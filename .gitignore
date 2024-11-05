@@ -47,5 +47,7 @@ Temporary Items
 go.work
 go.work.sum
 
+/tmp/
+
 # env file
 .env
