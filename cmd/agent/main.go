@@ -14,7 +14,7 @@ import (
 	"senhub-agent.go/internal/agent"
 )
 
-func gracefulShutdown(agent agent.Agent, done chan bool) {
+func gracefulShutdown(agent *agent.Agent, done chan bool) {
 	// Create context that listens for the interrupt signal from the OS.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -28,11 +28,11 @@ func gracefulShutdown(agent agent.Agent, done chan bool) {
 	// the request it is currently handling
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := agent.Shutdown(ctx); err != nil {
-		log.Printf("Server forced to shutdown with error: %v", err)
+	if err := (*agent).Shutdown(ctx); err != nil {
+		log.Printf("Agent forced to shutdown with error: %v", err)
 	}
 
-	log.Println("Server exiting")
+	log.Println("Agent exiting")
 
 	// Notify the main goroutine that the shutdown is complete
 	done <- true
@@ -45,9 +45,9 @@ func main() {
 	done := make(chan bool, 1)
 
 	// Run graceful shutdown in a separate goroutine
-	go gracefulShutdown(agent, done)
+	go gracefulShutdown(&agent, done)
 
-	err := agent.ListenAndServe()
+	err := agent.Start()
 	if err != nil {
 		panic(fmt.Sprintf("agent error: %s", err))
 	}

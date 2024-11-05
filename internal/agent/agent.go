@@ -1,22 +1,103 @@
 package agent
 
-import "context"
+import (
+	"context"
+	"log"
+	"os"
+	"syscall"
 
-type Agent interface {
-	ListenAndServe() error
+	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store"
+)
+
+type Service interface {
+	GetName() string
+	Start() error
 	Shutdown(context.Context) error
 }
 
-type agent struct{}
+type Agent interface {
+	Start() error
+	Shutdown(context.Context) error
+}
+
+type agent struct {
+	// List of services that have been started
+	startedServices *[]Service
+
+	localConfiguration  configuration.LocalConfiguration
+	remoteConfiguration configuration.RemoteConfiguration
+	store               data_store.DataStore
+}
 
 // Create new agent from context
 func NewAgent() Agent {
-	return agent{}
+	localConfiguration := configuration.NewLocalConfiguration()
+	remoteConfiguration := configuration.NewRemoteConfiguration()
+	store := data_store.NewDataStore()
+
+	return agent{
+		startedServices: &[]Service{},
+
+		localConfiguration:  localConfiguration,
+		remoteConfiguration: remoteConfiguration,
+		store:               store,
+	}
 }
 
-func (a agent) ListenAndServe() error {
+func (a agent) Start() error {
+	// List of all services that should be started
+	servicesToStart := []Service{
+		a.remoteConfiguration,
+		a.store,
+	}
+
+	// Attempt to start all services
+	var errors []error
+	for _, service := range servicesToStart {
+
+		if err := service.Start(); err != nil {
+			log.Printf("Error starting service: %s\n %v", service.GetName(), err)
+			errors = append(errors, err)
+		} else {
+			log.Printf("Service started: %s", service.GetName())
+			*a.startedServices = append(*a.startedServices, service)
+		}
+	}
+
+	if len(errors) > 0 {
+		a.handleStartError()
+	}
+
 	return nil
 }
+
 func (a agent) Shutdown(ctx context.Context) error {
+	var errors []error
+	for _, service := range *a.startedServices {
+		if err := service.Shutdown(ctx); err != nil {
+			log.Printf("Error shutting down service: %s %v", service.GetName(), err)
+			errors = append(errors, err)
+		} else {
+			log.Printf("Service shut down: %s", service.GetName())
+		}
+	}
+
+	if len(errors) > 0 {
+		return errors[0]
+	}
 	return nil
+}
+
+func (a agent) handleStartError() {
+	// Attempt to shutdown all services that were started
+	// by sending a SIGTEMR signal to the agent process
+	pid := os.Getpid()
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := p.Signal(syscall.SIGTERM); err != nil {
+		log.Fatal(err)
+	}
 }
