@@ -48,6 +48,7 @@ go.work
 go.work.sum
 
 /tmp/
+/senhub-agent
 
 # env file
 .env
