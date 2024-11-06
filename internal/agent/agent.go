@@ -6,6 +6,7 @@ import (
 	"os"
 	"syscall"
 
+	"github.com/alexflint/go-arg"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/senhub_server"
@@ -36,9 +37,20 @@ type agent struct {
 	sensors             sensor.Sensor
 }
 
+type AgentCliArgs struct {
+	AuthenticationKey string `arg:"required,--authentication-key,env:SENHUB_KEY"`
+	ServerUrl         string `arg:"--server-url,env:SENHUB_SERVER_URL" default:"https://nats.sensorfactory.eu:8443"`
+}
+
 // Create new agent from context
 func NewAgent() Agent {
-	localConfiguration := configuration.NewLocalConfiguration()
+	var args AgentCliArgs
+	arg.MustParse(&args)
+
+	localConfiguration := configuration.NewLocalConfiguration(
+		args.AuthenticationKey,
+		args.ServerUrl,
+	)
 
 	senhubServer := senhub_server.NewSenhubServer(
 		localConfiguration.GetAuthenticationKey(),
