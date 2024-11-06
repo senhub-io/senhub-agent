@@ -3,7 +3,7 @@ package senhub_server
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -38,6 +38,16 @@ func NewSenhubServer(authenticationKey string, url string) SenhubServer {
 	}
 }
 
+func (s senhubServer) NewRequest(method string, url string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-API-KEY", s.authenticationKey)
+
+	return req, nil
+}
+
 func (s senhubServer) Get(urlPath string) (*http.Response, error) {
 	fullUrl, err := url.JoinPath(
 		s.url,
@@ -46,9 +56,12 @@ func (s senhubServer) Get(urlPath string) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	fullUrl = fmt.Sprintf("%s?apiKey=%s", fullUrl, url.QueryEscape(s.authenticationKey))
+	req, err := s.NewRequest("GET", fullUrl, nil)
+	if err != nil {
+		return nil, err
+	}
 
-	return s.http.Get(fullUrl)
+	return s.http.Do(req)
 }
 
 func (s senhubServer) Post(urlPath string, data any) (*http.Response, error) {
@@ -59,12 +72,17 @@ func (s senhubServer) Post(urlPath string, data any) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	fullUrl = fmt.Sprintf("%s?apiKey=%s", fullUrl, url.QueryEscape(s.authenticationKey))
 	requestBody, err := json.Marshal(data)
 	if err != nil {
 		log.Printf("error encoding data. Err: %v", err)
 		return nil, err
 	}
 
-	return s.http.Post(fullUrl, "application/json", bytes.NewReader(requestBody))
+	req, err := s.NewRequest("POST", fullUrl, bytes.NewReader(requestBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	return s.http.Do(req)
 }

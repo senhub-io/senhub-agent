@@ -3,7 +3,12 @@ testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-args_bin = []
+args_bin = [
+  "--authentication-key",
+  "some_key",
+  "--server-url",
+  "http://localhost:8080",
+]
 bin = "./senhub-agent"
 cmd = "make build"
 delay = 1000
