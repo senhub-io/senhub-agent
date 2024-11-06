@@ -9,6 +9,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/senhub_server"
+	"senhub-agent.go/internal/agent/services/sensor"
 )
 
 type Service interface {
@@ -32,6 +33,7 @@ type agent struct {
 	localConfiguration  configuration.LocalConfiguration
 	remoteConfiguration configuration.RemoteConfiguration
 	store               data_store.DataStore
+	sensors             sensor.Sensor
 }
 
 // Create new agent from context
@@ -44,6 +46,7 @@ func NewAgent() Agent {
 	)
 	remoteConfiguration := configuration.NewRemoteConfiguration(senhubServer)
 	store := data_store.NewDataStore(senhubServer)
+	sensors := sensor.NewSensor(store.GetCallback())
 
 	return agent{
 		startedServices: &[]Service{},
@@ -53,6 +56,7 @@ func NewAgent() Agent {
 		localConfiguration:  localConfiguration,
 		remoteConfiguration: remoteConfiguration,
 		store:               store,
+		sensors:             sensors,
 	}
 }
 
@@ -61,6 +65,7 @@ func (a agent) Start() error {
 	servicesToStart := []Service{
 		a.remoteConfiguration,
 		a.store,
+		a.sensors,
 	}
 
 	// Attempt to start all services
