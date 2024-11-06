@@ -17,6 +17,7 @@ require (
 	github.com/ncruces/zenity v0.10.14 // indirect
 	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
+	github.com/ybbus/httpretry v1.0.2 // indirect
 	golang.org/x/image v0.20.0 // indirect
 	golang.org/x/sys v0.26.0 // indirect
 )
