@@ -72,14 +72,14 @@ func (c remoteConfiguration) doFetchConfiguration() (RemoteConfiguration, error)
 	if err != nil {
 		return nil, err
 	}
-	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("unexpected status code: %d", res.StatusCode)
-	}
 
 	defer res.Body.Close()
 	respBody, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, err
+	}
+	if res.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected status code: %d, %v", res.StatusCode, string(respBody))
 	}
 
 	var config RemoteConfiguration

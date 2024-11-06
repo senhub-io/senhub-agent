@@ -2,6 +2,8 @@ package data_store
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log"
 	"time"
 
@@ -74,14 +76,21 @@ func (d *dataStore) Start(quitChannel chan struct{}) error {
 func (d *dataStore) doSyncData() error {
 	data := d.buffer.Sync()
 	log.Printf("synchronizing data: %v", data)
+
 	response, err := d.senhubServer.Post("/metrics", data)
 	if err != nil || response.StatusCode != 200 {
+		d.buffer.AbortSync(data)
+
 		if err != nil {
 			log.Printf("error synchronizing data: %v", err)
 		} else {
-			log.Printf("error synchronizing data: %v", response.Status)
+			respBody, err := io.ReadAll(response.Body)
+			if err != nil {
+				return err
+			}
+			log.Printf("error synchronizing data: %d, %v", response.StatusCode, string(respBody))
+			return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 		}
-		d.buffer.AbortSync(data)
 		return err
 	}
 
