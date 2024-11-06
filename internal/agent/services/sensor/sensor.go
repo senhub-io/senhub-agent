@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/data_store"
 )
 
@@ -30,12 +31,31 @@ func (s *sensor) GetName() string {
 }
 
 func (s *sensor) Start(quitChannel chan struct{}) error {
-	ticker := time.NewTicker(2 * time.Second)
+	for _, probe := range probes.AllProbes {
+		go func(p probes.Probe) {
+			err := s.startProbe(p, quitChannel)
+			if err != nil {
+				log.Printf("error starting probe %s: %v", p.GetName(), err)
+			}
+		}(probe)
+	}
+
+	return nil
+}
+
+func (s *sensor) startProbe(p probes.Probe, quitChannel chan struct{}) error {
+	if p.ShouldStart() == false {
+		return nil
+	}
+
+	p.OnStart(quitChannel)
+
+	ticker := time.NewTicker(p.GetInterval())
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
-				err := s.doCollectSensors()
+				err := s.doCollectProbe(p)
 				if err != nil {
 					log.Printf("error collecting sensors: %v", err)
 				}
@@ -47,22 +67,24 @@ func (s *sensor) Start(quitChannel chan struct{}) error {
 		}
 	}()
 
-	return s.doCollectSensors()
+	return s.doCollectProbe(p)
 }
 
-func (s *sensor) doCollectSensors() error {
-	log.Println("collecting sensors")
-	s.addDataPoint([]data_store.DataPoint{
-		{
-			Name:  "temperature",
-			Value: "25",
-		},
-	})
-
-	return nil
+func (s *sensor) doCollectProbe(p probes.Probe) error {
+	data, err := p.Collect()
+	if err != nil {
+		return err
+	}
+	return s.addDataPoint(data)
 }
 
 func (s *sensor) Shutdown(ctx context.Context) error {
 	fmt.Println("Shutting down sensor")
+	for _, probe := range probes.AllProbes {
+		err := probe.OnShutdown(ctx)
+		if err != nil {
+			log.Printf("error shutting down probe %s: %v", probe.GetName(), err)
+		}
+	}
 	return nil
 }
