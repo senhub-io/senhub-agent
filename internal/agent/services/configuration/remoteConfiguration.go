@@ -39,6 +39,7 @@ func (c remoteConfiguration) GetName() string {
 func (c remoteConfiguration) Start(quitChannel chan struct{}) error {
 	ticker := time.NewTicker(5 * time.Second)
 	go func() {
+		c.doRefreshConfig()
 		for {
 			select {
 			case <-ticker.C:
@@ -51,7 +52,7 @@ func (c remoteConfiguration) Start(quitChannel chan struct{}) error {
 		}
 	}()
 
-	return c.doRefreshConfig()
+	return nil
 }
 
 func (c *remoteConfiguration) doRefreshConfig() error {
@@ -67,7 +68,7 @@ func (c *remoteConfiguration) doRefreshConfig() error {
 }
 
 func (c remoteConfiguration) doFetchConfiguration() (RemoteConfiguration, error) {
-	res, err := c.senhubServer.Get("/config")
+	res, err := c.senhubServer.Get("/configs")
 	if err != nil {
 		return nil, err
 	}

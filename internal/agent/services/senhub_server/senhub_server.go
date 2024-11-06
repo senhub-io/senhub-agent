@@ -26,7 +26,10 @@ type senhubServer struct {
 }
 
 func NewSenhubServer(authenticationKey string, url string) SenhubServer {
-	http := httpretry.NewDefaultClient()
+	http := httpretry.NewDefaultClient(
+		// retry up to 3 times
+		httpretry.WithMaxRetryCount(3),
+	)
 
 	return &senhubServer{
 		authenticationKey: authenticationKey,

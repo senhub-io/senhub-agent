@@ -52,6 +52,7 @@ func (s *sensor) startProbe(p probes.Probe, quitChannel chan struct{}) error {
 
 	ticker := time.NewTicker(p.GetInterval())
 	go func() {
+		s.doCollectProbe(p)
 		for {
 			select {
 			case <-ticker.C:
@@ -67,7 +68,7 @@ func (s *sensor) startProbe(p probes.Probe, quitChannel chan struct{}) error {
 		}
 	}()
 
-	return s.doCollectProbe(p)
+	return nil
 }
 
 func (s *sensor) doCollectProbe(p probes.Probe) error {
