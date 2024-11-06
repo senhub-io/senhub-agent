@@ -14,12 +14,13 @@ type localConfiguration struct {
 	ServerUrl         string
 }
 
-func NewLocalConfiguration() LocalConfiguration {
-	// TODO For now configuration is static
-	// This should be read from arguments, environment variables and/or a local file
+func NewLocalConfiguration(
+	AuthenticationKey string,
+	ServerUrl string,
+) LocalConfiguration {
 	return &localConfiguration{
-		AuthenticationKey: "default_key",
-		ServerUrl:         "https://nats.sensorfactory.eu:8443",
+		AuthenticationKey: AuthenticationKey,
+		ServerUrl:         ServerUrl,
 	}
 }
 
