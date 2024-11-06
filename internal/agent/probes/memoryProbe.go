@@ -2,7 +2,6 @@ package probes
 
 import (
 	"context"
-	"fmt"
 	"runtime"
 	"time"
 
@@ -28,12 +27,13 @@ func (m *memoryProbe) GetInterval() time.Duration {
 func (m *memoryProbe) Collect() ([]data_store.DataPoint, error) {
 	var s runtime.MemStats
 	runtime.ReadMemStats(&s)
+	var timestamp = time.Now()
 
 	return []data_store.DataPoint{
-		{Name: "mem_alloc", Value: fmt.Sprintf("%d", s.Alloc)},
-		{Name: "mem_total_alloc", Value: fmt.Sprintf("%d", s.TotalAlloc)},
-		{Name: "mem_sys", Value: fmt.Sprintf("%d", s.Sys)},
-		{Name: "mem_num_gc", Value: fmt.Sprintf("%d", s.NumGC)},
+		{Name: "mem_alloc", Timestamp: timestamp, Value: float32(s.Alloc)},
+		{Name: "mem_total_alloc", Timestamp: timestamp, Value: float32(s.TotalAlloc)},
+		{Name: "mem_sys", Timestamp: timestamp, Value: float32(s.Sys)},
+		{Name: "mem_num_gc", Timestamp: timestamp, Value: float32(s.NumGC)},
 	}, nil
 }
 func (m *memoryProbe) OnStart(quitChannel chan struct{}) error {

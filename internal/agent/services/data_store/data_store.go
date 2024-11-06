@@ -11,8 +11,9 @@ import (
 // Data store is responsible for storing and synchronizing data to the server.
 
 type DataPoint struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
+	Name      string    `json:"name"`
+	Timestamp time.Time `json:"timestamp"`
+	Value     float32   `json:"value"`
 }
 
 type AddCallback func([]DataPoint) error

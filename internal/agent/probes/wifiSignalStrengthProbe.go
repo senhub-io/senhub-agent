@@ -64,7 +64,8 @@ func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, erro
 					return []data_store.DataPoint{}, err
 				}
 				return []data_store.DataPoint{
-					{Name: "wifi_signal_strength", Value: fmt.Sprintf("%d", signalStrength)},
+					{Name: "wifi_signal_strength", Timestamp: time.Now(),
+						Value: float32(signalStrength)},
 				}, nil
 			}
 		}
@@ -91,7 +92,8 @@ func (m *wifiSignalStrengthProbe) collectLinux() ([]data_store.DataPoint, error)
 					signal := strings.Split(part, "=")[1]
 					signalStrength, _ := strconv.Atoi(signal)
 					return []data_store.DataPoint{
-						{Name: "wifi_signal_strength", Value: fmt.Sprintf("%d", signalStrength)},
+						{Name: "wifi_signal_strength", Timestamp: time.Now(),
+							Value: float32(signalStrength)},
 					}, nil
 				}
 			}
