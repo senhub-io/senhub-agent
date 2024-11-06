@@ -50,12 +50,11 @@ func (d *dataStore) GetCallback() AddCallback {
 }
 
 func (d *dataStore) Start(quitChannel chan struct{}) error {
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Println("synchronizing data")
 				err := d.doSyncData()
 				if err != nil {
 					log.Printf("error synchronizing data: %v", err)
@@ -73,8 +72,14 @@ func (d *dataStore) Start(quitChannel chan struct{}) error {
 
 func (d *dataStore) doSyncData() error {
 	data := d.buffer.Sync()
+	log.Printf("synchronizing data: %v", data)
 	response, err := d.senhubServer.Post("/metrics", data)
 	if err != nil || response.StatusCode != 200 {
+		if err != nil {
+			log.Printf("error synchronizing data: %v", err)
+		} else {
+			log.Printf("error synchronizing data: %v", response.Status)
+		}
 		d.buffer.AbortSync(data)
 		return err
 	}

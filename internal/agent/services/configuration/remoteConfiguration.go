@@ -42,12 +42,7 @@ func (c remoteConfiguration) Start(quitChannel chan struct{}) error {
 		for {
 			select {
 			case <-ticker.C:
-				config, err := c.doFetchConfiguration()
-				if err != nil {
-					log.Printf("error fetching configuration: %v", err)
-				}
-				// Replace existing configuration with new one
-				c.configuration = &config
+				c.doRefreshConfig()
 
 			case <-quitChannel:
 				ticker.Stop()
@@ -55,6 +50,18 @@ func (c remoteConfiguration) Start(quitChannel chan struct{}) error {
 			}
 		}
 	}()
+
+	return c.doRefreshConfig()
+}
+
+func (c *remoteConfiguration) doRefreshConfig() error {
+	config, err := c.doFetchConfiguration()
+	if err != nil {
+		log.Printf("error fetching configuration: %v", err)
+		return nil
+	}
+	// Replace existing configuration with new one
+	c.configuration = &config
 
 	return nil
 }

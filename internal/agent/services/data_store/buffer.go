@@ -10,27 +10,27 @@ type Buffer interface {
 }
 
 type buffer struct {
-	data []DataPoint
+	data *[]DataPoint
 }
 
 func NewBuffer() Buffer {
 	return &buffer{
-		data: []DataPoint{},
+		data: &[]DataPoint{},
 	}
 }
 
 func (b *buffer) Append(newData []DataPoint) error {
-	b.data = append(b.data, newData...)
+	*b.data = append(*b.data, newData...)
 	return nil
 }
 
 func (b *buffer) Sync() []DataPoint {
-	data := b.data
-	b.data = []DataPoint{}
+	data := *b.data
+	*b.data = []DataPoint{}
 	return data
 }
 
 func (b *buffer) AbortSync(failedData []DataPoint) error {
-	b.data = append(b.data, failedData...)
+	*b.data = append(*b.data, failedData...)
 	return nil
 }
