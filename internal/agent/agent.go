@@ -84,7 +84,6 @@ func (a agent) Start() error {
 	// Create a message channel to communicate with the services
 	var errors []error
 	for _, service := range servicesToStart {
-
 		if err := service.Start(a.messageChannel); err != nil {
 			log.Printf("Error starting service: %s\n %v", service.GetName(), err)
 			errors = append(errors, err)
