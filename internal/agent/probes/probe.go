@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 )
 
@@ -24,7 +25,7 @@ type Probe interface {
 }
 
 // AllProbes is a list of all probes available
-var AllProbes = []Probe{
-	NewMemoryProbe(),
-	NewWifiSignalStrengthProbe(),
+var AllProbes = []func(configuration.RemoteConfiguration) Probe{
+	NewMemoryProbe,
+	NewWifiSignalStrengthProbe,
 }
