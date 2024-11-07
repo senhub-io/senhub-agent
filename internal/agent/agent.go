@@ -58,7 +58,7 @@ func NewAgent() Agent {
 	)
 	remoteConfiguration := configuration.NewRemoteConfiguration(senhubServer)
 	store := data_store.NewDataStore(senhubServer)
-	sensors := sensor.NewSensor(store.GetCallback())
+	sensors := sensor.NewSensor(store.GetCallback(), remoteConfiguration)
 
 	return agent{
 		startedServices: &[]Service{},
