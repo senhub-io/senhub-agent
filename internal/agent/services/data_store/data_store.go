@@ -77,7 +77,7 @@ func (d *dataStore) doSyncData() error {
 	data := d.buffer.Sync()
 	log.Printf("synchronizing data: %v", data)
 
-	response, err := d.senhubServer.Post("/webmetrics", data)
+	response, err := d.senhubServer.Post("/metrics", data)
 	if err != nil || response.StatusCode != 200 {
 		d.buffer.AbortSync(data)
 
