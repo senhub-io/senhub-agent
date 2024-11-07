@@ -48,7 +48,9 @@ go.work
 go.work.sum
 
 /tmp/
-/senhub-agent
+/senhub-agent_darwin_amd64
+/senhub-agent_windows_amd64.exe
+/senhub-agent_linux_amd64
 
 # env file
 .env
