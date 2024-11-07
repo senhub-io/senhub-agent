@@ -39,7 +39,7 @@ func NewSenhubServer(authenticationKey string, url string) SenhubServer {
 }
 
 func (s senhubServer) NewRequest(method string, url string, body io.Reader) (*http.Request, error) {
-	req, err := http.NewRequest(method, url, nil)
+	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return nil, err
 	}
@@ -78,11 +78,17 @@ func (s senhubServer) Post(urlPath string, data any) (*http.Response, error) {
 		return nil, err
 	}
 
-	req, err := s.NewRequest("POST", fullUrl, bytes.NewReader(requestBody))
+	req, err := s.NewRequest("POST", fullUrl, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	return s.http.Do(req)
+	res, err := s.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	return res, nil
 }
