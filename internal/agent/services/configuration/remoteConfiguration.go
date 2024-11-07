@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/senhub_server"
@@ -19,12 +20,13 @@ type RemoteConfiguration interface {
 	Start(chan struct{}) error
 	Shutdown(context.Context) error
 }
-type Cfg struct  {
-	url string
+
+type RemoteConfigurationData struct {
+	Url               string            `json:"url"`
 }
 type remoteConfiguration struct {
 	senhubServer  senhub_server.SenhubServer
-	configuration *Cfg
+	configuration *RemoteConfigurationData
 }
 
 func NewRemoteConfiguration(senhubServer senhub_server.SenhubServer) RemoteConfiguration {
@@ -39,13 +41,23 @@ func (c remoteConfiguration) GetName() string {
 }
 
 func (c remoteConfiguration) Start(quitChannel chan struct{}) error {
+	// Refresh configuration immediately
+	// This is blocking
+	log.Println("Fetching initial configuration")
+	if err := c.doRefreshConfig(); err != nil {
+		log.Fatalf("Unable to fetch initial configuration %v", err)
+		os.Exit(1)
+	}
+
 	ticker := time.NewTicker(5 * time.Second)
 	go func() {
-		c.doRefreshConfig()
 		for {
 			select {
 			case <-ticker.C:
-				c.doRefreshConfig()
+				err := c.doRefreshConfig()
+				if err != nil {
+					log.Printf("error fetching configuration: %v", err)
+				}
 
 			case <-quitChannel:
 				ticker.Stop()
@@ -60,8 +72,7 @@ func (c remoteConfiguration) Start(quitChannel chan struct{}) error {
 func (c *remoteConfiguration) doRefreshConfig() error {
 	config, err := c.doFetchConfiguration()
 	if err != nil {
-		log.Printf("error fetching configuration: %v", err)
-		return nil
+		return err
 	}
 	// Replace existing configuration with new one
 	c.configuration = config
@@ -69,7 +80,7 @@ func (c *remoteConfiguration) doRefreshConfig() error {
 	return nil
 }
 
-func (c remoteConfiguration) doFetchConfiguration() (*Cfg, error) {
+func (c remoteConfiguration) doFetchConfiguration() (*RemoteConfigurationData, error) {
 	res, err := c.senhubServer.Get("/configs")
 	if err != nil {
 		return nil, err
@@ -84,7 +95,7 @@ func (c remoteConfiguration) doFetchConfiguration() (*Cfg, error) {
 		return nil, fmt.Errorf("unexpected status code: %d, %v", res.StatusCode, string(respBody))
 	}
 
-	var config Cfg
+	var config RemoteConfigurationData
 	err = json.Unmarshal(respBody, &config)
 	return &config, err
 }
