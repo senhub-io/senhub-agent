@@ -19,10 +19,12 @@ type RemoteConfiguration interface {
 	Start(chan struct{}) error
 	Shutdown(context.Context) error
 }
-
+type Cfg struct  {
+	url string
+}
 type remoteConfiguration struct {
 	senhubServer  senhub_server.SenhubServer
-	configuration *RemoteConfiguration
+	configuration *Cfg
 }
 
 func NewRemoteConfiguration(senhubServer senhub_server.SenhubServer) RemoteConfiguration {
@@ -62,12 +64,12 @@ func (c *remoteConfiguration) doRefreshConfig() error {
 		return nil
 	}
 	// Replace existing configuration with new one
-	c.configuration = &config
+	c.configuration = config
 
 	return nil
 }
 
-func (c remoteConfiguration) doFetchConfiguration() (RemoteConfiguration, error) {
+func (c remoteConfiguration) doFetchConfiguration() (*Cfg, error) {
 	res, err := c.senhubServer.Get("/configs")
 	if err != nil {
 		return nil, err
@@ -82,9 +84,9 @@ func (c remoteConfiguration) doFetchConfiguration() (RemoteConfiguration, error)
 		return nil, fmt.Errorf("unexpected status code: %d, %v", res.StatusCode, string(respBody))
 	}
 
-	var config RemoteConfiguration
+	var config Cfg
 	err = json.Unmarshal(respBody, &config)
-	return config, err
+	return &config, err
 }
 func (c remoteConfiguration) Shutdown(ctx context.Context) error {
 	// Nothing to do for now.
