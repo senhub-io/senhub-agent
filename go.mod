@@ -4,6 +4,8 @@ go 1.23.2
 
 require (
 	github.com/akavel/rsrc v0.10.2 // indirect
+	github.com/alexflint/go-arg v1.5.1 // indirect
+	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/dchest/jsmin v0.0.0-20220218165748-59f39799265f // indirect
 	github.com/getlantern/context v0.0.0-20190109183933-c447772a6520 // indirect
 	github.com/getlantern/errors v0.0.0-20190325191628-abdb3e3e36f7 // indirect
@@ -17,6 +19,7 @@ require (
 	github.com/ncruces/zenity v0.10.14 // indirect
 	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
+	github.com/ybbus/httpretry v1.0.2 // indirect
 	golang.org/x/image v0.20.0 // indirect
 	golang.org/x/sys v0.26.0 // indirect
 )
