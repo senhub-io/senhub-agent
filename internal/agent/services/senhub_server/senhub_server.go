@@ -39,7 +39,7 @@ func NewSenhubServer(authenticationKey string, url string) SenhubServer {
 }
 
 func (s senhubServer) NewRequest(method string, url string, body io.Reader) (*http.Request, error) {
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		return nil, err
 	}
