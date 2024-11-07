@@ -43,7 +43,7 @@ func (s senhubServer) NewRequest(method string, url string, body io.Reader) (*ht
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-API-KEY", s.authenticationKey)
+	req.Header.Set("X-AGENT-KEY", s.authenticationKey)
 
 	return req, nil
 }
