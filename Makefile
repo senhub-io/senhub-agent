@@ -1,12 +1,26 @@
-# Simple Makefile for a Go project
+EXECUTABLE=senhub-agent
+WINDOWS=$(EXECUTABLE)_windows_amd64.exe
+LINUX=$(EXECUTABLE)_linux_amd64
+DARWIN=$(EXECUTABLE)_darwin_amd64
+VERSION=$(shell git describe --tags --always --long --dirty)
 
 # Build the application
 all: build test
 
 # Build the application
-build:
-	@echo "Building Agent..."
-	@go build -o senhub-agent cmd/agent/main.go
+build: build-windows build-linux build-darwin ## Build binaries
+		@echo version: $(VERSION)
+
+build-windows: ## Build for Windows
+		@env GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="-s -w -X main.version=$(VERSION)"  ./cmd/agent/main.go
+
+build-linux: ## Build for Linux
+		@env GOOS=linux GOARCH=amd64 go build -o $(LINUX) -ldflags="-s -w -X main.version=$(VERSION)"  ./cmd/agent/main.go
+
+build-darwin: ## Build for Darwin (macOS)
+		@env GOOS=darwin GOARCH=amd64 go build -o $(DARWIN) -ldflags="-s -w -X main.version=$(VERSION)"  ./cmd/agent/main.go
+
+
 
 # Run the application
 run:
@@ -20,7 +34,7 @@ test:
 # Clean the binary
 clean:
 	@echo "Cleaning..."
-	@rm -f main
+	@rm -f $(WINDOWS) $(LINUX) $(DARWIN)
 
 # Live Reload
 watch: clean
@@ -39,4 +53,4 @@ watch: clean
             fi; \
         fi
 
-.PHONY: all build run test clean watch
+.PHONY: all build build-windows build-linux build-darwin run test clean watch
