@@ -5,14 +5,18 @@ import (
 	"runtime"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 )
 
 type memoryProbe struct {
+	config configuration.RemoteConfiguration
 }
 
-func NewMemoryProbe() Probe {
-	return &memoryProbe{}
+func NewMemoryProbe(config configuration.RemoteConfiguration) Probe {
+	return &memoryProbe{
+		config: config,
+	}
 }
 
 func (m *memoryProbe) GetName() string {
