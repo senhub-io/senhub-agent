@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/senhub_server"
 )
 
@@ -32,13 +33,18 @@ type DataStore interface {
 type dataStore struct {
 	buffer       Buffer
 	senhubServer senhub_server.SenhubServer
+	storeConfig  *configuration.RemoteConfiguration
 }
 
 // NewDataStore creates a new data store.
-func NewDataStore(senhubServer senhub_server.SenhubServer) DataStore {
+func NewDataStore(
+	senhubServer senhub_server.SenhubServer,
+	storeConfig *configuration.RemoteConfiguration,
+) DataStore {
 	return &dataStore{
 		buffer:       NewBuffer(),
 		senhubServer: senhubServer,
+		storeConfig:  storeConfig,
 	}
 }
 
