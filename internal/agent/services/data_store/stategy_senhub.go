@@ -10,11 +10,11 @@ import (
 
 // Synchronize metrics to senhub backend.
 type SyncStrategySenhub struct {
-	agentConfig configuration.LocalConfiguration
+	agentConfig configuration.AgentConfiguration
 	server      senhub_server.SenhubServer
 }
 
-func NewSyncStrategySenhub(agentConfig configuration.LocalConfiguration) SyncStrategy {
+func NewSyncStrategySenhub(agentConfig configuration.AgentConfiguration) SyncStrategy {
 	return &SyncStrategySenhub{
 		agentConfig: agentConfig,
 	}

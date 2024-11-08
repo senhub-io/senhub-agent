@@ -43,14 +43,14 @@ type dataStore struct {
 	buffer       Buffer
 	strategy     SyncStrategy
 	remoteConfig *configuration.RemoteConfiguration
-	agentConfig  configuration.LocalConfiguration
+	agentConfig  configuration.AgentConfiguration
 	ticker       *time.Ticker
 	tickerOnce   sync.Once
 }
 
 // NewDataStore creates a new data store.
 func NewDataStore(
-	agentConfig configuration.LocalConfiguration,
+	agentConfig configuration.AgentConfiguration,
 	remoteConfig *configuration.RemoteConfiguration,
 ) DataStore {
 	return &dataStore{
