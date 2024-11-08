@@ -24,9 +24,9 @@ func NewLocalConfiguration(
 	}
 }
 
-func (l localConfiguration) GetAuthenticationKey() string {
+func (l *localConfiguration) GetAuthenticationKey() string {
 	return l.AuthenticationKey
 }
-func (l localConfiguration) GetServerUrl() string {
+func (l *localConfiguration) GetServerUrl() string {
 	return l.ServerUrl
 }

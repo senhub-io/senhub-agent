@@ -2,14 +2,11 @@ package data_store
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"log"
 	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
-	"senhub-agent.go/internal/agent/services/senhub_server"
 )
 
 // Data store is responsible for storing and synchronizing data to the server.
@@ -22,6 +19,17 @@ type DataPoint struct {
 
 type AddCallback func([]DataPoint) error
 
+// SyncStrategy is an interface for synchronization strategies.
+// Implement these methods to create a new synchronization strategy.
+//
+// A synchronization strategy is responsible for synchronizing data to a backend.
+type SyncStrategy interface {
+	GetName() string
+	Start(chan struct{}, configuration.PersistanceConfig) error
+	Sync([]DataPoint, configuration.PersistanceConfig) error
+	Shutdown(context.Context) error
+}
+
 // DataStore is an interface for data store.
 type DataStore interface {
 	GetName() string
@@ -33,21 +41,22 @@ type DataStore interface {
 
 type dataStore struct {
 	buffer       Buffer
-	senhubServer senhub_server.SenhubServer
-	storeConfig  *configuration.RemoteConfiguration
+	strategy     SyncStrategy
+	remoteConfig *configuration.RemoteConfiguration
+	agentConfig  configuration.LocalConfiguration
 	ticker       *time.Ticker
 	tickerOnce   sync.Once
 }
 
 // NewDataStore creates a new data store.
 func NewDataStore(
-	senhubServer senhub_server.SenhubServer,
-	storeConfig *configuration.RemoteConfiguration,
+	agentConfig configuration.LocalConfiguration,
+	remoteConfig *configuration.RemoteConfiguration,
 ) DataStore {
 	return &dataStore{
 		buffer:       NewBuffer(),
-		senhubServer: senhubServer,
-		storeConfig:  storeConfig,
+		remoteConfig: remoteConfig,
+		agentConfig:  agentConfig,
 	}
 }
 
@@ -85,24 +94,46 @@ func (d *dataStore) Start(quitChannel chan struct{}) error {
 	return nil
 }
 
+// Ensure the strategy is available according to the configuration.
+func (d *dataStore) getOrRefreshStrategy() {
+	strategyName := d.remoteConfig.GetConfiguration().PersistanceConfig.Stategy
+	if strategyName == "" {
+		// Default strategy is senhub
+		strategyName = "senhub"
+	}
+
+	if d.strategy != nil && d.strategy.GetName() == strategyName {
+		return
+	}
+	if d.strategy != nil {
+		log.Printf("shutting down strategy: %s", d.strategy.GetName())
+		d.strategy.Shutdown(context.Background())
+	}
+
+	switch strategyName {
+	case "senhub":
+		log.Printf("using strategy: %s", strategyName)
+
+		d.strategy = NewSyncStrategySenhub(d.agentConfig)
+		d.strategy.Start(nil, d.remoteConfig.GetConfiguration().PersistanceConfig)
+		return
+
+	default:
+		log.Printf("unknown strategy: %s", strategyName)
+		return
+	}
+}
+
 func (d *dataStore) doSyncData() error {
+	d.getOrRefreshStrategy()
+
 	data := d.buffer.Sync()
+	remoteConfig := d.remoteConfig.GetConfiguration().PersistanceConfig
+
 	log.Printf("synchronizing data: %v", data)
-
-	response, err := d.senhubServer.Post("/metrics", data)
-	if err != nil || response.StatusCode != 200 {
+	if err := d.strategy.Sync(data, remoteConfig); err != nil {
+		log.Printf("error synchronizing data: %v", err)
 		d.buffer.AbortSync(data)
-
-		if err != nil {
-			log.Printf("error synchronizing data: %v", err)
-		} else {
-			respBody, err := io.ReadAll(response.Body)
-			if err != nil {
-				return err
-			}
-			log.Printf("error synchronizing data: %d, %v", response.StatusCode, string(respBody))
-			return fmt.Errorf("unexpected status code: %d", response.StatusCode)
-		}
 		return err
 	}
 
