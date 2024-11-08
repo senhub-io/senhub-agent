@@ -31,7 +31,7 @@ type agent struct {
 	messageChannel chan struct{}
 
 	senhubServer        senhub_server.SenhubServer
-	localConfiguration  configuration.LocalConfiguration
+	agentConfiguration  configuration.AgentConfiguration
 	remoteConfiguration *configuration.RemoteConfiguration
 	store               data_store.DataStore
 	sensors             sensor.Sensor
@@ -47,18 +47,18 @@ func NewAgent() Agent {
 	var args AgentCliArgs
 	arg.MustParse(&args)
 
-	localConfiguration := configuration.NewLocalConfiguration(
+	agentConfiguration := configuration.NewAgentConfiguration(
 		args.AuthenticationKey,
 		args.ServerUrl,
 	)
 
 	senhubServer := senhub_server.NewSenhubServer(
-		localConfiguration.GetAuthenticationKey(),
-		localConfiguration.GetServerUrl(),
+		agentConfiguration.GetAuthenticationKey(),
+		agentConfiguration.GetServerUrl(),
 	)
 	remoteConfiguration := configuration.NewRemoteConfiguration(senhubServer)
 	store := data_store.NewDataStore(
-		localConfiguration,
+		agentConfiguration,
 		remoteConfiguration,
 	)
 	sensors := sensor.NewSensor(store.GetCallback(), remoteConfiguration)
@@ -68,7 +68,7 @@ func NewAgent() Agent {
 		messageChannel:  make(chan struct{}),
 
 		senhubServer:        senhubServer,
-		localConfiguration:  localConfiguration,
+		agentConfiguration:  agentConfiguration,
 		remoteConfiguration: remoteConfiguration,
 		store:               store,
 		sensors:             sensors,
