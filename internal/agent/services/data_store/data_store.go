@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -34,6 +35,8 @@ type dataStore struct {
 	buffer       Buffer
 	senhubServer senhub_server.SenhubServer
 	storeConfig  *configuration.RemoteConfiguration
+	ticker       *time.Ticker
+	tickerOnce   sync.Once
 }
 
 // NewDataStore creates a new data store.
@@ -59,22 +62,25 @@ func (d *dataStore) GetCallback() AddCallback {
 }
 
 func (d *dataStore) Start(quitChannel chan struct{}) error {
-	ticker := time.NewTicker(5 * time.Second)
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				err := d.doSyncData()
-				if err != nil {
-					log.Printf("error synchronizing data: %v", err)
-				}
+	d.tickerOnce.Do(func() { // Ensure the ticker only starts once
+		ticker := time.NewTicker(5 * time.Second)
 
-			case <-quitChannel:
-				ticker.Stop()
-				return
+		go func() {
+			for {
+				select {
+				case <-ticker.C:
+					err := d.doSyncData()
+					if err != nil {
+						log.Printf("error synchronizing data: %v", err)
+					}
+
+				case <-quitChannel:
+					ticker.Stop()
+					return
+				}
 			}
-		}
-	}()
+		}()
+	})
 
 	return nil
 }
