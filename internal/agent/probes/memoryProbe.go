@@ -10,10 +10,10 @@ import (
 )
 
 type memoryProbe struct {
-	config configuration.RemoteConfiguration
+	config *configuration.RemoteConfiguration
 }
 
-func NewMemoryProbe(config configuration.RemoteConfiguration) Probe {
+func NewMemoryProbe(config *configuration.RemoteConfiguration) Probe {
 	return &memoryProbe{
 		config: config,
 	}

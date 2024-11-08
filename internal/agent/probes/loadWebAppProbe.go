@@ -3,8 +3,8 @@ package probes
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"net/http"
+	"net/url"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -12,10 +12,10 @@ import (
 )
 
 type LoadWebAppProbe struct {
-	config 		configuration.RemoteConfiguration
+	config *configuration.RemoteConfiguration
 }
 
-func NewLoadWebAppProbe(config configuration.RemoteConfiguration) Probe {
+func NewLoadWebAppProbe(config *configuration.RemoteConfiguration) Probe {
 	return &LoadWebAppProbe{
 		config: config,
 	}
@@ -38,7 +38,7 @@ func (p *LoadWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 
 	domLoadTime, fullLoadTime, err := p.measurePageLoad(webappURL)
 	if err != nil {
-		return nil, fmt.Errorf("Error measuring page load times:", err)
+		return nil, fmt.Errorf("Error measuring page load times: %v", err)
 	}
 
 	return []data_store.DataPoint{
@@ -69,15 +69,13 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (float32, float32, err
 
 	// Simulate DOM load time as half of the total time taken to fetch the page
 	fullLoadTime64 := time.Since(start).Seconds() * 1000 // Convert to milliseconds
-	domLoadTime64 := fullLoadTime64 / 2                     // Estimate DOM load time
+	domLoadTime64 := fullLoadTime64 / 2                  // Estimate DOM load time
 
 	domLoadTime := float32(domLoadTime64)
 	fullLoadTime := float32(fullLoadTime64)
 
 	return domLoadTime, fullLoadTime, nil
 }
-
-
 
 func (p *LoadWebAppProbe) OnStart(quitChannel chan struct{}) error {
 	return nil

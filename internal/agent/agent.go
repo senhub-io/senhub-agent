@@ -32,7 +32,7 @@ type agent struct {
 
 	senhubServer        senhub_server.SenhubServer
 	localConfiguration  configuration.LocalConfiguration
-	remoteConfiguration configuration.RemoteConfiguration
+	remoteConfiguration *configuration.RemoteConfiguration
 	store               data_store.DataStore
 	sensors             sensor.Sensor
 }
@@ -57,7 +57,10 @@ func NewAgent() Agent {
 		localConfiguration.GetServerUrl(),
 	)
 	remoteConfiguration := configuration.NewRemoteConfiguration(senhubServer)
-	store := data_store.NewDataStore(senhubServer)
+	store := data_store.NewDataStore(
+		senhubServer,
+		remoteConfiguration,
+	)
 	sensors := sensor.NewSensor(store.GetCallback(), remoteConfiguration)
 
 	return agent{
