@@ -20,11 +20,11 @@ func NewSyncStrategySenhub(agentConfig configuration.AgentConfiguration) SyncStr
 	}
 }
 
-func (s SyncStrategySenhub) GetName() string {
-	return "DataStoreStrategySenhub"
+func (s SyncStrategySenhub) GetStrategyName() string {
+	return "senhub"
 }
 
-func (s *SyncStrategySenhub) Start(chan struct{}, configuration.PersistanceConfig) error {
+func (s *SyncStrategySenhub) Start(chan struct{}, configuration.StorageConfig) error {
 	// Create new senhub server
 	s.server = senhub_server.NewSenhubServer(
 		s.agentConfig.GetAuthenticationKey(),
@@ -38,7 +38,7 @@ func (s *SyncStrategySenhub) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (s *SyncStrategySenhub) Sync(data []DataPoint, configuration configuration.PersistanceConfig) error {
+func (s *SyncStrategySenhub) Sync(data []DataPoint, configuration configuration.StorageConfig) error {
 	response, err := s.server.Post("/metrics", data)
 	if err != nil {
 		return err
