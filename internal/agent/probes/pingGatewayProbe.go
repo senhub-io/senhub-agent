@@ -16,10 +16,10 @@ import (
 )
 
 type PingGatewayProbe struct {
-	config configuration.RemoteConfiguration
+	config *configuration.RemoteConfiguration
 }
 
-func NewPingGatewayProbe(config configuration.RemoteConfiguration) Probe {
+func NewPingGatewayProbe(config *configuration.RemoteConfiguration) Probe {
 	return &PingGatewayProbe{
 		config: config,
 	}

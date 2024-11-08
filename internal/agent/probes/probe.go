@@ -25,10 +25,10 @@ type Probe interface {
 }
 
 // AllProbes is a list of all probes available
-var AllProbes = []func(configuration.RemoteConfiguration) Probe{
-	//NewMemoryProbe,
-	//NewWifiSignalStrengthProbe,
-	//NewPingGatewayProbe,
-	//NewPingWebAppProbe,
+var AllProbes = []func(*configuration.RemoteConfiguration) Probe{
+	NewMemoryProbe,
+	NewWifiSignalStrengthProbe,
+	NewPingGatewayProbe,
+	NewPingWebAppProbe,
 	NewLoadWebAppProbe,
 }

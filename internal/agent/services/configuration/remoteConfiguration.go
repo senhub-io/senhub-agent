@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
+	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/senhub_server"
@@ -15,73 +15,93 @@ import (
 // RemoteConfiguration is an interface for remote configuration.
 // Remote configuration is read periodically from the server.
 
-type RemoteConfiguration interface {
-	GetName() string
-	Start(chan struct{}) error
-	Shutdown(context.Context) error
+type PersistanceConfig struct {
+	Stategy   string `json:"strategy"`
+	ServerUrl string `json:"server_url"`
 }
 
 type RemoteConfigurationData struct {
 	Url               string            `json:"url"`
-}
-type remoteConfiguration struct {
-	senhubServer  senhub_server.SenhubServer
-	configuration *RemoteConfigurationData
+	PersistanceConfig PersistanceConfig `json:"persistance_config"`
 }
 
-func NewRemoteConfiguration(senhubServer senhub_server.SenhubServer) RemoteConfiguration {
-	return &remoteConfiguration{
-		senhubServer:  senhubServer,
-		configuration: nil,
+// RemoteConfiguration represents a struct that performs periodic tasks.
+type RemoteConfiguration struct {
+	data         RemoteConfigurationData
+	senhubServer senhub_server.SenhubServer
+	ticker       *time.Ticker
+	tickerOnce   sync.Once
+	mutex        sync.Mutex // Ensures thread-safe execution of doRefreshConfig
+}
+
+// NewService initializes a new Service instance.
+func NewRemoteConfiguration(senhubServer senhub_server.SenhubServer) *RemoteConfiguration {
+	return &RemoteConfiguration{
+		senhubServer: senhubServer,
+		data:         RemoteConfigurationData{},
 	}
 }
 
-func (c remoteConfiguration) GetName() string {
+func (s *RemoteConfiguration) GetName() string {
 	return "RemoteConfiguration"
 }
 
-func (c remoteConfiguration) Start(quitChannel chan struct{}) error {
+func (s *RemoteConfiguration) GetConfiguration() RemoteConfigurationData {
+	return s.data
+}
+
+// StartPeriodicTask starts calling doRefreshConfig at the specified interval.
+func (s *RemoteConfiguration) Start(quitChannel chan struct{}) error {
+	s.tickerOnce.Do(func() { // Ensure the ticker only starts once
+		s.ticker = time.NewTicker(3 * time.Second)
+
+		go func() {
+			for {
+				select {
+				case <-quitChannel:
+					s.ticker.Stop()
+					return
+				case <-s.ticker.C:
+					s.doRefreshConfig()
+				}
+			}
+		}()
+	})
+
 	// Refresh configuration immediately
 	// This is blocking
 	log.Println("Fetching initial configuration")
-	if err := c.doRefreshConfig(); err != nil {
+	if err := s.doRefreshConfig(); err != nil {
 		log.Fatalf("Unable to fetch initial configuration %v", err)
-		os.Exit(1)
+		return err
 	}
-
-	ticker := time.NewTicker(5 * time.Second)
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				err := c.doRefreshConfig()
-				if err != nil {
-					log.Printf("error fetching configuration: %v", err)
-				}
-
-			case <-quitChannel:
-				ticker.Stop()
-				return
-			}
-		}
-	}()
 
 	return nil
 }
 
-func (c *remoteConfiguration) doRefreshConfig() error {
-	config, err := c.doFetchConfiguration()
+// StopPeriodicTask stops the periodic execution of doRefreshConfig.
+func (s *RemoteConfiguration) Shutdown(context.Context) error {
+	return nil
+}
+
+// doRefreshConfig is the method called periodically, now thread-safe.
+func (s *RemoteConfiguration) doRefreshConfig() error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	config, err := s.doFetchConfiguration()
 	if err != nil {
 		return err
 	}
+
 	// Replace existing configuration with new one
-	c.configuration = config
+	s.data = *config
 
 	return nil
 }
 
-func (c remoteConfiguration) doFetchConfiguration() (*RemoteConfigurationData, error) {
-	res, err := c.senhubServer.Get("/configs")
+func (s *RemoteConfiguration) doFetchConfiguration() (*RemoteConfigurationData, error) {
+	res, err := s.senhubServer.Get("/configs")
 	if err != nil {
 		return nil, err
 	}
@@ -98,8 +118,4 @@ func (c remoteConfiguration) doFetchConfiguration() (*RemoteConfigurationData, e
 	var config RemoteConfigurationData
 	err = json.Unmarshal(respBody, &config)
 	return &config, err
-}
-func (c remoteConfiguration) Shutdown(ctx context.Context) error {
-	// Nothing to do for now.
-	return nil
 }
