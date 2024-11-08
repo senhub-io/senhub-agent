@@ -19,11 +19,11 @@ type Sensor interface {
 
 type sensor struct {
 	addDataPoint  data_store.AddCallback
-	config        configuration.RemoteConfiguration
+	config        *configuration.RemoteConfiguration
 	startedProbes *[]probes.Probe
 }
 
-func NewSensor(addDataPoint data_store.AddCallback, config configuration.RemoteConfiguration) Sensor {
+func NewSensor(addDataPoint data_store.AddCallback, config *configuration.RemoteConfiguration) Sensor {
 	return &sensor{
 		addDataPoint:  addDataPoint,
 		config:        config,
