@@ -15,14 +15,15 @@ import (
 // RemoteConfiguration is an interface for remote configuration.
 // Remote configuration is read periodically from the server.
 
-type PersistanceConfig struct {
+// StorageConfig represents the configuration for synchronization strategy.
+type StorageConfig struct {
 	Stategy   string `json:"strategy"`
 	ServerUrl string `json:"server_url"`
 }
 
 type RemoteConfigurationData struct {
-	Url               string            `json:"url"`
-	PersistanceConfig PersistanceConfig `json:"persistance_config"`
+	Url           string        `json:"url"`
+	StorageConfig StorageConfig `json:"storage"`
 }
 
 // RemoteConfiguration represents a struct that performs periodic tasks.
