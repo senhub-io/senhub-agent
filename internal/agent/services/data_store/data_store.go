@@ -24,9 +24,9 @@ type AddCallback func([]DataPoint) error
 //
 // A synchronization strategy is responsible for synchronizing data to a backend.
 type SyncStrategy interface {
-	GetName() string
-	Start(chan struct{}, configuration.PersistanceConfig) error
-	Sync([]DataPoint, configuration.PersistanceConfig) error
+	GetStrategyName() string
+	Start(chan struct{}, configuration.StorageConfig) error
+	Sync([]DataPoint, configuration.StorageConfig) error
 	Shutdown(context.Context) error
 }
 
@@ -96,17 +96,17 @@ func (d *dataStore) Start(quitChannel chan struct{}) error {
 
 // Ensure the strategy is available according to the configuration.
 func (d *dataStore) getOrRefreshStrategy() {
-	strategyName := d.remoteConfig.GetConfiguration().PersistanceConfig.Stategy
+	strategyName := d.remoteConfig.GetConfiguration().StorageConfig.Stategy
 	if strategyName == "" {
 		// Default strategy is senhub
 		strategyName = "senhub"
 	}
 
-	if d.strategy != nil && d.strategy.GetName() == strategyName {
+	if d.strategy != nil && d.strategy.GetStrategyName() == strategyName {
 		return
 	}
 	if d.strategy != nil {
-		log.Printf("shutting down strategy: %s", d.strategy.GetName())
+		log.Printf("shutting down strategy: %s", d.strategy.GetStrategyName())
 		d.strategy.Shutdown(context.Background())
 	}
 
@@ -115,7 +115,7 @@ func (d *dataStore) getOrRefreshStrategy() {
 		log.Printf("using strategy: %s", strategyName)
 
 		d.strategy = NewSyncStrategySenhub(d.agentConfig)
-		d.strategy.Start(nil, d.remoteConfig.GetConfiguration().PersistanceConfig)
+		d.strategy.Start(nil, d.remoteConfig.GetConfiguration().StorageConfig)
 		return
 
 	default:
@@ -128,7 +128,7 @@ func (d *dataStore) doSyncData() error {
 	d.getOrRefreshStrategy()
 
 	data := d.buffer.Sync()
-	remoteConfig := d.remoteConfig.GetConfiguration().PersistanceConfig
+	remoteConfig := d.remoteConfig.GetConfiguration().StorageConfig
 
 	log.Printf("synchronizing data: %v", data)
 	if err := d.strategy.Sync(data, remoteConfig); err != nil {
