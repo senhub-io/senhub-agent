@@ -58,7 +58,7 @@ func NewAgent() Agent {
 	)
 	remoteConfiguration := configuration.NewRemoteConfiguration(senhubServer)
 	store := data_store.NewDataStore(
-		senhubServer,
+		localConfiguration,
 		remoteConfiguration,
 	)
 	sensors := sensor.NewSensor(store.GetCallback(), remoteConfiguration)
