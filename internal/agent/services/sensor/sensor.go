@@ -19,14 +19,14 @@ type Sensor interface {
 
 type sensor struct {
 	addDataPoint  data_store.AddCallback
-	config        *configuration.RemoteConfiguration
+	remoteConfig  *configuration.RemoteConfiguration
 	startedProbes []probes.Probe
 }
 
-func NewSensor(addDataPoint data_store.AddCallback, config *configuration.RemoteConfiguration) Sensor {
+func NewSensor(addDataPoint data_store.AddCallback, remoteConfig *configuration.RemoteConfiguration) Sensor {
 	return &sensor{
 		addDataPoint:  addDataPoint,
-		config:        config,
+		remoteConfig:  remoteConfig,
 		startedProbes: []probes.Probe{},
 	}
 }
@@ -37,7 +37,7 @@ func (s *sensor) GetName() string {
 
 func (s *sensor) Start(quitChannel chan struct{}) error {
 	for _, probe := range probes.AllProbes {
-		p := probe(s.config)
+		p := probe(s.remoteConfig)
 		s.startedProbes = append(s.startedProbes, p)
 		go func(p probes.Probe) {
 			err := s.startProbe(p, quitChannel)
