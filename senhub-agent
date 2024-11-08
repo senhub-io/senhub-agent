@@ -1,1 +1,8 @@
-./senhub-agent_darwin_amd64
+#!/bin/zsh
+
+# Définition de la clé d'authentification et de l'URL du serveur
+AUTH_KEY="550e8400-e29b-41d4-a716-446655440000"
+SERVER_URL="https://nats.sensorfactory.eu:8443"
+
+# Exécution de la commande avec les arguments
+./senhub-agent_darwin_amd64 --authentication-key "$AUTH_KEY" --server-url "$SERVER_URL"
