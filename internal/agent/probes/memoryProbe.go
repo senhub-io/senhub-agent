@@ -20,7 +20,7 @@ func NewMemoryProbe(config *configuration.RemoteConfiguration) Probe {
 }
 
 func (m *memoryProbe) GetName() string {
-	return "MemoryProbe"
+	return "host_memory"
 }
 func (m *memoryProbe) ShouldStart() bool {
 	return true
