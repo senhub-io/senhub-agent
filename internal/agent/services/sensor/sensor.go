@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -20,14 +19,14 @@ type Sensor interface {
 type sensor struct {
 	addDataPoint  data_store.AddCallback
 	remoteConfig  *configuration.RemoteConfiguration
-	startedProbes []probes.Probe
+	startedProbes []*probes.ProbePoller
 }
 
 func NewSensor(addDataPoint data_store.AddCallback, remoteConfig *configuration.RemoteConfiguration) Sensor {
 	return &sensor{
 		addDataPoint:  addDataPoint,
 		remoteConfig:  remoteConfig,
-		startedProbes: []probes.Probe{},
+		startedProbes: []*probes.ProbePoller{},
 	}
 }
 
@@ -36,62 +35,46 @@ func (s *sensor) GetName() string {
 }
 
 func (s *sensor) Start(quitChannel chan struct{}) error {
-	for _, probe := range probes.AllProbes {
-		p := probe(s.remoteConfig)
-		s.startedProbes = append(s.startedProbes, p)
-		go func(p probes.Probe) {
-			err := s.startProbe(p, quitChannel)
-			if err != nil {
-				log.Printf("error starting probe %s: %v", p.GetName(), err)
-			}
-		}(p)
-	}
-
-	return nil
-}
-
-func (s *sensor) startProbe(p probes.Probe, quitChannel chan struct{}) error {
-	if p.ShouldStart() == false {
-		return nil
-	}
-
-	p.OnStart(quitChannel)
-
-	ticker := time.NewTicker(p.GetInterval())
-	go func() {
-		s.doCollectProbe(p)
-		for {
-			select {
-			case <-ticker.C:
-				err := s.doCollectProbe(p)
-				if err != nil {
-					log.Printf("error collecting sensors: %v", err)
-				}
-
-			case <-quitChannel:
-				ticker.Stop()
-				return
-			}
+	probeConfigs := s.remoteConfig.GetConfiguration().Probes
+	for _, probeConfig := range probeConfigs {
+		err := s.startProbe(probeConfig, quitChannel)
+		if err != nil {
+			log.Printf("error starting probe %s: %v", probeConfig, err)
 		}
-	}()
+	}
 
 	return nil
 }
 
-func (s *sensor) doCollectProbe(p probes.Probe) error {
-	data, err := p.Collect()
+func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel chan struct{}) error {
+	probeId := probes.GenerateProbeId(probeConfig)
+
+	// Is there a probe with this configuration already running?
+	for _, startedProbe := range s.startedProbes {
+		if startedProbe.ProbeId == probeId {
+			return nil
+		}
+	}
+
+	// Start a new probe lifecycle
+	probePoller, err := probes.NewProbePoller(probeConfig, s.addDataPoint)
 	if err != nil {
+		// Unable to start probe with this configuration
+		log.Printf("error starting probe %s: %v", probeConfig, err)
 		return err
 	}
-	return s.addDataPoint(data)
+
+	s.startedProbes = append(s.startedProbes, probePoller)
+
+	return probePoller.Start(quitChannel)
 }
 
 func (s *sensor) Shutdown(ctx context.Context) error {
 	fmt.Println("Shutting down sensor")
-	for _, probe := range s.startedProbes {
-		err := probe.OnShutdown(ctx)
+	for _, probePoller := range s.startedProbes {
+		err := probePoller.Shutdown(ctx)
 		if err != nil {
-			log.Printf("error shutting down probe %s: %v", probe.GetName(), err)
+			log.Printf("error shutting down probe %s: %v", probePoller.GetName(), err)
 		}
 	}
 	return nil

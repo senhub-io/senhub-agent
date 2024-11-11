@@ -27,7 +27,7 @@ func NewPingWebAppProbe(config *configuration.RemoteConfiguration) Probe {
 }
 
 func (p *PingWebAppProbe) GetName() string {
-	return "pingWebAppProbe"
+	return "ping_webapp"
 }
 
 func (p *PingWebAppProbe) ShouldStart() bool {
