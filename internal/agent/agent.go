@@ -68,6 +68,7 @@ func NewAgent() Agent {
 	store := data_store.NewDataStore(
 		agentConfiguration,
 		remoteConfiguration,
+		logger,
 	)
 	sensors := sensor.NewSensor(store.GetCallback(), remoteConfiguration)
 
