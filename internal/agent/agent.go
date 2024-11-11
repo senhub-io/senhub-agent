@@ -70,7 +70,11 @@ func NewAgent() Agent {
 		remoteConfiguration,
 		logger,
 	)
-	sensors := sensor.NewSensor(store.GetCallback(), remoteConfiguration)
+	sensors := sensor.NewSensor(
+		store.GetCallback(),
+		remoteConfiguration,
+		logger,
+	)
 
 	return agent{
 		startedServices: &[]Service{},
