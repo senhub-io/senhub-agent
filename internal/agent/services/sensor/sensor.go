@@ -19,15 +19,15 @@ type Sensor interface {
 
 type sensor struct {
 	addDataPoint  data_store.AddCallback
-	config        configuration.RemoteConfiguration
-	startedProbes *[]probes.Probe
+	remoteConfig  *configuration.RemoteConfiguration
+	startedProbes []probes.Probe
 }
 
-func NewSensor(addDataPoint data_store.AddCallback, config configuration.RemoteConfiguration) Sensor {
+func NewSensor(addDataPoint data_store.AddCallback, remoteConfig *configuration.RemoteConfiguration) Sensor {
 	return &sensor{
 		addDataPoint:  addDataPoint,
-		config:        config,
-		startedProbes: &[]probes.Probe{},
+		remoteConfig:  remoteConfig,
+		startedProbes: []probes.Probe{},
 	}
 }
 
@@ -37,8 +37,8 @@ func (s *sensor) GetName() string {
 
 func (s *sensor) Start(quitChannel chan struct{}) error {
 	for _, probe := range probes.AllProbes {
-		p := probe(s.config)
-		*s.startedProbes = append(*s.startedProbes, p)
+		p := probe(s.remoteConfig)
+		s.startedProbes = append(s.startedProbes, p)
 		go func(p probes.Probe) {
 			err := s.startProbe(p, quitChannel)
 			if err != nil {
@@ -88,7 +88,7 @@ func (s *sensor) doCollectProbe(p probes.Probe) error {
 
 func (s *sensor) Shutdown(ctx context.Context) error {
 	fmt.Println("Shutting down sensor")
-	for _, probe := range *s.startedProbes {
+	for _, probe := range s.startedProbes {
 		err := probe.OnShutdown(ctx)
 		if err != nil {
 			log.Printf("error shutting down probe %s: %v", probe.GetName(), err)
