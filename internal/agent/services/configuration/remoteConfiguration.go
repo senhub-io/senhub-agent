@@ -21,9 +21,15 @@ type StorageConfig struct {
 	ServerUrl string `json:"server_url"`
 }
 
+type ProbeConfig struct {
+	Name   string                 `json:"name"`
+	Params map[string]interface{} `json:"params"`
+}
+
 type RemoteConfigurationData struct {
 	Url           string        `json:"url"`
 	StorageConfig StorageConfig `json:"storage"`
+	Probes        []ProbeConfig `json:"probes"`
 }
 
 // RemoteConfiguration represents a struct that performs periodic tasks.
