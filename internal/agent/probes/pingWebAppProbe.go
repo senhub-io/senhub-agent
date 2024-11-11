@@ -3,6 +3,7 @@ package probes
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"net/url"
 	"os/exec"
@@ -12,15 +13,14 @@ import (
 	"strings"
 	"time"
 
-	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 )
 
 type PingWebAppProbe struct {
-	config *configuration.RemoteConfiguration
+	config map[string]interface{}
 }
 
-func NewPingWebAppProbe(config *configuration.RemoteConfiguration) Probe {
+func NewPingWebAppProbe(config map[string]interface{}) Probe {
 	return &PingWebAppProbe{
 		config: config,
 	}
@@ -34,12 +34,20 @@ func (p *PingWebAppProbe) ShouldStart() bool {
 	return true
 }
 
+func (p *PingWebAppProbe) ValidateConfig(config map[string]interface{}) bool {
+	if config["url"] == nil || !config["url"].(bool) {
+		log.Printf("url parameter is required for %s probe", p.GetName())
+		return false
+	}
+	return true
+}
+
 func (p *PingWebAppProbe) GetInterval() time.Duration {
 	return 30 * time.Second
 }
 
 func (p *PingWebAppProbe) Collect() ([]data_store.DataPoint, error) {
-	webappURL := "https://tuvalu-legislation.tv"
+	webappURL := p.config["url"].(string)
 
 	webappIP, err := p.resolveHostname(webappURL)
 	if err != nil {

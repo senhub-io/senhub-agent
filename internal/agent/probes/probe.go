@@ -15,6 +15,8 @@ import (
 
 // Interface each probe should implement
 type Probe interface {
+	// Is the remote configuration valid?
+	ValidateConfig(config map[string]interface{}) bool
 	// GetName returns the name of the probe
 	GetName() string
 	// ShouldStart returns whether the probe should be started or not
@@ -30,7 +32,7 @@ type Probe interface {
 }
 
 // AllProbes is a list of all probes available
-var AllProbes = []func(*configuration.RemoteConfiguration) Probe{
+var AllProbes = []func(config map[string]interface{}) Probe{
 	NewMemoryProbe,
 	NewWifiSignalStrengthProbe,
 	NewPingGatewayProbe,
@@ -65,17 +67,19 @@ func NewProbePoller(config configuration.ProbeConfig, addDataPoint data_store.Ad
 		return nil, err
 	}
 
-	return &ProbePoller{
+	probePoller := &ProbePoller{
 		ProbeId:      GenerateProbeId(config),
 		Probe:        probe,
 		config:       config,
 		addDataPoint: addDataPoint,
-	}, nil
+	}
+
+	return probePoller, nil
 }
 
 func getProbeConstructorForConfig(config configuration.ProbeConfig) (Probe, error) {
 	for _, probe := range AllProbes {
-		p := probe(nil)
+		p := probe(config.Params)
 		if p.GetName() == config.Name {
 			return p, nil
 		}
@@ -93,6 +97,11 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 	if p.Probe.ShouldStart() == false {
 		return nil
 	}
+
+	if !p.Probe.ValidateConfig(p.config.Params) {
+		return fmt.Errorf("invalid configuration for probe %s", p.GetName())
+	}
+
 	p.tickerOnce.Do(func() { // Ensure the ticker only starts once
 		p.Probe.OnStart(quitChannel)
 
