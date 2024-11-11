@@ -2,7 +2,6 @@ package data_store
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
@@ -142,7 +141,7 @@ func (d *dataStore) doSyncData() error {
 	data := d.buffer.Sync()
 	remoteConfig := d.remoteConfig.GetConfiguration().StorageConfig
 
-	log.Printf("synchronizing data: %v", data)
+	d.logger.Info().Any("data", data).Msg("synchronizing data")
 	if err := d.strategy.Sync(data, remoteConfig); err != nil {
 		d.logger.Error().Err(err).Msg("error synchronizing data")
 		d.buffer.AbortSync(data)
