@@ -101,11 +101,18 @@ func (a agent) Start() error {
 	// Create a message channel to communicate with the services
 	var errors []error
 	for _, service := range servicesToStart {
+		a.logger.Info().
+			Str("service", service.GetName()).
+			Msg("Starting service")
 		if err := service.Start(a.messageChannel); err != nil {
-			log.Printf("Error starting service: %s\n %v", service.GetName(), err)
+			a.logger.Error().Err(err).
+				Str("service", service.GetName()).
+				Msg("Error starting service")
 			errors = append(errors, err)
 		} else {
-			log.Printf("Service started: %s", service.GetName())
+			a.logger.Info().
+				Str("service", service.GetName()).
+				Msg("Service started")
 			*a.startedServices = append(*a.startedServices, service)
 		}
 	}
@@ -125,11 +132,18 @@ func (a agent) Shutdown(ctx context.Context) error {
 	// Not sure this is usefull since the message channel already notified to close
 	var errors []error
 	for _, service := range *a.startedServices {
+		a.logger.Info().
+			Str("service", service.GetName()).
+			Msg("Stopping service")
 		if err := service.Shutdown(ctx); err != nil {
-			log.Printf("Error shutting down service: %s %v", service.GetName(), err)
+			a.logger.Error().Err(err).
+				Str("service", service.GetName()).
+				Msg("Error shutting down service")
 			errors = append(errors, err)
 		} else {
-			log.Printf("Service shut down: %s", service.GetName())
+			a.logger.Info().
+				Str("service", service.GetName()).
+				Msg("Service shut down")
 		}
 	}
 
@@ -145,9 +159,11 @@ func (a agent) handleStartError() {
 	pid := os.Getpid()
 	p, err := os.FindProcess(pid)
 	if err != nil {
+		a.logger.Error().Err(err).Msg("Error finding process")
 		log.Fatal(err)
 	}
 	if err := p.Signal(syscall.SIGTERM); err != nil {
+		a.logger.Error().Err(err).Msg("Error sending SIGTERM signal")
 		log.Fatal(err)
 	}
 }
