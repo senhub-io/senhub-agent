@@ -15,10 +15,10 @@ import (
 )
 
 type wifiSignalStrengthProbe struct {
-	config configuration.RemoteConfiguration
+	config *configuration.RemoteConfiguration
 }
 
-func NewWifiSignalStrengthProbe(config configuration.RemoteConfiguration) Probe {
+func NewWifiSignalStrengthProbe(config *configuration.RemoteConfiguration) Probe {
 	return &wifiSignalStrengthProbe{
 		config: config,
 	}

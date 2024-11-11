@@ -17,10 +17,10 @@ import (
 )
 
 type PingWebAppProbe struct {
-	config 		configuration.RemoteConfiguration
+	config *configuration.RemoteConfiguration
 }
 
-func NewPingWebAppProbe(config configuration.RemoteConfiguration) Probe {
+func NewPingWebAppProbe(config *configuration.RemoteConfiguration) Probe {
 	return &PingWebAppProbe{
 		config: config,
 	}
@@ -79,7 +79,6 @@ func (p *PingWebAppProbe) resolveHostname(rawURL string) (string, error) {
 
 	return "", fmt.Errorf("no IP address found for hostname")
 }
-
 
 func (p *PingWebAppProbe) collectPing(ip string) (float32, float32, error) {
 	switch runtime.GOOS {
