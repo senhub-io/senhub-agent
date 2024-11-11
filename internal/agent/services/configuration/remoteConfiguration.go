@@ -75,6 +75,12 @@ func (rc *RemoteConfiguration) Start(quitChannel chan struct{}) error {
 	rc.tickerOnce.Do(func() { // Ensure the ticker only starts once
 		rc.ticker = time.NewTicker(3 * time.Second)
 
+		// Attempt to first fetch configuration
+		rc.logger.Info().Msg("Fetching initial configuration")
+		if err := rc.doRefreshConfig(); err != nil {
+			rc.logger.Error().Err(err).Msg("Failed to fetch initial configuration")
+		}
+
 		go func() {
 			for {
 				select {
@@ -82,25 +88,21 @@ func (rc *RemoteConfiguration) Start(quitChannel chan struct{}) error {
 					rc.ticker.Stop()
 					return
 				case <-rc.ticker.C:
-					rc.doRefreshConfig()
+					rc.logger.Info().Msg("Fetching configuration")
+					if err := rc.doRefreshConfig(); err != nil {
+						rc.logger.Error().Err(err).Msg("Failed to fetch configuration")
+					}
 				}
 			}
 		}()
 	})
-
-	// Refresh configuration immediately
-	// This is blocking
-	rc.logger.Info().Msg("Fetching initial configuration")
-	if err := rc.doRefreshConfig(); err != nil {
-		rc.logger.Error().Err(err).Msg("Failed to fetch initial configuration")
-		return err
-	}
 
 	return nil
 }
 
 // StopPeriodicTask stops the periodic execution of doRefreshConfig.
 func (rc *RemoteConfiguration) Shutdown(context.Context) error {
+	rc.logger.Info().Msg("Shutting down")
 	if rc.ticker != nil {
 		rc.ticker.Stop()
 	}
