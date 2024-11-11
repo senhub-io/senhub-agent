@@ -9,7 +9,11 @@ import (
 type Logger = zerolog.Logger
 
 func NewLogger() *Logger {
-	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
+	logger := zerolog.
+		New(zerolog.ConsoleWriter{Out: os.Stderr}).
+		With().
+		Timestamp().
+		Logger()
 
 	return &logger
 }
