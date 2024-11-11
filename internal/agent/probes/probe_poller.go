@@ -107,6 +107,8 @@ func (p *ProbePoller) doCollectProbe() error {
 }
 
 func (p *ProbePoller) Shutdown(ctx context.Context) error {
-	p.ticker.Stop()
+	if p.ticker != nil {
+		p.ticker.Stop()
+	}
 	return p.Probe.OnShutdown(ctx)
 }
