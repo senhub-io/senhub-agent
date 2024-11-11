@@ -3,11 +3,11 @@ package sensor
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 type Sensor interface {
@@ -17,16 +17,24 @@ type Sensor interface {
 }
 
 type sensor struct {
+	startedProbes []*probes.ProbePoller
 	addDataPoint  data_store.AddCallback
 	remoteConfig  *configuration.RemoteConfiguration
-	startedProbes []*probes.ProbePoller
+	logger        *logger.Logger
 }
 
-func NewSensor(addDataPoint data_store.AddCallback, remoteConfig *configuration.RemoteConfiguration) Sensor {
+func NewSensor(
+	addDataPoint data_store.AddCallback,
+	remoteConfig *configuration.RemoteConfiguration,
+	logger *logger.Logger,
+) Sensor {
+	localLogger := logger.With().Str("service", "Sensor").Logger()
+
 	return &sensor{
+		startedProbes: []*probes.ProbePoller{},
 		addDataPoint:  addDataPoint,
 		remoteConfig:  remoteConfig,
-		startedProbes: []*probes.ProbePoller{},
+		logger:        &localLogger,
 	}
 }
 
@@ -51,7 +59,10 @@ func (s *sensor) SyncConfiguration() error {
 		// Start a new probe poller
 		err := s.startProbe(probeConfig, nil)
 		if err != nil {
-			log.Printf("error starting probe %s: %v", probeConfig, err)
+			s.logger.Error().Err(err).
+				Str("probe_name", probeConfig.Name).
+				Any("probe_params", probeConfig.Params).
+				Msg("error starting probe")
 		}
 	}
 
@@ -68,7 +79,9 @@ func (s *sensor) SyncConfiguration() error {
 		if !found {
 			err := startedProbe.Shutdown(context.Background())
 			if err != nil {
-				log.Printf("error stopping probe %s: %v", startedProbe.GetName(), err)
+				s.logger.Error().Err(err).
+					Str("probe_name", startedProbe.GetName()).
+					Msg("error stopping probe")
 			}
 		}
 	}
@@ -109,7 +122,9 @@ func (s *sensor) Shutdown(ctx context.Context) error {
 	for _, probePoller := range s.startedProbes {
 		err := probePoller.Shutdown(ctx)
 		if err != nil {
-			log.Printf("error shutting down probe %s: %v", probePoller.GetName(), err)
+			s.logger.Error().Err(err).
+				Str("probe_name", probePoller.GetName()).
+				Msg("error shutting down probe")
 		}
 	}
 	return nil
