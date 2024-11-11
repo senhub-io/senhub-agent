@@ -27,7 +27,6 @@ type ProbeConfig struct {
 }
 
 type RemoteConfigurationData struct {
-	Url           string        `json:"url"`
 	StorageConfig StorageConfig `json:"storage"`
 	Probes        []ProbeConfig `json:"probes"`
 }
