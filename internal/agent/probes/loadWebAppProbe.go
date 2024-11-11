@@ -3,19 +3,19 @@ package probes
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
 
-	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 )
 
 type LoadWebAppProbe struct {
-	config *configuration.RemoteConfiguration
+	config map[string]interface{}
 }
 
-func NewLoadWebAppProbe(config *configuration.RemoteConfiguration) Probe {
+func NewLoadWebAppProbe(config map[string]interface{}) Probe {
 	return &LoadWebAppProbe{
 		config: config,
 	}
@@ -29,12 +29,20 @@ func (p *LoadWebAppProbe) ShouldStart() bool {
 	return true
 }
 
+func (p *LoadWebAppProbe) ValidateConfig(config map[string]interface{}) bool {
+	if config["url"] == nil || !config["url"].(bool) {
+		log.Printf("url parameter is required for %s probe", p.GetName())
+		return false
+	}
+	return true
+}
+
 func (p *LoadWebAppProbe) GetInterval() time.Duration {
 	return 30 * time.Second
 }
 
 func (p *LoadWebAppProbe) Collect() ([]data_store.DataPoint, error) {
-	webappURL := "https://tuvalu-legislation.tv"
+	webappURL := p.config["url"].(string)
 
 	domLoadTime, fullLoadTime, err := p.measurePageLoad(webappURL)
 	if err != nil {
@@ -56,7 +64,6 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (float32, float32, err
 
 	// Ensure the URL has the http or https scheme
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		fmt.Errorf("invalid URL scheme: %s, must be http or https", parsedURL.Scheme)
 		return 0, 0, fmt.Errorf("invalid URL scheme: %s, must be http or https", parsedURL.Scheme)
 	}
 
