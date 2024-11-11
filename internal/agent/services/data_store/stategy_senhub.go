@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/senhub_server"
 )
 
@@ -12,11 +13,18 @@ import (
 type SyncStrategySenhub struct {
 	agentConfig configuration.AgentConfiguration
 	server      senhub_server.SenhubServer
+	logger      *logger.Logger
 }
 
-func NewSyncStrategySenhub(agentConfig configuration.AgentConfiguration) SyncStrategy {
+func NewSyncStrategySenhub(
+	agentConfig configuration.AgentConfiguration,
+	logger *logger.Logger,
+) SyncStrategy {
+	localLogger := logger.With().Str("service", "SyncStrategySenhub").Logger()
+
 	return &SyncStrategySenhub{
 		agentConfig: agentConfig,
+		logger:      &localLogger,
 	}
 }
 
@@ -29,6 +37,7 @@ func (s *SyncStrategySenhub) Start(chan struct{}, configuration.StorageConfig) e
 	s.server = senhub_server.NewSenhubServer(
 		s.agentConfig.GetAuthenticationKey(),
 		s.agentConfig.GetServerUrl(),
+		s.logger,
 	)
 
 	return nil
