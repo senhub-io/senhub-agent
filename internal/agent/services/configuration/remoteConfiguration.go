@@ -93,7 +93,8 @@ func (s *RemoteConfiguration) Start(quitChannel chan struct{}) error {
 }
 
 // StopPeriodicTask stops the periodic execution of doRefreshConfig.
-func (s *RemoteConfiguration) Shutdown(context.Context) error {
+func (rc *RemoteConfiguration) Shutdown(context.Context) error {
+	rc.ticker.Stop()
 	return nil
 }
 
