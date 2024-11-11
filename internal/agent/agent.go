@@ -59,6 +59,7 @@ func NewAgent() Agent {
 	senhubServer := senhub_server.NewSenhubServer(
 		agentConfiguration.GetAuthenticationKey(),
 		agentConfiguration.GetServerUrl(),
+		logger,
 	)
 	remoteConfiguration := configuration.NewRemoteConfiguration(
 		senhubServer,
