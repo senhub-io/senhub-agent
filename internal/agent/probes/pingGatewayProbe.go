@@ -11,15 +11,14 @@ import (
 	"strings"
 	"time"
 
-	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 )
 
 type PingGatewayProbe struct {
-	config *configuration.RemoteConfiguration
+	config map[string]interface{}
 }
 
-func NewPingGatewayProbe(config *configuration.RemoteConfiguration) Probe {
+func NewPingGatewayProbe(config map[string]interface{}) Probe {
 	return &PingGatewayProbe{
 		config: config,
 	}
@@ -30,6 +29,10 @@ func (p *PingGatewayProbe) GetName() string {
 }
 
 func (p *PingGatewayProbe) ShouldStart() bool {
+	return true
+}
+
+func (p *PingGatewayProbe) ValidateConfig(config map[string]interface{}) bool {
 	return true
 }
 

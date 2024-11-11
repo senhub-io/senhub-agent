@@ -10,15 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 )
 
 type wifiSignalStrengthProbe struct {
-	config *configuration.RemoteConfiguration
+	config map[string]interface{}
 }
 
-func NewWifiSignalStrengthProbe(config *configuration.RemoteConfiguration) Probe {
+func NewWifiSignalStrengthProbe(config map[string]interface{}) Probe {
 	return &wifiSignalStrengthProbe{
 		config: config,
 	}
@@ -28,6 +27,9 @@ func (m *wifiSignalStrengthProbe) GetName() string {
 	return "WifiSignalStrengthProbe"
 }
 func (m *wifiSignalStrengthProbe) ShouldStart() bool {
+	return true
+}
+func (m *wifiSignalStrengthProbe) ValidateConfig(config map[string]interface{}) bool {
 	return true
 }
 func (m *wifiSignalStrengthProbe) GetInterval() time.Duration {
