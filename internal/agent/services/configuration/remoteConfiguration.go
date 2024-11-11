@@ -33,18 +33,20 @@ type RemoteConfigurationData struct {
 
 // RemoteConfiguration represents a struct that performs periodic tasks.
 type RemoteConfiguration struct {
-	data         RemoteConfigurationData
-	senhubServer senhub_server.SenhubServer
-	ticker       *time.Ticker
-	tickerOnce   sync.Once
-	mutex        sync.Mutex // Ensures thread-safe execution of doRefreshConfig
+	data          RemoteConfigurationData
+	senhubServer  senhub_server.SenhubServer
+	eventNotifier *EventNotifier
+	ticker        *time.Ticker
+	tickerOnce    sync.Once
+	mutex         sync.Mutex // Ensures thread-safe execution of doRefreshConfig
 }
 
 // NewService initializes a new Service instance.
 func NewRemoteConfiguration(senhubServer senhub_server.SenhubServer) *RemoteConfiguration {
 	return &RemoteConfiguration{
-		senhubServer: senhubServer,
-		data:         RemoteConfigurationData{},
+		senhubServer:  senhubServer,
+		data:          RemoteConfigurationData{},
+		eventNotifier: NewEventNotifier(),
 	}
 }
 
@@ -54,6 +56,11 @@ func (s *RemoteConfiguration) GetName() string {
 
 func (s *RemoteConfiguration) GetConfiguration() RemoteConfigurationData {
 	return s.data
+}
+
+// Register a callback to be called when the configuration changes.
+func (s *RemoteConfiguration) OnConfigChanged(callback func(string)) {
+	s.eventNotifier.RegisterObserver(callback)
 }
 
 // StartPeriodicTask starts calling doRefreshConfig at the specified interval.
@@ -102,6 +109,7 @@ func (s *RemoteConfiguration) doRefreshConfig() error {
 
 	// Replace existing configuration with new one
 	s.data = *config
+	s.eventNotifier.NotifyObservers("Configuration changed")
 
 	return nil
 }
