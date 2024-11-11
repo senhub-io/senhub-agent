@@ -31,13 +31,16 @@ type Probe interface {
 	OnShutdown(context.Context) error
 }
 
-// AllProbes is a list of all probes available
-var AllProbes = []func(config map[string]interface{}) Probe{
-	NewMemoryProbe,
-	NewWifiSignalStrengthProbe,
-	NewPingGatewayProbe,
-	NewPingWebAppProbe,
-	NewLoadWebAppProbe,
+type ProbeConstructor func(config map[string]interface{}) Probe
+
+// AllProbeDefinitions is a list of all probes available
+// The key is the name of the probe in remote configuration
+var AllProbeDefinitions = map[string]ProbeConstructor{
+	"host_memory":          NewMemoryProbe,
+	"wifi_signal_strength": NewWifiSignalStrengthProbe,
+	"ping_gateway":         NewPingGatewayProbe,
+	"ping_webapp":          NewPingWebAppProbe,
+	"load_webapp":          NewLoadWebAppProbe,
 }
 
 type ProbePoller struct {
@@ -62,9 +65,14 @@ func GenerateProbeId(config configuration.ProbeConfig) string {
 
 // NewProbePoller creates a new probe from ProbeConfig
 func NewProbePoller(config configuration.ProbeConfig, addDataPoint data_store.AddCallback) (*ProbePoller, error) {
-	probe, err := getProbeConstructorForConfig(config)
+	probeConstructor, err := getProbeConstructorForConfig(config)
 	if err != nil {
 		return nil, err
+	}
+
+	probe := probeConstructor(config.Params)
+	if probe.ValidateConfig(config.Params) == false {
+		return nil, fmt.Errorf("invalid configuration for probe %s", config.Name)
 	}
 
 	probePoller := &ProbePoller{
@@ -77,13 +85,11 @@ func NewProbePoller(config configuration.ProbeConfig, addDataPoint data_store.Ad
 	return probePoller, nil
 }
 
-func getProbeConstructorForConfig(config configuration.ProbeConfig) (Probe, error) {
-	for _, probe := range AllProbes {
-		p := probe(config.Params)
-		if p.GetName() == config.Name {
-			return p, nil
-		}
+func getProbeConstructorForConfig(config configuration.ProbeConfig) (ProbeConstructor, error) {
+	if constructor, ok := AllProbeDefinitions[config.Name]; ok {
+		return constructor, nil
 	}
+
 	return nil, fmt.Errorf("unknown probe %s", config.Name)
 }
 
@@ -96,10 +102,6 @@ func (p *ProbePoller) GetProbeId() string {
 func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 	if p.Probe.ShouldStart() == false {
 		return nil
-	}
-
-	if !p.Probe.ValidateConfig(p.config.Params) {
-		return fmt.Errorf("invalid configuration for probe %s", p.GetName())
 	}
 
 	p.tickerOnce.Do(func() { // Ensure the ticker only starts once

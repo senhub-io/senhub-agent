@@ -25,7 +25,7 @@ func NewPingGatewayProbe(config map[string]interface{}) Probe {
 }
 
 func (p *PingGatewayProbe) GetName() string {
-	return "ping_gateway"
+	return "pingGatewayProbe"
 }
 
 func (p *PingGatewayProbe) ShouldStart() bool {

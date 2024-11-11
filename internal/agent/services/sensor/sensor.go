@@ -56,11 +56,9 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel c
 		}
 	}
 
-	// Start a new probe lifecycle
+	// Start a new probe poller
 	probePoller, err := probes.NewProbePoller(probeConfig, s.addDataPoint)
 	if err != nil {
-		// Unable to start probe with this configuration
-		log.Printf("error starting probe %s: %v", probeConfig, err)
 		return err
 	}
 
