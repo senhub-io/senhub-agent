@@ -141,6 +141,9 @@ func (d *dataStore) doSyncData() error {
 }
 
 func (d *dataStore) Shutdown(ctx context.Context) error {
-	d.ticker.Stop()
+	if d.ticker != nil {
+		d.ticker.Stop()
+	}
+
 	return d.doSyncData()
 }

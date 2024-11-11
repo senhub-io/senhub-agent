@@ -50,32 +50,32 @@ func NewRemoteConfiguration(senhubServer senhub_server.SenhubServer) *RemoteConf
 	}
 }
 
-func (s *RemoteConfiguration) GetName() string {
+func (rc *RemoteConfiguration) GetName() string {
 	return "RemoteConfiguration"
 }
 
-func (s *RemoteConfiguration) GetConfiguration() RemoteConfigurationData {
-	return s.data
+func (rc *RemoteConfiguration) GetConfiguration() RemoteConfigurationData {
+	return rc.data
 }
 
 // Register a callback to be called when the configuration changes.
-func (s *RemoteConfiguration) OnConfigChanged(callback func(string)) {
-	s.eventNotifier.RegisterObserver(callback)
+func (rc *RemoteConfiguration) OnConfigChanged(callback func(string)) {
+	rc.eventNotifier.RegisterObserver(callback)
 }
 
 // StartPeriodicTask starts calling doRefreshConfig at the specified interval.
-func (s *RemoteConfiguration) Start(quitChannel chan struct{}) error {
-	s.tickerOnce.Do(func() { // Ensure the ticker only starts once
-		s.ticker = time.NewTicker(3 * time.Second)
+func (rc *RemoteConfiguration) Start(quitChannel chan struct{}) error {
+	rc.tickerOnce.Do(func() { // Ensure the ticker only starts once
+		rc.ticker = time.NewTicker(3 * time.Second)
 
 		go func() {
 			for {
 				select {
 				case <-quitChannel:
-					s.ticker.Stop()
+					rc.ticker.Stop()
 					return
-				case <-s.ticker.C:
-					s.doRefreshConfig()
+				case <-rc.ticker.C:
+					rc.doRefreshConfig()
 				}
 			}
 		}()
@@ -84,7 +84,7 @@ func (s *RemoteConfiguration) Start(quitChannel chan struct{}) error {
 	// Refresh configuration immediately
 	// This is blocking
 	log.Println("Fetching initial configuration")
-	if err := s.doRefreshConfig(); err != nil {
+	if err := rc.doRefreshConfig(); err != nil {
 		log.Fatalf("Unable to fetch initial configuration %v", err)
 		return err
 	}
@@ -94,29 +94,31 @@ func (s *RemoteConfiguration) Start(quitChannel chan struct{}) error {
 
 // StopPeriodicTask stops the periodic execution of doRefreshConfig.
 func (rc *RemoteConfiguration) Shutdown(context.Context) error {
-	rc.ticker.Stop()
+	if rc.ticker != nil {
+		rc.ticker.Stop()
+	}
 	return nil
 }
 
 // doRefreshConfig is the method called periodically, now thread-safe.
-func (s *RemoteConfiguration) doRefreshConfig() error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+func (rc *RemoteConfiguration) doRefreshConfig() error {
+	rc.mutex.Lock()
+	defer rc.mutex.Unlock()
 
-	config, err := s.doFetchConfiguration()
+	config, err := rc.doFetchConfiguration()
 	if err != nil {
 		return err
 	}
 
 	// Replace existing configuration with new one
-	s.data = *config
-	s.eventNotifier.NotifyObservers("Configuration changed")
+	rc.data = *config
+	rc.eventNotifier.NotifyObservers("Configuration changed")
 
 	return nil
 }
 
-func (s *RemoteConfiguration) doFetchConfiguration() (*RemoteConfigurationData, error) {
-	res, err := s.senhubServer.Get("/configs")
+func (rc *RemoteConfiguration) doFetchConfiguration() (*RemoteConfigurationData, error) {
+	res, err := rc.senhubServer.Get("/configs")
 	if err != nil {
 		return nil, err
 	}
