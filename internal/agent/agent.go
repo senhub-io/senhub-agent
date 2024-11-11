@@ -9,6 +9,7 @@ import (
 	"github.com/alexflint/go-arg"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/senhub_server"
 	"senhub-agent.go/internal/agent/services/sensor"
 )
@@ -30,6 +31,7 @@ type agent struct {
 	// Channel to communicate with services
 	messageChannel chan struct{}
 
+	logger              *logger.Logger
 	senhubServer        senhub_server.SenhubServer
 	agentConfiguration  configuration.AgentConfiguration
 	remoteConfiguration *configuration.RemoteConfiguration
@@ -47,6 +49,8 @@ func NewAgent() Agent {
 	var args AgentCliArgs
 	arg.MustParse(&args)
 
+	logger := logger.NewLogger()
+
 	agentConfiguration := configuration.NewAgentConfiguration(
 		args.AuthenticationKey,
 		args.ServerUrl,
@@ -56,7 +60,10 @@ func NewAgent() Agent {
 		agentConfiguration.GetAuthenticationKey(),
 		agentConfiguration.GetServerUrl(),
 	)
-	remoteConfiguration := configuration.NewRemoteConfiguration(senhubServer)
+	remoteConfiguration := configuration.NewRemoteConfiguration(
+		senhubServer,
+		logger,
+	)
 	store := data_store.NewDataStore(
 		agentConfiguration,
 		remoteConfiguration,
@@ -67,6 +74,7 @@ func NewAgent() Agent {
 		startedServices: &[]Service{},
 		messageChannel:  make(chan struct{}),
 
+		logger:              logger,
 		senhubServer:        senhubServer,
 		agentConfiguration:  agentConfiguration,
 		remoteConfiguration: remoteConfiguration,

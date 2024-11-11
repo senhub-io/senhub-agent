@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/senhub_server"
 )
 
@@ -34,6 +34,7 @@ type RemoteConfigurationData struct {
 // RemoteConfiguration represents a struct that performs periodic tasks.
 type RemoteConfiguration struct {
 	data          RemoteConfigurationData
+	logger        *logger.Logger
 	senhubServer  senhub_server.SenhubServer
 	eventNotifier *EventNotifier
 	ticker        *time.Ticker
@@ -42,8 +43,14 @@ type RemoteConfiguration struct {
 }
 
 // NewService initializes a new Service instance.
-func NewRemoteConfiguration(senhubServer senhub_server.SenhubServer) *RemoteConfiguration {
+func NewRemoteConfiguration(
+	senhubServer senhub_server.SenhubServer,
+	logger *logger.Logger,
+) *RemoteConfiguration {
+	localLogger := logger.With().Str("service", "RemoteConfiguration").Logger()
+
 	return &RemoteConfiguration{
+		logger:        &localLogger,
 		senhubServer:  senhubServer,
 		data:          RemoteConfigurationData{},
 		eventNotifier: NewEventNotifier(),
@@ -83,9 +90,9 @@ func (rc *RemoteConfiguration) Start(quitChannel chan struct{}) error {
 
 	// Refresh configuration immediately
 	// This is blocking
-	log.Println("Fetching initial configuration")
+	rc.logger.Info().Msg("Fetching initial configuration")
 	if err := rc.doRefreshConfig(); err != nil {
-		log.Fatalf("Unable to fetch initial configuration %v", err)
+		rc.logger.Error().Err(err).Msg("Failed to fetch initial configuration")
 		return err
 	}
 
