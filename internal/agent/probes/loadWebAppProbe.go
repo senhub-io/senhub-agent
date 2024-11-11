@@ -30,7 +30,7 @@ func (p *LoadWebAppProbe) ShouldStart() bool {
 }
 
 func (p *LoadWebAppProbe) ValidateConfig(config map[string]interface{}) bool {
-	if config["url"] == nil || !config["url"].(bool) {
+	if url, ok := config["url"]; !ok || url == "" {
 		log.Printf("url parameter is required for %s probe", p.GetName())
 		return false
 	}

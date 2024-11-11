@@ -27,7 +27,7 @@ func NewPingWebAppProbe(config map[string]interface{}) Probe {
 }
 
 func (p *PingWebAppProbe) GetName() string {
-	return "ping_webapp"
+	return "pingWebAppProbe"
 }
 
 func (p *PingWebAppProbe) ShouldStart() bool {
@@ -35,7 +35,7 @@ func (p *PingWebAppProbe) ShouldStart() bool {
 }
 
 func (p *PingWebAppProbe) ValidateConfig(config map[string]interface{}) bool {
-	if config["url"] == nil || !config["url"].(bool) {
+	if url, ok := config["url"]; !ok || url == "" {
 		log.Printf("url parameter is required for %s probe", p.GetName())
 		return false
 	}
