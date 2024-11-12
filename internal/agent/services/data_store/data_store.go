@@ -2,11 +2,11 @@ package data_store
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // Data store is responsible for storing and synchronizing data to the server.
@@ -42,6 +42,7 @@ type DataStore interface {
 type dataStore struct {
 	buffer       Buffer
 	strategy     SyncStrategy
+	logger       *logger.Logger
 	remoteConfig *configuration.RemoteConfiguration
 	agentConfig  configuration.AgentConfiguration
 	ticker       *time.Ticker
@@ -52,9 +53,13 @@ type dataStore struct {
 func NewDataStore(
 	agentConfig configuration.AgentConfiguration,
 	remoteConfig *configuration.RemoteConfiguration,
+	logger *logger.Logger,
 ) DataStore {
+	localLogger := logger.With().Str("service", "DataStore").Logger()
+
 	return &dataStore{
 		buffer:       NewBuffer(),
+		logger:       &localLogger,
 		remoteConfig: remoteConfig,
 		agentConfig:  agentConfig,
 	}
@@ -80,7 +85,7 @@ func (d *dataStore) Start(quitChannel chan struct{}) error {
 				case <-ticker.C:
 					err := d.doSyncData()
 					if err != nil {
-						log.Printf("error synchronizing data: %v", err)
+						d.logger.Error().Err(err).Msg("error synchronizing data")
 					}
 
 				case <-quitChannel:
@@ -106,20 +111,26 @@ func (d *dataStore) getOrRefreshStrategy() {
 		return
 	}
 	if d.strategy != nil {
-		log.Printf("shutting down strategy: %s", d.strategy.GetStrategyName())
+		d.logger.Info().
+			Str("strategy_name", d.strategy.GetStrategyName()).
+			Msg("shutting down strategy")
 		d.strategy.Shutdown(context.Background())
 	}
 
 	switch strategyName {
 	case "senhub":
-		log.Printf("using strategy: %s", strategyName)
+		d.logger.Info().
+			Str("strategy_name", strategyName).
+			Msg("Initializing strategy")
 
-		d.strategy = NewSyncStrategySenhub(d.agentConfig)
+		d.strategy = NewSyncStrategySenhub(d.agentConfig, d.logger)
 		d.strategy.Start(nil, d.remoteConfig.GetConfiguration().StorageConfig)
 		return
 
 	default:
-		log.Printf("unknown strategy: %s", strategyName)
+		d.logger.Error().
+			Str("strategy_name", strategyName).
+			Msg("unknown strategy")
 		return
 	}
 }
@@ -130,9 +141,9 @@ func (d *dataStore) doSyncData() error {
 	data := d.buffer.Sync()
 	remoteConfig := d.remoteConfig.GetConfiguration().StorageConfig
 
-	log.Printf("synchronizing data: %v", data)
+	d.logger.Info().Any("data", data).Msg("synchronizing data")
 	if err := d.strategy.Sync(data, remoteConfig); err != nil {
-		log.Printf("error synchronizing data: %v", err)
+		d.logger.Error().Err(err).Msg("error synchronizing data")
 		d.buffer.AbortSync(data)
 		return err
 	}
