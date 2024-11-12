@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 
 	"github.com/ybbus/httpretry"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 type SenhubServer interface {
@@ -19,21 +19,28 @@ type SenhubServer interface {
 type senhubServer struct {
 	// API key to authenticate with the server
 	authenticationKey string
+	logger            *logger.Logger
 	// URL of the server to send data to
 	url string
 	// HTTP client to use for requests
 	http *http.Client
 }
 
-func NewSenhubServer(authenticationKey string, url string) SenhubServer {
+func NewSenhubServer(
+	authenticationKey string,
+	url string,
+	logger *logger.Logger,
+) SenhubServer {
 	http := httpretry.NewDefaultClient(
 		// retry up to 3 times
 		httpretry.WithMaxRetryCount(3),
 	)
+	localLogger := logger.With().Str("service", "SenhubServer").Logger()
 
 	return &senhubServer{
 		authenticationKey: authenticationKey,
 		url:               url,
+		logger:            &localLogger,
 		http:              http,
 	}
 }
@@ -74,7 +81,7 @@ func (s senhubServer) Post(urlPath string, data any) (*http.Response, error) {
 	}
 	requestBody, err := json.Marshal(data)
 	if err != nil {
-		log.Printf("error encoding data. Err: %v", err)
+		s.logger.Error().Err(err).Msg("error encoding data.")
 		return nil, err
 	}
 

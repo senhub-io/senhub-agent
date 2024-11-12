@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/senhub_server"
 )
 
@@ -34,6 +34,7 @@ type RemoteConfigurationData struct {
 // RemoteConfiguration represents a struct that performs periodic tasks.
 type RemoteConfiguration struct {
 	data          RemoteConfigurationData
+	logger        *logger.Logger
 	senhubServer  senhub_server.SenhubServer
 	eventNotifier *EventNotifier
 	ticker        *time.Ticker
@@ -42,8 +43,14 @@ type RemoteConfiguration struct {
 }
 
 // NewService initializes a new Service instance.
-func NewRemoteConfiguration(senhubServer senhub_server.SenhubServer) *RemoteConfiguration {
+func NewRemoteConfiguration(
+	senhubServer senhub_server.SenhubServer,
+	logger *logger.Logger,
+) *RemoteConfiguration {
+	localLogger := logger.With().Str("service", "RemoteConfiguration").Logger()
+
 	return &RemoteConfiguration{
+		logger:        &localLogger,
 		senhubServer:  senhubServer,
 		data:          RemoteConfigurationData{},
 		eventNotifier: NewEventNotifier(),
@@ -68,6 +75,12 @@ func (rc *RemoteConfiguration) Start(quitChannel chan struct{}) error {
 	rc.tickerOnce.Do(func() { // Ensure the ticker only starts once
 		rc.ticker = time.NewTicker(3 * time.Second)
 
+		// Attempt to first fetch configuration
+		rc.logger.Info().Msg("Fetching initial configuration")
+		if err := rc.doRefreshConfig(); err != nil {
+			rc.logger.Error().Err(err).Msg("Failed to fetch initial configuration")
+		}
+
 		go func() {
 			for {
 				select {
@@ -75,25 +88,21 @@ func (rc *RemoteConfiguration) Start(quitChannel chan struct{}) error {
 					rc.ticker.Stop()
 					return
 				case <-rc.ticker.C:
-					rc.doRefreshConfig()
+					rc.logger.Info().Msg("Fetching configuration")
+					if err := rc.doRefreshConfig(); err != nil {
+						rc.logger.Error().Err(err).Msg("Failed to fetch configuration")
+					}
 				}
 			}
 		}()
 	})
-
-	// Refresh configuration immediately
-	// This is blocking
-	log.Println("Fetching initial configuration")
-	if err := rc.doRefreshConfig(); err != nil {
-		log.Fatalf("Unable to fetch initial configuration %v", err)
-		return err
-	}
 
 	return nil
 }
 
 // StopPeriodicTask stops the periodic execution of doRefreshConfig.
 func (rc *RemoteConfiguration) Shutdown(context.Context) error {
+	rc.logger.Info().Msg("Shutting down")
 	if rc.ticker != nil {
 		rc.ticker.Stop()
 	}
