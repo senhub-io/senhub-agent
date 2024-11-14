@@ -68,6 +68,9 @@ func (p *ProbePoller) GetName() string {
 func (p *ProbePoller) GetProbeId() string {
 	return p.ProbeId
 }
+func (p *ProbePoller) GetProbeParams() configuration.ProbeConfigParams {
+	return p.config.Params
+}
 func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 	if p.Probe.ShouldStart() == false {
 		p.logger.Debug().Msg("Probe should not start")

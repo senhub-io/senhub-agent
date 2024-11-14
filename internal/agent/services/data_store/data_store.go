@@ -26,8 +26,8 @@ type AddCallback func([]DataPoint) error
 // A synchronization strategy is responsible for synchronizing data to a backend.
 type SyncStrategy interface {
 	GetStrategyName() string
-	Start(chan struct{}, configuration.StorageConfig) error
-	Sync([]DataPoint, configuration.StorageConfig) error
+	Start() error
+	AddDataPoints([]DataPoint) error
 	Shutdown(context.Context) error
 }
 
@@ -41,7 +41,6 @@ type DataStore interface {
 }
 
 type dataStore struct {
-	buffer       Buffer
 	strategy     SyncStrategy
 	logger       *logger.Logger
 	remoteConfig *configuration.RemoteConfiguration
@@ -59,7 +58,6 @@ func NewDataStore(
 	localLogger := logger.With().Str("service", "DataStore").Logger()
 
 	return &dataStore{
-		buffer:       NewBuffer(),
 		logger:       &localLogger,
 		remoteConfig: remoteConfig,
 		agentConfig:  agentConfig,
@@ -72,37 +70,16 @@ func (d *dataStore) GetName() string {
 
 func (d *dataStore) GetCallback() AddCallback {
 	return func(data []DataPoint) error {
-		return d.buffer.Append(data)
+		if d.strategy == nil {
+			return nil
+		}
+		return d.strategy.AddDataPoints(data)
 	}
 }
 
-func (d *dataStore) Start(quitChannel chan struct{}) error {
-	d.tickerOnce.Do(func() { // Ensure the ticker only starts once
-		ticker := time.NewTicker(5 * time.Second)
-
-		go func() {
-			for {
-				select {
-				case <-ticker.C:
-					err := d.doSyncData()
-					if err != nil {
-						d.logger.Error().Err(err).Msg("error synchronizing data")
-					}
-
-				case <-quitChannel:
-					ticker.Stop()
-					return
-				}
-			}
-		}()
-	})
-
-	return nil
-}
-
-// Ensure the strategy is available according to the configuration.
-func (d *dataStore) getOrRefreshStrategy() {
-	strategyName := d.remoteConfig.GetConfiguration().StorageConfig.Stategy
+func (d *dataStore) OnConfigRefreshed(string) {
+	strategyConfig := d.remoteConfig.GetConfiguration().StorageConfig
+	strategyName := strategyConfig.Stategy
 	if strategyName == "" {
 		// Default strategy is senhub
 		strategyName = "senhub"
@@ -118,14 +95,13 @@ func (d *dataStore) getOrRefreshStrategy() {
 		d.strategy.Shutdown(context.Background())
 	}
 
+	logger := d.logger.With().Str("strategy_name", strategyName).Logger()
 	switch strategyName {
 	case "senhub":
-		d.logger.Info().
-			Str("strategy_name", strategyName).
-			Msg("Initializing strategy")
+		logger.Info().Msg("Initializing strategy")
 
-		d.strategy = NewSyncStrategySenhub(d.agentConfig, d.logger)
-		d.strategy.Start(nil, d.remoteConfig.GetConfiguration().StorageConfig)
+		d.strategy = NewSyncStrategySenhub(d.agentConfig, strategyConfig.Params, &logger)
+		d.strategy.Start()
 		return
 
 	default:
@@ -136,26 +112,12 @@ func (d *dataStore) getOrRefreshStrategy() {
 	}
 }
 
-func (d *dataStore) doSyncData() error {
-	d.getOrRefreshStrategy()
-
-	data := d.buffer.Sync()
-	remoteConfig := d.remoteConfig.GetConfiguration().StorageConfig
-
-	d.logger.Info().Any("data", data).Msg("synchronizing data")
-	if err := d.strategy.Sync(data, remoteConfig); err != nil {
-		d.logger.Error().Err(err).Msg("error synchronizing data")
-		d.buffer.AbortSync(data)
-		return err
-	}
-
+func (d *dataStore) Start(quitChannel chan struct{}) error {
+	d.OnConfigRefreshed("initial")
+	d.remoteConfig.OnConfigChanged(d.OnConfigRefreshed)
 	return nil
 }
 
 func (d *dataStore) Shutdown(ctx context.Context) error {
-	if d.ticker != nil {
-		d.ticker.Stop()
-	}
-
-	return d.doSyncData()
+	return d.strategy.Shutdown(ctx)
 }
