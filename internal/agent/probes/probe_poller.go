@@ -35,7 +35,11 @@ func GenerateProbeId(config configuration.ProbeConfig) string {
 }
 
 // NewProbePoller creates a new probe from ProbeConfig
-func NewProbePoller(config configuration.ProbeConfig, addDataPoint data_store.AddCallback, logger *logger.Logger) (*ProbePoller, error) {
+func NewProbePoller(
+	config configuration.ProbeConfig,
+	logger *logger.Logger,
+	addDataPoint data_store.AddCallback,
+) (*ProbePoller, error) {
 	probeConstructor, err := getProbeConstructorForConfig(config)
 	if err != nil {
 		return nil, err
