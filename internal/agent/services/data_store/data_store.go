@@ -26,6 +26,7 @@ type AddCallback func([]DataPoint) error
 // A synchronization strategy is responsible for synchronizing data to a backend.
 type SyncStrategy interface {
 	GetStrategyName() string
+	ValidateConfigParams(configuration.StorageConfigParams) error
 	Start() error
 	AddDataPoints([]DataPoint) error
 	Shutdown(context.Context) error
@@ -95,12 +96,29 @@ func (d *dataStore) OnConfigRefreshed(string) {
 		d.strategy.Shutdown(context.Background())
 	}
 
-	logger := d.logger.With().Str("strategy_name", strategyName).Logger()
+	logger := d.logger.With().
+		Any("strategy_config", strategyConfig).
+		Str("strategy_name", strategyName).
+		Logger()
 	switch strategyName {
 	case "senhub":
 		logger.Info().Msg("Initializing strategy")
 
 		d.strategy = NewSyncStrategySenhub(d.agentConfig, strategyConfig.Params, &logger)
+		if err := d.strategy.ValidateConfigParams(strategyConfig.Params); err != nil {
+			logger.Error().Err(err).Msg("invalid configuration")
+			return
+		}
+		d.strategy.Start()
+		return
+
+	case "prtg":
+		logger.Info().Msg("Initializing strategy")
+		d.strategy = NewSyncStrategyPrtg(d.agentConfig, strategyConfig.Params, &logger)
+		if err := d.strategy.ValidateConfigParams(strategyConfig.Params); err != nil {
+			logger.Error().Err(err).Msg("invalid configuration")
+			return
+		}
 		d.strategy.Start()
 		return
 
