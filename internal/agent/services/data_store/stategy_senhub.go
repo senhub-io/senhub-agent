@@ -53,6 +53,10 @@ func (s *SyncStrategySenhub) AddDataPoints(data []DataPoint) error {
 	return nil
 }
 
+func (s *SyncStrategySenhub) ValidateConfigParams(params configuration.StorageConfigParams) error {
+	return nil
+}
+
 func (s *SyncStrategySenhub) Start() error {
 	s.tickerOnce.Do(func() { // Ensure the ticker only starts once
 		s.logger.Info().Msg("Starting sync strategy")
