@@ -83,12 +83,17 @@ func (p *LoadWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 		return nil, fmt.Errorf("Error measuring network metrics: %v", err)
 	}
 
+	tags := map[string]string{
+			"url": webappURL,
+			"probe_type": "webApp",
+	}
+
 	return []data_store.DataPoint{
-		{Name: "webApp_dnstime", Timestamp: time.Now(), Value: float32(metrics.dnsDone.Sub(metrics.dnsStart).Milliseconds())},
-		{Name: "webApp_connecttime", Timestamp: time.Now(), Value: float32(metrics.connectDone.Sub(metrics.connectStart).Milliseconds())},
-		{Name: "webApp_tlstime", Timestamp: time.Now(), Value: float32(metrics.tlsHandshakeDone.Sub(metrics.tlsHandshakeStart).Milliseconds())},
-		{Name: "webApp_ttfb", Timestamp: time.Now(), Value: float32(metrics.firstByteDone.Sub(metrics.firstByteStart).Milliseconds())},
-		{Name: "webApp_total_time", Timestamp: time.Now(), Value: float32(metrics.completed.Sub(metrics.dnsStart).Milliseconds())},
+		{Name: "dnstime", Timestamp: time.Now(), Value: float32(metrics.dnsDone.Sub(metrics.dnsStart).Milliseconds()), Tags: tags},
+		{Name: "connecttime", Timestamp: time.Now(), Value: float32(metrics.connectDone.Sub(metrics.connectStart).Milliseconds()), Tags: tags},
+		{Name: "tlstime", Timestamp: time.Now(), Value: float32(metrics.tlsHandshakeDone.Sub(metrics.tlsHandshakeStart).Milliseconds()), Tags: tags},
+		{Name: "ttfb", Timestamp: time.Now(), Value: float32(metrics.firstByteDone.Sub(metrics.firstByteStart).Milliseconds()), Tags: tags},
+		{Name: "total_time", Timestamp: time.Now(), Value: float32(metrics.completed.Sub(metrics.dnsStart).Milliseconds()), Tags: tags},
 	}, nil
 }
 

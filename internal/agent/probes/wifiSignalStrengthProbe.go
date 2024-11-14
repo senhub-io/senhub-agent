@@ -26,15 +26,19 @@ func NewWifiSignalStrengthProbe(config map[string]interface{}) Probe {
 func (m *wifiSignalStrengthProbe) GetName() string {
 	return "WifiSignalStrengthProbe"
 }
+
 func (m *wifiSignalStrengthProbe) ShouldStart() bool {
 	return true
 }
+
 func (m *wifiSignalStrengthProbe) ValidateConfig(config map[string]interface{}) bool {
 	return true
 }
+
 func (m *wifiSignalStrengthProbe) GetInterval() time.Duration {
 	return 2 * time.Second
 }
+
 func (m *wifiSignalStrengthProbe) Collect() ([]data_store.DataPoint, error) {
 	var s runtime.MemStats
 	runtime.ReadMemStats(&s)
@@ -48,6 +52,7 @@ func (m *wifiSignalStrengthProbe) Collect() ([]data_store.DataPoint, error) {
 		return []data_store.DataPoint{}, nil
 	}
 }
+
 func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, error) {
 	// Exécuter la commande `netsh wlan show interfaces` pour récupérer les infos Wi-Fi
 	cmd := exec.Command("netsh", "wlan", "show", "interfaces")
@@ -77,9 +82,9 @@ func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, erro
 		}
 	}
 
-	// Retourne 0 si la force du signal n'est pas trouvée
 	return []data_store.DataPoint{}, nil
 }
+
 func (m *wifiSignalStrengthProbe) collectLinux() ([]data_store.DataPoint, error) {
 	cmd := exec.Command("iwconfig")
 	output, err := cmd.Output()
@@ -88,7 +93,6 @@ func (m *wifiSignalStrengthProbe) collectLinux() ([]data_store.DataPoint, error)
 		return []data_store.DataPoint{}, err
 	}
 
-	// Parse the output to find signal strength
 	lines := strings.Split(string(output), "\n")
 	for _, line := range lines {
 		if strings.Contains(line, "Signal level=") {
@@ -107,6 +111,7 @@ func (m *wifiSignalStrengthProbe) collectLinux() ([]data_store.DataPoint, error)
 	}
 	return []data_store.DataPoint{}, nil
 }
+
 func (m *wifiSignalStrengthProbe) OnStart(quitChannel chan struct{}) error {
 	return nil
 }
