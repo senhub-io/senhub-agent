@@ -1,7 +1,7 @@
 #!/bin/zsh
 
 # Définition de la clé d'authentification et de l'URL du serveur
-AUTH_KEY="29120156-bc5a-485e-bca7-dc4467adec6f"
+AUTH_KEY="fc6a9ac7-5a5e-4bc6-90d3-87bf681a4263"
 SERVER_URL="http://127.0.0.1:8080"
 
 # Exécution de la commande avec les arguments

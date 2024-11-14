@@ -51,9 +51,13 @@ func (p *PingGatewayProbe) Collect() ([]data_store.DataPoint, error) {
 		return nil, fmt.Errorf("error collecting ping data: %w", err)
 	}
 
+	tags := map[string]string{
+			"probe_type": "gateway",
+	}
+
 	return []data_store.DataPoint{
-		{Name: "gateway_averageLatency", Timestamp: time.Now(), Value: float32(averageLatency)},
-		{Name: "gateway_packetLoss", Timestamp: time.Now(), Value: float32(packetLoss)},
+		{Name: "averageLatency", Timestamp: time.Now(), Value: float32(averageLatency), Tags: tags},
+		{Name: "packetLoss", Timestamp: time.Now(), Value: float32(packetLoss), Tags: tags},
 	}, nil
 }
 
