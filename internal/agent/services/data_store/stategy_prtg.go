@@ -79,10 +79,25 @@ func (s *SyncStrategyPrtg) ValidateConfigParams(params configuration.StorageConf
 	return nil
 }
 
+var DEFAULT_INTERVAL = 5 * time.Second
+
 func (s *SyncStrategyPrtg) Start() error {
 	s.tickerOnce.Do(func() { // Ensure the ticker only starts once
 		s.logger.Info().Msg("Starting sync strategy")
-		ticker := time.NewTicker(5 * time.Second)
+		interval := DEFAULT_INTERVAL
+		if intervalStr, ok := s.storageConfig["interval"]; ok {
+			parsedInterval, err := time.ParseDuration(intervalStr.(string))
+			if err != nil {
+				s.logger.Error().
+					Err(err).
+					Str("value", intervalStr.(string)).
+					Msg("error parsing interval")
+				return
+			}
+
+			interval = parsedInterval
+		}
+		ticker := time.NewTicker(interval)
 
 		go func() {
 			for {
@@ -174,9 +189,13 @@ func (s *SyncStrategyPrtg) doSync() error {
 	})
 
 	s.logger.Debug().Any("data", data).Msg("synchronizing data")
+
+	// Some probes might not read nez value until the next sync, so valid data
+	// points are restored in the buffer.
+	// This happens wether the sync si successful or not.
+	s.buffer.AbortSync(data)
 	if err := s.doSyncData(data); err != nil {
 		s.logger.Error().Err(err).Msg("error synchronizing data")
-		s.buffer.AbortSync(data)
 		return err
 	}
 
