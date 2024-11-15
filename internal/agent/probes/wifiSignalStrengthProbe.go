@@ -10,6 +10,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
 )
 
 type wifiSignalStrengthProbe struct {
@@ -70,9 +71,12 @@ func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, erro
 					m.logger.Error().Msgf("Error parsing signal strength: %v", err)
 					return []data_store.DataPoint{}, err
 				}
+				tags := []tags.Tag{
+					data_store.CreatePrtgMetricIdTag("[name]"),
+				}
 				return []data_store.DataPoint{
 					{Name: "wifi_signal_strength", Timestamp: time.Now(),
-						Value: float32(signalStrength)},
+						Value: float32(signalStrength), Tags: tags},
 				}, nil
 			}
 		}

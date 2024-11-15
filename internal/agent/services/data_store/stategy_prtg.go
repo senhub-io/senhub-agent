@@ -6,13 +6,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/ybbus/httpretry"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
 )
+
+// Value of the tag with this name will be used as PRTG metric id.
+// The placeholder [name] will be replaced by the metric name.
+var PrtgTagNaame = "prtg_metric_id"
+
+func CreatePrtgMetricIdTag(metricId string) tags.Tag {
+	return tags.Tag{
+		Key:     PrtgTagNaame,
+		Value:   metricId,
+		Private: true,
+	}
+}
 
 type SyncStrategyPrtg struct {
 	/** Store all datapoints */
@@ -106,6 +120,14 @@ func filter[T any](ss []T, test func(T) bool) (ret []T) {
 }
 
 func metricId(p DataPoint) string {
+	// Find a tag named "metric_id"
+	for _, t := range p.Tags {
+		if t.Key == "prtg_metric_id" {
+			return strings.Replace(t.Value, "[name]", p.Name, -1)
+		}
+	}
+
+	// Fallback to the name
 	return p.Name
 }
 
