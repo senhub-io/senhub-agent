@@ -11,11 +11,18 @@ import (
 
 // Data store is responsible for storing and synchronizing data to the server.
 
+type Tag struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+	// Ability to mark a tag as private, which means it should not be sent to the server.
+	Private bool `json:"-"`
+}
+
 type DataPoint struct {
-	Name      string            `json:"name"`
-	Timestamp time.Time         `json:"timestamp"`
-	Value     float32           `json:"value"`
-	Tags      map[string]string `json:"tags"`
+	Name      string    `json:"name"`
+	Timestamp time.Time `json:"timestamp"`
+	Value     float32   `json:"value"`
+	Tags      []Tag     `json:"tags,omitempty"`
 }
 
 type AddCallback func([]DataPoint) error

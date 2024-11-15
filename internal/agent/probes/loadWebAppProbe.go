@@ -119,8 +119,9 @@ func (p *LoadWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 		return nil, err
 	}
 
-	tags := map[string]string{
-		"url": webappURL,
+	tags := []data_store.Tag{
+		{Key: "url", Value: webappURL, Private: false},
+		{Key: "probe_type", Value: "webApp", Private: false},
 	}
 
 	return []data_store.DataPoint{
