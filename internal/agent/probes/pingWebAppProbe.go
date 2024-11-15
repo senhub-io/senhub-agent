@@ -83,9 +83,9 @@ func (p *PingWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 		return nil, fmt.Errorf("error collecting ping data: %w", err)
 	}
 
-	tags := map[string]string{
-		"url":        webappURL,
-		"probe_type": "webApp",
+	tags := []data_store.Tag{
+		{Key: "url", Value: webappURL, Private: false},
+		{Key: "probe_type", Value: "webApp", Private: false},
 	}
 
 	return []data_store.DataPoint{
