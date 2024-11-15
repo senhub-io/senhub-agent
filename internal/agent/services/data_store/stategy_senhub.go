@@ -9,6 +9,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/senhub_server"
+	"senhub-agent.go/internal/agent/tags"
 )
 
 // Synchronize metrics to senhub backend.
@@ -96,17 +97,12 @@ func (s *SyncStrategySenhub) doSync() error {
 	// Remove private tags
 	transformedData := make([]DataPoint, 0, len(data))
 	for _, dp := range data {
-		tags := []Tag{}
-		for _, tag := range dp.Tags {
-			if !tag.Private {
-				tags = append(tags, tag)
-			}
-		}
+
 		transformedData = append(transformedData, DataPoint{
 			Name:      dp.Name,
 			Timestamp: dp.Timestamp,
 			Value:     dp.Value,
-			Tags:      tags,
+			Tags:      tags.OnlyPublicTags(dp.Tags),
 		})
 	}
 
