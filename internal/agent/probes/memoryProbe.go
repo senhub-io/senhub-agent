@@ -7,6 +7,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
 )
 
 type memoryProbe struct {
@@ -35,12 +36,15 @@ func (m *memoryProbe) Collect() ([]data_store.DataPoint, error) {
 	var s runtime.MemStats
 	runtime.ReadMemStats(&s)
 	var timestamp = time.Now()
+	tags := []tags.Tag{
+		data_store.CreatePrtgMetricIdTag("host_[name]"),
+	}
 
 	return []data_store.DataPoint{
-		{Name: "mem_alloc", Timestamp: timestamp, Value: float32(s.Alloc)},
-		{Name: "mem_total_alloc", Timestamp: timestamp, Value: float32(s.TotalAlloc)},
-		{Name: "mem_sys", Timestamp: timestamp, Value: float32(s.Sys)},
-		{Name: "mem_num_gc", Timestamp: timestamp, Value: float32(s.NumGC)},
+		{Name: "mem_alloc", Timestamp: timestamp, Value: float32(s.Alloc), Tags: tags},
+		{Name: "mem_total_alloc", Timestamp: timestamp, Value: float32(s.TotalAlloc), Tags: tags},
+		{Name: "mem_sys", Timestamp: timestamp, Value: float32(s.Sys), Tags: tags},
+		{Name: "mem_num_gc", Timestamp: timestamp, Value: float32(s.NumGC), Tags: tags},
 	}, nil
 }
 func (m *memoryProbe) OnStart(quitChannel chan struct{}) error {

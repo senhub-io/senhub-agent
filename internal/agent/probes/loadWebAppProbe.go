@@ -16,6 +16,7 @@ import (
 	"senhub-agent.go/internal/agent/configParser"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/validators"
 )
 
@@ -119,9 +120,15 @@ func (p *LoadWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 		return nil, err
 	}
 
-	tags := []data_store.Tag{
+	urlTagKey, err := tags.UrlToTagKey(webappURL)
+	if err != nil {
+		return nil, fmt.Errorf("error converting URL to tag key: %w", err)
+	}
+	tags := []tags.Tag{
 		{Key: "url", Value: webappURL, Private: false},
 		{Key: "probe_type", Value: "webApp", Private: false},
+		data_store.CreatePrtgMetricIdTag(
+			fmt.Sprintf("%s_[name]", urlTagKey)),
 	}
 
 	return []data_store.DataPoint{
