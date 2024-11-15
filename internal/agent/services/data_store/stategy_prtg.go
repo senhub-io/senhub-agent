@@ -161,13 +161,25 @@ func (s *SyncStrategyPrtg) doSync() error {
 	return nil
 }
 
+type PrtgResult struct {
+	Channel string  `json:"channel"`
+	Value   float32 `json:"value"`
+}
+
+type PrtgData struct {
+	Prtg struct {
+		Result []PrtgResult `json:"result"`
+	} `json:"prtg"`
+}
+
 func (s *SyncStrategyPrtg) doSyncData(data []DataPoint) error {
 	// Transform data points to PRTG format
-	jsonData := map[string]float32{
-		"timestamp": float32(time.Now().Unix()),
-	}
+	jsonData := PrtgData{}
 	for _, p := range data {
-		jsonData[metricId(p)] = p.Value
+		jsonData.Prtg.Result = append(jsonData.Prtg.Result, PrtgResult{
+			metricId(p),
+			p.Value,
+		})
 	}
 
 	// Send data to PRTG
