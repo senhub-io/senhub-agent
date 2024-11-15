@@ -89,13 +89,29 @@ func (s *SyncStrategySenhub) Shutdown(ctx context.Context) error {
 
 func (s *SyncStrategySenhub) doSync() error {
 	data := s.buffer.Sync()
-
 	if len(data) == 0 {
 		return nil
 	}
 
-	s.logger.Debug().Any("data", data).Msg("synchronizing data")
-	if err := s.doSyncData(data); err != nil {
+	// Remove private tags
+	transformedData := make([]DataPoint, 0, len(data))
+	for _, dp := range data {
+		tags := []Tag{}
+		for _, tag := range dp.Tags {
+			if !tag.Private {
+				tags = append(tags, tag)
+			}
+		}
+		transformedData = append(transformedData, DataPoint{
+			Name:      dp.Name,
+			Timestamp: dp.Timestamp,
+			Value:     dp.Value,
+			Tags:      tags,
+		})
+	}
+
+	s.logger.Debug().Any("data", transformedData).Msg("synchronizing data")
+	if err := s.doSyncData(transformedData); err != nil {
 		s.logger.Error().Err(err).Msg("error synchronizing data")
 		s.buffer.AbortSync(data)
 		return err
