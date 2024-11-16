@@ -12,6 +12,14 @@ import (
 	"senhub-agent.go/internal/agent/tags"
 )
 
+type SenhubDataPoint struct {
+	Name      string    `json:"name"`
+	Timestamp time.Time `json:"timestamp"`
+	Value     float32   `json:"value"`
+	// NOTE tags will be converted to a list of strings
+	Tags map[string]string `json:"tags,omitempty"`
+}
+
 // Synchronize metrics to senhub backend.
 type SyncStrategySenhub struct {
 	/** Store all datapoints */
@@ -95,14 +103,16 @@ func (s *SyncStrategySenhub) doSync() error {
 	}
 
 	// Remove private tags
-	transformedData := make([]DataPoint, 0, len(data))
+	transformedData := make([]SenhubDataPoint, 0, len(data))
 	for _, dp := range data {
 
-		transformedData = append(transformedData, DataPoint{
+		transformedData = append(transformedData, SenhubDataPoint{
 			Name:      dp.Name,
 			Timestamp: dp.Timestamp,
 			Value:     dp.Value,
-			Tags:      tags.OnlyPublicTags(dp.Tags),
+			Tags: tags.FormatTagsForServer(
+				tags.OnlyPublicTags(dp.Tags),
+			),
 		})
 	}
 
@@ -116,7 +126,7 @@ func (s *SyncStrategySenhub) doSync() error {
 	return nil
 }
 
-func (s *SyncStrategySenhub) doSyncData(data []DataPoint) error {
+func (s *SyncStrategySenhub) doSyncData(data []SenhubDataPoint) error {
 	response, err := s.server.Post("/metrics", data)
 	if err != nil {
 		return err
