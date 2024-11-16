@@ -13,15 +13,17 @@ var (
 )
 
 type CliArgs struct {
-	Version *VersionSubcommandArgs `arg:"subcommand:version"`
-	Agent   *StartSubcommandArgs   `arg:"subcommand:start"`
+	Version *VersionSubcommandArgs `arg:"subcommand:version" help:"Print version information and exit"`
+	Agent   *StartSubcommandArgs   `arg:"subcommand:start" help:"Start the agent (default)"`
+	Update  *UpdateSubcommandArgs  `arg:"subcommand:update" help:"Update the agent"`
 }
 
 type VersionSubcommandArgs struct{}
+type UpdateSubcommandArgs struct{}
 
 type StartSubcommandArgs struct {
-	AuthenticationKey string `arg:"required,--authentication-key,env:SENHUB_KEY"`
-	ServerUrl         string `arg:"--server-url,env:SENHUB_SERVER_URL" default:"https://eu-west-1.intake.senhub.io"`
+	AuthenticationKey string `arg:"required,--authentication-key,env:SENHUB_KEY" help:"The authentication key for the agent"`
+	ServerUrl         string `arg:"--server-url,env:SENHUB_SERVER_URL" default:"https://eu-west-1.intake.senhub.io" help:"The URL of senhub server to connect to"`
 }
 
 func MustParse() *StartSubcommandArgs {
@@ -39,12 +41,14 @@ func MustParse() *StartSubcommandArgs {
 		case err == arg.ErrHelp:
 			p.WriteHelp(os.Stdout)
 			os.Exit(0)
+
 		case p.Subcommand() == nil:
 			// No subcommand was provided.
 			// Attempt to parse arguments as start command.
 			var startArgs StartSubcommandArgs
 			arg.MustParse(&startArgs)
 			return &startArgs
+
 		default:
 			p.WriteUsage(os.Stdout)
 			os.Exit(1)
@@ -60,8 +64,12 @@ func MustParse() *StartSubcommandArgs {
 		os.Exit(0)
 	case args.Agent != nil:
 		return args.Agent
+	case args.Update != nil:
+		p.FailSubcommand("Update subcommand is not implemented yet.", "update")
+		os.Exit(1)
 	default:
-		log.Fatalf("unexpected error")
+		// No subcommand was provided.
+		p.Fail("Run with --help for usage information.")
 		os.Exit(1)
 	}
 
