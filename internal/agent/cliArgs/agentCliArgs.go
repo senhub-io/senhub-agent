@@ -12,41 +12,58 @@ var (
 	commit_hash = "n/a"
 )
 
-type AgentCliArgs struct {
-	AuthenticationKey string `arg:"--authentication-key,env:SENHUB_KEY"`
-	ServerUrl         string `arg:"--server-url,env:SENHUB_SERVER_URL" default:"https://nats.sensorfactory.eu:8443"`
-	ShowVersion       bool   `arg:"-v,--version"`
+type CliArgs struct {
+	Version *VersionSubcommandArgs `arg:"subcommand:version"`
+	Agent   *StartSubcommandArgs   `arg:"subcommand:start"`
 }
 
-type AgentConfiguration struct {
-	AuthenticationKey string
-	ServerUrl         string
+type VersionSubcommandArgs struct{}
+
+type StartSubcommandArgs struct {
+	AuthenticationKey string `arg:"required,--authentication-key,env:SENHUB_KEY"`
+	ServerUrl         string `arg:"--server-url,env:SENHUB_SERVER_URL" default:"https://eu-west-1.intake.senhub.io"`
 }
 
-func MustParse() AgentConfiguration {
-	var args AgentCliArgs
-	arg.MustParse(&args)
+func MustParse() *StartSubcommandArgs {
+	var args CliArgs
 
-	config := AgentConfiguration{
-		AuthenticationKey: args.AuthenticationKey,
-		ServerUrl:         args.ServerUrl,
+	// Attempt to parse arguments as subcommand
+	p, err := arg.NewParser(arg.Config{}, &args)
+	if err != nil {
+		log.Fatalf("there was an error in the definition of the Go struct: %v", err)
 	}
 
-	if args.ShowVersion && version != "" {
+	err = p.Parse(os.Args[1:])
+	if err != nil {
+		switch {
+		case err == arg.ErrHelp:
+			p.WriteHelp(os.Stdout)
+			os.Exit(0)
+		case p.Subcommand() == nil:
+			// No subcommand was provided.
+			// Attempt to parse arguments as start command.
+			var startArgs StartSubcommandArgs
+			arg.MustParse(&startArgs)
+			return &startArgs
+		default:
+			p.WriteUsage(os.Stdout)
+			os.Exit(1)
+		}
+	}
+
+	switch {
+	case args.Version != nil && version != "":
 		log.Printf("Version: %s", version)
 		os.Exit(0)
-	}
-
-	if args.ShowVersion && commit_hash != "" {
+	case args.Version != nil:
 		log.Printf("Development version: %s", commit_hash)
 		os.Exit(0)
-	}
-
-	// Validate configuration
-	if config.AuthenticationKey == "" {
-		log.Fatalf("missing required argument: --authentication-key")
+	case args.Agent != nil:
+		return args.Agent
+	default:
+		log.Fatalf("unexpected error")
 		os.Exit(1)
 	}
 
-	return config
+	return nil
 }
