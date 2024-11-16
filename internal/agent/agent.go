@@ -6,7 +6,7 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/alexflint/go-arg"
+	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -46,8 +46,8 @@ type AgentCliArgs struct {
 
 // Create new agent from context
 func NewAgent() Agent {
-	var args AgentCliArgs
-	arg.MustParse(&args)
+
+	args := agentCliArgs.MustParse()
 
 	logger := logger.NewLogger()
 
