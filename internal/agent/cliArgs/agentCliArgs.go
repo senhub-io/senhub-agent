@@ -7,9 +7,11 @@ import (
 	"github.com/alexflint/go-arg"
 )
 
+// Those variables are set by the build system
 var (
 	version     = "n/a"
 	commit_hash = "n/a"
+	env         = "n/a"
 )
 
 type CliArgs struct {
@@ -26,8 +28,20 @@ type StartSubcommandArgs struct {
 	ServerUrl         string `arg:"--server-url,env:SENHUB_SERVER_URL" default:"https://eu-west-1.intake.senhub.io" help:"The URL of senhub server to connect to"`
 }
 
-func MustParse() *StartSubcommandArgs {
+type ParsedArgs struct {
+	AuthenticationKey string
+	ServerUrl         string
+	// Can be production or development
+	Env string
+}
+
+func MustParse() *ParsedArgs {
 	var args CliArgs
+
+	parsedEnv := env
+	if parsedEnv != "development" {
+		parsedEnv = "production"
+	}
 
 	// Attempt to parse arguments as subcommand
 	p, err := arg.NewParser(arg.Config{}, &args)
@@ -47,7 +61,7 @@ func MustParse() *StartSubcommandArgs {
 			// Attempt to parse arguments as start command.
 			var startArgs StartSubcommandArgs
 			arg.MustParse(&startArgs)
-			return &startArgs
+			return parsedArgsFromStartArgs(&startArgs, parsedEnv)
 
 		default:
 			p.WriteUsage(os.Stdout)
@@ -58,12 +72,18 @@ func MustParse() *StartSubcommandArgs {
 	switch {
 	case args.Version != nil && version != "":
 		log.Printf("Version: %s", version)
+		if parsedEnv == "development" {
+			log.Printf("Development build")
+		}
 		os.Exit(0)
 	case args.Version != nil:
 		log.Printf("Development version: %s", commit_hash)
+		if parsedEnv == "development" {
+			log.Printf("Development build")
+		}
 		os.Exit(0)
 	case args.Agent != nil:
-		return args.Agent
+		return parsedArgsFromStartArgs(args.Agent, parsedEnv)
 	case args.Update != nil:
 		p.FailSubcommand("Update subcommand is not implemented yet.", "update")
 		os.Exit(1)
@@ -74,4 +94,12 @@ func MustParse() *StartSubcommandArgs {
 	}
 
 	return nil
+}
+
+func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *ParsedArgs {
+	return &ParsedArgs{
+		AuthenticationKey: args.AuthenticationKey,
+		ServerUrl:         args.ServerUrl,
+		Env:               environment,
+	}
 }
