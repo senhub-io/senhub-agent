@@ -18,6 +18,7 @@ type CliArgs struct {
 	Version *VersionSubcommandArgs `arg:"subcommand:version" help:"Print version information and exit"`
 	Agent   *StartSubcommandArgs   `arg:"subcommand:start" help:"Start the agent (default)"`
 	Update  *UpdateSubcommandArgs  `arg:"subcommand:update" help:"Update the agent"`
+	Verbose bool                   `arg:"-v,--verbose" help:"Enable verbose logging"`
 }
 
 type VersionSubcommandArgs struct{}
@@ -31,6 +32,7 @@ type StartSubcommandArgs struct {
 type ParsedArgs struct {
 	AuthenticationKey string
 	ServerUrl         string
+	Verbose           bool
 	// Can be production or development
 	Env string
 }
@@ -61,7 +63,7 @@ func MustParse() *ParsedArgs {
 			// Attempt to parse arguments as start command.
 			var startArgs StartSubcommandArgs
 			arg.MustParse(&startArgs)
-			return parsedArgsFromStartArgs(&startArgs, parsedEnv)
+			return parsedArgsFromStartArgs(&startArgs, parsedEnv, false)
 
 		default:
 			p.WriteUsage(os.Stdout)
@@ -83,7 +85,7 @@ func MustParse() *ParsedArgs {
 		}
 		os.Exit(0)
 	case args.Agent != nil:
-		return parsedArgsFromStartArgs(args.Agent, parsedEnv)
+		return parsedArgsFromStartArgs(args.Agent, parsedEnv, args.Verbose)
 	case args.Update != nil:
 		p.FailSubcommand("Update subcommand is not implemented yet.", "update")
 		os.Exit(1)
@@ -96,10 +98,11 @@ func MustParse() *ParsedArgs {
 	return nil
 }
 
-func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *ParsedArgs {
+func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string, verbose bool) *ParsedArgs {
 	return &ParsedArgs{
 		AuthenticationKey: args.AuthenticationKey,
 		ServerUrl:         args.ServerUrl,
 		Env:               environment,
+		Verbose:           verbose,
 	}
 }
