@@ -10,7 +10,7 @@ args_bin = [
   "http://localhost:8080",
 ]
 bin = "./senhub-agent"
-cmd = "make build"
+cmd = "ENV=development make build"
 delay = 1000
 exclude_dir = ["assets", "tmp", "vendor", "testdata"]
 exclude_file = []
