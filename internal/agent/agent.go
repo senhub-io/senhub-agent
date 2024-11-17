@@ -41,7 +41,7 @@ type agent struct {
 
 type AgentCliArgs struct {
 	AuthenticationKey string `arg:"required,--authentication-key,env:SENHUB_KEY"`
-	ServerUrl         string `arg:"--server-url,env:SENHUB_SERVER_URL" default:"https://nats.sensorfactory.eu:8443"`
+	ServerUrl         string `arg:"--server-url,env:SENHUB_SERVER_URL" default:"https://eu-west-1.intake.senhub.io"`
 }
 
 // Create new agent from context
