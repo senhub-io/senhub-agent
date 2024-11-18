@@ -4,6 +4,7 @@ import (
 	"os"
 	"fmt"
 	"github.com/rs/zerolog"
+	"runtime"
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 )
 
@@ -13,9 +14,17 @@ type LoggerConfig struct {
     logFile *os.File
 }
 
+func getLogPath() string {
+    if runtime.GOOS == "windows" {
+        return "C:\\Program Files\\Senhub\\Senhub Agent\\senhubagent.log"
+    }
+    return "/var/log/senhubagent.log"
+}
+
 func NewLogger(args *agentCliArgs.ParsedArgs) *Logger {
+	logPath := getLogPath()
 	runLogFile, err := os.OpenFile(
-			"senhubagent.log",
+			logPath,
 			os.O_APPEND|os.O_CREATE|os.O_WRONLY,
 			0664,
 	)

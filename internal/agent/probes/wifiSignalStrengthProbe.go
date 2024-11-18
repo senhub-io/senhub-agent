@@ -48,30 +48,29 @@ func (m *wifiSignalStrengthProbe) Collect() ([]data_store.DataPoint, error) {
 	case "linux":
 		return m.collectLinux()
 	default:
-		//logger.Info().Msg("OS not supported")
+		m.logger.Error().Msgf("OS not supported")
 		return []data_store.DataPoint{}, nil
 	}
 }
 
 func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, error) {
-	// Exécuter la commande `netsh wlan show interfaces` pour récupérer les infos Wi-Fi
+
 	cmd := exec.Command("netsh", "wlan", "show", "interfaces")
 	output, err := cmd.Output()
 	if err != nil {
 		return []data_store.DataPoint{}, err
 	}
 
-	// Analyser la sortie pour trouver la ligne contenant "Signal"
 	lines := strings.Split(string(output), "\n")
 	for _, line := range lines {
 		if strings.Contains(line, "Signal") {
 			parts := strings.Fields(line)
 			if len(parts) > 1 {
-				// Extraire le pourcentage du signal et enlever le symbole "%"
+
 				signalStrengthStr := strings.TrimSuffix(parts[len(parts)-1], "%")
 				signalStrength, err := strconv.Atoi(signalStrengthStr)
 				if err != nil {
-					//logger.Info().Msg("Error parsing signal strength:", err)
+					m.logger.Error().Msgf("Error parsing signal strength:", err)
 					return []data_store.DataPoint{}, err
 				}
 				return []data_store.DataPoint{
@@ -89,7 +88,7 @@ func (m *wifiSignalStrengthProbe) collectLinux() ([]data_store.DataPoint, error)
 	cmd := exec.Command("iwconfig")
 	output, err := cmd.Output()
 	if err != nil {
-		//logger.Info().Msg("Error retrieving Wi-Fi signal strength:", err)
+		m.logger.Error().Msgf("Error retrieving Wi-Fi signal strength:", err)
 		return []data_store.DataPoint{}, err
 	}
 
