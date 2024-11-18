@@ -15,10 +15,10 @@ type memoryProbe struct {
 }
 
 func NewMemoryProbe(config map[string]interface{}, logger *logger.Logger) Probe {
-    return &memoryProbe{
-        config: config,
-        logger: logger,
-    }
+	return &memoryProbe{
+		config: config,
+		logger: logger,
+	}
 }
 
 func (m *memoryProbe) GetName() string {
