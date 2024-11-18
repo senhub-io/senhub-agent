@@ -18,7 +18,16 @@ To run the project in production mode, you need to run the following command:
 
 ```bash
 make build
-./senhub-agent --authentication-key some_key --server-url "http://localhost:8080"
+./senhub-agent start --authentication-key some_key --server-url "http://localhost:8080"
+```
+
+### Build environment
+
+Project can be built in `development` or `production` mode by setting `ENV`
+variable.
+
+````bash
+ENV=development make build
 ```
 
 ## Running the tests
@@ -27,4 +36,4 @@ To run the tests, you need to run the following command:
 
 ```bash
 make test
-```
+````
