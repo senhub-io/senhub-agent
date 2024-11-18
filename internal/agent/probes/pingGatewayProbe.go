@@ -16,15 +16,16 @@ import (
 )
 
 type PingGatewayProbe struct {
-	config map[string]interface{}
-	logger *logger.Logger
+	rawConfig map[string]interface{}
+	logger    *logger.Logger
 }
 
-func NewPingGatewayProbe(config map[string]interface{}, logger *logger.Logger) Probe {
+func NewPingGatewayProbe(config map[string]interface{}, logger *logger.Logger) (Probe, error) {
+	// No validation needed for this probe
 	return &PingGatewayProbe{
-		config: config,
-		logger: logger,
-	}
+		rawConfig: config,
+		logger:    logger,
+	}, nil
 }
 
 func (p *PingGatewayProbe) GetName() string {
@@ -32,10 +33,6 @@ func (p *PingGatewayProbe) GetName() string {
 }
 
 func (p *PingGatewayProbe) ShouldStart() bool {
-	return true
-}
-
-func (p *PingGatewayProbe) ValidateConfig(config map[string]interface{}) bool {
 	return true
 }
 

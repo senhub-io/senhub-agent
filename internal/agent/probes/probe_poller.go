@@ -40,9 +40,9 @@ func NewProbePoller(config configuration.ProbeConfig, addDataPoint data_store.Ad
 	if err != nil {
 		return nil, err
 	}
-	probe := probeConstructor(config.Params, logger) // Passage du logger
-	if probe.ValidateConfig(config.Params) == false {
-		return nil, fmt.Errorf("invalid configuration for probe %s", config.Name)
+	probe, err := probeConstructor(config.Params, logger) // Passage du logger
+	if err != nil {
+		return nil, fmt.Errorf("Unable to start probe %s\n%v", config.Name, err)
 	}
 	probePoller := &ProbePoller{
 		ProbeId:      GenerateProbeId(config),
