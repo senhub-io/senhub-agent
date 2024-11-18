@@ -103,12 +103,12 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 
 func (p *ProbePoller) collect() error {
     data, err := p.Probe.Collect()
-    if err != nil {
-        p.logger.Error().
-            Err(err).
-            Interface("probe_config", p.config).
-            Str("probe_name", p.Probe.GetName()).
-            Msg("Error collecting probe")
+//    if err != nil {
+//        p.logger.Error().
+  //          Err(err).
+//            Interface("probe_config", p.config).
+//            Str("probe_name", p.Probe.GetName()).
+//            Msg("Error collecting probe")
         return err
     }
     return p.addDataPoint(data)
