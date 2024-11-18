@@ -25,7 +25,8 @@ build-linux: ## Build for Linux
 build-darwin: ## Build for Darwin (macOS)
 		@env GOOS=darwin GOARCH=amd64 go build -o $(DARWIN) -ldflags="-s -w -X ${PACKAGE}.version=$(VERSION) -X ${PACKAGE}.commit_hash=$(COMMIT_HASH) -X ${PACKAGE}.env=${ENV}"  ./cmd/agent/main.go
 
-
+install: ## Install the application
+	@./scripts/setup
 
 # Run the application
 run:
