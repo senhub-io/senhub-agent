@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+# Install project dependencies
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
+
+function check_requirements {
+  echo "Checking requirements"
+  # Check if go is installed
+  if ! command -v go &> /dev/null; then
+    echo "Go is not installed. Please install Go and try again."
+    exit 1
+  fi
+
+  if [[ -z "${GOPATH:-}" ]]; then
+    echo "GOPATH is not set. Please set GOPATH and try again."
+    exit 1
+  fi
+
+  if [[ ":$PATH:" != *":$GOPATH/bin:"* ]]; then
+    echo "Your path is missing \$GOPATH/bin, you might want to add it."
+  fi
+}
+
+function install_hooks {
+  echo "Installing hooks"
+  # Create a symlink for each file in the hooks directory
+  # to the .git/hooks directory
+  for file in $DIR/scripts/hooks/*; do
+      filename=$(basename $file)
+      ln -sf $file $DIR/.git/hooks/$filename
+  done
+
+  # Remove any empty symlinks that may have been created earlier
+  find $DIR/.git/hooks -type l -exec test ! -e {} \; -delete
+}
+
+function install_dependencies {
+  echo "Installing dependencies"
+  go mod download
+}
+
+################################################################################
+# Program main function
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns
+#   None
+################################################################################
+function main {
+  check_requirements
+  install_hooks
+  install_dependencies
+}
+
+main $@
