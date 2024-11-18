@@ -6,16 +6,19 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 type memoryProbe struct {
 	config map[string]interface{}
+	logger *logger.Logger
 }
 
-func NewMemoryProbe(config map[string]interface{}) Probe {
-	return &memoryProbe{
-		config: config,
-	}
+func NewMemoryProbe(config map[string]interface{}, logger *logger.Logger) Probe {
+    return &memoryProbe{
+        config: config,
+        logger: logger,
+    }
 }
 
 func (m *memoryProbe) GetName() string {

@@ -28,6 +28,7 @@ func NewSensor(
 	remoteConfig *configuration.RemoteConfiguration,
 	logger *logger.Logger,
 ) Sensor {
+
 	localLogger := logger.With().Str("service", "Sensor").Logger()
 
 	return &sensor{
@@ -107,7 +108,7 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel c
 	}
 
 	// Start a new probe poller
-	probePoller, err := probes.NewProbePoller(probeConfig, s.addDataPoint)
+	probePoller, err := probes.NewProbePoller(probeConfig, s.addDataPoint, s.logger)
 	if err != nil {
 		return err
 	}
