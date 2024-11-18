@@ -4,7 +4,8 @@ import (
 	"os"
 	"fmt"
 	"github.com/rs/zerolog"
-	"runtime"
+	"log"
+	"path/filepath"
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 )
 
@@ -15,10 +16,15 @@ type LoggerConfig struct {
 }
 
 func getLogPath() string {
-    if runtime.GOOS == "windows" {
-        return "C:\\Program Files\\Senhub\\Senhub Agent\\senhubagent.log"
-    }
-    return "/var/log/senhubagent.log"
+	exePath, err := os.Executable()
+	if err != nil {
+		log.Fatalf("Failed to get executable path: %v", err)
+	}
+
+	exeDir := filepath.Dir(exePath)
+	logFilePath := filepath.Join(exeDir, "senhubagent.log")
+
+  return logFilePath
 }
 
 func NewLogger(args *agentCliArgs.ParsedArgs) *Logger {
