@@ -73,12 +73,12 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
         p.logger.Debug().Msg("Probe should not start")
         return nil
     }
-    p.tickerOnce.Do(func() { // Ensure the ticker only starts once
+    p.tickerOnce.Do(func() {
         p.Probe.OnStart(quitChannel)
         p.ticker = time.NewTicker(p.Probe.GetInterval())
         go func() {
-            // Ensure an initial collect is done
-            if err := p.collect(); err != nil {  // Remplacé doCollectProbe par collect
+        
+            if err := p.collect(); err != nil {
                 p.logger.Debug().
                     Err(err).
                     Msg("Error during initial collect")
@@ -89,11 +89,8 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
                     p.ticker.Stop()
                     return
                 case <-p.ticker.C:
-                    if err := p.collect(); err != nil {
-                        p.logger.Debug().
-                            Err(err).
-                            Msg("Error during collect")
-                    }
+                    p.collect()
+
                 }
             }
         }()
@@ -103,12 +100,12 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 
 func (p *ProbePoller) collect() error {
     data, err := p.Probe.Collect()
-//    if err != nil {
-//        p.logger.Error().
-  //          Err(err).
-//            Interface("probe_config", p.config).
-//            Str("probe_name", p.Probe.GetName()).
-//            Msg("Error collecting probe")
+    if err != nil {
+        p.logger.Error().
+            Err(err).
+            Interface("probe_config", p.config).
+            Str("probe_name", p.Probe.GetName()).
+            Msg("Error collecting probe")
         return err
     }
     return p.addDataPoint(data)

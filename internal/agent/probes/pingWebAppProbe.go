@@ -3,7 +3,6 @@ package probes
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"net/url"
 	"os/exec"
@@ -39,7 +38,7 @@ func (p *PingWebAppProbe) ShouldStart() bool {
 
 func (p *PingWebAppProbe) ValidateConfig(config map[string]interface{}) bool {
 	if url, ok := config["url"]; !ok || url == "" {
-		log.Printf("url parameter is required for %s probe", p.GetName())
+		p.logger.Error().Msgf("url parameter is required for %s probe", p.GetName())
 		return false
 	}
 	return true

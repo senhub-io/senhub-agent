@@ -60,7 +60,7 @@ func (p *LoadWebAppProbe) ShouldStart() bool {
 
 func (p *LoadWebAppProbe) ValidateConfig(config map[string]interface{}) bool {
 	if url, ok := config["url"].(string); !ok || url == "" {
-		p.logger.Info().Msgf("url parameter is required for %s probe", p.GetName())
+		p.logger.Error().Msgf("url parameter is required for %s probe", p.GetName())
 		return false
 	}
 
@@ -91,7 +91,6 @@ func (p *LoadWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 
 	tags := map[string]string{
 			"url": webappURL,
-			"probe_type": "webApp",
 	}
 
 	return []data_store.DataPoint{
