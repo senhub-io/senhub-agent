@@ -18,10 +18,10 @@ type wifiSignalStrengthProbe struct {
 }
 
 func NewWifiSignalStrengthProbe(config map[string]interface{}, logger *logger.Logger) Probe {
-    return &wifiSignalStrengthProbe{
-        config: config,
-        logger: logger,
-    }
+	return &wifiSignalStrengthProbe{
+		config: config,
+		logger: logger,
+	}
 }
 
 func (m *wifiSignalStrengthProbe) GetName() string {

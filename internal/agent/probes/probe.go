@@ -31,9 +31,9 @@ type ProbeConstructor func(config map[string]interface{}, logger *logger.Logger)
 // AllProbeDefinitions is a list of all probes available
 // The key is the name of the probe in remote configuration
 var probeConstructors = map[string]ProbeConstructor{
-    "load_webapp":          NewLoadWebAppProbe,
-    "ping_webapp":          NewPingWebAppProbe,
-    "ping_gateway":         NewPingGatewayProbe,
-    "wifi_signal_strength": NewWifiSignalStrengthProbe,
-    "memory":              NewMemoryProbe,
+	"load_webapp":          NewLoadWebAppProbe,
+	"ping_webapp":          NewPingWebAppProbe,
+	"ping_gateway":         NewPingGatewayProbe,
+	"wifi_signal_strength": NewWifiSignalStrengthProbe,
+	"memory":               NewMemoryProbe,
 }
