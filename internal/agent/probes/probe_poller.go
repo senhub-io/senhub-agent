@@ -5,11 +5,11 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/data_store"
 )
 
@@ -21,6 +21,7 @@ type ProbePoller struct {
 	ticker       *time.Ticker
 	tickerOnce   sync.Once
 	mutex        sync.Mutex // Ensures thread-safe execution of doRefreshConfig
+	logger  		 *logger.Logger
 }
 
 // GenerateProbeId generates a unique id for the probe configuration.
@@ -34,33 +35,31 @@ func GenerateProbeId(config configuration.ProbeConfig) string {
 }
 
 // NewProbePoller creates a new probe from ProbeConfig
-func NewProbePoller(config configuration.ProbeConfig, addDataPoint data_store.AddCallback) (*ProbePoller, error) {
-	probeConstructor, err := getProbeConstructorForConfig(config)
-	if err != nil {
-		return nil, err
-	}
-
-	probe := probeConstructor(config.Params)
-	if probe.ValidateConfig(config.Params) == false {
-		return nil, fmt.Errorf("invalid configuration for probe %s", config.Name)
-	}
-
-	probePoller := &ProbePoller{
-		ProbeId:      GenerateProbeId(config),
-		Probe:        probe,
-		config:       config,
-		addDataPoint: addDataPoint,
-	}
-
-	return probePoller, nil
+func NewProbePoller(config configuration.ProbeConfig, addDataPoint data_store.AddCallback, logger *logger.Logger) (*ProbePoller, error) {
+    probeConstructor, err := getProbeConstructorForConfig(config)
+    if err != nil {
+        return nil, err
+    }
+    probe := probeConstructor(config.Params, logger)  // Passage du logger
+    if probe.ValidateConfig(config.Params) == false {
+        return nil, fmt.Errorf("invalid configuration for probe %s", config.Name)
+    }
+    probePoller := &ProbePoller{
+        ProbeId:      GenerateProbeId(config),
+        Probe:        probe,
+        config:       config,
+        addDataPoint: addDataPoint,
+        logger:       logger,
+    }
+    return probePoller, nil
 }
 
 func getProbeConstructorForConfig(config configuration.ProbeConfig) (ProbeConstructor, error) {
-	if constructor, ok := AllProbeDefinitions[config.Name]; ok {
-		return constructor, nil
-	}
-
-	return nil, fmt.Errorf("unknown probe %s", config.Name)
+    constructor, exists := probeConstructors[config.Name]
+    if !exists {
+        return nil, fmt.Errorf("unknown probe type: %s", config.Name)
+    }
+    return constructor, nil
 }
 
 func (p *ProbePoller) GetName() string {
@@ -70,41 +69,51 @@ func (p *ProbePoller) GetProbeId() string {
 	return p.ProbeId
 }
 func (p *ProbePoller) Start(quitChannel chan struct{}) error {
-	if p.Probe.ShouldStart() == false {
-		return nil
-	}
-
-	p.tickerOnce.Do(func() { // Ensure the ticker only starts once
-		p.Probe.OnStart(quitChannel)
-
-		p.ticker = time.NewTicker(p.Probe.GetInterval())
-
-		go func() {
-			// Ensure an iitial collect is done
-			p.doCollectProbe()
-
-			for {
-				select {
-				case <-quitChannel:
-					p.ticker.Stop()
-					return
-				case <-p.ticker.C:
-					p.doCollectProbe()
-				}
-			}
-		}()
-	})
-	return nil
+    if p.Probe.ShouldStart() == false {
+        p.logger.Debug().Msg("Probe should not start")
+        return nil
+    }
+    p.tickerOnce.Do(func() { // Ensure the ticker only starts once
+        p.Probe.OnStart(quitChannel)
+        p.ticker = time.NewTicker(p.Probe.GetInterval())
+        go func() {
+            // Ensure an initial collect is done
+            if err := p.collect(); err != nil {  // Remplacé doCollectProbe par collect
+                p.logger.Debug().
+                    Err(err).
+                    Msg("Error during initial collect")
+            }
+            for {
+                select {
+                case <-quitChannel:
+                    p.ticker.Stop()
+                    return
+                case <-p.ticker.C:
+                    if err := p.collect(); err != nil {
+                        p.logger.Debug().
+                            Err(err).
+                            Msg("Error during collect")
+                    }
+                }
+            }
+        }()
+    })
+    return nil
 }
 
-func (p *ProbePoller) doCollectProbe() error {
-	data, err := p.Probe.Collect()
-	if err != nil {
-		log.Printf("Error collecting probe %v: %v", p.config, err)
-		return err
-	}
-	return p.addDataPoint(data)
+func (p *ProbePoller) collect() error {
+    data, err := p.Probe.Collect()
+    if err != nil {
+        p.logger.Error().
+            Err(err).
+            Interface("probe_config", p.config).
+            Str("probe_name", p.Probe.GetName()).
+            Msg("Error collecting probe")
+        return err
+    }
+    return p.addDataPoint(data)
 }
+
 
 func (p *ProbePoller) Shutdown(ctx context.Context) error {
 	if p.ticker != nil {

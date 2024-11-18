@@ -22,7 +22,7 @@ func gracefulShutdown(agent *agent.Agent, done chan bool) {
 	// Listen for the interrupt signal.
 	<-ctx.Done()
 
-	log.Println("shutting down gracefully, press Ctrl+C again to force")
+	log.Printf("shutting down gracefully, press Ctrl+C again to force")
 
 	// The context is used to inform the server it has 5 seconds to finish
 	// the request it is currently handling
@@ -32,7 +32,7 @@ func gracefulShutdown(agent *agent.Agent, done chan bool) {
 		log.Printf("Agent forced to shutdown with error: %v", err)
 	}
 
-	log.Println("Agent exiting")
+	log.Printf("Agent exiting")
 
 	// Notify the main goroutine that the shutdown is complete
 	done <- true
@@ -54,5 +54,5 @@ func main() {
 
 	// Wait for the graceful shutdown to complete
 	<-done
-	log.Println("Graceful shutdown complete.")
+	log.Printf("Graceful shutdown complete.")
 }
