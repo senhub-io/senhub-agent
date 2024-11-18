@@ -12,16 +12,19 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 type PingGatewayProbe struct {
 	config map[string]interface{}
+	logger *logger.Logger
 }
 
-func NewPingGatewayProbe(config map[string]interface{}) Probe {
-	return &PingGatewayProbe{
-		config: config,
-	}
+func NewPingGatewayProbe(config map[string]interface{}, logger *logger.Logger) Probe {
+    return &PingGatewayProbe{
+        config: config,
+        logger: logger,
+    }
 }
 
 func (p *PingGatewayProbe) GetName() string {

@@ -2,8 +2,6 @@ package probes
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -11,16 +9,19 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 type wifiSignalStrengthProbe struct {
 	config map[string]interface{}
+	logger *logger.Logger
 }
 
-func NewWifiSignalStrengthProbe(config map[string]interface{}) Probe {
-	return &wifiSignalStrengthProbe{
-		config: config,
-	}
+func NewWifiSignalStrengthProbe(config map[string]interface{}, logger *logger.Logger) Probe {
+    return &wifiSignalStrengthProbe{
+        config: config,
+        logger: logger,
+    }
 }
 
 func (m *wifiSignalStrengthProbe) GetName() string {
@@ -40,15 +41,14 @@ func (m *wifiSignalStrengthProbe) GetInterval() time.Duration {
 }
 
 func (m *wifiSignalStrengthProbe) Collect() ([]data_store.DataPoint, error) {
-	var s runtime.MemStats
-	runtime.ReadMemStats(&s)
+
 	switch runtime.GOOS {
 	case "windows":
 		return m.collectWindows()
 	case "linux":
 		return m.collectLinux()
 	default:
-		log.Println("OS not supported")
+		//logger.Info().Msg("OS not supported")
 		return []data_store.DataPoint{}, nil
 	}
 }
@@ -71,7 +71,7 @@ func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, erro
 				signalStrengthStr := strings.TrimSuffix(parts[len(parts)-1], "%")
 				signalStrength, err := strconv.Atoi(signalStrengthStr)
 				if err != nil {
-					log.Println("Error parsing signal strength:", err)
+					//logger.Info().Msg("Error parsing signal strength:", err)
 					return []data_store.DataPoint{}, err
 				}
 				return []data_store.DataPoint{
@@ -89,7 +89,7 @@ func (m *wifiSignalStrengthProbe) collectLinux() ([]data_store.DataPoint, error)
 	cmd := exec.Command("iwconfig")
 	output, err := cmd.Output()
 	if err != nil {
-		fmt.Println("Error retrieving Wi-Fi signal strength:", err)
+		//logger.Info().Msg("Error retrieving Wi-Fi signal strength:", err)
 		return []data_store.DataPoint{}, err
 	}
 

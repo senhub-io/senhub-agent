@@ -14,16 +14,19 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 type PingWebAppProbe struct {
 	config map[string]interface{}
+	logger *logger.Logger
 }
 
-func NewPingWebAppProbe(config map[string]interface{}) Probe {
-	return &PingWebAppProbe{
-		config: config,
-	}
+func NewPingWebAppProbe(config map[string]interface{}, logger *logger.Logger) Probe {
+    return &PingWebAppProbe{
+        config: config,
+        logger: logger,
+    }
 }
 
 func (p *PingWebAppProbe) GetName() string {
