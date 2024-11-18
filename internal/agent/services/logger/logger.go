@@ -2,20 +2,33 @@ package logger
 
 import (
 	"os"
-
+	"fmt"
 	"github.com/rs/zerolog"
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 )
 
 type Logger = zerolog.Logger
 
+type LoggerConfig struct {
+    logFile *os.File
+}
+
 func NewLogger(args *agentCliArgs.ParsedArgs) *Logger {
+	runLogFile, err := os.OpenFile(
+			"senhubagent.log",
+			os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+			0664,
+	)
+	if err != nil {
+			panic(fmt.Sprintf("Cannot open logfile: %v", err))
+	}
+
 	var logger *Logger
 	switch args.Env {
 	case "development":
-		logger = buildDevelopmentLogger()
+		logger = buildDevelopmentLogger(runLogFile)
 	default:
-		logger = buildProductionLogger()
+		logger = buildProductionLogger(runLogFile)
 	}
 
 	if args.Verbose {
@@ -25,10 +38,16 @@ func NewLogger(args *agentCliArgs.ParsedArgs) *Logger {
 	return logger
 }
 
-func buildDevelopmentLogger() *Logger {
+func buildDevelopmentLogger(logFile *os.File) *Logger {
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+
+	multi := zerolog.MultiLevelWriter(
+		zerolog.ConsoleWriter{Out: os.Stderr},
+		logFile,
+	)
+
 	logger := zerolog.
-		New(zerolog.ConsoleWriter{Out: os.Stderr}).
+		New(multi).
 		With().
 		Timestamp().
 		Logger()
@@ -36,11 +55,11 @@ func buildDevelopmentLogger() *Logger {
 	return &logger
 }
 
-func buildProductionLogger() *Logger {
+func buildProductionLogger(logFile *os.File) *Logger {
 	zerolog.SetGlobalLevel(zerolog.WarnLevel)
 
 	logger := zerolog.
-		New(os.Stderr).
+		New(logFile).
 		With().
 		Timestamp().
 		Logger()

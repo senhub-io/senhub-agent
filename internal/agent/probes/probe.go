@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // Interface each probe should implement
@@ -25,14 +26,14 @@ type Probe interface {
 	OnShutdown(context.Context) error
 }
 
-type ProbeConstructor func(config map[string]interface{}) Probe
+type ProbeConstructor func(config map[string]interface{}, logger *logger.Logger) Probe
 
 // AllProbeDefinitions is a list of all probes available
 // The key is the name of the probe in remote configuration
-var AllProbeDefinitions = map[string]ProbeConstructor{
-	"host_memory":          NewMemoryProbe,
-	"wifi_signal_strength": NewWifiSignalStrengthProbe,
-	"ping_gateway":         NewPingGatewayProbe,
-	"ping_webapp":          NewPingWebAppProbe,
-	"load_webapp":          NewLoadWebAppProbe,
+var probeConstructors = map[string]ProbeConstructor{
+    "load_webapp":          NewLoadWebAppProbe,
+    "ping_webapp":          NewPingWebAppProbe,
+    "ping_gateway":         NewPingGatewayProbe,
+    "wifi_signal_strength": NewWifiSignalStrengthProbe,
+    "memory":              NewMemoryProbe,
 }
