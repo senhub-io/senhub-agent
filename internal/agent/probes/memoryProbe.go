@@ -10,24 +10,22 @@ import (
 )
 
 type memoryProbe struct {
-	config map[string]interface{}
-	logger *logger.Logger
+	rawConfig map[string]interface{}
+	logger    *logger.Logger
 }
 
-func NewMemoryProbe(config map[string]interface{}, logger *logger.Logger) Probe {
+func NewMemoryProbe(config map[string]interface{}, logger *logger.Logger) (Probe, error) {
+	// No validation needed for this probe
 	return &memoryProbe{
-		config: config,
-		logger: logger,
-	}
+		rawConfig: config,
+		logger:    logger,
+	}, nil
 }
 
 func (m *memoryProbe) GetName() string {
 	return "host_memory"
 }
 func (m *memoryProbe) ShouldStart() bool {
-	return true
-}
-func (m *memoryProbe) ValidateConfig(config map[string]interface{}) bool {
 	return true
 }
 func (m *memoryProbe) GetInterval() time.Duration {
