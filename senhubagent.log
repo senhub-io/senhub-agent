@@ -1,0 +1,16 @@
+{"level":"error","service":"Sensor","time":"2024-11-18T21:24:00+01:00","message":"OS not supported"}
+{"level":"error","service":"Sensor","error":"Get \"https://hibouvision.com\": tls: failed to verify certificate: x509: certificate is valid for www.hibouvision.com, not hibouvision.com","time":"2024-11-18T21:24:00+01:00","message":"SSL/TLS certificate error"}
+{"level":"error","service":"Sensor","error":"certificate error: Get \"https://hibouvision.com\": tls: failed to verify certificate: x509: certificate is valid for www.hibouvision.com, not hibouvision.com","time":"2024-11-18T21:24:00+01:00","message":"Error measuring network metrics: %v"}
+{"level":"error","service":"Sensor","error":"certificate error: Get \"https://hibouvision.com\": tls: failed to verify certificate: x509: certificate is valid for www.hibouvision.com, not hibouvision.com","probe_config":{"name":"load_webapp","params":{"url":"https://hibouvision.com"}},"probe_name":"loadWebAppProbe","time":"2024-11-18T21:24:00+01:00","message":"Error collecting probe"}
+{"level":"error","service":"Sensor","time":"2024-11-18T21:24:02+01:00","message":"OS not supported"}
+{"level":"error","service":"Sensor","time":"2024-11-18T21:24:04+01:00","message":"OS not supported"}
+{"level":"error","service":"Sensor","time":"2024-11-18T21:24:06+01:00","message":"OS not supported"}
+{"level":"error","service":"Sensor","time":"2024-11-18T21:24:08+01:00","message":"OS not supported"}
+{"level":"error","service":"Sensor","time":"2024-11-18T21:24:10+01:00","message":"OS not supported"}
+{"level":"error","service":"Sensor","time":"2024-11-18T21:24:12+01:00","message":"OS not supported"}
+{"level":"error","service":"Sensor","time":"2024-11-18T21:24:14+01:00","message":"OS not supported"}
+{"level":"error","service":"Sensor","time":"2024-11-18T21:24:16+01:00","message":"OS not supported"}
+{"level":"error","service":"Sensor","time":"2024-11-18T21:24:18+01:00","message":"OS not supported"}
+{"level":"error","service":"Sensor","time":"2024-11-18T21:24:20+01:00","message":"OS not supported"}
+{"level":"error","service":"Sensor","time":"2024-11-18T21:24:22+01:00","message":"OS not supported"}
+{"level":"error","service":"Sensor","time":"2024-11-18T21:24:24+01:00","message":"OS not supported"}
