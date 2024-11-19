@@ -1,5 +1,11 @@
 # SenHub agent
 
+## Install for development
+
+```bash
+make install
+```
+
 ## Running the project
 
 You need to have go installed on your machine.

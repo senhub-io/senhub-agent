@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+
+set -e
+
+# Colors for messages
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+RESET='\033[0m'
+
+# Get staged Go files
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR "*.go")
+
+if [ -z "$STAGED_FILES" ]; then
+  echo -e "${GREEN}No Go files staged for commit.${RESET}"
+  exit 0
+fi
+
+# Temporary directory for formatted files
+TMP_DIR=$(mktemp -d)
+
+# Cleanup on exit
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+for file in $STAGED_FILES; do
+  # Skip deleted files
+  if [ ! -f "$file" ]; then
+    continue
+  fi
+
+  echo "Processing $file"
+
+  # Get the staged version of the file and save it to a temp file
+  STAGED_FILE="$TMP_DIR/staged_$file"
+  if [[ -n $(dirname "$STAGED_FILE") ]]; then
+      mkdir	-p $(dirname "$STAGED_FILE")
+  fi
+  git show ":$file" > "$STAGED_FILE"
+
+  # Format the staged version of the file
+  gofmt -w "$STAGED_FILE"
+
+  # Check if formatting changed the file
+  if ! diff -q "$STAGED_FILE" <(git show ":$file") > /dev/null; then
+    echo -e "${RED}Fixing formatting for $file${RESET}"
+
+    # Replace the staged version with the formatted one
+    git update-index --add --cacheinfo 100644 $(git hash-object -w "$STAGED_FILE") "$file"
+  fi
+done
+
+echo -e "${GREEN}All staged Go files processed successfully.${RESET}"
+
