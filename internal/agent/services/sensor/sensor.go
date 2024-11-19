@@ -108,7 +108,14 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel c
 	}
 
 	// Start a new probe poller
-	probePoller, err := probes.NewProbePoller(probeConfig, s.addDataPoint, s.logger)
+	localLogger := s.logger.With().
+		Str("probe_name", probeConfig.Name).
+		Any("probe_params", probeConfig.Params).
+		Logger()
+
+	localLogger.Info().
+		Msg("Starting probe")
+	probePoller, err := probes.NewProbePoller(probeConfig, &localLogger, s.addDataPoint)
 	if err != nil {
 		return err
 	}
@@ -121,10 +128,15 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel c
 func (s *sensor) Shutdown(ctx context.Context) error {
 	fmt.Println("Shutting down sensor")
 	for _, probePoller := range s.startedProbes {
+		s.logger.Info().
+			Str("probe_name", probePoller.GetName()).
+			Any("probe_params", probePoller.GetProbeParams()).
+			Msg("Shutdown probe")
 		err := probePoller.Shutdown(ctx)
 		if err != nil {
 			s.logger.Error().Err(err).
 				Str("probe_name", probePoller.GetName()).
+				Any("probe_params", probePoller.GetProbeParams()).
 				Msg("error shutting down probe")
 		}
 	}
