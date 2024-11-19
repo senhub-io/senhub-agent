@@ -108,11 +108,11 @@ func ParseSyncStrategyPrtgParams(config configuration.StorageConfigParams) (Sync
 		}
 	}
 
-	url, ok := config["url"].(string)
+	url, ok := config["server_url"].(string)
 	if !ok || url == "" {
-		errs = append(errs, fmt.Errorf("url parameter is required"))
+		errs = append(errs, fmt.Errorf("server_url parameter is required"))
 	} else if !validators.IsURL(url) {
-		errs = append(errs, fmt.Errorf("url must be a valid URL"))
+		errs = append(errs, fmt.Errorf("server_url must be a valid URL"))
 	} else {
 		params.ServerUrl = url
 	}
@@ -126,6 +126,10 @@ func ParseSyncStrategyPrtgParams(config configuration.StorageConfigParams) (Sync
 
 func (s *SyncStrategyPrtg) GetStrategyName() string {
 	return "prtg"
+}
+
+func (s *SyncStrategyPrtg) GetStrategyParams() map[string]interface{} {
+	return s.rawConfig
 }
 
 func (s *SyncStrategyPrtg) AddDataPoints(data []DataPoint) error {
