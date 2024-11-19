@@ -21,10 +21,10 @@ type PingGatewayProbe struct {
 }
 
 func NewPingGatewayProbe(config map[string]interface{}, logger *logger.Logger) Probe {
-    return &PingGatewayProbe{
-        config: config,
-        logger: logger,
-    }
+	return &PingGatewayProbe{
+		config: config,
+		logger: logger,
+	}
 }
 
 func (p *PingGatewayProbe) GetName() string {
@@ -56,8 +56,7 @@ func (p *PingGatewayProbe) Collect() ([]data_store.DataPoint, error) {
 		return nil, err
 	}
 
-	tags := map[string]string{
-	}
+	tags := map[string]string{}
 
 	return []data_store.DataPoint{
 		{Name: "averageLatency", Timestamp: time.Now(), Value: float32(averageLatency), Tags: tags},
