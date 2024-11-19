@@ -12,10 +12,10 @@ import (
 // Data store is responsible for storing and synchronizing data to the server.
 
 type DataPoint struct {
-    Name      string            `json:"name"`
-    Timestamp time.Time         `json:"timestamp"`
-    Value     float32          `json:"value"`
-    Tags      map[string]string `json:"tags"`
+	Name      string            `json:"name"`
+	Timestamp time.Time         `json:"timestamp"`
+	Value     float32           `json:"value"`
+	Tags      map[string]string `json:"tags"`
 }
 
 type AddCallback func([]DataPoint) error
