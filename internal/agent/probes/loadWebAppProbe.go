@@ -10,10 +10,13 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
-	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/logger"
 	"strings"
 	"time"
+
+	"senhub-agent.go/internal/agent/configParser"
+	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/validators"
 )
 
 // Default configuration
@@ -38,16 +41,62 @@ type timingMetrics struct {
 	completed         time.Time
 }
 
-type LoadWebAppProbe struct {
-	config map[string]interface{}
-	logger *logger.Logger
+type LoadWebAppProbeConfig struct {
+	URL     string
+	Timeout time.Duration
 }
 
-func NewLoadWebAppProbe(config map[string]interface{}, logger *logger.Logger) Probe {
-	return &LoadWebAppProbe{
-		config: config,
-		logger: logger,
+type LoadWebAppProbe struct {
+	rawConfig map[string]interface{}
+	config    LoadWebAppProbeConfig
+	logger    *logger.Logger
+}
+
+func NewLoadWebAppProbe(config map[string]interface{}, logger *logger.Logger) (Probe, error) {
+	parsedConfig, err := parseLoadWebAppProbeConfig(config)
+	if err != nil {
+		return nil, err
 	}
+
+	return &LoadWebAppProbe{
+		rawConfig: config,
+		config:    parsedConfig,
+		logger:    logger,
+	}, nil
+}
+
+func parseLoadWebAppProbeConfig(config map[string]interface{}) (LoadWebAppProbeConfig, error) {
+	errs := []error{}
+	url, ok := config["url"].(string)
+	if !ok || url == "" {
+		errs = append(errs, fmt.Errorf("url parameter is required"))
+	} else if !validators.IsURL(url) {
+		errs = append(errs, fmt.Errorf("url must be a valid URL"))
+	}
+
+	timeout := DefaultTimeout
+	timeoutVal, ok := config["timeout"]
+	if ok && validators.IsDuration(timeoutVal) {
+		duration, err := configParser.ParseDuration(timeoutVal)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("invalid timeout value: %w", err))
+		} else if duration < MinTimeout || duration > MaxTimeout {
+			errs = append(errs, fmt.Errorf("timeout must be between %v and %v seconds", MinTimeout.Seconds(), MaxTimeout.Seconds()))
+		} else {
+			timeout = duration
+		}
+	} else if ok {
+		errs = append(errs, fmt.Errorf("Invalid timeout value: %v", timeoutVal))
+	}
+
+	if len(errs) > 0 {
+		return LoadWebAppProbeConfig{}, fmt.Errorf("error parsing config: %v", errs)
+	}
+
+	return LoadWebAppProbeConfig{
+		URL:     url,
+		Timeout: timeout,
+	}, nil
 }
 
 func (p *LoadWebAppProbe) GetName() string {
@@ -58,31 +107,12 @@ func (p *LoadWebAppProbe) ShouldStart() bool {
 	return true
 }
 
-func (p *LoadWebAppProbe) ValidateConfig(config map[string]interface{}) bool {
-	if url, ok := config["url"].(string); !ok || url == "" {
-		p.logger.Error().Msgf("url parameter is required for %s probe", p.GetName())
-		return false
-	}
-
-	// Validate timeout if present
-	if timeout, ok := config["timeout"].(float64); ok {
-		duration := time.Duration(timeout) * time.Second
-		if duration < MinTimeout || duration > MaxTimeout {
-			p.logger.Info().Msgf("timeout must be between %v and %v seconds for %s probe",
-				MinTimeout.Seconds(), MaxTimeout.Seconds(), p.GetName())
-			return false
-		}
-	}
-
-	return true
-}
-
 func (p *LoadWebAppProbe) GetInterval() time.Duration {
 	return 30 * time.Second
 }
 
 func (p *LoadWebAppProbe) Collect() ([]data_store.DataPoint, error) {
-	webappURL := p.config["url"].(string)
+	webappURL := p.config.URL
 	metrics, err := p.measurePageLoad(webappURL)
 	if err != nil {
 		p.logger.Error().Err(err).Msg("Error measuring network metrics: %v")
@@ -140,12 +170,7 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error
 		},
 	}
 
-	timeout := DefaultTimeout
-	if timeoutVal, ok := p.config["timeout"].(float64); ok {
-		timeout = time.Duration(timeoutVal) * time.Second
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), p.config.Timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", pageURL, nil)
@@ -159,7 +184,7 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error
 
 	// Configuration du client avec gestion des erreurs de certificat
 	client := &http.Client{
-		Timeout: timeout,
+		Timeout: p.config.Timeout,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: false, // Gardez false pour la sécurité
@@ -191,8 +216,8 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error
 
 		// Gestion des erreurs de contexte
 		if ctx.Err() == context.DeadlineExceeded {
-			p.logger.Error().Err(err).Msgf("Request timed out after %v", timeout)
-			return nil, fmt.Errorf("request timed out after %v: %w", timeout, err)
+			p.logger.Error().Err(err).Msgf("Request timed out after %v", p.config.Timeout)
+			return nil, fmt.Errorf("request timed out after %v: %w", p.config.Timeout, err)
 		}
 
 		// Autres erreurs réseau
