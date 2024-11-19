@@ -22,10 +22,10 @@ type PingWebAppProbe struct {
 }
 
 func NewPingWebAppProbe(config map[string]interface{}, logger *logger.Logger) Probe {
-    return &PingWebAppProbe{
-        config: config,
-        logger: logger,
-    }
+	return &PingWebAppProbe{
+		config: config,
+		logger: logger,
+	}
 }
 
 func (p *PingWebAppProbe) GetName() string {
@@ -62,13 +62,13 @@ func (p *PingWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	tags := map[string]string{
-	    "url": webappURL,
-			"probe_type": "webApp",
+		"url":        webappURL,
+		"probe_type": "webApp",
 	}
 
 	return []data_store.DataPoint{
-	   {Name: "averageLatency", Timestamp: time.Now(), Value: float32(averageLatency), Tags: tags},
-	   {Name: "packetLoss", Timestamp: time.Now(), Value: float32(packetLoss), Tags: tags},
+		{Name: "averageLatency", Timestamp: time.Now(), Value: float32(averageLatency), Tags: tags},
+		{Name: "packetLoss", Timestamp: time.Now(), Value: float32(packetLoss), Tags: tags},
 	}, nil
 }
 

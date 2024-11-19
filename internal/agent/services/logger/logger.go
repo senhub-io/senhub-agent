@@ -1,18 +1,19 @@
 package logger
 
 import (
-	"os"
 	"fmt"
-	"github.com/rs/zerolog"
 	"log"
+	"os"
 	"path/filepath"
+
+	"github.com/rs/zerolog"
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 )
 
 type Logger = zerolog.Logger
 
 type LoggerConfig struct {
-    logFile *os.File
+	logFile *os.File
 }
 
 func getLogPath() string {
@@ -24,18 +25,18 @@ func getLogPath() string {
 	exeDir := filepath.Dir(exePath)
 	logFilePath := filepath.Join(exeDir, "senhubagent.log")
 
-  return logFilePath
+	return logFilePath
 }
 
 func NewLogger(args *agentCliArgs.ParsedArgs) *Logger {
 	logPath := getLogPath()
 	runLogFile, err := os.OpenFile(
-			logPath,
-			os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-			0664,
+		logPath,
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+		0664,
 	)
 	if err != nil {
-			panic(fmt.Sprintf("Cannot open logfile: %v", err))
+		panic(fmt.Sprintf("Cannot open logfile: %v", err))
 	}
 
 	var logger *Logger
