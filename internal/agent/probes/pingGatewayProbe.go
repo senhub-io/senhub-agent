@@ -13,6 +13,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
 )
 
 type PingGatewayProbe struct {
@@ -53,7 +54,10 @@ func (p *PingGatewayProbe) Collect() ([]data_store.DataPoint, error) {
 		return nil, err
 	}
 
-	tags := map[string]string{}
+	tags := []tags.Tag{
+		{Key: "probe_type", Value: "gateway", Private: false},
+		data_store.CreatePrtgMetricIdTag("ping_gateway_[name]"),
+	}
 
 	return []data_store.DataPoint{
 		{Name: "averageLatency", Timestamp: time.Now(), Value: float32(averageLatency), Tags: tags},
