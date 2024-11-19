@@ -14,18 +14,48 @@ import (
 
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/validators"
 )
 
-type PingWebAppProbe struct {
-	config map[string]interface{}
-	logger *logger.Logger
+type PingWebAppProbeConfig struct {
+	URL string
 }
 
-func NewPingWebAppProbe(config map[string]interface{}, logger *logger.Logger) Probe {
-	return &PingWebAppProbe{
-		config: config,
-		logger: logger,
+type PingWebAppProbe struct {
+	rawConfig map[string]interface{}
+	config    PingWebAppProbeConfig
+	logger    *logger.Logger
+}
+
+func NewPingWebAppProbe(config map[string]interface{}, logger *logger.Logger) (Probe, error) {
+	parsedConfig, err := parsePingWebAppProbeConfig(config)
+	if err != nil {
+		return nil, err
 	}
+
+	return &PingWebAppProbe{
+		rawConfig: config,
+		config:    parsedConfig,
+		logger:    logger,
+	}, nil
+}
+
+func parsePingWebAppProbeConfig(config map[string]interface{}) (PingWebAppProbeConfig, error) {
+	errs := []error{}
+	url, ok := config["url"].(string)
+	if !ok || url == "" {
+		errs = append(errs, fmt.Errorf("url parameter is required"))
+	} else if !validators.IsURL(url) {
+		errs = append(errs, fmt.Errorf("url must be a valid URL"))
+	}
+
+	if len(errs) > 0 {
+		return PingWebAppProbeConfig{}, fmt.Errorf("error parsing config: %v", errs)
+	}
+
+	return PingWebAppProbeConfig{
+		URL: url,
+	}, nil
 }
 
 func (p *PingWebAppProbe) GetName() string {
@@ -36,20 +66,12 @@ func (p *PingWebAppProbe) ShouldStart() bool {
 	return true
 }
 
-func (p *PingWebAppProbe) ValidateConfig(config map[string]interface{}) bool {
-	if url, ok := config["url"]; !ok || url == "" {
-		p.logger.Error().Msgf("url parameter is required for %s probe", p.GetName())
-		return false
-	}
-	return true
-}
-
 func (p *PingWebAppProbe) GetInterval() time.Duration {
 	return 30 * time.Second
 }
 
 func (p *PingWebAppProbe) Collect() ([]data_store.DataPoint, error) {
-	webappURL := p.config["url"].(string)
+	webappURL := p.config.URL
 
 	webappIP, err := p.resolveHostname(webappURL)
 	if err != nil {
