@@ -13,15 +13,16 @@ import (
 )
 
 type wifiSignalStrengthProbe struct {
-	config map[string]interface{}
-	logger *logger.Logger
+	rawConfig map[string]interface{}
+	logger    *logger.Logger
 }
 
-func NewWifiSignalStrengthProbe(config map[string]interface{}, logger *logger.Logger) Probe {
+func NewWifiSignalStrengthProbe(config map[string]interface{}, logger *logger.Logger) (Probe, error) {
+	// No validation needed for this probe
 	return &wifiSignalStrengthProbe{
-		config: config,
-		logger: logger,
-	}
+		rawConfig: config,
+		logger:    logger,
+	}, nil
 }
 
 func (m *wifiSignalStrengthProbe) GetName() string {
@@ -29,10 +30,6 @@ func (m *wifiSignalStrengthProbe) GetName() string {
 }
 
 func (m *wifiSignalStrengthProbe) ShouldStart() bool {
-	return true
-}
-
-func (m *wifiSignalStrengthProbe) ValidateConfig(config map[string]interface{}) bool {
 	return true
 }
 
@@ -70,7 +67,7 @@ func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, erro
 				signalStrengthStr := strings.TrimSuffix(parts[len(parts)-1], "%")
 				signalStrength, err := strconv.Atoi(signalStrengthStr)
 				if err != nil {
-					m.logger.Error().Msgf("Error parsing signal strength: %s", err)
+					m.logger.Error().Msgf("Error parsing signal strength: %v", err)
 					return []data_store.DataPoint{}, err
 				}
 				return []data_store.DataPoint{
@@ -88,7 +85,7 @@ func (m *wifiSignalStrengthProbe) collectLinux() ([]data_store.DataPoint, error)
 	cmd := exec.Command("iwconfig")
 	output, err := cmd.Output()
 	if err != nil {
-		m.logger.Error().Msgf("Error retrieving Wi-Fi signal strength: %s", err)
+		m.logger.Error().Msgf("Error retrieving Wi-Fi signal strength: %v", err)
 		return []data_store.DataPoint{}, err
 	}
 
