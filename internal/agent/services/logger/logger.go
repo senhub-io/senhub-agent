@@ -29,22 +29,12 @@ func getLogPath() string {
 }
 
 func NewLogger(args *agentCliArgs.ParsedArgs) *Logger {
-	logPath := getLogPath()
-	runLogFile, err := os.OpenFile(
-		logPath,
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-		0664,
-	)
-	if err != nil {
-		panic(fmt.Sprintf("Cannot open logfile: %v", err))
-	}
-
 	var logger *Logger
 	switch args.Env {
 	case "development":
-		logger = buildDevelopmentLogger(runLogFile)
+		logger = buildDevelopmentLogger()
 	default:
-		logger = buildProductionLogger(runLogFile)
+		logger = buildProductionLogger()
 	}
 
 	if args.Verbose {
@@ -54,16 +44,11 @@ func NewLogger(args *agentCliArgs.ParsedArgs) *Logger {
 	return logger
 }
 
-func buildDevelopmentLogger(logFile *os.File) *Logger {
+func buildDevelopmentLogger() *Logger {
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
-	multi := zerolog.MultiLevelWriter(
-		zerolog.ConsoleWriter{Out: os.Stderr},
-		logFile,
-	)
-
 	logger := zerolog.
-		New(multi).
+		New(zerolog.ConsoleWriter{Out: os.Stderr}).
 		With().
 		Timestamp().
 		Logger()
@@ -71,7 +56,18 @@ func buildDevelopmentLogger(logFile *os.File) *Logger {
 	return &logger
 }
 
-func buildProductionLogger(logFile *os.File) *Logger {
+func buildProductionLogger() *Logger {
+	logPath := getLogPath()
+	logFile, err := os.OpenFile(
+		logPath,
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+		0664,
+	)
+
+	if err != nil {
+		panic(fmt.Sprintf("Cannot open logfile: %v", err))
+	}
+
 	zerolog.SetGlobalLevel(zerolog.WarnLevel)
 
 	logger := zerolog.

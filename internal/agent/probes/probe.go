@@ -10,8 +10,6 @@ import (
 
 // Interface each probe should implement
 type Probe interface {
-	// Is the remote configuration valid?
-	ValidateConfig(config map[string]interface{}) bool
 	// GetName returns the name of the probe
 	GetName() string
 	// ShouldStart returns whether the probe should be started or not
@@ -26,7 +24,7 @@ type Probe interface {
 	OnShutdown(context.Context) error
 }
 
-type ProbeConstructor func(config map[string]interface{}, logger *logger.Logger) Probe
+type ProbeConstructor func(config map[string]interface{}, logger *logger.Logger) (Probe, error)
 
 // AllProbeDefinitions is a list of all probes available
 // The key is the name of the probe in remote configuration
