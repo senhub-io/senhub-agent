@@ -18,8 +18,8 @@ import (
 // StorageConfig represents the configuration for synchronization strategy.
 type StorageConfigParams = map[string]interface{}
 type StorageConfig struct {
-	Stategy string              `json:"strategy"`
-	Params  StorageConfigParams `json:"params"`
+	Strategy string              `json:"strategy"`
+	Params   StorageConfigParams `json:"params"`
 }
 
 type ProbeConfigParams = map[string]interface{}
@@ -29,8 +29,8 @@ type ProbeConfig struct {
 }
 
 type RemoteConfigurationData struct {
-	StorageConfig StorageConfig `json:"storage"`
-	Probes        []ProbeConfig `json:"probes"`
+	StorageConfig []StorageConfig `json:"storage"`
+	Probes        []ProbeConfig   `json:"probes"`
 }
 
 // RemoteConfiguration represents a struct that performs periodic tasks.

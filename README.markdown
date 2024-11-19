@@ -32,7 +32,7 @@ make build
 Project can be built in `development` or `production` mode by setting `ENV`
 variable.
 
-````bash
+```bash
 ENV=development make build
 ```
 
@@ -42,4 +42,34 @@ To run the tests, you need to run the following command:
 
 ```bash
 make test
-````
+```
+
+## Configuration
+
+Agent configuration is read from senhub server.
+A valid configuration mathes the following structure:
+
+```json
+{
+  "probes": [
+    {
+      "name": "load_webapp",
+      "params": { "url": "http://www.google.fr", "timeout": 5 }
+    },
+    { "name": "ping_webapp", "params": { "url": "http://example.org:8080" } },
+    { "name": "ping_gateway", "params": {} },
+    { "name": "wifi_signal_strength", "params": {} },
+    { "name": "memory", "params": {} }
+  ],
+  "storage": [
+    { "name": "senhub", "params": {} },
+    {
+      "name": "prtg",
+      "params": {
+        "data_retention_period": "2m",
+        "server_url": "http://localhost:8080"
+      }
+    }
+  ]
+}
+```
