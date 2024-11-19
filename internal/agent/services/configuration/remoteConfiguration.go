@@ -16,14 +16,16 @@ import (
 // Remote configuration is read periodically from the server.
 
 // StorageConfig represents the configuration for synchronization strategy.
+type StorageConfigParams = map[string]interface{}
 type StorageConfig struct {
-	Stategy   string `json:"strategy"`
-	ServerUrl string `json:"server_url"`
+	Stategy string              `json:"strategy"`
+	Params  StorageConfigParams `json:"params"`
 }
 
+type ProbeConfigParams = map[string]interface{}
 type ProbeConfig struct {
-	Name   string                 `json:"name"`
-	Params map[string]interface{} `json:"params"`
+	Name   string            `json:"name"`
+	Params ProbeConfigParams `json:"params"`
 }
 
 type RemoteConfigurationData struct {
