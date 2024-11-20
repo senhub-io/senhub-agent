@@ -1,4 +1,5 @@
 EXECUTABLE=senhub-agent
+SERVICE=senhubagent-service.exe
 WINDOWS=$(EXECUTABLE)_windows_amd64.exe
 LINUX=$(EXECUTABLE)_linux_amd64
 DARWIN=$(EXECUTABLE)_darwin_amd64
@@ -18,7 +19,7 @@ build: build-windows build-linux build-darwin ## Build binaries
 
 build-windows: ## Build for Windows
 		@env GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="-s -w -X ${PACKAGE}.version=$(VERSION) -X ${PACKAGE}.commit_hash=$(COMMIT_HASH) -X ${PACKAGE}.env=${ENV}"  ./cmd/agent/main.go
-
+		@env GOOS=windows GOARCH=amd64 go build -o $(SERVICE) -ldflags="-s -w -X ${PACKAGE}.version=$(VERSION) -X ${PACKAGE}.commit_hash=$(COMMIT_HASH) -X ${PACKAGE}.env=${ENV}"  ./cmd/service/main.go
 build-linux: ## Build for Linux
 		@env GOOS=linux GOARCH=amd64 go build -o $(LINUX) -ldflags="-s -w -X ${PACKAGE}.version=$(VERSION) -X ${PACKAGE}.commit_hash=$(COMMIT_HASH) -X ${PACKAGE}.env=${ENV}"  ./cmd/agent/main.go
 
@@ -31,6 +32,7 @@ install: ## Install the application
 # Run the application
 run:
 	@go run cmd/agent/main.go
+	@go run cmd/service/main.go
 
 # Test the application
 test:
@@ -40,7 +42,7 @@ test:
 # Clean the binary
 clean:
 	@echo "Cleaning..."
-	@rm -f $(WINDOWS) $(LINUX) $(DARWIN)
+	@rm -f $(WINDOWS) $(LINUX) $(DARWIN) $(SERVICE)
 
 # Live Reload
 watch: clean
