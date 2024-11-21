@@ -2,239 +2,169 @@ package service
 
 import (
 	"fmt"
-	"golang.org/x/sys/windows/svc"
-	"golang.org/x/sys/windows/svc/debug"
-	"golang.org/x/sys/windows/svc/eventlog"
-	"golang.org/x/sys/windows/svc/mgr"
+	"github.com/kardianos/service"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
-	"syscall"
 	"time"
 )
 
 type SenHubService struct {
-	Name        string
-	AgentPath   string
-	ExecutePath string
-	elog        *eventlog.Log
-	isDebug     bool
+	service.Service
+	agentPath string
+	agentCmd  *exec.Cmd
+	logger    service.Logger
+	exit      chan struct{}
 }
 
+// Création d'une nouvelle instance du service
 func New(name, dir string) (*SenHubService, error) {
 	agentPath := filepath.Join(dir, "senhub-agent_windows_amd64.exe")
-	exePath, err := os.Executable()
-	if err != nil {
-		return nil, err
+	svcConfig := &service.Config{
+		Name:        name,
+		DisplayName: "SenHub Agent Service",
+		Description: "Service for SenHub Agent",
 	}
 
 	s := &SenHubService{
-		Name:        name,
-		AgentPath:   agentPath,
-		ExecutePath: exePath,
-		isDebug:     false,
+		agentPath: agentPath,
+		exit:      make(chan struct{}),
 	}
 
-	if !s.isDebug {
-		elog, err := eventlog.Open(name)
-		if err == nil {
-			s.elog = elog
-		}
+	svc, err := service.New(s, svcConfig)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create service: %v", err)
+	}
+
+	s.Service = svc
+	s.logger, err = svc.Logger(nil)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create logger: %v", err)
 	}
 
 	return s, nil
 }
 
-func (s *SenHubService) Execute(args []string, r <-chan svc.ChangeRequest, changes chan<- svc.Status) (bool, uint32) {
-	const cmdsAccepted = svc.AcceptStop | svc.AcceptShutdown | svc.AcceptPauseAndContinue
+// Start implémente l'interface service.Interface
+func (s *SenHubService) Start(svc service.Service) error {
+	s.logger.Info("Starting service...")
 
-	changes <- svc.Status{State: svc.StartPending}
+	// Vérification de l'existence de l'agent
+	if _, err := os.Stat(s.agentPath); os.IsNotExist(err) {
+		return fmt.Errorf("agent executable not found at %s", s.agentPath)
+	}
 
-	// Récupérer la clé d'authentification depuis les variables d'environnement
+	// Vérification de la clé d'authentification
 	authKey := os.Getenv("SENHUB_KEY")
 	if authKey == "" {
-		if s.elog != nil {
-			s.elog.Error(1, "SENHUB_KEY environment variable is not set")
-		}
-		return true, 1
+		return fmt.Errorf("SENHUB_KEY environment variable is not set")
 	}
 
-	// Créer la commande avec les paramètres
-	cmd := exec.Command(s.AgentPath, "--authentication-key", authKey)
-	err := cmd.Start()
-	if err != nil {
-		if s.elog != nil {
-			s.elog.Error(1, fmt.Sprintf("Failed to start agent: %v", err))
+	// Démarrage de l'agent en arrière-plan
+	go s.run()
+
+	return nil
+}
+
+// Stop implémente l'interface service.Interface
+func (s *SenHubService) Stop(svc service.Service) error {
+	s.logger.Info("Stopping service...")
+	close(s.exit)
+
+	if s.agentCmd != nil && s.agentCmd.Process != nil {
+		s.logger.Info("Killing agent process...")
+		if err := s.agentCmd.Process.Kill(); err != nil {
+			s.logger.Errorf("Failed to kill process: %v", err)
 		}
-		return true, 1
 	}
 
-	changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepted}
+	// Attendre que le processus se termine
+	time.Sleep(time.Second)
+	return nil
+}
+
+// run est la fonction principale qui exécute l'agent
+func (s *SenHubService) run() {
+	s.logger.Info("Starting agent process...")
 
 	for {
 		select {
-		case c := <-r:
-			switch c.Cmd {
-			case svc.Interrogate:
-				changes <- c.CurrentStatus
-			case svc.Stop, svc.Shutdown:
-				changes <- svc.Status{State: svc.StopPending}
-				if cmd.Process != nil {
-					cmd.Process.Signal(syscall.SIGTERM)
-					time.Sleep(time.Second) // Attendre la fermeture propre
-					cmd.Process.Kill()      // Force kill si nécessaire
-				}
-				return false, 0
-			case svc.Pause:
-				changes <- svc.Status{State: svc.Paused, Accepts: cmdsAccepted}
-			case svc.Continue:
-				changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepted}
+		case <-s.exit:
+			return
+		default:
+			authKey := os.Getenv("SENHUB_KEY")
+			s.agentCmd = exec.Command(s.agentPath, "--authentication-key", authKey)
+			s.agentCmd.Dir = filepath.Dir(s.agentPath)
+
+			// Configuration des logs
+			logPath := filepath.Join(filepath.Dir(s.agentPath), "senhub-agent-service.log")
+			logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+			if err == nil {
+				s.agentCmd.Stdout = logFile
+				s.agentCmd.Stderr = logFile
+				defer logFile.Close()
+			} else {
+				s.logger.Errorf("Failed to create log file: %v", err)
+			}
+
+			// Démarrage du processus
+			if err := s.agentCmd.Start(); err != nil {
+				s.logger.Errorf("Failed to start agent: %v", err)
+				time.Sleep(10 * time.Second) // Attendre avant de réessayer
+				continue
+			}
+
+			s.logger.Info("Agent process started successfully")
+
+			// Attendre que le processus se termine
+			if err := s.agentCmd.Wait(); err != nil {
+				s.logger.Errorf("Agent process exited with error: %v", err)
+			}
+
+			// Vérifier si on doit quitter
+			select {
+			case <-s.exit:
+				return
+			default:
+				time.Sleep(5 * time.Second) // Attendre avant de redémarrer
 			}
 		}
 	}
 }
 
+// Install installe le service
 func (s *SenHubService) Install() error {
-	m, err := mgr.Connect()
-	if err != nil {
-		return err
-	}
-	defer m.Disconnect()
-
-	service, err := m.OpenService(s.Name)
-	if err == nil {
-		service.Close()
-		return fmt.Errorf("service %s already exists", s.Name)
-	}
-
-	service, err = m.CreateService(
-		s.Name,
-		s.ExecutePath,
-		mgr.Config{
-			DisplayName: "SenHub Agent Service",
-			Description: "Service for SenHub Agent",
-			StartType:   mgr.StartAutomatic,
-		},
-	)
-	if err != nil {
-		return err
-	}
-	defer service.Close()
-
-	err = eventlog.InstallAsEventCreate(s.Name, eventlog.Error|eventlog.Warning|eventlog.Info)
-	if err != nil {
-		service.Delete()
-		return fmt.Errorf("SetupEventLogSource() failed: %s", err)
-	}
-
-	return nil
+	return s.Service.Install()
 }
 
+// Uninstall désinstalle le service
 func (s *SenHubService) Uninstall() error {
-	m, err := mgr.Connect()
-	if err != nil {
-		return err
-	}
-	defer m.Disconnect()
-
-	service, err := m.OpenService(s.Name)
-	if err != nil {
-		return fmt.Errorf("service %s not found", s.Name)
-	}
-	defer service.Close()
-
-	err = service.Delete()
-	if err != nil {
-		return err
-	}
-
-	err = eventlog.Remove(s.Name)
-	if err != nil {
-		return fmt.Errorf("RemoveEventLogSource() failed: %s", err)
-	}
-
-	return nil
+	return s.Service.Uninstall()
 }
 
-func (s *SenHubService) Start() error {
-	m, err := mgr.Connect()
-	if err != nil {
-		return err
-	}
-	defer m.Disconnect()
-
-	service, err := m.OpenService(s.Name)
-	if err != nil {
-		return fmt.Errorf("could not access service: %v", err)
-	}
-	defer service.Close()
-
-	err = service.Start()
-	if err != nil {
-		return fmt.Errorf("could not start service: %v", err)
-	}
-
-	return nil
+// Start démarre le service
+func (s *SenHubService) StartService() error {
+	return s.Service.Start()
 }
 
-func (s *SenHubService) Stop() error {
-	m, err := mgr.Connect()
-	if err != nil {
-		return err
-	}
-	defer m.Disconnect()
-
-	service, err := m.OpenService(s.Name)
-	if err != nil {
-		return fmt.Errorf("could not access service: %v", err)
-	}
-	defer service.Close()
-
-	status, err := service.Control(svc.Stop)
-	if err != nil {
-		return fmt.Errorf("could not send stop control: %v", err)
-	}
-
-	timeout := time.Now().Add(10 * time.Second)
-	for status.State != svc.Stopped {
-		if timeout.Before(time.Now()) {
-			return fmt.Errorf("timeout waiting for service to stop")
-		}
-		time.Sleep(300 * time.Millisecond)
-		status, err = service.Query()
-		if err != nil {
-			return fmt.Errorf("could not retrieve service status: %v", err)
-		}
-	}
-
-	return nil
+// Stop arrête le service
+func (s *SenHubService) StopService() error {
+	return s.Service.Stop()
 }
 
-func (s *SenHubService) Run() error {
-	isIntSess, err := svc.IsAnInteractiveSession()
-	if err != nil {
-		return err
-	}
-
-	if isIntSess {
-		return debug.Run(s.Name, s)
-	}
-	return svc.Run(s.Name, s)
-}
-
+// Control gère les commandes du service
 func Control(s *SenHubService, command string) error {
-	cmd := strings.ToLower(command)
-
-	switch cmd {
+	switch command {
 	case "install":
 		return s.Install()
 	case "uninstall":
 		return s.Uninstall()
 	case "start":
-		return s.Start()
+		return s.StartService()
 	case "stop":
-		return s.Stop()
+		return s.StopService()
+	case "run":
+		return s.Run()
 	default:
 		return fmt.Errorf("invalid command: %s", command)
 	}
