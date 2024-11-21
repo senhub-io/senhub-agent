@@ -1,5 +1,5 @@
 EXECUTABLE=senhub-agent
-SERVICE=senhubagent-service.exe
+SERVICE=senhub-agent-service.exe
 WINDOWS=$(EXECUTABLE)_windows_amd64.exe
 LINUX=$(EXECUTABLE)_linux_amd64
 DARWIN=$(EXECUTABLE)_darwin_amd64
