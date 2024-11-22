@@ -56,3 +56,4 @@ go.work.sum
 .env
 
 /*.log
+/dist
