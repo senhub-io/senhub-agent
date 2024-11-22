@@ -34,7 +34,9 @@ type ParsedArgs struct {
 	ServerUrl         string
 	Verbose           bool
 	// Can be production or development
-	Env string
+	Env        string
+	Version    string
+	CommitHash string
 }
 
 func MustParse() *ParsedArgs {
@@ -101,7 +103,9 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 	return &ParsedArgs{
 		AuthenticationKey: args.AuthenticationKey,
 		ServerUrl:         args.ServerUrl,
-		Env:               environment,
 		Verbose:           args.Verbose,
+		Env:               environment,
+		Version:           version,
+		CommitHash:        commit_hash,
 	}
 }
