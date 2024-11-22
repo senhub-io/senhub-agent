@@ -54,12 +54,6 @@ func (s *SenHubService) Start(svc service.Service) error {
 		return fmt.Errorf("agent executable not found at %s", s.agentPath)
 	}
 
-	// Vérification de la clé d'authentification
-	authKey := os.Getenv("SENHUB_KEY")
-	if authKey == "" {
-		return fmt.Errorf("SENHUB_KEY environment variable is not set")
-	}
-
 	// Démarrage de l'agent en arrière-plan
 	go s.run()
 
@@ -92,12 +86,12 @@ func (s *SenHubService) run() {
 		case <-s.exit:
 			return
 		default:
-			authKey := os.Getenv("SENHUB_KEY")
-			s.agentCmd = exec.Command(s.agentPath, "--authentication-key", authKey)
+			// Exécution de l'agent avec seulement l'option "start"
+			s.agentCmd = exec.Command(s.agentPath, "start")
 			s.agentCmd.Dir = filepath.Dir(s.agentPath)
 
 			// Configuration des logs
-			logPath := filepath.Join(filepath.Dir(s.agentPath), "senhub-agent-service.log")
+			logPath := filepath.Join(filepath.Dir(s.agentPath), "senhubagent-service.log")
 			logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 			if err == nil {
 				s.agentCmd.Stdout = logFile

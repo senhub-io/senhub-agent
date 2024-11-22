@@ -44,7 +44,6 @@ func MustParse() *ParsedArgs {
 	if parsedEnv != "development" {
 		parsedEnv = "production"
 	}
-
 	// Attempt to parse arguments as subcommand
 	p, err := arg.NewParser(arg.Config{}, &args)
 	if err != nil {
