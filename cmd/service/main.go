@@ -1,3 +1,6 @@
+//go:build windows
+// +build windows
+
 package main
 
 import (
@@ -5,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+
 	"senhub-agent.go/internal/service"
 )
 
