@@ -46,7 +46,7 @@ func (m *wifiSignalStrengthProbe) Collect() ([]data_store.DataPoint, error) {
 	case "linux":
 		return m.collectLinux()
 	default:
-		m.logger.Error().Msgf("OS not supported")
+		m.logger.Warn().Msgf("OS not supported")
 		return []data_store.DataPoint{}, nil
 	}
 }
