@@ -18,7 +18,6 @@ type CliArgs struct {
 	Version *VersionSubcommandArgs `arg:"subcommand:version" help:"Print version information and exit"`
 	Agent   *StartSubcommandArgs   `arg:"subcommand:start" help:"Start the agent (default)"`
 	Update  *UpdateSubcommandArgs  `arg:"subcommand:update" help:"Update the agent"`
-	Verbose bool                   `arg:"-v,--verbose" help:"Enable verbose logging"`
 }
 
 type VersionSubcommandArgs struct{}
@@ -27,6 +26,7 @@ type UpdateSubcommandArgs struct{}
 type StartSubcommandArgs struct {
 	AuthenticationKey string `arg:"required,--authentication-key,env:SENHUB_KEY" help:"The authentication key for the agent"`
 	ServerUrl         string `arg:"--server-url,env:SENHUB_SERVER_URL" default:"https://eu-west-1.intake.senhub.io" help:"The URL of senhub server to connect to"`
+	Verbose           bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
 }
 
 type ParsedArgs struct {
@@ -62,7 +62,7 @@ func MustParse() *ParsedArgs {
 			// Attempt to parse arguments as start command.
 			var startArgs StartSubcommandArgs
 			arg.MustParse(&startArgs)
-			return parsedArgsFromStartArgs(&startArgs, parsedEnv, false)
+			return parsedArgsFromStartArgs(&startArgs, parsedEnv)
 
 		default:
 			p.WriteUsage(os.Stdout)
@@ -84,7 +84,7 @@ func MustParse() *ParsedArgs {
 		}
 		os.Exit(0)
 	case args.Agent != nil:
-		return parsedArgsFromStartArgs(args.Agent, parsedEnv, args.Verbose)
+		return parsedArgsFromStartArgs(args.Agent, parsedEnv)
 	case args.Update != nil:
 		p.FailSubcommand("Update subcommand is not implemented yet.", "update")
 		os.Exit(1)
@@ -97,11 +97,11 @@ func MustParse() *ParsedArgs {
 	return nil
 }
 
-func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string, verbose bool) *ParsedArgs {
+func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *ParsedArgs {
 	return &ParsedArgs{
 		AuthenticationKey: args.AuthenticationKey,
 		ServerUrl:         args.ServerUrl,
 		Env:               environment,
-		Verbose:           verbose,
+		Verbose:           args.Verbose,
 	}
 }
