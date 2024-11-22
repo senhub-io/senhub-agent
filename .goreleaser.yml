@@ -4,11 +4,12 @@ before:
     - go mod tidy
 
 env:
-  - PACKAGE_PATH=github.com/<user>/<repo>/cmd
+  - PACKAGE_PATH=senhub-agent.go/internal/agent/cliArgs
 
 builds:
-  - binary: "{{ .ProjectName }}"
-    main: ./cmd/api
+  - id: "{{ .ProjectName }}"
+    binary: "{{ .ProjectName }}"
+    main: ./cmd/agent
     goos:
       - darwin
       - linux
@@ -18,8 +19,28 @@ builds:
       - arm64
     env:
       - CGO_ENABLED=0
+      - ENV=production
     ldflags:
-      - -s -w -X {{.Env.PACKAGE_PATH}}={{.Version}}
+      - -s -w
+      - -X {{.Env.PACKAGE_PATH}}.version={{.Version}}
+      - -X {{.Env.PACKAGE_PATH}}.commit_hash={{.Commit}}
+      - -X {{.Env.PACKAGE_PATH}}.env={{.Env.ENV}}
+  - id: "{{ .ProjectName }}-windows-service"
+    binary: "{{ .ProjectName }}-windows-service"
+    main: ./cmd/service
+    goos:
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+      - ENV=production
+    ldflags:
+      - -s -w
+      - -X {{.Env.PACKAGE_PATH}}.version={{.Version}}
+      - -X {{.Env.PACKAGE_PATH}}.commit_hash={{.Commit}}
+      - -X {{.Env.PACKAGE_PATH}}.env={{.Env.ENV}}
 release:
   prerelease: auto
 
@@ -27,16 +48,28 @@ universal_binaries:
   - replace: true
 
 archives:
-  - name_template: >
+  - id: "{{ .ProjectName }}-archive"
+    name_template: >
       {{- .ProjectName }}_{{- .Version }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end -}}
+    format_overrides:
+      - goos: windows
+        format: zip
+    builds:
+      - "{{ .ProjectName }}"
+    builds_info:
+      group: root
+      owner: root
+  - id: "{{ .ProjectName }}-windows-service-archive"
+    builds:
+      - "{{ .ProjectName }}-windows-service"
+    name_template: >
+      {{- .ProjectName }}_service_{{- .Version }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end -}}
     format_overrides:
       - goos: windows
         format: zip
     builds_info:
       group: root
       owner: root
-    files:
-      - README.md
 
 checksum:
   name_template: "checksums.txt"
