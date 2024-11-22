@@ -108,7 +108,7 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 func (p *ProbePoller) collect() error {
 	data, err := p.Probe.Collect()
 	if err != nil {
-		p.logger.Error().
+		p.logger.Warn().
 			Err(err).
 			Interface("probe_config", p.config).
 			Str("probe_name", p.Probe.GetName()).
