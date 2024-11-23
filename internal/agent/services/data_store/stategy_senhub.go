@@ -46,15 +46,20 @@ func NewSyncStrategySenhub(
 	)
 
 	return &SyncStrategySenhub{
-		buffer:      NewBuffer(),
-		agentConfig: agentConfig,
-		logger:      &localLogger,
-		server:      server,
+		buffer:        NewBuffer(),
+		agentConfig:   agentConfig,
+		storageConfig: storageConfig,
+		logger:        &localLogger,
+		server:        server,
 	}
 }
 
 func (s *SyncStrategySenhub) GetStrategyName() string {
 	return "senhub"
+}
+
+func (s *SyncStrategySenhub) GetStrategyParams() map[string]interface{} {
+	return s.storageConfig
 }
 
 func (s *SyncStrategySenhub) AddDataPoints(data []DataPoint) error {
