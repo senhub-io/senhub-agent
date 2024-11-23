@@ -1,12 +1,16 @@
+//go:build windows
+// +build windows
+
 package service
 
 import (
 	"fmt"
-	"github.com/kardianos/service"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/kardianos/service"
 )
 
 type SenHubService struct {
