@@ -2,6 +2,9 @@ package data_store
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
 	"sync"
 	"time"
 
@@ -27,6 +30,7 @@ type AddCallback func([]DataPoint) error
 // A synchronization strategy is responsible for synchronizing data to a backend.
 type SyncStrategy interface {
 	GetStrategyName() string
+	GetStrategyParams() map[string]interface{}
 	ValidateConfigParams(configuration.StorageConfigParams) error
 	Start() error
 	AddDataPoints([]DataPoint) error
@@ -43,7 +47,7 @@ type DataStore interface {
 }
 
 type dataStore struct {
-	strategy     SyncStrategy
+	strategies   []SyncStrategy
 	logger       *logger.Logger
 	remoteConfig *configuration.RemoteConfiguration
 	agentConfig  configuration.AgentConfiguration
@@ -72,62 +76,100 @@ func (d *dataStore) GetName() string {
 
 func (d *dataStore) GetCallback() AddCallback {
 	return func(data []DataPoint) error {
-		if d.strategy == nil {
-			return nil
+		for _, strategy := range d.strategies {
+			if err := strategy.AddDataPoints(data); err != nil {
+				d.logger.Error().
+					Err(err).
+					Str("strategy_name", strategy.GetStrategyName()).
+					Msg("error adding data points")
+			}
 		}
-		return d.strategy.AddDataPoints(data)
+
+		return nil
 	}
 }
 
+func (d *dataStore) GenerateStrategyId(strategyName string, params configuration.StorageConfigParams) string {
+	input := fmt.Sprintf("%s-%v", strategyName, params)
+	hash := md5.New()
+	hash.Write([]byte(input))
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
 func (d *dataStore) OnConfigRefreshed(string) {
-	strategyConfig := d.remoteConfig.GetConfiguration().StorageConfig
-	strategyName := strategyConfig.Stategy
-	if strategyName == "" {
-		// Default strategy is senhub
-		strategyName = "senhub"
+	validStrategyIds := []string{}
+	strategiesConfig := d.remoteConfig.GetConfiguration().StorageConfig
+	for _, strategyConfig := range strategiesConfig {
+		strategy := d.retrieveOrCreate(strategyConfig)
+		if strategy != nil {
+			validStrategyIds = append(validStrategyIds, d.GenerateStrategyId(strategyConfig.Strategy, strategyConfig.Params))
+		}
 	}
 
-	if d.strategy != nil && d.strategy.GetStrategyName() == strategyName {
-		return
+	// Stop strategies that are no longer in the Configuration
+	for _, strategy := range d.strategies {
+		found := false
+		for _, validStrategyId := range validStrategyIds {
+			strategyId := d.GenerateStrategyId(strategy.GetStrategyName(), strategy.GetStrategyParams())
+			if strategyId == validStrategyId {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			d.logger.Info().
+				Str("strategy_name", strategy.GetStrategyName()).
+				Msg("stopping strategy")
+			strategy.Shutdown(context.Background())
+		}
 	}
-	if d.strategy != nil {
-		d.logger.Info().
-			Str("strategy_name", d.strategy.GetStrategyName()).
-			Msg("shutting down strategy")
-		d.strategy.Shutdown(context.Background())
+}
+
+func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig) SyncStrategy {
+	searchStrategyId := d.GenerateStrategyId(strategyConfig.Strategy, strategyConfig.Params)
+
+	// Retrieve the strategy if it already exists
+	for _, strategy := range d.strategies {
+		strategyId := d.GenerateStrategyId(strategy.GetStrategyName(), strategy.GetStrategyParams())
+		if strategyId == searchStrategyId {
+			return strategy
+		}
 	}
 
+	// Create a new strategy as it does not exist
 	logger := d.logger.With().
-		Any("strategy_config", strategyConfig).
-		Str("strategy_name", strategyName).
+		Any("strategy_params", strategyConfig.Params).
+		Str("strategy_name", strategyConfig.Strategy).
 		Logger()
-	switch strategyName {
+	strategy := d.createStrategyForConfig(strategyConfig, logger)
+	if strategy == nil {
+		return nil
+	} else if err := strategy.ValidateConfigParams(strategyConfig.Params); err != nil {
+		logger.Error().Err(err).Msg("invalid configuration")
+		return nil
+	} else {
+		strategy.Start()
+		d.strategies = append(d.strategies, strategy)
+		return strategy
+	}
+}
+
+func (d *dataStore) createStrategyForConfig(strategyConfig configuration.StorageConfig, logger logger.Logger) SyncStrategy {
+	switch strategyConfig.Strategy {
 	case "senhub":
 		logger.Info().Msg("Initializing strategy")
-
-		d.strategy = NewSyncStrategySenhub(d.agentConfig, strategyConfig.Params, &logger)
-		if err := d.strategy.ValidateConfigParams(strategyConfig.Params); err != nil {
-			logger.Error().Err(err).Msg("invalid configuration")
-			return
-		}
-		d.strategy.Start()
-		return
+		strategy := NewSyncStrategySenhub(d.agentConfig, strategyConfig.Params, &logger)
+		return strategy
 
 	case "prtg":
 		logger.Info().Msg("Initializing strategy")
-		d.strategy = NewSyncStrategyPrtg(d.agentConfig, strategyConfig.Params, &logger)
-		if err := d.strategy.ValidateConfigParams(strategyConfig.Params); err != nil {
-			logger.Error().Err(err).Msg("invalid configuration")
-			return
-		}
-		d.strategy.Start()
-		return
+		strategy := NewSyncStrategyPrtg(d.agentConfig, strategyConfig.Params, &logger)
+		return strategy
 
 	default:
-		d.logger.Error().
-			Str("strategy_name", strategyName).
-			Msg("unknown strategy")
-		return
+		logger.Error().Msg("unknown strategy")
+		return nil
 	}
 }
 
@@ -138,5 +180,16 @@ func (d *dataStore) Start(quitChannel chan struct{}) error {
 }
 
 func (d *dataStore) Shutdown(ctx context.Context) error {
-	return d.strategy.Shutdown(ctx)
+	errs := []error{}
+	for _, strategy := range d.strategies {
+		err := strategy.Shutdown(ctx)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("errors shutting down strategies: %v", errs)
+	}
+	return nil
 }
