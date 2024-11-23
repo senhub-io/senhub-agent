@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -32,9 +33,9 @@ func NewLogger(args *agentCliArgs.ParsedArgs) *Logger {
 	var logger *Logger
 	switch args.Env {
 	case "development":
-		logger = buildDevelopmentLogger()
+		logger = buildDevelopmentLogger(args)
 	default:
-		logger = buildProductionLogger()
+		logger = buildProductionLogger(args)
 	}
 
 	if args.Verbose {
@@ -44,7 +45,7 @@ func NewLogger(args *agentCliArgs.ParsedArgs) *Logger {
 	return logger
 }
 
-func buildDevelopmentLogger() *Logger {
+func buildDevelopmentLogger(*agentCliArgs.ParsedArgs) *Logger {
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
 	logger := zerolog.
@@ -56,13 +57,23 @@ func buildDevelopmentLogger() *Logger {
 	return &logger
 }
 
-func buildProductionLogger() *Logger {
+func buildProductionLogger(args *agentCliArgs.ParsedArgs) *Logger {
 	logPath := getLogPath()
 	logFile, err := os.OpenFile(
 		logPath,
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
 		0664,
 	)
+
+	var logWriter io.Writer
+	logWriter = logFile
+	if args.Verbose {
+		// If verbose, write to both console and file
+		logWriter = zerolog.MultiLevelWriter(
+			zerolog.ConsoleWriter{Out: os.Stderr},
+			logFile,
+		)
+	}
 
 	if err != nil {
 		panic(fmt.Sprintf("Cannot open logfile: %v", err))
@@ -71,7 +82,7 @@ func buildProductionLogger() *Logger {
 	zerolog.SetGlobalLevel(zerolog.WarnLevel)
 
 	logger := zerolog.
-		New(logFile).
+		New(logWriter).
 		With().
 		Timestamp().
 		Logger()
