@@ -45,6 +45,9 @@ func NewAgent() Agent {
 	args := agentCliArgs.MustParse()
 
 	logger := logger.NewLogger(args)
+	logger.Debug().
+		Any("args", args).
+		Msg("Agent configuration")
 
 	agentConfiguration := configuration.NewAgentConfiguration(
 		args.AuthenticationKey,
