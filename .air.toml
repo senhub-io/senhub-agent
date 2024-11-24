@@ -5,9 +5,9 @@ tmp_dir = "tmp"
 [build]
 args_bin = [
   "--authentication-key",
-  "23b21493-990c-42dd-993c-1e99ab61b9d2",
+  "2a197eb3-4225-4e7b-8ed1-fdec21a2a839",
   "--server-url",
-  "https://eu-west-1.intake.senhub.io",
+  "http://127.0.0.1:8008",
 ]
 bin = "./senhub-agent"
 cmd = "ENV=development make build"

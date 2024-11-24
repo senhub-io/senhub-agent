@@ -90,7 +90,6 @@ func (p *PingWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 	tags := []tags.Tag{
 		{Key: "url", Value: webappURL, Private: false},
-		{Key: "probe_type", Value: "webApp", Private: false},
 		data_store.CreatePrtgMetricIdTag(
 			fmt.Sprintf("%s_[name]", urlTagKey)),
 	}
