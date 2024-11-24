@@ -14,15 +14,28 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/internal/agent/validators"
 )
 
-// Value of the tag with this name will be used as PRTG metric id.
-// The placeholder [name] will be replaced by the metric name.
-var PrtgTagNaame = "prtg_metric_id"
+var (
+	// Value of the tag with this name will be used as PRTG metric id.
+	// The placeholder [name] will be replaced by the metric name.
+	PrtgTagName = "prtg_metric_id"
+	// Default interval for synchronization
+	DEFAULT_INTERVAL = 5 * time.Second
+	// Default data retention period
+	DEFAULT_RETENTION_PERIOD = 2 * time.Minute
+)
+
+type SyncStrategyPrtgParams struct {
+	Interval        time.Duration
+	RetentionPeriod time.Duration
+	ServerUrl       string
+}
 
 func CreatePrtgMetricIdTag(metricId string) tags.Tag {
 	return tags.Tag{
-		Key:     PrtgTagNaame,
+		Key:     PrtgTagName,
 		Value:   metricId,
 		Private: true,
 	}
@@ -33,11 +46,12 @@ type SyncStrategyPrtg struct {
 	buffer Buffer
 	http   *http.Client
 
-	agentConfig   configuration.AgentConfiguration
-	storageConfig configuration.StorageConfigParams
-	logger        *logger.Logger
-	ticker        *time.Ticker
-	tickerOnce    sync.Once
+	agentConfig configuration.AgentConfiguration
+	rawConfig   configuration.StorageConfigParams
+	config      SyncStrategyPrtgParams
+	logger      *logger.Logger
+	ticker      *time.Ticker
+	tickerOnce  sync.Once
 }
 
 func NewSyncStrategyPrtg(
@@ -52,16 +66,70 @@ func NewSyncStrategyPrtg(
 	)
 
 	return &SyncStrategyPrtg{
-		buffer:        NewBuffer(),
-		http:          http,
-		storageConfig: storageConfig,
-		agentConfig:   agentConfig,
-		logger:        &localLogger,
+		buffer:      NewBuffer(),
+		http:        http,
+		rawConfig:   storageConfig,
+		agentConfig: agentConfig,
+		logger:      &localLogger,
 	}
+}
+
+func ParseSyncStrategyPrtgParams(config configuration.StorageConfigParams) (SyncStrategyPrtgParams, error) {
+	errs := []error{}
+	params := SyncStrategyPrtgParams{
+		Interval:        DEFAULT_INTERVAL,
+		RetentionPeriod: DEFAULT_RETENTION_PERIOD,
+		ServerUrl:       "",
+	}
+
+	if intervalStr, ok := config["interval"]; ok {
+		if !validators.IsDuration(intervalStr) {
+			errs = append(errs, fmt.Errorf("interval must be a valid duration"))
+		} else {
+			parsedInterval, err := time.ParseDuration(intervalStr.(string))
+			if err != nil {
+				errs = append(errs, fmt.Errorf("error parsing interval: %w", err))
+			} else {
+				params.Interval = parsedInterval
+			}
+		}
+	}
+
+	if intervalStr, ok := config["data_retention_period"]; ok {
+		if !validators.IsDuration(intervalStr) {
+			errs = append(errs, fmt.Errorf("data_retention_period must be a valid duration"))
+		} else {
+			parsedRetentionPeriod, err := time.ParseDuration(intervalStr.(string))
+			if err != nil {
+				errs = append(errs, fmt.Errorf("error parsing data_retention_period: %w", err))
+			} else {
+				params.RetentionPeriod = parsedRetentionPeriod
+			}
+		}
+	}
+
+	url, ok := config["server_url"].(string)
+	if !ok || url == "" {
+		errs = append(errs, fmt.Errorf("server_url parameter is required"))
+	} else if !validators.IsURL(url) {
+		errs = append(errs, fmt.Errorf("server_url must be a valid URL"))
+	} else {
+		params.ServerUrl = url
+	}
+
+	if len(errs) > 0 {
+		return params, fmt.Errorf("error parsing config: %v", errs)
+	}
+
+	return params, nil
 }
 
 func (s *SyncStrategyPrtg) GetStrategyName() string {
 	return "prtg"
+}
+
+func (s *SyncStrategyPrtg) GetStrategyParams() map[string]interface{} {
+	return s.rawConfig
 }
 
 func (s *SyncStrategyPrtg) AddDataPoints(data []DataPoint) error {
@@ -70,33 +138,19 @@ func (s *SyncStrategyPrtg) AddDataPoints(data []DataPoint) error {
 }
 
 func (s *SyncStrategyPrtg) ValidateConfigParams(params configuration.StorageConfigParams) error {
-	if _, ok := params["data_retention_period"]; !ok {
-		return fmt.Errorf("data_retention_period is required")
+	config, err := ParseSyncStrategyPrtgParams(params)
+	if err != nil {
+		return err
 	}
-	if _, ok := params["server_url"]; !ok {
-		return fmt.Errorf("server_url is required")
-	}
+
+	s.config = config
 	return nil
 }
-
-var DEFAULT_INTERVAL = 5 * time.Second
 
 func (s *SyncStrategyPrtg) Start() error {
 	s.tickerOnce.Do(func() { // Ensure the ticker only starts once
 		s.logger.Info().Msg("Starting sync strategy")
-		interval := DEFAULT_INTERVAL
-		if intervalStr, ok := s.storageConfig["interval"]; ok {
-			parsedInterval, err := time.ParseDuration(intervalStr.(string))
-			if err != nil {
-				s.logger.Error().
-					Err(err).
-					Str("value", intervalStr.(string)).
-					Msg("error parsing interval")
-				return
-			}
-
-			interval = parsedInterval
-		}
+		interval := s.config.Interval
 		ticker := time.NewTicker(interval)
 
 		go func() {
@@ -166,15 +220,8 @@ func (s *SyncStrategyPrtg) doSync() error {
 		}
 	}
 	// Only keep last data point within data retention period
-	retention, ok := s.storageConfig["data_retention_period"]
-	if !ok {
-		return fmt.Errorf("data_retention_period is required")
-	}
-	retentionDuration, err := time.ParseDuration(retention.(string))
-	if err != nil {
-		return err
-	}
-	retentionStart := time.Now().Add(-retentionDuration)
+	retentionPeriod := s.config.RetentionPeriod
+	retentionStart := time.Now().Add(-retentionPeriod)
 
 	data = filter(data, func(p DataPoint) bool {
 		if !p.Timestamp.After(retentionStart) {
@@ -229,11 +276,11 @@ func (s *SyncStrategyPrtg) doSyncData(data []DataPoint) error {
 		s.logger.Error().Err(err).Msg("error encoding data.")
 		return err
 	}
-	url, ok := s.storageConfig["server_url"]
-	if !ok {
-		return fmt.Errorf("server_url is required")
-	}
-	req, err := s.http.Post(url.(string), "application/json", bytes.NewBuffer(requestBody))
+	req, err := s.http.Post(
+		s.config.ServerUrl,
+		"application/json",
+		bytes.NewBuffer(requestBody),
+	)
 	if err != nil {
 		return err
 	}
