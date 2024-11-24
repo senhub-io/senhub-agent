@@ -55,7 +55,6 @@ func (p *PingGatewayProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	tags := []tags.Tag{
-		{Key: "probe_type", Value: "gateway", Private: false},
 		data_store.CreatePrtgMetricIdTag("ping_gateway_[name]"),
 	}
 

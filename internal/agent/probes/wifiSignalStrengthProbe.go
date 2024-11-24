@@ -26,16 +26,27 @@ func (m *wifiSignalStrengthProbe) checkWifiWindows() bool {
 		return false
 	}
 
-	// Check if a WiFi connection is active
 	lines := strings.Split(string(output), "\n")
+	found := false
+	isConnected := false
+
 	for _, line := range lines {
+		line = strings.TrimSpace(line)
 		if strings.Contains(line, "State") {
-			// Check for both English and French status as Windows can be localized
-			return strings.Contains(strings.ToLower(line), "connected") ||
-				strings.Contains(strings.ToLower(line), "connecté")
+			found = true
+			stateLine := strings.ToLower(line)
+			isConnected = strings.Contains(stateLine, "connected") ||
+				strings.Contains(stateLine, "connecté")
+			break
 		}
 	}
-	return false
+
+	if !found {
+		m.logger.Warn().Msg("No WiFi state information found in netsh output")
+		return false
+	}
+
+	return isConnected
 }
 
 func (m *wifiSignalStrengthProbe) checkWifiLinux() bool {
@@ -48,7 +59,6 @@ func (m *wifiSignalStrengthProbe) checkWifiLinux() bool {
 			return true
 		}
 	}
-
 	// Second attempt using nmcli if iwconfig fails
 	cmd = exec.Command("nmcli", "-t", "-f", "WIFI", "radio")
 	output, err = cmd.Output()
@@ -56,7 +66,6 @@ func (m *wifiSignalStrengthProbe) checkWifiLinux() bool {
 		m.logger.Error().Msgf("Error checking WiFi connection: %v", err)
 		return false
 	}
-
 	return strings.Contains(strings.ToLower(string(output)), "enabled")
 }
 
@@ -73,7 +82,15 @@ func (m *wifiSignalStrengthProbe) GetName() string {
 }
 
 func (m *wifiSignalStrengthProbe) ShouldStart() bool {
-	return true
+	switch runtime.GOOS {
+	case "windows":
+		return m.checkWifiWindows()
+	case "linux":
+		return m.checkWifiLinux()
+	default:
+		m.logger.Error().Msgf("Unsupported operating system: %s", runtime.GOOS)
+		return false
+	}
 }
 
 func (m *wifiSignalStrengthProbe) GetInterval() time.Duration {
