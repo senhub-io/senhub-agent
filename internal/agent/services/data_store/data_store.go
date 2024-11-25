@@ -42,7 +42,6 @@ type DataStore interface {
 	GetName() string
 	Start(chan struct{}) error
 	Shutdown(context.Context) error
-
 	GetCallback() AddCallback
 }
 
@@ -98,11 +97,12 @@ func (d *dataStore) GenerateStrategyId(strategyName string, params configuration
 
 func (d *dataStore) OnConfigRefreshed(string) {
 	validStrategyIds := []string{}
-	strategiesConfig := d.remoteConfig.GetConfiguration().StorageConfig
-	for _, strategyConfig := range strategiesConfig {
-		strategy := d.retrieveOrCreate(strategyConfig)
+	storageConfigs := d.remoteConfig.GetConfiguration().StorageConfig
+
+	for _, storageConfig := range storageConfigs {
+		strategy := d.retrieveOrCreate(storageConfig)
 		if strategy != nil {
-			validStrategyIds = append(validStrategyIds, d.GenerateStrategyId(strategyConfig.Strategy, strategyConfig.Params))
+			validStrategyIds = append(validStrategyIds, d.GenerateStrategyId(storageConfig.Name, storageConfig.Params))
 		}
 	}
 
@@ -127,7 +127,7 @@ func (d *dataStore) OnConfigRefreshed(string) {
 }
 
 func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig) SyncStrategy {
-	searchStrategyId := d.GenerateStrategyId(strategyConfig.Strategy, strategyConfig.Params)
+	searchStrategyId := d.GenerateStrategyId(strategyConfig.Name, strategyConfig.Params)
 
 	// Retrieve the strategy if it already exists
 	for _, strategy := range d.strategies {
@@ -140,7 +140,7 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 	// Create a new strategy as it does not exist
 	logger := d.logger.With().
 		Any("strategy_params", strategyConfig.Params).
-		Str("strategy_name", strategyConfig.Strategy).
+		Str("strategy_name", strategyConfig.Name).
 		Logger()
 	strategy := d.createStrategyForConfig(strategyConfig, logger)
 	if strategy == nil {
@@ -156,7 +156,7 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 }
 
 func (d *dataStore) createStrategyForConfig(strategyConfig configuration.StorageConfig, logger logger.Logger) SyncStrategy {
-	switch strategyConfig.Strategy {
+	switch strategyConfig.Name {
 	case "senhub":
 		logger.Info().Msg("Initializing strategy")
 		strategy := NewSyncStrategySenhub(d.agentConfig, strategyConfig.Params, &logger)
