@@ -252,6 +252,7 @@ func (s *SyncStrategyPrtg) doSync() error {
 type PrtgResult struct {
 	Channel string  `json:"channel"`
 	Value   float32 `json:"value"`
+	Float   int     `json:"float"`
 }
 
 type PrtgData struct {
@@ -267,6 +268,7 @@ func (s *SyncStrategyPrtg) doSyncData(data []DataPoint) error {
 		jsonData.Prtg.Result = append(jsonData.Prtg.Result, PrtgResult{
 			metricId(p),
 			p.Value,
+			1,
 		})
 	}
 
