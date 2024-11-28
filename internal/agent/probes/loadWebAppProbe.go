@@ -116,7 +116,7 @@ func (p *LoadWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 	webappURL := p.config.URL
 	metrics, err := p.measurePageLoad(webappURL)
 	if err != nil {
-		fmt.Errorf("Error measuring network metrics: %v")
+		fmt.Errorf("Error measuring network metrics: %v", err)
 		return nil, err
 	}
 
