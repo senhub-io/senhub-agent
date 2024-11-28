@@ -45,11 +45,10 @@ func UrlToTagKey(urlString string) (string, error) {
 
 }
 
-// TODO: In a near future tags will be sent as a list of strings, not a map.
-func FormatTagsForServer(tags []Tag) map[string]string {
-	formattedTags := make(map[string]string)
+func FormatTagsForServer(tags []Tag) []Tag {
+	formattedTags := make([]Tag, 0, len(tags))
 	for _, tag := range tags {
-		formattedTags[tag.Key] = tag.Value
+		formattedTags = append(formattedTags, Tag{Key: EscapeTagKey(tag.Key), Value: EscapeTagValue(tag.Value)})
 	}
 	return formattedTags
 }
