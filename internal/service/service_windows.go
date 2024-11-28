@@ -91,7 +91,7 @@ func (s *SenHubService) run() {
 			return
 		default:
 			// Exécution de l'agent avec seulement l'option "start"
-			s.agentCmd = exec.Command(s.agentPath, "start", "--server-url", "https://eu-west-1.intake.senhub.io")
+			s.agentCmd = exec.Command(s.agentPath, "start", "--authentication-key", "%SENHUB_KEY%", "--server-url", "https://eu-west-1.intake.senhub.io")
 			s.agentCmd.Dir = filepath.Dir(s.agentPath)
 
 			// Configuration des logs
