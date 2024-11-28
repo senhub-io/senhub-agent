@@ -13,11 +13,10 @@ import (
 )
 
 type SenhubDataPoint struct {
-	Name      string    `json:"name"`
-	Timestamp time.Time `json:"timestamp"`
-	Value     float32   `json:"value"`
-	// NOTE tags will be converted to a list of strings
-	Tags map[string]string `json:"tags,omitempty"`
+	Name      string     `json:"name"`
+	Timestamp time.Time  `json:"timestamp"`
+	Value     float32    `json:"value"`
+	Tags      []tags.Tag `json:"tags,omitempty"`
 }
 
 // Synchronize metrics to senhub backend.
