@@ -34,4 +34,7 @@ var probeConstructors = map[string]ProbeConstructor{
 	"ping_gateway":         NewPingGatewayProbe,
 	"wifi_signal_strength": NewWifiSignalStrengthProbe,
 	"memory":               NewMemoryProbe,
+	"cpu":                  NewCpuProbe,
+	"network":              NewNetworkProbe,
+	"storage":              NewStorageProbe,
 }
