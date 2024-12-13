@@ -3,8 +3,6 @@ package tags
 import (
 	"fmt"
 	"net/url"
-	"regexp"
-	"strings"
 )
 
 type Tag struct {
@@ -54,13 +52,11 @@ func FormatTagsForServer(tags []Tag) []Tag {
 }
 
 func EscapeTagKey(key string) string {
-	re := regexp.MustCompile("[:]")
-	return strings.ReplaceAll(re.ReplaceAllString(key, "_"), ".", "_")
+	return key
 }
 
 func EscapeTagValue(value string) string {
-	re := regexp.MustCompile("[:]")
-	return strings.ReplaceAll(re.ReplaceAllString(value, "_"), ".", "_")
+	return value
 }
 
 func TagToString(tag Tag) string {
