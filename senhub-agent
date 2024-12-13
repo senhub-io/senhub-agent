@@ -1,11 +1,11 @@
 #!/bin/zsh
 
 # Définition de la clé d'authentification et de l'URL du serveur
-AUTH_KEY="2a197eb3-4225-4e7b-8ed1-fdec21a2a839"
-SERVER_URL="http://127.0.0.1:8080"
+#AUTH_KEY="2a197eb3-4225-4e7b-8ed1-fdec21a2a839"
+#SERVER_URL="http://127.0.0.1:8080"
 
-#AUTH_KEY="3afc658b-2635-4a7d-bfb3-2ab2618f3e8d"
-#SERVER_URL="https://eu-west-1.intake.senhub.io"
+AUTH_KEY="5d1e7c50-570a-402b-9356-a8e064f8d6bd"
+SERVER_URL="https://eu-west-1.intake.senhub.io"
 
 # Exécution de la commande avec les arguments
-./senhub-agent_darwin_amd64 --authentication-key "$AUTH_KEY" --server-url "$SERVER_URL"
+./senhub-agent_darwin_amd64 start --authentication-key "$AUTH_KEY" --server-url "$SERVER_URL" -v

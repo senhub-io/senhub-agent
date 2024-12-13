@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/kardianos/service"
@@ -90,14 +91,54 @@ func (s *SenHubService) run() {
 		case <-s.exit:
 			return
 		default:
-			// Exécution de l'agent avec seulement l'option "start"
-			s.agentCmd = exec.Command(s.agentPath, "start", "--authentication-key", "%SENHUB_KEY%", "--server-url", "https://eu-west-1.intake.senhub.io")
+			// Vérifier si la variable d'environnement SENHUB_KEY existe
+			senhubKey := os.Getenv("SENHUB_KEY")
+			if senhubKey == "" {
+				s.logger.Errorf("SENHUB_KEY environment variable is not set")
+			}
+
+			// Remplacer la variable dans la commande
+			s.agentCmd = exec.Command(s.agentPath,
+				"start",
+				"--authentication-key",
+				senhubKey, // Utiliser la valeur réelle plutôt que %SENHUB_KEY%
+				"--server-url",
+				"https://eu-west-1.intake.senhub.io")
+
 			s.agentCmd.Dir = filepath.Dir(s.agentPath)
 
-			// Configuration des logs
 			logPath := filepath.Join(filepath.Dir(s.agentPath), "senhubagent-service.log")
 			logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 			if err == nil {
+				timestamp := time.Now().Format("2006-01-02 15:04:05")
+
+				// Logging de la commande de démarrage
+				cmdStr := fmt.Sprintf("%s %s", s.agentPath, strings.Join(s.agentCmd.Args[1:], " "))
+				if _, err := logFile.WriteString(fmt.Sprintf("\n=== Commande de démarrage (%s) ===\n", timestamp)); err != nil {
+					s.logger.Errorf("Failed to write command header: %v", err)
+				}
+				if _, err := logFile.WriteString(cmdStr + "\n"); err != nil {
+					s.logger.Errorf("Failed to write command: %v", err)
+				}
+				if _, err := logFile.WriteString("=====================================\n\n"); err != nil {
+					s.logger.Errorf("Failed to write command footer: %v", err)
+				}
+
+				// Logging des variables d'environnement
+				if _, err := logFile.WriteString(fmt.Sprintf("=== Variables d'environnement (%s) ===\n", timestamp)); err != nil {
+					s.logger.Errorf("Failed to write environment variables header: %v", err)
+				}
+				envVars := os.Environ()
+				for _, env := range envVars {
+					if _, err := logFile.WriteString(env + "\n"); err != nil {
+						s.logger.Errorf("Failed to write environment variable: %v", err)
+					}
+				}
+				if _, err := logFile.WriteString("=====================================\n\n"); err != nil {
+					s.logger.Errorf("Failed to write environment variables footer: %v", err)
+				}
+
+				// Configuration des sorties standard et d'erreur
 				s.agentCmd.Stdout = logFile
 				s.agentCmd.Stderr = logFile
 				defer logFile.Close()

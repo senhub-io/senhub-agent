@@ -21,79 +21,31 @@ type wifiSignalStrengthProbe struct {
 
 func (m *wifiSignalStrengthProbe) checkWifiWindows() bool {
 	cmd := exec.Command("netsh", "wlan", "show", "interfaces")
-
 	output, err := cmd.Output()
 	if err != nil {
 		fmt.Errorf("Error checking WiFi connection: %v", err)
 		return false
 	}
 
-	// Conversion en string et split en lignes
-	lines := strings.Split(string(output), "\n")
+	outputStr := string(output)
 
-	// Mots clés pour la détection de l'état en anglais et en français
-	stateKeywords := map[string]struct{}{
-		"state": {}, // EN
-		"état":  {}, // FR
-		"etat":  {}, // FR sans accent
-	}
-
-	connectedKeywords := map[string]struct{}{
-		"connected": {}, // EN
-		"connecté":  {}, // FR
-		"connecte":  {}, // FR sans accent
-	}
-
-	disconnectedKeywords := map[string]struct{}{
-		"disconnected": {}, // EN
-		"déconnecté":   {}, // FR
-		"deconnecte":   {}, // FR sans accent
-		"non connecté": {}, // FR
-		"non connecte": {}, // FR sans accent
-	}
-
-	found := false
-	isConnected := false
-
+	// On cherche des patterns simples qui marchent même avec des problèmes d'encodage
+	lines := strings.Split(outputStr, "\n")
 	for _, line := range lines {
-		line = strings.TrimSpace(strings.ToLower(line))
+		line = strings.ToLower(line)
 
-		// Vérification si la ligne contient un mot-clé d'état
-		containsStateKeyword := false
-		for keyword := range stateKeywords {
-			if strings.Contains(line, keyword) {
-				containsStateKeyword = true
-				found = true
-				break
+		// On cherche les indicateurs d'état (état ou state)
+		if strings.Contains(line, "tat") || strings.Contains(line, "state") {
+			// Si on trouve "connect" sans "non" ou "dis" avant, c'est connecté
+			if strings.Contains(line, "connect") {
+				if strings.Contains(line, "non") || strings.Contains(line, "dis") {
+					return false
+				}
+				return true
 			}
 		}
-
-		if containsStateKeyword {
-			// Vérification si connecté
-			for keyword := range connectedKeywords {
-				if strings.Contains(line, keyword) {
-					isConnected = true
-					break
-				}
-			}
-
-			// Vérification si déconnecté
-			for keyword := range disconnectedKeywords {
-				if strings.Contains(line, keyword) {
-					isConnected = false
-					break
-				}
-			}
-			break // Sort de la boucle une fois l'état trouvé
-		}
 	}
-
-	if !found {
-		fmt.Errorf("No WiFi state information found in netsh output (checked in both English and French)")
-		return false
-	}
-
-	return isConnected
+	return false
 }
 
 func (m *wifiSignalStrengthProbe) checkWifiLinux() bool {
@@ -190,11 +142,12 @@ func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, erro
 				ssid = strings.TrimSpace(parts[1])
 			}
 		}
-		// Gestion française et anglaise du BSSID
 		if strings.HasPrefix(line, "BSSID") || strings.Contains(line, "Point d'accès d'identificateur SSID") {
-			parts := strings.Split(line, ":")
-			if len(parts) > 1 {
-				bssid = strings.TrimSpace(parts[1])
+			// Find the index of the first ":" character
+			colonIndex := strings.Index(line, ":")
+			if colonIndex != -1 {
+				// Extract everything after the first ":" (to preserve BSSID format xx:xx:xx:xx:xx:xx)
+				bssid = strings.TrimSpace(line[colonIndex+1:])
 			}
 		}
 	}
