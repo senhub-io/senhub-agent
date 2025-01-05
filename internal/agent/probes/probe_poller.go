@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -15,7 +16,7 @@ import (
 
 type ProbePoller struct {
 	ProbeId      string
-	Probe        Probe
+	Probe        types.Probe
 	config       configuration.ProbeConfig
 	addDataPoint data_store.AddCallback
 	ticker       *time.Ticker

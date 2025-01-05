@@ -1,0 +1,268 @@
+//go:build windows
+
+package host
+
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"senhub-agent.go/internal/agent/services/common"
+	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/internal/agent/windows/pdh"
+)
+
+// Configuration des filtres de disques
+var driveFilters = struct {
+	Include []string
+	Exclude []string
+}{
+	Include: []string{},                            // Liste des disques à inclure (vide = tous)
+	Exclude: []string{"HarddiskVolume*", "_Total"}, // Liste des disques à exclure
+}
+
+// MetricDefinition définit un compteur de performance avec son chemin
+type StorageMetricDefinition struct {
+	path     string
+	instance string
+}
+
+// Définition des compteurs de performance
+var storageCounterPaths = map[string]StorageMetricDefinition{
+	"disk_free_bytes": {
+		path:     "\\LogicalDisk\\Free Megabytes",
+		instance: "*",
+	},
+	"disk_total_bytes": {
+		path:     "\\LogicalDisk\\% Free Space",
+		instance: "*",
+	},
+	"disk_reads_sec": {
+		path:     "\\LogicalDisk\\Disk Reads/sec",
+		instance: "*",
+	},
+	"disk_writes_sec": {
+		path:     "\\LogicalDisk\\Disk Writes/sec",
+		instance: "*",
+	},
+	"disk_read_bytes_sec": {
+		path:     "\\LogicalDisk\\Disk Read Bytes/sec",
+		instance: "*",
+	},
+	"disk_write_bytes_sec": {
+		path:     "\\LogicalDisk\\Disk Write Bytes/sec",
+		instance: "*",
+	},
+	"disk_queue_length": {
+		path:     "\\LogicalDisk\\Current Disk Queue Length",
+		instance: "*",
+	},
+}
+
+type windowsStorageCollector struct {
+	query          *pdh.Query
+	paths          map[string]pathInfo
+	initialized    bool
+	includeFilters []string
+	excludeFilters []string
+}
+
+func newLogicalDiskCollector(config map[string]interface{}, logger *logger.Logger) (storageCollector, error) {
+	query, err := pdh.NewQuery()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create PDH query: %v", err)
+	}
+
+	collector := &windowsStorageCollector{
+		query:          query,
+		paths:          make(map[string]pathInfo),
+		includeFilters: make([]string, len(driveFilters.Include)),
+		excludeFilters: make([]string, len(driveFilters.Exclude)),
+	}
+
+	// Copie des filtres par défaut
+	copy(collector.includeFilters, driveFilters.Include)
+	copy(collector.excludeFilters, driveFilters.Exclude)
+
+	// Override des filtres depuis la configuration si spécifié
+	if filters, ok := config["filters"].(map[string]interface{}); ok {
+		if include, ok := filters["include"].([]string); ok {
+			collector.includeFilters = include
+		}
+		if exclude, ok := filters["exclude"].([]string); ok {
+			collector.excludeFilters = exclude
+		}
+	}
+
+	fmt.Printf("Initializing storage collector with filters - Include: %v, Exclude: %v\n",
+		collector.includeFilters, collector.excludeFilters)
+
+	if err := collector.initializeCounters(); err != nil {
+		query.Close()
+		return nil, err
+	}
+
+	if err := query.Collect(); err != nil {
+		query.Close()
+		return nil, fmt.Errorf("failed initial collection: %v", err)
+	}
+
+	return collector, nil
+}
+
+// shouldIncludeDrive vérifie si un disque doit être inclus selon les filtres
+func (w *windowsStorageCollector) shouldIncludeDrive(drive string) bool {
+	// Si la liste d'inclusion est vide, tout est inclus par défaut
+	isIncluded := len(w.includeFilters) == 0
+
+	// Si la liste d'inclusion n'est pas vide, vérifie si le disque correspond à un pattern
+	for _, pattern := range w.includeFilters {
+		matched, err := filepath.Match(pattern, drive)
+		if err != nil {
+			fmt.Printf("Invalid include pattern %s: %v\n", pattern, err)
+			continue
+		}
+		if matched {
+			isIncluded = true
+			break
+		}
+	}
+
+	// Si le disque n'est pas inclus, pas besoin de vérifier les exclusions
+	if !isIncluded {
+		fmt.Printf("Drive %s does not match any include patterns\n", drive)
+		return false
+	}
+
+	// Vérifie si le disque correspond à un pattern d'exclusion
+	for _, pattern := range w.excludeFilters {
+		matched, err := filepath.Match(pattern, drive)
+		if err != nil {
+			fmt.Printf("Invalid exclude pattern %s: %v\n", pattern, err)
+			continue
+		}
+		if matched {
+			fmt.Printf("Drive %s matches exclude pattern %s\n", drive, pattern)
+			return false
+		}
+	}
+
+	return true
+}
+
+func (w *windowsStorageCollector) initializeCounters() error {
+	fmt.Printf("Initializing storage probe with counters\n")
+
+	for metricName, def := range storageCounterPaths {
+		if def.instance == "*" {
+			// Obtenir toutes les instances de disques logiques
+			instances, err := pdh.GetInstancesList("LogicalDisk", false)
+			if err != nil {
+				return fmt.Errorf("failed to get LogicalDisk instances: %v", err)
+			}
+
+			// Ajouter _Total à la liste des instances s'il n'y est pas déjà
+			hasTotal := false
+			for _, instance := range instances {
+				if instance == "_Total" {
+					hasTotal = true
+					break
+				}
+			}
+			if !hasTotal {
+				instances = append(instances, "_Total")
+			}
+
+			for _, instance := range instances {
+				// Applique les filtres de disques
+				if !w.shouldIncludeDrive(instance) {
+					fmt.Printf("Skipping drive %s due to filters\n", instance)
+					continue
+				}
+
+				path := pdh.BuildCounterPath(def.path, instance)
+				w.paths[fmt.Sprintf("%s_%s", metricName, instance)] = pathInfo{
+					path:     path,
+					instance: instance,
+				}
+
+				fmt.Printf("Adding counter %s with path: %s (drive: %s)\n", metricName, path, instance)
+				if err := w.query.AddCounter(path); err != nil {
+					return fmt.Errorf("failed to add counter %s (drive %s): %v", metricName, instance, err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (w *windowsStorageCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, error) {
+	if !w.initialized {
+		if err := w.query.Collect(); err != nil {
+			return nil, fmt.Errorf("failed initial sample collection: %v", err)
+		}
+		time.Sleep(1 * time.Second)
+		w.initialized = true
+	}
+
+	if err := w.query.Collect(); err != nil {
+		return nil, fmt.Errorf("failed to collect PDH metrics: %v", err)
+	}
+
+	baseTags, err := common.GetHostTags()
+	if err != nil {
+		return nil, fmt.Errorf("error getting host tags: %v", err)
+	}
+
+	dataPoints := make([]data_store.DataPoint, 0, len(w.paths))
+
+	for name, pathInfo := range w.paths {
+		value, err := w.query.GetCounterValue(pathInfo.path)
+		if err != nil {
+			fmt.Printf("Error getting counter value for %s: %v\n", name, err)
+			continue
+		}
+
+		// Ajustement des valeurs selon la métrique
+		if strings.Contains(name, "free_bytes") {
+			// Convertir MB en bytes
+			value = value * 1024 * 1024
+		}
+
+		// Préparation des tags
+		metricTags := append([]tags.Tag{}, baseTags...)
+		if pathInfo.instance != "" && pathInfo.instance != "_Total" {
+			metricTags = append(metricTags, tags.Tag{
+				Key:   "drive",
+				Value: pathInfo.instance,
+			})
+		}
+
+		// Construction du nom de la métrique en retirant l'instance
+		metricName := name
+		if idx := strings.LastIndex(name, "_"); idx != -1 {
+			metricName = name[:idx]
+		}
+
+		dataPoints = append(dataPoints, data_store.DataPoint{
+			Name:      metricName,
+			Timestamp: timestamp,
+			Value:     float32(value),
+			Tags:      metricTags,
+		})
+
+		fmt.Printf("Collected metric %s = %f, tags: %v\n", metricName, value, metricTags)
+	}
+
+	return dataPoints, nil
+}
+
+func (w *windowsStorageCollector) Close() error {
+	if w.query != nil {
+		w.query.Close()
+	}
+	return nil
+}
