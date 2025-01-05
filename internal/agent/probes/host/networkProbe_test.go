@@ -1,4 +1,4 @@
-package probes
+package host
 
 import (
 	"os"
@@ -7,7 +7,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestNewStorageProbe(t *testing.T) {
+func TestNewNetworkProbe(t *testing.T) {
 	logger := zerolog.New(os.Stderr)
 	tests := []struct {
 		name    string
@@ -22,7 +22,7 @@ func TestNewStorageProbe(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewStorageProbe(tt.config, &logger)
+			_, err := NewNetworkProbe(tt.config, &logger)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewNetworkProbe() error = %v, wantErr %v", err, tt.wantErr)
 				return

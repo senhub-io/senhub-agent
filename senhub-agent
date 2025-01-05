@@ -4,7 +4,7 @@
 #AUTH_KEY="2a197eb3-4225-4e7b-8ed1-fdec21a2a839"
 #SERVER_URL="http://127.0.0.1:8080"
 
-AUTH_KEY="5d1e7c50-570a-402b-9356-a8e064f8d6bd"
+AUTH_KEY="a80cd361-2c6e-42b0-86db-6ccda6745704"
 SERVER_URL="https://eu-west-1.intake.senhub.io"
 
 # Exécution de la commande avec les arguments

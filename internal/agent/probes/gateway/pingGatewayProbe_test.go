@@ -1,4 +1,4 @@
-package probes
+package gateway
 
 import (
 	"os"
@@ -7,7 +7,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestNewMemoryProbe(t *testing.T) {
+func TestNewPingGatewayProbe(t *testing.T) {
 	logger := zerolog.New(os.Stderr)
 	tests := []struct {
 		name    string
@@ -22,9 +22,9 @@ func TestNewMemoryProbe(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewMemoryProbe(tt.config, &logger)
+			_, err := NewPingGatewayProbe(tt.config, &logger)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("NewMemoryProbe() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("NewPingGatewayProbe() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 		})
