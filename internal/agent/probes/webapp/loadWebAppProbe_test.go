@@ -1,4 +1,4 @@
-package probes
+package webapp
 
 import (
 	"os"

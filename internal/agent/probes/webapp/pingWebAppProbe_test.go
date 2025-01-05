@@ -1,4 +1,4 @@
-package probes
+package webapp
 
 import (
 	"os"
@@ -7,7 +7,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestNewCpuProbe(t *testing.T) {
+func TestNewPingWebAppProbe(t *testing.T) {
 	logger := zerolog.New(os.Stderr)
 	tests := []struct {
 		name    string
@@ -16,15 +16,20 @@ func TestNewCpuProbe(t *testing.T) {
 	}{
 		{
 			name:    "Valid Probe",
-			config:  map[string]interface{}{},
+			config:  map[string]interface{}{"url": "http://example.com"},
 			wantErr: false,
+		},
+		{
+			name:    "Invalid Probe: Missing URL",
+			config:  map[string]interface{}{},
+			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewCpuProbe(tt.config, &logger)
+			_, err := NewPingWebAppProbe(tt.config, &logger)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("NewCpuProbe() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("NewPingWebAppProbe() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 		})

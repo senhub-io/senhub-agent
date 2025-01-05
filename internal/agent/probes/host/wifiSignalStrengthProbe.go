@@ -1,4 +1,4 @@
-package probes
+package host
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -68,7 +69,7 @@ func (m *wifiSignalStrengthProbe) checkWifiLinux() bool {
 	return strings.Contains(strings.ToLower(string(output)), "enabled")
 }
 
-func NewWifiSignalStrengthProbe(config map[string]interface{}, logger *logger.Logger) (Probe, error) {
+func NewWifiSignalStrengthProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
 	// No validation needed for this probe
 	return &wifiSignalStrengthProbe{
 		rawConfig: config,

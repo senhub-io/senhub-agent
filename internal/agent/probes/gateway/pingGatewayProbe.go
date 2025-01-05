@@ -1,4 +1,4 @@
-package probes
+package gateway
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -21,7 +22,7 @@ type PingGatewayProbe struct {
 	logger    *logger.Logger
 }
 
-func NewPingGatewayProbe(config map[string]interface{}, logger *logger.Logger) (Probe, error) {
+func NewPingGatewayProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
 	// No validation needed for this probe
 	return &PingGatewayProbe{
 		rawConfig: config,
