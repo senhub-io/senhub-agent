@@ -25,13 +25,13 @@ var driveFilters = struct {
 }
 
 // MetricDefinition définit un compteur de performance avec son chemin
-type StorageMetricDefinition struct {
+type LogicalDiskMetricDefinition struct {
 	path     string
 	instance string
 }
 
 // Définition des compteurs de performance
-var storageCounterPaths = map[string]StorageMetricDefinition{
+var logicaldiskCounterPaths = map[string]LogicalDiskMetricDefinition{
 	"disk_free_bytes": {
 		path:     "\\LogicalDisk\\Free Megabytes",
 		instance: "*",
@@ -62,7 +62,7 @@ var storageCounterPaths = map[string]StorageMetricDefinition{
 	},
 }
 
-type windowsStorageCollector struct {
+type windowsLogicalDiskCollector struct {
 	query          *pdh.Query
 	paths          map[string]pathInfo
 	initialized    bool
@@ -70,13 +70,13 @@ type windowsStorageCollector struct {
 	excludeFilters []string
 }
 
-func newLogicalDiskCollector(config map[string]interface{}, logger *logger.Logger) (storageCollector, error) {
+func newLogicalDiskCollector(config map[string]interface{}, logger *logger.Logger) (logicaldiskCollector, error) {
 	query, err := pdh.NewQuery()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PDH query: %v", err)
 	}
 
-	collector := &windowsStorageCollector{
+	collector := &windowsLogicalDiskCollector{
 		query:          query,
 		paths:          make(map[string]pathInfo),
 		includeFilters: make([]string, len(driveFilters.Include)),
@@ -97,7 +97,7 @@ func newLogicalDiskCollector(config map[string]interface{}, logger *logger.Logge
 		}
 	}
 
-	fmt.Printf("Initializing storage collector with filters - Include: %v, Exclude: %v\n",
+	fmt.Printf("Initializing logical disk collector with filters - Include: %v, Exclude: %v\n",
 		collector.includeFilters, collector.excludeFilters)
 
 	if err := collector.initializeCounters(); err != nil {
@@ -114,7 +114,7 @@ func newLogicalDiskCollector(config map[string]interface{}, logger *logger.Logge
 }
 
 // shouldIncludeDrive vérifie si un disque doit être inclus selon les filtres
-func (w *windowsStorageCollector) shouldIncludeDrive(drive string) bool {
+func (w *windowsLogicalDiskCollector) shouldIncludeDrive(drive string) bool {
 	// Si la liste d'inclusion est vide, tout est inclus par défaut
 	isIncluded := len(w.includeFilters) == 0
 
@@ -153,10 +153,10 @@ func (w *windowsStorageCollector) shouldIncludeDrive(drive string) bool {
 	return true
 }
 
-func (w *windowsStorageCollector) initializeCounters() error {
-	fmt.Printf("Initializing storage probe with counters\n")
+func (w *windowsLogicalDiskCollector) initializeCounters() error {
+	fmt.Printf("Initializing logical disk probe with counters\n")
 
-	for metricName, def := range storageCounterPaths {
+	for metricName, def := range logicaldiskCounterPaths {
 		if def.instance == "*" {
 			// Obtenir toutes les instances de disques logiques
 			instances, err := pdh.GetInstancesList("LogicalDisk", false)
@@ -199,7 +199,7 @@ func (w *windowsStorageCollector) initializeCounters() error {
 	return nil
 }
 
-func (w *windowsStorageCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, error) {
+func (w *windowsLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, error) {
 	if !w.initialized {
 		if err := w.query.Collect(); err != nil {
 			return nil, fmt.Errorf("failed initial sample collection: %v", err)
@@ -260,7 +260,7 @@ func (w *windowsStorageCollector) Collect(timestamp time.Time) ([]data_store.Dat
 	return dataPoints, nil
 }
 
-func (w *windowsStorageCollector) Close() error {
+func (w *windowsLogicalDiskCollector) Close() error {
 	if w.query != nil {
 		w.query.Close()
 	}

@@ -20,7 +20,7 @@ type unixCollector struct {
 	logger *logger.Logger
 }
 
-func newCollector(config map[string]interface{}, logger *logger.Logger) (osCollector, error) {
+func newCPUCollector(config map[string]interface{}, logger *logger.Logger) (osCollector, error) {
 	return &unixCollector{
 		logger: logger,
 	}, nil
