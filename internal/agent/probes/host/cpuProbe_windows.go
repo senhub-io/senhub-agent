@@ -104,7 +104,7 @@ type windowsCollector struct {
 	initialized bool
 }
 
-func newCollector(config map[string]interface{}, logger *logger.Logger) (osCollector, error) {
+func newCPUCollector(config map[string]interface{}, logger *logger.Logger) (osCollector, error) {
 	query, err := pdh.NewQuery()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PDH query: %v", err)
@@ -129,33 +129,41 @@ func newCollector(config map[string]interface{}, logger *logger.Logger) (osColle
 }
 
 // shouldIncludeInstance vérifie si une instance doit être incluse selon les filtres
+// Amélioration de shouldIncludeInstance
 func (w *windowsCollector) shouldIncludeInstance(instance string) bool {
+	fmt.Printf("Checking instance '%s' against filters - Include: %v, Exclude: %v\n",
+		instance, instanceFilters.Include, instanceFilters.Exclude)
+
 	// Si la liste d'inclusion est vide, tout est inclus par défaut
-	isIncluded := len(instanceFilters.Include) == 0
+	if len(instanceFilters.Include) == 0 {
+		// Vérifier uniquement les exclusions
+		for _, excludedInstance := range instanceFilters.Exclude {
+			if excludedInstance == instance {
+				fmt.Printf("Instance '%s' excluded by filter\n", instance)
+				return false
+			}
+		}
+		fmt.Printf("Instance '%s' included (no include filters, not in exclude list)\n", instance)
+		return true
+	}
 
 	// Si la liste d'inclusion n'est pas vide, vérifie si l'instance y est
 	for _, includedInstance := range instanceFilters.Include {
 		if includedInstance == instance {
-			isIncluded = true
-			break
+			// Vérifier que l'instance n'est pas dans la liste d'exclusion
+			for _, excludedInstance := range instanceFilters.Exclude {
+				if excludedInstance == instance {
+					fmt.Printf("Instance '%s' found in include list but excluded\n", instance)
+					return false
+				}
+			}
+			fmt.Printf("Instance '%s' found in include list and not excluded\n", instance)
+			return true
 		}
 	}
 
-	// Si l'instance n'est pas incluse, pas besoin de vérifier les exclusions
-	if !isIncluded {
-		fmt.Printf("Instance %s not in include list\n", instance)
-		return false
-	}
-
-	// Vérifie si l'instance est dans la liste d'exclusion
-	for _, excludedInstance := range instanceFilters.Exclude {
-		if excludedInstance == instance {
-			fmt.Printf("Instance %s found in exclude list\n", instance)
-			return false
-		}
-	}
-
-	return true
+	fmt.Printf("Instance '%s' not in include list\n", instance)
+	return false
 }
 
 func (w *windowsCollector) initializeCounters() error {
@@ -169,13 +177,11 @@ func (w *windowsCollector) initializeCounters() error {
 			}
 			objectName := parts[1]
 
-			// Obtenir toutes les instances, y compris _Total
 			instances, err := pdh.GetInstancesList(objectName, false)
 			if err != nil {
 				return fmt.Errorf("failed to get %s instances: %v", objectName, err)
 			}
 
-			// Ajouter _Total à la liste des instances s'il n'y est pas déjà
 			hasTotal := false
 			for _, instance := range instances {
 				if instance == "_Total" {
@@ -188,21 +194,24 @@ func (w *windowsCollector) initializeCounters() error {
 			}
 
 			for _, instance := range instances {
-				// Applique les filtres d'instance
 				if !w.shouldIncludeInstance(instance) {
-					fmt.Printf("Skipping instance %s due to filters\n", instance)
+					fmt.Printf("Instance %s skipped due to filters\n", instance)
 					continue
 				}
 
 				path := pdh.BuildCounterPath(def.path, instance)
-				w.paths[metricName] = pathInfo{
+				// Création d'une clé unique pour chaque combinaison métrique/instance
+				uniqueKey := fmt.Sprintf("%s|%s", metricName, instance)
+				w.paths[uniqueKey] = pathInfo{
 					path:     path,
 					instance: instance,
 				}
 
-				fmt.Printf("Adding counter %s with path: %s (instance: %s)\n", metricName, path, instance)
+				fmt.Printf("Adding counter %s with path: %s (instance: %s)\n",
+					metricName, path, instance)
 				if err := w.query.AddCounter(path); err != nil {
-					return fmt.Errorf("failed to add counter %s (instance %s): %v", metricName, instance, err)
+					return fmt.Errorf("failed to add counter %s (instance %s): %v",
+						metricName, instance, err)
 				}
 			}
 		} else {
@@ -225,14 +234,26 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	fmt.Printf("\nStarting metrics collection at %v\n", timestamp)
+	fmt.Printf("Number of paths to collect: %d\n", len(w.paths))
+
+	// Afficher tous les chemins enregistrés
+	fmt.Println("\nRegistered paths:")
+	for name, pathInfo := range w.paths {
+		fmt.Printf("- %s: path=%s, instance=%s\n", name, pathInfo.path, pathInfo.instance)
+	}
+
 	if !w.initialized {
+		fmt.Println("Initializing first collection...")
 		if err := w.query.Collect(); err != nil {
 			return nil, fmt.Errorf("failed initial sample collection: %v", err)
 		}
 		time.Sleep(1 * time.Second)
 		w.initialized = true
+		fmt.Println("First collection initialized")
 	}
 
+	fmt.Println("\nCollecting metrics...")
 	if err := w.query.Collect(); err != nil {
 		return nil, fmt.Errorf("failed to collect PDH metrics: %v", err)
 	}
@@ -241,11 +262,17 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 	if err != nil {
 		return nil, fmt.Errorf("error getting host tags: %v", err)
 	}
+	fmt.Printf("Base tags: %v\n", baseTags)
 
 	metrics := NewCPUMetrics()
 	dataPoints := make([]data_store.DataPoint, 0, len(w.paths))
 
+	fmt.Println("\nProcessing individual metrics:")
 	for name, pathInfo := range w.paths {
+		fmt.Printf("\nProcessing metric '%s' with path '%s'\n", name, pathInfo.path)
+
+		metricName := strings.Split(name, "|")[0]
+
 		value, err := w.query.GetCounterValue(pathInfo.path)
 		if err != nil {
 			fmt.Printf("Error getting counter value for %s: %v\n", name, err)
@@ -257,6 +284,7 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 
 		// Ajout du tag d'instance si présent
 		if pathInfo.instance != "" {
+			fmt.Printf("Adding instance tag: %s\n", pathInfo.instance)
 			metricTags = append(metricTags, tags.Tag{
 				Key:     "instance",
 				Value:   pathInfo.instance,
@@ -267,16 +295,19 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 		// Stockage de la métrique
 		metrics.SetMetric(name, value)
 
-		dataPoints = append(dataPoints, data_store.DataPoint{
-			Name:      name,
+		dataPoint := data_store.DataPoint{
+			Name:      metricName, // Utiliser metricName au lieu de strings.Split(name, "_")[0]
 			Timestamp: timestamp,
 			Value:     float32(value),
 			Tags:      metricTags,
-		})
+		}
+		dataPoints = append(dataPoints, dataPoint)
 
-		fmt.Printf("Collected metric %s = %f, tags: %v\n", name, value, metricTags)
+		fmt.Printf("Collected metric %s = %f\n", name, value)
+		fmt.Printf("Tags for this metric: %v\n", metricTags)
 	}
 
+	fmt.Printf("\nCollection completed. Total metrics collected: %d\n", len(dataPoints))
 	return dataPoints, nil
 }
 
