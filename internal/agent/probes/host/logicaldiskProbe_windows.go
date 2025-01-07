@@ -36,7 +36,7 @@ var logicaldiskCounterPaths = map[string]LogicalDiskMetricDefinition{
 		path:     "\\LogicalDisk\\Free Megabytes",
 		instance: "*",
 	},
-	"disk_total_bytes": {
+	"disk_free_percent": {
 		path:     "\\LogicalDisk\\% Free Space",
 		instance: "*",
 	},
