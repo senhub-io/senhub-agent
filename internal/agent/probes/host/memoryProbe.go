@@ -53,7 +53,7 @@ func NewMemoryProbe(config map[string]interface{}, logger *logger.Logger) (types
 }
 
 func (p *memoryProbe) GetName() string {
-	return "host_memory"
+	return "memoryProbe"
 }
 
 func (p *memoryProbe) ShouldStart() bool {

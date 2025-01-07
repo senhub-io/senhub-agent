@@ -37,9 +37,9 @@ func NewCpuProbe(config map[string]interface{}, logger *logger.Logger) (types.Pr
 	var err error
 	switch runtime.GOOS {
 	case "windows":
-		probe.collector, err = newCollector(config, logger)
+		probe.collector, err = newCPUCollector(config, logger)
 	case "linux", "darwin", "freebsd", "openbsd", "netbsd":
-		probe.collector, err = newCollector(config, logger)
+		probe.collector, err = newCPUCollector(config, logger)
 	default:
 		return nil, fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
 	}
@@ -52,7 +52,7 @@ func NewCpuProbe(config map[string]interface{}, logger *logger.Logger) (types.Pr
 }
 
 func (p *cpuProbe) GetName() string {
-	return "host_cpu"
+	return "cpuProbe"
 }
 
 func (p *cpuProbe) ShouldStart() bool {

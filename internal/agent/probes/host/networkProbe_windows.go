@@ -19,35 +19,35 @@ import (
 
 var networkCounterPaths = map[string]MetricDefinition{
 	"bytes_sent": {
-		path:     "\\Network Adapter\\Bytes Sent/sec",
+		path:     "\\Network Interface\\Bytes Sent/sec",
 		instance: "*",
 	},
 	"bytes_received": {
-		path:     "\\Network Adapter\\Bytes Received/sec",
+		path:     "\\Network Interface\\Bytes Received/sec",
 		instance: "*",
 	},
 	"packets_sent": {
-		path:     "\\Network Adapter\\Packets Sent/sec",
+		path:     "\\Network Interface\\Packets Sent/sec",
 		instance: "*",
 	},
 	"packets_received": {
-		path:     "\\Network Adapter\\Packets Received/sec",
+		path:     "\\Network Interface\\Packets Received/sec",
 		instance: "*",
 	},
 	"errors_sent": {
-		path:     "\\Network Adapter\\Packets Outbound Errors",
+		path:     "\\Network Interface\\Packets Outbound Errors",
 		instance: "*",
 	},
 	"errors_received": {
-		path:     "\\Network Adapter\\Packets Received Errors",
+		path:     "\\Network Interface\\Packets Received Errors",
 		instance: "*",
 	},
 	"discards_sent": {
-		path:     "\\Network Adapter\\Packets Outbound Discarded",
+		path:     "\\Network Interface\\Packets Outbound Discarded",
 		instance: "*",
 	},
 	"discards_received": {
-		path:     "\\Network Adapter\\Packets Received Discarded",
+		path:     "\\Network Interface\\Packets Received Discarded",
 		instance: "*",
 	},
 }
