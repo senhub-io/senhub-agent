@@ -14,11 +14,11 @@ func GetHostTags() ([]tags.Tag, error) {
 	}
 
 	return []tags.Tag{
-		{Key: "hostname", Value: hostInfo.Hostname, Private: false},
+		{Key: "host", Value: hostInfo.Hostname, Private: false},
 		{Key: "os", Value: hostInfo.OS, Private: false},
 		{Key: "platform", Value: hostInfo.Platform, Private: false},
-		{Key: "platform_version", Value: hostInfo.PlatformVersion, Private: false},
-		{Key: "kernel_version", Value: hostInfo.KernelVersion, Private: false},
+		//  {Key: "platform_version", Value: hostInfo.PlatformVersion, Private: false},
+		//  {Key: "kernel_version", Value: hostInfo.KernelVersion, Private: false},
 	}, nil
 }
 

@@ -18,5 +18,5 @@ var probeConstructors = map[string]ProbeConstructor{
 	"memory":               host.NewMemoryProbe,
 	"cpu":                  host.NewCpuProbe,
 	"network":              host.NewNetworkProbe,
-	"storage":              host.NewStorageProbe,
+	"logicaldisk":          host.NewLogicalDiskProbe,
 }

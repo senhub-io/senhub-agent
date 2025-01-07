@@ -13,28 +13,28 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-// storageCollector defines the interface for OS-specific storage metric collectors
-type storageCollector interface {
+// logicaldiskCollector defines the interface for OS-specific logicaldisk metric collectors
+type logicaldiskCollector interface {
 	Collect(timestamp time.Time) ([]data_store.DataPoint, error)
 	Close() error
 }
 
-// storageProbe représente le collecteur de métriques de stockage
-type storageProbe struct {
+// logicaldiskProbe represents the logical disk metrics collector
+type logicaldiskProbe struct {
 	rawConfig map[string]interface{}
 	logger    *logger.Logger
-	collector storageCollector
+	collector logicaldiskCollector
 	interval  time.Duration
 }
 
-// NewStorageProbe crée une nouvelle instance de Storage probe
-func NewStorageProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
+// newLogicalDiskCollector creates a new Storage probe instance
+func NewLogicalDiskProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
 	interval := 30 * time.Second
 	if cfgInterval, ok := config["interval"].(int); ok {
 		interval = time.Duration(cfgInterval) * time.Second
 	}
 
-	probe := &storageProbe{
+	probe := &logicaldiskProbe{
 		rawConfig: config,
 		logger:    logger,
 		interval:  interval,
@@ -51,48 +51,48 @@ func NewStorageProbe(config map[string]interface{}, logger *logger.Logger) (type
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to create storage collector: %v", err)
+		return nil, fmt.Errorf("failed to create logicaldisk collector: %v", err)
 	}
 	return probe, nil
 }
 
-func (p *storageProbe) GetName() string {
-	return "host_storage"
+func (p *logicaldiskProbe) GetName() string {
+	return "logicaldiskProbe"
 }
 
-func (p *storageProbe) ShouldStart() bool {
+func (p *logicaldiskProbe) ShouldStart() bool {
 	return true
 }
 
-func (p *storageProbe) GetInterval() time.Duration {
+func (p *logicaldiskProbe) GetInterval() time.Duration {
 	return p.interval
 }
 
-func (p *storageProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *logicaldiskProbe) Collect() ([]data_store.DataPoint, error) {
 	timestamp := time.Now()
 	metrics, err := p.collector.Collect(timestamp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to collect storage metrics: %v", err)
+		return nil, fmt.Errorf("failed to collect logicaldisk metrics: %v", err)
 	}
 	return metrics, nil
 }
 
-func (p *storageProbe) OnStart(quitChannel chan struct{}) error {
+func (p *logicaldiskProbe) OnStart(quitChannel chan struct{}) error {
 	return nil
 }
 
-func (p *storageProbe) OnShutdown(ctx context.Context) error {
+func (p *logicaldiskProbe) OnShutdown(ctx context.Context) error {
 	if p.collector != nil {
 		return p.collector.Close()
 	}
 	return nil
 }
 
-func (p *storageProbe) IsHealthy() bool {
+func (p *logicaldiskProbe) IsHealthy() bool {
 	_, err := p.Collect()
 	return err == nil
 }
 
-func (p *storageProbe) String() string {
-	return fmt.Sprintf("StorageProbe{name=%s, interval=%v}", p.GetName(), p.GetInterval())
+func (p *logicaldiskProbe) String() string {
+	return fmt.Sprintf("logicaldiskProbe{name=%s, interval=%v}", p.GetName(), p.GetInterval())
 }
