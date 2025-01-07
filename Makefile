@@ -20,7 +20,6 @@ build: build-windows build-linux build-darwin ## Build binaries
 
 build-windows: ## Build for Windows
 		@env GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="-s -w -X ${PACKAGE}.version=$(VERSION) -X ${PACKAGE}.commit_hash=$(COMMIT_HASH) -X ${PACKAGE}.env=${ENV}"  ./cmd/agent/main.go
-		@env GOOS=windows GOARCH=amd64 go build -o $(SERVICE) -ldflags="-s -w -X ${PACKAGE}.version=$(VERSION) -X ${PACKAGE}.commit_hash=$(COMMIT_HASH) -X ${PACKAGE}.env=${ENV}"  ./cmd/service/main.go
 build-linux: ## Build for Linux
 		@env GOOS=linux GOARCH=amd64 go build -o $(LINUX_AMD64) -ldflags="-s -w -X ${PACKAGE}.version=$(VERSION) -X ${PACKAGE}.commit_hash=$(COMMIT_HASH) -X ${PACKAGE}.env=${ENV}"  ./cmd/agent/main.go
 		@env GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64) -ldflags="-s -w -X ${PACKAGE}.version=$(VERSION) -X ${PACKAGE}.commit_hash=$(COMMIT_HASH) -X ${PACKAGE}.env=${ENV}"  ./cmd/agent/main.go
