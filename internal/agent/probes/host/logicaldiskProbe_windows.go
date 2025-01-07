@@ -226,12 +226,6 @@ func (w *windowsLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store
 			continue
 		}
 
-		// Ajustement des valeurs selon la métrique
-		if strings.Contains(name, "free_bytes") {
-			// Convertir MB en bytes
-			value = value * 1024 * 1024
-		}
-
 		// Préparation des tags
 		metricTags := append([]tags.Tag{}, baseTags...)
 		if pathInfo.instance != "" && pathInfo.instance != "_Total" {
