@@ -9,9 +9,11 @@ import (
 
 // Those variables are set by the build system
 var (
-	version     = "n/a"
-	commit_hash = "n/a"
-	env         = "n/a"
+	version    string
+	commitHash string
+	buildTime  string
+	goVersion  string
+	env        string
 )
 
 type CliArgs struct {
@@ -37,6 +39,16 @@ type ParsedArgs struct {
 	Env        string
 	Version    string
 	CommitHash string
+}
+
+func GetVersionInfo() map[string]string {
+	return map[string]string{
+		"version":    version,
+		"commitHash": commitHash,
+		"buildTime":  buildTime,
+		"goVersion":  goVersion,
+		"env":        env,
+	}
 }
 
 func MustParse() *ParsedArgs {
@@ -80,7 +92,7 @@ func MustParse() *ParsedArgs {
 		}
 		os.Exit(0)
 	case args.Version != nil:
-		log.Printf("Development version: %s", commit_hash)
+		log.Printf("Development version: %s", commitHash)
 		if parsedEnv == "development" {
 			log.Printf("Development build")
 		}
@@ -106,6 +118,6 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 		Verbose:           args.Verbose,
 		Env:               environment,
 		Version:           version,
-		CommitHash:        commit_hash,
+		CommitHash:        commitHash,
 	}
 }
