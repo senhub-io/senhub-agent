@@ -1,12 +1,11 @@
+// internal/agent/probes/host/networkProbe_unix.go
 //go:build !windows
 
-// internal/agent/probes/host/networkProbe_unix.go
-//
 package host
 
 import (
 	"fmt"
-	psnet "github.com/shirou/gopsutil/v3/net" // Renommé pour éviter le conflit
+	psnet "github.com/shirou/gopsutil/v3/net"
 	"net"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -15,9 +14,75 @@ import (
 	"time"
 )
 
-type counterWithTime struct {
-	Stats     psnet.IOCountersStat
-	Timestamp time.Time
+type interfaceInfo struct {
+	isMonitored bool
+	addresses   []string
+	err         error
+}
+
+func getValidIPAddresses(addrs []net.Addr) []string {
+	var validIPs []string
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+
+		// Skip link-local addresses
+		if ipNet.IP.IsLinkLocalUnicast() {
+			continue
+		}
+
+		validIPs = append(validIPs, ipNet.IP.String())
+	}
+	return validIPs
+}
+
+func (u *unixNetworkCollector) isInterfaceMonitored(interfaceName string) interfaceInfo {
+	iface, err := net.InterfaceByName(interfaceName)
+	if err != nil {
+		return interfaceInfo{
+			isMonitored: false,
+			err:         fmt.Errorf("error getting interface %s: %v", interfaceName, err),
+		}
+	}
+
+	// Skip if interface is loopback
+	if iface.Flags&net.FlagLoopback != 0 {
+		fmt.Printf("Interface %s is loopback, skipping\n", interfaceName)
+		return interfaceInfo{isMonitored: false}
+	}
+
+	// Check if interface is up
+	if iface.Flags&net.FlagUp == 0 {
+		fmt.Printf("Interface %s is not up, skipping\n", interfaceName)
+		return interfaceInfo{isMonitored: false}
+	}
+
+	// Check if interface is running
+	if iface.Flags&net.FlagRunning == 0 {
+		fmt.Printf("Interface %s is not running, skipping\n", interfaceName)
+		return interfaceInfo{isMonitored: false}
+	}
+
+	// Check if interface has addresses
+	addresses, err := iface.Addrs()
+	if err != nil {
+		return interfaceInfo{
+			isMonitored: false,
+			err:         fmt.Errorf("error getting addresses for interface %s: %v", interfaceName, err),
+		}
+	}
+
+	validIPs := getValidIPAddresses(addresses)
+	if len(validIPs) == 0 {
+		return interfaceInfo{isMonitored: false}
+	}
+
+	return interfaceInfo{
+		isMonitored: true,
+		addresses:   validIPs,
+	}
 }
 
 type unixNetworkCollector struct {
@@ -25,38 +90,16 @@ type unixNetworkCollector struct {
 	lastCounters map[string]counterWithTime
 }
 
+type counterWithTime struct {
+	Stats     psnet.IOCountersStat
+	Timestamp time.Time
+}
+
 func newNetworkCollector(config map[string]interface{}, logger *logger.Logger) (osNetworkCollector, error) {
 	return &unixNetworkCollector{
 		logger:       logger,
 		lastCounters: make(map[string]counterWithTime),
 	}, nil
-}
-
-func (u *unixNetworkCollector) isInterfaceMonitored(interfaceName string) (bool, error) {
-	iface, err := net.InterfaceByName(interfaceName)
-	if err != nil {
-		return false, fmt.Errorf("error getting interface %s: %v", interfaceName, err)
-	}
-
-	// Exclure si l'interface est loopback
-	if iface.Flags&net.FlagLoopback != 0 {
-		fmt.Printf("Interface %s is loopback, skipping\n", interfaceName)
-		return false, nil
-	}
-
-	// Vérifier si l'interface est up
-	if iface.Flags&net.FlagUp == 0 {
-		fmt.Printf("Interface %s is not up, skipping\n", interfaceName)
-		return false, nil
-	}
-
-	// Vérifier si l'interface est running
-	if iface.Flags&net.FlagRunning == 0 {
-		fmt.Printf("Interface %s is not running, skipping\n", interfaceName)
-		return false, nil
-	}
-
-	return true, nil
 }
 
 func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, error) {
@@ -73,16 +116,17 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 	dataPoints := make([]data_store.DataPoint, 0)
 
 	for _, counter := range counters {
-		// Vérifier si l'interface doit être monitorée
-		shouldMonitor, err := u.isInterfaceMonitored(counter.Name)
-		if err != nil {
-			fmt.Printf("Error checking interface %s status: %v\n", counter.Name, err)
+		// Check if interface should be monitored and get its addresses
+		interfaceInfo := u.isInterfaceMonitored(counter.Name)
+		if interfaceInfo.err != nil {
+			fmt.Printf("Error checking interface %s status: %v\n", counter.Name, interfaceInfo.err)
 			continue
 		}
-		if !shouldMonitor {
+		if !interfaceInfo.isMonitored {
 			continue
 		}
 
+		// Create base tags for this interface
 		interfaceTags := append([]tags.Tag{}, baseTags...)
 		interfaceTags = append(interfaceTags, tags.Tag{
 			Key:     "interface",
@@ -90,7 +134,26 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 			Private: false,
 		})
 
-		// Calcul des taux par seconde si nous avons des données précédentes
+		// Add IP addresses as tags
+		if len(interfaceInfo.addresses) > 0 {
+			// First IP with "ip" tag
+			interfaceTags = append(interfaceTags, tags.Tag{
+				Key:     "ip",
+				Value:   interfaceInfo.addresses[0],
+				Private: false,
+			})
+
+			// Additional IPs with indices
+			for i := 1; i < len(interfaceInfo.addresses); i++ {
+				interfaceTags = append(interfaceTags, tags.Tag{
+					Key:     fmt.Sprintf("ip_%d", i),
+					Value:   interfaceInfo.addresses[i],
+					Private: false,
+				})
+			}
+		}
+
+		// Calculate rates per second if we have previous data
 		if lastCounter, exists := u.lastCounters[counter.Name]; exists {
 			timeDiff := timestamp.Sub(lastCounter.Timestamp).Seconds()
 			if timeDiff > 0 {
@@ -119,7 +182,7 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 			}
 		}
 
-		// Sauvegarde des compteurs actuels pour la prochaine itération
+		// Save current counters for next iteration
 		u.lastCounters[counter.Name] = counterWithTime{
 			Stats:     counter,
 			Timestamp: timestamp,

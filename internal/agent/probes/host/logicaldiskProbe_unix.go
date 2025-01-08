@@ -1,6 +1,6 @@
 //go:build !windows
 
-// internal/agent/probes/host/logicaldiskProbe_unix.go
+// Package host provides system monitoring capabilities
 //
 package host
 
@@ -18,53 +18,75 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type unixLogicalDiskCollector struct {
-	excludedFsTypes     []string
-	excludedMountPoints []string
-}
+type unixLogicalDiskCollector struct{}
 
+// newLogicalDiskCollector creates a new collector instance
 func newLogicalDiskCollector(config map[string]interface{}, logger *logger.Logger) (logicaldiskCollector, error) {
-	collector := &unixLogicalDiskCollector{
-		// List of filesystem types to exclude from monitoring
-		excludedFsTypes: []string{
-			"proc", "sysfs", "fusectl", "debugfs", "securityfs", "devpts", "cgroup",
-			"cgroup2", "pstore", "bpf", "hugetlbfs", "mqueue", "devtmpfs", "none",
-			"sunrpc", "ramfs", "tmpfs", "tracefs", "nsfs", "autofs", "binfmt_misc",
-			"rpc_pipefs", "nfsd", "overlay", "configfs", "selinuxfs",
-		},
-		// List of mount points to exclude from monitoring
-		excludedMountPoints: []string{
-			"/proc", "/sys", "/dev", "/run",
-		},
-	}
-
-	// Override exclusions from configuration if specified
-	if excludedTypes, ok := config["excluded_fs_types"].([]string); ok {
-		collector.excludedFsTypes = excludedTypes
-	}
-	if excludedMounts, ok := config["excluded_mount_points"].([]string); ok {
-		collector.excludedMountPoints = excludedMounts
-	}
-
-	return collector, nil
+	return &unixLogicalDiskCollector{}, nil
 }
 
-func (c *unixLogicalDiskCollector) shouldCollectMount(fsType string, mountPoint string) bool {
-	// Check if filesystem type is excluded
-	for _, excluded := range c.excludedFsTypes {
-		if fsType == excluded {
-			return false
-		}
+// shouldCollectMount determines if metrics should be collected for a given filesystem
+// using the same logic as the df command
+func (c *unixLogicalDiskCollector) shouldCollectMount(fsType string, mountPoint string, device string) bool {
+	// Skip if device is "none" or empty
+	if device == "none" || device == "" {
+		return false
 	}
 
-	// Check if mount point is excluded
-	for _, excluded := range c.excludedMountPoints {
-		if mountPoint == excluded {
-			return false
-		}
+	// Skip special filesystem types that df doesn't show
+	excludedTypes := map[string]bool{
+		"sysfs":       true,
+		"proc":        true,
+		"devpts":      true,
+		"securityfs":  true,
+		"cgroup2":     true,
+		"pstore":      true,
+		"bpf":         true,
+		"fusectl":     true,
+		"debugfs":     true,
+		"tracefs":     true,
+		"configfs":    true,
+		"ramfs":       true,
+		"hugetlbfs":   true,
+		"mqueue":      true,
+		"nsfs":        true,
+		"autofs":      true,
+		"binfmt_misc": true,
+		"squashfs":    true,
+		"overlay":     true,
 	}
 
-	return true
+	if excludedTypes[fsType] {
+		return false
+	}
+
+	// Handle tmpfs specially - only include specific mount points
+	if fsType == "tmpfs" {
+		// Liste explicite des points de montage autorisés
+		allowedTmpfsMounts := map[string]bool{
+			"/run":           true,
+			"/dev/shm":       true,
+			"/run/lock":      true,
+			"/run/user/1001": true,
+		}
+		return allowedTmpfsMounts[mountPoint]
+	}
+
+	// Include standard filesystem types
+	standardFS := map[string]bool{
+		"ext4": true,
+		"ext3": true,
+		"ext2": true,
+		"xfs":  true,
+		"vfat": true,
+		"fuse": true,
+	}
+
+	if standardFS[fsType] {
+		return true
+	}
+
+	return false
 }
 
 func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, error) {
@@ -83,7 +105,7 @@ func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.Da
 	}
 
 	for _, mount := range mounts {
-		if !c.shouldCollectMount(mount.fstype, mount.mountpoint) {
+		if !c.shouldCollectMount(mount.fstype, mount.mountpoint, mount.device) {
 			continue
 		}
 
@@ -106,23 +128,25 @@ func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.Da
 		}
 
 		// Calculate inode metrics
-		totalInodes := stat.Files
-		freeInodes := stat.Ffree
+		totalInodes := uint64(stat.Files)
+		freeInodes := uint64(stat.Ffree)
 		usedInodes := totalInodes - freeInodes
 
-		var inodeUsedPercent float32
+		// Calculate inode usage percentage
+		var inodesUsedPercent float32
 		if totalInodes > 0 {
-			inodeUsedPercent = float32(usedInodes) / float32(totalInodes) * 100
+			inodesUsedPercent = float32(usedInodes) / float32(totalInodes) * 100
 		}
 
-		// Prepare mount-specific tags
+		// Create mount-specific tags
 		mountTags := append([]tags.Tag{}, baseTags...)
 		mountTags = append(mountTags,
 			tags.Tag{Key: "mount_point", Value: mount.mountpoint},
 			tags.Tag{Key: "fs_type", Value: mount.fstype},
+			tags.Tag{Key: "device", Value: mount.device},
 		)
 
-		// Add metrics
+		// Define metrics to collect
 		metrics := []struct {
 			name  string
 			value float32
@@ -135,9 +159,10 @@ func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.Da
 			{"fs_inodes_total", float32(totalInodes)},
 			{"fs_inodes_free", float32(freeInodes)},
 			{"fs_inodes_used", float32(usedInodes)},
-			{"fs_inodes_used_percent", inodeUsedPercent},
+			{"fs_inodes_used_percent", inodesUsedPercent},
 		}
 
+		// Add data points
 		for _, metric := range metrics {
 			dataPoints = append(dataPoints, data_store.DataPoint{
 				Name:      metric.name,
@@ -160,7 +185,7 @@ type mountInfo struct {
 func (c *unixLogicalDiskCollector) getMountPoints() ([]mountInfo, error) {
 	var mounts []mountInfo
 
-	// Read /proc/mounts on Linux
+	// Read /proc/mounts
 	mountsFile, err := unix.Open("/proc/mounts", unix.O_RDONLY, 0)
 	if err != nil {
 		return nil, fmt.Errorf("error opening /proc/mounts: %v", err)
@@ -177,16 +202,19 @@ func (c *unixLogicalDiskCollector) getMountPoints() ([]mountInfo, error) {
 		if n == 0 {
 			break
 		}
+
 		data := string(buf[:n])
 		lines := strings.Split(data, "\n")
 		for _, line := range lines {
 			if line == "" {
 				continue
 			}
+
 			fields := strings.Fields(line)
 			if len(fields) < 3 {
 				continue
 			}
+
 			mounts = append(mounts, mountInfo{
 				device:     fields[0],
 				mountpoint: fields[1],
@@ -199,6 +227,7 @@ func (c *unixLogicalDiskCollector) getMountPoints() ([]mountInfo, error) {
 	return mounts, nil
 }
 
+// Close performs any necessary cleanup
 func (c *unixLogicalDiskCollector) Close() error {
 	return nil
 }
