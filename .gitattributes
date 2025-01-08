@@ -1,5 +1,9 @@
 # Auto detect text files and perform LF normalization
-* text=autoa
+* text=auto
 *.go text eol=lf
 *.mod text eol=lf
 *.sum text eol=lf
+
+# Windows files
+*.{cmd,[cC][mM][dD]} text eol=crlf
+*.{bat,[bB][aA][tT]} text eol=crlf
