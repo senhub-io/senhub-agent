@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"os/user"
+	"runtime"
 	"senhub-agent.go/internal/agent"
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 	"syscall"
@@ -16,7 +18,7 @@ import (
 type program struct {
 	agent agent.Agent
 	done  chan bool
-	args  *agentCliArgs.ParsedArgs // Changed from CliArgs to ParsedArgs
+	args  *agentCliArgs.ParsedArgs
 }
 
 func (p *program) Start(s service.Service) error {
@@ -44,110 +46,183 @@ func (p *program) run() {
 	}
 }
 
+// checkPrivileges verifies if the program is running with the required privileges
+func checkPrivileges() error {
+	if runtime.GOOS == "windows" {
+		// Check for administrator privileges on Windows
+		_, err := os.Open("\\\\.\\PHYSICALDRIVE0")
+		if err != nil {
+			return fmt.Errorf("this program must be run with administrator privileges. Please right-click and select 'Run as administrator'")
+		}
+	} else {
+		// Check for root privileges on Unix-like systems
+		currentUser, err := user.Current()
+		if err != nil {
+			return fmt.Errorf("unable to determine current user: %v", err)
+		}
+
+		if currentUser.Uid != "0" {
+			return fmt.Errorf("this program must be run with root privileges. Please use 'sudo' or run as root")
+		}
+	}
+	return nil
+}
+
 func main() {
+	// Check privileges first
+	if err := checkPrivileges(); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Show help if no arguments or help is requested
 	if len(os.Args) <= 1 || os.Args[1] == "--help" || os.Args[1] == "-h" {
 		showHelp()
 		return
 	}
 
-	// Check if we have service-related commands
+	// If first argument is a service command
 	command := os.Args[1]
 	switch command {
 	case "install", "uninstall", "start", "stop", "status", "run":
-		// Parse all remaining arguments for the service
-		var authKey, serverUrl string
-		for i := 2; i < len(os.Args); i++ {
-			if os.Args[i] == "--authentication-key" && i+1 < len(os.Args) {
-				authKey = os.Args[i+1]
-				i++
-			} else if os.Args[i] == "--server-url" && i+1 < len(os.Args) {
-				serverUrl = os.Args[i+1]
-				i++
-			}
+		// For simple commands without required args, handle directly
+		if command == "start" || command == "stop" || command == "status" || command == "uninstall" {
+			handleServiceCommand(command, &agentCliArgs.ParsedArgs{})
+			return
 		}
-		handleServiceCommand(command, authKey, serverUrl)
+
+		// For commands requiring args, parse remaining arguments
+		serviceArgs := make([]string, 0)
+		if len(os.Args) > 2 {
+			serviceArgs = os.Args[2:]
+		}
+
+		// For install and run commands, we need authentication key
+		if (command == "install" || command == "run") && len(serviceArgs) == 0 {
+			showHelp()
+			return
+		}
+
+		// Parse remaining args as start arguments
+		os.Args = append([]string{os.Args[0]}, serviceArgs...)
+		args := agentCliArgs.MustParse()
+		handleServiceCommand(command, args)
 		return
 	default:
-		// If not a service command, let agent parse args normally
+		// If command is not recognized or no arguments provided, show help
+		if len(os.Args) <= 1 {
+			showHelp()
+			return
+		}
+
+		// Try to parse arguments for direct agent execution
 		args := agentCliArgs.MustParse()
+		if args == nil {
+			showHelp()
+			return
+		}
 		runAgent(args)
 	}
 }
 
-func handleServiceCommand(command, authKey, serverUrl string) {
+func handleServiceCommand(command string, args *agentCliArgs.ParsedArgs) {
+	// Check for required auth key when installing
+	if command == "install" && args.AuthenticationKey == "" {
+		fmt.Println("Error: Authentication key is required for installation")
+		fmt.Printf("\nUsage: %s install --authentication-key YOUR_KEY\n", os.Args[0])
+		os.Exit(1)
+	}
+
 	svcConfig := &service.Config{
-		Name:        "senhub-agent", // Nom unifié pour Windows et Linux
-		DisplayName: "SenHub Agent", // Nom affiché dans les interfaces
+		Name:        "senhub-agent",
+		DisplayName: "SenHub Agent",
 		Description: "SenHub Agent Service for monitoring and management",
 		Executable:  os.Args[0],
-		Arguments:   []string{"--authentication-key", authKey},
+		Arguments:   []string{"--authentication-key", args.AuthenticationKey},
 		Option: map[string]interface{}{
 			"SystemdScript": true,
 			"Restart":       "always",
 			"User":          "senhub",
 			"LogOutput":     true,
-			"ServiceName":   "senhub-agent.service", // Pour Linux
+			"ServiceName":   "senhub-agent.service",
 		},
 	}
 
-	if serverUrl != "" {
-		svcConfig.Arguments = append(svcConfig.Arguments, "--server-url", serverUrl)
+	// Add optional arguments to service config
+	if args.ServerUrl != "" {
+		svcConfig.Arguments = append(svcConfig.Arguments, "--server-url", args.ServerUrl)
+	}
+	if args.Verbose {
+		svcConfig.Arguments = append(svcConfig.Arguments, "--verbose")
 	}
 
 	prg := &program{
 		done: make(chan bool, 1),
+		args: args,
 	}
 
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
-		log.Fatal(err)
-	}
-
-	logger, err := s.Logger(nil)
-	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
 	}
 
 	switch command {
 	case "install":
-		if authKey == "" {
-			log.Fatal("Authentication key is required. Use: --authentication-key YOUR_KEY")
-		}
 		err = s.Install()
 		if err == nil {
-			logger.Info("Service installed successfully")
+			fmt.Println("Service installed successfully")
+			fmt.Printf("\nYou can now start the service with:\n    %s start\n", os.Args[0])
 		}
 	case "uninstall":
+		// Try to stop first
+		status, err := s.Status()
+		if err == nil && status == service.StatusRunning {
+			fmt.Println("Stopping service before uninstall...")
+			err = s.Stop()
+			if err != nil {
+				fmt.Printf("Error stopping service: %v\n", err)
+				os.Exit(1)
+			}
+			time.Sleep(2 * time.Second)
+		}
 		err = s.Uninstall()
 		if err == nil {
-			logger.Info("Service uninstalled successfully")
+			fmt.Println("Service uninstalled successfully")
 		}
 	case "start":
 		err = s.Start()
 		if err == nil {
-			logger.Info("Service started successfully")
+			fmt.Println("Service started successfully")
 		}
 	case "stop":
 		err = s.Stop()
 		if err == nil {
-			logger.Info("Service stopped successfully")
+			fmt.Println("Service stopped successfully")
 		}
 	case "status":
 		status, err := s.Status()
 		if err == nil {
-			statusText := getServiceStatusText(status)
-			fmt.Printf("Service status: %s\n", statusText)
+			fmt.Printf("Service status: %s\n", getServiceStatusText(status))
 		}
+	case "run":
+		runAgent(args)
+		return
 	}
 
 	if err != nil {
-		logger.Error(err)
-		log.Fatal(err)
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
 	}
 }
 
 func runAgent(args *agentCliArgs.ParsedArgs) {
+	// Configure logging based on verbose flag
+	if args.Verbose {
+		log.SetFlags(log.LstdFlags | log.Lshortfile | log.Lmicroseconds)
+		log.Println("Verbose logging enabled")
+	}
+
 	svcConfig := &service.Config{
 		Name:        "SenHubService",
 		DisplayName: "SenHub Agent Service",
@@ -156,6 +231,7 @@ func runAgent(args *agentCliArgs.ParsedArgs) {
 
 	prg := &program{
 		done: make(chan bool, 1),
+		args: args,
 	}
 
 	s, err := service.New(prg, svcConfig)
@@ -168,28 +244,40 @@ func runAgent(args *agentCliArgs.ParsedArgs) {
 		log.Fatal(err)
 	}
 
+	// Interactive mode (run command or direct execution)
 	if service.Interactive() {
 		log.Println("Running in interactive mode")
-		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-		defer stop()
+
+		// Start agent directly
+		if err := prg.Start(s); err != nil {
+			logger.Error("Failed to start agent: ", err)
+			log.Fatal(err)
+		}
+
+		// Setup signal handling
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 		go func() {
-			<-ctx.Done()
-			logger.Info("Graceful shutdown initiated, press Ctrl+C again to force")
-			if err := s.Stop(); err != nil {
+			sig := <-sigChan
+			log.Printf("Received signal %v, initiating shutdown...", sig)
+			if err := prg.Stop(s); err != nil {
 				logger.Error("Error stopping service: ", err)
 			}
 		}()
+
+		// Wait for completion
+		<-prg.done
+		log.Println("Agent stopped")
+		return
 	}
 
+	// Normal service mode
 	logger.Info("Starting service")
 	if err := s.Run(); err != nil {
 		logger.Error("Error running service: ", err)
 		log.Fatal(err)
 	}
-
-	<-prg.done
-	logger.Info("Graceful shutdown complete")
 }
 
 func getServiceStatusText(status service.Status) string {
@@ -214,7 +302,7 @@ Service Commands:
     start       Start the service
     stop        Stop the service
     status      Show service status
-    run         Run in console mode
+    run         Run in console mode (requires --authentication-key)
 
 Agent Options:
     --authentication-key KEY   Authentication key for the service (required)
@@ -225,7 +313,7 @@ Examples:
     %s install --authentication-key "your-key"
     %s start
     %s status
-    %s --authentication-key "your-key" --server-url "http://example.com"
+    %s run --authentication-key "your-key" --server-url "http://example.com"
 
 `, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
