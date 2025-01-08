@@ -11,6 +11,36 @@ ENV ?= production
 # Package to set version variable
 PACKAGE="senhub-agent.go/internal/agent/cliArgs"
 
+BUILD_TIME=$(shell date +%FT%T%z)
+GO_VERSION=$(shell go version | cut -d' ' -f3)
+
+# Modifier vos ldflags pour inclure ces informations
+LDFLAGS=-s -w \
+    -X '${PACKAGE}.version=$(VERSION)' \
+    -X '${PACKAGE}.commitHash=$(COMMIT_HASH)' \
+    -X '${PACKAGE}.buildTime=$(BUILD_TIME)' \
+    -X '${PACKAGE}.goVersion=$(GO_VERSION)' \
+    -X '${PACKAGE}.env=${ENV}'
+
+version-info:
+		@echo "Version:    $(VERSION)"
+		@echo "Commit:     $(COMMIT_HASH)"
+		@echo "Build time: $(BUILD_TIME)"
+		@echo "Go version: $(GO_VERSION)"
+		@echo "Env:        $(ENV)"
+
+check-version:
+    @if [ "$(VERSION)" = "" ]; then \
+        echo "ERROR: No version tag found" >&2; \
+        exit 1; \
+    fi
+
+bump-version:
+		@read -p "New version number (current: $(VERSION)): " new_version; \
+		git tag -a "v$$new_version" -m "Version $$new_version"; \
+		git push origin "v$$new_version"
+
+
 # Build the application
 all: build test
 

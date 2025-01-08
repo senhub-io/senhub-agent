@@ -302,6 +302,7 @@ Service Commands:
     start       Start the service
     stop        Stop the service
     status      Show service status
+    version     Show agent version
     run         Run in console mode (requires --authentication-key)
 
 Agent Options:
