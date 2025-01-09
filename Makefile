@@ -1,5 +1,4 @@
 EXECUTABLE=senhub-agent
-SERVICE=senhub-agent-service.exe
 WINDOWS=$(EXECUTABLE)_windows_amd64.exe
 LINUX_AMD64=$(EXECUTABLE)_linux_amd64
 LINUX_ARM64=$(EXECUTABLE)_linux_arm64
@@ -7,6 +6,8 @@ DARWIN=$(EXECUTABLE)_darwin_amd64
 VERSION=$(shell git describe --tags --abbrev=0 --match='v[0-9]*.[0-9]*.[0-9]*' 2> /dev/null | sed 's/^.//')
 COMMIT_HASH=$(shell git describe --tags --always --long --dirty)
 ENV ?= production
+PRODUCTION_URL="https://eu-west-1.intake.senhub.io"
+DEVELOPMENT_URL="https://eu-west-1.intake-dev.senhub.io"
 
 # Package to set version variable
 PACKAGE="senhub-agent.go/internal/agent/cliArgs"
@@ -16,11 +17,13 @@ GO_VERSION=$(shell go version | cut -d' ' -f3)
 
 # Modifier vos ldflags pour inclure ces informations
 LDFLAGS=-s -w \
-    -X '${PACKAGE}.version=$(VERSION)' \
-    -X '${PACKAGE}.commitHash=$(COMMIT_HASH)' \
-    -X '${PACKAGE}.buildTime=$(BUILD_TIME)' \
-    -X '${PACKAGE}.goVersion=$(GO_VERSION)' \
-    -X '${PACKAGE}.env=${ENV}'
+    -X '${PACKAGE}.Version=$(VERSION)' \
+    -X '${PACKAGE}.CommitHash=$(COMMIT_HASH)' \
+    -X '${PACKAGE}.BuildTime=$(BUILD_TIME)' \
+    -X '${PACKAGE}.GoVersion=$(GO_VERSION)' \
+    -X '${PACKAGE}.Env=${ENV}' \
+    -X '${PACKAGE}.ProductionURL=${PRODUCTION_URL}' \
+    -X '${PACKAGE}.DevelopmentURL=${DEVELOPMENT_URL}'
 
 version-info:
 		@echo "Version:    $(VERSION)"
@@ -49,13 +52,14 @@ build: build-windows build-linux build-darwin ## Build binaries
 	@echo version: $(VERSION) - commit: $(COMMIT_HASH)
 
 build-windows: ## Build for Windows
-		@env GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="-s -w -X ${PACKAGE}.version=$(VERSION) -X ${PACKAGE}.commit_hash=$(COMMIT_HASH) -X ${PACKAGE}.env=${ENV}"  ./cmd/agent/main.go
+	    @env GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/main.go
+
 build-linux: ## Build for Linux
-		@env GOOS=linux GOARCH=amd64 go build -o $(LINUX_AMD64) -ldflags="-s -w -X ${PACKAGE}.version=$(VERSION) -X ${PACKAGE}.commit_hash=$(COMMIT_HASH) -X ${PACKAGE}.env=${ENV}"  ./cmd/agent/main.go
-		@env GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64) -ldflags="-s -w -X ${PACKAGE}.version=$(VERSION) -X ${PACKAGE}.commit_hash=$(COMMIT_HASH) -X ${PACKAGE}.env=${ENV}"  ./cmd/agent/main.go
+	    @env GOOS=linux GOARCH=amd64 go build -o $(LINUX_AMD64) -ldflags="$(LDFLAGS)" ./cmd/agent/main.go
+	    @env GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/main.go
 
 build-darwin: ## Build for Darwin (macOS)
-		@env GOOS=darwin GOARCH=amd64 go build -o $(DARWIN) -ldflags="-s -w -X ${PACKAGE}.version=$(VERSION) -X ${PACKAGE}.commit_hash=$(COMMIT_HASH) -X ${PACKAGE}.env=${ENV}"  ./cmd/agent/main.go
+	    @env GOOS=darwin GOARCH=amd64 go build -o $(DARWIN) -ldflags="$(LDFLAGS)" ./cmd/agent/main.go
 
 install: ## Install the application
 	@./scripts/setup
@@ -70,10 +74,19 @@ test:
 	@echo "Testing..."
 	@go test ./... -v
 
+test-vars:
+	@echo "Build variables:"
+	@echo "  PACKAGE:          ${PACKAGE}"
+	@echo "  PRODUCTION_URL:   ${PRODUCTION_URL}"
+	@echo "  DEVELOPMENT_URL:  ${DEVELOPMENT_URL}"
+	@echo "  ENV:             ${ENV}"
+	@echo "Full LDFLAGS:"
+	@echo "  ${LDFLAGS}"
+
 # Clean the binary
 clean:
 	@echo "Cleaning..."
-	@rm -f $(WINDOWS) $(LINUX) $(DARWIN) $(SERVICE)
+	@rm -f $(WINDOWS) $(LINUX) $(DARWIN)
 
 # Live Reload
 watch: clean
