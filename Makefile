@@ -33,10 +33,10 @@ version-info:
 		@echo "Env:        $(ENV)"
 
 check-version:
-    @if [ "$(VERSION)" = "" ]; then \
-        echo "ERROR: No version tag found" >&2; \
-        exit 1; \
-    fi
+	@if [ "$(VERSION)" = "" ]; then \
+		echo "ERROR: No version tag found" >&2; \
+		exit 1; \
+	fi
 
 bump-version:
 		@read -p "New version number (current: $(VERSION)): " new_version; \
