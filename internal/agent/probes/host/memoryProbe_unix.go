@@ -1,7 +1,6 @@
 //go:build !windows
 
 // internal/agent/probes/host/memoryProbe_unix.go
-//
 package host
 
 import (

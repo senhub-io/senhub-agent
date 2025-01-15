@@ -1,7 +1,6 @@
 //go:build windows || !windows
 
 // internal/agent/probes/host/networkProbe.go
-//
 package host
 
 import (
