@@ -1,7 +1,6 @@
 //go:build !windows
 
 // internal/agent/probes/host/cpuProbe_unix.go
-//
 package host
 
 import (

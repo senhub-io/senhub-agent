@@ -1,7 +1,6 @@
 //go:build !windows
 
 // Package host provides system monitoring capabilities
-//
 package host
 
 import (
