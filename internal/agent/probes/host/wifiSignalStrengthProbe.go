@@ -31,6 +31,7 @@ func (m *wifiSignalStrengthProbe) checkWifiWindows() bool {
 	outputStr := string(output)
 
 	// On cherche des patterns simples qui marchent même avec des problèmes d'encodage
+	// Ceci est un test
 	lines := strings.Split(outputStr, "\n")
 	for _, line := range lines {
 		line = strings.ToLower(line)
