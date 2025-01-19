@@ -23,21 +23,20 @@ builds:
       - -X senhub-agent.go/internal/agent/cliArgs.Version={{.Version}}
       - -X senhub-agent.go/internal/agent/cliArgs.CommitHash={{.Commit}}
       - -X senhub-agent.go/internal/agent/cliArgs.BuildTime={{.Date}}
-      - -X senhub-agent.go/internal/agent/cliArgs.GoVersion={{.Env.GOVERSION}}
+      - -X senhub-agent.go/internal/agent/cliArgs.GoVersion={{.Runtime.Version}}
       - -X senhub-agent.go/internal/agent/cliArgs.Env=production
       - -X senhub-agent.go/internal/agent/cliArgs.ProductionURL=https://eu-west-1.intake.senhub.io
       - -X senhub-agent.go/internal/agent/cliArgs.DevelopmentURL=https://eu-west-1.intake-dev.senhub.io
 
 archives:
-  - id: default
+  - id: binary-archives
+    format: binary
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else }}{{ .Arch }}{{ end }}
-    format_overrides:
-      - goos: windows
-        format: zip
+    allow_different_binary_count: true
 
 release:
   draft: false
