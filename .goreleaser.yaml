@@ -1,12 +1,11 @@
-project_name: senhub-agent
-
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - main: ./cmd/agent/main.go
-    binary: senhub-agent
+  - id: "senhub-agent"
+    main: ./cmd/agent/main.go
+    binary: "senhub-agent"
     env:
       - CGO_ENABLED=0
     goos:
@@ -19,8 +18,6 @@ builds:
     ignore:
       - goos: windows
         goarch: arm64
-      - goos: darwin
-        goarch: arm64
     ldflags:
       - -s -w
       - -X senhub-agent.go/internal/agent/cliArgs.Version={{.Version}}
@@ -32,23 +29,29 @@ builds:
       - -X senhub-agent.go/internal/agent/cliArgs.DevelopmentURL=https://eu-west-1.intake-dev.senhub.io
 
 archives:
-  - format: tar.gz
+  - id: default
     name_template: >-
-      {{- .ProjectName }}_
-      {{- .Version }}_
-      {{- .Os }}_
-      {{- .Arch }}
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
     format_overrides:
       - goos: windows
         format: zip
-    files:
-      - none*  # This ensures only binaries are included, no source files
 
-source:
-  enabled: false  # This disables source code in releases
-
-changelog:
-  skip: true  # This disables changelog generation
+release:
+  draft: false
+  prerelease: auto
+  mode: replace
 
 checksum:
   name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+source:
+  enabled: false
+
+changelog:
+  skip: true
