@@ -4,18 +4,18 @@ on:
   push:
     branches:
       - master
-    tags:
-      - "v*.*.*"
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
-  test:
+  release:
     runs-on: ubuntu-latest
-    if: "!startsWith(github.ref, 'refs/tags/v')"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -27,30 +27,44 @@ jobs:
         run: |
           GO_VERSION=$(go version | cut -d' ' -f3)
           echo "GO_VERSION=$GO_VERSION" >> $GITHUB_ENV
-          echo "version=$GO_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Run tests
-        run: go test ./... -v
+      - name: Get Version
+        id: get_version
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          MAJOR=$(echo $LAST_TAG | cut -d. -f1)
+          MINOR=$(echo $LAST_TAG | cut -d. -f2)
+          PATCH=$(echo $LAST_TAG | cut -d. -f3)
+          NEXT_PATCH=$((PATCH + 1))
+          NEW_TAG="${MAJOR}.${MINOR}.${NEXT_PATCH}"
+          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
+          echo "new_version=$NEW_TAG" >> $GITHUB_OUTPUT
 
-  goreleaser:
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.23.2'
+      - name: Create Tag
+        run: |
+          git tag ${{ env.NEW_TAG }}
+          git push origin ${{ env.NEW_TAG }}
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
           distribution: goreleaser
           version: latest
-          args: release --clean
+          args: release --rm-dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GOVERSION: "1.23.2"
+          GOVERSION: ${{ env.GO_VERSION }}
+
+      - name: Create Release
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.NEW_TAG }}
+          name: Release ${{ env.NEW_TAG }}
+          files: |
+            dist/senhub-agent_Linux_*
+            dist/senhub-agent_Windows_*
+            dist/senhub-agent_Darwin_*
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

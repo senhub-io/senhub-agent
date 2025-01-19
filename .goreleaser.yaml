@@ -29,25 +29,23 @@ builds:
       - -X senhub-agent.go/internal/agent/cliArgs.DevelopmentURL=https://eu-west-1.intake-dev.senhub.io
 
 archives:
-  - id: binary-archives
+  - id: binaries
     format: binary
     name_template: >-
-      {{ .ProjectName }}_{{ .Version }}_
+      {{ .ProjectName }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else }}{{ .Arch }}{{ end }}
-    allow_different_binary_count: true
+    files:
+      - none*  # N'inclut aucun fichier supplémentaire
 
 release:
   draft: false
-  prerelease: auto
   mode: replace
+  make_latest: true  # Marque cette version comme la plus récente
 
-checksum:
-  name_template: 'checksums.txt'
-
-snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+signs:
+  - artifacts: none
 
 source:
   enabled: false
