@@ -1,3 +1,5 @@
+project_name: senhub-agent
+
 before:
   hooks:
     - go mod tidy
@@ -39,16 +41,14 @@ archives:
     format_overrides:
       - goos: windows
         format: zip
+    files:
+      - none*  # This ensures only binaries are included, no source files
+
+source:
+  enabled: false  # This disables source code in releases
 
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
-      - '^ci:'
-      - Merge pull request
-      - Merge branch
+  skip: true  # This disables changelog generation
 
 checksum:
   name_template: 'checksums.txt'
