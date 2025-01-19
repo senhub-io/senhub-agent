@@ -23,7 +23,7 @@ builds:
       - -X senhub-agent.go/internal/agent/cliArgs.Version={{.Version}}
       - -X senhub-agent.go/internal/agent/cliArgs.CommitHash={{.Commit}}
       - -X senhub-agent.go/internal/agent/cliArgs.BuildTime={{.Date}}
-      - -X senhub-agent.go/internal/agent/cliArgs.GoVersion={{.Runtime.Version}}
+      - -X senhub-agent.go/internal/agent/cliArgs.GoVersion={{.Env.GOVERSION}}
       - -X senhub-agent.go/internal/agent/cliArgs.Env=production
       - -X senhub-agent.go/internal/agent/cliArgs.ProductionURL=https://eu-west-1.intake.senhub.io
       - -X senhub-agent.go/internal/agent/cliArgs.DevelopmentURL=https://eu-west-1.intake-dev.senhub.io
