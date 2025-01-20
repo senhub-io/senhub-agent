@@ -42,8 +42,9 @@ jobs:
         with:
           distribution: goreleaser
           version: latest
-          args: release --rm-dist
+          args: release --clean
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           GOVERSION: ${{ env.GO_VERSION }}
       - name: Create Release
         if: success()
