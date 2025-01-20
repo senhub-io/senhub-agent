@@ -75,39 +75,11 @@ jobs:
           log_info "Version: ${{ env.NEW_TAG }}"
 
           # Sync des fichiers vers le dossier versionné
-          if aws s3 sync dist/ "${{ env.NEW_TAG }}/"; then
+          if aws s3 sync dist/ "s3://senhub-agent/${{ env.NEW_TAG }}/"; then
             log_success "Synchronisation vers ${{ env.NEW_TAG }} réussie"
 
             # Mise à jour du dossier "latest"
-            if aws s3 sync "${{ env.NEW_TAG }}/" "latest/"; then
-              log_success "Mise à jour du dossier 'latest' réussie"
-            else
-              log_error "Erreur lors de la mise à jour du dossier 'latest'"
-              exit 1
-            fi
-          else
-            log_error "Erreur lors de la synchronisation vers S3"
-            exit 1
-          fi
-      - name: Sync to OVH S3
-        run: |
-          # Fonctions de logging avec couleurs
-          function log_info() { echo "::info::$1"; }
-          function log_success() { echo "::notice::$1"; }
-          function log_error() { echo "::error::$1"; }
-
-          # Configuration du bucket
-          S3_BUCKET="${{ secrets.OVH_S3_BUCKET_NAME }}"
-
-          log_info "Démarrage de la synchronisation vers OVH S3"
-          log_info "Version: ${{ env.NEW_TAG }}"
-
-          # Sync des fichiers vers le dossier versionné
-          if aws s3 sync dist/ "s3://${S3_BUCKET}/${{ env.NEW_TAG }}/" --endpoint-url=https://s3.rbx.io.cloud.ovh.net; then
-            log_success "Synchronisation vers ${{ env.NEW_TAG }} réussie"
-
-            # Mise à jour du dossier "latest"
-            if aws s3 sync "s3://${S3_BUCKET}/${{ env.NEW_TAG }}/" "s3://${S3_BUCKET}/latest/" --endpoint-url=https://s3.rbx.io.cloud.ovh.net; then
+            if aws s3 sync "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/"; then
               log_success "Mise à jour du dossier 'latest' réussie"
             else
               log_error "Erreur lors de la mise à jour du dossier 'latest'"
