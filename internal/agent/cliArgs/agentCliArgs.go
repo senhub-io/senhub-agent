@@ -120,7 +120,7 @@ func MustParse() *ParsedArgs {
 }
 
 func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *ParsedArgs {
-	// Si ServerUrl n'est pas spécifié, utiliser la valeur par défaut
+	// If ServerUrl is not specified, use default value
 	serverUrl := args.ServerUrl
 	if serverUrl == "" {
 		serverUrl = defaultServerURL()
