@@ -44,7 +44,6 @@ jobs:
           version: latest
           args: release --rm-dist
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GOVERSION: ${{ env.GO_VERSION }}
       - name: Create Release
         if: success()
@@ -57,15 +56,43 @@ jobs:
             dist/senhub-agent_Windows_*
             dist/senhub-agent_Darwin_*
           generate_release_notes: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: rbx  # La région OVH
-          endpoint-url: https://s3.rbx.io.cloud.ovh.net # Endpoint OVH
-      - name: Sync to S3
+      - name: Install s3cmd
         run: |
-          aws s3 sync dist/ s3://${{ secrets.S3_BUCKET }}/senhub-agent/${{ env.NEW_TAG }}/
+          sudo apt-get update
+          sudo apt-get install -y s3cmd
+      - name: Configure s3cmd
+        run: |
+          echo "[default]
+          access_key = ${{ secrets.OVH_S3_KEY_ID }}
+          secret_key = ${{ secrets.OVH_S3_SECRET_KEY }}
+          host_base = s3.rbx.io.cloud.ovh.net
+          host_bucket = %(bucket)s.s3.rbx.io.cloud.ovh.net
+          use_https = True" > ~/.s3cfg
+      - name: Sync to OVH S3
+        run: |
+          # Fonctions de logging avec couleurs
+          function log_info() { echo "::info::$1"; }
+          function log_success() { echo "::notice::$1"; }
+          function log_error() { echo "::error::$1"; }
+
+          # Configuration du bucket
+          S3_BUCKET="${{ secrets.OVH_S3_BUCKET_NAME }}"
+
+          log_info "Démarrage de la synchronisation vers OVH S3"
+          log_info "Version: ${{ env.NEW_TAG }}"
+
+          # Sync des fichiers vers le dossier versionné
+          if s3cmd sync dist/ s3://${S3_BUCKET}/${{ env.NEW_TAG }}/; then
+            log_success "Synchronisation vers ${{ env.NEW_TAG }} réussie"
+
+            # Mise à jour du dossier "latest"
+            if s3cmd sync s3://${S3_BUCKET}/${{ env.NEW_TAG }}/ s3://${S3_BUCKET}/latest/; then
+              log_success "Mise à jour du dossier 'latest' réussie"
+            else
+              log_error "Erreur lors de la mise à jour du dossier 'latest'"
+              exit 1
+            fi
+          else
+            log_error "Erreur lors de la synchronisation vers S3"
+            exit 1
+          fi
