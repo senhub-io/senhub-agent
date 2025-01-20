@@ -1,14 +1,11 @@
 name: Release
-
 on:
   push:
     branches:
       - master
-
 permissions:
   contents: write
   packages: write
-
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -16,18 +13,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: '1.22.0'
-
       - name: Get Go Version
         id: go_version
         run: |
           GO_VERSION=$(go version | cut -d' ' -f3)
           echo "GO_VERSION=$GO_VERSION" >> $GITHUB_ENV
-
       - name: Get Version
         id: get_version
         run: |
@@ -39,12 +33,10 @@ jobs:
           NEW_TAG="${MAJOR}.${MINOR}.${NEXT_PATCH}"
           echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
           echo "new_version=$NEW_TAG" >> $GITHUB_OUTPUT
-
       - name: Create Tag
         run: |
           git tag ${{ env.NEW_TAG }}
           git push origin ${{ env.NEW_TAG }}
-
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
@@ -54,7 +46,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GOVERSION: ${{ env.GO_VERSION }}
-
       - name: Create Release
         if: success()
         uses: softprops/action-gh-release@v1
@@ -68,27 +59,13 @@ jobs:
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup s3cmd
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: rbx  # La région OVH
+          endpoint-url: https://s3.rbx.io.cloud.ovh.net # Endpoint OVH
+      - name: Sync to S3
         run: |
-          sudo apt-get update
-          sudo apt-get install -y s3cmd
-          mkdir -p ~/.s3cmd
-          echo "[default]" > ~/.s3cfg
-          echo "access_key = ${{ secrets.S3_ACCESS_KEY }}" >> ~/.s3cfg
-          echo "secret_key = ${{ secrets.S3_SECRET_KEY }}" >> ~/.s3cfg
-          echo "host_base = s3.rbx.io.cloud.ovh.net" >> ~/.s3cfg
-          echo "host_bucket = %(bucket)s.s3.rbx.io.cloud.ovh.net" >> ~/.s3cfg
-          echo "use_https = True" >> ~/.s3cfg
-
-      - name: Install jq
-        run: sudo apt-get install -y jq
-
-      - name: Execute sync script
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
-          S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
-        run: |
-          chmod +x .github/scripts/sync-to-s3.sh
-          .github/scripts/sync-to-s3.sh
+          aws s3 sync dist/ s3://${{ secrets.S3_BUCKET }}/senhub-agent/${{ env.NEW_TAG }}/
