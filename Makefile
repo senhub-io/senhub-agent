@@ -3,7 +3,7 @@ WINDOWS=$(EXECUTABLE)_windows_amd64.exe
 LINUX_AMD64=$(EXECUTABLE)_linux_amd64
 LINUX_ARM64=$(EXECUTABLE)_linux_arm64
 DARWIN=$(EXECUTABLE)_darwin_amd64
-VERSION=$(shell git describe --tags --abbrev=0 --match='v[0-9]*.[0-9]*.[0-9]*' 2> /dev/null | sed 's/^.//')
+VERSION=$(shell git describe --tags --abbrev=0 --match='v[0-9]*.*' 2> /dev/null | sed 's/^.//')
 COMMIT_HASH=$(shell git describe --tags --always --long --dirty)
 ENV ?= production
 PRODUCTION_URL="https://eu-west-1.intake.senhub.io"
@@ -33,16 +33,44 @@ version-info:
 		@echo "Env:        $(ENV)"
 
 check-version:
-	@if [ "$(VERSION)" = "" ]; then \
-		echo "ERROR: No version tag found" >&2; \
-		exit 1; \
-	fi
+		@if [ "$(VERSION)" = "" ]; then \
+			echo "ERROR: No version tag found" >&2; \
+			exit 1; \
+		fi
 
 bump-version:
-		@read -p "New version number (current: $(VERSION)): " new_version; \
-		git tag -a "v$$new_version" -m "Version $$new_version"; \
-		git push origin "v$$new_version"
+		@current_version=$$(echo "$(VERSION)" | sed 's/-rc//'); \
+		if [[ "$(VERSION)" == *"-rc"* ]]; then \
+			echo "Current version: $(VERSION) (Release Candidate)"; \
+			read -p "Do you want to create a release version? [Y/n] " make_release; \
+		if [[ "$$make_release" != "n" && "$$make_release" != "N" ]]; then \
+			new_version="$$current_version"; \
+		else \
+			read -p "Enter new RC version [$$current_version-rc]: " new_version; \
+				: "$${new_version:=$$current_version-rc}"; \
+			fi; \
+			else \
+				echo "Current version: $(VERSION)"; \
+				read -p "Is this a release candidate? [Y/n] " is_rc; \
+				if [[ "$$is_rc" != "n" && "$$is_rc" != "N" ]]; then \
+					read -p "Enter new version [$$current_version-rc]: " new_version; \
+					: "$${new_version:=$$current_version-rc}"; \
+				else \
+					read -p "Enter new version [$$current_version]: " new_version; \
+					: "$${new_version:=$$current_version}"; \
+				fi; \
+			fi; \
+			echo "Creating new version: v$$new_version"; \
+			git tag -a "v$$new_version" -m "Version $$new_version"; \
+			git push origin "v$$new_version"
 
+# Delete a version tag (useful for corrections)
+delete-version:
+	@echo "Current tags:"; \
+	git tag -l; \
+	read -p "Enter tag to delete: v" version_to_delete; \
+	git tag -d "v$$version_to_delete"; \
+	git push origin ":refs/tags/v$$version_to_delete"
 
 # Build the application
 all: build test
