@@ -62,8 +62,6 @@ jobs:
           aws configure set aws_access_key_id ${{ secrets.OVH_S3_KEY_ID }}
           aws configure set aws_secret_access_key ${{ secrets.OVH_S3_SECRET_KEY }}
           aws configure set region rbx
-          aws configure set default.s3.endpoint_url https://senhub-agent.s3.rbx.io.cloud.ovh.net
-
       - name: Sync to OVH S3
         run: |
           # Fonctions de logging avec couleurs
@@ -75,11 +73,11 @@ jobs:
           log_info "Version: ${{ env.NEW_TAG }}"
 
           # Sync des fichiers vers le dossier versionné
-          if aws s3 sync dist/ "s3://senhub-agent/${{ env.NEW_TAG }}/"; then
+          if aws s3 sync dist/ "s3://senhub-agent/${{ env.NEW_TAG }}/" --endpoint-url=https://senhub-agent.s3.rbx.io.cloud.ovh.net; then
             log_success "Synchronisation vers ${{ env.NEW_TAG }} réussie"
 
             # Mise à jour du dossier "latest"
-            if aws s3 sync "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/"; then
+            if aws s3 sync "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/" --endpoint-url=https://senhub-agent.s3.rbx.io.cloud.ovh.net; then
               log_success "Mise à jour du dossier 'latest' réussie"
             else
               log_error "Erreur lors de la mise à jour du dossier 'latest'"
