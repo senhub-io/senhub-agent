@@ -57,18 +57,15 @@ jobs:
             dist/senhub-agent_Windows_*
             dist/senhub-agent_Darwin_*
           generate_release_notes: false
-      - name: Install s3cmd
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.OVH_S3_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.OVH_S3_SECRET_KEY }}
+          aws-region: rbx
+      - name: Test S3 Connection
         run: |
-          sudo apt-get update
-          sudo apt-get install -y s3cmd
-      - name: Configure s3cmd
-        run: |
-          echo "[default]
-          access_key = ${{ secrets.OVH_S3_KEY_ID }}
-          secret_key = ${{ secrets.OVH_S3_SECRET_KEY }}
-          host_base = s3.rbx.io.cloud.ovh.net
-          host_bucket = %(bucket)s.s3.rbx.io.cloud.ovh.net
-          use_https = True" > ~/.s3cfg
+          aws s3 ls s3://${{ secrets.OVH_S3_BUCKET_NAME }}/ --endpoint-url=https://s3.rbx.io.cloud.ovh.net
       - name: Sync to OVH S3
         run: |
           # Fonctions de logging avec couleurs
@@ -83,11 +80,11 @@ jobs:
           log_info "Version: ${{ env.NEW_TAG }}"
 
           # Sync des fichiers vers le dossier versionné
-          if s3cmd sync dist/ s3://${S3_BUCKET}/${{ env.NEW_TAG }}/; then
+          if aws s3 sync dist/ "s3://${S3_BUCKET}/${{ env.NEW_TAG }}/" --endpoint-url=https://s3.rbx.io.cloud.ovh.net; then
             log_success "Synchronisation vers ${{ env.NEW_TAG }} réussie"
 
             # Mise à jour du dossier "latest"
-            if s3cmd sync s3://${S3_BUCKET}/${{ env.NEW_TAG }}/ s3://${S3_BUCKET}/latest/; then
+            if aws s3 sync "s3://${S3_BUCKET}/${{ env.NEW_TAG }}/" "s3://${S3_BUCKET}/latest/" --endpoint-url=https://s3.rbx.io.cloud.ovh.net; then
               log_success "Mise à jour du dossier 'latest' réussie"
             else
               log_error "Erreur lors de la mise à jour du dossier 'latest'"
