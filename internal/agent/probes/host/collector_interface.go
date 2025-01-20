@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// osCollector définit l'interface pour les collecteurs spécifiques à l'OS
+// osCollector defines the interface for OS-specific collectors
 type osCollector interface {
 	Collect(timestamp time.Time) ([]data_store.DataPoint, error)
 	Close() error
