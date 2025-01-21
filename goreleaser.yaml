@@ -1,7 +1,6 @@
 before:
   hooks:
     - go mod tidy
-
 builds:
   - id: "senhub-agent"
     main: ./cmd/agent/main.go
@@ -18,6 +17,9 @@ builds:
     ignore:
       - goos: windows
         goarch: arm64
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    flags:
+      - -trimpath
     ldflags:
       - -s -w
       - -X senhub-agent.go/internal/agent/cliArgs.Version={{.Version}}
@@ -27,28 +29,21 @@ builds:
       - -X senhub-agent.go/internal/agent/cliArgs.Env=production
       - -X senhub-agent.go/internal/agent/cliArgs.ProductionURL=https://eu-west-1.intake.senhub.io
       - -X senhub-agent.go/internal/agent/cliArgs.DevelopmentURL=https://eu-west-1.intake-dev.senhub.io
-
+    no_unique_dist_dir: true
 archives:
   - id: binaries
     format: binary
     name_template: >-
-      {{ .ProjectName }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else }}{{ .Arch }}{{ end }}
+      {{ .Binary }}_{{ .Os }}_{{ .Arch }}
     files:
-      - none*  # N'inclut aucun fichier supplémentaire
-
+      - none*
 release:
   draft: false
   mode: replace
-  make_latest: true  # Marque cette version comme la plus récente
-
+  make_latest: true
 signs:
   - artifacts: none
-
 source:
   enabled: false
-
 changelog:
   skip: true
