@@ -15,22 +15,22 @@ import (
 	"senhub-agent.go/internal/agent/windows/pdh"
 )
 
-// Configuration des filtres d'instances
+// Instance filters configuration
 var instanceFilters = struct {
 	Include []string
 	Exclude []string
 }{
-	Include: []string{}, // Liste des instances à inclure (vide = toutes)
-	Exclude: []string{}, // Liste des instances à exclure
+	Include: []string{}, // List of instances to include (empty = all)
+	Exclude: []string{}, // List of instances to exclude
 }
 
-// MetricDefinition définit un compteur de performance avec son chemin et son instance
+// MetricDefinition defines a performance counter with its path and instance
 type MetricDefinition struct {
 	path     string
 	instance string
 }
 
-// Définition des compteurs de performance
+// Performance counters definition
 var counterPaths = map[string]MetricDefinition{
 	"processor_time": {
 		path:     "\\Processor\\% Processor Time",
@@ -70,24 +70,24 @@ var counterPaths = map[string]MetricDefinition{
 	},
 }
 
-// CPUMetrics contient toutes les métriques CPU collectées
+// CPUMetrics contains all collected CPU metrics
 type CPUMetrics struct {
 	metrics map[string]float64
 }
 
-// NewCPUMetrics crée une nouvelle instance de CPUMetrics
+// NewCPUMetrics creates a new instance of CPUMetrics
 func NewCPUMetrics() *CPUMetrics {
 	return &CPUMetrics{
 		metrics: make(map[string]float64),
 	}
 }
 
-// SetMetric définit la valeur d'une métrique
+// SetMetric sets the value of a metric
 func (c *CPUMetrics) SetMetric(name string, value float64) {
 	c.metrics[name] = value
 }
 
-// GetMetric récupère la valeur d'une métrique
+// GetMetric retrieves the value of a metric
 func (c *CPUMetrics) GetMetric(name string) float64 {
 	return c.metrics[name]
 }
@@ -128,15 +128,15 @@ func newCPUCollector(config map[string]interface{}, logger *logger.Logger) (osCo
 	return collector, nil
 }
 
-// shouldIncludeInstance vérifie si une instance doit être incluse selon les filtres
-// Amélioration de shouldIncludeInstance
+// shouldIncludeInstance checks if an instance should be included according to filters
+// Improved shouldIncludeInstance
 func (w *windowsCollector) shouldIncludeInstance(instance string) bool {
 	fmt.Printf("Checking instance '%s' against filters - Include: %v, Exclude: %v\n",
 		instance, instanceFilters.Include, instanceFilters.Exclude)
 
-	// Si la liste d'inclusion est vide, tout est inclus par défaut
+	// If the inclusion list is empty, everything is included by default
 	if len(instanceFilters.Include) == 0 {
-		// Vérifier uniquement les exclusions
+		// Only check exclusions
 		for _, excludedInstance := range instanceFilters.Exclude {
 			if excludedInstance == instance {
 				fmt.Printf("Instance '%s' excluded by filter\n", instance)
@@ -147,10 +147,10 @@ func (w *windowsCollector) shouldIncludeInstance(instance string) bool {
 		return true
 	}
 
-	// Si la liste d'inclusion n'est pas vide, vérifie si l'instance y est
+	// If the inclusion list is not empty, check if the instance is in it
 	for _, includedInstance := range instanceFilters.Include {
 		if includedInstance == instance {
-			// Vérifier que l'instance n'est pas dans la liste d'exclusion
+			// Check that the instance is not in the exclusion list
 			for _, excludedInstance := range instanceFilters.Exclude {
 				if excludedInstance == instance {
 					fmt.Printf("Instance '%s' found in include list but excluded\n", instance)
@@ -200,7 +200,7 @@ func (w *windowsCollector) initializeCounters() error {
 				}
 
 				path := pdh.BuildCounterPath(def.path, instance)
-				// Création d'une clé unique pour chaque combinaison métrique/instance
+				// Create a unique key for each metric/instance combination
 				uniqueKey := fmt.Sprintf("%s|%s", metricName, instance)
 				w.paths[uniqueKey] = pathInfo{
 					path:     path,
@@ -237,7 +237,7 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 	fmt.Printf("\nStarting metrics collection at %v\n", timestamp)
 	fmt.Printf("Number of paths to collect: %d\n", len(w.paths))
 
-	// Afficher tous les chemins enregistrés
+	// Display all registered paths
 	fmt.Println("\nRegistered paths:")
 	for name, pathInfo := range w.paths {
 		fmt.Printf("- %s: path=%s, instance=%s\n", name, pathInfo.path, pathInfo.instance)
@@ -279,10 +279,10 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 			continue
 		}
 
-		// Préparation des tags
+		// Preparing tags
 		metricTags := append([]tags.Tag{}, baseTags...)
 
-		// Ajout du tag d'instance si présent
+		// Adding instance tag if present
 		if pathInfo.instance != "" {
 			fmt.Printf("Adding instance tag: %s\n", pathInfo.instance)
 			metricTags = append(metricTags, tags.Tag{
@@ -292,11 +292,11 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 			})
 		}
 
-		// Stockage de la métrique
+		// Store the metric
 		metrics.SetMetric(name, value)
 
 		dataPoint := data_store.DataPoint{
-			Name:      metricName, // Utiliser metricName au lieu de strings.Split(name, "_")[0]
+			Name:      metricName, // Use metricName instead of strings.Split(name, "_")[0]
 			Timestamp: timestamp,
 			Value:     float32(value),
 			Tags:      metricTags,
