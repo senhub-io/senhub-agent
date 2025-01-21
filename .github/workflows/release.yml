@@ -53,9 +53,9 @@ jobs:
           tag_name: ${{ env.NEW_TAG }}
           name: Release ${{ env.NEW_TAG }}
           files: |
-            dist/senhub-agent_Linux_*
-            dist/senhub-agent_Windows_*
-            dist/senhub-agent_Darwin_*
+            dist/senhub-agent_linux_*
+            dist/senhub-agent_windows_*
+            dist/senhub-agent_darwin_*
           generate_release_notes: false
       - name: Set up AWS CLI Configuration
         run: |
@@ -68,31 +68,14 @@ jobs:
           function log_info() { echo "::info::$1"; }
           function log_success() { echo "::notice::$1"; }
           function log_error() { echo "::error::$1"; }
-
           ENDPOINT="https://s3.rbx.io.cloud.ovh.net"
-          VERSION="${{ env.NEW_TAG }}"
-
           log_info "Starting synchronization to OVH S3"
-          log_info "Version: $VERSION"
-
-          # Create a temporary directory for renamed files
-          TEMP_DIR=$(mktemp -d)
-
-          # Copy and rename files preserving original names
-          for file in dist/*; do
-            if [ -f "$file" ]; then
-              # Get the original filename without path
-              filename=$(basename "$file")
-              # Copy file to temp directory
-              cp "$file" "$TEMP_DIR/$filename"
-            fi
-          done
-
-          # Sync files to versioned folder with preserved names
-          if aws s3 sync --endpoint-url="${ENDPOINT}" "$TEMP_DIR/" "s3://senhub-agent/$VERSION/" --acl public-read; then
-            log_success "Synchronization to $VERSION successful"
-            # Update "latest" folder with preserved names
-            if aws s3 sync --endpoint-url="${ENDPOINT}" "$TEMP_DIR/" "s3://senhub-agent/latest/" --acl public-read; then
+          log_info "Version: ${{ env.NEW_TAG }}"
+          # Sync files to versioned folder
+          if aws s3 sync --endpoint-url="${ENDPOINT}" dist/ "s3://senhub-agent/${{ env.NEW_TAG }}/" --acl public-read; then
+            log_success "Synchronization to ${{ env.NEW_TAG }} successful"
+            # Update "latest" folder
+            if aws s3 sync --endpoint-url="${ENDPOINT}" "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/" --acl public-read; then
               log_success "Update of 'latest' folder successful"
             else
               log_error "Error updating 'latest' folder"
@@ -102,6 +85,3 @@ jobs:
             log_error "Error during S3 synchronization"
             exit 1
           fi
-
-          # Clean up temporary directory
-          rm -rf "$TEMP_DIR"
