@@ -15,7 +15,7 @@ PACKAGE="senhub-agent.go/internal/agent/cliArgs"
 BUILD_TIME=$(shell date +%FT%T%z)
 GO_VERSION=$(shell go version | cut -d' ' -f3)
 
-# Modifier vos ldflags pour inclure ces informations
+# Update ldflags to include this information
 LDFLAGS=-s -w \
     -X '${PACKAGE}.Version=$(VERSION)' \
     -X '${PACKAGE}.CommitHash=$(COMMIT_HASH)' \
@@ -38,6 +38,7 @@ check-version:
 			exit 1; \
 		fi
 
+# Manual version management (use for development and RC versions)
 bump-version:
 		@current_version=$$(echo "$(VERSION)" | sed 's/-rc//'); \
 		if [[ "$(VERSION)" == *"-rc"* ]]; then \
@@ -75,7 +76,6 @@ delete-version:
 # Build the application
 all: build test
 
-# Build the application
 build: build-windows build-linux build-darwin ## Build binaries
 	@echo version: $(VERSION) - commit: $(COMMIT_HASH)
 
@@ -95,7 +95,6 @@ install: ## Install the application
 # Run the application
 run:
 	@go run cmd/agent/main.go
-	@go run cmd/service/main.go
 
 # Test the application
 test:
@@ -116,7 +115,7 @@ clean:
 	@echo "Cleaning..."
 	@rm -f $(WINDOWS) $(LINUX) $(DARWIN)
 
-# Live Reload
+# Live Reload (development tool)
 watch: clean
 	@if command -v air > /dev/null; then \
             air -c .air.toml; \
