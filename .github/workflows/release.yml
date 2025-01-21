@@ -64,18 +64,31 @@ jobs:
           aws configure set region rbx
       - name: Sync to OVH S3
         run: |
+          # Configurer le endpoint S3 globalement
+          aws configure set default.s3.addressing_style path
+          aws configure set default.s3.endpoint_url https://s3.rbx.io.cloud.ovh.net
+
           # Logging functions with colors
           function log_info() { echo "::info::$1"; }
           function log_success() { echo "::notice::$1"; }
           function log_error() { echo "::error::$1"; }
-          ENDPOINT="https://s3.rbx.io.cloud.ovh.net"
+
           log_info "Starting synchronization to OVH S3"
           log_info "Version: ${{ env.NEW_TAG }}"
-          # Sync files to versioned folder
-          if aws s3 sync --endpoint-url="${ENDPOINT}" dist/ "s3://senhub-agent/${{ env.NEW_TAG }}/" --acl public-read; then
+
+          # Sync files to versioned folder avec --no-verify-ssl pour éviter les problèmes SSL
+          if aws s3 sync dist/ "s3://senhub-agent/${{ env.NEW_TAG }}/" \
+            --acl public-read \
+            --no-verify-ssl \
+            --endpoint-url=https://s3.rbx.io.cloud.ovh.net; then
+
             log_success "Synchronization to ${{ env.NEW_TAG }} successful"
+
             # Update "latest" folder
-            if aws s3 sync --endpoint-url="${ENDPOINT}" "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/" --acl public-read; then
+            if aws s3 sync "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/" \
+              --acl public-read \
+              --no-verify-ssl \
+              --endpoint-url=https://s3.rbx.io.cloud.ovh.net; then
               log_success "Update of 'latest' folder successful"
             else
               log_error "Error updating 'latest' folder"
