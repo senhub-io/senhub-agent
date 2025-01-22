@@ -2,9 +2,9 @@
 package syslog
 
 import (
+	"github.com/rs/zerolog"
+	"os"
 	"testing"
-
-	"senhub-agent.go/internal/agent/services/logger"
 )
 
 func TestParseSyslogProbeConfig(t *testing.T) {
@@ -91,13 +91,7 @@ func TestParseSyslogProbeConfig(t *testing.T) {
 }
 
 func TestNewSyslogProbe(t *testing.T) {
-	// Créer un ParsedArgs avec les valeurs par défaut pour le test
-	args := &agentCliArgs.ParsedArgs{
-		Env:     "development", // ou "production" selon vos besoins
-		Verbose: false,         // ou true selon vos besoins
-	}
-
-	log := logger.NewLogger(args)
+	log := zerolog.New(os.Stderr) // Création directe du logger zerolog
 
 	tests := []struct {
 		name    string
@@ -120,7 +114,7 @@ func TestNewSyslogProbe(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewSyslogProbe(tt.config, log)
+			_, err := NewSyslogProbe(tt.config, &log)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewSyslogProbe() error = %v, wantErr %v", err, tt.wantErr)
 				return
