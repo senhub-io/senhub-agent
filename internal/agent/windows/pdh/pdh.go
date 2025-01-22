@@ -218,33 +218,58 @@ var (
 
 // PerfCounterIndex contient la correspondance entre les noms anglais des compteurs de performance
 // et leurs indices dans le système Windows
-var PerfCounterIndex = map[string]uint32{
+var PerfCounterIndexes = map[string][]uint32{
 	// Disques
-	"LogicalDisk":  236,
-	"PhysicalDisk": 234,
-	"HardDisk":     234,
+	"LogicalDisk":  {236, 1847, 830, 234},
+	"PhysicalDisk": {234, 1846, 828, 236},
+	"HardDisk":     {234, 1846, 828, 236},
 
 	// CPU
-	"Processor":             238,
-	"Processor Information": 238,
+	"Processor":             {238, 1848, 238, 732, 1732},
+	"Processor Information": {238, 1848, 238, 732, 1732},
 
 	// Réseau
-	"Network Interface": 510,
-	"Network Adapter":   442,
-	"TCPv4":             638,
-	"TCPv6":             639,
+	"Network Interface": {510, 1847, 1450, 3576},
+	"Network Adapter":   {442, 1856, 1380, 3450},
+	"TCPv4":             {638, 1957, 1480, 3726},
+	"TCPv6":             {639, 1958, 1482, 3728},
+	"IPv4":              {636, 1955, 1476, 3724},
+	"IPv6":              {637, 1956, 1478, 3725},
+	"NBT Connection":    {502, 1843, 1412, 3542},
 
 	// Mémoire et Paging
-	"Memory":        4,
-	"PagingFile":    144,
-	"Cache":         86,
-	"Pool":          106,
-	"VirtualMemory": 144,
-	"PageFile":      144,
+	"Memory":         {4, 1884, 804, 2600},
+	"PagingFile":     {144, 1946, 1866, 864},
+	"Cache":          {86, 1922, 822, 2618},
+	"Pool":           {106, 1926, 826, 2622},
+	"VirtualMemory":  {144, 1946, 1866, 864},
+	"PageFile":       {144, 1946, 1866, 864},
+	"Process Memory": {186, 1986, 1906, 904},
 
 	// Système
-	"System":  2,
-	"Process": 230,
+	"System":             {2, 1882, 802, 2598},
+	"Process":            {230, 1842, 824, 2620},
+	"Thread":             {232, 1844, 826, 2622},
+	"Objects":            {260, 1872, 854, 2650},
+	"Services":           {388, 1898, 880, 2676},
+	"Server":             {330, 1888, 870, 2666},
+	"Server Work Queues": {332, 1890, 872, 2668},
+
+	// USB
+	"USB": {404, 1904, 886, 2682},
+
+	// Base de données
+	"Database": {445, 1858, 840, 2636},
+	"MSSQL":    {446, 1860, 842, 2638},
+
+	// Web et .NET
+	"Web Service": {340, 1892, 874, 2670},
+	".NET CLR":    {582, 1908, 890, 2686},
+	"ASP.NET":     {576, 1902, 884, 2680},
+
+	// Terminal Services
+	"Terminal Services": {422, 1850, 832, 2628},
+	"Remote Desktop":    {424, 1852, 834, 2630},
 }
 
 type PDH_FMT_COUNTERVALUE struct {
@@ -269,39 +294,39 @@ func GetPdhErrorText(errorCode uint32) string {
 }
 
 func GetLocalizedCounterName(englishName string) (string, error) {
-	index, exists := PerfCounterIndex[englishName]
+	indexes, exists := PerfCounterIndexes[englishName]
 	if !exists {
 		return "", fmt.Errorf("unknown performance object name: %s", englishName)
 	}
 
-	var bufferSize uint32 = 0
+	var lastErr error
+	for _, index := range indexes {
+		var bufferSize uint32 = 0
+		ret, _, _ := pdhLookupPerfNameByIndexW.Call(
+			0,
+			uintptr(index),
+			0,
+			uintptr(unsafe.Pointer(&bufferSize)))
 
-	// Premier appel pour obtenir la taille du buffer
-	ret, _, _ := pdhLookupPerfNameByIndexW.Call(
-		0, // NULL machine name
-		uintptr(index),
-		0, // NULL buffer
-		uintptr(unsafe.Pointer(&bufferSize)))
+		if ret != PDH_MORE_DATA {
+			lastErr = fmt.Errorf("failed to get buffer size for index %d: %s", index, GetPdhErrorText(uint32(ret)))
+			continue
+		}
 
-	if ret != PDH_MORE_DATA {
-		return "", fmt.Errorf("failed to get buffer size: %s", GetPdhErrorText(uint32(ret)))
+		buffer := make([]uint16, bufferSize)
+		ret, _, _ = pdhLookupPerfNameByIndexW.Call(
+			0,
+			uintptr(index),
+			uintptr(unsafe.Pointer(&buffer[0])),
+			uintptr(unsafe.Pointer(&bufferSize)))
+
+		if ret == PDH_CSTATUS_VALID_DATA {
+			return windows.UTF16ToString(buffer), nil
+		}
+		lastErr = fmt.Errorf("failed to get localized name for index %d: %s", index, GetPdhErrorText(uint32(ret)))
 	}
 
-	// Allocation du buffer
-	buffer := make([]uint16, bufferSize)
-
-	// Second appel pour obtenir le nom localisé
-	ret, _, _ = pdhLookupPerfNameByIndexW.Call(
-		0,
-		uintptr(index),
-		uintptr(unsafe.Pointer(&buffer[0])),
-		uintptr(unsafe.Pointer(&bufferSize)))
-
-	if ret != PDH_CSTATUS_VALID_DATA {
-		return "", fmt.Errorf("failed to get localized name: %s", GetPdhErrorText(uint32(ret)))
-	}
-
-	return windows.UTF16ToString(buffer), nil
+	return "", fmt.Errorf("all indexes failed for %s: %v", englishName, lastErr)
 }
 
 func GetInstancesList(objectName string, debug bool) ([]string, error) {
