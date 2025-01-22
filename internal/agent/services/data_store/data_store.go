@@ -1,3 +1,4 @@
+// senhub-agent/internal/agent/services/data_store/data_store.go
 package data_store
 
 import (
@@ -96,28 +97,37 @@ func (d *dataStore) GenerateStrategyId(strategyName string, params configuration
 }
 
 func (d *dataStore) OnConfigRefreshed(string) {
+	fmt.Printf("OnConfigRefreshed called with storage configs: %+v\n", d.remoteConfig.GetConfiguration().StorageConfig)
+
 	validStrategyIds := []string{}
 	storageConfigs := d.remoteConfig.GetConfiguration().StorageConfig
 
 	for _, storageConfig := range storageConfigs {
+		fmt.Printf("Processing storage config - name: %s, params: %+v\n", storageConfig.Name, storageConfig.Params)
 		strategy := d.retrieveOrCreate(storageConfig)
 		if strategy != nil {
-			validStrategyIds = append(validStrategyIds, d.GenerateStrategyId(storageConfig.Name, storageConfig.Params))
+			strategyId := d.GenerateStrategyId(storageConfig.Name, storageConfig.Params)
+			fmt.Printf("Strategy created successfully with ID: %s\n", strategyId)
+			validStrategyIds = append(validStrategyIds, strategyId)
+		} else {
+			fmt.Printf("Failed to create strategy for config: %s\n", storageConfig.Name)
 		}
 	}
 
 	// Stop strategies that are no longer in the Configuration
 	for _, strategy := range d.strategies {
 		found := false
+		currentStrategyId := d.GenerateStrategyId(strategy.GetStrategyName(), strategy.GetStrategyParams())
+
 		for _, validStrategyId := range validStrategyIds {
-			strategyId := d.GenerateStrategyId(strategy.GetStrategyName(), strategy.GetStrategyParams())
-			if strategyId == validStrategyId {
+			if currentStrategyId == validStrategyId {
 				found = true
 				break
 			}
 		}
 
 		if !found {
+			fmt.Printf("Stopping strategy: %s (ID: %s)\n", strategy.GetStrategyName(), currentStrategyId)
 			d.logger.Info().
 				Str("strategy_name", strategy.GetStrategyName()).
 				Msg("stopping strategy")
@@ -161,12 +171,14 @@ func (d *dataStore) createStrategyForConfig(strategyConfig configuration.Storage
 		logger.Info().Msg("Initializing strategy")
 		strategy := NewSyncStrategySenhub(d.agentConfig, strategyConfig.Params, &logger)
 		return strategy
-
 	case "prtg":
 		logger.Info().Msg("Initializing strategy")
 		strategy := NewSyncStrategyPrtg(d.agentConfig, strategyConfig.Params, &logger)
 		return strategy
-
+	case "victorialogs":
+		logger.Info().Msg("Initializing strategy")
+		strategy := NewVictoriaLogsStrategy(d.agentConfig, strategyConfig.Params, &logger)
+		return strategy
 	default:
 		logger.Error().Msg("unknown strategy")
 		return nil
