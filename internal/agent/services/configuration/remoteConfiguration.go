@@ -1,3 +1,4 @@
+// senhub-agent/internal/agent/services/configuration/remoteConfiguration.go
 package configuration
 
 import (
@@ -142,6 +143,8 @@ func (rc *RemoteConfiguration) doFetchConfiguration() (*RemoteConfigurationData,
 	if res.StatusCode != 200 {
 		return nil, fmt.Errorf("unexpected status code: %d, %v", res.StatusCode, string(respBody))
 	}
+
+	fmt.Printf("Raw configuration response: %s\n", string(respBody))
 
 	var config RemoteConfigurationData
 	err = json.Unmarshal(respBody, &config)
