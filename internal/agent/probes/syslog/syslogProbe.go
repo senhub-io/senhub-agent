@@ -14,7 +14,7 @@ import (
 
 const (
 	DefaultSyslogPort = 514
-	MinPort           = 1
+	MinPort           = 1024
 	MaxPort           = 65535
 )
 
