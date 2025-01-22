@@ -91,7 +91,13 @@ func TestParseSyslogProbeConfig(t *testing.T) {
 }
 
 func TestNewSyslogProbe(t *testing.T) {
-	log := logger.NewLogger()
+	// Créer un ParsedArgs avec les valeurs par défaut pour le test
+	args := &agentCliArgs.ParsedArgs{
+		Env:     "development", // ou "production" selon vos besoins
+		Verbose: false,         // ou true selon vos besoins
+	}
+
+	log := logger.NewLogger(args)
 
 	tests := []struct {
 		name    string
