@@ -1,8 +1,10 @@
+// internal/agent/probes/registry.go
 package probes
 
 import (
 	"senhub-agent.go/internal/agent/probes/gateway"
 	"senhub-agent.go/internal/agent/probes/host"
+	"senhub-agent.go/internal/agent/probes/syslog"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/probes/webapp"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -19,4 +21,5 @@ var probeConstructors = map[string]ProbeConstructor{
 	"cpu":                  host.NewCpuProbe,
 	"network":              host.NewNetworkProbe,
 	"logicaldisk":          host.NewLogicalDiskProbe,
+	"syslog":               syslog.NewSyslogProbe,
 }

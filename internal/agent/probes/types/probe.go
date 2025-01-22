@@ -3,9 +3,8 @@ package types
 
 import (
 	"context"
-	"time"
-
 	"senhub-agent.go/internal/agent/services/data_store"
+	"time"
 )
 
 // Interface each probe should implement
@@ -22,4 +21,11 @@ type Probe interface {
 	OnStart(chan struct{}) error
 	// Event called when the probe is shutdown
 	OnShutdown(context.Context) error
+}
+
+// ProbeWithCallback extends Probe interface for probes that need to handle callbacks
+type ProbeWithCallback interface {
+	Probe
+	// SetCallback allows setting a callback function for data handling
+	SetCallback(func([]data_store.DataPoint) error)
 }
