@@ -1,3 +1,4 @@
+// senhub-agent/internal/agent/probes/probe_poller.go
 package probes
 
 import (
@@ -45,10 +46,16 @@ func NewProbePoller(
 	if err != nil {
 		return nil, err
 	}
-	probe, err := probeConstructor(config.Params, logger) // Passage du logger
+	probe, err := probeConstructor(config.Params, logger)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to start probe %s\n%v", config.Name, err)
 	}
+
+	// Si la probe supporte les callbacks, on configure le callback
+	if probeWithCallback, ok := probe.(types.ProbeWithCallback); ok {
+		probeWithCallback.SetCallback(addDataPoint)
+	}
+
 	probePoller := &ProbePoller{
 		ProbeId:      GenerateProbeId(config),
 		Probe:        probe,
