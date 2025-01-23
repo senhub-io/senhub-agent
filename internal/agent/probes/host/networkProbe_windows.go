@@ -1,3 +1,4 @@
+//senhub-agent/internal/agent/probes/host/networkProbe_windows.go
 //go:build windows
 
 package host
@@ -60,37 +61,74 @@ type Win32_NetworkAdapter struct {
 }
 
 type interfaceInfo struct {
-	adapterName    string   // Nom physique de la carte (depuis WMI)
-	connectionName string   // Nom de connexion (NetConnectionID de WMI)
-	ipv4           string   // Adresse IPv4 principale
-	ipv6           string   // Adresse IPv6 principale
-	otherIPs       []string // Autres adresses IP
-	enabled        bool     // État de la connexion
+	adapterName    string   // Physical adapter name (from WMI)
+	connectionName string   // Connection name (WMI NetConnectionID)
+	ipv4           string   // Primary IPv4 address
+	ipv6           string   // Primary IPv6 address
+	otherIPs       []string // Other IP addresses
+	enabled        bool     // Connection state
 }
 
 type windowsNetworkCollector struct {
 	query       *pdh.Query
 	paths       map[string]pathInfo
-	interfaces  map[string]interfaceInfo // clé = nom PDH
+	interfaces  map[string]interfaceInfo // key = PDH name
 	mu          sync.Mutex
 	initialized bool
 }
 
+// Helper function to normalize adapter names for comparison
+func normalizeAdapterName(name string) string {
+	// Convert to lowercase
+	name = strings.ToLower(name)
+
+	// Remove trademarks and special symbols
+	replacements := [][2]string{
+		{"(r)", ""},
+		{"[r]", ""},
+		{"(tm)", ""},
+		{"[tm]", ""},
+		{"®", ""},
+		{"™", ""},
+		{"(", ""},
+		{")", ""},
+		{"[", ""},
+		{"]", ""},
+		{"-", " "},
+		{"_", " "},
+	}
+
+	for _, r := range replacements {
+		name = strings.ReplaceAll(name, r[0], r[1])
+	}
+
+	// Reduce multiple spaces to single space
+	name = strings.Join(strings.Fields(name), " ")
+	return strings.TrimSpace(name)
+}
+
 func getNetworkInterfaces() (map[string]interfaceInfo, error) {
-	// 1. Récupérer les adaptateurs physiques via WMI
+	fmt.Printf("\n=== Starting Network Interfaces Detection ===\n")
+
+	// 1. WMI Query
 	var adapters []Win32_NetworkAdapter
 	query := "SELECT Name, NetConnectionID, PhysicalAdapter, NetEnabled FROM Win32_NetworkAdapter WHERE PhysicalAdapter=True"
+	fmt.Printf("\nExecuting WMI query: %s\n", query)
+
 	if err := wmi.Query(query, &adapters); err != nil {
+		fmt.Printf("WMI query failed: %v\n", err)
 		return nil, fmt.Errorf("failed to get network adapters from WMI: %v", err)
 	}
+	fmt.Printf("Found %d physical adapters from WMI\n", len(adapters))
 
-	fmt.Printf("\nFound Network Adapters (WMI):\n")
+	// 2. Debug WMI results
+	fmt.Printf("\nNetwork Adapters (WMI):\n")
 	for _, adapter := range adapters {
-		fmt.Printf("  Adapter: %s\n  Connection Name: %s\n\n",
-			adapter.Name, adapter.NetConnectionID)
+		fmt.Printf("  - Name: %s\n    Connection: %s\n    Enabled: %v\n",
+			adapter.Name, adapter.NetConnectionID, adapter.NetEnabled)
 	}
 
-	// 2. Créer un mapping NetConnectionID -> Name
+	// 3. Create mapping
 	type adapterInfo struct {
 		name    string
 		enabled bool
@@ -102,41 +140,54 @@ func getNetworkInterfaces() (map[string]interfaceInfo, error) {
 				name:    adapter.Name,
 				enabled: adapter.NetEnabled,
 			}
+			fmt.Printf("\nRegistered adapter mapping: %s -> %s (enabled: %v)\n",
+				adapter.NetConnectionID, adapter.Name, adapter.NetEnabled)
 		}
 	}
 
-	// 3. Récupérer les interfaces système pour les adresses IP
+	// 4. Get system interfaces
+	fmt.Printf("\nRetrieving system network interfaces...\n")
 	netInterfaces, err := net.Interfaces()
 	if err != nil {
+		fmt.Printf("Failed to get system interfaces: %v\n", err)
 		return nil, fmt.Errorf("failed to get system network interfaces: %v", err)
 	}
+	fmt.Printf("Found %d system interfaces\n", len(netInterfaces))
 
-	// 4. Récupérer les noms d'instance PDH
-	pdhInstances, err := pdh.GetInstancesList("Network Interface", false)
+	// 5. Get PDH instances
+	fmt.Printf("\nRetrieving PDH interface instances...\n")
+	pdhInstances, err := pdh.GetInstancesList("Network Interface", true) // debug enabled
 	if err != nil {
+		fmt.Printf("Failed to get PDH instances: %v\n", err)
 		return nil, fmt.Errorf("failed to get PDH Network Interface instances: %v", err)
 	}
-
-	fmt.Printf("\nPDH Interface instances:\n")
+	fmt.Printf("\nPDH Interface instances (%d found):\n", len(pdhInstances))
 	for _, inst := range pdhInstances {
-		fmt.Printf("  %s\n", inst)
+		fmt.Printf("  - %s\n", inst)
 	}
 
-	// 5. Construire le mapping final
+	// 6. Build final mapping
+	fmt.Printf("\n=== Building final interface mapping ===\n")
 	interfaces := make(map[string]interfaceInfo)
 
 	for _, iface := range netInterfaces {
-		// Chercher l'adaptateur correspondant et vérifier qu'il est actif
-		adapterInfo, exists := connectionToAdapter[iface.Name]
-		if !exists || !adapterInfo.enabled {
-			continue // Pas un adaptateur physique, non trouvé ou non actif
-		}
-		adapterName := adapterInfo.name
+		fmt.Printf("\nProcessing interface: %s\n", iface.Name)
 
-		// Récupérer les adresses IP
+		// Check for corresponding adapter
+		adapterInfo, exists := connectionToAdapter[iface.Name]
+		if !exists {
+			fmt.Printf("  No matching WMI adapter found for %s, skipping\n", iface.Name)
+			continue
+		}
+		if !adapterInfo.enabled {
+			fmt.Printf("  Adapter %s is disabled, skipping\n", iface.Name)
+			continue
+		}
+
+		// Get IP addresses
 		addrs, err := iface.Addrs()
 		if err != nil {
-			fmt.Printf("Error getting addresses for interface %s: %v\n", iface.Name, err)
+			fmt.Printf("  Error getting addresses: %v\n", err)
 			continue
 		}
 
@@ -152,42 +203,54 @@ func getNetworkInterfaces() (map[string]interfaceInfo, error) {
 			if ip4 := ip.To4(); ip4 != nil {
 				if ipv4 == "" {
 					ipv4 = ip4.String()
+					fmt.Printf("  Primary IPv4: %s\n", ipv4)
 				} else {
 					otherIPs = append(otherIPs, ip4.String())
+					fmt.Printf("  Additional IPv4: %s\n", ip4.String())
 				}
 			} else if ip6 := ip.To16(); ip6 != nil {
 				if ipv6 == "" {
 					ipv6 = ip6.String()
+					fmt.Printf("  Primary IPv6: %s\n", ipv6)
 				} else {
 					otherIPs = append(otherIPs, ip6.String())
+					fmt.Printf("  Additional IPv6: %s\n", ip6.String())
 				}
 			}
 		}
 
 		if ipv4 != "" || ipv6 != "" {
-			// Chercher le nom PDH correspondant
+			// Find matching PDH instance using normalized names
 			var pdhName string
 			for _, inst := range pdhInstances {
-				if strings.Contains(inst, adapterName) {
+				if strings.Contains(normalizeAdapterName(inst), normalizeAdapterName(adapterInfo.name)) {
 					pdhName = inst
+					fmt.Printf("  Found matching PDH instance: %s\n", pdhName)
 					break
 				}
 			}
 
 			if pdhName != "" {
 				interfaces[pdhName] = interfaceInfo{
-					adapterName:    adapterName,
+					adapterName:    adapterInfo.name,
 					connectionName: iface.Name,
 					ipv4:           ipv4,
 					ipv6:           ipv6,
 					otherIPs:       otherIPs,
 					enabled:        true,
 				}
-				fmt.Printf("\nMapped interface:\n  PDH: %s\n  Adapter: %s\n  Connection: %s\n  IPv4: %s\n  IPv6: %s\n  Other IPs: %s\n",
-					pdhName, adapterName, iface.Name, ipv4, ipv6, strings.Join(otherIPs, ", "))
+				fmt.Printf("\nSuccessfully mapped interface:\n  PDH: %s\n  Adapter: %s\n  Connection: %s\n  IPv4: %s\n  IPv6: %s\n  Other IPs: %v\n",
+					pdhName, adapterInfo.name, iface.Name, ipv4, ipv6, otherIPs)
+			} else {
+				fmt.Printf("  No matching PDH instance found for adapter %s\n", adapterInfo.name)
 			}
+		} else {
+			fmt.Printf("  No IP addresses found for interface %s\n", iface.Name)
 		}
 	}
+
+	fmt.Printf("\n=== Final Result ===\n")
+	fmt.Printf("Found %d valid interfaces\n", len(interfaces))
 
 	return interfaces, nil
 }
@@ -309,7 +372,7 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 			})
 		}
 
-		// Ajouter les autres IPs avec index
+		// Add other IPs with index
 		for i, ip := range interfaceInfo.otherIPs {
 			metricTags = append(metricTags, tags.Tag{
 				Key:     fmt.Sprintf("ip_%d", i+1),
