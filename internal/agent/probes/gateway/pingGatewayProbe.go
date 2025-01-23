@@ -45,13 +45,13 @@ func (p *PingGatewayProbe) GetInterval() time.Duration {
 func (p *PingGatewayProbe) Collect() ([]data_store.DataPoint, error) {
 	gatewayIP, err := p.getGatewayIP()
 	if err != nil {
-		fmt.Errorf("error retrieving gateway IP address: %v", err)
+		fmt.Printf("error retrieving gateway IP address: %v", err)
 		return nil, err
 	}
 
 	averageLatency, packetLoss, err := p.collectPing(gatewayIP)
 	if err != nil {
-		fmt.Errorf("error collecting ping data: %w", err)
+		fmt.Printf("error collecting ping data: %v", err)
 		return nil, err
 	}
 
