@@ -30,6 +30,10 @@ func NewPingGatewayProbe(config map[string]interface{}, logger *logger.Logger) (
 	}, nil
 }
 
+func (p *PingGatewayProbe) GetTargetStrategies() []string {
+	return []string{"senhub", "prtg"}
+}
+
 func (p *PingGatewayProbe) GetName() string {
 	return "pingGatewayProbe"
 }

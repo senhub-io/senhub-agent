@@ -21,6 +21,10 @@ type memoryProbe struct {
 	interval  time.Duration
 }
 
+func (p *memoryProbe) GetTargetStrategies() []string {
+	return []string{"senhub", "prtg"}
+}
+
 // NewMemoryProbe crée une nouvelle instance de Memory probe
 func NewMemoryProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
 	interval := 30 * time.Second

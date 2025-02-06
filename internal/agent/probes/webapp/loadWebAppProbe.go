@@ -1,3 +1,4 @@
+// senhub-agent/internal/agent/probes/webapp/loadWebAppProbe.go
 package webapp
 
 import (
@@ -99,6 +100,10 @@ func parseLoadWebAppProbeConfig(config map[string]interface{}) (LoadWebAppProbeC
 		URL:     url,
 		Timeout: timeout,
 	}, nil
+}
+
+func (p *LoadWebAppProbe) GetTargetStrategies() []string {
+	return []string{"senhub", "prtg"}
 }
 
 func (p *LoadWebAppProbe) GetName() string {
