@@ -27,6 +27,10 @@ type logicaldiskProbe struct {
 	interval  time.Duration
 }
 
+func (p *logicaldiskProbe) GetTargetStrategies() []string {
+	return []string{"senhub", "prtg"}
+}
+
 // newLogicalDiskCollector creates a new Storage probe instance
 func NewLogicalDiskProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
 	interval := 30 * time.Second
@@ -44,7 +48,7 @@ func NewLogicalDiskProbe(config map[string]interface{}, logger *logger.Logger) (
 	switch runtime.GOOS {
 	case "windows":
 		probe.collector, err = newLogicalDiskCollector(config, logger)
-	case "linux", "darwin", "freebsd", "openbsd", "netbsd":
+	case "linux", "freebsd", "openbsd", "netbsd":
 		probe.collector, err = newLogicalDiskCollector(config, logger)
 	default:
 		return nil, fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
