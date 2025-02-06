@@ -1,5 +1,4 @@
 // senhub-agent/internal/agent/services/data_store/stategy_senhub.go
-
 package data_store
 
 import (
@@ -10,7 +9,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/services/senhub_server"
+	"senhub-agent.go/internal/agent/services/server"
 	"senhub-agent.go/internal/agent/tags"
 )
 
@@ -23,12 +22,10 @@ type SenhubDataPoint struct {
 
 // Synchronize metrics to senhub backend.
 type SyncStrategySenhub struct {
-	/** Store all datapoints */
-	buffer Buffer
-
+	buffer        Buffer
 	agentConfig   configuration.AgentConfiguration
 	storageConfig configuration.StorageConfigParams
-	server        senhub_server.SenhubServer
+	server        server.Server // Utilise la nouvelle interface
 	logger        *logger.Logger
 	ticker        *time.Ticker
 	tickerOnce    sync.Once
@@ -40,7 +37,8 @@ func NewSyncStrategySenhub(
 	logger *logger.Logger,
 ) SyncStrategy {
 	localLogger := logger.With().Str("sync_strategy", "SyncStrategySenhub").Logger()
-	server := senhub_server.NewSenhubServer(
+
+	srv := server.NewServer(
 		agentConfig.GetAuthenticationKey(),
 		agentConfig.GetServerUrl(),
 		logger,
@@ -51,7 +49,7 @@ func NewSyncStrategySenhub(
 		agentConfig:   agentConfig,
 		storageConfig: storageConfig,
 		logger:        &localLogger,
-		server:        server,
+		server:        srv,
 	}
 }
 

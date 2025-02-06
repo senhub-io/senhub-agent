@@ -1,3 +1,6 @@
+// configParser/configParser.go
+
+// Package configParser provides utilities for parsing configuration values
 package configParser
 
 import (
@@ -5,16 +8,16 @@ import (
 	"time"
 )
 
+// ParseDuration converts value to time.Duration
+// Accepts:
+// - float64: interpreted as seconds
+// - string: parsed using time.ParseDuration format
 func ParseDuration(value any) (time.Duration, error) {
-	if _, ok := value.(float64); ok {
-		// This is a duration in seconds
-		return time.Duration(value.(float64)) * time.Second, nil
+	if seconds, ok := value.(float64); ok {
+		return time.Duration(seconds) * time.Second, nil
 	}
-	if _, ok := value.(string); ok {
-		// This is a duration in string format
-		// Check it can be parsed
-		return time.ParseDuration(value.(string))
+	if str, ok := value.(string); ok {
+		return time.ParseDuration(str)
 	}
-
 	return time.Duration(0), fmt.Errorf("invalid duration format")
 }
