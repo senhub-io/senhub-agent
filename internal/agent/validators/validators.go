@@ -1,3 +1,4 @@
+// Package validators provides validation utilities for URLs and durations
 package validators
 
 import (
@@ -5,6 +6,7 @@ import (
 	"time"
 )
 
+// IsURL validates if input string is a properly formatted URL
 func IsURL(urlStr string) bool {
 	if urlStr == "" {
 		return false
@@ -13,25 +15,18 @@ func IsURL(urlStr string) bool {
 	if err != nil {
 		return false
 	}
-	if parsedURL.Scheme == "" || parsedURL.Host == "" {
-		return false
-	}
-	return true
+	return parsedURL.Scheme != "" && parsedURL.Host != ""
 }
 
+// IsDuration validates if input value represents a duration
+// Accepts float64 (seconds) or string (time.Duration format)
 func IsDuration(value any) bool {
 	if _, ok := value.(float64); ok {
-		// This is a duration in seconds
 		return true
 	}
-	if _, ok := value.(string); ok {
-		// This is a duration in string format
-		// Check it can be parsed
-		_, err := time.ParseDuration(value.(string))
-		if err != nil {
-			return false
-		}
-		return true
+	if str, ok := value.(string); ok {
+		_, err := time.ParseDuration(str)
+		return err == nil
 	}
 	return false
 }

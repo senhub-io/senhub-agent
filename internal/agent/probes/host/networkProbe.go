@@ -27,6 +27,10 @@ type osNetworkCollector interface {
 	Close() error
 }
 
+func (p *networkProbe) GetTargetStrategies() []string {
+	return []string{"senhub", "prtg"}
+}
+
 // NewNetworkProbe crée une nouvelle instance de Network probe
 func NewNetworkProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
 	interval := 30 * time.Second

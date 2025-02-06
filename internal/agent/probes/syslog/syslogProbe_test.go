@@ -1,4 +1,4 @@
-// internal/agent/probes/syslog/syslogProbe_test.go
+// senhub-agent/internal/agent/probes/syslog/syslogProbe_test.go
 package syslog
 
 import (
@@ -7,58 +7,93 @@ import (
 	"testing"
 )
 
-func TestParseSyslogProbeConfig(t *testing.T) {
+func TestNewSyslogProbe(t *testing.T) {
+	logger := zerolog.New(os.Stderr)
 	tests := []struct {
-		name       string
-		config     map[string]interface{}
-		wantPort   int
-		wantLabels map[string]string
-		wantErr    bool
+		name    string
+		config  map[string]interface{}
+		wantErr bool
 	}{
 		{
-			name:       "Default config",
-			config:     map[string]interface{}{},
-			wantPort:   DefaultSyslogPort,
-			wantLabels: map[string]string{},
-			wantErr:    false,
-		},
-		{
-			name: "Custom port",
+			name: "Valid Probe",
 			config: map[string]interface{}{
-				"port": float64(2514),
+				"port":     float64(514),
+				"protocol": "udp",
 			},
-			wantPort:   2514,
-			wantLabels: map[string]string{},
-			wantErr:    false,
+			wantErr: false,
 		},
 		{
-			name: "Invalid port - too low",
-			config: map[string]interface{}{
-				"port": float64(80),
-			},
-			wantErr: true,
+			name:    "Valid Probe with defaults",
+			config:  map[string]interface{}{},
+			wantErr: false,
 		},
 		{
-			name: "Invalid port - too high",
+			name: "Invalid port",
 			config: map[string]interface{}{
 				"port": float64(70000),
 			},
 			wantErr: true,
 		},
 		{
-			name: "With labels",
+			name: "Invalid protocol",
 			config: map[string]interface{}{
-				"labels": map[string]interface{}{
-					"env": "prod",
-					"dc":  "paris",
-				},
+				"protocol": "http",
 			},
-			wantPort: DefaultSyslogPort,
-			wantLabels: map[string]string{
-				"env": "prod",
-				"dc":  "paris",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewSyslogProbe(tt.config, &logger)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewSyslogProbe() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParseSyslogProbeConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  map[string]interface{}
+		want    SyslogProbeConfig
+		wantErr bool
+	}{
+		{
+			name:   "default values",
+			config: map[string]interface{}{},
+			want: SyslogProbeConfig{
+				Port:     DefaultPort,
+				Protocol: DefaultProtocol,
 			},
 			wantErr: false,
+		},
+		{
+			name: "custom values",
+			config: map[string]interface{}{
+				"port":     float64(5140),
+				"protocol": "tcp",
+			},
+			want: SyslogProbeConfig{
+				Port:     5140,
+				Protocol: "tcp",
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid port",
+			config: map[string]interface{}{
+				"port": float64(70000),
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid protocol",
+			config: map[string]interface{}{
+				"protocol": "invalid",
+			},
+			wantErr: true,
 		},
 	}
 
@@ -69,55 +104,13 @@ func TestParseSyslogProbeConfig(t *testing.T) {
 				t.Errorf("parseSyslogProbeConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if err != nil {
-				return
-			}
-
-			if got.Port != tt.wantPort {
-				t.Errorf("parseSyslogProbeConfig() port = %v, want %v", got.Port, tt.wantPort)
-			}
-
-			if len(got.Labels) != len(tt.wantLabels) {
-				t.Errorf("parseSyslogProbeConfig() labels count = %v, want %v", len(got.Labels), len(tt.wantLabels))
-			}
-
-			for k, v := range tt.wantLabels {
-				if got.Labels[k] != v {
-					t.Errorf("parseSyslogProbeConfig() label[%s] = %v, want %v", k, got.Labels[k], v)
+			if !tt.wantErr {
+				if got.Port != tt.want.Port {
+					t.Errorf("parseSyslogProbeConfig() Port = %v, want %v", got.Port, tt.want.Port)
 				}
-			}
-		})
-	}
-}
-
-func TestNewSyslogProbe(t *testing.T) {
-	log := zerolog.New(os.Stderr) // Création directe du logger zerolog
-
-	tests := []struct {
-		name    string
-		config  map[string]interface{}
-		wantErr bool
-	}{
-		{
-			name:    "Valid config",
-			config:  map[string]interface{}{},
-			wantErr: false,
-		},
-		{
-			name: "Invalid port",
-			config: map[string]interface{}{
-				"port": float64(80),
-			},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewSyslogProbe(tt.config, &log)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewSyslogProbe() error = %v, wantErr %v", err, tt.wantErr)
-				return
+				if got.Protocol != tt.want.Protocol {
+					t.Errorf("parseSyslogProbeConfig() Protocol = %v, want %v", got.Protocol, tt.want.Protocol)
+				}
 			}
 		})
 	}
