@@ -1,8 +1,9 @@
 EXECUTABLE=senhub-agent
-WINDOWS=$(EXECUTABLE)_windows_amd64.exe
-LINUX_AMD64=$(EXECUTABLE)_linux_amd64
-LINUX_ARM64=$(EXECUTABLE)_linux_arm64
-DARWIN=$(EXECUTABLE)_darwin_amd64
+DIST_DIR=dist
+WINDOWS=$(DIST_DIR)/$(EXECUTABLE)_windows_amd64.exe
+LINUX_AMD64=$(DIST_DIR)/$(EXECUTABLE)_linux_amd64
+LINUX_ARM64=$(DIST_DIR)/$(EXECUTABLE)_linux_arm64
+DARWIN=$(DIST_DIR)/$(EXECUTABLE)_darwin_amd64
 VERSION=$(shell git describe --tags --abbrev=0 --match='v[0-9]*.*' 2> /dev/null | sed 's/^.//')
 COMMIT_HASH=$(shell git describe --tags --always --long --dirty)
 ENV ?= production
@@ -73,20 +74,24 @@ delete-version:
 	git tag -d "v$$version_to_delete"; \
 	git push origin ":refs/tags/v$$version_to_delete"
 
+# Create dist directory
+create-dist:
+	@mkdir -p $(DIST_DIR)
+
 # Build the application
-all: build test
+all: create-dist build test ## Build all binaries and run tests
 
 build: build-windows build-linux build-darwin ## Build binaries
 	@echo version: $(VERSION) - commit: $(COMMIT_HASH)
 
-build-windows: ## Build for Windows
+build-windows: create-dist ## Build for Windows
 	    @env GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/main.go
 
-build-linux: ## Build for Linux
+build-linux: create-dist ## Build for Linux
 	    @env GOOS=linux GOARCH=amd64 go build -o $(LINUX_AMD64) -ldflags="$(LDFLAGS)" ./cmd/agent/main.go
 	    @env GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/main.go
 
-build-darwin: ## Build for Darwin (macOS)
+build-darwin: create-dist ## Build for Darwin (macOS)
 	    @env GOOS=darwin GOARCH=amd64 go build -o $(DARWIN) -ldflags="$(LDFLAGS)" ./cmd/agent/main.go
 
 install: ## Install the application
@@ -113,7 +118,7 @@ test-vars:
 # Clean the binary
 clean:
 	@echo "Cleaning..."
-	@rm -f $(WINDOWS) $(LINUX) $(DARWIN)
+	@rm -rf $(DIST_DIR)
 
 # Live Reload (development tool)
 watch: clean
@@ -132,4 +137,4 @@ watch: clean
             fi; \
         fi
 
-.PHONY: all build build-windows build-linux build-darwin run test clean watch
+.PHONY: all build build-windows build-linux build-darwin run test clean watch create-dist

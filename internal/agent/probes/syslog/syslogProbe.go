@@ -1,33 +1,41 @@
-// internal/agent/probes/syslog/syslogProbe.go
+// senhub-agent/internal/agent/probes/syslog/syslogProbe.go
 package syslog
 
 import (
 	"context"
 	"fmt"
+	"gopkg.in/mcuadros/go-syslog.v2"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/services/syslog"
+	"senhub-agent.go/internal/agent/tags"
 )
 
 const (
-	DefaultSyslogPort = 514
-	MinPort           = 1024
-	MaxPort           = 65535
+	DefaultPort         = 514
+	DefaultProtocol     = "udp"
+	DefaultSyncInterval = 30 * time.Second
+	MinPort             = 1
+	MaxPort             = 65535
 )
 
 type SyslogProbeConfig struct {
-	Port   int
-	Labels map[string]string
+	Port     int
+	Protocol string
 }
 
 type SyslogProbe struct {
-	config   SyslogProbeConfig
-	logger   *logger.Logger
-	service  syslog.SyslogService
-	callback func([]data_store.DataPoint) error
+	rawConfig map[string]interface{}
+	config    SyslogProbeConfig
+	logger    *logger.Logger
+	server    *syslog.Server
+	callback  func([]data_store.DataPoint) error
+}
+
+func (p *SyslogProbe) SetCallback(callback func([]data_store.DataPoint) error) {
+	p.callback = callback
 }
 
 func NewSyslogProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
@@ -36,45 +44,49 @@ func NewSyslogProbe(config map[string]interface{}, logger *logger.Logger) (types
 		return nil, err
 	}
 
-	service := syslog.NewSyslogService(
-		parsedConfig.Port,
-		parsedConfig.Labels,
-		logger,
-	)
-
+	fmt.Printf("[DEBUG] Creating new syslog probe with config: %+v\n", parsedConfig)
 	return &SyslogProbe{
-		config:  parsedConfig,
-		logger:  logger,
-		service: service,
+		rawConfig: config,
+		config:    parsedConfig,
+		logger:    logger,
 	}, nil
 }
 
 func parseSyslogProbeConfig(config map[string]interface{}) (SyslogProbeConfig, error) {
-	port := DefaultSyslogPort
+	errs := []error{}
+	var port int = DefaultPort
+	var protocol string = DefaultProtocol
+
 	if portVal, ok := config["port"].(float64); ok {
 		port = int(portVal)
 		if port < MinPort || port > MaxPort {
-			return SyslogProbeConfig{}, fmt.Errorf("port must be between %d and %d", MinPort, MaxPort)
+			errs = append(errs, fmt.Errorf("port must be between %d and %d", MinPort, MaxPort))
 		}
 	}
 
-	labels := make(map[string]string)
-	if labelsVal, ok := config["labels"].(map[string]interface{}); ok {
-		for k, v := range labelsVal {
-			if strVal, ok := v.(string); ok {
-				labels[k] = strVal
-			}
+	if protocolVal, ok := config["protocol"].(string); ok {
+		protocol = protocolVal
+		if protocol != "tcp" && protocol != "udp" {
+			errs = append(errs, fmt.Errorf("protocol must be 'tcp' or 'udp'"))
 		}
+	}
+
+	if len(errs) > 0 {
+		return SyslogProbeConfig{}, fmt.Errorf("error parsing config: %v", errs)
 	}
 
 	return SyslogProbeConfig{
-		Port:   port,
-		Labels: labels,
+		Port:     port,
+		Protocol: protocol,
 	}, nil
 }
 
+func (p *SyslogProbe) GetTargetStrategies() []string {
+	return []string{"event"}
+}
+
 func (p *SyslogProbe) GetName() string {
-	return "syslogProbe"
+	return "syslog"
 }
 
 func (p *SyslogProbe) ShouldStart() bool {
@@ -82,30 +94,114 @@ func (p *SyslogProbe) ShouldStart() bool {
 }
 
 func (p *SyslogProbe) GetInterval() time.Duration {
-	return 24 * time.Hour // Un long intervalle car nous n'utilisons pas le polling
+	return DefaultSyncInterval
 }
 
 func (p *SyslogProbe) Collect() ([]data_store.DataPoint, error) {
-	return nil, nil // La collecte est gérée par le service Syslog
+	return nil, nil // Event-driven, pas de collection périodique
 }
 
 func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
-	if p.callback == nil {
-		p.logger.Error().Msg("DataStore callback not set")
-		return fmt.Errorf("datastore callback not set")
+	fmt.Printf("[INFO] Starting syslog probe on %s:%d\n", p.config.Protocol, p.config.Port)
+
+	channel := make(syslog.LogPartsChannel)
+	handler := syslog.NewChannelHandler(channel)
+
+	server := syslog.NewServer()
+	server.SetFormat(syslog.Automatic)
+	server.SetHandler(handler)
+
+	address := fmt.Sprintf("0.0.0.0:%d", p.config.Port)
+	switch p.config.Protocol {
+	case "udp":
+		if err := server.ListenUDP(address); err != nil {
+			fmt.Printf("[ERROR] Failed to start UDP listener: %v\n", err)
+			return fmt.Errorf("failed to start UDP listener: %w", err)
+		}
+	case "tcp":
+		if err := server.ListenTCP(address); err != nil {
+			fmt.Printf("[ERROR] Failed to start TCP listener: %v\n", err)
+			return fmt.Errorf("failed to start TCP listener: %w", err)
+		}
 	}
 
-	p.service.AddHandler(func(dp data_store.DataPoint) error {
-		return p.callback([]data_store.DataPoint{dp})
-	})
+	if err := server.Boot(); err != nil {
+		fmt.Printf("[ERROR] Failed to start syslog server: %v\n", err)
+		return fmt.Errorf("failed to start syslog server: %w", err)
+	}
 
-	return p.service.Start()
+	p.server = server
+	fmt.Printf("[INFO] Syslog server started successfully\n")
+
+	go func() {
+		for {
+			select {
+			case logParts := <-channel:
+				p.processLogMessage(logParts)
+			case <-quitChannel:
+				fmt.Printf("[DEBUG] Received quit signal, stopping message processing\n")
+				return
+			}
+		}
+	}()
+
+	return nil
 }
 
 func (p *SyslogProbe) OnShutdown(ctx context.Context) error {
-	return p.service.Stop(ctx)
+	if p.server != nil {
+		fmt.Printf("[INFO] Stopping syslog probe\n")
+		return p.server.Kill()
+	}
+	return nil
 }
 
-func (p *SyslogProbe) SetCallback(callback func([]data_store.DataPoint) error) {
-	p.callback = callback
+func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
+	facility, _ := logParts["facility"].(int)
+	severity, _ := logParts["severity"].(int)
+	content, _ := logParts["content"].(string)
+	hostname, _ := logParts["hostname"].(string)
+	tag, _ := logParts["tag"].(string)
+	client, _ := logParts["client"].(string)
+	priority, _ := logParts["priority"].(int)
+	timestamp, _ := logParts["timestamp"].(time.Time)
+	if timestamp.IsZero() {
+		timestamp = time.Now()
+	}
+
+	eventTags := []tags.Tag{
+		{Key: "facility", Value: fmt.Sprintf("%d", facility), Private: false},
+		{Key: "severity", Value: fmt.Sprintf("%d", severity), Private: false},
+		{Key: "host", Value: hostname, Private: false},
+		{Key: "message", Value: content, Private: false},
+		{Key: "tag", Value: tag, Private: false},
+		{Key: "client", Value: client, Private: false},
+		{Key: "priority", Value: fmt.Sprintf("%d", priority), Private: false},
+	}
+
+	fmt.Printf("[DEBUG] Received syslog message - facility: %d, severity: %d, host: %s, message: %s\n",
+		facility, severity, hostname, content)
+
+	if p.callback == nil {
+		fmt.Printf("[WARNING] Callback is not set\n")
+		return
+	}
+
+	dataPoint := data_store.DataPoint{
+		Name:      "syslog_event",
+		Timestamp: timestamp,
+		Value:     float32(severity),
+		Tags:      eventTags,
+	}
+
+	fmt.Printf("[DEBUG] Sending DataPoint to DataStore: timestamp=%v, severity=%v\n",
+		timestamp, severity)
+
+	if err := p.callback([]data_store.DataPoint{dataPoint}); err != nil {
+		fmt.Printf("[ERROR] Failed to send DataPoint to DataStore: %v\n", err)
+	}
+}
+
+func (p *SyslogProbe) String() string {
+	return fmt.Sprintf("SyslogProbe{protocol=%s, port=%d}", p.config.Protocol, p.config.Port)
 }
