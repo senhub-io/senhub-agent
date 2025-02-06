@@ -5,12 +5,12 @@ tmp_dir = "tmp"
 [build]
 args_bin = [
   "--authentication-key",
-  "2a197eb3-4225-4e7b-8ed1-fdec21a2a839",
+  "a80cd361-2c6e-42b0-86db-6ccda6745704",
   "--server-url",
-  "http://127.0.0.1:8008",
+  "https://eu-west-1.intake-dev.senhub.io",
 ]
-bin = "./senhub-agent"
-cmd = "ENV=development make build"
+bin = "./dist/senhub-agent_darwin_amd64"
+cmd = "ENV=development make build-darwin"
 delay = 1000
 exclude_dir = ["assets", "tmp", "vendor", "testdata"]
 exclude_file = []

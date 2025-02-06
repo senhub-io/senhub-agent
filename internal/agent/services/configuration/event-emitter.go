@@ -1,30 +1,50 @@
+// Package configuration provides configuration and event management for the agent
 package configuration
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
+// EventNotifier implements the observer pattern for configuration changes.
+// It allows components to register for and receive configuration update events
+// in a thread-safe manner.
 type EventNotifier struct {
-	observers []func(event string)
-	mu        sync.Mutex
+	observers []func(event string) // Registered callback functions
+	mu        sync.Mutex           // Protects concurrent access to observers
 }
 
-// NewEventNotifier initializes an EventNotifier with a callback.
+// NewEventNotifier creates and initializes a new event notification system.
+// Returns a pointer to EventNotifier ready to accept observers.
 func NewEventNotifier() *EventNotifier {
+	fmt.Printf("[DEBUG] Creating new EventNotifier\n")
 	return &EventNotifier{}
 }
 
-// RegisterObserver allows a service to register a callback function.
+// RegisterObserver adds a new callback function to be notified of events.
+// The callback function accepts an event string parameter describing the change.
+// Thread-safe: can be called concurrently from multiple goroutines.
 func (en *EventNotifier) RegisterObserver(callback func(string)) {
+	fmt.Printf("[DEBUG] Registering new observer\n")
 	en.mu.Lock()
 	defer en.mu.Unlock()
 	en.observers = append(en.observers, callback)
 }
 
-// Notify triggers the callback with the given event data.
+// NotifyObservers triggers all registered callbacks with the provided event.
+// Callbacks are executed asynchronously in separate goroutines.
+// Thread-safe: creates a copy of observers list to prevent race conditions.
 func (en *EventNotifier) NotifyObservers(event string) {
+	fmt.Printf("[DEBUG] Notifying observers of event: %s\n", event)
+
+	// Copy callbacks under lock to prevent race conditions
 	en.mu.Lock()
-	for _, callback := range en.observers {
-		// Call each observer callback with the new configuration
+	callbacks := make([]func(string), len(en.observers))
+	copy(callbacks, en.observers)
+	en.mu.Unlock()
+
+	// Execute callbacks asynchronously after releasing lock
+	for _, callback := range callbacks {
 		go callback(event)
 	}
-	en.mu.Unlock()
 }

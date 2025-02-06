@@ -1,7 +1,9 @@
+// Package agent manages the core agent lifecycle and services orchestration
 package agent
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"syscall"
@@ -10,64 +12,62 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/services/senhub_server"
 	"senhub-agent.go/internal/agent/services/sensor"
+	"senhub-agent.go/internal/agent/services/server"
 )
 
+// Service defines interface for agent services lifecycle
 type Service interface {
 	GetName() string
 	Start(chan struct{}) error
 	Shutdown(context.Context) error
 }
 
+// Agent defines interface for main agent operations
 type Agent interface {
 	Start() error
 	Shutdown(context.Context) error
 }
 
 type agent struct {
-	// List of services that have been started
-	startedServices *[]Service
-	// Channel to communicate with services
-	messageChannel chan struct{}
-
+	startedServices     *[]Service
+	messageChannel      chan struct{}
 	logger              *logger.Logger
-	senhubServer        senhub_server.SenhubServer
+	senhubServer        server.Server
 	agentConfiguration  configuration.AgentConfiguration
 	remoteConfiguration *configuration.RemoteConfiguration
 	store               data_store.DataStore
 	sensors             sensor.Sensor
 }
 
-// Create new agent from context
+// NewAgent initializes new agent with required services
 func NewAgent() Agent {
-
 	args := agentCliArgs.MustParse()
-
 	logger := logger.NewLogger(args)
-	logger.Debug().
-		Any("args", args).
-		Msg("Agent configuration")
+	logger.Debug().Any("args", args).Msg("Agent configuration")
 
 	agentConfiguration := configuration.NewAgentConfiguration(
 		args.AuthenticationKey,
 		args.ServerUrl,
 	)
 
-	senhubServer := senhub_server.NewSenhubServer(
+	senhubServer := server.NewServer(
 		agentConfiguration.GetAuthenticationKey(),
 		agentConfiguration.GetServerUrl(),
 		logger,
 	)
+
 	remoteConfiguration := configuration.NewRemoteConfiguration(
 		senhubServer,
 		logger,
 	)
+
 	store := data_store.NewDataStore(
 		agentConfiguration,
 		remoteConfiguration,
 		logger,
 	)
+
 	sensors := sensor.NewSensor(
 		store.GetCallback(),
 		remoteConfiguration,
@@ -75,9 +75,8 @@ func NewAgent() Agent {
 	)
 
 	return agent{
-		startedServices: &[]Service{},
-		messageChannel:  make(chan struct{}),
-
+		startedServices:     &[]Service{},
+		messageChannel:      make(chan struct{}),
 		logger:              logger,
 		senhubServer:        senhubServer,
 		agentConfiguration:  agentConfiguration,
@@ -88,29 +87,21 @@ func NewAgent() Agent {
 }
 
 func (a agent) Start() error {
-	// List of all services that should be started
 	servicesToStart := []Service{
 		a.remoteConfiguration,
 		a.store,
 		a.sensors,
 	}
 
-	// Attempt to start all services
-	// Create a message channel to communicate with the services
 	var errors []error
 	for _, service := range servicesToStart {
-		a.logger.Info().
-			Str("service", service.GetName()).
-			Msg("Starting service")
+		fmt.Printf("Starting service %s\n", service.GetName())
+
 		if err := service.Start(a.messageChannel); err != nil {
-			a.logger.Error().Err(err).
-				Str("service", service.GetName()).
-				Msg("Error starting service")
+			fmt.Printf("Error starting service %s: %v\n", service.GetName(), err)
 			errors = append(errors, err)
 		} else {
-			a.logger.Info().
-				Str("service", service.GetName()).
-				Msg("Service started")
+			fmt.Printf("Service %s started\n", service.GetName())
 			*a.startedServices = append(*a.startedServices, service)
 		}
 	}
@@ -123,25 +114,17 @@ func (a agent) Start() error {
 }
 
 func (a agent) Shutdown(ctx context.Context) error {
-	// Notify all services to shutdown
 	close(a.messageChannel)
 
-	// Explicitely call Shutdown method on all services
-	// Not sure this is usefull since the message channel already notified to close
 	var errors []error
 	for _, service := range *a.startedServices {
-		a.logger.Info().
-			Str("service", service.GetName()).
-			Msg("Stopping service")
+		fmt.Printf("Stopping service %s\n", service.GetName())
+
 		if err := service.Shutdown(ctx); err != nil {
-			a.logger.Error().Err(err).
-				Str("service", service.GetName()).
-				Msg("Error shutting down service")
+			fmt.Printf("Error shutting down service %s: %v\n", service.GetName(), err)
 			errors = append(errors, err)
 		} else {
-			a.logger.Info().
-				Str("service", service.GetName()).
-				Msg("Service shut down")
+			fmt.Printf("Service %s shut down\n", service.GetName())
 		}
 	}
 
@@ -152,16 +135,14 @@ func (a agent) Shutdown(ctx context.Context) error {
 }
 
 func (a agent) handleStartError() {
-	// Attempt to shutdown all services that were started
-	// by sending a SIGTEMR signal to the agent process
 	pid := os.Getpid()
 	p, err := os.FindProcess(pid)
 	if err != nil {
-		a.logger.Error().Err(err).Msg("Error finding process")
+		fmt.Printf("Error finding process: %v\n", err)
 		log.Fatal(err)
 	}
 	if err := p.Signal(syscall.SIGTERM); err != nil {
-		a.logger.Error().Err(err).Msg("Error sending SIGTERM signal")
+		fmt.Printf("Error sending SIGTERM signal: %v\n", err)
 		log.Fatal(err)
 	}
 }

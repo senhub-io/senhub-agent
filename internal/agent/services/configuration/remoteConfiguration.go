@@ -1,4 +1,8 @@
-// senhub-agent/internal/agent/services/configuration/remoteConfiguration.go
+// RemoteConfiguration handles dynamic configuration
+// Responsibilities:
+// - Initial configuration loading
+// - Hot configuration updates
+// - Component change notifications
 package configuration
 
 import (
@@ -6,24 +10,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/services/senhub_server"
+	"senhub-agent.go/internal/agent/services/server"
 )
 
-// RemoteConfiguration is an interface for remote configuration.
-// Remote configuration is read periodically from the server.
-
-// StorageConfig represents the configuration for synchronization strategy.
 type StorageConfigParams = map[string]interface{}
+
 type StorageConfig struct {
 	Name   string              `json:"name"`
 	Params StorageConfigParams `json:"params"`
 }
 
 type ProbeConfigParams = map[string]interface{}
+
 type ProbeConfig struct {
 	Name   string            `json:"name"`
 	Params ProbeConfigParams `json:"params"`
@@ -34,30 +37,28 @@ type RemoteConfigurationData struct {
 	Probes        []ProbeConfig   `json:"probes"`
 }
 
-// RemoteConfiguration represents a struct that performs periodic tasks.
 type RemoteConfiguration struct {
 	data          RemoteConfigurationData
 	logger        *logger.Logger
-	senhubServer  senhub_server.SenhubServer
+	server        server.Server
 	eventNotifier *EventNotifier
 	ticker        *time.Ticker
 	tickerOnce    sync.Once
-	mutex         sync.Mutex // Ensures thread-safe execution of doRefreshConfig
+	mutex         sync.Mutex
 }
 
-// NewService initializes a new Service instance.
-func NewRemoteConfiguration(
-	senhubServer senhub_server.SenhubServer,
-	logger *logger.Logger,
-) *RemoteConfiguration {
+func NewRemoteConfiguration(serverClient server.Server, logger *logger.Logger) *RemoteConfiguration {
+	fmt.Printf("[DEBUG] Creating new RemoteConfiguration instance\n")
 	localLogger := logger.With().Str("service", "RemoteConfiguration").Logger()
 
-	return &RemoteConfiguration{
+	rc := &RemoteConfiguration{
 		logger:        &localLogger,
-		senhubServer:  senhubServer,
+		server:        serverClient,
 		data:          RemoteConfigurationData{},
 		eventNotifier: NewEventNotifier(),
 	}
+	fmt.Printf("[DEBUG] RemoteConfiguration instance created successfully\n")
+	return rc
 }
 
 func (rc *RemoteConfiguration) GetName() string {
@@ -68,85 +69,170 @@ func (rc *RemoteConfiguration) GetConfiguration() RemoteConfigurationData {
 	return rc.data
 }
 
-// Register a callback to be called when the configuration changes.
 func (rc *RemoteConfiguration) OnConfigChanged(callback func(string)) {
+	fmt.Printf("[DEBUG] Registering new configuration change callback\n")
 	rc.eventNotifier.RegisterObserver(callback)
 }
 
-// StartPeriodicTask starts calling doRefreshConfig at the specified interval.
 func (rc *RemoteConfiguration) Start(quitChannel chan struct{}) error {
-	rc.tickerOnce.Do(func() { // Ensure the ticker only starts once
-		rc.ticker = time.NewTicker(3 * time.Second)
+	fmt.Printf("[DEBUG] Starting RemoteConfiguration service\n")
+	rc.tickerOnce.Do(func() {
+		rc.ticker = time.NewTicker(10 * time.Second)
 
-		// Attempt to first fetch configuration
-		rc.logger.Info().Msg("Fetching initial configuration")
+		fmt.Printf("[DEBUG] Fetching initial configuration\n")
 		if err := rc.doRefreshConfig(); err != nil {
-			rc.logger.Error().Err(err).Msg("Failed to fetch initial configuration")
+			fmt.Printf("[ERROR] Failed to fetch initial configuration: %v\n", err)
 		}
 
 		go func() {
 			for {
 				select {
 				case <-quitChannel:
+					fmt.Printf("[DEBUG] Received quit signal\n")
 					rc.ticker.Stop()
 					return
 				case <-rc.ticker.C:
-					rc.logger.Info().Msg("Fetching configuration")
 					if err := rc.doRefreshConfig(); err != nil {
-						rc.logger.Error().Err(err).Msg("Failed to fetch configuration")
+						fmt.Printf("[ERROR] Failed to fetch configuration: %v\n", err)
 					}
 				}
 			}
 		}()
 	})
-
 	return nil
 }
 
-// StopPeriodicTask stops the periodic execution of doRefreshConfig.
-func (rc *RemoteConfiguration) Shutdown(context.Context) error {
-	rc.logger.Info().Msg("Shutting down")
+func (rc *RemoteConfiguration) Shutdown(ctx context.Context) error {
+	fmt.Printf("[DEBUG] Shutting down RemoteConfiguration\n")
 	if rc.ticker != nil {
 		rc.ticker.Stop()
 	}
 	return nil
 }
 
-// doRefreshConfig is the method called periodically, now thread-safe.
-func (rc *RemoteConfiguration) doRefreshConfig() error {
-	rc.mutex.Lock()
-	defer rc.mutex.Unlock()
+func (rc *RemoteConfiguration) validateStorageParams(storage StorageConfig) error {
+	fmt.Printf("[DEBUG] Validating storage params for %s\n", storage.Name)
 
-	config, err := rc.doFetchConfiguration()
-	if err != nil {
-		return err
+	switch storage.Name {
+	case "senhub":
+		return nil
+	case "prtg", "event":
+		if _, ok := storage.Params["server_url"]; !ok {
+			return fmt.Errorf("%s storage requires server_url parameter", storage.Name)
+		}
+		serverURL, ok := storage.Params["server_url"].(string)
+		if !ok || serverURL == "" {
+			return fmt.Errorf("%s storage server_url must be a non-empty string", storage.Name)
+		}
+	default:
+		return fmt.Errorf("unknown storage strategy: %s", storage.Name)
+	}
+	return nil
+}
+
+func (rc *RemoteConfiguration) validateConfiguration(config *RemoteConfigurationData) error {
+	if config == nil {
+		return fmt.Errorf("configuration cannot be nil")
 	}
 
-	// Replace existing configuration with new one
-	rc.data = *config
-	rc.eventNotifier.NotifyObservers("Configuration changed")
+	fmt.Printf("[DEBUG] Validating configuration\n")
+
+	if len(config.StorageConfig) == 0 {
+		return fmt.Errorf("at least one storage strategy is required")
+	}
+
+	strategyNames := make(map[string]bool)
+	for _, storage := range config.StorageConfig {
+		if storage.Name == "" {
+			return fmt.Errorf("storage strategy name cannot be empty")
+		}
+		if strategyNames[storage.Name] {
+			return fmt.Errorf("duplicate storage strategy name: %s", storage.Name)
+		}
+		strategyNames[storage.Name] = true
+
+		if err := rc.validateStorageParams(storage); err != nil {
+			return fmt.Errorf("invalid params for strategy %s: %v", storage.Name, err)
+		}
+	}
+
+	probeNames := make(map[string]bool)
+	for _, probe := range config.Probes {
+		if probe.Name == "" {
+			return fmt.Errorf("probe name cannot be empty")
+		}
+		if probeNames[probe.Name] {
+			return fmt.Errorf("duplicate probe name: %s", probe.Name)
+		}
+		probeNames[probe.Name] = true
+	}
 
 	return nil
 }
 
-func (rc *RemoteConfiguration) doFetchConfiguration() (*RemoteConfigurationData, error) {
-	res, err := rc.senhubServer.Get("/configs")
-	if err != nil {
-		return nil, err
+func (rc *RemoteConfiguration) doRefreshConfig() error {
+	rc.mutex.Lock()
+	defer rc.mutex.Unlock()
+
+	maxRetries := 3
+	backoffDuration := 1 * time.Second
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		fmt.Printf("[DEBUG] Fetching configuration attempt %d/%d\n", attempt+1, maxRetries)
+
+		config, err := rc.doFetchConfiguration()
+		if err == nil {
+			if err := rc.validateConfiguration(config); err != nil {
+				fmt.Printf("[ERROR] Invalid configuration received: %v\n", err)
+				return fmt.Errorf("invalid configuration: %v", err)
+			}
+
+			if !reflect.DeepEqual(rc.data, *config) {
+				fmt.Printf("[INFO] Configuration changed, applying new version\n")
+				rc.data = *config
+				rc.eventNotifier.NotifyObservers("Configuration changed")
+			} else {
+				fmt.Printf("[DEBUG] Configuration unchanged\n")
+			}
+			return nil
+		}
+
+		fmt.Printf("[ERROR] Failed to fetch configuration: %v\n", err)
+		if attempt < maxRetries-1 {
+			fmt.Printf("[INFO] Retrying in %v\n", backoffDuration)
+			time.Sleep(backoffDuration)
+			backoffDuration *= 2
+		}
 	}
 
+	return fmt.Errorf("failed to fetch configuration after %d attempts", maxRetries)
+}
+
+func (rc *RemoteConfiguration) doFetchConfiguration() (*RemoteConfigurationData, error) {
+	fmt.Printf("[DEBUG] Fetching configuration from server\n")
+
+	res, err := rc.server.Get("/configs")
+	if err != nil {
+		return nil, fmt.Errorf("server request failed: %v", err)
+	}
 	defer res.Body.Close()
+
 	respBody, err := io.ReadAll(res.Body)
 	if err != nil {
-		return nil, err
-	}
-	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("unexpected status code: %d, %v", res.StatusCode, string(respBody))
+		return nil, fmt.Errorf("reading response failed: %v", err)
 	}
 
-	fmt.Printf("Raw configuration response: %s\n", string(respBody))
+	if res.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected status code: %d, response: %s",
+			res.StatusCode, string(respBody))
+	}
+
+	fmt.Printf("[DEBUG] Raw configuration response: %s\n", string(respBody))
 
 	var config RemoteConfigurationData
-	err = json.Unmarshal(respBody, &config)
-	return &config, err
+	if err := json.Unmarshal(respBody, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse configuration: %v", err)
+	}
+
+	return &config, nil
 }

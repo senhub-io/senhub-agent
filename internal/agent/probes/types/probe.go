@@ -1,31 +1,38 @@
-// probes/types/probe.go
+// Package types defines core interfaces and types for the probe system
 package types
 
 import (
 	"context"
-	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/types/datapoint"
 	"time"
 )
 
-// Interface each probe should implement
+// Probe defines the interface that all probes must implement.
+// It provides methods for lifecycle management and data collection.
 type Probe interface {
-	// GetName returns the name of the probe
+	// GetName returns the unique identifier of the probe
 	GetName() string
-	// ShouldStart returns whether the probe should be started or not
+
+	// ShouldStart indicates if probe should be activated based on environment
 	ShouldStart() bool
-	// Interval at which the probe should be run
+
+	// GetInterval returns the collection frequency for the probe
 	GetInterval() time.Duration
-	// Collect runs the probe and returns the data
-	Collect() ([]data_store.DataPoint, error)
-	// Event called when the probe is started
-	OnStart(chan struct{}) error
-	// Event called when the probe is shutdown
-	OnShutdown(context.Context) error
+
+	// Collect gathers metrics and returns collected datapoints
+	Collect() ([]datapoint.DataPoint, error)
+
+	// OnStart is called when probe is initialized
+	// quitChannel signals when probe should stop
+	OnStart(quitChannel chan struct{}) error
+
+	// OnShutdown handles cleanup when probe is stopped
+	OnShutdown(ctx context.Context) error
 }
 
-// ProbeWithCallback extends Probe interface for probes that need to handle callbacks
+// ProbeWithCallback extends Probe for event-driven collection
 type ProbeWithCallback interface {
 	Probe
-	// SetCallback allows setting a callback function for data handling
-	SetCallback(func([]data_store.DataPoint) error)
+	// SetCallback registers handler for collected datapoints
+	SetCallback(func([]datapoint.DataPoint) error)
 }
