@@ -1,5 +1,5 @@
 # Define the service executable path
-$serviceExecutable = ".\senhub-agent_windows_amd64.exe"
+$serviceExecutable = ".\dist\senhub-agent_windows_amd64.exe"
 
 # Function to check if the service is installed
 function Check-ServiceInstalled {
@@ -74,4 +74,3 @@ if (Check-ServiceInstalled -ServiceName $serviceName) {
     exit 1
 }
 Write-Host "Service uninstalled successfully."
-
