@@ -48,6 +48,9 @@ func (p *program) run() {
 
 // checkPrivileges verifies if the program is running with the required privileges
 func checkPrivileges() error {
+	if runtime.GOOS == "darwin" {
+		return nil
+	}
 	if runtime.GOOS == "windows" {
 		// Check for administrator privileges on Windows
 		_, err := os.Open("\\\\.\\PHYSICALDRIVE0")

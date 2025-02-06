@@ -1,6 +1,7 @@
-// internal/agent/probes/host/cpuProbe.go
 //go:build windows || !windows
 
+// internal/agent/probes/host/cpuProbe.go
+//
 package host
 
 import (
@@ -15,10 +16,11 @@ import (
 
 // cpuProbe représente le collecteur de métriques CPU
 type cpuProbe struct {
-	rawConfig map[string]interface{}
-	logger    *logger.Logger
-	collector osCollector
-	interval  time.Duration
+	*types.BaseProbe // Ajout de BaseProbe
+	rawConfig        map[string]interface{}
+	logger           *logger.Logger
+	collector        osCollector
+	interval         time.Duration
 }
 
 // NewCpuProbe crée une nouvelle instance de CPU probe
@@ -27,13 +29,12 @@ func NewCpuProbe(config map[string]interface{}, logger *logger.Logger) (types.Pr
 	if cfgInterval, ok := config["interval"].(int); ok {
 		interval = time.Duration(cfgInterval) * time.Second
 	}
-
 	probe := &cpuProbe{
+		BaseProbe: &types.BaseProbe{}, // Initialisation de BaseProbe
 		rawConfig: config,
 		logger:    logger,
 		interval:  interval,
 	}
-
 	var err error
 	switch runtime.GOOS {
 	case "windows":
@@ -43,12 +44,14 @@ func NewCpuProbe(config map[string]interface{}, logger *logger.Logger) (types.Pr
 	default:
 		return nil, fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
 	}
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CPU collector: %v", err)
 	}
-
 	return probe, nil
+}
+
+func (p *cpuProbe) GetTargetStrategies() []string {
+	return []string{"senhub", "prtg"}
 }
 
 func (p *cpuProbe) GetName() string {
@@ -69,6 +72,14 @@ func (p *cpuProbe) Collect() ([]data_store.DataPoint, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to collect CPU metrics: %v", err)
 	}
+
+	// Le probe s'auto-passe comme StrategyRouter
+	if p.OnDataPoints != nil {
+		if err := p.OnDataPoints(metrics, p); err != nil {
+			return nil, fmt.Errorf("error handling data points: %v", err)
+		}
+	}
+
 	return metrics, nil
 }
 
