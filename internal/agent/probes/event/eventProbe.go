@@ -188,7 +188,7 @@ func (p *EventProbe) handleEvent(w http.ResponseWriter, r *http.Request) {
 
 // validateEvent validates the incoming event.
 func validateEvent(event map[string]interface{}) error {
-	requiredFields := []string{"timestamp", "host", "message", "severity"}
+	requiredFields := []string{"host", "message", "severity"}
 	for _, field := range requiredFields {
 		if _, ok := event[field]; !ok {
 			return fmt.Errorf("missing required field: %s", field)
@@ -203,8 +203,6 @@ func validateEvent(event map[string]interface{}) error {
 		if _, err := time.Parse(time.RFC3339, ts); err != nil {
 			return fmt.Errorf("invalid timestamp format, must be ISO8601: %v", err)
 		}
-	} else {
-		return fmt.Errorf("timestamp must be a string")
 	}
 
 	if host, ok := event["host"].(string); !ok || host == "" {
