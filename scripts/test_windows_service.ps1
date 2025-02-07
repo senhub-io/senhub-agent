@@ -31,6 +31,8 @@ function Wait-ForFile {
 $serviceName = "senhub-agent"
 
 # Path to the expected log file
+$logDir = "C:\ProgramData\SenHub\logs"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logFilePath = "C:\ProgramData\SenHub\logs\senhubagent.log"
 
 # Step 1: Install the service
