@@ -1,4 +1,3 @@
-// Package event provides an HTTP-based event probe for the agent.
 package event
 
 import (
@@ -14,20 +13,16 @@ import (
 	"senhub-agent.go/internal/agent/tags"
 )
 
-// DefaultPort is the default port for the HTTP server.
-const DefaultPort = 8080
-
-// DefaultSyncInterval is the default interval for synchronization.
-const DefaultSyncInterval = 30 * time.Second
-
-// MinPort is the minimum valid port number.
-const MinPort = 1
-
-// MaxPort is the maximum valid port number.
-const MaxPort = 65535
-
-// MaxFields is the maximum number of fields allowed in an event.
-const MaxFields = 20
+// Default values
+const (
+	DefaultAddress      = "127.0.0.1"
+	DefaultPort         = 5656
+	DefaultProtocol     = "tcp"
+	DefaultSyncInterval = 30 * time.Second
+	MinPort             = 1
+	MaxPort             = 65535
+	MaxFields           = 20
+)
 
 // validSeverities is a map of valid severity levels.
 var validSeverities = map[string]struct{}{
@@ -43,7 +38,9 @@ var validSeverities = map[string]struct{}{
 
 // EventProbeConfig holds the configuration for the EventProbe.
 type EventProbeConfig struct {
-	Port int
+	Address  string
+	Port     int
+	Protocol string
 }
 
 // EventProbe is the main struct for the EventProbe.
@@ -79,6 +76,8 @@ func NewEventProbe(config map[string]interface{}, logger *logger.Logger) (types.
 func parseEventProbeConfig(config map[string]interface{}) (EventProbeConfig, error) {
 	errs := []error{}
 	var port int = DefaultPort
+	var protocol string = DefaultProtocol
+	var address string = DefaultAddress
 
 	if portVal, ok := config["port"].(float64); ok {
 		port = int(portVal)
@@ -87,12 +86,25 @@ func parseEventProbeConfig(config map[string]interface{}) (EventProbeConfig, err
 		}
 	}
 
+	if protocolVal, ok := config["protocol"].(string); ok {
+		protocol = protocolVal
+		if protocol != "tcp" && protocol != "udp" {
+			errs = append(errs, fmt.Errorf("protocol must be 'tcp' or 'udp'"))
+		}
+	}
+
+	if addrVal, ok := config["address"].(string); ok {
+		address = addrVal
+	}
+
 	if len(errs) > 0 {
 		return EventProbeConfig{}, fmt.Errorf("error parsing config: %v", errs)
 	}
 
 	return EventProbeConfig{
-		Port: port,
+		Address:  address,
+		Port:     port,
+		Protocol: protocol,
 	}, nil
 }
 
@@ -123,13 +135,13 @@ func (p *EventProbe) Collect() ([]data_store.DataPoint, error) {
 
 // OnStart starts the EventProbe.
 func (p *EventProbe) OnStart(quitChannel chan struct{}) error {
-	fmt.Printf("[INFO] Starting Event probe on port %d\n", p.config.Port)
+	fmt.Printf("[INFO] Starting Event probe on %s://%s:%d\n", p.config.Protocol, p.config.Address, p.config.Port)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/event", p.handleEvent)
 
 	p.server = &http.Server{
-		Addr:    fmt.Sprintf("0.0.0.0:%d", p.config.Port),
+		Addr:    fmt.Sprintf("%s:%d", p.config.Address, p.config.Port),
 		Handler: mux,
 	}
 
@@ -252,5 +264,5 @@ func (p *EventProbe) processEvent(event map[string]interface{}) data_store.DataP
 
 // String returns a string representation of the EventProbe.
 func (p *EventProbe) String() string {
-	return fmt.Sprintf("EventProbe{port=%d}", p.config.Port)
+	return fmt.Sprintf("EventProbe{address=%s, port=%d, protocol=%s}", p.config.Address, p.config.Port, p.config.Protocol)
 }
