@@ -187,11 +187,15 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 		{Key: "priority", Value: fmt.Sprintf("%d", priority), Private: false},
 	}
 
-	fmt.Printf("[DEBUG] Received syslog message - facility: %d, severity: %d, host: %s, message: %s\n",
-		facility, severity, hostname, content)
+	p.logger.Debug().
+		Int("facility", facility).
+		Int("severity", severity).
+		Str("host", hostname).
+		Str("message", content).
+		Msg("Received syslog message")
 
 	if p.callback == nil {
-		fmt.Printf("[WARNING] Callback is not set\n")
+		p.logger.Warn().Msg("Callback is not set")
 		return
 	}
 
@@ -202,11 +206,15 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 		Tags:      eventTags,
 	}
 
-	fmt.Printf("[DEBUG] Sending DataPoint to DataStore: timestamp=%v, severity=%v\n",
-		timestamp, severity)
+	p.logger.Debug().
+		Time("timestamp", timestamp).
+		Int("severity", severity).
+		Msg("Sending DataPoint to DataStore")
 
 	if err := p.callback([]data_store.DataPoint{dataPoint}); err != nil {
-		fmt.Printf("[ERROR] Failed to send DataPoint to DataStore: %v\n", err)
+		p.logger.Error().
+			Err(err).
+			Msg("Failed to send DataPoint to DataStore")
 	}
 }
 
