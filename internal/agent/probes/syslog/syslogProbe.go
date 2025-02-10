@@ -4,8 +4,9 @@ package syslog
 import (
 	"context"
 	"fmt"
-	"gopkg.in/mcuadros/go-syslog.v2"
 	"time"
+
+	"gopkg.in/mcuadros/go-syslog.v2"
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -39,16 +40,21 @@ func (p *SyslogProbe) SetCallback(callback func([]data_store.DataPoint) error) {
 }
 
 func NewSyslogProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
+	localLogger := logger.With().Str("probe", "syslog").Logger()
+
 	parsedConfig, err := parseSyslogProbeConfig(config)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Printf("[DEBUG] Creating new syslog probe with config: %+v\n", parsedConfig)
+	localLogger.Debug().
+		Any("config", parsedConfig).
+		Msg("Creating new syslog probe")
+
 	return &SyslogProbe{
 		rawConfig: config,
 		config:    parsedConfig,
-		logger:    logger,
+		logger:    &localLogger,
 	}, nil
 }
 
@@ -102,7 +108,12 @@ func (p *SyslogProbe) Collect() ([]data_store.DataPoint, error) {
 }
 
 func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
-	fmt.Printf("[INFO] Starting syslog probe on %s:%d\n", p.config.Protocol, p.config.Port)
+	localLogger := p.logger.With().
+		Str("protocol", p.config.Protocol).
+		Int("port", p.config.Port).
+		Logger()
+
+	localLogger.Info().Msg("Starting syslog probe")
 
 	channel := make(syslog.LogPartsChannel)
 	handler := syslog.NewChannelHandler(channel)
@@ -115,23 +126,20 @@ func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
 	switch p.config.Protocol {
 	case "udp":
 		if err := server.ListenUDP(address); err != nil {
-			fmt.Printf("[ERROR] Failed to start UDP listener: %v\n", err)
 			return fmt.Errorf("failed to start UDP listener: %w", err)
 		}
 	case "tcp":
 		if err := server.ListenTCP(address); err != nil {
-			fmt.Printf("[ERROR] Failed to start TCP listener: %v\n", err)
 			return fmt.Errorf("failed to start TCP listener: %w", err)
 		}
 	}
 
 	if err := server.Boot(); err != nil {
-		fmt.Printf("[ERROR] Failed to start syslog server: %v\n", err)
 		return fmt.Errorf("failed to start syslog server: %w", err)
 	}
 
 	p.server = server
-	fmt.Printf("[INFO] Syslog server started successfully\n")
+	localLogger.Info().Msg("Syslog server started successfully")
 
 	go func() {
 		for {
@@ -139,7 +147,7 @@ func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
 			case logParts := <-channel:
 				p.processLogMessage(logParts)
 			case <-quitChannel:
-				fmt.Printf("[DEBUG] Received quit signal, stopping message processing\n")
+				p.logger.Info().Msg("Received quit signal, stopping message processing")
 				return
 			}
 		}

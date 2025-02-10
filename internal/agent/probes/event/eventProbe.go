@@ -63,12 +63,20 @@ func NewEventProbe(config map[string]interface{}, logger *logger.Logger) (types.
 	if err != nil {
 		return nil, err
 	}
+	localLogger := logger.With().
+		Str("url", fmt.Sprintf("%s://%s:%d", parsedConfig.Protocol, parsedConfig.Address, parsedConfig.Port)).
+		Str("protocol", parsedConfig.Protocol).
+		Str("address", parsedConfig.Address).
+		Int("port", parsedConfig.Port).
+		Logger()
 
-	fmt.Printf("[DEBUG] Creating new Event probe with config: %+v\n", parsedConfig)
+	localLogger.Debug().
+		Any("config", parsedConfig).
+		Msg("Creating new Event probe")
 	return &EventProbe{
 		rawConfig: config,
 		config:    parsedConfig,
-		logger:    logger,
+		logger:    &localLogger,
 	}, nil
 }
 
@@ -135,7 +143,7 @@ func (p *EventProbe) Collect() ([]data_store.DataPoint, error) {
 
 // OnStart starts the EventProbe.
 func (p *EventProbe) OnStart(quitChannel chan struct{}) error {
-	fmt.Printf("[INFO] Starting Event probe on %s://%s:%d\n", p.config.Protocol, p.config.Address, p.config.Port)
+	p.logger.Debug().Msg("Starting Event probe")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/event", p.handleEvent)
@@ -147,18 +155,18 @@ func (p *EventProbe) OnStart(quitChannel chan struct{}) error {
 
 	go func() {
 		if err := p.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("[ERROR] Failed to start HTTP server: %v\n", err)
+			p.logger.Error().Err(err).Msg("Failed to start HTTP server")
 		}
 	}()
 
-	fmt.Printf("[INFO] HTTP server started successfully\n")
+	p.logger.Info().Msg("Event probe started successfully")
 	return nil
 }
 
 // OnShutdown stops the EventProbe.
 func (p *EventProbe) OnShutdown(ctx context.Context) error {
 	if p.server != nil {
-		fmt.Printf("[INFO] Stopping Event probe\n")
+		p.logger.Info().Msg("Stopping Event probe")
 		return p.server.Shutdown(ctx)
 	}
 	return nil
@@ -184,12 +192,12 @@ func (p *EventProbe) handleEvent(w http.ResponseWriter, r *http.Request) {
 
 	dataPoint := p.processEvent(event)
 	if p.callback == nil {
-		fmt.Printf("[WARNING] Callback is not set\n")
+		p.logger.Warn().Msg("Callback is not set")
 		return
 	}
 
 	if err := p.callback([]data_store.DataPoint{dataPoint}); err != nil {
-		fmt.Printf("[ERROR] Failed to send DataPoint to DataStore: %v\n", err)
+		p.logger.Error().Err(err).Msg("Failed to send DataPoint to DataStore")
 		http.Error(w, "Failed to process event", http.StatusInternalServerError)
 		return
 	}
@@ -252,7 +260,10 @@ func (p *EventProbe) processEvent(event map[string]interface{}) data_store.DataP
 		}
 	}
 
-	fmt.Printf("[DEBUG] Received Event - timestamp: %v, tags: %v\n", timestamp, eventTags)
+	p.logger.Debug().
+		Time("timestamp", timestamp).
+		Any("tags", eventTags).
+		Msg("Received Event")
 
 	return data_store.DataPoint{
 		Name:      "event_event",
