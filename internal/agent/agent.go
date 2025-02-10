@@ -3,7 +3,6 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"syscall"
@@ -95,13 +94,20 @@ func (a agent) Start() error {
 
 	var errors []error
 	for _, service := range servicesToStart {
-		fmt.Printf("Starting service %s\n", service.GetName())
+		a.logger.Debug().
+			Str("service", service.GetName()).
+			Msg("Starting service")
 
 		if err := service.Start(a.messageChannel); err != nil {
-			fmt.Printf("Error starting service %s: %v\n", service.GetName(), err)
+			a.logger.Error().
+				Str("service", service.GetName()).
+				Err(err).
+				Msg("Failed to start service")
 			errors = append(errors, err)
 		} else {
-			fmt.Printf("Service %s started\n", service.GetName())
+			a.logger.Info().
+				Str("service", service.GetName()).
+				Msg("Service started")
 			*a.startedServices = append(*a.startedServices, service)
 		}
 	}
@@ -118,13 +124,20 @@ func (a agent) Shutdown(ctx context.Context) error {
 
 	var errors []error
 	for _, service := range *a.startedServices {
-		fmt.Printf("Stopping service %s\n", service.GetName())
+		a.logger.Debug().
+			Str("service", service.GetName()).
+			Msg("Shutting down service")
 
 		if err := service.Shutdown(ctx); err != nil {
-			fmt.Printf("Error shutting down service %s: %v\n", service.GetName(), err)
+			a.logger.Error().
+				Str("service", service.GetName()).
+				Err(err).
+				Msg("Failed to shut down service")
 			errors = append(errors, err)
 		} else {
-			fmt.Printf("Service %s shut down\n", service.GetName())
+			a.logger.Info().
+				Str("service", service.GetName()).
+				Msg("Service shut down")
 		}
 	}
 
@@ -138,11 +151,11 @@ func (a agent) handleStartError() {
 	pid := os.Getpid()
 	p, err := os.FindProcess(pid)
 	if err != nil {
-		fmt.Printf("Error finding process: %v\n", err)
+		a.logger.Error().Err(err).Msg("Error finding process")
 		log.Fatal(err)
 	}
 	if err := p.Signal(syscall.SIGTERM); err != nil {
-		fmt.Printf("Error sending SIGTERM signal: %v\n", err)
+		a.logger.Error().Err(err).Msg("Error sending SIGTERM signal")
 		log.Fatal(err)
 	}
 }
