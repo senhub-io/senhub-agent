@@ -28,7 +28,6 @@ type ProbePoller struct {
 	tickerOnce   sync.Once                 // Ensures single initialization
 	mutex        sync.Mutex                // Protects probe operations
 	logger       *logger.Logger
-	errCount     int // Tracks consecutive failures
 }
 
 // defaultStrategyRouter provides default routing to senhub and prtg strategies
@@ -124,6 +123,7 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 	}
 
 	p.tickerOnce.Do(func() {
+		// Run OnStart only once
 		if err := p.Probe.OnStart(quitChannel); err != nil {
 			fmt.Printf("[ERROR] Failed to start probe %s: %v\n", p.GetName(), err)
 			return
@@ -132,6 +132,7 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 		p.ticker = time.NewTicker(p.Probe.GetInterval())
 
 		go func() {
+			errorCount := 0
 			if err := p.collect(); err != nil {
 				fmt.Printf("[ERROR] Initial collect failed for probe %s: %v\n",
 					p.GetName(), err)
@@ -145,17 +146,17 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 					return
 				case <-p.ticker.C:
 					if err := p.collect(); err != nil {
-						p.errCount++
-						if p.errCount > 3 {
+						errorCount++
+						if errorCount > 3 {
 							fmt.Printf("[WARN] Probe %s failed %d times consecutively\n",
-								p.GetName(), p.errCount)
+								p.GetName(), errorCount)
 						}
 					} else {
-						if p.errCount > 0 {
+						if errorCount > 0 {
 							fmt.Printf("[INFO] Probe %s recovered after %d failures\n",
-								p.GetName(), p.errCount)
+								p.GetName(), errorCount)
 						}
-						p.errCount = 0
+						errorCount = 0
 					}
 				}
 			}
