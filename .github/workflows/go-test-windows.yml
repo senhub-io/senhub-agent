@@ -1,15 +1,16 @@
 name: Go-test-windows
 on: [push, pull_request]
-
 env:
   SENHUB_KEY: "test-key"
 
 jobs:
   test-and-build:
     runs-on: windows-latest
-
+    permissions:
+      contents: write  # Required for service installation
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
@@ -17,11 +18,16 @@ jobs:
 
       - name: Test with the Go CLI
         run: make test
+
       - name: Build
         env:
           GOOS: windows
           GOARCH: amd64
           ENV: production
         run: make build
-      - name: Test CLI
-        run: .\scripts\test_windows_service.ps1
+
+      - name: Test Windows Service
+        shell: powershell
+        run: |
+          # Run the test script with admin privileges
+          Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File .\scripts\test_windows_service.ps1" -Wait -WindowStyle Hidden
