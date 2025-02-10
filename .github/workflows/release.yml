@@ -53,9 +53,11 @@ jobs:
           tag_name: ${{ env.NEW_TAG }}
           name: Release ${{ env.NEW_TAG }}
           files: |
-            dist/senhub-agent_linux_*
-            dist/senhub-agent_windows_*
-            dist/senhub-agent_darwin_*
+            dist/senhub-agent_linux_amd64_${{ env.NEW_TAG }}
+            dist/senhub-agent_linux_arm64_${{ env.NEW_TAG }}
+            dist/senhub-agent_windows_amd64_${{ env.NEW_TAG }}.exe
+            dist/senhub-agent_darwin_amd64_${{ env.NEW_TAG }}
+            dist/senhub-agent_darwin_arm64_${{ env.NEW_TAG }}
           generate_release_notes: false
       - name: Set up AWS CLI Configuration
         run: |
@@ -67,23 +69,18 @@ jobs:
           # Configurer le endpoint S3 globalement
           aws configure set default.s3.addressing_style path
           aws configure set default.s3.endpoint_url https://s3.rbx.io.cloud.ovh.net
-
           # Logging functions with colors
           function log_info() { echo "::info::$1"; }
           function log_success() { echo "::notice::$1"; }
           function log_error() { echo "::error::$1"; }
-
           log_info "Starting synchronization to OVH S3"
           log_info "Version: ${{ env.NEW_TAG }}"
-
           # Sync files to versioned folder avec --no-verify-ssl pour éviter les problèmes SSL
           if aws s3 sync dist/ "s3://senhub-agent/${{ env.NEW_TAG }}/" \
             --acl public-read \
             --no-verify-ssl \
             --endpoint-url=https://s3.rbx.io.cloud.ovh.net; then
-
             log_success "Synchronization to ${{ env.NEW_TAG }} successful"
-
             # Update "latest" folder
             if aws s3 sync "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/" \
               --acl public-read \
