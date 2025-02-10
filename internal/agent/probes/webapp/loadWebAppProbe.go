@@ -122,13 +122,12 @@ func (p *LoadWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 	webappURL := p.config.URL
 	metrics, err := p.measurePageLoad(webappURL)
 	if err != nil {
-		fmt.Errorf("Error measuring network metrics: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("Error measuring network metrics: %w", err)
 	}
 
 	urlTagKey, err := tags.UrlToTagKey(webappURL)
 	if err != nil {
-		return nil, fmt.Errorf("error converting URL to tag key: %w", err)
+		return nil, fmt.Errorf("Error converting URL to tag key: %w", err)
 	}
 	tags := []tags.Tag{
 		{Key: "url", Value: webappURL, Private: false},
