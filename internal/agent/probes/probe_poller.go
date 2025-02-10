@@ -42,7 +42,6 @@ func (d *defaultStrategyRouter) GetTargetStrategies() []string {
 // GenerateProbeId creates a unique identifier for a probe configuration
 // by hashing its name and parameters
 func GenerateProbeId(config configuration.ProbeConfig) string {
-	fmt.Printf("[DEBUG] Generating probe ID for %s\n", config.Name)
 	input := fmt.Sprintf("%s-%v", config.Name, config.Params)
 	hash := md5.New()
 	hash.Write([]byte(input))
@@ -56,34 +55,35 @@ func NewProbePoller(
 	logger *logger.Logger,
 	addDataPoint data_store.AddCallback,
 ) (*ProbePoller, error) {
-	fmt.Printf("[DEBUG] Creating new probe poller for %s\n", config.Name)
+	probeId := GenerateProbeId(config)
+	loggerWithProbeId := logger.With().Str("probe_id", probeId).Logger()
+
+	loggerWithProbeId.Debug().Msg("Creating new probe poller")
 
 	probeConstructor, err := getProbeConstructorForConfig(config)
 	if err != nil {
-		fmt.Printf("[ERROR] Failed to get constructor for probe %s: %v\n", config.Name, err)
-		return nil, err
+		return nil, fmt.Errorf("No constructor for probe %s\n%v", config.Name, err)
 	}
 
-	probe, err := probeConstructor(config.Params, logger)
+	probe, err := probeConstructor(config.Params, &loggerWithProbeId)
 	if err != nil {
-		fmt.Printf("[ERROR] Failed to create probe %s: %v\n", config.Name, err)
 		return nil, fmt.Errorf("unable to start probe %s: %v", config.Name, err)
 	}
 
 	probePoller := &ProbePoller{
-		ProbeId:      GenerateProbeId(config),
+		ProbeId:      probeId,
 		Probe:        probe,
 		config:       config,
 		addDataPoint: addDataPoint,
-		logger:       logger,
+		logger:       &loggerWithProbeId,
 	}
 
 	if probeWithCallback, ok := probe.(types.ProbeWithCallback); ok {
-		fmt.Printf("[DEBUG] Setting callback for probe %s\n", config.Name)
+		loggerWithProbeId.Debug().Msg("Setting callback for probe")
 		probeWithCallback.SetCallback(probePoller.getWrappedCallback())
 	}
 
-	fmt.Printf("[DEBUG] Probe poller created successfully for %s\n", config.Name)
+	loggerWithProbeId.Debug().Msg("Probe poller created successfully")
 	return probePoller, nil
 }
 
@@ -115,17 +115,19 @@ func (p *ProbePoller) GetProbeParams() configuration.ProbeConfigParams {
 // Start begins the periodic collection of metrics from the probe.
 // It handles initialization, scheduling, and error recovery.
 func (p *ProbePoller) Start(quitChannel chan struct{}) error {
-	fmt.Printf("[DEBUG] Starting probe %s\n", p.GetName())
+	p.logger.Debug().Msg("Starting probe")
 
 	if !p.Probe.ShouldStart() {
-		fmt.Printf("[DEBUG] Probe %s should not start\n", p.GetName())
+		p.logger.Debug().Msg("Probe should not start")
 		return nil
 	}
 
 	p.tickerOnce.Do(func() {
 		// Run OnStart only once
 		if err := p.Probe.OnStart(quitChannel); err != nil {
-			fmt.Printf("[ERROR] Failed to start probe %s: %v\n", p.GetName(), err)
+			// If OnStart fails, don't start the ticker
+			// Given this is async, we can't return the error
+			p.logger.Error().Err(err).Msg("Failed to start probe")
 			return
 		}
 
@@ -134,27 +136,29 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 		go func() {
 			errorCount := 0
 			if err := p.collect(); err != nil {
-				fmt.Printf("[ERROR] Initial collect failed for probe %s: %v\n",
-					p.GetName(), err)
+				p.logger.Error().Err(err).Msg("Initial collect failed")
 			}
 
 			for {
 				select {
 				case <-quitChannel:
-					fmt.Printf("[DEBUG] Stopping probe %s\n", p.GetName())
+					p.logger.Debug().Msg("Stopping probe")
 					p.ticker.Stop()
 					return
 				case <-p.ticker.C:
 					if err := p.collect(); err != nil {
 						errorCount++
 						if errorCount > 3 {
-							fmt.Printf("[WARN] Probe %s failed %d times consecutively\n",
-								p.GetName(), errorCount)
+							p.logger.Warn().
+								Int("error_count", errorCount).
+								Err(err).
+								Msg("Probe failed too many times")
 						}
 					} else {
 						if errorCount > 0 {
-							fmt.Printf("[INFO] Probe %s recovered after %d failures\n",
-								p.GetName(), errorCount)
+							p.logger.Info().
+								Int("error_count", errorCount).
+								Msg("Probe recovered")
 						}
 						errorCount = 0
 					}
@@ -168,21 +172,19 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 // collect gathers metrics from the probe and routes them to the appropriate
 // storage strategies. It handles both direct collection and callback-based collection.
 func (p *ProbePoller) collect() error {
-	fmt.Printf("[DEBUG] Collecting data from probe %s\n", p.GetName())
+	p.logger.Debug().Msg("Collecting data")
 
 	data, err := p.Probe.Collect()
 	if err != nil {
-		fmt.Printf("[ERROR] Failed to collect data from probe %s: %v\n",
-			p.GetName(), err)
 		return fmt.Errorf("collect failed: %v", err)
 	}
 
 	if strategyRouter, ok := p.Probe.(data_store.StrategyRouter); ok {
-		fmt.Printf("[DEBUG] Using probe's strategy router for %s\n", p.GetName())
+		p.logger.Debug().Msg("Using probe's strategy router")
 		return p.addDataPoint(data, strategyRouter)
 	}
 
-	fmt.Printf("[DEBUG] Using default strategy router for %s\n", p.GetName())
+	p.logger.Debug().Msg("Using default strategy router")
 	return p.addDataPoint(data, &defaultStrategyRouter{})
 }
 
@@ -190,8 +192,7 @@ func (p *ProbePoller) collect() error {
 // to appropriate storage strategies for callback-based probes
 func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 	return func(data []datapoint.DataPoint) error {
-		fmt.Printf("[DEBUG] Callback triggered for probe %s with %d datapoints\n",
-			p.GetName(), len(data))
+		p.logger.Debug().Int("datapoints_count", len(data)).Msg("Callback triggered")
 
 		if strategyRouter, ok := p.Probe.(data_store.StrategyRouter); ok {
 			return p.addDataPoint(data, strategyRouter)
@@ -202,7 +203,7 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 
 // Shutdown gracefully stops the probe and cleans up resources
 func (p *ProbePoller) Shutdown(ctx context.Context) error {
-	fmt.Printf("[DEBUG] Shutting down probe %s\n", p.GetName())
+	p.logger.Debug().Msg("Shutting down probe")
 
 	if p.ticker != nil {
 		p.ticker.Stop()
@@ -210,7 +211,7 @@ func (p *ProbePoller) Shutdown(ctx context.Context) error {
 
 	err := p.Probe.OnShutdown(ctx)
 	if err != nil {
-		fmt.Printf("[ERROR] Error shutting down probe %s: %v\n", p.GetName(), err)
+		return fmt.Errorf("shutdown failed: %v", err)
 	}
-	return err
+	return nil
 }
