@@ -58,7 +58,7 @@ func NewRemoteConfiguration(
 		logger:        &localLogger,
 		server:        serverClient,
 		data:          RemoteConfigurationData{},
-		eventNotifier: NewEventNotifier(),
+		eventNotifier: NewEventNotifier(&localLogger),
 	}
 	localLogger.Debug().Msg("RemoteConfiguration instance created successfully")
 	return rc
