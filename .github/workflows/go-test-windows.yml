@@ -7,7 +7,7 @@ jobs:
   test-and-build:
     runs-on: windows-latest
     permissions:
-      contents: write  # Required for service installation
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -29,5 +29,5 @@ jobs:
       - name: Test Windows Service
         shell: powershell
         run: |
-          # Run the test script with admin privileges
-          Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File .\scripts\test_windows_service.ps1" -Wait -WindowStyle Hidden
+          # Execute the test script directly as the runner already has admin privileges
+          .\scripts\test_windows_service.ps1
