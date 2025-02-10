@@ -2,8 +2,9 @@
 package configuration
 
 import (
-	"fmt"
 	"sync"
+
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // EventNotifier implements the observer pattern for configuration changes.
@@ -12,20 +13,25 @@ import (
 type EventNotifier struct {
 	observers []func(event string) // Registered callback functions
 	mu        sync.Mutex           // Protects concurrent access to observers
+	logger    *logger.Logger
 }
 
 // NewEventNotifier creates and initializes a new event notification system.
 // Returns a pointer to EventNotifier ready to accept observers.
-func NewEventNotifier() *EventNotifier {
-	fmt.Printf("[DEBUG] Creating new EventNotifier\n")
-	return &EventNotifier{}
+func NewEventNotifier(
+	logger *logger.Logger,
+) *EventNotifier {
+	logger.Debug().Msg("Creating new EventNotifier")
+	return &EventNotifier{
+		logger: logger,
+	}
 }
 
 // RegisterObserver adds a new callback function to be notified of events.
 // The callback function accepts an event string parameter describing the change.
 // Thread-safe: can be called concurrently from multiple goroutines.
 func (en *EventNotifier) RegisterObserver(callback func(string)) {
-	fmt.Printf("[DEBUG] Registering new observer\n")
+	en.logger.Debug().Msg("Registering new observer")
 	en.mu.Lock()
 	defer en.mu.Unlock()
 	en.observers = append(en.observers, callback)
@@ -35,7 +41,7 @@ func (en *EventNotifier) RegisterObserver(callback func(string)) {
 // Callbacks are executed asynchronously in separate goroutines.
 // Thread-safe: creates a copy of observers list to prevent race conditions.
 func (en *EventNotifier) NotifyObservers(event string) {
-	fmt.Printf("[DEBUG] Notifying observers of event: %s\n", event)
+	en.logger.Debug().Any("event", event).Msg("Notifying observers of event")
 
 	// Copy callbacks under lock to prevent race conditions
 	en.mu.Lock()
