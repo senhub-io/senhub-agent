@@ -48,6 +48,7 @@ func NewAgent() Agent {
 	agentConfiguration := configuration.NewAgentConfiguration(
 		args.AuthenticationKey,
 		args.ServerUrl,
+		logger,
 	)
 
 	senhubServer := server.NewServer(
