@@ -5,12 +5,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/ybbus/httpretry"
 	"io"
 	"net/http"
 	"net/url"
-	"senhub-agent.go/internal/agent/services/logger"
 	"strings"
+
+	"github.com/ybbus/httpretry"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // Server defines the interface for server communication with retry capabilities
@@ -40,11 +41,14 @@ func NewServer(
 	url string,
 	logger *logger.Logger,
 ) Server {
-	fmt.Printf("[DEBUG] Creating new server client with URL: %s\n", url)
+	localLogger := logger.With().Str("service", "Server").Logger()
+	localLogger.Debug().
+		Str("url", url).
+		Msg("[DEBUG] Creating new server client")
 	http := httpretry.NewDefaultClient(
 		httpretry.WithMaxRetryCount(3),
 	)
-	localLogger := logger.With().Str("service", "Server").Logger()
+
 	return &server{
 		authenticationKey: authenticationKey,
 		url:               url,
@@ -55,7 +59,10 @@ func NewServer(
 
 // NewRequest creates authenticated HTTP request with proper headers
 func (s *server) NewRequest(method string, url string, body io.Reader) (*http.Request, error) {
-	fmt.Printf("[DEBUG] Creating new %s request to %s\n", method, url)
+	s.logger.Debug().
+		Str("method", method).
+		Str("url", url).
+		Msg("Creating new request")
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)
@@ -71,7 +78,7 @@ func (s *server) Get(urlPath string) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to join URL path: %v", err)
 	}
 
-	fmt.Printf("[DEBUG] Making GET request to: %s\n", fullUrl)
+	s.logger.Debug().Str("url", fullUrl).Msg("Making GET request")
 	req, err := s.NewRequest("GET", fullUrl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GET request: %v", err)
@@ -92,7 +99,7 @@ func (s *server) Post(urlPath string, data any) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to marshal JSON: %v", err)
 	}
 
-	fmt.Printf("[DEBUG] Making POST request to: %s\n", fullUrl)
+	s.logger.Debug().Str("url", fullUrl).Msg("Making POST request")
 	req, err := s.NewRequest("POST", fullUrl, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create POST request: %v", err)
@@ -115,7 +122,7 @@ func (s *server) PostStream(urlPath string, streamBody string) (*http.Response, 
 		return nil, fmt.Errorf("failed to join URL path: %v", err)
 	}
 
-	fmt.Printf("[DEBUG] Making POST stream request to: %s\n", fullUrl)
+	s.logger.Debug().Str("url", fullUrl).Msg("Making POST stream request")
 	req, err := s.NewRequest("POST", fullUrl, strings.NewReader(streamBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream request: %v", err)
