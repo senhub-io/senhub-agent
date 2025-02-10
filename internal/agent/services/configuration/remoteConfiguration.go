@@ -47,17 +47,20 @@ type RemoteConfiguration struct {
 	mutex         sync.Mutex
 }
 
-func NewRemoteConfiguration(serverClient server.Server, logger *logger.Logger) *RemoteConfiguration {
-	fmt.Printf("[DEBUG] Creating new RemoteConfiguration instance\n")
+func NewRemoteConfiguration(
+	serverClient server.Server,
+	logger *logger.Logger,
+) *RemoteConfiguration {
 	localLogger := logger.With().Str("service", "RemoteConfiguration").Logger()
+	localLogger.Debug().Msg("Creating new RemoteConfiguration instance")
 
 	rc := &RemoteConfiguration{
 		logger:        &localLogger,
 		server:        serverClient,
 		data:          RemoteConfigurationData{},
-		eventNotifier: NewEventNotifier(),
+		eventNotifier: NewEventNotifier(&localLogger),
 	}
-	fmt.Printf("[DEBUG] RemoteConfiguration instance created successfully\n")
+	localLogger.Debug().Msg("RemoteConfiguration instance created successfully")
 	return rc
 }
 
@@ -70,30 +73,32 @@ func (rc *RemoteConfiguration) GetConfiguration() RemoteConfigurationData {
 }
 
 func (rc *RemoteConfiguration) OnConfigChanged(callback func(string)) {
-	fmt.Printf("[DEBUG] Registering new configuration change callback\n")
+	rc.logger.Debug().Msg("Registering new configuration change callback")
 	rc.eventNotifier.RegisterObserver(callback)
 }
 
 func (rc *RemoteConfiguration) Start(quitChannel chan struct{}) error {
-	fmt.Printf("[DEBUG] Starting RemoteConfiguration service\n")
+	rc.logger.Info().Msg("Starting RemoteConfiguration")
 	rc.tickerOnce.Do(func() {
 		rc.ticker = time.NewTicker(10 * time.Second)
 
-		fmt.Printf("[DEBUG] Fetching initial configuration\n")
+		rc.logger.Info().Msg("Fetching initial configuration")
 		if err := rc.doRefreshConfig(); err != nil {
-			fmt.Printf("[ERROR] Failed to fetch initial configuration: %v\n", err)
+			rc.logger.Error().Err(err).Msg("Failed to fetch initial configuration")
 		}
 
 		go func() {
 			for {
 				select {
 				case <-quitChannel:
-					fmt.Printf("[DEBUG] Received quit signal\n")
+					rc.logger.Debug().Msg("Received quit signal")
 					rc.ticker.Stop()
 					return
 				case <-rc.ticker.C:
 					if err := rc.doRefreshConfig(); err != nil {
-						fmt.Printf("[ERROR] Failed to fetch configuration: %v\n", err)
+						rc.logger.Error().
+							Err(err).
+							Msg("Failed to fetch configuration")
 					}
 				}
 			}
@@ -103,7 +108,7 @@ func (rc *RemoteConfiguration) Start(quitChannel chan struct{}) error {
 }
 
 func (rc *RemoteConfiguration) Shutdown(ctx context.Context) error {
-	fmt.Printf("[DEBUG] Shutting down RemoteConfiguration\n")
+	rc.logger.Info().Msg("Shutting down RemoteConfiguration")
 	if rc.ticker != nil {
 		rc.ticker.Stop()
 	}
@@ -111,7 +116,7 @@ func (rc *RemoteConfiguration) Shutdown(ctx context.Context) error {
 }
 
 func (rc *RemoteConfiguration) validateStorageParams(storage StorageConfig) error {
-	fmt.Printf("[DEBUG] Validating storage params for %s\n", storage.Name)
+	rc.logger.Debug().Msgf("Validating storage params for %s", storage.Name)
 
 	switch storage.Name {
 	case "senhub":
@@ -178,28 +183,35 @@ func (rc *RemoteConfiguration) doRefreshConfig() error {
 	backoffDuration := 1 * time.Second
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		fmt.Printf("[DEBUG] Fetching configuration attempt %d/%d\n", attempt+1, maxRetries)
+		rc.logger.Debug().
+			Int("attempt", attempt+1).
+			Int("max_retries", maxRetries).
+			Str("retry", fmt.Sprintf("%d/%d", attempt+1, maxRetries)).
+			Msgf("Fetching configuration attempt")
 
 		config, err := rc.doFetchConfiguration()
 		if err == nil {
 			if err := rc.validateConfiguration(config); err != nil {
-				fmt.Printf("[ERROR] Invalid configuration received: %v\n", err)
+				rc.logger.Error().Err(err).Msg("Invalid configuration received")
 				return fmt.Errorf("invalid configuration: %v", err)
 			}
 
 			if !reflect.DeepEqual(rc.data, *config) {
-				fmt.Printf("[INFO] Configuration changed, applying new version\n")
+				rc.logger.Info().
+					Any("old_config", rc.data).
+					Any("new_config", *config).
+					Msg("Configuration changed")
 				rc.data = *config
 				rc.eventNotifier.NotifyObservers("Configuration changed")
 			} else {
-				fmt.Printf("[DEBUG] Configuration unchanged\n")
+				rc.logger.Debug().Msg("Configuration unchanged")
 			}
 			return nil
 		}
 
-		fmt.Printf("[ERROR] Failed to fetch configuration: %v\n", err)
+		rc.logger.Error().Err(err).Msg("Failed to fetch configuration")
 		if attempt < maxRetries-1 {
-			fmt.Printf("[INFO] Retrying in %v\n", backoffDuration)
+			rc.logger.Info().Msgf("Retrying in %v seconds", backoffDuration)
 			time.Sleep(backoffDuration)
 			backoffDuration *= 2
 		}
@@ -209,7 +221,7 @@ func (rc *RemoteConfiguration) doRefreshConfig() error {
 }
 
 func (rc *RemoteConfiguration) doFetchConfiguration() (*RemoteConfigurationData, error) {
-	fmt.Printf("[DEBUG] Fetching configuration from server\n")
+	rc.logger.Debug().Msg("Fetching configuration from server")
 
 	res, err := rc.server.Get("/configs")
 	if err != nil {
@@ -227,7 +239,9 @@ func (rc *RemoteConfiguration) doFetchConfiguration() (*RemoteConfigurationData,
 			res.StatusCode, string(respBody))
 	}
 
-	fmt.Printf("[DEBUG] Raw configuration response: %s\n", string(respBody))
+	rc.logger.Debug().
+		Any("response", respBody).
+		Msg("Raw configuration response")
 
 	var config RemoteConfigurationData
 	if err := json.Unmarshal(respBody, &config); err != nil {
