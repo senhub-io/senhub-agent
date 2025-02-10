@@ -4,6 +4,7 @@ package sensor
 import (
 	"context"
 	"fmt"
+
 	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -54,6 +55,7 @@ func (s *sensor) SyncConfiguration() error {
 	for _, probeConfig := range probeConfigs {
 		probeId := probes.GenerateProbeId(probeConfig)
 		validProbeIds = append(validProbeIds, probeId)
+		probeLogger := s.getLoggerForProbe(probeConfig)
 
 		for _, startedProbe := range s.startedProbes {
 			if startedProbe.ProbeId == probeId {
@@ -63,7 +65,10 @@ func (s *sensor) SyncConfiguration() error {
 
 		err := s.startProbe(probeConfig, nil)
 		if err != nil {
-			fmt.Printf("Error starting probe %s: %v\n", probeConfig.Name, err)
+			// For now, just log the error and continue
+			// Handling this error differently is not straightforward
+			// because this is done asynchronously.
+			probeLogger.Error().Err(err).Msgf("Error starting probe")
 		}
 	}
 
@@ -78,7 +83,10 @@ func (s *sensor) SyncConfiguration() error {
 		if !found {
 			err := startedProbe.Shutdown(context.Background())
 			if err != nil {
-				fmt.Printf("Error stopping probe %s: %v\n", startedProbe.GetName(), err)
+				probeLogger := s.logger.With().
+					Str("probe_name", startedProbe.Probe.GetName()).
+					Logger()
+				probeLogger.Error().Err(err).Msgf("Error stopping probe")
 			}
 		}
 	}
@@ -86,12 +94,22 @@ func (s *sensor) SyncConfiguration() error {
 }
 
 func (s *sensor) Start(quitChannel chan struct{}) error {
+	s.logger.Info().Msg("Starting sensor")
 	if err := s.SyncConfiguration(); err != nil {
 		return fmt.Errorf("failed to sync configuration: %w", err)
 	}
-	fmt.Printf("Starting sensor service\n")
+
+	s.logger.Info().Msg("Starting sensor service")
 	s.remoteConfig.OnConfigChanged(func(string) { s.SyncConfiguration() })
 	return nil
+}
+
+func (s *sensor) getLoggerForProbe(probeConfig configuration.ProbeConfig) *logger.Logger {
+	logger := s.logger.With().
+		Str("probe_name", probeConfig.Name).
+		Any("probe_params", probeConfig.Params).
+		Logger()
+	return &logger
 }
 
 func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel chan struct{}) error {
@@ -103,16 +121,13 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel c
 		}
 	}
 
-	localLogger := s.logger.With().
-		Str("probe_name", probeConfig.Name).
-		Any("probe_params", probeConfig.Params).
-		Logger()
-
-	fmt.Printf("Starting probe %s\n", probeConfig.Name)
-
-	probePoller, err := probes.NewProbePoller(probeConfig, &localLogger, s.addDataPoint)
+	probePoller, err := probes.NewProbePoller(
+		probeConfig,
+		s.getLoggerForProbe(probeConfig),
+		s.addDataPoint,
+	)
 	if err != nil {
-		return fmt.Errorf("failed to create probe poller: %w", err)
+		return fmt.Errorf("Failed to create probe poller: %w", err)
 	}
 
 	s.startedProbes = append(s.startedProbes, probePoller)
@@ -120,15 +135,19 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel c
 }
 
 func (s *sensor) Shutdown(ctx context.Context) error {
-	fmt.Printf("Shutting down sensor\n")
+	s.logger.Info().Msg("Shutting down sensor")
 
 	for _, probePoller := range s.startedProbes {
-		fmt.Printf("Shutting down probe %s\n", probePoller.GetName())
+		s.logger.Debug().
+			Str("probe_name", probePoller.GetName()).
+			Msg("Shutting down sensor")
 
 		err := probePoller.Shutdown(ctx)
 		if err != nil {
-			fmt.Printf("Error shutting down probe %s: %v\n",
-				probePoller.GetName(), err)
+			s.logger.Error().
+				Err(err).
+				Str("probe_name", probePoller.GetName()).
+				Msg("Error shutting down probe")
 		}
 	}
 	return nil
