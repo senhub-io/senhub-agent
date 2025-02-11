@@ -137,27 +137,33 @@ func (s *EventSyncStrategy) ValidateConfigParams(params configuration.StorageCon
 }
 
 func (s *EventSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
-	fmt.Printf("[DEBUG] Event strategy receiving %d datapoints\n", len(data))
+	s.logger.Debug().
+		Int("datapoints_count", len(data)).
+		Msgf("Event strategy receiving datapoints")
 
 	for _, dp := range data {
-		fmt.Printf("[DEBUG] Processing datapoint: %+v\n", dp)
+		s.logger.Debug().
+			Any("datapoint", dp).
+			Msg("Processing datapoint")
 		evt := s.formatter.FormatDataPoint(dp)
 
 		if err := evt.Validate(); err != nil {
-			fmt.Printf("[ERROR] Invalid event data: %v\n", err)
+			s.logger.Error().
+				Err(err).
+				Msg("Invalid event data")
 			continue
 		}
 
 		select {
 		case s.buffer <- evt:
-			fmt.Printf("[DEBUG] Event added to buffer successfully\n")
+			s.logger.Debug().Msg("Event added to buffer successfully")
 		default:
 			select {
 			case <-s.buffer:
 				s.buffer <- evt
-				fmt.Printf("[WARN] Buffer full, dropped oldest event\n")
+				s.logger.Warn().Msg("Buffer full, dropped oldest event")
 			default:
-				fmt.Printf("[WARN] Buffer full, discarding event\n")
+				s.logger.Warn().Msg("Buffer full, discarding event")
 			}
 		}
 	}
@@ -176,13 +182,17 @@ func (s *EventSyncStrategy) getTagValue(tags []tags.Tag, key string) string {
 func (s *EventSyncStrategy) Start() error {
 	s.tickerOnce.Do(func() {
 		s.ticker = time.NewTicker(s.config.SyncInterval)
-		fmt.Printf("[DEBUG] Created ticker with interval %v\n", s.config.SyncInterval)
+		s.logger.Info().
+			Int("sync_interval_seconds", int(s.config.SyncInterval.Seconds())).
+			Msgf("Starting event sync strategy")
 
 		go func() {
-			fmt.Printf("[DEBUG] Starting event sync loop\n")
+			s.logger.Info().Msg("Starting event sync loop")
 			for range s.ticker.C {
 				if err := s.doSync(); err != nil {
-					fmt.Printf("[ERROR] Sync error: %v\n", err)
+					s.logger.Error().
+						Err(err).
+						Msg("Error syncing events")
 				}
 			}
 		}()
@@ -199,14 +209,19 @@ func (s *EventSyncStrategy) Shutdown(ctx context.Context) error {
 }
 
 func (s *EventSyncStrategy) doSync() error {
-	fmt.Printf("[DEBUG] Event sync - buffer size: %d/%d\n", len(s.buffer), cap(s.buffer))
+	s.logger.Debug().
+		Int("buffer_size", len(s.buffer)).
+		Int("buffer_capacity", cap(s.buffer)).
+		Msg("Event sync - starting sync")
 	if len(s.buffer) == 0 {
 		return nil
 	}
 
 	var events []eventtypes.EventDataPoint
 	bufferSize := len(s.buffer)
-	fmt.Printf("[DEBUG] Event sync - processing %d events\n", bufferSize)
+	s.logger.Debug().
+		Int("buffer_size", bufferSize).
+		Msg("Event sync - processing events")
 
 	// Vidons le buffer
 	for i := 0; i < bufferSize; i++ {
@@ -215,15 +230,16 @@ func (s *EventSyncStrategy) doSync() error {
 	}
 
 	if err := s.sendEvents(events); err != nil {
-		fmt.Printf("[ERROR] Failed to send events: %v\n", err)
 		// Remettons les événements dans le buffer
 		for _, event := range events {
 			s.buffer <- event
 		}
-		return err
+		return fmt.Errorf("Error sending events: %w", err)
 	}
 
-	fmt.Printf("[DEBUG] Event sync - successfully sent %d events\n", len(events))
+	s.logger.Debug().
+		Int("events_count", len(events)).
+		Msg("Event sync - events sent successfully")
 	return nil
 }
 
@@ -266,7 +282,9 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
 	}
 
 	// Afficher le contenu envoyé
-	fmt.Printf("DEBUG - Sending events: %s\n", streamBody.String())
+	s.logger.Debug().
+		Str("events", streamBody.String()).
+		Msg("Sending events")
 
 	response, err := s.server.PostStream("/event/insert", streamBody.String())
 	if err != nil {
@@ -279,7 +297,11 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
 		return fmt.Errorf("error reading response body: %w", err)
 	}
 
-	fmt.Printf("DEBUG - Server response (status=%d): %s\n", response.StatusCode, string(respBody))
+	s.logger.Debug().
+		Int("response_status_code", response.StatusCode).
+		Str("response_status", response.Status).
+		Str("response_body", string(respBody)).
+		Msg("Event sync - response received")
 
 	if response.StatusCode != http.StatusAccepted { // Changé en 202 Accepted
 		return fmt.Errorf("unexpected status code: %d - body: %s", response.StatusCode, string(respBody))
