@@ -140,7 +140,7 @@ func (rc *RemoteConfiguration) validateConfiguration(config *RemoteConfiguration
 		return fmt.Errorf("configuration cannot be nil")
 	}
 
-	fmt.Printf("[DEBUG] Validating configuration\n")
+	rc.logger.Debug().Msg("Validating configuration")
 
 	if len(config.StorageConfig) == 0 {
 		return fmt.Errorf("at least one storage strategy is required")
@@ -240,7 +240,7 @@ func (rc *RemoteConfiguration) doFetchConfiguration() (*RemoteConfigurationData,
 	}
 
 	rc.logger.Debug().
-		Any("response", respBody).
+		Str("response", string(respBody)).
 		Msg("Raw configuration response")
 
 	var config RemoteConfigurationData
