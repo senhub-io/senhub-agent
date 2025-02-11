@@ -69,7 +69,6 @@ jobs:
           aws configure set default.s3.endpoint_url https://s3.rbx.io.cloud.ovh.net
           # Configurer AWS CLI pour ignorer les certificats SSL
           aws configure set default.s3.use_ssl false
-
       - name: Sync to OVH S3
         run: |
           function log_info() { echo "::info::$1"; }
@@ -79,16 +78,18 @@ jobs:
           log_info "Starting synchronization to OVH S3"
           log_info "Version: ${{ env.NEW_TAG }}"
 
-          # Sync only binary files
-          if aws s3 sync dist/ "s3://senhub-agent/${{ env.NEW_TAG }}/" \
+          # Ajouter un log pour voir les fichiers
+          log_info "Files to sync:"
+          ls -la senhub-agent_*
+
+          # Sync from root directory instead of dist/
+          if aws s3 sync . "s3://senhub-agent/${{ env.NEW_TAG }}/" \
             --acl public-read \
             --endpoint-url=https://s3.rbx.io.cloud.ovh.net \
             --exclude "*" \
             --include "senhub-agent_*" \
             --no-verify-ssl; then
-
             log_success "Synchronization to ${{ env.NEW_TAG }} successful"
-
             if aws s3 sync "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/" \
               --acl public-read \
               --endpoint-url=https://s3.rbx.io.cloud.ovh.net \
