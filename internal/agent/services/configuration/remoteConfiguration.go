@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/server"
 )
@@ -42,9 +43,8 @@ type RemoteConfiguration struct {
 	logger        *logger.Logger
 	server        server.Server
 	eventNotifier *EventNotifier
-	ticker        *time.Ticker
-	tickerOnce    sync.Once
 	mutex         sync.Mutex
+	scheduler     periodic_scheduler.PeriodicScheduler
 }
 
 func NewRemoteConfiguration(
@@ -60,6 +60,16 @@ func NewRemoteConfiguration(
 		data:          RemoteConfigurationData{},
 		eventNotifier: NewEventNotifier(&localLogger),
 	}
+
+	scheduler := periodic_scheduler.NewPeriodicScheduler(periodic_scheduler.PeriodicSchedulerConfig{
+		Interval:          10 * time.Second,
+		MaxRetries:        3,
+		ExecuteOnStart:    true,
+		ExecuteOnShutdown: false,
+		Execute:           rc.doRefreshConfig,
+	}, &localLogger)
+	rc.scheduler = scheduler
+
 	localLogger.Debug().Msg("RemoteConfiguration instance created successfully")
 	return rc
 }
@@ -79,38 +89,16 @@ func (rc *RemoteConfiguration) OnConfigChanged(callback func(string)) {
 
 func (rc *RemoteConfiguration) Start(quitChannel chan struct{}) error {
 	rc.logger.Info().Msg("Starting RemoteConfiguration")
-	rc.tickerOnce.Do(func() {
-		rc.ticker = time.NewTicker(10 * time.Second)
-
-		rc.logger.Info().Msg("Fetching initial configuration")
-		if err := rc.doRefreshConfig(); err != nil {
-			rc.logger.Error().Err(err).Msg("Failed to fetch initial configuration")
-		}
-
-		go func() {
-			for {
-				select {
-				case <-quitChannel:
-					rc.logger.Debug().Msg("Received quit signal")
-					rc.ticker.Stop()
-					return
-				case <-rc.ticker.C:
-					if err := rc.doRefreshConfig(); err != nil {
-						rc.logger.Error().
-							Err(err).
-							Msg("Failed to fetch configuration")
-					}
-				}
-			}
-		}()
-	})
+	if err := rc.scheduler.Start(quitChannel); err != nil {
+		return fmt.Errorf("failed to start scheduler: %w", err)
+	}
 	return nil
 }
 
 func (rc *RemoteConfiguration) Shutdown(ctx context.Context) error {
 	rc.logger.Info().Msg("Shutting down RemoteConfiguration")
-	if rc.ticker != nil {
-		rc.ticker.Stop()
+	if err := rc.scheduler.Shutdown(ctx); err != nil {
+		return fmt.Errorf("failed to shutdown scheduler: %w", err)
 	}
 	return nil
 }
