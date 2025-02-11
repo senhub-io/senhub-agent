@@ -5,13 +5,14 @@ package host
 
 import (
 	"fmt"
-	psnet "github.com/shirou/gopsutil/v3/net"
 	"net"
+	"time"
+
+	psnet "github.com/shirou/gopsutil/v3/net"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
-	"time"
 )
 
 type interfaceInfo struct {
@@ -49,19 +50,25 @@ func (u *unixNetworkCollector) isInterfaceMonitored(interfaceName string) interf
 
 	// Skip if interface is loopback
 	if iface.Flags&net.FlagLoopback != 0 {
-		fmt.Printf("Interface %s is loopback, skipping\n", interfaceName)
+		u.logger.Debug().
+			Str("interface", iface.Name).
+			Msgf("Interface %s is loopback, skipping", interfaceName)
 		return interfaceInfo{isMonitored: false}
 	}
 
 	// Check if interface is up
 	if iface.Flags&net.FlagUp == 0 {
-		fmt.Printf("Interface %s is not up, skipping\n", interfaceName)
+		u.logger.Debug().
+			Str("interface", iface.Name).
+			Msgf("Interface %s is not up, skipping", interfaceName)
 		return interfaceInfo{isMonitored: false}
 	}
 
 	// Check if interface is running
 	if iface.Flags&net.FlagRunning == 0 {
-		fmt.Printf("Interface %s is not running, skipping\n", interfaceName)
+		u.logger.Debug().
+			Str("interface", iface.Name).
+			Msgf("Interface %s is not running, skipping", interfaceName)
 		return interfaceInfo{isMonitored: false}
 	}
 
@@ -95,7 +102,7 @@ type counterWithTime struct {
 	Timestamp time.Time
 }
 
-func newNetworkCollector(config map[string]interface{}, logger *logger.Logger) (osNetworkCollector, error) {
+func newNetworkCollector(_ map[string]interface{}, logger *logger.Logger) (osNetworkCollector, error) {
 	return &unixNetworkCollector{
 		logger:       logger,
 		lastCounters: make(map[string]counterWithTime),

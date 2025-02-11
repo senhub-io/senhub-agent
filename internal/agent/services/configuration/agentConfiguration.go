@@ -2,7 +2,7 @@
 package configuration
 
 import (
-	"fmt"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // AgentConfiguration defines interface for accessing local static configuration
@@ -25,13 +25,15 @@ type agentConfiguration struct {
 func NewAgentConfiguration(
 	AuthenticationKey string,
 	ServerUrl string,
+	logger *logger.Logger,
 ) AgentConfiguration {
-	fmt.Printf("[DEBUG] Creating new AgentConfiguration instance\n")
+	localLogger := logger.With().Str("service", "AgentConfiguration").Logger()
+	localLogger.Debug().Msg("Creating new AgentConfiguration instance")
 	ac := &agentConfiguration{
 		AuthenticationKey: AuthenticationKey,
 		ServerUrl:         ServerUrl,
 	}
-	fmt.Printf("[DEBUG] AgentConfiguration instance created successfully\n")
+	localLogger.Debug().Msg("AgentConfiguration instance created successfully")
 	return ac
 }
 
