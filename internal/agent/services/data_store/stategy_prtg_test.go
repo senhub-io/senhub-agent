@@ -1,11 +1,7 @@
 package data_store
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -15,36 +11,13 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/internal/testUtils"
 )
 
 type MockServerResult struct {
 	BodyStr  []byte
 	BodyJson map[string]interface{}
 	Req      *http.Request
-}
-
-/**
- * Create a test server for PRTG
- */
-func createPrtgMockServer(status int, body []byte) (*httptest.Server, *MockServerResult) {
-	lastRequest := &MockServerResult{}
-	testServer := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
-		bodyStr, err := io.ReadAll(req.Body)
-		if err != nil {
-			fmt.Printf("Server was unable to get request body: error = %v", err)
-		}
-
-		lastRequest.Req = req
-		lastRequest.BodyStr = bodyStr
-		err = json.Unmarshal(bodyStr, &lastRequest.BodyJson)
-		if err != nil {
-			fmt.Printf("Server was unable to parse request body as JSON: error = %v", err)
-		}
-
-		res.WriteHeader(status)
-		res.Write(body)
-	}))
-	return testServer, lastRequest
 }
 
 func TestSyncStrategyPrtg_NewSyncStrategyPrtg(t *testing.T) {
@@ -184,8 +157,8 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 		&logger,
 	)
 
-	testServer, lastRequest := createPrtgMockServer(200, []byte("OK"))
-	defer func() { testServer.Close() }()
+	testServer := testUtils.GetTestHTTPServer("OK", 200)
+	defer func() { testServer.Server.Close() }()
 	config := configuration.StorageConfigParams{
 		"server_url": testServer.URL,
 	}
@@ -214,13 +187,13 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			t.Errorf("DoSync() error = %v", err)
 		}
 
-		if lastRequest.Req == nil {
+		if testServer.LastRequest.Req == nil {
 			t.Errorf("DoSync() request is nil")
 		}
-		if lastRequest.Req.Method != "POST" {
-			t.Errorf("DoSync() request method = %s", lastRequest.Req.Method)
+		if testServer.LastRequest.Req.Method != "POST" {
+			t.Errorf("DoSync() request method = %s", testServer.LastRequest.Req.Method)
 		}
-		if lastRequest.BodyStr == nil {
+		if testServer.LastRequest.BodyStr == nil {
 			t.Errorf("DoSync() request body is nil")
 		}
 	})
@@ -249,7 +222,7 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			t.Errorf("DoSync() error = %v", err)
 		}
 
-		if lastRequest.Req == nil {
+		if testServer.LastRequest.Req == nil {
 			t.Errorf("DoSync() request is nil")
 		}
 
@@ -265,8 +238,8 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			},
 		}
 
-		if diff := deep.Equal(lastRequest.BodyJson, expected); diff != nil {
-			t.Errorf("DoSync() request body = %v\n%s", diff, lastRequest.BodyStr)
+		if diff := deep.Equal(testServer.LastRequest.BodyJson, expected); diff != nil {
+			t.Errorf("DoSync() request body = %v\n%s", diff, testServer.LastRequest.BodyStr)
 		}
 	})
 
@@ -295,7 +268,7 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			t.Errorf("DoSync() error = %v", err)
 		}
 
-		if lastRequest.Req == nil {
+		if testServer.LastRequest.Req == nil {
 			t.Errorf("DoSync() request is nil")
 		}
 
@@ -311,8 +284,8 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			},
 		}
 
-		if diff := deep.Equal(lastRequest.BodyJson, expected); diff != nil {
-			t.Errorf("DoSync() request body = %v\n%s", diff, lastRequest.BodyStr)
+		if diff := deep.Equal(testServer.LastRequest.BodyJson, expected); diff != nil {
+			t.Errorf("DoSync() request body = %v\n%s", diff, testServer.LastRequest.BodyStr)
 		}
 	})
 
@@ -355,7 +328,7 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			t.Errorf("DoSync() error = %v", err)
 		}
 
-		if lastRequest.Req == nil {
+		if testServer.LastRequest.Req == nil {
 			t.Errorf("DoSync() request is nil")
 		}
 
@@ -376,8 +349,8 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			},
 		}
 
-		if diff := deep.Equal(lastRequest.BodyJson, expected); diff != nil {
-			t.Errorf("DoSync() request body = %v\n%s", diff, lastRequest.BodyStr)
+		if diff := deep.Equal(testServer.LastRequest.BodyJson, expected); diff != nil {
+			t.Errorf("DoSync() request body = %v\n%s", diff, testServer.LastRequest.BodyStr)
 		}
 	})
 }
