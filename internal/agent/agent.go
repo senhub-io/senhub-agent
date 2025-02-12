@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/auto_update"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -37,6 +38,7 @@ type agent struct {
 	remoteConfiguration *configuration.RemoteConfiguration
 	store               data_store.DataStore
 	sensors             sensor.Sensor
+	updater             auto_update.AutoUpdate
 }
 
 // NewAgent initializes new agent with required services
@@ -74,6 +76,11 @@ func NewAgent() Agent {
 		logger,
 	)
 
+	updater := auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
+		RemoteConfig: remoteConfiguration,
+		Logger:       logger,
+	})
+
 	return agent{
 		startedServices:     &[]Service{},
 		messageChannel:      make(chan struct{}),
@@ -83,6 +90,7 @@ func NewAgent() Agent {
 		remoteConfiguration: remoteConfiguration,
 		store:               store,
 		sensors:             sensors,
+		updater:             updater,
 	}
 }
 
@@ -91,6 +99,7 @@ func (a agent) Start() error {
 		a.remoteConfiguration,
 		a.store,
 		a.sensors,
+		a.updater,
 	}
 
 	var errors []error
