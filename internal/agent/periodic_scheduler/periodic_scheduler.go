@@ -135,7 +135,6 @@ func (l *periodicScheduler) setupIntervalCall() error {
 					}
 					errorCount = 0
 				}
-				fmt.Println("Ticker end")
 			}
 		}
 	}(l.ticker)
