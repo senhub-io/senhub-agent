@@ -33,9 +33,15 @@ type ProbeConfig struct {
 	Params ProbeConfigParams `json:"params"`
 }
 
+type AgentConfig struct {
+	RegistryUrl string `json:"registry_url"`
+	Version     string `json:"version"`
+}
+
 type RemoteConfigurationData struct {
 	StorageConfig []StorageConfig `json:"storage"`
 	Probes        []ProbeConfig   `json:"probes"`
+	Agent         AgentConfig     `json:"agent"`
 }
 
 type RemoteConfiguration struct {
