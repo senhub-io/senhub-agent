@@ -1,14 +1,15 @@
 package logger
 
 import (
-	"github.com/rs/zerolog"
-	"gopkg.in/natefinch/lumberjack.v2"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
-	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
+
+	"github.com/rs/zerolog"
+	"gopkg.in/natefinch/lumberjack.v2"
+	"senhub-agent.go/internal/agent/cliArgs"
 )
 
 // Logger is an alias type for zerolog.Logger
@@ -58,7 +59,7 @@ func getLogPath() string {
 
 // NewLogger creates a new logger instance based on the provided arguments.
 // It switches between development and production configurations based on the environment.
-func NewLogger(args *agentCliArgs.ParsedArgs) *Logger {
+func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 	var logger *Logger
 	switch args.Env {
 	case "development":
@@ -77,7 +78,7 @@ func NewLogger(args *agentCliArgs.ParsedArgs) *Logger {
 
 // buildDevelopmentLogger creates a development-oriented logger configuration
 // that writes formatted logs to stderr with debug level enabled
-func buildDevelopmentLogger(args *agentCliArgs.ParsedArgs) *Logger {
+func buildDevelopmentLogger(*cliArgs.ParsedArgs) *Logger {
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	logger := zerolog.
 		New(zerolog.ConsoleWriter{Out: os.Stderr}).
@@ -93,7 +94,7 @@ func buildDevelopmentLogger(args *agentCliArgs.ParsedArgs) *Logger {
 // - Maximum of 5 backup files
 // - 30-day retention period
 // If verbose mode is enabled, it will also output to stderr alongside the file
-func buildProductionLogger(args *agentCliArgs.ParsedArgs) *Logger {
+func buildProductionLogger(args *cliArgs.ParsedArgs) *Logger {
 	logPath := getLogPath()
 
 	// Configure log rotation settings
