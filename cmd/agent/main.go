@@ -3,22 +3,23 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/kardianos/service"
 	"log"
 	"os"
 	"os/signal"
 	"os/user"
 	"runtime"
-	"senhub-agent.go/internal/agent"
-	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 	"syscall"
 	"time"
+
+	"github.com/kardianos/service"
+	"senhub-agent.go/internal/agent"
+	"senhub-agent.go/internal/agent/cliArgs"
 )
 
 type program struct {
 	agent agent.Agent
 	done  chan bool
-	args  *agentCliArgs.ParsedArgs
+	args  *cliArgs.ParsedArgs
 }
 
 func (p *program) Start(s service.Service) error {
@@ -90,7 +91,7 @@ func main() {
 	case "install", "uninstall", "start", "stop", "status", "run":
 		// For simple commands without required args, handle directly
 		if command == "start" || command == "stop" || command == "status" || command == "uninstall" {
-			handleServiceCommand(command, &agentCliArgs.ParsedArgs{})
+			handleServiceCommand(command, &cliArgs.ParsedArgs{})
 			return
 		}
 
@@ -108,7 +109,7 @@ func main() {
 
 		// Parse remaining args as start arguments
 		os.Args = append([]string{os.Args[0]}, serviceArgs...)
-		args := agentCliArgs.MustParse()
+		args := cliArgs.MustParse()
 		handleServiceCommand(command, args)
 		return
 	default:
@@ -119,7 +120,7 @@ func main() {
 		}
 
 		// Try to parse arguments for direct agent execution
-		args := agentCliArgs.MustParse()
+		args := cliArgs.MustParse()
 		if args == nil {
 			showHelp()
 			return
@@ -128,7 +129,7 @@ func main() {
 	}
 }
 
-func handleServiceCommand(command string, args *agentCliArgs.ParsedArgs) {
+func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	// Check for required auth key when installing
 	if command == "install" && args.AuthenticationKey == "" {
 		fmt.Println("Error: Authentication key is required for installation")
@@ -219,7 +220,7 @@ func handleServiceCommand(command string, args *agentCliArgs.ParsedArgs) {
 	}
 }
 
-func runAgent(args *agentCliArgs.ParsedArgs) {
+func runAgent(args *cliArgs.ParsedArgs) {
 	// Configure logging based on verbose flag
 	if args.Verbose {
 		log.SetFlags(log.LstdFlags | log.Lshortfile | log.Lmicroseconds)

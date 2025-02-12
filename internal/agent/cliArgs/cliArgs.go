@@ -1,9 +1,10 @@
-package agentCliArgs
+package cliArgs
 
 import (
-	"github.com/alexflint/go-arg"
 	"log"
 	"os"
+
+	"github.com/alexflint/go-arg"
 )
 
 // Those variables are set by the build system
