@@ -13,8 +13,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"sync"
-	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -60,8 +58,6 @@ type dataStore struct {
 	logger       *logger.Logger
 	remoteConfig *configuration.RemoteConfiguration
 	agentConfig  configuration.AgentConfiguration
-	ticker       *time.Ticker
-	tickerOnce   sync.Once
 }
 
 func NewDataStore(
