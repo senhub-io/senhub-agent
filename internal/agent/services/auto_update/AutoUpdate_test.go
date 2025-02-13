@@ -138,7 +138,7 @@ func TestAutoUpdate_ShouldUpdate(t *testing.T) {
 
 			cliArgs.Version = tc.currentVersion
 
-			expectedVersion := au.getExpectedVersion()
+			expectedVersion := au.getExpectedVersionFromConfig()
 			if expectedVersion != tc.expectedResult {
 				t.Errorf("Expected %s, got %s", tc.expectedResult, expectedVersion)
 			}
@@ -197,7 +197,7 @@ func TestAutoUpdate_getExpectedVersion_WithFailingServer(t *testing.T) {
 
 			cliArgs.Version = tc.currentVersion
 
-			expectedVersion := au.getExpectedVersion()
+			expectedVersion := au.getExpectedVersionFromConfig()
 			if expectedVersion != tc.expectedResult {
 				t.Errorf("Expected %s, got %s", tc.expectedResult, expectedVersion)
 			}
