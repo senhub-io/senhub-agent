@@ -47,18 +47,17 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GOVERSION: ${{ env.GO_VERSION }}
       - name: Create Release
-        if: success()
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ env.NEW_TAG }}
-          name: Release ${{ env.NEW_TAG }}
-          files: |
-            dist/senhub-agent_linux_amd64_${{ env.NEW_TAG }}
-            dist/senhub-agent_linux_arm64_${{ env.NEW_TAG }}
-            dist/senhub-agent_windows_amd64_${{ env.NEW_TAG }}.exe
-            dist/senhub-agent_darwin_amd64_${{ env.NEW_TAG }}
-            dist/senhub-agent_darwin_arm64_${{ env.NEW_TAG }}
-          generate_release_notes: false
+          if: success()
+          uses: softprops/action-gh-release@v1
+          with:
+            tag_name: ${{ env.NEW_TAG }}
+            name: Release ${{ env.NEW_TAG }}
+            files: |
+              dist/senhub-agent_linux_amd64_${{ env.NEW_TAG }}
+              dist/senhub-agent_linux_arm64_${{ env.NEW_TAG }}
+              dist/senhub-agent_windows_amd64_${{ env.NEW_TAG }}.exe
+              dist/senhub-agent_darwin_amd64_${{ env.NEW_TAG }}
+              dist/senhub-agent_darwin_arm64_${{ env.NEW_TAG }}
       - name: Set up AWS CLI Configuration
         run: |
           aws configure set aws_access_key_id ${{ secrets.OVH_S3_KEY_ID }}
@@ -80,16 +79,17 @@ jobs:
 
           # Ajouter un log pour voir les fichiers
           log_info "Files to sync:"
-          ls -la senhub-agent_*
+          ls -la dist/senhub-agent_*
 
-          # Sync from root directory instead of dist/
-          if aws s3 sync . "s3://senhub-agent/${{ env.NEW_TAG }}/" \
+          # Sync from dist/ directory
+          if aws s3 sync dist/ "s3://senhub-agent/${{ env.NEW_TAG }}/" \
             --acl public-read \
             --endpoint-url=https://s3.rbx.io.cloud.ovh.net \
             --exclude "*" \
             --include "senhub-agent_*" \
             --no-verify-ssl; then
             log_success "Synchronization to ${{ env.NEW_TAG }} successful"
+
             if aws s3 sync "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/" \
               --acl public-read \
               --endpoint-url=https://s3.rbx.io.cloud.ovh.net \
