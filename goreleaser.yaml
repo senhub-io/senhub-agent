@@ -33,8 +33,7 @@ builds:
 archives:
   - id: binaries
     format: binary
-    name_template: >-
-      {{ .Binary }}_{{ .Os }}_{{ .Arch }}_{{.Version}}{{if eq .Os "windows"}}.exe{{end}}
+    name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}_{{.Version}}{{if eq .Os \"windows\"}}.exe{{end}}"
     files:
       - none*
     allow_different_binary_count: true
