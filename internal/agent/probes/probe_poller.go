@@ -6,9 +6,8 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"sync"
-	"time"
 
+	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -24,10 +23,8 @@ type ProbePoller struct {
 	Probe        types.Probe               // The actual probe implementation
 	config       configuration.ProbeConfig // Probe configuration
 	addDataPoint data_store.AddCallback    // Callback to store collected data
-	ticker       *time.Ticker              // Timer for periodic collection
-	tickerOnce   sync.Once                 // Ensures single initialization
-	mutex        sync.Mutex                // Protects probe operations
 	logger       *logger.Logger
+	scheduler    periodic_scheduler.PeriodicScheduler
 }
 
 // defaultStrategyRouter provides default routing to senhub and prtg strategies
@@ -78,6 +75,17 @@ func NewProbePoller(
 		logger:       &loggerWithProbeId,
 	}
 
+	scheduler := periodic_scheduler.NewPeriodicScheduler(periodic_scheduler.PeriodicSchedulerConfig{
+		Interval:          probe.GetInterval(),
+		MaxRetries:        3,
+		ExecuteOnStart:    true,
+		ExecuteOnShutdown: false,
+		Execute:           probePoller.collect,
+		OnStart:           probe.OnStart,
+		OnShutdown:        probe.OnShutdown,
+	}, &loggerWithProbeId)
+	probePoller.scheduler = scheduler
+
 	if probeWithCallback, ok := probe.(types.ProbeWithCallback); ok {
 		loggerWithProbeId.Debug().Msg("Setting callback for probe")
 		probeWithCallback.SetCallback(probePoller.getWrappedCallback())
@@ -122,51 +130,7 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 		return nil
 	}
 
-	p.tickerOnce.Do(func() {
-		// Run OnStart only once
-		if err := p.Probe.OnStart(quitChannel); err != nil {
-			// If OnStart fails, don't start the ticker
-			// Given this is async, we can't return the error
-			p.logger.Error().Err(err).Msg("Failed to start probe")
-			return
-		}
-
-		p.ticker = time.NewTicker(p.Probe.GetInterval())
-
-		go func() {
-			errorCount := 0
-			if err := p.collect(); err != nil {
-				p.logger.Error().Err(err).Msg("Initial collect failed")
-			}
-
-			for {
-				select {
-				case <-quitChannel:
-					p.logger.Debug().Msg("Stopping probe")
-					p.ticker.Stop()
-					return
-				case <-p.ticker.C:
-					if err := p.collect(); err != nil {
-						errorCount++
-						if errorCount > 3 {
-							p.logger.Warn().
-								Int("error_count", errorCount).
-								Err(err).
-								Msg("Probe failed too many times")
-						}
-					} else {
-						if errorCount > 0 {
-							p.logger.Info().
-								Int("error_count", errorCount).
-								Msg("Probe recovered")
-						}
-						errorCount = 0
-					}
-				}
-			}
-		}()
-	})
-	return nil
+	return p.scheduler.Start(quitChannel)
 }
 
 // collect gathers metrics from the probe and routes them to the appropriate
@@ -205,13 +169,5 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 func (p *ProbePoller) Shutdown(ctx context.Context) error {
 	p.logger.Debug().Msg("Shutting down probe")
 
-	if p.ticker != nil {
-		p.ticker.Stop()
-	}
-
-	err := p.Probe.OnShutdown(ctx)
-	if err != nil {
-		return fmt.Errorf("shutdown failed: %v", err)
-	}
-	return nil
+	return p.scheduler.Shutdown(ctx)
 }
