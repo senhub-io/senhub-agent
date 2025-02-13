@@ -47,17 +47,17 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GOVERSION: ${{ env.GO_VERSION }}
       - name: Create Release
-          if: success()
-          uses: softprops/action-gh-release@v1
-          with:
-            tag_name: ${{ env.NEW_TAG }}
-            name: Release ${{ env.NEW_TAG }}
-            files: |
-              dist/senhub-agent_linux_amd64_${{ env.NEW_TAG }}
-              dist/senhub-agent_linux_arm64_${{ env.NEW_TAG }}
-              dist/senhub-agent_windows_amd64_${{ env.NEW_TAG }}.exe
-              dist/senhub-agent_darwin_amd64_${{ env.NEW_TAG }}
-              dist/senhub-agent_darwin_arm64_${{ env.NEW_TAG }}
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.NEW_TAG }}
+          name: Release ${{ env.NEW_TAG }}
+          files: |
+            dist/senhub-agent_linux_amd64_${{ env.NEW_TAG }}
+            dist/senhub-agent_linux_arm64_${{ env.NEW_TAG }}
+            dist/senhub-agent_windows_amd64_${{ env.NEW_TAG }}.exe
+            dist/senhub-agent_darwin_amd64_${{ env.NEW_TAG }}
+            dist/senhub-agent_darwin_arm64_${{ env.NEW_TAG }}
       - name: Set up AWS CLI Configuration
         run: |
           aws configure set aws_access_key_id ${{ secrets.OVH_S3_KEY_ID }}
