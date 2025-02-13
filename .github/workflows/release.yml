@@ -58,6 +58,7 @@ jobs:
             dist/senhub-agent_windows_amd64_${{ env.NEW_TAG }}.exe
             dist/senhub-agent_darwin_amd64_${{ env.NEW_TAG }}
             dist/senhub-agent_darwin_arm64_${{ env.NEW_TAG }}
+            dist/senhubagent_${{ env.NEW_TAG }}_checksums.txt
       - name: Set up AWS CLI Configuration
         run: |
           aws configure set aws_access_key_id ${{ secrets.OVH_S3_KEY_ID }}
