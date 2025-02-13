@@ -35,7 +35,13 @@ type CliArgs struct {
 }
 
 type VersionSubcommandArgs struct{}
-type UpdateSubcommandArgs struct{}
+type UpdateSubcommandArgs struct {
+	Version           string `arg:"positional,required" help:"Version to update to"`
+	AuthenticationKey string `arg:"--authentication-key,env:SENHUB_KEY" help:"The authentication key for the agent"`
+	RegistryUrl       string `arg:"--registry-url" help:"URL of the registry to use"`
+	ServerUrl         string `arg:"--server-url,env:SENHUB_SERVER_URL" help:"The URL of senhub server to connect to"`
+	Verbose           bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
+}
 
 type StartSubcommandArgs struct {
 	AuthenticationKey string `arg:"required,--authentication-key,env:SENHUB_KEY" help:"The authentication key for the agent"`
@@ -46,9 +52,11 @@ type StartSubcommandArgs struct {
 type ParsedArgs struct {
 	AuthenticationKey string
 	ServerUrl         string
+	UpdateRegistryUrl string
 	Verbose           bool
 	Env               string
 	Version           string
+	WantedVersion     string
 	CommitHash        string
 }
 
@@ -110,8 +118,7 @@ func MustParse() *ParsedArgs {
 	case args.Agent != nil:
 		return parsedArgsFromStartArgs(args.Agent, parsedEnv)
 	case args.Update != nil:
-		p.FailSubcommand("Update subcommand is not implemented yet.", "update")
-		os.Exit(1)
+		return parsedArgsFromUpdateArgs(args.Update, parsedEnv)
 	default:
 		// No subcommand was provided.
 		p.Fail("Run with --help for usage information.")
@@ -136,6 +143,28 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 		Verbose:           args.Verbose,
 		Env:               environment,
 		Version:           Version,
+		CommitHash:        CommitHash,
+	}
+}
+
+func parsedArgsFromUpdateArgs(args *UpdateSubcommandArgs, environment string) *ParsedArgs {
+	// If ServerUrl is not specified, use default value
+	serverUrl := args.ServerUrl
+	if serverUrl == "" {
+		serverUrl = defaultServerURL()
+		if serverUrl == "" {
+			log.Printf("Warning: Default server URL is not set for environment %s", environment)
+		}
+	}
+
+	return &ParsedArgs{
+		AuthenticationKey: args.AuthenticationKey,
+		ServerUrl:         serverUrl,
+		UpdateRegistryUrl: args.RegistryUrl,
+		Verbose:           args.Verbose,
+		Env:               environment,
+		Version:           Version,
+		WantedVersion:     args.Version,
 		CommitHash:        CommitHash,
 	}
 }
