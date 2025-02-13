@@ -72,7 +72,7 @@ func NewRemoteConfiguration(
 		MaxRetries:        3,
 		ExecuteOnStart:    true,
 		ExecuteOnShutdown: false,
-		Execute:           rc.doRefreshConfig,
+		Execute:           rc.UpdateSync,
 	}, &localLogger)
 	rc.scheduler = scheduler
 
@@ -169,7 +169,7 @@ func (rc *RemoteConfiguration) validateConfiguration(config *RemoteConfiguration
 	return nil
 }
 
-func (rc *RemoteConfiguration) doRefreshConfig() error {
+func (rc *RemoteConfiguration) UpdateSync() error {
 	rc.mutex.Lock()
 	defer rc.mutex.Unlock()
 
