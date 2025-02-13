@@ -4,7 +4,7 @@ before:
 builds:
   - id: "senhub-agent"
     main: ./cmd/agent/main.go
-    binary: "senhub-agent_{{ .Os }}_{{ .Arch }}_{{ .Version }}"  # Ajout du template ici
+    binary: "senhub-agent_{{ .Os }}_{{ .Arch }}"
     env:
       - CGO_ENABLED=0
     goos:
