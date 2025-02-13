@@ -1,108 +1,61 @@
-name: Release
-on:
-  push:
-    branches:
-      - master
-permissions:
-  contents: write
-  packages: write
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.22.0'
-      - name: Get Go Version
-        id: go_version
-        run: |
-          GO_VERSION=$(go version | cut -d' ' -f3)
-          echo "GO_VERSION=$GO_VERSION" >> $GITHUB_ENV
-      - name: Get Version
-        id: get_version
-        run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          MAJOR=$(echo $LAST_TAG | cut -d. -f1)
-          MINOR=$(echo $LAST_TAG | cut -d. -f2)
-          PATCH=$(echo $LAST_TAG | cut -d. -f3)
-          NEXT_PATCH=$((PATCH + 1))
-          NEW_TAG="${MAJOR}.${MINOR}.${NEXT_PATCH}"
-          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
-          echo "new_version=$NEW_TAG" >> $GITHUB_OUTPUT
-      - name: Create Tag
-        run: |
-          git tag -f ${{ env.NEW_TAG }}
-          git push -f origin ${{ env.NEW_TAG }}
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v5
-        with:
-          distribution: goreleaser
-          version: latest
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GOVERSION: ${{ env.GO_VERSION }}
-      - name: Create Release
-        if: success()
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ env.NEW_TAG }}
-          name: Release ${{ env.NEW_TAG }}
-          files: |
-            dist/senhub-agent_linux_amd64_${{ env.NEW_TAG }}
-            dist/senhub-agent_linux_arm64_${{ env.NEW_TAG }}
-            dist/senhub-agent_windows_amd64_${{ env.NEW_TAG }}.exe
-            dist/senhub-agent_darwin_amd64_${{ env.NEW_TAG }}
-            dist/senhub-agent_darwin_arm64_${{ env.NEW_TAG }}
-            dist/senhubagent_${{ env.NEW_TAG }}_checksums.txt
-      - name: Set up AWS CLI Configuration
-        run: |
-          aws configure set aws_access_key_id ${{ secrets.OVH_S3_KEY_ID }}
-          aws configure set aws_secret_access_key ${{ secrets.OVH_S3_SECRET_KEY }}
-          aws configure set region rbx
-          # Désactiver la validation SSL pour OVH Object Storage
-          aws configure set default.s3.addressing_style path
-          aws configure set default.s3.endpoint_url https://s3.rbx.io.cloud.ovh.net
-          # Configurer AWS CLI pour ignorer les certificats SSL
-          aws configure set default.s3.use_ssl false
-      - name: Sync to OVH S3
-        run: |
-          function log_info() { echo "::info::$1"; }
-          function log_success() { echo "::notice::$1"; }
-          function log_error() { echo "::error::$1"; }
-
-          log_info "Starting synchronization to OVH S3"
-          log_info "Version: ${{ env.NEW_TAG }}"
-
-          # Ajouter un log pour voir les fichiers
-          log_info "Files to sync:"
-          ls -la dist/senhub-agent_*
-
-          # Sync from dist/ directory
-          if aws s3 sync dist/ "s3://senhub-agent/${{ env.NEW_TAG }}/" \
-            --acl public-read \
-            --endpoint-url=https://s3.rbx.io.cloud.ovh.net \
-            --exclude "*" \
-            --include "senhub-agent_*" \
-            --no-verify-ssl; then
-            log_success "Synchronization to ${{ env.NEW_TAG }} successful"
-
-            if aws s3 sync "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/" \
-              --acl public-read \
-              --endpoint-url=https://s3.rbx.io.cloud.ovh.net \
-              --exclude "*" \
-              --include "senhub-agent_*" \
-              --no-verify-ssl; then
-              log_success "Update of 'latest' folder successful"
-            else
-              log_error "Error updating 'latest' folder"
-              exit 1
-            fi
-          else
-            log_error "Error during S3 synchronization"
-            exit 1
-          fi
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - id: "senhub-agent"
+    main: ./cmd/agent/main.go
+    binary: "senhub-agent"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X senhub-agent.go/internal/agent/cliArgs.Version={{.Version}}
+      - -X senhub-agent.go/internal/agent/cliArgs.CommitHash={{.Commit}}
+      - -X senhub-agent.go/internal/agent/cliArgs.BuildTime={{.Date}}
+      - -X senhub-agent.go/internal/agent/cliArgs.GoVersion={{.Env.GOVERSION}}
+      - -X senhub-agent.go/internal/agent/cliArgs.Env=production
+      - -X senhub-agent.go/internal/agent/cliArgs.ProductionURL=https://eu-west-1.intake.senhub.io
+      - -X senhub-agent.go/internal/agent/cliArgs.DevelopmentURL=https://eu-west-1.intake-dev.senhub.io
+    dir: .
+archives:
+  - id: binaries
+    format: binary
+    name_template: "{{ .Binary }}"
+    wrap_in_directory: false
+    files:
+      - none*
+    allow_different_binary_count: true
+    builds:
+      - senhub-agent
+    strip_parent_binary_name: true
+release:
+  draft: false
+  mode: replace
+  make_latest: true
+signs:
+  - artifacts: none
+source:
+  enabled: false
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - Merge pull request
+      - Merge branch
