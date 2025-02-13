@@ -30,6 +30,7 @@ builds:
       - -X senhub-agent.go/internal/agent/cliArgs.ProductionURL=https://eu-west-1.intake.senhub.io
       - -X senhub-agent.go/internal/agent/cliArgs.DevelopmentURL=https://eu-west-1.intake-dev.senhub.io
     no_unique_dist_dir: true
+    name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}_{{.Version}}{{if eq .Os \"windows\"}}.exe{{end}}"
 archives:
   - id: binaries
     format: binary
