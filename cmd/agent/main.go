@@ -88,6 +88,10 @@ func main() {
 	// If first argument is a service command
 	command := os.Args[1]
 	switch command {
+	case "update":
+		args := cliArgs.MustParse()
+		agent.UpdateAgent(args)
+		return
 	case "install", "uninstall", "start", "stop", "status", "run":
 		// For simple commands without required args, handle directly
 		if command == "start" || command == "stop" || command == "status" || command == "uninstall" {
@@ -308,6 +312,7 @@ Service Commands:
     status      Show service status
     version     Show agent version
     run         Run in console mode (requires --authentication-key)
+	update      Update the agent to given version (default: latest)
 
 Agent Options:
     --authentication-key KEY   Authentication key for the service (required)
@@ -319,6 +324,8 @@ Examples:
     %s start
     %s status
     %s run --authentication-key "your-key" --server-url "http://example.com"
+    %s update 1.0.0"
+    %s update latest"
 
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
