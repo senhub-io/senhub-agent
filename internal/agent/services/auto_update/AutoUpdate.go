@@ -2,6 +2,7 @@ package auto_update
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/hashicorp/go-version"
@@ -11,7 +12,7 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-var DEFAULT_REGISTRY_URL = "https://eu-west-1.intake.senhub.io/"
+var DEFAULT_REGISTRY_URL = "https://senhub-agent.s3.rbx.io.cloud.ovh.net/"
 
 // Register an event on remote config change
 // This function checks for update and applies the update if required
@@ -20,6 +21,7 @@ type AutoUpdate interface {
 	GetName() string
 	Start(quitChannel chan struct{}) error
 	Shutdown(ctx context.Context) error
+	Update(expectedVersion string, registryUrl ...string) error
 }
 
 type AutoUpdateConfig struct {
@@ -59,31 +61,67 @@ func (a *autoUpdate) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (a *autoUpdate) GetRegistryUrl() string {
-	registryUrl := a.remoteConfig.GetConfiguration().Agent.RegistryUrl
+func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) error {
+	var registry string
+	if len(registryUrl) > 0 {
+		registry = registryUrl[0]
+	}
+
+	expectedVersion := a.getExpectedVersion(
+		expectedVersionStr,
+		a.GetRegistryUrl(registry),
+	)
+
+	currentVersionStr := cliArgs.Version
+	if expectedVersion == "" || expectedVersion == cliArgs.Version {
+		a.logger.Info().Msg("No update required")
+		return nil
+	}
+
+	a.logger.Info().
+		Str("current_version", currentVersionStr).
+		Str("expected_version", expectedVersion).
+		Msg("Update required")
+
+	return nil
+}
+
+func (a *autoUpdate) GetRegistryUrl(registryUrl string) string {
 	if registryUrl == "" {
 		return DEFAULT_REGISTRY_URL
 	}
 	return registryUrl
 }
 
-func (a *autoUpdate) getExpectedVersion() string {
-	expectedVersionStr := a.remoteConfig.GetConfiguration().Agent.Version
+func (a *autoUpdate) getExpectedVersionFromConfig() string {
+	expectedVersion := a.remoteConfig.GetConfiguration().Agent.Version
+	registryUrl := a.remoteConfig.GetConfiguration().Agent.RegistryUrl
+
+	return a.getExpectedVersion(expectedVersion, registryUrl)
+}
+
+func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl string) string {
 	currentVersionStr := cliArgs.Version
+	registryUrl = a.GetRegistryUrl(registryUrl)
 
 	if expectedVersionStr == "" {
 		return currentVersionStr
 	}
 
 	// In case expected version is an alias, try to get latest version
-	expectedVersionMetadata, _ := fetchVersionMetadata(
+	expectedVersionMetadata, err := fetchVersionMetadata(
 		a.httpClient,
-		a.GetRegistryUrl(),
+		registryUrl,
 		expectedVersionStr,
 	)
+	if err != nil {
+		fmt.Println(err)
+	}
+
 	// Given there is a matching version metadata, use the version from the
 	// metadata
 	if expectedVersionMetadata != nil {
+		fmt.Println(expectedVersionMetadata.Version)
 		// There is an exact match
 		return expectedVersionMetadata.Version
 	}
@@ -120,7 +158,7 @@ func (a *autoUpdate) getExpectedVersion() string {
 
 	metadata, err := FetchBestMatchingVersion(
 		a.httpClient,
-		a.GetRegistryUrl(),
+		registryUrl,
 		constraint,
 	)
 	if err != nil {
