@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ybbus/httpretry"
+	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -22,7 +22,7 @@ var (
 	// The placeholder [name] will be replaced by the metric name.
 	PrtgTagName = "prtg_metric_id"
 	// Default interval for synchronization
-	DEFAULT_INTERVAL = 5 * time.Second
+	DEFAULT_PRTG_INTERVAL = 5 * time.Second
 	// Default data retention period
 	DEFAULT_RETENTION_PERIOD = 2 * time.Minute
 )
@@ -50,34 +50,35 @@ type SyncStrategyPrtg struct {
 	rawConfig   configuration.StorageConfigParams
 	config      SyncStrategyPrtgParams
 	logger      *logger.Logger
-	ticker      *time.Ticker
-	tickerOnce  sync.Once
+	scheduler   periodic_scheduler.PeriodicScheduler
 }
 
 func NewSyncStrategyPrtg(
 	agentConfig configuration.AgentConfiguration,
 	storageConfig configuration.StorageConfigParams,
 	logger *logger.Logger,
-) SyncStrategy {
+) *SyncStrategyPrtg {
 	localLogger := logger.With().Str("sync_strategy", "SyncStrategyPrtg").Logger()
 	http := httpretry.NewDefaultClient(
 		// retry up to 3 times
 		httpretry.WithMaxRetryCount(3),
 	)
 
-	return &SyncStrategyPrtg{
+	strategy := SyncStrategyPrtg{
 		buffer:      NewBuffer(),
 		http:        http,
 		rawConfig:   storageConfig,
 		agentConfig: agentConfig,
 		logger:      &localLogger,
 	}
+
+	return &strategy
 }
 
 func ParseSyncStrategyPrtgParams(config configuration.StorageConfigParams) (SyncStrategyPrtgParams, error) {
 	errs := []error{}
 	params := SyncStrategyPrtgParams{
-		Interval:        DEFAULT_INTERVAL,
+		Interval:        DEFAULT_PRTG_INTERVAL,
 		RetentionPeriod: DEFAULT_RETENTION_PERIOD,
 		ServerUrl:       "",
 	}
@@ -148,34 +149,25 @@ func (s *SyncStrategyPrtg) ValidateConfigParams(params configuration.StorageConf
 }
 
 func (s *SyncStrategyPrtg) Start() error {
-	s.tickerOnce.Do(func() { // Ensure the ticker only starts once
-		s.logger.Info().Msg("Starting sync strategy")
-		interval := s.config.Interval
-		ticker := time.NewTicker(interval)
-
-		go func() {
-			for {
-				select {
-				case <-ticker.C:
-					err := s.doSync()
-					if err != nil {
-						s.logger.Error().Err(err).Msg("error synchronizing data")
-					}
-				}
-			}
-		}()
-	})
-
-	return nil
+	if (s.scheduler) != nil {
+		return nil
+	}
+	scheduler := periodic_scheduler.NewPeriodicScheduler(periodic_scheduler.PeriodicSchedulerConfig{
+		Interval:          s.config.Interval,
+		Execute:           s.DoSync,
+		ExecuteOnStart:    false,
+		ExecuteOnShutdown: true,
+	}, s.logger)
+	s.scheduler = scheduler
+	return s.scheduler.Start(nil)
 }
 
 func (s *SyncStrategyPrtg) Shutdown(ctx context.Context) error {
 	s.logger.Info().Msg("Shutting down sync strategy")
-	if s.ticker != nil {
-		s.ticker.Stop()
-	}
-
-	return s.doSync()
+	defer func() {
+		s.scheduler = nil
+	}()
+	return s.scheduler.Shutdown(ctx)
 }
 
 // filter an array of T using a test function
@@ -200,7 +192,7 @@ func metricId(p DataPoint) string {
 	return p.Name
 }
 
-func (s *SyncStrategyPrtg) doSync() error {
+func (s *SyncStrategyPrtg) DoSync() error {
 	data := s.buffer.Sync()
 
 	if len(data) == 0 {
@@ -237,9 +229,9 @@ func (s *SyncStrategyPrtg) doSync() error {
 
 	s.logger.Debug().Any("data", data).Msg("synchronizing data")
 
-	// Some probes might not read nez value until the next sync, so valid data
+	// Some probes might not read any value until the next sync, so valid data
 	// points are restored in the buffer.
-	// This happens wether the sync si successful or not.
+	// This happens wether the sync is successful or not.
 	s.buffer.AbortSync(data)
 	if err := s.doSyncData(data); err != nil {
 		s.logger.Error().Err(err).Msg("error synchronizing data")
