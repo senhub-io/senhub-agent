@@ -4,7 +4,7 @@ before:
 builds:
   - id: "senhub-agent"
     main: ./cmd/agent/main.go
-    binary: "senhub-agent"  # Simplifié
+    binary: "senhub-agent_{{ .Os }}_{{ .Arch }}_{{ .Version }}"  # Ajout du template ici
     env:
       - CGO_ENABLED=0
     goos:
@@ -30,11 +30,9 @@ builds:
       - -X senhub-agent.go/internal/agent/cliArgs.ProductionURL=https://eu-west-1.intake.senhub.io
       - -X senhub-agent.go/internal/agent/cliArgs.DevelopmentURL=https://eu-west-1.intake-dev.senhub.io
     no_unique_dist_dir: true
-    name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}_{{.Version}}{{if eq .Os \"windows\"}}.exe{{end}}"
 archives:
   - id: binaries
     format: binary
-    name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}_{{.Version}}{{if eq .Os \"windows\"}}.exe{{end}}"
     files:
       - none*
     allow_different_binary_count: true
