@@ -46,6 +46,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GOVERSION: ${{ env.GO_VERSION }}
+
+      - name: Debug Files After GoReleaser
+        run: |
+          echo "==== Content of dist/ folder ===="
+          ls -la dist/
+          echo "==== Content of ./ folder ===="
+          ls -la
+          echo "==== File type of JSON files if they exist ===="
+          [ -f "dist/metadata.json" ] && file dist/metadata.json || echo "metadata.json not found"
+          [ -f "dist/artifacts.json" ] && file dist/artifacts.json || echo "artifacts.json not found"
+          echo "==== Full directory tree ===="
+          find . -name "*.json" -type f
+
+      - name: Save JSON files
+        run: |
+          # Create backup of JSON files if they exist
+          [ -f "dist/metadata.json" ] && cp dist/metadata.json /tmp/metadata.json || true
+          [ -f "dist/artifacts.json" ] && cp dist/artifacts.json /tmp/artifacts.json || true
       - name: Create Release
         if: success()
         uses: softprops/action-gh-release@v1
@@ -61,11 +79,24 @@ jobs:
             dist/senhubagent_checksums.txt
       - name: Set up AWS CLI Configuration
         run: |
+          # Installation des certificats racines OVH
+          sudo apt install ca-certificates
+          sudo update-ca-certificates
+
+          # Configuration AWS
           aws configure set aws_access_key_id ${{ secrets.OVH_S3_KEY_ID }}
           aws configure set aws_secret_access_key ${{ secrets.OVH_S3_SECRET_KEY }}
           aws configure set region rbx
           aws configure set default.s3.addressing_style path
           aws configure set default.s3.endpoint_url https://s3.rbx.io.cloud.ovh.net
+
+          # Configuration des retries et timeouts
+          aws configure set default.s3.max_concurrent_requests 1
+          aws configure set default.s3.max_queue_size 1000
+          aws configure set default.s3.multipart_threshold 64MB
+          aws configure set default.s3.multipart_chunksize 16MB
+          aws configure set default.retries 5
+          
       - name: Sync to OVH S3
         run: |
           function log_info() { echo "::info::$1"; }
@@ -74,28 +105,69 @@ jobs:
 
           log_info "Starting synchronization to OVH S3"
           log_info "Version: ${{ env.NEW_TAG }}"
+
+          # Vérification des fichiers dans dist/
+          log_info "Listing files in dist directory:"
+          ls -la dist/
+
+          # Vérification spécifique des fichiers JSON
+          if [ -f "dist/metadata.json" ]; then
+            log_info "metadata.json exists"
+          else
+            log_error "metadata.json not found"
+          fi
+
+          if [ -f "dist/artifacts.json" ]; then
+            log_info "artifacts.json exists"
+          else
+            log_error "artifacts.json not found"
+          fi
           log_info "Files to sync:"
           ls -la dist/senhub-agent_*
 
-          # Sync to version-specific directory
+          # First, set proper content-type for JSON files
+          export AWS_MAX_ATTEMPTS=10
+          export AWS_RETRY_MODE=adaptive
+
+          aws s3 cp dist/metadata.json "s3://senhub-agent/${{ env.NEW_TAG }}/metadata.json" \
+            --acl public-read \
+            --content-type "application/json" \
+            --endpoint-url=https://s3.rbx.io.cloud.ovh.net || true
+
+          aws s3 cp dist/artifacts.json "s3://senhub-agent/${{ env.NEW_TAG }}/artifacts.json" \
+            --acl public-read \
+            --content-type "application/json" \
+            --endpoint-url=https://s3.rbx.io.cloud.ovh.net || true
+
+          # Then sync remaining files
           if aws s3 sync dist/ "s3://senhub-agent/${{ env.NEW_TAG }}/" \
             --acl public-read \
             --endpoint-url=https://s3.rbx.io.cloud.ovh.net \
             --exclude "*" \
             --include "senhub-agent_*" \
-            --include "metadata.json" \
-            --include "artifacts.json" \
             --include "senhubagent_${{ env.NEW_TAG }}_checksums.txt"; then
             log_success "Synchronization to ${{ env.NEW_TAG }} successful"
 
             # Sync to latest directory
+            # Copy JSON files to latest with proper content-type
+            aws s3 cp "s3://senhub-agent/${{ env.NEW_TAG }}/metadata.json" \
+              "s3://senhub-agent/latest/metadata.json" \
+              --acl public-read \
+              --content-type "application/json" \
+              --endpoint-url=https://s3.rbx.io.cloud.ovh.net || true
+
+            aws s3 cp "s3://senhub-agent/${{ env.NEW_TAG }}/artifacts.json" \
+              "s3://senhub-agent/latest/artifacts.json" \
+              --acl public-read \
+              --content-type "application/json" \
+              --endpoint-url=https://s3.rbx.io.cloud.ovh.net || true
+
+            # Then sync remaining files to latest
             if aws s3 sync "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/" \
               --acl public-read \
               --endpoint-url=https://s3.rbx.io.cloud.ovh.net \
               --exclude "*" \
               --include "senhub-agent_*" \
-              --include "metadata.json" \
-              --include "artifacts.json" \
               --include "senhubagent_${{ env.NEW_TAG }}_checksums.txt"; then
               log_success "Update of 'latest' folder successful"
             else
