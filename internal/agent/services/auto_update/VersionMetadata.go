@@ -13,6 +13,7 @@ import (
 var (
 	VERSION_METADATA_LIST_PATH = "/"
 	VERSION_METADATA_PATH      = "/%s/metadata.json"
+	VERSION_BINARY_PATH        = "/%s/%s"
 )
 
 type VersionMetadata struct {
