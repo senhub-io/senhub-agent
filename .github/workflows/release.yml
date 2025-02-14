@@ -71,23 +71,32 @@ jobs:
           function log_info() { echo "::info::$1"; }
           function log_success() { echo "::notice::$1"; }
           function log_error() { echo "::error::$1"; }
+
           log_info "Starting synchronization to OVH S3"
           log_info "Version: ${{ env.NEW_TAG }}"
-          # Ajouter un log pour voir les fichiers
           log_info "Files to sync:"
           ls -la dist/senhub-agent_*
-          # Sync from dist/ directory
+
+          # Sync to version-specific directory
           if aws s3 sync dist/ "s3://senhub-agent/${{ env.NEW_TAG }}/" \
             --acl public-read \
             --endpoint-url=https://s3.rbx.io.cloud.ovh.net \
             --exclude "*" \
-            --include "senhub-agent_*"; then
+            --include "senhub-agent_*" \
+            --include "metadata.json" \
+            --include "artifacts.json" \
+            --include "senhubagent_${{ env.NEW_TAG }}_checksums.txt"; then
             log_success "Synchronization to ${{ env.NEW_TAG }} successful"
+
+            # Sync to latest directory
             if aws s3 sync "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/" \
               --acl public-read \
               --endpoint-url=https://s3.rbx.io.cloud.ovh.net \
               --exclude "*" \
-              --include "senhub-agent_*" \; then
+              --include "senhub-agent_*" \
+              --include "metadata.json" \
+              --include "artifacts.json" \
+              --include "senhubagent_${{ env.NEW_TAG }}_checksums.txt"; then
               log_success "Update of 'latest' folder successful"
             else
               log_error "Error updating 'latest' folder"
