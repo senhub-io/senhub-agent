@@ -43,7 +43,7 @@ func NewAutoUpdateVersionMetadataRoute(
 	}
 
 	return testUtils.TestHTTPServerURLConf{
-		URLPath:    fmt.Sprintf(VERSION_METADATA_PATH, alias),
+		URLPath:    fmt.Sprintf(VERSION_METADATA_PATH, FormatVersionForUrl(alias)),
 		Method:     "GET",
 		StatusCode: 200,
 		Body:       body,
