@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
+	"runtime"
 
 	"github.com/hashicorp/go-version"
+	"github.com/minio/selfupdate"
 	"github.com/ybbus/httpretry"
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -83,7 +86,36 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) er
 		Str("expected_version", expectedVersion).
 		Msg("Update required")
 
+	binaryUrl, err := a.GetBinaryUrl(registry, expectedVersion)
+	if err != nil {
+		a.logger.Error().
+			Err(err).
+			Msg("Failed to generate binary URL")
+		return err
+	}
+
+	a.logger.Debug().
+		Str("binary_url", binaryUrl).
+		Msg("Downloading binary")
+
+	err = doUpdate(binaryUrl)
+	if err != nil {
+		a.logger.Error().
+			Err(err).
+			Msg("Failed to update binary")
+	}
+
 	return nil
+}
+
+func doUpdate(url string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	err = selfupdate.Apply(resp.Body, selfupdate.Options{})
+	return err
 }
 
 func (a *autoUpdate) GetRegistryUrl(registryUrl string) string {
@@ -172,4 +204,28 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 		return currentVersionStr
 	}
 	return metadata.Version
+}
+
+func (a *autoUpdate) getBinaryNameForOptions(os, arch string) string {
+	suffix := ""
+	if os == "windows" {
+		suffix = ".exe"
+	}
+
+	return fmt.Sprintf("senhub-agent_%s_%s%s", os, arch, suffix)
+}
+
+func (a *autoUpdate) GetBinaryUrl(
+	registryUrl string,
+	version string,
+) (string, error) {
+	arch := runtime.GOARCH
+	os := runtime.GOOS
+	registryUrl = a.GetRegistryUrl(registryUrl)
+
+	filename := a.getBinaryNameForOptions(os, arch)
+	return url.JoinPath(
+		registryUrl,
+		fmt.Sprintf(VERSION_BINARY_PATH, FormatVersionForUrl(version), filename),
+	)
 }
