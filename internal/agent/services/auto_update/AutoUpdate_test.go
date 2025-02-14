@@ -204,3 +204,47 @@ func TestAutoUpdate_getExpectedVersion_WithFailingServer(t *testing.T) {
 		})
 	}
 }
+
+func TestAutoUpdate_GetBinaryName(t *testing.T) {
+	testCases := []struct {
+		name           string
+		os             string
+		arch           string
+		expectedResult string
+	}{
+		{
+			name:           "Linux amd64",
+			os:             "linux",
+			arch:           "amd64",
+			expectedResult: "senhub-agent_linux_amd64",
+		},
+		{
+			name:           "Window amd64",
+			os:             "windows",
+			arch:           "amd64",
+			expectedResult: "senhub-agent_windows_amd64.exe",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := zerolog.New( /*os.Stderr*/ nil)
+			remoteConfig := configuration.NewMockRemoteConfiguration(
+				"http://localhost:8000", "")
+
+			httpClient := httpretry.NewDefaultClient()
+			au := &autoUpdate{
+				remoteConfig,
+				&logger,
+				httpClient,
+			}
+			result := au.getBinaryNameForOptions(
+				tc.os,
+				tc.arch,
+			)
+			if result != tc.expectedResult {
+				t.Errorf("Expected %s, got %s", tc.expectedResult, result)
+			}
+		})
+	}
+}
