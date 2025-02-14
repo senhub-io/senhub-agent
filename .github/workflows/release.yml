@@ -64,11 +64,8 @@ jobs:
           aws configure set aws_access_key_id ${{ secrets.OVH_S3_KEY_ID }}
           aws configure set aws_secret_access_key ${{ secrets.OVH_S3_SECRET_KEY }}
           aws configure set region rbx
-          # Désactiver la validation SSL pour OVH Object Storage
           aws configure set default.s3.addressing_style path
           aws configure set default.s3.endpoint_url https://s3.rbx.io.cloud.ovh.net
-          # Configurer AWS CLI pour ignorer les certificats SSL
-          aws configure set default.s3.use_ssl false
       - name: Sync to OVH S3
         run: |
           function log_info() { echo "::info::$1"; }
@@ -84,15 +81,13 @@ jobs:
             --acl public-read \
             --endpoint-url=https://s3.rbx.io.cloud.ovh.net \
             --exclude "*" \
-            --include "senhub-agent_*" \
-            --no-verify-ssl; then
+            --include "senhub-agent_*"; then
             log_success "Synchronization to ${{ env.NEW_TAG }} successful"
             if aws s3 sync "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/" \
               --acl public-read \
               --endpoint-url=https://s3.rbx.io.cloud.ovh.net \
               --exclude "*" \
-              --include "senhub-agent_*" \
-              --no-verify-ssl; then
+              --include "senhub-agent_*" \; then
               log_success "Update of 'latest' folder successful"
             else
               log_error "Error updating 'latest' folder"
