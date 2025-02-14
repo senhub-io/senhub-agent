@@ -61,34 +61,31 @@ jobs:
         run: |
           aws configure set aws_access_key_id ${{ secrets.OVH_S3_KEY_ID }}
           aws configure set aws_secret_access_key ${{ secrets.OVH_S3_SECRET_KEY }}
-          aws configure set region rbx
-      - name: Sync to OVH S3
-        run: |
-          # Configurer le endpoint S3 globalement
+          aws configure set default.region rbx
+          aws configure set default.s3.signature_version s3v4
           aws configure set default.s3.addressing_style path
-          aws configure set default.s3.endpoint_url https://s3.rbx.io.cloud.ovh.net
 
-          # Logging functions with colors
+      - name: Sync to OVH S3
+        env:
+          AWS_ENDPOINT_URL: https://s3.rbx.io.cloud.ovh.net
+        run: |
           function log_info() { echo "::info::$1"; }
           function log_success() { echo "::notice::$1"; }
           function log_error() { echo "::error::$1"; }
 
           log_info "Starting synchronization to OVH S3"
-          log_info "Version: ${{ env.NEW_TAG }}"
 
-          # Sync files to versioned folder avec --no-verify-ssl pour éviter les problèmes SSL
+          # Sync to versioned folder
           if aws s3 sync dist/ "s3://senhub-agent/${{ env.NEW_TAG }}/" \
-            --acl public-read \
-            --no-verify-ssl \
-            --endpoint-url=https://s3.rbx.io.cloud.ovh.net; then
+            --endpoint-url="$AWS_ENDPOINT_URL" \
+            --acl public-read; then
 
             log_success "Synchronization to ${{ env.NEW_TAG }} successful"
 
-            # Update "latest" folder
+            # Update latest folder
             if aws s3 sync "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/" \
-              --acl public-read \
-              --no-verify-ssl \
-              --endpoint-url=https://s3.rbx.io.cloud.ovh.net; then
+              --endpoint-url="$AWS_ENDPOINT_URL" \
+              --acl public-read; then
               log_success "Update of 'latest' folder successful"
             else
               log_error "Error updating 'latest' folder"
