@@ -30,14 +30,27 @@ builds:
       - -X senhub-agent.go/internal/agent/cliArgs.ProductionURL=https://eu-west-1.intake.senhub.io
       - -X senhub-agent.go/internal/agent/cliArgs.DevelopmentURL=https://eu-west-1.intake-dev.senhub.io
     no_unique_dist_dir: true
+
+archives:
+  - id: binaries
+    format: binary
+    name_template: >-
+      {{.Binary}}_{{.Version}}{{if eq .Os "windows"}}{{end}}
+    files:
+      - none*
+    allow_different_binary_count: true
+
 release:
   draft: false
   mode: replace
   make_latest: true
+
 signs:
   - artifacts: none
+
 source:
   enabled: false
+
 changelog:
   use: github
   sort: asc
