@@ -23,11 +23,11 @@ type VersionMetadata struct {
 func fetchVersionMetadata(
 	httpClient *http.Client,
 	registryUrl string,
-	version string,
+	wantedVersion string,
 ) (*VersionMetadata, error) {
 	metadataUrl, err := url.JoinPath(
 		registryUrl,
-		fmt.Sprintf(VERSION_METADATA_PATH, version),
+		fmt.Sprintf(VERSION_METADATA_PATH, FormatVersionForUrl(wantedVersion)),
 	)
 	if err != nil {
 		return nil, err
@@ -44,6 +44,14 @@ func fetchVersionMetadata(
 	}
 
 	return &versionMetadata, nil
+}
+
+func FormatVersionForUrl(versionStr string) string {
+	_, err := version.NewVersion(versionStr)
+	if err != nil {
+		return versionStr
+	}
+	return fmt.Sprintf("v%s", versionStr)
 }
 
 // Fetch the list of versions available in the registry
