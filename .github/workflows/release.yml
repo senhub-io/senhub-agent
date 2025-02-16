@@ -56,42 +56,5 @@ jobs:
             dist/senhub-agent_linux_*
             dist/senhub-agent_windows_*
             dist/senhub-agent_darwin_*
+            dist/metadata.json
           generate_release_notes: false
-      - name: Set up AWS CLI Configuration
-        run: |
-          aws configure set aws_access_key_id ${{ secrets.OVH_S3_KEY_ID }}
-          aws configure set aws_secret_access_key ${{ secrets.OVH_S3_SECRET_KEY }}
-          aws configure set default.region rbx
-          aws configure set default.s3.signature_version s3v4
-          aws configure set default.s3.addressing_style virtual
-
-      - name: Sync to OVH S3
-        env:
-          AWS_ENDPOINT_URL: https://s3.rbx.io.cloud.ovh.net
-        run: |
-          function log_info() { echo "::info::$1"; }
-          function log_success() { echo "::notice::$1"; }
-          function log_error() { echo "::error::$1"; }
-
-          log_info "Starting synchronization to OVH S3"
-
-          # Sync to versioned folder
-          if aws s3 sync dist/ "s3://senhub-agent/${{ env.NEW_TAG }}/" \
-            --endpoint-url="$AWS_ENDPOINT_URL" \
-            --acl public-read; then
-
-            log_success "Synchronization to ${{ env.NEW_TAG }} successful"
-
-            # Update latest folder
-            if aws s3 sync "s3://senhub-agent/${{ env.NEW_TAG }}/" "s3://senhub-agent/latest/" \
-              --endpoint-url="$AWS_ENDPOINT_URL" \
-              --acl public-read; then
-              log_success "Update of 'latest' folder successful"
-            else
-              log_error "Error updating 'latest' folder"
-              exit 1
-            fi
-          else
-            log_error "Error during S3 synchronization"
-            exit 1
-          fi
