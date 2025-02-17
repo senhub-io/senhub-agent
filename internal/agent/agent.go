@@ -79,6 +79,7 @@ func NewAgent() Agent {
 	updater := auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
 		RemoteConfig: remoteConfiguration,
 		Logger:       logger,
+		DryRun:       false,
 	})
 
 	return agent{
