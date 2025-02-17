@@ -41,6 +41,7 @@ type UpdateSubcommandArgs struct {
 	RegistryUrl       string `arg:"--registry-url" help:"URL of the registry to use"`
 	ServerUrl         string `arg:"--server-url,env:SENHUB_SERVER_URL" help:"The URL of senhub server to connect to"`
 	Verbose           bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
+	DryRun            bool   `arg:"-d,--dry-run" help:"Do not perform the update, only print the new version"`
 }
 
 type StartSubcommandArgs struct {
@@ -58,6 +59,7 @@ type ParsedArgs struct {
 	Version           string
 	WantedVersion     string
 	CommitHash        string
+	DryRun            bool
 }
 
 func GetVersionInfo() map[string]string {
@@ -166,5 +168,6 @@ func parsedArgsFromUpdateArgs(args *UpdateSubcommandArgs, environment string) *P
 		Version:           Version,
 		WantedVersion:     args.Version,
 		CommitHash:        CommitHash,
+		DryRun:            args.DryRun,
 	}
 }
