@@ -51,6 +51,10 @@ A valid configuration mathes the following structure:
 
 ```json
 {
+  "agent": {
+    "version": "0.1.0",
+    "registry_url": "https://eu-west-1.intake.senhub.io/"
+  },
   "probes": [
     {
       "name": "load_webapp",
@@ -74,6 +78,13 @@ A valid configuration mathes the following structure:
 }
 ```
 
+### Agent
+
+- `version` (optional): required version for the agent. Can be in the form of `x.y.z`,
+  `latest`, `>=x.y.z`, `<=x.y.z`, `>x.y.z`, `<x.y.z`, `!=x.y.z`
+- `registry_url` (optional): URL to the registry server, default is
+  `https://eu-west-1.intake.senhub.io/`
+=======
 # Data Collection System Architecture
 
 ## Overview
@@ -269,4 +280,3 @@ type SyncStrategy interface {
    - Unit test all components
    - Test error conditions
    - Mock external dependencies
-
