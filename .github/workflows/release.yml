@@ -25,8 +25,11 @@ jobs:
       - name: Get Version
         id: get_version
         run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          MAJOR=$(echo $LAST_TAG | cut -d. -f1)
+      - name: Get Version
+        id: get_version
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          MAJOR=$(echo $LAST_TAG | cut -d. -f1 | sed 's/v//g')
           MINOR=$(echo $LAST_TAG | cut -d. -f2)
           PATCH=$(echo $LAST_TAG | cut -d. -f3)
           NEXT_PATCH=$((PATCH + 1))
