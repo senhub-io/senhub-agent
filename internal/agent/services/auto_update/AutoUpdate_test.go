@@ -18,6 +18,7 @@ func TestAutoUpdate_GetName(t *testing.T) {
 	au := NewAutoUpdate(AutoUpdateConfig{
 		remoteConfig,
 		&logger,
+		false,
 	})
 
 	if au.GetName() != "AutoUpdate" {
@@ -134,6 +135,7 @@ func TestAutoUpdate_ShouldUpdate(t *testing.T) {
 				remoteConfig,
 				&logger,
 				httpClient,
+				false,
 			}
 
 			cliArgs.Version = tc.currentVersion
@@ -193,6 +195,7 @@ func TestAutoUpdate_getExpectedVersion_WithFailingServer(t *testing.T) {
 				remoteConfig,
 				&logger,
 				httpClient,
+				false,
 			}
 
 			cliArgs.Version = tc.currentVersion
@@ -237,6 +240,7 @@ func TestAutoUpdate_GetBinaryName(t *testing.T) {
 				remoteConfig,
 				&logger,
 				httpClient,
+				false,
 			}
 			result := au.getBinaryNameForOptions(
 				tc.os,
