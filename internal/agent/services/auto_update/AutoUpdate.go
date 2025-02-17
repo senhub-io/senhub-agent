@@ -35,12 +35,14 @@ type AutoUpdate interface {
 type AutoUpdateConfig struct {
 	RemoteConfig *configuration.RemoteConfiguration
 	Logger       *logger.Logger
+	DryRun       bool
 }
 
 type autoUpdate struct {
 	remoteConfig *configuration.RemoteConfiguration
 	logger       *logger.Logger
 	httpClient   *http.Client
+	DryRun       bool
 }
 
 func NewAutoUpdate(config AutoUpdateConfig) AutoUpdate {
@@ -54,6 +56,7 @@ func NewAutoUpdate(config AutoUpdateConfig) AutoUpdate {
 		remoteConfig: config.RemoteConfig,
 		logger:       &localLogger,
 		httpClient:   httpClient,
+		DryRun:       config.DryRun,
 	}
 }
 
@@ -103,7 +106,7 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) er
 		Str("binary_url", binaryUrl).
 		Msg("Downloading binary")
 
-	err = doUpdate(binaryUrl)
+	err = a.doUpdate(binaryUrl)
 	if err != nil {
 		a.logger.Error().
 			Err(err).
@@ -113,7 +116,11 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) er
 	return nil
 }
 
-func doUpdate(url string) error {
+func (a *autoUpdate) doUpdate(url string) error {
+	if a.DryRun {
+		a.logger.Info().Msg("Dry run: Skipping update")
+		return nil
+	}
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
