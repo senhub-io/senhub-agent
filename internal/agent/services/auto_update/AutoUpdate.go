@@ -15,7 +15,12 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-var DEFAULT_REGISTRY_URL = "https://senhub-agent.s3.rbx.io.cloud.ovh.net/"
+var (
+	DEFAULT_REGISTRY_URL       = "https://eu-west-1.intake-dev.senhub.io/"
+	VERSION_METADATA_LIST_PATH = "/releases/releases.json"
+	VERSION_METADATA_PATH      = "/download/%s/metadata.json"
+	VERSION_BINARY_PATH        = "/download/%s/%s"
+)
 
 // Register an event on remote config change
 // This function checks for update and applies the update if required

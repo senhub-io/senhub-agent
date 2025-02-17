@@ -10,12 +10,6 @@ import (
 	"github.com/hashicorp/go-version"
 )
 
-var (
-	VERSION_METADATA_LIST_PATH = "/"
-	VERSION_METADATA_PATH      = "/%s/metadata.json"
-	VERSION_BINARY_PATH        = "/%s/%s"
-)
-
 type VersionMetadata struct {
 	Version     string `json:"version"`
 	ProjectName string `json:"project_name"`
@@ -52,7 +46,9 @@ func FormatVersionForUrl(versionStr string) string {
 	if err != nil {
 		return versionStr
 	}
-	return fmt.Sprintf("v%s", versionStr)
+	// Used to require a `v` prefix for versions, but this is no longer required
+	// return fmt.Sprintf("v%s", versionStr)
+	return versionStr
 }
 
 // Fetch the list of versions available in the registry
