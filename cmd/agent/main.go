@@ -3,22 +3,23 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/kardianos/service"
 	"log"
 	"os"
 	"os/signal"
 	"os/user"
 	"runtime"
-	"senhub-agent.go/internal/agent"
-	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 	"syscall"
 	"time"
+
+	"github.com/kardianos/service"
+	"senhub-agent.go/internal/agent"
+	"senhub-agent.go/internal/agent/cliArgs"
 )
 
 type program struct {
 	agent agent.Agent
 	done  chan bool
-	args  *agentCliArgs.ParsedArgs
+	args  *cliArgs.ParsedArgs
 }
 
 func (p *program) Start(s service.Service) error {
@@ -87,10 +88,14 @@ func main() {
 	// If first argument is a service command
 	command := os.Args[1]
 	switch command {
+	case "update":
+		args := cliArgs.MustParse()
+		agent.UpdateAgent(args)
+		return
 	case "install", "uninstall", "start", "stop", "status", "run":
 		// For simple commands without required args, handle directly
 		if command == "start" || command == "stop" || command == "status" || command == "uninstall" {
-			handleServiceCommand(command, &agentCliArgs.ParsedArgs{})
+			handleServiceCommand(command, &cliArgs.ParsedArgs{})
 			return
 		}
 
@@ -108,7 +113,7 @@ func main() {
 
 		// Parse remaining args as start arguments
 		os.Args = append([]string{os.Args[0]}, serviceArgs...)
-		args := agentCliArgs.MustParse()
+		args := cliArgs.MustParse()
 		handleServiceCommand(command, args)
 		return
 	default:
@@ -119,7 +124,7 @@ func main() {
 		}
 
 		// Try to parse arguments for direct agent execution
-		args := agentCliArgs.MustParse()
+		args := cliArgs.MustParse()
 		if args == nil {
 			showHelp()
 			return
@@ -128,7 +133,7 @@ func main() {
 	}
 }
 
-func handleServiceCommand(command string, args *agentCliArgs.ParsedArgs) {
+func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	// Check for required auth key when installing
 	if command == "install" && args.AuthenticationKey == "" {
 		fmt.Println("Error: Authentication key is required for installation")
@@ -219,7 +224,7 @@ func handleServiceCommand(command string, args *agentCliArgs.ParsedArgs) {
 	}
 }
 
-func runAgent(args *agentCliArgs.ParsedArgs) {
+func runAgent(args *cliArgs.ParsedArgs) {
 	// Configure logging based on verbose flag
 	if args.Verbose {
 		log.SetFlags(log.LstdFlags | log.Lshortfile | log.Lmicroseconds)
@@ -307,6 +312,7 @@ Service Commands:
     status      Show service status
     version     Show agent version
     run         Run in console mode (requires --authentication-key)
+	update      Update the agent to given version (default: latest)
 
 Agent Options:
     --authentication-key KEY   Authentication key for the service (required)
@@ -318,6 +324,8 @@ Examples:
     %s start
     %s status
     %s run --authentication-key "your-key" --server-url "http://example.com"
+    %s update 1.0.0"
+    %s update latest"
 
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
