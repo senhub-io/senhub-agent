@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"runtime"
 	"time"
 
@@ -175,10 +176,23 @@ func (a *autoUpdate) PeriodicalCheckForUpdate() error {
 	expectedVersion := a.remoteConfig.GetConfiguration().Agent.Version
 	registryUrl := a.remoteConfig.GetConfiguration().Agent.RegistryUrl
 
-	return a.Update(
+	err := a.Update(
 		expectedVersion,
 		registryUrl,
 	)
+	if err != nil {
+		a.logger.Error().
+			Err(err).
+			Msg("Failed to update")
+
+		return err
+	}
+
+	// Now that the binary is updated, exit the process to restart the service.
+	a.logger.Info().Msg("Exiting to apply update")
+	os.Exit(0)
+
+	return nil
 }
 
 func (a *autoUpdate) GetRegistryUrl(registryUrl string) string {
