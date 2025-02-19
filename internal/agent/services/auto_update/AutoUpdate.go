@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"runtime"
+	"time"
 
 	"github.com/hashicorp/go-version"
 	"github.com/minio/selfupdate"
 	"github.com/ybbus/httpretry"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -42,7 +45,8 @@ type autoUpdate struct {
 	remoteConfig *configuration.RemoteConfiguration
 	logger       *logger.Logger
 	httpClient   *http.Client
-	DryRun       bool
+	scheduler    *periodic_scheduler.PeriodicScheduler
+	dryRun       bool
 }
 
 func NewAutoUpdate(config AutoUpdateConfig) AutoUpdate {
@@ -56,7 +60,7 @@ func NewAutoUpdate(config AutoUpdateConfig) AutoUpdate {
 		remoteConfig: config.RemoteConfig,
 		logger:       &localLogger,
 		httpClient:   httpClient,
-		DryRun:       config.DryRun,
+		dryRun:       config.DryRun,
 	}
 }
 
@@ -64,12 +68,50 @@ func (a *autoUpdate) GetName() string {
 	return "AutoUpdate"
 }
 
+func (a *autoUpdate) createScheduler() {
+	var scheduler periodic_scheduler.PeriodicScheduler
+	if a.scheduler != nil {
+		scheduler := *a.scheduler
+		// shutdown existing scheduler
+		scheduler.Shutdown(context.Background())
+	}
+	scheduler = periodic_scheduler.NewPeriodicScheduler(periodic_scheduler.PeriodicSchedulerConfig{
+		Interval:          a.GetUpdateCheckInterval(),
+		MaxRetries:        3,
+		ExecuteOnStart:    true,
+		ExecuteOnShutdown: false,
+		Execute:           a.PeriodicalCheckForUpdate,
+	}, a.logger)
+
+	a.scheduler = &scheduler
+}
+
 func (a *autoUpdate) Start(quitChannel chan struct{}) error {
+	a.remoteConfig.OnConfigChanged(a.onConfigChange)
+
+	a.createScheduler()
+	(*a.scheduler).Start(quitChannel)
+
 	return nil
 }
 
 func (a *autoUpdate) Shutdown(ctx context.Context) error {
+	scheduler := *a.scheduler
+	if scheduler != nil {
+		scheduler.Shutdown(ctx)
+	}
 	return nil
+}
+
+func (a *autoUpdate) onConfigChange(string) {
+	a.PeriodicalCheckForUpdate()
+	// In case interval config changed, recreate the scheduler
+	scheduler := *a.scheduler
+	if scheduler != nil && scheduler.GetInterval() != a.GetUpdateCheckInterval() {
+		scheduler.Shutdown(context.Background())
+		a.createScheduler()
+		a.Start(nil)
+	}
 }
 
 func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) error {
@@ -117,7 +159,7 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) er
 }
 
 func (a *autoUpdate) doUpdate(url string) error {
-	if a.DryRun {
+	if a.dryRun {
 		a.logger.Info().Msg("Dry run: Skipping update")
 		return nil
 	}
@@ -130,11 +172,38 @@ func (a *autoUpdate) doUpdate(url string) error {
 	return err
 }
 
+func (a *autoUpdate) PeriodicalCheckForUpdate() error {
+	expectedVersion := a.remoteConfig.GetConfiguration().Agent.Version
+	registryUrl := a.remoteConfig.GetConfiguration().Agent.RegistryUrl
+
+	err := a.Update(
+		expectedVersion,
+		registryUrl,
+	)
+	if err != nil {
+		a.logger.Error().
+			Err(err).
+			Msg("Failed to update")
+
+		return err
+	}
+
+	// Now that the binary is updated, exit the process to restart the service.
+	a.logger.Info().Msg("Exiting to apply update")
+	os.Exit(0)
+
+	return nil
+}
+
 func (a *autoUpdate) GetRegistryUrl(registryUrl string) string {
 	if registryUrl == "" {
 		return DEFAULT_REGISTRY_URL
 	}
 	return registryUrl
+}
+
+func (a *autoUpdate) GetUpdateCheckInterval() time.Duration {
+	return a.remoteConfig.GetConfiguration().Agent.UpdateCheckInterval
 }
 
 func (a *autoUpdate) getExpectedVersionFromConfig() string {
