@@ -1,7 +1,9 @@
 package auto_update
 
 import (
+	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/ybbus/httpretry"
@@ -245,6 +247,60 @@ func TestAutoUpdate_GetBinaryName(t *testing.T) {
 			)
 			if result != tc.expectedResult {
 				t.Errorf("Expected %s, got %s", tc.expectedResult, result)
+			}
+		})
+	}
+}
+
+func TestAutoUpdate_GetUpdateCheckInterval(t *testing.T) {
+	testCases := []struct {
+		name           string
+		interval       any
+		expectedResult time.Duration
+	}{
+		{
+			name:           "1h",
+			interval:       "1h",
+			expectedResult: time.Hour,
+		},
+		{
+			name:           "1m",
+			interval:       "1m",
+			expectedResult: time.Minute,
+		},
+		{
+			name:           "number",
+			interval:       3600,
+			expectedResult: time.Hour,
+		},
+		{
+			name:           "default",
+			interval:       nil,
+			expectedResult: time.Hour,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := zerolog.New( /*os.Stderr*/ nil)
+			configInterval, _ := json.Marshal(tc.interval)
+			remoteConfig := configuration.NewMockRemoteConfiguration(
+				"http://localhost:8000", `
+				{
+					"agent": {
+						"update_check_interval": `+string(configInterval)+`
+					}
+				}
+				`)
+
+			httpClient := httpretry.NewDefaultClient()
+			au := &autoUpdate{
+				remoteConfig: remoteConfig,
+				logger:       &logger,
+				httpClient:   httpClient,
+			}
+			result := au.GetUpdateCheckInterval()
+			if result != tc.expectedResult {
+				t.Errorf("Expected %v, got %v", tc.expectedResult, result)
 			}
 		})
 	}
