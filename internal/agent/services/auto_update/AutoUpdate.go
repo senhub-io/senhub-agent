@@ -34,7 +34,7 @@ type AutoUpdate interface {
 	GetName() string
 	Start(quitChannel chan struct{}) error
 	Shutdown(ctx context.Context) error
-	Update(expectedVersion string, registryUrl ...string) error
+	Update(expectedVersion string, registryUrl ...string) (bool, error)
 }
 
 type AutoUpdateConfig struct {
@@ -116,7 +116,7 @@ func (a *autoUpdate) onConfigChange(string) {
 	}
 }
 
-func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) error {
+func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (bool, error) {
 	var registry string
 	if len(registryUrl) > 0 {
 		registry = registryUrl[0]
@@ -130,7 +130,7 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) er
 	currentVersionStr := cliArgs.Version
 	if expectedVersion == "" || expectedVersion == cliArgs.Version {
 		a.logger.Info().Msg("No update required")
-		return nil
+		return false, nil
 	}
 
 	a.logger.Info().
@@ -143,7 +143,7 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) er
 		a.logger.Error().
 			Err(err).
 			Msg("Failed to generate binary URL")
-		return err
+		return false, err
 	}
 
 	a.logger.Debug().
@@ -155,9 +155,10 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) er
 		a.logger.Error().
 			Err(err).
 			Msg("Failed to update binary")
+		return false, err
 	}
 
-	return nil
+	return true, nil
 }
 
 func (a *autoUpdate) doUpdate(url string) error {
@@ -178,7 +179,7 @@ func (a *autoUpdate) PeriodicalCheckForUpdate() error {
 	expectedVersion := a.remoteConfig.GetConfiguration().Agent.Version
 	registryUrl := a.remoteConfig.GetConfiguration().Agent.RegistryUrl
 
-	err := a.Update(
+	updateApplied, err := a.Update(
 		expectedVersion,
 		registryUrl,
 	)
@@ -190,9 +191,11 @@ func (a *autoUpdate) PeriodicalCheckForUpdate() error {
 		return err
 	}
 
-	// Now that the binary is updated, exit the process to restart the service.
-	a.logger.Info().Msg("Exiting to apply update")
-	os.Exit(0)
+	if updateApplied {
+		// Now that the binary is updated, exit the process to restart the service.
+		a.logger.Info().Msg("Exiting to apply update")
+		os.Exit(0)
+	}
 
 	return nil
 }
