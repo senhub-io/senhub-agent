@@ -132,10 +132,9 @@ func TestAutoUpdate_ShouldUpdate(t *testing.T) {
 
 			httpClient := httpretry.NewDefaultClient()
 			au := &autoUpdate{
-				remoteConfig,
-				&logger,
-				httpClient,
-				false,
+				remoteConfig: remoteConfig,
+				logger:       &logger,
+				httpClient:   httpClient,
 			}
 
 			cliArgs.Version = tc.currentVersion
@@ -192,10 +191,9 @@ func TestAutoUpdate_getExpectedVersion_WithFailingServer(t *testing.T) {
 
 			httpClient := httpretry.NewDefaultClient()
 			au := &autoUpdate{
-				remoteConfig,
-				&logger,
-				httpClient,
-				false,
+				remoteConfig: remoteConfig,
+				logger:       &logger,
+				httpClient:   httpClient,
 			}
 
 			cliArgs.Version = tc.currentVersion
@@ -237,10 +235,9 @@ func TestAutoUpdate_GetBinaryName(t *testing.T) {
 
 			httpClient := httpretry.NewDefaultClient()
 			au := &autoUpdate{
-				remoteConfig,
-				&logger,
-				httpClient,
-				false,
+				remoteConfig: remoteConfig,
+				logger:       &logger,
+				httpClient:   httpClient,
 			}
 			result := au.getBinaryNameForOptions(
 				tc.os,
