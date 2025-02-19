@@ -16,13 +16,15 @@ import (
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/validators"
 )
 
 var (
-	DEFAULT_REGISTRY_URL       = "https://eu-west-1.intake-dev.senhub.io/"
-	VERSION_METADATA_LIST_PATH = "/releases/releases.json"
-	VERSION_METADATA_PATH      = "/download/%s/metadata.json"
-	VERSION_BINARY_PATH        = "/download/%s/%s"
+	DEFAULT_REGISTRY_URL          = "https://eu-west-1.intake-dev.senhub.io/"
+	VERSION_METADATA_LIST_PATH    = "/releases/releases.json"
+	VERSION_METADATA_PATH         = "/download/%s/metadata.json"
+	VERSION_BINARY_PATH           = "/download/%s/%s"
+	DEFAULT_UPDATE_CHECK_INTERVAL = 1 * time.Hour
 )
 
 // Register an event on remote config change
@@ -203,7 +205,39 @@ func (a *autoUpdate) GetRegistryUrl(registryUrl string) string {
 }
 
 func (a *autoUpdate) GetUpdateCheckInterval() time.Duration {
-	return a.remoteConfig.GetConfiguration().Agent.UpdateCheckInterval
+	rawValue := a.remoteConfig.GetConfiguration().Agent.UpdateCheckInterval
+	if rawValue == nil {
+		return DEFAULT_UPDATE_CHECK_INTERVAL
+	}
+	if !validators.IsDuration(rawValue) {
+		a.logger.Error().
+			Str("update_check_interval", rawValue.(string)).
+			Msg("Failed to parse update check interval")
+		return DEFAULT_UPDATE_CHECK_INTERVAL
+	}
+
+	var updateCheckIntervalStr string
+	switch rawValue.(type) {
+	case string:
+		updateCheckIntervalStr = rawValue.(string)
+		break
+	case float64:
+		updateCheckIntervalStr = fmt.Sprintf("%d", int(rawValue.(float64)))
+		break
+	default:
+		updateCheckIntervalStr = fmt.Sprintf("%v", rawValue)
+	}
+
+	updateCheckInterval, err := time.ParseDuration(updateCheckIntervalStr)
+	if err != nil {
+		a.logger.Error().
+			Str("update_check_interval", updateCheckIntervalStr).
+			Err(err).
+			Msg("Failed to parse update check interval")
+
+		return DEFAULT_UPDATE_CHECK_INTERVAL
+	}
+	return updateCheckInterval
 }
 
 func (a *autoUpdate) getExpectedVersionFromConfig() string {
