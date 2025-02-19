@@ -395,3 +395,65 @@ func (s *EventSyncStrategy) Shutdown(ctx context.Context) error {
 	// Final sync of remaining events
 	return s.doSync()
 }
+
+// GetStrategyName returns the name of the strategy
+func (s *EventSyncStrategy) GetStrategyName() string {
+	return "event"
+}
+
+// GetStrategyParams returns the current configuration parameters
+func (s *EventSyncStrategy) GetStrategyParams() map[string]interface{} {
+	return map[string]interface{}{
+		"server_url":    s.config.ServerURL,
+		"queue_size":    s.config.QueueSize,
+		"sync_interval": s.config.SyncInterval,
+	}
+}
+
+// ValidateConfigParams validates the provided configuration parameters
+func (s *EventSyncStrategy) ValidateConfigParams(params configuration.StorageConfigParams) error {
+	config := EventSyncStrategyParams{
+		QueueSize:    DefaultQueueSize,
+		SyncInterval: DefaultSyncInterval,
+	}
+
+	if url, ok := params["server_url"].(string); !ok || url == "" {
+		return fmt.Errorf("server_url is required")
+	} else {
+		config.ServerURL = url
+		config.ServerURLFull = url + "/event/insert"
+	}
+
+	if size, ok := params["queue_size"].(int); ok {
+		config.QueueSize = size
+	}
+
+	if interval, ok := params["sync_interval"].(string); ok {
+		duration, err := time.ParseDuration(interval)
+		if err != nil {
+			return fmt.Errorf("invalid sync_interval: %w", err)
+		}
+		config.SyncInterval = duration
+	}
+
+	s.config = config
+
+	// Resize buffer if queue size changed
+	if cap(s.buffer) != config.QueueSize {
+		newBuffer := make(chan eventtypes.EventDataPoint, config.QueueSize)
+		close(s.buffer)
+		s.buffer = newBuffer
+	}
+
+	return nil
+}
+
+// getTagValue retrieves the value for a given tag key from a list of tags
+func (s *EventSyncStrategy) getTagValue(tags []tags.Tag, key string) string {
+	for _, tag := range tags {
+		if tag.Key == key {
+			return tag.Value
+		}
+	}
+	return ""
+}
