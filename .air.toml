@@ -5,9 +5,9 @@ tmp_dir = "tmp"
 [build]
 args_bin = [
   "--authentication-key",
-  "25dd2eb5-e0fa-4972-a88e-9f1ea8d7e68d",
+  "4a819b49-5ad6-4e48-9e91-690ce086d1fa",
   "--server-url",
-  "https://eu-west-1.intake.senhub.io",
+  "https://eu-west-1.intake-dev.senhub.io",
 ]
 bin = "./dist/senhub-agent_darwin_amd64"
 cmd = "ENV=development make build-darwin"
