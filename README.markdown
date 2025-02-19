@@ -73,6 +73,14 @@ A valid configuration mathes the following structure:
         "data_retention_period": "2m",
         "server_url": "http://localhost:8080"
       }
+    },
+    {
+      "name": "event",
+      "params": {
+        "queue_size": 1000,
+        "server_url": "https://eu-west-1.intake.senhub.io",
+        "sync_interval": "30s"
+        }
     }
   ]
 }
@@ -98,13 +106,13 @@ graph TD
     C --> D[Probes]
     D -->|DataPoints| E[DataStore]
     E -->|Routing| F[Strategies]
-    
+
     subgraph Probes
         D1[CPU Probe]
         D2[Memory Probe]
         D3[Syslog Probe]
     end
-    
+
     subgraph Strategies
         F1[Senhub Strategy]
         F2[PRTG Strategy]

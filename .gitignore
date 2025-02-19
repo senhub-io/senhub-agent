@@ -58,3 +58,4 @@ go.work.sum
 
 /*.log
 /dist
+.air.toml
