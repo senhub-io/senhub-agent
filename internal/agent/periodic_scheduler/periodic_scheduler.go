@@ -33,6 +33,7 @@ type PeriodicSchedulerConfig struct {
 }
 
 type PeriodicScheduler interface {
+	GetInterval() time.Duration
 	Start(quitChannel chan struct{}) error
 	Shutdown(ctx context.Context) error
 }
@@ -172,4 +173,8 @@ func (l *periodicScheduler) Shutdown(ctx context.Context) error {
 	l.logger.Info().Msg("Shut down")
 
 	return nil
+}
+
+func (l *periodicScheduler) GetInterval() time.Duration {
+	return l.config.Interval
 }
