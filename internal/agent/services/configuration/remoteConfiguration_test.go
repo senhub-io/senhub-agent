@@ -31,6 +31,16 @@ func TestRemoteConfiguration_FetchCofiguration(t *testing.T) {
 			config:   `{"storage_config":[{"name":"senhub"}]}`,
 			expected: true,
 		},
+		{
+			name:     "Agent config",
+			config:   `{"agent": { "registry_url": "http://localhost:8080", "version": "1.0.0", "update_check_interval": 3600 }}`,
+			expected: true,
+		},
+		{
+			name:     "Agent config: update_check_interval '1h'",
+			config:   `{"agent": { "registry_url": "http://localhost:8080", "version": "1.0.0", "update_check_interval": "1h" }}`,
+			expected: true,
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
