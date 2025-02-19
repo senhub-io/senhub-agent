@@ -92,7 +92,7 @@ A valid configuration mathes the following structure:
   `latest`, `>=x.y.z`, `<=x.y.z`, `>x.y.z`, `<x.y.z`, `!=x.y.z`
 - `registry_url` (optional): URL to the registry server, default is
   `https://eu-west-1.intake.senhub.io/`
-=======
+
 # Data Collection System Architecture
 
 ## Overview
