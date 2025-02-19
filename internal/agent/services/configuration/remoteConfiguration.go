@@ -34,9 +34,9 @@ type ProbeConfig struct {
 }
 
 type AgentConfig struct {
-	RegistryUrl         string        `json:"registry_url"`
-	Version             string        `json:"version"`
-	UpdateCheckInterval time.Duration `json:"update_check_interval" default:"3600"`
+	RegistryUrl         string `json:"registry_url"`
+	Version             string `json:"version"`
+	UpdateCheckInterval any    `json:"update_check_interval" default:"3600"`
 }
 
 type RemoteConfigurationData struct {
