@@ -1,120 +1,120 @@
 package data_store
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
+    "context"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "strings"
+    "sync"
+    "sync/atomic"
+    "time"
 
-	"github.com/avast/retry-go/v4"
+    "github.com/avast/retry-go/v4"
 
-	eventFormatter "senhub-agent.go/internal/agent/formats/event"
-	"senhub-agent.go/internal/agent/services/configuration"
-	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/services/server"
-	"senhub-agent.go/internal/agent/tags"
-	"senhub-agent.go/internal/agent/types/datapoint"
-	eventtypes "senhub-agent.go/internal/agent/types/event"
+    eventFormatter "senhub-agent.go/internal/agent/formats/event"
+    "senhub-agent.go/internal/agent/services/configuration"
+    "senhub-agent.go/internal/agent/services/logger"
+    "senhub-agent.go/internal/agent/services/server"
+    "senhub-agent.go/internal/agent/tags"
+    "senhub-agent.go/internal/agent/types/datapoint"
+    eventtypes "senhub-agent.go/internal/agent/types/event"
 )
 
 const (
-	// DefaultQueueSize is the default size of the event buffer
-	DefaultQueueSize = 1000
-	// DefaultSyncInterval is the default interval between syncs
-	DefaultSyncInterval = 30 * time.Second
-	// MaxMessageSize is the maximum size of a single message in bytes
-	MaxMessageSize = 1024 * 1024 // 1MB
-	// DefaultChunkSize is the default number of events per chunk
-	DefaultChunkSize = 100
-	// DefaultRetryAttempts is the number of retry attempts for failed syncs
-	DefaultRetryAttempts = 3
-	// DefaultRetryDelay is the delay between retry attempts
-	DefaultRetryDelay = time.Second
+    // DefaultQueueSize is the default size of the event buffer
+    DefaultQueueSize = 1000
+    // DefaultSyncInterval is the default interval between syncs
+    DefaultSyncInterval = 30 * time.Second
+    // MaxMessageSize is the maximum size of a single message in bytes
+    MaxMessageSize = 1024 * 1024 // 1MB
+    // DefaultChunkSize is the default number of events per chunk
+    DefaultChunkSize = 100
+    // DefaultRetryAttempts is the number of retry attempts for failed syncs
+    DefaultRetryAttempts = 3
+    // DefaultRetryDelay is the delay between retry attempts
+    DefaultRetryDelay = time.Second
 )
 
 // EventSyncStrategyParams holds the configuration for the event sync strategy
 type EventSyncStrategyParams struct {
-	ServerURL     string        // Base URL for the server
-	ServerURLFull string        // Full URL including the endpoint path
-	QueueSize     int           // Size of the event buffer
-	SyncInterval  time.Duration // Interval between syncs
+    ServerURL     string        // Base URL for the server
+    ServerURLFull string        // Full URL including the endpoint path
+    QueueSize     int          // Size of the event buffer
+    SyncInterval  time.Duration // Interval between syncs
 }
 
 // EventSyncStrategy implements the SyncStrategy interface for event synchronization
 type EventSyncStrategy struct {
-	buffer         chan eventtypes.EventDataPoint
-	syncInProgress atomic.Bool
-	currentSize    atomic.Int64 // Current size of buffered events in bytes
-	failedEvents   []eventtypes.EventDataPoint
-	mutex          sync.Mutex // Protects failedEvents
+    buffer         chan eventtypes.EventDataPoint
+    syncInProgress atomic.Bool
+    currentSize    atomic.Int64  // Current size of buffered events in bytes
+    failedEvents   []eventtypes.EventDataPoint
+    mutex          sync.Mutex    // Protects failedEvents
 
-	syncTriggerSize  int   // Number of events that triggers a sync
-	syncTriggerBytes int64 // Size in bytes that triggers a sync
+    syncTriggerSize  int   // Number of events that triggers a sync
+    syncTriggerBytes int64 // Size in bytes that triggers a sync
 
-	config      EventSyncStrategyParams
-	server      server.Server
-	logger      *logger.Logger
-	ticker      *time.Ticker
-	tickerOnce  sync.Once
-	agentConfig configuration.AgentConfiguration
-	formatter   *eventFormatter.Formatter
+    config      EventSyncStrategyParams
+    server      server.Server
+    logger      *logger.Logger
+    ticker      *time.Ticker
+    tickerOnce  sync.Once
+    agentConfig configuration.AgentConfiguration
+    formatter   *eventFormatter.Formatter
 }
 
 // NewEventSyncStrategy creates a new instance of EventSyncStrategy
 func NewEventSyncStrategy(
-	agentConfig configuration.AgentConfiguration,
-	storageConfig configuration.StorageConfigParams,
-	logger *logger.Logger,
+    agentConfig configuration.AgentConfiguration,
+    storageConfig configuration.StorageConfigParams,
+    logger *logger.Logger,
 ) SyncStrategy {
-	localLogger := logger.With().Str("sync_strategy", "EventSyncStrategy").Logger()
+    localLogger := logger.With().Str("sync_strategy", "EventSyncStrategy").Logger()
 
-	srv := server.NewServer(
-		agentConfig.GetAuthenticationKey(),
-		storageConfig["server_url"].(string),
-		logger,
-	)
+    srv := server.NewServer(
+        agentConfig.GetAuthenticationKey(),
+        storageConfig["server_url"].(string),
+        logger,
+    )
 
-	// Default configuration
-	config := EventSyncStrategyParams{
-		QueueSize:    DefaultQueueSize,
-		SyncInterval: DefaultSyncInterval,
-	}
+    // Default configuration
+    config := EventSyncStrategyParams{
+        QueueSize:    DefaultQueueSize,
+        SyncInterval: DefaultSyncInterval,
+    }
 
-	// Apply provided configuration
-	if url, ok := storageConfig["server_url"].(string); ok {
-		config.ServerURL = url
-		config.ServerURLFull = url + "/event/insert"
-	}
-	if size, ok := storageConfig["queue_size"].(int); ok {
-		config.QueueSize = size
-	}
-	if interval, ok := storageConfig["sync_interval"].(string); ok {
-		if duration, err := time.ParseDuration(interval); err == nil {
-			config.SyncInterval = duration
-		}
-	}
+    // Apply provided configuration
+    if url, ok := storageConfig["server_url"].(string); ok {
+        config.ServerURL = url
+        config.ServerURLFull = url + "/event/insert"
+    }
+    if size, ok := storageConfig["queue_size"].(int); ok {
+        config.QueueSize = size
+    }
+    if interval, ok := storageConfig["sync_interval"].(string); ok {
+        if duration, err := time.ParseDuration(interval); err == nil {
+            config.SyncInterval = duration
+        }
+    }
 
-	strategy := &EventSyncStrategy{
-		buffer:           make(chan eventtypes.EventDataPoint, config.QueueSize),
-		config:           config,
-		server:           srv,
-		agentConfig:      agentConfig,
-		logger:           &localLogger,
-		formatter:        eventFormatter.NewFormatter(),
-		syncTriggerSize:  DefaultChunkSize,
-		syncTriggerBytes: MaxMessageSize / 2, // Trigger at 50% of max message size
-	}
+    strategy := &EventSyncStrategy{
+        buffer:           make(chan eventtypes.EventDataPoint, config.QueueSize),
+        config:          config,
+        server:          srv,
+        agentConfig:     agentConfig,
+        logger:          &localLogger,
+        formatter:       eventFormatter.NewFormatter(),
+        syncTriggerSize: DefaultChunkSize,
+        syncTriggerBytes: MaxMessageSize / 2, // Trigger at 50% of max message size
+    }
 
-	// Initialize atomic values
-	strategy.currentSize.Store(0)
-	strategy.syncInProgress.Store(false)
+    // Initialize atomic values
+    strategy.currentSize.Store(0)
+    strategy.syncInProgress.Store(false)
 
-	return strategy
+    return strategy
 }
 
 // GetStrategyName returns the name of the strategy
@@ -181,217 +181,217 @@ func (s *EventSyncStrategy) getTagValue(tags []tags.Tag, key string) string {
 
 // AddDataPoints adds new datapoints to the buffer and triggers sync if needed
 func (s *EventSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
-	for _, dp := range data {
-		evt := s.formatter.FormatDataPoint(dp)
-		if err := evt.Validate(); err != nil {
-			s.logger.Error().Err(err).Msg("Invalid event data")
-			continue
-		}
+    for _, dp := range data {
+        evt := s.formatter.FormatDataPoint(dp)
+        if err := evt.Validate(); err != nil {
+            s.logger.Error().Err(err).Msg("Invalid event data")
+            continue
+        }
 
-		// Calculate event size
-		eventJson, err := json.Marshal(evt)
-		if err != nil {
-			s.logger.Error().Err(err).Msg("Failed to marshal event")
-			continue
-		}
-		eventSize := int64(len(eventJson))
+        // Calculate event size
+        eventJson, err := json.Marshal(evt)
+        if err != nil {
+            s.logger.Error().Err(err).Msg("Failed to marshal event")
+            continue
+        }
+        eventSize := int64(len(eventJson))
 
-		// Try to add to buffer
-		select {
-		case s.buffer <- evt:
-			newSize := s.currentSize.Add(eventSize)
-			s.logger.Debug().Msg("Event added to buffer successfully")
+        // Try to add to buffer
+        select {
+        case s.buffer <- evt:
+            newSize := s.currentSize.Add(eventSize)
+            s.logger.Debug().Msg("Event added to buffer successfully")
 
-			// Check if we should trigger a sync
-			if len(s.buffer) >= s.syncTriggerSize || newSize >= s.syncTriggerBytes {
-				s.triggerSync()
-			}
-		default:
-			// Buffer is full, try to make room
-			s.logger.Warn().Msg("Buffer full, attempting to make room")
-			select {
-			case <-s.buffer: // Remove oldest event
-				s.buffer <- evt
-				s.logger.Warn().Msg("Dropped oldest event to make room")
-			default:
-				s.logger.Error().Msg("Failed to make room in buffer, event lost")
-			}
-		}
-	}
-	return nil
+            // Check if we should trigger a sync
+            if len(s.buffer) >= s.syncTriggerSize || newSize >= s.syncTriggerBytes {
+                s.triggerSync()
+            }
+        default:
+            // Buffer is full, try to make room
+            s.logger.Warn().Msg("Buffer full, attempting to make room")
+            select {
+            case <-s.buffer: // Remove oldest event
+                s.buffer <- evt
+                s.logger.Warn().Msg("Dropped oldest event to make room")
+            default:
+                s.logger.Error().Msg("Failed to make room in buffer, event lost")
+            }
+        }
+    }
+    return nil
 }
 
 // triggerSync initiates an asynchronous sync if none is already in progress
 func (s *EventSyncStrategy) triggerSync() {
-	if s.syncInProgress.CompareAndSwap(false, true) {
-		go func() {
-			defer s.syncInProgress.Store(false)
-			if err := s.doSync(); err != nil {
-				s.logger.Error().
-					Err(err).
-					Msg("Sync failed, events preserved for retry")
-			}
-		}()
-	}
+    if s.syncInProgress.CompareAndSwap(false, true) {
+        go func() {
+            defer s.syncInProgress.Store(false)
+            if err := s.doSync(); err != nil {
+                s.logger.Error().
+                    Err(err).
+                    Msg("Sync failed, events preserved for retry")
+            }
+        }()
+    }
 }
 
 // doSync performs the actual synchronization with chunking and error handling
 func (s *EventSyncStrategy) doSync() error {
-	var events []eventtypes.EventDataPoint
-	var currentBatchSize int64
+    var events []eventtypes.EventDataPoint
+    var currentBatchSize int64
 
-	// First handle any previously failed events
-	s.mutex.Lock()
-	if len(s.failedEvents) > 0 {
-		s.logger.Info().
-			Int("count", len(s.failedEvents)).
-			Msg("Processing previously failed events")
-		events = append(events, s.failedEvents...)
-		s.failedEvents = nil
-	}
-	s.mutex.Unlock()
+    // First handle any previously failed events
+    s.mutex.Lock()
+    if len(s.failedEvents) > 0 {
+        s.logger.Info().
+            Int("count", len(s.failedEvents)).
+            Msg("Processing previously failed events")
+        events = append(events, s.failedEvents...)
+        s.failedEvents = nil
+    }
+    s.mutex.Unlock()
 
-	// Collect events up to chunk limits
-	for len(events) < s.syncTriggerSize && len(s.buffer) > 0 {
-		select {
-		case evt := <-s.buffer:
-			eventJson, err := json.Marshal(evt)
-			if err != nil {
-				s.logger.Error().Err(err).Msg("Failed to marshal event during sync")
-				continue
-			}
+    // Collect events up to chunk limits
+    for len(events) < s.syncTriggerSize && len(s.buffer) > 0 {
+        select {
+        case evt := <-s.buffer:
+            eventJson, err := json.Marshal(evt)
+            if err != nil {
+                s.logger.Error().Err(err).Msg("Failed to marshal event during sync")
+                continue
+            }
 
-			currentBatchSize += int64(len(eventJson))
-			if currentBatchSize > s.syncTriggerBytes {
-				// Put the event back if it would exceed size limit
-				s.buffer <- evt
-				break
-			}
+            currentBatchSize += int64(len(eventJson))
+            if currentBatchSize > s.syncTriggerBytes {
+                // Put the event back if it would exceed size limit
+                s.buffer <- evt
+                break
+            }
 
-			events = append(events, evt)
-		default:
-			break
-		}
-	}
+            events = append(events, evt)
+        default:
+            break
+        }
+    }
 
-	if len(events) == 0 {
-		return nil
-	}
+    if len(events) == 0 {
+        return nil
+    }
 
-	// Try to send events with retry mechanism
-	err := retry.Do(
-		func() error {
-			return s.sendEvents(events)
-		},
-		retry.Attempts(DefaultRetryAttempts),
-		retry.Delay(DefaultRetryDelay),
-		retry.OnRetry(func(n uint, err error) {
-			s.logger.Warn().
-				Err(err).
-				Uint("attempt", n+1).
-				Int("events_count", len(events)).
-				Msg("Retrying event sync")
-		}),
-	)
+    // Try to send events with retry mechanism
+    err := retry.Do(
+        func() error {
+            return s.sendEvents(events)
+        },
+        retry.Attempts(DefaultRetryAttempts),
+        retry.Delay(DefaultRetryDelay),
+        retry.OnRetry(func(n uint, err error) {
+            s.logger.Warn().
+                Err(err).
+                Uint("attempt", n+1).
+                Int("events_count", len(events)).
+                Msg("Retrying event sync")
+        }),
+    )
 
-	if err != nil {
-		// Preserve failed events for next sync attempt
-		s.mutex.Lock()
-		s.failedEvents = append(s.failedEvents, events...)
-		s.mutex.Unlock()
-		return fmt.Errorf("failed to sync events after %d attempts: %w", DefaultRetryAttempts, err)
-	}
+    if err != nil {
+        // Preserve failed events for next sync attempt
+        s.mutex.Lock()
+        s.failedEvents = append(s.failedEvents, events...)
+        s.mutex.Unlock()
+        return fmt.Errorf("failed to sync events after %d attempts: %w", DefaultRetryAttempts, err)
+    }
 
-	// Update metrics after successful send
-	s.currentSize.Add(-currentBatchSize)
-	s.logger.Info().
-		Int("events_sent", len(events)).
-		Int64("batch_size_bytes", currentBatchSize).
-		Msg("Successfully synced events")
+    // Update metrics after successful send
+    s.currentSize.Add(-currentBatchSize)
+    s.logger.Info().
+        Int("events_sent", len(events)).
+        Int64("batch_size_bytes", currentBatchSize).
+        Msg("Successfully synced events")
 
-	return nil
+    return nil
 }
 
 // sendEvents sends a batch of events to the server
 func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error {
-	if len(events) == 0 {
-		return nil
-	}
+    if len(events) == 0 {
+        return nil
+    }
 
-	// Convert to newline-delimited JSON
-	var streamBody strings.Builder
-	for _, event := range events {
-		eventJson, err := json.Marshal(event)
-		if err != nil {
-			return fmt.Errorf("error marshaling event: %w", err)
-		}
-		streamBody.Write(eventJson)
-		streamBody.WriteString("\n")
-	}
+    // Convert to newline-delimited JSON
+    var streamBody strings.Builder
+    for _, event := range events {
+        eventJson, err := json.Marshal(event)
+        if err != nil {
+            return fmt.Errorf("error marshaling event: %w", err)
+        }
+        streamBody.Write(eventJson)
+        streamBody.WriteString("\n")
+    }
 
-	s.logger.Debug().
-		Int("event_count", len(events)).
-		Int("payload_size", streamBody.Len()).
-		Msg("Sending batch of events")
+    s.logger.Debug().
+        Int("event_count", len(events)).
+        Int("payload_size", streamBody.Len()).
+        Msg("Sending batch of events")
 
-	response, err := s.server.PostStream("/event/insert", streamBody.String())
-	if err != nil {
-		return fmt.Errorf("error sending events: %w", err)
-	}
-	defer response.Body.Close()
+    response, err := s.server.PostStream("/event/insert", streamBody.String())
+    if err != nil {
+        return fmt.Errorf("error sending events: %w", err)
+    }
+    defer response.Body.Close()
 
-	respBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return fmt.Errorf("error reading response body: %w", err)
-	}
+    respBody, err := io.ReadAll(response.Body)
+    if err != nil {
+        return fmt.Errorf("error reading response body: %w", err)
+    }
 
-	if response.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("unexpected status code: %d - body: %s", response.StatusCode, string(respBody))
-	}
+    if response.StatusCode != http.StatusAccepted {
+        return fmt.Errorf("unexpected status code: %d - body: %s", response.StatusCode, string(respBody))
+    }
 
-	s.logger.Info().
-		Int("status_code", response.StatusCode).
-		Int("event_count", len(events)).
-		Msg("Server confirmed receipt of events")
+		s.logger.Info().
+			Int("status_code", response.StatusCode).
+			Int("event_count", len(events)).
+			Msg("Server confirmed receipt of events")
 
-	return nil
+    return nil
 }
 
 // Start initializes and starts the sync strategy
 func (s *EventSyncStrategy) Start() error {
-	s.tickerOnce.Do(func() {
-		s.ticker = time.NewTicker(s.config.SyncInterval)
-		s.logger.Info().
-			Dur("interval", s.config.SyncInterval).
-			Int("queue_size", s.config.QueueSize).
-			Msg("Starting event sync strategy")
+    s.tickerOnce.Do(func() {
+        s.ticker = time.NewTicker(s.config.SyncInterval)
+        s.logger.Info().
+            Dur("interval", s.config.SyncInterval).
+            Int("queue_size", s.config.QueueSize).
+            Msg("Starting event sync strategy")
 
-		go func() {
-			for range s.ticker.C {
-				s.triggerSync()
-			}
-		}()
-	})
-	return nil
+        go func() {
+            for range s.ticker.C {
+                s.triggerSync()
+            }
+        }()
+    })
+    return nil
 }
 
 // Shutdown performs a graceful shutdown of the sync strategy
 func (s *EventSyncStrategy) Shutdown(ctx context.Context) error {
-	s.logger.Info().Msg("Initiating graceful shutdown")
-	if s.ticker != nil {
-		s.ticker.Stop()
-	}
+    s.logger.Info().Msg("Initiating graceful shutdown")
+    if s.ticker != nil {
+        s.ticker.Stop()
+    }
 
-	// Wait for ongoing sync to complete
-	for s.syncInProgress.Load() {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(100 * time.Millisecond):
-			s.logger.Debug().Msg("Waiting for ongoing sync to complete")
-		}
-	}
+    // Wait for ongoing sync to complete
+    for s.syncInProgress.Load() {
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        case <-time.After(100 * time.Millisecond):
+            s.logger.Debug().Msg("Waiting for ongoing sync to complete")
+        }
+    }
 
-	// Final sync of remaining events
-	return s.doSync()
+    // Final sync of remaining events
+    return s.doSync()
 }
