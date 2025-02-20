@@ -1,11 +1,12 @@
 name: Beta Release
 on:
   push:
-    branches:
-      - dev
+    branches: [ dev ]
+
 permissions:
   contents: write
   packages: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
