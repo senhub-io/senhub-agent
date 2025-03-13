@@ -2,6 +2,7 @@
 package event
 
 import (
+	"encoding/json"
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
 	"senhub-agent.go/internal/agent/tags"
@@ -50,7 +51,7 @@ func (f *Formatter) syslogSeverityToEventSeverity(syslogSeverity string) event.E
 	}
 }
 
-// Modifier FormatDataPoint pour stocker la severity comme string
+// FormatDataPoint convertit un DataPoint en EventDataPoint
 func (f *Formatter) FormatDataPoint(dp datapoint.DataPoint) event.EventDataPoint {
 	// Créer un nouveau point d'événement
 	eventData := make(event.EventDataPoint)
@@ -66,9 +67,22 @@ func (f *Formatter) FormatDataPoint(dp datapoint.DataPoint) event.EventDataPoint
 
 	eventData["message"] = f.sanitizeUTF8(f.getTagValue(dp.Tags, "message"))
 
-	// Ajouter tous les autres tags comme champs dynamiques
+	// Extraire les valeurs complexes si elles existent
+	complexValuesJSON := f.getTagValue(dp.Tags, "_complex_values")
+	if complexValuesJSON != "" {
+		var complexValues map[string]interface{}
+		if err := json.Unmarshal([]byte(complexValuesJSON), &complexValues); err == nil {
+			// Ajouter les valeurs complexes directement à l'événement
+			for key, value := range complexValues {
+				eventData[key] = value // Préserve les tableaux et structures imbriquées
+			}
+		}
+	}
+
+	// Ajouter tous les autres tags comme champs dynamiques (en excluant les métadonnées spéciales)
 	for _, tag := range dp.Tags {
-		if tag.Key != "host" && tag.Key != "severity" && tag.Key != "message" {
+		if tag.Key != "host" && tag.Key != "severity" && tag.Key != "message" && 
+		   tag.Key != "_complex_values" && !eventData.HasKey(tag.Key) {
 			eventData[tag.Key] = f.sanitizeUTF8(tag.Value)
 		}
 	}
