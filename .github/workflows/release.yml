@@ -1,13 +1,15 @@
 name: Release
 on:
   push:
-    branches:
-      - master
+    tags:
+      - '*.*.*'
 permissions:
   contents: write
   packages: write
 jobs:
   release:
+    # Skip if tag contains 'beta'
+    if: ${{ !contains(github.ref, 'beta') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,24 +24,11 @@ jobs:
         run: |
           GO_VERSION=$(go version | cut -d' ' -f3)
           echo "GO_VERSION=$GO_VERSION" >> $GITHUB_ENV
-      - name: Get Version
+      - name: Get Tag Version
         id: get_version
         run: |
-      - name: Get Version
-        id: get_next_version
-        run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
-          MAJOR=$(echo $LAST_TAG | cut -d. -f1 | sed 's/v//g')
-          MINOR=$(echo $LAST_TAG | cut -d. -f2)
-          PATCH=$(echo $LAST_TAG | cut -d. -f3)
-          NEXT_PATCH=$((PATCH + 1))
-          NEW_TAG="${MAJOR}.${MINOR}.${NEXT_PATCH}"
-          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
-          echo "new_version=$NEW_TAG" >> $GITHUB_OUTPUT
-      - name: Create Tag
-        run: |
-          git tag ${{ env.NEW_TAG }}
-          git push origin ${{ env.NEW_TAG }}
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "TAG=$TAG" >> $GITHUB_ENV
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
@@ -53,8 +42,8 @@ jobs:
         if: success()
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ env.NEW_TAG }}
-          name: Release ${{ env.NEW_TAG }}
+          tag_name: ${{ env.TAG }}
+          name: Release ${{ env.TAG }}
           files: |
             dist/senhub-agent_linux_*
             dist/senhub-agent_windows_*

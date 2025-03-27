@@ -1,7 +1,9 @@
-name: Beta Release
+name: PR Release
 on:
-  push:
-    branches: [ dev ]
+  pull_request:
+    types: [closed]
+    branches:
+      - master
 
 permissions:
   contents: write
@@ -9,6 +11,8 @@ permissions:
 
 jobs:
   release:
+    # Only run when PR is merged, not when it's closed without merging
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,18 +27,19 @@ jobs:
         run: |
           GO_VERSION=$(go version | cut -d' ' -f3)
           echo "GO_VERSION=$GO_VERSION" >> $GITHUB_ENV
-      - name: Get Last Tag and Create Beta Tag
-        id: get_beta_version
+      # We look for the latest tag that was pushed to the repo
+      # The workflow assumes the developer has created and pushed a tag before creating the PR
+      - name: Find Latest Tag
+        id: find_tag
         run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
-          # Create a beta tag based on the last tag
-          BETA_TAG="${LAST_TAG}-beta"
-          echo "BETA_TAG=$BETA_TAG" >> $GITHUB_ENV
-          echo "beta_version=$BETA_TAG" >> $GITHUB_OUTPUT
-      - name: Create Beta Tag
-        run: |
-          git tag ${{ env.BETA_TAG }}
-          git push origin ${{ env.BETA_TAG }}
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          # Skip if tag contains beta
+          if [[ $LATEST_TAG == *"beta"* ]]; then
+            echo "Latest tag is a beta tag, cannot use for PR release"
+            exit 1
+          fi
+          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
@@ -48,12 +53,11 @@ jobs:
         if: success()
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ env.BETA_TAG }}
-          name: Beta Release ${{ env.BETA_TAG }}
+          tag_name: ${{ env.LATEST_TAG }}
+          name: Release ${{ env.LATEST_TAG }}
           files: |
             dist/senhub-agent_linux_*
             dist/senhub-agent_windows_*
             dist/senhub-agent_darwin_*
             dist/metadata.json
           generate_release_notes: false
-          prerelease: true
