@@ -6,7 +6,6 @@ import (
     "fmt"
     "io"
     "net/http"
-    "strings"
     "sync"
     "sync/atomic"
     "time"
@@ -318,23 +317,18 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
         return nil
     }
 
-    // Convert to newline-delimited JSON
-    var streamBody strings.Builder
-    for _, event := range events {
-        eventJson, err := json.Marshal(event)
-        if err != nil {
-            return fmt.Errorf("error marshaling event: %w", err)
-        }
-        streamBody.Write(eventJson)
-        streamBody.WriteString("\n")
+    // Marshal all events as a single JSON array
+    eventsJSON, err := json.Marshal(events)
+    if err != nil {
+        return fmt.Errorf("error marshaling events array: %w", err)
     }
 
     s.logger.Debug().
         Int("event_count", len(events)).
-        Int("payload_size", streamBody.Len()).
+        Int("payload_size", len(eventsJSON)).
         Msg("Sending batch of events")
 
-    response, err := s.server.PostStream("/event/insert", streamBody.String())
+    response, err := s.server.PostStream("/event/insert", string(eventsJSON))
     if err != nil {
         return fmt.Errorf("error sending events: %w", err)
     }
@@ -345,14 +339,15 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
         return fmt.Errorf("error reading response body: %w", err)
     }
 
-    if response.StatusCode != http.StatusAccepted {
+    // Accept both 200 OK and 202 Accepted as successful responses
+    if response.StatusCode != http.StatusAccepted && response.StatusCode != http.StatusOK {
         return fmt.Errorf("unexpected status code: %d - body: %s", response.StatusCode, string(respBody))
     }
 
-		s.logger.Info().
-			Int("status_code", response.StatusCode).
-			Int("event_count", len(events)).
-			Msg("Server confirmed receipt of events")
+    s.logger.Info().
+        Int("status_code", response.StatusCode).
+        Int("event_count", len(events)).
+        Msg("Server confirmed receipt of events")
 
     return nil
 }
