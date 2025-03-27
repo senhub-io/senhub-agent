@@ -1,9 +1,9 @@
-name: Beta Release
+name: Dev Tag Release
 on:
   push:
     branches: [ dev ]
-    tags-ignore:
-      - '*'
+    tags:
+      - '*.*.*'
 
 permissions:
   contents: write
@@ -25,18 +25,16 @@ jobs:
         run: |
           GO_VERSION=$(go version | cut -d' ' -f3)
           echo "GO_VERSION=$GO_VERSION" >> $GITHUB_ENV
-      - name: Get Version from Package
+      - name: Get Tag Version and Create Beta Tag
         id: get_version
         run: |
-          # Get the version directly from the git describe command
-          CURRENT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
-          echo "Using existing tag: $CURRENT_TAG"
-          echo "CURRENT_TAG=$CURRENT_TAG" >> $GITHUB_ENV
-          echo "beta_tag=${CURRENT_TAG}-beta" >> $GITHUB_ENV
-      - name: Create local beta tag
+          TAG=${GITHUB_REF#refs/tags/}
+          BETA_TAG="${TAG}-beta"
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "BETA_TAG=$BETA_TAG" >> $GITHUB_ENV
+      - name: Create Beta Tag
         run: |
-          git tag ${{ env.beta_tag }}
-
+          git tag ${{ env.BETA_TAG }}
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
@@ -50,8 +48,8 @@ jobs:
         if: success()
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ env.beta_tag }}
-          name: Beta Release ${{ env.beta_tag }}
+          tag_name: ${{ env.BETA_TAG }}
+          name: Beta Release ${{ env.BETA_TAG }}
           files: |
             dist/senhub-agent_linux_*
             dist/senhub-agent_windows_*
