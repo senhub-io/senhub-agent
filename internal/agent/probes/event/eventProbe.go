@@ -253,10 +253,39 @@ func (p *EventProbe) processEvent(event map[string]interface{}) data_store.DataP
 		}
 	}
 
+	// Create two sets of tags:
+	// 1. Standard string tags for required fields and simple values
+	// 2. A special JSON metadata field that preserves complex types like arrays
 	eventTags := []tags.Tag{}
+	complexValues := make(map[string]interface{})
+	
 	for key, value := range event {
-		if key != "timestamp" {
-			eventTags = append(eventTags, tags.Tag{Key: key, Value: fmt.Sprintf("%v", value), Private: false})
+		if key == "timestamp" {
+			continue
+		}
+		
+		// Store all values as strings in regular tags for backward compatibility
+		eventTags = append(eventTags, tags.Tag{Key: key, Value: fmt.Sprintf("%v", value), Private: false})
+		
+		// Also store complex values in their original form
+		switch v := value.(type) {
+		case []interface{}, map[string]interface{}:
+			// These are complex types that should be preserved
+			complexValues[key] = v
+		}
+	}
+	
+	// If we have complex values, serialize them as JSON and add as a special tag
+	if len(complexValues) > 0 {
+		complexJSON, err := json.Marshal(complexValues)
+		if err == nil {
+			eventTags = append(eventTags, tags.Tag{
+				Key:     "_complex_values",
+				Value:   string(complexJSON),
+				Private: false,
+			})
+		} else {
+			p.logger.Error().Err(err).Msg("Failed to marshal complex values")
 		}
 	}
 

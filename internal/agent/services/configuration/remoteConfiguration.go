@@ -156,15 +156,12 @@ func (rc *RemoteConfiguration) validateConfiguration(config *RemoteConfiguration
 		}
 	}
 
-	probeNames := make(map[string]bool)
+	// Check for empty probe names, but allow multiple probes of the same type with different params
+	// Each probe instance is uniquely identified by its ID (hash of name + params) in the sensor module
 	for _, probe := range config.Probes {
 		if probe.Name == "" {
 			return fmt.Errorf("probe name cannot be empty")
 		}
-		if probeNames[probe.Name] {
-			return fmt.Errorf("duplicate probe name: %s", probe.Name)
-		}
-		probeNames[probe.Name] = true
 	}
 
 	return nil
