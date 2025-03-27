@@ -230,7 +230,7 @@ func (c *HPECollector) collectSmartStorageMetrics(ctx context.Context, timestamp
 	for _, systemPath := range c.systems {
 		// Get SmartStorage collection
 		smartPath := systemPath + "/SmartStorage"
-		smartResp, err := c.client.Get(ctx, smartPath)
+		_, err := c.client.Get(ctx, smartPath)
 		if err != nil {
 			c.logger.Warn().
 				Err(err).

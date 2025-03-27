@@ -37,6 +37,8 @@ type RedfishResponse struct {
 	Description       string                 `json:"Description,omitempty"`
 	Status            *Status                `json:"Status,omitempty"`
 	Members           []map[string]string    `json:"Members,omitempty"`
+	// Raw contains the raw JSON data
+	Raw               json.RawMessage
 	MembersCount      int                    `json:"Members@odata.count,omitempty"`
 	Oem               map[string]interface{} `json:"Oem,omitempty"`
 	Manufacturer      string                 `json:"Manufacturer,omitempty"`
@@ -271,6 +273,9 @@ func (c *RedfishClient) Get(ctx context.Context, path string) (*RedfishResponse,
 	if err := json.Unmarshal(body, &redfishResp); err != nil {
 		return nil, fmt.Errorf("error parsing response: %v", err)
 	}
+	
+	// Store the raw JSON data
+	redfishResp.Raw = body
 
 	return &redfishResp, nil
 }
