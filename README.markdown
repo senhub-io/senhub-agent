@@ -1,69 +1,109 @@
-# SenHub agent
+# SenHub Agent
 
-## Install for development
+SenHub Agent is a monitoring and observability agent that collects metrics and events from various sources and sends them to multiple destinations. It's designed to be extensible, configurable, and efficient.
+
+## Installation
+
+### For Development
 
 ```bash
 make install
 ```
 
-## Running the project
+### Build
 
-You need to have go installed on your machine.
-At the time of writing, the project is using go 1.23.2
+```bash
+# Standard build for your platform
+make build
 
-To run the project in development mode, you need to run the following command:
+# Platform-specific builds
+make build-windows    # Windows build
+make build-linux      # Linux build
+make build-darwin     # macOS build
+```
+
+## Running the Project
+
+You need to have Go installed on your machine (Go 1.23.2+ recommended).
+
+### Development Mode
 
 ```bash
 make watch
 ```
 
-This will start the project in development mode, and it will watch for changes
-in the code.
+This will start the project in development mode with live reloading on code changes.
 
-To run the project in production mode, you need to run the following command:
+### Production Mode
 
 ```bash
 make build
-./senhub-agent start --authentication-key some_key --server-url "http://localhost:8080"
+./senhub-agent run --authentication-key <your_key> --server-url "https://your-server-url.com"
 ```
 
-### Build environment
+### Build Environment
 
-Project can be built in `development` or `production` mode by setting `ENV`
-variable.
+The project can be built in `development` or `production` mode by setting the `ENV` variable:
 
 ```bash
 ENV=development make build
 ```
 
-## Running the tests
-
-To run the tests, you need to run the following command:
+## Testing
 
 ```bash
+# Run all tests
 make test
+
+# Run a specific test
+go test -v ./path/to/package -run TestName
 ```
 
 ## Configuration
 
-Agent configuration is read from senhub server.
-A valid configuration mathes the following structure:
+Agent configuration is loaded from the SenHub server. The agent pulls its configuration dynamically and can adjust to changes without restarting.
+
+A configuration has three main sections:
+- `agent`: General agent settings
+- `probes`: Data collection components
+- `storage`: Data destination components
+
+Here's a sample configuration:
 
 ```json
 {
   "agent": {
     "version": "0.1.0",
-    "registry_url": "https://eu-west-1.intake.senhub.io/"
+    "registry_url": "https://eu-west-1.intake.senhub.io/",
+    "update_check_interval": "1h"
   },
   "probes": [
-    {
-      "name": "load_webapp",
-      "params": { "url": "http://www.google.fr", "timeout": 5 }
-    },
-    { "name": "ping_webapp", "params": { "url": "http://example.org:8080" } },
+    { "name": "cpu", "params": {} },
+    { "name": "memory", "params": {} },
+    { "name": "network", "params": {} },
+    { "name": "logicaldisk", "params": {} },
     { "name": "ping_gateway", "params": {} },
     { "name": "wifi_signal_strength", "params": {} },
-    { "name": "memory", "params": {} }
+    
+    { "name": "ping_webapp", "params": { "url": "https://example.com" } },
+    { "name": "ping_webapp", "params": { "url": "https://company-intranet.local" } },
+    
+    { "name": "load_webapp", "params": { "url": "https://example.com", "timeout": 30 } },
+    { "name": "load_webapp", "params": { "url": "https://company-intranet.local", "timeout": 10 } },
+    
+    { "name": "syslog", "params": { "port": 514, "protocol": "udp" } },
+    { "name": "event", "params": {} },
+    
+    { 
+      "name": "redfish", 
+      "params": { 
+        "endpoint": "https://192.168.1.100", 
+        "username": "admin", 
+        "password": "password",
+        "cache_duration": 240,
+        "collections": ["system", "thermal", "power", "processor", "memory", "storage", "network"]
+      } 
+    }
   ],
   "storage": [
     { "name": "senhub", "params": {} },
@@ -71,7 +111,7 @@ A valid configuration mathes the following structure:
       "name": "prtg",
       "params": {
         "data_retention_period": "2m",
-        "server_url": "http://localhost:8080"
+        "server_url": "http://prtg-server:8080"
       }
     },
     {
@@ -80,211 +120,288 @@ A valid configuration mathes the following structure:
         "queue_size": 1000,
         "server_url": "https://eu-west-1.intake.senhub.io",
         "sync_interval": "30s"
-        }
+      }
     }
   ]
 }
 ```
 
-### Agent
+## Available Probes
 
-- `version` (optional): required version for the agent. Can be in the form of `x.y.z`,
-  `latest`, `>=x.y.z`, `<=x.y.z`, `>x.y.z`, `<x.y.z`, `!=x.y.z`
-- `registry_url` (optional): URL to the registry server, default is
-  `https://eu-west-1.intake.senhub.io/`
+The agent supports multiple probe instances, including multiple instances of the same probe type with different parameters.
 
-# Data Collection System Architecture
+### System Monitoring
 
-## Overview
+#### CPU Probe
+Collects CPU usage metrics, including per-core utilization and system load.
 
-The data collection system is designed to be flexible and extensible, allowing collection of different types of data (metrics and events) and routing them to different backends.
+- **Configuration**
+  ```json
+  { "name": "cpu", "params": {} }
+  ```
+- **Metrics**
+  - `cpu_usage_percent`: Overall CPU usage percentage
+  - `cpu_core_usage_percent`: Per-core usage percentage
+  - `cpu_load_1min`, `cpu_load_5min`, `cpu_load_15min`: System load averages
 
-```mermaid
-graph TD
-    A[Configuration] --> B[Agent]
-    B --> C[Probe Poller]
-    C --> D[Probes]
-    D -->|DataPoints| E[DataStore]
-    E -->|Routing| F[Strategies]
+#### Memory Probe
+Monitors system memory usage and availability.
 
-    subgraph Probes
-        D1[CPU Probe]
-        D2[Memory Probe]
-        D3[Syslog Probe]
-    end
+- **Configuration**
+  ```json
+  { "name": "memory", "params": {} }
+  ```
+- **Metrics**
+  - `memory_total_bytes`: Total physical memory
+  - `memory_used_bytes`: Used physical memory
+  - `memory_free_bytes`: Free physical memory
+  - `memory_usage_percent`: Memory usage percentage
+  - `swap_total_bytes`, `swap_used_bytes`, `swap_free_bytes`: Swap memory metrics
 
-    subgraph Strategies
-        F1[Senhub Strategy]
-        F2[PRTG Strategy]
-        F3[Event Strategy]
-    end
+#### Network Probe
+Monitors network interface activity and throughput.
 
-    D1 & D2 -->|"senhub,prtg"| E
-    D3 -->|"event"| E
-    E --> F1 & F2 & F3
-```
+- **Configuration**
+  ```json
+  { "name": "network", "params": {} }
+  ```
+- **Metrics**
+  - `network_bytes_sent`, `network_bytes_received`: Traffic volume
+  - `network_packets_sent`, `network_packets_received`: Packet counts
+  - `network_errors_in`, `network_errors_out`: Error counts
+  - `network_dropped_in`, `network_dropped_out`: Dropped packet counts
 
-## Data Types
+#### Logical Disk Probe
+Monitors disk space and IO performance.
 
-### 1. Regular DataPoint
-Used for standard metrics (CPU, memory, etc.)
+- **Configuration**
+  ```json
+  { "name": "logicaldisk", "params": {} }
+  ```
+- **Metrics**
+  - `disk_total_bytes`, `disk_used_bytes`, `disk_free_bytes`: Disk space
+  - `disk_usage_percent`: Disk usage percentage
+  - `disk_io_reads`, `disk_io_writes`: IO operations
+  - `disk_io_read_bytes`, `disk_io_write_bytes`: IO throughput
+  - `disk_io_time`: Time spent on IO operations
 
-```go
-type DataPoint struct {
-    Name      string     // Metric name
-    Timestamp time.Time  // Measurement timestamp
-    Value     float32    // Numeric value
-    Tags      []tags.Tag // Associated tags
-}
-```
+#### WiFi Signal Strength Probe
+Measures WiFi signal quality and connection metrics.
 
-### 2. EventDataPoint
-Used for events (logs, alerts, etc.)
+- **Configuration**
+  ```json
+  { "name": "wifi_signal_strength", "params": {} }
+  ```
+- **Metrics**
+  - `wifi_signal_strength_dbm`: Signal strength in dBm
+  - `wifi_signal_quality_percent`: Signal quality percentage
+  - `wifi_link_speed_mbps`: Connection speed
 
-```go
-type EventDataPoint map[string]interface{}
-```
+### Network Connectivity
 
-## Key Components
+#### Ping Gateway Probe
+Tests connectivity to the default network gateway.
 
-### 1. Probes
-- Collect data
-- Implement `types.Probe` interface
-- Can implement `types.ProbeWithCallback` for event-driven processing
-- Indicate their target strategies via `StrategyRouter`
+- **Configuration**
+  ```json
+  { "name": "ping_gateway", "params": {} }
+  ```
+- **Metrics**
+  - `gateway_latency_ms`: Round-trip time to gateway
+  - `gateway_packet_loss_percent`: Packet loss percentage
+  - `gateway_reachable`: Boolean (1/0) indicating gateway reachability
 
-### 2. Probe Poller
-- Manages probe lifecycle
-- Configures callbacks
-- Orchestrates periodic collection
+### Web Monitoring
 
-### 3. DataStore
-- Receives data from probes
-- Routes data to appropriate strategies
-- Manages strategy configuration
+#### Ping Web App Probe
+Tests web application availability and measures latency. Multiple instances with different URLs can be configured.
 
-### 4. Strategies
-- Senhub: For standard metrics
-- PRTG: For PRTG metrics
-- Event: For events
+- **Configuration**
+  ```json
+  { "name": "ping_webapp", "params": { "url": "https://example.com" } }
+  ```
+- **Required Parameters**
+  - `url`: The URL to ping/test
+- **Metrics**
+  - `averageLatency`: Average round-trip time in milliseconds
+  - `packetLoss`: Packet loss percentage
 
-## Configuration
+#### Load Web App Probe
+Measures detailed web application loading performance metrics. Multiple instances with different URLs can be configured.
 
-The configuration defines:
-1. Which probes to enable
-2. Probe parameters
-3. Which strategies to use
-4. Strategy configuration
+- **Configuration**
+  ```json
+  { "name": "load_webapp", "params": { "url": "https://example.com", "timeout": 30 } }
+  ```
+- **Required Parameters**
+  - `url`: The URL to measure loading time
+- **Optional Parameters**
+  - `timeout`: Request timeout in seconds (default: 30, range: 1-300)
+- **Metrics**
+  - `dnstime`: DNS resolution time in milliseconds
+  - `connecttime`: TCP connection time in milliseconds
+  - `tlstime`: TLS handshake time in milliseconds (for HTTPS)
+  - `ttfb`: Time to first byte in milliseconds
+  - `total_time`: Total page load time in milliseconds
 
-Example:
-```json
-[
-    {"name": "senhub", "params": {}},
-    {"name": "event", "params": {
-        "server_url": "https://server/event",
-        "queue_size": 1000,
-        "sync_interval": "30s"
-    }}
-]
-```
+### Event Collection
 
-## Data Flow
+#### Syslog Probe
+Collects system logs via Syslog protocol.
 
-1. Configuration is loaded
-2. Probes are initialized via Probe Poller
-3. Probes collect data:
-   - Periodically for metrics
-   - On event for events
-4. Data is converted to DataPoints
-5. DataStore routes data to appropriate strategies
-6. Strategies send data to their destination
+- **Configuration**
+  ```json
+  { "name": "syslog", "params": { "port": 514, "protocol": "udp" } }
+  ```
+- **Optional Parameters**
+  - `port`: Port to listen on (default: 514)
+  - `protocol`: Either "udp" or "tcp" (default: "udp")
+- **Events**
+  - Structured Syslog messages with facility, severity, hostname, and message content
 
-## Example: Syslog Probe
+#### Event Probe
+Collects custom events via HTTP endpoint.
 
-The Syslog Probe illustrates the architecture well:
-1. Listens for syslog messages (UDP/TCP)
-2. Converts messages to DataPoints
-3. Uses formatter for conversion to EventDataPoints
-4. Routes only to "event" strategy
-5. Implements ProbeWithCallback for event-driven processing
+- **Configuration**
+  ```json
+  { "name": "event", "params": {} }
+  ```
+- **Events**
+  - Custom events sent to the agent's HTTP endpoint
 
-## Extending the System
+### Hardware Monitoring
 
-To add a new collection type:
-1. Create a new probe
-2. Implement required interfaces
-3. Define target strategies
-4. Add constructor to probe registry
+#### Redfish Probe
+Monitors server hardware via the Redfish API with vendor-specific collectors for Dell, HPE, Cisco, and Lenovo.
 
-To add a new destination:
-1. Create a new strategy
-2. Implement SyncStrategy interface
-3. Add strategy to configuration
+- **Configuration**
+  ```json
+  { 
+    "name": "redfish", 
+    "params": { 
+      "endpoint": "https://192.168.1.100", 
+      "username": "admin", 
+      "password": "password",
+      "cache_duration": 240,
+      "collections": ["system", "thermal", "power", "processor", "memory", "storage", "network"]
+    } 
+  }
+  ```
+- **Required Parameters**
+  - `endpoint`: URL of the Redfish API endpoint
+  - `username`: Username for Redfish API authentication
+  - `password`: Password for Redfish API authentication
+- **Optional Parameters**
+  - `cache_duration`: Duration in seconds to cache data (default: 240 seconds)
+  - `collections`: Array of collections to monitor (default includes "system", "thermal", "power", "processor", "memory")
+    - Available collections: "system", "thermal", "power", "processor", "memory", "storage", "network"
+- **Metrics**
+  - System information (model, serial, firmware versions)
+  - Temperature sensors and thresholds
+  - Fan speeds and status
+  - Power consumption and supply status
+  - Processor utilization and health
+  - Memory module status
+  - Storage device health and capacity
+  - Network interface status and throughput
 
-## Interfaces
+## Storage Options
 
-### Probe Interface
-```go
-type Probe interface {
-    GetName() string
-    ShouldStart() bool
-    GetInterval() time.Duration
-    Collect() ([]DataPoint, error)
-    OnStart(chan struct{}) error
-    OnShutdown(context.Context) error
-}
-```
+### SenHub Storage
+Sends metrics to the SenHub platform.
 
-### ProbeWithCallback Interface
-```go
-type ProbeWithCallback interface {
-    Probe
-    SetCallback(func([]DataPoint) error)
-}
-```
+- **Configuration**
+  ```json
+  { "name": "senhub", "params": {} }
+  ```
+  
+### PRTG Storage
+Forwards metrics to PRTG Network Monitor.
 
-### StrategyRouter Interface
-```go
-type StrategyRouter interface {
-    GetTargetStrategies() []string
-}
-```
+- **Configuration**
+  ```json
+  {
+    "name": "prtg",
+    "params": {
+      "server_url": "http://prtg-server:8080",
+      "data_retention_period": "5m"
+    }
+  }
+  ```
+- **Required Parameters**
+  - `server_url`: URL of the PRTG server
+- **Optional Parameters**
+  - `data_retention_period`: How long to keep data (default: "5m")
+  
+### Event Storage
+Manages event data collected by event-oriented probes.
 
-### SyncStrategy Interface
-```go
-type SyncStrategy interface {
-    GetStrategyName() string
-    GetStrategyParams() map[string]interface{}
-    ValidateConfigParams(StorageConfigParams) error
-    Start() error
-    AddDataPoints([]DataPoint) error
-    Shutdown(context.Context) error
-}
-```
+- **Configuration**
+  ```json
+  {
+    "name": "event",
+    "params": {
+      "server_url": "https://eu-west-1.intake.senhub.io",
+      "queue_size": 1000,
+      "sync_interval": "30s"
+    }
+  }
+  ```
+- **Required Parameters**
+  - `server_url`: URL where to send events
+- **Optional Parameters**
+  - `queue_size`: Size of the event queue (default: 1000)
+  - `sync_interval`: How frequently to sync events (default: "30s")
 
-## Best Practices
+## Agent Configuration
 
-1. **Error Handling**
-   - Always handle and log errors appropriately
-   - Return meaningful error messages
-   - Consider retry mechanisms for network operations
+### General Options
+- `version` (optional): Required version for the agent. Can be in the form of:
+  - Exact version: `0.1.0`
+  - Latest: `latest`
+  - Constraints: `>=0.1.0`, `<=0.1.0`, `>0.1.0`, `<0.1.0`, `!=0.1.0`
+- `registry_url` (optional): URL to the registry server (default: `https://eu-west-1.intake.senhub.io/`)
+- `update_check_interval` (optional): Interval to check for updates, can be seconds (integer) or duration string like "1h", "30m" (default: 1h)
 
-2. **Configuration**
-   - Provide sensible defaults
-   - Validate all configuration parameters
-   - Document configuration options
+## Architecture
 
-3. **Resource Management**
-   - Properly clean up resources in Shutdown
-   - Use appropriate buffer sizes
-   - Implement graceful shutdown
+The agent follows a modular architecture with these key components:
 
-4. **Data Routing**
-   - Define clear routing rules
-   - Handle routing failures gracefully
-   - Monitor routing performance
+1. **Probes**: Collect data from various sources
+2. **Probe Poller**: Manages probe lifecycle and scheduling
+3. **DataStore**: Routes data to appropriate strategies
+4. **Storage Strategies**: Send data to different destinations
 
-5. **Testing**
-   - Unit test all components
-   - Test error conditions
-   - Mock external dependencies
+### Data Flow
+1. Configuration is loaded from server
+2. Probes are initialized and scheduled
+3. Data is collected from probes
+4. DataStore routes data to configured strategies
+5. Strategies send data to their destinations
+
+## Contributing
+
+### Setup
+1. Fork the repository
+2. Install Go 1.23.2 or later
+3. Run `make install` to set up development environment
+4. Run `make test` to ensure everything works
+
+### Code Style
+- Use `gofmt` for formatting (enforced by pre-commit hook)
+- Follow standard Go conventions:
+  - PascalCase for exported identifiers
+  - camelCase for unexported identifiers
+  - Group imports: standard library, third-party, internal
+  - Document exported functions and types
+  - Write tests for new functionality
+
+### Pull Requests
+1. Create a feature branch
+2. Implement your changes with tests
+3. Run `make test` to verify all tests pass
+4. Submit a pull request with a clear description
+
+## License
+
+© SenHub. All rights reserved.
