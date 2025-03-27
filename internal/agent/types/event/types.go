@@ -23,6 +23,12 @@ const (
 // EventDataPoint is a dynamic map storing event fields
 type EventDataPoint map[string]interface{}
 
+// HasKey checks if the EventDataPoint contains a specific key
+func (e EventDataPoint) HasKey(key string) bool {
+	_, exists := e[key]
+	return exists
+}
+
 // Validate checks required fields presence and types
 func (e EventDataPoint) Validate() error {
 	timestamp, ok := e["timestamp"].(time.Time)

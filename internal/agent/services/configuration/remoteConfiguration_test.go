@@ -9,8 +9,55 @@ import (
 	"senhub-agent.go/internal/testUtils"
 )
 
-func TestRemoteConfiguration_FetchCofiguration(t *testing.T) {
+func TestValidateConfiguration(t *testing.T) {
+	logger := zerolog.New(os.Stderr)
+	rc := &RemoteConfiguration{
+		logger: &logger,
+	}
 
+	testCases := []struct {
+		name        string
+		config      *RemoteConfigurationData
+		expectError bool
+	}{
+		{
+			name: "Valid config with duplicate probe names",
+			config: &RemoteConfigurationData{
+				StorageConfig: []StorageConfig{
+					{Name: "senhub"},
+				},
+				Probes: []ProbeConfig{
+					{Name: "ping_webapp", Params: map[string]interface{}{"url": "https://example1.com"}},
+					{Name: "ping_webapp", Params: map[string]interface{}{"url": "https://example2.com"}},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Invalid config with empty probe name",
+			config: &RemoteConfigurationData{
+				StorageConfig: []StorageConfig{
+					{Name: "senhub"},
+				},
+				Probes: []ProbeConfig{
+					{Name: "", Params: map[string]interface{}{"url": "https://example.com"}},
+				},
+			},
+			expectError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := rc.validateConfiguration(tc.config)
+			if (err != nil) != tc.expectError {
+				t.Errorf("validateConfiguration() error = %v, expectError = %v", err, tc.expectError)
+			}
+		})
+	}
+}
+
+func TestRemoteConfiguration_FetchCofiguration(t *testing.T) {
 	testCases := []struct {
 		name     string
 		config   string
