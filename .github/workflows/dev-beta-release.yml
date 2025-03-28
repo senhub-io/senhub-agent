@@ -5,80 +5,86 @@ on:
       - '*.*.*'
 
 jobs:
-  check_branch:
+  create_beta_release:
     runs-on: ubuntu-latest
-    outputs:
-      is_dev: ${{ steps.check.outputs.is_dev }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          
       - name: Check if tag is on dev branch
-        id: check
+        id: check_branch
         run: |
           git fetch --all
           TAG_COMMIT=$(git rev-list -n 1 ${{ github.ref_name }})
           echo "Tag commit: $TAG_COMMIT"
           DEV_BRANCH=$(git branch -r --contains $TAG_COMMIT | grep "origin/dev" || echo "")
           if [[ -n "$DEV_BRANCH" ]]; then
-            echo "is_dev=true" >> $GITHUB_OUTPUT
-            echo "Tag is on dev branch"
+            echo "Tag is on dev branch, proceeding with beta release"
           else
-            echo "is_dev=false" >> $GITHUB_OUTPUT
-            echo "Tag is not on dev branch"
+            echo "Tag is not on dev branch, skipping"
+            exit 1
           fi
-
-  beta_release:
-    needs: check_branch
-    if: needs.check_branch.outputs.is_dev == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+          
+      - name: Get tag version
+        id: get_version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          BETA_TAG="${TAG}-beta"
+          echo "Original tag: $TAG"
+          echo "Beta tag: $BETA_TAG"
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "BETA_TAG=$BETA_TAG" >> $GITHUB_ENV
+          
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: '1.22.0'
-      - name: Create Beta Tag
-        id: create_beta_tag
+          
+      - name: Build binaries manually
         run: |
-          # Get the tag name from the event
-          TAG=${GITHUB_REF#refs/tags/}
-          echo "TAG=$TAG" >> $GITHUB_ENV
+          # Build for each platform
+          echo "Building for Linux amd64"
+          GOOS=linux GOARCH=amd64 go build -o dist/senhub-agent_linux_amd64/senhub-agent ./cmd/agent
           
-          # Create beta tag
-          BETA_TAG="${TAG}-beta"
-          echo "BETA_TAG=$BETA_TAG" >> $GITHUB_ENV
+          echo "Building for Windows amd64"
+          GOOS=windows GOARCH=amd64 go build -o dist/senhub-agent_windows_amd64/senhub-agent.exe ./cmd/agent
           
-          # Configure git
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          echo "Building for macOS amd64"
+          GOOS=darwin GOARCH=amd64 go build -o dist/senhub-agent_darwin_amd64/senhub-agent ./cmd/agent
           
-          # Create and push beta tag
-          git tag $BETA_TAG
-          git push origin $BETA_TAG
+          echo "Building for macOS arm64"
+          GOOS=darwin GOARCH=arm64 go build -o dist/senhub-agent_darwin_arm64/senhub-agent ./cmd/agent
           
-          echo "Created and pushed beta tag: $BETA_TAG"
-      - name: Download goreleaser
+          # ZIP the binaries
+          cd dist
+          for dir in */; do
+            platform=${dir%/}
+            echo "Creating zip for $platform"
+            (cd "$platform" && zip "../$platform.zip" *)
+          done
+          cd ..
+          
+          # List the contents of dist
+          echo "Contents of dist directory:"
+          ls -la dist
+          
+      - name: Create and push beta tag
         run: |
-          curl -sfL https://goreleaser.com/static/run | bash
-      - name: Run GoReleaser with Beta Tag
-        run: |
-          ./bin/goreleaser release --clean --skip-validate --rm-dist
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GORELEASER_CURRENT_TAG: ${{ env.BETA_TAG }}
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          
+          # Create the beta tag and push it
+          git tag ${{ env.BETA_TAG }}
+          git push origin ${{ env.BETA_TAG }}
+          
       - name: Create Beta Release
-        if: success()
+        id: create_release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.BETA_TAG }}
           name: Beta Release ${{ env.BETA_TAG }}
           files: |
-            dist/senhub-agent_linux_*
-            dist/senhub-agent_windows_*
-            dist/senhub-agent_darwin_*
-            dist/metadata.json
+            dist/*.zip
           generate_release_notes: false
           prerelease: true
