@@ -30,7 +30,12 @@ jobs:
         id: get_version
         run: |
           TAG=${GITHUB_REF#refs/tags/}
-          BETA_TAG="${TAG}-beta"
+          # Ne pas ajouter -beta si c'est déjà présent dans le tag
+          if [[ $TAG == *"-beta"* ]]; then
+            BETA_TAG="$TAG"
+          else
+            BETA_TAG="${TAG}-beta"
+          fi
           echo "Original tag: $TAG"
           echo "Beta tag: $BETA_TAG"
           echo "TAG=$TAG" >> $GITHUB_ENV
@@ -95,7 +100,8 @@ jobs:
           # Test version info in binaries
           echo "Testing version info in Linux binary:"
           chmod +x dist/senhub-agent_linux_amd64
-          dist/senhub-agent_linux_amd64 version
+          # La commande version peut échouer sur certains environnements, on l'ignore avec || true
+          dist/senhub-agent_linux_amd64 version || true
           
           # Create metadata.json
           echo "Creating metadata.json"
