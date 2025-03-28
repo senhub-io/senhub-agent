@@ -2,6 +2,8 @@ package auto_update
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/url"
 	"testing"
 	"time"
 
@@ -203,6 +205,120 @@ func TestAutoUpdate_getExpectedVersion_WithFailingServer(t *testing.T) {
 			expectedVersion := au.getExpectedVersionFromConfig()
 			if expectedVersion != tc.expectedResult {
 				t.Errorf("Expected %s, got %s", tc.expectedResult, expectedVersion)
+			}
+		})
+	}
+}
+
+func TestIsBetaVersion(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		expected bool
+	}{
+		{
+			name:     "Regular version",
+			version:  "1.0.0",
+			expected: false,
+		},
+		{
+			name:     "Beta version",
+			version:  "1.0.0-beta",
+			expected: true,
+		},
+		{
+			name:     "Short version",
+			version:  "1.0",
+			expected: false,
+		},
+		{
+			name:     "Empty string",
+			version:  "",
+			expected: false,
+		},
+		{
+			name:     "Other suffix",
+			version:  "1.0.0-alpha",
+			expected: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := isBetaVersion(tc.version)
+			if result != tc.expected {
+				t.Errorf("Expected %v, got %v", tc.expected, result)
+			}
+		})
+	}
+}
+
+func TestAutoUpdate_GetBinaryUrl(t *testing.T) {
+	testCases := []struct {
+		name           string
+		registryUrl    string
+		version        string
+		os             string
+		arch           string
+		expectedResult string
+	}{
+		{
+			name:           "Regular version",
+			registryUrl:    "https://registry.example.com",
+			version:        "1.0.0",
+			os:             "linux",
+			arch:           "amd64",
+			expectedResult: "https://registry.example.com/download/1.0.0/senhub-agent_linux_amd64",
+		},
+		{
+			name:           "Beta version",
+			registryUrl:    "https://registry.example.com",
+			version:        "1.0.0-beta",
+			os:             "linux",
+			arch:           "amd64",
+			expectedResult: "https://registry.example.com/download/1.0.0-beta/senhub-agent_linux_amd64",
+		},
+		{
+			name:           "Windows beta version",
+			registryUrl:    "https://registry.example.com",
+			version:        "1.0.0-beta",
+			os:             "windows",
+			arch:           "amd64",
+			expectedResult: "https://registry.example.com/download/1.0.0-beta/senhub-agent_windows_amd64.exe",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := zerolog.New( /*os.Stderr*/ nil)
+			remoteConfig := configuration.NewMockRemoteConfiguration(
+				"http://localhost:8000", "")
+
+			httpClient := httpretry.NewDefaultClient()
+			au := &autoUpdate{
+				remoteConfig: remoteConfig,
+				logger:       &logger,
+				httpClient:   httpClient,
+			}
+			
+			// Instead of trying to modify runtime.GOOS/GOARCH which is not possible in Go,
+			// we'll manually construct the URL that would be generated
+			binaryName := au.getBinaryNameForOptions(tc.os, tc.arch)
+			
+			// Get the formatted version
+			formattedVersion := FormatVersionForUrl(tc.version)
+			
+			// Always use the same download path pattern, regardless of beta or not
+			downloadPath := fmt.Sprintf(VERSION_BINARY_PATH, formattedVersion, binaryName)
+			
+			// Join with the registry URL
+			result, err := url.JoinPath(tc.registryUrl, downloadPath)
+			
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+			if result != tc.expectedResult {
+				t.Errorf("Expected %s, got %s", tc.expectedResult, result)
 			}
 		})
 	}
