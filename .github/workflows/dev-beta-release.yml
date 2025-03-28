@@ -43,26 +43,28 @@ jobs:
           
       - name: Build binaries manually
         run: |
+          # Create dist directory
+          mkdir -p dist
+          
           # Build for each platform
           echo "Building for Linux amd64"
-          GOOS=linux GOARCH=amd64 go build -o dist/senhub-agent_linux_amd64/senhub-agent ./cmd/agent
+          GOOS=linux GOARCH=amd64 go build -o dist/senhub-agent_linux_amd64 ./cmd/agent
           
           echo "Building for Windows amd64"
-          GOOS=windows GOARCH=amd64 go build -o dist/senhub-agent_windows_amd64/senhub-agent.exe ./cmd/agent
+          GOOS=windows GOARCH=amd64 go build -o dist/senhub-agent_windows_amd64.exe ./cmd/agent
           
           echo "Building for macOS amd64"
-          GOOS=darwin GOARCH=amd64 go build -o dist/senhub-agent_darwin_amd64/senhub-agent ./cmd/agent
+          GOOS=darwin GOARCH=amd64 go build -o dist/senhub-agent_darwin_amd64 ./cmd/agent
           
           echo "Building for macOS arm64"
-          GOOS=darwin GOARCH=arm64 go build -o dist/senhub-agent_darwin_arm64/senhub-agent ./cmd/agent
+          GOOS=darwin GOARCH=arm64 go build -o dist/senhub-agent_darwin_arm64 ./cmd/agent
           
           # ZIP the binaries
           cd dist
-          for dir in */; do
-            platform=${dir%/}
-            echo "Creating zip for $platform"
-            (cd "$platform" && zip "../$platform.zip" *)
-          done
+          zip senhub-agent_linux_amd64.zip senhub-agent_linux_amd64
+          zip senhub-agent_windows_amd64.zip senhub-agent_windows_amd64.exe
+          zip senhub-agent_darwin_amd64.zip senhub-agent_darwin_amd64
+          zip senhub-agent_darwin_arm64.zip senhub-agent_darwin_arm64
           cd ..
           
           # List the contents of dist
