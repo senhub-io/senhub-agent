@@ -37,18 +37,39 @@ jobs:
           # Create dist directory
           mkdir -p dist
           
+          # Get build information
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.%NZ")
+          GO_VERSION=$(go version | cut -d' ' -f3)
+          
+          # Set API URLs
+          PRODUCTION_URL="https://eu-west-1.intake.senhub.io"
+          DEVELOPMENT_URL="https://eu-west-1.intake-dev.senhub.io"
+          
+          # Set ldflags
+          LDFLAGS="-s -w \
+          -X 'senhub-agent.go/internal/agent/cliArgs.Version=$TAG' \
+          -X 'senhub-agent.go/internal/agent/cliArgs.CommitHash=$CURRENT_COMMIT' \
+          -X 'senhub-agent.go/internal/agent/cliArgs.BuildTime=$CURRENT_DATE' \
+          -X 'senhub-agent.go/internal/agent/cliArgs.GoVersion=$GO_VERSION' \
+          -X 'senhub-agent.go/internal/agent/cliArgs.Env=production' \
+          -X 'senhub-agent.go/internal/agent/cliArgs.ProductionURL=$PRODUCTION_URL' \
+          -X 'senhub-agent.go/internal/agent/cliArgs.DevelopmentURL=$DEVELOPMENT_URL'"
+          
+          echo "Using ldflags: $LDFLAGS"
+          
           # Build for each platform
           echo "Building for Linux amd64"
-          GOOS=linux GOARCH=amd64 go build -o dist/senhub-agent_linux_amd64 ./cmd/agent
+          GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_linux_amd64 ./cmd/agent
           
           echo "Building for Windows amd64"
-          GOOS=windows GOARCH=amd64 go build -o dist/senhub-agent_windows_amd64.exe ./cmd/agent
+          GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_windows_amd64.exe ./cmd/agent
           
           echo "Building for macOS amd64"
-          GOOS=darwin GOARCH=amd64 go build -o dist/senhub-agent_darwin_amd64 ./cmd/agent
+          GOOS=darwin GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_darwin_amd64 ./cmd/agent
           
           echo "Building for macOS arm64"
-          GOOS=darwin GOARCH=arm64 go build -o dist/senhub-agent_darwin_arm64 ./cmd/agent
+          GOOS=darwin GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_darwin_arm64 ./cmd/agent
           
           # ZIP the binaries
           cd dist
@@ -61,6 +82,11 @@ jobs:
           # List the contents of dist
           echo "Contents of dist directory:"
           ls -la dist
+          
+          # Test version info in binaries
+          echo "Testing version info in Linux binary:"
+          chmod +x dist/senhub-agent_linux_amd64
+          dist/senhub-agent_linux_amd64 version
           
           # Create metadata.json
           echo "Creating metadata.json"
