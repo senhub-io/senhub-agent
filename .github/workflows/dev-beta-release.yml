@@ -71,6 +71,25 @@ jobs:
           echo "Contents of dist directory:"
           ls -la dist
           
+          # Create metadata.json
+          echo "Creating metadata.json"
+          echo '{
+            "version": "'$BETA_TAG'",
+            "project_name": "senhub-agent"
+          }' > dist/metadata.json
+          
+          # Create releases directory if it doesn't exist
+          mkdir -p dist/releases
+          
+          # Create or update releases.json
+          echo "Creating releases.json"
+          echo '[
+            {
+              "version": "'$BETA_TAG'",
+              "project_name": "senhub-agent"
+            }
+          ]' > dist/releases/releases.json
+          
       - name: Create and push beta tag
         run: |
           git config user.name "GitHub Actions Bot"
@@ -88,5 +107,7 @@ jobs:
           name: Beta Release ${{ env.BETA_TAG }}
           files: |
             dist/*.zip
+            dist/metadata.json
+            dist/releases/releases.json
           generate_release_notes: false
           prerelease: true
