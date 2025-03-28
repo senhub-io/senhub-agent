@@ -89,6 +89,10 @@ jobs:
           name: Release ${{ env.TAG }}
           files: |
             dist/*.zip
+            dist/senhub-agent_linux_amd64
+            dist/senhub-agent_windows_amd64.exe
+            dist/senhub-agent_darwin_amd64
+            dist/senhub-agent_darwin_arm64
             dist/metadata.json
             dist/releases/releases.json
           generate_release_notes: false
