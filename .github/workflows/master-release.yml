@@ -1,0 +1,73 @@
+name: Master Release
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - master
+
+jobs:
+  create_release:
+    # Only run when PR is merged, not when it's closed without merging
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          # Skip if tag contains beta
+          if [[ $LATEST_TAG == *"beta"* ]]; then
+            # Find the latest non-beta tag
+            LATEST_TAG=$(git tag -l --sort=-v:refname | grep -v "beta" | head -n 1)
+          fi
+          echo "Using tag: $LATEST_TAG"
+          echo "TAG=$LATEST_TAG" >> $GITHUB_ENV
+          
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22.0'
+          
+      - name: Build binaries manually
+        run: |
+          # Create dist directory
+          mkdir -p dist
+          
+          # Build for each platform
+          echo "Building for Linux amd64"
+          GOOS=linux GOARCH=amd64 go build -o dist/senhub-agent_linux_amd64 ./cmd/agent
+          
+          echo "Building for Windows amd64"
+          GOOS=windows GOARCH=amd64 go build -o dist/senhub-agent_windows_amd64.exe ./cmd/agent
+          
+          echo "Building for macOS amd64"
+          GOOS=darwin GOARCH=amd64 go build -o dist/senhub-agent_darwin_amd64 ./cmd/agent
+          
+          echo "Building for macOS arm64"
+          GOOS=darwin GOARCH=arm64 go build -o dist/senhub-agent_darwin_arm64 ./cmd/agent
+          
+          # ZIP the binaries
+          cd dist
+          zip senhub-agent_linux_amd64.zip senhub-agent_linux_amd64
+          zip senhub-agent_windows_amd64.zip senhub-agent_windows_amd64.exe
+          zip senhub-agent_darwin_amd64.zip senhub-agent_darwin_amd64
+          zip senhub-agent_darwin_arm64.zip senhub-agent_darwin_arm64
+          cd ..
+          
+          # List the contents of dist
+          echo "Contents of dist directory:"
+          ls -la dist
+          
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Release ${{ env.TAG }}
+          files: |
+            dist/*.zip
+          generate_release_notes: false
