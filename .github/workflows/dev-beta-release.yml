@@ -92,11 +92,13 @@ jobs:
           echo "Contents of dist directory:"
           ls -la dist
           
+
           # Test version info in binaries
           echo "Testing version info in Linux binary:"
           chmod +x dist/senhub-agent_linux_amd64
           dist/senhub-agent_linux_amd64 version
           
+
           # Create metadata.json
           echo "Creating metadata.json"
           CURRENT_COMMIT=$(git rev-parse HEAD)
