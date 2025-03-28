@@ -5,6 +5,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/event" // Import the new event probe package
 	"senhub-agent.go/internal/agent/probes/gateway"
 	"senhub-agent.go/internal/agent/probes/host"
+	"senhub-agent.go/internal/agent/probes/redfish" // Import the redfish probe package
 	"senhub-agent.go/internal/agent/probes/syslog"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/probes/webapp"
@@ -29,6 +30,7 @@ type ProbeConstructor func(map[string]interface{}, *logger.Logger) (types.Probe,
 // - logicaldisk: Monitors disk space and IO
 // - syslog: Collects system logs
 // - event: Collects custom events via HTTP
+// - redfish: Monitors hardware via Redfish API
 var probeConstructors = map[string]ProbeConstructor{
 	"load_webapp":          webapp.NewLoadWebAppProbe,
 	"ping_webapp":          webapp.NewPingWebAppProbe,
@@ -40,4 +42,5 @@ var probeConstructors = map[string]ProbeConstructor{
 	"logicaldisk":          host.NewLogicalDiskProbe,
 	"syslog":               syslog.NewSyslogProbe,
 	"event":                event.NewEventProbe,
+	"redfish":              redfish.NewRedfishProbe,
 }

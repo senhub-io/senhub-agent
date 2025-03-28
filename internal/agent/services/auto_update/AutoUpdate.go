@@ -275,6 +275,14 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 		// There is an exact match
 		return expectedVersionMetadata.Version
 	}
+	
+	// Special handling for beta versions which don't parse as constraints
+	if isBetaVersion(expectedVersionStr) {
+		a.logger.Info().
+			Str("expected_version", expectedVersionStr).
+			Msg("Detected beta version as target")
+		return expectedVersionStr
+	}
 
 	constraint, err := version.NewConstraint(expectedVersionStr)
 	if err != nil {
@@ -342,8 +350,12 @@ func (a *autoUpdate) GetBinaryUrl(
 	registryUrl = a.GetRegistryUrl(registryUrl)
 
 	filename := a.getBinaryNameForOptions(os, arch)
-	return url.JoinPath(
-		registryUrl,
-		fmt.Sprintf(VERSION_BINARY_PATH, FormatVersionForUrl(version), filename),
-	)
+	formattedVersion := FormatVersionForUrl(version)
+	
+	// Always use the same download path pattern, regardless of beta or not
+	downloadPath := fmt.Sprintf(VERSION_BINARY_PATH, formattedVersion, filename)
+	
+	return url.JoinPath(registryUrl, downloadPath)
 }
+
+// Moved to VersionMetadata.go
