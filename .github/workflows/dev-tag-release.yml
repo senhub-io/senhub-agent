@@ -51,12 +51,25 @@ jobs:
             git tag $BETA_TAG
             echo "Created local beta tag: $BETA_TAG"
           fi
+      - name: Push Beta Tag
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git push origin ${{ env.BETA_TAG }}
+          
+      - name: Debug Variables
+        run: |
+          echo "TAG: ${{ env.TAG }}"
+          echo "BETA_TAG: ${{ env.BETA_TAG }}"
+          echo "Current directory contents:"
+          ls -la
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
           distribution: goreleaser
           version: latest
-          args: release --clean --skip-validate
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GOVERSION: ${{ env.GO_VERSION }}
