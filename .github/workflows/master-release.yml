@@ -62,6 +62,45 @@ jobs:
           echo "Contents of dist directory:"
           ls -la dist
           
+          # Create metadata.json
+          echo "Creating metadata.json"
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.%NZ")
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 $CURRENT_COMMIT^ 2>/dev/null || echo "0.0.0")
+          
+          echo '{
+            "project_name": "senhubagent",
+            "tag": "'$TAG'",
+            "previous_tag": "'$PREVIOUS_TAG'",
+            "version": "'$TAG'",
+            "commit": "'$CURRENT_COMMIT'",
+            "date": "'$CURRENT_DATE'",
+            "runtime": {
+              "goos": "linux",
+              "goarch": "amd64"
+            }
+          }' > dist/metadata.json
+          
+          # Create releases directory if it doesn't exist
+          mkdir -p dist/releases
+          
+          # Create or update releases.json
+          echo "Creating releases.json"
+          echo '[
+            {
+              "project_name": "senhubagent",
+              "tag": "'$TAG'",
+              "previous_tag": "'$PREVIOUS_TAG'",
+              "version": "'$TAG'",
+              "commit": "'$CURRENT_COMMIT'",
+              "date": "'$CURRENT_DATE'",
+              "runtime": {
+                "goos": "linux",
+                "goarch": "amd64"
+              }
+            }
+          ]' > dist/releases/releases.json
+          
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
@@ -70,4 +109,10 @@ jobs:
           name: Release ${{ env.TAG }}
           files: |
             dist/*.zip
+            dist/senhub-agent_linux_amd64
+            dist/senhub-agent_windows_amd64.exe
+            dist/senhub-agent_darwin_amd64
+            dist/senhub-agent_darwin_arm64
+            dist/metadata.json
+            dist/releases/releases.json
           generate_release_notes: false
