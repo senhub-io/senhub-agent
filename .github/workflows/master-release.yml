@@ -64,9 +64,21 @@ jobs:
           
           # Create metadata.json
           echo "Creating metadata.json"
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.%NZ")
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 $CURRENT_COMMIT^ 2>/dev/null || echo "0.0.0")
+          
           echo '{
+            "project_name": "senhubagent",
+            "tag": "'$TAG'",
+            "previous_tag": "'$PREVIOUS_TAG'",
             "version": "'$TAG'",
-            "project_name": "senhub-agent"
+            "commit": "'$CURRENT_COMMIT'",
+            "date": "'$CURRENT_DATE'",
+            "runtime": {
+              "goos": "linux",
+              "goarch": "amd64"
+            }
           }' > dist/metadata.json
           
           # Create releases directory if it doesn't exist
@@ -76,8 +88,16 @@ jobs:
           echo "Creating releases.json"
           echo '[
             {
+              "project_name": "senhubagent",
+              "tag": "'$TAG'",
+              "previous_tag": "'$PREVIOUS_TAG'",
               "version": "'$TAG'",
-              "project_name": "senhub-agent"
+              "commit": "'$CURRENT_COMMIT'",
+              "date": "'$CURRENT_DATE'",
+              "runtime": {
+                "goos": "linux",
+                "goarch": "amd64"
+              }
             }
           ]' > dist/releases/releases.json
           
