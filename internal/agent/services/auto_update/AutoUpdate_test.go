@@ -208,6 +208,121 @@ func TestAutoUpdate_getExpectedVersion_WithFailingServer(t *testing.T) {
 	}
 }
 
+func TestIsBetaVersion(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		expected bool
+	}{
+		{
+			name:     "Regular version",
+			version:  "1.0.0",
+			expected: false,
+		},
+		{
+			name:     "Beta version",
+			version:  "1.0.0-beta",
+			expected: true,
+		},
+		{
+			name:     "Short version",
+			version:  "1.0",
+			expected: false,
+		},
+		{
+			name:     "Empty string",
+			version:  "",
+			expected: false,
+		},
+		{
+			name:     "Other suffix",
+			version:  "1.0.0-alpha",
+			expected: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := isBetaVersion(tc.version)
+			if result != tc.expected {
+				t.Errorf("Expected %v, got %v", tc.expected, result)
+			}
+		})
+	}
+}
+
+func TestAutoUpdate_GetBinaryUrl(t *testing.T) {
+	testCases := []struct {
+		name           string
+		registryUrl    string
+		version        string
+		os             string
+		arch           string
+		expectedResult string
+	}{
+		{
+			name:           "Regular version",
+			registryUrl:    "https://registry.example.com",
+			version:        "1.0.0",
+			os:             "linux",
+			arch:           "amd64",
+			expectedResult: "https://registry.example.com/download/1.0.0/senhub-agent_linux_amd64",
+		},
+		{
+			name:           "Beta version",
+			registryUrl:    "https://registry.example.com",
+			version:        "1.0.0-beta",
+			os:             "linux",
+			arch:           "amd64",
+			expectedResult: "https://registry.example.com/beta/1.0.0-beta/senhub-agent_linux_amd64",
+		},
+		{
+			name:           "Windows beta version",
+			registryUrl:    "https://registry.example.com",
+			version:        "1.0.0-beta",
+			os:             "windows",
+			arch:           "amd64",
+			expectedResult: "https://registry.example.com/beta/1.0.0-beta/senhub-agent_windows_amd64.exe",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := zerolog.New( /*os.Stderr*/ nil)
+			remoteConfig := configuration.NewMockRemoteConfiguration(
+				"http://localhost:8000", "")
+
+			httpClient := httpretry.NewDefaultClient()
+			au := &autoUpdate{
+				remoteConfig: remoteConfig,
+				logger:       &logger,
+				httpClient:   httpClient,
+			}
+			
+			// We need to monkey patch the runtime functions for testing
+			origGOOS := runtime.GOOS
+			origGOARCH := runtime.GOARCH
+			
+			// Override for testing
+			runtime.GOOS = tc.os
+			runtime.GOARCH = tc.arch
+			
+			result, err := au.GetBinaryUrl(tc.registryUrl, tc.version)
+			
+			// Restore original values
+			runtime.GOOS = origGOOS 
+			runtime.GOARCH = origGOARCH
+			
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+			if result != tc.expectedResult {
+				t.Errorf("Expected %s, got %s", tc.expectedResult, result)
+			}
+		})
+	}
+}
+
 func TestAutoUpdate_GetBinaryName(t *testing.T) {
 	testCases := []struct {
 		name           string

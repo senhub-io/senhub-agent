@@ -342,8 +342,19 @@ func (a *autoUpdate) GetBinaryUrl(
 	registryUrl = a.GetRegistryUrl(registryUrl)
 
 	filename := a.getBinaryNameForOptions(os, arch)
-	return url.JoinPath(
-		registryUrl,
-		fmt.Sprintf(VERSION_BINARY_PATH, FormatVersionForUrl(version), filename),
-	)
+	formattedVersion := FormatVersionForUrl(version)
+	
+	// Check if this is a beta version
+	var downloadPath string
+	if isBetaVersion(version) {
+		// For beta versions, use /beta/version/filename path
+		downloadPath = fmt.Sprintf("/beta/%s/%s", formattedVersion, filename)
+	} else {
+		// For regular versions, use normal path
+		downloadPath = fmt.Sprintf(VERSION_BINARY_PATH, formattedVersion, filename)
+	}
+	
+	return url.JoinPath(registryUrl, downloadPath)
 }
+
+// Moved to VersionMetadata.go
