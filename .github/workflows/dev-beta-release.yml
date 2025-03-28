@@ -1,0 +1,92 @@
+name: Dev Beta Release
+on:
+  push:
+    tags:
+      - '*.*.*'
+
+jobs:
+  create_beta_release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Check if tag is on dev branch
+        id: check_branch
+        run: |
+          git fetch --all
+          TAG_COMMIT=$(git rev-list -n 1 ${{ github.ref_name }})
+          echo "Tag commit: $TAG_COMMIT"
+          DEV_BRANCH=$(git branch -r --contains $TAG_COMMIT | grep "origin/dev" || echo "")
+          if [[ -n "$DEV_BRANCH" ]]; then
+            echo "Tag is on dev branch, proceeding with beta release"
+          else
+            echo "Tag is not on dev branch, skipping"
+            exit 1
+          fi
+          
+      - name: Get tag version
+        id: get_version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          BETA_TAG="${TAG}-beta"
+          echo "Original tag: $TAG"
+          echo "Beta tag: $BETA_TAG"
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "BETA_TAG=$BETA_TAG" >> $GITHUB_ENV
+          
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22.0'
+          
+      - name: Build binaries manually
+        run: |
+          # Create dist directory
+          mkdir -p dist
+          
+          # Build for each platform
+          echo "Building for Linux amd64"
+          GOOS=linux GOARCH=amd64 go build -o dist/senhub-agent_linux_amd64 ./cmd/agent
+          
+          echo "Building for Windows amd64"
+          GOOS=windows GOARCH=amd64 go build -o dist/senhub-agent_windows_amd64.exe ./cmd/agent
+          
+          echo "Building for macOS amd64"
+          GOOS=darwin GOARCH=amd64 go build -o dist/senhub-agent_darwin_amd64 ./cmd/agent
+          
+          echo "Building for macOS arm64"
+          GOOS=darwin GOARCH=arm64 go build -o dist/senhub-agent_darwin_arm64 ./cmd/agent
+          
+          # ZIP the binaries
+          cd dist
+          zip senhub-agent_linux_amd64.zip senhub-agent_linux_amd64
+          zip senhub-agent_windows_amd64.zip senhub-agent_windows_amd64.exe
+          zip senhub-agent_darwin_amd64.zip senhub-agent_darwin_amd64
+          zip senhub-agent_darwin_arm64.zip senhub-agent_darwin_arm64
+          cd ..
+          
+          # List the contents of dist
+          echo "Contents of dist directory:"
+          ls -la dist
+          
+      - name: Create and push beta tag
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          
+          # Create the beta tag and push it
+          git tag ${{ env.BETA_TAG }}
+          git push origin ${{ env.BETA_TAG }}
+          
+      - name: Create Beta Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.BETA_TAG }}
+          name: Beta Release ${{ env.BETA_TAG }}
+          files: |
+            dist/*.zip
+          generate_release_notes: false
+          prerelease: true

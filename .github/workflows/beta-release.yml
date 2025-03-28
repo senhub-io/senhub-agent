@@ -2,6 +2,8 @@ name: Beta Release
 on:
   push:
     branches: [ dev ]
+    tags-ignore:
+      - '*'
 
 permissions:
   contents: write
@@ -23,27 +25,24 @@ jobs:
         run: |
           GO_VERSION=$(go version | cut -d' ' -f3)
           echo "GO_VERSION=$GO_VERSION" >> $GITHUB_ENV
-      - name: Get Next Beta Version
-        id: get_next_version
+      - name: Get Version from Package
+        id: get_version
         run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
-          MAJOR=$(echo $LAST_TAG | cut -d. -f1 | sed 's/v//g')
-          MINOR=$(echo $LAST_TAG | cut -d. -f2)
-          PATCH=$(echo $LAST_TAG | cut -d. -f3)
-          NEXT_PATCH=$((PATCH + 1))
-          NEW_TAG="${MAJOR}.${MINOR}.${NEXT_PATCH}-beta"
-          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
-          echo "new_version=$NEW_TAG" >> $GITHUB_OUTPUT
-      - name: Create Tag
+          # Get the version directly from the git describe command
+          CURRENT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          echo "Using existing tag: $CURRENT_TAG"
+          echo "CURRENT_TAG=$CURRENT_TAG" >> $GITHUB_ENV
+          echo "beta_tag=${CURRENT_TAG}-beta" >> $GITHUB_ENV
+      - name: Create local beta tag
         run: |
-          git tag ${{ env.NEW_TAG }}
-          git push origin ${{ env.NEW_TAG }}
+          git tag ${{ env.beta_tag }}
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
           distribution: goreleaser
           version: latest
-          args: release --clean
+          args: release --clean --skip-validate
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GOVERSION: ${{ env.GO_VERSION }}
@@ -51,8 +50,8 @@ jobs:
         if: success()
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ env.NEW_TAG }}
-          name: Beta Release ${{ env.NEW_TAG }}
+          tag_name: ${{ env.beta_tag }}
+          name: Beta Release ${{ env.beta_tag }}
           files: |
             dist/senhub-agent_linux_*
             dist/senhub-agent_windows_*
