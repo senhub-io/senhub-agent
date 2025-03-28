@@ -147,9 +147,14 @@ jobs:
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
           
-          # Create the beta tag and push it
-          git tag ${{ env.BETA_TAG }}
-          git push origin ${{ env.BETA_TAG }}
+          # Vérifier si le tag existe déjà
+          if ! git tag -l | grep -q "^${{ env.BETA_TAG }}$"; then
+            # Create the beta tag and push it
+            git tag ${{ env.BETA_TAG }}
+            git push origin ${{ env.BETA_TAG }}
+          else
+            echo "Le tag ${{ env.BETA_TAG }} existe déjà, on l'utilise directement"
+          fi
           
       - name: Create Beta Release
         id: create_release
