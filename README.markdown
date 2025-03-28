@@ -1,6 +1,8 @@
 # SenHub Agent
 
-SenHub Agent is a monitoring and observability agent that collects metrics and events from various sources and sends them to multiple destinations. It's designed to be extensible, configurable, and efficient.
+SenHub Agent is a powerful monitoring and observability agent that collects metrics and events from various sources and sends them to multiple destinations. It's designed to be extensible, configurable, and efficient.
+
+[![Build Status](https://github.com/senhub-io/senhubagent/actions/workflows/go-test.yml/badge.svg)](https://github.com/senhub-io/senhubagent/actions/workflows/go-test.yml)
 
 ## Installation
 
