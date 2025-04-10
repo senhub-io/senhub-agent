@@ -95,6 +95,17 @@ Here's a sample configuration:
     
     { "name": "syslog", "params": { "port": 514, "protocol": "udp" } },
     { "name": "event", "params": {} },
+    { 
+      "name": "systemlogs",
+      "params": {
+        "interval": 60,
+        "max_events": 100,
+        "windows": {
+          "channels": ["Application", "System", "Security"],
+          "levels": ["Critical", "Error", "Warning"]
+        }
+      }
+    },
     
     { 
       "name": "redfish", 
@@ -247,6 +258,37 @@ Measures detailed web application loading performance metrics. Multiple instance
   - `total_time`: Total page load time in milliseconds
 
 ### Event Collection
+
+#### SystemLogs Probe
+Collects system logs from the appropriate platform-specific source (Windows Event Log, systemd journal, or Apple System Log).
+
+- **Configuration**
+  ```json
+  { "name": "systemlogs", "params": {} }
+  ```
+- **Optional Parameters**
+  - `sources`: Array of log sources to collect from (auto-detected if not specified)
+  - `max_events`: Maximum number of events to collect per interval (default: 100)
+  - `interval`: Collection interval in seconds (default: 60)
+  - `filter`: Optional filter expression for events
+  - **Windows-specific settings**:
+    ```json
+    "windows": {
+      "channels": ["Application", "System", "Security"],
+      "event_ids": [1000, 1001],
+      "levels": ["Critical", "Error", "Warning"]
+    }
+    ```
+  - **Linux-specific settings**:
+    ```json
+    "journald": {
+      "units": ["systemd", "ssh"],
+      "priority": ["emerg", "alert", "crit", "err"]
+    }
+    ```
+- **Events**
+  - System log events with source, ID, level, message, and timestamp
+  - Platform-specific metadata
 
 #### Syslog Probe
 Collects system logs via Syslog protocol.
