@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -271,10 +272,26 @@ func (p *SystemLogsProbe) processEvent(event SystemLogEvent) data_store.DataPoin
 	// Map severity levels to standard format
 	severity := mapToStandardSeverity(event.Level)
 	
-	// Get hostname from metadata or use source if not available
-	hostname := event.Metadata["hostname"]
-	if hostname == "" {
-		hostname = event.Source
+	// Get system host information
+	hostTags, err := common.GetHostTags()
+	var hostname string
+	
+	if err != nil {
+		// Fallback if we can't get real hostname
+		p.logger.Error().Err(err).Msg("Failed to get host information")
+		// Try metadata, then source as last resort
+		hostname = event.Metadata["hostname"]
+		if hostname == "" {
+			hostname = event.Source
+		}
+	} else {
+		// Find the hostname from host tags
+		for _, tag := range hostTags {
+			if tag.Key == "host" {
+				hostname = tag.Value
+				break
+			}
+		}
 	}
 	
 	// Create standard set of tags with required fields for event strategy
@@ -285,9 +302,9 @@ func (p *SystemLogsProbe) processEvent(event SystemLogEvent) data_store.DataPoin
 		{Key: "message", Value: event.Message, Private: false},
 		
 		// Additional fields specific to system logs
-		{Key: "source", Value: event.Source, Private: false},
-		{Key: "id", Value: event.ID, Private: false},
-		{Key: "level", Value: event.Level, Private: false},
+		{Key: "event_source", Value: event.Source, Private: false},
+		{Key: "event_id", Value: event.ID, Private: false},
+		{Key: "event_level", Value: event.Level, Private: false},
 	}
 
 	// Add any additional metadata as tags
