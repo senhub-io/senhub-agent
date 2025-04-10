@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -262,16 +263,34 @@ func (p *SystemLogsProbe) OnShutdown(ctx context.Context) error {
 
 // processEvent converts a system log event to a DataPoint
 func (p *SystemLogsProbe) processEvent(event SystemLogEvent) data_store.DataPoint {
-	// Create standard set of tags
+	// Map severity levels to standard format
+	severity := mapToStandardSeverity(event.Level)
+	
+	// Get hostname from metadata or use source if not available
+	hostname := event.Metadata["hostname"]
+	if hostname == "" {
+		hostname = event.Source
+	}
+	
+	// Create standard set of tags with required fields for event strategy
 	eventTags := []tags.Tag{
+		// Required fields for event strategy
+		{Key: "host", Value: hostname, Private: false},
+		{Key: "severity", Value: severity, Private: false},
+		{Key: "message", Value: event.Message, Private: false},
+		
+		// Additional fields specific to system logs
 		{Key: "source", Value: event.Source, Private: false},
 		{Key: "id", Value: event.ID, Private: false},
 		{Key: "level", Value: event.Level, Private: false},
-		{Key: "message", Value: event.Message, Private: false},
 	}
 
 	// Add any additional metadata as tags
 	for key, value := range event.Metadata {
+		// Skip hostname if already added as host
+		if key == "hostname" {
+			continue
+		}
 		eventTags = append(eventTags, tags.Tag{
 			Key:     key,
 			Value:   value,
@@ -281,6 +300,8 @@ func (p *SystemLogsProbe) processEvent(event SystemLogEvent) data_store.DataPoin
 
 	p.logger.Debug().
 		Time("timestamp", event.Timestamp).
+		Str("host", hostname).
+		Str("severity", severity).
 		Str("source", event.Source).
 		Str("id", event.ID).
 		Str("level", event.Level).
@@ -292,6 +313,49 @@ func (p *SystemLogsProbe) processEvent(event SystemLogEvent) data_store.DataPoin
 		Value:     1.0, // Event count is always 1
 		Tags:      eventTags,
 	}
+}
+
+// mapToStandardSeverity converts various severity/level formats to standard syslog severity
+func mapToStandardSeverity(level string) string {
+	// Normalize level to lowercase for case-insensitive comparison
+	levelLower := strings.ToLower(level)
+	
+	// Map Windows event levels to syslog severity
+	switch levelLower {
+	case "critical":
+		return "2" // Critical
+	case "error":
+		return "3" // Error
+	case "warning":
+		return "4" // Warning
+	case "information", "info":
+		return "6" // Informational
+	case "verbose", "debug":
+		return "7" // Debug
+	}
+	
+	// Map Linux/journald priorities if they match pattern
+	switch levelLower {
+	case "emerg", "emergency":
+		return "0" // Emergency
+	case "alert":
+		return "1" // Alert
+	case "crit":
+		return "2" // Critical
+	case "err":
+		return "3" // Error
+	case "warning", "warn":
+		return "4" // Warning
+	case "notice":
+		return "5" // Notice
+	case "info":
+		return "6" // Informational
+	case "debug":
+		return "7" // Debug
+	}
+	
+	// Default to Notice if unknown
+	return "5"
 }
 
 // String returns a string representation of the SystemLogsProbe
