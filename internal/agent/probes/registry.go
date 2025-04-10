@@ -3,6 +3,7 @@ package probes
 
 import (
 	"senhub-agent.go/internal/agent/probes/event" // Import the new event probe package
+	"senhub-agent.go/internal/agent/probes/event/winevents" // Import the Windows events probe package
 	"senhub-agent.go/internal/agent/probes/gateway"
 	"senhub-agent.go/internal/agent/probes/host"
 	"senhub-agent.go/internal/agent/probes/redfish" // Import the redfish probe package
@@ -30,6 +31,7 @@ type ProbeConstructor func(map[string]interface{}, *logger.Logger) (types.Probe,
 // - logicaldisk: Monitors disk space and IO
 // - syslog: Collects system logs
 // - event: Collects custom events via HTTP
+// - winevents: Collects Windows Event Log entries
 // - redfish: Monitors hardware via Redfish API
 var probeConstructors = map[string]ProbeConstructor{
 	"load_webapp":          webapp.NewLoadWebAppProbe,
@@ -42,5 +44,6 @@ var probeConstructors = map[string]ProbeConstructor{
 	"logicaldisk":          host.NewLogicalDiskProbe,
 	"syslog":               syslog.NewSyslogProbe,
 	"event":                event.NewEventProbe,
+	"winevents":            winevents.NewWinEventProbe,
 	"redfish":              redfish.NewRedfishProbe,
 }
