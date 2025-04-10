@@ -220,6 +220,11 @@ func (p *SystemLogsProbe) GetName() string {
 	return "systemlogs"
 }
 
+// GetTargetStrategies returns the target strategies for the SystemLogsProbe
+func (p *SystemLogsProbe) GetTargetStrategies() []string {
+	return []string{"event"}
+}
+
 // ShouldStart indicates whether the SystemLogsProbe should start
 func (p *SystemLogsProbe) ShouldStart() bool {
 	// Check if we have any sources that can be collected on this OS
