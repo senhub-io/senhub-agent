@@ -337,7 +337,7 @@ func (m *ModernAPI) SubscribeToEvents(ctx context.Context, channel string, cp *C
 		}
 
 		// Create event for signaling
-		signalEvent, err := m.createEvent()
+		signalEvent, err := m.createEventObject()
 		if err != nil {
 			errChan <- fmt.Errorf("failed to create event: %w", err)
 			return
@@ -351,10 +351,10 @@ func (m *ModernAPI) SubscribeToEvents(ctx context.Context, channel string, cp *C
 			return
 		}
 
-		var subscription windows.Handle
+		var subsHandle uintptr
 		if bookmarkHandle != 0 {
 			// Subscribe with bookmark
-			subscription, _, err = procEvtSubscribe.Call(
+			subsHandle, _, _ = procEvtSubscribe.Call(
 				0, // Session (0 = local computer)
 				uintptr(signalEvent),
 				uintptr(unsafe.Pointer(channelPtr)),
@@ -366,7 +366,7 @@ func (m *ModernAPI) SubscribeToEvents(ctx context.Context, channel string, cp *C
 			)
 		} else {
 			// Subscribe without bookmark
-			subscription, _, err = procEvtSubscribe.Call(
+			subsHandle, _, _ = procEvtSubscribe.Call(
 				0, // Session (0 = local computer)
 				uintptr(signalEvent),
 				uintptr(unsafe.Pointer(channelPtr)),
@@ -378,7 +378,12 @@ func (m *ModernAPI) SubscribeToEvents(ctx context.Context, channel string, cp *C
 			)
 		}
 
-		if subscription == 0 {
+		if subsHandle == 0 {
+			errChan <- fmt.Errorf("failed to subscribe to events")
+			return
+		}
+		
+		subscription := windows.Handle(subsHandle)
 			errChan <- fmt.Errorf("failed to subscribe to events: %v", err)
 			return
 		}
@@ -480,8 +485,8 @@ func (m *ModernAPI) SubscribeToEvents(ctx context.Context, channel string, cp *C
 
 // Helper methods for event handling
 
-// createEvent creates a Windows event object for signaling
-func (m *ModernAPI) createEvent() (windows.Handle, error) {
+// createEventObject creates a Windows event object for signaling
+func (m *ModernAPI) createEventObject() (windows.Handle, error) {
 	h, _, err := procCreateEvent.Call(
 		0,                  // Security attributes (0 = default)
 		0,                  // Manual reset (0 = auto reset)
