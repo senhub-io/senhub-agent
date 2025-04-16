@@ -4,7 +4,7 @@ package eventlog
 
 import (
 	"context"
-	"time"
+	"fmt"
 	"golang.org/x/sys/windows"
 )
 
