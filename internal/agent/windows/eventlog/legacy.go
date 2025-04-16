@@ -5,7 +5,6 @@ package eventlog
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -469,27 +468,25 @@ func (l *LegacyAPI) parseEventLogRecord(buffer []byte, bytesRead uint32, channel
 }
 
 // formatEventMessage creates a message from parameter strings
-func (l *LegacyAPI) formatEventMessage(strings []string) string {
+func (l *LegacyAPI) formatEventMessage(params []string) string {
 	// Simple formatting - just join the strings
 	// A more sophisticated implementation would use FormatMessage API
 	// to properly insert the parameters into the message template
 	
-	if len(strings) == 0 {
+	if len(params) == 0 {
 		return ""
 	}
 	
-	if len(strings) == 1 {
-		return strings[0]
+	if len(params) == 1 {
+		return params[0]
 	}
 	
 	// Join all parameters
-	var sb strings.Builder
-	sb.WriteString(strings[0])
+	result := params[0]
 	
-	for i := 1; i < len(strings); i++ {
-		sb.WriteString(" - ")
-		sb.WriteString(strings[i])
+	for i := 1; i < len(params); i++ {
+		result += " - " + params[i]
 	}
 	
-	return sb.String()
+	return result
 }
