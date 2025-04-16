@@ -61,10 +61,3 @@ type Checkpoint struct {
 
 // SubscriptionFlags defines the subscription mode
 type SubscriptionFlags uint32
-
-// Subscription modes
-const (
-	EvtSubscribeToFutureEvents SubscriptionFlags = 1
-	EvtSubscribeStartAtOldestRecord SubscriptionFlags = 2
-	EvtSubscribeStartAfterBookmark SubscriptionFlags = 3
-)
