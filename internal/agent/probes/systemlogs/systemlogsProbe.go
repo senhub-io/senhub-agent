@@ -1,8 +1,8 @@
+// Package systemlogs provides system log collection functionality
 package systemlogs
 
 import (
 	"context"
-	"fmt"
 	"runtime"
 	"strings"
 	"time"
@@ -92,12 +92,19 @@ func NewSystemLogsProbe(config map[string]interface{}, logger *logger.Logger) (t
 		Any("config", parsedConfig).
 		Msg("Creating new SystemLogs probe")
 		
+	// Initialize with a lookback period to collect recent events
+	// This ensures we collect events that happened before the probe started
+	initialLookback := time.Hour * 24 // Default to 24 hour lookback for first collection
+	if lookbackVal, ok := config["initial_lookback"].(float64); ok {
+		initialLookback = time.Duration(lookbackVal) * time.Minute
+	}
+
 	return &SystemLogsProbe{
 		rawConfig:      config,
 		config:         parsedConfig,
 		logger:         &localLogger,
 		handles:        make(map[LogSource][]interface{}),
-		lastCollection: time.Now(),
+		lastCollection: time.Now().Add(-initialLookback),
 	}, nil
 }
 
@@ -144,7 +151,7 @@ func parseSystemLogsProbeConfig(config map[string]interface{}) (SystemLogsProbeC
 			}
 		}
 		if len(cfg.WindowsSettings.Channels) == 0 {
-			cfg.WindowsSettings.Channels = []string{"Application", "System"} // Default channels
+			cfg.WindowsSettings.Channels = []string{"Application", "System", "Security"} // Default channels
 		}
 
 		// Parse event IDs
@@ -165,7 +172,7 @@ func parseSystemLogsProbeConfig(config map[string]interface{}) (SystemLogsProbeC
 			}
 		}
 		if len(cfg.WindowsSettings.Levels) == 0 {
-			cfg.WindowsSettings.Levels = []string{"Critical", "Error", "Warning"} // Default levels
+			cfg.WindowsSettings.Levels = []string{"Critical", "Error", "Warning", "Information"} // Include Information level by default
 		}
 	}
 
@@ -259,6 +266,11 @@ func (p *SystemLogsProbe) Collect() ([]data_store.DataPoint, error) {
 
 // OnStart initializes the SystemLogsProbe
 func (p *SystemLogsProbe) OnStart(quitChannel chan struct{}) error {
+	// Log the time from which we'll start collecting events
+	p.logger.Info().
+		Time("collectingSince", p.lastCollection).
+		Msg("Starting systemlogs probe")
+		
 	return startImpl(p, quitChannel)
 }
 
@@ -267,29 +279,32 @@ func (p *SystemLogsProbe) OnShutdown(ctx context.Context) error {
 	return shutdownImpl(p, ctx)
 }
 
-// processEvent converts a system log event to a DataPoint
-func (p *SystemLogsProbe) processEvent(event SystemLogEvent) data_store.DataPoint {
+// ProcessEvent converts a system log event to a DataPoint (exported for testing)
+func (p *SystemLogsProbe) ProcessEvent(event SystemLogEvent) data_store.DataPoint {
 	// Map severity levels to standard format
 	severity := mapToStandardSeverity(event.Level)
 	
-	// Get system host information
-	hostTags, err := common.GetHostTags()
+	// Use computer name from Windows event when available, otherwise fall back to system hostname
 	var hostname string
 	
-	if err != nil {
-		// Fallback if we can't get real hostname
-		p.logger.Error().Err(err).Msg("Failed to get host information")
-		// Try metadata, then source as last resort
-		hostname = event.Metadata["hostname"]
-		if hostname == "" {
+	// First check if we have hostname in metadata (from Windows Computer field)
+	hostname = event.Metadata["hostname"]
+	
+	// If hostname is empty or "Unknown", fall back to system hostname
+	if hostname == "" || hostname == "Unknown" {
+		hostTags, err := common.GetHostTags()
+		if err != nil {
+			// Fallback if we can't get real hostname
+			p.logger.Error().Err(err).Msg("Failed to get host information")
+			// Use source as last resort
 			hostname = event.Source
-		}
-	} else {
-		// Find the hostname from host tags
-		for _, tag := range hostTags {
-			if tag.Key == "host" {
-				hostname = tag.Value
-				break
+		} else {
+			// Find the hostname from host tags
+			for _, tag := range hostTags {
+				if tag.Key == "host" {
+					hostname = tag.Value
+					break
+				}
 			}
 		}
 	}
@@ -320,19 +335,21 @@ func (p *SystemLogsProbe) processEvent(event SystemLogEvent) data_store.DataPoin
 		})
 	}
 
-	p.logger.Debug().
+	p.logger.Info().
 		Time("timestamp", event.Timestamp).
 		Str("host", hostname).
 		Str("severity", severity).
 		Str("source", event.Source).
 		Str("id", event.ID).
 		Str("level", event.Level).
-		Msg("Collected system log entry")
+		Str("message", event.Message).
+		Msg("System log entry ready for sending to server")
 
 	return data_store.DataPoint{
 		Name:      "systemlogs_event",
 		Timestamp: event.Timestamp,
-		Value:     1.0, // Event count is always 1
+		// No value needed for event data points
+		Value:     0,
 		Tags:      eventTags,
 	}
 }
@@ -382,5 +399,12 @@ func mapToStandardSeverity(level string) string {
 
 // String returns a string representation of the SystemLogsProbe
 func (p *SystemLogsProbe) String() string {
-	return fmt.Sprintf("SystemLogsProbe{sources=%v}", p.config.Sources)
+	sourcesStr := ""
+	for i, src := range p.config.Sources {
+		if i > 0 {
+			sourcesStr += ","
+		}
+		sourcesStr += string(src)
+	}
+	return "SystemLogsProbe{sources=[" + sourcesStr + "]}"
 }
