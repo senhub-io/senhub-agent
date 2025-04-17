@@ -682,169 +682,50 @@ func (m *ModernAPI) SubscribeToEvents(ctx context.Context, channel string, cp *C
 		defer close(eventChan)
 		defer close(errChan)
 		
-		// Create subscription handle
-		var flags uint32 = EvtSubscribeToFutureEvents
-		var bookmark uintptr = 0
-		
-		// Convert channel name to UTF16
-		channelUTF16, err := windows.UTF16PtrFromString(channel)
+		// Use simpler polling approach instead of subscription
+		// since subscriptions require more complex setup on Windows
+		handle, err := m.Open(channel)
 		if err != nil {
-			errChan <- fmt.Errorf("failed to convert channel name: %w", err)
+			errChan <- fmt.Errorf("failed to open channel '%s': %w", channel, err)
 			return
 		}
+		defer m.Close(handle)
 		
-		// Start subscription
-		handle, _, err := procEvtSubscribe.Call(
-			0, // Session (NULL = local)
-			0, // SignalEvent
-			uintptr(unsafe.Pointer(channelUTF16)),
-			0, // Query (NULL = all events)
-			bookmark,
-			0, // Context
-			0, // Callback
-			uintptr(flags),
-		)
-		
-		if handle == 0 {
-			errChan <- fmt.Errorf("failed to create subscription: %w", err)
-			return
-		}
-		defer procEvtClose.Call(handle)
-		
-		// Polling loop with ticker
+		// Use polling with ticker for real-time monitoring
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 		
-		// Buffer for event handles
-		const maxEventsPerPoll = 10
-		eventHandles := make([]windows.Handle, maxEventsPerPoll)
+		// Make a local copy of the checkpoint
+		localCP := &Checkpoint{
+			Channel:      cp.Channel,
+			Position:     cp.Position,
+			Timestamp:    cp.Timestamp,
+			LastModified: cp.LastModified,
+		}
 		
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				var eventsReturned uint32
-				
-				// Get events
-				ret, _, _ := procEvtNext.Call(
-					handle,
-					uintptr(maxEventsPerPoll),
-					uintptr(unsafe.Pointer(&eventHandles[0])),
-					0,
-					0,
-					uintptr(unsafe.Pointer(&eventsReturned)),
-				)
-				
-				if ret == 0 {
-					// Check if error or just no events
-					if windows.GetLastError() != windows.ERROR_NO_MORE_ITEMS {
-						continue
-					}
-				}
-				
-				if eventsReturned == 0 {
+				// Poll for new events
+				batch, err := m.Read(ctx, handle, 100, localCP)
+				if err != nil {
+					errChan <- fmt.Errorf("error reading events: %w", err)
 					continue
 				}
 				
-				// Process events
-				var events []Event
-				var highestPosition uint64
-				
-				for i := uint32(0); i < eventsReturned; i++ {
-					if eventHandles[i] == 0 {
-						continue
-					}
-					
-					// Extract event data
-					event := Event{
-						Channel: channel,
-					}
-					
-					// Get XML representation for complete data
-					xmlData, err := m.renderEventXml(eventHandles[i])
-					if err != nil {
-						fmt.Printf("Error rendering XML for event: %v\n", err)
-					} else {
-						// Basic XML parsing for key elements
-						event.RawXML = xmlData
-						
-						// Extract provider name
-						if provider := m.extractFromXml(xmlData, "Provider Name=\"", "\""); provider != "" {
-							event.ProviderName = provider
-						} else {
-							event.ProviderName = "Unknown Provider"
-						}
-						
-						// Extract Event ID
-						if eventID := m.extractFromXml(xmlData, "<EventID>", "</EventID>"); eventID != "" {
-							if id, err := strconv.ParseUint(eventID, 10, 32); err == nil {
-								event.EventID = uint32(id)
-							}
-						}
-						
-						// Extract Level
-						if levelStr := m.extractFromXml(xmlData, "<Level>", "</Level>"); levelStr != "" {
-							if level, err := strconv.ParseUint(levelStr, 10, 8); err == nil {
-								event.Level = EventLevel(level)
-							}
-						}
-						
-						// Extract Computer
-						if computer := m.extractFromXml(xmlData, "<Computer>", "</Computer>"); computer != "" {
-							event.Computer = computer
-						} else {
-							event.Computer = "localhost"
-						}
-						
-						// Extract Timestamp
-						if timeStr := m.extractFromXml(xmlData, "SystemTime=\"", "\""); timeStr != "" {
-							if t, err := time.Parse(time.RFC3339Nano, timeStr); err == nil {
-								event.TimeCreated = t
-							} else {
-								event.TimeCreated = time.Now()
-							}
-						} else {
-							event.TimeCreated = time.Now()
-						}
-						
-						// Extract Record ID
-						if recordIDStr := m.extractFromXml(xmlData, "<EventRecordID>", "</EventRecordID>"); recordIDStr != "" {
-							if recordID, err := strconv.ParseUint(recordIDStr, 10, 64); err == nil {
-								event.EventRecordID = recordID
-								
-								// Update highest position
-								if recordID > highestPosition {
-									highestPosition = recordID
-								}
-							}
-						}
-					}
-					
-					// Get formatted message
-					event.Message = m.getFormattedMessage(eventHandles[i], event.ProviderName)
-					
-					// Add to events
-					events = append(events, event)
-					
-					// Close event handle
-					procEvtClose.Call(uintptr(eventHandles[i]))
-				}
-				
-				// Send batch if we have events
-				if len(events) > 0 {
+				// Send batch if it has events
+				if len(batch.Events) > 0 {
 					// Update checkpoint
-					if highestPosition > 0 {
-						cp.Position = highestPosition
-					}
-					cp.Timestamp = time.Now()
-					cp.LastModified = time.Now()
+					localCP.Position = batch.Position
+					localCP.Timestamp = time.Now()
+					localCP.LastModified = time.Now()
 					
-					batch := &EventBatch{
-						Channel:  channel,
-						Events:   events,
-						Position: cp.Position,
-					}
+					// Update the original checkpoint
+					cp.Position = localCP.Position
+					cp.Timestamp = localCP.Timestamp
+					cp.LastModified = localCP.LastModified
 					
 					select {
 					case eventChan <- batch:
