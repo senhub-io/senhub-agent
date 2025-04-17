@@ -66,6 +66,27 @@ var (
 	procEvtSubscribe         = wevtapi.NewProc("EvtSubscribe")
 )
 
+// IsRecoverableWindowsError identifies Windows Event Log errors that can be recovered from
+func IsRecoverableWindowsError(errCode windows.Errno) bool {
+	// Common Windows errors that can be retried
+	switch errCode {
+	case windows.ERROR_INVALID_HANDLE:
+		return true
+	case windows.Errno(ERROR_RPC_S_SERVER_UNAVAILABLE):
+		return true
+	case windows.Errno(ERROR_RPC_S_CALL_CANCELLED):
+		return true
+	case windows.Errno(ERROR_EVT_QUERY_RESULT_STALE):
+		return true
+	case windows.ERROR_INVALID_PARAMETER:
+		return true
+	case windows.Errno(ERROR_EVT_PUBLISHER_DISABLED):
+		return true
+	default:
+		return false
+	}
+}
+
 // Open opens a channel for reading
 func (m *ModernAPI) Open(channel string) (windows.Handle, error) {
 	// Convert channel string to UTF16
@@ -82,7 +103,16 @@ func (m *ModernAPI) Open(channel string) (windows.Handle, error) {
 	)
 	
 	if handle == 0 {
-		return 0, fmt.Errorf("failed to open event log channel '%s': %w", channel, err)
+		// Get Windows error code and convert to Errno
+		errCode, ok := windows.GetLastError().(windows.Errno)
+		if !ok {
+			errCode = 0
+		}
+		
+		if IsRecoverableWindowsError(errCode) {
+			return 0, fmt.Errorf("recoverable error opening event log channel '%s': %v", channel, errCode)
+		}
+		return 0, fmt.Errorf("failed to open event log channel '%s': %v", channel, errCode)
 	}
 	
 	return windows.Handle(handle), nil
@@ -167,8 +197,13 @@ func (m *ModernAPI) Read(ctx context.Context, handle windows.Handle, maxEvents i
 	
 	// Check for empty result
 	if ret == 0 {
-		lastErr := windows.GetLastError()
-		if lastErr == windows.ERROR_NO_MORE_ITEMS {
+		// Get Windows error code and convert to Errno
+		errCode, ok := windows.GetLastError().(windows.Errno)
+		if !ok {
+			errCode = 0
+		}
+		
+		if errCode == windows.ERROR_NO_MORE_ITEMS {
 			// No events found, this is normal
 			return &EventBatch{
 				Channel:  cp.Channel,
@@ -176,8 +211,15 @@ func (m *ModernAPI) Read(ctx context.Context, handle windows.Handle, maxEvents i
 				Position: cp.Position,
 			}, nil
 		}
+		
+		// Check if this is a recoverable error
+		if IsRecoverableWindowsError(errCode) {
+			// For recoverable errors, return a specially marked error for retry
+			return nil, fmt.Errorf("recoverable error getting events (retry recommended): %v", errCode)
+		}
+		
 		// Only return error for problems other than empty results
-		return nil, fmt.Errorf("failed to get events: %v", lastErr)
+		return nil, fmt.Errorf("failed to get events: %v", errCode)
 	}
 	
 	// Process each event
@@ -751,8 +793,13 @@ func (m *ModernAPI) SubscribeToEvents(ctx context.Context, channel string, cp *C
 				// Poll for new events
 				batch, err := m.Read(ctx, handle, 100, localCP)
 				if err != nil {
-					// Only report errors that are not related to "no more data"
-					if !strings.Contains(err.Error(), "No more data is available") {
+					// Handle different types of errors appropriately
+					if strings.Contains(err.Error(), "recoverable error") {
+						// Log a warning and retry after a short delay
+						time.Sleep(500 * time.Millisecond)
+						continue
+					} else if !strings.Contains(err.Error(), "No more data is available") {
+						// Only report non-recoverable, non-empty errors
 						errChan <- fmt.Errorf("error reading events: %w", err)
 					}
 					continue
