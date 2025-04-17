@@ -626,123 +626,263 @@ func queryWindowsEvents(channel, query string, maxEvents int) ([]WindowsEvent, e
 
 // collectWindowsEvents collects Windows Event Log entries using the new eventlog package
 func collectWindowsEvents(p *SystemLogsProbe) ([]SystemLogEvent, error) {
-	p.logger.Debug().Msg("Collecting Windows Event logs")
+	// Wrap everything in a recovery function to prevent crashes from propagating
+	var events []SystemLogEvent
+	var collectionErr error
 	
-	events := []SystemLogEvent{}
-	
-	// Initialize EventLogManager if not already done
-	if eventLogManager == nil {
-		p.logger.Debug().Msg("Initializing Windows Event Log manager")
+	func() {
+		// Add panic recovery to prevent any Windows API crashes from bringing down the whole agent
+		defer func() {
+			if r := recover(); r != nil {
+				p.logger.Error().
+					Interface("panic", r).
+					Msg("Recovered from panic in Windows Event Log collection")
+				collectionErr = fmt.Errorf("panic in Windows Event Log collection: %v", r)
+			}
+		}()
 		
-		// Create a new manager with the configured channels
-		manager, err := eventlog.NewManager(
-			p.config.WindowsSettings.Channels,
-			eventlog.WithDebug(p.logger.GetLevel() == logger.DebugLevel),
-			eventlog.WithMaxEvents(p.config.MaxEvents),
-			eventlog.WithIncludeXML(false), // Don't include raw XML by default
-		)
+		p.logger.Debug().Msg("Collecting Windows Event logs")
 		
-		if err != nil {
-			p.logger.Error().Err(err).Msg("Failed to create Windows Event Log manager")
-			return nil, err
-		}
-		
-		// Initialize the manager
-		if err := manager.Init(); err != nil {
-			p.logger.Error().Err(err).Msg("Failed to initialize Windows Event Log manager")
-			return nil, err
-		}
-		
-		p.logger.Info().
-			Str("api", manager.GetCurrentAPI()).
-			Msg("Windows Event Log manager initialized")
-		
-		eventLogManager = manager
-	}
-	
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	
-	// For each configured channel
-	for _, channel := range p.config.WindowsSettings.Channels {
-		// Read events from this channel
-		p.logger.Debug().
-			Str("channel", channel).
-			Time("lastCollection", p.lastCollection).
-			Int("maxEvents", p.config.MaxEvents).
-			Msg("Reading Windows Event channel")
-		
-		// Build filter based on configuration
-		filterInfo := ""
-		if len(p.config.WindowsSettings.EventIDs) > 0 {
-			filterInfo += fmt.Sprintf(" EventIDs: %v", p.config.WindowsSettings.EventIDs)
-		}
-		if len(p.config.WindowsSettings.Levels) > 0 {
-			filterInfo += fmt.Sprintf(" Levels: %v", p.config.WindowsSettings.Levels)
-		}
-		
-		p.logger.Info().
-			Str("channel", channel).
-			Str("filters", filterInfo).
-			Time("since", p.lastCollection).
-			Msg("Windows Event Query details")
-		
-		// Read events
-		batch, err := eventLogManager.ReadEvents(ctx, channel, p.config.MaxEvents)
-		if err != nil {
-			p.logger.Error().Err(err).Str("channel", channel).Msg("Failed to read Windows events")
-			continue
-		}
-		
-		// Process events
-		if len(batch.Events) > 0 {
+		// Initialize EventLogManager if not already done
+		if eventLogManager == nil {
+			p.logger.Debug().Msg("Initializing Windows Event Log manager")
+			
+			// Create a new manager with the configured channels
+			manager, err := eventlog.NewManager(
+				p.config.WindowsSettings.Channels,
+				eventlog.WithDebug(false),
+				eventlog.WithMaxEvents(p.config.MaxEvents),
+				eventlog.WithIncludeXML(false), // Don't include raw XML by default
+			)
+			
+			if err != nil {
+				p.logger.Error().Err(err).Msg("Failed to create Windows Event Log manager")
+				collectionErr = err
+				return
+			}
+			
+			// Initialize the manager
+			if err := manager.Init(); err != nil {
+				p.logger.Error().Err(err).Msg("Failed to initialize Windows Event Log manager")
+				collectionErr = err
+				return
+			}
+			
 			p.logger.Info().
-				Str("channel", channel).
-				Int("count", len(batch.Events)).
-				Uint64("position", batch.Position).
-				Msg("Retrieved Windows events")
+				Str("api", manager.GetCurrentAPI()).
+				Msg("Windows Event Log manager initialized")
 			
-			// Log details of first few events
-			for i, evt := range batch.Events[:min(5, len(batch.Events))] { // Show at most 5 events
-				p.logger.Info().
-					Int("index", i).
-					Uint32("event_id", evt.EventID).
-					Str("provider", evt.ProviderName).
-					Stringer("level", evt.Level).
-					Time("timestamp", evt.TimeCreated).
-					Msg("Event details")
-			}
-			
-			// Convert Windows events to generic system events
-			for _, evt := range batch.Events {
-				sysEvent := SystemLogEvent{
-					Source:    evt.ProviderName,
-					ID:        fmt.Sprintf("%d", evt.EventID),
-					Level:     GetEventLevelName(uint8(evt.Level)),
-					Message:   evt.Message,
-					Timestamp: evt.TimeCreated,
-					Metadata: map[string]string{
-						"channel":  evt.Channel,
-						"hostname": evt.Computer,
-					},
-				}
-				
-				// Add any additional metadata from event data
-				for key, value := range evt.Data {
-					// Skip metadata fields we've already added
-					if key != "channel" && key != "hostname" {
-						sysEvent.Metadata[key] = value
-					}
-				}
-				
-				events = append(events, sysEvent)
-			}
-		} else {
-			p.logger.Debug().
-				Str("channel", channel).
-				Msg("No new Windows events found")
+			eventLogManager = manager
 		}
+		
+		// Create context with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		
+		// For each configured channel - with timeout for overall operation
+		channelsDone := make(chan struct{})
+		
+		// Process channels in a separate goroutine that can be monitored
+		go func() {
+			defer close(channelsDone)
+			
+			for _, channel := range p.config.WindowsSettings.Channels {
+				// Check context cancellation frequently
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					// Continue processing
+				}
+				
+				// Read events from this channel - in a protected way
+				func(channel string) {
+					// Add another level of recovery for each channel
+					defer func() {
+						if r := recover(); r != nil {
+							p.logger.Error().
+								Str("channel", channel).
+								Interface("panic", r).
+								Msg("Recovered from panic processing Windows Event channel")
+						}
+					}()
+					
+					p.logger.Debug().
+						Str("channel", channel).
+						Time("lastCollection", p.lastCollection).
+						Int("maxEvents", p.config.MaxEvents).
+						Msg("Reading Windows Event channel")
+					
+					// Build filter based on configuration
+					filterInfo := ""
+					if len(p.config.WindowsSettings.EventIDs) > 0 {
+						filterInfo += fmt.Sprintf(" EventIDs: %v", p.config.WindowsSettings.EventIDs)
+					}
+					if len(p.config.WindowsSettings.Levels) > 0 {
+						filterInfo += fmt.Sprintf(" Levels: %v", p.config.WindowsSettings.Levels)
+					}
+					
+					p.logger.Info().
+						Str("channel", channel).
+						Str("filters", filterInfo).
+						Time("since", p.lastCollection).
+						Msg("Windows Event Query details")
+					
+					// Create a local context with timeout for just this channel read
+					channelCtx, channelCancel := context.WithTimeout(ctx, 10*time.Second)
+					defer channelCancel()
+					
+					// Read events with timeout protection
+					readDone := make(chan struct{})
+					var batch *eventlog.EventBatch
+					var err error
+					
+					go func() {
+						defer close(readDone)
+						batch, err = eventLogManager.ReadEvents(channelCtx, channel, p.config.MaxEvents)
+					}()
+					
+					// Wait for read to complete or timeout
+					select {
+					case <-readDone:
+						// Read completed normally
+					case <-channelCtx.Done():
+						p.logger.Warn().
+							Str("channel", channel).
+							Err(channelCtx.Err()).
+							Msg("Timeout reading Windows Event channel")
+						return
+					}
+					
+					// Handle errors
+					if err != nil {
+						p.logger.Error().
+							Err(err).
+							Str("channel", channel).
+							Msg("Failed to read Windows events")
+						return
+					}
+					
+					// Validate batch
+					if batch == nil {
+						p.logger.Warn().
+							Str("channel", channel).
+							Msg("Received nil batch from Windows Event manager")
+						return
+					}
+					
+					// Process events
+					if len(batch.Events) > 0 {
+						p.logger.Info().
+							Str("channel", channel).
+							Int("count", len(batch.Events)).
+							Uint64("position", batch.Position).
+							Msg("Retrieved Windows events")
+						
+						// Log details of first few events
+						for i, evt := range batch.Events[:min(5, len(batch.Events))] { // Show at most 5 events
+							p.logger.Info().
+								Int("index", i).
+								Uint32("event_id", evt.EventID).
+								Str("provider", evt.ProviderName).
+								Uint8("level", uint8(evt.Level)).
+								Time("timestamp", evt.TimeCreated).
+								Msg("Event details")
+						}
+						
+						// Convert Windows events to generic system events with filtering
+						for _, evt := range batch.Events {
+							// Apply event ID filter if configured
+							if len(p.config.WindowsSettings.EventIDs) > 0 {
+								found := false
+								for _, id := range p.config.WindowsSettings.EventIDs {
+									if int(evt.EventID) == id {
+										found = true
+										break
+									}
+								}
+								if !found {
+									continue
+								}
+							}
+							
+							// Apply level filter if configured
+							if len(p.config.WindowsSettings.Levels) > 0 {
+								levelName := GetEventLevelName(uint8(evt.Level))
+								found := false
+								for _, level := range p.config.WindowsSettings.Levels {
+									if levelName == level {
+										found = true
+										break
+									}
+								}
+								if !found {
+									continue
+								}
+							}
+							
+							// Create system event with basic validated fields
+							sysEvent := SystemLogEvent{
+								Source:    evt.ProviderName,
+								ID:        fmt.Sprintf("%d", evt.EventID),
+								Level:     GetEventLevelName(uint8(evt.Level)),
+								Message:   evt.Message,
+								Metadata:  make(map[string]string),
+							}
+							
+							// Set timestamp with validation
+							if !evt.TimeCreated.IsZero() {
+								sysEvent.Timestamp = evt.TimeCreated
+							} else {
+								sysEvent.Timestamp = time.Now()
+							}
+							
+							// Add validated metadata
+							if evt.Channel != "" {
+								sysEvent.Metadata["channel"] = evt.Channel
+							} else {
+								sysEvent.Metadata["channel"] = channel
+							}
+							
+							if evt.Computer != "" {
+								sysEvent.Metadata["hostname"] = evt.Computer
+							} else {
+								sysEvent.Metadata["hostname"] = "localhost"
+							}
+							
+							// Add any additional metadata from event data
+							if evt.Data != nil {
+								for key, value := range evt.Data {
+									// Skip metadata fields we've already added
+									if key != "channel" && key != "hostname" && key != "" && value != "" {
+										sysEvent.Metadata[key] = value
+									}
+								}
+							}
+							
+							events = append(events, sysEvent)
+						}
+					} else {
+						p.logger.Debug().
+							Str("channel", channel).
+							Msg("No new Windows events found")
+					}
+				}(channel)
+			}
+		}()
+		
+		// Wait for all channels to be processed or timeout
+		select {
+		case <-channelsDone:
+			p.logger.Debug().Msg("Finished processing all Windows Event channels")
+		case <-ctx.Done():
+			p.logger.Warn().Msg("Timeout processing Windows Event channels")
+		}
+	}()
+	
+	// Return results or error
+	if collectionErr != nil {
+		return events, collectionErr
 	}
 	
 	p.logger.Info().Int("count", len(events)).Msg("Collected Windows Event logs")
@@ -825,7 +965,7 @@ func startSystemLogSubscriptions(p *SystemLogsProbe, quitChannel chan struct{}) 
 		// Create a new manager with the configured channels
 		manager, err := eventlog.NewManager(
 			p.config.WindowsSettings.Channels,
-			eventlog.WithDebug(p.logger.GetLevel() == logger.DebugLevel),
+			eventlog.WithDebug(false),
 			eventlog.WithMaxEvents(p.config.MaxEvents),
 			eventlog.WithIncludeXML(false), // Don't include raw XML by default
 		)
