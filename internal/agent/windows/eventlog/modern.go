@@ -167,15 +167,17 @@ func (m *ModernAPI) Read(ctx context.Context, handle windows.Handle, maxEvents i
 	
 	// Check for empty result
 	if ret == 0 {
-		if windows.GetLastError() == windows.ERROR_NO_MORE_ITEMS {
-			// No events found
+		lastErr := windows.GetLastError()
+		if lastErr == windows.ERROR_NO_MORE_ITEMS {
+			// No events found, this is normal
 			return &EventBatch{
 				Channel:  cp.Channel,
 				Events:   []Event{},
 				Position: cp.Position,
 			}, nil
 		}
-		return nil, fmt.Errorf("failed to get events: %w", err)
+		// Only return error for problems other than empty results
+		return nil, fmt.Errorf("failed to get events: %v", lastErr)
 	}
 	
 	// Process each event
@@ -711,7 +713,10 @@ func (m *ModernAPI) SubscribeToEvents(ctx context.Context, channel string, cp *C
 				// Poll for new events
 				batch, err := m.Read(ctx, handle, 100, localCP)
 				if err != nil {
-					errChan <- fmt.Errorf("error reading events: %w", err)
+					// Only report errors that are not related to "no more data"
+					if !strings.Contains(err.Error(), "No more data is available") {
+						errChan <- fmt.Errorf("error reading events: %w", err)
+					}
 					continue
 				}
 				
