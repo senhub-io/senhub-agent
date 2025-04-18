@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -19,6 +20,7 @@ import (
 type ModernAPI struct {
 	includeXML bool
 	mutex      sync.Mutex
+	cancelled  int32      // Atomic flag to indicate if operation is cancelled
 }
 
 // Windows constant definitions
@@ -137,13 +139,15 @@ func (m *ModernAPI) Close(handle windows.Handle) error {
 	return nil
 }
 
+// Maximum XML size to prevent memory issues
+const MaxEventXmlSize = 1024 * 1024 // 1MB
+
 // Read reads events from a channel
 func (m *ModernAPI) Read(ctx context.Context, handle windows.Handle, maxEvents int, cp *Checkpoint) (*EventBatch, error) {
-	// Mutex protection to ensure thread safety
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+	// Reset the cancelled flag before starting
+	atomic.StoreInt32(&m.cancelled, 0)
 	
-	// First, create a safety channel for context timeout
+	// Create a safety channel for context timeout
 	done := make(chan struct{})
 	defer close(done)
 	
@@ -151,14 +155,16 @@ func (m *ModernAPI) Read(ctx context.Context, handle windows.Handle, maxEvents i
 	go func() {
 		select {
 		case <-ctx.Done():
-			// Context was cancelled, signal to unblock operations
-			m.mutex.Unlock() // Temporary unlock to prevent deadlock
-			runtime.Gosched() // Allow other goroutines to run
-			m.mutex.Lock()    // Reacquire lock
+			// Context was cancelled, set the atomic flag
+			atomic.StoreInt32(&m.cancelled, 1)
 		case <-done:
 			// Function completed normally
 		}
 	}()
+	
+	// Mutex protection to ensure thread safety
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 	
 	// Check for invalid handle
 	if handle == 0 {
@@ -193,7 +199,7 @@ func (m *ModernAPI) Read(ctx context.Context, handle windows.Handle, maxEvents i
 		var eventsReturned uint32
 		
 		// Call EvtNext to get event handles
-		ret, _, err := procEvtNext.Call(
+		ret, _, _ := procEvtNext.Call(
 			uintptr(handle),
 			uintptr(maxEvents),
 			uintptr(unsafe.Pointer(&eventHandles[0])),
@@ -234,9 +240,8 @@ func (m *ModernAPI) Read(ctx context.Context, handle windows.Handle, maxEvents i
 		
 		// Process each event
 		for i := uint32(0); i < eventsReturned; i++ {
-			// Check for context cancellation
-			select {
-			case <-ctx.Done():
+			// Check for context cancellation using the atomic flag
+			if atomic.LoadInt32(&m.cancelled) == 1 {
 				readErr = ctx.Err()
 				// Close all event handles
 				for j := uint32(0); j < eventsReturned; j++ {
@@ -245,8 +250,6 @@ func (m *ModernAPI) Read(ctx context.Context, handle windows.Handle, maxEvents i
 					}
 				}
 				return
-			default:
-				// Continue processing
 			}
 			
 			// Skip invalid handles
@@ -418,15 +421,17 @@ func (m *ModernAPI) extractFromXml(xml, startMarker, endMarker string) string {
 	return xml[startIdx : startIdx+endIdx]
 }
 
-// Maximum XML size to prevent memory issues
-const MaxEventXmlSize = 1024 * 1024 // 1MB
-
 // renderEventXml gets the XML representation of an event
 // This implementation is based on the working code from winevent-agent
 func (m *ModernAPI) renderEventXml(eventHandle windows.Handle) (string, error) {
 	// Protection against invalid handle
 	if eventHandle == 0 {
 		return "", fmt.Errorf("invalid event handle")
+	}
+	
+	// Check for cancellation first
+	if atomic.LoadInt32(&m.cancelled) == 1 {
+		return "", fmt.Errorf("operation cancelled")
 	}
 	
 	// Wrap the entire function in a recover to prevent crashes
@@ -485,7 +490,7 @@ func (m *ModernAPI) renderEventXml(eventHandle windows.Handle) (string, error) {
 				)
 				
 				// Capture error code
-				errCode = windows.GetLastError()
+				errCode, _ = windows.GetLastError().(windows.Errno)
 			}()
 			
 			// Wait for the operation to complete or timeout
@@ -555,14 +560,14 @@ func (m *ModernAPI) generateBasicEventXML(eventHandle windows.Handle) string {
 	// Get basic event properties directly
 	currentTime := time.Now().Format(time.RFC3339)
 	return fmt.Sprintf(`<Event>
-  <System>
+  <s>
     <Provider Name="Windows Event Log" />
     <EventID>0</EventID>
     <Level>4</Level>
     <TimeCreated SystemTime="%s" />
     <Computer>localhost</Computer>
     <Channel>System</Channel>
-  </System>
+  </s>
   <EventData>
     <Data>Event data unavailable - rendering failed</Data>
   </EventData>
@@ -1429,7 +1434,6 @@ func (m *ModernAPI) SubscribeToEvents(ctx context.Context, channel string, cp *C
 		// Add recovery to prevent panics from taking down the goroutine
 		defer func() {
 			if r := recover(); r != nil {
-				// Log the panic but don't crash the application
 				fmt.Printf("Recovered from panic in SubscribeToEvents: %v\n", r)
 			}
 		}()
@@ -1444,6 +1448,10 @@ func (m *ModernAPI) SubscribeToEvents(ctx context.Context, channel string, cp *C
 		
 		// Define batch size - smaller for more robust behavior
 		batchSize := 10 // Smaller batch size for better reliability
+		
+		// Create a context for this subscription that can be cancelled
+		subscriptionCtx, cancelSubscription := context.WithCancel(ctx)
+		defer cancelSubscription()
 		
 		// Poll for events with a ticker instead of using EvtSubscribe
 		// This is more reliable than using the Windows subscription API
@@ -1496,7 +1504,7 @@ func (m *ModernAPI) SubscribeToEvents(ctx context.Context, channel string, cp *C
 					}
 					
 					// Create a local context with timeout for this read operation
-					readCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+					readCtx, cancel := context.WithTimeout(subscriptionCtx, 2*time.Second)
 					defer cancel()
 					
 					// Read a batch of events with timeout protection
@@ -1522,15 +1530,19 @@ func (m *ModernAPI) SubscribeToEvents(ctx context.Context, channel string, cp *C
 						return
 					}
 					
-					// Send batch if it has events and isn't nil
-					if batch != nil && len(batch.Events) > 0 {
+					// Check if batch is valid
+					if batch == nil {
+						return
+					}
+					
+					// Send batch if it has events
+					if len(batch.Events) > 0 {
 						// Update checkpoint position
 						if batch.Position > 0 {
 							cp.Position = batch.Position
 						}
 						
-						// Try to send but don't block - use a separate goroutine with timeout
-						// to ensure we can't deadlock here
+						// Try to send but don't block - use a timeout to prevent deadlocks
 						select {
 						case eventChan <- batch:
 							// Successfully sent
