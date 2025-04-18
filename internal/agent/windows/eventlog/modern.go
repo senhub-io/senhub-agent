@@ -215,7 +215,8 @@ func (m *ModernAPI) Read(ctx context.Context, handle windows.Handle, maxEvents i
 				errCode = 0
 			}
 			
-			if errCode == windows.ERROR_NO_MORE_ITEMS {
+			// ERROR_SUCCESS (0) or ERROR_NO_MORE_ITEMS both indicate no events found, which is normal
+			if errCode == windows.ERROR_NO_MORE_ITEMS || errCode == 0 {
 				// No events found, this is normal
 				return
 			}
