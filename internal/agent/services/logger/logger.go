@@ -86,13 +86,29 @@ func setupDebugLogShipper(args *cliArgs.ParsedArgs) (io.Writer, error) {
 		config.BufferSize = args.DebugLogShipperBuffer
 	}
 
-	// Create custom headers with tags if provided
+	// Set tags if provided
 	if len(args.DebugLogShipperTags) > 0 {
-		if config.Headers == nil {
-			config.Headers = make(map[string]string)
+		config.Tags = args.DebugLogShipperTags
+		
+		// For VictoriaLogs, add agent_name, host_name, and env tags if not present
+		if _, ok := config.Tags["agent_name"]; !ok {
+			config.Tags["agent_name"] = "senhub-agent"
+		}
+		
+		if _, ok := config.Tags["host_name"]; !ok {
+			hostname, err := os.Hostname()
+			if err == nil && hostname != "" {
+				config.Tags["host_name"] = hostname
+			}
+		}
+		
+		if _, ok := config.Tags["env"]; !ok {
+			config.Tags["env"] = args.Env
 		}
 	}
 
+	log.Printf("Initializing debug log shipper to %s", args.DebugLogShipperUrl)
+	
 	// Initialize the debug log shipper
 	shipper, err := debugshipper.NewDebugLogShipper(config)
 	if err != nil {
