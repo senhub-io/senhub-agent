@@ -45,21 +45,27 @@ type UpdateSubcommandArgs struct {
 }
 
 type StartSubcommandArgs struct {
-	AuthenticationKey string `arg:"required,--authentication-key,env:SENHUB_KEY" help:"The authentication key for the agent"`
-	ServerUrl         string `arg:"--server-url,env:SENHUB_SERVER_URL" help:"The URL of senhub server to connect to"`
-	Verbose           bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
+	AuthenticationKey     string            `arg:"required,--authentication-key,env:SENHUB_KEY" help:"The authentication key for the agent"`
+	ServerUrl             string            `arg:"--server-url,env:SENHUB_SERVER_URL" help:"The URL of senhub server to connect to"`
+	Verbose               bool              `arg:"-v,--verbose" help:"Enable verbose logging"`
+	DebugLogShipperUrl    string            `arg:"--debug-log-shipper-url,env:SENHUB_DEBUG_LOG_SHIPPER_URL" help:"URL of remote endpoint for shipping debug logs"`
+	DebugLogShipperTags   map[string]string `arg:"--debug-log-shipper-tags,env:SENHUB_DEBUG_LOG_SHIPPER_TAGS" help:"Tags to add to debug log entries (format: key1=value1,key2=value2)"`
+	DebugLogShipperBuffer int               `arg:"--debug-log-shipper-buffer,env:SENHUB_DEBUG_LOG_SHIPPER_BUFFER" help:"Buffer size for debug log shipper"`
 }
 
 type ParsedArgs struct {
-	AuthenticationKey string
-	ServerUrl         string
-	UpdateRegistryUrl string
-	Verbose           bool
-	Env               string
-	Version           string
-	WantedVersion     string
-	CommitHash        string
-	DryRun            bool
+	AuthenticationKey     string
+	ServerUrl             string
+	UpdateRegistryUrl     string
+	Verbose               bool
+	Env                   string
+	Version               string
+	WantedVersion         string
+	CommitHash            string
+	DryRun                bool
+	DebugLogShipperUrl    string
+	DebugLogShipperTags   map[string]string
+	DebugLogShipperBuffer int
 }
 
 func GetVersionInfo() map[string]string {
@@ -140,12 +146,15 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 	}
 
 	return &ParsedArgs{
-		AuthenticationKey: args.AuthenticationKey,
-		ServerUrl:         serverUrl,
-		Verbose:           args.Verbose,
-		Env:               environment,
-		Version:           Version,
-		CommitHash:        CommitHash,
+		AuthenticationKey:     args.AuthenticationKey,
+		ServerUrl:             serverUrl,
+		Verbose:               args.Verbose,
+		Env:                   environment,
+		Version:               Version,
+		CommitHash:            CommitHash,
+		DebugLogShipperUrl:    args.DebugLogShipperUrl,
+		DebugLogShipperTags:   args.DebugLogShipperTags,
+		DebugLogShipperBuffer: args.DebugLogShipperBuffer,
 	}
 }
 
