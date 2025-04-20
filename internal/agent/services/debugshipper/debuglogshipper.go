@@ -1,6 +1,9 @@
 package debugshipper
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -15,6 +18,7 @@ type DebugLogShipper struct {
 	endpoint   string
 	httpClient *http.Client
 	headers    map[string]string
+	config     *Config
 
 	// Buffer management
 	buffer     []string
@@ -38,6 +42,12 @@ type Config struct {
 	FlushInterval time.Duration
 	Headers       map[string]string
 	Timeout       time.Duration
+	
+	// VictoriaLogs specific options
+	StreamField string   // Field to use as stream identifier (_stream_fields)
+	TimeField   string   // Field to use as timestamp (_time_field)
+	MsgField    string   // Field to use as message (_msg_field)
+	Tags        map[string]string // Additional tags to add to every log entry
 }
 
 // DefaultConfig returns a Config with sensible default values
@@ -45,8 +55,12 @@ func DefaultConfig() *Config {
 	return &Config{
 		BufferSize:    100,
 		FlushInterval: 10 * time.Second,
-		Headers:       map[string]string{"Content-Type": "application/json"},
+		Headers:       map[string]string{"Content-Type": "application/stream+json"},
 		Timeout:       30 * time.Second,
+		StreamField:   "stream",
+		TimeField:     "timestamp",
+		MsgField:      "message",
+		Tags:          map[string]string{},
 	}
 }
 
@@ -57,23 +71,34 @@ func NewDebugLogShipper(config *Config) (*DebugLogShipper, error) {
 	}
 
 	// Apply defaults for missing values
+	defaultConfig := DefaultConfig()
 	if config.BufferSize <= 0 {
-		config.BufferSize = DefaultConfig().BufferSize
+		config.BufferSize = defaultConfig.BufferSize
 	}
 	if config.FlushInterval <= 0 {
-		config.FlushInterval = DefaultConfig().FlushInterval
+		config.FlushInterval = defaultConfig.FlushInterval
 	}
 	if config.Timeout <= 0 {
-		config.Timeout = DefaultConfig().Timeout
+		config.Timeout = defaultConfig.Timeout
 	}
 	if config.Headers == nil {
-		config.Headers = DefaultConfig().Headers
+		config.Headers = defaultConfig.Headers
+	}
+	if config.StreamField == "" {
+		config.StreamField = defaultConfig.StreamField
+	}
+	if config.TimeField == "" {
+		config.TimeField = defaultConfig.TimeField
+	}
+	if config.MsgField == "" {
+		config.MsgField = defaultConfig.MsgField
 	}
 
 	shipper := &DebugLogShipper{
 		endpoint:      config.Endpoint,
 		httpClient:    &http.Client{Timeout: config.Timeout},
 		headers:       config.Headers,
+		config:        config,
 		buffer:        make([]string, 0, config.BufferSize),
 		bufferSize:    config.BufferSize,
 		flushInterval: config.FlushInterval,
@@ -98,10 +123,42 @@ func (s *DebugLogShipper) Write(p []byte) (n int, err error) {
 		return 0, ErrShipperClosed
 	}
 
-	logEntry := string(p)
+	// Try to parse the JSON log entry
+	var logEntry map[string]interface{}
+	if err := json.Unmarshal(p, &logEntry); err != nil {
+		// If not valid JSON, create a simple log entry with the raw message
+		logEntry = map[string]interface{}{
+			s.config.MsgField: string(p),
+			"timestamp": time.Now().UnixNano() / int64(time.Millisecond), // Use current time in milliseconds
+			"stream": "agent",
+		}
+	}
+	
+	// Add any configured tags
+	for k, v := range s.config.Tags {
+		logEntry[k] = v
+	}
+	
+	// Ensure stream field exists
+	if _, ok := logEntry[s.config.StreamField]; !ok {
+		logEntry[s.config.StreamField] = "agent"
+	}
+	
+	// Ensure timestamp field exists (use 0 to let VictoriaLogs use server time)
+	if _, ok := logEntry[s.config.TimeField]; !ok {
+		logEntry[s.config.TimeField] = "0"
+	}
+	
+	// Convert back to JSON string
+	jsonBytes, err := json.Marshal(logEntry)
+	if err != nil {
+		return 0, err
+	}
+	
+	jsonStr := string(jsonBytes)
 
 	s.bufferLock.Lock()
-	s.buffer = append(s.buffer, logEntry)
+	s.buffer = append(s.buffer, jsonStr)
 	shouldFlush := len(s.buffer) >= s.bufferSize
 	s.bufferLock.Unlock()
 
@@ -167,7 +224,47 @@ func (s *DebugLogShipper) flush() {
 
 // sendLogs sends the payload to the remote endpoint
 func (s *DebugLogShipper) sendLogs(payload string) error {
-	req, err := http.NewRequest("POST", s.endpoint, strings.NewReader(payload))
+	// Construct the VictoriaLogs JSON Stream API endpoint URL with query parameters
+	url := s.endpoint
+	
+	// If the endpoint doesn't end with "/jsonline", append it assuming it's VictoriaLogs
+	if !strings.HasSuffix(url, "/jsonline") && !strings.Contains(url, "/jsonline?") {
+		if strings.HasSuffix(url, "/") {
+			url += "insert/jsonline"
+		} else {
+			url += "/insert/jsonline"
+		}
+	}
+	
+	// Add VictoriaLogs specific query parameters if not already present
+	if strings.HasSuffix(url, "/jsonline") || strings.Contains(url, "/jsonline?") {
+		// Parse the URL to manipulate query parameters
+		parsedURL, err := http.NewRequest("POST", url, nil)
+		if err != nil {
+			return err
+		}
+		
+		// Get the current query values
+		q := parsedURL.URL.Query()
+		
+		// Only add parameters if they're not already set
+		if q.Get("_stream_fields") == "" && s.config.StreamField != "" {
+			q.Add("_stream_fields", s.config.StreamField)
+		}
+		if q.Get("_time_field") == "" && s.config.TimeField != "" {
+			q.Add("_time_field", s.config.TimeField)
+		}
+		if q.Get("_msg_field") == "" && s.config.MsgField != "" {
+			q.Add("_msg_field", s.config.MsgField)
+		}
+		
+		// Update the URL with new query parameters
+		parsedURL.URL.RawQuery = q.Encode()
+		url = parsedURL.URL.String()
+	}
+	
+	// Create the request
+	req, err := http.NewRequest("POST", url, strings.NewReader(payload))
 	if err != nil {
 		return err
 	}
@@ -177,6 +274,7 @@ func (s *DebugLogShipper) sendLogs(payload string) error {
 		req.Header.Set(key, value)
 	}
 
+	// Send the request
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return err
@@ -184,7 +282,12 @@ func (s *DebugLogShipper) sendLogs(payload string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
-		return ErrRemoteEndpointError
+		// Read the response body for error details
+		errorBody, _ := io.ReadAll(resp.Body)
+		if len(errorBody) > 0 {
+			return fmt.Errorf("%w: %s (Status: %d)", ErrRemoteEndpointError, string(errorBody), resp.StatusCode)
+		}
+		return fmt.Errorf("%w (Status: %d)", ErrRemoteEndpointError, resp.StatusCode)
 	}
 
 	return nil

@@ -52,9 +52,15 @@ The DebugLogShipper can be used with various log collection systems:
 
 ### VictoriaLogs
 
-For VictoriaLogs, use an endpoint like:
+For VictoriaLogs, the DebugLogShipper uses the JSON Stream API. Just specify the base URL and the shipper will automatically add the proper endpoint and query parameters:
+
 ```
-http://victorialogs:9428/api/v1/write
+http://victorialogs:9428
+```
+
+The shipper will convert this to:
+```
+http://victorialogs:9428/insert/jsonline?_stream_fields=stream&_time_field=timestamp&_msg_field=message
 ```
 
 ### Loki 
