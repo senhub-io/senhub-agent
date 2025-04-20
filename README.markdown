@@ -43,6 +43,19 @@ make build
 ./senhub-agent run --authentication-key <your_key> --server-url "https://your-server-url.com"
 ```
 
+### Debug Logging
+
+The agent supports sending debug logs to remote endpoints like VictoriaLogs, Loki, or Elasticsearch:
+
+```bash
+# Enable debug logging to a remote endpoint
+./senhub-agent start --authentication-key <your_key> \
+    --debug-log-shipper-url "http://logserver:9428/api/v1/write" \
+    --debug-log-shipper-tags "env=production,component=agent"
+```
+
+For more details on debug log shipping, see `internal/agent/services/debugshipper/README.md`.
+
 ### Build Environment
 
 The project can be built in `development` or `production` mode by setting the `ENV` variable:
@@ -100,9 +113,21 @@ Here's a sample configuration:
       "params": {
         "interval": 60,
         "max_events": 100,
+        "initial_lookback": 60,
+        "sources": ["windowsevents", "journald", "asl"],
         "windows": {
           "channels": ["Application", "System", "Security"],
+          "event_ids": [1000, 1001, 7036, 7040],
           "levels": ["Critical", "Error", "Warning"]
+        },
+        "journald": {
+          "units": ["systemd", "ssh"],
+          "priority": ["emerg", "alert", "crit", "err"],
+          "identifiers": ["sshd"]
+        },
+        "asl": {
+          "processes": ["com.apple.xpc.launchd"],
+          "levels": ["Emergency", "Alert", "Critical", "Error"]
         }
       }
     },
@@ -268,27 +293,91 @@ Collects system logs from the appropriate platform-specific source (Windows Even
   ```
 - **Optional Parameters**
   - `sources`: Array of log sources to collect from (auto-detected if not specified)
+    - Windows: `["windowsevents"]`
+    - Linux: `["journald"]`
+    - macOS: `["asl"]`
   - `max_events`: Maximum number of events to collect per interval (default: 100)
   - `interval`: Collection interval in seconds (default: 60)
   - `filter`: Optional filter expression for events
+  - `initial_lookback`: Initial lookback period in minutes for first collection (default: 1440 - 24 hours)
+  
   - **Windows-specific settings**:
     ```json
     "windows": {
       "channels": ["Application", "System", "Security"],
       "event_ids": [1000, 1001],
-      "levels": ["Critical", "Error", "Warning"]
+      "levels": ["Critical", "Error", "Warning", "Information"]
     }
     ```
+    - `channels`: Windows Event Log channels to monitor (default: `["Application", "System"]`)
+    - `event_ids`: Specific event IDs to filter (optional, collects all IDs if not specified)
+    - `levels`: Event severity levels to collect (default: `["Critical", "Error", "Warning", "Information"]`)
+      - Available levels: `"LogAlways"`, `"Critical"`, `"Error"`, `"Warning"`, `"Information"`, `"Verbose"`
+  
   - **Linux-specific settings**:
     ```json
     "journald": {
       "units": ["systemd", "ssh"],
-      "priority": ["emerg", "alert", "crit", "err"]
+      "priority": ["emerg", "alert", "crit", "err"],
+      "identifiers": ["sshd", "cron"],
+      "boot_offset": 0
     }
     ```
+    - `units`: Systemd units to monitor (optional, collects all units if not specified)
+    - `priority`: Priority levels to collect (default: `["emerg", "alert", "crit", "err"]`)
+      - Available levels: `"emerg"`, `"alert"`, `"crit"`, `"err"`, `"warning"`, `"notice"`, `"info"`, `"debug"`
+    - `identifiers`: Journal source identifiers to filter (optional, collects all if not specified)
+    - `boot_offset`: Offset in number of boots to collect from (0=current boot, 1=previous boot, etc.)
+      
+  - **macOS-specific settings**:
+    ```json
+    "asl": {
+      "processes": ["com.apple.xpc.launchd", "kernel"],
+      "facility": ["auth", "daemon"],
+      "levels": ["Emergency", "Alert", "Critical", "Error"]
+    }
+    ```
+    - `processes`: Specific processes to collect logs from (optional, collects all if not specified)
+    - `facility`: Log facilities to collect (optional, collects all if not specified)
+      - Common facilities: `"auth"`, `"daemon"`, `"user"`, `"local0"` through `"local7"`
+    - `levels`: Log severity levels to collect (default: `["Emergency", "Alert", "Critical", "Error"]`)
+      - Available levels: `"Emergency"`, `"Alert"`, `"Critical"`, `"Error"`, `"Warning"`, `"Notice"`, `"Info"`, `"Debug"`
+
+- **Example Full Configuration**:
+  ```json
+  {
+    "name": "systemlogs",
+    "params": {
+      "sources": ["windowsevents", "journald", "asl"],
+      "interval": 60,
+      "max_events": 100,
+      "initial_lookback": 60,
+      "windows": {
+        "channels": ["Application", "System", "Security"],
+        "event_ids": [1000, 1001, 7036, 7040],
+        "levels": ["Critical", "Error"]
+      },
+      "journald": {
+        "units": ["systemd", "ssh", "httpd"],
+        "priority": ["emerg", "alert", "crit", "err"],
+        "identifiers": ["sshd", "cron"],
+        "boot_offset": 0
+      },
+      "asl": {
+        "processes": ["com.apple.xpc.launchd", "kernel"],
+        "facility": ["auth", "daemon"],
+        "levels": ["Emergency", "Alert", "Critical", "Error"]
+      }
+    }
+  }
+  ```
+  
+  Note: The agent will automatically detect the appropriate source based on the operating system. The cross-platform configuration above includes settings for all platforms, but only the settings for the current platform will be used.
+
 - **Events**
   - System log events with source, ID, level, message, and timestamp
-  - Platform-specific metadata
+  - Platform-specific metadata including channel/facility, host, and structured data
+  - Events are routed to the "event" strategy for processing and storage
 
 #### Syslog Probe
 Collects system logs via Syslog protocol.
