@@ -10,6 +10,17 @@ import (
 	"github.com/rs/zerolog"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/debugshipper"
+)
+
+// Expose log levels
+const (
+	DebugLevel = zerolog.DebugLevel
+	InfoLevel  = zerolog.InfoLevel
+	WarnLevel  = zerolog.WarnLevel
+	ErrorLevel = zerolog.ErrorLevel
+	FatalLevel = zerolog.FatalLevel
+	PanicLevel = zerolog.PanicLevel
 )
 
 // Logger is an alias type for zerolog.Logger
@@ -17,7 +28,9 @@ type Logger = zerolog.Logger
 
 // LoggerConfig holds the configuration for the logger
 type LoggerConfig struct {
-	logFile io.WriteCloser
+	logFile     io.WriteCloser
+	logShipper  io.Writer
+	debugConfig *debugshipper.Config
 }
 
 // getLogPath determines the appropriate log file location based on the operating system.
@@ -59,13 +72,56 @@ func getLogPath() string {
 
 // NewLogger creates a new logger instance based on the provided arguments.
 // It switches between development and production configurations based on the environment.
+// setupDebugLogShipper creates a new DebugLogShipper based on CLI arguments
+func setupDebugLogShipper(args *cliArgs.ParsedArgs) (io.Writer, error) {
+	if args.DebugLogShipperUrl == "" {
+		return nil, nil // No debug log shipping configured
+	}
+
+	// Create config for debug log shipper
+	config := debugshipper.DefaultConfig()
+	config.Endpoint = args.DebugLogShipperUrl
+
+	if args.DebugLogShipperBuffer > 0 {
+		config.BufferSize = args.DebugLogShipperBuffer
+	}
+
+	// Create custom headers with tags if provided
+	if len(args.DebugLogShipperTags) > 0 {
+		if config.Headers == nil {
+			config.Headers = make(map[string]string)
+		}
+	}
+
+	// Initialize the debug log shipper
+	shipper, err := debugshipper.NewDebugLogShipper(config)
+	if err != nil {
+		log.Printf("Failed to initialize debug log shipper: %v", err)
+		return nil, err
+	}
+
+	return shipper, nil
+}
+
 func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 	var logger *Logger
+
+	// Create debug log shipper if configured
+	shipper, err := setupDebugLogShipper(args)
+	if err != nil {
+		log.Printf("Warning: Failed to create debug log shipper: %v", err)
+	}
+
+	// Create logger configuration
+	config := &LoggerConfig{
+		logShipper: shipper,
+	}
+
 	switch args.Env {
 	case "development":
-		logger = buildDevelopmentLogger(args)
+		logger = buildDevelopmentLogger(args, config)
 	default:
-		logger = buildProductionLogger(args)
+		logger = buildProductionLogger(args, config)
 	}
 
 	// Enable debug level logging if verbose mode is requested
@@ -78,10 +134,21 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 
 // buildDevelopmentLogger creates a development-oriented logger configuration
 // that writes formatted logs to stderr with debug level enabled
-func buildDevelopmentLogger(*cliArgs.ParsedArgs) *Logger {
+func buildDevelopmentLogger(_ *cliArgs.ParsedArgs, config *LoggerConfig) *Logger {
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+
+	// Default writer is console
+	consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr}
+	var writer io.Writer = consoleWriter
+
+	// If debug log shipper is configured, create a multi-writer
+	if config.logShipper != nil {
+		writer = zerolog.MultiLevelWriter(consoleWriter, config.logShipper)
+		log.Printf("Debug log shipping enabled in development mode")
+	}
+
 	logger := zerolog.
-		New(zerolog.ConsoleWriter{Out: os.Stderr}).
+		New(writer).
 		With().
 		Timestamp().
 		Logger()
@@ -94,7 +161,7 @@ func buildDevelopmentLogger(*cliArgs.ParsedArgs) *Logger {
 // - Maximum of 5 backup files
 // - 30-day retention period
 // If verbose mode is enabled, it will also output to stderr alongside the file
-func buildProductionLogger(args *cliArgs.ParsedArgs) *Logger {
+func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logger {
 	logPath := getLogPath()
 
 	// Configure log rotation settings
@@ -106,19 +173,25 @@ func buildProductionLogger(args *cliArgs.ParsedArgs) *Logger {
 		Compress:   true,    // Enable compression of rotated logs
 	}
 
-	var logWriter io.Writer = logRotator
+	// Define writers - start with log file
+	writers := []io.Writer{logRotator}
 
-	// If verbose mode is enabled, create a multi-writer to output to both
-	// stderr and the log file
+	// Add console output if verbose
 	if args.Verbose {
-		logWriter = zerolog.MultiLevelWriter(
-			zerolog.ConsoleWriter{Out: os.Stderr},
-			logRotator,
-		)
+		writers = append(writers, zerolog.ConsoleWriter{Out: os.Stderr})
+	}
+
+	// Add debug log shipper if configured
+	if config.logShipper != nil {
+		writers = append(writers, config.logShipper)
+		log.Printf("Debug log shipping enabled in production mode")
 	}
 
 	// Set default production log level to warn
 	zerolog.SetGlobalLevel(zerolog.WarnLevel)
+
+	// Create the multi-writer with all outputs
+	logWriter := zerolog.MultiLevelWriter(writers...)
 
 	// Create and configure the logger with timestamp
 	logger := zerolog.
