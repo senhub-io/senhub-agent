@@ -1,3 +1,4 @@
+
 //senhub-agent/internal/agent/services/data_store/data_store.go
 
 // Package data_store implements configurable data routing system
@@ -16,6 +17,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
@@ -82,6 +84,34 @@ func (d *dataStore) GetName() string {
 	return "DataStore"
 }
 
+// Helper functions for logging
+
+// getTagValue retrieves a tag value by key
+func getTagValue(tags []tags.Tag, key string) string {
+	for _, tag := range tags {
+		if tag.Key == key {
+			return tag.Value
+		}
+	}
+	return ""
+}
+
+// min returns the smaller of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// truncateString truncates a string to the given maximum length
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
 func (d *dataStore) GetCallback() AddCallback {
 	d.logger.Debug().Msg("GetCallback called")
 	return func(data []datapoint.DataPoint, probe StrategyRouter) error {
@@ -120,15 +150,28 @@ func (d *dataStore) GetCallback() AddCallback {
 				Int("datapoints_count", len(data)).
 				Msg("Sending data to strategy")
 
+			// Log the first few events for debugging
+			if strategy.GetStrategyName() == "event" && len(data) > 0 {
+				for i := 0; i < min(3, len(data)); i++ {
+					localLogger.Debug().
+						Int("event_index", i).
+						Str("event_source", getTagValue(data[i].Tags, "event_source")).
+						Str("event_id", getTagValue(data[i].Tags, "event_id")).
+						Str("message", truncateString(getTagValue(data[i].Tags, "message"), 100)).
+						Msg("🔎 EVENT DETAIL - About to send to strategy")
+				}
+			}
+
 			if err := strategy.AddDataPoints(data); err != nil {
 				localLogger.Error().
 					Err(err).
 					Str("strategy", strategy.GetStrategyName()).
 					Msg("Error adding data points to strategy")
 			} else {
-				localLogger.Debug().
+				localLogger.Info().
 					Str("strategy", strategy.GetStrategyName()).
-					Msg("Successfully sent datapoints to strategy")
+					Int("count", len(data)).
+					Msg("✅ Successfully sent datapoints to strategy")
 			}
 		}
 		return nil
