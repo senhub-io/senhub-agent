@@ -49,11 +49,14 @@ func LogDetailedEventData(event eventlog.Event, index int) map[string]interface{
 		data["data_"+k] = v
 	}
 
-	// Add XML content if available
-	if event.RawXML != "" && len(event.RawXML) < 5000 {
-		data["raw_xml"] = event.RawXML
-	} else if event.RawXML != "" {
-		data["raw_xml"] = "[XML too large, first 2000 chars]:" + event.RawXML[:2000] + "..."
+	// Add XML content if available (handle both RawXML field and XML from Data map)
+	rawXML, hasXML := event.Data["RawXML"]
+	if hasXML && rawXML != "" {
+		if len(rawXML) < 5000 {
+			data["raw_xml"] = rawXML
+		} else {
+			data["raw_xml"] = "[XML too large, first 2000 chars]:" + rawXML[:2000] + "..."
+		}
 	}
 
 	return data
