@@ -21,9 +21,9 @@ type CiscoCollector struct {
 }
 
 // NewCiscoCollector creates a new collector for Cisco servers
-func NewCiscoCollector(endpoint, username, password string, logger *logger.Logger) (RedfishCollector, error) {
+func NewCiscoCollector(endpoint, username, password string, logger *logger.Logger, verifySSL bool) (RedfishCollector, error) {
 	// First create a generic collector as the base
-	genericCollector, err := NewGenericCollector(endpoint, username, password, logger)
+	genericCollector, err := NewGenericCollector(endpoint, username, password, logger, verifySSL)
 	if err != nil {
 		return nil, err
 	}
