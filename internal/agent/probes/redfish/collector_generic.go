@@ -21,8 +21,8 @@ type GenericCollector struct {
 }
 
 // NewGenericCollector creates a new generic Redfish collector
-func NewGenericCollector(endpoint, username, password string, logger *logger.Logger) (RedfishCollector, error) {
-	client, err := NewRedfishClient(endpoint, username, password, logger)
+func NewGenericCollector(endpoint, username, password string, logger *logger.Logger, verifySSL bool) (RedfishCollector, error) {
+	client, err := NewRedfishClient(endpoint, username, password, logger, verifySSL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Redfish client: %v", err)
 	}
