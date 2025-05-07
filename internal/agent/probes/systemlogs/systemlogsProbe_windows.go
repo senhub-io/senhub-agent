@@ -694,6 +694,10 @@ func collectSystemLogs(p *SystemLogsProbe) ([]data_store.DataPoint, error) {
 func startSystemLogSubscriptions(p *SystemLogsProbe, quitChannel chan struct{}) error {
 	p.logger.Info().Msg("🚀 Starting System Logs probe with Windows Event Subscription model")
 	
+	// Enable ultra-detailed debug logging
+	EnableUltraDetailedDebug()
+	p.logger.Info().Str("debug_log", eventlog.UltraDebugLogFile).Msg("🔍 Ultra-detailed Windows Event debug logging enabled")
+	
 	// Skip real-time subscription if WindowsEvent source is not enabled
 	sourceEnabled := false
 	for _, source := range p.config.Sources {
@@ -791,10 +795,27 @@ func startSystemLogSubscriptions(p *SystemLogsProbe, quitChannel chan struct{}) 
 						// Log the first event's RAW JSON dump in debug level
 						if len(batch.Events) > 0 {
 							// Convert the first event to JSON and log it
-							jsonDump := DumpEventToJSON(batch.Events[0])
+							jsonDump := DumpEventToJSONDetailed(batch.Events[0])
 							p.logger.Debug().
 								Str("raw_event", jsonDump).
 								Msg("🔬 RAW EVENT JSON DUMP (helpful for debugging)")
+								
+							// Also log to the ultra-detailed debug log
+							for i, event := range batch.Events {
+								if i < 10 { // Log only first 10 events to avoid excessive logging
+									LogWindowsEventDetailed("RECEIVED_EVENT", event, batch.Channel)
+								}
+							}
+							
+							// Log a summary in the ultra-detailed log
+							eventlog.UltraDebugLog("EVENTS_RECEIVED_BATCH", map[string]interface{}{
+								"channel":     batch.Channel,
+								"count":       len(batch.Events),
+								"position":    batch.Position,
+								"first_id":    batch.Events[0].EventID,
+								"first_provider": batch.Events[0].ProviderName,
+								"timestamp":   time.Now().Format(time.RFC3339),
+							})
 						}
 						
 					// Log informative message about filtering
