@@ -3,6 +3,7 @@ package redfish
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -75,7 +76,7 @@ type Status struct {
 }
 
 // NewRedfishClient creates a new Redfish API client
-func NewRedfishClient(baseURL, username, password string, logger *logger.Logger) (*RedfishClient, error) {
+func NewRedfishClient(baseURL, username, password string, logger *logger.Logger, verifySSL bool) (*RedfishClient, error) {
 	// Normalize baseURL
 	if !strings.HasSuffix(baseURL, "/") {
 		baseURL = baseURL + "/"
@@ -94,15 +95,24 @@ func NewRedfishClient(baseURL, username, password string, logger *logger.Logger)
 		return nil, fmt.Errorf("invalid baseURL: %v", err)
 	}
 
+	// Configure TLS with the option to skip verification
+	transport := &http.Transport{
+		TLSHandshakeTimeout: 10 * time.Second,
+		DisableKeepAlives:   false,
+		MaxIdleConns:        10,
+		IdleConnTimeout:     90 * time.Second,
+	}
+	
+	// Skip TLS verification if requested
+	if !verifySSL {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		logger.Info().Str("endpoint", baseURL).Msg("TLS certificate verification disabled")
+	}
+
 	// Create HTTP client with reasonable timeout
 	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			TLSHandshakeTimeout: 10 * time.Second,
-			DisableKeepAlives:   false,
-			MaxIdleConns:        10,
-			IdleConnTimeout:     90 * time.Second,
-		},
+		Timeout:   30 * time.Second,
+		Transport: transport,
 	}
 
 	return &RedfishClient{

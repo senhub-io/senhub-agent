@@ -24,6 +24,7 @@ type redfishProbe struct {
 	collections    []CollectionType
 	cacheDuration  time.Duration
 	lastCollection map[CollectionType]time.Time
+	verifySSL      bool
 	ctx            context.Context
 	cancelFunc     context.CancelFunc
 }
@@ -49,6 +50,12 @@ func NewRedfishProbe(config map[string]interface{}, logger *logger.Logger) (type
 	password, ok := config["password"].(string)
 	if !ok {
 		return nil, fmt.Errorf("redfish probe requires 'password' configuration")
+	}
+
+	// SSL verification configuration (default: true)
+	verifySSL := true
+	if cfgVerifySSL, ok := config["verify_ssl"].(bool); ok {
+		verifySSL = cfgVerifySSL
 	}
 
 	// Cache duration configuration (default: 4 minutes)
@@ -89,6 +96,7 @@ func NewRedfishProbe(config map[string]interface{}, logger *logger.Logger) (type
 		collections:    collections,
 		cacheDuration:  cacheDuration,
 		lastCollection: make(map[CollectionType]time.Time),
+		verifySSL:      verifySSL,
 		ctx:            ctx,
 		cancelFunc:     cancel,
 	}
@@ -118,7 +126,7 @@ func (p *redfishProbe) OnStart(quitChannel chan struct{}) error {
 	// Create an initial generic collector
 	// Later we'll detect the vendor and create the appropriate collector
 	var err error
-	p.collector, err = NewGenericCollector(p.endpoint, p.username, p.password, p.logger)
+	p.collector, err = NewGenericCollector(p.endpoint, p.username, p.password, p.logger, p.verifySSL)
 	if err != nil {
 		return fmt.Errorf("failed to create Redfish collector: %v", err)
 	}
@@ -138,16 +146,16 @@ func (p *redfishProbe) OnStart(quitChannel chan struct{}) error {
 		switch detectedVendor {
 		case VendorDell:
 			p.logger.Info().Msg("Dell server detected, creating Dell-specific collector")
-			vendorCollector, err = NewDellCollector(p.endpoint, p.username, p.password, p.logger)
+			vendorCollector, err = NewDellCollector(p.endpoint, p.username, p.password, p.logger, p.verifySSL)
 		case VendorHPE:
 			p.logger.Info().Msg("HPE server detected, creating HPE-specific collector")
-			vendorCollector, err = NewHPECollector(p.endpoint, p.username, p.password, p.logger)
+			vendorCollector, err = NewHPECollector(p.endpoint, p.username, p.password, p.logger, p.verifySSL)
 		case VendorLenovo:
 			p.logger.Info().Msg("Lenovo server detected, creating Lenovo-specific collector")
-			vendorCollector, err = NewLenovoCollector(p.endpoint, p.username, p.password, p.logger)
+			vendorCollector, err = NewLenovoCollector(p.endpoint, p.username, p.password, p.logger, p.verifySSL)
 		case VendorCisco:
 			p.logger.Info().Msg("Cisco server detected, creating Cisco-specific collector")
-			vendorCollector, err = NewCiscoCollector(p.endpoint, p.username, p.password, p.logger)
+			vendorCollector, err = NewCiscoCollector(p.endpoint, p.username, p.password, p.logger, p.verifySSL)
 		default:
 			p.logger.Info().
 				Str("vendor", string(detectedVendor)).
@@ -178,6 +186,7 @@ func (p *redfishProbe) OnStart(quitChannel chan struct{}) error {
 	p.logger.Info().
 		Str("endpoint", p.endpoint).
 		Str("vendor", string(p.collector.GetVendorType())).
+		Bool("verify_ssl", p.verifySSL).
 		Msg("Redfish probe initialized")
 
 	return nil
