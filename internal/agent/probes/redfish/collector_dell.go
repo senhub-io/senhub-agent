@@ -20,9 +20,9 @@ type DellCollector struct {
 }
 
 // NewDellCollector creates a new collector for Dell servers
-func NewDellCollector(endpoint, username, password string, logger *logger.Logger) (RedfishCollector, error) {
+func NewDellCollector(endpoint, username, password string, logger *logger.Logger, verifySSL bool) (RedfishCollector, error) {
 	// First create a generic collector as the base
-	genericCollector, err := NewGenericCollector(endpoint, username, password, logger)
+	genericCollector, err := NewGenericCollector(endpoint, username, password, logger, verifySSL)
 	if err != nil {
 		return nil, err
 	}
