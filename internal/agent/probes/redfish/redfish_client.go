@@ -95,7 +95,7 @@ func NewRedfishClient(baseURL, username, password string, logger *logger.Logger,
 		return nil, fmt.Errorf("invalid baseURL: %v", err)
 	}
 
-	// Configure TLS with the option to skip verification
+	// Configure transport with reasonable timeouts
 	transport := &http.Transport{
 		TLSHandshakeTimeout: 10 * time.Second,
 		DisableKeepAlives:   false,
@@ -109,7 +109,7 @@ func NewRedfishClient(baseURL, username, password string, logger *logger.Logger,
 		logger.Info().Str("endpoint", baseURL).Msg("TLS certificate verification disabled")
 	}
 
-	// Create HTTP client with reasonable timeout
+	// Create HTTP client with configured transport
 	httpClient := &http.Client{
 		Timeout:   30 * time.Second,
 		Transport: transport,
