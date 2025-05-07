@@ -25,7 +25,6 @@ type redfishProbe struct {
 	collections    []CollectionType
 	cacheDuration  time.Duration
 	lastCollection map[CollectionType]time.Time
-	verifySSL      bool
 	ctx            context.Context
 	cancelFunc     context.CancelFunc
 }
@@ -65,12 +64,6 @@ func NewRedfishProbe(config map[string]interface{}, logger *logger.Logger) (type
 		cacheDuration = time.Duration(cfgCache) * time.Second
 	}
 
-	// SSL verification configuration (default: true)
-	verifySSL := true
-	if cfgVerifySSL, ok := config["verify_ssl"].(bool); ok {
-		verifySSL = cfgVerifySSL
-	}
-
 	// Default collections to gather if not specified
 	collections := []CollectionType{
 		CollectionSystem,
@@ -104,7 +97,6 @@ func NewRedfishProbe(config map[string]interface{}, logger *logger.Logger) (type
 		collections:    collections,
 		cacheDuration:  cacheDuration,
 		lastCollection: make(map[CollectionType]time.Time),
-		verifySSL:      verifySSL,
 		ctx:            ctx,
 		cancelFunc:     cancel,
 	}
