@@ -142,13 +142,31 @@ func TestDebugLogShipper_Write(t *testing.T) {
 		t.Errorf("Expected at least %d logs, got %d", len(testLogs), len(receivedLogs))
 	}
 
-	// Verify log content
+	// Verify log content - only checking for required fields since timestamp and stream may be added
 	for i, expected := range testLogs {
 		if i >= len(receivedLogs) {
 			break
 		}
-		if receivedLogs[i] != expected {
-			t.Errorf("Log %d content mismatch: expected %s, got %s", i, expected, receivedLogs[i])
+		// Instead of exact match, check that the received log contains the expected content
+		if !strings.Contains(receivedLogs[i], `"level"`) || !strings.Contains(receivedLogs[i], `"message"`) {
+			t.Errorf("Log %d missing required fields: got %s", i, receivedLogs[i])
+		}
+		
+		// Extract expected level and message
+		expectedLevel := strings.SplitN(expected, `"level":"`, 2)[1]
+		expectedLevel = strings.SplitN(expectedLevel, `"`, 2)[0]
+		
+		expectedMsg := strings.SplitN(expected, `"message":"`, 2)[1]
+		expectedMsg = strings.SplitN(expectedMsg, `"`, 2)[0]
+		
+		// Check if the received log contains the expected level and message
+		if !strings.Contains(receivedLogs[i], `"level":"`+expectedLevel+`"`) {
+			t.Errorf("Log %d level mismatch: expected to contain %s, got %s", 
+				i, expectedLevel, receivedLogs[i])
+		}
+		if !strings.Contains(receivedLogs[i], `"message":"`+expectedMsg+`"`) {
+			t.Errorf("Log %d message mismatch: expected to contain %s, got %s", 
+				i, expectedMsg, receivedLogs[i])
 		}
 	}
 }
