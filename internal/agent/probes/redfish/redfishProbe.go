@@ -23,8 +23,6 @@ type redfishProbe struct {
 	password       string
 	verifySSL      bool
 	collections    []CollectionType
-	cacheDuration  time.Duration
-	lastCollection map[CollectionType]time.Time
 	ctx            context.Context
 	cancelFunc     context.CancelFunc
 }
@@ -58,11 +56,7 @@ func NewRedfishProbe(config map[string]interface{}, logger *logger.Logger) (type
 		verifySSL = cfgVerifySSL
 	}
 
-	// Cache duration configuration (default: 4 minutes)
-	cacheDuration := 4 * time.Minute
-	if cfgCache, ok := config["cache_duration"].(int); ok {
-		cacheDuration = time.Duration(cfgCache) * time.Second
-	}
+	// Cache duration configuration was removed as scheduling is handled by the probe poller
 
 	// Default collections to gather if not specified
 	collections := []CollectionType{
@@ -95,8 +89,6 @@ func NewRedfishProbe(config map[string]interface{}, logger *logger.Logger) (type
 		password:       password,
 		verifySSL:      verifySSL,
 		collections:    collections,
-		cacheDuration:  cacheDuration,
-		lastCollection: make(map[CollectionType]time.Time),
 		ctx:            ctx,
 		cancelFunc:     cancel,
 	}
@@ -218,17 +210,6 @@ func (p *redfishProbe) Collect() ([]data_store.DataPoint, error) {
 			continue
 		}
 
-		// Check if cache is still valid
-		lastCollect, exists := p.lastCollection[collectionType]
-		if exists && now.Sub(lastCollect) < p.cacheDuration {
-			p.logger.Debug().
-				Str("collection", string(collectionType)).
-				Dur("age", now.Sub(lastCollect)).
-				Dur("cache_duration", p.cacheDuration).
-				Msg("Using cached data")
-			continue
-		}
-
 		// Collect metrics for this collection type
 		datapoints, err := p.collector.CollectMetrics(p.ctx, collectionType, now)
 		if err != nil {
@@ -243,9 +224,6 @@ func (p *redfishProbe) Collect() ([]data_store.DataPoint, error) {
 		for i := range datapoints {
 			datapoints[i].Tags = append(datapoints[i].Tags, commonTags...)
 		}
-
-		// Update last collection time
-		p.lastCollection[collectionType] = now
 
 		// Add to aggregate result
 		allDatapoints = append(allDatapoints, datapoints...)
