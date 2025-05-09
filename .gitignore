@@ -59,3 +59,5 @@ go.work.sum
 /*.log
 /dist
 .air.toml
+
+**/.claude/settings.local.json
