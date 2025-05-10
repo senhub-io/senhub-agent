@@ -228,7 +228,7 @@ func (l *LegacyAPI) Read(ctx context.Context, handle windows.Handle, maxEvents i
 		var bytesRead, bytesNeeded uint32
 		
 		for {
-			ret, _, err := procReadEventLog.Call(
+			ret, _, _ := procReadEventLog.Call(
 				uintptr(handle),
 				uintptr(flags),
 				uintptr(recordNum),

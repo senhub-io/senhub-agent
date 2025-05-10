@@ -237,10 +237,23 @@ func (c *RedfishClient) Get(ctx context.Context, path string) (*RedfishResponse,
 
 	// Build URL
 	requestURL := c.baseURL
-	if !strings.HasPrefix(path, "/") {
-		requestURL += path
+	// Check if path is a full URL
+	if strings.HasPrefix(path, "http") {
+		requestURL = path
 	} else {
-		requestURL += strings.TrimPrefix(path, "/")
+		// Remove redundant /redfish/v1/ prefix if present
+		if strings.HasPrefix(path, "/redfish/v1/") {
+			path = strings.TrimPrefix(path, "/redfish/v1/")
+		} else if strings.HasPrefix(path, "redfish/v1/") {
+			path = strings.TrimPrefix(path, "redfish/v1/")
+		}
+
+		// Add path to baseURL
+		if !strings.HasPrefix(path, "/") {
+			requestURL += path
+		} else {
+			requestURL += strings.TrimPrefix(path, "/")
+		}
 	}
 
 	// Create request
@@ -297,10 +310,23 @@ func (c *RedfishClient) GetRaw(ctx context.Context, path string) ([]byte, error)
 
 	// Build URL
 	requestURL := c.baseURL
-	if !strings.HasPrefix(path, "/") {
-		requestURL += path
+	// Check if path is a full URL
+	if strings.HasPrefix(path, "http") {
+		requestURL = path
 	} else {
-		requestURL += strings.TrimPrefix(path, "/")
+		// Remove redundant /redfish/v1/ prefix if present
+		if strings.HasPrefix(path, "/redfish/v1/") {
+			path = strings.TrimPrefix(path, "/redfish/v1/")
+		} else if strings.HasPrefix(path, "redfish/v1/") {
+			path = strings.TrimPrefix(path, "redfish/v1/")
+		}
+
+		// Add path to baseURL
+		if !strings.HasPrefix(path, "/") {
+			requestURL += path
+		} else {
+			requestURL += strings.TrimPrefix(path, "/")
+		}
 	}
 
 	// Create request
