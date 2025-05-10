@@ -57,7 +57,28 @@ type Checkpoint struct {
 	Timestamp    time.Time // Last timestamp processed
 	LastModified time.Time // When the checkpoint was last updated
 	BookmarkXML  string    // Raw bookmark XML for Windows API
+	Filter       string    // Filter used for this checkpoint
 }
 
 // SubscriptionFlags defines the subscription mode
 type SubscriptionFlags uint32
+
+// Windows API structures needed for time conversion
+
+// FILETIME represents a Windows file time
+type FILETIME struct {
+	LowDateTime  uint32
+	HighDateTime uint32
+}
+
+// SYSTEMTIME represents a Windows system time
+type SYSTEMTIME struct {
+	Year         uint16
+	Month        uint16
+	DayOfWeek    uint16
+	Day          uint16
+	Hour         uint16
+	Minute       uint16
+	Second       uint16
+	Milliseconds uint16
+}
