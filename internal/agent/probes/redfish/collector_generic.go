@@ -79,7 +79,9 @@ func (c *GenericCollector) discoverSystems(ctx context.Context) error {
 	c.systems = make([]string, 0, len(resp.Members))
 	for _, member := range resp.Members {
 		if id, ok := member["@odata.id"]; ok {
-			c.systems = append(c.systems, id)
+			// Remove the /redfish/v1/ prefix from the path if it exists
+			normalizedPath := strings.TrimPrefix(id, "/redfish/v1/")
+			c.systems = append(c.systems, normalizedPath)
 		}
 	}
 
@@ -102,7 +104,9 @@ func (c *GenericCollector) discoverChassis(ctx context.Context) error {
 	c.chassis = make([]string, 0, len(resp.Members))
 	for _, member := range resp.Members {
 		if id, ok := member["@odata.id"]; ok {
-			c.chassis = append(c.chassis, id)
+			// Remove the /redfish/v1/ prefix from the path if it exists
+			normalizedPath := strings.TrimPrefix(id, "/redfish/v1/")
+			c.chassis = append(c.chassis, normalizedPath)
 		}
 	}
 
