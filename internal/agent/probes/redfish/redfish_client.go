@@ -366,3 +366,74 @@ func (c *RedfishClient) GetRaw(ctx context.Context, path string) ([]byte, error)
 
 	return body, nil
 }
+
+// RedfishVersionInfo contains information about Redfish API versions
+type RedfishVersionInfo struct {
+	// The main Redfish API version (e.g., "1.6.0")
+	RedfishVersion string
+
+	// Map of schema names to their versions
+	SchemaVersions map[string]string
+
+	// OEM-specific version information
+	OemVersions map[string]interface{}
+}
+
+// DetectRedfishVersions retrieves the Redfish and schema versions
+func (c *RedfishClient) DetectRedfishVersions(ctx context.Context) (*RedfishVersionInfo, error) {
+	// Get the service root document
+	resp, err := c.GetRaw(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Redfish service root: %v", err)
+	}
+
+	var rootObj struct {
+		RedfishVersion string `json:"RedfishVersion"`
+		UUID           string `json:"UUID"`
+		Name           string `json:"Name"`
+
+		// Schema version information
+		Links struct {
+			Sessions struct {
+				OdataID string `json:"@odata.id"`
+			} `json:"Sessions"`
+		} `json:"Links"`
+
+		// OEM-specific version information
+		Oem map[string]interface{} `json:"Oem"`
+
+		// Schema annotations
+		OdataContext string `json:"@odata.context"`
+		OdataID      string `json:"@odata.id"`
+		OdataType    string `json:"@odata.type"`
+	}
+
+	if err := json.Unmarshal(resp, &rootObj); err != nil {
+		return nil, fmt.Errorf("failed to parse Redfish service root: %v", err)
+	}
+
+	result := &RedfishVersionInfo{
+		RedfishVersion: rootObj.RedfishVersion,
+		SchemaVersions: make(map[string]string),
+		OemVersions:    make(map[string]interface{}),
+	}
+
+	// Extract schema versions from @odata.type
+	if rootObj.OdataType != "" {
+		// @odata.type typically looks like "#ServiceRoot.v1_5_0.ServiceRoot"
+		parts := strings.Split(rootObj.OdataType, ".")
+		if len(parts) >= 2 {
+			// Extract the schema name and version
+			schemaName := strings.TrimPrefix(parts[0], "#")
+			schemaVersion := parts[1]
+			result.SchemaVersions[schemaName] = schemaVersion
+		}
+	}
+
+	// Store OEM-specific information if available
+	if rootObj.Oem != nil {
+		result.OemVersions = rootObj.Oem
+	}
+
+	return result, nil
+}

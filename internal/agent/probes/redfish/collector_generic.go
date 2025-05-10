@@ -7,17 +7,21 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
+	"strconv"
 	"strings"
 	"time"
 )
 
 // GenericCollector provides a base implementation of the RedfishCollector interface
 type GenericCollector struct {
-	client     *RedfishClient
-	vendorType VendorType
-	systems    []string
-	chassis    []string
-	logger     *logger.Logger
+	client          *RedfishClient
+	vendorType      VendorType
+	systems         []string
+	chassis         []string
+	logger          *logger.Logger
+	redfishVersion  string              // Redfish API version
+	schemaVersions  map[string]string   // Schema versions by schema name
+	oemVersionData  map[string]interface{} // OEM-specific version data
 }
 
 // NewGenericCollector creates a new generic Redfish collector
@@ -28,9 +32,11 @@ func NewGenericCollector(endpoint, username, password string, logger *logger.Log
 	}
 
 	return &GenericCollector{
-		client:     client,
-		vendorType: VendorGeneric, // Default to generic, will be updated after detection
-		logger:     logger,
+		client:         client,
+		vendorType:     VendorGeneric, // Default to generic, will be updated after detection
+		logger:         logger,
+		schemaVersions: make(map[string]string),
+		oemVersionData: make(map[string]interface{}),
 	}, nil
 }
 
@@ -44,6 +50,23 @@ func (c *GenericCollector) Connect(ctx context.Context) error {
 	// Connect to Redfish API
 	if err := c.client.Connect(ctx); err != nil {
 		return fmt.Errorf("failed to connect to Redfish API: %v", err)
+	}
+
+	// Detect Redfish and schema versions
+	versionInfo, err := c.client.DetectRedfishVersions(ctx)
+	if err != nil {
+		c.logger.Warn().
+			Err(err).
+			Msg("Failed to detect Redfish versions, continuing with limited compatibility")
+	} else {
+		c.redfishVersion = versionInfo.RedfishVersion
+		c.schemaVersions = versionInfo.SchemaVersions
+		c.oemVersionData = versionInfo.OemVersions
+
+		c.logger.Info().
+			Str("redfish_version", versionInfo.RedfishVersion).
+			Interface("schema_versions", versionInfo.SchemaVersions).
+			Msg("Detected Redfish specifications")
 	}
 
 	// Discover systems
@@ -1233,4 +1256,58 @@ func mapPowerState(state string) int {
 	default:
 		return 4 // Unknown
 	}
+}
+
+// isVersionGreaterOrEqual checks if a version string is >= the minimum required version
+// Handles simple version strings like "1.2.3" or "1.2"
+func isVersionGreaterOrEqual(version, minVersion string) bool {
+	if version == "" {
+		return false
+	}
+
+	// Remove leading 'v' if present
+	if strings.HasPrefix(version, "v") {
+		version = version[1:]
+	}
+	if strings.HasPrefix(minVersion, "v") {
+		minVersion = minVersion[1:]
+	}
+
+	// Split into components
+	vParts := strings.Split(version, ".")
+	minParts := strings.Split(minVersion, ".")
+
+	// Compare each component
+	for i := 0; i < len(minParts); i++ {
+		// If we ran out of components in version, treat as 0
+		if i >= len(vParts) {
+			return false
+		}
+
+		// Parse components as integers and compare
+		vComp, err1 := strconv.Atoi(vParts[i])
+		minComp, err2 := strconv.Atoi(minParts[i])
+
+		// If we can't parse as integers, fall back to string comparison
+		if err1 != nil || err2 != nil {
+			if vParts[i] < minParts[i] {
+				return false
+			} else if vParts[i] > minParts[i] {
+				return true
+			}
+			// If equal, continue to next component
+			continue
+		}
+
+		// Compare numeric values
+		if vComp < minComp {
+			return false
+		} else if vComp > minComp {
+			return true
+		}
+		// If equal, continue to next component
+	}
+
+	// If we've compared all components and they're equal, return true
+	return true
 }
