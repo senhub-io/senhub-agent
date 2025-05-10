@@ -60,38 +60,139 @@ func (c *DellCollector) Connect(ctx context.Context) error {
 	return nil
 }
 
-// getDellInfo retrieves Dell-specific information like iDRAC version
+// getDellInfo retrieves Dell-specific information based on detected Redfish version
 func (c *DellCollector) getDellInfo(ctx context.Context) error {
-	// Try to get Dell-specific manager (iDRAC) info
-	resp, err := c.client.Get(ctx, "Managers/iDRAC.Embedded.1")
+	// Log Redfish version information for debugging
+	c.logger.Debug().
+		Str("redfish_version", c.GenericCollector.redfishVersion).
+		Interface("schema_versions", c.GenericCollector.schemaVersions).
+		Msg("Using Redfish version info for Dell-specific detection")
+
+	// First try standard iDRAC path (most common in newer versions)
+	idracFound := false
+	managersCollection, err := c.client.Get(ctx, "Managers")
 	if err != nil {
-		return fmt.Errorf("failed to get iDRAC info: %v", err)
-	}
+		c.logger.Warn().
+			Err(err).
+			Msg("Failed to get Managers collection, will try alternative paths")
+	} else {
+		// Try to find iDRAC in Managers collection
+		for _, manager := range managersCollection.Members {
+			managerURI, ok := manager["@odata.id"]
+			if !ok {
+				continue
+			}
 
-	// Extract iDRAC version
-	c.idracVersion = resp.FirmwareVersion
+			// Try to get this manager's info
+			managerResp, err := c.client.Get(ctx, managerURI)
+			if err != nil {
+				c.logger.Warn().
+					Err(err).
+					Str("path", managerURI).
+					Msg("Failed to get manager details")
+				continue
+			}
 
-	// Try to get Lifecycle Controller version
-	lcFound := false
-	if resp.Oem != nil {
-		// Dell puts Lifecycle Controller info in OEM section
-		dellData, hasDell := resp.Oem["Dell"]
-		if hasDell {
-			dellOem, ok := dellData.(map[string]interface{})
-			if ok {
-				if lcv, has := dellOem["LifecycleControllerVersion"]; has {
-					c.lifecycleVersion = fmt.Sprintf("%v", lcv)
-					lcFound = true
+			// Check if this is an iDRAC (look for clues in name, description or model)
+			isIDRAC := false
+			if strings.Contains(strings.ToLower(managerResp.Name), "idrac") ||
+			   strings.Contains(strings.ToLower(managerResp.Description), "idrac") ||
+			   strings.Contains(strings.ToLower(managerResp.Model), "idrac") {
+				isIDRAC = true
+			}
+
+			// If OEM data has Dell section, it's definitely Dell iDRAC
+			if managerResp.Oem != nil {
+				_, hasDell := managerResp.Oem["Dell"]
+				if hasDell {
+					isIDRAC = true
 				}
+			}
+
+			if isIDRAC {
+				// Extract iDRAC version
+				c.idracVersion = managerResp.FirmwareVersion
+
+				// Try to get Lifecycle Controller version from OEM section
+				if managerResp.Oem != nil {
+					// Dell puts Lifecycle Controller info in OEM section
+					dellData, hasDell := managerResp.Oem["Dell"]
+					if hasDell {
+						dellOem, ok := dellData.(map[string]interface{})
+						if ok {
+							// Different versions of Dell Redfish API might use different keys
+							lcKeys := []string{"LifecycleControllerVersion", "LCVersion", "LC.Version"}
+							for _, key := range lcKeys {
+								if lcv, has := dellOem[key]; has {
+									c.lifecycleVersion = fmt.Sprintf("%v", lcv)
+									break
+								}
+							}
+						}
+					}
+				}
+
+				idracFound = true
+				break
 			}
 		}
 	}
 
-	c.logger.Debug().
-		Str("idrac_version", c.idracVersion).
-		Bool("lifecycle_controller_found", lcFound).
-		Str("lifecycle_version", c.lifecycleVersion).
-		Msg("Retrieved Dell-specific information")
+	// Fallback: Try direct iDRAC path if we haven't found it yet
+	if !idracFound {
+		// Try paths for various iDRAC versions
+		idracPaths := []string{
+			"Managers/iDRAC.Embedded.1",
+			"Managers/iDRAC.Embedded",
+			"Managers/iDRAC",
+			"Managers/1",
+		}
+
+		for _, path := range idracPaths {
+			resp, err := c.client.Get(ctx, path)
+			if err != nil {
+				c.logger.Debug().
+					Err(err).
+					Str("path", path).
+					Msg("Path not available")
+				continue
+			}
+
+			// Extract iDRAC version
+			c.idracVersion = resp.FirmwareVersion
+
+			// Try to get Lifecycle Controller version
+			if resp.Oem != nil {
+				// Dell puts Lifecycle Controller info in OEM section
+				dellData, hasDell := resp.Oem["Dell"]
+				if hasDell {
+					dellOem, ok := dellData.(map[string]interface{})
+					if ok {
+						// Try different possible key names
+						lcKeys := []string{"LifecycleControllerVersion", "LCVersion", "LC.Version"}
+						for _, key := range lcKeys {
+							if lcv, has := dellOem[key]; has {
+								c.lifecycleVersion = fmt.Sprintf("%v", lcv)
+								break
+							}
+						}
+					}
+				}
+			}
+
+			idracFound = true
+			break
+		}
+	}
+
+	if !idracFound {
+		c.logger.Warn().Msg("Failed to find iDRAC manager, Dell-specific metrics may be limited")
+	} else {
+		c.logger.Debug().
+			Str("idrac_version", c.idracVersion).
+			Str("lifecycle_version", c.lifecycleVersion).
+			Msg("Retrieved Dell-specific information")
+	}
 
 	return nil
 }
