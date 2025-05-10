@@ -862,7 +862,7 @@ func (c *GenericCollector) collectStorageMetrics(ctx context.Context, timestamp 
 	
 	for _, systemID := range c.systems {
 		// Get Storage Collection
-		storageCollectionPath := fmt.Sprintf("/redfish/v1/Systems/%s/Storage", systemID)
+		storageCollectionPath := fmt.Sprintf("Systems/%s/Storage", systemID)
 		
 		// Fetch storage collection
 		storageCollectionResp, err := c.client.Get(ctx, storageCollectionPath)
@@ -1073,7 +1073,7 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 	
 	for _, systemID := range c.systems {
 		// Network interfaces path
-		networkPath := fmt.Sprintf("/redfish/v1/Systems/%s/NetworkInterfaces", systemID)
+		networkPath := fmt.Sprintf("Systems/%s/NetworkInterfaces", systemID)
 		
 		// Fetch network collection
 		networkResp, err := c.client.Get(ctx, networkPath)
@@ -1084,7 +1084,7 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 				Msg("Failed to get network interfaces collection")
 				
 			// Try alternate path - EthernetInterfaces is also common
-			alternatePath := fmt.Sprintf("/redfish/v1/Systems/%s/EthernetInterfaces", systemID)
+			alternatePath := fmt.Sprintf("Systems/%s/EthernetInterfaces", systemID)
 			networkResp, err = c.client.Get(ctx, alternatePath)
 			if err != nil {
 				c.logger.Warn().
