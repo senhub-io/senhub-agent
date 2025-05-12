@@ -142,8 +142,33 @@ func (c *GenericCollector) discoverChassis(ctx context.Context) error {
 
 // detectVendor attempts to determine the hardware vendor
 func (c *GenericCollector) detectVendor(ctx context.Context) error {
-	// If no systems are found, we can't detect the vendor
+	// Check if this is a storage device first (some don't have systems collection)
+	storageResp, err := c.client.Get(ctx, "Storage")
+	if err == nil && len(storageResp.Members) > 0 {
+		// Check for Seagate/PowerVault specific info
+		rootResp, err := c.client.Get(ctx, "")
+		if err == nil && rootResp.Oem != nil {
+			rawJSON, _ := json.Marshal(rootResp.Oem)
+			var oemData map[string]interface{}
+			if err := json.Unmarshal(rawJSON, &oemData); err == nil {
+				// Check for Seagate or other storage vendors in OEM data
+				if _, hasSeagate := oemData["Seagate"]; hasSeagate {
+					c.vendorType = VendorStorage
+					c.logger.Info().Msg("Detected storage system based on Seagate OEM data")
+					return nil
+				}
+			}
+		}
+	}
+
+	// If no systems are found, we can't detect the vendor using systems approach
 	if len(c.systems) == 0 {
+		// Check if we have storage collection instead
+		if storageResp != nil && len(storageResp.Members) > 0 {
+			c.vendorType = VendorStorage
+			c.logger.Info().Msg("Detected storage system based on Storage collection")
+			return nil
+		}
 		return fmt.Errorf("no systems found to detect vendor")
 	}
 
@@ -160,7 +185,12 @@ func (c *GenericCollector) detectVendor(ctx context.Context) error {
 		case containsIgnoreCase(manufacturer, "hp") || containsIgnoreCase(manufacturer, "hewlett packard"):
 			c.vendorType = VendorHPE
 		case containsIgnoreCase(manufacturer, "dell"):
-			c.vendorType = VendorDell
+			// Check if it's a PowerVault storage device
+			if containsIgnoreCase(resp.Model, "powervault") || containsIgnoreCase(resp.Model, "me") {
+				c.vendorType = VendorStorage
+			} else {
+				c.vendorType = VendorDell
+			}
 		case containsIgnoreCase(manufacturer, "lenovo"):
 			c.vendorType = VendorLenovo
 		case containsIgnoreCase(manufacturer, "cisco"):
@@ -187,6 +217,8 @@ func (c *GenericCollector) detectVendor(ctx context.Context) error {
 				c.vendorType = VendorLenovo
 			case containsIgnoreCase(key, "cisco"):
 				c.vendorType = VendorCisco
+			case containsIgnoreCase(key, "seagate"):
+				c.vendorType = VendorStorage
 			}
 		}
 	}
