@@ -181,7 +181,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 			// Controller health
 			if ctrlResp.Status != nil && ctrlResp.Status.Health != "" {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "redfish_storage_controller_health",
+					Name:      "hardware.storage.controller.health",
 					Timestamp: timestamp,
 					Value:     float32(mapHealthState(ctrlResp.Status.Health)),
 					Tags:      controllerTags,
@@ -276,7 +276,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						// Drive health state
 						if driveInfo.Status != nil && driveInfo.Status.Health != "" {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "redfish_storage_drive_health",
+								Name:      "hardware.storage.drive.health",
 								Timestamp: timestamp,
 								Value:     float32(mapHealthState(driveInfo.Status.Health)),
 								Tags:      driveTags,
@@ -286,7 +286,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						// Drive capacity
 						if driveInfo.CapacityBytes > 0 {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "redfish_storage_drive_capacity_bytes",
+								Name:      "hardware.storage.drive.size",
 								Timestamp: timestamp,
 								Value:     float32(driveInfo.CapacityBytes),
 								Tags:      driveTags,
@@ -295,7 +295,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							// Also add capacity in GB for easier consumption
 							gbValue := float32(driveInfo.CapacityBytes) / (1024 * 1024 * 1024)
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "redfish_storage_drive_capacity_gb",
+								Name:      "hardware.storage.drive.size_gb",
 								Timestamp: timestamp,
 								Value:     gbValue,
 								Tags:      driveTags,
@@ -305,7 +305,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						// Drive block size
 						if driveInfo.BlockSizeBytes > 0 {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "redfish_storage_drive_block_size_bytes",
+								Name:      "hardware.storage.drive.block_size",
 								Timestamp: timestamp,
 								Value:     float32(driveInfo.BlockSizeBytes),
 								Tags:      driveTags,
@@ -315,7 +315,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						// Drive rotation speed
 						if driveInfo.RotationSpeedRPM > 0 {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "redfish_storage_drive_rotation_speed_rpm",
+								Name:      "hardware.storage.drive.rotation_speed",
 								Timestamp: timestamp,
 								Value:     float32(driveInfo.RotationSpeedRPM),
 								Tags:      driveTags,
@@ -329,7 +329,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						}
 
 						datapoints = append(datapoints, data_store.DataPoint{
-							Name:      "redfish_storage_drive_failure_predicted",
+							Name:      "hardware.storage.drive.failure_predicted",
 							Timestamp: timestamp,
 							Value:     float32(failurePredicted),
 							Tags:      driveTags,
@@ -405,7 +405,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						}
 
 						datapoints = append(datapoints, data_store.DataPoint{
-							Name:      "redfish_storage_volume_encrypted",
+							Name:      "hardware.storage.volume.encrypted",
 							Timestamp: timestamp,
 							Value:     float32(encrypted),
 							Tags:      volumeTags,
@@ -414,7 +414,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						// Volume health state
 						if volumeInfo.Status != nil && volumeInfo.Status.Health != "" {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "redfish_storage_volume_health",
+								Name:      "hardware.storage.volume.health",
 								Timestamp: timestamp,
 								Value:     float32(mapHealthState(volumeInfo.Status.Health)),
 								Tags:      volumeTags,
@@ -424,7 +424,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						// Volume capacity
 						if volumeInfo.CapacityBytes > 0 {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "redfish_storage_volume_capacity_bytes",
+								Name:      "hardware.storage.volume.size",
 								Timestamp: timestamp,
 								Value:     float32(volumeInfo.CapacityBytes),
 								Tags:      volumeTags,
@@ -433,7 +433,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							// Also add capacity in GB for easier consumption
 							gbValue := float32(volumeInfo.CapacityBytes) / (1024 * 1024 * 1024)
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "redfish_storage_volume_capacity_gb",
+								Name:      "hardware.storage.volume.size_gb",
 								Timestamp: timestamp,
 								Value:     gbValue,
 								Tags:      volumeTags,
@@ -443,7 +443,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						// Volume optimal IO size
 						if volumeInfo.OptimumIOSizeBytes > 0 {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "redfish_storage_volume_optimum_io_size_bytes",
+								Name:      "hardware.storage.volume.optimum_io_size",
 								Timestamp: timestamp,
 								Value:     float32(volumeInfo.OptimumIOSizeBytes),
 								Tags:      volumeTags,
