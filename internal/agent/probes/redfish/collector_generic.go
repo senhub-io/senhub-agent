@@ -317,7 +317,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 		if resp.Status != nil {
 			health := mapHealthState(resp.Status.Health)
 			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "redfish_system_health",
+				Name:      "hardware.system.health",
 				Timestamp: timestamp,
 				Value:     float32(health),
 				Tags:      systemTags,
@@ -328,7 +328,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 		if resp.PowerState != "" {
 			powerState := mapPowerState(resp.PowerState)
 			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "redfish_system_power_state",
+				Name:      "hardware.system.power.state",
 				Timestamp: timestamp,
 				Value:     float32(powerState),
 				Tags:      systemTags,
@@ -346,7 +346,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 			rawJSON, _ := json.Marshal(resp.ProcessorSummary)
 			if err := json.Unmarshal(rawJSON, &procSummary); err == nil {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "redfish_system_processor_count",
+					Name:      "hardware.system.cpu.count",
 					Timestamp: timestamp,
 					Value:     float32(procSummary.Count),
 					Tags:      systemTags,
@@ -355,7 +355,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 				// Add processor health if available
 				if procSummary.Status != nil && procSummary.Status.Health != "" {
 					datapoints = append(datapoints, data_store.DataPoint{
-						Name:      "redfish_system_processor_health",
+						Name:      "hardware.system.cpu.health",
 						Timestamp: timestamp,
 						Value:     float32(mapHealthState(procSummary.Status.Health)),
 						Tags:      systemTags,
@@ -374,7 +374,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 			rawJSON, _ := json.Marshal(resp.MemorySummary)
 			if err := json.Unmarshal(rawJSON, &memSummary); err == nil {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "redfish_system_memory_total_gib",
+					Name:      "hardware.system.memory.size",
 					Timestamp: timestamp,
 					Value:     memSummary.TotalSystemMemoryGiB,
 					Tags:      systemTags,
@@ -383,7 +383,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 				// Add memory health if available
 				if memSummary.Status != nil && memSummary.Status.Health != "" {
 					datapoints = append(datapoints, data_store.DataPoint{
-						Name:      "redfish_system_memory_health",
+						Name:      "hardware.system.memory.health",
 						Timestamp: timestamp,
 						Value:     float32(mapHealthState(memSummary.Status.Health)),
 						Tags:      systemTags,
@@ -488,7 +488,7 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 
 			// Add temperature reading
 			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "redfish_thermal_temperature_celsius",
+				Name:      "hardware.temperature",
 				Timestamp: timestamp,
 				Value:     tempReading.ReadingCelsius,
 				Tags:      sensorTags,
@@ -498,7 +498,7 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 			if tempReading.Status != nil {
 				health := mapHealthState(tempReading.Status.Health)
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "redfish_thermal_temperature_health",
+					Name:      "hardware.temperature.health",
 					Timestamp: timestamp,
 					Value:     float32(health),
 					Tags:      sensorTags,
@@ -543,7 +543,7 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 
 			// Add fan reading
 			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "redfish_thermal_fan_speed",
+				Name:      "hardware.fan.speed",
 				Timestamp: timestamp,
 				Value:     fanReading.Reading,
 				Tags:      fanTags,
@@ -553,7 +553,7 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 			if fanReading.Status != nil {
 				health := mapHealthState(fanReading.Status.Health)
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "redfish_thermal_fan_health",
+					Name:      "hardware.fan.health",
 					Timestamp: timestamp,
 					Value:     float32(health),
 					Tags:      fanTags,
@@ -671,7 +671,7 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			// Add PSU power output (if available)
 			if psuReading.PowerOutputWatts > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "redfish_power_psu_output_watts",
+					Name:      "hardware.power.usage",
 					Timestamp: timestamp,
 					Value:     psuReading.PowerOutputWatts,
 					Tags:      psuTags,
@@ -681,7 +681,7 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			// Add PSU input voltage (if available)
 			if psuReading.LineInputVoltage > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "redfish_power_psu_input_volts",
+					Name:      "hardware.power.input_voltage",
 					Timestamp: timestamp,
 					Value:     psuReading.LineInputVoltage,
 					Tags:      psuTags,
@@ -691,7 +691,7 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			// Add PSU capacity (if available)
 			if psuReading.PowerCapacityWatts > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "redfish_power_psu_capacity_watts",
+					Name:      "hardware.power.limit",
 					Timestamp: timestamp,
 					Value:     psuReading.PowerCapacityWatts,
 					Tags:      psuTags,
@@ -702,7 +702,7 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			if psuReading.Status != nil {
 				health := mapHealthState(psuReading.Status.Health)
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "redfish_power_psu_health",
+					Name:      "hardware.power.health",
 					Timestamp: timestamp,
 					Value:     float32(health),
 					Tags:      psuTags,
@@ -730,7 +730,7 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			// Add power consumption
 			if pcReading.PowerConsumedWatts > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "redfish_power_consumed_watts",
+					Name:      "hardware.power.consumption",
 					Timestamp: timestamp,
 					Value:     pcReading.PowerConsumedWatts,
 					Tags:      chassisTags,
@@ -740,7 +740,7 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			// Add power capacity
 			if pcReading.PowerCapacityWatts > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "redfish_power_capacity_watts",
+					Name:      "hardware.power.capacity",
 					Timestamp: timestamp,
 					Value:     pcReading.PowerCapacityWatts,
 					Tags:      chassisTags,
