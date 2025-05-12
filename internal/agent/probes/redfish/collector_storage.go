@@ -1,3 +1,4 @@
+// Package redfish provides monitoring capabilities for hardware systems via Redfish API
 package redfish
 
 import (
@@ -491,6 +492,202 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 								Value:     gbValue,
 								Tags:      volumeTags,
 							})
+							
+							// Attempt to get usage information from OEM data if available
+							var volumeRawData map[string]interface{}
+							if err := json.Unmarshal(volResp.Raw, &volumeRawData); err == nil {
+								// Try to extract used and available space from various possible paths
+								// First check standard Redfish properties
+								if capacitySourcesRaw, ok := volumeRawData["CapacitySources"]; ok {
+									if capacitySources, ok := capacitySourcesRaw.([]interface{}); ok && len(capacitySources) > 0 {
+										for _, sourceRaw := range capacitySources {
+											if source, ok := sourceRaw.(map[string]interface{}); ok {
+												// Look for usage data in the CapacitySource
+												if providedCapacityRaw, ok := source["ProvidedCapacityBytes"]; ok {
+													if providedCapacity, ok := providedCapacityRaw.(float64); ok && providedCapacity > 0 {
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.used",
+															Timestamp: timestamp,
+															Value:     float32(providedCapacity),
+															Tags:      volumeTags,
+														})
+														
+														// Calculate used space percentage
+														usedSpacePercent := (float32(providedCapacity) / float32(volumeInfo.CapacityBytes)) * 100
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.utilization",
+															Timestamp: timestamp,
+															Value:     usedSpacePercent,
+															Tags:      volumeTags,
+														})
+														
+														// Calculate free space
+														freeSpace := float32(volumeInfo.CapacityBytes) - float32(providedCapacity)
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.free",
+															Timestamp: timestamp,
+															Value:     freeSpace,
+															Tags:      volumeTags,
+														})
+													}
+												}
+											}
+										}
+									}
+								}
+								
+								// If not found, try OEM-specific paths
+								if oemData, ok := volumeRawData["Oem"]; ok {
+									if oemMap, ok := oemData.(map[string]interface{}); ok {
+										// Check for Dell-specific paths
+										if dellData, ok := oemMap["Dell"]; ok {
+											if dellMap, ok := dellData.(map[string]interface{}); ok {
+												// Common Dell storage metrics names
+												if usedBytesRaw, ok := dellMap["UsedBytes"]; ok {
+													if usedBytes, ok := usedBytesRaw.(float64); ok && usedBytes > 0 {
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.used",
+															Timestamp: timestamp,
+															Value:     float32(usedBytes),
+															Tags:      volumeTags,
+														})
+														
+														// Add used GB
+														usedGB := float32(usedBytes) / (1024 * 1024 * 1024)
+														volumeTagsWithUnit := append(volumeTags, tags.Tag{Key: "unit", Value: "GB"})
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.used",
+															Timestamp: timestamp,
+															Value:     usedGB,
+															Tags:      volumeTagsWithUnit,
+														})
+														
+														// Calculate free space
+														freeSpace := float32(volumeInfo.CapacityBytes) - float32(usedBytes)
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.free",
+															Timestamp: timestamp,
+															Value:     freeSpace,
+															Tags:      volumeTags,
+														})
+														
+														// Add free GB 
+														freeGB := float32(freeSpace) / (1024 * 1024 * 1024)
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.free",
+															Timestamp: timestamp,
+															Value:     freeGB,
+															Tags:      volumeTagsWithUnit,
+														})
+														
+														// Calculate used space percentage
+														usedSpacePercent := (float32(usedBytes) / float32(volumeInfo.CapacityBytes)) * 100
+														volumeTagsWithPercentUnit := append(volumeTags, tags.Tag{Key: "unit", Value: "percent"})
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.utilization",
+															Timestamp: timestamp,
+															Value:     usedSpacePercent,
+															Tags:      volumeTagsWithPercentUnit,
+														})
+													}
+												}
+												
+												// Try common RemainingCapacity percent field
+												if remainingCapacityRaw, ok := dellMap["RemainingCapacityPercent"]; ok {
+													if remainingPercent, ok := remainingCapacityRaw.(float64); ok {
+														usedPercent := 100.0 - float32(remainingPercent)
+														volumeTagsWithPercentUnit := append(volumeTags, tags.Tag{Key: "unit", Value: "percent"})
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.utilization",
+															Timestamp: timestamp,
+															Value:     usedPercent,
+															Tags:      volumeTagsWithPercentUnit,
+														})
+														
+														// Calculate and add used and free space based on percentage
+														usedBytes := float32(volumeInfo.CapacityBytes) * (usedPercent / 100.0)
+														freeBytes := float32(volumeInfo.CapacityBytes) - usedBytes
+														
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.used",
+															Timestamp: timestamp,
+															Value:     usedBytes,
+															Tags:      volumeTags,
+														})
+														
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.free",
+															Timestamp: timestamp,
+															Value:     freeBytes,
+															Tags:      volumeTags,
+														})
+														
+														// Add GB versions
+														usedGB := usedBytes / (1024 * 1024 * 1024)
+														freeGB := freeBytes / (1024 * 1024 * 1024)
+														volumeTagsWithUnit := append(volumeTags, tags.Tag{Key: "unit", Value: "GB"})
+														
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.used",
+															Timestamp: timestamp,
+															Value:     usedGB,
+															Tags:      volumeTagsWithUnit,
+														})
+														
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.free",
+															Timestamp: timestamp,
+															Value:     freeGB,
+															Tags:      volumeTagsWithUnit,
+														})
+													}
+												}
+											}
+										}
+										
+										// Check for HPE-specific paths
+										if hpeData, ok := oemMap["Hpe"]; ok {
+											if hpeMap, ok := hpeData.(map[string]interface{}); ok {
+												// Common HPE storage metrics names
+												if spaceInfoRaw, ok := hpeMap["VolumeSpaceInfo"]; ok {
+													if spaceInfo, ok := spaceInfoRaw.(map[string]interface{}); ok {
+														// Check for used capacity fields
+														if usedRaw, ok := spaceInfo["UsedSpace"]; ok {
+															if usedBytes, ok := usedRaw.(float64); ok && usedBytes > 0 {
+																datapoints = append(datapoints, data_store.DataPoint{
+																	Name:      "hardware.storage.volume.space.used",
+																	Timestamp: timestamp,
+																	Value:     float32(usedBytes),
+																	Tags:      volumeTags,
+																})
+																
+																// Calculate free space and percentage
+																freeSpace := float32(volumeInfo.CapacityBytes) - float32(usedBytes)
+																usedPercent := (float32(usedBytes) / float32(volumeInfo.CapacityBytes)) * 100
+																
+																datapoints = append(datapoints, data_store.DataPoint{
+																	Name:      "hardware.storage.volume.space.free",
+																	Timestamp: timestamp,
+																	Value:     freeSpace,
+																	Tags:      volumeTags,
+																})
+																
+																volumeTagsWithPercentUnit := append(volumeTags, tags.Tag{Key: "unit", Value: "percent"})
+																datapoints = append(datapoints, data_store.DataPoint{
+																	Name:      "hardware.storage.volume.space.utilization",
+																	Timestamp: timestamp,
+																	Value:     usedPercent,
+																	Tags:      volumeTagsWithPercentUnit,
+																})
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
 						}
 
 						// Volume optimal IO size - la valeur est dérivée de OptimumIOSizeBytes
