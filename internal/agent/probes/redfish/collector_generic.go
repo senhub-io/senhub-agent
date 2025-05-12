@@ -293,10 +293,14 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 			return nil, fmt.Errorf("failed to get system details: %v", err)
 		}
 
+		// Extract hostname - we'll use this both for tags and to associate with other metrics
+		hostname := resp.Name
+
 		// Extract system tags
 		systemTags := []tags.Tag{
 			{Key: "system_id", Value: resp.ID},
 			{Key: "system_name", Value: resp.Name},
+			{Key: "host", Value: hostname},  // Add host tag
 		}
 
 		if resp.Manufacturer != "" {
@@ -313,7 +317,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 		if resp.Status != nil {
 			health := mapHealthState(resp.Status.Health)
 			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "system.health",
+				Name:      "redfish_system_health",
 				Timestamp: timestamp,
 				Value:     float32(health),
 				Tags:      systemTags,
@@ -324,7 +328,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 		if resp.PowerState != "" {
 			powerState := mapPowerState(resp.PowerState)
 			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "system.power_state",
+				Name:      "redfish_system_power_state",
 				Timestamp: timestamp,
 				Value:     float32(powerState),
 				Tags:      systemTags,
@@ -342,11 +346,21 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 			rawJSON, _ := json.Marshal(resp.ProcessorSummary)
 			if err := json.Unmarshal(rawJSON, &procSummary); err == nil {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "system.processor_count",
+					Name:      "redfish_system_processor_count",
 					Timestamp: timestamp,
 					Value:     float32(procSummary.Count),
 					Tags:      systemTags,
 				})
+
+				// Add processor health if available
+				if procSummary.Status != nil && procSummary.Status.Health != "" {
+					datapoints = append(datapoints, data_store.DataPoint{
+						Name:      "redfish_system_processor_health",
+						Timestamp: timestamp,
+						Value:     float32(mapHealthState(procSummary.Status.Health)),
+						Tags:      systemTags,
+					})
+				}
 			}
 		}
 
@@ -360,11 +374,21 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 			rawJSON, _ := json.Marshal(resp.MemorySummary)
 			if err := json.Unmarshal(rawJSON, &memSummary); err == nil {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "system.memory_total_gib",
+					Name:      "redfish_system_memory_total_gib",
 					Timestamp: timestamp,
 					Value:     memSummary.TotalSystemMemoryGiB,
 					Tags:      systemTags,
 				})
+
+				// Add memory health if available
+				if memSummary.Status != nil && memSummary.Status.Health != "" {
+					datapoints = append(datapoints, data_store.DataPoint{
+						Name:      "redfish_system_memory_health",
+						Timestamp: timestamp,
+						Value:     float32(mapHealthState(memSummary.Status.Health)),
+						Tags:      systemTags,
+					})
+				}
 			}
 		}
 	}
@@ -379,6 +403,15 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 	}
 
 	var datapoints []data_store.DataPoint
+
+	// Get system name for host tag
+	var hostName string
+	if len(c.systems) > 0 {
+		sysResp, err := c.client.Get(ctx, c.systems[0])
+		if err == nil && sysResp.Name != "" {
+			hostName = sysResp.Name
+		}
+	}
 
 	// Collect metrics for each chassis
 	for _, chassisPath := range c.chassis {
@@ -405,6 +438,11 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 		chassisTags := []tags.Tag{
 			{Key: "chassis_id", Value: chassisResp.ID},
 			{Key: "chassis_name", Value: chassisResp.Name},
+		}
+
+		// Add host tag if available
+		if hostName != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "host", Value: hostName})
 		}
 
 		// Process temperature sensors
@@ -434,11 +472,23 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 			// Create sensor-specific tags
 			sensorTags := append([]tags.Tag{}, chassisTags...)
 			sensorTags = append(sensorTags, tags.Tag{Key: "sensor_name", Value: tempReading.Name})
-			sensorTags = append(sensorTags, tags.Tag{Key: "physical_context", Value: tempReading.PhysicalContext})
+
+			// Look for controller name in sensor name
+			if strings.Contains(strings.ToLower(tempReading.Name), "ctrl_a") ||
+			   strings.Contains(strings.ToLower(tempReading.Name), "controller_a") {
+				sensorTags = append(sensorTags, tags.Tag{Key: "controller", Value: "A"})
+			} else if strings.Contains(strings.ToLower(tempReading.Name), "ctrl_b") ||
+			          strings.Contains(strings.ToLower(tempReading.Name), "controller_b") {
+				sensorTags = append(sensorTags, tags.Tag{Key: "controller", Value: "B"})
+			}
+
+			if tempReading.PhysicalContext != "" {
+				sensorTags = append(sensorTags, tags.Tag{Key: "physical_context", Value: tempReading.PhysicalContext})
+			}
 
 			// Add temperature reading
 			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "thermal.temperature",
+				Name:      "redfish_thermal_temperature_celsius",
 				Timestamp: timestamp,
 				Value:     tempReading.ReadingCelsius,
 				Tags:      sensorTags,
@@ -448,7 +498,7 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 			if tempReading.Status != nil {
 				health := mapHealthState(tempReading.Status.Health)
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "thermal.temperature.health",
+					Name:      "redfish_thermal_temperature_health",
 					Timestamp: timestamp,
 					Value:     float32(health),
 					Tags:      sensorTags,
@@ -482,12 +532,18 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 			// Create fan-specific tags
 			fanTags := append([]tags.Tag{}, chassisTags...)
 			fanTags = append(fanTags, tags.Tag{Key: "fan_name", Value: fanReading.Name})
-			fanTags = append(fanTags, tags.Tag{Key: "physical_context", Value: fanReading.PhysicalContext})
-			fanTags = append(fanTags, tags.Tag{Key: "units", Value: fanReading.ReadingUnits})
+
+			if fanReading.PhysicalContext != "" {
+				fanTags = append(fanTags, tags.Tag{Key: "physical_context", Value: fanReading.PhysicalContext})
+			}
+
+			if fanReading.ReadingUnits != "" {
+				fanTags = append(fanTags, tags.Tag{Key: "units", Value: fanReading.ReadingUnits})
+			}
 
 			// Add fan reading
 			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "thermal.fan_speed",
+				Name:      "redfish_thermal_fan_speed",
 				Timestamp: timestamp,
 				Value:     fanReading.Reading,
 				Tags:      fanTags,
@@ -497,7 +553,7 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 			if fanReading.Status != nil {
 				health := mapHealthState(fanReading.Status.Health)
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "thermal.fan.health",
+					Name:      "redfish_thermal_fan_health",
 					Timestamp: timestamp,
 					Value:     float32(health),
 					Tags:      fanTags,
@@ -516,6 +572,15 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 	}
 
 	var datapoints []data_store.DataPoint
+
+	// Get system name for host tag
+	var hostName string
+	if len(c.systems) > 0 {
+		sysResp, err := c.client.Get(ctx, c.systems[0])
+		if err == nil && sysResp.Name != "" {
+			hostName = sysResp.Name
+		}
+	}
 
 	// Collect metrics for each chassis
 	for _, chassisPath := range c.chassis {
@@ -544,6 +609,11 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			{Key: "chassis_name", Value: chassisResp.Name},
 		}
 
+		// Add host tag if available
+		if hostName != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "host", Value: hostName})
+		}
+
 		// Process power supplies
 		for i, psu := range resp.PowerSupplies {
 			var psuReading struct {
@@ -555,6 +625,11 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 				Manufacturer       string  `json:"Manufacturer"`
 				SerialNumber       string  `json:"SerialNumber"`
 				Status             *Status `json:"Status"`
+				Location           struct {
+					PartLocation struct {
+						ServiceLabel string `json:"ServiceLabel"`
+					} `json:"PartLocation"`
+				} `json:"Location"`
 			}
 			rawJSON, _ := json.Marshal(psu)
 			if err := json.Unmarshal(rawJSON, &psuReading); err != nil {
@@ -568,6 +643,16 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			// Create PSU-specific tags
 			psuTags := append([]tags.Tag{}, chassisTags...)
 			psuTags = append(psuTags, tags.Tag{Key: "psu_name", Value: psuReading.Name})
+
+			// Try to detect controller from PSU name
+			if strings.Contains(strings.ToLower(psuReading.Name), "left") ||
+			   strings.Contains(strings.ToLower(psuReading.Name), "a") {
+				psuTags = append(psuTags, tags.Tag{Key: "controller", Value: "A"})
+			} else if strings.Contains(strings.ToLower(psuReading.Name), "right") ||
+			          strings.Contains(strings.ToLower(psuReading.Name), "b") {
+				psuTags = append(psuTags, tags.Tag{Key: "controller", Value: "B"})
+			}
+
 			if psuReading.Model != "" {
 				psuTags = append(psuTags, tags.Tag{Key: "model", Value: psuReading.Model})
 			}
@@ -578,10 +663,15 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 				psuTags = append(psuTags, tags.Tag{Key: "serial_number", Value: psuReading.SerialNumber})
 			}
 
+			// Add service label if available
+			if psuReading.Location.PartLocation.ServiceLabel != "" {
+				psuTags = append(psuTags, tags.Tag{Key: "service_label", Value: psuReading.Location.PartLocation.ServiceLabel})
+			}
+
 			// Add PSU power output (if available)
 			if psuReading.PowerOutputWatts > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "power.psu.output_watts",
+					Name:      "redfish_power_psu_output_watts",
 					Timestamp: timestamp,
 					Value:     psuReading.PowerOutputWatts,
 					Tags:      psuTags,
@@ -591,7 +681,7 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			// Add PSU input voltage (if available)
 			if psuReading.LineInputVoltage > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "power.psu.input_voltage",
+					Name:      "redfish_power_psu_input_volts",
 					Timestamp: timestamp,
 					Value:     psuReading.LineInputVoltage,
 					Tags:      psuTags,
@@ -601,7 +691,7 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			// Add PSU capacity (if available)
 			if psuReading.PowerCapacityWatts > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "power.psu.capacity_watts",
+					Name:      "redfish_power_psu_capacity_watts",
 					Timestamp: timestamp,
 					Value:     psuReading.PowerCapacityWatts,
 					Tags:      psuTags,
@@ -612,7 +702,7 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			if psuReading.Status != nil {
 				health := mapHealthState(psuReading.Status.Health)
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "power.psu.health",
+					Name:      "redfish_power_psu_health",
 					Timestamp: timestamp,
 					Value:     float32(health),
 					Tags:      psuTags,
@@ -640,7 +730,7 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			// Add power consumption
 			if pcReading.PowerConsumedWatts > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "power.consumed_watts",
+					Name:      "redfish_power_consumed_watts",
 					Timestamp: timestamp,
 					Value:     pcReading.PowerConsumedWatts,
 					Tags:      chassisTags,
@@ -650,7 +740,7 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			// Add power capacity
 			if pcReading.PowerCapacityWatts > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "power.capacity_watts",
+					Name:      "redfish_power_capacity_watts",
 					Timestamp: timestamp,
 					Value:     pcReading.PowerCapacityWatts,
 					Tags:      chassisTags,
