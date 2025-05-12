@@ -296,7 +296,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 		// Extract hostname - we'll use this both for tags and to associate with other metrics
 		hostname := resp.Name
 
-		// Extract system tags
+		// Extract system tags according to REDFISH-TAGS.md conventions
 		systemTags := []tags.Tag{
 			{Key: "system_id", Value: resp.ID},
 			{Key: "system_name", Value: resp.Name},
@@ -311,6 +311,34 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 		}
 		if resp.SerialNumber != "" {
 			systemTags = append(systemTags, tags.Tag{Key: "serial_number", Value: resp.SerialNumber})
+		}
+		if resp.UUID != "" {
+			systemTags = append(systemTags, tags.Tag{Key: "system_uuid", Value: resp.UUID})
+		}
+		if resp.SystemType != "" {
+			systemTags = append(systemTags, tags.Tag{Key: "system_type", Value: resp.SystemType})
+		}
+		if resp.BiosVersion != "" {
+			systemTags = append(systemTags, tags.Tag{Key: "bios_version", Value: resp.BiosVersion})
+		}
+		if resp.Status != nil && resp.Status.State != "" {
+			systemTags = append(systemTags, tags.Tag{Key: "state", Value: resp.Status.State})
+		}
+		if resp.AssetTag != "" {
+			systemTags = append(systemTags, tags.Tag{Key: "asset_tag", Value: resp.AssetTag})
+		}
+		if resp.SKU != "" {
+			systemTags = append(systemTags, tags.Tag{Key: "sku", Value: resp.SKU})
+		}
+		if resp.PartNumber != "" {
+			systemTags = append(systemTags, tags.Tag{Key: "part_number", Value: resp.PartNumber})
+		}
+		// Note: IndicatorLED might not be available in all Redfish implementations
+		var rawData map[string]interface{}
+		if err := json.Unmarshal(resp.Raw, &rawData); err == nil {
+			if ledValue, ok := rawData["IndicatorLED"].(string); ok && ledValue != "" {
+				systemTags = append(systemTags, tags.Tag{Key: "indicator_led", Value: ledValue})
+			}
 		}
 
 		// Add health state metric
@@ -426,7 +454,7 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 			continue
 		}
 
-		// Extract chassis ID and name for tags
+		// Extract chassis ID and name for tags - follow REDFISH-TAGS.md conventions
 		chassisResp, err := c.client.Get(ctx, chassisPath)
 		if err != nil {
 			c.logger.Warn().
@@ -440,6 +468,61 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 			{Key: "chassis_name", Value: chassisResp.Name},
 		}
 
+		// Add additional chassis tags according to REDFISH-TAGS.md
+		// Extract ChassisType from Raw data if available
+		var chassisRawData map[string]interface{}
+		if err := json.Unmarshal(chassisResp.Raw, &chassisRawData); err == nil {
+			if chassisType, ok := chassisRawData["ChassisType"].(string); ok && chassisType != "" {
+				chassisTags = append(chassisTags, tags.Tag{Key: "chassis_type", Value: chassisType})
+			}
+		}
+		if chassisResp.Manufacturer != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "manufacturer", Value: chassisResp.Manufacturer})
+		}
+		if chassisResp.Model != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "model", Value: chassisResp.Model})
+		}
+		if chassisResp.SerialNumber != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "serial_number", Value: chassisResp.SerialNumber})
+		}
+		if chassisResp.PartNumber != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "part_number", Value: chassisResp.PartNumber})
+		}
+		if chassisResp.AssetTag != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "asset_tag", Value: chassisResp.AssetTag})
+		}
+		if chassisResp.SKU != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "sku", Value: chassisResp.SKU})
+		}
+		if chassisResp.Status != nil && chassisResp.Status.State != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "state", Value: chassisResp.Status.State})
+		}
+
+		// Get physical dimensions if available
+		var chassisPhysical struct {
+			HeightMm float32 `json:"HeightMm"`
+			WidthMm float32 `json:"WidthMm"`
+			DepthMm float32 `json:"DepthMm"`
+			WeightKg float32 `json:"WeightKg"`
+			LocationIndicatorActive bool `json:"LocationIndicatorActive"`
+		}
+		rawJSON, _ := json.Marshal(chassisResp)
+		if err := json.Unmarshal(rawJSON, &chassisPhysical); err == nil {
+			if chassisPhysical.HeightMm > 0 {
+				chassisTags = append(chassisTags, tags.Tag{Key: "height_mm", Value: fmt.Sprintf("%g", chassisPhysical.HeightMm)})
+			}
+			if chassisPhysical.WidthMm > 0 {
+				chassisTags = append(chassisTags, tags.Tag{Key: "width_mm", Value: fmt.Sprintf("%g", chassisPhysical.WidthMm)})
+			}
+			if chassisPhysical.DepthMm > 0 {
+				chassisTags = append(chassisTags, tags.Tag{Key: "depth_mm", Value: fmt.Sprintf("%g", chassisPhysical.DepthMm)})
+			}
+			if chassisPhysical.WeightKg > 0 {
+				chassisTags = append(chassisTags, tags.Tag{Key: "weight_kg", Value: fmt.Sprintf("%g", chassisPhysical.WeightKg)})
+			}
+			chassisTags = append(chassisTags, tags.Tag{Key: "location_indicator", Value: fmt.Sprintf("%t", chassisPhysical.LocationIndicatorActive)})
+		}
+
 		// Add host tag if available
 		if hostName != "" {
 			chassisTags = append(chassisTags, tags.Tag{Key: "host", Value: hostName})
@@ -448,12 +531,14 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 		// Process temperature sensors
 		for i, temp := range resp.Temperatures {
 			var tempReading struct {
-				Name            string  `json:"Name"`
-				ReadingCelsius  float32 `json:"ReadingCelsius"`
-				UpperThreshold  float32 `json:"UpperThresholdCritical"`
-				LowerThreshold  float32 `json:"LowerThresholdCritical"`
-				PhysicalContext string  `json:"PhysicalContext"`
-				Status          *Status `json:"Status"`
+				Name              string  `json:"Name"`
+				ReadingCelsius    float32 `json:"ReadingCelsius"`
+				UpperThreshold    float32 `json:"UpperThresholdCritical"`
+				LowerThreshold    float32 `json:"LowerThresholdCritical"`
+				PhysicalContext   string  `json:"PhysicalContext"`
+				Status            *Status `json:"Status"`
+				SensorNumber      int     `json:"SensorNumber"`
+				RelatedItemCount  int     `json:"RelatedItem@odata.count"`
 			}
 			rawJSON, _ := json.Marshal(temp)
 			if err := json.Unmarshal(rawJSON, &tempReading); err != nil {
@@ -469,9 +554,14 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 				continue
 			}
 
-			// Create sensor-specific tags
+			// Create sensor-specific tags following REDFISH-TAGS.md conventions
 			sensorTags := append([]tags.Tag{}, chassisTags...)
 			sensorTags = append(sensorTags, tags.Tag{Key: "sensor_name", Value: tempReading.Name})
+
+			// Add sensor number if available
+			if tempReading.SensorNumber != 0 {
+				sensorTags = append(sensorTags, tags.Tag{Key: "sensor_number", Value: fmt.Sprintf("%d", tempReading.SensorNumber)})
+			}
 
 			// Look for controller name in sensor name
 			if strings.Contains(strings.ToLower(tempReading.Name), "ctrl_a") ||
@@ -484,6 +574,11 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 
 			if tempReading.PhysicalContext != "" {
 				sensorTags = append(sensorTags, tags.Tag{Key: "physical_context", Value: tempReading.PhysicalContext})
+			}
+
+			// Add related items count if available
+			if tempReading.RelatedItemCount > 0 {
+				sensorTags = append(sensorTags, tags.Tag{Key: "related_items_count", Value: fmt.Sprintf("%d", tempReading.RelatedItemCount)})
 			}
 
 			// Add temperature reading
@@ -595,7 +690,7 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			continue
 		}
 
-		// Extract chassis ID and name for tags
+		// Extract chassis ID and name for tags - follow REDFISH-TAGS.md conventions
 		chassisResp, err := c.client.Get(ctx, chassisPath)
 		if err != nil {
 			c.logger.Warn().
@@ -607,6 +702,61 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 		chassisTags := []tags.Tag{
 			{Key: "chassis_id", Value: chassisResp.ID},
 			{Key: "chassis_name", Value: chassisResp.Name},
+		}
+
+		// Add additional chassis tags according to REDFISH-TAGS.md
+		// Extract ChassisType from Raw data if available
+		var chassisRawData map[string]interface{}
+		if err := json.Unmarshal(chassisResp.Raw, &chassisRawData); err == nil {
+			if chassisType, ok := chassisRawData["ChassisType"].(string); ok && chassisType != "" {
+				chassisTags = append(chassisTags, tags.Tag{Key: "chassis_type", Value: chassisType})
+			}
+		}
+		if chassisResp.Manufacturer != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "manufacturer", Value: chassisResp.Manufacturer})
+		}
+		if chassisResp.Model != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "model", Value: chassisResp.Model})
+		}
+		if chassisResp.SerialNumber != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "serial_number", Value: chassisResp.SerialNumber})
+		}
+		if chassisResp.PartNumber != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "part_number", Value: chassisResp.PartNumber})
+		}
+		if chassisResp.AssetTag != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "asset_tag", Value: chassisResp.AssetTag})
+		}
+		if chassisResp.SKU != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "sku", Value: chassisResp.SKU})
+		}
+		if chassisResp.Status != nil && chassisResp.Status.State != "" {
+			chassisTags = append(chassisTags, tags.Tag{Key: "state", Value: chassisResp.Status.State})
+		}
+
+		// Get physical dimensions if available
+		var chassisPhysical struct {
+			HeightMm float32 `json:"HeightMm"`
+			WidthMm float32 `json:"WidthMm"`
+			DepthMm float32 `json:"DepthMm"`
+			WeightKg float32 `json:"WeightKg"`
+			LocationIndicatorActive bool `json:"LocationIndicatorActive"`
+		}
+		rawJSON, _ := json.Marshal(chassisResp)
+		if err := json.Unmarshal(rawJSON, &chassisPhysical); err == nil {
+			if chassisPhysical.HeightMm > 0 {
+				chassisTags = append(chassisTags, tags.Tag{Key: "height_mm", Value: fmt.Sprintf("%g", chassisPhysical.HeightMm)})
+			}
+			if chassisPhysical.WidthMm > 0 {
+				chassisTags = append(chassisTags, tags.Tag{Key: "width_mm", Value: fmt.Sprintf("%g", chassisPhysical.WidthMm)})
+			}
+			if chassisPhysical.DepthMm > 0 {
+				chassisTags = append(chassisTags, tags.Tag{Key: "depth_mm", Value: fmt.Sprintf("%g", chassisPhysical.DepthMm)})
+			}
+			if chassisPhysical.WeightKg > 0 {
+				chassisTags = append(chassisTags, tags.Tag{Key: "weight_kg", Value: fmt.Sprintf("%g", chassisPhysical.WeightKg)})
+			}
+			chassisTags = append(chassisTags, tags.Tag{Key: "location_indicator", Value: fmt.Sprintf("%t", chassisPhysical.LocationIndicatorActive)})
 		}
 
 		// Add host tag if available
@@ -625,6 +775,9 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 				Manufacturer       string  `json:"Manufacturer"`
 				SerialNumber       string  `json:"SerialNumber"`
 				Status             *Status `json:"Status"`
+				FirmwareVersion    string  `json:"FirmwareVersion"`
+				InputRanges        string  `json:"InputRanges"`
+				EfficiencyPercent  float32 `json:"EfficiencyPercent"`
 				Location           struct {
 					PartLocation struct {
 						ServiceLabel string `json:"ServiceLabel"`
@@ -640,7 +793,7 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 				continue
 			}
 
-			// Create PSU-specific tags
+			// Create PSU-specific tags following REDFISH-TAGS.md conventions
 			psuTags := append([]tags.Tag{}, chassisTags...)
 			psuTags = append(psuTags, tags.Tag{Key: "psu_name", Value: psuReading.Name})
 
@@ -666,6 +819,16 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 			// Add service label if available
 			if psuReading.Location.PartLocation.ServiceLabel != "" {
 				psuTags = append(psuTags, tags.Tag{Key: "service_label", Value: psuReading.Location.PartLocation.ServiceLabel})
+			}
+
+			// Add firmware version if available
+			if psuReading.FirmwareVersion != "" {
+				psuTags = append(psuTags, tags.Tag{Key: "psu_firmware", Value: psuReading.FirmwareVersion})
+			}
+
+			// Add input ranges if available
+			if psuReading.InputRanges != "" {
+				psuTags = append(psuTags, tags.Tag{Key: "input_ranges", Value: psuReading.InputRanges})
 			}
 
 			// Add PSU power output (if available)
@@ -804,7 +967,7 @@ func (c *GenericCollector) collectProcessorMetrics(ctx context.Context, timestam
 				continue
 			}
 
-			// Create processor-specific tags
+			// Create processor-specific tags following REDFISH-TAGS.md conventions
 			procTags := append([]tags.Tag{}, systemTags...)
 			procTags = append(procTags, tags.Tag{Key: "processor_id", Value: procResp.ID})
 			procTags = append(procTags, tags.Tag{Key: "processor_name", Value: procResp.Name})
@@ -814,6 +977,21 @@ func (c *GenericCollector) collectProcessorMetrics(ctx context.Context, timestam
 			}
 			if procResp.Manufacturer != "" {
 				procTags = append(procTags, tags.Tag{Key: "manufacturer", Value: procResp.Manufacturer})
+			}
+			if procResp.SerialNumber != "" {
+				procTags = append(procTags, tags.Tag{Key: "serial_number", Value: procResp.SerialNumber})
+			}
+			if procResp.PartNumber != "" {
+				procTags = append(procTags, tags.Tag{Key: "part_number", Value: procResp.PartNumber})
+			}
+			if procResp.AssetTag != "" {
+				procTags = append(procTags, tags.Tag{Key: "asset_tag", Value: procResp.AssetTag})
+			}
+			if procResp.SKU != "" {
+				procTags = append(procTags, tags.Tag{Key: "sku", Value: procResp.SKU})
+			}
+			if procResp.Status != nil && procResp.Status.State != "" {
+				procTags = append(procTags, tags.Tag{Key: "state", Value: procResp.Status.State})
 			}
 
 			// Extract processor metrics from response
@@ -930,7 +1108,7 @@ func (c *GenericCollector) collectMemoryMetrics(ctx context.Context, timestamp t
 				continue
 			}
 
-			// Create memory-specific tags
+			// Create memory-specific tags following REDFISH-TAGS.md conventions
 			dimTags := append([]tags.Tag{}, systemTags...)
 			dimTags = append(dimTags, tags.Tag{Key: "memory_id", Value: dimResp.ID})
 			dimTags = append(dimTags, tags.Tag{Key: "memory_name", Value: dimResp.Name})
@@ -943,6 +1121,15 @@ func (c *GenericCollector) collectMemoryMetrics(ctx context.Context, timestamp t
 			}
 			if dimResp.PartNumber != "" {
 				dimTags = append(dimTags, tags.Tag{Key: "part_number", Value: dimResp.PartNumber})
+			}
+			if dimResp.AssetTag != "" {
+				dimTags = append(dimTags, tags.Tag{Key: "asset_tag", Value: dimResp.AssetTag})
+			}
+			if dimResp.SKU != "" {
+				dimTags = append(dimTags, tags.Tag{Key: "sku", Value: dimResp.SKU})
+			}
+			if dimResp.Status != nil && dimResp.Status.State != "" {
+				dimTags = append(dimTags, tags.Tag{Key: "state", Value: dimResp.Status.State})
 			}
 
 			// Extract memory metrics from response
@@ -1008,11 +1195,11 @@ func (c *GenericCollector) collectMemoryMetrics(ctx context.Context, timestamp t
 // collectStorageMetrics gathers storage metrics from a Redfish system
 func (c *GenericCollector) collectStorageMetrics(ctx context.Context, timestamp time.Time) ([]data_store.DataPoint, error) {
 	var datapoints []data_store.DataPoint
-	
+
 	for _, systemID := range c.systems {
 		// Get Storage Collection
 		storageCollectionPath := fmt.Sprintf("Systems/%s/Storage", systemID)
-		
+
 		// Fetch storage collection
 		storageCollectionResp, err := c.client.Get(ctx, storageCollectionPath)
 		if err != nil {
@@ -1022,14 +1209,14 @@ func (c *GenericCollector) collectStorageMetrics(ctx context.Context, timestamp 
 				Msg("Failed to get storage collection")
 			continue
 		}
-		
+
 		// Parse the collection
 		var storageCollection struct {
 			Members []struct {
 				OdataID string `json:"@odata.id"`
 			} `json:"Members"`
 		}
-		
+
 		if err := json.Unmarshal(storageCollectionResp.Raw, &storageCollection); err != nil {
 			c.logger.Warn().
 				Err(err).
@@ -1037,13 +1224,13 @@ func (c *GenericCollector) collectStorageMetrics(ctx context.Context, timestamp 
 				Msg("Failed to parse storage collection")
 			continue
 		}
-		
+
 		// Process each storage controller/subsystem
 		for _, member := range storageCollection.Members {
 			if member.OdataID == "" {
 				continue
 			}
-			
+
 			// Fetch storage controller
 			storageResp, err := c.client.Get(ctx, member.OdataID)
 			if err != nil {
@@ -1053,7 +1240,7 @@ func (c *GenericCollector) collectStorageMetrics(ctx context.Context, timestamp 
 					Msg("Failed to get storage details")
 				continue
 			}
-			
+
 			// Parse details
 			var storage struct {
 				ID           string  `json:"Id"`
@@ -1073,7 +1260,7 @@ func (c *GenericCollector) collectStorageMetrics(ctx context.Context, timestamp 
 				} `json:"Volumes"`
 				Status *Status `json:"Status"`
 			}
-			
+
 			if err := json.Unmarshal(storageResp.Raw, &storage); err != nil {
 				c.logger.Warn().
 					Err(err).
@@ -1081,60 +1268,60 @@ func (c *GenericCollector) collectStorageMetrics(ctx context.Context, timestamp 
 					Msg("Failed to parse storage details")
 				continue
 			}
-			
-			// Storage controller tags
+
+			// Storage controller tags - suivant les conventions de REDFISH-TAGS.md
 			storageTags := []tags.Tag{
 				{Key: "system_id", Value: systemID},
 				{Key: "storage_id", Value: storage.ID},
 				{Key: "storage_name", Value: storage.Name},
 			}
-			
+
 			// Storage health state
 			if storage.Status != nil && storage.Status.Health != "" {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "storage_health_state",
+					Name:      "hardware.storage.health",
 					Value:     float32(mapHealthState(storage.Status.Health)),
 					Timestamp: timestamp,
 					Tags:      storageTags,
 				})
 			}
-			
+
 			// Storage controllers
 			for _, controller := range storage.StorageControllers {
 				// Controller tags
 				controllerTags := append([]tags.Tag{}, storageTags...)
-				controllerTags = append(controllerTags, 
+				controllerTags = append(controllerTags,
 					tags.Tag{Key: "controller_id", Value: controller.MemberId},
 					tags.Tag{Key: "controller_name", Value: controller.Name},
 				)
-				
+
 				// Controller health
 				if controller.Status != nil && controller.Status.Health != "" {
 					datapoints = append(datapoints, data_store.DataPoint{
-						Name:      "storage_controller_health_state",
+						Name:      "hardware.storage.controller.health",
 						Value:     float32(mapHealthState(controller.Status.Health)),
 						Timestamp: timestamp,
 						Tags:      controllerTags,
 					})
 				}
-				
+
 				// Controller speed
 				if controller.SpeedGbps > 0 {
 					datapoints = append(datapoints, data_store.DataPoint{
-						Name:      "storage_controller_speed_gbps",
+						Name:      "hardware.storage.controller.speed_gbps",
 						Value:     controller.SpeedGbps,
 						Timestamp: timestamp,
 						Tags:      controllerTags,
 					})
 				}
 			}
-			
+
 			// Process drives if available
 			for _, drive := range storage.Drives {
 				if drive.OdataID == "" {
 					continue
 				}
-				
+
 				// Fetch drive details
 				driveResp, err := c.client.Get(ctx, drive.OdataID)
 				if err != nil {
@@ -1144,7 +1331,7 @@ func (c *GenericCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						Msg("Failed to get drive details")
 					continue
 				}
-				
+
 				// Parse drive details
 				var driveInfo struct {
 					ID            string  `json:"Id"`
@@ -1157,7 +1344,7 @@ func (c *GenericCollector) collectStorageMetrics(ctx context.Context, timestamp 
 					Status        *Status `json:"Status"`
 					FailurePredicted bool  `json:"FailurePredicted"`
 				}
-				
+
 				if err := json.Unmarshal(driveResp.Raw, &driveInfo); err != nil {
 					c.logger.Warn().
 						Err(err).
@@ -1165,46 +1352,55 @@ func (c *GenericCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						Msg("Failed to parse drive details")
 					continue
 				}
-				
-				// Drive tags
+
+				// Drive tags - suivant les conventions de REDFISH-TAGS.md
 				driveTags := append([]tags.Tag{}, storageTags...)
 				driveTags = append(driveTags,
 					tags.Tag{Key: "drive_id", Value: driveInfo.ID},
 					tags.Tag{Key: "drive_name", Value: driveInfo.Name},
-					tags.Tag{Key: "drive_model", Value: driveInfo.Model},
-					tags.Tag{Key: "drive_serial", Value: driveInfo.SerialNumber},
-					tags.Tag{Key: "drive_media_type", Value: driveInfo.MediaType},
-					tags.Tag{Key: "drive_protocol", Value: driveInfo.Protocol},
 				)
-				
+
+				if driveInfo.Model != "" {
+					driveTags = append(driveTags, tags.Tag{Key: "model", Value: driveInfo.Model})
+				}
+				if driveInfo.SerialNumber != "" {
+					driveTags = append(driveTags, tags.Tag{Key: "serial_number", Value: driveInfo.SerialNumber})
+				}
+				if driveInfo.MediaType != "" {
+					driveTags = append(driveTags, tags.Tag{Key: "media_type", Value: driveInfo.MediaType})
+				}
+				if driveInfo.Protocol != "" {
+					driveTags = append(driveTags, tags.Tag{Key: "protocol", Value: driveInfo.Protocol})
+				}
+
 				// Drive health state
 				if driveInfo.Status != nil && driveInfo.Status.Health != "" {
 					datapoints = append(datapoints, data_store.DataPoint{
-						Name:      "drive_health_state",
+						Name:      "hardware.storage.drive.health",
 						Value:     float32(mapHealthState(driveInfo.Status.Health)),
 						Timestamp: timestamp,
 						Tags:      driveTags,
 					})
 				}
-				
+
 				// Drive capacity
 				if driveInfo.CapacityBytes > 0 {
 					datapoints = append(datapoints, data_store.DataPoint{
-						Name:      "drive_capacity_bytes",
+						Name:      "hardware.storage.drive.capacity_bytes",
 						Value:     float32(driveInfo.CapacityBytes),
 						Timestamp: timestamp,
 						Tags:      driveTags,
 					})
 				}
-				
+
 				// Drive failure prediction
 				failurePredicted := 0.0
 				if driveInfo.FailurePredicted {
 					failurePredicted = 1.0
 				}
-				
+
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "drive_failure_predicted",
+					Name:      "hardware.storage.drive.failure_predicted",
 					Value:     float32(failurePredicted),
 					Timestamp: timestamp,
 					Tags:      driveTags,
@@ -1212,18 +1408,18 @@ func (c *GenericCollector) collectStorageMetrics(ctx context.Context, timestamp 
 			}
 		}
 	}
-	
+
 	return datapoints, nil
 }
 
 // collectNetworkMetrics gathers network metrics from a Redfish system
 func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp time.Time) ([]data_store.DataPoint, error) {
 	var datapoints []data_store.DataPoint
-	
+
 	for _, systemID := range c.systems {
 		// Network interfaces path
 		networkPath := fmt.Sprintf("Systems/%s/NetworkInterfaces", systemID)
-		
+
 		// Fetch network collection
 		networkResp, err := c.client.Get(ctx, networkPath)
 		if err != nil {
@@ -1231,7 +1427,7 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 				Err(err).
 				Str("path", networkPath).
 				Msg("Failed to get network interfaces collection")
-				
+
 			// Try alternate path - EthernetInterfaces is also common
 			alternatePath := fmt.Sprintf("Systems/%s/EthernetInterfaces", systemID)
 			networkResp, err = c.client.Get(ctx, alternatePath)
@@ -1243,14 +1439,14 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 				continue
 			}
 		}
-		
+
 		// Parse the collection
 		var networkCollection struct {
 			Members []struct {
 				OdataID string `json:"@odata.id"`
 			} `json:"Members"`
 		}
-		
+
 		if err := json.Unmarshal(networkResp.Raw, &networkCollection); err != nil {
 			c.logger.Warn().
 				Err(err).
@@ -1258,13 +1454,13 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 				Msg("Failed to parse network collection")
 			continue
 		}
-		
+
 		// Process each network interface
 		for _, member := range networkCollection.Members {
 			if member.OdataID == "" {
 				continue
 			}
-			
+
 			// Fetch network interface
 			networkDetailResp, err := c.client.Get(ctx, member.OdataID)
 			if err != nil {
@@ -1274,7 +1470,7 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 					Msg("Failed to get network interface details")
 				continue
 			}
-			
+
 			// Parse network interface details
 			var network struct {
 				ID            string  `json:"Id"`
@@ -1286,7 +1482,7 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 				LinkStatus    string  `json:"LinkStatus"`
 				InterfaceType string  `json:"InterfaceType"`
 			}
-			
+
 			if err := json.Unmarshal(networkDetailResp.Raw, &network); err != nil {
 				c.logger.Warn().
 					Err(err).
@@ -1294,51 +1490,51 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 					Msg("Failed to parse network interface details")
 				continue
 			}
-			
-			// Network interface tags
+
+			// Network interface tags - suivant les conventions de REDFISH-TAGS.md
 			networkTags := []tags.Tag{
 				{Key: "system_id", Value: systemID},
-				{Key: "network_id", Value: network.ID},
-				{Key: "network_name", Value: network.Name},
+				{Key: "adapter_id", Value: network.ID},
+				{Key: "adapter_name", Value: network.Name},
 				{Key: "mac_address", Value: network.MACAddress},
 				{Key: "interface_type", Value: network.InterfaceType},
 			}
-			
+
 			// Network health state
 			if network.Status != nil && network.Status.Health != "" {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "network_health_state",
+					Name:      "hardware.network.health",
 					Value:     float32(mapHealthState(network.Status.Health)),
 					Timestamp: timestamp,
 					Tags:      networkTags,
 				})
 			}
-			
+
 			// Network speed
 			if network.SpeedMbps > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "network_speed_mbps",
+					Name:      "hardware.network.speed_mbps",
 					Value:     float32(network.SpeedMbps),
 					Timestamp: timestamp,
 					Tags:      networkTags,
 				})
 			}
-			
+
 			// Link status
 			linkUp := 0.0
 			if strings.ToLower(network.LinkStatus) == "up" || strings.ToLower(network.LinkStatus) == "linked" {
 				linkUp = 1.0
 			}
-			
+
 			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "network_link_up",
+				Name:      "hardware.network.link_up",
 				Value:     float32(linkUp),
 				Timestamp: timestamp,
 				Tags:      networkTags,
 			})
 		}
 	}
-	
+
 	return datapoints, nil
 }
 

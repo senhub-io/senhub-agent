@@ -148,6 +148,9 @@ func (p *redfishProbe) OnStart(quitChannel chan struct{}) error {
 		case VendorCisco:
 			p.logger.Info().Msg("Cisco server detected, creating Cisco-specific collector")
 			vendorCollector, err = NewCiscoCollector(p.endpoint, p.username, p.password, p.logger, p.verifySSL)
+		case VendorStorage:
+			p.logger.Info().Msg("Storage system detected, creating Storage-specific collector")
+			vendorCollector, err = NewStorageCollector(p.endpoint, p.username, p.password, p.logger, p.verifySSL)
 		default:
 			p.logger.Info().
 				Str("vendor", string(detectedVendor)).
