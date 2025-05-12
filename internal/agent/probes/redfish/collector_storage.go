@@ -385,7 +385,8 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							OptimumIOSizeBytes int64   `json:"OptimumIOSizeBytes"`
 							EncryptionType    string  `json:"EncryptionType"`
 							StripSizeBytes    int64   `json:"StripSizeBytes"`
-							AccessCapabilities string  `json:"AccessCapabilities"`
+							// AccessCapabilities peut être une chaîne ou un tableau selon les implémentations
+							// Nous allons l'extraire manuellement du JSON brut
 						}
 						
 						if err := json.Unmarshal(volResp.Raw, &volumeInfo); err != nil {
@@ -415,8 +416,29 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						if volumeInfo.StripSizeBytes > 0 {
 							volumeTags = append(volumeTags, tags.Tag{Key: "stripe_size", Value: fmt.Sprintf("%d", volumeInfo.StripSizeBytes)})
 						}
-						if volumeInfo.AccessCapabilities != "" {
-							volumeTags = append(volumeTags, tags.Tag{Key: "access_capabilities", Value: volumeInfo.AccessCapabilities})
+						// Extraction d'AccessCapabilities qui peut être une chaîne ou un tableau
+						var accessCapabilities string
+						var volumeRawData map[string]interface{}
+						if err := json.Unmarshal(volResp.Raw, &volumeRawData); err == nil {
+							if accessCap, ok := volumeRawData["AccessCapabilities"]; ok {
+								// Essayons d'abord de le traiter comme une chaîne
+								if strValue, ok := accessCap.(string); ok && strValue != "" {
+									accessCapabilities = strValue
+								} else if arrValue, ok := accessCap.([]interface{}); ok && len(arrValue) > 0 {
+									// Si c'est un tableau, concaténons les valeurs avec des virgules
+									var values []string
+									for _, val := range arrValue {
+										if strVal, ok := val.(string); ok && strVal != "" {
+											values = append(values, strVal)
+										}
+									}
+									accessCapabilities = strings.Join(values, ", ")
+								}
+							}
+						}
+
+						if accessCapabilities != "" {
+							volumeTags = append(volumeTags, tags.Tag{Key: "access_capabilities", Value: accessCapabilities})
 						}
 
 						// Add host tag if available

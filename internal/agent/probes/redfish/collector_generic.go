@@ -1417,8 +1417,19 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 	var datapoints []data_store.DataPoint
 
 	for _, systemID := range c.systems {
+		// Normalize system ID by removing any redundant "Systems/" prefix
+		// This fixes paths like "Systems/Systems/something" that can occur in some implementations
+		normalizedSystemID := strings.TrimPrefix(systemID, "Systems/")
+
+		// Get system details for hostname - will be added to network interface tags
+		var hostname string
+		sysResp, err := c.client.Get(ctx, systemID)
+		if err == nil && sysResp.Name != "" {
+			hostname = sysResp.Name
+		}
+
 		// Network interfaces path
-		networkPath := fmt.Sprintf("Systems/%s/NetworkInterfaces", systemID)
+		networkPath := fmt.Sprintf("Systems/%s/NetworkInterfaces", normalizedSystemID)
 
 		// Fetch network collection
 		networkResp, err := c.client.Get(ctx, networkPath)
@@ -1429,14 +1440,24 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 				Msg("Failed to get network interfaces collection")
 
 			// Try alternate path - EthernetInterfaces is also common
-			alternatePath := fmt.Sprintf("Systems/%s/EthernetInterfaces", systemID)
+			alternatePath := fmt.Sprintf("Systems/%s/EthernetInterfaces", normalizedSystemID)
 			networkResp, err = c.client.Get(ctx, alternatePath)
 			if err != nil {
 				c.logger.Warn().
 					Err(err).
 					Str("path", alternatePath).
 					Msg("Failed to get ethernet interfaces collection")
-				continue
+
+					// Try another common pattern - adapters directly under system
+					adaptersPath := fmt.Sprintf("Systems/%s/Adapters", normalizedSystemID)
+					networkResp, err = c.client.Get(ctx, adaptersPath)
+					if err != nil {
+						c.logger.Warn().
+							Err(err).
+							Str("path", adaptersPath).
+							Msg("Failed to get adapters collection")
+						continue
+					}
 			}
 		}
 
@@ -1498,6 +1519,11 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 				{Key: "adapter_name", Value: network.Name},
 				{Key: "mac_address", Value: network.MACAddress},
 				{Key: "interface_type", Value: network.InterfaceType},
+			}
+
+			// Add host tag if available
+			if hostname != "" {
+				networkTags = append(networkTags, tags.Tag{Key: "host", Value: hostname})
 			}
 
 			// Network health state
