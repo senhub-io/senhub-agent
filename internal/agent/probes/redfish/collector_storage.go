@@ -165,7 +165,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 				controllerLetter = "B"
 			}
 
-			// Controller tags
+			// Controller tags - suivant les conventions de REDFISH-TAGS.md
 			controllerTags := []tags.Tag{
 				{Key: "controller_id", Value: controllerID},
 				{Key: "controller_name", Value: controllerName},
@@ -235,18 +235,18 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							continue
 						}
 						
-						// Drive tags
+						// Drive tags - suivant les conventions de REDFISH-TAGS.md
 						driveTags := append([]tags.Tag{}, controllerTags...)
 						driveTags = append(driveTags,
 							tags.Tag{Key: "drive_id", Value: driveInfo.ID},
 							tags.Tag{Key: "drive_name", Value: driveInfo.Name},
 						)
-						
+
 						if driveInfo.Model != "" {
 							driveTags = append(driveTags, tags.Tag{Key: "model", Value: driveInfo.Model})
 						}
 						if driveInfo.Manufacturer != "" {
-							driveTags = append(driveTags, tags.Tag{Key: "manufacturer", Value: driveInfo.Manufacturer})
+							driveTags = append(driveTags, tags.Tag{Key: "drive_manufacturer", Value: driveInfo.Manufacturer})
 						}
 						if driveInfo.SerialNumber != "" {
 							driveTags = append(driveTags, tags.Tag{Key: "serial_number", Value: driveInfo.SerialNumber})
@@ -257,8 +257,27 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						if driveInfo.Protocol != "" {
 							driveTags = append(driveTags, tags.Tag{Key: "protocol", Value: driveInfo.Protocol})
 						}
-						
-						// Add physical location if available
+
+						// Extract additional properties from raw data
+						var driveRawData map[string]interface{}
+						if err := json.Unmarshal(driveResp.Raw, &driveRawData); err == nil {
+							// Add hotspare type if available
+							if hotspareValue, ok := driveRawData["HotspareType"].(string); ok && hotspareValue != "" {
+								driveTags = append(driveTags, tags.Tag{Key: "hotspare_type", Value: hotspareValue})
+							}
+							
+							// Add encryption ability if available
+							if encAbilityValue, ok := driveRawData["EncryptionAbility"].(string); ok && encAbilityValue != "" {
+								driveTags = append(driveTags, tags.Tag{Key: "encryption_ability", Value: encAbilityValue})
+							}
+							
+							// Add encryption status if available
+							if encStatusValue, ok := driveRawData["EncryptionStatus"].(string); ok && encStatusValue != "" {
+								driveTags = append(driveTags, tags.Tag{Key: "encryption_status", Value: encStatusValue})
+							}
+						}
+
+						// Add service label if available - suivant les conventions de REDFISH-TAGS.md
 						if driveInfo.PhysicalLocation.PartLocation.ServiceLabel != "" {
 							driveTags = append(driveTags, tags.Tag{Key: "service_label", Value: driveInfo.PhysicalLocation.PartLocation.ServiceLabel})
 						}
@@ -273,7 +292,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							driveTags = append(driveTags, tags.Tag{Key: "controller", Value: controllerLetter})
 						}
 
-						// Drive health state
+						// Drive health state - la valeur est dérivée de Status.Health
 						if driveInfo.Status != nil && driveInfo.Status.Health != "" {
 							datapoints = append(datapoints, data_store.DataPoint{
 								Name:      "hardware.storage.drive.health",
@@ -356,14 +375,17 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						
 						// Extract volume information
 						var volumeInfo struct {
-							ID            string  `json:"Id"`
-							Name          string  `json:"Name"`
-							CapacityBytes int64   `json:"CapacityBytes"`
-							RAIDType      string  `json:"RAIDType"`
-							Status        *Status `json:"Status"`
-							VolumeType    string  `json:"VolumeType"`
-							Encrypted     bool    `json:"Encrypted"`
-							OptimumIOSizeBytes int64 `json:"OptimumIOSizeBytes"`
+							ID                string  `json:"Id"`
+							Name              string  `json:"Name"`
+							CapacityBytes     int64   `json:"CapacityBytes"`
+							RAIDType          string  `json:"RAIDType"`
+							Status            *Status `json:"Status"`
+							VolumeType        string  `json:"VolumeType"`
+							Encrypted         bool    `json:"Encrypted"`
+							OptimumIOSizeBytes int64   `json:"OptimumIOSizeBytes"`
+							EncryptionType    string  `json:"EncryptionType"`
+							StripSizeBytes    int64   `json:"StripSizeBytes"`
+							AccessCapabilities string  `json:"AccessCapabilities"`
 						}
 						
 						if err := json.Unmarshal(volResp.Raw, &volumeInfo); err != nil {
@@ -374,7 +396,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							continue
 						}
 						
-						// Volume tags
+						// Volume tags - suivant les conventions de REDFISH-TAGS.md
 						volumeTags := append([]tags.Tag{}, controllerTags...)
 						volumeTags = append(volumeTags,
 							tags.Tag{Key: "volume_id", Value: volumeInfo.ID},
@@ -387,6 +409,15 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						if volumeInfo.VolumeType != "" {
 							volumeTags = append(volumeTags, tags.Tag{Key: "volume_type", Value: volumeInfo.VolumeType})
 						}
+						if volumeInfo.EncryptionType != "" {
+							volumeTags = append(volumeTags, tags.Tag{Key: "encryption_type", Value: volumeInfo.EncryptionType})
+						}
+						if volumeInfo.StripSizeBytes > 0 {
+							volumeTags = append(volumeTags, tags.Tag{Key: "stripe_size", Value: fmt.Sprintf("%d", volumeInfo.StripSizeBytes)})
+						}
+						if volumeInfo.AccessCapabilities != "" {
+							volumeTags = append(volumeTags, tags.Tag{Key: "access_capabilities", Value: volumeInfo.AccessCapabilities})
+						}
 
 						// Add host tag if available
 						if hostName != "" {
@@ -398,7 +429,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							volumeTags = append(volumeTags, tags.Tag{Key: "controller", Value: controllerLetter})
 						}
 
-						// Volume encryption state
+						// Volume encryption state - la valeur est dérivée de Encrypted
 						encrypted := 0.0
 						if volumeInfo.Encrypted {
 							encrypted = 1.0
@@ -411,7 +442,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							Tags:      volumeTags,
 						})
 
-						// Volume health state
+						// Volume health state - la valeur est dérivée de Status.Health
 						if volumeInfo.Status != nil && volumeInfo.Status.Health != "" {
 							datapoints = append(datapoints, data_store.DataPoint{
 								Name:      "hardware.storage.volume.health",
@@ -440,7 +471,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							})
 						}
 
-						// Volume optimal IO size
+						// Volume optimal IO size - la valeur est dérivée de OptimumIOSizeBytes
 						if volumeInfo.OptimumIOSizeBytes > 0 {
 							datapoints = append(datapoints, data_store.DataPoint{
 								Name:      "hardware.storage.volume.optimum_io_size",
