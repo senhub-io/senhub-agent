@@ -1351,20 +1351,31 @@ func containsIgnoreCase(s, substr string) bool {
 }
 
 // mapHealthState converts Redfish health states to numeric values
+// Using standard enum pattern for OpenTelemetry:
+// 0: OK/Healthy
+// 1: Warning/Degraded
+// 2: Critical/Error
+// 3: Unknown
 func mapHealthState(health string) int {
 	switch strings.ToLower(health) {
 	case "ok":
-		return 0 // OK
+		return 0 // OK/Healthy
 	case "warning":
-		return 1 // Warning
+		return 1 // Warning/Degraded
 	case "critical":
-		return 2 // Critical
+		return 2 // Critical/Error
 	default:
 		return 3 // Unknown
 	}
 }
 
 // mapPowerState converts Redfish power states to numeric values
+// Using standard enum pattern for power states:
+// 0: Off
+// 1: On
+// 2: Powering On (transitional)
+// 3: Powering Off (transitional)
+// 4: Unknown/Other
 func mapPowerState(state string) int {
 	switch strings.ToLower(state) {
 	case "on":
