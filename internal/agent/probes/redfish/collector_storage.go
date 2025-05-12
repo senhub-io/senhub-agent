@@ -120,7 +120,26 @@ func (c *StorageCollector) CollectMetrics(ctx context.Context, collectionType Co
 // collectVolumeMetrics collects metrics for storage volumes
 func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp time.Time) ([]data_store.DataPoint, error) {
 	var datapoints []data_store.DataPoint
-	
+
+	// Get system name to use as the host tag
+	var hostName string
+
+	// Try to get host info
+	if len(c.systems) > 0 {
+		sysResp, err := c.client.Get(ctx, c.systems[0])
+		if err == nil && sysResp.Name != "" {
+			hostName = sysResp.Name
+		}
+	}
+
+	// If hostname is empty, try to get from the service root
+	if hostName == "" {
+		rootResp, err := c.client.Get(ctx, "")
+		if err == nil && rootResp.UUID != "" {
+			hostName = rootResp.UUID
+		}
+	}
+
 	// If we have a storage-specific root collection
 	if len(c.storageControllers) > 0 {
 		for _, controllerPath := range c.storageControllers {
@@ -133,18 +152,36 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 					Msg("Failed to get storage controller details")
 				continue
 			}
-			
+
+			// Get controller ID and map it to A/B if it contains those letters
+			controllerID := ctrlResp.ID
+			controllerName := ctrlResp.Name
+
+			// Extract simple controller letter if it looks like "controller_a" -> "A"
+			var controllerLetter string
+			if strings.Contains(strings.ToLower(controllerID), "_a") {
+				controllerLetter = "A"
+			} else if strings.Contains(strings.ToLower(controllerID), "_b") {
+				controllerLetter = "B"
+			}
+
 			// Controller tags
 			controllerTags := []tags.Tag{
-				{Key: "controller_id", Value: ctrlResp.ID},
-				{Key: "controller_name", Value: ctrlResp.Name},
+				{Key: "controller_id", Value: controllerID},
+				{Key: "controller_name", Value: controllerName},
+				{Key: "controller", Value: controllerLetter},
 				{Key: "controller_type", Value: "storage"},
 			}
-			
+
+			// Add host tag if available
+			if hostName != "" {
+				controllerTags = append(controllerTags, tags.Tag{Key: "host", Value: hostName})
+			}
+
 			// Controller health
 			if ctrlResp.Status != nil && ctrlResp.Status.Health != "" {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "storage.controller.health",
+					Name:      "redfish_storage_controller_health",
 					Timestamp: timestamp,
 					Value:     float32(mapHealthState(ctrlResp.Status.Health)),
 					Tags:      controllerTags,
@@ -226,54 +263,73 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							driveTags = append(driveTags, tags.Tag{Key: "service_label", Value: driveInfo.PhysicalLocation.PartLocation.ServiceLabel})
 						}
 						
+						// Add host tag if available
+						if hostName != "" {
+							driveTags = append(driveTags, tags.Tag{Key: "host", Value: hostName})
+						}
+
+						// Add controller letter tag if available
+						if controllerLetter != "" {
+							driveTags = append(driveTags, tags.Tag{Key: "controller", Value: controllerLetter})
+						}
+
 						// Drive health state
 						if driveInfo.Status != nil && driveInfo.Status.Health != "" {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "storage.drive.health",
+								Name:      "redfish_storage_drive_health",
 								Timestamp: timestamp,
 								Value:     float32(mapHealthState(driveInfo.Status.Health)),
 								Tags:      driveTags,
 							})
 						}
-						
+
 						// Drive capacity
 						if driveInfo.CapacityBytes > 0 {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "storage.drive.capacity_bytes",
+								Name:      "redfish_storage_drive_capacity_bytes",
 								Timestamp: timestamp,
 								Value:     float32(driveInfo.CapacityBytes),
 								Tags:      driveTags,
 							})
+
+							// Also add capacity in GB for easier consumption
+							gbValue := float32(driveInfo.CapacityBytes) / (1024 * 1024 * 1024)
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "redfish_storage_drive_capacity_gb",
+								Timestamp: timestamp,
+								Value:     gbValue,
+								Tags:      driveTags,
+							})
 						}
-						
+
 						// Drive block size
 						if driveInfo.BlockSizeBytes > 0 {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "storage.drive.block_size_bytes",
+								Name:      "redfish_storage_drive_block_size_bytes",
 								Timestamp: timestamp,
 								Value:     float32(driveInfo.BlockSizeBytes),
 								Tags:      driveTags,
 							})
 						}
-						
+
 						// Drive rotation speed
 						if driveInfo.RotationSpeedRPM > 0 {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "storage.drive.rotation_speed_rpm",
+								Name:      "redfish_storage_drive_rotation_speed_rpm",
 								Timestamp: timestamp,
 								Value:     float32(driveInfo.RotationSpeedRPM),
 								Tags:      driveTags,
 							})
 						}
-						
+
 						// Drive failure prediction
 						failurePredicted := 0.0
 						if driveInfo.FailurePredicted {
 							failurePredicted = 1.0
 						}
-						
+
 						datapoints = append(datapoints, data_store.DataPoint{
-							Name:      "storage.drive.failure_predicted",
+							Name:      "redfish_storage_drive_failure_predicted",
 							Timestamp: timestamp,
 							Value:     float32(failurePredicted),
 							Tags:      driveTags,
@@ -324,51 +380,70 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							tags.Tag{Key: "volume_id", Value: volumeInfo.ID},
 							tags.Tag{Key: "volume_name", Value: volumeInfo.Name},
 						)
-						
+
 						if volumeInfo.RAIDType != "" {
 							volumeTags = append(volumeTags, tags.Tag{Key: "raid_type", Value: volumeInfo.RAIDType})
 						}
 						if volumeInfo.VolumeType != "" {
 							volumeTags = append(volumeTags, tags.Tag{Key: "volume_type", Value: volumeInfo.VolumeType})
 						}
-						
+
+						// Add host tag if available
+						if hostName != "" {
+							volumeTags = append(volumeTags, tags.Tag{Key: "host", Value: hostName})
+						}
+
+						// Add controller letter tag if available
+						if controllerLetter != "" {
+							volumeTags = append(volumeTags, tags.Tag{Key: "controller", Value: controllerLetter})
+						}
+
 						// Volume encryption state
 						encrypted := 0.0
 						if volumeInfo.Encrypted {
 							encrypted = 1.0
 						}
-						
+
 						datapoints = append(datapoints, data_store.DataPoint{
-							Name:      "storage.volume.encrypted",
+							Name:      "redfish_storage_volume_encrypted",
 							Timestamp: timestamp,
 							Value:     float32(encrypted),
 							Tags:      volumeTags,
 						})
-						
+
 						// Volume health state
 						if volumeInfo.Status != nil && volumeInfo.Status.Health != "" {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "storage.volume.health",
+								Name:      "redfish_storage_volume_health",
 								Timestamp: timestamp,
 								Value:     float32(mapHealthState(volumeInfo.Status.Health)),
 								Tags:      volumeTags,
 							})
 						}
-						
+
 						// Volume capacity
 						if volumeInfo.CapacityBytes > 0 {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "storage.volume.capacity_bytes",
+								Name:      "redfish_storage_volume_capacity_bytes",
 								Timestamp: timestamp,
 								Value:     float32(volumeInfo.CapacityBytes),
 								Tags:      volumeTags,
 							})
+
+							// Also add capacity in GB for easier consumption
+							gbValue := float32(volumeInfo.CapacityBytes) / (1024 * 1024 * 1024)
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "redfish_storage_volume_capacity_gb",
+								Timestamp: timestamp,
+								Value:     gbValue,
+								Tags:      volumeTags,
+							})
 						}
-						
+
 						// Volume optimal IO size
 						if volumeInfo.OptimumIOSizeBytes > 0 {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "storage.volume.optimum_io_size_bytes",
+								Name:      "redfish_storage_volume_optimum_io_size_bytes",
 								Timestamp: timestamp,
 								Value:     float32(volumeInfo.OptimumIOSizeBytes),
 								Tags:      volumeTags,
