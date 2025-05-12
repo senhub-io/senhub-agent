@@ -948,6 +948,7 @@ func (c *GenericCollector) collectProcessorMetrics(ctx context.Context, timestam
 		systemTags := []tags.Tag{
 			{Key: "system_id", Value: sysResp.ID},
 			{Key: "system_name", Value: sysResp.Name},
+			{Key: "host", Value: sysResp.Name}, // Add host tag for easier correlation
 		}
 
 		// Process each processor
@@ -1001,6 +1002,14 @@ func (c *GenericCollector) collectProcessorMetrics(ctx context.Context, timestam
 				MaxSpeedMHz       int     `json:"MaxSpeedMHz"`
 				InstructionSet    string  `json:"InstructionSet"`
 				Status            *Status `json:"Status"`
+				Socket            string  `json:"Socket"`
+				ProcessorType     string  `json:"ProcessorType"`
+				ProcessorArchitecture string `json:"ProcessorArchitecture"`
+				Links             struct {
+					Metrics struct {
+						OdataID string `json:"@odata.id"`
+					} `json:"Metrics"`
+				} `json:"Links"`
 			}
 			rawJSON, _ := json.Marshal(procResp)
 			if err := json.Unmarshal(rawJSON, &procData); err != nil {
@@ -1010,10 +1019,24 @@ func (c *GenericCollector) collectProcessorMetrics(ctx context.Context, timestam
 				continue
 			}
 
+			// Add extra processor tags if available
+			if procData.ProcessorType != "" {
+				procTags = append(procTags, tags.Tag{Key: "processor_type", Value: procData.ProcessorType})
+			}
+			if procData.ProcessorArchitecture != "" {
+				procTags = append(procTags, tags.Tag{Key: "architecture", Value: procData.ProcessorArchitecture})
+			}
+			if procData.Socket != "" {
+				procTags = append(procTags, tags.Tag{Key: "socket", Value: procData.Socket})
+			}
+			if procData.InstructionSet != "" {
+				procTags = append(procTags, tags.Tag{Key: "instruction_set", Value: procData.InstructionSet})
+			}
+
 			// Add processor core count
 			if procData.TotalCores > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "processor.total_cores",
+					Name:      "hardware.cpu.cores",
 					Timestamp: timestamp,
 					Value:     float32(procData.TotalCores),
 					Tags:      procTags,
@@ -1023,7 +1046,7 @@ func (c *GenericCollector) collectProcessorMetrics(ctx context.Context, timestam
 			// Add processor thread count
 			if procData.TotalThreads > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "processor.total_threads",
+					Name:      "hardware.cpu.threads",
 					Timestamp: timestamp,
 					Value:     float32(procData.TotalThreads),
 					Tags:      procTags,
@@ -1033,10 +1056,10 @@ func (c *GenericCollector) collectProcessorMetrics(ctx context.Context, timestam
 			// Add processor max speed
 			if procData.MaxSpeedMHz > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "processor.max_speed_mhz",
+					Name:      "hardware.cpu.max_speed",
 					Timestamp: timestamp,
 					Value:     float32(procData.MaxSpeedMHz),
-					Tags:      procTags,
+					Tags:      append(procTags, tags.Tag{Key: "unit", Value: "MHz"}),
 				})
 			}
 
@@ -1044,11 +1067,299 @@ func (c *GenericCollector) collectProcessorMetrics(ctx context.Context, timestam
 			if procData.Status != nil {
 				health := mapHealthState(procData.Status.Health)
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "processor.health",
+					Name:      "hardware.cpu.health",
 					Timestamp: timestamp,
 					Value:     float32(health),
 					Tags:      procTags,
 				})
+			}
+
+			// Check for processor metrics endpoint
+			metricsPath := ""
+			// Try to get from Links section first
+			if procData.Links.Metrics.OdataID != "" {
+				metricsPath = procData.Links.Metrics.OdataID
+			} else {
+				// Try standard path as a fallback
+				metricsPath = processorPath + "/Metrics"
+			}
+
+			if metricsPath != "" {
+				// Get processor metrics
+				metricsResp, err := c.client.Get(ctx, metricsPath)
+				if err != nil {
+					c.logger.Debug().
+						Err(err).
+						Str("path", metricsPath).
+						Msg("ProcessorMetrics endpoint not available")
+				} else {
+					// Parse processor metrics data
+					var metricsData struct {
+						AverageFrequencyMHz float32 `json:"AverageFrequencyMHz"`
+						CurrentSpeedMHz     float32 `json:"CurrentSpeedMHz"`
+						ThrottlingCelsius   float32 `json:"ThrottlingCelsius"`
+						TemperatureCelsius  float32 `json:"TemperatureCelsius"`
+						ConsumedPowerWatt   float32 `json:"ConsumedPowerWatt"`
+						ThermalMargin       float32 `json:"ThermalMargin"`
+						PowerLimit          float32 `json:"PowerLimit"`
+						Oem                 map[string]interface{} `json:"Oem"`
+						// Utilization metrics
+						CPUUtilization  float32 `json:"CPUUtilization"`
+						KernelPercent   float32 `json:"KernelPercent"`
+						UserPercent     float32 `json:"UserPercent"`
+						IOWaitPercent   float32 `json:"IOWaitPercent"`
+						// Cache metrics
+						CacheMetrics struct {
+							L1CacheMetrics struct {
+								OccupancyBytes       float32 `json:"OccupancyBytes"`
+								HitRatio            float32 `json:"HitRatio"`
+								MissRatio           float32 `json:"MissRatio"`
+							} `json:"L1CacheMetrics"`
+							L2CacheMetrics struct {
+								OccupancyBytes       float32 `json:"OccupancyBytes"`
+								HitRatio            float32 `json:"HitRatio"`
+								MissRatio           float32 `json:"MissRatio"`
+							} `json:"L2CacheMetrics"`
+							L3CacheMetrics struct {
+								OccupancyBytes       float32 `json:"OccupancyBytes"`
+								HitRatio            float32 `json:"HitRatio"`
+								MissRatio           float32 `json:"MissRatio"`
+							} `json:"L3CacheMetrics"`
+						} `json:"CacheMetrics"`
+					}
+
+					rawJSON, _ := json.Marshal(metricsResp)
+					if err := json.Unmarshal(rawJSON, &metricsData); err != nil {
+						c.logger.Warn().
+							Err(err).
+							Msg("Failed to parse processor metrics data")
+					} else {
+						// Add current processor speed
+						if metricsData.CurrentSpeedMHz > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.current_speed",
+								Timestamp: timestamp,
+								Value:     metricsData.CurrentSpeedMHz,
+								Tags:      append(procTags, tags.Tag{Key: "unit", Value: "MHz"}),
+							})
+						}
+
+						// Add average processor frequency
+						if metricsData.AverageFrequencyMHz > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.average_frequency",
+								Timestamp: timestamp,
+								Value:     metricsData.AverageFrequencyMHz,
+								Tags:      append(procTags, tags.Tag{Key: "unit", Value: "MHz"}),
+							})
+						}
+
+						// Add processor temperature
+						if metricsData.TemperatureCelsius > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.temperature",
+								Timestamp: timestamp,
+								Value:     metricsData.TemperatureCelsius,
+								Tags:      append(procTags, tags.Tag{Key: "unit", Value: "celsius"}),
+							})
+						}
+
+						// Add processor thermal throttling temperature
+						if metricsData.ThrottlingCelsius > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.throttling_temperature",
+								Timestamp: timestamp,
+								Value:     metricsData.ThrottlingCelsius,
+								Tags:      append(procTags, tags.Tag{Key: "unit", Value: "celsius"}),
+							})
+						}
+
+						// Add thermal margin
+						if metricsData.ThermalMargin > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.thermal_margin",
+								Timestamp: timestamp,
+								Value:     metricsData.ThermalMargin,
+								Tags:      append(procTags, tags.Tag{Key: "unit", Value: "celsius"}),
+							})
+						}
+
+						// Add processor power consumption
+						if metricsData.ConsumedPowerWatt > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.power_consumption",
+								Timestamp: timestamp,
+								Value:     metricsData.ConsumedPowerWatt,
+								Tags:      append(procTags, tags.Tag{Key: "unit", Value: "watt"}),
+							})
+						}
+
+						// Add processor power limit
+						if metricsData.PowerLimit > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.power_limit",
+								Timestamp: timestamp,
+								Value:     metricsData.PowerLimit,
+								Tags:      append(procTags, tags.Tag{Key: "unit", Value: "watt"}),
+							})
+						}
+
+						// Add CPU utilization metrics
+						if metricsData.CPUUtilization > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.utilization",
+								Timestamp: timestamp,
+								Value:     metricsData.CPUUtilization,
+								Tags:      append(procTags, tags.Tag{Key: "unit", Value: "percent"}),
+							})
+						}
+
+						// Add kernel percent utilization
+						if metricsData.KernelPercent > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.kernel_percent",
+								Timestamp: timestamp,
+								Value:     metricsData.KernelPercent,
+								Tags:      append(procTags, tags.Tag{Key: "unit", Value: "percent"}),
+							})
+						}
+
+						// Add user percent utilization
+						if metricsData.UserPercent > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.user_percent",
+								Timestamp: timestamp,
+								Value:     metricsData.UserPercent,
+								Tags:      append(procTags, tags.Tag{Key: "unit", Value: "percent"}),
+							})
+						}
+
+						// Add IO wait percent
+						if metricsData.IOWaitPercent > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.io_wait_percent",
+								Timestamp: timestamp,
+								Value:     metricsData.IOWaitPercent,
+								Tags:      append(procTags, tags.Tag{Key: "unit", Value: "percent"}),
+							})
+						}
+
+						// Add cache metrics if available
+						// L1 Cache
+						if metricsData.CacheMetrics.L1CacheMetrics.OccupancyBytes > 0 {
+							l1Tags := append(procTags, tags.Tag{Key: "cache_level", Value: "L1"}, tags.Tag{Key: "unit", Value: "bytes"})
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.cache.occupancy",
+								Timestamp: timestamp,
+								Value:     metricsData.CacheMetrics.L1CacheMetrics.OccupancyBytes,
+								Tags:      l1Tags,
+							})
+						}
+
+						if metricsData.CacheMetrics.L1CacheMetrics.HitRatio > 0 {
+							l1Tags := append(procTags, tags.Tag{Key: "cache_level", Value: "L1"}, tags.Tag{Key: "unit", Value: "ratio"})
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.cache.hit_ratio",
+								Timestamp: timestamp,
+								Value:     metricsData.CacheMetrics.L1CacheMetrics.HitRatio,
+								Tags:      l1Tags,
+							})
+						}
+
+						// L2 Cache
+						if metricsData.CacheMetrics.L2CacheMetrics.OccupancyBytes > 0 {
+							l2Tags := append(procTags, tags.Tag{Key: "cache_level", Value: "L2"}, tags.Tag{Key: "unit", Value: "bytes"})
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.cache.occupancy",
+								Timestamp: timestamp,
+								Value:     metricsData.CacheMetrics.L2CacheMetrics.OccupancyBytes,
+								Tags:      l2Tags,
+							})
+						}
+
+						if metricsData.CacheMetrics.L2CacheMetrics.HitRatio > 0 {
+							l2Tags := append(procTags, tags.Tag{Key: "cache_level", Value: "L2"}, tags.Tag{Key: "unit", Value: "ratio"})
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.cache.hit_ratio",
+								Timestamp: timestamp,
+								Value:     metricsData.CacheMetrics.L2CacheMetrics.HitRatio,
+								Tags:      l2Tags,
+							})
+						}
+
+						// L3 Cache
+						if metricsData.CacheMetrics.L3CacheMetrics.OccupancyBytes > 0 {
+							l3Tags := append(procTags, tags.Tag{Key: "cache_level", Value: "L3"}, tags.Tag{Key: "unit", Value: "bytes"})
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.cache.occupancy",
+								Timestamp: timestamp,
+								Value:     metricsData.CacheMetrics.L3CacheMetrics.OccupancyBytes,
+								Tags:      l3Tags,
+							})
+						}
+
+						if metricsData.CacheMetrics.L3CacheMetrics.HitRatio > 0 {
+							l3Tags := append(procTags, tags.Tag{Key: "cache_level", Value: "L3"}, tags.Tag{Key: "unit", Value: "ratio"})
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.cpu.cache.hit_ratio",
+								Timestamp: timestamp,
+								Value:     metricsData.CacheMetrics.L3CacheMetrics.HitRatio,
+								Tags:      l3Tags,
+							})
+						}
+
+						// Check for OEM-specific metrics
+						// Dell or HPE might have specific metrics under the OEM section
+						if len(metricsData.Oem) > 0 {
+							// Log OEM data for debugging - this can help identify
+							// vendor-specific metrics in future iterations
+							c.logger.Debug().
+								Interface("oem_data", metricsData.Oem).
+								Msg("Found OEM processor metrics data")
+
+							// Extract Dell-specific metrics if present
+							if dell, ok := metricsData.Oem["Dell"]; ok {
+								dellData, _ := json.Marshal(dell)
+								var dellMetrics struct {
+									CPUUtilization float32 `json:"CPUUtilization"`
+									IOWaitTime     float32 `json:"IOWaitTime"`
+								}
+
+								if err := json.Unmarshal(dellData, &dellMetrics); err == nil {
+									if dellMetrics.CPUUtilization > 0 {
+										datapoints = append(datapoints, data_store.DataPoint{
+											Name:      "hardware.cpu.utilization.dell",
+											Timestamp: timestamp,
+											Value:     dellMetrics.CPUUtilization,
+											Tags:      append(procTags, tags.Tag{Key: "unit", Value: "percent"}),
+										})
+									}
+								}
+							}
+
+							// Extract HPE-specific metrics if present
+							if hpe, ok := metricsData.Oem["Hpe"]; ok {
+								hpeData, _ := json.Marshal(hpe)
+								var hpeMetrics struct {
+									CPUUtilization float32 `json:"CPUUtilization"`
+									CState         float32 `json:"CState"`
+									PState         float32 `json:"PState"`
+								}
+
+								if err := json.Unmarshal(hpeData, &hpeMetrics); err == nil {
+									if hpeMetrics.CPUUtilization > 0 {
+										datapoints = append(datapoints, data_store.DataPoint{
+											Name:      "hardware.cpu.utilization.hpe",
+											Timestamp: timestamp,
+											Value:     hpeMetrics.CPUUtilization,
+											Tags:      append(procTags, tags.Tag{Key: "unit", Value: "percent"}),
+										})
+									}
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -1089,6 +1400,7 @@ func (c *GenericCollector) collectMemoryMetrics(ctx context.Context, timestamp t
 		systemTags := []tags.Tag{
 			{Key: "system_id", Value: sysResp.ID},
 			{Key: "system_name", Value: sysResp.Name},
+			{Key: "host", Value: sysResp.Name}, // Add host tag for easier correlation
 		}
 
 		// Process each memory module
@@ -1134,12 +1446,37 @@ func (c *GenericCollector) collectMemoryMetrics(ctx context.Context, timestamp t
 
 			// Extract memory metrics from response
 			var dimData struct {
-				CapacityMiB        int     `json:"CapacityMiB"`
-				OperatingSpeedMhz  int     `json:"OperatingSpeedMhz"`
-				MemoryType         string  `json:"MemoryDeviceType"`
-				DataWidthBits      int     `json:"DataWidthBits"`
-				RankCount          int     `json:"RankCount"`
-				Status             *Status `json:"Status"`
+				CapacityMiB          int     `json:"CapacityMiB"`
+				OperatingSpeedMhz    int     `json:"OperatingSpeedMhz"`
+				MemoryType           string  `json:"MemoryDeviceType"`
+				DataWidthBits        int     `json:"DataWidthBits"`
+				RankCount            int     `json:"RankCount"`
+				Status               *Status `json:"Status"`
+				BaseModuleType       string  `json:"BaseModuleType"`
+				BusWidthBits         int     `json:"BusWidthBits"`
+				Location             struct {
+					Socket     int `json:"Socket"`
+					MemoryController int `json:"MemoryController"`
+					Channel    int `json:"Channel"`
+					Slot       int `json:"Slot"`
+				} `json:"Location"`
+				Links               struct {
+					Metrics       struct {
+						OdataID string `json:"@odata.id"`
+					} `json:"Metrics"`
+				} `json:"Links"`
+				MemoryLocation struct {
+					Socket     int `json:"Socket"`
+					MemoryController int `json:"MemoryController"`
+					Channel    int `json:"Channel"`
+					Slot       int `json:"Slot"`
+				} `json:"MemoryLocation"`
+				AllowedSpeedsMHz []int `json:"AllowedSpeedsMHz"`
+				ConfiguredSpeedMHz int `json:"ConfiguredSpeedMHz"`
+				MaxTDPMilliWatts int `json:"MaxTDPMilliWatts"`
+				CacheSizeMiB     int `json:"CacheSizeMiB"`
+				LogicalSizeMiB   int `json:"LogicalSizeMiB"`
+				ErrorCorrection  string `json:"ErrorCorrection"`
 			}
 			rawJSON, _ := json.Marshal(dimResp)
 			if err := json.Unmarshal(rawJSON, &dimData); err != nil {
@@ -1153,24 +1490,115 @@ func (c *GenericCollector) collectMemoryMetrics(ctx context.Context, timestamp t
 			if dimData.MemoryType != "" {
 				dimTags = append(dimTags, tags.Tag{Key: "memory_type", Value: dimData.MemoryType})
 			}
+			if dimData.BaseModuleType != "" {
+				dimTags = append(dimTags, tags.Tag{Key: "module_type", Value: dimData.BaseModuleType})
+			}
+			if dimData.ErrorCorrection != "" {
+				dimTags = append(dimTags, tags.Tag{Key: "error_correction", Value: dimData.ErrorCorrection})
+			}
+
+			// Add memory location info
+			// First check newer Location structure
+			if dimData.Location.Socket > 0 {
+				dimTags = append(dimTags, tags.Tag{Key: "socket", Value: fmt.Sprintf("%d", dimData.Location.Socket)})
+				dimTags = append(dimTags, tags.Tag{Key: "memory_controller", Value: fmt.Sprintf("%d", dimData.Location.MemoryController)})
+				dimTags = append(dimTags, tags.Tag{Key: "channel", Value: fmt.Sprintf("%d", dimData.Location.Channel)})
+				dimTags = append(dimTags, tags.Tag{Key: "slot", Value: fmt.Sprintf("%d", dimData.Location.Slot)})
+			} else if dimData.MemoryLocation.Socket > 0 {
+				// Fall back to older MemoryLocation structure
+				dimTags = append(dimTags, tags.Tag{Key: "socket", Value: fmt.Sprintf("%d", dimData.MemoryLocation.Socket)})
+				dimTags = append(dimTags, tags.Tag{Key: "memory_controller", Value: fmt.Sprintf("%d", dimData.MemoryLocation.MemoryController)})
+				dimTags = append(dimTags, tags.Tag{Key: "channel", Value: fmt.Sprintf("%d", dimData.MemoryLocation.Channel)})
+				dimTags = append(dimTags, tags.Tag{Key: "slot", Value: fmt.Sprintf("%d", dimData.MemoryLocation.Slot)})
+			}
 
 			// Add memory capacity
 			if dimData.CapacityMiB > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "memory.capacity_mib",
+					Name:      "hardware.memory.capacity",
 					Timestamp: timestamp,
 					Value:     float32(dimData.CapacityMiB),
+					Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "MiB"}),
+				})
+			}
+
+			// Add logical size if available and different from capacity
+			if dimData.LogicalSizeMiB > 0 && dimData.LogicalSizeMiB != dimData.CapacityMiB {
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.memory.logical_size",
+					Timestamp: timestamp,
+					Value:     float32(dimData.LogicalSizeMiB),
+					Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "MiB"}),
+				})
+			}
+
+			// Add cache size if available
+			if dimData.CacheSizeMiB > 0 {
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.memory.cache_size",
+					Timestamp: timestamp,
+					Value:     float32(dimData.CacheSizeMiB),
+					Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "MiB"}),
+				})
+			}
+
+			// Add memory operating speed
+			if dimData.OperatingSpeedMhz > 0 {
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.memory.speed",
+					Timestamp: timestamp,
+					Value:     float32(dimData.OperatingSpeedMhz),
+					Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "MHz"}),
+				})
+			}
+
+			// Add configured speed if different from operating speed
+			if dimData.ConfiguredSpeedMHz > 0 && dimData.ConfiguredSpeedMHz != dimData.OperatingSpeedMhz {
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.memory.configured_speed",
+					Timestamp: timestamp,
+					Value:     float32(dimData.ConfiguredSpeedMHz),
+					Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "MHz"}),
+				})
+			}
+
+			// Add data width
+			if dimData.DataWidthBits > 0 {
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.memory.data_width",
+					Timestamp: timestamp,
+					Value:     float32(dimData.DataWidthBits),
+					Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "bits"}),
+				})
+			}
+
+			// Add bus width
+			if dimData.BusWidthBits > 0 {
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.memory.bus_width",
+					Timestamp: timestamp,
+					Value:     float32(dimData.BusWidthBits),
+					Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "bits"}),
+				})
+			}
+
+			// Add rank count
+			if dimData.RankCount > 0 {
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.memory.rank_count",
+					Timestamp: timestamp,
+					Value:     float32(dimData.RankCount),
 					Tags:      dimTags,
 				})
 			}
 
-			// Add memory speed
-			if dimData.OperatingSpeedMhz > 0 {
+			// Add max TDP
+			if dimData.MaxTDPMilliWatts > 0 {
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "memory.speed_mhz",
+					Name:      "hardware.memory.max_tdp",
 					Timestamp: timestamp,
-					Value:     float32(dimData.OperatingSpeedMhz),
-					Tags:      dimTags,
+					Value:     float32(dimData.MaxTDPMilliWatts),
+					Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "milliwatts"}),
 				})
 			}
 
@@ -1178,11 +1606,307 @@ func (c *GenericCollector) collectMemoryMetrics(ctx context.Context, timestamp t
 			if dimData.Status != nil {
 				health := mapHealthState(dimData.Status.Health)
 				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "memory.health",
+					Name:      "hardware.memory.health",
 					Timestamp: timestamp,
 					Value:     float32(health),
 					Tags:      dimTags,
 				})
+			}
+
+			// Check for memory metrics endpoint
+			metricsPath := ""
+			// Try to get from Links section first
+			if dimData.Links.Metrics.OdataID != "" {
+				metricsPath = dimData.Links.Metrics.OdataID
+			} else {
+				// Try standard path as a fallback
+				metricsPath = dimPath + "/Metrics"
+			}
+
+			if metricsPath != "" {
+				// Get memory metrics
+				metricsResp, err := c.client.Get(ctx, metricsPath)
+				if err != nil {
+					c.logger.Debug().
+						Err(err).
+						Str("path", metricsPath).
+						Msg("MemoryMetrics endpoint not available")
+				} else {
+					// Parse memory metrics
+					var metricsData struct {
+						BlockSizeBytes         int     `json:"BlockSizeBytes"`
+						CurrentPeriodBlocksRead int64  `json:"CurrentPeriodBlocksRead"`
+						CurrentPeriodBlocksWritten int64 `json:"CurrentPeriodBlocksWritten"`
+						LifeTime struct {
+							BlocksRead    int64 `json:"BlocksRead"`
+							BlocksWritten int64 `json:"BlocksWritten"`
+						} `json:"LifeTime"`
+						OperatingSpeedMHz     int     `json:"OperatingSpeedMHz"`
+						TemperatureCelsius    float32 `json:"TemperatureCelsius"`
+						ThrottledCycles       int64   `json:"ThrottledCycles"`
+						BandwidthPercent      float32 `json:"BandwidthPercent"`
+						ThermalMargin         float32 `json:"ThermalMargin"`
+						ConsumedPowerWatts    float32 `json:"ConsumedPowerWatts"`
+						AlarmTrips struct {
+							Temperature  bool `json:"Temperature"`
+							Spares       bool `json:"Spares"`
+							Uncorrectable bool `json:"Uncorrectable"`
+							CorrectableECCError bool `json:"CorrectableECCError"`
+						} `json:"AlarmTrips"`
+						CorrectableECCErrorCount int64   `json:"CorrectableECCErrorCount"`
+						UncorrectableECCErrorCount int64 `json:"UncorrectableECCErrorCount"`
+						Oem                 map[string]interface{} `json:"Oem"`
+					}
+
+					rawJSON, _ := json.Marshal(metricsResp)
+					if err := json.Unmarshal(rawJSON, &metricsData); err != nil {
+						c.logger.Warn().
+							Err(err).
+							Msg("Failed to parse memory metrics data")
+					} else {
+						// Add memory temperature
+						if metricsData.TemperatureCelsius > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.memory.temperature",
+								Timestamp: timestamp,
+								Value:     metricsData.TemperatureCelsius,
+								Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "celsius"}),
+							})
+						}
+
+						// Add thermal margin
+						if metricsData.ThermalMargin > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.memory.thermal_margin",
+								Timestamp: timestamp,
+								Value:     metricsData.ThermalMargin,
+								Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "celsius"}),
+							})
+						}
+
+						// Add power consumption
+						if metricsData.ConsumedPowerWatts > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.memory.power_consumption",
+								Timestamp: timestamp,
+								Value:     metricsData.ConsumedPowerWatts,
+								Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "watt"}),
+							})
+						}
+
+						// Add bandwidth utilization
+						if metricsData.BandwidthPercent > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.memory.bandwidth_utilization",
+								Timestamp: timestamp,
+								Value:     metricsData.BandwidthPercent,
+								Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "percent"}),
+							})
+						}
+
+						// Add throttled cycles
+						if metricsData.ThrottledCycles > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.memory.throttled_cycles",
+								Timestamp: timestamp,
+								Value:     float32(metricsData.ThrottledCycles),
+								Tags:      dimTags,
+							})
+						}
+
+						// Add error counts
+						if metricsData.CorrectableECCErrorCount > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.memory.correctable_ecc_errors",
+								Timestamp: timestamp,
+								Value:     float32(metricsData.CorrectableECCErrorCount),
+								Tags:      dimTags,
+							})
+						}
+
+						if metricsData.UncorrectableECCErrorCount > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.memory.uncorrectable_ecc_errors",
+								Timestamp: timestamp,
+								Value:     float32(metricsData.UncorrectableECCErrorCount),
+								Tags:      dimTags,
+							})
+						}
+
+						// Add alarm status
+						// Convert boolean alarms to numeric values (0 = false, 1 = true)
+						temperatureAlarm := 0.0
+						if metricsData.AlarmTrips.Temperature {
+							temperatureAlarm = 1.0
+						}
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.memory.alarm.temperature",
+							Timestamp: timestamp,
+							Value:     float32(temperatureAlarm),
+							Tags:      dimTags,
+						})
+
+						sparesAlarm := 0.0
+						if metricsData.AlarmTrips.Spares {
+							sparesAlarm = 1.0
+						}
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.memory.alarm.spares",
+							Timestamp: timestamp,
+							Value:     float32(sparesAlarm),
+							Tags:      dimTags,
+						})
+
+						uncorrectableAlarm := 0.0
+						if metricsData.AlarmTrips.Uncorrectable {
+							uncorrectableAlarm = 1.0
+						}
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.memory.alarm.uncorrectable",
+							Timestamp: timestamp,
+							Value:     float32(uncorrectableAlarm),
+							Tags:      dimTags,
+						})
+
+						correctableECCAlarm := 0.0
+						if metricsData.AlarmTrips.CorrectableECCError {
+							correctableECCAlarm = 1.0
+						}
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.memory.alarm.correctable_ecc",
+							Timestamp: timestamp,
+							Value:     float32(correctableECCAlarm),
+							Tags:      dimTags,
+						})
+
+						// Add IO activity metrics
+						if metricsData.BlockSizeBytes > 0 {
+							// Store block size as a metric
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.memory.block_size",
+								Timestamp: timestamp,
+								Value:     float32(metricsData.BlockSizeBytes),
+								Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "bytes"}),
+							})
+						}
+
+						// Current period IO metrics
+						if metricsData.CurrentPeriodBlocksRead > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.memory.current_period.blocks_read",
+								Timestamp: timestamp,
+								Value:     float32(metricsData.CurrentPeriodBlocksRead),
+								Tags:      dimTags,
+							})
+						}
+
+						if metricsData.CurrentPeriodBlocksWritten > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.memory.current_period.blocks_written",
+								Timestamp: timestamp,
+								Value:     float32(metricsData.CurrentPeriodBlocksWritten),
+								Tags:      dimTags,
+							})
+						}
+
+						// Lifetime IO metrics
+						if metricsData.LifeTime.BlocksRead > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.memory.lifetime.blocks_read",
+								Timestamp: timestamp,
+								Value:     float32(metricsData.LifeTime.BlocksRead),
+								Tags:      dimTags,
+							})
+						}
+
+						if metricsData.LifeTime.BlocksWritten > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.memory.lifetime.blocks_written",
+								Timestamp: timestamp,
+								Value:     float32(metricsData.LifeTime.BlocksWritten),
+								Tags:      dimTags,
+							})
+						}
+
+						// Check for OEM-specific metrics
+						if len(metricsData.Oem) > 0 {
+							// Log OEM data for debugging - this helps identify
+							// vendor-specific metrics in future iterations
+							c.logger.Debug().
+								Interface("oem_data", metricsData.Oem).
+								Msg("Found OEM memory metrics data")
+
+							// Extract Dell-specific metrics if present
+							if dell, ok := metricsData.Oem["Dell"]; ok {
+								dellData, _ := json.Marshal(dell)
+								var dellMetrics struct {
+									RemainingSpares int `json:"RemainingSpares"`
+									UsedSpares      int `json:"UsedSpares"`
+									AvailableSpare  int `json:"AvailableSpare"`
+								}
+
+								if err := json.Unmarshal(dellData, &dellMetrics); err == nil {
+									if dellMetrics.RemainingSpares > 0 {
+										datapoints = append(datapoints, data_store.DataPoint{
+											Name:      "hardware.memory.dell.remaining_spares",
+											Timestamp: timestamp,
+											Value:     float32(dellMetrics.RemainingSpares),
+											Tags:      dimTags,
+										})
+									}
+
+									if dellMetrics.UsedSpares > 0 {
+										datapoints = append(datapoints, data_store.DataPoint{
+											Name:      "hardware.memory.dell.used_spares",
+											Timestamp: timestamp,
+											Value:     float32(dellMetrics.UsedSpares),
+											Tags:      dimTags,
+										})
+									}
+								}
+							}
+
+							// Extract HPE-specific metrics if present
+							if hpe, ok := metricsData.Oem["Hpe"]; ok {
+								hpeData, _ := json.Marshal(hpe)
+								var hpeMetrics struct {
+									MinimumOperatingVoltageMillivolts int `json:"MinimumOperatingVoltageMillivolts"`
+									MaximumOperatingVoltageMillivolts int `json:"MaximumOperatingVoltageMillivolts"`
+									CurrentOperatingVoltageMillivolts int `json:"CurrentOperatingVoltageMillivolts"`
+								}
+
+								if err := json.Unmarshal(hpeData, &hpeMetrics); err == nil {
+									if hpeMetrics.CurrentOperatingVoltageMillivolts > 0 {
+										datapoints = append(datapoints, data_store.DataPoint{
+											Name:      "hardware.memory.hpe.current_voltage",
+											Timestamp: timestamp,
+											Value:     float32(hpeMetrics.CurrentOperatingVoltageMillivolts),
+											Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "millivolts"}),
+										})
+									}
+
+									if hpeMetrics.MinimumOperatingVoltageMillivolts > 0 {
+										datapoints = append(datapoints, data_store.DataPoint{
+											Name:      "hardware.memory.hpe.min_voltage",
+											Timestamp: timestamp,
+											Value:     float32(hpeMetrics.MinimumOperatingVoltageMillivolts),
+											Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "millivolts"}),
+										})
+									}
+
+									if hpeMetrics.MaximumOperatingVoltageMillivolts > 0 {
+										datapoints = append(datapoints, data_store.DataPoint{
+											Name:      "hardware.memory.hpe.max_voltage",
+											Timestamp: timestamp,
+											Value:     float32(hpeMetrics.MaximumOperatingVoltageMillivolts),
+											Tags:      append(dimTags, tags.Tag{Key: "unit", Value: "millivolts"}),
+										})
+									}
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 	}
