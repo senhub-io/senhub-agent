@@ -20,6 +20,7 @@ const (
 	VendorSupermicro VendorType = "supermicro"
 	VendorFujitsu  VendorType = "fujitsu"
 	VendorHuawei   VendorType = "huawei"
+	VendorStorage  VendorType = "storage" // For storage systems like Dell PowerVault
 )
 
 // CollectionType represents the types of data that can be collected
