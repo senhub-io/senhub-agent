@@ -129,24 +129,38 @@ func (c *StorageCollector) CollectMetrics(ctx context.Context, collectionType Co
 		// Use generic implementation for these
 		return c.GenericCollector.CollectMetrics(ctx, collectionType, timestamp)
 	case CollectionStorage:
-		// Collecte des métriques de stockage, y compris les volumes et les pools
-		storagePoints, err := c.collectStorageMetrics(ctx, timestamp)
-		if err != nil {
-			return nil, err
-		}
+		// Only collect storage consumption metrics - volumes and pools
+		var allPoints []data_store.DataPoint
 		
-		// Si nous avons des pools, récupérez leurs métriques également
+		// Only collect pool metrics which contain the resource occupation data
 		if len(c.storagePools) > 0 {
 			poolPoints, err := c.collectPoolMetrics(ctx, timestamp)
 			if err != nil {
 				c.logger.Warn().Err(err).Msg("Failed to collect pool metrics")
 			} else {
-				// Combinez toutes les métriques
-				storagePoints = append(storagePoints, poolPoints...)
+				allPoints = append(allPoints, poolPoints...)
 			}
 		}
 		
-		return storagePoints, nil
+		// Collect volume metrics for storage usage
+		volumePoints, err := c.collectVolumeConsumptionMetrics(ctx, timestamp)
+		if err != nil {
+			c.logger.Warn().Err(err).Msg("Failed to collect volume consumption metrics")
+		} else {
+			allPoints = append(allPoints, volumePoints...)
+		}
+		
+		// If we have controllers, just collect bare minimum health information
+		if len(c.storageControllers) > 0 {
+			controllerPoints, err := c.collectControllerHealthMetrics(ctx, timestamp)
+			if err != nil {
+				c.logger.Warn().Err(err).Msg("Failed to collect controller health metrics")
+			} else {
+				allPoints = append(allPoints, controllerPoints...)
+			}
+		}
+		
+		return allPoints, nil
 	case CollectionNetworkAdapter:
 		return c.collectNetworkMetrics(ctx, timestamp)
 	default:
@@ -747,6 +761,291 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 	return datapoints, nil
 }
 
+// collectVolumeConsumptionMetrics collects only storage consumption metrics for volumes
+func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, timestamp time.Time) ([]data_store.DataPoint, error) {
+	var datapoints []data_store.DataPoint
+
+	// Get system name to use as the host tag
+	var hostName string
+	if len(c.systems) > 0 {
+		sysResp, err := c.client.Get(ctx, c.systems[0])
+		if err == nil && sysResp.Name != "" {
+			hostName = sysResp.Name
+		}
+	}
+	if hostName == "" {
+		rootResp, err := c.client.Get(ctx, "")
+		if err == nil && rootResp.UUID != "" {
+			hostName = rootResp.UUID
+		}
+	}
+
+	// Process volumes for each controller
+	for _, controllerPath := range c.storageControllers {
+		// Get controller details to extract letter
+		ctrlResp, err := c.client.Get(ctx, controllerPath)
+		if err != nil {
+			c.logger.Warn().Err(err).Str("path", controllerPath).Msg("Failed to get controller details")
+			continue
+		}
+
+		// Extract controller letter (A/B) for tagging
+		controllerID := ctrlResp.ID
+		var controllerLetter string
+		if strings.Contains(strings.ToLower(controllerID), "_a") {
+			controllerLetter = "A"
+		} else if strings.Contains(strings.ToLower(controllerID), "_b") {
+			controllerLetter = "B"
+		}
+
+		// Process each volume
+		volumesPath := controllerPath + "/Volumes"
+		volumesResp, err := c.client.Get(ctx, volumesPath)
+		if err != nil {
+			continue
+		}
+
+		for _, member := range volumesResp.Members {
+			if volumePath, ok := member["@odata.id"]; ok {
+				volResp, err := c.client.Get(ctx, volumePath)
+				if err != nil {
+					continue
+				}
+
+				// Extract basic volume information
+				var volumeInfo struct {
+					ID            string  `json:"Id"`
+					Name          string  `json:"Name"`
+					CapacityBytes int64   `json:"CapacityBytes"`
+					Status        *Status `json:"Status"`
+				}
+				if err := json.Unmarshal(volResp.Raw, &volumeInfo); err != nil {
+					continue
+				}
+
+				// Volume tags - only essential tags for identification
+				volumeTags := []tags.Tag{
+					{Key: "volume_id", Value: volumeInfo.ID},
+					{Key: "volume_name", Value: volumeInfo.Name},
+					{Key: "controller_id", Value: controllerID},
+				}
+				if controllerLetter != "" {
+					volumeTags = append(volumeTags, tags.Tag{Key: "controller", Value: controllerLetter})
+				}
+				if hostName != "" {
+					volumeTags = append(volumeTags, tags.Tag{Key: "host", Value: hostName})
+				}
+
+				// Extract access capabilities for tagging
+				var accessCapabilities string
+				var volumeRawData map[string]interface{}
+				if err := json.Unmarshal(volResp.Raw, &volumeRawData); err == nil {
+					if accessCap, ok := volumeRawData["AccessCapabilities"]; ok {
+						if strValue, ok := accessCap.(string); ok && strValue != "" {
+							accessCapabilities = strValue
+						} else if arrValue, ok := accessCap.([]interface{}); ok && len(arrValue) > 0 {
+							var values []string
+							for _, val := range arrValue {
+								if strVal, ok := val.(string); ok && strVal != "" {
+									values = append(values, strVal)
+								}
+							}
+							accessCapabilities = strings.Join(values, ", ")
+						}
+					}
+				}
+				if accessCapabilities != "" {
+					volumeTags = append(volumeTags, tags.Tag{Key: "access_capabilities", Value: accessCapabilities})
+				}
+
+				// Volume health - essential operational metric
+				if volumeInfo.Status != nil && volumeInfo.Status.Health != "" {
+					datapoints = append(datapoints, data_store.DataPoint{
+						Name:      "hardware.storage.volume.health",
+						Timestamp: timestamp,
+						Value:     float32(mapHealthState(volumeInfo.Status.Health)),
+						Tags:      volumeTags,
+					})
+				}
+
+				// Skip if no capacity information is available
+				if volumeInfo.CapacityBytes <= 0 {
+					continue
+				}
+
+				// Try to extract usage metrics from OEM data
+				if err := json.Unmarshal(volResp.Raw, &volumeRawData); err == nil {
+					extractedUsage := false
+
+					// Check for standard Redfish properties
+					if capacitySourcesRaw, ok := volumeRawData["CapacitySources"]; ok {
+						if capacitySources, ok := capacitySourcesRaw.([]interface{}); ok && len(capacitySources) > 0 {
+							for _, sourceRaw := range capacitySources {
+								if source, ok := sourceRaw.(map[string]interface{}); ok {
+									if providedCapacityRaw, ok := source["ProvidedCapacityBytes"]; ok {
+										if providedCapacity, ok := providedCapacityRaw.(float64); ok && providedCapacity > 0 {
+											datapoints = append(datapoints, data_store.DataPoint{
+												Name:      "hardware.storage.volume.space.used",
+												Timestamp: timestamp,
+												Value:     float32(providedCapacity),
+												Tags:      volumeTags,
+											})
+											extractedUsage = true
+										}
+									}
+								}
+							}
+						}
+					}
+
+					// Check OEM-specific paths if standard properties didn't yield results
+					if !extractedUsage {
+						if oemData, ok := volumeRawData["Oem"]; ok {
+							if oemMap, ok := oemData.(map[string]interface{}); ok {
+								// Check Dell-specific paths
+								if dellData, ok := oemMap["Dell"]; ok {
+									if dellMap, ok := dellData.(map[string]interface{}); ok {
+										if usedBytesRaw, ok := dellMap["UsedBytes"]; ok {
+											if usedBytes, ok := usedBytesRaw.(float64); ok && usedBytes > 0 {
+												datapoints = append(datapoints, data_store.DataPoint{
+													Name:      "hardware.storage.volume.space.used",
+													Timestamp: timestamp,
+													Value:     float32(usedBytes),
+													Tags:      volumeTags,
+												})
+												extractedUsage = true
+											}
+										}
+										
+										if remainingCapacityRaw, ok := dellMap["RemainingCapacityPercent"]; ok {
+											if remainingPercent, ok := remainingCapacityRaw.(float64); ok {
+												usedPercent := 100.0 - float32(remainingPercent)
+												datapoints = append(datapoints, data_store.DataPoint{
+													Name:      "hardware.storage.volume.space.utilization",
+													Timestamp: timestamp,
+													Value:     usedPercent,
+													Tags:      volumeTags,
+												})
+												
+												// Calculate and add used based on percentage
+												usedBytes := float32(volumeInfo.CapacityBytes) * (usedPercent / 100.0)
+												datapoints = append(datapoints, data_store.DataPoint{
+													Name:      "hardware.storage.volume.space.used",
+													Timestamp: timestamp,
+													Value:     usedBytes,
+													Tags:      volumeTags,
+												})
+												extractedUsage = true
+											}
+										}
+									}
+								}
+								
+								// Check HPE-specific paths
+								if !extractedUsage && oemMap["Hpe"] != nil {
+									if hpeMap, ok := oemMap["Hpe"].(map[string]interface{}); ok {
+										if spaceInfoRaw, ok := hpeMap["VolumeSpaceInfo"]; ok {
+											if spaceInfo, ok := spaceInfoRaw.(map[string]interface{}); ok {
+												if usedRaw, ok := spaceInfo["UsedSpace"]; ok {
+													if usedBytes, ok := usedRaw.(float64); ok && usedBytes > 0 {
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.used",
+															Timestamp: timestamp,
+															Value:     float32(usedBytes),
+															Tags:      volumeTags,
+														})
+														
+														// Calculate utilization percentage
+														usedPercent := (float32(usedBytes) / float32(volumeInfo.CapacityBytes)) * 100
+														datapoints = append(datapoints, data_store.DataPoint{
+															Name:      "hardware.storage.volume.space.utilization",
+															Timestamp: timestamp,
+															Value:     usedPercent,
+															Tags:      volumeTags,
+														})
+														extractedUsage = true
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	return datapoints, nil
+}
+
+// collectControllerHealthMetrics collects only essential health metrics for storage controllers
+func (c *StorageCollector) collectControllerHealthMetrics(ctx context.Context, timestamp time.Time) ([]data_store.DataPoint, error) {
+	var datapoints []data_store.DataPoint
+
+	// Get system name to use as the host tag
+	var hostName string
+	if len(c.systems) > 0 {
+		sysResp, err := c.client.Get(ctx, c.systems[0])
+		if err == nil && sysResp.Name != "" {
+			hostName = sysResp.Name
+		}
+	}
+	if hostName == "" {
+		rootResp, err := c.client.Get(ctx, "")
+		if err == nil && rootResp.UUID != "" {
+			hostName = rootResp.UUID
+		}
+	}
+
+	// Process each controller
+	for _, controllerPath := range c.storageControllers {
+		ctrlResp, err := c.client.Get(ctx, controllerPath)
+		if err != nil {
+			continue
+		}
+
+		// Extract controller information
+		controllerID := ctrlResp.ID
+		controllerName := ctrlResp.Name
+
+		// Extract controller letter (A/B)
+		var controllerLetter string
+		if strings.Contains(strings.ToLower(controllerID), "_a") {
+			controllerLetter = "A"
+		} else if strings.Contains(strings.ToLower(controllerID), "_b") {
+			controllerLetter = "B"
+		}
+
+		// Controller tags - minimal identification tags
+		controllerTags := []tags.Tag{
+			{Key: "controller_id", Value: controllerID},
+			{Key: "controller_name", Value: controllerName},
+			{Key: "controller_type", Value: "storage"},
+		}
+		if controllerLetter != "" {
+			controllerTags = append(controllerTags, tags.Tag{Key: "controller", Value: controllerLetter})
+		}
+		if hostName != "" {
+			controllerTags = append(controllerTags, tags.Tag{Key: "host", Value: hostName})
+		}
+
+		// Controller health - only essential operational metric
+		if ctrlResp.Status != nil && ctrlResp.Status.Health != "" {
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.controller.health",
+				Timestamp: timestamp,
+				Value:     float32(mapHealthState(ctrlResp.Status.Health)),
+				Tags:      controllerTags,
+			})
+		}
+	}
+	
+	return datapoints, nil
+}
+
 // followODataLink traverse un lien OData de manière récursive pour récupérer les données
 func (c *StorageCollector) followODataLink(ctx context.Context, path string, depth int) (map[string]interface{}, error) {
 	// Vérification du cycle pour éviter les références circulaires
@@ -816,7 +1115,7 @@ func (c *StorageCollector) followODataLink(ctx context.Context, path string, dep
 	return data, nil
 }
 
-// collectPoolMetrics collects metrics for storage pools
+// collectPoolMetrics collects resource consumption metrics for storage pools
 func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp time.Time) ([]data_store.DataPoint, error) {
 	var datapoints []data_store.DataPoint
 
@@ -889,7 +1188,7 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			}
 		}
 		
-		// Pool tags - suivant les conventions de REDFISH-TAGS.md
+		// Pool tags - essential tags only for identification
 		poolTags := []tags.Tag{
 			{Key: "pool_id", Value: poolInfo.ID},
 			{Key: "pool_name", Value: poolInfo.Name},
@@ -908,21 +1207,7 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			poolTags = append(poolTags, tags.Tag{Key: "host", Value: hostName})
 		}
 		
-		// Additional metadata from raw data
-		var poolRawData map[string]interface{}
-		if err := json.Unmarshal(poolResp.Raw, &poolRawData); err == nil {
-			// Add RAID level if available
-			if raidLevel, ok := poolRawData["RAIDLevel"].(string); ok && raidLevel != "" {
-				poolTags = append(poolTags, tags.Tag{Key: "raid_level", Value: raidLevel})
-			}
-			
-			// Add pool usage type if available
-			if usageType, ok := poolRawData["UsageType"].(string); ok && usageType != "" {
-				poolTags = append(poolTags, tags.Tag{Key: "usage_type", Value: usageType})
-			}
-		}
-		
-		// Pool health state - la valeur est dérivée de Status.Health
+		// Pool health state - including only as a critical operational metric
 		if poolInfo.Status != nil && poolInfo.Status.Health != "" {
 			datapoints = append(datapoints, data_store.DataPoint{
 				Name:      "hardware.storage.pool.health",
@@ -932,77 +1217,7 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			})
 		}
 		
-		// Pool capacity
-		if poolInfo.CapacityBytes > 0 {
-			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "hardware.storage.pool.size",
-				Timestamp: timestamp,
-				Value:     float32(poolInfo.CapacityBytes),
-				Tags:      poolTags,
-			})
-			
-			// Also add capacity in GB for easier consumption
-			gbValue := float32(poolInfo.CapacityBytes) / (1024 * 1024 * 1024)
-			poolTagsWithUnit := append(poolTags, tags.Tag{Key: "unit", Value: "GB"})
-			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "hardware.storage.pool.size",
-				Timestamp: timestamp,
-				Value:     gbValue,
-				Tags:      poolTagsWithUnit,
-			})
-		}
-		
-		// Pool remaining capacity
-		if poolInfo.RemainingCapacityBytes > 0 {
-			freeBytes := float32(poolInfo.RemainingCapacityBytes)
-			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "hardware.storage.pool.space.free",
-				Timestamp: timestamp,
-				Value:     freeBytes,
-				Tags:      poolTags,
-			})
-			
-			// Add in GB
-			freeGB := freeBytes / (1024 * 1024 * 1024)
-			poolTagsWithUnit := append(poolTags, tags.Tag{Key: "unit", Value: "GB"})
-			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "hardware.storage.pool.space.free",
-				Timestamp: timestamp,
-				Value:     freeGB,
-				Tags:      poolTagsWithUnit,
-			})
-			
-			// Calculate used capacity and percentage if total capacity is available
-			if poolInfo.CapacityBytes > 0 {
-				usedBytes := float32(poolInfo.CapacityBytes) - freeBytes
-				usedPercent := (usedBytes / float32(poolInfo.CapacityBytes)) * 100
-				
-				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "hardware.storage.pool.space.used",
-					Timestamp: timestamp,
-					Value:     usedBytes,
-					Tags:      poolTags,
-				})
-				
-				usedGB := usedBytes / (1024 * 1024 * 1024)
-				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "hardware.storage.pool.space.used",
-					Timestamp: timestamp,
-					Value:     usedGB,
-					Tags:      poolTagsWithUnit,
-				})
-				
-				poolTagsWithPercentUnit := append(poolTags, tags.Tag{Key: "unit", Value: "percent"})
-				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "hardware.storage.pool.space.utilization",
-					Timestamp: timestamp,
-					Value:     usedPercent,
-					Tags:      poolTagsWithPercentUnit,
-				})
-			}
-		}
-		
-		// Pool allocated capacity
+		// Pool allocated capacity - showing resource allocation
 		allocatedBytes := float32(poolInfo.AllocatedBytes)
 		if allocatedBytes == 0 && poolInfo.Capacity.Data.AllocatedBytes > 0 {
 			allocatedBytes = float32(poolInfo.Capacity.Data.AllocatedBytes)
@@ -1015,31 +1230,9 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 				Value:     allocatedBytes,
 				Tags:      poolTags,
 			})
-			
-			// Add in GB
-			allocatedGB := allocatedBytes / (1024 * 1024 * 1024)
-			poolTagsWithUnit := append(poolTags, tags.Tag{Key: "unit", Value: "GB"})
-			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "hardware.storage.pool.space.allocated",
-				Timestamp: timestamp,
-				Value:     allocatedGB,
-				Tags:      poolTagsWithUnit,
-			})
-			
-			// Calculate allocation percentage if total capacity is available
-			if poolInfo.CapacityBytes > 0 {
-				allocPercent := (allocatedBytes / float32(poolInfo.CapacityBytes)) * 100
-				poolTagsWithPercentUnit := append(poolTags, tags.Tag{Key: "unit", Value: "percent"})
-				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "hardware.storage.pool.space.allocation",
-					Timestamp: timestamp,
-					Value:     allocPercent,
-					Tags:      poolTagsWithPercentUnit,
-				})
-			}
 		}
 		
-		// Pool consumed capacity
+		// Pool consumed capacity - showing actual usage
 		if poolInfo.Capacity.Data.ConsumedBytes > 0 {
 			consumedBytes := float32(poolInfo.Capacity.Data.ConsumedBytes)
 			datapoints = append(datapoints, data_store.DataPoint{
@@ -1048,31 +1241,9 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 				Value:     consumedBytes,
 				Tags:      poolTags,
 			})
-			
-			// Add in GB
-			consumedGB := consumedBytes / (1024 * 1024 * 1024)
-			poolTagsWithUnit := append(poolTags, tags.Tag{Key: "unit", Value: "GB"})
-			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "hardware.storage.pool.space.consumed",
-				Timestamp: timestamp,
-				Value:     consumedGB,
-				Tags:      poolTagsWithUnit,
-			})
-			
-			// Calculate consumption percentage if total capacity is available
-			if poolInfo.CapacityBytes > 0 {
-				consumePercent := (consumedBytes / float32(poolInfo.CapacityBytes)) * 100
-				poolTagsWithPercentUnit := append(poolTags, tags.Tag{Key: "unit", Value: "percent"})
-				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "hardware.storage.pool.space.consumption",
-					Timestamp: timestamp,
-					Value:     consumePercent,
-					Tags:      poolTagsWithPercentUnit,
-				})
-			}
 		}
 		
-		// Track thin provisioning if available
+		// Track thin provisioning - important for understanding storage behavior
 		thinProvisioned := 0.0
 		if poolInfo.Capacity.IsThinProvisioned {
 			thinProvisioned = 1.0
@@ -1088,5 +1259,3 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 	
 	return datapoints, nil
 }
-
-// followODataLink traverse un lien OData de manière récursive pour récupérer les données
