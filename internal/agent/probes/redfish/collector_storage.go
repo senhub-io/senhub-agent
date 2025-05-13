@@ -15,8 +15,11 @@ import (
 // StorageCollector is a specialized implementation for storage systems like Dell PowerVault
 type StorageCollector struct {
 	*GenericCollector
-	storageVolumes  []string
+	storageVolumes     []string
 	storageControllers []string
+	storagePools       []string
+	visitedLinks       map[string]bool // Pour éviter les cycles dans la traversée de liens
+	maxDepth           int             // Profondeur maximale pour la traversée
 }
 
 // NewStorageCollector creates a new collector for storage devices
@@ -28,9 +31,12 @@ func NewStorageCollector(endpoint, username, password string, logger *logger.Log
 	}
 
 	return &StorageCollector{
-		GenericCollector: genericCollector.(*GenericCollector),
-		storageVolumes:  make([]string, 0),
+		GenericCollector:   genericCollector.(*GenericCollector),
+		storageVolumes:     make([]string, 0),
 		storageControllers: make([]string, 0),
+		storagePools:       make([]string, 0),
+		visitedLinks:       make(map[string]bool),
+		maxDepth:           5, // Profondeur par défaut pour la traversée
 	}, nil
 }
 
@@ -62,12 +68,25 @@ func (c *StorageCollector) Connect(ctx context.Context) error {
 						}
 					}
 				}
+				
+				// Attempt to get storage pools for each controller
+				poolsPath := normalizedPath + "/StoragePools"
+				poolsResp, err := c.client.Get(ctx, poolsPath)
+				if err == nil && len(poolsResp.Members) > 0 {
+					// We found storage pools, add them to our list
+					for _, pool := range poolsResp.Members {
+						if poolId, ok := pool["@odata.id"]; ok {
+							c.storagePools = append(c.storagePools, strings.TrimPrefix(poolId, "/redfish/v1/"))
+						}
+					}
+				}
 			}
 		}
 		
 		c.logger.Debug().
 			Int("controller_count", len(c.storageControllers)).
 			Int("volume_count", len(c.storageVolumes)).
+			Int("pool_count", len(c.storagePools)).
 			Msg("Discovered storage resources")
 			
 		// Set vendor type to storage
@@ -110,7 +129,24 @@ func (c *StorageCollector) CollectMetrics(ctx context.Context, collectionType Co
 		// Use generic implementation for these
 		return c.GenericCollector.CollectMetrics(ctx, collectionType, timestamp)
 	case CollectionStorage:
-		return c.collectStorageMetrics(ctx, timestamp)
+		// Collecte des métriques de stockage, y compris les volumes et les pools
+		storagePoints, err := c.collectStorageMetrics(ctx, timestamp)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Si nous avons des pools, récupérez leurs métriques également
+		if len(c.storagePools) > 0 {
+			poolPoints, err := c.collectPoolMetrics(ctx, timestamp)
+			if err != nil {
+				c.logger.Warn().Err(err).Msg("Failed to collect pool metrics")
+			} else {
+				// Combinez toutes les métriques
+				storagePoints = append(storagePoints, poolPoints...)
+			}
+		}
+		
+		return storagePoints, nil
 	case CollectionNetworkAdapter:
 		return c.collectNetworkMetrics(ctx, timestamp)
 	default:
@@ -710,3 +746,347 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 	
 	return datapoints, nil
 }
+
+// followODataLink traverse un lien OData de manière récursive pour récupérer les données
+func (c *StorageCollector) followODataLink(ctx context.Context, path string, depth int) (map[string]interface{}, error) {
+	// Vérification du cycle pour éviter les références circulaires
+	if c.visitedLinks[path] {
+		return nil, fmt.Errorf("cycle detected in link traversal: %s", path)
+	}
+	
+	// Vérification de la profondeur maximale pour éviter les récursions infinies
+	if depth > c.maxDepth {
+		return nil, fmt.Errorf("max traversal depth reached at: %s", path)
+	}
+	
+	// Marquer comme visité
+	c.visitedLinks[path] = true
+	
+	// Obtenir la ressource
+	normalizedPath := strings.TrimPrefix(path, "/redfish/v1/")
+	resp, err := c.client.Get(ctx, normalizedPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resource at %s: %v", path, err)
+	}
+	
+	// Analyser la réponse JSON
+	var data map[string]interface{}
+	if err := json.Unmarshal(resp.Raw, &data); err != nil {
+		return nil, fmt.Errorf("failed to parse response for %s: %v", path, err)
+	}
+	
+	// Traiter chaque champ récursivement s'il s'agit d'un @odata.id
+	for key, value := range data {
+		// Ignorer le champ @odata.id lui-même
+		if key == "@odata.id" {
+			continue
+		}
+		
+		// Si c'est un map/object, vérifier s'il a @odata.id
+		if subObj, ok := value.(map[string]interface{}); ok {
+			if linkID, ok := subObj["@odata.id"].(string); ok {
+				// Suivre ce lien récursivement 
+				subData, err := c.followODataLink(ctx, linkID, depth+1)
+				if err == nil {
+					// Remplacer le lien par les données réelles
+					data[key+"Data"] = subData
+				}
+			}
+		}
+		
+		// Si c'est un tableau, vérifier chaque élément
+		if arr, ok := value.([]interface{}); ok {
+			for i, item := range arr {
+				if itemObj, ok := item.(map[string]interface{}); ok {
+					if linkID, ok := itemObj["@odata.id"].(string); ok {
+						// Suivre ce lien récursivement
+						subData, err := c.followODataLink(ctx, linkID, depth+1)
+						if err == nil {
+							// Comme nous ne pouvons pas facilement modifier le tableau en place,
+							// nous ajoutons un nouveau champ avec les données du lien
+							itemKey := fmt.Sprintf("%sItem%d", key, i)
+							data[itemKey] = subData
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	return data, nil
+}
+
+// collectPoolMetrics collects metrics for storage pools
+func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp time.Time) ([]data_store.DataPoint, error) {
+	var datapoints []data_store.DataPoint
+
+	// Get system name to use as the host tag
+	var hostName string
+
+	// Try to get host info
+	if len(c.systems) > 0 {
+		sysResp, err := c.client.Get(ctx, c.systems[0])
+		if err == nil && sysResp.Name != "" {
+			hostName = sysResp.Name
+		}
+	}
+
+	// If hostname is empty, try to get from the service root
+	if hostName == "" {
+		rootResp, err := c.client.Get(ctx, "")
+		if err == nil && rootResp.UUID != "" {
+			hostName = rootResp.UUID
+		}
+	}
+
+	// For each storage pool
+	for _, poolPath := range c.storagePools {
+		poolResp, err := c.client.Get(ctx, poolPath)
+		if err != nil {
+			c.logger.Warn().
+				Err(err).
+				Str("path", poolPath).
+				Msg("Failed to get storage pool details")
+			continue
+		}
+		
+		// Extract pool information
+		var poolInfo struct {
+			ID                   string  `json:"Id"`
+			Name                 string  `json:"Name"`
+			Status               *Status `json:"Status"`
+			CapacityBytes        int64   `json:"CapacityBytes"`
+			RemainingCapacityBytes int64 `json:"RemainingCapacityBytes"`
+			AllocatedBytes       int64   `json:"AllocatedBytes"`
+			Capacity struct {
+				Data struct {
+					AllocatedBytes int64 `json:"AllocatedBytes"`
+					ConsumedBytes  int64 `json:"ConsumedBytes"`
+				} `json:"Data"`
+				IsThinProvisioned bool `json:"IsThinProvisioned"`
+			} `json:"Capacity"`
+		}
+		
+		if err := json.Unmarshal(poolResp.Raw, &poolInfo); err != nil {
+			c.logger.Warn().
+				Err(err).
+				Str("path", poolPath).
+				Msg("Failed to parse pool details")
+			continue
+		}
+		
+		// Extract controller ID from path (e.g., "Storage/controller_a/StoragePools/A" -> "controller_a")
+		pathParts := strings.Split(poolPath, "/")
+		var controllerID, controllerLetter string
+		if len(pathParts) >= 2 {
+			controllerID = pathParts[1]
+			
+			// Extract simple controller letter if it looks like "controller_a" -> "A"
+			if strings.Contains(strings.ToLower(controllerID), "_a") {
+				controllerLetter = "A"
+			} else if strings.Contains(strings.ToLower(controllerID), "_b") {
+				controllerLetter = "B"
+			}
+		}
+		
+		// Pool tags - suivant les conventions de REDFISH-TAGS.md
+		poolTags := []tags.Tag{
+			{Key: "pool_id", Value: poolInfo.ID},
+			{Key: "pool_name", Value: poolInfo.Name},
+		}
+		
+		// Add controller tags if available
+		if controllerID != "" {
+			poolTags = append(poolTags, tags.Tag{Key: "controller_id", Value: controllerID})
+		}
+		if controllerLetter != "" {
+			poolTags = append(poolTags, tags.Tag{Key: "controller", Value: controllerLetter})
+		}
+		
+		// Add host tag if available
+		if hostName != "" {
+			poolTags = append(poolTags, tags.Tag{Key: "host", Value: hostName})
+		}
+		
+		// Additional metadata from raw data
+		var poolRawData map[string]interface{}
+		if err := json.Unmarshal(poolResp.Raw, &poolRawData); err == nil {
+			// Add RAID level if available
+			if raidLevel, ok := poolRawData["RAIDLevel"].(string); ok && raidLevel != "" {
+				poolTags = append(poolTags, tags.Tag{Key: "raid_level", Value: raidLevel})
+			}
+			
+			// Add pool usage type if available
+			if usageType, ok := poolRawData["UsageType"].(string); ok && usageType != "" {
+				poolTags = append(poolTags, tags.Tag{Key: "usage_type", Value: usageType})
+			}
+		}
+		
+		// Pool health state - la valeur est dérivée de Status.Health
+		if poolInfo.Status != nil && poolInfo.Status.Health != "" {
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.health",
+				Timestamp: timestamp,
+				Value:     float32(mapHealthState(poolInfo.Status.Health)),
+				Tags:      poolTags,
+			})
+		}
+		
+		// Pool capacity
+		if poolInfo.CapacityBytes > 0 {
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.size",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.CapacityBytes),
+				Tags:      poolTags,
+			})
+			
+			// Also add capacity in GB for easier consumption
+			gbValue := float32(poolInfo.CapacityBytes) / (1024 * 1024 * 1024)
+			poolTagsWithUnit := append(poolTags, tags.Tag{Key: "unit", Value: "GB"})
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.size",
+				Timestamp: timestamp,
+				Value:     gbValue,
+				Tags:      poolTagsWithUnit,
+			})
+		}
+		
+		// Pool remaining capacity
+		if poolInfo.RemainingCapacityBytes > 0 {
+			freeBytes := float32(poolInfo.RemainingCapacityBytes)
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.space.free",
+				Timestamp: timestamp,
+				Value:     freeBytes,
+				Tags:      poolTags,
+			})
+			
+			// Add in GB
+			freeGB := freeBytes / (1024 * 1024 * 1024)
+			poolTagsWithUnit := append(poolTags, tags.Tag{Key: "unit", Value: "GB"})
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.space.free",
+				Timestamp: timestamp,
+				Value:     freeGB,
+				Tags:      poolTagsWithUnit,
+			})
+			
+			// Calculate used capacity and percentage if total capacity is available
+			if poolInfo.CapacityBytes > 0 {
+				usedBytes := float32(poolInfo.CapacityBytes) - freeBytes
+				usedPercent := (usedBytes / float32(poolInfo.CapacityBytes)) * 100
+				
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.storage.pool.space.used",
+					Timestamp: timestamp,
+					Value:     usedBytes,
+					Tags:      poolTags,
+				})
+				
+				usedGB := usedBytes / (1024 * 1024 * 1024)
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.storage.pool.space.used",
+					Timestamp: timestamp,
+					Value:     usedGB,
+					Tags:      poolTagsWithUnit,
+				})
+				
+				poolTagsWithPercentUnit := append(poolTags, tags.Tag{Key: "unit", Value: "percent"})
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.storage.pool.space.utilization",
+					Timestamp: timestamp,
+					Value:     usedPercent,
+					Tags:      poolTagsWithPercentUnit,
+				})
+			}
+		}
+		
+		// Pool allocated capacity
+		allocatedBytes := float32(poolInfo.AllocatedBytes)
+		if allocatedBytes == 0 && poolInfo.Capacity.Data.AllocatedBytes > 0 {
+			allocatedBytes = float32(poolInfo.Capacity.Data.AllocatedBytes)
+		}
+		
+		if allocatedBytes > 0 {
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.space.allocated",
+				Timestamp: timestamp,
+				Value:     allocatedBytes,
+				Tags:      poolTags,
+			})
+			
+			// Add in GB
+			allocatedGB := allocatedBytes / (1024 * 1024 * 1024)
+			poolTagsWithUnit := append(poolTags, tags.Tag{Key: "unit", Value: "GB"})
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.space.allocated",
+				Timestamp: timestamp,
+				Value:     allocatedGB,
+				Tags:      poolTagsWithUnit,
+			})
+			
+			// Calculate allocation percentage if total capacity is available
+			if poolInfo.CapacityBytes > 0 {
+				allocPercent := (allocatedBytes / float32(poolInfo.CapacityBytes)) * 100
+				poolTagsWithPercentUnit := append(poolTags, tags.Tag{Key: "unit", Value: "percent"})
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.storage.pool.space.allocation",
+					Timestamp: timestamp,
+					Value:     allocPercent,
+					Tags:      poolTagsWithPercentUnit,
+				})
+			}
+		}
+		
+		// Pool consumed capacity
+		if poolInfo.Capacity.Data.ConsumedBytes > 0 {
+			consumedBytes := float32(poolInfo.Capacity.Data.ConsumedBytes)
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.space.consumed",
+				Timestamp: timestamp,
+				Value:     consumedBytes,
+				Tags:      poolTags,
+			})
+			
+			// Add in GB
+			consumedGB := consumedBytes / (1024 * 1024 * 1024)
+			poolTagsWithUnit := append(poolTags, tags.Tag{Key: "unit", Value: "GB"})
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.space.consumed",
+				Timestamp: timestamp,
+				Value:     consumedGB,
+				Tags:      poolTagsWithUnit,
+			})
+			
+			// Calculate consumption percentage if total capacity is available
+			if poolInfo.CapacityBytes > 0 {
+				consumePercent := (consumedBytes / float32(poolInfo.CapacityBytes)) * 100
+				poolTagsWithPercentUnit := append(poolTags, tags.Tag{Key: "unit", Value: "percent"})
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.storage.pool.space.consumption",
+					Timestamp: timestamp,
+					Value:     consumePercent,
+					Tags:      poolTagsWithPercentUnit,
+				})
+			}
+		}
+		
+		// Track thin provisioning if available
+		thinProvisioned := 0.0
+		if poolInfo.Capacity.IsThinProvisioned {
+			thinProvisioned = 1.0
+		}
+		
+		datapoints = append(datapoints, data_store.DataPoint{
+			Name:      "hardware.storage.pool.thin_provisioned",
+			Timestamp: timestamp,
+			Value:     float32(thinProvisioned),
+			Tags:      poolTags,
+		})
+	}
+	
+	return datapoints, nil
+}
+
+// followODataLink traverse un lien OData de manière récursive pour récupérer les données
