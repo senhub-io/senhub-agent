@@ -2152,13 +2152,29 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 			hostname = sysResp.Name
 		}
 
+		// For storage systems like PowerVault ME5024, we may need to skip network adapters
+		// as they don't expose network interfaces through Redfish
+		if c.vendorType == VendorStorage {
+			// Check if this is a storage system that doesn't support network endpoints
+			testPath := fmt.Sprintf("Systems/%s/NetworkInterfaces", normalizedSystemID)
+			_, testErr := c.client.Get(ctx, testPath)
+			if testErr != nil && strings.Contains(testErr.Error(), "400") &&
+			   strings.Contains(testErr.Error(), "Invalid URL") {
+				// This appears to be a storage system that doesn't support network endpoints
+				c.logger.Debug().
+					Str("system_id", systemID).
+					Msg("Storage system does not support network interfaces endpoints, skipping")
+				continue
+			}
+		}
+
 		// Network interfaces path
 		networkPath := fmt.Sprintf("Systems/%s/NetworkInterfaces", normalizedSystemID)
 
 		// Fetch network collection
 		networkResp, err := c.client.Get(ctx, networkPath)
 		if err != nil {
-			c.logger.Warn().
+			c.logger.Debug().
 				Err(err).
 				Str("path", networkPath).
 				Msg("Failed to get network interfaces collection")
@@ -2167,7 +2183,7 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 			alternatePath := fmt.Sprintf("Systems/%s/EthernetInterfaces", normalizedSystemID)
 			networkResp, err = c.client.Get(ctx, alternatePath)
 			if err != nil {
-				c.logger.Warn().
+				c.logger.Debug().
 					Err(err).
 					Str("path", alternatePath).
 					Msg("Failed to get ethernet interfaces collection")
@@ -2176,7 +2192,7 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 					adaptersPath := fmt.Sprintf("Systems/%s/Adapters", normalizedSystemID)
 					networkResp, err = c.client.Get(ctx, adaptersPath)
 					if err != nil {
-						c.logger.Warn().
+						c.logger.Debug().
 							Err(err).
 							Str("path", adaptersPath).
 							Msg("Failed to get adapters collection")
