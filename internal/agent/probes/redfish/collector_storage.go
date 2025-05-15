@@ -709,50 +709,96 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 					continue
 				}
 
-				// Extract basic volume information
+				// Extract detailed volume information
 				var volumeInfo struct {
-					ID            string  `json:"Id"`
-					Name          string  `json:"Name"`
-					CapacityBytes int64   `json:"CapacityBytes"`
-					Status        *Status `json:"Status"`
+					ID                    string  `json:"Id"`
+					Name                  string  `json:"Name"`
+					CapacityBytes         int64   `json:"CapacityBytes"`
+					BlockSizeBytes        int     `json:"BlockSizeBytes"`
+					Status                *Status `json:"Status"`
+					Encrypted             bool    `json:"Encrypted"`
+					RemainingCapacityPercent int  `json:"RemainingCapacityPercent"`
+					WriteCachePolicy      string  `json:"WriteCachePolicy"`
+					AccessCapabilities    []string `json:"AccessCapabilities"`
+					EncryptionTypes       []string `json:"EncryptionTypes"`
+					Capacity struct {
+						Data struct {
+							AllocatedBytes int64 `json:"AllocatedBytes"`
+							ConsumedBytes  int64 `json:"ConsumedBytes"`
+						} `json:"Data"`
+					} `json:"Capacity"`
+					// IO Statistics for performance metrics
+					IOStatistics struct {
+						ReadHitIORequests  int64 `json:"ReadHitIORequests"`
+						ReadIOKiBytes      int64 `json:"ReadIOKiBytes"`
+						WriteHitIORequests int64 `json:"WriteHitIORequests"`
+						WriteIOKiBytes     int64 `json:"WriteIOKiBytes"`
+					} `json:"IOStatistics"`
+					// Capacity Sources to track pool association
+					CapacitySources []struct {
+						Id             string `json:"Id"`
+						Name           string `json:"Name"`
+						ProvidingPools struct {
+							Members []struct {
+								OdataID string `json:"@odata.id"`
+							}
+						} `json:"ProvidingPools"`
+					} `json:"CapacitySources"`
 				}
+				
 				if err := json.Unmarshal(volResp.Raw, &volumeInfo); err != nil {
+					c.logger.Warn().Err(err).Str("path", volumePath).Msg("Failed to unmarshal volume data")
 					continue
 				}
 
-				// Volume tags - only essential tags for identification
+				// Extract volume pool from path
+				var poolID string
+				if len(volumeInfo.CapacitySources) > 0 && len(volumeInfo.CapacitySources[0].ProvidingPools.Members) > 0 {
+					// Extract pool ID from @odata.id path which is like "/redfish/v1/Storage/controller_a/StoragePools/A"
+					poolPath := volumeInfo.CapacitySources[0].ProvidingPools.Members[0].OdataID
+					pathParts := strings.Split(poolPath, "/")
+					if len(pathParts) > 0 {
+						poolID = pathParts[len(pathParts)-1]
+					}
+				}
+
+				// Volume tags - comprehensive tags for identification
 				volumeTags := []tags.Tag{
 					{Key: "volume_id", Value: volumeInfo.ID},
 					{Key: "volume_name", Value: volumeInfo.Name},
 					{Key: "controller_id", Value: controllerID},
 				}
+				
 				if controllerLetter != "" {
 					volumeTags = append(volumeTags, tags.Tag{Key: "controller", Value: controllerLetter})
 				}
+				
 				if hostName != "" {
 					volumeTags = append(volumeTags, tags.Tag{Key: "host", Value: hostName})
 				}
-
-				// Extract access capabilities for tagging
-				var accessCapabilities string
-				var volumeRawData map[string]interface{}
-				if err := json.Unmarshal(volResp.Raw, &volumeRawData); err == nil {
-					if accessCap, ok := volumeRawData["AccessCapabilities"]; ok {
-						if strValue, ok := accessCap.(string); ok && strValue != "" {
-							accessCapabilities = strValue
-						} else if arrValue, ok := accessCap.([]interface{}); ok && len(arrValue) > 0 {
-							var values []string
-							for _, val := range arrValue {
-								if strVal, ok := val.(string); ok && strVal != "" {
-									values = append(values, strVal)
-								}
-							}
-							accessCapabilities = strings.Join(values, ", ")
-						}
-					}
+				
+				if poolID != "" {
+					volumeTags = append(volumeTags, tags.Tag{Key: "pool_id", Value: poolID})
 				}
-				if accessCapabilities != "" {
+				
+				if volumeInfo.WriteCachePolicy != "" {
+					volumeTags = append(volumeTags, tags.Tag{Key: "write_cache_policy", Value: volumeInfo.WriteCachePolicy})
+				}
+				
+				if volumeInfo.BlockSizeBytes > 0 {
+					volumeTags = append(volumeTags, tags.Tag{Key: "block_size", Value: fmt.Sprintf("%d", volumeInfo.BlockSizeBytes)})
+				}
+				
+				// Handle access capabilities
+				if len(volumeInfo.AccessCapabilities) > 0 {
+					accessCapabilities := strings.Join(volumeInfo.AccessCapabilities, ", ")
 					volumeTags = append(volumeTags, tags.Tag{Key: "access_capabilities", Value: accessCapabilities})
+				}
+				
+				// Handle encryption types
+				if len(volumeInfo.EncryptionTypes) > 0 {
+					encryptionType := strings.Join(volumeInfo.EncryptionTypes, ", ")
+					volumeTags = append(volumeTags, tags.Tag{Key: "encryption_type", Value: encryptionType})
 				}
 
 				// Volume health - essential operational metric
@@ -764,93 +810,108 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 						Tags:      volumeTags,
 					})
 				}
+				
+				// Volume encryption state
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.storage.volume.encrypted",
+					Timestamp: timestamp,
+					Value:     float32(boolToFloat(volumeInfo.Encrypted)),
+					Tags:      volumeTags,
+				})
 
-				// Skip if no capacity information is available
-				if volumeInfo.CapacityBytes <= 0 {
-					continue
-				}
-
-				// Try to extract usage metrics from OEM data
-				if err := json.Unmarshal(volResp.Raw, &volumeRawData); err == nil {
-					extractedUsage := false
-
-					// Check for standard Redfish properties
-					if capacitySourcesRaw, ok := volumeRawData["CapacitySources"]; ok {
-						if capacitySources, ok := capacitySourcesRaw.([]interface{}); ok && len(capacitySources) > 0 {
-							for _, sourceRaw := range capacitySources {
-								if source, ok := sourceRaw.(map[string]interface{}); ok {
-									if providedCapacityRaw, ok := source["ProvidedCapacityBytes"]; ok {
-										if providedCapacity, ok := providedCapacityRaw.(float64); ok && providedCapacity > 0 {
-											datapoints = append(datapoints, data_store.DataPoint{
-												Name:      "hardware.storage.volume.space.used",
-												Timestamp: timestamp,
-												Value:     float32(providedCapacity),
-												Tags:      volumeTags,
-											})
-											extractedUsage = true
-										}
-									}
-								}
-							}
-						}
+				// Volume capacity metrics
+				if volumeInfo.CapacityBytes > 0 {
+					// Total capacity
+					datapoints = append(datapoints, data_store.DataPoint{
+						Name:      "hardware.storage.volume.capacity.total",
+						Timestamp: timestamp,
+						Value:     float32(volumeInfo.CapacityBytes),
+						Tags:      volumeTags,
+					})
+					
+					// Allocated capacity
+					if volumeInfo.Capacity.Data.AllocatedBytes > 0 {
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.capacity.allocated",
+							Timestamp: timestamp,
+							Value:     float32(volumeInfo.Capacity.Data.AllocatedBytes),
+							Tags:      volumeTags,
+						})
 					}
-
-					// Check OEM-specific paths if standard properties didn't yield results
-					if !extractedUsage {
-						if oemData, ok := volumeRawData["Oem"]; ok {
-							if oemMap, ok := oemData.(map[string]interface{}); ok {
-								// Check Dell-specific paths
-								if dellData, ok := oemMap["Dell"]; ok {
-									if dellMap, ok := dellData.(map[string]interface{}); ok {
-										if usedBytesRaw, ok := dellMap["UsedBytes"]; ok {
-											if usedBytes, ok := usedBytesRaw.(float64); ok && usedBytes > 0 {
-												datapoints = append(datapoints, data_store.DataPoint{
-													Name:      "hardware.storage.volume.space.used",
-													Timestamp: timestamp,
-													Value:     float32(usedBytes),
-													Tags:      volumeTags,
-												})
-												extractedUsage = true
-											}
-										}
-										
-										if remainingCapacityRaw, ok := dellMap["RemainingCapacityPercent"]; ok {
-											if remainingPercent, ok := remainingCapacityRaw.(float64); ok {
-												// Calculate used bytes based on remaining percentage
-												usedBytes := float32(volumeInfo.CapacityBytes) * ((100.0 - float32(remainingPercent)) / 100.0)
-												datapoints = append(datapoints, data_store.DataPoint{
-													Name:      "hardware.storage.volume.space.used",
-													Timestamp: timestamp,
-													Value:     usedBytes,
-													Tags:      volumeTags,
-												})
-												extractedUsage = true
-											}
-										}
-									}
-								}
-								
-								// Check HPE-specific paths
-								if !extractedUsage && oemMap["Hpe"] != nil {
-									if hpeMap, ok := oemMap["Hpe"].(map[string]interface{}); ok {
-										if spaceInfoRaw, ok := hpeMap["VolumeSpaceInfo"]; ok {
-											if spaceInfo, ok := spaceInfoRaw.(map[string]interface{}); ok {
-												if usedRaw, ok := spaceInfo["UsedSpace"]; ok {
-													if usedBytes, ok := usedRaw.(float64); ok && usedBytes > 0 {
-														datapoints = append(datapoints, data_store.DataPoint{
-															Name:      "hardware.storage.volume.space.used",
-															Timestamp: timestamp,
-															Value:     float32(usedBytes),
-															Tags:      volumeTags,
-														})
-														
-														extractedUsage = true
-													}
-												}
-											}
-										}
-									}
-								}
+					
+					// Consumed capacity
+					if volumeInfo.Capacity.Data.ConsumedBytes > 0 {
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.capacity.consumed",
+							Timestamp: timestamp,
+							Value:     float32(volumeInfo.Capacity.Data.ConsumedBytes),
+							Tags:      volumeTags,
+						})
+					}
+					
+					// Remaining capacity percentage
+					if volumeInfo.RemainingCapacityPercent > 0 {
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.capacity.remaining_percent",
+							Timestamp: timestamp,
+							Value:     float32(volumeInfo.RemainingCapacityPercent),
+							Tags:      volumeTags,
+						})
+					}
+				}
+				
+				// IO Statistics for performance metrics
+				if volumeInfo.IOStatistics.ReadHitIORequests > 0 || volumeInfo.IOStatistics.WriteHitIORequests > 0 {
+					// Read operations
+					datapoints = append(datapoints, data_store.DataPoint{
+						Name:      "hardware.storage.volume.io.reads",
+						Timestamp: timestamp,
+						Value:     float32(volumeInfo.IOStatistics.ReadHitIORequests),
+						Tags:      volumeTags,
+					})
+					
+					// Read bytes (convert KiB to bytes)
+					if volumeInfo.IOStatistics.ReadIOKiBytes > 0 {
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.io.read.bytes",
+							Timestamp: timestamp,
+							Value:     float32(volumeInfo.IOStatistics.ReadIOKiBytes * 1024),
+							Tags:      volumeTags,
+						})
+					}
+					
+					// Write operations
+					datapoints = append(datapoints, data_store.DataPoint{
+						Name:      "hardware.storage.volume.io.writes",
+						Timestamp: timestamp,
+						Value:     float32(volumeInfo.IOStatistics.WriteHitIORequests),
+						Tags:      volumeTags,
+					})
+					
+					// Write bytes (convert KiB to bytes)
+					if volumeInfo.IOStatistics.WriteIOKiBytes > 0 {
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.io.write.bytes",
+							Timestamp: timestamp,
+							Value:     float32(volumeInfo.IOStatistics.WriteIOKiBytes * 1024),
+							Tags:      volumeTags,
+						})
+					}
+				}
+				
+				// Try to extract additional OEM-specific data if standard fields weren't sufficient
+				var volumeRawData map[string]interface{}
+				if err := json.Unmarshal(volResp.Raw, &volumeRawData); err == nil {
+					if oemData, ok := volumeRawData["Oem"]; ok {
+						if oemMap, ok := oemData.(map[string]interface{}); ok {
+							// Process Dell-specific OEM data
+							if dellData, ok := oemMap["Dell"]; ok {
+								c.processVolumeOemDellData(dellData, volumeInfo.CapacityBytes, volumeTags, timestamp, &datapoints)
+							}
+							
+							// Process HPE-specific OEM data
+							if hpeData, ok := oemMap["Hpe"]; ok {
+								c.processVolumeOemHpeData(hpeData, volumeInfo.CapacityBytes, volumeTags, timestamp, &datapoints)
 							}
 						}
 					}
@@ -860,6 +921,181 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 	}
 	
 	return datapoints, nil
+}
+
+// Helper function to process Dell OEM volume data
+func (c *StorageCollector) processVolumeOemDellData(dellData interface{}, capacityBytes int64, volumeTags []tags.Tag, timestamp time.Time, datapoints *[]data_store.DataPoint) {
+	if dellMap, ok := dellData.(map[string]interface{}); ok {
+		// Process UsedBytes if available
+		if usedBytesRaw, ok := dellMap["UsedBytes"]; ok {
+			if usedBytes, ok := usedBytesRaw.(float64); ok && usedBytes > 0 {
+				*datapoints = append(*datapoints, data_store.DataPoint{
+					Name:      "hardware.storage.volume.capacity.used",
+					Timestamp: timestamp,
+					Value:     float32(usedBytes),
+					Tags:      volumeTags,
+				})
+			}
+		}
+		
+		// Process IO Stats if available
+		if ioStatsRaw, ok := dellMap["IOStats"]; ok {
+			if ioStats, ok := ioStatsRaw.(map[string]interface{}); ok {
+				// Read operations
+				if readOpsRaw, ok := ioStats["ReadOps"]; ok {
+					if readOps, ok := readOpsRaw.(float64); ok {
+						*datapoints = append(*datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.io.reads",
+							Timestamp: timestamp,
+							Value:     float32(readOps),
+							Tags:      volumeTags,
+						})
+					}
+				}
+				
+				// Read bytes
+				if readBytesRaw, ok := ioStats["ReadBytes"]; ok {
+					if readBytes, ok := readBytesRaw.(float64); ok {
+						*datapoints = append(*datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.io.read.bytes",
+							Timestamp: timestamp,
+							Value:     float32(readBytes),
+							Tags:      volumeTags,
+						})
+					}
+				}
+				
+				// Write operations
+				if writeOpsRaw, ok := ioStats["WriteOps"]; ok {
+					if writeOps, ok := writeOpsRaw.(float64); ok {
+						*datapoints = append(*datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.io.writes",
+							Timestamp: timestamp,
+							Value:     float32(writeOps),
+							Tags:      volumeTags,
+						})
+					}
+				}
+				
+				// Write bytes
+				if writeBytesRaw, ok := ioStats["WriteBytes"]; ok {
+					if writeBytes, ok := writeBytesRaw.(float64); ok {
+						*datapoints = append(*datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.io.write.bytes",
+							Timestamp: timestamp,
+							Value:     float32(writeBytes),
+							Tags:      volumeTags,
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
+// Helper function to process HPE OEM volume data
+func (c *StorageCollector) processVolumeOemHpeData(hpeData interface{}, capacityBytes int64, volumeTags []tags.Tag, timestamp time.Time, datapoints *[]data_store.DataPoint) {
+	if hpeMap, ok := hpeData.(map[string]interface{}); ok {
+		if spaceInfoRaw, ok := hpeMap["VolumeSpaceInfo"]; ok {
+			if spaceInfo, ok := spaceInfoRaw.(map[string]interface{}); ok {
+				// Process UsedSpace if available
+				if usedRaw, ok := spaceInfo["UsedSpace"]; ok {
+					if usedBytes, ok := usedRaw.(float64); ok && usedBytes > 0 {
+						*datapoints = append(*datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.capacity.used",
+							Timestamp: timestamp,
+							Value:     float32(usedBytes),
+							Tags:      volumeTags,
+						})
+					}
+				}
+				
+				// Process allocated and reserved space if available
+				if allocatedRaw, ok := spaceInfo["AllocatedSpace"]; ok {
+					if allocatedBytes, ok := allocatedRaw.(float64); ok && allocatedBytes > 0 {
+						*datapoints = append(*datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.capacity.allocated",
+							Timestamp: timestamp,
+							Value:     float32(allocatedBytes),
+							Tags:      volumeTags,
+						})
+					}
+				}
+				
+				if reservedRaw, ok := spaceInfo["ReservedSpace"]; ok {
+					if reservedBytes, ok := reservedRaw.(float64); ok && reservedBytes > 0 {
+						*datapoints = append(*datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.capacity.reserved",
+							Timestamp: timestamp,
+							Value:     float32(reservedBytes),
+							Tags:      volumeTags,
+						})
+					}
+				}
+			}
+		}
+		
+		// Process IO Stats if available
+		if statsRaw, ok := hpeMap["IOStatistics"]; ok {
+			if stats, ok := statsRaw.(map[string]interface{}); ok {
+				// Read operations
+				if readOpsRaw, ok := stats["ReadIOCount"]; ok {
+					if readOps, ok := readOpsRaw.(float64); ok {
+						*datapoints = append(*datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.io.reads",
+							Timestamp: timestamp,
+							Value:     float32(readOps),
+							Tags:      volumeTags,
+						})
+					}
+				}
+				
+				// Read bytes
+				if readBytesRaw, ok := stats["ReadIOBytes"]; ok {
+					if readBytes, ok := readBytesRaw.(float64); ok {
+						*datapoints = append(*datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.io.read.bytes",
+							Timestamp: timestamp,
+							Value:     float32(readBytes),
+							Tags:      volumeTags,
+						})
+					}
+				}
+				
+				// Write operations
+				if writeOpsRaw, ok := stats["WriteIOCount"]; ok {
+					if writeOps, ok := writeOpsRaw.(float64); ok {
+						*datapoints = append(*datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.io.writes",
+							Timestamp: timestamp,
+							Value:     float32(writeOps),
+							Tags:      volumeTags,
+						})
+					}
+				}
+				
+				// Write bytes
+				if writeBytesRaw, ok := stats["WriteIOBytes"]; ok {
+					if writeBytes, ok := writeBytesRaw.(float64); ok {
+						*datapoints = append(*datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.io.write.bytes",
+							Timestamp: timestamp,
+							Value:     float32(writeBytes),
+							Tags:      volumeTags,
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
+// Helper function to convert bool to float
+func boolToFloat(b bool) float64 {
+	if b {
+		return 1.0
+	}
+	return 0.0
 }
 
 // collectControllerHealthMetrics collects only essential health metrics for storage controllers
@@ -1042,9 +1278,23 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 				Data struct {
 					AllocatedBytes int64 `json:"AllocatedBytes"`
 					ConsumedBytes  int64 `json:"ConsumedBytes"`
+					VolumesAllocatedBytes int64 `json:"VolumesAllocatedBytes"`
+					SnapshotsAllocatedBytes int64 `json:"SnapshotsAllocatedBytes"`
+					UnusedBytes int64 `json:"UnusedBytes"`
+					TotalCommittedBytes int64 `json:"TotalCommittedBytes"`
 				} `json:"Data"`
 				IsThinProvisioned bool `json:"IsThinProvisioned"`
 			} `json:"Capacity"`
+			// OEM-specific fields
+			Oem struct {
+				Dell struct {
+					VolumesBytes int64 `json:"VolumesBytes"`
+					SnapshotsBytes int64 `json:"SnapshotsBytes"`
+					FreeBytes int64 `json:"FreeBytes"`
+					OverCommitBytes int64 `json:"OverCommitBytes"`
+					AllocatedSpaceRemaining int64 `json:"AllocatedSpaceRemaining"`
+				} `json:"Dell"`
+			} `json:"Oem"`
 		}
 		
 		if err := json.Unmarshal(poolResp.Raw, &poolInfo); err != nil {
@@ -1106,7 +1356,7 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 		
 		if allocatedBytes > 0 {
 			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "hardware.storage.pool.space.allocated",
+				Name:      "hardware.storage.pool.capacity.allocated",
 				Timestamp: timestamp,
 				Value:     allocatedBytes,
 				Tags:      poolTags,
@@ -1117,9 +1367,83 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 		if poolInfo.Capacity.Data.ConsumedBytes > 0 {
 			consumedBytes := float32(poolInfo.Capacity.Data.ConsumedBytes)
 			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "hardware.storage.pool.space.consumed",
+				Name:      "hardware.storage.pool.capacity.consumed",
 				Timestamp: timestamp,
 				Value:     consumedBytes,
+				Tags:      poolTags,
+			})
+		}
+		
+		// Pool volumes allocated capacity (if available)
+		if poolInfo.Capacity.Data.VolumesAllocatedBytes > 0 {
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.capacity.volumes",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.Capacity.Data.VolumesAllocatedBytes),
+				Tags:      poolTags,
+			})
+		} else if poolInfo.Oem.Dell.VolumesBytes > 0 {
+			// Try Dell OEM data if standard field not available
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.capacity.volumes",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.Oem.Dell.VolumesBytes),
+				Tags:      poolTags,
+			})
+		}
+		
+		// Pool snapshots allocated capacity (if available)
+		if poolInfo.Capacity.Data.SnapshotsAllocatedBytes > 0 {
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.capacity.snapshots",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.Capacity.Data.SnapshotsAllocatedBytes),
+				Tags:      poolTags,
+			})
+		} else if poolInfo.Oem.Dell.SnapshotsBytes > 0 {
+			// Try Dell OEM data if standard field not available
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.capacity.snapshots",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.Oem.Dell.SnapshotsBytes),
+				Tags:      poolTags,
+			})
+		}
+		
+		// Pool unused capacity (if available)
+		if poolInfo.Capacity.Data.UnusedBytes > 0 {
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.capacity.unused",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.Capacity.Data.UnusedBytes),
+				Tags:      poolTags,
+			})
+		} else if poolInfo.Oem.Dell.FreeBytes > 0 {
+			// Try Dell OEM data if standard field not available
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.capacity.unused",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.Oem.Dell.FreeBytes),
+				Tags:      poolTags,
+			})
+		}
+		
+		// Pool total committed capacity (if available)
+		if poolInfo.Capacity.Data.TotalCommittedBytes > 0 {
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.capacity.committed",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.Capacity.Data.TotalCommittedBytes),
+				Tags:      poolTags,
+			})
+		}
+		
+		// Track pool overcommit (if available)
+		if poolInfo.Oem.Dell.OverCommitBytes > 0 {
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.capacity.overcommit",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.Oem.Dell.OverCommitBytes),
 				Tags:      poolTags,
 			})
 		}
