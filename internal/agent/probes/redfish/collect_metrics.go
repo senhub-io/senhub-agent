@@ -55,6 +55,14 @@ func (c *StorageCollector) CollectMetrics(ctx context.Context, collectionType Co
 			}
 		}
 		
+		// Collect event and log metrics
+		eventPoints, err := c.collectEventMetrics(ctx, timestamp)
+		if err != nil {
+			c.logger.Warn().Err(err).Msg("Failed to collect event metrics")
+		} else {
+			allPoints = append(allPoints, eventPoints...)
+		}
+		
 		return allPoints, nil
 	case CollectionNetworkAdapter:
 		return c.collectNetworkMetrics(ctx, timestamp)
