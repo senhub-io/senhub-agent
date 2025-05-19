@@ -14,7 +14,7 @@ import (
 
 // GenericCollector provides a base implementation of the RedfishCollector interface
 type GenericCollector struct {
-	client          *RedfishClient
+	client          RedfishClientInterface
 	vendorType      VendorType
 	systems         []string
 	chassis         []string
