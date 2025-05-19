@@ -33,13 +33,17 @@
   - Implemented Redfish API client with session handling
   - Added vendor detection logic
   - Implemented vendor-specific collectors for Dell, HPE, Lenovo, and Cisco
+  - Added specialized storage collector for Dell PowerVault ME5024
   - Added probe to registry
   - Implemented collection-specific metrics (system, thermal, power, processor, memory, storage, network)
+  - Added comprehensive unit and integration tests
+  - Added documentation in REDFISH-METRICS.md
+  - Implemented storage metrics for health, capacity, and performance
+  - Added disk operation tracking (rebuilds, formatting, etc.)
 - TODO: 
-  1. Add unit and integration tests
-  2. Optimize caching system for performance
-  3. Add documentation and example configurations
-  4. Add support for additional vendors (SuperMicro, Fujitsu, etc.)
+  1. Optimize caching system for performance
+  2. Add support for additional vendors (SuperMicro, Fujitsu, etc.)
+  3. Extend metrics for additional storage operations
 
 ### Windows Event Log Probe
 - OBJECTIVE: Create a probe to collect Windows Event Log entries
