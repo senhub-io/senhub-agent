@@ -28,6 +28,9 @@ type RedfishClient struct {
 	mu         sync.Mutex // Mutex for concurrent access to client
 }
 
+// Ensure RedfishClient implements RedfishClientInterface
+var _ RedfishClientInterface = &RedfishClient{}
+
 // RedfishResponse encapsulates common Redfish response fields
 type RedfishResponse struct {
 	OdataContext      string                 `json:"@odata.context,omitempty"`
@@ -66,6 +69,7 @@ type RedfishResponse struct {
 	Voltages          []map[string]interface{} `json:"Voltages,omitempty"`
 	PowerSupplies     []map[string]interface{} `json:"PowerSupplies,omitempty"`
 	PowerControl      []map[string]interface{} `json:"PowerControl,omitempty"`
+	StorageControllers []map[string]interface{} `json:"StorageControllers,omitempty"`
 }
 
 // Status represents the common Redfish Status object
