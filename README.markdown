@@ -78,6 +78,23 @@ go test -v ./path/to/package -run TestName
 
 Agent configuration is loaded from the SenHub server. The agent pulls its configuration dynamically and can adjust to changes without restarting.
 
+## Available Probes
+
+The agent includes various probes for collecting different types of metrics:
+
+### System Probes
+- CPU, Memory, Disk, and Network metrics
+- Process monitoring
+- Event logs
+
+### Application Probes
+- Web application monitoring
+- Syslog collection
+
+### Infrastructure Probes
+- Redfish monitoring for servers and storage systems (see [REDFISH-METRICS.md](REDFISH-METRICS.md) for details on available metrics)
+- Gateway connectivity monitoring
+
 A configuration has three main sections:
 - `agent`: General agent settings
 - `probes`: Data collection components
