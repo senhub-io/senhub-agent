@@ -8,6 +8,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -122,51 +123,7 @@ func (c *StorageCollector) GetSupportedCollections() []CollectionType {
 	}
 }
 
-// CollectMetrics gathers metrics for the specified collection type
-func (c *StorageCollector) CollectMetrics(ctx context.Context, collectionType CollectionType, timestamp time.Time) ([]data_store.DataPoint, error) {
-	switch collectionType {
-	case CollectionSystem, CollectionThermal, CollectionPower:
-		// Use generic implementation for these
-		return c.GenericCollector.CollectMetrics(ctx, collectionType, timestamp)
-	case CollectionStorage:
-		// Only collect storage consumption metrics - volumes and pools
-		var allPoints []data_store.DataPoint
-		
-		// Only collect pool metrics which contain the resource occupation data
-		if len(c.storagePools) > 0 {
-			poolPoints, err := c.collectPoolMetrics(ctx, timestamp)
-			if err != nil {
-				c.logger.Warn().Err(err).Msg("Failed to collect pool metrics")
-			} else {
-				allPoints = append(allPoints, poolPoints...)
-			}
-		}
-		
-		// Collect volume metrics for storage usage
-		volumePoints, err := c.collectVolumeConsumptionMetrics(ctx, timestamp)
-		if err != nil {
-			c.logger.Warn().Err(err).Msg("Failed to collect volume consumption metrics")
-		} else {
-			allPoints = append(allPoints, volumePoints...)
-		}
-		
-		// If we have controllers, just collect bare minimum health information
-		if len(c.storageControllers) > 0 {
-			controllerPoints, err := c.collectControllerHealthMetrics(ctx, timestamp)
-			if err != nil {
-				c.logger.Warn().Err(err).Msg("Failed to collect controller health metrics")
-			} else {
-				allPoints = append(allPoints, controllerPoints...)
-			}
-		}
-		
-		return allPoints, nil
-	case CollectionNetworkAdapter:
-		return c.collectNetworkMetrics(ctx, timestamp)
-	default:
-		return nil, fmt.Errorf("unsupported collection type: %s", collectionType)
-	}
-}
+// CollectMetrics implementation is in collect_metrics.go
 
 // collectVolumeMetrics collects metrics for storage volumes
 func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp time.Time) ([]data_store.DataPoint, error) {
@@ -658,7 +615,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 	return datapoints, nil
 }
 
-// collectVolumeConsumptionMetrics collects only storage consumption metrics for volumes
+// collectVolumeConsumptionMetrics collects storage consumption and I/O metrics for volumes
 func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, timestamp time.Time) ([]data_store.DataPoint, error) {
 	var datapoints []data_store.DataPoint
 
@@ -721,6 +678,7 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 					WriteCachePolicy      string  `json:"WriteCachePolicy"`
 					AccessCapabilities    []string `json:"AccessCapabilities"`
 					EncryptionTypes       []string `json:"EncryptionTypes"`
+					RAIDType              string  `json:"RAIDType"`
 					Capacity struct {
 						Data struct {
 							AllocatedBytes int64 `json:"AllocatedBytes"`
@@ -733,6 +691,8 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 						ReadIOKiBytes      int64 `json:"ReadIOKiBytes"`
 						WriteHitIORequests int64 `json:"WriteHitIORequests"`
 						WriteIOKiBytes     int64 `json:"WriteIOKiBytes"`
+						ReadIORequestTime  string `json:"ReadIORequestTime"`
+						WriteIORequestTime string `json:"WriteIORequestTime"`
 					} `json:"IOStatistics"`
 					// Capacity Sources to track pool association
 					CapacitySources []struct {
@@ -762,42 +722,52 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 					}
 				}
 
-				// Volume tags - comprehensive tags for identification
+				// Volume tags - comprehensive tags for operational context
 				volumeTags := []tags.Tag{
 					{Key: "volume_id", Value: volumeInfo.ID},
 					{Key: "volume_name", Value: volumeInfo.Name},
 					{Key: "controller_id", Value: controllerID},
 				}
 				
+				// Add controller letter tag - critical for operations
 				if controllerLetter != "" {
 					volumeTags = append(volumeTags, tags.Tag{Key: "controller", Value: controllerLetter})
 				}
 				
+				// Add host tag for instance identification
 				if hostName != "" {
 					volumeTags = append(volumeTags, tags.Tag{Key: "host", Value: hostName})
 				}
 				
+				// Add pool ID for mapping volumes to pools
 				if poolID != "" {
 					volumeTags = append(volumeTags, tags.Tag{Key: "pool_id", Value: poolID})
 				}
 				
+				// Add RAID type as tag - critical for understanding volume configuration
+				if volumeInfo.RAIDType != "" {
+					volumeTags = append(volumeTags, tags.Tag{Key: "raid_type", Value: volumeInfo.RAIDType})
+				}
+				
+				// Add cache policy as tag - impacts performance
 				if volumeInfo.WriteCachePolicy != "" {
 					volumeTags = append(volumeTags, tags.Tag{Key: "write_cache_policy", Value: volumeInfo.WriteCachePolicy})
 				}
 				
+				// Add block size as tag, not metric
 				if volumeInfo.BlockSizeBytes > 0 {
-					volumeTags = append(volumeTags, tags.Tag{Key: "block_size", Value: fmt.Sprintf("%d", volumeInfo.BlockSizeBytes)})
+					volumeTags = append(volumeTags, tags.Tag{Key: "block_size_bytes", Value: fmt.Sprintf("%d", volumeInfo.BlockSizeBytes)})
 				}
 				
-				// Handle access capabilities
+				// Add access capabilities as tag
 				if len(volumeInfo.AccessCapabilities) > 0 {
-					accessCapabilities := strings.Join(volumeInfo.AccessCapabilities, ", ")
+					accessCapabilities := strings.Join(volumeInfo.AccessCapabilities, ",")
 					volumeTags = append(volumeTags, tags.Tag{Key: "access_capabilities", Value: accessCapabilities})
 				}
 				
-				// Handle encryption types
+				// Add encryption types as tag
 				if len(volumeInfo.EncryptionTypes) > 0 {
-					encryptionType := strings.Join(volumeInfo.EncryptionTypes, ", ")
+					encryptionType := strings.Join(volumeInfo.EncryptionTypes, ",")
 					volumeTags = append(volumeTags, tags.Tag{Key: "encryption_type", Value: encryptionType})
 				}
 
@@ -811,7 +781,7 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 					})
 				}
 				
-				// Volume encryption state
+				// Volume encryption state - security metric
 				datapoints = append(datapoints, data_store.DataPoint{
 					Name:      "hardware.storage.volume.encrypted",
 					Timestamp: timestamp,
@@ -819,7 +789,7 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 					Tags:      volumeTags,
 				})
 
-				// Volume capacity metrics
+				// Volume capacity metrics - core metrics for capacity planning
 				if volumeInfo.CapacityBytes > 0 {
 					// Total capacity
 					datapoints = append(datapoints, data_store.DataPoint{
@@ -829,40 +799,80 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 						Tags:      volumeTags,
 					})
 					
-					// Allocated capacity
+					// Allocated capacity - storage reserved for the volume
 					if volumeInfo.Capacity.Data.AllocatedBytes > 0 {
+						allocatedBytes := float32(volumeInfo.Capacity.Data.AllocatedBytes)
+						
 						datapoints = append(datapoints, data_store.DataPoint{
 							Name:      "hardware.storage.volume.capacity.allocated",
 							Timestamp: timestamp,
-							Value:     float32(volumeInfo.Capacity.Data.AllocatedBytes),
+							Value:     allocatedBytes,
 							Tags:      volumeTags,
 						})
-					}
-					
-					// Consumed capacity
-					if volumeInfo.Capacity.Data.ConsumedBytes > 0 {
+						
+						// Calculate allocated percentage
+						allocatedPercent := (allocatedBytes / float32(volumeInfo.CapacityBytes)) * 100.0
 						datapoints = append(datapoints, data_store.DataPoint{
-							Name:      "hardware.storage.volume.capacity.consumed",
+							Name:      "hardware.storage.volume.capacity.allocated_percent",
 							Timestamp: timestamp,
-							Value:     float32(volumeInfo.Capacity.Data.ConsumedBytes),
+							Value:     allocatedPercent,
 							Tags:      volumeTags,
 						})
 					}
 					
-					// Remaining capacity percentage
+					// Consumed capacity - actual space used
+					if volumeInfo.Capacity.Data.ConsumedBytes > 0 {
+						consumedBytes := float32(volumeInfo.Capacity.Data.ConsumedBytes)
+						
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.capacity.used",
+							Timestamp: timestamp,
+							Value:     consumedBytes,
+							Tags:      volumeTags,
+						})
+						
+						// Calculate used percentage
+						usedPercent := (consumedBytes / float32(volumeInfo.CapacityBytes)) * 100.0
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.capacity.used_percent",
+							Timestamp: timestamp,
+							Value:     usedPercent,
+							Tags:      volumeTags,
+						})
+					}
+					
+					// Remaining capacity percentage - direct from API for accuracy
 					if volumeInfo.RemainingCapacityPercent > 0 {
 						datapoints = append(datapoints, data_store.DataPoint{
-							Name:      "hardware.storage.volume.capacity.remaining_percent",
+							Name:      "hardware.storage.volume.capacity.free_percent",
 							Timestamp: timestamp,
 							Value:     float32(volumeInfo.RemainingCapacityPercent),
+							Tags:      volumeTags,
+						})
+						
+						// Calculate free bytes based on percentage
+						freeBytes := float32(volumeInfo.CapacityBytes) * (float32(volumeInfo.RemainingCapacityPercent) / 100.0)
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.capacity.free",
+							Timestamp: timestamp,
+							Value:     freeBytes,
 							Tags:      volumeTags,
 						})
 					}
 				}
 				
-				// IO Statistics for performance metrics
+				// IO Statistics for performance metrics - essential I/O metrics
 				if volumeInfo.IOStatistics.ReadHitIORequests > 0 || volumeInfo.IOStatistics.WriteHitIORequests > 0 {
-					// Read operations
+					// Total I/O operations - combined metric for overall activity
+					totalIO := float32(volumeInfo.IOStatistics.ReadHitIORequests + volumeInfo.IOStatistics.WriteHitIORequests)
+					datapoints = append(datapoints, data_store.DataPoint{
+						Name:      "hardware.storage.volume.io.total_ops",
+						Timestamp: timestamp,
+						Value:     totalIO,
+						Tags:      volumeTags,
+					})
+					
+					// Read operations - separate to understand read workload
 					datapoints = append(datapoints, data_store.DataPoint{
 						Name:      "hardware.storage.volume.io.reads",
 						Timestamp: timestamp,
@@ -870,7 +880,26 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 						Tags:      volumeTags,
 					})
 					
-					// Read bytes (convert KiB to bytes)
+					// Write operations - separate to understand write workload
+					datapoints = append(datapoints, data_store.DataPoint{
+						Name:      "hardware.storage.volume.io.writes",
+						Timestamp: timestamp,
+						Value:     float32(volumeInfo.IOStatistics.WriteHitIORequests),
+						Tags:      volumeTags,
+					})
+					
+					// Total bytes - combined data volume metric
+					if volumeInfo.IOStatistics.ReadIOKiBytes > 0 || volumeInfo.IOStatistics.WriteIOKiBytes > 0 {
+						totalBytes := float32((volumeInfo.IOStatistics.ReadIOKiBytes + volumeInfo.IOStatistics.WriteIOKiBytes) * 1024)
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.io.total_bytes",
+							Timestamp: timestamp,
+							Value:     totalBytes,
+							Tags:      volumeTags,
+						})
+					}
+					
+					// Read bytes - data volume for reads (convert KiB to bytes)
 					if volumeInfo.IOStatistics.ReadIOKiBytes > 0 {
 						datapoints = append(datapoints, data_store.DataPoint{
 							Name:      "hardware.storage.volume.io.read.bytes",
@@ -880,15 +909,7 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 						})
 					}
 					
-					// Write operations
-					datapoints = append(datapoints, data_store.DataPoint{
-						Name:      "hardware.storage.volume.io.writes",
-						Timestamp: timestamp,
-						Value:     float32(volumeInfo.IOStatistics.WriteHitIORequests),
-						Tags:      volumeTags,
-					})
-					
-					// Write bytes (convert KiB to bytes)
+					// Write bytes - data volume for writes (convert KiB to bytes)
 					if volumeInfo.IOStatistics.WriteIOKiBytes > 0 {
 						datapoints = append(datapoints, data_store.DataPoint{
 							Name:      "hardware.storage.volume.io.write.bytes",
@@ -896,6 +917,30 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 							Value:     float32(volumeInfo.IOStatistics.WriteIOKiBytes * 1024),
 							Tags:      volumeTags,
 						})
+					}
+					
+					// Read request time if available - performance metric
+					if volumeInfo.IOStatistics.ReadIORequestTime != "" {
+						if readTime, err := strconv.ParseFloat(volumeInfo.IOStatistics.ReadIORequestTime, 32); err == nil {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.storage.volume.io.read.latency",
+								Timestamp: timestamp,
+								Value:     float32(readTime),
+								Tags:      volumeTags,
+							})
+						}
+					}
+					
+					// Write request time if available - performance metric
+					if volumeInfo.IOStatistics.WriteIORequestTime != "" {
+						if writeTime, err := strconv.ParseFloat(volumeInfo.IOStatistics.WriteIORequestTime, 32); err == nil {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.storage.volume.io.write.latency",
+								Timestamp: timestamp,
+								Value:     float32(writeTime),
+								Tags:      volumeTags,
+							})
+						}
 					}
 				}
 				
@@ -935,6 +980,17 @@ func (c *StorageCollector) processVolumeOemDellData(dellData interface{}, capaci
 					Value:     float32(usedBytes),
 					Tags:      volumeTags,
 				})
+				
+				// Calculate and add used percentage if total capacity is available
+				if capacityBytes > 0 {
+					usedPercent := (float32(usedBytes) / float32(capacityBytes)) * 100.0
+					*datapoints = append(*datapoints, data_store.DataPoint{
+						Name:      "hardware.storage.volume.capacity.used_percent",
+						Timestamp: timestamp,
+						Value:     usedPercent,
+						Tags:      volumeTags,
+					})
+				}
 			}
 		}
 		
@@ -984,6 +1040,73 @@ func (c *StorageCollector) processVolumeOemDellData(dellData interface{}, capaci
 							Name:      "hardware.storage.volume.io.write.bytes",
 							Timestamp: timestamp,
 							Value:     float32(writeBytes),
+							Tags:      volumeTags,
+						})
+					}
+				}
+				
+				// Calculate total I/O operations
+				var totalOps float32 = 0
+				if readOpsRaw, ok := ioStats["ReadOps"]; ok {
+					if readOps, ok := readOpsRaw.(float64); ok {
+						totalOps += float32(readOps)
+					}
+				}
+				if writeOpsRaw, ok := ioStats["WriteOps"]; ok {
+					if writeOps, ok := writeOpsRaw.(float64); ok {
+						totalOps += float32(writeOps)
+					}
+				}
+				
+				if totalOps > 0 {
+					*datapoints = append(*datapoints, data_store.DataPoint{
+						Name:      "hardware.storage.volume.io.total_ops",
+						Timestamp: timestamp,
+						Value:     totalOps,
+						Tags:      volumeTags,
+					})
+				}
+				
+				// Calculate total I/O bytes
+				var totalBytes float32 = 0
+				if readBytesRaw, ok := ioStats["ReadBytes"]; ok {
+					if readBytes, ok := readBytesRaw.(float64); ok {
+						totalBytes += float32(readBytes)
+					}
+				}
+				if writeBytesRaw, ok := ioStats["WriteBytes"]; ok {
+					if writeBytes, ok := writeBytesRaw.(float64); ok {
+						totalBytes += float32(writeBytes)
+					}
+				}
+				
+				if totalBytes > 0 {
+					*datapoints = append(*datapoints, data_store.DataPoint{
+						Name:      "hardware.storage.volume.io.total_bytes",
+						Timestamp: timestamp,
+						Value:     totalBytes,
+						Tags:      volumeTags,
+					})
+				}
+				
+				// Check for latency information
+				if readLatencyRaw, ok := ioStats["ReadLatency"]; ok {
+					if readLatency, ok := readLatencyRaw.(float64); ok && readLatency > 0 {
+						*datapoints = append(*datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.io.read.latency",
+							Timestamp: timestamp,
+							Value:     float32(readLatency),
+							Tags:      volumeTags,
+						})
+					}
+				}
+				
+				if writeLatencyRaw, ok := ioStats["WriteLatency"]; ok {
+					if writeLatency, ok := writeLatencyRaw.(float64); ok && writeLatency > 0 {
+						*datapoints = append(*datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.volume.io.write.latency",
+							Timestamp: timestamp,
+							Value:     float32(writeLatency),
 							Tags:      volumeTags,
 						})
 					}
@@ -1098,7 +1221,8 @@ func boolToFloat(b bool) float64 {
 	return 0.0
 }
 
-// collectControllerHealthMetrics collects only essential health metrics for storage controllers
+// collectControllerHealthMetrics collects essential health metrics for storage controllers
+// including redundancy status and controller information
 func (c *StorageCollector) collectControllerHealthMetrics(ctx context.Context, timestamp time.Time) ([]data_store.DataPoint, error) {
 	var datapoints []data_store.DataPoint
 
@@ -1128,6 +1252,24 @@ func (c *StorageCollector) collectControllerHealthMetrics(ctx context.Context, t
 		controllerID := ctrlResp.ID
 		controllerName := ctrlResp.Name
 
+		// Extract model, manufacturer and serial information when available
+		var manufacturer, model, serialNumber string
+		
+		// Try to get manufacturer from storage controllers
+		if len(ctrlResp.StorageControllers) > 0 {
+			for _, sc := range ctrlResp.StorageControllers {
+				if mfr, ok := sc["Manufacturer"].(string); ok && mfr != "" {
+					manufacturer = mfr
+				}
+				if mod, ok := sc["Model"].(string); ok && mod != "" {
+					model = mod
+				}
+				if sn, ok := sc["SerialNumber"].(string); ok && sn != "" {
+					serialNumber = sn
+				}
+			}
+		}
+
 		// Extract controller letter (A/B)
 		var controllerLetter string
 		if strings.Contains(strings.ToLower(controllerID), "_a") {
@@ -1136,20 +1278,39 @@ func (c *StorageCollector) collectControllerHealthMetrics(ctx context.Context, t
 			controllerLetter = "B"
 		}
 
-		// Controller tags - minimal identification tags
+		// Controller tags - identification tags with operational context
 		controllerTags := []tags.Tag{
 			{Key: "controller_id", Value: controllerID},
 			{Key: "controller_name", Value: controllerName},
 			{Key: "controller_type", Value: "storage"},
 		}
+		
+		// Add controller letter tag if available - important for operations
 		if controllerLetter != "" {
 			controllerTags = append(controllerTags, tags.Tag{Key: "controller", Value: controllerLetter})
 		}
+		
+		// Add host tag if available
 		if hostName != "" {
 			controllerTags = append(controllerTags, tags.Tag{Key: "host", Value: hostName})
 		}
+		
+		// Add manufacturer tag if available
+		if manufacturer != "" {
+			controllerTags = append(controllerTags, tags.Tag{Key: "manufacturer", Value: manufacturer})
+		}
+		
+		// Add model tag if available
+		if model != "" {
+			controllerTags = append(controllerTags, tags.Tag{Key: "model", Value: model})
+		}
+		
+		// Add serial number tag if available
+		if serialNumber != "" {
+			controllerTags = append(controllerTags, tags.Tag{Key: "serial_number", Value: serialNumber})
+		}
 
-		// Controller health - only essential operational metric
+		// Controller health - essential operational metric
 		if ctrlResp.Status != nil && ctrlResp.Status.Health != "" {
 			datapoints = append(datapoints, data_store.DataPoint{
 				Name:      "hardware.storage.controller.health",
@@ -1157,6 +1318,81 @@ func (c *StorageCollector) collectControllerHealthMetrics(ctx context.Context, t
 				Value:     float32(mapHealthState(ctrlResp.Status.Health)),
 				Tags:      controllerTags,
 			})
+		}
+		
+		// Check for redundancy information - critical for high availability
+		var storageData struct {
+			Redundancy []struct {
+				MaxNumSupported int    `json:"MaxNumSupported"`
+				MemberId        string `json:"MemberId"`
+				MinNumNeeded    int    `json:"MinNumNeeded"`
+				Mode            string `json:"Mode"`
+				Name            string `json:"Name"`
+				RedundancySet   []struct {
+					OdataID string `json:"@odata.id"`
+				} `json:"RedundancySet"`
+				Status struct {
+					Health string `json:"Health"`
+					State  string `json:"State"`
+				} `json:"Status"`
+			} `json:"Redundancy"`
+		}
+		
+		if err := json.Unmarshal(ctrlResp.Raw, &storageData); err == nil {
+			// Process redundancy information
+			for _, redundancy := range storageData.Redundancy {
+				if redundancy.Status.Health != "" {
+					// Create tags specific to redundancy group
+					redundancyTags := append([]tags.Tag{}, controllerTags...)
+					redundancyTags = append(redundancyTags, 
+						tags.Tag{Key: "redundancy_group", Value: redundancy.Name},
+						tags.Tag{Key: "redundancy_mode", Value: redundancy.Mode},
+					)
+					
+					// Add minimum and maximum redundancy information if available
+					if redundancy.MinNumNeeded > 0 {
+						redundancyTags = append(redundancyTags, 
+							tags.Tag{Key: "min_controllers_needed", Value: fmt.Sprintf("%d", redundancy.MinNumNeeded)})
+					}
+					
+					// Add redundancy health metric
+					datapoints = append(datapoints, data_store.DataPoint{
+						Name:      "hardware.storage.redundancy.health",
+						Timestamp: timestamp,
+						Value:     float32(mapHealthState(redundancy.Status.Health)),
+						Tags:      redundancyTags,
+					})
+					
+					// Add redundancy count metrics
+					if redundancy.MaxNumSupported > 0 {
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.redundancy.controllers_max",
+							Timestamp: timestamp,
+							Value:     float32(redundancy.MaxNumSupported),
+							Tags:      redundancyTags,
+						})
+					}
+					
+					if redundancy.MinNumNeeded > 0 {
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.redundancy.controllers_min",
+							Timestamp: timestamp,
+							Value:     float32(redundancy.MinNumNeeded),
+							Tags:      redundancyTags,
+						})
+					}
+					
+					// Add count of currently active controllers
+					if len(redundancy.RedundancySet) > 0 {
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.redundancy.controllers_active",
+							Timestamp: timestamp,
+							Value:     float32(len(redundancy.RedundancySet)),
+							Tags:      redundancyTags,
+						})
+					}
+				}
+			}
 		}
 	}
 	
@@ -1271,9 +1507,13 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			ID                   string  `json:"Id"`
 			Name                 string  `json:"Name"`
 			Status               *Status `json:"Status"`
+			Description          string  `json:"Description"`
+			MaxBlockSizeBytes    int64   `json:"MaxBlockSizeBytes"`
 			CapacityBytes        int64   `json:"CapacityBytes"`
 			RemainingCapacityBytes int64 `json:"RemainingCapacityBytes"`
 			AllocatedBytes       int64   `json:"AllocatedBytes"`
+			RemainingCapacityPercent int `json:"RemainingCapacityPercent"`
+			SupportedRAIDTypes   []string `json:"SupportedRAIDTypes"`
 			Capacity struct {
 				Data struct {
 					AllocatedBytes int64 `json:"AllocatedBytes"`
@@ -1285,6 +1525,15 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 				} `json:"Data"`
 				IsThinProvisioned bool `json:"IsThinProvisioned"`
 			} `json:"Capacity"`
+			// IOStatistics for performance metrics
+			IOStatistics struct {
+				ReadHitIORequests  int64 `json:"ReadHitIORequests"`
+				ReadIOKiBytes      int64 `json:"ReadIOKiBytes"`
+				ReadIORequestTime  string `json:"ReadIORequestTime"`
+				WriteHitIORequests int64 `json:"WriteHitIORequests"`
+				WriteIOKiBytes     int64 `json:"WriteIOKiBytes"`
+				WriteIORequestTime string `json:"WriteIORequestTime"`
+			} `json:"IOStatistics"`
 			// OEM-specific fields
 			Oem struct {
 				Dell struct {
@@ -1319,7 +1568,7 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			}
 		}
 		
-		// Pool tags - essential tags only for identification
+		// Pool tags - essential tags for operational clarity
 		poolTags := []tags.Tag{
 			{Key: "pool_id", Value: poolInfo.ID},
 			{Key: "pool_name", Value: poolInfo.Name},
@@ -1338,12 +1587,46 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			poolTags = append(poolTags, tags.Tag{Key: "host", Value: hostName})
 		}
 		
-		// Pool health state - including only as a critical operational metric
+		// Add description if available
+		if poolInfo.Description != "" {
+			poolTags = append(poolTags, tags.Tag{Key: "description", Value: poolInfo.Description})
+		}
+		
+		// Add RAID types if available - important operational information
+		if len(poolInfo.SupportedRAIDTypes) > 0 {
+			raidTypes := strings.Join(poolInfo.SupportedRAIDTypes, ",")
+			poolTags = append(poolTags, tags.Tag{Key: "supported_raid_types", Value: raidTypes})
+		}
+		
+		// Add block size if available - as tag, not metric
+		if poolInfo.MaxBlockSizeBytes > 0 {
+			poolTags = append(poolTags, tags.Tag{Key: "max_block_size_bytes", 
+				Value: fmt.Sprintf("%d", poolInfo.MaxBlockSizeBytes)})
+		}
+		
+		// Add thin provisioning information as tag
+		if poolInfo.Capacity.IsThinProvisioned {
+			poolTags = append(poolTags, tags.Tag{Key: "thin_provisioned", Value: "true"})
+		} else {
+			poolTags = append(poolTags, tags.Tag{Key: "thin_provisioned", Value: "false"})
+		}
+		
+		// Pool health state - critical operational metric
 		if poolInfo.Status != nil && poolInfo.Status.Health != "" {
 			datapoints = append(datapoints, data_store.DataPoint{
 				Name:      "hardware.storage.pool.health",
 				Timestamp: timestamp,
 				Value:     float32(mapHealthState(poolInfo.Status.Health)),
+				Tags:      poolTags,
+			})
+		}
+		
+		// Total capacity - raw capacity of the pool
+		if poolInfo.CapacityBytes > 0 {
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.capacity.total",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.CapacityBytes),
 				Tags:      poolTags,
 			})
 		}
@@ -1361,20 +1644,78 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 				Value:     allocatedBytes,
 				Tags:      poolTags,
 			})
+			
+			// Calculate and add allocated percentage if total capacity is available
+			if poolInfo.CapacityBytes > 0 {
+				allocatedPercent := (allocatedBytes / float32(poolInfo.CapacityBytes)) * 100.0
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.storage.pool.capacity.allocated_percent",
+					Timestamp: timestamp,
+					Value:     allocatedPercent,
+					Tags:      poolTags,
+				})
+			}
 		}
 		
 		// Pool consumed capacity - showing actual usage
 		if poolInfo.Capacity.Data.ConsumedBytes > 0 {
 			consumedBytes := float32(poolInfo.Capacity.Data.ConsumedBytes)
 			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "hardware.storage.pool.capacity.consumed",
+				Name:      "hardware.storage.pool.capacity.used",
 				Timestamp: timestamp,
 				Value:     consumedBytes,
 				Tags:      poolTags,
 			})
+			
+			// Calculate and add consumed percentage if total capacity is available
+			if poolInfo.CapacityBytes > 0 {
+				usedPercent := (consumedBytes / float32(poolInfo.CapacityBytes)) * 100.0
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.storage.pool.capacity.used_percent",
+					Timestamp: timestamp,
+					Value:     usedPercent,
+					Tags:      poolTags,
+				})
+			}
 		}
 		
-		// Pool volumes allocated capacity (if available)
+		// Remaining capacity as a percentage - direct from API for accuracy
+		if poolInfo.RemainingCapacityPercent > 0 {
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.capacity.free_percent",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.RemainingCapacityPercent),
+				Tags:      poolTags,
+			})
+		}
+		
+		// Remaining capacity in bytes - direct from API when available
+		if poolInfo.RemainingCapacityBytes > 0 {
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.capacity.free",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.RemainingCapacityBytes),
+				Tags:      poolTags,
+			})
+		} else if poolInfo.Capacity.Data.UnusedBytes > 0 {
+			// Try alternate field if RemainingCapacityBytes not available
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.capacity.free",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.Capacity.Data.UnusedBytes),
+				Tags:      poolTags,
+			})
+		} else if poolInfo.Oem.Dell.FreeBytes > 0 {
+			// Try Dell OEM data as last resort
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.capacity.free",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.Oem.Dell.FreeBytes),
+				Tags:      poolTags,
+			})
+		}
+		
+		// Pool volumes allocated capacity (if available) - important for understanding pool usage
 		if poolInfo.Capacity.Data.VolumesAllocatedBytes > 0 {
 			datapoints = append(datapoints, data_store.DataPoint{
 				Name:      "hardware.storage.pool.capacity.volumes",
@@ -1392,7 +1733,7 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			})
 		}
 		
-		// Pool snapshots allocated capacity (if available)
+		// Pool snapshots allocated capacity (if available) - important for understanding pool usage
 		if poolInfo.Capacity.Data.SnapshotsAllocatedBytes > 0 {
 			datapoints = append(datapoints, data_store.DataPoint{
 				Name:      "hardware.storage.pool.capacity.snapshots",
@@ -1410,25 +1751,7 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			})
 		}
 		
-		// Pool unused capacity (if available)
-		if poolInfo.Capacity.Data.UnusedBytes > 0 {
-			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "hardware.storage.pool.capacity.unused",
-				Timestamp: timestamp,
-				Value:     float32(poolInfo.Capacity.Data.UnusedBytes),
-				Tags:      poolTags,
-			})
-		} else if poolInfo.Oem.Dell.FreeBytes > 0 {
-			// Try Dell OEM data if standard field not available
-			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "hardware.storage.pool.capacity.unused",
-				Timestamp: timestamp,
-				Value:     float32(poolInfo.Oem.Dell.FreeBytes),
-				Tags:      poolTags,
-			})
-		}
-		
-		// Pool total committed capacity (if available)
+		// Pool committed capacity (if available) - important for thin provisioning
 		if poolInfo.Capacity.Data.TotalCommittedBytes > 0 {
 			datapoints = append(datapoints, data_store.DataPoint{
 				Name:      "hardware.storage.pool.capacity.committed",
@@ -1438,7 +1761,7 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			})
 		}
 		
-		// Track pool overcommit (if available)
+		// Track pool overcommit (if available) - critical for thin provisioning
 		if poolInfo.Oem.Dell.OverCommitBytes > 0 {
 			datapoints = append(datapoints, data_store.DataPoint{
 				Name:      "hardware.storage.pool.capacity.overcommit",
@@ -1448,18 +1771,44 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			})
 		}
 		
-		// Track thin provisioning - important for understanding storage behavior
-		thinProvisioned := 0.0
-		if poolInfo.Capacity.IsThinProvisioned {
-			thinProvisioned = 1.0
+		// Process IO statistics if available
+		if poolInfo.IOStatistics.ReadHitIORequests > 0 || poolInfo.IOStatistics.WriteHitIORequests > 0 {
+			// Read operations
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.io.reads",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.IOStatistics.ReadHitIORequests),
+				Tags:      poolTags,
+			})
+			
+			// Read bytes (convert KiBytes to bytes)
+			if poolInfo.IOStatistics.ReadIOKiBytes > 0 {
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.storage.pool.io.read.bytes",
+					Timestamp: timestamp,
+					Value:     float32(poolInfo.IOStatistics.ReadIOKiBytes * 1024),
+					Tags:      poolTags,
+				})
+			}
+			
+			// Write operations
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.io.writes",
+				Timestamp: timestamp,
+				Value:     float32(poolInfo.IOStatistics.WriteHitIORequests),
+				Tags:      poolTags,
+			})
+			
+			// Write bytes (convert KiBytes to bytes)
+			if poolInfo.IOStatistics.WriteIOKiBytes > 0 {
+				datapoints = append(datapoints, data_store.DataPoint{
+					Name:      "hardware.storage.pool.io.write.bytes",
+					Timestamp: timestamp,
+					Value:     float32(poolInfo.IOStatistics.WriteIOKiBytes * 1024),
+					Tags:      poolTags,
+				})
+			}
 		}
-		
-		datapoints = append(datapoints, data_store.DataPoint{
-			Name:      "hardware.storage.pool.thin_provisioned",
-			Timestamp: timestamp,
-			Value:     float32(thinProvisioned),
-			Tags:      poolTags,
-		})
 	}
 	
 	return datapoints, nil
