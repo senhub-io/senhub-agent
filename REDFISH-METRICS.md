@@ -23,6 +23,16 @@ Ce document décrit les métriques améliorées disponibles via la sonde Redfish
 - `hardware.storage.volume.health` - État de santé du volume
 - `hardware.storage.volume.encrypted` - Statut de chiffrement (1=chiffré)
 
+### Événements et journaux
+- `hardware.logs.entries.total` - Nombre total d'entrées de journal
+- `hardware.logs.entries.critical` - Nombre d'entrées critiques
+- `hardware.logs.entries.warning` - Nombre d'entrées d'avertissement
+- `hardware.logs.entries.info` - Nombre d'entrées informatives
+- `hardware.logs.entries.last_24h` - Nombre d'événements des dernières 24 heures
+- `hardware.logs.entries.last_7d` - Nombre d'événements des 7 derniers jours
+- `hardware.eventservice.health` - État de santé du service d'événements
+- `hardware.eventservice.subscriptions` - Nombre d'abonnements aux événements
+
 ## Métriques de capacité
 
 ### Pools de stockage
@@ -120,6 +130,14 @@ Ce document décrit les métriques améliorées disponibles via la sonde Redfish
 - `access_capabilities` - Capacités d'accès (Read, Write)
 - `encryption_type` - Type de chiffrement
 
+### Événements et journaux
+- `host` - Nom du système hôte
+- `manager_id` - Identifiant du gestionnaire
+- `manager_name` - Nom du gestionnaire
+- `model` - Modèle du gestionnaire
+- `log_service_id` - Identifiant du service de journalisation
+- `log_service_name` - Nom du service de journalisation
+
 ## Utilisation recommandée
 
 ### Alertes essentielles
@@ -127,6 +145,7 @@ Ce document décrit les métriques améliorées disponibles via la sonde Redfish
 - Surveiller `hardware.storage.redundancy.health` pour les problèmes de redondance
 - Surveiller `hardware.storage.drive.failure_predicted` pour les disques en préfaillance
 - Surveiller `hardware.storage.drive.has_operations` pour les opérations de maintenance en cours
+- Surveiller `hardware.logs.entries.critical` pour les événements critiques générés par le système
 
 ### Capacité
 - Surveiller `hardware.storage.pool.capacity.free_percent` pour l'espace disponible
@@ -135,6 +154,12 @@ Ce document décrit les métriques améliorées disponibles via la sonde Redfish
 ### Performance
 - Surveiller `hardware.storage.volume.io.total_ops` pour l'activité générale
 - Surveiller `hardware.storage.volume.io.read.latency` et `hardware.storage.volume.io.write.latency` pour les problèmes de performance
+
+### Événements et journaux
+- Surveiller `hardware.logs.entries.critical` et `hardware.logs.entries.warning` pour détecter les problèmes système
+- Utiliser `hardware.logs.entries.last_24h` pour suivre l'activité récente du système
+- Comparer les tendances entre `hardware.logs.entries.last_24h` et `hardware.logs.entries.last_7d` pour identifier les pics d'événements
+- Utiliser `hardware.eventservice.health` pour vérifier que le service d'événements fonctionne correctement
 
 ## Extraction des données
 
