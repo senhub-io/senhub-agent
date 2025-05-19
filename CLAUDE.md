@@ -40,6 +40,7 @@
   - Added documentation in REDFISH-METRICS.md
   - Implemented storage metrics for health, capacity, and performance
   - Added disk operation tracking (rebuilds, formatting, etc.)
+  - Added classification system for UI grouping in REDFISH-CLASSIFICATION.md
 - TODO: 
   1. Optimize caching system for performance
   2. Add support for additional vendors (SuperMicro, Fujitsu, etc.)
@@ -70,9 +71,13 @@
   - `/internal/agent/probes/redfish/collector_hpe.go` - HPE-specific collector
   - `/internal/agent/probes/redfish/collector_lenovo.go` - Lenovo-specific collector
   - `/internal/agent/probes/redfish/collector_cisco.go` - Cisco-specific collector
+  - `/internal/agent/probes/redfish/classification.go` - Classification system for UI grouping
   - `/internal/agent/probes/event/winevents/wineventsProbe.go` - Windows Event Log probe implementation
   - `/internal/agent/probes/event/winevents/wineventsProbe_windows.go` - Windows-specific implementation
   - `/internal/agent/probes/event/winevents/wineventsProbe_test.go` - Tests for Windows Event Log probe
 - REGISTRY UPDATED: 
   - Added "redfish" to probe registry in `/internal/agent/probes/registry.go`
   - Added "winevents" to probe registry in `/internal/agent/probes/registry.go`
+
+## Version Tagging
+- IMPORTANT: Version tags should NOT include the "v" prefix (use "0.0.82-beta" instead of "v0.0.82-beta")
