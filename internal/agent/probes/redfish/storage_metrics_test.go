@@ -496,6 +496,72 @@ func TestStorageMetricsCollection(t *testing.T) {
 			"CapacityBytes": 1000000000000
 		}`)
 
+		// Mock responses for event metrics
+		mockClient.AddMockResponse("Managers", `{
+			"@odata.id": "/redfish/v1/Managers",
+			"Members": [
+				{"@odata.id": "/redfish/v1/Managers/1"}
+			]
+		}`)
+
+		mockClient.AddMockResponse("Managers/1", `{
+			"@odata.id": "/redfish/v1/Managers/1",
+			"Id": "1",
+			"Name": "Storage Controller Manager",
+			"Model": "PowerVault ME5024"
+		}`)
+
+		mockClient.AddMockResponse("Managers/1/LogServices", `{
+			"@odata.id": "/redfish/v1/Managers/1/LogServices",
+			"Members": [
+				{"@odata.id": "/redfish/v1/Managers/1/LogServices/Log"}
+			]
+		}`)
+
+		mockClient.AddMockResponse("Managers/1/LogServices/Log", `{
+			"@odata.id": "/redfish/v1/Managers/1/LogServices/Log",
+			"Id": "Log",
+			"Name": "System Logs"
+		}`)
+
+		mockClient.AddMockResponse("Managers/1/LogServices/Log/Entries", `{
+			"@odata.id": "/redfish/v1/Managers/1/LogServices/Log/Entries",
+			"Members": [
+				{
+					"@odata.id": "/redfish/v1/Managers/1/LogServices/Log/Entries/1",
+					"Id": "1",
+					"Severity": "Critical",
+					"Created": "2024-05-18T10:00:00Z",
+					"Message": "Disk failure detected"
+				},
+				{
+					"@odata.id": "/redfish/v1/Managers/1/LogServices/Log/Entries/2",
+					"Id": "2",
+					"Severity": "Warning",
+					"Created": "2024-05-18T11:00:00Z",
+					"Message": "Temperature threshold exceeded"
+				}
+			],
+			"Members@odata.count": 2
+		}`)
+
+		mockClient.AddMockResponse("EventService", `{
+			"@odata.id": "/redfish/v1/EventService",
+			"Id": "EventService",
+			"Name": "Event Service",
+			"Status": {
+				"Health": "OK",
+				"State": "Enabled"
+			}
+		}`)
+
+		mockClient.AddMockResponse("EventService/Subscriptions", `{
+			"@odata.id": "/redfish/v1/EventService/Subscriptions",
+			"Members": [
+				{"@odata.id": "/redfish/v1/EventService/Subscriptions/1"}
+			]
+		}`)
+
 		// Create collector
 		collector, err := NewStorageCollector("https://redfish.example.com", "admin", "password", loggerPtr, false)
 		assert.NoError(t, err)
@@ -520,6 +586,7 @@ func TestStorageMetricsCollection(t *testing.T) {
 		hasVolumeMetric := false
 		hasControllerMetric := false
 		hasDriveMetric := false
+		hasEventMetric := false
 
 		for _, metric := range metrics {
 			if metric.Name == "hardware.storage.pool.health" {
@@ -534,12 +601,16 @@ func TestStorageMetricsCollection(t *testing.T) {
 			if metric.Name == "hardware.storage.drive.health" {
 				hasDriveMetric = true
 			}
+			if metric.Name == "hardware.logs.entries.total" {
+				hasEventMetric = true
+			}
 		}
 
 		assert.True(t, hasPoolMetric, "Should have pool metrics")
 		assert.True(t, hasVolumeMetric, "Should have volume metrics")
 		assert.True(t, hasControllerMetric, "Should have controller metrics")
 		assert.True(t, hasDriveMetric, "Should have drive metrics")
+		assert.True(t, hasEventMetric, "Should have event metrics")
 	})
 }
 
