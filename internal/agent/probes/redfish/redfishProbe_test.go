@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/logger"
 	"testing"
 	"time"
 
@@ -52,6 +53,7 @@ func (m *MockRedfishCollector) GetSupportedCollections() []CollectionType {
 func TestNewRedfishProbe(t *testing.T) {
 	// Create a test logger
 	testLogger := zerolog.New(os.Stderr)
+	loggerPtr := (*logger.Logger)(&testLogger)
 
 	// Define test cases
 	tests := []struct {
@@ -132,7 +134,7 @@ func TestNewRedfishProbe(t *testing.T) {
 	// Run the tests
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			probe, err := NewRedfishProbe(tt.config, &testLogger)
+			probe, err := NewRedfishProbe(tt.config, loggerPtr)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -186,7 +188,9 @@ func TestNewRedfishProbe(t *testing.T) {
 
 // Test cases for base probe methods
 func TestRedfishProbeBaseMethods(t *testing.T) {
+	// Create a test logger
 	testLogger := zerolog.New(os.Stderr)
+	loggerPtr := (*logger.Logger)(&testLogger)
 
 	config := map[string]interface{}{
 		"endpoint":  "https://redfish.example.com",
@@ -195,7 +199,7 @@ func TestRedfishProbeBaseMethods(t *testing.T) {
 		"interval":  600,
 	}
 
-	probe, err := NewRedfishProbe(config, &testLogger)
+	probe, err := NewRedfishProbe(config, loggerPtr)
 	assert.NoError(t, err)
 	assert.NotNil(t, probe)
 
@@ -211,7 +215,9 @@ func TestRedfishProbeBaseMethods(t *testing.T) {
 
 // Test cases for OnStart method
 func TestRedfishProbeOnStart(t *testing.T) {
+	// Create a test logger
 	testLogger := zerolog.New(os.Stderr)
+	loggerPtr := (*logger.Logger)(&testLogger)
 
 	config := map[string]interface{}{
 		"endpoint":  "https://redfish.example.com",
@@ -220,7 +226,7 @@ func TestRedfishProbeOnStart(t *testing.T) {
 	}
 
 	t.Run("OnStart with successful connection", func(t *testing.T) {
-		probe, err := NewRedfishProbe(config, &testLogger)
+		probe, err := NewRedfishProbe(config, loggerPtr)
 		assert.NoError(t, err)
 		assert.NotNil(t, probe)
 
@@ -238,7 +244,9 @@ func TestRedfishProbeOnStart(t *testing.T) {
 
 // Test cases for OnShutdown method
 func TestRedfishProbeOnShutdown(t *testing.T) {
+	// Create a test logger
 	testLogger := zerolog.New(os.Stderr)
+	loggerPtr := (*logger.Logger)(&testLogger)
 
 	config := map[string]interface{}{
 		"endpoint":  "https://redfish.example.com",
@@ -247,7 +255,7 @@ func TestRedfishProbeOnShutdown(t *testing.T) {
 	}
 
 	t.Run("OnShutdown with no collector", func(t *testing.T) {
-		probe, err := NewRedfishProbe(config, &testLogger)
+		probe, err := NewRedfishProbe(config, loggerPtr)
 		assert.NoError(t, err)
 		assert.NotNil(t, probe)
 
@@ -257,7 +265,7 @@ func TestRedfishProbeOnShutdown(t *testing.T) {
 	})
 
 	t.Run("OnShutdown with successful disconnect", func(t *testing.T) {
-		probe, err := NewRedfishProbe(config, &testLogger)
+		probe, err := NewRedfishProbe(config, loggerPtr)
 		assert.NoError(t, err)
 		redfishProbe := probe.(*redfishProbe)
 
@@ -273,7 +281,7 @@ func TestRedfishProbeOnShutdown(t *testing.T) {
 	})
 
 	t.Run("OnShutdown with disconnect error", func(t *testing.T) {
-		probe, err := NewRedfishProbe(config, &testLogger)
+		probe, err := NewRedfishProbe(config, loggerPtr)
 		assert.NoError(t, err)
 		redfishProbe := probe.(*redfishProbe)
 
