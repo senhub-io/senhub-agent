@@ -232,6 +232,9 @@ func (p *redfishProbe) Collect() ([]data_store.DataPoint, error) {
 		allDatapoints = append(allDatapoints, datapoints...)
 	}
 
+	// Add classification tags for UI grouping
+	AddClassificationTagsToDataPoints(allDatapoints)
+
 	// Route data through callback if configured
 	if p.OnDataPoints != nil && len(allDatapoints) > 0 {
 		if err := p.OnDataPoints(allDatapoints, p); err != nil {
