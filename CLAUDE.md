@@ -40,7 +40,6 @@
   - Added documentation in REDFISH-METRICS.md
   - Implemented storage metrics for health, capacity, and performance
   - Added disk operation tracking (rebuilds, formatting, etc.)
-  - Added classification system for UI grouping in REDFISH-CLASSIFICATION.md
 - TODO: 
   1. Optimize caching system for performance
   2. Add support for additional vendors (SuperMicro, Fujitsu, etc.)

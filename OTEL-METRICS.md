@@ -89,3 +89,94 @@ Tags:
   - volume_id: vol1
   - raid_type: RAID5
 ```
+
+# OpenTelemetry Probe
+
+Le probe OpenTelemetry permet de collecter des télémétries (métriques, traces, logs) depuis des endpoints OTLP (OpenTelemetry Protocol) en utilisant HTTP ou gRPC.
+
+## Configuration
+
+### Configuration générale
+
+```yaml
+probes:
+  - name: otel
+    interval: 60  # intervalle de collecte en secondes
+    telemetry_types:
+      - metrics
+      - traces
+      - logs
+    http:  # configuration du collecteur HTTP
+      endpoint: "http://localhost:4318"
+      timeout: 30  # timeout en secondes
+      headers:
+        Authorization: "Bearer <token>"
+      username: "user"  # optionnel - pour l'authentification basic
+      password: "pass"  # optionnel
+      telemetry_types:  # optionnel - surcharge les types de télémétrie globaux
+        - metrics
+        - logs
+    grpc:  # configuration du collecteur gRPC
+      endpoint: "localhost:4317"
+      timeout: 30  # timeout en secondes
+      insecure: false  # utiliser une connexion non-sécurisée
+      token: "<auth-token>"  # optionnel
+      telemetry_types:  # optionnel - surcharge les types de télémétrie globaux
+        - metrics
+        - traces
+```
+
+## Dépendances
+
+Pour utiliser ce probe, les dépendances suivantes doivent être ajoutées au fichier `go.mod`:
+
+```
+require (
+  go.opentelemetry.io/otel v1.24.0
+  go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.24.0
+  go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.24.0
+  go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.24.0
+  go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.24.0
+  go.opentelemetry.io/otel/exporters/otlp/otlplogs/otlplogsgrpc v0.48.0
+  go.opentelemetry.io/otel/exporters/otlp/otlplogs/otplogshttp v0.48.0
+  go.opentelemetry.io/otel/sdk v1.24.0
+  go.opentelemetry.io/otel/sdk/metric v1.24.0
+  go.opentelemetry.io/proto/otlp v1.1.0
+  google.golang.org/grpc v1.63.0
+)
+```
+
+## Fonctionnement
+
+Le probe OpenTelemetry offre les fonctionnalités suivantes:
+
+1. Collection de télémétrie via le protocole OTLP (HTTP ou gRPC)
+2. Support pour les métriques, traces et logs OpenTelemetry
+3. Configuration flexible des endpoints et des paramètres d'authentification
+4. Fonctionnement en parallèle des collecteurs HTTP et gRPC
+
+## Types de télémétrie
+
+- **métriques** : Données numériques qui décrivent l'état ou la performance d'un système
+- **traces** : Informations sur le chemin d'exécution d'une requête à travers un système
+- **logs** : Enregistrements textuels d'événements survenus dans un système
+
+## Ajout au registre des probes
+
+Pour activer ce probe, ajoutez-le au registre des probes dans `internal/agent/probes/registry.go`:
+
+```go
+var probeConstructors = map[string]ProbeConstructor{
+    // Autres probes...
+    "otel": otel.NewOtelProbe,
+}
+```
+
+N'oubliez pas d'ajouter l'import correspondant:
+
+```go
+import (
+    // Autres imports...
+    "senhub-agent.go/internal/agent/probes/otel"
+)
+```
