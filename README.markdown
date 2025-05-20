@@ -155,7 +155,7 @@ Here's a sample configuration:
         "endpoint": "https://192.168.1.100", 
         "username": "admin", 
         "password": "password",
-        "cache_duration": 240,
+        "verify_ssl": true,
         "collections": ["system", "thermal", "power", "processor", "memory", "storage", "network"]
       } 
     }
@@ -432,7 +432,7 @@ Monitors server hardware via the Redfish API with vendor-specific collectors for
       "endpoint": "https://192.168.1.100", 
       "username": "admin", 
       "password": "password",
-      "cache_duration": 240,
+      "verify_ssl": true,
       "collections": ["system", "thermal", "power", "processor", "memory", "storage", "network"]
     } 
   }
@@ -442,7 +442,7 @@ Monitors server hardware via the Redfish API with vendor-specific collectors for
   - `username`: Username for Redfish API authentication
   - `password`: Password for Redfish API authentication
 - **Optional Parameters**
-  - `cache_duration`: Duration in seconds to cache data (default: 240 seconds)
+  - `verify_ssl`: Whether to verify SSL certificates (default: true)
   - `collections`: Array of collections to monitor (default includes "system", "thermal", "power", "processor", "memory")
     - Available collections: "system", "thermal", "power", "processor", "memory", "storage", "network"
 - **Metrics**
