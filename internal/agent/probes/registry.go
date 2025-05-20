@@ -5,7 +5,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/event" // Import the new event probe package
 	"senhub-agent.go/internal/agent/probes/gateway"
 	"senhub-agent.go/internal/agent/probes/host"
-	"senhub-agent.go/internal/agent/probes/otel" // Import the OpenTelemetry probe package
 	"senhub-agent.go/internal/agent/probes/redfish" // Import the redfish probe package
 	"senhub-agent.go/internal/agent/probes/syslog"
 	"senhub-agent.go/internal/agent/probes/types"
@@ -32,7 +31,6 @@ type ProbeConstructor func(map[string]interface{}, *logger.Logger) (types.Probe,
 // - syslog: Collects system logs
 // - event: Collects custom events via HTTP
 // - redfish: Monitors hardware via Redfish API
-// - otel: Collects metrics using OpenTelemetry protocol
 var probeConstructors = map[string]ProbeConstructor{
 	"load_webapp":          webapp.NewLoadWebAppProbe,
 	"ping_webapp":          webapp.NewPingWebAppProbe,
@@ -45,5 +43,4 @@ var probeConstructors = map[string]ProbeConstructor{
 	"syslog":               syslog.NewSyslogProbe,
 	"event":                event.NewEventProbe,
 	"redfish":              redfish.NewRedfishProbe,
-	"otel":                 otel.NewOtelProbe,
 }
