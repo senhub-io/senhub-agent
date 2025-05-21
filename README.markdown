@@ -43,18 +43,94 @@ make build
 ./senhub-agent run --authentication-key <your_key> --server-url "https://your-server-url.com"
 ```
 
-### Debug Logging
+### Debug Logging with DebugLogShipper
 
-The agent supports sending debug logs to remote endpoints like VictoriaLogs, Loki, or Elasticsearch:
+The agent includes a powerful DebugLogShipper component that can send logs to remote endpoints like VictoriaLogs, Grafana Loki, or Elasticsearch. This is useful for centralized log collection and remote debugging.
+
+#### Basic Usage
 
 ```bash
 # Enable debug logging to a remote endpoint
 ./senhub-agent start --authentication-key <your_key> \
-    --debug-log-shipper-url "http://logserver:9428/api/v1/write" \
+    --debug-log-shipper-url "http://logserver:9428" \
     --debug-log-shipper-tags "env=production,component=agent"
 ```
 
-For more details on debug log shipping, see `internal/agent/services/debugshipper/README.md`.
+#### Configuration Options
+
+| Option | Environment Variable | Description | Default |
+|--------|---------------------|-------------|---------|
+| `--debug-log-shipper-url` | `SENHUB_DEBUG_LOG_SHIPPER_URL` | URL of the log collection endpoint | - |
+| `--debug-log-shipper-tags` | `SENHUB_DEBUG_LOG_SHIPPER_TAGS` | Custom tags (format: key1=value1,key2=value2) | - |
+| `--debug-log-shipper-buffer` | `SENHUB_DEBUG_LOG_SHIPPER_BUFFER` | Buffer size before sending logs | 100 |
+
+#### Compatible Log Collection Systems
+
+##### VictoriaLogs (Recommended)
+
+For VictoriaLogs, simply specify the base URL:
+
+```bash
+--debug-log-shipper-url "http://victorialogs:9428"
+```
+
+The shipper automatically converts this to the JSON Stream API endpoint:
+```
+http://victorialogs:9428/insert/jsonline?_stream_fields=stream&_time_field=timestamp&_msg_field=message
+```
+
+##### Grafana Loki
+
+For Loki, specify the push API endpoint:
+
+```bash
+--debug-log-shipper-url "http://loki:3100/loki/api/v1/push"
+```
+
+##### Elasticsearch
+
+For Elasticsearch, specify the document API endpoint:
+
+```bash
+--debug-log-shipper-url "http://elasticsearch:9200/logs/_doc"
+```
+
+#### Automatic Tag Enrichment
+
+The following tags are automatically added if not explicitly specified:
+
+- `agent_name`: "senhub-agent"
+- `host_name`: Hostname of the machine
+- `env`: Environment (production/development)
+
+#### Usage with Service or Console Mode
+
+The DebugLogShipper works in both service mode and console mode:
+
+```bash
+# With service start
+./senhub-agent start --authentication-key <your_key> \
+    --debug-log-shipper-url "http://logserver:9428"
+
+# With console mode
+./senhub-agent run --authentication-key <your_key> \
+    --debug-log-shipper-url "http://logserver:9428" \
+    --debug-log-shipper-tags "env=production,component=agent" \
+    --verbose
+```
+
+#### Complete Configuration Example
+
+```bash
+./senhub-agent run --authentication-key <your_key> \
+    --server-url "https://api.senhub.io" \
+    --debug-log-shipper-url "http://victorialogs:9428" \
+    --debug-log-shipper-tags "env=production,component=agent,region=europe,customer=acme" \
+    --debug-log-shipper-buffer 200 \
+    --verbose
+```
+
+For more technical details on the DebugLogShipper implementation, see `internal/agent/services/debugshipper/README.md`.
 
 ### Build Environment
 
