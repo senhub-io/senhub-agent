@@ -321,20 +321,26 @@ Service Commands:
     status      Show service status
     version     Show agent version
     run         Run in console mode (requires --authentication-key)
-	update      Update the agent to given version (default: latest)
+    update      Update the agent to given version (default: latest)
 
 Agent Options:
-    --authentication-key KEY   Authentication key for the service (required)
-    --server-url URL          Server URL (optional)
-    --verbose                 Enable verbose logging
+    --authentication-key KEY                Authentication key for the service (required)
+    --server-url URL                       Server URL (optional)
+    --verbose                              Enable verbose logging
+
+Debug Log Shipper Options:
+    --debug-log-shipper-url URL            URL of remote log collection endpoint
+    --debug-log-shipper-tags tags          Custom tags for logs (format: key1=value1,key2=value2)
+    --debug-log-shipper-buffer SIZE        Buffer size for logs before sending (default: 100)
 
 Examples:
     %s install --authentication-key "your-key"
     %s start
     %s status
     %s run --authentication-key "your-key" --server-url "http://example.com"
+    %s run --authentication-key "your-key" --debug-log-shipper-url "http://logserver:9428"
     %s update 1.0.0"
     %s update latest"
 
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
