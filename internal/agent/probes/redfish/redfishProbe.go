@@ -65,6 +65,7 @@ func NewRedfishProbe(config map[string]interface{}, logger *logger.Logger) (type
 		CollectionPower,
 		CollectionProcessor,
 		CollectionMemory,
+		CollectionStorage,  // Added storage collection by default for PowerVault metrics
 	}
 
 	// Override collections if specified
