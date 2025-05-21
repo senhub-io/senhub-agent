@@ -76,6 +76,9 @@ jobs:
           echo "Building for Linux amd64"
           GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_linux_amd64 ./cmd/agent
           
+          echo "Building for Linux arm64"
+          GOOS=linux GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_linux_arm64 ./cmd/agent
+          
           echo "Building for Windows amd64"
           GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_windows_amd64.exe ./cmd/agent
           
@@ -88,6 +91,7 @@ jobs:
           # ZIP the binaries
           cd dist
           zip senhub-agent_linux_amd64.zip senhub-agent_linux_amd64
+          zip senhub-agent_linux_arm64.zip senhub-agent_linux_arm64
           zip senhub-agent_windows_amd64.zip senhub-agent_windows_amd64.exe
           zip senhub-agent_darwin_amd64.zip senhub-agent_darwin_amd64
           zip senhub-agent_darwin_arm64.zip senhub-agent_darwin_arm64
@@ -165,6 +169,7 @@ jobs:
           files: |
             dist/*.zip
             dist/senhub-agent_linux_amd64
+            dist/senhub-agent_linux_arm64
             dist/senhub-agent_windows_amd64.exe
             dist/senhub-agent_darwin_amd64
             dist/senhub-agent_darwin_arm64
