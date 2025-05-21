@@ -176,6 +176,7 @@ func TestNewRedfishProbe(t *testing.T) {
 						CollectionPower,
 						CollectionProcessor,
 						CollectionMemory,
+						CollectionStorage, // Added storage collection by default for PowerVault metrics
 					}
 					assert.Equal(t, defaultCollections, redfishProbe.collections)
 				}
