@@ -1663,9 +1663,26 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			}
 		}
 		
-		// Pool consumed capacity - showing actual usage
-		if poolInfo.Capacity.Data.ConsumedBytes > 0 {
-			consumedBytes := float32(poolInfo.Capacity.Data.ConsumedBytes)
+		// Pool consumed capacity calculation
+		// For Dell ME storage arrays, the most accurate method is to use:
+		// 1. AllocatedBytes - ConsumedBytes to get the real usable capacity
+		// 2. RemainingCapacityPercent to determine how much of that capacity is actually used
+		
+		if poolInfo.CapacityBytes > 0 && poolInfo.Capacity.Data.AllocatedBytes > 0 && 
+		   poolInfo.Capacity.Data.ConsumedBytes > 0 && poolInfo.RemainingCapacityPercent > 0 {
+			
+			// Calculate used capacity percentage based on RemainingCapacityPercent
+			usedPercent := roundToTwoDecimals(100.0 - float32(poolInfo.RemainingCapacityPercent))
+			
+			// Calculate total available capacity (AllocatedBytes - ConsumedBytes)
+			// This is the real capacity available to the user after system overhead
+			availableCapacity := float32(poolInfo.Capacity.Data.AllocatedBytes - poolInfo.Capacity.Data.ConsumedBytes)
+			
+			// Calculate real consumed bytes by applying the used percentage to available capacity
+			// This gives us the most accurate value of actual storage consumption
+			consumedBytes := roundToTwoDecimals(availableCapacity * (usedPercent / 100.0))
+			
+			// Add the used capacity metric
 			datapoints = append(datapoints, data_store.DataPoint{
 				Name:      "hardware.storage.pool.capacity.used",
 				Timestamp: timestamp,
@@ -1673,16 +1690,13 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 				Tags:      poolTags,
 			})
 			
-			// Calculate and add consumed percentage if total capacity is available
-			if poolInfo.CapacityBytes > 0 {
-				usedPercent := roundToTwoDecimals((consumedBytes / float32(poolInfo.CapacityBytes)) * 100.0)
-				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "hardware.storage.pool.capacity.used_percent",
-					Timestamp: timestamp,
-					Value:     usedPercent,
-					Tags:      poolTags,
-				})
-			}
+			// Add the used percentage metric
+			datapoints = append(datapoints, data_store.DataPoint{
+				Name:      "hardware.storage.pool.capacity.used_percent",
+				Timestamp: timestamp,
+				Value:     usedPercent,
+				Tags:      poolTags,
+			})
 		}
 		
 		// Remaining capacity as a percentage - direct from API for accuracy
