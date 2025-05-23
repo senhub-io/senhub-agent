@@ -258,7 +258,7 @@ func TestStorageMetricsCollection(t *testing.T) {
 
 		// Check Drive 0 metrics (regular drive, no operations)
 		assert.Contains(t, drive0Metrics, "hardware.storage.drive.health")
-		assert.Contains(t, drive0Metrics, "hardware.storage.drive.size")
+		assert.Contains(t, drive0Metrics, "hardware.storage.drive.capacity.total")
 		assert.Contains(t, drive0Metrics, "hardware.storage.drive.failure_predicted")
 		assert.Contains(t, drive0Metrics, "hardware.storage.drive.has_operations")
 		assert.Equal(t, float32(0.0), drive0Metrics["hardware.storage.drive.has_operations"].Value, "Drive 0 should have no operations")
@@ -267,7 +267,7 @@ func TestStorageMetricsCollection(t *testing.T) {
 
 		// Check Drive 1 metrics (drive with operations)
 		assert.Contains(t, drive1Metrics, "hardware.storage.drive.health")
-		assert.Contains(t, drive1Metrics, "hardware.storage.drive.size")
+		assert.Contains(t, drive1Metrics, "hardware.storage.drive.capacity.total")
 		assert.Contains(t, drive1Metrics, "hardware.storage.drive.failure_predicted")
 		assert.Contains(t, drive1Metrics, "hardware.storage.drive.has_operations")
 		assert.Contains(t, drive1Metrics, "hardware.storage.drive.operation.progress")
