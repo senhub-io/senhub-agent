@@ -20,8 +20,8 @@ type StorageCollector struct {
 	storageVolumes     []string
 	storageControllers []string
 	storagePools       []string
-	visitedLinks       map[string]bool // Pour éviter les cycles dans la traversée de liens
-	maxDepth           int             // Profondeur maximale pour la traversée
+	visitedLinks       map[string]bool // To avoid cycles when traversing links
+	maxDepth           int             // Maximum depth for traversal
 }
 
 // NewStorageCollector creates a new collector for storage devices
@@ -38,7 +38,7 @@ func NewStorageCollector(endpoint, username, password string, logger *logger.Log
 		storageControllers: make([]string, 0),
 		storagePools:       make([]string, 0),
 		visitedLinks:       make(map[string]bool),
-		maxDepth:           5, // Profondeur par défaut pour la traversée
+		maxDepth:           5, // Default depth for traversal
 	}, nil
 }
 
@@ -301,7 +301,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							driveTags = append(driveTags, tags.Tag{Key: "controller", Value: controllerLetter})
 						}
 
-						// Drive health state - la valeur est dérivée de Status.Health
+						// Drive health state - value is derived from Status.Health
 						if driveInfo.Status != nil && driveInfo.Status.Health != "" {
 							datapoints = append(datapoints, data_store.DataPoint{
 								Name:      "hardware.storage.drive.health",
@@ -377,8 +377,8 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							OptimumIOSizeBytes int64   `json:"OptimumIOSizeBytes"`
 							EncryptionType    string  `json:"EncryptionType"`
 							StripSizeBytes    int64   `json:"StripSizeBytes"`
-							// AccessCapabilities peut être une chaîne ou un tableau selon les implémentations
-							// Nous allons l'extraire manuellement du JSON brut
+							// AccessCapabilities can be either a string or an array depending on implementations
+							// We will extract it manually from the raw JSON
 						}
 						
 						if err := json.Unmarshal(volResp.Raw, &volumeInfo); err != nil {
@@ -408,16 +408,16 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						if volumeInfo.StripSizeBytes > 0 {
 							volumeTags = append(volumeTags, tags.Tag{Key: "stripe_size", Value: fmt.Sprintf("%d", volumeInfo.StripSizeBytes)})
 						}
-						// Extraction d'AccessCapabilities qui peut être une chaîne ou un tableau
+						// Extraction of AccessCapabilities which can be either a string or an array
 						var accessCapabilities string
 						var volumeRawData map[string]interface{}
 						if err := json.Unmarshal(volResp.Raw, &volumeRawData); err == nil {
 							if accessCap, ok := volumeRawData["AccessCapabilities"]; ok {
-								// Essayons d'abord de le traiter comme une chaîne
+								// First try to treat it as a string
 								if strValue, ok := accessCap.(string); ok && strValue != "" {
 									accessCapabilities = strValue
 								} else if arrValue, ok := accessCap.([]interface{}); ok && len(arrValue) > 0 {
-									// Si c'est un tableau, concaténons les valeurs avec des virgules
+									// If it's an array, concatenate values with commas
 									var values []string
 									for _, val := range arrValue {
 										if strVal, ok := val.(string); ok && strVal != "" {
@@ -443,7 +443,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							volumeTags = append(volumeTags, tags.Tag{Key: "controller", Value: controllerLetter})
 						}
 
-						// Volume encryption state - la valeur est dérivée de Encrypted
+						// Volume encryption state - value is derived from Encrypted
 						encrypted := 0.0
 						if volumeInfo.Encrypted {
 							encrypted = 1.0
@@ -456,7 +456,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							Tags:      volumeTags,
 						})
 
-						// Volume health state - la valeur est dérivée de Status.Health
+						// Volume health state - value is derived from Status.Health
 						if volumeInfo.Status != nil && volumeInfo.Status.Health != "" {
 							datapoints = append(datapoints, data_store.DataPoint{
 								Name:      "hardware.storage.volume.health",
@@ -1214,7 +1214,7 @@ func (c *StorageCollector) processVolumeOemHpeData(hpeData interface{}, capacity
 	}
 }
 
-// roundToTwoDecimals arrondit un float32 à 2 décimales
+// roundToTwoDecimals rounds a float32 to 2 decimal places
 func roundToTwoDecimals(value float32) float32 {
 	return float32(math.Round(float64(value)*100) / 100)
 }
@@ -1405,19 +1405,19 @@ func (c *StorageCollector) collectControllerHealthMetrics(ctx context.Context, t
 	return datapoints, nil
 }
 
-// followODataLink traverse un lien OData de manière récursive pour récupérer les données
+// followODataLink recursively traverses an OData link to retrieve data
 func (c *StorageCollector) followODataLink(ctx context.Context, path string, depth int) (map[string]interface{}, error) {
-	// Vérification du cycle pour éviter les références circulaires
+	// Check for cycles to avoid circular references
 	if c.visitedLinks[path] {
 		return nil, fmt.Errorf("cycle detected in link traversal: %s", path)
 	}
 	
-	// Vérification de la profondeur maximale pour éviter les récursions infinies
+	// Check maximum depth to avoid infinite recursion
 	if depth > c.maxDepth {
 		return nil, fmt.Errorf("max traversal depth reached at: %s", path)
 	}
 	
-	// Marquer comme visité
+	// Mark as visited
 	c.visitedLinks[path] = true
 	
 	// Obtenir la ressource
@@ -1427,41 +1427,41 @@ func (c *StorageCollector) followODataLink(ctx context.Context, path string, dep
 		return nil, fmt.Errorf("failed to get resource at %s: %v", path, err)
 	}
 	
-	// Analyser la réponse JSON
+	// Parse the JSON response
 	var data map[string]interface{}
 	if err := json.Unmarshal(resp.Raw, &data); err != nil {
 		return nil, fmt.Errorf("failed to parse response for %s: %v", path, err)
 	}
 	
-	// Traiter chaque champ récursivement s'il s'agit d'un @odata.id
+	// Process each field recursively if it's an @odata.id
 	for key, value := range data {
-		// Ignorer le champ @odata.id lui-même
+		// Ignore the @odata.id field itself
 		if key == "@odata.id" {
 			continue
 		}
 		
-		// Si c'est un map/object, vérifier s'il a @odata.id
+		// If it's a map/object, check if it has @odata.id
 		if subObj, ok := value.(map[string]interface{}); ok {
 			if linkID, ok := subObj["@odata.id"].(string); ok {
-				// Suivre ce lien récursivement 
+				// Follow this link recursively
 				subData, err := c.followODataLink(ctx, linkID, depth+1)
 				if err == nil {
-					// Remplacer le lien par les données réelles
+					// Replace the link with actual data
 					data[key+"Data"] = subData
 				}
 			}
 		}
 		
-		// Si c'est un tableau, vérifier chaque élément
+		// If it's an array, check each item
 		if arr, ok := value.([]interface{}); ok {
 			for i, item := range arr {
 				if itemObj, ok := item.(map[string]interface{}); ok {
 					if linkID, ok := itemObj["@odata.id"].(string); ok {
-						// Suivre ce lien récursivement
+						// Follow this link recursively
 						subData, err := c.followODataLink(ctx, linkID, depth+1)
 						if err == nil {
-							// Comme nous ne pouvons pas facilement modifier le tableau en place,
-							// nous ajoutons un nouveau champ avec les données du lien
+							// Since we can't easily modify the array in place,
+							// we add a new field with the link data
 							itemKey := fmt.Sprintf("%sItem%d", key, i)
 							data[itemKey] = subData
 						}
