@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// sensitivePatterns définit les regex pour identifier les données sensibles
+// sensitivePatterns defines regex patterns to identify sensitive data
 var sensitivePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(password|passwd|pwd)["']?\s*[:=]\s*["']?([^"',\s]+)`),
 	regexp.MustCompile(`(?i)(token|api[-_]?key|secret|authentication[-_]?key)["']?\s*[:=]\s*["']?([^"',\s]+)`),
@@ -13,7 +13,7 @@ var sensitivePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)("[^"]*pass[^"]*":\s*")[^"]*(")`),
 }
 
-// MaskSensitiveData remplace les informations sensibles par des astérisques
+// MaskSensitiveData replaces sensitive information with asterisks
 func MaskSensitiveData(input string) string {
 	masked := input
 	for _, pattern := range sensitivePatterns {
@@ -30,16 +30,16 @@ func MaskSensitiveData(input string) string {
 	return masked
 }
 
-// maskValue masque un texte en préservant les premiers et derniers caractères
+// maskValue masks text while preserving the first and last characters
 func maskValue(value string) string {
 	valueLen := len(value)
 	
-	// Pour les valeurs courtes, masquer complètement
+	// For short values, mask completely
 	if valueLen <= 8 {
 		return "********"
 	}
 	
-	// Pour les valeurs plus longues, préserver le début et la fin
+	// For longer values, preserve beginning and end
 	visible := valueLen / 4
 	if visible < 2 {
 		visible = 2
