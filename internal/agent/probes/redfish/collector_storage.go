@@ -1664,29 +1664,29 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 		}
 		
 		// Pool consumed capacity calculation
-		// For Dell ME storage arrays, the most accurate method is to use:
-		// 1. AllocatedBytes - ConsumedBytes to get the real usable capacity
-		// 2. RemainingCapacityPercent to determine how much of that capacity is actually used
+		// For Dell ME storage arrays, we need to directly apply the RemainingCapacityPercent 
+		// to the total capacity to get accurate used capacity values
+		// Note: Dell ME interface displays values in decimal TB (10^12 bytes) rather than binary TiB (2^40 bytes)
 		
-		if poolInfo.CapacityBytes > 0 && poolInfo.Capacity.Data.AllocatedBytes > 0 && 
-		   poolInfo.Capacity.Data.ConsumedBytes > 0 && poolInfo.RemainingCapacityPercent > 0 {
+		if poolInfo.CapacityBytes > 0 && poolInfo.RemainingCapacityPercent > 0 {
+			
+			// For Dell ME, the formula that correctly calculates the used capacity is:
+			// UsedBytes = CapacityBytes * (100 - RemainingCapacityPercent) / 100
+			// This applies the remaining percentage to the total capacity directly
 			
 			// Calculate used capacity percentage based on RemainingCapacityPercent
 			usedPercent := roundToTwoDecimals(100.0 - float32(poolInfo.RemainingCapacityPercent))
 			
-			// Calculate total available capacity (AllocatedBytes - ConsumedBytes)
-			// This is the real capacity available to the user after system overhead
-			availableCapacity := float32(poolInfo.Capacity.Data.AllocatedBytes - poolInfo.Capacity.Data.ConsumedBytes)
-			
-			// Calculate real consumed bytes by applying the used percentage to available capacity
-			// This gives us the most accurate value of actual storage consumption
-			consumedBytes := roundToTwoDecimals(availableCapacity * (usedPercent / 100.0))
+			// Calculate used bytes by applying the used percentage to the total capacity
+			// Dell ME interface uses decimal TB (10^12 bytes) rather than binary TiB (2^40 bytes)
+			// This is the formula that matches the values displayed in the Dell ME interface
+			usedBytes := roundToTwoDecimals(float32(poolInfo.CapacityBytes) * (usedPercent / 100.0))
 			
 			// Add the used capacity metric
 			datapoints = append(datapoints, data_store.DataPoint{
 				Name:      "hardware.storage.pool.capacity.used",
 				Timestamp: timestamp,
-				Value:     consumedBytes,
+				Value:     usedBytes,
 				Tags:      poolTags,
 			})
 			
