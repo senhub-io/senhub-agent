@@ -58,7 +58,7 @@ Ce document décrit les métriques améliorées disponibles via la sonde Redfish
 - `hardware.storage.volume.capacity.free_percent` - Pourcentage d'espace libre
 
 ### Disques
-- `hardware.storage.drive.size` - Capacité du disque (en octets)
+- `hardware.storage.drive.capacity.total` - Capacité totale du disque (en octets)
 
 ## Métriques de performance
 

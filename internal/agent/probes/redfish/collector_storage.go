@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -313,7 +314,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						// Drive capacity
 						if driveInfo.CapacityBytes > 0 {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "hardware.storage.drive.size",
+								Name:      "hardware.storage.drive.capacity.total",
 								Timestamp: timestamp,
 								Value:     float32(driveInfo.CapacityBytes),
 								Tags:      driveTags,
@@ -468,7 +469,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						// Volume capacity
 						if volumeInfo.CapacityBytes > 0 {
 							datapoints = append(datapoints, data_store.DataPoint{
-								Name:      "hardware.storage.volume.size",
+								Name:      "hardware.storage.volume.capacity.total",
 								Timestamp: timestamp,
 								Value:     float32(volumeInfo.CapacityBytes),
 								Tags:      volumeTags,
@@ -488,7 +489,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 												if providedCapacityRaw, ok := source["ProvidedCapacityBytes"]; ok {
 													if providedCapacity, ok := providedCapacityRaw.(float64); ok && providedCapacity > 0 {
 														datapoints = append(datapoints, data_store.DataPoint{
-															Name:      "hardware.storage.volume.space.used",
+															Name:      "hardware.storage.volume.capacity.used",
 															Timestamp: timestamp,
 															Value:     float32(providedCapacity),
 															Tags:      volumeTags,
@@ -496,9 +497,9 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 														
 														
 														// Calculate free space
-														freeSpace := float32(volumeInfo.CapacityBytes) - float32(providedCapacity)
+														freeSpace := roundToTwoDecimals(float32(volumeInfo.CapacityBytes) - float32(providedCapacity))
 														datapoints = append(datapoints, data_store.DataPoint{
-															Name:      "hardware.storage.volume.space.free",
+															Name:      "hardware.storage.volume.capacity.free",
 															Timestamp: timestamp,
 															Value:     freeSpace,
 															Tags:      volumeTags,
@@ -520,7 +521,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 												if usedBytesRaw, ok := dellMap["UsedBytes"]; ok {
 													if usedBytes, ok := usedBytesRaw.(float64); ok && usedBytes > 0 {
 														datapoints = append(datapoints, data_store.DataPoint{
-															Name:      "hardware.storage.volume.space.used",
+															Name:      "hardware.storage.volume.capacity.used",
 															Timestamp: timestamp,
 															Value:     float32(usedBytes),
 															Tags:      volumeTags,
@@ -528,9 +529,9 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 														
 														
 														// Calculate free space
-														freeSpace := float32(volumeInfo.CapacityBytes) - float32(usedBytes)
+														freeSpace := roundToTwoDecimals(float32(volumeInfo.CapacityBytes) - float32(usedBytes))
 														datapoints = append(datapoints, data_store.DataPoint{
-															Name:      "hardware.storage.volume.space.free",
+															Name:      "hardware.storage.volume.capacity.free",
 															Timestamp: timestamp,
 															Value:     freeSpace,
 															Tags:      volumeTags,
@@ -549,14 +550,14 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 														freeBytes := float32(volumeInfo.CapacityBytes) - usedBytes
 														
 														datapoints = append(datapoints, data_store.DataPoint{
-															Name:      "hardware.storage.volume.space.used",
+															Name:      "hardware.storage.volume.capacity.used",
 															Timestamp: timestamp,
 															Value:     usedBytes,
 															Tags:      volumeTags,
 														})
 														
 														datapoints = append(datapoints, data_store.DataPoint{
-															Name:      "hardware.storage.volume.space.free",
+															Name:      "hardware.storage.volume.capacity.free",
 															Timestamp: timestamp,
 															Value:     freeBytes,
 															Tags:      volumeTags,
@@ -577,17 +578,17 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 														if usedRaw, ok := spaceInfo["UsedSpace"]; ok {
 															if usedBytes, ok := usedRaw.(float64); ok && usedBytes > 0 {
 																datapoints = append(datapoints, data_store.DataPoint{
-																	Name:      "hardware.storage.volume.space.used",
+																	Name:      "hardware.storage.volume.capacity.used",
 																	Timestamp: timestamp,
 																	Value:     float32(usedBytes),
 																	Tags:      volumeTags,
 																})
 																
 																// Calculate free space
-																freeSpace := float32(volumeInfo.CapacityBytes) - float32(usedBytes)
+																freeSpace := roundToTwoDecimals(float32(volumeInfo.CapacityBytes) - float32(usedBytes))
 																
 																datapoints = append(datapoints, data_store.DataPoint{
-																	Name:      "hardware.storage.volume.space.free",
+																	Name:      "hardware.storage.volume.capacity.free",
 																	Timestamp: timestamp,
 																	Value:     freeSpace,
 																	Tags:      volumeTags,
@@ -811,7 +812,7 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 						})
 						
 						// Calculate allocated percentage
-						allocatedPercent := (allocatedBytes / float32(volumeInfo.CapacityBytes)) * 100.0
+						allocatedPercent := roundToTwoDecimals((allocatedBytes / float32(volumeInfo.CapacityBytes)) * 100.0)
 						datapoints = append(datapoints, data_store.DataPoint{
 							Name:      "hardware.storage.volume.capacity.allocated_percent",
 							Timestamp: timestamp,
@@ -832,7 +833,7 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 						})
 						
 						// Calculate used percentage
-						usedPercent := (consumedBytes / float32(volumeInfo.CapacityBytes)) * 100.0
+						usedPercent := roundToTwoDecimals((consumedBytes / float32(volumeInfo.CapacityBytes)) * 100.0)
 						datapoints = append(datapoints, data_store.DataPoint{
 							Name:      "hardware.storage.volume.capacity.used_percent",
 							Timestamp: timestamp,
@@ -846,12 +847,12 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 						datapoints = append(datapoints, data_store.DataPoint{
 							Name:      "hardware.storage.volume.capacity.free_percent",
 							Timestamp: timestamp,
-							Value:     float32(volumeInfo.RemainingCapacityPercent),
+							Value:     roundToTwoDecimals(float32(volumeInfo.RemainingCapacityPercent)),
 							Tags:      volumeTags,
 						})
 						
 						// Calculate free bytes based on percentage
-						freeBytes := float32(volumeInfo.CapacityBytes) * (float32(volumeInfo.RemainingCapacityPercent) / 100.0)
+						freeBytes := roundToTwoDecimals(float32(volumeInfo.CapacityBytes) * (float32(volumeInfo.RemainingCapacityPercent) / 100.0))
 						datapoints = append(datapoints, data_store.DataPoint{
 							Name:      "hardware.storage.volume.capacity.free",
 							Timestamp: timestamp,
@@ -983,7 +984,7 @@ func (c *StorageCollector) processVolumeOemDellData(dellData interface{}, capaci
 				
 				// Calculate and add used percentage if total capacity is available
 				if capacityBytes > 0 {
-					usedPercent := (float32(usedBytes) / float32(capacityBytes)) * 100.0
+					usedPercent := roundToTwoDecimals((float32(usedBytes) / float32(capacityBytes)) * 100.0)
 					*datapoints = append(*datapoints, data_store.DataPoint{
 						Name:      "hardware.storage.volume.capacity.used_percent",
 						Timestamp: timestamp,
@@ -1211,6 +1212,11 @@ func (c *StorageCollector) processVolumeOemHpeData(hpeData interface{}, capacity
 			}
 		}
 	}
+}
+
+// roundToTwoDecimals arrondit un float32 à 2 décimales
+func roundToTwoDecimals(value float32) float32 {
+	return float32(math.Round(float64(value)*100) / 100)
 }
 
 // Helper function to convert bool to float
@@ -1647,7 +1653,7 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			
 			// Calculate and add allocated percentage if total capacity is available
 			if poolInfo.CapacityBytes > 0 {
-				allocatedPercent := (allocatedBytes / float32(poolInfo.CapacityBytes)) * 100.0
+				allocatedPercent := roundToTwoDecimals((allocatedBytes / float32(poolInfo.CapacityBytes)) * 100.0)
 				datapoints = append(datapoints, data_store.DataPoint{
 					Name:      "hardware.storage.pool.capacity.allocated_percent",
 					Timestamp: timestamp,
@@ -1669,7 +1675,7 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			
 			// Calculate and add consumed percentage if total capacity is available
 			if poolInfo.CapacityBytes > 0 {
-				usedPercent := (consumedBytes / float32(poolInfo.CapacityBytes)) * 100.0
+				usedPercent := roundToTwoDecimals((consumedBytes / float32(poolInfo.CapacityBytes)) * 100.0)
 				datapoints = append(datapoints, data_store.DataPoint{
 					Name:      "hardware.storage.pool.capacity.used_percent",
 					Timestamp: timestamp,
@@ -1684,7 +1690,7 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			datapoints = append(datapoints, data_store.DataPoint{
 				Name:      "hardware.storage.pool.capacity.free_percent",
 				Timestamp: timestamp,
-				Value:     float32(poolInfo.RemainingCapacityPercent),
+				Value:     roundToTwoDecimals(float32(poolInfo.RemainingCapacityPercent)),
 				Tags:      poolTags,
 			})
 		}

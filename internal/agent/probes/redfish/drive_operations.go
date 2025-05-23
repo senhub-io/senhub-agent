@@ -150,7 +150,7 @@ func (c *StorageCollector) collectDriveMetrics(ctx context.Context, timestamp ti
 				// Drive capacity - important for resource planning
 				if capacityBytes, ok := driveData["CapacityBytes"].(float64); ok && capacityBytes > 0 {
 					datapoints = append(datapoints, data_store.DataPoint{
-						Name:      "hardware.storage.drive.size",
+						Name:      "hardware.storage.drive.capacity.total",
 						Timestamp: timestamp,
 						Value:     float32(capacityBytes),
 						Tags:      driveTags,
