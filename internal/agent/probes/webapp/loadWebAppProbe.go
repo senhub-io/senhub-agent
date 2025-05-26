@@ -135,13 +135,19 @@ func (p *LoadWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 			fmt.Sprintf("%s_[name]", urlTagKey)),
 	}
 
-	return []data_store.DataPoint{
+	datapoints := []data_store.DataPoint{
 		{Name: "dnstime", Timestamp: time.Now(), Value: float32(metrics.dnsDone.Sub(metrics.dnsStart).Milliseconds()), Tags: tags},
 		{Name: "connecttime", Timestamp: time.Now(), Value: float32(metrics.connectDone.Sub(metrics.connectStart).Milliseconds()), Tags: tags},
 		{Name: "tlstime", Timestamp: time.Now(), Value: float32(metrics.tlsHandshakeDone.Sub(metrics.tlsHandshakeStart).Milliseconds()), Tags: tags},
 		{Name: "ttfb", Timestamp: time.Now(), Value: float32(metrics.firstByteDone.Sub(metrics.firstByteStart).Milliseconds()), Tags: tags},
 		{Name: "total_time", Timestamp: time.Now(), Value: float32(metrics.completed.Sub(metrics.dnsStart).Milliseconds()), Tags: tags},
-	}, nil
+	}
+	
+	// Create base probe for enrichment
+	baseProbe := &types.BaseProbe{}
+	enrichedDatapoints := baseProbe.EnrichDataPointsWithProbeName(datapoints, p.GetName())
+	
+	return enrichedDatapoints, nil
 }
 
 func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error) {
