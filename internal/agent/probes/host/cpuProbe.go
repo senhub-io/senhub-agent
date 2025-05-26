@@ -51,7 +51,7 @@ func NewCpuProbe(config map[string]interface{}, logger *logger.Logger) (types.Pr
 }
 
 func (p *cpuProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg"}
+	return []string{"senhub", "prtg", "http"}
 }
 
 func (p *cpuProbe) GetName() string {
