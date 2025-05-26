@@ -124,6 +124,9 @@ func (rc *RemoteConfiguration) validateStorageParams(storage StorageConfig) erro
 		if !ok || serverURL == "" {
 			return fmt.Errorf("%s storage server_url must be a non-empty string", storage.Name)
 		}
+	case "http":
+		// HTTP strategy is valid, no required parameters
+		return nil
 	default:
 		return fmt.Errorf("unknown storage strategy: %s", storage.Name)
 	}
