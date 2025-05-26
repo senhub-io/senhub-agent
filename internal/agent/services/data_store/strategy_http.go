@@ -182,6 +182,8 @@ func (h *HTTPSyncStrategy) Start() error {
 
 // AddDataPoints stores the received datapoints in cache
 func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error {
+	h.logger.Info().Int("count", len(datapoints)).Msg("🔥 HTTP Strategy - Received datapoints")
+	
 	h.cache.mu.Lock()
 	defer h.cache.mu.Unlock()
 
@@ -203,9 +205,15 @@ func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error
 			ProbeName: tags["probe_name"], // Assuming probe_name is in tags
 			Tags:      tags,
 		}
+		
+		h.logger.Debug().
+			Str("key", key).
+			Str("probe_name", tags["probe_name"]).
+			Any("value", dp.Value).
+			Msg("📊 Stored metric in cache")
 	}
 
-	h.logger.Debug().Int("count", len(datapoints)).Msg("Datapoints added to cache")
+	h.logger.Info().Int("count", len(datapoints)).Int("cache_size", len(h.cache.data)).Msg("✅ Datapoints added to HTTP cache")
 	return nil
 }
 
@@ -301,16 +309,30 @@ func (h *HTTPSyncStrategy) getMetricsForProbe(probeName string) []PRTGChannel {
 	h.cache.mu.RLock()
 	defer h.cache.mu.RUnlock()
 
+	h.logger.Info().
+		Str("requested_probe", probeName).
+		Int("cache_size", len(h.cache.data)).
+		Msg("🔍 Getting metrics for probe")
+
 	var channels []PRTGChannel
+	matchingMetrics := 0
 
 	for key, metric := range h.cache.data {
+		h.logger.Debug().
+			Str("key", key).
+			Str("metric_probe", metric.ProbeName).
+			Str("requested_probe", probeName).
+			Msg("📋 Cache entry")
+
 		// Filter by probe name
 		if metric.ProbeName != probeName {
 			continue
 		}
+		matchingMetrics++
 
 		// Skip expired metrics
 		if time.Since(metric.Timestamp) > h.cache.ttl {
+			h.logger.Debug().Str("key", key).Msg("⏰ Metric expired, skipping")
 			continue
 		}
 
@@ -320,6 +342,12 @@ func (h *HTTPSyncStrategy) getMetricsForProbe(probeName string) []PRTGChannel {
 			channels = append(channels, *channel)
 		}
 	}
+
+	h.logger.Info().
+		Str("probe", probeName).
+		Int("matching_metrics", matchingMetrics).
+		Int("channels_created", len(channels)).
+		Msg("📊 Metrics retrieval result")
 
 	return channels
 }
