@@ -1668,7 +1668,16 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 		// to the total capacity to get accurate used capacity values
 		// Note: Dell ME interface displays values in decimal TB (10^12 bytes) rather than binary TiB (2^40 bytes)
 		
-		if poolInfo.CapacityBytes > 0 && poolInfo.RemainingCapacityPercent > 0 {
+		// Debug logging for pool capacity data
+		c.logger.Debug().
+			Str("pool_id", poolInfo.ID).
+			Int64("capacity_bytes", int64(poolInfo.CapacityBytes)).
+			Int("remaining_capacity_percent", poolInfo.RemainingCapacityPercent).
+			Int64("allocated_bytes", int64(poolInfo.Capacity.Data.AllocatedBytes)).
+			Int64("consumed_bytes", int64(poolInfo.Capacity.Data.ConsumedBytes)).
+			Msg("Pool capacity data before calculation")
+		
+		if poolInfo.CapacityBytes > 0 && poolInfo.RemainingCapacityPercent >= 0 {
 			
 			// For Dell ME, the formula that correctly calculates the used capacity is:
 			// UsedBytes = CapacityBytes * (100 - RemainingCapacityPercent) / 100
@@ -1681,6 +1690,13 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			// Dell ME interface uses decimal TB (10^12 bytes) rather than binary TiB (2^40 bytes)
 			// This is the formula that matches the values displayed in the Dell ME interface
 			usedBytes := roundToTwoDecimals(float32(poolInfo.CapacityBytes) * (usedPercent / 100.0))
+			
+			// Debug logging for calculation result
+			c.logger.Debug().
+				Str("pool_id", poolInfo.ID).
+				Float32("used_percent", usedPercent).
+				Float32("used_bytes", usedBytes).
+				Msg("Pool capacity calculation result")
 			
 			// Add the used capacity metric
 			datapoints = append(datapoints, data_store.DataPoint{
@@ -1697,10 +1713,17 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 				Value:     usedPercent,
 				Tags:      poolTags,
 			})
+		} else {
+			// Debug logging when condition is not met
+			c.logger.Debug().
+				Str("pool_id", poolInfo.ID).
+				Int64("capacity_bytes", int64(poolInfo.CapacityBytes)).
+				Int("remaining_capacity_percent", poolInfo.RemainingCapacityPercent).
+				Msg("Pool capacity condition not met - skipping used capacity calculation")
 		}
 		
 		// Remaining capacity as a percentage - direct from API for accuracy
-		if poolInfo.RemainingCapacityPercent > 0 {
+		if poolInfo.RemainingCapacityPercent >= 0 {
 			datapoints = append(datapoints, data_store.DataPoint{
 				Name:      "hardware.storage.pool.capacity.free_percent",
 				Timestamp: timestamp,
