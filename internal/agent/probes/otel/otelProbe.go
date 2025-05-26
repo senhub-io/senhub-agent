@@ -208,14 +208,17 @@ func (p *otelProbe) Collect() ([]data_store.DataPoint, error) {
 	
 	p.lastCollectTime = collectionTime
 	
+	// Enrich with probe name
+	enrichedDataPoints := p.BaseProbe.EnrichDataPointsWithProbeName(allDataPoints, p.GetName())
+	
 	// Route data through callback if configured
-	if p.OnDataPoints != nil && len(allDataPoints) > 0 {
-		if err := p.OnDataPoints(allDataPoints, p); err != nil {
+	if p.OnDataPoints != nil && len(enrichedDataPoints) > 0 {
+		if err := p.OnDataPoints(enrichedDataPoints, p); err != nil {
 			return nil, fmt.Errorf("error handling data points: %v", err)
 		}
 	}
 	
-	return allDataPoints, nil
+	return enrichedDataPoints, nil
 }
 
 // OnStart is called when probe is initialized
