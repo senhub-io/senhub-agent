@@ -7,10 +7,11 @@ import (
 
 // sensitivePatterns defines regex patterns to identify sensitive data
 var sensitivePatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)"(password|passwd|pwd)"\s*:\s*"([^"]+)"`),
+	regexp.MustCompile(`(?i)"(token|api[-_]?key|secret|authentication[-_]?key)"\s*:\s*"([^"]+)"`),
 	regexp.MustCompile(`(?i)(password|passwd|pwd)["']?\s*[:=]\s*["']?([^"',\s]+)`),
 	regexp.MustCompile(`(?i)(token|api[-_]?key|secret|authentication[-_]?key)["']?\s*[:=]\s*["']?([^"',\s]+)`),
 	regexp.MustCompile(`(?i)(Authorization|Auth):\s*(Bearer|Basic)\s+([a-zA-Z0-9+/=._-]+)`),
-	regexp.MustCompile(`(?i)("[^"]*pass[^"]*":\s*")[^"]*(")`),
 }
 
 // MaskSensitiveData replaces sensitive information with asterisks
@@ -40,17 +41,23 @@ func maskValue(value string) string {
 	}
 	
 	// For longer values, preserve beginning and end
-	visible := valueLen / 4
-	if visible < 2 {
+	visible := 2 // Always show 2 characters at start and end for consistency
+	if valueLen <= 10 {
 		visible = 2
+	} else if valueLen <= 20 {
+		visible = 2
+	} else {
+		visible = 4 // For very long values, show 4 characters
 	}
-	if visible > 4 {
-		visible = 4
+	
+	if visible*2 >= valueLen {
+		return "********"
 	}
 	
 	prefix := value[:visible]
 	suffix := value[valueLen-visible:]
-	masked := strings.Repeat("*", valueLen-visible*2)
+	maskedLength := valueLen - visible*2
+	masked := strings.Repeat("*", maskedLength)
 	
 	return prefix + masked + suffix
 }
