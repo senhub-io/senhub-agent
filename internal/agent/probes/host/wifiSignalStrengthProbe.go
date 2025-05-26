@@ -79,7 +79,7 @@ func NewWifiSignalStrengthProbe(config map[string]interface{}, logger *logger.Lo
 }
 
 func (p *wifiSignalStrengthProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg"}
+	return []string{"senhub", "prtg", "http"}
 }
 
 func (m *wifiSignalStrengthProbe) GetName() string {
