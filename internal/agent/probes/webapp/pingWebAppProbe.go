@@ -61,7 +61,7 @@ func parsePingWebAppProbeConfig(config map[string]interface{}) (PingWebAppProbeC
 }
 
 func (p *PingWebAppProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg"}
+	return []string{"senhub", "prtg", "http"}
 }
 
 func (p *PingWebAppProbe) GetName() string {
