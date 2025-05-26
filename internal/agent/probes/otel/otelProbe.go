@@ -263,7 +263,7 @@ func (p *otelProbe) OnShutdown(ctx context.Context) error {
 
 // GetTargetStrategies returns the strategies this probe's data should be sent to
 func (p *otelProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg"}
+	return []string{"senhub", "prtg", "http"}
 }
 
 // Helper function to convert telemetry types to strings for logging

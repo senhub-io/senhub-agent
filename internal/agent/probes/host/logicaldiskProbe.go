@@ -28,7 +28,7 @@ type logicaldiskProbe struct {
 }
 
 func (p *logicaldiskProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg"}
+	return []string{"senhub", "prtg", "http"}
 }
 
 // newLogicalDiskCollector creates a new Storage probe instance
