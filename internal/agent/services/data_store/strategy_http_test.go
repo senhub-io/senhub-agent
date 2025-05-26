@@ -177,15 +177,23 @@ func TestHTTPSyncStrategy_AddDataPoints(t *testing.T) {
 		t.Errorf("Expected 2 cached metrics, got %d", len(strategy.cache.data))
 	}
 
-	// Check specific cached metric
-	if metric, exists := strategy.cache.data["cpu.usage_percent"]; !exists {
-		t.Error("Expected cpu.usage_percent to be cached")
-	} else {
-		if metric.Value != float32(75.5) {
-			t.Errorf("Expected cached value 75.5, got %v", metric.Value)
+	// Check specific cached metric - find it by iterating since key format changed
+	var cpuMetric *CachedMetric
+	for key, metric := range strategy.cache.data {
+		if strings.Contains(key, "cpu.usage_percent") && metric.ProbeName == "host" {
+			cpuMetric = &metric
+			break
 		}
-		if metric.ProbeName != "host" {
-			t.Errorf("Expected probe name 'host', got %s", metric.ProbeName)
+	}
+	
+	if cpuMetric == nil {
+		t.Error("Expected cpu.usage_percent metric from host probe to be cached")
+	} else {
+		if cpuMetric.Value != float32(75.5) {
+			t.Errorf("Expected cached value 75.5, got %v", cpuMetric.Value)
+		}
+		if cpuMetric.ProbeName != "host" {
+			t.Errorf("Expected probe name 'host', got %s", cpuMetric.ProbeName)
 		}
 	}
 }
