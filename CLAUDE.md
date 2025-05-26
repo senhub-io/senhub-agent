@@ -20,7 +20,7 @@
 
 ## Project Architecture
 - Probes collect metrics/events, implement types.Probe or types.ProbeWithCallback interface
-- DataStore routes data to strategies (senhub, prtg, event)
+- DataStore routes data to strategies (senhub, prtg, event, http)
 - Follow resource management best practices (proper cleanup in Shutdown)
 - Use agent config from server with proper validation
 
@@ -59,6 +59,50 @@
   4. Add integration tests with Windows event log
   5. Optimize performance for high-volume event logs
 
+### HTTP Strategy
+- OBJECTIVE: Expose agent metrics via HTTP REST API for external monitoring tools (PRTG, etc.)
+- PROGRESS:
+  - Implemented HTTP sync strategy with gorilla/mux router
+  - Created POST endpoint `/api/{agentkey}/prtg/metrics` for PRTG integration
+  - Implemented metric caching system with TTL and automatic cleanup
+  - Built modular transformer system for user-friendly metric names
+  - Created YAML-based configuration files for metric transformations:
+    - `redfish_friendly.yaml` - Redfish metrics with friendly names
+    - `host_friendly.yaml` - System metrics transformations  
+    - `otel_technical.yaml` - OTEL metrics (technical names)
+  - Added authentication via agent key in URL path
+  - Implemented PRTG JSON response format with channels, units, and limits
+  - Configuration emulation for dynamic probe settings (POST body)
+  - Added comprehensive unit tests for strategy and transformers
+  - Added strategy to data_store.go registry as "http"
+- FEATURES:
+  - Cache-based metric storage with 5-minute TTL
+  - Template-based name transformations: `thermal.cpu.{index}.temperature` → `"CPU Temperature - Processor {index}"`
+  - Configurable naming styles per probe: `{"naming": {"redfish": "friendly", "host": "friendly"}}`
+  - Health check endpoint at `/health`
+  - Graceful shutdown with proper resource cleanup
+- CONFIGURATION EXAMPLE:
+  ```json
+  {
+    "storage_config": [{
+      "name": "http",
+      "params": {
+        "port": 8080,
+        "naming": {
+          "redfish": "friendly",
+          "host": "friendly",
+          "otel": "technical"
+        }
+      }
+    }]
+  }
+  ```
+- TODO:
+  1. Add support for GET endpoints for other monitoring tools
+  2. Implement dynamic configuration updates from POST body
+  3. Add support for additional transformer patterns
+  4. Add Prometheus format support
+
 ## Development Session Information
 - WORK DIRECTORY: `/Users/matthieu/Documents/GitHub/senhub-agent/`
 - FILES CREATED:
@@ -74,9 +118,20 @@
   - `/internal/agent/probes/event/winevents/wineventsProbe.go` - Windows Event Log probe implementation
   - `/internal/agent/probes/event/winevents/wineventsProbe_windows.go` - Windows-specific implementation
   - `/internal/agent/probes/event/winevents/wineventsProbe_test.go` - Tests for Windows Event Log probe
+  - `/internal/agent/services/data_store/strategy_http.go` - HTTP strategy implementation
+  - `/internal/agent/services/data_store/strategy_http_test.go` - HTTP strategy tests
+  - `/internal/agent/services/data_store/transformers/transformer.go` - Metric name transformer system
+  - `/internal/agent/services/data_store/transformers/transformer_test.go` - Transformer tests
+  - `/internal/agent/services/data_store/transformers/redfish_friendly.yaml` - Redfish metric transformations
+  - `/internal/agent/services/data_store/transformers/host_friendly.yaml` - Host metric transformations
+  - `/internal/agent/services/data_store/transformers/otel_technical.yaml` - OTEL metric transformations
 - REGISTRY UPDATED: 
   - Added "redfish" to probe registry in `/internal/agent/probes/registry.go`
   - Added "winevents" to probe registry in `/internal/agent/probes/registry.go`
+  - Added "http" to strategy registry in `/internal/agent/services/data_store/data_store.go`
+- DEPENDENCIES ADDED:
+  - `github.com/gorilla/mux` for HTTP routing
+  - `gopkg.in/yaml.v2` for transformer configuration parsing
 
 ## Version Tagging
 - IMPORTANT: Version tags should NOT include the "v" prefix (use "0.0.82-beta" instead of "v0.0.82-beta")
