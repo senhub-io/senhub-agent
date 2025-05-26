@@ -13,9 +13,9 @@ type BaseProbe struct {
 }
 
 // GetTargetStrategies returns the default storage strategies
-// for collected metrics (senhub and prtg)
+// for collected metrics (senhub, prtg, and http)
 func (p *BaseProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg"}
+	return []string{"senhub", "prtg", "http"}
 }
 
 // SetOnDataPoints registers the callback for handling collected datapoints
