@@ -73,7 +73,12 @@ func (p *memoryProbe) Collect() ([]data_store.DataPoint, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to collect Memory metrics: %v", err)
 	}
-	return metrics, nil
+	
+	// Create base probe for enrichment
+	baseProbe := &types.BaseProbe{}
+	enrichedMetrics := baseProbe.EnrichDataPointsWithProbeName(metrics, p.GetName())
+	
+	return enrichedMetrics, nil
 }
 
 func (p *memoryProbe) OnStart(quitChannel chan struct{}) error {

@@ -235,14 +235,17 @@ func (p *redfishProbe) Collect() ([]data_store.DataPoint, error) {
 
 	// Classification removed per user request
 
+	// Enrich with probe name
+	enrichedDatapoints := p.BaseProbe.EnrichDataPointsWithProbeName(allDatapoints, p.GetName())
+
 	// Route data through callback if configured
-	if p.OnDataPoints != nil && len(allDatapoints) > 0 {
-		if err := p.OnDataPoints(allDatapoints, p); err != nil {
+	if p.OnDataPoints != nil && len(enrichedDatapoints) > 0 {
+		if err := p.OnDataPoints(enrichedDatapoints, p); err != nil {
 			return nil, fmt.Errorf("error handling data points: %v", err)
 		}
 	}
 
-	return allDatapoints, nil
+	return enrichedDatapoints, nil
 }
 
 // OnShutdown handles cleanup when probe is stopped
