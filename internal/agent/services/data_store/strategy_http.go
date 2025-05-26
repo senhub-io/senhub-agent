@@ -333,6 +333,11 @@ func (h *HTTPSyncStrategy) getMetricsForProbe(probeName string) []PRTGChannel {
 
 		// Filter by probe name
 		if metric.ProbeName != probeName {
+			h.logger.Debug().
+				Str("key", key).
+				Str("metric_probe", metric.ProbeName).
+				Str("requested_probe", probeName).
+				Msg("❌ Probe name mismatch, skipping")
 			continue
 		}
 		matchingMetrics++
@@ -343,10 +348,26 @@ func (h *HTTPSyncStrategy) getMetricsForProbe(probeName string) []PRTGChannel {
 			continue
 		}
 
+		h.logger.Debug().
+			Str("key", key).
+			Str("probe", metric.ProbeName).
+			Any("value", metric.Value).
+			Msg("✅ Processing metric for PRTG")
+
 		// Transform metric to PRTG channel
 		channel := h.transformToPRTGChannel(key, metric)
 		if channel != nil {
 			channels = append(channels, *channel)
+			h.logger.Debug().
+				Str("key", key).
+				Str("channel", channel.Channel).
+				Float64("value", channel.Value).
+				Msg("✅ Channel created successfully")
+		} else {
+			h.logger.Warn().
+				Str("key", key).
+				Any("value", metric.Value).
+				Msg("❌ Failed to create PRTG channel")
 		}
 	}
 
