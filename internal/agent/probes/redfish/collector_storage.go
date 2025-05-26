@@ -466,8 +466,33 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							})
 						}
 
-						// For volumes, use CapacityBytes directly
+						// For volumes, determine capacity using the same logic as pools
 						effectiveCapacity := volumeInfo.CapacityBytes
+						
+						// For Dell ME systems, CapacityBytes may be 0, check for AllocatedBytes in raw JSON
+						if effectiveCapacity == 0 {
+							var volumeRawData map[string]interface{}
+							if err := json.Unmarshal(volResp.Raw, &volumeRawData); err == nil {
+								if capacityRaw, ok := volumeRawData["Capacity"]; ok {
+									if capacity, ok := capacityRaw.(map[string]interface{}); ok {
+										if dataRaw, ok := capacity["Data"]; ok {
+											if data, ok := dataRaw.(map[string]interface{}); ok {
+												if allocatedBytes, ok := data["AllocatedBytes"]; ok {
+													if allocated, ok := allocatedBytes.(float64); ok && allocated > 0 {
+														effectiveCapacity = int64(allocated)
+														c.logger.Debug().
+															Str("volume_id", volumeInfo.ID).
+															Int64("capacity_bytes", volumeInfo.CapacityBytes).
+															Int64("allocated_bytes", effectiveCapacity).
+															Msg("Dell ME volume: Using AllocatedBytes as effective capacity")
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
 						
 						// Volume capacity
 						if effectiveCapacity > 0 {
