@@ -422,9 +422,45 @@ func (h *HTTPSyncStrategy) transformMetricName(key string, metric CachedMetric) 
 
 // generateMetricKey creates a unique key for a datapoint
 func (h *HTTPSyncStrategy) generateMetricKey(dp datapoint.DataPoint) string {
-	// For now, use Name field as key
-	// TODO: Include relevant tags to create unique keys
-	return dp.Name
+	// Start with the metric name
+	key := dp.Name
+	
+	// Add discriminant tags to make the key unique
+	var keyParts []string
+	keyParts = append(keyParts, key)
+	
+	// Convert tags to map for easier access
+	tagMap := make(map[string]string)
+	for _, tag := range dp.Tags {
+		tagMap[tag.Key] = tag.Value
+	}
+	
+	// Add important tags that help differentiate metrics
+	discriminantTags := []string{
+		"probe_name",   // Different probes
+		"instance",     // Different instances (CPU cores, disks, etc.)
+		"device",       // Device names
+		"endpoint",     // Different endpoints
+		"url",          // Different URLs
+		"interface",    // Network interfaces
+		"drive",        // Storage drives
+		"volume",       // Volume names
+		"sensor",       // Sensor names
+		"component",    // Component names
+		"chassis",      // Chassis IDs
+		"system",       // System IDs
+		"node",         // Node names
+	}
+	
+	// Add tag values to key if they exist
+	for _, tagKey := range discriminantTags {
+		if value, exists := tagMap[tagKey]; exists && value != "" {
+			keyParts = append(keyParts, fmt.Sprintf("%s=%s", tagKey, value))
+		}
+	}
+	
+	// Join all parts with dots
+	return strings.Join(keyParts, ".")
 }
 
 // DebugCacheEntry represents a cache entry for debug display
