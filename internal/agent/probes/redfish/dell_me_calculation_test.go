@@ -51,3 +51,22 @@ func TestDellMEStorageCalculation(t *testing.T) {
 	//
 	// For example: 15.35TB (decimal) * 34% = 5.22TB, which is the expected value
 }
+
+func TestDellMEFullPoolCalculation(t *testing.T) {
+	// Test case for a full pool (0% remaining)
+	totalCapacityBytes := float32(1000000000000) // 1TB
+	remainingPercent := float32(0) // Pool is full
+	
+	// Calculate used percentage
+	usedPercent := 100.0 - remainingPercent
+	
+	// Calculate used bytes
+	usedBytes := totalCapacityBytes * (usedPercent / 100.0)
+	usedBytesRounded := roundToTwoDecimals(usedBytes)
+	
+	t.Logf("Full pool test - Used bytes: %.2f, Expected: %.2f", usedBytesRounded, totalCapacityBytes)
+	
+	// When pool is full, used capacity should equal total capacity
+	assert.Equal(t, totalCapacityBytes, usedBytesRounded, "Full pool should show 100% usage")
+	assert.Equal(t, float32(100.0), usedPercent, "Used percent should be 100%")
+}

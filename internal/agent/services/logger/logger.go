@@ -153,13 +153,15 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 func buildDevelopmentLogger(_ *cliArgs.ParsedArgs, config *LoggerConfig) *Logger {
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
-	// Default writer is console
+	// Default writer is console with masking
 	consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr}
-	var writer io.Writer = consoleWriter
+	var writer io.Writer = NewMaskingWriter(consoleWriter)
 
-	// If debug log shipper is configured, create a multi-writer
+	// If debug log shipper is configured, create a multi-writer with masking
 	if config.logShipper != nil {
-		writer = zerolog.MultiLevelWriter(consoleWriter, config.logShipper)
+		// Apply masking to the log shipper
+		maskedShipper := NewMaskingWriter(config.logShipper)
+		writer = zerolog.MultiLevelWriter(writer, maskedShipper)
 		log.Printf("Debug log shipping enabled in development mode")
 	}
 
@@ -176,6 +178,7 @@ func buildDevelopmentLogger(_ *cliArgs.ParsedArgs, config *LoggerConfig) *Logger
 // - Compression of rotated logs
 // - Maximum of 5 backup files
 // - 30-day retention period
+// - Masking of sensitive information
 // If verbose mode is enabled, it will also output to stderr alongside the file
 func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logger {
 	logPath := getLogPath()
@@ -189,17 +192,18 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 		Compress:   true,    // Enable compression of rotated logs
 	}
 
-	// Define writers - start with log file
-	writers := []io.Writer{logRotator}
+	// Define masked writers - start with log file
+	writers := []io.Writer{NewMaskingWriter(logRotator)}
 
 	// Add console output if verbose
 	if args.Verbose {
-		writers = append(writers, zerolog.ConsoleWriter{Out: os.Stderr})
+		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr}
+		writers = append(writers, NewMaskingWriter(consoleWriter))
 	}
 
 	// Add debug log shipper if configured
 	if config.logShipper != nil {
-		writers = append(writers, config.logShipper)
+		writers = append(writers, NewMaskingWriter(config.logShipper))
 		log.Printf("Debug log shipping enabled in production mode")
 	}
 
