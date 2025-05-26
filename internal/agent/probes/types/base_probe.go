@@ -3,6 +3,7 @@ package types
 
 import (
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/tags"
 )
 
 // BaseProbe provides common probe functionality that can be embedded
@@ -21,4 +22,23 @@ func (p *BaseProbe) GetTargetStrategies() []string {
 // SetOnDataPoints registers the callback for handling collected datapoints
 func (p *BaseProbe) SetOnDataPoints(callback data_store.AddCallback) {
 	p.OnDataPoints = callback
+}
+
+// EnrichDataPointsWithProbeName adds the probe name tag to all datapoints
+func (p *BaseProbe) EnrichDataPointsWithProbeName(datapoints []data_store.DataPoint, probeName string) []data_store.DataPoint {
+	enrichedDataPoints := make([]data_store.DataPoint, len(datapoints))
+	
+	for i, dp := range datapoints {
+		// Copy the datapoint
+		enrichedDataPoints[i] = dp
+		
+		// Add probe_name tag
+		enrichedDataPoints[i].Tags = append([]tags.Tag{}, dp.Tags...)
+		enrichedDataPoints[i].Tags = append(enrichedDataPoints[i].Tags, tags.Tag{
+			Key:   "probe_name",
+			Value: probeName,
+		})
+	}
+	
+	return enrichedDataPoints
 }
