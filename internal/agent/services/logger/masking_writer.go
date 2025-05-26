@@ -28,14 +28,26 @@ func (w *MaskingWriter) Write(p []byte) (n int, err error) {
 		if err != nil {
 			// In case of error, mask the raw string
 			maskedStr := MaskSensitiveData(string(p))
-			return w.out.Write([]byte(maskedStr))
+			_, writeErr := w.out.Write([]byte(maskedStr))
+			if writeErr != nil {
+				return 0, writeErr
+			}
+			return len(p), nil // Return original input length
 		}
-		return w.out.Write(maskedJSON)
+		_, writeErr := w.out.Write(maskedJSON)
+		if writeErr != nil {
+			return 0, writeErr
+		}
+		return len(p), nil // Return original input length
 	}
 	
 	// If it's not JSON, treat as string
 	maskedStr := MaskSensitiveData(string(p))
-	return w.out.Write([]byte(maskedStr))
+	_, writeErr := w.out.Write([]byte(maskedStr))
+	if writeErr != nil {
+		return 0, writeErr
+	}
+	return len(p), nil // Return original input length
 }
 
 // maskJSONFields recursively traverses a JSON object and masks sensitive fields
