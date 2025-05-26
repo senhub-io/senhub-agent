@@ -1,0 +1,57 @@
+# Host Metrics Friendly Naming Patterns for PRTG
+patterns:
+  # CPU metrics
+  "cpu.usage_percent": "CPU Usage"
+  "cpu.system_percent": "CPU System Time"
+  "cpu.user_percent": "CPU User Time"
+  "cpu.idle_percent": "CPU Idle Time"
+  "cpu.iowait_percent": "CPU I/O Wait"
+  "cpu.load_1m": "CPU Load - 1 minute"
+  "cpu.load_5m": "CPU Load - 5 minutes" 
+  "cpu.load_15m": "CPU Load - 15 minutes"
+  
+  # Memory metrics
+  "memory.used_percent": "Memory Usage"
+  "memory.available_percent": "Memory Available"
+  "memory.used_bytes": "Memory Used"
+  "memory.available_bytes": "Memory Available"
+  "memory.total_bytes": "Memory Total"
+  "memory.cached_bytes": "Memory Cached"
+  "memory.buffers_bytes": "Memory Buffers"
+  
+  # Disk metrics
+  "disk.{device}.used_percent": "Disk Usage - {device}"
+  "disk.{device}.free_percent": "Disk Free - {device}"
+  "disk.{device}.used_bytes": "Disk Used Space - {device}"
+  "disk.{device}.free_bytes": "Disk Free Space - {device}"
+  "disk.{device}.total_bytes": "Disk Total Space - {device}"
+  "disk.{device}.read_iops": "Disk Read IOPS - {device}"
+  "disk.{device}.write_iops": "Disk Write IOPS - {device}"
+  "disk.{device}.read_bps": "Disk Read Throughput - {device}"
+  "disk.{device}.write_bps": "Disk Write Throughput - {device}"
+  
+  # Network metrics
+  "network.{interface}.rx_bytes": "Network Received - {interface}"
+  "network.{interface}.tx_bytes": "Network Transmitted - {interface}"
+  "network.{interface}.rx_packets": "Network Packets In - {interface}"
+  "network.{interface}.tx_packets": "Network Packets Out - {interface}"
+  "network.{interface}.rx_errors": "Network Errors In - {interface}"
+  "network.{interface}.tx_errors": "Network Errors Out - {interface}"
+  "network.{interface}.speed_mbps": "Network Speed - {interface}"
+  
+  # System metrics
+  "system.uptime_seconds": "System Uptime"
+  "system.processes_total": "Total Processes"
+  "system.processes_running": "Running Processes"
+  "system.processes_sleeping": "Sleeping Processes"
+
+# Unit mappings
+units:
+  percentage: "%"
+  bytes: "Bytes"
+  seconds: "s"
+  count: "#"
+  load: ""
+  iops: "IOPS"
+  bps: "Bytes/s"
+  mbps: "Mbps"

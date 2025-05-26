@@ -273,6 +273,9 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 	case "event":
 		localLogger.Debug().Msg("Initializing event strategy")
 		strategy = NewEventSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger)
+	case "http":
+		localLogger.Debug().Msg("Initializing http strategy")
+		strategy = NewHTTPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger)
 	default:
 		localLogger.Error().
 			Any("params", strategyConfig.Params).

@@ -1,0 +1,18 @@
+# OTEL Technical Naming Patterns (keeps original metric names)
+patterns:
+  # Keep OTEL metrics as-is for technical users
+  "otel.{service}.{metric}": "{service} - {metric}"
+  "http.server.duration": "HTTP Server Duration"
+  "http.client.duration": "HTTP Client Duration"
+  "system.cpu.utilization": "CPU Utilization"
+  "system.memory.utilization": "Memory Utilization"
+  "system.disk.io": "Disk I/O"
+  "system.network.io": "Network I/O"
+
+# Unit mappings for OTEL metrics
+units:
+  duration: "ms"
+  utilization: "%"
+  io: "Bytes/s"
+  count: "#"
+  gauge: ""
