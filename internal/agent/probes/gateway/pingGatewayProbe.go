@@ -31,7 +31,7 @@ func NewPingGatewayProbe(config map[string]interface{}, logger *logger.Logger) (
 }
 
 func (p *PingGatewayProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg"}
+	return []string{"senhub", "prtg", "http"}
 }
 
 func (p *PingGatewayProbe) GetName() string {

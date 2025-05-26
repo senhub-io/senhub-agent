@@ -103,7 +103,7 @@ func parseLoadWebAppProbeConfig(config map[string]interface{}) (LoadWebAppProbeC
 }
 
 func (p *LoadWebAppProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg"}
+	return []string{"senhub", "prtg", "http"}
 }
 
 func (p *LoadWebAppProbe) GetName() string {
