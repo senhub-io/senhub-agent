@@ -1,11 +1,44 @@
-# Redfish Metrics Guide for PowerVault ME5024
+# Redfish Metrics Guide
 
-Ce document décrit les métriques améliorées disponibles via la sonde Redfish pour les systèmes de stockage PowerVault ME5024 et autres systèmes Dell EMC compatibles.
+Ce document décrit les métriques collectées via la probe Redfish pour les systèmes compatibles avec l'API Redfish (Dell PowerVault ME5024, Dell iDRAC, HPE iLO, Lenovo XClarity, Cisco UCS, etc.).
+
+## Configuration de la probe
+
+### Configuration simple (serveur unique)
+```yaml
+probes:
+  redfish:  # Le nom de section définit le type de probe
+    enabled: true
+    endpoint: "https://your-server.example.com"
+    username: "admin"
+    password: "password"
+    interval: 300
+```
+
+### Configuration multiple (plusieurs serveurs)
+```yaml
+probes:
+  storage_dell:  # Nom personnalisé
+    probe_type: redfish  # Type explicite requis pour multiples instances
+    enabled: true
+    endpoint: "https://dell-server.example.com"
+    username: "admin"
+    password: "password"
+    
+  storage_hpe:   # Nom personnalisé
+    probe_type: redfish  # Type explicite requis pour multiples instances  
+    enabled: true
+    endpoint: "https://hpe-server.example.com"
+    username: "admin"
+    password: "password"
+```
+
+**Note importante** : La probe détecte automatiquement le type de matériel (Dell, HPE, Lenovo, Cisco) via l'API Redfish et adapte la collecte de métriques en conséquence. Aucune configuration spécifique au vendor n'est requise.
 
 ## Métriques de santé
 
 ### Contrôleurs de stockage
-- `hardware.storage.controller.health` - État de santé du contrôleur (0=Critical, 1=Warning, 2=OK)
+- `hardware.storage.controller.health` - État de santé du contrôleur (0=OK, 1=Warning, 2=Critical, 3=Unknown)
 - `hardware.storage.redundancy.health` - État de santé de la redondance des contrôleurs
 - `hardware.storage.redundancy.controllers_active` - Nombre de contrôleurs actifs
 - `hardware.storage.redundancy.controllers_min` - Nombre minimum de contrôleurs requis
@@ -48,6 +81,8 @@ Ce document décrit les métriques améliorées disponibles via la sonde Redfish
 - `hardware.storage.pool.capacity.committed` - Espace total engagé (en octets)
 - `hardware.storage.pool.capacity.overcommit` - Espace sur-alloué en thin provisioning (en octets)
 
+**Note importante pour Dell ME**: Pour les systèmes Dell ME (PowerVault ME5024), les pools et volumes peuvent retourner `CapacityBytes=0`. Dans ce cas, l'agent utilise automatiquement `Capacity.Data.AllocatedBytes` comme capacité effective.
+
 ### Volumes
 - `hardware.storage.volume.capacity.total` - Capacité totale du volume (en octets)
 - `hardware.storage.volume.capacity.allocated` - Espace alloué au volume (en octets)
@@ -56,6 +91,8 @@ Ce document décrit les métriques améliorées disponibles via la sonde Redfish
 - `hardware.storage.volume.capacity.used_percent` - Pourcentage d'espace utilisé
 - `hardware.storage.volume.capacity.free` - Espace libre (en octets)
 - `hardware.storage.volume.capacity.free_percent` - Pourcentage d'espace libre
+
+**Note importante pour Dell ME**: Pour les volumes Dell ME, si `CapacityBytes=0`, l'agent utilise `Capacity.Data.AllocatedBytes` extrait du JSON brut de l'API Redfish. Cette logique garantit des métriques précises même quand l'API ne retourne pas `CapacityBytes` directement.
 
 ### Disques
 - `hardware.storage.drive.capacity.total` - Capacité totale du disque (en octets)
@@ -160,6 +197,33 @@ Ce document décrit les métriques améliorées disponibles via la sonde Redfish
 - Utiliser `hardware.logs.entries.last_24h` pour suivre l'activité récente du système
 - Comparer les tendances entre `hardware.logs.entries.last_24h` et `hardware.logs.entries.last_7d` pour identifier les pics d'événements
 - Utiliser `hardware.eventservice.health` pour vérifier que le service d'événements fonctionne correctement
+
+## Débogage et résolution de problèmes
+
+### Logs de debug pour Dell ME
+
+L'agent génère automatiquement des logs de debug détaillés pour les systèmes Dell ME afin de tracer les calculs de capacité :
+
+```
+Dell ME pool: Using AllocatedBytes as effective capacity pool_id=A capacity_bytes=0 allocated_bytes=15357952425984 effective_capacity=15357952425984
+Dell ME volume: Using AllocatedBytes as effective capacity volume_id=VD1-ME5024 capacity_bytes=0 allocated_bytes=5219072606208
+```
+
+### Vérification des métriques
+
+Pour vérifier que les métriques sont correctement calculées :
+
+1. **Pools** : Vérifiez que `hardware.storage.pool.capacity.used` correspond au pourcentage affiché sur l'interface du ME5024
+2. **Volumes** : Vérifiez que `hardware.storage.volume.capacity.allocated` n'est plus 0.01 TB mais reflète la vraie taille du volume
+3. **Cohérence** : Le total des volumes alloués doit correspondre à l'espace utilisé dans le pool
+
+### Problèmes connus et solutions
+
+**Problème** : Métriques `allocated` affichent 0.01 TB au lieu de la vraie capacité
+**Solution** : Mise à jour vers la version 0.0.86-beta qui corrige le calcul Dell ME
+
+**Problème** : Logs "zerolog: could not write event: short write"
+**Solution** : Corrigé dans la version 0.0.86-beta avec le masquage amélioré des mots de passe
 
 ## Extraction des données
 
