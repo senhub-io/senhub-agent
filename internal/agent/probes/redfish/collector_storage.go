@@ -466,12 +466,15 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							})
 						}
 
+						// For volumes, use CapacityBytes directly
+						effectiveCapacity := volumeInfo.CapacityBytes
+						
 						// Volume capacity
-						if volumeInfo.CapacityBytes > 0 {
+						if effectiveCapacity > 0 {
 							datapoints = append(datapoints, data_store.DataPoint{
 								Name:      "hardware.storage.volume.capacity.total",
 								Timestamp: timestamp,
-								Value:     float32(volumeInfo.CapacityBytes),
+								Value:     float32(effectiveCapacity),
 								Tags:      volumeTags,
 							})
 
@@ -497,7 +500,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 														
 														
 														// Calculate free space
-														freeSpace := roundToTwoDecimals(float32(volumeInfo.CapacityBytes) - float32(providedCapacity))
+														freeSpace := roundToTwoDecimals(float32(effectiveCapacity) - float32(providedCapacity))
 														datapoints = append(datapoints, data_store.DataPoint{
 															Name:      "hardware.storage.volume.capacity.free",
 															Timestamp: timestamp,
@@ -529,7 +532,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 														
 														
 														// Calculate free space
-														freeSpace := roundToTwoDecimals(float32(volumeInfo.CapacityBytes) - float32(usedBytes))
+														freeSpace := roundToTwoDecimals(float32(effectiveCapacity) - float32(usedBytes))
 														datapoints = append(datapoints, data_store.DataPoint{
 															Name:      "hardware.storage.volume.capacity.free",
 															Timestamp: timestamp,
@@ -546,8 +549,8 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 														usedPercent := 100.0 - float32(remainingPercent)
 														
 														// Calculate and add used and free space based on percentage
-														usedBytes := float32(volumeInfo.CapacityBytes) * (usedPercent / 100.0)
-														freeBytes := float32(volumeInfo.CapacityBytes) - usedBytes
+														usedBytes := float32(effectiveCapacity) * (usedPercent / 100.0)
+														freeBytes := float32(effectiveCapacity) - usedBytes
 														
 														datapoints = append(datapoints, data_store.DataPoint{
 															Name:      "hardware.storage.volume.capacity.used",
@@ -585,7 +588,7 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 																})
 																
 																// Calculate free space
-																freeSpace := roundToTwoDecimals(float32(volumeInfo.CapacityBytes) - float32(usedBytes))
+																freeSpace := roundToTwoDecimals(float32(effectiveCapacity) - float32(usedBytes))
 																
 																datapoints = append(datapoints, data_store.DataPoint{
 																	Name:      "hardware.storage.volume.capacity.free",
@@ -790,13 +793,28 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 					Tags:      volumeTags,
 				})
 
+				// Debug logging for volume capacity data
+				c.logger.Debug().
+					Str("volume_id", volumeInfo.ID).
+					Int64("capacity_bytes", volumeInfo.CapacityBytes).
+					Int64("allocated_bytes", int64(volumeInfo.Capacity.Data.AllocatedBytes)).
+					Int64("consumed_bytes", int64(volumeInfo.Capacity.Data.ConsumedBytes)).
+					Int("remaining_capacity_percent", volumeInfo.RemainingCapacityPercent).
+					Msg("Volume capacity data before calculation")
+				
+				// For Dell ME storage, use AllocatedBytes if CapacityBytes is 0
+				effectiveVolumeCapacity := volumeInfo.CapacityBytes
+				if effectiveVolumeCapacity == 0 && volumeInfo.Capacity.Data.AllocatedBytes > 0 {
+					effectiveVolumeCapacity = volumeInfo.Capacity.Data.AllocatedBytes
+				}
+				
 				// Volume capacity metrics - core metrics for capacity planning
-				if volumeInfo.CapacityBytes > 0 {
+				if effectiveVolumeCapacity > 0 {
 					// Total capacity
 					datapoints = append(datapoints, data_store.DataPoint{
 						Name:      "hardware.storage.volume.capacity.total",
 						Timestamp: timestamp,
-						Value:     float32(volumeInfo.CapacityBytes),
+						Value:     float32(effectiveVolumeCapacity),
 						Tags:      volumeTags,
 					})
 					
@@ -812,7 +830,7 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 						})
 						
 						// Calculate allocated percentage
-						allocatedPercent := roundToTwoDecimals((allocatedBytes / float32(volumeInfo.CapacityBytes)) * 100.0)
+						allocatedPercent := roundToTwoDecimals((allocatedBytes / float32(effectiveVolumeCapacity)) * 100.0)
 						datapoints = append(datapoints, data_store.DataPoint{
 							Name:      "hardware.storage.volume.capacity.allocated_percent",
 							Timestamp: timestamp,
@@ -833,7 +851,7 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 						})
 						
 						// Calculate used percentage
-						usedPercent := roundToTwoDecimals((consumedBytes / float32(volumeInfo.CapacityBytes)) * 100.0)
+						usedPercent := roundToTwoDecimals((consumedBytes / float32(effectiveVolumeCapacity)) * 100.0)
 						datapoints = append(datapoints, data_store.DataPoint{
 							Name:      "hardware.storage.volume.capacity.used_percent",
 							Timestamp: timestamp,
@@ -852,7 +870,7 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 						})
 						
 						// Calculate free bytes based on percentage
-						freeBytes := roundToTwoDecimals(float32(volumeInfo.CapacityBytes) * (float32(volumeInfo.RemainingCapacityPercent) / 100.0))
+						freeBytes := roundToTwoDecimals(float32(effectiveVolumeCapacity) * (float32(volumeInfo.RemainingCapacityPercent) / 100.0))
 						datapoints = append(datapoints, data_store.DataPoint{
 							Name:      "hardware.storage.volume.capacity.free",
 							Timestamp: timestamp,
@@ -952,12 +970,12 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 						if oemMap, ok := oemData.(map[string]interface{}); ok {
 							// Process Dell-specific OEM data
 							if dellData, ok := oemMap["Dell"]; ok {
-								c.processVolumeOemDellData(dellData, volumeInfo.CapacityBytes, volumeTags, timestamp, &datapoints)
+								c.processVolumeOemDellData(dellData, effectiveVolumeCapacity, volumeTags, timestamp, &datapoints)
 							}
 							
 							// Process HPE-specific OEM data
 							if hpeData, ok := oemMap["Hpe"]; ok {
-								c.processVolumeOemHpeData(hpeData, volumeInfo.CapacityBytes, volumeTags, timestamp, &datapoints)
+								c.processVolumeOemHpeData(hpeData, effectiveVolumeCapacity, volumeTags, timestamp, &datapoints)
 							}
 						}
 					}
@@ -1677,19 +1695,23 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			Int64("consumed_bytes", int64(poolInfo.Capacity.Data.ConsumedBytes)).
 			Msg("Pool capacity data before calculation")
 		
-		if poolInfo.CapacityBytes > 0 && poolInfo.RemainingCapacityPercent >= 0 {
+		// For Dell ME storage, always use AllocatedBytes as the effective capacity
+		// CapacityBytes is often 0 or incorrect, AllocatedBytes is the real pool capacity
+		effectiveCapacity := uint64(poolInfo.Capacity.Data.AllocatedBytes)
+		
+		if effectiveCapacity > 0 && poolInfo.RemainingCapacityPercent >= 0 {
 			
 			// For Dell ME, the formula that correctly calculates the used capacity is:
-			// UsedBytes = CapacityBytes * (100 - RemainingCapacityPercent) / 100
+			// UsedBytes = EffectiveCapacity * (100 - RemainingCapacityPercent) / 100
 			// This applies the remaining percentage to the total capacity directly
 			
 			// Calculate used capacity percentage based on RemainingCapacityPercent
 			usedPercent := roundToTwoDecimals(100.0 - float32(poolInfo.RemainingCapacityPercent))
 			
-			// Calculate used bytes by applying the used percentage to the total capacity
+			// Calculate used bytes by applying the used percentage to the effective capacity
 			// Dell ME interface uses decimal TB (10^12 bytes) rather than binary TiB (2^40 bytes)
 			// This is the formula that matches the values displayed in the Dell ME interface
-			usedBytes := roundToTwoDecimals(float32(poolInfo.CapacityBytes) * (usedPercent / 100.0))
+			usedBytes := roundToTwoDecimals(float32(effectiveCapacity) * (usedPercent / 100.0))
 			
 			// Debug logging for calculation result
 			c.logger.Debug().
@@ -1717,7 +1739,7 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			// Debug logging when condition is not met
 			c.logger.Debug().
 				Str("pool_id", poolInfo.ID).
-				Int64("capacity_bytes", int64(poolInfo.CapacityBytes)).
+				Int64("effective_capacity", int64(effectiveCapacity)).
 				Int("remaining_capacity_percent", poolInfo.RemainingCapacityPercent).
 				Msg("Pool capacity condition not met - skipping used capacity calculation")
 		}
