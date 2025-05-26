@@ -197,18 +197,22 @@ func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error
 			tags[tag.Key] = tag.Value
 		}
 
+		// Get probe name from tags
+		probeName := tags["probe_name"]
+
 		// Store in cache
 		h.cache.data[key] = CachedMetric{
 			Value:     dp.Value,
 			Timestamp: time.Now(),
 			Unit:      "", // DataPoint doesn't have Unit field yet
-			ProbeName: tags["probe_name"], // Assuming probe_name is in tags
+			ProbeName: probeName,
 			Tags:      tags,
 		}
 		
 		h.logger.Debug().
 			Str("key", key).
-			Str("probe_name", tags["probe_name"]).
+			Str("probe_name_tag", tags["probe_name"]).
+			Str("final_probe_name", probeName).
 			Any("value", dp.Value).
 			Msg("📊 Stored metric in cache")
 	}

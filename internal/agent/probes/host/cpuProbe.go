@@ -73,9 +73,10 @@ func (p *cpuProbe) Collect() ([]data_store.DataPoint, error) {
 		return nil, fmt.Errorf("failed to collect CPU metrics: %v", err)
 	}
 
-	// Le probe s'auto-passe comme StrategyRouter
+	// Enrich datapoints with probe name and send to strategies
 	if p.OnDataPoints != nil {
-		if err := p.OnDataPoints(metrics, p); err != nil {
+		enrichedMetrics := p.EnrichDataPointsWithProbeName(metrics, "cpu")
+		if err := p.OnDataPoints(enrichedMetrics, p); err != nil {
 			return nil, fmt.Errorf("error handling data points: %v", err)
 		}
 	}
