@@ -99,10 +99,16 @@ func (p *PingWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 			fmt.Sprintf("%s_[name]", urlTagKey)),
 	}
 
-	return []data_store.DataPoint{
+	datapoints := []data_store.DataPoint{
 		{Name: "averageLatency", Timestamp: time.Now(), Value: float32(averageLatency), Tags: tags},
 		{Name: "packetLoss", Timestamp: time.Now(), Value: float32(packetLoss), Tags: tags},
-	}, nil
+	}
+	
+	// Create base probe for enrichment
+	baseProbe := &types.BaseProbe{}
+	enrichedDatapoints := baseProbe.EnrichDataPointsWithProbeName(datapoints, p.GetName())
+	
+	return enrichedDatapoints, nil
 }
 
 func (p *PingWebAppProbe) resolveHostname(rawURL string) (string, error) {
