@@ -246,6 +246,9 @@ func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 	// Health check endpoint
 	router.HandleFunc("/health", h.handleHealth).Methods("GET")
 
+	// Debug endpoint to view cache contents (with agentkey authentication)
+	router.HandleFunc("/api/{agentkey}/debug/cache", h.handleDebugCache).Methods("GET")
+
 	return router
 }
 
@@ -422,6 +425,91 @@ func (h *HTTPSyncStrategy) generateMetricKey(dp datapoint.DataPoint) string {
 	// For now, use Name field as key
 	// TODO: Include relevant tags to create unique keys
 	return dp.Name
+}
+
+// DebugCacheEntry represents a cache entry for debug display
+type DebugCacheEntry struct {
+	Key       string            `json:"key"`
+	Value     interface{}       `json:"value"`
+	Timestamp time.Time         `json:"timestamp"`
+	Unit      string            `json:"unit"`
+	ProbeName string            `json:"probe_name"`
+	Tags      map[string]string `json:"tags"`
+	Age       string            `json:"age"`
+}
+
+// DebugCacheResponse represents the debug cache response
+type DebugCacheResponse struct {
+	TotalEntries int                `json:"total_entries"`
+	CacheTTL     string             `json:"cache_ttl"`
+	Entries      []DebugCacheEntry  `json:"entries"`
+	Summary      map[string]int     `json:"summary"`
+}
+
+// handleDebugCache handles GET requests for cache debugging
+func (h *HTTPSyncStrategy) handleDebugCache(w http.ResponseWriter, r *http.Request) {
+	// Extract and validate agentkey from path
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+
+	if providedKey != h.agentKey {
+		h.logger.Warn().Str("provided_key", providedKey).Msg("Invalid agent key for debug endpoint")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	h.logger.Debug().Msg("Debug cache request received")
+
+	h.cache.mu.RLock()
+	defer h.cache.mu.RUnlock()
+
+	now := time.Now()
+	entries := make([]DebugCacheEntry, 0, len(h.cache.data))
+	summary := make(map[string]int)
+
+	// Convert cache data to debug format
+	for key, metric := range h.cache.data {
+		age := now.Sub(metric.Timestamp)
+		
+		entry := DebugCacheEntry{
+			Key:       key,
+			Value:     metric.Value,
+			Timestamp: metric.Timestamp,
+			Unit:      metric.Unit,
+			ProbeName: metric.ProbeName,
+			Tags:      metric.Tags,
+			Age:       age.String(),
+		}
+		entries = append(entries, entry)
+
+		// Count entries by probe name
+		probeName := metric.ProbeName
+		if probeName == "" {
+			probeName = "unknown"
+		}
+		summary[probeName]++
+	}
+
+	response := DebugCacheResponse{
+		TotalEntries: len(entries),
+		CacheTTL:     h.cache.ttl.String(),
+		Entries:      entries,
+		Summary:      summary,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to encode debug cache response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Debug().
+		Int("total_entries", len(entries)).
+		Any("summary", summary).
+		Msg("Debug cache response sent")
 }
 
 // cleanup removes expired metrics from cache
