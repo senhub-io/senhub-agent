@@ -252,6 +252,16 @@ Here's a sample configuration:
         "server_url": "https://eu-west-1.intake.senhub.io",
         "sync_interval": "30s"
       }
+    },
+    {
+      "name": "http",
+      "params": {
+        "port": 8080,
+        "naming": {
+          "redfish": "friendly",
+          "host": "friendly"
+        }
+      }
     }
   ]
 }
@@ -578,6 +588,74 @@ Manages event data collected by event-oriented probes.
 - **Optional Parameters**
   - `queue_size`: Size of the event queue (default: 1000)
   - `sync_interval`: How frequently to sync events (default: "30s")
+
+### HTTP Storage
+Exposes agent metrics via HTTP REST API for external monitoring tools like PRTG Network Monitor.
+
+- **Configuration**
+  ```json
+  {
+    "name": "http",
+    "params": {
+      "port": 8080,
+      "naming": {
+        "redfish": "friendly",
+        "host": "friendly",
+        "otel": "technical"
+      }
+    }
+  }
+  ```
+- **Optional Parameters**
+  - `port`: HTTP server port (default: 8080)
+  - `naming`: Metric name transformation styles per probe type
+    - `friendly`: User-friendly names (e.g., "CPU Temperature - Processor 0")
+    - `technical`: Technical names (e.g., "thermal.cpu.0.temperature")
+    - `prtg_standard`: PRTG-optimized naming conventions
+
+- **Endpoints**
+  - `POST /api/{agentkey}/prtg/metrics`: PRTG-compatible endpoint for metric retrieval
+  - `GET /health`: Health check endpoint
+
+- **Features**
+  - **Authentication**: Agent key validation in URL path
+  - **Caching**: 5-minute TTL for metrics with automatic cleanup
+  - **Transformations**: Configurable metric name transformations per probe
+  - **PRTG Format**: JSON response with channels, values, units, and limits
+  - **Configuration Emulation**: Dynamic probe configuration via POST body (ready for future implementation)
+
+- **PRTG Integration Example**
+  ```bash
+  curl -X POST "http://agent-host:8080/api/your-agent-key/prtg/metrics" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "probe": "redfish",
+      "target": "server1",
+      "config": {
+        "host": "192.168.1.100",
+        "username": "admin",
+        "password": "secret"
+      }
+    }'
+  ```
+
+- **Response Format**
+  ```json
+  {
+    "prtg": {
+      "result": [
+        {
+          "channel": "CPU Temperature - Processor 0",
+          "value": 65.2,
+          "unit": "°C",
+          "limitmode": 1,
+          "limitmaxwarning": 70,
+          "limitmaxerror": 85
+        }
+      ]
+    }
+  }
+  ```
 
 ## Agent Configuration
 
