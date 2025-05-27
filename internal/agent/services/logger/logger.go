@@ -160,6 +160,7 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 			}
 			logger.Info().
 				Strs("modules", args.DebugModules).
+				Int("module_count", len(args.DebugModules)).
 				Msg("Selective debug mode enabled - debug logging activated for specific modules only")
 		} else {
 			// Full verbose mode: enable debug globally (backward compatibility)
