@@ -44,6 +44,11 @@ type agent struct {
 // NewAgent initializes new agent with required services
 func NewAgent() Agent {
 	args := agentCliArgs.MustParse()
+	return NewAgentWithArgs(args)
+}
+
+// NewAgentWithArgs initializes new agent with provided CLI arguments
+func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 	logger := logger.NewLogger(args)
 	logger.Debug().Any("args", args).Msg("Agent configuration")
 

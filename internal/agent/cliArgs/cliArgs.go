@@ -48,6 +48,7 @@ type StartSubcommandArgs struct {
 	AuthenticationKey     string            `arg:"required,--authentication-key,env:SENHUB_KEY" help:"The authentication key for the agent"`
 	ServerUrl             string            `arg:"--server-url,env:SENHUB_SERVER_URL" help:"The URL of senhub server to connect to"`
 	Verbose               bool              `arg:"-v,--verbose" help:"Enable verbose logging"`
+	DebugModules          []string          `arg:"--debug-modules" help:"Enable debug logging only for specific modules (comma-separated: strategy.http,cache,probe.redfish)"`
 	DebugLogShipperUrl    string            `arg:"--debug-log-shipper-url,env:SENHUB_DEBUG_LOG_SHIPPER_URL" help:"URL of remote endpoint for shipping debug logs"`
 	DebugLogShipperTags   map[string]string `arg:"--debug-log-shipper-tags,env:SENHUB_DEBUG_LOG_SHIPPER_TAGS" help:"Tags to add to debug log entries (format: key1=value1,key2=value2)"`
 	DebugLogShipperBuffer int               `arg:"--debug-log-shipper-buffer,env:SENHUB_DEBUG_LOG_SHIPPER_BUFFER" help:"Buffer size for debug log shipper"`
@@ -58,6 +59,7 @@ type ParsedArgs struct {
 	ServerUrl             string
 	UpdateRegistryUrl     string
 	Verbose               bool
+	DebugModules          []string
 	Env                   string
 	Version               string
 	WantedVersion         string
@@ -149,6 +151,7 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 		AuthenticationKey:     args.AuthenticationKey,
 		ServerUrl:             serverUrl,
 		Verbose:               args.Verbose,
+		DebugModules:          args.DebugModules,
 		Env:                   environment,
 		Version:               Version,
 		CommitHash:            CommitHash,
