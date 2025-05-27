@@ -28,9 +28,16 @@ type Logger = zerolog.Logger
 
 // LoggerConfig holds the configuration for the logger
 type LoggerConfig struct {
-	logFile     io.WriteCloser
-	logShipper  io.Writer
-	debugConfig *debugshipper.Config
+	logFile      io.WriteCloser
+	logShipper   io.Writer
+	debugConfig  *debugshipper.Config
+	moduleLevels map[string]zerolog.Level // Per-module log levels
+}
+
+// ModuleLogConfig allows setting specific log levels for different components
+type ModuleLogConfig struct {
+	Module string `json:"module" yaml:"module"`
+	Level  string `json:"level" yaml:"level"`
 }
 
 // getLogPath determines the appropriate log file location based on the operating system.
@@ -221,4 +228,87 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 		Logger()
 
 	return &logger
+}
+
+// Global module levels configuration
+var moduleLogLevels = map[string]zerolog.Level{
+	"strategy.http":      zerolog.InfoLevel,  // HTTP strategy logs
+	"strategy.prtg":      zerolog.InfoLevel,  // PRTG strategy logs  
+	"strategy.senhub":    zerolog.InfoLevel,  // SenHub strategy logs
+	"probe.redfish":      zerolog.InfoLevel,  // Redfish probe logs
+	"probe.host":         zerolog.InfoLevel,  // Host probes (CPU, memory, etc.)
+	"probe.network":      zerolog.InfoLevel,  // Network probes
+	"probe.webapp":       zerolog.InfoLevel,  // WebApp probes
+	"probe.otel":         zerolog.InfoLevel,  // OpenTelemetry probe
+	"probe.gateway":      zerolog.InfoLevel,  // Gateway probe
+	"probe.syslog":       zerolog.InfoLevel,  // Syslog probe
+	"cache":              zerolog.InfoLevel,  // Cache operations
+	"transformer":        zerolog.InfoLevel,  // Metric transformers
+	"scheduler":          zerolog.InfoLevel,  // Probe scheduler
+	"configuration":      zerolog.InfoLevel,  // Configuration loading
+}
+
+// SetModuleLogLevel sets the log level for a specific module
+func SetModuleLogLevel(module string, level zerolog.Level) {
+	moduleLogLevels[module] = level
+}
+
+// SetModuleLogLevels sets multiple module log levels from configuration
+func SetModuleLogLevels(configs []ModuleLogConfig) error {
+	for _, config := range configs {
+		level, err := parseLogLevel(config.Level)
+		if err != nil {
+			return err
+		}
+		moduleLogLevels[config.Module] = level
+	}
+	return nil
+}
+
+// parseLogLevel converts string level to zerolog.Level
+func parseLogLevel(levelStr string) (zerolog.Level, error) {
+	switch levelStr {
+	case "debug":
+		return zerolog.DebugLevel, nil
+	case "info":
+		return zerolog.InfoLevel, nil
+	case "warn":
+		return zerolog.WarnLevel, nil
+	case "error":
+		return zerolog.ErrorLevel, nil
+	case "fatal":
+		return zerolog.FatalLevel, nil
+	case "panic":
+		return zerolog.PanicLevel, nil
+	case "disabled":
+		return zerolog.Disabled, nil
+	default:
+		return zerolog.InfoLevel, nil
+	}
+}
+
+// NewModuleLogger creates a logger for a specific module with appropriate filtering
+func NewModuleLogger(baseLogger *Logger, module string) *Logger {
+	// Get the configured level for this module
+	moduleLevel, exists := moduleLogLevels[module]
+	if !exists {
+		moduleLevel = zerolog.InfoLevel // Default level
+	}
+	
+	// Create logger with module context and level filtering
+	moduleLogger := baseLogger.With().
+		Str("module", module).
+		Logger().
+		Level(moduleLevel)
+	
+	return &moduleLogger
+}
+
+// GetModuleLogLevels returns current module log level configuration
+func GetModuleLogLevels() map[string]zerolog.Level {
+	result := make(map[string]zerolog.Level)
+	for k, v := range moduleLogLevels {
+		result[k] = v
+	}
+	return result
 }

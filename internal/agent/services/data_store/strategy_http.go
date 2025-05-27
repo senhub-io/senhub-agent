@@ -78,17 +78,18 @@ type PRTGChannel struct {
 func NewHTTPSyncStrategy(
 	agentConfig configuration.AgentConfiguration,
 	params map[string]interface{},
-	logger *logger.Logger,
+	baseLogger *logger.Logger,
 ) SyncStrategy {
-	localLogger := logger.With().Str("strategy", "http").Logger()
+	// Create module-specific logger for HTTP strategy
+	moduleLogger := logger.NewModuleLogger(baseLogger, "strategy.http")
 
 	strategy := &HTTPSyncStrategy{
 		agentConfig:         agentConfig,
 		params:              params,
-		logger:              &localLogger,
+		logger:              moduleLogger,
 		agentKey:            agentConfig.GetAuthenticationKey(),
 		port:                8080, // Default port, should be configurable
-		transformerRegistry: transformers.NewTransformerRegistry(&localLogger),
+		transformerRegistry: transformers.NewTransformerRegistry(moduleLogger),
 		namingConfig:        make(map[string]string),
 		cache: &MetricCache{
 			data:     make(map[string]CachedMetric),
@@ -248,6 +249,10 @@ func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 
 	// Debug endpoint to view cache contents (with agentkey authentication)
 	router.HandleFunc("/api/{agentkey}/debug/cache", h.handleDebugCache).Methods("GET")
+
+	// Debug endpoint to view and set log levels (with agentkey authentication)
+	router.HandleFunc("/api/{agentkey}/debug/logs", h.handleDebugLogs).Methods("GET")
+	router.HandleFunc("/api/{agentkey}/debug/logs", h.handleSetLogLevels).Methods("POST")
 
 	return router
 }
@@ -567,6 +572,107 @@ func (h *HTTPSyncStrategy) handleDebugCache(w http.ResponseWriter, r *http.Reque
 		Int("total_entries", len(entries)).
 		Any("summary", summary).
 		Msg("Debug cache response sent")
+}
+
+// LogLevelInfo represents log level information for debug display
+type LogLevelInfo struct {
+	Module string `json:"module"`
+	Level  string `json:"level"`
+}
+
+// LogLevelsResponse represents the debug log levels response
+type LogLevelsResponse struct {
+	ModuleLevels []LogLevelInfo `json:"module_levels"`
+}
+
+// SetLogLevelsRequest represents the request to set log levels
+type SetLogLevelsRequest struct {
+	ModuleLevels []logger.ModuleLogConfig `json:"module_levels"`
+}
+
+// handleDebugLogs handles GET requests for log level debugging
+func (h *HTTPSyncStrategy) handleDebugLogs(w http.ResponseWriter, r *http.Request) {
+	// Extract and validate agentkey from path
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+
+	if providedKey != h.agentKey {
+		h.logger.Warn().Str("provided_key", providedKey).Msg("Invalid agent key for debug logs endpoint")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	h.logger.Debug().Msg("Debug logs request received")
+
+	// Get current module log levels
+	moduleLevels := logger.GetModuleLogLevels()
+	
+	var logLevels []LogLevelInfo
+	for module, level := range moduleLevels {
+		logLevels = append(logLevels, LogLevelInfo{
+			Module: module,
+			Level:  level.String(),
+		})
+	}
+
+	response := LogLevelsResponse{
+		ModuleLevels: logLevels,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to encode debug logs response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Debug().Int("modules_count", len(logLevels)).Msg("Debug logs response sent")
+}
+
+// handleSetLogLevels handles POST requests to set log levels
+func (h *HTTPSyncStrategy) handleSetLogLevels(w http.ResponseWriter, r *http.Request) {
+	// Extract and validate agentkey from path
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+
+	if providedKey != h.agentKey {
+		h.logger.Warn().Str("provided_key", providedKey).Msg("Invalid agent key for set logs endpoint")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Parse request body
+	var req SetLogLevelsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to parse log levels request body")
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	h.logger.Info().
+		Int("modules_count", len(req.ModuleLevels)).
+		Msg("Setting log levels")
+
+	// Set the log levels
+	if err := logger.SetModuleLogLevels(req.ModuleLevels); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to set module log levels")
+		http.Error(w, "Invalid log configuration", http.StatusBadRequest)
+		return
+	}
+
+	// Return success
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	
+	response := map[string]string{"status": "success", "message": "Log levels updated"}
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to encode set logs response")
+		return
+	}
+
+	h.logger.Info().Msg("Log levels updated successfully")
 }
 
 // cleanup removes expired metrics from cache
