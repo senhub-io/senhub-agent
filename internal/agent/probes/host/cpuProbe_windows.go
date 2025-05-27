@@ -102,11 +102,15 @@ type windowsCollector struct {
 	paths       map[string]pathInfo
 	mu          sync.Mutex
 	initialized bool
+	logger      *logger.ModuleLogger
 }
 
-func newCPUCollector(config map[string]interface{}, logger *logger.Logger) (osCollector, error) {
+func newCPUCollector(config map[string]interface{}, baseLogger *logger.Logger) (osCollector, error) {
 	// Initialize PDH logger
-	pdh.InitializePDHLogger(logger)
+	pdh.InitializePDHLogger(baseLogger)
+	
+	// Create module logger for host probes
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.host")
 	
 	query, err := pdh.NewQuery()
 	if err != nil {
@@ -114,8 +118,9 @@ func newCPUCollector(config map[string]interface{}, logger *logger.Logger) (osCo
 	}
 
 	collector := &windowsCollector{
-		query: query,
-		paths: make(map[string]pathInfo),
+		query:  query,
+		paths:  make(map[string]pathInfo),
+		logger: moduleLogger,
 	}
 
 	if err := collector.initializeCounters(); err != nil {
@@ -134,19 +139,22 @@ func newCPUCollector(config map[string]interface{}, logger *logger.Logger) (osCo
 // shouldIncludeInstance checks if an instance should be included according to filters
 // Improved shouldIncludeInstance
 func (w *windowsCollector) shouldIncludeInstance(instance string) bool {
-	fmt.Printf("Checking instance '%s' against filters - Include: %v, Exclude: %v\n",
-		instance, instanceFilters.Include, instanceFilters.Exclude)
+	w.logger.Debug().
+		Str("instance", instance).
+		Strs("include_filters", instanceFilters.Include).
+		Strs("exclude_filters", instanceFilters.Exclude).
+		Msg("Checking instance against filters")
 
 	// If the inclusion list is empty, everything is included by default
 	if len(instanceFilters.Include) == 0 {
 		// Only check exclusions
 		for _, excludedInstance := range instanceFilters.Exclude {
 			if excludedInstance == instance {
-				fmt.Printf("Instance '%s' excluded by filter\n", instance)
+				w.logger.Debug().Str("instance", instance).Msg("Instance excluded by filter")
 				return false
 			}
 		}
-		fmt.Printf("Instance '%s' included (no include filters, not in exclude list)\n", instance)
+		w.logger.Debug().Str("instance", instance).Msg("Instance included (no include filters, not in exclude list)")
 		return true
 	}
 
@@ -156,21 +164,21 @@ func (w *windowsCollector) shouldIncludeInstance(instance string) bool {
 			// Check that the instance is not in the exclusion list
 			for _, excludedInstance := range instanceFilters.Exclude {
 				if excludedInstance == instance {
-					fmt.Printf("Instance '%s' found in include list but excluded\n", instance)
+					w.logger.Debug().Str("instance", instance).Msg("Instance found in include list but excluded")
 					return false
 				}
 			}
-			fmt.Printf("Instance '%s' found in include list and not excluded\n", instance)
+			w.logger.Debug().Str("instance", instance).Msg("Instance found in include list and not excluded")
 			return true
 		}
 	}
 
-	fmt.Printf("Instance '%s' not in include list\n", instance)
+	w.logger.Debug().Str("instance", instance).Msg("Instance not in include list")
 	return false
 }
 
 func (w *windowsCollector) initializeCounters() error {
-	fmt.Printf("Initializing CPU probe with counters\n")
+	w.logger.Debug().Msg("Initializing CPU probe with counters")
 
 	for metricName, def := range counterPaths {
 		if def.instance == "*" {
@@ -198,7 +206,7 @@ func (w *windowsCollector) initializeCounters() error {
 
 			for _, instance := range instances {
 				if !w.shouldIncludeInstance(instance) {
-					fmt.Printf("Instance %s skipped due to filters\n", instance)
+					w.logger.Debug().Str("instance", instance).Msg("Instance skipped due to filters")
 					continue
 				}
 
@@ -210,8 +218,11 @@ func (w *windowsCollector) initializeCounters() error {
 					instance: instance,
 				}
 
-				fmt.Printf("Adding counter %s with path: %s (instance: %s)\n",
-					metricName, path, instance)
+				w.logger.Debug().
+					Str("metric", metricName).
+					Str("path", path).
+					Str("instance", instance).
+					Msg("Adding counter")
 				if err := w.query.AddCounter(path); err != nil {
 					return fmt.Errorf("failed to add counter %s (instance %s): %v",
 						metricName, instance, err)
@@ -224,7 +235,10 @@ func (w *windowsCollector) initializeCounters() error {
 				instance: def.instance,
 			}
 
-			fmt.Printf("Adding counter %s with path: %s\n", metricName, path)
+			w.logger.Debug().
+				Str("metric", metricName).
+				Str("path", path).
+				Msg("Adding counter")
 			if err := w.query.AddCounter(path); err != nil {
 				return fmt.Errorf("failed to add counter %s: %v", metricName, err)
 			}
@@ -237,26 +251,33 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	fmt.Printf("\nStarting metrics collection at %v\n", timestamp)
-	fmt.Printf("Number of paths to collect: %d\n", len(w.paths))
+	w.logger.Debug().
+		Time("timestamp", timestamp).
+		Int("paths_count", len(w.paths)).
+		Msg("Starting metrics collection")
 
-	// Display all registered paths
-	fmt.Println("\nRegistered paths:")
-	for name, pathInfo := range w.paths {
-		fmt.Printf("- %s: path=%s, instance=%s\n", name, pathInfo.path, pathInfo.instance)
+	// Log registered paths
+	if w.logger.Debug().Enabled() {
+		for name, pathInfo := range w.paths {
+			w.logger.Debug().
+				Str("metric", name).
+				Str("path", pathInfo.path).
+				Str("instance", pathInfo.instance).
+				Msg("Registered path")
+		}
 	}
 
 	if !w.initialized {
-		fmt.Println("Initializing first collection...")
+		w.logger.Debug().Msg("Initializing first collection")
 		if err := w.query.Collect(); err != nil {
 			return nil, fmt.Errorf("failed initial sample collection: %v", err)
 		}
 		time.Sleep(1 * time.Second)
 		w.initialized = true
-		fmt.Println("First collection initialized")
+		w.logger.Debug().Msg("First collection initialized")
 	}
 
-	fmt.Println("\nCollecting metrics...")
+	w.logger.Debug().Msg("Collecting metrics")
 	if err := w.query.Collect(); err != nil {
 		return nil, fmt.Errorf("failed to collect PDH metrics: %v", err)
 	}
@@ -265,20 +286,26 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 	if err != nil {
 		return nil, fmt.Errorf("error getting host tags: %v", err)
 	}
-	fmt.Printf("Base tags: %v\n", baseTags)
+	w.logger.Debug().Interface("base_tags", baseTags).Msg("Got base tags")
 
 	metrics := NewCPUMetrics()
 	dataPoints := make([]data_store.DataPoint, 0, len(w.paths))
 
-	fmt.Println("\nProcessing individual metrics:")
+	w.logger.Debug().Msg("Processing individual metrics")
 	for name, pathInfo := range w.paths {
-		fmt.Printf("\nProcessing metric '%s' with path '%s'\n", name, pathInfo.path)
+		w.logger.Debug().
+			Str("metric", name).
+			Str("path", pathInfo.path).
+			Msg("Processing metric")
 
 		metricName := strings.Split(name, "|")[0]
 
 		value, err := w.query.GetCounterValue(pathInfo.path)
 		if err != nil {
-			fmt.Printf("Error getting counter value for %s: %v\n", name, err)
+			w.logger.Debug().
+				Str("metric", name).
+				Err(err).
+				Msg("Error getting counter value")
 			continue
 		}
 
@@ -287,7 +314,7 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 
 		// Adding instance tag if present
 		if pathInfo.instance != "" {
-			fmt.Printf("Adding instance tag: %s\n", pathInfo.instance)
+			w.logger.Debug().Str("instance", pathInfo.instance).Msg("Adding instance tag")
 			metricTags = append(metricTags, tags.Tag{
 				Key:     "instance",
 				Value:   pathInfo.instance,
@@ -306,11 +333,16 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 		}
 		dataPoints = append(dataPoints, dataPoint)
 
-		fmt.Printf("Collected metric %s = %f\n", name, value)
-		fmt.Printf("Tags for this metric: %v\n", metricTags)
+		w.logger.Debug().
+			Str("metric", name).
+			Float64("value", value).
+			Interface("tags", metricTags).
+			Msg("Collected metric")
 	}
 
-	fmt.Printf("\nCollection completed. Total metrics collected: %d\n", len(dataPoints))
+	w.logger.Debug().
+		Int("total_metrics", len(dataPoints)).
+		Msg("Collection completed")
 	return dataPoints, nil
 }
 
