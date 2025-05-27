@@ -275,7 +275,13 @@ func (h *HTTPSyncStrategy) Shutdown(ctx context.Context) error {
 func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 	router := mux.NewRouter()
 
-	// PRTG endpoint with agentkey in path
+	// PRTG endpoint with agentkey and probe name in path (GET)
+	router.HandleFunc("/api/{agentkey}/prtg/metrics/{probe}", h.handlePRTGMetricsGET).Methods("GET")
+
+	// List available probes endpoint (GET)
+	router.HandleFunc("/api/{agentkey}/prtg/probes", h.handleListProbes).Methods("GET")
+
+	// Legacy PRTG endpoint (POST) - kept for backward compatibility
 	router.HandleFunc("/api/{agentkey}/prtg/metrics", h.handlePRTGMetrics).Methods("POST")
 
 	// Health check endpoint
@@ -291,7 +297,126 @@ func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 	return router
 }
 
-// handlePRTGMetrics handles POST requests for PRTG metrics
+// handlePRTGMetricsGET handles GET requests for PRTG metrics
+func (h *HTTPSyncStrategy) handlePRTGMetricsGET(w http.ResponseWriter, r *http.Request) {
+	// Extract and validate agentkey from path
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+	probeName := vars["probe"]
+
+	if providedKey != h.agentKey {
+		h.logger.Warn().Str("provided_key", providedKey).Msg("Invalid agent key")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	h.logger.Debug().
+		Str("probe", probeName).
+		Msg("PRTG metrics GET request received")
+
+	// Get metrics from cache for the specified probe
+	channels := h.getMetricsForProbe(probeName)
+
+	// Build PRTG response
+	response := PRTGResponse{
+		PRTG: PRTGResult{
+			Result: channels,
+		},
+	}
+
+	// Send response
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to encode response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info().
+		Str("probe", probeName).
+		Int("channels", len(channels)).
+		Msg("PRTG GET response sent")
+}
+
+// ProbesListResponse represents the response for listing available probes
+type ProbesListResponse struct {
+	Probes []ProbeInfo `json:"probes"`
+}
+
+// ProbeInfo represents information about a probe
+type ProbeInfo struct {
+	Name         string `json:"name"`
+	MetricsCount int    `json:"metrics_count"`
+	LastUpdate   string `json:"last_update,omitempty"`
+}
+
+// handleListProbes handles GET requests to list available probes
+func (h *HTTPSyncStrategy) handleListProbes(w http.ResponseWriter, r *http.Request) {
+	// Extract and validate agentkey from path
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+
+	if providedKey != h.agentKey {
+		h.logger.Warn().Str("provided_key", providedKey).Msg("Invalid agent key")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	h.logger.Debug().Msg("List probes request received")
+
+	h.cache.mu.RLock()
+	defer h.cache.mu.RUnlock()
+
+	// Count metrics by probe name
+	probeMetrics := make(map[string]int)
+	probeLastUpdate := make(map[string]time.Time)
+
+	for _, metric := range h.cache.data {
+		probeName := metric.ProbeName
+		if probeName == "" {
+			probeName = "unknown"
+		}
+		probeMetrics[probeName]++
+		
+		// Track latest update time for each probe
+		if lastUpdate, exists := probeLastUpdate[probeName]; !exists || metric.Timestamp.After(lastUpdate) {
+			probeLastUpdate[probeName] = metric.Timestamp
+		}
+	}
+
+	// Build response
+	probes := make([]ProbeInfo, 0, len(probeMetrics))
+	for probeName, count := range probeMetrics {
+		lastUpdate := ""
+		if timestamp, exists := probeLastUpdate[probeName]; exists {
+			lastUpdate = timestamp.Format(time.RFC3339)
+		}
+		
+		probes = append(probes, ProbeInfo{
+			Name:         probeName,
+			MetricsCount: count,
+			LastUpdate:   lastUpdate,
+		})
+	}
+
+	response := ProbesListResponse{
+		Probes: probes,
+	}
+
+	// Send response
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to encode probes list response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info().
+		Int("probes_count", len(probes)).
+		Msg("Probes list response sent")
+}
+
+// handlePRTGMetrics handles POST requests for PRTG metrics (legacy)
 func (h *HTTPSyncStrategy) handlePRTGMetrics(w http.ResponseWriter, r *http.Request) {
 	// Extract and validate agentkey from path
 	vars := mux.Vars(r)
