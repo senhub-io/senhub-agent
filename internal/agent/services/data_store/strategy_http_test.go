@@ -542,3 +542,132 @@ func TestGenerateMetricKey(t *testing.T) {
 		t.Errorf("Expected key 'cpu.usage_percent', got %s", key)
 	}
 }
+
+func TestHTTPSyncStrategy_DebugLogsEndpoint(t *testing.T) {
+	agentConfig := createTestAgentConfig()
+	logger := createTestLogger()
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+
+	// Start the strategy to initialize the server
+	err := strategy.Start()
+	if err != nil {
+		t.Fatalf("Failed to start strategy: %v", err)
+	}
+	defer strategy.Shutdown(context.Background())
+
+	tests := []struct {
+		name           string
+		agentKey       string
+		method         string
+		expectedStatus int
+		expectedInBody string
+	}{
+		{
+			name:           "Valid agent key GET",
+			agentKey:       "test-agent-key",
+			method:         "GET", 
+			expectedStatus: http.StatusOK,
+			expectedInBody: "module_levels",
+		},
+		{
+			name:           "Invalid agent key GET",
+			agentKey:       "wrong-key",
+			method:         "GET",
+			expectedStatus: http.StatusUnauthorized,
+			expectedInBody: "Unauthorized",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url := "/api/" + tt.agentKey + "/debug/logs"
+			req, err := http.NewRequest(tt.method, url, nil)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			rr := httptest.NewRecorder()
+			router := strategy.setupRoutes()
+			router.ServeHTTP(rr, req)
+
+			if status := rr.Code; status != tt.expectedStatus {
+				t.Errorf("Expected status code %d, got %d", tt.expectedStatus, status)
+			}
+
+			if !strings.Contains(rr.Body.String(), tt.expectedInBody) {
+				t.Errorf("Expected body to contain '%s', got '%s'", tt.expectedInBody, rr.Body.String())
+			}
+		})
+	}
+}
+
+func TestHTTPSyncStrategy_SetLogLevelsEndpoint(t *testing.T) {
+	agentConfig := createTestAgentConfig()
+	logger := createTestLogger()
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+
+	// Start the strategy to initialize the server
+	err := strategy.Start()
+	if err != nil {
+		t.Fatalf("Failed to start strategy: %v", err)
+	}
+	defer strategy.Shutdown(context.Background())
+
+	tests := []struct {
+		name           string
+		agentKey       string
+		body           string
+		expectedStatus int
+		expectedInBody string
+	}{
+		{
+			name:     "Valid log level setting",
+			agentKey: "test-agent-key",
+			body: `{
+				"module_levels": [
+					{"module": "strategy.http", "level": "debug"},
+					{"module": "probe.redfish", "level": "warn"}
+				]
+			}`,
+			expectedStatus: http.StatusOK,
+			expectedInBody: "success",
+		},
+		{
+			name:           "Invalid agent key",
+			agentKey:       "wrong-key",
+			body:           `{"module_levels": []}`,
+			expectedStatus: http.StatusUnauthorized,
+			expectedInBody: "Unauthorized",
+		},
+		{
+			name:           "Invalid JSON",
+			agentKey:       "test-agent-key",
+			body:           `{invalid json}`,
+			expectedStatus: http.StatusBadRequest,
+			expectedInBody: "Invalid JSON",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url := "/api/" + tt.agentKey + "/debug/logs"
+			req, err := http.NewRequest("POST", url, strings.NewReader(tt.body))
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			router := strategy.setupRoutes()
+			router.ServeHTTP(rr, req)
+
+			if status := rr.Code; status != tt.expectedStatus {
+				t.Errorf("Expected status code %d, got %d", tt.expectedStatus, status)
+			}
+
+			if !strings.Contains(rr.Body.String(), tt.expectedInBody) {
+				t.Errorf("Expected body to contain '%s', got '%s'", tt.expectedInBody, rr.Body.String())
+			}
+		})
+	}
+}
