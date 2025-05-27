@@ -3,7 +3,6 @@ package auto_update
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -23,37 +22,21 @@ func fetchVersionMetadata(
 ) (*VersionMetadata, error) {
 	formattedVersion := FormatVersionForUrl(wantedVersion)
 	
-	// Construct the metadata path based on whether it's a beta version or not
-	var metadataPath string
-	if isBetaVersion(wantedVersion) {
-		// For beta versions, use /beta/version/metadata.json path
-		metadataPath = fmt.Sprintf("/beta/%s/metadata.json", formattedVersion)
-	} else {
-		// For regular versions, use normal path
-		metadataPath = fmt.Sprintf(VERSION_METADATA_PATH, formattedVersion)
-	}
+	// All versions (including beta) use the same path format
+	metadataPath := fmt.Sprintf(VERSION_METADATA_PATH, formattedVersion)
 	
 	metadataUrl, err := url.JoinPath(registryUrl, metadataPath)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("Fetching metadata from URL: %s\n", metadataUrl)
 	response, err := httpClient.Get(metadataUrl)
 	if err != nil {
 		return nil, err
 	}
 	defer response.Body.Close()
 
-	// Read the raw response for debugging
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Printf("Raw response body: %s\n", string(body))
-
 	var versionMetadata VersionMetadata
-	if err := json.Unmarshal(body, &versionMetadata); err != nil {
-		fmt.Printf("JSON unmarshal error: %v\n", err)
+	if err := json.NewDecoder(response.Body).Decode(&versionMetadata); err != nil {
 		return nil, err
 	}
 
