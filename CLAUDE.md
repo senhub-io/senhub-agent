@@ -206,5 +206,16 @@ curl -X POST http://localhost:8080/api/{agentkey}/debug/logs \
   - `github.com/gorilla/mux` for HTTP routing
   - `gopkg.in/yaml.v2` for transformer configuration parsing
 
+## Modular Logging System
+- IMPLEMENTED: Full modular logging system based on zerolog with per-component control
+- FEATURES:
+  - CLI arguments: `--verbose` (all modules) or `--debug-modules "module1,module2"` (selective)
+  - Runtime HTTP API: GET/POST `/api/{agentkey}/debug/logs` for viewing/setting log levels
+  - 16 predefined modules: agent.*, probe.*, strategy.*
+  - Global vs per-module level control (selective mode uses ERROR global + DEBUG for specified modules)
+  - All probes migrated to use ModuleLogger for targeted debugging
+- DOCUMENTATION: See LOGGING.md for complete usage guide
+- BENEFITS: Targeted debugging, reduced log noise, runtime configuration without restart
+
 ## Version Tagging
 - IMPORTANT: Version tags should NOT include the "v" prefix (use "0.0.82-beta" instead of "v0.0.82-beta")

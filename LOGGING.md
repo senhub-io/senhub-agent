@@ -1,227 +1,385 @@
-# Modular Logging System
-
-SenHub Agent includes a sophisticated modular logging system that allows fine-grained control over log levels for different components. This system helps reduce log noise and enables targeted debugging.
+# SenHub Agent - Modular Logging System
 
 ## Overview
 
-The modular logging system provides:
-- **Per-module log level configuration** - Set different log levels for different components
-- **Runtime configuration** - Adjust log levels without restarting the agent
-- **HTTP API** - Manage log levels via REST endpoints
-- **Default configurations** - Sensible defaults for all modules
+The SenHub Agent uses a modular logging system based on [zerolog](https://github.com/rs/zerolog) that provides granular control over log levels per component. This system allows enabling/disabling debug logs for specific modules without affecting other components.
 
-## Supported Modules
+## Architecture
 
-The system supports the following predefined modules:
+### Core Components
 
-### Data Routing Strategies
-- `strategy.http` - HTTP strategy logs (endpoints, requests, responses)
-- `strategy.prtg` - PRTG strategy logs (data synchronization, API calls)
-- `strategy.senhub` - SenHub strategy logs (server communication)
+1. **Logger** (`*zerolog.Logger`) - Base logger (alias of zerolog.Logger)
+2. **ModuleLogger** - Wrapper that adds per-module filtering
+3. **Global Log Level** - Global level for all standard loggers
+4. **Module Log Levels** - Specific levels per module
 
-### Data Collection Probes
-- `probe.redfish` - Redfish hardware monitoring probe
-- `probe.host` - Host system probes (CPU, memory, disk, network)
-- `probe.network` - Network-specific probes
-- `probe.webapp` - Web application monitoring probes
-- `probe.otel` - OpenTelemetry data collection probe
-- `probe.gateway` - Gateway connectivity probes
-- `probe.syslog` - Syslog monitoring probe
+### Logger Hierarchy
 
-### Core System Components
-- `cache` - Caching operations and management
-- `transformer` - Metric name transformations
-- `scheduler` - Probe scheduling and execution
-- `configuration` - Configuration loading and management
+```
+┌─────────────────┐
+│ zerolog.Logger  │ ← Base logger (global level)
+└─────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│ ModuleLogger    │ ← Wrapper with per-module filtering
+└─────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│ zerolog.Event   │ ← Log events (Debug, Info, Warn, Error)
+└─────────────────┘
+```
 
-## Log Levels
+## Predefined Modules
 
-Available log levels (from most to least verbose):
+The system defines 16 modules for different components:
 
-| Level | Description | Use Case |
-|-------|-------------|----------|
-| `debug` | Detailed debugging information | Development, troubleshooting |
-| `info` | General informational messages | Normal operation monitoring |
-| `warn` | Warning conditions that don't stop operation | Potential issues |
-| `error` | Error conditions that may affect functionality | Error monitoring |
-| `fatal` | Fatal errors that cause program termination | Critical failures |
-| `panic` | Panic conditions (highest severity) | System crashes |
-| `disabled` | No logging for this module | Complete silence |
+| Module | Description |
+|--------|-------------|
+| `agent.core` | Main agent and orchestration |
+| `agent.config` | Configuration and parsing |
+| `agent.scheduler` | Task scheduler |
+| `probe.cpu` | CPU probe |
+| `probe.memory` | Memory probe |
+| `probe.network` | Network probe |
+| `probe.disk` | Logical disk probe |
+| `probe.redfish` | Redfish probe |
+| `probe.otel` | OpenTelemetry probe |
+| `probe.webapp` | Web application probe |
+| `probe.gateway` | Gateway/ping probe |
+| `probe.wifi` | WiFi signal probe |
+| `probe.syslog` | Syslog probe |
+| `probe.event` | Event probe (HTTP endpoint) |
+| `strategy.senhub` | SenHub sending strategy |
+| `strategy.prtg` | PRTG sending strategy |
+| `strategy.http` | HTTP/cache strategy |
 
-## HTTP API
+## Usage
 
-### View Current Log Levels
+### CLI Arguments
 
-**Endpoint:** `GET /api/{agentkey}/debug/logs`
+#### Full verbose mode (backward compatible)
+```bash
+./senhub-agent --verbose --authentication-key "..."
+```
+Enables DEBUG level for all modules.
 
-**Response Example:**
-```json
+#### Selective debug mode
+```bash
+./senhub-agent --debug-modules "strategy.http,probe.redfish" --authentication-key "..."
+```
+Enables DEBUG level only for specified modules.
+
+### Runtime HTTP API
+
+#### View current log levels
+```bash
+GET /api/{agentkey}/debug/logs
+```
+
+#### Modify log levels
+```bash
+POST /api/{agentkey}/debug/logs
+Content-Type: application/json
+
 {
-  "module_levels": [
-    {"module": "strategy.http", "level": "info"},
-    {"module": "probe.redfish", "level": "warn"},
-    {"module": "probe.host", "level": "info"},
-    {"module": "cache", "level": "warn"}
+  "modules": [
+    {"module": "probe.redfish", "level": "debug"},
+    {"module": "strategy.http", "level": "info"}
   ]
 }
 ```
 
-### Set Log Levels
+### Supported Log Levels
 
-**Endpoint:** `POST /api/{agentkey}/debug/logs`
+- `disabled` - No logs
+- `trace` - Detailed tracing
+- `debug` - Detailed debugging
+- `info` - General information
+- `warn` - Warnings
+- `error` - Errors only
+- `fatal` - Fatal errors
+- `panic` - Panics
 
-**Request Body:**
-```json
-{
-  "module_levels": [
-    {"module": "strategy.http", "level": "debug"},
-    {"module": "probe.redfish", "level": "warn"}
-  ]
+## Code Implementation
+
+### Using ModuleLogger
+
+```go
+// In a probe
+type myProbe struct {
+    moduleLogger *logger.ModuleLogger
+}
+
+func NewMyProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
+    // Create module-specific logger
+    moduleLogger := logger.NewModuleLogger(baseLogger, "probe.myprobe")
+    
+    return &myProbe{
+        moduleLogger: moduleLogger,
+    }, nil
+}
+
+func (p *myProbe) someMethod() {
+    // Normal usage like zerolog
+    p.moduleLogger.Debug().Msg("Debug message - filtered by module level")
+    p.moduleLogger.Info().Str("key", "value").Msg("Info message")
+    p.moduleLogger.Error().Err(err).Msg("Error message")
 }
 ```
 
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Log levels updated"
+### Converting from standard logger
+
+**Before (standard logger):**
+```go
+type oldProbe struct {
+    logger *logger.Logger
+}
+
+func (p *oldProbe) method() {
+    p.logger.Debug().Msg("This debug will appear in verbose mode")
 }
 ```
 
-## Usage Examples
+**After (ModuleLogger):**
+```go
+type newProbe struct {
+    moduleLogger *logger.ModuleLogger
+}
 
-### Common Troubleshooting Scenarios
+func NewProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
+    moduleLogger := logger.NewModuleLogger(baseLogger, "probe.example")
+    return &newProbe{moduleLogger: moduleLogger}, nil
+}
 
-#### 1. Debug HTTP Strategy Issues
-When debugging HTTP endpoint problems:
+func (p *newProbe) method() {
+    p.moduleLogger.Debug().Msg("This debug only appears if probe.example is enabled")
+}
+```
+
+## System Behavior
+
+### Verbose mode (`--verbose`)
+- **Global level**: DEBUG
+- **Modules**: All at DEBUG level
+- **Result**: All logs from all components are visible
+
+### Selective mode (`--debug-modules "module1,module2"`)
+- **Global level**: ERROR (suppresses non-critical logs from other components)
+- **Specified modules**: DEBUG
+- **Non-specified modules**: Inherit global level (ERROR)
+- **Result**: Only debug logs from specified modules are visible
+
+### Practical Examples
+
+#### Debug only HTTP cache issues
 ```bash
-curl -X POST http://localhost:8080/api/YOUR_AGENT_KEY/debug/logs \
+./senhub-agent --debug-modules "strategy.http" --authentication-key "..."
+```
+
+#### Debug Redfish and network probes
+```bash
+./senhub-agent --debug-modules "probe.redfish,probe.network" --authentication-key "..."
+```
+
+#### Runtime level changes
+```bash
+# Enable debug for probe.redfish
+curl -X POST http://localhost:8080/api/mykey/debug/logs \
   -H "Content-Type: application/json" \
+  -d '{"modules":[{"module":"probe.redfish","level":"debug"}]}'
+
+# Disable all logs from a module
+curl -X POST http://localhost:8080/api/mykey/debug/logs \
+  -H "Content-Type: application/json" \
+  -d '{"modules":[{"module":"probe.cpu","level":"disabled"}]}'
+```
+
+## Technical Details
+
+### Log Filtering
+
+The `ModuleLogger` checks the allowed level for each call:
+
+```go
+func (m *ModuleLogger) Debug() *zerolog.Event {
+    if GetModuleLogLevel(m.module) <= zerolog.DebugLevel {
+        return m.Logger.Debug()  // Normal log
+    }
+    // Create disabled logger to suppress output
+    disabledLogger := m.Logger.Level(zerolog.Disabled)
+    return disabledLogger.Debug()  // Suppressed log
+}
+```
+
+### Level Management
+
+```go
+// Per-module levels stored in thread-safe map
+var moduleLogLevels = make(map[string]zerolog.Level)
+var moduleLogLevelsMutex sync.RWMutex
+
+// Get module level
+func GetModuleLogLevel(module string) zerolog.Level {
+    moduleLogLevelsMutex.RLock()
+    defer moduleLogLevelsMutex.RUnlock()
+    
+    if level, exists := moduleLogLevels[module]; exists {
+        return level
+    }
+    return zerolog.GlobalLevel()  // Fallback to global level
+}
+```
+
+### Zerolog Integration
+
+The system is fully compatible with zerolog API:
+
+- `ModuleLogger.Debug()` returns `*zerolog.Event`
+- `ModuleLogger.Logger` is a `*zerolog.Logger`
+- Uses `zerolog.SetGlobalLevel()` for global level
+- Supports all zerolog formatters (`.Str()`, `.Int()`, `.Err()`, etc.)
+
+## Migration
+
+### Steps to migrate a component to ModuleLogger
+
+1. **Change logger type**:
+   ```go
+   // Before
+   logger *logger.Logger
+   // After  
+   moduleLogger *logger.ModuleLogger
+   ```
+
+2. **Modify constructor**:
+   ```go
+   func NewComponent(config map[string]interface{}, baseLogger *logger.Logger) {
+       moduleLogger := logger.NewModuleLogger(baseLogger, "module.name")
+       return &component{moduleLogger: moduleLogger}
+   }
+   ```
+
+3. **Adapt log calls**:
+   ```go
+   // Before
+   p.logger.Debug().Msg("message")
+   // After
+   p.moduleLogger.Debug().Msg("message")
+   ```
+
+4. **Choose appropriate module name** following convention:
+   - `agent.*` for agent components
+   - `probe.*` for probes
+   - `strategy.*` for data strategies
+
+## Benefits
+
+1. **Targeted debugging**: Focus on specific components
+2. **Performance**: Reduces log volume in production
+3. **Flexibility**: Runtime configuration without restart
+4. **Backward compatibility**: `--verbose` continues to work
+5. **Standard API**: Maintains familiar zerolog API
+6. **Thread-safe**: Safe concurrent level management
+
+## Limitations
+
+1. **Complexity**: More complex than simple logging
+2. **Memory**: Storage of per-module levels
+3. **Convention**: Requires following module naming
+4. **Migration**: Manual conversion of existing components
+
+## Common Usage Examples
+
+### Scenario 1: Debug specific cache issues
+```bash
+# Problem: Metrics not appearing in PRTG endpoint
+# Solution: Enable cache and HTTP strategy logs
+
+./senhub-agent --debug-modules "strategy.http" --authentication-key "..."
+
+# Or via API:
+curl -X POST http://localhost:8080/api/mykey/debug/logs \
+  -d '{"modules":[{"module":"strategy.http","level":"debug"}]}'
+```
+
+### Scenario 2: Diagnose Redfish probe issues
+```bash
+# Problem: Redfish probe not collecting metrics
+# Solution: Enable only Redfish logs
+
+./senhub-agent --debug-modules "probe.redfish" --authentication-key "..."
+```
+
+### Scenario 3: Reduce log noise in production
+```bash
+# Problem: Too many logs in production
+# Solution: Reduce log levels via API
+
+curl -X POST http://localhost:8080/api/mykey/debug/logs \
   -d '{
-    "module_levels": [
-      {"module": "strategy.http", "level": "debug"},
-      {"module": "cache", "level": "debug"}
+    "modules": [
+      {"module": "probe.cpu", "level": "error"},
+      {"module": "probe.memory", "level": "error"},
+      {"module": "probe.network", "level": "warn"}
     ]
   }'
 ```
 
-#### 2. Debug Specific Probe Issues
-When a particular probe (e.g., Redfish) isn't working:
+## Testing and Validation
+
+### Verify the system works
 ```bash
-curl -X POST http://localhost:8080/api/YOUR_AGENT_KEY/debug/logs \
-  -H "Content-Type: application/json" \
-  -d '{
-    "module_levels": [
-      {"module": "probe.redfish", "level": "debug"}
-    ]
-  }'
+# 1. Start agent with specific module
+./senhub-agent --debug-modules "strategy.http" --authentication-key "test"
+
+# 2. Verify only strategy.http debug logs appear
+# 3. Other components should only show errors
+
+# 4. Test API
+curl http://localhost:8080/api/test/debug/logs
 ```
 
-#### 3. Reduce Log Noise
-When logs are too verbose:
-```bash
-curl -X POST http://localhost:8080/api/YOUR_AGENT_KEY/debug/logs \
-  -H "Content-Type: application/json" \
-  -d '{
-    "module_levels": [
-      {"module": "strategy.http", "level": "warn"},
-      {"module": "probe.host", "level": "error"},
-      {"module": "cache", "level": "error"}
-    ]
-  }'
-```
+### Module Naming Convention
 
-#### 4. Silent Specific Components
-To completely disable logs for noisy components:
-```bash
-curl -X POST http://localhost:8080/api/YOUR_AGENT_KEY/debug/logs \
-  -H "Content-Type: application/json" \
-  -d '{
-    "module_levels": [
-      {"module": "transformer", "level": "disabled"},
-      {"module": "scheduler", "level": "disabled"}
-    ]
-  }'
-```
+Modules follow a hierarchical convention:
+- **Top-level**: `agent`, `probe`, `strategy`
+- **Sub-modules**: `agent.core`, `probe.cpu`, `strategy.http`
 
-### View Current Configuration
-```bash
-# Check current log levels
-curl http://localhost:8080/api/YOUR_AGENT_KEY/debug/logs | jq
+This convention enables granular filtering and logical organization of logs.
 
-# View with formatting
-curl -s http://localhost:8080/api/YOUR_AGENT_KEY/debug/logs | \
-  jq '.module_levels[] | "\(.module): \(.level)"'
-```
+## Implementation Notes
 
-## Integration Examples
+### Probe Migration Status
 
-### Monitoring Script
-Create a script to automatically adjust log levels based on system load:
+The following probes have been migrated to use ModuleLogger:
 
-```bash
-#!/bin/bash
-AGENT_KEY="your-agent-key"
-AGENT_URL="http://localhost:8080"
+- ✅ `probe.cpu` - CPU probe
+- ✅ `probe.memory` - Memory probe  
+- ✅ `probe.network` - Network probe
+- ✅ `probe.disk` - Logical disk probe
+- ✅ `probe.redfish` - Redfish probe
+- ✅ `probe.otel` - OpenTelemetry probe
+- ✅ `probe.webapp` - Web application probes (ping, load)
+- ✅ `probe.gateway` - Gateway ping probe
+- ✅ `probe.wifi` - WiFi signal strength probe
+- ✅ `probe.syslog` - Syslog probe
+- ✅ `probe.event` - Event probe (HTTP endpoint)
 
-# High verbosity for debugging
-debug_mode() {
-  curl -X POST "$AGENT_URL/api/$AGENT_KEY/debug/logs" \
-    -H "Content-Type: application/json" \
-    -d '{
-      "module_levels": [
-        {"module": "strategy.http", "level": "debug"},
-        {"module": "probe.redfish", "level": "debug"},
-        {"module": "cache", "level": "debug"}
-      ]
-    }'
-}
+### Strategy Migration Status
 
-# Production mode - minimal logging
-production_mode() {
-  curl -X POST "$AGENT_URL/api/$AGENT_KEY/debug/logs" \
-    -H "Content-Type: application/json" \
-    -d '{
-      "module_levels": [
-        {"module": "strategy.http", "level": "warn"},
-        {"module": "probe.redfish", "level": "error"},
-        {"module": "cache", "level": "error"}
-      ]
-    }'
+- ✅ `strategy.http` - HTTP strategy with cache
+
+### Parameter Naming
+
+To avoid conflicts between the `logger` package and `logger` parameter names, constructors use `baseLogger` as the parameter name:
+
+```go
+func NewProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
+    moduleLogger := logger.NewModuleLogger(baseLogger, "probe.example")
+    // ...
 }
 ```
 
-## Best Practices
-
-### Development
-- Use `debug` level for components you're actively developing
-- Use `info` level for general operation visibility
-- Use `warn` level for components you're not currently debugging
-
-### Production
-- Use `warn` or `error` levels for most components
-- Use `info` level only for critical components
-- Use `disabled` for very noisy components that aren't essential
-
-### Troubleshooting
-1. **Start with current levels**: Always check current configuration first
-2. **Enable debug selectively**: Only enable debug for components you're investigating
-3. **Restore after debugging**: Return to previous levels when done
-4. **Monitor log volume**: Debug logging can generate significant log volume
-
-## Default Configuration
-
-By default, all modules are set to `info` level, providing a balanced view of system operation without excessive verbosity.
-
-To view the current defaults:
-```bash
-curl http://localhost:8080/api/YOUR_AGENT_KEY/debug/logs
-```
-
-## Notes
-
-- Log level changes are **immediate** and don't require agent restart
-- Settings are **not persistent** - they reset when the agent restarts
-- Invalid module names are **ignored silently**
-- Invalid log levels default to `info`
-- The API requires **agent key authentication** for security
+This prevents Go compiler ambiguity between package and variable names.
