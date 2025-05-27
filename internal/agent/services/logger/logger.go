@@ -150,6 +150,26 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 	// Enable debug level logging if verbose mode is requested
 	if args.Verbose {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		
+		// If specific debug modules are specified, only enable those
+		if len(args.DebugModules) > 0 {
+			// Enable debug only for specified modules
+			for _, module := range args.DebugModules {
+				SetModuleLogLevel(module, zerolog.DebugLevel)
+			}
+			logger.Info().
+				Strs("modules", args.DebugModules).
+				Msg("Verbose mode enabled - debug logging activated for specific modules")
+		} else {
+			// Keep existing behavior: enable debug for all key modules
+			SetModuleLogLevel("strategy.http", zerolog.DebugLevel)
+			SetModuleLogLevel("cache", zerolog.DebugLevel)
+			SetModuleLogLevel("probe.redfish", zerolog.DebugLevel)
+			SetModuleLogLevel("configuration", zerolog.DebugLevel)
+			SetModuleLogLevel("scheduler", zerolog.DebugLevel)
+			
+			logger.Info().Msg("Verbose mode enabled - debug logging activated for all key modules")
+		}
 	}
 
 	return logger

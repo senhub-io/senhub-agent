@@ -138,6 +138,44 @@
   1. Add configuration file support for default module log levels
   2. Implement log level inheritance for sub-modules
 
+## Debugging Guide
+
+### Enable Debug Logging on Startup
+
+#### Full Debug Mode
+Use the `--verbose` flag to enable debug logging for all key modules:
+```bash
+./agent run --authentication-key YOUR_KEY --verbose
+```
+
+This automatically enables debug logging for:
+- `strategy.http` - HTTP strategy and cache operations
+- `cache` - Cache operations and debugging  
+- `probe.redfish` - Redfish probe operations
+- `configuration` - Configuration loading and parsing
+- `scheduler` - Probe scheduling operations
+
+#### Selective Debug Mode
+Use `--verbose` with `--debug-modules` to enable debug logging only for specific modules:
+```bash
+./agent run --authentication-key YOUR_KEY --verbose --debug-modules strategy.http,cache
+./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.redfish
+```
+
+Available modules: `strategy.http`, `strategy.prtg`, `strategy.senhub`, `probe.redfish`, `probe.host`, `probe.network`, `probe.webapp`, `probe.otel`, `probe.gateway`, `probe.syslog`, `cache`, `transformer`, `scheduler`, `configuration`
+
+### Runtime Debug Control
+You can also change log levels at runtime via HTTP API:
+```bash
+# Get current log levels
+curl -X GET http://localhost:8080/api/{agentkey}/debug/logs
+
+# Set specific modules to debug
+curl -X POST http://localhost:8080/api/{agentkey}/debug/logs \
+  -H "Content-Type: application/json" \
+  -d '{"strategy.http": "debug", "cache": "debug"}'
+```
+
 ## Development Session Information
 - WORK DIRECTORY: `/Users/matthieu/Documents/GitHub/senhub-agent/`
 - FILES CREATED:
