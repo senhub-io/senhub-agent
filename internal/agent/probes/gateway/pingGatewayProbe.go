@@ -37,7 +37,7 @@ func (p *PingGatewayProbe) GetTargetStrategies() []string {
 }
 
 func (p *PingGatewayProbe) GetName() string {
-	return "pingGatewayProbe"
+	return "ping_gateway"
 }
 
 func (p *PingGatewayProbe) ShouldStart() bool {

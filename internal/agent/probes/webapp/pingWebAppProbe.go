@@ -68,7 +68,7 @@ func (p *PingWebAppProbe) GetTargetStrategies() []string {
 }
 
 func (p *PingWebAppProbe) GetName() string {
-	return "pingWebAppProbe"
+	return "ping_webapp"
 }
 
 func (p *PingWebAppProbe) ShouldStart() bool {
