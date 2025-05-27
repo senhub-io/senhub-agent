@@ -18,15 +18,17 @@ import (
 )
 
 type PingGatewayProbe struct {
-	rawConfig map[string]interface{}
-	logger    *logger.Logger
+	rawConfig    map[string]interface{}
+	moduleLogger *logger.ModuleLogger
 }
 
-func NewPingGatewayProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
-	// No validation needed for this probe
+func NewPingGatewayProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
+	// Create module-specific logger for gateway probe
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.gateway")
+
 	return &PingGatewayProbe{
-		rawConfig: config,
-		logger:    logger,
+		rawConfig:    config,
+		moduleLogger: moduleLogger,
 	}, nil
 }
 
@@ -49,13 +51,13 @@ func (p *PingGatewayProbe) GetInterval() time.Duration {
 func (p *PingGatewayProbe) Collect() ([]data_store.DataPoint, error) {
 	gatewayIP, err := p.getGatewayIP()
 	if err != nil {
-		fmt.Printf("error retrieving gateway IP address: %v", err)
+		p.moduleLogger.Error().Err(err).Msg("error retrieving gateway IP address")
 		return nil, err
 	}
 
 	averageLatency, packetLoss, err := p.collectPing(gatewayIP)
 	if err != nil {
-		fmt.Printf("error collecting ping data: %v", err)
+		p.moduleLogger.Error().Err(err).Msg("error collecting ping data")
 		return nil, err
 	}
 

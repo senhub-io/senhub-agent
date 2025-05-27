@@ -50,21 +50,24 @@ type LoadWebAppProbeConfig struct {
 }
 
 type LoadWebAppProbe struct {
-	rawConfig map[string]interface{}
-	config    LoadWebAppProbeConfig
-	logger    *logger.Logger
+	rawConfig    map[string]interface{}
+	config       LoadWebAppProbeConfig
+	moduleLogger *logger.ModuleLogger
 }
 
-func NewLoadWebAppProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
+func NewLoadWebAppProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
 	parsedConfig, err := parseLoadWebAppProbeConfig(config)
 	if err != nil {
 		return nil, err
 	}
 
+	// Create module-specific logger for loadwebapp probe
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.loadwebapp")
+
 	return &LoadWebAppProbe{
-		rawConfig: config,
-		config:    parsedConfig,
-		logger:    logger,
+		rawConfig:    config,
+		config:       parsedConfig,
+		moduleLogger: moduleLogger,
 	}, nil
 }
 
@@ -153,13 +156,13 @@ func (p *LoadWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error) {
 	parsedURL, err := url.Parse(pageURL)
 	if err != nil {
-		p.logger.Error().Err(err).Msg("Failed to parse URL")
+		p.moduleLogger.Error().Err(err).Msg("Failed to parse URL")
 		return nil, err
 	}
 
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		err := fmt.Errorf("invalid URL scheme: %s, must be http or https", parsedURL.Scheme)
-		p.logger.Error().Msg(err.Error())
+		p.moduleLogger.Error().Msg(err.Error())
 		return nil, err
 	}
 
@@ -193,7 +196,7 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error
 
 	req, err := http.NewRequestWithContext(ctx, "GET", pageURL, nil)
 	if err != nil {
-		p.logger.Error().Err(err).Msg("Failed to create request")
+		p.moduleLogger.Error().Err(err).Msg("Failed to create request")
 		return nil, err
 	}
 
@@ -221,25 +224,25 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error
 		var netErr net.Error
 		if errors.As(err, &netErr) {
 			if netErr.Timeout() {
-				p.logger.Error().Err(err).Msg("Request timed out")
+				p.moduleLogger.Error().Err(err).Msg("Request timed out")
 				return nil, fmt.Errorf("request timed out: %w", err)
 			}
 		}
 
 		// Gestion des erreurs de certificat
 		if strings.Contains(err.Error(), "x509") || strings.Contains(err.Error(), "certificate") {
-			p.logger.Error().Err(err).Msg("SSL/TLS certificate error")
+			p.moduleLogger.Error().Err(err).Msg("SSL/TLS certificate error")
 			return nil, fmt.Errorf("certificate error: %w", err)
 		}
 
 		// Gestion des erreurs de contexte
 		if ctx.Err() == context.DeadlineExceeded {
-			p.logger.Error().Err(err).Msgf("Request timed out after %v", p.config.Timeout)
+			p.moduleLogger.Error().Err(err).Msgf("Request timed out after %v", p.config.Timeout)
 			return nil, fmt.Errorf("request timed out after %v: %w", p.config.Timeout, err)
 		}
 
 		// Autres erreurs réseau
-		p.logger.Error().Err(err).Msg("Network error occurred")
+		p.moduleLogger.Error().Err(err).Msg("Network error occurred")
 		return nil, fmt.Errorf("network error: %w", err)
 	}
 	defer resp.Body.Close()
@@ -247,7 +250,7 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error
 	// Vérification du code de statut
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		err := fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-		p.logger.Error().Err(err).Int("status_code", resp.StatusCode).Msg("HTTP error")
+		p.moduleLogger.Error().Err(err).Int("status_code", resp.StatusCode).Msg("HTTP error")
 		return nil, err
 	}
 
@@ -264,11 +267,11 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error
 	select {
 	case err := <-bodyDone:
 		if err != nil {
-			p.logger.Error().Err(err).Msg("Error reading response body")
+			p.moduleLogger.Error().Err(err).Msg("Error reading response body")
 			return nil, fmt.Errorf("error reading response body: %w", err)
 		}
 	case <-bodyCtx.Done():
-		p.logger.Error().Msg("Timeout reading response body")
+		p.moduleLogger.Error().Msg("Timeout reading response body")
 		return nil, fmt.Errorf("timeout reading response body")
 	}
 

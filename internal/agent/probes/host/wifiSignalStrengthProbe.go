@@ -16,8 +16,8 @@ import (
 )
 
 type wifiSignalStrengthProbe struct {
-	rawConfig map[string]interface{}
-	logger    *logger.Logger
+	rawConfig    map[string]interface{}
+	moduleLogger *logger.ModuleLogger
 }
 
 func (m *wifiSignalStrengthProbe) checkWifiWindows() bool {
@@ -70,11 +70,13 @@ func (m *wifiSignalStrengthProbe) checkWifiLinux() bool {
 	return strings.Contains(strings.ToLower(string(output)), "enabled")
 }
 
-func NewWifiSignalStrengthProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
-	// No validation needed for this probe
+func NewWifiSignalStrengthProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
+	// Create module-specific logger for wifi probe
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.wifi")
+
 	return &wifiSignalStrengthProbe{
-		rawConfig: config,
-		logger:    logger,
+		rawConfig:    config,
+		moduleLogger: moduleLogger,
 	}, nil
 }
 
