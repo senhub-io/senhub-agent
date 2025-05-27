@@ -28,33 +28,34 @@ type SyslogProbeConfig struct {
 }
 
 type SyslogProbe struct {
-	rawConfig map[string]interface{}
-	config    SyslogProbeConfig
-	logger    *logger.Logger
-	server    *syslog.Server
-	callback  func([]data_store.DataPoint) error
+	rawConfig    map[string]interface{}
+	config       SyslogProbeConfig
+	moduleLogger *logger.ModuleLogger
+	server       *syslog.Server
+	callback     func([]data_store.DataPoint) error
 }
 
 func (p *SyslogProbe) SetCallback(callback func([]data_store.DataPoint) error) {
 	p.callback = callback
 }
 
-func NewSyslogProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
-	localLogger := logger.With().Str("probe", "syslog").Logger()
+func NewSyslogProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
+	// Create module-specific logger for syslog probe
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.syslog")
 
 	parsedConfig, err := parseSyslogProbeConfig(config)
 	if err != nil {
 		return nil, err
 	}
 
-	localLogger.Debug().
+	moduleLogger.Debug().
 		Any("config", parsedConfig).
 		Msg("Creating new syslog probe")
 
 	return &SyslogProbe{
-		rawConfig: config,
-		config:    parsedConfig,
-		logger:    &localLogger,
+		rawConfig:    config,
+		config:       parsedConfig,
+		moduleLogger: moduleLogger,
 	}, nil
 }
 
@@ -108,7 +109,7 @@ func (p *SyslogProbe) Collect() ([]data_store.DataPoint, error) {
 }
 
 func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
-	localLogger := p.logger.With().
+	localLogger := p.moduleLogger.Logger.With().
 		Str("protocol", p.config.Protocol).
 		Int("port", p.config.Port).
 		Logger()
@@ -147,7 +148,7 @@ func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
 			case logParts := <-channel:
 				p.processLogMessage(logParts)
 			case <-quitChannel:
-				p.logger.Info().Msg("Received quit signal, stopping message processing")
+				p.moduleLogger.Info().Msg("Received quit signal, stopping message processing")
 				return
 			}
 		}
@@ -187,7 +188,7 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 		{Key: "priority", Value: fmt.Sprintf("%d", priority), Private: false},
 	}
 
-	p.logger.Debug().
+	p.moduleLogger.Debug().
 		Int("facility", facility).
 		Int("severity", severity).
 		Str("host", hostname).
@@ -195,7 +196,7 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 		Msg("Received syslog message")
 
 	if p.callback == nil {
-		p.logger.Warn().Msg("Callback is not set")
+		p.moduleLogger.Warn().Msg("Callback is not set")
 		return
 	}
 
@@ -206,13 +207,13 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 		Tags:      eventTags,
 	}
 
-	p.logger.Debug().
+	p.moduleLogger.Debug().
 		Time("timestamp", timestamp).
 		Int("severity", severity).
 		Msg("Sending DataPoint to DataStore")
 
 	if err := p.callback([]data_store.DataPoint{dataPoint}); err != nil {
-		p.logger.Error().
+		p.moduleLogger.Error().
 			Err(err).
 			Msg("Failed to send DataPoint to DataStore")
 	}
