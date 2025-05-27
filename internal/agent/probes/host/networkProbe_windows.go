@@ -256,6 +256,9 @@ func getNetworkInterfaces() (map[string]interfaceInfo, error) {
 }
 
 func newNetworkCollector(config map[string]interface{}, logger *logger.Logger) (osNetworkCollector, error) {
+	// Initialize PDH logger
+	pdh.InitializePDHLogger(logger)
+	
 	query, err := pdh.NewQuery()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PDH query: %v", err)
