@@ -110,7 +110,7 @@ func (p *LoadWebAppProbe) GetTargetStrategies() []string {
 }
 
 func (p *LoadWebAppProbe) GetName() string {
-	return "loadWebAppProbe"
+	return "load_webapp"
 }
 
 func (p *LoadWebAppProbe) ShouldStart() bool {
