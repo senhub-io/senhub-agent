@@ -46,7 +46,7 @@ func NewOtelProbe(config map[string]interface{}, baseLogger *logger.Logger) (typ
 	
 	probe := &otelProbe{
 		BaseProbe:      &types.BaseProbe{},
-		name:           "otelProbe",
+		name:           "otel",
 		interval:       60 * time.Second,
 		moduleLogger:   moduleLogger,
 		endpoint:       endpoint,

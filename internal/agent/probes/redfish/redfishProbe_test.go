@@ -205,7 +205,7 @@ func TestRedfishProbeBaseMethods(t *testing.T) {
 	assert.NotNil(t, probe)
 
 	// Test GetName
-	assert.Equal(t, "redfishProbe", probe.GetName())
+	assert.Equal(t, "redfish", probe.GetName())
 
 	// Test ShouldStart
 	assert.True(t, probe.ShouldStart())
