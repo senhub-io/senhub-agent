@@ -97,6 +97,9 @@ type windowsMemoryCollector struct {
 }
 
 func newMemoryCollector(config map[string]interface{}, logger *logger.Logger) (osCollector, error) {
+	// Initialize PDH logger
+	pdh.InitializePDHLogger(logger)
+	
 	query, err := pdh.NewQuery()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PDH query: %v", err)

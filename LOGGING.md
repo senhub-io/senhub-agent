@@ -51,6 +51,7 @@ The system defines 16 modules for different components:
 | `probe.wifi` | WiFi signal probe |
 | `probe.syslog` | Syslog probe |
 | `probe.event` | Event probe (HTTP endpoint) |
+| `pdh.windows` | Windows Performance Data Helper (low-level) |
 | `strategy.senhub` | SenHub sending strategy |
 | `strategy.prtg` | PRTG sending strategy |
 | `strategy.http` | HTTP/cache strategy |
@@ -181,6 +182,11 @@ func (p *newProbe) method() {
 #### Debug Redfish and network probes
 ```bash
 ./senhub-agent --debug-modules "probe.redfish,probe.network" --authentication-key "..."
+```
+
+#### Debug Windows performance counters (PDH)
+```bash
+./senhub-agent --debug-modules "pdh.windows" --authentication-key "..."
 ```
 
 #### Runtime level changes
@@ -366,6 +372,7 @@ The following probes have been migrated to use ModuleLogger:
 - ✅ `probe.wifi` - WiFi signal strength probe
 - ✅ `probe.syslog` - Syslog probe
 - ✅ `probe.event` - Event probe (HTTP endpoint)
+- ✅ `pdh.windows` - Windows Performance Data Helper utilities
 
 ### Strategy Migration Status
 
