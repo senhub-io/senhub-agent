@@ -26,6 +26,7 @@ type HTTPSyncStrategy struct {
 	cache               *MetricCache
 	agentKey            string
 	port                int
+	bindAddress         string // IP address to bind to
 	transformerRegistry *transformers.TransformerRegistry
 	namingConfig        map[string]string // probe -> style mapping
 }
@@ -88,7 +89,8 @@ func NewHTTPSyncStrategy(
 		params:              params,
 		logger:              moduleLogger,
 		agentKey:            agentConfig.GetAuthenticationKey(),
-		port:                8080, // Default port, should be configurable
+		port:                8080,      // Default port
+		bindAddress:         "0.0.0.0", // Default to all interfaces
 		transformerRegistry: transformers.NewTransformerRegistry(moduleLogger.Logger),
 		namingConfig:        make(map[string]string),
 		cache: &MetricCache{
@@ -102,6 +104,13 @@ func NewHTTPSyncStrategy(
 	if portValue, exists := params["port"]; exists {
 		if port, ok := portValue.(float64); ok {
 			strategy.port = int(port)
+		}
+	}
+
+	// Override bind address if specified in params
+	if bindValue, exists := params["bind_address"]; exists {
+		if bindAddr, ok := bindValue.(string); ok {
+			strategy.bindAddress = bindAddr
 		}
 	}
 
@@ -148,12 +157,23 @@ func (h *HTTPSyncStrategy) ValidateConfigParams(params configuration.StorageConf
 			return fmt.Errorf("port must be a number")
 		}
 	}
+	
+	// Validate bind_address if provided
+	if bindValue, exists := params["bind_address"]; exists {
+		if _, ok := bindValue.(string); !ok {
+			return fmt.Errorf("bind_address must be a string")
+		}
+	}
+	
 	return nil
 }
 
 // Start initializes the HTTP server and cache cleanup
 func (h *HTTPSyncStrategy) Start() error {
-	h.logger.Info().Int("port", h.port).Msg("Starting HTTP strategy")
+	h.logger.Info().
+		Int("port", h.port).
+		Str("bind_address", h.bindAddress).
+		Msg("Starting HTTP strategy")
 
 	// Start cache cleanup goroutine
 	go h.cache.cleanup()
@@ -161,9 +181,10 @@ func (h *HTTPSyncStrategy) Start() error {
 	// Setup HTTP routes
 	router := h.setupRoutes()
 
-	// Create HTTP server
+	// Create HTTP server with configurable bind address
+	address := fmt.Sprintf("%s:%d", h.bindAddress, h.port)
 	h.server = &http.Server{
-		Addr:         fmt.Sprintf(":%d", h.port),
+		Addr:         address,
 		Handler:      router,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
@@ -172,7 +193,11 @@ func (h *HTTPSyncStrategy) Start() error {
 
 	// Start server in goroutine
 	go func() {
-		h.logger.Info().Int("port", h.port).Msg("HTTP server listening")
+		h.logger.Info().
+			Str("address", address).
+			Int("port", h.port).
+			Str("bind_address", h.bindAddress).
+			Msg("HTTP server listening")
 		if err := h.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			h.logger.Error().Err(err).Msg("HTTP server error")
 		}
