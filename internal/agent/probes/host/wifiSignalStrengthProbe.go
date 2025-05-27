@@ -16,8 +16,9 @@ import (
 )
 
 type wifiSignalStrengthProbe struct {
-	rawConfig    map[string]interface{}
-	moduleLogger *logger.ModuleLogger
+	*types.BaseProbe // Ajout de BaseProbe
+	rawConfig        map[string]interface{}
+	moduleLogger     *logger.ModuleLogger
 }
 
 func (m *wifiSignalStrengthProbe) checkWifiWindows() bool {
@@ -75,6 +76,7 @@ func NewWifiSignalStrengthProbe(config map[string]interface{}, baseLogger *logge
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.wifi")
 
 	return &wifiSignalStrengthProbe{
+		BaseProbe:    &types.BaseProbe{},
 		rawConfig:    config,
 		moduleLogger: moduleLogger,
 	}, nil
@@ -85,7 +87,7 @@ func (p *wifiSignalStrengthProbe) GetTargetStrategies() []string {
 }
 
 func (m *wifiSignalStrengthProbe) GetName() string {
-	return "WifiSignalStrengthProbe"
+	return "wifi_signal_strength"
 }
 
 func (m *wifiSignalStrengthProbe) ShouldStart() bool {
@@ -105,16 +107,32 @@ func (m *wifiSignalStrengthProbe) GetInterval() time.Duration {
 }
 
 func (m *wifiSignalStrengthProbe) Collect() ([]data_store.DataPoint, error) {
+	var metrics []data_store.DataPoint
+	var err error
 
 	switch runtime.GOOS {
 	case "windows":
-		return m.collectWindows()
+		metrics, err = m.collectWindows()
 	case "linux":
-		return m.collectLinux()
+		metrics, err = m.collectLinux()
 	default:
-		fmt.Errorf("OS not supported")
-		return []data_store.DataPoint{}, nil
+		err = fmt.Errorf("OS not supported")
+		return []data_store.DataPoint{}, err
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Enrich datapoints with probe name and send to strategies
+	if m.OnDataPoints != nil {
+		enrichedMetrics := m.EnrichDataPointsWithProbeName(metrics, m.GetName())
+		if err := m.OnDataPoints(enrichedMetrics, m); err != nil {
+			return nil, fmt.Errorf("error handling data points: %v", err)
+		}
+	}
+
+	return metrics, nil
 }
 
 func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, error) {

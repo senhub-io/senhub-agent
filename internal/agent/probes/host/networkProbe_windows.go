@@ -75,6 +75,7 @@ type windowsNetworkCollector struct {
 	interfaces  map[string]interfaceInfo // key = PDH name
 	mu          sync.Mutex
 	initialized bool
+	logger      *logger.ModuleLogger
 }
 
 // Helper function to normalize adapter names for comparison
@@ -107,25 +108,28 @@ func normalizeAdapterName(name string) string {
 	return strings.TrimSpace(name)
 }
 
-func getNetworkInterfaces() (map[string]interfaceInfo, error) {
-	fmt.Printf("\n=== Starting Network Interfaces Detection ===\n")
+func getNetworkInterfaces(logger *logger.ModuleLogger) (map[string]interfaceInfo, error) {
+	logger.Debug().Msg("Starting Network Interfaces Detection")
 
 	// 1. WMI Query
 	var adapters []Win32_NetworkAdapter
 	query := "SELECT Name, NetConnectionID, PhysicalAdapter, NetEnabled FROM Win32_NetworkAdapter WHERE PhysicalAdapter=True"
-	fmt.Printf("\nExecuting WMI query: %s\n", query)
+	logger.Debug().Str("wmi_query", query).Msg("Executing WMI query")
 
 	if err := wmi.Query(query, &adapters); err != nil {
-		fmt.Printf("WMI query failed: %v\n", err)
+		logger.Debug().Err(err).Msg("WMI query failed")
 		return nil, fmt.Errorf("failed to get network adapters from WMI: %v", err)
 	}
-	fmt.Printf("Found %d physical adapters from WMI\n", len(adapters))
+	logger.Debug().Int("adapter_count", len(adapters)).Msg("Found physical adapters from WMI")
 
 	// 2. Debug WMI results
-	fmt.Printf("\nNetwork Adapters (WMI):\n")
+	logger.Debug().Msg("Network Adapters (WMI)")
 	for _, adapter := range adapters {
-		fmt.Printf("  - Name: %s\n    Connection: %s\n    Enabled: %v\n",
-			adapter.Name, adapter.NetConnectionID, adapter.NetEnabled)
+		logger.Debug().
+			Str("name", adapter.Name).
+			Str("connection", adapter.NetConnectionID).
+			Bool("enabled", adapter.NetEnabled).
+			Msg("WMI Adapter")
 	}
 
 	// 3. Create mapping
@@ -140,54 +144,57 @@ func getNetworkInterfaces() (map[string]interfaceInfo, error) {
 				name:    adapter.Name,
 				enabled: adapter.NetEnabled,
 			}
-			fmt.Printf("\nRegistered adapter mapping: %s -> %s (enabled: %v)\n",
-				adapter.NetConnectionID, adapter.Name, adapter.NetEnabled)
+			logger.Debug().
+				Str("connection", adapter.NetConnectionID).
+				Str("adapter", adapter.Name).
+				Bool("enabled", adapter.NetEnabled).
+				Msg("Registered adapter mapping")
 		}
 	}
 
 	// 4. Get system interfaces
-	fmt.Printf("\nRetrieving system network interfaces...\n")
+	logger.Debug().Msg("Retrieving system network interfaces")
 	netInterfaces, err := net.Interfaces()
 	if err != nil {
-		fmt.Printf("Failed to get system interfaces: %v\n", err)
+		logger.Debug().Err(err).Msg("Failed to get system interfaces")
 		return nil, fmt.Errorf("failed to get system network interfaces: %v", err)
 	}
-	fmt.Printf("Found %d system interfaces\n", len(netInterfaces))
+	logger.Debug().Int("interface_count", len(netInterfaces)).Msg("Found system interfaces")
 
 	// 5. Get PDH instances
-	fmt.Printf("\nRetrieving PDH interface instances...\n")
+	logger.Debug().Msg("Retrieving PDH interface instances")
 	pdhInstances, err := pdh.GetInstancesList("Network Interface", true) // debug enabled
 	if err != nil {
-		fmt.Printf("Failed to get PDH instances: %v\n", err)
+		logger.Debug().Err(err).Msg("Failed to get PDH instances")
 		return nil, fmt.Errorf("failed to get PDH Network Interface instances: %v", err)
 	}
-	fmt.Printf("\nPDH Interface instances (%d found):\n", len(pdhInstances))
+	logger.Debug().Int("instance_count", len(pdhInstances)).Msg("PDH Interface instances found")
 	for _, inst := range pdhInstances {
-		fmt.Printf("  - %s\n", inst)
+		logger.Debug().Str("instance", inst).Msg("PDH instance")
 	}
 
 	// 6. Build final mapping
-	fmt.Printf("\n=== Building final interface mapping ===\n")
+	logger.Debug().Msg("Building final interface mapping")
 	interfaces := make(map[string]interfaceInfo)
 
 	for _, iface := range netInterfaces {
-		fmt.Printf("\nProcessing interface: %s\n", iface.Name)
+		logger.Debug().Str("interface", iface.Name).Msg("Processing interface")
 
 		// Check for corresponding adapter
 		adapterInfo, exists := connectionToAdapter[iface.Name]
 		if !exists {
-			fmt.Printf("  No matching WMI adapter found for %s, skipping\n", iface.Name)
+			logger.Debug().Str("interface", iface.Name).Msg("No matching WMI adapter found, skipping")
 			continue
 		}
 		if !adapterInfo.enabled {
-			fmt.Printf("  Adapter %s is disabled, skipping\n", iface.Name)
+			logger.Debug().Str("adapter", iface.Name).Msg("Adapter is disabled, skipping")
 			continue
 		}
 
 		// Get IP addresses
 		addrs, err := iface.Addrs()
 		if err != nil {
-			fmt.Printf("  Error getting addresses: %v\n", err)
+			logger.Debug().Err(err).Msg("Error getting addresses")
 			continue
 		}
 
@@ -203,18 +210,18 @@ func getNetworkInterfaces() (map[string]interfaceInfo, error) {
 			if ip4 := ip.To4(); ip4 != nil {
 				if ipv4 == "" {
 					ipv4 = ip4.String()
-					fmt.Printf("  Primary IPv4: %s\n", ipv4)
+					logger.Debug().Str("ipv4", ipv4).Msg("Primary IPv4")
 				} else {
 					otherIPs = append(otherIPs, ip4.String())
-					fmt.Printf("  Additional IPv4: %s\n", ip4.String())
+					logger.Debug().Str("ipv4", ip4.String()).Msg("Additional IPv4")
 				}
 			} else if ip6 := ip.To16(); ip6 != nil {
 				if ipv6 == "" {
 					ipv6 = ip6.String()
-					fmt.Printf("  Primary IPv6: %s\n", ipv6)
+					logger.Debug().Str("ipv6", ipv6).Msg("Primary IPv6")
 				} else {
 					otherIPs = append(otherIPs, ip6.String())
-					fmt.Printf("  Additional IPv6: %s\n", ip6.String())
+					logger.Debug().Str("ipv6", ip6.String()).Msg("Additional IPv6")
 				}
 			}
 		}
@@ -225,7 +232,7 @@ func getNetworkInterfaces() (map[string]interfaceInfo, error) {
 			for _, inst := range pdhInstances {
 				if strings.Contains(normalizeAdapterName(inst), normalizeAdapterName(adapterInfo.name)) {
 					pdhName = inst
-					fmt.Printf("  Found matching PDH instance: %s\n", pdhName)
+					logger.Debug().Str("pdh_name", pdhName).Msg("Found matching PDH instance")
 					break
 				}
 			}
@@ -239,34 +246,43 @@ func getNetworkInterfaces() (map[string]interfaceInfo, error) {
 					otherIPs:       otherIPs,
 					enabled:        true,
 				}
-				fmt.Printf("\nSuccessfully mapped interface:\n  PDH: %s\n  Adapter: %s\n  Connection: %s\n  IPv4: %s\n  IPv6: %s\n  Other IPs: %v\n",
-					pdhName, adapterInfo.name, iface.Name, ipv4, ipv6, otherIPs)
+				logger.Debug().
+					Str("pdh", pdhName).
+					Str("adapter", adapterInfo.name).
+					Str("connection", iface.Name).
+					Str("ipv4", ipv4).
+					Str("ipv6", ipv6).
+					Strs("other_ips", otherIPs).
+					Msg("Successfully mapped interface")
 			} else {
-				fmt.Printf("  No matching PDH instance found for adapter %s\n", adapterInfo.name)
+				logger.Debug().Str("adapter", adapterInfo.name).Msg("No matching PDH instance found for adapter")
 			}
 		} else {
-			fmt.Printf("  No IP addresses found for interface %s\n", iface.Name)
+			logger.Debug().Str("interface", iface.Name).Msg("No IP addresses found for interface")
 		}
 	}
 
-	fmt.Printf("\n=== Final Result ===\n")
-	fmt.Printf("Found %d valid interfaces\n", len(interfaces))
+	logger.Debug().Msg("Final Result")
+	logger.Debug().Int("interface_count", len(interfaces)).Msg("Found valid interfaces")
 
 	return interfaces, nil
 }
 
-func newNetworkCollector(config map[string]interface{}, logger *logger.Logger) (osNetworkCollector, error) {
+func newNetworkCollector(config map[string]interface{}, baseLogger *logger.Logger) (osNetworkCollector, error) {
 	// Initialize PDH logger
-	pdh.InitializePDHLogger(logger)
+	pdh.InitializePDHLogger(baseLogger)
+	
+	// Create module logger for host probes
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.host")
 	
 	query, err := pdh.NewQuery()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PDH query: %v", err)
 	}
 
-	fmt.Printf("Initializing network collector\n")
+	moduleLogger.Debug().Msg("Initializing network collector")
 
-	interfaces, err := getNetworkInterfaces()
+	interfaces, err := getNetworkInterfaces(moduleLogger)
 	if err != nil {
 		query.Close()
 		return nil, fmt.Errorf("failed to get network interfaces: %v", err)
@@ -276,6 +292,7 @@ func newNetworkCollector(config map[string]interface{}, logger *logger.Logger) (
 		query:      query,
 		paths:      make(map[string]pathInfo),
 		interfaces: interfaces,
+		logger:     moduleLogger,
 	}
 
 	if err := collector.initializeCounters(); err != nil {
@@ -292,7 +309,7 @@ func newNetworkCollector(config map[string]interface{}, logger *logger.Logger) (
 }
 
 func (w *windowsNetworkCollector) initializeCounters() error {
-	fmt.Printf("Initializing Network probe counters\n")
+	w.logger.Debug().Msg("Initializing Network probe counters")
 
 	for metricName, def := range networkCounterPaths {
 		if def.instance == "*" {
@@ -306,9 +323,14 @@ func (w *windowsNetworkCollector) initializeCounters() error {
 				if err := w.query.AddCounter(path); err != nil {
 					return fmt.Errorf("failed to add counter %s (instance %s): %v", metricName, pdhName, err)
 				}
-				fmt.Printf("Added counter %s for adapter '%s' (connection: %s) IPv4: %s, IPv6: %s, Other IPs: %s\n",
-					metricName, interfaceInfo.adapterName, interfaceInfo.connectionName,
-					interfaceInfo.ipv4, interfaceInfo.ipv6, strings.Join(interfaceInfo.otherIPs, ", "))
+				w.logger.Debug().
+					Str("metric", metricName).
+					Str("adapter", interfaceInfo.adapterName).
+					Str("connection", interfaceInfo.connectionName).
+					Str("ipv4", interfaceInfo.ipv4).
+					Str("ipv6", interfaceInfo.ipv6).
+					Str("other_ips", strings.Join(interfaceInfo.otherIPs, ", ")).
+					Msg("Added counter")
 			}
 		}
 	}
@@ -341,7 +363,7 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 	for name, pathInfo := range w.paths {
 		value, err := w.query.GetCounterValue(pathInfo.path)
 		if err != nil {
-			fmt.Printf("Error getting counter value for %s: %v\n", name, err)
+			w.logger.Debug().Str("metric", name).Err(err).Msg("Error getting counter value")
 			continue
 		}
 

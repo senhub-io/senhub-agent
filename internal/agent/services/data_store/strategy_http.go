@@ -201,6 +201,14 @@ func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error
 
 		// Get probe name from tags
 		probeName := tags["probe_name"]
+		
+		// ⚠️ DEBUG: Log if probe_name is missing or empty
+		if probeName == "" {
+			h.logger.Warn().
+				Str("key", key).
+				Interface("all_tags", tags).
+				Msg("⚠️ MISSING PROBE_NAME: Metric has no probe_name tag!")
+		}
 
 		// Store in cache
 		h.cache.data[key] = CachedMetric{
@@ -326,6 +334,20 @@ func (h *HTTPSyncStrategy) getMetricsForProbe(probeName string) []PRTGChannel {
 		Str("requested_probe", probeName).
 		Int("cache_size", len(h.cache.data)).
 		Msg("🔍 Getting metrics for probe")
+
+	// ⚠️ DEBUG: Log all available probe names in cache
+	probeNames := make(map[string]int)
+	for _, metric := range h.cache.data {
+		if metric.ProbeName != "" {
+			probeNames[metric.ProbeName]++
+		} else {
+			probeNames["<EMPTY>"]++
+		}
+	}
+	h.logger.Info().
+		Interface("available_probes", probeNames).
+		Str("requested_probe", probeName).
+		Msg("🗂️ Available probe names in cache")
 
 	var channels []PRTGChannel
 	matchingMetrics := 0
