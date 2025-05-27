@@ -21,7 +21,7 @@ import (
 type HTTPSyncStrategy struct {
 	agentConfig         configuration.AgentConfiguration
 	params              map[string]interface{}
-	logger              *logger.Logger
+	logger              *logger.ModuleLogger
 	server              *http.Server
 	cache               *MetricCache
 	agentKey            string
@@ -89,7 +89,7 @@ func NewHTTPSyncStrategy(
 		logger:              moduleLogger,
 		agentKey:            agentConfig.GetAuthenticationKey(),
 		port:                8080, // Default port, should be configurable
-		transformerRegistry: transformers.NewTransformerRegistry(moduleLogger),
+		transformerRegistry: transformers.NewTransformerRegistry(moduleLogger.Logger),
 		namingConfig:        make(map[string]string),
 		cache: &MetricCache{
 			data:     make(map[string]CachedMetric),
@@ -184,6 +184,7 @@ func (h *HTTPSyncStrategy) Start() error {
 // AddDataPoints stores the received datapoints in cache
 func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error {
 	h.logger.Info().Int("count", len(datapoints)).Msg("🔥 HTTP Strategy - Received datapoints")
+	h.logger.Debug().Int("datapoints_count", len(datapoints)).Msg("Processing datapoints for HTTP cache")
 	
 	h.cache.mu.Lock()
 	defer h.cache.mu.Unlock()
@@ -334,7 +335,8 @@ func (h *HTTPSyncStrategy) getMetricsForProbe(probeName string) []PRTGChannel {
 			Str("key", key).
 			Str("metric_probe", metric.ProbeName).
 			Str("requested_probe", probeName).
-			Msg("📋 Cache entry")
+			Interface("metric_value", metric.Value).
+			Msg("📋 Checking cache entry for probe match")
 
 		// Filter by probe name
 		if metric.ProbeName != probeName {
@@ -486,7 +488,14 @@ func (h *HTTPSyncStrategy) generateMetricKey(dp datapoint.DataPoint) string {
 	}
 	
 	// Join all parts with dots
-	return strings.Join(keyParts, ".")
+	generatedKey := strings.Join(keyParts, ".")
+	h.logger.Debug().
+		Str("metric_name", dp.Name).
+		Str("generated_key", generatedKey).
+		Interface("tags", tagMap).
+		Msg("Generated metric cache key")
+	
+	return generatedKey
 }
 
 // DebugCacheEntry represents a cache entry for debug display
