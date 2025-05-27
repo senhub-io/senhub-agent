@@ -288,20 +288,68 @@ func parseLogLevel(levelStr string) (zerolog.Level, error) {
 }
 
 // NewModuleLogger creates a logger for a specific module with appropriate filtering
-func NewModuleLogger(baseLogger *Logger, module string) *Logger {
-	// Get the configured level for this module
+// GetModuleLogLevel returns the current log level for a module
+func GetModuleLogLevel(module string) zerolog.Level {
 	moduleLevel, exists := moduleLogLevels[module]
 	if !exists {
-		moduleLevel = zerolog.InfoLevel // Default level
+		return zerolog.InfoLevel // Default level
 	}
-	
-	// Create logger with module context and level filtering
-	moduleLogger := baseLogger.With().
+	return moduleLevel
+}
+
+// ModuleLogger wraps a zerolog.Logger with dynamic level checking for a specific module
+type ModuleLogger struct {
+	*zerolog.Logger
+	module string
+}
+
+func NewModuleLogger(baseLogger *Logger, module string) *ModuleLogger {
+	// Create logger with module context
+	logger := baseLogger.With().
 		Str("module", module).
-		Logger().
-		Level(moduleLevel)
+		Logger()
 	
-	return &moduleLogger
+	return &ModuleLogger{
+		Logger: &logger,
+		module: module,
+	}
+}
+
+// Debug logs a debug message if the module's current level allows it
+func (m *ModuleLogger) Debug() *zerolog.Event {
+	if GetModuleLogLevel(m.module) <= zerolog.DebugLevel {
+		return m.Logger.Debug()
+	}
+	// Create a disabled logger for suppressing output
+	disabledLogger := m.Logger.Level(zerolog.Disabled)
+	return disabledLogger.Debug()
+}
+
+// Info logs an info message if the module's current level allows it
+func (m *ModuleLogger) Info() *zerolog.Event {
+	if GetModuleLogLevel(m.module) <= zerolog.InfoLevel {
+		return m.Logger.Info()
+	}
+	disabledLogger := m.Logger.Level(zerolog.Disabled)
+	return disabledLogger.Info()
+}
+
+// Warn logs a warning message if the module's current level allows it
+func (m *ModuleLogger) Warn() *zerolog.Event {
+	if GetModuleLogLevel(m.module) <= zerolog.WarnLevel {
+		return m.Logger.Warn()
+	}
+	disabledLogger := m.Logger.Level(zerolog.Disabled)
+	return disabledLogger.Warn()
+}
+
+// Error logs an error message if the module's current level allows it
+func (m *ModuleLogger) Error() *zerolog.Event {
+	if GetModuleLogLevel(m.module) <= zerolog.ErrorLevel {
+		return m.Logger.Error()
+	}
+	disabledLogger := m.Logger.Level(zerolog.Disabled)
+	return disabledLogger.Error()
 }
 
 // GetModuleLogLevels returns current module log level configuration
