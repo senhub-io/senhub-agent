@@ -68,11 +68,15 @@ type windowsLogicalDiskCollector struct {
 	initialized    bool
 	includeFilters []string
 	excludeFilters []string
+	logger         *logger.ModuleLogger
 }
 
-func newLogicalDiskCollector(config map[string]interface{}, logger *logger.Logger) (logicaldiskCollector, error) {
+func newLogicalDiskCollector(config map[string]interface{}, baseLogger *logger.Logger) (logicaldiskCollector, error) {
 	// Initialize PDH logger
-	pdh.InitializePDHLogger(logger)
+	pdh.InitializePDHLogger(baseLogger)
+	
+	// Create module logger for host probes
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.host")
 	
 	query, err := pdh.NewQuery()
 	if err != nil {
@@ -84,6 +88,7 @@ func newLogicalDiskCollector(config map[string]interface{}, logger *logger.Logge
 		paths:          make(map[string]pathInfo),
 		includeFilters: make([]string, len(driveFilters.Include)),
 		excludeFilters: make([]string, len(driveFilters.Exclude)),
+		logger:         moduleLogger,
 	}
 
 	// Copie des filtres par défaut
@@ -100,8 +105,10 @@ func newLogicalDiskCollector(config map[string]interface{}, logger *logger.Logge
 		}
 	}
 
-	fmt.Printf("Initializing logical disk collector with filters - Include: %v, Exclude: %v\n",
-		collector.includeFilters, collector.excludeFilters)
+	collector.logger.Debug().
+		Strs("include_filters", collector.includeFilters).
+		Strs("exclude_filters", collector.excludeFilters).
+		Msg("Initializing logical disk collector with filters")
 
 	if err := collector.initializeCounters(); err != nil {
 		query.Close()
@@ -125,7 +132,7 @@ func (w *windowsLogicalDiskCollector) shouldIncludeDrive(drive string) bool {
 	for _, pattern := range w.includeFilters {
 		matched, err := filepath.Match(pattern, drive)
 		if err != nil {
-			fmt.Printf("Invalid include pattern %s: %v\n", pattern, err)
+			w.logger.Debug().Str("pattern", pattern).Err(err).Msg("Invalid include pattern")
 			continue
 		}
 		if matched {
@@ -136,7 +143,7 @@ func (w *windowsLogicalDiskCollector) shouldIncludeDrive(drive string) bool {
 
 	// Si le disque n'est pas inclus, pas besoin de vérifier les exclusions
 	if !isIncluded {
-		fmt.Printf("Drive %s does not match any include patterns\n", drive)
+		w.logger.Debug().Str("drive", drive).Msg("Drive does not match any include patterns")
 		return false
 	}
 
@@ -144,11 +151,11 @@ func (w *windowsLogicalDiskCollector) shouldIncludeDrive(drive string) bool {
 	for _, pattern := range w.excludeFilters {
 		matched, err := filepath.Match(pattern, drive)
 		if err != nil {
-			fmt.Printf("Invalid exclude pattern %s: %v\n", pattern, err)
+			w.logger.Debug().Str("pattern", pattern).Err(err).Msg("Invalid exclude pattern")
 			continue
 		}
 		if matched {
-			fmt.Printf("Drive %s matches exclude pattern %s\n", drive, pattern)
+			w.logger.Debug().Str("drive", drive).Str("pattern", pattern).Msg("Drive matches exclude pattern")
 			return false
 		}
 	}
@@ -157,7 +164,7 @@ func (w *windowsLogicalDiskCollector) shouldIncludeDrive(drive string) bool {
 }
 
 func (w *windowsLogicalDiskCollector) initializeCounters() error {
-	fmt.Printf("Initializing logical disk probe with counters\n")
+	w.logger.Debug().Msg("Initializing logical disk probe with counters")
 
 	for metricName, def := range logicaldiskCounterPaths {
 		if def.instance == "*" {
@@ -182,7 +189,7 @@ func (w *windowsLogicalDiskCollector) initializeCounters() error {
 			for _, instance := range instances {
 				// Applique les filtres de disques
 				if !w.shouldIncludeDrive(instance) {
-					fmt.Printf("Skipping drive %s due to filters\n", instance)
+					w.logger.Debug().Str("drive", instance).Msg("Skipping drive due to filters")
 					continue
 				}
 
@@ -192,7 +199,7 @@ func (w *windowsLogicalDiskCollector) initializeCounters() error {
 					instance: instance,
 				}
 
-				fmt.Printf("Adding counter %s with path: %s (drive: %s)\n", metricName, path, instance)
+				w.logger.Debug().Str("metric", metricName).Str("path", path).Str("drive", instance).Msg("Adding counter")
 				if err := w.query.AddCounter(path); err != nil {
 					return fmt.Errorf("failed to add counter %s (drive %s): %v", metricName, instance, err)
 				}
@@ -225,7 +232,7 @@ func (w *windowsLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store
 	for name, pathInfo := range w.paths {
 		value, err := w.query.GetCounterValue(pathInfo.path)
 		if err != nil {
-			fmt.Printf("Error getting counter value for %s: %v\n", name, err)
+			w.logger.Debug().Str("metric", name).Err(err).Msg("Error getting counter value")
 			continue
 		}
 
@@ -251,7 +258,7 @@ func (w *windowsLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store
 			Tags:      metricTags,
 		})
 
-		fmt.Printf("Collected metric %s = %f, tags: %v\n", metricName, value, metricTags)
+		w.logger.Debug().Str("metric", metricName).Float64("value", value).Interface("tags", metricTags).Msg("Collected metric")
 	}
 
 	return dataPoints, nil
