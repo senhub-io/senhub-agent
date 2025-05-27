@@ -24,21 +24,24 @@ type PingWebAppProbeConfig struct {
 }
 
 type PingWebAppProbe struct {
-	rawConfig map[string]interface{}
-	config    PingWebAppProbeConfig
-	logger    *logger.Logger
+	rawConfig    map[string]interface{}
+	config       PingWebAppProbeConfig
+	moduleLogger *logger.ModuleLogger
 }
 
-func NewPingWebAppProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
+func NewPingWebAppProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
 	parsedConfig, err := parsePingWebAppProbeConfig(config)
 	if err != nil {
 		return nil, err
 	}
 
+	// Create module-specific logger for webapp probe
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.webapp")
+
 	return &PingWebAppProbe{
-		rawConfig: config,
-		config:    parsedConfig,
-		logger:    logger,
+		rawConfig:    config,
+		config:       parsedConfig,
+		moduleLogger: moduleLogger,
 	}, nil
 }
 

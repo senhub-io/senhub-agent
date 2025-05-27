@@ -19,7 +19,7 @@ type otelProbe struct {
 	// Probe configuration
 	name           string
 	interval       time.Duration
-	logger         *logger.Logger
+	moduleLogger   *logger.ModuleLogger
 	collector      OtelCollector
 	telemetryTypes []TelemetryType
 	endpoint       string
@@ -32,7 +32,7 @@ type otelProbe struct {
 }
 
 // NewOtelProbe creates a new instance of an OpenTelemetry probe
-func NewOtelProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
+func NewOtelProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
 	// Extract required parameter: endpoint
 	endpoint, ok := config["endpoint"].(string)
 	if !ok || endpoint == "" {
@@ -41,11 +41,14 @@ func NewOtelProbe(config map[string]interface{}, logger *logger.Logger) (types.P
 	
 	ctx, cancel := context.WithCancel(context.Background())
 	
+	// Create module-specific logger for otel probe
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.otel")
+	
 	probe := &otelProbe{
 		BaseProbe:      &types.BaseProbe{},
 		name:           "otelProbe",
 		interval:       60 * time.Second,
-		logger:         logger,
+		moduleLogger:   moduleLogger,
 		endpoint:       endpoint,
 		telemetryTypes: []TelemetryType{TelemetryMetrics, TelemetryTraces, TelemetryLogs},
 		ctx:            ctx,
@@ -70,7 +73,7 @@ func NewOtelProbe(config map[string]interface{}, logger *logger.Logger) (types.P
 				if isSupportedTelemetryType(telemetryType) {
 					probe.telemetryTypes = append(probe.telemetryTypes, telemetryType)
 				} else {
-					logger.Warn().Msgf("Unsupported telemetry type: %s", typeStr)
+					moduleLogger.Warn().Msgf("Unsupported telemetry type: %s", typeStr)
 				}
 			}
 		}
@@ -170,20 +173,20 @@ func (p *otelProbe) Collect() ([]data_store.DataPoint, error) {
 	// Collect metrics for each requested telemetry type
 	for _, telemetryType := range p.telemetryTypes {
 		if !p.collector.IsSupported(telemetryType) {
-			p.logger.Debug().
+			p.moduleLogger.Debug().
 				Str("telemetry_type", string(telemetryType)).
 				Msg("Telemetry type not supported by collector, skipping")
 			continue
 		}
 		
-		p.logger.Debug().
+		p.moduleLogger.Debug().
 			Str("collector", string(p.collector.GetProtocolType())).
 			Str("telemetry_type", string(telemetryType)).
 			Msg("Collecting OpenTelemetry data")
 			
 		dataPoints, err := p.collector.CollectTelemetry(collectCtx, telemetryType, collectionTime)
 		if err != nil {
-			p.logger.Error().
+			p.moduleLogger.Error().
 				Err(err).
 				Str("collector", string(p.collector.GetProtocolType())).
 				Str("telemetry_type", string(telemetryType)).
@@ -199,7 +202,7 @@ func (p *otelProbe) Collect() ([]data_store.DataPoint, error) {
 		// Add to aggregate result
 		allDataPoints = append(allDataPoints, dataPoints...)
 		
-		p.logger.Debug().
+		p.moduleLogger.Debug().
 			Str("collector", string(p.collector.GetProtocolType())).
 			Str("telemetry_type", string(telemetryType)).
 			Int("datapoints", len(dataPoints)).
@@ -225,7 +228,7 @@ func (p *otelProbe) Collect() ([]data_store.DataPoint, error) {
 // quitChannel signals when probe should stop
 func (p *otelProbe) OnStart(quitChannel chan struct{}) error {
 	p.quitChannel = quitChannel
-	p.logger.Info().Msg("OpenTelemetry probe started")
+	p.moduleLogger.Info().Msg("OpenTelemetry probe started")
 	
 	// Connect the collector
 	connectCtx, cancel := context.WithTimeout(p.ctx, 30*time.Second)
@@ -233,14 +236,14 @@ func (p *otelProbe) OnStart(quitChannel chan struct{}) error {
 	
 	err := p.collector.Connect(connectCtx)
 	if err != nil {
-		p.logger.Error().
+		p.moduleLogger.Error().
 			Err(err).
 			Str("protocol", string(p.collector.GetProtocolType())).
 			Msg("Failed to connect OpenTelemetry collector")
 		return fmt.Errorf("failed to connect to OpenTelemetry endpoint: %w", err)
 	}
 	
-	p.logger.Info().
+	p.moduleLogger.Info().
 		Str("endpoint", p.endpoint).
 		Str("protocol", string(p.collector.GetProtocolType())).
 		Strs("telemetry_types", telemetryTypesToStrings(p.telemetryTypes)).
@@ -251,7 +254,7 @@ func (p *otelProbe) OnStart(quitChannel chan struct{}) error {
 
 // OnShutdown handles cleanup when probe is stopped
 func (p *otelProbe) OnShutdown(ctx context.Context) error {
-	p.logger.Info().Msg("Shutting down OpenTelemetry probe")
+	p.moduleLogger.Info().Msg("Shutting down OpenTelemetry probe")
 	
 	// Cancel the context to signal any ongoing operations to stop
 	p.cancelFunc()
