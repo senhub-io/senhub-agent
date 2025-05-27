@@ -24,7 +24,11 @@ type program struct {
 
 func (p *program) Start(s service.Service) error {
 	// Initialize the agent with stored CLI args
-	p.agent = agent.NewAgent() // This should use the args stored in your agent package
+	if p.args != nil {
+		p.agent = agent.NewAgentWithArgs(p.args)
+	} else {
+		p.agent = agent.NewAgent()
+	}
 	go p.run()
 	return nil
 }
@@ -326,7 +330,8 @@ Service Commands:
 Agent Options:
     --authentication-key KEY                Authentication key for the service (required)
     --server-url URL                       Server URL (optional)
-    --verbose                              Enable verbose logging
+    --verbose                              Enable verbose logging (debug level for all key modules)
+    --debug-modules module1,module2        Enable debug logging only for specific modules
 
 Debug Log Shipper Options:
     --debug-log-shipper-url URL            URL of remote log collection endpoint
@@ -338,9 +343,11 @@ Examples:
     %s start
     %s status
     %s run --authentication-key "your-key" --server-url "http://example.com"
+    %s run --authentication-key "your-key" --verbose
+    %s run --authentication-key "your-key" --verbose --debug-modules strategy.http,cache
     %s run --authentication-key "your-key" --debug-log-shipper-url "http://logserver:9428"
     %s update 1.0.0"
     %s update latest"
 
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
