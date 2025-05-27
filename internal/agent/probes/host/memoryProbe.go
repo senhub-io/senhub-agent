@@ -56,7 +56,7 @@ func NewMemoryProbe(config map[string]interface{}, logger *logger.Logger) (types
 }
 
 func (p *memoryProbe) GetName() string {
-	return "memoryProbe"
+	return "memory"
 }
 
 func (p *memoryProbe) ShouldStart() bool {
