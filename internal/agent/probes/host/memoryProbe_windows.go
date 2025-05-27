@@ -94,11 +94,15 @@ type windowsMemoryCollector struct {
 	paths       map[string]pathInfo
 	mu          sync.Mutex
 	initialized bool
+	logger      *logger.ModuleLogger
 }
 
-func newMemoryCollector(config map[string]interface{}, logger *logger.Logger) (osCollector, error) {
+func newMemoryCollector(config map[string]interface{}, baseLogger *logger.Logger) (osCollector, error) {
 	// Initialize PDH logger
-	pdh.InitializePDHLogger(logger)
+	pdh.InitializePDHLogger(baseLogger)
+	
+	// Create module logger for host probes
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.host")
 	
 	query, err := pdh.NewQuery()
 	if err != nil {
@@ -106,8 +110,9 @@ func newMemoryCollector(config map[string]interface{}, logger *logger.Logger) (o
 	}
 
 	collector := &windowsMemoryCollector{
-		query: query,
-		paths: make(map[string]pathInfo),
+		query:  query,
+		paths:  make(map[string]pathInfo),
+		logger: moduleLogger,
 	}
 
 	if err := collector.initializeCounters(); err != nil {
@@ -124,7 +129,7 @@ func newMemoryCollector(config map[string]interface{}, logger *logger.Logger) (o
 }
 
 func (w *windowsMemoryCollector) initializeCounters() error {
-	fmt.Printf("Initializing Memory probe with counters\n")
+	w.logger.Debug().Msg("Initializing Memory probe with counters")
 
 	for metricName, def := range memoryCounterPaths {
 		path := pdh.BuildCounterPath(def.path, def.instance)
@@ -133,7 +138,7 @@ func (w *windowsMemoryCollector) initializeCounters() error {
 			instance: def.instance,
 		}
 
-		fmt.Printf("Adding counter %s with path: %s\n", metricName, path)
+		w.logger.Debug().Str("metric", metricName).Str("path", path).Msg("Adding counter")
 		if err := w.query.AddCounter(path); err != nil {
 			return fmt.Errorf("failed to add counter %s: %v", metricName, err)
 		}
@@ -168,7 +173,7 @@ func (w *windowsMemoryCollector) Collect(timestamp time.Time) ([]data_store.Data
 	for name, pathInfo := range w.paths {
 		value, err := w.query.GetCounterValue(pathInfo.path)
 		if err != nil {
-			fmt.Printf("Error getting counter value for %s: %v\n", name, err)
+			w.logger.Debug().Str("metric", name).Err(err).Msg("Error getting counter value")
 			continue
 		}
 
@@ -194,7 +199,7 @@ func (w *windowsMemoryCollector) Collect(timestamp time.Time) ([]data_store.Data
 			Tags:      metricTags,
 		})
 
-		fmt.Printf("Collected metric %s = %f, tags: %v\n", name, value, metricTags)
+		w.logger.Debug().Str("metric", name).Float64("value", value).Interface("tags", metricTags).Msg("Collected metric")
 	}
 
 	// Calcul et ajout du pourcentage de mémoire utilisée
