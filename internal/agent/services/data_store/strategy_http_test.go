@@ -643,6 +643,87 @@ func TestHTTPSyncStrategy_DebugLogsEndpoint(t *testing.T) {
 	}
 }
 
+func TestHTTPSyncStrategy_ExtractBaseMetricName(t *testing.T) {
+	agentConfig := createTestAgentConfig()
+	logger := createTestLogger()
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+
+	tests := []struct {
+		name     string
+		key      string
+		expected string
+	}{
+		{
+			name:     "Simple metric name",
+			key:      "cpu_usage",
+			expected: "cpu_usage",
+		},
+		{
+			name:     "Metric with probe_name tag",
+			key:      "cpu_usage.probe_name=cpu",
+			expected: "cpu_usage",
+		},
+		{
+			name:     "Metric with probe_name and other tags",
+			key:      "cpu_usage.probe_name=cpu.instance=0",
+			expected: "cpu_usage",
+		},
+		{
+			name:     "Complex metric key",
+			key:      "memory_usage.probe_name=memory.instance=total",
+			expected: "memory_usage",
+		},
+		{
+			name:     "Network metric with interface",
+			key:      "network_bytes_received.probe_name=network.interface=eth0",
+			expected: "network_bytes_received",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := strategy.extractBaseMetricName(tt.key)
+			if result != tt.expected {
+				t.Errorf("Expected '%s', got '%s'", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestHTTPSyncStrategy_TransformToPRTGChannel_NoProbeNameInChannel(t *testing.T) {
+	agentConfig := createTestAgentConfig()
+	logger := createTestLogger()
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+
+	// Create a metric with probe_name in the key
+	key := "cpu_usage_total.probe_name=cpu"
+	metric := CachedMetric{
+		Value:     75.5,
+		Timestamp: time.Now(),
+		Unit:      "%",
+		ProbeName: "cpu",
+		Tags: map[string]string{
+			"probe_name": "cpu",
+		},
+	}
+
+	channel := strategy.transformToPRTGChannel(key, metric)
+
+	if channel == nil {
+		t.Fatal("Expected channel to be created, got nil")
+	}
+
+	// Channel should be transformed to "CPU Usage" (without probe name)
+	expectedChannelName := "CPU Usage"
+	if channel.Channel != expectedChannelName {
+		t.Errorf("Expected channel name '%s', got '%s'", expectedChannelName, channel.Channel)
+	}
+
+	if channel.Value != 75.5 {
+		t.Errorf("Expected value 75.5, got %f", channel.Value)
+	}
+}
+
 func TestHTTPSyncStrategy_SetLogLevelsEndpoint(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()

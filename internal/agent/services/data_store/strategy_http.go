@@ -474,25 +474,65 @@ func (h *HTTPSyncStrategy) transformMetricName(key string, metric CachedMetric) 
 		}
 	}
 
+	// Extract the base metric name without probe_name tag from the key
+	baseMetricName := h.extractBaseMetricName(key)
+
 	// Get the naming style for this probe
-	style, exists := h.namingConfig[probeName]
+	// Map individual host probes to the "host" category
+	probeCategory := probeName
+	if probeName == "cpu" || probeName == "memory" || probeName == "network" || probeName == "logicaldisk" || probeName == "wifi_signal_strength" {
+		probeCategory = "host"
+	}
+	
+	style, exists := h.namingConfig[probeCategory]
 	if !exists {
 		style = "friendly" // Default style
 	}
 
-	// Load transformer for this probe and style
-	transformer, err := h.transformerRegistry.LoadTransformer(probeName, style)
+	// Load transformer for this probe category and style
+	transformer, err := h.transformerRegistry.LoadTransformer(probeCategory, style)
 	if err != nil {
 		h.logger.Warn().
 			Err(err).
 			Str("probe", probeName).
 			Str("style", style).
 			Msg("Failed to load transformer, using fallback")
-		return key // Fallback to original key
+		return baseMetricName // Fallback to base metric name
 	}
 
-	// Transform the metric name
-	return transformer.TransformMetricName(key, metric.Tags)
+	// Transform the base metric name (without probe name)
+	return transformer.TransformMetricName(baseMetricName, metric.Tags)
+}
+
+// extractBaseMetricName extracts the original metric name from the cache key
+// removing the probe_name tag part that was added during key generation
+func (h *HTTPSyncStrategy) extractBaseMetricName(key string) string {
+	// Split the key by dots to get parts
+	parts := strings.Split(key, ".")
+	
+	if len(parts) == 0 {
+		return key
+	}
+	
+	// The first part is always the original metric name
+	baseMetricName := parts[0]
+	
+	// Remove any probe_name tag parts from the key
+	// Key format is: "metric_name.probe_name=value.other_tag=value"
+	// We want just the metric_name part
+	for i, part := range parts {
+		if i == 0 {
+			continue // Skip the first part (metric name)
+		}
+		// If we find a probe_name tag, don't include it in the base name
+		if strings.HasPrefix(part, "probe_name=") {
+			continue
+		}
+		// For other discriminant tags, we might want to keep them for context
+		// but not include them in the channel name to keep it clean
+	}
+	
+	return baseMetricName
 }
 
 // generateMetricKey creates a unique key for a datapoint
