@@ -103,6 +103,41 @@
   3. Add support for additional transformer patterns
   4. Add Prometheus format support
 
+### Modular Logging System
+- OBJECTIVE: Implement granular log level control per module/component to reduce log noise
+- PROGRESS:
+  - Created module-based logging system with configurable levels per component
+  - Added HTTP endpoints for runtime log level management
+  - Implemented logger filtering at module level (strategy.http, probe.redfish, etc.)
+  - Added comprehensive test coverage for logging functionality
+  - Updated HTTP strategy to use module-specific logger
+- CONFIGURATION: Supports 16 predefined modules with individual log levels:
+  - `strategy.http`, `strategy.prtg`, `strategy.senhub` - Data routing strategies
+  - `probe.redfish`, `probe.host`, `probe.network`, `probe.webapp`, `probe.otel`, `probe.gateway`, `probe.syslog` - Data collection probes
+  - `cache`, `transformer`, `scheduler`, `configuration` - Core system components
+- API ENDPOINTS:
+  - `GET /api/{agentkey}/debug/logs` - View current module log levels
+  - `POST /api/{agentkey}/debug/logs` - Set module log levels dynamically
+- USAGE EXAMPLES:
+  ```bash
+  # View current log levels
+  curl http://localhost:8080/api/YOUR_AGENT_KEY/debug/logs
+  
+  # Disable HTTP strategy debug logs
+  curl -X POST http://localhost:8080/api/YOUR_AGENT_KEY/debug/logs \
+    -H "Content-Type: application/json" \
+    -d '{"module_levels": [{"module": "strategy.http", "level": "warn"}]}'
+  
+  # Enable detailed debugging for Redfish probe only
+  curl -X POST http://localhost:8080/api/YOUR_AGENT_KEY/debug/logs \
+    -H "Content-Type: application/json" \
+    -d '{"module_levels": [{"module": "probe.redfish", "level": "debug"}]}'
+  ```
+- LOG LEVELS: `debug`, `info`, `warn`, `error`, `fatal`, `panic`, `disabled`
+- TODO:
+  1. Add configuration file support for default module log levels
+  2. Implement log level inheritance for sub-modules
+
 ## Development Session Information
 - WORK DIRECTORY: `/Users/matthieu/Documents/GitHub/senhub-agent/`
 - FILES CREATED:
