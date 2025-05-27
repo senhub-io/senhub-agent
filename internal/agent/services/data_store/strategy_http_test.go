@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -721,6 +722,108 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel_NoProbeNameInChannel(t *testing
 
 	if channel.Value != 75.5 {
 		t.Errorf("Expected value 75.5, got %f", channel.Value)
+	}
+}
+
+func TestHTTPSyncStrategy_PRTGMetricsGET(t *testing.T) {
+	agentConfig := createTestAgentConfig()
+	logger := createTestLogger()
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+
+	// Add some test data to cache
+	testDataPoints := []datapoint.DataPoint{
+		{
+			Name:      "cpu_usage_total",
+			Timestamp: time.Now(),
+			Value:     float32(75.5),
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: "cpu"},
+			},
+		},
+		{
+			Name:      "memory_used_percent", 
+			Timestamp: time.Now(),
+			Value:     float32(82.3),
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: "memory"},
+			},
+		},
+	}
+	
+	// Add data to strategy cache
+	err := strategy.AddDataPoints(testDataPoints)
+	if err != nil {
+		t.Fatalf("Failed to add test data: %v", err)
+	}
+
+	tests := []struct {
+		name           string
+		agentKey       string
+		probe          string
+		expectedStatus int
+		expectedProbe  string
+	}{
+		{
+			name:           "Valid GET request for CPU metrics",
+			agentKey:       "test-agent-key",
+			probe:          "cpu",
+			expectedStatus: http.StatusOK,
+			expectedProbe:  "cpu",
+		},
+		{
+			name:           "Valid GET request for memory metrics",
+			agentKey:       "test-agent-key",
+			probe:          "memory",
+			expectedStatus: http.StatusOK,
+			expectedProbe:  "memory",
+		},
+		{
+			name:           "Invalid agent key",
+			agentKey:       "wrong-key",
+			probe:          "cpu",
+			expectedStatus: http.StatusUnauthorized,
+			expectedProbe:  "",
+		},
+		{
+			name:           "Non-existent probe",
+			agentKey:       "test-agent-key",
+			probe:          "nonexistent",
+			expectedStatus: http.StatusOK,
+			expectedProbe:  "nonexistent",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url := fmt.Sprintf("/api/%s/prtg/metrics/%s", tt.agentKey, tt.probe)
+			req, err := http.NewRequest("GET", url, nil)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			rr := httptest.NewRecorder()
+			router := strategy.setupRoutes()
+			router.ServeHTTP(rr, req)
+
+			if status := rr.Code; status != tt.expectedStatus {
+				t.Errorf("Expected status code %d, got %d", tt.expectedStatus, status)
+			}
+
+			if tt.expectedStatus == http.StatusOK {
+				// Parse response and verify it's valid PRTG format
+				var response PRTGResponse
+				if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+					t.Errorf("Failed to decode response: %v", err)
+				}
+
+				// For existing probes, we should have channels
+				if tt.expectedProbe == "cpu" || tt.expectedProbe == "memory" {
+					if len(response.PRTG.Result) == 0 {
+						t.Errorf("Expected channels for probe %s, got none", tt.expectedProbe)
+					}
+				}
+			}
+		})
 	}
 }
 
