@@ -59,7 +59,7 @@ func (p *cpuProbe) GetTargetStrategies() []string {
 }
 
 func (p *cpuProbe) GetName() string {
-	return "cpuProbe"
+	return "cpu"
 }
 
 func (p *cpuProbe) ShouldStart() bool {
@@ -79,7 +79,7 @@ func (p *cpuProbe) Collect() ([]data_store.DataPoint, error) {
 
 	// Enrich datapoints with probe name and send to strategies
 	if p.OnDataPoints != nil {
-		enrichedMetrics := p.EnrichDataPointsWithProbeName(metrics, "cpu")
+		enrichedMetrics := p.EnrichDataPointsWithProbeName(metrics, p.GetName())
 		if err := p.OnDataPoints(enrichedMetrics, p); err != nil {
 			return nil, fmt.Errorf("error handling data points: %v", err)
 		}

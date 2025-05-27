@@ -61,7 +61,7 @@ func NewLogicalDiskProbe(config map[string]interface{}, logger *logger.Logger) (
 }
 
 func (p *logicaldiskProbe) GetName() string {
-	return "logicaldiskProbe"
+	return "logicaldisk"
 }
 
 func (p *logicaldiskProbe) ShouldStart() bool {
