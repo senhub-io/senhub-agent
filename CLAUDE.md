@@ -66,6 +66,8 @@
   - Created POST endpoint `/api/{agentkey}/prtg/metrics` for PRTG integration
   - Implemented metric caching system with TTL and automatic cleanup
   - Built modular transformer system for user-friendly metric names
+  - Added configurable bind address support for interface selection (loopback, specific IPs)
+  - Fixed probe naming consistency issues for proper metrics exposure
   - Created YAML-based configuration files for metric transformations:
     - `redfish_friendly.yaml` - Redfish metrics with friendly names
     - `host_friendly.yaml` - System metrics transformations  

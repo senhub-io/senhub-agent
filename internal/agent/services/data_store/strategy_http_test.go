@@ -42,12 +42,14 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 		name   string
 		params map[string]interface{}
 		expectedPort int
+		expectedBindAddress string
 		expectedNaming map[string]string
 	}{
 		{
 			name:   "Default configuration",
 			params: map[string]interface{}{},
 			expectedPort: 8080,
+			expectedBindAddress: "0.0.0.0",
 			expectedNaming: map[string]string{
 				"redfish": "friendly",
 				"host":    "friendly", 
@@ -60,6 +62,24 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 				"port": float64(9090),
 			},
 			expectedPort: 9090,
+			expectedBindAddress: "0.0.0.0",
+		},
+		{
+			name: "Custom bind address - loopback",
+			params: map[string]interface{}{
+				"bind_address": "127.0.0.1",
+			},
+			expectedPort: 8080,
+			expectedBindAddress: "127.0.0.1",
+		},
+		{
+			name: "Custom bind address - specific interface",
+			params: map[string]interface{}{
+				"bind_address": "192.168.1.100",
+				"port": float64(8888),
+			},
+			expectedPort: 8888,
+			expectedBindAddress: "192.168.1.100",
 		},
 		{
 			name: "Custom naming configuration",
@@ -70,6 +90,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 				},
 			},
 			expectedPort: 8080, // default port
+			expectedBindAddress: "0.0.0.0",
 			expectedNaming: map[string]string{
 				"redfish": "technical",
 				"host":    "prtg_standard",
@@ -93,6 +114,10 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 
 			if httpStrategy.port != tt.expectedPort {
 				t.Errorf("Expected port %d, got %d", tt.expectedPort, httpStrategy.port)
+			}
+
+			if httpStrategy.bindAddress != tt.expectedBindAddress {
+				t.Errorf("Expected bind address %s, got %s", tt.expectedBindAddress, httpStrategy.bindAddress)
 			}
 
 			if tt.expectedNaming != nil {
@@ -134,6 +159,23 @@ func TestHTTPSyncStrategy_Interface(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("Expected validation error for invalid port")
+	}
+
+	// Test invalid bind_address validation
+	err = strategy.ValidateConfigParams(configuration.StorageConfigParams{
+		"bind_address": 123,
+	})
+	if err == nil {
+		t.Error("Expected validation error for invalid bind_address")
+	}
+
+	// Test valid bind_address validation
+	err = strategy.ValidateConfigParams(configuration.StorageConfigParams{
+		"bind_address": "127.0.0.1",
+		"port": float64(8080),
+	})
+	if err != nil {
+		t.Errorf("Expected no validation error for valid config, got %v", err)
 	}
 }
 
