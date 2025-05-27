@@ -151,12 +151,17 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 	if args.Verbose {
 		// If specific debug modules are specified, only enable those (selective mode)
 		if len(args.DebugModules) > 0 {
-			// In selective mode, keep global level at INFO and only enable specific modules
-			zerolog.SetGlobalLevel(zerolog.InfoLevel)
+			// Activate selective debug mode
+			selectiveDebugMode = true
+			activeDebugModules = make(map[string]bool)
+			
+			// In selective mode, DON'T change global level at all
+			// Keep the default level (INFO for production, DEBUG for development)
 			
 			// Enable debug only for specified modules
 			for _, module := range args.DebugModules {
 				SetModuleLogLevel(module, zerolog.DebugLevel)
+				activeDebugModules[module] = true
 			}
 			logger.Info().
 				Strs("modules", args.DebugModules).
@@ -164,6 +169,8 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 				Msg("Selective debug mode enabled - debug logging activated for specific modules only")
 		} else {
 			// Full verbose mode: enable debug globally (backward compatibility)
+			selectiveDebugMode = false
+			activeDebugModules = nil
 			zerolog.SetGlobalLevel(zerolog.DebugLevel)
 			
 			// Also enable debug for key modules
@@ -239,8 +246,8 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 		log.Printf("Debug log shipping enabled in production mode")
 	}
 
-	// Set default production log level to warn
-	zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	// Set default production log level to info
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 	// Create the multi-writer with all outputs
 	logWriter := zerolog.MultiLevelWriter(writers...)
@@ -272,6 +279,10 @@ var moduleLogLevels = map[string]zerolog.Level{
 	"scheduler":          zerolog.InfoLevel,  // Probe scheduler
 	"configuration":      zerolog.InfoLevel,  // Configuration loading
 }
+
+// Selective debug mode tracking
+var selectiveDebugMode bool
+var activeDebugModules map[string]bool
 
 // SetModuleLogLevel sets the log level for a specific module
 func SetModuleLogLevel(module string, level zerolog.Level) {
