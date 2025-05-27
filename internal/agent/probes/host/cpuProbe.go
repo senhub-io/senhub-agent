@@ -18,29 +18,33 @@ import (
 type cpuProbe struct {
 	*types.BaseProbe // Ajout de BaseProbe
 	rawConfig        map[string]interface{}
-	logger           *logger.Logger
+	moduleLogger     *logger.ModuleLogger
 	collector        osCollector
 	interval         time.Duration
 }
 
 // NewCpuProbe crée une nouvelle instance de CPU probe
-func NewCpuProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
+func NewCpuProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
 	interval := 30 * time.Second
 	if cfgInterval, ok := config["interval"].(int); ok {
 		interval = time.Duration(cfgInterval) * time.Second
 	}
+	
+	// Create module-specific logger for CPU probe
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.cpu")
+	
 	probe := &cpuProbe{
-		BaseProbe: &types.BaseProbe{}, // Initialisation de BaseProbe
-		rawConfig: config,
-		logger:    logger,
-		interval:  interval,
+		BaseProbe:    &types.BaseProbe{}, // Initialisation de BaseProbe
+		rawConfig:    config,
+		moduleLogger: moduleLogger,
+		interval:     interval,
 	}
 	var err error
 	switch runtime.GOOS {
 	case "windows":
-		probe.collector, err = newCPUCollector(config, logger)
+		probe.collector, err = newCPUCollector(config, moduleLogger.Logger)
 	case "linux", "darwin", "freebsd", "openbsd", "netbsd":
-		probe.collector, err = newCPUCollector(config, logger)
+		probe.collector, err = newCPUCollector(config, moduleLogger.Logger)
 	default:
 		return nil, fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
 	}
