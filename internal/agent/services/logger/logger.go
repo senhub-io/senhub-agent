@@ -155,8 +155,9 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 			selectiveDebugMode = true
 			activeDebugModules = make(map[string]bool)
 			
-			// In selective mode, DON'T change global level at all
-			// Keep the default level (INFO for production, DEBUG for development)
+			// In selective mode, set global level to ERROR to suppress all non-critical logs
+			// Only specified ModuleLoggers will be able to output debug logs
+			zerolog.SetGlobalLevel(zerolog.ErrorLevel)
 			
 			// Enable debug only for specified modules
 			for _, module := range args.DebugModules {
