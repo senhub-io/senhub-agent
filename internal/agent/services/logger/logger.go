@@ -155,9 +155,9 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 			selectiveDebugMode = true
 			activeDebugModules = make(map[string]bool)
 			
-			// In selective mode, set global level to ERROR to suppress all non-critical logs
-			// Only specified ModuleLoggers will be able to output debug logs
-			zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+			// In selective mode, keep global level at INFO to show essential logs
+			// ModuleLoggers will filter debug logs based on module configuration
+			zerolog.SetGlobalLevel(zerolog.InfoLevel)
 			
 			// Enable debug only for specified modules
 			for _, module := range args.DebugModules {
@@ -354,39 +354,36 @@ func NewModuleLogger(baseLogger *Logger, module string) *ModuleLogger {
 
 // Debug logs a debug message if the module's current level allows it
 func (m *ModuleLogger) Debug() *zerolog.Event {
+	// In selective debug mode, only allow debug logs for specifically enabled modules
+	if selectiveDebugMode {
+		if _, enabled := activeDebugModules[m.module]; !enabled {
+			disabledLogger := m.Logger.Level(zerolog.Disabled)
+			return disabledLogger.Debug()
+		}
+	}
+	
+	// Check module log level for normal mode or enabled modules
 	if GetModuleLogLevel(m.module) <= zerolog.DebugLevel {
 		return m.Logger.Debug()
 	}
-	// Create a disabled logger for suppressing output
+	
 	disabledLogger := m.Logger.Level(zerolog.Disabled)
 	return disabledLogger.Debug()
 }
 
-// Info logs an info message if the module's current level allows it
+// Info logs an info message (always allowed)
 func (m *ModuleLogger) Info() *zerolog.Event {
-	if GetModuleLogLevel(m.module) <= zerolog.InfoLevel {
-		return m.Logger.Info()
-	}
-	disabledLogger := m.Logger.Level(zerolog.Disabled)
-	return disabledLogger.Info()
+	return m.Logger.Info()
 }
 
-// Warn logs a warning message if the module's current level allows it
+// Warn logs a warning message (always allowed)
 func (m *ModuleLogger) Warn() *zerolog.Event {
-	if GetModuleLogLevel(m.module) <= zerolog.WarnLevel {
-		return m.Logger.Warn()
-	}
-	disabledLogger := m.Logger.Level(zerolog.Disabled)
-	return disabledLogger.Warn()
+	return m.Logger.Warn()
 }
 
-// Error logs an error message if the module's current level allows it
+// Error logs an error message (always allowed)
 func (m *ModuleLogger) Error() *zerolog.Event {
-	if GetModuleLogLevel(m.module) <= zerolog.ErrorLevel {
-		return m.Logger.Error()
-	}
-	disabledLogger := m.Logger.Level(zerolog.Disabled)
-	return disabledLogger.Error()
+	return m.Logger.Error()
 }
 
 // GetModuleLogLevels returns current module log level configuration
