@@ -3,6 +3,7 @@ package auto_update
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -36,14 +37,23 @@ func fetchVersionMetadata(
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("Fetching metadata from URL: %s\n", metadataUrl)
 	response, err := httpClient.Get(metadataUrl)
 	if err != nil {
 		return nil, err
 	}
 	defer response.Body.Close()
 
+	// Read the raw response for debugging
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Printf("Raw response body: %s\n", string(body))
+
 	var versionMetadata VersionMetadata
-	if err := json.NewDecoder(response.Body).Decode(&versionMetadata); err != nil {
+	if err := json.Unmarshal(body, &versionMetadata); err != nil {
+		fmt.Printf("JSON unmarshal error: %v\n", err)
 		return nil, err
 	}
 
