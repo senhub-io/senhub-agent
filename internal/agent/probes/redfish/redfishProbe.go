@@ -15,7 +15,7 @@ import (
 type redfishProbe struct {
 	*types.BaseProbe
 	config         map[string]interface{}
-	logger         *logger.Logger
+	logger         *logger.ModuleLogger
 	interval       time.Duration
 	collector      RedfishCollector
 	endpoint       string
@@ -28,7 +28,9 @@ type redfishProbe struct {
 }
 
 // NewRedfishProbe creates a new instance of the Redfish probe
-func NewRedfishProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
+func NewRedfishProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
+	// Create module-specific logger for redfish probe
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.redfish")
 	interval := 300 * time.Second // Default: 5 minutes
 	if cfgInterval, ok := config["interval"].(int); ok {
 		interval = time.Duration(cfgInterval) * time.Second
@@ -83,7 +85,7 @@ func NewRedfishProbe(config map[string]interface{}, logger *logger.Logger) (type
 	probe := &redfishProbe{
 		BaseProbe:      &types.BaseProbe{},
 		config:         config,
-		logger:         logger,
+		logger:         moduleLogger,
 		interval:       interval,
 		endpoint:       endpoint,
 		username:       username,
@@ -119,7 +121,7 @@ func (p *redfishProbe) OnStart(quitChannel chan struct{}) error {
 	// Create an initial generic collector
 	// Later we'll detect the vendor and create the appropriate collector
 	var err error
-	p.collector, err = NewGenericCollector(p.endpoint, p.username, p.password, p.logger, p.verifySSL)
+	p.collector, err = NewGenericCollector(p.endpoint, p.username, p.password, p.logger.Logger, p.verifySSL)
 	if err != nil {
 		return fmt.Errorf("failed to create Redfish collector: %v", err)
 	}
@@ -139,19 +141,19 @@ func (p *redfishProbe) OnStart(quitChannel chan struct{}) error {
 		switch detectedVendor {
 		case VendorDell:
 			p.logger.Info().Msg("Dell server detected, creating Dell-specific collector")
-			vendorCollector, err = NewDellCollector(p.endpoint, p.username, p.password, p.logger, p.verifySSL)
+			vendorCollector, err = NewDellCollector(p.endpoint, p.username, p.password, p.logger.Logger, p.verifySSL)
 		case VendorHPE:
 			p.logger.Info().Msg("HPE server detected, creating HPE-specific collector")
-			vendorCollector, err = NewHPECollector(p.endpoint, p.username, p.password, p.logger, p.verifySSL)
+			vendorCollector, err = NewHPECollector(p.endpoint, p.username, p.password, p.logger.Logger, p.verifySSL)
 		case VendorLenovo:
 			p.logger.Info().Msg("Lenovo server detected, creating Lenovo-specific collector")
-			vendorCollector, err = NewLenovoCollector(p.endpoint, p.username, p.password, p.logger, p.verifySSL)
+			vendorCollector, err = NewLenovoCollector(p.endpoint, p.username, p.password, p.logger.Logger, p.verifySSL)
 		case VendorCisco:
 			p.logger.Info().Msg("Cisco server detected, creating Cisco-specific collector")
-			vendorCollector, err = NewCiscoCollector(p.endpoint, p.username, p.password, p.logger, p.verifySSL)
+			vendorCollector, err = NewCiscoCollector(p.endpoint, p.username, p.password, p.logger.Logger, p.verifySSL)
 		case VendorStorage:
 			p.logger.Info().Msg("Storage system detected, creating Storage-specific collector")
-			vendorCollector, err = NewStorageCollector(p.endpoint, p.username, p.password, p.logger, p.verifySSL)
+			vendorCollector, err = NewStorageCollector(p.endpoint, p.username, p.password, p.logger.Logger, p.verifySSL)
 		default:
 			p.logger.Info().
 				Str("vendor", string(detectedVendor)).
