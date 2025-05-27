@@ -62,7 +62,7 @@ func NewNetworkProbe(config map[string]interface{}, logger *logger.Logger) (type
 }
 
 func (p *networkProbe) GetName() string {
-	return "networkProbe"
+	return "network"
 }
 
 func (p *networkProbe) ShouldStart() bool {

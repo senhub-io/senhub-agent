@@ -103,7 +103,7 @@ func NewRedfishProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 
 // GetName returns the unique identifier of the probe
 func (p *redfishProbe) GetName() string {
-	return "redfishProbe"
+	return "redfish"
 }
 
 // ShouldStart indicates if probe should be activated
