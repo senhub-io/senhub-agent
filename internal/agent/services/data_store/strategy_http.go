@@ -69,6 +69,7 @@ type PRTGResult struct {
 type PRTGChannel struct {
 	Channel         string  `json:"channel"`
 	Value           float64 `json:"value"`
+	Float           int     `json:"float"`
 	Unit            string  `json:"unit,omitempty"`
 	LimitMode       int     `json:"limitmode,omitempty"`
 	LimitMaxWarning float64 `json:"limitmaxwarning,omitempty"`
@@ -583,6 +584,7 @@ func (h *HTTPSyncStrategy) transformToPRTGChannel(key string, metric CachedMetri
 	return &PRTGChannel{
 		Channel: channelName,
 		Value:   value,
+		Float:   1,
 		Unit:    metric.Unit,
 	}
 }
