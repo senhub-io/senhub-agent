@@ -132,6 +132,35 @@ metrics:
     display_name: "Disk {device} Free"
     unit: "Bytes"
     multi_instance_labels: ["device", "mountpoint"]
+    description: "Amount of free disk space"
+    
+  # Logical Disk Metrics (legacy naming)
+  - name: "logicaldisk_total"
+    channel: "logicaldisk_total"
+    display_name: "Disk {mountpoint} Total"
+    unit: "Bytes"
+    multi_instance_labels: ["mountpoint"]
+    description: "Total logical disk space"
+    
+  - name: "logicaldisk_used"
+    channel: "logicaldisk_used"
+    display_name: "Disk {mountpoint} Used"
+    unit: "Bytes"
+    multi_instance_labels: ["mountpoint"]
+    description: "Used logical disk space"
+    
+  - name: "logicaldisk_used_percent"
+    channel: "logicaldisk_used_percent"
+    display_name: "Disk {mountpoint} Usage"
+    unit: "%"
+    multi_instance_labels: ["mountpoint"]
+    description: "Percentage of used logical disk space"
+    
+  - name: "logicaldisk_free_space"
+    channel: "logicaldisk_free_space"
+    display_name: "Disk {mountpoint} Free"
+    unit: "Bytes"
+    multi_instance_labels: ["mountpoint"]
     description: "Free disk space"
     
   - name: "disk_read_bytes"
