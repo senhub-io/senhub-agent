@@ -543,6 +543,9 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 				if channel.Unit != tt.metric.Unit {
 					t.Errorf("Expected unit %s, got %s", tt.metric.Unit, channel.Unit)
 				}
+				if channel.Float != 1 {
+					t.Errorf("Expected Float field to be 1, got %d", channel.Float)
+				}
 			}
 		})
 	}
