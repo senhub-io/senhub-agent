@@ -468,17 +468,56 @@ func (dt *DefinitionBasedTransformer) matchesPattern(pattern, text string) bool 
 	
 	// Handle wildcards like {index}, {component}, etc.
 	if strings.Contains(pattern, "{") {
-		// Convert pattern to regex-like matching
+		// Create a regex pattern by replacing template variables with appropriate regex
 		regexPattern := pattern
-		regexPattern = strings.ReplaceAll(regexPattern, "{index}", `[0-9]+`)
-		regexPattern = strings.ReplaceAll(regexPattern, "{component}", `[^.]+`)
-		regexPattern = strings.ReplaceAll(regexPattern, "{pool_id}", `[^.]+`)
+		
+		// Replace common template variables with regex patterns
+		templateReplacements := map[string]string{
+			"{index}":         `\d+`,
+			"{component}":     `[^.]+`,
+			"{pool_id}":       `[^.]+`,
+			"{controller_id}": `[^.]+`,
+			"{volume_id}":     `[^.]+`,
+			"{drive_id}":      `[^.]+`,
+			"{core}":          `\d+`,
+			"{interface}":     `[^.]+`,
+			"{device}":        `[^.]+`,
+		}
+		
+		for placeholder, regex := range templateReplacements {
+			regexPattern = strings.ReplaceAll(regexPattern, placeholder, regex)
+		}
+		
+		// Escape dots for literal matching
 		regexPattern = strings.ReplaceAll(regexPattern, ".", `\.`)
 		
-		// Simple prefix/suffix matching for now
-		if strings.HasPrefix(regexPattern, text[:len(text)/2]) {
-			return true
+		// Add anchors for exact matching
+		regexPattern = "^" + regexPattern + "$"
+		
+		// Use simple pattern matching for now (avoid regex import)
+		// Check if the structure matches by comparing parts
+		patternParts := strings.Split(pattern, ".")
+		textParts := strings.Split(text, ".")
+		
+		if len(patternParts) != len(textParts) {
+			return false
 		}
+		
+		for i, patternPart := range patternParts {
+			textPart := textParts[i]
+			
+			// If it's a template variable, accept any value
+			if strings.Contains(patternPart, "{") && strings.Contains(patternPart, "}") {
+				continue
+			}
+			
+			// Otherwise, must match exactly
+			if patternPart != textPart {
+				return false
+			}
+		}
+		
+		return true
 	}
 	
 	return false
@@ -515,16 +554,42 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariables(template string, 
 		"diskgroup_name", "diskgroup_id", "controller_name", "controller_id",
 		"fan_name", "sensor_location", "target", "operation_type",
 		"raid_type", "host", "system_name", "slot", "enclosure_id",
+		"adapter_id", "memory_controller",
 	}
 	
 	for _, varName := range templateVars {
 		placeholder := fmt.Sprintf("{%s}", varName)
 		if strings.Contains(result, placeholder) {
 			value := tags[varName]
+			
+			// Handle special case mappings
+			if value == "" {
+				switch varName {
+				case "core":
+					// Try "index" tag if "core" tag is not found
+					value = tags["index"]
+				case "index":
+					// Try "core" tag if "index" tag is not found
+					value = tags["core"]
+				case "device":
+					// Try "interface" tag if "device" tag is not found
+					value = tags["interface"]
+				case "interface":
+					// Try "device" tag if "interface" tag is not found
+					value = tags["device"]
+				case "drive_name":
+					// Try "drive_id" tag if "drive_name" tag is not found
+					value = tags["drive_id"]
+				case "drive_id":
+					// Try "drive_name" tag if "drive_id" tag is not found
+					value = tags["drive_name"]
+				}
+			}
+			
 			if value == "" {
 				// Fallback values
 				switch varName {
-				case "index":
+				case "index", "core":
 					value = "0"
 				case "component":
 					value = "Unknown"
