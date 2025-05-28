@@ -251,12 +251,14 @@ func TestMetricCache_Cleanup(t *testing.T) {
 	// Add some test data
 	cache.mu.Lock()
 	cache.data["test1"] = CachedMetric{
-		Value:     10.0,
-		Timestamp: time.Now().Add(-100 * time.Millisecond), // Expired
+		Value:      10.0,
+		Timestamp:  time.Now().Add(-100 * time.Millisecond), // Expired
+		MetricName: "test1",
 	}
 	cache.data["test2"] = CachedMetric{
-		Value:     20.0,
-		Timestamp: time.Now(), // Fresh
+		Value:      20.0,
+		Timestamp:  time.Now(), // Fresh
+		MetricName: "test2",
 	}
 	cache.mu.Unlock()
 
@@ -300,9 +302,10 @@ func TestHTTPSyncStrategy_PRTGEndpoint(t *testing.T) {
 
 	// Add some test data to cache
 	strategy.cache.data["thermal.cpu.0.temperature"] = CachedMetric{
-		Value:     65.2,
-		Timestamp: time.Now(),
-		ProbeName: "redfish",
+		Value:      65.2,
+		Timestamp:  time.Now(),
+		ProbeName:  "redfish",
+		MetricName: "thermal.cpu.0.temperature",
 		Tags: map[string]string{
 			"probe_name": "redfish",
 			"index":      "0",
@@ -422,25 +425,28 @@ func TestHTTPSyncStrategy_GetMetricsForProbe(t *testing.T) {
 	// Add test data to cache
 	now := time.Now()
 	strategy.cache.data["metric1"] = CachedMetric{
-		Value:     10.5,
-		Timestamp: now,
-		ProbeName: "redfish",
+		Value:      10.5,
+		Timestamp:  now,
+		ProbeName:  "redfish",
+		MetricName: "metric1",
 		Tags: map[string]string{
 			"probe_name": "redfish",
 		},
 	}
 	strategy.cache.data["metric2"] = CachedMetric{
-		Value:     20.0,
-		Timestamp: now,
-		ProbeName: "host",
+		Value:      20.0,
+		Timestamp:  now,
+		ProbeName:  "host",
+		MetricName: "metric2",
 		Tags: map[string]string{
 			"probe_name": "host",
 		},
 	}
 	strategy.cache.data["metric3"] = CachedMetric{
-		Value:     30.0,
-		Timestamp: now.Add(-10 * time.Minute), // Expired
-		ProbeName: "redfish",
+		Value:      30.0,
+		Timestamp:  now.Add(-10 * time.Minute), // Expired
+		ProbeName:  "redfish",
+		MetricName: "metric3",
 		Tags: map[string]string{
 			"probe_name": "redfish",
 		},
@@ -489,9 +495,10 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 			name: "Valid float64 value",
 			key:  "test.metric",
 			metric: CachedMetric{
-				Value: float64(25.5),
-				Unit:  "°C",
-				Tags:  map[string]string{},
+				Value:      float64(25.5),
+				Unit:       "°C",
+				MetricName: "test.metric",
+				Tags:       map[string]string{},
 			},
 			wantNil: false,
 		},
@@ -499,9 +506,10 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 			name: "Valid float32 value",
 			key:  "test.metric",
 			metric: CachedMetric{
-				Value: float32(30.0),
-				Unit:  "W",
-				Tags:  map[string]string{},
+				Value:      float32(30.0),
+				Unit:       "W",
+				MetricName: "test.metric",
+				Tags:       map[string]string{},
 			},
 			wantNil: false,
 		},
@@ -509,9 +517,10 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 			name: "Valid int value",
 			key:  "test.metric",
 			metric: CachedMetric{
-				Value: int(100),
-				Unit:  "#",
-				Tags:  map[string]string{},
+				Value:      int(100),
+				Unit:       "#",
+				MetricName: "test.metric",
+				Tags:       map[string]string{},
 			},
 			wantNil: false,
 		},
@@ -519,9 +528,10 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 			name: "Invalid string value",
 			key:  "test.metric",
 			metric: CachedMetric{
-				Value: "invalid",
-				Unit:  "",
-				Tags:  map[string]string{},
+				Value:      "invalid",
+				Unit:       "",
+				MetricName: "test.metric",
+				Tags:       map[string]string{},
 			},
 			wantNil: true,
 		},
@@ -647,52 +657,6 @@ func TestHTTPSyncStrategy_DebugLogsEndpoint(t *testing.T) {
 	}
 }
 
-func TestHTTPSyncStrategy_ExtractBaseMetricName(t *testing.T) {
-	agentConfig := createTestAgentConfig()
-	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
-
-	tests := []struct {
-		name     string
-		key      string
-		expected string
-	}{
-		{
-			name:     "Simple metric name",
-			key:      "cpu_usage",
-			expected: "cpu_usage",
-		},
-		{
-			name:     "Metric with probe_name tag",
-			key:      "cpu_usage.probe_name=cpu",
-			expected: "cpu_usage",
-		},
-		{
-			name:     "Metric with probe_name and other tags",
-			key:      "cpu_usage.probe_name=cpu.instance=0",
-			expected: "cpu_usage",
-		},
-		{
-			name:     "Complex metric key",
-			key:      "memory_usage.probe_name=memory.instance=total",
-			expected: "memory_usage",
-		},
-		{
-			name:     "Network metric with interface",
-			key:      "network_bytes_received.probe_name=network.interface=eth0",
-			expected: "network_bytes_received",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := strategy.extractBaseMetricName(tt.key)
-			if result != tt.expected {
-				t.Errorf("Expected '%s', got '%s'", tt.expected, result)
-			}
-		})
-	}
-}
 
 func TestHTTPSyncStrategy_TransformToPRTGChannel_NoProbeNameInChannel(t *testing.T) {
 	agentConfig := createTestAgentConfig()
@@ -702,10 +666,11 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel_NoProbeNameInChannel(t *testing
 	// Create a metric with probe_name in the key
 	key := "cpu_usage_total.probe_name=cpu"
 	metric := CachedMetric{
-		Value:     75.5,
-		Timestamp: time.Now(),
-		Unit:      "%",
-		ProbeName: "cpu",
+		Value:      75.5,
+		Timestamp:  time.Now(),
+		Unit:       "%",
+		ProbeName:  "cpu",
+		MetricName: "cpu_usage_total",
 		Tags: map[string]string{
 			"probe_name": "cpu",
 		},
