@@ -1,0 +1,189 @@
+# Redfish Server Hardware Metrics Definitions
+# Compatible with Go agent redfish probe
+
+probe_name: "redfish"
+version: "1.0.0"
+
+metrics:
+  # System Health Metrics
+  - name: "system.health.status"
+    channel: "system_health"
+    display_name: "System Health Status"
+    unit: "#"
+    description: "Overall system health status"
+    
+  - name: "system.power.state"
+    channel: "power_state"
+    display_name: "System Power State"
+    unit: "#"
+    description: "System power state (On/Off)"
+
+  # Thermal Metrics
+  - name: "thermal.cpu.{index}.temperature"
+    channel: "cpu_temperature"
+    display_name: "CPU {index} Temperature"
+    unit: "°C"
+    multi_instance_labels: ["index", "component"]
+    description: "CPU temperature in Celsius"
+    
+  - name: "thermal.system.{index}.temperature"
+    channel: "system_temperature"
+    display_name: "System {index} Temperature"
+    unit: "°C"
+    multi_instance_labels: ["index", "component"]
+    description: "System ambient temperature in Celsius"
+    
+  - name: "thermal.memory.{index}.temperature"
+    channel: "memory_temperature"
+    display_name: "Memory {index} Temperature"
+    unit: "°C"
+    multi_instance_labels: ["index", "component"]
+    description: "Memory module temperature in Celsius"
+
+  # Power Metrics
+  - name: "power.system.consumption"
+    channel: "power_consumption"
+    display_name: "System Power Consumption"
+    unit: "W"
+    description: "Total system power consumption in watts"
+    
+  - name: "power.cpu.{index}.consumption"
+    channel: "cpu_power"
+    display_name: "CPU {index} Power"
+    unit: "W"
+    multi_instance_labels: ["index", "component"]
+    description: "CPU power consumption in watts"
+    
+  - name: "power.psu.{index}.output"
+    channel: "psu_output"
+    display_name: "PSU {index} Output"
+    unit: "W"
+    multi_instance_labels: ["index", "component"]
+    description: "Power supply unit output in watts"
+    
+  - name: "power.psu.{index}.efficiency"
+    channel: "psu_efficiency"
+    display_name: "PSU {index} Efficiency"
+    unit: "%"
+    multi_instance_labels: ["index", "component"]
+    description: "Power supply unit efficiency percentage"
+
+  # Fan Metrics
+  - name: "thermal.fan.{index}.speed"
+    channel: "fan_speed"
+    display_name: "Fan {index} Speed"
+    unit: "rpm"
+    multi_instance_labels: ["index", "component"]
+    description: "Fan speed in revolutions per minute"
+    
+  - name: "thermal.fan.{index}.speed_percent"
+    channel: "fan_speed_percent"
+    display_name: "Fan {index} Speed"
+    unit: "%"
+    multi_instance_labels: ["index", "component"]
+    description: "Fan speed as percentage of maximum"
+
+  # Processor Metrics
+  - name: "processor.{index}.utilization"
+    channel: "processor_utilization"
+    display_name: "Processor {index} Utilization"
+    unit: "%"
+    multi_instance_labels: ["index", "socket"]
+    description: "Processor utilization percentage"
+    
+  - name: "processor.{index}.frequency"
+    channel: "processor_frequency"
+    display_name: "Processor {index} Frequency"
+    unit: "MHz"
+    multi_instance_labels: ["index", "socket"]
+    description: "Processor operating frequency in MHz"
+
+  # Memory Metrics
+  - name: "memory.total.capacity"
+    channel: "memory_total"
+    display_name: "Memory Total Capacity"
+    unit: "Bytes"
+    description: "Total memory capacity in bytes"
+    
+  - name: "memory.used.capacity"
+    channel: "memory_used"
+    display_name: "Memory Used"
+    unit: "Bytes"
+    description: "Used memory capacity in bytes"
+    
+  - name: "memory.utilization"
+    channel: "memory_utilization"
+    display_name: "Memory Utilization"
+    unit: "%"
+    description: "Memory utilization percentage"
+    
+  - name: "memory.{index}.health"
+    channel: "memory_health"
+    display_name: "Memory {index} Health"
+    unit: "#"
+    multi_instance_labels: ["index", "slot"]
+    description: "Memory module health status"
+
+  # Storage Metrics
+  - name: "storage.drive.{index}.health"
+    channel: "drive_health"
+    display_name: "Drive {index} Health"
+    unit: "#"
+    multi_instance_labels: ["index", "drive_id"]
+    description: "Storage drive health status"
+    
+  - name: "storage.drive.{index}.temperature"
+    channel: "drive_temperature"
+    display_name: "Drive {index} Temperature"
+    unit: "°C"
+    multi_instance_labels: ["index", "drive_id"]
+    description: "Storage drive temperature in Celsius"
+    
+  - name: "storage.pool.{pool_id}.capacity.total"
+    channel: "pool_capacity_total"
+    display_name: "Storage Pool {pool_id} Total"
+    unit: "Bytes"
+    multi_instance_labels: ["pool_id"]
+    description: "Total storage pool capacity in bytes"
+    
+  - name: "storage.pool.{pool_id}.capacity.used"
+    channel: "pool_capacity_used"
+    display_name: "Storage Pool {pool_id} Used"
+    unit: "Bytes"
+    multi_instance_labels: ["pool_id"]
+    description: "Used storage pool capacity in bytes"
+    
+  - name: "storage.pool.{pool_id}.capacity.used_percent"
+    channel: "pool_utilization"
+    display_name: "Storage Pool {pool_id} Usage"
+    unit: "%"
+    multi_instance_labels: ["pool_id"]
+    description: "Storage pool utilization percentage"
+
+  # Network Metrics
+  - name: "network.adapter.{index}.status"
+    channel: "network_adapter_status"
+    display_name: "Network Adapter {index} Status"
+    unit: "#"
+    multi_instance_labels: ["index", "adapter_id"]
+    description: "Network adapter operational status"
+    
+  - name: "network.adapter.{index}.link_speed"
+    channel: "network_link_speed"
+    display_name: "Network Adapter {index} Link Speed"
+    unit: "Mbps"
+    multi_instance_labels: ["index", "adapter_id"]
+    description: "Network adapter link speed in Mbps"
+
+  # Event/Alert Metrics
+  - name: "event.critical.count"
+    channel: "critical_events"
+    display_name: "Critical Events"
+    unit: "#"
+    description: "Number of critical events in system log"
+    
+  - name: "event.warning.count"
+    channel: "warning_events"
+    display_name: "Warning Events"
+    unit: "#"
+    description: "Number of warning events in system log"
