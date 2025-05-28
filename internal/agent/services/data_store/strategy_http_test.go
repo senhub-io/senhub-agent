@@ -216,16 +216,24 @@ func TestHTTPSyncStrategy_AddDataPoints(t *testing.T) {
 	strategy.cache.mu.RLock()
 	defer strategy.cache.mu.RUnlock()
 
-	if len(strategy.cache.data) != 2 {
-		t.Errorf("Expected 2 cached metrics, got %d", len(strategy.cache.data))
+	// Count total metrics across all probes
+	totalMetrics := 0
+	for _, metrics := range strategy.cache.dataByProbe {
+		totalMetrics += len(metrics)
+	}
+	
+	if totalMetrics != 2 {
+		t.Errorf("Expected 2 cached metrics, got %d", totalMetrics)
 	}
 
-	// Check specific cached metric - find it by iterating since key format changed
+	// Check specific cached metric in the host probe
 	var cpuMetric *CachedMetric
-	for key, metric := range strategy.cache.data {
-		if strings.Contains(key, "cpu.usage_percent") && metric.ProbeName == "host" {
-			cpuMetric = &metric
-			break
+	if hostMetrics, exists := strategy.cache.dataByProbe["host"]; exists {
+		for _, metric := range hostMetrics {
+			if metric.MetricName == "cpu.usage_percent" && metric.ProbeName == "host" {
+				cpuMetric = &metric
+				break
+			}
 		}
 	}
 	
@@ -243,22 +251,26 @@ func TestHTTPSyncStrategy_AddDataPoints(t *testing.T) {
 
 func TestMetricCache_Cleanup(t *testing.T) {
 	cache := &MetricCache{
-		data:     make(map[string]CachedMetric),
-		ttl:      50 * time.Millisecond, // Very short TTL for testing
-		stopChan: make(chan struct{}),
+		dataByProbe: make(map[string][]CachedMetric),
+		ttl:         50 * time.Millisecond, // Very short TTL for testing
+		stopChan:    make(chan struct{}),
 	}
 
 	// Add some test data
 	cache.mu.Lock()
-	cache.data["test1"] = CachedMetric{
-		Value:      10.0,
-		Timestamp:  time.Now().Add(-100 * time.Millisecond), // Expired
-		MetricName: "test1",
-	}
-	cache.data["test2"] = CachedMetric{
-		Value:      20.0,
-		Timestamp:  time.Now(), // Fresh
-		MetricName: "test2",
+	cache.dataByProbe["test"] = []CachedMetric{
+		{
+			Value:      10.0,
+			Timestamp:  time.Now().Add(-100 * time.Millisecond), // Expired
+			MetricName: "test1",
+			ProbeName:  "test",
+		},
+		{
+			Value:      20.0,
+			Timestamp:  time.Now(), // Fresh
+			MetricName: "test2",
+			ProbeName:  "test",
+		},
 	}
 	cache.mu.Unlock()
 
@@ -275,9 +287,17 @@ func TestMetricCache_Cleanup(t *testing.T) {
 	// Manually run cleanup logic for testing
 	cache.mu.Lock()
 	now := time.Now()
-	for key, metric := range cache.data {
-		if now.Sub(metric.Timestamp) > cache.ttl {
-			delete(cache.data, key)
+	for probeName, metrics := range cache.dataByProbe {
+		var validMetrics []CachedMetric
+		for _, metric := range metrics {
+			if now.Sub(metric.Timestamp) <= cache.ttl {
+				validMetrics = append(validMetrics, metric)
+			}
+		}
+		if len(validMetrics) == 0 {
+			delete(cache.dataByProbe, probeName)
+		} else {
+			cache.dataByProbe[probeName] = validMetrics
 		}
 	}
 	cache.mu.Unlock()
@@ -286,12 +306,9 @@ func TestMetricCache_Cleanup(t *testing.T) {
 	cache.mu.RLock()
 	defer cache.mu.RUnlock()
 
-	if _, exists := cache.data["test1"]; exists {
-		t.Error("Expected expired metric to be removed")
-	}
-
-	if _, exists := cache.data["test2"]; exists {
-		t.Error("Expected expired metric to be removed")
+	// Both metrics should be expired and removed
+	if metrics, exists := cache.dataByProbe["test"]; exists && len(metrics) > 0 {
+		t.Error("Expected all expired metrics to be removed")
 	}
 }
 
@@ -301,16 +318,20 @@ func TestHTTPSyncStrategy_PRTGEndpoint(t *testing.T) {
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
 
 	// Add some test data to cache
-	strategy.cache.data["thermal.cpu.0.temperature"] = CachedMetric{
-		Value:      65.2,
-		Timestamp:  time.Now(),
-		ProbeName:  "redfish",
-		MetricName: "thermal.cpu.0.temperature",
-		Tags: map[string]string{
-			"probe_name": "redfish",
-			"index":      "0",
+	strategy.cache.mu.Lock()
+	strategy.cache.dataByProbe["redfish"] = []CachedMetric{
+		{
+			Value:      65.2,
+			Timestamp:  time.Now(),
+			ProbeName:  "redfish",
+			MetricName: "thermal.cpu.0.temperature",
+			Tags: map[string]string{
+				"probe_name": "redfish",
+				"index":      "0",
+			},
 		},
 	}
+	strategy.cache.mu.Unlock()
 
 	// Setup HTTP server
 	err := strategy.Start()
@@ -424,33 +445,39 @@ func TestHTTPSyncStrategy_GetMetricsForProbe(t *testing.T) {
 
 	// Add test data to cache
 	now := time.Now()
-	strategy.cache.data["metric1"] = CachedMetric{
-		Value:      10.5,
-		Timestamp:  now,
-		ProbeName:  "redfish",
-		MetricName: "metric1",
-		Tags: map[string]string{
-			"probe_name": "redfish",
+	strategy.cache.mu.Lock()
+	strategy.cache.dataByProbe["redfish"] = []CachedMetric{
+		{
+			Value:      10.5,
+			Timestamp:  now,
+			ProbeName:  "redfish",
+			MetricName: "metric1",
+			Tags: map[string]string{
+				"probe_name": "redfish",
+			},
+		},
+		{
+			Value:      30.0,
+			Timestamp:  now.Add(-10 * time.Minute), // Expired
+			ProbeName:  "redfish",
+			MetricName: "metric3",
+			Tags: map[string]string{
+				"probe_name": "redfish",
+			},
 		},
 	}
-	strategy.cache.data["metric2"] = CachedMetric{
-		Value:      20.0,
-		Timestamp:  now,
-		ProbeName:  "host",
-		MetricName: "metric2",
-		Tags: map[string]string{
-			"probe_name": "host",
+	strategy.cache.dataByProbe["host"] = []CachedMetric{
+		{
+			Value:      20.0,
+			Timestamp:  now,
+			ProbeName:  "host",
+			MetricName: "metric2",
+			Tags: map[string]string{
+				"probe_name": "host",
+			},
 		},
 	}
-	strategy.cache.data["metric3"] = CachedMetric{
-		Value:      30.0,
-		Timestamp:  now.Add(-10 * time.Minute), // Expired
-		ProbeName:  "redfish",
-		MetricName: "metric3",
-		Tags: map[string]string{
-			"probe_name": "redfish",
-		},
-	}
+	strategy.cache.mu.Unlock()
 
 	// Get metrics for redfish probe
 	channels := strategy.getMetricsForProbe("redfish")
@@ -582,22 +609,8 @@ func TestHTTPSyncStrategy_Shutdown(t *testing.T) {
 	}
 }
 
-func TestGenerateMetricKey(t *testing.T) {
-	agentConfig := createTestAgentConfig()
-	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
-
-	dp := datapoint.DataPoint{
-		Name:      "cpu.usage_percent",
-		Timestamp: time.Now(),
-		Value:     75.0,
-	}
-
-	key := strategy.generateMetricKey(dp)
-	if key != "cpu.usage_percent" {
-		t.Errorf("Expected key 'cpu.usage_percent', got %s", key)
-	}
-}
+// TestGenerateMetricKey is no longer needed since we removed the generateMetricKey function
+// The cache now stores metrics directly by probe name without complex key generation
 
 func TestHTTPSyncStrategy_DebugLogsEndpoint(t *testing.T) {
 	agentConfig := createTestAgentConfig()
