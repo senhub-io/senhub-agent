@@ -31,12 +31,12 @@ type HTTPSyncStrategy struct {
 	namingConfig        map[string]string // probe -> style mapping
 }
 
-// MetricCache stores the latest metrics in memory with TTL
+// MetricCache stores the latest metrics in memory with TTL, organized by probe
 type MetricCache struct {
-	mu       sync.RWMutex
-	data     map[string]CachedMetric
-	ttl      time.Duration
-	stopChan chan struct{}
+	mu          sync.RWMutex
+	dataByProbe map[string][]CachedMetric
+	ttl         time.Duration
+	stopChan    chan struct{}
 }
 
 // CachedMetric represents a stored metric with metadata
@@ -96,9 +96,9 @@ func NewHTTPSyncStrategy(
 		transformerRegistry: transformers.NewTransformerRegistry(moduleLogger.Logger),
 		namingConfig:        make(map[string]string),
 		cache: &MetricCache{
-			data:     make(map[string]CachedMetric),
-			ttl:      5 * time.Minute, // 5 minutes TTL
-			stopChan: make(chan struct{}),
+			dataByProbe: make(map[string][]CachedMetric),
+			ttl:         5 * time.Minute, // 5 minutes TTL
+			stopChan:    make(chan struct{}),
 		},
 	}
 
@@ -217,9 +217,6 @@ func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error
 	defer h.cache.mu.Unlock()
 
 	for _, dp := range datapoints {
-		// Create a unique key for the metric
-		key := h.generateMetricKey(dp)
-
 		// Extract tags as map
 		tags := make(map[string]string)
 		for _, tag := range dp.Tags {
@@ -232,13 +229,14 @@ func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error
 		// ⚠️ DEBUG: Log if probe_name is missing or empty
 		if probeName == "" {
 			h.logger.Warn().
-				Str("key", key).
+				Str("metric_name", dp.Name).
 				Interface("all_tags", tags).
 				Msg("⚠️ MISSING PROBE_NAME: Metric has no probe_name tag!")
+			probeName = "unknown" // Fallback for metrics without probe_name
 		}
 
-		// Store in cache
-		h.cache.data[key] = CachedMetric{
+		// Create cached metric
+		metric := CachedMetric{
 			Value:      dp.Value,
 			Timestamp:  time.Now(),
 			Unit:       "", // DataPoint doesn't have Unit field yet
@@ -246,16 +244,23 @@ func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error
 			MetricName: dp.Name,
 			Tags:       tags,
 		}
+
+		// Store in cache organized by probe
+		h.cache.dataByProbe[probeName] = append(h.cache.dataByProbe[probeName], metric)
 		
 		h.logger.Debug().
-			Str("key", key).
-			Str("probe_name_tag", tags["probe_name"]).
-			Str("final_probe_name", probeName).
+			Str("metric_name", dp.Name).
+			Str("probe_name", probeName).
 			Any("value", dp.Value).
 			Msg("📊 Stored metric in cache")
 	}
 
-	h.logger.Info().Int("count", len(datapoints)).Int("cache_size", len(h.cache.data)).Msg("✅ Datapoints added to HTTP cache")
+	// Calculate total cache size across all probes
+	totalCacheSize := 0
+	for _, metrics := range h.cache.dataByProbe {
+		totalCacheSize += len(metrics)
+	}
+	h.logger.Info().Int("count", len(datapoints)).Int("cache_size", totalCacheSize).Msg("✅ Datapoints added to HTTP cache")
 	return nil
 }
 
@@ -374,16 +379,17 @@ func (h *HTTPSyncStrategy) handleListProbes(w http.ResponseWriter, r *http.Reque
 	probeMetrics := make(map[string]int)
 	probeLastUpdate := make(map[string]time.Time)
 
-	for _, metric := range h.cache.data {
-		probeName := metric.ProbeName
+	for probeName, metrics := range h.cache.dataByProbe {
 		if probeName == "" {
 			probeName = "unknown"
 		}
-		probeMetrics[probeName]++
+		probeMetrics[probeName] = len(metrics)
 		
 		// Track latest update time for each probe
-		if lastUpdate, exists := probeLastUpdate[probeName]; !exists || metric.Timestamp.After(lastUpdate) {
-			probeLastUpdate[probeName] = metric.Timestamp
+		for _, metric := range metrics {
+			if lastUpdate, exists := probeLastUpdate[probeName]; !exists || metric.Timestamp.After(lastUpdate) {
+				probeLastUpdate[probeName] = metric.Timestamp
+			}
 		}
 	}
 
@@ -483,71 +489,66 @@ func (h *HTTPSyncStrategy) getMetricsForProbe(probeName string) []PRTGChannel {
 	h.cache.mu.RLock()
 	defer h.cache.mu.RUnlock()
 
+	// Calculate total cache size for logging
+	totalCacheSize := 0
+	probeNames := make(map[string]int)
+	for probe, metrics := range h.cache.dataByProbe {
+		count := len(metrics)
+		totalCacheSize += count
+		probeNames[probe] = count
+	}
+
 	h.logger.Info().
 		Str("requested_probe", probeName).
-		Int("cache_size", len(h.cache.data)).
+		Int("total_cache_size", totalCacheSize).
 		Msg("🔍 Getting metrics for probe")
 
-	// ⚠️ DEBUG: Log all available probe names in cache
-	probeNames := make(map[string]int)
-	for _, metric := range h.cache.data {
-		if metric.ProbeName != "" {
-			probeNames[metric.ProbeName]++
-		} else {
-			probeNames["<EMPTY>"]++
-		}
-	}
 	h.logger.Info().
 		Interface("available_probes", probeNames).
 		Str("requested_probe", probeName).
 		Msg("🗂️ Available probe names in cache")
 
+	// Get metrics for the specific probe (O(1) access)
+	rawMetrics, exists := h.cache.dataByProbe[probeName]
+	if !exists {
+		h.logger.Info().Str("probe", probeName).Msg("📭 No metrics found for probe")
+		return []PRTGChannel{}
+	}
+
+	h.logger.Info().
+		Str("probe", probeName).
+		Int("raw_metrics_count", len(rawMetrics)).
+		Msg("📦 Found raw metrics for probe")
+
+	// Deduplicate metrics and filter expired ones
+	validMetrics := h.deduplicateAndFilterMetrics(rawMetrics)
+
+	h.logger.Info().
+		Str("probe", probeName).
+		Int("valid_metrics_count", len(validMetrics)).
+		Msg("🔄 After deduplication and TTL filtering")
+
+	// Transform to PRTG channels
 	var channels []PRTGChannel
-	matchingMetrics := 0
-
-	for key, metric := range h.cache.data {
+	for _, metric := range validMetrics {
 		h.logger.Debug().
-			Str("key", key).
-			Str("metric_probe", metric.ProbeName).
-			Str("requested_probe", probeName).
-			Interface("metric_value", metric.Value).
-			Msg("📋 Checking cache entry for probe match")
-
-		// Filter by probe name
-		if metric.ProbeName != probeName {
-			h.logger.Debug().
-				Str("key", key).
-				Str("metric_probe", metric.ProbeName).
-				Str("requested_probe", probeName).
-				Msg("❌ Probe name mismatch, skipping")
-			continue
-		}
-		matchingMetrics++
-
-		// Skip expired metrics
-		if time.Since(metric.Timestamp) > h.cache.ttl {
-			h.logger.Debug().Str("key", key).Msg("⏰ Metric expired, skipping")
-			continue
-		}
-
-		h.logger.Debug().
-			Str("key", key).
+			Str("metric_name", metric.MetricName).
 			Str("probe", metric.ProbeName).
 			Any("value", metric.Value).
 			Msg("✅ Processing metric for PRTG")
 
-		// Transform metric to PRTG channel
-		channel := h.transformToPRTGChannel(key, metric)
+		// Transform metric to PRTG channel (no key needed)
+		channel := h.transformToPRTGChannel("", metric)
 		if channel != nil {
 			channels = append(channels, *channel)
 			h.logger.Debug().
-				Str("key", key).
+				Str("metric_name", metric.MetricName).
 				Str("channel", channel.Channel).
 				Float64("value", channel.Value).
 				Msg("✅ Channel created successfully")
 		} else {
 			h.logger.Warn().
-				Str("key", key).
+				Str("metric_name", metric.MetricName).
 				Any("value", metric.Value).
 				Msg("❌ Failed to create PRTG channel")
 		}
@@ -555,11 +556,82 @@ func (h *HTTPSyncStrategy) getMetricsForProbe(probeName string) []PRTGChannel {
 
 	h.logger.Info().
 		Str("probe", probeName).
-		Int("matching_metrics", matchingMetrics).
+		Int("valid_metrics", len(validMetrics)).
 		Int("channels_created", len(channels)).
 		Msg("📊 Metrics retrieval result")
 
 	return channels
+}
+
+// deduplicateAndFilterMetrics removes duplicates and expired metrics
+func (h *HTTPSyncStrategy) deduplicateAndFilterMetrics(metrics []CachedMetric) []CachedMetric {
+	now := time.Now()
+	latest := make(map[string]CachedMetric)
+
+	for _, metric := range metrics {
+		// Skip expired metrics
+		if now.Sub(metric.Timestamp) > h.cache.ttl {
+			h.logger.Debug().
+				Str("metric_name", metric.MetricName).
+				Time("timestamp", metric.Timestamp).
+				Dur("age", now.Sub(metric.Timestamp)).
+				Dur("ttl", h.cache.ttl).
+				Msg("⏰ Skipping expired metric")
+			continue
+		}
+
+		// Create unique key from metric name + tags
+		keyParts := []string{metric.MetricName}
+		
+		// Sort tag keys for consistent key generation
+		tagKeys := make([]string, 0, len(metric.Tags))
+		for k := range metric.Tags {
+			if k != "probe_name" { // Exclude probe_name since we're already grouped by probe
+				tagKeys = append(tagKeys, k)
+			}
+		}
+		
+		// Simple sort
+		for i := 0; i < len(tagKeys); i++ {
+			for j := i + 1; j < len(tagKeys); j++ {
+				if tagKeys[i] > tagKeys[j] {
+					tagKeys[i], tagKeys[j] = tagKeys[j], tagKeys[i]
+				}
+			}
+		}
+		
+		// Add sorted tags to key
+		for _, k := range tagKeys {
+			keyParts = append(keyParts, fmt.Sprintf("%s=%s", k, metric.Tags[k]))
+		}
+		
+		uniqueKey := strings.Join(keyParts, ".")
+
+		// Keep the latest metric for each unique key
+		if existing, exists := latest[uniqueKey]; !exists || metric.Timestamp.After(existing.Timestamp) {
+			latest[uniqueKey] = metric
+			h.logger.Debug().
+				Str("unique_key", uniqueKey).
+				Str("metric_name", metric.MetricName).
+				Time("timestamp", metric.Timestamp).
+				Msg("✅ Keeping metric (latest)")
+		} else {
+			h.logger.Debug().
+				Str("unique_key", uniqueKey).
+				Str("metric_name", metric.MetricName).
+				Time("timestamp", metric.Timestamp).
+				Time("existing_timestamp", existing.Timestamp).
+				Msg("🔄 Skipping metric (older)")
+		}
+	}
+
+	// Convert map back to slice
+	result := make([]CachedMetric, 0, len(latest))
+	for _, metric := range latest {
+		result = append(result, metric)
+	}
+
+	return result
 }
 
 // transformToPRTGChannel converts a cached metric to PRTG channel format
@@ -633,53 +705,6 @@ func (h *HTTPSyncStrategy) transformMetricName(key string, metric CachedMetric) 
 }
 
 
-// generateMetricKey creates a unique key for a datapoint
-func (h *HTTPSyncStrategy) generateMetricKey(dp datapoint.DataPoint) string {
-	// Use metric name + all tags for a comprehensive key
-	// This ensures we don't lose any metrics due to over-filtering
-	
-	var keyParts []string
-	keyParts = append(keyParts, dp.Name)
-	
-	// Convert tags to map and sort keys for consistent ordering
-	tagMap := make(map[string]string)
-	for _, tag := range dp.Tags {
-		if tag.Key != "" && tag.Value != "" {
-			tagMap[tag.Key] = tag.Value
-		}
-	}
-	
-	// Add ALL tags to ensure uniqueness
-	// Sort keys to ensure consistent key generation
-	keys := make([]string, 0, len(tagMap))
-	for k := range tagMap {
-		keys = append(keys, k)
-	}
-	
-	// Sort for consistency
-	for i := 0; i < len(keys); i++ {
-		for j := i + 1; j < len(keys); j++ {
-			if keys[i] > keys[j] {
-				keys[i], keys[j] = keys[j], keys[i]
-			}
-		}
-	}
-	
-	// Add all tag key-value pairs
-	for _, key := range keys {
-		keyParts = append(keyParts, fmt.Sprintf("%s=%s", key, tagMap[key]))
-	}
-	
-	// Join all parts with dots
-	generatedKey := strings.Join(keyParts, ".")
-	h.logger.Debug().
-		Str("metric_name", dp.Name).
-		Str("generated_key", generatedKey).
-		Interface("all_tags", tagMap).
-		Msg("Generated comprehensive metric cache key")
-	
-	return generatedKey
-}
 
 // DebugCacheEntry represents a cache entry for debug display
 type DebugCacheEntry struct {
@@ -718,30 +743,30 @@ func (h *HTTPSyncStrategy) handleDebugCache(w http.ResponseWriter, r *http.Reque
 	defer h.cache.mu.RUnlock()
 
 	now := time.Now()
-	entries := make([]DebugCacheEntry, 0, len(h.cache.data))
+	var entries []DebugCacheEntry
 	summary := make(map[string]int)
 
 	// Convert cache data to debug format
-	for key, metric := range h.cache.data {
-		age := now.Sub(metric.Timestamp)
+	for probeName, metrics := range h.cache.dataByProbe {
+		summary[probeName] = len(metrics)
 		
-		entry := DebugCacheEntry{
-			Key:       key,
-			Value:     metric.Value,
-			Timestamp: metric.Timestamp,
-			Unit:      metric.Unit,
-			ProbeName: metric.ProbeName,
-			Tags:      metric.Tags,
-			Age:       age.String(),
+		for _, metric := range metrics {
+			age := now.Sub(metric.Timestamp)
+			
+			// Generate a display key for debugging (no longer used for storage)
+			displayKey := fmt.Sprintf("%s.%s", metric.MetricName, probeName)
+			
+			entry := DebugCacheEntry{
+				Key:       displayKey,
+				Value:     metric.Value,
+				Timestamp: metric.Timestamp,
+				Unit:      metric.Unit,
+				ProbeName: metric.ProbeName,
+				Tags:      metric.Tags,
+				Age:       age.String(),
+			}
+			entries = append(entries, entry)
 		}
-		entries = append(entries, entry)
-
-		// Count entries by probe name
-		probeName := metric.ProbeName
-		if probeName == "" {
-			probeName = "unknown"
-		}
-		summary[probeName]++
 	}
 
 	response := DebugCacheResponse{
@@ -877,9 +902,21 @@ func (cache *MetricCache) cleanup() {
 		case <-ticker.C:
 			cache.mu.Lock()
 			now := time.Now()
-			for key, metric := range cache.data {
-				if now.Sub(metric.Timestamp) > cache.ttl {
-					delete(cache.data, key)
+			
+			// Clean up expired metrics from each probe
+			for probeName, metrics := range cache.dataByProbe {
+				var validMetrics []CachedMetric
+				for _, metric := range metrics {
+					if now.Sub(metric.Timestamp) <= cache.ttl {
+						validMetrics = append(validMetrics, metric)
+					}
+				}
+				
+				// Update the probe's metrics list or remove empty probes
+				if len(validMetrics) > 0 {
+					cache.dataByProbe[probeName] = validMetrics
+				} else {
+					delete(cache.dataByProbe, probeName)
 				}
 			}
 			cache.mu.Unlock()
