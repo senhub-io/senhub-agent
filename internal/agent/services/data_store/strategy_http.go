@@ -41,11 +41,12 @@ type MetricCache struct {
 
 // CachedMetric represents a stored metric with metadata
 type CachedMetric struct {
-	Value     interface{}
-	Timestamp time.Time
-	Unit      string
-	ProbeName string
-	Tags      map[string]string
+	Value      interface{}
+	Timestamp  time.Time
+	Unit       string
+	ProbeName  string
+	MetricName string
+	Tags       map[string]string
 }
 
 // PRTGRequest represents the POST body for PRTG endpoints
@@ -238,11 +239,12 @@ func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error
 
 		// Store in cache
 		h.cache.data[key] = CachedMetric{
-			Value:     dp.Value,
-			Timestamp: time.Now(),
-			Unit:      "", // DataPoint doesn't have Unit field yet
-			ProbeName: probeName,
-			Tags:      tags,
+			Value:      dp.Value,
+			Timestamp:  time.Now(),
+			Unit:       "", // DataPoint doesn't have Unit field yet
+			ProbeName:  probeName,
+			MetricName: dp.Name,
+			Tags:       tags,
 		}
 		
 		h.logger.Debug().
@@ -591,18 +593,17 @@ func (h *HTTPSyncStrategy) transformToPRTGChannel(key string, metric CachedMetri
 
 // transformMetricName converts technical metric names to user-friendly channel names
 func (h *HTTPSyncStrategy) transformMetricName(key string, metric CachedMetric) string {
-	// Get the probe name from metric tags or fallback to parsing key
+	// Use the stored metric name directly instead of parsing from key
+	metricName := metric.MetricName
 	probeName := metric.ProbeName
-	if probeName == "" {
-		// Try to extract probe name from key (assuming format like "probe.metric.name")
+	
+	// Fallback: if metric name is empty, extract from key
+	if metricName == "" {
 		parts := strings.Split(key, ".")
 		if len(parts) > 0 {
-			probeName = parts[0]
+			metricName = parts[0]
 		}
 	}
-
-	// Extract the base metric name without probe_name tag from the key
-	baseMetricName := h.extractBaseMetricName(key)
 
 	// Get the naming style for this probe
 	// Map individual host probes to the "host" category
@@ -624,81 +625,49 @@ func (h *HTTPSyncStrategy) transformMetricName(key string, metric CachedMetric) 
 			Str("probe", probeName).
 			Str("style", style).
 			Msg("Failed to load transformer, using fallback")
-		return baseMetricName // Fallback to base metric name
+		return metricName // Fallback to original metric name
 	}
 
-	// Transform the base metric name (without probe name)
-	return transformer.TransformMetricName(baseMetricName, metric.Tags)
+	// Transform the metric name using all available tags
+	return transformer.TransformMetricName(metricName, metric.Tags)
 }
 
-// extractBaseMetricName extracts the original metric name from the cache key
-// removing the probe_name tag part that was added during key generation
-func (h *HTTPSyncStrategy) extractBaseMetricName(key string) string {
-	// Split the key by dots to get parts
-	parts := strings.Split(key, ".")
-	
-	if len(parts) == 0 {
-		return key
-	}
-	
-	// The first part is always the original metric name
-	baseMetricName := parts[0]
-	
-	// Remove any probe_name tag parts from the key
-	// Key format is: "metric_name.probe_name=value.other_tag=value"
-	// We want just the metric_name part
-	for i, part := range parts {
-		if i == 0 {
-			continue // Skip the first part (metric name)
-		}
-		// If we find a probe_name tag, don't include it in the base name
-		if strings.HasPrefix(part, "probe_name=") {
-			continue
-		}
-		// For other discriminant tags, we might want to keep them for context
-		// but not include them in the channel name to keep it clean
-	}
-	
-	return baseMetricName
-}
 
 // generateMetricKey creates a unique key for a datapoint
 func (h *HTTPSyncStrategy) generateMetricKey(dp datapoint.DataPoint) string {
-	// Start with the metric name
-	key := dp.Name
+	// Use metric name + all tags for a comprehensive key
+	// This ensures we don't lose any metrics due to over-filtering
 	
-	// Add discriminant tags to make the key unique
 	var keyParts []string
-	keyParts = append(keyParts, key)
+	keyParts = append(keyParts, dp.Name)
 	
-	// Convert tags to map for easier access
+	// Convert tags to map and sort keys for consistent ordering
 	tagMap := make(map[string]string)
 	for _, tag := range dp.Tags {
-		tagMap[tag.Key] = tag.Value
-	}
-	
-	// Add important tags that help differentiate metrics
-	discriminantTags := []string{
-		"probe_name",   // Different probes
-		"instance",     // Different instances (CPU cores, disks, etc.)
-		"device",       // Device names
-		"endpoint",     // Different endpoints
-		"url",          // Different URLs
-		"interface",    // Network interfaces
-		"drive",        // Storage drives
-		"volume",       // Volume names
-		"sensor",       // Sensor names
-		"component",    // Component names
-		"chassis",      // Chassis IDs
-		"system",       // System IDs
-		"node",         // Node names
-	}
-	
-	// Add tag values to key if they exist
-	for _, tagKey := range discriminantTags {
-		if value, exists := tagMap[tagKey]; exists && value != "" {
-			keyParts = append(keyParts, fmt.Sprintf("%s=%s", tagKey, value))
+		if tag.Key != "" && tag.Value != "" {
+			tagMap[tag.Key] = tag.Value
 		}
+	}
+	
+	// Add ALL tags to ensure uniqueness
+	// Sort keys to ensure consistent key generation
+	keys := make([]string, 0, len(tagMap))
+	for k := range tagMap {
+		keys = append(keys, k)
+	}
+	
+	// Sort for consistency
+	for i := 0; i < len(keys); i++ {
+		for j := i + 1; j < len(keys); j++ {
+			if keys[i] > keys[j] {
+				keys[i], keys[j] = keys[j], keys[i]
+			}
+		}
+	}
+	
+	// Add all tag key-value pairs
+	for _, key := range keys {
+		keyParts = append(keyParts, fmt.Sprintf("%s=%s", key, tagMap[key]))
 	}
 	
 	// Join all parts with dots
@@ -706,8 +675,8 @@ func (h *HTTPSyncStrategy) generateMetricKey(dp datapoint.DataPoint) string {
 	h.logger.Debug().
 		Str("metric_name", dp.Name).
 		Str("generated_key", generatedKey).
-		Interface("tags", tagMap).
-		Msg("Generated metric cache key")
+		Interface("all_tags", tagMap).
+		Msg("Generated comprehensive metric cache key")
 	
 	return generatedKey
 }
