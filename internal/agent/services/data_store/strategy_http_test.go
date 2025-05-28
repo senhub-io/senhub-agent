@@ -695,8 +695,8 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel_NoProbeNameInChannel(t *testing
 		t.Fatal("Expected channel to be created, got nil")
 	}
 
-	// Channel should be transformed to "CPU Usage" (without probe name)
-	expectedChannelName := "CPU Usage"
+	// Channel should be transformed to "CPU Total Usage" (new YAML transformer)
+	expectedChannelName := "CPU Total Usage"
 	if channel.Channel != expectedChannelName {
 		t.Errorf("Expected channel name '%s', got '%s'", expectedChannelName, channel.Channel)
 	}

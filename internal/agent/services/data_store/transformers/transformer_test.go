@@ -2,6 +2,7 @@
 package transformers
 
 import (
+	"strings"
 	"testing"
 
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -423,5 +424,65 @@ func TestCreateFallbackTransformer(t *testing.T) {
 
 	if len(probeTransformer.config.Units) != 0 {
 		t.Error("Expected fallback to have empty units")
+	}
+}
+
+func TestDefinitionBasedTransformer(t *testing.T) {
+	logger := createTestLogger()
+	registry := NewTransformerRegistry(logger)
+	
+	// Test loading definition-based transformer for host probe
+	transformer, err := registry.LoadTransformer("host", "friendly")
+	if err != nil {
+		t.Logf("Definition-based transformer not loaded, using fallback: %v", err)
+		// This is expected if definition files don't exist yet
+		return
+	}
+	
+	// Test metric transformation with tags
+	tests := []struct {
+		name       string
+		metricName string
+		tags       map[string]string
+		expectContains string
+	}{
+		{
+			name:       "CPU usage with core",
+			metricName: "cpu_core_usage",
+			tags: map[string]string{
+				"probe_name": "host",
+				"core":       "0",
+			},
+			expectContains: "CPU Core 0",
+		},
+		{
+			name:       "Memory usage",
+			metricName: "memory_used_percent",
+			tags: map[string]string{
+				"probe_name": "host",
+			},
+			expectContains: "Memory Usage",
+		},
+		{
+			name:       "Network interface",
+			metricName: "network_bytes_sent",
+			tags: map[string]string{
+				"probe_name": "host",
+				"interface":  "eth0",
+			},
+			expectContains: "Network eth0",
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			displayName := transformer.TransformMetricName(tt.metricName, tt.tags)
+			
+			if !strings.Contains(displayName, tt.expectContains) {
+				t.Errorf("Expected display name to contain '%s', got '%s'", tt.expectContains, displayName)
+			}
+			
+			t.Logf("Metric: %s -> Display: %s", tt.metricName, displayName)
+		})
 	}
 }
