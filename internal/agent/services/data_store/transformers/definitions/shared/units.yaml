@@ -1,0 +1,95 @@
+# Standardized Units Mapping
+# Mapping between different unit representations used across connectors
+
+units:
+  # Percentage
+  percent:
+    aliases: ["%", "percent", "pct"]
+    standard: "%"
+    description: "Percentage value (0-100)"
+
+  # Time units
+  milliseconds:
+    aliases: ["ms", "milliseconds", "msec"]
+    standard: "ms" 
+    description: "Time in milliseconds"
+    
+  seconds:
+    aliases: ["s", "sec", "seconds"]
+    standard: "s"
+    description: "Time in seconds"
+
+  # Data size units
+  bytes:
+    aliases: ["Bytes", "bytes", "B", "byte"]
+    standard: "Bytes"
+    description: "Data size in bytes"
+    
+  megabytes:
+    aliases: ["MBytes", "MB", "megabytes", "mbytes"]
+    standard: "MBytes"
+    description: "Data size in megabytes"
+
+  # Rate units  
+  bytes_per_second:
+    aliases: ["Bytes/s", "bytes/s", "BPS", "bps"]
+    standard: "Bytes/s"
+    description: "Data transfer rate in bytes per second"
+    
+  operations_per_second:
+    aliases: ["ops/s", "ops", "operations/s", "IOPS"]
+    standard: "ops/s"
+    description: "Operations per second"
+    
+  packets_per_second:
+    aliases: ["Pkts/s", "packets/s", "pps", "packet/s"]
+    standard: "Pkts/s"
+    description: "Network packets per second"
+    
+  requests_per_second:
+    aliases: ["req/s", "requests/s", "rps"]
+    standard: "req/s"
+    description: "Requests per second"
+    
+  interrupts_per_second:
+    aliases: ["int/s", "interrupts/s", "ips"]
+    standard: "int/s"
+    description: "Interrupts per second"
+    
+  faults_per_second:
+    aliases: ["Faults/s", "faults/s", "fps"]
+    standard: "Faults/s"
+    description: "Page faults per second"
+
+  # Hardware units
+  celsius:
+    aliases: ["°C", "celsius", "C", "degC"]
+    standard: "°C"
+    description: "Temperature in Celsius"
+    
+  rpm:
+    aliases: ["rpm", "RPM", "rev/min"]
+    standard: "rpm"
+    description: "Revolutions per minute"
+
+  # Dimensionless/counters
+  count:
+    aliases: ["#", "count", "number", "num"]
+    standard: "#"
+    description: "Dimensionless counter or number"
+    
+  ratio:
+    aliases: ["ratio", "factor", "multiplier"]
+    standard: "ratio"
+    description: "Dimensionless ratio"
+    
+  boolean:
+    aliases: ["boolean", "bool", "true/false"]
+    standard: "boolean"
+    description: "Boolean true/false value"
+
+  # Network specific
+  packets:
+    aliases: ["Pkts", "packets", "pkt"]
+    standard: "Pkts"
+    description: "Network packet count"
