@@ -878,3 +878,65 @@ func TestHTTPSyncStrategy_SetLogLevelsEndpoint(t *testing.T) {
 		})
 	}
 }
+func TestHTTPSyncStrategy_SenHubMetricsGET(t *testing.T) {
+	agentConfig := createTestAgentConfig()
+	logger := createTestLogger()
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+
+	// Add some test data to cache
+	testDataPoints := []datapoint.DataPoint{
+		{
+			Name:      "cpu_usage_total",
+			Timestamp: time.Now(),
+			Value:     float32(75.5),
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: "host"},
+				{Key: "component", Value: "cpu"},
+			},
+		},
+	}
+	
+	// Add data to strategy cache
+	err := strategy.AddDataPoints(testDataPoints)
+	if err != nil {
+		t.Fatalf("Failed to add test data: %v", err)
+	}
+
+	url := "/api/test-agent-key/senhub/metrics/host"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	router := strategy.setupRoutes()
+	router.ServeHTTP(rr, req)
+
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, status)
+	}
+
+	// Parse response and verify it's valid SenHub format
+	var response []SenHubMetric
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Errorf("Failed to decode response: %v", err)
+	}
+
+	if len(response) == 0 {
+		t.Error("Expected metrics for host probe, got none")
+	}
+	
+	// Verify SenHub format structure
+	if len(response) > 0 {
+		metric := response[0]
+		if metric.Name != "cpu_usage_total" {
+			t.Errorf("Expected Name to be cpu_usage_total, got %s", metric.Name)
+		}
+		if metric.DisplayName == "" {
+			t.Error("Expected DisplayName field to be populated")
+		}
+		if metric.ProbeName != "host" {
+			t.Errorf("Expected probe_name host, got %s", metric.ProbeName)
+		}
+	}
+}
