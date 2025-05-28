@@ -49,6 +49,18 @@ type CachedMetric struct {
 	Tags       map[string]string
 }
 
+// SenHubMetric represents a metric in standardized SenHub raw format
+type SenHubMetric struct {
+	Name        string            `json:"name" yaml:"name"`                   // Technical metric name
+	DisplayName string            `json:"display_name" yaml:"display_name"`   // Contextualized display name
+	Value       interface{}       `json:"value" yaml:"value"`
+	Unit        string            `json:"unit" yaml:"unit"`
+	Timestamp   time.Time         `json:"timestamp" yaml:"timestamp"`
+	ProbeName   string            `json:"probe_name" yaml:"probe_name"`
+	Tags        map[string]string `json:"tags" yaml:"tags"`
+	Description string            `json:"description,omitempty" yaml:"description,omitempty"`
+}
+
 // PRTGRequest represents the POST body for PRTG endpoints
 type PRTGRequest struct {
 	Probe  string                 `json:"probe"`
@@ -283,6 +295,9 @@ func (h *HTTPSyncStrategy) Shutdown(ctx context.Context) error {
 func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 	router := mux.NewRouter()
 
+	// SenHub raw format endpoint with agentkey and probe name in path (GET)
+	router.HandleFunc("/api/{agentkey}/senhub/metrics/{probe}", h.handleSenHubMetricsGET).Methods("GET")
+
 	// PRTG endpoint with agentkey and probe name in path (GET)
 	router.HandleFunc("/api/{agentkey}/prtg/metrics/{probe}", h.handlePRTGMetricsGET).Methods("GET")
 
@@ -303,6 +318,39 @@ func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/debug/logs", h.handleSetLogLevels).Methods("POST")
 
 	return router
+}
+
+// handleSenHubMetricsGET handles GET requests for SenHub raw format metrics
+func (h *HTTPSyncStrategy) handleSenHubMetricsGET(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	agentKey := vars["agentkey"]
+	probeName := vars["probe"]
+
+	// Validate agent key
+	if agentKey != h.agentConfig.GetAuthenticationKey() {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	h.logger.Debug().
+		Str("probe", probeName).
+		Msg("SenHub metrics GET request received")
+
+	// Get metrics from cache for the specified probe and convert to SenHub format
+	senHubMetrics := h.getSenHubMetricsForProbe(probeName)
+
+	// Send response
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(senHubMetrics); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to encode SenHub metrics response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info().
+		Str("probe", probeName).
+		Int("metrics_count", len(senHubMetrics)).
+		Msg("✅ SenHub metrics response sent")
 }
 
 // handlePRTGMetricsGET handles GET requests for PRTG metrics
@@ -563,6 +611,58 @@ func (h *HTTPSyncStrategy) getMetricsForProbe(probeName string) []PRTGChannel {
 	return channels
 }
 
+// getSenHubMetricsForProbe retrieves metrics for a probe in SenHub raw format
+func (h *HTTPSyncStrategy) getSenHubMetricsForProbe(probeName string) []SenHubMetric {
+	h.cache.mu.RLock()
+	defer h.cache.mu.RUnlock()
+
+	h.logger.Info().
+		Str("requested_probe", probeName).
+		Msg("🔍 Getting SenHub metrics for probe")
+
+	// Get metrics for the specific probe (O(1) access)
+	rawMetrics, exists := h.cache.dataByProbe[probeName]
+	if !exists {
+		h.logger.Info().Str("probe", probeName).Msg("📭 No metrics found for probe")
+		return []SenHubMetric{}
+	}
+
+	h.logger.Info().
+		Str("probe", probeName).
+		Int("raw_metrics_count", len(rawMetrics)).
+		Msg("📦 Found raw metrics for probe")
+
+	// Deduplicate metrics and filter expired ones
+	validMetrics := h.deduplicateAndFilterMetrics(rawMetrics)
+
+	h.logger.Info().
+		Str("probe", probeName).
+		Int("valid_metrics_count", len(validMetrics)).
+		Msg("🔄 After deduplication and TTL filtering")
+
+	// Convert to SenHub format
+	var senHubMetrics []SenHubMetric
+	for _, metric := range validMetrics {
+		senHubMetric := h.convertToSenHubFormat(metric)
+		senHubMetrics = append(senHubMetrics, senHubMetric)
+		
+		h.logger.Debug().
+			Str("metric_name", metric.MetricName).
+			Str("display_name", senHubMetric.DisplayName).
+			Str("probe", metric.ProbeName).
+			Any("value", metric.Value).
+			Msg("✅ Converted to SenHub format")
+	}
+
+	h.logger.Info().
+		Str("probe", probeName).
+		Int("valid_metrics", len(validMetrics)).
+		Int("senhub_metrics_created", len(senHubMetrics)).
+		Msg("📊 SenHub metrics retrieval result")
+
+	return senHubMetrics
+}
+
 // deduplicateAndFilterMetrics removes duplicates and expired metrics
 func (h *HTTPSyncStrategy) deduplicateAndFilterMetrics(metrics []CachedMetric) []CachedMetric {
 	now := time.Now()
@@ -632,6 +732,31 @@ func (h *HTTPSyncStrategy) deduplicateAndFilterMetrics(metrics []CachedMetric) [
 	}
 
 	return result
+}
+
+// convertToSenHubFormat converts a CachedMetric to SenHub standardized format
+func (h *HTTPSyncStrategy) convertToSenHubFormat(metric CachedMetric) SenHubMetric {
+	// Generate contextualized display name using transformer
+	var displayName string
+	transformer, err := h.transformerRegistry.LoadTransformer(metric.ProbeName, "friendly")
+	if err != nil {
+		h.logger.Warn().Err(err).Str("probe", metric.ProbeName).Msg("Failed to load transformer, using fallback")
+		// Use metric name as fallback display name
+		displayName = metric.MetricName
+	} else {
+		displayName = transformer.TransformMetricName(metric.MetricName, metric.Tags)
+	}
+	
+	return SenHubMetric{
+		Name:        metric.MetricName,
+		DisplayName: displayName,
+		Value:       metric.Value,
+		Unit:        metric.Unit,
+		Timestamp:   metric.Timestamp,
+		ProbeName:   metric.ProbeName,
+		Tags:        metric.Tags,
+		Description: "", // Could be enriched from transformer
+	}
 }
 
 // transformToPRTGChannel converts a cached metric to PRTG channel format
@@ -708,7 +833,7 @@ func (h *HTTPSyncStrategy) transformMetricName(key string, metric CachedMetric) 
 
 // DebugCacheEntry represents a cache entry for debug display
 type DebugCacheEntry struct {
-	Key       string            `json:"key"`
+	Name      string            `json:"name"`
 	Value     interface{}       `json:"value"`
 	Timestamp time.Time         `json:"timestamp"`
 	Unit      string            `json:"unit"`
@@ -753,11 +878,9 @@ func (h *HTTPSyncStrategy) handleDebugCache(w http.ResponseWriter, r *http.Reque
 		for _, metric := range metrics {
 			age := now.Sub(metric.Timestamp)
 			
-			// Generate a display key for debugging (no longer used for storage)
-			displayKey := fmt.Sprintf("%s.%s", metric.MetricName, probeName)
-			
+			// Use metric name directly (no probe suffix needed)
 			entry := DebugCacheEntry{
-				Key:       displayKey,
+				Name:      metric.MetricName,
 				Value:     metric.Value,
 				Timestamp: metric.Timestamp,
 				Unit:      metric.Unit,
