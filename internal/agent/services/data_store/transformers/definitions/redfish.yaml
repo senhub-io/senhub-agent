@@ -127,14 +127,14 @@ metrics:
   # Storage Metrics
   - name: "storage.drive.{index}.health"
     channel: "drive_health"
-    display_name: "Drive {index} Health"
+    display_name: "Drive {drive_id} Health"
     unit: "#"
     multi_instance_labels: ["index", "drive_id"]
     description: "Storage drive health status"
     
   - name: "storage.drive.{index}.temperature"
     channel: "drive_temperature"
-    display_name: "Drive {index} Temperature"
+    display_name: "Drive {drive_id} Temperature"
     unit: "°C"
     multi_instance_labels: ["index", "drive_id"]
     description: "Storage drive temperature in Celsius"
@@ -159,6 +159,86 @@ metrics:
     unit: "%"
     multi_instance_labels: ["pool_id"]
     description: "Storage pool utilization percentage"
+    
+  # Storage Controller Metrics
+  - name: "storage.controller.health"
+    channel: "controller_health"
+    display_name: "Storage Controller {controller_name} Health"
+    unit: "#"
+    multi_instance_labels: ["controller_id", "controller_name"]
+    description: "Storage controller health status"
+    
+  - name: "hardware.storage.controller.health"
+    channel: "controller_health"
+    display_name: "Storage Controller {controller_name} Health"
+    unit: "#"
+    multi_instance_labels: ["controller_id", "controller_name"]
+    description: "Storage controller health status"
+    
+  - name: "hardware.storage.controller.speed_gbps"
+    channel: "controller_speed"
+    display_name: "Storage Controller {controller_name} Speed"
+    unit: "Gbps"
+    multi_instance_labels: ["controller_id", "controller_name"]
+    description: "Storage controller speed in Gbps"
+    
+  # Storage Volume Metrics
+  - name: "storage.volume.capacity_gb"
+    channel: "volume_capacity"
+    display_name: "Storage Volume {volume_name} Capacity"
+    unit: "GB"
+    multi_instance_labels: ["volume_id", "volume_name"]
+    description: "Storage volume capacity in GB"
+    
+  - name: "storage.volume.health"
+    channel: "volume_health"
+    display_name: "Storage Volume {volume_name} Health"
+    unit: "#"
+    multi_instance_labels: ["volume_id", "volume_name"]
+    description: "Storage volume health status"
+    
+  - name: "hardware.storage.volume.encrypted"
+    channel: "volume_encrypted"
+    display_name: "Storage Volume {volume_name} Encrypted"
+    unit: "#"
+    multi_instance_labels: ["volume_id", "volume_name"]
+    description: "Storage volume encryption status"
+    
+  # Hardware Storage Drive Metrics
+  - name: "hardware.storage.drive.health"
+    channel: "drive_health"
+    display_name: "Storage Drive {drive_name} Health"
+    unit: "#"
+    multi_instance_labels: ["drive_id", "drive_name"]
+    description: "Storage drive health status"
+    
+  - name: "hardware.storage.drive.capacity_bytes"
+    channel: "drive_capacity"
+    display_name: "Storage Drive {drive_id} Capacity"
+    unit: "Bytes"
+    multi_instance_labels: ["drive_id", "drive_name"]
+    description: "Storage drive capacity in bytes"
+    
+  - name: "hardware.storage.drive.capacity.total"
+    channel: "drive_capacity_total"
+    display_name: "Storage Drive {drive_id} Total Capacity"
+    unit: "Bytes"
+    multi_instance_labels: ["drive_id", "drive_name"]
+    description: "Storage drive total capacity"
+    
+  - name: "hardware.storage.drive.rotation_speed"
+    channel: "drive_rotation_speed"
+    display_name: "Storage Drive {drive_id} RPM"
+    unit: "RPM"
+    multi_instance_labels: ["drive_id", "drive_name"]
+    description: "Storage drive rotation speed"
+    
+  - name: "hardware.storage.drive.failure_predicted"
+    channel: "drive_failure_predicted"
+    display_name: "Storage Drive {drive_id} Failure Predicted"
+    unit: "#"
+    multi_instance_labels: ["drive_id", "drive_name"]
+    description: "Storage drive failure prediction status"
 
   # Network Metrics
   - name: "network.adapter.{index}.status"
