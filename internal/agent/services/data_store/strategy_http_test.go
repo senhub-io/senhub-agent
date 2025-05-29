@@ -44,17 +44,15 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 		params map[string]interface{}
 		expectedPort int
 		expectedBindAddress string
-		expectedNaming map[string]string
+		expectedEndpoints map[string]bool
 	}{
 		{
 			name:   "Default configuration",
 			params: map[string]interface{}{},
 			expectedPort: 8080,
 			expectedBindAddress: "0.0.0.0",
-			expectedNaming: map[string]string{
-				"redfish": "friendly",
-				"host":    "friendly", 
-				"otel":    "technical",
+			expectedEndpoints: map[string]bool{
+				"senhub": true,
 			},
 		},
 		{
@@ -64,6 +62,9 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 			},
 			expectedPort: 9090,
 			expectedBindAddress: "0.0.0.0",
+			expectedEndpoints: map[string]bool{
+				"senhub": true,
+			},
 		},
 		{
 			name: "Custom bind address - loopback",
@@ -72,6 +73,9 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 			},
 			expectedPort: 8080,
 			expectedBindAddress: "127.0.0.1",
+			expectedEndpoints: map[string]bool{
+				"senhub": true,
+			},
 		},
 		{
 			name: "Custom bind address - specific interface",
@@ -81,21 +85,21 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 			},
 			expectedPort: 8888,
 			expectedBindAddress: "192.168.1.100",
+			expectedEndpoints: map[string]bool{
+				"senhub": true,
+			},
 		},
 		{
-			name: "Custom naming configuration",
+			name: "Custom endpoints configuration",
 			params: map[string]interface{}{
-				"naming": map[string]interface{}{
-					"redfish": "technical",
-					"host":    "prtg_standard",
-				},
+				"endpoints": []interface{}{"senhub", "prtg", "nagios"},
 			},
 			expectedPort: 8080, // default port
 			expectedBindAddress: "0.0.0.0",
-			expectedNaming: map[string]string{
-				"redfish": "technical",
-				"host":    "prtg_standard",
-				"otel":    "technical", // default
+			expectedEndpoints: map[string]bool{
+				"senhub": true,
+				"prtg":   true,
+				"nagios": true,
 			},
 		},
 	}
@@ -121,12 +125,14 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 				t.Errorf("Expected bind address %s, got %s", tt.expectedBindAddress, httpStrategy.bindAddress)
 			}
 
-			if tt.expectedNaming != nil {
-				for probe, expectedStyle := range tt.expectedNaming {
-					if style, exists := httpStrategy.namingConfig[probe]; !exists {
-						t.Errorf("Expected naming config for %s", probe)
-					} else if style != expectedStyle {
-						t.Errorf("Expected naming style %s for %s, got %s", expectedStyle, probe, style)
+			if tt.expectedEndpoints != nil {
+				for endpoint, expectedEnabled := range tt.expectedEndpoints {
+					if enabled, exists := httpStrategy.enabledEndpoints[endpoint]; !exists {
+						if expectedEnabled {
+							t.Errorf("Expected endpoint %s to be enabled", endpoint)
+						}
+					} else if enabled != expectedEnabled {
+						t.Errorf("Expected endpoint %s to be %v, got %v", endpoint, expectedEnabled, enabled)
 					}
 				}
 			}
@@ -335,7 +341,11 @@ func TestMetricCache_Cleanup(t *testing.T) {
 func TestHTTPSyncStrategy_PRTGEndpoint(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	// Enable PRTG endpoint for this test
+	params := map[string]interface{}{
+		"endpoints": []interface{}{"prtg"},
+	}
+	strategy := NewHTTPSyncStrategy(agentConfig, params, logger).(*HTTPSyncStrategy)
 
 	// Add some test data to cache using TSDB structure
 	strategy.cache.mu.Lock()
@@ -744,7 +754,11 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel_NoProbeNameInChannel(t *testing
 func TestHTTPSyncStrategy_PRTGMetricsGET(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	// Enable PRTG endpoint for this test
+	params := map[string]interface{}{
+		"endpoints": []interface{}{"prtg"},
+	}
+	strategy := NewHTTPSyncStrategy(agentConfig, params, logger).(*HTTPSyncStrategy)
 
 	// Add some test data to cache
 	testDataPoints := []datapoint.DataPoint{
