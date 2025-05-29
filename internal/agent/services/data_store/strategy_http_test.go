@@ -216,24 +216,23 @@ func TestHTTPSyncStrategy_AddDataPoints(t *testing.T) {
 	strategy.cache.mu.RLock()
 	defer strategy.cache.mu.RUnlock()
 
-	// Count total metrics across all probes
-	totalMetrics := 0
-	for _, metrics := range strategy.cache.dataByProbe {
-		totalMetrics += len(metrics)
-	}
+	// Count total metrics in time series
+	totalMetrics := len(strategy.cache.timeSeries)
 	
 	if totalMetrics != 2 {
 		t.Errorf("Expected 2 cached metrics, got %d", totalMetrics)
 	}
 
-	// Check specific cached metric in the host probe
+	// Check specific cached metric using time series key
 	var cpuMetric *CachedMetric
-	if hostMetrics, exists := strategy.cache.dataByProbe["host"]; exists {
-		for _, metric := range hostMetrics {
-			if metric.MetricName == "cpu.usage_percent" && metric.ProbeName == "host" {
-				cpuMetric = &metric
-				break
+	for tsKey, metric := range strategy.cache.timeSeries {
+		if metric.MetricName == "cpu.usage_percent" && metric.ProbeName == "host" {
+			cpuMetric = &metric
+			// Verify the metric is also indexed properly
+			if probeKeys, exists := strategy.cache.probeIndex["host"]; !exists || !probeKeys[tsKey] {
+				t.Error("Expected cpu.usage_percent metric to be indexed under host probe")
 			}
+			break
 		}
 	}
 	
@@ -251,26 +250,32 @@ func TestHTTPSyncStrategy_AddDataPoints(t *testing.T) {
 
 func TestMetricCache_Cleanup(t *testing.T) {
 	cache := &MetricCache{
-		dataByProbe: make(map[string][]CachedMetric),
+		timeSeries:  make(map[string]CachedMetric),
+		probeIndex: make(map[string]map[string]bool),
 		ttl:         50 * time.Millisecond, // Very short TTL for testing
 		stopChan:    make(chan struct{}),
 	}
 
-	// Add some test data
+	// Add some test data using TSDB structure
 	cache.mu.Lock()
-	cache.dataByProbe["test"] = []CachedMetric{
-		{
-			Value:      10.0,
-			Timestamp:  time.Now().Add(-100 * time.Millisecond), // Expired
-			MetricName: "test1",
-			ProbeName:  "test",
-		},
-		{
-			Value:      20.0,
-			Timestamp:  time.Now(), // Fresh
-			MetricName: "test2",
-			ProbeName:  "test",
-		},
+	tsKey1 := "test:test1"
+	tsKey2 := "test:test2"
+	cache.timeSeries[tsKey1] = CachedMetric{
+		Value:      10.0,
+		Timestamp:  time.Now().Add(-100 * time.Millisecond), // Expired
+		MetricName: "test1",
+		ProbeName:  "test",
+	}
+	cache.timeSeries[tsKey2] = CachedMetric{
+		Value:      20.0,
+		Timestamp:  time.Now(), // Fresh
+		MetricName: "test2",
+		ProbeName:  "test",
+	}
+	// Update probe index
+	cache.probeIndex["test"] = map[string]bool{
+		tsKey1: true,
+		tsKey2: true,
 	}
 	cache.mu.Unlock()
 
@@ -284,20 +289,30 @@ func TestMetricCache_Cleanup(t *testing.T) {
 	// Stop cleanup
 	close(cache.stopChan)
 
-	// Manually run cleanup logic for testing
+	// Manually run cleanup logic for testing using TSDB structure
 	cache.mu.Lock()
 	now := time.Now()
-	for probeName, metrics := range cache.dataByProbe {
-		var validMetrics []CachedMetric
-		for _, metric := range metrics {
-			if now.Sub(metric.Timestamp) <= cache.ttl {
-				validMetrics = append(validMetrics, metric)
-			}
+	expiredKeys := make([]string, 0)
+	
+	// Find expired metrics
+	for tsKey, metric := range cache.timeSeries {
+		if now.Sub(metric.Timestamp) > cache.ttl {
+			expiredKeys = append(expiredKeys, tsKey)
 		}
-		if len(validMetrics) == 0 {
-			delete(cache.dataByProbe, probeName)
-		} else {
-			cache.dataByProbe[probeName] = validMetrics
+	}
+	
+	// Remove expired metrics
+	for _, tsKey := range expiredKeys {
+		metric := cache.timeSeries[tsKey]
+		delete(cache.timeSeries, tsKey)
+		
+		// Also remove from probe index
+		if probeKeys, exists := cache.probeIndex[metric.ProbeName]; exists {
+			delete(probeKeys, tsKey)
+			// Clean up empty probe index
+			if len(probeKeys) == 0 {
+				delete(cache.probeIndex, metric.ProbeName)
+			}
 		}
 	}
 	cache.mu.Unlock()
@@ -306,9 +321,14 @@ func TestMetricCache_Cleanup(t *testing.T) {
 	cache.mu.RLock()
 	defer cache.mu.RUnlock()
 
-	// Both metrics should be expired and removed
-	if metrics, exists := cache.dataByProbe["test"]; exists && len(metrics) > 0 {
-		t.Error("Expected all expired metrics to be removed")
+	// Both metrics should be expired and removed from timeSeries
+	if len(cache.timeSeries) > 0 {
+		t.Errorf("Expected all expired metrics to be removed from timeSeries, but found %d", len(cache.timeSeries))
+	}
+	
+	// Probe index should also be cleaned up
+	if _, exists := cache.probeIndex["test"]; exists {
+		t.Error("Expected probe index to be cleaned up when all metrics expired")
 	}
 }
 
@@ -317,20 +337,25 @@ func TestHTTPSyncStrategy_PRTGEndpoint(t *testing.T) {
 	logger := createTestLogger()
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
 
-	// Add some test data to cache
+	// Add some test data to cache using TSDB structure
 	strategy.cache.mu.Lock()
-	strategy.cache.dataByProbe["redfish"] = []CachedMetric{
-		{
-			Value:      65.2,
-			Timestamp:  time.Now(),
-			ProbeName:  "redfish",
-			MetricName: "thermal.cpu.0.temperature",
-			Tags: map[string]string{
-				"probe_name": "redfish",
-				"index":      "0",
-			},
-		},
+	tags := map[string]string{
+		"probe_name": "redfish",
+		"index":      "0",
 	}
+	tsKey := strategy.generateTimeSeriesKey("redfish", "thermal.cpu.0.temperature", tags)
+	strategy.cache.timeSeries[tsKey] = CachedMetric{
+		Value:      65.2,
+		Timestamp:  time.Now(),
+		ProbeName:  "redfish",
+		MetricName: "thermal.cpu.0.temperature",
+		Tags:       tags,
+	}
+	// Update probe index
+	if strategy.cache.probeIndex["redfish"] == nil {
+		strategy.cache.probeIndex["redfish"] = make(map[string]bool)
+	}
+	strategy.cache.probeIndex["redfish"][tsKey] = true
 	strategy.cache.mu.Unlock()
 
 	// Setup HTTP server
@@ -443,39 +468,49 @@ func TestHTTPSyncStrategy_GetMetricsForProbe(t *testing.T) {
 	logger := createTestLogger()
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
 
-	// Add test data to cache
+	// Add test data to cache using TSDB structure
 	now := time.Now()
 	strategy.cache.mu.Lock()
-	strategy.cache.dataByProbe["redfish"] = []CachedMetric{
-		{
-			Value:      10.5,
-			Timestamp:  now,
-			ProbeName:  "redfish",
-			MetricName: "metric1",
-			Tags: map[string]string{
-				"probe_name": "redfish",
-			},
-		},
-		{
-			Value:      30.0,
-			Timestamp:  now.Add(-10 * time.Minute), // Expired
-			ProbeName:  "redfish",
-			MetricName: "metric3",
-			Tags: map[string]string{
-				"probe_name": "redfish",
-			},
-		},
+	
+	// Add redfish metrics
+	redfishTags1 := map[string]string{"probe_name": "redfish"}
+	redfishTags3 := map[string]string{"probe_name": "redfish"}
+	tsKey1 := strategy.generateTimeSeriesKey("redfish", "metric1", redfishTags1)
+	tsKey3 := strategy.generateTimeSeriesKey("redfish", "metric3", redfishTags3)
+	
+	strategy.cache.timeSeries[tsKey1] = CachedMetric{
+		Value:      10.5,
+		Timestamp:  now,
+		ProbeName:  "redfish",
+		MetricName: "metric1",
+		Tags:       redfishTags1,
 	}
-	strategy.cache.dataByProbe["host"] = []CachedMetric{
-		{
-			Value:      20.0,
-			Timestamp:  now,
-			ProbeName:  "host",
-			MetricName: "metric2",
-			Tags: map[string]string{
-				"probe_name": "host",
-			},
-		},
+	strategy.cache.timeSeries[tsKey3] = CachedMetric{
+		Value:      30.0,
+		Timestamp:  now.Add(-10 * time.Minute), // Expired
+		ProbeName:  "redfish",
+		MetricName: "metric3",
+		Tags:       redfishTags3,
+	}
+	
+	// Add host metric
+	hostTags := map[string]string{"probe_name": "host"}
+	tsKey2 := strategy.generateTimeSeriesKey("host", "metric2", hostTags)
+	strategy.cache.timeSeries[tsKey2] = CachedMetric{
+		Value:      20.0,
+		Timestamp:  now,
+		ProbeName:  "host",
+		MetricName: "metric2",
+		Tags:       hostTags,
+	}
+	
+	// Update probe indexes
+	strategy.cache.probeIndex["redfish"] = map[string]bool{
+		tsKey1: true,
+		tsKey3: true,
+	}
+	strategy.cache.probeIndex["host"] = map[string]bool{
+		tsKey2: true,
 	}
 	strategy.cache.mu.Unlock()
 
