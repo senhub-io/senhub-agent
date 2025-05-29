@@ -1,269 +1,103 @@
-# Redfish Server Hardware Metrics Definitions
-# Compatible with Go agent redfish probe
+# Redfish Server Hardware Metrics Definitions  
+# Based on real VictoriaMetrics data from Dell PowerVault ME5024
 
 probe_name: "redfish"
-version: "1.0.0"
+version: "2.0.0"
 
 metrics:
-  # System Health Metrics
-  - name: "system.health.status"
-    channel: "system_health"
-    display_name: "System Health Status"
+  # Hardware Fan Metrics
+  - name: "hardware.fan.health"
+    channel: "fan_health"
+    display_name: "Fan {fan_name} Health"
     unit: "#"
-    description: "Overall system health status"
+    multi_instance_labels: ["fan_name", "chassis_id"]
+    description: "Fan health status in storage enclosure"
     
-  - name: "system.power.state"
-    channel: "power_state"
-    display_name: "System Power State"
-    unit: "#"
-    description: "System power state (On/Off)"
-
-  # Thermal Metrics
-  - name: "thermal.cpu.{index}.temperature"
-    channel: "cpu_temperature"
-    display_name: "CPU {index} Temperature"
-    unit: "°C"
-    multi_instance_labels: ["index", "component"]
-    description: "CPU temperature in Celsius"
-    
-  - name: "thermal.system.{index}.temperature"
-    channel: "system_temperature"
-    display_name: "System {index} Temperature"
-    unit: "°C"
-    multi_instance_labels: ["index", "component"]
-    description: "System ambient temperature in Celsius"
-    
-  - name: "thermal.memory.{index}.temperature"
-    channel: "memory_temperature"
-    display_name: "Memory {index} Temperature"
-    unit: "°C"
-    multi_instance_labels: ["index", "component"]
-    description: "Memory module temperature in Celsius"
-
-  # Power Metrics
-  - name: "power.system.consumption"
-    channel: "power_consumption"
-    display_name: "System Power Consumption"
-    unit: "W"
-    description: "Total system power consumption in watts"
-    
-  - name: "power.cpu.{index}.consumption"
-    channel: "cpu_power"
-    display_name: "CPU {index} Power"
-    unit: "W"
-    multi_instance_labels: ["index", "component"]
-    description: "CPU power consumption in watts"
-    
-  - name: "power.psu.{index}.output"
-    channel: "psu_output"
-    display_name: "PSU {index} Output"
-    unit: "W"
-    multi_instance_labels: ["index", "component"]
-    description: "Power supply unit output in watts"
-    
-  - name: "power.psu.{index}.efficiency"
-    channel: "psu_efficiency"
-    display_name: "PSU {index} Efficiency"
-    unit: "%"
-    multi_instance_labels: ["index", "component"]
-    description: "Power supply unit efficiency percentage"
-
-  # Fan Metrics
-  - name: "thermal.fan.{index}.speed"
+  - name: "hardware.fan.speed"
     channel: "fan_speed"
-    display_name: "Fan {index} Speed"
-    unit: "rpm"
-    multi_instance_labels: ["index", "component"]
-    description: "Fan speed in revolutions per minute"
-    
-  - name: "thermal.fan.{index}.speed_percent"
-    channel: "fan_speed_percent"
-    display_name: "Fan {index} Speed"
-    unit: "%"
-    multi_instance_labels: ["index", "component"]
-    description: "Fan speed as percentage of maximum"
+    display_name: "Fan {fan_name} Speed"
+    unit: "RPM"
+    multi_instance_labels: ["fan_name", "chassis_id"]
+    description: "Fan speed in RPM"
 
-  # Processor Metrics
-  - name: "processor.{index}.utilization"
-    channel: "processor_utilization"
-    display_name: "Processor {index} Utilization"
-    unit: "%"
-    multi_instance_labels: ["index", "socket"]
-    description: "Processor utilization percentage"
-    
-  - name: "processor.{index}.frequency"
-    channel: "processor_frequency"
-    display_name: "Processor {index} Frequency"
-    unit: "MHz"
-    multi_instance_labels: ["index", "socket"]
-    description: "Processor operating frequency in MHz"
+  # Hardware Power Metrics
+  - name: "hardware.power.health"
+    channel: "power_health"
+    display_name: "PSU {psu_name} Health"
+    unit: "#"
+    multi_instance_labels: ["psu_name", "controller"]
+    description: "Power supply unit health status"
 
-  # Memory Metrics
-  - name: "memory.total.capacity"
-    channel: "memory_total"
-    display_name: "Memory Total Capacity"
-    unit: "Bytes"
-    description: "Total memory capacity in bytes"
-    
-  - name: "memory.used.capacity"
-    channel: "memory_used"
-    display_name: "Memory Used"
-    unit: "Bytes"
-    description: "Used memory capacity in bytes"
-    
-  - name: "memory.utilization"
-    channel: "memory_utilization"
-    display_name: "Memory Utilization"
-    unit: "%"
-    description: "Memory utilization percentage"
-    
-  - name: "memory.{index}.health"
-    channel: "memory_health"
-    display_name: "Memory {index} Health"
-    unit: "#"
-    multi_instance_labels: ["index", "slot"]
-    description: "Memory module health status"
-
-  # Storage Metrics
-  - name: "storage.drive.{index}.health"
-    channel: "drive_health"
-    display_name: "Drive {drive_id} Health"
-    unit: "#"
-    multi_instance_labels: ["index", "drive_id"]
-    description: "Storage drive health status"
-    
-  - name: "storage.drive.{index}.temperature"
-    channel: "drive_temperature"
-    display_name: "Drive {drive_id} Temperature"
-    unit: "°C"
-    multi_instance_labels: ["index", "drive_id"]
-    description: "Storage drive temperature in Celsius"
-    
-  - name: "storage.pool.{pool_id}.capacity.total"
-    channel: "pool_capacity_total"
-    display_name: "Storage Pool {pool_id} Total"
-    unit: "Bytes"
-    multi_instance_labels: ["pool_id"]
-    description: "Total storage pool capacity in bytes"
-    
-  - name: "storage.pool.{pool_id}.capacity.used"
-    channel: "pool_capacity_used"
-    display_name: "Storage Pool {pool_id} Used"
-    unit: "Bytes"
-    multi_instance_labels: ["pool_id"]
-    description: "Used storage pool capacity in bytes"
-    
-  - name: "storage.pool.{pool_id}.capacity.used_percent"
-    channel: "pool_utilization"
-    display_name: "Storage Pool {pool_id} Usage"
-    unit: "%"
-    multi_instance_labels: ["pool_id"]
-    description: "Storage pool utilization percentage"
-    
-  # Storage Controller Metrics
-  - name: "storage.controller.health"
-    channel: "controller_health"
-    display_name: "Storage Controller {controller_name} Health"
-    unit: "#"
-    multi_instance_labels: ["controller_id", "controller_name"]
-    description: "Storage controller health status"
-    
-  - name: "hardware.storage.controller.health"
-    channel: "controller_health"
-    display_name: "Storage Controller {controller_name} Health"
-    unit: "#"
-    multi_instance_labels: ["controller_id", "controller_name"]
-    description: "Storage controller health status"
-    
-  - name: "hardware.storage.controller.speed_gbps"
-    channel: "controller_speed"
-    display_name: "Storage Controller {controller_name} Speed"
-    unit: "Gbps"
-    multi_instance_labels: ["controller_id", "controller_name"]
-    description: "Storage controller speed in Gbps"
-    
-  # Storage Volume Metrics
-  - name: "storage.volume.capacity_gb"
-    channel: "volume_capacity"
-    display_name: "Storage Volume {volume_name} Capacity"
-    unit: "GB"
-    multi_instance_labels: ["volume_id", "volume_name"]
-    description: "Storage volume capacity in GB"
-    
-  - name: "storage.volume.health"
-    channel: "volume_health"
-    display_name: "Storage Volume {volume_name} Health"
-    unit: "#"
-    multi_instance_labels: ["volume_id", "volume_name"]
-    description: "Storage volume health status"
-    
-  - name: "hardware.storage.volume.encrypted"
-    channel: "volume_encrypted"
-    display_name: "Storage Volume {volume_name} Encrypted"
-    unit: "#"
-    multi_instance_labels: ["volume_id", "volume_name"]
-    description: "Storage volume encryption status"
-    
-  # Hardware Storage Drive Metrics
-  - name: "hardware.storage.drive.health"
-    channel: "drive_health"
-    display_name: "Storage Drive {drive_name} Health"
-    unit: "#"
-    multi_instance_labels: ["drive_id", "drive_name"]
-    description: "Storage drive health status"
-    
-  - name: "hardware.storage.drive.capacity_bytes"
-    channel: "drive_capacity"
-    display_name: "Storage Drive {drive_id} Capacity"
-    unit: "Bytes"
-    multi_instance_labels: ["drive_id", "drive_name"]
-    description: "Storage drive capacity in bytes"
-    
+  # Storage Drive Metrics
   - name: "hardware.storage.drive.capacity.total"
     channel: "drive_capacity_total"
-    display_name: "Storage Drive {drive_id} Total Capacity"
+    display_name: "Drive {drive_name} Total Capacity"
     unit: "Bytes"
-    multi_instance_labels: ["drive_id", "drive_name"]
-    description: "Storage drive total capacity"
-    
-  - name: "hardware.storage.drive.rotation_speed"
-    channel: "drive_rotation_speed"
-    display_name: "Storage Drive {drive_id} RPM"
-    unit: "RPM"
-    multi_instance_labels: ["drive_id", "drive_name"]
-    description: "Storage drive rotation speed"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id"]
+    description: "Total drive capacity in bytes"
     
   - name: "hardware.storage.drive.failure_predicted"
     channel: "drive_failure_predicted"
-    display_name: "Storage Drive {drive_id} Failure Predicted"
+    display_name: "Drive {drive_name} Failure Predicted"
     unit: "#"
-    multi_instance_labels: ["drive_id", "drive_name"]
-    description: "Storage drive failure prediction status"
-
-  # Network Metrics
-  - name: "network.adapter.{index}.status"
-    channel: "network_adapter_status"
-    display_name: "Network Adapter {index} Status"
-    unit: "#"
-    multi_instance_labels: ["index", "adapter_id"]
-    description: "Network adapter operational status"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id"]
+    description: "Drive failure prediction status"
     
-  - name: "network.adapter.{index}.link_speed"
-    channel: "network_link_speed"
-    display_name: "Network Adapter {index} Link Speed"
-    unit: "Mbps"
-    multi_instance_labels: ["index", "adapter_id"]
-    description: "Network adapter link speed in Mbps"
+  - name: "hardware.storage.drive.has_operations"
+    channel: "drive_has_operations"
+    display_name: "Drive {drive_name} Has Operations"
+    unit: "#"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id"]
+    description: "Indicates if drive has active operations"
 
-  # Event/Alert Metrics
-  - name: "event.critical.count"
-    channel: "critical_events"
-    display_name: "Critical Events"
-    unit: "#"
-    description: "Number of critical events in system log"
+  # Storage Volume Metrics
+  - name: "hardware.storage.volume.capacity.allocated"
+    channel: "volume_capacity_allocated"
+    display_name: "Volume {volume_name} Allocated"
+    unit: "Bytes"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id"]
+    description: "Allocated volume capacity in bytes"
     
-  - name: "event.warning.count"
-    channel: "warning_events"
-    display_name: "Warning Events"
+  - name: "hardware.storage.volume.capacity.allocated_percent"
+    channel: "volume_capacity_allocated_percent"
+    display_name: "Volume {volume_name} Allocated Percent"
+    unit: "%"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id"]
+    description: "Allocated volume capacity percentage"
+    
+  - name: "hardware.storage.volume.capacity.free"
+    channel: "volume_capacity_free"
+    display_name: "Volume {volume_name} Free"
+    unit: "Bytes"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id"]
+    description: "Free volume capacity in bytes"
+
+  # Storage Pool Metrics
+  - name: "hardware.storage.pool.capacity.allocated"
+    channel: "pool_capacity_allocated"
+    display_name: "Pool {pool_name} Allocated"
+    unit: "Bytes"
+    multi_instance_labels: ["pool_name", "pool_id", "controller_id"]
+    description: "Allocated pool capacity in bytes"
+    
+  - name: "hardware.storage.pool.capacity.used"
+    channel: "pool_capacity_used"
+    display_name: "Pool {pool_name} Used"
+    unit: "Bytes"
+    multi_instance_labels: ["pool_name", "pool_id", "controller_id"]
+    description: "Used pool capacity in bytes"
+    
+  - name: "hardware.storage.pool.capacity.free_percent"
+    channel: "pool_capacity_free_percent"
+    display_name: "Pool {pool_name} Free Percent"
+    unit: "%"
+    multi_instance_labels: ["pool_name", "pool_id", "controller_id"]
+    description: "Free pool capacity percentage"
+
+  # System Health Metrics
+  - name: "hardware.eventservice.health"
+    channel: "eventservice_health"
+    display_name: "Event Service Health"
     unit: "#"
-    description: "Number of warning events in system log"
+    description: "System event service health status"
+
