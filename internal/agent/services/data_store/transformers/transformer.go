@@ -546,8 +546,8 @@ func (dt *DefinitionBasedTransformer) generateDisplayName(def MetricDefinition, 
 		displayName = dt.makeReadable(def.Name)
 	}
 	
-	// Replace template variables with tag values
-	displayName = dt.replaceTemplateVariables(displayName, tags)
+	// Replace template variables with tag values using definition-specific labels
+	displayName = dt.replaceTemplateVariablesWithDefinition(displayName, tags, def)
 	
 	return displayName
 }
@@ -609,6 +609,43 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariables(template string, 
 			result = strings.ReplaceAll(result, placeholder, value)
 		}
 	}
+	
+	return result
+}
+
+// replaceTemplateVariablesWithDefinition replaces {variable} placeholders using definition-specific multi_instance_labels
+func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithDefinition(template string, tags map[string]string, def MetricDefinition) string {
+	result := template
+	
+	dt.logger.Debug().
+		Str("template", template).
+		Interface("multi_instance_labels", def.MultiInstanceLabels).
+		Interface("tags", tags).
+		Msg("Processing template with definition-specific labels")
+	
+	// First, process multi_instance_labels defined for this specific metric
+	for _, labelName := range def.MultiInstanceLabels {
+		placeholder := fmt.Sprintf("{%s}", labelName)
+		if strings.Contains(result, placeholder) {
+			value := tags[labelName]
+			
+			if value != "" {
+				result = strings.ReplaceAll(result, placeholder, value)
+				dt.logger.Debug().
+					Str("placeholder", placeholder).
+					Str("value", value).
+					Msg("Replaced template variable from multi_instance_labels")
+			} else {
+				dt.logger.Debug().
+					Str("placeholder", placeholder).
+					Str("label", labelName).
+					Msg("Multi-instance label not found in tags")
+			}
+		}
+	}
+	
+	// Then process any remaining placeholders with fallback logic
+	result = dt.replaceTemplateVariables(result, tags)
 	
 	return result
 }
