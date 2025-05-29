@@ -31,12 +31,16 @@ type HTTPSyncStrategy struct {
 	namingConfig        map[string]string // probe -> style mapping
 }
 
-// MetricCache stores the latest metrics in memory with TTL, organized by probe
+// MetricCache stores the latest metrics in memory with TTL, organized like a TSDB
 type MetricCache struct {
-	mu          sync.RWMutex
-	dataByProbe map[string][]CachedMetric
-	ttl         time.Duration
-	stopChan    chan struct{}
+	mu           sync.RWMutex
+	// TSDB-like structure: unique key -> latest metric
+	// Key format: probe_name:metric_name:sorted_tags_hash
+	timeSeries   map[string]CachedMetric
+	// Index by probe for fast probe-specific queries  
+	probeIndex   map[string]map[string]bool // probe_name -> set of ts_keys
+	ttl          time.Duration
+	stopChan     chan struct{}
 }
 
 // CachedMetric represents a stored metric with metadata
@@ -47,6 +51,40 @@ type CachedMetric struct {
 	ProbeName  string
 	MetricName string
 	Tags       map[string]string
+}
+
+// generateTimeSeriesKey creates a unique key for a time series based on probe, metric name, and tags
+func (h *HTTPSyncStrategy) generateTimeSeriesKey(probeName, metricName string, tags map[string]string) string {
+	// Create a sorted list of tag key-value pairs for consistent key generation
+	var tagParts []string
+	
+	// Sort tag keys for consistent ordering
+	tagKeys := make([]string, 0, len(tags))
+	for k := range tags {
+		if k != "probe_name" { // Exclude probe_name since it's already in the key prefix
+			tagKeys = append(tagKeys, k)
+		}
+	}
+	
+	// Simple sort
+	for i := 0; i < len(tagKeys); i++ {
+		for j := i + 1; j < len(tagKeys); j++ {
+			if tagKeys[i] > tagKeys[j] {
+				tagKeys[i], tagKeys[j] = tagKeys[j], tagKeys[i]
+			}
+		}
+	}
+	
+	// Build tag string
+	for _, k := range tagKeys {
+		tagParts = append(tagParts, fmt.Sprintf("%s=%s", k, tags[k]))
+	}
+	
+	// Create unique key: probe:metric:tags
+	if len(tagParts) > 0 {
+		return fmt.Sprintf("%s:%s:%s", probeName, metricName, strings.Join(tagParts, ","))
+	}
+	return fmt.Sprintf("%s:%s", probeName, metricName)
 }
 
 // SenHubMetric represents a metric in standardized SenHub raw format
@@ -108,7 +146,8 @@ func NewHTTPSyncStrategy(
 		transformerRegistry: transformers.NewTransformerRegistry(moduleLogger.Logger),
 		namingConfig:        make(map[string]string),
 		cache: &MetricCache{
-			dataByProbe: make(map[string][]CachedMetric),
+			timeSeries:  make(map[string]CachedMetric),
+			probeIndex:  make(map[string]map[string]bool),
 			ttl:         5 * time.Minute, // 5 minutes TTL
 			stopChan:    make(chan struct{}),
 		},
@@ -223,11 +262,13 @@ func (h *HTTPSyncStrategy) Start() error {
 // AddDataPoints stores the received datapoints in cache
 func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error {
 	h.logger.Info().Int("count", len(datapoints)).Msg("🔥 HTTP Strategy - Received datapoints")
-	h.logger.Debug().Int("datapoints_count", len(datapoints)).Msg("Processing datapoints for HTTP cache")
+	h.logger.Debug().Int("datapoints_count", len(datapoints)).Msg("Processing datapoints for TSDB cache")
 	
 	h.cache.mu.Lock()
 	defer h.cache.mu.Unlock()
 
+	now := time.Now()
+	
 	for _, dp := range datapoints {
 		// Extract tags as map
 		tags := make(map[string]string)
@@ -247,33 +288,89 @@ func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error
 			probeName = "unknown" // Fallback for metrics without probe_name
 		}
 
+		// Generate unique time series key
+		tsKey := h.generateTimeSeriesKey(probeName, dp.Name, tags)
+
 		// Create cached metric
 		metric := CachedMetric{
 			Value:      dp.Value,
-			Timestamp:  time.Now(),
+			Timestamp:  now, // Use consistent timestamp for write batch
 			Unit:       "", // DataPoint doesn't have Unit field yet
 			ProbeName:  probeName,
 			MetricName: dp.Name,
 			Tags:       tags,
 		}
 
-		// Store in cache organized by probe
-		h.cache.dataByProbe[probeName] = append(h.cache.dataByProbe[probeName], metric)
+		// TSDB approach: Store/replace metric by unique key (deduplication at write-time)
+		existingMetric, exists := h.cache.timeSeries[tsKey]
+		if exists {
+			h.logger.Debug().
+				Str("ts_key", tsKey).
+				Time("old_timestamp", existingMetric.Timestamp).
+				Time("new_timestamp", metric.Timestamp).
+				Msg("🔄 Replacing existing metric in time series")
+		} else {
+			h.logger.Debug().
+				Str("ts_key", tsKey).
+				Str("metric_name", dp.Name).
+				Str("probe_name", probeName).
+				Msg("📊 Adding new metric to time series")
+		}
 		
-		h.logger.Debug().
-			Str("metric_name", dp.Name).
-			Str("probe_name", probeName).
-			Any("value", dp.Value).
-			Msg("📊 Stored metric in cache")
+		// Store metric in time series
+		h.cache.timeSeries[tsKey] = metric
+		
+		// Update probe index for fast probe-specific queries
+		if h.cache.probeIndex[probeName] == nil {
+			h.cache.probeIndex[probeName] = make(map[string]bool)
+		}
+		h.cache.probeIndex[probeName][tsKey] = true
 	}
 
-	// Calculate total cache size across all probes
-	totalCacheSize := 0
-	for _, metrics := range h.cache.dataByProbe {
-		totalCacheSize += len(metrics)
-	}
-	h.logger.Info().Int("count", len(datapoints)).Int("cache_size", totalCacheSize).Msg("✅ Datapoints added to HTTP cache")
+	// Clean up expired metrics
+	h.cleanupExpiredMetrics(now)
+
+	h.logger.Info().
+		Int("count", len(datapoints)).
+		Int("total_time_series", len(h.cache.timeSeries)).
+		Int("active_probes", len(h.cache.probeIndex)).
+		Msg("✅ Datapoints added to TSDB cache")
+
 	return nil
+}
+
+// cleanupExpiredMetrics removes expired metrics from the time series cache
+func (h *HTTPSyncStrategy) cleanupExpiredMetrics(now time.Time) {
+	expiredKeys := make([]string, 0)
+	
+	// Find expired metrics
+	for tsKey, metric := range h.cache.timeSeries {
+		if now.Sub(metric.Timestamp) > h.cache.ttl {
+			expiredKeys = append(expiredKeys, tsKey)
+		}
+	}
+	
+	// Remove expired metrics
+	for _, tsKey := range expiredKeys {
+		metric := h.cache.timeSeries[tsKey]
+		delete(h.cache.timeSeries, tsKey)
+		
+		// Also remove from probe index
+		if probeKeys, exists := h.cache.probeIndex[metric.ProbeName]; exists {
+			delete(probeKeys, tsKey)
+			// Clean up empty probe index
+			if len(probeKeys) == 0 {
+				delete(h.cache.probeIndex, metric.ProbeName)
+			}
+		}
+	}
+	
+	if len(expiredKeys) > 0 {
+		h.logger.Debug().
+			Int("expired_count", len(expiredKeys)).
+			Dur("ttl", h.cache.ttl).
+			Msg("🧹 Cleaned up expired metrics from TSDB cache")
+	}
 }
 
 // Shutdown gracefully stops the HTTP server and cleanup routines
@@ -423,20 +520,22 @@ func (h *HTTPSyncStrategy) handleListProbes(w http.ResponseWriter, r *http.Reque
 	h.cache.mu.RLock()
 	defer h.cache.mu.RUnlock()
 
-	// Count metrics by probe name
+	// Count metrics by probe name using TSDB structure
 	probeMetrics := make(map[string]int)
 	probeLastUpdate := make(map[string]time.Time)
 
-	for probeName, metrics := range h.cache.dataByProbe {
+	for probeName, tsKeys := range h.cache.probeIndex {
 		if probeName == "" {
 			probeName = "unknown"
 		}
-		probeMetrics[probeName] = len(metrics)
+		probeMetrics[probeName] = len(tsKeys)
 		
 		// Track latest update time for each probe
-		for _, metric := range metrics {
-			if lastUpdate, exists := probeLastUpdate[probeName]; !exists || metric.Timestamp.After(lastUpdate) {
-				probeLastUpdate[probeName] = metric.Timestamp
+		for tsKey := range tsKeys {
+			if metric, exists := h.cache.timeSeries[tsKey]; exists {
+				if lastUpdate, hasUpdate := probeLastUpdate[probeName]; !hasUpdate || metric.Timestamp.After(lastUpdate) {
+					probeLastUpdate[probeName] = metric.Timestamp
+				}
 			}
 		}
 	}
@@ -537,44 +636,53 @@ func (h *HTTPSyncStrategy) getMetricsForProbe(probeName string) []PRTGChannel {
 	h.cache.mu.RLock()
 	defer h.cache.mu.RUnlock()
 
-	// Calculate total cache size for logging
-	totalCacheSize := 0
+	// Calculate total cache size for logging using TSDB structure
+	totalCacheSize := len(h.cache.timeSeries)
 	probeNames := make(map[string]int)
-	for probe, metrics := range h.cache.dataByProbe {
-		count := len(metrics)
-		totalCacheSize += count
-		probeNames[probe] = count
+	for probe, tsKeys := range h.cache.probeIndex {
+		probeNames[probe] = len(tsKeys)
 	}
 
 	h.logger.Info().
 		Str("requested_probe", probeName).
-		Int("total_cache_size", totalCacheSize).
-		Msg("🔍 Getting metrics for probe")
+		Int("total_time_series", totalCacheSize).
+		Msg("🔍 Getting metrics for probe from TSDB")
 
 	h.logger.Info().
 		Interface("available_probes", probeNames).
 		Str("requested_probe", probeName).
-		Msg("🗂️ Available probe names in cache")
+		Msg("🗂️ Available probe names in TSDB cache")
 
-	// Get metrics for the specific probe (O(1) access)
-	rawMetrics, exists := h.cache.dataByProbe[probeName]
+	// Get time series keys for the specific probe (O(1) access)
+	tsKeys, exists := h.cache.probeIndex[probeName]
 	if !exists {
 		h.logger.Info().Str("probe", probeName).Msg("📭 No metrics found for probe")
 		return []PRTGChannel{}
 	}
 
+	// Extract metrics from time series (already deduplicated by design)
+	var validMetrics []CachedMetric
+	now := time.Now()
+	
+	for tsKey := range tsKeys {
+		if metric, exists := h.cache.timeSeries[tsKey]; exists {
+			// Filter expired metrics
+			if now.Sub(metric.Timestamp) <= h.cache.ttl {
+				validMetrics = append(validMetrics, metric)
+			}
+		}
+	}
+
 	h.logger.Info().
 		Str("probe", probeName).
-		Int("raw_metrics_count", len(rawMetrics)).
-		Msg("📦 Found raw metrics for probe")
-
-	// Deduplicate metrics and filter expired ones
-	validMetrics := h.deduplicateAndFilterMetrics(rawMetrics)
+		Int("time_series_count", len(tsKeys)).
+		Int("valid_metrics_count", len(validMetrics)).
+		Msg("📦 Extracted metrics from TSDB")
 
 	h.logger.Info().
 		Str("probe", probeName).
 		Int("valid_metrics_count", len(validMetrics)).
-		Msg("🔄 After deduplication and TTL filtering")
+		Msg("🔄 After TTL filtering (no deduplication needed in TSDB)")
 
 	// Transform to PRTG channels
 	var channels []PRTGChannel
@@ -618,27 +726,38 @@ func (h *HTTPSyncStrategy) getSenHubMetricsForProbe(probeName string) []SenHubMe
 
 	h.logger.Info().
 		Str("requested_probe", probeName).
-		Msg("🔍 Getting SenHub metrics for probe")
+		Msg("🔍 Getting SenHub metrics for probe from TSDB")
 
-	// Get metrics for the specific probe (O(1) access)
-	rawMetrics, exists := h.cache.dataByProbe[probeName]
+	// Get time series keys for the specific probe (O(1) access)
+	tsKeys, exists := h.cache.probeIndex[probeName]
 	if !exists {
 		h.logger.Info().Str("probe", probeName).Msg("📭 No metrics found for probe")
 		return []SenHubMetric{}
 	}
 
+	// Extract metrics from time series (already deduplicated by design)
+	var validMetrics []CachedMetric
+	now := time.Now()
+	
+	for tsKey := range tsKeys {
+		if metric, exists := h.cache.timeSeries[tsKey]; exists {
+			// Filter expired metrics
+			if now.Sub(metric.Timestamp) <= h.cache.ttl {
+				validMetrics = append(validMetrics, metric)
+			}
+		}
+	}
+
 	h.logger.Info().
 		Str("probe", probeName).
-		Int("raw_metrics_count", len(rawMetrics)).
-		Msg("📦 Found raw metrics for probe")
-
-	// Deduplicate metrics and filter expired ones
-	validMetrics := h.deduplicateAndFilterMetrics(rawMetrics)
+		Int("time_series_count", len(tsKeys)).
+		Int("valid_metrics_count", len(validMetrics)).
+		Msg("📦 Extracted metrics from TSDB")
 
 	h.logger.Info().
 		Str("probe", probeName).
 		Int("valid_metrics_count", len(validMetrics)).
-		Msg("🔄 After deduplication and TTL filtering")
+		Msg("🔄 After TTL filtering (no deduplication needed in TSDB)")
 
 	// Convert to SenHub format
 	var senHubMetrics []SenHubMetric
@@ -663,75 +782,13 @@ func (h *HTTPSyncStrategy) getSenHubMetricsForProbe(probeName string) []SenHubMe
 	return senHubMetrics
 }
 
-// deduplicateAndFilterMetrics removes duplicates and expired metrics
+// deduplicateAndFilterMetrics is now DEPRECATED - TSDB handles this automatically
+// This function is kept for backwards compatibility but should not be used
+// The TSDB approach eliminates duplicates at write-time and handles TTL during read
 func (h *HTTPSyncStrategy) deduplicateAndFilterMetrics(metrics []CachedMetric) []CachedMetric {
-	now := time.Now()
-	latest := make(map[string]CachedMetric)
-
-	for _, metric := range metrics {
-		// Skip expired metrics
-		if now.Sub(metric.Timestamp) > h.cache.ttl {
-			h.logger.Debug().
-				Str("metric_name", metric.MetricName).
-				Time("timestamp", metric.Timestamp).
-				Dur("age", now.Sub(metric.Timestamp)).
-				Dur("ttl", h.cache.ttl).
-				Msg("⏰ Skipping expired metric")
-			continue
-		}
-
-		// Create unique key from metric name + tags
-		keyParts := []string{metric.MetricName}
-		
-		// Sort tag keys for consistent key generation
-		tagKeys := make([]string, 0, len(metric.Tags))
-		for k := range metric.Tags {
-			if k != "probe_name" { // Exclude probe_name since we're already grouped by probe
-				tagKeys = append(tagKeys, k)
-			}
-		}
-		
-		// Simple sort
-		for i := 0; i < len(tagKeys); i++ {
-			for j := i + 1; j < len(tagKeys); j++ {
-				if tagKeys[i] > tagKeys[j] {
-					tagKeys[i], tagKeys[j] = tagKeys[j], tagKeys[i]
-				}
-			}
-		}
-		
-		// Add sorted tags to key
-		for _, k := range tagKeys {
-			keyParts = append(keyParts, fmt.Sprintf("%s=%s", k, metric.Tags[k]))
-		}
-		
-		uniqueKey := strings.Join(keyParts, ".")
-
-		// Keep the latest metric for each unique key
-		if existing, exists := latest[uniqueKey]; !exists || metric.Timestamp.After(existing.Timestamp) {
-			latest[uniqueKey] = metric
-			h.logger.Debug().
-				Str("unique_key", uniqueKey).
-				Str("metric_name", metric.MetricName).
-				Time("timestamp", metric.Timestamp).
-				Msg("✅ Keeping metric (latest)")
-		} else {
-			h.logger.Debug().
-				Str("unique_key", uniqueKey).
-				Str("metric_name", metric.MetricName).
-				Time("timestamp", metric.Timestamp).
-				Time("existing_timestamp", existing.Timestamp).
-				Msg("🔄 Skipping metric (older)")
-		}
-	}
-
-	// Convert map back to slice
-	result := make([]CachedMetric, 0, len(latest))
-	for _, metric := range latest {
-		result = append(result, metric)
-	}
-
-	return result
+	h.logger.Warn().Msg("⚠️ DEPRECATED: deduplicateAndFilterMetrics called - TSDB handles this automatically")
+	// Return as-is since TSDB already handles deduplication and TTL
+	return metrics
 }
 
 // convertToSenHubFormat converts a CachedMetric to SenHub standardized format
@@ -871,24 +928,26 @@ func (h *HTTPSyncStrategy) handleDebugCache(w http.ResponseWriter, r *http.Reque
 	var entries []DebugCacheEntry
 	summary := make(map[string]int)
 
-	// Convert cache data to debug format
-	for probeName, metrics := range h.cache.dataByProbe {
-		summary[probeName] = len(metrics)
+	// Convert TSDB cache data to debug format
+	for probeName, tsKeys := range h.cache.probeIndex {
+		summary[probeName] = len(tsKeys)
 		
-		for _, metric := range metrics {
-			age := now.Sub(metric.Timestamp)
-			
-			// Use metric name directly (no probe suffix needed)
-			entry := DebugCacheEntry{
-				Name:      metric.MetricName,
-				Value:     metric.Value,
-				Timestamp: metric.Timestamp,
-				Unit:      metric.Unit,
-				ProbeName: metric.ProbeName,
-				Tags:      metric.Tags,
-				Age:       age.String(),
+		for tsKey := range tsKeys {
+			if metric, exists := h.cache.timeSeries[tsKey]; exists {
+				age := now.Sub(metric.Timestamp)
+				
+				// Use metric name directly (no probe suffix needed)
+				entry := DebugCacheEntry{
+					Name:      metric.MetricName,
+					Value:     metric.Value,
+					Timestamp: metric.Timestamp,
+					Unit:      metric.Unit,
+					ProbeName: metric.ProbeName,
+					Tags:      metric.Tags,
+					Age:       age.String(),
+				}
+				entries = append(entries, entry)
 			}
-			entries = append(entries, entry)
 		}
 	}
 
@@ -1015,7 +1074,7 @@ func (h *HTTPSyncStrategy) handleSetLogLevels(w http.ResponseWriter, r *http.Req
 	h.logger.Info().Msg("Log levels updated successfully")
 }
 
-// cleanup removes expired metrics from cache
+// cleanup removes expired metrics from TSDB cache
 func (cache *MetricCache) cleanup() {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
@@ -1026,22 +1085,31 @@ func (cache *MetricCache) cleanup() {
 			cache.mu.Lock()
 			now := time.Now()
 			
-			// Clean up expired metrics from each probe
-			for probeName, metrics := range cache.dataByProbe {
-				var validMetrics []CachedMetric
-				for _, metric := range metrics {
-					if now.Sub(metric.Timestamp) <= cache.ttl {
-						validMetrics = append(validMetrics, metric)
-					}
-				}
-				
-				// Update the probe's metrics list or remove empty probes
-				if len(validMetrics) > 0 {
-					cache.dataByProbe[probeName] = validMetrics
-				} else {
-					delete(cache.dataByProbe, probeName)
+			// Clean up expired metrics from TSDB
+			expiredKeys := make([]string, 0)
+			
+			// Find expired metrics
+			for tsKey, metric := range cache.timeSeries {
+				if now.Sub(metric.Timestamp) > cache.ttl {
+					expiredKeys = append(expiredKeys, tsKey)
 				}
 			}
+			
+			// Remove expired metrics
+			for _, tsKey := range expiredKeys {
+				metric := cache.timeSeries[tsKey]
+				delete(cache.timeSeries, tsKey)
+				
+				// Also remove from probe index
+				if probeKeys, exists := cache.probeIndex[metric.ProbeName]; exists {
+					delete(probeKeys, tsKey)
+					// Clean up empty probe index
+					if len(probeKeys) == 0 {
+						delete(cache.probeIndex, metric.ProbeName)
+					}
+				}
+			}
+			
 			cache.mu.Unlock()
 		case <-cache.stopChan:
 			return
