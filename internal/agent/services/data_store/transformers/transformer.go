@@ -279,8 +279,23 @@ func (pt *ProbeTransformer) extractIndex(tags map[string]string) string {
 
 // makeReadable converts technical keys to more readable format
 func (pt *ProbeTransformer) makeReadable(key string) string {
+	// Remove probe-specific common prefixes that add no value
+	readable := key
+	
+	// Redfish probe: remove "hardware." prefix (100% of metrics have it)
+	if strings.HasPrefix(readable, "hardware.") {
+		readable = strings.TrimPrefix(readable, "hardware.")
+	}
+	
+	// Host probe prefixes that appear in most metrics of their type
+	if strings.HasPrefix(readable, "disk_") {
+		readable = strings.TrimPrefix(readable, "disk_")
+	} else if strings.HasPrefix(readable, "memory_") {
+		readable = strings.TrimPrefix(readable, "memory_")
+	}
+	
 	// Basic transformation: replace dots and underscores with spaces, capitalize
-	readable := strings.ReplaceAll(key, ".", " ")
+	readable = strings.ReplaceAll(readable, ".", " ")
 	readable = strings.ReplaceAll(readable, "_", " ")
 	
 	// Capitalize first letter of each word, with special cases
@@ -666,10 +681,17 @@ func (dt *DefinitionBasedTransformer) generateFallbackDisplayName(metricName str
 
 // makeReadable converts technical metric names to readable format
 func (dt *DefinitionBasedTransformer) makeReadable(metricName string) string {
-	// Remove common prefixes
+	// Remove probe-specific common prefixes that add no value
 	readable := metricName
-	prefixes := []string{"dell_powervault_me.", "thermal.", "power.", "storage."}
-	for _, prefix := range prefixes {
+	
+	// Redfish probe: remove "hardware." prefix (100% of metrics have it)
+	if strings.HasPrefix(readable, "hardware.") {
+		readable = strings.TrimPrefix(readable, "hardware.")
+	}
+	
+	// Legacy prefixes for backwards compatibility
+	legacyPrefixes := []string{"dell_powervault_me.", "thermal.", "power.", "storage."}
+	for _, prefix := range legacyPrefixes {
 		readable = strings.TrimPrefix(readable, prefix)
 	}
 	
