@@ -349,6 +349,21 @@ func TestMakeReadable(t *testing.T) {
 			key:      "cpu_iowait",
 			expected: "CPU IO Wait",
 		},
+		{
+			name:     "Redfish hardware prefix removal",
+			key:      "hardware.fan.health",
+			expected: "Fan Health",
+		},
+		{
+			name:     "Host disk prefix removal", 
+			key:      "disk_free_percent",
+			expected: "Free Percent",
+		},
+		{
+			name:     "Host memory prefix removal",
+			key:      "memory_available_bytes", 
+			expected: "Available Bytes",
+		},
 	}
 
 	for _, tt := range tests {
