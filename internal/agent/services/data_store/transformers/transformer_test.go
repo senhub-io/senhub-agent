@@ -317,7 +317,7 @@ func TestMakeReadable(t *testing.T) {
 		{
 			name:     "Dots and underscores",
 			key:      "cpu.usage_percent",
-			expected: "Cpu Usage Percent",
+			expected: "CPU Usage Percent",
 		},
 		{
 			name:     "Multiple dots",
@@ -333,6 +333,21 @@ func TestMakeReadable(t *testing.T) {
 			name:     "Mixed separators",
 			key:      "network.interface_rx.bytes_per_sec",
 			expected: "Network Interface Rx Bytes Per Sec",
+		},
+		{
+			name:     "IO transformation",
+			key:      "disk.io.operations",
+			expected: "Disk IO Operations",
+		},
+		{
+			name:     "IO with mixed case",
+			key:      "system_io_wait",
+			expected: "System IO Wait",
+		},
+		{
+			name:     "CPU iowait transformation",
+			key:      "cpu_iowait",
+			expected: "CPU IO Wait",
 		},
 	}
 
