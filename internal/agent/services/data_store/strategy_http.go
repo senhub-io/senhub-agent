@@ -28,7 +28,7 @@ type HTTPSyncStrategy struct {
 	port                int
 	bindAddress         string // IP address to bind to
 	transformerRegistry *transformers.TransformerRegistry
-	namingConfig        map[string]string // probe -> style mapping
+	enabledEndpoints    map[string]bool // monitoring tools to expose
 }
 
 // MetricCache stores the latest metrics in memory with TTL, organized like a TSDB
@@ -144,7 +144,7 @@ func NewHTTPSyncStrategy(
 		port:                8080,      // Default port
 		bindAddress:         "0.0.0.0", // Default to all interfaces
 		transformerRegistry: transformers.NewTransformerRegistry(moduleLogger.Logger),
-		namingConfig:        make(map[string]string),
+		enabledEndpoints:    make(map[string]bool),
 		cache: &MetricCache{
 			timeSeries:  make(map[string]CachedMetric),
 			probeIndex:  make(map[string]map[string]bool),
@@ -167,26 +167,20 @@ func NewHTTPSyncStrategy(
 		}
 	}
 
-	// Load naming configuration
-	if namingParams, exists := params["naming"]; exists {
-		if namingMap, ok := namingParams.(map[string]interface{}); ok {
-			for probe, style := range namingMap {
-				if styleStr, ok := style.(string); ok {
-					strategy.namingConfig[probe] = styleStr
+	// Load endpoints configuration
+	if endpointsParam, exists := params["endpoints"]; exists {
+		if endpointsList, ok := endpointsParam.([]interface{}); ok {
+			for _, endpoint := range endpointsList {
+				if endpointStr, ok := endpoint.(string); ok {
+					strategy.enabledEndpoints[endpointStr] = true
 				}
 			}
 		}
 	}
 
-	// Set defaults for naming config
-	if _, exists := strategy.namingConfig["redfish"]; !exists {
-		strategy.namingConfig["redfish"] = "friendly"
-	}
-	if _, exists := strategy.namingConfig["host"]; !exists {
-		strategy.namingConfig["host"] = "friendly"
-	}
-	if _, exists := strategy.namingConfig["otel"]; !exists {
-		strategy.namingConfig["otel"] = "technical"
+	// If no endpoints specified, default to senhub only (raw format)
+	if len(strategy.enabledEndpoints) == 0 {
+		strategy.enabledEndpoints["senhub"] = true
 	}
 
 	return strategy
@@ -392,27 +386,36 @@ func (h *HTTPSyncStrategy) Shutdown(ctx context.Context) error {
 func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 	router := mux.NewRouter()
 
-	// SenHub raw format endpoint with agentkey and probe name in path (GET)
-	router.HandleFunc("/api/{agentkey}/senhub/metrics/{probe}", h.handleSenHubMetricsGET).Methods("GET")
-
-	// PRTG endpoint with agentkey and probe name in path (GET)
-	router.HandleFunc("/api/{agentkey}/prtg/metrics/{probe}", h.handlePRTGMetricsGET).Methods("GET")
-
-	// List available probes endpoint (GET)
-	router.HandleFunc("/api/{agentkey}/prtg/probes", h.handleListProbes).Methods("GET")
-
-	// Legacy PRTG endpoint (POST) - kept for backward compatibility
-	router.HandleFunc("/api/{agentkey}/prtg/metrics", h.handlePRTGMetrics).Methods("POST")
-
-	// Health check endpoint
+	// Always expose health check endpoint
 	router.HandleFunc("/health", h.handleHealth).Methods("GET")
 
-	// Debug endpoint to view cache contents (with agentkey authentication)
+	// Always expose debug endpoints (with agentkey authentication)
 	router.HandleFunc("/api/{agentkey}/debug/cache", h.handleDebugCache).Methods("GET")
-
-	// Debug endpoint to view and set log levels (with agentkey authentication)
 	router.HandleFunc("/api/{agentkey}/debug/logs", h.handleDebugLogs).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/debug/logs", h.handleSetLogLevels).Methods("POST")
+
+	// Conditionally expose monitoring tool endpoints based on configuration
+	if h.enabledEndpoints["senhub"] {
+		router.HandleFunc("/api/{agentkey}/senhub/metrics/{probe}", h.handleSenHubMetricsGET).Methods("GET")
+	}
+
+	if h.enabledEndpoints["prtg"] {
+		router.HandleFunc("/api/{agentkey}/prtg/metrics/{probe}", h.handlePRTGMetricsGET).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/prtg/probes", h.handleListProbes).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/prtg/metrics", h.handlePRTGMetrics).Methods("POST") // Legacy endpoint
+	}
+
+	if h.enabledEndpoints["nagios"] {
+		router.HandleFunc("/api/{agentkey}/nagios/metrics/{probe}", h.handleNagiosMetricsGET).Methods("GET")
+	}
+
+	if h.enabledEndpoints["zabbix"] {
+		router.HandleFunc("/api/{agentkey}/zabbix/metrics/{probe}", h.handleZabbixMetricsGET).Methods("GET")
+	}
+
+	if h.enabledEndpoints["prometheus"] {
+		router.HandleFunc("/api/{agentkey}/prometheus/metrics", h.handlePrometheusMetricsGET).Methods("GET")
+	}
 
 	return router
 }
@@ -834,8 +837,8 @@ func (h *HTTPSyncStrategy) transformToPRTGChannel(key string, metric CachedMetri
 		return nil
 	}
 
-	// Transform metric name to user-friendly channel name
-	channelName := h.transformMetricName(key, metric)
+	// Transform metric name to user-friendly channel name for PRTG
+	channelName := h.transformMetricNameForPRTG(key, metric)
 
 	return &PRTGChannel{
 		Channel: channelName,
@@ -845,8 +848,8 @@ func (h *HTTPSyncStrategy) transformToPRTGChannel(key string, metric CachedMetri
 	}
 }
 
-// transformMetricName converts technical metric names to user-friendly channel names
-func (h *HTTPSyncStrategy) transformMetricName(key string, metric CachedMetric) string {
+// transformMetricNameForPRTG converts technical metric names to user-friendly channel names for PRTG
+func (h *HTTPSyncStrategy) transformMetricNameForPRTG(key string, metric CachedMetric) string {
 	// Use the stored metric name directly instead of parsing from key
 	metricName := metric.MetricName
 	probeName := metric.ProbeName
@@ -859,17 +862,14 @@ func (h *HTTPSyncStrategy) transformMetricName(key string, metric CachedMetric) 
 		}
 	}
 
-	// Get the naming style for this probe
 	// Map individual host probes to the "host" category
 	probeCategory := probeName
 	if probeName == "cpu" || probeName == "memory" || probeName == "network" || probeName == "logicaldisk" || probeName == "wifi_signal_strength" {
 		probeCategory = "host"
 	}
 	
-	style, exists := h.namingConfig[probeCategory]
-	if !exists {
-		style = "friendly" // Default style
-	}
+	// Always use "friendly" style for PRTG endpoints
+	style := "friendly"
 
 	// Load transformer for this probe category and style
 	transformer, err := h.transformerRegistry.LoadTransformer(probeCategory, style)
@@ -1115,4 +1115,66 @@ func (cache *MetricCache) cleanup() {
 			return
 		}
 	}
+}
+
+// handleNagiosMetricsGET handles GET requests for Nagios format metrics
+func (h *HTTPSyncStrategy) handleNagiosMetricsGET(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+	probeName := vars["probe"]
+
+	// Validate agent key
+	if providedKey != h.agentKey {
+		h.logger.Warn().Str("provided_key", providedKey).Msg("Invalid agent key for Nagios endpoint")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	h.logger.Info().Str("probe", probeName).Msg("🔄 Nagios endpoint - Request received")
+
+	// TODO: Implement Nagios format conversion
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusNotImplemented)
+	w.Write([]byte("Nagios format endpoint not yet implemented"))
+}
+
+// handleZabbixMetricsGET handles GET requests for Zabbix format metrics
+func (h *HTTPSyncStrategy) handleZabbixMetricsGET(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+	probeName := vars["probe"]
+
+	// Validate agent key
+	if providedKey != h.agentKey {
+		h.logger.Warn().Str("provided_key", providedKey).Msg("Invalid agent key for Zabbix endpoint")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	h.logger.Info().Str("probe", probeName).Msg("🔄 Zabbix endpoint - Request received")
+
+	// TODO: Implement Zabbix format conversion
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotImplemented)
+	w.Write([]byte(`{"error": "Zabbix format endpoint not yet implemented"}`))
+}
+
+// handlePrometheusMetricsGET handles GET requests for Prometheus format metrics
+func (h *HTTPSyncStrategy) handlePrometheusMetricsGET(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+
+	// Validate agent key
+	if providedKey != h.agentKey {
+		h.logger.Warn().Str("provided_key", providedKey).Msg("Invalid agent key for Prometheus endpoint")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	h.logger.Info().Msg("🔄 Prometheus endpoint - Request received")
+
+	// TODO: Implement Prometheus format conversion
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusNotImplemented)
+	w.Write([]byte("# Prometheus format endpoint not yet implemented\n"))
 }
