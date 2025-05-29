@@ -283,11 +283,20 @@ func (pt *ProbeTransformer) makeReadable(key string) string {
 	readable := strings.ReplaceAll(key, ".", " ")
 	readable = strings.ReplaceAll(readable, "_", " ")
 	
-	// Capitalize first letter of each word
+	// Capitalize first letter of each word, with special cases
 	words := strings.Fields(readable)
 	for i, word := range words {
 		if len(word) > 0 {
-			words[i] = strings.ToUpper(word[:1]) + word[1:]
+			// Special cases for technical terms
+			if strings.ToLower(word) == "io" {
+				words[i] = "IO"
+			} else if strings.ToLower(word) == "iowait" {
+				words[i] = "IO Wait"
+			} else if strings.ToLower(word) == "cpu" {
+				words[i] = "CPU"
+			} else {
+				words[i] = strings.ToUpper(word[:1]) + word[1:]
+			}
 		}
 	}
 	
@@ -631,11 +640,20 @@ func (dt *DefinitionBasedTransformer) makeReadable(metricName string) string {
 	readable = strings.ReplaceAll(readable, ".", " ")
 	readable = strings.ReplaceAll(readable, "_", " ")
 	
-	// Capitalize first letter of each word
+	// Capitalize first letter of each word, with special cases
 	words := strings.Fields(readable)
 	for i, word := range words {
 		if len(word) > 0 {
-			words[i] = strings.ToUpper(word[:1]) + word[1:]
+			// Special cases for technical terms
+			if strings.ToLower(word) == "io" {
+				words[i] = "IO"
+			} else if strings.ToLower(word) == "iowait" {
+				words[i] = "IO Wait"
+			} else if strings.ToLower(word) == "cpu" {
+				words[i] = "CPU"
+			} else {
+				words[i] = strings.ToUpper(word[:1]) + word[1:]
+			}
 		}
 	}
 	
