@@ -442,6 +442,69 @@ func TestCreateFallbackTransformer(t *testing.T) {
 	}
 }
 
+func TestReplaceTemplateVariablesWithDefinition(t *testing.T) {
+	logger := createTestLogger()
+	
+	// Create test transformer with mock definition
+	transformer := &DefinitionBasedTransformer{
+		logger: logger,
+	}
+	
+	tests := []struct {
+		name       string
+		template   string
+		tags       map[string]string
+		definition MetricDefinition
+		expected   string
+	}{
+		{
+			name:     "CPU core with multi_instance_labels",
+			template: "CPU Core {core} Usage",
+			tags:     map[string]string{"core": "1", "index": "999"},
+			definition: MetricDefinition{
+				MultiInstanceLabels: []string{"core"},
+			},
+			expected: "CPU Core 1 Usage",
+		},
+		{
+			name:     "Disk with device from multi_instance_labels",
+			template: "Disk {device} Free",
+			tags:     map[string]string{"device": "C", "mountpoint": "/mount", "other": "ignored"},
+			definition: MetricDefinition{
+				MultiInstanceLabels: []string{"device", "mountpoint"},
+			},
+			expected: "Disk C Free",
+		},
+		{
+			name:     "Network interface with multi_instance_labels priority",
+			template: "Network {interface} Sent",
+			tags:     map[string]string{"interface": "eth0", "device": "ignored_device"},
+			definition: MetricDefinition{
+				MultiInstanceLabels: []string{"interface"},
+			},
+			expected: "Network eth0 Sent",
+		},
+		{
+			name:     "Multiple placeholders from multi_instance_labels",
+			template: "Disk {device} at {mountpoint} Usage",
+			tags:     map[string]string{"device": "sda1", "mountpoint": "/var/log"},
+			definition: MetricDefinition{
+				MultiInstanceLabels: []string{"device", "mountpoint"},
+			},
+			expected: "Disk sda1 at /var/log Usage",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := transformer.replaceTemplateVariablesWithDefinition(tt.template, tt.tags, tt.definition)
+			if result != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, result)
+			}
+		})
+	}
+}
+
 func TestDefinitionBasedTransformer(t *testing.T) {
 	logger := createTestLogger()
 	registry := NewTransformerRegistry(logger)
@@ -462,13 +525,13 @@ func TestDefinitionBasedTransformer(t *testing.T) {
 		expectContains string
 	}{
 		{
-			name:       "CPU usage with core",
-			metricName: "cpu_core_usage",
+			name:       "CPU usage with instance",
+			metricName: "processor_time",
 			tags: map[string]string{
 				"probe_name": "host",
-				"core":       "0",
+				"instance":   "0",
 			},
-			expectContains: "CPU Core 0",
+			expectContains: "CPU 0",
 		},
 		{
 			name:       "Memory usage",

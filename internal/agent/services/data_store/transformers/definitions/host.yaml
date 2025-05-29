@@ -14,9 +14,9 @@ metrics:
     
   - name: "cpu_core_usage"
     channel: "cpu_core_usage"
-    display_name: "CPU Core {core} Usage"
+    display_name: "CPU Core {instance} Usage"
     unit: "%"
-    multi_instance_labels: ["core"]
+    multi_instance_labels: ["instance"]
     description: "CPU usage percentage per core"
     
   - name: "cpu_load1"
@@ -134,33 +134,141 @@ metrics:
     multi_instance_labels: ["device", "mountpoint"]
     description: "Amount of free disk space"
     
+  # Real CPU metrics from Windows Performance Counters
+  - name: "processor_time"
+    channel: "processor_time"
+    display_name: "CPU {instance} Usage"
+    unit: "%"
+    multi_instance_labels: ["instance"]
+    description: "CPU usage percentage per processor instance"
+    
+  - name: "user_time"
+    channel: "user_time"
+    display_name: "CPU {instance} User Time"
+    unit: "%"
+    multi_instance_labels: ["instance"]
+    description: "CPU user mode time percentage"
+    
+  - name: "privileged_time"
+    channel: "privileged_time"
+    display_name: "CPU {instance} Privileged Time"
+    unit: "%"
+    multi_instance_labels: ["instance"]
+    description: "CPU privileged mode time percentage"
+    
+  - name: "interrupt_time"
+    channel: "interrupt_time"
+    display_name: "CPU {instance} Interrupt Time"
+    unit: "%"
+    multi_instance_labels: ["instance"]
+    description: "CPU interrupt time percentage"
+    
+  - name: "dpc_time"
+    channel: "dpc_time"
+    display_name: "CPU {instance} DPC Time"
+    unit: "%"
+    multi_instance_labels: ["instance"]
+    description: "CPU DPC (Deferred Procedure Call) time percentage"
+
+  # Real Logical Disk Metrics (from Performance Counters)
+  - name: "disk_free_bytes"
+    channel: "disk_free_bytes"
+    display_name: "Disk {drive} Free Space"
+    unit: "Bytes"
+    multi_instance_labels: ["drive"]
+    description: "Free disk space in bytes"
+    
+  - name: "disk_free_percent"
+    channel: "disk_free_percent"
+    display_name: "Disk {drive} Free Percent"
+    unit: "%"
+    multi_instance_labels: ["drive"]
+    description: "Free disk space percentage"
+    
+  - name: "disk_read_bytes_sec"
+    channel: "disk_read_bytes_sec"
+    display_name: "Disk {drive} Read Rate"
+    unit: "Bytes/s"
+    multi_instance_labels: ["drive"]
+    description: "Disk read rate in bytes per second"
+    
+  - name: "disk_write_bytes_sec"
+    channel: "disk_write_bytes_sec"
+    display_name: "Disk {drive} Write Rate"
+    unit: "Bytes/s"
+    multi_instance_labels: ["drive"]
+    description: "Disk write rate in bytes per second"
+    
+  - name: "disk_reads_sec"
+    channel: "disk_reads_sec"
+    display_name: "Disk {drive} Read Operations"
+    unit: "ops/s"
+    multi_instance_labels: ["drive"]
+    description: "Disk read operations per second"
+    
+  - name: "disk_writes_sec"
+    channel: "disk_writes_sec"
+    display_name: "Disk {drive} Write Operations"
+    unit: "ops/s"
+    multi_instance_labels: ["drive"]
+    description: "Disk write operations per second"
+
+  # Real Network Metrics
+  - name: "bytes_received"
+    channel: "bytes_received"
+    display_name: "Network {interface} Bytes Received"
+    unit: "Bytes/s"
+    multi_instance_labels: ["interface"]
+    description: "Network bytes received per second"
+    
+  - name: "bytes_sent"
+    channel: "bytes_sent"
+    display_name: "Network {interface} Bytes Sent"
+    unit: "Bytes/s"
+    multi_instance_labels: ["interface"]
+    description: "Network bytes sent per second"
+    
+  - name: "packets_received"
+    channel: "packets_received"
+    display_name: "Network {interface} Packets Received"
+    unit: "Pkts/s"
+    multi_instance_labels: ["interface"]
+    description: "Network packets received per second"
+    
+  - name: "packets_sent"
+    channel: "packets_sent"
+    display_name: "Network {interface} Packets Sent"
+    unit: "Pkts/s"
+    multi_instance_labels: ["interface"]
+    description: "Network packets sent per second"
+
   # Logical Disk Metrics (legacy naming)
   - name: "logicaldisk_total"
     channel: "logicaldisk_total"
-    display_name: "Disk {mountpoint} Total"
+    display_name: "Disk {drive} Total"
     unit: "Bytes"
-    multi_instance_labels: ["mountpoint"]
+    multi_instance_labels: ["drive"]
     description: "Total logical disk space"
     
   - name: "logicaldisk_used"
     channel: "logicaldisk_used"
-    display_name: "Disk {mountpoint} Used"
+    display_name: "Disk {drive} Used"
     unit: "Bytes"
-    multi_instance_labels: ["mountpoint"]
+    multi_instance_labels: ["drive"]
     description: "Used logical disk space"
     
   - name: "logicaldisk_used_percent"
     channel: "logicaldisk_used_percent"
-    display_name: "Disk {mountpoint} Usage"
+    display_name: "Disk {drive} Usage"
     unit: "%"
-    multi_instance_labels: ["mountpoint"]
+    multi_instance_labels: ["drive"]
     description: "Percentage of used logical disk space"
     
   - name: "logicaldisk_free_space"
     channel: "logicaldisk_free_space"
-    display_name: "Disk {mountpoint} Free"
+    display_name: "Disk {drive} Free"
     unit: "Bytes"
-    multi_instance_labels: ["mountpoint"]
+    multi_instance_labels: ["drive"]
     description: "Free disk space"
     
   - name: "disk_read_bytes"
