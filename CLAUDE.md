@@ -67,6 +67,7 @@
   - Implemented metric caching system with TTL and automatic cleanup
   - Built modular transformer system for user-friendly metric names
   - Added configurable bind address support for interface selection (loopback, specific IPs)
+  - Fixed unit resolution for all metrics by integrating transformer system into cache storage
   - Fixed probe naming consistency issues for proper metrics exposure
   - Created YAML-based configuration files for metric transformations:
     - `redfish_friendly.yaml` - Redfish metrics with friendly names
@@ -80,7 +81,7 @@
 - FEATURES:
   - Cache-based metric storage with 5-minute TTL
   - Template-based name transformations: `thermal.cpu.{index}.temperature` → `"CPU Temperature - Processor {index}"`
-  - Configurable naming styles per probe: `{"naming": {"redfish": "friendly", "host": "friendly"}}`
+  - Automatic format selection per endpoint (PRTG=friendly, SenHub=friendly+technical)
   - Health check endpoint at `/health`
   - Graceful shutdown with proper resource cleanup
 - CONFIGURATION EXAMPLE:
@@ -90,11 +91,7 @@
       "name": "http",
       "params": {
         "port": 8080,
-        "naming": {
-          "redfish": "friendly",
-          "host": "friendly",
-          "otel": "technical"
-        }
+        "endpoints": ["prtg", "senhub"]
       }
     }]
   }
@@ -200,6 +197,13 @@ curl -X POST http://localhost:8080/api/{agentkey}/debug/logs \
   - `/internal/agent/services/data_store/transformers/redfish_friendly.yaml` - Redfish metric transformations
   - `/internal/agent/services/data_store/transformers/host_friendly.yaml` - Host metric transformations
   - `/internal/agent/services/data_store/transformers/otel_technical.yaml` - OTEL metric transformations
+  - `/internal/agent/services/data_store/transformers/definitions/network.yaml` - Network metrics transformations
+  - `/internal/agent/services/data_store/transformers/definitions/cpu.yaml` - CPU metrics transformations
+  - `/internal/agent/services/data_store/transformers/definitions/memory.yaml` - Memory metrics transformations
+  - `/internal/agent/services/data_store/transformers/definitions/logicaldisk.yaml` - Logical disk metrics transformations
+  - `/internal/agent/services/data_store/transformers/definitions/ping_gateway.yaml` - Gateway ping metrics transformations
+  - `/internal/agent/services/data_store/transformers/definitions/ping_webapp.yaml` - WebApp ping metrics transformations
+  - `/internal/agent/services/data_store/transformers/definitions/load_webapp.yaml` - WebApp load metrics transformations
 - REGISTRY UPDATED: 
   - Added "redfish" to probe registry in `/internal/agent/probes/registry.go`
   - Added "winevents" to probe registry in `/internal/agent/probes/registry.go`

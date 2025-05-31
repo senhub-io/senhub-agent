@@ -382,37 +382,30 @@ func TestLoadTransformerFromFile(t *testing.T) {
 
 	// Test loading existing file
 	t.Run("Load existing redfish_friendly.yaml", func(t *testing.T) {
-		transformer, err := registry.loadTransformerFromFile("redfish", "friendly")
+		transformer, err := registry.LoadTransformer("redfish", "friendly")
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
 
-		probeTransformer, ok := transformer.(*ProbeTransformer)
+		definitionTransformer, ok := transformer.(*DefinitionBasedTransformer)
 		if !ok {
-			t.Fatal("Expected ProbeTransformer type")
+			t.Fatal("Expected DefinitionBasedTransformer type")
 		}
 
-		// Check that some patterns were loaded
-		if len(probeTransformer.config.Patterns) == 0 {
-			t.Error("Expected patterns to be loaded from YAML file")
+		// Check that some metrics were loaded
+		if len(definitionTransformer.definition.Metrics) == 0 {
+			t.Error("Expected metrics to be loaded from YAML file")
 		}
 
-		// Check specific pattern
-		if pattern, exists := probeTransformer.config.Patterns["thermal.cpu.{index}.temperature"]; !exists {
-			t.Error("Expected specific pattern to be loaded")
-		} else if pattern != "CPU Temperature - Processor {index}" {
-			t.Errorf("Expected specific pattern value, got %q", pattern)
-		}
-
-		// Check units
-		if len(probeTransformer.config.Units) == 0 {
-			t.Error("Expected units to be loaded from YAML file")
+		// Basic validation that transformer was created successfully
+		if definitionTransformer.definition == nil {
+			t.Error("Expected definition to be loaded")
 		}
 	})
 
 	// Test non-existent file (should create fallback)
 	t.Run("Load non-existent file creates fallback", func(t *testing.T) {
-		transformer, err := registry.loadTransformerFromFile("nonexistent", "style")
+		transformer, err := registry.LoadTransformer("nonexistent", "style")
 		if err != nil {
 			t.Fatalf("Expected no error for fallback, got %v", err)
 		}
@@ -558,7 +551,7 @@ func TestDefinitionBasedTransformer(t *testing.T) {
 		},
 		{
 			name:       "Network interface",
-			metricName: "network_bytes_sent",
+			metricName: "bytes_sent",
 			tags: map[string]string{
 				"probe_name": "host",
 				"interface":  "eth0",
@@ -576,6 +569,251 @@ func TestDefinitionBasedTransformer(t *testing.T) {
 			}
 			
 			t.Logf("Metric: %s -> Display: %s", tt.metricName, displayName)
+		})
+	}
+}
+
+// TestDefinitionBasedTransformer_AutoDetectIndexTags tests the automatic index tag detection system
+func TestDefinitionBasedTransformer_AutoDetectIndexTags(t *testing.T) {
+	logger := createTestLogger()
+	
+	// Create a definition-based transformer with a simple definition
+	definition := &ProbeDefinition{
+		Metrics: []MetricDefinition{
+			{
+				Name:        "cpu_core_usage",
+				DisplayName: "CPU Core {instance} Usage",
+				Unit:        "%",
+				// No multi_instance_labels - should use auto-detection
+			},
+		},
+	}
+	
+	transformer := &DefinitionBasedTransformer{
+		probeName:       "test",
+		definition:      definition,
+		templatesConfig: &TemplateConfig{
+			FallbackPatterns: map[string]string{
+				"generic": "{metric_name}",
+			},
+		},
+		logger: logger,
+	}
+	
+	tests := []struct {
+		name     string
+		metric   string
+		tags     map[string]string
+		expected string
+	}{
+		{
+			name:   "CPU core with Unix/macOS core tag",
+			metric: "cpu_core_usage",
+			tags: map[string]string{
+				"core":       "6",
+				"host":       "test-host",
+				"os":         "darwin",
+				"platform":   "darwin",
+				"probe_name": "cpu",
+			},
+			expected: "CPU Core 6 Usage",
+		},
+		{
+			name:   "CPU core with Windows instance tag",
+			metric: "cpu_core_usage",
+			tags: map[string]string{
+				"instance":   "3",
+				"host":       "test-host",
+				"os":         "windows", 
+				"platform":   "windows",
+				"probe_name": "cpu",
+			},
+			expected: "CPU Core 3 Usage",
+		},
+		{
+			name:   "Network interface with interface tag",
+			metric: "network_bytes_sent",
+			tags: map[string]string{
+				"interface":  "en0",
+				"host":       "test-host",
+				"os":         "darwin",
+				"probe_name": "network",
+			},
+			expected: "Network Bytes Sent", // No template, should use fallback
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := transformer.TransformMetricName(tt.metric, tt.tags)
+			if result != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, result)
+			}
+			t.Logf("Auto-detected transformation: %s -> %s", tt.metric, result)
+		})
+	}
+}
+
+// TestDefinitionBasedTransformer_DetectIndexTags tests the index tag detection logic
+func TestDefinitionBasedTransformer_DetectIndexTags(t *testing.T) {
+	logger := createTestLogger()
+	transformer := &DefinitionBasedTransformer{
+		probeName: "test",
+		logger:    logger,
+	}
+	
+	tests := []struct {
+		name           string
+		tags           map[string]string
+		expectedIndexes map[string]string
+	}{
+		{
+			name: "CPU probe Unix/macOS tags",
+			tags: map[string]string{
+				"core":       "6",
+				"host":       "MacBook-Pro.local",
+				"os":         "darwin",
+				"platform":   "darwin",
+				"probe_name": "cpu",
+			},
+			expectedIndexes: map[string]string{
+				"core": "6",
+			},
+		},
+		{
+			name: "CPU probe Windows tags",
+			tags: map[string]string{
+				"instance":   "0",
+				"host":       "WIN-PC",
+				"os":         "windows",
+				"platform":   "windows", 
+				"probe_name": "cpu",
+			},
+			expectedIndexes: map[string]string{
+				"instance": "0",
+			},
+		},
+		{
+			name: "Network probe tags",
+			tags: map[string]string{
+				"interface":  "en0",
+				"ip":         "192.168.1.100",
+				"host":       "test-host",
+				"probe_name": "network",
+			},
+			expectedIndexes: map[string]string{
+				"interface": "en0",
+			},
+		},
+		{
+			name: "Redfish probe tags",
+			tags: map[string]string{
+				"controller_id": "A",
+				"drive_id":      "0",
+				"slot":          "2",
+				"manufacturer":  "Dell",
+				"model":         "PowerVault",
+				"probe_name":    "redfish",
+			},
+			expectedIndexes: map[string]string{
+				"controller_id": "A",
+				"drive_id":      "0", 
+				"slot":          "2",
+			},
+		},
+		{
+			name: "System tags only (no indexes)",
+			tags: map[string]string{
+				"host":         "test-host",
+				"os":           "linux",
+				"platform":     "linux",
+				"probe_name":   "system",
+				"manufacturer": "Dell",
+				"model":        "PowerEdge",
+			},
+			expectedIndexes: map[string]string{},
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			detected := transformer.detectIndexTags(tt.tags)
+			
+			if len(detected) != len(tt.expectedIndexes) {
+				t.Errorf("Expected %d index tags, got %d", len(tt.expectedIndexes), len(detected))
+			}
+			
+			for expectedKey, expectedValue := range tt.expectedIndexes {
+				if detectedValue, exists := detected[expectedKey]; !exists {
+					t.Errorf("Expected index tag '%s' not detected", expectedKey)
+				} else if detectedValue != expectedValue {
+					t.Errorf("Expected index tag '%s'='%s', got '%s'", expectedKey, expectedValue, detectedValue)
+				}
+			}
+			
+			t.Logf("Detected index tags: %v", detected)
+		})
+	}
+}
+
+// TestDefinitionBasedTransformer_FindBestInstanceTag tests the instance tag selection logic
+func TestDefinitionBasedTransformer_FindBestInstanceTag(t *testing.T) {
+	logger := createTestLogger()
+	transformer := &DefinitionBasedTransformer{
+		probeName: "test",
+		logger:    logger,
+	}
+	
+	tests := []struct {
+		name      string
+		indexTags map[string]string
+		expected  string
+	}{
+		{
+			name: "CPU core preferred over instance",
+			indexTags: map[string]string{
+				"core":     "6",
+				"instance": "3",
+			},
+			expected: "6", // core has priority
+		},
+		{
+			name: "Windows instance only",
+			indexTags: map[string]string{
+				"instance": "2",
+			},
+			expected: "2",
+		},
+		{
+			name: "Network interface",
+			indexTags: map[string]string{
+				"interface": "eth0",
+			},
+			expected: "eth0",
+		},
+		{
+			name: "Redfish controller preferred",
+			indexTags: map[string]string{
+				"slot":          "3", 
+				"controller_id": "A",
+				"drive_id":      "1",
+			},
+			expected: "A", // controller_id has priority
+		},
+		{
+			name:      "No index tags",
+			indexTags: map[string]string{},
+			expected:  "",
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := transformer.findBestInstanceTag(tt.indexTags)
+			if result != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, result)
+			}
+			t.Logf("Best instance tag for %v: %s", tt.indexTags, result)
 		})
 	}
 }

@@ -1,0 +1,52 @@
+probe_name: "logicaldisk"
+friendly_name: "Logical Disk Metrics"
+multi_instance_labels: ["device", "mount_point"]
+
+metrics:
+  # Filesystem Size Metrics (in bytes)
+  - name: "fs_total_bytes"
+    channel: "disk_total_bytes"
+    display_name: "Disk {device} Total Space"
+    unit: "bytes"
+    
+  - name: "fs_free_bytes"
+    channel: "disk_free_bytes"
+    display_name: "Disk {device} Free Space"
+    unit: "bytes"
+    
+  - name: "fs_used_bytes"
+    channel: "disk_used_bytes"
+    display_name: "Disk {device} Used Space"
+    unit: "bytes"
+    
+  - name: "fs_available_bytes"
+    channel: "disk_available_bytes"
+    display_name: "Disk {device} Available Space"
+    unit: "bytes"
+
+  # Filesystem Usage Percentage
+  - name: "fs_used_percent"
+    channel: "disk_usage"
+    display_name: "Disk {device} Usage"
+    unit: "%"
+
+  # Inode Metrics
+  - name: "fs_inodes_total"
+    channel: "disk_inodes_total"
+    display_name: "Disk {device} Total Inodes"
+    unit: "#"
+    
+  - name: "fs_inodes_free"
+    channel: "disk_inodes_free"
+    display_name: "Disk {device} Free Inodes"
+    unit: "#"
+    
+  - name: "fs_inodes_used"
+    channel: "disk_inodes_used"
+    display_name: "Disk {device} Used Inodes"
+    unit: "#"
+    
+  - name: "fs_inodes_used_percent"
+    channel: "disk_inodes_usage"
+    display_name: "Disk {device} Inode Usage"
+    unit: "%"

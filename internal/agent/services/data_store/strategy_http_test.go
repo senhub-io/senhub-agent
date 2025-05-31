@@ -2,7 +2,6 @@
 package data_store
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -338,115 +337,7 @@ func TestMetricCache_Cleanup(t *testing.T) {
 	}
 }
 
-func TestHTTPSyncStrategy_PRTGEndpoint(t *testing.T) {
-	agentConfig := createTestAgentConfig()
-	logger := createTestLogger()
-	// Enable PRTG endpoint for this test
-	params := map[string]interface{}{
-		"endpoints": []interface{}{"prtg"},
-	}
-	strategy := NewHTTPSyncStrategy(agentConfig, params, logger).(*HTTPSyncStrategy)
-
-	// Add some test data to cache using TSDB structure
-	strategy.cache.mu.Lock()
-	tags := map[string]string{
-		"probe_name": "redfish",
-		"index":      "0",
-	}
-	tsKey := strategy.generateTimeSeriesKey("redfish", "thermal.cpu.0.temperature", tags)
-	strategy.cache.timeSeries[tsKey] = CachedMetric{
-		Value:      65.2,
-		Timestamp:  time.Now(),
-		ProbeName:  "redfish",
-		MetricName: "thermal.cpu.0.temperature",
-		Tags:       tags,
-	}
-	// Update probe index
-	if strategy.cache.probeIndex["redfish"] == nil {
-		strategy.cache.probeIndex["redfish"] = make(map[string]bool)
-	}
-	strategy.cache.probeIndex["redfish"][tsKey] = true
-	strategy.cache.mu.Unlock()
-
-	// Setup HTTP server
-	err := strategy.Start()
-	if err != nil {
-		t.Fatalf("Failed to start strategy: %v", err)
-	}
-	defer strategy.Shutdown(context.Background())
-
-	// Create test request
-	requestBody := PRTGRequest{
-		Probe:  "redfish",
-		Target: "server1", 
-		Config: map[string]interface{}{
-			"host":     "192.168.1.100",
-			"username": "admin",
-			"password": "secret",
-		},
-	}
-
-	bodyBytes, _ := json.Marshal(requestBody)
-	
-	// Test with correct agent key
-	t.Run("Valid agent key", func(t *testing.T) {
-		// Use router to properly extract path variables
-		router := strategy.setupRoutes()
-		
-		url := "/api/test-agent-key/prtg/metrics"
-		req := httptest.NewRequest("POST", url, bytes.NewReader(bodyBytes))
-		req.Header.Set("Content-Type", "application/json")
-		
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
-		}
-
-		var response PRTGResponse
-		err := json.Unmarshal(w.Body.Bytes(), &response)
-		if err != nil {
-			t.Fatalf("Failed to parse response: %v", err)
-		}
-
-		if len(response.PRTG.Result) == 0 {
-			t.Error("Expected at least one PRTG channel in response")
-		}
-	})
-
-	// Test with invalid agent key
-	t.Run("Invalid agent key", func(t *testing.T) {
-		router := strategy.setupRoutes()
-		
-		url := "/api/wrong-key/prtg/metrics"
-		req := httptest.NewRequest("POST", url, bytes.NewReader(bodyBytes))
-		req.Header.Set("Content-Type", "application/json")
-		
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusUnauthorized {
-			t.Errorf("Expected status 401, got %d", w.Code)
-		}
-	})
-
-	// Test with invalid JSON
-	t.Run("Invalid JSON", func(t *testing.T) {
-		router := strategy.setupRoutes()
-		
-		url := "/api/test-agent-key/prtg/metrics"
-		req := httptest.NewRequest("POST", url, strings.NewReader("invalid json"))
-		req.Header.Set("Content-Type", "application/json")
-		
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected status 400, got %d", w.Code)
-		}
-	})
-}
+// Legacy POST endpoint has been removed - use GET endpoints instead
 
 func TestHTTPSyncStrategy_HealthEndpoint(t *testing.T) {
 	agentConfig := createTestAgentConfig()
@@ -462,14 +353,14 @@ func TestHTTPSyncStrategy_HealthEndpoint(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
 
-	var response map[string]string
+	var response HealthResponse
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	if err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
 
-	if response["status"] != "ok" {
-		t.Errorf("Expected status 'ok', got %s", response["status"])
+	if response.Status != "ok" {
+		t.Errorf("Expected status 'ok', got %s", response.Status)
 	}
 }
 
@@ -565,34 +456,37 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 	}{
 		{
 			name: "Valid float64 value",
-			key:  "test.metric",
+			key:  "processor_time",
 			metric: CachedMetric{
 				Value:      float64(25.5),
-				Unit:       "°C",
-				MetricName: "test.metric",
-				Tags:       map[string]string{},
+				Unit:       "%",
+				MetricName: "processor_time",
+				ProbeName:  "cpu",
+				Tags:       map[string]string{"instance": "0"},
 			},
 			wantNil: false,
 		},
 		{
 			name: "Valid float32 value",
-			key:  "test.metric",
+			key:  "memory_used_percent",
 			metric: CachedMetric{
 				Value:      float32(30.0),
-				Unit:       "W",
-				MetricName: "test.metric",
+				Unit:       "%",
+				MetricName: "memory_used_percent",
+				ProbeName:  "memory",
 				Tags:       map[string]string{},
 			},
 			wantNil: false,
 		},
 		{
 			name: "Valid int value",
-			key:  "test.metric",
+			key:  "bytes_received",
 			metric: CachedMetric{
 				Value:      int(100),
-				Unit:       "#",
-				MetricName: "test.metric",
-				Tags:       map[string]string{},
+				Unit:       "Bytes/s",
+				MetricName: "bytes_received",
+				ProbeName:  "network",
+				Tags:       map[string]string{"interface": "eth0"},
 			},
 			wantNil: false,
 		},
@@ -622,8 +516,14 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 			}
 
 			if channel != nil {
-				if channel.Unit != tt.metric.Unit {
-					t.Errorf("Expected unit %s, got %s", tt.metric.Unit, channel.Unit)
+				// For PRTG, unit should be "custom" and the real unit should be in CustomUnit
+				if tt.metric.Unit != "" {
+					if channel.Unit != "custom" {
+						t.Errorf("Expected unit 'custom', got %s", channel.Unit)
+					}
+					if channel.CustomUnit != tt.metric.Unit {
+						t.Errorf("Expected custom unit %s, got %s", tt.metric.Unit, channel.CustomUnit)
+					}
 				}
 				if channel.Float != 1 {
 					t.Errorf("Expected Float field to be 1, got %d", channel.Float)

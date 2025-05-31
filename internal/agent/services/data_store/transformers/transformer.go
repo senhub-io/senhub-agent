@@ -2,15 +2,17 @@
 package transformers
 
 import (
+	"embed"
 	"fmt"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 
 	"gopkg.in/yaml.v2"
 	"senhub-agent.go/internal/agent/services/logger"
 )
+
+//go:embed definitions/*.yaml definitions/shared/*.yaml
+var definitionFiles embed.FS
 
 // MetricTransformer defines the interface for transforming metric names
 type MetricTransformer interface {
@@ -114,72 +116,30 @@ func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricT
 		tr.logger.Debug().
 			Str("probe", probeName).
 			Str("style", style).
-			Msg("Definition-based transformer loaded successfully")
+			Msg("✅ Definition-based transformer loaded successfully")
 		return transformer, nil
 	}
 
-	// Fallback to legacy transformer
-	tr.logger.Debug().
+	// Log the error and create fallback transformer directly
+	tr.logger.Warn().
 		Err(err).
 		Str("probe", probeName).
-		Msg("Definition-based transformer not found, falling back to legacy")
+		Msg("❌ Definition-based transformer not found, creating fallback")
 		
-	transformer, err = tr.loadTransformerFromFile(probeName, style)
-	if err != nil {
-		tr.logger.Error().
-			Err(err).
-			Str("probe", probeName).
-			Str("style", style).
-			Msg("Failed to load transformer")
-		return nil, err
-	}
-
+	// Create fallback transformer directly instead of loading from file
+	transformer = tr.createFallbackTransformer(probeName, style)
+	
 	// Cache the transformer
 	tr.transformers[key] = transformer
 	tr.logger.Debug().
 		Str("probe", probeName).
 		Str("style", style).
-		Msg("Legacy transformer loaded successfully")
+		Msg("🔧 Fallback transformer created")
 
 	return transformer, nil
 }
 
-// loadTransformerFromFile loads a transformer configuration from YAML file
-func (tr *TransformerRegistry) loadTransformerFromFile(probeName, style string) (MetricTransformer, error) {
-	filename := fmt.Sprintf("%s_%s.yaml", probeName, style)
-	
-	// Get the directory where this source file is located
-	_, sourceFile, _, _ := runtime.Caller(0)
-	transformersDir := filepath.Dir(sourceFile)
-	filePath := filepath.Join(transformersDir, filename)
-
-	// Check if file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		tr.logger.Warn().
-			Str("file", filePath).
-			Msg("Transformer file not found, using fallback")
-		return tr.createFallbackTransformer(probeName, style), nil
-	}
-
-	// Read YAML file
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read transformer file %s: %w", filePath, err)
-	}
-
-	// Parse YAML
-	var config TransformConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse transformer file %s: %w", filePath, err)
-	}
-
-	return &ProbeTransformer{
-		probeName: probeName,
-		style:     style,
-		config:    config,
-		logger:    tr.logger,
-	}, nil
-}
+// REMOVED: loadTransformerFromFile - replaced by embedded definitions
 
 // createFallbackTransformer creates a basic transformer when no config file exists
 func (tr *TransformerRegistry) createFallbackTransformer(probeName, style string) MetricTransformer {
@@ -320,26 +280,36 @@ func (pt *ProbeTransformer) makeReadable(key string) string {
 
 // loadDefinitionBasedTransformer loads a new definition-based transformer
 func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) (MetricTransformer, error) {
-	// Get the directory where definitions are stored
-	_, sourceFile, _, _ := runtime.Caller(0)
-	transformersDir := filepath.Dir(sourceFile)
-	definitionsDir := filepath.Join(transformersDir, "definitions")
-	
-	// Load probe definition
-	probeFilePath := filepath.Join(definitionsDir, fmt.Sprintf("%s.yaml", probeName))
-	definition, err := tr.loadProbeDefinition(probeFilePath)
+	// Load probe definition from embedded files
+	probeFilePath := fmt.Sprintf("definitions/%s.yaml", probeName)
+	tr.logger.Debug().
+		Str("probe", probeName).
+		Str("file_path", probeFilePath).
+		Msg("🔍 Loading probe definition from embedded files")
+		
+	definition, err := tr.loadProbeDefinitionFromEmbed(probeFilePath)
 	if err != nil {
+		tr.logger.Error().
+			Err(err).
+			Str("probe", probeName).
+			Str("file_path", probeFilePath).
+			Msg("❌ Failed to load embedded probe definition")
 		return nil, fmt.Errorf("failed to load probe definition: %w", err)
 	}
 	
-	// Load shared configurations
-	unitsConfig, err := tr.loadUnitsConfig(filepath.Join(definitionsDir, "shared", "units.yaml"))
+	tr.logger.Debug().
+		Str("probe", probeName).
+		Int("metrics_count", len(definition.Metrics)).
+		Msg("✅ Probe definition loaded from embedded files")
+	
+	// Load shared configurations from embedded files
+	unitsConfig, err := tr.loadUnitsConfigFromEmbed("definitions/shared/units.yaml")
 	if err != nil {
 		tr.logger.Warn().Err(err).Msg("Failed to load units config, using empty config")
 		unitsConfig = &UnitsConfig{Units: make(map[string]UnitDefinition)}
 	}
 	
-	templatesConfig, err := tr.loadTemplatesConfig(filepath.Join(definitionsDir, "shared", "templates.yaml"))
+	templatesConfig, err := tr.loadTemplatesConfigFromEmbed("definitions/shared/templates.yaml")
 	if err != nil {
 		tr.logger.Warn().Err(err).Msg("Failed to load templates config, using empty config")
 		templatesConfig = &TemplateConfig{
@@ -377,6 +347,22 @@ func (tr *TransformerRegistry) loadProbeDefinition(filePath string) (*ProbeDefin
 	return &definition, nil
 }
 
+// loadProbeDefinitionFromEmbed loads a probe definition from embedded YAML file
+func (tr *TransformerRegistry) loadProbeDefinitionFromEmbed(filePath string) (*ProbeDefinition, error) {
+	data, err := definitionFiles.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	
+	var definition ProbeDefinition
+	err = yaml.Unmarshal(data, &definition)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &definition, nil
+}
+
 // loadUnitsConfig loads units configuration from YAML file
 func (tr *TransformerRegistry) loadUnitsConfig(filePath string) (*UnitsConfig, error) {
 	data, err := os.ReadFile(filePath)
@@ -393,9 +379,41 @@ func (tr *TransformerRegistry) loadUnitsConfig(filePath string) (*UnitsConfig, e
 	return &config, nil
 }
 
+// loadUnitsConfigFromEmbed loads units configuration from embedded YAML file
+func (tr *TransformerRegistry) loadUnitsConfigFromEmbed(filePath string) (*UnitsConfig, error) {
+	data, err := definitionFiles.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	
+	var config UnitsConfig
+	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &config, nil
+}
+
 // loadTemplatesConfig loads templates configuration from YAML file
 func (tr *TransformerRegistry) loadTemplatesConfig(filePath string) (*TemplateConfig, error) {
 	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	
+	var config TemplateConfig
+	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &config, nil
+}
+
+// loadTemplatesConfigFromEmbed loads templates configuration from embedded YAML file
+func (tr *TransformerRegistry) loadTemplatesConfigFromEmbed(filePath string) (*TemplateConfig, error) {
+	data, err := definitionFiles.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -628,7 +646,7 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariables(template string, 
 	return result
 }
 
-// replaceTemplateVariablesWithDefinition replaces {variable} placeholders using definition-specific multi_instance_labels
+// replaceTemplateVariablesWithDefinition replaces {variable} placeholders using definition-specific multi_instance_labels and automatic detection
 func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithDefinition(template string, tags map[string]string, def MetricDefinition) string {
 	result := template
 	
@@ -657,6 +675,11 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithDefinition(tem
 					Msg("Multi-instance label not found in tags")
 			}
 		}
+	}
+	
+	// If we still have unresolved placeholders, try automatic index detection
+	if strings.Contains(result, "{") {
+		result = dt.replaceTemplateVariablesWithAutoDetection(result, tags)
 	}
 	
 	// Then process any remaining placeholders with fallback logic
@@ -732,4 +755,167 @@ func (dt *DefinitionBasedTransformer) normalizeUnit(unit string) string {
 	
 	// Return as-is if no normalization needed
 	return unit
+}
+
+// replaceTemplateVariablesWithAutoDetection automatically detects index tags and replaces placeholders
+func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithAutoDetection(template string, tags map[string]string) string {
+	result := template
+	
+	// Detect all index tags automatically
+	indexTags := dt.detectIndexTags(tags)
+	
+	dt.logger.Debug().
+		Interface("detected_index_tags", indexTags).
+		Str("template", template).
+		Msg("Auto-detected index tags for template replacement")
+	
+	// Replace all detected index tags in the template
+	for tagKey, tagValue := range indexTags {
+		placeholder := fmt.Sprintf("{%s}", tagKey)
+		if strings.Contains(result, placeholder) {
+			result = strings.ReplaceAll(result, placeholder, tagValue)
+			dt.logger.Debug().
+				Str("placeholder", placeholder).
+				Str("value", tagValue).
+				Msg("Auto-replaced template variable")
+		}
+	}
+	
+	// Special handling for generic {instance} placeholder
+	if strings.Contains(result, "{instance}") {
+		// Try to find the best index tag for {instance}
+		instanceValue := dt.findBestInstanceTag(indexTags)
+		if instanceValue != "" {
+			result = strings.ReplaceAll(result, "{instance}", instanceValue)
+			dt.logger.Debug().
+				Str("instance_value", instanceValue).
+				Msg("Replaced generic {instance} placeholder")
+		}
+	}
+	
+	return result
+}
+
+// detectIndexTags automatically identifies which tags are likely to be index/identifier tags
+func (dt *DefinitionBasedTransformer) detectIndexTags(tags map[string]string) map[string]string {
+	indexTags := make(map[string]string)
+	
+	for key, value := range tags {
+		if dt.isIndexTag(key, value) {
+			indexTags[key] = value
+		}
+	}
+	
+	return indexTags
+}
+
+// isIndexTag determines if a tag key/value pair represents an index or identifier
+func (dt *DefinitionBasedTransformer) isIndexTag(key, value string) bool {
+	// Skip system/metadata tags
+	systemTags := []string{"host", "os", "platform", "probe_name", "state", "manufacturer", "model", "serial_number"}
+	for _, systemTag := range systemTags {
+		if key == systemTag {
+			return false
+		}
+	}
+	
+	// Skip very long values (probably not indexes)
+	if len(value) > 50 {
+		return false
+	}
+	
+	// CPU probe patterns (OS-specific)
+	if key == "core" && dt.isNumeric(value) {
+		return true // Unix/macOS: core="0", "1", "2"
+	}
+	if key == "instance" && (dt.isNumeric(value) || value == "_Total") {
+		return true // Windows: instance="0", "1", "_Total"
+	}
+	
+	// Network probe patterns
+	if key == "interface" && len(value) <= 20 {
+		return true // interface="en0", "Wi-Fi", "Ethernet"
+	}
+	if key == "adapter" && len(value) <= 30 {
+		return true // Windows adapter names
+	}
+	
+	// Redfish probe patterns
+	redfishIndexTags := []string{"controller_id", "drive_id", "system_id", "controller"}
+	for _, redfishTag := range redfishIndexTags {
+		if key == redfishTag {
+			return true
+		}
+	}
+	
+	// Physical positions
+	physicalTags := []string{"slot", "channel", "socket", "bay"}
+	for _, physicalTag := range physicalTags {
+		if key == physicalTag && dt.isNumeric(value) {
+			return true
+		}
+	}
+	
+	// Memory-specific tags
+	if key == "memory_controller" && dt.isNumeric(value) {
+		return true
+	}
+	
+	// Generic numeric values for potential indexes
+	if dt.isNumeric(value) && len(value) <= 3 {
+		// Short numeric values are likely indexes
+		return true
+	}
+	
+	// Single letter values (like controller letters A, B, C)
+	if len(value) == 1 && dt.isAlpha(value) {
+		return true
+	}
+	
+	return false
+}
+
+// findBestInstanceTag finds the most appropriate tag value for a generic {instance} placeholder
+func (dt *DefinitionBasedTransformer) findBestInstanceTag(indexTags map[string]string) string {
+	// Preference order for {instance} replacement
+	preferenceOrder := []string{"core", "instance", "interface", "controller_id", "drive_id", "slot", "channel"}
+	
+	for _, preferred := range preferenceOrder {
+		if value, exists := indexTags[preferred]; exists {
+			return value
+		}
+	}
+	
+	// If no preferred tag found, return the first available index tag
+	for _, value := range indexTags {
+		return value
+	}
+	
+	return ""
+}
+
+// isNumeric checks if a string contains only digits
+func (dt *DefinitionBasedTransformer) isNumeric(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, char := range s {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// isAlpha checks if a string contains only letters
+func (dt *DefinitionBasedTransformer) isAlpha(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, char := range s {
+		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')) {
+			return false
+		}
+	}
+	return true
 }
