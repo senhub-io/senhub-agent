@@ -5,6 +5,8 @@ package host
 
 import (
 	"fmt"
+	"os/exec"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -182,6 +184,18 @@ type mountInfo struct {
 }
 
 func (c *unixLogicalDiskCollector) getMountPoints() ([]mountInfo, error) {
+	// Use different approaches based on OS
+	switch runtime.GOOS {
+	case "darwin":
+		return c.getMountPointsDarwin()
+	case "linux":
+		return c.getMountPointsLinux()
+	default:
+		return c.getMountPointsLinux() // Default to Linux approach for other Unix systems
+	}
+}
+
+func (c *unixLogicalDiskCollector) getMountPointsLinux() ([]mountInfo, error) {
 	var mounts []mountInfo
 
 	// Read /proc/mounts
@@ -224,6 +238,109 @@ func (c *unixLogicalDiskCollector) getMountPoints() ([]mountInfo, error) {
 	}
 
 	return mounts, nil
+}
+
+func (c *unixLogicalDiskCollector) getMountPointsDarwin() ([]mountInfo, error) {
+	var mounts []mountInfo
+
+	// Use df command to get mounted filesystems on macOS
+	cmd := exec.Command("df", "-h")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("error running df command: %v", err)
+	}
+
+	lines := strings.Split(string(output), "\n")
+	for i, line := range lines {
+		if i == 0 || line == "" {
+			continue // Skip header and empty lines
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 9 {
+			continue // Skip malformed lines
+		}
+
+		device := fields[0]
+		mountpoint := fields[8]
+		
+		// Determine filesystem type from device name
+		fstype := c.determineFSTypeDarwin(device)
+
+		// Filter out pseudo filesystems and system mounts
+		if c.shouldMonitorMountDarwin(mountpoint, fstype) {
+			mounts = append(mounts, mountInfo{
+				device:     device,
+				mountpoint: mountpoint,
+				fstype:     fstype,
+			})
+		}
+	}
+
+	return mounts, nil
+}
+
+// determineFSTypeDarwin determines filesystem type from device name on macOS
+func (c *unixLogicalDiskCollector) determineFSTypeDarwin(device string) string {
+	if strings.HasPrefix(device, "/dev/disk") {
+		return "apfs" // Modern macOS uses APFS by default
+	}
+	if device == "devfs" {
+		return "devfs"
+	}
+	if strings.HasPrefix(device, "map") {
+		return "autofs"
+	}
+	return "unknown"
+}
+
+// shouldMonitorMountDarwin determines if a mount point should be monitored on macOS
+func (c *unixLogicalDiskCollector) shouldMonitorMountDarwin(mountPoint, fsType string) bool {
+	// Exclude virtual/system filesystems
+	excludedTypes := map[string]bool{
+		"devfs":   true,
+		"autofs":  true,
+		"unknown": true,
+	}
+
+	if excludedTypes[fsType] {
+		return false
+	}
+
+	// Exclude system mount points (but allow /System/Volumes/Data for user data)
+	excludedMounts := map[string]bool{
+		"/dev":                       true,
+		"/System/Volumes/Preboot":    true,
+		"/System/Volumes/VM":         true,
+		"/System/Volumes/Update":     true,
+		"/System/Volumes/Data/home":  true,
+	}
+
+	if excludedMounts[mountPoint] {
+		return false
+	}
+
+	// Include root filesystem
+	if mountPoint == "/" {
+		return true
+	}
+
+	// Include user data volume
+	if mountPoint == "/System/Volumes/Data" {
+		return true
+	}
+
+	// Include external volumes
+	if strings.HasPrefix(mountPoint, "/Volumes/") {
+		return true
+	}
+
+	// Include APFS filesystems
+	if fsType == "apfs" {
+		return true
+	}
+
+	return false
 }
 
 // Close performs any necessary cleanup
