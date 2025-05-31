@@ -257,10 +257,7 @@ Here's a sample configuration:
       "name": "http",
       "params": {
         "port": 8080,
-        "naming": {
-          "redfish": "friendly",
-          "host": "friendly"
-        }
+        "endpoints": ["prtg", "senhub"]
       }
     }
   ]
@@ -598,20 +595,20 @@ Exposes agent metrics via HTTP REST API for external monitoring tools like PRTG 
     "name": "http",
     "params": {
       "port": 8080,
-      "naming": {
-        "redfish": "friendly",
-        "host": "friendly",
-        "otel": "technical"
-      }
+      "bind_address": "0.0.0.0",
+      "endpoints": ["prtg", "senhub", "prometheus"]
     }
   }
   ```
 - **Optional Parameters**
   - `port`: HTTP server port (default: 8080)
-  - `naming`: Metric name transformation styles per probe type
-    - `friendly`: User-friendly names (e.g., "CPU Temperature - Processor 0")
-    - `technical`: Technical names (e.g., "thermal.cpu.0.temperature")
-    - `prtg_standard`: PRTG-optimized naming conventions
+  - `bind_address`: IP address to bind to (default: "0.0.0.0", use "127.0.0.1" for loopback only)
+  - `endpoints`: List of monitoring tool endpoints to enable (default: ["senhub"])
+    - `prtg`: PRTG-compatible JSON format with friendly names
+    - `senhub`: SenHub raw format with technical + display names
+    - `prometheus`: Prometheus metrics format (future)
+    - `nagios`: Nagios check format (future)
+    - `zabbix`: Zabbix format (future)
 
 - **Endpoints**
   - `POST /api/{agentkey}/prtg/metrics`: PRTG-compatible endpoint for metric retrieval
@@ -705,6 +702,284 @@ The agent follows a modular architecture with these key components:
 2. Implement your changes with tests
 3. Run `make test` to verify all tests pass
 4. Submit a pull request with a clear description
+
+## HTTP API Documentation
+
+When the HTTP strategy is enabled, SenHub Agent exposes a comprehensive REST API for retrieving metrics and managing the agent.
+
+### Base Configuration
+
+Enable HTTP strategy in your agent configuration:
+
+```json
+{
+  "storage_config": [{
+    "name": "http",
+    "params": {
+      "port": 8080,
+      "bind_address": "127.0.0.1",
+      "endpoints": ["prtg", "senhub", "prometheus"]
+    }
+  }]
+}
+```
+
+### API Endpoints Overview
+
+#### System Endpoints
+
+##### Health Check
+```http
+GET /health
+```
+
+Returns comprehensive system information:
+
+```json
+{
+  "status": "ok",
+  "version": "0.1.22-beta",
+  "uptime": "2h34m12s",
+  "probes_active": 3,
+  "metrics_cached": 47
+}
+```
+
+#### Discovery Endpoints
+
+##### List Available Probes
+```http
+GET /api/{agentkey}/info/probes
+```
+
+Returns all available probes and their metric counts:
+
+```json
+{
+  "probes": ["cpu", "memory", "network", "redfish"],
+  "probe_metrics": {
+    "cpu": 20,
+    "memory": 11,
+    "network": 16
+  },
+  "total_metrics": 47
+}
+```
+
+##### Probe Tag Discovery
+```http
+GET /api/{agentkey}/info/tags/{probe}
+```
+
+Discover available tags and their values for a specific probe:
+
+```json
+{
+  "probe": "cpu",
+  "tags": {
+    "core": {
+      "values": ["0", "1", "2", "3", "4", "5", "6", "7"],
+      "description": "CPU core identifier",
+      "sample_count": 8
+    },
+    "instance": {
+      "values": ["0", "1", "_Total"],
+      "description": "CPU instance identifier (Windows)",
+      "sample_count": 3
+    }
+  },
+  "metrics": ["cpu_usage_total", "cpu_core_usage", "cpu_user"],
+  "total_metrics": 15
+}
+```
+
+##### Complete Schema with Examples
+```http
+GET /api/{agentkey}/info/schema/{probe}
+```
+
+Returns complete schema information with usage examples:
+
+```json
+{
+  "probe": "cpu",
+  "tags": { /* same as /info/tags */ },
+  "metrics": ["cpu_usage_total", "cpu_core_usage"],
+  "total_metrics": 15,
+  "examples": [
+    {
+      "description": "Get all metrics for this probe",
+      "url": "/api/{agentkey}/prtg/metrics/cpu",
+      "estimated_results": 15
+    },
+    {
+      "description": "Filter by core=0",
+      "url": "/api/{agentkey}/prtg/metrics/cpu?tags=core:0",
+      "estimated_results": 3
+    }
+  ]
+}
+```
+
+#### Metrics Endpoints
+
+##### PRTG Format
+```http
+GET /api/{agentkey}/prtg/metrics/{probe}
+```
+
+Returns metrics in PRTG-compatible format with friendly names and custom units:
+
+```json
+{
+  "prtg": {
+    "result": [
+      {
+        "channel": "CPU Core 0 Usage",
+        "value": 23.5,
+        "float": 1,
+        "unit": "custom",
+        "customunit": "%"
+      }
+    ]
+  }
+}
+```
+
+##### SenHub Format
+```http
+GET /api/{agentkey}/senhub/metrics/{probe}
+```
+
+Returns metrics in SenHub raw format for internal processing.
+
+##### Prometheus Format
+```http
+GET /api/{agentkey}/prometheus/metrics
+```
+
+Returns all metrics in Prometheus exposition format.
+
+### Query Parameters
+
+All metrics endpoints support powerful filtering via query parameters:
+
+#### Tag Filtering
+```http
+# Filter by specific tag values
+GET /api/{agentkey}/prtg/metrics/cpu?tags=core:0,1,2
+
+# Multiple tag filters
+GET /api/{agentkey}/prtg/metrics/network?tags=interface:en0
+
+# Exclude specific values
+GET /api/{agentkey}/prtg/metrics/cpu?exclude_tags=instance:_Total
+```
+
+#### Metric Filtering
+```http
+# Select specific metrics only
+GET /api/{agentkey}/prtg/metrics/cpu?metrics=cpu_usage_total,cpu_load1
+```
+
+#### Pagination
+```http
+# Limit results
+GET /api/{agentkey}/prtg/metrics/redfish?limit=20
+
+# Pagination with offset
+GET /api/{agentkey}/prtg/metrics/redfish?limit=20&offset=40
+```
+
+#### Combined Filtering
+```http
+# Complex filtering example
+GET /api/{agentkey}/prtg/metrics/cpu?tags=core:0,1&metrics=cpu_core_usage&limit=5
+```
+
+### Administrative Endpoints
+
+#### Cache Information
+```http
+GET /api/{agentkey}/admin/cache
+```
+
+Returns detailed cache statistics and stored metrics for debugging.
+
+#### Log Level Management
+```http
+# Get current log levels
+GET /api/{agentkey}/admin/logs
+
+# Set log levels
+POST /api/{agentkey}/admin/logs
+Content-Type: application/json
+
+{
+  "module_levels": [
+    {"module": "strategy.http", "level": "debug"},
+    {"module": "probe.redfish", "level": "info"}
+  ]
+}
+```
+
+### Authentication
+
+All API endpoints (except `/health`) require authentication via the agent key in the URL path:
+
+```http
+GET /api/your-secret-agent-key/info/probes
+```
+
+### Error Responses
+
+The API returns standard HTTP status codes:
+
+- `200 OK` - Success
+- `400 Bad Request` - Invalid parameters
+- `401 Unauthorized` - Invalid or missing agent key
+- `404 Not Found` - Probe or resource not found
+- `500 Internal Server Error` - Server error
+
+### Usage Examples
+
+#### Discover Available Data
+```bash
+# Find all probes
+curl "http://localhost:8080/api/your-key/info/probes"
+
+# Explore CPU probe tags
+curl "http://localhost:8080/api/your-key/info/tags/cpu"
+
+# Get usage examples
+curl "http://localhost:8080/api/your-key/info/schema/network"
+```
+
+#### Retrieve Metrics
+```bash
+# Get all CPU metrics
+curl "http://localhost:8080/api/your-key/prtg/metrics/cpu"
+
+# Get specific CPU cores only
+curl "http://localhost:8080/api/your-key/prtg/metrics/cpu?tags=core:0,1,2"
+
+# Get specific network interface
+curl "http://localhost:8080/api/your-key/prtg/metrics/network?tags=interface:en0"
+
+# Get first 10 Redfish metrics
+curl "http://localhost:8080/api/your-key/prtg/metrics/redfish?limit=10"
+```
+
+#### Monitor System Health
+```bash
+# Check agent health
+curl "http://localhost:8080/health"
+
+# View cache contents
+curl "http://localhost:8080/api/your-key/admin/cache"
+```
+
+This HTTP API provides complete programmatic access to all agent metrics and system information, making it easy to integrate SenHub Agent with monitoring tools, dashboards, and automation systems.
 
 ## License
 
