@@ -36,6 +36,55 @@ metrics:
     display_name: "CPU Load Average 15min"
     unit: "#"
     description: "System load average over 15 minutes"
+    
+  # Linux-specific CPU time metrics (in seconds)
+  - name: "cpu_user"
+    channel: "cpu_user"
+    display_name: "CPU User"
+    unit: "s"
+    description: "CPU time spent in user mode"
+    
+  - name: "cpu_system"
+    channel: "cpu_system"
+    display_name: "CPU System"
+    unit: "s"
+    description: "CPU time spent in system/kernel mode"
+    
+  - name: "cpu_idle"
+    channel: "cpu_idle"
+    display_name: "CPU Idle"
+    unit: "s"
+    description: "CPU time spent in idle state"
+    
+  - name: "cpu_nice"
+    channel: "cpu_nice"
+    display_name: "CPU Nice"
+    unit: "s"
+    description: "CPU time spent by user processes with nice priority"
+    
+  - name: "cpu_iowait"
+    channel: "cpu_iowait"
+    display_name: "CPU IO Wait"
+    unit: "s"
+    description: "CPU time spent waiting for I/O operations"
+    
+  - name: "cpu_irq"
+    channel: "cpu_irq"
+    display_name: "CPU Irq"
+    unit: "s"
+    description: "CPU time spent processing hardware interrupts"
+    
+  - name: "cpu_softirq"
+    channel: "cpu_softirq"
+    display_name: "CPU Softirq"
+    unit: "s"
+    description: "CPU time spent processing software interrupts"
+    
+  - name: "cpu_steal"
+    channel: "cpu_steal"
+    display_name: "CPU Steal"
+    unit: "s"
+    description: "CPU time stolen by the hypervisor"
 
   # Memory Metrics
   - name: "memory_total"
@@ -213,34 +262,62 @@ metrics:
     multi_instance_labels: ["drive"]
     description: "Disk write operations per second"
 
-  # Real Network Metrics
+  # Network Metrics (standardized with PowerShell definitions)
   - name: "bytes_received"
-    channel: "bytes_received"
+    channel: "network_bytes_received"
     display_name: "Network {interface} Bytes Received"
     unit: "Bytes/s"
     multi_instance_labels: ["interface"]
-    description: "Network bytes received per second"
+    description: "Number of bytes received on network interface"
     
   - name: "bytes_sent"
-    channel: "bytes_sent"
+    channel: "network_bytes_sent"
     display_name: "Network {interface} Bytes Sent"
     unit: "Bytes/s"
     multi_instance_labels: ["interface"]
-    description: "Network bytes sent per second"
+    description: "Number of bytes sent on network interface"
     
   - name: "packets_received"
-    channel: "packets_received"
+    channel: "network_packets_received"
     display_name: "Network {interface} Packets Received"
     unit: "Pkts/s"
     multi_instance_labels: ["interface"]
-    description: "Network packets received per second"
+    description: "Number of packets received on network interface"
     
   - name: "packets_sent"
-    channel: "packets_sent"
+    channel: "network_packets_sent"
     display_name: "Network {interface} Packets Sent"
     unit: "Pkts/s"
     multi_instance_labels: ["interface"]
-    description: "Network packets sent per second"
+    description: "Number of packets sent on network interface"
+    
+  - name: "errors_received"
+    channel: "network_errors_received"
+    display_name: "Network {interface} Errors Received"
+    unit: "Pkts/s"
+    multi_instance_labels: ["interface"]
+    description: "Number of inbound errors on network interface"
+    
+  - name: "errors_sent"
+    channel: "network_errors_sent"
+    display_name: "Network {interface} Errors Sent"
+    unit: "Pkts/s"
+    multi_instance_labels: ["interface"]
+    description: "Number of outbound errors on network interface"
+    
+  - name: "discards_received"
+    channel: "network_discards_received"
+    display_name: "Network {interface} Discards Received"
+    unit: "Pkts/s"
+    multi_instance_labels: ["interface"]
+    description: "Number of inbound packets discarded on network interface"
+    
+  - name: "discards_sent"
+    channel: "network_discards_sent"
+    display_name: "Network {interface} Discards Sent"
+    unit: "Pkts/s"
+    multi_instance_labels: ["interface"]
+    description: "Number of outbound packets discarded on network interface"
 
   # Logical Disk Metrics (legacy naming)
   - name: "logicaldisk_total"
@@ -299,48 +376,6 @@ metrics:
     multi_instance_labels: ["device"]
     description: "Disk write operations per second"
 
-  # Network Metrics
-  - name: "network_bytes_sent"
-    channel: "network_bytes_sent"
-    display_name: "Network {interface} Sent"
-    unit: "Bytes/s"
-    multi_instance_labels: ["interface"]
-    description: "Network bytes sent per second"
-    
-  - name: "network_bytes_recv"
-    channel: "network_bytes_recv"
-    display_name: "Network {interface} Received"
-    unit: "Bytes/s"
-    multi_instance_labels: ["interface"]
-    description: "Network bytes received per second"
-    
-  - name: "network_packets_sent"
-    channel: "network_packets_sent"
-    display_name: "Network {interface} Packets Sent"
-    unit: "Pkts/s"
-    multi_instance_labels: ["interface"]
-    description: "Network packets sent per second"
-    
-  - name: "network_packets_recv"
-    channel: "network_packets_recv"
-    display_name: "Network {interface} Packets Received"
-    unit: "Pkts/s"
-    multi_instance_labels: ["interface"]
-    description: "Network packets received per second"
-    
-  - name: "network_errors_in"
-    channel: "network_errors_in"
-    display_name: "Network {interface} Input Errors"
-    unit: "Pkts/s"
-    multi_instance_labels: ["interface"]
-    description: "Network input errors per second"
-    
-  - name: "network_errors_out"
-    channel: "network_errors_out"
-    display_name: "Network {interface} Output Errors"
-    unit: "Pkts/s"
-    multi_instance_labels: ["interface"]
-    description: "Network output errors per second"
 
   # WiFi Metrics
   - name: "wifi_signal_strength"

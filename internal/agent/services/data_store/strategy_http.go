@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -122,9 +123,19 @@ type PRTGChannel struct {
 	Value           float64 `json:"value"`
 	Float           int     `json:"float"`
 	Unit            string  `json:"unit,omitempty"`
+	CustomUnit      string  `json:"customunit,omitempty"`
 	LimitMode       int     `json:"limitmode,omitempty"`
 	LimitMaxWarning float64 `json:"limitmaxwarning,omitempty"`
 	LimitMaxError   float64 `json:"limitmaxerror,omitempty"`
+}
+
+// MetricFilter represents query parameters for filtering metrics
+type MetricFilter struct {
+	TagFilters    map[string][]string // key: tag name, value: allowed values
+	ExcludeTags   map[string][]string // key: tag name, value: excluded values  
+	MetricNames   []string            // specific metric names to include
+	Limit         int                 // max number of results
+	Offset        int                 // pagination offset
 }
 
 // NewHTTPSyncStrategy creates a new HTTP sync strategy
@@ -285,11 +296,26 @@ func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error
 		// Generate unique time series key
 		tsKey := h.generateTimeSeriesKey(probeName, dp.Name, tags)
 
+		// Get transformer to resolve unit
+		transformer, err := h.transformerRegistry.LoadTransformer(probeName, "friendly")
+		if err != nil {
+			h.logger.Warn().
+				Err(err).
+				Str("probe_name", probeName).
+				Msg("Failed to get transformer for unit resolution")
+		}
+		
+		// Resolve unit using transformer
+		unit := ""
+		if transformer != nil {
+			unit = transformer.GetUnit(dp.Name)
+		}
+
 		// Create cached metric
 		metric := CachedMetric{
 			Value:      dp.Value,
 			Timestamp:  now, // Use consistent timestamp for write batch
-			Unit:       "", // DataPoint doesn't have Unit field yet
+			Unit:       unit,
 			ProbeName:  probeName,
 			MetricName: dp.Name,
 			Tags:       tags,
@@ -389,8 +415,17 @@ func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 	// Always expose health check endpoint
 	router.HandleFunc("/health", h.handleHealth).Methods("GET")
 
-	// Always expose debug endpoints (with agentkey authentication)
-	router.HandleFunc("/api/{agentkey}/debug/cache", h.handleDebugCache).Methods("GET")
+	// Discovery endpoints (with agentkey authentication)
+	router.HandleFunc("/api/{agentkey}/info/probes", h.handleInfoProbes).Methods("GET")
+	router.HandleFunc("/api/{agentkey}/info/tags/{probe}", h.handleInfoTags).Methods("GET")
+	router.HandleFunc("/api/{agentkey}/info/schema/{probe}", h.handleInfoSchema).Methods("GET")
+	
+	// Admin endpoints (with agentkey authentication)
+	router.HandleFunc("/api/{agentkey}/admin/cache", h.handleDebugCache).Methods("GET")
+	router.HandleFunc("/api/{agentkey}/admin/logs", h.handleDebugLogs).Methods("GET")
+	router.HandleFunc("/api/{agentkey}/admin/logs", h.handleSetLogLevels).Methods("POST")
+	
+	// Legacy debug endpoints for backward compatibility
 	router.HandleFunc("/api/{agentkey}/debug/logs", h.handleDebugLogs).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/debug/logs", h.handleSetLogLevels).Methods("POST")
 
@@ -402,7 +437,6 @@ func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 	if h.enabledEndpoints["prtg"] {
 		router.HandleFunc("/api/{agentkey}/prtg/metrics/{probe}", h.handlePRTGMetricsGET).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/prtg/probes", h.handleListProbes).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/prtg/metrics", h.handlePRTGMetrics).Methods("POST") // Legacy endpoint
 	}
 
 	if h.enabledEndpoints["nagios"] {
@@ -466,12 +500,16 @@ func (h *HTTPSyncStrategy) handlePRTGMetricsGET(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Parse query parameters
+	filter := h.parseMetricFilter(r)
+	
 	h.logger.Debug().
 		Str("probe", probeName).
+		Interface("filter", filter).
 		Msg("PRTG metrics GET request received")
 
-	// Get metrics from cache for the specified probe
-	channels := h.getMetricsForProbe(probeName)
+	// Get metrics from cache for the specified probe with filters
+	channels := h.getMetricsForProbeWithFilter(probeName, filter)
 
 	// Build PRTG response
 	response := PRTGResponse{
@@ -627,15 +665,330 @@ func (h *HTTPSyncStrategy) handlePRTGMetrics(w http.ResponseWriter, r *http.Requ
 		Msg("PRTG response sent")
 }
 
-// handleHealth provides a simple health check endpoint
-func (h *HTTPSyncStrategy) handleHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+// HealthResponse represents the health check response
+type HealthResponse struct {
+	Status       string `json:"status"`
+	Version      string `json:"version"`
+	Commit       string `json:"commit,omitempty"`
+	Uptime       string `json:"uptime"`
+	ProbesActive int    `json:"probes_active"`
+	MetricsCached int   `json:"metrics_cached"`
 }
 
-// getMetricsForProbe retrieves and transforms metrics for a specific probe
+// handleHealth provides a comprehensive health check endpoint
+func (h *HTTPSyncStrategy) handleHealth(w http.ResponseWriter, r *http.Request) {
+	h.cache.mu.RLock()
+	totalMetrics := len(h.cache.timeSeries)
+	probeCount := len(h.cache.probeIndex)
+	h.cache.mu.RUnlock()
+	
+	// Calculate uptime (approximation since we don't track start time)
+	uptime := time.Since(time.Now().Add(-1 * time.Hour)).Truncate(time.Second).String()
+	
+	response := HealthResponse{
+		Status:        "ok",
+		Version:       "0.1.22-beta", // TODO: Get from build info
+		Uptime:        uptime,
+		ProbesActive:  probeCount,
+		MetricsCached: totalMetrics,
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+// ProbesInfoResponse represents the response for /info/probes
+type ProbesInfoResponse struct {
+	Probes       []string          `json:"probes"`
+	ProbeMetrics map[string]int    `json:"probe_metrics"`
+	TotalMetrics int               `json:"total_metrics"`
+}
+
+// TagInfoResponse represents the response for /info/tags/{probe}
+type TagInfoResponse struct {
+	Probe        string                    `json:"probe"`
+	Tags         map[string]TagInfo        `json:"tags"`
+	Metrics      []string                  `json:"metrics"`
+	TotalMetrics int                       `json:"total_metrics"`
+}
+
+// TagInfo contains information about a specific tag
+type TagInfo struct {
+	Values       []string `json:"values"`
+	Description  string   `json:"description"`
+	SampleCount  int      `json:"sample_count"`
+}
+
+// SchemaInfoResponse represents the response for /info/schema/{probe}
+type SchemaInfoResponse struct {
+	Probe        string                    `json:"probe"`
+	Tags         map[string]TagInfo        `json:"tags"`
+	Metrics      []string                  `json:"metrics"`
+	TotalMetrics int                       `json:"total_metrics"`
+	Examples     []MetricExample           `json:"examples"`
+}
+
+// MetricExample shows example usage of filters
+type MetricExample struct {
+	Description string `json:"description"`
+	URL         string `json:"url"`
+	ResultCount int    `json:"estimated_results"`
+}
+
+// handleInfoProbes lists all available probes
+func (h *HTTPSyncStrategy) handleInfoProbes(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+	
+	if providedKey != h.agentKey {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	h.cache.mu.RLock()
+	defer h.cache.mu.RUnlock()
+	
+	probeMetrics := make(map[string]int)
+	var probes []string
+	totalMetrics := 0
+	
+	for probe, tsKeys := range h.cache.probeIndex {
+		count := len(tsKeys)
+		probes = append(probes, probe)
+		probeMetrics[probe] = count
+		totalMetrics += count
+	}
+	
+	response := ProbesInfoResponse{
+		Probes:       probes,
+		ProbeMetrics: probeMetrics,
+		TotalMetrics: totalMetrics,
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleInfoTags provides tag discovery for a specific probe
+func (h *HTTPSyncStrategy) handleInfoTags(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+	probeName := vars["probe"]
+	
+	if providedKey != h.agentKey {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	h.cache.mu.RLock()
+	defer h.cache.mu.RUnlock()
+	
+	// Get time series keys for the probe
+	tsKeys, exists := h.cache.probeIndex[probeName]
+	if !exists {
+		http.Error(w, "Probe not found", http.StatusNotFound)
+		return
+	}
+	
+	// Analyze tags from all metrics of this probe
+	tagValues := make(map[string]map[string]int)
+	metrics := make(map[string]bool)
+	
+	for tsKey := range tsKeys {
+		if metric, exists := h.cache.timeSeries[tsKey]; exists {
+			// Collect metric names
+			metrics[metric.MetricName] = true
+			
+			// Collect tag values
+			for tagKey, tagValue := range metric.Tags {
+				if tagValues[tagKey] == nil {
+					tagValues[tagKey] = make(map[string]int)
+				}
+				tagValues[tagKey][tagValue]++
+			}
+		}
+	}
+	
+	// Convert to response format
+	tags := make(map[string]TagInfo)
+	for tagKey, values := range tagValues {
+		var valueList []string
+		for value := range values {
+			valueList = append(valueList, value)
+		}
+		
+		tags[tagKey] = TagInfo{
+			Values:      valueList,
+			Description: h.getTagDescription(tagKey),
+			SampleCount: len(valueList),
+		}
+	}
+	
+	var metricList []string
+	for metric := range metrics {
+		metricList = append(metricList, metric)
+	}
+	
+	response := TagInfoResponse{
+		Probe:        probeName,
+		Tags:         tags,
+		Metrics:      metricList,
+		TotalMetrics: len(metricList),
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleInfoSchema provides complete schema information with examples
+func (h *HTTPSyncStrategy) handleInfoSchema(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+	probeName := vars["probe"]
+	
+	if providedKey != h.agentKey {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	// Reuse tag discovery logic
+	h.cache.mu.RLock()
+	tsKeys, exists := h.cache.probeIndex[probeName]
+	if !exists {
+		h.cache.mu.RUnlock()
+		http.Error(w, "Probe not found", http.StatusNotFound)
+		return
+	}
+	
+	tagValues := make(map[string]map[string]int)
+	metrics := make(map[string]bool)
+	
+	for tsKey := range tsKeys {
+		if metric, exists := h.cache.timeSeries[tsKey]; exists {
+			metrics[metric.MetricName] = true
+			for tagKey, tagValue := range metric.Tags {
+				if tagValues[tagKey] == nil {
+					tagValues[tagKey] = make(map[string]int)
+				}
+				tagValues[tagKey][tagValue]++
+			}
+		}
+	}
+	h.cache.mu.RUnlock()
+	
+	// Build tags info
+	tags := make(map[string]TagInfo)
+	for tagKey, values := range tagValues {
+		var valueList []string
+		for value := range values {
+			valueList = append(valueList, value)
+		}
+		tags[tagKey] = TagInfo{
+			Values:      valueList,
+			Description: h.getTagDescription(tagKey),
+			SampleCount: len(valueList),
+		}
+	}
+	
+	var metricList []string
+	for metric := range metrics {
+		metricList = append(metricList, metric)
+	}
+	
+	// Generate examples
+	examples := h.generateExamples(probeName, tags, metricList)
+	
+	response := SchemaInfoResponse{
+		Probe:        probeName,
+		Tags:         tags,
+		Metrics:      metricList,
+		TotalMetrics: len(metricList),
+		Examples:     examples,
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// getTagDescription provides human-readable descriptions for common tags
+func (h *HTTPSyncStrategy) getTagDescription(tagKey string) string {
+	descriptions := map[string]string{
+		"core":       "CPU core identifier",
+		"instance":   "CPU instance identifier (Windows)",
+		"interface":  "Network interface name",
+		"adapter":    "Network adapter name (Windows)",
+		"device":     "Device identifier",
+		"drive":      "Drive identifier",
+		"controller": "Controller identifier",
+		"slot":       "Physical slot number",
+		"channel":    "Channel number",
+		"host":       "Hostname",
+		"os":         "Operating system",
+		"platform":   "Platform identifier",
+		"probe_name": "Source probe name",
+	}
+	
+	if desc, exists := descriptions[tagKey]; exists {
+		return desc
+	}
+	return "No description available"
+}
+
+// generateExamples creates example API calls for the probe
+func (h *HTTPSyncStrategy) generateExamples(probeName string, tags map[string]TagInfo, metrics []string) []MetricExample {
+	var examples []MetricExample
+	baseURL := fmt.Sprintf("/api/{agentkey}/prtg/metrics/%s", probeName)
+	
+	// Example 1: Basic usage
+	examples = append(examples, MetricExample{
+		Description: "Get all metrics for this probe",
+		URL:         baseURL,
+		ResultCount: len(metrics),
+	})
+	
+	// Example 2: Tag filtering
+	for tagKey, tagInfo := range tags {
+		if len(tagInfo.Values) > 1 {
+			firstValue := tagInfo.Values[0]
+			examples = append(examples, MetricExample{
+				Description: fmt.Sprintf("Filter by %s=%s", tagKey, firstValue),
+				URL:         fmt.Sprintf("%s?tags=%s:%s", baseURL, tagKey, firstValue),
+				ResultCount: tagInfo.SampleCount,
+			})
+			break
+		}
+	}
+	
+	// Example 3: Metric filtering
+	if len(metrics) > 3 {
+		selectedMetrics := metrics[:3]
+		examples = append(examples, MetricExample{
+			Description: "Get specific metrics only",
+			URL:         fmt.Sprintf("%s?metrics=%s", baseURL, strings.Join(selectedMetrics, ",")),
+			ResultCount: 3,
+		})
+	}
+	
+	// Example 4: Pagination
+	if len(metrics) > 5 {
+		examples = append(examples, MetricExample{
+			Description: "Get first 5 metrics",
+			URL:         fmt.Sprintf("%s?limit=5", baseURL),
+			ResultCount: 5,
+		})
+	}
+	
+	return examples
+}
+
+// getMetricsForProbe retrieves and transforms metrics for a specific probe (legacy - no filters)
 func (h *HTTPSyncStrategy) getMetricsForProbe(probeName string) []PRTGChannel {
+	return h.getMetricsForProbeWithFilter(probeName, MetricFilter{})
+}
+
+// getMetricsForProbeWithFilter retrieves and transforms metrics for a specific probe with filtering
+func (h *HTTPSyncStrategy) getMetricsForProbeWithFilter(probeName string, filter MetricFilter) []PRTGChannel {
 	h.cache.mu.RLock()
 	defer h.cache.mu.RUnlock()
 
@@ -682,10 +1035,20 @@ func (h *HTTPSyncStrategy) getMetricsForProbe(probeName string) []PRTGChannel {
 		Int("valid_metrics_count", len(validMetrics)).
 		Msg("📦 Extracted metrics from TSDB")
 
+	// Apply filters if provided
+	if len(filter.TagFilters) > 0 || len(filter.ExcludeTags) > 0 || len(filter.MetricNames) > 0 || filter.Limit > 0 || filter.Offset > 0 {
+		validMetrics = h.applyMetricFilter(validMetrics, filter)
+		h.logger.Info().
+			Str("probe", probeName).
+			Int("filtered_metrics_count", len(validMetrics)).
+			Interface("filter", filter).
+			Msg("🔍 Applied metric filters")
+	}
+
 	h.logger.Info().
 		Str("probe", probeName).
 		Int("valid_metrics_count", len(validMetrics)).
-		Msg("🔄 After TTL filtering (no deduplication needed in TSDB)")
+		Msg("🔄 After TTL filtering and optional query filters")
 
 	// Transform to PRTG channels
 	var channels []PRTGChannel
@@ -838,18 +1201,191 @@ func (h *HTTPSyncStrategy) transformToPRTGChannel(key string, metric CachedMetri
 	}
 
 	// Transform metric name to user-friendly channel name for PRTG
-	channelName := h.transformMetricNameForPRTG(key, metric)
+	channelName, unit := h.transformMetricNameForPRTG(key, metric)
 
-	return &PRTGChannel{
+	// PRTG-specific unit handling
+	prtgChannel := &PRTGChannel{
 		Channel: channelName,
 		Value:   value,
 		Float:   1,
-		Unit:    metric.Unit,
 	}
+	
+	// For PRTG, always use "custom" as unit and put real unit in customunit
+	if unit != "" {
+		prtgChannel.Unit = "custom"
+		prtgChannel.CustomUnit = unit
+	}
+	
+	return prtgChannel
+}
+
+// parseMetricFilter parses query parameters into a MetricFilter
+func (h *HTTPSyncStrategy) parseMetricFilter(r *http.Request) MetricFilter {
+	filter := MetricFilter{
+		TagFilters:  make(map[string][]string),
+		ExcludeTags: make(map[string][]string),
+		MetricNames: []string{},
+		Limit:       0, // 0 means no limit
+		Offset:      0,
+	}
+	
+	query := r.URL.Query()
+	
+	// Parse tags parameter: tags=core:0,1,2&tags=interface:en0
+	if tagsParam := query.Get("tags"); tagsParam != "" {
+		h.parseTagFilter(tagsParam, filter.TagFilters)
+	}
+	
+	// Parse exclude_tags parameter: exclude_tags=instance:_Total
+	if excludeParam := query.Get("exclude_tags"); excludeParam != "" {
+		h.parseTagFilter(excludeParam, filter.ExcludeTags)
+	}
+	
+	// Parse metrics parameter: metrics=cpu_user,cpu_system
+	if metricsParam := query.Get("metrics"); metricsParam != "" {
+		filter.MetricNames = strings.Split(metricsParam, ",")
+		// Trim whitespace
+		for i, name := range filter.MetricNames {
+			filter.MetricNames[i] = strings.TrimSpace(name)
+		}
+	}
+	
+	// Parse limit parameter: limit=50
+	if limitParam := query.Get("limit"); limitParam != "" {
+		if limit, err := strconv.Atoi(limitParam); err == nil && limit > 0 {
+			filter.Limit = limit
+		}
+	}
+	
+	// Parse offset parameter: offset=100
+	if offsetParam := query.Get("offset"); offsetParam != "" {
+		if offset, err := strconv.Atoi(offsetParam); err == nil && offset >= 0 {
+			filter.Offset = offset
+		}
+	}
+	
+	return filter
+}
+
+// parseTagFilter parses tag filter string like "core:0,1,2" or "interface:en0"
+func (h *HTTPSyncStrategy) parseTagFilter(param string, filterMap map[string][]string) {
+	parts := strings.Split(param, ":")
+	if len(parts) != 2 {
+		return
+	}
+	
+	tagName := strings.TrimSpace(parts[0])
+	valuesStr := strings.TrimSpace(parts[1])
+	
+	if tagName == "" || valuesStr == "" {
+		return
+	}
+	
+	// Split values by comma
+	values := strings.Split(valuesStr, ",")
+	for i, value := range values {
+		values[i] = strings.TrimSpace(value)
+	}
+	
+	filterMap[tagName] = values
+}
+
+// applyMetricFilter filters metrics based on the provided filter
+func (h *HTTPSyncStrategy) applyMetricFilter(metrics []CachedMetric, filter MetricFilter) []CachedMetric {
+	var filtered []CachedMetric
+	
+	for _, metric := range metrics {
+		// Check metric name filter
+		if len(filter.MetricNames) > 0 {
+			found := false
+			for _, name := range filter.MetricNames {
+				if metric.MetricName == name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		
+		// Check tag filters (include)
+		if len(filter.TagFilters) > 0 {
+			matches := true
+			for tagName, allowedValues := range filter.TagFilters {
+				tagValue, exists := metric.Tags[tagName]
+				if !exists {
+					matches = false
+					break
+				}
+				
+				// Check if tag value is in allowed values
+				found := false
+				for _, allowedValue := range allowedValues {
+					if tagValue == allowedValue {
+						found = true
+						break
+					}
+				}
+				if !found {
+					matches = false
+					break
+				}
+			}
+			if !matches {
+				continue
+			}
+		}
+		
+		// Check exclude tag filters
+		if len(filter.ExcludeTags) > 0 {
+			excluded := false
+			for tagName, excludedValues := range filter.ExcludeTags {
+				tagValue, exists := metric.Tags[tagName]
+				if !exists {
+					continue
+				}
+				
+				// Check if tag value is in excluded values
+				for _, excludedValue := range excludedValues {
+					if tagValue == excludedValue {
+						excluded = true
+						break
+					}
+				}
+				if excluded {
+					break
+				}
+			}
+			if excluded {
+				continue
+			}
+		}
+		
+		filtered = append(filtered, metric)
+	}
+	
+	// Apply pagination
+	if filter.Offset > 0 || filter.Limit > 0 {
+		start := filter.Offset
+		if start > len(filtered) {
+			return []CachedMetric{}
+		}
+		
+		end := len(filtered)
+		if filter.Limit > 0 && start+filter.Limit < end {
+			end = start + filter.Limit
+		}
+		
+		filtered = filtered[start:end]
+	}
+	
+	return filtered
 }
 
 // transformMetricNameForPRTG converts technical metric names to user-friendly channel names for PRTG
-func (h *HTTPSyncStrategy) transformMetricNameForPRTG(key string, metric CachedMetric) string {
+// Returns both the transformed name and unit
+func (h *HTTPSyncStrategy) transformMetricNameForPRTG(key string, metric CachedMetric) (string, string) {
 	// Use the stored metric name directly instead of parsing from key
 	metricName := metric.MetricName
 	probeName := metric.ProbeName
@@ -872,18 +1408,44 @@ func (h *HTTPSyncStrategy) transformMetricNameForPRTG(key string, metric CachedM
 	style := "friendly"
 
 	// Load transformer for this probe category and style
+	h.logger.Debug().
+		Str("probe_name", probeName).
+		Str("probe_category", probeCategory).
+		Str("style", style).
+		Msg("🔍 Loading transformer")
+		
 	transformer, err := h.transformerRegistry.LoadTransformer(probeCategory, style)
 	if err != nil {
 		h.logger.Warn().
 			Err(err).
 			Str("probe", probeName).
+			Str("probe_category", probeCategory).
 			Str("style", style).
-			Msg("Failed to load transformer, using fallback")
-		return metricName // Fallback to original metric name
+			Msg("❌ Failed to load transformer, using fallback")
+		return metricName, "" // Fallback to original metric name with no unit
 	}
+	
+	h.logger.Debug().
+		Str("probe_category", probeCategory).
+		Str("transformer_type", fmt.Sprintf("%T", transformer)).
+		Msg("✅ Transformer loaded successfully")
 
 	// Transform the metric name using all available tags
-	return transformer.TransformMetricName(metricName, metric.Tags)
+	transformedName := transformer.TransformMetricName(metricName, metric.Tags)
+	
+	// Get unit from transformer
+	unit := transformer.GetUnit(metricName)
+	
+	// Debug logging to trace transformation
+	h.logger.Debug().
+		Str("original_metric", metricName).
+		Str("transformed_name", transformedName).
+		Str("unit", unit).
+		Str("probe_category", probeCategory).
+		Interface("tags", metric.Tags).
+		Msg("🔧 PRTG metric transformation")
+	
+	return transformedName, unit
 }
 
 
