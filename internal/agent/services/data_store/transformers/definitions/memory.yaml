@@ -1,0 +1,41 @@
+probe_name: "memory"
+friendly_name: "Memory Metrics"
+multi_instance_labels: []
+
+metrics:
+  # Memory Size Metrics (in bytes)
+  - name: "memory_total"
+    channel: "memory_total"
+    display_name: "Memory Total"
+    unit: "bytes"
+    
+  - name: "memory_available"
+    channel: "memory_available"
+    display_name: "Memory Available"
+    unit: "bytes"
+    
+  - name: "memory_used"
+    channel: "memory_used"
+    display_name: "Memory Used"
+    unit: "bytes"
+    
+  - name: "memory_free"
+    channel: "memory_free"
+    display_name: "Memory Free"
+    unit: "bytes"
+    
+  - name: "memory_cached"
+    channel: "memory_cached"
+    display_name: "Memory Cached"
+    unit: "bytes"
+    
+  - name: "memory_buffers"
+    channel: "memory_buffers"
+    display_name: "Memory Buffers"
+    unit: "bytes"
+
+  # Memory Usage Percentage
+  - name: "memory_used_percent"
+    channel: "memory_usage"
+    display_name: "Memory Usage"
+    unit: "%"

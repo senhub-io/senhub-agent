@@ -48,7 +48,7 @@ func NewLogicalDiskProbe(config map[string]interface{}, logger *logger.Logger) (
 	switch runtime.GOOS {
 	case "windows":
 		probe.collector, err = newLogicalDiskCollector(config, logger)
-	case "linux", "freebsd", "openbsd", "netbsd":
+	case "linux", "darwin", "freebsd", "openbsd", "netbsd":
 		probe.collector, err = newLogicalDiskCollector(config, logger)
 	default:
 		return nil, fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
