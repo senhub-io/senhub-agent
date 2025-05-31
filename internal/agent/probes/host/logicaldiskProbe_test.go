@@ -2,7 +2,6 @@ package host
 
 import (
 	"os"
-	"runtime"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -18,7 +17,7 @@ func TestNewLogicalDiskProbe(t *testing.T) {
 		{
 			name:    "Valid Probe",
 			config:  map[string]interface{}{},
-			wantErr: runtime.GOOS == "darwin", // On s'attend à une erreur sur Darwin
+			wantErr: false, // Darwin is now supported
 		},
 	}
 
@@ -30,13 +29,7 @@ func TestNewLogicalDiskProbe(t *testing.T) {
 				return
 			}
 
-			// Si on est sur Darwin, vérifions que c'est bien l'erreur attendue
-			if runtime.GOOS == "darwin" && err != nil {
-				expectedError := "unsupported operating system: darwin"
-				if err.Error() != expectedError {
-					t.Errorf("Expected error message '%s', got '%s'", expectedError, err.Error())
-				}
-			}
+			// Darwin is now supported, no special error handling needed
 		})
 	}
 }

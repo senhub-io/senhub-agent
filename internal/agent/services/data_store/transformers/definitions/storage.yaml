@@ -178,3 +178,102 @@ metrics:
     multi_instance_labels: ["system_name", "host"]
     description: "Capacity efficiency ratio (usable vs raw capacity)"
     calculated_metric: "(system.total_usable_capacity_bytes / system.total_raw_capacity_bytes) * 100"
+
+  # Disk Group I/O Performance (missing from PowerShell but present in our storage metrics)
+  - name: "dell_powervault_me.diskgroup.io.reads"
+    channel: "Disk Group Read Operations"
+    display_name: "Disk Group {diskgroup_name} Read Ops"
+    unit: "ops/s"
+    multi_instance_labels: ["diskgroup_id", "diskgroup_name", "raid_type", "host"]
+    description: "Number of read operations on Dell PowerVault ME disk groups"
+    
+  - name: "dell_powervault_me.diskgroup.io.writes"
+    channel: "Disk Group Write Operations"
+    display_name: "Disk Group {diskgroup_name} Write Ops"
+    unit: "ops/s"
+    multi_instance_labels: ["diskgroup_id", "diskgroup_name", "raid_type", "host"]
+    description: "Number of write operations on Dell PowerVault ME disk groups"
+    
+  - name: "dell_powervault_me.diskgroup.io.total_ops"
+    channel: "Disk Group Total Operations"
+    display_name: "Disk Group {diskgroup_name} Total Ops"
+    unit: "ops/s"
+    multi_instance_labels: ["diskgroup_id", "diskgroup_name", "raid_type", "host"]
+    description: "Total I/O operations on Dell PowerVault ME disk groups"
+    calculated_metric: "diskgroup.io.reads + diskgroup.io.writes"
+    
+  - name: "dell_powervault_me.diskgroup.io.read_bytes"
+    channel: "Disk Group Read Throughput"
+    display_name: "Disk Group {diskgroup_name} Read Throughput"
+    unit: "Bytes/s"
+    multi_instance_labels: ["diskgroup_id", "diskgroup_name", "raid_type", "host"]
+    description: "Bytes read from Dell PowerVault ME disk groups"
+    
+  - name: "dell_powervault_me.diskgroup.io.write_bytes"
+    channel: "Disk Group Write Throughput"
+    display_name: "Disk Group {diskgroup_name} Write Throughput"
+    unit: "Bytes/s"
+    multi_instance_labels: ["diskgroup_id", "diskgroup_name", "raid_type", "host"]
+    description: "Bytes written to Dell PowerVault ME disk groups"
+    
+  - name: "dell_powervault_me.diskgroup.io.total_bytes"
+    channel: "Disk Group Total Throughput"
+    display_name: "Disk Group {diskgroup_name} Total Throughput"
+    unit: "Bytes/s"
+    multi_instance_labels: ["diskgroup_id", "diskgroup_name", "raid_type", "host"]
+    description: "Total bytes transferred for Dell PowerVault ME disk groups"
+    calculated_metric: "diskgroup.io.read_bytes + diskgroup.io.write_bytes"
+
+  # Health Metrics (from Alerts.psd1)
+  - name: "dell_powervault_me.drive.health"
+    channel: "Drive Health"
+    display_name: "Drive {drive_name} Health"
+    unit: "#"
+    multi_instance_labels: ["drive_id", "drive_name", "drive_type", "drive_interface", "enclosure_id", "slot", "host"]
+    description: "Health status for Dell PowerVault ME physical drives"
+    
+  - name: "dell_powervault_me.controller.health"
+    channel: "Controller Health"
+    display_name: "Controller {controller_name} Health"
+    unit: "#"
+    multi_instance_labels: ["controller_id", "controller_name", "controller_slot", "host"]
+    description: "Health status for Dell PowerVault ME storage controllers"
+    
+  - name: "dell_powervault_me.diskgroup.health"
+    channel: "Disk Group Health"
+    display_name: "Disk Group {diskgroup_name} Health"
+    unit: "#"
+    multi_instance_labels: ["diskgroup_id", "diskgroup_name", "raid_type", "host"]
+    description: "Health status for Dell PowerVault ME disk groups"
+    
+  - name: "dell_powervault_me.volume.health"
+    channel: "Volume Health"
+    display_name: "Volume {volume_name} Health"
+    unit: "#"
+    multi_instance_labels: ["volume_id", "volume_name", "disk_group", "host"]
+    description: "Health status for Dell PowerVault ME volumes"
+
+  # System-wide Performance Metrics
+  - name: "dell_powervault_me.system.io.total_ops"
+    channel: "System Total I/O Operations"
+    display_name: "System {system_name} Total Ops"
+    unit: "ops/s"
+    multi_instance_labels: ["system_name", "host"]
+    description: "Total I/O operations across all Dell PowerVault ME volumes"
+    calculated_metric: "sum(volume.io.total_ops)"
+    
+  - name: "dell_powervault_me.system.io.total_bytes"
+    channel: "System Total Throughput"
+    display_name: "System {system_name} Total Throughput"
+    unit: "Bytes/s"
+    multi_instance_labels: ["system_name", "host"]
+    description: "Total bytes transferred across all Dell PowerVault ME volumes"
+    calculated_metric: "sum(volume.io.total_bytes)"
+    
+  - name: "dell_powervault_me.system.io.read_write_ratio"
+    channel: "System Read/Write Ratio"
+    display_name: "System {system_name} Read/Write Ratio"
+    unit: "ratio"
+    multi_instance_labels: ["system_name", "host"]
+    description: "Read to write ratio for Dell PowerVault ME system"
+    calculated_metric: "sum(volume.io.reads) / sum(volume.io.writes)"
