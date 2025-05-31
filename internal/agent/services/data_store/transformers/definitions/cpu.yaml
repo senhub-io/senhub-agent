@@ -1,0 +1,72 @@
+probe_name: "cpu"
+friendly_name: "CPU Metrics"
+multi_instance_labels: ["core"]
+
+metrics:
+  # CPU Time Metrics (in seconds)
+  - name: "cpu_user"
+    channel: "cpu_user_time"
+    display_name: "CPU User"
+    unit: "s"
+    
+  - name: "cpu_system"
+    channel: "cpu_system_time"
+    display_name: "CPU System"
+    unit: "s"
+    
+  - name: "cpu_idle"
+    channel: "cpu_idle_time"
+    display_name: "CPU Idle"
+    unit: "s"
+    
+  - name: "cpu_nice"
+    channel: "cpu_nice_time"
+    display_name: "CPU Nice"
+    unit: "s"
+    
+  - name: "cpu_iowait"
+    channel: "cpu_iowait_time"
+    display_name: "CPU IO Wait"
+    unit: "s"
+    
+  - name: "cpu_irq"
+    channel: "cpu_irq_time"
+    display_name: "CPU Irq"
+    unit: "s"
+    
+  - name: "cpu_softirq"
+    channel: "cpu_softirq_time"
+    display_name: "CPU Softirq"
+    unit: "s"
+    
+  - name: "cpu_steal"
+    channel: "cpu_steal_time"
+    display_name: "CPU Steal"
+    unit: "s"
+
+  # CPU Usage Metrics (in percentages)
+  - name: "cpu_usage_total"
+    channel: "cpu_total_usage"
+    display_name: "CPU Total Usage"
+    unit: "%"
+    
+  - name: "processor_time"
+    channel: "cpu_core_usage"
+    display_name: "CPU Core {core} Usage"
+    unit: "%"
+
+  # Load Average Metrics
+  - name: "cpu_load1"
+    channel: "cpu_load_1min"
+    display_name: "CPU Load Average 1min"
+    unit: "#"
+    
+  - name: "cpu_load5"
+    channel: "cpu_load_5min"
+    display_name: "CPU Load Average 5min"
+    unit: "#"
+    
+  - name: "cpu_load15"
+    channel: "cpu_load_15min"
+    display_name: "CPU Load Average 15min"
+    unit: "#"

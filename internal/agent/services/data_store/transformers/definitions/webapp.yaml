@@ -61,6 +61,30 @@ metrics:
     description: "DNS resolution time for web application"
     tag_filter:
       url: "{webapp_url}"  # Filtered by specific webapp URL
+      
+  - name: "tlstime"
+    channel: "webapp_tls_time"
+    display_name: "WebApp TLS Handshake Time"
+    unit: "ms"
+    description: "TLS handshake time for web application"
+    tag_filter:
+      url: "{webapp_url}"  # Filtered by specific webapp URL
+      
+  - name: "total_time"
+    channel: "webapp_total_time"
+    display_name: "WebApp Total Load Time"
+    unit: "ms"
+    description: "Total page load time for web application"
+    tag_filter:
+      url: "{webapp_url}"  # Filtered by specific webapp URL
+      
+  - name: "ttfb"
+    channel: "webapp_time_to_first_byte"
+    display_name: "WebApp Time to First Byte"
+    unit: "ms"
+    description: "Time to first byte for web application"
+    tag_filter:
+      url: "{webapp_url}"  # Filtered by specific webapp URL
 
   # Generic HTTP Response Metrics
   - name: "http_response_time"

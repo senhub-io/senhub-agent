@@ -32,13 +32,10 @@ storage:
       port: 8081
       bind_address: "192.168.1.100"  # External monitoring
 
-# Example 5: Combined with custom naming configuration
+# Example 5: Combined with multiple endpoints configuration
 storage:
   - type: "http"
     config:
       port: 8080
       bind_address: "127.0.0.1"
-      naming:
-        redfish: "friendly"
-        host: "prtg_standard"
-        otel: "technical"
+      endpoints: ["prtg", "senhub", "prometheus"]
