@@ -220,12 +220,12 @@ metrics:
     description: "CPU DPC (Deferred Procedure Call) time percentage"
 
   # Real Logical Disk Metrics (from Performance Counters)
-  - name: "disk_free_bytes"
-    channel: "disk_free_bytes"
+  - name: "disk_free_mb"
+    channel: "disk_free_mb"
     display_name: "Disk {drive} Free Space"
-    unit: "Bytes"
+    unit: "MB"
     multi_instance_labels: ["drive"]
-    description: "Free disk space in bytes"
+    description: "Free disk space in megabytes"
     
   - name: "disk_free_percent"
     channel: "disk_free_percent"
