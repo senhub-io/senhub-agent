@@ -16,7 +16,7 @@ import (
 // networkProbe représente le collecteur de métriques réseau
 type networkProbe struct {
 	rawConfig map[string]interface{}
-	logger    *logger.Logger
+	logger    *logger.ModuleLogger
 	collector osNetworkCollector
 	interval  time.Duration
 }
@@ -32,7 +32,7 @@ func (p *networkProbe) GetTargetStrategies() []string {
 }
 
 // NewNetworkProbe crée une nouvelle instance de Network probe
-func NewNetworkProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
+func NewNetworkProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
 	interval := 30 * time.Second
 	if cfgInterval, ok := config["interval"].(int); ok {
 		interval = time.Duration(cfgInterval) * time.Second
@@ -40,16 +40,16 @@ func NewNetworkProbe(config map[string]interface{}, logger *logger.Logger) (type
 
 	probe := &networkProbe{
 		rawConfig: config,
-		logger:    logger,
+		logger:    logger.NewModuleLogger(baseLogger, "probe.network"),
 		interval:  interval,
 	}
 
 	var err error
 	switch runtime.GOOS {
 	case "windows":
-		probe.collector, err = newNetworkCollector(config, logger)
+		probe.collector, err = newNetworkCollector(config, baseLogger)
 	case "linux", "darwin", "freebsd", "openbsd", "netbsd":
-		probe.collector, err = newNetworkCollector(config, logger)
+		probe.collector, err = newNetworkCollector(config, baseLogger)
 	default:
 		return nil, fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
 	}

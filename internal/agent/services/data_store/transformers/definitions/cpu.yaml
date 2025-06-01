@@ -1,9 +1,9 @@
 probe_name: "cpu"
 friendly_name: "CPU Metrics"
-multi_instance_labels: ["core"]
+version: "2.0.0"
 
 metrics:
-  # CPU Time Metrics (in seconds)
+  # CPU Time Metrics (Linux/Unix - in seconds)
   - name: "cpu_user"
     channel: "cpu_user_time"
     display_name: "CPU User"
@@ -44,18 +44,77 @@ metrics:
     display_name: "CPU Steal"
     unit: "s"
 
-  # CPU Usage Metrics (in percentages)
+  # CPU Usage Metrics (cross-platform - in percentages)
   - name: "cpu_usage_total"
     channel: "cpu_total_usage"
     display_name: "CPU Total Usage"
     unit: "%"
     
+  # Windows-specific CPU Metrics (in percentages)
   - name: "processor_time"
     channel: "cpu_core_usage"
-    display_name: "CPU Core {core} Usage"
+    display_name: "CPU {instance} Usage"
     unit: "%"
+    multi_instance_labels: ["instance", "core"]
+    description: "CPU processor time percentage per core"
+    
+  - name: "user_time"
+    channel: "cpu_user_time_percent"
+    display_name: "CPU {instance} User Time"
+    unit: "%"
+    multi_instance_labels: ["instance", "core"]
+    description: "CPU user time percentage per core"
+    
+  - name: "privileged_time"
+    channel: "cpu_privileged_time"
+    display_name: "CPU {instance} Privileged Time"
+    unit: "%"
+    multi_instance_labels: ["instance", "core"]
+    description: "CPU privileged (kernel) time percentage per core"
+    
+  - name: "interrupt_time"
+    channel: "cpu_interrupt_time"
+    display_name: "CPU {instance} Interrupt Time"
+    unit: "%"
+    multi_instance_labels: ["instance", "core"]
+    description: "CPU interrupt time percentage per core"
+    
+  - name: "dpc_time"
+    channel: "cpu_dpc_time"
+    display_name: "CPU {instance} DPC Time"
+    unit: "%"
+    multi_instance_labels: ["instance", "core"]
+    description: "CPU Deferred Procedure Call time percentage per core"
 
-  # Load Average Metrics
+  # Windows System-wide CPU Metrics
+  - name: "dpc_rate"
+    channel: "cpu_dpc_rate"
+    display_name: "CPU {instance} DPC Rate"
+    unit: "#"
+    multi_instance_labels: ["instance", "core"]
+    description: "Deferred Procedure Calls per second per core"
+    
+  - name: "dpc_queued"
+    channel: "cpu_dpc_queued"
+    display_name: "CPU {instance} DPC Queued"
+    unit: "/s"
+    multi_instance_labels: ["instance", "core"]
+    description: "DPCs queued per second per core"
+    
+  - name: "interrupt_sec"
+    channel: "cpu_interrupt_rate"
+    display_name: "CPU {instance} Interrupt Rate"
+    unit: "/s"
+    multi_instance_labels: ["instance", "core"]
+    description: "Interrupts per second per core"
+    
+  - name: "processor_queue_length"
+    channel: "cpu_queue_length"
+    display_name: "Processor Queue Length"
+    unit: "#"
+    description: "Number of threads waiting in the processor queue"
+
+  # Load Average Metrics (Linux/Unix)
   - name: "cpu_load1"
     channel: "cpu_load_1min"
     display_name: "CPU Load Average 1min"
