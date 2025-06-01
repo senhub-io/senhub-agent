@@ -22,7 +22,7 @@ type logicaldiskCollector interface {
 // logicaldiskProbe represents the logical disk metrics collector
 type logicaldiskProbe struct {
 	rawConfig map[string]interface{}
-	logger    *logger.Logger
+	logger    *logger.ModuleLogger
 	collector logicaldiskCollector
 	interval  time.Duration
 }
@@ -32,7 +32,7 @@ func (p *logicaldiskProbe) GetTargetStrategies() []string {
 }
 
 // newLogicalDiskCollector creates a new Storage probe instance
-func NewLogicalDiskProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
+func NewLogicalDiskProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
 	interval := 30 * time.Second
 	if cfgInterval, ok := config["interval"].(int); ok {
 		interval = time.Duration(cfgInterval) * time.Second
@@ -40,16 +40,16 @@ func NewLogicalDiskProbe(config map[string]interface{}, logger *logger.Logger) (
 
 	probe := &logicaldiskProbe{
 		rawConfig: config,
-		logger:    logger,
+		logger:    logger.NewModuleLogger(baseLogger, "probe.logicaldisk"),
 		interval:  interval,
 	}
 
 	var err error
 	switch runtime.GOOS {
 	case "windows":
-		probe.collector, err = newLogicalDiskCollector(config, logger)
+		probe.collector, err = newLogicalDiskCollector(config, baseLogger)
 	case "linux", "darwin", "freebsd", "openbsd", "netbsd":
-		probe.collector, err = newLogicalDiskCollector(config, logger)
+		probe.collector, err = newLogicalDiskCollector(config, baseLogger)
 	default:
 		return nil, fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
 	}

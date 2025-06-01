@@ -94,13 +94,6 @@ metrics:
     description: "HTTP response time"
     multi_instance_labels: ["url"]
     
-  - name: "http_status_code"
-    channel: "http_status_code"
-    display_name: "HTTP Status Code"
-    unit: "#"
-    description: "HTTP response status code"
-    multi_instance_labels: ["url"]
-    
   - name: "http_availability"
     channel: "http_availability"
     display_name: "HTTP Availability"
