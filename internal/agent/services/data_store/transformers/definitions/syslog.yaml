@@ -1,0 +1,15 @@
+# Syslog Probe Metrics Definitions
+# Based on RFC 3164 Syslog Protocol specification
+
+probe_name: "syslog"
+version: "1.0.0"
+
+metrics:
+  # Syslog Event Severity
+  - name: "syslog_event"
+    channel: "syslog_severity"
+    display_name: "Syslog {facility_name} Severity"
+    unit: "#"
+    multi_instance_labels: ["facility", "facility_name", "hostname", "tag"]
+    description: "Syslog message severity level (RFC 3164)"
+    lookup: "sfs.syslog.severity"

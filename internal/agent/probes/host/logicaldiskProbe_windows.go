@@ -32,7 +32,7 @@ type LogicalDiskMetricDefinition struct {
 
 // Définition des compteurs de performance
 var logicaldiskCounterPaths = map[string]LogicalDiskMetricDefinition{
-	"disk_free_bytes": {
+	"disk_free_mb": {
 		path:     "\\LogicalDisk\\Free Megabytes",
 		instance: "*",
 	},

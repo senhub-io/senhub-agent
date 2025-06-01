@@ -16,7 +16,7 @@ import (
 // memoryProbe représente le collecteur de métriques mémoire
 type memoryProbe struct {
 	rawConfig map[string]interface{}
-	logger    *logger.Logger
+	logger    *logger.ModuleLogger
 	collector osCollector
 	interval  time.Duration
 }
@@ -26,7 +26,7 @@ func (p *memoryProbe) GetTargetStrategies() []string {
 }
 
 // NewMemoryProbe crée une nouvelle instance de Memory probe
-func NewMemoryProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
+func NewMemoryProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
 	interval := 30 * time.Second
 	if cfgInterval, ok := config["interval"].(int); ok {
 		interval = time.Duration(cfgInterval) * time.Second
@@ -34,16 +34,16 @@ func NewMemoryProbe(config map[string]interface{}, logger *logger.Logger) (types
 
 	probe := &memoryProbe{
 		rawConfig: config,
-		logger:    logger,
+		logger:    logger.NewModuleLogger(baseLogger, "probe.memory"),
 		interval:  interval,
 	}
 
 	var err error
 	switch runtime.GOOS {
 	case "windows":
-		probe.collector, err = newMemoryCollector(config, logger)
+		probe.collector, err = newMemoryCollector(config, baseLogger)
 	case "linux", "darwin", "freebsd", "openbsd", "netbsd":
-		probe.collector, err = newMemoryCollector(config, logger)
+		probe.collector, err = newMemoryCollector(config, baseLogger)
 	default:
 		return nil, fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
 	}

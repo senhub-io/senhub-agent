@@ -11,13 +11,14 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-//go:embed definitions/*.yaml definitions/shared/*.yaml
+//go:embed definitions/*.yaml definitions/shared/*.yaml lookups/*.lookup
 var definitionFiles embed.FS
 
 // MetricTransformer defines the interface for transforming metric names
 type MetricTransformer interface {
 	TransformMetricName(key string, tags map[string]string) string
 	GetUnit(key string) string
+	GetLookup(key string) string
 }
 
 // TransformConfig represents the structure of a transformation YAML file (legacy)
@@ -38,6 +39,7 @@ type MetricDefinition struct {
 	CalculatedMetric      string            `yaml:"calculated_metric"`
 	AlertThresholdWarning int               `yaml:"alert_threshold_warning"`
 	AlertThresholdCritical int              `yaml:"alert_threshold_critical"`
+	Lookup                string            `yaml:"lookup"`
 }
 
 // ProbeDefinition represents the structure of a probe definition YAML file
@@ -186,6 +188,12 @@ func (pt *ProbeTransformer) GetUnit(key string) string {
 		}
 	}
 
+	return ""
+}
+
+// GetLookup returns the lookup file for a metric key (legacy transformer doesn't support lookups)
+func (pt *ProbeTransformer) GetLookup(key string) string {
+	// Legacy transformers don't support lookups
 	return ""
 }
 
@@ -464,6 +472,19 @@ func (dt *DefinitionBasedTransformer) GetUnit(metricName string) string {
 	for _, metric := range dt.definition.Metrics {
 		if metric.Name == metricName {
 			return dt.normalizeUnit(metric.Unit)
+		}
+	}
+	
+	// Return empty string if no match found
+	return ""
+}
+
+// GetLookup implements MetricTransformer interface for definition-based transformer
+func (dt *DefinitionBasedTransformer) GetLookup(metricName string) string {
+	// Find matching metric definition
+	for _, metric := range dt.definition.Metrics {
+		if metric.Name == metricName {
+			return metric.Lookup
 		}
 	}
 	

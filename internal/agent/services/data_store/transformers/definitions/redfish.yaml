@@ -1,10 +1,26 @@
 # Redfish Server Hardware Metrics Definitions  
-# Based on real VictoriaMetrics data from Dell PowerVault ME5024
+# Based on real data from Dell PowerVault ME5024 and other Redfish servers
 
 probe_name: "redfish"
-version: "2.0.0"
+version: "3.0.0"
 
 metrics:
+  # Hardware Thermal Metrics
+  - name: "hardware.temperature"
+    channel: "temperature"
+    display_name: "Temperature {sensor_name}"
+    unit: "°C"
+    multi_instance_labels: ["sensor_name", "controller_id", "chassis_id"]
+    description: "Temperature reading from thermal sensor"
+    
+  - name: "hardware.temperature.health"
+    channel: "temperature_health"
+    display_name: "Temperature {sensor_name} Health"
+    unit: "#"
+    multi_instance_labels: ["sensor_name", "controller_id", "chassis_id"]
+    description: "Temperature sensor health status"
+    lookup: "sfs.redfish.health"
+
   # Hardware Fan Metrics
   - name: "hardware.fan.health"
     channel: "fan_health"
@@ -12,11 +28,12 @@ metrics:
     unit: "#"
     multi_instance_labels: ["fan_name", "chassis_id"]
     description: "Fan health status in storage enclosure"
+    lookup: "sfs.redfish.health"
     
   - name: "hardware.fan.speed"
     channel: "fan_speed"
     display_name: "Fan {fan_name} Speed"
-    unit: "RPM"
+    unit: "rpm"
     multi_instance_labels: ["fan_name", "chassis_id"]
     description: "Fan speed in RPM"
 
@@ -27,6 +44,7 @@ metrics:
     unit: "#"
     multi_instance_labels: ["psu_name", "controller"]
     description: "Power supply unit health status"
+    lookup: "sfs.redfish.health"
 
   # Storage Drive Metrics
   - name: "hardware.storage.drive.capacity.total"
@@ -42,6 +60,7 @@ metrics:
     unit: "#"
     multi_instance_labels: ["drive_name", "drive_id", "controller_id"]
     description: "Drive failure prediction status"
+    lookup: "sfs.generic.boolean"
     
   - name: "hardware.storage.drive.has_operations"
     channel: "drive_has_operations"
@@ -49,6 +68,22 @@ metrics:
     unit: "#"
     multi_instance_labels: ["drive_name", "drive_id", "controller_id"]
     description: "Indicates if drive has active operations"
+    lookup: "sfs.generic.boolean"
+    
+  - name: "hardware.storage.drive.health"
+    channel: "drive_health"
+    display_name: "Drive {drive_name} Health"
+    unit: "#"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id"]
+    description: "Drive health status"
+    lookup: "sfs.redfish.health"
+    
+  - name: "hardware.storage.drive.operation.progress"
+    channel: "drive_operation_progress"
+    display_name: "Drive {drive_name} Operation Progress"
+    unit: "%"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id"]
+    description: "Drive operation progress percentage"
 
   # Storage Volume Metrics
   - name: "hardware.storage.volume.capacity.allocated"
@@ -71,6 +106,79 @@ metrics:
     unit: "Bytes"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id"]
     description: "Free volume capacity in bytes"
+    
+  - name: "hardware.storage.volume.capacity.total"
+    channel: "volume_capacity_total"
+    display_name: "Volume {volume_name} Total Capacity"
+    unit: "Bytes"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id"]
+    description: "Total volume capacity in bytes"
+    
+  - name: "hardware.storage.volume.capacity.free_percent"
+    channel: "volume_capacity_free_percent"
+    display_name: "Volume {volume_name} Free Percent"
+    unit: "%"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id"]
+    description: "Free volume capacity percentage"
+    
+  - name: "hardware.storage.volume.health"
+    channel: "volume_health"
+    display_name: "Volume {volume_name} Health"
+    unit: "#"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id"]
+    description: "Volume health status"
+    lookup: "sfs.redfish.health"
+    
+  - name: "hardware.storage.volume.encrypted"
+    channel: "volume_encrypted"
+    display_name: "Volume {volume_name} Encrypted"
+    unit: "#"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id"]
+    description: "Volume encryption status (0=no, 1=yes)"
+    lookup: "sfs.generic.boolean"
+    
+  # Volume I/O Metrics
+  - name: "hardware.storage.volume.io.reads"
+    channel: "volume_io_reads"
+    display_name: "Volume {volume_name} IO Reads"
+    unit: "#"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id"]
+    description: "Number of read operations on volume"
+    
+  - name: "hardware.storage.volume.io.writes"
+    channel: "volume_io_writes"
+    display_name: "Volume {volume_name} IO Writes"
+    unit: "#"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id"]
+    description: "Number of write operations on volume"
+    
+  - name: "hardware.storage.volume.io.total_ops"
+    channel: "volume_io_total_ops"
+    display_name: "Volume {volume_name} IO Total Ops"
+    unit: "#"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id"]
+    description: "Total number of I/O operations on volume"
+    
+  - name: "hardware.storage.volume.io.read_bytes"
+    channel: "volume_io_read_bytes"
+    display_name: "Volume {volume_name} IO Read Bytes"
+    unit: "Bytes"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id"]
+    description: "Total bytes read from volume"
+    
+  - name: "hardware.storage.volume.io.write_bytes"
+    channel: "volume_io_write_bytes"
+    display_name: "Volume {volume_name} IO Write Bytes"
+    unit: "Bytes"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id"]
+    description: "Total bytes written to volume"
+    
+  - name: "hardware.storage.volume.io.total_bytes"
+    channel: "volume_io_total_bytes"
+    display_name: "Volume {volume_name} IO Total Bytes"
+    unit: "Bytes"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id"]
+    description: "Total bytes transferred (read + write) on volume"
 
   # Storage Pool Metrics
   - name: "hardware.storage.pool.capacity.allocated"
@@ -93,11 +201,103 @@ metrics:
     unit: "%"
     multi_instance_labels: ["pool_name", "pool_id", "controller_id"]
     description: "Free pool capacity percentage"
+    
+  - name: "hardware.storage.pool.capacity.used_percent"
+    channel: "pool_capacity_used_percent"
+    display_name: "Pool {pool_name} Used Percent"
+    unit: "%"
+    multi_instance_labels: ["pool_name", "pool_id", "controller_id"]
+    description: "Used pool capacity percentage"
+    
+  - name: "hardware.storage.pool.health"
+    channel: "pool_health"
+    display_name: "Pool {pool_name} Health"
+    unit: "#"
+    multi_instance_labels: ["pool_name", "pool_id", "controller_id"]
+    description: "Pool health status"
+    lookup: "sfs.redfish.health"
+    
+  # Pool I/O Metrics
+  - name: "hardware.storage.pool.io.reads"
+    channel: "pool_io_reads"
+    display_name: "Pool {pool_name} IO Reads"
+    unit: "#"
+    multi_instance_labels: ["pool_name", "pool_id", "controller_id"]
+    description: "Number of read operations on pool"
+    
+  - name: "hardware.storage.pool.io.writes"
+    channel: "pool_io_writes"
+    display_name: "Pool {pool_name} IO Writes"
+    unit: "#"
+    multi_instance_labels: ["pool_name", "pool_id", "controller_id"]
+    description: "Number of write operations on pool"
+    
+  - name: "hardware.storage.pool.io.read_bytes"
+    channel: "pool_io_read_bytes"
+    display_name: "Pool {pool_name} IO Read Bytes"
+    unit: "Bytes"
+    multi_instance_labels: ["pool_name", "pool_id", "controller_id"]
+    description: "Total bytes read from pool"
+    
+  - name: "hardware.storage.pool.io.write_bytes"
+    channel: "pool_io_write_bytes"
+    display_name: "Pool {pool_name} IO Write Bytes"
+    unit: "Bytes"
+    multi_instance_labels: ["pool_name", "pool_id", "controller_id"]
+    description: "Total bytes written to pool"
 
   # System Health Metrics
+  - name: "hardware.system.health"
+    channel: "system_health"
+    display_name: "System Health"
+    unit: "#"
+    description: "Overall system health status"
+    lookup: "sfs.redfish.health"
+    
+  - name: "hardware.system.power.state"
+    channel: "system_power_state"
+    display_name: "System Power State"
+    unit: "#"
+    description: "System power state"
+    lookup: "sfs.redfish.power_state"
+    
+  - name: "hardware.controller.health"
+    channel: "controller_health"
+    display_name: "Controller {controller_id} Health"
+    unit: "#"
+    multi_instance_labels: ["controller_id"]
+    description: "Storage controller health status"
+    lookup: "sfs.redfish.health"
+    
   - name: "hardware.eventservice.health"
     channel: "eventservice_health"
     display_name: "Event Service Health"
     unit: "#"
     description: "System event service health status"
-
+    lookup: "sfs.redfish.health"
+    
+  # Redundancy Metrics
+  - name: "hardware.redundancy.health"
+    channel: "redundancy_health"
+    display_name: "Redundancy Health"
+    unit: "#"
+    description: "Redundancy system health status"
+    lookup: "sfs.redfish.health"
+    
+  - name: "hardware.redundancy.controllers.active"
+    channel: "redundancy_controllers_active"
+    display_name: "Redundancy Controllers Active"
+    unit: "#"
+    description: "Number of active redundant controllers"
+    
+  - name: "hardware.redundancy.controllers.min"
+    channel: "redundancy_controllers_min"
+    display_name: "Redundancy Controllers Min"
+    unit: "#"
+    description: "Minimum number of controllers for redundancy"
+    
+  - name: "hardware.redundancy.controllers.max"
+    channel: "redundancy_controllers_max"
+    display_name: "Redundancy Controllers Max"
+    unit: "#"
+    description: "Maximum number of controllers supported"
