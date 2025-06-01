@@ -5,13 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
+	"gopkg.in/yaml.v2"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -30,6 +33,8 @@ type HTTPSyncStrategy struct {
 	bindAddress         string // IP address to bind to
 	transformerRegistry *transformers.TransformerRegistry
 	enabledEndpoints    map[string]bool // monitoring tools to expose
+	nagiosConfig        *NagiosConfig   // cached Nagios configuration
+	nagiosConfigMu      sync.RWMutex    // mutex for nagios config access
 }
 
 // MetricCache stores the latest metrics in memory with TTL, organized like a TSDB
@@ -127,6 +132,7 @@ type PRTGChannel struct {
 	LimitMode       int     `json:"limitmode,omitempty"`
 	LimitMaxWarning float64 `json:"limitmaxwarning,omitempty"`
 	LimitMaxError   float64 `json:"limitmaxerror,omitempty"`
+	ValueLookup     string  `json:"valuelookup,omitempty"`
 }
 
 // MetricFilter represents query parameters for filtering metrics
@@ -136,6 +142,86 @@ type MetricFilter struct {
 	MetricNames   []string            // specific metric names to include
 	Limit         int                 // max number of results
 	Offset        int                 // pagination offset
+}
+
+// Nagios structs for check configuration and responses
+type NagiosConfig struct {
+	Version     string        `yaml:"version"`
+	Description string        `yaml:"description"`
+	Checks      []NagiosCheck `yaml:"checks"`
+}
+
+type NagiosCheck struct {
+	Name        string           `yaml:"name"`
+	Description string           `yaml:"description"`
+	ProbeFilter string           `yaml:"probe_filter,omitempty"`
+	TagFilters  []NagiosTagFilter `yaml:"tag_filters,omitempty"`
+	Metrics     []NagiosMetric   `yaml:"metrics"`
+}
+
+type NagiosTagFilter struct {
+	Key      string   `yaml:"key"`
+	Values   []string `yaml:"values,omitempty"`
+	Operator string   `yaml:"operator"` // "in", "not_in", "equals", "not_equals", "exists"
+}
+
+type NagiosMetric struct {
+	Channel               string                    `yaml:"channel"`
+	Aggregation          string                    `yaml:"aggregation,omitempty"` // "average", "max", "min", "sum", "none"
+	Warning              string                    `yaml:"warning"`
+	Critical             string                    `yaml:"critical"`
+	Unit                 string                    `yaml:"unit,omitempty"`
+	Invert               bool                      `yaml:"invert,omitempty"`
+	TagContext           string                    `yaml:"tag_context,omitempty"`
+	TagSpecificThresholds []NagiosTagThreshold     `yaml:"tag_specific_thresholds,omitempty"`
+	Description          string                    `yaml:"description,omitempty"`
+}
+
+type NagiosTagThreshold struct {
+	Tags     map[string]string `yaml:"tags"`
+	Warning  string           `yaml:"warning"`
+	Critical string           `yaml:"critical"`
+}
+
+// Nagios response structures
+type NagiosResponse struct {
+	Status     int    `json:"status"`      // 0=OK, 1=WARNING, 2=CRITICAL, 3=UNKNOWN
+	StatusText string `json:"status_text"` // "OK", "WARNING", "CRITICAL", "UNKNOWN"
+	Message    string `json:"message"`     // Human readable message
+	PerfData   string `json:"perfdata"`    // Performance data string
+}
+
+type NagiosRequest struct {
+	CheckName string                 `json:"check_name,omitempty"`
+	Probe     string                 `json:"probe,omitempty"`
+	Config    map[string]interface{} `json:"config,omitempty"`
+	Overrides NagiosOverrides        `json:"overrides,omitempty"`
+}
+
+type NagiosOverrides struct {
+	Warning    string            `json:"warning,omitempty"`
+	Critical   string            `json:"critical,omitempty"`
+	TagFilters map[string]string `json:"tag_filters,omitempty"`
+}
+
+// Nagios discovery response structures
+type NagiosCheckInfo struct {
+	Name        string              `json:"name"`
+	Description string              `json:"description"`
+	ProbeFilter string              `json:"probe_filter,omitempty"`
+	MetricCount int                 `json:"metric_count"`
+	TagFilters  []NagiosTagFilter   `json:"tag_filters,omitempty"`
+	Metrics     []NagiosMetricInfo  `json:"metrics"`
+}
+
+type NagiosMetricInfo struct {
+	Channel     string `json:"channel"`
+	Aggregation string `json:"aggregation,omitempty"`
+	Warning     string `json:"warning"`
+	Critical    string `json:"critical"`
+	Unit        string `json:"unit,omitempty"`
+	Invert      bool   `json:"invert,omitempty"`
+	TagContext  string `json:"tag_context,omitempty"`
 }
 
 // NewHTTPSyncStrategy creates a new HTTP sync strategy
@@ -415,6 +501,9 @@ func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 	// Always expose health check endpoint
 	router.HandleFunc("/health", h.handleHealth).Methods("GET")
 
+	// API documentation endpoint
+	router.HandleFunc("/api/{agentkey}/endpoints", h.handleListEndpoints).Methods("GET")
+
 	// Discovery endpoints (with agentkey authentication)
 	router.HandleFunc("/api/{agentkey}/info/probes", h.handleInfoProbes).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/tags/{probe}", h.handleInfoTags).Methods("GET")
@@ -441,6 +530,9 @@ func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 
 	if h.enabledEndpoints["nagios"] {
 		router.HandleFunc("/api/{agentkey}/nagios/metrics/{probe}", h.handleNagiosMetricsGET).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/nagios/check/{check_name}", h.handleNagiosCheck).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/nagios/metrics", h.handleNagiosMetrics).Methods("GET", "POST")
+		router.HandleFunc("/api/{agentkey}/nagios/checks", h.handleNagiosChecks).Methods("GET")
 	}
 
 	if h.enabledEndpoints["zabbix"] {
@@ -530,6 +622,19 @@ func (h *HTTPSyncStrategy) handlePRTGMetricsGET(w http.ResponseWriter, r *http.R
 		Str("probe", probeName).
 		Int("channels", len(channels)).
 		Msg("PRTG GET response sent")
+}
+
+// EndpointsListResponse represents the response for listing all available endpoints
+type EndpointsListResponse struct {
+	Endpoints []EndpointInfo `json:"endpoints"`
+}
+
+// EndpointInfo represents information about an endpoint
+type EndpointInfo struct {
+	Path        string   `json:"path"`
+	Methods     []string `json:"methods"`
+	Description string   `json:"description"`
+	Category    string   `json:"category"`
 }
 
 // ProbesListResponse represents the response for listing available probes
@@ -1203,6 +1308,9 @@ func (h *HTTPSyncStrategy) transformToPRTGChannel(key string, metric CachedMetri
 	// Transform metric name to user-friendly channel name for PRTG
 	channelName, unit := h.transformMetricNameForPRTG(key, metric)
 
+	// Get lookup information from transformer
+	lookup := h.getLookupForMetric(key, metric.ProbeName)
+
 	// PRTG-specific unit handling
 	prtgChannel := &PRTGChannel{
 		Channel: channelName,
@@ -1216,7 +1324,98 @@ func (h *HTTPSyncStrategy) transformToPRTGChannel(key string, metric CachedMetri
 		prtgChannel.CustomUnit = unit
 	}
 	
+	// Add lookup if available
+	if lookup != "" {
+		prtgChannel.ValueLookup = lookup
+	}
+	
 	return prtgChannel
+}
+
+// getLookupForMetric gets the lookup file for a metric using the transformer
+func (h *HTTPSyncStrategy) getLookupForMetric(metricName, probeName string) string {
+	// Get transformer for this probe
+	transformer, err := h.transformerRegistry.LoadTransformer(probeName, "friendly")
+	if err != nil {
+		h.logger.Debug().
+			Err(err).
+			Str("probe", probeName).
+			Str("metric", metricName).
+			Msg("Failed to load transformer for lookup")
+		return ""
+	}
+	
+	// Get lookup from transformer
+	lookup := transformer.GetLookup(metricName)
+	
+	h.logger.Debug().
+		Str("probe", probeName).
+		Str("metric", metricName).
+		Str("lookup", lookup).
+		Msg("Retrieved lookup for metric")
+		
+	return lookup
+}
+
+// handleListEndpoints lists all available API endpoints
+func (h *HTTPSyncStrategy) handleListEndpoints(w http.ResponseWriter, r *http.Request) {
+	// Extract and validate agentkey from path
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+
+	if providedKey != h.agentKey {
+		h.logger.Warn().Str("provided_key", providedKey).Msg("Invalid agent key")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	endpoints := []EndpointInfo{
+		// Health and Discovery
+		{"/health", []string{"GET"}, "Health check endpoint", "health"},
+		{"/api/{agentkey}/endpoints", []string{"GET"}, "List all available endpoints", "discovery"},
+		{"/api/{agentkey}/info/probes", []string{"GET"}, "List available probes", "discovery"},
+		{"/api/{agentkey}/info/tags/{probe}", []string{"GET"}, "Get tags for specific probe", "discovery"},
+		{"/api/{agentkey}/info/schema/{probe}", []string{"GET"}, "Get schema for specific probe", "discovery"},
+		
+		// Administration
+		{"/api/{agentkey}/admin/cache", []string{"GET"}, "View metric cache contents", "admin"},
+		{"/api/{agentkey}/admin/logs", []string{"GET"}, "View current log levels", "admin"},
+		{"/api/{agentkey}/admin/logs", []string{"POST"}, "Set log levels", "admin"},
+		{"/api/{agentkey}/debug/logs", []string{"GET"}, "View current log levels (legacy)", "admin"},
+		{"/api/{agentkey}/debug/logs", []string{"POST"}, "Set log levels (legacy)", "admin"},
+		
+		// SenHub Format
+		{"/api/{agentkey}/senhub/metrics/{probe}", []string{"GET"}, "Get metrics in SenHub format", "senhub"},
+		
+		// PRTG Format
+		{"/api/{agentkey}/prtg/metrics/{probe}", []string{"GET"}, "Get metrics in PRTG format for specific probe", "prtg"},
+		{"/api/{agentkey}/prtg/probes", []string{"GET"}, "List probes for PRTG", "prtg"},
+		
+		// Nagios Format
+		{"/api/{agentkey}/nagios/metrics/{probe}", []string{"GET"}, "Get metrics in Nagios format for specific probe", "nagios"},
+		{"/api/{agentkey}/nagios/check/{check_name}", []string{"GET"}, "Execute Nagios check", "nagios"},
+		{"/api/{agentkey}/nagios/metrics", []string{"GET", "POST"}, "Get aggregated metrics in Nagios format", "nagios"},
+		{"/api/{agentkey}/nagios/checks", []string{"GET"}, "List available Nagios checks", "nagios"},
+		
+		// Zabbix Format (if enabled)
+		{"/api/{agentkey}/zabbix/metrics/{probe}", []string{"GET"}, "Get metrics in Zabbix format", "zabbix"},
+		
+		// Prometheus Format (if enabled)
+		{"/api/{agentkey}/prometheus/metrics", []string{"GET"}, "Get metrics in Prometheus format", "prometheus"},
+	}
+
+	response := EndpointsListResponse{
+		Endpoints: endpoints,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to encode endpoints response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info().Int("endpoints_count", len(endpoints)).Msg("Endpoints list response sent")
 }
 
 // parseMetricFilter parses query parameters into a MetricFilter
@@ -1679,7 +1878,37 @@ func (cache *MetricCache) cleanup() {
 	}
 }
 
-// handleNagiosMetricsGET handles GET requests for Nagios format metrics
+// GetAllMetrics returns all cached metrics
+func (cache *MetricCache) GetAllMetrics() []CachedMetric {
+	cache.mu.RLock()
+	defer cache.mu.RUnlock()
+	
+	metrics := make([]CachedMetric, 0, len(cache.timeSeries))
+	for _, metric := range cache.timeSeries {
+		metrics = append(metrics, metric)
+	}
+	
+	return metrics
+}
+
+// GetProbeMetrics returns all metrics for a specific probe
+func (cache *MetricCache) GetProbeMetrics(probeName string) []CachedMetric {
+	cache.mu.RLock()
+	defer cache.mu.RUnlock()
+	
+	var metrics []CachedMetric
+	if probeKeys, exists := cache.probeIndex[probeName]; exists {
+		for tsKey := range probeKeys {
+			if metric, exists := cache.timeSeries[tsKey]; exists {
+				metrics = append(metrics, metric)
+			}
+		}
+	}
+	
+	return metrics
+}
+
+// handleNagiosMetricsGET handles GET requests for Nagios format metrics by probe
 func (h *HTTPSyncStrategy) handleNagiosMetricsGET(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	providedKey := vars["agentkey"]
@@ -1694,10 +1923,883 @@ func (h *HTTPSyncStrategy) handleNagiosMetricsGET(w http.ResponseWriter, r *http
 
 	h.logger.Info().Str("probe", probeName).Msg("🔄 Nagios endpoint - Request received")
 
-	// TODO: Implement Nagios format conversion
+	// Parse query parameters
+	filter := h.parseMetricFilter(r)
+	
+	// Get probe metrics from cache
+	metrics := h.cache.GetProbeMetrics(probeName)
+	if len(metrics) == 0 {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(500)
+		w.Write([]byte("CRITICAL - No metrics available for probe " + probeName))
+		return
+	}
+
+	// Apply filters
+	filteredMetrics := h.applyMetricFilter(metrics, filter)
+	
+	// Generate simple probe-based Nagios response
+	response := h.generateSimpleNagiosResponse(probeName, filteredMetrics)
+	
 	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte("Nagios format endpoint not yet implemented"))
+	if response.Status >= 2 {
+		w.WriteHeader(500)
+	}
+	w.Write([]byte(fmt.Sprintf("%s - %s | %s", response.StatusText, response.Message, response.PerfData)))
+}
+
+// handleNagiosCheck handles GET requests for specific Nagios checks
+func (h *HTTPSyncStrategy) handleNagiosCheck(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+	checkName := vars["check_name"]
+
+	// Validate agent key
+	if providedKey != h.agentKey {
+		h.logger.Warn().Str("provided_key", providedKey).Msg("Invalid agent key for Nagios check endpoint")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	h.logger.Info().Str("check", checkName).Msg("🔄 Nagios check endpoint - Request received")
+
+	// Load Nagios configuration
+	config := h.loadNagiosConfig()
+	check := h.findNagiosCheck(config, checkName)
+	if check == nil {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(500)
+		w.Write([]byte("CRITICAL - Check '" + checkName + "' not found"))
+		return
+	}
+
+	// Parse query parameters for overrides
+	filter := h.parseMetricFilter(r)
+	overrides := h.parseNagiosOverrides(r)
+	
+	// Execute check
+	response := h.executeNagiosCheck(check, filter, overrides)
+	
+	w.Header().Set("Content-Type", "text/plain")
+	if response.Status >= 2 {
+		w.WriteHeader(500)
+	}
+	w.Write([]byte(fmt.Sprintf("%s - %s | %s", response.StatusText, response.Message, response.PerfData)))
+}
+
+// handleNagiosMetrics handles GET/POST requests for all Nagios metrics
+func (h *HTTPSyncStrategy) handleNagiosMetrics(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+
+	// Validate agent key
+	if providedKey != h.agentKey {
+		h.logger.Warn().Str("provided_key", providedKey).Msg("Invalid agent key for Nagios metrics endpoint")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	h.logger.Info().Str("method", r.Method).Msg("🔄 Nagios metrics endpoint - Request received")
+
+	var nagiosRequest NagiosRequest
+	
+	if r.Method == "POST" {
+		// Parse POST body for dynamic configuration
+		if err := json.NewDecoder(r.Body).Decode(&nagiosRequest); err != nil {
+			h.logger.Error().Err(err).Msg("Failed to parse Nagios request body")
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Parse query parameters
+	filter := h.parseMetricFilter(r)
+	overrides := h.parseNagiosOverrides(r)
+	
+	// Load configuration
+	config := h.loadNagiosConfig()
+	
+	// Execute all checks or specific check
+	var responses []NagiosResponse
+	if nagiosRequest.CheckName != "" {
+		check := h.findNagiosCheck(config, nagiosRequest.CheckName)
+		if check != nil {
+			response := h.executeNagiosCheck(check, filter, overrides)
+			responses = append(responses, response)
+		}
+	} else {
+		// Execute all checks
+		for _, check := range config.Checks {
+			response := h.executeNagiosCheck(&check, filter, overrides)
+			responses = append(responses, response)
+		}
+	}
+
+	// Return JSON response for multiple checks
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"checks": responses,
+		"count":  len(responses),
+	})
+}
+
+// handleNagiosChecks lists all available Nagios checks
+func (h *HTTPSyncStrategy) handleNagiosChecks(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+
+	// Validate agent key
+	if providedKey != h.agentKey {
+		h.logger.Warn().Str("provided_key", providedKey).Msg("Invalid agent key for Nagios checks endpoint")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	h.logger.Info().Msg("🔄 Nagios checks discovery endpoint - Request received")
+
+	// Load Nagios configuration
+	config := h.loadNagiosConfig()
+	
+	// Build response with check information
+	var checks []NagiosCheckInfo
+	for _, check := range config.Checks {
+		checkInfo := NagiosCheckInfo{
+			Name:        check.Name,
+			Description: check.Description,
+			ProbeFilter: check.ProbeFilter,
+			MetricCount: len(check.Metrics),
+			TagFilters:  check.TagFilters,
+			Metrics:     make([]NagiosMetricInfo, len(check.Metrics)),
+		}
+		
+		// Add metric information
+		for i, metric := range check.Metrics {
+			checkInfo.Metrics[i] = NagiosMetricInfo{
+				Channel:     metric.Channel,
+				Aggregation: metric.Aggregation,
+				Warning:     metric.Warning,
+				Critical:    metric.Critical,
+				Unit:        metric.Unit,
+				Invert:      metric.Invert,
+				TagContext:  metric.TagContext,
+			}
+		}
+		
+		checks = append(checks, checkInfo)
+	}
+
+	// Return JSON response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"version":     config.Version,
+		"description": config.Description,
+		"checks":      checks,
+		"count":       len(checks),
+	})
+}
+
+// Nagios helper functions
+
+// loadNagiosConfig loads the Nagios configuration from YAML file
+func (h *HTTPSyncStrategy) loadNagiosConfig() *NagiosConfig {
+	h.nagiosConfigMu.RLock()
+	if h.nagiosConfig != nil {
+		h.nagiosConfigMu.RUnlock()
+		return h.nagiosConfig
+	}
+	h.nagiosConfigMu.RUnlock()
+
+	h.nagiosConfigMu.Lock()
+	defer h.nagiosConfigMu.Unlock()
+
+	// Double-check after acquiring write lock
+	if h.nagiosConfig != nil {
+		return h.nagiosConfig
+	}
+
+	// Load from file
+	configPath := filepath.Join("internal", "agent", "services", "data_store", "transformers", "definitions", "nagios.yaml")
+	
+	config, err := h.loadNagiosConfigFromFile(configPath)
+	if err != nil {
+		h.logger.Error().Err(err).Str("path", configPath).Msg("Failed to load Nagios config, using fallback")
+		config = h.createFallbackNagiosConfig()
+	}
+
+	h.nagiosConfig = config
+	return config
+}
+
+// loadNagiosConfigFromFile loads Nagios config from YAML file
+func (h *HTTPSyncStrategy) loadNagiosConfigFromFile(configPath string) (*NagiosConfig, error) {
+	data, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var config NagiosConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse Nagios YAML: %w", err)
+	}
+
+	h.logger.Info().
+		Str("version", config.Version).
+		Int("checks_count", len(config.Checks)).
+		Msg("Loaded Nagios configuration")
+
+	return &config, nil
+}
+
+// createFallbackNagiosConfig creates a basic fallback configuration
+func (h *HTTPSyncStrategy) createFallbackNagiosConfig() *NagiosConfig {
+	return &NagiosConfig{
+		Version:     "1.0.0",
+		Description: "Fallback Nagios configuration",
+		Checks: []NagiosCheck{
+			{
+				Name:        "system_health",
+				Description: "Basic system health check",
+				Metrics: []NagiosMetric{
+					{
+						Channel:     "cpu_usage_percent",
+						Aggregation: "average",
+						Warning:     "80",
+						Critical:    "90",
+						Unit:        "%",
+					},
+					{
+						Channel:     "memory_used_percent",
+						Warning:     "85",
+						Critical:    "95",
+						Unit:        "%",
+					},
+				},
+			},
+		},
+	}
+}
+
+// findNagiosCheck finds a check by name in the configuration
+func (h *HTTPSyncStrategy) findNagiosCheck(config *NagiosConfig, checkName string) *NagiosCheck {
+	for _, check := range config.Checks {
+		if check.Name == checkName {
+			return &check
+		}
+	}
+	return nil
+}
+
+// parseNagiosOverrides parses query parameters for Nagios threshold overrides
+func (h *HTTPSyncStrategy) parseNagiosOverrides(r *http.Request) NagiosOverrides {
+	query := r.URL.Query()
+	
+	overrides := NagiosOverrides{
+		TagFilters: make(map[string]string),
+	}
+
+	if warning := query.Get("warning"); warning != "" {
+		overrides.Warning = warning
+	}
+	
+	if critical := query.Get("critical"); critical != "" {
+		overrides.Critical = critical
+	}
+
+	// Parse tag filters from individual query params
+	for key, values := range query {
+		if key != "warning" && key != "critical" && key != "tags" && key != "exclude_tags" && key != "metrics" && key != "limit" && key != "offset" {
+			if len(values) > 0 {
+				overrides.TagFilters[key] = strings.Join(values, ",")
+			}
+		}
+	}
+
+	return overrides
+}
+
+// executeNagiosCheck executes a Nagios check with filtering and overrides
+func (h *HTTPSyncStrategy) executeNagiosCheck(check *NagiosCheck, filter MetricFilter, overrides NagiosOverrides) NagiosResponse {
+	h.logger.Debug().
+		Str("check", check.Name).
+		Interface("filter", filter).
+		Interface("overrides", overrides).
+		Msg("Executing Nagios check")
+
+	// Get all metrics from cache
+	allMetrics := h.cache.GetAllMetrics()
+	
+	// Apply probe filter if specified
+	var metrics []CachedMetric
+	if check.ProbeFilter != "" {
+		metrics = h.cache.GetProbeMetrics(check.ProbeFilter)
+	} else {
+		metrics = allMetrics
+	}
+
+	if len(metrics) == 0 {
+		return NagiosResponse{
+			Status:     3, // UNKNOWN
+			StatusText: "UNKNOWN",
+			Message:    fmt.Sprintf("No metrics available for check %s", check.Name),
+			PerfData:   "",
+		}
+	}
+
+	// Apply tag filters from check configuration
+	metrics = h.applyNagiosTagFilters(metrics, check.TagFilters)
+	
+	// Apply additional filters from query parameters
+	metrics = h.applyMetricFilter(metrics, filter)
+
+	if len(metrics) == 0 {
+		return NagiosResponse{
+			Status:     3, // UNKNOWN
+			StatusText: "UNKNOWN",
+			Message:    fmt.Sprintf("No metrics match filters for check %s", check.Name),
+			PerfData:   "",
+		}
+	}
+
+	// Process each metric in the check
+	var results []NagiosMetricResult
+	overallStatus := 0 // OK
+	var messages []string
+	var perfDataItems []string
+
+	for _, metricDef := range check.Metrics {
+		result := h.processNagiosMetric(metricDef, metrics, overrides)
+		results = append(results, result)
+		
+		// Update overall status (worst case wins)
+		if result.Status > overallStatus {
+			overallStatus = result.Status
+		}
+		
+		if result.Message != "" {
+			messages = append(messages, result.Message)
+		}
+		
+		if result.PerfData != "" {
+			perfDataItems = append(perfDataItems, result.PerfData)
+		}
+	}
+
+	// Build response
+	statusText := h.getStatusText(overallStatus)
+	
+	var message string
+	if len(messages) > 0 {
+		message = strings.Join(messages, ", ")
+	} else {
+		message = fmt.Sprintf("%s - %s", check.Description, statusText)
+	}
+
+	return NagiosResponse{
+		Status:     overallStatus,
+		StatusText: statusText,
+		Message:    message,
+		PerfData:   strings.Join(perfDataItems, " "),
+	}
+}
+
+// NagiosMetricResult represents the result of processing a single metric
+type NagiosMetricResult struct {
+	Status   int
+	Message  string
+	PerfData string
+}
+
+// processNagiosMetric processes a single metric definition against available data
+func (h *HTTPSyncStrategy) processNagiosMetric(metricDef NagiosMetric, metrics []CachedMetric, overrides NagiosOverrides) NagiosMetricResult {
+	// Filter metrics by channel name
+	var matchingMetrics []CachedMetric
+	for _, metric := range metrics {
+		if metric.MetricName == metricDef.Channel {
+			matchingMetrics = append(matchingMetrics, metric)
+		}
+	}
+
+	if len(matchingMetrics) == 0 {
+		return NagiosMetricResult{
+			Status:  3, // UNKNOWN
+			Message: fmt.Sprintf("%s metric not found", metricDef.Channel),
+		}
+	}
+
+	// Apply aggregation or create separate checks
+	if metricDef.Aggregation == "none" {
+		// Return separate check for each metric instance
+		return h.processNagiosMetricSeparate(metricDef, matchingMetrics, overrides)
+	} else {
+		// Aggregate metrics and return single result
+		return h.processNagiosMetricAggregated(metricDef, matchingMetrics, overrides)
+	}
+}
+
+// processNagiosMetricAggregated processes metrics with aggregation
+func (h *HTTPSyncStrategy) processNagiosMetricAggregated(metricDef NagiosMetric, metrics []CachedMetric, overrides NagiosOverrides) NagiosMetricResult {
+	// Convert to float64 values
+	var values []float64
+	for _, metric := range metrics {
+		if val, ok := metric.Value.(float64); ok {
+			values = append(values, val)
+		} else if val, ok := metric.Value.(float32); ok {
+			values = append(values, float64(val))
+		}
+	}
+
+	if len(values) == 0 {
+		return NagiosMetricResult{
+			Status:  3, // UNKNOWN
+			Message: fmt.Sprintf("%s no valid numeric values", metricDef.Channel),
+		}
+	}
+
+	// Apply aggregation
+	aggregatedValue := h.aggregateValues(values, metricDef.Aggregation)
+	
+	// Get thresholds (with overrides)
+	warning := metricDef.Warning
+	critical := metricDef.Critical
+	if overrides.Warning != "" {
+		warning = overrides.Warning
+	}
+	if overrides.Critical != "" {
+		critical = overrides.Critical
+	}
+
+	// Evaluate thresholds
+	status := h.evaluateThreshold(aggregatedValue, warning, critical, metricDef.Invert)
+	
+	// Build context message
+	var contextStr string
+	if metricDef.TagContext != "" && len(metrics) > 0 {
+		contextStr = h.buildTagContext(metrics[0], metricDef.TagContext)
+	}
+	
+	// Build message
+	var message string
+	if status > 0 {
+		statusText := h.getStatusText(status)
+		if contextStr != "" {
+			message = fmt.Sprintf("%s %s %s", contextStr, metricDef.Channel, statusText)
+		} else {
+			message = fmt.Sprintf("%s %s", metricDef.Channel, statusText)
+		}
+	}
+
+	// Build performance data
+	perfData := h.buildPerfData(metricDef.Channel, aggregatedValue, warning, critical, metricDef.Unit)
+
+	return NagiosMetricResult{
+		Status:   status,
+		Message:  message,
+		PerfData: perfData,
+	}
+}
+
+// processNagiosMetricSeparate processes metrics separately (no aggregation)
+func (h *HTTPSyncStrategy) processNagiosMetricSeparate(metricDef NagiosMetric, metrics []CachedMetric, overrides NagiosOverrides) NagiosMetricResult {
+	// For simplicity, return the worst case status and combine perf data
+	worstStatus := 0
+	var messages []string
+	var perfDataItems []string
+
+	for _, metric := range metrics {
+		if val, ok := metric.Value.(float64); ok {
+			// Get thresholds
+			warning := metricDef.Warning
+			critical := metricDef.Critical
+			
+			// Apply tag-specific thresholds
+			for _, tagThreshold := range metricDef.TagSpecificThresholds {
+				if h.matchesTagThreshold(metric, tagThreshold) {
+					warning = tagThreshold.Warning
+					critical = tagThreshold.Critical
+					break
+				}
+			}
+			
+			// Apply overrides
+			if overrides.Warning != "" {
+				warning = overrides.Warning
+			}
+			if overrides.Critical != "" {
+				critical = overrides.Critical
+			}
+
+			status := h.evaluateThreshold(val, warning, critical, metricDef.Invert)
+			if status > worstStatus {
+				worstStatus = status
+			}
+
+			// Build context
+			contextStr := h.buildTagContext(metric, metricDef.TagContext)
+			
+			if status > 0 {
+				statusText := h.getStatusText(status)
+				if contextStr != "" {
+					messages = append(messages, fmt.Sprintf("%s %s", contextStr, statusText))
+				}
+			}
+
+			// Build perf data with context
+			perfName := metricDef.Channel
+			if contextStr != "" {
+				perfName = fmt.Sprintf("%s_%s", metricDef.Channel, strings.ReplaceAll(contextStr, " ", "_"))
+			}
+			perfDataItems = append(perfDataItems, h.buildPerfData(perfName, val, warning, critical, metricDef.Unit))
+		}
+	}
+
+	return NagiosMetricResult{
+		Status:   worstStatus,
+		Message:  strings.Join(messages, ", "),
+		PerfData: strings.Join(perfDataItems, " "),
+	}
+}
+
+// Helper utility functions for Nagios processing
+
+// applyNagiosTagFilters applies tag filters from Nagios check configuration
+func (h *HTTPSyncStrategy) applyNagiosTagFilters(metrics []CachedMetric, filters []NagiosTagFilter) []CachedMetric {
+	if len(filters) == 0 {
+		return metrics
+	}
+
+	var filtered []CachedMetric
+	for _, metric := range metrics {
+		include := true
+		
+		for _, filter := range filters {
+			tagValue := h.getTagValue(metric, filter.Key)
+			
+			switch filter.Operator {
+			case "exists":
+				if tagValue == "" {
+					include = false
+				}
+			case "in":
+				if len(filter.Values) > 0 {
+					found := false
+					for _, value := range filter.Values {
+						if tagValue == value {
+							found = true
+							break
+						}
+					}
+					if !found {
+						include = false
+					}
+				}
+			case "not_in":
+				if len(filter.Values) > 0 {
+					for _, value := range filter.Values {
+						if tagValue == value {
+							include = false
+							break
+						}
+					}
+				}
+			case "equals":
+				if len(filter.Values) > 0 && tagValue != filter.Values[0] {
+					include = false
+				}
+			case "not_equals":
+				if len(filter.Values) > 0 && tagValue == filter.Values[0] {
+					include = false
+				}
+			}
+			
+			if !include {
+				break
+			}
+		}
+		
+		if include {
+			filtered = append(filtered, metric)
+		}
+	}
+	
+	return filtered
+}
+
+// getTagValue gets the value of a tag from a metric
+func (h *HTTPSyncStrategy) getTagValue(metric CachedMetric, tagKey string) string {
+	if value, exists := metric.Tags[tagKey]; exists {
+		return value
+	}
+	return ""
+}
+
+// matchesTagThreshold checks if a metric matches tag-specific threshold conditions
+func (h *HTTPSyncStrategy) matchesTagThreshold(metric CachedMetric, threshold NagiosTagThreshold) bool {
+	for key, value := range threshold.Tags {
+		if value == "*" {
+			// Wildcard - any value matches
+			continue
+		}
+		
+		tagValue := h.getTagValue(metric, key)
+		if tagValue != value {
+			return false
+		}
+	}
+	return true
+}
+
+// buildTagContext builds a context string from metric tags
+func (h *HTTPSyncStrategy) buildTagContext(metric CachedMetric, tagContext string) string {
+	if tagContext == "" {
+		return ""
+	}
+	
+	tagValue := h.getTagValue(metric, tagContext)
+	if tagValue != "" {
+		return tagValue
+	}
+	
+	return ""
+}
+
+// aggregateValues aggregates a slice of values using the specified method
+func (h *HTTPSyncStrategy) aggregateValues(values []float64, aggregation string) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	
+	switch aggregation {
+	case "average", "avg":
+		sum := 0.0
+		for _, v := range values {
+			sum += v
+		}
+		return sum / float64(len(values))
+		
+	case "max":
+		max := values[0]
+		for _, v := range values {
+			if v > max {
+				max = v
+			}
+		}
+		return max
+		
+	case "min":
+		min := values[0]
+		for _, v := range values {
+			if v < min {
+				min = v
+			}
+		}
+		return min
+		
+	case "sum":
+		sum := 0.0
+		for _, v := range values {
+			sum += v
+		}
+		return sum
+		
+	default:
+		// Default to average
+		sum := 0.0
+		for _, v := range values {
+			sum += v
+		}
+		return sum / float64(len(values))
+	}
+}
+
+// evaluateThreshold evaluates a value against warning and critical thresholds
+func (h *HTTPSyncStrategy) evaluateThreshold(value float64, warning, critical string, invert bool) int {
+	// Parse thresholds
+	warnThreshold, err := strconv.ParseFloat(warning, 64)
+	if err != nil {
+		return 3 // UNKNOWN
+	}
+	
+	critThreshold, err := strconv.ParseFloat(critical, 64)
+	if err != nil {
+		return 3 // UNKNOWN
+	}
+	
+	var status int
+	if invert {
+		// Lower values are worse (e.g., free disk space)
+		if value <= critThreshold {
+			status = 2 // CRITICAL
+		} else if value <= warnThreshold {
+			status = 1 // WARNING
+		} else {
+			status = 0 // OK
+		}
+	} else {
+		// Higher values are worse (e.g., CPU usage)
+		if value >= critThreshold {
+			status = 2 // CRITICAL
+		} else if value >= warnThreshold {
+			status = 1 // WARNING
+		} else {
+			status = 0 // OK
+		}
+	}
+	
+	return status
+}
+
+// getStatusText converts numeric status to text
+func (h *HTTPSyncStrategy) getStatusText(status int) string {
+	switch status {
+	case 0:
+		return "OK"
+	case 1:
+		return "WARNING"
+	case 2:
+		return "CRITICAL"
+	case 3:
+		return "UNKNOWN"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+// buildPerfData builds Nagios performance data string with optimal graphing format
+func (h *HTTPSyncStrategy) buildPerfData(name string, value float64, warning, critical, unit string) string {
+	// Clean label name (no spaces, special chars)
+	cleanName := h.cleanPerfDataLabel(name)
+	
+	// Convert unit to standard Nagios UOM
+	standardUOM := h.convertToStandardUOM(unit)
+	
+	// Determine min/max values based on metric type
+	min, max := h.getPerfDataMinMax(unit, value)
+	
+	// Format: label=value[UOM];[warn];[crit];[min];[max]
+	perfData := fmt.Sprintf("%s=%.2f", cleanName, value)
+	
+	if standardUOM != "" {
+		perfData += standardUOM
+	}
+	
+	perfData += fmt.Sprintf(";%s;%s", warning, critical)
+	
+	// Add min/max for better graphing
+	if min != "" || max != "" {
+		perfData += fmt.Sprintf(";%s;%s", min, max)
+	}
+	
+	return perfData
+}
+
+// cleanPerfDataLabel cleans metric names for Nagios performance data
+func (h *HTTPSyncStrategy) cleanPerfDataLabel(name string) string {
+	// Replace spaces and dots with underscores
+	cleaned := strings.ReplaceAll(name, " ", "_")
+	cleaned = strings.ReplaceAll(cleaned, ".", "_")
+	cleaned = strings.ReplaceAll(cleaned, "-", "_")
+	
+	// Remove special characters except underscore
+	var result strings.Builder
+	for _, r := range cleaned {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
+			result.WriteRune(r)
+		}
+	}
+	
+	// Limit length to 64 characters (Nagios recommendation)
+	final := result.String()
+	if len(final) > 64 {
+		final = final[:64]
+	}
+	
+	return final
+}
+
+// convertToStandardUOM converts units to standard Nagios UOM
+func (h *HTTPSyncStrategy) convertToStandardUOM(unit string) string {
+	switch strings.ToLower(unit) {
+	case "bytes":
+		return "B"
+	case "kilobytes", "kb":
+		return "KB"
+	case "megabytes", "mb":
+		return "MB"
+	case "gigabytes", "gb":
+		return "GB"
+	case "milliseconds", "ms":
+		return "ms"
+	case "seconds", "sec", "s":
+		return "s"
+	case "microseconds", "us":
+		return "us"
+	case "percent", "%":
+		return "%"
+	case "#", "count", "counter":
+		return "c"
+	case "°c", "celsius":
+		return "" // Temperature without UOM is cleaner
+	case "bytes/sec", "bytes/second":
+		return "B/s"
+	default:
+		// Return original unit if no standard mapping
+		return unit
+	}
+}
+
+// getPerfDataMinMax determines appropriate min/max values for graphing
+func (h *HTTPSyncStrategy) getPerfDataMinMax(unit string, value float64) (string, string) {
+	switch strings.ToLower(unit) {
+	case "%", "percent":
+		return "0", "100"
+	case "°c", "celsius":
+		return "0", "100"
+	case "ms", "milliseconds", "s", "seconds":
+		return "0", ""
+	case "bytes", "b", "kb", "mb", "gb":
+		return "0", ""
+	case "#", "count", "counter":
+		return "0", ""
+	default:
+		// For load averages and other metrics, use 0 as min, no max
+		return "0", ""
+	}
+}
+
+// generateSimpleNagiosResponse generates a simple Nagios response for probe-based queries
+func (h *HTTPSyncStrategy) generateSimpleNagiosResponse(probeName string, metrics []CachedMetric) NagiosResponse {
+	if len(metrics) == 0 {
+		return NagiosResponse{
+			Status:     2, // CRITICAL
+			StatusText: "CRITICAL",
+			Message:    fmt.Sprintf("No metrics available for probe %s", probeName),
+			PerfData:   "",
+		}
+	}
+	
+	// Simple health check - just report metrics count and build basic perf data
+	var perfDataItems []string
+	metricCount := 0
+	
+	for _, metric := range metrics {
+		if val, ok := metric.Value.(float64); ok {
+			perfDataItems = append(perfDataItems, fmt.Sprintf("%s=%.2f", metric.MetricName, val))
+			metricCount++
+		} else if val, ok := metric.Value.(float32); ok {
+			perfDataItems = append(perfDataItems, fmt.Sprintf("%s=%.2f", metric.MetricName, float64(val)))
+			metricCount++
+		}
+	}
+	
+	message := fmt.Sprintf("Probe %s healthy - %d metrics collected", probeName, metricCount)
+	perfData := strings.Join(perfDataItems, " ")
+	
+	return NagiosResponse{
+		Status:     0, // OK
+		StatusText: "OK",
+		Message:    message,
+		PerfData:   perfData,
+	}
 }
 
 // handleZabbixMetricsGET handles GET requests for Zabbix format metrics
