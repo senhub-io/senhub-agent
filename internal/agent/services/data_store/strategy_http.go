@@ -579,6 +579,7 @@ func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/endpoints", h.handleListEndpoints).Methods("GET")
 
 	// Discovery endpoints (with agentkey authentication)
+	router.HandleFunc("/api/{agentkey}/info/endpoints", h.handleInfoEndpoints).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/probes", h.handleInfoProbes).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/tags/{probe}", h.handleInfoTags).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/schema/{probe}", h.handleInfoSchema).Methods("GET")
@@ -894,6 +895,17 @@ func (h *HTTPSyncStrategy) handleHealth(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(response)
 }
 
+// EndpointsInfoResponse represents the response for /info/endpoints
+type EndpointsInfoResponse struct {
+	Endpoints []EndpointInfoStatus `json:"endpoints"`
+}
+
+type EndpointInfoStatus struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Enabled     bool   `json:"enabled"`
+}
+
 // ProbesInfoResponse represents the response for /info/probes
 type ProbesInfoResponse struct {
 	Probes       []string          `json:"probes"`
@@ -960,6 +972,40 @@ func (h *HTTPSyncStrategy) handleInfoProbes(w http.ResponseWriter, r *http.Reque
 		Probes:       probes,
 		ProbeMetrics: probeMetrics,
 		TotalMetrics: totalMetrics,
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleInfoEndpoints provides discovery of available endpoints
+func (h *HTTPSyncStrategy) handleInfoEndpoints(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+	
+	if providedKey != h.agentKey {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	// Define all possible endpoints with their descriptions
+	allEndpoints := map[string]string{
+		"senhub": "SenHub native JSON format for time-series data",
+		"prtg":   "PRTG XML format for monitoring integration",
+		"nagios": "Nagios-compatible output format",
+	}
+	
+	var endpoints []EndpointInfoStatus
+	for name, description := range allEndpoints {
+		endpoints = append(endpoints, EndpointInfoStatus{
+			Name:        name,
+			Description: description,
+			Enabled:     h.enabledEndpoints[name],
+		})
+	}
+	
+	response := EndpointsInfoResponse{
+		Endpoints: endpoints,
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
