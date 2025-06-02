@@ -1969,7 +1969,7 @@ func (h *HTTPSyncStrategy) transformMetricNameForPRTG(key string, metric CachedM
 
 	// Map individual host probes to the "host" category
 	probeCategory := probeName
-	if probeName == "cpu" || probeName == "memory" || probeName == "network" || probeName == "logicaldisk" || probeName == "wifi_signal_strength" {
+	if probeName == "cpu" || probeName == "memory" || probeName == "network" || probeName == "wifi_signal_strength" {
 		probeCategory = "host"
 	}
 	
