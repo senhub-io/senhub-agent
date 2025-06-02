@@ -1,0 +1,195 @@
+/* SenHub Agent - Specialized Components */
+
+/* URL Generator */
+.url-generator {
+    background-color: var(--gray-100);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    margin: var(--spacing-md) 0;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.875rem;
+    word-break: break-all;
+    border: 1px solid var(--gray-300);
+    min-height: 3rem;
+    display: flex;
+    align-items: center;
+    position: relative;
+    transition: background-color 0.2s ease;
+}
+
+.url-generator:hover {
+    background-color: var(--gray-200);
+}
+
+/* Response Area */
+.result-area {
+    background-color: #1f2937;
+    color: #f9fafb;
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.875rem;
+    max-height: 400px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    border: 1px solid #374151;
+    line-height: 1.5;
+}
+
+.result-area::-webkit-scrollbar {
+    width: 8px;
+}
+
+.result-area::-webkit-scrollbar-track {
+    background: #374151;
+    border-radius: 4px;
+}
+
+.result-area::-webkit-scrollbar-thumb {
+    background: #6b7280;
+    border-radius: 4px;
+}
+
+.result-area::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+
+/* Loading states */
+.loading {
+    text-align: center;
+    padding: var(--spacing-xl);
+    color: var(--gray-600);
+    font-style: italic;
+}
+
+.loading::before {
+    content: '';
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--gray-300);
+    border-top: 2px solid var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: var(--spacing-sm);
+    vertical-align: middle;
+}
+
+/* Status indicators */
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-running {
+    background-color: #dcfce7;
+    color: var(--success-color);
+}
+
+.status-warning {
+    background-color: #fff3e0;
+    color: var(--warning-color);
+}
+
+.status-info {
+    background-color: #e0f7f7;
+    color: var(--primary-color);
+}
+
+.status-error {
+    background-color: #fef2f2;
+    color: var(--danger-color);
+}
+
+/* Error messages */
+.error {
+    background-color: #fef2f2;
+    color: var(--danger-color);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-md);
+    border: 1px solid #fecaca;
+}
+
+/* Success messages */
+.success {
+    background-color: #f0fdf4;
+    color: var(--success-color);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-md);
+    border: 1px solid #bbf7d0;
+}
+
+/* Badges */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1;
+}
+
+.badge-primary {
+    background-color: rgba(0, 188, 212, 0.1);
+    color: var(--primary-color);
+}
+
+.badge-secondary {
+    background-color: var(--gray-100);
+    color: var(--gray-700);
+}
+
+/* Tooltips */
+.tooltip {
+    position: relative;
+    cursor: help;
+}
+
+.tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--gray-900);
+    color: white;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 1000;
+}
+
+.tooltip:hover::after {
+    opacity: 1;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.pulse {
+    animation: pulse 2s ease-in-out infinite;
+}

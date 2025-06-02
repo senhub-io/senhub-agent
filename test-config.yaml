@@ -1,0 +1,12 @@
+agent:
+  key: "test-key-123"
+  
+storage:
+  - name: "http"
+    params:
+      port: 8080
+      
+probes:
+  - name: "host"
+    type: "host"
+    schedule: "30s"

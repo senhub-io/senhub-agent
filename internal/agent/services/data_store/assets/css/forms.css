@@ -1,0 +1,168 @@
+/* SenHub Agent - Form Components */
+
+.form-group {
+    margin-bottom: var(--spacing-md);
+}
+
+.form-label {
+    display: block;
+    margin-bottom: var(--spacing-sm);
+    font-weight: 500;
+    color: var(--gray-800);
+    font-size: 0.875rem;
+}
+
+.form-select, 
+.form-input {
+    width: 100%;
+    padding: var(--spacing-sm) 0.75rem;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    background-color: white;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-select:focus, 
+.form-input:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(0, 188, 212, 0.1);
+}
+
+.form-select:disabled, 
+.form-input:disabled {
+    background-color: var(--gray-100);
+    color: var(--gray-500);
+    cursor: not-allowed;
+}
+
+/* Tag Filters */
+.tags-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-sm);
+}
+
+.tag-filter-container {
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background: white;
+    transition: border-color 0.2s ease;
+}
+
+.tag-filter-container:hover {
+    border-color: var(--gray-300);
+}
+
+.tag-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-xs);
+}
+
+.tag-header input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+.tag-header label {
+    font-size: 0.875rem;
+    color: var(--gray-700);
+    cursor: pointer;
+    flex: 1;
+    font-weight: 500;
+}
+
+.mode-select {
+    font-size: 0.75rem;
+    padding: 0.125rem 0.25rem;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-sm);
+    min-width: 100px;
+    background: white;
+}
+
+/* Multi-select values container */
+.values-container {
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-xs);
+    margin-top: var(--spacing-xs);
+    background: var(--gray-50);
+}
+
+.value-option {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem var(--spacing-xs);
+    font-size: 0.75rem;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.2s ease;
+}
+
+.value-option:hover {
+    background-color: var(--gray-100);
+}
+
+.value-option input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+.value-option label {
+    cursor: pointer;
+    flex: 1;
+    color: var(--gray-700);
+}
+
+.all-values-label {
+    font-weight: 600;
+    color: var(--primary-color) !important;
+}
+
+/* Expression container */
+.expression-container {
+    margin-top: var(--spacing-xs);
+}
+
+.expression-input {
+    width: 100%;
+    padding: var(--spacing-sm);
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    background: white;
+}
+
+.expression-help {
+    font-size: 0.65rem;
+    color: var(--gray-500);
+    display: block;
+    margin-top: 0.125rem;
+    font-style: italic;
+}
+
+/* Info notice */
+.info-notice {
+    background: linear-gradient(135deg, rgba(0, 188, 212, 0.1), rgba(0, 188, 212, 0.05));
+    border: 1px solid rgba(0, 188, 212, 0.2);
+    padding: var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--spacing-sm);
+    font-size: 0.75rem;
+}
+
+.info-notice code {
+    background: rgba(0, 188, 212, 0.1);
+    padding: 0.125rem 0.25rem;
+    border-radius: 2px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
