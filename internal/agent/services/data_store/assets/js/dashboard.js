@@ -36,7 +36,7 @@ class Dashboard {
         this.resourceMemory = this.base.$('#resource-memory');
         this.resourceGoroutines = this.base.$('#resource-goroutines');
         this.resourceCacheTtl = this.base.$('#resource-cache-ttl');
-        this.resourceTotalMetrics = this.base.$('#resource-total-metrics');
+        this.resourceCpuUsage = this.base.$('#resource-cpu-usage');
         
         // Probes
         this.probesCount = this.base.$('#probes-count');
@@ -112,8 +112,11 @@ class Dashboard {
             this.resourceGoroutines.textContent = resources.goroutines.toString();
         }
         
+        if (resources.cpu_percent !== undefined) {
+            this.resourceCpuUsage.textContent = `${resources.cpu_percent.toFixed(1)}%`;
+        }
+        
         this.resourceCacheTtl.textContent = cache.ttl || 'unknown';
-        this.resourceTotalMetrics.textContent = cache.total_metrics || '0';
     }
 
     updateProbesList(probesData) {
