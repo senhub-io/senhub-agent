@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="agent-key" content="{{.AgentKey}}">
+    <title>SenHub Agent - Dashboard</title>
+    
+    <!-- CSS Assets -->
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/variables.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/base.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/layout.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/forms.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/buttons.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/components.css">
+    
+    <style>
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        .status-running {
+            background-color: #dcfce7;
+            color: var(--success-color);
+        }
+        
+        .status-warning {
+            background-color: #fff3e0;
+            color: var(--warning-color);
+        }
+        
+        .status-info {
+            background-color: #e0f7f7;
+            color: var(--primary-color);
+        }
+        
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--gray-200);
+        }
+        
+        .metric-row:last-child {
+            border-bottom: none;
+        }
+        
+        .metric-label {
+            font-weight: 500;
+            color: var(--gray-700);
+        }
+        
+        .metric-value {
+            color: var(--gray-900);
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+        
+        .probe-list {
+            list-style: none;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .probe-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--gray-200);
+        }
+        
+        .probe-item:last-child {
+            border-bottom: none;
+        }
+        
+        .probe-info {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .probe-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        
+        .probe-status.active {
+            background-color: var(--success-color);
+        }
+        
+        .probe-status.inactive {
+            background-color: var(--warning-color);
+        }
+        
+        .probe-name {
+            font-weight: 500;
+        }
+        
+        .probe-metrics {
+            color: var(--gray-600);
+            font-size: 0.875rem;
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+        
+        .health-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .nav-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+        
+        .refresh-info {
+            text-align: center;
+            color: var(--gray-500);
+            font-size: 0.875rem;
+            margin-top: 1rem;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: var(--gray-600);
+        }
+        
+        .error {
+            background-color: #fef2f2;
+            color: var(--danger-color);
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            border-left: 4px solid var(--danger-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
+            SenHub Agent Dashboard
+        </h1>
+        <div class="nav-breadcrumb">
+            Dashboard
+        </div>
+    </div>
+    
+    <div class="container">
+        <div id="loading" class="loading">
+            <div>⏳ Loading agent status...</div>
+        </div>
+        
+        <div id="error" class="error" style="display: none;">
+            ❌ Failed to load agent status. Please check if the agent is running.
+            <div style="margin-top: 0.5rem; font-size: 0.875rem;">
+                <a href="#" onclick="loadDashboard()" style="color: inherit; text-decoration: underline;">Click to retry</a>
+            </div>
+        </div>
+        
+        <div id="content" style="display: none;">
+            <!-- Status Overview -->
+            <div class="dashboard-grid">
+                <!-- Agent Status -->
+                <div class="card">
+                    <h2>🚀 Agent Status</h2>
+                    <div class="health-status">
+                        <div class="status-indicator" id="agent-status-indicator">
+                            <span>●</span>
+                            <span id="agent-status">Loading...</span>
+                        </div>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Version</span>
+                        <span class="metric-value" id="agent-version">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Port</span>
+                        <span class="metric-value" id="agent-port">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Uptime</span>
+                        <span class="metric-value" id="agent-uptime">-</span>
+                    </div>
+                </div>
+                
+                <!-- Health Check -->
+                <div class="card">
+                    <h2>💊 Health Check</h2>
+                    <div class="metric-row">
+                        <span class="metric-label">HTTP Server</span>
+                        <span class="metric-value" id="health-http">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Cache</span>
+                        <span class="metric-value" id="health-cache">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Metrics</span>
+                        <span class="metric-value" id="health-metrics">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Last Check</span>
+                        <span class="metric-value" id="health-timestamp">-</span>
+                    </div>
+                </div>
+                
+                <!-- Resources -->
+                <div class="card">
+                    <h2>📊 Resources</h2>
+                    <div class="metric-row">
+                        <span class="metric-label">Memory Usage</span>
+                        <span class="metric-value" id="resource-memory">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Goroutines</span>
+                        <span class="metric-value" id="resource-goroutines">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Cache TTL</span>
+                        <span class="metric-value" id="resource-cache-ttl">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Total Metrics</span>
+                        <span class="metric-value" id="resource-total-metrics">-</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Probes Status -->
+            <div class="card">
+                <h2>🔍 Active Probes</h2>
+                <div style="margin-bottom: 1rem;">
+                    <span class="metric-label">Total Probes: </span>
+                    <span class="metric-value" id="probes-count">-</span>
+                </div>
+                <ul id="probes-list" class="probe-list">
+                    <!-- Probes will be loaded here -->
+                </ul>
+                <div id="no-probes" style="display: none; text-align: center; color: var(--gray-500); padding: 2rem;">
+                    No active probes found. Check your configuration.
+                </div>
+            </div>
+            
+            <!-- Navigation -->
+            <div class="nav-buttons">
+                <a href="/web/{{.AgentKey}}/explorer" class="btn btn-primary">
+                    🔍 API Explorer
+                </a>
+                <a href="/web/{{.AgentKey}}/admin" class="btn btn-secondary">
+                    ⚙️ Administration
+                </a>
+                <a href="/health" class="btn btn-secondary" target="_blank">
+                    💊 Health Endpoint
+                </a>
+                <a href="/api/{{.AgentKey}}/info/system" class="btn btn-secondary" target="_blank">
+                    📊 System API
+                </a>
+            </div>
+            
+            <div class="refresh-info">
+                🔄 Auto-refresh every 30 seconds
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript -->
+    <script>
+        // Make agent key available globally
+        window.AGENT_KEY = '{{.AgentKey}}';
+    </script>
+    <script src="/web/{{.AgentKey}}/assets/js/base.js"></script>
+    <script src="/web/{{.AgentKey}}/assets/js/dashboard.js"></script>
+</body>
+</html>
