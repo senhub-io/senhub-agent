@@ -46,13 +46,21 @@ metrics:
 
   # CPU Usage Metrics (cross-platform - in percentages)
   - name: "cpu_usage_total"
-    channel: "cpu_total_usage"
+    channel: "cpu_usage_total"
     display_name: "CPU Total Usage"
     unit: "%"
     
+  # Per-core CPU Usage (Unix/Linux)
+  - name: "cpu_core_usage"
+    channel: "cpu_core_usage"
+    display_name: "CPU Core {core} Usage"
+    unit: "%"
+    multi_instance_labels: ["core"]
+    description: "CPU usage percentage per core"
+    
   # Windows-specific CPU Metrics (in percentages)
   - name: "processor_time"
-    channel: "cpu_core_usage"
+    channel: "processor_time"
     display_name: "CPU {instance} Usage"
     unit: "%"
     multi_instance_labels: ["instance", "core"]
