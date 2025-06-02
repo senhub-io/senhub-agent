@@ -25,15 +25,39 @@
 .result-area {
     background-color: #1f2937;
     color: #f9fafb;
-    padding: var(--spacing-md);
+    padding: var(--spacing-sm);
     border-radius: var(--radius-md);
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     font-size: 0.875rem;
+    min-height: 100px;
     max-height: 400px;
     overflow-y: auto;
     white-space: pre-wrap;
     border: 1px solid #374151;
-    line-height: 1.5;
+    line-height: 1.4;
+}
+
+/* When result-area has placeholder or loading, center the content */
+.result-area.centered {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Placeholder text styling */
+.result-area .placeholder-text {
+    color: #9ca3af;
+    font-style: italic;
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+/* Loading text styling */
+.result-area .loading-text {
+    color: #6b7280;
+    font-style: italic;
+    font-size: 0.8rem;
+    text-align: center;
 }
 
 .result-area::-webkit-scrollbar {
