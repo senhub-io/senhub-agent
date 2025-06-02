@@ -4,15 +4,139 @@ SenHub Agent is a powerful monitoring and observability agent that collects metr
 
 [![Build Status](https://github.com/senhub-io/senhubagent/actions/workflows/go-test.yml/badge.svg)](https://github.com/senhub-io/senhubagent/actions/workflows/go-test.yml)
 
-## Installation
+## 🚀 Quick Start
 
-### For Development
+### Offline Mode (Recommended for Quick Testing)
 
 ```bash
-make install
+# Download and install
+wget https://releases.senhub.io/agent/latest/senhub-agent-linux-amd64
+chmod +x senhub-agent-linux-amd64
+
+# Install in offline mode with HTTPS
+sudo ./senhub-agent-linux-amd64 install --offline --enable-https
+
+# Start the agent
+sudo ./senhub-agent-linux-amd64 start
+
+# Access your dashboard
+open https://localhost:8443/web/{agentkey}/dashboard
 ```
 
-### Build
+**📚 [5-Minute Setup Guide](QUICK-START-OFFLINE.md)** | **📖 [Complete Offline Documentation](OFFLINE-MODE.md)**
+
+### Online Mode (SenHub Platform)
+
+```bash
+# Install with platform integration
+sudo ./senhub-agent run --authentication-key <your_key> --server-url "https://your-server-url.com"
+```
+
+## 📋 Documentation
+
+### User Guides
+- **[🏃 Quick Start (5 min)](QUICK-START-OFFLINE.md)** - Get running in 5 minutes
+- **[💻 Offline Mode Guide](OFFLINE-MODE.md)** - Complete standalone deployment guide
+- **[🔒 HTTPS Configuration](HTTPS-CONFIGURATION.md)** - TLS/SSL setup and security
+- **[🛠️ Troubleshooting](TROUBLESHOOTING-OFFLINE.md)** - Common issues and solutions
+
+### Developer Resources
+- **[👨‍💻 Development Guide](CLAUDE.md)** - Architecture, development, and build instructions
+- **[📝 Logging System](LOGGING.md)** - Advanced logging and debugging
+- **[🔌 Probe Configuration](PROBE-CONFIGURATION.md)** - Configure monitoring probes
+- **[🏷️ Redfish Metrics](REDFISH-METRICS.md)** - Hardware monitoring documentation
+
+## ✨ Key Features
+
+### 🌐 Dual Mode Operation
+- **Online Mode**: Integrated with SenHub platform for centralized management
+- **Offline Mode**: Standalone operation with local web interface and APIs
+
+### 📊 Comprehensive Monitoring
+- **System Metrics**: CPU, memory, disk, network monitoring
+- **Hardware Monitoring**: Server hardware via Redfish (iDRAC, iLO, BMC)
+- **Application Monitoring**: Website performance and availability
+- **Event Collection**: Syslog, Windows events, custom events
+- **OpenTelemetry**: Metrics, traces, and logs collection
+
+### 🔌 Multiple API Formats
+- **PRTG Network Monitor**: Native integration
+- **Nagios/Icinga**: Status codes and performance data
+- **Prometheus**: Metrics for Grafana dashboards
+- **SenHub**: Native platform format
+
+### 🔒 Security & TLS
+- **Auto-generated certificates** for quick HTTPS setup
+- **Custom certificate support** for production deployments
+- **TLS 1.2/1.3 support** with secure cipher suites
+- **Automatic certificate renewal**
+
+### 🌍 Cross-Platform
+- **Linux**: Full support (systemd, init.d)
+- **Windows**: Windows Service integration
+- **macOS**: LaunchDaemon support
+- **Docker**: Container-ready deployment
+
+## 🛠️ Installation Methods
+
+### Binary Installation
+
+```bash
+# Linux
+wget https://releases.senhub.io/agent/latest/senhub-agent-linux-amd64
+chmod +x senhub-agent-linux-amd64
+sudo mv senhub-agent-linux-amd64 /usr/local/bin/agent
+
+# Windows
+curl -O https://releases.senhub.io/agent/latest/senhub-agent-windows-amd64.exe
+
+# macOS
+curl -O https://releases.senhub.io/agent/latest/senhub-agent-darwin-amd64
+```
+
+### Package Managers
+
+```bash
+# Ubuntu/Debian
+wget -qO- https://packages.senhub.io/key.asc | sudo apt-key add -
+echo "deb https://packages.senhub.io/ubuntu focal main" | sudo tee /etc/apt/sources.list.d/senhub.list
+sudo apt update && sudo apt install senhub-agent
+
+# CentOS/RHEL
+sudo yum install -y https://packages.senhub.io/rpm/senhub-agent-latest.rpm
+
+# Homebrew (macOS)
+brew tap senhub/tap
+brew install senhub-agent
+```
+
+### Docker
+
+```bash
+# Offline mode
+docker run -d \
+  --name senhub-agent \
+  -p 8443:8443 \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  senhub/agent:latest --offline --enable-https
+
+# Online mode  
+docker run -d \
+  --name senhub-agent \
+  -e SENHUB_KEY="your-key" \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  senhub/agent:latest
+```
+
+## 🔧 Development
+
+### Build Requirements
+
+- Go 1.23.2+
+- Make
+- Git
+
+### Build Commands
 
 ```bash
 # Standard build for your platform
@@ -22,25 +146,15 @@ make build
 make build-windows    # Windows build
 make build-linux      # Linux build
 make build-darwin     # macOS build
-```
 
-## Running the Project
+# Cross-compile all platforms
+make build-all
 
-You need to have Go installed on your machine (Go 1.23.2+ recommended).
+# Run tests
+make test
 
-### Development Mode
-
-```bash
+# Development with live reload
 make watch
-```
-
-This will start the project in development mode with live reloading on code changes.
-
-### Production Mode
-
-```bash
-make build
-./senhub-agent run --authentication-key <your_key> --server-url "https://your-server-url.com"
 ```
 
 ### Debug Logging with DebugLogShipper

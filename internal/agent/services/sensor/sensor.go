@@ -22,24 +22,24 @@ type Sensor interface {
 }
 
 type sensor struct {
-	startedProbes []*probes.ProbePoller
-	addDataPoint  data_store.AddCallback
-	remoteConfig  *configuration.RemoteConfiguration
-	logger        *logger.Logger
+	startedProbes  []*probes.ProbePoller
+	addDataPoint   data_store.AddCallback
+	configProvider configuration.ConfigurationProvider
+	logger         *logger.Logger
 }
 
 // NewSensor creates a new Sensor instance
 func NewSensor(
 	addDataPoint data_store.AddCallback,
-	remoteConfig *configuration.RemoteConfiguration,
+	configProvider configuration.ConfigurationProvider,
 	logger *logger.Logger,
 ) Sensor {
 	localLogger := logger.With().Str("service", "Sensor").Logger()
 	return &sensor{
-		startedProbes: []*probes.ProbePoller{},
-		addDataPoint:  addDataPoint,
-		remoteConfig:  remoteConfig,
-		logger:        &localLogger,
+		startedProbes:  []*probes.ProbePoller{},
+		addDataPoint:   addDataPoint,
+		configProvider: configProvider,
+		logger:         &localLogger,
 	}
 }
 
@@ -50,7 +50,7 @@ func (s *sensor) GetName() string {
 // SyncConfiguration synchronizes probes with current configuration
 func (s *sensor) SyncConfiguration() error {
 	validProbeIds := []string{}
-	probeConfigs := s.remoteConfig.GetConfiguration().Probes
+	probeConfigs := s.configProvider.GetConfiguration().Probes
 
 	for _, probeConfig := range probeConfigs {
 		probeId := probes.GenerateProbeId(probeConfig)
@@ -100,7 +100,7 @@ func (s *sensor) Start(quitChannel chan struct{}) error {
 	}
 
 	s.logger.Info().Msg("Starting sensor service")
-	s.remoteConfig.OnConfigChanged(func(string) { s.SyncConfiguration() })
+	s.configProvider.OnConfigChanged(func(string) { s.SyncConfiguration() })
 	return nil
 }
 

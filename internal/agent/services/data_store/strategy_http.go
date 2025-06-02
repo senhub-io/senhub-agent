@@ -35,6 +35,9 @@ type HTTPSyncStrategy struct {
 	enabledEndpoints    map[string]bool // monitoring tools to expose
 	nagiosConfig        *NagiosConfig   // cached Nagios configuration
 	nagiosConfigMu      sync.RWMutex    // mutex for nagios config access
+	// TLS configuration
+	tlsEnabled          bool
+	tlsMinVersion       string
 }
 
 // MetricCache stores the latest metrics in memory with TTL, organized like a TSDB
@@ -103,6 +106,13 @@ type SenHubMetric struct {
 	ProbeName   string            `json:"probe_name" yaml:"probe_name"`
 	Tags        map[string]string `json:"tags" yaml:"tags"`
 	Description string            `json:"description,omitempty" yaml:"description,omitempty"`
+}
+
+// SenHubResponse wraps SenHub metrics with status information
+type SenHubResponse struct {
+	Metrics []SenHubMetric `json:"metrics"`
+	Status  string         `json:"status"`
+	Message string         `json:"message"`
 }
 
 // PRTGRequest represents the POST body for PRTG endpoints
@@ -252,8 +262,13 @@ func NewHTTPSyncStrategy(
 
 	// Override port if specified in params
 	if portValue, exists := params["port"]; exists {
-		if port, ok := portValue.(float64); ok {
-			strategy.port = int(port)
+		switch v := portValue.(type) {
+		case float64:
+			strategy.port = int(v)
+		case int:
+			strategy.port = v
+		case int64:
+			strategy.port = int(v)
 		}
 	}
 
@@ -280,6 +295,27 @@ func NewHTTPSyncStrategy(
 		strategy.enabledEndpoints["senhub"] = true
 	}
 
+	// Parse TLS configuration
+	if tlsParam, exists := params["tls"]; exists {
+		if tlsConfig, ok := tlsParam.(map[string]interface{}); ok {
+			// TLS enabled
+			if enabled, exists := tlsConfig["enabled"]; exists {
+				if enabledBool, ok := enabled.(bool); ok {
+					strategy.tlsEnabled = enabledBool
+				}
+			}
+			
+			// Min TLS version (with default)
+			if minVersion, exists := tlsConfig["min_tls_version"]; exists {
+				if minVersionStr, ok := minVersion.(string); ok {
+					strategy.tlsMinVersion = minVersionStr
+				}
+			} else if strategy.tlsEnabled {
+				strategy.tlsMinVersion = "1.2"
+			}
+		}
+	}
+
 	return strategy
 }
 
@@ -297,8 +333,25 @@ func (h *HTTPSyncStrategy) GetStrategyParams() map[string]interface{} {
 func (h *HTTPSyncStrategy) ValidateConfigParams(params configuration.StorageConfigParams) error {
 	// Validate port if provided
 	if portValue, exists := params["port"]; exists {
-		if _, ok := portValue.(float64); !ok {
-			return fmt.Errorf("port must be a number")
+		var port int
+		switch v := portValue.(type) {
+		case int:
+			port = v
+		case int64:
+			port = int(v)
+		case float64:
+			// Accept float64 only if it's a whole number (for JSON compatibility)
+			if v != float64(int(v)) {
+				return fmt.Errorf("port must be an integer")
+			}
+			port = int(v)
+		default:
+			return fmt.Errorf("port must be an integer")
+		}
+		
+		// Validate port range
+		if port < 1 || port > 65535 {
+			return fmt.Errorf("port must be between 1 and 65535")
 		}
 	}
 	
@@ -337,13 +390,34 @@ func (h *HTTPSyncStrategy) Start() error {
 
 	// Start server in goroutine
 	go func() {
-		h.logger.Info().
-			Str("address", address).
-			Int("port", h.port).
-			Str("bind_address", h.bindAddress).
-			Msg("HTTP server listening")
-		if err := h.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			h.logger.Error().Err(err).Msg("HTTP server error")
+		if h.tlsEnabled {
+			// Fixed certificate paths generated during installation
+			certFile := "./certs/agent-cert.pem"
+			keyFile := "./certs/agent-key.pem"
+			
+			h.logger.Info().
+				Str("address", address).
+				Int("port", h.port).
+				Str("bind_address", h.bindAddress).
+				Bool("tls_enabled", true).
+				Str("cert_file", certFile).
+				Str("key_file", keyFile).
+				Str("min_tls_version", h.tlsMinVersion).
+				Msg("HTTPS server listening")
+			
+			if err := h.server.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
+				h.logger.Error().Err(err).Msg("HTTPS server error")
+			}
+		} else {
+			h.logger.Info().
+				Str("address", address).
+				Int("port", h.port).
+				Str("bind_address", h.bindAddress).
+				Bool("tls_enabled", false).
+				Msg("HTTP server listening")
+			if err := h.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				h.logger.Error().Err(err).Msg("HTTP server error")
+			}
 		}
 	}()
 
@@ -543,6 +617,15 @@ func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 		router.HandleFunc("/api/{agentkey}/prometheus/metrics", h.handlePrometheusMetricsGET).Methods("GET")
 	}
 
+	// Web UI routes
+	router.HandleFunc("/web/{agentkey}/", h.handleWebDashboard).Methods("GET")
+	router.HandleFunc("/web/{agentkey}/explorer", h.handleWebExplorer).Methods("GET")
+	router.HandleFunc("/web/{agentkey}/docs", h.handleWebDocs).Methods("GET")
+	router.HandleFunc("/web/{agentkey}/admin", h.handleWebAdmin).Methods("GET")
+	
+	// Static assets
+	router.PathPrefix("/web/{agentkey}/assets/").HandlerFunc(h.handleWebAssets).Methods("GET")
+
 	return router
 }
 
@@ -565,9 +648,16 @@ func (h *HTTPSyncStrategy) handleSenHubMetricsGET(w http.ResponseWriter, r *http
 	// Get metrics from cache for the specified probe and convert to SenHub format
 	senHubMetrics := h.getSenHubMetricsForProbe(probeName)
 
+	// Create wrapped response
+	response := SenHubResponse{
+		Metrics: senHubMetrics,
+		Status:  "success",
+		Message: fmt.Sprintf("Retrieved %d metrics for probe %s", len(senHubMetrics), probeName),
+	}
+
 	// Send response
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(senHubMetrics); err != nil {
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		h.logger.Error().Err(err).Msg("Failed to encode SenHub metrics response")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -2841,4 +2931,89 @@ func (h *HTTPSyncStrategy) handlePrometheusMetricsGET(w http.ResponseWriter, r *
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusNotImplemented)
 	w.Write([]byte("# Prometheus format endpoint not yet implemented\n"))
+}
+
+// Web UI Handlers
+
+func (h *HTTPSyncStrategy) handleWebDashboard(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	agentKey := vars["agentkey"]
+	
+	if !h.validateAgentKey(agentKey) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	// For now, redirect to explorer
+	http.Redirect(w, r, "/web/"+agentKey+"/explorer", http.StatusTemporaryRedirect)
+}
+
+func (h *HTTPSyncStrategy) handleWebExplorer(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	agentKey := vars["agentkey"]
+	
+	if !h.validateAgentKey(agentKey) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	// Create asset handler
+	assetHandler := NewAssetHandler(agentKey)
+	
+	// Render API Explorer template
+	html, err := assetHandler.RenderTemplate("api-explorer")
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to render API Explorer template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(html))
+}
+
+func (h *HTTPSyncStrategy) handleWebDocs(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	agentKey := vars["agentkey"]
+	
+	if !h.validateAgentKey(agentKey) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	// TODO: Implement docs template
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte("<h1>API Documentation</h1><p>Coming soon...</p>"))
+}
+
+func (h *HTTPSyncStrategy) handleWebAdmin(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	agentKey := vars["agentkey"]
+	
+	if !h.validateAgentKey(agentKey) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	// TODO: Implement admin template
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte("<h1>Administration</h1><p>Coming soon...</p>"))
+}
+
+func (h *HTTPSyncStrategy) handleWebAssets(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	agentKey := vars["agentkey"]
+	
+	if !h.validateAgentKey(agentKey) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	// Create asset handler and serve the requested asset
+	assetHandler := NewAssetHandler(agentKey)
+	assetHandler.ServeAsset(w, r, r.URL.Path)
+}
+
+func (h *HTTPSyncStrategy) validateAgentKey(providedKey string) bool {
+	return providedKey == h.agentKey
 }

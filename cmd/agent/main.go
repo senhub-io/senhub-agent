@@ -7,13 +7,17 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/kardianos/service"
 	"senhub-agent.go/internal/agent"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/configuration"
+	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
 
 type program struct {
@@ -109,7 +113,7 @@ func main() {
 			serviceArgs = os.Args[2:]
 		}
 
-		// For install and run commands, we need authentication key
+		// For install and run commands, we need authentication key OR offline mode
 		if (command == "install" || command == "run") && len(serviceArgs) == 0 {
 			showHelp()
 			return
@@ -133,27 +137,98 @@ func main() {
 			showHelp()
 			return
 		}
+		
+		// Auto-detect offline mode if no mode specified but config file exists
+		if !args.Offline && args.AuthenticationKey == "" {
+			configPath := args.ConfigPath
+			if configPath == "" {
+				configPath = "./agent-config.yaml"
+			}
+			if _, err := os.Stat(configPath); err == nil {
+				fmt.Printf("📋 Detected offline configuration file: %s\n", configPath)
+				fmt.Printf("🔄 Automatically switching to offline mode\n")
+				args.Offline = true
+				args.ConfigPath = configPath
+			}
+		}
+		
 		runAgent(args)
 	}
 }
 
 func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
-	// Check for required auth key when installing
-	if command == "install" && args.AuthenticationKey == "" {
-		fmt.Println("Error: Authentication key is required for installation")
+	// Check for required auth key when installing (unless offline mode)
+	if command == "install" && args.AuthenticationKey == "" && !args.Offline {
+		fmt.Println("Error: Authentication key is required for installation (or use --offline)")
 		fmt.Printf("\nUsage: %s install --authentication-key YOUR_KEY\n", os.Args[0])
+		fmt.Printf("    or: %s install --offline\n", os.Args[0])
 		os.Exit(1)
 	}
 
+	// Build service arguments based on mode
+	var serviceArgs []string
+	
+	if args.Offline {
+		// Offline mode: only add basic offline parameters
+		// All other configuration (HTTPS, ports, etc.) will be read from config file
+		serviceArgs = append(serviceArgs, "--offline")
+		if args.ConfigPath != "" {
+			serviceArgs = append(serviceArgs, "--config-path", args.ConfigPath)
+		}
+	} else {
+		// Online mode: add authentication key and server URL
+		serviceArgs = append(serviceArgs, "--authentication-key", args.AuthenticationKey)
+		if args.ServerUrl != "" {
+			serviceArgs = append(serviceArgs, "--server-url", args.ServerUrl)
+		}
+	}
+	
+	// Add common optional arguments
+	if args.Verbose {
+		serviceArgs = append(serviceArgs, "--verbose")
+	}
+	if len(args.DebugModules) > 0 {
+		serviceArgs = append(serviceArgs, "--debug-modules", strings.Join(args.DebugModules, ","))
+	}
+
+	// Get the directory where the agent binary is located
+	executablePath, err := os.Executable()
+	if err != nil {
+		fmt.Printf("Error getting executable path: %v\n", err)
+		os.Exit(1)
+	}
+	workingDir := filepath.Dir(executablePath)
+
+	// Convert config path to absolute if it's relative
+	configPath := args.ConfigPath
+	if configPath == "" {
+		configPath = "./agent-config.yaml"
+	}
+	if !filepath.IsAbs(configPath) {
+		configPath = filepath.Join(workingDir, configPath)
+	}
+
+	// Update service arguments with absolute paths
+	if args.Offline {
+		// Update the config path argument to absolute path
+		for i, arg := range serviceArgs {
+			if arg == "--config-path" && i+1 < len(serviceArgs) {
+				serviceArgs[i+1] = configPath
+				break
+			}
+		}
+	}
+
 	svcConfig := &service.Config{
-		Name:        "senhub-agent",
-		DisplayName: "SenHub Agent",
-		Description: "SenHub Agent Service for monitoring and management",
-		Executable:  os.Args[0],
-		Arguments:   []string{"--authentication-key", args.AuthenticationKey},
+		Name:             "senhub-agent",
+		DisplayName:      "SenHub Agent",
+		Description:      "SenHub Agent Service for monitoring and management",
+		Executable:       executablePath,
+		Arguments:        serviceArgs,
+		WorkingDirectory: workingDir,
 		Option: map[string]interface{}{
 			"LogOutput":   true,
-			"User":        "senhub",
+			"User":        "root",
 			"ServiceName": "senhub-agent.service",
 			"SystemdScript": true,
 			"Restart":      "always",
@@ -167,14 +242,6 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			"RestartDelay":          10000,
 			"Actions":               []string{"restart"},
 		},
-	}
-
-	// Add optional arguments to service config
-	if args.ServerUrl != "" {
-		svcConfig.Arguments = append(svcConfig.Arguments, "--server-url", args.ServerUrl)
-	}
-	if args.Verbose {
-		svcConfig.Arguments = append(svcConfig.Arguments, "--verbose")
 	}
 
 	prg := &program{
@@ -193,6 +260,22 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		err = s.Install()
 		if err == nil {
 			fmt.Println("Service installed successfully")
+			
+			// Generate offline configuration if in offline mode
+			if args.Offline {
+				if err := generateOfflineConfiguration(args); err != nil {
+					fmt.Printf("Warning: Failed to generate offline configuration: %v\n", err)
+				} else {
+					fmt.Printf("✅ Offline configuration generated: %s\n", args.ConfigPath)
+					if args.EnableHttps {
+						fmt.Printf("✅ HTTPS certificates generated in ./certs/\n")
+						fmt.Printf("\nAccess your agent at: https://localhost:%d/web/{agentkey}/dashboard\n", args.HttpsPort)
+					} else {
+						fmt.Printf("\nAccess your agent at: http://localhost:8080/web/{agentkey}/dashboard\n")
+					}
+				}
+			}
+			
 			fmt.Printf("\nYou can now start the service with:\n    %s start\n", os.Args[0])
 		}
 	case "uninstall":
@@ -207,9 +290,14 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			}
 			time.Sleep(2 * time.Second)
 		}
+		
+		// Uninstall the service
 		err = s.Uninstall()
 		if err == nil {
 			fmt.Println("Service uninstalled successfully")
+			
+			// Clean up files and directories
+			cleanupFiles(args)
 		}
 	case "start":
 		err = s.Start()
@@ -227,6 +315,32 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			fmt.Printf("Service status: %s\n", getServiceStatusText(status))
 		}
 	case "run":
+		// Auto-detect offline mode if no mode specified but config file exists
+		if !args.Offline && args.AuthenticationKey == "" {
+			configPath := args.ConfigPath
+			if configPath == "" {
+				configPath = "./agent-config.yaml"
+			}
+			if _, err := os.Stat(configPath); err == nil {
+				fmt.Printf("📋 Detected offline configuration file: %s\n", configPath)
+				fmt.Printf("🔄 Automatically switching to offline mode\n")
+				args.Offline = true
+				args.ConfigPath = configPath
+			}
+		}
+		
+		// Check if configuration file exists when running in offline mode
+		if args.Offline {
+			if _, err := os.Stat(args.ConfigPath); os.IsNotExist(err) {
+				fmt.Printf("Error: Configuration file not found: %s\n", args.ConfigPath)
+				fmt.Printf("\nIn offline mode, you must first install the agent to generate the configuration:\n")
+				fmt.Printf("    %s install --offline\n", os.Args[0])
+				fmt.Printf("\nThen you can run the agent:\n")
+				fmt.Printf("    %s run --offline\n", os.Args[0])
+				os.Exit(1)
+			}
+		}
+		
 		runAgent(args)
 		return
 	}
@@ -244,6 +358,9 @@ func runAgent(args *cliArgs.ParsedArgs) {
 		log.Println("Verbose logging enabled")
 	}
 
+	// Create logger early for better logging
+	appLogger := agentLogger.NewLogger(args)
+
 	svcConfig := &service.Config{
 		Name:        "SenHubService",
 		DisplayName: "SenHub Agent Service",
@@ -260,19 +377,19 @@ func runAgent(args *cliArgs.ParsedArgs) {
 		log.Fatal(err)
 	}
 
-	logger, err := s.Logger(nil)
+	svcLogger, err := s.Logger(nil)
 	if err != nil {
-		log.Fatal(err)
+		appLogger.Fatal().Err(err).Msg("Failed to create service logger")
 	}
 
 	// Interactive mode (run command or direct execution)
 	if service.Interactive() {
-		log.Println("Running in interactive mode")
+		appLogger.Info().Msg("Running in interactive mode")
 
 		// Start agent directly
 		if err := prg.Start(s); err != nil {
-			logger.Error("Failed to start agent: ", err)
-			log.Fatal(err)
+			appLogger.Error().Err(err).Msg("Failed to start agent")
+			os.Exit(1)
 		}
 
 		// Setup signal handling
@@ -281,23 +398,23 @@ func runAgent(args *cliArgs.ParsedArgs) {
 
 		go func() {
 			sig := <-sigChan
-			log.Printf("Received signal %v, initiating shutdown...", sig)
+			appLogger.Info().Str("signal", sig.String()).Msg("Received signal, initiating shutdown")
 			if err := prg.Stop(s); err != nil {
-				logger.Error("Error stopping service: ", err)
+				appLogger.Error().Err(err).Msg("Error stopping service")
 			}
 		}()
 
 		// Wait for completion
 		<-prg.done
-		log.Println("Agent stopped")
+		appLogger.Info().Msg("Agent stopped")
 		return
 	}
 
 	// Normal service mode
-	logger.Info("Starting service")
+	svcLogger.Info("Starting service")
 	if err := s.Run(); err != nil {
-		logger.Error("Error running service: ", err)
-		log.Fatal(err)
+		svcLogger.Error("Error running service: ", err)
+		appLogger.Fatal().Err(err).Msg("Service failed to run")
 	}
 }
 
@@ -318,20 +435,32 @@ func showHelp() {
 	fmt.Printf(`Usage: %s [command] [options]
 
 Service Commands:
-    install     Install the service (requires --authentication-key)
+    install     Install the service (requires --authentication-key OR --offline)
     uninstall   Remove the service
     start       Start the service
     stop        Stop the service
     status      Show service status
     version     Show agent version
-    run         Run in console mode (requires --authentication-key)
+    run         Run in console mode (requires --authentication-key OR --offline)
     update      Update the agent to given version (default: latest)
 
 Agent Options:
-    --authentication-key KEY                Authentication key for the service (required)
+    --authentication-key KEY                Authentication key for the service
     --server-url URL                       Server URL (optional)
     --verbose                              Enable verbose logging (debug level for all key modules)
     --debug-modules module1,module2        Enable debug logging only for specific modules
+
+Offline Mode Options:
+    --offline                              Run in offline mode with local configuration
+    --config-path PATH                     Path to local configuration file (default: ./agent-config.yaml)
+
+HTTPS/TLS Options (for offline mode):
+    --enable-https                         Enable HTTPS for HTTP strategy
+    --https-port PORT                      HTTPS port (default: 8443)
+    --https-hosts HOST1,HOST2              Hostnames for certificate SAN (default: localhost,127.0.0.1)
+    --cert-file PATH                       Path to custom TLS certificate file
+    --key-file PATH                        Path to custom TLS private key file
+    --min-tls-version VERSION              Minimum TLS version (1.2, 1.3) (default: 1.2)
 
 Debug Log Shipper Options:
     --debug-log-shipper-url URL            URL of remote log collection endpoint
@@ -339,15 +468,101 @@ Debug Log Shipper Options:
     --debug-log-shipper-buffer SIZE        Buffer size for logs before sending (default: 100)
 
 Examples:
+    Online Mode:
     %s install --authentication-key "your-key"
+    %s run --authentication-key "your-key" --server-url "http://example.com"
+    %s run --authentication-key "your-key" --verbose --debug-modules strategy.http,cache
+    
+    Offline Mode:
+    %s install --offline
+    %s install --offline --enable-https --https-hosts "agent.company.com,192.168.1.100"
+    %s install --offline --enable-https --cert-file /path/to/cert.pem --key-file /path/to/key.pem
+    %s run --offline --config-path /etc/senhub-agent/config.yaml
+    %s run --offline --enable-https --verbose
+    
+    Service Management:
     %s start
     %s status
-    %s run --authentication-key "your-key" --server-url "http://example.com"
-    %s run --authentication-key "your-key" --verbose
-    %s run --authentication-key "your-key" --verbose --debug-modules strategy.http,cache
-    %s run --authentication-key "your-key" --debug-log-shipper-url "http://logserver:9428"
-    %s update 1.0.0"
-    %s update latest"
+    %s update latest
 
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+}
+
+// generateOfflineConfiguration creates the offline configuration file and certificates
+func generateOfflineConfiguration(args *cliArgs.ParsedArgs) error {
+	// Import the configuration package
+	appLogger := agentLogger.NewLogger(args)
+	
+	// Create local configuration instance
+	localConfig := configuration.NewLocalConfiguration(args, appLogger)
+	
+	// Start the local configuration to trigger creation
+	quitChannel := make(chan struct{})
+	defer close(quitChannel)
+	
+	if err := localConfig.Start(quitChannel); err != nil {
+		return fmt.Errorf("failed to create configuration: %w", err)
+	}
+	
+	return nil
+}
+
+// cleanupFiles removes configuration files, logs, and certificates during uninstall
+func cleanupFiles(args *cliArgs.ParsedArgs) {
+	var filesToRemove []string
+	var dirsToRemove []string
+	
+	// Configuration file
+	configPath := args.ConfigPath
+	if configPath == "" {
+		configPath = "./agent-config.yaml"
+	}
+	if _, err := os.Stat(configPath); err == nil {
+		filesToRemove = append(filesToRemove, configPath)
+	}
+	
+	// Certificate directory
+	certsDir := "./certs"
+	if _, err := os.Stat(certsDir); err == nil {
+		dirsToRemove = append(dirsToRemove, certsDir)
+	}
+	
+	// Log files and directory
+	logPaths := []string{
+		"/Library/Logs/SenHub",           // macOS
+		"/var/log/senhub-agent",          // Linux
+		"C:\\ProgramData\\SenHub\\Logs",  // Windows
+		"./logs",                         // Local logs if any
+	}
+	
+	for _, logPath := range logPaths {
+		if _, err := os.Stat(logPath); err == nil {
+			dirsToRemove = append(dirsToRemove, logPath)
+		}
+	}
+	
+	// Remove files
+	for _, file := range filesToRemove {
+		if err := os.Remove(file); err != nil {
+			fmt.Printf("Warning: Could not remove %s: %v\n", file, err)
+		} else {
+			fmt.Printf("✅ Removed: %s\n", file)
+		}
+	}
+	
+	// Remove directories
+	for _, dir := range dirsToRemove {
+		if err := os.RemoveAll(dir); err != nil {
+			fmt.Printf("Warning: Could not remove directory %s: %v\n", dir, err)
+		} else {
+			fmt.Printf("✅ Removed directory: %s\n", dir)
+		}
+	}
+	
+	if len(filesToRemove) == 0 && len(dirsToRemove) == 0 {
+		fmt.Println("✅ No additional files to clean up")
+	} else {
+		fmt.Printf("\n🧹 Cleanup completed - removed %d files and %d directories\n", 
+			len(filesToRemove), len(dirsToRemove))
+	}
 }

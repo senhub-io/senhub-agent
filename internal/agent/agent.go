@@ -36,9 +36,11 @@ type agent struct {
 	senhubServer        server.Server
 	agentConfiguration  configuration.AgentConfiguration
 	remoteConfiguration *configuration.RemoteConfiguration
+	localConfiguration  *configuration.LocalConfiguration
 	store               data_store.DataStore
 	sensors             sensor.Sensor
 	updater             auto_update.AutoUpdate
+	isOfflineMode       bool
 }
 
 // NewAgent initializes new agent with required services
@@ -52,40 +54,73 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 	logger := logger.NewLogger(args)
 	logger.Debug().Any("args", args).Msg("Agent configuration")
 
+	// Auto-detect mode based on configuration file existence and auth key
+	isOfflineMode := detectAgentMode(args, logger)
+
+	// Initialize configuration provider based on mode
+	var configProvider configuration.ConfigurationProvider
+	var remoteConfiguration *configuration.RemoteConfiguration
+	var localConfiguration *configuration.LocalConfiguration
+	var senhubServer server.Server
+	var agentKey string
+
+	if isOfflineMode {
+		logger.Info().Msg("Initializing agent in offline mode")
+		localConfiguration = configuration.NewLocalConfiguration(args, logger)
+		configProvider = localConfiguration
+		
+		// Get the agent key directly from the local configuration data
+		agentKey = localConfiguration.GetAgentKey()
+		if agentKey == "" {
+			// Fallback to args if config doesn't have a key
+			agentKey = args.AuthenticationKey
+			if agentKey == "" {
+				agentKey = "offline-pending" // Last resort temporary value
+			}
+		}
+	} else {
+		agentKey = args.AuthenticationKey
+		logger.Info().Msg("Initializing agent in online mode")
+	}
+
+	// Create agent configuration with the correct key
 	agentConfiguration := configuration.NewAgentConfiguration(
-		args.AuthenticationKey,
+		agentKey,
 		args.ServerUrl,
 		logger,
 	)
 
-	senhubServer := server.NewServer(
-		agentConfiguration.GetAuthenticationKey(),
-		agentConfiguration.GetServerUrl(),
-		logger,
-	)
-
-	remoteConfiguration := configuration.NewRemoteConfiguration(
-		senhubServer,
-		logger,
-	)
+	if !isOfflineMode {
+		senhubServer = server.NewServer(
+			agentConfiguration.GetAuthenticationKey(),
+			agentConfiguration.GetServerUrl(),
+			logger,
+		)
+		remoteConfiguration = configuration.NewRemoteConfiguration(senhubServer, logger)
+		configProvider = remoteConfiguration
+	}
 
 	store := data_store.NewDataStore(
 		agentConfiguration,
-		remoteConfiguration,
+		configProvider,
 		logger,
 	)
 
 	sensors := sensor.NewSensor(
 		store.GetCallback(),
-		remoteConfiguration,
+		configProvider,
 		logger,
 	)
 
-	updater := auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
-		RemoteConfig: remoteConfiguration,
-		Logger:       logger,
-		DryRun:       false,
-	})
+	var updater auto_update.AutoUpdate
+	if !isOfflineMode {
+		// Only create auto-updater in online mode
+		updater = auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
+			RemoteConfig: remoteConfiguration,
+			Logger:       logger,
+			DryRun:       false,
+		})
+	}
 
 	return agent{
 		startedServices:     &[]Service{},
@@ -94,18 +129,32 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		senhubServer:        senhubServer,
 		agentConfiguration:  agentConfiguration,
 		remoteConfiguration: remoteConfiguration,
+		localConfiguration:  localConfiguration,
 		store:               store,
 		sensors:             sensors,
 		updater:             updater,
+		isOfflineMode:       isOfflineMode,
 	}
 }
 
 func (a agent) Start() error {
-	servicesToStart := []Service{
-		a.remoteConfiguration,
-		a.store,
-		a.sensors,
-		a.updater,
+	var servicesToStart []Service
+	
+	if a.isOfflineMode {
+		// Offline mode: start local configuration, store, and sensors
+		servicesToStart = []Service{
+			a.localConfiguration,
+			a.store,
+			a.sensors,
+		}
+	} else {
+		// Online mode: start remote configuration, store, sensors, and updater
+		servicesToStart = []Service{
+			a.remoteConfiguration,
+			a.store,
+			a.sensors,
+			a.updater,
+		}
 	}
 
 	var errors []error
@@ -174,4 +223,45 @@ func (a agent) handleStartError() {
 		a.logger.Error().Err(err).Msg("Error sending SIGTERM signal")
 		log.Fatal(err)
 	}
+}
+
+// detectAgentMode automatically determines if the agent should run in offline or online mode
+func detectAgentMode(args *agentCliArgs.ParsedArgs, logger *logger.Logger) bool {
+	// If offline mode is explicitly set, respect it
+	if args.Offline {
+		logger.Info().Msg("Offline mode explicitly requested")
+		return true
+	}
+	
+	// Check if configuration file exists
+	configPath := args.ConfigPath
+	if configPath == "" {
+		configPath = "./agent-config.yaml"
+	}
+	
+	if _, err := os.Stat(configPath); err == nil {
+		// Config file exists - auto-detect offline mode
+		logger.Info().
+			Str("config_path", configPath).
+			Msg("Configuration file detected - automatically switching to offline mode")
+		
+		// Update args to reflect the detected mode
+		args.Offline = true
+		args.ConfigPath = configPath
+		return true
+	}
+	
+	// No config file - check if we have auth key for online mode
+	if args.AuthenticationKey == "" {
+		logger.Error().
+			Str("config_path", configPath).
+			Msg("No configuration file found and no authentication key provided")
+		logger.Info().Msg("To run in offline mode: install the agent first with 'install --offline'")
+		logger.Info().Msg("To run in online mode: provide authentication key with '--authentication-key YOUR_KEY'")
+		log.Fatal("Cannot determine agent mode - need either config file or authentication key")
+	}
+	
+	// Have auth key but no config file - online mode
+	logger.Info().Msg("Authentication key provided - running in online mode")
+	return false
 }
