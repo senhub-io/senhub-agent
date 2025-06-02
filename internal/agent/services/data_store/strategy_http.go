@@ -619,6 +619,7 @@ func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 
 	// Web UI routes
 	router.HandleFunc("/web/{agentkey}/", h.handleWebDashboard).Methods("GET")
+	router.HandleFunc("/web/{agentkey}/dashboard", h.handleWebDashboard).Methods("GET") // Compatibility alias
 	router.HandleFunc("/web/{agentkey}/explorer", h.handleWebExplorer).Methods("GET")
 	router.HandleFunc("/web/{agentkey}/docs", h.handleWebDocs).Methods("GET")
 	router.HandleFunc("/web/{agentkey}/admin", h.handleWebAdmin).Methods("GET")
