@@ -68,8 +68,14 @@ func (ah *AssetHandler) parseTemplates() {
 		}
 	}
 	
+	// Parse Documentation template
+	if tmplContent, err := htmlFiles.ReadFile("assets/html/docs.html"); err == nil {
+		if tmpl, err := template.New("docs").Parse(string(tmplContent)); err == nil {
+			ah.templates["docs"] = tmpl
+		}
+	}
+	
 	// Add more templates here as needed
-	// - docs.html
 	// - admin.html
 }
 

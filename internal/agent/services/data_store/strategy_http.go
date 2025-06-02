@@ -3155,9 +3155,16 @@ func (h *HTTPSyncStrategy) handleWebDocs(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	
-	// TODO: Implement docs template
+	// Render the documentation template
+	content, err := h.assetHandler.RenderTemplate("docs")
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to render docs template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte("<h1>API Documentation</h1><p>Coming soon...</p>"))
+	w.Write([]byte(content))
 }
 
 func (h *HTTPSyncStrategy) handleWebAdmin(w http.ResponseWriter, r *http.Request) {
