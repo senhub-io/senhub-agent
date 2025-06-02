@@ -25,6 +25,9 @@ var jsFiles embed.FS
 //go:embed assets/html/*.html
 var htmlFiles embed.FS
 
+//go:embed web/logo-senhubagent.png
+var logoFile embed.FS
+
 // Template data structure
 type TemplateData struct {
 	AgentKey string
@@ -103,10 +106,9 @@ func (ah *AssetHandler) ServeAsset(w http.ResponseWriter, r *http.Request, asset
 		contentType = "application/javascript"
 		
 	case strings.HasSuffix(filePath, "logo.png"):
-		// Serve the logo file (need to implement logo embedding)
-		// For now, return a placeholder or error
-		http.NotFound(w, r)
-		return
+		// Serve the embedded logo file
+		content, err = logoFile.ReadFile("web/logo-senhubagent.png")
+		contentType = "image/png"
 		
 	default:
 		http.NotFound(w, r)
