@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -38,6 +40,8 @@ type HTTPSyncStrategy struct {
 	nagiosConfigMu      sync.RWMutex    // mutex for nagios config access
 	startTime           time.Time       // agent start time for uptime calculation
 	assetHandler        *AssetHandler   // asset handler for templates and static files
+	lastCPUTime         time.Duration   // last CPU time measurement
+	lastCPUMeasurement  time.Time       // last CPU measurement timestamp
 	// TLS configuration
 	tlsEnabled          bool
 	tlsMinVersion       string
@@ -1102,7 +1106,7 @@ func (h *HTTPSyncStrategy) handleInfoSystem(w http.ResponseWriter, r *http.Reque
 		},
 		Resources: ResourcesInfo{
 			MemoryUsageMB: memUsageMB,
-			CPUPercent:    0.0, // TODO: implement CPU monitoring
+			CPUPercent:    h.getCPUUsage(),
 			Goroutines:    runtime.NumGoroutine(),
 		},
 	}
@@ -1124,6 +1128,116 @@ func formatDuration(d time.Duration) string {
 	} else {
 		return fmt.Sprintf("%dm", minutes)
 	}
+}
+
+// getCPUUsage calculates the CPU usage percentage for the current process
+func (h *HTTPSyncStrategy) getCPUUsage() float64 {
+	// Get current process CPU usage
+	pid := os.Getpid()
+	
+	// Read CPU times from /proc/pid/stat on Linux/Unix
+	var currentCPUTime time.Duration
+	var err error
+	
+	switch runtime.GOOS {
+	case "linux":
+		currentCPUTime, err = h.getCPUTimeLinux(pid)
+	case "darwin":
+		currentCPUTime, err = h.getCPUTimeDarwin(pid)
+	default:
+		// Fallback: return 0 for unsupported platforms
+		return 0.0
+	}
+	
+	if err != nil {
+		h.logger.Debug().Err(err).Msg("Failed to get CPU time")
+		return 0.0
+	}
+	
+	now := time.Now()
+	
+	// If this is the first measurement, store the values and return 0
+	if h.lastCPUMeasurement.IsZero() {
+		h.lastCPUTime = currentCPUTime
+		h.lastCPUMeasurement = now
+		return 0.0
+	}
+	
+	// Calculate CPU usage percentage
+	cpuTimeDelta := currentCPUTime - h.lastCPUTime
+	wallTimeDelta := now.Sub(h.lastCPUMeasurement)
+	
+	// Update stored values for next calculation
+	h.lastCPUTime = currentCPUTime
+	h.lastCPUMeasurement = now
+	
+	if wallTimeDelta == 0 {
+		return 0.0
+	}
+	
+	// CPU percentage = (CPU time delta / wall time delta) * 100
+	cpuPercent := float64(cpuTimeDelta) / float64(wallTimeDelta) * 100.0
+	
+	// Cap at 100% (can exceed on multi-core systems)
+	if cpuPercent > 100.0 {
+		cpuPercent = 100.0
+	}
+	
+	return cpuPercent
+}
+
+// getCPUTimeLinux reads CPU time from /proc/pid/stat on Linux
+func (h *HTTPSyncStrategy) getCPUTimeLinux(pid int) (time.Duration, error) {
+	statFile := fmt.Sprintf("/proc/%d/stat", pid)
+	data, err := os.ReadFile(statFile)
+	if err != nil {
+		return 0, err
+	}
+	
+	fields := strings.Fields(string(data))
+	if len(fields) < 15 {
+		return 0, fmt.Errorf("insufficient fields in /proc/stat")
+	}
+	
+	// Fields 13 and 14 contain user and system CPU time in clock ticks
+	utime, err := strconv.ParseInt(fields[13], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	
+	stime, err := strconv.ParseInt(fields[14], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	
+	// Convert clock ticks to time duration
+	// Get clock ticks per second (usually 100 on most Linux systems)
+	clockTicks := int64(100)
+	
+	totalTicks := utime + stime
+	totalNanos := (totalTicks * int64(time.Second)) / clockTicks
+	
+	return time.Duration(totalNanos), nil
+}
+
+// getCPUTimeDarwin reads CPU time on macOS (simplified approach)
+func (h *HTTPSyncStrategy) getCPUTimeDarwin(pid int) (time.Duration, error) {
+	// On macOS, we can use the rusage syscall for the current process
+	if pid != os.Getpid() {
+		return 0, fmt.Errorf("can only get CPU time for current process on macOS")
+	}
+	
+	var rusage syscall.Rusage
+	err := syscall.Getrusage(syscall.RUSAGE_SELF, &rusage)
+	if err != nil {
+		return 0, err
+	}
+	
+	// User time + System time
+	userTime := time.Duration(rusage.Utime.Sec)*time.Second + time.Duration(rusage.Utime.Usec)*time.Microsecond
+	systemTime := time.Duration(rusage.Stime.Sec)*time.Second + time.Duration(rusage.Stime.Usec)*time.Microsecond
+	
+	return userTime + systemTime, nil
 }
 
 // handleInfoTags provides tag discovery for a specific probe
