@@ -6,56 +6,56 @@ metrics:
   # Filesystem Size Metrics (in bytes)
   - name: "fs_total_bytes"
     channel: "fs_total_bytes"
-    display_name: "Fs Total Bytes ({mount_point})"
+    display_name: "Total Bytes ({mount_point})"
     unit: "bytes"
     multi_instance_labels: ["device", "mount_point"]
     
   - name: "fs_free_bytes"
     channel: "fs_free_bytes"
-    display_name: "Fs Free Bytes ({mount_point})"
+    display_name: "Free Bytes ({mount_point})"
     unit: "bytes"
     multi_instance_labels: ["device", "mount_point"]
     
   - name: "fs_used_bytes"
     channel: "fs_used_bytes"
-    display_name: "Fs Used Bytes ({mount_point})"
+    display_name: "Used Bytes ({mount_point})"
     unit: "bytes"
     multi_instance_labels: ["device", "mount_point"]
     
   - name: "fs_available_bytes"
     channel: "fs_available_bytes"
-    display_name: "Fs Available Bytes ({mount_point})"
+    display_name: "Available Bytes ({mount_point})"
     unit: "bytes"
     multi_instance_labels: ["device", "mount_point"]
 
   # Filesystem Usage Percentage
   - name: "fs_used_percent"
     channel: "fs_used_percent"
-    display_name: "Fs Used Percent ({mount_point})"
+    display_name: "Used Percent ({mount_point})"
     unit: "%"
     multi_instance_labels: ["device", "mount_point"]
 
   # Inode Metrics
   - name: "fs_inodes_total"
     channel: "fs_inodes_total"
-    display_name: "Fs Inodes Total ({mount_point})"
+    display_name: "Inodes Total ({mount_point})"
     unit: "#"
     multi_instance_labels: ["device", "mount_point"]
     
   - name: "fs_inodes_free"
     channel: "fs_inodes_free"
-    display_name: "Fs Inodes Free ({mount_point})"
+    display_name: "Inodes Free ({mount_point})"
     unit: "#"
     multi_instance_labels: ["device", "mount_point"]
     
   - name: "fs_inodes_used"
     channel: "fs_inodes_used"
-    display_name: "Fs Inodes Used ({mount_point})"
+    display_name: "Inodes Used ({mount_point})"
     unit: "#"
     multi_instance_labels: ["device", "mount_point"]
     
   - name: "fs_inodes_used_percent"
     channel: "fs_inodes_used_percent"
-    display_name: "Fs Inodes Used Percent ({mount_point})"
+    display_name: "Inodes Used Percent ({mount_point})"
     unit: "%"
     multi_instance_labels: ["device", "mount_point"]
