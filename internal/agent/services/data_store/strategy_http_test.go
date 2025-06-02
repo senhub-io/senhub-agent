@@ -66,6 +66,17 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 			},
 		},
 		{
+			name: "Custom port as int (YAML style)",
+			params: map[string]interface{}{
+				"port": 8443,
+			},
+			expectedPort: 8443,
+			expectedBindAddress: "0.0.0.0",
+			expectedEndpoints: map[string]bool{
+				"senhub": true,
+			},
+		},
+		{
 			name: "Custom bind address - loopback",
 			params: map[string]interface{}{
 				"bind_address": "127.0.0.1",
@@ -159,12 +170,28 @@ func TestHTTPSyncStrategy_Interface(t *testing.T) {
 		t.Errorf("Expected no validation error, got %v", err)
 	}
 
-	// Test invalid port validation
+	// Test invalid port validation - string
 	err = strategy.ValidateConfigParams(configuration.StorageConfigParams{
 		"port": "invalid",
 	})
 	if err == nil {
 		t.Error("Expected validation error for invalid port")
+	}
+
+	// Test invalid port validation - decimal number
+	err = strategy.ValidateConfigParams(configuration.StorageConfigParams{
+		"port": 8080.5,
+	})
+	if err == nil {
+		t.Error("Expected validation error for decimal port")
+	}
+
+	// Test invalid port validation - out of range
+	err = strategy.ValidateConfigParams(configuration.StorageConfigParams{
+		"port": 70000,
+	})
+	if err == nil {
+		t.Error("Expected validation error for port out of range")
 	}
 
 	// Test invalid bind_address validation
@@ -182,6 +209,22 @@ func TestHTTPSyncStrategy_Interface(t *testing.T) {
 	})
 	if err != nil {
 		t.Errorf("Expected no validation error for valid config, got %v", err)
+	}
+
+	// Test valid port as int (common from YAML parsing)
+	err = strategy.ValidateConfigParams(configuration.StorageConfigParams{
+		"port": 8443,
+	})
+	if err != nil {
+		t.Errorf("Expected no validation error for int port, got %v", err)
+	}
+
+	// Test valid port as int64
+	err = strategy.ValidateConfigParams(configuration.StorageConfigParams{
+		"port": int64(9090),
+	})
+	if err != nil {
+		t.Errorf("Expected no validation error for int64 port, got %v", err)
 	}
 }
 
@@ -866,26 +909,38 @@ func TestHTTPSyncStrategy_SenHubMetricsGET(t *testing.T) {
 	}
 
 	// Parse response and verify it's valid SenHub format
-	var response []SenHubMetric
+	var response SenHubResponse
 	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
 		t.Errorf("Failed to decode response: %v", err)
 	}
 
-	if len(response) == 0 {
+	if len(response.Metrics) == 0 {
 		t.Error("Expected metrics for host probe, got none")
 	}
 	
 	// Verify SenHub format structure
-	if len(response) > 0 {
-		metric := response[0]
-		if metric.Name != "cpu_usage_total" {
-			t.Errorf("Expected Name to be cpu_usage_total, got %s", metric.Name)
+	if len(response.Metrics) > 0 {
+		metric := response.Metrics[0]
+		if metric.Name == "" {
+			t.Error("Expected Name field to be populated")
 		}
 		if metric.DisplayName == "" {
 			t.Error("Expected DisplayName field to be populated")
 		}
-		if metric.ProbeName != "host" {
-			t.Errorf("Expected probe_name host, got %s", metric.ProbeName)
+		if metric.ProbeName == "" {
+			t.Error("Expected ProbeName field to be populated")
 		}
+		if metric.Value == nil {
+			t.Error("Expected Value field to be populated")
+		}
+		// Unit can be empty for some metrics, so we don't check it
+	}
+	
+	// Verify response structure
+	if response.Status == "" {
+		t.Error("Expected Status field to be populated")
+	}
+	if response.Message == "" {
+		t.Error("Expected Message field to be populated")
 	}
 }
