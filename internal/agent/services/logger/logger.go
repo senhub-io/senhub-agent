@@ -147,8 +147,8 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 		logger = buildProductionLogger(args, config)
 	}
 
-	// Enable debug level logging if verbose mode is requested
-	if args.Verbose {
+	// Enable debug level logging if verbose mode is requested OR debug modules are specified
+	if args.Verbose || len(args.DebugModules) > 0 {
 		// If specific debug modules are specified, only enable those (selective mode)
 		if len(args.DebugModules) > 0 {
 			// Activate selective debug mode
