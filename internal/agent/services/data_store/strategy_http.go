@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,6 +36,7 @@ type HTTPSyncStrategy struct {
 	enabledEndpoints    map[string]bool // monitoring tools to expose
 	nagiosConfig        *NagiosConfig   // cached Nagios configuration
 	nagiosConfigMu      sync.RWMutex    // mutex for nagios config access
+	startTime           time.Time       // agent start time for uptime calculation
 	// TLS configuration
 	tlsEnabled          bool
 	tlsMinVersion       string
@@ -252,6 +254,7 @@ func NewHTTPSyncStrategy(
 		bindAddress:         "0.0.0.0", // Default to all interfaces
 		transformerRegistry: transformers.NewTransformerRegistry(moduleLogger.Logger),
 		enabledEndpoints:    make(map[string]bool),
+		startTime:           time.Now(), // Initialize start time for uptime calculation
 		cache: &MetricCache{
 			timeSeries:  make(map[string]CachedMetric),
 			probeIndex:  make(map[string]map[string]bool),
@@ -580,6 +583,7 @@ func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 
 	// Discovery endpoints (with agentkey authentication)
 	router.HandleFunc("/api/{agentkey}/info/endpoints", h.handleInfoEndpoints).Methods("GET")
+	router.HandleFunc("/api/{agentkey}/info/system", h.handleInfoSystem).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/probes", h.handleInfoProbes).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/tags/{probe}", h.handleInfoTags).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/schema/{probe}", h.handleInfoSchema).Methods("GET")
@@ -872,6 +876,14 @@ type HealthResponse struct {
 	MetricsCached int   `json:"metrics_cached"`
 }
 
+// HealthCheckResponse represents detailed health information for system info
+type HealthCheckResponse struct {
+	Status    string            `json:"status"`
+	Timestamp int64             `json:"timestamp"`
+	Version   string            `json:"version"`
+	Services  map[string]string `json:"services"`
+}
+
 // handleHealth provides a comprehensive health check endpoint
 func (h *HTTPSyncStrategy) handleHealth(w http.ResponseWriter, r *http.Request) {
 	h.cache.mu.RLock()
@@ -904,6 +916,29 @@ type EndpointInfoStatus struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Enabled     bool   `json:"enabled"`
+}
+
+// SystemInfoResponse represents the response for /info/system
+type SystemInfoResponse struct {
+	Status      string             `json:"status"`
+	Version     string             `json:"version"`
+	Port        int                `json:"port"`
+	Uptime      string             `json:"uptime"`
+	Health      HealthCheckResponse `json:"health"`
+	Cache       CacheInfoResponse   `json:"cache"`
+	Resources   ResourcesInfo       `json:"resources"`
+}
+
+type CacheInfoResponse struct {
+	TotalMetrics int    `json:"total_metrics"`
+	TTL          string `json:"ttl"`
+	MemoryUsage  string `json:"memory_usage"`
+}
+
+type ResourcesInfo struct {
+	MemoryUsageMB float64 `json:"memory_usage_mb"`
+	CPUPercent    float64 `json:"cpu_percent"`
+	Goroutines    int     `json:"goroutines"`
 }
 
 // ProbesInfoResponse represents the response for /info/probes
@@ -1010,6 +1045,83 @@ func (h *HTTPSyncStrategy) handleInfoEndpoints(w http.ResponseWriter, r *http.Re
 	
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// handleInfoSystem provides system status and resource information
+func (h *HTTPSyncStrategy) handleInfoSystem(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	providedKey := vars["agentkey"]
+	
+	if providedKey != h.agentKey {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	// Calculate uptime
+	uptime := time.Since(h.startTime)
+	uptimeStr := formatDuration(uptime)
+	
+	// Get memory stats
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	memUsageMB := float64(memStats.Alloc) / 1024 / 1024
+	
+	// Get cache stats
+	h.cache.mu.RLock()
+	totalMetrics := 0
+	for _, tsKeys := range h.cache.probeIndex {
+		totalMetrics += len(tsKeys)
+	}
+	h.cache.mu.RUnlock()
+	
+	// Create health response (reuse existing health logic)
+	healthResponse := HealthCheckResponse{
+		Status:    "healthy",
+		Timestamp: time.Now().Unix(),
+		Version:   "0.1.24-beta", // TODO: get from build info
+		Services: map[string]string{
+			"http_server": "running",
+			"cache":       "running",
+			"metrics":     fmt.Sprintf("%d metrics cached", totalMetrics),
+		},
+	}
+	
+	// Build system info response
+	response := SystemInfoResponse{
+		Status:  "running",
+		Version: "0.1.24-beta", // TODO: get from build info
+		Port:    h.port,
+		Uptime:  uptimeStr,
+		Health:  healthResponse,
+		Cache: CacheInfoResponse{
+			TotalMetrics: totalMetrics,
+			TTL:          h.cache.ttl.String(),
+			MemoryUsage:  fmt.Sprintf("%.2f MB", memUsageMB),
+		},
+		Resources: ResourcesInfo{
+			MemoryUsageMB: memUsageMB,
+			CPUPercent:    0.0, // TODO: implement CPU monitoring
+			Goroutines:    runtime.NumGoroutine(),
+		},
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// formatDuration formats a duration in a human-readable format
+func formatDuration(d time.Duration) string {
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+	
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm", days, hours, minutes)
+	} else if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	} else {
+		return fmt.Sprintf("%dm", minutes)
+	}
 }
 
 // handleInfoTags provides tag discovery for a specific probe

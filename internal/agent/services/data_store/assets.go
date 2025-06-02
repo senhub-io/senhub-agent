@@ -54,6 +54,13 @@ func NewAssetHandler(agentKey string) *AssetHandler {
 
 // parseTemplates loads and parses all HTML templates
 func (ah *AssetHandler) parseTemplates() {
+	// Parse Dashboard template
+	if tmplContent, err := htmlFiles.ReadFile("assets/html/dashboard.html"); err == nil {
+		if tmpl, err := template.New("dashboard").Parse(string(tmplContent)); err == nil {
+			ah.templates["dashboard"] = tmpl
+		}
+	}
+	
 	// Parse API Explorer template
 	if tmplContent, err := htmlFiles.ReadFile("assets/html/api-explorer.html"); err == nil {
 		if tmpl, err := template.New("api-explorer").Parse(string(tmplContent)); err == nil {
@@ -172,6 +179,8 @@ func (ah *AssetHandler) listFiles(efs embed.FS, dir string) []string {
 // GetTemplateName gets the template name from a URL path
 func GetTemplateName(urlPath string) string {
 	switch {
+	case strings.Contains(urlPath, "/dashboard") || strings.HasSuffix(urlPath, "/"):
+		return "dashboard"
 	case strings.Contains(urlPath, "/explorer"):
 		return "api-explorer"
 	case strings.Contains(urlPath, "/docs"):
