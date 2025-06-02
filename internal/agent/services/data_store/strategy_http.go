@@ -104,13 +104,13 @@ func (h *HTTPSyncStrategy) generateTimeSeriesKey(probeName, metricName string, t
 
 // SenHubMetric represents a metric in standardized SenHub raw format
 type SenHubMetric struct {
-	Name        string            `json:"name" yaml:"name"`                   // Technical metric name
-	DisplayName string            `json:"display_name" yaml:"display_name"`   // Contextualized display name
+	Name        string            `json:"name,omitempty" yaml:"name"`                   // Technical metric name
+	Channel     string            `json:"channel" yaml:"channel"`                      // Transformed display name (main field)
 	Value       interface{}       `json:"value" yaml:"value"`
-	Unit        string            `json:"unit" yaml:"unit"`
-	Timestamp   time.Time         `json:"timestamp" yaml:"timestamp"`
-	ProbeName   string            `json:"probe_name" yaml:"probe_name"`
-	Tags        map[string]string `json:"tags" yaml:"tags"`
+	Unit        string            `json:"unit,omitempty" yaml:"unit"`
+	Timestamp   time.Time         `json:"timestamp,omitempty" yaml:"timestamp"`
+	ProbeName   string            `json:"probe_name,omitempty" yaml:"probe_name"`
+	Tags        map[string]string `json:"tags,omitempty" yaml:"tags"`
 	Description string            `json:"description,omitempty" yaml:"description,omitempty"`
 }
 
@@ -119,6 +119,7 @@ type SenHubResponse struct {
 	Metrics []SenHubMetric `json:"metrics"`
 	Status  string         `json:"status"`
 	Message string         `json:"message"`
+	Date    int64          `json:"date"` // Unix timestamp in milliseconds
 }
 
 // PRTGRequest represents the POST body for PRTG endpoints
@@ -662,8 +663,9 @@ func (h *HTTPSyncStrategy) handleSenHubMetricsGET(w http.ResponseWriter, r *http
 	// Create wrapped response
 	response := SenHubResponse{
 		Metrics: senHubMetrics,
-		Status:  "success",
-		Message: fmt.Sprintf("Retrieved %d metrics for probe %s", len(senHubMetrics), probeName),
+		Status:  "OK",
+		Message: "Metrics successfully retrieved.",
+		Date:    time.Now().UnixMilli(),
 	}
 
 	// Send response
@@ -1608,7 +1610,7 @@ func (h *HTTPSyncStrategy) getSenHubMetricsForProbe(probeName string) []SenHubMe
 		
 		h.logger.Debug().
 			Str("metric_name", metric.MetricName).
-			Str("display_name", senHubMetric.DisplayName).
+			Str("channel", senHubMetric.Channel).
 			Str("probe", metric.ProbeName).
 			Any("value", metric.Value).
 			Msg("✅ Converted to SenHub format")
@@ -1647,7 +1649,7 @@ func (h *HTTPSyncStrategy) convertToSenHubFormat(metric CachedMetric) SenHubMetr
 	
 	return SenHubMetric{
 		Name:        metric.MetricName,
-		DisplayName: displayName,
+		Channel:     displayName,
 		Value:       metric.Value,
 		Unit:        metric.Unit,
 		Timestamp:   metric.Timestamp,
