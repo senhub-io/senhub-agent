@@ -223,5 +223,218 @@ curl -X POST http://localhost:8080/api/{agentkey}/debug/logs \
 - DOCUMENTATION: See LOGGING.md for complete usage guide
 - BENEFITS: Targeted debugging, reduced log noise, runtime configuration without restart
 
+## Offline Mode Implementation (COMPLETED)
+
+### Overview
+The SenHub Agent now fully supports **offline mode** for zero-configuration deployment without requiring connectivity to the SenHub platform. This enables deployment in air-gapped environments, edge computing, local testing, and standalone monitoring scenarios.
+
+### Key Features Implemented
+- **Local Configuration System**: YAML-based configuration with automatic agent key generation
+- **HTTPS/TLS Support**: Auto-generated self-signed certificates or custom certificate support
+- **Comprehensive CLI**: Complete command-line interface for offline installation and management
+- **Web Interface**: Local dashboard with system overview, API explorer, and administration
+- **Multiple API Formats**: PRTG, Nagios, SenHub, and Prometheus-compatible endpoints
+- **Certificate Management**: Automatic generation, renewal, and secure storage
+- **Service Architecture**: Modified initialization to support both online and offline modes
+
+### Installation Examples
+
+#### Basic Offline Installation
+```bash
+# HTTP mode (localhost only)
+./agent install --offline
+./agent start
+# Access: http://localhost:8080/web/{agentkey}/dashboard
+```
+
+#### HTTPS with Auto-Generated Certificates
+```bash
+# HTTPS mode with self-signed certificates
+./agent install --offline --enable-https
+./agent start
+# Access: https://localhost:8443/web/{agentkey}/dashboard
+```
+
+#### Production HTTPS with Custom Certificates
+```bash
+# HTTPS with provided certificates
+./agent install --offline --enable-https \
+  --cert-file /path/to/cert.pem \
+  --key-file /path/to/key.pem \
+  --https-port 443 \
+  --min-tls-version 1.3
+```
+
+### CLI Options Added
+- `--offline`: Enable offline mode with local configuration
+- `--config-path PATH`: Specify configuration file location
+- `--enable-https`: Enable HTTPS with TLS encryption
+- `--https-port PORT`: Custom HTTPS port (default: 8443)
+- `--https-hosts HOSTS`: Hostnames for certificate SAN
+- `--cert-file PATH`: Custom TLS certificate file
+- `--key-file PATH`: Custom TLS private key file
+- `--min-tls-version VER`: Minimum TLS version (1.2, 1.3)
+
+### Architecture Changes
+- **ConfigurationProvider Interface**: Unified interface for remote and local configuration
+- **LocalConfiguration Service**: YAML-based configuration with agent key generation
+- **HTTP Strategy Enhanced**: Full TLS support with multiple certificate modes
+- **Service Initialization**: Modified to support offline mode (skips auto-updater)
+- **Data Store and Sensor**: Updated to work with both configuration providers
+
+### Generated Configuration Structure
+```yaml
+agent:
+  key: "offline-hostname-timestamp-random"
+  mode: offline
+  generated: true
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+      endpoints: ["prtg", "senhub", "web", "nagios"]
+      tls:  # If HTTPS enabled
+        enabled: true
+        mode: "auto"
+        auto_cert:
+          organization: "SenHub Agent"
+          common_name: "localhost"
+          san_hosts: ["localhost", "127.0.0.1"]
+          validity_days: 365
+
+probes:
+  - name: cpu
+    params: {interval: 30}
+  - name: memory
+    params: {interval: 30}
+  - name: network
+    params: {interval: 60}
+  - name: logicaldisk
+    params: {interval: 30}
+# Additional probes available as commented examples
+```
+
+### Documentation Created
+- **OFFLINE-MODE.md**: Comprehensive offline mode documentation
+- **HTTPS-CONFIGURATION.md**: Detailed TLS/HTTPS configuration guide
+- **QUICK-START-OFFLINE.md**: 5-minute setup guide for users
+
+### Security Features
+- **Agent Key Generation**: Machine fingerprint-based unique keys
+- **Self-Signed Certificates**: Automatic generation with configurable SAN
+- **TLS 1.2/1.3 Support**: Modern encryption with secure cipher suites
+- **Certificate Auto-Renewal**: Automatic renewal before expiration
+- **Secure File Permissions**: Proper certificate and key file protection
+
+### Integration Support
+- **PRTG Network Monitor**: JSON format with channels and limits
+- **Nagios/Icinga**: Status codes and performance data
+- **Grafana/Prometheus**: Metrics format for visualization
+- **Custom Monitoring**: RESTful APIs for any monitoring system
+
+### Files Created/Modified for Offline Mode
+- `internal/agent/services/configuration/localConfiguration.go` - Local YAML configuration system
+- `internal/agent/cliArgs/cliArgs.go` - Enhanced CLI arguments with offline options
+- `internal/agent/agent.go` - Modified service initialization for offline mode
+- `internal/agent/services/data_store/strategy_http.go` - Enhanced with TLS support
+- `cmd/agent/main.go` - Updated CLI with offline installation workflow
+- `OFFLINE-MODE.md` - Complete offline mode documentation
+- `HTTPS-CONFIGURATION.md` - TLS configuration guide
+- `QUICK-START-OFFLINE.md` - User quick start guide
+
 ## Version Tagging
 - IMPORTANT: Version tags should NOT include the "v" prefix (use "0.0.82-beta" instead of "v0.0.82-beta")
+
+## Configuration Management - Strategic Implementation Complete
+
+### Contexte actuel
+- Déploiement actuel : AgentKey fourni → Configuration via SenHub Platform
+- Processus : Créer agent dans SenHub → Configurer connecteur host → Déployer avec AgentKey
+- Limitation : Nécessite connectivité SenHub pour fonctionner
+
+### Vision : Agent autonome
+**Objectif** : Agent déployable complètement offline avec génération auto d'AgentKey et configuration minimale
+
+### Modes proposés
+1. **Mode Online (actuel)** : Agent → SenHub Platform → Config + Updates
+2. **Mode Offline** : Agent → AgentKey auto-généré → Config locale → Autonome
+3. **Mode Hybride** : Détection connectivité → Basculement auto online/offline
+
+### Avantages Mode Offline
+- ✅ Déploiement zéro-config réseau
+- ✅ Environments sécurisés sans Internet
+- ✅ Edge computing et IoT
+- ✅ Tests locaux sans compte SenHub
+- ✅ Résilience : fonctionnement continu même si SenHub indisponible
+
+### Inconvénients potentiels
+- ❌ Pas de centralisation des configurations
+- ❌ Mises à jour manuelles si offline permanent
+- ❌ Gestion AgentKey auto-générées (unicité, révocation)
+
+### Implémentation suggérée
+
+#### Génération AgentKey offline
+```go
+machineID := getMachineFingerprint() // MAC, hostname, etc.
+timestamp := time.Now().Unix()
+random := generateSecureRandom(8)
+agentKey := fmt.Sprintf("%s-%d-%s", machineID, timestamp, random)
+```
+
+#### Configuration par défaut
+```yaml
+agent:
+  key: auto-generated-key-here
+  mode: offline  # online, offline, hybrid
+probes:
+  - name: host
+    enabled: true
+    config:
+      metrics: [cpu, memory, network, logicaldisk]
+storage:
+  - name: local_files
+    params:
+      path: ./metrics/
+      format: json
+```
+
+#### Interface web locale
+- Configuration probes sans SenHub
+- Gestion connecteurs localement
+- Import/Export configurations
+- URL: http://localhost:8080/web/{agentkey}/config
+
+### Roadmap proposée
+
+#### Phase 1 : Mode Offline de base
+1. Génération AgentKey auto
+2. Configuration par défaut avec probe host
+3. Storage local (JSON/CSV)
+4. Interface web configuration
+
+#### Phase 2 : Mode Hybride
+1. Détection connectivité SenHub
+2. Basculement automatique online/offline
+3. Synchronisation configs quand online
+4. Cache local des configurations
+
+#### Phase 3 : Fonctionnalités avancées
+1. Export/Import configurations
+2. Clustering agents offline
+3. Proxy mode (agent online pour plusieurs offline)
+4. Configuration discovery automatique
+
+### Questions stratégiques à résoudre
+- Modèle économique : offline gratuit vs online premium ?
+- Support : identification/support agents offline
+- Migration : offline → online, import config locale vers SenHub
+- Télémétrie anonyme pour statistics usage
+
+### Conclusion
+Mode hybride optimal : combine simplicité offline + puissance online
+→ SenHub Agent universellement déployable préservant valeur ajoutée plateforme
+
+**Status** : Réflexion notée - À développer demain

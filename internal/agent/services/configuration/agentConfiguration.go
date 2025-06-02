@@ -2,6 +2,7 @@
 package configuration
 
 import (
+	"context"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -13,6 +14,15 @@ type AgentConfiguration interface {
 
 	// GetServerUrl returns server endpoint URL
 	GetServerUrl() string
+}
+
+// ConfigurationProvider defines interface for both remote and local configuration
+type ConfigurationProvider interface {
+	GetName() string
+	GetConfiguration() RemoteConfigurationData
+	OnConfigChanged(callback func(string))
+	Start(chan struct{}) error
+	Shutdown(context.Context) error
 }
 
 // agentConfiguration implements AgentConfiguration

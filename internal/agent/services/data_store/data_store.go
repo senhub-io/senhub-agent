@@ -58,23 +58,23 @@ type DataStore interface {
 type dataStore struct {
 	strategies   []SyncStrategy
 	logger       *logger.Logger
-	remoteConfig *configuration.RemoteConfiguration
+	configProvider configuration.ConfigurationProvider
 	agentConfig  configuration.AgentConfiguration
 }
 
 func NewDataStore(
 	agentConfig configuration.AgentConfiguration,
-	remoteConfig *configuration.RemoteConfiguration,
+	configProvider configuration.ConfigurationProvider,
 	logger *logger.Logger,
 ) DataStore {
 	localLogger := logger.With().Str("service", "DataStore").Logger()
 	localLogger.Debug().Msg("Creating new DataStore instance")
 
 	ds := &dataStore{
-		logger:       &localLogger,
-		remoteConfig: remoteConfig,
-		agentConfig:  agentConfig,
-		strategies:   make([]SyncStrategy, 0),
+		logger:         &localLogger,
+		configProvider: configProvider,
+		agentConfig:    agentConfig,
+		strategies:     make([]SyncStrategy, 0),
 	}
 	localLogger.Debug().Msg("DataStore instance created successfully")
 	return ds
@@ -181,7 +181,7 @@ func (d *dataStore) GetCallback() AddCallback {
 func (d *dataStore) Start(quitChannel chan struct{}) error {
 	d.logger.Debug().Msg("Starting DataStore service")
 	d.OnConfigRefreshed("initial")
-	d.remoteConfig.OnConfigChanged(d.OnConfigRefreshed)
+	d.configProvider.OnConfigChanged(d.OnConfigRefreshed)
 	return nil
 }
 
@@ -201,8 +201,19 @@ func (d *dataStore) Shutdown(ctx context.Context) error {
 }
 
 func (d *dataStore) GenerateStrategyId(strategyName string, params configuration.StorageConfigParams) string {
-	paramsBytes, err := json.Marshal(params)
-	if err != nil || len(params) == 0 {
+	// Convert map[interface{}]interface{} to map[string]interface{} if needed
+	fixedParams := d.convertMapTypes(params)
+	
+	paramsBytes, err := json.Marshal(fixedParams)
+	if err != nil {
+		d.logger.Error().
+			Err(err).
+			Str("strategy", strategyName).
+			Any("params", params).
+			Msg("marshaling error: failed to marshal strategy parameters - using empty config")
+		paramsBytes = []byte("{}")
+	}
+	if len(params) == 0 {
 		paramsBytes = []byte("{}")
 	}
 
@@ -210,6 +221,35 @@ func (d *dataStore) GenerateStrategyId(strategyName string, params configuration
 	hash := md5.New()
 	hash.Write([]byte(input))
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+// convertMapTypes recursively converts map[interface{}]interface{} to map[string]interface{}
+// This fixes YAML parsing issues where Go unmarshals maps with interface{} keys
+func (d *dataStore) convertMapTypes(input interface{}) interface{} {
+	switch v := input.(type) {
+	case map[interface{}]interface{}:
+		result := make(map[string]interface{})
+		for key, value := range v {
+			if keyStr, ok := key.(string); ok {
+				result[keyStr] = d.convertMapTypes(value)
+			}
+		}
+		return result
+	case map[string]interface{}:
+		result := make(map[string]interface{})
+		for key, value := range v {
+			result[key] = d.convertMapTypes(value)
+		}
+		return result
+	case []interface{}:
+		result := make([]interface{}, len(v))
+		for i, item := range v {
+			result[i] = d.convertMapTypes(item)
+		}
+		return result
+	default:
+		return v
+	}
 }
 
 // OnConfigRefreshed updates strategy configurations based on remote changes.
@@ -222,7 +262,7 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 
 	newStrategies := make(map[string]SyncStrategy)
 
-	for _, storageConfig := range d.remoteConfig.GetConfiguration().StorageConfig {
+	for _, storageConfig := range d.configProvider.GetConfiguration().StorageConfig {
 		strategy := d.retrieveOrCreate(storageConfig)
 		if strategy != nil {
 			newStrategies[strategy.GetStrategyName()] = strategy
@@ -274,8 +314,9 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		localLogger.Debug().Msg("Initializing event strategy")
 		strategy = NewEventSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger)
 	case "http":
-		localLogger.Debug().Msg("Initializing http strategy")
+		localLogger.Debug().Msg("Initializing HTTP strategy")
 		strategy = NewHTTPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger)
+		localLogger.Debug().Bool("initialized", strategy != nil).Msg("HTTP strategy created")
 	default:
 		localLogger.Error().
 			Any("params", strategyConfig.Params).
