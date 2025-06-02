@@ -223,7 +223,8 @@ class APIExplorer {
         const url = this.getCurrentURL().replace(window.location.origin, '');
         const endpointType = this.endpointTypeSelect?.value;
         
-        this.responseArea.textContent = 'Loading...';
+        this.responseArea.className = 'result-area centered';
+        this.responseArea.innerHTML = '<span class="loading-text">Loading...</span>';
         this.copyResponseBtn.disabled = true;
         
         try {
@@ -237,10 +238,13 @@ class APIExplorer {
                 responseText = JSON.stringify(jsonData, null, 2);
             }
             
+            // Remove centered class and set content
+            this.responseArea.className = 'result-area';
             this.responseArea.textContent = responseText;
             this.copyResponseBtn.disabled = false;
             
         } catch (error) {
+            this.responseArea.className = 'result-area centered';
             this.responseArea.textContent = `Error: ${error.message}`;
             this.copyResponseBtn.disabled = true;
         }
@@ -255,7 +259,8 @@ class APIExplorer {
     }
 
     clearResponse() {
-        this.responseArea.textContent = 'Click "Test Request" to see the response...';
+        this.responseArea.className = 'result-area centered';
+        this.responseArea.innerHTML = '<span class="placeholder-text">Click "Test Request" to see the response...</span>';
         this.copyResponseBtn.disabled = true;
     }
 
