@@ -3152,11 +3152,15 @@ func (h *HTTPSyncStrategy) generateSimpleNagiosResponse(probeName string, metric
 	metricCount := 0
 	
 	for _, metric := range metrics {
+		// Transform metric name using the same logic as PRTG
+		transformedName, _ := h.transformMetricNameForPRTG("", metric)
+		cleanName := h.cleanPerfDataLabel(transformedName)
+		
 		if val, ok := metric.Value.(float64); ok {
-			perfDataItems = append(perfDataItems, fmt.Sprintf("%s=%.2f", metric.MetricName, val))
+			perfDataItems = append(perfDataItems, fmt.Sprintf("%s=%.2f", cleanName, val))
 			metricCount++
 		} else if val, ok := metric.Value.(float32); ok {
-			perfDataItems = append(perfDataItems, fmt.Sprintf("%s=%.2f", metric.MetricName, float64(val)))
+			perfDataItems = append(perfDataItems, fmt.Sprintf("%s=%.2f", cleanName, float64(val)))
 			metricCount++
 		}
 	}
