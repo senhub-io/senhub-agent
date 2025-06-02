@@ -37,6 +37,7 @@ type HTTPSyncStrategy struct {
 	nagiosConfig        *NagiosConfig   // cached Nagios configuration
 	nagiosConfigMu      sync.RWMutex    // mutex for nagios config access
 	startTime           time.Time       // agent start time for uptime calculation
+	assetHandler        *AssetHandler   // asset handler for templates and static files
 	// TLS configuration
 	tlsEnabled          bool
 	tlsMinVersion       string
@@ -255,6 +256,7 @@ func NewHTTPSyncStrategy(
 		transformerRegistry: transformers.NewTransformerRegistry(moduleLogger.Logger),
 		enabledEndpoints:    make(map[string]bool),
 		startTime:           time.Now(), // Initialize start time for uptime calculation
+		assetHandler:        NewAssetHandler(agentConfig.GetAuthenticationKey()),
 		cache: &MetricCache{
 			timeSeries:  make(map[string]CachedMetric),
 			probeIndex:  make(map[string]map[string]bool),
@@ -3103,8 +3105,21 @@ func (h *HTTPSyncStrategy) handleWebDashboard(w http.ResponseWriter, r *http.Req
 		return
 	}
 	
-	// For now, redirect to explorer
-	http.Redirect(w, r, "/web/"+agentKey+"/explorer", http.StatusTemporaryRedirect)
+	// Render the new dashboard template
+	templateName := GetTemplateName(r.URL.Path)
+	if templateName == "" {
+		templateName = "dashboard" // Default to dashboard for root and dashboard paths
+	}
+	
+	content, err := h.assetHandler.RenderTemplate(templateName)
+	if err != nil {
+		h.logger.Error().Err(err).Str("template", templateName).Msg("Failed to render dashboard template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(content))
 }
 
 func (h *HTTPSyncStrategy) handleWebExplorer(w http.ResponseWriter, r *http.Request) {
