@@ -549,6 +549,30 @@ grep -i "tls\|certificate\|ssl" /var/log/senhub-agent/agent.log
 grep -i "probe" /var/log/senhub-agent/agent.log
 ```
 
+#### Log Permission Issues
+
+**Symptoms:**
+```
+zerolog: could not write event: can't rename log file: permission denied
+```
+
+**Cause:**
+The agent tries to write logs to system directories (`/Library/Logs/SenHub` on macOS, `/var/log/senhub` on Linux) but lacks the necessary permissions.
+
+**Solution:**
+The agent automatically detects permission issues and falls back to a local directory. No action needed - this is expected behavior when running without elevated privileges.
+
+**Verification:**
+```bash
+# Check where logs are actually being written
+./agent run --offline --verbose 2>&1 | grep "Using log file"
+
+# The output will show the actual log location, e.g.:
+# Using log file: /Users/username/agent-directory/senhubagent.log
+```
+
+**Note:** If you prefer system-wide logging, run the agent with appropriate permissions or install as a service.
+
 #### Performance Monitoring
 
 ```bash
