@@ -991,7 +991,7 @@ func (h *HTTPSyncStrategy) handleInfoEndpoints(w http.ResponseWriter, r *http.Re
 	// Define all possible endpoints with their descriptions
 	allEndpoints := map[string]string{
 		"senhub": "SenHub native JSON format for time-series data",
-		"prtg":   "PRTG XML format for monitoring integration",
+		"prtg":   "PRTG JSON format for monitoring integration",
 		"nagios": "Nagios-compatible output format",
 	}
 	
