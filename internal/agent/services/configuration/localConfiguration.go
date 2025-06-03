@@ -113,7 +113,7 @@ func (lc *LocalConfiguration) GetConfiguration() RemoteConfigurationData {
 
 // OnConfigChanged registers a callback for configuration changes
 func (lc *LocalConfiguration) OnConfigChanged(callback func(string)) {
-	lc.logger.Debug().Msg("Registering new configuration change callback")
+	lc.logger.Info().Msg("Registering new configuration change callback")
 	lc.eventNotifier.RegisterObserver(callback)
 }
 
@@ -723,12 +723,17 @@ func (lc *LocalConfiguration) reloadConfiguration() error {
 	
 	// Check if configuration actually changed
 	if lc.hasConfigurationChanged(previousData, lc.data) {
-		lc.logger.Info().Msg("Configuration changes detected, notifying observers")
+		lc.logger.Info().
+			Any("old_storage", previousData.Storage).
+			Any("new_storage", lc.data.Storage).
+			Any("old_probes", previousData.Probes).
+			Any("new_probes", lc.data.Probes).
+			Msg("Configuration changes detected, notifying observers")
 		
 		// Notify all observers about the configuration change
 		lc.eventNotifier.NotifyObservers("Configuration file changed")
 	} else {
-		lc.logger.Debug().Msg("Configuration file changed but content is identical")
+		lc.logger.Info().Msg("Configuration file changed but content is identical")
 	}
 	
 	return nil
