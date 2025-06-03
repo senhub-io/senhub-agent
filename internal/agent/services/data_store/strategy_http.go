@@ -17,6 +17,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"gopkg.in/yaml.v2"
+	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -1094,9 +1095,15 @@ func (h *HTTPSyncStrategy) handleInfoSystem(w http.ResponseWriter, r *http.Reque
 	}
 	
 	// Build system info response
+	version := cliArgs.Version
+	if cliArgs.CommitHash != "" {
+		// Include commit hash in version for build identification
+		version = fmt.Sprintf("%s-%s", version, cliArgs.CommitHash[:8])
+	}
+	
 	response := SystemInfoResponse{
 		Status:  "running",
-		Version: "0.1.24-beta", // TODO: get from build info
+		Version: version,
 		Port:    h.port,
 		Uptime:  uptimeStr,
 		Health:  healthResponse,
