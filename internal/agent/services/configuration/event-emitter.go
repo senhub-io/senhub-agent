@@ -41,7 +41,10 @@ func (en *EventNotifier) RegisterObserver(callback func(string)) {
 // Callbacks are executed asynchronously in separate goroutines.
 // Thread-safe: creates a copy of observers list to prevent race conditions.
 func (en *EventNotifier) NotifyObservers(event string) {
-	en.logger.Debug().Any("event", event).Msg("Notifying observers of event")
+	en.logger.Info().
+		Any("event", event).
+		Int("observer_count", len(en.observers)).
+		Msg("Notifying observers of event")
 
 	// Copy callbacks under lock to prevent race conditions
 	en.mu.Lock()
