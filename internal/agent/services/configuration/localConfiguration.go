@@ -666,14 +666,21 @@ func (lc *LocalConfiguration) watchConfigFile() {
 				Str("event", event.String()).
 				Msg("Configuration file event received")
 			
-			// Handle write and create events (saves, renames, etc.)
-			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
+			// Handle various file change events
+			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Chmod) {
 				lc.logger.Info().
 					Str("config_path", lc.configPath).
+					Str("event_type", event.Op.String()).
 					Msg("Configuration file changed, reloading...")
 				
 				// Small delay to ensure file write is complete
-				time.Sleep(100 * time.Millisecond)
+				time.Sleep(200 * time.Millisecond)
+				
+				// Check if file still exists (some editors delete/recreate)
+				if _, err := os.Stat(lc.configPath); os.IsNotExist(err) {
+					lc.logger.Warn().Msg("Configuration file was deleted, skipping reload")
+					continue
+				}
 				
 				if err := lc.reloadConfiguration(); err != nil {
 					lc.logger.Error().
@@ -682,6 +689,14 @@ func (lc *LocalConfiguration) watchConfigFile() {
 				} else {
 					lc.logger.Info().Msg("Configuration reloaded successfully")
 				}
+			} else if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
+				lc.logger.Warn().
+					Str("event_type", event.Op.String()).
+					Msg("Configuration file was removed or renamed, attempting to re-watch...")
+				
+				// Try to re-add the file to the watcher after a delay
+				// This handles editors that delete/recreate files
+				go lc.attemptRewatch()
 			}
 			
 		case err, ok := <-lc.watcher.Errors:
@@ -747,4 +762,52 @@ func (lc *LocalConfiguration) hasConfigurationChanged(old, new LocalConfiguratio
 	// For now, if we reach here, consider configuration unchanged
 	// A more sophisticated comparison could be implemented later
 	return false
+}
+
+// attemptRewatch tries to re-add the configuration file to the watcher
+// This handles editors that delete and recreate files during save operations
+func (lc *LocalConfiguration) attemptRewatch() {
+	maxRetries := 5
+	retryDelay := 500 * time.Millisecond
+	
+	for i := 0; i < maxRetries; i++ {
+		// Wait a bit for the file to be recreated
+		time.Sleep(retryDelay)
+		
+		// Check if file exists
+		if _, err := os.Stat(lc.configPath); err == nil {
+			// File exists, try to add it back to watcher
+			if err := lc.watcher.Add(lc.configPath); err != nil {
+				lc.logger.Warn().
+					Err(err).
+					Int("attempt", i+1).
+					Msg("Failed to re-watch configuration file")
+			} else {
+				lc.logger.Info().
+					Int("attempt", i+1).
+					Msg("Successfully re-added configuration file to watcher")
+				
+				// File is back, try to reload configuration
+				if err := lc.reloadConfiguration(); err != nil {
+					lc.logger.Error().
+						Err(err).
+						Msg("Failed to reload configuration after re-watch")
+				} else {
+					lc.logger.Info().Msg("Configuration reloaded successfully after re-watch")
+				}
+				return
+			}
+		} else {
+			lc.logger.Debug().
+				Int("attempt", i+1).
+				Msg("Configuration file not yet recreated, retrying...")
+		}
+		
+		// Increase delay for next retry
+		retryDelay *= 2
+	}
+	
+	lc.logger.Error().
+		Int("max_retries", maxRetries).
+		Msg("Failed to re-watch configuration file after maximum retries")
 }
