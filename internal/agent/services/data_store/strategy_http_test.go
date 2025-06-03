@@ -924,8 +924,8 @@ func TestHTTPSyncStrategy_SenHubMetricsGET(t *testing.T) {
 		if metric.Name == "" {
 			t.Error("Expected Name field to be populated")
 		}
-		if metric.DisplayName == "" {
-			t.Error("Expected DisplayName field to be populated")
+		if metric.Channel == "" {
+			t.Error("Expected Channel field to be populated")
 		}
 		if metric.ProbeName == "" {
 			t.Error("Expected ProbeName field to be populated")
