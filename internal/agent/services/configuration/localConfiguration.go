@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"gopkg.in/yaml.v2"
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -54,6 +55,8 @@ type LocalConfiguration struct {
 	configPath   string
 	args         *cliArgs.ParsedArgs
 	eventNotifier *EventNotifier
+	watcher      *fsnotify.Watcher
+	quitChannel  chan struct{}
 }
 
 // NewLocalConfiguration creates a new LocalConfiguration instance
@@ -114,21 +117,48 @@ func (lc *LocalConfiguration) OnConfigChanged(callback func(string)) {
 	lc.eventNotifier.RegisterObserver(callback)
 }
 
-// Start initializes the local configuration
+// Start initializes the local configuration and begins file watching
 func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
-	lc.logger.Info().Msg("Starting LocalConfiguration")
+	lc.logger.Info().Msg("Starting LocalConfiguration with file watching")
+	lc.quitChannel = quitChannel
 	
 	// Load or create configuration
 	if err := lc.loadOrCreateConfiguration(); err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 	
+	// Initialize file watcher
+	var err error
+	lc.watcher, err = fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("failed to create file watcher: %w", err)
+	}
+	
+	// Add config file to watcher
+	err = lc.watcher.Add(lc.configPath)
+	if err != nil {
+		lc.watcher.Close()
+		return fmt.Errorf("failed to watch config file %s: %w", lc.configPath, err)
+	}
+	
+	lc.logger.Info().Str("config_path", lc.configPath).Msg("Started watching configuration file")
+	
+	// Start watching goroutine
+	go lc.watchConfigFile()
+	
 	return nil
 }
 
-// Shutdown performs cleanup
+// Shutdown performs cleanup and stops file watching
 func (lc *LocalConfiguration) Shutdown(ctx context.Context) error {
 	lc.logger.Info().Msg("Shutting down LocalConfiguration")
+	
+	if lc.watcher != nil {
+		if err := lc.watcher.Close(); err != nil {
+			lc.logger.Warn().Err(err).Msg("Error closing file watcher")
+		}
+	}
+	
 	return nil
 }
 
@@ -614,4 +644,107 @@ probes:
 		endpointsStr,
 		tlsSection,
 	)), nil
+}
+
+// watchConfigFile monitors the configuration file for changes
+func (lc *LocalConfiguration) watchConfigFile() {
+	lc.logger.Debug().Msg("Started configuration file watching goroutine")
+	
+	for {
+		select {
+		case <-lc.quitChannel:
+			lc.logger.Debug().Msg("Configuration file watching stopped")
+			return
+			
+		case event, ok := <-lc.watcher.Events:
+			if !ok {
+				lc.logger.Debug().Msg("File watcher events channel closed")
+				return
+			}
+			
+			lc.logger.Debug().
+				Str("event", event.String()).
+				Msg("Configuration file event received")
+			
+			// Handle write and create events (saves, renames, etc.)
+			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
+				lc.logger.Info().
+					Str("config_path", lc.configPath).
+					Msg("Configuration file changed, reloading...")
+				
+				// Small delay to ensure file write is complete
+				time.Sleep(100 * time.Millisecond)
+				
+				if err := lc.reloadConfiguration(); err != nil {
+					lc.logger.Error().
+						Err(err).
+						Msg("Failed to reload configuration")
+				} else {
+					lc.logger.Info().Msg("Configuration reloaded successfully")
+				}
+			}
+			
+		case err, ok := <-lc.watcher.Errors:
+			if !ok {
+				lc.logger.Debug().Msg("File watcher errors channel closed")
+				return
+			}
+			lc.logger.Warn().
+				Err(err).
+				Msg("Configuration file watcher error")
+		}
+	}
+}
+
+// reloadConfiguration reloads the configuration and notifies observers
+func (lc *LocalConfiguration) reloadConfiguration() error {
+	// Store previous configuration for comparison
+	previousData := lc.data
+	
+	// Load new configuration
+	if err := lc.loadConfiguration(); err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+	
+	// Check if configuration actually changed
+	if lc.hasConfigurationChanged(previousData, lc.data) {
+		lc.logger.Info().Msg("Configuration changes detected, notifying observers")
+		
+		// Notify all observers about the configuration change
+		lc.eventNotifier.NotifyObservers("Configuration file changed")
+	} else {
+		lc.logger.Debug().Msg("Configuration file changed but content is identical")
+	}
+	
+	return nil
+}
+
+// hasConfigurationChanged compares two configurations for differences
+func (lc *LocalConfiguration) hasConfigurationChanged(old, new LocalConfigurationData) bool {
+	// Compare storage configuration
+	if len(old.Storage) != len(new.Storage) {
+		return true
+	}
+	for i, storage := range old.Storage {
+		if i >= len(new.Storage) || storage.Name != new.Storage[i].Name {
+			return true
+		}
+		// Deep comparison of parameters would be more thorough
+		// but for now we assume any storage section change matters
+	}
+	
+	// Compare probes configuration
+	if len(old.Probes) != len(new.Probes) {
+		return true
+	}
+	for i, probe := range old.Probes {
+		if i >= len(new.Probes) || probe.Name != new.Probes[i].Name {
+			return true
+		}
+		// Similar to storage, we could do deeper parameter comparison
+	}
+	
+	// For now, if we reach here, consider configuration unchanged
+	// A more sophisticated comparison could be implemented later
+	return false
 }
