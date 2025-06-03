@@ -388,3 +388,56 @@ func joinStrings(strs []string, sep string) string {
 	}
 	return result
 }
+
+// GetStatistics returns cache statistics for administration
+func (c *MetricCache) GetStatistics() CacheStatistics {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	
+	stats := CacheStatistics{
+		TotalMetrics: len(c.timeSeries),
+		Probes:       make([]ProbeStatistics, 0),
+	}
+	
+	// Count metrics per probe
+	probeMetrics := make(map[string]int)
+	lastUpdated := make(map[string]time.Time)
+	
+	for _, metric := range c.timeSeries {
+		probeMetrics[metric.ProbeName]++
+		if existing, ok := lastUpdated[metric.ProbeName]; !ok || metric.Timestamp.After(existing) {
+			lastUpdated[metric.ProbeName] = metric.Timestamp
+		}
+	}
+	
+	// Create probe statistics
+	for probeName, count := range probeMetrics {
+		stats.Probes = append(stats.Probes, ProbeStatistics{
+			Name:         probeName,
+			MetricsCount: count,
+			LastUpdate:   lastUpdated[probeName],
+		})
+	}
+	
+	return stats
+}
+
+// Clear removes all cached metrics
+func (c *MetricCache) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	
+	c.logger.Info().
+		Int("cleared_metrics", len(c.timeSeries)).
+		Msg("Clearing all cached metrics")
+	
+	// Clear all data structures
+	c.timeSeries = make(map[string]CachedMetric)
+	c.probeIndex = make(map[string]map[string]bool)
+}
+
+// CacheStatistics represents cache statistics for administration
+type CacheStatistics struct {
+	TotalMetrics int               `json:"total_metrics"`
+	Probes       []ProbeStatistics `json:"probes"`
+}

@@ -47,6 +47,11 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/debug/logs", h.HandleDebugLogs).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/debug/logs", h.HandleSetLogLevels).Methods("POST")
 
+	// Admin endpoints (with agentkey authentication)
+	router.HandleFunc("/api/{agentkey}/stats/cache", h.HandleStatsCache).Methods("GET")
+	router.HandleFunc("/api/{agentkey}/config/probes", h.HandleConfigProbes).Methods("GET")
+	router.HandleFunc("/api/{agentkey}/admin/cache/clear", h.HandleAdminCacheClear).Methods("POST")
+
 	// Configure endpoints based on enabled monitoring tools
 	if h.strategy.enabledEndpoints["prtg"] {
 		// PRTG endpoints
@@ -306,4 +311,18 @@ func (h *HTTPHandlers) HandleWebAdmin(w http.ResponseWriter, r *http.Request) {
 
 func (h *HTTPHandlers) HandleWebAssets(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleWebAssets(w, r)
+}
+
+// Admin handlers (delegating to strategy for now)
+
+func (h *HTTPHandlers) HandleStatsCache(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleStatsCache(w, r)
+}
+
+func (h *HTTPHandlers) HandleConfigProbes(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleConfigProbes(w, r)
+}
+
+func (h *HTTPHandlers) HandleAdminCacheClear(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleAdminCacheClear(w, r)
 }
