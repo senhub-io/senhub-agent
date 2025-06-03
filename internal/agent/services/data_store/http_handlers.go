@@ -2,10 +2,7 @@
 package data_store
 
 import (
-	"encoding/json"
 	"net/http"
-	"runtime"
-	"time"
 
 	"github.com/gorilla/mux"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -53,37 +50,37 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/admin/cache/clear", h.HandleAdminCacheClear).Methods("POST")
 
 	// Configure endpoints based on enabled monitoring tools
-	if h.strategy.enabledEndpoints["prtg"] {
+	if h.strategy.configManager.IsEndpointEnabled("prtg") {
 		// PRTG endpoints
 		router.HandleFunc("/api/{agentkey}/prtg/metrics", h.HandlePRTGMetrics).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/prtg/metrics/{probe}", h.HandlePRTGMetricsGET).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/prtg/probes", h.HandleListProbes).Methods("GET")
 	}
 
-	if h.strategy.enabledEndpoints["senhub"] {
+	if h.strategy.configManager.IsEndpointEnabled("senhub") {
 		// SenHub endpoints
 		router.HandleFunc("/api/{agentkey}/senhub/metrics/{probe}", h.HandleSenHubMetricsGET).Methods("GET")
 	}
 
-	if h.strategy.enabledEndpoints["nagios"] {
+	if h.strategy.configManager.IsEndpointEnabled("nagios") {
 		// Nagios endpoints
 		router.HandleFunc("/api/{agentkey}/nagios/metrics/{probe}", h.HandleNagiosMetricsGET).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/nagios/metrics", h.HandleNagiosMetrics).Methods("POST")
-		router.HandleFunc("/api/{agentkey}/nagios/check/{probe}", h.HandleNagiosCheck).Methods("GET")
+		// Removed: /nagios/check/{probe} endpoint not needed
 		router.HandleFunc("/api/{agentkey}/nagios/checks", h.HandleNagiosChecks).Methods("POST")
 	}
 
-	if h.strategy.enabledEndpoints["zabbix"] {
+	if h.strategy.configManager.IsEndpointEnabled("zabbix") {
 		// Zabbix endpoints
 		router.HandleFunc("/api/{agentkey}/zabbix/metrics/{probe}", h.HandleZabbixMetricsGET).Methods("GET")
 	}
 
-	if h.strategy.enabledEndpoints["prometheus"] {
+	if h.strategy.configManager.IsEndpointEnabled("prometheus") {
 		// Prometheus endpoints
 		router.HandleFunc("/api/{agentkey}/prometheus/metrics", h.HandlePrometheusMetricsGET).Methods("GET")
 	}
 
-	if h.strategy.enabledEndpoints["web"] {
+	if h.strategy.configManager.IsEndpointEnabled("web") {
 		// Web UI endpoints
 		router.HandleFunc("/web/{agentkey}/", h.HandleWebDashboard).Methods("GET")
 		router.HandleFunc("/web/{agentkey}/dashboard", h.HandleWebDashboard).Methods("GET")
@@ -100,115 +97,23 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 
 // Health and utility handlers
 
-// HandleHealth handles health check requests
+// HandleHealth handles health check requests (public endpoint - no authentication)
 func (h *HTTPHandlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
-	h.logger.Debug().Msg("Health check request received")
-
-	// Get memory stats for health info
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	memUsageMB := float64(memStats.Alloc) / 1024 / 1024
-
-	healthInfo := struct {
-		Status    string  `json:"status"`
-		Timestamp string  `json:"timestamp"`
-		Memory    float64 `json:"memory_mb"`
-		Version   string  `json:"version"`
-	}{
-		Status:    "ok",
-		Timestamp: time.Now().Format(time.RFC3339),
-		Memory:    memUsageMB,
-		Version:   "HTTP Strategy v1.0",
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(healthInfo); err != nil {
-		h.logger.Error().Err(err).Msg("Failed to encode health response")
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-	}
+	// Delegate to health manager for basic health check
+	h.strategy.healthManager.HandleBasicHealth(w, r)
 }
 
 // HandleListEndpoints handles requests to list available endpoints
 func (h *HTTPHandlers) HandleListEndpoints(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	providedKey := vars["agentkey"]
-
-	if providedKey != h.strategy.agentKey {
-		h.logger.Warn().Str("provided_key", providedKey).Msg("Invalid agent key")
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	h.logger.Debug().Msg("List endpoints request received")
-
-	endpoints := make([]string, 0)
-	
-	// Add enabled endpoints
-	for endpoint := range h.strategy.enabledEndpoints {
-		if h.strategy.enabledEndpoints[endpoint] {
-			endpoints = append(endpoints, endpoint)
-		}
-	}
-
-	response := struct {
-		Endpoints []string `json:"endpoints"`
-	}{
-		Endpoints: endpoints,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.logger.Error().Err(err).Msg("Failed to encode endpoints response")
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-	}
+	h.strategy.handleListEndpoints(w, r)
 }
 
-// validateAgentKey checks if the provided agent key is valid
-func (h *HTTPHandlers) validateAgentKey(providedKey string) bool {
-	return providedKey == h.strategy.agentKey
-}
 
 // Metrics API handlers
 
 // HandleSenHubMetricsGET handles GET requests for SenHub format metrics by probe
 func (h *HTTPHandlers) HandleSenHubMetricsGET(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	agentKey := vars["agentkey"]
-	probeName := vars["probe"]
-
-	// Validate agent key
-	if agentKey != h.strategy.agentConfig.GetAuthenticationKey() {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	h.logger.Debug().
-		Str("probe", probeName).
-		Msg("SenHub metrics GET request received")
-
-	// Get metrics from cache for the specified probe and convert to SenHub format
-	senHubMetrics := h.strategy.getSenHubMetricsForProbe(probeName)
-
-	// Create wrapped response
-	response := SenHubResponse{
-		Metrics: senHubMetrics,
-		Status:  "OK",
-		Message: "Metrics successfully retrieved.",
-		Date:    time.Now().UnixMilli(),
-	}
-
-	// Send response
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.logger.Error().Err(err).Msg("Failed to encode SenHub metrics response")
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	h.logger.Info().
-		Str("probe", probeName).
-		Int("metrics_count", len(senHubMetrics)).
-		Msg("✅ SenHub metrics served successfully")
+	h.strategy.handleSenHubMetricsGET(w, r)
 }
 
 // Info/Discovery handlers (delegating to strategy for now)
@@ -271,9 +176,7 @@ func (h *HTTPHandlers) HandleNagiosMetrics(w http.ResponseWriter, r *http.Reques
 	h.strategy.handleNagiosMetrics(w, r)
 }
 
-func (h *HTTPHandlers) HandleNagiosCheck(w http.ResponseWriter, r *http.Request) {
-	h.strategy.handleNagiosCheck(w, r)
-}
+// Removed: HandleNagiosCheck - endpoint not needed
 
 func (h *HTTPHandlers) HandleNagiosChecks(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleNagiosChecks(w, r)
