@@ -23,6 +23,8 @@ class Dashboard {
         this.agentStatusIndicator = this.base.$('#agent-status-indicator');
         this.agentStatus = this.base.$('#agent-status');
         this.agentVersion = this.base.$('#agent-version');
+        this.agentCommit = this.base.$('#agent-commit');
+        this.agentCommitRow = this.base.$('#agent-commit-row');
         this.agentPort = this.base.$('#agent-port');
         this.agentUptime = this.base.$('#agent-uptime');
         
@@ -73,6 +75,14 @@ class Dashboard {
         this.agentVersion.textContent = systemData.version || 'unknown';
         this.agentPort.textContent = systemData.port || 'unknown';
         this.agentUptime.textContent = systemData.uptime || 'unknown';
+        
+        // Update commit information if available
+        if (systemData.commit && systemData.commit.trim() !== '') {
+            this.agentCommit.textContent = systemData.commit;
+            this.agentCommitRow.style.display = 'flex';
+        } else {
+            this.agentCommitRow.style.display = 'none';
+        }
         
         // Update status indicator
         this.agentStatusIndicator.className = 'status-indicator';
