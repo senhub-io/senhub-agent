@@ -137,11 +137,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 
 			if tt.expectedEndpoints != nil {
 				for endpoint, expectedEnabled := range tt.expectedEndpoints {
-					if enabled, exists := httpStrategy.enabledEndpoints[endpoint]; !exists {
-						if expectedEnabled {
-							t.Errorf("Expected endpoint %s to be enabled", endpoint)
-						}
-					} else if enabled != expectedEnabled {
+					if enabled := httpStrategy.configManager.IsEndpointEnabled(endpoint); enabled != expectedEnabled {
 						t.Errorf("Expected endpoint %s to be %v, got %v", endpoint, expectedEnabled, enabled)
 					}
 				}
@@ -392,7 +388,7 @@ func TestHTTPSyncStrategy_HealthEndpoint(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 
-	strategy.handleHealth(w, req)
+	strategy.healthManager.HandleBasicHealth(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", w.Code)
