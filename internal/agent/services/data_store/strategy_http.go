@@ -541,3 +541,98 @@ func (h *HTTPSyncStrategy) parseVersionInfo() VersionInfo {
 func (h *HTTPSyncStrategy) validateAgentKey(providedKey string) bool {
 	return h.authManager.ValidateAgentKey(providedKey)
 }
+
+// Module Access Getters (Encapsulation)
+// These methods provide controlled access to internal modules
+
+// GetAuthManager returns the authentication manager (read-only access)
+func (h *HTTPSyncStrategy) GetAuthManager() *AuthenticationManager {
+	return h.authManager
+}
+
+// GetHealthManager returns the health manager (read-only access)
+func (h *HTTPSyncStrategy) GetHealthManager() *HealthManager {
+	return h.healthManager
+}
+
+// GetMetricsProcessor returns the metrics processor (read-only access)
+func (h *HTTPSyncStrategy) GetMetricsProcessor() *MetricsProcessor {
+	return h.metricsProcessor
+}
+
+// GetConfigManager returns the configuration manager (read-only access)
+func (h *HTTPSyncStrategy) GetConfigManager() *ConfigurationManager {
+	return h.configManager
+}
+
+// GetServerManager returns the server manager (read-only access)
+func (h *HTTPSyncStrategy) GetServerManager() *ServerManager {
+	return h.serverManager
+}
+
+// GetDebugManager returns the debug manager (read-only access)
+func (h *HTTPSyncStrategy) GetDebugManager() *DebugManager {
+	return h.debugManager
+}
+
+// GetAPIManager returns the API manager (read-only access)
+func (h *HTTPSyncStrategy) GetAPIManager() *APIManager {
+	return h.apiManager
+}
+
+// GetNagiosManager returns the Nagios manager (read-only access)
+func (h *HTTPSyncStrategy) GetNagiosManager() *NagiosManager {
+	return h.nagiosManager
+}
+
+// GetUtilsManager returns the utilities manager (read-only access)
+func (h *HTTPSyncStrategy) GetUtilsManager() *UtilsManager {
+	return h.utilsManager
+}
+
+// GetWebInterface returns the web interface handler (read-only access)
+func (h *HTTPSyncStrategy) GetWebInterface() *WebInterface {
+	return h.webInterface
+}
+
+// GetCache returns the metric cache (read-only access)
+func (h *HTTPSyncStrategy) GetCache() *MetricCache {
+	return h.cache
+}
+
+// GetTransformerRegistry returns the transformer registry (read-only access)
+func (h *HTTPSyncStrategy) GetTransformerRegistry() *transformers.TransformerRegistry {
+	return h.transformerRegistry
+}
+
+// GetFormatConverter returns the format converter (read-only access)
+func (h *HTTPSyncStrategy) GetFormatConverter() *FormatConverter {
+	return h.formatConverter
+}
+
+// GetAssetHandler returns the asset handler (read-only access)
+func (h *HTTPSyncStrategy) GetAssetHandler() *AssetHandler {
+	return h.assetHandler
+}
+
+// Configuration Access Getters
+
+// GetPort returns the configured port
+func (h *HTTPSyncStrategy) GetPort() int {
+	return h.port
+}
+
+// GetBindAddress returns the configured bind address
+func (h *HTTPSyncStrategy) GetBindAddress() string {
+	return h.bindAddress
+}
+
+// GetAgentKey returns the agent authentication key
+func (h *HTTPSyncStrategy) GetAgentKey() string {
+	return h.agentKey
+}
+
+// GetStartTime returns the strategy start time
+func (h *HTTPSyncStrategy) GetStartTime() time.Time {
+	return h.startTime
+}
