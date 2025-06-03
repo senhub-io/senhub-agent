@@ -687,6 +687,10 @@ type EndpointInfoStatus struct {
 type SystemInfoResponse struct {
 	Status      string             `json:"status"`
 	Version     string             `json:"version"`
+	Commit      string             `json:"commit"`
+	GoVersion   string             `json:"go_version"`
+	OS          string             `json:"os"`
+	Arch        string             `json:"arch"`
 	Port        int                `json:"port"`
 	Uptime      string             `json:"uptime"`
 	Health      HealthCheckResponse `json:"health"`
@@ -847,19 +851,21 @@ func (h *HTTPSyncStrategy) handleInfoSystem(w http.ResponseWriter, r *http.Reque
 	}
 	
 	// Build system info response
-	// Use CommitHash if available (contains full version info), otherwise fallback to Version
-	version := cliArgs.Version
-	if cliArgs.CommitHash != "" {
-		// CommitHash contains full version info from git describe
-		version = cliArgs.CommitHash
-	}
+	// Parse version and commit information
+	versionInfo := h.parseVersionInfo()
+	version := versionInfo.Version
+	commit := versionInfo.Commit
 	
 	response := SystemInfoResponse{
-		Status:  "running",
-		Version: version,
-		Port:    h.port,
-		Uptime:  uptimeStr,
-		Health:  healthResponse,
+		Status:    "running",
+		Version:   version,
+		Commit:    commit,
+		GoVersion: runtime.Version(),
+		OS:        runtime.GOOS,
+		Arch:      runtime.GOARCH,
+		Port:      h.port,
+		Uptime:    uptimeStr,
+		Health:    healthResponse,
 		Cache: CacheInfoResponse{
 			TotalMetrics: totalMetrics,
 			TTL:          h.cache.ttl.String(),
@@ -2579,6 +2585,66 @@ func (h *HTTPSyncStrategy) handleAdminCacheClear(w http.ResponseWriter, r *http.
 		h.logger.Error().Err(err).Msg("Failed to encode cache clear response")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
+	}
+}
+
+// VersionInfo holds parsed version and commit information
+type VersionInfo struct {
+	Version string
+	Commit  string
+}
+
+// parseVersionInfo parses version and commit information from cliArgs
+func (h *HTTPSyncStrategy) parseVersionInfo() VersionInfo {
+	version := cliArgs.Version
+	commit := ""
+	
+	// If we have a commit hash from git describe, parse it
+	if cliArgs.CommitHash != "" {
+		// CommitHash format from git describe: "tag-commits-ghash-dirty"
+		// Examples:
+		// "0.1.27-beta" (exact tag)
+		// "0.1.27-beta-0-g25913b5-dirty" (dirty working tree)
+		// "0.1.26-beta-3-g1a2b3c4" (3 commits after tag)
+		
+		fullVersion := cliArgs.CommitHash
+		
+		// Try to extract version and commit info
+		if fullVersion != "" {
+			// If it's just a tag (no commit info), use it as version
+			if !strings.Contains(fullVersion, "-g") {
+				version = fullVersion
+			} else {
+				// Parse format: "version-commits-ghash-dirty"
+				parts := strings.Split(fullVersion, "-")
+				if len(parts) >= 3 {
+					// Find the version part (everything before the commit count)
+					for i, part := range parts {
+						if strings.HasPrefix(part, "g") && i > 0 {
+							// This is the git hash, version is everything before previous part
+							version = strings.Join(parts[:i-1], "-")
+							commit = strings.Join(parts[i-1:], "-")
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	// Fallback: if version is empty, use commit hash
+	if version == "" && cliArgs.CommitHash != "" {
+		version = cliArgs.CommitHash
+	}
+	
+	// Fallback: if still empty, use default
+	if version == "" {
+		version = "development"
+	}
+	
+	return VersionInfo{
+		Version: version,
+		Commit:  commit,
 	}
 }
 
