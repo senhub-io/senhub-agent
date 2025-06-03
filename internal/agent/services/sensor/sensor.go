@@ -72,6 +72,8 @@ func (s *sensor) SyncConfiguration() error {
 		}
 	}
 
+	// Filter out stopped probes from the startedProbes slice
+	activeProbes := []*probes.ProbePoller{}
 	for _, startedProbe := range s.startedProbes {
 		found := false
 		for _, validProbeId := range validProbeIds {
@@ -80,7 +82,11 @@ func (s *sensor) SyncConfiguration() error {
 				break
 			}
 		}
-		if !found {
+		if found {
+			// Keep active probes
+			activeProbes = append(activeProbes, startedProbe)
+		} else {
+			// Shutdown and remove probe
 			err := startedProbe.Shutdown(context.Background())
 			if err != nil {
 				probeLogger := s.logger.With().
@@ -90,6 +96,8 @@ func (s *sensor) SyncConfiguration() error {
 			}
 		}
 	}
+	// Update the slice to contain only active probes
+	s.startedProbes = activeProbes
 	return nil
 }
 

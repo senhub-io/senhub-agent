@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -370,22 +371,41 @@ func TestGenerateSelfSignedCert_ValidityAndFields(t *testing.T) {
 		t.Error("Private key file was not created")
 	}
 	
-	// Check file permissions
-	certInfo, err := os.Stat(certFile)
-	if err != nil {
-		t.Fatalf("Failed to stat cert file: %v", err)
-	}
-	
-	if certInfo.Mode().Perm() != 0644 {
-		t.Errorf("Certificate file should have 644 permissions, got %o", certInfo.Mode().Perm())
-	}
-	
-	keyInfo, err := os.Stat(keyFile)
-	if err != nil {
-		t.Fatalf("Failed to stat key file: %v", err)
-	}
-	
-	if keyInfo.Mode().Perm() != 0600 {
-		t.Errorf("Private key file should have 600 permissions, got %o", keyInfo.Mode().Perm())
+	// Check file permissions (only on Unix-like systems)
+	if runtime.GOOS != "windows" {
+		certInfo, err := os.Stat(certFile)
+		if err != nil {
+			t.Fatalf("Failed to stat cert file: %v", err)
+		}
+		
+		if certInfo.Mode().Perm() != 0644 {
+			t.Errorf("Certificate file should have 644 permissions, got %o", certInfo.Mode().Perm())
+		}
+		
+		keyInfo, err := os.Stat(keyFile)
+		if err != nil {
+			t.Fatalf("Failed to stat key file: %v", err)
+		}
+		
+		if keyInfo.Mode().Perm() != 0600 {
+			t.Errorf("Private key file should have 600 permissions, got %o", keyInfo.Mode().Perm())
+		}
+	} else {
+		// On Windows, just verify files exist and are readable
+		certInfo, err := os.Stat(certFile)
+		if err != nil {
+			t.Fatalf("Failed to stat cert file: %v", err)
+		}
+		if certInfo.Size() == 0 {
+			t.Error("Certificate file is empty")
+		}
+		
+		keyInfo, err := os.Stat(keyFile)
+		if err != nil {
+			t.Fatalf("Failed to stat key file: %v", err)
+		}
+		if keyInfo.Size() == 0 {
+			t.Error("Private key file is empty")
+		}
 	}
 }

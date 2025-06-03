@@ -39,11 +39,12 @@ type PeriodicScheduler interface {
 }
 
 type periodicScheduler struct {
-	started bool
-	logger  *logger.Logger
-	config  PeriodicSchedulerConfig
-	ticker  *time.Ticker
-	mutex   sync.Mutex // Protects probe operations
+	started     bool
+	logger      *logger.Logger
+	config      PeriodicSchedulerConfig
+	ticker      *time.Ticker
+	quitChannel chan struct{}
+	mutex       sync.Mutex // Protects probe operations
 }
 
 func NewPeriodicScheduler(config PeriodicSchedulerConfig, logger *logger.Logger) PeriodicScheduler {
@@ -61,6 +62,7 @@ func (l *periodicScheduler) Start(quitChannel chan struct{}) error {
 
 	l.logger.Info().Msg("Starting")
 	l.started = true
+	l.quitChannel = quitChannel
 
 	if l.config.OnStart != nil {
 		l.logger.Info().Msg("On start call")
@@ -136,6 +138,9 @@ func (l *periodicScheduler) setupIntervalCall() error {
 					}
 					errorCount = 0
 				}
+			case <-l.quitChannel:
+				l.logger.Debug().Msg("Scheduler goroutine terminating on quit signal")
+				return
 			}
 		}
 	}(l.ticker)

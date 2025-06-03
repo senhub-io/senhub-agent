@@ -99,13 +99,7 @@ func (c *HTTPCollector) CollectTelemetry(ctx context.Context, telemetryType Tele
 		return nil, fmt.Errorf("telemetry type %s is not supported by this collector", telemetryType)
 	}
 	
-	// TODO: When implementing the HTTP collection, use the URL from constructURL method
-	// Example usage: url := c.constructURL(telemetryType)
-	
 	// TODO: Implement actual HTTP collection using the OpenTelemetry HTTP API
-	// This would use the OTLP HTTP protocol to collect data
-	
-	// Placeholder for actual implementation
 	return []data_store.DataPoint{}, nil
 }
 
