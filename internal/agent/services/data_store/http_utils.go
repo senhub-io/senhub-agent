@@ -3,138 +3,162 @@ package data_store
 
 import (
 	"fmt"
-	"os"
-	"runtime"
-	"strconv"
+	"net/http"
 	"strings"
 	"time"
+
+	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
-// CPUMeasurement holds CPU timing state for usage calculations
-type CPUMeasurement struct {
-	LastCPUTime        time.Duration
-	LastMeasurementTime time.Time
-	StartTime          time.Time
+// UtilsManager handles utility functions and helper methods
+type UtilsManager struct {
+	logger   *logger.ModuleLogger
+	strategy *HTTPSyncStrategy // Reference to parent strategy for access to other modules
 }
 
-// NewCPUMeasurement creates a new CPU measurement tracker
-func NewCPUMeasurement() *CPUMeasurement {
-	return &CPUMeasurement{
-		StartTime: time.Now(),
+// NewUtilsManager creates a new utilities manager
+func NewUtilsManager(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger) *UtilsManager {
+	return &UtilsManager{
+		logger:   logger,
+		strategy: strategy,
 	}
 }
 
-// GetCPUUsage calculates the CPU usage percentage for the current process
-func (c *CPUMeasurement) GetCPUUsage() float64 {
-	// Get current process CPU usage
-	pid := os.Getpid()
-	
-	// Read CPU times from platform-specific sources
-	var currentCPUTime time.Duration
-	var err error
-	
-	switch runtime.GOOS {
-	case "linux":
-		currentCPUTime, err = getCPUTimeLinux(pid)
-	case "darwin":
-		currentCPUTime, err = getCPUTimeDarwin(pid, c.StartTime)
-	default:
-		// Fallback: return 0 for unsupported platforms
-		return 0.0
+// Utility Functions for HTTP Strategy
+
+// getTagDescription provides human-readable descriptions for common tags
+func (u *UtilsManager) getTagDescription(tagKey string) string {
+	descriptions := map[string]string{
+		"core":       "CPU core identifier",
+		"instance":   "CPU instance identifier (Windows)",
+		"interface":  "Network interface name",
+		"adapter":    "Network adapter name (Windows)",
+		"device":     "Device identifier",
+		"drive":      "Drive identifier",
+		"controller": "Controller identifier",
+		"slot":       "Physical slot number",
+		"channel":    "Channel number",
+		"host":       "Hostname",
+		"os":         "Operating system",
+		"platform":   "Platform identifier",
+		"probe_name": "Source probe name",
 	}
 	
-	if err != nil {
-		return 0.0
+	if desc, exists := descriptions[tagKey]; exists {
+		return desc
 	}
-	
-	now := time.Now()
-	
-	// If this is the first measurement, store the values and return 0
-	if c.LastMeasurementTime.IsZero() {
-		c.LastCPUTime = currentCPUTime
-		c.LastMeasurementTime = now
-		return 0.0
-	}
-	
-	// Calculate CPU usage percentage
-	cpuTimeDelta := currentCPUTime - c.LastCPUTime
-	wallTimeDelta := now.Sub(c.LastMeasurementTime)
-	
-	// Update stored values for next calculation
-	c.LastCPUTime = currentCPUTime
-	c.LastMeasurementTime = now
-	
-	if wallTimeDelta == 0 {
-		return 0.0
-	}
-	
-	// CPU percentage = (CPU time delta / wall time delta) * 100
-	cpuPercent := float64(cpuTimeDelta) / float64(wallTimeDelta) * 100.0
-	
-	// Cap at 100% (can exceed on multi-core systems)
-	if cpuPercent > 100.0 {
-		cpuPercent = 100.0
-	}
-	
-	return cpuPercent
+	return "No description available"
 }
 
-// getCPUTimeLinux reads CPU time from /proc/pid/stat on Linux
-func getCPUTimeLinux(pid int) (time.Duration, error) {
-	statFile := fmt.Sprintf("/proc/%d/stat", pid)
-	data, err := os.ReadFile(statFile)
-	if err != nil {
-		return 0, err
-	}
-	
-	fields := strings.Fields(string(data))
-	if len(fields) < 15 {
-		return 0, fmt.Errorf("insufficient fields in /proc/stat")
-	}
-	
-	// Fields 13 and 14 contain user and system CPU time in clock ticks
-	utime, err := strconv.ParseInt(fields[13], 10, 64)
-	if err != nil {
-		return 0, err
-	}
-	
-	stime, err := strconv.ParseInt(fields[14], 10, 64)
-	if err != nil {
-		return 0, err
-	}
-	
-	// Convert clock ticks to time duration
-	// Get clock ticks per second (usually 100 on most Linux systems)
-	clockTicks := int64(100)
-	
-	totalTicks := utime + stime
-	totalNanos := (totalTicks * int64(time.Second)) / clockTicks
-	
-	return time.Duration(totalNanos), nil
+// Version and Build Info
+
+// VersionInfo holds parsed version and commit information
+type VersionInfo struct {
+	Version string
+	Commit  string
 }
 
-// getCPUTimeDarwin reads CPU time on macOS using runtime stats
-func getCPUTimeDarwin(pid int, startTime time.Time) (time.Duration, error) {
-	// On macOS, we'll use runtime stats as a fallback since syscall.Getrusage is not available
-	if pid != os.Getpid() {
-		return 0, fmt.Errorf("can only get CPU time for current process on macOS")
+// parseVersionInfo parses version and commit information from cliArgs
+func (u *UtilsManager) parseVersionInfo() VersionInfo {
+	version := cliArgs.Version
+	commit := ""
+	
+	// If we have a commit hash from git describe, parse it
+	if cliArgs.CommitHash != "" {
+		fullVersion := cliArgs.CommitHash
+		
+		// Try to extract version and commit info
+		if fullVersion != "" {
+			// If it's just a tag (no commit info), use it as version
+			if !strings.Contains(fullVersion, "-g") {
+				version = fullVersion
+			} else {
+				// Parse format: "version-commits-ghash-dirty"
+				parts := strings.Split(fullVersion, "-")
+				if len(parts) >= 3 {
+					// Find the version part (everything before the commit count)
+					for i, part := range parts {
+						if strings.HasPrefix(part, "g") && i > 0 {
+							// This is the git hash, version is everything before previous part
+							version = strings.Join(parts[:i-1], "-")
+							commit = strings.Join(parts[i-1:], "-")
+							break
+						}
+					}
+				}
+			}
+		}
 	}
 	
-	// Get memory stats which include runtime information
-	var stats runtime.MemStats
-	runtime.ReadMemStats(&stats)
-	
-	// Estimate CPU time based on GC pause times and other runtime metrics
-	// This is a simplified approach since direct CPU time access requires platform-specific code
-	gcPauseTotal := time.Duration(0)
-	for i := 0; i < len(stats.PauseNs); i++ {
-		gcPauseTotal += time.Duration(stats.PauseNs[i])
+	// Fallback: if version is empty, use commit hash
+	if version == "" && cliArgs.CommitHash != "" {
+		version = cliArgs.CommitHash
 	}
 	
-	// Return estimated CPU time based on GC activity and uptime
-	// This is an approximation since we can't access rusage on this platform
-	uptime := time.Since(startTime)
-	estimatedCPUTime := uptime/10 + gcPauseTotal // rough estimate
+	// Fallback: if still empty, use default
+	if version == "" {
+		version = "development"
+	}
 	
-	return estimatedCPUTime, nil
+	return VersionInfo{
+		Version: version,
+		Commit:  commit,
+	}
+}
+
+// formatDuration formats a duration in a human-readable format
+func (u *UtilsManager) formatDuration(d time.Duration) string {
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+	
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm", days, hours, minutes)
+	} else if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	} else {
+		return fmt.Sprintf("%dm", minutes)
+	}
+}
+
+// CPU Measurement for system monitoring
+
+// getCPUUsage calculates CPU usage percentage for the current process
+func (u *UtilsManager) getCPUUsage() float64 {
+	// For now, return 0.0 as placeholder
+	// TODO: Implement actual CPU usage measurement
+	return 0.0
+}
+
+// Monitoring Format Handlers (Future Expansion)
+
+// handleZabbixMetricsGET handles GET requests for Zabbix format metrics (placeholder)
+func (u *UtilsManager) handleZabbixMetricsGET(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := u.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	u.logger.Info().Msg("🔄 Zabbix endpoint - Request received")
+
+	// TODO: Implement Zabbix format conversion
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotImplemented)
+	w.Write([]byte(`{"error": "Zabbix format endpoint not yet implemented"}`))
+}
+
+// handlePrometheusMetricsGET handles GET requests for Prometheus format metrics (placeholder)
+func (u *UtilsManager) handlePrometheusMetricsGET(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := u.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	u.logger.Info().Msg("🔄 Prometheus endpoint - Request received")
+
+	// TODO: Implement Prometheus format conversion
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusNotImplemented)
+	w.Write([]byte("# Prometheus format endpoint not yet implemented\n"))
 }
