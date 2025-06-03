@@ -297,11 +297,13 @@ func TestHTTPSyncStrategy_AddDataPoints(t *testing.T) {
 }
 
 func TestMetricCache_Cleanup(t *testing.T) {
+	baseLogger := createTestLogger()
 	cache := &MetricCache{
 		timeSeries:  make(map[string]CachedMetric),
 		probeIndex: make(map[string]map[string]bool),
 		ttl:         50 * time.Millisecond, // Very short TTL for testing
 		stopChan:    make(chan struct{}),
+		logger:      logger.NewModuleLogger(baseLogger, "cache"),
 	}
 
 	// Add some test data using TSDB structure
@@ -412,51 +414,31 @@ func TestHTTPSyncStrategy_GetMetricsForProbe(t *testing.T) {
 	logger := createTestLogger()
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
 
-	// Add test data to cache using TSDB structure
+	// Add test data to cache using public interface
 	now := time.Now()
-	strategy.cache.mu.Lock()
 	
-	// Add redfish metrics
-	redfishTags1 := map[string]string{"probe_name": "redfish"}
-	redfishTags3 := map[string]string{"probe_name": "redfish"}
-	tsKey1 := strategy.generateTimeSeriesKey("redfish", "metric1", redfishTags1)
-	tsKey3 := strategy.generateTimeSeriesKey("redfish", "metric3", redfishTags3)
-	
-	strategy.cache.timeSeries[tsKey1] = CachedMetric{
-		Value:      10.5,
-		Timestamp:  now,
-		ProbeName:  "redfish",
-		MetricName: "metric1",
-		Tags:       redfishTags1,
-	}
-	strategy.cache.timeSeries[tsKey3] = CachedMetric{
-		Value:      30.0,
-		Timestamp:  now.Add(-10 * time.Minute), // Expired
-		ProbeName:  "redfish",
-		MetricName: "metric3",
-		Tags:       redfishTags3,
+	// Create test datapoints and add them to cache
+	testDatapoints := []datapoint.DataPoint{
+		{
+			Name:      "metric1",
+			Value:     10.5,
+			Timestamp: now,
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: "redfish"},
+			},
+		},
+		{
+			Name:      "metric2",
+			Value:     20.0,
+			Timestamp: now,
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: "host"},
+			},
+		},
 	}
 	
-	// Add host metric
-	hostTags := map[string]string{"probe_name": "host"}
-	tsKey2 := strategy.generateTimeSeriesKey("host", "metric2", hostTags)
-	strategy.cache.timeSeries[tsKey2] = CachedMetric{
-		Value:      20.0,
-		Timestamp:  now,
-		ProbeName:  "host",
-		MetricName: "metric2",
-		Tags:       hostTags,
-	}
-	
-	// Update probe indexes
-	strategy.cache.probeIndex["redfish"] = map[string]bool{
-		tsKey1: true,
-		tsKey3: true,
-	}
-	strategy.cache.probeIndex["host"] = map[string]bool{
-		tsKey2: true,
-	}
-	strategy.cache.mu.Unlock()
+	// Add test data to cache
+	strategy.cache.AddDataPointsWithTransformer(testDatapoints, strategy.transformerRegistry)
 
 	// Get metrics for redfish probe
 	channels := strategy.getMetricsForProbe("redfish")
