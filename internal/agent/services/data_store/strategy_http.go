@@ -2464,9 +2464,16 @@ func (h *HTTPSyncStrategy) handleWebAdmin(w http.ResponseWriter, r *http.Request
 		return
 	}
 	
-	// TODO: Implement admin template
+	// Render admin template
+	content, err := h.assetHandler.RenderTemplate("admin")
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to render admin template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte("<h1>Administration</h1><p>Coming soon...</p>"))
+	w.Write([]byte(content))
 }
 
 func (h *HTTPSyncStrategy) handleWebAssets(w http.ResponseWriter, r *http.Request) {
@@ -2481,6 +2488,98 @@ func (h *HTTPSyncStrategy) handleWebAssets(w http.ResponseWriter, r *http.Reques
 	// Create asset handler and serve the requested asset
 	assetHandler := NewAssetHandler(agentKey)
 	assetHandler.ServeAsset(w, r, r.URL.Path)
+}
+
+// Admin API handlers
+
+func (h *HTTPSyncStrategy) handleStatsCache(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	agentKey := vars["agentkey"]
+	
+	if !h.validateAgentKey(agentKey) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	// Get cache statistics
+	stats := h.cache.GetStatistics()
+	
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to encode cache stats")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (h *HTTPSyncStrategy) handleConfigProbes(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	agentKey := vars["agentkey"]
+	
+	if !h.validateAgentKey(agentKey) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	// For now, return active probes from cache since we don't have direct access to configuration provider
+	// TODO: Refactor to pass configuration provider to HTTP strategy for full probe config access
+	h.cache.mu.RLock()
+	activeProbes := make(map[string]bool)
+	for _, metric := range h.cache.timeSeries {
+		activeProbes[metric.ProbeName] = true
+	}
+	h.cache.mu.RUnlock()
+	
+	// Create simplified probe list
+	probes := make([]map[string]interface{}, 0)
+	for probeName := range activeProbes {
+		probes = append(probes, map[string]interface{}{
+			"name":    probeName,
+			"type":    "detected",
+			"enabled": true,
+			"status":  "active",
+		})
+	}
+	
+	response := map[string]interface{}{
+		"probes": probes,
+		"count":  len(probes),
+		"note":   "Showing active probes from cache. Full configuration requires restart to change.",
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to encode probe config")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (h *HTTPSyncStrategy) handleAdminCacheClear(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	agentKey := vars["agentkey"]
+	
+	if !h.validateAgentKey(agentKey) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	// Clear the cache
+	h.cache.Clear()
+	
+	h.logger.Info().Msg("Cache cleared via admin API")
+	
+	response := map[string]string{
+		"status":  "success",
+		"message": "Cache cleared successfully",
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to encode cache clear response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (h *HTTPSyncStrategy) validateAgentKey(providedKey string) bool {

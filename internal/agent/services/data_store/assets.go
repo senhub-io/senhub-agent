@@ -75,8 +75,12 @@ func (ah *AssetHandler) parseTemplates() {
 		}
 	}
 	
-	// Add more templates here as needed
-	// - admin.html
+	// Parse Administration template
+	if tmplContent, err := htmlFiles.ReadFile("assets/html/admin.html"); err == nil {
+		if tmpl, err := template.New("admin").Parse(string(tmplContent)); err == nil {
+			ah.templates["admin"] = tmpl
+		}
+	}
 }
 
 // RenderTemplate renders an HTML template with data
