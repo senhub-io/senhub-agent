@@ -1633,14 +1633,6 @@ func (h *HTTPSyncStrategy) getSenHubMetricsForProbe(probeName string) []SenHubMe
 	return senHubMetrics
 }
 
-// deduplicateAndFilterMetrics is now DEPRECATED - TSDB handles this automatically
-// This function is kept for backwards compatibility but should not be used
-// The TSDB approach eliminates duplicates at write-time and handles TTL during read
-func (h *HTTPSyncStrategy) deduplicateAndFilterMetrics(metrics []CachedMetric) []CachedMetric {
-	h.logger.Warn().Msg("⚠️ DEPRECATED: deduplicateAndFilterMetrics called - TSDB handles this automatically")
-	// Return as-is since TSDB already handles deduplication and TTL
-	return metrics
-}
 
 // convertToSenHubFormat converts a CachedMetric to SenHub standardized format
 func (h *HTTPSyncStrategy) convertToSenHubFormat(metric CachedMetric) SenHubMetric {
