@@ -244,7 +244,7 @@ async function loadSystemInfo() {
         console.error('Failed to load system info:', error);
         // Set error values
         const elements = [
-            'system-version', 'system-go-version', 'system-os', 
+            'system-version', 'system-commit', 'system-go-version', 'system-os', 
             'system-arch', 'system-memory', 'system-goroutines', 'system-uptime'
         ];
         elements.forEach(id => {
@@ -257,6 +257,16 @@ async function loadSystemInfo() {
 function updateSystemInfo(data) {
     // Update system information
     updateElement('system-version', data.version || 'Unknown');
+    
+    // Update commit information if available
+    const commitRow = document.getElementById('system-commit-row');
+    if (data.commit && data.commit.trim() !== '') {
+        updateElement('system-commit', data.commit);
+        commitRow.style.display = 'table-row';
+    } else {
+        commitRow.style.display = 'none';
+    }
+    
     updateElement('system-go-version', data.go_version || 'Unknown');
     updateElement('system-os', data.os || 'Unknown');
     updateElement('system-arch', data.arch || 'Unknown');
