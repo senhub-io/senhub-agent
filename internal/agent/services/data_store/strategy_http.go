@@ -1095,10 +1095,11 @@ func (h *HTTPSyncStrategy) handleInfoSystem(w http.ResponseWriter, r *http.Reque
 	}
 	
 	// Build system info response
+	// Use CommitHash if available (contains full version info), otherwise fallback to Version
 	version := cliArgs.Version
 	if cliArgs.CommitHash != "" {
-		// Include commit hash in version for build identification
-		version = fmt.Sprintf("%s-%s", version, cliArgs.CommitHash[:8])
+		// CommitHash contains full version info from git describe
+		version = cliArgs.CommitHash
 	}
 	
 	response := SystemInfoResponse{
