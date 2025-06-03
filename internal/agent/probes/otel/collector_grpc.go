@@ -78,26 +78,6 @@ func (c *GRPCCollector) Connect(ctx context.Context) error {
 	}
 	
 	// TODO: Implement gRPC connection establishment
-	// This would create a gRPC client connection to the specified endpoint
-	// Example pseudocode:
-	// 
-	// var opts []grpc.DialOption
-	// if c.insecure {
-	//     opts = append(opts, grpc.WithInsecure())
-	// }
-	// if c.token != "" {
-	//     opts = append(opts, grpc.WithPerRPCCredentials(newTokenAuth(c.token)))
-	// }
-	// 
-	// ctxWithTimeout, cancel := context.WithTimeout(ctx, c.timeout)
-	// defer cancel()
-	// 
-	// conn, err := grpc.DialContext(ctxWithTimeout, c.endpoint, opts...)
-	// if err != nil {
-	//     return fmt.Errorf("failed to connect to gRPC endpoint: %w", err)
-	// }
-	// 
-	// c.client = conn
 	
 	c.connected = true
 	return nil
@@ -110,13 +90,6 @@ func (c *GRPCCollector) Disconnect(ctx context.Context) error {
 	}
 	
 	// TODO: Implement gRPC connection closing
-	// Example pseudocode:
-	// 
-	// if c.client != nil {
-	//     if err := c.client.Close(); err != nil {
-	//         return fmt.Errorf("failed to close gRPC connection: %w", err)
-	//     }
-	// }
 	
 	c.connected = false
 	return nil
@@ -135,25 +108,6 @@ func (c *GRPCCollector) CollectTelemetry(ctx context.Context, telemetryType Tele
 	}
 	
 	// TODO: Implement actual gRPC collection using the OpenTelemetry gRPC API
-	// This would use the OTLP gRPC protocol to collect data
-	// Example pseudocode:
-	//
-	// switch telemetryType {
-	// case TelemetryMetrics:
-	//     client := otlpmetrics.NewMetricsServiceClient(c.client)
-	//     resp, err := client.Export(ctx, request)
-	//     // Process response...
-	// case TelemetryTraces:
-	//     client := otlptraces.NewTraceServiceClient(c.client)
-	//     resp, err := client.Export(ctx, request)
-	//     // Process response...
-	// case TelemetryLogs:
-	//     client := otlplogs.NewLogsServiceClient(c.client)
-	//     resp, err := client.Export(ctx, request)
-	//     // Process response...
-	// }
-	
-	// Placeholder for actual implementation
 	return []data_store.DataPoint{}, nil
 }
 
