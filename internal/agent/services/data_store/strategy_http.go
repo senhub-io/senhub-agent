@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -40,68 +39,14 @@ type HTTPSyncStrategy struct {
 	nagiosConfigMu      sync.RWMutex    // mutex for nagios config access
 	startTime           time.Time       // agent start time for uptime calculation
 	assetHandler        *AssetHandler   // asset handler for templates and static files
-	lastCPUTime         time.Duration   // last CPU time measurement
-	lastCPUMeasurement  time.Time       // last CPU measurement timestamp
+	cpuMeasurement      *CPUMeasurement // CPU usage tracking
+	formatConverter     *FormatConverter // format conversion for monitoring tools
 	// TLS configuration
 	tlsEnabled          bool
 	tlsMinVersion       string
 }
 
-// MetricCache stores the latest metrics in memory with TTL, organized like a TSDB
-type MetricCache struct {
-	mu           sync.RWMutex
-	// TSDB-like structure: unique key -> latest metric
-	// Key format: probe_name:metric_name:sorted_tags_hash
-	timeSeries   map[string]CachedMetric
-	// Index by probe for fast probe-specific queries  
-	probeIndex   map[string]map[string]bool // probe_name -> set of ts_keys
-	ttl          time.Duration
-	stopChan     chan struct{}
-}
 
-// CachedMetric represents a stored metric with metadata
-type CachedMetric struct {
-	Value      interface{}
-	Timestamp  time.Time
-	Unit       string
-	ProbeName  string
-	MetricName string
-	Tags       map[string]string
-}
-
-// generateTimeSeriesKey creates a unique key for a time series based on probe, metric name, and tags
-func (h *HTTPSyncStrategy) generateTimeSeriesKey(probeName, metricName string, tags map[string]string) string {
-	// Create a sorted list of tag key-value pairs for consistent key generation
-	var tagParts []string
-	
-	// Sort tag keys for consistent ordering
-	tagKeys := make([]string, 0, len(tags))
-	for k := range tags {
-		if k != "probe_name" { // Exclude probe_name since it's already in the key prefix
-			tagKeys = append(tagKeys, k)
-		}
-	}
-	
-	// Simple sort
-	for i := 0; i < len(tagKeys); i++ {
-		for j := i + 1; j < len(tagKeys); j++ {
-			if tagKeys[i] > tagKeys[j] {
-				tagKeys[i], tagKeys[j] = tagKeys[j], tagKeys[i]
-			}
-		}
-	}
-	
-	// Build tag string
-	for _, k := range tagKeys {
-		tagParts = append(tagParts, fmt.Sprintf("%s=%s", k, tags[k]))
-	}
-	
-	// Create unique key: probe:metric:tags
-	if len(tagParts) > 0 {
-		return fmt.Sprintf("%s:%s:%s", probeName, metricName, strings.Join(tagParts, ","))
-	}
-	return fmt.Sprintf("%s:%s", probeName, metricName)
-}
 
 // SenHubMetric represents a metric in standardized SenHub raw format
 type SenHubMetric struct {
@@ -262,13 +207,12 @@ func NewHTTPSyncStrategy(
 		enabledEndpoints:    make(map[string]bool),
 		startTime:           time.Now(), // Initialize start time for uptime calculation
 		assetHandler:        NewAssetHandler(agentConfig.GetAuthenticationKey()),
-		cache: &MetricCache{
-			timeSeries:  make(map[string]CachedMetric),
-			probeIndex:  make(map[string]map[string]bool),
-			ttl:         5 * time.Minute, // 5 minutes TTL
-			stopChan:    make(chan struct{}),
-		},
+		cpuMeasurement:      NewCPUMeasurement(),
+		cache: NewMetricCache(5*time.Minute, moduleLogger),
 	}
+	
+	// Initialize format converter after cache is created
+	strategy.formatConverter = NewFormatConverter(strategy.transformerRegistry, moduleLogger, strategy.cache)
 
 	// Override port if specified in params
 	if portValue, exists := params["port"]; exists {
@@ -383,7 +327,7 @@ func (h *HTTPSyncStrategy) Start() error {
 		Msg("Starting HTTP strategy")
 
 	// Start cache cleanup goroutine
-	go h.cache.cleanup()
+	h.cache.StartCleanupRoutine()
 
 	// Setup HTTP routes
 	router := h.setupRoutes()
@@ -437,138 +381,28 @@ func (h *HTTPSyncStrategy) Start() error {
 // AddDataPoints stores the received datapoints in cache
 func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error {
 	h.logger.Info().Int("count", len(datapoints)).Msg("🔥 HTTP Strategy - Received datapoints")
-	h.logger.Debug().Int("datapoints_count", len(datapoints)).Msg("Processing datapoints for TSDB cache")
 	
-	h.cache.mu.Lock()
-	defer h.cache.mu.Unlock()
-
-	now := time.Now()
+	// Use the cache's method to add data points
+	h.cache.AddDataPointsWithTransformer(datapoints, h.transformerRegistry)
 	
-	for _, dp := range datapoints {
-		// Extract tags as map
-		tags := make(map[string]string)
-		for _, tag := range dp.Tags {
-			tags[tag.Key] = tag.Value
-		}
-
-		// Get probe name from tags
-		probeName := tags["probe_name"]
-		
-		// ⚠️ DEBUG: Log if probe_name is missing or empty
-		if probeName == "" {
-			h.logger.Warn().
-				Str("metric_name", dp.Name).
-				Interface("all_tags", tags).
-				Msg("⚠️ MISSING PROBE_NAME: Metric has no probe_name tag!")
-			probeName = "unknown" // Fallback for metrics without probe_name
-		}
-
-		// Generate unique time series key
-		tsKey := h.generateTimeSeriesKey(probeName, dp.Name, tags)
-
-		// Get transformer to resolve unit
-		transformer, err := h.transformerRegistry.LoadTransformer(probeName, "friendly")
-		if err != nil {
-			h.logger.Warn().
-				Err(err).
-				Str("probe_name", probeName).
-				Msg("Failed to get transformer for unit resolution")
-		}
-		
-		// Resolve unit using transformer
-		unit := ""
-		if transformer != nil {
-			unit = transformer.GetUnit(dp.Name)
-		}
-
-		// Create cached metric
-		metric := CachedMetric{
-			Value:      dp.Value,
-			Timestamp:  now, // Use consistent timestamp for write batch
-			Unit:       unit,
-			ProbeName:  probeName,
-			MetricName: dp.Name,
-			Tags:       tags,
-		}
-
-		// TSDB approach: Store/replace metric by unique key (deduplication at write-time)
-		existingMetric, exists := h.cache.timeSeries[tsKey]
-		if exists {
-			h.logger.Debug().
-				Str("ts_key", tsKey).
-				Time("old_timestamp", existingMetric.Timestamp).
-				Time("new_timestamp", metric.Timestamp).
-				Msg("🔄 Replacing existing metric in time series")
-		} else {
-			h.logger.Debug().
-				Str("ts_key", tsKey).
-				Str("metric_name", dp.Name).
-				Str("probe_name", probeName).
-				Msg("📊 Adding new metric to time series")
-		}
-		
-		// Store metric in time series
-		h.cache.timeSeries[tsKey] = metric
-		
-		// Update probe index for fast probe-specific queries
-		if h.cache.probeIndex[probeName] == nil {
-			h.cache.probeIndex[probeName] = make(map[string]bool)
-		}
-		h.cache.probeIndex[probeName][tsKey] = true
-	}
-
-	// Clean up expired metrics
-	h.cleanupExpiredMetrics(now)
-
+	// Get cache info for logging
+	cacheInfo := h.cache.GetCacheInfo()
 	h.logger.Info().
 		Int("count", len(datapoints)).
-		Int("total_time_series", len(h.cache.timeSeries)).
-		Int("active_probes", len(h.cache.probeIndex)).
+		Int("total_time_series", cacheInfo.TotalMetrics).
+		Int("active_probes", cacheInfo.ProbeCount).
 		Msg("✅ Datapoints added to TSDB cache")
 
 	return nil
 }
 
-// cleanupExpiredMetrics removes expired metrics from the time series cache
-func (h *HTTPSyncStrategy) cleanupExpiredMetrics(now time.Time) {
-	expiredKeys := make([]string, 0)
-	
-	// Find expired metrics
-	for tsKey, metric := range h.cache.timeSeries {
-		if now.Sub(metric.Timestamp) > h.cache.ttl {
-			expiredKeys = append(expiredKeys, tsKey)
-		}
-	}
-	
-	// Remove expired metrics
-	for _, tsKey := range expiredKeys {
-		metric := h.cache.timeSeries[tsKey]
-		delete(h.cache.timeSeries, tsKey)
-		
-		// Also remove from probe index
-		if probeKeys, exists := h.cache.probeIndex[metric.ProbeName]; exists {
-			delete(probeKeys, tsKey)
-			// Clean up empty probe index
-			if len(probeKeys) == 0 {
-				delete(h.cache.probeIndex, metric.ProbeName)
-			}
-		}
-	}
-	
-	if len(expiredKeys) > 0 {
-		h.logger.Debug().
-			Int("expired_count", len(expiredKeys)).
-			Dur("ttl", h.cache.ttl).
-			Msg("🧹 Cleaned up expired metrics from TSDB cache")
-	}
-}
 
 // Shutdown gracefully stops the HTTP server and cleanup routines
 func (h *HTTPSyncStrategy) Shutdown(ctx context.Context) error {
 	h.logger.Info().Msg("Shutting down HTTP strategy")
 
 	// Stop cache cleanup
-	close(h.cache.stopChan)
+	h.cache.Stop()
 
 	// Shutdown HTTP server
 	if h.server != nil {
@@ -580,66 +414,9 @@ func (h *HTTPSyncStrategy) Shutdown(ctx context.Context) error {
 
 // setupRoutes configures HTTP routes
 func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
-	router := mux.NewRouter()
-
-	// Always expose health check endpoint
-	router.HandleFunc("/health", h.handleHealth).Methods("GET")
-
-	// API documentation endpoint
-	router.HandleFunc("/api/{agentkey}/endpoints", h.handleListEndpoints).Methods("GET")
-
-	// Discovery endpoints (with agentkey authentication)
-	router.HandleFunc("/api/{agentkey}/info/endpoints", h.handleInfoEndpoints).Methods("GET")
-	router.HandleFunc("/api/{agentkey}/info/system", h.handleInfoSystem).Methods("GET")
-	router.HandleFunc("/api/{agentkey}/info/probes", h.handleInfoProbes).Methods("GET")
-	router.HandleFunc("/api/{agentkey}/info/tags/{probe}", h.handleInfoTags).Methods("GET")
-	router.HandleFunc("/api/{agentkey}/info/schema/{probe}", h.handleInfoSchema).Methods("GET")
-	
-	// Admin endpoints (with agentkey authentication)
-	router.HandleFunc("/api/{agentkey}/admin/cache", h.handleDebugCache).Methods("GET")
-	router.HandleFunc("/api/{agentkey}/admin/logs", h.handleDebugLogs).Methods("GET")
-	router.HandleFunc("/api/{agentkey}/admin/logs", h.handleSetLogLevels).Methods("POST")
-	
-	// Legacy debug endpoints for backward compatibility
-	router.HandleFunc("/api/{agentkey}/debug/logs", h.handleDebugLogs).Methods("GET")
-	router.HandleFunc("/api/{agentkey}/debug/logs", h.handleSetLogLevels).Methods("POST")
-
-	// Conditionally expose monitoring tool endpoints based on configuration
-	if h.enabledEndpoints["senhub"] {
-		router.HandleFunc("/api/{agentkey}/senhub/metrics/{probe}", h.handleSenHubMetricsGET).Methods("GET")
-	}
-
-	if h.enabledEndpoints["prtg"] {
-		router.HandleFunc("/api/{agentkey}/prtg/metrics/{probe}", h.handlePRTGMetricsGET).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/prtg/probes", h.handleListProbes).Methods("GET")
-	}
-
-	if h.enabledEndpoints["nagios"] {
-		router.HandleFunc("/api/{agentkey}/nagios/metrics/{probe}", h.handleNagiosMetricsGET).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/nagios/check/{check_name}", h.handleNagiosCheck).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/nagios/metrics", h.handleNagiosMetrics).Methods("GET", "POST")
-		router.HandleFunc("/api/{agentkey}/nagios/checks", h.handleNagiosChecks).Methods("GET")
-	}
-
-	if h.enabledEndpoints["zabbix"] {
-		router.HandleFunc("/api/{agentkey}/zabbix/metrics/{probe}", h.handleZabbixMetricsGET).Methods("GET")
-	}
-
-	if h.enabledEndpoints["prometheus"] {
-		router.HandleFunc("/api/{agentkey}/prometheus/metrics", h.handlePrometheusMetricsGET).Methods("GET")
-	}
-
-	// Web UI routes
-	router.HandleFunc("/web/{agentkey}/", h.handleWebDashboard).Methods("GET")
-	router.HandleFunc("/web/{agentkey}/dashboard", h.handleWebDashboard).Methods("GET") // Compatibility alias
-	router.HandleFunc("/web/{agentkey}/explorer", h.handleWebExplorer).Methods("GET")
-	router.HandleFunc("/web/{agentkey}/docs", h.handleWebDocs).Methods("GET")
-	router.HandleFunc("/web/{agentkey}/admin", h.handleWebAdmin).Methods("GET")
-	
-	// Static assets
-	router.PathPrefix("/web/{agentkey}/assets/").HandlerFunc(h.handleWebAssets).Methods("GET")
-
-	return router
+	// Create handlers and delegate routing to them
+	handlers := NewHTTPHandlers(h)
+	return handlers.SetupRoutes()
 }
 
 // handleSenHubMetricsGET handles GET requests for SenHub raw format metrics
@@ -767,40 +544,20 @@ func (h *HTTPSyncStrategy) handleListProbes(w http.ResponseWriter, r *http.Reque
 
 	h.logger.Debug().Msg("List probes request received")
 
-	h.cache.mu.RLock()
-	defer h.cache.mu.RUnlock()
-
-	// Count metrics by probe name using TSDB structure
-	probeMetrics := make(map[string]int)
-	probeLastUpdate := make(map[string]time.Time)
-
-	for probeName, tsKeys := range h.cache.probeIndex {
-		if probeName == "" {
-			probeName = "unknown"
-		}
-		probeMetrics[probeName] = len(tsKeys)
-		
-		// Track latest update time for each probe
-		for tsKey := range tsKeys {
-			if metric, exists := h.cache.timeSeries[tsKey]; exists {
-				if lastUpdate, hasUpdate := probeLastUpdate[probeName]; !hasUpdate || metric.Timestamp.After(lastUpdate) {
-					probeLastUpdate[probeName] = metric.Timestamp
-				}
-			}
-		}
-	}
+	// Get probe statistics from cache
+	probeStats := h.cache.GetProbeStatistics()
 
 	// Build response
-	probes := make([]ProbeInfo, 0, len(probeMetrics))
-	for probeName, count := range probeMetrics {
+	probes := make([]ProbeInfo, 0, len(probeStats))
+	for _, stats := range probeStats {
 		lastUpdate := ""
-		if timestamp, exists := probeLastUpdate[probeName]; exists {
-			lastUpdate = timestamp.Format(time.RFC3339)
+		if !stats.LastUpdate.IsZero() {
+			lastUpdate = stats.LastUpdate.Format(time.RFC3339)
 		}
 		
 		probes = append(probes, ProbeInfo{
-			Name:         probeName,
-			MetricsCount: count,
+			Name:         stats.Name,
+			MetricsCount: stats.MetricsCount,
 			LastUpdate:   lastUpdate,
 		})
 	}
@@ -937,11 +694,6 @@ type SystemInfoResponse struct {
 	Resources   ResourcesInfo       `json:"resources"`
 }
 
-type CacheInfoResponse struct {
-	TotalMetrics int    `json:"total_metrics"`
-	TTL          string `json:"ttl"`
-	MemoryUsage  string `json:"memory_usage"`
-}
 
 type ResourcesInfo struct {
 	MemoryUsageMB float64 `json:"memory_usage_mb"`
@@ -1141,119 +893,9 @@ func formatDuration(d time.Duration) string {
 
 // getCPUUsage calculates the CPU usage percentage for the current process
 func (h *HTTPSyncStrategy) getCPUUsage() float64 {
-	// Get current process CPU usage
-	pid := os.Getpid()
-	
-	// Read CPU times from /proc/pid/stat on Linux/Unix
-	var currentCPUTime time.Duration
-	var err error
-	
-	switch runtime.GOOS {
-	case "linux":
-		currentCPUTime, err = h.getCPUTimeLinux(pid)
-	case "darwin":
-		currentCPUTime, err = h.getCPUTimeDarwin(pid)
-	default:
-		// Fallback: return 0 for unsupported platforms
-		return 0.0
-	}
-	
-	if err != nil {
-		h.logger.Debug().Err(err).Msg("Failed to get CPU time")
-		return 0.0
-	}
-	
-	now := time.Now()
-	
-	// If this is the first measurement, store the values and return 0
-	if h.lastCPUMeasurement.IsZero() {
-		h.lastCPUTime = currentCPUTime
-		h.lastCPUMeasurement = now
-		return 0.0
-	}
-	
-	// Calculate CPU usage percentage
-	cpuTimeDelta := currentCPUTime - h.lastCPUTime
-	wallTimeDelta := now.Sub(h.lastCPUMeasurement)
-	
-	// Update stored values for next calculation
-	h.lastCPUTime = currentCPUTime
-	h.lastCPUMeasurement = now
-	
-	if wallTimeDelta == 0 {
-		return 0.0
-	}
-	
-	// CPU percentage = (CPU time delta / wall time delta) * 100
-	cpuPercent := float64(cpuTimeDelta) / float64(wallTimeDelta) * 100.0
-	
-	// Cap at 100% (can exceed on multi-core systems)
-	if cpuPercent > 100.0 {
-		cpuPercent = 100.0
-	}
-	
-	return cpuPercent
+	return h.cpuMeasurement.GetCPUUsage()
 }
 
-// getCPUTimeLinux reads CPU time from /proc/pid/stat on Linux
-func (h *HTTPSyncStrategy) getCPUTimeLinux(pid int) (time.Duration, error) {
-	statFile := fmt.Sprintf("/proc/%d/stat", pid)
-	data, err := os.ReadFile(statFile)
-	if err != nil {
-		return 0, err
-	}
-	
-	fields := strings.Fields(string(data))
-	if len(fields) < 15 {
-		return 0, fmt.Errorf("insufficient fields in /proc/stat")
-	}
-	
-	// Fields 13 and 14 contain user and system CPU time in clock ticks
-	utime, err := strconv.ParseInt(fields[13], 10, 64)
-	if err != nil {
-		return 0, err
-	}
-	
-	stime, err := strconv.ParseInt(fields[14], 10, 64)
-	if err != nil {
-		return 0, err
-	}
-	
-	// Convert clock ticks to time duration
-	// Get clock ticks per second (usually 100 on most Linux systems)
-	clockTicks := int64(100)
-	
-	totalTicks := utime + stime
-	totalNanos := (totalTicks * int64(time.Second)) / clockTicks
-	
-	return time.Duration(totalNanos), nil
-}
-
-// getCPUTimeDarwin reads CPU time on macOS using runtime stats
-func (h *HTTPSyncStrategy) getCPUTimeDarwin(pid int) (time.Duration, error) {
-	// On macOS, we'll use runtime stats as a fallback since syscall.Getrusage is not available
-	if pid != os.Getpid() {
-		return 0, fmt.Errorf("can only get CPU time for current process on macOS")
-	}
-	
-	// Get memory stats which include runtime information
-	var stats runtime.MemStats
-	runtime.ReadMemStats(&stats)
-	
-	// Estimate CPU time based on GC pause times and other runtime metrics
-	// This is a simplified approach since direct CPU time access requires platform-specific code
-	gcPauseTotal := time.Duration(0)
-	for i := 0; i < len(stats.PauseNs); i++ {
-		gcPauseTotal += time.Duration(stats.PauseNs[i])
-	}
-	
-	// Return estimated CPU time based on GC activity and uptime
-	// This is an approximation since we can't access rusage on this platform
-	uptime := time.Since(h.startTime)
-	estimatedCPUTime := uptime/10 + gcPauseTotal // rough estimate
-	
-	return estimatedCPUTime, nil
-}
 
 // handleInfoTags provides tag discovery for a specific probe
 func (h *HTTPSyncStrategy) handleInfoTags(w http.ResponseWriter, r *http.Request) {
@@ -1469,265 +1111,35 @@ func (h *HTTPSyncStrategy) generateExamples(probeName string, tags map[string]Ta
 
 // getMetricsForProbe retrieves and transforms metrics for a specific probe (legacy - no filters)
 func (h *HTTPSyncStrategy) getMetricsForProbe(probeName string) []PRTGChannel {
-	return h.getMetricsForProbeWithFilter(probeName, MetricFilter{})
+	return h.formatConverter.GetMetricsForProbe(probeName)
 }
 
 // getMetricsForProbeWithFilter retrieves and transforms metrics for a specific probe with filtering
 func (h *HTTPSyncStrategy) getMetricsForProbeWithFilter(probeName string, filter MetricFilter) []PRTGChannel {
-	h.cache.mu.RLock()
-	defer h.cache.mu.RUnlock()
-
-	// Calculate total cache size for logging using TSDB structure
-	totalCacheSize := len(h.cache.timeSeries)
-	probeNames := make(map[string]int)
-	for probe, tsKeys := range h.cache.probeIndex {
-		probeNames[probe] = len(tsKeys)
-	}
-
-	h.logger.Info().
-		Str("requested_probe", probeName).
-		Int("total_time_series", totalCacheSize).
-		Msg("🔍 Getting metrics for probe from TSDB")
-
-	h.logger.Info().
-		Interface("available_probes", probeNames).
-		Str("requested_probe", probeName).
-		Msg("🗂️ Available probe names in TSDB cache")
-
-	// Get time series keys for the specific probe (O(1) access)
-	tsKeys, exists := h.cache.probeIndex[probeName]
-	if !exists {
-		h.logger.Info().Str("probe", probeName).Msg("📭 No metrics found for probe")
-		return []PRTGChannel{}
-	}
-
-	// Extract metrics from time series (already deduplicated by design)
-	var validMetrics []CachedMetric
-	now := time.Now()
-	
-	for tsKey := range tsKeys {
-		if metric, exists := h.cache.timeSeries[tsKey]; exists {
-			// Filter expired metrics
-			if now.Sub(metric.Timestamp) <= h.cache.ttl {
-				validMetrics = append(validMetrics, metric)
-			}
-		}
-	}
-
-	h.logger.Info().
-		Str("probe", probeName).
-		Int("time_series_count", len(tsKeys)).
-		Int("valid_metrics_count", len(validMetrics)).
-		Msg("📦 Extracted metrics from TSDB")
-
-	// Apply filters if provided
-	if len(filter.TagFilters) > 0 || len(filter.ExcludeTags) > 0 || len(filter.MetricNames) > 0 || filter.Limit > 0 || filter.Offset > 0 {
-		validMetrics = h.applyMetricFilter(validMetrics, filter)
-		h.logger.Info().
-			Str("probe", probeName).
-			Int("filtered_metrics_count", len(validMetrics)).
-			Interface("filter", filter).
-			Msg("🔍 Applied metric filters")
-	}
-
-	h.logger.Info().
-		Str("probe", probeName).
-		Int("valid_metrics_count", len(validMetrics)).
-		Msg("🔄 After TTL filtering and optional query filters")
-
-	// Transform to PRTG channels
-	var channels []PRTGChannel
-	for _, metric := range validMetrics {
-		h.logger.Debug().
-			Str("metric_name", metric.MetricName).
-			Str("probe", metric.ProbeName).
-			Any("value", metric.Value).
-			Msg("✅ Processing metric for PRTG")
-
-		// Transform metric to PRTG channel (no key needed)
-		channel := h.transformToPRTGChannel("", metric)
-		if channel != nil {
-			channels = append(channels, *channel)
-			h.logger.Debug().
-				Str("metric_name", metric.MetricName).
-				Str("channel", channel.Channel).
-				Float64("value", channel.Value).
-				Msg("✅ Channel created successfully")
-		} else {
-			h.logger.Warn().
-				Str("metric_name", metric.MetricName).
-				Any("value", metric.Value).
-				Msg("❌ Failed to create PRTG channel")
-		}
-	}
-
-	h.logger.Info().
-		Str("probe", probeName).
-		Int("valid_metrics", len(validMetrics)).
-		Int("channels_created", len(channels)).
-		Msg("📊 Metrics retrieval result")
-
-	return channels
+	return h.formatConverter.GetMetricsForProbeWithFilter(probeName, filter)
 }
 
-// getSenHubMetricsForProbe retrieves metrics for a probe in SenHub raw format
 func (h *HTTPSyncStrategy) getSenHubMetricsForProbe(probeName string) []SenHubMetric {
-	h.cache.mu.RLock()
-	defer h.cache.mu.RUnlock()
-
-	h.logger.Info().
-		Str("requested_probe", probeName).
-		Msg("🔍 Getting SenHub metrics for probe from TSDB")
-
-	// Get time series keys for the specific probe (O(1) access)
-	tsKeys, exists := h.cache.probeIndex[probeName]
-	if !exists {
-		h.logger.Info().Str("probe", probeName).Msg("📭 No metrics found for probe")
-		return []SenHubMetric{}
-	}
-
-	// Extract metrics from time series (already deduplicated by design)
-	var validMetrics []CachedMetric
-	now := time.Now()
-	
-	for tsKey := range tsKeys {
-		if metric, exists := h.cache.timeSeries[tsKey]; exists {
-			// Filter expired metrics
-			if now.Sub(metric.Timestamp) <= h.cache.ttl {
-				validMetrics = append(validMetrics, metric)
-			}
-		}
-	}
-
-	h.logger.Info().
-		Str("probe", probeName).
-		Int("time_series_count", len(tsKeys)).
-		Int("valid_metrics_count", len(validMetrics)).
-		Msg("📦 Extracted metrics from TSDB")
-
-	h.logger.Info().
-		Str("probe", probeName).
-		Int("valid_metrics_count", len(validMetrics)).
-		Msg("🔄 After TTL filtering (no deduplication needed in TSDB)")
-
-	// Convert to SenHub format
-	var senHubMetrics []SenHubMetric
-	for _, metric := range validMetrics {
-		senHubMetric := h.convertToSenHubFormat(metric)
-		senHubMetrics = append(senHubMetrics, senHubMetric)
-		
-		h.logger.Debug().
-			Str("metric_name", metric.MetricName).
-			Str("channel", senHubMetric.Channel).
-			Str("probe", metric.ProbeName).
-			Any("value", metric.Value).
-			Msg("✅ Converted to SenHub format")
-	}
-
-	h.logger.Info().
-		Str("probe", probeName).
-		Int("valid_metrics", len(validMetrics)).
-		Int("senhub_metrics_created", len(senHubMetrics)).
-		Msg("📊 SenHub metrics retrieval result")
-
-	return senHubMetrics
+	return h.formatConverter.GetSenHubMetricsForProbe(probeName)
 }
 
-
-// convertToSenHubFormat converts a CachedMetric to SenHub standardized format
 func (h *HTTPSyncStrategy) convertToSenHubFormat(metric CachedMetric) SenHubMetric {
-	// Generate contextualized display name using transformer
-	var displayName string
-	transformer, err := h.transformerRegistry.LoadTransformer(metric.ProbeName, "friendly")
-	if err != nil {
-		h.logger.Warn().Err(err).Str("probe", metric.ProbeName).Msg("Failed to load transformer, using fallback")
-		// Use metric name as fallback display name
-		displayName = metric.MetricName
-	} else {
-		displayName = transformer.TransformMetricName(metric.MetricName, metric.Tags)
-	}
-	
-	return SenHubMetric{
-		Name:        metric.MetricName,
-		Channel:     displayName,
-		Value:       metric.Value,
-		Unit:        metric.Unit,
-		Timestamp:   metric.Timestamp,
-		ProbeName:   metric.ProbeName,
-		Tags:        metric.Tags,
-		Description: "", // Could be enriched from transformer
-	}
+	// Delegate to format converter
+	return h.formatConverter.convertToSenHubFormat(metric)
 }
 
-// transformToPRTGChannel converts a cached metric to PRTG channel format
 func (h *HTTPSyncStrategy) transformToPRTGChannel(key string, metric CachedMetric) *PRTGChannel {
-	// Convert value to float64
-	var value float64
-	switch v := metric.Value.(type) {
-	case float64:
-		value = v
-	case float32:
-		value = float64(v)
-	case int:
-		value = float64(v)
-	case int64:
-		value = float64(v)
-	default:
-		h.logger.Warn().Str("key", key).Any("value", metric.Value).Msg("Cannot convert value to float64")
-		return nil
-	}
-
-	// Transform metric name to user-friendly channel name for PRTG
-	channelName, unit := h.transformMetricNameForPRTG(key, metric)
-
-	// Get lookup information from transformer
-	lookup := h.getLookupForMetric(key, metric.ProbeName)
-
-	// PRTG-specific unit handling
-	prtgChannel := &PRTGChannel{
-		Channel: channelName,
-		Value:   value,
-		Float:   1,
-	}
-	
-	// For PRTG, always use "custom" as unit and put real unit in customunit
-	if unit != "" {
-		prtgChannel.Unit = "custom"
-		prtgChannel.CustomUnit = unit
-	}
-	
-	// Add lookup if available
-	if lookup != "" {
-		prtgChannel.ValueLookup = lookup
-	}
-	
-	return prtgChannel
+	return h.formatConverter.transformToPRTGChannel(key, metric)
 }
 
-// getLookupForMetric gets the lookup file for a metric using the transformer
-func (h *HTTPSyncStrategy) getLookupForMetric(metricName, probeName string) string {
-	// Get transformer for this probe
-	transformer, err := h.transformerRegistry.LoadTransformer(probeName, "friendly")
-	if err != nil {
-		h.logger.Debug().
-			Err(err).
-			Str("probe", probeName).
-			Str("metric", metricName).
-			Msg("Failed to load transformer for lookup")
-		return ""
-	}
-	
-	// Get lookup from transformer
-	lookup := transformer.GetLookup(metricName)
-	
-	h.logger.Debug().
-		Str("probe", probeName).
-		Str("metric", metricName).
-		Str("lookup", lookup).
-		Msg("Retrieved lookup for metric")
-		
-	return lookup
+func (h *HTTPSyncStrategy) applyMetricFilter(metrics []CachedMetric, filter MetricFilter) []CachedMetric {
+	return h.formatConverter.applyMetricFilter(metrics, filter)
 }
+
+func (h *HTTPSyncStrategy) transformMetricNameForPRTG(key string, metric CachedMetric) (string, string) {
+	return h.formatConverter.transformMetricNameForPRTG(key, metric)
+}
+
 
 // handleListEndpoints lists all available API endpoints
 func (h *HTTPSyncStrategy) handleListEndpoints(w http.ResponseWriter, r *http.Request) {
@@ -1861,184 +1273,7 @@ func (h *HTTPSyncStrategy) parseTagFilter(param string, filterMap map[string][]s
 	filterMap[tagName] = values
 }
 
-// applyMetricFilter filters metrics based on the provided filter
-func (h *HTTPSyncStrategy) applyMetricFilter(metrics []CachedMetric, filter MetricFilter) []CachedMetric {
-	var filtered []CachedMetric
-	
-	for _, metric := range metrics {
-		// Check metric name filter
-		if len(filter.MetricNames) > 0 {
-			found := false
-			for _, name := range filter.MetricNames {
-				if metric.MetricName == name {
-					found = true
-					break
-				}
-			}
-			if !found {
-				continue
-			}
-		}
-		
-		// Check tag filters (include)
-		if len(filter.TagFilters) > 0 {
-			matches := true
-			for tagName, allowedValues := range filter.TagFilters {
-				tagValue, exists := metric.Tags[tagName]
-				if !exists {
-					matches = false
-					break
-				}
-				
-				// Check if tag value is in allowed values
-				found := false
-				for _, allowedValue := range allowedValues {
-					if tagValue == allowedValue {
-						found = true
-						break
-					}
-				}
-				if !found {
-					matches = false
-					break
-				}
-			}
-			if !matches {
-				continue
-			}
-		}
-		
-		// Check exclude tag filters
-		if len(filter.ExcludeTags) > 0 {
-			excluded := false
-			for tagName, excludedValues := range filter.ExcludeTags {
-				tagValue, exists := metric.Tags[tagName]
-				if !exists {
-					continue
-				}
-				
-				// Check if tag value is in excluded values
-				for _, excludedValue := range excludedValues {
-					if tagValue == excludedValue {
-						excluded = true
-						break
-					}
-				}
-				if excluded {
-					break
-				}
-			}
-			if excluded {
-				continue
-			}
-		}
-		
-		filtered = append(filtered, metric)
-	}
-	
-	// Apply pagination
-	if filter.Offset > 0 || filter.Limit > 0 {
-		start := filter.Offset
-		if start > len(filtered) {
-			return []CachedMetric{}
-		}
-		
-		end := len(filtered)
-		if filter.Limit > 0 && start+filter.Limit < end {
-			end = start + filter.Limit
-		}
-		
-		filtered = filtered[start:end]
-	}
-	
-	return filtered
-}
 
-// transformMetricNameForPRTG converts technical metric names to user-friendly channel names for PRTG
-// Returns both the transformed name and unit
-func (h *HTTPSyncStrategy) transformMetricNameForPRTG(key string, metric CachedMetric) (string, string) {
-	// Use the stored metric name directly instead of parsing from key
-	metricName := metric.MetricName
-	probeName := metric.ProbeName
-	
-	// Fallback: if metric name is empty, extract from key
-	if metricName == "" {
-		parts := strings.Split(key, ".")
-		if len(parts) > 0 {
-			metricName = parts[0]
-		}
-	}
-
-	// Map individual host probes to the "host" category
-	probeCategory := probeName
-	if probeName == "cpu" || probeName == "memory" || probeName == "network" || probeName == "wifi_signal_strength" {
-		probeCategory = "host"
-	}
-	
-	// Always use "friendly" style for PRTG endpoints
-	style := "friendly"
-
-	// Load transformer for this probe category and style
-	h.logger.Debug().
-		Str("probe_name", probeName).
-		Str("probe_category", probeCategory).
-		Str("style", style).
-		Msg("🔍 Loading transformer")
-		
-	transformer, err := h.transformerRegistry.LoadTransformer(probeCategory, style)
-	if err != nil {
-		h.logger.Warn().
-			Err(err).
-			Str("probe", probeName).
-			Str("probe_category", probeCategory).
-			Str("style", style).
-			Msg("❌ Failed to load transformer, using fallback")
-		return metricName, "" // Fallback to original metric name with no unit
-	}
-	
-	h.logger.Debug().
-		Str("probe_category", probeCategory).
-		Str("transformer_type", fmt.Sprintf("%T", transformer)).
-		Msg("✅ Transformer loaded successfully")
-
-	// Transform the metric name using all available tags
-	transformedName := transformer.TransformMetricName(metricName, metric.Tags)
-	
-	// Get unit from transformer
-	unit := transformer.GetUnit(metricName)
-	
-	// Debug logging to trace transformation
-	h.logger.Debug().
-		Str("original_metric", metricName).
-		Str("transformed_name", transformedName).
-		Str("unit", unit).
-		Str("probe_category", probeCategory).
-		Interface("tags", metric.Tags).
-		Msg("🔧 PRTG metric transformation")
-	
-	return transformedName, unit
-}
-
-
-
-// DebugCacheEntry represents a cache entry for debug display
-type DebugCacheEntry struct {
-	Name      string            `json:"name"`
-	Value     interface{}       `json:"value"`
-	Timestamp time.Time         `json:"timestamp"`
-	Unit      string            `json:"unit"`
-	ProbeName string            `json:"probe_name"`
-	Tags      map[string]string `json:"tags"`
-	Age       string            `json:"age"`
-}
-
-// DebugCacheResponse represents the debug cache response
-type DebugCacheResponse struct {
-	TotalEntries int                `json:"total_entries"`
-	CacheTTL     string             `json:"cache_ttl"`
-	Entries      []DebugCacheEntry  `json:"entries"`
-	Summary      map[string]int     `json:"summary"`
-}
 
 // handleDebugCache handles GET requests for cache debugging
 func (h *HTTPSyncStrategy) handleDebugCache(w http.ResponseWriter, r *http.Request) {
@@ -2207,78 +1442,6 @@ func (h *HTTPSyncStrategy) handleSetLogLevels(w http.ResponseWriter, r *http.Req
 	h.logger.Info().Msg("Log levels updated successfully")
 }
 
-// cleanup removes expired metrics from TSDB cache
-func (cache *MetricCache) cleanup() {
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			cache.mu.Lock()
-			now := time.Now()
-			
-			// Clean up expired metrics from TSDB
-			expiredKeys := make([]string, 0)
-			
-			// Find expired metrics
-			for tsKey, metric := range cache.timeSeries {
-				if now.Sub(metric.Timestamp) > cache.ttl {
-					expiredKeys = append(expiredKeys, tsKey)
-				}
-			}
-			
-			// Remove expired metrics
-			for _, tsKey := range expiredKeys {
-				metric := cache.timeSeries[tsKey]
-				delete(cache.timeSeries, tsKey)
-				
-				// Also remove from probe index
-				if probeKeys, exists := cache.probeIndex[metric.ProbeName]; exists {
-					delete(probeKeys, tsKey)
-					// Clean up empty probe index
-					if len(probeKeys) == 0 {
-						delete(cache.probeIndex, metric.ProbeName)
-					}
-				}
-			}
-			
-			cache.mu.Unlock()
-		case <-cache.stopChan:
-			return
-		}
-	}
-}
-
-// GetAllMetrics returns all cached metrics
-func (cache *MetricCache) GetAllMetrics() []CachedMetric {
-	cache.mu.RLock()
-	defer cache.mu.RUnlock()
-	
-	metrics := make([]CachedMetric, 0, len(cache.timeSeries))
-	for _, metric := range cache.timeSeries {
-		metrics = append(metrics, metric)
-	}
-	
-	return metrics
-}
-
-// GetProbeMetrics returns all metrics for a specific probe
-func (cache *MetricCache) GetProbeMetrics(probeName string) []CachedMetric {
-	cache.mu.RLock()
-	defer cache.mu.RUnlock()
-	
-	var metrics []CachedMetric
-	if probeKeys, exists := cache.probeIndex[probeName]; exists {
-		for tsKey := range probeKeys {
-			if metric, exists := cache.timeSeries[tsKey]; exists {
-				metrics = append(metrics, metric)
-			}
-		}
-	}
-	
-	return metrics
-}
 
 // handleNagiosMetricsGET handles GET requests for Nagios format metrics by probe
 func (h *HTTPSyncStrategy) handleNagiosMetricsGET(w http.ResponseWriter, r *http.Request) {
