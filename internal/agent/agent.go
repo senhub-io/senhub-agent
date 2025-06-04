@@ -114,12 +114,29 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 
 	var updater auto_update.AutoUpdate
 	if !isOfflineMode {
-		// Only create auto-updater in online mode
+		// Create auto-updater in online mode
 		updater = auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
-			RemoteConfig: remoteConfiguration,
+			ConfigSource: remoteConfiguration,
 			Logger:       logger,
 			DryRun:       false,
 		})
+	} else if localConfiguration != nil {
+		// In offline mode, check if auto-update is enabled
+		autoUpdateConfig := localConfiguration.GetAutoUpdateConfig()
+		if autoUpdateConfig.Enabled {
+			logger.Info().
+				Str("url", autoUpdateConfig.URL).
+				Bool("enabled", autoUpdateConfig.Enabled).
+				Msg("🔄 Auto-update enabled in offline mode")
+			
+			updater = auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
+				ConfigSource: localConfiguration,
+				Logger:       logger,
+				DryRun:       false,
+			})
+		} else {
+			logger.Info().Msg("Auto-update disabled in offline mode")
+		}
 	}
 
 	return agent{
@@ -146,6 +163,12 @@ func (a agent) Start() error {
 			a.localConfiguration,
 			a.store,
 			a.sensors,
+		}
+		
+		// Add auto-updater if enabled in offline mode
+		if a.updater != nil {
+			a.logger.Info().Msg("Adding auto-updater to offline mode services")
+			servicesToStart = append(servicesToStart, a.updater)
 		}
 	} else {
 		// Online mode: start remote configuration, store, sensors, and updater

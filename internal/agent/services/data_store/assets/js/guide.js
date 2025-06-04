@@ -1,7 +1,7 @@
 // SenHub Agent - Guide JavaScript
 
 /**
- * Simple Markdown to HTML parser for the user guide
+ * Enhanced Markdown to HTML parser for the user guide
  */
 class MarkdownParser {
     constructor() {
@@ -12,58 +12,137 @@ class MarkdownParser {
         this.toc = [];
         let html = markdown;
 
-        // Headers (avec génération de TOC)
-        html = html.replace(/^### (.*$)/gim, (match, title) => {
-            const id = this.generateId(title);
-            this.toc.push({ level: 3, title: title, id: id });
-            return `<h3 id="${id}">${title}</h3>`;
-        });
-
-        html = html.replace(/^## (.*$)/gim, (match, title) => {
-            const id = this.generateId(title);
-            this.toc.push({ level: 2, title: title, id: id });
-            return `<h2 id="${id}">${title}</h2>`;
-        });
-
-        html = html.replace(/^# (.*$)/gim, (match, title) => {
-            const id = this.generateId(title);
-            this.toc.push({ level: 1, title: title, id: id });
-            return `<h1 id="${id}">${title}</h1>`;
-        });
-
-        // Code blocks
-        html = html.replace(/```(\w+)?\n([\s\S]*?)```/gim, (match, language, code) => {
-            return `<pre><code class="language-${language || 'text'}">${this.escapeHtml(code.trim())}</code></pre>`;
-        });
-
-        // Inline code
-        html = html.replace(/`([^`]+)`/gim, '<code>$1</code>');
-
-        // Bold
-        html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
-
-        // Italic
-        html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>');
-
-        // Links
-        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/gim, '<a href="$2" target="_blank">$1</a>');
-
-        // Lists
-        html = html.replace(/^\- (.*$)/gim, '<li>$1</li>');
-        html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
-
-        // Numbered lists
-        html = html.replace(/^\d+\. (.*$)/gim, '<li>$1</li>');
-
-        // Line breaks
-        html = html.replace(/\n\n/gim, '<br><br>');
-        html = html.replace(/\n/gim, '<br>');
-
-        // Clean up nested lists
-        html = html.replace(/<\/ul><br><ul>/gim, '');
-        html = html.replace(/<\/ol><br><ol>/gim, '');
+        // Split into blocks (paragraphs, code blocks, etc.)
+        const blocks = this.splitIntoBlocks(html);
+        html = this.processBlocks(blocks);
 
         return html;
+    }
+
+    splitIntoBlocks(text) {
+        // Split by double newlines to get blocks
+        const blocks = text.split(/\n\s*\n/);
+        return blocks.filter(block => block.trim().length > 0);
+    }
+
+    processBlocks(blocks) {
+        let html = '';
+        let inCodeBlock = false;
+        let codeLanguage = '';
+        let codeContent = '';
+
+        for (let block of blocks) {
+            block = block.trim();
+            
+            // Handle code blocks
+            if (block.startsWith('```')) {
+                if (!inCodeBlock) {
+                    // Start of code block
+                    inCodeBlock = true;
+                    codeLanguage = block.substring(3).trim();
+                    codeContent = '';
+                    continue;
+                } else {
+                    // End of code block
+                    inCodeBlock = false;
+                    html += `<pre><code class="language-${codeLanguage}">${this.escapeHtml(codeContent.trim())}</code></pre>\n\n`;
+                    continue;
+                }
+            }
+
+            if (inCodeBlock) {
+                codeContent += block + '\n';
+                continue;
+            }
+
+            // Process regular blocks
+            html += this.processBlock(block) + '\n\n';
+        }
+
+        return html;
+    }
+
+    processBlock(block) {
+        // Headers
+        if (block.match(/^#{1,6}\s/)) {
+            return this.processHeaders(block);
+        }
+
+        // Lists
+        if (block.match(/^[\-\*\+]\s/) || block.match(/^\d+\.\s/)) {
+            return this.processList(block);
+        }
+
+        // Regular paragraph
+        return '<p>' + this.processInlineElements(block) + '</p>';
+    }
+
+    processHeaders(block) {
+        const match = block.match(/^(#{1,6})\s(.+)/);
+        if (!match) return block;
+
+        const level = match[1].length;
+        const title = match[2].trim();
+        const id = this.generateId(title);
+        
+        this.toc.push({ level: level, title: title, id: id });
+        
+        return `<h${level} id="${id}">${this.processInlineElements(title)}</h${level}>`;
+    }
+
+    processList(block) {
+        const lines = block.split('\n');
+        let html = '';
+        let inList = false;
+        let listType = '';
+
+        for (let line of lines) {
+            line = line.trim();
+            if (!line) continue;
+
+            // Detect list type
+            if (line.match(/^[\-\*\+]\s/)) {
+                if (!inList || listType !== 'ul') {
+                    if (inList && listType === 'ol') html += '</ol>';
+                    if (!inList) html += '<ul>';
+                    inList = true;
+                    listType = 'ul';
+                }
+                const content = line.replace(/^[\-\*\+]\s/, '');
+                html += `<li>${this.processInlineElements(content)}</li>`;
+            } else if (line.match(/^\d+\.\s/)) {
+                if (!inList || listType !== 'ol') {
+                    if (inList && listType === 'ul') html += '</ul>';
+                    if (!inList) html += '<ol>';
+                    inList = true;
+                    listType = 'ol';
+                }
+                const content = line.replace(/^\d+\.\s/, '');
+                html += `<li>${this.processInlineElements(content)}</li>`;
+            }
+        }
+
+        if (inList) {
+            html += listType === 'ul' ? '</ul>' : '</ol>';
+        }
+
+        return html;
+    }
+
+    processInlineElements(text) {
+        // Bold
+        text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        
+        // Italic
+        text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        
+        // Inline code
+        text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+        
+        // Links
+        text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+        
+        return text;
     }
 
     generateId(title) {
@@ -72,7 +151,7 @@ class MarkdownParser {
             .replace(/[^a-z0-9\s-]/g, '')
             .replace(/\s+/g, '-')
             .replace(/-+/g, '-')
-            .trim();
+            .replace(/^-|-$/g, '');
     }
 
     escapeHtml(text) {
@@ -82,21 +161,15 @@ class MarkdownParser {
     }
 
     generateTOC() {
+        if (this.toc.length === 0) return '';
+        
         let tocHtml = '';
-        let currentLevel = 0;
-
+        
         this.toc.forEach(item => {
-            if (item.level > currentLevel) {
-                tocHtml += '<ul>'.repeat(item.level - currentLevel);
-            } else if (item.level < currentLevel) {
-                tocHtml += '</ul>'.repeat(currentLevel - item.level);
-            }
-            
-            tocHtml += `<li><a href="#${item.id}">${item.title}</a></li>`;
-            currentLevel = item.level;
+            const levelClass = `toc-level-${item.level}`;
+            tocHtml += `<li><a href="#${item.id}" class="${levelClass}" data-target="${item.id}">${item.title}</a></li>`;
         });
-
-        tocHtml += '</ul>'.repeat(currentLevel);
+        
         return tocHtml;
     }
 }
@@ -108,6 +181,7 @@ class GuidePage {
     constructor(agentKey) {
         this.base = new SenHubBase(agentKey);
         this.parser = new MarkdownParser();
+        this.activeSection = null;
         
         this.initializeElements();
         this.loadGuide();
@@ -144,8 +218,9 @@ class GuidePage {
             const tocHtml = this.parser.generateTOC();
             this.tocList.innerHTML = tocHtml;
             
-            // Setup smooth scrolling for TOC links
+            // Setup interactions
             this.setupSmoothScrolling();
+            this.setupScrollSpy();
             
             this.showContent();
             
@@ -161,16 +236,58 @@ class GuidePage {
         tocLinks.forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
-                const targetId = link.getAttribute('href').substring(1);
+                const targetId = link.getAttribute('data-target');
                 const targetElement = document.getElementById(targetId);
                 
                 if (targetElement) {
+                    // Remove active class from all links
+                    tocLinks.forEach(l => l.classList.remove('active'));
+                    // Add active class to clicked link
+                    link.classList.add('active');
+                    
+                    // Smooth scroll to target
                     targetElement.scrollIntoView({
                         behavior: 'smooth',
                         block: 'start'
                     });
+                    
+                    this.activeSection = targetId;
                 }
             });
+        });
+    }
+
+    setupScrollSpy() {
+        // Intersection Observer for scroll spy
+        const headings = this.guideContent.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        const tocLinks = this.tocList.querySelectorAll('a[data-target]');
+        
+        if (headings.length === 0 || tocLinks.length === 0) return;
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const id = entry.target.id;
+                    
+                    // Remove active class from all TOC links
+                    tocLinks.forEach(link => link.classList.remove('active'));
+                    
+                    // Add active class to corresponding TOC link
+                    const activeLink = this.tocList.querySelector(`a[data-target="${id}"]`);
+                    if (activeLink) {
+                        activeLink.classList.add('active');
+                    }
+                }
+            });
+        }, {
+            rootMargin: '-20% 0px -70% 0px',
+            threshold: 0
+        });
+
+        headings.forEach(heading => {
+            if (heading.id) {
+                observer.observe(heading);
+            }
         });
     }
 

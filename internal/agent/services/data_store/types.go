@@ -5,10 +5,10 @@ import (
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
-// DataPoint est un alias vers datapoint.DataPoint
+// DataPoint is an alias for datapoint.DataPoint
 type DataPoint = datapoint.DataPoint
 
-// StrategyRouter définit l'interface pour le routage des données vers les stratégies
+// StrategyRouter defines the interface for routing data to strategies
 type StrategyRouter interface {
 	GetTargetStrategies() []string
 }

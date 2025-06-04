@@ -288,16 +288,43 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 
 	searchStrategyId := d.GenerateStrategyId(strategyConfig.Name, strategyConfig.Params)
 
-	// Recherche d'une stratégie existante
+	// Search for existing strategy with the same name
 	for _, strategy := range d.strategies {
-		strategyId := d.GenerateStrategyId(strategy.GetStrategyName(), strategy.GetStrategyParams())
-		if strategyId == searchStrategyId {
-			localLogger.Debug().Msg("Found existing strategy")
-			return strategy
+		if strategy.GetStrategyName() == strategyConfig.Name {
+			// Strategy of same type found, check if parameters have changed
+			strategyId := d.GenerateStrategyId(strategy.GetStrategyName(), strategy.GetStrategyParams())
+			if strategyId == searchStrategyId {
+				localLogger.Debug().Msg("Found existing strategy with same configuration")
+				return strategy
+			} else {
+				// Same name but different parameters - try to update
+				localLogger.Info().
+					Any("old_params", strategy.GetStrategyParams()).
+					Any("new_params", strategyConfig.Params).
+					Msg("Strategy configuration changed, attempting update")
+				
+				// Try to update the strategy if it supports live updates
+				if httpStrategy, ok := strategy.(*HTTPSyncStrategy); ok {
+					if err := httpStrategy.UpdateConfiguration(strategyConfig.Params); err != nil {
+						localLogger.Warn().
+							Err(err).
+							Msg("Failed to update strategy configuration, will recreate")
+						// If update fails, continue to create a new strategy
+						break
+					} else {
+						localLogger.Info().Msg("✅ Strategy configuration updated successfully")
+						return strategy
+					}
+				} else {
+					localLogger.Debug().Msg("Strategy does not support live updates, will recreate")
+					// Strategy does not support live updates, continue to recreate
+					break
+				}
+			}
 		}
 	}
 
-	// Création d'une nouvelle stratégie
+	// Create a new strategy
 	localLogger.Debug().
 		Any("params", strategyConfig.Params).
 		Msg("Creating new strategy")

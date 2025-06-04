@@ -45,7 +45,7 @@ class TagFilters {
 
     renderTags() {
         // Filter out redundant tags
-        const redundantTags = ['host', 'probe_name', 'platform', 'os'];
+        const redundantTags = ['host', 'probe_name', 'platform', 'os', 'prtg_metric_id'];
         const alwaysKeepTags = ['url', 'endpoint', 'interface', 'drive_name', 'volume_name'];
         
         const filteredTags = Object.fromEntries(
