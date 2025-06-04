@@ -4,9 +4,10 @@
 
 SenHub Agent is a powerful and flexible monitoring system that collects real-time system metrics and exposes them via REST APIs compatible with major monitoring tools (PRTG, Nagios, Prometheus, etc.).
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Online Mode (Recommended)
+
 ```bash
 # Installation with authentication key
 ./agent install --authentication-key "your-agent-key"
@@ -19,6 +20,7 @@ SenHub Agent is a powerful and flexible monitoring system that collects real-tim
 ```
 
 ### Offline Mode (Standalone)
+
 ```bash
 # Offline installation with local configuration
 ./agent install --offline
@@ -30,37 +32,41 @@ SenHub Agent is a powerful and flexible monitoring system that collects real-tim
 ./agent run --offline
 ```
 
-## 📊 Web Interface
+## Web Interface
 
 Once the agent is running, access the web interface:
 
-- **Dashboard** : `http://localhost:8080/web/{your-key}/dashboard`
-- **API Explorer** : `http://localhost:8080/web/{your-key}/explorer`
-- **Documentation** : `http://localhost:8080/web/{your-key}/docs`
+- **Dashboard**: `http://localhost:8080/web/{your-key}/dashboard`
+- **API Explorer**: `http://localhost:8080/web/{your-key}/explorer`
+- **Documentation**: `http://localhost:8080/web/{your-key}/docs`
 
 ### Main Dashboard
 
 The dashboard displays in real-time:
-- ✅ **Agent status** (version, uptime, port)
-- 💊 **Health check** (HTTP server, cache, metrics)
-- 📊 **System resources** (memory, goroutines, CPU)
-- 🔍 **Active probes** with metrics count
+
+- **Agent status** (version, uptime, port)
+- **Health check** (HTTP server, cache, metrics)
+- **System resources** (memory, goroutines, CPU)
+- **Active probes** with metrics count
 
 ### API Explorer
 
 Interactive tool for:
-- 🔍 Testing API endpoints live
-- 🏷️ Filtering metrics by tags
-- 📋 Viewing request examples
-- 🎯 Exploring data schemas
 
-## 🔧 Configuration
+- Testing API endpoints live
+- Filtering metrics by tags
+- Viewing request examples
+- Exploring data schemas
+
+## Configuration
 
 ### Automatic Configuration (Online Mode)
+
 The agent automatically retrieves its configuration from SenHub Platform.
 
 ### Manual Configuration (Offline Mode)
-`agent-config.yaml` file:
+
+Create an `agent-config.yaml` file:
 
 ```yaml
 agent:
@@ -85,36 +91,41 @@ probes:
     params: {interval: 30}
 ```
 
-## 🔍 Available Probes
+## Available Probes
 
 ### System Probes
-- **cpu** : CPU usage per core and total
-- **memory** : Physical and virtual memory
-- **network** : Network traffic per interface
-- **logicaldisk** : Disk space and I/O
+
+- **cpu**: CPU usage per core and total
+- **memory**: Physical and virtual memory
+- **network**: Network traffic per interface
+- **logicaldisk**: Disk space and I/O
 
 ### Infrastructure Probes
-- **redfish** : Server monitoring (Dell, HPE, Lenovo, Cisco)
-- **syslog** : Syslog event collection
-- **otel** : OpenTelemetry metrics
+
+- **redfish**: Server monitoring (Dell, HPE, Lenovo, Cisco)
+- **syslog**: Syslog event collection
+- **otel**: OpenTelemetry metrics
 
 ### Application Probes
-- **ping_webapp** : URL availability
-- **load_webapp** : Response time and HTTP codes
-- **ping_gateway** : Network connectivity
 
-## 📈 Output Formats
+- **ping_webapp**: URL availability
+- **load_webapp**: Response time and HTTP codes
+- **ping_gateway**: Network connectivity
+
+## Output Formats
 
 ### PRTG Network Monitor
+
 ```bash
-# By probe
+# Get metrics by probe
 curl "http://localhost:8080/api/{key}/prtg/metrics/cpu"
 
-# With filters
+# Apply filters
 curl "http://localhost:8080/api/{key}/prtg/metrics/cpu?tags=instance:0"
 ```
 
-**PRTG Response:**
+**PRTG Response Example:**
+
 ```json
 {
   "prtg": {
@@ -132,11 +143,13 @@ curl "http://localhost:8080/api/{key}/prtg/metrics/cpu?tags=instance:0"
 ```
 
 ### Nagios/Icinga
+
 ```bash
 curl "http://localhost:8080/api/{key}/nagios/metrics/system_health"
 ```
 
-**Nagios Response:**
+**Nagios Response Example:**
+
 ```json
 {
   "status": 0,
@@ -147,23 +160,27 @@ curl "http://localhost:8080/api/{key}/nagios/metrics/system_health"
 ```
 
 ### Prometheus
+
 ```bash
 curl "http://localhost:8080/api/{key}/prometheus/metrics"
 ```
 
-## 🏷️ Tag System
+## Tag System
 
 ### Automatic Tags
-- `probe_name` : Source probe name
-- `hostname` : Host name
-- `instance` : Component instance/index
+
+- `probe_name`: Source probe name
+- `hostname`: Host name
+- `instance`: Component instance/index
 
 ### Specialized Tags
-- **Network** : `interface`, `adapter_type`
-- **Disk** : `drive_letter`, `filesystem`
-- **Redfish** : `component_type`, `vendor`, `model`
 
-### Tag Filtering
+- **Network**: `interface`, `adapter_type`
+- **Disk**: `drive_letter`, `filesystem`
+- **Redfish**: `component_type`, `vendor`, `model`
+
+### Tag Filtering Examples
+
 ```bash
 # Specific CPU core
 curl "...?tags=instance:0"
@@ -175,9 +192,10 @@ curl "...?tags=interface:eth0"
 curl "...?tags=probe_name:redfish,component_type:thermal"
 ```
 
-## 🔧 Administration
+## Debug and Logging
 
-### Real-time Debug
+### Enable Debug at Startup
+
 ```bash
 # Enable global debug
 ./agent run --authentication-key "key" --verbose
@@ -187,6 +205,7 @@ curl "...?tags=probe_name:redfish,component_type:thermal"
 ```
 
 ### Runtime Debug API
+
 ```bash
 # View current log levels
 curl "http://localhost:8080/api/{key}/debug/logs"
@@ -198,6 +217,7 @@ curl -X POST "http://localhost:8080/api/{key}/debug/logs" \
 ```
 
 ### Available Debug Modules
+
 - `strategy.http` - HTTP strategy and cache
 - `probe.redfish` - Redfish probe  
 - `probe.host` - System probes
@@ -205,14 +225,16 @@ curl -X POST "http://localhost:8080/api/{key}/debug/logs" \
 - `configuration` - Configuration management
 - `scheduler` - Probe scheduling
 
-## 🔒 HTTPS Security
+## HTTPS Security
 
 ### Auto-generated Certificates
+
 ```bash
 ./agent install --offline --enable-https
 ```
 
 ### Custom Certificates
+
 ```bash
 ./agent install --offline --enable-https \
   --cert-file /path/to/cert.pem \
@@ -221,6 +243,7 @@ curl -X POST "http://localhost:8080/api/{key}/debug/logs" \
 ```
 
 ### HTTPS Configuration
+
 ```yaml
 storage:
   - name: http
@@ -237,9 +260,10 @@ storage:
           validity_days: 365
 ```
 
-## 📋 Redfish Monitoring
+## Redfish Monitoring
 
 ### Basic Configuration
+
 ```yaml
 probes:
   - name: redfish
@@ -253,24 +277,27 @@ probes:
 ```
 
 ### Available Collections
-- **system** : General status, processors, memory
-- **thermal** : Temperatures and fans
-- **power** : Power supply and consumption
-- **processor** : Detailed processor information
-- **memory** : Detailed memory modules
-- **storage** : Disks and controllers
-- **network** : Network interfaces
+
+- **system**: General status, processors, memory
+- **thermal**: Temperatures and fans
+- **power**: Power supply and consumption
+- **processor**: Detailed processor information
+- **memory**: Detailed memory modules
+- **storage**: Disks and controllers
+- **network**: Network interfaces
 
 ### Supported Vendors
-- **Dell** : PowerEdge, PowerVault ME5024
-- **HPE** : ProLiant, Synergy
-- **Lenovo** : ThinkSystem
-- **Cisco** : UCS
-- **Generic** : Redfish-compatible servers
 
-## 🚨 Event Monitoring
+- **Dell**: PowerEdge, PowerVault ME5024
+- **HPE**: ProLiant, Synergy
+- **Lenovo**: ThinkSystem
+- **Cisco**: UCS
+- **Generic**: Redfish-compatible servers
 
-### Syslog
+## Event Monitoring
+
+### Syslog Configuration
+
 ```yaml
 probes:
   - name: syslog
@@ -281,29 +308,44 @@ probes:
 ```
 
 ### Redfish Events
+
 System events are automatically collected from Redfish servers and converted to numerical metrics.
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
-**Agent won't start:**
+#### Agent Won't Start
+
 ```bash
-# Check logs
+# Check logs with verbose output
 ./agent run --authentication-key "key" --verbose
 
-# Verify configuration
+# Test with offline configuration
 ./agent run --offline --config-path ./test-config.yaml
 ```
 
-**No metrics:**
-- Check that probes are active in the dashboard
-- Review logs with `--debug-modules "probe.host,cache"`
-- Test API endpoints directly
+#### No Metrics Available
 
-**HTTPS issues:**
-- Verify certificates: `openssl x509 -in cert.pem -text -noout`
-- Test with curl: `curl -k https://localhost:8443/health`
+1. Check that probes are active in the dashboard
+2. Review logs with targeted debugging:
+   ```bash
+   ./agent run --verbose --debug-modules "probe.host,cache"
+   ```
+3. Test API endpoints directly:
+   ```bash
+   curl "http://localhost:8080/api/{key}/info/probes"
+   ```
+
+#### HTTPS Issues
+
+```bash
+# Verify certificates
+openssl x509 -in cert.pem -text -noout
+
+# Test with curl
+curl -k https://localhost:8443/health
+```
 
 ### Test URLs
 
@@ -314,34 +356,38 @@ curl "http://localhost:8080/health"
 # List active probes
 curl "http://localhost:8080/api/{key}/info/probes"
 
-# Probe metrics
+# Get probe metrics
 curl "http://localhost:8080/api/{key}/prtg/metrics/cpu"
 
-# Probe schema
+# View probe schema
 curl "http://localhost:8080/api/{key}/info/schema/cpu"
 ```
 
-## 📞 Support
+## Support Resources
 
-### Logs and Diagnostics
-- Detailed logs: `--verbose --debug-modules "module1,module2"`
-- Health check: `/health`
-- System info: `/api/{key}/info/system`
+### Diagnostics
 
-### Resources
-- Web interface: Integrated dashboard
-- API Explorer: Real-time testing
-- Documentation: Endpoints and examples
+- **Detailed logs**: Use `--verbose --debug-modules "module1,module2"`
+- **Health check**: Access `/health` endpoint
+- **System info**: Check `/api/{key}/info/system`
 
-### Production Configuration
+### Available Interfaces
 
-**Recommendations:**
-- Use HTTPS in production
-- Configure appropriate intervals (30-300s)
-- Monitor memory consumption
-- Backup configurations
+- **Web interface**: Integrated dashboard at `/web/{key}/`
+- **API Explorer**: Real-time testing at `/web/{key}/explorer`
+- **Documentation**: Complete API reference at `/web/{key}/docs`
 
-**Production Example:**
+## Production Configuration
+
+### Recommendations
+
+- Use HTTPS in production environments
+- Configure appropriate collection intervals (30-300 seconds)
+- Monitor memory consumption regularly
+- Backup configuration files
+
+### Production Example
+
 ```yaml
 agent:
   key: "production-key"

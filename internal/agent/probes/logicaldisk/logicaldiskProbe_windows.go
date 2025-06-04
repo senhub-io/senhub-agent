@@ -1,6 +1,6 @@
 //go:build windows
 
-package host
+package logicaldisk
 
 import (
 	"fmt"
@@ -14,6 +14,12 @@ import (
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/windows/pdh"
 )
+
+// pathInfo represents path information for performance counters
+type pathInfo struct {
+	path     string
+	instance string
+}
 
 // Configuration des filtres de disques
 var driveFilters = struct {
