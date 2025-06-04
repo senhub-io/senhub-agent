@@ -512,9 +512,9 @@ func (h *HTTPSyncStrategy) handleWebDocs(w http.ResponseWriter, r *http.Request)
 	h.webInterface.HandleWebDocs(r, w)
 }
 
-func (h *HTTPSyncStrategy) handleWebGuide(w http.ResponseWriter, r *http.Request) {
-	h.webInterface.HandleWebGuide(r, w)
-}
+// func (h *HTTPSyncStrategy) handleWebGuide(w http.ResponseWriter, r *http.Request) {
+// 	h.webInterface.HandleWebGuide(r, w)
+// }
 
 func (h *HTTPSyncStrategy) handleWebAssets(w http.ResponseWriter, r *http.Request) {
 	h.webInterface.HandleWebAssets(r, w)
