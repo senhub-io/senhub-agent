@@ -345,6 +345,20 @@ func (c *MetricCache) Stop() {
 	close(c.stopChan)
 }
 
+// UpdateTTL updates the cache TTL dynamically
+func (c *MetricCache) UpdateTTL(newTTL time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	
+	oldTTL := c.ttl
+	c.ttl = newTTL
+	
+	c.logger.Info().
+		Dur("old_ttl", oldTTL).
+		Dur("new_ttl", newTTL).
+		Msg("🔄 Cache TTL updated dynamically")
+}
+
 // CacheInfoResponse represents cache statistics
 type CacheInfoResponse struct {
 	TotalMetrics int    `json:"total_metrics"`

@@ -29,9 +29,11 @@ import (
 
 // LocalConfigurationData represents the YAML configuration structure
 type LocalConfigurationData struct {
-	Agent   LocalAgentConfig  `yaml:"agent"`
-	Storage []StorageConfig   `yaml:"storage"`
-	Probes  []ProbeConfig     `yaml:"probes"`
+	Agent      LocalAgentConfig  `yaml:"agent"`
+	Storage    []StorageConfig   `yaml:"storage"`
+	Probes     []ProbeConfig     `yaml:"probes"`
+	AutoUpdate *AutoUpdateConfig `yaml:"auto_update,omitempty"`
+	Cache      *CacheConfig      `yaml:"cache,omitempty"`
 }
 
 // LocalAgentConfig represents agent-specific configuration
@@ -46,6 +48,17 @@ type TLSConfig struct {
 	Enabled       bool     `yaml:"enabled"`
 	MinTlsVersion string   `yaml:"min_tls_version"`
 	CipherSuites  []string `yaml:"cipher_suites"`
+}
+
+// AutoUpdateConfig represents auto-update configuration
+type AutoUpdateConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	URL     string `yaml:"url"`
+}
+
+// CacheConfig represents cache configuration
+type CacheConfig struct {
+	RetentionMinutes int `yaml:"retention_minutes"`
 }
 
 // LocalConfiguration manages offline configuration
@@ -97,16 +110,61 @@ func (lc *LocalConfiguration) GetAgentKey() string {
 	return lc.data.Agent.Key
 }
 
+// GetAuthenticationKey implements AgentConfiguration interface
+func (lc *LocalConfiguration) GetAuthenticationKey() string {
+	return lc.data.Agent.Key
+}
+
+// GetServerUrl implements AgentConfiguration interface
+func (lc *LocalConfiguration) GetServerUrl() string {
+	// In offline mode, we don't have a server URL
+	return ""
+}
+
+// GetAutoUpdateConfig returns the auto-update configuration
+func (lc *LocalConfiguration) GetAutoUpdateConfig() *AutoUpdateConfig {
+	if lc.data.AutoUpdate == nil {
+		// Return default configuration
+		return &AutoUpdateConfig{
+			Enabled: false,
+			URL:     "https://eu-west-1.intake.senhub.io/releases",
+		}
+	}
+	return lc.data.AutoUpdate
+}
+
+// GetCacheConfig returns the cache configuration
+func (lc *LocalConfiguration) GetCacheConfig() *CacheConfig {
+	if lc.data.Cache == nil {
+		// Return default configuration
+		return &CacheConfig{
+			RetentionMinutes: 5,
+		}
+	}
+	return lc.data.Cache
+}
+
 // GetConfiguration returns the configuration data in RemoteConfigurationData format
 func (lc *LocalConfiguration) GetConfiguration() RemoteConfigurationData {
+	// Get auto-update configuration
+	autoUpdate := lc.GetAutoUpdateConfig()
+	
+	// Convert auto-update interval based on enabled status
+	var updateInterval int
+	if autoUpdate.Enabled {
+		updateInterval = 3600 // 1 hour in seconds
+	} else {
+		updateInterval = 0 // Disabled
+	}
+	
 	// Convert local config format to remote config format
 	return RemoteConfigurationData{
 		StorageConfig: lc.data.Storage,
 		Probes:        lc.data.Probes,
 		Agent: AgentConfig{
-			RegistryUrl:         "",
+			RegistryUrl:         autoUpdate.URL,
 			Version:             "",
-			UpdateCheckInterval: 0, // Disable auto-updates in offline mode
+			UpdateCheckInterval: updateInterval,
 		},
 	}
 }
@@ -217,8 +275,10 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 			Mode:      "offline",
 			Generated: lc.args.AuthenticationKey == "", // Mark as generated if we created it
 		},
-		Storage: lc.createDefaultStorageConfig(),
-		Probes:  lc.createDefaultProbesConfig(),
+		Storage:    lc.createDefaultStorageConfig(),
+		Probes:     lc.createDefaultProbesConfig(),
+		AutoUpdate: lc.createDefaultAutoUpdateConfig(),
+		Cache:      lc.createDefaultCacheConfig(),
 	}
 	
 	// Create directory if it doesn't exist
@@ -276,7 +336,7 @@ func (lc *LocalConfiguration) createDefaultStorageConfig() []StorageConfig {
 	httpParams := map[string]interface{}{
 		"port":         8080,
 		"bind_address": "127.0.0.1",
-		"endpoints":    []string{"prtg", "senhub", "web", "nagios"},
+		"endpoints":    []string{"prtg", "web", "nagios"},
 	}
 	
 	// Add TLS configuration if HTTPS is enabled
@@ -319,6 +379,21 @@ func (lc *LocalConfiguration) createDefaultProbesConfig() []ProbeConfig {
 			Name:   "logicaldisk",
 			Params: map[string]interface{}{"interval": 30},
 		},
+	}
+}
+
+// createDefaultAutoUpdateConfig creates default auto-update configuration
+func (lc *LocalConfiguration) createDefaultAutoUpdateConfig() *AutoUpdateConfig {
+	return &AutoUpdateConfig{
+		Enabled: false, // Disabled by default in offline mode
+		URL:     "https://eu-west-1.intake.senhub.io/releases",
+	}
+}
+
+// createDefaultCacheConfig creates default cache configuration
+func (lc *LocalConfiguration) createDefaultCacheConfig() *CacheConfig {
+	return &CacheConfig{
+		RetentionMinutes: 5, // Default 5 minutes retention
 	}
 }
 
@@ -509,6 +584,15 @@ agent:
   mode: offline
   generated: %t
 
+# Auto-update configuration (disabled by default in offline mode)
+auto_update:
+  enabled: %t      # Enable/disable automatic updates
+  url: "%s"        # Update server URL
+
+# Cache configuration
+cache:
+  retention_minutes: %d  # Cache retention time in minutes
+
 # Local storage with web interface
 storage:
   - name: http
@@ -607,17 +691,6 @@ probes:
 #       Authorization: "Bearer token123"
 #     insecure: false                    # Optional, gRPC only
 
-# ===== OTHER STORAGE STRATEGIES =====
-
-# # Send to PRTG server
-# - name: prtg
-#   params:
-#     server_url: "https://prtg.example.com"  # REQUIRED
-
-# # Send to events server  
-# - name: event
-#   params:
-#     server_url: "https://events.example.com"  # REQUIRED
 `
 	
 	// Extract storage config values
@@ -639,6 +712,9 @@ probes:
 	return []byte(fmt.Sprintf(yamlTemplate, 
 		config.Agent.Key,
 		config.Agent.Generated,
+		config.AutoUpdate.Enabled,
+		config.AutoUpdate.URL,
+		config.Cache.RetentionMinutes,
 		port,
 		bindAddress,
 		endpointsStr,

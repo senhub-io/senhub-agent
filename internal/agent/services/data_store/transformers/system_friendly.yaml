@@ -1,0 +1,12 @@
+# System Metrics Friendly Naming Patterns for PRTG
+patterns:
+  # System metrics
+  "system.uptime_seconds": "System Uptime"
+  "system.processes_total": "Total Processes"
+  "system.processes_running": "Running Processes"
+  "system.processes_sleeping": "Sleeping Processes"
+
+# Unit mappings
+units:
+  seconds: "s"
+  count: "#"

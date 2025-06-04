@@ -4,6 +4,7 @@ package data_store
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -147,16 +148,25 @@ func (m *MetricsProcessor) ParseMetricFilter(r *http.Request) MetricFilter {
 
 // parseTagFilter parses tag filter string like "core:0,1,2" or "interface:en0"
 func (m *MetricsProcessor) parseTagFilter(param string, filterMap map[string][]string) {
-	parts := strings.Split(param, ":")
-	if len(parts) != 2 {
+	// Split only on the first colon to handle values with colons (like URLs)
+	colonIndex := strings.Index(param, ":")
+	if colonIndex == -1 {
 		return
 	}
 	
-	tagName := strings.TrimSpace(parts[0])
-	valuesStr := strings.TrimSpace(parts[1])
+	tagName := strings.TrimSpace(param[:colonIndex])
+	valuesStr := strings.TrimSpace(param[colonIndex+1:])
 	
 	if tagName == "" || valuesStr == "" {
 		return
+	}
+	
+	// URL decode tag name and values
+	if decodedTagName, err := url.QueryUnescape(tagName); err == nil {
+		tagName = decodedTagName
+	}
+	if decodedValuesStr, err := url.QueryUnescape(valuesStr); err == nil {
+		valuesStr = decodedValuesStr
 	}
 	
 	// Split values by comma
@@ -585,7 +595,8 @@ func (m *MetricsProcessor) GenerateSimpleNagiosResponse(probeName string, metric
 		transformedName, _ := m.TransformMetricNameForPRTG("", metric)
 		cleanName := m.cleanPerfDataLabel(transformedName)
 		
-		if val, ok := metric.Value.(float64); ok {
+		// Convert metric value to float64 (handle different types)
+		if val, ok := m.convertToFloat64(metric.Value); ok {
 			perfDataItems = append(perfDataItems, fmt.Sprintf("%s=%.2f", cleanName, val))
 			metricCount++
 		}
@@ -599,6 +610,41 @@ func (m *MetricsProcessor) GenerateSimpleNagiosResponse(probeName string, metric
 		StatusText: "OK",
 		Message:    message,
 		PerfData:   perfData,
+	}
+}
+
+// convertToFloat64 converts various types to float64 for Nagios processing
+func (m *MetricsProcessor) convertToFloat64(value interface{}) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return v, true
+	case float32:
+		return float64(v), true
+	case int:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case uint:
+		return float64(v), true
+	case uint32:
+		return float64(v), true
+	case uint64:
+		return float64(v), true
+	case string:
+		if parsed, err := strconv.ParseFloat(v, 64); err == nil {
+			return parsed, true
+		}
+		return 0, false
+	default:
+		// Try to convert via string representation
+		if str := fmt.Sprintf("%v", v); str != "" {
+			if parsed, err := strconv.ParseFloat(str, 64); err == nil {
+				return parsed, true
+			}
+		}
+		return 0, false
 	}
 }
 

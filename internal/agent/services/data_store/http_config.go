@@ -173,10 +173,8 @@ func (cm *ConfigurationManager) loadConfiguration() {
 		}
 	}
 
-	// If no endpoints specified, default to senhub only (raw format)
-	if len(cm.enabledEndpoints) == 0 {
-		cm.enabledEndpoints["senhub"] = true
-	}
+	// If no endpoints specified, default to no endpoints enabled
+	// User must explicitly configure endpoints
 
 	// Parse TLS configuration
 	if tlsParam, exists := cm.params["tls"]; exists {
@@ -237,14 +235,14 @@ func (cm *ConfigurationManager) ValidateConfigParams(params configuration.Storag
 	if endpointsValue, exists := params["endpoints"]; exists {
 		if endpointsList, ok := endpointsValue.([]interface{}); ok {
 			validEndpoints := map[string]bool{
-				"prtg": true, "senhub": true, "nagios": true, 
+				"prtg": true, "nagios": true, 
 				"zabbix": true, "prometheus": true, "web": true,
 			}
 			
 			for _, endpoint := range endpointsList {
 				if endpointStr, ok := endpoint.(string); ok {
 					if !validEndpoints[endpointStr] {
-						return fmt.Errorf("invalid endpoint: %s. Valid endpoints: prtg, senhub, nagios, zabbix, prometheus, web", endpointStr)
+						return fmt.Errorf("invalid endpoint: %s. Valid endpoints: prtg, nagios, zabbix, prometheus, web", endpointStr)
 					}
 				} else {
 					return fmt.Errorf("endpoint must be a string, got: %T", endpoint)
