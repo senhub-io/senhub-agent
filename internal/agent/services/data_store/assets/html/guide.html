@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="agent-key" content="{{.AgentKey}}">
+    <title>SenHub Agent - Guide Utilisateur</title>
+    <link rel="icon" type="image/png" href="/web/{{.AgentKey}}/assets/logo.png">
+    
+    <!-- CSS Assets -->
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/variables.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/base.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/layout.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/forms.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/buttons.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/components.css">
+    
+    <style>
+        .guide-content {
+            max-width: 900px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        
+        .guide-content h1 {
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 0.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .guide-content h2 {
+            color: var(--gray-800);
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            padding-left: 0.5rem;
+            border-left: 4px solid var(--primary-color);
+        }
+        
+        .guide-content h3 {
+            color: var(--gray-700);
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+        
+        .guide-content h4 {
+            color: var(--gray-600);
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .guide-content pre {
+            background-color: var(--gray-50);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.875rem;
+            margin: 1rem 0;
+        }
+        
+        .guide-content code {
+            background-color: var(--gray-100);
+            padding: 0.125rem 0.25rem;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.875rem;
+            color: var(--gray-800);
+        }
+        
+        .guide-content pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        
+        .guide-content ul, .guide-content ol {
+            margin: 1rem 0;
+            padding-left: 1.5rem;
+        }
+        
+        .guide-content li {
+            margin: 0.5rem 0;
+        }
+        
+        .guide-content blockquote {
+            border-left: 4px solid var(--warning-color);
+            background-color: #fff3e0;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: var(--radius-md);
+        }
+        
+        .guide-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        
+        .guide-content th,
+        .guide-content td {
+            border: 1px solid var(--gray-200);
+            padding: 0.75rem;
+            text-align: left;
+        }
+        
+        .guide-content th {
+            background-color: var(--gray-50);
+            font-weight: 600;
+        }
+        
+        .guide-content .emoji {
+            font-style: normal;
+        }
+        
+        .guide-toc {
+            background-color: var(--gray-50);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .guide-toc h3 {
+            margin-top: 0;
+            margin-bottom: 1rem;
+            color: var(--primary-color);
+        }
+        
+        .guide-toc ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .guide-toc ul ul {
+            padding-left: 1rem;
+            margin-top: 0.25rem;
+        }
+        
+        .guide-toc li {
+            margin: 0.25rem 0;
+        }
+        
+        .guide-toc a {
+            color: var(--gray-700);
+            text-decoration: none;
+            display: block;
+            padding: 0.25rem 0;
+            border-radius: 3px;
+            transition: background-color 0.2s ease;
+        }
+        
+        .guide-toc a:hover {
+            background-color: var(--gray-100);
+            color: var(--primary-color);
+            padding-left: 0.5rem;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: var(--gray-600);
+        }
+        
+        .error {
+            background-color: #fef2f2;
+            color: var(--danger-color);
+            padding: 1rem;
+            border-radius: var(--radius-md);
+            margin-bottom: 1rem;
+            border-left: 4px solid var(--danger-color);
+        }
+        
+        .back-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--gray-200);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
+            Guide Utilisateur
+        </h1>
+        <div class="nav-breadcrumb">
+            <a href="/web/{{.AgentKey}}/">Dashboard</a> / Guide Utilisateur
+        </div>
+    </div>
+    
+    <div class="container">
+        <div id="loading" class="loading">
+            <div>📖 Chargement du guide utilisateur...</div>
+        </div>
+        
+        <div id="error" class="error" style="display: none;">
+            ❌ Impossible de charger le guide utilisateur.
+        </div>
+        
+        <div id="content" style="display: none;">
+            <div class="guide-content">
+                <!-- Table des matières -->
+                <div class="guide-toc">
+                    <h3>📑 Table des Matières</h3>
+                    <ul id="toc-list">
+                        <!-- Générée automatiquement -->
+                    </ul>
+                </div>
+                
+                <!-- Contenu du guide -->
+                <div id="guide-content">
+                    <!-- Contenu markdown rendu ici -->
+                </div>
+                
+                <!-- Liens de retour -->
+                <div class="back-links">
+                    <a href="/web/{{.AgentKey}}/" class="btn btn-primary">
+                        🏠 Retour au Dashboard
+                    </a>
+                    <a href="/web/{{.AgentKey}}/explorer" class="btn btn-secondary">
+                        🔍 API Explorer
+                    </a>
+                    <a href="/web/{{.AgentKey}}/docs" class="btn btn-secondary">
+                        📚 Documentation API
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript -->
+    <script>
+        // Make agent key available globally
+        window.AGENT_KEY = '{{.AgentKey}}';
+    </script>
+    <script src="/web/{{.AgentKey}}/assets/js/base.js"></script>
+    <script src="/web/{{.AgentKey}}/assets/js/guide.js"></script>
+</body>
+</html>
