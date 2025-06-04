@@ -90,17 +90,17 @@ func (w *WebInterface) HandleWebDocs(req *http.Request, writer http.ResponseWrit
 	writer.Write([]byte(content))
 }
 
-// HandleWebAdmin serves the administration interface
-func (w *WebInterface) HandleWebAdmin(req *http.Request, writer http.ResponseWriter) {
+// HandleWebGuide serves the user guide interface
+func (w *WebInterface) HandleWebGuide(req *http.Request, writer http.ResponseWriter) {
 	_, authenticated := w.strategy.authManager.AuthenticateAndExtract(writer, req)
 	if !authenticated {
 		return
 	}
 	
-	// Render admin template
-	content, err := w.assetHandler.RenderTemplate("admin")
+	// Render guide template
+	content, err := w.assetHandler.RenderTemplate("guide")
 	if err != nil {
-		w.logger.Error().Err(err).Msg("Failed to render admin template")
+		w.logger.Error().Err(err).Msg("Failed to render guide template")
 		http.Error(writer, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}

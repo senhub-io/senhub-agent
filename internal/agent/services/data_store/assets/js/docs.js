@@ -77,7 +77,6 @@ class DocsPage {
             health: { title: '💊 Health & Status', description: 'Monitor agent health and status' },
             discovery: { title: '🔍 Discovery', description: 'Discover available probes, metrics, and schemas' },
             metrics: { title: '📊 Metrics', description: 'Access collected metrics in various formats' },
-            admin: { title: '⚙️ Administration', description: 'Administrative and debugging endpoints' },
             other: { title: '🔧 Other', description: 'Additional utility endpoints' }
         };
         
