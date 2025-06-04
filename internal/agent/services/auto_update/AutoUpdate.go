@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/go-version"
@@ -176,13 +177,48 @@ func (a *autoUpdate) doUpdate(url string) error {
 		a.logger.Info().Msg("Dry run: Skipping update")
 		return nil
 	}
+	
+	a.logger.Info().
+		Str("download_url", url).
+		Msg("Downloading update binary")
+	
 	resp, err := http.Get(url)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to download update: %w", err)
 	}
 	defer resp.Body.Close()
+	
+	// Validate HTTP response
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download update: HTTP %d %s from %s", 
+			resp.StatusCode, resp.Status, url)
+	}
+	
+	// Validate Content-Type (should be application/octet-stream or similar for binaries)
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "application/json") {
+		return fmt.Errorf("invalid content type for binary download: %s (expected binary, got %s)", 
+			contentType, url)
+	}
+	
+	// Validate Content-Length (binary should be several MB)
+	contentLength := resp.ContentLength
+	if contentLength > 0 && contentLength < 1024*1024 { // Less than 1MB is suspicious
+		return fmt.Errorf("binary too small: %d bytes (expected at least 1MB)", contentLength)
+	}
+	
+	a.logger.Info().
+		Str("content_type", contentType).
+		Int64("content_length", contentLength).
+		Msg("Binary download validation passed, applying update")
+	
 	err = selfupdate.Apply(resp.Body, selfupdate.Options{})
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to apply update: %w", err)
+	}
+	
+	a.logger.Info().Msg("Update applied successfully")
+	return nil
 }
 
 func (a *autoUpdate) PeriodicalCheckForUpdate() error {
