@@ -31,7 +31,7 @@ func UpdateAgent(args *cliArgs.ParsedArgs) {
 	)
 
 	updater := auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
-		RemoteConfig: remoteConfiguration,
+		ConfigSource: remoteConfiguration,
 		Logger:       logger,
 		DryRun:       args.DryRun,
 	})

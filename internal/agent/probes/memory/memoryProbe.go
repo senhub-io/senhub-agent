@@ -1,7 +1,7 @@
 //go:build windows || !windows
 
-// internal/agent/probes/host/memoryProbe.go
-package host
+// internal/agent/probes/memory/memoryProbe.go
+package memory
 
 import (
 	"context"

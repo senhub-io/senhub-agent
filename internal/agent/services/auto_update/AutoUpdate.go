@@ -13,6 +13,7 @@ import (
 	"github.com/minio/selfupdate"
 	"github.com/ybbus/httpretry"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/configParser"
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -27,6 +28,15 @@ var (
 	DEFAULT_UPDATE_CHECK_INTERVAL = 1 * time.Hour
 )
 
+// ConfigSource defines interface for auto-update configuration access
+// This allows auto-update to work with both local and remote configurations
+type ConfigSource interface {
+	// GetConfiguration returns the agent configuration data
+	GetConfiguration() configuration.RemoteConfigurationData
+	// OnConfigChanged registers a callback for configuration changes
+	OnConfigChanged(callback func(string))
+}
+
 // Register an event on remote config change
 // This function checks for update and applies the update if required
 
@@ -38,13 +48,13 @@ type AutoUpdate interface {
 }
 
 type AutoUpdateConfig struct {
-	RemoteConfig *configuration.RemoteConfiguration
+	ConfigSource ConfigSource
 	Logger       *logger.Logger
 	DryRun       bool
 }
 
 type autoUpdate struct {
-	remoteConfig *configuration.RemoteConfiguration
+	configSource ConfigSource
 	logger       *logger.Logger
 	httpClient   *http.Client
 	scheduler    *periodic_scheduler.PeriodicScheduler
@@ -59,7 +69,7 @@ func NewAutoUpdate(config AutoUpdateConfig) AutoUpdate {
 	)
 
 	return &autoUpdate{
-		remoteConfig: config.RemoteConfig,
+		configSource: config.ConfigSource,
 		logger:       &localLogger,
 		httpClient:   httpClient,
 		dryRun:       config.DryRun,
@@ -89,7 +99,7 @@ func (a *autoUpdate) createScheduler() {
 }
 
 func (a *autoUpdate) Start(quitChannel chan struct{}) error {
-	a.remoteConfig.OnConfigChanged(a.onConfigChange)
+	a.configSource.OnConfigChanged(a.onConfigChange)
 
 	a.createScheduler()
 	(*a.scheduler).Start(quitChannel)
@@ -176,8 +186,8 @@ func (a *autoUpdate) doUpdate(url string) error {
 }
 
 func (a *autoUpdate) PeriodicalCheckForUpdate() error {
-	expectedVersion := a.remoteConfig.GetConfiguration().Agent.Version
-	registryUrl := a.remoteConfig.GetConfiguration().Agent.RegistryUrl
+	expectedVersion := a.configSource.GetConfiguration().Agent.Version
+	registryUrl := a.configSource.GetConfiguration().Agent.RegistryUrl
 
 	updateApplied, err := a.Update(
 		expectedVersion,
@@ -208,44 +218,31 @@ func (a *autoUpdate) GetRegistryUrl(registryUrl string) string {
 }
 
 func (a *autoUpdate) GetUpdateCheckInterval() time.Duration {
-	rawValue := a.remoteConfig.GetConfiguration().Agent.UpdateCheckInterval
+	rawValue := a.configSource.GetConfiguration().Agent.UpdateCheckInterval
 	if rawValue == nil {
 		return DEFAULT_UPDATE_CHECK_INTERVAL
 	}
 	if !validators.IsDuration(rawValue) {
 		a.logger.Error().
-			Str("update_check_interval", rawValue.(string)).
+			Interface("update_check_interval", rawValue).
 			Msg("Failed to parse update check interval")
 		return DEFAULT_UPDATE_CHECK_INTERVAL
 	}
 
-	var updateCheckIntervalStr string
-	switch rawValue.(type) {
-	case string:
-		updateCheckIntervalStr = rawValue.(string)
-		break
-	case float64:
-		updateCheckIntervalStr = fmt.Sprintf("%d", int(rawValue.(float64)))
-		break
-	default:
-		updateCheckIntervalStr = fmt.Sprintf("%v", rawValue)
-	}
-
-	updateCheckInterval, err := time.ParseDuration(updateCheckIntervalStr)
+	updateCheckInterval, err := configParser.ParseDuration(rawValue)
 	if err != nil {
 		a.logger.Error().
-			Str("update_check_interval", updateCheckIntervalStr).
+			Interface("update_check_interval", rawValue).
 			Err(err).
 			Msg("Failed to parse update check interval")
-
 		return DEFAULT_UPDATE_CHECK_INTERVAL
 	}
 	return updateCheckInterval
 }
 
 func (a *autoUpdate) getExpectedVersionFromConfig() string {
-	expectedVersion := a.remoteConfig.GetConfiguration().Agent.Version
-	registryUrl := a.remoteConfig.GetConfiguration().Agent.RegistryUrl
+	expectedVersion := a.configSource.GetConfiguration().Agent.Version
+	registryUrl := a.configSource.GetConfiguration().Agent.RegistryUrl
 
 	return a.getExpectedVersion(expectedVersion, registryUrl)
 }

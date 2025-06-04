@@ -19,9 +19,9 @@ func IsURL(urlStr string) bool {
 }
 
 // IsDuration validates if input value represents a duration
-// Accepts float64 (seconds) or string (time.Duration format)
+// Accepts int (seconds) or string (time.Duration format like "30s", "1m")
 func IsDuration(value any) bool {
-	if _, ok := value.(float64); ok {
+	if _, ok := value.(int); ok {
 		return true
 	}
 	if str, ok := value.(string); ok {

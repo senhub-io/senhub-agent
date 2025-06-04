@@ -1,7 +1,7 @@
 //go:build windows || !windows
 
-// internal/agent/probes/host/networkProbe.go
-package host
+// internal/agent/probes/network/networkProbe.go
+package network
 
 import (
 	"context"

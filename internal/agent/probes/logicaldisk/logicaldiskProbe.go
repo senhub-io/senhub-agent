@@ -1,6 +1,6 @@
 //go:build windows || !windows
 
-package host
+package logicaldisk
 
 import (
 	"context"
