@@ -28,44 +28,6 @@ func NewAPIManager(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger) *API
 
 // SenHub API Endpoints
 
-// HandleSenHubMetricsGET handles GET requests for SenHub raw format metrics
-func (a *APIManager) HandleSenHubMetricsGET(w http.ResponseWriter, r *http.Request) {
-	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
-	if !authenticated {
-		return
-	}
-
-	vars := mux.Vars(r)
-	probeName := vars["probe"]
-
-	a.logger.Debug().
-		Str("probe", probeName).
-		Msg("SenHub metrics GET request received")
-
-	// Get metrics from cache for the specified probe and convert to SenHub format
-	senHubMetrics := a.strategy.getSenHubMetricsForProbe(probeName)
-
-	// Create wrapped response
-	response := SenHubResponse{
-		Metrics: senHubMetrics,
-		Status:  "OK",
-		Message: "Metrics successfully retrieved.",
-		Date:    time.Now().UnixMilli(),
-	}
-
-	// Send response
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		a.logger.Error().Err(err).Msg("Failed to encode SenHub metrics response")
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	a.logger.Info().
-		Str("probe", probeName).
-		Int("metrics_count", len(senHubMetrics)).
-		Msg("✅ SenHub metrics response sent")
-}
 
 // PRTG API Endpoints
 
@@ -244,7 +206,6 @@ func (a *APIManager) HandleInfoEndpoints(w http.ResponseWriter, r *http.Request)
 	
 	// Define all possible endpoints with their descriptions
 	allEndpoints := map[string]string{
-		"senhub": "SenHub native JSON format for time-series data",
 		"prtg":   "PRTG JSON format for monitoring integration",
 		"nagios": "Nagios-compatible output format",
 	}
@@ -473,8 +434,6 @@ func (a *APIManager) HandleListEndpoints(w http.ResponseWriter, r *http.Request)
 		{"/api/{agentkey}/debug/logs", []string{"GET"}, "View current log levels (legacy)", "admin"},
 		{"/api/{agentkey}/debug/logs", []string{"POST"}, "Set log levels (legacy)", "admin"},
 		
-		// SenHub Format
-		{"/api/{agentkey}/senhub/metrics/{probe}", []string{"GET"}, "Get metrics in SenHub format", "senhub"},
 		
 		// PRTG Format
 		{"/api/{agentkey}/prtg/metrics/{probe}", []string{"GET"}, "Get metrics in PRTG format for specific probe", "prtg"},

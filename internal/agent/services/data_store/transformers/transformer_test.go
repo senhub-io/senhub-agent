@@ -47,8 +47,26 @@ func TestLoadTransformer(t *testing.T) {
 			wantError: false,
 		},
 		{
-			name:      "Load host friendly transformer",
-			probeName: "host", 
+			name:      "Load cpu friendly transformer",
+			probeName: "cpu", 
+			style:     "friendly",
+			wantError: false,
+		},
+		{
+			name:      "Load memory friendly transformer",
+			probeName: "memory", 
+			style:     "friendly",
+			wantError: false,
+		},
+		{
+			name:      "Load network friendly transformer",
+			probeName: "network", 
+			style:     "friendly",
+			wantError: false,
+		},
+		{
+			name:      "Load logicaldisk friendly transformer",
+			probeName: "logicaldisk", 
 			style:     "friendly",
 			wantError: false,
 		},
@@ -517,43 +535,39 @@ func TestDefinitionBasedTransformer(t *testing.T) {
 	logger := createTestLogger()
 	registry := NewTransformerRegistry(logger)
 	
-	// Test loading definition-based transformer for host probe
-	transformer, err := registry.LoadTransformer("host", "friendly")
-	if err != nil {
-		t.Logf("Definition-based transformer not loaded, using fallback: %v", err)
-		// This is expected if definition files don't exist yet
-		return
-	}
-	
-	// Test metric transformation with tags
+	// Test metric transformation with tags for atomized probes
 	tests := []struct {
 		name       string
+		probeName  string
 		metricName string
 		tags       map[string]string
 		expectContains string
 	}{
 		{
 			name:       "CPU usage with instance",
-			metricName: "processor_time",
+			probeName:  "cpu",
+			metricName: "cpu_usage_total",
 			tags: map[string]string{
-				"probe_name": "host",
-				"instance":   "0",
+				"probe_name": "cpu",
+				"core":       "0",
 			},
-			expectContains: "CPU 0",
+			expectContains: "CPU Total Usage",
 		},
 		{
 			name:       "Memory usage",
+			probeName:  "memory",
 			metricName: "memory_used_percent",
 			tags: map[string]string{
-				"probe_name": "host",
+				"probe_name": "memory",
 			},
 			expectContains: "Memory Usage",
 		},
 		{
 			name:       "Network interface",
+			probeName:  "network",
 			metricName: "bytes_sent",
 			tags: map[string]string{
-				"probe_name": "host",
+				"probe_name": "network",
 				"interface":  "eth0",
 			},
 			expectContains: "Network eth0",
@@ -562,6 +576,14 @@ func TestDefinitionBasedTransformer(t *testing.T) {
 	
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Load transformer for this specific probe
+			transformer, err := registry.LoadTransformer(tt.probeName, "friendly")
+			if err != nil {
+				t.Logf("Definition-based transformer not loaded for %s, using fallback: %v", tt.probeName, err)
+				// This is expected if definition files don't exist yet
+				return
+			}
+			
 			displayName := transformer.TransformMetricName(tt.metricName, tt.tags)
 			
 			if !strings.Contains(displayName, tt.expectContains) {

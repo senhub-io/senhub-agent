@@ -1,0 +1,19 @@
+# Logical Disk Metrics Friendly Naming Patterns for PRTG
+patterns:
+  # Filesystem metrics
+  "fs_total_bytes": "Filesystem Total Space"
+  "fs_free_bytes": "Filesystem Free Space"
+  "fs_used_bytes": "Filesystem Used Space"
+  "fs_available_bytes": "Filesystem Available Space"
+  "fs_used_percent": "Filesystem Usage"
+  "fs_inodes_total": "Filesystem Total Inodes"
+  "fs_inodes_free": "Filesystem Free Inodes"
+  "fs_inodes_used": "Filesystem Used Inodes"
+  "fs_inodes_used_percent": "Filesystem Inode Usage"
+
+# Unit mappings
+units:
+  percentage: "%"
+  bytes: "Bytes"
+  count: "#"
+  iops: "IOPS"

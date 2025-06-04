@@ -1,8 +1,8 @@
 //go:build windows || !windows
 
-// internal/agent/probes/host/cpuProbe.go
+// internal/agent/probes/cpu/cpuProbe.go
 //
-package host
+package cpu
 
 import (
 	"context"

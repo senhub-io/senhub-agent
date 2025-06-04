@@ -1,7 +1,7 @@
 // internal/agent/probes/host/memoryProbe_windows.go
 //go:build windows
 
-package host
+package memory
 
 import (
 	"fmt"
@@ -14,6 +14,18 @@ import (
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/windows/pdh"
 )
+
+// MetricDefinition defines a performance counter with its path and instance
+type MetricDefinition struct {
+	path     string
+	instance string
+}
+
+// pathInfo represents path information for performance counters
+type pathInfo struct {
+	path     string
+	instance string
+}
 
 // Définition des compteurs de performance pour la mémoire
 var memoryCounterPaths = map[string]MetricDefinition{
