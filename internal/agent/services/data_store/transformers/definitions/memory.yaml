@@ -3,7 +3,7 @@ friendly_name: "Memory Metrics"
 multi_instance_labels: []
 
 metrics:
-  # Memory Size Metrics (in bytes)
+  # Windows Performance Counter Metrics (bytes)
   - name: "memory_total"
     channel: "memory_total"
     display_name: "Memory Total"
@@ -14,6 +14,59 @@ metrics:
     display_name: "Memory Available"
     unit: "bytes"
     
+  - name: "memory_committed"
+    channel: "memory_committed"
+    display_name: "Memory Committed"
+    unit: "bytes"
+    
+  - name: "memory_modified_page_list"
+    channel: "memory_modified_page_list"
+    display_name: "Memory Modified Page List"
+    unit: "bytes"
+    
+  - name: "memory_nonpaged_pool"
+    channel: "memory_nonpaged_pool"
+    display_name: "Memory Nonpaged Pool"
+    unit: "bytes"
+    
+  - name: "memory_paged_pool"
+    channel: "memory_paged_pool"
+    display_name: "Memory Paged Pool"
+    unit: "bytes"
+    
+  - name: "memory_cache"
+    channel: "memory_cache"
+    display_name: "Memory Cache"
+    unit: "bytes"
+
+  # Windows Performance Counter Metrics (counts per second)
+  - name: "memory_page_faults"
+    channel: "memory_page_faults"
+    display_name: "Memory Page Faults"
+    unit: "#"
+    
+  - name: "memory_pages_input"
+    channel: "memory_pages_input"
+    display_name: "Memory Pages Input"
+    unit: "#"
+    
+  - name: "memory_pages_output"
+    channel: "memory_pages_output"
+    display_name: "Memory Pages Output"
+    unit: "#"
+
+  # Windows Pagefile Metrics (percentages)
+  - name: "pagefile_usage"
+    channel: "pagefile_usage"
+    display_name: "Pagefile Usage"
+    unit: "%"
+    
+  - name: "pagefile_usage_peak"
+    channel: "pagefile_usage_peak"
+    display_name: "Pagefile Usage Peak"
+    unit: "%"
+
+  # Unix/Linux Memory Size Metrics (in bytes)
   - name: "memory_used"
     channel: "memory_used"
     display_name: "Memory Used"
@@ -34,7 +87,7 @@ metrics:
     display_name: "Memory Buffers"
     unit: "bytes"
 
-  # Memory Usage Percentage
+  # Memory Usage Percentage (cross-platform)
   - name: "memory_used_percent"
     channel: "memory_usage"
     display_name: "Memory Usage"
