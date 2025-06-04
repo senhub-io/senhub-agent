@@ -28,6 +28,9 @@ var htmlFiles embed.FS
 //go:embed web/logo-senhubagent.png
 var logoFile embed.FS
 
+//go:embed assets/USER_GUIDE.md
+var markdownFiles embed.FS
+
 // Template data structure
 type TemplateData struct {
 	AgentKey string
@@ -75,10 +78,10 @@ func (ah *AssetHandler) parseTemplates() {
 		}
 	}
 	
-	// Parse Administration template
-	if tmplContent, err := htmlFiles.ReadFile("assets/html/admin.html"); err == nil {
-		if tmpl, err := template.New("admin").Parse(string(tmplContent)); err == nil {
-			ah.templates["admin"] = tmpl
+	// Parse Guide template
+	if tmplContent, err := htmlFiles.ReadFile("assets/html/guide.html"); err == nil {
+		if tmpl, err := template.New("guide").Parse(string(tmplContent)); err == nil {
+			ah.templates["guide"] = tmpl
 		}
 	}
 }
@@ -126,6 +129,11 @@ func (ah *AssetHandler) ServeAsset(w http.ResponseWriter, r *http.Request, asset
 		// Serve the embedded logo file
 		content, err = logoFile.ReadFile("web/logo-senhubagent.png")
 		contentType = "image/png"
+		
+	case strings.HasSuffix(filePath, "USER_GUIDE.md"):
+		// Serve the user guide markdown file
+		content, err = markdownFiles.ReadFile("assets/USER_GUIDE.md")
+		contentType = "text/markdown; charset=utf-8"
 		
 	default:
 		http.NotFound(w, r)

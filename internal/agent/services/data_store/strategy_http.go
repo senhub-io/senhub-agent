@@ -223,10 +223,6 @@ func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 	return h.serverManager.setupRoutes()
 }
 
-// handleSenHubMetricsGET handles GET requests for SenHub raw format metrics (delegated to APIManager)
-func (h *HTTPSyncStrategy) handleSenHubMetricsGET(w http.ResponseWriter, r *http.Request) {
-	h.apiManager.HandleSenHubMetricsGET(w, r)
-}
 
 // handlePRTGMetricsGET handles GET requests for PRTG metrics (delegated to APIManager)
 func (h *HTTPSyncStrategy) handlePRTGMetricsGET(w http.ResponseWriter, r *http.Request) {
@@ -509,8 +505,8 @@ func (h *HTTPSyncStrategy) handleWebDocs(w http.ResponseWriter, r *http.Request)
 	h.webInterface.HandleWebDocs(r, w)
 }
 
-func (h *HTTPSyncStrategy) handleWebAdmin(w http.ResponseWriter, r *http.Request) {
-	h.webInterface.HandleWebAdmin(r, w)
+func (h *HTTPSyncStrategy) handleWebGuide(w http.ResponseWriter, r *http.Request) {
+	h.webInterface.HandleWebGuide(r, w)
 }
 
 func (h *HTTPSyncStrategy) handleWebAssets(w http.ResponseWriter, r *http.Request) {
@@ -635,4 +631,72 @@ func (h *HTTPSyncStrategy) GetAgentKey() string {
 // GetStartTime returns the strategy start time
 func (h *HTTPSyncStrategy) GetStartTime() time.Time {
 	return h.startTime
+}
+
+// UpdateConfiguration allows updating the HTTP strategy configuration at runtime
+func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{}) error {
+	h.logger.Info().
+		Any("new_params", newParams).
+		Msg("Updating HTTP strategy configuration")
+
+	// Update the configuration manager
+	if err := h.configManager.UpdateConfiguration(newParams); err != nil {
+		h.logger.Error().
+			Err(err).
+			Msg("Failed to update configuration manager")
+		return err
+	}
+
+	// Update internal parameters
+	h.params = newParams
+
+	// Restart server if port or bind address changed
+	if portParam, exists := newParams["port"]; exists {
+		if newPort, ok := portParam.(int); ok && newPort != h.port {
+			h.logger.Info().
+				Int("old_port", h.port).
+				Int("new_port", newPort).
+				Msg("Port changed, restarting HTTP server")
+			h.port = newPort
+			return h.restartServer()
+		}
+	}
+
+	if bindParam, exists := newParams["bind_address"]; exists {
+		if newBind, ok := bindParam.(string); ok && newBind != h.bindAddress {
+			h.logger.Info().
+				Str("old_bind", h.bindAddress).
+				Str("new_bind", newBind).
+				Msg("Bind address changed, restarting HTTP server")
+			h.bindAddress = newBind
+			return h.restartServer()
+		}
+	}
+
+	h.logger.Info().Msg("✅ HTTP strategy configuration updated successfully")
+	return nil
+}
+
+// restartServer restarts the HTTP server with new configuration
+func (h *HTTPSyncStrategy) restartServer() error {
+	h.logger.Info().Msg("Restarting HTTP server...")
+
+	// Stop the current server
+	if h.serverManager != nil {
+		if err := h.serverManager.Shutdown(context.Background()); err != nil {
+			h.logger.Warn().Err(err).Msg("Error stopping server during restart")
+		}
+	}
+
+	// Restart with new configuration
+	if err := h.serverManager.Start(); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to restart HTTP server")
+		return err
+	}
+
+	h.logger.Info().
+		Int("port", h.port).
+		Str("bind_address", h.bindAddress).
+		Msg("🚀 HTTP server restarted successfully")
+	return nil
 }

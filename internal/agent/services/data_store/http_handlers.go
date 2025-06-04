@@ -57,10 +57,6 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/api/{agentkey}/prtg/probes", h.HandleListProbes).Methods("GET")
 	}
 
-	if h.strategy.configManager.IsEndpointEnabled("senhub") {
-		// SenHub endpoints
-		router.HandleFunc("/api/{agentkey}/senhub/metrics/{probe}", h.HandleSenHubMetricsGET).Methods("GET")
-	}
 
 	if h.strategy.configManager.IsEndpointEnabled("nagios") {
 		// Nagios endpoints
@@ -86,7 +82,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/web/{agentkey}/dashboard", h.HandleWebDashboard).Methods("GET")
 		router.HandleFunc("/web/{agentkey}/explorer", h.HandleWebExplorer).Methods("GET")
 		router.HandleFunc("/web/{agentkey}/docs", h.HandleWebDocs).Methods("GET")
-		router.HandleFunc("/web/{agentkey}/admin", h.HandleWebAdmin).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/guide", h.HandleWebGuide).Methods("GET")
 		
 		// Static assets
 		router.PathPrefix("/web/{agentkey}/assets/").HandlerFunc(h.HandleWebAssets).Methods("GET")
@@ -111,10 +107,6 @@ func (h *HTTPHandlers) HandleListEndpoints(w http.ResponseWriter, r *http.Reques
 
 // Metrics API handlers
 
-// HandleSenHubMetricsGET handles GET requests for SenHub format metrics by probe
-func (h *HTTPHandlers) HandleSenHubMetricsGET(w http.ResponseWriter, r *http.Request) {
-	h.strategy.handleSenHubMetricsGET(w, r)
-}
 
 // Info/Discovery handlers (delegating to strategy for now)
 
@@ -208,8 +200,8 @@ func (h *HTTPHandlers) HandleWebDocs(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleWebDocs(w, r)
 }
 
-func (h *HTTPHandlers) HandleWebAdmin(w http.ResponseWriter, r *http.Request) {
-	h.strategy.handleWebAdmin(w, r)
+func (h *HTTPHandlers) HandleWebGuide(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleWebGuide(w, r)
 }
 
 func (h *HTTPHandlers) HandleWebAssets(w http.ResponseWriter, r *http.Request) {
