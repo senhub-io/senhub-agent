@@ -1,66 +1,66 @@
-# SenHub Agent - Guide Utilisateur
+# SenHub Agent - User Guide
 
 ## Introduction
 
-SenHub Agent est un système de monitoring puissant et flexible qui collecte des métriques système en temps réel et les expose via des APIs REST compatibles avec les principaux outils de supervision (PRTG, Nagios, Prometheus, etc.).
+SenHub Agent is a powerful and flexible monitoring system that collects real-time system metrics and exposes them via REST APIs compatible with major monitoring tools (PRTG, Nagios, Prometheus, etc.).
 
-## 🚀 Démarrage Rapide
+## 🚀 Quick Start
 
-### Mode Online (Recommandé)
+### Online Mode (Recommended)
 ```bash
-# Installation avec clé d'authentification
-./agent install --authentication-key "votre-cle-agent"
+# Installation with authentication key
+./agent install --authentication-key "your-agent-key"
 
-# Démarrage
+# Start the agent
 ./agent start
 
-# Vérification du statut
+# Check status
 ./agent status
 ```
 
-### Mode Offline (Autonome)
+### Offline Mode (Standalone)
 ```bash
-# Installation offline avec configuration locale
+# Offline installation with local configuration
 ./agent install --offline
 
-# Installation HTTPS sécurisée
+# Secure HTTPS installation
 ./agent install --offline --enable-https
 
-# Démarrage
+# Start the agent
 ./agent run --offline
 ```
 
-## 📊 Interface Web
+## 📊 Web Interface
 
-Une fois l'agent démarré, accédez à l'interface web :
+Once the agent is running, access the web interface:
 
-- **Dashboard** : `http://localhost:8080/web/{votre-cle}/dashboard`
-- **API Explorer** : `http://localhost:8080/web/{votre-cle}/explorer`
-- **Documentation** : `http://localhost:8080/web/{votre-cle}/docs`
+- **Dashboard** : `http://localhost:8080/web/{your-key}/dashboard`
+- **API Explorer** : `http://localhost:8080/web/{your-key}/explorer`
+- **Documentation** : `http://localhost:8080/web/{your-key}/docs`
 
-### Dashboard Principal
+### Main Dashboard
 
-Le dashboard affiche en temps réel :
-- ✅ **Statut de l'agent** (version, uptime, port)
-- 💊 **Health check** (serveur HTTP, cache, métriques)
-- 📊 **Ressources système** (mémoire, goroutines, CPU)
-- 🔍 **Probes actives** avec compteur de métriques
+The dashboard displays in real-time:
+- ✅ **Agent status** (version, uptime, port)
+- 💊 **Health check** (HTTP server, cache, metrics)
+- 📊 **System resources** (memory, goroutines, CPU)
+- 🔍 **Active probes** with metrics count
 
 ### API Explorer
 
-Outil interactif pour :
-- 🔍 Tester les endpoints API en direct
-- 🏷️ Filtrer les métriques par tags
-- 📋 Voir les exemples de requêtes
-- 🎯 Explorer les schémas de données
+Interactive tool for:
+- 🔍 Testing API endpoints live
+- 🏷️ Filtering metrics by tags
+- 📋 Viewing request examples
+- 🎯 Exploring data schemas
 
 ## 🔧 Configuration
 
-### Configuration Automatique (Mode Online)
-L'agent récupère automatiquement sa configuration depuis SenHub Platform.
+### Automatic Configuration (Online Mode)
+The agent automatically retrieves its configuration from SenHub Platform.
 
-### Configuration Manuelle (Mode Offline)
-Fichier `agent-config.yaml` :
+### Manual Configuration (Offline Mode)
+`agent-config.yaml` file:
 
 ```yaml
 agent:
@@ -85,36 +85,36 @@ probes:
     params: {interval: 30}
 ```
 
-## 🔍 Probes Disponibles
+## 🔍 Available Probes
 
-### Probes Système
-- **cpu** : Utilisation CPU par cœur et total
-- **memory** : Mémoire physique et virtuelle
-- **network** : Trafic réseau par interface
-- **logicaldisk** : Espace disque et I/O
+### System Probes
+- **cpu** : CPU usage per core and total
+- **memory** : Physical and virtual memory
+- **network** : Network traffic per interface
+- **logicaldisk** : Disk space and I/O
 
-### Probes Infrastructure
-- **redfish** : Monitoring serveurs (Dell, HPE, Lenovo, Cisco)
-- **syslog** : Collecte d'événements syslog
-- **otel** : Métriques OpenTelemetry
+### Infrastructure Probes
+- **redfish** : Server monitoring (Dell, HPE, Lenovo, Cisco)
+- **syslog** : Syslog event collection
+- **otel** : OpenTelemetry metrics
 
-### Probes Applications
-- **ping_webapp** : Disponibilité URLs
-- **load_webapp** : Temps de réponse et codes HTTP
-- **ping_gateway** : Connectivité réseau
+### Application Probes
+- **ping_webapp** : URL availability
+- **load_webapp** : Response time and HTTP codes
+- **ping_gateway** : Network connectivity
 
-## 📈 Formats de Sortie
+## 📈 Output Formats
 
 ### PRTG Network Monitor
 ```bash
-# Par probe
-curl "http://localhost:8080/api/{cle}/prtg/metrics/cpu"
+# By probe
+curl "http://localhost:8080/api/{key}/prtg/metrics/cpu"
 
-# Avec filtres
-curl "http://localhost:8080/api/{cle}/prtg/metrics/cpu?tags=instance:0"
+# With filters
+curl "http://localhost:8080/api/{key}/prtg/metrics/cpu?tags=instance:0"
 ```
 
-**Réponse PRTG :**
+**PRTG Response:**
 ```json
 {
   "prtg": {
@@ -133,10 +133,10 @@ curl "http://localhost:8080/api/{cle}/prtg/metrics/cpu?tags=instance:0"
 
 ### Nagios/Icinga
 ```bash
-curl "http://localhost:8080/api/{cle}/nagios/metrics/system_health"
+curl "http://localhost:8080/api/{key}/nagios/metrics/system_health"
 ```
 
-**Réponse Nagios :**
+**Nagios Response:**
 ```json
 {
   "status": 0,
@@ -148,71 +148,71 @@ curl "http://localhost:8080/api/{cle}/nagios/metrics/system_health"
 
 ### Prometheus
 ```bash
-curl "http://localhost:8080/api/{cle}/prometheus/metrics"
+curl "http://localhost:8080/api/{key}/prometheus/metrics"
 ```
 
-## 🏷️ Système de Tags
+## 🏷️ Tag System
 
-### Tags Automatiques
-- `probe_name` : Nom de la probe source
-- `hostname` : Nom de l'hôte
-- `instance` : Instance/index du composant
+### Automatic Tags
+- `probe_name` : Source probe name
+- `hostname` : Host name
+- `instance` : Component instance/index
 
-### Tags Spécialisés
-- **Réseau** : `interface`, `adapter_type`
-- **Disque** : `drive_letter`, `filesystem`
+### Specialized Tags
+- **Network** : `interface`, `adapter_type`
+- **Disk** : `drive_letter`, `filesystem`
 - **Redfish** : `component_type`, `vendor`, `model`
 
-### Filtrage par Tags
+### Tag Filtering
 ```bash
-# CPU core spécifique
+# Specific CPU core
 curl "...?tags=instance:0"
 
-# Interface réseau spécifique  
+# Specific network interface  
 curl "...?tags=interface:eth0"
 
-# Plusieurs filtres
+# Multiple filters
 curl "...?tags=probe_name:redfish,component_type:thermal"
 ```
 
 ## 🔧 Administration
 
-### Debug en Temps Réel
+### Real-time Debug
 ```bash
-# Activation du debug global
-./agent run --authentication-key "cle" --verbose
+# Enable global debug
+./agent run --authentication-key "key" --verbose
 
-# Debug sélectif par module
-./agent run --authentication-key "cle" --verbose --debug-modules "strategy.http,probe.redfish"
+# Selective debug by module
+./agent run --authentication-key "key" --verbose --debug-modules "strategy.http,probe.redfish"
 ```
 
-### API de Debug Runtime
+### Runtime Debug API
 ```bash
-# Voir les niveaux de log actuels
-curl "http://localhost:8080/api/{cle}/debug/logs"
+# View current log levels
+curl "http://localhost:8080/api/{key}/debug/logs"
 
-# Modifier les niveaux en live
-curl -X POST "http://localhost:8080/api/{cle}/debug/logs" \
+# Modify levels at runtime
+curl -X POST "http://localhost:8080/api/{key}/debug/logs" \
   -H "Content-Type: application/json" \
   -d '{"module_levels": [{"module": "strategy.http", "level": "debug"}]}'
 ```
 
-### Modules de Debug Disponibles
-- `strategy.http` - Stratégie HTTP et cache
-- `probe.redfish` - Probe Redfish  
-- `probe.host` - Probes système
-- `cache` - Opérations de cache
-- `configuration` - Gestion configuration
-- `scheduler` - Ordonnancement des probes
+### Available Debug Modules
+- `strategy.http` - HTTP strategy and cache
+- `probe.redfish` - Redfish probe  
+- `probe.host` - System probes
+- `cache` - Cache operations
+- `configuration` - Configuration management
+- `scheduler` - Probe scheduling
 
-## 🔒 Sécurité HTTPS
+## 🔒 HTTPS Security
 
-### Auto-génération de Certificats
+### Auto-generated Certificates
 ```bash
 ./agent install --offline --enable-https
 ```
 
-### Certificats Personnalisés
+### Custom Certificates
 ```bash
 ./agent install --offline --enable-https \
   --cert-file /path/to/cert.pem \
@@ -220,7 +220,7 @@ curl -X POST "http://localhost:8080/api/{cle}/debug/logs" \
   --min-tls-version 1.3
 ```
 
-### Configuration HTTPS
+### HTTPS Configuration
 ```yaml
 storage:
   - name: http
@@ -231,15 +231,15 @@ storage:
         enabled: true
         mode: "auto"
         auto_cert:
-          organization: "Mon Entreprise"
-          common_name: "agent.entreprise.com"
+          organization: "My Company"
+          common_name: "agent.company.com"
           san_hosts: ["localhost", "192.168.1.100"]
           validity_days: 365
 ```
 
-## 📋 Surveillance Redfish
+## 📋 Redfish Monitoring
 
-### Configuration de Base
+### Basic Configuration
 ```yaml
 probes:
   - name: redfish
@@ -252,23 +252,23 @@ probes:
       insecure: true
 ```
 
-### Collections Disponibles
-- **system** : État général, processeurs, mémoire
-- **thermal** : Températures et ventilateurs
-- **power** : Alimentation et consommation
-- **processor** : Détails processeurs
-- **memory** : Modules mémoire détaillés
-- **storage** : Disques et contrôleurs
-- **network** : Interfaces réseau
+### Available Collections
+- **system** : General status, processors, memory
+- **thermal** : Temperatures and fans
+- **power** : Power supply and consumption
+- **processor** : Detailed processor information
+- **memory** : Detailed memory modules
+- **storage** : Disks and controllers
+- **network** : Network interfaces
 
-### Vendeurs Supportés
+### Supported Vendors
 - **Dell** : PowerEdge, PowerVault ME5024
 - **HPE** : ProLiant, Synergy
 - **Lenovo** : ThinkSystem
 - **Cisco** : UCS
-- **Générique** : Serveurs compatibles Redfish
+- **Generic** : Redfish-compatible servers
 
-## 🚨 Monitoring d'Événements
+## 🚨 Event Monitoring
 
 ### Syslog
 ```yaml
@@ -280,68 +280,68 @@ probes:
       bind_address: "0.0.0.0"
 ```
 
-### Événements Redfish
-Les événements système sont automatiquement collectés depuis les serveurs Redfish et convertis en métriques numériques.
+### Redfish Events
+System events are automatically collected from Redfish servers and converted to numerical metrics.
 
-## 🔧 Dépannage
+## 🔧 Troubleshooting
 
-### Problèmes Courants
+### Common Issues
 
-**Agent ne démarre pas :**
+**Agent won't start:**
 ```bash
-# Vérifier les logs
-./agent run --authentication-key "cle" --verbose
+# Check logs
+./agent run --authentication-key "key" --verbose
 
-# Vérifier la configuration
+# Verify configuration
 ./agent run --offline --config-path ./test-config.yaml
 ```
 
-**Pas de métriques :**
-- Vérifier que les probes sont actives dans le dashboard
-- Contrôler les logs avec `--debug-modules "probe.host,cache"`
-- Tester les endpoints API directement
+**No metrics:**
+- Check that probes are active in the dashboard
+- Review logs with `--debug-modules "probe.host,cache"`
+- Test API endpoints directly
 
-**Problèmes HTTPS :**
-- Vérifier les certificats : `openssl x509 -in cert.pem -text -noout`
-- Tester avec curl : `curl -k https://localhost:8443/health`
+**HTTPS issues:**
+- Verify certificates: `openssl x509 -in cert.pem -text -noout`
+- Test with curl: `curl -k https://localhost:8443/health`
 
-### URLs de Test
+### Test URLs
 
 ```bash
-# Health check global
+# Global health check
 curl "http://localhost:8080/health"
 
-# Liste des probes actives
-curl "http://localhost:8080/api/{cle}/info/probes"
+# List active probes
+curl "http://localhost:8080/api/{key}/info/probes"
 
-# Métriques d'une probe
-curl "http://localhost:8080/api/{cle}/prtg/metrics/cpu"
+# Probe metrics
+curl "http://localhost:8080/api/{key}/prtg/metrics/cpu"
 
-# Schema d'une probe
-curl "http://localhost:8080/api/{cle}/info/schema/cpu"
+# Probe schema
+curl "http://localhost:8080/api/{key}/info/schema/cpu"
 ```
 
 ## 📞 Support
 
-### Logs et Diagnostics
-- Logs détaillés : `--verbose --debug-modules "module1,module2"`
-- Health check : `/health`
-- Info système : `/api/{cle}/info/system`
+### Logs and Diagnostics
+- Detailed logs: `--verbose --debug-modules "module1,module2"`
+- Health check: `/health`
+- System info: `/api/{key}/info/system`
 
-### Ressources
-- Interface web : Dashboard intégré
-- API Explorer : Tests en temps réel
-- Documentation : Endpoints et exemples
+### Resources
+- Web interface: Integrated dashboard
+- API Explorer: Real-time testing
+- Documentation: Endpoints and examples
 
-### Configuration de Production
+### Production Configuration
 
-**Recommandations :**
-- Utiliser HTTPS en production
-- Configurer des intervalles appropriés (30-300s)
-- Monitorer la consommation mémoire
-- Sauvegarder les configurations
+**Recommendations:**
+- Use HTTPS in production
+- Configure appropriate intervals (30-300s)
+- Monitor memory consumption
+- Backup configurations
 
-**Exemple Production :**
+**Production Example:**
 ```yaml
 agent:
   key: "production-key"
