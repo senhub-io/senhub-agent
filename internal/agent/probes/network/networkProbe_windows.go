@@ -390,7 +390,12 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 			},
 			{
 				Key:     "interface",
-				Value:   interfaceInfo.connectionName,
+				Value:   pathInfo.instance, // Use PDH instance name (e.g., "Network_3")
+				Private: false,
+			},
+			{
+				Key:     "connection_name",
+				Value:   interfaceInfo.connectionName, // Keep original connection name as additional info
 				Private: false,
 			},
 		}...)
