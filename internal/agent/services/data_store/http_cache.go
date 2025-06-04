@@ -246,8 +246,39 @@ func (c *MetricCache) GetCacheInfo() CacheInfoResponse {
 	return CacheInfoResponse{
 		TotalMetrics: len(c.timeSeries),
 		ProbeCount:   len(c.probeIndex),
-		TTL:          c.ttl.String(),
+		TTL:          formatTTL(c.ttl),
 	}
+}
+
+// formatTTL formats a duration into a human-readable string
+func formatTTL(d time.Duration) string {
+	hours := int(d.Hours())
+	minutes := int(d.Minutes()) % 60
+	seconds := int(d.Seconds()) % 60
+	
+	if hours > 0 {
+		if minutes > 0 {
+			return fmt.Sprintf("%d hour%s %d minute%s", hours, pluralize(hours), minutes, pluralize(minutes))
+		}
+		return fmt.Sprintf("%d hour%s", hours, pluralize(hours))
+	}
+	
+	if minutes > 0 {
+		if seconds > 0 && minutes < 5 { // Show seconds for short durations
+			return fmt.Sprintf("%d minute%s %d second%s", minutes, pluralize(minutes), seconds, pluralize(seconds))
+		}
+		return fmt.Sprintf("%d minute%s", minutes, pluralize(minutes))
+	}
+	
+	return fmt.Sprintf("%d second%s", seconds, pluralize(seconds))
+}
+
+// pluralize returns "s" if count != 1, otherwise empty string
+func pluralize(count int) string {
+	if count == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // ProbeStatistics represents statistics for a single probe

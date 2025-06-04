@@ -5,11 +5,13 @@ multi_instance_labels: ["url"]
 metrics:
   # WebApp Ping Metrics
   - name: "averageLatency"
-    channel: "webapp_average_latency"
-    display_name: "WebApp Average Latency"
+    channel: "ping_average_latency"
+    display_name: "Average Latency ({url})"
     unit: "ms"
+    multi_instance_labels: ["url"]
     
   - name: "packetLoss"
-    channel: "webapp_packet_loss"
-    display_name: "WebApp Packet Loss"
+    channel: "ping_packet_loss"
+    display_name: "Packet Loss ({url})"
     unit: "%"
+    multi_instance_labels: ["url"]

@@ -76,41 +76,35 @@ type VersionInfo struct {
 // parseVersionInfo parses version and commit information from cliArgs
 func (u *UtilsManager) parseVersionInfo() VersionInfo {
 	version := cliArgs.Version
-	commit := ""
+	commit := cliArgs.CommitHash
 	
-	// If we have a commit hash from git describe, parse it
-	if cliArgs.CommitHash != "" {
-		fullVersion := cliArgs.CommitHash
-		
-		// Try to extract version and commit info
-		if fullVersion != "" {
-			// If it's just a tag (no commit info), use it as version
-			if !strings.Contains(fullVersion, "-g") {
-				version = fullVersion
-			} else {
-				// Parse format: "version-commits-ghash-dirty"
-				parts := strings.Split(fullVersion, "-")
-				if len(parts) >= 3 {
-					// Find the version part (everything before the commit count)
-					for i, part := range parts {
-						if strings.HasPrefix(part, "g") && i > 0 {
-							// This is the git hash, version is everything before previous part
-							version = strings.Join(parts[:i-1], "-")
-							commit = strings.Join(parts[i-1:], "-")
-							break
-						}
-					}
-				}
-			}
+	// Linux/Makefile case: Version is properly set, use it directly
+	if version != "" {
+		return VersionInfo{
+			Version: version,
+			Commit:  commit,
 		}
 	}
 	
-	// Fallback: if version is empty, use commit hash
-	if version == "" && cliArgs.CommitHash != "" {
-		version = cliArgs.CommitHash
+	// Windows/no-Makefile case: Version is empty, try to extract from CommitHash
+	if commit != "" {
+		// Parse git describe format: "tag-commits-ghash-dirty"
+		if strings.Contains(commit, "-g") {
+			parts := strings.Split(commit, "-")
+			for i, part := range parts {
+				if strings.HasPrefix(part, "g") && i > 0 {
+					// Version is everything before the commit count
+					version = strings.Join(parts[:i-1], "-")
+					break
+				}
+			}
+		} else {
+			// If no -g, it might be just a tag or commit hash
+			version = commit
+		}
 	}
 	
-	// Fallback: if still empty, use default
+	// Final fallback
 	if version == "" {
 		version = "development"
 	}

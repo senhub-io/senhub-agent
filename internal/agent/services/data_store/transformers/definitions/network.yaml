@@ -6,39 +6,47 @@ metrics:
   - name: "bytes_sent"
     channel: "network_bytes_sent"
     display_name: "Network {interface} Bytes Sent"
-    unit: "bytes/sec"
+    unit: "bytes"
+    multi_instance_labels: ["interface"]
     
   - name: "bytes_received"
     channel: "network_bytes_received"
     display_name: "Network {interface} Bytes Received"
-    unit: "bytes/sec"
+    unit: "bytes"
+    multi_instance_labels: ["interface"]
     
   - name: "packets_sent"
     channel: "network_packets_sent"
     display_name: "Network {interface} Packets Sent"
-    unit: "packets/sec"
+    unit: "#"
+    multi_instance_labels: ["interface"]
     
   - name: "packets_received"
     channel: "network_packets_received"
     display_name: "Network {interface} Packets Received"
-    unit: "packets/sec"
+    unit: "#"
+    multi_instance_labels: ["interface"]
     
   - name: "errors_sent"
     channel: "network_errors_sent"
     display_name: "Network {interface} Send Errors"
-    unit: "errors/sec"
+    unit: "#"
+    multi_instance_labels: ["interface"]
     
   - name: "errors_received"
     channel: "network_errors_received"
     display_name: "Network {interface} Receive Errors"
-    unit: "errors/sec"
+    unit: "#"
+    multi_instance_labels: ["interface"]
     
   - name: "discards_sent"
     channel: "network_discards_sent"
     display_name: "Network {interface} Send Discards"
-    unit: "discards/sec"
+    unit: "#"
+    multi_instance_labels: ["interface"]
     
   - name: "discards_received"
     channel: "network_discards_received"
     display_name: "Network {interface} Receive Discards"
-    unit: "discards/sec"
+    unit: "#"
+    multi_instance_labels: ["interface"]
