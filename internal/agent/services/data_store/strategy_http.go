@@ -104,6 +104,13 @@ func NewHTTPSyncStrategy(
 	// Create module-specific logger for HTTP strategy
 	moduleLogger := logger.NewModuleLogger(baseLogger, "strategy.http")
 
+	// Get cache configuration from agent config
+	cacheRetentionMinutes := 5 // Default value
+	if localConfig, ok := agentConfig.(*configuration.LocalConfiguration); ok {
+		cacheConfig := localConfig.GetCacheConfig()
+		cacheRetentionMinutes = cacheConfig.RetentionMinutes
+	}
+
 	strategy := &HTTPSyncStrategy{
 		agentConfig:         agentConfig,
 		params:              params,
@@ -114,7 +121,7 @@ func NewHTTPSyncStrategy(
 		transformerRegistry: transformers.NewTransformerRegistry(moduleLogger.Logger),
 		startTime:           time.Now(), // Initialize start time for uptime calculation
 		assetHandler:        NewAssetHandler(agentConfig.GetAuthenticationKey()),
-		cache: NewMetricCache(5*time.Minute, moduleLogger),
+		cache: NewMetricCache(time.Duration(cacheRetentionMinutes)*time.Minute, moduleLogger),
 	}
 	
 	// Initialize format converter after cache is created
@@ -671,6 +678,17 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 			h.bindAddress = newBind
 			return h.restartServer()
 		}
+	}
+
+	// Update cache configuration if agent config is LocalConfiguration
+	if localConfig, ok := h.agentConfig.(*configuration.LocalConfiguration); ok {
+		cacheConfig := localConfig.GetCacheConfig()
+		newTTL := time.Duration(cacheConfig.RetentionMinutes) * time.Minute
+		h.cache.UpdateTTL(newTTL)
+		
+		h.logger.Info().
+			Int("retention_minutes", cacheConfig.RetentionMinutes).
+			Msg("✅ Cache configuration updated")
 	}
 
 	h.logger.Info().Msg("✅ HTTP strategy configuration updated successfully")

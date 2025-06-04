@@ -67,6 +67,21 @@ class APIExplorer {
             this.loadEndpoints(),
             this.loadProbes()
         ]);
+        
+        // Restore state from URL after data is loaded
+        const urlState = this.restoreStateFromURL();
+        
+        // If we have a probe from URL, load its tags and update UI
+        if (urlState.probe) {
+            await this.tagFilters.loadTags(urlState.probe);
+            this.showTagFilters(true);
+            
+            // Restore tag filter selections
+            this.restoreTagFilterSelections(urlState.tags);
+        }
+        
+        // Generate URL with restored state
+        this.generateURL();
     }
 
     async loadEndpoints() {
@@ -138,6 +153,8 @@ class APIExplorer {
         if (!endpointType || !this.selectedProbe) {
             this.updateUrlDisplay('Select an endpoint and probe to generate URL...');
             this.setButtonsEnabled(false);
+            // Clear URL parameters when no selection
+            this.updatePageURL();
             return;
         }
 
@@ -146,7 +163,7 @@ class APIExplorer {
         // Add tag filters as query parameters
         const tagParams = [];
         Object.entries(this.selectedTags).forEach(([key, value]) => {
-            tagParams.push(`tags=${key}:${value}`);
+            tagParams.push(`tags=${encodeURIComponent(key)}:${encodeURIComponent(value)}`);
         });
         
         if (tagParams.length > 0) {
@@ -156,6 +173,9 @@ class APIExplorer {
         const fullUrl = window.location.origin + url;
         this.updateUrlDisplay(fullUrl);
         this.setButtonsEnabled(true);
+        
+        // Update the page URL to reflect current state
+        this.updatePageURL(endpointType, this.selectedProbe, this.selectedTags);
     }
 
     updateUrlDisplay(url) {
@@ -275,6 +295,81 @@ class APIExplorer {
             button.textContent = originalText || original;
             button.disabled = false;
         }, 2000);
+    }
+
+    updatePageURL(endpointType = '', probe = '', tags = {}) {
+        const params = new URLSearchParams();
+        
+        if (endpointType) params.set('endpoint', endpointType);
+        if (probe) params.set('probe', probe);
+        
+        // Add tags as individual parameters
+        Object.entries(tags).forEach(([key, value]) => {
+            params.set(`tag_${key}`, value);
+        });
+        
+        const newURL = params.toString() ? 
+            `${window.location.pathname}?${params.toString()}` : 
+            window.location.pathname;
+            
+        // Update URL without triggering page reload
+        window.history.replaceState({}, '', newURL);
+    }
+
+    restoreStateFromURL() {
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        // Restore endpoint type
+        const endpointType = urlParams.get('endpoint');
+        if (endpointType && this.endpointTypeSelect) {
+            this.endpointTypeSelect.value = endpointType;
+        }
+        
+        // Restore probe selection
+        const probe = urlParams.get('probe');
+        if (probe && this.probeSelect) {
+            this.probeSelect.value = probe;
+            this.selectedProbe = probe;
+        }
+        
+        // Restore tag filters
+        const tags = {};
+        for (const [key, value] of urlParams.entries()) {
+            if (key.startsWith('tag_')) {
+                const tagKey = key.substring(4); // Remove 'tag_' prefix
+                tags[tagKey] = value;
+            }
+        }
+        this.selectedTags = tags;
+        
+        return { endpointType, probe, tags };
+    }
+
+    restoreTagFilterSelections(tags) {
+        // This method would need to interact with the TagFilters instance
+        // to programmatically select the appropriate tag values
+        Object.entries(tags).forEach(([tagKey, tagValue]) => {
+            // Enable the tag checkbox
+            const tagCheckbox = this.base.$(`#tag-${tagKey}`);
+            if (tagCheckbox) {
+                tagCheckbox.checked = true;
+                
+                // If it's a comma-separated list, select individual values
+                const values = tagValue.split(',');
+                values.forEach(value => {
+                    const valueCheckbox = this.base.$(`#value-${tagKey}-${this.tagFilters.escapeId(value)}`);
+                    if (valueCheckbox) {
+                        valueCheckbox.checked = true;
+                    }
+                });
+                
+                // Update UI to show the values container
+                this.tagFilters.updateTagUI(tagKey, 'multi', true);
+            }
+        });
+        
+        // Trigger the tag update to reflect restored selections
+        this.tagFilters.updateSelectedTags();
     }
 }
 

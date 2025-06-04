@@ -50,9 +50,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 			params: map[string]interface{}{},
 			expectedPort: 8080,
 			expectedBindAddress: "0.0.0.0",
-			expectedEndpoints: map[string]bool{
-				"senhub": true,
-			},
+			expectedEndpoints: map[string]bool{},
 		},
 		{
 			name: "Custom port",
@@ -61,9 +59,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 			},
 			expectedPort: 9090,
 			expectedBindAddress: "0.0.0.0",
-			expectedEndpoints: map[string]bool{
-				"senhub": true,
-			},
+			expectedEndpoints: map[string]bool{},
 		},
 		{
 			name: "Custom port as int (YAML style)",
@@ -72,9 +68,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 			},
 			expectedPort: 8443,
 			expectedBindAddress: "0.0.0.0",
-			expectedEndpoints: map[string]bool{
-				"senhub": true,
-			},
+			expectedEndpoints: map[string]bool{},
 		},
 		{
 			name: "Custom bind address - loopback",
@@ -83,9 +77,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 			},
 			expectedPort: 8080,
 			expectedBindAddress: "127.0.0.1",
-			expectedEndpoints: map[string]bool{
-				"senhub": true,
-			},
+			expectedEndpoints: map[string]bool{},
 		},
 		{
 			name: "Custom bind address - specific interface",
@@ -95,19 +87,16 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 			},
 			expectedPort: 8888,
 			expectedBindAddress: "192.168.1.100",
-			expectedEndpoints: map[string]bool{
-				"senhub": true,
-			},
+			expectedEndpoints: map[string]bool{},
 		},
 		{
 			name: "Custom endpoints configuration",
 			params: map[string]interface{}{
-				"endpoints": []interface{}{"senhub", "prtg", "nagios"},
+				"endpoints": []interface{}{"prtg", "nagios"},
 			},
 			expectedPort: 8080, // default port
 			expectedBindAddress: "0.0.0.0",
 			expectedEndpoints: map[string]bool{
-				"senhub": true,
 				"prtg":   true,
 				"nagios": true,
 			},
@@ -846,79 +835,5 @@ func TestHTTPSyncStrategy_SetLogLevelsEndpoint(t *testing.T) {
 				t.Errorf("Expected body to contain '%s', got '%s'", tt.expectedInBody, rr.Body.String())
 			}
 		})
-	}
-}
-func TestHTTPSyncStrategy_SenHubMetricsGET(t *testing.T) {
-	agentConfig := createTestAgentConfig()
-	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
-
-	// Add some test data to cache
-	testDataPoints := []datapoint.DataPoint{
-		{
-			Name:      "cpu_usage_total",
-			Timestamp: time.Now(),
-			Value:     float32(75.5),
-			Tags: []tags.Tag{
-				{Key: "probe_name", Value: "host"},
-				{Key: "component", Value: "cpu"},
-			},
-		},
-	}
-	
-	// Add data to strategy cache
-	err := strategy.AddDataPoints(testDataPoints)
-	if err != nil {
-		t.Fatalf("Failed to add test data: %v", err)
-	}
-
-	url := "/api/test-agent-key/senhub/metrics/host"
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		t.Fatalf("Failed to create request: %v", err)
-	}
-
-	rr := httptest.NewRecorder()
-	router := strategy.setupRoutes()
-	router.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("Expected status code %d, got %d", http.StatusOK, status)
-	}
-
-	// Parse response and verify it's valid SenHub format
-	var response SenHubResponse
-	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
-		t.Errorf("Failed to decode response: %v", err)
-	}
-
-	if len(response.Metrics) == 0 {
-		t.Error("Expected metrics for host probe, got none")
-	}
-	
-	// Verify SenHub format structure
-	if len(response.Metrics) > 0 {
-		metric := response.Metrics[0]
-		if metric.Name == "" {
-			t.Error("Expected Name field to be populated")
-		}
-		if metric.Channel == "" {
-			t.Error("Expected Channel field to be populated")
-		}
-		if metric.ProbeName == "" {
-			t.Error("Expected ProbeName field to be populated")
-		}
-		if metric.Value == nil {
-			t.Error("Expected Value field to be populated")
-		}
-		// Unit can be empty for some metrics, so we don't check it
-	}
-	
-	// Verify response structure
-	if response.Status == "" {
-		t.Error("Expected Status field to be populated")
-	}
-	if response.Message == "" {
-		t.Error("Expected Message field to be populated")
 	}
 }

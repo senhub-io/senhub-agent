@@ -1,7 +1,7 @@
 // internal/agent/probes/host/networkProbe_unix.go
 //go:build !windows
 
-package host
+package network
 
 import (
 	"fmt"

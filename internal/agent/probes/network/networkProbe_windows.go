@@ -1,7 +1,7 @@
 //senhub-agent/internal/agent/probes/host/networkProbe_windows.go
 //go:build windows
 
-package host
+package network
 
 import (
 	"fmt"
@@ -17,6 +17,18 @@ import (
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/windows/pdh"
 )
+
+// MetricDefinition defines a performance counter with its path and instance
+type MetricDefinition struct {
+	path     string
+	instance string
+}
+
+// pathInfo represents path information for performance counters
+type pathInfo struct {
+	path     string
+	instance string
+}
 
 var networkCounterPaths = map[string]MetricDefinition{
 	"bytes_sent": {
