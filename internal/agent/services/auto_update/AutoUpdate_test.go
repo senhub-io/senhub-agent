@@ -11,17 +11,29 @@ import (
 	"github.com/ybbus/httpretry"
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/testUtils"
 )
 
+// Helper function to create test logger
+func createTestLogger() *logger.Logger {
+	l := zerolog.New( /*os.Stderr*/ nil)
+	return &l
+}
+
+// Helper function to create test module logger
+func createTestModuleLogger() *logger.ModuleLogger {
+	return logger.NewModuleLogger(createTestLogger(), "auto_update.test")
+}
+
 func TestAutoUpdate_GetName(t *testing.T) {
-	logger := zerolog.New( /*os.Stderr*/ nil)
+	baseLogger := createTestLogger()
 
 	remoteConfig := configuration.NewMockRemoteConfiguration("http://localhost:8080", "")
 
 	au := NewAutoUpdate(AutoUpdateConfig{
 		remoteConfig,
-		&logger,
+		baseLogger,
 		false,
 	})
 
@@ -119,7 +131,6 @@ func TestAutoUpdate_ShouldUpdate(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			logger := zerolog.New( /*os.Stderr*/ nil)
 			var configString string
 			if tc.expectedVersion == "" {
 				configString = `{ "agent": {} }`
@@ -137,7 +148,7 @@ func TestAutoUpdate_ShouldUpdate(t *testing.T) {
 			httpClient := httpretry.NewDefaultClient()
 			au := &autoUpdate{
 				configSource: remoteConfig,
-				logger:       &logger,
+				logger:       createTestModuleLogger(),
 				httpClient:   httpClient,
 			}
 
@@ -183,7 +194,6 @@ func TestAutoUpdate_getExpectedVersion_WithFailingServer(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			logger := zerolog.New( /*os.Stderr*/ nil)
 			configString := `{
 				"agent": {
 					"version": "` + tc.expectedVersion + `",
@@ -196,7 +206,7 @@ func TestAutoUpdate_getExpectedVersion_WithFailingServer(t *testing.T) {
 			httpClient := httpretry.NewDefaultClient()
 			au := &autoUpdate{
 				configSource: remoteConfig,
-				logger:       &logger,
+				logger:       createTestModuleLogger(),
 				httpClient:   httpClient,
 			}
 
@@ -290,14 +300,13 @@ func TestAutoUpdate_GetBinaryUrl(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			logger := zerolog.New( /*os.Stderr*/ nil)
 			remoteConfig := configuration.NewMockRemoteConfiguration(
 				"http://localhost:8000", "")
 
 			httpClient := httpretry.NewDefaultClient()
 			au := &autoUpdate{
 				configSource: remoteConfig,
-				logger:       &logger,
+				logger:       createTestModuleLogger(),
 				httpClient:   httpClient,
 			}
 			
@@ -347,14 +356,13 @@ func TestAutoUpdate_GetBinaryName(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			logger := zerolog.New( /*os.Stderr*/ nil)
 			remoteConfig := configuration.NewMockRemoteConfiguration(
 				"http://localhost:8000", "")
 
 			httpClient := httpretry.NewDefaultClient()
 			au := &autoUpdate{
 				configSource: remoteConfig,
-				logger:       &logger,
+				logger:       createTestModuleLogger(),
 				httpClient:   httpClient,
 			}
 			result := au.getBinaryNameForOptions(
@@ -397,7 +405,6 @@ func TestAutoUpdate_GetUpdateCheckInterval(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			logger := zerolog.New( /*os.Stderr*/ nil)
 			configInterval, _ := json.Marshal(tc.interval)
 			remoteConfig := configuration.NewMockRemoteConfiguration(
 				"http://localhost:8000", `
@@ -411,7 +418,7 @@ func TestAutoUpdate_GetUpdateCheckInterval(t *testing.T) {
 			httpClient := httpretry.NewDefaultClient()
 			au := &autoUpdate{
 				configSource: remoteConfig,
-				logger:       &logger,
+				logger:       createTestModuleLogger(),
 				httpClient:   httpClient,
 			}
 			result := au.GetUpdateCheckInterval()

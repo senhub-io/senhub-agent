@@ -5,14 +5,17 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
+	"senhub-agent.go/internal/agent/services/logger"
 	clientService "senhub-agent.go/internal/agent/services/server"
 	"senhub-agent.go/internal/testUtils"
 )
 
 func TestValidateConfiguration(t *testing.T) {
-	logger := zerolog.New(os.Stderr)
+	l := zerolog.New(os.Stderr)
+	baseLogger := &l
+	moduleLogger := logger.NewModuleLogger(baseLogger, "configuration.test")
 	rc := &RemoteConfiguration{
-		logger: &logger,
+		logger: moduleLogger,
 	}
 
 	testCases := []struct {
@@ -96,13 +99,15 @@ func TestRemoteConfiguration_FetchCofiguration(t *testing.T) {
 			})
 			defer testServer.Server.Close()
 
-			logger := zerolog.New(os.Stderr)
-			httpClient := clientService.NewServer("authKey", testServer.URL, &logger)
+			l := zerolog.New(os.Stderr)
+	baseLogger := &l
+			moduleLogger := logger.NewModuleLogger(baseLogger, "configuration.test")
+			httpClient := clientService.NewServer("authKey", testServer.URL, baseLogger)
 
 			rc := &RemoteConfiguration{
 				server:        httpClient,
-				logger:        &logger,
-				eventNotifier: NewEventNotifier(&logger),
+				logger:        moduleLogger,
+				eventNotifier: NewEventNotifier(baseLogger),
 			}
 
 			_, err := rc.doFetchConfiguration()
