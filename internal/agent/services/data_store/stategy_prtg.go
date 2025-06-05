@@ -49,16 +49,17 @@ type SyncStrategyPrtg struct {
 	agentConfig configuration.AgentConfiguration
 	rawConfig   configuration.StorageConfigParams
 	config      SyncStrategyPrtgParams
-	logger      *logger.Logger
+	logger      *logger.ModuleLogger
 	scheduler   periodic_scheduler.PeriodicScheduler
 }
 
 func NewSyncStrategyPrtg(
 	agentConfig configuration.AgentConfiguration,
 	storageConfig configuration.StorageConfigParams,
-	logger *logger.Logger,
+	baseLogger *logger.Logger,
 ) *SyncStrategyPrtg {
-	localLogger := logger.With().Str("sync_strategy", "SyncStrategyPrtg").Logger()
+	// Create module-specific logger for PRTG strategy
+	moduleLogger := logger.NewModuleLogger(baseLogger, "strategy.prtg")
 	http := httpretry.NewDefaultClient(
 		// retry up to 3 times
 		httpretry.WithMaxRetryCount(3),
@@ -69,7 +70,7 @@ func NewSyncStrategyPrtg(
 		http:        http,
 		rawConfig:   storageConfig,
 		agentConfig: agentConfig,
-		logger:      &localLogger,
+		logger:      moduleLogger,
 	}
 
 	return &strategy
@@ -157,7 +158,7 @@ func (s *SyncStrategyPrtg) Start() error {
 		Execute:           s.DoSync,
 		ExecuteOnStart:    false,
 		ExecuteOnShutdown: true,
-	}, s.logger)
+	}, s.logger.Logger)
 	s.scheduler = scheduler
 	return s.scheduler.Start(nil)
 }

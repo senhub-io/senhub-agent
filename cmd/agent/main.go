@@ -96,6 +96,9 @@ func main() {
 	// If first argument is a service command
 	command := os.Args[1]
 	switch command {
+	case "debug-modules-list":
+		showDebugModules()
+		return
 	case "update":
 		args := cliArgs.MustParse()
 		agent.UpdateAgent(args)
@@ -435,14 +438,15 @@ func showHelp() {
 	fmt.Printf(`Usage: %s [command] [options]
 
 Service Commands:
-    install     Install the service (requires --authentication-key OR --offline)
-    uninstall   Remove the service
-    start       Start the service
-    stop        Stop the service
-    status      Show service status
-    version     Show agent version
-    run         Run in console mode (requires --authentication-key OR --offline)
-    update      Update the agent to given version (default: latest)
+    install              Install the service (requires --authentication-key OR --offline)
+    uninstall            Remove the service
+    start                Start the service
+    stop                 Stop the service
+    status               Show service status
+    version              Show agent version
+    run                  Run in console mode (requires --authentication-key OR --offline)
+    update               Update the agent to given version (default: latest)
+    debug-modules-list   List all available debug modules
 
 Agent Options:
     --authentication-key KEY                Authentication key for the service
@@ -565,4 +569,63 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 		fmt.Printf("\n🧹 Cleanup completed - removed %d files and %d directories\n", 
 			len(filesToRemove), len(dirsToRemove))
 	}
+}
+
+// showDebugModules displays all available debug modules
+func showDebugModules() {
+	modules := agentLogger.GetAvailableModules()
+	
+	fmt.Printf("Available Debug Modules (%d modules):\n\n", len(modules))
+	
+	// Group modules by category
+	categories := map[string][]string{
+		"Core Services": {},
+		"Data Strategies": {},
+		"System Probes": {},
+		"Application Probes": {},
+		"Platform Specific": {},
+		"Sub-modules": {},
+	}
+	
+	// Categorize modules
+	for _, module := range modules {
+		switch {
+		case strings.HasPrefix(module, "strategy."):
+			categories["Data Strategies"] = append(categories["Data Strategies"], module)
+		case module == "pdh.windows":
+			categories["Platform Specific"] = append(categories["Platform Specific"], module)
+		case module == "probe.redfish.client":
+			categories["Sub-modules"] = append(categories["Sub-modules"], module)
+		case module == "probe.webapp" || module == "probe.gateway" || 
+			 module == "probe.syslog" || module == "probe.event" || 
+			 module == "probe.otel" || module == "probe.redfish":
+			categories["Application Probes"] = append(categories["Application Probes"], module)
+		case strings.HasPrefix(module, "probe."):
+			categories["System Probes"] = append(categories["System Probes"], module)
+		default:
+			categories["Core Services"] = append(categories["Core Services"], module)
+		}
+	}
+	
+	// Display categorized modules
+	categoryOrder := []string{"Core Services", "Data Strategies", "System Probes", "Application Probes", "Platform Specific", "Sub-modules"}
+	
+	for _, category := range categoryOrder {
+		if len(categories[category]) > 0 {
+			fmt.Printf("📂 %s:\n", category)
+			for _, module := range categories[category] {
+				fmt.Printf("   • %s\n", module)
+			}
+			fmt.Println()
+		}
+	}
+	
+	fmt.Println("Usage Examples:")
+	fmt.Printf("   # Debug specific module:\n")
+	fmt.Printf("   %s run --debug-modules strategy.http\n", os.Args[0])
+	fmt.Printf("\n   # Debug multiple modules:\n")
+	fmt.Printf("   %s run --debug-modules strategy.http,cache,probe.redfish\n", os.Args[0])
+	fmt.Printf("\n   # Debug with offline mode:\n")
+	fmt.Printf("   %s run --offline --debug-modules strategy.http,cache\n", os.Args[0])
+	fmt.Println()
 }
