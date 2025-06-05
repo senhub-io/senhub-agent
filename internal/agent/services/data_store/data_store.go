@@ -57,7 +57,7 @@ type DataStore interface {
 
 type dataStore struct {
 	strategies   []SyncStrategy
-	logger       *logger.Logger
+	logger       *logger.ModuleLogger
 	configProvider configuration.ConfigurationProvider
 	agentConfig  configuration.AgentConfiguration
 }
@@ -65,18 +65,19 @@ type dataStore struct {
 func NewDataStore(
 	agentConfig configuration.AgentConfiguration,
 	configProvider configuration.ConfigurationProvider,
-	logger *logger.Logger,
+	baseLogger *logger.Logger,
 ) DataStore {
-	localLogger := logger.With().Str("service", "DataStore").Logger()
-	localLogger.Debug().Msg("Creating new DataStore instance")
+	// Create module-specific logger for data store
+	moduleLogger := logger.NewModuleLogger(baseLogger, "data_store")
+	moduleLogger.Debug().Msg("Creating new DataStore instance")
 
 	ds := &dataStore{
-		logger:         &localLogger,
+		logger:         moduleLogger,
 		configProvider: configProvider,
 		agentConfig:    agentConfig,
 		strategies:     make([]SyncStrategy, 0),
 	}
-	localLogger.Debug().Msg("DataStore instance created successfully")
+	moduleLogger.Debug().Msg("DataStore instance created successfully")
 	return ds
 }
 
@@ -115,17 +116,16 @@ func truncateString(s string, maxLen int) string {
 func (d *dataStore) GetCallback() AddCallback {
 	d.logger.Debug().Msg("GetCallback called")
 	return func(data []datapoint.DataPoint, probe StrategyRouter) error {
-		localLogger := d.logger.With().Str("function", "addDataPoint").Logger()
-		localLogger.Debug().Int("datapoints_count", len(data)).Msg("Callback called")
+		d.logger.Debug().Int("datapoints_count", len(data)).Msg("Callback called")
 
 		if len(d.strategies) == 0 {
-			localLogger.Warn().Msg("No strategies configured in datastore")
+			d.logger.Warn().Msg("No strategies configured in datastore")
 			return nil
 		}
 
 		for _, strategy := range d.strategies {
 			targetStrategies := probe.GetTargetStrategies()
-			localLogger.Debug().
+			d.logger.Debug().
 				Strs("target_strategies", targetStrategies).
 				Msg("Target strategies")
 
@@ -139,13 +139,13 @@ func (d *dataStore) GetCallback() AddCallback {
 
 			if !shouldSendToStrategy {
 				// Skip strategies that are not in the target list
-				localLogger.Debug().
+				d.logger.Debug().
 					Str("strategy", strategy.GetStrategyName()).
 					Msg("Skipping strategy")
 				continue
 			}
 
-			localLogger.Debug().
+			d.logger.Debug().
 				Str("strategy", strategy.GetStrategyName()).
 				Int("datapoints_count", len(data)).
 				Msg("Sending data to strategy")
@@ -153,7 +153,7 @@ func (d *dataStore) GetCallback() AddCallback {
 			// Log the first few events for debugging
 			if strategy.GetStrategyName() == "event" && len(data) > 0 {
 				for i := 0; i < min(3, len(data)); i++ {
-					localLogger.Debug().
+					d.logger.Debug().
 						Int("event_index", i).
 						Str("event_source", getTagValue(data[i].Tags, "event_source")).
 						Str("event_id", getTagValue(data[i].Tags, "event_id")).
@@ -163,12 +163,12 @@ func (d *dataStore) GetCallback() AddCallback {
 			}
 
 			if err := strategy.AddDataPoints(data); err != nil {
-				localLogger.Error().
+				d.logger.Error().
 					Err(err).
 					Str("strategy", strategy.GetStrategyName()).
 					Msg("Error adding data points to strategy")
 			} else {
-				localLogger.Info().
+				d.logger.Info().
 					Str("strategy", strategy.GetStrategyName()).
 					Int("count", len(data)).
 					Msg("✅ Successfully sent datapoints to strategy")
@@ -279,12 +279,9 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 }
 
 func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig) SyncStrategy {
-	localLogger := d.logger.With().
-		Str("function", "retrieveOrCreate").
+	d.logger.Debug().
 		Str("strategy", strategyConfig.Name).
-		Logger()
-
-	localLogger.Debug().Msg("retrieveOrCreate called")
+		Msg("retrieveOrCreate called")
 
 	searchStrategyId := d.GenerateStrategyId(strategyConfig.Name, strategyConfig.Params)
 
@@ -294,11 +291,11 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 			// Strategy of same type found, check if parameters have changed
 			strategyId := d.GenerateStrategyId(strategy.GetStrategyName(), strategy.GetStrategyParams())
 			if strategyId == searchStrategyId {
-				localLogger.Debug().Msg("Found existing strategy with same configuration")
+				d.logger.Debug().Msg("Found existing strategy with same configuration")
 				return strategy
 			} else {
 				// Same name but different parameters - try to update
-				localLogger.Info().
+				d.logger.Info().
 					Any("old_params", strategy.GetStrategyParams()).
 					Any("new_params", strategyConfig.Params).
 					Msg("Strategy configuration changed, attempting update")
@@ -306,17 +303,17 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 				// Try to update the strategy if it supports live updates
 				if httpStrategy, ok := strategy.(*HTTPSyncStrategy); ok {
 					if err := httpStrategy.UpdateConfiguration(strategyConfig.Params); err != nil {
-						localLogger.Warn().
+						d.logger.Warn().
 							Err(err).
 							Msg("Failed to update strategy configuration, will recreate")
 						// If update fails, continue to create a new strategy
 						break
 					} else {
-						localLogger.Info().Msg("✅ Strategy configuration updated successfully")
+						d.logger.Info().Msg("✅ Strategy configuration updated successfully")
 						return strategy
 					}
 				} else {
-					localLogger.Debug().Msg("Strategy does not support live updates, will recreate")
+					d.logger.Debug().Msg("Strategy does not support live updates, will recreate")
 					// Strategy does not support live updates, continue to recreate
 					break
 				}
@@ -325,41 +322,41 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 	}
 
 	// Create a new strategy
-	localLogger.Debug().
+	d.logger.Debug().
 		Any("params", strategyConfig.Params).
 		Msg("Creating new strategy")
 
 	var strategy SyncStrategy
 	switch strategyConfig.Name {
 	case "senhub":
-		localLogger.Debug().Msg("Initializing senhub strategy")
-		strategy = NewSyncStrategySenhub(d.agentConfig, strategyConfig.Params, d.logger)
+		d.logger.Debug().Msg("Initializing senhub strategy")
+		strategy = NewSyncStrategySenhub(d.agentConfig, strategyConfig.Params, d.logger.Logger)
 	case "prtg":
-		localLogger.Debug().Msg("Initializing prtg strategy")
-		strategy = NewSyncStrategyPrtg(d.agentConfig, strategyConfig.Params, d.logger)
+		d.logger.Debug().Msg("Initializing prtg strategy")
+		strategy = NewSyncStrategyPrtg(d.agentConfig, strategyConfig.Params, d.logger.Logger)
 	case "event":
-		localLogger.Debug().Msg("Initializing event strategy")
-		strategy = NewEventSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger)
+		d.logger.Debug().Msg("Initializing event strategy")
+		strategy = NewEventSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger)
 	case "http":
-		localLogger.Debug().Msg("Initializing HTTP strategy")
-		strategy = NewHTTPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger)
-		localLogger.Debug().Bool("initialized", strategy != nil).Msg("HTTP strategy created")
+		d.logger.Debug().Msg("Initializing HTTP strategy")
+		strategy = NewHTTPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger)
+		d.logger.Debug().Bool("initialized", strategy != nil).Msg("HTTP strategy created")
 	default:
-		localLogger.Error().
+		d.logger.Error().
 			Any("params", strategyConfig.Params).
 			Msg("Unknown strategy")
 		return nil
 	}
 
 	if strategy == nil {
-		localLogger.Error().
+		d.logger.Error().
 			Any("params", strategyConfig.Params).
 			Msg("Failed to create strategy")
 		return nil
 	}
 
 	if err := strategy.ValidateConfigParams(strategyConfig.Params); err != nil {
-		localLogger.Error().
+		d.logger.Error().
 			Any("params", strategyConfig.Params).
 			Err(err).
 			Msg("Invalid strategy configuration")
@@ -367,13 +364,13 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 	}
 
 	if err := strategy.Start(); err != nil {
-		localLogger.Error().
+		d.logger.Error().
 			Err(err).
 			Msg("Failed to start strategy")
 		return nil
 	}
 
 	d.strategies = append(d.strategies, strategy)
-	localLogger.Debug().Msg("Strategy created successfully")
+	d.logger.Debug().Msg("Strategy created successfully")
 	return strategy
 }

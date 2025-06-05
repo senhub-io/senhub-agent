@@ -82,11 +82,12 @@ func (u *UtilsManager) parseVersionInfo() VersionInfo {
 	if version != "" {
 		return VersionInfo{
 			Version: version,
-			Commit:  commit,
+			Commit:  formatCommitHash(commit),
 		}
 	}
 	
 	// Windows/no-Makefile case: Version is empty, try to extract from CommitHash
+	var extractedCommitHash string
 	if commit != "" {
 		// Parse git describe format: "tag-commits-ghash-dirty"
 		if strings.Contains(commit, "-g") {
@@ -95,12 +96,15 @@ func (u *UtilsManager) parseVersionInfo() VersionInfo {
 				if strings.HasPrefix(part, "g") && i > 0 {
 					// Version is everything before the commit count
 					version = strings.Join(parts[:i-1], "-")
+					// Extract commit hash (part starting with 'g')
+					extractedCommitHash = part
 					break
 				}
 			}
 		} else {
 			// If no -g, it might be just a tag or commit hash
 			version = commit
+			extractedCommitHash = commit
 		}
 	}
 	
@@ -109,10 +113,62 @@ func (u *UtilsManager) parseVersionInfo() VersionInfo {
 		version = "development"
 	}
 	
+	// Format commit hash for display - use extracted hash, not full commit string
+	var formattedCommit string
+	if extractedCommitHash != "" {
+		formattedCommit = formatCommitHash(extractedCommitHash)
+	} else {
+		formattedCommit = formatCommitHash(commit)
+	}
+	
 	return VersionInfo{
 		Version: version,
-		Commit:  commit,
+		Commit:  formattedCommit,
 	}
+}
+
+// formatCommitHash formats a commit hash for human-readable display
+func formatCommitHash(commit string) string {
+	if commit == "" {
+		return ""
+	}
+	
+	// Handle single hash part with 'g' prefix (e.g., "g302b166")
+	if strings.HasPrefix(commit, "g") && len(commit) > 1 {
+		// Extract short hash (first 7 chars after 'g', or all if shorter)
+		hashPart := commit[1:]
+		if len(hashPart) >= 7 {
+			return hashPart[:7]
+		}
+		return hashPart
+	}
+	
+	// Handle git describe format: "tag-commits-ghash-dirty"
+	if strings.Contains(commit, "-g") {
+		parts := strings.Split(commit, "-")
+		for i, part := range parts {
+			if strings.HasPrefix(part, "g") && len(part) > 1 {
+				// Extract short hash (first 7 chars after 'g')
+				hashPart := part[1:]
+				if len(hashPart) >= 7 {
+					hashPart = hashPart[:7]
+				}
+				// Check if it's dirty
+				isDirty := len(parts) > i+1 && parts[i+1] == "dirty"
+				if isDirty {
+					return fmt.Sprintf("%s (modified)", hashPart)
+				}
+				return hashPart
+			}
+		}
+	}
+	
+	// Handle plain commit hash - take first 7 characters
+	if len(commit) >= 7 {
+		return commit[:7]
+	}
+	
+	return commit
 }
 
 // formatDuration formats a duration in a human-readable format

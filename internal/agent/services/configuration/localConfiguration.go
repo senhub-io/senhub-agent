@@ -64,7 +64,7 @@ type CacheConfig struct {
 // LocalConfiguration manages offline configuration
 type LocalConfiguration struct {
 	data         LocalConfigurationData
-	logger       *logger.Logger
+	logger       *logger.ModuleLogger
 	configPath   string
 	args         *cliArgs.ParsedArgs
 	eventNotifier *EventNotifier
@@ -75,28 +75,29 @@ type LocalConfiguration struct {
 // NewLocalConfiguration creates a new LocalConfiguration instance
 func NewLocalConfiguration(
 	args *cliArgs.ParsedArgs,
-	logger *logger.Logger,
+	baseLogger *logger.Logger,
 ) *LocalConfiguration {
-	localLogger := logger.With().Str("service", "LocalConfiguration").Logger()
-	localLogger.Debug().Msg("Creating new LocalConfiguration instance")
+	// Create module-specific logger for local configuration
+	moduleLogger := logger.NewModuleLogger(baseLogger, "configuration.local")
+	moduleLogger.Debug().Msg("Creating new LocalConfiguration instance")
 
 	lc := &LocalConfiguration{
-		logger:        &localLogger,
+		logger:        moduleLogger,
 		configPath:    args.ConfigPath,
 		args:          args,
 		data:          LocalConfigurationData{},
-		eventNotifier: NewEventNotifier(&localLogger),
+		eventNotifier: NewEventNotifier(moduleLogger.Logger),
 	}
 
 	// Try to load existing configuration immediately
 	if _, err := os.Stat(lc.configPath); err == nil {
 		// File exists, load it
 		if err := lc.loadConfiguration(); err != nil {
-			localLogger.Warn().Err(err).Msg("Failed to load existing configuration, will use defaults")
+			moduleLogger.Warn().Err(err).Msg("Failed to load existing configuration, will use defaults")
 		}
 	}
 
-	localLogger.Debug().Msg("LocalConfiguration instance created successfully")
+	moduleLogger.Debug().Msg("LocalConfiguration instance created successfully")
 	return lc
 }
 
@@ -136,11 +137,15 @@ func (lc *LocalConfiguration) GetAutoUpdateConfig() *AutoUpdateConfig {
 // GetCacheConfig returns the cache configuration
 func (lc *LocalConfiguration) GetCacheConfig() *CacheConfig {
 	if lc.data.Cache == nil {
+		lc.logger.Warn().Msg("Cache configuration is nil in YAML, using default (5 minutes)")
 		// Return default configuration
 		return &CacheConfig{
 			RetentionMinutes: 5,
 		}
 	}
+	lc.logger.Info().
+		Int("retention_minutes", lc.data.Cache.RetentionMinutes).
+		Msg("Cache configuration loaded from YAML")
 	return lc.data.Cache
 }
 
