@@ -18,6 +18,7 @@ type redfishProbe struct {
 	logger         *logger.ModuleLogger
 	interval       time.Duration
 	collector      RedfishCollector
+	tagEnhancer    *TagEnhancer
 	endpoint       string
 	username       string
 	password       string
@@ -87,6 +88,7 @@ func NewRedfishProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		config:         config,
 		logger:         moduleLogger,
 		interval:       interval,
+		tagEnhancer:    NewTagEnhancer(),
 		endpoint:       endpoint,
 		username:       username,
 		password:       password,
@@ -226,9 +228,13 @@ func (p *redfishProbe) Collect() ([]data_store.DataPoint, error) {
 			continue
 		}
 
-		// Add common tags to all datapoints
+		// Add common tags to all datapoints and enhance tags
 		for i := range datapoints {
+			// Add common tags
 			datapoints[i].Tags = append(datapoints[i].Tags, commonTags...)
+			
+			// Enhance tags using TagEnhancer for better organization
+			datapoints[i].Tags = p.tagEnhancer.EnhanceMetricTags(datapoints[i].Name, datapoints[i].Tags)
 		}
 
 		// Add to aggregate result
