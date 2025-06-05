@@ -23,6 +23,13 @@ func NewWebInterface(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger, as
 	}
 }
 
+// setNoCacheHeaders sets headers to prevent browser caching of dynamic content
+func (w *WebInterface) setNoCacheHeaders(writer http.ResponseWriter) {
+	writer.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	writer.Header().Set("Pragma", "no-cache")
+	writer.Header().Set("Expires", "0")
+}
+
 // Web UI Handlers
 
 // HandleWebDashboard serves the main dashboard interface
@@ -46,6 +53,7 @@ func (w *WebInterface) HandleWebDashboard(req *http.Request, writer http.Respons
 	}
 	
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.setNoCacheHeaders(writer)
 	writer.Write([]byte(content))
 }
 
@@ -68,6 +76,7 @@ func (w *WebInterface) HandleWebExplorer(req *http.Request, writer http.Response
 	}
 	
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.setNoCacheHeaders(writer)
 	writer.Write([]byte(html))
 }
 
@@ -87,6 +96,7 @@ func (w *WebInterface) HandleWebDocs(req *http.Request, writer http.ResponseWrit
 	}
 	
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.setNoCacheHeaders(writer)
 	writer.Write([]byte(content))
 }
 

@@ -106,9 +106,19 @@ func NewHTTPSyncStrategy(
 
 	// Get cache configuration from agent config
 	cacheRetentionMinutes := 5 // Default value
-	if localConfig, ok := agentConfig.(*configuration.LocalConfiguration); ok {
-		cacheConfig := localConfig.GetCacheConfig()
+	
+	// Try to get cache config from agentConfiguration (which may have LocalConfiguration reference)
+	if agentConfigWithCache, ok := agentConfig.(interface{ GetCacheConfig() *configuration.CacheConfig }); ok {
+		cacheConfig := agentConfigWithCache.GetCacheConfig()
 		cacheRetentionMinutes = cacheConfig.RetentionMinutes
+		moduleLogger.Info().
+			Int("retention_minutes", cacheRetentionMinutes).
+			Msg("Using cache configuration from agent config")
+	} else {
+		moduleLogger.Info().
+			Str("config_type", fmt.Sprintf("%T", agentConfig)).
+			Int("default_retention_minutes", cacheRetentionMinutes).
+			Msg("Using default cache configuration (no cache config interface)")
 	}
 
 	strategy := &HTTPSyncStrategy{

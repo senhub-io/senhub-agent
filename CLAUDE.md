@@ -24,6 +24,210 @@
 - Follow resource management best practices (proper cleanup in Shutdown)
 - Use agent config from server with proper validation
 
+## Design Patterns & Best Practices
+
+### 🏗️ **Modular Architecture Pattern**
+The HTTP strategy follows a modular architecture with specialized managers:
+
+```go
+type HTTPSyncStrategy struct {
+    // Core modules
+    authManager      *AuthenticationManager  // Authentication & security
+    healthManager    *HealthManager          // Health checks & monitoring
+    apiManager       *APIManager             // API endpoints (PRTG, SenHub, Info)
+    webInterface     *WebInterface           // Web UI handlers
+    debugManager     *DebugManager           // Debug & admin utilities
+    configManager    *ConfigurationManager   // Configuration management
+    serverManager    *ServerManager          // HTTP server lifecycle
+    utilsManager     *UtilsManager           // Utility functions
+    // ... other managers
+}
+```
+
+**Benefits:**
+- Single Responsibility Principle: Each manager handles one concern
+- Easier testing and maintenance
+- Clear separation of concerns
+- Modular development
+
+### 🔄 **Delegation Pattern**
+HTTPSyncStrategy delegates to specialized managers instead of handling everything directly:
+
+```go
+// ❌ Bad: Handling directly in main strategy
+func (h *HTTPSyncStrategy) handlePRTGMetrics(w http.ResponseWriter, r *http.Request) {
+    // 100+ lines of PRTG logic here...
+}
+
+// ✅ Good: Delegating to specialized manager
+func (h *HTTPSyncStrategy) handlePRTGMetrics(w http.ResponseWriter, r *http.Request) {
+    h.apiManager.HandlePRTGMetrics(w, r)
+}
+```
+
+### 🔒 **Encapsulation with Controlled Access**
+Provide read-only access to internal modules through getters:
+
+```go
+// Module Access Getters (Encapsulation)
+// These methods provide controlled access to internal modules
+
+// GetAuthManager returns the authentication manager (read-only access)
+func (h *HTTPSyncStrategy) GetAuthManager() *AuthenticationManager {
+    return h.authManager
+}
+```
+
+**Pattern Rules:**
+- All getters return pointers for performance (no copying)
+- Comment each getter as "(read-only access)"
+- Group getters in dedicated section
+- Use consistent naming: `Get[ModuleName]Manager()`
+
+### 🏷️ **Module-Specific Logging**
+Each module uses its own logger for targeted debugging:
+
+```go
+// ✅ Create module-specific logger
+moduleLogger := logger.NewModuleLogger(baseLogger, "strategy.http")
+
+// ✅ Pass to managers for consistent logging
+authManager := NewAuthenticationManager(agentKey, agentConfig, moduleLogger)
+```
+
+**Benefits:**
+- Granular log control per module
+- Easier debugging with `--debug-modules strategy.http,cache`
+- Consistent log format across modules
+
+### 🛠️ **Helper Function Pattern**
+Create reusable helper functions for common operations:
+
+```go
+// ✅ HTTP Headers Helper
+func (w *WebInterface) setNoCacheHeaders(writer http.ResponseWriter) {
+    writer.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+    writer.Header().Set("Pragma", "no-cache")
+    writer.Header().Set("Expires", "0")
+}
+
+// ✅ Version Parsing Helper
+func formatCommitHash(commit string) string {
+    // Complex parsing logic centralized here
+}
+```
+
+**Usage Rules:**
+- Helper functions should be pure (no side effects when possible)
+- Group related helpers in same file
+- Use descriptive names that explain the action
+- Document complex helpers with examples
+
+### 🔗 **Configuration Provider Pattern**
+Support multiple configuration sources through common interface:
+
+```go
+type ConfigurationProvider interface {
+    GetName() string
+    GetConfiguration() RemoteConfigurationData
+    OnConfigChanged(callback func(string))
+    Start(chan struct{}) error
+    Shutdown(context.Context) error
+}
+
+// Implementations:
+// - LocalConfiguration (offline mode)
+// - RemoteConfiguration (online mode)
+```
+
+### 🏷️ **Interface-Based Design**
+Define clear interfaces for extensibility:
+
+```go
+type AgentConfiguration interface {
+    GetAuthenticationKey() string
+    GetServerUrl() string
+}
+
+// Can be extended with cache config access
+type AgentConfigurationWithCache interface {
+    AgentConfiguration
+    GetCacheConfig() *CacheConfig
+}
+```
+
+### 📝 **Error Handling Pattern**
+Consistent error handling with context:
+
+```go
+// ✅ Add context to errors
+if err := service.Start(); err != nil {
+    return fmt.Errorf("failed to start HTTP server: %w", err)
+}
+
+// ✅ Log errors with structured fields
+logger.Error().
+    Err(err).
+    Str("service", serviceName).
+    Msg("Failed to start service")
+```
+
+### 🧪 **Testing Patterns**
+- **Table-driven tests** for multiple scenarios
+- **Mock interfaces** for external dependencies
+- **Integration tests** for HTTP endpoints
+- **Benchmark tests** for performance validation
+
+### 📋 **Code Organization Rules**
+1. **File naming**: Use descriptive names (`http_web.go`, `http_api.go`)
+2. **Function ordering**: Public functions first, then private helpers
+3. **Import grouping**: Standard library, third-party, internal packages
+4. **Comment structure**: Package comments, then function documentation
+5. **Manager initialization**: Create all managers in constructor, initialize in order of dependencies
+
+### ✅ **Pattern Compliance Checklist**
+Before committing new code, verify compliance with our patterns:
+
+#### **Modular Architecture**
+- [ ] New functionality added to appropriate manager (not HTTPSyncStrategy directly)
+- [ ] Manager follows single responsibility principle
+- [ ] Manager initialized in NewHTTPSyncStrategy constructor
+- [ ] Manager has proper encapsulation getter: `GetXxxManager()`
+
+#### **Delegation Pattern**
+- [ ] HTTPSyncStrategy handlers delegate to managers: `h.apiManager.HandleXxx(w, r)`
+- [ ] No business logic in main strategy handlers (only delegation)
+- [ ] Comments indicate delegation: `// (delegated to XxxManager)`
+
+#### **Helper Functions**
+- [ ] Common operations extracted to helper functions
+- [ ] Helper functions are pure (no side effects when possible)
+- [ ] Helper functions have descriptive names
+- [ ] Complex helpers documented with examples
+
+#### **Logging**
+- [ ] Module-specific logger used: `logger.NewModuleLogger(baseLogger, "module.name")`
+- [ ] Structured logging with relevant fields
+- [ ] Error logging includes context
+- [ ] Debug/Info messages provide meaningful information
+
+#### **HTTP Headers**
+- [ ] Dynamic HTML pages use `setNoCacheHeaders()`
+- [ ] Static assets use appropriate cache headers
+- [ ] JSON APIs have consistent headers
+
+#### **Error Handling**
+- [ ] Errors wrapped with context: `fmt.Errorf("operation failed: %w", err)`
+- [ ] Errors logged with structured fields
+- [ ] HTTP errors use appropriate status codes
+- [ ] Resource cleanup in error paths
+
+#### **Comments & Documentation**
+- [ ] Public functions have descriptive comments
+- [ ] Getters commented as "(read-only access)"
+- [ ] Complex logic documented with inline comments
+- [ ] Interface implementations documented
+
 ## Current Development
 
 ### Redfish Probe
