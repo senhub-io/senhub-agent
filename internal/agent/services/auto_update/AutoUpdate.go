@@ -56,14 +56,15 @@ type AutoUpdateConfig struct {
 
 type autoUpdate struct {
 	configSource ConfigSource
-	logger       *logger.Logger
+	logger       *logger.ModuleLogger
 	httpClient   *http.Client
 	scheduler    *periodic_scheduler.PeriodicScheduler
 	dryRun       bool
 }
 
 func NewAutoUpdate(config AutoUpdateConfig) AutoUpdate {
-	localLogger := config.Logger.With().Str("service", "auto_update").Logger()
+	// Create module-specific logger for auto-update service
+	moduleLogger := logger.NewModuleLogger(config.Logger, "service.auto_update")
 
 	httpClient := httpretry.NewDefaultClient(
 		httpretry.WithMaxRetryCount(3),
@@ -71,7 +72,7 @@ func NewAutoUpdate(config AutoUpdateConfig) AutoUpdate {
 
 	return &autoUpdate{
 		configSource: config.ConfigSource,
-		logger:       &localLogger,
+		logger:       moduleLogger,
 		httpClient:   httpClient,
 		dryRun:       config.DryRun,
 	}
@@ -94,7 +95,7 @@ func (a *autoUpdate) createScheduler() {
 		ExecuteOnStart:    true,
 		ExecuteOnShutdown: false,
 		Execute:           a.PeriodicalCheckForUpdate,
-	}, a.logger)
+	}, a.logger.Logger)
 
 	a.scheduler = &scheduler
 }

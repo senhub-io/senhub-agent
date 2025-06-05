@@ -109,12 +109,10 @@ func (p *SyslogProbe) Collect() ([]data_store.DataPoint, error) {
 }
 
 func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
-	localLogger := p.moduleLogger.Logger.With().
+	p.moduleLogger.Info().
 		Str("protocol", p.config.Protocol).
 		Int("port", p.config.Port).
-		Logger()
-
-	localLogger.Info().Msg("Starting syslog probe")
+		Msg("Starting syslog probe")
 
 	channel := make(syslog.LogPartsChannel)
 	handler := syslog.NewChannelHandler(channel)
@@ -140,7 +138,7 @@ func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
 	}
 
 	p.server = server
-	localLogger.Info().Msg("Syslog server started successfully")
+	p.moduleLogger.Info().Msg("Syslog server started successfully")
 
 	go func() {
 		for {

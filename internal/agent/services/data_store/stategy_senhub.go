@@ -37,7 +37,7 @@ type SyncStrategySenhub struct {
 	agentConfig   configuration.AgentConfiguration
 	storageConfig configuration.StorageConfigParams
 	server        server.Server // Utilise la nouvelle interface
-	logger        *logger.Logger
+	logger        *logger.ModuleLogger
 	config        SyncStrategySenhubParams
 	scheduler     periodic_scheduler.PeriodicScheduler
 }
@@ -45,21 +45,22 @@ type SyncStrategySenhub struct {
 func NewSyncStrategySenhub(
 	agentConfig configuration.AgentConfiguration,
 	storageConfig configuration.StorageConfigParams,
-	logger *logger.Logger,
+	baseLogger *logger.Logger,
 ) SyncStrategy {
-	localLogger := logger.With().Str("sync_strategy", "SyncStrategySenhub").Logger()
+	// Create module-specific logger for SenHub strategy
+	moduleLogger := logger.NewModuleLogger(baseLogger, "strategy.senhub")
 
 	srv := server.NewServer(
 		agentConfig.GetAuthenticationKey(),
 		agentConfig.GetServerUrl(),
-		logger,
+		baseLogger,
 	)
 
 	return &SyncStrategySenhub{
 		buffer:        NewBuffer(),
 		agentConfig:   agentConfig,
 		storageConfig: storageConfig,
-		logger:        &localLogger,
+		logger:        moduleLogger,
 		server:        srv,
 	}
 }
@@ -121,7 +122,7 @@ func (s *SyncStrategySenhub) Start() error {
 		Execute:           s.doSync,
 		ExecuteOnStart:    false,
 		ExecuteOnShutdown: true,
-	}, s.logger)
+	}, s.logger.Logger)
 	s.scheduler = scheduler
 
 	return s.scheduler.Start(nil)
