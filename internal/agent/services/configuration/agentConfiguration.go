@@ -27,23 +27,68 @@ type ConfigurationProvider interface {
 
 // agentConfiguration implements AgentConfiguration
 type agentConfiguration struct {
-	AuthenticationKey string
-	ServerUrl         string
+	AuthenticationKey    string
+	ServerUrl            string
+	localConfiguration  *LocalConfiguration  // Optional reference for offline mode
+	remoteConfiguration *RemoteConfiguration // Optional reference for online mode
 }
 
 // NewAgentConfiguration creates AgentConfiguration instance
 func NewAgentConfiguration(
 	AuthenticationKey string,
 	ServerUrl string,
-	logger *logger.Logger,
+	baseLogger *logger.Logger,
 ) AgentConfiguration {
-	localLogger := logger.With().Str("service", "AgentConfiguration").Logger()
-	localLogger.Debug().Msg("Creating new AgentConfiguration instance")
+	// Create module-specific logger for agent configuration
+	moduleLogger := logger.NewModuleLogger(baseLogger, "configuration.agent")
+	moduleLogger.Debug().Msg("Creating new AgentConfiguration instance")
 	ac := &agentConfiguration{
-		AuthenticationKey: AuthenticationKey,
-		ServerUrl:         ServerUrl,
+		AuthenticationKey:    AuthenticationKey,
+		ServerUrl:            ServerUrl,
+		localConfiguration:  nil,
+		remoteConfiguration: nil,
 	}
-	localLogger.Debug().Msg("AgentConfiguration instance created successfully")
+	moduleLogger.Debug().Msg("AgentConfiguration instance created successfully")
+	return ac
+}
+
+// NewAgentConfigurationWithLocal creates AgentConfiguration instance with LocalConfiguration reference
+func NewAgentConfigurationWithLocal(
+	AuthenticationKey string,
+	ServerUrl string,
+	localConfig *LocalConfiguration,
+	baseLogger *logger.Logger,
+) AgentConfiguration {
+	// Create module-specific logger for agent configuration
+	moduleLogger := logger.NewModuleLogger(baseLogger, "configuration.agent")
+	moduleLogger.Debug().Msg("Creating new AgentConfiguration instance with LocalConfiguration")
+	ac := &agentConfiguration{
+		AuthenticationKey:    AuthenticationKey,
+		ServerUrl:            ServerUrl,
+		localConfiguration:  localConfig,
+		remoteConfiguration: nil,
+	}
+	moduleLogger.Debug().Msg("AgentConfiguration instance with LocalConfiguration created successfully")
+	return ac
+}
+
+// NewAgentConfigurationWithRemote creates AgentConfiguration instance with RemoteConfiguration reference
+func NewAgentConfigurationWithRemote(
+	AuthenticationKey string,
+	ServerUrl string,
+	remoteConfig *RemoteConfiguration,
+	baseLogger *logger.Logger,
+) AgentConfiguration {
+	// Create module-specific logger for agent configuration
+	moduleLogger := logger.NewModuleLogger(baseLogger, "configuration.agent")
+	moduleLogger.Debug().Msg("Creating new AgentConfiguration instance with RemoteConfiguration")
+	ac := &agentConfiguration{
+		AuthenticationKey:    AuthenticationKey,
+		ServerUrl:            ServerUrl,
+		localConfiguration:  nil,
+		remoteConfiguration: remoteConfig,
+	}
+	moduleLogger.Debug().Msg("AgentConfiguration instance with RemoteConfiguration created successfully")
 	return ac
 }
 
@@ -55,4 +100,18 @@ func (l *agentConfiguration) GetAuthenticationKey() string {
 // GetServerUrl returns the server URL
 func (l *agentConfiguration) GetServerUrl() string {
 	return l.ServerUrl
+}
+
+// GetCacheConfig returns cache configuration from either Local or Remote configuration
+func (l *agentConfiguration) GetCacheConfig() *CacheConfig {
+	if l.localConfiguration != nil {
+		return l.localConfiguration.GetCacheConfig()
+	}
+	if l.remoteConfiguration != nil {
+		return l.remoteConfiguration.GetCacheConfig()
+	}
+	// Return default if no configuration source
+	return &CacheConfig{
+		RetentionMinutes: 5,
+	}
 }

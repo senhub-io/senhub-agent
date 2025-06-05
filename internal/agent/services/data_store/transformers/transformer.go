@@ -74,7 +74,7 @@ type ProbeTransformer struct {
 	probeName string
 	style     string
 	config    TransformConfig
-	logger    *logger.Logger
+	moduleLogger *logger.ModuleLogger
 }
 
 // DefinitionBasedTransformer implements MetricTransformer using YAML definitions
@@ -83,21 +83,22 @@ type DefinitionBasedTransformer struct {
 	definition   *ProbeDefinition
 	unitsConfig  *UnitsConfig
 	templatesConfig *TemplateConfig
-	logger       *logger.Logger
+	moduleLogger *logger.ModuleLogger
 }
 
 // TransformerRegistry manages all transformers
 type TransformerRegistry struct {
 	transformers map[string]MetricTransformer // key: "probe_name:style"
-	logger       *logger.Logger
+	moduleLogger *logger.ModuleLogger
 }
 
 // NewTransformerRegistry creates a new transformer registry
-func NewTransformerRegistry(logger *logger.Logger) *TransformerRegistry {
-	localLogger := logger.With().Str("component", "TransformerRegistry").Logger()
+func NewTransformerRegistry(baseLogger *logger.Logger) *TransformerRegistry {
+	// Create module-specific logger for transformer registry
+	moduleLogger := logger.NewModuleLogger(baseLogger, "transformer")
 	return &TransformerRegistry{
 		transformers: make(map[string]MetricTransformer),
-		logger:       &localLogger,
+		moduleLogger: moduleLogger,
 	}
 }
 
@@ -115,7 +116,7 @@ func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricT
 	if err == nil {
 		// Cache the transformer
 		tr.transformers[key] = transformer
-		tr.logger.Debug().
+		tr.moduleLogger.Debug().
 			Str("probe", probeName).
 			Str("style", style).
 			Msg("✅ Definition-based transformer loaded successfully")
@@ -123,7 +124,7 @@ func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricT
 	}
 
 	// Log the error and create fallback transformer directly
-	tr.logger.Warn().
+	tr.moduleLogger.Warn().
 		Err(err).
 		Str("probe", probeName).
 		Msg("❌ Definition-based transformer not found, creating fallback")
@@ -133,7 +134,7 @@ func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricT
 	
 	// Cache the transformer
 	tr.transformers[key] = transformer
-	tr.logger.Debug().
+	tr.moduleLogger.Debug().
 		Str("probe", probeName).
 		Str("style", style).
 		Msg("🔧 Fallback transformer created")
@@ -152,7 +153,7 @@ func (tr *TransformerRegistry) createFallbackTransformer(probeName, style string
 			Patterns: make(map[string]string),
 			Units:    make(map[string]string),
 		},
-		logger: tr.logger,
+		moduleLogger: tr.moduleLogger,
 	}
 }
 
@@ -290,14 +291,14 @@ func (pt *ProbeTransformer) makeReadable(key string) string {
 func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) (MetricTransformer, error) {
 	// Load probe definition from embedded files
 	probeFilePath := fmt.Sprintf("definitions/%s.yaml", probeName)
-	tr.logger.Debug().
+	tr.moduleLogger.Debug().
 		Str("probe", probeName).
 		Str("file_path", probeFilePath).
 		Msg("🔍 Loading probe definition from embedded files")
 		
 	definition, err := tr.loadProbeDefinitionFromEmbed(probeFilePath)
 	if err != nil {
-		tr.logger.Error().
+		tr.moduleLogger.Error().
 			Err(err).
 			Str("probe", probeName).
 			Str("file_path", probeFilePath).
@@ -305,7 +306,7 @@ func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) 
 		return nil, fmt.Errorf("failed to load probe definition: %w", err)
 	}
 	
-	tr.logger.Debug().
+	tr.moduleLogger.Debug().
 		Str("probe", probeName).
 		Int("metrics_count", len(definition.Metrics)).
 		Msg("✅ Probe definition loaded from embedded files")
@@ -313,13 +314,13 @@ func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) 
 	// Load shared configurations from embedded files
 	unitsConfig, err := tr.loadUnitsConfigFromEmbed("definitions/shared/units.yaml")
 	if err != nil {
-		tr.logger.Warn().Err(err).Msg("Failed to load units config, using empty config")
+		tr.moduleLogger.Warn().Err(err).Msg("Failed to load units config, using empty config")
 		unitsConfig = &UnitsConfig{Units: make(map[string]UnitDefinition)}
 	}
 	
 	templatesConfig, err := tr.loadTemplatesConfigFromEmbed("definitions/shared/templates.yaml")
 	if err != nil {
-		tr.logger.Warn().Err(err).Msg("Failed to load templates config, using empty config")
+		tr.moduleLogger.Warn().Err(err).Msg("Failed to load templates config, using empty config")
 		templatesConfig = &TemplateConfig{
 			Templates: make(map[string]string),
 			MetricTypes: make(map[string]string),
@@ -328,14 +329,15 @@ func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) 
 		}
 	}
 	
-	localLogger := tr.logger.With().Str("component", "DefinitionBasedTransformer").Str("probe", probeName).Logger()
+	// Create child module logger for definition-based transformer
+	childLogger := logger.NewModuleLogger(tr.moduleLogger.Logger, "transformer.definition")
 	
 	return &DefinitionBasedTransformer{
 		probeName:       probeName,
 		definition:      definition,
 		unitsConfig:     unitsConfig,
 		templatesConfig: templatesConfig,
-		logger:          &localLogger,
+		moduleLogger:    childLogger,
 	}, nil
 }
 
@@ -447,7 +449,7 @@ func (dt *DefinitionBasedTransformer) TransformMetricName(metricName string, tag
 	}
 	
 	if matchingDef == nil {
-		dt.logger.Debug().
+		dt.moduleLogger.Debug().
 			Str("metric_name", metricName).
 			Interface("tags", tags).
 			Msg("No matching definition found, using fallback")
@@ -457,7 +459,7 @@ func (dt *DefinitionBasedTransformer) TransformMetricName(metricName string, tag
 	// Generate display name using definition
 	displayName := dt.generateDisplayName(*matchingDef, tags)
 	
-	dt.logger.Debug().
+	dt.moduleLogger.Debug().
 		Str("metric_name", metricName).
 		Str("display_name", displayName).
 		Interface("tags", tags).
@@ -671,7 +673,7 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariables(template string, 
 func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithDefinition(template string, tags map[string]string, def MetricDefinition) string {
 	result := template
 	
-	dt.logger.Debug().
+	dt.moduleLogger.Debug().
 		Str("template", template).
 		Interface("multi_instance_labels", def.MultiInstanceLabels).
 		Interface("tags", tags).
@@ -685,12 +687,12 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithDefinition(tem
 			
 			if value != "" {
 				result = strings.ReplaceAll(result, placeholder, value)
-				dt.logger.Debug().
+				dt.moduleLogger.Debug().
 					Str("placeholder", placeholder).
 					Str("value", value).
 					Msg("Replaced template variable from multi_instance_labels")
 			} else {
-				dt.logger.Debug().
+				dt.moduleLogger.Debug().
 					Str("placeholder", placeholder).
 					Str("label", labelName).
 					Msg("Multi-instance label not found in tags")
@@ -785,7 +787,7 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithAutoDetection(
 	// Detect all index tags automatically
 	indexTags := dt.detectIndexTags(tags)
 	
-	dt.logger.Debug().
+	dt.moduleLogger.Debug().
 		Interface("detected_index_tags", indexTags).
 		Str("template", template).
 		Msg("Auto-detected index tags for template replacement")
@@ -795,7 +797,7 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithAutoDetection(
 		placeholder := fmt.Sprintf("{%s}", tagKey)
 		if strings.Contains(result, placeholder) {
 			result = strings.ReplaceAll(result, placeholder, tagValue)
-			dt.logger.Debug().
+			dt.moduleLogger.Debug().
 				Str("placeholder", placeholder).
 				Str("value", tagValue).
 				Msg("Auto-replaced template variable")
@@ -808,7 +810,7 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithAutoDetection(
 		instanceValue := dt.findBestInstanceTag(indexTags)
 		if instanceValue != "" {
 			result = strings.ReplaceAll(result, "{instance}", instanceValue)
-			dt.logger.Debug().
+			dt.moduleLogger.Debug().
 				Str("instance_value", instanceValue).
 				Msg("Replaced generic {instance} placeholder")
 		}

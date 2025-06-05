@@ -84,11 +84,23 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 	}
 
 	// Create agent configuration with the correct key
-	agentConfiguration := configuration.NewAgentConfiguration(
-		agentKey,
-		args.ServerUrl,
-		logger,
-	)
+	var agentConfiguration configuration.AgentConfiguration
+	if isOfflineMode && localConfiguration != nil {
+		// In offline mode, create agentConfiguration with LocalConfiguration reference
+		agentConfiguration = configuration.NewAgentConfigurationWithLocal(
+			agentKey,
+			args.ServerUrl,
+			localConfiguration,
+			logger,
+		)
+	} else {
+		// In online mode, create standard agentConfiguration
+		agentConfiguration = configuration.NewAgentConfiguration(
+			agentKey,
+			args.ServerUrl,
+			logger,
+		)
+	}
 
 	if !isOfflineMode {
 		senhubServer = server.NewServer(
@@ -98,6 +110,14 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		)
 		remoteConfiguration = configuration.NewRemoteConfiguration(senhubServer, logger)
 		configProvider = remoteConfiguration
+		
+		// Update agentConfiguration to include remoteConfiguration reference
+		agentConfiguration = configuration.NewAgentConfigurationWithRemote(
+			agentKey,
+			args.ServerUrl,
+			remoteConfiguration,
+			logger,
+		)
 	}
 
 	store := data_store.NewDataStore(

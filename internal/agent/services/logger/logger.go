@@ -163,40 +163,49 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 		logger = buildProductionLogger(args, config)
 	}
 
-	// Enable debug level logging if verbose mode is requested OR debug modules are specified
-	if args.Verbose || len(args.DebugModules) > 0 {
-		// If specific debug modules are specified, only enable those (selective mode)
-		if len(args.DebugModules) > 0 {
-			// Activate selective debug mode
-			selectiveDebugMode = true
-			activeDebugModules = make(map[string]bool)
-			
-			// In selective mode, keep global level at INFO to show essential logs
-			// ModuleLoggers will filter debug logs based on module configuration
-			zerolog.SetGlobalLevel(zerolog.InfoLevel)
-			
-			// Enable debug only for specified modules
-			for _, module := range args.DebugModules {
-				SetModuleLogLevel(module, zerolog.DebugLevel)
-				activeDebugModules[module] = true
-			}
+	// Initialize selective debug mode variables
+	selectiveDebugMode = false
+	activeDebugModules = make(map[string]bool)
+	
+	// Configure debug logging
+	if len(args.DebugModules) > 0 && !args.Verbose {
+		// Selective debug mode: only enable debug for specified modules (unless --verbose is also set)
+		selectiveDebugMode = true
+		activeDebugModules = make(map[string]bool)
+		
+		// In selective mode, set global level to DEBUG to allow debug logs for enabled modules
+		// ModuleLoggers will filter all log levels based on module configuration
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		
+		// Enable debug only for specified modules
+		for _, module := range args.DebugModules {
+			SetModuleLogLevel(module, zerolog.DebugLevel)
+			activeDebugModules[module] = true
+		}
+		
+		logger.Info().
+			Strs("modules", args.DebugModules).
+			Int("module_count", len(args.DebugModules)).
+			Bool("verbose_flag", args.Verbose).
+			Msg("Selective debug mode enabled - debug logging activated for specific modules only")
+	} else if args.Verbose || len(args.DebugModules) > 0 {
+		// Full verbose mode: enable debug globally (when --verbose is set, or both --verbose and --debug-modules)
+		selectiveDebugMode = false
+		activeDebugModules = make(map[string]bool) // Empty map instead of nil
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		
+		// Also enable debug for key modules
+		SetModuleLogLevel("strategy.http", zerolog.DebugLevel)
+		SetModuleLogLevel("cache", zerolog.DebugLevel)
+		SetModuleLogLevel("probe.redfish", zerolog.DebugLevel)
+		SetModuleLogLevel("configuration", zerolog.DebugLevel)
+		SetModuleLogLevel("scheduler", zerolog.DebugLevel)
+		
+		if args.Verbose && len(args.DebugModules) > 0 {
 			logger.Info().
 				Strs("modules", args.DebugModules).
-				Int("module_count", len(args.DebugModules)).
-				Msg("Selective debug mode enabled - debug logging activated for specific modules only")
+				Msg("Full verbose mode enabled with focus on specific modules - debug logging activated for all components")
 		} else {
-			// Full verbose mode: enable debug globally (backward compatibility)
-			selectiveDebugMode = false
-			activeDebugModules = nil
-			zerolog.SetGlobalLevel(zerolog.DebugLevel)
-			
-			// Also enable debug for key modules
-			SetModuleLogLevel("strategy.http", zerolog.DebugLevel)
-			SetModuleLogLevel("cache", zerolog.DebugLevel)
-			SetModuleLogLevel("probe.redfish", zerolog.DebugLevel)
-			SetModuleLogLevel("configuration", zerolog.DebugLevel)
-			SetModuleLogLevel("scheduler", zerolog.DebugLevel)
-			
 			logger.Info().Msg("Full verbose mode enabled - debug logging activated for all components")
 		}
 	}
@@ -251,8 +260,8 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 	// Define masked writers - start with log file
 	writers := []io.Writer{NewMaskingWriter(logRotator)}
 
-	// Add console output if verbose
-	if args.Verbose {
+	// Add console output if verbose or debug modules are specified
+	if args.Verbose || len(args.DebugModules) > 0 {
 		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr}
 		writers = append(writers, NewMaskingWriter(consoleWriter))
 	}
@@ -354,6 +363,8 @@ func GetModuleLogLevel(module string) zerolog.Level {
 type ModuleLogger struct {
 	*zerolog.Logger
 	module string
+	selectiveMode bool
+	enabledModules map[string]bool
 }
 
 func NewModuleLogger(baseLogger *Logger, module string) *ModuleLogger {
@@ -365,14 +376,28 @@ func NewModuleLogger(baseLogger *Logger, module string) *ModuleLogger {
 	return &ModuleLogger{
 		Logger: &logger,
 		module: module,
+		selectiveMode: selectiveDebugMode,
+		enabledModules: copyMap(activeDebugModules),
 	}
+}
+
+// copyMap creates a copy of the activeDebugModules map to avoid shared state issues
+func copyMap(original map[string]bool) map[string]bool {
+	if original == nil {
+		return make(map[string]bool)
+	}
+	copy := make(map[string]bool)
+	for k, v := range original {
+		copy[k] = v
+	}
+	return copy
 }
 
 // Debug logs a debug message if the module's current level allows it
 func (m *ModuleLogger) Debug() *zerolog.Event {
 	// In selective debug mode, only allow debug logs for specifically enabled modules
-	if selectiveDebugMode {
-		if _, enabled := activeDebugModules[m.module]; !enabled {
+	if m.selectiveMode {
+		if _, enabled := m.enabledModules[m.module]; !enabled {
 			disabledLogger := m.Logger.Level(zerolog.Disabled)
 			return disabledLogger.Debug()
 		}
@@ -387,18 +412,39 @@ func (m *ModuleLogger) Debug() *zerolog.Event {
 	return disabledLogger.Debug()
 }
 
-// Info logs an info message (always allowed)
+// Info logs an info message (filtered in selective debug mode)
 func (m *ModuleLogger) Info() *zerolog.Event {
+	// In selective debug mode, only allow logs for specifically enabled modules
+	if m.selectiveMode {
+		if _, enabled := m.enabledModules[m.module]; !enabled {
+			disabledLogger := m.Logger.Level(zerolog.Disabled)
+			return disabledLogger.Info()
+		}
+	}
 	return m.Logger.Info()
 }
 
-// Warn logs a warning message (always allowed)
+// Warn logs a warning message (filtered in selective debug mode)
 func (m *ModuleLogger) Warn() *zerolog.Event {
+	// In selective debug mode, only allow logs for specifically enabled modules
+	if m.selectiveMode {
+		if _, enabled := m.enabledModules[m.module]; !enabled {
+			disabledLogger := m.Logger.Level(zerolog.Disabled)
+			return disabledLogger.Warn()
+		}
+	}
 	return m.Logger.Warn()
 }
 
-// Error logs an error message (always allowed)
+// Error logs an error message (filtered in selective debug mode)
 func (m *ModuleLogger) Error() *zerolog.Event {
+	// In selective debug mode, only allow logs for specifically enabled modules
+	if m.selectiveMode {
+		if _, enabled := m.enabledModules[m.module]; !enabled {
+			disabledLogger := m.Logger.Level(zerolog.Disabled)
+			return disabledLogger.Error()
+		}
+	}
 	return m.Logger.Error()
 }
 
@@ -409,4 +455,45 @@ func GetModuleLogLevels() map[string]zerolog.Level {
 		result[k] = v
 	}
 	return result
+}
+
+// GetAvailableModules returns a list of all available debug modules
+func GetAvailableModules() []string {
+	return []string{
+		// Core services
+		"configuration",
+		"scheduler", 
+		"cache",
+		"transformer",
+		"sensor",
+		"auto_update",
+		
+		// Data storage strategies
+		"strategy.http",
+		"strategy.prtg", 
+		"strategy.senhub",
+		"strategy.event",
+		
+		// System probes
+		"probe.cpu",
+		"probe.memory",
+		"probe.network", 
+		"probe.logicaldisk",
+		"probe.host",
+		
+		// Application probes
+		"probe.webapp",
+		"probe.gateway",
+		"probe.syslog",
+		"probe.event",
+		"probe.otel",
+		"probe.redfish",
+		
+		// Platform-specific
+		"pdh.windows",
+		
+		// Sub-modules (examples)
+		"probe.redfish.client",
+		"data_store",
+	}
 }

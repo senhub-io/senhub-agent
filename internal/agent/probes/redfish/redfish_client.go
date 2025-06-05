@@ -24,7 +24,7 @@ type RedfishClient struct {
 	httpClient *http.Client
 	authToken  string
 	sessionURL string
-	logger     *logger.Logger
+	logger     *logger.ModuleLogger
 	mu         sync.Mutex // Mutex for concurrent access to client
 }
 
@@ -80,7 +80,10 @@ type Status struct {
 }
 
 // NewRedfishClient creates a new Redfish API client
-func NewRedfishClient(baseURL, username, password string, logger *logger.Logger, verifySSL bool) (*RedfishClient, error) {
+func NewRedfishClient(baseURL, username, password string, baseLogger *logger.Logger, verifySSL bool) (*RedfishClient, error) {
+	// Create module-specific logger for redfish client
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.redfish.client")
+	
 	// Normalize baseURL
 	if !strings.HasSuffix(baseURL, "/") {
 		baseURL = baseURL + "/"
@@ -110,7 +113,7 @@ func NewRedfishClient(baseURL, username, password string, logger *logger.Logger,
 	// Skip TLS verification if requested
 	if !verifySSL {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-		logger.Info().Str("endpoint", baseURL).Msg("TLS certificate verification disabled")
+		moduleLogger.Info().Str("endpoint", baseURL).Msg("TLS certificate verification disabled")
 	}
 
 	// Create HTTP client with configured transport
@@ -124,7 +127,7 @@ func NewRedfishClient(baseURL, username, password string, logger *logger.Logger,
 		username:   username,
 		password:   password,
 		httpClient: httpClient,
-		logger:     logger,
+		logger:     moduleLogger,
 	}, nil
 }
 
