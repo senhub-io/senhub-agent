@@ -90,6 +90,51 @@ func (c *GenericCollector) Connect(ctx context.Context) error {
 	return nil
 }
 
+// addCollectionTag adds the collection tag to a tag slice for proper categorization
+func addCollectionTag(baseTags []tags.Tag, collection string) []tags.Tag {
+	return append(baseTags, tags.Tag{Key: "collection", Value: collection})
+}
+
+// createBaseSystemTags creates the base tags for system-level metrics
+func (c *GenericCollector) createBaseSystemTags(resp *RedfishResponse, hostname string) []tags.Tag {
+	systemTags := []tags.Tag{
+		{Key: "endpoint", Value: hostname},
+	}
+
+	if resp.ID != "" {
+		systemTags = append(systemTags, tags.Tag{Key: "system_id", Value: resp.ID})
+	}
+	if resp.Name != "" {
+		systemTags = append(systemTags, tags.Tag{Key: "system_name", Value: resp.Name})
+	}
+	if resp.Manufacturer != "" {
+		systemTags = append(systemTags, tags.Tag{Key: "manufacturer", Value: resp.Manufacturer})
+	}
+	if resp.Model != "" {
+		systemTags = append(systemTags, tags.Tag{Key: "model", Value: resp.Model})
+	}
+	if resp.SerialNumber != "" {
+		systemTags = append(systemTags, tags.Tag{Key: "serial_number", Value: resp.SerialNumber})
+	}
+	if resp.UUID != "" {
+		systemTags = append(systemTags, tags.Tag{Key: "system_uuid", Value: resp.UUID})
+	}
+	if resp.SystemType != "" {
+		systemTags = append(systemTags, tags.Tag{Key: "system_type", Value: resp.SystemType})
+	}
+	if resp.BiosVersion != "" {
+		systemTags = append(systemTags, tags.Tag{Key: "bios_version", Value: resp.BiosVersion})
+	}
+	if resp.Status != nil && resp.Status.State != "" {
+		systemTags = append(systemTags, tags.Tag{Key: "state", Value: resp.Status.State})
+	}
+	if resp.AssetTag != "" {
+		systemTags = append(systemTags, tags.Tag{Key: "asset_tag", Value: resp.AssetTag})
+	}
+
+	return systemTags
+}
+
 // discoverSystems finds available systems in the Redfish API
 func (c *GenericCollector) discoverSystems(ctx context.Context) error {
 	// Get systems collection
@@ -296,37 +341,10 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 		// Extract hostname - we'll use this both for tags and to associate with other metrics
 		hostname := resp.Name
 
-		// Extract system tags according to REDFISH-TAGS.md conventions
-		systemTags := []tags.Tag{
-			{Key: "system_id", Value: resp.ID},
-			{Key: "system_name", Value: resp.Name},
-			{Key: "host", Value: hostname},  // Add host tag
-		}
-
-		if resp.Manufacturer != "" {
-			systemTags = append(systemTags, tags.Tag{Key: "manufacturer", Value: resp.Manufacturer})
-		}
-		if resp.Model != "" {
-			systemTags = append(systemTags, tags.Tag{Key: "model", Value: resp.Model})
-		}
-		if resp.SerialNumber != "" {
-			systemTags = append(systemTags, tags.Tag{Key: "serial_number", Value: resp.SerialNumber})
-		}
-		if resp.UUID != "" {
-			systemTags = append(systemTags, tags.Tag{Key: "system_uuid", Value: resp.UUID})
-		}
-		if resp.SystemType != "" {
-			systemTags = append(systemTags, tags.Tag{Key: "system_type", Value: resp.SystemType})
-		}
-		if resp.BiosVersion != "" {
-			systemTags = append(systemTags, tags.Tag{Key: "bios_version", Value: resp.BiosVersion})
-		}
-		if resp.Status != nil && resp.Status.State != "" {
-			systemTags = append(systemTags, tags.Tag{Key: "state", Value: resp.Status.State})
-		}
-		if resp.AssetTag != "" {
-			systemTags = append(systemTags, tags.Tag{Key: "asset_tag", Value: resp.AssetTag})
-		}
+		// Create base system tags using helper function
+		systemTags := c.createBaseSystemTags(resp, hostname)
+		
+		// Add additional system-specific tags
 		if resp.SKU != "" {
 			systemTags = append(systemTags, tags.Tag{Key: "sku", Value: resp.SKU})
 		}
@@ -340,6 +358,9 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 				systemTags = append(systemTags, tags.Tag{Key: "indicator_led", Value: ledValue})
 			}
 		}
+		
+		// Add collection tag for system metrics
+		systemTagsWithCollection := addCollectionTag(systemTags, "system")
 
 		// Add health state metric
 		if resp.Status != nil {
@@ -348,7 +369,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 				Name:      "hardware.system.health",
 				Timestamp: timestamp,
 				Value:     float32(health),
-				Tags:      systemTags,
+				Tags:      systemTagsWithCollection,
 			})
 		}
 
@@ -359,7 +380,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 				Name:      "hardware.system.power.state",
 				Timestamp: timestamp,
 				Value:     float32(powerState),
-				Tags:      systemTags,
+				Tags:      systemTagsWithCollection,
 			})
 		}
 
@@ -373,11 +394,14 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 			}
 			rawJSON, _ := json.Marshal(resp.ProcessorSummary)
 			if err := json.Unmarshal(rawJSON, &procSummary); err == nil {
+				// Create processor-specific tags with collection
+				processorTags := addCollectionTag(systemTags, "processor")
+				
 				datapoints = append(datapoints, data_store.DataPoint{
 					Name:      "hardware.system.cpu.count",
 					Timestamp: timestamp,
 					Value:     float32(procSummary.Count),
-					Tags:      systemTags,
+					Tags:      processorTags,
 				})
 
 				// Add processor health if available
@@ -386,7 +410,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 						Name:      "hardware.system.cpu.health",
 						Timestamp: timestamp,
 						Value:     float32(mapHealthState(procSummary.Status.Health)),
-						Tags:      systemTags,
+						Tags:      processorTags,
 					})
 				}
 			}
@@ -401,11 +425,14 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 			}
 			rawJSON, _ := json.Marshal(resp.MemorySummary)
 			if err := json.Unmarshal(rawJSON, &memSummary); err == nil {
+				// Create memory-specific tags with collection
+				memoryTags := addCollectionTag(systemTags, "memory")
+				
 				datapoints = append(datapoints, data_store.DataPoint{
 					Name:      "hardware.system.memory.size",
 					Timestamp: timestamp,
 					Value:     memSummary.TotalSystemMemoryGiB,
-					Tags:      systemTags,
+					Tags:      memoryTags,
 				})
 
 				// Add memory health if available
@@ -414,7 +441,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 						Name:      "hardware.system.memory.health",
 						Timestamp: timestamp,
 						Value:     float32(mapHealthState(memSummary.Status.Health)),
-						Tags:      systemTags,
+						Tags:      memoryTags,
 					})
 				}
 			}

@@ -8,6 +8,7 @@ This section contains detailed technical documentation for developers, integrato
 - **[Redfish Overview](./README-REDFISH.md)** - Overview of Redfish probe implementation
 - **[Redfish Metrics](./REDFISH-METRICS.md)** - Complete list of available Redfish metrics
 - **[Redfish Tags](./REDFISH-TAGS.md)** - Tagging system and metadata for Redfish metrics
+- **[Redfish Tag Enhancement](./REDFISH-TAG-ENHANCEMENT.md)** - Advanced tag enhancement system for better organization
 
 ### OpenTelemetry Integration
 - **[OpenTelemetry Metrics](./OTEL-METRICS.md)** - OTEL metrics collection and export
