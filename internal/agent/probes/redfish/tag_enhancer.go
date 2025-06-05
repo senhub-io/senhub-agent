@@ -36,11 +36,18 @@ func (te *TagEnhancer) EnhanceMetricTags(metricName string, originalTags []tags.
 		// Simplify tag values
 		simplifiedTag := te.simplifyTag(tag)
 		
-		// Avoid duplicate keys (keep first occurrence)
-		if !seenKeys[simplifiedTag.Key] {
-			enhancedTags = append(enhancedTags, simplifiedTag)
-			seenKeys[simplifiedTag.Key] = true
+		// Handle duplicate keys - prefer the better value
+		if seenKeys[simplifiedTag.Key] {
+			// If we already have this key, check if the new value is better
+			if te.isBetterTagValue(simplifiedTag.Key, simplifiedTag.Value, enhancedTags) {
+				// Replace the existing tag with the better one
+				te.replaceTagInSlice(enhancedTags, simplifiedTag)
+			}
+			continue
 		}
+		
+		enhancedTags = append(enhancedTags, simplifiedTag)
+		seenKeys[simplifiedTag.Key] = true
 	}
 	
 	return enhancedTags
@@ -78,8 +85,8 @@ func (te *TagEnhancer) detectCollection(metricName string) string {
 
 // shouldSkipTag determines if a tag should be excluded from the enhanced tags
 func (te *TagEnhancer) shouldSkipTag(tag tags.Tag) bool {
-	// Skip very long serial numbers that clutter the interface
-	if tag.Key == "serial_number" && len(tag.Value) > 20 {
+	// Always skip serial numbers (they clutter the interface and aren't useful for filtering)
+	if tag.Key == "serial_number" {
 		return true
 	}
 	
@@ -93,6 +100,29 @@ func (te *TagEnhancer) shouldSkipTag(tag tags.Tag) bool {
 		return true
 	}
 	
+	// Skip ID-based tags in favor of name-based tags
+	if strings.HasSuffix(tag.Key, "_id") {
+		return true
+	}
+	
+	// Skip technical/internal tags that aren't useful for user filtering
+	technicalTags := []string{
+		"location_ordinal",    // Technical location identifier
+		"system_id",          // Internal system ID (prefer system_name)
+		"uuid",               // Technical UUID (not user-friendly)
+	}
+	for _, techTag := range technicalTags {
+		if tag.Key == techTag {
+			return true
+		}
+	}
+	
+	// Optionally skip sensor_name if they're too complex for filtering
+	// This can be enabled if sensor names are not useful for end-user filtering
+	if tag.Key == "sensor_name" && te.isSensorNameTooComplex(tag.Value) {
+		return true
+	}
+	
 	return false
 }
 
@@ -100,26 +130,31 @@ func (te *TagEnhancer) shouldSkipTag(tag tags.Tag) bool {
 func (te *TagEnhancer) simplifyTag(tag tags.Tag) tags.Tag {
 	simplifiedTag := tag
 	
-	// Simplify sensor names - extract meaningful parts
+	// Handle sensor_name - keep the simplified name for better readability but don't expose the raw complex name
 	if tag.Key == "sensor_name" {
 		simplifiedTag.Value = te.simplifySensorName(tag.Value)
 	}
 	
-	// Simplify controller names
+	// Simplify controller names and unify the key
 	if tag.Key == "controller_name" || tag.Key == "controller_id" {
 		simplifiedTag.Value = te.simplifyControllerName(tag.Value)
-		// Unify controller-related tag keys
 		simplifiedTag.Key = "controller"
 	}
 	
-	// Simplify drive names - use location_ordinal if available in context
+	// Simplify drive names
 	if tag.Key == "drive_name" {
 		simplifiedTag.Value = te.simplifyDriveName(tag.Value)
 	}
 	
-	// Simplify pool names
-	if tag.Key == "pool_name" {
-		simplifiedTag.Value = te.simplifyPoolName(tag.Value)
+	// Handle pool names - check both pool_name and description for pool information
+	if tag.Key == "pool_name" || tag.Key == "description" {
+		// If it's a pool-related description, extract pool name
+		if tag.Key == "description" && te.isPoolDescription(tag.Value) {
+			simplifiedTag.Key = "pool_name"
+			simplifiedTag.Value = te.extractPoolNameFromDescription(tag.Value)
+		} else if tag.Key == "pool_name" {
+			simplifiedTag.Value = te.simplifyPoolName(tag.Value)
+		}
 	}
 	
 	return simplifiedTag
@@ -231,4 +266,148 @@ func (te *TagEnhancer) GetCollectionDescription(collection string) string {
 		return desc
 	}
 	return "Redfish hardware metrics"
+}
+
+// isPoolDescription checks if a description contains pool information
+func (te *TagEnhancer) isPoolDescription(description string) bool {
+	descLower := strings.ToLower(description)
+	
+	// Common pool indicators in descriptions
+	poolIndicators := []string{
+		"pool",
+		"raid group",
+		"volume group",
+		"disk group",
+		"storage pool",
+	}
+	
+	for _, indicator := range poolIndicators {
+		if strings.Contains(descLower, indicator) {
+			return true
+		}
+	}
+	
+	// Check for patterns like "dgA01", "Pool A", etc.
+	if strings.HasPrefix(descLower, "dg") || strings.Contains(descLower, "pool") {
+		return true
+	}
+	
+	return false
+}
+
+// extractPoolNameFromDescription extracts pool name from description field
+func (te *TagEnhancer) extractPoolNameFromDescription(description string) string {
+	descLower := strings.ToLower(description)
+	
+	// Try to extract pool name from various patterns
+	
+	// Pattern: "Pool A" -> "Pool A"
+	if strings.Contains(descLower, "pool ") {
+		// Extract the part after "pool "
+		parts := strings.Fields(description)
+		for i, part := range parts {
+			if strings.ToLower(part) == "pool" && i+1 < len(parts) {
+				return "Pool " + strings.ToUpper(parts[i+1])
+			}
+		}
+	}
+	
+	// Pattern: "dgA01" -> "Pool A"
+	if strings.HasPrefix(descLower, "dg") && len(description) > 2 {
+		letter := string(description[2])
+		if letter >= "A" && letter <= "Z" || letter >= "a" && letter <= "z" {
+			return "Pool " + strings.ToUpper(letter)
+		}
+	}
+	
+	// Pattern: "RAID Group 1" -> "Pool 1"
+	if strings.Contains(descLower, "raid group") {
+		parts := strings.Fields(description)
+		for i, part := range parts {
+			if strings.ToLower(part) == "group" && i+1 < len(parts) {
+				return "Pool " + parts[i+1]
+			}
+		}
+	}
+	
+	// Fallback: use original description but clean it up
+	return strings.Title(strings.ToLower(description))
+}
+
+// isSensorNameTooComplex determines if a sensor name is too complex for user filtering
+func (te *TagEnhancer) isSensorNameTooComplex(sensorName string) bool {
+	// Skip very long sensor names
+	if len(sensorName) > 50 {
+		return true
+	}
+	
+	// Skip sensor names with multiple dots or complex IDs
+	dotCount := strings.Count(sensorName, ".")
+	if dotCount > 2 {
+		return true
+	}
+	
+	// Skip sensor names that look like internal IDs rather than user-friendly names
+	if strings.Contains(sensorName, "_temp_") || strings.Contains(sensorName, "_sensor_") {
+		return true
+	}
+	
+	// Keep sensor names that are already user-friendly
+	return false
+}
+
+// isBetterTagValue determines if a new tag value is better than the existing one
+func (te *TagEnhancer) isBetterTagValue(key, newValue string, existingTags []tags.Tag) bool {
+	// Find the existing tag
+	for _, tag := range existingTags {
+		if tag.Key == key {
+			existingValue := tag.Value
+			
+			// For endpoint tags, prefer hostname over full URL for consistency
+			if key == "endpoint" {
+				// Prefer shorter, cleaner hostname over full URL
+				if te.isHostname(newValue) && te.isFullURL(existingValue) {
+					return true
+				}
+				if te.isFullURL(newValue) && te.isHostname(existingValue) {
+					return false
+				}
+			}
+			
+			// For names vs IDs, prefer names
+			if strings.Contains(existingValue, "_id") && !strings.Contains(newValue, "_id") {
+				return true
+			}
+			
+			// Prefer shorter, cleaner values
+			if len(newValue) < len(existingValue) && len(newValue) > 0 {
+				return true
+			}
+			
+			break
+		}
+	}
+	
+	return false
+}
+
+// replaceTagInSlice replaces an existing tag in the slice
+func (te *TagEnhancer) replaceTagInSlice(tags []tags.Tag, newTag tags.Tag) {
+	for i, tag := range tags {
+		if tag.Key == newTag.Key {
+			tags[i] = newTag
+			break
+		}
+	}
+}
+
+// isHostname checks if a value looks like a hostname
+func (te *TagEnhancer) isHostname(value string) bool {
+	// Simple check: no protocol, no path
+	return !strings.Contains(value, "://") && !strings.Contains(value, "/")
+}
+
+// isFullURL checks if a value looks like a full URL
+func (te *TagEnhancer) isFullURL(value string) bool {
+	return strings.Contains(value, "://")
 }
