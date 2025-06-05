@@ -43,11 +43,12 @@ type RemoteConfigurationData struct {
 	StorageConfig []StorageConfig `json:"storage"`
 	Probes        []ProbeConfig   `json:"probes"`
 	Agent         AgentConfig     `json:"agent"`
+	Cache         *CacheConfig    `json:"cache,omitempty"`
 }
 
 type RemoteConfiguration struct {
 	data          RemoteConfigurationData
-	logger        *logger.Logger
+	logger        *logger.ModuleLogger
 	server        server.Server
 	eventNotifier *EventNotifier
 	mutex         sync.Mutex
@@ -56,16 +57,17 @@ type RemoteConfiguration struct {
 
 func NewRemoteConfiguration(
 	serverClient server.Server,
-	logger *logger.Logger,
+	baseLogger *logger.Logger,
 ) *RemoteConfiguration {
-	localLogger := logger.With().Str("service", "RemoteConfiguration").Logger()
-	localLogger.Debug().Msg("Creating new RemoteConfiguration instance")
+	// Create module-specific logger for remote configuration
+	moduleLogger := logger.NewModuleLogger(baseLogger, "configuration.remote")
+	moduleLogger.Debug().Msg("Creating new RemoteConfiguration instance")
 
 	rc := &RemoteConfiguration{
-		logger:        &localLogger,
+		logger:        moduleLogger,
 		server:        serverClient,
 		data:          RemoteConfigurationData{},
-		eventNotifier: NewEventNotifier(&localLogger),
+		eventNotifier: NewEventNotifier(moduleLogger.Logger),
 	}
 
 	scheduler := periodic_scheduler.NewPeriodicScheduler(periodic_scheduler.PeriodicSchedulerConfig{
@@ -74,10 +76,10 @@ func NewRemoteConfiguration(
 		ExecuteOnStart:    true,
 		ExecuteOnShutdown: false,
 		Execute:           rc.UpdateSync,
-	}, &localLogger)
+	}, moduleLogger.Logger)
 	rc.scheduler = scheduler
 
-	localLogger.Debug().Msg("RemoteConfiguration instance created successfully")
+	moduleLogger.Debug().Msg("RemoteConfiguration instance created successfully")
 	return rc
 }
 
@@ -87,6 +89,17 @@ func (rc *RemoteConfiguration) GetName() string {
 
 func (rc *RemoteConfiguration) GetConfiguration() RemoteConfigurationData {
 	return rc.data
+}
+
+// GetCacheConfig returns cache configuration from remote config
+func (rc *RemoteConfiguration) GetCacheConfig() *CacheConfig {
+	if rc.data.Cache == nil {
+		// Return default configuration if not provided by server
+		return &CacheConfig{
+			RetentionMinutes: 5,
+		}
+	}
+	return rc.data.Cache
 }
 
 func (rc *RemoteConfiguration) OnConfigChanged(callback func(string)) {

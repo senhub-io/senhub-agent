@@ -18,7 +18,8 @@ import (
 )
 
 // ProbeConstructor defines the function signature for creating new probe instances.
-// It takes configuration parameters and a logger, returns a probe instance and potential error.
+// It takes configuration parameters and a base logger, returns a probe instance and potential error.
+// Probes are expected to create their own ModuleLogger from the base logger.
 type ProbeConstructor func(map[string]interface{}, *logger.Logger) (types.Probe, error)
 
 // probeConstructors maps probe names to their constructor functions.

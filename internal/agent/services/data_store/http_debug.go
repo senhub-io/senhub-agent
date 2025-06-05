@@ -84,9 +84,12 @@ func (d *DebugManager) HandleDebugCache(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	// Get formatted TTL from cache info
+	cacheInfo := d.strategy.cache.GetCacheInfo()
+	
 	response := DebugCacheResponse{
 		TotalEntries: len(entries),
-		CacheTTL:     d.strategy.cache.ttl.String(),
+		CacheTTL:     cacheInfo.TTL,
 		Entries:      entries,
 		Summary:      summary,
 	}

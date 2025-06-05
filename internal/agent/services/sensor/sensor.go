@@ -25,21 +25,22 @@ type sensor struct {
 	startedProbes  []*probes.ProbePoller
 	addDataPoint   data_store.AddCallback
 	configProvider configuration.ConfigurationProvider
-	logger         *logger.Logger
+	moduleLogger   *logger.ModuleLogger
 }
 
 // NewSensor creates a new Sensor instance
 func NewSensor(
 	addDataPoint data_store.AddCallback,
 	configProvider configuration.ConfigurationProvider,
-	logger *logger.Logger,
+	baseLogger *logger.Logger,
 ) Sensor {
-	localLogger := logger.With().Str("service", "Sensor").Logger()
+	// Create module-specific logger for sensor service
+	moduleLogger := logger.NewModuleLogger(baseLogger, "sensor")
 	return &sensor{
 		startedProbes:  []*probes.ProbePoller{},
 		addDataPoint:   addDataPoint,
 		configProvider: configProvider,
-		logger:         &localLogger,
+		moduleLogger:   moduleLogger,
 	}
 }
 
@@ -49,12 +50,12 @@ func (s *sensor) GetName() string {
 
 // SyncConfiguration synchronizes probes with current configuration
 func (s *sensor) SyncConfiguration() error {
-	s.logger.Info().Msg("Starting configuration synchronization")
+	s.moduleLogger.Info().Msg("Starting configuration synchronization")
 	
 	validProbeIds := []string{}
 	probeConfigs := s.configProvider.GetConfiguration().Probes
 	
-	s.logger.Info().
+	s.moduleLogger.Info().
 		Int("config_probes", len(probeConfigs)).
 		Int("running_probes", len(s.startedProbes)).
 		Msg("Configuration sync status")
@@ -76,7 +77,7 @@ func (s *sensor) SyncConfiguration() error {
 
 		// Only start probe if it doesn't exist
 		if !probeExists {
-			s.logger.Info().
+			s.moduleLogger.Info().
 				Str("probe_id", probeId).
 				Str("probe_name", probeConfig.Name).
 				Any("probe_params", probeConfig.Params).
@@ -86,13 +87,13 @@ func (s *sensor) SyncConfiguration() error {
 			if err != nil {
 				probeLogger.Error().Err(err).Msgf("Error starting probe")
 			} else {
-				s.logger.Info().
+				s.moduleLogger.Info().
 					Str("probe_id", probeId).
 					Str("probe_name", probeConfig.Name).
 					Msg("✅ Probe started successfully")
 			}
 		} else {
-			s.logger.Debug().
+			s.moduleLogger.Debug().
 				Str("probe_id", probeId).
 				Str("probe_name", probeConfig.Name).
 				Msg("Probe already running, skipping")
@@ -116,20 +117,20 @@ func (s *sensor) SyncConfiguration() error {
 			activeProbes = append(activeProbes, startedProbe)
 		} else {
 			// Shutdown and remove probe
-			s.logger.Info().
+			s.moduleLogger.Info().
 				Str("probe_id", startedProbe.ProbeId).
 				Str("probe_name", startedProbe.Probe.GetName()).
 				Msg("Stopping removed probe")
 				
 			err := startedProbe.Shutdown(context.Background())
 			if err != nil {
-				s.logger.Error().
+				s.moduleLogger.Error().
 					Str("probe_id", startedProbe.ProbeId).
 					Str("probe_name", startedProbe.Probe.GetName()).
 					Err(err).
 					Msg("Error stopping probe")
 			} else {
-				s.logger.Info().
+				s.moduleLogger.Info().
 					Str("probe_id", startedProbe.ProbeId).
 					Str("probe_name", startedProbe.Probe.GetName()).
 					Msg("🛑 Probe stopped successfully")
@@ -141,7 +142,7 @@ func (s *sensor) SyncConfiguration() error {
 	// Update the slice to contain only active probes
 	s.startedProbes = activeProbes
 	
-	s.logger.Info().
+	s.moduleLogger.Info().
 		Int("probes_started", len(validProbeIds)-len(activeProbes)+stoppedCount).
 		Int("probes_stopped", stoppedCount).
 		Int("probes_active", len(activeProbes)).
@@ -151,22 +152,20 @@ func (s *sensor) SyncConfiguration() error {
 }
 
 func (s *sensor) Start(quitChannel chan struct{}) error {
-	s.logger.Info().Msg("Starting sensor")
+	s.moduleLogger.Info().Msg("Starting sensor")
 	if err := s.SyncConfiguration(); err != nil {
 		return fmt.Errorf("failed to sync configuration: %w", err)
 	}
 
-	s.logger.Info().Msg("Starting sensor service")
+	s.moduleLogger.Info().Msg("Starting sensor service")
 	s.configProvider.OnConfigChanged(func(string) { s.SyncConfiguration() })
 	return nil
 }
 
 func (s *sensor) getLoggerForProbe(probeConfig configuration.ProbeConfig) *logger.Logger {
-	logger := s.logger.With().
-		Str("probe_name", probeConfig.Name).
-		Any("probe_params", probeConfig.Params).
-		Logger()
-	return &logger
+	// Return the base logger for probe constructor compatibility
+	// Probes will create their own ModuleLogger from this base logger
+	return s.moduleLogger.Logger
 }
 
 func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel chan struct{}) error {
@@ -192,16 +191,16 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel c
 }
 
 func (s *sensor) Shutdown(ctx context.Context) error {
-	s.logger.Info().Msg("Shutting down sensor")
+	s.moduleLogger.Info().Msg("Shutting down sensor")
 
 	for _, probePoller := range s.startedProbes {
-		s.logger.Debug().
+		s.moduleLogger.Debug().
 			Str("probe_name", probePoller.GetName()).
 			Msg("Shutting down sensor")
 
 		err := probePoller.Shutdown(ctx)
 		if err != nil {
-			s.logger.Error().
+			s.moduleLogger.Error().
 				Err(err).
 				Str("probe_name", probePoller.GetName()).
 				Msg("Error shutting down probe")

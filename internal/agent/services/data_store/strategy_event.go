@@ -57,7 +57,7 @@ type EventSyncStrategy struct {
 
     config      EventSyncStrategyParams
     server      server.Server
-    logger      *logger.Logger
+    logger      *logger.ModuleLogger
     ticker      *time.Ticker
     tickerOnce  sync.Once
     agentConfig configuration.AgentConfiguration
@@ -68,14 +68,15 @@ type EventSyncStrategy struct {
 func NewEventSyncStrategy(
     agentConfig configuration.AgentConfiguration,
     storageConfig configuration.StorageConfigParams,
-    logger *logger.Logger,
+    baseLogger *logger.Logger,
 ) SyncStrategy {
-    localLogger := logger.With().Str("sync_strategy", "EventSyncStrategy").Logger()
+    // Create module-specific logger for event strategy
+    moduleLogger := logger.NewModuleLogger(baseLogger, "strategy.event")
 
     srv := server.NewServer(
         agentConfig.GetAuthenticationKey(),
         storageConfig["server_url"].(string),
-        logger,
+        baseLogger,
     )
 
     // Default configuration
@@ -103,7 +104,7 @@ func NewEventSyncStrategy(
         config:          config,
         server:          srv,
         agentConfig:     agentConfig,
-        logger:          &localLogger,
+        logger:          moduleLogger,
         formatter:       eventFormatter.NewFormatter(),
         syncTriggerSize: DefaultChunkSize,
         syncTriggerBytes: MaxMessageSize / 2, // Trigger at 50% of max message size
