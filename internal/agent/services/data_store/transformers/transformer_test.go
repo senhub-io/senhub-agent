@@ -17,9 +17,13 @@ func createTestLogger() *logger.Logger {
 	return logger.NewLogger(args)
 }
 
+func createTestModuleLogger() *logger.ModuleLogger {
+	baseLogger := createTestLogger()
+	return logger.NewModuleLogger(baseLogger, "transformer.test")
+}
+
 func TestNewTransformerRegistry(t *testing.T) {
-	logger := createTestLogger()
-	registry := NewTransformerRegistry(logger)
+	registry := NewTransformerRegistry(createTestLogger())
 
 	if registry == nil {
 		t.Fatal("Expected registry to be created, got nil")
@@ -31,8 +35,7 @@ func TestNewTransformerRegistry(t *testing.T) {
 }
 
 func TestLoadTransformer(t *testing.T) {
-	logger := createTestLogger()
-	registry := NewTransformerRegistry(logger)
+	registry := NewTransformerRegistry(createTestLogger())
 
 	tests := []struct {
 		name      string
@@ -96,8 +99,7 @@ func TestLoadTransformer(t *testing.T) {
 }
 
 func TestTransformerCaching(t *testing.T) {
-	logger := createTestLogger()
-	registry := NewTransformerRegistry(logger)
+	registry := NewTransformerRegistry(createTestLogger())
 
 	// Load transformer twice
 	transformer1, err1 := registry.LoadTransformer("redfish", "friendly")
@@ -119,8 +121,6 @@ func TestTransformerCaching(t *testing.T) {
 }
 
 func TestProbeTransformer_TransformMetricName(t *testing.T) {
-	logger := createTestLogger()
-
 	// Create transformer with test patterns
 	transformer := &ProbeTransformer{
 		probeName: "test",
@@ -132,7 +132,7 @@ func TestProbeTransformer_TransformMetricName(t *testing.T) {
 				"power.psu.{index}.output_watts":   "Power Supply - PSU{index} Output",
 			},
 		},
-		logger: logger,
+		moduleLogger: createTestModuleLogger(),
 	}
 
 	tests := []struct {
@@ -178,8 +178,6 @@ func TestProbeTransformer_TransformMetricName(t *testing.T) {
 }
 
 func TestProbeTransformer_GetUnit(t *testing.T) {
-	logger := createTestLogger()
-
 	transformer := &ProbeTransformer{
 		probeName: "test",
 		style:     "friendly",
@@ -190,7 +188,7 @@ func TestProbeTransformer_GetUnit(t *testing.T) {
 				"percentage":  "%",
 			},
 		},
-		logger: logger,
+		moduleLogger: createTestModuleLogger(),
 	}
 
 	tests := []struct {
@@ -226,8 +224,7 @@ func TestProbeTransformer_GetUnit(t *testing.T) {
 }
 
 func TestMatchesPattern(t *testing.T) {
-	logger := createTestLogger()
-	transformer := &ProbeTransformer{logger: logger}
+	transformer := &ProbeTransformer{moduleLogger: createTestModuleLogger()}
 
 	tests := []struct {
 		name     string
@@ -272,8 +269,7 @@ func TestMatchesPattern(t *testing.T) {
 }
 
 func TestApplyTemplate(t *testing.T) {
-	logger := createTestLogger()
-	transformer := &ProbeTransformer{logger: logger}
+	transformer := &ProbeTransformer{moduleLogger: createTestModuleLogger()}
 
 	tests := []struct {
 		name     string
@@ -324,8 +320,7 @@ func TestApplyTemplate(t *testing.T) {
 }
 
 func TestMakeReadable(t *testing.T) {
-	logger := createTestLogger()
-	transformer := &ProbeTransformer{logger: logger}
+	transformer := &ProbeTransformer{moduleLogger: createTestModuleLogger()}
 
 	tests := []struct {
 		name     string
@@ -395,8 +390,7 @@ func TestMakeReadable(t *testing.T) {
 }
 
 func TestLoadTransformerFromFile(t *testing.T) {
-	logger := createTestLogger()
-	registry := NewTransformerRegistry(logger)
+	registry := NewTransformerRegistry(createTestLogger())
 
 	// Test loading existing file
 	t.Run("Load existing redfish_friendly.yaml", func(t *testing.T) {
@@ -441,8 +435,7 @@ func TestLoadTransformerFromFile(t *testing.T) {
 }
 
 func TestCreateFallbackTransformer(t *testing.T) {
-	logger := createTestLogger()
-	registry := NewTransformerRegistry(logger)
+	registry := NewTransformerRegistry(createTestLogger())
 
 	transformer := registry.createFallbackTransformer("test", "style")
 	
@@ -469,11 +462,10 @@ func TestCreateFallbackTransformer(t *testing.T) {
 }
 
 func TestReplaceTemplateVariablesWithDefinition(t *testing.T) {
-	logger := createTestLogger()
 	
 	// Create test transformer with mock definition
 	transformer := &DefinitionBasedTransformer{
-		logger: logger,
+		moduleLogger: createTestModuleLogger(),
 	}
 	
 	tests := []struct {
@@ -532,8 +524,7 @@ func TestReplaceTemplateVariablesWithDefinition(t *testing.T) {
 }
 
 func TestDefinitionBasedTransformer(t *testing.T) {
-	logger := createTestLogger()
-	registry := NewTransformerRegistry(logger)
+	registry := NewTransformerRegistry(createTestLogger())
 	
 	// Test metric transformation with tags for atomized probes
 	tests := []struct {
@@ -597,7 +588,6 @@ func TestDefinitionBasedTransformer(t *testing.T) {
 
 // TestDefinitionBasedTransformer_AutoDetectIndexTags tests the automatic index tag detection system
 func TestDefinitionBasedTransformer_AutoDetectIndexTags(t *testing.T) {
-	logger := createTestLogger()
 	
 	// Create a definition-based transformer with a simple definition
 	definition := &ProbeDefinition{
@@ -619,7 +609,7 @@ func TestDefinitionBasedTransformer_AutoDetectIndexTags(t *testing.T) {
 				"generic": "{metric_name}",
 			},
 		},
-		logger: logger,
+		moduleLogger: createTestModuleLogger(),
 	}
 	
 	tests := []struct {
@@ -678,10 +668,9 @@ func TestDefinitionBasedTransformer_AutoDetectIndexTags(t *testing.T) {
 
 // TestDefinitionBasedTransformer_DetectIndexTags tests the index tag detection logic
 func TestDefinitionBasedTransformer_DetectIndexTags(t *testing.T) {
-	logger := createTestLogger()
 	transformer := &DefinitionBasedTransformer{
 		probeName: "test",
-		logger:    logger,
+		moduleLogger:    createTestModuleLogger(),
 	}
 	
 	tests := []struct {
@@ -780,10 +769,9 @@ func TestDefinitionBasedTransformer_DetectIndexTags(t *testing.T) {
 
 // TestDefinitionBasedTransformer_FindBestInstanceTag tests the instance tag selection logic
 func TestDefinitionBasedTransformer_FindBestInstanceTag(t *testing.T) {
-	logger := createTestLogger()
 	transformer := &DefinitionBasedTransformer{
 		probeName: "test",
-		logger:    logger,
+		moduleLogger:    createTestModuleLogger(),
 	}
 	
 	tests := []struct {
