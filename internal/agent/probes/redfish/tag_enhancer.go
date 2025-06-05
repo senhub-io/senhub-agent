@@ -157,6 +157,13 @@ func (te *TagEnhancer) simplifyTag(tag tags.Tag) tags.Tag {
 		}
 	}
 	
+	// Normalize manufacturer names for consistency
+	if tag.Key == "manufacturer" || tag.Key == "drive_manufacturer" {
+		simplifiedTag.Value = te.normalizeManufacturer(tag.Value)
+		// Unify manufacturer tag names
+		simplifiedTag.Key = "manufacturer"
+	}
+	
 	return simplifiedTag
 }
 
@@ -374,6 +381,16 @@ func (te *TagEnhancer) isBetterTagValue(key, newValue string, existingTags []tag
 				}
 			}
 			
+			// For manufacturer tags, prefer the normalized value
+			if key == "manufacturer" {
+				normalizedNew := te.normalizeManufacturer(newValue)
+				normalizedExisting := te.normalizeManufacturer(existingValue)
+				// If they normalize to the same value, prefer the cleaner one
+				if normalizedNew == normalizedExisting {
+					return len(newValue) < len(existingValue)
+				}
+			}
+			
 			// For names vs IDs, prefer names
 			if strings.Contains(existingValue, "_id") && !strings.Contains(newValue, "_id") {
 				return true
@@ -410,4 +427,47 @@ func (te *TagEnhancer) isHostname(value string) bool {
 // isFullURL checks if a value looks like a full URL
 func (te *TagEnhancer) isFullURL(value string) bool {
 	return strings.Contains(value, "://")
+}
+
+// normalizeManufacturer standardizes manufacturer names for consistency
+func (te *TagEnhancer) normalizeManufacturer(manufacturer string) string {
+	// Convert to lowercase for comparison
+	mfr := strings.ToLower(strings.TrimSpace(manufacturer))
+	
+	// Normalize common manufacturer variations
+	switch {
+	case strings.Contains(mfr, "dell"):
+		return "Dell"
+	case strings.Contains(mfr, "hewlett") || strings.Contains(mfr, "hpe") || mfr == "hp":
+		return "HPE"
+	case strings.Contains(mfr, "lenovo"):
+		return "Lenovo"
+	case strings.Contains(mfr, "cisco"):
+		return "Cisco"
+	case strings.Contains(mfr, "supermicro") || strings.Contains(mfr, "super micro"):
+		return "Supermicro"
+	case strings.Contains(mfr, "fujitsu"):
+		return "Fujitsu"
+	case strings.Contains(mfr, "huawei"):
+		return "Huawei"
+	case strings.Contains(mfr, "intel"):
+		return "Intel"
+	case strings.Contains(mfr, "amd"):
+		return "AMD"
+	case strings.Contains(mfr, "nvidia"):
+		return "NVIDIA"
+	case strings.Contains(mfr, "seagate"):
+		return "Seagate"
+	case strings.Contains(mfr, "western digital") || strings.Contains(mfr, "wd"):
+		return "Western Digital"
+	case strings.Contains(mfr, "samsung"):
+		return "Samsung"
+	case strings.Contains(mfr, "micron"):
+		return "Micron"
+	case strings.Contains(mfr, "kingston"):
+		return "Kingston"
+	default:
+		// If no match, return the original but properly capitalized
+		return strings.Title(strings.ToLower(manufacturer))
+	}
 }
