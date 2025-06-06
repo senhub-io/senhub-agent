@@ -4,6 +4,7 @@ package data_store
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
@@ -141,22 +142,31 @@ func (f *FormatConverter) transformToPRTGChannel(key string, metric CachedMetric
 	}
 	
 	// Transform metric name using transformer
-	channelName, unit := f.transformMetricNameForPRTG(key, metric)
+	channelName, unit, valueLookup := f.transformMetricNameForPRTGWithLookup(key, metric)
 	
-	// Format units for PRTG: use "custom" when we have a unit, put real unit in CustomUnit
-	var prtgUnit, customUnit string
-	if unit != "" {
-		prtgUnit = "custom"
-		customUnit = unit
+	// Create PRTG channel with lookup-optimized format
+	channel := &PRTGChannel{
+		Channel: channelName,
+		Value:   value,
 	}
 	
-	return &PRTGChannel{
-		Channel:    channelName,
-		Value:      value,
-		Float:      1,           // PRTG expects Float=1 for decimal values
-		Unit:       prtgUnit,
-		CustomUnit: customUnit,
+	// Configure channel based on whether it uses lookup or not
+	if valueLookup != "" {
+		// Lookup metrics: PRTG will display text from lookup file
+		// No need for Float, Unit, or CustomUnit
+		channel.ValueLookup = valueLookup
+	} else {
+		// Regular metrics: use standard numeric formatting
+		channel.Float = 1 // PRTG expects Float=1 for decimal values
+		
+		// Format units for PRTG: use "custom" when we have a unit
+		if unit != "" {
+			channel.Unit = "custom"
+			channel.CustomUnit = unit
+		}
 	}
+	
+	return channel
 }
 
 // convertValueToFloat64 safely converts metric values to float64 for PRTG
@@ -188,8 +198,14 @@ func (f *FormatConverter) convertValueToFloat64(value interface{}) (float64, boo
 	}
 }
 
-// transformMetricNameForPRTG transforms metric names using the transformer system
+// transformMetricNameForPRTG transforms metric names using the transformer system (legacy)
 func (f *FormatConverter) transformMetricNameForPRTG(key string, metric CachedMetric) (string, string) {
+	name, unit, _ := f.transformMetricNameForPRTGWithLookup(key, metric)
+	return name, unit
+}
+
+// transformMetricNameForPRTGWithLookup transforms metric names using the transformer system with lookup support
+func (f *FormatConverter) transformMetricNameForPRTGWithLookup(key string, metric CachedMetric) (string, string, string) {
 	// Get transformer for friendly name resolution
 	transformer, err := f.transformerRegistry.LoadTransformer(metric.ProbeName, "friendly")
 	if err != nil {
@@ -197,12 +213,13 @@ func (f *FormatConverter) transformMetricNameForPRTG(key string, metric CachedMe
 			Err(err).
 			Str("probe_name", metric.ProbeName).
 			Msg("Failed to get transformer for PRTG format")
-		return metric.MetricName, metric.Unit
+		return metric.MetricName, metric.Unit, ""
 	}
 	
 	// Default to original values
 	transformedName := metric.MetricName
 	unit := metric.Unit
+	valueLookup := ""
 	
 	if transformer != nil {
 		// Get friendly name
@@ -216,9 +233,50 @@ func (f *FormatConverter) transformMetricNameForPRTG(key string, metric CachedMe
 				unit = transformerUnit
 			}
 		}
+		
+		// Get lookup from transformer for health and status metrics
+		if lookupName := transformer.GetLookup(metric.MetricName); lookupName != "" {
+			// Check if this is a health/status metric that should use lookups
+			if f.isHealthStatusMetric(metric.MetricName, metric.Tags) {
+				valueLookup = lookupName
+				f.logger.Debug().
+					Str("metric", metric.MetricName).
+					Str("lookup", lookupName).
+					Msg("Applied lookup for health/status metric")
+			}
+		}
 	}
 	
-	return transformedName, unit
+	return transformedName, unit, valueLookup
+}
+
+// isHealthStatusMetric determines if a metric should use value lookups
+func (f *FormatConverter) isHealthStatusMetric(metricName string, tags map[string]string) bool {
+	// Check metric name patterns for health/status indicators
+	healthKeywords := []string{"health", "status", "state", "power_state", "availability"}
+	
+	metricLower := strings.ToLower(metricName)
+	for _, keyword := range healthKeywords {
+		if strings.Contains(metricLower, keyword) {
+			return true
+		}
+	}
+	
+	// Check classification tags for health metrics
+	if category, exists := tags["metric_category"]; exists {
+		if strings.ToLower(category) == "system" || strings.ToLower(category) == "health" {
+			return true
+		}
+	}
+	
+	// Check unit type - boolean metrics are often status indicators
+	if unit, exists := tags["metric_unit"]; exists {
+		if strings.ToLower(unit) == "boolean" {
+			return true
+		}
+	}
+	
+	return false
 }
 
 // Metric Filtering
