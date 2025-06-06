@@ -52,7 +52,11 @@
                         <!-- Dynamic tag filters will be loaded here -->
                     </div>
                 </div>
-                
+            </div>
+            
+            <!-- Response and URL Generator -->
+            <div class="card">
+                <!-- Generated URL Section -->
                 <div class="form-group">
                     <label class="form-label">Generated URL</label>
                     <div id="generated-url" class="url-generator">
@@ -74,21 +78,19 @@
                         </button>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Response -->
-            <div class="card">
+                
+                <!-- Response Section -->
                 <h2>Response</h2>
-                <div id="response-area" class="result-area centered">
-                    <span class="placeholder-text">Click "Test Request" to see the response...</span>
-                </div>
-                <div class="button-group">
+                <div class="button-group" style="margin-bottom: var(--spacing-md);">
                     <button id="copy-response-btn" class="btn btn-secondary" disabled>
                         📋 Copy Response
                     </button>
                     <button id="clear-response-btn" class="btn btn-secondary">
                         🗑️ Clear
                     </button>
+                </div>
+                <div id="response-area" class="result-area centered adaptive-height">
+                    <span class="placeholder-text">Click "Test Request" to see the response...</span>
                 </div>
             </div>
         </div>
