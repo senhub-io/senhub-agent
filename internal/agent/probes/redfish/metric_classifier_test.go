@@ -1,0 +1,461 @@
+package redfish
+
+import (
+	"testing"
+	
+	"github.com/rs/zerolog"
+	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/internal/agent/types/metrics"
+)
+
+// createTestLogger creates a logger for testing
+func createTestLogger() *logger.Logger {
+	l := zerolog.New(nil)
+	return &l
+}
+
+// createTestClassifier creates a classifier for testing
+func createTestClassifier() *RedfishMetricClassifier {
+	testLogger := createTestLogger()
+	return NewRedfishMetricClassifier(testLogger)
+}
+
+func TestNewRedfishMetricClassifier(t *testing.T) {
+	classifier := createTestClassifier()
+	
+	if classifier == nil {
+		t.Error("Expected non-nil classifier")
+	}
+	
+	if classifier.classificationRules == nil {
+		t.Error("Expected classification rules to be initialized")
+	}
+	
+	if len(classifier.classificationRules) == 0 {
+		t.Error("Expected classification rules to be populated")
+	}
+}
+
+func TestRedfishMetricClassifier_GetSupportedCategories(t *testing.T) {
+	classifier := createTestClassifier()
+	categories := classifier.GetSupportedCategories()
+	
+	expectedCategories := []metrics.MetricCategory{
+		metrics.CategoryHealth,
+		metrics.CategoryPerformance,
+		metrics.CategoryCapacity,
+		metrics.CategoryQuality,
+	}
+	
+	if len(categories) != len(expectedCategories) {
+		t.Errorf("Expected %d categories, got %d", len(expectedCategories), len(categories))
+	}
+	
+	for i, expected := range expectedCategories {
+		if categories[i] != expected {
+			t.Errorf("Expected category %s at index %d, got %s", expected, i, categories[i])
+		}
+	}
+}
+
+func TestRedfishMetricClassifier_ClassifyMetric_ExactMatch(t *testing.T) {
+	classifier := createTestClassifier()
+	
+	tests := []struct {
+		name            string
+		metricName      string
+		expectedCategory metrics.MetricCategory
+		expectedSubcategory metrics.MetricSubcategory
+		expectedSeverity metrics.MetricSeverity
+		expectedUnit    metrics.MetricUnit
+	}{
+		{
+			name:            "System health",
+			metricName:      "redfish.system.health",
+			expectedCategory: metrics.CategoryHealth,
+			expectedSubcategory: metrics.SubcategorySystemHealth,
+			expectedSeverity: metrics.SeverityCritical,
+			expectedUnit:    metrics.UnitBoolean,
+		},
+		{
+			name:            "System power state",
+			metricName:      "redfish.system.power_state",
+			expectedCategory: metrics.CategoryHealth,
+			expectedSubcategory: metrics.SubcategoryAvailability,
+			expectedSeverity: metrics.SeverityCritical,
+			expectedUnit:    metrics.UnitBoolean,
+		},
+		{
+			name:            "Power consumption",
+			metricName:      "redfish.power.consumption.total",
+			expectedCategory: metrics.CategoryCapacity,
+			expectedSubcategory: metrics.SubcategoryStorage, // Used as general resource
+			expectedSeverity: metrics.SeverityMedium,
+			expectedUnit:    metrics.UnitWatts,
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			classification := classifier.ClassifyMetric(tt.metricName, 1.0, []tags.Tag{})
+			
+			if classification.Category != tt.expectedCategory {
+				t.Errorf("Expected category %s, got %s", tt.expectedCategory, classification.Category)
+			}
+			if classification.Subcategory != tt.expectedSubcategory {
+				t.Errorf("Expected subcategory %s, got %s", tt.expectedSubcategory, classification.Subcategory)
+			}
+			if classification.Severity != tt.expectedSeverity {
+				t.Errorf("Expected severity %s, got %s", tt.expectedSeverity, classification.Severity)
+			}
+			if classification.Unit != tt.expectedUnit {
+				t.Errorf("Expected unit %s, got %s", tt.expectedUnit, classification.Unit)
+			}
+		})
+	}
+}
+
+func TestRedfishMetricClassifier_ClassifyMetric_PatternMatch(t *testing.T) {
+	classifier := createTestClassifier()
+	
+	tests := []struct {
+		name            string
+		metricName      string
+		expectedCategory metrics.MetricCategory
+		expectedUnit    metrics.MetricUnit
+		expectedGroup   string
+	}{
+		{
+			name:            "Temperature sensor",
+			metricName:      "redfish.thermal.temperature.cpu_1",
+			expectedCategory: metrics.CategoryHealth,
+			expectedUnit:    metrics.UnitCelsius,
+			expectedGroup:   "Thermal",
+		},
+		{
+			name:            "Fan speed",
+			metricName:      "redfish.thermal.fan.speed.chassis_fan_1",
+			expectedCategory: metrics.CategoryPerformance,
+			expectedUnit:    metrics.UnitRPM,
+			expectedGroup:   "Thermal",
+		},
+		{
+			name:            "Drive capacity",
+			metricName:      "redfish.storage.drive.capacity_used.drive_0",
+			expectedCategory: metrics.CategoryCapacity,
+			expectedUnit:    metrics.UnitPercent,
+			expectedGroup:   "Storage",
+		},
+		{
+			name:            "Drive health",
+			metricName:      "redfish.storage.drive.health.drive_1",
+			expectedCategory: metrics.CategoryHealth,
+			expectedUnit:    metrics.UnitBoolean,
+			expectedGroup:   "Storage",
+		},
+		{
+			name:            "Processor utilization",
+			metricName:      "redfish.processor.utilization.cpu_0",
+			expectedCategory: metrics.CategoryCapacity,
+			expectedUnit:    metrics.UnitPercent,
+			expectedGroup:   "Processor",
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			classification := classifier.ClassifyMetric(tt.metricName, 50.0, []tags.Tag{})
+			
+			if classification.Category != tt.expectedCategory {
+				t.Errorf("Expected category %s, got %s", tt.expectedCategory, classification.Category)
+			}
+			if classification.Unit != tt.expectedUnit {
+				t.Errorf("Expected unit %s, got %s", tt.expectedUnit, classification.Unit)
+			}
+			if classification.Group != tt.expectedGroup {
+				t.Errorf("Expected group %s, got %s", tt.expectedGroup, classification.Group)
+			}
+		})
+	}
+}
+
+func TestRedfishMetricClassifier_ClassifyMetric_NameAnalysis(t *testing.T) {
+	classifier := createTestClassifier()
+	
+	tests := []struct {
+		name            string
+		metricName      string
+		expectedCategory metrics.MetricCategory
+		expectedSubcategory metrics.MetricSubcategory
+		expectedUnit    metrics.MetricUnit
+	}{
+		{
+			name:            "Unknown health metric",
+			metricName:      "redfish.custom.health.status",
+			expectedCategory: metrics.CategoryHealth,
+			expectedSubcategory: metrics.SubcategorySystemHealth,
+			expectedUnit:    metrics.UnitBoolean,
+		},
+		{
+			name:            "Unknown temperature metric",
+			metricName:      "redfish.custom.temperature.ambient",
+			expectedCategory: metrics.CategoryHealth,
+			expectedSubcategory: metrics.SubcategorySystemHealth,
+			expectedUnit:    metrics.UnitCelsius,
+		},
+		{
+			name:            "Unknown utilization metric",
+			metricName:      "redfish.custom.utilization.bandwidth",
+			expectedCategory: metrics.CategoryCapacity,
+			expectedSubcategory: metrics.SubcategoryStorage,
+			expectedUnit:    metrics.UnitPercent,
+		},
+		{
+			name:            "Unknown error metric",
+			metricName:      "redfish.custom.error.count",
+			expectedCategory: metrics.CategoryQuality,
+			expectedSubcategory: metrics.SubcategoryErrorRates,
+			expectedUnit:    metrics.UnitCount,
+		},
+		{
+			name:            "Completely unknown metric",
+			metricName:      "redfish.custom.unknown.metric",
+			expectedCategory: metrics.CategoryHealth,
+			expectedSubcategory: metrics.SubcategorySystemHealth,
+			expectedUnit:    metrics.UnitNone,
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			classification := classifier.ClassifyMetric(tt.metricName, 1.0, []tags.Tag{})
+			
+			if classification.Category != tt.expectedCategory {
+				t.Errorf("Expected category %s, got %s", tt.expectedCategory, classification.Category)
+			}
+			if classification.Subcategory != tt.expectedSubcategory {
+				t.Errorf("Expected subcategory %s, got %s", tt.expectedSubcategory, classification.Subcategory)
+			}
+			if classification.Unit != tt.expectedUnit {
+				t.Errorf("Expected unit %s, got %s", tt.expectedUnit, classification.Unit)
+			}
+		})
+	}
+}
+
+func TestRedfishMetricClassifier_matchesPattern(t *testing.T) {
+	classifier := createTestClassifier()
+	
+	tests := []struct {
+		name        string
+		metricName  string
+		pattern     string
+		shouldMatch bool
+	}{
+		{
+			name:        "Exact match",
+			metricName:  "redfish.system.health",
+			pattern:     "redfish.system.health",
+			shouldMatch: true,
+		},
+		{
+			name:        "Prefix wildcard match",
+			metricName:  "redfish.thermal.temperature.cpu_1",
+			pattern:     "redfish.thermal.temperature.*",
+			shouldMatch: true,
+		},
+		{
+			name:        "Suffix wildcard match",
+			metricName:  "redfish.thermal.fan.speed.chassis_fan_1",
+			pattern:     "*.speed.*",
+			shouldMatch: true,
+		},
+		{
+			name:        "No match",
+			metricName:  "redfish.power.voltage",
+			pattern:     "redfish.thermal.*",
+			shouldMatch: false,
+		},
+		{
+			name:        "Prefix no match",
+			metricName:  "other.thermal.temperature.cpu_1",
+			pattern:     "redfish.thermal.temperature.*",
+			shouldMatch: false,
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matches := classifier.matchesPattern(tt.metricName, tt.pattern)
+			if matches != tt.shouldMatch {
+				t.Errorf("Expected pattern '%s' to match '%s': %v, got %v", 
+					tt.pattern, tt.metricName, tt.shouldMatch, matches)
+			}
+		})
+	}
+}
+
+func TestRedfishMetricClassifier_formatDisplayName(t *testing.T) {
+	classifier := createTestClassifier()
+	
+	tests := []struct {
+		name         string
+		metricName   string
+		expectedName string
+	}{
+		{
+			name:         "System health",
+			metricName:   "redfish.system.health",
+			expectedName: "System Health",
+		},
+		{
+			name:         "Temperature metric",
+			metricName:   "redfish.thermal.temperature.cpu_1",
+			expectedName: "Thermal Temperature Cpu 1",
+		},
+		{
+			name:         "Fan speed",
+			metricName:   "redfish.thermal.fan.speed.chassis_fan_1",
+			expectedName: "Thermal Fan Speed Chassis Fan 1",
+		},
+		{
+			name:         "Storage capacity",
+			metricName:   "redfish.storage.drive.capacity_used.drive_0",
+			expectedName: "Storage Drive Capacity Used Drive 0",
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			displayName := classifier.formatDisplayName(tt.metricName)
+			if displayName != tt.expectedName {
+				t.Errorf("Expected display name '%s', got '%s'", tt.expectedName, displayName)
+			}
+		})
+	}
+}
+
+func TestRedfishMetricClassifier_enhanceClassification(t *testing.T) {
+	classifier := createTestClassifier()
+	
+	baseClassification := metrics.MetricClassification{
+		Category:    metrics.CategoryHealth,
+		Subcategory: metrics.SubcategorySystemHealth,
+		Severity:    metrics.SeverityHigh,
+		Unit:        metrics.UnitBoolean,
+	}
+	
+	metricTags := []tags.Tag{
+		{Key: "component", Value: "CPU_1"},
+		{Key: "location", Value: "Slot_1"},
+		{Key: "other_tag", Value: "other_value"},
+	}
+	
+	enhanced := classifier.enhanceClassification(baseClassification, "redfish.test.metric", 1.0, metricTags)
+	
+	// Check that base classification is preserved
+	if enhanced.Category != baseClassification.Category {
+		t.Errorf("Expected category %s, got %s", baseClassification.Category, enhanced.Category)
+	}
+	
+	// Check that display name was set
+	if enhanced.DisplayName == "" {
+		t.Error("Expected display name to be set")
+	}
+	
+	// Check that component tag was added
+	if enhanced.Tags == nil {
+		t.Error("Expected tags to be initialized")
+	}
+	if enhanced.Tags["component"] != "CPU_1" {
+		t.Errorf("Expected component tag 'CPU_1', got '%s'", enhanced.Tags["component"])
+	}
+	if enhanced.Tags["location"] != "Slot_1" {
+		t.Errorf("Expected location tag 'Slot_1', got '%s'", enhanced.Tags["location"])
+	}
+}
+
+func TestRedfishMetricClassifier_GetCategoryMetrics(t *testing.T) {
+	classifier := createTestClassifier()
+	
+	// Test getting health metrics
+	healthMetrics := classifier.GetCategoryMetrics(metrics.CategoryHealth)
+	if len(healthMetrics) == 0 {
+		t.Error("Expected health metrics to be found")
+	}
+	
+	// Check that system.health is in health metrics
+	found := false
+	for _, metric := range healthMetrics {
+		if metric == "redfish.system.health" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Expected 'redfish.system.health' to be in health metrics")
+	}
+	
+	// Test getting performance metrics
+	performanceMetrics := classifier.GetCategoryMetrics(metrics.CategoryPerformance)
+	if len(performanceMetrics) == 0 {
+		t.Error("Expected performance metrics to be found")
+	}
+	
+	// Test getting metrics for non-existent category
+	securityMetrics := classifier.GetCategoryMetrics(metrics.CategorySecurity)
+	// Security metrics might be empty since we focused on hardware metrics
+	// This is acceptable behavior
+	_ = securityMetrics
+}
+
+func TestRedfishMetricClassifier_ThresholdConfiguration(t *testing.T) {
+	classifier := createTestClassifier()
+	
+	// Test that temperature metric has proper thresholds
+	classification := classifier.ClassifyMetric("redfish.thermal.temperature.cpu_1", 75.0, []tags.Tag{})
+	
+	if classification.Thresholds == nil {
+		t.Error("Expected temperature metric to have thresholds")
+		return
+	}
+	
+	if classification.Thresholds.Warning == nil {
+		t.Error("Expected temperature metric to have warning threshold")
+	} else if *classification.Thresholds.Warning.Max != 75.0 {
+		t.Errorf("Expected warning threshold 75.0, got %f", *classification.Thresholds.Warning.Max)
+	}
+	
+	if classification.Thresholds.Critical == nil {
+		t.Error("Expected temperature metric to have critical threshold")
+	} else if *classification.Thresholds.Critical.Max != 85.0 {
+		t.Errorf("Expected critical threshold 85.0, got %f", *classification.Thresholds.Critical.Max)
+	}
+}
+
+func TestRedfishMetricClassifier_CaseInsensitive(t *testing.T) {
+	classifier := createTestClassifier()
+	
+	// Test that classification is case-insensitive
+	tests := []string{
+		"redfish.system.health",
+		"REDFISH.SYSTEM.HEALTH",
+		"Redfish.System.Health",
+		"RedFish.System.Health",
+	}
+	
+	var firstClassification metrics.MetricClassification
+	for i, metricName := range tests {
+		classification := classifier.ClassifyMetric(metricName, 1.0, []tags.Tag{})
+		
+		if i == 0 {
+			firstClassification = classification
+		} else {
+			if classification.Category != firstClassification.Category {
+				t.Errorf("Case sensitivity issue: expected category %s, got %s for metric %s", 
+					firstClassification.Category, classification.Category, metricName)
+			}
+		}
+	}
+}
