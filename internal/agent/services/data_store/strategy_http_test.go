@@ -535,8 +535,19 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 						t.Errorf("Expected custom unit %s, got %s", tt.metric.Unit, channel.CustomUnit)
 					}
 				}
-				if channel.Float != 1 {
-					t.Errorf("Expected Float field to be 1, got %d", channel.Float)
+				// Check Float field based on lookup presence
+				if channel.ValueLookup == "" {
+					if channel.Float == nil || *channel.Float != 1 {
+						if channel.Float == nil {
+							t.Errorf("Expected Float field to be 1 for non-lookup metric, got nil")
+						} else {
+							t.Errorf("Expected Float field to be 1 for non-lookup metric, got %d", *channel.Float)
+						}
+					}
+				} else {
+					if channel.Float != nil {
+						t.Errorf("Expected Float field to be nil for lookup metric, got %d", *channel.Float)
+					}
 				}
 			}
 		})
