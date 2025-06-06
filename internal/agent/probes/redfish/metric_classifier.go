@@ -102,7 +102,7 @@ func (c *RedfishMetricClassifier) initializeClassificationRules() {
 		Unit:        metrics.UnitBoolean,
 		Description: "Overall system health status",
 		DisplayName: "System Health",
-		Group:       "System Status",
+		Group:       "System",
 		SortOrder:   1,
 		Thresholds: &metrics.MetricThresholds{
 			Critical: &metrics.ThresholdRange{Max: &[]float64{0}[0]}, // 0 = unhealthy
@@ -116,7 +116,7 @@ func (c *RedfishMetricClassifier) initializeClassificationRules() {
 		Unit:        metrics.UnitBoolean,
 		Description: "System power state (1=on, 0=off)",
 		DisplayName: "Power State",
-		Group:       "System Status",
+		Group:       "System",
 		SortOrder:   2,
 		Thresholds: &metrics.MetricThresholds{
 			Critical: &metrics.ThresholdRange{Max: &[]float64{0}[0]}, // 0 = powered off
@@ -317,7 +317,7 @@ func (c *RedfishMetricClassifier) initializeClassificationRules() {
 		Unit:        metrics.UnitCount,
 		Description: "Drive read error count",
 		DisplayName: "Drive Read Errors",
-		Group:       "Storage Quality",
+		Group:       "Storage",
 		SortOrder:   60,
 		Thresholds: &metrics.MetricThresholds{
 			Warning:  &metrics.ThresholdRange{Max: &[]float64{10}[0]},
@@ -332,7 +332,7 @@ func (c *RedfishMetricClassifier) initializeClassificationRules() {
 		Unit:        metrics.UnitCount,
 		Description: "Drive write error count",
 		DisplayName: "Drive Write Errors",
-		Group:       "Storage Quality",
+		Group:       "Storage",
 		SortOrder:   61,
 		Thresholds: &metrics.MetricThresholds{
 			Warning:  &metrics.ThresholdRange{Max: &[]float64{10}[0]},
@@ -348,7 +348,7 @@ func (c *RedfishMetricClassifier) initializeClassificationRules() {
 		Unit:        metrics.UnitOpsPerSecond,
 		Description: "Drive read IOPS",
 		DisplayName: "Drive Read IOPS",
-		Group:       "Storage Performance",
+		Group:       "Storage",
 		SortOrder:   70,
 	})
 	
@@ -359,7 +359,7 @@ func (c *RedfishMetricClassifier) initializeClassificationRules() {
 		Unit:        metrics.UnitOpsPerSecond,
 		Description: "Drive write IOPS",
 		DisplayName: "Drive Write IOPS",
-		Group:       "Storage Performance",
+		Group:       "Storage",
 		SortOrder:   71,
 	})
 	
@@ -437,7 +437,7 @@ func (c *RedfishMetricClassifier) classifyByNameAnalysis(metricName string, valu
 			Unit:        metrics.UnitBoolean,
 			Description: "System component health status",
 			DisplayName: c.formatDisplayName(metricName),
-			Group:       "General Health",
+			Group:       "System",
 			SortOrder:   999,
 		}
 	}
@@ -479,7 +479,7 @@ func (c *RedfishMetricClassifier) classifyByNameAnalysis(metricName string, valu
 			Unit:        metrics.UnitCount,
 			Description: "Error count or rate",
 			DisplayName: c.formatDisplayName(metricName),
-			Group:       "Quality",
+			Group:       "System",
 			SortOrder:   999,
 		}
 	}
@@ -492,7 +492,7 @@ func (c *RedfishMetricClassifier) classifyByNameAnalysis(metricName string, valu
 		Unit:        metrics.UnitNone,
 		Description: "Unclassified Redfish metric",
 		DisplayName: c.formatDisplayName(metricName),
-		Group:       "Other",
+		Group:       "System",
 		SortOrder:   999,
 	}
 }

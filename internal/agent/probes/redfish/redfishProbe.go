@@ -244,11 +244,9 @@ func (p *redfishProbe) Collect() ([]data_store.DataPoint, error) {
 			
 			// Add classification information as tags
 			datapoints[i].Tags = append(datapoints[i].Tags, []tags.Tag{
-				{Key: "metric_category", Value: string(classification.Category)},
-				{Key: "metric_subcategory", Value: string(classification.Subcategory)},
+				{Key: "metric_category", Value: classification.Group},
 				{Key: "metric_severity", Value: string(classification.Severity)},
 				{Key: "metric_unit", Value: string(classification.Unit)},
-				{Key: "metric_group", Value: classification.Group},
 			}...)
 			
 			// Classification applied (debug logging is handled by the classifier itself)
