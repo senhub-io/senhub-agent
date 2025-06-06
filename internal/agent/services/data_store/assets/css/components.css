@@ -37,6 +37,20 @@
     line-height: 1.4;
 }
 
+/* Adaptive height for response area - adjusts to content */
+.result-area.adaptive-height {
+    max-height: none;
+    height: auto;
+    min-height: 100px;
+    overflow-y: visible;
+}
+
+/* For very large JSON responses, add a max height and scrolling */
+.result-area.adaptive-height[data-large-content="true"] {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
 /* When result-area has placeholder or loading, center the content */
 .result-area.centered {
     display: flex;
