@@ -228,6 +228,18 @@ func (pt *ProbeTransformer) applyTemplate(template string, tags map[string]strin
 		result = strings.ReplaceAll(result, "{component}", component)
 	}
 
+	// Replace any other template variables using tag values
+	// This handles variables like {sensor_name}, {drive_name}, {volume_name}, etc.
+	for tagKey, tagValue := range tags {
+		placeholder := fmt.Sprintf("{%s}", tagKey)
+		if strings.Contains(result, placeholder) {
+			if tagValue == "" {
+				tagValue = "Unknown"
+			}
+			result = strings.ReplaceAll(result, placeholder, tagValue)
+		}
+	}
+
 	return result
 }
 

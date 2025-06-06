@@ -194,9 +194,20 @@ func testPRTGFormat(t *testing.T, converter *FormatConverter, testMetrics []data
 					t.Errorf("PRTG channel missing Channel field")
 				}
 				
-				// Validate Float field is set (required for decimal values)
-				if channel.Float != 1 {
-					t.Errorf("PRTG channel Float field should be 1, got %d", channel.Float)
+				// Validate Float field is set for non-lookup metrics (required for decimal values)
+				if channel.ValueLookup == "" {
+					if channel.Float == nil || *channel.Float != 1 {
+						if channel.Float == nil {
+							t.Errorf("PRTG channel Float field should be 1 for non-lookup metric, got nil")
+						} else {
+							t.Errorf("PRTG channel Float field should be 1 for non-lookup metric, got %d", *channel.Float)
+						}
+					}
+				} else {
+					// Lookup metrics should NOT have Float field set
+					if channel.Float != nil {
+						t.Errorf("PRTG channel Float field should be nil for lookup metric, got %d", *channel.Float)
+					}
 				}
 				
 				// Validate unit handling
