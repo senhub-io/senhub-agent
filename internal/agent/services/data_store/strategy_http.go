@@ -81,15 +81,15 @@ type PRTGResult struct {
 
 // PRTGChannel represents a single metric channel for PRTG
 type PRTGChannel struct {
-	Channel         string  `json:"channel"`
-	Value           float64 `json:"value"`
-	Float           int     `json:"float"`
-	Unit            string  `json:"unit,omitempty"`
-	CustomUnit      string  `json:"customunit,omitempty"`
-	LimitMode       int     `json:"limitmode,omitempty"`
-	LimitMaxWarning float64 `json:"limitmaxwarning,omitempty"`
-	LimitMaxError   float64 `json:"limitmaxerror,omitempty"`
-	ValueLookup     string  `json:"valuelookup,omitempty"`
+	Channel         string   `json:"channel"`
+	Value           float64  `json:"value"`
+	Float           *int     `json:"float,omitempty"`     // Pointer to make optional for lookup metrics
+	Unit            string   `json:"unit,omitempty"`
+	CustomUnit      string   `json:"customunit,omitempty"`
+	LimitMode       int      `json:"limitmode,omitempty"`
+	LimitMaxWarning float64  `json:"limitmaxwarning,omitempty"`
+	LimitMaxError   float64  `json:"limitmaxerror,omitempty"`
+	ValueLookup     string   `json:"valuelookup,omitempty"`
 }
 
 // MetricFilter represents query parameters for filtering metrics
