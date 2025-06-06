@@ -144,7 +144,7 @@ func (f *FormatConverter) transformToPRTGChannel(key string, metric CachedMetric
 	// Transform metric name using transformer
 	channelName, unit, valueLookup := f.transformMetricNameForPRTGWithLookup(key, metric)
 	
-	// Create PRTG channel with lookup-optimized format
+	// Create PRTG channel
 	channel := &PRTGChannel{
 		Channel: channelName,
 		Value:   value,
@@ -153,11 +153,13 @@ func (f *FormatConverter) transformToPRTGChannel(key string, metric CachedMetric
 	// Configure channel based on whether it uses lookup or not
 	if valueLookup != "" {
 		// Lookup metrics: PRTG will display text from lookup file
-		// No need for Float, Unit, or CustomUnit
+		// CRITICAL: Do not set Float field at all for lookup metrics (leave as nil)
 		channel.ValueLookup = valueLookup
+		// No Unit or CustomUnit for lookup metrics
 	} else {
 		// Regular metrics: use standard numeric formatting
-		channel.Float = 1 // PRTG expects Float=1 for decimal values
+		floatValue := 1
+		channel.Float = &floatValue // PRTG expects Float=1 for decimal values
 		
 		// Format units for PRTG: use "custom" when we have a unit
 		if unit != "" {
@@ -243,6 +245,18 @@ func (f *FormatConverter) transformMetricNameForPRTGWithLookup(key string, metri
 					Str("metric", metric.MetricName).
 					Str("lookup", lookupName).
 					Msg("Applied lookup for health/status metric")
+			} else {
+				f.logger.Debug().
+					Str("metric", metric.MetricName).
+					Str("lookup", lookupName).
+					Msg("Lookup found but metric not identified as health/status metric")
+			}
+		} else {
+			// Check if this might be a health metric that should have a lookup
+			if f.isHealthStatusMetric(metric.MetricName, metric.Tags) {
+				f.logger.Debug().
+					Str("metric", metric.MetricName).
+					Msg("Health/status metric detected but no lookup found in transformer")
 			}
 		}
 	}
