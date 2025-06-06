@@ -254,7 +254,7 @@ Before committing new code, verify compliance with our patterns:
   - **Tag Enhancement**: Classification metadata added as tags to each metric
   - **Extensible Design**: Easy to add new categories, units, and probe-specific classifiers
 - DOCUMENTATION: Complete technical reference in `docs/technical-reference/METRICS-CLASSIFICATION.md`
-- USAGE: Classification tags automatically added to all Redfish metrics: `metric_category`, `metric_subcategory`, `metric_severity`, `metric_unit`, `metric_group`
+- USAGE: Classification tags automatically added to all Redfish metrics: `metric_category` (simplified groups like "System", "Thermal", "Storage"), `metric_severity`, `metric_unit`
 - TODO: Extend classification system to other probes (CPU, memory, network, etc.)
 
 ### Redfish Probe
