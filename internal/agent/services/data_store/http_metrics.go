@@ -198,6 +198,11 @@ func (m *MetricsProcessor) ProcessNagiosMetric(metricDef NagiosMetric, metrics [
 		}
 	}
 
+	// Check if this is a health/status metric requiring special handling
+	if m.isHealthStatusMetricNagios(metricDef.Channel, matchingMetrics) {
+		return m.processNagiosHealthMetric(metricDef, matchingMetrics, overrides)
+	}
+
 	// Determine processing mode based on aggregation
 	if metricDef.Aggregation != "" && metricDef.Aggregation != "none" {
 		return m.processNagiosMetricAggregated(metricDef, matchingMetrics, overrides)
@@ -697,4 +702,202 @@ func (m *MetricsProcessor) GenerateExamples(probeName string, tags map[string]Ta
 	}
 	
 	return examples
+}
+
+// Health Metrics Processing for Nagios
+
+// isHealthStatusMetricNagios determines if a metric should use health-specific Nagios processing
+func (m *MetricsProcessor) isHealthStatusMetricNagios(metricName string, metrics []CachedMetric) bool {
+	// Check metric name patterns
+	healthKeywords := []string{"health", "status", "state", "power_state", "availability"}
+	
+	metricLower := strings.ToLower(metricName)
+	for _, keyword := range healthKeywords {
+		if strings.Contains(metricLower, keyword) {
+			return true
+		}
+	}
+	
+	// Check metric tags if available
+	if len(metrics) > 0 {
+		metric := metrics[0] // Use first metric to check patterns
+		
+		// Check classification tags
+		if category, exists := metric.Tags["metric_category"]; exists {
+			if strings.ToLower(category) == "system" || strings.ToLower(category) == "health" {
+				return true
+			}
+		}
+		
+		// Check unit type - boolean metrics are often status indicators
+		if unit, exists := metric.Tags["metric_unit"]; exists {
+			if strings.ToLower(unit) == "boolean" {
+				return true
+			}
+		}
+		
+		// Check if metric unit suggests health values
+		if metric.Unit == "#" || metric.Unit == "" {
+			// Numeric health values (0=OK, 1=Warning, 2=Critical, 3=Unknown)
+			if val, ok := metric.Value.(float64); ok {
+				if val >= 0 && val <= 3 && val == float64(int(val)) {
+					return true
+				}
+			}
+		}
+	}
+	
+	return false
+}
+
+// processNagiosHealthMetric processes health/status metrics with special Nagios mapping
+func (m *MetricsProcessor) processNagiosHealthMetric(metricDef NagiosMetric, metrics []CachedMetric, overrides NagiosOverrides) NagiosMetricResult {
+	m.logger.Debug().
+		Str("channel", metricDef.Channel).
+		Int("metric_count", len(metrics)).
+		Msg("Processing health metric for Nagios")
+
+	// Process health metrics individually (no aggregation makes sense for health)
+	var worstStatus int = 0 // Start with OK
+	var healthMessages []string
+	var perfDataItems []string
+	
+	for _, metric := range metrics {
+		// Convert health value to Nagios status
+		healthValue, nagiosStatus, statusText := m.convertHealthToNagiosStatus(metric)
+		
+		// Track worst status
+		if nagiosStatus > worstStatus {
+			worstStatus = nagiosStatus
+		}
+		
+		// Build message with context
+		var contextName string
+		if componentName, exists := metric.Tags["component"]; exists {
+			contextName = componentName
+		} else if instanceName, exists := metric.Tags["instance"]; exists {
+			contextName = instanceName
+		} else {
+			contextName = metricDef.Channel
+		}
+		
+		healthMessage := fmt.Sprintf("%s: %s", contextName, statusText)
+		healthMessages = append(healthMessages, healthMessage)
+		
+		// Add performance data optimized for health metrics (no warning/critical thresholds, use min/max range)
+		perfData := m.buildHealthPerfData(contextName, healthValue)
+		perfDataItems = append(perfDataItems, perfData)
+	}
+	
+	// Build overall message
+	overallStatusText := m.getStatusText(worstStatus)
+	var message string
+	
+	if len(healthMessages) == 1 {
+		message = healthMessages[0]
+	} else {
+		// Multiple health metrics - show summary
+		okCount := 0
+		warnCount := 0
+		critCount := 0
+		unknownCount := 0
+		
+		for _, metric := range metrics {
+			_, status, _ := m.convertHealthToNagiosStatus(metric)
+			switch status {
+			case 0:
+				okCount++
+			case 1:
+				warnCount++
+			case 2:
+				critCount++
+			case 3:
+				unknownCount++
+			}
+		}
+		
+		message = fmt.Sprintf("%s - %s: %d OK, %d Warning, %d Critical, %d Unknown", 
+			overallStatusText, metricDef.Channel, okCount, warnCount, critCount, unknownCount)
+		
+		// Add specific failures for non-OK statuses
+		if worstStatus > 0 {
+			var failureMessages []string
+			for _, metric := range metrics {
+				_, status, statusText := m.convertHealthToNagiosStatus(metric)
+				if status > 0 {
+					var contextName string
+					if componentName, exists := metric.Tags["component"]; exists {
+						contextName = componentName
+					} else {
+						contextName = "component"
+					}
+					failureMessages = append(failureMessages, fmt.Sprintf("%s: %s", contextName, statusText))
+				}
+			}
+			if len(failureMessages) > 0 {
+				message += "; " + strings.Join(failureMessages, ", ")
+			}
+		}
+	}
+	
+	return NagiosMetricResult{
+		Status:   worstStatus,
+		Message:  message,
+		PerfData: strings.Join(perfDataItems, " "),
+	}
+}
+
+// convertHealthToNagiosStatus converts health metric values to Nagios status codes
+func (m *MetricsProcessor) convertHealthToNagiosStatus(metric CachedMetric) (float64, int, string) {
+	// Convert metric value to float64
+	var healthValue float64
+	switch v := metric.Value.(type) {
+	case float64:
+		healthValue = v
+	case float32:
+		healthValue = float64(v)
+	case int:
+		healthValue = float64(v)
+	case int32:
+		healthValue = float64(v)
+	case int64:
+		healthValue = float64(v)
+	default:
+		return 0, 3, "UNKNOWN - Invalid health value type"
+	}
+	
+	// Map health values to Nagios status
+	// Standard Redfish/generic health mapping:
+	// 0 = OK/Healthy, 1 = Warning/Degraded, 2 = Critical/Failed, 3 = Unknown
+	switch int(healthValue) {
+	case 0:
+		return healthValue, 0, "OK"      // Nagios OK
+	case 1:
+		return healthValue, 1, "WARNING" // Nagios WARNING  
+	case 2:
+		return healthValue, 2, "CRITICAL" // Nagios CRITICAL
+	case 3:
+		return healthValue, 3, "UNKNOWN"  // Nagios UNKNOWN
+	default:
+		// Handle boolean health metrics (0=unhealthy, 1=healthy)
+		if healthValue == 1 {
+			return healthValue, 0, "OK"
+		} else if healthValue == 0 {
+			return healthValue, 2, "CRITICAL"
+		}
+		
+		// Unknown health value
+		return healthValue, 3, fmt.Sprintf("UNKNOWN - Unexpected health value: %.0f", healthValue)
+	}
+}
+
+// buildHealthPerfData builds optimized Nagios performance data for health metrics
+func (m *MetricsProcessor) buildHealthPerfData(name string, value float64) string {
+	// Clean label name (no spaces, special chars)
+	cleanName := m.cleanPerfDataLabel(name)
+	
+	// Health metrics format: label=value;;;min;max
+	// No warning/critical thresholds since health values have predefined meanings
+	// min=0 (OK), max=3 (Unknown) to indicate the valid range
+	return fmt.Sprintf("%s=%.0f;;;0;3", cleanName, value)
 }

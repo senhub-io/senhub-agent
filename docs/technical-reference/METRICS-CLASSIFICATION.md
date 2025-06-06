@@ -243,11 +243,9 @@ classification := p.classifier.ClassifyMetric(datapoint.Name, datapoint.Value, d
 
 // Add classification as tags
 datapoint.Tags = append(datapoint.Tags, []tags.Tag{
-    {Key: "metric_category", Value: string(classification.Category)},
-    {Key: "metric_subcategory", Value: string(classification.Subcategory)},
+    {Key: "metric_category", Value: classification.Group},
     {Key: "metric_severity", Value: string(classification.Severity)},
     {Key: "metric_unit", Value: string(classification.Unit)},
-    {Key: "metric_group", Value: classification.Group},
 }...)
 ```
 
@@ -336,16 +334,18 @@ curl "http://localhost:8080/api/{agentkey}/metrics?severity=critical"
 
 ```javascript
 // Group metrics by category for dashboard
-const healthMetrics = metrics.filter(m => m.tags.metric_category === 'health');
-const performanceMetrics = metrics.filter(m => m.tags.metric_category === 'performance');
-const capacityMetrics = metrics.filter(m => m.tags.metric_category === 'capacity');
+const systemMetrics = metrics.filter(m => m.tags.metric_category === 'System');
+const thermalMetrics = metrics.filter(m => m.tags.metric_category === 'Thermal');
+const storageMetrics = metrics.filter(m => m.tags.metric_category === 'Storage');
 
-// Sort by group and order within group
+// Sort by category and severity
 const sortedMetrics = metrics.sort((a, b) => {
-    if (a.tags.metric_group !== b.tags.metric_group) {
-        return a.tags.metric_group.localeCompare(b.tags.metric_group);
+    if (a.tags.metric_category !== b.tags.metric_category) {
+        return a.tags.metric_category.localeCompare(b.tags.metric_category);
     }
-    return parseInt(a.tags.sort_order || 999) - parseInt(b.tags.sort_order || 999);
+    // Sort by severity: critical first, then high, medium, low
+    const severityOrder = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+    return severityOrder[a.tags.metric_severity] - severityOrder[b.tags.metric_severity];
 });
 ```
 
@@ -357,14 +357,14 @@ groups:
   - name: senhub.critical
     rules:
       - alert: SystemHealthCritical
-        expr: senhub_metric{metric_severity="critical", metric_category="health"} == 0
+        expr: senhub_metric{metric_severity="critical", metric_category="System"} == 0
         labels:
           severity: critical
         annotations:
           summary: "Critical system health issue detected"
           
       - alert: CapacityWarning
-        expr: senhub_metric{metric_category="capacity", metric_unit="percent"} > 85
+        expr: senhub_metric{metric_category="Storage", metric_unit="percent"} > 85
         labels:
           severity: warning
         annotations:
