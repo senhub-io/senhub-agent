@@ -233,7 +233,9 @@ func (pt *ProbeTransformer) applyTemplate(template string, tags map[string]strin
 	for tagKey, tagValue := range tags {
 		placeholder := fmt.Sprintf("{%s}", tagKey)
 		if strings.Contains(result, placeholder) {
-			if tagValue == "" {
+			if tagValue == "" || tagValue == tagKey {
+				// If tag value is empty or equals the tag key (e.g., sensor_name="sensor_name"), 
+				// use a generic fallback
 				tagValue = "Unknown"
 			}
 			result = strings.ReplaceAll(result, placeholder, tagValue)
