@@ -1,0 +1,22 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#ResourceBlock.ResourceBlock",
+    "@odata.id": "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.11",
+    "@odata.type": "#ResourceBlock.v1_3_4.ResourceBlock",
+    "CompositionStatus": {
+        "CompositionState": "Composed"
+    },
+    "Drives": [
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.11"
+        }
+    ],
+    "Id": "S6LDNA0XA02317",
+    "Name": "0.11",
+    "ResourceBlockType": [
+        "Storage"
+    ],
+    "Status": {
+        "Health": "OK",
+        "State": "UnavailableOffline"
+    }
+}

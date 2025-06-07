@@ -1,0 +1,16 @@
+{
+  "path": "/redfish/v1/Fabrics",
+  "type": "#FabricCollection.FabricCollection",
+  "data": {
+    "depth": 2,
+    "id": null,
+    "name": "Fabric Collection",
+    "path": "/redfish/v1/Fabrics",
+    "timestamp": "2025-06-06T18:08:36+02:00",
+    "type": "#FabricCollection.FabricCollection"
+  },
+  "children": [
+    "/redfish/v1/Fabrics",
+    "/redfish/v1/Fabrics/SAS"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#VolumeCollection.VolumeCollection",
+    "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Volumes",
+    "@odata.type": "#VolumeCollection.VolumeCollection",
+    "Members": [
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Volumes/00c0fffd07cd00005a728a6701000000"
+        }
+    ],
+    "Members@odata.count": 1,
+    "Name": "Volume Collection"
+}

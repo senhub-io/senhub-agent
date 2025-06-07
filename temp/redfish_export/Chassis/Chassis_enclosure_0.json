@@ -1,0 +1,28 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#Chassis.Chassis",
+    "@odata.id": "/redfish/v1/Chassis/enclosure_0",
+    "@odata.type": "#Chassis.v1_15_0.Chassis",
+    "ChassisType": "StorageEnclosure",
+    "Id": "enclosure_0",
+    "Location": {
+        "Placement": {
+            "Rack": "0",
+            "RackOffset": 0
+        }
+    },
+    "LocationIndicatorActive": false,
+    "Manufacturer": "DellEMC",
+    "Name": "enclosure_0",
+    "Power": {
+        "@odata.id": "UNKNOWN/enclosure_0/Power"
+    },
+    "PowerState": "On",
+    "SerialNumber": "500C0FF06984553C",
+    "Status": {
+        "Health": "OK",
+        "State": "Enabled"
+    },
+    "Thermal": {
+        "@odata.id": "UNKNOWN/enclosure_0/Thermal"
+    }
+}

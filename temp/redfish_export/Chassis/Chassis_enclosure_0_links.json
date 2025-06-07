@@ -1,0 +1,17 @@
+{
+  "path": "/redfish/v1/Chassis/enclosure_0",
+  "type": "#Chassis.v1_15_0.Chassis",
+  "data": {
+    "depth": 4,
+    "id": "enclosure_0",
+    "name": "enclosure_0",
+    "path": "/redfish/v1/Chassis/enclosure_0",
+    "timestamp": "2025-06-06T18:08:14+02:00",
+    "type": "#Chassis.v1_15_0.Chassis"
+  },
+  "children": [
+    "/redfish/v1/Chassis/enclosure_0",
+    "UNKNOWN/enclosure_0/Power",
+    "UNKNOWN/enclosure_0/Thermal"
+  ]
+}

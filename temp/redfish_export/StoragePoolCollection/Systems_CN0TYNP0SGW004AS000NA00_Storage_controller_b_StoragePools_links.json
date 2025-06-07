@@ -1,0 +1,17 @@
+{
+  "path": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/StoragePools",
+  "type": "#StoragePoolCollection.StoragePoolCollection",
+  "data": {
+    "depth": 6,
+    "id": null,
+    "name": "StoragePool Collection",
+    "path": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/StoragePools",
+    "timestamp": "2025-06-06T18:08:29+02:00",
+    "type": "#StoragePoolCollection.StoragePoolCollection"
+  },
+  "children": [
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/StoragePools",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/StoragePools/A",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/StoragePools/dgA01"
+  ]
+}

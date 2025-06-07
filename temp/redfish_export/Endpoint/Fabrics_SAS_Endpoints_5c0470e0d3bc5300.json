@@ -1,0 +1,18 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#Endpoint.Endpoint",
+    "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints/5c0470e0d3bc5300",
+    "@odata.type": "#Endpoint.v1_5_1.Endpoint",
+    "Description": "This instance represents an initiator",
+    "Id": "5c0470e0d3bc5300",
+    "Identifiers": [
+        {
+            "DurableName": "5c0470e0d3bc5300",
+            "DurableNameFormat": "NAA"
+        }
+    ],
+    "Name": "I0-ESX21-CRTL2",
+    "Status": {
+        "Health": "OK",
+        "State": "Enabled"
+    }
+}

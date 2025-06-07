@@ -1,0 +1,16 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#Fabric.Fabric",
+    "@odata.id": "/redfish/v1/Fabrics/SAS",
+    "@odata.type": "#Fabric.v1_2_1.Fabric",
+    "Description": "A SAS fabric with ports",
+    "Endpoints": {
+        "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints"
+    },
+    "FabricType": "SAS",
+    "Id": "SAS",
+    "Name": "SAS Fabric",
+    "Status": {
+        "HealthRollup": "OK",
+        "State": "Enabled"
+    }
+}
