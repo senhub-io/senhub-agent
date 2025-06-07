@@ -106,7 +106,7 @@ func (c *StorageCollector) GetVendorType() VendorType {
 // IsSupported checks if a specific collection type is supported
 func (c *StorageCollector) IsSupported(collectionType CollectionType) bool {
 	switch collectionType {
-	case CollectionSystem, CollectionThermal, CollectionPower, CollectionStorage, CollectionNetworkAdapter:
+	case CollectionSystem, CollectionThermal, CollectionPower, CollectionProcessor, CollectionMemory, CollectionStorage, CollectionDrives, CollectionNetworkAdapter:
 		return true
 	default:
 		return false
@@ -119,7 +119,10 @@ func (c *StorageCollector) GetSupportedCollections() []CollectionType {
 		CollectionSystem,
 		CollectionThermal, 
 		CollectionPower,
+		CollectionProcessor,
+		CollectionMemory,
 		CollectionStorage,
+		CollectionDrives,
 		CollectionNetworkAdapter,
 	}
 }
