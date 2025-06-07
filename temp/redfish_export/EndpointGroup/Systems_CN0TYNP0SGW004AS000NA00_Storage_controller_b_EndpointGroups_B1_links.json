@@ -1,0 +1,16 @@
+{
+  "path": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/B1",
+  "type": "#EndpointGroup.v1_3_1.EndpointGroup",
+  "data": {
+    "depth": 7,
+    "id": "hostport_B1",
+    "name": "B1",
+    "path": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/B1",
+    "timestamp": "2025-06-06T18:08:27+02:00",
+    "type": "#EndpointGroup.v1_3_1.EndpointGroup"
+  },
+  "children": [
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/B1",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/B1"
+  ]
+}

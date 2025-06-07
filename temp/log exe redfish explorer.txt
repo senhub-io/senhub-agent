@@ -1,0 +1,160 @@
+C:\Program Files\SenHub\SenhubAgent>redfish-explorer.exe -depth 20 -no-verify-ssl -endpoint https://lb-me5024mgmt1.batistyl.fr -username adminme5024 -password Bat@-25#
+6:08PM INF TLS certificate verification disabled endpoint=https://lb-me5024mgmt1.batistyl.fr/redfish/v1/
+6:08PM INF Successfully connected to Redfish API endpoint=https://lb-me5024mgmt1.batistyl.fr/redfish/v1/
+Starting Redfish API exploration...
+Endpoint: https://lb-me5024mgmt1.batistyl.fr
+Export directory: redfish_export
+Maximum depth: 20
+Parallelism: 5
+Explored: / (type: ServiceRoot, depth: 0)
+Explored: /redfish/v1/ (type: ServiceRoot, depth: 1)
+Explored: /redfish/v1/SessionService/Sessions (type: SessionCollection, depth: 2)
+Explored: /redfish/v1/SessionService/Sessions/2224 (type: Session, depth: 3)
+Explored: /redfish/v1/SessionService/Sessions/2258 (type: Session, depth: 3)
+Explored: /redfish/v1/SessionService/Sessions/2257 (type: Session, depth: 3)
+Explored: /redfish/v1/TaskService (type: TaskService, depth: 2)
+Explored: /redfish/v1/TaskService/Tasks (type: TaskCollection, depth: 3)
+Explored: /redfish/v1/SessionService (type: SessionService, depth: 2)
+6:08PM WRN Failed to explore child path error="failed to parse JSON from /redfish/v1/Storage: unexpected end of JSON input" path=/redfish/v1/Storage
+Explored: /redfish/v1/Systems (type: ComputerSystemCollection, depth: 2)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00 (type: ComputerSystem, depth: 3)
+Explored: /redfish/v1/Chassis/enclosure_0 (type: Chassis, depth: 4)
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN/enclosure_0/Power: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN/enclosure_0/Power: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN/enclosure_0/Power
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN/enclosure_0/Thermal: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN/enclosure_0/Thermal: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN/enclosure_0/Thermal
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage (type: StorageCollection, depth: 4)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a (type: Storage, depth: 5)
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN/EndpointGroups: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN/EndpointGroups: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN/EndpointGroups
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN#/Redundancy/0: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN#/Redundancy/0: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN#/Redundancy/0
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN/controller_a: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN/controller_a: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN/controller_a
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN/controller_b: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN/controller_b: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN/controller_b
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN/UNKNOWN#/StorageControllers/0: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN/UNKNOWN#/StorageControllers/0: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN/UNKNOWN#/StorageControllers/0
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN/StorageGroups: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN/StorageGroups: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN/StorageGroups
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN/Volumes: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN/Volumes: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN/Volumes
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.0 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.1 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.2 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.3 (type: Drive, depth: 6)
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN/enclosure_0: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN/enclosure_0: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN/enclosure_0
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.4 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.5 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.6 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.7 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.8 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.9 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.10 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.11 (type: Drive, depth: 6)
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN/StoragePools: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN/StoragePools: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN/StoragePools
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b (type: Storage, depth: 5)
+6:08PM WRN Failed to explore child path error="failed to get data from /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b#/StorageControllers/0: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b#/StorageControllers/0: 404, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10707: Resource Not Found\"\n   }\n}" path=/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b#/StorageControllers/0
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.0 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.1 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.2 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.3 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.4 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.5 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.6 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.7 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.8 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.9 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.10 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.11 (type: Drive, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups (type: EndpointGroupCollection, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/A0 (type: EndpointGroup, depth: 7)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/A0 (type: Endpoint, depth: 8)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/A1 (type: EndpointGroup, depth: 7)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/A1 (type: Endpoint, depth: 8)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/A2 (type: EndpointGroup, depth: 7)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/A2 (type: Endpoint, depth: 8)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/A3 (type: EndpointGroup, depth: 7)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/A3 (type: Endpoint, depth: 8)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/B0 (type: EndpointGroup, depth: 7)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/B0 (type: Endpoint, depth: 8)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/B1 (type: EndpointGroup, depth: 7)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/B1 (type: Endpoint, depth: 8)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/B2 (type: EndpointGroup, depth: 7)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/B2 (type: Endpoint, depth: 8)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/B3 (type: EndpointGroup, depth: 7)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/B3 (type: Endpoint, depth: 8)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/5c0470e0d3bc5300 (type: EndpointGroup, depth: 7)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/5c0470e0d3bc5300 (type: Endpoint, depth: 8)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/5c0470e0d3bc4a00 (type: EndpointGroup, depth: 7)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/5c0470e0d3bc4a00 (type: Endpoint, depth: 8)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/5c0470e0d3bc4a01 (type: EndpointGroup, depth: 7)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/5c0470e0d3bc4a01 (type: Endpoint, depth: 8)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/EndpointGroups/5c0470e0d3bc5301 (type: EndpointGroup, depth: 7)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/5c0470e0d3bc5301 (type: Endpoint, depth: 8)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/StorageGroups (type: StorageGroupCollection, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/StorageGroups/00c0fffd07cd00005a728a6701000000_00c0fffd07cd00004d728a6701010000 (type: StorageGroup, depth: 7)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Volumes/00c0fffd07cd00005a728a6701000000 (type: Volume, depth: 8)
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN#/CapacitySources/0: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN#/CapacitySources/0: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN#/CapacitySources/0
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN/A: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN/A: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN/A
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/StoragePools (type: StoragePoolCollection, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/StoragePools/A (type: StoragePool, depth: 7)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/StoragePools/dgA01 (type: StoragePool, depth: 7)
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN/dgA01#/CapacitySources/0: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN/dgA01#/CapacitySources/0: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN/dgA01#/CapacitySources/0
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Volumes (type: VolumeCollection, depth: 6)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b#/Redundancy/0 (type: Storage, depth: 6)
+6:08PM WRN Failed to explore child path error="failed to get data from /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/UNKNOWN#/StorageControllers/0: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/UNKNOWN#/StorageControllers/0: 404, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10707: Resource Not Found\"\n   }\n}" path=/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/UNKNOWN#/StorageControllers/0
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/LogServices (type: LogServiceCollection, depth: 4)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/LogServices/controller_a (type: LogService, depth: 5)
+Explored: /redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/LogServices/controller_b (type: LogService, depth: 5)
+Explored: /redfish/v1/EventService (type: EventService, depth: 2)
+Explored: /redfish/v1/EventService/Subscriptions (type: EventDestinationCollection, depth: 3)
+Explored: /redfish/v1/Managers (type: ManagerCollection, depth: 2)
+Explored: /redfish/v1/Managers/controller_a (type: Manager, depth: 3)
+Explored: /redfish/v1/Managers/controller_a/EthernetInterfaces (type: EthernetInterfaceCollection, depth: 4)
+Explored: /redfish/v1/Managers/controller_a/EthernetInterfaces/Dedicated (type: EthernetInterface, depth: 5)
+Explored: /redfish/v1/Managers/controller_b (type: Manager, depth: 3)
+Explored: /redfish/v1/Managers/controller_b/EthernetInterfaces (type: EthernetInterfaceCollection, depth: 4)
+Explored: /redfish/v1/Managers/controller_b/EthernetInterfaces/Dedicated (type: EthernetInterface, depth: 5)
+Explored: /redfish/v1/Chassis (type: ChassisCollection, depth: 2)
+Explored: /redfish/v1/Fabrics (type: FabricCollection, depth: 2)
+Explored: /redfish/v1/Fabrics/SAS (type: Fabric, depth: 3)
+Explored: /redfish/v1/Fabrics/SAS/Endpoints (type: EndpointCollection, depth: 4)
+Explored: /redfish/v1/Fabrics/SAS/Endpoints/A0 (type: Endpoint, depth: 5)
+Explored: /redfish/v1/Fabrics/SAS/Endpoints/A1 (type: Endpoint, depth: 5)
+Explored: /redfish/v1/Fabrics/SAS/Endpoints/A2 (type: Endpoint, depth: 5)
+Explored: /redfish/v1/Fabrics/SAS/Endpoints/A3 (type: Endpoint, depth: 5)
+Explored: /redfish/v1/Fabrics/SAS/Endpoints/B0 (type: Endpoint, depth: 5)
+Explored: /redfish/v1/Fabrics/SAS/Endpoints/B1 (type: Endpoint, depth: 5)
+Explored: /redfish/v1/Fabrics/SAS/Endpoints/B2 (type: Endpoint, depth: 5)
+Explored: /redfish/v1/Fabrics/SAS/Endpoints/B3 (type: Endpoint, depth: 5)
+Explored: /redfish/v1/Fabrics/SAS/Endpoints/5c0470e0d3bc5300 (type: Endpoint, depth: 5)
+Explored: /redfish/v1/Fabrics/SAS/Endpoints/5c0470e0d3bc4a00 (type: Endpoint, depth: 5)
+Explored: /redfish/v1/Fabrics/SAS/Endpoints/5c0470e0d3bc4a01 (type: Endpoint, depth: 5)
+Explored: /redfish/v1/Fabrics/SAS/Endpoints/5c0470e0d3bc5301 (type: Endpoint, depth: 5)
+Explored: /redfish/v1/UpdateService (type: UpdateService, depth: 2)
+Explored: /redfish/v1/UpdateService/FirmwareInventory (type: SoftwareInventoryCollection, depth: 3)
+Explored: /redfish/v1/UpdateService/FirmwareInventory/firmware-bundle_0 (type: SoftwareInventory, depth: 4)
+Explored: /redfish/v1/UpdateService/FirmwareInventory/firmware-bundle_1 (type: SoftwareInventory, depth: 4)
+Explored: /redfish/v1/CompositionService (type: CompositionService, depth: 2)
+Explored: /redfish/v1/CompositionService/ResourceBlocks (type: ResourceBlockCollection, depth: 3)
+Explored: /redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.0 (type: ResourceBlock, depth: 4)
+Explored: /redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.1 (type: ResourceBlock, depth: 4)
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN/UNKNOWN/Drives/0.1: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN/UNKNOWN/Drives/0.1: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN/UNKNOWN/Drives/0.1
+Explored: /redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.2 (type: ResourceBlock, depth: 4)
+Explored: /redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.3 (type: ResourceBlock, depth: 4)
+Explored: /redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.4 (type: ResourceBlock, depth: 4)
+Explored: /redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.5 (type: ResourceBlock, depth: 4)
+Explored: /redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.6 (type: ResourceBlock, depth: 4)
+Explored: /redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.7 (type: ResourceBlock, depth: 4)
+Explored: /redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.8 (type: ResourceBlock, depth: 4)
+Explored: /redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.9 (type: ResourceBlock, depth: 4)
+Explored: /redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.10 (type: ResourceBlock, depth: 4)
+6:08PM WRN Failed to explore child path error="failed to get data from UNKNOWN/UNKNOWN/Drives/0.10: error response from https://lb-me5024mgmt1.batistyl.fr/redfish/v1/UNKNOWN/UNKNOWN/Drives/0.10: 400, {\n   \"error\": {\n\"code\": \"Base.1.8.GeneralError\",\n   \"message\": \"10025: Invalid URL\"\n   }\n}" path=UNKNOWN/UNKNOWN/Drives/0.10
+Explored: /redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.11 (type: ResourceBlock, depth: 4)
+Explored: /redfish/v1/CompositionService/ResourceBlocks/StoragePoolBlock-A (type: ResourceBlock, depth: 4)
+Explored: /redfish/v1/CompositionService/ResourceBlocks/VolumeBlock-00c0fffd07cd00005a728a6701000000 (type: ResourceBlock, depth: 4)
+Explored: /redfish/v1/CompositionService/ResourceZones (type: ZoneCollection, depth: 3)
+Explored: /redfish/v1/CompositionService/ResourceZones/HDD (type: Zone, depth: 4)
+Explored: /redfish/v1/Systems/Capabilities (type: Volume, depth: 5)
+Explored: /redfish/v1/CompositionService/ResourceZones/SSD (type: Zone, depth: 4)
+
+Exploration completed
+Total time: 34.5391539s
+Total requests: 144
+Error count: 0
+Results exported to: redfish_export
+Analyzing exported data...
+Analysis complete. Results exported to redfish_export\analysis

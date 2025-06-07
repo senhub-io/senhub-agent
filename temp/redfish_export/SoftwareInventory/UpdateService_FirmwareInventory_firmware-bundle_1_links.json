@@ -1,0 +1,15 @@
+{
+  "path": "/redfish/v1/UpdateService/FirmwareInventory/firmware-bundle_1",
+  "type": "#SoftwareInventory.v1_4_0.SoftwareInventory",
+  "data": {
+    "depth": 4,
+    "id": "firmware-bundle_1",
+    "name": "firmware-bundle",
+    "path": "/redfish/v1/UpdateService/FirmwareInventory/firmware-bundle_1",
+    "timestamp": "2025-06-06T18:08:38+02:00",
+    "type": "#SoftwareInventory.v1_4_0.SoftwareInventory"
+  },
+  "children": [
+    "/redfish/v1/UpdateService/FirmwareInventory/firmware-bundle_1"
+  ]
+}

@@ -1,0 +1,1173 @@
+{
+  "resource_types": {
+    "Chassis": {
+      "type": "Chassis",
+      "count": 1,
+      "paths": [
+        "\\Chassis\\Chassis_enclosure_0.json"
+      ],
+      "properties": [
+        "Location",
+        "Manufacturer",
+        "Name",
+        "Power",
+        "PowerState",
+        "SerialNumber",
+        "@odata.id",
+        "ChassisType",
+        "Id",
+        "LocationIndicatorActive",
+        "Status",
+        "Thermal",
+        "@odata.context",
+        "@odata.type"
+      ],
+      "common_fields": []
+    },
+    "ChassisCollection": {
+      "type": "ChassisCollection",
+      "count": 1,
+      "paths": [
+        "\\ChassisCollection\\Chassis.json"
+      ],
+      "properties": [
+        "Name",
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Members",
+        "Members@odata.count"
+      ],
+      "common_fields": []
+    },
+    "CompositionService": {
+      "type": "CompositionService",
+      "count": 1,
+      "paths": [
+        "\\CompositionService\\CompositionService.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "AllowOverprovisioning",
+        "ResourceZones",
+        "ServiceEnabled",
+        "Status",
+        "AllowZoneAffinity",
+        "Id",
+        "Name",
+        "ResourceBlocks"
+      ],
+      "common_fields": []
+    },
+    "ComputerSystem": {
+      "type": "ComputerSystem",
+      "count": 1,
+      "paths": [
+        "\\ComputerSystem\\Systems_CN0TYNP0SGW004AS000NA00.json"
+      ],
+      "properties": [
+        "Status",
+        "Actions",
+        "LogServices",
+        "Name",
+        "Storage",
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Id",
+        "Links",
+        "Manufacturer",
+        "SerialNumber"
+      ],
+      "common_fields": []
+    },
+    "ComputerSystemCollection": {
+      "type": "ComputerSystemCollection",
+      "count": 1,
+      "paths": [
+        "\\ComputerSystemCollection\\Systems.json"
+      ],
+      "properties": [
+        "@odata.type",
+        "Members",
+        "Members@odata.count",
+        "Name",
+        "@odata.context",
+        "@odata.id"
+      ],
+      "common_fields": []
+    },
+    "Drive": {
+      "type": "Drive",
+      "count": 24,
+      "paths": [
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_a_Drives_0.0.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_a_Drives_0.1.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_a_Drives_0.10.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_a_Drives_0.11.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_a_Drives_0.2.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_a_Drives_0.3.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_a_Drives_0.4.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_a_Drives_0.5.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_a_Drives_0.6.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_a_Drives_0.7.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_a_Drives_0.8.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_a_Drives_0.9.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Drives_0.0.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Drives_0.1.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Drives_0.10.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Drives_0.11.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Drives_0.2.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Drives_0.3.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Drives_0.4.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Drives_0.5.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Drives_0.6.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Drives_0.7.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Drives_0.8.json",
+        "\\Drive\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Drives_0.9.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "BlockSizeBytes",
+        "CapacityBytes",
+        "EncryptionAbility",
+        "EncryptionStatus",
+        "FailurePredicted",
+        "Id",
+        "Identifiers",
+        "Links",
+        "LocationIndicatorActive",
+        "Manufacturer",
+        "MediaType",
+        "Name",
+        "NegotiatedSpeedGbs",
+        "PartNumber",
+        "PhysicalLocation",
+        "Protocol",
+        "Revision",
+        "RotationSpeedRPM",
+        "SerialNumber",
+        "Status"
+      ],
+      "common_fields": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "BlockSizeBytes",
+        "CapacityBytes",
+        "EncryptionAbility",
+        "EncryptionStatus",
+        "FailurePredicted",
+        "Id",
+        "Identifiers",
+        "Links",
+        "LocationIndicatorActive",
+        "Manufacturer",
+        "MediaType",
+        "Name",
+        "NegotiatedSpeedGbs",
+        "PartNumber",
+        "PhysicalLocation",
+        "Protocol",
+        "Revision",
+        "RotationSpeedRPM",
+        "SerialNumber",
+        "Status"
+      ]
+    },
+    "Endpoint": {
+      "type": "Endpoint",
+      "count": 24,
+      "paths": [
+        "\\Endpoint\\Fabrics_SAS_Endpoints_5c0470e0d3bc4a00.json",
+        "\\Endpoint\\Fabrics_SAS_Endpoints_5c0470e0d3bc4a01.json",
+        "\\Endpoint\\Fabrics_SAS_Endpoints_5c0470e0d3bc5300.json",
+        "\\Endpoint\\Fabrics_SAS_Endpoints_5c0470e0d3bc5301.json",
+        "\\Endpoint\\Fabrics_SAS_Endpoints_A0.json",
+        "\\Endpoint\\Fabrics_SAS_Endpoints_A1.json",
+        "\\Endpoint\\Fabrics_SAS_Endpoints_A2.json",
+        "\\Endpoint\\Fabrics_SAS_Endpoints_A3.json",
+        "\\Endpoint\\Fabrics_SAS_Endpoints_B0.json",
+        "\\Endpoint\\Fabrics_SAS_Endpoints_B1.json",
+        "\\Endpoint\\Fabrics_SAS_Endpoints_B2.json",
+        "\\Endpoint\\Fabrics_SAS_Endpoints_B3.json",
+        "\\Endpoint\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Endpoints_5c0470e0d3bc4a00.json",
+        "\\Endpoint\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Endpoints_5c0470e0d3bc4a01.json",
+        "\\Endpoint\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Endpoints_5c0470e0d3bc5300.json",
+        "\\Endpoint\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Endpoints_5c0470e0d3bc5301.json",
+        "\\Endpoint\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Endpoints_A0.json",
+        "\\Endpoint\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Endpoints_A1.json",
+        "\\Endpoint\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Endpoints_A2.json",
+        "\\Endpoint\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Endpoints_A3.json",
+        "\\Endpoint\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Endpoints_B0.json",
+        "\\Endpoint\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Endpoints_B1.json",
+        "\\Endpoint\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Endpoints_B2.json",
+        "\\Endpoint\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Endpoints_B3.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Description",
+        "Id",
+        "Identifiers",
+        "Name",
+        "Status"
+      ],
+      "common_fields": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Description",
+        "Id",
+        "Identifiers",
+        "Name",
+        "Status"
+      ]
+    },
+    "EndpointCollection": {
+      "type": "EndpointCollection",
+      "count": 1,
+      "paths": [
+        "\\EndpointCollection\\Fabrics_SAS_Endpoints.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Members",
+        "Members@odata.count",
+        "Name"
+      ],
+      "common_fields": []
+    },
+    "EndpointGroup": {
+      "type": "EndpointGroup",
+      "count": 12,
+      "paths": [
+        "\\EndpointGroup\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_EndpointGroups_5c0470e0d3bc4a00.json",
+        "\\EndpointGroup\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_EndpointGroups_5c0470e0d3bc4a01.json",
+        "\\EndpointGroup\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_EndpointGroups_5c0470e0d3bc5300.json",
+        "\\EndpointGroup\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_EndpointGroups_5c0470e0d3bc5301.json",
+        "\\EndpointGroup\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_EndpointGroups_A0.json",
+        "\\EndpointGroup\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_EndpointGroups_A1.json",
+        "\\EndpointGroup\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_EndpointGroups_A2.json",
+        "\\EndpointGroup\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_EndpointGroups_A3.json",
+        "\\EndpointGroup\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_EndpointGroups_B0.json",
+        "\\EndpointGroup\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_EndpointGroups_B1.json",
+        "\\EndpointGroup\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_EndpointGroups_B2.json",
+        "\\EndpointGroup\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_EndpointGroups_B3.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Description",
+        "Endpoints",
+        "GroupType",
+        "Id",
+        "Name"
+      ],
+      "common_fields": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Description",
+        "Endpoints",
+        "GroupType",
+        "Id",
+        "Name"
+      ]
+    },
+    "EndpointGroupCollection": {
+      "type": "EndpointGroupCollection",
+      "count": 1,
+      "paths": [
+        "\\EndpointGroupCollection\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_EndpointGroups.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Members",
+        "Members@odata.count",
+        "Name"
+      ],
+      "common_fields": []
+    },
+    "EthernetInterface": {
+      "type": "EthernetInterface",
+      "count": 2,
+      "paths": [
+        "\\EthernetInterface\\Managers_controller_a_EthernetInterfaces_Dedicated.json",
+        "\\EthernetInterface\\Managers_controller_b_EthernetInterfaces_Dedicated.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "AutoNeg",
+        "FullDuplex",
+        "IPv4Addresses",
+        "IPv6Addresses",
+        "Id",
+        "InterfaceEnabled",
+        "Name",
+        "PermanentMACAddress",
+        "SpeedMbps",
+        "Status"
+      ],
+      "common_fields": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "AutoNeg",
+        "FullDuplex",
+        "IPv4Addresses",
+        "IPv6Addresses",
+        "Id",
+        "InterfaceEnabled",
+        "Name",
+        "PermanentMACAddress",
+        "SpeedMbps",
+        "Status"
+      ]
+    },
+    "EthernetInterfaceCollection": {
+      "type": "EthernetInterfaceCollection",
+      "count": 2,
+      "paths": [
+        "\\EthernetInterfaceCollection\\Managers_controller_a_EthernetInterfaces.json",
+        "\\EthernetInterfaceCollection\\Managers_controller_b_EthernetInterfaces.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Members",
+        "Members@odata.count",
+        "Name"
+      ],
+      "common_fields": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Members",
+        "Members@odata.count",
+        "Name"
+      ]
+    },
+    "EventDestinationCollection": {
+      "type": "EventDestinationCollection",
+      "count": 1,
+      "paths": [
+        "\\EventDestinationCollection\\EventService_Subscriptions.json"
+      ],
+      "properties": [
+        "@odata.id",
+        "@odata.type",
+        "Members",
+        "Members@odata.count",
+        "Name",
+        "@odata.context"
+      ],
+      "common_fields": []
+    },
+    "EventService": {
+      "type": "EventService",
+      "count": 1,
+      "paths": [
+        "\\EventService\\EventService.json"
+      ],
+      "properties": [
+        "Status",
+        "Subscriptions",
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Id",
+        "Name",
+        "ServiceEnabled"
+      ],
+      "common_fields": []
+    },
+    "Fabric": {
+      "type": "Fabric",
+      "count": 1,
+      "paths": [
+        "\\Fabric\\Fabrics_SAS.json"
+      ],
+      "properties": [
+        "@odata.id",
+        "@odata.type",
+        "Endpoints",
+        "FabricType",
+        "Name",
+        "Status",
+        "@odata.context",
+        "Description",
+        "Id"
+      ],
+      "common_fields": []
+    },
+    "FabricCollection": {
+      "type": "FabricCollection",
+      "count": 1,
+      "paths": [
+        "\\FabricCollection\\Fabrics.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Description",
+        "Members",
+        "Members@odata.count",
+        "Name"
+      ],
+      "common_fields": []
+    },
+    "LogService": {
+      "type": "LogService",
+      "count": 2,
+      "paths": [
+        "\\LogService\\Systems_CN0TYNP0SGW004AS000NA00_LogServices_controller_a.json",
+        "\\LogService\\Systems_CN0TYNP0SGW004AS000NA00_LogServices_controller_b.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Actions",
+        "Id",
+        "Name",
+        "ServiceEnabled",
+        "Status"
+      ],
+      "common_fields": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Actions",
+        "Id",
+        "Name",
+        "ServiceEnabled",
+        "Status"
+      ]
+    },
+    "LogServiceCollection": {
+      "type": "LogServiceCollection",
+      "count": 1,
+      "paths": [
+        "\\LogServiceCollection\\Systems_CN0TYNP0SGW004AS000NA00_LogServices.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Members",
+        "Members@odata.count",
+        "Name"
+      ],
+      "common_fields": []
+    },
+    "Manager": {
+      "type": "Manager",
+      "count": 2,
+      "paths": [
+        "\\Manager\\Managers_controller_a.json",
+        "\\Manager\\Managers_controller_b.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "EthernetInterfaces",
+        "FirmwareVersion",
+        "Id",
+        "ManagerType",
+        "Name",
+        "Status"
+      ],
+      "common_fields": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "EthernetInterfaces",
+        "FirmwareVersion",
+        "Id",
+        "ManagerType",
+        "Name",
+        "Status"
+      ]
+    },
+    "ManagerCollection": {
+      "type": "ManagerCollection",
+      "count": 1,
+      "paths": [
+        "\\ManagerCollection\\Managers.json"
+      ],
+      "properties": [
+        "Members@odata.count",
+        "Name",
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Members"
+      ],
+      "common_fields": []
+    },
+    "ResourceBlock": {
+      "type": "ResourceBlock",
+      "count": 14,
+      "paths": [
+        "\\ResourceBlock\\CompositionService_ResourceBlocks_DriveBlock-0.0.json",
+        "\\ResourceBlock\\CompositionService_ResourceBlocks_DriveBlock-0.1.json",
+        "\\ResourceBlock\\CompositionService_ResourceBlocks_DriveBlock-0.10.json",
+        "\\ResourceBlock\\CompositionService_ResourceBlocks_DriveBlock-0.11.json",
+        "\\ResourceBlock\\CompositionService_ResourceBlocks_DriveBlock-0.2.json",
+        "\\ResourceBlock\\CompositionService_ResourceBlocks_DriveBlock-0.3.json",
+        "\\ResourceBlock\\CompositionService_ResourceBlocks_DriveBlock-0.4.json",
+        "\\ResourceBlock\\CompositionService_ResourceBlocks_DriveBlock-0.5.json",
+        "\\ResourceBlock\\CompositionService_ResourceBlocks_DriveBlock-0.6.json",
+        "\\ResourceBlock\\CompositionService_ResourceBlocks_DriveBlock-0.7.json",
+        "\\ResourceBlock\\CompositionService_ResourceBlocks_DriveBlock-0.8.json",
+        "\\ResourceBlock\\CompositionService_ResourceBlocks_DriveBlock-0.9.json",
+        "\\ResourceBlock\\CompositionService_ResourceBlocks_StoragePoolBlock-A.json",
+        "\\ResourceBlock\\CompositionService_ResourceBlocks_VolumeBlock-00c0fffd07cd00005a728a6701000000.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "CompositionStatus",
+        "Drives",
+        "Id",
+        "Name",
+        "ResourceBlockType",
+        "Status",
+        "Storage"
+      ],
+      "common_fields": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "CompositionStatus",
+        "Drives",
+        "Id",
+        "Name",
+        "ResourceBlockType",
+        "Status",
+        "Storage"
+      ]
+    },
+    "ResourceBlockCollection": {
+      "type": "ResourceBlockCollection",
+      "count": 1,
+      "paths": [
+        "\\ResourceBlockCollection\\CompositionService_ResourceBlocks.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Members",
+        "Members@odata.count",
+        "Name"
+      ],
+      "common_fields": []
+    },
+    "ServiceRoot": {
+      "type": "ServiceRoot",
+      "count": 1,
+      "paths": [
+        "\\ServiceRoot\\root.json"
+      ],
+      "properties": [
+        "Systems",
+        "UUID",
+        "@odata.id",
+        "EventService",
+        "Id",
+        "RedfishVersion",
+        "Tasks",
+        "UpdateService",
+        "Fabrics",
+        "Managers",
+        "Name",
+        "@odata.context",
+        "Chassis",
+        "CompositionService",
+        "Storage",
+        "@odata.type",
+        "Links",
+        "Oem",
+        "SessionService"
+      ],
+      "common_fields": []
+    },
+    "Session": {
+      "type": "Session",
+      "count": 3,
+      "paths": [
+        "\\Session\\SessionService_Sessions_2224.json",
+        "\\Session\\SessionService_Sessions_2257.json",
+        "\\Session\\SessionService_Sessions_2258.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Description",
+        "Id",
+        "Name",
+        "UserName"
+      ],
+      "common_fields": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Description",
+        "Id",
+        "Name",
+        "UserName"
+      ]
+    },
+    "SessionCollection": {
+      "type": "SessionCollection",
+      "count": 1,
+      "paths": [
+        "\\SessionCollection\\SessionService_Sessions.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Members",
+        "Members@odata.count",
+        "Name"
+      ],
+      "common_fields": []
+    },
+    "SessionService": {
+      "type": "SessionService",
+      "count": 1,
+      "paths": [
+        "\\SessionService\\SessionService.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Id",
+        "Name",
+        "ServiceEnabled",
+        "Sessions"
+      ],
+      "common_fields": []
+    },
+    "SoftwareInventory": {
+      "type": "SoftwareInventory",
+      "count": 2,
+      "paths": [
+        "\\SoftwareInventory\\UpdateService_FirmwareInventory_firmware-bundle_0.json",
+        "\\SoftwareInventory\\UpdateService_FirmwareInventory_firmware-bundle_1.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Id",
+        "Measurement",
+        "Name",
+        "ReleaseDate",
+        "Status",
+        "Updateable",
+        "Version"
+      ],
+      "common_fields": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Id",
+        "Measurement",
+        "Name",
+        "ReleaseDate",
+        "Status",
+        "Updateable",
+        "Version"
+      ]
+    },
+    "SoftwareInventoryCollection": {
+      "type": "SoftwareInventoryCollection",
+      "count": 1,
+      "paths": [
+        "\\SoftwareInventoryCollection\\UpdateService_FirmwareInventory.json"
+      ],
+      "properties": [
+        "Name",
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Members",
+        "Members@odata.count"
+      ],
+      "common_fields": []
+    },
+    "Storage": {
+      "type": "Storage",
+      "count": 3,
+      "paths": [
+        "\\Storage\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_a.json",
+        "\\Storage\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b#_Redundancy_0.json",
+        "\\Storage\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Drives",
+        "EndpointGroups",
+        "Id",
+        "Name",
+        "Oem",
+        "Redundancy",
+        "Status",
+        "StorageControllers",
+        "StorageGroups",
+        "StoragePools",
+        "Volumes"
+      ],
+      "common_fields": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Drives",
+        "EndpointGroups",
+        "Id",
+        "Name",
+        "Oem",
+        "Redundancy",
+        "Status",
+        "StorageControllers",
+        "StorageGroups",
+        "StoragePools",
+        "Volumes"
+      ]
+    },
+    "StorageCollection": {
+      "type": "StorageCollection",
+      "count": 1,
+      "paths": [
+        "\\StorageCollection\\Systems_CN0TYNP0SGW004AS000NA00_Storage.json"
+      ],
+      "properties": [
+        "@odata.id",
+        "@odata.type",
+        "Members",
+        "Members@odata.count",
+        "Name",
+        "@odata.context"
+      ],
+      "common_fields": []
+    },
+    "StorageGroup": {
+      "type": "StorageGroup",
+      "count": 1,
+      "paths": [
+        "\\StorageGroup\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_StorageGroups_00c0fffd07cd00005a728a6701000000_00c0fffd07cd00004d728a6701010000.json"
+      ],
+      "properties": [
+        "Status",
+        "VolumesAreExposed",
+        "@odata.id",
+        "@odata.type",
+        "ClientEndpointGroups",
+        "Id",
+        "ServerEndpointGroups",
+        "@odata.context",
+        "AccessState",
+        "Description",
+        "MappedVolumes",
+        "Name"
+      ],
+      "common_fields": []
+    },
+    "StorageGroupCollection": {
+      "type": "StorageGroupCollection",
+      "count": 1,
+      "paths": [
+        "\\StorageGroupCollection\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_StorageGroups.json"
+      ],
+      "properties": [
+        "Members",
+        "Members@odata.count",
+        "Name",
+        "@odata.context",
+        "@odata.id",
+        "@odata.type"
+      ],
+      "common_fields": []
+    },
+    "StoragePool": {
+      "type": "StoragePool",
+      "count": 2,
+      "paths": [
+        "\\StoragePool\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_StoragePools_A.json",
+        "\\StoragePool\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_StoragePools_dgA01.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "AllocatedPools",
+        "AllocatedVolumes",
+        "Capacity",
+        "CapacitySources",
+        "Description",
+        "IOStatistics",
+        "Id",
+        "MaxBlockSizeBytes",
+        "Name",
+        "RemainingCapacityPercent",
+        "Status",
+        "SupportedRAIDTypes"
+      ],
+      "common_fields": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "AllocatedPools",
+        "AllocatedVolumes",
+        "Capacity",
+        "CapacitySources",
+        "Description",
+        "IOStatistics",
+        "Id",
+        "MaxBlockSizeBytes",
+        "Name",
+        "RemainingCapacityPercent",
+        "Status",
+        "SupportedRAIDTypes"
+      ]
+    },
+    "StoragePoolCollection": {
+      "type": "StoragePoolCollection",
+      "count": 1,
+      "paths": [
+        "\\StoragePoolCollection\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_StoragePools.json"
+      ],
+      "properties": [
+        "@odata.type",
+        "Members",
+        "Members@odata.count",
+        "Name",
+        "@odata.context",
+        "@odata.id"
+      ],
+      "common_fields": []
+    },
+    "TaskCollection": {
+      "type": "TaskCollection",
+      "count": 1,
+      "paths": [
+        "\\TaskCollection\\TaskService_Tasks.json"
+      ],
+      "properties": [
+        "Members@odata.count",
+        "Name",
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Members"
+      ],
+      "common_fields": []
+    },
+    "TaskService": {
+      "type": "TaskService",
+      "count": 1,
+      "paths": [
+        "\\TaskService\\TaskService.json"
+      ],
+      "properties": [
+        "Status",
+        "Tasks",
+        "Name",
+        "ServiceEnabled",
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "CompletedTaskOverWritePolicy",
+        "Id",
+        "LifeCycleEventOnTaskStateChange"
+      ],
+      "common_fields": []
+    },
+    "UpdateService": {
+      "type": "UpdateService",
+      "count": 1,
+      "paths": [
+        "\\UpdateService\\UpdateService.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.type",
+        "Actions",
+        "Id",
+        "Name",
+        "@odata.id",
+        "FirmwareInventory",
+        "MultipartHttpPushUri",
+        "ServiceEnabled",
+        "Status"
+      ],
+      "common_fields": []
+    },
+    "Volume": {
+      "type": "Volume",
+      "count": 2,
+      "paths": [
+        "\\Volume\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Volumes_00c0fffd07cd00005a728a6701000000.json",
+        "\\Volume\\Systems_Capabilities.json"
+      ],
+      "properties": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "AccessCapabilities",
+        "AccessCapabilities@Redfish.RequiredOnCreate",
+        "AccessCapabilities@Redfish.SetOnlyOnCreate",
+        "AllocatedPools@Redfish.RequiredOnCreate",
+        "AllocatedPools@Redfish.SetOnlyOnCreate",
+        "BlockSizeBytes",
+        "Capacity",
+        "CapacityBytes",
+        "CapacityBytes@Redfish.RequiredOnCreate",
+        "CapacityBytes@Redfish.SetOnlyOnCreate",
+        "CapacitySources",
+        "Description@Redfish.RequiredOnCreate",
+        "Description@Redfish.SetOnlyOnCreate",
+        "Encrypted",
+        "EncryptionTypes",
+        "IOStatistics",
+        "Id",
+        "Links",
+        "LogicalUnitNumber@Redfish.RequiredOnCreate",
+        "LogicalUnitNumber@Redfish.SetOnlyOnCreate",
+        "Name",
+        "Name@Redfish.RequiredOnCreate",
+        "Name@Redfish.SetOnlyOnCreate",
+        "RAIDType@Redfish.RequiredOnCreate",
+        "RAIDType@Redfish.SetOnlyOnCreate",
+        "RemainingCapacityPercent",
+        "ResourceBlocks@Redfish.RequiredOnCreate",
+        "ResourceBlocks@Redfish.SetOnlyOnCreate",
+        "Status",
+        "WriteCachePolicy"
+      ],
+      "common_fields": [
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "AccessCapabilities",
+        "AccessCapabilities@Redfish.RequiredOnCreate",
+        "AccessCapabilities@Redfish.SetOnlyOnCreate",
+        "AllocatedPools@Redfish.RequiredOnCreate",
+        "AllocatedPools@Redfish.SetOnlyOnCreate",
+        "BlockSizeBytes",
+        "Capacity",
+        "CapacityBytes",
+        "CapacityBytes@Redfish.RequiredOnCreate",
+        "CapacityBytes@Redfish.SetOnlyOnCreate",
+        "CapacitySources",
+        "Description@Redfish.RequiredOnCreate",
+        "Description@Redfish.SetOnlyOnCreate",
+        "Encrypted",
+        "EncryptionTypes",
+        "IOStatistics",
+        "Id",
+        "Links",
+        "LogicalUnitNumber@Redfish.RequiredOnCreate",
+        "LogicalUnitNumber@Redfish.SetOnlyOnCreate",
+        "Name",
+        "Name@Redfish.RequiredOnCreate",
+        "Name@Redfish.SetOnlyOnCreate",
+        "RAIDType@Redfish.RequiredOnCreate",
+        "RAIDType@Redfish.SetOnlyOnCreate",
+        "RemainingCapacityPercent",
+        "ResourceBlocks@Redfish.RequiredOnCreate",
+        "ResourceBlocks@Redfish.SetOnlyOnCreate",
+        "Status",
+        "WriteCachePolicy"
+      ]
+    },
+    "VolumeCollection": {
+      "type": "VolumeCollection",
+      "count": 1,
+      "paths": [
+        "\\VolumeCollection\\Systems_CN0TYNP0SGW004AS000NA00_Storage_controller_b_Volumes.json"
+      ],
+      "properties": [
+        "Name",
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Members",
+        "Members@odata.count"
+      ],
+      "common_fields": []
+    },
+    "Zone": {
+      "type": "Zone",
+      "count": 2,
+      "paths": [
+        "\\Zone\\CompositionService_ResourceZones_HDD.json",
+        "\\Zone\\CompositionService_ResourceZones_SSD.json"
+      ],
+      "properties": [
+        "@Redfish.CollectionCapabilities",
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Id",
+        "Links",
+        "Name",
+        "Status"
+      ],
+      "common_fields": [
+        "@Redfish.CollectionCapabilities",
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Id",
+        "Links",
+        "Name",
+        "Status"
+      ]
+    },
+    "ZoneCollection": {
+      "type": "ZoneCollection",
+      "count": 1,
+      "paths": [
+        "\\ZoneCollection\\CompositionService_ResourceZones.json"
+      ],
+      "properties": [
+        "Members@odata.count",
+        "Name",
+        "@odata.context",
+        "@odata.id",
+        "@odata.type",
+        "Members"
+      ],
+      "common_fields": []
+    },
+    "unknown": {
+      "type": "unknown",
+      "count": 1,
+      "paths": [
+        "\\index.json"
+      ],
+      "properties": [
+        "max_depth",
+        "duration",
+        "visited_links",
+        "total_links",
+        "total_requests",
+        "error_count"
+      ],
+      "common_fields": []
+    }
+  },
+  "total_resource_count": 144,
+  "unique_resource_types": 42,
+  "schema_types": {
+    "Chassis.v1_15_0.Chassis": 1,
+    "ChassisCollection.ChassisCollection": 1,
+    "CompositionService.v1_1_2.CompositionService": 1,
+    "ComputerSystem.v1_14_0.ComputerSystem": 1,
+    "ComputerSystemCollection.ComputerSystemCollection": 1,
+    "Drive.v1_12_0.Drive": 24,
+    "Endpoint.v1_5_1.Endpoint": 24,
+    "EndpointCollection.EndpointCollection": 1,
+    "EndpointGroup.v1_3_1.EndpointGroup": 12,
+    "EndpointGroupCollection.EndpointGroupCollection": 1,
+    "EthernetInterface.v1_6_3.EthernetInterface": 2,
+    "EthernetInterfaceCollection.EthernetInterfaceCollection": 2,
+    "EventDestinationCollection.EventDestinationCollection": 1,
+    "EventService.v1_7_1.EventService": 1,
+    "Fabric.v1_2_1.Fabric": 1,
+    "FabricCollection.FabricCollection": 1,
+    "LogService.v1_2_0.LogService": 2,
+    "LogServiceCollection.LogServiceCollection": 1,
+    "Manager.v1_11_0.Manager": 2,
+    "ManagerCollection.ManagerCollection": 1,
+    "ResourceBlock.v1_3_4.ResourceBlock": 14,
+    "ResourceBlockCollection.ResourceBlockCollection": 1,
+    "ServiceRoot.v1_9_0.ServiceRoot": 1,
+    "Session.v1_3_0.Session": 3,
+    "SessionCollection.SessionCollection": 1,
+    "SessionService.v1_1_8.SessionService": 1,
+    "SoftwareInventory.v1_4_0.SoftwareInventory": 2,
+    "SoftwareInventoryCollection.SoftwareInventoryCollection": 1,
+    "Storage.v1_10_0.Storage": 3,
+    "StorageCollection.StorageCollection": 1,
+    "StorageGroup.v1_5_0.StorageGroup": 1,
+    "StorageGroupCollection.StorageGroupCollection": 1,
+    "StoragePool.v1_5_0.StoragePool": 2,
+    "StoragePoolCollection.StoragePoolCollection": 1,
+    "TaskCollection.TaskCollection": 1,
+    "TaskService.v1_1_6.TaskService": 1,
+    "UpdateService.v1_8_3.UpdateService": 1,
+    "Volume.v1_6_1.Volume": 2,
+    "VolumeCollection.VolumeCollection": 1,
+    "Zone.v1_6_0.Zone": 2,
+    "ZoneCollection.ZoneCollection": 1
+  },
+  "odata_types": {
+    "#Chassis.v1_15_0.Chassis": 1,
+    "#ChassisCollection.ChassisCollection": 1,
+    "#CompositionService.v1_1_2.CompositionService": 1,
+    "#ComputerSystem.v1_14_0.ComputerSystem": 1,
+    "#ComputerSystemCollection.ComputerSystemCollection": 1,
+    "#Drive.v1_12_0.Drive": 24,
+    "#Endpoint.v1_5_1.Endpoint": 24,
+    "#EndpointCollection.EndpointCollection": 1,
+    "#EndpointGroup.v1_3_1.EndpointGroup": 12,
+    "#EndpointGroupCollection.EndpointGroupCollection": 1,
+    "#EthernetInterface.v1_6_3.EthernetInterface": 2,
+    "#EthernetInterfaceCollection.EthernetInterfaceCollection": 2,
+    "#EventDestinationCollection.EventDestinationCollection": 1,
+    "#EventService.v1_7_1.EventService": 1,
+    "#Fabric.v1_2_1.Fabric": 1,
+    "#FabricCollection.FabricCollection": 1,
+    "#LogService.v1_2_0.LogService": 2,
+    "#LogServiceCollection.LogServiceCollection": 1,
+    "#Manager.v1_11_0.Manager": 2,
+    "#ManagerCollection.ManagerCollection": 1,
+    "#ResourceBlock.v1_3_4.ResourceBlock": 14,
+    "#ResourceBlockCollection.ResourceBlockCollection": 1,
+    "#ServiceRoot.v1_9_0.ServiceRoot": 1,
+    "#Session.v1_3_0.Session": 3,
+    "#SessionCollection.SessionCollection": 1,
+    "#SessionService.v1_1_8.SessionService": 1,
+    "#SoftwareInventory.v1_4_0.SoftwareInventory": 2,
+    "#SoftwareInventoryCollection.SoftwareInventoryCollection": 1,
+    "#Storage.v1_10_0.Storage": 3,
+    "#StorageCollection.StorageCollection": 1,
+    "#StorageGroup.v1_5_0.StorageGroup": 1,
+    "#StorageGroupCollection.StorageGroupCollection": 1,
+    "#StoragePool.v1_5_0.StoragePool": 2,
+    "#StoragePoolCollection.StoragePoolCollection": 1,
+    "#TaskCollection.TaskCollection": 1,
+    "#TaskService.v1_1_6.TaskService": 1,
+    "#UpdateService.v1_8_3.UpdateService": 1,
+    "#Volume.v1_6_1.Volume": 2,
+    "#VolumeCollection.VolumeCollection": 1,
+    "#Zone.v1_6_0.Zone": 2,
+    "#ZoneCollection.ZoneCollection": 1
+  }
+}

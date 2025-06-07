@@ -223,13 +223,17 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							Model         string  `json:"Model"`
 							Manufacturer  string  `json:"Manufacturer"`
 							SerialNumber  string  `json:"SerialNumber"`
+							PartNumber    string  `json:"PartNumber"`
+							Revision      string  `json:"Revision"`
 							MediaType     string  `json:"MediaType"`
 							CapacityBytes int64   `json:"CapacityBytes"`
 							Protocol      string  `json:"Protocol"`
 							Status        *Status `json:"Status"`
 							BlockSizeBytes int64  `json:"BlockSizeBytes"`
 							RotationSpeedRPM int  `json:"RotationSpeedRPM"`
+							NegotiatedSpeedGbs float64 `json:"NegotiatedSpeedGbs"`
 							FailurePredicted bool  `json:"FailurePredicted"`
+							LocationIndicatorActive bool `json:"LocationIndicatorActive"`
 							PhysicalLocation struct {
 								PartLocation struct {
 									LocationType string `json:"LocationType"`
@@ -268,6 +272,12 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 						}
 						if driveInfo.Protocol != "" {
 							driveTags = append(driveTags, tags.Tag{Key: "protocol", Value: driveInfo.Protocol})
+						}
+						if driveInfo.PartNumber != "" {
+							driveTags = append(driveTags, tags.Tag{Key: "part_number", Value: driveInfo.PartNumber})
+						}
+						if driveInfo.Revision != "" {
+							driveTags = append(driveTags, tags.Tag{Key: "firmware_version", Value: driveInfo.Revision})
 						}
 
 						// Extract additional properties from raw data
@@ -348,6 +358,38 @@ func (c *StorageCollector) collectStorageMetrics(ctx context.Context, timestamp 
 							Value:     float32(failurePredicted),
 							Tags:      driveTags,
 						})
+
+						// Drive negotiated speed (Gbps)
+						if driveInfo.NegotiatedSpeedGbs > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.storage.drive.speed_gbs",
+								Timestamp: timestamp,
+								Value:     float32(driveInfo.NegotiatedSpeedGbs),
+								Tags:      driveTags,
+							})
+						}
+
+						// Drive location indicator active status
+						locationIndicator := 0.0
+						if driveInfo.LocationIndicatorActive {
+							locationIndicator = 1.0
+						}
+						datapoints = append(datapoints, data_store.DataPoint{
+							Name:      "hardware.storage.drive.location_indicator_active",
+							Timestamp: timestamp,
+							Value:     float32(locationIndicator),
+							Tags:      driveTags,
+						})
+
+						// Drive block size bytes
+						if driveInfo.BlockSizeBytes > 0 {
+							datapoints = append(datapoints, data_store.DataPoint{
+								Name:      "hardware.storage.drive.block_size_bytes",
+								Timestamp: timestamp,
+								Value:     float32(driveInfo.BlockSizeBytes),
+								Tags:      driveTags,
+							})
+						}
 					}
 				}
 			}

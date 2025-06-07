@@ -1,0 +1,33 @@
+{
+  "path": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/StoragePools/dgA01",
+  "type": "#StoragePool.v1_5_0.StoragePool",
+  "data": {
+    "depth": 7,
+    "id": "00c0fffd07cd000025228a6700000000",
+    "name": "dgA01",
+    "path": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/StoragePools/dgA01",
+    "status": {
+      "Health": "OK",
+      "State": "Enabled"
+    },
+    "timestamp": "2025-06-06T18:08:30+02:00",
+    "type": "#StoragePool.v1_5_0.StoragePool"
+  },
+  "children": [
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/StoragePools/dgA01",
+    "UNKNOWN",
+    "UNKNOWN/dgA01#/CapacitySources/0",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.0",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.1",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.2",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.3",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.4",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.5",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.6",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.7",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.8",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.9",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.10",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.11"
+  ]
+}

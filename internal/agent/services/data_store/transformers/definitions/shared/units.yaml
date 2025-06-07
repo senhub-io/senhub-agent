@@ -71,6 +71,12 @@ units:
     aliases: ["rpm", "RPM", "rev/min"]
     standard: "rpm"
     description: "Revolutions per minute"
+    
+  # Speed units
+  gbps:
+    aliases: ["Gbps", "gbps", "GBps", "gb/s"]
+    standard: "Gbps"
+    description: "Gigabits per second"
 
   # Dimensionless/counters
   count:
