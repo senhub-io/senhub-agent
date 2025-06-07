@@ -1,0 +1,22 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#ResourceBlock.ResourceBlock",
+    "@odata.id": "/redfish/v1/CompositionService/ResourceBlocks/StoragePoolBlock-A",
+    "@odata.type": "#ResourceBlock.v1_3_4.ResourceBlock",
+    "CompositionStatus": {
+        "CompositionState": "ComposedAndAvailable"
+    },
+    "Id": "00c0fffd07cd000026228a6701000000",
+    "Name": "A",
+    "ResourceBlockType": [
+        "Storage",
+        "Expansion"
+    ],
+    "Status": {
+        "Health": "OK"
+    },
+    "Storage": [
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a"
+        }
+    ]
+}

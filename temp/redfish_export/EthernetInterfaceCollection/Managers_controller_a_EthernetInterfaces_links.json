@@ -1,0 +1,16 @@
+{
+  "path": "/redfish/v1/Managers/controller_a/EthernetInterfaces",
+  "type": "#EthernetInterfaceCollection.EthernetInterfaceCollection",
+  "data": {
+    "depth": 4,
+    "id": null,
+    "name": "Ethernet Interface Collection",
+    "path": "/redfish/v1/Managers/controller_a/EthernetInterfaces",
+    "timestamp": "2025-06-06T18:08:35+02:00",
+    "type": "#EthernetInterfaceCollection.EthernetInterfaceCollection"
+  },
+  "children": [
+    "/redfish/v1/Managers/controller_a/EthernetInterfaces",
+    "/redfish/v1/Managers/controller_a/EthernetInterfaces/Dedicated"
+  ]
+}

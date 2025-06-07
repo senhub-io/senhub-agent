@@ -1,0 +1,40 @@
+vendor: "Dell"
+product_line: "PowerVault ME"
+models: ["ME5024", "ME5012", "ME5084"]
+
+corrections:
+  # Dell PowerVault ME capacity values are reported 1000x too large
+  - metric_pattern: "hardware.storage.*.capacity.*"
+    vendor_filter:
+      manufacturer: "Dell"
+      model: "PowerVault"
+    detection_rule: "value > 1e13"  # > 10 TB is suspicious for standard storage
+    correction_factor: 0.001  # Divide by 1000 to correct scale (decimal units)
+    reason: "Dell ME API reports capacity values in wrong unit scale (observed 1000x inflation)"
+    enabled: true
+    
+  # Ensure IOPS are properly labeled and scaled
+  - metric_pattern: "hardware.storage.*.io.reads"
+    vendor_filter:
+      manufacturer: "Dell"
+    detection_rule: "always"
+    correction_factor: 1.0  # No value change
+    reason: "Standardize IOPS unit naming for Dell devices"
+    enabled: true
+    
+  - metric_pattern: "hardware.storage.*.io.writes"
+    vendor_filter:
+      manufacturer: "Dell"
+    detection_rule: "always"
+    correction_factor: 1.0  # No value change
+    reason: "Standardize IOPS unit naming for Dell devices"
+    enabled: true
+
+  # Fix any anomalous speed values
+  - metric_pattern: "hardware.storage.drive.speed_gbs"
+    vendor_filter:
+      manufacturer: "Dell"
+    detection_rule: "value > 1000"  # > 1000 Gbps is suspicious
+    correction_factor: 0.001  # Likely reported in Mbps instead of Gbps
+    reason: "Speed values reported in wrong unit (Mbps instead of Gbps)"
+    enabled: true

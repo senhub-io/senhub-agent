@@ -1,0 +1,18 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#Endpoint.Endpoint",
+    "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/5c0470e0d3bc5301",
+    "@odata.type": "#Endpoint.v1_5_1.Endpoint",
+    "Description": "This instance represents an initiator",
+    "Id": "5c0470e0d3bc5301",
+    "Identifiers": [
+        {
+            "DurableName": "5c0470e0d3bc5301",
+            "DurableNameFormat": "NAA"
+        }
+    ],
+    "Name": "I3-ESX21-CTRL1",
+    "Status": {
+        "Health": "OK",
+        "State": "Enabled"
+    }
+}

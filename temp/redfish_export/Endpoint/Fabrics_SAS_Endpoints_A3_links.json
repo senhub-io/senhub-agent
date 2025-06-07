@@ -1,0 +1,15 @@
+{
+  "path": "/redfish/v1/Fabrics/SAS/Endpoints/A3",
+  "type": "#Endpoint.v1_5_1.Endpoint",
+  "data": {
+    "depth": 5,
+    "id": "A3",
+    "name": "A3",
+    "path": "/redfish/v1/Fabrics/SAS/Endpoints/A3",
+    "timestamp": "2025-06-06T18:08:37+02:00",
+    "type": "#Endpoint.v1_5_1.Endpoint"
+  },
+  "children": [
+    "/redfish/v1/Fabrics/SAS/Endpoints/A3"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "path": "/redfish/v1/",
+  "type": "#ServiceRoot.v1_9_0.ServiceRoot",
+  "data": {
+    "depth": 1,
+    "id": "RootService",
+    "name": "Root Service",
+    "path": "/redfish/v1/",
+    "timestamp": "2025-06-06T18:08:09+02:00",
+    "type": "#ServiceRoot.v1_9_0.ServiceRoot"
+  },
+  "children": [
+    "/redfish/v1/",
+    "/redfish/v1/SessionService/Sessions",
+    "/redfish/v1/TaskService",
+    "/redfish/v1/SessionService",
+    "/redfish/v1/Storage",
+    "/redfish/v1/Systems",
+    "/redfish/v1/EventService",
+    "/redfish/v1/Managers",
+    "/redfish/v1/Chassis",
+    "/redfish/v1/Fabrics",
+    "/redfish/v1/UpdateService",
+    "/redfish/v1/CompositionService"
+  ]
+}

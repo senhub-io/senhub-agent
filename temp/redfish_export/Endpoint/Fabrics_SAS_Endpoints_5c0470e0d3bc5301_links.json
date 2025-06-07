@@ -1,0 +1,15 @@
+{
+  "path": "/redfish/v1/Fabrics/SAS/Endpoints/5c0470e0d3bc5301",
+  "type": "#Endpoint.v1_5_1.Endpoint",
+  "data": {
+    "depth": 5,
+    "id": "5c0470e0d3bc5301",
+    "name": "Exception(1): [json.exception.type_error.305] cannot use operator[] with a string argument with array-ESX21-CTRL1",
+    "path": "/redfish/v1/Fabrics/SAS/Endpoints/5c0470e0d3bc5301",
+    "timestamp": "2025-06-06T18:08:38+02:00",
+    "type": "#Endpoint.v1_5_1.Endpoint"
+  },
+  "children": [
+    "/redfish/v1/Fabrics/SAS/Endpoints/5c0470e0d3bc5301"
+  ]
+}

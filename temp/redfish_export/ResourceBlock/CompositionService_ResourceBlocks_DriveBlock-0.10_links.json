@@ -1,0 +1,16 @@
+{
+  "path": "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.10",
+  "type": "#ResourceBlock.v1_3_4.ResourceBlock",
+  "data": {
+    "depth": 4,
+    "id": "S6LDNA0XA02183",
+    "name": "0.10",
+    "path": "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.10",
+    "timestamp": "2025-06-06T18:08:42+02:00",
+    "type": "#ResourceBlock.v1_3_4.ResourceBlock"
+  },
+  "children": [
+    "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.10",
+    "UNKNOWN/UNKNOWN/Drives/0.10"
+  ]
+}

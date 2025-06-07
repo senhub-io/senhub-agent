@@ -1,0 +1,18 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#Endpoint.Endpoint",
+    "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/A2",
+    "@odata.type": "#Endpoint.v1_5_1.Endpoint",
+    "Description": "This instance represents a port",
+    "Id": "A2",
+    "Identifiers": [
+        {
+            "DurableName": "hostport_A2",
+            "DurableNameFormat": "NAA"
+        }
+    ],
+    "Name": "A2",
+    "Status": {
+        "Health": "OK",
+        "State": "Enabled"
+    }
+}

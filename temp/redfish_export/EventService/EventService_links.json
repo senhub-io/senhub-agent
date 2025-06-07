@@ -1,0 +1,16 @@
+{
+  "path": "/redfish/v1/EventService",
+  "type": "#EventService.v1_7_1.EventService",
+  "data": {
+    "depth": 2,
+    "id": "EventService",
+    "name": "Event Service",
+    "path": "/redfish/v1/EventService",
+    "timestamp": "2025-06-06T18:08:34+02:00",
+    "type": "#EventService.v1_7_1.EventService"
+  },
+  "children": [
+    "/redfish/v1/EventService",
+    "/redfish/v1/EventService/Subscriptions"
+  ]
+}
