@@ -1,0 +1,15 @@
+{
+  "path": "/redfish/v1/SessionService/Sessions/2224",
+  "type": "#Session.v1_3_0.Session",
+  "data": {
+    "depth": 3,
+    "id": "2224",
+    "name": "User Session",
+    "path": "/redfish/v1/SessionService/Sessions/2224",
+    "timestamp": "2025-06-06T18:08:10+02:00",
+    "type": "#Session.v1_3_0.Session"
+  },
+  "children": [
+    "/redfish/v1/SessionService/Sessions/2224"
+  ]
+}

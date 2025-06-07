@@ -1,0 +1,16 @@
+{
+  "path": "/redfish/v1/UpdateService",
+  "type": "#UpdateService.v1_8_3.UpdateService",
+  "data": {
+    "depth": 2,
+    "id": "UpdateService",
+    "name": "Update Service",
+    "path": "/redfish/v1/UpdateService",
+    "timestamp": "2025-06-06T18:08:38+02:00",
+    "type": "#UpdateService.v1_8_3.UpdateService"
+  },
+  "children": [
+    "/redfish/v1/UpdateService",
+    "/redfish/v1/UpdateService/FirmwareInventory"
+  ]
+}

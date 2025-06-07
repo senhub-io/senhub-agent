@@ -1,0 +1,95 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#Storage.Storage",
+    "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b",
+    "@odata.type": "#Storage.v1_10_0.Storage",
+    "Drives": [
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.0"
+        },
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.1"
+        },
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.2"
+        },
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.3"
+        },
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.4"
+        },
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.5"
+        },
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.6"
+        },
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.7"
+        },
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.8"
+        },
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.9"
+        },
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.10"
+        },
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Drives/0.11"
+        }
+    ],
+    "EndpointGroups": {
+        "@odata.id": "UNKNOWN/EndpointGroups"
+    },
+    "Name": "controller_b",
+    "Oem": {
+        "Seagate": {
+            "DiskAdvancedSettings": {
+                "BackgroundDiskGroupScrub": "Enabled",
+                "BackgroundDiskScrub": "Disabled",
+                "ValidScrubSettings": [
+                    "Enabled",
+                    "Disabled",
+                    "On",
+                    "Off"
+                ]
+            }
+        }
+    },
+    "Redundancy": [
+        {
+            "@odata.id": "UNKNOWN#/Redundancy/0",
+            "MaxNumSupported": 2,
+            "MinNumNeeded": 1,
+            "Mode": "Sharing",
+            "Name": "Controller Redundancy Group 1",
+            "RedundancySet": [
+                {
+                    "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a"
+                },
+                {
+                    "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b"
+                }
+            ],
+            "Status": {
+                "State": "Enabled"
+            }
+        }
+    ],
+    "StorageControllers": [
+        {
+            "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/UNKNOWN#/StorageControllers/0"
+        }
+    ],
+    "StorageGroups": {
+        "@odata.id": "UNKNOWN/StorageGroups"
+    },
+    "StoragePools": {
+        "@odata.id": "UNKNOWN/StoragePools"
+    },
+    "Volumes": {
+        "@odata.id": "UNKNOWN/Volumes"
+    }
+}

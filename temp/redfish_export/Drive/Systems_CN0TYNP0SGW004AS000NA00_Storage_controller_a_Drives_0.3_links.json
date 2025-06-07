@@ -1,0 +1,16 @@
+{
+  "path": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.3",
+  "type": "#Drive.v1_12_0.Drive",
+  "data": {
+    "depth": 6,
+    "id": "S6LDNA0XA02315",
+    "name": "0.3",
+    "path": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.3",
+    "timestamp": "2025-06-06T18:08:17+02:00",
+    "type": "#Drive.v1_12_0.Drive"
+  },
+  "children": [
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.3",
+    "UNKNOWN/enclosure_0"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "path": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00",
+  "type": "#ComputerSystem.v1_14_0.ComputerSystem",
+  "data": {
+    "depth": 3,
+    "id": "CN0TYNP0SGW004AS000NA00",
+    "name": "LB-ME5024MGMT1",
+    "path": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00",
+    "timestamp": "2025-06-06T18:08:13+02:00",
+    "type": "#ComputerSystem.v1_14_0.ComputerSystem"
+  },
+  "children": [
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00",
+    "/redfish/v1/Chassis/enclosure_0",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/LogServices"
+  ]
+}
