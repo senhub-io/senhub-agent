@@ -1,0 +1,26 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#LogService.LogService",
+    "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/LogServices/controller_a",
+    "@odata.type": "#LogService.v1_2_0.LogService",
+    "Actions": {
+        "#LogService.CollectDiagnosticData": {
+            "DiagnosticDataType@Redfish.AllowableValues": [
+                "OEM"
+            ],
+            "DriveLogType@Redfish.AllowableValues": [
+                "disk, diskfarm, diskibt, disksm2, diskidd,  diskfarmlct, diskfarmfield"
+            ],
+            "OEMDiagnosticDataType@Redfish.AllowableValues": [
+                "CollectControllerLog, DownloadLogData, CollectAndDownloadControllerLog, GetDriveLog"
+            ],
+            "target": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/LogServices/controller_a/Actions/LogService.CollectDiagnosticData"
+        }
+    },
+    "Id": "A",
+    "Name": "controller_a",
+    "ServiceEnabled": true,
+    "Status": {
+        "Health": "OK",
+        "State": "Enabled"
+    }
+}

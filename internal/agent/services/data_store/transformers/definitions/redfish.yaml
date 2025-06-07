@@ -84,6 +84,28 @@ metrics:
     unit: "%"
     multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
     description: "Drive operation progress percentage"
+    
+  - name: "hardware.storage.drive.speed_gbs"
+    channel: "drive_speed_gbs"
+    display_name: "Drive {drive_name} Negotiated Speed"
+    unit: "Gbps"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
+    description: "Drive negotiated speed in Gbps"
+    
+  - name: "hardware.storage.drive.location_indicator_active"
+    channel: "drive_location_indicator_active"
+    display_name: "Drive {drive_name} Location Indicator Active"
+    unit: "#"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
+    description: "Drive location indicator active status"
+    lookup: "sfs.generic.boolean"
+    
+  - name: "hardware.storage.drive.block_size_bytes"
+    channel: "drive_block_size_bytes"
+    display_name: "Drive {drive_name} Block Size"
+    unit: "Bytes"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
+    description: "Drive block size in bytes"
 
   # Storage Volume Metrics
   - name: "hardware.storage.volume.capacity.allocated"

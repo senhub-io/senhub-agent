@@ -1,0 +1,29 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#Volume.Volume",
+    "@odata.id": "/redfish/v1/Systems/Capabilities",
+    "@odata.type": "#Volume.v1_6_1.Volume",
+    "AccessCapabilities@Redfish.RequiredOnCreate": false,
+    "AccessCapabilities@Redfish.SetOnlyOnCreate": true,
+    "AllocatedPools@Redfish.RequiredOnCreate": false,
+    "AllocatedPools@Redfish.SetOnlyOnCreate": true,
+    "CapacityBytes@Redfish.RequiredOnCreate": false,
+    "CapacityBytes@Redfish.SetOnlyOnCreate": true,
+    "Description@Redfish.RequiredOnCreate": false,
+    "Description@Redfish.SetOnlyOnCreate": true,
+    "Id": "VolumeCapabilities",
+    "Links": {
+        "ClientEndpoints@Redfish.RequiredOnCreate": true,
+        "ClientEndpoints@Redfish.SetOnlyOnCreate": true,
+        "ServerEndpoints@Redfish.RequiredOnCreate": false,
+        "ServerEndpoints@Redfish.SetOnlyOnCreate": true
+    },
+    "LogicalUnitNumber@Redfish.RequiredOnCreate": true,
+    "LogicalUnitNumber@Redfish.SetOnlyOnCreate": true,
+    "Name": "POST requirements for Composing a Volume",
+    "Name@Redfish.RequiredOnCreate": true,
+    "Name@Redfish.SetOnlyOnCreate": true,
+    "RAIDType@Redfish.RequiredOnCreate": true,
+    "RAIDType@Redfish.SetOnlyOnCreate": true,
+    "ResourceBlocks@Redfish.RequiredOnCreate": true,
+    "ResourceBlocks@Redfish.SetOnlyOnCreate": true
+}

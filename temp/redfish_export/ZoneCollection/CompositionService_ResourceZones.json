@@ -1,0 +1,15 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#ZoneCollection.ZoneCollection",
+    "@odata.id": "/redfish/v1/CompositionService/ResourceZones",
+    "@odata.type": "#ZoneCollection.ZoneCollection",
+    "Members": [
+        {
+            "@odata.id": "/redfish/v1/CompositionService/ResourceZones/HDD"
+        },
+        {
+            "@odata.id": "/redfish/v1/CompositionService/ResourceZones/SSD"
+        }
+    ],
+    "Members@odata.count": 2,
+    "Name": "Zone Collection"
+}

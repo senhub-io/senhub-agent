@@ -1,0 +1,28 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#EthernetInterface.EthernetInterface",
+    "@odata.id": "/redfish/v1/Managers/controller_a/EthernetInterfaces/Dedicated",
+    "@odata.type": "#EthernetInterface.v1_6_3.EthernetInterface",
+    "AutoNeg": true,
+    "FullDuplex": true,
+    "IPv4Addresses": [
+        {
+            "Address": "172.16.17.112",
+            "Gateway": "172.16.17.254",
+            "SubnetMask": "255.255.255.0"
+        }
+    ],
+    "IPv6Addresses": [
+        {
+            "Address": "fe80::5a4f:8fe8:fa42:7cf1"
+        }
+    ],
+    "Id": "A",
+    "InterfaceEnabled": true,
+    "Name": "Dedicated Ethernet Interface",
+    "PermanentMACAddress": "00:C0:FF:FD:07:CD",
+    "SpeedMbps": 1000,
+    "Status": {
+        "Health": "OK",
+        "State": "Enabled"
+    }
+}

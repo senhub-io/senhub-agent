@@ -1,0 +1,46 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#Drive.Drive",
+    "@odata.id": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a/Drives/0.3",
+    "@odata.type": "#Drive.v1_12_0.Drive",
+    "BlockSizeBytes": 512,
+    "CapacityBytes": 1920383410176,
+    "EncryptionAbility": "None",
+    "EncryptionStatus": "Unecrypted",
+    "FailurePredicted": false,
+    "Id": "S6LDNA0XA02315",
+    "Identifiers": [
+        {
+            "DurableName": "disk_00.03",
+            "DurableNameFormat": "NAA"
+        }
+    ],
+    "Links": {
+        "Chassis": {
+            "@odata.id": "UNKNOWN/enclosure_0"
+        }
+    },
+    "LocationIndicatorActive": false,
+    "Manufacturer": "SAMSUNG",
+    "MediaType": "SSD",
+    "Name": "0.3",
+    "NegotiatedSpeedGbs": 12.0,
+    "PartNumber": "MZILG1T9HCJRAD3",
+    "PhysicalLocation": {
+        "PartLocation": {
+            "LocationOrdinalValue": 3,
+            "LocationType": "Slot"
+        },
+        "Placement": {
+            "Rack": "0",
+            "RackOffset": 3
+        }
+    },
+    "Protocol": "SAS",
+    "Revision": "DSG9",
+    "RotationSpeedRPM": 0,
+    "SerialNumber": "S6LDNA0XA02315",
+    "Status": {
+        "Health": "OK",
+        "State": "Enabled"
+    }
+}

@@ -1,0 +1,17 @@
+{
+  "path": "/redfish/v1/UpdateService/FirmwareInventory",
+  "type": "#SoftwareInventoryCollection.SoftwareInventoryCollection",
+  "data": {
+    "depth": 3,
+    "id": null,
+    "name": "FirmwareInventory Collection",
+    "path": "/redfish/v1/UpdateService/FirmwareInventory",
+    "timestamp": "2025-06-06T18:08:38+02:00",
+    "type": "#SoftwareInventoryCollection.SoftwareInventoryCollection"
+  },
+  "children": [
+    "/redfish/v1/UpdateService/FirmwareInventory",
+    "/redfish/v1/UpdateService/FirmwareInventory/firmware-bundle_0",
+    "/redfish/v1/UpdateService/FirmwareInventory/firmware-bundle_1"
+  ]
+}

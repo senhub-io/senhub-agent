@@ -1,0 +1,18 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#Endpoint.Endpoint",
+    "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints/A1",
+    "@odata.type": "#Endpoint.v1_5_1.Endpoint",
+    "Description": "This instance represents a port",
+    "Id": "A1",
+    "Identifiers": [
+        {
+            "DurableName": "hostport_A1",
+            "DurableNameFormat": "NAA"
+        }
+    ],
+    "Name": "A1",
+    "Status": {
+        "Health": "OK",
+        "State": "Enabled"
+    }
+}
