@@ -1,0 +1,45 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#EndpointCollection.EndpointCollection",
+    "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints",
+    "@odata.type": "#EndpointCollection.EndpointCollection",
+    "Members": [
+        {
+            "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints/A0"
+        },
+        {
+            "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints/A1"
+        },
+        {
+            "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints/A2"
+        },
+        {
+            "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints/A3"
+        },
+        {
+            "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints/B0"
+        },
+        {
+            "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints/B1"
+        },
+        {
+            "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints/B2"
+        },
+        {
+            "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints/B3"
+        },
+        {
+            "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints/5c0470e0d3bc5300"
+        },
+        {
+            "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints/5c0470e0d3bc4a00"
+        },
+        {
+            "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints/5c0470e0d3bc4a01"
+        },
+        {
+            "@odata.id": "/redfish/v1/Fabrics/SAS/Endpoints/5c0470e0d3bc5301"
+        }
+    ],
+    "Members@odata.count": 12,
+    "Name": "Endpoint Collection"
+}

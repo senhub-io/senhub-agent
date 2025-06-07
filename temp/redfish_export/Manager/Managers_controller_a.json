@@ -1,0 +1,16 @@
+{
+    "@odata.context": "/redfish/v1/$metadata#Manager.Manager",
+    "@odata.id": "/redfish/v1/Managers/controller_a",
+    "@odata.type": "#Manager.v1_11_0.Manager",
+    "EthernetInterfaces": {
+        "@odata.id": "/redfish/v1/Managers/controller_a/EthernetInterfaces"
+    },
+    "FirmwareVersion": "ME5.1.2.0.3",
+    "Id": "controller_a",
+    "ManagerType": "ManagementController",
+    "Name": "/redfish/v1/Managers/management_controller_a",
+    "Status": {
+        "Health": "OK",
+        "State": "Enabled"
+    }
+}

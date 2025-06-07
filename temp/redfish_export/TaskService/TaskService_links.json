@@ -1,0 +1,16 @@
+{
+  "path": "/redfish/v1/TaskService",
+  "type": "#TaskService.v1_1_6.TaskService",
+  "data": {
+    "depth": 2,
+    "id": "TaskService",
+    "name": "Task Service",
+    "path": "/redfish/v1/TaskService",
+    "timestamp": "2025-06-06T18:08:10+02:00",
+    "type": "#TaskService.v1_1_6.TaskService"
+  },
+  "children": [
+    "/redfish/v1/TaskService",
+    "/redfish/v1/TaskService/Tasks"
+  ]
+}

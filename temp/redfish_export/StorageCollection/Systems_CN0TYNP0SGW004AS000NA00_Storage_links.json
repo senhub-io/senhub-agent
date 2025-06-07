@@ -1,0 +1,17 @@
+{
+  "path": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage",
+  "type": "#StorageCollection.StorageCollection",
+  "data": {
+    "depth": 4,
+    "id": null,
+    "name": "Storage Collection",
+    "path": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage",
+    "timestamp": "2025-06-06T18:08:14+02:00",
+    "type": "#StorageCollection.StorageCollection"
+  },
+  "children": [
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_a",
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b"
+  ]
+}

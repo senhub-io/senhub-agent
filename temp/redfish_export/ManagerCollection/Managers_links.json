@@ -1,0 +1,17 @@
+{
+  "path": "/redfish/v1/Managers",
+  "type": "#ManagerCollection.ManagerCollection",
+  "data": {
+    "depth": 2,
+    "id": null,
+    "name": "Manager Collection",
+    "path": "/redfish/v1/Managers",
+    "timestamp": "2025-06-06T18:08:34+02:00",
+    "type": "#ManagerCollection.ManagerCollection"
+  },
+  "children": [
+    "/redfish/v1/Managers",
+    "/redfish/v1/Managers/controller_a",
+    "/redfish/v1/Managers/controller_b"
+  ]
+}

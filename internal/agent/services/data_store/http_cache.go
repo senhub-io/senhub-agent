@@ -127,9 +127,27 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 			unit = transformer.GetUnit(dp.Name)
 		}
 		
-		// Store the metric
+		// Apply unit corrections for inconsistent vendor APIs
+		correctedValue := dp.Value
+		if transformer != nil {
+			// Try to cast to DefinitionBasedTransformer to access correction methods
+			if defTransformer, ok := transformer.(interface {
+				ApplyUnitCorrection(string, float64, map[string]string) (float64, bool)
+			}); ok {
+				if newValue, applied := defTransformer.ApplyUnitCorrection(dp.Name, float64(dp.Value), tags); applied {
+					correctedValue = float32(newValue)
+					c.logger.Debug().
+						Str("metric", dp.Name).
+						Float32("original", dp.Value).
+						Float32("corrected", correctedValue).
+						Msg("🔧 Applied unit correction during cache storage")
+				}
+			}
+		}
+		
+		// Store the metric with corrected value
 		cachedMetric := CachedMetric{
-			Value:      dp.Value,
+			Value:      correctedValue,
 			Timestamp:  now, // Use consistent timestamp for write batch
 			Unit:       unit,
 			ProbeName:  probeName,

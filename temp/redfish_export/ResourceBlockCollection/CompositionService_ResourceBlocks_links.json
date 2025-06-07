@@ -1,0 +1,29 @@
+{
+  "path": "/redfish/v1/CompositionService/ResourceBlocks",
+  "type": "#ResourceBlockCollection.ResourceBlockCollection",
+  "data": {
+    "depth": 3,
+    "id": null,
+    "name": "ResourceBlock Collection",
+    "path": "/redfish/v1/CompositionService/ResourceBlocks",
+    "timestamp": "2025-06-06T18:08:39+02:00",
+    "type": "#ResourceBlockCollection.ResourceBlockCollection"
+  },
+  "children": [
+    "/redfish/v1/CompositionService/ResourceBlocks",
+    "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.0",
+    "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.1",
+    "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.2",
+    "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.3",
+    "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.4",
+    "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.5",
+    "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.6",
+    "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.7",
+    "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.8",
+    "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.9",
+    "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.10",
+    "/redfish/v1/CompositionService/ResourceBlocks/DriveBlock-0.11",
+    "/redfish/v1/CompositionService/ResourceBlocks/StoragePoolBlock-A",
+    "/redfish/v1/CompositionService/ResourceBlocks/VolumeBlock-00c0fffd07cd00005a728a6701000000"
+  ]
+}

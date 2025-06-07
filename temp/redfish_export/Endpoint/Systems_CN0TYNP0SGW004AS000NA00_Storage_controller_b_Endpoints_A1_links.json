@@ -1,0 +1,15 @@
+{
+  "path": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/A1",
+  "type": "#Endpoint.v1_5_1.Endpoint",
+  "data": {
+    "depth": 8,
+    "id": "A1",
+    "name": "A1",
+    "path": "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/A1",
+    "timestamp": "2025-06-06T18:08:26+02:00",
+    "type": "#Endpoint.v1_5_1.Endpoint"
+  },
+  "children": [
+    "/redfish/v1/Systems/CN0TYNP0SGW004AS000NA00/Storage/controller_b/Endpoints/A1"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "path": "/redfish/v1/EventService/Subscriptions",
+  "type": "#EventDestinationCollection.EventDestinationCollection",
+  "data": {
+    "depth": 3,
+    "id": null,
+    "name": "EventDestination Collection",
+    "path": "/redfish/v1/EventService/Subscriptions",
+    "timestamp": "2025-06-06T18:08:34+02:00",
+    "type": "#EventDestinationCollection.EventDestinationCollection"
+  },
+  "children": [
+    "/redfish/v1/EventService/Subscriptions"
+  ]
+}
