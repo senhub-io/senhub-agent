@@ -110,6 +110,9 @@ func (te *TagEnhancer) shouldSkipTag(tag tags.Tag) bool {
 		"location_ordinal",    // Technical location identifier
 		"system_id",          // Internal system ID (prefer system_name)
 		"uuid",               // Technical UUID (not user-friendly)
+		"metric_category",    // Internal classification metadata
+		"metric_severity",    // Internal classification metadata  
+		"metric_unit",        // Internal classification metadata
 	}
 	for _, techTag := range technicalTags {
 		if tag.Key == techTag {
@@ -471,3 +474,4 @@ func (te *TagEnhancer) normalizeManufacturer(manufacturer string) string {
 		return strings.Title(strings.ToLower(manufacturer))
 	}
 }
+

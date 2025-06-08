@@ -18,7 +18,22 @@ class TagFilters {
         // Use event delegation for dynamic content
         this.container.addEventListener('change', (e) => {
             if (e.target.matches('input[type="checkbox"]') || e.target.matches('select')) {
+                // Auto-check parent when a value is selected
+                if (e.target.matches('input[data-tag]:not([id^="tag-"])')) {
+                    this.handleValueCheckboxChange(e.target);
+                }
                 this.updateSelectedTags();
+            }
+        });
+        
+        // Add click handlers for toggling tag sections
+        this.container.addEventListener('click', (e) => {
+            if (e.target.matches('.tag-header-clickable, .tag-header-clickable *')) {
+                // Find the closest tag header
+                const header = e.target.closest('.tag-header-clickable') || e.target;
+                if (header.classList.contains('tag-header-clickable')) {
+                    this.toggleTagSection(header);
+                }
             }
         });
     }
@@ -89,7 +104,10 @@ class TagFilters {
             <div class="tag-filter-container" data-tag="${tagKey}">
                 <div class="tag-header">
                     <input type="checkbox" id="tag-${tagKey}" data-tag="${tagKey}">
-                    <label for="tag-${tagKey}">${tagKey} (${values.length} values)${description}</label>
+                    <div class="tag-header-clickable" data-tag="${tagKey}">
+                        <label for="tag-${tagKey}">${tagKey} (${values.length} values)${description}</label>
+                        <span class="toggle-indicator">▼</span>
+                    </div>
                     <select class="mode-select" id="mode-${tagKey}" disabled>
                         <option value="multi">Multi-select</option>
                         <option value="expression">Expression</option>
@@ -176,22 +194,34 @@ class TagFilters {
         const valuesContainer = this.base.$(`#values-${tagKey}`);
         const expressionContainer = this.base.$(`#expression-${tagKey}`);
         const modeSelect = this.base.$(`#mode-${tagKey}`);
+        const toggleIndicator = this.base.$(`.tag-header-clickable[data-tag="${tagKey}"] .toggle-indicator`);
         
         if (modeSelect) modeSelect.disabled = !isEnabled;
         
         if (valuesContainer && expressionContainer) {
             valuesContainer.style.display = isEnabled && mode === 'multi' ? 'block' : 'none';
             expressionContainer.style.display = isEnabled && mode === 'expression' ? 'block' : 'none';
+            
+            // Update toggle indicator
+            if (toggleIndicator) {
+                toggleIndicator.textContent = isEnabled ? '▼' : '▶';
+            }
         }
 
         if (!isEnabled) {
             // Clear selections when disabled
             this.clearTagSelections(tagKey);
+            
+            // Update toggle indicator for disabled state
+            if (toggleIndicator) {
+                toggleIndicator.textContent = '▶';
+            }
         }
 
-        // Handle "All" checkbox logic
+        // Handle "All" checkbox logic (only add event listener once)
         const allCheckbox = this.base.$(`#value-${tagKey}-ALL`);
-        if (allCheckbox) {
+        if (allCheckbox && !allCheckbox.hasAttribute('data-listener-added')) {
+            allCheckbox.setAttribute('data-listener-added', 'true');
             allCheckbox.addEventListener('change', () => {
                 const isAllChecked = allCheckbox.checked;
                 const valueCheckboxes = this.container.querySelectorAll(`input[data-tag="${tagKey}"]:not([value="ALL"])`);
@@ -244,6 +274,76 @@ class TagFilters {
 
     escapeId(text) {
         return text.replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+    
+    /**
+     * Handle value checkbox change - auto-check parent when value is selected
+     */
+    handleValueCheckboxChange(checkbox) {
+        const tagKey = checkbox.dataset.tag;
+        const mainCheckbox = this.base.$(`#tag-${tagKey}`);
+        
+        if (checkbox.checked && mainCheckbox && !mainCheckbox.checked) {
+            // Auto-check the parent tag when a value is selected
+            mainCheckbox.checked = true;
+            
+            // Update the UI to show the values container and enable mode select
+            const modeSelect = this.base.$(`#mode-${tagKey}`);
+            const mode = modeSelect ? modeSelect.value : 'multi';
+            this.updateTagUI(tagKey, mode, true);
+        }
+        
+        // Check if we should uncheck the parent (when no values are selected)
+        if (!checkbox.checked) {
+            const allValueCheckboxes = this.container.querySelectorAll(`input[data-tag="${tagKey}"]:not([id^="tag-"])`);
+            const hasAnyChecked = Array.from(allValueCheckboxes).some(cb => cb.checked);
+            
+            if (!hasAnyChecked && mainCheckbox) {
+                mainCheckbox.checked = false;
+                const modeSelect = this.base.$(`#mode-${tagKey}`);
+                const mode = modeSelect ? modeSelect.value : 'multi';
+                this.updateTagUI(tagKey, mode, false);
+            }
+        }
+    }
+    
+    /**
+     * Toggle tag section visibility
+     */
+    toggleTagSection(headerElement) {
+        const tagKey = headerElement.dataset.tag;
+        const valuesContainer = this.base.$(`#values-${tagKey}`);
+        const expressionContainer = this.base.$(`#expression-${tagKey}`);
+        const toggleIndicator = headerElement.querySelector('.toggle-indicator');
+        const mainCheckbox = this.base.$(`#tag-${tagKey}`);
+        
+        if (!valuesContainer && !expressionContainer) return;
+        
+        // Determine current visibility
+        const modeSelect = this.base.$(`#mode-${tagKey}`);
+        const mode = modeSelect ? modeSelect.value : 'multi';
+        const currentContainer = mode === 'multi' ? valuesContainer : expressionContainer;
+        const isCurrentlyVisible = currentContainer && currentContainer.style.display !== 'none';
+        
+        // Only toggle if the main checkbox is checked
+        if (mainCheckbox && mainCheckbox.checked) {
+            if (valuesContainer) {
+                valuesContainer.style.display = (isCurrentlyVisible || mode !== 'multi') ? 'none' : 'block';
+            }
+            if (expressionContainer) {
+                expressionContainer.style.display = (isCurrentlyVisible || mode !== 'expression') ? 'none' : 'block';
+            }
+            
+            // Update toggle indicator
+            if (toggleIndicator) {
+                toggleIndicator.textContent = isCurrentlyVisible ? '▶' : '▼';
+            }
+        } else if (mainCheckbox) {
+            // If not checked, check it and show the container
+            mainCheckbox.checked = true;
+            this.updateTagUI(tagKey, mode, true);
+            this.updateSelectedTags();
+        }
     }
 }
 

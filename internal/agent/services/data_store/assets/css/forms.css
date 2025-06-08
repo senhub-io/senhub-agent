@@ -77,6 +77,39 @@
     font-weight: 500;
 }
 
+/* Clickable header for toggle functionality */
+.tag-header-clickable {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex: 1;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.2s ease;
+}
+
+.tag-header-clickable:hover {
+    background-color: var(--gray-100);
+}
+
+.tag-header-clickable label {
+    pointer-events: none; /* Prevent double-click on label */
+    margin: 0;
+}
+
+.toggle-indicator {
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    transition: transform 0.2s ease, color 0.2s ease;
+    user-select: none;
+    margin-left: 0.5rem;
+}
+
+.tag-header-clickable:hover .toggle-indicator {
+    color: var(--primary-color);
+}
+
 .mode-select {
     font-size: 0.75rem;
     padding: 0.125rem 0.25rem;
