@@ -75,10 +75,49 @@ func (c *StorageCollector) Connect(ctx context.Context) error {
 				poolsPath := normalizedPath + "/StoragePools"
 				poolsResp, err := c.client.Get(ctx, poolsPath)
 				if err == nil && len(poolsResp.Members) > 0 {
-					// We found storage pools, add them to our list
+					// We found storage pools, filter out disk groups and add only actual pools
 					for _, pool := range poolsResp.Members {
 						if poolId, ok := pool["@odata.id"]; ok {
-							c.storagePools = append(c.storagePools, strings.TrimPrefix(poolId, "/redfish/v1/"))
+							poolPath := strings.TrimPrefix(poolId, "/redfish/v1/")
+							
+							// Get pool details to check if it's an actual pool or disk group
+							poolResp, err := c.client.Get(ctx, poolPath)
+							if err != nil {
+								c.logger.Warn().
+									Err(err).
+									Str("path", poolPath).
+									Msg("Failed to get pool details during discovery")
+								continue
+							}
+							
+							// Parse pool info to check Description field
+							var poolInfo struct {
+								Description string `json:"Description"`
+								Name        string `json:"Name"`
+							}
+							if err := json.Unmarshal(poolResp.Raw, &poolInfo); err != nil {
+								c.logger.Warn().
+									Err(err).
+									Str("path", poolPath).
+									Msg("Failed to parse pool info during discovery")
+								continue
+							}
+							
+							// Only include actual storage pools, skip disk groups
+							if poolInfo.Description != "DiskGroup" {
+								c.storagePools = append(c.storagePools, poolPath)
+								c.logger.Debug().
+									Str("pool_name", poolInfo.Name).
+									Str("description", poolInfo.Description).
+									Str("path", poolPath).
+									Msg("Added storage pool for monitoring")
+							} else {
+								c.logger.Debug().
+									Str("pool_name", poolInfo.Name).
+									Str("description", poolInfo.Description).
+									Str("path", poolPath).
+									Msg("Skipped disk group (redundant with storage pool)")
+							}
 						}
 					}
 				}
@@ -1648,6 +1687,15 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			continue
 		}
 		
+		// Skip DiskGroups as they are redundant with storage pools
+		// DiskGroups have Description="DiskGroup" while regular pools have Description="Pool"
+		if strings.ToLower(poolInfo.Description) == "diskgroup" {
+			c.logger.Debug().
+				Str("pool_name", poolInfo.Name).
+				Str("description", poolInfo.Description).
+				Msg("Skipping DiskGroup metrics (redundant with pool metrics)")
+			continue
+		}
 		
 		// Extract controller ID from path (e.g., "Storage/controller_a/StoragePools/A" -> "controller_a")
 		pathParts := strings.Split(poolPath, "/")
