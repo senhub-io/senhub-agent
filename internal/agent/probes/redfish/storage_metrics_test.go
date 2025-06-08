@@ -94,19 +94,19 @@ func TestStorageMetricsCollection(t *testing.T) {
 			}
 			assert.True(t, hasHost, "Host tag should be set on all metrics")
 			
-			// Verify pool_id and pool_name tags are set
-			hasPoolID := false
-			hasPoolName := false
+			// Verify pool-specific tags are set (pool metrics represent the pool itself)
+			hasController := false
+			hasDescription := false
 			for _, tag := range metric.Tags {
-				if tag.Key == "pool_id" && tag.Value == "A" {
-					hasPoolID = true
+				if tag.Key == "controller" && tag.Value == "A" {
+					hasController = true
 				}
-				if tag.Key == "pool_name" && tag.Value == "Pool A" {
-					hasPoolName = true
+				if tag.Key == "description" && tag.Value == "Main storage pool" {
+					hasDescription = true
 				}
 			}
-			assert.True(t, hasPoolID, "pool_id tag should be set on all metrics")
-			assert.True(t, hasPoolName, "pool_name tag should be set on all metrics")
+			assert.True(t, hasController, "controller tag should be set on pool metrics")
+			assert.True(t, hasDescription, "description tag should be set on pool metrics")
 			
 			// Check timestamp is correctly set
 			assert.Equal(t, testTimestamp, metric.Timestamp)
@@ -389,7 +389,7 @@ func TestStorageMetricsCollection(t *testing.T) {
 				if tag.Key == "volume_name" && tag.Value == "Volume 1" {
 					hasVolumeName = true
 				}
-				if tag.Key == "pool_id" && tag.Value == "A" {
+				if tag.Key == "pool" && tag.Value == "A" {
 					hasPoolID = true
 				}
 				if tag.Key == "raid_type" && tag.Value == "RAID5" {
@@ -400,7 +400,7 @@ func TestStorageMetricsCollection(t *testing.T) {
 			assert.True(t, hasHost, "Host tag should be set on all metrics")
 			assert.True(t, hasVolumeID, "volume_id tag should be set on all metrics")
 			assert.True(t, hasVolumeName, "volume_name tag should be set on all metrics")
-			assert.True(t, hasPoolID, "pool_id tag should be set on all metrics")
+			assert.True(t, hasPoolID, "pool tag should be set on all metrics")
 			assert.True(t, hasRAIDType, "raid_type tag should be set on all metrics")
 			
 			// Check timestamp is correctly set
