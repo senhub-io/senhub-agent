@@ -19,6 +19,7 @@ type GenericCollector struct {
 	systems         []string
 	chassis         []string
 	logger          *logger.Logger
+	endpoint        string              // Configured endpoint URL
 	redfishVersion  string              // Redfish API version
 	schemaVersions  map[string]string   // Schema versions by schema name
 	oemVersionData  map[string]interface{} // OEM-specific version data
@@ -35,6 +36,7 @@ func NewGenericCollector(endpoint, username, password string, logger *logger.Log
 		client:         client,
 		vendorType:     VendorGeneric, // Default to generic, will be updated after detection
 		logger:         logger,
+		endpoint:       endpoint,
 		schemaVersions: make(map[string]string),
 		oemVersionData: make(map[string]interface{}),
 	}, nil
@@ -338,11 +340,13 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 			return nil, fmt.Errorf("failed to get system details: %v", err)
 		}
 
-		// Extract hostname - we'll use this both for tags and to associate with other metrics
-		hostname := resp.Name
+		// Use configured endpoint for tags - this is the actual endpoint URL
+		// resp.Name contains the system name (like "CN0TYNP0SGW004AS000NA00") 
+		// but we want the configured endpoint URL for the endpoint tag
+		endpoint := c.endpoint
 
 		// Create base system tags using helper function
-		systemTags := c.createBaseSystemTags(resp, hostname)
+		systemTags := c.createBaseSystemTags(resp, endpoint)
 		
 		// Add additional system-specific tags
 		if resp.SKU != "" {

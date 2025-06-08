@@ -1648,6 +1648,16 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 			continue
 		}
 		
+		// Skip DiskGroups as they are redundant with storage pools
+		// DiskGroups have Description="DiskGroup" while regular pools have Description="Pool"
+		if strings.ToLower(poolInfo.Description) == "diskgroup" {
+			c.logger.Debug().
+				Str("pool_name", poolInfo.Name).
+				Str("description", poolInfo.Description).
+				Msg("Skipping DiskGroup metrics (redundant with pool metrics)")
+			continue
+		}
+		
 		// Extract controller ID from path (e.g., "Storage/controller_a/StoragePools/A" -> "controller_a")
 		pathParts := strings.Split(poolPath, "/")
 		var controllerID, controllerLetter string
