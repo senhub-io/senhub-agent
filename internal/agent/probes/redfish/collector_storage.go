@@ -852,9 +852,9 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 					volumeTags = append(volumeTags, tags.Tag{Key: "host", Value: hostName})
 				}
 				
-				// Add pool ID for mapping volumes to pools
+				// Add pool for mapping volumes to pools
 				if poolID != "" {
-					volumeTags = append(volumeTags, tags.Tag{Key: "pool_id", Value: poolID})
+					volumeTags = append(volumeTags, tags.Tag{Key: "pool", Value: poolID})
 				}
 				
 				// Add RAID type as tag - critical for understanding volume configuration
