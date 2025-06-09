@@ -94,10 +94,14 @@ func TestStorageMetricsCollection(t *testing.T) {
 			}
 			assert.True(t, hasHost, "Host tag should be set on all metrics")
 			
-			// Verify pool-specific tags are set (pool metrics represent the pool itself)
+			// Verify pool-specific tags are set 
+			hasPool := false
 			hasController := false
 			hasDescription := false
 			for _, tag := range metric.Tags {
+				if tag.Key == "pool" && tag.Value == "A" {
+					hasPool = true
+				}
 				if tag.Key == "controller" && tag.Value == "A" {
 					hasController = true
 				}
@@ -105,6 +109,7 @@ func TestStorageMetricsCollection(t *testing.T) {
 					hasDescription = true
 				}
 			}
+			assert.True(t, hasPool, "pool tag should be set on pool metrics")
 			assert.True(t, hasController, "controller tag should be set on pool metrics")
 			assert.True(t, hasDescription, "description tag should be set on pool metrics")
 			
