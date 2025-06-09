@@ -1713,8 +1713,9 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 		
 		// Pool tags - essential tags for operational clarity
 		poolTags := []tags.Tag{
-			{Key: "pool_id", Value: poolInfo.ID},
-			{Key: "pool_name", Value: poolInfo.Name},
+			{Key: "pool", Value: poolInfo.ID},           // Simple pool identifier for filtering
+			{Key: "pool_id", Value: poolInfo.ID},        // Detailed pool ID  
+			{Key: "pool_name", Value: poolInfo.Name},    // Human-readable pool name
 		}
 		
 		// Add controller tags if available
