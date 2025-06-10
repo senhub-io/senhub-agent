@@ -100,9 +100,16 @@ func (te *TagEnhancer) shouldSkipTag(tag tags.Tag) bool {
 		return true
 	}
 	
-	// Skip ID-based tags in favor of name-based tags
+	// Skip ID-based tags in favor of name-based tags, but preserve important ones
 	if strings.HasSuffix(tag.Key, "_id") {
-		return true
+		// Keep important IDs that are useful for filtering
+		importantIDs := []string{"pool_id", "controller_id", "drive_id", "volume_id"}
+		for _, importantID := range importantIDs {
+			if tag.Key == importantID {
+				return false // Don't skip these important IDs
+			}
+		}
+		return true // Skip other *_id tags
 	}
 	
 	// Skip technical/internal tags that aren't useful for user filtering
@@ -146,13 +153,17 @@ func (te *TagEnhancer) simplifyTag(tag tags.Tag) tags.Tag {
 		simplifiedTag.Value = te.simplifyDriveName(tag.Value)
 	}
 	
-	// Handle pool names - check both pool_name and description for pool information
-	if tag.Key == "pool_name" || tag.Key == "description" {
+	// Handle pool names - keep pool_name as-is
+	if tag.Key == "pool_name" {
+		// Keep pool_name tag as-is, no transformation
+		simplifiedTag = tag
+	} else if tag.Key == "pool" || tag.Key == "description" {
 		// If it's a pool-related description, extract pool name
 		if tag.Key == "description" && te.isPoolDescription(tag.Value) {
-			simplifiedTag.Key = "pool_name"
+			simplifiedTag.Key = "pool"
 			simplifiedTag.Value = te.extractPoolNameFromDescription(tag.Value)
-		} else if tag.Key == "pool_name" {
+		} else if tag.Key == "pool" {
+			// Simplify pool tag value
 			simplifiedTag.Value = te.simplifyPoolName(tag.Value)
 		}
 	}

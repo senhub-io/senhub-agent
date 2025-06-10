@@ -854,7 +854,7 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 				
 				// Add pool for mapping volumes to pools
 				if poolID != "" {
-					volumeTags = append(volumeTags, tags.Tag{Key: "pool", Value: poolID})
+					volumeTags = append(volumeTags, tags.Tag{Key: "pool_name", Value: poolID})
 				}
 				
 				// Add RAID type as tag - critical for understanding volume configuration
@@ -1713,8 +1713,6 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 		
 		// Pool tags - essential tags for operational clarity
 		poolTags := []tags.Tag{
-			{Key: "pool", Value: poolInfo.ID},           // Simple pool identifier for filtering
-			{Key: "pool_id", Value: poolInfo.ID},        // Detailed pool ID  
 			{Key: "pool_name", Value: poolInfo.Name},    // Human-readable pool name
 		}
 		
