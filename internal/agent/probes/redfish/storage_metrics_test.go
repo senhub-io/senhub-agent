@@ -59,6 +59,19 @@ func TestStorageMetricsCollection(t *testing.T) {
 		}`
 		mockClient.AddMockResponse("Storage/controller_a/StoragePools/A", poolResponse)
 
+		// Mock response for controller info (required for manufacturer/model tags)
+		controllerResponse := `{
+			"@odata.id": "/redfish/v1/Storage/controller_a",
+			"Id": "controller_a",
+			"Name": "Controller A",
+			"StorageControllers": [{
+				"Manufacturer": "Dell",
+				"Model": "PowerVault",
+				"SerialNumber": "ABC123"
+			}]
+		}`
+		mockClient.AddMockResponse("Storage/controller_a", controllerResponse)
+
 		// Create collector
 		collector, err := NewStorageCollector("https://redfish.example.com", "admin", "password", loggerPtr, false)
 		assert.NoError(t, err)
@@ -147,7 +160,12 @@ func TestStorageMetricsCollection(t *testing.T) {
 		controllerResponse := `{
 			"@odata.id": "/redfish/v1/Storage/controller_a",
 			"Id": "controller_a",
-			"Name": "Storage Controller A"
+			"Name": "Storage Controller A",
+			"StorageControllers": [{
+				"Manufacturer": "Dell",
+				"Model": "PowerVault",
+				"SerialNumber": "ABC123"
+			}]
 		}`
 		mockClient.AddMockResponse("Storage/controller_a", controllerResponse)
 
@@ -298,7 +316,12 @@ func TestStorageMetricsCollection(t *testing.T) {
 		controllerResponse := `{
 			"@odata.id": "/redfish/v1/Storage/controller_a",
 			"Id": "controller_a",
-			"Name": "Storage Controller A"
+			"Name": "Storage Controller A",
+			"StorageControllers": [{
+				"Manufacturer": "Dell",
+				"Model": "PowerVault",
+				"SerialNumber": "ABC123"
+			}]
 		}`
 		mockClient.AddMockResponse("Storage/controller_a", controllerResponse)
 
@@ -447,7 +470,12 @@ func TestStorageMetricsCollection(t *testing.T) {
 			"@odata.id": "/redfish/v1/Storage/controller_a",
 			"Id": "controller_a",
 			"Name": "Storage Controller A",
-			"Status": {"Health": "OK", "State": "Enabled"}
+			"Status": {"Health": "OK", "State": "Enabled"},
+			"StorageControllers": [{
+				"Manufacturer": "Dell",
+				"Model": "PowerVault",
+				"SerialNumber": "ABC123"
+			}]
 		}`)
 
 		// Mock response for volumes collection
