@@ -276,19 +276,6 @@ func (f *FormatConverter) isHealthStatusMetric(metricName string, tags map[strin
 		}
 	}
 	
-	// Check classification tags for health metrics
-	if category, exists := tags["metric_category"]; exists {
-		if strings.ToLower(category) == "system" || strings.ToLower(category) == "health" {
-			return true
-		}
-	}
-	
-	// Check unit type - boolean metrics are often status indicators
-	if unit, exists := tags["metric_unit"]; exists {
-		if strings.ToLower(unit) == "boolean" {
-			return true
-		}
-	}
 	
 	return false
 }
