@@ -153,19 +153,18 @@ func (te *TagEnhancer) simplifyTag(tag tags.Tag) tags.Tag {
 		simplifiedTag.Value = te.simplifyDriveName(tag.Value)
 	}
 	
-	// Handle pool names - keep pool_name as-is
+	// Handle pool names - keep only pool_name, skip pool tag
 	if tag.Key == "pool_name" {
 		// Keep pool_name tag as-is, no transformation
 		simplifiedTag = tag
-	} else if tag.Key == "pool" || tag.Key == "description" {
-		// If it's a pool-related description, extract pool name
-		if tag.Key == "description" && te.isPoolDescription(tag.Value) {
-			simplifiedTag.Key = "pool"
-			simplifiedTag.Value = te.extractPoolNameFromDescription(tag.Value)
-		} else if tag.Key == "pool" {
-			// Simplify pool tag value
-			simplifiedTag.Value = te.simplifyPoolName(tag.Value)
-		}
+	} else if tag.Key == "pool" {
+		// Skip pool tag entirely - we only want pool_name
+		// This will be filtered out by the shouldSkipTag logic
+		simplifiedTag = tags.Tag{Key: "_skip_pool", Value: ""}
+	} else if tag.Key == "description" && te.isPoolDescription(tag.Value) {
+		// Convert pool description to pool_name tag
+		simplifiedTag.Key = "pool_name"
+		simplifiedTag.Value = te.extractPoolNameFromDescription(tag.Value)
 	}
 	
 	// Normalize manufacturer names for consistency
