@@ -99,7 +99,7 @@ func TestStorageMetricsCollection(t *testing.T) {
 			hasController := false
 			hasDescription := false
 			for _, tag := range metric.Tags {
-				if tag.Key == "pool" && tag.Value == "A" {
+				if tag.Key == "pool_name" && tag.Value == "Pool A" {
 					hasPool = true
 				}
 				if tag.Key == "controller" && tag.Value == "A" {
@@ -109,7 +109,7 @@ func TestStorageMetricsCollection(t *testing.T) {
 					hasDescription = true
 				}
 			}
-			assert.True(t, hasPool, "pool tag should be set on pool metrics")
+			assert.True(t, hasPool, "pool_name tag should be set on pool metrics")
 			assert.True(t, hasController, "controller tag should be set on pool metrics")
 			assert.True(t, hasDescription, "description tag should be set on pool metrics")
 			
@@ -394,7 +394,7 @@ func TestStorageMetricsCollection(t *testing.T) {
 				if tag.Key == "volume_name" && tag.Value == "Volume 1" {
 					hasVolumeName = true
 				}
-				if tag.Key == "pool" && tag.Value == "A" {
+				if tag.Key == "pool_name" && tag.Value == "A" {
 					hasPoolID = true
 				}
 				if tag.Key == "raid_type" && tag.Value == "RAID5" {
@@ -405,7 +405,7 @@ func TestStorageMetricsCollection(t *testing.T) {
 			assert.True(t, hasHost, "Host tag should be set on all metrics")
 			assert.True(t, hasVolumeID, "volume_id tag should be set on all metrics")
 			assert.True(t, hasVolumeName, "volume_name tag should be set on all metrics")
-			assert.True(t, hasPoolID, "pool tag should be set on all metrics")
+			assert.True(t, hasPoolID, "pool_name tag should be set on all metrics")
 			assert.True(t, hasRAIDType, "raid_type tag should be set on all metrics")
 			
 			// Check timestamp is correctly set
