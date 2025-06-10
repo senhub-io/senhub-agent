@@ -722,19 +722,6 @@ func (m *MetricsProcessor) isHealthStatusMetricNagios(metricName string, metrics
 	if len(metrics) > 0 {
 		metric := metrics[0] // Use first metric to check patterns
 		
-		// Check classification tags
-		if category, exists := metric.Tags["metric_category"]; exists {
-			if strings.ToLower(category) == "system" || strings.ToLower(category) == "health" {
-				return true
-			}
-		}
-		
-		// Check unit type - boolean metrics are often status indicators
-		if unit, exists := metric.Tags["metric_unit"]; exists {
-			if strings.ToLower(unit) == "boolean" {
-				return true
-			}
-		}
 		
 		// Check if metric unit suggests health values
 		if metric.Unit == "#" || metric.Unit == "" {

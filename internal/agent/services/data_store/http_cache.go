@@ -127,27 +127,12 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 			unit = transformer.GetUnit(dp.Name)
 		}
 		
-		// Apply unit corrections for inconsistent vendor APIs
-		correctedValue := dp.Value
-		if transformer != nil {
-			// Try to cast to DefinitionBasedTransformer to access correction methods
-			if defTransformer, ok := transformer.(interface {
-				ApplyUnitCorrection(string, float64, map[string]string) (float64, bool)
-			}); ok {
-				if newValue, applied := defTransformer.ApplyUnitCorrection(dp.Name, float64(dp.Value), tags); applied {
-					correctedValue = float32(newValue)
-					c.logger.Debug().
-						Str("metric", dp.Name).
-						Float32("original", dp.Value).
-						Float32("corrected", correctedValue).
-						Msg("🔧 Applied unit correction during cache storage")
-				}
-			}
-		}
+		// Note: Unit corrections are now applied earlier in the data processing pipeline (data_store.go)
+		// before routing to strategies, so datapoints here already have corrected values
 		
-		// Store the metric with corrected value
+		// Store the metric (value already corrected by data_store.go)
 		cachedMetric := CachedMetric{
-			Value:      correctedValue,
+			Value:      dp.Value,
 			Timestamp:  now, // Use consistent timestamp for write batch
 			Unit:       unit,
 			ProbeName:  probeName,

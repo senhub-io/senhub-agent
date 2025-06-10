@@ -20,7 +20,6 @@ type redfishProbe struct {
 	interval       time.Duration
 	collector      RedfishCollector
 	tagEnhancer    *TagEnhancer
-	classifier     *RedfishMetricClassifier
 	endpoint       string
 	username       string
 	password       string
@@ -91,7 +90,6 @@ func NewRedfishProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		logger:         moduleLogger,
 		interval:       interval,
 		tagEnhancer:    NewTagEnhancer(),
-		classifier:     NewRedfishMetricClassifier(moduleLogger.Logger),
 		endpoint:       endpoint,
 		username:       username,
 		password:       password,
@@ -238,18 +236,6 @@ func (p *redfishProbe) Collect() ([]data_store.DataPoint, error) {
 			
 			// Enhance tags using TagEnhancer for better organization
 			datapoints[i].Tags = p.tagEnhancer.EnhanceMetricTags(datapoints[i].Name, datapoints[i].Tags)
-			
-			// Apply metric classification
-			classification := p.classifier.ClassifyMetric(datapoints[i].Name, float64(datapoints[i].Value), datapoints[i].Tags)
-			
-			// Add classification information as tags
-			datapoints[i].Tags = append(datapoints[i].Tags, []tags.Tag{
-				{Key: "metric_category", Value: classification.Group},
-				{Key: "metric_severity", Value: string(classification.Severity)},
-				{Key: "metric_unit", Value: string(classification.Unit)},
-			}...)
-			
-			// Classification applied (debug logging is handled by the classifier itself)
 		}
 
 		// Add to aggregate result
