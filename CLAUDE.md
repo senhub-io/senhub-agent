@@ -230,32 +230,6 @@ Before committing new code, verify compliance with our patterns:
 
 ## Current Development
 
-### Metrics Classification System (COMPLETED)
-- OBJECTIVE: Implement standardized metrics classification for consistent organization, alerting, and dashboard display
-- PROGRESS:
-  - Created comprehensive classification system with 6 primary categories: Health, Performance, Capacity, Quality, Security, Business
-  - Implemented granular subcategories for each primary category (24 subcategories total)
-  - Defined severity levels (critical, high, medium, low, info) for prioritization
-  - Created standardized units system with 20+ predefined units
-  - Built threshold management system for alerting and operational ranges
-  - Implemented MetricClassifier interface for probe-specific classification
-  - Created ClassificationRegistry for managing multiple probe classifiers
-  - Fully integrated with Redfish probe with 80+ classification rules
-  - Added comprehensive pattern matching for dynamic metric names
-  - Implemented fallback classification based on metric name analysis
-  - Created complete test suite with 100% coverage
-  - Generated comprehensive documentation with examples and best practices
-- FEATURES:
-  - **6 Primary Categories**: Health (availability, connectivity, service status, system health), Performance (response time, throughput, processing speed), Capacity (CPU, memory, storage, network), Quality (error rates, stability, consistency), Security (authentication, access control, vulnerability), Business (SLA compliance, cost, user impact)
-  - **Automatic Classification**: All Redfish metrics automatically classified with appropriate category, subcategory, severity, and unit
-  - **Threshold Support**: Built-in alerting thresholds (warning/critical ranges) for operational monitoring
-  - **UI Organization**: Display names, groups, sort orders for dashboard layout
-  - **Pattern Matching**: Supports wildcard patterns for dynamic metric classification
-  - **Tag Enhancement**: Classification metadata added as tags to each metric
-  - **Extensible Design**: Easy to add new categories, units, and probe-specific classifiers
-- DOCUMENTATION: Complete technical reference in `docs/technical-reference/METRICS-CLASSIFICATION.md`
-- USAGE: Classification tags automatically added to all Redfish metrics: `metric_category` (simplified groups like "System", "Thermal", "Storage"), `metric_severity`, `metric_unit`
-- TODO: Extend classification system to other probes (CPU, memory, network, etc.)
 
 ### Redfish Probe
 - OBJECTIVE: Port Python Redfish monitoring plugin to Go probe with vendor-specific collectors
