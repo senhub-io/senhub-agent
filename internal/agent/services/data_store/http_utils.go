@@ -226,9 +226,16 @@ func (u *UtilsManager) getCPUUsage() float64 {
 	// Calculate CPU percentage
 	cpuPercent := float64(cpuDelta) / float64(wallDelta) * 100.0
 	
-	// Cap at 100% for single-core equivalent
-	if cpuPercent > 100.0 {
-		cpuPercent = 100.0
+	// Ensure valid range: 0-100%
+	if cpuPercent < 0.0 {
+		u.logger.Debug().
+			Float64("original_percent", cpuPercent).
+			Int64("cpu_delta_ns", int64(cpuDelta)).
+			Int64("wall_delta_ns", int64(wallDelta)).
+			Msg("CPU percent was negative, clamping to 0%")
+		cpuPercent = 0.0  // Handle negative values from system counter resets
+	} else if cpuPercent > 100.0 {
+		cpuPercent = 100.0  // Cap at 100% for single-core equivalent
 	}
 	
 	return cpuPercent
