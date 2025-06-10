@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // DebugManager handles all debug and admin utilities for HTTP endpoints
@@ -265,6 +267,126 @@ func (d *DebugManager) HandleAdminCacheClear(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		d.logger.Error().Err(err).Msg("Failed to encode cache clear response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// HandleTestInjectMetrics handles POST requests to inject test redfish metrics (TEMPORARY TEST ENDPOINT)
+func (d *DebugManager) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := d.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+	
+	d.logger.Info().Msg("🧪 Injecting test redfish metrics for validation")
+	
+	now := time.Now()
+	
+	// Create realistic Dell PowerVault ME storage metrics
+	testMetrics := []datapoint.DataPoint{
+		// Pool metrics with manufacturer/model tags for Dell corrections
+		{
+			Name:      "storage.pool.capacity.total",
+			Value:     float32(10995116277760), // 10TB in bytes - should become ~10.0 TB
+			Timestamp: now,
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: "redfish"},
+				{Key: "endpoint", Value: "https://powervault.example.com"},
+				{Key: "controller", Value: "controller_a"},
+				{Key: "pool_name", Value: "Pool A"},      // This should appear in filters!
+				{Key: "pool_id", Value: "A"},
+				{Key: "manufacturer", Value: "Dell"},      // Enables Dell corrections
+				{Key: "model", Value: "PowerVault"},       // Enables Dell corrections
+			},
+		},
+		{
+			Name:      "storage.pool.capacity.available",
+			Value:     float32(8796093022208), // 8TB available in bytes - should become ~8.0 TB
+			Timestamp: now,
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: "redfish"},
+				{Key: "endpoint", Value: "https://powervault.example.com"},
+				{Key: "controller", Value: "controller_a"},
+				{Key: "pool_name", Value: "Pool A"},
+				{Key: "pool_id", Value: "A"},
+				{Key: "manufacturer", Value: "Dell"},
+				{Key: "model", Value: "PowerVault"},
+			},
+		},
+		// Volume metrics
+		{
+			Name:      "storage.volume.capacity.total",
+			Value:     float32(5497558138880), // 5TB volume in bytes
+			Timestamp: now,
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: "redfish"},
+				{Key: "endpoint", Value: "https://powervault.example.com"},
+				{Key: "controller", Value: "controller_a"},
+				{Key: "pool_name", Value: "Pool A"},      // Should appear in filters
+				{Key: "volume_name", Value: "Volume001"}, // Should appear in filters
+				{Key: "volume_id", Value: "00c0fffd07cd00005a728a6701000000"},
+				{Key: "volume_type", Value: "standard"},
+				{Key: "raid_type", Value: "RAID5"},       // Should appear in filters
+				{Key: "manufacturer", Value: "Dell"},
+				{Key: "model", Value: "PowerVault"},
+			},
+		},
+		// Drive metrics - with drive_id that should be HIDDEN
+		{
+			Name:      "storage.drive.capacity.total",
+			Value:     float32(2000398934016), // 2TB drive in bytes
+			Timestamp: now,
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: "redfish"},
+				{Key: "endpoint", Value: "https://powervault.example.com"},
+				{Key: "controller", Value: "controller_a"},
+				{Key: "drive_name", Value: "Drive 3"},    // Should appear in filters
+				{Key: "drive_id", Value: "0.3"},         // Should be HIDDEN in filters
+				{Key: "drive_type", Value: "HDD"},
+				{Key: "manufacturer", Value: "Dell"},
+				{Key: "model", Value: "PowerVault"},
+			},
+		},
+		// Multiple pools to test filtering
+		{
+			Name:      "storage.pool.capacity.total",
+			Value:     float32(5497558138880), // 5TB pool
+			Timestamp: now,
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: "redfish"},
+				{Key: "endpoint", Value: "https://powervault.example.com"},
+				{Key: "controller", Value: "controller_b"},
+				{Key: "pool_name", Value: "dgA01"},       // Different pool name
+				{Key: "pool_id", Value: "dgA01"},
+				{Key: "manufacturer", Value: "Dell"},
+				{Key: "model", Value: "PowerVault"},
+			},
+		},
+	}
+	
+	// Inject metrics into cache using transformer registry
+	d.strategy.cache.AddDataPointsWithTransformer(testMetrics, d.strategy.transformerRegistry)
+	
+	d.logger.Info().
+		Int("metrics_injected", len(testMetrics)).
+		Msg("🧪 Test redfish metrics injected successfully")
+	
+	response := map[string]interface{}{
+		"status":          "success",
+		"message":         "Test redfish metrics injected successfully",
+		"metrics_count":   len(testMetrics),
+		"instructions":    "Now check Tag Filters - pool_name should appear, drive_id should be hidden",
+		"test_urls": map[string]string{
+			"dashboard":    "http://localhost:8080/web/2a5d71c5-706e-43ce-8a10-8ee252f85772/dashboard",
+			"tag_filters":  "http://localhost:8080/api/2a5d71c5-706e-43ce-8a10-8ee252f85772/info/tags/redfish",
+			"prtg_metrics": "http://localhost:8080/api/2a5d71c5-706e-43ce-8a10-8ee252f85772/prtg/metrics/redfish",
+		},
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		d.logger.Error().Err(err).Msg("Failed to encode test inject response")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
