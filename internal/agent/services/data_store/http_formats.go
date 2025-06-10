@@ -144,10 +144,13 @@ func (f *FormatConverter) transformToPRTGChannel(key string, metric CachedMetric
 	// Transform metric name using transformer
 	channelName, unit, valueLookup := f.transformMetricNameForPRTGWithLookup(key, metric)
 	
+	// Apply intelligent unit conversion for better readability
+	convertedValue, convertedUnit := f.convertUnitsForDisplay(value, unit, metric.MetricName)
+	
 	// Create PRTG channel
 	channel := &PRTGChannel{
 		Channel: channelName,
-		Value:   value,
+		Value:   convertedValue,
 	}
 	
 	// Configure channel based on whether it uses lookup or not
@@ -162,13 +165,117 @@ func (f *FormatConverter) transformToPRTGChannel(key string, metric CachedMetric
 		channel.Float = &floatValue // PRTG expects Float=1 for decimal values
 		
 		// Format units for PRTG: use "custom" when we have a unit
-		if unit != "" {
+		if convertedUnit != "" {
 			channel.Unit = "custom"
-			channel.CustomUnit = unit
+			channel.CustomUnit = convertedUnit
 		}
 	}
 	
 	return channel
+}
+
+// convertUnitsForDisplay applies intelligent unit conversion for better readability
+func (f *FormatConverter) convertUnitsForDisplay(value float64, unit string, metricName string) (float64, string) {
+	// Only convert if unit is "Bytes" or "bytes"
+	if unit != "Bytes" && unit != "bytes" {
+		return value, unit
+	}
+	
+	// Don't convert values that are already reasonable (< 10MB)
+	if value < 10*1024*1024 {
+		return value, unit
+	}
+	
+	// Apply storage capacity conversion (binary units: 1024-based)
+	if f.isStorageCapacityMetric(metricName) {
+		return f.convertBytesToBinaryUnits(value)
+	}
+	
+	// Apply network/IO conversion (decimal units: 1000-based) 
+	if f.isNetworkIOMetric(metricName) {
+		return f.convertBytesToDecimalUnits(value)
+	}
+	
+	// Default: use binary conversion for storage-related metrics
+	return f.convertBytesToBinaryUnits(value)
+}
+
+// isStorageCapacityMetric checks if the metric represents storage capacity
+func (f *FormatConverter) isStorageCapacityMetric(metricName string) bool {
+	storageKeywords := []string{"capacity", "allocated", "used", "free", "total"}
+	metricLower := strings.ToLower(metricName)
+	
+	for _, keyword := range storageKeywords {
+		if strings.Contains(metricLower, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+// isNetworkIOMetric checks if the metric represents network or I/O throughput
+func (f *FormatConverter) isNetworkIOMetric(metricName string) bool {
+	ioKeywords := []string{"io.", "read_bytes", "write_bytes", "total_bytes", "network", "throughput"}
+	metricLower := strings.ToLower(metricName)
+	
+	for _, keyword := range ioKeywords {
+		if strings.Contains(metricLower, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+// convertBytesToBinaryUnits converts bytes to appropriate binary units (KB, MB, GB, TB)
+func (f *FormatConverter) convertBytesToBinaryUnits(bytes float64) (float64, string) {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+		TB = GB * 1024
+		PB = TB * 1024
+	)
+	
+	switch {
+	case bytes >= PB:
+		return bytes / PB, "PB"
+	case bytes >= TB:
+		return bytes / TB, "TB"
+	case bytes >= GB:
+		return bytes / GB, "GB"
+	case bytes >= MB:
+		return bytes / MB, "MB"
+	case bytes >= KB:
+		return bytes / KB, "KB"
+	default:
+		return bytes, "Bytes"
+	}
+}
+
+// convertBytesToDecimalUnits converts bytes to appropriate decimal units (kB, MB, GB, TB)
+func (f *FormatConverter) convertBytesToDecimalUnits(bytes float64) (float64, string) {
+	const (
+		kB = 1000
+		MB = kB * 1000
+		GB = MB * 1000
+		TB = GB * 1000
+		PB = TB * 1000
+	)
+	
+	switch {
+	case bytes >= PB:
+		return bytes / PB, "PB"
+	case bytes >= TB:
+		return bytes / TB, "TB"
+	case bytes >= GB:
+		return bytes / GB, "GB"
+	case bytes >= MB:
+		return bytes / MB, "MB"
+	case bytes >= kB:
+		return bytes / kB, "kB"
+	default:
+		return bytes, "bytes"
+	}
 }
 
 // convertValueToFloat64 safely converts metric values to float64 for PRTG
