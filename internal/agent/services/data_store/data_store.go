@@ -16,6 +16,7 @@ import (
 	"fmt"
 
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
@@ -56,10 +57,11 @@ type DataStore interface {
 }
 
 type dataStore struct {
-	strategies   []SyncStrategy
-	logger       *logger.ModuleLogger
-	configProvider configuration.ConfigurationProvider
-	agentConfig  configuration.AgentConfiguration
+	strategies         []SyncStrategy
+	logger             *logger.ModuleLogger
+	configProvider     configuration.ConfigurationProvider
+	agentConfig        configuration.AgentConfiguration
+	transformerRegistry *transformers.TransformerRegistry
 }
 
 func NewDataStore(
@@ -72,10 +74,11 @@ func NewDataStore(
 	moduleLogger.Debug().Msg("Creating new DataStore instance")
 
 	ds := &dataStore{
-		logger:         moduleLogger,
-		configProvider: configProvider,
-		agentConfig:    agentConfig,
-		strategies:     make([]SyncStrategy, 0),
+		logger:              moduleLogger,
+		configProvider:      configProvider,
+		agentConfig:         agentConfig,
+		strategies:          make([]SyncStrategy, 0),
+		transformerRegistry: transformers.NewTransformerRegistry(baseLogger),
 	}
 	moduleLogger.Debug().Msg("DataStore instance created successfully")
 	return ds
@@ -123,6 +126,15 @@ func (d *dataStore) GetCallback() AddCallback {
 			return nil
 		}
 
+		// Apply unit corrections to all datapoints before routing to strategies
+		correctedData := d.applyUnitCorrections(data)
+		if len(correctedData) != len(data) {
+			d.logger.Debug().
+				Int("original_count", len(data)).
+				Int("corrected_count", len(correctedData)).
+				Msg("Unit corrections applied to datapoints")
+		}
+
 		for _, strategy := range d.strategies {
 			targetStrategies := probe.GetTargetStrategies()
 			d.logger.Debug().
@@ -147,22 +159,22 @@ func (d *dataStore) GetCallback() AddCallback {
 
 			d.logger.Debug().
 				Str("strategy", strategy.GetStrategyName()).
-				Int("datapoints_count", len(data)).
+				Int("datapoints_count", len(correctedData)).
 				Msg("Sending data to strategy")
 
 			// Log the first few events for debugging
-			if strategy.GetStrategyName() == "event" && len(data) > 0 {
-				for i := 0; i < min(3, len(data)); i++ {
+			if strategy.GetStrategyName() == "event" && len(correctedData) > 0 {
+				for i := 0; i < min(3, len(correctedData)); i++ {
 					d.logger.Debug().
 						Int("event_index", i).
-						Str("event_source", getTagValue(data[i].Tags, "event_source")).
-						Str("event_id", getTagValue(data[i].Tags, "event_id")).
-						Str("message", truncateString(getTagValue(data[i].Tags, "message"), 100)).
+						Str("event_source", getTagValue(correctedData[i].Tags, "event_source")).
+						Str("event_id", getTagValue(correctedData[i].Tags, "event_id")).
+						Str("message", truncateString(getTagValue(correctedData[i].Tags, "message"), 100)).
 						Msg("🔎 EVENT DETAIL - About to send to strategy")
 				}
 			}
 
-			if err := strategy.AddDataPoints(data); err != nil {
+			if err := strategy.AddDataPoints(correctedData); err != nil {
 				d.logger.Error().
 					Err(err).
 					Str("strategy", strategy.GetStrategyName()).
@@ -170,7 +182,7 @@ func (d *dataStore) GetCallback() AddCallback {
 			} else {
 				d.logger.Info().
 					Str("strategy", strategy.GetStrategyName()).
-					Int("count", len(data)).
+					Int("count", len(correctedData)).
 					Msg("✅ Successfully sent datapoints to strategy")
 			}
 		}
@@ -373,4 +385,79 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 	d.strategies = append(d.strategies, strategy)
 	d.logger.Debug().Msg("Strategy created successfully")
 	return strategy
+}
+
+// applyUnitCorrections applies unit corrections to datapoints for consistent metrics across all strategies
+func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []datapoint.DataPoint {
+	if len(datapoints) == 0 {
+		return datapoints
+	}
+	
+	correctedDatapoints := make([]datapoint.DataPoint, len(datapoints))
+	correctionCount := 0
+	
+	for i, dp := range datapoints {
+		// Convert tags from []tags.Tag to map[string]string for transformer
+		tags := make(map[string]string)
+		for _, tag := range dp.Tags {
+			tags[tag.Key] = tag.Value
+		}
+		
+		// Get probe name from tags to load appropriate transformer
+		probeName := tags["probe_name"]
+		if probeName == "" {
+			// If no probe_name, copy datapoint as-is
+			correctedDatapoints[i] = dp
+			continue
+		}
+		
+		// Load transformer for this probe
+		transformer, err := d.transformerRegistry.LoadTransformer(probeName, "friendly")
+		if err != nil {
+			d.logger.Debug().
+				Err(err).
+				Str("probe_name", probeName).
+				Msg("No transformer available for unit correction")
+			correctedDatapoints[i] = dp
+			continue
+		}
+		
+		// Try to apply unit corrections if transformer supports them
+		correctedValue := dp.Value
+		if defTransformer, ok := transformer.(interface {
+			ApplyUnitCorrection(string, float64, map[string]string) (float64, bool)
+		}); ok {
+			// Convert value to float64 for correction calculation
+			originalFloat64 := float64(dp.Value)
+			if newValue, applied := defTransformer.ApplyUnitCorrection(dp.Name, originalFloat64, tags); applied {
+				correctedValue = float32(newValue)
+				correctionCount++
+				
+				d.logger.Info().
+					Str("metric", dp.Name).
+					Str("probe", probeName).
+					Float64("original_value", originalFloat64).
+					Float64("corrected_value", newValue).
+					Float64("correction_factor", newValue/originalFloat64).
+					Msg("🔧 Unit correction applied to datapoint - ensuring consistent units across all strategies")
+			}
+		}
+		
+		// Create corrected datapoint
+		correctedDatapoints[i] = datapoint.DataPoint{
+			Name:      dp.Name,
+			Value:     correctedValue,
+			Timestamp: dp.Timestamp,
+			Tags:      dp.Tags, // Keep original tags structure
+		}
+	}
+	
+	if correctionCount > 0 {
+		d.logger.Info().
+			Int("total_datapoints", len(datapoints)).
+			Int("corrections_applied", correctionCount).
+			Msg("✅ Unit corrections completed - all strategies will receive corrected metrics")
+	}
+	
+	return correctedDatapoints
 }
