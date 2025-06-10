@@ -309,26 +309,33 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 			continue
 		}
 
+		// Normalize metric names and values
+		normalizedName, normalizedValue := w.normalizeMetric(metricName, pathInfo.instance, value)
+		if normalizedName == "" {
+			// Skip this metric if it shouldn't be reported
+			continue
+		}
+
 		// Preparing tags
 		metricTags := append([]tags.Tag{}, baseTags...)
 
-		// Adding instance tag if present
-		if pathInfo.instance != "" {
-			w.logger.Debug().Str("instance", pathInfo.instance).Msg("Adding instance tag")
+		// Adding core tag for per-core metrics (consistent with Unix)
+		if pathInfo.instance != "" && pathInfo.instance != "_Total" {
+			w.logger.Debug().Str("instance", pathInfo.instance).Msg("Adding core tag")
 			metricTags = append(metricTags, tags.Tag{
-				Key:     "instance",
+				Key:     "core",
 				Value:   pathInfo.instance,
 				Private: false,
 			})
 		}
 
 		// Store the metric
-		metrics.SetMetric(name, value)
+		metrics.SetMetric(name, normalizedValue)
 
 		dataPoint := data_store.DataPoint{
-			Name:      metricName, // Use metricName instead of strings.Split(name, "_")[0]
+			Name:      normalizedName,
 			Timestamp: timestamp,
-			Value:     float32(value),
+			Value:     float32(normalizedValue),
 			Tags:      metricTags,
 		}
 		dataPoints = append(dataPoints, dataPoint)
@@ -344,6 +351,65 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 		Int("total_metrics", len(dataPoints)).
 		Msg("Collection completed")
 	return dataPoints, nil
+}
+
+// normalizeMetric converts Windows PDH metrics to standardized names and validates values
+func (w *windowsCollector) normalizeMetric(metricName, instance string, value float64) (string, float64) {
+	// Validate percentage values (should be between 0-100)
+	normalizedValue := value
+	if strings.Contains(metricName, "time") || strings.Contains(metricName, "percent") {
+		// Clamp percentage values to valid range
+		if normalizedValue < 0 {
+			normalizedValue = 0
+		} else if normalizedValue > 100 {
+			normalizedValue = 100
+		}
+	}
+
+	// Map Windows PDH metrics to Unix-compatible names
+	switch metricName {
+	case "processor_time":
+		if instance == "_Total" {
+			return "cpu_usage_total", normalizedValue
+		} else {
+			return "cpu_core_usage", normalizedValue
+		}
+	case "user_time":
+		if instance == "_Total" {
+			return "cpu_user", normalizedValue
+		} else {
+			return "cpu_core_user", normalizedValue
+		}
+	case "privileged_time":
+		if instance == "_Total" {
+			return "cpu_system", normalizedValue
+		} else {
+			return "cpu_core_system", normalizedValue
+		}
+	case "interrupt_time":
+		if instance == "_Total" {
+			return "cpu_irq", normalizedValue
+		} else {
+			return "cpu_core_irq", normalizedValue
+		}
+	case "dpc_time":
+		if instance == "_Total" {
+			return "cpu_softirq", normalizedValue
+		} else {
+			return "cpu_core_softirq", normalizedValue
+		}
+	case "dpc_rate":
+		return "cpu_dpc_rate", normalizedValue
+	case "dpc_queued":
+		return "cpu_dpc_queued", normalizedValue
+	case "interrupt_sec":
+		return "cpu_interrupts", normalizedValue
+	case "processor_queue_length":
+		return "cpu_queue_length", normalizedValue
+	default:
+		// Return empty string to skip unknown metrics
+		return "", 0
+	}
 }
 
 func (w *windowsCollector) Close() error {
