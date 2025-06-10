@@ -852,6 +852,27 @@ func (c *StorageCollector) collectVolumeConsumptionMetrics(ctx context.Context, 
 					volumeTags = append(volumeTags, tags.Tag{Key: "host", Value: hostName})
 				}
 				
+				// Get manufacturer/model information from controller for unit corrections
+				if controllerID != "" {
+					// Reconstruct controller path
+					controllerPath := "Storage/" + controllerID
+					ctrlResp, err := c.client.Get(ctx, controllerPath)
+					if err == nil {
+						// Extract manufacturer and model from storage controllers
+						if len(ctrlResp.StorageControllers) > 0 {
+							for _, sc := range ctrlResp.StorageControllers {
+								if mfr, ok := sc["Manufacturer"].(string); ok && mfr != "" {
+									volumeTags = append(volumeTags, tags.Tag{Key: "manufacturer", Value: mfr})
+								}
+								if mod, ok := sc["Model"].(string); ok && mod != "" {
+									volumeTags = append(volumeTags, tags.Tag{Key: "model", Value: mod})
+								}
+								break // Use first controller info
+							}
+						}
+					}
+				}
+				
 				// Add pool for mapping volumes to pools
 				if poolID != "" {
 					volumeTags = append(volumeTags, tags.Tag{Key: "pool_name", Value: poolID})
@@ -1727,6 +1748,27 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 		// Add host tag if available
 		if hostName != "" {
 			poolTags = append(poolTags, tags.Tag{Key: "host", Value: hostName})
+		}
+		
+		// Get manufacturer/model information from controller for unit corrections
+		if controllerID != "" {
+			// Reconstruct controller path
+			controllerPath := "Storage/" + controllerID
+			ctrlResp, err := c.client.Get(ctx, controllerPath)
+			if err == nil {
+				// Extract manufacturer and model from storage controllers
+				if len(ctrlResp.StorageControllers) > 0 {
+					for _, sc := range ctrlResp.StorageControllers {
+						if mfr, ok := sc["Manufacturer"].(string); ok && mfr != "" {
+							poolTags = append(poolTags, tags.Tag{Key: "manufacturer", Value: mfr})
+						}
+						if mod, ok := sc["Model"].(string); ok && mod != "" {
+							poolTags = append(poolTags, tags.Tag{Key: "model", Value: mod})
+						}
+						break // Use first controller info
+					}
+				}
+			}
 		}
 		
 		// Add description if available
