@@ -4,6 +4,7 @@ package data_store
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/logger"
@@ -387,6 +388,142 @@ func (d *DebugManager) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		d.logger.Error().Err(err).Msg("Failed to encode test inject response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// RealMetricInjectionRequest represents the request structure for real metric injection
+type RealMetricInjectionRequest struct {
+	Metrics []struct {
+		Name      string            `json:"name"`
+		Value     interface{}       `json:"value"`
+		Unit      string            `json:"unit"`
+		Timestamp string            `json:"timestamp"`
+		Tags      map[string]string `json:"tags"`
+	} `json:"metrics"`
+	Source string `json:"source"`
+}
+
+// HandleInjectRealMetrics handles POST requests to inject real production metrics
+func (d *DebugManager) HandleInjectRealMetrics(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := d.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+	
+	d.logger.Info().Msg("🔥 Injecting real production metrics for testing")
+	
+	// Parse request body
+	var request RealMetricInjectionRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		d.logger.Error().Err(err).Msg("Failed to decode real metrics injection request")
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+	
+	// Convert to datapoint format
+	var dataPoints []datapoint.DataPoint
+	now := time.Now()
+	
+	for _, metric := range request.Metrics {
+		// Parse timestamp
+		var timestamp time.Time
+		if parsedTime, err := time.Parse(time.RFC3339, metric.Timestamp); err == nil {
+			timestamp = parsedTime
+		} else {
+			timestamp = now // Fallback to current time
+		}
+		
+		// Convert tags map to Tag slice
+		var tagSlice []tags.Tag
+		for key, value := range metric.Tags {
+			tagSlice = append(tagSlice, tags.Tag{Key: key, Value: value})
+		}
+		
+		// Convert value to float32 (required by DataPoint)
+		var value float32
+		switch v := metric.Value.(type) {
+		case float64:
+			value = float32(v)
+		case float32:
+			value = v
+		case int:
+			value = float32(v)
+		case int64:
+			value = float32(v)
+		case int32:
+			value = float32(v)
+		default:
+			// Try to convert via string if possible
+			if f, ok := v.(float64); ok {
+				value = float32(f)
+			} else {
+				value = 0 // Default fallback
+			}
+		}
+		
+		dataPoint := datapoint.DataPoint{
+			Name:      metric.Name,
+			Value:     value,
+			Timestamp: timestamp,
+			Tags:      tagSlice,
+		}
+		
+		dataPoints = append(dataPoints, dataPoint)
+	}
+	
+	// Inject metrics into cache using transformer registry
+	d.strategy.cache.AddDataPointsWithTransformer(dataPoints, d.strategy.transformerRegistry)
+	
+	d.logger.Info().
+		Int("metrics_injected", len(dataPoints)).
+		Str("source", request.Source).
+		Msg("🔥 Real production metrics injected successfully")
+	
+	// Count metrics by type for better reporting
+	metricsByType := make(map[string]int)
+	for _, dp := range dataPoints {
+		if dp.Name != "" {
+			if len(dp.Name) >= 8 && dp.Name[:8] == "hardware" {
+				parts := strings.Split(dp.Name, ".")
+				if len(parts) >= 3 {
+					metricType := strings.Join(parts[:3], ".")
+					metricsByType[metricType]++
+				}
+			} else {
+				// Handle other metric patterns
+				parts := strings.Split(dp.Name, ".")
+				if len(parts) >= 2 {
+					metricType := strings.Join(parts[:2], ".")
+					metricsByType[metricType]++
+				}
+			}
+		}
+	}
+	
+	response := map[string]interface{}{
+		"status":         "success",
+		"message":        "Real production metrics injected successfully",
+		"metrics_count":  len(dataPoints),
+		"source":         request.Source,
+		"metrics_by_type": metricsByType,
+		"instructions":   "Test contextual filtering with real production data",
+		"test_urls": map[string]string{
+			"dashboard":    "http://localhost:8080/web/2a5d71c5-706e-43ce-8a10-8ee252f85772/dashboard",
+			"tag_filters":  "http://localhost:8080/api/2a5d71c5-706e-43ce-8a10-8ee252f85772/info/tags/redfish",
+			"prtg_metrics": "http://localhost:8080/api/2a5d71c5-706e-43ce-8a10-8ee252f85772/prtg/metrics/redfish",
+		},
+		"contextual_filtering_examples": map[string]string{
+			"pool_metrics":   "http://localhost:8080/api/2a5d71c5-706e-43ce-8a10-8ee252f85772/prtg/metrics/redfish?tags=pool_name:A",
+			"volume_metrics": "http://localhost:8080/api/2a5d71c5-706e-43ce-8a10-8ee252f85772/prtg/metrics/redfish?tags=volume_name:Volume001",
+			"drive_metrics":  "http://localhost:8080/api/2a5d71c5-706e-43ce-8a10-8ee252f85772/prtg/metrics/redfish?tags=drive_name:Drive%200.0",
+		},
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		d.logger.Error().Err(err).Msg("Failed to encode real metrics inject response")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
