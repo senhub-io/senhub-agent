@@ -389,15 +389,36 @@ func (f *FormatConverter) isHealthStatusMetric(metricName string, tags map[strin
 
 // Metric Filtering
 
-// applyMetricFilter applies filtering criteria to metrics
+// applyMetricFilter applies filtering criteria to metrics with contextual intelligence
 func (f *FormatConverter) applyMetricFilter(metrics []CachedMetric, filter MetricFilter) []CachedMetric {
 	if filter.Limit == 0 && filter.Offset == 0 && len(filter.MetricNames) == 0 && len(filter.TagFilters) == 0 && len(filter.ExcludeTags) == 0 {
 		return metrics // No filtering needed
 	}
 	
+	// Apply contextual filtering based on tag types
+	contextualMetricPrefixes := f.getContextualMetricPrefixes(filter.TagFilters)
+	
 	filtered := make([]CachedMetric, 0)
 	
 	for _, metric := range metrics {
+		// Apply contextual metric filtering first
+		if len(contextualMetricPrefixes) > 0 {
+			matchesContext := false
+			for _, prefix := range contextualMetricPrefixes {
+				if strings.HasPrefix(metric.MetricName, prefix) {
+					matchesContext = true
+					break
+				}
+			}
+			if !matchesContext {
+				f.logger.Debug().
+					Str("metric", metric.MetricName).
+					Strs("context_prefixes", contextualMetricPrefixes).
+					Msg("Metric filtered out by contextual filtering")
+				continue
+			}
+		}
+		
 		// Filter by metric names if specified
 		if len(filter.MetricNames) > 0 {
 			found := false
@@ -477,6 +498,54 @@ func (f *FormatConverter) applyMetricFilter(metrics []CachedMetric, filter Metri
 	}
 	
 	return filtered[start:end]
+}
+
+// getContextualMetricPrefixes determines which metric prefixes to include based on tag filter context
+func (f *FormatConverter) getContextualMetricPrefixes(tagFilters map[string][]string) []string {
+	var prefixes []string
+	
+	// Check for storage-related contextual tags
+	for tagKey := range tagFilters {
+		switch tagKey {
+		case "pool_name":
+			// If filtering on pool_name, show only pool metrics
+			prefixes = append(prefixes, "storage.pool.")
+			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for pool metrics")
+			
+		case "volume_name":
+			// If filtering on volume_name, show only volume metrics  
+			prefixes = append(prefixes, "storage.volume.")
+			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for volume metrics")
+			
+		case "drive_name":
+			// If filtering on drive_name, show only drive metrics
+			prefixes = append(prefixes, "storage.drive.")
+			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for drive metrics")
+			
+		case "controller":
+			// If filtering on controller, show only storage controller metrics
+			prefixes = append(prefixes, "storage.controller.")
+			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for controller metrics")
+			
+		case "interface":
+			// If filtering on interface, show only network metrics
+			prefixes = append(prefixes, "network.")
+			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for network metrics")
+			
+		case "core":
+			// If filtering on core, show only CPU metrics
+			prefixes = append(prefixes, "cpu.")
+			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for CPU metrics")
+			
+		case "mount_point", "filesystem":
+			// If filtering on mount point or filesystem, show only logical disk metrics
+			prefixes = append(prefixes, "logicaldisk.")
+			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for logical disk metrics")
+		}
+	}
+	
+	// If multiple contextual prefixes found, return them all (user might want to see related metrics)
+	return prefixes
 }
 
 // Nagios Format Conversion (basic structure - detailed implementation would be in Nagios module)
