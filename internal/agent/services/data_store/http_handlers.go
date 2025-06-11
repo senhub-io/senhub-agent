@@ -44,6 +44,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/debug/logs", h.HandleDebugLogs).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/debug/logs", h.HandleSetLogLevels).Methods("POST")
 	router.HandleFunc("/api/{agentkey}/debug/inject-test-metrics", h.HandleTestInjectMetrics).Methods("POST") // TEMPORARY TEST ENDPOINT
+	router.HandleFunc("/api/{agentkey}/debug/inject-real-metrics", h.HandleInjectRealMetrics).Methods("POST") // PRODUCTION DATA INJECTION
 
 	// Admin endpoints (with agentkey authentication)
 	router.HandleFunc("/api/{agentkey}/stats/cache", h.HandleStatsCache).Methods("GET")
@@ -147,6 +148,10 @@ func (h *HTTPHandlers) HandleSetLogLevels(w http.ResponseWriter, r *http.Request
 
 func (h *HTTPHandlers) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleTestInjectMetrics(w, r)
+}
+
+func (h *HTTPHandlers) HandleInjectRealMetrics(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleInjectRealMetrics(w, r)
 }
 
 // PRTG handlers (delegating to strategy for now)
