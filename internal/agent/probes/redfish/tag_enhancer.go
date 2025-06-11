@@ -174,6 +174,9 @@ func (te *TagEnhancer) simplifyTag(tag tags.Tag) tags.Tag {
 		simplifiedTag.Key = "manufacturer"
 	}
 	
+	// Clean problematic characters from all tag values for URL compatibility
+	simplifiedTag.Value = te.cleanTagValueForURL(simplifiedTag.Value)
+	
 	return simplifiedTag
 }
 
@@ -480,5 +483,45 @@ func (te *TagEnhancer) normalizeManufacturer(manufacturer string) string {
 		// If no match, return the original but properly capitalized
 		return strings.Title(strings.ToLower(manufacturer))
 	}
+}
+
+// cleanTagValueForURL removes or replaces characters that are problematic in URLs
+func (te *TagEnhancer) cleanTagValueForURL(value string) string {
+	// List of problematic characters to remove from tag values
+	// These cause issues with URL encoding/parsing
+	problematicChars := []string{
+		",",  // Comma - often used as separator in URL params
+		";",  // Semicolon - can be interpreted as parameter separator
+		"(",  // Parentheses - can cause parsing issues
+		")",
+		"[",  // Brackets - can interfere with array notation
+		"]",
+		"{",  // Braces - can interfere with template syntax
+		"}",
+		"<",  // Angle brackets - can be interpreted as HTML
+		">",
+		"|",  // Pipe - often used as separator
+		"\\", // Backslash - escape character issues
+		"\"", // Quotes - can break string parsing
+		"'",
+		"`",  // Backtick - template literal issues
+		"#",  // Hash - URL fragment identifier
+		"&",  // Ampersand - URL parameter separator
+		"?",  // Question mark - URL query start
+		"=",  // Equals - URL parameter assignment
+	}
+	
+	cleanValue := value
+	for _, char := range problematicChars {
+		cleanValue = strings.ReplaceAll(cleanValue, char, "")
+	}
+	
+	// Replace multiple spaces with single space
+	cleanValue = strings.Join(strings.Fields(cleanValue), " ")
+	
+	// Trim spaces
+	cleanValue = strings.TrimSpace(cleanValue)
+	
+	return cleanValue
 }
 
