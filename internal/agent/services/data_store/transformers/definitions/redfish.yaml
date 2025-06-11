@@ -40,7 +40,7 @@ metrics:
   # Hardware Power Metrics
   - name: "hardware.power.health"
     channel: "power_health"
-    display_name: "PSU {psu_name} Health"
+    display_name: "{psu_name} Health"
     unit: "#"
     multi_instance_labels: ["psu_name", "controller", "enclosure_id", "psu_location", "host"]
     description: "Power supply unit health status"
@@ -181,14 +181,14 @@ metrics:
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Total number of I/O operations on volume"
     
-  - name: "hardware.storage.volume.io.read_bytes"
+  - name: "hardware.storage.volume.io.read.bytes"
     channel: "volume_io_read_bytes"
     display_name: "Volume {volume_name} IO Read Bytes"
     unit: "Bytes"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Total bytes read from volume"
     
-  - name: "hardware.storage.volume.io.write_bytes"
+  - name: "hardware.storage.volume.io.write.bytes"
     channel: "volume_io_write_bytes"
     display_name: "Volume {volume_name} IO Write Bytes"
     unit: "Bytes"
@@ -254,14 +254,14 @@ metrics:
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Number of write operations on pool"
     
-  - name: "hardware.storage.pool.io.read_bytes"
+  - name: "hardware.storage.pool.io.read.bytes"
     channel: "pool_io_read_bytes"
     display_name: "Pool {pool_name} IO Read Bytes"
     unit: "Bytes"
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Total bytes read from pool"
     
-  - name: "hardware.storage.pool.io.write_bytes"
+  - name: "hardware.storage.pool.io.write.bytes"
     channel: "pool_io_write_bytes"
     display_name: "Pool {pool_name} IO Write Bytes"
     unit: "Bytes"
