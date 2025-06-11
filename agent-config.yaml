@@ -1,0 +1,123 @@
+# Agent configuration
+agent:
+  key: "ba517963-cde0-4726-a52a-fb583de60939"
+  mode: offline
+  generated: true
+
+# Auto-update configuration (disabled by default in offline mode)
+auto_update:
+  enabled: false      # Enable/disable automatic updates
+  url: "https://eu-west-1.intake.senhub.io/releases"        # Update server URL
+
+# Cache configuration
+cache:
+  retention_minutes: 5  # Cache retention time in minutes
+
+# Local storage with web interface
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+      endpoints: ["prtg", "web", "nagios"]
+
+
+# Active probes (default system monitoring)
+probes:
+  # ===== ACTIVE PROBES =====
+
+  # CPU monitoring - 30s interval
+  - name: cpu
+    params:
+      interval: 30
+
+  # Memory monitoring - 30s interval
+  - name: memory
+    params:
+      interval: 30
+
+  # Network monitoring - 60s interval (less frequent)
+  - name: network
+    params:
+      interval: 60
+
+  # Disk monitoring - 30s interval
+  - name: logicaldisk
+    params:
+      interval: 30
+  # Server hardware via Redfish (exemple fictif pour tests)
+  - name: redfish
+    params:
+      endpoint: "https://fake-powervault.local"  # Endpoint fictif
+      username: "admin"
+      password: "fake123"
+      interval: 300
+      verify_ssl: false
+      timeout: 10                               # Court timeout pour éviter les attentes
+      collections:
+        - storage    # Pour les métriques pool_name
+
+# ===== CONFIGURATION EXAMPLES (COMMENTED) =====
+
+# # Network connectivity
+# - name: ping_gateway
+#   params: {}  # Auto-detects gateway
+#
+# - name: ping_webapp
+#   params:
+#     url: "https://example.com"  # REQUIRED
+#
+# - name: load_webapp
+#   params:
+#     url: "https://example.com"  # REQUIRED
+#     timeout: 30                 # Optional, 1-300s, default: 30s
+
+# # WiFi signal strength (auto-detects if WiFi available)
+# - name: wifi_signal_strength
+#   params: {}
+
+# # Server hardware via Redfish (iDRAC, iLO, etc.)
+# - name: redfish
+#   params:
+#     endpoint: "https://idrac.example.com"  # REQUIRED
+#     username: "admin"                      # REQUIRED
+#     password: "password123"                # REQUIRED
+#     interval: 300                          # Optional, default: 300s (5min)
+#     verify_ssl: true                       # Optional, default: true
+#     collections:                           # Optional, default: all
+#       - system     # General system info
+#       - thermal    # Temperatures, fans
+#       - power      # Power supply, consumption
+#       - processor  # CPU hardware
+#       - memory     # RAM hardware
+#       - storage    # RAID, disks
+#       - drives     # Individual drives
+#       - networkadapter  # Network cards
+
+# # Syslog event collection
+# - name: syslog
+#   params:
+#     port: 514        # Optional, default: 514, range: 1-65535
+#     protocol: "udp"  # Optional, default: "udp", values: "tcp"/"udp"
+
+# # Custom events endpoint (POST /event)
+# - name: event
+#   params:
+#     address: "127.0.0.1"  # Optional, default: "127.0.0.1"
+#     port: 5656            # Optional, default: 5656, range: 1-65535
+#     protocol: "tcp"       # Optional, default: "tcp", values: "tcp"/"udp"
+
+# # OpenTelemetry collector
+# - name: otel
+#   params:
+#     endpoint: "http://localhost:4318"  # REQUIRED
+#     name: "otel"                       # Optional, default: "otel"
+#     interval: 60                       # Optional, default: 60s
+#     protocol: "http"                   # Optional, auto-detected ("http"/"grpc")
+#     telemetry_types:                   # Optional, default: all
+#       - metrics
+#       - traces
+#       - logs
+#     headers:                           # Optional, HTTP only
+#       Authorization: "Bearer token123"
+#     insecure: false                    # Optional, gRPC only
