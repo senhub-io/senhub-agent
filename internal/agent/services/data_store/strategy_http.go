@@ -454,6 +454,11 @@ func (h *HTTPSyncStrategy) handleTestInjectMetrics(w http.ResponseWriter, r *htt
 	h.debugManager.HandleTestInjectMetrics(w, r)
 }
 
+// handleInjectRealMetrics handles POST requests to inject real production metrics (delegated to DebugManager)
+func (h *HTTPSyncStrategy) handleInjectRealMetrics(w http.ResponseWriter, r *http.Request) {
+	h.debugManager.HandleInjectRealMetrics(w, r)
+}
+
 
 // handleNagiosMetricsGET handles GET requests for Nagios format metrics by probe (delegated to NagiosManager)
 func (h *HTTPSyncStrategy) handleNagiosMetricsGET(w http.ResponseWriter, r *http.Request) {

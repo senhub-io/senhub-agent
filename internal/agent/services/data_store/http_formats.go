@@ -509,37 +509,48 @@ func (f *FormatConverter) getContextualMetricPrefixes(tagFilters map[string][]st
 		switch tagKey {
 		case "pool_name":
 			// If filtering on pool_name, show only pool metrics
-			prefixes = append(prefixes, "storage.pool.")
+			// Support both old test format and real hardware format
+			prefixes = append(prefixes, "storage.pool.", "hardware.storage.pool.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for pool metrics")
 			
 		case "volume_name":
 			// If filtering on volume_name, show only volume metrics  
-			prefixes = append(prefixes, "storage.volume.")
+			prefixes = append(prefixes, "storage.volume.", "hardware.storage.volume.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for volume metrics")
 			
 		case "drive_name":
 			// If filtering on drive_name, show only drive metrics
-			prefixes = append(prefixes, "storage.drive.")
+			prefixes = append(prefixes, "storage.drive.", "hardware.storage.drive.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for drive metrics")
 			
 		case "controller":
 			// If filtering on controller, show only storage controller metrics
-			prefixes = append(prefixes, "storage.controller.")
+			prefixes = append(prefixes, "storage.controller.", "hardware.storage.controller.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for controller metrics")
+			
+		case "fan_name":
+			// If filtering on fan_name, show only fan metrics
+			prefixes = append(prefixes, "hardware.fan.")
+			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for fan metrics")
+			
+		case "psu_name":
+			// If filtering on psu_name, show only power/PSU metrics
+			prefixes = append(prefixes, "hardware.power.")
+			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for PSU metrics")
 			
 		case "interface":
 			// If filtering on interface, show only network metrics
-			prefixes = append(prefixes, "network.")
+			prefixes = append(prefixes, "network.", "hardware.network.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for network metrics")
 			
 		case "core":
 			// If filtering on core, show only CPU metrics
-			prefixes = append(prefixes, "cpu.")
+			prefixes = append(prefixes, "cpu.", "hardware.cpu.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for CPU metrics")
 			
 		case "mount_point", "filesystem":
 			// If filtering on mount point or filesystem, show only logical disk metrics
-			prefixes = append(prefixes, "logicaldisk.")
+			prefixes = append(prefixes, "logicaldisk.", "hardware.disk.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for logical disk metrics")
 		}
 	}
