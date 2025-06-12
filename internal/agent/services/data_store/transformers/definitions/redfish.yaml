@@ -5,37 +5,12 @@ probe_name: "redfish"
 version: "3.0.0"
 
 metrics:
-  # Hardware Thermal Metrics
-  - name: "hardware.temperature"
-    channel: "temperature"
-    display_name: "Temperature {sensor_name}"
-    unit: "°C"
-    multi_instance_labels: ["sensor_name", "controller_id", "chassis_id", "enclosure_id", "sensor_location", "host"]
-    description: "Temperature reading from thermal sensor"
-    
-  - name: "hardware.temperature.health"
-    channel: "temperature_health"
-    display_name: "Temperature {sensor_name} Health"
-    unit: "#"
-    multi_instance_labels: ["sensor_name", "controller_id", "chassis_id", "enclosure_id", "sensor_location", "host"]
-    description: "Temperature sensor health status"
-    lookup: "sfs.redfish.health"
-
-  # Hardware Fan Metrics
-  - name: "hardware.fan.health"
-    channel: "fan_health"
-    display_name: "Fan {fan_name} Health"
-    unit: "#"
-    multi_instance_labels: ["fan_name", "chassis_id", "enclosure_id", "fan_location", "host"]
-    description: "Fan health status in storage enclosure"
-    lookup: "sfs.redfish.health"
-    
-  - name: "hardware.fan.speed"
-    channel: "fan_speed"
-    display_name: "Fan {fan_name} Speed"
-    unit: "rpm"
-    multi_instance_labels: ["fan_name", "chassis_id", "enclosure_id", "fan_location", "host"]
-    description: "Fan speed in RPM"
+  # Hardware Thermal Metrics - DISABLED for consistency across strategies
+  # Temperature and fan metrics are skipped in probe collection to avoid naming issues
+  # 
+  # - name: "hardware.temperature"
+  #   display_name: "Temperature"
+  #   (definitions removed for consistency)
 
   # Hardware Power Metrics
   - name: "hardware.power.health"
@@ -303,25 +278,29 @@ metrics:
   # Redundancy Metrics
   - name: "hardware.redundancy.health"
     channel: "redundancy_health"
-    display_name: "Redundancy Health"
+    display_name: "{host} Redundancy Health"
     unit: "#"
+    multi_instance_labels: ["host", "controller_id", "redundancy_set"]
     description: "Redundancy system health status"
     lookup: "sfs.redfish.health"
     
   - name: "hardware.redundancy.controllers.active"
     channel: "redundancy_controllers_active"
-    display_name: "Redundancy Controllers Active"
+    display_name: "{host} Redundancy Controllers Active"
     unit: "#"
+    multi_instance_labels: ["host", "redundancy_set"]
     description: "Number of active redundant controllers"
     
   - name: "hardware.redundancy.controllers.min"
     channel: "redundancy_controllers_min"
-    display_name: "Redundancy Controllers Min"
+    display_name: "{host} Redundancy Controllers Min"
     unit: "#"
+    multi_instance_labels: ["host", "redundancy_set"]
     description: "Minimum number of controllers for redundancy"
     
   - name: "hardware.redundancy.controllers.max"
     channel: "redundancy_controllers_max"
-    display_name: "Redundancy Controllers Max"
+    display_name: "{host} Redundancy Controllers Max"
     unit: "#"
+    multi_instance_labels: ["host", "redundancy_set"]
     description: "Maximum number of controllers supported"

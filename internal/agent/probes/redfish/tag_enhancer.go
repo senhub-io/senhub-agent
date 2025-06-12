@@ -124,11 +124,10 @@ func (te *TagEnhancer) shouldSkipTag(tag tags.Tag) bool {
 		}
 	}
 	
-	// Optionally skip sensor_name if they're too complex for filtering
-	// This can be enabled if sensor names are not useful for end-user filtering
-	if tag.Key == "sensor_name" && te.isSensorNameTooComplex(tag.Value) {
-		return true
-	}
+	// Thermal metrics disabled - sensor_name filtering removed for consistency
+	// if tag.Key == "sensor_name" && te.isSensorNameTooComplex(tag.Value) {
+	//     return true
+	// }
 	
 	return false
 }
@@ -137,10 +136,10 @@ func (te *TagEnhancer) shouldSkipTag(tag tags.Tag) bool {
 func (te *TagEnhancer) simplifyTag(tag tags.Tag) tags.Tag {
 	simplifiedTag := tag
 	
-	// Handle sensor_name - keep the simplified name for better readability but don't expose the raw complex name
-	if tag.Key == "sensor_name" {
-		simplifiedTag.Value = te.simplifySensorName(tag.Value)
-	}
+	// Thermal metrics disabled - sensor_name handling removed for consistency
+	// if tag.Key == "sensor_name" {
+	//     // Sensor processing disabled for consistency across strategies
+	// }
 	
 	// Simplify controller names and unify the key
 	if tag.Key == "controller_name" || tag.Key == "controller_id" {
