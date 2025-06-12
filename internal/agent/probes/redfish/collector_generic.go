@@ -474,16 +474,9 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 
 	// Collect metrics for each chassis
 	for _, chassisPath := range c.chassis {
-		// Get thermal data for this chassis
-		thermalPath := chassisPath + "/Thermal"
-		resp, err := c.client.Get(ctx, thermalPath)
-		if err != nil {
-			c.logger.Warn().
-				Err(err).
-				Str("path", thermalPath).
-				Msg("Failed to get thermal data, skipping")
-			continue
-		}
+		// Skip thermal data collection - thermal metrics disabled for consistency
+		// thermalPath := chassisPath + "/Thermal"
+		// resp, err := c.client.Get(ctx, thermalPath)
 
 		// Extract chassis ID and name for tags - follow REDFISH-TAGS.md conventions
 		chassisResp, err := c.client.Get(ctx, chassisPath)
@@ -559,133 +552,18 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 			chassisTags = append(chassisTags, tags.Tag{Key: "host", Value: hostName})
 		}
 
-		// Process temperature sensors
-		for i, temp := range resp.Temperatures {
-			var tempReading struct {
-				Name              string  `json:"Name"`
-				ReadingCelsius    float32 `json:"ReadingCelsius"`
-				UpperThreshold    float32 `json:"UpperThresholdCritical"`
-				LowerThreshold    float32 `json:"LowerThresholdCritical"`
-				PhysicalContext   string  `json:"PhysicalContext"`
-				Status            *Status `json:"Status"`
-				SensorNumber      int     `json:"SensorNumber"`
-				RelatedItemCount  int     `json:"RelatedItem@odata.count"`
-			}
-			rawJSON, _ := json.Marshal(temp)
-			if err := json.Unmarshal(rawJSON, &tempReading); err != nil {
-				c.logger.Warn().
-					Err(err).
-					Int("index", i).
-					Msg("Failed to parse temperature data")
-				continue
-			}
-
-			// Skip if no reading available
-			if tempReading.ReadingCelsius == 0 {
-				continue
-			}
-
-			// Create sensor-specific tags following REDFISH-TAGS.md conventions
-			sensorTags := append([]tags.Tag{}, chassisTags...)
-			sensorTags = append(sensorTags, tags.Tag{Key: "sensor_name", Value: tempReading.Name})
-
-			// Add sensor number if available
-			if tempReading.SensorNumber != 0 {
-				sensorTags = append(sensorTags, tags.Tag{Key: "sensor_number", Value: fmt.Sprintf("%d", tempReading.SensorNumber)})
-			}
-
-			// Look for controller name in sensor name
-			if strings.Contains(strings.ToLower(tempReading.Name), "ctrl_a") ||
-			   strings.Contains(strings.ToLower(tempReading.Name), "controller_a") {
-				sensorTags = append(sensorTags, tags.Tag{Key: "controller", Value: "A"})
-			} else if strings.Contains(strings.ToLower(tempReading.Name), "ctrl_b") ||
-			          strings.Contains(strings.ToLower(tempReading.Name), "controller_b") {
-				sensorTags = append(sensorTags, tags.Tag{Key: "controller", Value: "B"})
-			}
-
-			if tempReading.PhysicalContext != "" {
-				sensorTags = append(sensorTags, tags.Tag{Key: "physical_context", Value: tempReading.PhysicalContext})
-			}
-
-			// Add related items count if available
-			if tempReading.RelatedItemCount > 0 {
-				sensorTags = append(sensorTags, tags.Tag{Key: "related_items_count", Value: fmt.Sprintf("%d", tempReading.RelatedItemCount)})
-			}
-
-			// Add temperature reading
-			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "hardware.temperature",
-				Timestamp: timestamp,
-				Value:     tempReading.ReadingCelsius,
-				Tags:      sensorTags,
-			})
-
-			// Add health state if available
-			if tempReading.Status != nil {
-				health := mapHealthState(tempReading.Status.Health)
-				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "hardware.temperature.health",
-					Timestamp: timestamp,
-					Value:     float32(health),
-					Tags:      sensorTags,
-				})
-			}
-		}
-
-		// Process fans
-		for i, fan := range resp.Fans {
-			var fanReading struct {
-				Name           string  `json:"Name"`
-				Reading        float32 `json:"Reading"`
-				ReadingUnits   string  `json:"ReadingUnits"`
-				PhysicalContext string  `json:"PhysicalContext"`
-				Status         *Status `json:"Status"`
-			}
-			rawJSON, _ := json.Marshal(fan)
-			if err := json.Unmarshal(rawJSON, &fanReading); err != nil {
-				c.logger.Warn().
-					Err(err).
-					Int("index", i).
-					Msg("Failed to parse fan data")
-				continue
-			}
-
-			// Skip if no reading available
-			if fanReading.Reading == 0 {
-				continue
-			}
-
-			// Create fan-specific tags
-			fanTags := append([]tags.Tag{}, chassisTags...)
-			fanTags = append(fanTags, tags.Tag{Key: "fan_name", Value: fanReading.Name})
-
-			if fanReading.PhysicalContext != "" {
-				fanTags = append(fanTags, tags.Tag{Key: "physical_context", Value: fanReading.PhysicalContext})
-			}
-
-			if fanReading.ReadingUnits != "" {
-				fanTags = append(fanTags, tags.Tag{Key: "units", Value: fanReading.ReadingUnits})
-			}
-
-			// Add fan reading
-			datapoints = append(datapoints, data_store.DataPoint{
-				Name:      "hardware.fan.speed",
-				Timestamp: timestamp,
-				Value:     fanReading.Reading,
-				Tags:      fanTags,
-			})
-
-			// Add health state if available
-			if fanReading.Status != nil {
-				health := mapHealthState(fanReading.Status.Health)
-				datapoints = append(datapoints, data_store.DataPoint{
-					Name:      "hardware.fan.health",
-					Timestamp: timestamp,
-					Value:     float32(health),
-					Tags:      fanTags,
-				})
-			}
-		}
+		// Skip thermal metrics processing to avoid inconsistent naming issues
+		// Temperature and fan metrics are disabled for consistency across all strategies
+		// 
+		// // Process temperature sensors
+		// for i, temp := range resp.Temperatures {
+		//     // Temperature processing code removed for consistency
+		// }
+		//
+		// // Process fans  
+		// for i, fan := range resp.Fans {
+		//     // Fan processing code removed for consistency
+		// }
 	}
 
 	return datapoints, nil
