@@ -528,10 +528,9 @@ func (f *FormatConverter) getContextualMetricPrefixes(tagFilters map[string][]st
 			prefixes = append(prefixes, "storage.controller.", "hardware.storage.controller.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for controller metrics")
 			
-		case "fan_name":
-			// If filtering on fan_name, show only fan metrics
-			prefixes = append(prefixes, "hardware.fan.")
-			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for fan metrics")
+		// case "fan_name":
+		//     // Thermal metrics disabled - fan filtering not available
+		//     f.logger.Debug().Str("tag", tagKey).Msg("Fan metrics disabled for consistency")
 			
 		case "psu_name":
 			// If filtering on psu_name, show only power/PSU metrics

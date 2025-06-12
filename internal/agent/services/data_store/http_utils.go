@@ -43,20 +43,9 @@ func NewUtilsManager(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger) *U
 
 // getTagDescription provides human-readable descriptions for common tags
 func (u *UtilsManager) getTagDescription(tagKey string) string {
+	// All descriptions removed for uniform tag display
 	descriptions := map[string]string{
-		"core":       "CPU core identifier",
-		"instance":   "CPU instance identifier (Windows)",
-		"interface":  "Network interface name",
-		"adapter":    "Network adapter name (Windows)",
-		"device":     "Device identifier",
-		"drive":      "Drive identifier",
-		"controller": "Controller identifier",
-		"slot":       "Physical slot number",
-		"channel":    "Channel number",
-		"host":       "Hostname",
-		"os":         "Operating system",
-		"platform":   "Platform identifier",
-		"probe_name": "Source probe name",
+		// Tags display as "tag_name (X values)" without additional descriptions
 	}
 	
 	if desc, exists := descriptions[tagKey]; exists {
