@@ -35,6 +35,7 @@ const (
 	CollectionMemory     CollectionType = "memory"
 	CollectionStorage    CollectionType = "storage"
 	CollectionDrives     CollectionType = "drives"
+	CollectionNetwork    CollectionType = "network"
 	CollectionNetworkAdapter CollectionType = "networkadapter"
 )
 
