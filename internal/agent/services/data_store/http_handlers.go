@@ -51,6 +51,11 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/config/probes", h.HandleConfigProbes).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/admin/cache/clear", h.HandleAdminCacheClear).Methods("POST")
 
+	// Universal Configuration endpoints (with agentkey authentication)
+	router.HandleFunc("/api/{agentkey}/config/validate", h.HandleUniversalConfigValidation).Methods("POST")
+	router.HandleFunc("/api/{agentkey}/config/preview", h.HandleUniversalConfigPreview).Methods("POST")
+	router.HandleFunc("/api/{agentkey}/config/test", h.HandleUniversalConfigTest).Methods("POST")
+
 	// Configure endpoints based on enabled monitoring tools
 	if h.strategy.configManager.IsEndpointEnabled("prtg") {
 		// PRTG endpoints
@@ -63,9 +68,9 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	if h.strategy.configManager.IsEndpointEnabled("nagios") {
 		// Nagios endpoints
 		router.HandleFunc("/api/{agentkey}/nagios/metrics/{probe}", h.HandleNagiosMetricsGET).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/nagios/metrics", h.HandleNagiosMetrics).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/nagios/metrics", h.HandleNagiosMetrics).Methods("GET", "POST")
 		// Removed: /nagios/check/{probe} endpoint not needed
-		router.HandleFunc("/api/{agentkey}/nagios/checks", h.HandleNagiosChecks).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/nagios/checks", h.HandleNagiosChecks).Methods("GET", "POST")
 	}
 
 	if h.strategy.configManager.IsEndpointEnabled("zabbix") {
@@ -230,4 +235,18 @@ func (h *HTTPHandlers) HandleConfigProbes(w http.ResponseWriter, r *http.Request
 
 func (h *HTTPHandlers) HandleAdminCacheClear(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleAdminCacheClear(w, r)
+}
+
+// Universal Configuration handlers (delegating to ConfigurationManager)
+
+func (h *HTTPHandlers) HandleUniversalConfigValidation(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleUniversalConfigValidation(w, r)
+}
+
+func (h *HTTPHandlers) HandleUniversalConfigPreview(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleUniversalConfigPreview(w, r)
+}
+
+func (h *HTTPHandlers) HandleUniversalConfigTest(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleUniversalConfigTest(w, r)
 }

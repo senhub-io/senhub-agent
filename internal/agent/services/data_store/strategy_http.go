@@ -554,6 +554,20 @@ func (h *HTTPSyncStrategy) handleAdminCacheClear(w http.ResponseWriter, r *http.
 	h.debugManager.HandleAdminCacheClear(w, r)
 }
 
+// Universal Configuration handlers (delegated to ConfigurationManager)
+
+func (h *HTTPSyncStrategy) handleUniversalConfigValidation(w http.ResponseWriter, r *http.Request) {
+	h.configManager.HandleUniversalConfigValidation(w, r)
+}
+
+func (h *HTTPSyncStrategy) handleUniversalConfigPreview(w http.ResponseWriter, r *http.Request) {
+	h.configManager.HandleUniversalConfigPreview(w, r)
+}
+
+func (h *HTTPSyncStrategy) handleUniversalConfigTest(w http.ResponseWriter, r *http.Request) {
+	h.configManager.HandleUniversalConfigTest(w, r)
+}
+
 
 // parseVersionInfo parses version and commit information from cliArgs (delegated to UtilsManager)
 func (h *HTTPSyncStrategy) parseVersionInfo() VersionInfo {

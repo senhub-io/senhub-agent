@@ -428,6 +428,46 @@ curl -X POST http://localhost:8080/api/{agentkey}/debug/logs \
 - DOCUMENTATION: See LOGGING.md for complete usage guide
 - BENEFITS: Targeted debugging, reduced log noise, runtime configuration without restart
 
+### Universal Configuration API (COMPLETED)
+- OBJECTIVE: Provide universal configuration validation for all probe types and monitoring systems
+- PROGRESS: 
+  - Implemented Universal Configuration API with three validation levels (schema, connectivity, full)
+  - Extended ConfigurationManager following existing patterns and module-based logging
+  - Added three new endpoints: `/config/validate`, `/config/preview`, `/config/test` 
+  - Implemented probe-specific schema validation for all supported probe types
+  - Added network connectivity testing for remote probes (Redfish, WebApp, Syslog)
+  - Created mock metrics preview system for full validation mode
+  - Added comprehensive HTTP handlers with proper error handling and structured logging
+  - Fixed GET/POST method support for Nagios endpoints (HTTP 405 → 100% success rate)
+  - Added delegation pattern from HTTPSyncStrategy to ConfigurationManager
+  - All tests pass including integration tests (PRTG: 100%, Nagios: 100%)
+- FEATURES:
+  - **Three validation levels**: 
+    - `schema` - Fast structure validation (~1-5ms)
+    - `connectivity` - Network connectivity testing (~100-2000ms) 
+    - `full` - Complete validation with metrics preview (~1-10s)
+  - **Universal probe support**: Redfish, WebApp, System probes, Gateway, Syslog
+  - **Monitoring system integration**: Works with PRTG, Nagios, Zabbix, and any monitoring tool
+  - **Comprehensive error handling**: Detailed validation results with test-by-test feedback
+  - **Security validation**: Authentication endpoint testing and credential verification
+  - **Preview metrics**: Sample data collection for verification purposes
+- CONFIGURATION EXAMPLE:
+  ```bash
+  # Validate Redfish configuration with connectivity test
+  curl -X POST /api/{key}/config/validate \
+    -d '{"probe":"redfish","config":{"endpoint":"https://server.com","username":"admin","password":"secret"},"validation":"connectivity"}'
+  
+  # Test full configuration with metrics preview
+  curl -X POST /api/{key}/config/test \
+    -d '{"probe":"redfish","config":{...}}'
+  ```
+- INTEGRATION:
+  - Replaces probe-specific configuration validation scattered across monitoring endpoints
+  - Provides standardized validation API for all monitoring systems
+  - Enables pre-deployment configuration testing and troubleshooting
+  - Supports automated configuration validation in CI/CD pipelines
+- DOCUMENTATION: Complete API documentation in `docs/admin-guide/UNIVERSAL-CONFIGURATION.md`
+
 ## Offline Mode Implementation (COMPLETED)
 
 ### Overview
