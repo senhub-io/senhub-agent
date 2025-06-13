@@ -304,3 +304,33 @@ metrics:
     unit: "#"
     multi_instance_labels: ["host", "redundancy_set"]
     description: "Maximum number of controllers supported"
+
+  # Storage Redundancy Metrics (Dell PowerVault)
+  - name: "hardware.storage.redundancy.health"
+    channel: "storage_redundancy_health"
+    display_name: "{redundancy_group} Health"
+    unit: "#"
+    multi_instance_labels: ["host", "controller", "redundancy_group", "redundancy_mode"]
+    description: "Storage redundancy health status"
+    lookup: "sfs.redfish.health"
+    
+  - name: "hardware.storage.redundancy.controllers_active"
+    channel: "storage_redundancy_controllers_active"
+    display_name: "{redundancy_group} Controllers Active"
+    unit: "#"
+    multi_instance_labels: ["host", "controller", "redundancy_group", "redundancy_mode"]
+    description: "Number of active redundant storage controllers"
+    
+  - name: "hardware.storage.redundancy.controllers_min"
+    channel: "storage_redundancy_controllers_min"
+    display_name: "{redundancy_group} Controllers Min"
+    unit: "#"
+    multi_instance_labels: ["host", "controller", "redundancy_group", "redundancy_mode"]
+    description: "Minimum number of storage controllers for redundancy"
+    
+  - name: "hardware.storage.redundancy.controllers_max"
+    channel: "storage_redundancy_controllers_max"
+    display_name: "{redundancy_group} Controllers Max"
+    unit: "#"
+    multi_instance_labels: ["host", "controller", "redundancy_group", "redundancy_mode"]
+    description: "Maximum number of storage controllers supported"
