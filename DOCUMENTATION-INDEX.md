@@ -106,6 +106,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 
 ### Integration & APIs
 - **[API Reference](OFFLINE-MODE.md#api-endpoints)** - REST API documentation
+- **[Universal Configuration](docs/admin-guide/UNIVERSAL-CONFIGURATION.md)** - Probe configuration validation API
 - **[HTTP Strategy](HTTP-STRATEGY.md)** - HTTP strategy configuration
 - **[Integration Examples](OFFLINE-MODE.md#integration-examples)** - PRTG, Nagios, Grafana
 
