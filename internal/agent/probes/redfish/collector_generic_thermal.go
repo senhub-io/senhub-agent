@@ -38,6 +38,7 @@ func (c *GenericCollector) collectThermalMetrics(ctx context.Context, timestamp 
 				Err(err).
 				Str("path", chassisPath).
 				Msg("Failed to get chassis details")
+			continue // Skip this chassis if we can't get its details
 		}
 
 		// Create common chassis tags using helper function
