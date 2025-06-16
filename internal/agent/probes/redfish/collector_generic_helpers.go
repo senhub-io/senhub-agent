@@ -90,6 +90,11 @@ func (c *GenericCollector) createBaseSystemTags(resp *RedfishResponse, hostname 
 // createChassisBaseTags creates common chassis tags from a chassis response
 // This helper function extracts the duplicate chassis tag creation logic
 func (c *GenericCollector) createChassisBaseTags(chassisResp *RedfishResponse) []tags.Tag {
+	// Check for nil response
+	if chassisResp == nil {
+		return []tags.Tag{}
+	}
+
 	chassisTags := []tags.Tag{
 		{Key: "chassis_id", Value: chassisResp.ID},
 		{Key: "chassis_name", Value: chassisResp.Name},
