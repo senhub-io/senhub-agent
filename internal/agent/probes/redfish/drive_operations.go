@@ -124,11 +124,11 @@ func (c *StorageCollector) collectDriveMetrics(ctx context.Context, timestamp ti
 						if serviceLabel, ok := partLocation["ServiceLabel"].(string); ok && serviceLabel != "" {
 							driveTags = append(driveTags, tags.Tag{Key: "service_label", Value: serviceLabel})
 						}
-						
+
 						if locationType, ok := partLocation["LocationType"].(string); ok && locationType != "" {
 							driveTags = append(driveTags, tags.Tag{Key: "location_type", Value: locationType})
 						}
-						
+
 						if locationOrdinalValue, ok := partLocation["LocationOrdinalValue"].(float64); ok {
 							driveTags = append(driveTags, tags.Tag{Key: "location_ordinal", Value: fmt.Sprintf("%d", int(locationOrdinalValue))})
 						}
@@ -174,7 +174,7 @@ func (c *StorageCollector) collectDriveMetrics(ctx context.Context, timestamp ti
 				// Hotspare type - important for RAID configuration
 				if hotspare, ok := driveData["HotspareType"].(string); ok && hotspare != "" {
 					driveTags = append(driveTags, tags.Tag{Key: "hotspare_type", Value: hotspare})
-					
+
 					// Add metric for hotspare status (1 if hotspare, 0 if not)
 					hotspareValue := 0.0
 					if hotspare != "None" {
@@ -212,7 +212,14 @@ func (c *StorageCollector) collectDriveMetrics(ctx context.Context, timestamp ti
 							// Create operation-specific tags
 							opTags := append([]tags.Tag{}, driveTags...)
 							opTags = append(opTags, tags.Tag{Key: "operation_name", Value: opName})
-							
+
+							// If there's an associated task, add its link
+							if associatedTask, ok := op["AssociatedTask"].(map[string]interface{}); ok {
+								if taskID, ok := associatedTask["@odata.id"].(string); ok && taskID != "" {
+									opTags = append(opTags, tags.Tag{Key: "associated_task", Value: taskID})
+								}
+							}
+
 							// Get progress percentage
 							if percentComplete, ok := op["PercentageComplete"].(float64); ok {
 								datapoints = append(datapoints, data_store.DataPoint{
@@ -221,13 +228,6 @@ func (c *StorageCollector) collectDriveMetrics(ctx context.Context, timestamp ti
 									Value:     float32(percentComplete),
 									Tags:      opTags,
 								})
-							}
-							
-							// If there's an associated task, add its link
-							if associatedTask, ok := op["AssociatedTask"].(map[string]interface{}); ok {
-								if taskID, ok := associatedTask["@odata.id"].(string); ok && taskID != "" {
-									opTags = append(opTags, tags.Tag{Key: "associated_task", Value: taskID})
-								}
 							}
 						}
 					}

@@ -1,5 +1,5 @@
 // senhub-agent/internal/agent/services/data_store/http_metrics.go
-package data_store
+package http
 
 import (
 	"fmt"
@@ -30,7 +30,7 @@ func NewMetricsProcessor(cache *MetricCache, formatConverter *FormatConverter, l
 // MetricFilter represents filtering criteria for metrics
 type MetricFilter struct {
 	TagFilters  map[string][]string // key: tag name, value: allowed values
-	ExcludeTags map[string][]string // key: tag name, value: excluded values  
+	ExcludeTags map[string][]string // key: tag name, value: excluded values
 	MetricNames []string            // specific metric names to include
 	Limit       int                 // max number of results
 	Offset      int                 // pagination offset
@@ -100,23 +100,23 @@ func (m *MetricsProcessor) ParseMetricFilter(r *http.Request) MetricFilter {
 		Limit:       0, // 0 means no limit
 		Offset:      0,
 	}
-	
+
 	query := r.URL.Query()
-	
+
 	// Parse tag filters (include)
 	if tagParams := query["tags"]; len(tagParams) > 0 {
 		for _, tagParam := range tagParams {
 			m.parseTagFilter(tagParam, filter.TagFilters)
 		}
 	}
-	
+
 	// Parse exclude tag filters
 	if excludeParams := query["exclude_tags"]; len(excludeParams) > 0 {
 		for _, excludeParam := range excludeParams {
 			m.parseTagFilter(excludeParam, filter.ExcludeTags)
 		}
 	}
-	
+
 	// Parse metric name filters
 	if metricParams := query["metrics"]; len(metricParams) > 0 {
 		for _, metricParam := range metricParams {
@@ -128,21 +128,21 @@ func (m *MetricsProcessor) ParseMetricFilter(r *http.Request) MetricFilter {
 			}
 		}
 	}
-	
+
 	// Parse limit
 	if limitParam := query.Get("limit"); limitParam != "" {
 		if limit, err := strconv.Atoi(limitParam); err == nil && limit > 0 {
 			filter.Limit = limit
 		}
 	}
-	
+
 	// Parse offset
 	if offsetParam := query.Get("offset"); offsetParam != "" {
 		if offset, err := strconv.Atoi(offsetParam); err == nil && offset >= 0 {
 			filter.Offset = offset
 		}
 	}
-	
+
 	return filter
 }
 
@@ -153,14 +153,14 @@ func (m *MetricsProcessor) parseTagFilter(param string, filterMap map[string][]s
 	if colonIndex == -1 {
 		return
 	}
-	
+
 	tagName := strings.TrimSpace(param[:colonIndex])
 	valuesStr := strings.TrimSpace(param[colonIndex+1:])
-	
+
 	if tagName == "" || valuesStr == "" {
 		return
 	}
-	
+
 	// URL decode tag name and values
 	if decodedTagName, err := url.QueryUnescape(tagName); err == nil {
 		tagName = decodedTagName
@@ -168,13 +168,13 @@ func (m *MetricsProcessor) parseTagFilter(param string, filterMap map[string][]s
 	if decodedValuesStr, err := url.QueryUnescape(valuesStr); err == nil {
 		valuesStr = decodedValuesStr
 	}
-	
+
 	// Split values by comma
 	values := strings.Split(valuesStr, ",")
 	for i, value := range values {
 		values[i] = strings.TrimSpace(value)
 	}
-	
+
 	filterMap[tagName] = values
 }
 
@@ -324,10 +324,10 @@ func (m *MetricsProcessor) ApplyNagiosTagFilters(metrics []CachedMetric, filters
 	var filtered []CachedMetric
 	for _, metric := range metrics {
 		include := true
-		
+
 		for _, filter := range filters {
 			tagValue := m.getTagValue(metric, filter.Key)
-			
+
 			switch filter.Operator {
 			case "in":
 				if len(filter.Values) > 0 {
@@ -369,12 +369,12 @@ func (m *MetricsProcessor) ApplyNagiosTagFilters(metrics []CachedMetric, filters
 				}
 			}
 		}
-		
+
 		if include {
 			filtered = append(filtered, metric)
 		}
 	}
-	
+
 	return filtered
 }
 
@@ -391,12 +391,12 @@ func (m *MetricsProcessor) buildTagContext(metric CachedMetric, tagContext strin
 	if tagContext == "" {
 		return ""
 	}
-	
+
 	tagValue := m.getTagValue(metric, tagContext)
 	if tagValue != "" {
 		return tagValue
 	}
-	
+
 	return ""
 }
 
@@ -407,7 +407,7 @@ func (m *MetricsProcessor) aggregateValues(values []float64, aggregation string)
 	if len(values) == 0 {
 		return 0
 	}
-	
+
 	switch aggregation {
 	case "average", "avg":
 		sum := 0.0
@@ -456,15 +456,15 @@ func (m *MetricsProcessor) evaluateThreshold(value float64, warning, critical st
 	if err != nil {
 		return 3 // UNKNOWN
 	}
-	
+
 	critThreshold, err := strconv.ParseFloat(critical, 64)
 	if err != nil {
 		return 3 // UNKNOWN
 	}
-	
+
 	// Evaluate status
 	status := 0 // OK
-	
+
 	if !invert {
 		// Normal evaluation: higher values are worse
 		if value >= critThreshold {
@@ -480,7 +480,7 @@ func (m *MetricsProcessor) evaluateThreshold(value float64, warning, critical st
 			status = 1 // WARNING
 		}
 	}
-	
+
 	return status
 }
 
@@ -504,17 +504,17 @@ func (m *MetricsProcessor) getStatusText(status int) string {
 func (m *MetricsProcessor) buildPerfData(name string, value float64, warning, critical, unit string) string {
 	// Clean label name (no spaces, special chars)
 	cleanName := m.cleanPerfDataLabel(name)
-	
+
 	// Convert unit to standard Nagios UOM
 	standardUOM := m.convertToStandardUOM(unit)
-	
+
 	// Determine min/max values based on metric type
 	min, max := m.getPerfDataMinMax(unit, value)
-	
+
 	// Format: label=value[UOM];[warn];[crit];[min];[max]
 	perfData := fmt.Sprintf("%s=%.2f%s;%s;%s;%s;%s",
 		cleanName, value, standardUOM, warning, critical, min, max)
-	
+
 	return perfData
 }
 
@@ -524,7 +524,7 @@ func (m *MetricsProcessor) cleanPerfDataLabel(name string) string {
 	cleaned := strings.ReplaceAll(name, " ", "_")
 	cleaned = strings.ReplaceAll(cleaned, ".", "_")
 	cleaned = strings.ReplaceAll(cleaned, "-", "_")
-	
+
 	// Remove special characters except underscore
 	var result strings.Builder
 	for _, r := range cleaned {
@@ -532,7 +532,7 @@ func (m *MetricsProcessor) cleanPerfDataLabel(name string) string {
 			result.WriteRune(r)
 		}
 	}
-	
+
 	return result.String()
 }
 
@@ -590,26 +590,26 @@ func (m *MetricsProcessor) GenerateSimpleNagiosResponse(probeName string, metric
 			PerfData:   "",
 		}
 	}
-	
+
 	// Simple health check - just report metrics count and build basic perf data
 	var perfDataItems []string
 	metricCount := 0
-	
+
 	for _, metric := range metrics {
 		// Transform metric name using the same logic as PRTG
 		transformedName, _ := m.TransformMetricNameForPRTG("", metric)
 		cleanName := m.cleanPerfDataLabel(transformedName)
-		
+
 		// Convert metric value to float64 (handle different types)
 		if val, ok := m.convertToFloat64(metric.Value); ok {
 			perfDataItems = append(perfDataItems, fmt.Sprintf("%s=%.2f", cleanName, val))
 			metricCount++
 		}
 	}
-	
+
 	message := fmt.Sprintf("Probe %s healthy - %d metrics collected", probeName, metricCount)
 	perfData := strings.Join(perfDataItems, " ")
-	
+
 	return NagiosResponse{
 		Status:     0, // OK
 		StatusText: "OK",
@@ -659,14 +659,14 @@ func (m *MetricsProcessor) convertToFloat64(value interface{}) (float64, bool) {
 func (m *MetricsProcessor) GenerateExamples(probeName string, tags map[string]TagInfo, metrics []string) []MetricExample {
 	var examples []MetricExample
 	baseURL := fmt.Sprintf("/api/{agentkey}/prtg/metrics/%s", probeName)
-	
+
 	// Example 1: Basic usage
 	examples = append(examples, MetricExample{
 		Description: "Get all metrics for this probe",
 		URL:         baseURL,
 		ResultCount: len(metrics),
 	})
-	
+
 	// Example 2: Limit results
 	if len(metrics) > 5 {
 		examples = append(examples, MetricExample{
@@ -675,7 +675,7 @@ func (m *MetricsProcessor) GenerateExamples(probeName string, tags map[string]Ta
 			ResultCount: 5,
 		})
 	}
-	
+
 	// Example 3: Tag filtering (if tags available)
 	if len(tags) > 0 {
 		for tagName, tagInfo := range tags {
@@ -690,7 +690,7 @@ func (m *MetricsProcessor) GenerateExamples(probeName string, tags map[string]Ta
 			}
 		}
 	}
-	
+
 	// Example 4: Specific metrics
 	if len(metrics) > 2 {
 		firstMetric := metrics[0]
@@ -700,7 +700,7 @@ func (m *MetricsProcessor) GenerateExamples(probeName string, tags map[string]Ta
 			ResultCount: 1,
 		})
 	}
-	
+
 	return examples
 }
 
@@ -710,19 +710,18 @@ func (m *MetricsProcessor) GenerateExamples(probeName string, tags map[string]Ta
 func (m *MetricsProcessor) isHealthStatusMetricNagios(metricName string, metrics []CachedMetric) bool {
 	// Check metric name patterns
 	healthKeywords := []string{"health", "status", "state", "power_state", "availability"}
-	
+
 	metricLower := strings.ToLower(metricName)
 	for _, keyword := range healthKeywords {
 		if strings.Contains(metricLower, keyword) {
 			return true
 		}
 	}
-	
+
 	// Check metric tags if available
 	if len(metrics) > 0 {
 		metric := metrics[0] // Use first metric to check patterns
-		
-		
+
 		// Check if metric unit suggests health values
 		if metric.Unit == "#" || metric.Unit == "" {
 			// Numeric health values (0=OK, 1=Warning, 2=Critical, 3=Unknown)
@@ -733,7 +732,7 @@ func (m *MetricsProcessor) isHealthStatusMetricNagios(metricName string, metrics
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -748,16 +747,16 @@ func (m *MetricsProcessor) processNagiosHealthMetric(metricDef NagiosMetric, met
 	var worstStatus int = 0 // Start with OK
 	var healthMessages []string
 	var perfDataItems []string
-	
+
 	for _, metric := range metrics {
 		// Convert health value to Nagios status
 		healthValue, nagiosStatus, statusText := m.convertHealthToNagiosStatus(metric)
-		
+
 		// Track worst status
 		if nagiosStatus > worstStatus {
 			worstStatus = nagiosStatus
 		}
-		
+
 		// Build message with context
 		var contextName string
 		if componentName, exists := metric.Tags["component"]; exists {
@@ -767,19 +766,19 @@ func (m *MetricsProcessor) processNagiosHealthMetric(metricDef NagiosMetric, met
 		} else {
 			contextName = metricDef.Channel
 		}
-		
+
 		healthMessage := fmt.Sprintf("%s: %s", contextName, statusText)
 		healthMessages = append(healthMessages, healthMessage)
-		
+
 		// Add performance data optimized for health metrics (no warning/critical thresholds, use min/max range)
 		perfData := m.buildHealthPerfData(contextName, healthValue)
 		perfDataItems = append(perfDataItems, perfData)
 	}
-	
+
 	// Build overall message
 	overallStatusText := m.getStatusText(worstStatus)
 	var message string
-	
+
 	if len(healthMessages) == 1 {
 		message = healthMessages[0]
 	} else {
@@ -788,7 +787,7 @@ func (m *MetricsProcessor) processNagiosHealthMetric(metricDef NagiosMetric, met
 		warnCount := 0
 		critCount := 0
 		unknownCount := 0
-		
+
 		for _, metric := range metrics {
 			_, status, _ := m.convertHealthToNagiosStatus(metric)
 			switch status {
@@ -802,10 +801,10 @@ func (m *MetricsProcessor) processNagiosHealthMetric(metricDef NagiosMetric, met
 				unknownCount++
 			}
 		}
-		
-		message = fmt.Sprintf("%s - %s: %d OK, %d Warning, %d Critical, %d Unknown", 
+
+		message = fmt.Sprintf("%s - %s: %d OK, %d Warning, %d Critical, %d Unknown",
 			overallStatusText, metricDef.Channel, okCount, warnCount, critCount, unknownCount)
-		
+
 		// Add specific failures for non-OK statuses
 		if worstStatus > 0 {
 			var failureMessages []string
@@ -826,7 +825,7 @@ func (m *MetricsProcessor) processNagiosHealthMetric(metricDef NagiosMetric, met
 			}
 		}
 	}
-	
+
 	return NagiosMetricResult{
 		Status:   worstStatus,
 		Message:  message,
@@ -852,19 +851,19 @@ func (m *MetricsProcessor) convertHealthToNagiosStatus(metric CachedMetric) (flo
 	default:
 		return 0, 3, "UNKNOWN - Invalid health value type"
 	}
-	
+
 	// Map health values to Nagios status
 	// Standard Redfish/generic health mapping:
 	// 0 = OK/Healthy, 1 = Warning/Degraded, 2 = Critical/Failed, 3 = Unknown
 	switch int(healthValue) {
 	case 0:
-		return healthValue, 0, "OK"      // Nagios OK
+		return healthValue, 0, "OK" // Nagios OK
 	case 1:
-		return healthValue, 1, "WARNING" // Nagios WARNING  
+		return healthValue, 1, "WARNING" // Nagios WARNING
 	case 2:
 		return healthValue, 2, "CRITICAL" // Nagios CRITICAL
 	case 3:
-		return healthValue, 3, "UNKNOWN"  // Nagios UNKNOWN
+		return healthValue, 3, "UNKNOWN" // Nagios UNKNOWN
 	default:
 		// Handle boolean health metrics (0=unhealthy, 1=healthy)
 		if healthValue == 1 {
@@ -872,7 +871,7 @@ func (m *MetricsProcessor) convertHealthToNagiosStatus(metric CachedMetric) (flo
 		} else if healthValue == 0 {
 			return healthValue, 2, "CRITICAL"
 		}
-		
+
 		// Unknown health value
 		return healthValue, 3, fmt.Sprintf("UNKNOWN - Unexpected health value: %.0f", healthValue)
 	}
@@ -882,7 +881,7 @@ func (m *MetricsProcessor) convertHealthToNagiosStatus(metric CachedMetric) (flo
 func (m *MetricsProcessor) buildHealthPerfData(name string, value float64) string {
 	// Clean label name (no spaces, special chars)
 	cleanName := m.cleanPerfDataLabel(name)
-	
+
 	// Health metrics format: label=value;;;min;max
 	// No warning/critical thresholds since health values have predefined meanings
 	// min=0 (OK), max=3 (Unknown) to indicate the valid range

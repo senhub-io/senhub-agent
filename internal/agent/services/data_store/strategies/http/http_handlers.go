@@ -1,5 +1,5 @@
 // senhub-agent/internal/agent/services/data_store/http_handlers.go
-package data_store
+package http
 
 import (
 	"net/http"
@@ -64,7 +64,6 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/api/{agentkey}/prtg/probes", h.HandleListProbes).Methods("GET")
 	}
 
-
 	if h.strategy.configManager.IsEndpointEnabled("nagios") {
 		// Nagios endpoints
 		router.HandleFunc("/api/{agentkey}/nagios/metrics/{probe}", h.HandleNagiosMetricsGET).Methods("GET")
@@ -90,7 +89,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/web/{agentkey}/explorer", h.HandleWebExplorer).Methods("GET")
 		router.HandleFunc("/web/{agentkey}/docs", h.HandleWebDocs).Methods("GET")
 		// router.HandleFunc("/web/{agentkey}/guide", h.HandleWebGuide).Methods("GET") // Temporarily disabled
-		
+
 		// Static assets
 		router.PathPrefix("/web/{agentkey}/assets/").HandlerFunc(h.HandleWebAssets).Methods("GET")
 	}
@@ -111,9 +110,7 @@ func (h *HTTPHandlers) HandleListEndpoints(w http.ResponseWriter, r *http.Reques
 	h.strategy.handleListEndpoints(w, r)
 }
 
-
 // Metrics API handlers
-
 
 // Info/Discovery handlers (delegating to strategy for now)
 

@@ -15,12 +15,12 @@ type GRPCCollector struct {
 	insecure       bool
 	timeout        time.Duration
 	supportedTypes []TelemetryType
-	
+
 	// Authentication
-	token          string
-	
+	token string
+
 	// Internal state
-	connected      bool
+	connected bool
 	// client         *grpc.ClientConn - Will be implemented with actual gRPC client
 }
 
@@ -30,7 +30,7 @@ func NewGRPCCollector(config map[string]interface{}) (*GRPCCollector, error) {
 	if !ok || endpoint == "" {
 		return nil, fmt.Errorf("gRPC collector requires a valid endpoint")
 	}
-	
+
 	collector := &GRPCCollector{
 		endpoint:       endpoint,
 		insecure:       false,
@@ -38,21 +38,21 @@ func NewGRPCCollector(config map[string]interface{}) (*GRPCCollector, error) {
 		supportedTypes: []TelemetryType{TelemetryMetrics, TelemetryTraces, TelemetryLogs},
 		connected:      false,
 	}
-	
+
 	// Apply optional configurations
 	if timeout, ok := config["timeout"].(int); ok {
 		collector.timeout = time.Duration(timeout) * time.Second
 	}
-	
+
 	if insecure, ok := config["insecure"].(bool); ok {
 		collector.insecure = insecure
 	}
-	
+
 	// Authentication settings
 	if token, ok := config["token"].(string); ok {
 		collector.token = token
 	}
-	
+
 	// Configure supported telemetry types if specified
 	if types, ok := config["telemetry_types"].([]interface{}); ok {
 		collector.supportedTypes = []TelemetryType{}
@@ -62,7 +62,7 @@ func NewGRPCCollector(config map[string]interface{}) (*GRPCCollector, error) {
 			}
 		}
 	}
-	
+
 	return collector, nil
 }
 
@@ -76,9 +76,9 @@ func (c *GRPCCollector) Connect(ctx context.Context) error {
 	if c.connected {
 		return nil
 	}
-	
+
 	// TODO: Implement gRPC connection establishment
-	
+
 	c.connected = true
 	return nil
 }
@@ -88,9 +88,9 @@ func (c *GRPCCollector) Disconnect(ctx context.Context) error {
 	if !c.connected {
 		return nil
 	}
-	
+
 	// TODO: Implement gRPC connection closing
-	
+
 	c.connected = false
 	return nil
 }
@@ -100,13 +100,13 @@ func (c *GRPCCollector) CollectTelemetry(ctx context.Context, telemetryType Tele
 	if !c.IsSupported(telemetryType) {
 		return nil, fmt.Errorf("telemetry type %s is not supported by this collector", telemetryType)
 	}
-	
+
 	if !c.connected {
 		if err := c.Connect(ctx); err != nil {
 			return nil, fmt.Errorf("failed to connect to OpenTelemetry endpoint: %w", err)
 		}
 	}
-	
+
 	// TODO: Implement actual gRPC collection using the OpenTelemetry gRPC API
 	return []data_store.DataPoint{}, nil
 }

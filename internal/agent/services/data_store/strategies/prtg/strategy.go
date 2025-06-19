@@ -1,4 +1,4 @@
-package data_store
+package prtg
 
 import (
 	"bytes"
@@ -7,38 +7,76 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ybbus/httpretry"
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/internal/agent/types/datapoint"
 	"senhub-agent.go/internal/agent/validators"
 )
 
 var (
-	// Value of the tag with this name will be used as PRTG metric id.
-	// The placeholder [name] will be replaced by the metric name.
-	PrtgTagName = "prtg_metric_id"
 	// Default interval for synchronization
 	DEFAULT_PRTG_INTERVAL = 5 * time.Second
 	// Default data retention period
 	DEFAULT_RETENTION_PERIOD = 2 * time.Minute
 )
 
+// Buffer interface for local use to avoid import cycles
+type Buffer interface {
+	// Append appends data to the buffer
+	Append(newData []datapoint.DataPoint) error
+	// Flush the buffer data and return the data
+	Sync() []datapoint.DataPoint
+	// Revert the sync operation
+	AbortSync(failedData []datapoint.DataPoint) error
+}
+
+// buffer implements Buffer interface
+type buffer struct {
+	data  *[]datapoint.DataPoint
+	mutex sync.Mutex
+}
+
+// NewBuffer creates a new buffer instance
+func NewBuffer() Buffer {
+	return &buffer{
+		data: &[]datapoint.DataPoint{},
+	}
+}
+
+// Append appends data to the buffer
+func (b *buffer) Append(newData []datapoint.DataPoint) error {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	*b.data = append(*b.data, newData...)
+	return nil
+}
+
+// Sync returns all buffered data and clears the buffer
+func (b *buffer) Sync() []datapoint.DataPoint {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	data := *b.data
+	b.data = &[]datapoint.DataPoint{}
+	return data
+}
+
+// AbortSync adds failed data back to the buffer
+func (b *buffer) AbortSync(failedData []datapoint.DataPoint) error {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	*b.data = append(failedData, *b.data...)
+	return nil
+}
+
 type SyncStrategyPrtgParams struct {
 	Interval        time.Duration
 	RetentionPeriod time.Duration
 	ServerUrl       string
-}
-
-func CreatePrtgMetricIdTag(metricId string) tags.Tag {
-	return tags.Tag{
-		Key:     PrtgTagName,
-		Value:   metricId,
-		Private: true,
-	}
 }
 
 type SyncStrategyPrtg struct {
@@ -134,8 +172,10 @@ func (s *SyncStrategyPrtg) GetStrategyParams() map[string]interface{} {
 	return s.rawConfig
 }
 
-func (s *SyncStrategyPrtg) AddDataPoints(data []DataPoint) error {
-	s.buffer.Append(data)
+func (s *SyncStrategyPrtg) AddDataPoints(data []datapoint.DataPoint) error {
+	if err := s.buffer.Append(data); err != nil {
+		return fmt.Errorf("failed to append data to buffer: %w", err)
+	}
 	return nil
 }
 
@@ -181,7 +221,7 @@ func filter[T any](ss []T, test func(T) bool) (ret []T) {
 	return ret
 }
 
-func metricId(p DataPoint) string {
+func metricId(p datapoint.DataPoint) string {
 	// Find a tag named "metric_id"
 	for _, t := range p.Tags {
 		if t.Key == "prtg_metric_id" {
@@ -216,7 +256,7 @@ func (s *SyncStrategyPrtg) DoSync() error {
 	retentionPeriod := s.config.RetentionPeriod
 	retentionStart := time.Now().Add(-retentionPeriod)
 
-	data = filter(data, func(p DataPoint) bool {
+	data = filter(data, func(p datapoint.DataPoint) bool {
 		if !p.Timestamp.After(retentionStart) {
 			return false
 		}
@@ -233,7 +273,9 @@ func (s *SyncStrategyPrtg) DoSync() error {
 	// Some probes might not read any value until the next sync, so valid data
 	// points are restored in the buffer.
 	// This happens wether the sync is successful or not.
-	s.buffer.AbortSync(data)
+	if abortErr := s.buffer.AbortSync(data); abortErr != nil {
+		s.logger.Error().Err(abortErr).Msg("failed to abort sync")
+	}
 	if err := s.doSyncData(data); err != nil {
 		s.logger.Error().Err(err).Msg("error synchronizing data")
 		return err
@@ -254,7 +296,7 @@ type PrtgData struct {
 	} `json:"prtg"`
 }
 
-func (s *SyncStrategyPrtg) doSyncData(data []DataPoint) error {
+func (s *SyncStrategyPrtg) doSyncData(data []datapoint.DataPoint) error {
 	// Transform data points to PRTG format
 	jsonData := PrtgData{}
 	for _, p := range data {

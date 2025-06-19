@@ -1,5 +1,5 @@
 // senhub-agent/internal/agent/services/data_store/http_utils.go
-package data_store
+package http
 
 import (
 	"fmt"
@@ -17,10 +17,10 @@ import (
 
 // CPUTracker holds CPU measurement state for calculating usage
 type CPUTracker struct {
-	lastCPUTime    time.Duration
-	lastWallTime   time.Time
-	initialized    bool
-	mu             sync.RWMutex
+	lastCPUTime  time.Duration
+	lastWallTime time.Time
+	initialized  bool
+	mu           sync.RWMutex
 }
 
 // UtilsManager handles utility functions and helper methods
@@ -47,7 +47,7 @@ func (u *UtilsManager) getTagDescription(tagKey string) string {
 	descriptions := map[string]string{
 		// Tags display as "tag_name (X values)" without additional descriptions
 	}
-	
+
 	if desc, exists := descriptions[tagKey]; exists {
 		return desc
 	}
@@ -66,7 +66,7 @@ type VersionInfo struct {
 func (u *UtilsManager) parseVersionInfo() VersionInfo {
 	version := cliArgs.Version
 	commit := cliArgs.CommitHash
-	
+
 	// Linux/Makefile case: Version is properly set, use it directly
 	if version != "" {
 		return VersionInfo{
@@ -74,7 +74,7 @@ func (u *UtilsManager) parseVersionInfo() VersionInfo {
 			Commit:  formatCommitHash(commit),
 		}
 	}
-	
+
 	// Windows/no-Makefile case: Version is empty, try to extract from CommitHash
 	var extractedCommitHash string
 	if commit != "" {
@@ -96,12 +96,12 @@ func (u *UtilsManager) parseVersionInfo() VersionInfo {
 			extractedCommitHash = commit
 		}
 	}
-	
+
 	// Final fallback
 	if version == "" {
 		version = "development"
 	}
-	
+
 	// Format commit hash for display - use extracted hash, not full commit string
 	var formattedCommit string
 	if extractedCommitHash != "" {
@@ -109,7 +109,7 @@ func (u *UtilsManager) parseVersionInfo() VersionInfo {
 	} else {
 		formattedCommit = formatCommitHash(commit)
 	}
-	
+
 	return VersionInfo{
 		Version: version,
 		Commit:  formattedCommit,
@@ -121,7 +121,7 @@ func formatCommitHash(commit string) string {
 	if commit == "" {
 		return ""
 	}
-	
+
 	// Handle single hash part with 'g' prefix (e.g., "g302b166")
 	if strings.HasPrefix(commit, "g") && len(commit) > 1 {
 		// Extract short hash (first 7 chars after 'g', or all if shorter)
@@ -131,7 +131,7 @@ func formatCommitHash(commit string) string {
 		}
 		return hashPart
 	}
-	
+
 	// Handle git describe format: "tag-commits-ghash-dirty"
 	if strings.Contains(commit, "-g") {
 		parts := strings.Split(commit, "-")
@@ -151,29 +151,15 @@ func formatCommitHash(commit string) string {
 			}
 		}
 	}
-	
+
 	// Handle plain commit hash - take first 7 characters
 	if len(commit) >= 7 {
 		return commit[:7]
 	}
-	
+
 	return commit
 }
 
-// formatDuration formats a duration in a human-readable format
-func (u *UtilsManager) formatDuration(d time.Duration) string {
-	days := int(d.Hours()) / 24
-	hours := int(d.Hours()) % 24
-	minutes := int(d.Minutes()) % 60
-	
-	if days > 0 {
-		return fmt.Sprintf("%dd %dh %dm", days, hours, minutes)
-	} else if hours > 0 {
-		return fmt.Sprintf("%dh %dm", hours, minutes)
-	} else {
-		return fmt.Sprintf("%dm", minutes)
-	}
-}
 
 // CPU Measurement for system monitoring
 
@@ -181,16 +167,16 @@ func (u *UtilsManager) formatDuration(d time.Duration) string {
 func (u *UtilsManager) getCPUUsage() float64 {
 	u.cpuTracker.mu.Lock()
 	defer u.cpuTracker.mu.Unlock()
-	
+
 	// Get current CPU time for this process
 	currentCPUTime, err := u.getCurrentProcessCPUTime()
 	if err != nil {
 		u.logger.Debug().Err(err).Msg("Failed to get CPU time")
 		return 0.0
 	}
-	
+
 	currentWallTime := time.Now()
-	
+
 	// If this is the first measurement, initialize and return 0
 	if !u.cpuTracker.initialized {
 		u.cpuTracker.lastCPUTime = currentCPUTime
@@ -198,23 +184,23 @@ func (u *UtilsManager) getCPUUsage() float64 {
 		u.cpuTracker.initialized = true
 		return 0.0
 	}
-	
+
 	// Calculate deltas
 	cpuDelta := currentCPUTime - u.cpuTracker.lastCPUTime
 	wallDelta := currentWallTime.Sub(u.cpuTracker.lastWallTime)
-	
+
 	// Update for next calculation
 	u.cpuTracker.lastCPUTime = currentCPUTime
 	u.cpuTracker.lastWallTime = currentWallTime
-	
+
 	// Avoid division by zero
 	if wallDelta == 0 {
 		return 0.0
 	}
-	
+
 	// Calculate CPU percentage
 	cpuPercent := float64(cpuDelta) / float64(wallDelta) * 100.0
-	
+
 	// Ensure valid range: 0-100%
 	if cpuPercent < 0.0 {
 		u.logger.Debug().
@@ -222,11 +208,11 @@ func (u *UtilsManager) getCPUUsage() float64 {
 			Int64("cpu_delta_ns", int64(cpuDelta)).
 			Int64("wall_delta_ns", int64(wallDelta)).
 			Msg("CPU percent was negative, clamping to 0%")
-		cpuPercent = 0.0  // Handle negative values from system counter resets
+		cpuPercent = 0.0 // Handle negative values from system counter resets
 	} else if cpuPercent > 100.0 {
-		cpuPercent = 100.0  // Cap at 100% for single-core equivalent
+		cpuPercent = 100.0 // Cap at 100% for single-core equivalent
 	}
-	
+
 	return cpuPercent
 }
 
@@ -249,34 +235,34 @@ func (u *UtilsManager) getCurrentProcessCPUTime() (time.Duration, error) {
 func (u *UtilsManager) getCPUTimeLinux() (time.Duration, error) {
 	pid := os.Getpid()
 	statFile := fmt.Sprintf("/proc/%d/stat", pid)
-	
+
 	data, err := os.ReadFile(statFile)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read /proc/%d/stat: %w", pid, err)
 	}
-	
+
 	fields := strings.Fields(string(data))
 	if len(fields) < 15 {
 		return 0, fmt.Errorf("insufficient fields in /proc/%d/stat", pid)
 	}
-	
+
 	// Fields 13 and 14 are utime and stime (user and system CPU time in clock ticks)
 	utime, err := strconv.ParseInt(fields[13], 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("failed to parse utime: %w", err)
 	}
-	
+
 	stime, err := strconv.ParseInt(fields[14], 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("failed to parse stime: %w", err)
 	}
-	
+
 	// Convert clock ticks to nanoseconds
 	// Most Linux systems use 100 Hz (100 clock ticks per second)
 	clockTicks := int64(100)
 	totalTicks := utime + stime
 	nanoseconds := (totalTicks * int64(time.Second)) / clockTicks
-	
+
 	return time.Duration(nanoseconds), nil
 }
 
@@ -285,14 +271,14 @@ func (u *UtilsManager) getCPUTimeDarwin() (time.Duration, error) {
 	// On macOS, without CGO, we use runtime stats as approximation
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	// Estimate CPU time based on GC activity and runtime metrics
 	// This is an approximation since exact CPU time requires platform-specific syscalls
 	gcCPUTime := time.Duration(memStats.GCCPUFraction * float64(time.Since(u.cpuTracker.lastWallTime)))
-	
+
 	// Add base CPU time estimation
 	estimatedCPUTime := gcCPUTime + time.Duration(memStats.NumGC)*time.Millisecond
-	
+
 	return estimatedCPUTime, nil
 }
 
@@ -301,11 +287,11 @@ func (u *UtilsManager) getCPUTimeWindows() (time.Duration, error) {
 	// On Windows, without CGO, we use runtime stats as approximation
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	// Estimate based on GC and goroutine activity
 	gcTime := time.Duration(memStats.GCCPUFraction * float64(time.Since(u.cpuTracker.lastWallTime)))
 	routineEstimate := time.Duration(runtime.NumGoroutine()) * time.Microsecond
-	
+
 	return gcTime + routineEstimate, nil
 }
 
@@ -313,14 +299,14 @@ func (u *UtilsManager) getCPUTimeWindows() (time.Duration, error) {
 func (u *UtilsManager) getCPUTimeRuntime() (time.Duration, error) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	// Very rough approximation based on GC CPU fraction
 	if u.cpuTracker.initialized {
 		wallDelta := time.Since(u.cpuTracker.lastWallTime)
 		estimatedCPUTime := time.Duration(memStats.GCCPUFraction * float64(wallDelta))
 		return u.cpuTracker.lastCPUTime + estimatedCPUTime, nil
 	}
-	
+
 	return time.Duration(memStats.GCCPUFraction * float64(time.Second)), nil
 }
 
@@ -338,7 +324,9 @@ func (u *UtilsManager) handleZabbixMetricsGET(w http.ResponseWriter, r *http.Req
 	// TODO: Implement Zabbix format conversion
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error": "Zabbix format endpoint not yet implemented"}`))
+	if _, err := w.Write([]byte(`{"error": "Zabbix format endpoint not yet implemented"}`)); err != nil {
+		u.logger.Error().Err(err).Msg("Failed to write Zabbix error response")
+	}
 }
 
 // handlePrometheusMetricsGET handles GET requests for Prometheus format metrics (placeholder)
@@ -353,5 +341,7 @@ func (u *UtilsManager) handlePrometheusMetricsGET(w http.ResponseWriter, r *http
 	// TODO: Implement Prometheus format conversion
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte("# Prometheus format endpoint not yet implemented\n"))
+	if _, err := w.Write([]byte("# Prometheus format endpoint not yet implemented\n")); err != nil {
+		u.logger.Error().Err(err).Msg("Failed to write Prometheus error response")
+	}
 }

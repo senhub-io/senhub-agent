@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -224,13 +225,13 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 
 	t.Run("Start should call Execute periodically", func(t *testing.T) {
 		quitChannel := make(chan struct{})
-		called := 0
+		var called int64
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
 			ExecuteOnStart: false,
 			Interval:       10 * time.Millisecond,
 			Execute: func() error {
-				called += 1
+				atomic.AddInt64(&called, 1)
 				return nil
 			},
 		}, &logger)
@@ -241,11 +242,13 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 		}
 
 		// Wait for 3 calls
-		for called < 3 {
+		for atomic.LoadInt64(&called) < 3 {
+			time.Sleep(1 * time.Millisecond)
 		}
 
-		if called != 3 {
-			t.Errorf("PeriodicScheduler.Start() should call Execute periodically %d", called)
+		callCount := atomic.LoadInt64(&called)
+		if callCount != 3 {
+			t.Errorf("PeriodicScheduler.Start() should call Execute periodically %d", callCount)
 		}
 	})
 }
@@ -254,18 +257,18 @@ func TestPeriodicScheduler_Retry(t *testing.T) {
 	t.Run("Retry should call Execute until MaxRetries and then Shutdown", func(t *testing.T) {
 		logger := zerolog.New(os.Stderr)
 		quitChannel := make(chan struct{})
-		called := 0
-		shutdownCalled := 0
+		var called int64
+		var shutdownCalled int64
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
 			Interval:   10 * time.Millisecond,
 			MaxRetries: 3,
 			Execute: func() error {
-				called += 1
+				atomic.AddInt64(&called, 1)
 				return fmt.Errorf("Error")
 			},
 			OnShutdown: func(context.Context) error {
-				shutdownCalled += 1
+				atomic.AddInt64(&shutdownCalled, 1)
 				return nil
 			},
 		}, &logger)
@@ -275,11 +278,13 @@ func TestPeriodicScheduler_Retry(t *testing.T) {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
 		}
 
-		for shutdownCalled == 0 {
+		for atomic.LoadInt64(&shutdownCalled) == 0 {
+			time.Sleep(1 * time.Millisecond)
 		}
 
-		if called != 3 {
-			t.Errorf("PeriodicScheduler.Start() should call Execute until MaxRetries %d", called)
+		callCount := atomic.LoadInt64(&called)
+		if callCount != 3 {
+			t.Errorf("PeriodicScheduler.Start() should call Execute until MaxRetries %d", callCount)
 		}
 
 	})

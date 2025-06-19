@@ -53,18 +53,18 @@ type StartSubcommandArgs struct {
 	DebugLogShipperUrl    string            `arg:"--debug-log-shipper-url,env:SENHUB_DEBUG_LOG_SHIPPER_URL" help:"URL of remote endpoint for shipping debug logs"`
 	DebugLogShipperTags   map[string]string `arg:"--debug-log-shipper-tags,env:SENHUB_DEBUG_LOG_SHIPPER_TAGS" help:"Tags to add to debug log entries (format: key1=value1,key2=value2)"`
 	DebugLogShipperBuffer int               `arg:"--debug-log-shipper-buffer,env:SENHUB_DEBUG_LOG_SHIPPER_BUFFER" help:"Buffer size for debug log shipper"`
-	
+
 	// Offline mode options
-	Offline        bool   `arg:"--offline" help:"Run in offline mode with local configuration"`
-	ConfigPath     string `arg:"--config-path" help:"Path to local configuration file (default: ./agent-config.yaml)"`
-	
+	Offline    bool   `arg:"--offline" help:"Run in offline mode with local configuration"`
+	ConfigPath string `arg:"--config-path" help:"Path to local configuration file (default: ./agent-config.yaml)"`
+
 	// HTTPS options for offline mode
-	EnableHttps    bool   `arg:"--enable-https" help:"Enable HTTPS for HTTP strategy"`
-	HttpsPort      int    `arg:"--https-port" help:"HTTPS port (default: 8443)"`
-	HttpsHosts     string `arg:"--https-hosts" help:"Comma-separated hostnames for certificate SAN (default: localhost,127.0.0.1)"`
-	CertFile       string `arg:"--cert-file" help:"Path to custom TLS certificate file"`
-	KeyFile        string `arg:"--key-file" help:"Path to custom TLS private key file"`
-	MinTlsVersion  string `arg:"--min-tls-version" help:"Minimum TLS version (1.2, 1.3) (default: 1.2)"`
+	EnableHttps   bool   `arg:"--enable-https" help:"Enable HTTPS for HTTP strategy"`
+	HttpsPort     int    `arg:"--https-port" help:"HTTPS port (default: 8443)"`
+	HttpsHosts    string `arg:"--https-hosts" help:"Comma-separated hostnames for certificate SAN (default: localhost,127.0.0.1)"`
+	CertFile      string `arg:"--cert-file" help:"Path to custom TLS certificate file"`
+	KeyFile       string `arg:"--key-file" help:"Path to custom TLS private key file"`
+	MinTlsVersion string `arg:"--min-tls-version" help:"Minimum TLS version (1.2, 1.3) (default: 1.2)"`
 }
 
 type ParsedArgs struct {
@@ -81,18 +81,18 @@ type ParsedArgs struct {
 	DebugLogShipperUrl    string
 	DebugLogShipperTags   map[string]string
 	DebugLogShipperBuffer int
-	
+
 	// Offline mode options
-	Offline               bool
-	ConfigPath            string
-	
+	Offline    bool
+	ConfigPath string
+
 	// HTTPS options
-	EnableHttps           bool
-	HttpsPort             int
-	HttpsHosts            []string
-	CertFile              string
-	KeyFile               string
-	MinTlsVersion         string
+	EnableHttps   bool
+	HttpsPort     int
+	HttpsHosts    []string
+	CertFile      string
+	KeyFile       string
+	MinTlsVersion string
 }
 
 func GetVersionInfo() map[string]string {
@@ -222,18 +222,18 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 		DebugLogShipperUrl:    args.DebugLogShipperUrl,
 		DebugLogShipperTags:   args.DebugLogShipperTags,
 		DebugLogShipperBuffer: args.DebugLogShipperBuffer,
-		
+
 		// Offline mode options
-		Offline:               args.Offline,
-		ConfigPath:            configPath,
-		
+		Offline:    args.Offline,
+		ConfigPath: configPath,
+
 		// HTTPS options
-		EnableHttps:           args.EnableHttps,
-		HttpsPort:             httpsPort,
-		HttpsHosts:            httpsHosts,
-		CertFile:              args.CertFile,
-		KeyFile:               args.KeyFile,
-		MinTlsVersion:         minTlsVersion,
+		EnableHttps:   args.EnableHttps,
+		HttpsPort:     httpsPort,
+		HttpsHosts:    httpsHosts,
+		CertFile:      args.CertFile,
+		KeyFile:       args.KeyFile,
+		MinTlsVersion: minTlsVersion,
 	}
 }
 

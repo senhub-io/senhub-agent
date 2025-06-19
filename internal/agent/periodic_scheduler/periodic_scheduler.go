@@ -128,7 +128,9 @@ func (l *periodicScheduler) setupIntervalCall() error {
 							Int("error_count", errorCount).
 							Int("max_retry", l.config.MaxRetries).
 							Msg("Max retries reached, shutting down")
-						l.Shutdown(context.Background())
+						if err := l.Shutdown(context.Background()); err != nil {
+							l.logger.Error().Err(err).Msg("Failed to shutdown scheduler")
+						}
 					}
 				} else {
 					if errorCount > 0 {

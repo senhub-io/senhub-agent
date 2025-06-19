@@ -74,7 +74,7 @@ func (m *MockGRPCCollector) GetSupportedTelemetryTypes() []TelemetryType {
 // NewMockHTTPCollector creates a new MockHTTPCollector
 func NewMockHTTPCollector() *MockHTTPCollector {
 	collector := &MockHTTPCollector{}
-	
+
 	// Setup default behaviors
 	collector.On("Connect", mock.Anything).Return(nil)
 	collector.On("Disconnect", mock.Anything).Return(nil)
@@ -83,14 +83,14 @@ func NewMockHTTPCollector() *MockHTTPCollector {
 			{Name: "mock_metric", Value: 42.0, Timestamp: time.Now()},
 		}, nil,
 	)
-	
+
 	return collector
 }
 
 // NewMockGRPCCollector creates a new MockGRPCCollector
 func NewMockGRPCCollector() *MockGRPCCollector {
 	collector := &MockGRPCCollector{}
-	
+
 	// Setup default behaviors
 	collector.On("Connect", mock.Anything).Return(nil)
 	collector.On("Disconnect", mock.Anything).Return(nil)
@@ -99,6 +99,6 @@ func NewMockGRPCCollector() *MockGRPCCollector {
 			{Name: "mock_metric", Value: 42.0, Timestamp: time.Now()},
 		}, nil,
 	)
-	
+
 	return collector
 }

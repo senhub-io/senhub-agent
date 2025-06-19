@@ -33,7 +33,7 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 			testPath := fmt.Sprintf("Systems/%s/NetworkInterfaces", normalizedSystemID)
 			_, testErr := c.client.Get(ctx, testPath)
 			if testErr != nil && strings.Contains(testErr.Error(), "400") &&
-			   strings.Contains(testErr.Error(), "Invalid URL") {
+				strings.Contains(testErr.Error(), "Invalid URL") {
 				// This appears to be a storage system that doesn't support network endpoints
 				c.logger.Debug().
 					Str("system_id", systemID).
@@ -62,16 +62,16 @@ func (c *GenericCollector) collectNetworkMetrics(ctx context.Context, timestamp 
 					Str("path", alternatePath).
 					Msg("Failed to get ethernet interfaces collection")
 
-					// Try another common pattern - adapters directly under system
-					adaptersPath := fmt.Sprintf("Systems/%s/Adapters", normalizedSystemID)
-					networkResp, err = c.client.Get(ctx, adaptersPath)
-					if err != nil {
-						c.logger.Debug().
-							Err(err).
-							Str("path", adaptersPath).
-							Msg("Failed to get adapters collection")
-						continue
-					}
+				// Try another common pattern - adapters directly under system
+				adaptersPath := fmt.Sprintf("Systems/%s/Adapters", normalizedSystemID)
+				networkResp, err = c.client.Get(ctx, adaptersPath)
+				if err != nil {
+					c.logger.Debug().
+						Err(err).
+						Str("path", adaptersPath).
+						Msg("Failed to get adapters collection")
+					continue
+				}
 			}
 		}
 

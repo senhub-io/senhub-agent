@@ -68,8 +68,9 @@ func getHTTPServer(expectedResponse string, resCode int, enableHtts bool) *MockS
 	var testServer *httptest.Server
 	if enableHtts {
 		testServer = httptest.NewTLSServer(handlerFunc)
+	} else {
+		testServer = httptest.NewServer(handlerFunc)
 	}
-	testServer = httptest.NewServer(handlerFunc)
 
 	return &MockServer{
 		Server:      testServer,
@@ -151,8 +152,9 @@ func getHTTPServerWithURLPath(urlPathConfList []TestHTTPServerURLConf, enableHtt
 	var testServer *httptest.Server
 	if enableHtts {
 		testServer = httptest.NewTLSServer(handlerFunc)
+	} else {
+		testServer = httptest.NewServer(handlerFunc)
 	}
-	testServer = httptest.NewServer(handlerFunc)
 	return &MockServer{
 		Server:      testServer,
 		URL:         testServer.URL,

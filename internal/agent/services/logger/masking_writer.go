@@ -40,7 +40,7 @@ func (w *MaskingWriter) Write(p []byte) (n int, err error) {
 		}
 		return len(p), nil // Return original input length
 	}
-	
+
 	// If it's not JSON, treat as string
 	maskedStr := MaskSensitiveData(string(p))
 	_, writeErr := w.out.Write([]byte(maskedStr))
@@ -53,10 +53,10 @@ func (w *MaskingWriter) Write(p []byte) (n int, err error) {
 // maskJSONFields recursively traverses a JSON object and masks sensitive fields
 func maskJSONFields(obj map[string]interface{}) map[string]interface{} {
 	result := make(map[string]interface{})
-	
+
 	for key, value := range obj {
 		newKey := key
-		
+
 		// Mask sensitive fields based on field name
 		if isSensitiveFieldName(key) {
 			switch v := value.(type) {
@@ -65,7 +65,7 @@ func maskJSONFields(obj map[string]interface{}) map[string]interface{} {
 				continue
 			}
 		}
-		
+
 		// Recursive processing of nested structures
 		switch v := value.(type) {
 		case map[string]interface{}:
@@ -84,26 +84,26 @@ func maskJSONFields(obj map[string]interface{}) map[string]interface{} {
 			result[newKey] = value
 		}
 	}
-	
+
 	return result
 }
 
 // isSensitiveFieldName checks if a field name is likely to contain sensitive data
 func isSensitiveFieldName(fieldName string) bool {
 	sensitiveNames := []string{
-		"password", "passwd", "pwd", 
-		"token", "api_key", "apikey", 
-		"secret", "credential", 
+		"password", "passwd", "pwd",
+		"token", "api_key", "apikey",
+		"secret", "credential",
 		"authentication_key", "authkey",
 		"authorization", "auth",
 	}
-	
+
 	fieldNameLower := strings.ToLower(fieldName)
 	for _, name := range sensitiveNames {
 		if strings.Contains(fieldNameLower, name) {
 			return true
 		}
 	}
-	
+
 	return false
 }

@@ -53,7 +53,7 @@ func NewProbePoller(
 	addDataPoint data_store.AddCallback,
 ) (*ProbePoller, error) {
 	probeId := GenerateProbeId(config)
-	
+
 	// Create module-specific logger for probe poller with readable probe name
 	probeModuleName := fmt.Sprintf("probe.%s", config.Name)
 	moduleLogger := logger.NewModuleLogger(baseLogger, probeModuleName)

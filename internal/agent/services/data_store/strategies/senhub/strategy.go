@@ -1,9 +1,10 @@
 // senhub-agent/internal/agent/services/data_store/stategy_senhub.go
-package data_store
+package senhub
 
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/periodic_scheduler"
@@ -11,12 +12,61 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/server"
 	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/internal/agent/types/datapoint"
 	"senhub-agent.go/internal/agent/validators"
 )
 
 var (
 	DEFAULT_SENHUB_INTERVAL = 5 * time.Second
 )
+
+// Buffer interface for local use to avoid import cycles
+type Buffer interface {
+	// Append appends data to the buffer
+	Append(newData []datapoint.DataPoint) error
+	// Flush the buffer data and return the data
+	Sync() []datapoint.DataPoint
+	// Revert the sync operation
+	AbortSync(failedData []datapoint.DataPoint) error
+}
+
+// buffer implements Buffer interface
+type buffer struct {
+	data  *[]datapoint.DataPoint
+	mutex sync.Mutex
+}
+
+// NewBuffer creates a new buffer instance
+func NewBuffer() Buffer {
+	return &buffer{
+		data: &[]datapoint.DataPoint{},
+	}
+}
+
+// Append appends data to the buffer
+func (b *buffer) Append(newData []datapoint.DataPoint) error {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	*b.data = append(*b.data, newData...)
+	return nil
+}
+
+// Sync returns all buffered data and clears the buffer
+func (b *buffer) Sync() []datapoint.DataPoint {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	data := *b.data
+	b.data = &[]datapoint.DataPoint{}
+	return data
+}
+
+// AbortSync adds failed data back to the buffer
+func (b *buffer) AbortSync(failedData []datapoint.DataPoint) error {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	*b.data = append(failedData, *b.data...)
+	return nil
+}
 
 type SenhubDataPoint struct {
 	Name      string     `json:"name"`
@@ -46,7 +96,7 @@ func NewSyncStrategySenhub(
 	agentConfig configuration.AgentConfiguration,
 	storageConfig configuration.StorageConfigParams,
 	baseLogger *logger.Logger,
-) SyncStrategy {
+) interface{} {
 	// Create module-specific logger for SenHub strategy
 	moduleLogger := logger.NewModuleLogger(baseLogger, "strategy.senhub")
 
@@ -73,8 +123,10 @@ func (s *SyncStrategySenhub) GetStrategyParams() map[string]interface{} {
 	return s.storageConfig
 }
 
-func (s *SyncStrategySenhub) AddDataPoints(data []DataPoint) error {
-	s.buffer.Append(data)
+func (s *SyncStrategySenhub) AddDataPoints(data []datapoint.DataPoint) error {
+	if err := s.buffer.Append(data); err != nil {
+		return fmt.Errorf("failed to append data to buffer: %w", err)
+	}
 	return nil
 }
 
@@ -159,7 +211,9 @@ func (s *SyncStrategySenhub) doSync() error {
 	s.logger.Debug().Any("data", transformedData).Msg("synchronizing data")
 	if err := s.doSyncData(transformedData); err != nil {
 		s.logger.Error().Err(err).Msg("error synchronizing data")
-		s.buffer.AbortSync(data)
+		if abortErr := s.buffer.AbortSync(data); abortErr != nil {
+			s.logger.Error().Err(abortErr).Msg("failed to abort sync")
+		}
 		return err
 	}
 

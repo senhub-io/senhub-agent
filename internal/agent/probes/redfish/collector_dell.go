@@ -15,7 +15,7 @@ import (
 type DellCollector struct {
 	*GenericCollector
 	// Dell specific fields
-	idracVersion string
+	idracVersion     string
 	lifecycleVersion string
 }
 
@@ -96,8 +96,8 @@ func (c *DellCollector) getDellInfo(ctx context.Context) error {
 			// Check if this is an iDRAC (look for clues in name, description or model)
 			isIDRAC := false
 			if strings.Contains(strings.ToLower(managerResp.Name), "idrac") ||
-			   strings.Contains(strings.ToLower(managerResp.Description), "idrac") ||
-			   strings.Contains(strings.ToLower(managerResp.Model), "idrac") {
+				strings.Contains(strings.ToLower(managerResp.Description), "idrac") ||
+				strings.Contains(strings.ToLower(managerResp.Model), "idrac") {
 				isIDRAC = true
 			}
 
@@ -431,12 +431,12 @@ func (c *DellCollector) collectStorageMetrics(ctx context.Context, timestamp tim
 
 				// Extract drive metrics
 				var driveData struct {
-					CapacityBytes    int64    `json:"CapacityBytes"`
-					MediaType        string   `json:"MediaType"`
-					Protocol         string   `json:"Protocol"`
-					RotationSpeedRPM int      `json:"RotationSpeedRPM"`
+					CapacityBytes                 int64   `json:"CapacityBytes"`
+					MediaType                     string  `json:"MediaType"`
+					Protocol                      string  `json:"Protocol"`
+					RotationSpeedRPM              int     `json:"RotationSpeedRPM"`
 					PredictedMediaLifeLeftPercent float32 `json:"PredictedMediaLifeLeftPercent"`
-					Status           *Status  `json:"Status"`
+					Status                        *Status `json:"Status"`
 				}
 				rawJSON, _ := json.Marshal(driveResp)
 				if err := json.Unmarshal(rawJSON, &driveData); err != nil {
@@ -531,8 +531,8 @@ func (c *DellCollector) collectStorageMetrics(ctx context.Context, timestamp tim
 
 				// Extract volume metrics
 				var volumeData struct {
-					CapacityBytes int64  `json:"CapacityBytes"`
-					RAIDType      string `json:"RAIDType"`
+					CapacityBytes int64   `json:"CapacityBytes"`
+					RAIDType      string  `json:"RAIDType"`
 					Status        *Status `json:"Status"`
 				}
 				rawJSON, _ := json.Marshal(volumeResp)
@@ -686,9 +686,9 @@ func (c *DellCollector) collectNetworkMetrics(ctx context.Context, timestamp tim
 
 				// Extract port metrics
 				var portData struct {
-					LinkStatus       string   `json:"LinkStatus"`
-					CurrentLinkSpeed string   `json:"CurrentLinkSpeed"`
-					Status           *Status  `json:"Status"`
+					LinkStatus       string  `json:"LinkStatus"`
+					CurrentLinkSpeed string  `json:"CurrentLinkSpeed"`
+					Status           *Status `json:"Status"`
 				}
 				rawJSON, _ := json.Marshal(portResp)
 				if err := json.Unmarshal(rawJSON, &portData); err != nil {
