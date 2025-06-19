@@ -19,6 +19,18 @@ import (
 	"senhub-agent.go/internal/agent/validators"
 )
 
+// validateIPAddress ensures the IP address is valid and safe to use in commands
+func validateIPAddress(ip string) error {
+	if net.ParseIP(ip) == nil {
+		return fmt.Errorf("invalid IP address: %s", ip)
+	}
+	// Additional safety check - ensure no special characters that could be used for injection
+	if strings.ContainsAny(ip, ";|&$`<>(){}[]") {
+		return fmt.Errorf("unsafe characters in IP address: %s", ip)
+	}
+	return nil
+}
+
 type PingWebAppProbeConfig struct {
 	URL string
 }
@@ -152,8 +164,12 @@ func (p *PingWebAppProbe) collectPing(ip string) (float32, float32, error) {
 }
 
 func (p *PingWebAppProbe) collectPingWebAppWindows(ip string) (float32, float32, error) {
+	if err := validateIPAddress(ip); err != nil {
+		return 0, 0, fmt.Errorf("invalid IP address: %w", err)
+	}
+	
 	count := 10
-	cmd := exec.Command("ping", "-n", strconv.Itoa(count), ip)
+	cmd := exec.Command("ping", "-n", strconv.Itoa(count), ip) // #nosec G204 - IP address is validated above
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -170,8 +186,12 @@ func (p *PingWebAppProbe) collectPingWebAppWindows(ip string) (float32, float32,
 }
 
 func (p *PingWebAppProbe) collectPingWebAppLinux(ip string) (float32, float32, error) {
+	if err := validateIPAddress(ip); err != nil {
+		return 0, 0, fmt.Errorf("invalid IP address: %w", err)
+	}
+	
 	count := 10
-	cmd := exec.Command("ping", "-c", strconv.Itoa(count), ip)
+	cmd := exec.Command("ping", "-c", strconv.Itoa(count), ip) // #nosec G204 - IP address is validated above
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -188,8 +208,12 @@ func (p *PingWebAppProbe) collectPingWebAppLinux(ip string) (float32, float32, e
 }
 
 func (p *PingWebAppProbe) collectPingWebAppDarwin(ip string) (float32, float32, error) {
+	if err := validateIPAddress(ip); err != nil {
+		return 0, 0, fmt.Errorf("invalid IP address: %w", err)
+	}
+	
 	count := 10
-	cmd := exec.Command("ping", "-c", strconv.Itoa(count), ip)
+	cmd := exec.Command("ping", "-c", strconv.Itoa(count), ip) // #nosec G204 - IP address is validated above
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {

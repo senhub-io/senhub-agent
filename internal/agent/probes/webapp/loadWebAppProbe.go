@@ -209,6 +209,7 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: false, // Gardez false pour la sécurité
+				MinVersion:         tls.VersionTLS12,
 			},
 			// Ajout de timeouts plus spécifiques
 			TLSHandshakeTimeout:   10 * time.Second,

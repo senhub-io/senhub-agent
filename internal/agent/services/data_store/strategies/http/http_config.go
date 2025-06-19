@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -374,7 +375,7 @@ func (cm *ConfigurationManager) LoadNagiosConfig() *NagiosConfig {
 
 // loadNagiosConfigFromFile loads Nagios configuration from a YAML file
 func (cm *ConfigurationManager) loadNagiosConfigFromFile(configPath string) (*NagiosConfig, error) {
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(filepath.Clean(configPath)) // #nosec G304 - configPath is hardcoded to "config/nagios.yaml"
 	if err != nil {
 		return nil, err
 	}

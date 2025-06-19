@@ -28,6 +28,7 @@ func UpdateAgent(args *cliArgs.ParsedArgs) {
 	remoteConfiguration := configuration.NewRemoteConfiguration(
 		senhubServer,
 		logger,
+		args,
 	)
 
 	updater := auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
