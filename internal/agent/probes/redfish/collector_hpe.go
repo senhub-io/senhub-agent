@@ -15,9 +15,9 @@ import (
 type HPECollector struct {
 	*GenericCollector
 	// HPE specific fields
-	iloVersion string
+	iloVersion   string
 	smartStorage bool
-	isGen10     bool
+	isGen10      bool
 }
 
 // NewHPECollector creates a new collector for HPE servers
@@ -83,7 +83,7 @@ func (c *HPECollector) getHPEInfo(ctx context.Context) error {
 	}
 
 	// Check for SmartStorage
-	if c.systems != nil && len(c.systems) > 0 {
+	if len(c.systems) > 0 {
 		// Try to access SmartStorage endpoint
 		smartStoragePath := c.systems[0] + "/SmartStorage"
 		smartResp, err := c.client.Get(ctx, smartStoragePath)
@@ -182,7 +182,7 @@ func (c *HPECollector) collectSystemMetrics(ctx context.Context, timestamp time.
 				// Try legacy "Hp" OEM key
 				hpeData, hasHPE = resp.Oem["Hp"]
 			}
-			
+
 			if hasHPE {
 				hpeOem, ok := hpeData.(map[string]interface{})
 				if ok {
@@ -192,7 +192,7 @@ func (c *HPECollector) collectSystemMetrics(ctx context.Context, timestamp time.
 						// Add serial as a tag
 						systemTags = append(systemTags, tags.Tag{Key: "serial_number", Value: serialStr})
 					}
-					
+
 					// Add product ID if available
 					if productID, has := hpeOem["ProductID"]; has {
 						productIDStr := fmt.Sprintf("%v", productID)
@@ -289,10 +289,10 @@ func (c *HPECollector) collectSmartStorageMetrics(ctx context.Context, timestamp
 
 			// Extract controller metrics
 			var arrayData struct {
-				Model            string   `json:"Model"`
-				SerialNumber     string   `json:"SerialNumber"`
-				FirmwareVersion  string   `json:"FirmwareVersion"`
-				Status           *Status  `json:"Status"`
+				Model           string  `json:"Model"`
+				SerialNumber    string  `json:"SerialNumber"`
+				FirmwareVersion string  `json:"FirmwareVersion"`
+				Status          *Status `json:"Status"`
 			}
 			rawJSON, _ := json.Marshal(arrayResp)
 			if err := json.Unmarshal(rawJSON, &arrayData); err != nil {
@@ -359,13 +359,13 @@ func (c *HPECollector) collectSmartStorageMetrics(ctx context.Context, timestamp
 
 				// Extract drive metrics
 				var driveData struct {
-					CapacityGB       float32 `json:"CapacityGB"`
-					MediaType        string  `json:"MediaType"`
-					InterfaceType    string  `json:"InterfaceType"`
-					SerialNumber     string  `json:"SerialNumber"`
-					Model            string  `json:"Model"`
-					RotationalSpeedRpm int   `json:"RotationalSpeedRpm"`
-					Status           *Status `json:"Status"`
+					CapacityGB         float32 `json:"CapacityGB"`
+					MediaType          string  `json:"MediaType"`
+					InterfaceType      string  `json:"InterfaceType"`
+					SerialNumber       string  `json:"SerialNumber"`
+					Model              string  `json:"Model"`
+					RotationalSpeedRpm int     `json:"RotationalSpeedRpm"`
+					Status             *Status `json:"Status"`
 				}
 				rawJSON, _ := json.Marshal(driveResp)
 				if err := json.Unmarshal(rawJSON, &driveData); err != nil {
@@ -382,7 +382,7 @@ func (c *HPECollector) collectSmartStorageMetrics(ctx context.Context, timestamp
 				if driveData.SerialNumber != "" {
 					driveTags = append(driveTags, tags.Tag{Key: "serial_number", Value: driveData.SerialNumber})
 				}
-				
+
 				// Add media type and interface as tags
 				if driveData.MediaType != "" {
 					driveTags = append(driveTags, tags.Tag{Key: "media_type", Value: driveData.MediaType})
@@ -458,10 +458,10 @@ func (c *HPECollector) collectSmartStorageMetrics(ctx context.Context, timestamp
 
 				// Extract logical drive metrics
 				var volumeData struct {
-					CapacityGB      float32  `json:"CapacityGB"`
-					Raid            string   `json:"Raid"`
+					CapacityGB       float32 `json:"CapacityGB"`
+					Raid             string  `json:"Raid"`
 					LogicalDriveType string  `json:"LogicalDriveType"`
-					Status          *Status  `json:"Status"`
+					Status           *Status `json:"Status"`
 				}
 				rawJSON, _ := json.Marshal(volumeResp)
 				if err := json.Unmarshal(rawJSON, &volumeData); err != nil {
