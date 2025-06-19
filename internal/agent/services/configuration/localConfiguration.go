@@ -13,7 +13,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"net"
 	"os"
@@ -63,13 +62,13 @@ type CacheConfig struct {
 
 // LocalConfiguration manages offline configuration
 type LocalConfiguration struct {
-	data         LocalConfigurationData
-	logger       *logger.ModuleLogger
-	configPath   string
-	args         *cliArgs.ParsedArgs
+	data          LocalConfigurationData
+	logger        *logger.ModuleLogger
+	configPath    string
+	args          *cliArgs.ParsedArgs
 	eventNotifier *EventNotifier
-	watcher      *fsnotify.Watcher
-	quitChannel  chan struct{}
+	watcher       *fsnotify.Watcher
+	quitChannel   chan struct{}
 }
 
 // NewLocalConfiguration creates a new LocalConfiguration instance
@@ -153,7 +152,7 @@ func (lc *LocalConfiguration) GetCacheConfig() *CacheConfig {
 func (lc *LocalConfiguration) GetConfiguration() RemoteConfigurationData {
 	// Get auto-update configuration
 	autoUpdate := lc.GetAutoUpdateConfig()
-	
+
 	// Convert auto-update interval based on enabled status
 	var updateInterval int
 	if autoUpdate.Enabled {
@@ -161,7 +160,7 @@ func (lc *LocalConfiguration) GetConfiguration() RemoteConfigurationData {
 	} else {
 		updateInterval = 0 // Disabled
 	}
-	
+
 	// Convert local config format to remote config format
 	return RemoteConfigurationData{
 		StorageConfig: lc.data.Storage,
@@ -184,44 +183,44 @@ func (lc *LocalConfiguration) OnConfigChanged(callback func(string)) {
 func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
 	lc.logger.Info().Msg("Starting LocalConfiguration with file watching")
 	lc.quitChannel = quitChannel
-	
+
 	// Load or create configuration
 	if err := lc.loadOrCreateConfiguration(); err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
-	
+
 	// Initialize file watcher
 	var err error
 	lc.watcher, err = fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("failed to create file watcher: %w", err)
 	}
-	
+
 	// Add config file to watcher
 	err = lc.watcher.Add(lc.configPath)
 	if err != nil {
 		lc.watcher.Close()
 		return fmt.Errorf("failed to watch config file %s: %w", lc.configPath, err)
 	}
-	
+
 	lc.logger.Info().Str("config_path", lc.configPath).Msg("Started watching configuration file")
-	
+
 	// Start watching goroutine
 	go lc.watchConfigFile()
-	
+
 	return nil
 }
 
 // Shutdown performs cleanup and stops file watching
 func (lc *LocalConfiguration) Shutdown(ctx context.Context) error {
 	lc.logger.Info().Msg("Shutting down LocalConfiguration")
-	
+
 	if lc.watcher != nil {
 		if err := lc.watcher.Close(); err != nil {
 			lc.logger.Warn().Err(err).Msg("Error closing file watcher")
 		}
 	}
-	
+
 	return nil
 }
 
@@ -231,31 +230,31 @@ func (lc *LocalConfiguration) loadOrCreateConfiguration() error {
 		lc.logger.Info().Msgf("Configuration file not found, creating default: %s", lc.configPath)
 		return lc.createDefaultConfiguration()
 	}
-	
+
 	lc.logger.Info().Msgf("Loading configuration from: %s", lc.configPath)
 	return lc.loadConfiguration()
 }
 
 // loadConfiguration loads configuration from YAML file
 func (lc *LocalConfiguration) loadConfiguration() error {
-	data, err := ioutil.ReadFile(lc.configPath)
+	data, err := os.ReadFile(lc.configPath)
 	if err != nil {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
-	
+
 	var config LocalConfigurationData
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return fmt.Errorf("failed to parse YAML config: %w", err)
 	}
-	
+
 	// Fix YAML interface conversion issues
 	config = lc.fixYAMLTypes(config)
-	
+
 	// Validate configuration
 	if err := lc.validateConfiguration(&config); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
-	
+
 	lc.data = config
 	lc.logger.Info().Msg("Configuration loaded successfully")
 	return nil
@@ -272,7 +271,7 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 			return fmt.Errorf("failed to generate agent key: %w", err)
 		}
 	}
-	
+
 	// Create default configuration
 	config := LocalConfigurationData{
 		Agent: LocalAgentConfig{
@@ -285,34 +284,34 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 		AutoUpdate: lc.createDefaultAutoUpdateConfig(),
 		Cache:      lc.createDefaultCacheConfig(),
 	}
-	
+
 	// Create directory if it doesn't exist
 	configDir := filepath.Dir(lc.configPath)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
-	
+
 	// Generate YAML with comments
 	yamlData, err := lc.generateConfigYAML(&config)
 	if err != nil {
 		return fmt.Errorf("failed to generate YAML: %w", err)
 	}
-	
+
 	// Write configuration file
-	if err := ioutil.WriteFile(lc.configPath, yamlData, 0644); err != nil {
+	if err := os.WriteFile(lc.configPath, yamlData, 0644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
-	
+
 	lc.data = config
 	lc.logger.Info().Msgf("Default configuration created: %s", lc.configPath)
-	
+
 	// Generate TLS certificates if HTTPS is enabled
 	if lc.args.EnableHttps {
 		if err := lc.generateTLSCertificates(); err != nil {
 			lc.logger.Warn().Err(err).Msg("Failed to generate TLS certificates")
 		}
 	}
-	
+
 	return nil
 }
 
@@ -323,15 +322,15 @@ func (lc *LocalConfiguration) generateOfflineAgentKey() (string, error) {
 	if _, err := rand.Read(uuid); err != nil {
 		return "", fmt.Errorf("failed to generate random bytes for UUID: %w", err)
 	}
-	
+
 	// Set version (4) and variant bits
 	uuid[6] = (uuid[6] & 0x0f) | 0x40 // Version 4
 	uuid[8] = (uuid[8] & 0x3f) | 0x80 // Variant bits
-	
+
 	// Format as UUID string
 	key := fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
 		uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:16])
-	
+
 	lc.logger.Info().Msg("Generated offline agent key (UUID)")
 	return key, nil
 }
@@ -343,20 +342,20 @@ func (lc *LocalConfiguration) createDefaultStorageConfig() []StorageConfig {
 		"bind_address": "127.0.0.1",
 		"endpoints":    []string{"prtg", "web", "nagios"},
 	}
-	
+
 	// Add TLS configuration if HTTPS is enabled
 	if lc.args.EnableHttps {
 		httpParams["port"] = lc.args.HttpsPort
 		httpParams["bind_address"] = "0.0.0.0" // Accept external connections with HTTPS
-		
+
 		tlsConfig := TLSConfig{
 			Enabled:       true,
 			MinTlsVersion: lc.args.MinTlsVersion,
 		}
-		
+
 		httpParams["tls"] = tlsConfig
 	}
-	
+
 	return []StorageConfig{
 		{
 			Name:   "http",
@@ -402,7 +401,7 @@ func (lc *LocalConfiguration) createDefaultCacheConfig() *CacheConfig {
 	}
 }
 
-// fixYAMLTypes converts map[interface{}]interface{} to map[string]interface{} 
+// fixYAMLTypes converts map[interface{}]interface{} to map[string]interface{}
 // This is needed because yaml.v2 unmarshals into map[interface{}]interface{}
 // but Go JSON expects map[string]interface{}
 func (lc *LocalConfiguration) fixYAMLTypes(config LocalConfigurationData) LocalConfigurationData {
@@ -414,7 +413,7 @@ func (lc *LocalConfiguration) fixYAMLTypes(config LocalConfigurationData) LocalC
 			}
 		}
 	}
-	
+
 	// Fix probe configs
 	for i, probe := range config.Probes {
 		if converted := lc.convertMapTypes(probe.Params); converted != nil {
@@ -423,7 +422,7 @@ func (lc *LocalConfiguration) fixYAMLTypes(config LocalConfigurationData) LocalC
 			}
 		}
 	}
-	
+
 	return config
 }
 
@@ -460,30 +459,30 @@ func (lc *LocalConfiguration) validateConfiguration(config *LocalConfigurationDa
 	if config == nil {
 		return fmt.Errorf("configuration cannot be nil")
 	}
-	
+
 	// Validate agent config
 	if config.Agent.Key == "" {
 		return fmt.Errorf("agent key cannot be empty")
 	}
-	
+
 	// Validate storage config
 	if len(config.Storage) == 0 {
 		return fmt.Errorf("at least one storage strategy is required")
 	}
-	
+
 	for _, storage := range config.Storage {
 		if storage.Name == "" {
 			return fmt.Errorf("storage strategy name cannot be empty")
 		}
 	}
-	
+
 	// Validate probes config
 	for _, probe := range config.Probes {
 		if probe.Name == "" {
 			return fmt.Errorf("probe name cannot be empty")
 		}
 	}
-	
+
 	return nil
 }
 
@@ -492,33 +491,33 @@ func (lc *LocalConfiguration) generateTLSCertificates() error {
 	if !lc.args.EnableHttps {
 		return nil // Skip if HTTPS disabled
 	}
-	
+
 	lc.logger.Info().Msg("Generating TLS certificates (replace with your own if needed)")
-	
+
 	// Create certs directory
 	certsDir := "./certs"
 	if err := os.MkdirAll(certsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create certs directory: %w", err)
 	}
-	
+
 	// Generate certificate
 	certPEM, keyPEM, err := lc.generateSelfSignedCert()
 	if err != nil {
 		return fmt.Errorf("failed to generate certificate: %w", err)
 	}
-	
+
 	// Write certificate files
 	certPath := filepath.Join(certsDir, "agent-cert.pem")
 	keyPath := filepath.Join(certsDir, "agent-key.pem")
-	
-	if err := ioutil.WriteFile(certPath, certPEM, 0644); err != nil {
+
+	if err := os.WriteFile(certPath, certPEM, 0644); err != nil {
 		return fmt.Errorf("failed to write certificate: %w", err)
 	}
-	
-	if err := ioutil.WriteFile(keyPath, keyPEM, 0600); err != nil {
+
+	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
 		return fmt.Errorf("failed to write private key: %w", err)
 	}
-	
+
 	lc.logger.Info().Msgf("TLS certificates generated: %s, %s", certPath, keyPath)
 	lc.logger.Info().Msg("To use your own certificates, replace these files with your own")
 	return nil
@@ -531,7 +530,7 @@ func (lc *LocalConfiguration) generateSelfSignedCert() ([]byte, []byte, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate private key: %w", err)
 	}
-	
+
 	// Create certificate template
 	template := x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().Unix()),
@@ -544,13 +543,13 @@ func (lc *LocalConfiguration) generateSelfSignedCert() ([]byte, []byte, error) {
 			PostalCode:    []string{""},
 			CommonName:    "localhost",
 		},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(365 * 24 * time.Hour),
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 	}
-	
+
 	// Add Subject Alternative Names
 	for _, host := range lc.args.HttpsHosts {
 		if ip := net.ParseIP(host); ip != nil {
@@ -559,24 +558,24 @@ func (lc *LocalConfiguration) generateSelfSignedCert() ([]byte, []byte, error) {
 			template.DNSNames = append(template.DNSNames, host)
 		}
 	}
-	
+
 	// Generate certificate
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create certificate: %w", err)
 	}
-	
+
 	// Encode to PEM format
 	certPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: certDER,
 	})
-	
+
 	keyPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
 	})
-	
+
 	return certPEM, keyPEM, nil
 }
 
@@ -697,15 +696,15 @@ probes:
 #     insecure: false                    # Optional, gRPC only
 
 `
-	
+
 	// Extract storage config values
 	httpStorage := config.Storage[0]
 	port := httpStorage.Params["port"].(int)
 	bindAddress := httpStorage.Params["bind_address"].(string)
-	
+
 	endpoints := httpStorage.Params["endpoints"].([]string)
 	endpointsStr := `"` + strings.Join(endpoints, `", "`) + `"`
-	
+
 	// TLS configuration section
 	tlsSection := ""
 	if lc.args.EnableHttps {
@@ -713,8 +712,8 @@ probes:
         enabled: true
         min_tls_version: "` + lc.args.MinTlsVersion + `"`
 	}
-	
-	return []byte(fmt.Sprintf(yamlTemplate, 
+
+	return []byte(fmt.Sprintf(yamlTemplate,
 		config.Agent.Key,
 		config.Agent.Generated,
 		config.AutoUpdate.Enabled,
@@ -730,39 +729,39 @@ probes:
 // watchConfigFile monitors the configuration file for changes
 func (lc *LocalConfiguration) watchConfigFile() {
 	lc.logger.Debug().Msg("Started configuration file watching goroutine")
-	
+
 	for {
 		select {
 		case <-lc.quitChannel:
 			lc.logger.Debug().Msg("Configuration file watching stopped")
 			return
-			
+
 		case event, ok := <-lc.watcher.Events:
 			if !ok {
 				lc.logger.Debug().Msg("File watcher events channel closed")
 				return
 			}
-			
+
 			lc.logger.Debug().
 				Str("event", event.String()).
 				Msg("Configuration file event received")
-			
+
 			// Handle various file change events
 			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Chmod) {
 				lc.logger.Info().
 					Str("config_path", lc.configPath).
 					Str("event_type", event.Op.String()).
 					Msg("Configuration file changed, reloading...")
-				
+
 				// Small delay to ensure file write is complete
 				time.Sleep(200 * time.Millisecond)
-				
+
 				// Check if file still exists (some editors delete/recreate)
 				if _, err := os.Stat(lc.configPath); os.IsNotExist(err) {
 					lc.logger.Warn().Msg("Configuration file was deleted, skipping reload")
 					continue
 				}
-				
+
 				if err := lc.reloadConfiguration(); err != nil {
 					lc.logger.Error().
 						Err(err).
@@ -774,12 +773,12 @@ func (lc *LocalConfiguration) watchConfigFile() {
 				lc.logger.Warn().
 					Str("event_type", event.Op.String()).
 					Msg("Configuration file was removed or renamed, attempting to re-watch...")
-				
+
 				// Try to re-add the file to the watcher after a delay
 				// This handles editors that delete/recreate files
 				go lc.attemptRewatch()
 			}
-			
+
 		case err, ok := <-lc.watcher.Errors:
 			if !ok {
 				lc.logger.Debug().Msg("File watcher errors channel closed")
@@ -796,12 +795,12 @@ func (lc *LocalConfiguration) watchConfigFile() {
 func (lc *LocalConfiguration) reloadConfiguration() error {
 	// Store previous configuration for comparison
 	previousData := lc.data
-	
+
 	// Load new configuration
 	if err := lc.loadConfiguration(); err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
-	
+
 	// Check if configuration actually changed
 	if lc.hasConfigurationChanged(previousData, lc.data) {
 		lc.logger.Info().
@@ -810,13 +809,13 @@ func (lc *LocalConfiguration) reloadConfiguration() error {
 			Any("old_probes", previousData.Probes).
 			Any("new_probes", lc.data.Probes).
 			Msg("Configuration changes detected, notifying observers")
-		
+
 		// Notify all observers about the configuration change
 		lc.eventNotifier.NotifyObservers("Configuration file changed")
 	} else {
 		lc.logger.Info().Msg("Configuration file changed but content is identical")
 	}
-	
+
 	return nil
 }
 
@@ -833,7 +832,7 @@ func (lc *LocalConfiguration) hasConfigurationChanged(old, new LocalConfiguratio
 		// Deep comparison of parameters would be more thorough
 		// but for now we assume any storage section change matters
 	}
-	
+
 	// Compare probes configuration
 	if len(old.Probes) != len(new.Probes) {
 		return true
@@ -844,7 +843,7 @@ func (lc *LocalConfiguration) hasConfigurationChanged(old, new LocalConfiguratio
 		}
 		// Similar to storage, we could do deeper parameter comparison
 	}
-	
+
 	// For now, if we reach here, consider configuration unchanged
 	// A more sophisticated comparison could be implemented later
 	return false
@@ -855,11 +854,11 @@ func (lc *LocalConfiguration) hasConfigurationChanged(old, new LocalConfiguratio
 func (lc *LocalConfiguration) attemptRewatch() {
 	maxRetries := 5
 	retryDelay := 500 * time.Millisecond
-	
+
 	for i := 0; i < maxRetries; i++ {
 		// Wait a bit for the file to be recreated
 		time.Sleep(retryDelay)
-		
+
 		// Check if file exists
 		if _, err := os.Stat(lc.configPath); err == nil {
 			// File exists, try to add it back to watcher
@@ -872,7 +871,7 @@ func (lc *LocalConfiguration) attemptRewatch() {
 				lc.logger.Info().
 					Int("attempt", i+1).
 					Msg("Successfully re-added configuration file to watcher")
-				
+
 				// File is back, try to reload configuration
 				if err := lc.reloadConfiguration(); err != nil {
 					lc.logger.Error().
@@ -888,11 +887,11 @@ func (lc *LocalConfiguration) attemptRewatch() {
 				Int("attempt", i+1).
 				Msg("Configuration file not yet recreated, retrying...")
 		}
-		
+
 		// Increase delay for next retry
 		retryDelay *= 2
 	}
-	
+
 	lc.logger.Error().
 		Int("max_retries", maxRetries).
 		Msg("Failed to re-watch configuration file after maximum retries")

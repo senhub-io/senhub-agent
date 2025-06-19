@@ -34,30 +34,26 @@ func MaskSensitiveData(input string) string {
 // maskValue masks text while preserving the first and last characters
 func maskValue(value string) string {
 	valueLen := len(value)
-	
+
 	// For short values, mask completely
 	if valueLen <= 8 {
 		return "********"
 	}
-	
+
 	// For longer values, preserve beginning and end
-	visible := 2 // Always show 2 characters at start and end for consistency
-	if valueLen <= 10 {
-		visible = 2
-	} else if valueLen <= 20 {
-		visible = 2
-	} else {
+	visible := 2 // Default: show 2 characters at start and end
+	if valueLen > 20 {
 		visible = 4 // For very long values, show 4 characters
 	}
-	
+
 	if visible*2 >= valueLen {
 		return "********"
 	}
-	
+
 	prefix := value[:visible]
 	suffix := value[valueLen-visible:]
 	maskedLength := valueLen - visible*2
 	masked := strings.Repeat("*", maskedLength)
-	
+
 	return prefix + masked + suffix
 }

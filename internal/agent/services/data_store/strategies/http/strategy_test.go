@@ -1,5 +1,5 @@
 // senhub-agent/internal/agent/services/data_store/strategy_http_test.go
-package data_store
+package http
 
 import (
 	"context"
@@ -39,62 +39,62 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 	logger := createTestLogger()
 
 	tests := []struct {
-		name   string
-		params map[string]interface{}
-		expectedPort int
+		name                string
+		params              map[string]interface{}
+		expectedPort        int
 		expectedBindAddress string
-		expectedEndpoints map[string]bool
+		expectedEndpoints   map[string]bool
 	}{
 		{
-			name:   "Default configuration",
-			params: map[string]interface{}{},
-			expectedPort: 8080,
+			name:                "Default configuration",
+			params:              map[string]interface{}{},
+			expectedPort:        8080,
 			expectedBindAddress: "0.0.0.0",
-			expectedEndpoints: map[string]bool{},
+			expectedEndpoints:   map[string]bool{},
 		},
 		{
 			name: "Custom port",
 			params: map[string]interface{}{
 				"port": float64(9090),
 			},
-			expectedPort: 9090,
+			expectedPort:        9090,
 			expectedBindAddress: "0.0.0.0",
-			expectedEndpoints: map[string]bool{},
+			expectedEndpoints:   map[string]bool{},
 		},
 		{
 			name: "Custom port as int (YAML style)",
 			params: map[string]interface{}{
 				"port": 8443,
 			},
-			expectedPort: 8443,
+			expectedPort:        8443,
 			expectedBindAddress: "0.0.0.0",
-			expectedEndpoints: map[string]bool{},
+			expectedEndpoints:   map[string]bool{},
 		},
 		{
 			name: "Custom bind address - loopback",
 			params: map[string]interface{}{
 				"bind_address": "127.0.0.1",
 			},
-			expectedPort: 8080,
+			expectedPort:        8080,
 			expectedBindAddress: "127.0.0.1",
-			expectedEndpoints: map[string]bool{},
+			expectedEndpoints:   map[string]bool{},
 		},
 		{
 			name: "Custom bind address - specific interface",
 			params: map[string]interface{}{
 				"bind_address": "192.168.1.100",
-				"port": float64(8888),
+				"port":         float64(8888),
 			},
-			expectedPort: 8888,
+			expectedPort:        8888,
 			expectedBindAddress: "192.168.1.100",
-			expectedEndpoints: map[string]bool{},
+			expectedEndpoints:   map[string]bool{},
 		},
 		{
 			name: "Custom endpoints configuration",
 			params: map[string]interface{}{
 				"endpoints": []interface{}{"prtg", "nagios"},
 			},
-			expectedPort: 8080, // default port
+			expectedPort:        8080, // default port
 			expectedBindAddress: "0.0.0.0",
 			expectedEndpoints: map[string]bool{
 				"prtg":   true,
@@ -106,7 +106,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			strategy := NewHTTPSyncStrategy(agentConfig, tt.params, logger)
-			
+
 			if strategy == nil {
 				t.Fatal("Expected strategy to be created, got nil")
 			}
@@ -138,7 +138,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 func TestHTTPSyncStrategy_Interface(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger)
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
 
 	// Test interface methods
 	if strategy.GetStrategyName() != "http" {
@@ -190,7 +190,7 @@ func TestHTTPSyncStrategy_Interface(t *testing.T) {
 	// Test valid bind_address validation
 	err = strategy.ValidateConfigParams(configuration.StorageConfigParams{
 		"bind_address": "127.0.0.1",
-		"port": float64(8080),
+		"port":         float64(8080),
 	})
 	if err != nil {
 		t.Errorf("Expected no validation error for valid config, got %v", err)
@@ -251,7 +251,7 @@ func TestHTTPSyncStrategy_AddDataPoints(t *testing.T) {
 
 	// Count total metrics in time series
 	totalMetrics := len(strategy.cache.timeSeries)
-	
+
 	if totalMetrics != 2 {
 		t.Errorf("Expected 2 cached metrics, got %d", totalMetrics)
 	}
@@ -268,7 +268,7 @@ func TestHTTPSyncStrategy_AddDataPoints(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if cpuMetric == nil {
 		t.Error("Expected cpu.usage_percent metric from host probe to be cached")
 	} else {
@@ -284,11 +284,11 @@ func TestHTTPSyncStrategy_AddDataPoints(t *testing.T) {
 func TestMetricCache_Cleanup(t *testing.T) {
 	baseLogger := createTestLogger()
 	cache := &MetricCache{
-		timeSeries:  make(map[string]CachedMetric),
+		timeSeries: make(map[string]CachedMetric),
 		probeIndex: make(map[string]map[string]bool),
-		ttl:         50 * time.Millisecond, // Very short TTL for testing
-		stopChan:    make(chan struct{}),
-		logger:      logger.NewModuleLogger(baseLogger, "cache"),
+		ttl:        50 * time.Millisecond, // Very short TTL for testing
+		stopChan:   make(chan struct{}),
+		logger:     logger.NewModuleLogger(baseLogger, "cache"),
 	}
 
 	// Add some test data using TSDB structure
@@ -328,19 +328,19 @@ func TestMetricCache_Cleanup(t *testing.T) {
 	cache.mu.Lock()
 	now := time.Now()
 	expiredKeys := make([]string, 0)
-	
+
 	// Find expired metrics
 	for tsKey, metric := range cache.timeSeries {
 		if now.Sub(metric.Timestamp) > cache.ttl {
 			expiredKeys = append(expiredKeys, tsKey)
 		}
 	}
-	
+
 	// Remove expired metrics
 	for _, tsKey := range expiredKeys {
 		metric := cache.timeSeries[tsKey]
 		delete(cache.timeSeries, tsKey)
-		
+
 		// Also remove from probe index
 		if probeKeys, exists := cache.probeIndex[metric.ProbeName]; exists {
 			delete(probeKeys, tsKey)
@@ -360,7 +360,7 @@ func TestMetricCache_Cleanup(t *testing.T) {
 	if len(cache.timeSeries) > 0 {
 		t.Errorf("Expected all expired metrics to be removed from timeSeries, but found %d", len(cache.timeSeries))
 	}
-	
+
 	// Probe index should also be cleaned up
 	if _, exists := cache.probeIndex["test"]; exists {
 		t.Error("Expected probe index to be cleaned up when all metrics expired")
@@ -401,7 +401,7 @@ func TestHTTPSyncStrategy_GetMetricsForProbe(t *testing.T) {
 
 	// Add test data to cache using public interface
 	now := time.Now()
-	
+
 	// Create test datapoints and add them to cache
 	testDatapoints := []datapoint.DataPoint{
 		{
@@ -421,12 +421,12 @@ func TestHTTPSyncStrategy_GetMetricsForProbe(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Add test data to cache
 	strategy.cache.AddDataPointsWithTransformer(testDatapoints, strategy.transformerRegistry)
 
 	// Get metrics for redfish probe
-	channels := strategy.getMetricsForProbe("redfish")
+	channels := strategy.metricsProcessor.GetPRTGMetricsForProbe("redfish")
 
 	if len(channels) != 1 {
 		t.Errorf("Expected 1 channel for redfish probe, got %d", len(channels))
@@ -439,14 +439,14 @@ func TestHTTPSyncStrategy_GetMetricsForProbe(t *testing.T) {
 	}
 
 	// Get metrics for host probe
-	channels = strategy.getMetricsForProbe("host")
+	channels = strategy.metricsProcessor.GetPRTGMetricsForProbe("host")
 
 	if len(channels) != 1 {
 		t.Errorf("Expected 1 channel for host probe, got %d", len(channels))
 	}
 
 	// Get metrics for non-existent probe
-	channels = strategy.getMetricsForProbe("nonexistent")
+	channels = strategy.metricsProcessor.GetPRTGMetricsForProbe("nonexistent")
 
 	if len(channels) != 0 {
 		t.Errorf("Expected 0 channels for non-existent probe, got %d", len(channels))
@@ -459,10 +459,10 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
 
 	tests := []struct {
-		name     string
-		key      string
-		metric   CachedMetric
-		wantNil  bool
+		name    string
+		key     string
+		metric  CachedMetric
+		wantNil bool
 	}{
 		{
 			name: "Valid float64 value",
@@ -515,7 +515,7 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			channel := strategy.transformToPRTGChannel(tt.key, tt.metric)
+			channel := strategy.metricsProcessor.TransformToPRTGChannel(tt.key, tt.metric)
 
 			if tt.wantNil && channel != nil {
 				t.Error("Expected nil channel for invalid value")
@@ -588,7 +588,11 @@ func TestHTTPSyncStrategy_DebugLogsEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to start strategy: %v", err)
 	}
-	defer strategy.Shutdown(context.Background())
+	defer func() {
+		if err := strategy.Shutdown(context.Background()); err != nil {
+			t.Errorf("Failed to shutdown strategy: %v", err)
+		}
+	}()
 
 	tests := []struct {
 		name           string
@@ -600,7 +604,7 @@ func TestHTTPSyncStrategy_DebugLogsEndpoint(t *testing.T) {
 		{
 			name:           "Valid agent key GET",
 			agentKey:       "test-agent-key",
-			method:         "GET", 
+			method:         "GET",
 			expectedStatus: http.StatusOK,
 			expectedInBody: "module_levels",
 		},
@@ -636,7 +640,6 @@ func TestHTTPSyncStrategy_DebugLogsEndpoint(t *testing.T) {
 	}
 }
 
-
 func TestHTTPSyncStrategy_TransformToPRTGChannel_NoProbeNameInChannel(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
@@ -655,7 +658,7 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel_NoProbeNameInChannel(t *testing
 		},
 	}
 
-	channel := strategy.transformToPRTGChannel(key, metric)
+	channel := strategy.metricsProcessor.TransformToPRTGChannel(key, metric)
 
 	if channel == nil {
 		t.Fatal("Expected channel to be created, got nil")
@@ -692,7 +695,7 @@ func TestHTTPSyncStrategy_PRTGMetricsGET(t *testing.T) {
 			},
 		},
 		{
-			Name:      "memory_used_percent", 
+			Name:      "memory_used_percent",
 			Timestamp: time.Now(),
 			Value:     float32(82.3),
 			Tags: []tags.Tag{
@@ -700,7 +703,7 @@ func TestHTTPSyncStrategy_PRTGMetricsGET(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Add data to strategy cache
 	err := strategy.AddDataPoints(testDataPoints)
 	if err != nil {
@@ -788,7 +791,11 @@ func TestHTTPSyncStrategy_SetLogLevelsEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to start strategy: %v", err)
 	}
-	defer strategy.Shutdown(context.Background())
+	defer func() {
+		if err := strategy.Shutdown(context.Background()); err != nil {
+			t.Errorf("Failed to shutdown strategy: %v", err)
+		}
+	}()
 
 	tests := []struct {
 		name           string

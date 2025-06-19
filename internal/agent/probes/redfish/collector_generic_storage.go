@@ -60,14 +60,14 @@ func (c *GenericCollector) collectStorageMetrics(ctx context.Context, timestamp 
 
 			// Parse details
 			var storage struct {
-				ID           string  `json:"Id"`
-				Name         string  `json:"Name"`
-				Description  string  `json:"Description"`
+				ID                 string `json:"Id"`
+				Name               string `json:"Name"`
+				Description        string `json:"Description"`
 				StorageControllers []struct {
-					MemberId    string  `json:"MemberId"`
-					Name        string  `json:"Name"`
-					Status      *Status `json:"Status"`
-					SpeedGbps   float32 `json:"SpeedGbps"`
+					MemberId  string  `json:"MemberId"`
+					Name      string  `json:"Name"`
+					Status    *Status `json:"Status"`
+					SpeedGbps float32 `json:"SpeedGbps"`
 				} `json:"StorageControllers"`
 				Drives []struct {
 					OdataID string `json:"@odata.id"`
@@ -151,15 +151,15 @@ func (c *GenericCollector) collectStorageMetrics(ctx context.Context, timestamp 
 
 				// Parse drive details
 				var driveInfo struct {
-					ID            string  `json:"Id"`
-					Name          string  `json:"Name"`
-					Model         string  `json:"Model"`
-					SerialNumber  string  `json:"SerialNumber"`
-					MediaType     string  `json:"MediaType"`
-					Protocol      string  `json:"Protocol"`
-					CapacityBytes int64   `json:"CapacityBytes"`
-					Status        *Status `json:"Status"`
-					FailurePredicted bool  `json:"FailurePredicted"`
+					ID               string  `json:"Id"`
+					Name             string  `json:"Name"`
+					Model            string  `json:"Model"`
+					SerialNumber     string  `json:"SerialNumber"`
+					MediaType        string  `json:"MediaType"`
+					Protocol         string  `json:"Protocol"`
+					CapacityBytes    int64   `json:"CapacityBytes"`
+					Status           *Status `json:"Status"`
+					FailurePredicted bool    `json:"FailurePredicted"`
 				}
 
 				if err := json.Unmarshal(driveResp.Raw, &driveInfo); err != nil {

@@ -106,11 +106,11 @@ func (p *PingWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 		{Name: "averageLatency", Timestamp: time.Now(), Value: float32(averageLatency), Tags: tags},
 		{Name: "packetLoss", Timestamp: time.Now(), Value: float32(packetLoss), Tags: tags},
 	}
-	
+
 	// Create base probe for enrichment
 	baseProbe := &types.BaseProbe{}
 	enrichedDatapoints := baseProbe.EnrichDataPointsWithProbeName(datapoints, p.GetName())
-	
+
 	return enrichedDatapoints, nil
 }
 

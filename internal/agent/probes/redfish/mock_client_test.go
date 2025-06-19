@@ -48,7 +48,7 @@ func (m *MockRedfishClient) Get(ctx context.Context, path string) (*RedfishRespo
 	// Remove any leading slashes or "redfish/v1/" prefix to normalize the path
 	path = strings.TrimPrefix(path, "/")
 	path = strings.TrimPrefix(path, "redfish/v1/")
-	
+
 	// Check if we have a mock response for this path
 	if jsonResponse, ok := m.responseMocks[path]; ok {
 		resp, err := createMockRedfishResponse(jsonResponse)
@@ -57,7 +57,7 @@ func (m *MockRedfishClient) Get(ctx context.Context, path string) (*RedfishRespo
 		}
 		return resp, nil
 	}
-	
+
 	// If we don't have a mock response, return the result from the mock expectations
 	args := m.Called(ctx, path)
 	if args.Get(0) == nil {
