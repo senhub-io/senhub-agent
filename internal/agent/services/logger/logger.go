@@ -64,7 +64,7 @@ func getLogPath() string {
 
 	// Attempt to create the log directory and test write permissions
 	logPath := filepath.Join(basePath, "senhubagent.log")
-	if err := os.MkdirAll(basePath, 0755); err != nil {
+	if err := os.MkdirAll(basePath, 0750); err != nil {
 		log.Printf("Unable to create log directory %s: %v", basePath, err)
 		// Fall back to executable directory
 		exePath, _ := os.Executable()
@@ -73,7 +73,7 @@ func getLogPath() string {
 	} else {
 		// Test write permissions by trying to create a test file
 		testFile := filepath.Join(basePath, ".write_test")
-		if file, err := os.Create(testFile); err != nil {
+		if file, err := os.Create(filepath.Clean(testFile)); err != nil { // #nosec G304 - testFile is constructed from safe basePath
 			log.Printf("No write permissions for log directory %s: %v", basePath, err)
 			log.Printf("Falling back to local directory for logs")
 			// Fall back to executable directory
@@ -81,8 +81,8 @@ func getLogPath() string {
 			basePath = filepath.Dir(exePath)
 			logPath = filepath.Join(basePath, "senhubagent.log")
 		} else {
-			file.Close()
-			os.Remove(testFile)
+			_ = file.Close()
+			_ = os.Remove(testFile)
 		}
 	}
 
