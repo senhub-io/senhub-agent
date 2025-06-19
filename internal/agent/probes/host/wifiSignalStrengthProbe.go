@@ -25,7 +25,7 @@ func (m *wifiSignalStrengthProbe) checkWifiWindows() bool {
 	cmd := exec.Command("netsh", "wlan", "show", "interfaces")
 	output, err := cmd.Output()
 	if err != nil {
-		fmt.Errorf("Error checking WiFi connection: %v", err)
+		m.moduleLogger.Error().Err(err).Msg("Error checking WiFi connection")
 		return false
 	}
 
@@ -65,7 +65,7 @@ func (m *wifiSignalStrengthProbe) checkWifiLinux() bool {
 	cmd = exec.Command("nmcli", "-t", "-f", "WIFI", "radio")
 	output, err = cmd.Output()
 	if err != nil {
-		fmt.Errorf("Error checking WiFi connection: %v", err)
+		m.moduleLogger.Error().Err(err).Msg("Error checking WiFi connection")
 		return false
 	}
 	return strings.Contains(strings.ToLower(string(output)), "enabled")
@@ -97,7 +97,7 @@ func (m *wifiSignalStrengthProbe) ShouldStart() bool {
 	case "linux":
 		return m.checkWifiLinux()
 	default:
-		fmt.Errorf("Unsupported operating system: %s", runtime.GOOS)
+		m.moduleLogger.Error().Str("os", runtime.GOOS).Msg("Unsupported operating system")
 		return false
 	}
 }

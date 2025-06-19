@@ -1,5 +1,5 @@
 // Format validation tests - comprehensive validation of all metric formats
-package data_store
+package http
 
 import (
 	"encoding/json"
@@ -23,7 +23,7 @@ func TestFormatValidation(t *testing.T) {
 	baseLogger := createTestLogger()
 	moduleLogger := logger.NewModuleLogger(baseLogger, "test")
 	cache := NewMetricCache(5*time.Minute, moduleLogger)
-	
+
 	// Create transformer registry
 	transformerRegistry := createTestTransformerRegistry(baseLogger)
 	formatConverter := NewFormatConverter(transformerRegistry, moduleLogger, cache)
@@ -128,16 +128,16 @@ func TestFormatValidation(t *testing.T) {
 func testSenHubFormat(t *testing.T, converter *FormatConverter, testMetrics []datapoint.DataPoint) {
 	// Test each probe's SenHub format
 	probes := []string{"cpu", "host", "memory", "network", "redfish", "logicaldisk"}
-	
+
 	for _, probeName := range probes {
 		t.Run("SenHub_"+probeName, func(t *testing.T) {
 			metrics := converter.GetSenHubMetricsForProbe(probeName)
-			
+
 			if len(metrics) == 0 {
 				t.Logf("No metrics found for probe %s (expected for some probes)", probeName)
 				return
 			}
-			
+
 			for _, metric := range metrics {
 				// Validate required fields
 				if metric.Name == "" {
@@ -155,20 +155,20 @@ func testSenHubFormat(t *testing.T, converter *FormatConverter, testMetrics []da
 				if metric.Timestamp.IsZero() {
 					t.Errorf("SenHub metric missing Timestamp field")
 				}
-				
+
 				// Validate JSON serialization
 				jsonData, err := json.Marshal(metric)
 				if err != nil {
 					t.Errorf("Failed to serialize SenHub metric to JSON: %v", err)
 				}
-				
+
 				// Validate we can deserialize it back
 				var deserializedMetric SenHubMetric
 				if err := json.Unmarshal(jsonData, &deserializedMetric); err != nil {
 					t.Errorf("Failed to deserialize SenHub metric from JSON: %v", err)
 				}
-				
-				t.Logf("✅ SenHub %s: %s = %v %s (Channel: %s)", 
+
+				t.Logf("✅ SenHub %s: %s = %v %s (Channel: %s)",
 					probeName, metric.Name, metric.Value, metric.Unit, metric.Channel)
 			}
 		})
@@ -178,22 +178,22 @@ func testSenHubFormat(t *testing.T, converter *FormatConverter, testMetrics []da
 func testPRTGFormat(t *testing.T, converter *FormatConverter, testMetrics []datapoint.DataPoint) {
 	// Test each probe's PRTG format
 	probes := []string{"cpu", "host", "memory", "network", "redfish", "logicaldisk"}
-	
+
 	for _, probeName := range probes {
 		t.Run("PRTG_"+probeName, func(t *testing.T) {
 			channels := converter.GetMetricsForProbe(probeName)
-			
+
 			if len(channels) == 0 {
 				t.Logf("No channels found for probe %s (expected for some probes)", probeName)
 				return
 			}
-			
+
 			for _, channel := range channels {
 				// Validate required PRTG fields
 				if channel.Channel == "" {
 					t.Errorf("PRTG channel missing Channel field")
 				}
-				
+
 				// Validate Float field is set for non-lookup metrics (required for decimal values)
 				if channel.ValueLookup == "" {
 					if channel.Float == nil || *channel.Float != 1 {
@@ -209,7 +209,7 @@ func testPRTGFormat(t *testing.T, converter *FormatConverter, testMetrics []data
 						t.Errorf("PRTG channel Float field should be nil for lookup metric, got %d", *channel.Float)
 					}
 				}
-				
+
 				// Validate unit handling
 				if channel.Unit != "" && channel.Unit != "custom" {
 					// If unit is set and not "custom", it should be a standard PRTG unit
@@ -225,31 +225,31 @@ func testPRTGFormat(t *testing.T, converter *FormatConverter, testMetrics []data
 						t.Logf("PRTG channel using non-standard unit: %s", channel.Unit)
 					}
 				}
-				
+
 				// If unit is "custom", CustomUnit should be set
 				if channel.Unit == "custom" && channel.CustomUnit == "" {
 					t.Errorf("PRTG channel with Unit='custom' should have CustomUnit set")
 				}
-				
+
 				// Validate JSON serialization for PRTG response
 				prtgResponse := PRTGResponse{
 					PRTG: PRTGResult{
 						Result: []PRTGChannel{channel},
 					},
 				}
-				
+
 				jsonData, err := json.Marshal(prtgResponse)
 				if err != nil {
 					t.Errorf("Failed to serialize PRTG response to JSON: %v", err)
 				}
-				
+
 				// Validate we can deserialize it back
 				var deserializedResponse PRTGResponse
 				if err := json.Unmarshal(jsonData, &deserializedResponse); err != nil {
 					t.Errorf("Failed to deserialize PRTG response from JSON: %v", err)
 				}
-				
-				t.Logf("✅ PRTG %s: %s = %.2f %s/%s", 
+
+				t.Logf("✅ PRTG %s: %s = %.2f %s/%s",
 					probeName, channel.Channel, channel.Value, channel.Unit, channel.CustomUnit)
 			}
 		})
@@ -259,11 +259,11 @@ func testPRTGFormat(t *testing.T, converter *FormatConverter, testMetrics []data
 func testNagiosFormat(t *testing.T, converter *FormatConverter, testMetrics []datapoint.DataPoint) {
 	// Test each probe's Nagios format
 	probes := []string{"cpu", "host", "memory", "network", "redfish", "logicaldisk"}
-	
+
 	for _, probeName := range probes {
 		t.Run("Nagios_"+probeName, func(t *testing.T) {
 			response := converter.GetNagiosMetricsForProbe(probeName)
-			
+
 			// Validate required Nagios fields
 			validStatuses := []int{0, 1, 2, 3} // OK, WARNING, CRITICAL, UNKNOWN
 			statusValid := false
@@ -276,40 +276,40 @@ func testNagiosFormat(t *testing.T, converter *FormatConverter, testMetrics []da
 			if !statusValid {
 				t.Errorf("Nagios response has invalid status: %d", response.Status)
 			}
-			
+
 			if response.StatusText == "" {
 				t.Errorf("Nagios response missing StatusText field")
 			}
-			
+
 			if response.Message == "" {
 				t.Errorf("Nagios response missing Message field")
 			}
-			
+
 			// Validate status text matches status code
 			expectedStatusTexts := map[int]string{
 				0: "OK",
-				1: "WARNING", 
+				1: "WARNING",
 				2: "CRITICAL",
 				3: "UNKNOWN",
 			}
-			
+
 			if response.StatusText != expectedStatusTexts[response.Status] {
-				t.Errorf("Nagios StatusText '%s' doesn't match Status %d", 
+				t.Errorf("Nagios StatusText '%s' doesn't match Status %d",
 					response.StatusText, response.Status)
 			}
-			
+
 			// Validate JSON serialization
 			jsonData, err := json.Marshal(response)
 			if err != nil {
 				t.Errorf("Failed to serialize Nagios response to JSON: %v", err)
 			}
-			
+
 			// Validate we can deserialize it back
 			var deserializedResponse NagiosResponse
 			if err := json.Unmarshal(jsonData, &deserializedResponse); err != nil {
 				t.Errorf("Failed to deserialize Nagios response from JSON: %v", err)
 			}
-			
+
 			t.Logf("✅ Nagios %s: Status=%d (%s) Message=%s PerfData=%s",
 				probeName, response.Status, response.StatusText, response.Message, response.PerfData)
 		})
@@ -322,7 +322,7 @@ func TestFormatConsistency(t *testing.T) {
 	baseLogger := createTestLogger()
 	moduleLogger := logger.NewModuleLogger(baseLogger, "test")
 	cache := NewMetricCache(5*time.Minute, moduleLogger)
-	
+
 	// Create transformer registry
 	transformerRegistry := createTestTransformerRegistry(baseLogger)
 	formatConverter := NewFormatConverter(transformerRegistry, moduleLogger, cache)
@@ -338,7 +338,7 @@ func TestFormatConsistency(t *testing.T) {
 			},
 		},
 	}
-	
+
 	cache.AddDataPointsWithTransformer(testMetric, transformerRegistry)
 
 	// Test consistency across multiple calls
@@ -347,11 +347,11 @@ func TestFormatConsistency(t *testing.T) {
 			// SenHub format should be consistent
 			senHubMetrics1 := formatConverter.GetSenHubMetricsForProbe("test")
 			senHubMetrics2 := formatConverter.GetSenHubMetricsForProbe("test")
-			
+
 			if len(senHubMetrics1) != len(senHubMetrics2) {
 				t.Errorf("SenHub metrics count inconsistent: %d vs %d", len(senHubMetrics1), len(senHubMetrics2))
 			}
-			
+
 			if len(senHubMetrics1) > 0 && len(senHubMetrics2) > 0 {
 				if senHubMetrics1[0].Name != senHubMetrics2[0].Name {
 					t.Errorf("SenHub metric name inconsistent: %s vs %s", senHubMetrics1[0].Name, senHubMetrics2[0].Name)
@@ -360,15 +360,15 @@ func TestFormatConsistency(t *testing.T) {
 					t.Errorf("SenHub metric value inconsistent: %v vs %v", senHubMetrics1[0].Value, senHubMetrics2[0].Value)
 				}
 			}
-			
+
 			// PRTG format should be consistent
 			prtgChannels1 := formatConverter.GetMetricsForProbe("test")
 			prtgChannels2 := formatConverter.GetMetricsForProbe("test")
-			
+
 			if len(prtgChannels1) != len(prtgChannels2) {
 				t.Errorf("PRTG channels count inconsistent: %d vs %d", len(prtgChannels1), len(prtgChannels2))
 			}
-			
+
 			if len(prtgChannels1) > 0 && len(prtgChannels2) > 0 {
 				if prtgChannels1[0].Channel != prtgChannels2[0].Channel {
 					t.Errorf("PRTG channel name inconsistent: %s vs %s", prtgChannels1[0].Channel, prtgChannels2[0].Channel)

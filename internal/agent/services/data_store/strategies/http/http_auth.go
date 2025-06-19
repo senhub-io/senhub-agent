@@ -1,5 +1,5 @@
 // senhub-agent/internal/agent/services/data_store/http_auth.go
-package data_store
+package http
 
 import (
 	"net/http"
@@ -31,12 +31,12 @@ func (a *AuthenticationManager) ValidateAgentKey(providedKey string) bool {
 	if providedKey == a.agentKey {
 		return true
 	}
-	
+
 	// Fallback validation against agent config (for backward compatibility)
 	if a.agentConfig != nil && providedKey == a.agentConfig.GetAuthenticationKey() {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -44,19 +44,19 @@ func (a *AuthenticationManager) ValidateAgentKey(providedKey string) bool {
 func (a *AuthenticationManager) AuthenticateRequest(r *http.Request) (string, bool) {
 	vars := mux.Vars(r)
 	agentKey := vars["agentkey"]
-	
+
 	if agentKey == "" {
 		a.logger.Warn().Msg("Missing agent key in request")
 		return "", false
 	}
-	
+
 	if !a.ValidateAgentKey(agentKey) {
 		a.logger.Warn().
 			Str("provided_key", agentKey).
 			Msg("Invalid agent key provided")
 		return agentKey, false
 	}
-	
+
 	return agentKey, true
 }
 
@@ -68,7 +68,7 @@ func (a *AuthenticationManager) RequireAuthentication(next http.HandlerFunc) htt
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		
+
 		next(w, r)
 	}
 }
@@ -81,7 +81,7 @@ func (a *AuthenticationManager) AuthenticateAndExtract(w http.ResponseWriter, r 
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return "", false
 	}
-	
+
 	return agentKey, true
 }
 
@@ -96,6 +96,6 @@ func (a *AuthenticationManager) UpdateAgentKey(newKey string) {
 		Str("old_key_prefix", a.agentKey[:8]+"...").
 		Str("new_key_prefix", newKey[:8]+"...").
 		Msg("Agent key updated")
-		
+
 	a.agentKey = newKey
 }

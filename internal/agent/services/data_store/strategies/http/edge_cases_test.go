@@ -1,5 +1,5 @@
 // Edge cases tests - Test boundary conditions and error handling
-package data_store
+package http
 
 import (
 	"testing"
@@ -112,7 +112,7 @@ func testNullValues(t *testing.T, converter *FormatConverter, cache *MetricCache
 func testInvalidValues(t *testing.T, converter *FormatConverter, cache *MetricCache, registry *transformers.TransformerRegistry) {
 	// Since DataPoint.Value is float32, we directly insert invalid values into cache
 	cache.mu.Lock()
-	
+
 	// String value
 	tsKey1 := cache.generateTimeSeriesKey("test", "string_metric", map[string]string{"probe_name": "test"})
 	cache.timeSeries[tsKey1] = CachedMetric{
@@ -123,7 +123,7 @@ func testInvalidValues(t *testing.T, converter *FormatConverter, cache *MetricCa
 		MetricName: "string_metric",
 		Tags:       map[string]string{"probe_name": "test"},
 	}
-	
+
 	// Object value
 	tsKey2 := cache.generateTimeSeriesKey("test", "object_metric", map[string]string{"probe_name": "test"})
 	cache.timeSeries[tsKey2] = CachedMetric{
@@ -134,7 +134,7 @@ func testInvalidValues(t *testing.T, converter *FormatConverter, cache *MetricCa
 		MetricName: "object_metric",
 		Tags:       map[string]string{"probe_name": "test"},
 	}
-	
+
 	// Array value
 	tsKey3 := cache.generateTimeSeriesKey("test", "array_metric", map[string]string{"probe_name": "test"})
 	cache.timeSeries[tsKey3] = CachedMetric{
@@ -145,7 +145,7 @@ func testInvalidValues(t *testing.T, converter *FormatConverter, cache *MetricCa
 		MetricName: "array_metric",
 		Tags:       map[string]string{"probe_name": "test"},
 	}
-	
+
 	// Update probe index
 	if cache.probeIndex["test"] == nil {
 		cache.probeIndex["test"] = make(map[string]bool)
@@ -157,7 +157,7 @@ func testInvalidValues(t *testing.T, converter *FormatConverter, cache *MetricCa
 
 	// Test PRTG format handling of invalid values
 	prtgChannels := converter.GetMetricsForProbe("test")
-	
+
 	// Count how many valid channels were created from invalid data
 	validChannelCount := 0
 	for _, channel := range prtgChannels {
@@ -165,7 +165,7 @@ func testInvalidValues(t *testing.T, converter *FormatConverter, cache *MetricCa
 			validChannelCount++
 		}
 	}
-	
+
 	t.Logf("✅ PRTG created %d valid channels from 3 invalid value metrics", validChannelCount)
 
 	// Test SenHub format - should preserve original values even if not numeric
@@ -197,7 +197,7 @@ func testMissingUnits(t *testing.T, converter *FormatConverter, cache *MetricCac
 
 	prtgChannels := converter.GetMetricsForProbe("test")
 	for _, channel := range prtgChannels {
-		t.Logf("✅ PRTG channel without unit: %s = %f (Unit: %s, CustomUnit: %s)", 
+		t.Logf("✅ PRTG channel without unit: %s = %f (Unit: %s, CustomUnit: %s)",
 			channel.Channel, channel.Value, channel.Unit, channel.CustomUnit)
 	}
 }
@@ -248,7 +248,7 @@ func testLargeValues(t *testing.T, converter *FormatConverter, cache *MetricCach
 	}
 
 	cache.AddDataPointsWithTransformer(testMetrics, registry)
-	
+
 	// Also test with direct cache insertion for int64 values
 	cache.mu.Lock()
 	tsKey := cache.generateTimeSeriesKey("test", "large_int64", map[string]string{"probe_name": "test"})
@@ -268,18 +268,18 @@ func testLargeValues(t *testing.T, converter *FormatConverter, cache *MetricCach
 
 	// Test that large values are handled correctly
 	prtgChannels := converter.GetMetricsForProbe("test")
-	
+
 	for _, channel := range prtgChannels {
 		// Check for overflow or underflow
 		if channel.Value != channel.Value { // Check for NaN
 			t.Errorf("PRTG channel has NaN value from large number: %f", channel.Value)
 		}
-		
+
 		// Check for infinity
 		if channel.Value == channel.Value && (channel.Value > 1e100 || channel.Value < -1e100) {
 			t.Logf("⚠️  PRTG channel has very large value: %e", channel.Value)
 		}
-		
+
 		t.Logf("✅ PRTG handles large value: %s = %e", channel.Channel, channel.Value)
 	}
 
@@ -317,7 +317,7 @@ func testSpecialCharacters(t *testing.T, converter *FormatConverter, cache *Metr
 	senHubMetrics := converter.GetSenHubMetricsForProbe("test")
 	for _, metric := range senHubMetrics {
 		t.Logf("✅ SenHub handles special chars: %s (Channel: %s)", metric.Name, metric.Channel)
-		
+
 		// Check that tags with special characters are preserved
 		for key, value := range metric.Tags {
 			if key == "special-tag" || key == "unicode_tag" {

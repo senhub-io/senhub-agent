@@ -25,13 +25,13 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 		}
 
 		// Use configured endpoint for tags - this is the actual endpoint URL
-		// resp.Name contains the system name (like "CN0TYNP0SGW004AS000NA00") 
+		// resp.Name contains the system name (like "CN0TYNP0SGW004AS000NA00")
 		// but we want the configured endpoint URL for the endpoint tag
 		endpoint := c.endpoint
 
 		// Create base system tags using helper function
 		systemTags := c.createBaseSystemTags(resp, endpoint)
-		
+
 		// Add additional system-specific tags
 		if resp.SKU != "" {
 			systemTags = append(systemTags, tags.Tag{Key: "sku", Value: resp.SKU})
@@ -46,7 +46,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 				systemTags = append(systemTags, tags.Tag{Key: "indicator_led", Value: ledValue})
 			}
 		}
-		
+
 		// Add collection tag for system metrics
 		systemTagsWithCollection := addCollectionTag(systemTags, "system")
 
@@ -84,7 +84,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 			if err := json.Unmarshal(rawJSON, &procSummary); err == nil {
 				// Create processor-specific tags with collection
 				processorTags := addCollectionTag(systemTags, "processor")
-				
+
 				datapoints = append(datapoints, data_store.DataPoint{
 					Name:      "hardware.system.cpu.count",
 					Timestamp: timestamp,
@@ -115,7 +115,7 @@ func (c *GenericCollector) collectSystemMetrics(ctx context.Context, timestamp t
 			if err := json.Unmarshal(rawJSON, &memSummary); err == nil {
 				// Create memory-specific tags with collection
 				memoryTags := addCollectionTag(systemTags, "memory")
-				
+
 				datapoints = append(datapoints, data_store.DataPoint{
 					Name:      "hardware.system.memory.size",
 					Timestamp: timestamp,

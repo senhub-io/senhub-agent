@@ -91,15 +91,15 @@ func (c *GenericCollector) collectProcessorMetrics(ctx context.Context, timestam
 
 			// Extract processor metrics from response
 			var procData struct {
-				TotalCores        int     `json:"TotalCores"`
-				TotalThreads      int     `json:"TotalThreads"`
-				MaxSpeedMHz       int     `json:"MaxSpeedMHz"`
-				InstructionSet    string  `json:"InstructionSet"`
-				Status            *Status `json:"Status"`
-				Socket            string  `json:"Socket"`
-				ProcessorType     string  `json:"ProcessorType"`
-				ProcessorArchitecture string `json:"ProcessorArchitecture"`
-				Links             struct {
+				TotalCores            int     `json:"TotalCores"`
+				TotalThreads          int     `json:"TotalThreads"`
+				MaxSpeedMHz           int     `json:"MaxSpeedMHz"`
+				InstructionSet        string  `json:"InstructionSet"`
+				Status                *Status `json:"Status"`
+				Socket                string  `json:"Socket"`
+				ProcessorType         string  `json:"ProcessorType"`
+				ProcessorArchitecture string  `json:"ProcessorArchitecture"`
+				Links                 struct {
 					Metrics struct {
 						OdataID string `json:"@odata.id"`
 					} `json:"Metrics"`
@@ -189,35 +189,35 @@ func (c *GenericCollector) collectProcessorMetrics(ctx context.Context, timestam
 				} else {
 					// Parse processor metrics data
 					var metricsData struct {
-						AverageFrequencyMHz float32 `json:"AverageFrequencyMHz"`
-						CurrentSpeedMHz     float32 `json:"CurrentSpeedMHz"`
-						ThrottlingCelsius   float32 `json:"ThrottlingCelsius"`
-						TemperatureCelsius  float32 `json:"TemperatureCelsius"`
-						ConsumedPowerWatt   float32 `json:"ConsumedPowerWatt"`
-						ThermalMargin       float32 `json:"ThermalMargin"`
-						PowerLimit          float32 `json:"PowerLimit"`
+						AverageFrequencyMHz float32                `json:"AverageFrequencyMHz"`
+						CurrentSpeedMHz     float32                `json:"CurrentSpeedMHz"`
+						ThrottlingCelsius   float32                `json:"ThrottlingCelsius"`
+						TemperatureCelsius  float32                `json:"TemperatureCelsius"`
+						ConsumedPowerWatt   float32                `json:"ConsumedPowerWatt"`
+						ThermalMargin       float32                `json:"ThermalMargin"`
+						PowerLimit          float32                `json:"PowerLimit"`
 						Oem                 map[string]interface{} `json:"Oem"`
 						// Utilization metrics
-						CPUUtilization  float32 `json:"CPUUtilization"`
-						KernelPercent   float32 `json:"KernelPercent"`
-						UserPercent     float32 `json:"UserPercent"`
-						IOWaitPercent   float32 `json:"IOWaitPercent"`
+						CPUUtilization float32 `json:"CPUUtilization"`
+						KernelPercent  float32 `json:"KernelPercent"`
+						UserPercent    float32 `json:"UserPercent"`
+						IOWaitPercent  float32 `json:"IOWaitPercent"`
 						// Cache metrics
 						CacheMetrics struct {
 							L1CacheMetrics struct {
-								OccupancyBytes       float32 `json:"OccupancyBytes"`
-								HitRatio            float32 `json:"HitRatio"`
-								MissRatio           float32 `json:"MissRatio"`
+								OccupancyBytes float32 `json:"OccupancyBytes"`
+								HitRatio       float32 `json:"HitRatio"`
+								MissRatio      float32 `json:"MissRatio"`
 							} `json:"L1CacheMetrics"`
 							L2CacheMetrics struct {
-								OccupancyBytes       float32 `json:"OccupancyBytes"`
-								HitRatio            float32 `json:"HitRatio"`
-								MissRatio           float32 `json:"MissRatio"`
+								OccupancyBytes float32 `json:"OccupancyBytes"`
+								HitRatio       float32 `json:"HitRatio"`
+								MissRatio      float32 `json:"MissRatio"`
 							} `json:"L2CacheMetrics"`
 							L3CacheMetrics struct {
-								OccupancyBytes       float32 `json:"OccupancyBytes"`
-								HitRatio            float32 `json:"HitRatio"`
-								MissRatio           float32 `json:"MissRatio"`
+								OccupancyBytes float32 `json:"OccupancyBytes"`
+								HitRatio       float32 `json:"HitRatio"`
+								MissRatio      float32 `json:"MissRatio"`
 							} `json:"L3CacheMetrics"`
 						} `json:"CacheMetrics"`
 					}

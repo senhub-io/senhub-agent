@@ -1,5 +1,5 @@
 // senhub-agent/internal/agent/services/data_store/strategy_http.go
-package data_store
+package http
 
 import (
 	"context"
@@ -25,8 +25,8 @@ type HTTPSyncStrategy struct {
 	port                int
 	bindAddress         string // IP address to bind to
 	transformerRegistry *transformers.TransformerRegistry
-	startTime           time.Time       // agent start time for uptime calculation
-	assetHandler        *AssetHandler   // asset handler for templates and static files
+	startTime           time.Time              // agent start time for uptime calculation
+	assetHandler        *AssetHandler          // asset handler for templates and static files
 	formatConverter     *FormatConverter       // format conversion for monitoring tools
 	webInterface        *WebInterface          // web UI interface handler
 	authManager         *AuthenticationManager // authentication and security manager
@@ -40,12 +40,10 @@ type HTTPSyncStrategy struct {
 	utilsManager        *UtilsManager          // utility functions and helper methods manager
 }
 
-
-
 // SenHubMetric represents a metric in standardized SenHub raw format
 type SenHubMetric struct {
-	Name        string            `json:"name,omitempty" yaml:"name"`                   // Technical metric name
-	Channel     string            `json:"channel" yaml:"channel"`                      // Transformed display name (main field)
+	Name        string            `json:"name,omitempty" yaml:"name"` // Technical metric name
+	Channel     string            `json:"channel" yaml:"channel"`     // Transformed display name (main field)
 	Value       interface{}       `json:"value" yaml:"value"`
 	Unit        string            `json:"unit,omitempty" yaml:"unit"`
 	Timestamp   time.Time         `json:"timestamp,omitempty" yaml:"timestamp"`
@@ -81,34 +79,35 @@ type PRTGResult struct {
 
 // PRTGChannel represents a single metric channel for PRTG
 type PRTGChannel struct {
-	Channel         string   `json:"channel"`
-	Value           float64  `json:"value"`
-	Float           *int     `json:"float,omitempty"`     // Pointer to make optional for lookup metrics
-	Unit            string   `json:"unit,omitempty"`
-	CustomUnit      string   `json:"customunit,omitempty"`
-	LimitMode       int      `json:"limitmode,omitempty"`
-	LimitMaxWarning float64  `json:"limitmaxwarning,omitempty"`
-	LimitMaxError   float64  `json:"limitmaxerror,omitempty"`
-	ValueLookup     string   `json:"valuelookup,omitempty"`
+	Channel         string  `json:"channel"`
+	Value           float64 `json:"value"`
+	Float           *int    `json:"float,omitempty"` // Pointer to make optional for lookup metrics
+	Unit            string  `json:"unit,omitempty"`
+	CustomUnit      string  `json:"customunit,omitempty"`
+	LimitMode       int     `json:"limitmode,omitempty"`
+	LimitMaxWarning float64 `json:"limitmaxwarning,omitempty"`
+	LimitMaxError   float64 `json:"limitmaxerror,omitempty"`
+	ValueLookup     string  `json:"valuelookup,omitempty"`
 }
 
 // MetricFilter represents query parameters for filtering metrics
-
 
 // NewHTTPSyncStrategy creates a new HTTP sync strategy
 func NewHTTPSyncStrategy(
 	agentConfig configuration.AgentConfiguration,
 	params map[string]interface{},
 	baseLogger *logger.Logger,
-) SyncStrategy {
+) interface{} {
 	// Create module-specific logger for HTTP strategy
 	moduleLogger := logger.NewModuleLogger(baseLogger, "strategy.http")
 
 	// Get cache configuration from agent config
 	cacheRetentionMinutes := 5 // Default value
-	
+
 	// Try to get cache config from agentConfiguration (which may have LocalConfiguration reference)
-	if agentConfigWithCache, ok := agentConfig.(interface{ GetCacheConfig() *configuration.CacheConfig }); ok {
+	if agentConfigWithCache, ok := agentConfig.(interface {
+		GetCacheConfig() *configuration.CacheConfig
+	}); ok {
 		cacheConfig := agentConfigWithCache.GetCacheConfig()
 		cacheRetentionMinutes = cacheConfig.RetentionMinutes
 		moduleLogger.Info().
@@ -131,43 +130,43 @@ func NewHTTPSyncStrategy(
 		transformerRegistry: transformers.NewTransformerRegistry(moduleLogger.Logger),
 		startTime:           time.Now(), // Initialize start time for uptime calculation
 		assetHandler:        NewAssetHandler(agentConfig.GetAuthenticationKey()),
-		cache: NewMetricCache(time.Duration(cacheRetentionMinutes)*time.Minute, moduleLogger),
+		cache:               NewMetricCache(time.Duration(cacheRetentionMinutes)*time.Minute, moduleLogger),
 	}
-	
+
 	// Initialize format converter after cache is created
 	strategy.formatConverter = NewFormatConverter(strategy.transformerRegistry, moduleLogger, strategy.cache)
-	
+
 	// Initialize authentication manager
 	strategy.authManager = NewAuthenticationManager(strategy.agentKey, agentConfig, moduleLogger)
-	
+
 	// Initialize web interface handler
 	strategy.webInterface = NewWebInterface(strategy, moduleLogger, strategy.assetHandler)
-	
+
 	// Initialize health manager
 	strategy.healthManager = NewHealthManager(strategy, moduleLogger, strategy.startTime)
-	
+
 	// Initialize metrics processor
 	strategy.metricsProcessor = NewMetricsProcessor(strategy.cache, strategy.formatConverter, moduleLogger)
-	
+
 	// Initialize configuration manager
 	strategy.configManager = NewConfigurationManager(agentConfig, params, moduleLogger)
-	
+
 	// Update strategy fields from configuration manager
 	strategy.port = strategy.configManager.GetPort()
 	strategy.bindAddress = strategy.configManager.GetBindAddress()
-	
-	// Initialize debug manager  
+
+	// Initialize debug manager
 	strategy.debugManager = NewDebugManager(strategy, moduleLogger)
-	
+
 	// Initialize API manager
 	strategy.apiManager = NewAPIManager(strategy, moduleLogger)
-	
+
 	// Initialize Nagios manager
 	strategy.nagiosManager = NewNagiosManager(strategy, moduleLogger)
-	
+
 	// Initialize utils manager
 	strategy.utilsManager = NewUtilsManager(strategy, moduleLogger)
-	
+
 	// Initialize server manager (must be last, needs access to all other modules)
 	strategy.serverManager = NewServerManager(strategy, moduleLogger)
 
@@ -200,7 +199,7 @@ func (h *HTTPSyncStrategy) Start() error {
 	if err := h.serverManager.Start(); err != nil {
 		return fmt.Errorf("failed to start HTTP server: %w", err)
 	}
-	
+
 	// Keep reference to server for compatibility
 	h.server = h.serverManager.GetServer()
 
@@ -210,10 +209,10 @@ func (h *HTTPSyncStrategy) Start() error {
 // AddDataPoints stores the received datapoints in cache
 func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error {
 	h.logger.Info().Int("count", len(datapoints)).Msg("🔥 HTTP Strategy - Received datapoints")
-	
+
 	// Use the cache's method to add data points
 	h.cache.AddDataPointsWithTransformer(datapoints, h.transformerRegistry)
-	
+
 	// Get cache info for logging
 	cacheInfo := h.cache.GetCacheInfo()
 	h.logger.Info().
@@ -224,7 +223,6 @@ func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error
 
 	return nil
 }
-
 
 // Shutdown gracefully stops the HTTP server and cleanup routines
 func (h *HTTPSyncStrategy) Shutdown(ctx context.Context) error {
@@ -239,7 +237,6 @@ func (h *HTTPSyncStrategy) setupRoutes() *mux.Router {
 	// Delegate to ServerManager for consistency
 	return h.serverManager.setupRoutes()
 }
-
 
 // handlePRTGMetricsGET handles GET requests for PRTG metrics (delegated to APIManager)
 func (h *HTTPSyncStrategy) handlePRTGMetricsGET(w http.ResponseWriter, r *http.Request) {
@@ -281,7 +278,6 @@ func (h *HTTPSyncStrategy) handlePRTGMetrics(w http.ResponseWriter, r *http.Requ
 	h.apiManager.HandlePRTGMetrics(w, r)
 }
 
-
 // EndpointsInfoResponse represents the response for /info/endpoints
 type EndpointsInfoResponse struct {
 	Endpoints []EndpointInfoStatus `json:"endpoints"`
@@ -295,50 +291,48 @@ type EndpointInfoStatus struct {
 
 // SystemInfoResponse represents the response for /info/system
 type SystemInfoResponse struct {
-	Status      string             `json:"status"`
-	Version     string             `json:"version"`
-	Commit      string             `json:"commit"`
-	GoVersion   string             `json:"go_version"`
-	OS          string             `json:"os"`
-	Arch        string             `json:"arch"`
-	Port        int                `json:"port"`
-	Uptime      string             `json:"uptime"`
-	Health      HealthCheckResponse `json:"health"`
-	Cache       CacheInfoResponse   `json:"cache"`
-	Resources   ResourcesInfo       `json:"resources"`
+	Status    string              `json:"status"`
+	Version   string              `json:"version"`
+	Commit    string              `json:"commit"`
+	GoVersion string              `json:"go_version"`
+	OS        string              `json:"os"`
+	Arch      string              `json:"arch"`
+	Port      int                 `json:"port"`
+	Uptime    string              `json:"uptime"`
+	Health    HealthCheckResponse `json:"health"`
+	Cache     CacheInfoResponse   `json:"cache"`
+	Resources ResourcesInfo       `json:"resources"`
 }
-
-
 
 // ProbesInfoResponse represents the response for /info/probes
 type ProbesInfoResponse struct {
-	Probes       []string          `json:"probes"`
-	ProbeMetrics map[string]int    `json:"probe_metrics"`
-	TotalMetrics int               `json:"total_metrics"`
+	Probes       []string       `json:"probes"`
+	ProbeMetrics map[string]int `json:"probe_metrics"`
+	TotalMetrics int            `json:"total_metrics"`
 }
 
 // TagInfoResponse represents the response for /info/tags/{probe}
 type TagInfoResponse struct {
-	Probe        string                    `json:"probe"`
-	Tags         map[string]TagInfo        `json:"tags"`
-	Metrics      []string                  `json:"metrics"`
-	TotalMetrics int                       `json:"total_metrics"`
+	Probe        string             `json:"probe"`
+	Tags         map[string]TagInfo `json:"tags"`
+	Metrics      []string           `json:"metrics"`
+	TotalMetrics int                `json:"total_metrics"`
 }
 
 // TagInfo contains information about a specific tag
 type TagInfo struct {
-	Values       []string `json:"values"`
-	Description  string   `json:"description"`
-	SampleCount  int      `json:"sample_count"`
+	Values      []string `json:"values"`
+	Description string   `json:"description"`
+	SampleCount int      `json:"sample_count"`
 }
 
 // SchemaInfoResponse represents the response for /info/schema/{probe}
 type SchemaInfoResponse struct {
-	Probe        string                    `json:"probe"`
-	Tags         map[string]TagInfo        `json:"tags"`
-	Metrics      []string                  `json:"metrics"`
-	TotalMetrics int                       `json:"total_metrics"`
-	Examples     []MetricExample           `json:"examples"`
+	Probe        string             `json:"probe"`
+	Tags         map[string]TagInfo `json:"tags"`
+	Metrics      []string           `json:"metrics"`
+	TotalMetrics int                `json:"total_metrics"`
+	Examples     []MetricExample    `json:"examples"`
 }
 
 // MetricExample shows example usage of filters
@@ -358,15 +352,6 @@ func (h *HTTPSyncStrategy) handleInfoSystem(w http.ResponseWriter, r *http.Reque
 	h.apiManager.HandleInfoSystem(w, r)
 }
 
-// formatDuration formats a duration in a human-readable format (delegated to UtilsManager)
-func (h *HTTPSyncStrategy) formatDuration(d time.Duration) string {
-	return h.utilsManager.formatDuration(d)
-}
-
-// getCPUUsage calculates the CPU usage percentage for the current process (delegated to UtilsManager)
-func (h *HTTPSyncStrategy) getCPUUsage() float64 {
-	return h.utilsManager.getCPUUsage()
-}
 
 
 // handleInfoTags provides tag discovery for a specific probe (delegated to APIManager)
@@ -379,45 +364,13 @@ func (h *HTTPSyncStrategy) handleInfoSchema(w http.ResponseWriter, r *http.Reque
 	h.apiManager.HandleInfoSchema(w, r)
 }
 
-// getTagDescription provides human-readable descriptions for common tags (delegated to UtilsManager)
-func (h *HTTPSyncStrategy) getTagDescription(tagKey string) string {
-	return h.utilsManager.getTagDescription(tagKey)
-}
 
-// generateExamples creates example API calls for the probe
-func (h *HTTPSyncStrategy) generateExamples(probeName string, tags map[string]TagInfo, metrics []string) []MetricExample {
-	return h.metricsProcessor.GenerateExamples(probeName, tags, metrics)
-}
 
-// getMetricsForProbe retrieves and transforms metrics for a specific probe (legacy - no filters)
-func (h *HTTPSyncStrategy) getMetricsForProbe(probeName string) []PRTGChannel {
-	return h.metricsProcessor.GetPRTGMetricsForProbe(probeName)
-}
 
-// getMetricsForProbeWithFilter retrieves and transforms metrics for a specific probe with filtering
-func (h *HTTPSyncStrategy) getMetricsForProbeWithFilter(probeName string, filter MetricFilter) []PRTGChannel {
-	return h.metricsProcessor.GetPRTGMetricsForProbeWithFilter(probeName, filter)
-}
 
-func (h *HTTPSyncStrategy) getSenHubMetricsForProbe(probeName string) []SenHubMetric {
-	return h.metricsProcessor.GetSenHubMetricsForProbe(probeName)
-}
 
-func (h *HTTPSyncStrategy) convertToSenHubFormat(metric CachedMetric) SenHubMetric {
-	return h.metricsProcessor.ConvertToSenHubFormat(metric)
-}
 
-func (h *HTTPSyncStrategy) transformToPRTGChannel(key string, metric CachedMetric) *PRTGChannel {
-	return h.metricsProcessor.TransformToPRTGChannel(key, metric)
-}
 
-func (h *HTTPSyncStrategy) applyMetricFilter(metrics []CachedMetric, filter MetricFilter) []CachedMetric {
-	return h.metricsProcessor.ApplyMetricFilter(metrics, filter)
-}
-
-func (h *HTTPSyncStrategy) transformMetricNameForPRTG(key string, metric CachedMetric) (string, string) {
-	return h.metricsProcessor.TransformMetricNameForPRTG(key, metric)
-}
 
 
 // handleListEndpoints lists all available API endpoints (delegated to APIManager)
@@ -425,19 +378,11 @@ func (h *HTTPSyncStrategy) handleListEndpoints(w http.ResponseWriter, r *http.Re
 	h.apiManager.HandleListEndpoints(w, r)
 }
 
-// parseMetricFilter parses query parameters into a MetricFilter
-func (h *HTTPSyncStrategy) parseMetricFilter(r *http.Request) MetricFilter {
-	return h.metricsProcessor.ParseMetricFilter(r)
-}
-
-
-
 
 // handleDebugCache handles GET requests for cache debugging (delegated to DebugManager)
 func (h *HTTPSyncStrategy) handleDebugCache(w http.ResponseWriter, r *http.Request) {
 	h.debugManager.HandleDebugCache(w, r)
 }
-
 
 // handleDebugLogs handles GET requests for log level debugging (delegated to DebugManager)
 func (h *HTTPSyncStrategy) handleDebugLogs(w http.ResponseWriter, r *http.Request) {
@@ -459,7 +404,6 @@ func (h *HTTPSyncStrategy) handleInjectRealMetrics(w http.ResponseWriter, r *htt
 	h.debugManager.HandleInjectRealMetrics(w, r)
 }
 
-
 // handleNagiosMetricsGET handles GET requests for Nagios format metrics by probe (delegated to NagiosManager)
 func (h *HTTPSyncStrategy) handleNagiosMetricsGET(w http.ResponseWriter, r *http.Request) {
 	h.nagiosManager.HandleNagiosMetricsGET(w, r)
@@ -479,34 +423,11 @@ func (h *HTTPSyncStrategy) handleNagiosChecks(w http.ResponseWriter, r *http.Req
 
 // Nagios helper functions (delegated to NagiosManager)
 
-// loadNagiosConfig loads the Nagios configuration from YAML file
-func (h *HTTPSyncStrategy) loadNagiosConfig() *NagiosConfig {
-	return h.configManager.LoadNagiosConfig()
-}
 
-// findNagiosCheck finds a check by name in the configuration
-func (h *HTTPSyncStrategy) findNagiosCheck(config *NagiosConfig, checkName string) *NagiosCheck {
-	return h.configManager.FindNagiosCheck(config, checkName)
-}
 
-// parseNagiosOverrides parses query parameters for Nagios threshold overrides
-func (h *HTTPSyncStrategy) parseNagiosOverrides(r *http.Request) NagiosOverrides {
-	return h.configManager.ParseNagiosOverrides(r)
-}
 
-// executeNagiosCheck executes a Nagios check with filtering and overrides (delegated to NagiosManager)
-func (h *HTTPSyncStrategy) executeNagiosCheck(check *NagiosCheck, filter MetricFilter, overrides NagiosOverrides) NagiosResponse {
-	return h.nagiosManager.executeNagiosCheck(check, filter, overrides)
-}
 
-// processNagiosMetric processes a single metric definition against available data (delegated to MetricsProcessor)
-func (h *HTTPSyncStrategy) processNagiosMetric(metricDef NagiosMetric, metrics []CachedMetric, overrides NagiosOverrides) NagiosMetricResult {
-	return h.metricsProcessor.ProcessNagiosMetric(metricDef, metrics, overrides)
-}
-// generateSimpleNagiosResponse generates a simple Nagios response for probe-based queries (delegated to MetricsProcessor)
-func (h *HTTPSyncStrategy) generateSimpleNagiosResponse(probeName string, metrics []CachedMetric) NagiosResponse {
-	return h.metricsProcessor.GenerateSimpleNagiosResponse(probeName, metrics)
-}
+
 
 // handleZabbixMetricsGET handles GET requests for Zabbix format metrics (delegated to UtilsManager)
 func (h *HTTPSyncStrategy) handleZabbixMetricsGET(w http.ResponseWriter, r *http.Request) {
@@ -569,15 +490,6 @@ func (h *HTTPSyncStrategy) handleUniversalConfigTest(w http.ResponseWriter, r *h
 }
 
 
-// parseVersionInfo parses version and commit information from cliArgs (delegated to UtilsManager)
-func (h *HTTPSyncStrategy) parseVersionInfo() VersionInfo {
-	return h.utilsManager.parseVersionInfo()
-}
-
-// validateAgentKey delegates to the authentication manager
-func (h *HTTPSyncStrategy) validateAgentKey(providedKey string) bool {
-	return h.authManager.ValidateAgentKey(providedKey)
-}
 
 // Module Access Getters (Encapsulation)
 // These methods provide controlled access to internal modules
@@ -719,7 +631,7 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 		cacheConfig := localConfig.GetCacheConfig()
 		newTTL := time.Duration(cacheConfig.RetentionMinutes) * time.Minute
 		h.cache.UpdateTTL(newTTL)
-		
+
 		h.logger.Info().
 			Int("retention_minutes", cacheConfig.RetentionMinutes).
 			Msg("✅ Cache configuration updated")

@@ -1,5 +1,5 @@
 // senhub-agent/internal/agent/services/data_store/http_debug.go
-package data_store
+package http
 
 import (
 	"encoding/json"
@@ -67,11 +67,11 @@ func (d *DebugManager) HandleDebugCache(w http.ResponseWriter, r *http.Request) 
 	// Convert TSDB cache data to debug format
 	for probeName, tsKeys := range d.strategy.cache.probeIndex {
 		summary[probeName] = len(tsKeys)
-		
+
 		for tsKey := range tsKeys {
 			if metric, exists := d.strategy.cache.timeSeries[tsKey]; exists {
 				age := now.Sub(metric.Timestamp)
-				
+
 				// Use metric name directly (no probe suffix needed)
 				entry := DebugCacheEntry{
 					Name:      metric.MetricName,
@@ -89,7 +89,7 @@ func (d *DebugManager) HandleDebugCache(w http.ResponseWriter, r *http.Request) 
 
 	// Get formatted TTL from cache info
 	cacheInfo := d.strategy.cache.GetCacheInfo()
-	
+
 	response := DebugCacheResponse{
 		TotalEntries: len(entries),
 		CacheTTL:     cacheInfo.TTL,
@@ -123,7 +123,7 @@ func (d *DebugManager) HandleDebugLogs(w http.ResponseWriter, r *http.Request) {
 
 	// Get current module log levels
 	moduleLevels := logger.GetModuleLogLevels()
-	
+
 	var logLevels []LogLevelInfo
 	for module, level := range moduleLevels {
 		logLevels = append(logLevels, LogLevelInfo{
@@ -177,7 +177,7 @@ func (d *DebugManager) HandleSetLogLevels(w http.ResponseWriter, r *http.Request
 	// Return success
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	
+
 	response := map[string]string{"status": "success", "message": "Log levels updated"}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		d.logger.Error().Err(err).Msg("Failed to encode set logs response")
@@ -195,10 +195,10 @@ func (d *DebugManager) HandleStatsCache(w http.ResponseWriter, r *http.Request) 
 	if !authenticated {
 		return
 	}
-	
+
 	// Get cache statistics
 	stats := d.strategy.cache.GetStatistics()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(stats); err != nil {
 		d.logger.Error().Err(err).Msg("Failed to encode cache stats")
@@ -213,7 +213,7 @@ func (d *DebugManager) HandleConfigProbes(w http.ResponseWriter, r *http.Request
 	if !authenticated {
 		return
 	}
-	
+
 	// For now, return active probes from cache since we don't have direct access to configuration provider
 	// TODO: Refactor to pass configuration provider to HTTP strategy for full probe config access
 	d.strategy.cache.mu.RLock()
@@ -222,7 +222,7 @@ func (d *DebugManager) HandleConfigProbes(w http.ResponseWriter, r *http.Request
 		activeProbes[metric.ProbeName] = true
 	}
 	d.strategy.cache.mu.RUnlock()
-	
+
 	// Create simplified probe list
 	probes := make([]map[string]interface{}, 0)
 	for probeName := range activeProbes {
@@ -233,13 +233,13 @@ func (d *DebugManager) HandleConfigProbes(w http.ResponseWriter, r *http.Request
 			"status":  "active",
 		})
 	}
-	
+
 	response := map[string]interface{}{
 		"probes": probes,
 		"count":  len(probes),
 		"note":   "Showing active probes from cache. Full configuration requires restart to change.",
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		d.logger.Error().Err(err).Msg("Failed to encode probe config")
@@ -254,17 +254,17 @@ func (d *DebugManager) HandleAdminCacheClear(w http.ResponseWriter, r *http.Requ
 	if !authenticated {
 		return
 	}
-	
+
 	// Clear the cache
 	d.strategy.cache.Clear()
-	
+
 	d.logger.Info().Msg("Cache cleared via admin API")
-	
+
 	response := map[string]string{
 		"status":  "success",
 		"message": "Cache cleared successfully",
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		d.logger.Error().Err(err).Msg("Failed to encode cache clear response")
@@ -279,11 +279,11 @@ func (d *DebugManager) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Re
 	if !authenticated {
 		return
 	}
-	
+
 	d.logger.Info().Msg("🧪 Injecting test redfish metrics for validation")
-	
+
 	now := time.Now()
-	
+
 	// Create realistic Dell PowerVault ME storage metrics
 	testMetrics := []datapoint.DataPoint{
 		// Pool metrics with manufacturer/model tags for Dell corrections
@@ -295,10 +295,10 @@ func (d *DebugManager) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Re
 				{Key: "probe_name", Value: "redfish"},
 				{Key: "endpoint", Value: "https://powervault.example.com"},
 				{Key: "controller", Value: "controller_a"},
-				{Key: "pool_name", Value: "Pool A"},      // This should appear in filters!
+				{Key: "pool_name", Value: "Pool A"}, // This should appear in filters!
 				{Key: "pool_id", Value: "A"},
-				{Key: "manufacturer", Value: "Dell"},      // Enables Dell corrections
-				{Key: "model", Value: "PowerVault"},       // Enables Dell corrections
+				{Key: "manufacturer", Value: "Dell"}, // Enables Dell corrections
+				{Key: "model", Value: "PowerVault"},  // Enables Dell corrections
 			},
 		},
 		{
@@ -328,7 +328,7 @@ func (d *DebugManager) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Re
 				{Key: "volume_name", Value: "Volume001"}, // Should appear in filters
 				{Key: "volume_id", Value: "00c0fffd07cd00005a728a6701000000"},
 				{Key: "volume_type", Value: "standard"},
-				{Key: "raid_type", Value: "RAID5"},       // Should appear in filters
+				{Key: "raid_type", Value: "RAID5"}, // Should appear in filters
 				{Key: "manufacturer", Value: "Dell"},
 				{Key: "model", Value: "PowerVault"},
 			},
@@ -342,8 +342,8 @@ func (d *DebugManager) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Re
 				{Key: "probe_name", Value: "redfish"},
 				{Key: "endpoint", Value: "https://powervault.example.com"},
 				{Key: "controller", Value: "controller_a"},
-				{Key: "drive_name", Value: "Drive 3"},    // Should appear in filters
-				{Key: "drive_id", Value: "0.3"},         // Should be HIDDEN in filters
+				{Key: "drive_name", Value: "Drive 3"}, // Should appear in filters
+				{Key: "drive_id", Value: "0.3"},       // Should be HIDDEN in filters
 				{Key: "drive_type", Value: "HDD"},
 				{Key: "manufacturer", Value: "Dell"},
 				{Key: "model", Value: "PowerVault"},
@@ -358,33 +358,33 @@ func (d *DebugManager) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Re
 				{Key: "probe_name", Value: "redfish"},
 				{Key: "endpoint", Value: "https://powervault.example.com"},
 				{Key: "controller", Value: "controller_b"},
-				{Key: "pool_name", Value: "dgA01"},       // Different pool name
+				{Key: "pool_name", Value: "dgA01"}, // Different pool name
 				{Key: "pool_id", Value: "dgA01"},
 				{Key: "manufacturer", Value: "Dell"},
 				{Key: "model", Value: "PowerVault"},
 			},
 		},
 	}
-	
+
 	// Inject metrics into cache using transformer registry
 	d.strategy.cache.AddDataPointsWithTransformer(testMetrics, d.strategy.transformerRegistry)
-	
+
 	d.logger.Info().
 		Int("metrics_injected", len(testMetrics)).
 		Msg("🧪 Test redfish metrics injected successfully")
-	
+
 	response := map[string]interface{}{
-		"status":          "success",
-		"message":         "Test redfish metrics injected successfully",
-		"metrics_count":   len(testMetrics),
-		"instructions":    "Now check Tag Filters - pool_name should appear, drive_id should be hidden",
+		"status":        "success",
+		"message":       "Test redfish metrics injected successfully",
+		"metrics_count": len(testMetrics),
+		"instructions":  "Now check Tag Filters - pool_name should appear, drive_id should be hidden",
 		"test_urls": map[string]string{
 			"dashboard":    "http://localhost:8080/web/2a5d71c5-706e-43ce-8a10-8ee252f85772/dashboard",
 			"tag_filters":  "http://localhost:8080/api/2a5d71c5-706e-43ce-8a10-8ee252f85772/info/tags/redfish",
 			"prtg_metrics": "http://localhost:8080/api/2a5d71c5-706e-43ce-8a10-8ee252f85772/prtg/metrics/redfish",
 		},
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		d.logger.Error().Err(err).Msg("Failed to encode test inject response")
@@ -411,9 +411,9 @@ func (d *DebugManager) HandleInjectRealMetrics(w http.ResponseWriter, r *http.Re
 	if !authenticated {
 		return
 	}
-	
+
 	d.logger.Info().Msg("🔥 Injecting real production metrics for testing")
-	
+
 	// Parse request body
 	var request RealMetricInjectionRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -421,11 +421,11 @@ func (d *DebugManager) HandleInjectRealMetrics(w http.ResponseWriter, r *http.Re
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
 		return
 	}
-	
+
 	// Convert to datapoint format
 	var dataPoints []datapoint.DataPoint
 	now := time.Now()
-	
+
 	for _, metric := range request.Metrics {
 		// Parse timestamp
 		var timestamp time.Time
@@ -434,13 +434,13 @@ func (d *DebugManager) HandleInjectRealMetrics(w http.ResponseWriter, r *http.Re
 		} else {
 			timestamp = now // Fallback to current time
 		}
-		
+
 		// Convert tags map to Tag slice
 		var tagSlice []tags.Tag
 		for key, value := range metric.Tags {
 			tagSlice = append(tagSlice, tags.Tag{Key: key, Value: value})
 		}
-		
+
 		// Convert value to float32 (required by DataPoint)
 		var value float32
 		switch v := metric.Value.(type) {
@@ -462,25 +462,25 @@ func (d *DebugManager) HandleInjectRealMetrics(w http.ResponseWriter, r *http.Re
 				value = 0 // Default fallback
 			}
 		}
-		
+
 		dataPoint := datapoint.DataPoint{
 			Name:      metric.Name,
 			Value:     value,
 			Timestamp: timestamp,
 			Tags:      tagSlice,
 		}
-		
+
 		dataPoints = append(dataPoints, dataPoint)
 	}
-	
+
 	// Inject metrics into cache using transformer registry
 	d.strategy.cache.AddDataPointsWithTransformer(dataPoints, d.strategy.transformerRegistry)
-	
+
 	d.logger.Info().
 		Int("metrics_injected", len(dataPoints)).
 		Str("source", request.Source).
 		Msg("🔥 Real production metrics injected successfully")
-	
+
 	// Count metrics by type for better reporting
 	metricsByType := make(map[string]int)
 	for _, dp := range dataPoints {
@@ -501,14 +501,14 @@ func (d *DebugManager) HandleInjectRealMetrics(w http.ResponseWriter, r *http.Re
 			}
 		}
 	}
-	
+
 	response := map[string]interface{}{
-		"status":         "success",
-		"message":        "Real production metrics injected successfully",
-		"metrics_count":  len(dataPoints),
-		"source":         request.Source,
+		"status":          "success",
+		"message":         "Real production metrics injected successfully",
+		"metrics_count":   len(dataPoints),
+		"source":          request.Source,
 		"metrics_by_type": metricsByType,
-		"instructions":   "Test contextual filtering with real production data",
+		"instructions":    "Test contextual filtering with real production data",
 		"test_urls": map[string]string{
 			"dashboard":    "http://localhost:8080/web/2a5d71c5-706e-43ce-8a10-8ee252f85772/dashboard",
 			"tag_filters":  "http://localhost:8080/api/2a5d71c5-706e-43ce-8a10-8ee252f85772/info/tags/redfish",
@@ -520,7 +520,7 @@ func (d *DebugManager) HandleInjectRealMetrics(w http.ResponseWriter, r *http.Re
 			"drive_metrics":  "http://localhost:8080/api/2a5d71c5-706e-43ce-8a10-8ee252f85772/prtg/metrics/redfish?tags=drive_name:Drive%200.0",
 		},
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		d.logger.Error().Err(err).Msg("Failed to encode real metrics inject response")
@@ -542,7 +542,7 @@ func (d *DebugManager) GetDebugInfo() map[string]interface{} {
 		"cache": map[string]interface{}{
 			"total_metrics": totalMetrics,
 			"active_probes": probeCount,
-			"ttl":          d.strategy.cache.ttl.String(),
+			"ttl":           d.strategy.cache.ttl.String(),
 		},
 		"server": d.strategy.serverManager.GetServerStats(),
 		"config": d.strategy.configManager.GetConfigurationSummary(),

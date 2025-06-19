@@ -33,42 +33,42 @@ var _ RedfishClientInterface = &RedfishClient{}
 
 // RedfishResponse encapsulates common Redfish response fields
 type RedfishResponse struct {
-	OdataContext      string                 `json:"@odata.context,omitempty"`
-	OdataID           string                 `json:"@odata.id,omitempty"`
-	OdataType         string                 `json:"@odata.type,omitempty"`
-	ID                string                 `json:"Id,omitempty"`
-	Name              string                 `json:"Name,omitempty"`
-	Description       string                 `json:"Description,omitempty"`
-	Status            *Status                `json:"Status,omitempty"`
-	Members           []map[string]string    `json:"Members,omitempty"`
+	OdataContext string              `json:"@odata.context,omitempty"`
+	OdataID      string              `json:"@odata.id,omitempty"`
+	OdataType    string              `json:"@odata.type,omitempty"`
+	ID           string              `json:"Id,omitempty"`
+	Name         string              `json:"Name,omitempty"`
+	Description  string              `json:"Description,omitempty"`
+	Status       *Status             `json:"Status,omitempty"`
+	Members      []map[string]string `json:"Members,omitempty"`
 	// Raw contains the raw JSON data
-	Raw               json.RawMessage
-	MembersCount      int                    `json:"Members@odata.count,omitempty"`
-	Oem               map[string]interface{} `json:"Oem,omitempty"`
-	Manufacturer      string                 `json:"Manufacturer,omitempty"`
-	Model             string                 `json:"Model,omitempty"`
-	SerialNumber      string                 `json:"SerialNumber,omitempty"`
-	FirmwareVersion   string                 `json:"FirmwareVersion,omitempty"`
-	PartNumber        string                 `json:"PartNumber,omitempty"`
-	PowerState        string                 `json:"PowerState,omitempty"`
-	SKU               string                 `json:"SKU,omitempty"`
-	UUID              string                 `json:"UUID,omitempty"`
-	AssetTag          string                 `json:"AssetTag,omitempty"`
-	BiosVersion       string                 `json:"BiosVersion,omitempty"`
-	SystemType        string                 `json:"SystemType,omitempty"`
-	ProcessorSummary  map[string]interface{} `json:"ProcessorSummary,omitempty"`
-	MemorySummary     map[string]interface{} `json:"MemorySummary,omitempty"`
-	Storage           map[string]interface{} `json:"Storage,omitempty"`
-	Processors        map[string]interface{} `json:"Processors,omitempty"`
-	Memory            map[string]interface{} `json:"Memory,omitempty"`
-	EthernetInterfaces map[string]interface{} `json:"EthernetInterfaces,omitempty"`
-	Links             map[string]interface{} `json:"Links,omitempty"`
-	Actions           map[string]interface{} `json:"Actions,omitempty"`
-	Temperatures      []map[string]interface{} `json:"Temperatures,omitempty"`
-	Fans              []map[string]interface{} `json:"Fans,omitempty"`
-	Voltages          []map[string]interface{} `json:"Voltages,omitempty"`
-	PowerSupplies     []map[string]interface{} `json:"PowerSupplies,omitempty"`
-	PowerControl      []map[string]interface{} `json:"PowerControl,omitempty"`
+	Raw                json.RawMessage
+	MembersCount       int                      `json:"Members@odata.count,omitempty"`
+	Oem                map[string]interface{}   `json:"Oem,omitempty"`
+	Manufacturer       string                   `json:"Manufacturer,omitempty"`
+	Model              string                   `json:"Model,omitempty"`
+	SerialNumber       string                   `json:"SerialNumber,omitempty"`
+	FirmwareVersion    string                   `json:"FirmwareVersion,omitempty"`
+	PartNumber         string                   `json:"PartNumber,omitempty"`
+	PowerState         string                   `json:"PowerState,omitempty"`
+	SKU                string                   `json:"SKU,omitempty"`
+	UUID               string                   `json:"UUID,omitempty"`
+	AssetTag           string                   `json:"AssetTag,omitempty"`
+	BiosVersion        string                   `json:"BiosVersion,omitempty"`
+	SystemType         string                   `json:"SystemType,omitempty"`
+	ProcessorSummary   map[string]interface{}   `json:"ProcessorSummary,omitempty"`
+	MemorySummary      map[string]interface{}   `json:"MemorySummary,omitempty"`
+	Storage            map[string]interface{}   `json:"Storage,omitempty"`
+	Processors         map[string]interface{}   `json:"Processors,omitempty"`
+	Memory             map[string]interface{}   `json:"Memory,omitempty"`
+	EthernetInterfaces map[string]interface{}   `json:"EthernetInterfaces,omitempty"`
+	Links              map[string]interface{}   `json:"Links,omitempty"`
+	Actions            map[string]interface{}   `json:"Actions,omitempty"`
+	Temperatures       []map[string]interface{} `json:"Temperatures,omitempty"`
+	Fans               []map[string]interface{} `json:"Fans,omitempty"`
+	Voltages           []map[string]interface{} `json:"Voltages,omitempty"`
+	PowerSupplies      []map[string]interface{} `json:"PowerSupplies,omitempty"`
+	PowerControl       []map[string]interface{} `json:"PowerControl,omitempty"`
 	StorageControllers []map[string]interface{} `json:"StorageControllers,omitempty"`
 }
 
@@ -83,7 +83,7 @@ type Status struct {
 func NewRedfishClient(baseURL, username, password string, baseLogger *logger.Logger, verifySSL bool) (*RedfishClient, error) {
 	// Create module-specific logger for redfish client
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.redfish.client")
-	
+
 	// Normalize baseURL
 	if !strings.HasSuffix(baseURL, "/") {
 		baseURL = baseURL + "/"
@@ -109,7 +109,7 @@ func NewRedfishClient(baseURL, username, password string, baseLogger *logger.Log
 		MaxIdleConns:        10,
 		IdleConnTimeout:     90 * time.Second,
 	}
-	
+
 	// Skip TLS verification if requested
 	if !verifySSL {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
@@ -171,7 +171,7 @@ func (c *RedfishClient) Connect(ctx context.Context) error {
 			Int("status_code", resp.StatusCode).
 			Str("response", string(body)).
 			Msg("Failed to create session")
-		
+
 		// If session creation fails, try basic auth
 		c.logger.Info().Msg("Session auth failed, falling back to basic auth")
 		return nil
@@ -271,7 +271,7 @@ func (c *RedfishClient) Get(ctx context.Context, path string) (*RedfishResponse,
 
 	// Add headers
 	req.Header.Set("Accept", "application/json")
-	
+
 	// Add auth token if available, otherwise use basic auth
 	if c.authToken != "" {
 		req.Header.Set("X-Auth-Token", c.authToken)
@@ -303,7 +303,7 @@ func (c *RedfishClient) Get(ctx context.Context, path string) (*RedfishResponse,
 	if err := json.Unmarshal(body, &redfishResp); err != nil {
 		return nil, fmt.Errorf("error parsing response: %v", err)
 	}
-	
+
 	// Store the raw JSON data
 	redfishResp.Raw = body
 
@@ -344,7 +344,7 @@ func (c *RedfishClient) GetRaw(ctx context.Context, path string) ([]byte, error)
 
 	// Add headers
 	req.Header.Set("Accept", "application/json")
-	
+
 	// Add auth token if available, otherwise use basic auth
 	if c.authToken != "" {
 		req.Header.Set("X-Auth-Token", c.authToken)
