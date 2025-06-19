@@ -1,5 +1,5 @@
 // senhub-agent/internal/agent/services/data_store/http_health.go
-package data_store
+package http
 
 import (
 	"encoding/json"
@@ -82,7 +82,9 @@ func (h *HealthManager) HandleBasicHealth(w http.ResponseWriter, r *http.Request
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(healthInfo)
+	if err := json.NewEncoder(w).Encode(healthInfo); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to encode basic health response")
+	}
 }
 
 // HandleDetailedHealth provides a comprehensive health check endpoint (authenticated)
@@ -99,7 +101,7 @@ func (h *HealthManager) HandleDetailedHealth(w http.ResponseWriter, r *http.Requ
 	uptime := time.Since(h.startTime).Truncate(time.Second).String()
 
 	// Get version information from strategy
-	versionInfo := h.strategy.parseVersionInfo()
+	versionInfo := h.strategy.utilsManager.parseVersionInfo()
 
 	response := HealthResponse{
 		Status:        "ok",
@@ -112,7 +114,9 @@ func (h *HealthManager) HandleDetailedHealth(w http.ResponseWriter, r *http.Requ
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to encode detailed health response")
+	}
 }
 
 // BuildSystemHealth creates comprehensive health information for system info endpoint
@@ -131,7 +135,7 @@ func (h *HealthManager) BuildSystemHealth() SystemHealth {
 	uptimeStr := fmt.Sprintf("%.0f seconds", uptime.Seconds())
 
 	// Get version information
-	versionInfo := h.strategy.parseVersionInfo()
+	versionInfo := h.strategy.utilsManager.parseVersionInfo()
 
 	// Create health response
 	healthResponse := HealthCheckResponse{
@@ -148,7 +152,7 @@ func (h *HealthManager) BuildSystemHealth() SystemHealth {
 	// Create resources info
 	resources := ResourcesInfo{
 		MemoryUsageMB: memUsageMB,
-		CPUPercent:    h.strategy.getCPUUsage(),
+		CPUPercent:    h.strategy.utilsManager.getCPUUsage(),
 		Goroutines:    runtime.NumGoroutine(),
 	}
 
@@ -208,14 +212,14 @@ func (h *HealthManager) GetHealthMetrics() map[string]interface{} {
 	uptimeSeconds := time.Since(h.startTime).Seconds()
 
 	return map[string]interface{}{
-		"uptime_seconds":     uptimeSeconds,
-		"memory_usage_mb":    memUsageMB,
-		"cpu_usage_percent":  h.strategy.getCPUUsage(),
-		"goroutines_count":   runtime.NumGoroutine(),
-		"probes_active":      probeCount,
-		"metrics_cached":     totalMetrics,
-		"cache_ttl_seconds":  h.strategy.cache.ttl.Seconds(),
-		"http_port":          h.strategy.port,
-		"status":             "healthy",
+		"uptime_seconds":    uptimeSeconds,
+		"memory_usage_mb":   memUsageMB,
+		"cpu_usage_percent": h.strategy.utilsManager.getCPUUsage(),
+		"goroutines_count":  runtime.NumGoroutine(),
+		"probes_active":     probeCount,
+		"metrics_cached":    totalMetrics,
+		"cache_ttl_seconds": h.strategy.cache.ttl.Seconds(),
+		"http_port":         h.strategy.port,
+		"status":            "healthy",
 	}
 }

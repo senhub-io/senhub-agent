@@ -1,5 +1,5 @@
 // senhub-agent/internal/agent/services/data_store/integration_metrics_test.go
-package data_store
+package http
 
 import (
 	"context"
@@ -19,25 +19,25 @@ import (
 
 // IntegrationTestConfig contains configuration for the comprehensive metrics test
 type IntegrationTestConfig struct {
-	AgentKey      string
-	Port          int
-	BindAddress   string
-	Endpoints     []string
-	Logger        *logger.Logger
-	AgentConfig   configuration.AgentConfiguration
+	AgentKey    string
+	Port        int
+	BindAddress string
+	Endpoints   []string
+	Logger      *logger.Logger
+	AgentConfig configuration.AgentConfiguration
 }
 
 // MetricsTestResult contains test results for each endpoint format
 type MetricsTestResult struct {
-	EndpointName   string
-	URL            string
-	StatusCode     int
-	ResponseBody   string
-	MetricCount    int
-	ProbesCovered  []string
-	Errors         []string
-	Warnings       []string
-	Success        bool
+	EndpointName  string
+	URL           string
+	StatusCode    int
+	ResponseBody  string
+	MetricCount   int
+	ProbesCovered []string
+	Errors        []string
+	Warnings      []string
+	Success       bool
 }
 
 // ComprehensiveTestReport contains the complete test report
@@ -83,7 +83,7 @@ func generateTestDataPoints() []datapoint.DataPoint {
 	dataPoints := []datapoint.DataPoint{}
 
 	// CPU Metrics (host probe)
-	dataPoints = append(dataPoints, 
+	dataPoints = append(dataPoints,
 		datapoint.DataPoint{
 			Name:      "cpu_usage_total",
 			Value:     float32(75.5),
@@ -377,7 +377,11 @@ func TestComprehensiveMetricsIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("❌ Failed to start HTTP strategy: %v", err)
 	}
-	defer strategy.Shutdown(context.Background())
+	defer func() {
+		if err := strategy.Shutdown(context.Background()); err != nil {
+			t.Errorf("Failed to shutdown strategy: %v", err)
+		}
+	}()
 
 	t.Logf("✅ HTTP Strategy started on %s:%d", config.BindAddress, config.Port)
 
@@ -406,7 +410,6 @@ func TestComprehensiveMetricsIntegration(t *testing.T) {
 	prtgResult := testPRTGEndpoints(t, baseURL, config.AgentKey, strategy)
 	report.EndpointResults = append(report.EndpointResults, prtgResult...)
 
-
 	// Test Nagios endpoints
 	nagiosResult := testNagiosEndpoints(t, baseURL, config.AgentKey, strategy)
 	report.EndpointResults = append(report.EndpointResults, nagiosResult...)
@@ -431,7 +434,7 @@ func testPRTGEndpoints(t *testing.T, baseURL, agentKey string, strategy *HTTPSyn
 
 	for _, probe := range probes {
 		url := fmt.Sprintf("%s/api/%s/prtg/metrics/%s", baseURL, agentKey, probe)
-		
+
 		resp, err := http.Get(url)
 		result := MetricsTestResult{
 			EndpointName:  fmt.Sprintf("PRTG-%s", probe),
@@ -444,7 +447,11 @@ func testPRTGEndpoints(t *testing.T, baseURL, agentKey string, strategy *HTTPSyn
 			result.Success = false
 		} else {
 			result.StatusCode = resp.StatusCode
-			defer resp.Body.Close()
+			defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Logf("Failed to close response body: %v", err)
+		}
+	}()
 
 			if resp.StatusCode == http.StatusOK {
 				var prtgResp PRTGResponse
@@ -479,7 +486,6 @@ func testPRTGEndpoints(t *testing.T, baseURL, agentKey string, strategy *HTTPSyn
 	return results
 }
 
-
 // testNagiosEndpoints tests all Nagios format endpoints
 func testNagiosEndpoints(t *testing.T, baseURL, agentKey string, strategy *HTTPSyncStrategy) []MetricsTestResult {
 	t.Logf("🔍 Testing Nagios Endpoints...")
@@ -490,7 +496,7 @@ func testNagiosEndpoints(t *testing.T, baseURL, agentKey string, strategy *HTTPS
 
 	for _, probe := range probes {
 		url := fmt.Sprintf("%s/api/%s/nagios/metrics/%s", baseURL, agentKey, probe)
-		
+
 		resp, err := http.Get(url)
 		result := MetricsTestResult{
 			EndpointName:  fmt.Sprintf("Nagios-%s", probe),
@@ -503,7 +509,11 @@ func testNagiosEndpoints(t *testing.T, baseURL, agentKey string, strategy *HTTPS
 			result.Success = false
 		} else {
 			result.StatusCode = resp.StatusCode
-			defer resp.Body.Close()
+			defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Logf("Failed to close response body: %v", err)
+		}
+	}()
 
 			if resp.StatusCode == http.StatusOK {
 				// For Nagios, we expect text response, not JSON
@@ -513,9 +523,9 @@ func testNagiosEndpoints(t *testing.T, baseURL, agentKey string, strategy *HTTPS
 				result.ResponseBody = string(bodyBytes[:n])
 
 				// Basic validation for Nagios format
-				if strings.Contains(result.ResponseBody, "OK") || 
-				   strings.Contains(result.ResponseBody, "WARNING") || 
-				   strings.Contains(result.ResponseBody, "CRITICAL") {
+				if strings.Contains(result.ResponseBody, "OK") ||
+					strings.Contains(result.ResponseBody, "WARNING") ||
+					strings.Contains(result.ResponseBody, "CRITICAL") {
 					result.Success = true
 				} else {
 					result.Warnings = append(result.Warnings, "Response doesn't contain Nagios status keywords")
@@ -553,7 +563,11 @@ func testNagiosEndpoints(t *testing.T, baseURL, agentKey string, strategy *HTTPS
 		result.Success = false
 	} else {
 		result.StatusCode = resp.StatusCode
-		defer resp.Body.Close()
+		defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Logf("Failed to close response body: %v", err)
+		}
+	}()
 		result.Success = resp.StatusCode == http.StatusOK
 	}
 
@@ -600,7 +614,11 @@ func testInfoEndpoints(t *testing.T, baseURL, agentKey string, strategy *HTTPSyn
 			result.Success = false
 		} else {
 			result.StatusCode = resp.StatusCode
-			defer resp.Body.Close()
+			defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Logf("Failed to close response body: %v", err)
+		}
+	}()
 			result.Success = resp.StatusCode == http.StatusOK
 
 			if resp.StatusCode == http.StatusOK {
@@ -625,14 +643,14 @@ func testInfoEndpoints(t *testing.T, baseURL, agentKey string, strategy *HTTPSyn
 
 // generateFinalReport creates and logs the comprehensive test report
 func generateFinalReport(t *testing.T, report *ComprehensiveTestReport) {
-	t.Logf("\n" + strings.Repeat("=", 80))
+	t.Log("\n" + strings.Repeat("=", 80))
 	t.Logf("🎯 COMPREHENSIVE METRICS INTEGRATION TEST REPORT")
-	t.Logf(strings.Repeat("=", 80))
+	t.Log(strings.Repeat("=", 80))
 
 	// Overall statistics
 	successCount := 0
 	totalEndpoints := len(report.EndpointResults)
-	
+
 	for _, result := range report.EndpointResults {
 		if result.Success {
 			successCount++
@@ -658,9 +676,9 @@ func generateFinalReport(t *testing.T, report *ComprehensiveTestReport) {
 
 	// Detailed results by category
 	categories := map[string][]MetricsTestResult{
-		"PRTG":    {},
-		"Nagios":  {},
-		"Info":    {},
+		"PRTG":   {},
+		"Nagios": {},
+		"Info":   {},
 	}
 
 	for _, result := range report.EndpointResults {
@@ -674,7 +692,7 @@ func generateFinalReport(t *testing.T, report *ComprehensiveTestReport) {
 	}
 
 	t.Logf("\n📋 DETAILED RESULTS BY CATEGORY:")
-	t.Logf(strings.Repeat("-", 80))
+	t.Log(strings.Repeat("-", 80))
 
 	for category, results := range categories {
 		if len(results) == 0 {
@@ -696,7 +714,7 @@ func generateFinalReport(t *testing.T, report *ComprehensiveTestReport) {
 			status = "❌ FAIL"
 		}
 
-		t.Logf("🔸 %s: %s (%.1f%% - %d/%d endpoints, %d total metrics)", 
+		t.Logf("🔸 %s: %s (%.1f%% - %d/%d endpoints, %d total metrics)",
 			category, status, categoryRate, categorySuccess, len(results), totalMetrics)
 
 		for _, result := range results {
@@ -718,16 +736,16 @@ func generateFinalReport(t *testing.T, report *ComprehensiveTestReport) {
 
 	// Generate recommendations
 	report.Recommendations = generateRecommendations(report)
-	
+
 	if len(report.Recommendations) > 0 {
 		t.Logf("\n🔧 RECOMMENDATIONS:")
-		t.Logf(strings.Repeat("-", 80))
+		t.Log(strings.Repeat("-", 80))
 		for i, rec := range report.Recommendations {
 			t.Logf("%d. %s", i+1, rec)
 		}
 	}
 
-	t.Logf("\n" + strings.Repeat("=", 80))
+	t.Log("\n" + strings.Repeat("=", 80))
 }
 
 // generateRecommendations analyzes test results and provides actionable recommendations
@@ -752,17 +770,17 @@ func generateRecommendations(report *ComprehensiveTestReport) []string {
 	}
 
 	if len(failedEndpoints) > 0 {
-		recommendations = append(recommendations, 
+		recommendations = append(recommendations,
 			fmt.Sprintf("Fix failed endpoints: %s", strings.Join(failedEndpoints, ", ")))
 	}
 
 	if len(lowMetricEndpoints) > 0 {
-		recommendations = append(recommendations, 
+		recommendations = append(recommendations,
 			fmt.Sprintf("Investigate low metric counts in: %s", strings.Join(lowMetricEndpoints, ", ")))
 	}
 
 	if len(endpointsWithWarnings) > 0 {
-		recommendations = append(recommendations, 
+		recommendations = append(recommendations,
 			fmt.Sprintf("Review warnings for: %s", strings.Join(endpointsWithWarnings, ", ")))
 	}
 

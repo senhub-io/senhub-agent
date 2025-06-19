@@ -78,11 +78,11 @@ func (p *logicaldiskProbe) Collect() ([]data_store.DataPoint, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to collect logicaldisk metrics: %v", err)
 	}
-	
+
 	// Create base probe for enrichment
 	baseProbe := &types.BaseProbe{}
 	enrichedMetrics := baseProbe.EnrichDataPointsWithProbeName(metrics, p.GetName())
-	
+
 	return enrichedMetrics, nil
 }
 

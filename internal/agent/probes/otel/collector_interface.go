@@ -30,19 +30,19 @@ const (
 type OtelCollector interface {
 	// GetProtocolType returns the protocol this collector handles
 	GetProtocolType() ProtocolType
-	
+
 	// Connect establishes a connection to the OpenTelemetry endpoint
 	Connect(ctx context.Context) error
-	
+
 	// Disconnect closes the connection
 	Disconnect(ctx context.Context) error
-	
+
 	// CollectTelemetry gathers telemetry data for the specified type
 	CollectTelemetry(ctx context.Context, telemetryType TelemetryType, timestamp time.Time) ([]data_store.DataPoint, error)
-	
+
 	// IsSupported checks if a specific telemetry type is supported by this collector
 	IsSupported(telemetryType TelemetryType) bool
-	
+
 	// GetSupportedTelemetryTypes returns a list of all supported telemetry types
 	GetSupportedTelemetryTypes() []TelemetryType
 }

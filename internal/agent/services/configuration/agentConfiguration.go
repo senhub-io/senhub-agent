@@ -27,8 +27,8 @@ type ConfigurationProvider interface {
 
 // agentConfiguration implements AgentConfiguration
 type agentConfiguration struct {
-	AuthenticationKey    string
-	ServerUrl            string
+	AuthenticationKey   string
+	ServerUrl           string
 	localConfiguration  *LocalConfiguration  // Optional reference for offline mode
 	remoteConfiguration *RemoteConfiguration // Optional reference for online mode
 }
@@ -43,8 +43,8 @@ func NewAgentConfiguration(
 	moduleLogger := logger.NewModuleLogger(baseLogger, "configuration.agent")
 	moduleLogger.Debug().Msg("Creating new AgentConfiguration instance")
 	ac := &agentConfiguration{
-		AuthenticationKey:    AuthenticationKey,
-		ServerUrl:            ServerUrl,
+		AuthenticationKey:   AuthenticationKey,
+		ServerUrl:           ServerUrl,
 		localConfiguration:  nil,
 		remoteConfiguration: nil,
 	}
@@ -63,8 +63,8 @@ func NewAgentConfigurationWithLocal(
 	moduleLogger := logger.NewModuleLogger(baseLogger, "configuration.agent")
 	moduleLogger.Debug().Msg("Creating new AgentConfiguration instance with LocalConfiguration")
 	ac := &agentConfiguration{
-		AuthenticationKey:    AuthenticationKey,
-		ServerUrl:            ServerUrl,
+		AuthenticationKey:   AuthenticationKey,
+		ServerUrl:           ServerUrl,
 		localConfiguration:  localConfig,
 		remoteConfiguration: nil,
 	}
@@ -83,8 +83,8 @@ func NewAgentConfigurationWithRemote(
 	moduleLogger := logger.NewModuleLogger(baseLogger, "configuration.agent")
 	moduleLogger.Debug().Msg("Creating new AgentConfiguration instance with RemoteConfiguration")
 	ac := &agentConfiguration{
-		AuthenticationKey:    AuthenticationKey,
-		ServerUrl:            ServerUrl,
+		AuthenticationKey:   AuthenticationKey,
+		ServerUrl:           ServerUrl,
 		localConfiguration:  nil,
 		remoteConfiguration: remoteConfig,
 	}

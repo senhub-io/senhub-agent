@@ -51,25 +51,25 @@ func TestLoadTransformer(t *testing.T) {
 		},
 		{
 			name:      "Load cpu friendly transformer",
-			probeName: "cpu", 
+			probeName: "cpu",
 			style:     "friendly",
 			wantError: false,
 		},
 		{
 			name:      "Load memory friendly transformer",
-			probeName: "memory", 
+			probeName: "memory",
 			style:     "friendly",
 			wantError: false,
 		},
 		{
 			name:      "Load network friendly transformer",
-			probeName: "network", 
+			probeName: "network",
 			style:     "friendly",
 			wantError: false,
 		},
 		{
 			name:      "Load logicaldisk friendly transformer",
-			probeName: "logicaldisk", 
+			probeName: "logicaldisk",
 			style:     "friendly",
 			wantError: false,
 		},
@@ -128,8 +128,8 @@ func TestProbeTransformer_TransformMetricName(t *testing.T) {
 		config: TransformConfig{
 			Patterns: map[string]string{
 				"thermal.cpu.{index}.temperature": "CPU Temperature - Processor {index}",
-				"memory.used_percent":              "Memory Usage",
-				"power.psu.{index}.output_watts":   "Power Supply - PSU{index} Output",
+				"memory.used_percent":             "Memory Usage",
+				"power.psu.{index}.output_watts":  "Power Supply - PSU{index} Output",
 			},
 		},
 		moduleLogger: createTestModuleLogger(),
@@ -142,27 +142,27 @@ func TestProbeTransformer_TransformMetricName(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "Transform CPU temperature with index",
-			key:  "thermal.cpu.0.temperature",
-			tags: map[string]string{"index": "0"},
+			name:     "Transform CPU temperature with index",
+			key:      "thermal.cpu.0.temperature",
+			tags:     map[string]string{"index": "0"},
 			expected: "CPU Temperature - Processor 0",
 		},
 		{
-			name: "Transform memory usage",
-			key:  "memory.used_percent",
-			tags: map[string]string{},
+			name:     "Transform memory usage",
+			key:      "memory.used_percent",
+			tags:     map[string]string{},
 			expected: "Memory Usage",
 		},
 		{
-			name: "Transform PSU power with index",
-			key:  "power.psu.1.output_watts",
-			tags: map[string]string{"index": "1"},
+			name:     "Transform PSU power with index",
+			key:      "power.psu.1.output_watts",
+			tags:     map[string]string{"index": "1"},
 			expected: "Power Supply - PSU1 Output",
 		},
 		{
-			name: "Unknown metric fallback",
-			key:  "unknown.metric.name",
-			tags: map[string]string{},
+			name:     "Unknown metric fallback",
+			key:      "unknown.metric.name",
+			tags:     map[string]string{},
 			expected: "Unknown Metric Name",
 		},
 	}
@@ -368,13 +368,13 @@ func TestMakeReadable(t *testing.T) {
 			expected: "Fan Health",
 		},
 		{
-			name:     "Host disk prefix removal", 
+			name:     "Host disk prefix removal",
 			key:      "disk_free_percent",
 			expected: "Free Percent",
 		},
 		{
 			name:     "Host memory prefix removal",
-			key:      "memory_available_bytes", 
+			key:      "memory_available_bytes",
 			expected: "Available Bytes",
 		},
 	}
@@ -438,7 +438,7 @@ func TestCreateFallbackTransformer(t *testing.T) {
 	registry := NewTransformerRegistry(createTestLogger())
 
 	transformer := registry.createFallbackTransformer("test", "style")
-	
+
 	probeTransformer, ok := transformer.(*ProbeTransformer)
 	if !ok {
 		t.Fatal("Expected ProbeTransformer type")
@@ -462,12 +462,12 @@ func TestCreateFallbackTransformer(t *testing.T) {
 }
 
 func TestReplaceTemplateVariablesWithDefinition(t *testing.T) {
-	
+
 	// Create test transformer with mock definition
 	transformer := &DefinitionBasedTransformer{
 		moduleLogger: createTestModuleLogger(),
 	}
-	
+
 	tests := []struct {
 		name       string
 		template   string
@@ -525,13 +525,13 @@ func TestReplaceTemplateVariablesWithDefinition(t *testing.T) {
 
 func TestDefinitionBasedTransformer(t *testing.T) {
 	registry := NewTransformerRegistry(createTestLogger())
-	
+
 	// Test metric transformation with tags for atomized probes
 	tests := []struct {
-		name       string
-		probeName  string
-		metricName string
-		tags       map[string]string
+		name           string
+		probeName      string
+		metricName     string
+		tags           map[string]string
 		expectContains string
 	}{
 		{
@@ -564,7 +564,7 @@ func TestDefinitionBasedTransformer(t *testing.T) {
 			expectContains: "Network eth0",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Load transformer for this specific probe
@@ -574,13 +574,13 @@ func TestDefinitionBasedTransformer(t *testing.T) {
 				// This is expected if definition files don't exist yet
 				return
 			}
-			
+
 			displayName := transformer.TransformMetricName(tt.metricName, tt.tags)
-			
+
 			if !strings.Contains(displayName, tt.expectContains) {
 				t.Errorf("Expected display name to contain '%s', got '%s'", tt.expectContains, displayName)
 			}
-			
+
 			t.Logf("Metric: %s -> Display: %s", tt.metricName, displayName)
 		})
 	}
@@ -588,7 +588,7 @@ func TestDefinitionBasedTransformer(t *testing.T) {
 
 // TestDefinitionBasedTransformer_AutoDetectIndexTags tests the automatic index tag detection system
 func TestDefinitionBasedTransformer_AutoDetectIndexTags(t *testing.T) {
-	
+
 	// Create a definition-based transformer with a simple definition
 	definition := &ProbeDefinition{
 		Metrics: []MetricDefinition{
@@ -600,10 +600,10 @@ func TestDefinitionBasedTransformer_AutoDetectIndexTags(t *testing.T) {
 			},
 		},
 	}
-	
+
 	transformer := &DefinitionBasedTransformer{
-		probeName:       "test",
-		definition:      definition,
+		probeName:  "test",
+		definition: definition,
 		templatesConfig: &TemplateConfig{
 			FallbackPatterns: map[string]string{
 				"generic": "{metric_name}",
@@ -611,7 +611,7 @@ func TestDefinitionBasedTransformer_AutoDetectIndexTags(t *testing.T) {
 		},
 		moduleLogger: createTestModuleLogger(),
 	}
-	
+
 	tests := []struct {
 		name     string
 		metric   string
@@ -636,7 +636,7 @@ func TestDefinitionBasedTransformer_AutoDetectIndexTags(t *testing.T) {
 			tags: map[string]string{
 				"instance":   "3",
 				"host":       "test-host",
-				"os":         "windows", 
+				"os":         "windows",
 				"platform":   "windows",
 				"probe_name": "cpu",
 			},
@@ -654,7 +654,7 @@ func TestDefinitionBasedTransformer_AutoDetectIndexTags(t *testing.T) {
 			expected: "Network Bytes Sent", // No template, should use fallback
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := transformer.TransformMetricName(tt.metric, tt.tags)
@@ -669,13 +669,13 @@ func TestDefinitionBasedTransformer_AutoDetectIndexTags(t *testing.T) {
 // TestDefinitionBasedTransformer_DetectIndexTags tests the index tag detection logic
 func TestDefinitionBasedTransformer_DetectIndexTags(t *testing.T) {
 	transformer := &DefinitionBasedTransformer{
-		probeName: "test",
-		moduleLogger:    createTestModuleLogger(),
+		probeName:    "test",
+		moduleLogger: createTestModuleLogger(),
 	}
-	
+
 	tests := []struct {
-		name           string
-		tags           map[string]string
+		name            string
+		tags            map[string]string
 		expectedIndexes map[string]string
 	}{
 		{
@@ -697,7 +697,7 @@ func TestDefinitionBasedTransformer_DetectIndexTags(t *testing.T) {
 				"instance":   "0",
 				"host":       "WIN-PC",
 				"os":         "windows",
-				"platform":   "windows", 
+				"platform":   "windows",
 				"probe_name": "cpu",
 			},
 			expectedIndexes: map[string]string{
@@ -728,7 +728,7 @@ func TestDefinitionBasedTransformer_DetectIndexTags(t *testing.T) {
 			},
 			expectedIndexes: map[string]string{
 				"controller_id": "A",
-				"drive_id":      "0", 
+				"drive_id":      "0",
 				"slot":          "2",
 			},
 		},
@@ -745,15 +745,15 @@ func TestDefinitionBasedTransformer_DetectIndexTags(t *testing.T) {
 			expectedIndexes: map[string]string{},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			detected := transformer.detectIndexTags(tt.tags)
-			
+
 			if len(detected) != len(tt.expectedIndexes) {
 				t.Errorf("Expected %d index tags, got %d", len(tt.expectedIndexes), len(detected))
 			}
-			
+
 			for expectedKey, expectedValue := range tt.expectedIndexes {
 				if detectedValue, exists := detected[expectedKey]; !exists {
 					t.Errorf("Expected index tag '%s' not detected", expectedKey)
@@ -761,7 +761,7 @@ func TestDefinitionBasedTransformer_DetectIndexTags(t *testing.T) {
 					t.Errorf("Expected index tag '%s'='%s', got '%s'", expectedKey, expectedValue, detectedValue)
 				}
 			}
-			
+
 			t.Logf("Detected index tags: %v", detected)
 		})
 	}
@@ -770,10 +770,10 @@ func TestDefinitionBasedTransformer_DetectIndexTags(t *testing.T) {
 // TestDefinitionBasedTransformer_FindBestInstanceTag tests the instance tag selection logic
 func TestDefinitionBasedTransformer_FindBestInstanceTag(t *testing.T) {
 	transformer := &DefinitionBasedTransformer{
-		probeName: "test",
-		moduleLogger:    createTestModuleLogger(),
+		probeName:    "test",
+		moduleLogger: createTestModuleLogger(),
 	}
-	
+
 	tests := []struct {
 		name      string
 		indexTags map[string]string
@@ -804,7 +804,7 @@ func TestDefinitionBasedTransformer_FindBestInstanceTag(t *testing.T) {
 		{
 			name: "Redfish controller preferred",
 			indexTags: map[string]string{
-				"slot":          "3", 
+				"slot":          "3",
 				"controller_id": "A",
 				"drive_id":      "1",
 			},
@@ -816,7 +816,7 @@ func TestDefinitionBasedTransformer_FindBestInstanceTag(t *testing.T) {
 			expected:  "",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := transformer.findBestInstanceTag(tt.indexTags)

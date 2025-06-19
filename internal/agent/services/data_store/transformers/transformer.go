@@ -689,34 +689,7 @@ func (dt *DefinitionBasedTransformer) matchesPattern(pattern, text string) bool 
 
 	// Handle wildcards like {index}, {component}, etc. or simple "*" wildcards
 	if strings.Contains(pattern, "{") || strings.Contains(pattern, "*") {
-		// Create a regex pattern by replacing template variables with appropriate regex
-		regexPattern := pattern
-
-		// Replace common template variables with regex patterns
-		templateReplacements := map[string]string{
-			"{index}":         `\d+`,
-			"{component}":     `[^.]+`,
-			"{pool_id}":       `[^.]+`,
-			"{controller_id}": `[^.]+`,
-			"{volume_id}":     `[^.]+`,
-			"{drive_id}":      `[^.]+`,
-			"{core}":          `\d+`,
-			"{interface}":     `[^.]+`,
-			"{device}":        `[^.]+`,
-		}
-
-		for placeholder, regex := range templateReplacements {
-			regexPattern = strings.ReplaceAll(regexPattern, placeholder, regex)
-		}
-
-		// Escape dots for literal matching
-		regexPattern = strings.ReplaceAll(regexPattern, ".", `\.`)
-
-		// Add anchors for exact matching
-		regexPattern = "^" + regexPattern + "$"
-
-		// Use simple pattern matching for now (avoid regex import)
-		// Check if the structure matches by comparing parts
+		// Use simple pattern matching by comparing parts
 		patternParts := strings.Split(pattern, ".")
 		textParts := strings.Split(text, ".")
 

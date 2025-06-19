@@ -1,5 +1,5 @@
 // senhub-agent/internal/agent/services/data_store/http_web.go
-package data_store
+package http
 
 import (
 	"net/http"
@@ -38,23 +38,25 @@ func (w *WebInterface) HandleWebDashboard(req *http.Request, writer http.Respons
 	if !authenticated {
 		return
 	}
-	
+
 	// Render the new dashboard template
 	templateName := GetTemplateName(req.URL.Path)
 	if templateName == "" {
 		templateName = "dashboard" // Default to dashboard for root and dashboard paths
 	}
-	
+
 	content, err := w.assetHandler.RenderTemplate(templateName)
 	if err != nil {
 		w.logger.Error().Err(err).Str("template", templateName).Msg("Failed to render dashboard template")
 		http.Error(writer, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	
+
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.setNoCacheHeaders(writer)
-	writer.Write([]byte(content))
+	if _, err := writer.Write([]byte(content)); err != nil {
+		w.logger.Error().Err(err).Msg("Failed to write content")
+	}
 }
 
 // HandleWebExplorer serves the API explorer interface
@@ -63,10 +65,10 @@ func (w *WebInterface) HandleWebExplorer(req *http.Request, writer http.Response
 	if !authenticated {
 		return
 	}
-	
+
 	// Create asset handler
 	assetHandler := NewAssetHandler(agentKey)
-	
+
 	// Render API Explorer template
 	html, err := assetHandler.RenderTemplate("api-explorer")
 	if err != nil {
@@ -74,10 +76,12 @@ func (w *WebInterface) HandleWebExplorer(req *http.Request, writer http.Response
 		http.Error(writer, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	
+
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.setNoCacheHeaders(writer)
-	writer.Write([]byte(html))
+	if _, err := writer.Write([]byte(html)); err != nil {
+		w.logger.Error().Err(err).Msg("Failed to write HTML content")
+	}
 }
 
 // HandleWebDocs serves the documentation interface
@@ -86,7 +90,7 @@ func (w *WebInterface) HandleWebDocs(req *http.Request, writer http.ResponseWrit
 	if !authenticated {
 		return
 	}
-	
+
 	// Render the documentation template
 	content, err := w.assetHandler.RenderTemplate("docs")
 	if err != nil {
@@ -94,10 +98,12 @@ func (w *WebInterface) HandleWebDocs(req *http.Request, writer http.ResponseWrit
 		http.Error(writer, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	
+
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.setNoCacheHeaders(writer)
-	writer.Write([]byte(content))
+	if _, err := writer.Write([]byte(content)); err != nil {
+		w.logger.Error().Err(err).Msg("Failed to write content")
+	}
 }
 
 // // HandleWebGuide serves the user guide interface - TEMPORARILY DISABLED
@@ -106,7 +112,7 @@ func (w *WebInterface) HandleWebDocs(req *http.Request, writer http.ResponseWrit
 // 	if !authenticated {
 // 		return
 // 	}
-// 	
+//
 // 	// Render guide template
 // 	content, err := w.assetHandler.RenderTemplate("guide")
 // 	if err != nil {
@@ -114,9 +120,11 @@ func (w *WebInterface) HandleWebDocs(req *http.Request, writer http.ResponseWrit
 // 		http.Error(writer, "Internal Server Error", http.StatusInternalServerError)
 // 		return
 // 	}
-// 	
+//
 // 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-// 	writer.Write([]byte(content))
+// 	if _, err := writer.Write([]byte(content)); err != nil {
+// 		w.logger.Error().Err(err).Msg("Failed to write content")
+// 	}
 // }
 
 // HandleWebAssets serves static assets (CSS, JS, images)
@@ -125,7 +133,7 @@ func (w *WebInterface) HandleWebAssets(req *http.Request, writer http.ResponseWr
 	if !authenticated {
 		return
 	}
-	
+
 	// Create asset handler and serve the requested asset
 	assetHandler := NewAssetHandler(agentKey)
 	assetHandler.ServeAsset(writer, req, req.URL.Path)

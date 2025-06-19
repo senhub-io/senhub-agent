@@ -17,7 +17,7 @@ func (c *StorageCollector) CollectMetrics(ctx context.Context, collectionType Co
 	case CollectionStorage:
 		// Collect comprehensive storage metrics
 		var allPoints []data_store.DataPoint
-		
+
 		// Collect pool metrics which contain the resource occupation data
 		if len(c.storagePools) > 0 {
 			poolPoints, err := c.collectPoolMetrics(ctx, timestamp)
@@ -27,7 +27,7 @@ func (c *StorageCollector) CollectMetrics(ctx context.Context, collectionType Co
 				allPoints = append(allPoints, poolPoints...)
 			}
 		}
-		
+
 		// Collect volume metrics for storage usage
 		volumePoints, err := c.collectVolumeConsumptionMetrics(ctx, timestamp)
 		if err != nil {
@@ -35,7 +35,7 @@ func (c *StorageCollector) CollectMetrics(ctx context.Context, collectionType Co
 		} else {
 			allPoints = append(allPoints, volumePoints...)
 		}
-		
+
 		// If we have controllers, collect health information and drive metrics
 		if len(c.storageControllers) > 0 {
 			// Collect controller health metrics
@@ -45,7 +45,7 @@ func (c *StorageCollector) CollectMetrics(ctx context.Context, collectionType Co
 			} else {
 				allPoints = append(allPoints, controllerPoints...)
 			}
-			
+
 			// Collect drive metrics including operations in progress
 			drivePoints, err := c.collectDriveMetrics(ctx, timestamp)
 			if err != nil {
@@ -54,7 +54,7 @@ func (c *StorageCollector) CollectMetrics(ctx context.Context, collectionType Co
 				allPoints = append(allPoints, drivePoints...)
 			}
 		}
-		
+
 		// Collect event and log metrics
 		eventPoints, err := c.collectEventMetrics(ctx, timestamp)
 		if err != nil {
@@ -62,7 +62,7 @@ func (c *StorageCollector) CollectMetrics(ctx context.Context, collectionType Co
 		} else {
 			allPoints = append(allPoints, eventPoints...)
 		}
-		
+
 		return allPoints, nil
 	case CollectionNetworkAdapter:
 		return c.collectNetworkMetrics(ctx, timestamp)

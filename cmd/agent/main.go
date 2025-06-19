@@ -140,7 +140,7 @@ func main() {
 			showHelp()
 			return
 		}
-		
+
 		// Auto-detect offline mode if no mode specified but config file exists
 		if !args.Offline && args.AuthenticationKey == "" {
 			configPath := args.ConfigPath
@@ -154,7 +154,7 @@ func main() {
 				args.ConfigPath = configPath
 			}
 		}
-		
+
 		runAgent(args)
 	}
 }
@@ -170,7 +170,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 
 	// Build service arguments based on mode
 	var serviceArgs []string
-	
+
 	if args.Offline {
 		// Offline mode: only add basic offline parameters
 		// All other configuration (HTTPS, ports, etc.) will be read from config file
@@ -185,7 +185,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			serviceArgs = append(serviceArgs, "--server-url", args.ServerUrl)
 		}
 	}
-	
+
 	// Add common optional arguments
 	if args.Verbose {
 		serviceArgs = append(serviceArgs, "--verbose")
@@ -230,17 +230,17 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		Arguments:        serviceArgs,
 		WorkingDirectory: workingDir,
 		Option: map[string]interface{}{
-			"LogOutput":   true,
-			"User":        "root",
-			"ServiceName": "senhub-agent.service",
-			"SystemdScript": true,
-			"Restart":      "always",
-			"RestartSec":   "10",
+			"LogOutput":             true,
+			"User":                  "root",
+			"ServiceName":           "senhub-agent.service",
+			"SystemdScript":         true,
+			"Restart":               "always",
+			"RestartSec":            "10",
 			"StartLimitIntervalSec": "0",
 			"StartLimitBurst":       "0",
-			"OnFailure":              "restart",
-			"RecoveryActions":        []string{"restart", "restart", "restart", "restart", "none"},
-			"RecoveryCallback":       "",
+			"OnFailure":             "restart",
+			"RecoveryActions":       []string{"restart", "restart", "restart", "restart", "none"},
+			"RecoveryCallback":      "",
 			"ResetPeriod":           86400,
 			"RestartDelay":          10000,
 			"Actions":               []string{"restart"},
@@ -263,7 +263,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		err = s.Install()
 		if err == nil {
 			fmt.Println("Service installed successfully")
-			
+
 			// Generate offline configuration if in offline mode
 			if args.Offline {
 				if err := generateOfflineConfiguration(args); err != nil {
@@ -278,7 +278,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 					}
 				}
 			}
-			
+
 			fmt.Printf("\nYou can now start the service with:\n    %s start\n", os.Args[0])
 		}
 	case "uninstall":
@@ -293,12 +293,12 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			}
 			time.Sleep(2 * time.Second)
 		}
-		
+
 		// Uninstall the service
 		err = s.Uninstall()
 		if err == nil {
 			fmt.Println("Service uninstalled successfully")
-			
+
 			// Clean up files and directories
 			cleanupFiles(args)
 		}
@@ -331,7 +331,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 				args.ConfigPath = configPath
 			}
 		}
-		
+
 		// Check if configuration file exists when running in offline mode
 		if args.Offline {
 			if _, err := os.Stat(args.ConfigPath); os.IsNotExist(err) {
@@ -343,7 +343,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 				os.Exit(1)
 			}
 		}
-		
+
 		runAgent(args)
 		return
 	}
@@ -414,9 +414,13 @@ func runAgent(args *cliArgs.ParsedArgs) {
 	}
 
 	// Normal service mode
-	svcLogger.Info("Starting service")
+	if err := svcLogger.Info("Starting service"); err != nil {
+		appLogger.Warn().Err(err).Msg("Failed to log service start message")
+	}
 	if err := s.Run(); err != nil {
-		svcLogger.Error("Error running service: ", err)
+		if logErr := svcLogger.Error("Error running service: ", err); logErr != nil {
+			appLogger.Warn().Err(logErr).Msg("Failed to log service error")
+		}
 		appLogger.Fatal().Err(err).Msg("Service failed to run")
 	}
 }
@@ -496,18 +500,18 @@ Examples:
 func generateOfflineConfiguration(args *cliArgs.ParsedArgs) error {
 	// Import the configuration package
 	appLogger := agentLogger.NewLogger(args)
-	
+
 	// Create local configuration instance
 	localConfig := configuration.NewLocalConfiguration(args, appLogger)
-	
+
 	// Start the local configuration to trigger creation
 	quitChannel := make(chan struct{})
 	defer close(quitChannel)
-	
+
 	if err := localConfig.Start(quitChannel); err != nil {
 		return fmt.Errorf("failed to create configuration: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -515,7 +519,7 @@ func generateOfflineConfiguration(args *cliArgs.ParsedArgs) error {
 func cleanupFiles(args *cliArgs.ParsedArgs) {
 	var filesToRemove []string
 	var dirsToRemove []string
-	
+
 	// Configuration file
 	configPath := args.ConfigPath
 	if configPath == "" {
@@ -524,27 +528,27 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 	if _, err := os.Stat(configPath); err == nil {
 		filesToRemove = append(filesToRemove, configPath)
 	}
-	
+
 	// Certificate directory
 	certsDir := "./certs"
 	if _, err := os.Stat(certsDir); err == nil {
 		dirsToRemove = append(dirsToRemove, certsDir)
 	}
-	
+
 	// Log files and directory
 	logPaths := []string{
-		"/Library/Logs/SenHub",           // macOS
-		"/var/log/senhub-agent",          // Linux
-		"C:\\ProgramData\\SenHub\\Logs",  // Windows
-		"./logs",                         // Local logs if any
+		"/Library/Logs/SenHub",          // macOS
+		"/var/log/senhub-agent",         // Linux
+		"C:\\ProgramData\\SenHub\\Logs", // Windows
+		"./logs",                        // Local logs if any
 	}
-	
+
 	for _, logPath := range logPaths {
 		if _, err := os.Stat(logPath); err == nil {
 			dirsToRemove = append(dirsToRemove, logPath)
 		}
 	}
-	
+
 	// Remove files
 	for _, file := range filesToRemove {
 		if err := os.Remove(file); err != nil {
@@ -553,7 +557,7 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 			fmt.Printf("✅ Removed: %s\n", file)
 		}
 	}
-	
+
 	// Remove directories
 	for _, dir := range dirsToRemove {
 		if err := os.RemoveAll(dir); err != nil {
@@ -562,11 +566,11 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 			fmt.Printf("✅ Removed directory: %s\n", dir)
 		}
 	}
-	
+
 	if len(filesToRemove) == 0 && len(dirsToRemove) == 0 {
 		fmt.Println("✅ No additional files to clean up")
 	} else {
-		fmt.Printf("\n🧹 Cleanup completed - removed %d files and %d directories\n", 
+		fmt.Printf("\n🧹 Cleanup completed - removed %d files and %d directories\n",
 			len(filesToRemove), len(dirsToRemove))
 	}
 }
@@ -574,19 +578,19 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 // showDebugModules displays all available debug modules
 func showDebugModules() {
 	modules := agentLogger.GetAvailableModules()
-	
+
 	fmt.Printf("Available Debug Modules (%d modules):\n\n", len(modules))
-	
+
 	// Group modules by category
 	categories := map[string][]string{
-		"Core Services": {},
-		"Data Strategies": {},
-		"System Probes": {},
+		"Core Services":      {},
+		"Data Strategies":    {},
+		"System Probes":      {},
 		"Application Probes": {},
-		"Platform Specific": {},
-		"Sub-modules": {},
+		"Platform Specific":  {},
+		"Sub-modules":        {},
 	}
-	
+
 	// Categorize modules
 	for _, module := range modules {
 		switch {
@@ -596,9 +600,9 @@ func showDebugModules() {
 			categories["Platform Specific"] = append(categories["Platform Specific"], module)
 		case module == "probe.redfish.client":
 			categories["Sub-modules"] = append(categories["Sub-modules"], module)
-		case module == "probe.webapp" || module == "probe.gateway" || 
-			 module == "probe.syslog" || module == "probe.event" || 
-			 module == "probe.otel" || module == "probe.redfish":
+		case module == "probe.webapp" || module == "probe.gateway" ||
+			module == "probe.syslog" || module == "probe.event" ||
+			module == "probe.otel" || module == "probe.redfish":
 			categories["Application Probes"] = append(categories["Application Probes"], module)
 		case strings.HasPrefix(module, "probe."):
 			categories["System Probes"] = append(categories["System Probes"], module)
@@ -606,10 +610,10 @@ func showDebugModules() {
 			categories["Core Services"] = append(categories["Core Services"], module)
 		}
 	}
-	
+
 	// Display categorized modules
 	categoryOrder := []string{"Core Services", "Data Strategies", "System Probes", "Application Probes", "Platform Specific", "Sub-modules"}
-	
+
 	for _, category := range categoryOrder {
 		if len(categories[category]) > 0 {
 			fmt.Printf("📂 %s:\n", category)
@@ -619,7 +623,7 @@ func showDebugModules() {
 			fmt.Println()
 		}
 	}
-	
+
 	fmt.Println("Usage Examples:")
 	fmt.Printf("   # Debug specific module:\n")
 	fmt.Printf("   %s run --debug-modules strategy.http\n", os.Args[0])

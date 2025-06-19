@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	
+
 	"github.com/rs/zerolog"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -18,13 +18,13 @@ func TestDefinitionBasedTransformer_ApplyUnitCorrection(t *testing.T) {
 	moduleLogger := logger.NewModuleLogger(&baseLogger, "transformer.test")
 
 	tests := []struct {
-		name           string
-		metricName     string
-		value          float64
-		tags           map[string]string
+		name              string
+		metricName        string
+		value             float64
+		tags              map[string]string
 		correctionsConfig *CorrectionsConfig
-		expectedValue  float64
-		expectedApplied bool
+		expectedValue     float64
+		expectedApplied   bool
 	}{
 		{
 			name:       "Dell PowerVault ME capacity correction",
@@ -163,7 +163,7 @@ func TestDefinitionBasedTransformer_ApplyUnitCorrection(t *testing.T) {
 
 			// Apply correction
 			correctedValue, applied := transformer.ApplyUnitCorrection(tt.metricName, tt.value, tt.tags)
-			
+
 			// Debug output for failing case
 			if tt.name == "Dell PowerVault ME capacity correction" && !applied {
 				t.Logf("DEBUG: Expected correction to be applied but it wasn't")
@@ -176,15 +176,15 @@ func TestDefinitionBasedTransformer_ApplyUnitCorrection(t *testing.T) {
 					t.Logf("  correction vendor filter: %+v", correction.VendorFilter)
 					t.Logf("  correction detection rule: %s", correction.DetectionRule)
 					t.Logf("  correction enabled: %v", correction.Enabled)
-					
+
 					// Test each step of the correction process manually
 					// Pattern matching test
 					patternMatches := testMatchesPattern(correction.MetricPattern, tt.metricName)
-					vendorMatches := testMatchesVendorFilter(correction.VendorFilter, tt.tags) 
+					vendorMatches := testMatchesVendorFilter(correction.VendorFilter, tt.tags)
 					detectionMatches := testMatchesDetectionRule(correction.DetectionRule, tt.value)
-					
+
 					t.Logf("  pattern matches: %v", patternMatches)
-					t.Logf("  vendor filter matches: %v", vendorMatches) 
+					t.Logf("  vendor filter matches: %v", vendorMatches)
 					t.Logf("  detection rule matches: %v", detectionMatches)
 				}
 			}
@@ -365,39 +365,39 @@ func testMatchesPattern(pattern, text string) bool {
 	if pattern == text {
 		return true
 	}
-	
+
 	// Handle wildcards like {index}, {component}, etc.
 	if strings.Contains(pattern, "{") {
 		// Check if the structure matches by comparing parts
 		patternParts := strings.Split(pattern, ".")
 		textParts := strings.Split(text, ".")
-		
+
 		if len(patternParts) != len(textParts) {
 			return false
 		}
-		
+
 		for i, patternPart := range patternParts {
 			textPart := textParts[i]
-			
+
 			// If it's a template variable, accept any value
 			if strings.Contains(patternPart, "{") && strings.Contains(patternPart, "}") {
 				continue
 			}
-			
+
 			// If it's a wildcard "*", accept any value
 			if patternPart == "*" {
 				continue
 			}
-			
+
 			// Otherwise, must match exactly
 			if patternPart != textPart {
 				return false
 			}
 		}
-		
+
 		return true
 	}
-	
+
 	return false
 }
 
@@ -405,20 +405,20 @@ func testMatchesVendorFilter(filter map[string]string, tags map[string]string) b
 	if len(filter) == 0 {
 		return true // No filter means match all
 	}
-	
+
 	// All filter conditions must match
 	for filterKey, filterValue := range filter {
 		tagValue, exists := tags[filterKey]
 		if !exists {
 			return false
 		}
-		
+
 		// Check if tag value contains the filter value (partial match)
 		if !strings.Contains(strings.ToLower(tagValue), strings.ToLower(filterValue)) {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
