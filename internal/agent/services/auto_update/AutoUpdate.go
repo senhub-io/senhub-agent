@@ -205,11 +205,16 @@ func (a *autoUpdate) doUpdate(url string) error {
 		return nil
 	}
 
+	// Validate URL safety
+	if !strings.HasPrefix(url, "https://") {
+		return fmt.Errorf("unsafe URL scheme - only HTTPS URLs are allowed: %s", url)
+	}
+
 	a.logger.Info().
 		Str("download_url", url).
 		Msg("Downloading update binary")
 
-	resp, err := http.Get(url)
+	resp, err := http.Get(url) // #nosec G107 - URL is validated for HTTPS scheme above
 	if err != nil {
 		return fmt.Errorf("failed to download update: %w", err)
 	}

@@ -3,7 +3,7 @@ package probes
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 
@@ -40,7 +40,7 @@ func (d *defaultStrategyRouter) GetTargetStrategies() []string {
 // by hashing its name and parameters
 func GenerateProbeId(config configuration.ProbeConfig) string {
 	input := fmt.Sprintf("%s-%v", config.Name, config.Params)
-	hash := md5.New()
+	hash := sha256.New()
 	hash.Write([]byte(input))
 	return hex.EncodeToString(hash.Sum(nil))
 }
