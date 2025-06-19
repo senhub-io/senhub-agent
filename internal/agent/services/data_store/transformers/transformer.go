@@ -4,7 +4,6 @@ package transformers
 import (
 	"embed"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -30,17 +29,17 @@ type TransformConfig struct {
 
 // MetricDefinition represents a single metric definition in the new YAML format
 type MetricDefinition struct {
-	Name                  string            `yaml:"name"`
-	Channel               string            `yaml:"channel"`
-	DisplayName           string            `yaml:"display_name"`
-	Unit                  string            `yaml:"unit"`
-	MultiInstanceLabels   []string          `yaml:"multi_instance_labels"`
-	TagFilter             map[string]string `yaml:"tag_filter"`
-	Description           string            `yaml:"description"`
-	CalculatedMetric      string            `yaml:"calculated_metric"`
-	AlertThresholdWarning int               `yaml:"alert_threshold_warning"`
-	AlertThresholdCritical int              `yaml:"alert_threshold_critical"`
-	Lookup                string            `yaml:"lookup"`
+	Name                   string            `yaml:"name"`
+	Channel                string            `yaml:"channel"`
+	DisplayName            string            `yaml:"display_name"`
+	Unit                   string            `yaml:"unit"`
+	MultiInstanceLabels    []string          `yaml:"multi_instance_labels"`
+	TagFilter              map[string]string `yaml:"tag_filter"`
+	Description            string            `yaml:"description"`
+	CalculatedMetric       string            `yaml:"calculated_metric"`
+	AlertThresholdWarning  int               `yaml:"alert_threshold_warning"`
+	AlertThresholdCritical int               `yaml:"alert_threshold_critical"`
+	Lookup                 string            `yaml:"lookup"`
 }
 
 // UnitCorrection represents a correction rule for inconsistent source data
@@ -82,28 +81,28 @@ type UnitsConfig struct {
 
 // TemplateConfig represents the templates.yaml structure
 type TemplateConfig struct {
-	Templates       map[string]string            `yaml:"templates"`
-	MetricTypes     map[string]string            `yaml:"metric_types"`
-	TagPriority     map[int][]string             `yaml:"tag_priority"`
-	FallbackPatterns map[string]string           `yaml:"fallback_patterns"`
+	Templates        map[string]string `yaml:"templates"`
+	MetricTypes      map[string]string `yaml:"metric_types"`
+	TagPriority      map[int][]string  `yaml:"tag_priority"`
+	FallbackPatterns map[string]string `yaml:"fallback_patterns"`
 }
 
 // ProbeTransformer implements MetricTransformer for a specific probe and style (legacy)
 type ProbeTransformer struct {
-	probeName string
-	style     string
-	config    TransformConfig
+	probeName    string
+	style        string
+	config       TransformConfig
 	moduleLogger *logger.ModuleLogger
 }
 
 // DefinitionBasedTransformer implements MetricTransformer using YAML definitions
 type DefinitionBasedTransformer struct {
-	probeName       string
-	definition      *ProbeDefinition
-	unitsConfig     *UnitsConfig
-	templatesConfig *TemplateConfig
+	probeName         string
+	definition        *ProbeDefinition
+	unitsConfig       *UnitsConfig
+	templatesConfig   *TemplateConfig
 	correctionsConfig *CorrectionsConfig
-	moduleLogger    *logger.ModuleLogger
+	moduleLogger      *logger.ModuleLogger
 }
 
 // TransformerRegistry manages all transformers
@@ -125,7 +124,7 @@ func NewTransformerRegistry(baseLogger *logger.Logger) *TransformerRegistry {
 // LoadTransformer loads or creates a transformer for a specific probe and style
 func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricTransformer, error) {
 	key := fmt.Sprintf("%s:%s", probeName, style)
-	
+
 	// Return cached transformer if already loaded
 	if transformer, exists := tr.transformers[key]; exists {
 		return transformer, nil
@@ -148,10 +147,10 @@ func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricT
 		Err(err).
 		Str("probe", probeName).
 		Msg("❌ Definition-based transformer not found, creating fallback")
-		
+
 	// Create fallback transformer directly instead of loading from file
 	transformer = tr.createFallbackTransformer(probeName, style)
-	
+
 	// Cache the transformer
 	tr.transformers[key] = transformer
 	tr.moduleLogger.Debug().
@@ -254,7 +253,7 @@ func (pt *ProbeTransformer) applyTemplate(template string, tags map[string]strin
 		placeholder := fmt.Sprintf("{%s}", tagKey)
 		if strings.Contains(result, placeholder) {
 			if tagValue == "" || tagValue == tagKey {
-				// If tag value is empty or equals the tag key (e.g., sensor_name="sensor_name"), 
+				// If tag value is empty or equals the tag key (e.g., sensor_name="sensor_name"),
 				// use a generic fallback
 				tagValue = "Unknown"
 			}
@@ -271,7 +270,7 @@ func (pt *ProbeTransformer) extractIndex(tags map[string]string) string {
 	if index, exists := tags["index"]; exists {
 		return index
 	}
-	
+
 	// Try to get from instance tag
 	if instance, exists := tags["instance"]; exists {
 		return instance
@@ -284,23 +283,21 @@ func (pt *ProbeTransformer) extractIndex(tags map[string]string) string {
 func (pt *ProbeTransformer) makeReadable(key string) string {
 	// Remove probe-specific common prefixes that add no value
 	readable := key
-	
+
 	// Redfish probe: remove "hardware." prefix (100% of metrics have it)
-	if strings.HasPrefix(readable, "hardware.") {
-		readable = strings.TrimPrefix(readable, "hardware.")
-	}
-	
+	readable = strings.TrimPrefix(readable, "hardware.")
+
 	// Host probe prefixes that appear in most metrics of their type
 	if strings.HasPrefix(readable, "disk_") {
 		readable = strings.TrimPrefix(readable, "disk_")
 	} else if strings.HasPrefix(readable, "memory_") {
 		readable = strings.TrimPrefix(readable, "memory_")
 	}
-	
+
 	// Basic transformation: replace dots and underscores with spaces, capitalize
 	readable = strings.ReplaceAll(readable, ".", " ")
 	readable = strings.ReplaceAll(readable, "_", " ")
-	
+
 	// Capitalize first letter of each word, with special cases
 	words := strings.Fields(readable)
 	for i, word := range words {
@@ -317,7 +314,7 @@ func (pt *ProbeTransformer) makeReadable(key string) string {
 			}
 		}
 	}
-	
+
 	return strings.Join(words, " ")
 }
 
@@ -329,7 +326,7 @@ func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) 
 		Str("probe", probeName).
 		Str("file_path", probeFilePath).
 		Msg("🔍 Loading probe definition from embedded files")
-		
+
 	definition, err := tr.loadProbeDefinitionFromEmbed(probeFilePath)
 	if err != nil {
 		tr.moduleLogger.Error().
@@ -339,30 +336,30 @@ func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) 
 			Msg("❌ Failed to load embedded probe definition")
 		return nil, fmt.Errorf("failed to load probe definition: %w", err)
 	}
-	
+
 	tr.moduleLogger.Debug().
 		Str("probe", probeName).
 		Int("metrics_count", len(definition.Metrics)).
 		Msg("✅ Probe definition loaded from embedded files")
-	
+
 	// Load shared configurations from embedded files
 	unitsConfig, err := tr.loadUnitsConfigFromEmbed("definitions/shared/units.yaml")
 	if err != nil {
 		tr.moduleLogger.Warn().Err(err).Msg("Failed to load units config, using empty config")
 		unitsConfig = &UnitsConfig{Units: make(map[string]UnitDefinition)}
 	}
-	
+
 	templatesConfig, err := tr.loadTemplatesConfigFromEmbed("definitions/shared/templates.yaml")
 	if err != nil {
 		tr.moduleLogger.Warn().Err(err).Msg("Failed to load templates config, using empty config")
 		templatesConfig = &TemplateConfig{
-			Templates: make(map[string]string),
-			MetricTypes: make(map[string]string),
-			TagPriority: make(map[int][]string),
+			Templates:        make(map[string]string),
+			MetricTypes:      make(map[string]string),
+			TagPriority:      make(map[int][]string),
 			FallbackPatterns: make(map[string]string),
 		}
 	}
-	
+
 	// Load corrections config for vendor-specific fixes (optional)
 	correctionsConfig, err := tr.loadCorrectionsConfigFromEmbed(probeName)
 	if err != nil {
@@ -372,10 +369,10 @@ func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) 
 			Msg("No corrections config found (this is optional)")
 		correctionsConfig = nil // No corrections available
 	}
-	
+
 	// Create child module logger for definition-based transformer
 	childLogger := logger.NewModuleLogger(tr.moduleLogger.Logger, "transformer.definition")
-	
+
 	return &DefinitionBasedTransformer{
 		probeName:         probeName,
 		definition:        definition,
@@ -386,52 +383,20 @@ func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) 
 	}, nil
 }
 
-// loadProbeDefinition loads a probe definition from YAML file
-func (tr *TransformerRegistry) loadProbeDefinition(filePath string) (*ProbeDefinition, error) {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-	
-	var definition ProbeDefinition
-	err = yaml.Unmarshal(data, &definition)
-	if err != nil {
-		return nil, err
-	}
-	
-	return &definition, nil
-}
-
 // loadProbeDefinitionFromEmbed loads a probe definition from embedded YAML file
 func (tr *TransformerRegistry) loadProbeDefinitionFromEmbed(filePath string) (*ProbeDefinition, error) {
 	data, err := definitionFiles.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var definition ProbeDefinition
 	err = yaml.Unmarshal(data, &definition)
 	if err != nil {
 		return nil, err
 	}
-	
-	return &definition, nil
-}
 
-// loadUnitsConfig loads units configuration from YAML file
-func (tr *TransformerRegistry) loadUnitsConfig(filePath string) (*UnitsConfig, error) {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-	
-	var config UnitsConfig
-	err = yaml.Unmarshal(data, &config)
-	if err != nil {
-		return nil, err
-	}
-	
-	return &config, nil
+	return &definition, nil
 }
 
 // loadUnitsConfigFromEmbed loads units configuration from embedded YAML file
@@ -440,29 +405,13 @@ func (tr *TransformerRegistry) loadUnitsConfigFromEmbed(filePath string) (*Units
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var config UnitsConfig
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
 		return nil, err
 	}
-	
-	return &config, nil
-}
 
-// loadTemplatesConfig loads templates configuration from YAML file
-func (tr *TransformerRegistry) loadTemplatesConfig(filePath string) (*TemplateConfig, error) {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-	
-	var config TemplateConfig
-	err = yaml.Unmarshal(data, &config)
-	if err != nil {
-		return nil, err
-	}
-	
 	return &config, nil
 }
 
@@ -472,13 +421,13 @@ func (tr *TransformerRegistry) loadTemplatesConfigFromEmbed(filePath string) (*T
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var config TemplateConfig
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &config, nil
 }
 
@@ -489,16 +438,16 @@ func (tr *TransformerRegistry) loadCorrectionsConfigFromEmbed(probeName string) 
 		fmt.Sprintf("corrections/%s.yaml", probeName),
 		fmt.Sprintf("corrections/%s_corrections.yaml", probeName),
 	}
-	
+
 	// For redfish probe, also try vendor-specific corrections
 	if probeName == "redfish" {
-		patterns = append(patterns, 
+		patterns = append(patterns,
 			"corrections/dell_powervault_me.yaml",
 			"corrections/hpe_smartarray.yaml",
 			"corrections/lenovo_thinkagile.yaml",
 		)
 	}
-	
+
 	var lastErr error
 	for _, pattern := range patterns {
 		data, err := definitionFiles.ReadFile(pattern)
@@ -506,23 +455,23 @@ func (tr *TransformerRegistry) loadCorrectionsConfigFromEmbed(probeName string) 
 			lastErr = err
 			continue
 		}
-		
+
 		var config CorrectionsConfig
 		err = yaml.Unmarshal(data, &config)
 		if err != nil {
 			lastErr = err
 			continue
 		}
-		
+
 		tr.moduleLogger.Debug().
 			Str("probe", probeName).
 			Str("corrections_file", pattern).
 			Int("corrections_count", len(config.Corrections)).
 			Msg("✅ Corrections config loaded")
-		
+
 		return &config, nil
 	}
-	
+
 	return nil, fmt.Errorf("no corrections config found for probe %s: %w", probeName, lastErr)
 }
 
@@ -536,7 +485,7 @@ func (dt *DefinitionBasedTransformer) TransformMetricName(metricName string, tag
 			break
 		}
 	}
-	
+
 	if matchingDef == nil {
 		dt.moduleLogger.Debug().
 			Str("metric_name", metricName).
@@ -544,16 +493,16 @@ func (dt *DefinitionBasedTransformer) TransformMetricName(metricName string, tag
 			Msg("No matching definition found, using fallback")
 		return dt.generateFallbackDisplayName(metricName, tags)
 	}
-	
+
 	// Generate display name using definition
 	displayName := dt.generateDisplayName(*matchingDef, tags)
-	
+
 	dt.moduleLogger.Debug().
 		Str("metric_name", metricName).
 		Str("display_name", displayName).
 		Interface("tags", tags).
 		Msg("Generated display name from definition")
-	
+
 	return displayName
 }
 
@@ -565,7 +514,7 @@ func (dt *DefinitionBasedTransformer) GetUnit(metricName string) string {
 			return dt.normalizeUnit(metric.Unit)
 		}
 	}
-	
+
 	// Return empty string if no match found
 	return ""
 }
@@ -578,7 +527,7 @@ func (dt *DefinitionBasedTransformer) GetLookup(metricName string) string {
 			return metric.Lookup
 		}
 	}
-	
+
 	// Return empty string if no match found
 	return ""
 }
@@ -588,12 +537,12 @@ func (dt *DefinitionBasedTransformer) ApplyUnitCorrection(metricName string, val
 	if dt.correctionsConfig == nil {
 		return value, false
 	}
-	
+
 	for _, correction := range dt.correctionsConfig.Corrections {
 		if !correction.Enabled {
 			continue
 		}
-		
+
 		// Check if metric pattern matches
 		if !dt.matchesPattern(correction.MetricPattern, metricName) {
 			dt.moduleLogger.Debug().
@@ -602,7 +551,7 @@ func (dt *DefinitionBasedTransformer) ApplyUnitCorrection(metricName string, val
 				Msg("🔧 Pattern did not match, skipping correction")
 			continue
 		}
-		
+
 		// Check vendor filter conditions
 		if !dt.matchesVendorFilter(correction.VendorFilter, tags) {
 			dt.moduleLogger.Debug().
@@ -611,7 +560,7 @@ func (dt *DefinitionBasedTransformer) ApplyUnitCorrection(metricName string, val
 				Msg("🔧 Vendor filter did not match, skipping correction")
 			continue
 		}
-		
+
 		// Check detection rule
 		if !dt.matchesDetectionRule(correction.DetectionRule, value) {
 			dt.moduleLogger.Debug().
@@ -620,7 +569,7 @@ func (dt *DefinitionBasedTransformer) ApplyUnitCorrection(metricName string, val
 				Msg("🔧 Detection rule did not match, skipping correction")
 			continue
 		}
-		
+
 		// Apply correction
 		correctedValue := value * correction.CorrectionFactor
 		dt.moduleLogger.Debug().
@@ -630,10 +579,10 @@ func (dt *DefinitionBasedTransformer) ApplyUnitCorrection(metricName string, val
 			Float64("factor", correction.CorrectionFactor).
 			Str("reason", correction.Reason).
 			Msg("🔧 Applied unit correction for inconsistent source data")
-			
+
 		return correctedValue, true
 	}
-	
+
 	return value, false
 }
 
@@ -642,26 +591,26 @@ func (dt *DefinitionBasedTransformer) matchesVendorFilter(filter map[string]stri
 	if len(filter) == 0 {
 		return true // No filter means match all
 	}
-	
+
 	// Convert tags map to string map for easier lookup
 	tagMap := make(map[string]string)
 	for key, value := range tags {
 		tagMap[key] = value
 	}
-	
+
 	// All filter conditions must match
 	for filterKey, filterValue := range filter {
 		tagValue, exists := tagMap[filterKey]
 		if !exists {
 			return false
 		}
-		
+
 		// Check if tag value contains the filter value (partial match)
 		if !strings.Contains(strings.ToLower(tagValue), strings.ToLower(filterValue)) {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
@@ -694,7 +643,7 @@ func (dt *DefinitionBasedTransformer) parseThreshold(threshold string) float64 {
 	if val, err := strconv.ParseFloat(threshold, 64); err == nil {
 		return val
 	}
-	
+
 	dt.moduleLogger.Warn().
 		Str("threshold", threshold).
 		Msg("Failed to parse threshold, defaulting to 0")
@@ -707,7 +656,7 @@ func (dt *DefinitionBasedTransformer) matchesMetric(def MetricDefinition, metric
 	if !dt.matchesPattern(def.Name, metricName) {
 		return false
 	}
-	
+
 	// Check tag filters if defined
 	if len(def.TagFilter) > 0 {
 		for filterKey, filterValue := range def.TagFilter {
@@ -715,19 +664,19 @@ func (dt *DefinitionBasedTransformer) matchesMetric(def MetricDefinition, metric
 			if !exists {
 				return false
 			}
-			
+
 			// Handle special null value filter
 			if filterValue == "null" || filterValue == "{webapp_url}" {
 				// Custom logic for webapp filtering could be added here
 				continue
 			}
-			
+
 			if tagValue != filterValue {
 				return false
 			}
 		}
 	}
-	
+
 	return true
 }
 
@@ -737,12 +686,12 @@ func (dt *DefinitionBasedTransformer) matchesPattern(pattern, text string) bool 
 	if pattern == text {
 		return true
 	}
-	
+
 	// Handle wildcards like {index}, {component}, etc. or simple "*" wildcards
 	if strings.Contains(pattern, "{") || strings.Contains(pattern, "*") {
 		// Create a regex pattern by replacing template variables with appropriate regex
 		regexPattern := pattern
-		
+
 		// Replace common template variables with regex patterns
 		templateReplacements := map[string]string{
 			"{index}":         `\d+`,
@@ -755,75 +704,75 @@ func (dt *DefinitionBasedTransformer) matchesPattern(pattern, text string) bool 
 			"{interface}":     `[^.]+`,
 			"{device}":        `[^.]+`,
 		}
-		
+
 		for placeholder, regex := range templateReplacements {
 			regexPattern = strings.ReplaceAll(regexPattern, placeholder, regex)
 		}
-		
+
 		// Escape dots for literal matching
 		regexPattern = strings.ReplaceAll(regexPattern, ".", `\.`)
-		
+
 		// Add anchors for exact matching
 		regexPattern = "^" + regexPattern + "$"
-		
+
 		// Use simple pattern matching for now (avoid regex import)
 		// Check if the structure matches by comparing parts
 		patternParts := strings.Split(pattern, ".")
 		textParts := strings.Split(text, ".")
-		
+
 		if len(patternParts) != len(textParts) {
 			return false
 		}
-		
+
 		for i, patternPart := range patternParts {
 			textPart := textParts[i]
-			
+
 			// If it's a template variable, accept any value
 			if strings.Contains(patternPart, "{") && strings.Contains(patternPart, "}") {
 				continue
 			}
-			
+
 			// If it's a wildcard "*", accept any value
 			if patternPart == "*" {
 				continue
 			}
-			
+
 			// Otherwise, must match exactly
 			if patternPart != textPart {
 				return false
 			}
 		}
-		
+
 		return true
 	}
-	
+
 	return false
 }
 
 // generateDisplayName creates a contextualized display name using the definition and tags
 func (dt *DefinitionBasedTransformer) generateDisplayName(def MetricDefinition, tags map[string]string) string {
 	displayName := def.DisplayName
-	
+
 	// If no display_name is defined, use the channel name
 	if displayName == "" {
 		displayName = def.Channel
 	}
-	
+
 	// If still empty, generate from metric name
 	if displayName == "" {
 		displayName = dt.makeReadable(def.Name)
 	}
-	
+
 	// Replace template variables with tag values using definition-specific labels
 	displayName = dt.replaceTemplateVariablesWithDefinition(displayName, tags, def)
-	
+
 	return displayName
 }
 
 // replaceTemplateVariables replaces {variable} placeholders with tag values
 func (dt *DefinitionBasedTransformer) replaceTemplateVariables(template string, tags map[string]string) string {
 	result := template
-	
+
 	// Replace common template variables
 	templateVars := []string{
 		"index", "component", "core", "interface", "device", "mountpoint",
@@ -833,12 +782,12 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariables(template string, 
 		"raid_type", "host", "system_name", "slot", "enclosure_id",
 		"adapter_id", "memory_controller",
 	}
-	
+
 	for _, varName := range templateVars {
 		placeholder := fmt.Sprintf("{%s}", varName)
 		if strings.Contains(result, placeholder) {
 			value := tags[varName]
-			
+
 			// Handle special case mappings
 			if value == "" {
 				switch varName {
@@ -862,7 +811,7 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariables(template string, 
 					value = tags["drive_name"]
 				}
 			}
-			
+
 			if value == "" {
 				// Fallback values
 				switch varName {
@@ -877,26 +826,26 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariables(template string, 
 			result = strings.ReplaceAll(result, placeholder, value)
 		}
 	}
-	
+
 	return result
 }
 
 // replaceTemplateVariablesWithDefinition replaces {variable} placeholders using definition-specific multi_instance_labels and automatic detection
 func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithDefinition(template string, tags map[string]string, def MetricDefinition) string {
 	result := template
-	
+
 	dt.moduleLogger.Debug().
 		Str("template", template).
 		Interface("multi_instance_labels", def.MultiInstanceLabels).
 		Interface("tags", tags).
 		Msg("Processing template with definition-specific labels")
-	
+
 	// First, process multi_instance_labels defined for this specific metric
 	for _, labelName := range def.MultiInstanceLabels {
 		placeholder := fmt.Sprintf("{%s}", labelName)
 		if strings.Contains(result, placeholder) {
 			value := tags[labelName]
-			
+
 			if value != "" {
 				result = strings.ReplaceAll(result, placeholder, value)
 				dt.moduleLogger.Debug().
@@ -911,15 +860,15 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithDefinition(tem
 			}
 		}
 	}
-	
+
 	// If we still have unresolved placeholders, try automatic index detection
 	if strings.Contains(result, "{") {
 		result = dt.replaceTemplateVariablesWithAutoDetection(result, tags)
 	}
-	
+
 	// Then process any remaining placeholders with fallback logic
 	result = dt.replaceTemplateVariables(result, tags)
-	
+
 	return result
 }
 
@@ -932,7 +881,7 @@ func (dt *DefinitionBasedTransformer) generateFallbackDisplayName(metricName str
 			return strings.ReplaceAll(pattern, "{metric_name}", dt.makeReadable(metricName))
 		}
 	}
-	
+
 	// Ultimate fallback: make the metric name readable
 	return dt.makeReadable(metricName)
 }
@@ -941,22 +890,20 @@ func (dt *DefinitionBasedTransformer) generateFallbackDisplayName(metricName str
 func (dt *DefinitionBasedTransformer) makeReadable(metricName string) string {
 	// Remove probe-specific common prefixes that add no value
 	readable := metricName
-	
+
 	// Redfish probe: remove "hardware." prefix (100% of metrics have it)
-	if strings.HasPrefix(readable, "hardware.") {
-		readable = strings.TrimPrefix(readable, "hardware.")
-	}
-	
+	readable = strings.TrimPrefix(readable, "hardware.")
+
 	// Legacy prefixes for backwards compatibility
 	legacyPrefixes := []string{"dell_powervault_me.", "thermal.", "power.", "storage."}
 	for _, prefix := range legacyPrefixes {
 		readable = strings.TrimPrefix(readable, prefix)
 	}
-	
+
 	// Replace dots and underscores with spaces
 	readable = strings.ReplaceAll(readable, ".", " ")
 	readable = strings.ReplaceAll(readable, "_", " ")
-	
+
 	// Capitalize first letter of each word, with special cases
 	words := strings.Fields(readable)
 	for i, word := range words {
@@ -973,7 +920,7 @@ func (dt *DefinitionBasedTransformer) makeReadable(metricName string) string {
 			}
 		}
 	}
-	
+
 	return strings.Join(words, " ")
 }
 
@@ -987,7 +934,7 @@ func (dt *DefinitionBasedTransformer) normalizeUnit(unit string) string {
 			}
 		}
 	}
-	
+
 	// Return as-is if no normalization needed
 	return unit
 }
@@ -995,15 +942,15 @@ func (dt *DefinitionBasedTransformer) normalizeUnit(unit string) string {
 // replaceTemplateVariablesWithAutoDetection automatically detects index tags and replaces placeholders
 func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithAutoDetection(template string, tags map[string]string) string {
 	result := template
-	
+
 	// Detect all index tags automatically
 	indexTags := dt.detectIndexTags(tags)
-	
+
 	dt.moduleLogger.Debug().
 		Interface("detected_index_tags", indexTags).
 		Str("template", template).
 		Msg("Auto-detected index tags for template replacement")
-	
+
 	// Replace all detected index tags in the template
 	for tagKey, tagValue := range indexTags {
 		placeholder := fmt.Sprintf("{%s}", tagKey)
@@ -1015,7 +962,7 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithAutoDetection(
 				Msg("Auto-replaced template variable")
 		}
 	}
-	
+
 	// Special handling for generic {instance} placeholder
 	if strings.Contains(result, "{instance}") {
 		// Try to find the best index tag for {instance}
@@ -1027,20 +974,20 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithAutoDetection(
 				Msg("Replaced generic {instance} placeholder")
 		}
 	}
-	
+
 	return result
 }
 
 // detectIndexTags automatically identifies which tags are likely to be index/identifier tags
 func (dt *DefinitionBasedTransformer) detectIndexTags(tags map[string]string) map[string]string {
 	indexTags := make(map[string]string)
-	
+
 	for key, value := range tags {
 		if dt.isIndexTag(key, value) {
 			indexTags[key] = value
 		}
 	}
-	
+
 	return indexTags
 }
 
@@ -1053,12 +1000,12 @@ func (dt *DefinitionBasedTransformer) isIndexTag(key, value string) bool {
 			return false
 		}
 	}
-	
+
 	// Skip very long values (probably not indexes)
 	if len(value) > 50 {
 		return false
 	}
-	
+
 	// CPU probe patterns (OS-specific)
 	if key == "core" && dt.isNumeric(value) {
 		return true // Unix/macOS: core="0", "1", "2"
@@ -1066,7 +1013,7 @@ func (dt *DefinitionBasedTransformer) isIndexTag(key, value string) bool {
 	if key == "instance" && (dt.isNumeric(value) || value == "_Total") {
 		return true // Windows: instance="0", "1", "_Total"
 	}
-	
+
 	// Network probe patterns
 	if key == "interface" && len(value) <= 20 {
 		return true // interface="en0", "Wi-Fi", "Ethernet"
@@ -1074,7 +1021,7 @@ func (dt *DefinitionBasedTransformer) isIndexTag(key, value string) bool {
 	if key == "adapter" && len(value) <= 30 {
 		return true // Windows adapter names
 	}
-	
+
 	// Redfish probe patterns
 	redfishIndexTags := []string{"controller_id", "drive_id", "system_id", "controller"}
 	for _, redfishTag := range redfishIndexTags {
@@ -1082,7 +1029,7 @@ func (dt *DefinitionBasedTransformer) isIndexTag(key, value string) bool {
 			return true
 		}
 	}
-	
+
 	// Physical positions
 	physicalTags := []string{"slot", "channel", "socket", "bay"}
 	for _, physicalTag := range physicalTags {
@@ -1090,23 +1037,23 @@ func (dt *DefinitionBasedTransformer) isIndexTag(key, value string) bool {
 			return true
 		}
 	}
-	
+
 	// Memory-specific tags
 	if key == "memory_controller" && dt.isNumeric(value) {
 		return true
 	}
-	
+
 	// Generic numeric values for potential indexes
 	if dt.isNumeric(value) && len(value) <= 3 {
 		// Short numeric values are likely indexes
 		return true
 	}
-	
+
 	// Single letter values (like controller letters A, B, C)
 	if len(value) == 1 && dt.isAlpha(value) {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -1114,18 +1061,18 @@ func (dt *DefinitionBasedTransformer) isIndexTag(key, value string) bool {
 func (dt *DefinitionBasedTransformer) findBestInstanceTag(indexTags map[string]string) string {
 	// Preference order for {instance} replacement
 	preferenceOrder := []string{"core", "instance", "interface", "controller_id", "drive_id", "slot", "channel"}
-	
+
 	for _, preferred := range preferenceOrder {
 		if value, exists := indexTags[preferred]; exists {
 			return value
 		}
 	}
-	
+
 	// If no preferred tag found, return the first available index tag
 	for _, value := range indexTags {
 		return value
 	}
-	
+
 	return ""
 }
 

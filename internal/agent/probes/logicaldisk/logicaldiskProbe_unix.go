@@ -83,11 +83,7 @@ func (c *unixLogicalDiskCollector) shouldCollectMount(fsType string, mountPoint 
 		"fuse": true,
 	}
 
-	if standardFS[fsType] {
-		return true
-	}
-
-	return false
+	return standardFS[fsType]
 }
 
 func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, error) {
@@ -263,7 +259,7 @@ func (c *unixLogicalDiskCollector) getMountPointsDarwin() ([]mountInfo, error) {
 
 		device := fields[0]
 		mountpoint := fields[8]
-		
+
 		// Determine filesystem type from device name
 		fstype := c.determineFSTypeDarwin(device)
 
@@ -309,11 +305,11 @@ func (c *unixLogicalDiskCollector) shouldMonitorMountDarwin(mountPoint, fsType s
 
 	// Exclude system mount points (but allow /System/Volumes/Data for user data)
 	excludedMounts := map[string]bool{
-		"/dev":                       true,
-		"/System/Volumes/Preboot":    true,
-		"/System/Volumes/VM":         true,
-		"/System/Volumes/Update":     true,
-		"/System/Volumes/Data/home":  true,
+		"/dev":                      true,
+		"/System/Volumes/Preboot":   true,
+		"/System/Volumes/VM":        true,
+		"/System/Volumes/Update":    true,
+		"/System/Volumes/Data/home": true,
 	}
 
 	if excludedMounts[mountPoint] {
