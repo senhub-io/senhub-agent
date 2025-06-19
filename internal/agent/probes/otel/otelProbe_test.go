@@ -51,22 +51,21 @@ func (m *MockOtelCollector) GetSupportedTelemetryTypes() []TelemetryType {
 // TestOtelProbeBasicConstruction tests just creation without network calls
 func TestOtelProbeBasicConstruction(t *testing.T) {
 	t.Skip("Skipping tests until we have proper logger setup in tests")
-	
+
 	// Get a test logger
 	testLogger := &logger.Logger{}
-	
+
 	// Define test config
 	config := map[string]interface{}{
 		"endpoint": "http://otel.example.com:4318/v1/metrics",
 		"protocol": "http",
 	}
-	
+
 	// Create probe
 	probe, err := NewOtelProbe(config, testLogger)
 	assert.NoError(t, err)
 	assert.NotNil(t, probe)
-	
+
 	// Verify it implements the Probe interface
-	_, ok := probe.(types.Probe)
-	assert.True(t, ok, "Should implement types.Probe")
+	assert.Implements(t, (*types.Probe)(nil), probe, "Should implement types.Probe")
 }
