@@ -147,8 +147,11 @@ func (p *EventProbe) OnStart(quitChannel chan struct{}) error {
 	mux.HandleFunc("/event", p.handleEvent)
 
 	p.server = &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", p.config.Address, p.config.Port),
-		Handler: mux,
+		Addr:         fmt.Sprintf("%s:%d", p.config.Address, p.config.Port),
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	go func() {

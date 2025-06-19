@@ -5,8 +5,10 @@ import (
 	"context"
 	"log"
 	"os"
+	"path/filepath"
 	"syscall"
 
+	"gopkg.in/yaml.v2"
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/auto_update"
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -108,7 +110,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 			agentConfiguration.GetServerUrl(),
 			logger,
 		)
-		remoteConfiguration = configuration.NewRemoteConfiguration(senhubServer, logger)
+		remoteConfiguration = configuration.NewRemoteConfiguration(senhubServer, logger, args)
 		configProvider = remoteConfiguration
 
 		// Update agentConfiguration to include remoteConfiguration reference
@@ -268,43 +270,211 @@ func (a agent) handleStartError() {
 	}
 }
 
+// LocalConfigInfo represents essential configuration information extracted from local config file
+// This struct supports backward compatibility with legacy configuration formats
+type LocalConfigInfo struct {
+	AuthenticationKey string // Agent authentication key from config file
+	Mode              string // Operating mode: "online" or "offline"
+	IsValid           bool   // Whether the configuration was successfully parsed
+	ConfigPath        string // Path where the configuration was found
+}
+
+// DetectAgentMode automatically determines if the agent should run in offline or online mode
+// This is the public interface for mode detection, used by the CLI
+func DetectAgentMode(args *agentCliArgs.ParsedArgs) bool {
+	// Create a temporary logger for mode detection (minimal logging)
+	tempLogger := logger.NewLogger(args)
+	return detectAgentMode(args, tempLogger)
+}
+
 // detectAgentMode automatically determines if the agent should run in offline or online mode
+// This function implements backward compatibility with legacy CLI-only configurations
+// while supporting new configuration file-based deployments
 func detectAgentMode(args *agentCliArgs.ParsedArgs, logger *logger.Logger) bool {
-	// If offline mode is explicitly set, respect it
+	// If offline mode is explicitly set via CLI, respect it (legacy compatibility)
 	if args.Offline {
-		logger.Info().Msg("Offline mode explicitly requested")
+		logger.Info().Msg("Offline mode explicitly requested via CLI")
 		return true
 	}
 
-	// Check if configuration file exists
+	// Attempt to load configuration from local file (new configuration-driven approach)
+	localConfig := loadLocalConfigInfo(args, logger)
+	
+	if localConfig.IsValid {
+		// Configuration file found and parsed successfully
+		logger.Info().
+			Str("config_path", localConfig.ConfigPath).
+			Str("mode", localConfig.Mode).
+			Str("auth_key", maskAuthenticationKey(localConfig.AuthenticationKey)).
+			Msg("Configuration file detected - using file-based configuration")
+
+		// Apply configuration file settings to args (backward compatibility)
+		// This ensures that existing code expecting CLI args continues to work
+		if args.AuthenticationKey == "" {
+			// No CLI key provided - use the one from config file
+			args.AuthenticationKey = localConfig.AuthenticationKey
+			logger.Info().Msg("Using authentication key from configuration file")
+		} else if args.AuthenticationKey != localConfig.AuthenticationKey {
+			// CLI key differs from config file - validate CLI key first, fallback to config
+			logger.Warn().
+				Str("cli_key", maskAuthenticationKey(args.AuthenticationKey)).
+				Str("config_key", maskAuthenticationKey(localConfig.AuthenticationKey)).
+				Msg("Authentication key mismatch between CLI and config file")
+			
+			// Test CLI key first, if it fails, use config file key
+			if !validateAuthenticationKey(args.AuthenticationKey, args.ServerUrl, logger) {
+				logger.Warn().Msg("CLI authentication key validation failed, falling back to config file key")
+				args.AuthenticationKey = localConfig.AuthenticationKey
+			} else {
+				logger.Info().Msg("CLI authentication key validated successfully, using CLI key")
+			}
+		}
+
+		// Set mode based on configuration file
+		args.ConfigPath = localConfig.ConfigPath
+		if localConfig.Mode == "offline" {
+			args.Offline = true
+			return true
+		} else if localConfig.Mode == "online" {
+			args.Offline = false
+			return false
+		} else {
+			logger.Warn().
+				Str("mode", localConfig.Mode).
+				Msg("Unknown mode in configuration file, defaulting based on other factors")
+		}
+	}
+
+	// Fallback to legacy detection logic (backward compatibility)
+	// This maintains compatibility with existing deployments that don't have config files
+	
+	// Check if configuration file exists but couldn't be parsed
 	configPath := args.ConfigPath
 	if configPath == "" {
 		configPath = "./agent-config.yaml"
 	}
 
-	if _, err := os.Stat(configPath); err == nil {
-		// Config file exists - auto-detect offline mode
-		logger.Info().
+	if _, err := os.Stat(configPath); err == nil && !localConfig.IsValid {
+		// Config file exists but couldn't be parsed - try offline mode anyway
+		logger.Warn().
 			Str("config_path", configPath).
-			Msg("Configuration file detected - automatically switching to offline mode")
-
-		// Update args to reflect the detected mode
+			Msg("Configuration file found but invalid - attempting offline mode")
 		args.Offline = true
 		args.ConfigPath = configPath
 		return true
 	}
 
-	// No config file - check if we have auth key for online mode
+	// No valid config file - check if we have auth key for online mode (legacy path)
 	if args.AuthenticationKey == "" {
 		logger.Error().
 			Str("config_path", configPath).
-			Msg("No configuration file found and no authentication key provided")
+			Msg("No valid configuration file found and no authentication key provided")
 		logger.Info().Msg("To run in offline mode: install the agent first with 'install --offline'")
 		logger.Info().Msg("To run in online mode: provide authentication key with '--authentication-key YOUR_KEY'")
-		log.Fatal("Cannot determine agent mode - need either config file or authentication key")
+		log.Fatal("Cannot determine agent mode - need either valid config file or authentication key")
 	}
 
-	// Have auth key but no config file - online mode
-	logger.Info().Msg("Authentication key provided - running in online mode")
+	// Have auth key but no config file - online mode (legacy compatibility)
+	logger.Info().Msg("Authentication key provided via CLI - running in online mode")
 	return false
+}
+
+// loadLocalConfigInfo attempts to load and parse local configuration file
+// Returns configuration information for mode detection and key extraction
+func loadLocalConfigInfo(args *agentCliArgs.ParsedArgs, logger *logger.Logger) LocalConfigInfo {
+	configPath := args.ConfigPath
+	if configPath == "" {
+		configPath = "./agent-config.yaml"
+	}
+
+	result := LocalConfigInfo{
+		ConfigPath: configPath,
+		IsValid:    false,
+	}
+
+	// Check if configuration file exists
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		logger.Debug().
+			Str("config_path", configPath).
+			Msg("No local configuration file found")
+		return result
+	}
+
+	// Read configuration file (path is either from args.ConfigPath or hardcoded default)
+	data, err := os.ReadFile(filepath.Clean(configPath)) // #nosec G304 - configPath is from CLI args or hardcoded default
+	if err != nil {
+		logger.Warn().
+			Err(err).
+			Str("config_path", configPath).
+			Msg("Failed to read configuration file")
+		return result
+	}
+
+	// Parse YAML configuration (supports both new and legacy formats)
+	var config struct {
+		Agent struct {
+			Key  string `yaml:"key"`
+			Mode string `yaml:"mode"`
+		} `yaml:"agent"`
+	}
+
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		logger.Warn().
+			Err(err).
+			Str("config_path", configPath).
+			Msg("Failed to parse configuration file as YAML")
+		return result
+	}
+
+	// Extract configuration information
+	result.AuthenticationKey = config.Agent.Key
+	result.Mode = config.Agent.Mode
+	result.IsValid = true
+
+	// Validate extracted information
+	if result.AuthenticationKey == "" {
+		logger.Warn().
+			Str("config_path", configPath).
+			Msg("No authentication key found in configuration file")
+		result.IsValid = false
+	}
+
+	if result.Mode == "" {
+		logger.Debug().
+			Str("config_path", configPath).
+			Msg("No mode specified in configuration file, will determine automatically")
+		result.Mode = "offline" // Default assumption for config files
+	}
+
+	return result
+}
+
+// validateAuthenticationKey performs a quick validation of authentication key
+// This is used for backward compatibility when CLI and config keys differ
+func validateAuthenticationKey(key, serverUrl string, logger *logger.Logger) bool {
+	if key == "" {
+		return false
+	}
+
+	// Basic format validation (UUID-like format expected)
+	if len(key) < 10 {
+		logger.Debug().Msg("Authentication key too short")
+		return false
+	}
+
+	// For now, we'll do basic validation. In the future, this could include
+	// a lightweight server ping to validate the key
+	logger.Debug().
+		Str("key", maskAuthenticationKey(key)).
+		Msg("Authentication key format appears valid")
+	
+	return true
+}
+
+// maskAuthenticationKey masks authentication key for secure logging
+func maskAuthenticationKey(key string) string {
+	if len(key) <= 8 {
+		return "***"
+	}
+	return key[:4] + "***" + key[len(key)-4:]
 }

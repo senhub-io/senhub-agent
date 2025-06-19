@@ -199,7 +199,7 @@ func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
 	// Add config file to watcher
 	err = lc.watcher.Add(lc.configPath)
 	if err != nil {
-		lc.watcher.Close()
+		_ = lc.watcher.Close()
 		return fmt.Errorf("failed to watch config file %s: %w", lc.configPath, err)
 	}
 
@@ -287,7 +287,7 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 
 	// Create directory if it doesn't exist
 	configDir := filepath.Dir(lc.configPath)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0750); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
@@ -298,7 +298,7 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 	}
 
 	// Write configuration file
-	if err := os.WriteFile(lc.configPath, yamlData, 0644); err != nil {
+	if err := os.WriteFile(lc.configPath, yamlData, 0600); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
@@ -496,7 +496,7 @@ func (lc *LocalConfiguration) generateTLSCertificates() error {
 
 	// Create certs directory
 	certsDir := "./certs"
-	if err := os.MkdirAll(certsDir, 0755); err != nil {
+	if err := os.MkdirAll(certsDir, 0750); err != nil {
 		return fmt.Errorf("failed to create certs directory: %w", err)
 	}
 
@@ -510,7 +510,7 @@ func (lc *LocalConfiguration) generateTLSCertificates() error {
 	certPath := filepath.Join(certsDir, "agent-cert.pem")
 	keyPath := filepath.Join(certsDir, "agent-key.pem")
 
-	if err := os.WriteFile(certPath, certPEM, 0644); err != nil {
+	if err := os.WriteFile(certPath, certPEM, 0600); err != nil {
 		return fmt.Errorf("failed to write certificate: %w", err)
 	}
 
