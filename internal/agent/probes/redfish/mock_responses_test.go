@@ -3,7 +3,6 @@ package redfish
 import (
 	"context"
 	"encoding/json"
-	"senhub-agent.go/internal/agent/services/logger"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,55 +11,7 @@ import (
 
 // This file contains test data and helpers for mock responses used in Redfish tests
 
-// createTestStorageCollector creates a storage collector with a mock client for testing
-func createTestStorageCollector(t *testing.T, logger *logger.Logger) (*StorageCollector, *MockRedfishClient) {
-	// Create collector
-	collector, err := NewStorageCollector("https://redfish.example.com", "admin", "password", logger, false)
-	assert.NoError(t, err)
-	storageCollector := collector.(*StorageCollector)
 
-	// Create mock client
-	mockClient := NewMockRedfishClient()
-	
-	// Replace client with mock - this is safe because we're using the interface
-	storageCollector.GenericCollector.client = mockClient
-	
-	// Set basic system info
-	storageCollector.GenericCollector.systems = []string{"Systems/1"}
-	mockClient.AddMockResponse("Systems/1", testSystemResponse)
-	mockClient.AddMockResponse("", `{"Name": "TestSystem", "UUID": "test-uuid"}`)
-	
-	return storageCollector, mockClient
-}
-
-// setupStorageTestEnvironment configures a complete test environment for storage collection
-func setupStorageTestEnvironment(t *testing.T, logger *logger.Logger) (*StorageCollector, *MockRedfishClient) {
-	collector, mockClient := createTestStorageCollector(t, logger)
-	
-	// Add controllers
-	mockClient.AddMockResponse("Storage", testStorageResponse)
-	mockClient.AddMockResponse("Storage/controller_a", testControllerResponse)
-	
-	// Add volumes
-	mockClient.AddMockResponse("Storage/controller_a/Volumes", testVolumesResponse)
-	mockClient.AddMockResponse("Storage/controller_a/Volumes/1", testVolumeResponse)
-	
-	// Add pools
-	mockClient.AddMockResponse("Storage/controller_a/StoragePools", testPoolsResponse)
-	mockClient.AddMockResponse("Storage/controller_a/StoragePools/A", testPoolResponse)
-	
-	// Add drives
-	mockClient.AddMockResponse("Storage/controller_a/Drives", testDrivesResponse)
-	mockClient.AddMockResponse("Storage/controller_a/Drives/0", testDrive0Response)
-	mockClient.AddMockResponse("Storage/controller_a/Drives/1", testDrive1Response)
-	
-	// Set resources
-	collector.storageControllers = []string{"Storage/controller_a"}
-	collector.storageVolumes = []string{"Storage/controller_a/Volumes/1"}
-	collector.storagePools = []string{"Storage/controller_a/StoragePools/A"}
-	
-	return collector, mockClient
-}
 
 // Mock response for system info
 const testSystemResponse = `{
@@ -304,7 +255,7 @@ func validateMockRedfishClient(t *testing.T, mockClient *MockRedfishClient) {
 func TestMockResponses(t *testing.T) {
 	// Create a mock client and add all responses
 	mockClient := NewMockRedfishClient()
-	
+
 	// Add all mock responses
 	mockClient.AddMockResponse("Systems/1", testSystemResponse)
 	mockClient.AddMockResponse("Storage", testStorageResponse)
@@ -316,13 +267,13 @@ func TestMockResponses(t *testing.T) {
 	mockClient.AddMockResponse("Storage/controller_a/Drives", testDrivesResponse)
 	mockClient.AddMockResponse("Storage/controller_a/Drives/0", testDrive0Response)
 	mockClient.AddMockResponse("Storage/controller_a/Drives/1", testDrive1Response)
-	
+
 	// Validate all responses
 	validateMockRedfishClient(t, mockClient)
-	
+
 	// Test that we can retrieve responses
 	mockClient.On("Connect", mock.Anything).Return(nil)
-	
+
 	// Test getting a response
 	ctx := context.Background()
 	resp, err := mockClient.Get(ctx, "Storage/controller_a")

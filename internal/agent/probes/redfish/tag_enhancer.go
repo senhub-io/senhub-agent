@@ -2,8 +2,8 @@
 package redfish
 
 import (
-	"strings"
 	"senhub-agent.go/internal/agent/tags"
+	"strings"
 )
 
 // TagEnhancer provides utilities to improve and organize Redfish metric tags
@@ -17,25 +17,25 @@ func NewTagEnhancer() *TagEnhancer {
 // EnhanceMetricTags improves metric tags by adding collection and simplifying redundant tags
 func (te *TagEnhancer) EnhanceMetricTags(metricName string, originalTags []tags.Tag) []tags.Tag {
 	enhancedTags := make([]tags.Tag, 0, len(originalTags)+1)
-	
+
 	// Add collection tag based on metric name pattern
 	collection := te.detectCollection(metricName)
 	if collection != "" {
 		enhancedTags = append(enhancedTags, tags.Tag{Key: "collection", Value: collection})
 	}
-	
+
 	// Process and clean existing tags
 	seenKeys := make(map[string]bool)
-	
+
 	for _, tag := range originalTags {
 		// Skip redundant or confusing tags
 		if te.shouldSkipTag(tag) {
 			continue
 		}
-		
+
 		// Simplify tag values
 		simplifiedTag := te.simplifyTag(tag)
-		
+
 		// Handle duplicate keys - prefer the better value
 		if seenKeys[simplifiedTag.Key] {
 			// If we already have this key, check if the new value is better
@@ -45,18 +45,18 @@ func (te *TagEnhancer) EnhanceMetricTags(metricName string, originalTags []tags.
 			}
 			continue
 		}
-		
+
 		enhancedTags = append(enhancedTags, simplifiedTag)
 		seenKeys[simplifiedTag.Key] = true
 	}
-	
+
 	return enhancedTags
 }
 
 // detectCollection determines the appropriate collection based on metric name
 func (te *TagEnhancer) detectCollection(metricName string) string {
 	metricLower := strings.ToLower(metricName)
-	
+
 	switch {
 	case strings.Contains(metricLower, "temperature") || strings.Contains(metricLower, "thermal"):
 		return "thermal"
@@ -89,17 +89,17 @@ func (te *TagEnhancer) shouldSkipTag(tag tags.Tag) bool {
 	if tag.Key == "serial_number" {
 		return true
 	}
-	
+
 	// Skip empty values
 	if tag.Value == "" {
 		return true
 	}
-	
+
 	// Skip internal/debugging tags
 	if strings.HasPrefix(tag.Key, "_") || strings.HasPrefix(tag.Key, "debug_") {
 		return true
 	}
-	
+
 	// Skip ID-based tags in favor of name-based tags, but preserve important ones
 	if strings.HasSuffix(tag.Key, "_id") {
 		// Keep important IDs that are useful for filtering
@@ -111,47 +111,44 @@ func (te *TagEnhancer) shouldSkipTag(tag tags.Tag) bool {
 		}
 		return true // Skip other *_id tags
 	}
-	
+
 	// Skip technical/internal tags that aren't useful for user filtering
 	technicalTags := []string{
-		"location_ordinal",    // Technical location identifier
-		"system_id",          // Internal system ID (prefer system_name)
-		"uuid",               // Technical UUID (not user-friendly)
+		"location_ordinal", // Technical location identifier
+		"system_id",        // Internal system ID (prefer system_name)
+		"uuid",             // Technical UUID (not user-friendly)
 	}
 	for _, techTag := range technicalTags {
 		if tag.Key == techTag {
 			return true
 		}
 	}
-	
+
 	// Thermal metrics disabled - sensor_name filtering removed for consistency
-	// if tag.Key == "sensor_name" && te.isSensorNameTooComplex(tag.Value) {
-	//     return true
-	// }
-	
+
 	return false
 }
 
 // simplifyTag improves tag readability and consistency
 func (te *TagEnhancer) simplifyTag(tag tags.Tag) tags.Tag {
 	simplifiedTag := tag
-	
+
 	// Thermal metrics disabled - sensor_name handling removed for consistency
 	// if tag.Key == "sensor_name" {
 	//     // Sensor processing disabled for consistency across strategies
 	// }
-	
+
 	// Simplify controller names and unify the key
 	if tag.Key == "controller_name" || tag.Key == "controller_id" {
 		simplifiedTag.Value = te.simplifyControllerName(tag.Value)
 		simplifiedTag.Key = "controller"
 	}
-	
+
 	// Simplify drive names
 	if tag.Key == "drive_name" {
 		simplifiedTag.Value = te.simplifyDriveName(tag.Value)
 	}
-	
+
 	// Handle pool names - keep only pool_name, skip pool tag
 	if tag.Key == "pool_name" {
 		// Keep pool_name tag as-is, no transformation
@@ -165,56 +162,20 @@ func (te *TagEnhancer) simplifyTag(tag tags.Tag) tags.Tag {
 		simplifiedTag.Key = "pool_name"
 		simplifiedTag.Value = te.extractPoolNameFromDescription(tag.Value)
 	}
-	
+
 	// Normalize manufacturer names for consistency
 	if tag.Key == "manufacturer" || tag.Key == "drive_manufacturer" {
 		simplifiedTag.Value = te.normalizeManufacturer(tag.Value)
 		// Unify manufacturer tag names
 		simplifiedTag.Key = "manufacturer"
 	}
-	
+
 	// Clean problematic characters from all tag values for URL compatibility
 	simplifiedTag.Value = te.cleanTagValueForURL(simplifiedTag.Value)
-	
+
 	return simplifiedTag
 }
 
-// simplifySensorName extracts meaningful information from complex sensor names
-func (te *TagEnhancer) simplifySensorName(sensorName string) string {
-	// Examples: "sensor_temp_ctrl_A.4" -> "Controller A Sensor 4"
-	//          "sensor_temp_iom_0.A.1" -> "IOM A Sensor 1"
-	//          "sensor_temp_psu_0.0.0" -> "PSU 0 Sensor 0"
-	
-	if strings.HasPrefix(sensorName, "sensor_temp_") {
-		parts := strings.Split(strings.TrimPrefix(sensorName, "sensor_temp_"), ".")
-		if len(parts) >= 2 {
-			component := parts[0]
-			sensorNum := parts[len(parts)-1]
-			
-			// Beautify component names
-			switch {
-			case strings.HasPrefix(component, "ctrl_"):
-				controller := strings.TrimPrefix(component, "ctrl_")
-				return "Controller " + strings.ToUpper(controller) + " Sensor " + sensorNum
-			case strings.HasPrefix(component, "iom_"):
-				iomParts := strings.Split(strings.TrimPrefix(component, "iom_"), "_")
-				if len(iomParts) >= 2 {
-					return "IOM " + strings.ToUpper(iomParts[1]) + " Sensor " + sensorNum
-				}
-				return "IOM Sensor " + sensorNum
-			case strings.HasPrefix(component, "psu_"):
-				psuParts := strings.Split(strings.TrimPrefix(component, "psu_"), "_")
-				if len(psuParts) >= 2 {
-					return "PSU " + psuParts[1] + " Sensor " + sensorNum
-				}
-				return "PSU Sensor " + sensorNum
-			}
-		}
-	}
-	
-	// Fallback: return original if no pattern matches
-	return sensorName
-}
 
 // simplifyControllerName standardizes controller identifiers
 func (te *TagEnhancer) simplifyControllerName(controllerName string) string {
@@ -238,32 +199,17 @@ func (te *TagEnhancer) simplifyDriveName(driveName string) string {
 	return driveName
 }
 
-// simplifyPoolName creates cleaner pool identifiers
-func (te *TagEnhancer) simplifyPoolName(poolName string) string {
-	// Examples: "dgA01" -> "Pool A", "A" -> "Pool A"
-	if len(poolName) == 1 && poolName >= "A" && poolName <= "Z" {
-		return "Pool " + poolName
-	}
-	if strings.HasPrefix(strings.ToLower(poolName), "dg") && len(poolName) > 2 {
-		// Extract letter after "dg"
-		letter := string(poolName[2])
-		if letter >= "A" && letter <= "Z" || letter >= "a" && letter <= "z" {
-			return "Pool " + strings.ToUpper(letter)
-		}
-	}
-	return poolName
-}
 
 // GetRecommendedCollections returns the list of standard Redfish collections
 func (te *TagEnhancer) GetRecommendedCollections() []string {
 	return []string{
-		"system",        // General system health and info
-		"thermal",       // Temperatures, fans, cooling
-		"power",         // Power supplies, consumption
-		"processor",     // CPU hardware
-		"memory",        // RAM hardware
-		"storage",       // RAID controllers, pools, volumes
-		"drives",        // Individual drives
+		"system",         // General system health and info
+		"thermal",        // Temperatures, fans, cooling
+		"power",          // Power supplies, consumption
+		"processor",      // CPU hardware
+		"memory",         // RAM hardware
+		"storage",        // RAID controllers, pools, volumes
+		"drives",         // Individual drives
 		"networkadapter", // Network cards
 	}
 }
@@ -271,16 +217,16 @@ func (te *TagEnhancer) GetRecommendedCollections() []string {
 // GetCollectionDescription returns a human-readable description of each collection
 func (te *TagEnhancer) GetCollectionDescription(collection string) string {
 	descriptions := map[string]string{
-		"system":        "General system health, power state, hardware info",
-		"thermal":       "Temperature sensors, fans, cooling systems",
-		"power":         "Power supplies, power consumption, PSU health",
-		"processor":     "CPU hardware, processor health and summary",
-		"memory":        "RAM hardware, memory capacity and health",
-		"storage":       "RAID controllers, storage pools, volumes",
-		"drives":        "Individual drive health, capacity, operations",
+		"system":         "General system health, power state, hardware info",
+		"thermal":        "Temperature sensors, fans, cooling systems",
+		"power":          "Power supplies, power consumption, PSU health",
+		"processor":      "CPU hardware, processor health and summary",
+		"memory":         "RAM hardware, memory capacity and health",
+		"storage":        "RAID controllers, storage pools, volumes",
+		"drives":         "Individual drive health, capacity, operations",
 		"networkadapter": "Network interface cards and connectivity",
 	}
-	
+
 	if desc, exists := descriptions[collection]; exists {
 		return desc
 	}
@@ -290,7 +236,7 @@ func (te *TagEnhancer) GetCollectionDescription(collection string) string {
 // isPoolDescription checks if a description contains pool information
 func (te *TagEnhancer) isPoolDescription(description string) bool {
 	descLower := strings.ToLower(description)
-	
+
 	// Common pool indicators in descriptions
 	poolIndicators := []string{
 		"pool",
@@ -299,27 +245,27 @@ func (te *TagEnhancer) isPoolDescription(description string) bool {
 		"disk group",
 		"storage pool",
 	}
-	
+
 	for _, indicator := range poolIndicators {
 		if strings.Contains(descLower, indicator) {
 			return true
 		}
 	}
-	
+
 	// Check for patterns like "dgA01", "Pool A", etc.
 	if strings.HasPrefix(descLower, "dg") || strings.Contains(descLower, "pool") {
 		return true
 	}
-	
+
 	return false
 }
 
 // extractPoolNameFromDescription extracts pool name from description field
 func (te *TagEnhancer) extractPoolNameFromDescription(description string) string {
 	descLower := strings.ToLower(description)
-	
+
 	// Try to extract pool name from various patterns
-	
+
 	// Pattern: "Pool A" -> "Pool A"
 	if strings.Contains(descLower, "pool ") {
 		// Extract the part after "pool "
@@ -330,7 +276,7 @@ func (te *TagEnhancer) extractPoolNameFromDescription(description string) string
 			}
 		}
 	}
-	
+
 	// Pattern: "dgA01" -> "Pool A"
 	if strings.HasPrefix(descLower, "dg") && len(description) > 2 {
 		letter := string(description[2])
@@ -338,7 +284,7 @@ func (te *TagEnhancer) extractPoolNameFromDescription(description string) string
 			return "Pool " + strings.ToUpper(letter)
 		}
 	}
-	
+
 	// Pattern: "RAID Group 1" -> "Pool 1"
 	if strings.Contains(descLower, "raid group") {
 		parts := strings.Fields(description)
@@ -348,32 +294,16 @@ func (te *TagEnhancer) extractPoolNameFromDescription(description string) string
 			}
 		}
 	}
-	
+
 	// Fallback: use original description but clean it up
-	return strings.Title(strings.ToLower(description))
+	// Note: Using simple capitalization instead of deprecated strings.Title
+	desc := strings.ToLower(description)
+	if len(desc) > 0 {
+		return strings.ToUpper(string(desc[0])) + desc[1:]
+	}
+	return desc
 }
 
-// isSensorNameTooComplex determines if a sensor name is too complex for user filtering
-func (te *TagEnhancer) isSensorNameTooComplex(sensorName string) bool {
-	// Skip very long sensor names
-	if len(sensorName) > 50 {
-		return true
-	}
-	
-	// Skip sensor names with multiple dots or complex IDs
-	dotCount := strings.Count(sensorName, ".")
-	if dotCount > 2 {
-		return true
-	}
-	
-	// Skip sensor names that look like internal IDs rather than user-friendly names
-	if strings.Contains(sensorName, "_temp_") || strings.Contains(sensorName, "_sensor_") {
-		return true
-	}
-	
-	// Keep sensor names that are already user-friendly
-	return false
-}
 
 // isBetterTagValue determines if a new tag value is better than the existing one
 func (te *TagEnhancer) isBetterTagValue(key, newValue string, existingTags []tags.Tag) bool {
@@ -381,7 +311,7 @@ func (te *TagEnhancer) isBetterTagValue(key, newValue string, existingTags []tag
 	for _, tag := range existingTags {
 		if tag.Key == key {
 			existingValue := tag.Value
-			
+
 			// For endpoint tags, prefer hostname over full URL for consistency
 			if key == "endpoint" {
 				// Prefer shorter, cleaner hostname over full URL
@@ -392,7 +322,7 @@ func (te *TagEnhancer) isBetterTagValue(key, newValue string, existingTags []tag
 					return false
 				}
 			}
-			
+
 			// For manufacturer tags, prefer the normalized value
 			if key == "manufacturer" {
 				normalizedNew := te.normalizeManufacturer(newValue)
@@ -402,21 +332,21 @@ func (te *TagEnhancer) isBetterTagValue(key, newValue string, existingTags []tag
 					return len(newValue) < len(existingValue)
 				}
 			}
-			
+
 			// For names vs IDs, prefer names
 			if strings.Contains(existingValue, "_id") && !strings.Contains(newValue, "_id") {
 				return true
 			}
-			
+
 			// Prefer shorter, cleaner values
 			if len(newValue) < len(existingValue) && len(newValue) > 0 {
 				return true
 			}
-			
+
 			break
 		}
 	}
-	
+
 	return false
 }
 
@@ -445,7 +375,7 @@ func (te *TagEnhancer) isFullURL(value string) bool {
 func (te *TagEnhancer) normalizeManufacturer(manufacturer string) string {
 	// Convert to lowercase for comparison
 	mfr := strings.ToLower(strings.TrimSpace(manufacturer))
-	
+
 	// Normalize common manufacturer variations
 	switch {
 	case strings.Contains(mfr, "dell"):
@@ -480,7 +410,12 @@ func (te *TagEnhancer) normalizeManufacturer(manufacturer string) string {
 		return "Kingston"
 	default:
 		// If no match, return the original but properly capitalized
-		return strings.Title(strings.ToLower(manufacturer))
+		// Note: Using simple capitalization instead of deprecated strings.Title
+		mfr := strings.ToLower(manufacturer)
+		if len(mfr) > 0 {
+			return strings.ToUpper(string(mfr[0])) + mfr[1:]
+		}
+		return mfr
 	}
 }
 
@@ -489,38 +424,37 @@ func (te *TagEnhancer) cleanTagValueForURL(value string) string {
 	// List of problematic characters to remove from tag values
 	// These cause issues with URL encoding/parsing
 	problematicChars := []string{
-		",",  // Comma - often used as separator in URL params
-		";",  // Semicolon - can be interpreted as parameter separator
-		"(",  // Parentheses - can cause parsing issues
+		",", // Comma - often used as separator in URL params
+		";", // Semicolon - can be interpreted as parameter separator
+		"(", // Parentheses - can cause parsing issues
 		")",
-		"[",  // Brackets - can interfere with array notation
+		"[", // Brackets - can interfere with array notation
 		"]",
-		"{",  // Braces - can interfere with template syntax
+		"{", // Braces - can interfere with template syntax
 		"}",
-		"<",  // Angle brackets - can be interpreted as HTML
+		"<", // Angle brackets - can be interpreted as HTML
 		">",
 		"|",  // Pipe - often used as separator
 		"\\", // Backslash - escape character issues
 		"\"", // Quotes - can break string parsing
 		"'",
-		"`",  // Backtick - template literal issues
-		"#",  // Hash - URL fragment identifier
-		"&",  // Ampersand - URL parameter separator
-		"?",  // Question mark - URL query start
-		"=",  // Equals - URL parameter assignment
+		"`", // Backtick - template literal issues
+		"#", // Hash - URL fragment identifier
+		"&", // Ampersand - URL parameter separator
+		"?", // Question mark - URL query start
+		"=", // Equals - URL parameter assignment
 	}
-	
+
 	cleanValue := value
 	for _, char := range problematicChars {
 		cleanValue = strings.ReplaceAll(cleanValue, char, "")
 	}
-	
+
 	// Replace multiple spaces with single space
 	cleanValue = strings.Join(strings.Fields(cleanValue), " ")
-	
+
 	// Trim spaces
 	cleanValue = strings.TrimSpace(cleanValue)
-	
+
 	return cleanValue
 }
-

@@ -11,15 +11,15 @@ import (
 // HTTPCollector implements the OtelCollector interface for HTTP protocol
 type HTTPCollector struct {
 	// Configuration
-	endpoint      string
-	headers       map[string]string
-	timeout       time.Duration
+	endpoint       string
+	headers        map[string]string
+	timeout        time.Duration
 	supportedTypes []TelemetryType
-	
+
 	// Authentication
-	username      string
-	password      string
-	token         string
+	username string
+	password string
+	token    string
 }
 
 // NewHTTPCollector creates a new instance of an HTTP-based OpenTelemetry collector
@@ -28,19 +28,19 @@ func NewHTTPCollector(config map[string]interface{}) (*HTTPCollector, error) {
 	if !ok || endpoint == "" {
 		return nil, fmt.Errorf("HTTP collector requires a valid endpoint")
 	}
-	
+
 	collector := &HTTPCollector{
-		endpoint:      endpoint,
-		headers:       make(map[string]string),
-		timeout:       30 * time.Second,
+		endpoint:       endpoint,
+		headers:        make(map[string]string),
+		timeout:        30 * time.Second,
 		supportedTypes: []TelemetryType{TelemetryMetrics, TelemetryTraces, TelemetryLogs},
 	}
-	
+
 	// Apply optional configurations
 	if timeout, ok := config["timeout"].(int); ok {
 		collector.timeout = time.Duration(timeout) * time.Second
 	}
-	
+
 	if headers, ok := config["headers"].(map[string]interface{}); ok {
 		for k, v := range headers {
 			if strVal, ok := v.(string); ok {
@@ -48,20 +48,20 @@ func NewHTTPCollector(config map[string]interface{}) (*HTTPCollector, error) {
 			}
 		}
 	}
-	
+
 	// Authentication settings
 	if username, ok := config["username"].(string); ok {
 		collector.username = username
 	}
-	
+
 	if password, ok := config["password"].(string); ok {
 		collector.password = password
 	}
-	
+
 	if token, ok := config["token"].(string); ok {
 		collector.token = token
 	}
-	
+
 	// Configure supported telemetry types if specified
 	if types, ok := config["telemetry_types"].([]interface{}); ok {
 		collector.supportedTypes = []TelemetryType{}
@@ -71,7 +71,7 @@ func NewHTTPCollector(config map[string]interface{}) (*HTTPCollector, error) {
 			}
 		}
 	}
-	
+
 	return collector, nil
 }
 
@@ -98,7 +98,7 @@ func (c *HTTPCollector) CollectTelemetry(ctx context.Context, telemetryType Tele
 	if !c.IsSupported(telemetryType) {
 		return nil, fmt.Errorf("telemetry type %s is not supported by this collector", telemetryType)
 	}
-	
+
 	// TODO: Implement actual HTTP collection using the OpenTelemetry HTTP API
 	return []data_store.DataPoint{}, nil
 }
@@ -118,13 +118,3 @@ func (c *HTTPCollector) GetSupportedTelemetryTypes() []TelemetryType {
 	return c.supportedTypes
 }
 
-// constructURL builds the appropriate URL for the telemetry type
-func (c *HTTPCollector) constructURL(telemetryType TelemetryType) string {
-	// Base URL format: http(s)://host:port/v1/[metrics|traces|logs]
-	endpoint := c.endpoint
-	if endpoint[len(endpoint)-1] == '/' {
-		endpoint = endpoint[:len(endpoint)-1]
-	}
-	
-	return fmt.Sprintf("%s/v1/%s", endpoint, telemetryType)
-}

@@ -87,7 +87,11 @@ func (a *autoUpdate) createScheduler() {
 	if a.scheduler != nil {
 		scheduler := *a.scheduler
 		// shutdown existing scheduler
-		scheduler.Shutdown(context.Background())
+		if err := scheduler.Shutdown(context.Background()); err != nil {
+			a.logger.Error().
+				Err(err).
+				Msg("Failed to shutdown existing scheduler")
+		}
 	}
 	scheduler = periodic_scheduler.NewPeriodicScheduler(periodic_scheduler.PeriodicSchedulerConfig{
 		Interval:          a.GetUpdateCheckInterval(),
@@ -104,7 +108,12 @@ func (a *autoUpdate) Start(quitChannel chan struct{}) error {
 	a.configSource.OnConfigChanged(a.onConfigChange)
 
 	a.createScheduler()
-	(*a.scheduler).Start(quitChannel)
+	if err := (*a.scheduler).Start(quitChannel); err != nil {
+		a.logger.Error().
+			Err(err).
+			Msg("Failed to start scheduler")
+		return fmt.Errorf("failed to start auto-update scheduler: %w", err)
+	}
 
 	return nil
 }
@@ -112,19 +121,36 @@ func (a *autoUpdate) Start(quitChannel chan struct{}) error {
 func (a *autoUpdate) Shutdown(ctx context.Context) error {
 	scheduler := *a.scheduler
 	if scheduler != nil {
-		scheduler.Shutdown(ctx)
+		if err := scheduler.Shutdown(ctx); err != nil {
+			a.logger.Error().
+				Err(err).
+				Msg("Failed to shutdown scheduler")
+			return fmt.Errorf("failed to shutdown auto-update scheduler: %w", err)
+		}
 	}
 	return nil
 }
 
 func (a *autoUpdate) onConfigChange(string) {
-	a.PeriodicalCheckForUpdate()
+	if err := a.PeriodicalCheckForUpdate(); err != nil {
+		a.logger.Error().
+			Err(err).
+			Msg("Failed to check for update during config change")
+	}
 	// In case interval config changed, recreate the scheduler
 	scheduler := *a.scheduler
 	if scheduler != nil && scheduler.GetInterval() != a.GetUpdateCheckInterval() {
-		scheduler.Shutdown(context.Background())
+		if err := scheduler.Shutdown(context.Background()); err != nil {
+			a.logger.Error().
+				Err(err).
+				Msg("Failed to shutdown scheduler during config change")
+		}
 		a.createScheduler()
-		a.Start(nil)
+		if err := a.Start(nil); err != nil {
+			a.logger.Error().
+				Err(err).
+				Msg("Failed to restart scheduler during config change")
+		}
 	}
 }
 
@@ -178,46 +204,46 @@ func (a *autoUpdate) doUpdate(url string) error {
 		a.logger.Info().Msg("Dry run: Skipping update")
 		return nil
 	}
-	
+
 	a.logger.Info().
 		Str("download_url", url).
 		Msg("Downloading update binary")
-	
+
 	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to download update: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// Validate HTTP response
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download update: HTTP %d %s from %s", 
+		return fmt.Errorf("failed to download update: HTTP %d %s from %s",
 			resp.StatusCode, resp.Status, url)
 	}
-	
+
 	// Validate Content-Type (should be application/octet-stream or similar for binaries)
 	contentType := resp.Header.Get("Content-Type")
 	if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "application/json") {
-		return fmt.Errorf("invalid content type for binary download: %s (expected binary, got %s)", 
+		return fmt.Errorf("invalid content type for binary download: %s (expected binary, got %s)",
 			contentType, url)
 	}
-	
+
 	// Validate Content-Length (binary should be several MB)
 	contentLength := resp.ContentLength
 	if contentLength > 0 && contentLength < 1024*1024 { // Less than 1MB is suspicious
 		return fmt.Errorf("binary too small: %d bytes (expected at least 1MB)", contentLength)
 	}
-	
+
 	a.logger.Info().
 		Str("content_type", contentType).
 		Int64("content_length", contentLength).
 		Msg("Binary download validation passed, applying update")
-	
+
 	err = selfupdate.Apply(resp.Body, selfupdate.Options{})
 	if err != nil {
 		return fmt.Errorf("failed to apply update: %w", err)
 	}
-	
+
 	a.logger.Info().Msg("Update applied successfully")
 	return nil
 }
@@ -309,7 +335,7 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 		// There is an exact match
 		return expectedVersionMetadata.Version
 	}
-	
+
 	// Special handling for beta versions which don't parse as constraints
 	if isBetaVersion(expectedVersionStr) {
 		a.logger.Info().
@@ -385,10 +411,10 @@ func (a *autoUpdate) GetBinaryUrl(
 
 	filename := a.getBinaryNameForOptions(os, arch)
 	formattedVersion := FormatVersionForUrl(version)
-	
+
 	// Always use the same download path pattern, regardless of beta or not
 	downloadPath := fmt.Sprintf(VERSION_BINARY_PATH, formattedVersion, filename)
-	
+
 	return url.JoinPath(registryUrl, downloadPath)
 }
 

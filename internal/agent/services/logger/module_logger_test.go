@@ -22,7 +22,7 @@ func TestSetModuleLogLevel(t *testing.T) {
 
 	// Test setting a log level
 	SetModuleLogLevel("test.module", zerolog.ErrorLevel)
-	
+
 	if moduleLogLevels["test.module"] != zerolog.ErrorLevel {
 		t.Errorf("Expected test.module level to be ErrorLevel, got %v", moduleLogLevels["test.module"])
 	}
@@ -95,26 +95,26 @@ func TestNewModuleLogger(t *testing.T) {
 	// Create a base logger
 	var buf bytes.Buffer
 	baseLogger := zerolog.New(&buf).With().Timestamp().Logger()
-	
+
 	// Set specific level for test module
 	SetModuleLogLevel("test.module", zerolog.WarnLevel)
-	
+
 	// Create module logger
 	moduleLogger := NewModuleLogger(&baseLogger, "test.module")
-	
+
 	// Test that debug message is filtered out (level is WARN)
 	moduleLogger.Debug().Msg("This should not appear")
 	if buf.Len() > 0 {
 		t.Error("Debug message should have been filtered out")
 	}
-	
+
 	// Test that warn message appears
 	buf.Reset()
 	moduleLogger.Warn().Msg("This should appear")
 	if buf.Len() == 0 {
 		t.Error("Warn message should have appeared")
 	}
-	
+
 	// Check that the module field is present in the log
 	logOutput := buf.String()
 	if !bytes.Contains(buf.Bytes(), []byte("test.module")) {
@@ -138,16 +138,16 @@ func TestGetModuleLogLevels(t *testing.T) {
 	// Set some test levels
 	SetModuleLogLevel("test.module1", zerolog.DebugLevel)
 	SetModuleLogLevel("test.module2", zerolog.ErrorLevel)
-	
+
 	levels := GetModuleLogLevels()
-	
+
 	if levels["test.module1"] != zerolog.DebugLevel {
 		t.Errorf("Expected test.module1 to be DebugLevel, got %v", levels["test.module1"])
 	}
 	if levels["test.module2"] != zerolog.ErrorLevel {
 		t.Errorf("Expected test.module2 to be ErrorLevel, got %v", levels["test.module2"])
 	}
-	
+
 	// Ensure we got a copy, not the original map
 	levels["test.module1"] = zerolog.InfoLevel
 	if moduleLogLevels["test.module1"] != zerolog.DebugLevel {
@@ -159,16 +159,16 @@ func TestModuleLoggerWithUnknownModule(t *testing.T) {
 	// Create a base logger
 	var buf bytes.Buffer
 	baseLogger := zerolog.New(&buf).With().Timestamp().Logger()
-	
+
 	// Create module logger for unknown module (should use InfoLevel default)
 	moduleLogger := NewModuleLogger(&baseLogger, "unknown.module")
-	
+
 	// Test that debug message is filtered out (default level is INFO)
 	moduleLogger.Debug().Msg("This should not appear")
 	if buf.Len() > 0 {
 		t.Error("Debug message should have been filtered out for unknown module")
 	}
-	
+
 	// Test that info message appears
 	buf.Reset()
 	moduleLogger.Info().Msg("This should appear")

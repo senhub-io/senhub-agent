@@ -108,10 +108,10 @@ type windowsCollector struct {
 func newCPUCollector(config map[string]interface{}, baseLogger *logger.Logger) (osCollector, error) {
 	// Initialize PDH logger
 	pdh.InitializePDHLogger(baseLogger)
-	
+
 	// Create module logger for host probes
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.host")
-	
+
 	query, err := pdh.NewQuery()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PDH query: %v", err)

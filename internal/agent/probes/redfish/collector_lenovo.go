@@ -197,7 +197,7 @@ func (c *LenovoCollector) collectSystemMetrics(ctx context.Context, timestamp ti
 						machineTypeStr := fmt.Sprintf("%v", machineType)
 						systemTags = append(systemTags, tags.Tag{Key: "machine_type", Value: machineTypeStr})
 					}
-					
+
 					// Add location details if available
 					if location, has := lenovoOem["Location"]; has {
 						locationStr := fmt.Sprintf("%v", location)

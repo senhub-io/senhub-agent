@@ -1,7 +1,6 @@
 //go:build windows || !windows
 
 // internal/agent/probes/cpu/cpuProbe.go
-//
 package cpu
 
 import (
@@ -29,10 +28,10 @@ func NewCpuProbe(config map[string]interface{}, baseLogger *logger.Logger) (type
 	if cfgInterval, ok := config["interval"].(int); ok {
 		interval = time.Duration(cfgInterval) * time.Second
 	}
-	
+
 	// Create module-specific logger for CPU probe
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.cpu")
-	
+
 	probe := &cpuProbe{
 		BaseProbe:    &types.BaseProbe{}, // Initialisation de BaseProbe
 		rawConfig:    config,

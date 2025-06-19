@@ -68,7 +68,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		logger.Info().Msg("Initializing agent in offline mode")
 		localConfiguration = configuration.NewLocalConfiguration(args, logger)
 		configProvider = localConfiguration
-		
+
 		// Get the agent key directly from the local configuration data
 		agentKey = localConfiguration.GetAgentKey()
 		if agentKey == "" {
@@ -110,7 +110,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		)
 		remoteConfiguration = configuration.NewRemoteConfiguration(senhubServer, logger)
 		configProvider = remoteConfiguration
-		
+
 		// Update agentConfiguration to include remoteConfiguration reference
 		agentConfiguration = configuration.NewAgentConfigurationWithRemote(
 			agentKey,
@@ -148,7 +148,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 				Str("url", autoUpdateConfig.URL).
 				Bool("enabled", autoUpdateConfig.Enabled).
 				Msg("🔄 Auto-update enabled in offline mode")
-			
+
 			updater = auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
 				ConfigSource: localConfiguration,
 				Logger:       logger,
@@ -176,7 +176,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 
 func (a agent) Start() error {
 	var servicesToStart []Service
-	
+
 	if a.isOfflineMode {
 		// Offline mode: start local configuration, store, and sensors
 		servicesToStart = []Service{
@@ -184,7 +184,7 @@ func (a agent) Start() error {
 			a.store,
 			a.sensors,
 		}
-		
+
 		// Add auto-updater if enabled in offline mode
 		if a.updater != nil {
 			a.logger.Info().Msg("Adding auto-updater to offline mode services")
@@ -275,25 +275,25 @@ func detectAgentMode(args *agentCliArgs.ParsedArgs, logger *logger.Logger) bool 
 		logger.Info().Msg("Offline mode explicitly requested")
 		return true
 	}
-	
+
 	// Check if configuration file exists
 	configPath := args.ConfigPath
 	if configPath == "" {
 		configPath = "./agent-config.yaml"
 	}
-	
+
 	if _, err := os.Stat(configPath); err == nil {
 		// Config file exists - auto-detect offline mode
 		logger.Info().
 			Str("config_path", configPath).
 			Msg("Configuration file detected - automatically switching to offline mode")
-		
+
 		// Update args to reflect the detected mode
 		args.Offline = true
 		args.ConfigPath = configPath
 		return true
 	}
-	
+
 	// No config file - check if we have auth key for online mode
 	if args.AuthenticationKey == "" {
 		logger.Error().
@@ -303,7 +303,7 @@ func detectAgentMode(args *agentCliArgs.ParsedArgs, logger *logger.Logger) bool 
 		logger.Info().Msg("To run in online mode: provide authentication key with '--authentication-key YOUR_KEY'")
 		log.Fatal("Cannot determine agent mode - need either config file or authentication key")
 	}
-	
+
 	// Have auth key but no config file - online mode
 	logger.Info().Msg("Authentication key provided - running in online mode")
 	return false

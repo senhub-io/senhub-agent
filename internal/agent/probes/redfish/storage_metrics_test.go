@@ -96,7 +96,7 @@ func TestStorageMetricsCollection(t *testing.T) {
 		metricNames := make(map[string]bool)
 		for _, metric := range metrics {
 			metricNames[metric.Name] = true
-			
+
 			// Verify host tag is set
 			hasHost := false
 			for _, tag := range metric.Tags {
@@ -106,8 +106,8 @@ func TestStorageMetricsCollection(t *testing.T) {
 				}
 			}
 			assert.True(t, hasHost, "Host tag should be set on all metrics")
-			
-			// Verify pool-specific tags are set 
+
+			// Verify pool-specific tags are set
 			hasPool := false
 			hasController := false
 			hasDescription := false
@@ -125,7 +125,7 @@ func TestStorageMetricsCollection(t *testing.T) {
 			assert.True(t, hasPool, "pool_name tag should be set on pool metrics")
 			assert.True(t, hasController, "controller tag should be set on pool metrics")
 			assert.True(t, hasDescription, "description tag should be set on pool metrics")
-			
+
 			// Check timestamp is correctly set
 			assert.Equal(t, testTimestamp, metric.Timestamp)
 		}
@@ -399,14 +399,14 @@ func TestStorageMetricsCollection(t *testing.T) {
 		metricNames := make(map[string]bool)
 		for _, metric := range metrics {
 			metricNames[metric.Name] = true
-			
+
 			// Verify host tag is set
 			hasHost := false
 			hasVolumeID := false
 			hasVolumeName := false
 			hasPoolID := false
 			hasRAIDType := false
-			
+
 			for _, tag := range metric.Tags {
 				if tag.Key == "host" && tag.Value == "TestSystem" {
 					hasHost = true
@@ -424,13 +424,13 @@ func TestStorageMetricsCollection(t *testing.T) {
 					hasRAIDType = true
 				}
 			}
-			
+
 			assert.True(t, hasHost, "Host tag should be set on all metrics")
 			assert.True(t, hasVolumeID, "volume_id tag should be set on all metrics")
 			assert.True(t, hasVolumeName, "volume_name tag should be set on all metrics")
 			assert.True(t, hasPoolID, "pool_name tag should be set on all metrics")
 			assert.True(t, hasRAIDType, "raid_type tag should be set on all metrics")
-			
+
 			// Check timestamp is correctly set
 			assert.Equal(t, testTimestamp, metric.Timestamp)
 		}

@@ -27,11 +27,11 @@ func (p *BaseProbe) SetOnDataPoints(callback data_store.AddCallback) {
 // EnrichDataPointsWithProbeName adds the probe name tag to all datapoints
 func (p *BaseProbe) EnrichDataPointsWithProbeName(datapoints []data_store.DataPoint, probeName string) []data_store.DataPoint {
 	enrichedDataPoints := make([]data_store.DataPoint, len(datapoints))
-	
+
 	for i, dp := range datapoints {
 		// Copy the datapoint
 		enrichedDataPoints[i] = dp
-		
+
 		// Add probe_name tag
 		enrichedDataPoints[i].Tags = append([]tags.Tag{}, dp.Tags...)
 		enrichedDataPoints[i].Tags = append(enrichedDataPoints[i].Tags, tags.Tag{
@@ -39,6 +39,6 @@ func (p *BaseProbe) EnrichDataPointsWithProbeName(datapoints []data_store.DataPo
 			Value: probeName,
 		})
 	}
-	
+
 	return enrichedDataPoints
 }
