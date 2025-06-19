@@ -103,9 +103,9 @@ func main() {
 		args := cliArgs.MustParse()
 		agent.UpdateAgent(args)
 		return
-	case "install", "uninstall", "start", "stop", "status", "run":
+	case "install", "uninstall", "start", "stop", "restart", "status", "run":
 		// For simple commands without required args, handle directly
-		if command == "start" || command == "stop" || command == "status" || command == "uninstall" {
+		if command == "start" || command == "stop" || command == "restart" || command == "status" || command == "uninstall" {
 			handleServiceCommand(command, &cliArgs.ParsedArgs{})
 			return
 		}
@@ -312,6 +312,60 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		if err == nil {
 			fmt.Println("Service stopped successfully")
 		}
+	case "restart":
+		// First check if service is running
+		status, statusErr := s.Status()
+		if statusErr != nil {
+			fmt.Printf("Error checking service status: %v\n", statusErr)
+			os.Exit(1)
+		}
+		
+		fmt.Printf("Current service status: %s\n", getServiceStatusText(status))
+		
+		// Stop the service if it's running
+		if status == service.StatusRunning {
+			fmt.Println("Stopping service...")
+			err = s.Stop()
+			if err != nil {
+				fmt.Printf("Error stopping service: %v\n", err)
+				os.Exit(1)
+			}
+			
+			// Wait and verify the service has stopped
+			fmt.Println("Waiting for service to stop...")
+			maxWaitTime := 10 * time.Second
+			waitInterval := 500 * time.Millisecond
+			elapsed := time.Duration(0)
+			
+			for elapsed < maxWaitTime {
+				time.Sleep(waitInterval)
+				elapsed += waitInterval
+				
+				currentStatus, _ := s.Status()
+				if currentStatus == service.StatusStopped {
+					fmt.Println("Service stopped successfully")
+					break
+				}
+				
+				if elapsed >= maxWaitTime {
+					fmt.Println("Warning: Service may not have stopped completely, proceeding anyway...")
+				}
+			}
+		} else if status == service.StatusStopped {
+			fmt.Println("Service is already stopped")
+		}
+		
+		// Start the service
+		fmt.Println("Starting service...")
+		err = s.Start()
+		if err == nil {
+			fmt.Println("Service restarted successfully")
+			
+			// Verify the service started
+			time.Sleep(1 * time.Second)
+			finalStatus, _ := s.Status()
+			fmt.Printf("Final service status: %s\n", getServiceStatusText(finalStatus))
+		}
 	case "status":
 		status, err := s.Status()
 		if err == nil {
@@ -439,6 +493,7 @@ Service Commands:
     uninstall            Remove the service
     start                Start the service
     stop                 Stop the service
+    restart              Restart the service (stop then start)
     status               Show service status
     version              Show agent version
     run                  Run in console mode (requires --authentication-key OR --offline)
