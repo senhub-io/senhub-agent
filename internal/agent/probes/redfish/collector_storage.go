@@ -1229,7 +1229,13 @@ func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp tim
 
 		// For Dell ME storage, always use AllocatedBytes as the effective capacity
 		// CapacityBytes is often 0 or incorrect, AllocatedBytes is the real pool capacity
-		effectiveCapacity := uint64(poolInfo.Capacity.Data.AllocatedBytes)
+		// Prevent integer overflow by checking bounds and using safe conversion
+		var effectiveCapacity uint64
+		if poolInfo.Capacity.Data.AllocatedBytes < 0 {
+			effectiveCapacity = 0
+		} else {
+			effectiveCapacity = uint64(poolInfo.Capacity.Data.AllocatedBytes) // #nosec G115 - negative values handled above
+		}
 
 		if effectiveCapacity > 0 && poolInfo.RemainingCapacityPercent >= 0 {
 
