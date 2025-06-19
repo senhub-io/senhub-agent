@@ -88,37 +88,37 @@ func (c *GenericCollector) collectMemoryMetrics(ctx context.Context, timestamp t
 
 			// Extract memory metrics from response
 			var dimData struct {
-				CapacityMiB          int     `json:"CapacityMiB"`
-				OperatingSpeedMhz    int     `json:"OperatingSpeedMhz"`
-				MemoryType           string  `json:"MemoryDeviceType"`
-				DataWidthBits        int     `json:"DataWidthBits"`
-				RankCount            int     `json:"RankCount"`
-				Status               *Status `json:"Status"`
-				BaseModuleType       string  `json:"BaseModuleType"`
-				BusWidthBits         int     `json:"BusWidthBits"`
-				Location             struct {
-					Socket     int `json:"Socket"`
+				CapacityMiB       int     `json:"CapacityMiB"`
+				OperatingSpeedMhz int     `json:"OperatingSpeedMhz"`
+				MemoryType        string  `json:"MemoryDeviceType"`
+				DataWidthBits     int     `json:"DataWidthBits"`
+				RankCount         int     `json:"RankCount"`
+				Status            *Status `json:"Status"`
+				BaseModuleType    string  `json:"BaseModuleType"`
+				BusWidthBits      int     `json:"BusWidthBits"`
+				Location          struct {
+					Socket           int `json:"Socket"`
 					MemoryController int `json:"MemoryController"`
-					Channel    int `json:"Channel"`
-					Slot       int `json:"Slot"`
+					Channel          int `json:"Channel"`
+					Slot             int `json:"Slot"`
 				} `json:"Location"`
-				Links               struct {
-					Metrics       struct {
+				Links struct {
+					Metrics struct {
 						OdataID string `json:"@odata.id"`
 					} `json:"Metrics"`
 				} `json:"Links"`
 				MemoryLocation struct {
-					Socket     int `json:"Socket"`
+					Socket           int `json:"Socket"`
 					MemoryController int `json:"MemoryController"`
-					Channel    int `json:"Channel"`
-					Slot       int `json:"Slot"`
+					Channel          int `json:"Channel"`
+					Slot             int `json:"Slot"`
 				} `json:"MemoryLocation"`
-				AllowedSpeedsMHz []int `json:"AllowedSpeedsMHz"`
-				ConfiguredSpeedMHz int `json:"ConfiguredSpeedMHz"`
-				MaxTDPMilliWatts int `json:"MaxTDPMilliWatts"`
-				CacheSizeMiB     int `json:"CacheSizeMiB"`
-				LogicalSizeMiB   int `json:"LogicalSizeMiB"`
-				ErrorCorrection  string `json:"ErrorCorrection"`
+				AllowedSpeedsMHz   []int  `json:"AllowedSpeedsMHz"`
+				ConfiguredSpeedMHz int    `json:"ConfiguredSpeedMHz"`
+				MaxTDPMilliWatts   int    `json:"MaxTDPMilliWatts"`
+				CacheSizeMiB       int    `json:"CacheSizeMiB"`
+				LogicalSizeMiB     int    `json:"LogicalSizeMiB"`
+				ErrorCorrection    string `json:"ErrorCorrection"`
 			}
 			rawJSON, _ := json.Marshal(dimResp)
 			if err := json.Unmarshal(rawJSON, &dimData); err != nil {
@@ -276,28 +276,28 @@ func (c *GenericCollector) collectMemoryMetrics(ctx context.Context, timestamp t
 				} else {
 					// Parse memory metrics
 					var metricsData struct {
-						BlockSizeBytes         int     `json:"BlockSizeBytes"`
-						CurrentPeriodBlocksRead int64  `json:"CurrentPeriodBlocksRead"`
+						BlockSizeBytes             int   `json:"BlockSizeBytes"`
+						CurrentPeriodBlocksRead    int64 `json:"CurrentPeriodBlocksRead"`
 						CurrentPeriodBlocksWritten int64 `json:"CurrentPeriodBlocksWritten"`
-						LifeTime struct {
+						LifeTime                   struct {
 							BlocksRead    int64 `json:"BlocksRead"`
 							BlocksWritten int64 `json:"BlocksWritten"`
 						} `json:"LifeTime"`
-						OperatingSpeedMHz     int     `json:"OperatingSpeedMHz"`
-						TemperatureCelsius    float32 `json:"TemperatureCelsius"`
-						ThrottledCycles       int64   `json:"ThrottledCycles"`
-						BandwidthPercent      float32 `json:"BandwidthPercent"`
-						ThermalMargin         float32 `json:"ThermalMargin"`
-						ConsumedPowerWatts    float32 `json:"ConsumedPowerWatts"`
-						AlarmTrips struct {
-							Temperature  bool `json:"Temperature"`
-							Spares       bool `json:"Spares"`
-							Uncorrectable bool `json:"Uncorrectable"`
+						OperatingSpeedMHz  int     `json:"OperatingSpeedMHz"`
+						TemperatureCelsius float32 `json:"TemperatureCelsius"`
+						ThrottledCycles    int64   `json:"ThrottledCycles"`
+						BandwidthPercent   float32 `json:"BandwidthPercent"`
+						ThermalMargin      float32 `json:"ThermalMargin"`
+						ConsumedPowerWatts float32 `json:"ConsumedPowerWatts"`
+						AlarmTrips         struct {
+							Temperature         bool `json:"Temperature"`
+							Spares              bool `json:"Spares"`
+							Uncorrectable       bool `json:"Uncorrectable"`
 							CorrectableECCError bool `json:"CorrectableECCError"`
 						} `json:"AlarmTrips"`
-						CorrectableECCErrorCount int64   `json:"CorrectableECCErrorCount"`
-						UncorrectableECCErrorCount int64 `json:"UncorrectableECCErrorCount"`
-						Oem                 map[string]interface{} `json:"Oem"`
+						CorrectableECCErrorCount   int64                  `json:"CorrectableECCErrorCount"`
+						UncorrectableECCErrorCount int64                  `json:"UncorrectableECCErrorCount"`
+						Oem                        map[string]interface{} `json:"Oem"`
 					}
 
 					rawJSON, _ := json.Marshal(metricsResp)

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -151,21 +152,21 @@ func TestDebugLogShipper_Write(t *testing.T) {
 		if !strings.Contains(receivedLogs[i], `"level"`) || !strings.Contains(receivedLogs[i], `"message"`) {
 			t.Errorf("Log %d missing required fields: got %s", i, receivedLogs[i])
 		}
-		
+
 		// Extract expected level and message
 		expectedLevel := strings.SplitN(expected, `"level":"`, 2)[1]
 		expectedLevel = strings.SplitN(expectedLevel, `"`, 2)[0]
-		
+
 		expectedMsg := strings.SplitN(expected, `"message":"`, 2)[1]
 		expectedMsg = strings.SplitN(expectedMsg, `"`, 2)[0]
-		
+
 		// Check if the received log contains the expected level and message
 		if !strings.Contains(receivedLogs[i], `"level":"`+expectedLevel+`"`) {
-			t.Errorf("Log %d level mismatch: expected to contain %s, got %s", 
+			t.Errorf("Log %d level mismatch: expected to contain %s, got %s",
 				i, expectedLevel, receivedLogs[i])
 		}
 		if !strings.Contains(receivedLogs[i], `"message":"`+expectedMsg+`"`) {
-			t.Errorf("Log %d message mismatch: expected to contain %s, got %s", 
+			t.Errorf("Log %d message mismatch: expected to contain %s, got %s",
 				i, expectedMsg, receivedLogs[i])
 		}
 	}
@@ -173,9 +174,9 @@ func TestDebugLogShipper_Write(t *testing.T) {
 
 func TestDebugLogShipper_Close(t *testing.T) {
 	// Create a test server
-	received := false
+	var received int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		received = true
+		atomic.StoreInt64(&received, 1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -207,7 +208,7 @@ func TestDebugLogShipper_Close(t *testing.T) {
 	// Give some time for the flush to complete
 	time.Sleep(100 * time.Millisecond)
 
-	if !received {
+	if atomic.LoadInt64(&received) == 0 {
 		t.Error("Close() didn't trigger a flush")
 	}
 

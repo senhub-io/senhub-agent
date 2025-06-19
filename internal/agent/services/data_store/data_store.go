@@ -1,4 +1,3 @@
-
 //senhub-agent/internal/agent/services/data_store/data_store.go
 
 // Package data_store implements configurable data routing system
@@ -16,6 +15,10 @@ import (
 	"fmt"
 
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/strategies/event"
+	"senhub-agent.go/internal/agent/services/data_store/strategies/http"
+	"senhub-agent.go/internal/agent/services/data_store/strategies/prtg"
+	"senhub-agent.go/internal/agent/services/data_store/strategies/senhub"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -57,10 +60,10 @@ type DataStore interface {
 }
 
 type dataStore struct {
-	strategies         []SyncStrategy
-	logger             *logger.ModuleLogger
-	configProvider     configuration.ConfigurationProvider
-	agentConfig        configuration.AgentConfiguration
+	strategies          []SyncStrategy
+	logger              *logger.ModuleLogger
+	configProvider      configuration.ConfigurationProvider
+	agentConfig         configuration.AgentConfiguration
 	transformerRegistry *transformers.TransformerRegistry
 }
 
@@ -215,7 +218,7 @@ func (d *dataStore) Shutdown(ctx context.Context) error {
 func (d *dataStore) GenerateStrategyId(strategyName string, params configuration.StorageConfigParams) string {
 	// Convert map[interface{}]interface{} to map[string]interface{} if needed
 	fixedParams := d.convertMapTypes(params)
-	
+
 	paramsBytes, err := json.Marshal(fixedParams)
 	if err != nil {
 		d.logger.Error().
@@ -311,9 +314,9 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 					Any("old_params", strategy.GetStrategyParams()).
 					Any("new_params", strategyConfig.Params).
 					Msg("Strategy configuration changed, attempting update")
-				
+
 				// Try to update the strategy if it supports live updates
-				if httpStrategy, ok := strategy.(*HTTPSyncStrategy); ok {
+				if httpStrategy, ok := strategy.(*http.HTTPSyncStrategy); ok {
 					if err := httpStrategy.UpdateConfiguration(strategyConfig.Params); err != nil {
 						d.logger.Warn().
 							Err(err).
@@ -342,16 +345,16 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 	switch strategyConfig.Name {
 	case "senhub":
 		d.logger.Debug().Msg("Initializing senhub strategy")
-		strategy = NewSyncStrategySenhub(d.agentConfig, strategyConfig.Params, d.logger.Logger)
+		strategy = senhub.NewSyncStrategySenhub(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
 	case "prtg":
 		d.logger.Debug().Msg("Initializing prtg strategy")
-		strategy = NewSyncStrategyPrtg(d.agentConfig, strategyConfig.Params, d.logger.Logger)
+		strategy = prtg.NewSyncStrategyPrtg(d.agentConfig, strategyConfig.Params, d.logger.Logger)
 	case "event":
 		d.logger.Debug().Msg("Initializing event strategy")
-		strategy = NewEventSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger)
+		strategy = event.NewEventSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
 	case "http":
 		d.logger.Debug().Msg("Initializing HTTP strategy")
-		strategy = NewHTTPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger)
+		strategy = http.NewHTTPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
 		d.logger.Debug().Bool("initialized", strategy != nil).Msg("HTTP strategy created")
 	default:
 		d.logger.Error().
@@ -392,17 +395,17 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 	if len(datapoints) == 0 {
 		return datapoints
 	}
-	
+
 	correctedDatapoints := make([]datapoint.DataPoint, len(datapoints))
 	correctionCount := 0
-	
+
 	for i, dp := range datapoints {
 		// Convert tags from []tags.Tag to map[string]string for transformer
 		tags := make(map[string]string)
 		for _, tag := range dp.Tags {
 			tags[tag.Key] = tag.Value
 		}
-		
+
 		// Get probe name from tags to load appropriate transformer
 		probeName := tags["probe_name"]
 		if probeName == "" {
@@ -410,7 +413,7 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 			correctedDatapoints[i] = dp
 			continue
 		}
-		
+
 		// Load transformer for this probe
 		transformer, err := d.transformerRegistry.LoadTransformer(probeName, "friendly")
 		if err != nil {
@@ -421,7 +424,7 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 			correctedDatapoints[i] = dp
 			continue
 		}
-		
+
 		// Try to apply unit corrections if transformer supports them
 		correctedValue := dp.Value
 		if defTransformer, ok := transformer.(interface {
@@ -432,7 +435,7 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 			if newValue, applied := defTransformer.ApplyUnitCorrection(dp.Name, originalFloat64, tags); applied {
 				correctedValue = float32(newValue)
 				correctionCount++
-				
+
 				d.logger.Info().
 					Str("metric", dp.Name).
 					Str("probe", probeName).
@@ -442,7 +445,7 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 					Msg("🔧 Unit correction applied to datapoint - ensuring consistent units across all strategies")
 			}
 		}
-		
+
 		// Create corrected datapoint
 		correctedDatapoints[i] = datapoint.DataPoint{
 			Name:      dp.Name,
@@ -451,13 +454,13 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 			Tags:      dp.Tags, // Keep original tags structure
 		}
 	}
-	
+
 	if correctionCount > 0 {
 		d.logger.Info().
 			Int("total_datapoints", len(datapoints)).
 			Int("corrections_applied", correctionCount).
 			Msg("✅ Unit corrections completed - all strategies will receive corrected metrics")
 	}
-	
+
 	return correctedDatapoints
 }

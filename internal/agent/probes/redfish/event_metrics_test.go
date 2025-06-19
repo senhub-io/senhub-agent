@@ -148,24 +148,24 @@ func TestEventMetricsCollection(t *testing.T) {
 		// Check severity counts
 		assert.Contains(t, metricMap, "hardware.logs.entries.critical")
 		assert.Equal(t, float32(1), metricMap["hardware.logs.entries.critical"])
-		
+
 		assert.Contains(t, metricMap, "hardware.logs.entries.warning")
 		assert.Equal(t, float32(1), metricMap["hardware.logs.entries.warning"])
-		
+
 		assert.Contains(t, metricMap, "hardware.logs.entries.info")
 		assert.Equal(t, float32(2), metricMap["hardware.logs.entries.info"])
 
 		// Check timeframe counts
 		assert.Contains(t, metricMap, "hardware.logs.entries.last_24h")
 		assert.Equal(t, float32(3), metricMap["hardware.logs.entries.last_24h"])
-		
+
 		assert.Contains(t, metricMap, "hardware.logs.entries.last_7d")
 		assert.Equal(t, float32(3), metricMap["hardware.logs.entries.last_7d"])
 
 		// Check event service metrics
 		assert.Contains(t, metricMap, "hardware.eventservice.health")
 		assert.Equal(t, float32(0), metricMap["hardware.eventservice.health"]) // OK = 0
-		
+
 		assert.Contains(t, metricMap, "hardware.eventservice.subscriptions")
 		assert.Equal(t, float32(1), metricMap["hardware.eventservice.subscriptions"])
 	})

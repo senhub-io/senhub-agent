@@ -1,4 +1,4 @@
-package data_store
+package prtg
 
 import (
 	"net/http"
@@ -170,7 +170,9 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			config,
 			&logger,
 		)
-		strategy.ValidateConfigParams(config)
+		if err := strategy.ValidateConfigParams(config); err != nil {
+			t.Errorf("ValidateConfigParams() error = %v", err)
+		}
 		err := strategy.AddDataPoints([]datapoint.DataPoint{
 			{
 				Name:      "test",
@@ -204,7 +206,9 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			config,
 			&logger,
 		)
-		strategy.ValidateConfigParams(config)
+		if err := strategy.ValidateConfigParams(config); err != nil {
+			t.Errorf("ValidateConfigParams() error = %v", err)
+		}
 
 		err := strategy.AddDataPoints([]datapoint.DataPoint{
 			{
@@ -249,7 +253,9 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			config,
 			&logger,
 		)
-		strategy.ValidateConfigParams(config)
+		if err := strategy.ValidateConfigParams(config); err != nil {
+			t.Errorf("ValidateConfigParams() error = %v", err)
+		}
 
 		err := strategy.AddDataPoints([]datapoint.DataPoint{
 			{
@@ -295,7 +301,9 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			config,
 			&logger,
 		)
-		strategy.ValidateConfigParams(config)
+		if err := strategy.ValidateConfigParams(config); err != nil {
+			t.Errorf("ValidateConfigParams() error = %v", err)
+		}
 
 		err := strategy.AddDataPoints([]datapoint.DataPoint{
 			{

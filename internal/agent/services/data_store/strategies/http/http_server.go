@@ -1,5 +1,5 @@
 // senhub-agent/internal/agent/services/data_store/http_server.go
-package data_store
+package http
 
 import (
 	"context"
@@ -13,10 +13,10 @@ import (
 
 // ServerManager handles HTTP server lifecycle and routing configuration
 type ServerManager struct {
-	logger        *logger.ModuleLogger
-	strategy      *HTTPSyncStrategy  // Reference to parent strategy for access to modules
-	server        *http.Server
-	handlers      *HTTPHandlers
+	logger   *logger.ModuleLogger
+	strategy *HTTPSyncStrategy // Reference to parent strategy for access to modules
+	server   *http.Server
+	handlers *HTTPHandlers
 }
 
 // NewServerManager creates a new HTTP server manager
@@ -68,7 +68,7 @@ func (s *ServerManager) Shutdown(ctx context.Context) error {
 // createHTTPServer creates and configures the HTTP server instance
 func (s *ServerManager) createHTTPServer(router *mux.Router) *http.Server {
 	address := fmt.Sprintf("%s:%d", s.strategy.bindAddress, s.strategy.port)
-	
+
 	return &http.Server{
 		Addr:         address,
 		Handler:      router,
@@ -81,7 +81,7 @@ func (s *ServerManager) createHTTPServer(router *mux.Router) *http.Server {
 // startServerAsync starts the HTTP/HTTPS server in a goroutine
 func (s *ServerManager) startServerAsync() {
 	address := s.server.Addr
-	
+
 	if s.strategy.configManager.IsTLSEnabled() {
 		s.startHTTPSServer(address)
 	} else {
@@ -94,7 +94,7 @@ func (s *ServerManager) startHTTPSServer(address string) {
 	// Fixed certificate paths generated during installation
 	certFile := "./certs/agent-cert.pem"
 	keyFile := "./certs/agent-key.pem"
-	
+
 	s.logger.Info().
 		Str("address", address).
 		Int("port", s.strategy.port).
@@ -104,7 +104,7 @@ func (s *ServerManager) startHTTPSServer(address string) {
 		Str("key_file", keyFile).
 		Str("min_tls_version", s.strategy.configManager.GetTLSMinVersion()).
 		Msg("HTTPS server listening")
-	
+
 	if err := s.server.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
 		s.logger.Error().Err(err).Msg("HTTPS server error")
 	}
@@ -118,7 +118,7 @@ func (s *ServerManager) startHTTPServer(address string) {
 		Str("bind_address", s.strategy.bindAddress).
 		Bool("tls_enabled", false).
 		Msg("HTTP server listening")
-		
+
 	if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		s.logger.Error().Err(err).Msg("HTTP server error")
 	}
@@ -150,21 +150,21 @@ func (s *ServerManager) GetServerAddress() string {
 // GetServerConfig returns server configuration details
 func (s *ServerManager) GetServerConfig() map[string]interface{} {
 	config := map[string]interface{}{
-		"address":         s.GetServerAddress(),
-		"port":           s.strategy.port,
-		"bind_address":   s.strategy.bindAddress,
-		"tls_enabled":    s.strategy.configManager.IsTLSEnabled(),
-		"read_timeout":   "10s",
-		"write_timeout":  "10s",
-		"idle_timeout":   "60s",
+		"address":       s.GetServerAddress(),
+		"port":          s.strategy.port,
+		"bind_address":  s.strategy.bindAddress,
+		"tls_enabled":   s.strategy.configManager.IsTLSEnabled(),
+		"read_timeout":  "10s",
+		"write_timeout": "10s",
+		"idle_timeout":  "60s",
 	}
-	
+
 	if s.strategy.configManager.IsTLSEnabled() {
 		config["tls_min_version"] = s.strategy.configManager.GetTLSMinVersion()
 		config["cert_file"] = "./certs/agent-cert.pem"
 		config["key_file"] = "./certs/agent-key.pem"
 	}
-	
+
 	return config
 }
 
@@ -174,16 +174,16 @@ func (s *ServerManager) UpdateServerConfig(newConfig map[string]interface{}) err
 	if err := s.strategy.configManager.UpdateConfiguration(newConfig); err != nil {
 		return fmt.Errorf("invalid server configuration: %w", err)
 	}
-	
+
 	// Update strategy fields
 	s.strategy.port = s.strategy.configManager.GetPort()
 	s.strategy.bindAddress = s.strategy.configManager.GetBindAddress()
-	
+
 	s.logger.Info().
 		Int("new_port", s.strategy.port).
 		Str("new_bind_address", s.strategy.bindAddress).
 		Msg("Server configuration updated (restart required)")
-	
+
 	return nil
 }
 
@@ -194,12 +194,12 @@ func (s *ServerManager) GetServerStats() map[string]interface{} {
 		"address":     s.GetServerAddress(),
 		"tls_enabled": s.strategy.configManager.IsTLSEnabled(),
 	}
-	
+
 	if s.server != nil {
 		stats["server_configured"] = true
 	} else {
 		stats["server_configured"] = false
 	}
-	
+
 	return stats
 }

@@ -51,10 +51,10 @@ func (s *sensor) GetName() string {
 // SyncConfiguration synchronizes probes with current configuration
 func (s *sensor) SyncConfiguration() error {
 	s.moduleLogger.Info().Msg("Starting configuration synchronization")
-	
+
 	validProbeIds := []string{}
 	probeConfigs := s.configProvider.GetConfiguration().Probes
-	
+
 	s.moduleLogger.Info().
 		Int("config_probes", len(probeConfigs)).
 		Int("running_probes", len(s.startedProbes)).
@@ -82,7 +82,7 @@ func (s *sensor) SyncConfiguration() error {
 				Str("probe_name", probeConfig.Name).
 				Any("probe_params", probeConfig.Params).
 				Msg("Starting new probe")
-				
+
 			err := s.startProbe(probeConfig, nil)
 			if err != nil {
 				probeLogger.Error().Err(err).Msgf("Error starting probe")
@@ -100,10 +100,10 @@ func (s *sensor) SyncConfiguration() error {
 		}
 	}
 
-	// Phase 2: Stop removed probes  
+	// Phase 2: Stop removed probes
 	activeProbes := []*probes.ProbePoller{}
 	stoppedCount := 0
-	
+
 	for _, startedProbe := range s.startedProbes {
 		found := false
 		for _, validProbeId := range validProbeIds {
@@ -121,7 +121,7 @@ func (s *sensor) SyncConfiguration() error {
 				Str("probe_id", startedProbe.ProbeId).
 				Str("probe_name", startedProbe.Probe.GetName()).
 				Msg("Stopping removed probe")
-				
+
 			err := startedProbe.Shutdown(context.Background())
 			if err != nil {
 				s.moduleLogger.Error().
@@ -138,16 +138,16 @@ func (s *sensor) SyncConfiguration() error {
 			}
 		}
 	}
-	
+
 	// Update the slice to contain only active probes
 	s.startedProbes = activeProbes
-	
+
 	s.moduleLogger.Info().
 		Int("probes_started", len(validProbeIds)-len(activeProbes)+stoppedCount).
 		Int("probes_stopped", stoppedCount).
 		Int("probes_active", len(activeProbes)).
 		Msg("Configuration synchronization completed")
-		
+
 	return nil
 }
 
@@ -158,7 +158,11 @@ func (s *sensor) Start(quitChannel chan struct{}) error {
 	}
 
 	s.moduleLogger.Info().Msg("Starting sensor service")
-	s.configProvider.OnConfigChanged(func(string) { s.SyncConfiguration() })
+	s.configProvider.OnConfigChanged(func(string) { 
+		if err := s.SyncConfiguration(); err != nil {
+			s.moduleLogger.Error().Err(err).Msg("Failed to sync configuration on config change")
+		}
+	})
 	return nil
 }
 

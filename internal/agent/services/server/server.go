@@ -29,10 +29,10 @@ type Server interface {
 
 // server implements Server interface
 type server struct {
-	authenticationKey string                // Key for server authentication
+	authenticationKey string               // Key for server authentication
 	moduleLogger      *logger.ModuleLogger // Structured logging
-	url               string                // Base server URL
-	http              *http.Client          // Retry-enabled HTTP client
+	url               string               // Base server URL
+	http              *http.Client         // Retry-enabled HTTP client
 }
 
 // NewServer creates server client with automatic retry and auth handling

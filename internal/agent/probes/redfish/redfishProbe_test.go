@@ -74,10 +74,10 @@ func TestNewRedfishProbe(t *testing.T) {
 		{
 			name: "Valid config with custom interval",
 			config: map[string]interface{}{
-				"endpoint":  "https://redfish.example.com",
-				"username":  "admin",
-				"password":  "password123",
-				"interval":  600,
+				"endpoint":   "https://redfish.example.com",
+				"username":   "admin",
+				"password":   "password123",
+				"interval":   600,
 				"verify_ssl": false,
 			},
 			expectError: false,
@@ -194,10 +194,10 @@ func TestRedfishProbeBaseMethods(t *testing.T) {
 	loggerPtr := (*logger.Logger)(&testLogger)
 
 	config := map[string]interface{}{
-		"endpoint":  "https://redfish.example.com",
-		"username":  "admin",
-		"password":  "password123",
-		"interval":  600,
+		"endpoint": "https://redfish.example.com",
+		"username": "admin",
+		"password": "password123",
+		"interval": 600,
 	}
 
 	probe, err := NewRedfishProbe(config, loggerPtr)
@@ -221,9 +221,9 @@ func TestRedfishProbeOnStart(t *testing.T) {
 	loggerPtr := (*logger.Logger)(&testLogger)
 
 	config := map[string]interface{}{
-		"endpoint":  "https://redfish.example.com",
-		"username":  "admin",
-		"password":  "password123",
+		"endpoint": "https://redfish.example.com",
+		"username": "admin",
+		"password": "password123",
 	}
 
 	t.Run("OnStart with successful connection", func(t *testing.T) {
@@ -235,7 +235,7 @@ func TestRedfishProbeOnStart(t *testing.T) {
 		// collector and try to connect to a real endpoint.
 		// Since we can't easily mock the collector creation, we'll just verify
 		// that the OnStart method handles errors correctly when trying to connect.
-		
+
 		// With a non-existent endpoint, we expect the connection to fail
 		err = probe.OnStart(make(chan struct{}))
 		assert.Error(t, err)
@@ -250,9 +250,9 @@ func TestRedfishProbeOnShutdown(t *testing.T) {
 	loggerPtr := (*logger.Logger)(&testLogger)
 
 	config := map[string]interface{}{
-		"endpoint":  "https://redfish.example.com",
-		"username":  "admin",
-		"password":  "password123",
+		"endpoint": "https://redfish.example.com",
+		"username": "admin",
+		"password": "password123",
 	}
 
 	t.Run("OnShutdown with no collector", func(t *testing.T) {

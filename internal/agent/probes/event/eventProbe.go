@@ -63,14 +63,14 @@ func NewEventProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Create module-specific logger for event probe
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.event")
 
 	moduleLogger.Debug().
 		Any("config", parsedConfig).
 		Msg("Creating new Event probe")
-		
+
 	return &EventProbe{
 		rawConfig:    config,
 		config:       parsedConfig,
@@ -256,15 +256,15 @@ func (p *EventProbe) processEvent(event map[string]interface{}) data_store.DataP
 	// 2. A special JSON metadata field that preserves complex types like arrays
 	eventTags := []tags.Tag{}
 	complexValues := make(map[string]interface{})
-	
+
 	for key, value := range event {
 		if key == "timestamp" {
 			continue
 		}
-		
+
 		// Store all values as strings in regular tags for backward compatibility
 		eventTags = append(eventTags, tags.Tag{Key: key, Value: fmt.Sprintf("%v", value), Private: false})
-		
+
 		// Also store complex values in their original form
 		switch v := value.(type) {
 		case []interface{}, map[string]interface{}:
@@ -272,7 +272,7 @@ func (p *EventProbe) processEvent(event map[string]interface{}) data_store.DataP
 			complexValues[key] = v
 		}
 	}
-	
+
 	// If we have complex values, serialize them as JSON and add as a special tag
 	if len(complexValues) > 0 {
 		complexJSON, err := json.Marshal(complexValues)

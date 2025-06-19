@@ -12,15 +12,15 @@ import (
 
 // GenericCollector provides a base implementation of the RedfishCollector interface
 type GenericCollector struct {
-	client          RedfishClientInterface
-	vendorType      VendorType
-	systems         []string
-	chassis         []string
-	logger          *logger.Logger
-	endpoint        string              // Configured endpoint URL
-	redfishVersion  string              // Redfish API version
-	schemaVersions  map[string]string   // Schema versions by schema name
-	oemVersionData  map[string]interface{} // OEM-specific version data
+	client         RedfishClientInterface
+	vendorType     VendorType
+	systems        []string
+	chassis        []string
+	logger         *logger.Logger
+	endpoint       string                 // Configured endpoint URL
+	redfishVersion string                 // Redfish API version
+	schemaVersions map[string]string      // Schema versions by schema name
+	oemVersionData map[string]interface{} // OEM-specific version data
 }
 
 // NewGenericCollector creates a new generic Redfish collector

@@ -93,10 +93,10 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 
 			// Try to detect controller from PSU name
 			if strings.Contains(strings.ToLower(psuReading.Name), "left") ||
-			   strings.Contains(strings.ToLower(psuReading.Name), "a") {
+				strings.Contains(strings.ToLower(psuReading.Name), "a") {
 				psuTags = append(psuTags, tags.Tag{Key: "controller", Value: "A"})
 			} else if strings.Contains(strings.ToLower(psuReading.Name), "right") ||
-			          strings.Contains(strings.ToLower(psuReading.Name), "b") {
+				strings.Contains(strings.ToLower(psuReading.Name), "b") {
 				psuTags = append(psuTags, tags.Tag{Key: "controller", Value: "B"})
 			}
 
@@ -170,10 +170,10 @@ func (c *GenericCollector) collectPowerMetrics(ctx context.Context, timestamp ti
 		// Process power control (overall power consumption)
 		for i, pc := range resp.PowerControl {
 			var pcReading struct {
-				PowerConsumedWatts float32 `json:"PowerConsumedWatts"`
+				PowerConsumedWatts  float32 `json:"PowerConsumedWatts"`
 				PowerRequestedWatts float32 `json:"PowerRequestedWatts"`
 				PowerAvailableWatts float32 `json:"PowerAvailableWatts"`
-				PowerCapacityWatts float32 `json:"PowerCapacityWatts"`
+				PowerCapacityWatts  float32 `json:"PowerCapacityWatts"`
 			}
 			rawJSON, _ := json.Marshal(pc)
 			if err := json.Unmarshal(rawJSON, &pcReading); err != nil {

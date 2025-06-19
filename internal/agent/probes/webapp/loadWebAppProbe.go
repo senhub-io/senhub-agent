@@ -145,11 +145,11 @@ func (p *LoadWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 		{Name: "ttfb", Timestamp: time.Now(), Value: float32(metrics.firstByteDone.Sub(metrics.firstByteStart).Milliseconds()), Tags: tags},
 		{Name: "total_time", Timestamp: time.Now(), Value: float32(metrics.completed.Sub(metrics.dnsStart).Milliseconds()), Tags: tags},
 	}
-	
+
 	// Create base probe for enrichment
 	baseProbe := &types.BaseProbe{}
 	enrichedDatapoints := baseProbe.EnrichDataPointsWithProbeName(datapoints, p.GetName())
-	
+
 	return enrichedDatapoints, nil
 }
 

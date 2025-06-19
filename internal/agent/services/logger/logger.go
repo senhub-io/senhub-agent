@@ -28,10 +28,7 @@ type Logger = zerolog.Logger
 
 // LoggerConfig holds the configuration for the logger
 type LoggerConfig struct {
-	logFile      io.WriteCloser
-	logShipper   io.Writer
-	debugConfig  *debugshipper.Config
-	moduleLevels map[string]zerolog.Level // Per-module log levels
+	logShipper io.Writer
 }
 
 // ModuleLogConfig allows setting specific log levels for different components
@@ -112,26 +109,26 @@ func setupDebugLogShipper(args *cliArgs.ParsedArgs) (io.Writer, error) {
 	// Set tags if provided
 	if len(args.DebugLogShipperTags) > 0 {
 		config.Tags = args.DebugLogShipperTags
-		
+
 		// For VictoriaLogs, add agent_name, host_name, and env tags if not present
 		if _, ok := config.Tags["agent_name"]; !ok {
 			config.Tags["agent_name"] = "senhub-agent"
 		}
-		
+
 		if _, ok := config.Tags["host_name"]; !ok {
 			hostname, err := os.Hostname()
 			if err == nil && hostname != "" {
 				config.Tags["host_name"] = hostname
 			}
 		}
-		
+
 		if _, ok := config.Tags["env"]; !ok {
 			config.Tags["env"] = args.Env
 		}
 	}
 
 	log.Printf("Initializing debug log shipper to %s", args.DebugLogShipperUrl)
-	
+
 	// Initialize the debug log shipper
 	shipper, err := debugshipper.NewDebugLogShipper(config)
 	if err != nil {
@@ -166,23 +163,23 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 	// Initialize selective debug mode variables
 	selectiveDebugMode = false
 	activeDebugModules = make(map[string]bool)
-	
+
 	// Configure debug logging
 	if len(args.DebugModules) > 0 && !args.Verbose {
 		// Selective debug mode: only enable debug for specified modules (unless --verbose is also set)
 		selectiveDebugMode = true
 		activeDebugModules = make(map[string]bool)
-		
+
 		// In selective mode, set global level to DEBUG to allow debug logs for enabled modules
 		// ModuleLoggers will filter all log levels based on module configuration
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-		
+
 		// Enable debug only for specified modules
 		for _, module := range args.DebugModules {
 			SetModuleLogLevel(module, zerolog.DebugLevel)
 			activeDebugModules[module] = true
 		}
-		
+
 		logger.Info().
 			Strs("modules", args.DebugModules).
 			Int("module_count", len(args.DebugModules)).
@@ -193,14 +190,14 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 		selectiveDebugMode = false
 		activeDebugModules = make(map[string]bool) // Empty map instead of nil
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-		
+
 		// Also enable debug for key modules
 		SetModuleLogLevel("strategy.http", zerolog.DebugLevel)
 		SetModuleLogLevel("cache", zerolog.DebugLevel)
 		SetModuleLogLevel("probe.redfish", zerolog.DebugLevel)
 		SetModuleLogLevel("configuration", zerolog.DebugLevel)
 		SetModuleLogLevel("scheduler", zerolog.DebugLevel)
-		
+
 		if args.Verbose && len(args.DebugModules) > 0 {
 			logger.Info().
 				Strs("modules", args.DebugModules).
@@ -290,20 +287,20 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 
 // Global module levels configuration
 var moduleLogLevels = map[string]zerolog.Level{
-	"strategy.http":      zerolog.InfoLevel,  // HTTP strategy logs
-	"strategy.prtg":      zerolog.InfoLevel,  // PRTG strategy logs  
-	"strategy.senhub":    zerolog.InfoLevel,  // SenHub strategy logs
-	"probe.redfish":      zerolog.InfoLevel,  // Redfish probe logs
-	"probe.host":         zerolog.InfoLevel,  // Host probes (CPU, memory, etc.)
-	"probe.network":      zerolog.InfoLevel,  // Network probes
-	"probe.webapp":       zerolog.InfoLevel,  // WebApp probes
-	"probe.otel":         zerolog.InfoLevel,  // OpenTelemetry probe
-	"probe.gateway":      zerolog.InfoLevel,  // Gateway probe
-	"probe.syslog":       zerolog.InfoLevel,  // Syslog probe
-	"cache":              zerolog.InfoLevel,  // Cache operations
-	"transformer":        zerolog.InfoLevel,  // Metric transformers
-	"scheduler":          zerolog.InfoLevel,  // Probe scheduler
-	"configuration":      zerolog.InfoLevel,  // Configuration loading
+	"strategy.http":   zerolog.InfoLevel, // HTTP strategy logs
+	"strategy.prtg":   zerolog.InfoLevel, // PRTG strategy logs
+	"strategy.senhub": zerolog.InfoLevel, // SenHub strategy logs
+	"probe.redfish":   zerolog.InfoLevel, // Redfish probe logs
+	"probe.host":      zerolog.InfoLevel, // Host probes (CPU, memory, etc.)
+	"probe.network":   zerolog.InfoLevel, // Network probes
+	"probe.webapp":    zerolog.InfoLevel, // WebApp probes
+	"probe.otel":      zerolog.InfoLevel, // OpenTelemetry probe
+	"probe.gateway":   zerolog.InfoLevel, // Gateway probe
+	"probe.syslog":    zerolog.InfoLevel, // Syslog probe
+	"cache":           zerolog.InfoLevel, // Cache operations
+	"transformer":     zerolog.InfoLevel, // Metric transformers
+	"scheduler":       zerolog.InfoLevel, // Probe scheduler
+	"configuration":   zerolog.InfoLevel, // Configuration loading
 }
 
 // Selective debug mode tracking
@@ -362,8 +359,8 @@ func GetModuleLogLevel(module string) zerolog.Level {
 // ModuleLogger wraps a zerolog.Logger with dynamic level checking for a specific module
 type ModuleLogger struct {
 	*zerolog.Logger
-	module string
-	selectiveMode bool
+	module         string
+	selectiveMode  bool
 	enabledModules map[string]bool
 }
 
@@ -372,11 +369,11 @@ func NewModuleLogger(baseLogger *Logger, module string) *ModuleLogger {
 	logger := baseLogger.With().
 		Str("module", module).
 		Logger()
-	
+
 	return &ModuleLogger{
-		Logger: &logger,
-		module: module,
-		selectiveMode: selectiveDebugMode,
+		Logger:         &logger,
+		module:         module,
+		selectiveMode:  selectiveDebugMode,
 		enabledModules: copyMap(activeDebugModules),
 	}
 }
@@ -402,12 +399,12 @@ func (m *ModuleLogger) Debug() *zerolog.Event {
 			return disabledLogger.Debug()
 		}
 	}
-	
+
 	// Check module log level for normal mode or enabled modules
 	if GetModuleLogLevel(m.module) <= zerolog.DebugLevel {
 		return m.Logger.Debug()
 	}
-	
+
 	disabledLogger := m.Logger.Level(zerolog.Disabled)
 	return disabledLogger.Debug()
 }
@@ -462,25 +459,25 @@ func GetAvailableModules() []string {
 	return []string{
 		// Core services
 		"configuration",
-		"scheduler", 
+		"scheduler",
 		"cache",
 		"transformer",
 		"sensor",
 		"auto_update",
-		
+
 		// Data storage strategies
 		"strategy.http",
-		"strategy.prtg", 
+		"strategy.prtg",
 		"strategy.senhub",
 		"strategy.event",
-		
+
 		// System probes
 		"probe.cpu",
 		"probe.memory",
-		"probe.network", 
+		"probe.network",
 		"probe.logicaldisk",
 		"probe.host",
-		
+
 		// Application probes
 		"probe.webapp",
 		"probe.gateway",
@@ -488,10 +485,10 @@ func GetAvailableModules() []string {
 		"probe.event",
 		"probe.otel",
 		"probe.redfish",
-		
+
 		// Platform-specific
 		"pdh.windows",
-		
+
 		// Sub-modules (examples)
 		"probe.redfish.client",
 		"data_store",

@@ -5,6 +5,7 @@ go 1.23.2
 require (
 	github.com/alexflint/go-arg v1.5.1
 	github.com/avast/retry-go/v4 v4.6.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-test/deep v1.1.1
 	github.com/gorilla/mux v1.8.1
 	github.com/hashicorp/go-version v1.7.0
@@ -26,7 +27,6 @@ require (
 	aead.dev/minisign v0.2.0 // indirect
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect

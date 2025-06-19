@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"time"
-	
+
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -15,18 +15,18 @@ import (
 // redfishProbe implements monitoring for hardware systems using the Redfish API
 type redfishProbe struct {
 	*types.BaseProbe
-	config         map[string]interface{}
-	logger         *logger.ModuleLogger
-	interval       time.Duration
-	collector      RedfishCollector
-	tagEnhancer    *TagEnhancer
-	endpoint       string
-	username       string
-	password       string
-	verifySSL      bool
-	collections    []CollectionType
-	ctx            context.Context
-	cancelFunc     context.CancelFunc
+	config      map[string]interface{}
+	logger      *logger.ModuleLogger
+	interval    time.Duration
+	collector   RedfishCollector
+	tagEnhancer *TagEnhancer
+	endpoint    string
+	username    string
+	password    string
+	verifySSL   bool
+	collections []CollectionType
+	ctx         context.Context
+	cancelFunc  context.CancelFunc
 }
 
 // NewRedfishProbe creates a new instance of the Redfish probe
@@ -69,7 +69,7 @@ func NewRedfishProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		CollectionPower,
 		CollectionProcessor,
 		CollectionMemory,
-		CollectionStorage,  // Added storage collection by default for PowerVault metrics
+		CollectionStorage, // Added storage collection by default for PowerVault metrics
 	}
 
 	// Override collections if specified
@@ -85,22 +85,22 @@ func NewRedfishProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 	ctx, cancel := context.WithCancel(context.Background())
 
 	probe := &redfishProbe{
-		BaseProbe:      &types.BaseProbe{},
-		config:         config,
-		logger:         moduleLogger,
-		interval:       interval,
-		tagEnhancer:    NewTagEnhancer(),
-		endpoint:       endpoint,
-		username:       username,
-		password:       password,
-		verifySSL:      verifySSL,
-		collections:    collections,
-		ctx:            ctx,
-		cancelFunc:     cancel,
+		BaseProbe:   &types.BaseProbe{},
+		config:      config,
+		logger:      moduleLogger,
+		interval:    interval,
+		tagEnhancer: NewTagEnhancer(),
+		endpoint:    endpoint,
+		username:    username,
+		password:    password,
+		verifySSL:   verifySSL,
+		collections: collections,
+		ctx:         ctx,
+		cancelFunc:  cancel,
 	}
 
 	// We'll initialize the actual collector in OnStart after we can detect the vendor
-	
+
 	return probe, nil
 }
 
@@ -233,7 +233,7 @@ func (p *redfishProbe) Collect() ([]data_store.DataPoint, error) {
 		for i := range datapoints {
 			// Add common tags
 			datapoints[i].Tags = append(datapoints[i].Tags, commonTags...)
-			
+
 			// Enhance tags using TagEnhancer for better organization
 			datapoints[i].Tags = p.tagEnhancer.EnhanceMetricTags(datapoints[i].Name, datapoints[i].Tags)
 		}

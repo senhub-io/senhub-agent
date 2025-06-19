@@ -132,11 +132,11 @@ func (c *GenericCollector) createChassisBaseTags(chassisResp *RedfishResponse) [
 
 	// Get physical dimensions if available
 	var chassisPhysical struct {
-		HeightMm float32 `json:"HeightMm"`
-		WidthMm float32 `json:"WidthMm"`
-		DepthMm float32 `json:"DepthMm"`
-		WeightKg float32 `json:"WeightKg"`
-		LocationIndicatorActive bool `json:"LocationIndicatorActive"`
+		HeightMm                float32 `json:"HeightMm"`
+		WidthMm                 float32 `json:"WidthMm"`
+		DepthMm                 float32 `json:"DepthMm"`
+		WeightKg                float32 `json:"WeightKg"`
+		LocationIndicatorActive bool    `json:"LocationIndicatorActive"`
 	}
 	rawJSON, _ := json.Marshal(chassisResp)
 	if err := json.Unmarshal(rawJSON, &chassisPhysical); err == nil {

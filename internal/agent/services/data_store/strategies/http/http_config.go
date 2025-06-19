@@ -1,11 +1,11 @@
 // senhub-agent/internal/agent/services/data_store/http_config.go
-package data_store
+package http
 
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,16 +18,16 @@ import (
 
 // ConfigurationManager handles all configuration management for HTTP strategy
 type ConfigurationManager struct {
-	logger             *logger.ModuleLogger
-	agentConfig        configuration.AgentConfiguration
-	params             map[string]interface{}
-	enabledEndpoints   map[string]bool
-	nagiosConfig       *NagiosConfig
-	nagiosConfigMu     sync.RWMutex
-	tlsEnabled         bool
-	tlsMinVersion      string
-	port               int
-	bindAddress        string
+	logger           *logger.ModuleLogger
+	agentConfig      configuration.AgentConfiguration
+	params           map[string]interface{}
+	enabledEndpoints map[string]bool
+	nagiosConfig     *NagiosConfig
+	nagiosConfigMu   sync.RWMutex
+	tlsEnabled       bool
+	tlsMinVersion    string
+	port             int
+	bindAddress      string
 }
 
 // NewConfigurationManager creates a new configuration manager
@@ -54,7 +54,7 @@ func NewConfigurationManager(agentConfig configuration.AgentConfiguration, param
 type UniversalConfigRequest struct {
 	Probe      string                 `json:"probe"`                // Target probe name (e.g., "redfish", "host")
 	Target     string                 `json:"target,omitempty"`     // Target system/endpoint URL
-	Config     map[string]interface{} `json:"config"`              // Probe-specific configuration
+	Config     map[string]interface{} `json:"config"`               // Probe-specific configuration
 	Validation ConfigValidationMode   `json:"validation,omitempty"` // Validation level to perform
 	Timeout    int                    `json:"timeout,omitempty"`    // Timeout for connectivity tests (seconds)
 }
@@ -63,38 +63,38 @@ type UniversalConfigRequest struct {
 type ConfigValidationMode string
 
 const (
-	ValidationSchemaOnly   ConfigValidationMode = "schema"      // Validate structure and types only
+	ValidationSchemaOnly   ConfigValidationMode = "schema"       // Validate structure and types only
 	ValidationConnectivity ConfigValidationMode = "connectivity" // + Test network connectivity
-	ValidationFull         ConfigValidationMode = "full"        // + Test actual metrics collection
+	ValidationFull         ConfigValidationMode = "full"         // + Test actual metrics collection
 )
 
 // UniversalConfigResponse represents the response from configuration validation
 type UniversalConfigResponse struct {
-	Valid          bool                           `json:"valid"`                    // Overall validation result
-	Probe          string                         `json:"probe"`                    // Probe that was validated
-	Target         string                         `json:"target,omitempty"`         // Target that was tested
-	ValidationLevel ConfigValidationMode          `json:"validation_level"`         // Level of validation performed
-	Tests          map[string]ValidationTestResult `json:"tests"`                   // Individual test results
-	Warnings       []string                       `json:"warnings,omitempty"`       // Non-fatal warnings
-	Errors         []string                       `json:"errors,omitempty"`         // Validation errors
-	PreviewMetrics []PreviewMetric                `json:"preview_metrics,omitempty"` // Sample metrics (for full validation)
-	Duration       int64                          `json:"duration_ms"`              // Total validation time in milliseconds
+	Valid           bool                            `json:"valid"`                     // Overall validation result
+	Probe           string                          `json:"probe"`                     // Probe that was validated
+	Target          string                          `json:"target,omitempty"`          // Target that was tested
+	ValidationLevel ConfigValidationMode            `json:"validation_level"`          // Level of validation performed
+	Tests           map[string]ValidationTestResult `json:"tests"`                     // Individual test results
+	Warnings        []string                        `json:"warnings,omitempty"`        // Non-fatal warnings
+	Errors          []string                        `json:"errors,omitempty"`          // Validation errors
+	PreviewMetrics  []PreviewMetric                 `json:"preview_metrics,omitempty"` // Sample metrics (for full validation)
+	Duration        int64                           `json:"duration_ms"`               // Total validation time in milliseconds
 }
 
 // ValidationTestResult represents the result of an individual validation test
 type ValidationTestResult struct {
-	Passed     bool   `json:"passed"`               // Whether this test passed
-	Error      string `json:"error,omitempty"`      // Error message if failed
-	Duration   int64  `json:"duration_ms"`          // Test duration in milliseconds
-	Details    string `json:"details,omitempty"`    // Additional test details
+	Passed   bool   `json:"passed"`            // Whether this test passed
+	Error    string `json:"error,omitempty"`   // Error message if failed
+	Duration int64  `json:"duration_ms"`       // Test duration in milliseconds
+	Details  string `json:"details,omitempty"` // Additional test details
 }
 
 // PreviewMetric represents a sample metric for preview purposes
 type PreviewMetric struct {
-	Name      string                 `json:"name"`      // Metric name
-	Value     float32                `json:"value"`     // Metric value
-	Tags      map[string]string      `json:"tags"`      // Metric tags
-	Timestamp int64                  `json:"timestamp"` // Collection timestamp
+	Name      string            `json:"name"`      // Metric name
+	Value     float32           `json:"value"`     // Metric value
+	Tags      map[string]string `json:"tags"`      // Metric tags
+	Timestamp int64             `json:"timestamp"` // Collection timestamp
 }
 
 // Nagios Configuration Types
@@ -124,15 +124,15 @@ type NagiosTagFilter struct {
 
 // NagiosMetric represents a metric definition within a check
 type NagiosMetric struct {
-	Channel               string                `yaml:"channel"`
-	Aggregation          string                `yaml:"aggregation,omitempty"` // "average", "max", "min", "sum", "none"
-	Warning              string                `yaml:"warning"`
-	Critical             string                `yaml:"critical"`
-	Unit                 string                `yaml:"unit,omitempty"`
-	Invert               bool                  `yaml:"invert,omitempty"`
-	TagContext           string                `yaml:"tag_context,omitempty"`
+	Channel               string               `yaml:"channel"`
+	Aggregation           string               `yaml:"aggregation,omitempty"` // "average", "max", "min", "sum", "none"
+	Warning               string               `yaml:"warning"`
+	Critical              string               `yaml:"critical"`
+	Unit                  string               `yaml:"unit,omitempty"`
+	Invert                bool                 `yaml:"invert,omitempty"`
+	TagContext            string               `yaml:"tag_context,omitempty"`
 	TagSpecificThresholds []NagiosTagThreshold `yaml:"tag_specific_thresholds,omitempty"`
-	Description          string                `yaml:"description,omitempty"`
+	Description           string               `yaml:"description,omitempty"`
 }
 
 // NagiosTagThreshold represents tag-specific threshold overrides
@@ -236,7 +236,7 @@ func (cm *ConfigurationManager) loadConfiguration() {
 					cm.tlsEnabled = enabledBool
 				}
 			}
-			
+
 			// Min TLS version (with default)
 			if minVersion, exists := tlsConfig["min_tls_version"]; exists {
 				if minVersionStr, ok := minVersion.(string); ok {
@@ -269,7 +269,7 @@ func (cm *ConfigurationManager) ValidateConfigParams(params configuration.Storag
 		default:
 			return fmt.Errorf("port must be an integer, got: %T", v)
 		}
-		
+
 		if port < 1 || port > 65535 {
 			return fmt.Errorf("port must be between 1 and 65535, got: %d", port)
 		}
@@ -286,10 +286,10 @@ func (cm *ConfigurationManager) ValidateConfigParams(params configuration.Storag
 	if endpointsValue, exists := params["endpoints"]; exists {
 		if endpointsList, ok := endpointsValue.([]interface{}); ok {
 			validEndpoints := map[string]bool{
-				"prtg": true, "nagios": true, 
+				"prtg": true, "nagios": true,
 				"zabbix": true, "prometheus": true, "web": true,
 			}
-			
+
 			for _, endpoint := range endpointsList {
 				if endpointStr, ok := endpoint.(string); ok {
 					if !validEndpoints[endpointStr] {
@@ -374,7 +374,7 @@ func (cm *ConfigurationManager) LoadNagiosConfig() *NagiosConfig {
 
 // loadNagiosConfigFromFile loads Nagios configuration from a YAML file
 func (cm *ConfigurationManager) loadNagiosConfigFromFile(configPath string) (*NagiosConfig, error) {
-	data, err := ioutil.ReadFile(configPath)
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, err
 	}
@@ -485,7 +485,7 @@ func (cm *ConfigurationManager) FindNagiosCheck(config *NagiosConfig, checkName 
 // ParseNagiosOverrides parses query parameters for Nagios threshold overrides
 func (cm *ConfigurationManager) ParseNagiosOverrides(r *http.Request) NagiosOverrides {
 	query := r.URL.Query()
-	
+
 	overrides := NagiosOverrides{
 		TagFilters: make(map[string]string),
 	}
@@ -493,11 +493,11 @@ func (cm *ConfigurationManager) ParseNagiosOverrides(r *http.Request) NagiosOver
 	if warning := query.Get("warning"); warning != "" {
 		overrides.Warning = warning
 	}
-	
+
 	if critical := query.Get("critical"); critical != "" {
 		overrides.Critical = critical
 	}
-	
+
 	// Parse tag filters from query parameters
 	for key, values := range query {
 		if strings.HasPrefix(key, "tag_") {
@@ -539,7 +539,7 @@ func (cm *ConfigurationManager) ReloadNagiosConfig() error {
 
 	// Clear cached config to force reload
 	cm.nagiosConfig = nil
-	
+
 	cm.logger.Info().Msg("Nagios configuration cache cleared, will reload on next access")
 	return nil
 }
@@ -547,11 +547,11 @@ func (cm *ConfigurationManager) ReloadNagiosConfig() error {
 // GetConfigurationSummary returns a summary of the current configuration
 func (cm *ConfigurationManager) GetConfigurationSummary() map[string]interface{} {
 	summary := map[string]interface{}{
-		"port":                cm.port,
-		"bind_address":        cm.bindAddress,
-		"enabled_endpoints":   cm.enabledEndpoints,
-		"tls_enabled":         cm.tlsEnabled,
-		"tls_min_version":     cm.tlsMinVersion,
+		"port":                 cm.port,
+		"bind_address":         cm.bindAddress,
+		"enabled_endpoints":    cm.enabledEndpoints,
+		"tls_enabled":          cm.tlsEnabled,
+		"tls_min_version":      cm.tlsMinVersion,
 		"nagios_config_loaded": cm.nagiosConfig != nil,
 	}
 
@@ -591,7 +591,7 @@ func (cm *ConfigurationManager) GetEnabledEndpointsList() []string {
 // ValidateUniversalConfig validates a universal configuration request according to the specified validation mode
 func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequest) (*UniversalConfigResponse, error) {
 	startTime := time.Now()
-	
+
 	cm.logger.Info().
 		Str("probe", req.Probe).
 		Str("target", req.Target).
@@ -622,17 +622,17 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 	// Step 1: Schema Validation (always performed)
 	schemaResult := cm.validateProbeSchema(req.Probe, req.Config)
 	response.Tests["schema"] = schemaResult
-	
+
 	if !schemaResult.Passed {
 		response.Valid = false
 		response.Errors = append(response.Errors, schemaResult.Error)
 		response.Duration = time.Since(startTime).Milliseconds()
-		
+
 		cm.logger.Error().
 			Str("probe", req.Probe).
 			Str("error", schemaResult.Error).
 			Msg("Schema validation failed")
-		
+
 		return response, nil
 	}
 
@@ -640,18 +640,18 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 	if req.Validation == ValidationConnectivity || req.Validation == ValidationFull {
 		connectivityResult := cm.validateProbeConnectivity(req.Probe, req.Config, req.Target, req.Timeout)
 		response.Tests["connectivity"] = connectivityResult
-		
+
 		if !connectivityResult.Passed {
 			response.Valid = false
 			response.Errors = append(response.Errors, connectivityResult.Error)
 			response.Duration = time.Since(startTime).Milliseconds()
-			
+
 			cm.logger.Warn().
 				Str("probe", req.Probe).
 				Str("target", req.Target).
 				Str("error", connectivityResult.Error).
 				Msg("Connectivity validation failed")
-			
+
 			return response, nil
 		}
 	}
@@ -661,7 +661,7 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 		metricsResult, previewMetrics := cm.validateProbeMetrics(req.Probe, req.Config, req.Target, req.Timeout)
 		response.Tests["metrics"] = metricsResult
 		response.PreviewMetrics = previewMetrics
-		
+
 		if !metricsResult.Passed {
 			response.Valid = false
 			response.Errors = append(response.Errors, metricsResult.Error)
@@ -671,7 +671,7 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 	// Final result
 	response.Valid = true
 	response.Duration = time.Since(startTime).Milliseconds()
-	
+
 	cm.logger.Info().
 		Str("probe", req.Probe).
 		Str("validation_level", string(req.Validation)).
@@ -685,7 +685,7 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 // validateProbeSchema validates the probe configuration against its expected schema
 func (cm *ConfigurationManager) validateProbeSchema(probeName string, config map[string]interface{}) ValidationTestResult {
 	startTime := time.Now()
-	
+
 	cm.logger.Debug().
 		Str("probe", probeName).
 		Any("config", config).
@@ -716,7 +716,7 @@ func (cm *ConfigurationManager) validateProbeSchema(probeName string, config map
 	}
 
 	result.Duration = time.Since(startTime).Milliseconds()
-	
+
 	cm.logger.Debug().
 		Str("probe", probeName).
 		Bool("passed", result.Passed).
@@ -729,7 +729,7 @@ func (cm *ConfigurationManager) validateProbeSchema(probeName string, config map
 // validateProbeConnectivity tests network connectivity to the target system
 func (cm *ConfigurationManager) validateProbeConnectivity(probeName string, config map[string]interface{}, target string, timeout int) ValidationTestResult {
 	startTime := time.Now()
-	
+
 	cm.logger.Debug().
 		Str("probe", probeName).
 		Str("target", target).
@@ -755,7 +755,7 @@ func (cm *ConfigurationManager) validateProbeConnectivity(probeName string, conf
 	}
 
 	result.Duration = time.Since(startTime).Milliseconds()
-	
+
 	cm.logger.Debug().
 		Str("probe", probeName).
 		Str("target", target).
@@ -769,7 +769,7 @@ func (cm *ConfigurationManager) validateProbeConnectivity(probeName string, conf
 // validateProbeMetrics attempts to collect actual metrics from the configured probe
 func (cm *ConfigurationManager) validateProbeMetrics(probeName string, config map[string]interface{}, target string, timeout int) (ValidationTestResult, []PreviewMetric) {
 	startTime := time.Now()
-	
+
 	cm.logger.Debug().
 		Str("probe", probeName).
 		Str("target", target).
@@ -784,12 +784,12 @@ func (cm *ConfigurationManager) validateProbeMetrics(probeName string, config ma
 	// For now, we'll simulate this functionality
 	result.Passed = true
 	result.Details = "Metrics validation not yet implemented - configuration appears valid"
-	
+
 	// Create some mock preview metrics based on probe type
 	previewMetrics = cm.generateMockPreviewMetrics(probeName)
 
 	result.Duration = time.Since(startTime).Milliseconds()
-	
+
 	cm.logger.Debug().
 		Str("probe", probeName).
 		Bool("passed", result.Passed).
@@ -805,7 +805,7 @@ func (cm *ConfigurationManager) validateProbeMetrics(probeName string, config ma
 // validateRedfishSchema validates Redfish probe configuration
 func (cm *ConfigurationManager) validateRedfishSchema(config map[string]interface{}) ValidationTestResult {
 	result := ValidationTestResult{Passed: true}
-	
+
 	// Required fields for Redfish
 	requiredFields := []string{"endpoint", "username", "password"}
 	for _, field := range requiredFields {
@@ -815,7 +815,7 @@ func (cm *ConfigurationManager) validateRedfishSchema(config map[string]interfac
 			return result
 		}
 	}
-	
+
 	// Validate endpoint format
 	if endpoint, ok := config["endpoint"].(string); ok {
 		if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
@@ -828,7 +828,7 @@ func (cm *ConfigurationManager) validateRedfishSchema(config map[string]interfac
 		result.Error = "endpoint must be a string"
 		return result
 	}
-	
+
 	result.Details = "Redfish configuration schema is valid"
 	return result
 }
@@ -836,7 +836,7 @@ func (cm *ConfigurationManager) validateRedfishSchema(config map[string]interfac
 // validateSystemProbeSchema validates system probe configuration (cpu, memory, etc.)
 func (cm *ConfigurationManager) validateSystemProbeSchema(config map[string]interface{}) ValidationTestResult {
 	result := ValidationTestResult{Passed: true}
-	
+
 	// System probes typically have minimal configuration requirements
 	// Validate interval if specified
 	if interval, exists := config["interval"]; exists {
@@ -850,7 +850,7 @@ func (cm *ConfigurationManager) validateSystemProbeSchema(config map[string]inte
 			}
 		}
 	}
-	
+
 	result.Details = "System probe configuration schema is valid"
 	return result
 }
@@ -858,7 +858,7 @@ func (cm *ConfigurationManager) validateSystemProbeSchema(config map[string]inte
 // validateGatewayProbeSchema validates gateway ping probe configuration
 func (cm *ConfigurationManager) validateGatewayProbeSchema(config map[string]interface{}) ValidationTestResult {
 	result := ValidationTestResult{Passed: true}
-	
+
 	// Gateway probe may need target or will auto-discover
 	if target, exists := config["target"]; exists {
 		if _, ok := target.(string); !ok {
@@ -867,7 +867,7 @@ func (cm *ConfigurationManager) validateGatewayProbeSchema(config map[string]int
 			return result
 		}
 	}
-	
+
 	result.Details = "Gateway probe configuration schema is valid"
 	return result
 }
@@ -875,14 +875,14 @@ func (cm *ConfigurationManager) validateGatewayProbeSchema(config map[string]int
 // validateWebAppProbeSchema validates webapp probe configuration
 func (cm *ConfigurationManager) validateWebAppProbeSchema(config map[string]interface{}) ValidationTestResult {
 	result := ValidationTestResult{Passed: true}
-	
+
 	// Required field: url
 	if _, exists := config["url"]; !exists {
 		result.Passed = false
 		result.Error = "missing required field: url"
 		return result
 	}
-	
+
 	// Validate URL format
 	if url, ok := config["url"].(string); ok {
 		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
@@ -895,7 +895,7 @@ func (cm *ConfigurationManager) validateWebAppProbeSchema(config map[string]inte
 		result.Error = "url must be a string"
 		return result
 	}
-	
+
 	result.Details = "WebApp probe configuration schema is valid"
 	return result
 }
@@ -903,7 +903,7 @@ func (cm *ConfigurationManager) validateWebAppProbeSchema(config map[string]inte
 // validateSyslogProbeSchema validates syslog probe configuration
 func (cm *ConfigurationManager) validateSyslogProbeSchema(config map[string]interface{}) ValidationTestResult {
 	result := ValidationTestResult{Passed: true}
-	
+
 	// Validate port if specified
 	if port, exists := config["port"]; exists {
 		if portInt, ok := port.(int); ok {
@@ -925,7 +925,7 @@ func (cm *ConfigurationManager) validateSyslogProbeSchema(config map[string]inte
 			return result
 		}
 	}
-	
+
 	// Validate protocol if specified
 	if protocol, exists := config["protocol"]; exists {
 		if protocolStr, ok := protocol.(string); ok {
@@ -940,7 +940,7 @@ func (cm *ConfigurationManager) validateSyslogProbeSchema(config map[string]inte
 			return result
 		}
 	}
-	
+
 	result.Details = "Syslog probe configuration schema is valid"
 	return result
 }
@@ -950,24 +950,24 @@ func (cm *ConfigurationManager) validateSyslogProbeSchema(config map[string]inte
 // testRedfishConnectivity tests connectivity to a Redfish endpoint
 func (cm *ConfigurationManager) testRedfishConnectivity(config map[string]interface{}, timeout int) ValidationTestResult {
 	result := ValidationTestResult{Passed: false}
-	
+
 	endpoint, exists := config["endpoint"]
 	if !exists {
 		result.Error = "endpoint not specified for connectivity test"
 		return result
 	}
-	
+
 	endpointStr, ok := endpoint.(string)
 	if !ok {
 		result.Error = "endpoint must be a string"
 		return result
 	}
-	
+
 	// Test basic HTTP connectivity to the Redfish service root
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
 	}
-	
+
 	// Try to reach the Redfish service root
 	testURL := strings.TrimRight(endpointStr, "/") + "/redfish/v1/"
 	resp, err := client.Get(testURL)
@@ -975,8 +975,12 @@ func (cm *ConfigurationManager) testRedfishConnectivity(config map[string]interf
 		result.Error = fmt.Sprintf("connectivity test failed: %v", err)
 		return result
 	}
-	defer resp.Body.Close()
-	
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			cm.logger.Debug().Err(err).Msg("Failed to close response body")
+		}
+	}()
+
 	if resp.StatusCode == 200 || resp.StatusCode == 401 {
 		// 200 = accessible, 401 = accessible but auth required (expected)
 		result.Passed = true
@@ -984,38 +988,42 @@ func (cm *ConfigurationManager) testRedfishConnectivity(config map[string]interf
 	} else {
 		result.Error = fmt.Sprintf("unexpected HTTP status: %d", resp.StatusCode)
 	}
-	
+
 	return result
 }
 
 // testWebAppConnectivity tests connectivity to a web application
 func (cm *ConfigurationManager) testWebAppConnectivity(config map[string]interface{}, timeout int) ValidationTestResult {
 	result := ValidationTestResult{Passed: false}
-	
+
 	url, exists := config["url"]
 	if !exists {
 		result.Error = "url not specified for connectivity test"
 		return result
 	}
-	
+
 	urlStr, ok := url.(string)
 	if !ok {
 		result.Error = "url must be a string"
 		return result
 	}
-	
+
 	// Test HTTP connectivity
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
 	}
-	
+
 	resp, err := client.Get(urlStr)
 	if err != nil {
 		result.Error = fmt.Sprintf("connectivity test failed: %v", err)
 		return result
 	}
-	defer resp.Body.Close()
-	
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			cm.logger.Debug().Err(err).Msg("Failed to close response body")
+		}
+	}()
+
 	if resp.StatusCode >= 200 && resp.StatusCode < 500 {
 		// Any 2xx, 3xx, or 4xx is considered "reachable"
 		result.Passed = true
@@ -1023,7 +1031,7 @@ func (cm *ConfigurationManager) testWebAppConnectivity(config map[string]interfa
 	} else {
 		result.Error = fmt.Sprintf("unexpected HTTP status: %d", resp.StatusCode)
 	}
-	
+
 	return result
 }
 
@@ -1038,7 +1046,7 @@ func (cm *ConfigurationManager) testSyslogConnectivity(config map[string]interfa
 // generateMockPreviewMetrics creates sample metrics for preview purposes
 func (cm *ConfigurationManager) generateMockPreviewMetrics(probeName string) []PreviewMetric {
 	timestamp := time.Now().Unix()
-	
+
 	switch probeName {
 	case "redfish":
 		return []PreviewMetric{
@@ -1080,7 +1088,7 @@ func (cm *ConfigurationManager) HandleUniversalConfigValidation(w http.ResponseW
 		cm.logger.Error().
 			Err(err).
 			Msg("Failed to parse universal config validation request")
-		
+
 		http.Error(w, "Invalid JSON request body", http.StatusBadRequest)
 		return
 	}
@@ -1092,7 +1100,7 @@ func (cm *ConfigurationManager) HandleUniversalConfigValidation(w http.ResponseW
 			Err(err).
 			Str("probe", req.Probe).
 			Msg("Universal configuration validation failed")
-		
+
 		http.Error(w, fmt.Sprintf("Validation failed: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -1106,7 +1114,7 @@ func (cm *ConfigurationManager) HandleUniversalConfigValidation(w http.ResponseW
 		cm.logger.Error().
 			Err(err).
 			Msg("Failed to encode universal config validation response")
-		
+
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
@@ -1129,7 +1137,7 @@ func (cm *ConfigurationManager) HandleUniversalConfigPreview(w http.ResponseWrit
 		cm.logger.Error().
 			Err(err).
 			Msg("Failed to parse universal config preview request")
-		
+
 		http.Error(w, "Invalid JSON request body", http.StatusBadRequest)
 		return
 	}
@@ -1149,7 +1157,7 @@ func (cm *ConfigurationManager) HandleUniversalConfigPreview(w http.ResponseWrit
 			Err(err).
 			Str("probe", req.Probe).
 			Msg("Universal configuration preview failed")
-		
+
 		http.Error(w, fmt.Sprintf("Preview failed: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -1163,7 +1171,7 @@ func (cm *ConfigurationManager) HandleUniversalConfigPreview(w http.ResponseWrit
 		cm.logger.Error().
 			Err(err).
 			Msg("Failed to encode universal config preview response")
-		
+
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
@@ -1186,7 +1194,7 @@ func (cm *ConfigurationManager) HandleUniversalConfigTest(w http.ResponseWriter,
 		cm.logger.Error().
 			Err(err).
 			Msg("Failed to parse universal config test request")
-		
+
 		http.Error(w, "Invalid JSON request body", http.StatusBadRequest)
 		return
 	}
@@ -1204,7 +1212,7 @@ func (cm *ConfigurationManager) HandleUniversalConfigTest(w http.ResponseWriter,
 			Err(err).
 			Str("probe", req.Probe).
 			Msg("Universal configuration test failed")
-		
+
 		http.Error(w, fmt.Sprintf("Test failed: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -1218,7 +1226,7 @@ func (cm *ConfigurationManager) HandleUniversalConfigTest(w http.ResponseWriter,
 		cm.logger.Error().
 			Err(err).
 			Msg("Failed to encode universal config test response")
-		
+
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}

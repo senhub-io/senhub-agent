@@ -1,5 +1,5 @@
 // senhub-agent/internal/agent/services/data_store/http_formats.go
-package data_store
+package http
 
 import (
 	"fmt"
@@ -32,22 +32,22 @@ func NewFormatConverter(transformerRegistry *transformers.TransformerRegistry, l
 // GetSenHubMetricsForProbe converts cached metrics to SenHub format for a specific probe
 func (f *FormatConverter) GetSenHubMetricsForProbe(probeName string) []SenHubMetric {
 	f.logger.Debug().Str("probe", probeName).Msg("Converting metrics to SenHub format")
-	
+
 	// Get cached metrics for the probe
 	cachedMetrics := f.cache.GetProbeMetrics(probeName)
-	
+
 	// Convert to SenHub format
 	senHubMetrics := make([]SenHubMetric, 0, len(cachedMetrics))
 	for _, metric := range cachedMetrics {
 		senHubMetric := f.convertToSenHubFormat(metric)
 		senHubMetrics = append(senHubMetrics, senHubMetric)
 	}
-	
+
 	f.logger.Debug().
 		Str("probe", probeName).
 		Int("metrics_count", len(senHubMetrics)).
 		Msg("SenHub format conversion completed")
-	
+
 	return senHubMetrics
 }
 
@@ -61,7 +61,7 @@ func (f *FormatConverter) convertToSenHubFormat(metric CachedMetric) SenHubMetri
 			Str("probe_name", metric.ProbeName).
 			Msg("Failed to get transformer for SenHub format")
 	}
-	
+
 	// Resolve channel name using transformer
 	channelName := metric.MetricName
 	if transformer != nil {
@@ -69,15 +69,15 @@ func (f *FormatConverter) convertToSenHubFormat(metric CachedMetric) SenHubMetri
 			channelName = friendlyName
 		}
 	}
-	
+
 	return SenHubMetric{
-		Name:        metric.MetricName,
-		Channel:     channelName,
-		Value:       metric.Value,
-		Unit:        metric.Unit,
-		Timestamp:   metric.Timestamp,
-		ProbeName:   metric.ProbeName,
-		Tags:        metric.Tags,
+		Name:      metric.MetricName,
+		Channel:   channelName,
+		Value:     metric.Value,
+		Unit:      metric.Unit,
+		Timestamp: metric.Timestamp,
+		ProbeName: metric.ProbeName,
+		Tags:      metric.Tags,
 	}
 }
 
@@ -94,38 +94,38 @@ func (f *FormatConverter) GetMetricsForProbeWithFilter(probeName string, filter 
 		Str("probe", probeName).
 		Interface("filter", filter).
 		Msg("Converting metrics to PRTG format with filtering")
-	
+
 	// Get cached metrics for the probe
 	cachedMetrics := f.cache.GetProbeMetrics(probeName)
-	
+
 	// Apply filters
 	filteredMetrics := f.applyMetricFilter(cachedMetrics, filter)
-	
+
 	// Convert to PRTG format
 	channels := make([]PRTGChannel, 0, len(filteredMetrics))
 	now := time.Now()
-	
+
 	for _, metric := range filteredMetrics {
 		// Skip expired metrics
 		if now.Sub(metric.Timestamp) > 5*time.Minute { // TTL check
 			continue
 		}
-		
+
 		// Generate unique key for transformer
 		tsKey := f.cache.generateTimeSeriesKey(metric.ProbeName, metric.MetricName, metric.Tags)
-		
+
 		// Transform to PRTG channel
 		if channel := f.transformToPRTGChannel(tsKey, metric); channel != nil {
 			channels = append(channels, *channel)
 		}
 	}
-	
+
 	f.logger.Debug().
 		Str("probe", probeName).
 		Int("filtered_metrics", len(filteredMetrics)).
 		Int("prtg_channels", len(channels)).
 		Msg("PRTG format conversion completed")
-	
+
 	return channels
 }
 
@@ -140,19 +140,19 @@ func (f *FormatConverter) transformToPRTGChannel(key string, metric CachedMetric
 			Msg("Failed to convert metric value to float64 for PRTG")
 		return nil
 	}
-	
+
 	// Transform metric name using transformer
 	channelName, unit, valueLookup := f.transformMetricNameForPRTGWithLookup(key, metric)
-	
+
 	// Apply intelligent unit conversion for better readability
 	convertedValue, convertedUnit := f.convertUnitsForDisplay(value, unit, metric.MetricName)
-	
+
 	// Create PRTG channel
 	channel := &PRTGChannel{
 		Channel: channelName,
 		Value:   convertedValue,
 	}
-	
+
 	// Configure channel based on whether it uses lookup or not
 	if valueLookup != "" {
 		// Lookup metrics: PRTG will display text from lookup file
@@ -163,14 +163,14 @@ func (f *FormatConverter) transformToPRTGChannel(key string, metric CachedMetric
 		// Regular metrics: use standard numeric formatting
 		floatValue := 1
 		channel.Float = &floatValue // PRTG expects Float=1 for decimal values
-		
+
 		// Format units for PRTG: use "custom" when we have a unit
 		if convertedUnit != "" {
 			channel.Unit = "custom"
 			channel.CustomUnit = convertedUnit
 		}
 	}
-	
+
 	return channel
 }
 
@@ -180,22 +180,22 @@ func (f *FormatConverter) convertUnitsForDisplay(value float64, unit string, met
 	if unit != "Bytes" && unit != "bytes" {
 		return value, unit
 	}
-	
+
 	// Don't convert values that are already reasonable (< 10MB)
 	if value < 10*1024*1024 {
 		return value, unit
 	}
-	
+
 	// Apply storage capacity conversion (binary units: 1024-based)
 	if f.isStorageCapacityMetric(metricName) {
 		return f.convertBytesToBinaryUnits(value)
 	}
-	
-	// Apply network/IO conversion (decimal units: 1000-based) 
+
+	// Apply network/IO conversion (decimal units: 1000-based)
 	if f.isNetworkIOMetric(metricName) {
 		return f.convertBytesToDecimalUnits(value)
 	}
-	
+
 	// Default: use binary conversion for storage-related metrics
 	return f.convertBytesToBinaryUnits(value)
 }
@@ -204,7 +204,7 @@ func (f *FormatConverter) convertUnitsForDisplay(value float64, unit string, met
 func (f *FormatConverter) isStorageCapacityMetric(metricName string) bool {
 	storageKeywords := []string{"capacity", "allocated", "used", "free", "total"}
 	metricLower := strings.ToLower(metricName)
-	
+
 	for _, keyword := range storageKeywords {
 		if strings.Contains(metricLower, keyword) {
 			return true
@@ -217,7 +217,7 @@ func (f *FormatConverter) isStorageCapacityMetric(metricName string) bool {
 func (f *FormatConverter) isNetworkIOMetric(metricName string) bool {
 	ioKeywords := []string{"io.", "read_bytes", "write_bytes", "total_bytes", "network", "throughput"}
 	metricLower := strings.ToLower(metricName)
-	
+
 	for _, keyword := range ioKeywords {
 		if strings.Contains(metricLower, keyword) {
 			return true
@@ -235,7 +235,7 @@ func (f *FormatConverter) convertBytesToBinaryUnits(bytes float64) (float64, str
 		TB = GB * 1024
 		PB = TB * 1024
 	)
-	
+
 	switch {
 	case bytes >= PB:
 		return bytes / PB, "PB"
@@ -261,7 +261,7 @@ func (f *FormatConverter) convertBytesToDecimalUnits(bytes float64) (float64, st
 		TB = GB * 1000
 		PB = TB * 1000
 	)
-	
+
 	switch {
 	case bytes >= PB:
 		return bytes / PB, "PB"
@@ -324,25 +324,25 @@ func (f *FormatConverter) transformMetricNameForPRTGWithLookup(key string, metri
 			Msg("Failed to get transformer for PRTG format")
 		return metric.MetricName, metric.Unit, ""
 	}
-	
+
 	// Default to original values
 	transformedName := metric.MetricName
 	unit := metric.Unit
 	valueLookup := ""
-	
+
 	if transformer != nil {
 		// Get friendly name
 		if friendlyName := transformer.TransformMetricName(metric.MetricName, metric.Tags); friendlyName != "" {
 			transformedName = friendlyName
 		}
-		
+
 		// Get unit from transformer only if metric doesn't have a unit
 		if unit == "" {
 			if transformerUnit := transformer.GetUnit(metric.MetricName); transformerUnit != "" {
 				unit = transformerUnit
 			}
 		}
-		
+
 		// Get lookup from transformer for health and status metrics
 		if lookupName := transformer.GetLookup(metric.MetricName); lookupName != "" {
 			// Check if this is a health/status metric that should use lookups
@@ -367,7 +367,7 @@ func (f *FormatConverter) transformMetricNameForPRTGWithLookup(key string, metri
 			}
 		}
 	}
-	
+
 	return transformedName, unit, valueLookup
 }
 
@@ -375,15 +375,14 @@ func (f *FormatConverter) transformMetricNameForPRTGWithLookup(key string, metri
 func (f *FormatConverter) isHealthStatusMetric(metricName string, tags map[string]string) bool {
 	// Check metric name patterns for health/status indicators
 	healthKeywords := []string{"health", "status", "state", "power_state", "availability"}
-	
+
 	metricLower := strings.ToLower(metricName)
 	for _, keyword := range healthKeywords {
 		if strings.Contains(metricLower, keyword) {
 			return true
 		}
 	}
-	
-	
+
 	return false
 }
 
@@ -394,12 +393,12 @@ func (f *FormatConverter) applyMetricFilter(metrics []CachedMetric, filter Metri
 	if filter.Limit == 0 && filter.Offset == 0 && len(filter.MetricNames) == 0 && len(filter.TagFilters) == 0 && len(filter.ExcludeTags) == 0 {
 		return metrics // No filtering needed
 	}
-	
+
 	// Apply contextual filtering based on tag types
 	contextualMetricPrefixes := f.getContextualMetricPrefixes(filter.TagFilters)
-	
+
 	filtered := make([]CachedMetric, 0)
-	
+
 	for _, metric := range metrics {
 		// Apply contextual metric filtering first
 		if len(contextualMetricPrefixes) > 0 {
@@ -418,7 +417,7 @@ func (f *FormatConverter) applyMetricFilter(metrics []CachedMetric, filter Metri
 				continue
 			}
 		}
-		
+
 		// Filter by metric names if specified
 		if len(filter.MetricNames) > 0 {
 			found := false
@@ -432,7 +431,7 @@ func (f *FormatConverter) applyMetricFilter(metrics []CachedMetric, filter Metri
 				continue
 			}
 		}
-		
+
 		// Filter by tag filters if specified (include tags)
 		if len(filter.TagFilters) > 0 {
 			tagMatch := true
@@ -459,7 +458,7 @@ func (f *FormatConverter) applyMetricFilter(metrics []CachedMetric, filter Metri
 				continue
 			}
 		}
-		
+
 		// Filter by exclude tags if specified (exclude tags)
 		if len(filter.ExcludeTags) > 0 {
 			shouldExclude := false
@@ -482,28 +481,28 @@ func (f *FormatConverter) applyMetricFilter(metrics []CachedMetric, filter Metri
 				continue
 			}
 		}
-		
+
 		filtered = append(filtered, metric)
 	}
-	
+
 	// Apply offset and limit
 	start := filter.Offset
 	if start > len(filtered) {
 		return []CachedMetric{}
 	}
-	
+
 	end := len(filtered)
 	if filter.Limit > 0 && start+filter.Limit < end {
 		end = start + filter.Limit
 	}
-	
+
 	return filtered[start:end]
 }
 
 // getContextualMetricPrefixes determines which metric prefixes to include based on tag filter context
 func (f *FormatConverter) getContextualMetricPrefixes(tagFilters map[string][]string) []string {
 	var prefixes []string
-	
+
 	// Check for storage-related contextual tags
 	for tagKey := range tagFilters {
 		switch tagKey {
@@ -512,48 +511,48 @@ func (f *FormatConverter) getContextualMetricPrefixes(tagFilters map[string][]st
 			// Support both old test format and real hardware format
 			prefixes = append(prefixes, "storage.pool.", "hardware.storage.pool.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for pool metrics")
-			
+
 		case "volume_name":
-			// If filtering on volume_name, show only volume metrics  
+			// If filtering on volume_name, show only volume metrics
 			prefixes = append(prefixes, "storage.volume.", "hardware.storage.volume.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for volume metrics")
-			
+
 		case "drive_name":
 			// If filtering on drive_name, show only drive metrics
 			prefixes = append(prefixes, "storage.drive.", "hardware.storage.drive.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for drive metrics")
-			
+
 		case "controller":
 			// If filtering on controller, show only storage controller metrics
 			prefixes = append(prefixes, "storage.controller.", "hardware.storage.controller.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for controller metrics")
-			
+
 		// case "fan_name":
 		//     // Thermal metrics disabled - fan filtering not available
 		//     f.logger.Debug().Str("tag", tagKey).Msg("Fan metrics disabled for consistency")
-			
+
 		case "psu_name":
 			// If filtering on psu_name, show only power/PSU metrics
 			prefixes = append(prefixes, "hardware.power.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for PSU metrics")
-			
+
 		case "interface":
 			// If filtering on interface, show only network metrics
 			prefixes = append(prefixes, "network.", "hardware.network.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for network metrics")
-			
+
 		case "core":
 			// If filtering on core, show only CPU metrics
 			prefixes = append(prefixes, "cpu.", "hardware.cpu.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for CPU metrics")
-			
+
 		case "mount_point", "filesystem":
 			// If filtering on mount point or filesystem, show only logical disk metrics
 			prefixes = append(prefixes, "logicaldisk.", "hardware.disk.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for logical disk metrics")
 		}
 	}
-	
+
 	// If multiple contextual prefixes found, return them all (user might want to see related metrics)
 	return prefixes
 }
@@ -563,21 +562,21 @@ func (f *FormatConverter) getContextualMetricPrefixes(tagFilters map[string][]st
 // GetNagiosMetricsForProbe converts cached metrics to basic Nagios format
 func (f *FormatConverter) GetNagiosMetricsForProbe(probeName string) NagiosResponse {
 	f.logger.Debug().Str("probe", probeName).Msg("Converting metrics to basic Nagios format")
-	
+
 	// Get cached metrics for the probe
 	cachedMetrics := f.cache.GetProbeMetrics(probeName)
-	
+
 	// Simple conversion - for complex Nagios logic, this would delegate to a specialized module
-	status := 0        // 0=OK
+	status := 0 // 0=OK
 	statusText := "OK"
 	message := fmt.Sprintf("Probe %s has %d metrics", probeName, len(cachedMetrics))
-	
+
 	if len(cachedMetrics) == 0 {
-		status = 1           // 1=WARNING
+		status = 1 // 1=WARNING
 		statusText = "WARNING"
 		message = fmt.Sprintf("No metrics available for probe %s", probeName)
 	}
-	
+
 	return NagiosResponse{
 		Status:     status,
 		StatusText: statusText,
@@ -587,4 +586,3 @@ func (f *FormatConverter) GetNagiosMetricsForProbe(probeName string) NagiosRespo
 }
 
 // Utility Functions
-

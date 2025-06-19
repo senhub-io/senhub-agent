@@ -100,7 +100,7 @@ func TestRemoteConfiguration_FetchCofiguration(t *testing.T) {
 			defer testServer.Server.Close()
 
 			l := zerolog.New(os.Stderr)
-	baseLogger := &l
+			baseLogger := &l
 			moduleLogger := logger.NewModuleLogger(baseLogger, "configuration.test")
 			httpClient := clientService.NewServer("authKey", testServer.URL, baseLogger)
 
