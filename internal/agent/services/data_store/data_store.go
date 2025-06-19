@@ -9,7 +9,7 @@ package data_store
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -233,7 +233,7 @@ func (d *dataStore) GenerateStrategyId(strategyName string, params configuration
 	}
 
 	input := fmt.Sprintf("%s-%s", strategyName, string(paramsBytes))
-	hash := md5.New()
+	hash := sha256.New()
 	hash.Write([]byte(input))
 	return hex.EncodeToString(hash.Sum(nil))
 }

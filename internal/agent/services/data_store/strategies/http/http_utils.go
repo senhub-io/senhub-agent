@@ -236,7 +236,7 @@ func (u *UtilsManager) getCPUTimeLinux() (time.Duration, error) {
 	pid := os.Getpid()
 	statFile := fmt.Sprintf("/proc/%d/stat", pid)
 
-	data, err := os.ReadFile(statFile)
+	data, err := os.ReadFile(statFile) // #nosec G304 - statFile is constructed from safe PID
 	if err != nil {
 		return 0, fmt.Errorf("failed to read /proc/%d/stat: %w", pid, err)
 	}

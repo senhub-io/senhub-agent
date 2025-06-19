@@ -110,10 +110,17 @@ func NewRedfishClient(baseURL, username, password string, baseLogger *logger.Log
 		IdleConnTimeout:     90 * time.Second,
 	}
 
-	// Skip TLS verification if requested
+	// Skip TLS verification if requested (security warning: only use for testing)
 	if !verifySSL {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-		moduleLogger.Info().Str("endpoint", baseURL).Msg("TLS certificate verification disabled")
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true, // #nosec G402 - TLS verification disabled intentionally for testing environments
+			MinVersion:         tls.VersionTLS12,
+		}
+		moduleLogger.Warn().Str("endpoint", baseURL).Msg("TLS certificate verification disabled - NOT RECOMMENDED for production")
+	} else {
+		transport.TLSClientConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
 	}
 
 	// Create HTTP client with configured transport

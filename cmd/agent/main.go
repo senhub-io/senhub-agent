@@ -318,19 +318,12 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			fmt.Printf("Service status: %s\n", getServiceStatusText(status))
 		}
 	case "run":
-		// Auto-detect offline mode if no mode specified but config file exists
-		if !args.Offline && args.AuthenticationKey == "" {
-			configPath := args.ConfigPath
-			if configPath == "" {
-				configPath = "./agent-config.yaml"
-			}
-			if _, err := os.Stat(configPath); err == nil {
-				fmt.Printf("📋 Detected offline configuration file: %s\n", configPath)
-				fmt.Printf("🔄 Automatically switching to offline mode\n")
-				args.Offline = true
-				args.ConfigPath = configPath
-			}
-		}
+		// Intelligent mode detection with backward compatibility
+		// This function detects the appropriate mode (online/offline) based on:
+		// 1. Configuration file content (mode: online/offline)
+		// 2. Authentication key availability (CLI vs config file)
+		// 3. Legacy fallback for backward compatibility
+		args.Offline = agent.DetectAgentMode(args)
 
 		// Check if configuration file exists when running in offline mode
 		if args.Offline {
