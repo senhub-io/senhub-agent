@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -29,7 +30,7 @@ type DebugLogShipper struct {
 	flushInterval time.Duration
 	flushTimer    *time.Timer
 	flushChan     chan bool
-	closed        bool
+	closed        int64 // atomic flag: 0 = open, 1 = closed
 }
 
 // Config holds configuration options for DebugLogShipper
@@ -42,11 +43,11 @@ type Config struct {
 	FlushInterval time.Duration
 	Headers       map[string]string
 	Timeout       time.Duration
-	
+
 	// VictoriaLogs specific options
-	StreamField string   // Field to use as stream identifier (_stream_fields)
-	TimeField   string   // Field to use as timestamp (_time_field)
-	MsgField    string   // Field to use as message (_msg_field)
+	StreamField string            // Field to use as stream identifier (_stream_fields)
+	TimeField   string            // Field to use as timestamp (_time_field)
+	MsgField    string            // Field to use as message (_msg_field)
 	Tags        map[string]string // Additional tags to add to every log entry
 }
 
@@ -119,7 +120,7 @@ func NewDebugLogShipper(config *Config) (*DebugLogShipper, error) {
 // Write implements io.Writer interface
 // It buffers the log entry and triggers a flush if buffer is full
 func (s *DebugLogShipper) Write(p []byte) (n int, err error) {
-	if s.closed {
+	if atomic.LoadInt64(&s.closed) != 0 {
 		return 0, ErrShipperClosed
 	}
 
@@ -129,32 +130,32 @@ func (s *DebugLogShipper) Write(p []byte) (n int, err error) {
 		// If not valid JSON, create a simple log entry with the raw message
 		logEntry = map[string]interface{}{
 			s.config.MsgField: string(p),
-			"timestamp": time.Now().UnixNano() / int64(time.Millisecond), // Use current time in milliseconds
-			"stream": "agent",
+			"timestamp":       time.Now().UnixNano() / int64(time.Millisecond), // Use current time in milliseconds
+			"stream":          "agent",
 		}
 	}
-	
+
 	// Add any configured tags
 	for k, v := range s.config.Tags {
 		logEntry[k] = v
 	}
-	
+
 	// Ensure stream field exists
 	if _, ok := logEntry[s.config.StreamField]; !ok {
 		logEntry[s.config.StreamField] = "agent"
 	}
-	
+
 	// Ensure timestamp field exists (use 0 to let VictoriaLogs use server time)
 	if _, ok := logEntry[s.config.TimeField]; !ok {
 		logEntry[s.config.TimeField] = "0"
 	}
-	
+
 	// Convert back to JSON string
 	jsonBytes, err := json.Marshal(logEntry)
 	if err != nil {
 		return 0, err
 	}
-	
+
 	jsonStr := string(jsonBytes)
 
 	s.bufferLock.Lock()
@@ -182,16 +183,14 @@ func (s *DebugLogShipper) triggerFlush() {
 // flushWorker handles buffer flushing in the background
 func (s *DebugLogShipper) flushWorker() {
 	for {
-		select {
-		case <-s.flushChan:
-			s.flush()
-			// Reset timer after flush
-			if !s.closed {
-				s.flushTimer.Reset(s.flushInterval)
-			}
+		<-s.flushChan
+		s.flush()
+		// Reset timer after flush
+		if atomic.LoadInt64(&s.closed) == 0 {
+			s.flushTimer.Reset(s.flushInterval)
 		}
 
-		if s.closed {
+		if atomic.LoadInt64(&s.closed) != 0 {
 			return
 		}
 	}
@@ -226,7 +225,7 @@ func (s *DebugLogShipper) flush() {
 func (s *DebugLogShipper) sendLogs(payload string) error {
 	// Construct the VictoriaLogs JSON Stream API endpoint URL with query parameters
 	url := s.endpoint
-	
+
 	// If the endpoint doesn't end with "/jsonline", append it assuming it's VictoriaLogs
 	if !strings.HasSuffix(url, "/jsonline") && !strings.Contains(url, "/jsonline?") {
 		if strings.HasSuffix(url, "/") {
@@ -235,7 +234,7 @@ func (s *DebugLogShipper) sendLogs(payload string) error {
 			url += "/insert/jsonline"
 		}
 	}
-	
+
 	// Add VictoriaLogs specific query parameters if not already present
 	if strings.HasSuffix(url, "/jsonline") || strings.Contains(url, "/jsonline?") {
 		// Parse the URL to manipulate query parameters
@@ -243,10 +242,10 @@ func (s *DebugLogShipper) sendLogs(payload string) error {
 		if err != nil {
 			return err
 		}
-		
+
 		// Get the current query values
 		q := parsedURL.URL.Query()
-		
+
 		// Only add parameters if they're not already set
 		if q.Get("_stream_fields") == "" && s.config.StreamField != "" {
 			q.Add("_stream_fields", s.config.StreamField)
@@ -257,12 +256,12 @@ func (s *DebugLogShipper) sendLogs(payload string) error {
 		if q.Get("_msg_field") == "" && s.config.MsgField != "" {
 			q.Add("_msg_field", s.config.MsgField)
 		}
-		
+
 		// Update the URL with new query parameters
 		parsedURL.URL.RawQuery = q.Encode()
 		url = parsedURL.URL.String()
 	}
-	
+
 	// Create the request
 	req, err := http.NewRequest("POST", url, strings.NewReader(payload))
 	if err != nil {
@@ -296,11 +295,11 @@ func (s *DebugLogShipper) sendLogs(payload string) error {
 // Close implements io.Closer interface
 // It flushes any remaining logs and cleans up resources
 func (s *DebugLogShipper) Close() error {
-	if s.closed {
+	if atomic.LoadInt64(&s.closed) != 0 {
 		return nil
 	}
 
-	s.closed = true
+	atomic.StoreInt64(&s.closed, 1)
 	s.flushTimer.Stop()
 	s.triggerFlush() // Final flush
 	return nil
