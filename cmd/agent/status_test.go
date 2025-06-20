@@ -32,9 +32,9 @@ func TestGetSystemStatusDirect(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name: "No args - unknown mode",
+			name: "No args - online mode default",
 			args: &cliArgs.ParsedArgs{}, // Empty args, no offline flag, no auth key
-			wantMode: "unknown",
+			wantMode: "online", // Default assumption for status checks
 			wantErr:  false,
 		},
 	}
@@ -48,10 +48,17 @@ func TestGetSystemStatusDirect(t *testing.T) {
 				return
 			}
 			
-			// Note: Connection.Mode might be influenced by StatusService logic beyond just our args
-			// For now, we just verify that we get a mode and it's reasonable
-			if status.Connection.Mode == "" {
-				t.Error("Connection mode should not be empty")
+			// Verify the mode is one of the expected values (using real agent detection logic)
+			validModes := []string{"online", "offline"}
+			validMode := false
+			for _, mode := range validModes {
+				if status.Connection.Mode == mode {
+					validMode = true
+					break
+				}
+			}
+			if !validMode {
+				t.Errorf("Connection mode '%s' should be one of %v", status.Connection.Mode, validModes)
 			}
 			
 			// Basic validation of returned status

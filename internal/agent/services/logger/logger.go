@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/rs/zerolog"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -86,11 +87,21 @@ func getLogPath() string {
 		}
 	}
 
-	// Only print log file path when not running status command
-	if len(os.Args) < 2 || os.Args[1] != "status" {
+	// Only print log file path when not running status command or tests
+	if len(os.Args) < 2 || (os.Args[1] != "status" && !isInTestMode()) {
 		log.Printf("Using log file: %s", logPath)
 	}
 	return logPath
+}
+
+// isInTestMode detects if the current execution is running in test mode
+func isInTestMode() bool {
+	for _, arg := range os.Args {
+		if strings.Contains(arg, "test") || strings.HasSuffix(arg, ".test") {
+			return true
+		}
+	}
+	return false
 }
 
 // NewLogger creates a new logger instance based on the provided arguments.
