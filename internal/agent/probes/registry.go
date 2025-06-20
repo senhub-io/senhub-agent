@@ -2,6 +2,7 @@
 package probes
 
 import (
+	"senhub-agent.go/internal/agent/probes/citrix"  // Import the citrix probe package
 	"senhub-agent.go/internal/agent/probes/cpu"
 	"senhub-agent.go/internal/agent/probes/event" // Import the new event probe package
 	"senhub-agent.go/internal/agent/probes/gateway"
@@ -38,6 +39,7 @@ type ProbeConstructor func(map[string]interface{}, *logger.Logger) (types.Probe,
 // - event: Collects custom events via HTTP
 // - otel: Collects OpenTelemetry data
 // - redfish: Monitors hardware via Redfish API
+// - citrix: Monitors Citrix Virtual Apps and Desktops via OData API
 var probeConstructors = map[string]ProbeConstructor{
 	"load_webapp":          webapp.NewLoadWebAppProbe,
 	"ping_webapp":          webapp.NewPingWebAppProbe,
@@ -51,4 +53,5 @@ var probeConstructors = map[string]ProbeConstructor{
 	"event":                event.NewEventProbe,
 	"otel":                 otel.NewOtelProbe,
 	"redfish":              redfish.NewRedfishProbe,
+	"citrix":               citrix.NewCitrixProbe,
 }
