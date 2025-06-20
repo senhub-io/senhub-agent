@@ -176,7 +176,6 @@ func (te *TagEnhancer) simplifyTag(tag tags.Tag) tags.Tag {
 	return simplifiedTag
 }
 
-
 // simplifyControllerName standardizes controller identifiers
 func (te *TagEnhancer) simplifyControllerName(controllerName string) string {
 	// Examples: "controller_a" -> "A", "Controller A" -> "A"
@@ -198,7 +197,6 @@ func (te *TagEnhancer) simplifyDriveName(driveName string) string {
 	}
 	return driveName
 }
-
 
 // GetRecommendedCollections returns the list of standard Redfish collections
 func (te *TagEnhancer) GetRecommendedCollections() []string {
@@ -303,7 +301,6 @@ func (te *TagEnhancer) extractPoolNameFromDescription(description string) string
 	}
 	return desc
 }
-
 
 // isBetterTagValue determines if a new tag value is better than the existing one
 func (te *TagEnhancer) isBetterTagValue(key, newValue string, existingTags []tags.Tag) bool {

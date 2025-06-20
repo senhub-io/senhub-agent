@@ -480,5 +480,3 @@ func (a *APIManager) HandleListEndpoints(w http.ResponseWriter, r *http.Request)
 }
 
 // Utility Methods for API Responses
-
-

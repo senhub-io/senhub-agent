@@ -60,15 +60,15 @@ type RemoteConfigurationData struct {
 }
 
 type RemoteConfiguration struct {
-	data               RemoteConfigurationData
-	logger             *logger.ModuleLogger
-	server             server.Server
-	eventNotifier      *EventNotifier
-	mutex              sync.Mutex
-	scheduler          periodic_scheduler.PeriodicScheduler
-	args               *cliArgs.ParsedArgs // CLI args for local replication
-	localReplicaPath   string             // Path for local replica file
-	agentKey           string             // Agent authentication key
+	data             RemoteConfigurationData
+	logger           *logger.ModuleLogger
+	server           server.Server
+	eventNotifier    *EventNotifier
+	mutex            sync.Mutex
+	scheduler        periodic_scheduler.PeriodicScheduler
+	args             *cliArgs.ParsedArgs // CLI args for local replication
+	localReplicaPath string              // Path for local replica file
+	agentKey         string              // Agent authentication key
 }
 
 func NewRemoteConfiguration(
@@ -84,18 +84,18 @@ func NewRemoteConfiguration(
 	var parsedArgs *cliArgs.ParsedArgs
 	var localReplicaPath string
 	var agentKey string
-	
+
 	if a, ok := args.(*cliArgs.ParsedArgs); ok {
 		parsedArgs = a
 		agentKey = a.AuthenticationKey
-		
+
 		// Determine local replica path
 		if a.ConfigPath != "" {
 			localReplicaPath = a.ConfigPath
 		} else {
 			localReplicaPath = "./agent-config.yaml" // Default path
 		}
-		
+
 		moduleLogger.Debug().
 			Str("local_replica_path", localReplicaPath).
 			Str("agent_key", maskKey(agentKey)).
@@ -254,16 +254,16 @@ func (rc *RemoteConfiguration) UpdateSync() error {
 					Any("new_config", *config).
 					Msg("Configuration changed")
 				rc.data = *config
-				
+
 				// Replicate configuration locally for transition purposes
 				if err := rc.replicateConfigurationLocally(); err != nil {
 					rc.logger.Warn().Err(err).Msg("Failed to replicate configuration locally")
 				}
-				
+
 				rc.eventNotifier.NotifyObservers("Configuration changed")
 			} else {
 				rc.logger.Debug().Msg("Configuration unchanged")
-				
+
 				// Always attempt to create local replica if it doesn't exist (first run)
 				if rc.localReplicaPath != "" {
 					if _, err := os.Stat(rc.localReplicaPath); os.IsNotExist(err) {
@@ -334,7 +334,7 @@ func (rc *RemoteConfiguration) replicateConfigurationLocally() error {
 	localConfig := LocalConfigurationData{
 		Agent: LocalAgentConfig{
 			Key:       rc.agentKey,
-			Mode:      "online", // Important: this stays "online" 
+			Mode:      "online", // Important: this stays "online"
 			Generated: false,    // Key was provided via CLI, not generated
 		},
 		Storage:    rc.data.StorageConfig,
@@ -467,17 +467,17 @@ probes:
 // generateStorageYAML generates the storage section of the YAML
 func (rc *RemoteConfiguration) generateStorageYAML(storage []StorageConfig) (string, error) {
 	var yamlLines []string
-	
+
 	for _, s := range storage {
 		yamlLines = append(yamlLines, fmt.Sprintf("  - name: %s", s.Name))
 		yamlLines = append(yamlLines, "    params:")
-		
+
 		// Convert params to YAML format
 		paramsYaml, err := yaml.Marshal(s.Params)
 		if err != nil {
 			return "", fmt.Errorf("failed to marshal storage params: %w", err)
 		}
-		
+
 		// Indent the params YAML
 		lines := strings.Split(string(paramsYaml), "\n")
 		for _, line := range lines {
@@ -486,24 +486,24 @@ func (rc *RemoteConfiguration) generateStorageYAML(storage []StorageConfig) (str
 			}
 		}
 	}
-	
+
 	return strings.Join(yamlLines, "\n"), nil
 }
 
 // generateProbesYAML generates the probes section of the YAML
 func (rc *RemoteConfiguration) generateProbesYAML(probes []ProbeConfig) (string, error) {
 	var yamlLines []string
-	
+
 	for _, p := range probes {
 		yamlLines = append(yamlLines, fmt.Sprintf("  - name: %s", p.Name))
 		yamlLines = append(yamlLines, "    params:")
-		
+
 		// Convert params to YAML format
 		paramsYaml, err := yaml.Marshal(p.Params)
 		if err != nil {
 			return "", fmt.Errorf("failed to marshal probe params: %w", err)
 		}
-		
+
 		// Indent the params YAML
 		lines := strings.Split(string(paramsYaml), "\n")
 		for _, line := range lines {
@@ -512,6 +512,6 @@ func (rc *RemoteConfiguration) generateProbesYAML(probes []ProbeConfig) (string,
 			}
 		}
 	}
-	
+
 	return strings.Join(yamlLines, "\n"), nil
 }

@@ -41,7 +41,7 @@ func (rc *RemoteConfiguration) SetReplicationParams(args *cliArgs.ParsedArgs) {
 	} else {
 		rc.localReplicaPath = "./agent-config.yaml"
 	}
-	
+
 	// Create a proper logger from args
 	baseLogger := logger.NewLogger(args)
 	rc.logger = logger.NewModuleLogger(baseLogger, "configuration.remote")

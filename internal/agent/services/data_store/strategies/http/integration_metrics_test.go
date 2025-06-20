@@ -448,10 +448,10 @@ func testPRTGEndpoints(t *testing.T, baseURL, agentKey string, strategy *HTTPSyn
 		} else {
 			result.StatusCode = resp.StatusCode
 			defer func() {
-		if err := resp.Body.Close(); err != nil {
-			t.Logf("Failed to close response body: %v", err)
-		}
-	}()
+				if err := resp.Body.Close(); err != nil {
+					t.Logf("Failed to close response body: %v", err)
+				}
+			}()
 
 			if resp.StatusCode == http.StatusOK {
 				var prtgResp PRTGResponse
@@ -510,10 +510,10 @@ func testNagiosEndpoints(t *testing.T, baseURL, agentKey string, strategy *HTTPS
 		} else {
 			result.StatusCode = resp.StatusCode
 			defer func() {
-		if err := resp.Body.Close(); err != nil {
-			t.Logf("Failed to close response body: %v", err)
-		}
-	}()
+				if err := resp.Body.Close(); err != nil {
+					t.Logf("Failed to close response body: %v", err)
+				}
+			}()
 
 			if resp.StatusCode == http.StatusOK {
 				// For Nagios, we expect text response, not JSON
@@ -564,10 +564,10 @@ func testNagiosEndpoints(t *testing.T, baseURL, agentKey string, strategy *HTTPS
 	} else {
 		result.StatusCode = resp.StatusCode
 		defer func() {
-		if err := resp.Body.Close(); err != nil {
-			t.Logf("Failed to close response body: %v", err)
-		}
-	}()
+			if err := resp.Body.Close(); err != nil {
+				t.Logf("Failed to close response body: %v", err)
+			}
+		}()
 		result.Success = resp.StatusCode == http.StatusOK
 	}
 
@@ -615,10 +615,10 @@ func testInfoEndpoints(t *testing.T, baseURL, agentKey string, strategy *HTTPSyn
 		} else {
 			result.StatusCode = resp.StatusCode
 			defer func() {
-		if err := resp.Body.Close(); err != nil {
-			t.Logf("Failed to close response body: %v", err)
-		}
-	}()
+				if err := resp.Body.Close(); err != nil {
+					t.Logf("Failed to close response body: %v", err)
+				}
+			}()
 			result.Success = resp.StatusCode == http.StatusOK
 
 			if resp.StatusCode == http.StatusOK {

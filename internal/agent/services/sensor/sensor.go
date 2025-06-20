@@ -158,7 +158,7 @@ func (s *sensor) Start(quitChannel chan struct{}) error {
 	}
 
 	s.moduleLogger.Info().Msg("Starting sensor service")
-	s.configProvider.OnConfigChanged(func(string) { 
+	s.configProvider.OnConfigChanged(func(string) {
 		if err := s.SyncConfiguration(); err != nil {
 			s.moduleLogger.Error().Err(err).Msg("Failed to sync configuration on config change")
 		}
