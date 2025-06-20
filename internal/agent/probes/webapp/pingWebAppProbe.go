@@ -167,7 +167,7 @@ func (p *PingWebAppProbe) collectPingWebAppWindows(ip string) (float32, float32,
 	if err := validateIPAddress(ip); err != nil {
 		return 0, 0, fmt.Errorf("invalid IP address: %w", err)
 	}
-	
+
 	count := 10
 	cmd := exec.Command("ping", "-n", strconv.Itoa(count), ip) // #nosec G204 - IP address is validated above
 
@@ -189,7 +189,7 @@ func (p *PingWebAppProbe) collectPingWebAppLinux(ip string) (float32, float32, e
 	if err := validateIPAddress(ip); err != nil {
 		return 0, 0, fmt.Errorf("invalid IP address: %w", err)
 	}
-	
+
 	count := 10
 	cmd := exec.Command("ping", "-c", strconv.Itoa(count), ip) // #nosec G204 - IP address is validated above
 
@@ -211,7 +211,7 @@ func (p *PingWebAppProbe) collectPingWebAppDarwin(ip string) (float32, float32, 
 	if err := validateIPAddress(ip); err != nil {
 		return 0, 0, fmt.Errorf("invalid IP address: %w", err)
 	}
-	
+
 	count := 10
 	cmd := exec.Command("ping", "-c", strconv.Itoa(count), ip) // #nosec G204 - IP address is validated above
 

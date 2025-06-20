@@ -1,0 +1,13 @@
+agent:
+  key: "test-offline-agent-key-123456"
+  mode: offline
+  generated: false
+
+# Probes configuration (lightweight for testing)
+probes:
+  - name: cpu
+    params:
+      interval: 30
+  - name: memory
+    params:
+      interval: 30
