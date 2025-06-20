@@ -770,9 +770,11 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 		args = &cliArgs.ParsedArgs{}
 	}
 	
-	// Create a silent logger for the status service (no output during status command)
-	args.Verbose = false // Ensure no debug output
-	logger := agentLogger.NewLogger(args)
+	// Create a completely silent logger for the status service (no output during status command)
+	silentArgs := &cliArgs.ParsedArgs{
+		Verbose: false,
+	}
+	logger := agentLogger.NewLogger(silentArgs)
 	
 	// Try to get version and commit information
 	version := cliArgs.Version
@@ -789,12 +791,14 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 	// Create status service
 	statusService := status.NewStatusService(logger, version, commit)
 	
-	// Determine agent mode based on args
-	agentMode := "unknown"
-	if args.Offline {
-		agentMode = "offline"
-	} else if args.AuthenticationKey != "" {
-		agentMode = "online"
+	// Determine agent mode using the same logic as the agent initialization
+	agentMode := "online" // Default assumption for status checks
+	if args != nil {
+		// Use the authoritative agent mode detection
+		isOffline := agent.DetectAgentMode(args)
+		if isOffline {
+			agentMode = "offline"
+		}
 	}
 	statusService.SetAgentMode(agentMode)
 	

@@ -27,7 +27,11 @@ func (f *CLIFormatter) FormatSystemStatus(status SystemStatus) string {
 	var output strings.Builder
 	
 	// Header
-	output.WriteString("📊 SenHub Agent Status\n")
+	if runtime.GOOS == "windows" {
+		output.WriteString("SenHub Agent Status\n")
+	} else {
+		output.WriteString("📊 SenHub Agent Status\n")
+	}
 	output.WriteString(strings.Repeat("=", 50) + "\n\n")
 	
 	// Agent Information
@@ -58,7 +62,11 @@ func (f *CLIFormatter) FormatSystemStatus(status SystemStatus) string {
 func (f *CLIFormatter) FormatBasicStatus(health HealthInfo, agent AgentInfo) string {
 	var output strings.Builder
 	
-	output.WriteString("📊 SenHub Agent Status\n")
+	if runtime.GOOS == "windows" {
+		output.WriteString("SenHub Agent Status\n")
+	} else {
+		output.WriteString("📊 SenHub Agent Status\n")
+	}
 	output.WriteString(strings.Repeat("=", 30) + "\n\n")
 	
 	// Basic health
@@ -80,7 +88,11 @@ func (f *CLIFormatter) FormatBasicStatus(health HealthInfo, agent AgentInfo) str
 func (f *CLIFormatter) formatAgentInfo(agent AgentInfo) string {
 	var output strings.Builder
 	
-	output.WriteString("🔧 Agent Information\n")
+	if runtime.GOOS == "windows" {
+		output.WriteString("Agent Information\n")
+	} else {
+		output.WriteString("🔧 Agent Information\n")
+	}
 	output.WriteString(strings.Repeat("-", 30) + "\n")
 	output.WriteString(fmt.Sprintf("Version:    %s\n", agent.Version))
 	output.WriteString(fmt.Sprintf("Commit:     %s\n", agent.Commit))
@@ -98,7 +110,11 @@ func (f *CLIFormatter) formatAgentInfo(agent AgentInfo) string {
 func (f *CLIFormatter) formatHealthInfo(health HealthInfo) string {
 	var output strings.Builder
 	
-	output.WriteString("💚 System Health\n")
+	if runtime.GOOS == "windows" {
+		output.WriteString("System Health\n")
+	} else {
+		output.WriteString("💚 System Health\n")
+	}
 	output.WriteString(strings.Repeat("-", 30) + "\n")
 	
 	statusIcon := f.getHealthIcon(health.Status)
@@ -116,11 +132,19 @@ func (f *CLIFormatter) formatHealthInfo(health HealthInfo) string {
 func (f *CLIFormatter) formatConnectionInfo(conn ConnectionInfo) string {
 	var output strings.Builder
 	
-	output.WriteString("🌐 Connection\n")
+	if runtime.GOOS == "windows" {
+		output.WriteString("Connection\n")
+	} else {
+		output.WriteString("🌐 Connection\n")
+	}
 	output.WriteString(strings.Repeat("-", 30) + "\n")
 	
 	modeIcon := f.getConnectionIcon(conn.Mode)
-	output.WriteString(fmt.Sprintf("Mode:       %s %s\n", modeIcon, f.titleCaser.String(conn.Mode)))
+	if modeIcon != "" {
+		output.WriteString(fmt.Sprintf("Mode:       %s %s\n", modeIcon, f.titleCaser.String(conn.Mode)))
+	} else {
+		output.WriteString(fmt.Sprintf("Mode:       %s\n", f.titleCaser.String(conn.Mode)))
+	}
 	output.WriteString(fmt.Sprintf("Source:     %s\n", f.formatSource(conn.Source)))
 	output.WriteString(fmt.Sprintf("Status:     %s\n", f.formatConnectionStatus(conn.Status)))
 	
@@ -131,7 +155,11 @@ func (f *CLIFormatter) formatConnectionInfo(conn ConnectionInfo) string {
 func (f *CLIFormatter) formatPerformanceInfo(perf PerformanceInfo) string {
 	var output strings.Builder
 	
-	output.WriteString("⚡ Performance\n")
+	if runtime.GOOS == "windows" {
+		output.WriteString("Performance\n")
+	} else {
+		output.WriteString("⚡ Performance\n")
+	}
 	output.WriteString(strings.Repeat("-", 30) + "\n")
 	output.WriteString(fmt.Sprintf("Uptime:     %s\n", perf.Uptime))
 	output.WriteString(fmt.Sprintf("Memory:     %.1f MB\n", perf.MemoryUsageMB))
@@ -152,7 +180,11 @@ func (f *CLIFormatter) formatPerformanceInfo(perf PerformanceInfo) string {
 func (f *CLIFormatter) FormatProbeStatuses(probes []ProbeStatus) string {
 	var output strings.Builder
 	
-	output.WriteString("🔍 Probes\n")
+	if runtime.GOOS == "windows" {
+		output.WriteString("Probes\n")
+	} else {
+		output.WriteString("🔍 Probes\n")
+	}
 	output.WriteString(strings.Repeat("-", 30) + "\n")
 	
 	if len(probes) == 0 {
@@ -181,7 +213,11 @@ func (f *CLIFormatter) FormatProbeStatuses(probes []ProbeStatus) string {
 	// Individual probe details
 	for _, probe := range probes {
 		statusIcon := f.getProbeIcon(probe.Status)
-		output.WriteString(fmt.Sprintf("  %s %s\n", statusIcon, probe.Name))
+		if statusIcon != "" {
+			output.WriteString(fmt.Sprintf("  %s %s\n", statusIcon, probe.Name))
+		} else {
+			output.WriteString(fmt.Sprintf("  %s\n", probe.Name))
+		}
 		output.WriteString(fmt.Sprintf("     Status: %s\n", f.titleCaser.String(probe.Status)))
 		output.WriteString(fmt.Sprintf("     Metrics: %d\n", probe.MetricsCount))
 		
@@ -270,10 +306,19 @@ func (f *CLIFormatter) formatSource(source string) string {
 func (f *CLIFormatter) formatConnectionStatus(status string) string {
 	switch status {
 	case "connected":
+		if runtime.GOOS == "windows" {
+			return "Connected"
+		}
 		return "✅ Connected"
 	case "disconnected":
+		if runtime.GOOS == "windows" {
+			return "Disconnected"
+		}
 		return "❌ Disconnected"
 	case "local":
+		if runtime.GOOS == "windows" {
+			return "Local mode"
+		}
 		return "📁 Local mode"
 	default:
 		return status
