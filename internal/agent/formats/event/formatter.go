@@ -104,7 +104,6 @@ func (f *Formatter) getTagValue(tags []tags.Tag, key string) string {
 	return ""
 }
 
-
 // sanitizeUTF8 nettoie et normalise une chaîne en UTF-8
 func (f *Formatter) sanitizeUTF8(input string) string {
 	t := transform.Chain(norm.NFC)

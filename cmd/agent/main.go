@@ -18,6 +18,7 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/services/status"
 )
 
 type program struct {
@@ -367,10 +368,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			fmt.Printf("Final service status: %s\n", getServiceStatusText(finalStatus))
 		}
 	case "status":
-		status, err := s.Status()
-		if err == nil {
-			fmt.Printf("Service status: %s\n", getServiceStatusText(status))
-		}
+		showEnhancedStatus(s, args)
 	case "run":
 		// Intelligent mode detection with backward compatibility
 		// This function detects the appropriate mode (online/offline) based on:
@@ -680,4 +678,219 @@ func showDebugModules() {
 	fmt.Printf("\n   # Debug with offline mode:\n")
 	fmt.Printf("   %s run --offline --debug-modules strategy.http,cache\n", os.Args[0])
 	fmt.Println()
+}
+
+// showEnhancedStatus displays enhanced status information using the status service
+func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
+	// Create logger for status operations
+	logger := agentLogger.NewLogger(&cliArgs.ParsedArgs{Verbose: false})
+	
+	// Create status helper and formatter
+	statusHelper := status.NewStatusHelper(logger)
+	formatter := status.NewCLIFormatter()
+	
+	// Get basic service status
+	serviceStatus, err := statusHelper.GetServiceStatus(svc)
+	if err != nil {
+		fmt.Printf("Error checking service status: %v\n", err)
+		return
+	}
+	
+	// Capitalize first letter for display
+	displayStatus := strings.ToUpper(serviceStatus[:1]) + serviceStatus[1:]
+	fmt.Printf("Service status: %s\n\n", displayStatus)
+	
+	// If service is not running, show basic info only
+	if serviceStatus != "running" {
+		fmt.Println("Agent service is not running.")
+		fmt.Println("Start the service with: " + os.Args[0] + " start")
+		return
+	}
+	
+	// Try to get detailed status from running agent first (via HTTP)
+	agentKey := ""
+	if args != nil {
+		agentKey = args.AuthenticationKey
+		
+		// Try to get agent key from config file if not provided
+		if agentKey == "" {
+			configPath := args.ConfigPath
+			if configPath == "" {
+				configPath = "./agent-config.yaml"
+			}
+			
+			if extractedKey, err := extractAgentKeyFromConfig(configPath); err == nil {
+				agentKey = extractedKey
+			}
+		}
+	}
+	
+	// Try HTTP endpoint first (for running agent with HTTP strategy)
+	if agentKey != "" {
+		if systemStatus, err := statusHelper.GetDetailedStatusFromHTTP(agentKey, 8080); err == nil {
+			// Successfully got status from running agent
+			fmt.Print(formatter.FormatSystemStatus(*systemStatus))
+			return
+		}
+		// HTTP failed, fall back to direct method
+	}
+	
+	// Fallback: Get system status directly using StatusService (no HTTP dependency)
+	systemStatus, err := getSystemStatusDirect(args)
+	if err != nil {
+		fmt.Printf("Note: Could not get system status (%v), showing minimal status\n\n", err)
+		
+		// Minimal fallback status
+		basicHealth := status.HealthInfo{
+			Status:    "unknown", 
+			Timestamp: time.Now(),
+			Message:   "Service is running but status unavailable",
+		}
+		
+		basicAgent := status.AgentInfo{
+			Version:   "unknown",
+			Commit:    "unknown", 
+			GoVersion: runtime.Version(),
+			OS:        runtime.GOOS,
+			Arch:      runtime.GOARCH,
+		}
+		
+		fmt.Print(formatter.FormatBasicStatus(basicHealth, basicAgent))
+		return
+	}
+	
+	// Display full system status
+	fmt.Print(formatter.FormatSystemStatus(systemStatus))
+}
+
+// getSystemStatusDirect gets system status directly using StatusService (no HTTP dependency)
+func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error) {
+	// Handle nil args case
+	if args == nil {
+		args = &cliArgs.ParsedArgs{}
+	}
+	
+	// Create a silent logger for the status service (no output during status command)
+	args.Verbose = false // Ensure no debug output
+	logger := agentLogger.NewLogger(args)
+	
+	// Try to get version and commit information
+	version := cliArgs.Version
+	commit := cliArgs.CommitHash
+	if version == "" {
+		version = "development"
+	}
+	
+	// Format commit hash for display (take first 7 chars if longer)
+	if len(commit) > 7 {
+		commit = commit[:7]
+	}
+	
+	// Create status service
+	statusService := status.NewStatusService(logger, version, commit)
+	
+	// Determine agent mode based on args
+	agentMode := "unknown"
+	if args.Offline {
+		agentMode = "offline"
+	} else if args.AuthenticationKey != "" {
+		agentMode = "online"
+	}
+	statusService.SetAgentMode(agentMode)
+	
+	// Note: Without actual probe/cache data, we'll get basic system info
+	// In a real deployment, this would connect to the running agent's internal state
+	systemStatus := statusService.GetSystemStatus()
+	
+	// Try to enhance with agent key if available
+	if args != nil {
+		agentKey := args.AuthenticationKey
+		
+		// Try to get agent key from config file if not provided
+		if agentKey == "" {
+			configPath := args.ConfigPath
+			if configPath == "" {
+				configPath = "./agent-config.yaml"
+			}
+			
+			if extractedKey, err := extractAgentKeyFromConfig(configPath); err == nil {
+				agentKey = extractedKey
+			}
+		}
+		
+		// Update connection info with agent key source
+		if agentKey != "" {
+			systemStatus.Connection.Source = "Configuration file"
+			systemStatus.Connection.Status = "Available"
+		}
+	}
+	
+	return systemStatus, nil
+}
+
+// validateConfigPath validates that the config path is safe to read
+func validateConfigPath(configPath string) error {
+	// Convert to absolute path for consistent validation
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve absolute path: %w", err)
+	}
+	
+	// Only allow .yaml and .yml extensions
+	ext := strings.ToLower(filepath.Ext(absPath))
+	if ext != ".yaml" && ext != ".yml" {
+		return fmt.Errorf("config file must have .yaml or .yml extension, got: %s", ext)
+	}
+	
+	// Ensure the path doesn't contain directory traversal attempts
+	cleanPath := filepath.Clean(absPath)
+	if cleanPath != absPath {
+		return fmt.Errorf("path contains directory traversal attempts")
+	}
+	
+	// Only allow config files in current directory or subdirectories (no parent directory access)
+	workingDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get working directory: %w", err)
+	}
+	
+	// Check if the file is within the working directory or its subdirectories
+	relPath, err := filepath.Rel(workingDir, absPath)
+	if err != nil || strings.HasPrefix(relPath, "..") {
+		return fmt.Errorf("config file must be within the current working directory or its subdirectories")
+	}
+	
+	return nil
+}
+
+// extractAgentKeyFromConfig attempts to extract agent key from local config file
+func extractAgentKeyFromConfig(configPath string) (string, error) {
+	// Validate the config path for security
+	if err := validateConfigPath(configPath); err != nil {
+		return "", fmt.Errorf("invalid config path: %w", err)
+	}
+	
+	// This is a simplified version - in practice, we'd properly parse the YAML
+	// #nosec G304 - path is validated by validateConfigPath function
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		return "", err
+	}
+	
+	// Simple string search for agent key (not ideal, but functional)
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "key:") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(strings.Trim(parts[1], "\""))
+				if key != "" {
+					return key, nil
+				}
+			}
+		}
+	}
+	
+	return "", fmt.Errorf("agent key not found in config file")
 }

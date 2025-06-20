@@ -993,7 +993,6 @@ func (c *StorageCollector) collectControllerHealthMetrics(ctx context.Context, t
 	return datapoints, nil
 }
 
-
 // collectPoolMetrics collects resource consumption metrics for storage pools
 func (c *StorageCollector) collectPoolMetrics(ctx context.Context, timestamp time.Time) ([]data_store.DataPoint, error) {
 	var datapoints []data_store.DataPoint
