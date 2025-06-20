@@ -86,7 +86,10 @@ func getLogPath() string {
 		}
 	}
 
-	log.Printf("Using log file: %s", logPath)
+	// Only print log file path when not running status command
+	if len(os.Args) < 2 || os.Args[1] != "status" {
+		log.Printf("Using log file: %s", logPath)
+	}
 	return logPath
 }
 
