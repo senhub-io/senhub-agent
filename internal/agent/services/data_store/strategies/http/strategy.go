@@ -11,6 +11,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/services/status"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
@@ -38,6 +39,7 @@ type HTTPSyncStrategy struct {
 	apiManager          *APIManager            // API endpoints manager (PRTG, SenHub, Info)
 	nagiosManager       *NagiosManager         // Nagios endpoints and processing manager
 	utilsManager        *UtilsManager          // utility functions and helper methods manager
+	statusService       *status.StatusService  // centralized status calculation service
 }
 
 // SenHubMetric represents a metric in standardized SenHub raw format
@@ -167,10 +169,42 @@ func NewHTTPSyncStrategy(
 	// Initialize utils manager
 	strategy.utilsManager = NewUtilsManager(strategy, moduleLogger)
 
+	// Initialize status service with centralized status calculations
+	strategy.statusService = status.NewStatusService(
+		moduleLogger.Logger, 
+		"unknown", // Version will be set later if available
+		"unknown", // Commit will be set later if available  
+	)
+	
+	// Configure status service with cache provider and agent mode
+	cacheAdapter := NewHTTPCacheAdapter(strategy.cache, moduleLogger.Logger)
+	strategy.statusService.SetCacheProvider(cacheAdapter)
+	
+	// Determine agent mode (online/offline) from configuration
+	agentMode := strategy.determineAgentMode()
+	strategy.statusService.SetAgentMode(agentMode)
+
 	// Initialize server manager (must be last, needs access to all other modules)
 	strategy.serverManager = NewServerManager(strategy, moduleLogger)
 
 	return strategy
+}
+
+// determineAgentMode determines if the agent is running in online or offline mode
+func (h *HTTPSyncStrategy) determineAgentMode() string {
+	// Simple heuristic: if agent key looks like offline generated key, assume offline mode
+	if h.agentKey == "" {
+		return "unknown"
+	}
+	
+	// Offline keys typically contain "offline" or are generated with machine fingerprint
+	if len(h.agentKey) > 20 && (h.agentKey[:7] == "offline" || h.agentKey[:4] == "test") {
+		return "offline"
+	}
+	
+	// For now, assume online mode for other keys
+	// This could be enhanced with proper mode detection
+	return "online"
 }
 
 // GetStrategyName returns the strategy identifier
@@ -352,8 +386,6 @@ func (h *HTTPSyncStrategy) handleInfoSystem(w http.ResponseWriter, r *http.Reque
 	h.apiManager.HandleInfoSystem(w, r)
 }
 
-
-
 // handleInfoTags provides tag discovery for a specific probe (delegated to APIManager)
 func (h *HTTPSyncStrategy) handleInfoTags(w http.ResponseWriter, r *http.Request) {
 	h.apiManager.HandleInfoTags(w, r)
@@ -364,20 +396,10 @@ func (h *HTTPSyncStrategy) handleInfoSchema(w http.ResponseWriter, r *http.Reque
 	h.apiManager.HandleInfoSchema(w, r)
 }
 
-
-
-
-
-
-
-
-
-
 // handleListEndpoints lists all available API endpoints (delegated to APIManager)
 func (h *HTTPSyncStrategy) handleListEndpoints(w http.ResponseWriter, r *http.Request) {
 	h.apiManager.HandleListEndpoints(w, r)
 }
-
 
 // handleDebugCache handles GET requests for cache debugging (delegated to DebugManager)
 func (h *HTTPSyncStrategy) handleDebugCache(w http.ResponseWriter, r *http.Request) {
@@ -422,12 +444,6 @@ func (h *HTTPSyncStrategy) handleNagiosChecks(w http.ResponseWriter, r *http.Req
 }
 
 // Nagios helper functions (delegated to NagiosManager)
-
-
-
-
-
-
 
 // handleZabbixMetricsGET handles GET requests for Zabbix format metrics (delegated to UtilsManager)
 func (h *HTTPSyncStrategy) handleZabbixMetricsGET(w http.ResponseWriter, r *http.Request) {
@@ -488,8 +504,6 @@ func (h *HTTPSyncStrategy) handleUniversalConfigPreview(w http.ResponseWriter, r
 func (h *HTTPSyncStrategy) handleUniversalConfigTest(w http.ResponseWriter, r *http.Request) {
 	h.configManager.HandleUniversalConfigTest(w, r)
 }
-
-
 
 // Module Access Getters (Encapsulation)
 // These methods provide controlled access to internal modules
@@ -663,4 +677,12 @@ func (h *HTTPSyncStrategy) restartServer() error {
 		Str("bind_address", h.bindAddress).
 		Msg("🚀 HTTP server restarted successfully")
 	return nil
+}
+
+// Module Access Getters (Encapsulation)
+// These methods provide controlled access to internal modules
+
+// GetStatusService returns the status service (read-only access)
+func (h *HTTPSyncStrategy) GetStatusService() *status.StatusService {
+	return h.statusService
 }

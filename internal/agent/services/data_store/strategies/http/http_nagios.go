@@ -180,9 +180,6 @@ func (n *NagiosManager) HandleNagiosChecks(w http.ResponseWriter, r *http.Reques
 
 // Nagios Processing Methods
 
-
-
-
 // executeNagiosCheck executes a Nagios check with filtering and overrides
 func (n *NagiosManager) executeNagiosCheck(check *NagiosCheck, filter MetricFilter, overrides NagiosOverrides) NagiosResponse {
 	n.logger.Debug().
@@ -266,7 +263,6 @@ func (n *NagiosManager) executeNagiosCheck(check *NagiosCheck, filter MetricFilt
 	}
 }
 
-
 // applyNagiosTagFilters applies tag filters from Nagios check configuration
 func (n *NagiosManager) applyNagiosTagFilters(metrics []CachedMetric, filters []NagiosTagFilter) []CachedMetric {
 	return n.strategy.metricsProcessor.ApplyNagiosTagFilters(metrics, filters)
@@ -288,11 +284,4 @@ func (n *NagiosManager) getStatusText(status int) string {
 	}
 }
 
-
 // Utility Methods for Nagios processing
-
-
-
-
-
-

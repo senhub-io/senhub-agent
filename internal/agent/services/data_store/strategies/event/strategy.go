@@ -168,7 +168,6 @@ func (s *EventSyncStrategy) ValidateConfigParams(params configuration.StorageCon
 	return nil
 }
 
-
 // AddDataPoints adds new datapoints to the buffer and triggers sync if needed
 func (s *EventSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
 	for _, dp := range data {

@@ -299,7 +299,7 @@ func detectAgentMode(args *agentCliArgs.ParsedArgs, logger *logger.Logger) bool 
 
 	// Attempt to load configuration from local file (new configuration-driven approach)
 	localConfig := loadLocalConfigInfo(args, logger)
-	
+
 	if localConfig.IsValid {
 		// Configuration file found and parsed successfully
 		logger.Info().
@@ -320,7 +320,7 @@ func detectAgentMode(args *agentCliArgs.ParsedArgs, logger *logger.Logger) bool 
 				Str("cli_key", maskAuthenticationKey(args.AuthenticationKey)).
 				Str("config_key", maskAuthenticationKey(localConfig.AuthenticationKey)).
 				Msg("Authentication key mismatch between CLI and config file")
-			
+
 			// Test CLI key first, if it fails, use config file key
 			if !validateAuthenticationKey(args.AuthenticationKey, args.ServerUrl, logger) {
 				logger.Warn().Msg("CLI authentication key validation failed, falling back to config file key")
@@ -347,7 +347,7 @@ func detectAgentMode(args *agentCliArgs.ParsedArgs, logger *logger.Logger) bool 
 
 	// Fallback to legacy detection logic (backward compatibility)
 	// This maintains compatibility with existing deployments that don't have config files
-	
+
 	// Check if configuration file exists but couldn't be parsed
 	configPath := args.ConfigPath
 	if configPath == "" {
@@ -467,7 +467,7 @@ func validateAuthenticationKey(key, serverUrl string, logger *logger.Logger) boo
 	logger.Debug().
 		Str("key", maskAuthenticationKey(key)).
 		Msg("Authentication key format appears valid")
-	
+
 	return true
 }
 
