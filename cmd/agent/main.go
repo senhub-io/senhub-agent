@@ -793,12 +793,14 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 	
 	// Determine agent mode using the same logic as the agent initialization
 	agentMode := "online" // Default assumption for status checks
-	if args != nil {
-		// Use the authoritative agent mode detection
+	if args != nil && args.AuthenticationKey != "" {
+		// Use the authoritative agent mode detection only if we have some context
 		isOffline := agent.DetectAgentMode(args)
 		if isOffline {
 			agentMode = "offline"
 		}
+	} else if args != nil && args.Offline {
+		agentMode = "offline"
 	}
 	statusService.SetAgentMode(agentMode)
 	
