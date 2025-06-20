@@ -117,4 +117,3 @@ func (c *HTTPCollector) IsSupported(telemetryType TelemetryType) bool {
 func (c *HTTPCollector) GetSupportedTelemetryTypes() []TelemetryType {
 	return c.supportedTypes
 }
-

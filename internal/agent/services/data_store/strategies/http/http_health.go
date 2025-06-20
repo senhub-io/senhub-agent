@@ -92,24 +92,25 @@ func (h *HealthManager) HandleDetailedHealth(w http.ResponseWriter, r *http.Requ
 	// Authentication is handled by the calling handler
 	h.logger.Debug().Msg("Detailed health check request received")
 
-	h.strategy.cache.mu.RLock()
-	totalMetrics := len(h.strategy.cache.timeSeries)
-	probeCount := len(h.strategy.cache.probeIndex)
-	h.strategy.cache.mu.RUnlock()
+	// Get status from centralized service
+	systemStatus := h.strategy.statusService.GetSystemStatus()
+	probeStatuses := h.strategy.statusService.GetProbeStatuses()
 
-	// Calculate actual uptime since start
-	uptime := time.Since(h.startTime).Truncate(time.Second).String()
-
-	// Get version information from strategy
-	versionInfo := h.strategy.utilsManager.parseVersionInfo()
+	// Count active probes
+	activeProbes := 0
+	for _, probe := range probeStatuses {
+		if probe.Status == "active" {
+			activeProbes++
+		}
+	}
 
 	response := HealthResponse{
 		Status:        "ok",
-		Version:       versionInfo.Version,
-		Commit:        versionInfo.Commit,
-		Uptime:        uptime,
-		ProbesActive:  probeCount,
-		MetricsCached: totalMetrics,
+		Version:       systemStatus.Agent.Version,
+		Commit:        systemStatus.Agent.Commit,
+		Uptime:        systemStatus.Performance.Uptime,
+		ProbesActive:  activeProbes,
+		MetricsCached: systemStatus.Performance.CacheEntries,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -120,106 +121,100 @@ func (h *HealthManager) HandleDetailedHealth(w http.ResponseWriter, r *http.Requ
 }
 
 // BuildSystemHealth creates comprehensive health information for system info endpoint
+// This method now delegates to the centralized StatusService for consistency
 func (h *HealthManager) BuildSystemHealth() SystemHealth {
-	h.strategy.cache.mu.RLock()
-	totalMetrics := len(h.strategy.cache.timeSeries)
-	h.strategy.cache.mu.RUnlock()
-
-	// Get memory stats
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	memUsageMB := float64(memStats.Alloc) / 1024 / 1024
-
-	// Calculate uptime
-	uptime := time.Since(h.startTime)
-	uptimeStr := fmt.Sprintf("%.0f seconds", uptime.Seconds())
-
-	// Get version information
-	versionInfo := h.strategy.utilsManager.parseVersionInfo()
-
-	// Create health response
+	// Get comprehensive system status from centralized service
+	systemStatus := h.strategy.statusService.GetSystemStatus()
+	
+	// Convert to HTTP strategy's format for backward compatibility
 	healthResponse := HealthCheckResponse{
-		Status:    "healthy",
-		Timestamp: time.Now().Unix(),
-		Version:   versionInfo.Version,
+		Status:    systemStatus.Health.Status,
+		Timestamp: systemStatus.Health.Timestamp.Unix(),
+		Version:   systemStatus.Agent.Version,
 		Services: map[string]string{
 			"http_server": "running",
 			"cache":       "running",
-			"metrics":     fmt.Sprintf("%d metrics cached", totalMetrics),
+			"metrics":     fmt.Sprintf("%d metrics cached", systemStatus.Performance.CacheEntries),
+			"mode":        systemStatus.Connection.Mode,
 		},
 	}
 
-	// Create resources info
+	// Convert resources info
 	resources := ResourcesInfo{
-		MemoryUsageMB: memUsageMB,
-		CPUPercent:    h.strategy.utilsManager.getCPUUsage(),
-		Goroutines:    runtime.NumGoroutine(),
+		MemoryUsageMB: systemStatus.Performance.MemoryUsageMB,
+		CPUPercent:    systemStatus.Performance.CPUPercent,
+		Goroutines:    systemStatus.Performance.Goroutines,
 	}
 
 	return SystemHealth{
 		Health:    healthResponse,
 		Resources: resources,
-		Uptime:    uptimeStr,
+		Uptime:    systemStatus.Performance.Uptime,
 	}
 }
 
 // GetServiceStatus returns the status of various system services
+// This method now delegates to the centralized StatusService for consistency
 func (h *HealthManager) GetServiceStatus() map[string]string {
-	h.strategy.cache.mu.RLock()
-	totalMetrics := len(h.strategy.cache.timeSeries)
-	h.strategy.cache.mu.RUnlock()
+	// Get status from centralized service
+	systemStatus := h.strategy.statusService.GetSystemStatus()
 
 	return map[string]string{
 		"http_server": "running",
 		"cache":       "running",
-		"metrics":     fmt.Sprintf("%d metrics cached", totalMetrics),
+		"metrics":     fmt.Sprintf("%d metrics cached", systemStatus.Performance.CacheEntries),
 		"strategy":    "http",
-		"uptime":      time.Since(h.startTime).Truncate(time.Second).String(),
+		"mode":        systemStatus.Connection.Mode,
+		"uptime":      systemStatus.Performance.Uptime,
+		"health":      systemStatus.Health.Status,
 	}
 }
 
 // IsHealthy performs basic health checks and returns system status
+// This method now delegates to the centralized StatusService for consistency
 func (h *HealthManager) IsHealthy() bool {
-	// Basic health checks
-	if h.strategy == nil {
+	// Basic infrastructure checks
+	if h.strategy == nil || h.strategy.cache == nil || h.strategy.server == nil {
 		return false
 	}
 
-	if h.strategy.cache == nil {
-		return false
-	}
-
-	// Check if server is running (basic check)
-	if h.strategy.server == nil {
-		return false
-	}
-
-	return true
+	// Get health status from centralized service
+	healthStatus := h.strategy.statusService.GetHealthStatus()
+	
+	// Consider healthy if status is "healthy" or "degraded" (not "unhealthy")
+	return healthStatus.Status == "healthy" || healthStatus.Status == "degraded"
 }
 
 // GetHealthMetrics returns health-related metrics for monitoring integration
+// This method now delegates to the centralized StatusService for consistency
 func (h *HealthManager) GetHealthMetrics() map[string]interface{} {
-	h.strategy.cache.mu.RLock()
-	totalMetrics := len(h.strategy.cache.timeSeries)
-	probeCount := len(h.strategy.cache.probeIndex)
-	h.strategy.cache.mu.RUnlock()
+	// Get comprehensive status from centralized service
+	systemStatus := h.strategy.statusService.GetSystemStatus()
+	probeStatuses := h.strategy.statusService.GetProbeStatuses()
 
-	// Get system metrics
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	memUsageMB := float64(memStats.Alloc) / 1024 / 1024
+	// Count active probes
+	activeProbes := 0
+	for _, probe := range probeStatuses {
+		if probe.Status == "active" {
+			activeProbes++
+		}
+	}
 
+	// Calculate uptime in seconds for backward compatibility
 	uptimeSeconds := time.Since(h.startTime).Seconds()
 
 	return map[string]interface{}{
 		"uptime_seconds":    uptimeSeconds,
-		"memory_usage_mb":   memUsageMB,
-		"cpu_usage_percent": h.strategy.utilsManager.getCPUUsage(),
-		"goroutines_count":  runtime.NumGoroutine(),
-		"probes_active":     probeCount,
-		"metrics_cached":    totalMetrics,
+		"memory_usage_mb":   systemStatus.Performance.MemoryUsageMB,
+		"cpu_usage_percent": systemStatus.Performance.CPUPercent,
+		"goroutines_count":  systemStatus.Performance.Goroutines,
+		"probes_active":     activeProbes,
+		"total_probes":      len(probeStatuses),
+		"metrics_cached":    systemStatus.Performance.CacheEntries,
 		"cache_ttl_seconds": h.strategy.cache.ttl.Seconds(),
 		"http_port":         h.strategy.port,
-		"status":            "healthy",
+		"status":            systemStatus.Health.Status,
+		"agent_mode":        systemStatus.Connection.Mode,
+		"health_timestamp":  systemStatus.Health.Timestamp.Unix(),
 	}
 }

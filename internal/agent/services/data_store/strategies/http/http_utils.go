@@ -4,38 +4,24 @@ package http
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"runtime"
-	"strconv"
 	"strings"
-	"sync"
-	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-// CPUTracker holds CPU measurement state for calculating usage
-type CPUTracker struct {
-	lastCPUTime  time.Duration
-	lastWallTime time.Time
-	initialized  bool
-	mu           sync.RWMutex
-}
 
 // UtilsManager handles utility functions and helper methods
 type UtilsManager struct {
-	logger     *logger.ModuleLogger
-	strategy   *HTTPSyncStrategy // Reference to parent strategy for access to other modules
-	cpuTracker *CPUTracker       // CPU usage tracking
+	logger   *logger.ModuleLogger
+	strategy *HTTPSyncStrategy // Reference to parent strategy for access to other modules
 }
 
 // NewUtilsManager creates a new utilities manager
 func NewUtilsManager(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger) *UtilsManager {
 	return &UtilsManager{
-		logger:     logger,
-		strategy:   strategy,
-		cpuTracker: &CPUTracker{},
+		logger:   logger,
+		strategy: strategy,
 	}
 }
 
@@ -160,155 +146,6 @@ func formatCommitHash(commit string) string {
 	return commit
 }
 
-
-// CPU Measurement for system monitoring
-
-// getCPUUsage calculates CPU usage percentage for the current process
-func (u *UtilsManager) getCPUUsage() float64 {
-	u.cpuTracker.mu.Lock()
-	defer u.cpuTracker.mu.Unlock()
-
-	// Get current CPU time for this process
-	currentCPUTime, err := u.getCurrentProcessCPUTime()
-	if err != nil {
-		u.logger.Debug().Err(err).Msg("Failed to get CPU time")
-		return 0.0
-	}
-
-	currentWallTime := time.Now()
-
-	// If this is the first measurement, initialize and return 0
-	if !u.cpuTracker.initialized {
-		u.cpuTracker.lastCPUTime = currentCPUTime
-		u.cpuTracker.lastWallTime = currentWallTime
-		u.cpuTracker.initialized = true
-		return 0.0
-	}
-
-	// Calculate deltas
-	cpuDelta := currentCPUTime - u.cpuTracker.lastCPUTime
-	wallDelta := currentWallTime.Sub(u.cpuTracker.lastWallTime)
-
-	// Update for next calculation
-	u.cpuTracker.lastCPUTime = currentCPUTime
-	u.cpuTracker.lastWallTime = currentWallTime
-
-	// Avoid division by zero
-	if wallDelta == 0 {
-		return 0.0
-	}
-
-	// Calculate CPU percentage
-	cpuPercent := float64(cpuDelta) / float64(wallDelta) * 100.0
-
-	// Ensure valid range: 0-100%
-	if cpuPercent < 0.0 {
-		u.logger.Debug().
-			Float64("original_percent", cpuPercent).
-			Int64("cpu_delta_ns", int64(cpuDelta)).
-			Int64("wall_delta_ns", int64(wallDelta)).
-			Msg("CPU percent was negative, clamping to 0%")
-		cpuPercent = 0.0 // Handle negative values from system counter resets
-	} else if cpuPercent > 100.0 {
-		cpuPercent = 100.0 // Cap at 100% for single-core equivalent
-	}
-
-	return cpuPercent
-}
-
-// getCurrentProcessCPUTime gets CPU time for current process (cross-platform)
-func (u *UtilsManager) getCurrentProcessCPUTime() (time.Duration, error) {
-	switch runtime.GOOS {
-	case "linux":
-		return u.getCPUTimeLinux()
-	case "darwin":
-		return u.getCPUTimeDarwin()
-	case "windows":
-		return u.getCPUTimeWindows()
-	default:
-		// Fallback: use runtime stats for approximation
-		return u.getCPUTimeRuntime()
-	}
-}
-
-// getCPUTimeLinux reads CPU time from /proc/pid/stat
-func (u *UtilsManager) getCPUTimeLinux() (time.Duration, error) {
-	pid := os.Getpid()
-	statFile := fmt.Sprintf("/proc/%d/stat", pid)
-
-	data, err := os.ReadFile(statFile) // #nosec G304 - statFile is constructed from safe PID
-	if err != nil {
-		return 0, fmt.Errorf("failed to read /proc/%d/stat: %w", pid, err)
-	}
-
-	fields := strings.Fields(string(data))
-	if len(fields) < 15 {
-		return 0, fmt.Errorf("insufficient fields in /proc/%d/stat", pid)
-	}
-
-	// Fields 13 and 14 are utime and stime (user and system CPU time in clock ticks)
-	utime, err := strconv.ParseInt(fields[13], 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse utime: %w", err)
-	}
-
-	stime, err := strconv.ParseInt(fields[14], 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse stime: %w", err)
-	}
-
-	// Convert clock ticks to nanoseconds
-	// Most Linux systems use 100 Hz (100 clock ticks per second)
-	clockTicks := int64(100)
-	totalTicks := utime + stime
-	nanoseconds := (totalTicks * int64(time.Second)) / clockTicks
-
-	return time.Duration(nanoseconds), nil
-}
-
-// getCPUTimeDarwin gets CPU time on macOS using runtime approximation
-func (u *UtilsManager) getCPUTimeDarwin() (time.Duration, error) {
-	// On macOS, without CGO, we use runtime stats as approximation
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-
-	// Estimate CPU time based on GC activity and runtime metrics
-	// This is an approximation since exact CPU time requires platform-specific syscalls
-	gcCPUTime := time.Duration(memStats.GCCPUFraction * float64(time.Since(u.cpuTracker.lastWallTime)))
-
-	// Add base CPU time estimation
-	estimatedCPUTime := gcCPUTime + time.Duration(memStats.NumGC)*time.Millisecond
-
-	return estimatedCPUTime, nil
-}
-
-// getCPUTimeWindows gets CPU time on Windows using runtime approximation
-func (u *UtilsManager) getCPUTimeWindows() (time.Duration, error) {
-	// On Windows, without CGO, we use runtime stats as approximation
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-
-	// Estimate based on GC and goroutine activity
-	gcTime := time.Duration(memStats.GCCPUFraction * float64(time.Since(u.cpuTracker.lastWallTime)))
-	routineEstimate := time.Duration(runtime.NumGoroutine()) * time.Microsecond
-
-	return gcTime + routineEstimate, nil
-}
-
-// getCPUTimeRuntime fallback using runtime statistics
-func (u *UtilsManager) getCPUTimeRuntime() (time.Duration, error) {
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-
-	// Very rough approximation based on GC CPU fraction
-	if u.cpuTracker.initialized {
-		wallDelta := time.Since(u.cpuTracker.lastWallTime)
-		estimatedCPUTime := time.Duration(memStats.GCCPUFraction * float64(wallDelta))
-		return u.cpuTracker.lastCPUTime + estimatedCPUTime, nil
-	}
-
-	return time.Duration(memStats.GCCPUFraction * float64(time.Second)), nil
-}
 
 // Monitoring Format Handlers (Future Expansion)
 
