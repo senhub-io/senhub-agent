@@ -1,0 +1,192 @@
+# SenHub Agent Configuration with Citrix Probe
+# Complete example for monitoring Citrix Virtual Apps and Desktops
+
+agent:
+  key: "your-agent-key-here"
+
+# Data storage strategies
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "0.0.0.0"
+      endpoints: ["prtg", "senhub", "web", "nagios"]
+      # Cache configuration for Citrix metrics
+      cache:
+        retention_minutes: 45  # Compromise between 10min metrics and 60min historical
+
+# Monitoring probes configuration
+probes:
+  # Citrix Virtual Apps and Desktops monitoring
+  - name: citrix
+    params:
+      # Citrix Director OData API endpoint
+      base_url: "https://citrix-director.company.com/Citrix/Monitor/OData/v4/Data"
+      
+      # Environment identifier for tagging
+      environment: "PROD"
+      
+      # Collection interval (2 minutes recommended)
+      interval: 120
+      
+      # Authentication configuration
+      auth:
+        method: "ntlm"                    # ntlm, basic, or kerberos
+        username: "DOMAIN\\svc-monitoring"  # Service account with read permissions
+        password: "secure-password"        # Use environment variable: ${CITRIX_PASSWORD}
+      
+      # TLS/SSL configuration
+      tls:
+        verify_ssl: true                   # Set to false for self-signed certificates
+      
+      # API collection settings
+      collection_interval: 120             # Internal collection interval (seconds)
+      timeout: 30                         # Request timeout (seconds)
+      
+      # Retry configuration for reliability
+      retry:
+        max_attempts: 3                   # Maximum retry attempts
+        backoff_factor: 2.0               # Exponential backoff multiplier
+
+  # System monitoring probes (recommended for complete coverage)
+  - name: cpu
+    params:
+      interval: 30
+
+  - name: memory
+    params:
+      interval: 30
+
+  - name: network
+    params:
+      interval: 60
+
+  - name: logicaldisk
+    params:
+      interval: 30
+
+---
+# Alternative configuration for development environment
+
+agent:
+  key: "dev-agent-key"
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      endpoints: ["prtg", "web"]
+
+probes:
+  - name: citrix
+    params:
+      base_url: "https://citrix-dev.company.com/Citrix/Monitor/OData/v4/Data"
+      environment: "DEV"
+      interval: 300  # 5 minutes for development
+      
+      auth:
+        method: "basic"
+        username: "admin"
+        password: "devpassword"
+      
+      tls:
+        verify_ssl: false  # Allow self-signed certificates
+      
+      timeout: 60        # Longer timeout for dev environment
+      
+      retry:
+        max_attempts: 5
+        backoff_factor: 1.5
+
+---
+# High-availability configuration with multiple controllers
+
+agent:
+  key: "ha-citrix-agent"
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      endpoints: ["prtg", "senhub", "nagios"]
+
+probes:
+  # Primary Citrix site
+  - name: citrix
+    params:
+      base_url: "https://citrix-site1.company.com/Citrix/Monitor/OData/v4/Data"
+      environment: "PROD-SITE1"
+      interval: 120
+      
+      auth:
+        method: "ntlm"
+        username: "DOMAIN\\svc-monitoring"
+        password: "${CITRIX_PASSWORD}"
+      
+      tls:
+        verify_ssl: true
+      
+      timeout: 30
+      retry:
+        max_attempts: 3
+        backoff_factor: 2.0
+
+  # Secondary Citrix site (different probe instance)
+  - name: citrix
+    params:
+      base_url: "https://citrix-site2.company.com/Citrix/Monitor/OData/v4/Data"
+      environment: "PROD-SITE2"
+      interval: 120
+      
+      auth:
+        method: "ntlm"
+        username: "DOMAIN\\svc-monitoring"
+        password: "${CITRIX_PASSWORD}"
+      
+      tls:
+        verify_ssl: true
+      
+      timeout: 30
+      retry:
+        max_attempts: 3
+        backoff_factor: 2.0
+
+---
+# Security-hardened configuration
+
+agent:
+  key: "${SENHUB_AGENT_KEY}"  # From environment variable
+
+storage:
+  - name: http
+    params:
+      port: 8443  # Non-standard port
+      bind_address: "127.0.0.1"  # Localhost only
+      endpoints: ["prtg"]
+      
+      # HTTPS with custom certificates
+      tls:
+        enabled: true
+        cert_file: "/etc/senhub/tls/cert.pem"
+        key_file: "/etc/senhub/tls/key.pem"
+        min_tls_version: "1.3"
+
+probes:
+  - name: citrix
+    params:
+      base_url: "https://citrix-director.secure.company.com/Citrix/Monitor/OData/v4/Data"
+      environment: "PROD"
+      interval: 120
+      
+      auth:
+        method: "ntlm"
+        username: "${CITRIX_USERNAME}"    # From environment
+        password: "${CITRIX_PASSWORD}"    # From environment
+      
+      tls:
+        verify_ssl: true                  # Strict SSL verification
+      
+      timeout: 15                       # Shorter timeout
+      retry:
+        max_attempts: 2                 # Fewer retries to avoid detection
+        backoff_factor: 3.0             # Longer backoff
