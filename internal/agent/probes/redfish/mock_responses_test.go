@@ -11,8 +11,6 @@ import (
 
 // This file contains test data and helpers for mock responses used in Redfish tests
 
-
-
 // Mock response for system info
 const testSystemResponse = `{
 	"@odata.id": "/redfish/v1/Systems/1",

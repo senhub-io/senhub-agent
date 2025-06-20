@@ -11,12 +11,12 @@ import (
 
 func TestDetectAgentMode(t *testing.T) {
 	tests := []struct {
-		name           string
-		configContent  string
-		cliArgs        *cliArgs.ParsedArgs
-		expectedMode   bool // true = offline, false = online
-		expectAuthKey  string
-		description    string
+		name          string
+		configContent string
+		cliArgs       *cliArgs.ParsedArgs
+		expectedMode  bool // true = offline, false = online
+		expectAuthKey string
+		description   string
 	}{
 		{
 			name: "Offline mode from config file",
@@ -89,7 +89,7 @@ agent:
 			description:   "CLI offline flag should take precedence over config file mode",
 		},
 		{
-			name: "No config file but has CLI key - online mode",
+			name:          "No config file but has CLI key - online mode",
 			configContent: "", // No config file
 			cliArgs: &cliArgs.ParsedArgs{
 				AuthenticationKey: "cli-key-provided",
@@ -168,7 +168,7 @@ storage:
 
 			// Verify authentication key handling
 			if tt.expectAuthKey != "" && tt.cliArgs.AuthenticationKey != tt.expectAuthKey {
-				t.Errorf("Expected authentication key '%s', got '%s'. %s", 
+				t.Errorf("Expected authentication key '%s', got '%s'. %s",
 					tt.expectAuthKey, tt.cliArgs.AuthenticationKey, tt.description)
 			}
 
@@ -190,12 +190,12 @@ storage:
 
 func TestLoadLocalConfigInfo(t *testing.T) {
 	tests := []struct {
-		name           string
-		configContent  string
-		expectedValid  bool
-		expectedMode   string
-		expectedKey    string
-		description    string
+		name          string
+		configContent string
+		expectedValid bool
+		expectedMode  string
+		expectedKey   string
+		description   string
 	}{
 		{
 			name: "Valid offline configuration",
@@ -236,13 +236,13 @@ func TestLoadLocalConfigInfo(t *testing.T) {
   - name: http
 probes:
   - name: cpu`,
-			expectedValid: false, // No authentication key found
+			expectedValid: false,     // No authentication key found
 			expectedMode:  "offline", // Default mode when none specified
 			expectedKey:   "",
 			description:   "Should handle missing agent section gracefully",
 		},
 		{
-			name: "Empty configuration",
+			name:          "Empty configuration",
 			configContent: "",
 			expectedValid: false,
 			expectedMode:  "",
@@ -256,7 +256,7 @@ probes:
 			// Create temporary config file
 			tempDir := t.TempDir()
 			configPath := filepath.Join(tempDir, "agent-config.yaml")
-			
+
 			if tt.configContent != "" {
 				err := os.WriteFile(configPath, []byte(tt.configContent), 0644)
 				if err != nil {
