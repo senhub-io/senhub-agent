@@ -16,6 +16,9 @@ type CitrixClient interface {
 
 	// GetSessions retrieves sessions data from the OData API
 	GetSessions(ctx context.Context, sinceTime time.Time) ([]Session, error)
+	
+	// GetSessionsByConnectionState retrieves sessions filtered by ConnectionState
+	GetSessionsByConnectionState(ctx context.Context, connectionStates []int) ([]Session, error)
 
 	// GetMachines retrieves machines data from the OData API
 	GetMachines(ctx context.Context, sinceTime time.Time) ([]Machine, error)
@@ -26,8 +29,14 @@ type CitrixClient interface {
 	// GetConnectionFailureLogs retrieves connection failure logs from the OData API
 	GetConnectionFailureLogs(ctx context.Context, sinceTime time.Time) ([]ConnectionFailureLog, error)
 
-	// GetControllerStatus retrieves controller status information
-	GetControllerStatus(ctx context.Context) ([]Controller, error)
+	// GetConnectionFailureCategories retrieves connection failure category mappings from the OData API
+	GetConnectionFailureCategories(ctx context.Context) ([]ConnectionFailureCategory, error)
+
+	// GetDeliveryGroupById retrieves a specific delivery group by ID (fallback for missing groups)
+	GetDeliveryGroupById(ctx context.Context, deliveryGroupId string) (*DesktopGroup, error)
+	
+	// GetConnections retrieves connection details with logon breakdown metrics
+	GetConnections(ctx context.Context, sinceTime time.Time) ([]Connection, error)
 }
 
 // CitrixClientConfig holds the configuration for the Citrix client
@@ -43,25 +52,26 @@ type CitrixClientConfig struct {
 	RetryBackoffFactor float64
 }
 
+
 // Session represents a Citrix session from the OData API
 type Session struct {
-	SessionKey          string    `json:"SessionKey"`
-	UserId              string    `json:"UserId"`
-	UserName            string    `json:"UserName"`
-	DesktopGroupId      string    `json:"DesktopGroupId"`
-	DesktopGroupName    string    `json:"DesktopGroupName"`
-	MachineName         string    `json:"MachineName"`
-	SessionState        int       `json:"SessionState"`        // 2=disconnected, 3=connected, 5=active
-	LogOnDuration       int       `json:"LogOnDuration"`       // milliseconds
-	StartTime           time.Time `json:"StartTime"`
-	EndTime             *time.Time `json:"EndTime,omitempty"`
+	SessionKey          string      `json:"SessionKey"`
+	UserId              int         `json:"UserId"`
+	UserName            string      `json:"UserName"`
+	DesktopGroupId      string      `json:"DesktopGroupId"`
+	DesktopGroupName    string      `json:"DesktopGroupName"`
+	MachineName         string      `json:"MachineName"`
+	SessionState        int         `json:"SessionState"`        // 2=disconnected, 3=connected, 5=active
+	LogOnDuration       int         `json:"LogOnDuration"`       // milliseconds
+	StartTime           time.Time   `json:"StartTime"`
+	EndTime             *time.Time  `json:"EndTime,omitempty"`
 	SessionStateChangeTime time.Time `json:"SessionStateChangeTime"`
-	ModifiedDate        time.Time `json:"ModifiedDate"`
-	ConnectionState     int       `json:"ConnectionState"`
-	Protocol            string    `json:"Protocol"`
-	ClientName          string    `json:"ClientName"`
-	ClientIPAddress     string    `json:"ClientIPAddress"`
-	SessionType         string    `json:"SessionType"`
+	ModifiedDate        time.Time   `json:"ModifiedDate"`
+	ConnectionState     int         `json:"ConnectionState"`
+	Protocol            string      `json:"Protocol"`
+	ClientName          string      `json:"ClientName"`
+	ClientIPAddress     string      `json:"ClientIPAddress"`
+	SessionType         int         `json:"SessionType"`
 }
 
 // Machine represents a Citrix machine from the OData API
@@ -71,7 +81,7 @@ type Machine struct {
 	DnsName             string    `json:"DnsName"`
 	DesktopGroupId      string    `json:"DesktopGroupId"`
 	DesktopGroupName    string    `json:"DesktopGroupName"`
-	RegistrationState   int       `json:"RegistrationState"`   // 0=unregistered, 1=registered, 2=agent_error
+	RegistrationState   int       `json:"CurrentRegistrationState"`   // 0=unregistered, 1=registered, 2=agent_error
 	FaultState          int       `json:"FaultState"`          // 0=healthy, others=failed
 	PowerState          string    `json:"PowerState"`
 	SessionSupport      string    `json:"SessionSupport"`      // MultiSession, SingleSession
@@ -86,30 +96,76 @@ type Machine struct {
 
 // DesktopGroup represents a Citrix delivery group from the OData API
 type DesktopGroup struct {
-	DesktopGroupId   string `json:"DesktopGroupId"`
+	DesktopGroupId   string `json:"DesktopGroupId"` // Real Citrix server
+	Id               string `json:"Id"`             // Mock server and some Citrix versions
 	Name             string `json:"Name"`
 	Description      string `json:"Description"`
 	Enabled          bool   `json:"Enabled"`
 	SessionSharing   bool   `json:"SessionSharing"`
-	DeliveryType     string `json:"DeliveryType"`
+	DeliveryType     int    `json:"DeliveryType"`
 	TotalMachines    int    `json:"TotalMachines"`
 	MachinesInUse    int    `json:"MachinesInUse"`
 	PublishedName    string `json:"PublishedName"`
 }
 
+// GetEffectiveId returns the effective ID, preferring DesktopGroupId over Id
+func (dg *DesktopGroup) GetEffectiveId() string {
+	if dg.DesktopGroupId != "" {
+		return dg.DesktopGroupId
+	}
+	return dg.Id
+}
+
 // ConnectionFailureLog represents a connection failure log entry from the OData API
 type ConnectionFailureLog struct {
-	Id              string    `json:"Id"`
-	FailureDate     time.Time `json:"FailureDate"`
-	FailureType     int       `json:"FailureType"`     // 1=client_connection_failures, 2=configuration_errors, etc.
-	DesktopGroupId  string    `json:"DesktopGroupId"`
-	DesktopGroupName string   `json:"DesktopGroupName"`
-	UserName        string    `json:"UserName"`
-	MachineName     string    `json:"MachineName"`
-	FailureDetails  string    `json:"FailureDetails"`
-	ErrorCode       string    `json:"ErrorCode"`
-	ClientName      string    `json:"ClientName"`
-	ClientIPAddress string    `json:"ClientIPAddress"`
+	Id                        int       `json:"Id"`
+	FailureDate              time.Time `json:"FailureDate"`
+	ConnectionFailureEnumValue int      `json:"ConnectionFailureEnumValue"` // The actual failure code from Citrix
+	DesktopGroupId           string    `json:"DesktopGroupId"`
+	DesktopGroupName         string    `json:"DesktopGroupName"`
+	UserName                 string    `json:"UserName"`
+	MachineName              string    `json:"MachineName"`
+	FailureDetails           string    `json:"FailureDetails"`
+	ErrorCode                string    `json:"ErrorCode"`
+	ClientName               string    `json:"ClientName"`
+	ClientIPAddress          string    `json:"ClientIPAddress"`
+}
+
+// ConnectionFailureCategory represents the mapping between failure codes and categories
+type ConnectionFailureCategory struct {
+	Id                        int       `json:"Id"`
+	ConnectionFailureEnumValue int      `json:"ConnectionFailureEnumValue"`
+	Category                  int       `json:"Category"`
+	CreatedDate              time.Time `json:"CreatedDate"`
+	ModifiedDate             time.Time `json:"ModifiedDate"`
+}
+
+// Connection represents a connection with detailed logon metrics from the OData API
+type Connection struct {
+	Id                        int        `json:"Id"`
+	ClientName               string     `json:"ClientName"`
+	ClientAddress            string     `json:"ClientAddress"`
+	Protocol                 string     `json:"Protocol"`
+	LogOnStartDate           time.Time  `json:"LogOnStartDate"`
+	LogOnEndDate             time.Time  `json:"LogOnEndDate"`
+	BrokeringDuration        int        `json:"BrokeringDuration"`        // milliseconds
+	BrokeringDate            time.Time  `json:"BrokeringDate"`
+	VMStartStartDate         *time.Time `json:"VMStartStartDate"`
+	VMStartEndDate           *time.Time `json:"VMStartEndDate"`
+	HdxStartDate             time.Time  `json:"HdxStartDate"`
+	HdxEndDate               time.Time  `json:"HdxEndDate"`
+	AuthenticationDuration   int        `json:"AuthenticationDuration"`   // milliseconds
+	GpoStartDate             time.Time  `json:"GpoStartDate"`
+	GpoEndDate               time.Time  `json:"GpoEndDate"`
+	LogOnScriptsStartDate    time.Time  `json:"LogOnScriptsStartDate"`
+	LogOnScriptsEndDate      time.Time  `json:"LogOnScriptsEndDate"`
+	ProfileLoadStartDate     time.Time  `json:"ProfileLoadStartDate"`
+	ProfileLoadEndDate       time.Time  `json:"ProfileLoadEndDate"`
+	InteractiveStartDate     time.Time  `json:"InteractiveStartDate"`
+	InteractiveEndDate       time.Time  `json:"InteractiveEndDate"`
+	SessionKey               string     `json:"SessionKey"`
+	CreatedDate              time.Time  `json:"CreatedDate"`
+	ModifiedDate             time.Time  `json:"ModifiedDate"`
 }
 
 // Controller represents a Citrix controller from the API
@@ -142,20 +198,27 @@ const (
 	AuthMethodKerberos AuthenticationMethod = "kerberos"
 )
 
-// Failure type constants for connection failures
+// Failure category constants (based on Citrix ConnectionFailureCategories)
 const (
-	FailureTypeClientConnection  = 1
-	FailureTypeConfiguration     = 2
-	FailureTypeMachine          = 3
-	FailureTypeCapacity         = 4
-	FailureTypeLicense          = 5
+	FailureCategoryClientConnection = 0  // Client-side connection issues
+	FailureCategoryConfiguration    = 1  // Configuration/setup errors
+	FailureCategoryMachine         = 2  // Machine/VDA failures
+	FailureCategoryCapacity        = 3  // Capacity/resource issues
+	FailureCategoryLicense         = 4  // Licensing issues
+	FailureCategoryOther           = 5  // Other/Unknown issues
 )
 
-// Session state constants
+// Session state constants (based on Citrix ConnectionState enum)
 const (
-	SessionStateDisconnected = 2
-	SessionStateConnected    = 3
-	SessionStateActive       = 5
+	SessionStateUnknown      = 0  // Unknown state
+	SessionStateConnected    = 1  // Connected - actively connected to desktop
+	SessionStateDisconnected = 2  // Disconnected - but session exists
+	SessionStateTerminated   = 3  // Terminated
+	SessionStatePreparing    = 4  // PreparingSession
+	SessionStateActive       = 5  // Active
+	SessionStateReconnecting = 6  // Reconnecting
+	SessionStateOther        = 8  // Other
+	SessionStatePending      = 9  // Pending
 )
 
 // Registration state constants for machines
@@ -165,8 +228,26 @@ const (
 	RegistrationStateAgentError   = 2
 )
 
-// Fault state constants for machines
+// Fault state constants for machines (based on Citrix MachineFaultStateCode enum)
 const (
-	FaultStateHealthy = 0
-	FaultStateFailed  = 1
+	FaultStateUnknown           = 0  // Unknown
+	FaultStateNone             = 1  // None - healthy machine
+	FaultStateFailedToStart    = 2  // Last power-on operation failed
+	FaultStateStuckOnBoot      = 3  // Machine might not have booted
+	FaultStateUnregistered     = 4  // Unregistered
+	FaultStateMaxCapacity      = 5  // Max capacity
+	FaultStateVMNotFound       = 6  // Virtual machine not found
+)
+
+// Delivery type constants for desktop groups
+const (
+	DeliveryTypeDesktopsOnly         = 0
+	DeliveryTypeAppsOnly            = 1
+	DeliveryTypeDesktopsAndApps     = 2
+)
+
+// Session type constants
+const (
+	SessionTypeApplication = 0
+	SessionTypeDesktop     = 1
 )
