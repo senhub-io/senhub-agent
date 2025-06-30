@@ -3,6 +3,7 @@ package citrix
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -10,6 +11,11 @@ import (
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/services/logger"
 )
+
+// roundToTwoDecimals rounds a float32 to exactly 2 decimal places
+func roundToTwoDecimals(value float32) float32 {
+	return float32(math.Round(float64(value)*100) / 100)
+}
 
 // CommonMetricsHelper provides shared utilities and caching for metrics calculation
 type CommonMetricsHelper struct {
