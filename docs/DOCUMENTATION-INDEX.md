@@ -54,6 +54,9 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 | **[REDFISH-METRICS.md](REDFISH-METRICS.md)** | Hardware monitoring via Redfish | Server monitoring |
 | **[REDFISH-TAGS.md](REDFISH-TAGS.md)** | Redfish metric tagging | Hardware metrics |
 | **[OTEL-PROBE.md](OTEL-PROBE.md)** | OpenTelemetry probe configuration | OTEL integration |
+| **[CITRIX-SESSION-METRICS.md](technical-reference/CITRIX-SESSION-METRICS.md)** | Citrix session monitoring documentation | Citrix VDI monitoring |
+| **[CITRIX-BLACK-HOLE-MACHINES.md](CITRIX-BLACK-HOLE-MACHINES.md)** | Black Hole Machine detection | Citrix failure analysis |
+| **[CITRIX-METRICS-COMPLETE-REFERENCE.md](CITRIX-METRICS-COMPLETE-REFERENCE.md)** | Complete Citrix metrics reference | Citrix monitoring |
 
 ## 🎯 Quick Navigation by Use Case
 

@@ -1,0 +1,173 @@
+probe_name: "citrix"
+friendly_name: "Citrix Virtual Apps and Desktops"
+version: "1.0.0"
+
+metrics:
+  # Connection Failure Metrics (Count-based)
+  - name: "connection_failures_total"
+    channel: "connection_failures_total"
+    display_name: "Connection Failures Total"
+    unit: "#"
+    description: "Total number of connection failures in the last 2 minutes"
+    
+  - name: "connection_failures_by_type"
+    channel: "connection_failures_by_type"
+    display_name: "Connection Failures by Type"
+    unit: "#"
+    multi_instance_labels: ["failure_type"]
+    description: "Number of connection failures by failure type"
+    
+  - name: "connection_failures_by_delivery_group"
+    channel: "connection_failures_by_delivery_group"
+    display_name: "Connection Failures - {delivery_group_name}"
+    unit: "#"
+    multi_instance_labels: ["delivery_group_id", "delivery_group_name", "failure_type"]
+    description: "Number of connection failures per delivery group and failure type"
+
+  # Logon Performance Metrics 
+  - name: "logon_count_current"
+    channel: "logon_count_current"
+    display_name: "Current Logon Count"
+    unit: "#"
+    description: "Number of logons in the current 2-minute period"
+    
+  - name: "logon_count_1h_total"
+    channel: "logon_count_1h_total"
+    display_name: "1-Hour Logon Count"
+    unit: "#"
+    description: "Total number of logons in the last hour"
+    
+  - name: "logon_duration_average_ms"
+    channel: "logon_duration_average"
+    display_name: "Average Logon Duration"
+    unit: "ms"
+    description: "Average logon duration in the current period"
+    
+  - name: "logon_duration_min_ms"
+    channel: "logon_duration_min"
+    display_name: "Minimum Logon Duration"
+    unit: "ms"
+    description: "Minimum logon duration in the current period"
+    
+  - name: "logon_duration_max_ms"
+    channel: "logon_duration_max"
+    display_name: "Maximum Logon Duration"
+    unit: "ms"
+    description: "Maximum logon duration in the current period"
+    
+  - name: "logon_duration_median_ms"
+    channel: "logon_duration_median"
+    display_name: "Median Logon Duration"
+    unit: "ms"
+    description: "Median logon duration in the current period"
+    
+  - name: "logon_duration_p95_ms"
+    channel: "logon_duration_p95"
+    display_name: "95th Percentile Logon Duration"
+    unit: "ms"
+    description: "95th percentile logon duration in the current period"
+    
+  - name: "logon_duration_1h_average_ms"
+    channel: "logon_duration_1h_average"
+    display_name: "1-Hour Average Logon Duration"
+    unit: "ms"
+    description: "Average logon duration over the last hour"
+    
+  - name: "logon_performance_by_delivery_group"
+    channel: "logon_performance_by_delivery_group"
+    display_name: "Logon Performance - {delivery_group_name}"
+    unit: "ms"
+    multi_instance_labels: ["delivery_group_id", "delivery_group_name"]
+    description: "Average logon performance per delivery group"
+
+  # Session Metrics (Count-based)
+  - name: "total_sessions"
+    channel: "total_sessions"
+    display_name: "Total Active Sessions"
+    unit: "#"
+    description: "Total number of active sessions"
+    
+  - name: "sessions_by_state"
+    channel: "sessions_by_state"
+    display_name: "Sessions by State"
+    unit: "#"
+    multi_instance_labels: ["session_state"]
+    description: "Number of sessions grouped by state"
+    
+  - name: "sessions_by_delivery_group_total"
+    channel: "sessions_by_delivery_group_total"
+    display_name: "Total Sessions - {delivery_group_name}"
+    unit: "#"
+    multi_instance_labels: ["delivery_group_id", "delivery_group_name"]
+    description: "Total sessions per delivery group"
+    
+  - name: "sessions_by_delivery_group_connected"
+    channel: "sessions_by_delivery_group_connected"
+    display_name: "Connected Sessions - {delivery_group_name}"
+    unit: "#"
+    multi_instance_labels: ["delivery_group_id", "delivery_group_name"]
+    description: "Connected and active sessions per delivery group"
+
+  # Machine Metrics (Count-based)
+  - name: "total_machines"
+    channel: "total_machines"
+    display_name: "Total Machines"
+    unit: "#"
+    description: "Total number of machines in the farm"
+    
+  - name: "machines_by_registration_state"
+    channel: "machines_by_registration_state"
+    display_name: "Machines by Registration State"
+    unit: "#"
+    multi_instance_labels: ["registration_state"]
+    description: "Number of machines grouped by registration state"
+    
+  - name: "machines_by_fault_state"
+    channel: "machines_by_fault_state"
+    display_name: "Machines by Fault State"
+    unit: "#"
+    multi_instance_labels: ["fault_state"]
+    description: "Number of machines grouped by fault state"
+    
+  - name: "machines_by_delivery_group"
+    channel: "machines_by_delivery_group"
+    display_name: "Machines - {delivery_group_name}"
+    unit: "#"
+    multi_instance_labels: ["delivery_group_id", "delivery_group_name", "machine_metric"]
+    description: "Machine statistics per delivery group"
+    
+  - name: "machines_by_controller"
+    channel: "machines_by_controller"
+    display_name: "Machines by Controller"
+    unit: "#"
+    multi_instance_labels: ["controller_dns"]
+    description: "Number of machines per controller"
+
+  # Infrastructure Metrics (Derived from Machine Data)
+  - name: "controller_derived_online_status"
+    channel: "controller_derived_online_status"
+    display_name: "Controller Status - {controller_dns}"
+    unit: "#"
+    multi_instance_labels: ["controller_dns", "data_source"]
+    description: "Controller perceived online status derived from machine registrations (1=online, 0=offline)"
+    
+  - name: "controller_health_score"
+    channel: "controller_health_score"
+    display_name: "Controller Health Score - {controller_dns}"
+    unit: "%"
+    multi_instance_labels: ["controller_dns", "data_source"]
+    description: "Controller health score based on percentage of healthy machines (0.0-1.0)"
+    
+  - name: "controller_machines_registered"
+    channel: "controller_machines_registered"
+    display_name: "Machines Registered - {controller_dns}"
+    unit: "#"
+    multi_instance_labels: ["controller_dns", "data_source"]
+    description: "Number of machines registered to this controller (from machine data)"
+    
+  - name: "controller_machines_total"
+    channel: "controller_machines_total"
+    display_name: "Total Machines - {controller_dns}"
+    unit: "#"
+    multi_instance_labels: ["controller_dns", "data_source"]
+    description: "Total number of machines managed by this controller"

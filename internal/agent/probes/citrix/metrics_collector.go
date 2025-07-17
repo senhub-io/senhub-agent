@@ -367,10 +367,7 @@ func (mc *MetricsCollector) calculateConnectionFailuresMetrics(timestamp time.Ti
 	// 3. Échecs par type d'échec (fenêtre glissante)
 
 	for failureType, count := range failuresByType {
-		typeName := failureCategoryNames[failureType]
-		if typeName == "" {
-			typeName = fmt.Sprintf("unknown_type_%d", failureType)
-		}
+		_ = failureCategoryNames[failureType] // Ignore type name since tags were removed
 
 		dataPoints = append(dataPoints, datapoint.DataPoint{
 			Name:      "user_connection_failures_by_type",
@@ -404,10 +401,7 @@ func (mc *MetricsCollector) calculateConnectionFailuresMetrics(timestamp time.Ti
 		
 		// Détail par type d'échec pour ce delivery group
 		for failureType, count := range failureTypes {
-			typeName := failureCategoryNames[failureType]
-			if typeName == "" {
-				typeName = fmt.Sprintf("unknown_type_%d", failureType)
-			}
+			_ = failureCategoryNames[failureType] // Ignore type name since tags were removed
 
 			dataPoints = append(dataPoints, datapoint.DataPoint{
 				Name:      "user_connection_failures_by_type",
@@ -757,10 +751,7 @@ func (mc *MetricsCollector) calculateSessionMetrics(timestamp time.Time, session
 				SessionStateActive:       "active",
 			}
 			
-			stateName := sessionStateNames[state]
-			if stateName == "" {
-				stateName = fmt.Sprintf("unknown_state_%d", state)
-			}
+			_ = sessionStateNames[state] // Ignore state name since tags were removed
 
 			dataPoints = append(dataPoints, datapoint.DataPoint{
 				Name:      "sessions_by_state",
@@ -930,10 +921,7 @@ func (mc *MetricsCollector) calculateMachineMetrics(timestamp time.Time, machine
 	// Machines by registration state globally
 
 	for state, count := range machinesByRegState {
-		stateName := registrationStateNames[state]
-		if stateName == "" {
-			stateName = fmt.Sprintf("unknown_reg_state_%d", state)
-		}
+		_ = registrationStateNames[state] // Ignore state name since tags were removed
 
 		dataPoints = append(dataPoints, datapoint.DataPoint{
 			Name:      "machines_by_state",
@@ -948,10 +936,7 @@ func (mc *MetricsCollector) calculateMachineMetrics(timestamp time.Time, machine
 	// Machines by fault state globally
 
 	for state, count := range machinesByFaultState {
-		stateName := faultStateNames[state]
-		if stateName == "" {
-			stateName = fmt.Sprintf("unknown_fault_state_%d", state)
-		}
+		_ = faultStateNames[state] // Ignore state name since tags were removed
 
 		dataPoints = append(dataPoints, datapoint.DataPoint{
 			Name:      "machines_by_state",
@@ -982,10 +967,7 @@ func (mc *MetricsCollector) calculateMachineMetrics(timestamp time.Time, machine
 	for _, stateCount := range machinesByControllerAndState {
 		// controllerDNS unused after tag removal
 		for state, count := range stateCount {
-			stateName := registrationStateNames[state]
-			if stateName == "" {
-				stateName = fmt.Sprintf("unknown_reg_state_%d", state)
-			}
+			_ = registrationStateNames[state] // Ignore state name since tags were removed
 
 			dataPoints = append(dataPoints, datapoint.DataPoint{
 				Name:      "machines_by_state",
@@ -1083,7 +1065,7 @@ func (mc *MetricsCollector) calculateInfrastructureMetricsFromMachines(timestamp
 
 		dataPoints = append(dataPoints, datapoint.DataPoint{
 			Name:      "controller_health_score",
-			Value:     healthScore,
+			Value:     roundToTwoDecimals(healthScore),
 			Timestamp: timestamp,
 			Tags: []tags.Tag{
 				{Key: "metric_type", Value: "infrastructure"},
@@ -1126,21 +1108,6 @@ func (mc *MetricsCollector) filterSessionsWithLogonDuration(sessions []Session) 
 	return mc.helper.FilterSessionsWithLogonDuration(sessions)
 }
 
-// getDesktopGroupName gets the desktop group name by ID - DEPRECATED: use helper.GetDesktopGroupName instead
-func (mc *MetricsCollector) getDesktopGroupName(dgId string, desktopGroups []DesktopGroup) string {
-	// This is a compatibility function - new code should use the cached version
-	cache := &CachedDataCollection{
-		DesktopGroups: desktopGroups,
-		DesktopGroupMap: make(map[string]DesktopGroup),
-	}
-	
-	// Build temporary map for lookup
-	for _, dg := range desktopGroups {
-		cache.DesktopGroupMap[dg.GetEffectiveId()] = dg
-	}
-	
-	return mc.helper.GetDesktopGroupName(dgId, cache)
-}
 
 // calculateAverage - DEPRECATED: use helper.CalculateAverage instead
 func (mc *MetricsCollector) calculateAverage(values []int) int {

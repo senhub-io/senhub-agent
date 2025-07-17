@@ -9,7 +9,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/types/datapoint"
 	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/tags"
 )
 
 // citrixProbe implements monitoring for Citrix Virtual Apps and Desktops using OData API
@@ -30,7 +29,6 @@ type citrixProbe struct {
 	username            string
 	password            string
 	verifySSL           bool
-	collectionInterval  time.Duration
 	timeout             time.Duration
 	maxRetryAttempts    int
 	retryBackoffFactor  float64
@@ -87,11 +85,7 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		}
 	}
 
-	// Extract collection interval (separate from probe interval for internal collection timing)
-	collectionInterval := 120 * time.Second
-	if cfgCollectionInterval, ok := config["collection_interval"].(int); ok {
-		collectionInterval = time.Duration(cfgCollectionInterval) * time.Second
-	}
+	// Use interval for probe execution timing
 
 	// Extract timeout configuration
 	timeout := 30 * time.Second
@@ -110,6 +104,7 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 			retryBackoffFactor = cfgBackoffFactor
 		}
 	}
+	
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -126,7 +121,6 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		username:            username,
 		password:            password,
 		verifySSL:           verifySSL,
-		collectionInterval:  collectionInterval,
 		timeout:             timeout,
 		maxRetryAttempts:    maxRetryAttempts,
 		retryBackoffFactor:  retryBackoffFactor,
@@ -175,14 +169,14 @@ func (p *citrixProbe) OnStart(quitChannel chan struct{}) error {
 	}
 
 	// Create metrics collector
-	p.metricsCollector = NewMetricsCollector(p.client, p.logger.Logger)
+	p.metricsCollector = NewMetricsCollectorWithEnv(p.client, p.environment, p.baseURL, p.logger.Logger)
 
 	p.logger.Info().
 		Str("base_url", p.baseURL).
 		Str("environment", p.environment).
 		Str("auth_method", p.authMethod).
 		Bool("verify_ssl", p.verifySSL).
-		Dur("collection_interval", p.collectionInterval).
+		Int("interval_seconds", int(p.interval.Seconds())).
 		Msg("Citrix probe initialized")
 
 	return nil
@@ -201,23 +195,13 @@ func (p *citrixProbe) Collect() ([]datapoint.DataPoint, error) {
 	now := time.Now()
 	p.logger.Debug().Msg("Starting Citrix metrics collection")
 
-	// Collect all pre-calculated metrics
-	allDatapoints, err := p.metricsCollector.CollectAllMetrics(p.ctx, now)
+	// Collect all metrics - no frequency logic needed
+	allDatapoints, err := p.metricsCollector.CollectMetrics(p.ctx, now)
 	if err != nil {
 		p.logger.Error().
 			Err(err).
 			Msg("Failed to collect Citrix metrics")
 		return nil, fmt.Errorf("failed to collect Citrix metrics: %v", err)
-	}
-
-	// Add common tags to all datapoints
-	commonTags := []tags.Tag{
-		{Key: "environment", Value: p.environment},
-		{Key: "citrix_url", Value: p.baseURL},
-	}
-
-	for i := range allDatapoints {
-		allDatapoints[i].Tags = append(allDatapoints[i].Tags, commonTags...)
 	}
 
 	// Enrich with probe name
