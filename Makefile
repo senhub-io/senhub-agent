@@ -109,6 +109,37 @@ build-linux: create-dist ## Build for Linux
 build-darwin: create-dist ## Build for Darwin (macOS)
 	    @env GOOS=darwin GOARCH=amd64 go build -o $(DARWIN) -ldflags="$(LDFLAGS)" ./cmd/agent/main.go
 
+# ========================================
+# PACKAGING TARGETS
+# ========================================
+
+# Create ZIP packages for all binaries
+package: build ## Create ZIP packages for all platforms
+	@echo "$(GREEN)📦 Creating ZIP packages...$(NC)"
+	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_windows_amd64.zip $(EXECUTABLE)_windows_amd64.exe
+	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_linux_amd64.zip $(EXECUTABLE)_linux_amd64
+	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_linux_arm64.zip $(EXECUTABLE)_linux_arm64
+	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_darwin_amd64.zip $(EXECUTABLE)_darwin_amd64
+	@echo "$(GREEN)✅ ZIP packages created in $(DIST_DIR)/$(NC)"
+	@ls -la $(DIST_DIR)/*.zip
+
+# Create ZIP package for specific platform
+package-windows: build-windows ## Create ZIP package for Windows
+	@echo "$(GREEN)📦 Creating Windows ZIP package...$(NC)"
+	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_windows_amd64.zip $(EXECUTABLE)_windows_amd64.exe
+	@echo "$(GREEN)✅ Windows ZIP package created: $(DIST_DIR)/$(EXECUTABLE)_windows_amd64.zip$(NC)"
+
+package-linux: build-linux ## Create ZIP packages for Linux
+	@echo "$(GREEN)📦 Creating Linux ZIP packages...$(NC)"
+	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_linux_amd64.zip $(EXECUTABLE)_linux_amd64
+	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_linux_arm64.zip $(EXECUTABLE)_linux_arm64
+	@echo "$(GREEN)✅ Linux ZIP packages created$(NC)"
+
+package-darwin: build-darwin ## Create ZIP package for macOS
+	@echo "$(GREEN)📦 Creating macOS ZIP package...$(NC)"
+	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_darwin_amd64.zip $(EXECUTABLE)_darwin_amd64
+	@echo "$(GREEN)✅ macOS ZIP package created: $(DIST_DIR)/$(EXECUTABLE)_darwin_amd64.zip$(NC)"
+
 install: ## Install the application
 	@./scripts/setup
 
@@ -256,7 +287,7 @@ help: ## Affiche cette aide
 	@echo "$(GREEN)senhub-agent - Commandes disponibles:$(NC)"
 	@echo ""
 	@echo "$(YELLOW)🔨 Build & Deploy:$(NC)"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(build|install|run|watch|clean)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(build|package|install|run|watch|clean)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(YELLOW)🧪 Tests & Qualité:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(test|lint|security|coverage|benchmark)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
@@ -267,4 +298,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows build-linux build-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist help
+.PHONY: all build build-windows build-linux build-darwin package package-windows package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist help
