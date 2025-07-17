@@ -215,12 +215,18 @@ func (c *citrixClient) GetSessionsByConnectionState(ctx context.Context, connect
 // GetMachines retrieves machines data from the OData API
 func (c *citrixClient) GetMachines(ctx context.Context, sinceTime time.Time) ([]Machine, error) {
 	endpoint := "/Machines"
-	filter := fmt.Sprintf("ModifiedDate ge %s", formatODataDateTime(sinceTime))
 	
-	c.logger.Debug().
-		Time("since_time", sinceTime).
-		Str("filter", filter).
-		Msg("Getting machines with filter")
+	var filter string
+	if !sinceTime.IsZero() {
+		filter = fmt.Sprintf("ModifiedDate ge %s", formatODataDateTime(sinceTime))
+		c.logger.Debug().
+			Time("since_time", sinceTime).
+			Str("filter", filter).
+			Msg("Getting machines with time filter")
+	} else {
+		// No filter - get all machines for infrastructure metrics
+		c.logger.Debug().Msg("Getting all machines (no time filter)")
+	}
 	
 	var machines []Machine
 	err := c.getODataCollectionUnlimited(ctx, endpoint, filter, &machines)
@@ -284,6 +290,38 @@ func (c *citrixClient) GetConnectionFailureLogs(ctx context.Context, sinceTime t
 		Int("failure_log_count", len(failureLogs)).
 		Time("since_time", sinceTime).
 		Msg("Retrieved connection failure logs from Citrix API")
+
+	return failureLogs, nil
+}
+
+// GetConnectionFailureLogsWithExpand retrieves connection failure logs with expanded data from the OData API
+func (c *citrixClient) GetConnectionFailureLogsWithExpand(ctx context.Context, sinceTime time.Time, expand []string) ([]ConnectionFailureLog, error) {
+	endpoint := "/ConnectionFailureLogs"
+	filter := fmt.Sprintf("FailureDate ge %s", formatODataDateTime(sinceTime))
+	
+	// Build expand parameter
+	expandParam := ""
+	if len(expand) > 0 {
+		expandParam = strings.Join(expand, ",")
+	}
+	
+	c.logger.Debug().
+		Time("since_time", sinceTime).
+		Str("filter", filter).
+		Str("expand", expandParam).
+		Msg("Getting connection failure logs with filter and expand")
+	
+	var failureLogs []ConnectionFailureLog
+	err := c.getODataCollectionWithExpand(ctx, endpoint, filter, expandParam, &failureLogs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection failure logs with expand: %v", err)
+	}
+
+	c.logger.Debug().
+		Int("failure_log_count", len(failureLogs)).
+		Time("since_time", sinceTime).
+		Str("expand", expandParam).
+		Msg("Retrieved connection failure logs with expanded data from Citrix API")
 
 	return failureLogs, nil
 }
@@ -420,6 +458,79 @@ func (c *citrixClient) getODataCollectionUnlimited(ctx context.Context, endpoint
 		Int("total_pages", pageCount).
 		Str("endpoint", endpoint).
 		Msg("Completed unlimited OData collection retrieval")
+
+	// Convert to the expected type
+	jsonData, err := json.Marshal(allItems)
+	if err != nil {
+		return fmt.Errorf("failed to marshal response data: %v", err)
+	}
+
+	if err := json.Unmarshal(jsonData, result); err != nil {
+		return fmt.Errorf("failed to unmarshal to target type: %v", err)
+	}
+
+	return nil
+}
+
+// getODataCollectionWithExpand retrieves items with $expand parameter for related entities
+func (c *citrixClient) getODataCollectionWithExpand(ctx context.Context, endpoint, filter, expand string, result interface{}) error {
+	url := c.baseURL + endpoint
+
+	// Add query parameters including $expand
+	params := neturl.Values{}
+	if filter != "" {
+		params.Add("$filter", filter)
+	}
+	if expand != "" {
+		params.Add("$expand", expand)
+	}
+	// No $top parameter = get all items
+
+	if len(params) > 0 {
+		url += "?" + params.Encode()
+	}
+
+	var allItems []interface{}
+	pageCount := 0
+
+	// Handle pagination
+	for url != "" {
+		pageCount++
+		var response ODataResponse
+		nextURL, err := c.performRequest(ctx, url, &response)
+		if err != nil {
+			return err
+		}
+
+		// Append items from this page
+		allItems = append(allItems, response.Value...)
+
+		// Check for next page
+		url = nextURL
+		if url != "" && !strings.HasPrefix(url, "http") {
+			// Relative URL, make it absolute
+			if strings.HasPrefix(url, "/") {
+				url = c.baseURL + url
+			} else {
+				url = c.baseURL + "/" + url
+			}
+		}
+
+		c.logger.Debug().
+			Int("items_retrieved", len(response.Value)).
+			Int("total_items", len(allItems)).
+			Int("page_number", pageCount).
+			Str("expand", expand).
+			Str("next_url", url).
+			Msg("Retrieved expanded page from OData endpoint")
+	}
+
+	c.logger.Info().
+		Int("total_items_retrieved", len(allItems)).
+		Int("total_pages", pageCount).
+		Str("endpoint", endpoint).
+		Str("expand", expand).
+		Msg("Completed expanded OData collection retrieval")
 
 	// Convert to the expected type
 	jsonData, err := json.Marshal(allItems)
