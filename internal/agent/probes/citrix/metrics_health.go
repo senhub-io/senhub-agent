@@ -111,10 +111,10 @@ func (mc *MetricsCollector) CollectHealthMetrics(ctx context.Context, timestamp 
 	
 	metric := datapoint.DataPoint{
 		Name:      "health_score",
-		Value:     score,
+		Value:     roundToTwoDecimals(score),
 		Timestamp: timestamp,
 		Tags: []tags.Tag{
-			{Key: "metric_type", Value: "overview"},
+			{Key: "metric_type", Value: "analytics"},
 		},
 	}
 	

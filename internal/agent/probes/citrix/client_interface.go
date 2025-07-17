@@ -29,6 +29,9 @@ type CitrixClient interface {
 	// GetConnectionFailureLogs retrieves connection failure logs from the OData API
 	GetConnectionFailureLogs(ctx context.Context, sinceTime time.Time) ([]ConnectionFailureLog, error)
 
+	// GetConnectionFailureLogsWithExpand retrieves connection failure logs with expanded data from the OData API
+	GetConnectionFailureLogsWithExpand(ctx context.Context, sinceTime time.Time, expand []string) ([]ConnectionFailureLog, error)
+
 	// GetConnectionFailureCategories retrieves connection failure category mappings from the OData API
 	GetConnectionFailureCategories(ctx context.Context) ([]ConnectionFailureCategory, error)
 
@@ -72,26 +75,29 @@ type Session struct {
 	ClientName          string      `json:"ClientName"`
 	ClientIPAddress     string      `json:"ClientIPAddress"`
 	SessionType         int         `json:"SessionType"`
+	Hidden              bool        `json:"Hidden"`              // Hidden sessions are zombie sessions
 }
 
 // Machine represents a Citrix machine from the OData API
 type Machine struct {
-	MachineId           string    `json:"MachineId"`
-	MachineName         string    `json:"MachineName"`
-	DnsName             string    `json:"DnsName"`
-	DesktopGroupId      string    `json:"DesktopGroupId"`
-	DesktopGroupName    string    `json:"DesktopGroupName"`
-	RegistrationState   int       `json:"CurrentRegistrationState"`   // 0=unregistered, 1=registered, 2=agent_error
-	FaultState          int       `json:"FaultState"`          // 0=healthy, others=failed
-	PowerState          string    `json:"PowerState"`
-	SessionSupport      string    `json:"SessionSupport"`      // MultiSession, SingleSession
+	MachineId           string    `json:"Id"`                          // Machine ID
+	MachineName         string    `json:"Name"`                        // Machine name (can be null)
+	DnsName             string    `json:"DnsName"`                     // DNS name (can be null)
+	DesktopGroupId      string    `json:"DesktopGroupId"`              // Desktop group ID
+	DesktopGroupName    string    `json:"DesktopGroupName"`            // Desktop group name
+	RegistrationState   int       `json:"CurrentRegistrationState"`    // 0=unregistered, 1=registered, 2=agent_error
+	FaultState          int       `json:"FaultState"`                  // 1=healthy/none, others=failed
+	PowerState          int       `json:"CurrentPowerState"`           // Power state as int
+	MachineRole         int       `json:"MachineRole"`                 // 0=unknown, 1=single_session, 2=multi_session
 	ControllerDNSName   string    `json:"ControllerDNSName"`
 	ModifiedDate        time.Time `json:"ModifiedDate"`
 	LastConnectionTime  *time.Time `json:"LastConnectionTime,omitempty"`
 	LastConnectionUser  string    `json:"LastConnectionUser"`
-	SessionCount        int       `json:"SessionCount"`
+	SessionCount        int       `json:"CurrentSessionCount"`         // Current session count
 	LoadIndex           int       `json:"LoadIndex"`
-	InMaintenanceMode   bool      `json:"InMaintenanceMode"`
+	InMaintenanceMode   bool      `json:"IsInMaintenanceMode"`         // Maintenance mode flag
+	OSType              string    `json:"OSType"`                      // OS type (can be null)
+	LifecycleState      int       `json:"LifecycleState"`              // Lifecycle state
 }
 
 // DesktopGroup represents a Citrix delivery group from the OData API
@@ -125,6 +131,7 @@ type ConnectionFailureLog struct {
 	DesktopGroupName         string    `json:"DesktopGroupName"`
 	UserName                 string    `json:"UserName"`
 	MachineName              string    `json:"MachineName"`
+	MachineId                string    `json:"MachineId"`     // Machine GUID for black hole detection
 	FailureDetails           string    `json:"FailureDetails"`
 	ErrorCode                string    `json:"ErrorCode"`
 	ClientName               string    `json:"ClientName"`
@@ -146,6 +153,7 @@ type Connection struct {
 	ClientName               string     `json:"ClientName"`
 	ClientAddress            string     `json:"ClientAddress"`
 	Protocol                 string     `json:"Protocol"`
+	IsReconnect              bool       `json:"IsReconnect"`
 	LogOnStartDate           time.Time  `json:"LogOnStartDate"`
 	LogOnEndDate             time.Time  `json:"LogOnEndDate"`
 	BrokeringDuration        int        `json:"BrokeringDuration"`        // milliseconds
