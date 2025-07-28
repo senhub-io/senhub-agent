@@ -1,0 +1,49 @@
+agent:
+  key: "test-citrix-ddc-key"
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+      endpoints: ["prtg", "web"]
+
+probes:
+  - name: citrix
+    params:
+      # Citrix Director OData API endpoint
+      base_url: "https://citrix-director.company.com/Citrix/Monitor/OData/v4/Data"
+      
+      # Delivery Controller configuration (nouveau)
+      delivery_controller:
+        # Primary delivery controller URL
+        url: "https://sw000-209-030.noble-age.fr"
+        # Optional: fallback controllers
+        fallback_urls:
+          - "https://sw000-209-031.noble-age.fr"
+        # Site filter (optionnel - si non spécifié, tous les sites seront monitorés)
+        site_filter: "SITE-PARIS"
+      
+      # Environment identifier for tagging
+      environment: "TEST"
+      
+      # Collection interval (2 minutes recommended)
+      interval: 120
+      
+      # Authentication configuration (utilisé pour Director ET DDC)
+      auth:
+        method: "basic"  # Pour DDC, on utilise basic pour obtenir le token
+        username: "noble-age.fr\\svc_api_sensor"
+        password: "gs-+8L<2:mL3[=17"
+      
+      # TLS/SSL configuration
+      tls:
+        verify_ssl: false  # Pour les tests
+      
+      # API collection settings
+      timeout: 30
+      
+      # Retry configuration for reliability
+      retry:
+        max_attempts: 3
+        backoff_factor: 2.0
