@@ -667,6 +667,34 @@ probes:
 #       - drives     # Individual drives
 #       - networkadapter  # Network cards
 
+# # Citrix Virtual Apps and Desktops monitoring
+# - name: citrix
+#   params:
+#     base_url: "https://citrix-director.company.com/Citrix/Monitor/OData/v4/Data"  # REQUIRED
+#     
+#     # Optional: Delivery Controller for site filtering (NEW)
+#     delivery_controller:
+#       url: "https://citrix-ddc.company.com"
+#       fallback_urls:
+#         - "https://citrix-ddc-backup.company.com"
+#       site_filter: "SITE-NAME"  # Only monitor this site
+#     
+#     environment: "PROD"         # Optional, default: "PROD"
+#     interval: 120               # Optional, default: 120s (2min)
+#     
+#     auth:
+#       method: "ntlm"            # Required: "ntlm" or "basic"
+#       username: "DOMAIN\\user"  # REQUIRED
+#       password: "password"      # REQUIRED
+#     
+#     tls:
+#       verify_ssl: true          # Optional, default: true
+#     
+#     timeout: 30                 # Optional, default: 30s
+#     retry:
+#       max_attempts: 3           # Optional, default: 3
+#       backoff_factor: 2.0       # Optional, default: 2.0
+
 # # Syslog event collection
 # - name: syslog
 #   params:

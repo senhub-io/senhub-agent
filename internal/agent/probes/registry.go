@@ -2,7 +2,7 @@
 package probes
 
 import (
-	"senhub-agent.go/internal/agent/probes/citrix"  // Import the citrix probe package
+	"senhub-agent.go/internal/agent/probes/citrix" // Import the citrix probe package
 	"senhub-agent.go/internal/agent/probes/cpu"
 	"senhub-agent.go/internal/agent/probes/event" // Import the new event probe package
 	"senhub-agent.go/internal/agent/probes/gateway"

@@ -20,7 +20,7 @@ type StatusHelper struct {
 // NewStatusHelper creates a new status helper
 func NewStatusHelper(baseLogger *logger.Logger) *StatusHelper {
 	moduleLogger := logger.NewModuleLogger(baseLogger, "status.helper")
-	
+
 	return &StatusHelper{
 		logger: moduleLogger,
 	}
@@ -32,7 +32,7 @@ func (h *StatusHelper) GetServiceStatus(svc service.Service) (string, error) {
 	if err != nil {
 		return "unknown", err
 	}
-	
+
 	switch status {
 	case service.StatusUnknown:
 		return "unknown", nil
@@ -50,47 +50,47 @@ func (h *StatusHelper) GetDetailedStatusFromHTTP(agentKey string, port int) (*Sy
 	if agentKey == "" {
 		return nil, fmt.Errorf("agent key required for detailed status")
 	}
-	
+
 	// Try to connect to local HTTP endpoint
 	url := fmt.Sprintf("http://localhost:%d/api/%s/info/system", port, agentKey)
-	
+
 	h.logger.Debug().
 		Str("url", url).
 		Msg("Attempting to get detailed status from HTTP endpoint")
-	
+
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
-	
+
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to HTTP endpoint: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP endpoint returned status %d", resp.StatusCode)
 	}
-	
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
-	
+
 	// Parse the HTTP strategy's system info response and convert to our format
 	var httpResponse HTTPSystemInfoResponse
 	if err := json.Unmarshal(body, &httpResponse); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
-	
+
 	// Convert to our SystemStatus format
 	systemStatus := h.convertHTTPResponseToSystemStatus(httpResponse)
-	
+
 	h.logger.Debug().
 		Int("probe_count", len(systemStatus.Probes)).
 		Str("health", systemStatus.Health.Status).
 		Msg("Successfully retrieved detailed status from HTTP endpoint")
-	
+
 	return &systemStatus, nil
 }
 
@@ -132,7 +132,7 @@ func (h *StatusHelper) convertHTTPResponseToSystemStatus(httpResp HTTPSystemInfo
 	} else {
 		mode = "online"
 	}
-	
+
 	return SystemStatus{
 		Health: HealthInfo{
 			Status:    httpResp.Health.Status,
@@ -199,33 +199,33 @@ func (h *StatusHelper) GetDetailedProbeStatusFromHTTP(agentKey string, port int)
 	if agentKey == "" {
 		return nil, fmt.Errorf("agent key required for probe status")
 	}
-	
+
 	// Try to get probe information from HTTP endpoint
 	url := fmt.Sprintf("http://localhost:%d/api/%s/info/probes", port, agentKey)
-	
+
 	h.logger.Debug().
 		Str("url", url).
 		Msg("Attempting to get probe status from HTTP endpoint")
-	
+
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
-	
+
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to HTTP endpoint: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP endpoint returned status %d", resp.StatusCode)
 	}
-	
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
-	
+
 	// Parse probe response
 	var probeResponse struct {
 		Probes []struct {
@@ -234,11 +234,11 @@ func (h *StatusHelper) GetDetailedProbeStatusFromHTTP(agentKey string, port int)
 			LastUpdate   string `json:"last_update,omitempty"`
 		} `json:"probes"`
 	}
-	
+
 	if err := json.Unmarshal(body, &probeResponse); err != nil {
 		return nil, fmt.Errorf("failed to parse probe response: %w", err)
 	}
-	
+
 	// Convert to our format
 	var probeStatuses []ProbeStatus
 	for _, probe := range probeResponse.Probes {
@@ -246,14 +246,14 @@ func (h *StatusHelper) GetDetailedProbeStatusFromHTTP(agentKey string, port int)
 		if probe.MetricsCount == 0 {
 			status = "inactive"
 		}
-		
+
 		var lastUpdate time.Time
 		if probe.LastUpdate != "" {
 			if parsed, err := time.Parse(time.RFC3339, probe.LastUpdate); err == nil {
 				lastUpdate = parsed
 			}
 		}
-		
+
 		probeStatuses = append(probeStatuses, ProbeStatus{
 			Name:         probe.Name,
 			Status:       status,
@@ -261,10 +261,10 @@ func (h *StatusHelper) GetDetailedProbeStatusFromHTTP(agentKey string, port int)
 			LastUpdate:   lastUpdate,
 		})
 	}
-	
+
 	h.logger.Debug().
 		Int("probe_count", len(probeStatuses)).
 		Msg("Successfully retrieved probe status from HTTP endpoint")
-	
+
 	return probeStatuses, nil
 }
