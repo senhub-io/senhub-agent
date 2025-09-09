@@ -171,15 +171,15 @@ func NewHTTPSyncStrategy(
 
 	// Initialize status service with centralized status calculations
 	strategy.statusService = status.NewStatusService(
-		moduleLogger.Logger, 
+		moduleLogger.Logger,
 		"unknown", // Version will be set later if available
-		"unknown", // Commit will be set later if available  
+		"unknown", // Commit will be set later if available
 	)
-	
+
 	// Configure status service with cache provider and agent mode
 	cacheAdapter := NewHTTPCacheAdapter(strategy.cache, moduleLogger.Logger)
 	strategy.statusService.SetCacheProvider(cacheAdapter)
-	
+
 	// Determine agent mode (online/offline) from configuration
 	agentMode := strategy.determineAgentMode()
 	strategy.statusService.SetAgentMode(agentMode)
@@ -196,12 +196,12 @@ func (h *HTTPSyncStrategy) determineAgentMode() string {
 	if h.agentKey == "" {
 		return "unknown"
 	}
-	
+
 	// Offline keys typically contain "offline" or are generated with machine fingerprint
 	if len(h.agentKey) > 20 && (h.agentKey[:7] == "offline" || h.agentKey[:4] == "test") {
 		return "offline"
 	}
-	
+
 	// For now, assume online mode for other keys
 	// This could be enhanced with proper mode detection
 	return "online"
