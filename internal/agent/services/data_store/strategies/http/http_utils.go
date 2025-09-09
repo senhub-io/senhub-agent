@@ -10,7 +10,6 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-
 // UtilsManager handles utility functions and helper methods
 type UtilsManager struct {
 	logger   *logger.ModuleLogger
@@ -145,7 +144,6 @@ func formatCommitHash(commit string) string {
 
 	return commit
 }
-
 
 // Monitoring Format Handlers (Future Expansion)
 
