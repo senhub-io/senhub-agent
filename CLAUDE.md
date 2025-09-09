@@ -683,3 +683,11 @@ Mode hybride optimal : combine simplicité offline + puissance online
 → SenHub Agent universellement déployable préservant valeur ajoutée plateforme
 
 **Status** : Réflexion notée - À développer demain
+
+## Version Tagging - Updated Guidelines
+
+### Tag Format Consistency (2025-09-09)
+- **IMPORTANT**: All version tags must follow the format `X.Y.Z-beta` (WITHOUT the "v" prefix)
+- **Fixed**: Purged all problematic `v0.0.x-beta` tags that caused GoReleaser conflicts
+- **Current format**: `0.1.x-beta` - continue incrementing from `0.1.56-beta`
+- **Beta releases**: Automatically generated from dev branch pushes
