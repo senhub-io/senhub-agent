@@ -3,6 +3,7 @@ module senhub-agent.go
 go 1.23.2
 
 require (
+	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358
 	github.com/alexflint/go-arg v1.5.1
 	github.com/avast/retry-go/v4 v4.6.0
 	github.com/fsnotify/fsnotify v1.9.0
@@ -25,7 +26,6 @@ require (
 
 require (
 	aead.dev/minisign v0.2.0 // indirect
-	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect

@@ -6,14 +6,13 @@ import (
 	"sort"
 	"time"
 
-	"senhub-agent.go/internal/agent/types/datapoint"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // State name mappings for better metrics labeling
 var (
-
 	registrationStateNames = map[int]string{
 		RegistrationStateUnregistered: "unregistered",
 		RegistrationStateRegistered:   "registered",
@@ -33,10 +32,10 @@ var (
 	failureCategoryNames = map[int]string{
 		FailureCategoryClientConnection: "client_connection_failures",
 		FailureCategoryConfiguration:    "configuration_errors",
-		FailureCategoryMachine:         "machine_failures",
-		FailureCategoryCapacity:        "unavailable_capacity",
-		FailureCategoryLicense:         "unavailable_licenses",
-		FailureCategoryOther:           "other_failures",
+		FailureCategoryMachine:          "machine_failures",
+		FailureCategoryCapacity:         "unavailable_capacity",
+		FailureCategoryLicense:          "unavailable_licenses",
+		FailureCategoryOther:            "other_failures",
 	}
 )
 
@@ -74,66 +73,66 @@ func NewMetricsCollectorWithEnv(client CitrixClient, environment, citrixURL stri
 // CollectMetrics collects all Citrix metrics (simplified - no frequency logic)
 func (mc *MetricsCollector) CollectMetrics(ctx context.Context, timestamp time.Time) ([]datapoint.DataPoint, error) {
 	mc.logger.Debug().Msg("Starting complete Citrix metrics collection")
-	
+
 	var allMetrics []datapoint.DataPoint
-	
+
 	// Collect ALL metrics every time - let the probe interval control frequency
-	
+
 	// 1. Infrastructure metrics (instantaneous)
 	if infra, err := mc.CollectInfrastructureMetrics(ctx, timestamp); err != nil {
 		mc.logger.Warn().Err(err).Msg("Failed to collect infrastructure metrics")
 	} else {
 		allMetrics = append(allMetrics, infra...)
 	}
-	
+
 	// 2. Session metrics (instantaneous + calculated)
 	if sessions, err := mc.CollectSessionMetrics(ctx, timestamp); err != nil {
 		mc.logger.Warn().Err(err).Msg("Failed to collect session metrics")
 	} else {
 		allMetrics = append(allMetrics, sessions...)
 	}
-	
+
 	// 3. Logon metrics (calculated on 2min sliding window)
 	if logon, err := mc.CollectLogonMetrics(ctx, timestamp); err != nil {
 		mc.logger.Warn().Err(err).Msg("Failed to collect logon metrics")
 	} else {
 		allMetrics = append(allMetrics, logon...)
 	}
-	
+
 	// 4. UX metrics
 	if ux, err := mc.CollectUXMetrics(ctx, timestamp); err != nil {
 		mc.logger.Warn().Err(err).Msg("Failed to collect UX metrics")
 	} else {
 		allMetrics = append(allMetrics, ux...)
 	}
-	
+
 	// 5. Failure metrics (calculated on 1h sliding window)
 	if failures, err := mc.CollectFailureMetrics(ctx, timestamp); err != nil {
 		mc.logger.Warn().Err(err).Msg("Failed to collect failure metrics")
 	} else {
 		allMetrics = append(allMetrics, failures...)
 	}
-	
+
 	// 6. Health metrics
 	if health, err := mc.CollectHealthMetrics(ctx, timestamp); err != nil {
 		mc.logger.Warn().Err(err).Msg("Failed to collect health metrics")
 	} else {
 		allMetrics = append(allMetrics, health...)
 	}
-	
+
 	// Note: Only metric_type tag is preserved for metrics
-	
+
 	mc.logger.Info().
 		Int("metrics_collected", len(allMetrics)).
 		Msg("Complete Citrix metrics collection finished")
-	
+
 	return allMetrics, nil
 }
 
 // CollectAllMetrics collects and calculates all required metrics using progressive optimized loading
 func (mc *MetricsCollector) CollectAllMetrics(ctx context.Context, timestamp time.Time) ([]datapoint.DataPoint, error) {
 	mc.logger.Info().Msg("🔍 CITRIX: Starting progressive optimized metrics collection")
-	
+
 	// Progressive data loading - load only what we need when we need it
 	cache := &CachedDataCollection{
 		DesktopGroupMap:      make(map[string]DesktopGroup),
@@ -141,9 +140,9 @@ func (mc *MetricsCollector) CollectAllMetrics(ctx context.Context, timestamp tim
 		MachinesByController: make(map[string][]Machine),
 		CollectionTime:       timestamp,
 	}
-	
+
 	var allDataPoints []datapoint.DataPoint
-	
+
 	// 1. Load Desktop Groups first (essential for all metrics)
 	mc.logger.Debug().Msg("Loading desktop groups (required for name resolution)...")
 	if dgs, err := mc.client.GetDesktopGroups(ctx); err != nil {
@@ -152,7 +151,7 @@ func (mc *MetricsCollector) CollectAllMetrics(ctx context.Context, timestamp tim
 	} else {
 		cache.DesktopGroups = dgs
 		cache.SuccessfulEndpoints = append(cache.SuccessfulEndpoints, "DesktopGroups")
-		
+
 		// Build lookup map once
 		for _, dg := range dgs {
 			cache.DesktopGroupMap[dg.GetEffectiveId()] = dg
@@ -172,24 +171,24 @@ func (mc *MetricsCollector) CollectAllMetrics(ctx context.Context, timestamp tim
 	} else {
 		cache.Sessions = sessions
 		cache.SuccessfulEndpoints = append(cache.SuccessfulEndpoints, "Sessions")
-		
+
 		// Pre-group sessions by state (optimization)
 		for _, session := range sessions {
 			cache.SessionsByState[session.ConnectionState] = append(cache.SessionsByState[session.ConnectionState], session)
 		}
-		
+
 		// Calculate session metrics immediately
 		sessionMetrics := mc.calculateSessionMetrics(timestamp, cache.Sessions, cache.DesktopGroups)
 		allDataPoints = append(allDataPoints, sessionMetrics...)
-		
+
 		// Add user connection totals
 		userConnectionMetrics := mc.calculateUserConnectionTotals(timestamp, cache.Sessions, cache.DesktopGroups)
 		allDataPoints = append(allDataPoints, userConnectionMetrics...)
-		
+
 		// Add logon duration average for last hour (missing metric!)
 		logonDurationMetric := mc.calculateLogonDurationAvgHourly(ctx, timestamp)
 		allDataPoints = append(allDataPoints, logonDurationMetric)
-		
+
 		mc.logger.Info().
 			Int("sessions_loaded", len(sessions)).
 			Int("session_metrics", len(sessionMetrics)).
@@ -205,20 +204,20 @@ func (mc *MetricsCollector) CollectAllMetrics(ctx context.Context, timestamp tim
 	} else {
 		cache.Machines = machines
 		cache.SuccessfulEndpoints = append(cache.SuccessfulEndpoints, "Machines")
-		
+
 		// Pre-group machines by controller (optimization)
 		for _, machine := range machines {
 			cache.MachinesByController[machine.ControllerDNSName] = append(cache.MachinesByController[machine.ControllerDNSName], machine)
 		}
-		
+
 		// Calculate machine metrics immediately
 		machineMetrics := mc.calculateMachineMetrics(timestamp, cache.Machines, cache.DesktopGroups)
 		allDataPoints = append(allDataPoints, machineMetrics...)
-		
+
 		// Calculate infrastructure metrics immediately
 		infrastructureMetrics := mc.calculateInfrastructureMetricsFromMachines(timestamp, cache.Machines)
 		allDataPoints = append(allDataPoints, infrastructureMetrics...)
-		
+
 		mc.logger.Info().
 			Int("machines_loaded", len(machines)).
 			Int("machine_metrics", len(machineMetrics)).
@@ -229,7 +228,7 @@ func (mc *MetricsCollector) CollectAllMetrics(ctx context.Context, timestamp tim
 	// 4. Connection Failures Metrics (load failure data when needed)
 	mc.logger.Debug().Msg("Loading connection failures for failure metrics...")
 	oneHourAgo := timestamp.Add(-1 * time.Hour)
-	
+
 	// Load failure categories first (needed for interpretation)
 	if categories, err := mc.client.GetConnectionFailureCategories(ctx); err != nil {
 		mc.logger.Warn().Err(err).Msg("Failed to get failure categories - will use defaults")
@@ -238,7 +237,7 @@ func (mc *MetricsCollector) CollectAllMetrics(ctx context.Context, timestamp tim
 		cache.FailureCategories = categories
 		cache.SuccessfulEndpoints = append(cache.SuccessfulEndpoints, "ConnectionFailureCategories")
 	}
-	
+
 	// Load failure logs
 	if failures, err := mc.client.GetConnectionFailureLogs(ctx, oneHourAgo); err != nil {
 		mc.logger.Warn().Err(err).Msg("Failed to get connection failures - continuing without failure metrics")
@@ -246,7 +245,7 @@ func (mc *MetricsCollector) CollectAllMetrics(ctx context.Context, timestamp tim
 	} else {
 		cache.ConnectionFailures = failures
 		cache.SuccessfulEndpoints = append(cache.SuccessfulEndpoints, "ConnectionFailureLogs")
-		
+
 		// Calculate failure metrics immediately
 		if len(failures) > 0 {
 			connectionFailuresMetrics := mc.calculateConnectionFailuresMetrics(timestamp, cache.ConnectionFailures, cache.DesktopGroups, cache.FailureCategories)
@@ -296,7 +295,7 @@ func (mc *MetricsCollector) CollectAllMetrics(ctx context.Context, timestamp tim
 // calculateConnectionFailuresMetrics calculates user connection metrics and failure tracking
 func (mc *MetricsCollector) calculateConnectionFailuresMetrics(timestamp time.Time, failures []ConnectionFailureLog, desktopGroups []DesktopGroup, categories []ConnectionFailureCategory) []datapoint.DataPoint {
 	mc.logger.Debug().Int("failure_count", len(failures)).Msg("Calculating user connection metrics and failures")
-	
+
 	// Build failure code to category mapping
 	failureCodeToCategory := make(map[int]int)
 	for _, cat := range categories {
@@ -315,17 +314,17 @@ func (mc *MetricsCollector) calculateConnectionFailuresMetrics(timestamp time.Ti
 	for _, failure := range failures {
 		// Track unique users who had failures
 		uniqueUsers[failure.UserName] = true
-		
+
 		// Map failure code to category
 		category := failureCodeToCategory[failure.ConnectionFailureEnumValue]
 		if _, exists := failureCategoryNames[category]; !exists {
 			// If category is not known, use Other category
 			category = FailureCategoryOther
 		}
-		
+
 		// Count failures by category
 		failuresByType[category]++
-		
+
 		// Count failures by user
 		failuresByUser[failure.UserName]++
 
@@ -383,13 +382,13 @@ func (mc *MetricsCollector) calculateConnectionFailuresMetrics(timestamp time.Ti
 	for dgId, failureTypes := range failuresByDeliveryGroup {
 		_ = dgId // Unused after tag removal
 		// dgName := mc.getDesktopGroupName(dgId, desktopGroups)
-		
+
 		// Total des échecs pour ce delivery group
 		totalFailuresForDG := 0
 		for _, count := range failureTypes {
 			totalFailuresForDG += count
 		}
-		
+
 		dataPoints = append(dataPoints, datapoint.DataPoint{
 			Name:      "user_connection_failures_by_delivery_group",
 			Value:     float32(totalFailuresForDG),
@@ -398,7 +397,7 @@ func (mc *MetricsCollector) calculateConnectionFailuresMetrics(timestamp time.Ti
 				{Key: "metric_type", Value: "user_connections"},
 			},
 		})
-		
+
 		// Détail par type d'échec pour ce delivery group
 		for failureType, count := range failureTypes {
 			_ = failureCategoryNames[failureType] // Ignore type name since tags were removed
@@ -419,7 +418,7 @@ func (mc *MetricsCollector) calculateConnectionFailuresMetrics(timestamp time.Ti
 		_ = dgId // Unused after tag removal
 		// dgName := mc.getDesktopGroupName(dgId, desktopGroups)
 		uniqueUsersForDG := len(userFailures)
-		
+
 		dataPoints = append(dataPoints, datapoint.DataPoint{
 			Name:      "user_connection_users_with_failures",
 			Value:     float32(uniqueUsersForDG),
@@ -472,12 +471,12 @@ func (mc *MetricsCollector) calculateLogonPerformanceMetrics(timestamp time.Time
 		p95 := mc.calculatePercentile(durations, 95)
 
 		// Current period metrics
-		dataPoints = append(dataPoints, 
+		dataPoints = append(dataPoints,
 			datapoint.DataPoint{
 				Name:      "logon_count_current",
 				Value:     float32(len(validRecentSessions)),
 				Timestamp: timestamp,
-				
+
 				Tags: []tags.Tag{
 					{Key: "metric_type", Value: "logon_performance"},
 				},
@@ -486,7 +485,7 @@ func (mc *MetricsCollector) calculateLogonPerformanceMetrics(timestamp time.Time
 				Name:      "logon_duration_average_ms",
 				Value:     float32(avg),
 				Timestamp: timestamp,
-				
+
 				Tags: []tags.Tag{
 					{Key: "metric_type", Value: "logon_performance"},
 				},
@@ -495,7 +494,7 @@ func (mc *MetricsCollector) calculateLogonPerformanceMetrics(timestamp time.Time
 				Name:      "logon_duration_min_ms",
 				Value:     float32(min),
 				Timestamp: timestamp,
-				
+
 				Tags: []tags.Tag{
 					{Key: "metric_type", Value: "logon_performance"},
 				},
@@ -504,7 +503,7 @@ func (mc *MetricsCollector) calculateLogonPerformanceMetrics(timestamp time.Time
 				Name:      "logon_duration_max_ms",
 				Value:     float32(max),
 				Timestamp: timestamp,
-				
+
 				Tags: []tags.Tag{
 					{Key: "metric_type", Value: "logon_performance"},
 				},
@@ -513,7 +512,7 @@ func (mc *MetricsCollector) calculateLogonPerformanceMetrics(timestamp time.Time
 				Name:      "logon_duration_median_ms",
 				Value:     float32(median),
 				Timestamp: timestamp,
-				
+
 				Tags: []tags.Tag{
 					{Key: "metric_type", Value: "logon_performance"},
 				},
@@ -522,7 +521,7 @@ func (mc *MetricsCollector) calculateLogonPerformanceMetrics(timestamp time.Time
 				Name:      "logon_duration_p95_ms",
 				Value:     float32(p95),
 				Timestamp: timestamp,
-				
+
 				Tags: []tags.Tag{
 					{Key: "metric_type", Value: "logon_performance"},
 				},
@@ -539,12 +538,12 @@ func (mc *MetricsCollector) calculateLogonPerformanceMetrics(timestamp time.Time
 
 		hourlyAvg := mc.calculateAverage(hourlyDurations)
 
-		dataPoints = append(dataPoints, 
+		dataPoints = append(dataPoints,
 			datapoint.DataPoint{
 				Name:      "logon_count_1h_total",
 				Value:     float32(len(validHourlySessions)),
 				Timestamp: timestamp,
-				
+
 				Tags: []tags.Tag{
 					{Key: "metric_type", Value: "logon_performance"},
 				},
@@ -553,7 +552,7 @@ func (mc *MetricsCollector) calculateLogonPerformanceMetrics(timestamp time.Time
 				Name:      "logon_duration_1h_average_ms",
 				Value:     float32(hourlyAvg),
 				Timestamp: timestamp,
-				
+
 				Tags: []tags.Tag{
 					{Key: "metric_type", Value: "logon_performance"},
 				},
@@ -579,7 +578,7 @@ func (mc *MetricsCollector) calculateLogonPerformanceMetrics(timestamp time.Time
 				Name:      "logon_performance_by_delivery_group",
 				Value:     float32(avg),
 				Timestamp: timestamp,
-				
+
 				Tags: []tags.Tag{
 					{Key: "metric_type", Value: "logon_performance"},
 				},
@@ -600,17 +599,17 @@ func (mc *MetricsCollector) calculateSessionMetrics(timestamp time.Time, session
 	// Count sessions by state globally
 	sessionsByState := make(map[int]int)
 	sessionsByDeliveryGroup := make(map[string]map[int]int)
-	
+
 	// Track unique users for concurrent session counting
 	uniqueUsers := make(map[string]bool)
 	usersByDeliveryGroup := make(map[string]map[string]bool)
 
 	var sessionsWithEmptyDG int
 	var sessionsWithDG int
-	
+
 	for _, session := range sessions {
 		sessionsByState[session.SessionState]++
-		
+
 		// Track unique users globally
 		uniqueUsers[session.UserName] = true
 
@@ -628,21 +627,21 @@ func (mc *MetricsCollector) calculateSessionMetrics(timestamp time.Time, session
 		if usersByDeliveryGroup[session.DesktopGroupId] == nil {
 			usersByDeliveryGroup[session.DesktopGroupId] = make(map[string]bool)
 		}
-		
+
 		sessionsByDeliveryGroup[session.DesktopGroupId][session.SessionState]++
 		usersByDeliveryGroup[session.DesktopGroupId][session.UserName] = true
 	}
-	
+
 	mc.logger.Info().
 		Int("sessions_with_empty_dg", sessionsWithEmptyDG).
 		Int("sessions_with_dg", sessionsWithDG).
 		Msg("🔍 CITRIX DELIVERY GROUP DISTRIBUTION")
 
-	// 1. Sessions connectées en live (currently connected)  
+	// 1. Sessions connectées en live (currently connected)
 	// ONLY include states: 1 (Connected) and 5 (Active)
 	// State 0 (Unknown) are NOT active sessions - they are old/orphaned sessions
 	connectedSessions := sessionsByState[SessionStateConnected] + sessionsByState[SessionStateActive]
-	
+
 	// INFO logging pour diagnostiquer le problème
 	mc.logger.Info().
 		Int("total_sessions", len(sessions)).
@@ -688,17 +687,16 @@ func (mc *MetricsCollector) calculateSessionMetrics(timestamp time.Time, session
 		},
 	})
 
-
 	// 6. Métriques par delivery group avec filtrage
 	for dgId, stateCount := range sessionsByDeliveryGroup {
 		_ = dgId // Unused after tag removal
 		// dgName := mc.getDesktopGroupName(dgId, desktopGroups)
-		
+
 		// Calculer les totaux pour ce delivery group
 		totalForDG := 0
 		connectedForDG := 0
 		disconnectedForDG := 0
-		
+
 		for state, count := range stateCount {
 			totalForDG += count
 			switch state {
@@ -708,7 +706,7 @@ func (mc *MetricsCollector) calculateSessionMetrics(timestamp time.Time, session
 				disconnectedForDG += count
 			}
 		}
-		
+
 		// Utilisateurs simultanés pour ce delivery group
 		simultaneousUsersForDG := len(usersByDeliveryGroup[dgId])
 
@@ -750,7 +748,7 @@ func (mc *MetricsCollector) calculateSessionMetrics(timestamp time.Time, session
 				SessionStateConnected:    "connected",
 				SessionStateActive:       "active",
 			}
-			
+
 			_ = sessionStateNames[state] // Ignore state name since tags were removed
 
 			dataPoints = append(dataPoints, datapoint.DataPoint{
@@ -777,12 +775,12 @@ func (mc *MetricsCollector) calculateUserConnectionTotals(timestamp time.Time, s
 	// Count active user connections globally and by delivery group
 	totalActiveConnections := 0
 	activeUsersByDeliveryGroup := make(map[string]map[string]bool)
-	
+
 	for _, session := range sessions {
 		// Only count connected and active sessions as "current connections"
 		if session.SessionState == SessionStateConnected || session.SessionState == SessionStateActive {
 			totalActiveConnections++
-			
+
 			// Track unique active users per delivery group
 			if activeUsersByDeliveryGroup[session.DesktopGroupId] == nil {
 				activeUsersByDeliveryGroup[session.DesktopGroupId] = make(map[string]bool)
@@ -806,7 +804,7 @@ func (mc *MetricsCollector) calculateUserConnectionTotals(timestamp time.Time, s
 		_ = dgId // Unused after tag removal
 		// dgName := mc.getDesktopGroupName(dgId, desktopGroups)
 		activeConnectionsForDG := len(activeUsers)
-		
+
 		dataPoints = append(dataPoints, datapoint.DataPoint{
 			Name:      "user_connections_total_active",
 			Value:     float32(activeConnectionsForDG),
@@ -849,7 +847,7 @@ func (mc *MetricsCollector) calculateMachineMetrics(timestamp time.Time, machine
 			machinesByDeliveryGroup[machine.DesktopGroupId] = make(map[string]int)
 		}
 		machinesByDeliveryGroup[machine.DesktopGroupId]["total"]++
-		
+
 		if machine.RegistrationState == RegistrationStateRegistered {
 			machinesByDeliveryGroup[machine.DesktopGroupId]["registered"]++
 		}
@@ -869,10 +867,10 @@ func (mc *MetricsCollector) calculateMachineMetrics(timestamp time.Time, machine
 
 			// Total machines per controller
 			machinesByController[machine.ControllerDNSName]["total"]++
-			
+
 			// Machines by registration state per controller
 			machinesByControllerAndState[machine.ControllerDNSName][machine.RegistrationState]++
-			
+
 			// Categorize machines by state for controller
 			switch machine.RegistrationState {
 			case RegistrationStateRegistered:
@@ -882,7 +880,7 @@ func (mc *MetricsCollector) calculateMachineMetrics(timestamp time.Time, machine
 			case RegistrationStateAgentError:
 				machinesByController[machine.ControllerDNSName]["agent_error"]++
 			}
-			
+
 			// Categorize by fault state
 			if machine.FaultState == FaultStateNone {
 				machinesByController[machine.ControllerDNSName]["healthy"]++
@@ -901,7 +899,7 @@ func (mc *MetricsCollector) calculateMachineMetrics(timestamp time.Time, machine
 	for state := range uniqueFaultStates {
 		faultStateValues = append(faultStateValues, state)
 	}
-	
+
 	mc.logger.Warn().
 		Ints("actual_registration_states", regStateValues).
 		Ints("actual_fault_states", faultStateValues).
@@ -1002,7 +1000,6 @@ func (mc *MetricsCollector) calculateMachineMetrics(timestamp time.Time, machine
 	return dataPoints
 }
 
-
 // calculateInfrastructureMetricsFromMachines calculates infrastructure status metrics derived from machine data
 func (mc *MetricsCollector) calculateInfrastructureMetricsFromMachines(timestamp time.Time, machines []Machine) []datapoint.DataPoint {
 	mc.logger.Debug().Int("machine_count", len(machines)).Msg("Calculating infrastructure metrics from machine data")
@@ -1021,20 +1018,20 @@ func (mc *MetricsCollector) calculateInfrastructureMetricsFromMachines(timestamp
 		if machine.ControllerDNSName != "" {
 			health := controllerHealth[machine.ControllerDNSName]
 			health.TotalMachines++
-			
+
 			if machine.RegistrationState == RegistrationStateRegistered {
 				health.RegisteredMachines++
 			}
-			
+
 			if machine.FaultState == FaultStateNone {
 				health.HealthyMachines++
 			}
-			
+
 			// Consider machine online if it's registered and healthy
 			if machine.RegistrationState == RegistrationStateRegistered && machine.FaultState == FaultStateNone {
 				health.OnlineMachines++
 			}
-			
+
 			controllerHealth[machine.ControllerDNSName] = health
 		}
 	}
@@ -1097,7 +1094,7 @@ func (mc *MetricsCollector) calculateInfrastructureMetricsFromMachines(timestamp
 		Int("controllers_found", len(controllerHealth)).
 		Int("datapoints_generated", len(dataPoints)).
 		Msg("Infrastructure metrics calculated from machine data")
-	
+
 	return dataPoints
 }
 
@@ -1107,7 +1104,6 @@ func (mc *MetricsCollector) calculateInfrastructureMetricsFromMachines(timestamp
 func (mc *MetricsCollector) filterSessionsWithLogonDuration(sessions []Session) []Session {
 	return mc.helper.FilterSessionsWithLogonDuration(sessions)
 }
-
 
 // calculateAverage - DEPRECATED: use helper.CalculateAverage instead
 func (mc *MetricsCollector) calculateAverage(values []int) int {
