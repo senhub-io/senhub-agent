@@ -693,3 +693,4 @@ Mode hybride optimal : combine simplicité offline + puissance online
 - **Current format**: `0.1.x-beta` - continue incrementing from `0.1.56-beta`
 - **Beta releases**: Automatically generated from dev branch pushes
 - **Workflow**: Uses `git describe --tags --abbrev=0` to find latest tag
+- **Next version**: 0.1.57-beta created, ready for beta releases
