@@ -320,9 +320,9 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			fmt.Printf("Error checking service status: %v\n", statusErr)
 			os.Exit(1)
 		}
-		
+
 		fmt.Printf("Current service status: %s\n", getServiceStatusText(status))
-		
+
 		// Stop the service if it's running
 		if status == service.StatusRunning {
 			fmt.Println("Stopping service...")
@@ -331,23 +331,23 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 				fmt.Printf("Error stopping service: %v\n", err)
 				os.Exit(1)
 			}
-			
+
 			// Wait and verify the service has stopped
 			fmt.Println("Waiting for service to stop...")
 			maxWaitTime := 10 * time.Second
 			waitInterval := 500 * time.Millisecond
 			elapsed := time.Duration(0)
-			
+
 			for elapsed < maxWaitTime {
 				time.Sleep(waitInterval)
 				elapsed += waitInterval
-				
+
 				currentStatus, _ := s.Status()
 				if currentStatus == service.StatusStopped {
 					fmt.Println("Service stopped successfully")
 					break
 				}
-				
+
 				if elapsed >= maxWaitTime {
 					fmt.Println("Warning: Service may not have stopped completely, proceeding anyway...")
 				}
@@ -355,13 +355,13 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		} else if status == service.StatusStopped {
 			fmt.Println("Service is already stopped")
 		}
-		
+
 		// Start the service
 		fmt.Println("Starting service...")
 		err = s.Start()
 		if err == nil {
 			fmt.Println("Service restarted successfully")
-			
+
 			// Verify the service started
 			time.Sleep(1 * time.Second)
 			finalStatus, _ := s.Status()
@@ -684,47 +684,47 @@ func showDebugModules() {
 func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 	// Create logger for status operations
 	logger := agentLogger.NewLogger(&cliArgs.ParsedArgs{Verbose: false})
-	
+
 	// Create status helper and formatter
 	statusHelper := status.NewStatusHelper(logger)
 	formatter := status.NewCLIFormatter()
-	
+
 	// Get basic service status
 	serviceStatus, err := statusHelper.GetServiceStatus(svc)
 	if err != nil {
 		fmt.Printf("Error checking service status: %v\n", err)
 		return
 	}
-	
+
 	// Capitalize first letter for display
 	displayStatus := strings.ToUpper(serviceStatus[:1]) + serviceStatus[1:]
 	fmt.Printf("Service status: %s\n\n", displayStatus)
-	
+
 	// If service is not running, show basic info only
 	if serviceStatus != "running" {
 		fmt.Println("Agent service is not running.")
 		fmt.Println("Start the service with: " + os.Args[0] + " start")
 		return
 	}
-	
+
 	// Try to get detailed status from running agent first (via HTTP)
 	agentKey := ""
 	if args != nil {
 		agentKey = args.AuthenticationKey
-		
+
 		// Try to get agent key from config file if not provided
 		if agentKey == "" {
 			configPath := args.ConfigPath
 			if configPath == "" {
 				configPath = "./agent-config.yaml"
 			}
-			
+
 			if extractedKey, err := extractAgentKeyFromConfig(configPath); err == nil {
 				agentKey = extractedKey
 			}
 		}
 	}
-	
+
 	// Try HTTP endpoint first (for running agent with HTTP strategy)
 	if agentKey != "" {
 		if systemStatus, err := statusHelper.GetDetailedStatusFromHTTP(agentKey, 8080); err == nil {
@@ -734,31 +734,31 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 		}
 		// HTTP failed, fall back to direct method
 	}
-	
+
 	// Fallback: Get system status directly using StatusService (no HTTP dependency)
 	systemStatus, err := getSystemStatusDirect(args)
 	if err != nil {
 		fmt.Printf("Note: Could not get system status (%v), showing minimal status\n\n", err)
-		
+
 		// Minimal fallback status
 		basicHealth := status.HealthInfo{
-			Status:    "unknown", 
+			Status:    "unknown",
 			Timestamp: time.Now(),
 			Message:   "Service is running but status unavailable",
 		}
-		
+
 		basicAgent := status.AgentInfo{
 			Version:   "unknown",
-			Commit:    "unknown", 
+			Commit:    "unknown",
 			GoVersion: runtime.Version(),
 			OS:        runtime.GOOS,
 			Arch:      runtime.GOARCH,
 		}
-		
+
 		fmt.Print(formatter.FormatBasicStatus(basicHealth, basicAgent))
 		return
 	}
-	
+
 	// Display full system status
 	fmt.Print(formatter.FormatSystemStatus(systemStatus))
 }
@@ -769,28 +769,28 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 	if args == nil {
 		args = &cliArgs.ParsedArgs{}
 	}
-	
+
 	// Create a completely silent logger for the status service (no output during status command)
 	silentArgs := &cliArgs.ParsedArgs{
 		Verbose: false,
 	}
 	logger := agentLogger.NewLogger(silentArgs)
-	
+
 	// Try to get version and commit information
 	version := cliArgs.Version
 	commit := cliArgs.CommitHash
 	if version == "" {
 		version = "development"
 	}
-	
+
 	// Format commit hash for display (take first 7 chars if longer)
 	if len(commit) > 7 {
 		commit = commit[:7]
 	}
-	
+
 	// Create status service
 	statusService := status.NewStatusService(logger, version, commit)
-	
+
 	// Determine agent mode using the same logic as the agent initialization
 	agentMode := "online" // Default assumption for status checks
 	if args != nil && args.AuthenticationKey != "" {
@@ -803,34 +803,34 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 		agentMode = "offline"
 	}
 	statusService.SetAgentMode(agentMode)
-	
+
 	// Note: Without actual probe/cache data, we'll get basic system info
 	// In a real deployment, this would connect to the running agent's internal state
 	systemStatus := statusService.GetSystemStatus()
-	
+
 	// Try to enhance with agent key if available
 	if args != nil {
 		agentKey := args.AuthenticationKey
-		
+
 		// Try to get agent key from config file if not provided
 		if agentKey == "" {
 			configPath := args.ConfigPath
 			if configPath == "" {
 				configPath = "./agent-config.yaml"
 			}
-			
+
 			if extractedKey, err := extractAgentKeyFromConfig(configPath); err == nil {
 				agentKey = extractedKey
 			}
 		}
-		
+
 		// Update connection info with agent key source
 		if agentKey != "" {
 			systemStatus.Connection.Source = "Configuration file"
 			systemStatus.Connection.Status = "Available"
 		}
 	}
-	
+
 	return systemStatus, nil
 }
 
@@ -841,31 +841,31 @@ func validateConfigPath(configPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to resolve absolute path: %w", err)
 	}
-	
+
 	// Only allow .yaml and .yml extensions
 	ext := strings.ToLower(filepath.Ext(absPath))
 	if ext != ".yaml" && ext != ".yml" {
 		return fmt.Errorf("config file must have .yaml or .yml extension, got: %s", ext)
 	}
-	
+
 	// Ensure the path doesn't contain directory traversal attempts
 	cleanPath := filepath.Clean(absPath)
 	if cleanPath != absPath {
 		return fmt.Errorf("path contains directory traversal attempts")
 	}
-	
+
 	// Only allow config files in current directory or subdirectories (no parent directory access)
 	workingDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
-	
+
 	// Check if the file is within the working directory or its subdirectories
 	relPath, err := filepath.Rel(workingDir, absPath)
 	if err != nil || strings.HasPrefix(relPath, "..") {
 		return fmt.Errorf("config file must be within the current working directory or its subdirectories")
 	}
-	
+
 	return nil
 }
 
@@ -875,14 +875,14 @@ func extractAgentKeyFromConfig(configPath string) (string, error) {
 	if err := validateConfigPath(configPath); err != nil {
 		return "", fmt.Errorf("invalid config path: %w", err)
 	}
-	
+
 	// This is a simplified version - in practice, we'd properly parse the YAML
 	// #nosec G304 - path is validated by validateConfigPath function
 	content, err := os.ReadFile(configPath)
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Simple string search for agent key (not ideal, but functional)
 	lines := strings.Split(string(content), "\n")
 	for _, line := range lines {
@@ -897,6 +897,6 @@ func extractAgentKeyFromConfig(configPath string) (string, error) {
 			}
 		}
 	}
-	
+
 	return "", fmt.Errorf("agent key not found in config file")
 }

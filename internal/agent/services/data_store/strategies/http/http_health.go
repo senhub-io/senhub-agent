@@ -125,7 +125,7 @@ func (h *HealthManager) HandleDetailedHealth(w http.ResponseWriter, r *http.Requ
 func (h *HealthManager) BuildSystemHealth() SystemHealth {
 	// Get comprehensive system status from centralized service
 	systemStatus := h.strategy.statusService.GetSystemStatus()
-	
+
 	// Convert to HTTP strategy's format for backward compatibility
 	healthResponse := HealthCheckResponse{
 		Status:    systemStatus.Health.Status,
@@ -180,7 +180,7 @@ func (h *HealthManager) IsHealthy() bool {
 
 	// Get health status from centralized service
 	healthStatus := h.strategy.statusService.GetHealthStatus()
-	
+
 	// Consider healthy if status is "healthy" or "degraded" (not "unhealthy")
 	return healthStatus.Status == "healthy" || healthStatus.Status == "degraded"
 }
