@@ -20,18 +20,16 @@ type SiteInventory struct {
 	Applications   map[string]DDCApplication   // AppID → Application
 	LastUpdate     time.Time
 	UpdateDuration time.Duration
-	mu             sync.RWMutex
 }
 
 // InventoryService manages the site inventory cache
 type InventoryService struct {
-	ddcClient    DeliveryControllerClient
-	cache        *SiteInventory
-	cacheTTL     time.Duration
-	logger       *logger.ModuleLogger
-	refreshTimer *time.Timer
-	stopChan     chan struct{}
-	mu           sync.RWMutex
+	ddcClient DeliveryControllerClient
+	cache     *SiteInventory
+	cacheTTL  time.Duration
+	logger    *logger.ModuleLogger
+	stopChan  chan struct{}
+	mu        sync.RWMutex
 }
 
 // NewInventoryService creates a new inventory service
