@@ -55,7 +55,7 @@ func NewCitrixClient(config CitrixClientConfig, baseLogger *logger.Logger) (Citr
 		// Parse domain\username format - handle both single and double backslash
 		username := config.Username
 		domain := ""
-		
+
 		// Handle domain\username format (can be single or double backslash in YAML)
 		if strings.Contains(username, "\\") {
 			// Handle both single backslash and double backslash cases
@@ -71,14 +71,14 @@ func NewCitrixClient(config CitrixClientConfig, baseLogger *logger.Logger) (Citr
 				}
 			}
 		}
-		
+
 		moduleLogger.Debug().
 			Str("original_username", config.Username).
 			Str("parsed_domain", domain).
 			Str("parsed_username", username).
 			Str("password_length", fmt.Sprintf("%d", len(config.Password))).
 			Msg("Configuring NTLM authentication with parsed credentials")
-		
+
 		httpClient = &http.Client{
 			Transport: ntlmssp.Negotiator{
 				RoundTripper: transport,
@@ -162,12 +162,12 @@ func (c *citrixClient) Disconnect(ctx context.Context) error {
 func (c *citrixClient) GetSessions(ctx context.Context, sinceTime time.Time) ([]Session, error) {
 	endpoint := "/Sessions"
 	filter := fmt.Sprintf("ModifiedDate ge %s", formatODataDateTime(sinceTime))
-	
+
 	c.logger.Debug().
 		Time("since_time", sinceTime).
 		Str("filter", filter).
 		Msg("Getting sessions with filter")
-	
+
 	var sessions []Session
 	err := c.getODataCollectionUnlimited(ctx, endpoint, filter, &sessions)
 	if err != nil {
@@ -185,19 +185,19 @@ func (c *citrixClient) GetSessions(ctx context.Context, sinceTime time.Time) ([]
 // GetSessionsByConnectionState retrieves sessions filtered by ConnectionState using OData filter
 func (c *citrixClient) GetSessionsByConnectionState(ctx context.Context, connectionStates []int) ([]Session, error) {
 	endpoint := "/Sessions"
-	
+
 	// Build OData filter for ConnectionState
 	var stateFilters []string
 	for _, state := range connectionStates {
 		stateFilters = append(stateFilters, fmt.Sprintf("ConnectionState eq %d", state))
 	}
 	filter := strings.Join(stateFilters, " or ")
-	
+
 	c.logger.Debug().
 		Ints("connection_states", connectionStates).
 		Str("filter", filter).
 		Msg("Getting sessions filtered by ConnectionState")
-	
+
 	var sessions []Session
 	err := c.getODataCollectionUnlimited(ctx, endpoint, filter, &sessions)
 	if err != nil {
@@ -215,7 +215,7 @@ func (c *citrixClient) GetSessionsByConnectionState(ctx context.Context, connect
 // GetMachines retrieves machines data from the OData API
 func (c *citrixClient) GetMachines(ctx context.Context, sinceTime time.Time) ([]Machine, error) {
 	endpoint := "/Machines"
-	
+
 	var filter string
 	if !sinceTime.IsZero() {
 		filter = fmt.Sprintf("ModifiedDate ge %s", formatODataDateTime(sinceTime))
@@ -227,7 +227,7 @@ func (c *citrixClient) GetMachines(ctx context.Context, sinceTime time.Time) ([]
 		// No filter - get all machines for infrastructure metrics
 		c.logger.Debug().Msg("Getting all machines (no time filter)")
 	}
-	
+
 	var machines []Machine
 	err := c.getODataCollectionUnlimited(ctx, endpoint, filter, &machines)
 	if err != nil {
@@ -245,7 +245,7 @@ func (c *citrixClient) GetMachines(ctx context.Context, sinceTime time.Time) ([]
 // GetDesktopGroups retrieves desktop groups data from the OData API
 func (c *citrixClient) GetDesktopGroups(ctx context.Context) ([]DesktopGroup, error) {
 	endpoint := "/DesktopGroups"
-	
+
 	var desktopGroups []DesktopGroup
 	err := c.getODataCollectionUnlimited(ctx, endpoint, "", &desktopGroups)
 	if err != nil {
@@ -255,7 +255,7 @@ func (c *citrixClient) GetDesktopGroups(ctx context.Context) ([]DesktopGroup, er
 	c.logger.Info().
 		Int("desktop_group_count", len(desktopGroups)).
 		Msg("Retrieved desktop groups from Citrix API")
-	
+
 	// Log details of each desktop group for debugging
 	for _, dg := range desktopGroups {
 		c.logger.Debug().
@@ -274,12 +274,12 @@ func (c *citrixClient) GetDesktopGroups(ctx context.Context) ([]DesktopGroup, er
 func (c *citrixClient) GetConnectionFailureLogs(ctx context.Context, sinceTime time.Time) ([]ConnectionFailureLog, error) {
 	endpoint := "/ConnectionFailureLogs"
 	filter := fmt.Sprintf("FailureDate ge %s", formatODataDateTime(sinceTime))
-	
+
 	c.logger.Debug().
 		Time("since_time", sinceTime).
 		Str("filter", filter).
 		Msg("Getting connection failure logs with filter")
-	
+
 	var failureLogs []ConnectionFailureLog
 	err := c.getODataCollectionUnlimited(ctx, endpoint, filter, &failureLogs)
 	if err != nil {
@@ -298,19 +298,19 @@ func (c *citrixClient) GetConnectionFailureLogs(ctx context.Context, sinceTime t
 func (c *citrixClient) GetConnectionFailureLogsWithExpand(ctx context.Context, sinceTime time.Time, expand []string) ([]ConnectionFailureLog, error) {
 	endpoint := "/ConnectionFailureLogs"
 	filter := fmt.Sprintf("FailureDate ge %s", formatODataDateTime(sinceTime))
-	
+
 	// Build expand parameter
 	expandParam := ""
 	if len(expand) > 0 {
 		expandParam = strings.Join(expand, ",")
 	}
-	
+
 	c.logger.Debug().
 		Time("since_time", sinceTime).
 		Str("filter", filter).
 		Str("expand", expandParam).
 		Msg("Getting connection failure logs with filter and expand")
-	
+
 	var failureLogs []ConnectionFailureLog
 	err := c.getODataCollectionWithExpand(ctx, endpoint, filter, expandParam, &failureLogs)
 	if err != nil {
@@ -329,9 +329,9 @@ func (c *citrixClient) GetConnectionFailureLogsWithExpand(ctx context.Context, s
 // GetConnectionFailureCategories retrieves connection failure category mappings from the OData API
 func (c *citrixClient) GetConnectionFailureCategories(ctx context.Context) ([]ConnectionFailureCategory, error) {
 	endpoint := "/ConnectionFailureCategories"
-	
+
 	c.logger.Debug().Msg("Getting connection failure categories")
-	
+
 	var categories []ConnectionFailureCategory
 	err := c.getODataCollectionUnlimited(ctx, endpoint, "", &categories)
 	if err != nil {
@@ -344,7 +344,6 @@ func (c *citrixClient) GetConnectionFailureCategories(ctx context.Context) ([]Co
 
 	return categories, nil
 }
-
 
 // getODataCollection performs a GET request to an OData endpoint with pagination support
 func (c *citrixClient) getODataCollection(ctx context.Context, endpoint, filter string, result interface{}) error {
@@ -557,7 +556,7 @@ func (c *citrixClient) performRequest(ctx context.Context, url string, result in
 				Int("attempt", attempt+1).
 				Dur("delay", delay).
 				Msg("Retrying request after delay")
-			
+
 			select {
 			case <-time.After(delay):
 			case <-ctx.Done():
@@ -592,7 +591,7 @@ func (c *citrixClient) doRequest(ctx context.Context, url string, result interfa
 
 	// Add authentication headers
 	c.addAuthHeaders(req)
-	
+
 	// Debug log the full request details
 	c.logger.Debug().
 		Str("method", req.Method).
@@ -620,7 +619,7 @@ func (c *citrixClient) doRequest(ctx context.Context, url string, result interfa
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
-		
+
 		// Log authentication failures with more detail
 		if resp.StatusCode == 401 {
 			c.logger.Error().
@@ -665,7 +664,7 @@ func (c *citrixClient) addCitrixHeaders(req *http.Request) {
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "SenHub-Citrix-Collector/1.0")
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	// Some Citrix environments may require these headers
 	if c.config.Environment != "" {
 		req.Header.Set("Citrix-InstanceId", c.config.Environment)
@@ -705,17 +704,17 @@ func (c *citrixClient) GetDeliveryGroupById(ctx context.Context, deliveryGroupId
 	if deliveryGroupId == "" {
 		return nil, fmt.Errorf("delivery group ID cannot be empty")
 	}
-	
+
 	c.logger.Debug().
 		Str("delivery_group_id", deliveryGroupId).
 		Msg("Attempting to fetch specific delivery group by ID")
-	
+
 	// Use OData endpoint with specific filter for the ID
 	// Use only Id field as DesktopGroupId doesn't exist on DesktopGroup type
 	// Format as GUID for OData (no quotes, use guid syntax)
 	endpoint := "/DesktopGroups"
 	filter := fmt.Sprintf("Id eq guid'%s'", deliveryGroupId)
-	
+
 	var desktopGroups []DesktopGroup
 	err := c.getODataCollection(ctx, endpoint, filter, &desktopGroups)
 	if err != nil {
@@ -725,19 +724,19 @@ func (c *citrixClient) GetDeliveryGroupById(ctx context.Context, deliveryGroupId
 			Msg("Failed to get delivery group via OData filter")
 		return nil, fmt.Errorf("failed to get delivery group by ID: %v", err)
 	}
-	
+
 	if len(desktopGroups) == 0 {
 		c.logger.Debug().
 			Str("delivery_group_id", deliveryGroupId).
 			Msg("No delivery group found with the specified ID")
 		return nil, fmt.Errorf("delivery group with ID '%s' not found", deliveryGroupId)
 	}
-	
+
 	c.logger.Debug().
 		Str("delivery_group_id", deliveryGroupId).
 		Str("delivery_group_name", desktopGroups[0].Name).
 		Msg("Successfully retrieved delivery group by ID")
-	
+
 	return &desktopGroups[0], nil
 }
 
@@ -745,23 +744,23 @@ func (c *citrixClient) GetDeliveryGroupById(ctx context.Context, deliveryGroupId
 func (c *citrixClient) GetConnections(ctx context.Context, sinceTime time.Time) ([]Connection, error) {
 	endpoint := "/Connections"
 	filter := ""
-	
+
 	// Add time filter if provided
 	if !sinceTime.IsZero() {
 		filter = fmt.Sprintf("LogOnStartDate gt %s", formatODataDateTime(sinceTime))
 	}
-	
+
 	var connections []Connection
 	err := c.getODataCollection(ctx, endpoint, filter, &connections)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get connections: %w", err)
 	}
-	
+
 	c.logger.Debug().
 		Int("connections_count", len(connections)).
 		Time("since", sinceTime).
 		Msg("Retrieved connections with logon breakdown metrics")
-	
+
 	return connections, nil
 }
 
