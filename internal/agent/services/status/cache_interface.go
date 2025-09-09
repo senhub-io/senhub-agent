@@ -7,13 +7,13 @@ import "time"
 type CacheStatisticsProvider interface {
 	// GetProbeStatistics returns statistics for each probe
 	GetProbeStatistics() map[string]ProbeStatistics
-	
+
 	// GetCacheInfo returns general cache information
 	GetCacheInfo() CacheInfo
-	
+
 	// GetTotalEntries returns total number of cache entries
 	GetTotalEntries() int
-	
+
 	// GetHealthMetrics returns cache health metrics
 	GetHealthMetrics() map[string]interface{}
 }
@@ -29,10 +29,10 @@ type ProbeStatistics struct {
 
 // CacheInfo represents general cache information
 type CacheInfo struct {
-	TotalEntries    int           `json:"total_entries"`
-	RetentionMinutes int          `json:"retention_minutes"`
-	LastCleanup     time.Time     `json:"last_cleanup"`
-	MemoryUsageMB   float64       `json:"memory_usage_mb"`
+	TotalEntries     int       `json:"total_entries"`
+	RetentionMinutes int       `json:"retention_minutes"`
+	LastCleanup      time.Time `json:"last_cleanup"`
+	MemoryUsageMB    float64   `json:"memory_usage_mb"`
 }
 
 // Add this field to StatusService struct

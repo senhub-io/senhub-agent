@@ -7,44 +7,44 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/types/datapoint"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // citrixProbe implements monitoring for Citrix Virtual Apps and Desktops using OData API
 type citrixProbe struct {
 	*types.BaseProbe
-	config          map[string]interface{}
-	logger          *logger.ModuleLogger
-	interval        time.Duration
-	client          CitrixClient
-	ddcClient       DeliveryControllerClient
+	config           map[string]interface{}
+	logger           *logger.ModuleLogger
+	interval         time.Duration
+	client           CitrixClient
+	ddcClient        DeliveryControllerClient
 	metricsCollector *MetricsCollector
-	ctx             context.Context
-	cancelFunc      context.CancelFunc
+	ctx              context.Context
+	cancelFunc       context.CancelFunc
 
 	// Configuration fields
-	baseURL             string
-	environment         string
-	authMethod          string
-	username            string
-	password            string
-	verifySSL           bool
-	timeout             time.Duration
-	maxRetryAttempts    int
-	retryBackoffFactor  float64
-	
+	baseURL            string
+	environment        string
+	authMethod         string
+	username           string
+	password           string
+	verifySSL          bool
+	timeout            time.Duration
+	maxRetryAttempts   int
+	retryBackoffFactor float64
+
 	// Delivery Controller configuration
-	ddcConfig           *DeliveryControllerConfig
-	siteFilter          string
-	filteredMachines    []string
+	ddcConfig        *DeliveryControllerConfig
+	siteFilter       string
+	filteredMachines []string
 }
 
 // NewCitrixProbe creates a new instance of the Citrix probe
 func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
 	// Create module-specific logger for citrix probe
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.citrix")
-	
+
 	// Default interval: 2 minutes as specified in requirements
 	interval := 120 * time.Second
 	if cfgInterval, ok := config["interval"].(int); ok {
@@ -110,7 +110,7 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 			retryBackoffFactor = cfgBackoffFactor
 		}
 	}
-	
+
 	// Extract Delivery Controller configuration if present
 	var ddcConfig *DeliveryControllerConfig
 	var siteFilter string
@@ -119,11 +119,11 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 			VerifySSL: verifySSL, // Use same SSL config as main client
 			Timeout:   timeout,
 		}
-		
+
 		if url, ok := ddcCfg["url"].(string); ok {
 			ddcConfig.URL = url
 		}
-		
+
 		if fallbackURLs, ok := ddcCfg["fallback_urls"].([]interface{}); ok {
 			ddcConfig.FallbackURLs = make([]string, 0, len(fallbackURLs))
 			for _, url := range fallbackURLs {
@@ -132,12 +132,12 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 				}
 			}
 		}
-		
+
 		if site, ok := ddcCfg["site_filter"].(string); ok {
 			siteFilter = site
 			ddcConfig.SiteFilter = site
 		}
-		
+
 		moduleLogger.Info().
 			Str("ddc_url", ddcConfig.URL).
 			Str("site_filter", siteFilter).
@@ -148,23 +148,23 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	ctx, cancel := context.WithCancel(context.Background())
 
 	probe := &citrixProbe{
-		BaseProbe:           &types.BaseProbe{},
-		config:              config,
-		logger:              moduleLogger,
-		interval:            interval,
-		ctx:                 ctx,
-		cancelFunc:          cancel,
-		baseURL:             baseURL,
-		environment:         environment,
-		authMethod:          authMethod,
-		username:            username,
-		password:            password,
-		verifySSL:           verifySSL,
-		timeout:             timeout,
-		maxRetryAttempts:    maxRetryAttempts,
-		retryBackoffFactor:  retryBackoffFactor,
-		ddcConfig:           ddcConfig,
-		siteFilter:          siteFilter,
+		BaseProbe:          &types.BaseProbe{},
+		config:             config,
+		logger:             moduleLogger,
+		interval:           interval,
+		ctx:                ctx,
+		cancelFunc:         cancel,
+		baseURL:            baseURL,
+		environment:        environment,
+		authMethod:         authMethod,
+		username:           username,
+		password:           password,
+		verifySSL:          verifySSL,
+		timeout:            timeout,
+		maxRetryAttempts:   maxRetryAttempts,
+		retryBackoffFactor: retryBackoffFactor,
+		ddcConfig:          ddcConfig,
+		siteFilter:         siteFilter,
 	}
 
 	return probe, nil
@@ -216,12 +216,12 @@ func (p *citrixProbe) OnStart(quitChannel chan struct{}) error {
 			Username: p.username,
 			Password: p.password,
 		}
-		
+
 		p.ddcClient, err = NewDeliveryControllerClient(*p.ddcConfig, authConfig, p.logger.Logger)
 		if err != nil {
 			return fmt.Errorf("failed to create Delivery Controller client: %v", err)
 		}
-		
+
 		// Test DDC connectivity
 		if err := p.ddcClient.TestConnectivity(p.ctx); err != nil {
 			p.logger.Warn().
