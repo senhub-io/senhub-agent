@@ -689,5 +689,7 @@ Mode hybride optimal : combine simplicité offline + puissance online
 ### Tag Format Consistency (2025-09-09)
 - **IMPORTANT**: All version tags must follow the format `X.Y.Z-beta` (WITHOUT the "v" prefix)
 - **Fixed**: Purged all problematic `v0.0.x-beta` tags that caused GoReleaser conflicts
+- **Fixed**: Removed regression tag `0.0.75-beta` that was causing version conflicts
 - **Current format**: `0.1.x-beta` - continue incrementing from `0.1.56-beta`
 - **Beta releases**: Automatically generated from dev branch pushes
+- **Workflow**: Uses `git describe --tags --abbrev=0` to find latest tag
