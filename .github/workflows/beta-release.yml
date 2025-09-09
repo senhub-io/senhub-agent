@@ -54,9 +54,10 @@ jobs:
           echo "CURRENT_TAG=$CURRENT_TAG" >> $GITHUB_ENV
           echo "beta_tag=$NEW_TAG" >> $GITHUB_ENV
           echo "New beta tag will be: $NEW_TAG"
-      - name: Create local beta tag
+      - name: Create and push beta tag
         run: |
           git tag ${{ env.beta_tag }}
+          git push origin ${{ env.beta_tag }}
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
