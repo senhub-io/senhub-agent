@@ -16,7 +16,7 @@ func TestGetSystemStatusDirect(t *testing.T) {
 		{
 			name: "Offline mode from args",
 			args: &cliArgs.ParsedArgs{
-				Offline: true,
+				Offline:           true,
 				AuthenticationKey: "test-key-123",
 			},
 			wantMode: "offline",
@@ -25,16 +25,16 @@ func TestGetSystemStatusDirect(t *testing.T) {
 		{
 			name: "Online mode from args",
 			args: &cliArgs.ParsedArgs{
-				Offline: false,
+				Offline:           false,
 				AuthenticationKey: "test-key-456",
 			},
 			wantMode: "online",
 			wantErr:  false,
 		},
 		{
-			name: "No args - online mode default",
-			args: &cliArgs.ParsedArgs{}, // Empty args, no offline flag, no auth key
-			wantMode: "online", // Default assumption for status checks
+			name:     "No args - online mode default",
+			args:     &cliArgs.ParsedArgs{}, // Empty args, no offline flag, no auth key
+			wantMode: "online",              // Default assumption for status checks
 			wantErr:  false,
 		},
 	}
@@ -42,12 +42,12 @@ func TestGetSystemStatusDirect(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			status, err := getSystemStatusDirect(tt.args)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getSystemStatusDirect() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			// Verify the mode is one of the expected values (using real agent detection logic)
 			validModes := []string{"online", "offline"}
 			validMode := false
@@ -60,12 +60,12 @@ func TestGetSystemStatusDirect(t *testing.T) {
 			if !validMode {
 				t.Errorf("Connection mode '%s' should be one of %v", status.Connection.Mode, validModes)
 			}
-			
+
 			// Basic validation of returned status
 			if status.Agent.Version == "" {
 				t.Error("Agent version should not be empty")
 			}
-			
+
 			if status.Health.Status == "" {
 				t.Error("Health status should not be empty")
 			}
@@ -85,7 +85,7 @@ func TestValidateConfigPath(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "Valid YML file", 
+			name:    "Valid YML file",
 			path:    "./test-config.yml",
 			wantErr: false,
 		},
@@ -109,7 +109,7 @@ func TestValidateConfigPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateConfigPath(tt.path)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateConfigPath() error = %v, wantErr %v", err, tt.wantErr)
 			}

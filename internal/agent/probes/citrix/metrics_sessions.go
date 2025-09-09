@@ -5,23 +5,23 @@ import (
 	"fmt"
 	"time"
 
-	"senhub-agent.go/internal/agent/types/datapoint"
 	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // CollectSessionMetrics collects all session-related metrics using optimized OData queries
 func (mc *MetricsCollector) CollectSessionMetrics(ctx context.Context, timestamp time.Time) ([]datapoint.DataPoint, error) {
 	mc.logger.Debug().Msg("Collecting session metrics")
-	
+
 	var metrics []datapoint.DataPoint
-	
+
 	// 1. sessions_connected (matches portal "Sessions Connected" = ConnectionState 5)
 	connectedSessions, err := mc.client.GetSessionsByConnectionState(ctx, []int{SessionStateActive})
 	if err != nil {
 		mc.logger.Error().Err(err).Msg("Failed to get connected sessions")
 		return nil, err
 	}
-	
+
 	connectedMetric := datapoint.DataPoint{
 		Name:      "sessions_connected",
 		Value:     float32(len(connectedSessions)),
@@ -31,9 +31,9 @@ func (mc *MetricsCollector) CollectSessionMetrics(ctx context.Context, timestamp
 		},
 	}
 	metrics = append(metrics, connectedMetric)
-	
+
 	// Note: Removed simultaneous session metrics - unclear business value
-	
+
 	// 3. sessions_disconnected (ConnectionState == 2) - optimized query
 	disconnectedSessions, err := mc.client.GetSessionsByConnectionState(ctx, []int{SessionStateDisconnected})
 	if err != nil {
@@ -49,7 +49,7 @@ func (mc *MetricsCollector) CollectSessionMetrics(ctx context.Context, timestamp
 		},
 	}
 	metrics = append(metrics, disconnectedMetric)
-	
+
 	// 4. sessions_zombie (Hidden sessions - need to get ALL sessions to check Hidden flag)
 	allSessions, err := mc.client.GetSessions(ctx, time.Now().Add(-24*time.Hour))
 	if err != nil {
@@ -67,25 +67,24 @@ func (mc *MetricsCollector) CollectSessionMetrics(ctx context.Context, timestamp
 		zombieMetric := mc.calculateSessionsZombie(timestamp, allSessions)
 		metrics = append(metrics, zombieMetric)
 	}
-	
+
 	// 5. logon_duration_avg (average logon time for sessions in last hour)
 	logonDurationMetric := mc.calculateLogonDurationAvgHourly(ctx, timestamp)
 	metrics = append(metrics, logonDurationMetric)
-	
+
 	mc.logger.Info().
 		Int("sessions_connected", len(connectedSessions)).
 		Int("sessions_disconnected", len(disconnectedSessions)).
 		Int("metrics_count", len(metrics)).
 		Msg("✅ Session metrics collected - simplified and focused")
-	
+
 	return metrics, nil
 }
-
 
 // calculateSessionsZombie counts sessions marked as Hidden (true zombie sessions per Citrix definition)
 func (mc *MetricsCollector) calculateSessionsZombie(timestamp time.Time, sessions []Session) datapoint.DataPoint {
 	count := 0
-	
+
 	// According to Citrix documentation, zombie sessions are those with Hidden=true
 	// These are sessions that are hidden from users and cannot be reconnected
 	for _, session := range sessions {
@@ -93,12 +92,12 @@ func (mc *MetricsCollector) calculateSessionsZombie(timestamp time.Time, session
 			count++
 		}
 	}
-	
+
 	mc.logger.Debug().
 		Int("zombie_sessions", count).
 		Int("total_sessions_checked", len(sessions)).
 		Msg("Zombie session calculation (Hidden=true)")
-	
+
 	return datapoint.DataPoint{
 		Name:      "sessions_zombie",
 		Value:     float32(count),
@@ -118,7 +117,7 @@ func (mc *MetricsCollector) calculateLogonDurationAvgHourly(ctx context.Context,
 	currentMinute := timestamp.Truncate(time.Minute)
 	windowEnd := currentMinute
 	windowStart := currentMinute.Add(-1 * time.Hour)
-	
+
 	// Log the calculated time window for debugging alignment
 	mc.logger.Info().
 		Time("current_time", timestamp).
@@ -126,7 +125,7 @@ func (mc *MetricsCollector) calculateLogonDurationAvgHourly(ctx context.Context,
 		Time("window_end_local", windowEnd).
 		Str("window_description", fmt.Sprintf("%s to %s", windowStart.Format("15:04:05"), windowEnd.Format("15:04:05"))).
 		Msg("🕐 1-hour average logon duration time window calculated (sliding window on complete minutes)")
-	
+
 	connections, err := mc.client.GetConnections(ctx, windowStart)
 	if err != nil {
 		mc.logger.Warn().Err(err).Msg("Failed to get connections for hourly logon duration")
@@ -139,16 +138,16 @@ func (mc *MetricsCollector) calculateLogonDurationAvgHourly(ctx context.Context,
 			},
 		}
 	}
-	
+
 	// Filter connections that started within the 1-hour window
 	// Apply same filtering logic as 2-minute metrics for consistency
 	var recentConnections []Connection
 	var totalInWindow, nonHDX, reconnections, incomplete, included int
-	
+
 	for _, conn := range connections {
 		if conn.LogOnStartDate.After(windowStart) && conn.LogOnStartDate.Before(windowEnd) {
 			totalInWindow++
-			
+
 			// Apply Citrix Director filtering logic (same as 2-minute metrics):
 			// - Protocol = "HDX" (only HDX connections)
 			// - IsReconnect = false (exclude reconnections per Citrix documentation)
@@ -179,7 +178,7 @@ func (mc *MetricsCollector) calculateLogonDurationAvgHourly(ctx context.Context,
 			}
 		}
 	}
-	
+
 	// Log filtering statistics (same format as 2-minute metrics)
 	mc.logger.Info().
 		Int("total_in_window", totalInWindow).
@@ -190,17 +189,17 @@ func (mc *MetricsCollector) calculateLogonDurationAvgHourly(ctx context.Context,
 		Time("window_start", windowStart).
 		Time("window_end", windowEnd).
 		Msg("1-hour connection filtering statistics")
-	
+
 	// Calculate average duration from filtered connections
 	var totalDuration int64
 	var validConnectionCount int
-	
+
 	for _, conn := range recentConnections {
 		connectionDuration := int(conn.LogOnEndDate.Sub(conn.LogOnStartDate).Milliseconds())
 		if connectionDuration > 0 {
 			totalDuration += int64(connectionDuration)
 			validConnectionCount++
-			
+
 			mc.logger.Debug().
 				Str("connection_id", fmt.Sprintf("%d", conn.Id)).
 				Time("logon_start", conn.LogOnStartDate).
@@ -209,7 +208,7 @@ func (mc *MetricsCollector) calculateLogonDurationAvgHourly(ctx context.Context,
 				Msg("Found HDX connection with valid logon duration for 1h average")
 		}
 	}
-	
+
 	var avgDurationSeconds float32
 	if validConnectionCount > 0 {
 		// Convert from milliseconds to seconds with 2 decimal places (consistent with 2-minute metrics)
@@ -223,7 +222,7 @@ func (mc *MetricsCollector) calculateLogonDurationAvgHourly(ctx context.Context,
 			Time("window_end", windowEnd).
 			Msg("No connections started in 1-hour window with valid logon duration")
 	}
-	
+
 	mc.logger.Info().
 		Int("total_connections_checked", len(connections)).
 		Int("connections_in_window", totalInWindow).
@@ -232,7 +231,7 @@ func (mc *MetricsCollector) calculateLogonDurationAvgHourly(ctx context.Context,
 		Time("window_start", windowStart).
 		Time("window_end", windowEnd).
 		Msg("✅ 1-hour average logon duration calculated with consistent windowing")
-	
+
 	return datapoint.DataPoint{
 		Name:      "logon_duration_avg_1h",
 		Value:     avgDurationSeconds,

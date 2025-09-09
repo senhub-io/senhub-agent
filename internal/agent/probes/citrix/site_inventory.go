@@ -11,16 +11,16 @@ import (
 
 // SiteInventory holds cached information about a Citrix site
 type SiteInventory struct {
-	SiteID           string
-	SiteName         string
-	Machines         map[string]DDCMachine        // MachineDNS → Machine
-	MachinesByID     map[string]DDCMachine        // MachineID → Machine
-	DeliveryGroups   map[string]DDCDeliveryGroup  // GroupID → Group
-	Controllers      map[string]bool               // ControllerDNS → exists
-	Applications     map[string]DDCApplication    // AppID → Application
-	LastUpdate       time.Time
-	UpdateDuration   time.Duration
-	mu               sync.RWMutex
+	SiteID         string
+	SiteName       string
+	Machines       map[string]DDCMachine       // MachineDNS → Machine
+	MachinesByID   map[string]DDCMachine       // MachineID → Machine
+	DeliveryGroups map[string]DDCDeliveryGroup // GroupID → Group
+	Controllers    map[string]bool             // ControllerDNS → exists
+	Applications   map[string]DDCApplication   // AppID → Application
+	LastUpdate     time.Time
+	UpdateDuration time.Duration
+	mu             sync.RWMutex
 }
 
 // InventoryService manages the site inventory cache
@@ -37,7 +37,7 @@ type InventoryService struct {
 // NewInventoryService creates a new inventory service
 func NewInventoryService(ddcClient DeliveryControllerClient, cacheTTL time.Duration, baseLogger *logger.Logger) *InventoryService {
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.citrix.inventory")
-	
+
 	return &InventoryService{
 		ddcClient: ddcClient,
 		cacheTTL:  cacheTTL,
@@ -51,9 +51,9 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 	s.logger.Info().
 		Str("site", siteFilter).
 		Msg("Refreshing site inventory")
-	
+
 	startTime := time.Now()
-	
+
 	// Create new inventory
 	newInventory := &SiteInventory{
 		SiteName:       siteFilter,
@@ -64,15 +64,15 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 		Applications:   make(map[string]DDCApplication),
 		LastUpdate:     startTime,
 	}
-	
+
 	// Get site details first
 	siteDetails, err := s.ddcClient.GetSiteDetails(ctx, siteFilter)
 	if err != nil {
 		return fmt.Errorf("failed to get site details: %w", err)
 	}
-	
+
 	newInventory.SiteID = siteDetails.Site.Id
-	
+
 	// Load machines
 	machines, err := s.ddcClient.GetMachinesDetailedBySite(ctx, siteFilter)
 	if err != nil {
@@ -90,19 +90,19 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 			} else if machine.Name != "" {
 				newInventory.Machines[machine.Name] = machine
 			}
-			
+
 			// Also index by ID for session filtering
 			if machine.Id != "" {
 				newInventory.MachinesByID[machine.Id] = machine
 			}
 		}
-		
+
 		s.logger.Debug().
 			Int("machine_count", len(machines)).
 			Str("site", siteFilter).
 			Msg("Loaded machines into inventory")
 	}
-	
+
 	// Load delivery groups
 	deliveryGroups, err := s.ddcClient.GetDeliveryGroupsBySite(ctx, siteFilter)
 	if err != nil {
@@ -114,13 +114,13 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 		for _, dg := range deliveryGroups {
 			newInventory.DeliveryGroups[dg.Id] = dg
 		}
-		
+
 		s.logger.Debug().
 			Int("delivery_group_count", len(deliveryGroups)).
 			Str("site", siteFilter).
 			Msg("Loaded delivery groups into inventory")
 	}
-	
+
 	// Load controllers
 	controllers, err := s.ddcClient.GetControllersBySite(ctx, siteFilter)
 	if err != nil {
@@ -134,13 +134,13 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 				newInventory.Controllers[ctrl.DNSName] = true
 			}
 		}
-		
+
 		s.logger.Debug().
 			Int("controller_count", len(controllers)).
 			Str("site", siteFilter).
 			Msg("Loaded controllers into inventory")
 	}
-	
+
 	// Load applications
 	applications, err := s.ddcClient.GetApplicationsBySite(ctx, siteFilter)
 	if err != nil {
@@ -152,20 +152,20 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 		for _, app := range applications {
 			newInventory.Applications[app.Id] = app
 		}
-		
+
 		s.logger.Debug().
 			Int("application_count", len(applications)).
 			Str("site", siteFilter).
 			Msg("Loaded applications into inventory")
 	}
-	
+
 	newInventory.UpdateDuration = time.Since(startTime)
-	
+
 	// Update cache atomically
 	s.mu.Lock()
 	s.cache = newInventory
 	s.mu.Unlock()
-	
+
 	s.logger.Info().
 		Str("site", siteFilter).
 		Int("machines", len(newInventory.Machines)).
@@ -174,7 +174,7 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 		Int("applications", len(newInventory.Applications)).
 		Dur("duration", newInventory.UpdateDuration).
 		Msg("Site inventory refreshed successfully")
-	
+
 	return nil
 }
 
@@ -184,7 +184,7 @@ func (s *InventoryService) StartPeriodicRefresh(ctx context.Context, interval ti
 		Dur("interval", interval).
 		Str("site", siteFilter).
 		Msg("Starting periodic inventory refresh")
-	
+
 	ticker := time.NewTicker(interval)
 	go func() {
 		for {
@@ -217,11 +217,11 @@ func (s *InventoryService) Stop() {
 func (s *InventoryService) IsInSite(machineDNS string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.cache == nil {
 		return false
 	}
-	
+
 	_, exists := s.cache.Machines[machineDNS]
 	return exists
 }
@@ -230,11 +230,11 @@ func (s *InventoryService) IsInSite(machineDNS string) bool {
 func (s *InventoryService) IsMachineIDInSite(machineID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.cache == nil {
 		return false
 	}
-	
+
 	_, exists := s.cache.MachinesByID[machineID]
 	return exists
 }
@@ -243,11 +243,11 @@ func (s *InventoryService) IsMachineIDInSite(machineID string) bool {
 func (s *InventoryService) IsDeliveryGroupInSite(deliveryGroupID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.cache == nil {
 		return false
 	}
-	
+
 	_, exists := s.cache.DeliveryGroups[deliveryGroupID]
 	return exists
 }
@@ -256,11 +256,11 @@ func (s *InventoryService) IsDeliveryGroupInSite(deliveryGroupID string) bool {
 func (s *InventoryService) IsControllerInSite(controllerDNS string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.cache == nil {
 		return false
 	}
-	
+
 	return s.cache.Controllers[controllerDNS]
 }
 
@@ -268,11 +268,11 @@ func (s *InventoryService) IsControllerInSite(controllerDNS string) bool {
 func (s *InventoryService) GetDeliveryGroupsForSite() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.cache == nil {
 		return []string{}
 	}
-	
+
 	groups := make([]string, 0, len(s.cache.DeliveryGroups))
 	for id := range s.cache.DeliveryGroups {
 		groups = append(groups, id)
@@ -284,11 +284,11 @@ func (s *InventoryService) GetDeliveryGroupsForSite() []string {
 func (s *InventoryService) GetControllersForSite() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.cache == nil {
 		return []string{}
 	}
-	
+
 	controllers := make([]string, 0, len(s.cache.Controllers))
 	for dns := range s.cache.Controllers {
 		controllers = append(controllers, dns)
@@ -300,11 +300,11 @@ func (s *InventoryService) GetControllersForSite() []string {
 func (s *InventoryService) GetMachinesForSite() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.cache == nil {
 		return []string{}
 	}
-	
+
 	machines := make([]string, 0, len(s.cache.Machines))
 	for dns := range s.cache.Machines {
 		machines = append(machines, dns)
@@ -316,24 +316,24 @@ func (s *InventoryService) GetMachinesForSite() []string {
 func (s *InventoryService) GetInventoryStats() map[string]interface{} {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.cache == nil {
 		return map[string]interface{}{
 			"cached": false,
 		}
 	}
-	
+
 	return map[string]interface{}{
-		"cached":           true,
-		"site_name":        s.cache.SiteName,
-		"site_id":          s.cache.SiteID,
-		"machine_count":    len(s.cache.Machines),
-		"delivery_groups":  len(s.cache.DeliveryGroups),
-		"controllers":      len(s.cache.Controllers),
-		"applications":     len(s.cache.Applications),
-		"last_update":      s.cache.LastUpdate,
-		"update_duration":  s.cache.UpdateDuration,
-		"cache_age":        time.Since(s.cache.LastUpdate),
+		"cached":          true,
+		"site_name":       s.cache.SiteName,
+		"site_id":         s.cache.SiteID,
+		"machine_count":   len(s.cache.Machines),
+		"delivery_groups": len(s.cache.DeliveryGroups),
+		"controllers":     len(s.cache.Controllers),
+		"applications":    len(s.cache.Applications),
+		"last_update":     s.cache.LastUpdate,
+		"update_duration": s.cache.UpdateDuration,
+		"cache_age":       time.Since(s.cache.LastUpdate),
 	}
 }
 
@@ -341,11 +341,11 @@ func (s *InventoryService) GetInventoryStats() map[string]interface{} {
 func (s *InventoryService) IsStale() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.cache == nil {
 		return true
 	}
-	
+
 	return time.Since(s.cache.LastUpdate) > s.cacheTTL
 }
 
@@ -353,10 +353,10 @@ func (s *InventoryService) IsStale() bool {
 func (s *InventoryService) GetSiteInfo() (string, string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.cache == nil {
 		return "", ""
 	}
-	
+
 	return s.cache.SiteID, s.cache.SiteName
 }
