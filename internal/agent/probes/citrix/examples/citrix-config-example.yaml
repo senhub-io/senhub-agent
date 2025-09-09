@@ -111,10 +111,18 @@ storage:
       endpoints: ["prtg", "senhub", "nagios"]
 
 probes:
-  # Primary Citrix site
+  # Primary Citrix site with Delivery Controller filtering
   - name: citrix
     params:
       base_url: "https://citrix-site1.company.com/Citrix/Monitor/OData/v4/Data"
+      
+      # NEW: Delivery Controller configuration for site filtering
+      delivery_controller:
+        url: "https://citrix-ddc1-site1.company.com"
+        fallback_urls:
+          - "https://citrix-ddc2-site1.company.com"
+        site_filter: "SITE1"  # Only monitor machines from this site
+      
       environment: "PROD-SITE1"
       interval: 120
       
@@ -131,10 +139,18 @@ probes:
         max_attempts: 3
         backoff_factor: 2.0
 
-  # Secondary Citrix site (different probe instance)
+  # Secondary Citrix site with different DDC configuration
   - name: citrix
     params:
       base_url: "https://citrix-site2.company.com/Citrix/Monitor/OData/v4/Data"
+      
+      # NEW: Different Delivery Controller for site 2
+      delivery_controller:
+        url: "https://citrix-ddc1-site2.company.com"
+        fallback_urls:
+          - "https://citrix-ddc2-site2.company.com"
+        site_filter: "SITE2"  # Only monitor machines from site 2
+      
       environment: "PROD-SITE2"
       interval: 120
       
@@ -190,3 +206,79 @@ probes:
       retry:
         max_attempts: 2                 # Fewer retries to avoid detection
         backoff_factor: 3.0             # Longer backoff
+
+---
+# Configuration with Citrix Cloud / CVAD REST API
+
+agent:
+  key: "citrix-cloud-agent"
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      endpoints: ["prtg", "senhub", "web"]
+
+probes:
+  - name: citrix
+    params:
+      # Citrix Director endpoint
+      base_url: "https://citrix-director.company.com/Citrix/Monitor/OData/v4/Data"
+      
+      # NEW: Delivery Controller with Basic Auth for CVAD REST API
+      delivery_controller:
+        url: "https://citrix-ddc.company.com"
+        fallback_urls:
+          - "https://citrix-ddc-backup.company.com"
+        site_filter: "Paris-DataCenter"  # Filter by site name
+      
+      environment: "PROD"
+      interval: 120
+      
+      # Authentication configuration (used for both Director and DDC)
+      # For DDC, basic auth is used to obtain Bearer token
+      auth:
+        method: "basic"                    # Basic auth for DDC token endpoint
+        username: "DOMAIN\\svc_api_sensor"
+        password: "${CITRIX_API_PASSWORD}"
+      
+      tls:
+        verify_ssl: true
+      
+      timeout: 30
+      retry:
+        max_attempts: 3
+        backoff_factor: 2.0
+
+---
+# Multi-site monitoring without DDC filtering
+
+agent:
+  key: "citrix-global-monitoring"
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      endpoints: ["prtg", "senhub"]
+
+probes:
+  - name: citrix
+    params:
+      # Monitor all sites through Director without filtering
+      base_url: "https://citrix-director-global.company.com/Citrix/Monitor/OData/v4/Data"
+      
+      # No delivery_controller section = no site filtering
+      
+      environment: "GLOBAL"
+      interval: 120
+      
+      auth:
+        method: "ntlm"
+        username: "DOMAIN\\svc-monitoring-global"
+        password: "${CITRIX_PASSWORD}"
+      
+      tls:
+        verify_ssl: true
+      
+      timeout: 30

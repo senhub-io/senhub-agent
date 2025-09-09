@@ -4,16 +4,16 @@ import (
 	"context"
 	"time"
 
-	"senhub-agent.go/internal/agent/types/datapoint"
 	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // CollectUXMetrics collects user experience classification metrics
 func (mc *MetricsCollector) CollectUXMetrics(ctx context.Context, timestamp time.Time) ([]datapoint.DataPoint, error) {
 	mc.logger.Debug().Msg("Collecting UX classification metrics")
-	
+
 	var metrics []datapoint.DataPoint
-	
+
 	// Get recent sessions for UX metrics (last 15 minutes)
 	fifteenMinutesAgo := timestamp.Add(-15 * time.Minute)
 	sessions, err := mc.client.GetSessions(ctx, fifteenMinutesAgo)
@@ -21,20 +21,20 @@ func (mc *MetricsCollector) CollectUXMetrics(ctx context.Context, timestamp time
 		mc.logger.Error().Err(err).Msg("Failed to get sessions for UX metrics")
 		return nil, err
 	}
-	
+
 	// Count sessions by UX category based on logon duration
 	excellent := 0 // < 15s
 	good := 0      // 15-30s
 	fair := 0      // 30-60s
 	poor := 0      // > 60s
-	
+
 	for _, session := range sessions {
 		if session.LogOnDuration <= 0 {
 			continue // Skip sessions without logon duration
 		}
-		
+
 		durationSeconds := session.LogOnDuration / 1000 // Convert ms to seconds
-		
+
 		switch {
 		case durationSeconds < 15:
 			excellent++
@@ -46,7 +46,7 @@ func (mc *MetricsCollector) CollectUXMetrics(ctx context.Context, timestamp time
 			poor++
 		}
 	}
-	
+
 	// Create metrics
 	metrics = append(metrics, datapoint.DataPoint{
 		Name:      "ux_excellent_count",
@@ -56,7 +56,7 @@ func (mc *MetricsCollector) CollectUXMetrics(ctx context.Context, timestamp time
 			{Key: "metric_type", Value: "overview"},
 		},
 	})
-	
+
 	metrics = append(metrics, datapoint.DataPoint{
 		Name:      "ux_good_count",
 		Value:     float32(good),
@@ -65,7 +65,7 @@ func (mc *MetricsCollector) CollectUXMetrics(ctx context.Context, timestamp time
 			{Key: "metric_type", Value: "overview"},
 		},
 	})
-	
+
 	metrics = append(metrics, datapoint.DataPoint{
 		Name:      "ux_fair_count",
 		Value:     float32(fair),
@@ -74,7 +74,7 @@ func (mc *MetricsCollector) CollectUXMetrics(ctx context.Context, timestamp time
 			{Key: "metric_type", Value: "overview"},
 		},
 	})
-	
+
 	metrics = append(metrics, datapoint.DataPoint{
 		Name:      "ux_poor_count",
 		Value:     float32(poor),
@@ -83,13 +83,13 @@ func (mc *MetricsCollector) CollectUXMetrics(ctx context.Context, timestamp time
 			{Key: "metric_type", Value: "overview"},
 		},
 	})
-	
+
 	mc.logger.Debug().
 		Int("excellent", excellent).
 		Int("good", good).
 		Int("fair", fair).
 		Int("poor", poor).
 		Msg("UX metrics calculated")
-	
+
 	return metrics, nil
 }

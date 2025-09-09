@@ -18,8 +18,8 @@ import (
 type StatusService struct {
 	logger        *logger.ModuleLogger
 	startTime     time.Time
-	cacheProvider CacheStatisticsProvider     // For accessing cache statistics
-	agentMode     string                       // "online", "offline", or "unknown"
+	cacheProvider CacheStatisticsProvider // For accessing cache statistics
+	agentMode     string                  // "online", "offline", or "unknown"
 	version       string
 	commit        string
 }
@@ -35,7 +35,7 @@ type SystemStatus struct {
 
 // HealthInfo represents system health status
 type HealthInfo struct {
-	Status    string    `json:"status"`    // "healthy", "unhealthy", "degraded"
+	Status    string    `json:"status"` // "healthy", "unhealthy", "degraded"
 	Timestamp time.Time `json:"timestamp"`
 	Message   string    `json:"message,omitempty"`
 }
@@ -50,7 +50,7 @@ type ConnectionInfo struct {
 // ProbeStatus represents individual probe status
 type ProbeStatus struct {
 	Name         string    `json:"name"`
-	Status       string    `json:"status"`        // "active", "inactive", "error"
+	Status       string    `json:"status"` // "active", "inactive", "error"
 	MetricsCount int       `json:"metrics_count"`
 	LastUpdate   time.Time `json:"last_update,omitempty"`
 	LastError    string    `json:"last_error,omitempty"`
@@ -78,7 +78,7 @@ type AgentInfo struct {
 // NewStatusService creates a new status service instance
 func NewStatusService(baseLogger *logger.Logger, version, commit string) *StatusService {
 	moduleLogger := logger.NewModuleLogger(baseLogger, "status.service")
-	
+
 	return &StatusService{
 		logger:    moduleLogger,
 		startTime: time.Now(),
@@ -87,7 +87,6 @@ func NewStatusService(baseLogger *logger.Logger, version, commit string) *Status
 		commit:    commit,
 	}
 }
-
 
 // SetCacheProvider sets the cache statistics provider
 func (s *StatusService) SetCacheProvider(provider CacheStatisticsProvider) {
@@ -104,7 +103,7 @@ func (s *StatusService) SetAgentMode(mode string) {
 // GetSystemStatus returns complete system status
 func (s *StatusService) GetSystemStatus() SystemStatus {
 	s.logger.Debug().Msg("Calculating complete system status")
-	
+
 	return SystemStatus{
 		Health:      s.calculateHealthInfo(),
 		Connection:  s.calculateConnectionInfo(),
@@ -133,17 +132,17 @@ func (s *StatusService) GetPerformanceMetrics() PerformanceInfo {
 func (s *StatusService) calculateHealthInfo() HealthInfo {
 	status := "healthy"
 	message := ""
-	
+
 	// Check various health indicators
 	probeStatuses := s.calculateProbeStatuses()
 	errorCount := 0
-	
+
 	for _, probe := range probeStatuses {
 		if probe.Status == "error" {
 			errorCount++
 		}
 	}
-	
+
 	// Determine health based on probe errors
 	if errorCount > 0 {
 		if errorCount >= len(probeStatuses)/2 {
@@ -154,7 +153,7 @@ func (s *StatusService) calculateHealthInfo() HealthInfo {
 			message = fmt.Sprintf("%d probe(s) have errors", errorCount)
 		}
 	}
-	
+
 	// Check memory usage
 	perf := s.calculatePerformanceInfo()
 	if perf.MemoryUsageMB > 1000 { // 1GB threshold
@@ -163,7 +162,7 @@ func (s *StatusService) calculateHealthInfo() HealthInfo {
 			message = "High memory usage"
 		}
 	}
-	
+
 	return HealthInfo{
 		Status:    status,
 		Timestamp: time.Now(),
@@ -177,9 +176,9 @@ func (s *StatusService) calculateConnectionInfo() ConnectionInfo {
 	if mode == "unknown" {
 		mode = "offline" // Default assumption
 	}
-	
+
 	var source, status string
-	
+
 	switch mode {
 	case "online":
 		source = "remote_server"
@@ -191,7 +190,7 @@ func (s *StatusService) calculateConnectionInfo() ConnectionInfo {
 		source = "unknown"
 		status = "unknown"
 	}
-	
+
 	return ConnectionInfo{
 		Mode:   mode,
 		Source: source,
@@ -202,15 +201,15 @@ func (s *StatusService) calculateConnectionInfo() ConnectionInfo {
 // calculateProbeStatuses gets status for all probes
 func (s *StatusService) calculateProbeStatuses() []ProbeStatus {
 	var probeStatuses []ProbeStatus
-	
+
 	if s.cacheProvider == nil {
 		s.logger.Debug().Msg("Cache provider not available, returning empty probe list")
 		return probeStatuses
 	}
-	
+
 	// Get probe statistics from cache provider
 	probeStats := s.cacheProvider.GetProbeStatistics()
-	
+
 	for _, stats := range probeStats {
 		status := "active"
 		if !stats.IsActive {
@@ -219,7 +218,7 @@ func (s *StatusService) calculateProbeStatuses() []ProbeStatus {
 		if stats.LastError != "" {
 			status = "error"
 		}
-		
+
 		probeStatus := ProbeStatus{
 			Name:         stats.Name,
 			Status:       status,
@@ -227,10 +226,10 @@ func (s *StatusService) calculateProbeStatuses() []ProbeStatus {
 			LastUpdate:   stats.LastUpdate,
 			LastError:    stats.LastError,
 		}
-		
+
 		probeStatuses = append(probeStatuses, probeStatus)
 	}
-	
+
 	s.logger.Debug().Int("probe_count", len(probeStatuses)).Msg("Calculated probe statuses")
 	return probeStatuses
 }
@@ -239,26 +238,26 @@ func (s *StatusService) calculateProbeStatuses() []ProbeStatus {
 func (s *StatusService) calculatePerformanceInfo() PerformanceInfo {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	uptime := time.Since(s.startTime)
 	uptimeStr := s.formatUptime(uptime)
-	
+
 	// Memory usage in MB
 	memoryMB := float64(memStats.Alloc) / 1024 / 1024
-	
+
 	// Goroutine count
 	goroutines := runtime.NumGoroutine()
-	
+
 	// CPU usage would require more complex calculation
 	// For now, return 0 - can be enhanced later
 	cpuPercent := 0.0
-	
+
 	// Cache entries count
 	cacheEntries := 0
 	if s.cacheProvider != nil {
 		cacheEntries = s.cacheProvider.GetTotalEntries()
 	}
-	
+
 	return PerformanceInfo{
 		Uptime:        uptimeStr,
 		MemoryUsageMB: memoryMB,
@@ -285,7 +284,7 @@ func (s *StatusService) formatUptime(uptime time.Duration) string {
 	hours := int(uptime.Hours()) % 24
 	minutes := int(uptime.Minutes()) % 60
 	seconds := int(uptime.Seconds()) % 60
-	
+
 	if days > 0 {
 		return fmt.Sprintf("%dd %dh %dm %ds", days, hours, minutes, seconds)
 	} else if hours > 0 {
