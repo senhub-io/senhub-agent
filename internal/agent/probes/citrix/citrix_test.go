@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"senhub-agent.go/internal/agent/types/datapoint"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // MockCitrixClient is a mock implementation of CitrixClient for testing
@@ -98,8 +98,8 @@ func TestNewCitrixProbe(t *testing.T) {
 				"collection_interval": 120,
 				"timeout":             30,
 				"retry": map[string]interface{}{
-					"max_attempts":    3,
-					"backoff_factor":  2.0,
+					"max_attempts":   3,
+					"backoff_factor": 2.0,
 				},
 			},
 			wantErr: false,
@@ -205,7 +205,7 @@ func TestCitrixProbe_GetTargetStrategies(t *testing.T) {
 	probe, err := NewCitrixProbe(config, baseLogger)
 
 	assert.NoError(t, err)
-	
+
 	// Cast to citrixProbe to access GetTargetStrategies method
 	citrixProbeImpl := probe.(*citrixProbe)
 	expectedStrategies := []string{"senhub", "prtg", "http"}
@@ -218,32 +218,32 @@ func TestMetricsCollector_CalculateConnectionFailuresMetrics(t *testing.T) {
 	collector := NewMetricsCollector(mockClient, baseLogger)
 
 	timestamp := time.Now()
-	
+
 	// Test data
 	failures := []ConnectionFailureLog{
 		{
-			Id:                        1,
-			FailureDate:              timestamp.Add(-1 * time.Minute),
+			Id:                         1,
+			FailureDate:                timestamp.Add(-1 * time.Minute),
 			ConnectionFailureEnumValue: 1, // ClientConnectionFailure
-			DesktopGroupId:           "dg1",
-			DesktopGroupName:         "Test Group 1",
-			UserName:                 "user1",
+			DesktopGroupId:             "dg1",
+			DesktopGroupName:           "Test Group 1",
+			UserName:                   "user1",
 		},
 		{
-			Id:                        2,
-			FailureDate:              timestamp.Add(-30 * time.Second),
+			Id:                         2,
+			FailureDate:                timestamp.Add(-30 * time.Second),
 			ConnectionFailureEnumValue: 1, // ClientConnectionFailure
-			DesktopGroupId:           "dg1",
-			DesktopGroupName:         "Test Group 1",
-			UserName:                 "user2",
+			DesktopGroupId:             "dg1",
+			DesktopGroupName:           "Test Group 1",
+			UserName:                   "user2",
 		},
 		{
-			Id:                        3,
-			FailureDate:              timestamp.Add(-45 * time.Second),
+			Id:                         3,
+			FailureDate:                timestamp.Add(-45 * time.Second),
 			ConnectionFailureEnumValue: 6, // Configuration error (maps to category 1)
-			DesktopGroupId:           "dg2",
-			DesktopGroupName:         "Test Group 2",
-			UserName:                 "user3",
+			DesktopGroupId:             "dg2",
+			DesktopGroupName:           "Test Group 2",
+			UserName:                   "user3",
 		},
 	}
 
@@ -260,20 +260,20 @@ func TestMetricsCollector_CalculateConnectionFailuresMetrics(t *testing.T) {
 
 	// Categories mapping from production data
 	categories := []ConnectionFailureCategory{
-		{ConnectionFailureEnumValue: 1, Category: 0},  // Client connection
-		{ConnectionFailureEnumValue: 6, Category: 1},  // Configuration
+		{ConnectionFailureEnumValue: 1, Category: 0}, // Client connection
+		{ConnectionFailureEnumValue: 6, Category: 1}, // Configuration
 	}
 
 	dataPoints := collector.calculateConnectionFailuresMetrics(timestamp, failures, desktopGroups, categories)
 
 	// Verify results
 	assert.NotEmpty(t, dataPoints)
-	
+
 	// Should have total failures metric (both new and legacy)
 	totalMetric := findDataPointByName(dataPoints, "user_connection_failures_total")
 	assert.NotNil(t, totalMetric)
 	assert.Equal(t, float32(3.0), totalMetric.Value)
-	
+
 	// Should also have legacy metric for compatibility
 	legacyTotalMetric := findDataPointByName(dataPoints, "connection_failures_total")
 	assert.NotNil(t, legacyTotalMetric)
@@ -294,7 +294,7 @@ func TestMetricsCollector_CalculateLogonPerformanceMetrics(t *testing.T) {
 	collector := NewMetricsCollector(mockClient, baseLogger)
 
 	timestamp := time.Now()
-	
+
 	// Test data with valid logon durations
 	recentSessions := []Session{
 		{
@@ -339,7 +339,7 @@ func TestMetricsCollector_CalculateLogonPerformanceMetrics(t *testing.T) {
 
 	// Verify results
 	assert.NotEmpty(t, dataPoints)
-	
+
 	// Should have current period count
 	countMetric := findDataPointByName(dataPoints, "logon_count_current")
 	assert.NotNil(t, countMetric)
@@ -379,9 +379,9 @@ func findDataPointsByName(dataPoints []datapoint.DataPoint, name string) []datap
 
 func TestDesktopGroup_GetEffectiveId(t *testing.T) {
 	tests := []struct {
-		name           string
-		desktopGroup   DesktopGroup
-		expectedId     string
+		name         string
+		desktopGroup DesktopGroup
+		expectedId   string
 	}{
 		{
 			name: "DesktopGroupId takes precedence (real Citrix server)",
@@ -425,29 +425,29 @@ func TestMetricsCollector_CalculateInfrastructureMetricsFromMachines(t *testing.
 	collector := NewMetricsCollector(mockClient, baseLogger)
 
 	timestamp := time.Now()
-	
+
 	// Test data with machines from different controllers
 	machines := []Machine{
 		{
-			MachineId:           "machine1",
-			MachineName:         "VM-001",
-			ControllerDNSName:   "controller1.example.com",
-			RegistrationState:   RegistrationStateRegistered,
-			FaultState:          FaultStateNone,
+			MachineId:         "machine1",
+			MachineName:       "VM-001",
+			ControllerDNSName: "controller1.example.com",
+			RegistrationState: RegistrationStateRegistered,
+			FaultState:        FaultStateNone,
 		},
 		{
-			MachineId:           "machine2",
-			MachineName:         "VM-002",
-			ControllerDNSName:   "controller1.example.com",
-			RegistrationState:   RegistrationStateUnregistered,
-			FaultState:          FaultStateUnknown,
+			MachineId:         "machine2",
+			MachineName:       "VM-002",
+			ControllerDNSName: "controller1.example.com",
+			RegistrationState: RegistrationStateUnregistered,
+			FaultState:        FaultStateUnknown,
 		},
 		{
-			MachineId:           "machine3",
-			MachineName:         "VM-003",
-			ControllerDNSName:   "controller2.example.com",
-			RegistrationState:   RegistrationStateRegistered,
-			FaultState:          FaultStateNone,
+			MachineId:         "machine3",
+			MachineName:       "VM-003",
+			ControllerDNSName: "controller2.example.com",
+			RegistrationState: RegistrationStateRegistered,
+			FaultState:        FaultStateNone,
 		},
 	}
 
@@ -455,7 +455,7 @@ func TestMetricsCollector_CalculateInfrastructureMetricsFromMachines(t *testing.
 
 	// Verify results
 	assert.NotEmpty(t, dataPoints)
-	
+
 	// Should have controller health metrics for both controllers
 	onlineStatusMetrics := findDataPointsByName(dataPoints, "controller_derived_online_status")
 	assert.Len(t, onlineStatusMetrics, 2) // Two controllers
@@ -465,10 +465,10 @@ func TestMetricsCollector_CalculateInfrastructureMetricsFromMachines(t *testing.
 
 	// Controller1 should have 1 registered machine out of 2 total (health score 0.5)
 	// Controller2 should have 1 registered machine out of 1 total (health score 1.0)
-	
+
 	registeredMetrics := findDataPointsByName(dataPoints, "controller_machines_registered")
 	assert.Len(t, registeredMetrics, 2) // Two controllers
-	
+
 	totalMetrics := findDataPointsByName(dataPoints, "controller_machines_total")
 	assert.Len(t, totalMetrics, 2) // Two controllers
 }
@@ -479,7 +479,7 @@ func TestMetricsCollector_CalculateSessionMetrics(t *testing.T) {
 	collector := NewMetricsCollector(mockClient, baseLogger)
 
 	timestamp := time.Now()
-	
+
 	// Test data with different session states
 	sessions := []Session{
 		{
@@ -527,19 +527,19 @@ func TestMetricsCollector_CalculateSessionMetrics(t *testing.T) {
 
 	// Verify results
 	assert.NotEmpty(t, dataPoints)
-	
+
 	// Should have global connected sessions metric (2 connected + 1 active = 3)
 	connectedMetrics := findDataPointsByName(dataPoints, "sessions_connected")
 	assert.GreaterOrEqual(t, len(connectedMetrics), 1)
-	
+
 	// Should have global simultaneous users metric (2 unique users)
 	simultaneousMetrics := findDataPointsByName(dataPoints, "sessions_simultaneous_users")
 	assert.GreaterOrEqual(t, len(simultaneousMetrics), 1)
-	
+
 	// Should have disconnected sessions metric
 	disconnectedMetrics := findDataPointsByName(dataPoints, "sessions_disconnected_max")
 	assert.GreaterOrEqual(t, len(disconnectedMetrics), 1)
-	
+
 	// Should have sessions by state metrics
 	stateMetrics := findDataPointsByName(dataPoints, "sessions_by_state")
 	assert.GreaterOrEqual(t, len(stateMetrics), 3) // At least 3 different states
@@ -551,7 +551,7 @@ func TestMetricsCollector_CalculateUserConnectionTotals(t *testing.T) {
 	collector := NewMetricsCollector(mockClient, baseLogger)
 
 	timestamp := time.Now()
-	
+
 	// Test data with active and inactive sessions
 	sessions := []Session{
 		{
@@ -588,11 +588,11 @@ func TestMetricsCollector_CalculateUserConnectionTotals(t *testing.T) {
 
 	// Verify results
 	assert.NotEmpty(t, dataPoints)
-	
+
 	// Should have global total active connections metric (2 active sessions)
 	totalActiveMetrics := findDataPointsByName(dataPoints, "user_connections_total_active")
 	assert.GreaterOrEqual(t, len(totalActiveMetrics), 1)
-	
+
 	// Find the global metric (without delivery group tags)
 	var globalMetric *datapoint.DataPoint
 	for _, dp := range totalActiveMetrics {
@@ -608,7 +608,7 @@ func TestMetricsCollector_CalculateUserConnectionTotals(t *testing.T) {
 			break
 		}
 	}
-	
+
 	assert.NotNil(t, globalMetric)
 	assert.Equal(t, float32(2.0), globalMetric.Value) // 2 active sessions
 }
@@ -619,32 +619,32 @@ func TestMetricsCollector_CalculateMachineMetrics(t *testing.T) {
 	collector := NewMetricsCollector(mockClient, baseLogger)
 
 	timestamp := time.Now()
-	
+
 	// Test data with machines in different states
 	machines := []Machine{
 		{
-			MachineId:           "machine1",
-			MachineName:         "VM-001",
-			ControllerDNSName:   "controller1.example.com",
-			RegistrationState:   RegistrationStateRegistered,
-			FaultState:          FaultStateNone,
-			DesktopGroupId:      "dg1",
+			MachineId:         "machine1",
+			MachineName:       "VM-001",
+			ControllerDNSName: "controller1.example.com",
+			RegistrationState: RegistrationStateRegistered,
+			FaultState:        FaultStateNone,
+			DesktopGroupId:    "dg1",
 		},
 		{
-			MachineId:           "machine2",
-			MachineName:         "VM-002",
-			ControllerDNSName:   "controller1.example.com",
-			RegistrationState:   RegistrationStateUnregistered,
-			FaultState:          FaultStateUnknown,
-			DesktopGroupId:      "dg1",
+			MachineId:         "machine2",
+			MachineName:       "VM-002",
+			ControllerDNSName: "controller1.example.com",
+			RegistrationState: RegistrationStateUnregistered,
+			FaultState:        FaultStateUnknown,
+			DesktopGroupId:    "dg1",
 		},
 		{
-			MachineId:           "machine3",
-			MachineName:         "VM-003",
-			ControllerDNSName:   "controller2.example.com",
-			RegistrationState:   RegistrationStateRegistered,
-			FaultState:          FaultStateNone,
-			DesktopGroupId:      "dg2",
+			MachineId:         "machine3",
+			MachineName:       "VM-003",
+			ControllerDNSName: "controller2.example.com",
+			RegistrationState: RegistrationStateRegistered,
+			FaultState:        FaultStateNone,
+			DesktopGroupId:    "dg2",
 		},
 	}
 
@@ -663,16 +663,16 @@ func TestMetricsCollector_CalculateMachineMetrics(t *testing.T) {
 
 	// Verify results
 	assert.NotEmpty(t, dataPoints)
-	
+
 	// Should have total machines metric
 	totalMetric := findDataPointByName(dataPoints, "machines_total")
 	assert.NotNil(t, totalMetric)
 	assert.Equal(t, float32(3.0), totalMetric.Value)
-	
+
 	// Should have machines by state metrics
 	stateMetrics := findDataPointsByName(dataPoints, "machines_by_state")
 	assert.GreaterOrEqual(t, len(stateMetrics), 2) // At least 2 different states
-	
+
 	// Should have machines by controller metrics
 	controllerMetrics := findDataPointsByName(dataPoints, "machines_by_controller")
 	assert.GreaterOrEqual(t, len(controllerMetrics), 2) // Multiple controller states
@@ -684,32 +684,32 @@ func TestMetricsCollector_CalculateNewConnectionFailureMetrics(t *testing.T) {
 	collector := NewMetricsCollector(mockClient, baseLogger)
 
 	timestamp := time.Now()
-	
+
 	// Test data with various failure types
 	failures := []ConnectionFailureLog{
 		{
-			Id:               1,
-			FailureDate:      timestamp.Add(-1 * time.Minute),
+			Id:                         1,
+			FailureDate:                timestamp.Add(-1 * time.Minute),
 			ConnectionFailureEnumValue: 1, // ClientConnectionFailure
-			DesktopGroupId:   "dg1",
-			DesktopGroupName: "Test Group 1",
-			UserName:         "user1",
+			DesktopGroupId:             "dg1",
+			DesktopGroupName:           "Test Group 1",
+			UserName:                   "user1",
 		},
 		{
-			Id:               2,
-			FailureDate:      timestamp.Add(-30 * time.Second),
+			Id:                         2,
+			FailureDate:                timestamp.Add(-30 * time.Second),
 			ConnectionFailureEnumValue: 6, // Configuration
-			DesktopGroupId:   "dg1",
-			DesktopGroupName: "Test Group 1",
-			UserName:         "user2",
+			DesktopGroupId:             "dg1",
+			DesktopGroupName:           "Test Group 1",
+			UserName:                   "user2",
 		},
 		{
-			Id:               3,
-			FailureDate:      timestamp.Add(-45 * time.Second),
+			Id:                         3,
+			FailureDate:                timestamp.Add(-45 * time.Second),
 			ConnectionFailureEnumValue: 1, // ClientConnectionFailure
-			DesktopGroupId:   "dg2",
-			DesktopGroupName: "Test Group 2",
-			UserName:         "user1", // Same user, different group
+			DesktopGroupId:             "dg2",
+			DesktopGroupName:           "Test Group 2",
+			UserName:                   "user1", // Same user, different group
 		},
 	}
 
@@ -726,33 +726,33 @@ func TestMetricsCollector_CalculateNewConnectionFailureMetrics(t *testing.T) {
 
 	// Categories mapping from production data
 	categories := []ConnectionFailureCategory{
-		{ConnectionFailureEnumValue: 1, Category: 0},  // Client connection
-		{ConnectionFailureEnumValue: 6, Category: 1},  // Configuration
+		{ConnectionFailureEnumValue: 1, Category: 0}, // Client connection
+		{ConnectionFailureEnumValue: 6, Category: 1}, // Configuration
 	}
 
 	dataPoints := collector.calculateConnectionFailuresMetrics(timestamp, failures, desktopGroups, categories)
 
 	// Verify results
 	assert.NotEmpty(t, dataPoints)
-	
+
 	// Should have new user connection failure metrics
 	totalFailuresMetric := findDataPointByName(dataPoints, "user_connection_failures_total")
 	assert.NotNil(t, totalFailuresMetric)
 	assert.Equal(t, float32(3.0), totalFailuresMetric.Value)
-	
+
 	// Should have unique users with failures metric
 	uniqueUsersMetric := findDataPointByName(dataPoints, "user_connection_users_with_failures")
 	assert.NotNil(t, uniqueUsersMetric)
 	assert.Equal(t, float32(2.0), uniqueUsersMetric.Value) // 2 unique users
-	
+
 	// Should have failures by type metrics
 	typeMetrics := findDataPointsByName(dataPoints, "user_connection_failures_by_type")
 	assert.GreaterOrEqual(t, len(typeMetrics), 2) // At least 2 different failure types
-	
+
 	// Should have failures by delivery group metrics
 	dgMetrics := findDataPointsByName(dataPoints, "user_connection_failures_by_delivery_group")
 	assert.Len(t, dgMetrics, 2) // Two delivery groups
-	
+
 	// Should still have legacy metric for compatibility
 	legacyTotalMetric := findDataPointByName(dataPoints, "connection_failures_total")
 	assert.NotNil(t, legacyTotalMetric)
@@ -817,7 +817,7 @@ func TestNewCitrixClient_AuthenticationMethods(t *testing.T) {
 func TestCitrixProbe_Collect(t *testing.T) {
 	// Create a test logger
 	baseLogger := &logger.Logger{}
-	
+
 	// Create probe configuration
 	config := map[string]interface{}{
 		"base_url":    "https://director.example.com/Citrix/Monitor/OData/v4/Data",
@@ -840,10 +840,10 @@ func TestCitrixProbe_Collect(t *testing.T) {
 
 	// Cast to citrixProbe to access internal fields
 	citrixProbeImpl := probe.(*citrixProbe)
-	
+
 	// Create a mock client
 	mockClient := &MockCitrixClient{}
-	
+
 	// Mock successful API calls
 	mockSessions := []Session{
 		{
@@ -855,67 +855,67 @@ func TestCitrixProbe_Collect(t *testing.T) {
 			LogOnDuration:  15000,
 		},
 	}
-	
+
 	mockMachines := []Machine{
 		{
-			MachineId:           "machine1",
-			MachineName:         "VM-001",
-			ControllerDNSName:   "controller1.example.com",
-			RegistrationState:   RegistrationStateRegistered,
-			FaultState:          FaultStateNone,
-			DesktopGroupId:      "dg1",
-		},
-	}
-	
-	// mockDesktopGroups not needed for 1min frequency test
-	
-	mockFailures := []ConnectionFailureLog{
-		{
-			Id:               1,
-			FailureDate:      time.Now().Add(-30 * time.Minute),
-			ConnectionFailureEnumValue: 1, // ClientConnectionFailure
-			DesktopGroupId:   "dg1",
-			DesktopGroupName: "Test Group 1",
-			UserName:         "user1",
+			MachineId:         "machine1",
+			MachineName:       "VM-001",
+			ControllerDNSName: "controller1.example.com",
+			RegistrationState: RegistrationStateRegistered,
+			FaultState:        FaultStateNone,
+			DesktopGroupId:    "dg1",
 		},
 	}
 
-	// Set up mock expectations for unified MetricsCollector 
+	// mockDesktopGroups not needed for 1min frequency test
+
+	mockFailures := []ConnectionFailureLog{
+		{
+			Id:                         1,
+			FailureDate:                time.Now().Add(-30 * time.Minute),
+			ConnectionFailureEnumValue: 1, // ClientConnectionFailure
+			DesktopGroupId:             "dg1",
+			DesktopGroupName:           "Test Group 1",
+			UserName:                   "user1",
+		},
+	}
+
+	// Set up mock expectations for unified MetricsCollector
 	// which calls all collectors: Infrastructure, Sessions, Logon, UX, Failures, Health
-	
+
 	// CollectInfrastructureMetrics calls:
 	mockClient.On("GetMachines", mock.Anything, mock.Anything).Return(mockMachines, nil)
-	
+
 	// CollectSessionMetrics calls:
 	mockClient.On("GetSessionsByConnectionState", mock.Anything, mock.Anything).Return(mockSessions, nil)
 	mockClient.On("GetSessions", mock.Anything, mock.Anything).Return(mockSessions, nil)
-	
+
 	// CollectLogonMetrics calls (will return zero metrics if no recent sessions):
 	mockClient.On("GetConnections", mock.Anything, mock.Anything).Return([]Connection{}, nil).Maybe()
-	
+
 	// CollectFailureMetrics calls:
 	mockClient.On("GetConnectionFailureCategories", mock.Anything).Return([]ConnectionFailureCategory{}, nil)
 	mockClient.On("GetConnectionFailureLogs", mock.Anything, mock.Anything).Return(mockFailures, nil)
-	
+
 	// CollectHealthMetrics calls (no additional API calls needed)
 	// CollectUXMetrics calls (no additional API calls for now)
 
 	// Replace the probe's client with our mock
 	citrixProbeImpl.client = mockClient
-	
+
 	// Create and set the metrics collector with the mock client
 	citrixProbeImpl.metricsCollector = NewMetricsCollectorWithEnv(mockClient, "TEST", "https://test.example.com", baseLogger)
-	
+
 	// Test collection
 	dataPoints, err := probe.Collect()
-	
+
 	// Verify results
 	assert.NoError(t, err)
 	assert.NotEmpty(t, dataPoints)
-	
+
 	// Should have various types of metrics from ALL collectors
 	var hasSessionMetrics, hasMachineMetrics, hasFailureMetrics, hasLogonMetrics bool
-	
+
 	for _, dp := range dataPoints {
 		switch {
 		case dp.Name == "sessions_connected" || dp.Name == "sessions_disconnected" || dp.Name == "logon_duration_avg_1h":
@@ -930,12 +930,12 @@ func TestCitrixProbe_Collect(t *testing.T) {
 			hasLogonMetrics = true
 		}
 	}
-	
+
 	assert.True(t, hasSessionMetrics, "Should have session metrics")
-	assert.True(t, hasMachineMetrics, "Should have machine metrics") 
+	assert.True(t, hasMachineMetrics, "Should have machine metrics")
 	assert.True(t, hasFailureMetrics, "Should have failure metrics")
 	assert.True(t, hasLogonMetrics, "Should have logon breakdown metrics (even if zero)")
-	
+
 	// Verify mock expectations were met
 	mockClient.AssertExpectations(t)
 }
@@ -946,7 +946,7 @@ func TestMetricsCollector_APIHealthMetric(t *testing.T) {
 	collector := NewMetricsCollector(mockClient, baseLogger)
 
 	timestamp := time.Now()
-	
+
 	// Mock some successful calls for all endpoints that CollectAllMetrics uses
 	mockClient.On("GetDesktopGroups", mock.Anything).Return([]DesktopGroup{}, nil)
 	mockClient.On("GetSessions", mock.Anything, mock.Anything).Return([]Session{}, nil)
@@ -960,16 +960,16 @@ func TestMetricsCollector_APIHealthMetric(t *testing.T) {
 	// Test collection
 	ctx := context.Background()
 	dataPoints, err := collector.CollectAllMetrics(ctx, timestamp)
-	
+
 	// Verify results
 	assert.NoError(t, err)
 	assert.NotEmpty(t, dataPoints)
-	
+
 	// Should have API health metric
 	healthMetric := findDataPointByName(dataPoints, "citrix_api_health")
 	assert.NotNil(t, healthMetric)
 	assert.Equal(t, float32(6.0), healthMetric.Value) // 6 successful endpoints (DesktopGroups, Sessions, Machines, ConnectionFailureCategories, ConnectionFailureLogs, LogonMetrics)
-	
+
 	// Check that health metric has correct tags (only metric_type should remain)
 	var hasMetricType bool
 	for _, tag := range healthMetric.Tags {
@@ -981,10 +981,10 @@ func TestMetricsCollector_APIHealthMetric(t *testing.T) {
 			t.Errorf("Unexpected tag found: %s = %s", tag.Key, tag.Value)
 		}
 	}
-	
+
 	assert.True(t, hasMetricType, "Should have metric_type tag")
 	// Extra tags removed as requested
-	
+
 	// Verify mock expectations were met
 	mockClient.AssertExpectations(t)
 }
@@ -996,7 +996,7 @@ func TestMetricsCollector_SessionMetricsFilteringByDeliveryGroup(t *testing.T) {
 	collector := NewMetricsCollector(mockClient, baseLogger)
 
 	timestamp := time.Now()
-	
+
 	// Test data with sessions distributed across delivery groups
 	sessions := []Session{
 		{
@@ -1066,7 +1066,7 @@ func TestMetricsCollector_MachineMetricsFilteringByController(t *testing.T) {
 	collector := NewMetricsCollector(mockClient, baseLogger)
 
 	timestamp := time.Now()
-	
+
 	// Test data with machines across different controllers
 	machines := []Machine{
 		{
@@ -1078,7 +1078,7 @@ func TestMetricsCollector_MachineMetricsFilteringByController(t *testing.T) {
 			DesktopGroupId:    "dg1",
 		},
 		{
-			MachineId:         "machine2", 
+			MachineId:         "machine2",
 			MachineName:       "VM-002",
 			ControllerDNSName: "ctx-ctrl-01.domain.com",
 			RegistrationState: RegistrationStateUnregistered,
@@ -1106,7 +1106,7 @@ func TestMetricsCollector_MachineMetricsFilteringByController(t *testing.T) {
 	controllerMetrics := findDataPointsByName(dataPoints, "machines_by_controller")
 	// Log the actual number of metrics for debugging
 	t.Logf("Found %d controller metrics", len(controllerMetrics))
-	
+
 	// With the current implementation, metrics are generated for non-zero counts
 	// We should have at least some controller metrics
 	assert.Greater(t, len(controllerMetrics), 0, "Should have controller metrics")
@@ -1117,7 +1117,7 @@ func TestMetricsCollector_MachineMetricsFilteringByController(t *testing.T) {
 	for _, metric := range controllerMetrics {
 		totalMachinesInControllerMetrics += metric.Value
 	}
-	
+
 	// The sum should be reasonable (not checking exact value due to multiple state counts)
 	assert.Greater(t, totalMachinesInControllerMetrics, float32(0), "Controller metrics should have values")
 
@@ -1133,40 +1133,40 @@ func TestMetricsCollector_UserConnectionFailuresWithFiltering(t *testing.T) {
 	collector := NewMetricsCollector(mockClient, baseLogger)
 
 	timestamp := time.Now()
-	
+
 	// Test data with various failure types across delivery groups
 	failures := []ConnectionFailureLog{
 		{
-			Id:               1,
-			FailureDate:      timestamp.Add(-10 * time.Minute),
+			Id:                         1,
+			FailureDate:                timestamp.Add(-10 * time.Minute),
 			ConnectionFailureEnumValue: 1, // ClientConnectionFailure
-			DesktopGroupId:   "dg1",
-			DesktopGroupName: "Production Apps",
-			UserName:         "user1",
+			DesktopGroupId:             "dg1",
+			DesktopGroupName:           "Production Apps",
+			UserName:                   "user1",
 		},
 		{
-			Id:               2,
-			FailureDate:      timestamp.Add(-15 * time.Minute),
+			Id:                         2,
+			FailureDate:                timestamp.Add(-15 * time.Minute),
 			ConnectionFailureEnumValue: 1, // ClientConnectionFailure
-			DesktopGroupId:   "dg1",
-			DesktopGroupName: "Production Apps",
-			UserName:         "user2",
+			DesktopGroupId:             "dg1",
+			DesktopGroupName:           "Production Apps",
+			UserName:                   "user2",
 		},
 		{
-			Id:               3,
-			FailureDate:      timestamp.Add(-20 * time.Minute),
+			Id:                         3,
+			FailureDate:                timestamp.Add(-20 * time.Minute),
 			ConnectionFailureEnumValue: 6, // Configuration
-			DesktopGroupId:   "dg2",
-			DesktopGroupName: "VDI Desktops",
-			UserName:         "user3",
+			DesktopGroupId:             "dg2",
+			DesktopGroupName:           "VDI Desktops",
+			UserName:                   "user3",
 		},
 		{
-			Id:               4,
-			FailureDate:      timestamp.Add(-5 * time.Minute),
+			Id:                         4,
+			FailureDate:                timestamp.Add(-5 * time.Minute),
 			ConnectionFailureEnumValue: 2, // MachineFailure
-			DesktopGroupId:   "dg2",
-			DesktopGroupName: "VDI Desktops",
-			UserName:         "user1", // Same user, different failure type and DG
+			DesktopGroupId:             "dg2",
+			DesktopGroupName:           "VDI Desktops",
+			UserName:                   "user1", // Same user, different failure type and DG
 		},
 	}
 
@@ -1177,9 +1177,9 @@ func TestMetricsCollector_UserConnectionFailuresWithFiltering(t *testing.T) {
 
 	// Categories mapping from production data
 	categories := []ConnectionFailureCategory{
-		{ConnectionFailureEnumValue: 1, Category: 0},  // Client connection
-		{ConnectionFailureEnumValue: 2, Category: 2},  // Machine failure
-		{ConnectionFailureEnumValue: 6, Category: 1},  // Configuration
+		{ConnectionFailureEnumValue: 1, Category: 0}, // Client connection
+		{ConnectionFailureEnumValue: 2, Category: 2}, // Machine failure
+		{ConnectionFailureEnumValue: 6, Category: 1}, // Configuration
 	}
 
 	dataPoints := collector.calculateConnectionFailuresMetrics(timestamp, failures, desktopGroups, categories)
@@ -1196,7 +1196,7 @@ func TestMetricsCollector_UserConnectionFailuresWithFiltering(t *testing.T) {
 	// Verify failure type metrics exist
 	typeMetrics := findDataPointsByName(dataPoints, "user_connection_failures_by_type")
 	assert.Greater(t, len(typeMetrics), 0, "Should have failure type metrics")
-	
+
 	// Check that we have some failures by type
 	// The total might be higher than 4 due to multiple metrics per type (global + per delivery group)
 	totalTypeFailures := float32(0)
@@ -1208,7 +1208,7 @@ func TestMetricsCollector_UserConnectionFailuresWithFiltering(t *testing.T) {
 	// Verify delivery group metrics exist
 	dgMetrics := findDataPointsByName(dataPoints, "user_connection_failures_by_delivery_group")
 	assert.Greater(t, len(dgMetrics), 0, "Should have delivery group failure metrics")
-	
+
 	// Check that we have delivery group failure metrics
 	totalDGFailures := float32(0)
 	for _, metric := range dgMetrics {
@@ -1245,7 +1245,7 @@ func TestMetricsCollector_TagValidation(t *testing.T) {
 	// Test session metrics tags
 	sessionDataPoints := collector.calculateSessionMetrics(timestamp, sessions, desktopGroups)
 	connectedLiveMetrics := findDataPointsByName(sessionDataPoints, "sessions_connected")
-	
+
 	for _, metric := range connectedLiveMetrics {
 		// Should only have metric_type tag in simplified structure
 		assert.True(t, hasTag(metric.Tags, "metric_type", "sessions"))
@@ -1256,7 +1256,7 @@ func TestMetricsCollector_TagValidation(t *testing.T) {
 	// Test machine metrics tags
 	machineDataPoints := collector.calculateMachineMetrics(timestamp, machines, desktopGroups)
 	controllerMetrics := findDataPointsByName(machineDataPoints, "machines_by_controller")
-	
+
 	for _, metric := range controllerMetrics {
 		// Should only have metric_type tag in simplified structure
 		assert.True(t, hasTag(metric.Tags, "metric_type", "machines"))
@@ -1271,7 +1271,7 @@ func TestMetricsCollector_TagValidation(t *testing.T) {
 	}
 	failureDataPoints := collector.calculateConnectionFailuresMetrics(timestamp, failures, desktopGroups, categories)
 	userFailureMetrics := findDataPointsByName(failureDataPoints, "user_connection_failures_by_type")
-	
+
 	for _, metric := range userFailureMetrics {
 		// Should only have metric_type tag in simplified structure
 		assert.True(t, hasTag(metric.Tags, "metric_type", "user_connections"))
@@ -1290,7 +1290,6 @@ func findMetricWithoutDeliveryGroupTag(metrics []datapoint.DataPoint) *datapoint
 	}
 	return nil
 }
-
 
 func hasTag(tags []tags.Tag, key, value string) bool {
 	for _, tag := range tags {
@@ -1318,34 +1317,34 @@ func TestMetricsCollector_CalculateLogonDurationAvgHourly_SlidingWindow(t *testi
 
 	// Test cases for different times to verify sliding window alignment
 	tests := []struct {
-		name           string
-		currentTime    string
-		expectedStart  string
-		description    string
+		name          string
+		currentTime   string
+		expectedStart string
+		description   string
 	}{
 		{
-			name:           "afternoon with seconds",
-			currentTime:    "2024-01-15T14:55:43Z",
-			expectedStart:  "2024-01-15T13:55:00Z",
-			description:    "14:55:43 → window 13:55:00 to 14:55:00",
+			name:          "afternoon with seconds",
+			currentTime:   "2024-01-15T14:55:43Z",
+			expectedStart: "2024-01-15T13:55:00Z",
+			description:   "14:55:43 → window 13:55:00 to 14:55:00",
 		},
 		{
-			name:           "morning with seconds",
-			currentTime:    "2024-01-15T13:00:58Z",
-			expectedStart:  "2024-01-15T12:00:00Z",
-			description:    "13:00:58 → window 12:00:00 to 13:00:00",
+			name:          "morning with seconds",
+			currentTime:   "2024-01-15T13:00:58Z",
+			expectedStart: "2024-01-15T12:00:00Z",
+			description:   "13:00:58 → window 12:00:00 to 13:00:00",
 		},
 		{
-			name:           "exact minute boundary",
-			currentTime:    "2024-01-15T09:32:00Z",
-			expectedStart:  "2024-01-15T08:32:00Z",
-			description:    "09:32:00 → window 08:32:00 to 09:32:00",
+			name:          "exact minute boundary",
+			currentTime:   "2024-01-15T09:32:00Z",
+			expectedStart: "2024-01-15T08:32:00Z",
+			description:   "09:32:00 → window 08:32:00 to 09:32:00",
 		},
 		{
-			name:           "late evening",
-			currentTime:    "2024-01-15T23:47:12Z",
-			expectedStart:  "2024-01-15T22:47:00Z",
-			description:    "23:47:12 → window 22:47:00 to 23:47:00",
+			name:          "late evening",
+			currentTime:   "2024-01-15T23:47:12Z",
+			expectedStart: "2024-01-15T22:47:00Z",
+			description:   "23:47:12 → window 22:47:00 to 23:47:00",
 		},
 	}
 
@@ -1536,4 +1535,3 @@ func TestMetricsCollector_CalculateLogonDurationAvgHourly_WindowAlignment(t *tes
 		})
 	}
 }
-
