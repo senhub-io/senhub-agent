@@ -55,14 +55,23 @@ func NewDeliveryControllerClient(config DeliveryControllerConfig, authConfig Aut
 	}, nil
 }
 
-// getToken retrieves or refreshes the authentication token
+// CVADTokenResponse represents the CVAD token response
+type CVADTokenResponse struct {
+	Token      string    `json:"Token"`
+	Principal  string    `json:"Principal"`
+	UserId     string    `json:"UserId"`
+	CustomerId string    `json:"CustomerId"`
+	ExpiresAt  time.Time `json:"ExpiresAt"`
+}
+
+// getToken retrieves or refreshes the authentication token using CVAD format
 func (c *deliveryControllerClient) getToken(ctx context.Context) error {
 	// Check if we have a valid token
 	if c.token != "" && time.Now().Before(c.tokenExpiry.Add(-5*time.Minute)) {
 		return nil
 	}
 	
-	c.logger.Debug().Msg("Getting new authentication token")
+	c.logger.Debug().Msg("Getting new CVAD authentication token")
 	
 	urls := append([]string{c.primaryURL}, c.fallbackURLs...)
 	
@@ -76,12 +85,17 @@ func (c *deliveryControllerClient) getToken(ctx context.Context) error {
 			continue
 		}
 		
-		// Set headers
+		// Set headers for CVAD authentication
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 		
-		// Basic auth for token request
+		// Basic auth for token request (username can be DOMAIN\username format)
 		req.SetBasicAuth(c.authConfig.Username, c.authConfig.Password)
+		
+		c.logger.Debug().
+			Str("url", url).
+			Str("username", c.authConfig.Username).
+			Msg("Requesting CVAD token")
 		
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -94,8 +108,9 @@ func (c *deliveryControllerClient) getToken(ctx context.Context) error {
 		}
 		defer resp.Body.Close()
 		
+		body, _ := io.ReadAll(resp.Body)
+		
 		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
 			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 			c.logger.Warn().
 				Int("status", resp.StatusCode).
@@ -105,20 +120,27 @@ func (c *deliveryControllerClient) getToken(ctx context.Context) error {
 			continue
 		}
 		
-		// Parse token response
-		var tokenResp TokenResponse
-		if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-			lastErr = fmt.Errorf("failed to parse token response: %w", err)
+		// Parse CVAD token response
+		var tokenResp CVADTokenResponse
+		if err := json.Unmarshal(body, &tokenResp); err != nil {
+			lastErr = fmt.Errorf("failed to parse CVAD token response: %w", err)
+			c.logger.Warn().
+				Err(err).
+				Str("response", string(body)).
+				Msg("Failed to unmarshal token response")
 			continue
 		}
 		
+		// Store token information
 		c.token = tokenResp.Token
 		c.tokenExpiry = tokenResp.ExpiresAt
 		
 		c.logger.Info().
-			Str("url", url).
+			Str("principal", tokenResp.Principal).
+			Str("user_id", tokenResp.UserId).
+			Str("customer_id", tokenResp.CustomerId).
 			Time("expires_at", c.tokenExpiry).
-			Msg("Successfully obtained authentication token")
+			Msg("Successfully obtained CVAD authentication token")
 		
 		return nil
 	}
@@ -154,10 +176,13 @@ func (c *deliveryControllerClient) makeRequest(ctx context.Context, method, endp
 			continue
 		}
 		
-		// Set headers
+		// Set headers for CVAD API requests
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
+		// CVAD uses CWSAuth Bearer format instead of standard Bearer
+		req.Header.Set("Authorization", fmt.Sprintf("CWSAuth Bearer=%s", c.token))
+		// Add Citrix-CustomerId header (may be required for some operations)
+		req.Header.Set("Citrix-CustomerId", "CitrixOnPremises")
 		
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
