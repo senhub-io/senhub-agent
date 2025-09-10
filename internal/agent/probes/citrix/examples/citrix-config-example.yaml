@@ -23,8 +23,7 @@ probes:
       # Citrix Director OData API endpoint
       base_url: "https://citrix-director.company.com/Citrix/Monitor/OData/v4/Data"
       
-      # Environment identifier for tagging
-      environment: "PROD"
+      # environment parameter removed - was not used in metrics generation
       
       # Collection interval (2 minutes recommended)
       interval: 120
@@ -81,7 +80,7 @@ probes:
   - name: citrix
     params:
       base_url: "https://citrix-dev.company.com"
-      environment: "DEV"
+# environment parameter removed - was not used
       interval: 300  # 5 minutes for development
       
       auth:
@@ -123,7 +122,7 @@ probes:
           - "https://citrix-ddc2-site1.company.com"
         site_filter: "SITE1"  # Only monitor machines from this site
       
-      environment: "PROD-SITE1"
+# environment parameter removed
       interval: 120
       
       auth:
@@ -151,7 +150,7 @@ probes:
           - "https://citrix-ddc2-site2.company.com"
         site_filter: "SITE2"  # Only monitor machines from site 2
       
-      environment: "PROD-SITE2"
+# environment parameter removed
       interval: 120
       
       auth:
@@ -191,7 +190,7 @@ probes:
   - name: citrix
     params:
       base_url: "https://citrix-director.secure.company.com/Citrix/Monitor/OData/v4/Data"
-      environment: "PROD"
+# environment parameter removed
       interval: 120
       
       auth:
@@ -232,7 +231,7 @@ probes:
           - "https://citrix-ddc-backup.company.com"
         site_filter: "Paris-DataCenter"  # Filter by site name
       
-      environment: "PROD"
+# environment parameter removed
       interval: 120
       
       # Authentication configuration (used for both Director and DDC)
@@ -270,7 +269,7 @@ probes:
       
       # No delivery_controller section = no site filtering
       
-      environment: "GLOBAL"
+# environment parameter removed
       interval: 120
       
       auth:
