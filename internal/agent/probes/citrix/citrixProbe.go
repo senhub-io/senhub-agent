@@ -25,7 +25,6 @@ type citrixProbe struct {
 
 	// Configuration fields
 	baseURL            string
-	environment        string
 	authMethod         string
 	username           string
 	password           string
@@ -57,10 +56,7 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		return nil, fmt.Errorf("citrix probe requires 'base_url' configuration")
 	}
 
-	environment, ok := config["environment"].(string)
-	if !ok {
-		environment = "PROD" // Default environment
-	}
+	// environment parameter removed - was not used in metrics generation
 
 	// Extract authentication configuration
 	authConfig, ok := config["auth"].(map[string]interface{})
@@ -155,7 +151,6 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		ctx:                ctx,
 		cancelFunc:         cancel,
 		baseURL:            baseURL,
-		environment:        environment,
 		authMethod:         authMethod,
 		username:           username,
 		password:           password,
@@ -191,7 +186,7 @@ func (p *citrixProbe) OnStart(quitChannel chan struct{}) error {
 	var err error
 	p.client, err = NewCitrixClient(CitrixClientConfig{
 		BaseURL:            p.baseURL,
-		Environment:        p.environment,
+		Environment:        "",
 		AuthMethod:         p.authMethod,
 		Username:           p.username,
 		Password:           p.password,
@@ -249,11 +244,10 @@ func (p *citrixProbe) OnStart(quitChannel chan struct{}) error {
 	}
 
 	// Create metrics collector
-	p.metricsCollector = NewMetricsCollectorWithEnv(p.client, p.environment, p.baseURL, p.logger.Logger)
+	p.metricsCollector = NewMetricsCollectorWithEnv(p.client, "", p.baseURL, p.logger.Logger)
 
 	p.logger.Info().
 		Str("base_url", p.baseURL).
-		Str("environment", p.environment).
 		Str("auth_method", p.authMethod).
 		Bool("verify_ssl", p.verifySSL).
 		Int("interval_seconds", int(p.interval.Seconds())).
