@@ -60,8 +60,9 @@ func (c *deliveryControllerClient) GetMachinesBySite(ctx context.Context, siteNa
 	}
 
 	// CVAD REST API endpoint for machines
-	// We'll use a filter to get machines for this site
-	endpoint := fmt.Sprintf("/cvad/manage/Machines?filter=Site/Id eq '%s'", siteID)
+	// We'll use a filter to get machines for this site - properly URL encode the filter
+	filter := fmt.Sprintf("Site/Id eq '%s'", siteID)
+	endpoint := fmt.Sprintf("/cvad/manage/Machines?$filter=%s", url.QueryEscape(filter))
 
 	body, err := c.makeRequest(ctx, "GET", endpoint, nil)
 	if err != nil {
