@@ -80,7 +80,7 @@ storage:
 probes:
   - name: citrix
     params:
-      base_url: "https://citrix-dev.company.com/Citrix/Monitor/OData/v4/Data"
+      base_url: "https://citrix-dev.company.com"
       environment: "DEV"
       interval: 300  # 5 minutes for development
       
@@ -114,7 +114,7 @@ probes:
   # Primary Citrix site with Delivery Controller filtering
   - name: citrix
     params:
-      base_url: "https://citrix-site1.company.com/Citrix/Monitor/OData/v4/Data"
+      base_url: "https://citrix-site1.company.com"
       
       # NEW: Delivery Controller configuration for site filtering
       delivery_controller:
@@ -142,7 +142,7 @@ probes:
   # Secondary Citrix site with different DDC configuration
   - name: citrix
     params:
-      base_url: "https://citrix-site2.company.com/Citrix/Monitor/OData/v4/Data"
+      base_url: "https://citrix-site2.company.com"
       
       # NEW: Different Delivery Controller for site 2
       delivery_controller:
@@ -222,8 +222,8 @@ storage:
 probes:
   - name: citrix
     params:
-      # Citrix Director endpoint
-      base_url: "https://citrix-director.company.com/Citrix/Monitor/OData/v4/Data"
+      # Citrix Director base URL (API path added automatically)
+      base_url: "https://citrix-director.company.com"
       
       # NEW: Delivery Controller with Basic Auth for CVAD REST API
       delivery_controller:
@@ -266,7 +266,7 @@ probes:
   - name: citrix
     params:
       # Monitor all sites through Director without filtering
-      base_url: "https://citrix-director-global.company.com/Citrix/Monitor/OData/v4/Data"
+      base_url: "https://citrix-director-global.company.com"
       
       # No delivery_controller section = no site filtering
       

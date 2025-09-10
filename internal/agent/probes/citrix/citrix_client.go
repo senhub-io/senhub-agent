@@ -31,9 +31,13 @@ func NewCitrixClient(config CitrixClientConfig, baseLogger *logger.Logger) (Citr
 	// Create module-specific logger for citrix client
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.citrix.client")
 
-	// Normalize baseURL
+	// Normalize baseURL and add Citrix Monitor OData path if not present
 	baseURL := strings.TrimSuffix(config.BaseURL, "/")
-	if !strings.HasSuffix(baseURL, "/Data") {
+	
+	// Add complete Citrix Monitor OData API path if not already present
+	if !strings.Contains(baseURL, "/Citrix/Monitor/OData") {
+		baseURL = baseURL + "/Citrix/Monitor/OData/v4/Data"
+	} else if !strings.HasSuffix(baseURL, "/Data") {
 		baseURL = baseURL + "/Data"
 	}
 
