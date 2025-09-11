@@ -142,17 +142,17 @@ func (mc *MetricsCollector) calculateLogonDurationAvgHourly(ctx context.Context,
 	// Filter connections that started within the 1-hour window
 	// Apply same filtering logic as 2-minute metrics for consistency
 	var recentConnections []Connection
-	var totalInWindow, nonHDX, reconnections, incomplete, included int
+	var totalInWindow, nonHDX, incomplete, included int
 
 	for _, conn := range connections {
 		if conn.LogOnStartDate.After(windowStart) && conn.LogOnStartDate.Before(windowEnd) {
 			totalInWindow++
 
-			// Apply Citrix Director filtering logic (same as 2-minute metrics):
+			// Apply Director Console filtering logic for 1-hour average:
 			// - Protocol = "HDX" (only HDX connections)
-			// - IsReconnect = false (exclude reconnections per Citrix documentation)
-			// - LogOnEndDate != null (exclude incomplete sessions per Citrix documentation)
-			if conn.Protocol == "HDX" && !conn.IsReconnect && !conn.LogOnEndDate.IsZero() {
+			// - LogOnEndDate != null (exclude incomplete sessions)
+			// - Include reconnections (Director includes them in average calculation)
+			if conn.Protocol == "HDX" && !conn.LogOnEndDate.IsZero() {
 				recentConnections = append(recentConnections, conn)
 				included++
 			} else {
@@ -163,11 +163,6 @@ func (mc *MetricsCollector) calculateLogonDurationAvgHourly(ctx context.Context,
 						Str("protocol", conn.Protocol).
 						Int("connection_id", conn.Id).
 						Msg("Excluding from hourly avg - not HDX protocol")
-				} else if conn.IsReconnect {
-					reconnections++
-					mc.logger.Trace().
-						Int("connection_id", conn.Id).
-						Msg("Excluding from hourly avg - is reconnection")
 				} else if conn.LogOnEndDate.IsZero() {
 					incomplete++
 					mc.logger.Trace().
@@ -175,20 +170,21 @@ func (mc *MetricsCollector) calculateLogonDurationAvgHourly(ctx context.Context,
 						Int("connection_id", conn.Id).
 						Msg("Excluding from hourly avg - logon not yet completed")
 				}
+				
+				// Note: Reconnections are now included for Director alignment
 			}
 		}
 	}
 
-	// Log filtering statistics (same format as 2-minute metrics)
+	// Log filtering statistics - reconnections now included for Director alignment
 	mc.logger.Info().
 		Int("total_in_window", totalInWindow).
 		Int("included", included).
 		Int("excluded_non_hdx", nonHDX).
-		Int("excluded_reconnections", reconnections).
 		Int("excluded_incomplete", incomplete).
 		Time("window_start", windowStart).
 		Time("window_end", windowEnd).
-		Msg("1-hour connection filtering statistics")
+		Msg("1-hour connection filtering statistics - includes reconnections for Director alignment")
 
 	// Calculate average duration from filtered connections
 	var totalDuration int64
