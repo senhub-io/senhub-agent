@@ -2,8 +2,43 @@ package citrix
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 )
+
+// CVADTime handles the custom date format used by CVAD API
+type CVADTime struct {
+	time.Time
+}
+
+// UnmarshalJSON parses CVAD date format: "09/10/2025 13:34:55"
+func (ct *CVADTime) UnmarshalJSON(data []byte) error {
+	// Remove quotes
+	dateStr := strings.Trim(string(data), `"`)
+	if dateStr == "null" || dateStr == "" {
+		return nil
+	}
+	
+	// Try CVAD format: "09/10/2025 13:34:55"
+	if parsedTime, err := time.Parse("01/02/2006 15:04:05", dateStr); err == nil {
+		ct.Time = parsedTime
+		return nil
+	}
+	
+	// Fallback to standard ISO format
+	if parsedTime, err := time.Parse(time.RFC3339, dateStr); err == nil {
+		ct.Time = parsedTime
+		return nil
+	}
+	
+	return fmt.Errorf("unable to parse CVAD date format: %s", dateStr)
+}
+
+// MarshalJSON outputs in standard format
+func (ct CVADTime) MarshalJSON() ([]byte, error) {
+	return json.Marshal(ct.Time.Format(time.RFC3339))
+}
 
 // DDCMachine represents a machine from Delivery Controller API
 type DDCMachine struct {
@@ -19,8 +54,8 @@ type DDCMachine struct {
 	IsAssigned             bool       `json:"IsAssigned"`
 	IsInMaintenanceMode    bool       `json:"InMaintenanceMode"`
 	RegistrationState      string     `json:"RegistrationState"`
-	LastConnectionTime     *time.Time `json:"LastConnectionTime,omitempty"`
-	LastDeregistrationTime *time.Time `json:"LastDeregistrationTime,omitempty"`
+	LastConnectionTime     *CVADTime  `json:"LastConnectionTime,omitempty"`
+	LastDeregistrationTime *CVADTime  `json:"LastDeregistrationTime,omitempty"`
 	PowerState             string     `json:"PowerState,omitempty"`
 	SessionCount           int        `json:"SessionCount"`
 }
@@ -64,7 +99,7 @@ type DDCController struct {
 	SiteId             string     `json:"SiteId,omitempty"`
 	SiteName           string     `json:"SiteName,omitempty"`
 	ControllerState    string     `json:"State"`
-	LastActivityTime   *time.Time `json:"LastActivityTime,omitempty"`
+	LastActivityTime   *CVADTime  `json:"LastActivityTime,omitempty"`
 	DesktopsRegistered int        `json:"DesktopsRegistered"`
 }
 
@@ -78,7 +113,7 @@ type DDCSession struct {
 	DeliveryGroupId   string     `json:"DeliveryGroupId,omitempty"`
 	DeliveryGroupName string     `json:"DeliveryGroupName,omitempty"`
 	SessionState      string     `json:"SessionState"`
-	StartTime         *time.Time `json:"StartTime,omitempty"`
+	StartTime         *CVADTime  `json:"StartTime,omitempty"`
 	LogOnDuration     int        `json:"LogOnDuration,omitempty"` // in milliseconds
 	ConnectionState   string     `json:"ConnectionState"`
 	Protocol          string     `json:"Protocol,omitempty"`
@@ -129,4 +164,28 @@ type DDCControllersResponse struct {
 type DDCSessionsResponse struct {
 	Items             []DDCSession `json:"Items"`
 	ContinuationToken string       `json:"ContinuationToken,omitempty"`
+}
+
+// DDCMeResponse represents the /me endpoint response with current user info
+type DDCMeResponse struct {
+	UserId                  string           `json:"UserId"`
+	DisplayName             string           `json:"DisplayName"`
+	ExpiryTime              string           `json:"ExpiryTime"`
+	RefreshExpirationTime   string           `json:"RefreshExpirationTime"`
+	VerifiedEmail           interface{}      `json:"VerifiedEmail"`
+	IsCspCustomer           bool             `json:"IsCspCustomer"`
+	Customers               []DDCCustomer    `json:"Customers"`
+}
+
+// DDCCustomer represents a customer in the /me response
+type DDCCustomer struct {
+	Id    string    `json:"Id"`
+	Name  *string   `json:"Name"`
+	Sites []DDCSite `json:"Sites"`
+}
+
+// DDCSite represents a site in the /me response  
+type DDCSite struct {
+	Id   string `json:"Id"`
+	Name string `json:"Name"`
 }

@@ -1,0 +1,54 @@
+# SenHub Agent Configuration - Citrix Debug Mode
+# This configuration extracts identifiers from both CVAD and OData APIs for analysis
+
+agent:
+  key: "debug-agent-key"
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      endpoints: ["web"]
+
+probes:
+  # Citrix probe in debug mode
+  - name: citrix
+    params:
+      # Citrix Director base URL
+      base_url: "https://your-citrix-director.company.com"
+      
+      # Short interval for debug (run once every 30 seconds)
+      interval: 30
+      
+      # DEBUG MODE ENABLED - extracts identifiers instead of collecting metrics
+      debug_identifiers: true
+      
+      # Authentication
+      auth:
+        username: "DOMAIN\\your-username"
+        password: "your-password"
+      
+      # SSL verification (disable for testing)
+      verify_ssl: false
+      
+      # Delivery Controller configuration (required for CVAD API)
+      delivery_controller:
+        url: "https://your-delivery-controller.company.com"
+        site_filter: "YourSiteName"  # Optional: filter by specific site
+        fallback_urls:
+          - "https://ddc2.company.com"
+          - "https://ddc3.company.com"
+
+# Output files will be generated in /tmp/citrix-debug/:
+# - cvad_identifiers_SITENAME_TIMESTAMP.json  (CVAD REST API data)
+# - odata_identifiers_SITENAME_TIMESTAMP.json (OData Director API data)
+#
+# To use this configuration:
+# 1. Update URLs, credentials, and site name
+# 2. Run: ./agent run --config citrix-debug-example.yaml
+# 3. Check logs for "Debug identifier extraction completed"
+# 4. Analyze files in /tmp/citrix-debug/
+#
+# To compare machine identifiers:
+# cat /tmp/citrix-debug/cvad_*.json | jq '.machines[0]'    # CVAD format
+# cat /tmp/citrix-debug/odata_*.json | jq '.machines[0]'   # OData format

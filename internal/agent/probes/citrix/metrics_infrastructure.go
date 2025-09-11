@@ -9,7 +9,7 @@ import (
 )
 
 // CollectInfrastructureMetrics collects all infrastructure-related metrics
-func (mc *MetricsCollector) CollectInfrastructureMetrics(ctx context.Context, timestamp time.Time) ([]datapoint.DataPoint, error) {
+func (mc *MetricsCollector) CollectInfrastructureMetrics(ctx context.Context, timestamp time.Time, inventoryService *InventoryService) ([]datapoint.DataPoint, error) {
 	mc.logger.Debug().Msg("Collecting infrastructure metrics")
 
 	var metrics []datapoint.DataPoint
@@ -170,6 +170,12 @@ func (mc *MetricsCollector) CollectInfrastructureMetrics(ctx context.Context, ti
 	detailedFaultMetrics := mc.createDetailedFaultStateMetrics(faultStateCounts, multiSessionFaultyCount, timestamp)
 	metrics = append(metrics, detailedFaultMetrics...)
 
+	// Add inventory-related infrastructure metrics if inventory service is available
+	if inventoryService != nil {
+		inventoryMetrics := mc.createInventoryInfrastructureMetrics(timestamp, inventoryService)
+		metrics = append(metrics, inventoryMetrics...)
+	}
+
 	mc.logger.Info().
 		Int("total", totalMachines).
 		Int("registered", registeredCount).
@@ -223,6 +229,79 @@ func (mc *MetricsCollector) createDetailedFaultStateMetrics(faultStateCounts map
 		Interface("fault_state_counts", faultStateCounts).
 		Int("total_faulty", totalFaultyCount).
 		Msg("Multi-session fault state metrics created")
+
+	return metrics
+}
+
+// createInventoryInfrastructureMetrics creates infrastructure metrics from inventory data
+func (mc *MetricsCollector) createInventoryInfrastructureMetrics(timestamp time.Time, inventoryService *InventoryService) []datapoint.DataPoint {
+	var metrics []datapoint.DataPoint
+
+	// Get inventory statistics
+	inventoryStats := inventoryService.GetInventoryStats()
+	siteID, siteName := inventoryService.GetSiteInfo()
+
+	// Base tags for all infrastructure metrics
+	baseTags := []tags.Tag{
+		{Key: "metric_type", Value: "infrastructure"},
+		{Key: "site_name", Value: siteName},
+		{Key: "site_id", Value: siteID},
+	}
+
+	if cached, ok := inventoryStats["cached"].(bool); ok && cached {
+		// Cache age metric
+		if cacheAge, ok := inventoryStats["cache_age"].(time.Duration); ok {
+			metrics = append(metrics, datapoint.DataPoint{
+				Name:      "cache_age_sec",
+				Value:     float32(cacheAge.Seconds()),
+				Tags:      baseTags,
+				Timestamp: timestamp,
+			})
+		}
+
+		// Update duration metric
+		if updateDuration, ok := inventoryStats["update_duration"].(time.Duration); ok {
+			metrics = append(metrics, datapoint.DataPoint{
+				Name:      "cache_update_sec",
+				Value:     float32(updateDuration.Seconds()),
+				Tags:      baseTags,
+				Timestamp: timestamp,
+			})
+		}
+
+		// Inventory counts
+		if deliveryGroups, ok := inventoryStats["delivery_groups"].(int); ok {
+			metrics = append(metrics, datapoint.DataPoint{
+				Name:      "delivery_groups",
+				Value:     float32(deliveryGroups),
+				Tags:      baseTags,
+				Timestamp: timestamp,
+			})
+		}
+
+		if controllers, ok := inventoryStats["controllers"].(int); ok {
+			metrics = append(metrics, datapoint.DataPoint{
+				Name:      "controllers",
+				Value:     float32(controllers),
+				Tags:      baseTags,
+				Timestamp: timestamp,
+			})
+		}
+
+		if applications, ok := inventoryStats["applications"].(int); ok {
+			metrics = append(metrics, datapoint.DataPoint{
+				Name:      "applications",
+				Value:     float32(applications),
+				Tags:      baseTags,
+				Timestamp: timestamp,
+			})
+		}
+	}
+
+	mc.logger.Debug().
+		Int("inventory_infrastructure_metrics", len(metrics)).
+		Str("site_name", siteName).
+		Msg("📦 Created inventory infrastructure metrics")
 
 	return metrics
 }
