@@ -693,4 +693,156 @@ Mode hybride optimal : combine simplicité offline + puissance online
 - **Current format**: `0.1.x-beta` - continue incrementing from `0.1.56-beta`
 - **Beta releases**: Automatically generated from dev branch pushes
 - **Workflow**: Uses `git describe --tags --abbrev=0` to find latest tag
-- **Next version**: 0.1.57-beta created, ready for beta releases
+- **Next version**: 0.1.59-beta will be created on next push
+
+## Citrix Probe Development - Current State (2025-09-11)
+
+### Overview
+Le probe Citrix monitore les environnements Citrix Virtual Apps and Desktops (CVAD) via deux APIs :
+- **OData API** (Director) : Métriques temps réel des sessions, machines, connexions
+- **DDC REST API** : Inventaire du site, filtrage par site, gestion des delivery groups
+
+### Architecture actuelle
+```
+citrixProbe.go
+├── metrics_collector.go      # Orchestration de la collecte
+├── citrix_client.go          # Client OData avec filtrage côté client
+├── ddc_client.go             # Client DDC pour inventaire CVAD
+├── site_inventory.go         # Service d'inventaire avec cache
+├── metrics_sessions.go       # Métriques de sessions et logon duration
+├── metrics_infrastructure.go # Métriques machines et infrastructure
+├── metrics_logon.go          # Breakdown détaillé du logon (2 min)
+├── metrics_overview.go       # UX scores et health metrics
+└── metrics_failures.go       # Connection failures et black holes
+```
+
+### État actuel des métriques
+
+#### ✅ Métriques fonctionnelles
+- **Sessions connectées** : 2342 (aligné avec Director)
+- **Sessions déconnectées** : Correct
+- **Infrastructure** : Machines registered/unregistered/faulty
+- **Connection failures** : Par catégorie
+- **UX scores** : Excellent/Good/Fair/Poor
+- **Health score** : Calculé correctement
+
+#### ⚠️ Problème en cours : Durée de logon
+- **Director affiche** : 18-19 secondes (moyenne 1h)
+- **Agent remonte** : 11.85 secondes
+- **Écart** : ~6-7 secondes
+
+### Analyse du problème de durée
+
+#### Ce qui a été vérifié
+1. **Filtrage des reconnexions** : Corrigé - les reconnexions sont maintenant EXCLUES comme dans Director
+2. **Fenêtre temporelle** : 1h glissante alignée sur minutes complètes
+3. **Protocole** : HDX uniquement
+4. **Sessions complètes** : LogOnEndDate != null
+
+#### Code actuel du filtrage (metrics_sessions.go:155)
+```go
+// Apply Director Console filtering logic for 1-hour average:
+// - Protocol = "HDX" (only HDX connections)
+// - LogOnEndDate != null (exclude incomplete sessions)  
+// - Exclude reconnections (Director excludes them per documentation)
+if conn.Protocol == "HDX" && !conn.IsReconnect && !conn.LogOnEndDate.IsZero() {
+    recentConnections = append(recentConnections, conn)
+}
+```
+
+#### Hypothèses restantes sur l'écart
+1. **Composants de calcul différents** : Director pourrait utiliser `Session.LogOnDuration` directement au lieu de calculer depuis Connections
+2. **Overlap des phases** : Documentation indique que les phases peuvent se chevaucher
+3. **Filtrage supplémentaire** : Director pourrait avoir d'autres critères non documentés
+
+### Configuration Citrix avec filtrage par site
+
+#### Configuration YAML actuelle
+```yaml
+- name: citrix
+  params:
+    base_url: "https://director.noble-age.fr"
+    
+    # Filtrage par site PROD via DDC
+    delivery_controller:
+      url: "https://SW000-209-030.noble-age.fr"
+      fallback_urls:
+        - "https://SW000-209-031.noble-age.fr"
+      site_filter: "PROD"  # Seul ce site est monitoré
+    
+    interval: 120
+    auth:
+      username: "noble-age.fr\\svc_api_sensor"
+      password: "gs-+8L<2:mL38]17"
+    tls:
+      verify_ssl: false
+```
+
+#### Mécanisme de filtrage
+1. **DDC interrogé** → Récupère l'inventaire du site PROD (259 machines)
+2. **Cache inventaire** → Maintenu 5 minutes, contient les DNS des machines
+3. **Filtrage OData** → Sessions/Connections filtrées par DNS machine côté client
+4. **Expand nécessaire** → `$expand=Machine` pour avoir les infos machine dans Sessions
+
+### Commandes de debug utiles
+
+```bash
+# Lancer avec logs Citrix uniquement
+./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.citrix
+
+# Tester l'API OData manuellement (Postman)
+GET https://director.noble-age.fr/Citrix/Monitor/OData/v4/Data/Sessions?$expand=Machine&$filter=ConnectionState eq 5&$top=100
+Authorization: Basic base64(username:password)
+
+# Tester DDC API
+POST https://SW000-209-030.noble-age.fr/cvad/manage/Sessions/$getCredentials
+Authorization: Bearer {token_from_auth}
+```
+
+### Tests existants
+- **citrix_test.go** : Tests unitaires complets incluant le calcul de logon duration
+- **Test important** : `TestMetricsCollector_CalculateLogonDurationAvgHourly_WithConnections`
+  - Vérifie l'exclusion des reconnexions ✅
+  - Vérifie le calcul de moyenne ✅  
+  - Vérifie les fenêtres temporelles ✅
+
+### Problème Windows Service (en cours)
+
+#### Symptôme
+- Mode `run` : Interface web fonctionne (port 8443 HTTPS)
+- Mode `service` : Port ne monte pas
+
+#### Cause probable
+Le service Windows ne trouve pas `agent-config.yaml` car le répertoire de travail est différent.
+
+#### Solution à tester
+```powershell
+# Réinstaller avec chemin absolu
+sc stop "SenHub Agent"
+sc delete "SenHub Agent"
+senhub-agent_windows_amd64.exe install --offline --config-path "C:\Program Files\Senhub\Senhub Agent\agent-config.yaml"
+sc start "SenHub Agent"
+
+# Vérifier les logs
+type "C:\ProgramData\SenHub\logs\senhubagent.log"
+```
+
+### Commits récents pertinents
+- `f4bec6f` : fix(citrix): exclude reconnections from logon duration calculation
+- `4fa1538` : fix(citrix): align logon duration calculation with Director console
+- `9d0d208` : fix(citrix): resolve DDC API issues and simplify configuration
+- `5367652` : refactor(citrix): remove unused environment parameter
+
+### TODO Citrix Probe
+1. **Investiguer l'écart de durée** : Pourquoi 11.85s vs 18s malgré les corrections
+2. **Tester avec Session.LogOnDuration** : Utiliser le champ direct au lieu du calcul
+3. **Analyser les phases overlap** : Comprendre le chevauchement des phases de logon
+4. **Résoudre problème Windows Service** : Port HTTP qui ne monte pas en mode service
+
+### Contacts et environnement
+- **Site client** : noble-age.fr
+- **Site CVAD** : PROD (598f37d5-6347-4a11-af5b-0351ab567667)
+- **Director** : https://director.noble-age.fr
+- **DDC Principal** : SW000-209-030.noble-age.fr
+- **DDC Fallback** : SW000-209-031.noble-age.fr
+- **Compte API** : noble-age.fr\svc_api_sensor
