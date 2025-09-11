@@ -45,26 +45,31 @@ func TestDDCConnectivity(ddcURL, username, password string) error {
 	}
 	fmt.Println("✅ DDC connectivity successful")
 
-	// Test GetSites
-	fmt.Println("\n📍 Getting sites...")
-	sites, err := ddcClient.GetSites(ctx)
+	// Test GetMe
+	fmt.Println("\n📍 Getting current user info...")
+	me, err := ddcClient.GetMe(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get sites: %w", err)
+		return fmt.Errorf("failed to get user info: %w", err)
 	}
 
-	fmt.Printf("✅ Found %d sites:\n", len(sites))
-	for _, site := range sites {
-		fmt.Printf("  - ID: %s, Name: %s\n", site.Id, site.Name)
-	}
-
-	if len(sites) == 0 {
-		fmt.Println("⚠️  No sites found - check DDC configuration")
+	// Extract site info from the Customers structure
+	if len(me.Customers) == 0 || len(me.Customers[0].Sites) == 0 {
+		fmt.Println("⚠️  User has no accessible sites - check DDC configuration")
 		return nil
 	}
 
-	// Test with first site
-	siteName := sites[0].Name
-	fmt.Printf("\n🖥️  Testing with site: %s\n", siteName)
+	userSite := me.Customers[0].Sites[0]
+	fmt.Printf("✅ Current user: %s\n", me.DisplayName)
+	fmt.Printf("  - Site: %s (ID: %s)\n", userSite.Name, userSite.Id)
+
+	if userSite.Id == "" {
+		fmt.Println("⚠️  User has no site ID - check DDC configuration")
+		return nil
+	}
+
+	// Test with user's site
+	siteName := userSite.Name
+	fmt.Printf("\n🖥️  Testing with user's site: %s\n", siteName)
 
 	// Test GetMachinesBySite
 	fmt.Println("Getting machine DNS names...")

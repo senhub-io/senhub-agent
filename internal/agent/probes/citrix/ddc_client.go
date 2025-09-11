@@ -150,6 +150,11 @@ func (c *deliveryControllerClient) getToken(ctx context.Context) error {
 
 // makeRequest performs an authenticated HTTP request
 func (c *deliveryControllerClient) makeRequest(ctx context.Context, method, endpoint string, body interface{}) ([]byte, error) {
+	return c.makeRequestWithSiteID(ctx, method, endpoint, body, "")
+}
+
+// makeRequestWithSiteID performs an authenticated HTTP request with optional site ID header
+func (c *deliveryControllerClient) makeRequestWithSiteID(ctx context.Context, method, endpoint string, body interface{}, siteID string) ([]byte, error) {
 	// Ensure we have a valid token
 	if err := c.getToken(ctx); err != nil {
 		return nil, fmt.Errorf("failed to authenticate: %w", err)
@@ -181,15 +186,19 @@ func (c *deliveryControllerClient) makeRequest(ctx context.Context, method, endp
 		req.Header.Set("Content-Type", "application/json")
 		// CVAD uses CWSAuth Bearer format instead of standard Bearer
 		req.Header.Set("Authorization", fmt.Sprintf("CWSAuth Bearer=%s", c.token))
-		// Add Citrix-CustomerId header (may be required for some operations)
+		// Add Citrix-CustomerId header (required for all operations)
 		req.Header.Set("Citrix-CustomerId", "CitrixOnPremises")
+		// Add Citrix-InstanceId header if site ID is provided (required for site-specific operations)
+		if siteID != "" {
+			req.Header.Set("Citrix-InstanceId", siteID)
+		}
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			c.logger.Warn().
+			c.logger.Debug().
 				Err(err).
 				Str("url", url).
-				Msg("Request failed, trying next controller")
+				Msg("Controller request failed, trying fallback controller")
 			lastErr = err
 			continue
 		}
@@ -216,7 +225,14 @@ func (c *deliveryControllerClient) makeRequest(ctx context.Context, method, endp
 
 		if resp.StatusCode >= 400 {
 			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
-			c.logger.Warn().
+			
+			// Reduce log level for optional endpoints that may not exist (404)
+			logLevel := c.logger.Warn()
+			if resp.StatusCode == 404 && (strings.Contains(url, "/Controllers") || strings.Contains(url, "/Applications")) {
+				logLevel = c.logger.Debug()
+			}
+			
+			logLevel.
 				Int("status", resp.StatusCode).
 				Str("url", url).
 				Str("response", string(respBody)).
