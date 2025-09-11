@@ -20,17 +20,22 @@ probes:
   # Citrix Virtual Apps and Desktops monitoring
   - name: citrix
     params:
-      # Citrix Director OData API endpoint
-      base_url: "https://citrix-director.company.com/Citrix/Monitor/OData/v4/Data"
+      # Citrix Director base URL (API path added automatically)
+      base_url: "https://citrix-director.company.com"
       
       # environment parameter removed - was not used in metrics generation
       
       # Collection interval (2 minutes recommended)
       interval: 120
       
+      # Debug mode: extract identifiers for CVAD vs OData mapping analysis
+      # Set to true to generate /tmp/citrix-debug/*.json files instead of collecting metrics
+      # Use this to understand identifier correspondences between APIs
+      debug_identifiers: false
+      
       # Authentication configuration
+      # Authentication methods are automatic: NTLM for Director, Basic for DDC
       auth:
-        method: "ntlm"                    # ntlm, basic, or kerberos
         username: "DOMAIN\\svc-monitoring"  # Service account with read permissions
         password: "secure-password"        # Use environment variable: ${CITRIX_PASSWORD}
       
@@ -84,7 +89,6 @@ probes:
       interval: 300  # 5 minutes for development
       
       auth:
-        method: "basic"
         username: "admin"
         password: "devpassword"
       
@@ -126,7 +130,6 @@ probes:
       interval: 120
       
       auth:
-        method: "ntlm"
         username: "DOMAIN\\svc-monitoring"
         password: "${CITRIX_PASSWORD}"
       
@@ -154,7 +157,6 @@ probes:
       interval: 120
       
       auth:
-        method: "ntlm"
         username: "DOMAIN\\svc-monitoring"
         password: "${CITRIX_PASSWORD}"
       
@@ -189,7 +191,7 @@ storage:
 probes:
   - name: citrix
     params:
-      base_url: "https://citrix-director.secure.company.com/Citrix/Monitor/OData/v4/Data"
+      base_url: "https://citrix-director.secure.company.com"
 # environment parameter removed
       interval: 120
       
@@ -235,9 +237,8 @@ probes:
       interval: 120
       
       # Authentication configuration (used for both Director and DDC)
-      # For DDC, basic auth is used to obtain Bearer token
+      # Authentication methods are automatic: NTLM for Director, Basic for DDC
       auth:
-        method: "basic"                    # Basic auth for DDC token endpoint
         username: "DOMAIN\\svc_api_sensor"
         password: "${CITRIX_API_PASSWORD}"
       

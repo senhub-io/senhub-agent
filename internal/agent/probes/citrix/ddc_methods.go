@@ -7,33 +7,6 @@ import (
 	"net/url"
 )
 
-// GetSites retrieves all sites from the Delivery Controller
-func (c *deliveryControllerClient) GetSites(ctx context.Context) ([]Site, error) {
-	c.logger.Debug().Msg("Retrieving sites from Delivery Controller")
-
-	// CVAD REST API endpoint for sites
-	endpoint := "/cvad/manage/Sites"
-
-	body, err := c.makeRequest(ctx, "GET", endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get sites: %w", err)
-	}
-
-	// Parse response which contains Items array
-	var response struct {
-		Items []Site `json:"Items"`
-	}
-
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse sites response: %w", err)
-	}
-
-	c.logger.Info().
-		Int("site_count", len(response.Items)).
-		Msg("Retrieved sites from Delivery Controller")
-
-	return response.Items, nil
-}
 
 // GetMachinesBySite retrieves all machines for a specific site
 func (c *deliveryControllerClient) GetMachinesBySite(ctx context.Context, siteName string) ([]string, error) {
@@ -41,66 +14,114 @@ func (c *deliveryControllerClient) GetMachinesBySite(ctx context.Context, siteNa
 		Str("site", siteName).
 		Msg("Retrieving machines for site")
 
-	// First, we need to get the site ID
-	sites, err := c.GetSites(ctx)
+	// Get current user info to get their site ID
+	// This is the only reliable way with standard user permissions
+	meResp, err := c.GetMe(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get sites: %w", err)
+		return nil, fmt.Errorf("failed to get user info: %w", err)
 	}
 
-	var siteID string
-	for _, site := range sites {
-		if site.Name == siteName {
-			siteID = site.Id
-			break
-		}
+	// Extract site ID from customers/sites structure
+	if len(meResp.Customers) == 0 || len(meResp.Customers[0].Sites) == 0 {
+		return nil, fmt.Errorf("user has no accessible sites")
+	}
+
+	// Use the first site (usually there's only one)
+	siteID := meResp.Customers[0].Sites[0].Id
+	actualSiteName := meResp.Customers[0].Sites[0].Name
+
+	// Check if the requested site matches the user's site
+	if siteName != "" && actualSiteName != siteName {
+		c.logger.Warn().
+			Str("requested_site", siteName).
+			Str("user_site", actualSiteName).
+			Msg("User requesting different site than their own - using user's site for security")
 	}
 
 	if siteID == "" {
-		return nil, fmt.Errorf("site %s not found", siteName)
+		return nil, fmt.Errorf("user site ID not available")
 	}
 
-	// CVAD REST API endpoint for machines
-	// We'll use a filter to get machines for this site - properly URL encode the filter
-	filter := fmt.Sprintf("Site/Id eq '%s'", siteID)
-	endpoint := fmt.Sprintf("/cvad/manage/Machines?$filter=%s", url.QueryEscape(filter))
+	return c.getMachinesBySiteID(ctx, siteID, actualSiteName)
+}
 
-	body, err := c.makeRequest(ctx, "GET", endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get machines: %w", err)
-	}
+// getMachinesBySiteID is a helper method that retrieves machines by site ID
+func (c *deliveryControllerClient) getMachinesBySiteID(ctx context.Context, siteID, siteName string) ([]string, error) {
+	c.logger.Debug().
+		Str("site_id", siteID).
+		Str("site_name", siteName).
+		Msg("Retrieving machines for site ID")
 
-	// Parse machine response
-	var response struct {
-		Items []struct {
-			Id          string `json:"Id"`
-			Name        string `json:"Name"`
-			DNSName     string `json:"DNSName"`
-			MachineName string `json:"MachineName"`
-		} `json:"Items"`
-	}
+	// Collect all machines with pagination support
+	var allMachines []string
+	continuationToken := ""
+	pageCount := 0
 
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse machines response: %w", err)
-	}
-
-	// Extract machine names (prefer DNSName, fallback to MachineName or Name)
-	machines := make([]string, 0, len(response.Items))
-	for _, m := range response.Items {
-		if m.DNSName != "" {
-			machines = append(machines, m.DNSName)
-		} else if m.MachineName != "" {
-			machines = append(machines, m.MachineName)
-		} else if m.Name != "" {
-			machines = append(machines, m.Name)
+	for {
+		// CVAD REST API endpoint for machines with pagination
+		endpoint := "/cvad/manage/Machines"
+		if continuationToken != "" {
+			endpoint = fmt.Sprintf("%s?ContinuationToken=%s", endpoint, url.QueryEscape(continuationToken))
 		}
+
+		body, err := c.makeRequestWithSiteID(ctx, "GET", endpoint, nil, siteID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get machines: %w", err)
+		}
+
+		// Parse machine response with ContinuationToken
+		var response struct {
+			Items []struct {
+				Id          string `json:"Id"`
+				Name        string `json:"Name"`
+				DNSName     string `json:"DnsName"`
+				MachineName string `json:"MachineName"`
+			} `json:"Items"`
+			ContinuationToken string `json:"ContinuationToken,omitempty"`
+		}
+
+		if err := json.Unmarshal(body, &response); err != nil {
+			return nil, fmt.Errorf("failed to parse machines response: %w", err)
+		}
+
+		pageCount++
+		c.logger.Debug().
+			Int("page", pageCount).
+			Int("items_in_page", len(response.Items)).
+			Str("continuation_token", response.ContinuationToken).
+			Msg("Processing machines page")
+
+		// Extract machine names (prefer DNSName, fallback to MachineName or Name)
+		for _, m := range response.Items {
+			machineName := ""
+			if m.DNSName != "" {
+				machineName = m.DNSName
+			} else if m.MachineName != "" {
+				machineName = m.MachineName
+			} else if m.Name != "" {
+				machineName = m.Name
+			}
+			
+			if machineName != "" {
+				allMachines = append(allMachines, machineName)
+			}
+		}
+
+		// Check if there are more pages
+		if response.ContinuationToken == "" {
+			break
+		}
+		continuationToken = response.ContinuationToken
 	}
 
 	c.logger.Info().
 		Str("site", siteName).
-		Int("machine_count", len(machines)).
-		Msg("Retrieved machines for site")
+		Str("site_id", siteID).
+		Int("machine_count", len(allMachines)).
+		Int("pages_processed", pageCount).
+		Msg("Retrieved all machines for site")
 
-	return machines, nil
+	return allMachines, nil
 }
 
 // GetMachinesDetailedBySite retrieves detailed machine info for a specific site
@@ -109,22 +130,31 @@ func (c *deliveryControllerClient) GetMachinesDetailedBySite(ctx context.Context
 		Str("site", siteName).
 		Msg("Retrieving detailed machines for site")
 
-	// First, get the site ID
-	sites, err := c.GetSites(ctx)
+	// Get current user info to get their site ID
+	meResp, err := c.GetMe(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get sites: %w", err)
+		return nil, fmt.Errorf("failed to get user info: %w", err)
 	}
 
-	var siteID string
-	for _, site := range sites {
-		if site.Name == siteName {
-			siteID = site.Id
-			break
-		}
+	// Extract site ID from customers/sites structure
+	if len(meResp.Customers) == 0 || len(meResp.Customers[0].Sites) == 0 {
+		return nil, fmt.Errorf("user has no accessible sites")
 	}
+
+	// Use the first site (usually there's only one)
+	siteID := meResp.Customers[0].Sites[0].Id
+	actualSiteName := meResp.Customers[0].Sites[0].Name
 
 	if siteID == "" {
-		return nil, fmt.Errorf("site %s not found", siteName)
+		return nil, fmt.Errorf("user site ID not available")
+	}
+
+	// Check if requested site matches user's site
+	if siteName != "" && actualSiteName != siteName {
+		c.logger.Warn().
+			Str("requested_site", siteName).
+			Str("user_site", actualSiteName).
+			Msg("User requesting different site than their own - using user's site for security")
 	}
 
 	// Get machines with pagination support
@@ -137,7 +167,7 @@ func (c *deliveryControllerClient) GetMachinesDetailedBySite(ctx context.Context
 			endpoint = fmt.Sprintf("%s?ContinuationToken=%s", endpoint, url.QueryEscape(continuationToken))
 		}
 
-		body, err := c.makeRequest(ctx, "GET", endpoint, nil)
+		body, err := c.makeRequestWithSiteID(ctx, "GET", endpoint, nil, siteID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get machines: %w", err)
 		}
@@ -147,11 +177,9 @@ func (c *deliveryControllerClient) GetMachinesDetailedBySite(ctx context.Context
 			return nil, fmt.Errorf("failed to parse machines response: %w", err)
 		}
 
-		// Filter machines by site
+		// Add all machines (server-side filtering via Citrix-InstanceId header should handle site filtering)
 		for _, machine := range response.Items {
-			if machine.SiteId == siteID {
-				allMachines = append(allMachines, machine)
-			}
+			allMachines = append(allMachines, machine)
 		}
 
 		if response.ContinuationToken == "" {
@@ -174,22 +202,31 @@ func (c *deliveryControllerClient) GetDeliveryGroupsBySite(ctx context.Context, 
 		Str("site", siteName).
 		Msg("Retrieving delivery groups for site")
 
-	// Get site ID first
-	sites, err := c.GetSites(ctx)
+	// Get current user info to get their site ID
+	meResp, err := c.GetMe(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get sites: %w", err)
+		return nil, fmt.Errorf("failed to get user info: %w", err)
 	}
 
-	var siteID string
-	for _, site := range sites {
-		if site.Name == siteName {
-			siteID = site.Id
-			break
-		}
+	// Extract site ID from customers/sites structure
+	if len(meResp.Customers) == 0 || len(meResp.Customers[0].Sites) == 0 {
+		return nil, fmt.Errorf("user has no accessible sites")
 	}
+
+	// Use the first site (usually there's only one)
+	siteID := meResp.Customers[0].Sites[0].Id
+	actualSiteName := meResp.Customers[0].Sites[0].Name
 
 	if siteID == "" {
-		return nil, fmt.Errorf("site %s not found", siteName)
+		return nil, fmt.Errorf("user site ID not available")
+	}
+
+	// Check if requested site matches user's site
+	if siteName != "" && actualSiteName != siteName {
+		c.logger.Warn().
+			Str("requested_site", siteName).
+			Str("user_site", actualSiteName).
+			Msg("User requesting different site than their own - using user's site for security")
 	}
 
 	// Get delivery groups with pagination
@@ -202,7 +239,7 @@ func (c *deliveryControllerClient) GetDeliveryGroupsBySite(ctx context.Context, 
 			endpoint = fmt.Sprintf("%s?ContinuationToken=%s", endpoint, url.QueryEscape(continuationToken))
 		}
 
-		body, err := c.makeRequest(ctx, "GET", endpoint, nil)
+		body, err := c.makeRequestWithSiteID(ctx, "GET", endpoint, nil, siteID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get delivery groups: %w", err)
 		}
@@ -212,11 +249,9 @@ func (c *deliveryControllerClient) GetDeliveryGroupsBySite(ctx context.Context, 
 			return nil, fmt.Errorf("failed to parse delivery groups response: %w", err)
 		}
 
-		// Filter by site
+		// Add all groups (server-side filtering via Citrix-InstanceId header should handle site filtering)
 		for _, group := range response.Items {
-			if group.SiteId == siteID {
-				allGroups = append(allGroups, group)
-			}
+			allGroups = append(allGroups, group)
 		}
 
 		if response.ContinuationToken == "" {
@@ -301,42 +336,62 @@ func (c *deliveryControllerClient) GetControllersBySite(ctx context.Context, sit
 		Str("site", siteName).
 		Msg("Retrieving controllers for site")
 
-	// Get site ID
-	sites, err := c.GetSites(ctx)
+	// Get current user info to get their site ID
+	meResp, err := c.GetMe(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get sites: %w", err)
+		return nil, fmt.Errorf("failed to get user info: %w", err)
 	}
 
-	var siteID string
-	for _, site := range sites {
-		if site.Name == siteName {
-			siteID = site.Id
-			break
-		}
+	// Extract site ID from customers/sites structure
+	if len(meResp.Customers) == 0 || len(meResp.Customers[0].Sites) == 0 {
+		return nil, fmt.Errorf("user has no accessible sites")
 	}
+
+	// Use the first site (usually there's only one)
+	siteID := meResp.Customers[0].Sites[0].Id
+	actualSiteName := meResp.Customers[0].Sites[0].Name
 
 	if siteID == "" {
-		return nil, fmt.Errorf("site %s not found", siteName)
+		return nil, fmt.Errorf("user site ID not available")
 	}
 
-	// Get controllers
-	endpoint := "/cvad/manage/Controllers"
-	body, err := c.makeRequest(ctx, "GET", endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get controllers: %w", err)
+	// Check if requested site matches user's site
+	if siteName != "" && actualSiteName != siteName {
+		c.logger.Warn().
+			Str("requested_site", siteName).
+			Str("user_site", actualSiteName).
+			Msg("User requesting different site than their own - using user's site for security")
 	}
 
-	var response DDCControllersResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse controllers response: %w", err)
-	}
-
-	// Filter controllers by site
+	// Get controllers with pagination support
 	var siteControllers []DDCController
-	for _, controller := range response.Items {
-		if controller.SiteId == siteID {
+	continuationToken := ""
+
+	for {
+		endpoint := "/cvad/manage/Controllers"
+		if continuationToken != "" {
+			endpoint = fmt.Sprintf("%s?ContinuationToken=%s", endpoint, url.QueryEscape(continuationToken))
+		}
+
+		body, err := c.makeRequestWithSiteID(ctx, "GET", endpoint, nil, siteID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get controllers: %w", err)
+		}
+
+		var response DDCControllersResponse
+		if err := json.Unmarshal(body, &response); err != nil {
+			return nil, fmt.Errorf("failed to parse controllers response: %w", err)
+		}
+
+		// Add all controllers (server-side filtering via Citrix-InstanceId header should handle site filtering)
+		for _, controller := range response.Items {
 			siteControllers = append(siteControllers, controller)
 		}
+
+		if response.ContinuationToken == "" {
+			break
+		}
+		continuationToken = response.ContinuationToken
 	}
 
 	c.logger.Info().
@@ -412,22 +467,35 @@ func (c *deliveryControllerClient) GetSiteDetails(ctx context.Context, siteName 
 		Str("site", siteName).
 		Msg("Retrieving site details")
 
-	// Get basic site info
-	sites, err := c.GetSites(ctx)
+	// Get current user info to get their site info
+	meResp, err := c.GetMe(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get sites: %w", err)
+		return nil, fmt.Errorf("failed to get user info: %w", err)
 	}
 
-	var siteInfo *Site
-	for _, site := range sites {
-		if site.Name == siteName {
-			siteInfo = &site
-			break
-		}
+	// Extract site info from customers/sites structure
+	if len(meResp.Customers) == 0 || len(meResp.Customers[0].Sites) == 0 {
+		return nil, fmt.Errorf("user has no accessible sites")
 	}
 
-	if siteInfo == nil {
-		return nil, fmt.Errorf("site %s not found", siteName)
+	// Use the first site (usually there's only one)
+	actualSiteName := meResp.Customers[0].Sites[0].Name
+	siteInfo := &Site{
+		Id:   meResp.Customers[0].Sites[0].Id,
+		Name: meResp.Customers[0].Sites[0].Name,
+	}
+
+	if siteInfo.Id == "" {
+		return nil, fmt.Errorf("user site ID not available")
+	}
+
+	// Check if requested site matches user's site
+	if siteName != "" && actualSiteName != siteName {
+		c.logger.Warn().
+			Str("requested_site", siteName).
+			Str("user_site", actualSiteName).
+			Msg("User requesting different site than their own - using user's site for security")
+		siteName = actualSiteName // Use user's site for security
 	}
 
 	// Get detailed information
@@ -445,13 +513,13 @@ func (c *deliveryControllerClient) GetSiteDetails(ctx context.Context, siteName 
 
 	controllers, err := c.GetControllersBySite(ctx, siteName)
 	if err != nil {
-		c.logger.Warn().Err(err).Msg("Failed to get controllers for site details")
+		c.logger.Debug().Err(err).Msg("Controllers endpoint not available for site details - using empty count")
 		controllers = []DDCController{}
 	}
 
 	sessions, err := c.GetSessionsBySite(ctx, siteName)
 	if err != nil {
-		c.logger.Warn().Err(err).Msg("Failed to get sessions for site details")
+		c.logger.Debug().Err(err).Msg("Sessions endpoint not available for site details - using empty count")
 		sessions = []DDCSession{}
 	}
 
@@ -491,6 +559,41 @@ func (c *deliveryControllerClient) GetSiteDetails(ctx context.Context, siteName 
 	return details, nil
 }
 
+// GetMe retrieves current user information from Delivery Controller
+func (c *deliveryControllerClient) GetMe(ctx context.Context) (*DDCMeResponse, error) {
+	c.logger.Debug().Msg("Retrieving current user information from Delivery Controller")
+
+	// CVAD REST API endpoint for current user (lowercase 'me')
+	endpoint := "/cvad/manage/me"
+
+	body, err := c.makeRequest(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current user info: %w", err)
+	}
+
+	// Parse me response
+	var meResp DDCMeResponse
+	if err := json.Unmarshal(body, &meResp); err != nil {
+		return nil, fmt.Errorf("failed to parse me response: %w", err)
+	}
+
+	// Extract first site info for logging
+	var siteId, siteName string
+	if len(meResp.Customers) > 0 && len(meResp.Customers[0].Sites) > 0 {
+		siteId = meResp.Customers[0].Sites[0].Id
+		siteName = meResp.Customers[0].Sites[0].Name
+	}
+
+	c.logger.Info().
+		Str("user_id", meResp.UserId).
+		Str("display_name", meResp.DisplayName).
+		Str("site_id", siteId).
+		Str("site_name", siteName).
+		Msg("Retrieved current user information")
+
+	return &meResp, nil
+}
+
 // TestConnectivity tests the connection to the Delivery Controller
 func (c *deliveryControllerClient) TestConnectivity(ctx context.Context) error {
 	c.logger.Debug().Msg("Testing Delivery Controller connectivity")
@@ -500,9 +603,8 @@ func (c *deliveryControllerClient) TestConnectivity(ctx context.Context) error {
 		return fmt.Errorf("connectivity test failed: %w", err)
 	}
 
-	// Try a simple API call
-	endpoint := "/cvad/manage/Sites"
-	_, err := c.makeRequest(ctx, "GET", endpoint, nil)
+	// Try the /me endpoint as connectivity test
+	_, err := c.GetMe(ctx)
 	if err != nil {
 		return fmt.Errorf("API test failed: %w", err)
 	}
