@@ -22,6 +22,9 @@ type CitrixClient interface {
 
 	// GetMachines retrieves machines data from the OData API
 	GetMachines(ctx context.Context, sinceTime time.Time) ([]Machine, error)
+	
+	// GetMachinesFiltered retrieves machines filtered by DNS names from CVAD inventory
+	GetMachinesFiltered(ctx context.Context, sinceTime time.Time, dnsNames []string) ([]Machine, error)
 
 	// GetDesktopGroups retrieves desktop groups (delivery groups) data from the OData API
 	GetDesktopGroups(ctx context.Context) ([]DesktopGroup, error)
@@ -40,6 +43,9 @@ type CitrixClient interface {
 
 	// GetConnections retrieves connection details with logon breakdown metrics
 	GetConnections(ctx context.Context, sinceTime time.Time) ([]Connection, error)
+	
+	// SetValidMachineDNS sets the list of valid machine DNS names for client-side filtering
+	SetValidMachineDNS(dnsNames []string)
 }
 
 // CitrixClientConfig holds the configuration for the Citrix client
@@ -62,9 +68,10 @@ type Session struct {
 	UserName               string     `json:"UserName"`
 	DesktopGroupId         string     `json:"DesktopGroupId"`
 	DesktopGroupName       string     `json:"DesktopGroupName"`
-	MachineName            string     `json:"MachineName"`
-	SessionState           int        `json:"SessionState"`  // 2=disconnected, 3=connected, 5=active
-	LogOnDuration          int        `json:"LogOnDuration"` // milliseconds
+	MachineName            string     `json:"MachineName"`            // Legacy field, often empty
+	MachineId              string     `json:"MachineId"`              // Machine GUID for linking
+	SessionState           int        `json:"SessionState"`           // 2=disconnected, 3=connected, 5=active
+	LogOnDuration          int        `json:"LogOnDuration"`          // milliseconds
 	StartTime              time.Time  `json:"StartTime"`
 	EndTime                *time.Time `json:"EndTime,omitempty"`
 	SessionStateChangeTime time.Time  `json:"SessionStateChangeTime"`
@@ -75,6 +82,7 @@ type Session struct {
 	ClientIPAddress        string     `json:"ClientIPAddress"`
 	SessionType            int        `json:"SessionType"`
 	Hidden                 bool       `json:"Hidden"` // Hidden sessions are zombie sessions
+	Machine                *Machine   `json:"Machine,omitempty"`      // Expanded machine data
 }
 
 // Machine represents a Citrix machine from the OData API

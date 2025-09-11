@@ -11,15 +11,17 @@ import (
 
 // SiteInventory holds cached information about a Citrix site
 type SiteInventory struct {
-	SiteID         string
-	SiteName       string
-	Machines       map[string]DDCMachine       // MachineDNS → Machine
-	MachinesByID   map[string]DDCMachine       // MachineID → Machine
-	DeliveryGroups map[string]DDCDeliveryGroup // GroupID → Group
-	Controllers    map[string]bool             // ControllerDNS → exists
-	Applications   map[string]DDCApplication   // AppID → Application
-	LastUpdate     time.Time
-	UpdateDuration time.Duration
+	SiteID             string
+	SiteName           string
+	Machines           map[string]DDCMachine       // MachineDNS → Machine (Registered only)
+	AllMachines        map[string]DDCMachine       // MachineDNS → Machine (ALL states)
+	MachinesByID       map[string]DDCMachine       // MachineID → Machine
+	MachinesByState    map[string][]DDCMachine     // RegistrationState → []Machine  
+	DeliveryGroups     map[string]DDCDeliveryGroup // GroupID → Group
+	Controllers        map[string]bool             // ControllerDNS → exists
+	Applications       map[string]DDCApplication   // AppID → Application
+	LastUpdate         time.Time
+	UpdateDuration     time.Duration
 }
 
 // InventoryService manages the site inventory cache
@@ -54,13 +56,15 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 
 	// Create new inventory
 	newInventory := &SiteInventory{
-		SiteName:       siteFilter,
-		Machines:       make(map[string]DDCMachine),
-		MachinesByID:   make(map[string]DDCMachine),
-		DeliveryGroups: make(map[string]DDCDeliveryGroup),
-		Controllers:    make(map[string]bool),
-		Applications:   make(map[string]DDCApplication),
-		LastUpdate:     startTime,
+		SiteName:        siteFilter,
+		Machines:        make(map[string]DDCMachine),
+		AllMachines:     make(map[string]DDCMachine),
+		MachinesByID:    make(map[string]DDCMachine),
+		MachinesByState: make(map[string][]DDCMachine),
+		DeliveryGroups:  make(map[string]DDCDeliveryGroup),
+		Controllers:     make(map[string]bool),
+		Applications:    make(map[string]DDCApplication),
+		LastUpdate:      startTime,
 	}
 
 	// Get site details first
@@ -79,14 +83,45 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 			Str("site", siteFilter).
 			Msg("Failed to get machines for inventory")
 	} else {
+		var validMachineCount int
+		var excludedMachineCount int
+		var totalMachineCount int
+		
 		for _, machine := range machines {
-			// Index by DNS name
+			totalMachineCount++
+			
+			// Index each machine only once with priority: DNSName > MachineName > Name
+			var key string
 			if machine.DNSName != "" {
-				newInventory.Machines[machine.DNSName] = machine
+				key = machine.DNSName
 			} else if machine.MachineName != "" {
-				newInventory.Machines[machine.MachineName] = machine
+				key = machine.MachineName
 			} else if machine.Name != "" {
-				newInventory.Machines[machine.Name] = machine
+				key = machine.Name
+			}
+			
+			// Index ALL machines regardless of state
+			if key != "" {
+				newInventory.AllMachines[key] = machine
+				newInventory.MachinesByID[machine.Id] = machine
+				
+				// Group by registration state
+				state := machine.RegistrationState
+				newInventory.MachinesByState[state] = append(newInventory.MachinesByState[state], machine)
+				
+				// Only include registered machines in the main collection (for backward compatibility)
+				if machine.RegistrationState == "Registered" {
+					validMachineCount++
+					newInventory.Machines[key] = machine
+				} else {
+					excludedMachineCount++
+					s.logger.Debug().
+						Str("machine_dns", machine.DNSName).
+						Str("machine_name", machine.MachineName).
+						Str("registration_state", machine.RegistrationState).
+						Str("site", siteFilter).
+						Msg("📊 Machine stored in inventory but excluded from active filtering")
+				}
 			}
 
 			// Also index by ID for session filtering
@@ -94,11 +129,21 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 				newInventory.MachinesByID[machine.Id] = machine
 			}
 		}
-
-		s.logger.Debug().
-			Int("machine_count", len(machines)).
+		
+		s.logger.Info().
+			Int("total_cvad_machines", len(machines)).
+			Int("all_machines_stored", len(newInventory.AllMachines)).
+			Int("registered_machines", validMachineCount).
+			Int("excluded_machines", excludedMachineCount).
 			Str("site", siteFilter).
-			Msg("Loaded machines into inventory")
+			Msg("🎯 Processed CVAD machines by registration state")
+
+		s.logger.Info().
+			Int("registered_indexed", len(newInventory.Machines)).
+			Int("all_machines_indexed", len(newInventory.AllMachines)).
+			Int("states_available", len(newInventory.MachinesByState)).
+			Str("site", siteFilter).
+			Msg("📦 Loaded complete machine inventory")
 	}
 
 	// Load delivery groups
@@ -122,10 +167,10 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 	// Load controllers
 	controllers, err := s.ddcClient.GetControllersBySite(ctx, siteFilter)
 	if err != nil {
-		s.logger.Warn().
+		s.logger.Debug().
 			Err(err).
 			Str("site", siteFilter).
-			Msg("Failed to get controllers for inventory")
+			Msg("Controllers endpoint not available - skipping (inventory will still function)")
 	} else {
 		for _, ctrl := range controllers {
 			if ctrl.DNSName != "" {
@@ -142,10 +187,10 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 	// Load applications
 	applications, err := s.ddcClient.GetApplicationsBySite(ctx, siteFilter)
 	if err != nil {
-		s.logger.Warn().
+		s.logger.Debug().
 			Err(err).
 			Str("site", siteFilter).
-			Msg("Failed to get applications for inventory")
+			Msg("Applications endpoint not available - skipping (inventory will still function)")
 	} else {
 		for _, app := range applications {
 			newInventory.Applications[app.Id] = app
@@ -295,6 +340,7 @@ func (s *InventoryService) GetControllersForSite() []string {
 }
 
 // GetMachinesForSite returns all machine DNS names for the cached site
+// GetMachinesForSite returns DNS names of REGISTERED machines in the site for filtering
 func (s *InventoryService) GetMachinesForSite() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -307,7 +353,101 @@ func (s *InventoryService) GetMachinesForSite() []string {
 	for dns := range s.cache.Machines {
 		machines = append(machines, dns)
 	}
+	
+	s.logger.Info().
+		Int("cached_machines", len(s.cache.Machines)).
+		Int("returned_dns_names", len(machines)).
+		Msg("🎯 Returned REGISTERED machine DNS names for operational filtering")
+	
 	return machines
+}
+
+// GetAllMachinesForSite returns DNS names of ALL machines in the site (including off/unregistered)
+func (s *InventoryService) GetAllMachinesForSite() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.cache == nil {
+		return []string{}
+	}
+
+	machines := make([]string, 0, len(s.cache.AllMachines))
+	for dns := range s.cache.AllMachines {
+		machines = append(machines, dns)
+	}
+	
+	s.logger.Info().
+		Int("all_cached_machines", len(s.cache.AllMachines)).
+		Int("returned_dns_names", len(machines)).
+		Msg("🏭 Returned ALL machine DNS names for inventory filtering")
+	
+	return machines
+}
+
+// GetMachinesByRegistrationState returns DNS names of machines by their registration state
+func (s *InventoryService) GetMachinesByRegistrationState(state string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.cache == nil {
+		return []string{}
+	}
+
+	machines := make([]string, 0)
+	if stateGroup, exists := s.cache.MachinesByState[state]; exists {
+		for _, machine := range stateGroup {
+			if machine.DNSName != "" {
+				machines = append(machines, machine.DNSName)
+			} else if machine.MachineName != "" {
+				machines = append(machines, machine.MachineName)
+			} else if machine.Name != "" {
+				machines = append(machines, machine.Name)
+			}
+		}
+	}
+	
+	s.logger.Debug().
+		Str("registration_state", state).
+		Int("machines_found", len(machines)).
+		Msg("🔍 Returned machines for specific registration state")
+	
+	return machines
+}
+
+// GetInventoryStats returns detailed statistics about the machine inventory
+func (s *InventoryService) GetMachineInventoryStats() map[string]int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	stats := map[string]int{
+		"registered_machines":   0,
+		"all_machines":         0,
+		"unregistered_machines": 0,
+		"agent_error_machines":  0,
+		"unknown_state_machines": 0,
+	}
+
+	if s.cache == nil {
+		return stats
+	}
+
+	stats["registered_machines"] = len(s.cache.Machines)
+	stats["all_machines"] = len(s.cache.AllMachines)
+	
+	for state, machinesList := range s.cache.MachinesByState {
+		switch state {
+		case "Unregistered":
+			stats["unregistered_machines"] = len(machinesList)
+		case "AgentError":
+			stats["agent_error_machines"] = len(machinesList)
+		case "Registered":
+			// Already counted above
+		default:
+			stats["unknown_state_machines"] += len(machinesList)
+		}
+	}
+
+	return stats
 }
 
 // GetInventoryStats returns statistics about the cached inventory

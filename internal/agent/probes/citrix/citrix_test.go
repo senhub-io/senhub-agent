@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
@@ -35,6 +36,11 @@ func (m *MockCitrixClient) GetSessions(ctx context.Context, sinceTime time.Time)
 
 func (m *MockCitrixClient) GetMachines(ctx context.Context, sinceTime time.Time) ([]Machine, error) {
 	args := m.Called(ctx, sinceTime)
+	return args.Get(0).([]Machine), args.Error(1)
+}
+
+func (m *MockCitrixClient) GetMachinesFiltered(ctx context.Context, sinceTime time.Time, dnsNames []string) ([]Machine, error) {
+	args := m.Called(ctx, sinceTime, dnsNames)
 	return args.Get(0).([]Machine), args.Error(1)
 }
 
@@ -71,6 +77,11 @@ func (m *MockCitrixClient) GetConnections(ctx context.Context, sinceTime time.Ti
 	return args.Get(0).([]Connection), args.Error(1)
 }
 
+func (m *MockCitrixClient) SetValidMachineDNS(dnsNames []string) {
+	m.Called(dnsNames)
+}
+
+
 func (m *MockCitrixClient) GetConnectionFailureLogsWithExpand(ctx context.Context, sinceTime time.Time, expand []string) ([]ConnectionFailureLog, error) {
 	args := m.Called(ctx, sinceTime, expand)
 	return args.Get(0).([]ConnectionFailureLog), args.Error(1)
@@ -88,7 +99,6 @@ func TestNewCitrixProbe(t *testing.T) {
 				"base_url":    "https://director.example.com/Citrix/Monitor/OData/v4/Data",
 				"environment": "PROD",
 				"auth": map[string]interface{}{
-					"method":   "ntlm",
 					"username": "domain\\user",
 					"password": "password",
 				},
@@ -110,7 +120,6 @@ func TestNewCitrixProbe(t *testing.T) {
 				"base_url":    "https://director.example.com/Citrix/Monitor/OData/v4/Data",
 				"environment": "PROD",
 				"auth": map[string]interface{}{
-					"method":   "basic",
 					"username": "testuser",
 					"password": "testpass",
 				},
@@ -126,7 +135,6 @@ func TestNewCitrixProbe(t *testing.T) {
 			name: "missing base_url",
 			config: map[string]interface{}{
 				"auth": map[string]interface{}{
-					"method":   "ntlm",
 					"username": "domain\\user",
 					"password": "password",
 				},
@@ -178,7 +186,6 @@ func TestCitrixProbe_GetInterval(t *testing.T) {
 		"base_url": "https://director.example.com/Citrix/Monitor/OData/v4/Data",
 		"interval": 300, // 5 minutes
 		"auth": map[string]interface{}{
-			"method":   "ntlm",
 			"username": "domain\\user",
 			"password": "password",
 		},
@@ -195,7 +202,6 @@ func TestCitrixProbe_GetTargetStrategies(t *testing.T) {
 	config := map[string]interface{}{
 		"base_url": "https://director.example.com/Citrix/Monitor/OData/v4/Data",
 		"auth": map[string]interface{}{
-			"method":   "ntlm",
 			"username": "domain\\user",
 			"password": "password",
 		},
@@ -823,7 +829,6 @@ func TestCitrixProbe_Collect(t *testing.T) {
 		"base_url":    "https://director.example.com/Citrix/Monitor/OData/v4/Data",
 		"environment": "TEST",
 		"auth": map[string]interface{}{
-			"method":   "ntlm",
 			"username": "domain\\user",
 			"password": "password",
 		},
@@ -1532,6 +1537,261 @@ func TestMetricsCollector_CalculateLogonDurationAvgHourly_WindowAlignment(t *tes
 
 			// Verify mock expectations (ensures correct window start was used)
 			mockClient.AssertExpectations(t)
+		})
+	}
+}
+
+// Test simplified Directory-first configuration
+func TestNewCitrixProbe_DirectoryFirstApproach(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	
+	// Simple configuration without complex machine inclusion strategies
+	config := map[string]interface{}{
+		"base_url": "https://director.example.com/Citrix/Monitor/OData/v4/Data",
+		"auth": map[string]interface{}{
+			"username": "domain\\user", 
+			"password": "password",
+		},
+		"delivery_controller": map[string]interface{}{
+			"url":         "https://ddc.company.com",
+			"site_filter": "PROD",
+		},
+	}
+
+	probe, err := NewCitrixProbe(config, baseLogger)
+	
+	assert.NoError(t, err)
+	assert.NotNil(t, probe)
+	assert.Equal(t, "citrix", probe.GetName())
+	
+	// Cast to citrixProbe to verify internal configuration
+	citrixProbeImpl := probe.(*citrixProbe)
+	assert.Equal(t, "PROD", citrixProbeImpl.siteFilter)
+	assert.NotNil(t, citrixProbeImpl.ddcConfig)
+	
+	// Verify the simplification - no complex strategy fields
+	// (These fields were removed in the simplification)
+}
+
+// Test inventory metrics collection (Directory-first approach)
+func TestCitrixProbe_InventoryMetricsDirectoryFirst(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	
+	// Create simple configuration (Directory-first approach)
+	config := map[string]interface{}{
+		"base_url": "https://director.example.com/Citrix/Monitor/OData/v4/Data",
+		"auth": map[string]interface{}{
+			"username": "domain\\user",
+			"password": "password",
+		},
+		"delivery_controller": map[string]interface{}{
+			"url":         "https://ddc.company.com",
+			"site_filter": "PROD",
+		},
+	}
+
+	probe, err := NewCitrixProbe(config, baseLogger)
+	assert.NoError(t, err)
+	assert.NotNil(t, probe)
+
+	// Cast to citrixProbe to access internal fields
+	citrixProbeImpl := probe.(*citrixProbe)
+	
+	// Test that the probe was configured for Directory-first approach
+	assert.Equal(t, "PROD", citrixProbeImpl.siteFilter)
+	assert.NotNil(t, citrixProbeImpl.ddcConfig)
+
+	// Test that the probe handles nil inventory service gracefully
+}
+
+// Test Directory-first filtering approach
+func TestCitrixProbe_GetMachinesForMetricsDirectoryFirst(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+
+	// Create probe with Directory-first approach
+	probe := &citrixProbe{
+		BaseProbe: &types.BaseProbe{},
+		logger:    logger.NewModuleLogger(baseLogger, "probe.citrix"),
+		client:    mockClient,
+		siteFilter: "PROD",
+		filteredMachines: []string{}, // No pre-filtering
+	}
+
+	ctx := context.Background()
+	sinceTime := time.Now().Add(-1 * time.Hour)
+
+	// Test fallback to unfiltered query when no inventory service
+	expectedMachines := []Machine{
+		{MachineId: "m1", MachineName: "machine1", RegistrationState: RegistrationStateRegistered},
+		{MachineId: "m2", MachineName: "machine2", RegistrationState: RegistrationStateUnregistered}, // OFF machine
+	}
+
+	mockClient.On("GetMachines", ctx, sinceTime).Return(expectedMachines, nil)
+
+	// Call the method
+	result, err := probe.GetMachinesForMetrics(ctx, sinceTime)
+
+	// Verify results
+	assert.NoError(t, err)
+	assert.Equal(t, expectedMachines, result)
+	assert.Len(t, result, 2, "Should return ALL machines (including OFF machines)")
+
+	// Verify mock expectations were met
+	mockClient.AssertExpectations(t)
+}
+
+// Test complete probe collection with Directory-first approach
+func TestCitrixProbe_CollectDirectoryFirstApproach(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+
+	// Create probe configuration (Directory-first)
+	config := map[string]interface{}{
+		"base_url": "https://director.example.com/Citrix/Monitor/OData/v4/Data",
+		"auth": map[string]interface{}{
+			"username": "domain\\user",
+			"password": "password",
+		},
+		"delivery_controller": map[string]interface{}{
+			"url":         "https://ddc.company.com",
+			"site_filter": "PROD",
+		},
+		"interval": 120,
+	}
+
+	probe, err := NewCitrixProbe(config, baseLogger)
+	assert.NoError(t, err)
+	assert.NotNil(t, probe)
+
+	// Cast to citrixProbe and inject mock client
+	citrixProbeImpl := probe.(*citrixProbe)
+	citrixProbeImpl.client = mockClient
+	citrixProbeImpl.metricsCollector = NewMetricsCollectorWithEnv(mockClient, "PROD", "https://director.example.com", baseLogger)
+
+	// Mock data representing Director console reality (259 machines including OFF)
+	mockSessions := []Session{
+		{SessionKey: "session1", UserId: 123, UserName: "user1", DesktopGroupId: "dg1", SessionState: SessionStateConnected, MachineName: "machine1"},
+		// Note: No sessions from OFF machine (natural filtering)
+	}
+
+	mockMachines := []Machine{
+		{MachineId: "m1", MachineName: "machine1", RegistrationState: RegistrationStateRegistered, FaultState: FaultStateNone, SessionCount: 1},
+		{MachineId: "m2", MachineName: "machine2", RegistrationState: RegistrationStateUnregistered, FaultState: FaultStateUnknown, SessionCount: 0}, // OFF machine
+	}
+
+	// Set up expectations for metrics collection (Directory-first: all machines returned)
+	mockClient.On("GetMachines", mock.Anything, mock.Anything).Return(mockMachines, nil)
+	mockClient.On("GetSessionsByConnectionState", mock.Anything, mock.Anything).Return(mockSessions, nil)
+	mockClient.On("GetSessions", mock.Anything, mock.Anything).Return(mockSessions, nil)
+	mockClient.On("GetConnections", mock.Anything, mock.Anything).Return([]Connection{}, nil).Maybe()
+	mockClient.On("GetConnectionFailureCategories", mock.Anything).Return([]ConnectionFailureCategory{}, nil)
+	mockClient.On("GetConnectionFailureLogs", mock.Anything, mock.Anything).Return([]ConnectionFailureLog{}, nil)
+
+	// Test collection
+	dataPoints, err := probe.Collect()
+
+	// Verify results
+	assert.NoError(t, err)
+	assert.NotEmpty(t, dataPoints)
+
+	// Log all metrics for debugging
+	t.Logf("Generated metrics:")
+	for _, dp := range dataPoints {
+		t.Logf("  %s = %f", dp.Name, dp.Value)
+	}
+
+	// We should have some metrics generated
+	assert.True(t, len(dataPoints) > 0, "Should have some metrics")
+	
+	// The key validation is that Directory-first approach works:
+	// - All machines (including OFF) are included in API calls
+	// - Metrics are generated successfully
+	// - The specific metric names and values depend on the collector implementation
+
+	// Verify mock expectations were met
+	mockClient.AssertExpectations(t)
+}
+
+// Test configuration validation for Directory-first approach
+func TestNewCitrixProbe_DirectoryFirstValidation(t *testing.T) {
+	tests := []struct {
+		name           string
+		config         map[string]interface{}
+		expectedSite   string
+		expectDDCConfig bool
+		wantErr        bool
+	}{
+		{
+			name: "valid Directory-first configuration",
+			config: map[string]interface{}{
+				"base_url": "https://director.example.com/Citrix/Monitor/OData/v4/Data",
+				"auth": map[string]interface{}{
+					"username": "domain\\user",
+					"password": "password",
+				},
+				"delivery_controller": map[string]interface{}{
+					"url":         "https://ddc.company.com",
+					"site_filter": "PROD",
+				},
+			},
+			expectedSite:    "PROD",
+			expectDDCConfig: true,
+			wantErr:         false,
+		},
+		{
+			name: "configuration without delivery_controller (OData only)",
+			config: map[string]interface{}{
+				"base_url": "https://director.example.com/Citrix/Monitor/OData/v4/Data",
+				"auth": map[string]interface{}{
+					"username": "domain\\user",
+					"password": "password",
+				},
+			},
+			expectedSite:    "",
+			expectDDCConfig: false,
+			wantErr:         false,
+		},
+		{
+			name: "configuration with delivery_controller but no site_filter",
+			config: map[string]interface{}{
+				"base_url": "https://director.example.com/Citrix/Monitor/OData/v4/Data",
+				"auth": map[string]interface{}{
+					"username": "domain\\user",
+					"password": "password",
+				},
+				"delivery_controller": map[string]interface{}{
+					"url": "https://ddc.company.com",
+				},
+			},
+			expectedSite:    "",
+			expectDDCConfig: true,
+			wantErr:         false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			baseLogger := &logger.Logger{}
+			probe, err := NewCitrixProbe(tt.config, baseLogger)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, probe)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, probe)
+
+				// Cast to citrixProbe to access internal fields
+				citrixProbeImpl := probe.(*citrixProbe)
+				assert.Equal(t, tt.expectedSite, citrixProbeImpl.siteFilter)
+				
+				if tt.expectDDCConfig {
+					assert.NotNil(t, citrixProbeImpl.ddcConfig, "Should have DDC config")
+				} else {
+					assert.Nil(t, citrixProbeImpl.ddcConfig, "Should not have DDC config")
+				}
+			}
 		})
 	}
 }

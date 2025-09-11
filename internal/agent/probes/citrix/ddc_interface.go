@@ -7,8 +7,8 @@ import (
 
 // DeliveryControllerClient provides access to Citrix Delivery Controller APIs
 type DeliveryControllerClient interface {
-	// GetSites retrieves all sites from the Delivery Controller
-	GetSites(ctx context.Context) ([]Site, error)
+	// GetMe retrieves current user information
+	GetMe(ctx context.Context) (*DDCMeResponse, error)
 
 	// GetMachinesBySite retrieves all machines for a specific site (returns DNS names)
 	GetMachinesBySite(ctx context.Context, siteName string) ([]string, error)

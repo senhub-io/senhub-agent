@@ -72,6 +72,11 @@ func NewMetricsCollectorWithEnv(client CitrixClient, environment, citrixURL stri
 
 // CollectMetrics collects all Citrix metrics (simplified - no frequency logic)
 func (mc *MetricsCollector) CollectMetrics(ctx context.Context, timestamp time.Time) ([]datapoint.DataPoint, error) {
+	return mc.CollectMetricsWithInventory(ctx, timestamp, nil)
+}
+
+// CollectMetricsWithInventory collects all Citrix metrics with inventory service
+func (mc *MetricsCollector) CollectMetricsWithInventory(ctx context.Context, timestamp time.Time, inventoryService *InventoryService) ([]datapoint.DataPoint, error) {
 	mc.logger.Debug().Msg("Starting complete Citrix metrics collection")
 
 	var allMetrics []datapoint.DataPoint
@@ -79,7 +84,7 @@ func (mc *MetricsCollector) CollectMetrics(ctx context.Context, timestamp time.T
 	// Collect ALL metrics every time - let the probe interval control frequency
 
 	// 1. Infrastructure metrics (instantaneous)
-	if infra, err := mc.CollectInfrastructureMetrics(ctx, timestamp); err != nil {
+	if infra, err := mc.CollectInfrastructureMetrics(ctx, timestamp, inventoryService); err != nil {
 		mc.logger.Warn().Err(err).Msg("Failed to collect infrastructure metrics")
 	} else {
 		allMetrics = append(allMetrics, infra...)
