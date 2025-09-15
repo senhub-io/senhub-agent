@@ -11,17 +11,16 @@ import (
 
 // SiteInventory holds cached information about a Citrix site
 type SiteInventory struct {
-	SiteID             string
-	SiteName           string
-	Machines           map[string]DDCMachine       // MachineDNS → Machine (Registered only)
-	AllMachines        map[string]DDCMachine       // MachineDNS → Machine (ALL states)
-	MachinesByID       map[string]DDCMachine       // MachineID → Machine
-	MachinesByState    map[string][]DDCMachine     // RegistrationState → []Machine  
-	DeliveryGroups     map[string]DDCDeliveryGroup // GroupID → Group
-	Controllers        map[string]bool             // ControllerDNS → exists
-	Applications       map[string]DDCApplication   // AppID → Application
-	LastUpdate         time.Time
-	UpdateDuration     time.Duration
+	SiteID          string
+	SiteName        string
+	Machines        map[string]DDCMachine       // MachineDNS → Machine (Registered only)
+	AllMachines     map[string]DDCMachine       // MachineDNS → Machine (ALL states)
+	MachinesByID    map[string]DDCMachine       // MachineID → Machine
+	MachinesByState map[string][]DDCMachine     // RegistrationState → []Machine
+	DeliveryGroups  map[string]DDCDeliveryGroup // GroupID → Group
+	Controllers     map[string]bool             // ControllerDNS → exists
+	LastUpdate      time.Time
+	UpdateDuration  time.Duration
 }
 
 // InventoryService manages the site inventory cache
@@ -48,7 +47,7 @@ func NewInventoryService(ddcClient DeliveryControllerClient, cacheTTL time.Durat
 
 // RefreshInventory loads or refreshes the inventory for a specific site
 func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter string) error {
-	s.logger.Info().
+	s.logger.Debug().
 		Str("site", siteFilter).
 		Msg("Refreshing site inventory")
 
@@ -63,7 +62,6 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 		MachinesByState: make(map[string][]DDCMachine),
 		DeliveryGroups:  make(map[string]DDCDeliveryGroup),
 		Controllers:     make(map[string]bool),
-		Applications:    make(map[string]DDCApplication),
 		LastUpdate:      startTime,
 	}
 
@@ -86,10 +84,10 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 		var validMachineCount int
 		var excludedMachineCount int
 		var totalMachineCount int
-		
+
 		for _, machine := range machines {
 			totalMachineCount++
-			
+
 			// Index each machine only once with priority: DNSName > MachineName > Name
 			var key string
 			if machine.DNSName != "" {
@@ -99,16 +97,16 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 			} else if machine.Name != "" {
 				key = machine.Name
 			}
-			
+
 			// Index ALL machines regardless of state
 			if key != "" {
 				newInventory.AllMachines[key] = machine
 				newInventory.MachinesByID[machine.Id] = machine
-				
+
 				// Group by registration state
 				state := machine.RegistrationState
 				newInventory.MachinesByState[state] = append(newInventory.MachinesByState[state], machine)
-				
+
 				// Only include registered machines in the main collection (for backward compatibility)
 				if machine.RegistrationState == "Registered" {
 					validMachineCount++
@@ -129,8 +127,8 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 				newInventory.MachinesByID[machine.Id] = machine
 			}
 		}
-		
-		s.logger.Info().
+
+		s.logger.Debug().
 			Int("total_cvad_machines", len(machines)).
 			Int("all_machines_stored", len(newInventory.AllMachines)).
 			Int("registered_machines", validMachineCount).
@@ -138,7 +136,7 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 			Str("site", siteFilter).
 			Msg("🎯 Processed CVAD machines by registration state")
 
-		s.logger.Info().
+		s.logger.Debug().
 			Int("registered_indexed", len(newInventory.Machines)).
 			Int("all_machines_indexed", len(newInventory.AllMachines)).
 			Int("states_available", len(newInventory.MachinesByState)).
@@ -184,23 +182,6 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 			Msg("Loaded controllers into inventory")
 	}
 
-	// Load applications
-	applications, err := s.ddcClient.GetApplicationsBySite(ctx, siteFilter)
-	if err != nil {
-		s.logger.Debug().
-			Err(err).
-			Str("site", siteFilter).
-			Msg("Applications endpoint not available - skipping (inventory will still function)")
-	} else {
-		for _, app := range applications {
-			newInventory.Applications[app.Id] = app
-		}
-
-		s.logger.Debug().
-			Int("application_count", len(applications)).
-			Str("site", siteFilter).
-			Msg("Loaded applications into inventory")
-	}
 
 	newInventory.UpdateDuration = time.Since(startTime)
 
@@ -209,12 +190,11 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 	s.cache = newInventory
 	s.mu.Unlock()
 
-	s.logger.Info().
+	s.logger.Debug().
 		Str("site", siteFilter).
 		Int("machines", len(newInventory.Machines)).
 		Int("delivery_groups", len(newInventory.DeliveryGroups)).
 		Int("controllers", len(newInventory.Controllers)).
-		Int("applications", len(newInventory.Applications)).
 		Dur("duration", newInventory.UpdateDuration).
 		Msg("Site inventory refreshed successfully")
 
@@ -223,7 +203,7 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 
 // StartPeriodicRefresh starts automatic inventory refresh
 func (s *InventoryService) StartPeriodicRefresh(ctx context.Context, interval time.Duration, siteFilter string) {
-	s.logger.Info().
+	s.logger.Debug().
 		Dur("interval", interval).
 		Str("site", siteFilter).
 		Msg("Starting periodic inventory refresh")
@@ -240,11 +220,11 @@ func (s *InventoryService) StartPeriodicRefresh(ctx context.Context, interval ti
 				}
 			case <-ctx.Done():
 				ticker.Stop()
-				s.logger.Info().Msg("Stopping periodic inventory refresh")
+				s.logger.Debug().Msg("Stopping periodic inventory refresh")
 				return
 			case <-s.stopChan:
 				ticker.Stop()
-				s.logger.Info().Msg("Inventory refresh stopped")
+				s.logger.Debug().Msg("Inventory refresh stopped")
 				return
 			}
 		}
@@ -353,12 +333,12 @@ func (s *InventoryService) GetMachinesForSite() []string {
 	for dns := range s.cache.Machines {
 		machines = append(machines, dns)
 	}
-	
-	s.logger.Info().
+
+	s.logger.Debug().
 		Int("cached_machines", len(s.cache.Machines)).
 		Int("returned_dns_names", len(machines)).
 		Msg("🎯 Returned REGISTERED machine DNS names for operational filtering")
-	
+
 	return machines
 }
 
@@ -375,12 +355,12 @@ func (s *InventoryService) GetAllMachinesForSite() []string {
 	for dns := range s.cache.AllMachines {
 		machines = append(machines, dns)
 	}
-	
-	s.logger.Info().
+
+	s.logger.Debug().
 		Int("all_cached_machines", len(s.cache.AllMachines)).
 		Int("returned_dns_names", len(machines)).
 		Msg("🏭 Returned ALL machine DNS names for inventory filtering")
-	
+
 	return machines
 }
 
@@ -405,12 +385,12 @@ func (s *InventoryService) GetMachinesByRegistrationState(state string) []string
 			}
 		}
 	}
-	
+
 	s.logger.Debug().
 		Str("registration_state", state).
 		Int("machines_found", len(machines)).
 		Msg("🔍 Returned machines for specific registration state")
-	
+
 	return machines
 }
 
@@ -420,10 +400,10 @@ func (s *InventoryService) GetMachineInventoryStats() map[string]int {
 	defer s.mu.RUnlock()
 
 	stats := map[string]int{
-		"registered_machines":   0,
-		"all_machines":         0,
-		"unregistered_machines": 0,
-		"agent_error_machines":  0,
+		"registered_machines":    0,
+		"all_machines":           0,
+		"unregistered_machines":  0,
+		"agent_error_machines":   0,
 		"unknown_state_machines": 0,
 	}
 
@@ -433,7 +413,7 @@ func (s *InventoryService) GetMachineInventoryStats() map[string]int {
 
 	stats["registered_machines"] = len(s.cache.Machines)
 	stats["all_machines"] = len(s.cache.AllMachines)
-	
+
 	for state, machinesList := range s.cache.MachinesByState {
 		switch state {
 		case "Unregistered":
@@ -468,7 +448,6 @@ func (s *InventoryService) GetInventoryStats() map[string]interface{} {
 		"machine_count":   len(s.cache.Machines),
 		"delivery_groups": len(s.cache.DeliveryGroups),
 		"controllers":     len(s.cache.Controllers),
-		"applications":    len(s.cache.Applications),
 		"last_update":     s.cache.LastUpdate,
 		"update_duration": s.cache.UpdateDuration,
 		"cache_age":       time.Since(s.cache.LastUpdate),

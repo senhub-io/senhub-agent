@@ -45,7 +45,7 @@ func (mc *MetricsCollector) CollectInfrastructureMetrics(ctx context.Context, ti
 			registeredCount++
 		case RegistrationStateUnregistered:
 			unregisteredCount++
-			mc.logger.Info().
+			mc.logger.Debug().
 				Str("machine_name", machine.MachineName).
 				Int("machine_role", machine.MachineRole).
 				Str("machine_id", machine.MachineId).
@@ -57,7 +57,7 @@ func (mc *MetricsCollector) CollectInfrastructureMetrics(ctx context.Context, ti
 				Msg("🔍 Found unregistered machine")
 		case RegistrationStateAgentError:
 			unregisteredCount++ // Count AgentError as unregistered for metrics
-			mc.logger.Info().
+			mc.logger.Debug().
 				Str("machine_name", machine.MachineName).
 				Int("machine_role", machine.MachineRole).
 				Str("machine_id", machine.MachineId).
@@ -91,7 +91,7 @@ func (mc *MetricsCollector) CollectInfrastructureMetrics(ctx context.Context, ti
 			if machine.FaultState == FaultStateNone {
 				multiSessionFaultyCount++
 				faultStateCounts[FaultStateUnregistered]++ // Treat as unregistered fault
-				mc.logger.Info().
+				mc.logger.Debug().
 					Str("machine_name", machine.MachineName).
 					Int("machine_role", machine.MachineRole).
 					Int("registration_state", machine.RegistrationState).
@@ -100,7 +100,7 @@ func (mc *MetricsCollector) CollectInfrastructureMetrics(ctx context.Context, ti
 					Msg("✅ Added unregistered machine in desktop group to multi-session faulty count")
 			} else {
 				// Machine already counted in the faulty section above, but ensure it's in unregistered category
-				mc.logger.Info().
+				mc.logger.Debug().
 					Str("machine_name", machine.MachineName).
 					Int("machine_role", machine.MachineRole).
 					Int("registration_state", machine.RegistrationState).
@@ -122,10 +122,10 @@ func (mc *MetricsCollector) CollectInfrastructureMetrics(ctx context.Context, ti
 		}
 	}
 
-	// Create all metrics with proper units
+	// Create all metrics with standardized naming (self-descriptive names)
 	metrics = []datapoint.DataPoint{
 		{
-			Name:      "machines_total",
+			Name:      MetricMachinesTotal,
 			Value:     float32(totalMachines),
 			Timestamp: timestamp,
 			Tags: []tags.Tag{
@@ -133,7 +133,7 @@ func (mc *MetricsCollector) CollectInfrastructureMetrics(ctx context.Context, ti
 			},
 		},
 		{
-			Name:      "machines_registered",
+			Name:      MetricMachinesRegistered,
 			Value:     float32(registeredCount),
 			Timestamp: timestamp,
 			Tags: []tags.Tag{
@@ -141,7 +141,7 @@ func (mc *MetricsCollector) CollectInfrastructureMetrics(ctx context.Context, ti
 			},
 		},
 		{
-			Name:      "unregistered_VDA_count",
+			Name:      MetricMachinesUnregistered,
 			Value:     float32(unregisteredCount),
 			Timestamp: timestamp,
 			Tags: []tags.Tag{
@@ -149,7 +149,7 @@ func (mc *MetricsCollector) CollectInfrastructureMetrics(ctx context.Context, ti
 			},
 		},
 		{
-			Name:      "machines_faulty",
+			Name:      MetricMachinesFaulty,
 			Value:     float32(faultyCount),
 			Timestamp: timestamp,
 			Tags: []tags.Tag{
@@ -157,7 +157,7 @@ func (mc *MetricsCollector) CollectInfrastructureMetrics(ctx context.Context, ti
 			},
 		},
 		{
-			Name:      "machines_maintenance",
+			Name:      MetricMachinesMaintenance,
 			Value:     float32(maintenanceCount),
 			Timestamp: timestamp,
 			Tags: []tags.Tag{
@@ -176,7 +176,7 @@ func (mc *MetricsCollector) CollectInfrastructureMetrics(ctx context.Context, ti
 		metrics = append(metrics, inventoryMetrics...)
 	}
 
-	mc.logger.Info().
+	mc.logger.Debug().
 		Int("total", totalMachines).
 		Int("registered", registeredCount).
 		Int("unregistered", unregisteredCount).
@@ -194,7 +194,7 @@ func (mc *MetricsCollector) createDetailedFaultStateMetrics(faultStateCounts map
 
 	// Total multi-session faulty machines
 	metrics = append(metrics, datapoint.DataPoint{
-		Name:      "machines_total",
+		Name:      MetricMachinesTotal,
 		Value:     float32(totalFaultyCount),
 		Timestamp: timestamp,
 		Tags: []tags.Tag{
@@ -239,63 +239,14 @@ func (mc *MetricsCollector) createInventoryInfrastructureMetrics(timestamp time.
 
 	// Get inventory statistics
 	inventoryStats := inventoryService.GetInventoryStats()
-	siteID, siteName := inventoryService.GetSiteInfo()
+	_, siteName := inventoryService.GetSiteInfo()
 
-	// Base tags for all infrastructure metrics
-	baseTags := []tags.Tag{
-		{Key: "metric_type", Value: "infrastructure"},
-		{Key: "site_name", Value: siteName},
-		{Key: "site_id", Value: siteID},
-	}
 
 	if cached, ok := inventoryStats["cached"].(bool); ok && cached {
-		// Cache age metric
-		if cacheAge, ok := inventoryStats["cache_age"].(time.Duration); ok {
-			metrics = append(metrics, datapoint.DataPoint{
-				Name:      "cache_age_sec",
-				Value:     float32(cacheAge.Seconds()),
-				Tags:      baseTags,
-				Timestamp: timestamp,
-			})
-		}
+		// Cache age and update duration metrics removed - internal technical metrics not operationally relevant
 
-		// Update duration metric
-		if updateDuration, ok := inventoryStats["update_duration"].(time.Duration); ok {
-			metrics = append(metrics, datapoint.DataPoint{
-				Name:      "cache_update_sec",
-				Value:     float32(updateDuration.Seconds()),
-				Tags:      baseTags,
-				Timestamp: timestamp,
-			})
-		}
+		// Delivery groups and controllers metrics removed - static configuration data not operationally relevant
 
-		// Inventory counts
-		if deliveryGroups, ok := inventoryStats["delivery_groups"].(int); ok {
-			metrics = append(metrics, datapoint.DataPoint{
-				Name:      "delivery_groups",
-				Value:     float32(deliveryGroups),
-				Tags:      baseTags,
-				Timestamp: timestamp,
-			})
-		}
-
-		if controllers, ok := inventoryStats["controllers"].(int); ok {
-			metrics = append(metrics, datapoint.DataPoint{
-				Name:      "controllers",
-				Value:     float32(controllers),
-				Tags:      baseTags,
-				Timestamp: timestamp,
-			})
-		}
-
-		if applications, ok := inventoryStats["applications"].(int); ok {
-			metrics = append(metrics, datapoint.DataPoint{
-				Name:      "applications",
-				Value:     float32(applications),
-				Tags:      baseTags,
-				Timestamp: timestamp,
-			})
-		}
 	}
 
 	mc.logger.Debug().

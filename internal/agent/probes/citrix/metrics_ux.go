@@ -49,7 +49,7 @@ func (mc *MetricsCollector) CollectUXMetrics(ctx context.Context, timestamp time
 
 	// Create metrics
 	metrics = append(metrics, datapoint.DataPoint{
-		Name:      "ux_excellent_count",
+		Name:      MetricUXExcellent,
 		Value:     float32(excellent),
 		Timestamp: timestamp,
 		Tags: []tags.Tag{
@@ -58,7 +58,7 @@ func (mc *MetricsCollector) CollectUXMetrics(ctx context.Context, timestamp time
 	})
 
 	metrics = append(metrics, datapoint.DataPoint{
-		Name:      "ux_good_count",
+		Name:      MetricUXGood,
 		Value:     float32(good),
 		Timestamp: timestamp,
 		Tags: []tags.Tag{
@@ -67,7 +67,7 @@ func (mc *MetricsCollector) CollectUXMetrics(ctx context.Context, timestamp time
 	})
 
 	metrics = append(metrics, datapoint.DataPoint{
-		Name:      "ux_fair_count",
+		Name:      MetricUXFair,
 		Value:     float32(fair),
 		Timestamp: timestamp,
 		Tags: []tags.Tag{
@@ -76,7 +76,7 @@ func (mc *MetricsCollector) CollectUXMetrics(ctx context.Context, timestamp time
 	})
 
 	metrics = append(metrics, datapoint.DataPoint{
-		Name:      "ux_poor_count",
+		Name:      MetricUXPoor,
 		Value:     float32(poor),
 		Timestamp: timestamp,
 		Tags: []tags.Tag{

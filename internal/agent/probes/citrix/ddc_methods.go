@@ -7,7 +7,6 @@ import (
 	"net/url"
 )
 
-
 // GetMachinesBySite retrieves all machines for a specific site
 func (c *deliveryControllerClient) GetMachinesBySite(ctx context.Context, siteName string) ([]string, error) {
 	c.logger.Debug().
@@ -101,7 +100,7 @@ func (c *deliveryControllerClient) getMachinesBySiteID(ctx context.Context, site
 			} else if m.Name != "" {
 				machineName = m.Name
 			}
-			
+
 			if machineName != "" {
 				allMachines = append(allMachines, machineName)
 			}
@@ -114,7 +113,7 @@ func (c *deliveryControllerClient) getMachinesBySiteID(ctx context.Context, site
 		continuationToken = response.ContinuationToken
 	}
 
-	c.logger.Info().
+	c.logger.Debug().
 		Str("site", siteName).
 		Str("site_id", siteID).
 		Int("machine_count", len(allMachines)).
@@ -188,7 +187,7 @@ func (c *deliveryControllerClient) GetMachinesDetailedBySite(ctx context.Context
 		continuationToken = response.ContinuationToken
 	}
 
-	c.logger.Info().
+	c.logger.Debug().
 		Str("site", siteName).
 		Int("machine_count", len(allMachines)).
 		Msg("Retrieved detailed machines for site")
@@ -260,7 +259,7 @@ func (c *deliveryControllerClient) GetDeliveryGroupsBySite(ctx context.Context, 
 		continuationToken = response.ContinuationToken
 	}
 
-	c.logger.Info().
+	c.logger.Debug().
 		Str("site", siteName).
 		Int("group_count", len(allGroups)).
 		Msg("Retrieved delivery groups for site")
@@ -268,67 +267,6 @@ func (c *deliveryControllerClient) GetDeliveryGroupsBySite(ctx context.Context, 
 	return allGroups, nil
 }
 
-// GetApplicationsBySite retrieves all applications for a specific site
-func (c *deliveryControllerClient) GetApplicationsBySite(ctx context.Context, siteName string) ([]DDCApplication, error) {
-	c.logger.Debug().
-		Str("site", siteName).
-		Msg("Retrieving applications for site")
-
-	// Get delivery groups for the site first
-	deliveryGroups, err := c.GetDeliveryGroupsBySite(ctx, siteName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get delivery groups: %w", err)
-	}
-
-	// Create a map of delivery group IDs for this site
-	siteDeliveryGroups := make(map[string]bool)
-	for _, dg := range deliveryGroups {
-		siteDeliveryGroups[dg.Id] = true
-	}
-
-	// Get all applications and filter by delivery group
-	var allApps []DDCApplication
-	continuationToken := ""
-
-	for {
-		endpoint := "/cvad/manage/Applications"
-		if continuationToken != "" {
-			endpoint = fmt.Sprintf("%s?ContinuationToken=%s", endpoint, url.QueryEscape(continuationToken))
-		}
-
-		body, err := c.makeRequest(ctx, "GET", endpoint, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get applications: %w", err)
-		}
-
-		var response DDCApplicationsResponse
-		if err := json.Unmarshal(body, &response); err != nil {
-			return nil, fmt.Errorf("failed to parse applications response: %w", err)
-		}
-
-		// Filter applications that belong to delivery groups in this site
-		for _, app := range response.Items {
-			for _, dgId := range app.DeliveryGroupIds {
-				if siteDeliveryGroups[dgId] {
-					allApps = append(allApps, app)
-					break
-				}
-			}
-		}
-
-		if response.ContinuationToken == "" {
-			break
-		}
-		continuationToken = response.ContinuationToken
-	}
-
-	c.logger.Info().
-		Str("site", siteName).
-		Int("app_count", len(allApps)).
-		Msg("Retrieved applications for site")
-
-	return allApps, nil
-}
 
 // GetControllersBySite retrieves all controllers for a specific site
 func (c *deliveryControllerClient) GetControllersBySite(ctx context.Context, siteName string) ([]DDCController, error) {
@@ -394,7 +332,7 @@ func (c *deliveryControllerClient) GetControllersBySite(ctx context.Context, sit
 		continuationToken = response.ContinuationToken
 	}
 
-	c.logger.Info().
+	c.logger.Debug().
 		Str("site", siteName).
 		Int("controller_count", len(siteControllers)).
 		Msg("Retrieved controllers for site")
@@ -408,19 +346,34 @@ func (c *deliveryControllerClient) GetSessionsBySite(ctx context.Context, siteNa
 		Str("site", siteName).
 		Msg("Retrieving sessions for site")
 
-	// Get machines for the site to filter sessions
-	machines, err := c.GetMachinesDetailedBySite(ctx, siteName)
+	// Get current user info to get their site ID
+	meResp, err := c.GetMe(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get machines: %w", err)
+		return nil, fmt.Errorf("failed to get user info: %w", err)
 	}
 
-	// Create a map of machine IDs for this site
-	siteMachines := make(map[string]bool)
-	for _, machine := range machines {
-		siteMachines[machine.Id] = true
+	// Extract site ID from customers/sites structure
+	if len(meResp.Customers) == 0 || len(meResp.Customers[0].Sites) == 0 {
+		return nil, fmt.Errorf("user has no accessible sites")
 	}
 
-	// Get active sessions
+	// Use the first site (usually there's only one)
+	siteID := meResp.Customers[0].Sites[0].Id
+	actualSiteName := meResp.Customers[0].Sites[0].Name
+
+	if siteID == "" {
+		return nil, fmt.Errorf("user site ID not available")
+	}
+
+	// Check if requested site matches user's site
+	if siteName != "" && actualSiteName != siteName {
+		c.logger.Warn().
+			Str("requested_site", siteName).
+			Str("user_site", actualSiteName).
+			Msg("User requesting different site than their own - using user's site for security")
+	}
+
+	// Get active sessions (server-side filtering via Citrix-InstanceId header should handle site filtering)
 	var allSessions []DDCSession
 	continuationToken := ""
 
@@ -430,7 +383,7 @@ func (c *deliveryControllerClient) GetSessionsBySite(ctx context.Context, siteNa
 			endpoint = fmt.Sprintf("%s?ContinuationToken=%s", endpoint, url.QueryEscape(continuationToken))
 		}
 
-		body, err := c.makeRequest(ctx, "GET", endpoint, nil)
+		body, err := c.makeRequestWithSiteID(ctx, "GET", endpoint, nil, siteID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get sessions: %w", err)
 		}
@@ -440,12 +393,8 @@ func (c *deliveryControllerClient) GetSessionsBySite(ctx context.Context, siteNa
 			return nil, fmt.Errorf("failed to parse sessions response: %w", err)
 		}
 
-		// Filter sessions by machine
-		for _, session := range response.Items {
-			if siteMachines[session.MachineId] {
-				allSessions = append(allSessions, session)
-			}
-		}
+		// Add all sessions (server-side filtering via Citrix-InstanceId header should handle site filtering)
+		allSessions = append(allSessions, response.Items...)
 
 		if response.ContinuationToken == "" {
 			break
@@ -453,7 +402,7 @@ func (c *deliveryControllerClient) GetSessionsBySite(ctx context.Context, siteNa
 		continuationToken = response.ContinuationToken
 	}
 
-	c.logger.Info().
+	c.logger.Debug().
 		Str("site", siteName).
 		Int("session_count", len(allSessions)).
 		Msg("Retrieved sessions for site")
@@ -549,7 +498,7 @@ func (c *deliveryControllerClient) GetSiteDetails(ctx context.Context, siteName 
 		details.Controllers[i] = ctrl.DNSName
 	}
 
-	c.logger.Info().
+	c.logger.Debug().
 		Str("site", siteName).
 		Int("machines", details.TotalMachines).
 		Int("registered", details.RegisteredMachines).
@@ -584,7 +533,7 @@ func (c *deliveryControllerClient) GetMe(ctx context.Context) (*DDCMeResponse, e
 		siteName = meResp.Customers[0].Sites[0].Name
 	}
 
-	c.logger.Info().
+	c.logger.Debug().
 		Str("user_id", meResp.UserId).
 		Str("display_name", meResp.DisplayName).
 		Str("site_id", siteId).
@@ -609,6 +558,6 @@ func (c *deliveryControllerClient) TestConnectivity(ctx context.Context) error {
 		return fmt.Errorf("API test failed: %w", err)
 	}
 
-	c.logger.Info().Msg("Delivery Controller connectivity test successful")
+	c.logger.Debug().Msg("Delivery Controller connectivity test successful")
 	return nil
 }

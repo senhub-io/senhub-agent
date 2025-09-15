@@ -494,8 +494,12 @@ func (lc *LocalConfiguration) generateTLSCertificates() error {
 
 	lc.logger.Info().Msg("Generating TLS certificates (replace with your own if needed)")
 
-	// Create certs directory
-	certsDir := "./certs"
+	// Create certs directory with absolute path
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current working directory: %w", err)
+	}
+	certsDir := filepath.Join(currentDir, "certs")
 	if err := os.MkdirAll(certsDir, 0750); err != nil {
 		return fmt.Errorf("failed to create certs directory: %w", err)
 	}
@@ -670,7 +674,7 @@ probes:
 # # Citrix Virtual Apps and Desktops monitoring
 # - name: citrix
 #   params:
-#     base_url: "https://citrix-director.company.com/Citrix/Monitor/OData/v4/Data"  # REQUIRED
+#     base_url: "https://citrix-director.company.com"  # REQUIRED (API path added automatically)
 #     
 #     # Optional: Delivery Controller for site filtering (NEW)
 #     delivery_controller:
@@ -679,11 +683,11 @@ probes:
 #         - "https://citrix-ddc-backup.company.com"
 #       site_filter: "SITE-NAME"  # Only monitor this site
 #     
-#     environment: "PROD"         # Optional, default: "PROD"
+#     # environment parameter removed - was not used in metrics generation
 #     interval: 120               # Optional, default: 120s (2min)
 #     
 #     auth:
-#       method: "ntlm"            # Required: "ntlm" or "basic"
+#       # Authentication methods are automatic: NTLM for Director, Basic for DDC
 #       username: "DOMAIN\\user"  # REQUIRED
 #       password: "password"      # REQUIRED
 #     
@@ -736,9 +740,23 @@ probes:
 	// TLS configuration section
 	tlsSection := ""
 	if lc.args.EnableHttps {
+		// Get absolute paths for certificates
+		currentDir, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current working directory for TLS config: %w", err)
+		}
+		certPath := filepath.Join(currentDir, "certs", "agent-cert.pem")
+		keyPath := filepath.Join(currentDir, "certs", "agent-key.pem")
+		
+		// Escape backslashes for Windows paths in YAML
+		certPathYAML := strings.ReplaceAll(certPath, "\\", "\\\\")
+		keyPathYAML := strings.ReplaceAll(keyPath, "\\", "\\\\")
+		
 		tlsSection = `      tls:
         enabled: true
-        min_tls_version: "` + lc.args.MinTlsVersion + `"`
+        min_tls_version: "` + lc.args.MinTlsVersion + `"
+        cert_file: "` + certPathYAML + `"
+        key_file: "` + keyPathYAML + `"`
 	}
 
 	return []byte(fmt.Sprintf(yamlTemplate,
