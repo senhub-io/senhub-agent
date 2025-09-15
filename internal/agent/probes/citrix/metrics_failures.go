@@ -22,7 +22,7 @@ func (mc *MetricsCollector) CollectFailureMetrics(ctx context.Context, timestamp
 
 	// Always add total connection failures metric
 	connectionFailureMetric := datapoint.DataPoint{
-		Name:      "total",
+		Name:      MetricFailuresTotal,
 		Value:     0, // Default to 0 if error
 		Timestamp: timestamp,
 		Tags: []tags.Tag{
@@ -57,12 +57,7 @@ func (mc *MetricsCollector) CollectFailureMetrics(ctx context.Context, timestamp
 	}
 
 	// 2. Black hole machines (machines with 4+ connection failures)
-	blackHoleMetrics, err := mc.calculateBlackHoleMachines(ctx, timestamp)
-	if err != nil {
-		mc.logger.Warn().Err(err).Msg("Failed to calculate black hole machines")
-	} else {
-		metrics = append(metrics, blackHoleMetrics...)
-	}
+	// Black hole machines metrics removed - concept unclear and not actionable
 
 	mc.logger.Debug().Int("metrics_count", len(metrics)).Msg("Failure metrics collected")
 	return metrics, nil
@@ -204,115 +199,6 @@ func (mc *MetricsCollector) createZeroFailureCategoryMetrics(timestamp time.Time
 	return metrics
 }
 
-// calculateBlackHoleMachines finds machines where 3+ unique users fail to connect in the last 24h
-// Based on Citrix official documentation: https://docs.citrix.com/en-us/performance-analytics/insights.html
-func (mc *MetricsCollector) calculateBlackHoleMachines(ctx context.Context, timestamp time.Time) ([]datapoint.DataPoint, error) {
-	// Citrix standard: exactly 24 hours lookback
-	startTime := timestamp.Add(-24 * time.Hour)
-
-	mc.logger.Debug().
-		Time("start_time", startTime).
-		Msg("Getting connection failures for black hole detection (last 24h)")
-
-	// Get connection failures - we don't need $expand for this metric
-	// We only need MachineId to group failures by machine
-	failures, err := mc.client.GetConnectionFailureLogs(ctx, startTime)
-	if err != nil {
-		mc.logger.Warn().Err(err).Msg("Failed to get connection failures for black hole detection")
-		return []datapoint.DataPoint{}, err
-	}
-
-	// Group failures by MachineId and track unique users per machine
-	// Black Hole Machines are those causing failures for MULTIPLE different users
-	type machineFailureInfo struct {
-		uniqueUsers   map[string]bool
-		machineName   string
-		totalFailures int
-	}
-
-	failuresByMachine := make(map[string]*machineFailureInfo)
-
-	for _, failure := range failures {
-		// Use MachineId if available, otherwise fall back to MachineName
-		machineKey := failure.MachineId
-		if machineKey == "" {
-			machineKey = failure.MachineName
-		}
-
-		if machineKey != "" && failure.UserName != "" {
-			// Initialize machine info if not exists
-			if failuresByMachine[machineKey] == nil {
-				failuresByMachine[machineKey] = &machineFailureInfo{
-					uniqueUsers: make(map[string]bool),
-					machineName: failure.MachineName,
-				}
-			}
-
-			// Track unique user and increment total failures
-			failuresByMachine[machineKey].uniqueUsers[failure.UserName] = true
-			failuresByMachine[machineKey].totalFailures++
-		}
-	}
-
-	// Count machines where 3 or more unique users experience failures (Citrix standard)
-	const blackHoleThreshold = 3 // Citrix official threshold
-	blackHoleMachines := 0
-
-	for machineKey, info := range failuresByMachine {
-		uniqueUserCount := len(info.uniqueUsers)
-		if uniqueUserCount >= blackHoleThreshold {
-			blackHoleMachines++
-			mc.logger.Info().
-				Str("machine_id", machineKey).
-				Str("machine_name", info.machineName).
-				Int("unique_users_failed", uniqueUserCount).
-				Int("total_failures", info.totalFailures).
-				Msg("Identified Black Hole Machine (3+ users affected)")
-		}
-	}
-
-	mc.logger.Info().
-		Int("total_failures", len(failures)).
-		Int("machines_with_failures", len(failuresByMachine)).
-		Int("black_hole_machines", blackHoleMachines).
-		Msg("Black hole machine detection completed (24h window, 3+ unique users)")
-
-	// Create metrics
-	metrics := []datapoint.DataPoint{
-		{
-			Name:      "black_hole_machines_count",
-			Value:     float32(blackHoleMachines),
-			Timestamp: timestamp,
-			Tags: []tags.Tag{
-				{Key: "metric_type", Value: "analytics"},
-			},
-		},
-	}
-
-	// Add individual machine metrics showing unique user count (not total failures)
-	// This helps identify which specific machines are affecting multiple users
-	for machineKey, info := range failuresByMachine {
-		uniqueUserCount := len(info.uniqueUsers)
-		if uniqueUserCount >= blackHoleThreshold {
-			machineName := info.machineName
-			if machineName == "" {
-				machineName = machineKey // Use ID if name not available
-			}
-
-			// Report unique users affected, not total failures
-			metrics = append(metrics, datapoint.DataPoint{
-				Name:      "black_hole_machine_users_affected",
-				Value:     float32(uniqueUserCount),
-				Timestamp: timestamp,
-				Tags: []tags.Tag{
-					{Key: "metric_type", Value: "analytics"},
-					{Key: "machine", Value: machineName},
-				},
-			})
-		}
-	}
-
-	return metrics, nil
-}
+// calculateBlackHoleMachines function removed - concept unclear and not operationally actionable
 
 // TODO: Implement application_failures_count when we have ApplicationErrors endpoint

@@ -60,8 +60,8 @@ class TagFilters {
 
     renderTags() {
         // Filter out redundant tags
-        const redundantTags = ['host', 'probe_name', 'platform', 'os', 'prtg_metric_id', 'drive_id', 'volume_id', 'pool_id'];
-        const alwaysKeepTags = ['url', 'endpoint', 'interface', 'drive_name', 'volume_name', 'volume_type', 'pool_name', 'controller', 'raid_type'];
+        const redundantTags = ['host', 'probe_name', 'platform', 'os', 'prtg_metric_id', 'drive_id', 'volume_id', 'pool_id', 'adapter', 'connection_name'];
+        const alwaysKeepTags = ['url', 'endpoint', 'interface', 'drive', 'drive_name', 'volume_name', 'volume_type', 'pool_name', 'controller', 'raid_type', 'core'];
 // Note: fan_name and sensor_name removed - thermal metrics disabled for consistency
         
         const filteredTags = Object.fromEntries(

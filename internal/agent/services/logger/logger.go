@@ -179,46 +179,45 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 	activeDebugModules = make(map[string]bool)
 
 	// Configure debug logging
-	if len(args.DebugModules) > 0 && !args.Verbose {
-		// Selective debug mode: only enable debug for specified modules (unless --verbose is also set)
-		selectiveDebugMode = true
-		activeDebugModules = make(map[string]bool)
-
-		// In selective mode, set global level to DEBUG to allow debug logs for enabled modules
-		// ModuleLoggers will filter all log levels based on module configuration
+	if args.Verbose {
+		// Verbose mode requested - enable debug level globally
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
-		// Enable debug only for specified modules
-		for _, module := range args.DebugModules {
-			SetModuleLogLevel(module, zerolog.DebugLevel)
-			activeDebugModules[module] = true
-		}
+		if len(args.DebugModules) > 0 {
+			// Selective debug mode: --verbose with --debug-modules = filter to specific modules
+			selectiveDebugMode = true
+			activeDebugModules = make(map[string]bool)
 
-		logger.Info().
-			Strs("modules", args.DebugModules).
-			Int("module_count", len(args.DebugModules)).
-			Bool("verbose_flag", args.Verbose).
-			Msg("Selective debug mode enabled - debug logging activated for specific modules only")
-	} else if args.Verbose || len(args.DebugModules) > 0 {
-		// Full verbose mode: enable debug globally (when --verbose is set, or both --verbose and --debug-modules)
-		selectiveDebugMode = false
-		activeDebugModules = make(map[string]bool) // Empty map instead of nil
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+			// Set global level to INFO to reduce non-module debug logs
+			zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
-		// Also enable debug for key modules
-		SetModuleLogLevel("strategy.http", zerolog.DebugLevel)
-		SetModuleLogLevel("cache", zerolog.DebugLevel)
-		SetModuleLogLevel("probe.redfish", zerolog.DebugLevel)
-		SetModuleLogLevel("configuration", zerolog.DebugLevel)
-		SetModuleLogLevel("scheduler", zerolog.DebugLevel)
+			// Enable debug only for specified modules
+			for _, module := range args.DebugModules {
+				SetModuleLogLevel(module, zerolog.DebugLevel)
+				activeDebugModules[module] = true
+			}
 
-		if args.Verbose && len(args.DebugModules) > 0 {
 			logger.Info().
-				Strs("modules", args.DebugModules).
-				Msg("Full verbose mode enabled with focus on specific modules - debug logging activated for all components")
+				Str("modules", strings.Join(args.DebugModules, ",")).
+				Int("module_count", len(args.DebugModules)).
+				Msg("Selective debug mode enabled - debug logging activated for specific modules only")
 		} else {
+			// Full verbose mode: --verbose without --debug-modules = all debug logs
+			selectiveDebugMode = false
+			activeDebugModules = make(map[string]bool)
+
+			// Enable debug for key modules
+			SetModuleLogLevel("strategy.http", zerolog.DebugLevel)
+			SetModuleLogLevel("cache", zerolog.DebugLevel)
+			SetModuleLogLevel("probe.redfish", zerolog.DebugLevel)
+			SetModuleLogLevel("configuration", zerolog.DebugLevel)
+			SetModuleLogLevel("scheduler", zerolog.DebugLevel)
+
 			logger.Info().Msg("Full verbose mode enabled - debug logging activated for all components")
 		}
+	} else if len(args.DebugModules) > 0 {
+		// --debug-modules requires --verbose flag
+		logger.Warn().Msg("--debug-modules flag requires --verbose to be enabled. Ignoring debug modules.")
 	}
 
 	return logger

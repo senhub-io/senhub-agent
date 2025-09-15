@@ -25,6 +25,12 @@ Technical documentation for developers and integrators:
 - [OpenTelemetry Metrics](./technical-reference/OTEL-METRICS.md) - OTEL metrics integration
 - [OpenTelemetry Probe](./technical-reference/OTEL-PROBE.md) - OTEL probe configuration
 
+### 📊 [Probe Documentation](./probes/)
+Specific documentation for monitoring probes:
+- [Citrix CVAD](./probes/citrix/) - Citrix Virtual Apps and Desktops monitoring
+- [Redfish](./probes/redfish/) - Hardware monitoring via Redfish
+- [Windows Events](./probes/winevents/) - Windows Event Log monitoring
+
 ### 🚨 [Troubleshooting](./troubleshooting/)
 Troubleshooting guides and common issues:
 - [Offline Mode Issues](./troubleshooting/TROUBLESHOOTING-OFFLINE.md) - Solve offline mode problems
@@ -41,6 +47,7 @@ Troubleshooting guides and common issues:
 |--------------|----------|
 | Get started quickly | [Quick Start Guide](./user-guide/QUICK-START-OFFLINE.md) |
 | Configure probes | [Probe Configuration](./user-guide/PROBE-CONFIGURATION.md) |
+| Monitor Citrix CVAD | [Citrix Documentation](./probes/citrix/) |
 | Setup HTTPS | [HTTPS Configuration](./admin-guide/HTTPS-CONFIGURATION.md) |
 | Understand Redfish | [Redfish Overview](./technical-reference/README-REDFISH.md) |
 | Fix offline issues | [Offline Troubleshooting](./troubleshooting/TROUBLESHOOTING-OFFLINE.md) |
