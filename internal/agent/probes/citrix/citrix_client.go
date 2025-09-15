@@ -3,11 +3,9 @@ package citrix
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	neturl "net/url"
 	"strings"
 	"time"
 
@@ -17,11 +15,11 @@ import (
 
 // citrixClient implements the CitrixClient interface for OData API communication
 type citrixClient struct {
-	config           CitrixClientConfig
-	httpClient       *http.Client
-	logger           *logger.ModuleLogger
-	baseURL          string
-	validMachineDNS  []string // DNS names from CVAD inventory for filtering
+	config     CitrixClientConfig
+	httpClient *http.Client
+	logger     *logger.ModuleLogger
+	baseURL    string
+	filters    *ClientFilters // DNS filtering functionality extracted to separate module
 }
 
 // Ensure citrixClient implements CitrixClient interface
@@ -108,6 +106,7 @@ func NewCitrixClient(config CitrixClientConfig, baseLogger *logger.Logger) (Citr
 		httpClient: httpClient,
 		logger:     moduleLogger,
 		baseURL:    baseURL,
+		filters:    NewClientFilters(baseLogger),
 	}
 
 	return client, nil
@@ -115,7 +114,7 @@ func NewCitrixClient(config CitrixClientConfig, baseLogger *logger.Logger) (Citr
 
 // Connect establishes a connection to the Citrix OData API endpoint
 func (c *citrixClient) Connect(ctx context.Context) error {
-	c.logger.Info().
+	c.logger.Debug().
 		Str("base_url", c.baseURL).
 		Str("auth_method", c.config.AuthMethod).
 		Msg("Connecting to Citrix OData API")
@@ -149,7 +148,7 @@ func (c *citrixClient) Connect(ctx context.Context) error {
 		return fmt.Errorf("connection test failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	c.logger.Info().
+	c.logger.Debug().
 		Int("status_code", resp.StatusCode).
 		Msg("Successfully connected to Citrix OData API")
 
@@ -158,7 +157,7 @@ func (c *citrixClient) Connect(ctx context.Context) error {
 
 // Disconnect closes the connection
 func (c *citrixClient) Disconnect(ctx context.Context) error {
-	c.logger.Info().Msg("Disconnecting from Citrix OData API")
+	c.logger.Debug().Msg("Disconnecting from Citrix OData API")
 	// No explicit disconnect needed for HTTP client
 	return nil
 }
@@ -186,8 +185,8 @@ func (c *citrixClient) GetSessions(ctx context.Context, sinceTime time.Time) ([]
 		Msg("Retrieved sessions from Citrix API")
 
 	// Apply client-side DNS filtering if we have a valid machine list
-	if len(c.validMachineDNS) > 0 {
-		sessions = c.filterSessionsByMachineDNS(sessions, c.validMachineDNS)
+	if len(c.filters.GetValidMachineDNS()) > 0 {
+		sessions = c.filters.FilterSessionsByMachineDNS(sessions)
 	}
 
 	return sessions, nil
@@ -222,8 +221,8 @@ func (c *citrixClient) GetSessionsByConnectionState(ctx context.Context, connect
 		Msg("Retrieved sessions filtered by ConnectionState from Citrix API")
 
 	// Apply client-side DNS filtering if we have a valid machine list
-	if len(c.validMachineDNS) > 0 {
-		sessions = c.filterSessionsByMachineDNS(sessions, c.validMachineDNS)
+	if len(c.filters.GetValidMachineDNS()) > 0 {
+		sessions = c.filters.FilterSessionsByMachineDNS(sessions)
 	}
 
 	return sessions, nil
@@ -265,9 +264,9 @@ func (c *citrixClient) GetMachinesFiltered(ctx context.Context, sinceTime time.T
 		c.logger.Debug().Msg("No DNS names provided for filtering - using unfiltered query")
 		return c.GetMachines(ctx, sinceTime)
 	}
-	
+
 	endpoint := "/Machines"
-	
+
 	// Build DNS name filter
 	var dnsFilters []string
 	for _, dnsName := range dnsNames {
@@ -275,33 +274,33 @@ func (c *citrixClient) GetMachinesFiltered(ctx context.Context, sinceTime time.T
 			dnsFilters = append(dnsFilters, fmt.Sprintf("DnsName eq '%s'", strings.ReplaceAll(dnsName, "'", "''")))
 		}
 	}
-	
+
 	if len(dnsFilters) == 0 {
 		c.logger.Debug().Msg("All DNS names were empty - using unfiltered query")
 		return c.GetMachines(ctx, sinceTime)
 	}
-	
+
 	var combinedFilter string
-	
+
 	// Combine DNS filter with time filter if provided
 	dnsFilter := strings.Join(dnsFilters, " or ")
 	if len(dnsFilters) > 1 {
 		dnsFilter = fmt.Sprintf("(%s)", dnsFilter)
 	}
-	
+
 	if !sinceTime.IsZero() {
 		timeFilter := fmt.Sprintf("ModifiedDate ge %s", formatODataDateTime(sinceTime))
 		combinedFilter = fmt.Sprintf("%s and %s", timeFilter, dnsFilter)
 	} else {
 		combinedFilter = dnsFilter
 	}
-	
+
 	c.logger.Debug().
 		Int("dns_names_count", len(dnsNames)).
 		Int("valid_dns_filters", len(dnsFilters)).
 		Str("filter", combinedFilter).
 		Msg("Getting machines with DNS name filtering")
-	
+
 	var machines []Machine
 	err := c.getODataCollectionUnlimited(ctx, endpoint, combinedFilter, &machines)
 	if err != nil {
@@ -310,17 +309,17 @@ func (c *citrixClient) GetMachinesFiltered(ctx context.Context, sinceTime time.T
 			Err(err).
 			Int("dns_names_count", len(dnsNames)).
 			Msg("OData filtering failed (expected with >100 machines) - falling back to client-side filtering")
-		
+
 		allMachines, fallbackErr := c.GetMachines(ctx, sinceTime)
 		if fallbackErr != nil {
 			return nil, fmt.Errorf("both filtered and fallback queries failed: %v, %v", err, fallbackErr)
 		}
-		
+
 		// Filter client-side
 		dnsMap := make(map[string]bool)
 		var validDnsNames []string
 		var duplicateCount int
-		
+
 		for _, dnsName := range dnsNames {
 			if dnsName != "" {
 				if dnsMap[dnsName] {
@@ -334,7 +333,7 @@ func (c *citrixClient) GetMachinesFiltered(ctx context.Context, sinceTime time.T
 				}
 			}
 		}
-		
+
 		if duplicateCount > 0 {
 			c.logger.Warn().
 				Int("duplicate_dns_count", duplicateCount).
@@ -342,30 +341,30 @@ func (c *citrixClient) GetMachinesFiltered(ctx context.Context, sinceTime time.T
 				Int("total_dns_input", len(dnsNames)).
 				Msg("🚨 Found duplicate DNS names in CVAD inventory filter")
 		}
-		
+
 		// Log sample of CVAD DNS names for debugging
 		if len(validDnsNames) > 0 {
 			sampleSize := 5
 			if len(validDnsNames) < sampleSize {
 				sampleSize = len(validDnsNames)
 			}
-			c.logger.Info().
+			c.logger.Debug().
 				Strs("cvad_sample_dns", validDnsNames[:sampleSize]).
 				Int("total_cvad_dns", len(validDnsNames)).
 				Msg("📋 Sample of CVAD inventory DNS names used for filtering")
 		}
-		
-		c.logger.Info().
+
+		c.logger.Debug().
 			Int("cvad_dns_names", len(dnsNames)).
 			Int("odata_machines", len(allMachines)).
 			Msg("Starting client-side DNS filtering - detailed analysis")
-		
+
 		var filteredMachines []Machine
 		var matchedDNSNames []string
 		var notMatchedCount int
-		processedDNS := make(map[string]bool) // Track processed DNS to detect duplicates in OData
+		processedDNS := make(map[string]bool)     // Track processed DNS to detect duplicates in OData
 		machinesByDNS := make(map[string]Machine) // Store first machine by DNS for comparison
-		
+
 		var emptyDnsCount int
 		for _, machine := range allMachines {
 			if machine.DnsName == "" {
@@ -376,16 +375,16 @@ func (c *citrixClient) GetMachinesFiltered(ctx context.Context, sinceTime time.T
 					Msg("OData machine has EMPTY DNS name - skipping")
 				continue
 			}
-			
+
 			if dnsMap[machine.DnsName] {
 				// Check if we already processed this DNS from OData side
 				if processedDNS[machine.DnsName] {
 					currentMachine := machinesByDNS[machine.DnsName]
-					
+
 					// Intelligent machine selection: choose the better machine based on criteria
 					shouldReplace := false
 					reason := ""
-					
+
 					// Priority 1: Registration State (1=Registered is best, 0=Unregistered, 2=Error)
 					if machine.RegistrationState == 1 && currentMachine.RegistrationState != 1 {
 						shouldReplace = true
@@ -420,7 +419,7 @@ func (c *citrixClient) GetMachinesFiltered(ctx context.Context, sinceTime time.T
 							}
 						}
 					}
-					
+
 					currentConnectionStr := "null"
 					if currentMachine.LastConnectionTime != nil {
 						currentConnectionStr = currentMachine.LastConnectionTime.Format(time.RFC3339)
@@ -429,8 +428,8 @@ func (c *citrixClient) GetMachinesFiltered(ctx context.Context, sinceTime time.T
 					if machine.LastConnectionTime != nil {
 						newConnectionStr = machine.LastConnectionTime.Format(time.RFC3339)
 					}
-					
-					c.logger.Info().
+
+					c.logger.Debug().
 						Str("dns_name", machine.DnsName).
 						Str("current_machine_id", currentMachine.MachineId).
 						Int("current_registration_state", currentMachine.RegistrationState).
@@ -443,7 +442,7 @@ func (c *citrixClient) GetMachinesFiltered(ctx context.Context, sinceTime time.T
 						Bool("will_replace", shouldReplace).
 						Str("reason", reason).
 						Msg("🔄 DUPLICATE OData machines - intelligent selection")
-					
+
 					if shouldReplace {
 						// Replace the current machine in filteredMachines
 						for i, filteredMachine := range filteredMachines {
@@ -453,24 +452,24 @@ func (c *citrixClient) GetMachinesFiltered(ctx context.Context, sinceTime time.T
 							}
 						}
 						machinesByDNS[machine.DnsName] = machine
-						c.logger.Info().
+						c.logger.Debug().
 							Str("dns_name", machine.DnsName).
 							Str("replaced_id", currentMachine.MachineId).
 							Str("new_id", machine.MachineId).
 							Str("reason", reason).
 							Msg("✅ Replaced machine with better candidate")
 					}
-					
+
 					continue // Don't add to filteredMachines again (either kept current or replaced)
 				}
 				processedDNS[machine.DnsName] = true
 				machinesByDNS[machine.DnsName] = machine // Store for comparison
-				
+
 				filteredMachines = append(filteredMachines, machine)
 				matchedDNSNames = append(matchedDNSNames, machine.DnsName)
 			} else {
 				notMatchedCount++
-				c.logger.Info().
+				c.logger.Debug().
 					Str("machine_dns", machine.DnsName).
 					Str("machine_name", machine.MachineName).
 					Str("machine_id", machine.MachineId).
@@ -479,14 +478,14 @@ func (c *citrixClient) GetMachinesFiltered(ctx context.Context, sinceTime time.T
 					Msg("🚫 OData machine NOT in CVAD inventory filter")
 			}
 		}
-		
-		c.logger.Info().
+
+		c.logger.Debug().
 			Int("total_machines", len(allMachines)).
 			Int("filtered_machines", len(filteredMachines)).
 			Int("not_matched", notMatchedCount).
 			Int("empty_dns", emptyDnsCount).
 			Msg("Applied client-side DNS filtering")
-			
+
 		// Log first few matched DNS names for verification
 		if len(matchedDNSNames) > 0 {
 			sampleSize := 5
@@ -498,16 +497,16 @@ func (c *citrixClient) GetMachinesFiltered(ctx context.Context, sinceTime time.T
 				Int("total_matched", len(matchedDNSNames)).
 				Msg("Sample of machines matched by client-side filtering")
 		}
-		
+
 		return filteredMachines, nil
 	}
-	
-	c.logger.Info().
+
+	c.logger.Debug().
 		Int("machine_count", len(machines)).
 		Int("dns_names_count", len(dnsNames)).
 		Time("since_time", sinceTime).
 		Msg("Retrieved filtered machines from Citrix API")
-	
+
 	return machines, nil
 }
 
@@ -521,7 +520,7 @@ func (c *citrixClient) GetDesktopGroups(ctx context.Context) ([]DesktopGroup, er
 		return nil, fmt.Errorf("failed to get desktop groups: %v", err)
 	}
 
-	c.logger.Info().
+	c.logger.Debug().
 		Int("desktop_group_count", len(desktopGroups)).
 		Msg("Retrieved desktop groups from Citrix API")
 
@@ -561,8 +560,8 @@ func (c *citrixClient) GetConnectionFailureLogs(ctx context.Context, sinceTime t
 		Msg("Retrieved connection failure logs from Citrix API")
 
 	// Apply client-side DNS filtering if we have a valid machine list
-	if len(c.validMachineDNS) > 0 {
-		failureLogs = c.filterFailureLogsByMachineDNS(failureLogs, c.validMachineDNS)
+	if len(c.filters.GetValidMachineDNS()) > 0 {
+		failureLogs = c.filters.FilterFailureLogsByMachineDNS(failureLogs)
 	}
 
 	return failureLogs, nil
@@ -617,418 +616,6 @@ func (c *citrixClient) GetConnectionFailureCategories(ctx context.Context) ([]Co
 		Msg("Retrieved connection failure categories from Citrix API")
 
 	return categories, nil
-}
-
-// getODataCollection performs a GET request to an OData endpoint with pagination support
-func (c *citrixClient) getODataCollection(ctx context.Context, endpoint, filter string, result interface{}) error {
-	url := c.baseURL + endpoint
-
-	// Add query parameters
-	params := neturl.Values{}
-	if filter != "" {
-		params.Add("$filter", filter)
-	}
-	params.Add("$top", "1000") // Pagination limit
-
-	if len(params) > 0 {
-		url += "?" + params.Encode()
-	}
-
-	var allItems []interface{}
-
-	// Handle pagination
-	for url != "" {
-		var response ODataResponse
-		nextURL, err := c.performRequest(ctx, url, &response)
-		if err != nil {
-			return err
-		}
-
-		// Append items from this page
-		allItems = append(allItems, response.Value...)
-
-		// Check for next page
-		url = nextURL
-		if url != "" && !strings.HasPrefix(url, "http") {
-			// Relative URL, make it absolute
-			if strings.HasPrefix(url, "/") {
-				url = c.baseURL + url
-			} else {
-				url = c.baseURL + "/" + url
-			}
-		}
-
-		c.logger.Debug().
-			Int("items_retrieved", len(response.Value)).
-			Str("next_url", url).
-			Msg("Retrieved page from OData endpoint")
-	}
-
-	// Convert to the expected type
-	jsonData, err := json.Marshal(allItems)
-	if err != nil {
-		return fmt.Errorf("failed to marshal response data: %v", err)
-	}
-
-	if err := json.Unmarshal(jsonData, result); err != nil {
-		return fmt.Errorf("failed to unmarshal to target type: %v", err)
-	}
-
-	return nil
-}
-
-// getODataCollectionUnlimitedWithExpand retrieves ALL items with $expand support without pagination limits
-func (c *citrixClient) getODataCollectionUnlimitedWithExpand(ctx context.Context, endpoint, filter, expand string, result interface{}) error {
-	url := c.baseURL + endpoint
-
-	// Add query parameters - remove $top limit to get all items
-	params := neturl.Values{}
-	if filter != "" {
-		params.Add("$filter", filter)
-	}
-	if expand != "" {
-		params.Add("$expand", expand)
-	}
-	// No $top parameter = get all items
-
-	if len(params) > 0 {
-		url += "?" + params.Encode()
-	}
-
-	var allItems []interface{}
-	pageCount := 0
-
-	// Handle pagination
-	for url != "" {
-		pageCount++
-		var response ODataResponse
-		nextURL, err := c.performRequest(ctx, url, &response)
-		if err != nil {
-			return err
-		}
-
-		// Append items from this page
-		allItems = append(allItems, response.Value...)
-
-		// Check for next page
-		url = nextURL
-	}
-
-	c.logger.Info().
-		Str("endpoint", endpoint).
-		Str("filter", filter).
-		Str("expand", expand).
-		Int("total_items_retrieved", len(allItems)).
-		Int("total_pages", pageCount).
-		Msg("Completed unlimited OData collection retrieval with expand")
-
-	// Convert to JSON and back to populate the result struct correctly
-	jsonData, err := json.Marshal(allItems)
-	if err != nil {
-		return fmt.Errorf("failed to marshal OData items: %v", err)
-	}
-
-	err = json.Unmarshal(jsonData, result)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal OData items: %v", err)
-	}
-
-	return nil
-}
-
-// getODataCollectionUnlimited retrieves ALL items without pagination limits
-func (c *citrixClient) getODataCollectionUnlimited(ctx context.Context, endpoint, filter string, result interface{}) error {
-	url := c.baseURL + endpoint
-
-	// Add query parameters - remove $top limit to get all items
-	params := neturl.Values{}
-	if filter != "" {
-		params.Add("$filter", filter)
-	}
-	// No $top parameter = get all items
-
-	if len(params) > 0 {
-		url += "?" + params.Encode()
-	}
-
-	var allItems []interface{}
-	pageCount := 0
-
-	// Handle pagination
-	for url != "" {
-		pageCount++
-		var response ODataResponse
-		nextURL, err := c.performRequest(ctx, url, &response)
-		if err != nil {
-			return err
-		}
-
-		// Append items from this page
-		allItems = append(allItems, response.Value...)
-
-		// Check for next page
-		url = nextURL
-		if url != "" && !strings.HasPrefix(url, "http") {
-			// Relative URL, make it absolute
-			if strings.HasPrefix(url, "/") {
-				url = c.baseURL + url
-			} else {
-				url = c.baseURL + "/" + url
-			}
-		}
-
-		c.logger.Debug().
-			Int("items_retrieved", len(response.Value)).
-			Int("total_items", len(allItems)).
-			Int("page_number", pageCount).
-			Str("next_url", url).
-			Msg("Retrieved unlimited page from OData endpoint")
-	}
-
-	c.logger.Info().
-		Int("total_items_retrieved", len(allItems)).
-		Int("total_pages", pageCount).
-		Str("endpoint", endpoint).
-		Msg("Completed unlimited OData collection retrieval")
-
-	// Convert to the expected type
-	jsonData, err := json.Marshal(allItems)
-	if err != nil {
-		return fmt.Errorf("failed to marshal response data: %v", err)
-	}
-
-	if err := json.Unmarshal(jsonData, result); err != nil {
-		return fmt.Errorf("failed to unmarshal to target type: %v", err)
-	}
-
-	return nil
-}
-
-// getODataCollectionWithExpand retrieves items with $expand parameter for related entities
-func (c *citrixClient) getODataCollectionWithExpand(ctx context.Context, endpoint, filter, expand string, result interface{}) error {
-	url := c.baseURL + endpoint
-
-	// Add query parameters including $expand
-	params := neturl.Values{}
-	if filter != "" {
-		params.Add("$filter", filter)
-	}
-	if expand != "" {
-		params.Add("$expand", expand)
-	}
-	// No $top parameter = get all items
-
-	if len(params) > 0 {
-		url += "?" + params.Encode()
-	}
-
-	var allItems []interface{}
-	pageCount := 0
-
-	// Handle pagination
-	for url != "" {
-		pageCount++
-		var response ODataResponse
-		nextURL, err := c.performRequest(ctx, url, &response)
-		if err != nil {
-			return err
-		}
-
-		// Append items from this page
-		allItems = append(allItems, response.Value...)
-
-		// Check for next page
-		url = nextURL
-		if url != "" && !strings.HasPrefix(url, "http") {
-			// Relative URL, make it absolute
-			if strings.HasPrefix(url, "/") {
-				url = c.baseURL + url
-			} else {
-				url = c.baseURL + "/" + url
-			}
-		}
-
-		c.logger.Debug().
-			Int("items_retrieved", len(response.Value)).
-			Int("total_items", len(allItems)).
-			Int("page_number", pageCount).
-			Str("expand", expand).
-			Str("next_url", url).
-			Msg("Retrieved expanded page from OData endpoint")
-	}
-
-	c.logger.Info().
-		Int("total_items_retrieved", len(allItems)).
-		Int("total_pages", pageCount).
-		Str("endpoint", endpoint).
-		Str("expand", expand).
-		Msg("Completed expanded OData collection retrieval")
-
-	// Convert to the expected type
-	jsonData, err := json.Marshal(allItems)
-	if err != nil {
-		return fmt.Errorf("failed to marshal response data: %v", err)
-	}
-
-	if err := json.Unmarshal(jsonData, result); err != nil {
-		return fmt.Errorf("failed to unmarshal to target type: %v", err)
-	}
-
-	return nil
-}
-
-// performRequest executes a single HTTP request with retry logic
-func (c *citrixClient) performRequest(ctx context.Context, url string, result interface{}) (nextLink string, err error) {
-	var lastErr error
-
-	for attempt := 0; attempt < c.config.MaxRetryAttempts; attempt++ {
-		if attempt > 0 {
-			// Exponential backoff
-			delay := time.Duration(float64(time.Second) * c.config.RetryBackoffFactor * float64(attempt))
-			c.logger.Debug().
-				Int("attempt", attempt+1).
-				Dur("delay", delay).
-				Msg("Retrying request after delay")
-
-			select {
-			case <-time.After(delay):
-			case <-ctx.Done():
-				return "", ctx.Err()
-			}
-		}
-
-		nextLink, lastErr = c.doRequest(ctx, url, result)
-		if lastErr == nil {
-			return nextLink, nil
-		}
-
-		c.logger.Debug().
-			Err(lastErr).
-			Int("attempt", attempt+1).
-			Int("max_attempts", c.config.MaxRetryAttempts).
-			Msg("OData request failed, will retry if attempts remaining")
-	}
-
-	return "", fmt.Errorf("request failed after %d attempts: %v", c.config.MaxRetryAttempts, lastErr)
-}
-
-// doRequest performs a single HTTP request
-func (c *citrixClient) doRequest(ctx context.Context, url string, result interface{}) (nextLink string, err error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %v", err)
-	}
-
-	// Add required Citrix headers
-	c.addCitrixHeaders(req)
-
-	// Add authentication headers
-	c.addAuthHeaders(req)
-
-	// Debug log the full request details
-	c.logger.Debug().
-		Str("method", req.Method).
-		Str("url", req.URL.String()).
-		Str("host", req.Host).
-		Interface("headers", req.Header).
-		Msg("Sending HTTP request")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		c.logger.Error().
-			Err(err).
-			Str("url", url).
-			Str("auth_method", c.config.AuthMethod).
-			Msg("HTTP request completely failed")
-		return "", fmt.Errorf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	c.logger.Debug().
-		Int("status_code", resp.StatusCode).
-		Str("url", url).
-		Interface("response_headers", resp.Header).
-		Msg("Received HTTP response")
-
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
-
-		// Log authentication failures with more detail
-		if resp.StatusCode == 401 {
-			c.logger.Error().
-				Int("status_code", resp.StatusCode).
-				Str("response_body", string(body)).
-				Str("url", url).
-				Str("auth_method", c.config.AuthMethod).
-				Str("username", c.config.Username).
-				Interface("response_headers", resp.Header).
-				Interface("request_headers", req.Header).
-				Msg("Authentication failed - check credentials and authentication method")
-		} else {
-			c.logger.Debug().
-				Int("status_code", resp.StatusCode).
-				Str("response_body", string(body)).
-				Str("url", url).
-				Msg("HTTP request failed with error response")
-		}
-		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %v", err)
-	}
-
-	// Parse the response
-	var odataResp ODataResponse
-	if err := json.Unmarshal(body, &odataResp); err != nil {
-		return "", fmt.Errorf("failed to parse OData response: %v", err)
-	}
-
-	// Copy the response to result
-	*result.(*ODataResponse) = odataResp
-
-	return odataResp.NextLink, nil
-}
-
-// addCitrixHeaders adds required Citrix-specific headers
-func (c *citrixClient) addCitrixHeaders(req *http.Request) {
-	// Essential headers for OData API
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "SenHub-Citrix-Collector/1.0")
-	req.Header.Set("Content-Type", "application/json")
-
-	// Some Citrix environments may require these headers
-	if c.config.Environment != "" {
-		req.Header.Set("Citrix-InstanceId", c.config.Environment)
-	}
-}
-
-// addAuthHeaders adds authentication headers based on the configured method
-func (c *citrixClient) addAuthHeaders(req *http.Request) {
-	switch AuthenticationMethod(c.config.AuthMethod) {
-	case AuthMethodBasic:
-		req.SetBasicAuth(c.config.Username, c.config.Password)
-		c.logger.Debug().
-			Str("auth_method", "basic").
-			Str("url", req.URL.Path).
-			Str("username", c.config.Username).
-			Msg("Added basic authentication headers")
-	case AuthMethodNTLM:
-		// NTLM authentication is handled by the transport layer
-		// Set basic auth as fallback - many Citrix servers accept this for NTLM
-		req.SetBasicAuth(c.config.Username, c.config.Password)
-		c.logger.Debug().
-			Str("auth_method", "ntlm_with_basic_fallback").
-			Str("url", req.URL.Path).
-			Str("username", c.config.Username).
-			Str("username_length", fmt.Sprintf("%d", len(c.config.Username))).
-			Str("password_length", fmt.Sprintf("%d", len(c.config.Password))).
-			Msg("NTLM transport configured with basic auth fallback")
-	case AuthMethodKerberos:
-		// Kerberos authentication - placeholder for future implementation
-		c.logger.Warn().Msg("Kerberos authentication not yet implemented")
-	}
 }
 
 // GetDeliveryGroupById retrieves a specific delivery group by ID using OData filter
@@ -1095,8 +682,8 @@ func (c *citrixClient) GetConnections(ctx context.Context, sinceTime time.Time) 
 		Msg("Retrieved connections with logon breakdown metrics")
 
 	// Apply client-side DNS filtering if we have a valid machine list
-	if len(c.validMachineDNS) > 0 {
-		connections = c.filterConnectionsByMachineDNS(connections, c.validMachineDNS)
+	if len(c.filters.GetValidMachineDNS()) > 0 {
+		connections = c.filters.FilterConnectionsByMachineDNS(connections)
 	}
 
 	return connections, nil
@@ -1104,217 +691,7 @@ func (c *citrixClient) GetConnections(ctx context.Context, sinceTime time.Time) 
 
 // SetValidMachineDNS sets the list of valid machine DNS names for filtering
 func (c *citrixClient) SetValidMachineDNS(dnsNames []string) {
-	c.validMachineDNS = dnsNames
-	c.logger.Info().
-		Int("dns_count", len(dnsNames)).
-		Msg("Updated valid machine DNS list for client-side filtering")
+	c.filters.SetValidMachineDNS(dnsNames)
 }
 
-// formatODataDateTime formats a time for OData filter queries
-func formatODataDateTime(t time.Time) string {
-	// OData datetime format: 2023-12-20T10:30:00Z
-	// Ensure we don't send future dates that might confuse the server
-	now := time.Now().UTC()
-	if t.After(now) {
-		// Note: Future time requested, using current time instead
-		t = now
-	}
-	return t.UTC().Format("2006-01-02T15:04:05Z")
-}
-
-// filterSessionsByMachineDNS filters sessions to only include those from specified machine DNS names
-func (c *citrixClient) filterSessionsByMachineDNS(sessions []Session, validDNSNames []string) []Session {
-	if len(validDNSNames) == 0 {
-		// No filter, return all sessions
-		return sessions
-	}
-	
-	// Create a map for O(1) lookup with both DNS names and short names
-	machineMap := make(map[string]bool)
-	for _, dns := range validDNSNames {
-		if dns != "" {
-			// Add full DNS name
-			machineMap[strings.ToLower(dns)] = true
-			
-			// Also add short name (first part before first dot)
-			if dotIndex := strings.Index(dns, "."); dotIndex > 0 {
-				shortName := dns[:dotIndex]
-				machineMap[strings.ToLower(shortName)] = true
-			}
-		}
-	}
-	
-	var filtered []Session
-	var excludedCount int
-	
-	for _, session := range sessions {
-		var machineName string
-		var machineDNS string
-		
-		// Get machine name from expanded Machine data (preferred) or legacy MachineName field
-		if session.Machine != nil {
-			machineName = session.Machine.MachineName
-			machineDNS = session.Machine.DnsName
-		} else {
-			machineName = session.MachineName
-		}
-		
-		// Debug log the first few sessions to validate the fix
-		if len(filtered) < 3 {
-			c.logger.Info().
-				Str("session_key", session.SessionKey).
-				Str("expanded_machine_name", func() string { 
-					if session.Machine != nil { return session.Machine.MachineName }
-					return "null"
-				}()).
-				Str("expanded_machine_dns", func() string { 
-					if session.Machine != nil { return session.Machine.DnsName }
-					return "null"
-				}()).
-				Str("legacy_machine_name", session.MachineName).
-				Str("session_user", session.UserName).
-				Int("connection_state", session.ConnectionState).
-				Int("valid_dns_count", len(validDNSNames)).
-				Msg("🔍 Session structure debugging - WITH EXPAND")
-		}
-		
-		// Try direct matching first (with machine name from expand)
-		machineNameLower := strings.ToLower(machineName)
-		if machineName == "" || machineMap[machineNameLower] {
-			filtered = append(filtered, session)
-			continue
-		}
-		
-		// Try DNS name matching if available
-		if machineDNS != "" && machineMap[strings.ToLower(machineDNS)] {
-			filtered = append(filtered, session)
-			c.logger.Debug().
-				Str("session_key", session.SessionKey).
-				Str("machine_dns", machineDNS).
-				Msg("✅ Session included - matched via DNS name")
-			continue
-		}
-		
-		// Extract hostname from Domain\Hostname format and try matching
-		hostnameOnly := machineName
-		if backslashIndex := strings.LastIndex(machineName, "\\"); backslashIndex >= 0 {
-			hostnameOnly = machineName[backslashIndex+1:]
-		}
-		
-		if machineMap[strings.ToLower(hostnameOnly)] {
-			filtered = append(filtered, session)
-			c.logger.Debug().
-				Str("session_key", session.SessionKey).
-				Str("machine_name", machineName).
-				Str("hostname_extracted", hostnameOnly).
-				Msg("✅ Session included - matched via hostname extraction")
-		} else {
-			excludedCount++
-			c.logger.Debug().
-				Str("session_key", session.SessionKey).
-				Str("machine_name", machineName).
-				Str("machine_dns", machineDNS).
-				Str("hostname_only", hostnameOnly).
-				Str("user", session.UserName).
-				Int("connection_state", session.ConnectionState).
-				Msg("🚫 Session excluded - machine not in CVAD inventory")
-		}
-	}
-	
-	if excludedCount > 0 {
-		c.logger.Info().
-			Int("total_sessions", len(sessions)).
-			Int("filtered_sessions", len(filtered)).
-			Int("excluded_sessions", excludedCount).
-			Msg("Applied client-side DNS filtering to sessions")
-	}
-	
-	return filtered
-}
-
-// filterConnectionsByMachineDNS filters connections to only include those from specified machine DNS names
-func (c *citrixClient) filterConnectionsByMachineDNS(connections []Connection, validDNSNames []string) []Connection {
-	if len(validDNSNames) == 0 {
-		// No filter, return all connections
-		return connections
-	}
-	
-	// Create a map for O(1) lookup
-	dnsMap := make(map[string]bool)
-	for _, dns := range validDNSNames {
-		if dns != "" {
-			dnsMap[strings.ToLower(dns)] = true
-		}
-	}
-	
-	var filtered []Connection
-	var excludedCount int
-	
-	for _, conn := range connections {
-		// Note: Connection doesn't have direct machine info, skip filtering for now
-		// TODO: Need to join with Session via SessionKey to get machine info
-		filtered = append(filtered, conn)
-	}
-	
-	if excludedCount > 0 {
-		c.logger.Info().
-			Int("total_connections", len(connections)).
-			Int("filtered_connections", len(filtered)).
-			Int("excluded_connections", excludedCount).
-			Msg("Applied client-side DNS filtering to connections")
-	}
-	
-	return filtered
-}
-
-// filterFailureLogsByMachineDNS filters connection failure logs to only include those from specified machine DNS names
-func (c *citrixClient) filterFailureLogsByMachineDNS(failures []ConnectionFailureLog, validDNSNames []string) []ConnectionFailureLog {
-	if len(validDNSNames) == 0 {
-		// No filter, return all failures
-		return failures
-	}
-	
-	// Create a map for O(1) lookup with both DNS names and short names
-	machineMap := make(map[string]bool)
-	for _, dns := range validDNSNames {
-		if dns != "" {
-			// Add full DNS name
-			machineMap[strings.ToLower(dns)] = true
-			
-			// Also add short name (first part before first dot)
-			if dotIndex := strings.Index(dns, "."); dotIndex > 0 {
-				shortName := dns[:dotIndex]
-				machineMap[strings.ToLower(shortName)] = true
-			}
-		}
-	}
-	
-	var filtered []ConnectionFailureLog
-	var excludedCount int
-	
-	for _, failure := range failures {
-		// Check if failure's machine name is in our valid list
-		// Note: ConnectionFailureLog has MachineName, not MachineDnsName
-		machineName := strings.ToLower(failure.MachineName)
-		if machineName == "" || machineMap[machineName] {
-			filtered = append(filtered, failure)
-		} else {
-			excludedCount++
-			c.logger.Debug().
-				Int("failure_id", failure.Id).
-				Str("machine_name", failure.MachineName).
-				Str("user", failure.UserName).
-				Msg("🚫 Connection failure excluded - machine not in CVAD inventory")
-		}
-	}
-	
-	if excludedCount > 0 {
-		c.logger.Info().
-			Int("total_failures", len(failures)).
-			Int("filtered_failures", len(filtered)).
-			Int("excluded_failures", excludedCount).
-			Msg("Applied client-side DNS filtering to connection failures")
-	}
-	
-	return filtered
-}
+// HTTP and OData helper methods moved to citrix_client_http.go for better code organization

@@ -135,7 +135,7 @@ func (c *deliveryControllerClient) getToken(ctx context.Context) error {
 		c.token = tokenResp.Token
 		c.tokenExpiry = tokenResp.ExpiresAt
 
-		c.logger.Info().
+		c.logger.Debug().
 			Str("principal", tokenResp.Principal).
 			Str("user_id", tokenResp.UserId).
 			Str("customer_id", tokenResp.CustomerId).
@@ -225,13 +225,13 @@ func (c *deliveryControllerClient) makeRequestWithSiteID(ctx context.Context, me
 
 		if resp.StatusCode >= 400 {
 			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
-			
+
 			// Reduce log level for optional endpoints that may not exist (404)
 			logLevel := c.logger.Warn()
 			if resp.StatusCode == 404 && (strings.Contains(url, "/Controllers") || strings.Contains(url, "/Applications")) {
 				logLevel = c.logger.Debug()
 			}
-			
+
 			logLevel.
 				Int("status", resp.StatusCode).
 				Str("url", url).

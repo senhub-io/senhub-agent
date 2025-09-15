@@ -27,6 +27,8 @@ type ConfigurationManager struct {
 	nagiosConfigMu   sync.RWMutex
 	tlsEnabled       bool
 	tlsMinVersion    string
+	tlsCertFile      string
+	tlsKeyFile       string
 	port             int
 	bindAddress      string
 }
@@ -246,6 +248,18 @@ func (cm *ConfigurationManager) loadConfiguration() {
 			} else if cm.tlsEnabled {
 				cm.tlsMinVersion = "1.2"
 			}
+			
+			// Certificate file paths
+			if certFile, exists := tlsConfig["cert_file"]; exists {
+				if certFileStr, ok := certFile.(string); ok {
+					cm.tlsCertFile = certFileStr
+				}
+			}
+			if keyFile, exists := tlsConfig["key_file"]; exists {
+				if keyFileStr, ok := keyFile.(string); ok {
+					cm.tlsKeyFile = keyFileStr
+				}
+			}
 		}
 	}
 }
@@ -333,6 +347,16 @@ func (cm *ConfigurationManager) IsTLSEnabled() bool {
 // GetTLSMinVersion returns the minimum TLS version
 func (cm *ConfigurationManager) GetTLSMinVersion() string {
 	return cm.tlsMinVersion
+}
+
+// GetTLSCertFile returns the TLS certificate file path
+func (cm *ConfigurationManager) GetTLSCertFile() string {
+	return cm.tlsCertFile
+}
+
+// GetTLSKeyFile returns the TLS private key file path
+func (cm *ConfigurationManager) GetTLSKeyFile() string {
+	return cm.tlsKeyFile
 }
 
 // GetAgentConfig returns the agent configuration

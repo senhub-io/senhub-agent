@@ -19,19 +19,19 @@ func (ct *CVADTime) UnmarshalJSON(data []byte) error {
 	if dateStr == "null" || dateStr == "" {
 		return nil
 	}
-	
+
 	// Try CVAD format: "09/10/2025 13:34:55"
 	if parsedTime, err := time.Parse("01/02/2006 15:04:05", dateStr); err == nil {
 		ct.Time = parsedTime
 		return nil
 	}
-	
+
 	// Fallback to standard ISO format
 	if parsedTime, err := time.Parse(time.RFC3339, dateStr); err == nil {
 		ct.Time = parsedTime
 		return nil
 	}
-	
+
 	return fmt.Errorf("unable to parse CVAD date format: %s", dateStr)
 }
 
@@ -42,22 +42,22 @@ func (ct CVADTime) MarshalJSON() ([]byte, error) {
 
 // DDCMachine represents a machine from Delivery Controller API
 type DDCMachine struct {
-	Id                     string     `json:"Id"`
-	Name                   string     `json:"Name"`
-	DNSName                string     `json:"DnsName"`
-	MachineName            string     `json:"MachineName"`
-	SiteId                 string     `json:"SiteId,omitempty"`
-	SiteName               string     `json:"SiteName,omitempty"`
-	DeliveryGroupId        string     `json:"DeliveryGroupId,omitempty"`
-	DeliveryGroupName      string     `json:"DeliveryGroupName,omitempty"`
-	ControllerDNSName      string     `json:"AssociatedControllerDnsName,omitempty"`
-	IsAssigned             bool       `json:"IsAssigned"`
-	IsInMaintenanceMode    bool       `json:"InMaintenanceMode"`
-	RegistrationState      string     `json:"RegistrationState"`
-	LastConnectionTime     *CVADTime  `json:"LastConnectionTime,omitempty"`
-	LastDeregistrationTime *CVADTime  `json:"LastDeregistrationTime,omitempty"`
-	PowerState             string     `json:"PowerState,omitempty"`
-	SessionCount           int        `json:"SessionCount"`
+	Id                     string    `json:"Id"`
+	Name                   string    `json:"Name"`
+	DNSName                string    `json:"DnsName"`
+	MachineName            string    `json:"MachineName"`
+	SiteId                 string    `json:"SiteId,omitempty"`
+	SiteName               string    `json:"SiteName,omitempty"`
+	DeliveryGroupId        string    `json:"DeliveryGroupId,omitempty"`
+	DeliveryGroupName      string    `json:"DeliveryGroupName,omitempty"`
+	ControllerDNSName      string    `json:"AssociatedControllerDnsName,omitempty"`
+	IsAssigned             bool      `json:"IsAssigned"`
+	IsInMaintenanceMode    bool      `json:"InMaintenanceMode"`
+	RegistrationState      string    `json:"RegistrationState"`
+	LastConnectionTime     *CVADTime `json:"LastConnectionTime,omitempty"`
+	LastDeregistrationTime *CVADTime `json:"LastDeregistrationTime,omitempty"`
+	PowerState             string    `json:"PowerState,omitempty"`
+	SessionCount           int       `json:"SessionCount"`
 }
 
 // DDCDeliveryGroup represents a delivery group from Delivery Controller API
@@ -76,47 +76,34 @@ type DDCDeliveryGroup struct {
 	MachineIds            []string `json:"AssociatedMachineIds,omitempty"`
 }
 
-// DDCApplication represents an application from Delivery Controller API
-type DDCApplication struct {
-	Id                    string   `json:"Id"`
-	Name                  string   `json:"Name"`
-	PublishedName         string   `json:"PublishedName"`
-	Description           string   `json:"Description,omitempty"`
-	Enabled               bool     `json:"Enabled"`
-	Visible               bool     `json:"Visible"`
-	CommandLineExecutable string   `json:"CommandLineExecutable"`
-	DeliveryGroupIds      []string `json:"AssociatedDeliveryGroupIds,omitempty"`
-	SiteId                string   `json:"SiteId,omitempty"`
-	SiteName              string   `json:"SiteName,omitempty"`
-}
 
 // DDCController represents a Delivery Controller
 type DDCController struct {
-	Id                 string     `json:"Id"`
-	Name               string     `json:"Name"`
-	DNSName            string     `json:"DnsName"`
-	MachineName        string     `json:"MachineName"`
-	SiteId             string     `json:"SiteId,omitempty"`
-	SiteName           string     `json:"SiteName,omitempty"`
-	ControllerState    string     `json:"State"`
-	LastActivityTime   *CVADTime  `json:"LastActivityTime,omitempty"`
-	DesktopsRegistered int        `json:"DesktopsRegistered"`
+	Id                 string    `json:"Id"`
+	Name               string    `json:"Name"`
+	DNSName            string    `json:"DnsName"`
+	MachineName        string    `json:"MachineName"`
+	SiteId             string    `json:"SiteId,omitempty"`
+	SiteName           string    `json:"SiteName,omitempty"`
+	ControllerState    string    `json:"State"`
+	LastActivityTime   *CVADTime `json:"LastActivityTime,omitempty"`
+	DesktopsRegistered int       `json:"DesktopsRegistered"`
 }
 
 // DDCSession represents a session from Delivery Controller API
 type DDCSession struct {
-	Id                string     `json:"Id"`
-	UserName          string     `json:"UserName"`
-	UserUPN           string     `json:"UserUPN,omitempty"`
-	MachineDNSName    string     `json:"MachineDnsName,omitempty"`
-	MachineId         string     `json:"MachineId,omitempty"`
-	DeliveryGroupId   string     `json:"DeliveryGroupId,omitempty"`
-	DeliveryGroupName string     `json:"DeliveryGroupName,omitempty"`
-	SessionState      string     `json:"SessionState"`
-	StartTime         *CVADTime  `json:"StartTime,omitempty"`
-	LogOnDuration     int        `json:"LogOnDuration,omitempty"` // in milliseconds
-	ConnectionState   string     `json:"ConnectionState"`
-	Protocol          string     `json:"Protocol,omitempty"`
+	Id                string    `json:"Id"`
+	UserName          string    `json:"UserName"`
+	UserUPN           string    `json:"UserUPN,omitempty"`
+	MachineDNSName    string    `json:"MachineDnsName,omitempty"`
+	MachineId         string    `json:"MachineId,omitempty"`
+	DeliveryGroupId   string    `json:"DeliveryGroupId,omitempty"`
+	DeliveryGroupName string    `json:"DeliveryGroupName,omitempty"`
+	SessionState      string    `json:"SessionState"`
+	StartTime         *CVADTime `json:"StartTime,omitempty"`
+	LogOnDuration     int       `json:"LogOnDuration,omitempty"` // in milliseconds
+	ConnectionState   string    `json:"ConnectionState"`
+	Protocol          string    `json:"Protocol,omitempty"`
 }
 
 // DDCPaginatedResponse represents a paginated API response
@@ -148,11 +135,6 @@ type DDCDeliveryGroupsResponse struct {
 	ContinuationToken string             `json:"ContinuationToken,omitempty"`
 }
 
-// DDCApplicationsResponse represents the response from Applications endpoint
-type DDCApplicationsResponse struct {
-	Items             []DDCApplication `json:"Items"`
-	ContinuationToken string           `json:"ContinuationToken,omitempty"`
-}
 
 // DDCControllersResponse represents the response from Controllers endpoint
 type DDCControllersResponse struct {
@@ -168,13 +150,13 @@ type DDCSessionsResponse struct {
 
 // DDCMeResponse represents the /me endpoint response with current user info
 type DDCMeResponse struct {
-	UserId                  string           `json:"UserId"`
-	DisplayName             string           `json:"DisplayName"`
-	ExpiryTime              string           `json:"ExpiryTime"`
-	RefreshExpirationTime   string           `json:"RefreshExpirationTime"`
-	VerifiedEmail           interface{}      `json:"VerifiedEmail"`
-	IsCspCustomer           bool             `json:"IsCspCustomer"`
-	Customers               []DDCCustomer    `json:"Customers"`
+	UserId                string        `json:"UserId"`
+	DisplayName           string        `json:"DisplayName"`
+	ExpiryTime            string        `json:"ExpiryTime"`
+	RefreshExpirationTime string        `json:"RefreshExpirationTime"`
+	VerifiedEmail         interface{}   `json:"VerifiedEmail"`
+	IsCspCustomer         bool          `json:"IsCspCustomer"`
+	Customers             []DDCCustomer `json:"Customers"`
 }
 
 // DDCCustomer represents a customer in the /me response
@@ -184,7 +166,7 @@ type DDCCustomer struct {
 	Sites []DDCSite `json:"Sites"`
 }
 
-// DDCSite represents a site in the /me response  
+// DDCSite represents a site in the /me response
 type DDCSite struct {
 	Id   string `json:"Id"`
 	Name string `json:"Name"`
