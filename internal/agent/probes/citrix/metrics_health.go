@@ -110,7 +110,7 @@ func (mc *MetricsCollector) CollectHealthMetrics(ctx context.Context, timestamp 
 	}
 
 	metric := datapoint.DataPoint{
-		Name:      "health_score",
+		Name:      MetricSiteHealthScore,
 		Value:     roundToTwoDecimals(score),
 		Timestamp: timestamp,
 		Tags: []tags.Tag{
@@ -118,7 +118,7 @@ func (mc *MetricsCollector) CollectHealthMetrics(ctx context.Context, timestamp 
 		},
 	}
 
-	mc.logger.Info().
+	mc.logger.Debug().
 		Float32("health_score", score).
 		Msg("Health score calculated")
 

@@ -435,27 +435,60 @@ func (f *FormatConverter) applyMetricFilter(metrics []CachedMetric, filter Metri
 		// Filter by tag filters if specified (include tags)
 		if len(filter.TagFilters) > 0 {
 			tagMatch := true
+			f.logger.Debug().
+				Str("metric_name", metric.MetricName).
+				Interface("metric_tags", metric.Tags).
+				Interface("filter_tags", filter.TagFilters).
+				Msg("🔍 Filtering: Checking metric against tag filters")
+			
 			for tagKey, allowedValues := range filter.TagFilters {
 				metricValue, exists := metric.Tags[tagKey]
+				f.logger.Debug().
+					Str("tag_key", tagKey).
+					Str("metric_value", metricValue).
+					Bool("exists", exists).
+					Strs("allowed_values", allowedValues).
+					Msg("🔍 Filtering: Tag comparison")
+				
 				if !exists {
+					f.logger.Debug().
+						Str("tag_key", tagKey).
+						Msg("🔍 Filtering: Tag not found in metric, excluding")
 					tagMatch = false
 					break
 				}
 				// Check if metric value is in allowed values
 				found := false
 				for _, allowedValue := range allowedValues {
+					f.logger.Debug().
+						Str("metric_value", metricValue).
+						Str("allowed_value", allowedValue).
+						Bool("match", metricValue == allowedValue).
+						Msg("🔍 Filtering: Value comparison")
 					if metricValue == allowedValue {
 						found = true
 						break
 					}
 				}
 				if !found {
+					f.logger.Debug().
+						Str("tag_key", tagKey).
+						Str("metric_value", metricValue).
+						Strs("allowed_values", allowedValues).
+						Msg("🔍 Filtering: No matching value found, excluding metric")
 					tagMatch = false
 					break
 				}
 			}
 			if !tagMatch {
+				f.logger.Debug().
+					Str("metric_name", metric.MetricName).
+					Msg("🔍 Filtering: Metric excluded by tag filters")
 				continue
+			} else {
+				f.logger.Debug().
+					Str("metric_name", metric.MetricName).
+					Msg("🔍 Filtering: Metric passed tag filters")
 			}
 		}
 
@@ -536,19 +569,22 @@ func (f *FormatConverter) getContextualMetricPrefixes(tagFilters map[string][]st
 			prefixes = append(prefixes, "hardware.power.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for PSU metrics")
 
-		case "interface":
-			// If filtering on interface, show only network metrics
-			prefixes = append(prefixes, "network.", "hardware.network.")
+		case "interface", "adapter", "connection_name":
+			// If filtering on interface/adapter/connection, show only network metrics
+			// Support both dot notation (hardware probes) and underscore notation (host probes)
+			prefixes = append(prefixes, "network.", "network_", "packets_", "bytes_", "errors_", "discards_", "hardware.network.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for network metrics")
 
 		case "core":
 			// If filtering on core, show only CPU metrics
-			prefixes = append(prefixes, "cpu.", "hardware.cpu.")
+			// Support both dot notation (hardware probes) and underscore notation (host probes)
+			prefixes = append(prefixes, "cpu.", "cpu_", "hardware.cpu.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for CPU metrics")
 
-		case "mount_point", "filesystem":
-			// If filtering on mount point or filesystem, show only logical disk metrics
-			prefixes = append(prefixes, "logicaldisk.", "hardware.disk.")
+		case "mount_point", "filesystem", "drive":
+			// If filtering on mount point/filesystem/drive, show only logical disk metrics
+			// Support both dot notation (hardware probes) and underscore notation (host probes)
+			prefixes = append(prefixes, "logicaldisk.", "disk_", "hardware.disk.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for logical disk metrics")
 		}
 	}

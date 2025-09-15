@@ -50,13 +50,41 @@ metrics:
     display_name: "CPU Total Usage"
     unit: "%"
     
-  # Per-core CPU Usage (Unix/Linux)
+  # Per-core CPU Usage (Cross-platform)
   - name: "cpu_core_usage"
     channel: "cpu_core_usage"
     display_name: "CPU Core {core} Usage"
     unit: "%"
     multi_instance_labels: ["core"]
     description: "CPU usage percentage per core"
+    
+  - name: "cpu_core_user"
+    channel: "cpu_core_user"
+    display_name: "CPU Core {core} User"
+    unit: "%"
+    multi_instance_labels: ["core"]
+    description: "CPU user time percentage per core"
+    
+  - name: "cpu_core_system"
+    channel: "cpu_core_system"
+    display_name: "CPU Core {core} System"
+    unit: "%"
+    multi_instance_labels: ["core"]
+    description: "CPU system time percentage per core"
+    
+  - name: "cpu_core_irq"
+    channel: "cpu_core_irq"
+    display_name: "CPU Core {core} IRQ"
+    unit: "%"
+    multi_instance_labels: ["core"]
+    description: "CPU interrupt time percentage per core"
+    
+  - name: "cpu_core_softirq"
+    channel: "cpu_core_softirq"
+    display_name: "CPU Core {core} SoftIRQ"
+    unit: "%"
+    multi_instance_labels: ["core"]
+    description: "CPU soft interrupt time percentage per core"
     
   # Windows-specific CPU Metrics (in percentages)
   - name: "processor_time"
@@ -95,6 +123,31 @@ metrics:
     description: "CPU Deferred Procedure Call time percentage per core"
 
   # Windows System-wide CPU Metrics
+  - name: "cpu_dpc_rate"
+    channel: "cpu_dpc_rate"
+    display_name: "CPU DPC Rate"
+    unit: "#"
+    description: "Deferred Procedure Calls per second"
+    
+  - name: "cpu_dpc_queued"
+    channel: "cpu_dpc_queued"
+    display_name: "CPU DPC Queued"
+    unit: "/s"
+    description: "DPCs queued per second"
+    
+  - name: "cpu_interrupts"
+    channel: "cpu_interrupts"
+    display_name: "CPU Interrupts"
+    unit: "/s"
+    description: "CPU interrupts per second"
+    
+  - name: "cpu_queue_length"
+    channel: "cpu_queue_length"
+    display_name: "CPU Queue Length"
+    unit: "#"
+    description: "Number of threads waiting in the processor queue"
+    
+  # Legacy Windows metrics (kept for compatibility)
   - name: "dpc_rate"
     channel: "cpu_dpc_rate"
     display_name: "CPU {instance} DPC Rate"
