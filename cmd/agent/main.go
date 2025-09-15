@@ -575,10 +575,13 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 		filesToRemove = append(filesToRemove, configPath)
 	}
 
-	// Certificate directory
-	certsDir := "./certs"
-	if _, err := os.Stat(certsDir); err == nil {
-		dirsToRemove = append(dirsToRemove, certsDir)
+	// Certificate directory (use absolute path)
+	currentDir, err := os.Getwd()
+	if err == nil {
+		certsDir := filepath.Join(currentDir, "certs")
+		if _, err := os.Stat(certsDir); err == nil {
+			dirsToRemove = append(dirsToRemove, certsDir)
+		}
 	}
 
 	// Log files and directory
