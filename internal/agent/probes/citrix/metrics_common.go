@@ -54,7 +54,7 @@ type CachedDataCollection struct {
 
 // LoadAllDataOnce performs all API calls once and caches results for reuse
 func (cmh *CommonMetricsHelper) LoadAllDataOnce(ctx context.Context, client CitrixClient, timestamp time.Time) (*CachedDataCollection, error) {
-	cmh.logger.Info().Msg("🚀 Loading all Citrix data once for optimal performance")
+	cmh.logger.Debug().Msg("🚀 Loading all Citrix data once for optimal performance")
 
 	cache := &CachedDataCollection{
 		DesktopGroupMap:      make(map[string]DesktopGroup),
@@ -78,7 +78,7 @@ func (cmh *CommonMetricsHelper) LoadAllDataOnce(ctx context.Context, client Citr
 			effectiveId := dg.GetEffectiveId()
 			cache.DesktopGroupMap[effectiveId] = dg
 		}
-		cmh.logger.Info().Int("count", len(dgs)).Msg("✅ Desktop groups loaded and mapped")
+		cmh.logger.Debug().Int("count", len(dgs)).Msg("✅ Desktop groups loaded and mapped")
 	}
 
 	// 2. Get all Sessions (last 24h for comprehensive data)
@@ -95,7 +95,7 @@ func (cmh *CommonMetricsHelper) LoadAllDataOnce(ctx context.Context, client Citr
 		for _, session := range sessions {
 			cache.SessionsByState[session.ConnectionState] = append(cache.SessionsByState[session.ConnectionState], session)
 		}
-		cmh.logger.Info().Int("count", len(sessions)).Msg("✅ Sessions loaded and grouped by state")
+		cmh.logger.Debug().Int("count", len(sessions)).Msg("✅ Sessions loaded and grouped by state")
 	}
 
 	// 3. Get all Machines
@@ -111,7 +111,7 @@ func (cmh *CommonMetricsHelper) LoadAllDataOnce(ctx context.Context, client Citr
 		for _, machine := range machines {
 			cache.MachinesByController[machine.ControllerDNSName] = append(cache.MachinesByController[machine.ControllerDNSName], machine)
 		}
-		cmh.logger.Info().Int("count", len(machines)).Msg("✅ Machines loaded and grouped by controller")
+		cmh.logger.Debug().Int("count", len(machines)).Msg("✅ Machines loaded and grouped by controller")
 	}
 
 	// 4. Get Connection Failure Categories (for failure interpretation)
@@ -137,7 +137,7 @@ func (cmh *CommonMetricsHelper) LoadAllDataOnce(ctx context.Context, client Citr
 		cmh.logger.Debug().Int("count", len(failures)).Msg("✅ Connection failures loaded")
 	}
 
-	cmh.logger.Info().
+	cmh.logger.Debug().
 		Strs("successful", cache.SuccessfulEndpoints).
 		Strs("failed", cache.FailedEndpoints).
 		Msg("🎯 Data loading completed - ready for efficient metrics calculation")
