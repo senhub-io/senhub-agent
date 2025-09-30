@@ -1,0 +1,68 @@
+# Example SNMP Trap probe configuration with external MIBs
+# This configuration demonstrates how to use the LibreNMS MIB collection
+
+agent:
+  key: "example-snmp-trap-config"
+  mode: offline
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      endpoints: ["prtg", "senhub", "web"]
+
+probes:
+  # SNMP Trap probe with comprehensive MIB support
+  - name: snmptrap
+    params:
+      # Network configuration
+      listen_address: "0.0.0.0:162"
+      buffer_size: 5000
+      
+      # MIB enrichment with external MIBs from LibreNMS
+      mib_enrichment:
+        enabled: true
+        external_mibs_path: "./mibs"  # Path to 1213 MIB files (31 vendors)
+        cache_size: 25000              # Large cache for comprehensive collection
+        cache_ttl: "2h"                # Cache OID translations for 2 hours
+      
+      # Security and filtering
+      communities: ["public", "monitoring", "snmp-ro"]
+      
+      filters:
+        # Allow traps from network infrastructure subnets
+        allowed_sources:
+          - "10.0.0.0/8"          # Private network
+          - "172.16.0.0/12"       # Private network
+          - "192.168.0.0/16"      # Private network
+        
+        # Focus on major network vendors
+        allowed_enterprises:
+          - "1.3.6.1.4.1.9"       # Cisco
+          - "1.3.6.1.4.1.25461"   # Palo Alto Networks
+          - "1.3.6.1.4.1.12356"   # Fortinet
+          - "1.3.6.1.4.1.2636"    # Juniper
+          - "1.3.6.1.4.1.3375"    # F5 Networks
+          - "1.3.6.1.4.1.11"      # HPE
+          - "1.3.6.1.4.1.674"     # Dell
+          - "1.3.6.1.4.1.2011"    # Huawei
+          - "1.3.6.1.4.1.30065"   # Arista
+        
+        # Rate limiting for high-volume environments
+        rate_limit:
+          max_traps_per_minute: 500
+          per_source_limit: 100
+          cleanup_interval: 300   # 5 minutes
+
+  # Basic system monitoring as backup
+  - name: cpu
+    params:
+      interval: 60
+
+  - name: memory  
+    params:
+      interval: 60
+
+  - name: logicaldisk
+    params:
+      interval: 120

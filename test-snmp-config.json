@@ -1,0 +1,36 @@
+{
+  "probes": [
+    {
+      "name": "snmptrap",
+      "params": {
+        "listen_address": "0.0.0.0:162",
+        "buffer_size": 1000,
+        "mib_enrichment": {
+          "enabled": true,
+          "cache_size": 10000,
+          "cache_ttl": "1h",
+          "external_mibs_path": "mibs"
+        },
+        "rate_limiting": {
+          "enabled": true,
+          "max_traps_per_second": 100,
+          "burst_size": 200
+        },
+        "filtering": {
+          "allowed_sources": [],
+          "blocked_sources": [],
+          "allowed_enterprises": [],
+          "blocked_enterprises": []
+        }
+      }
+    }
+  ],
+  "storage_config": [
+    {
+      "name": "event",
+      "params": {
+        "server_url": "http://localhost:3000"
+      }
+    }
+  ]
+}
