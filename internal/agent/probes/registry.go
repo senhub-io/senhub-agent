@@ -12,6 +12,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/network"
 	"senhub-agent.go/internal/agent/probes/otel"    // Import the otel probe package
 	"senhub-agent.go/internal/agent/probes/redfish" // Import the redfish probe package
+	"senhub-agent.go/internal/agent/probes/snmptrap" // Import the snmptrap probe package
 	"senhub-agent.go/internal/agent/probes/syslog"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/probes/webapp"
@@ -40,6 +41,7 @@ type ProbeConstructor func(map[string]interface{}, *logger.Logger) (types.Probe,
 // - otel: Collects OpenTelemetry data
 // - redfish: Monitors hardware via Redfish API
 // - citrix: Monitors Citrix Virtual Apps and Desktops via OData API
+// - snmptrap: Collects SNMP traps from network devices
 var probeConstructors = map[string]ProbeConstructor{
 	"load_webapp":          webapp.NewLoadWebAppProbe,
 	"ping_webapp":          webapp.NewPingWebAppProbe,
@@ -54,4 +56,5 @@ var probeConstructors = map[string]ProbeConstructor{
 	"otel":                 otel.NewOtelProbe,
 	"redfish":              redfish.NewRedfishProbe,
 	"citrix":               citrix.NewCitrixProbe,
+	"snmptrap":             snmptrap.NewSNMPTrapProbe,
 }

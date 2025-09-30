@@ -1,0 +1,26 @@
+agent:
+  key: "test-snmp-trap-offline"
+  mode: offline
+  generated: true
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+      endpoints: ["prtg", "senhub", "web", "event"]
+
+probes:
+  - name: snmptrap
+    params:
+      listen_address: "0.0.0.0:162"
+      buffer_size: 1000
+      mib_enrichment:
+        enabled: true
+        cache_size: 10000
+        cache_ttl: "1h"
+        external_mibs_path: "mibs"
+      rate_limiting:
+        enabled: false
+        max_per_second: 100
+      communities: ["public", "private"]

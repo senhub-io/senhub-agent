@@ -9,12 +9,13 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-test/deep v1.1.1
 	github.com/gorilla/mux v1.8.1
+	github.com/gosnmp/gosnmp v1.42.1
 	github.com/hashicorp/go-version v1.7.0
 	github.com/kardianos/service v1.2.2
 	github.com/minio/selfupdate v0.6.0
 	github.com/rs/zerolog v1.33.0
 	github.com/shirou/gopsutil/v3 v3.24.5
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/ybbus/httpretry v1.0.2
 	github.com/yusufpapurcu/wmi v1.2.4
 	golang.org/x/sys v0.28.0
@@ -26,6 +27,7 @@ require (
 
 require (
 	aead.dev/minisign v0.2.0 // indirect
+	github.com/alecthomas/participle v0.4.1 // indirect
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
@@ -37,6 +39,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
+	github.com/sleepinggenius2/gosmi v0.4.4 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect

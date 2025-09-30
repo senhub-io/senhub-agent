@@ -163,6 +163,9 @@ func MustParse() *ParsedArgs {
 }
 
 func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *ParsedArgs {
+	// Clean authentication key - remove quotes that may be added by Windows shells
+	authKey := strings.Trim(args.AuthenticationKey, "'\"")
+	
 	// If ServerUrl is not specified, use default value (unless offline mode)
 	serverUrl := args.ServerUrl
 	if serverUrl == "" && !args.Offline {
@@ -212,7 +215,7 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 	}
 
 	return &ParsedArgs{
-		AuthenticationKey:     args.AuthenticationKey,
+		AuthenticationKey:     authKey,
 		ServerUrl:             serverUrl,
 		Verbose:               args.Verbose,
 		DebugModules:          debugModules,
@@ -238,6 +241,9 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 }
 
 func parsedArgsFromUpdateArgs(args *UpdateSubcommandArgs, environment string) *ParsedArgs {
+	// Clean authentication key - remove quotes that may be added by Windows shells
+	authKey := strings.Trim(args.AuthenticationKey, "'\"")
+	
 	// If ServerUrl is not specified, use default value
 	serverUrl := args.ServerUrl
 	if serverUrl == "" {
@@ -246,7 +252,7 @@ func parsedArgsFromUpdateArgs(args *UpdateSubcommandArgs, environment string) *P
 	}
 
 	return &ParsedArgs{
-		AuthenticationKey: args.AuthenticationKey,
+		AuthenticationKey: authKey,
 		ServerUrl:         serverUrl,
 		UpdateRegistryUrl: args.RegistryUrl,
 		Verbose:           args.Verbose,
