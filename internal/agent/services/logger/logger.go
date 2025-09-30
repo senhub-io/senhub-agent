@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -206,12 +207,10 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 			selectiveDebugMode = false
 			activeDebugModules = make(map[string]bool)
 
-			// Enable debug for key modules
-			SetModuleLogLevel("strategy.http", zerolog.DebugLevel)
-			SetModuleLogLevel("cache", zerolog.DebugLevel)
-			SetModuleLogLevel("probe.redfish", zerolog.DebugLevel)
-			SetModuleLogLevel("configuration", zerolog.DebugLevel)
-			SetModuleLogLevel("scheduler", zerolog.DebugLevel)
+			// Enable debug for ALL modules
+			for module := range moduleLogLevels {
+				SetModuleLogLevel(module, zerolog.DebugLevel)
+			}
 
 			logger.Info().Msg("Full verbose mode enabled - debug logging activated for all components")
 		}
@@ -267,8 +266,34 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 		Compress:   true,    // Enable compression of rotated logs
 	}
 
-	// Define masked writers - start with log file
-	writers := []io.Writer{NewMaskingWriter(logRotator)}
+	// Create a ConsoleWriter for the local file with better formatting
+	fileConsoleWriter := zerolog.ConsoleWriter{
+		Out:        logRotator,
+		TimeFormat: "2006-01-02 15:04:05.000",
+		NoColor:    true, // Disable colors in file output
+		PartsOrder: []string{
+			zerolog.TimestampFieldName,
+			zerolog.LevelFieldName,
+			zerolog.CallerFieldName,
+			zerolog.MessageFieldName,
+		},
+		FieldsExclude: []string{}, // Include all fields
+		FormatLevel: func(i interface{}) string {
+			if level, ok := i.(string); ok {
+				return strings.ToUpper(level)[:4] // INFO, WARN, ERRO, DEBU
+			}
+			return "????"
+		},
+		FormatFieldName: func(i interface{}) string {
+			return i.(string) + "="
+		},
+		FormatFieldValue: func(i interface{}) string {
+			return fmt.Sprintf("%v", i)
+		},
+	}
+
+	// Define masked writers - start with formatted log file
+	writers := []io.Writer{NewMaskingWriter(fileConsoleWriter)}
 
 	// Add console output if verbose or debug modules are specified
 	if args.Verbose || len(args.DebugModules) > 0 {
