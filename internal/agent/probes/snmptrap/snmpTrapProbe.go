@@ -3,6 +3,7 @@ package snmptrap
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -449,19 +450,61 @@ func (p *SNMPTrapProbe) parseTrap(packet *gosnmp.SnmpPacket, addr string) *Parse
 		}
 		varbinds = append(varbinds, varbind)
 	}
-	
+
+	// Extract enterprise OID based on SNMP version
+	var enterpriseOID string
+	switch packet.Version {
+	case gosnmp.Version1:
+		// SNMPv1 has dedicated enterprise field
+		enterpriseOID = packet.Enterprise
+	case gosnmp.Version2c, gosnmp.Version3:
+		// SNMPv2c/v3: extract enterprise from trap OID
+		// Format: .1.3.6.1.4.1.{enterprise_id}.*
+		enterpriseOID = extractEnterpriseFromTrapOID(trapOID)
+		p.moduleLogger.Debug().
+			Str("trap_oid", trapOID).
+			Str("extracted_enterprise", enterpriseOID).
+			Msg("Extracted enterprise OID from trap OID for SNMPv2c/v3")
+	}
+
 	return &ParsedTrap{
 		Timestamp:     time.Now(),
 		SourceIP:      sourceIP,
 		AgentAddress:  packet.AgentAddress, // SNMPv1 agent address
 		TrapOID:       trapOID,
-		EnterpriseOID: packet.Enterprise,
+		EnterpriseOID: enterpriseOID,
 		GenericTrap:   packet.GenericTrap,
 		SpecificTrap:  packet.SpecificTrap,
 		Varbinds:      varbinds,
 		Version:       packet.Version,
 		Community:     packet.Community,
 	}
+}
+
+// extractEnterpriseFromTrapOID extracts the enterprise OID from a trap OID
+// For SNMPv2c/v3, the enterprise is embedded in the trap OID
+// Format: .1.3.6.1.4.1.{enterprise_id}.* → returns .1.3.6.1.4.1.{enterprise_id}
+func extractEnterpriseFromTrapOID(trapOID string) string {
+	const enterprisePrefix = ".1.3.6.1.4.1."
+
+	// Check if OID starts with enterprises prefix
+	if !strings.HasPrefix(trapOID, enterprisePrefix) {
+		// Not an enterprise OID, return empty
+		return ""
+	}
+
+	// Remove prefix to get the rest
+	rest := strings.TrimPrefix(trapOID, enterprisePrefix)
+
+	// Extract enterprise ID (first number after prefix)
+	parts := strings.Split(rest, ".")
+	if len(parts) == 0 || parts[0] == "" {
+		return ""
+	}
+
+	// Build enterprise OID
+	enterpriseOID := enterprisePrefix + parts[0]
+	return enterpriseOID
 }
 
 // maintenanceLoop performs periodic maintenance tasks
