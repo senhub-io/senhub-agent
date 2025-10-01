@@ -10,6 +10,7 @@ import (
 type ParsedTrap struct {
 	Timestamp     time.Time
 	SourceIP      string
+	AgentAddress  string             // SNMPv1 agent address
 	TrapOID       string
 	EnterpriseOID string
 	GenericTrap   int
@@ -29,27 +30,28 @@ type Varbind struct {
 // EnrichedTrap represents a trap enriched with MIB information
 type EnrichedTrap struct {
 	// Basic information
-	Timestamp  time.Time `json:"timestamp"`
-	SourceHost string    `json:"source_host"`
-	TrapOID    string    `json:"trap_oid"`
-	TrapName   string    `json:"trap_name"`
-	
+	Timestamp    time.Time `json:"timestamp"`
+	SourceHost   string    `json:"source_host"`
+	AgentAddress string    `json:"agent_address,omitempty"` // SNMPv1 agent address
+	TrapOID      string    `json:"trap_oid"`
+	TrapName     string    `json:"trap_name"`
+
 	// Enterprise information
 	Enterprise     string `json:"enterprise"`
 	EnterpriseFull string `json:"enterprise_full"`
 	Category       string `json:"category"`
-	
+
 	// Message and severity
 	Severity    string `json:"severity"`
 	Message     string `json:"message"`
 	Description string `json:"description"`
-	
-	// Enriched varbinds
+
+	// Enriched varbinds (detailed)
 	Varbinds map[string]interface{} `json:"varbinds"`
-	
+
 	// Analysis
 	Analysis map[string]interface{} `json:"analysis,omitempty"`
-	
+
 	// Raw data for debugging
 	RawData interface{} `json:"raw_data,omitempty"`
 }

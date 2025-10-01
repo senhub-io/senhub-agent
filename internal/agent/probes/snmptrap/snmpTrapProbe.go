@@ -166,7 +166,7 @@ func (p *SNMPTrapProbe) OnStart(quitChannel chan struct{}) error {
 
 // convertTrapToDataPoint converts an enriched trap to a datapoint
 func (p *SNMPTrapProbe) convertTrapToDataPoint(trap *EnrichedTrap) data_store.DataPoint {
-	// Convert tags from map to []tags.Tag
+	// Start with base tags
 	tagsList := []tags.Tag{
 		{Key: "host", Value: trap.SourceHost},  // Required by event strategy
 		{Key: "trap_oid", Value: trap.TrapOID},
@@ -178,7 +178,40 @@ func (p *SNMPTrapProbe) convertTrapToDataPoint(trap *EnrichedTrap) data_store.Da
 		{Key: "event_type", Value: "snmp_trap"},
 		{Key: "message", Value: trap.Message},
 	}
-	
+
+	// Add agent_address if present (SNMPv1)
+	if trap.AgentAddress != "" {
+		tagsList = append(tagsList, tags.Tag{
+			Key:   "agent_address",
+			Value: trap.AgentAddress,
+		})
+	}
+
+	// Extract varbinds as individual tags for filtering
+	// This allows Elasticsearch/Kibana to filter on varbind values directly
+	for key, vbData := range trap.Varbinds {
+		if vbMap, ok := vbData.(map[string]interface{}); ok {
+			value := vbMap["value"]
+
+			// Use resolved name if available, otherwise use OID as key
+			fieldName := key
+			if name, ok := vbMap["name"].(string); ok && name != "" {
+				fieldName = name
+			}
+
+			// Add as tag with string value
+			tagsList = append(tagsList, tags.Tag{
+				Key:   fieldName,
+				Value: fmt.Sprintf("%v", value),
+			})
+		}
+	}
+
+	p.moduleLogger.Debug().
+		Int("total_tags", len(tagsList)).
+		Int("varbind_tags", len(trap.Varbinds)).
+		Msg("Converted trap to datapoint with extracted varbind tags")
+
 	return data_store.DataPoint{
 		Name:      "snmp_trap_event",
 		Value:     1.0,
@@ -252,6 +285,25 @@ func (p *SNMPTrapProbe) handleTrap(packet *gosnmp.SnmpPacket, addr string) {
 	// Parse the trap
 	parsedTrap := p.parseTrap(packet, addr)
 	
+	// Debug the parsed trap
+	p.moduleLogger.Info().
+		Str("trap_oid", parsedTrap.TrapOID).
+		Str("enterprise_oid", parsedTrap.EnterpriseOID).
+		Str("source_ip", parsedTrap.SourceIP).
+		Int("varbind_count", len(parsedTrap.Varbinds)).
+		Msg("🔍 Parsed trap details for vendor detection")
+	
+	// Trigger dynamic MIB download for detected vendors
+	if p.config.MIBEnrichment.Enabled && p.mibManager != nil {
+		p.moduleLogger.Info().Msg("🚀 About to trigger dynamic MIB processing")
+		p.mibManager.ProcessTrapForDynamicMIBs(parsedTrap)
+	} else {
+		p.moduleLogger.Info().
+			Bool("mib_enrichment", p.config.MIBEnrichment.Enabled).
+			Bool("mib_manager_exists", p.mibManager != nil).
+			Msg("⚠️ Skipping dynamic MIB processing")
+	}
+	
 	// Enrich with MIB data if enabled
 	var enrichedTrap *EnrichedTrap
 	if p.config.MIBEnrichment.Enabled {
@@ -321,37 +373,69 @@ func (p *SNMPTrapProbe) parseTrap(packet *gosnmp.SnmpPacket, addr string) *Parse
 		Str("enterprise", packet.Enterprise).
 		Int("varbind_count", len(packet.Variables)).
 		Msg("Parsing SNMP trap")
-	
-	// Build trap OID based on version
+
+	// Build trap OID based on SNMP version
 	var trapOID string
-	
-	// Check if it's SNMPv2c/v3 by looking for the standard trap OID varbind
-	if len(packet.Variables) > 1 && packet.Variables[1].Name == ".1.3.6.1.6.3.1.1.4.1.0" {
-		// SNMPv2c/v3 format - trap OID is in second varbind
-		trapOID = fmt.Sprint(packet.Variables[1].Value)
-		p.moduleLogger.Debug().
-			Str("trap_oid", trapOID).
-			Str("varbind_oid", packet.Variables[1].Name).
-			Interface("varbind_value", packet.Variables[1].Value).
-			Msg("Parsed SNMPv2c/v3 trap OID")
-	} else if packet.Enterprise != "" && packet.SpecificTrap >= 0 {
-		// SNMPv1 format
-		trapOID = fmt.Sprintf("%s.0.%d", packet.Enterprise, packet.SpecificTrap)
-		p.moduleLogger.Debug().
-			Str("trap_oid", trapOID).
-			Msg("Parsed SNMPv1 trap OID")
-	} else {
-		p.moduleLogger.Debug().
-			Int("varbind_count", len(packet.Variables)).
-			Msg("Could not determine trap OID format")
-		if len(packet.Variables) > 0 {
-			for i, v := range packet.Variables {
+
+	switch packet.Version {
+	case gosnmp.Version2c, gosnmp.Version3:
+		// SNMPv2c/v3 format - trap OID is in snmpTrapOID.0 varbind
+		// Standard OID: .1.3.6.1.6.3.1.1.4.1.0
+		for i, v := range packet.Variables {
+			if v.Name == ".1.3.6.1.6.3.1.1.4.1.0" {
+				trapOID = fmt.Sprint(v.Value)
 				p.moduleLogger.Debug().
-					Int("index", i).
-					Str("oid", v.Name).
-					Interface("value", v.Value).
-					Msg("Varbind details")
+					Str("trap_oid", trapOID).
+					Int("varbind_index", i).
+					Msg("Parsed SNMPv2c/v3 trap OID from snmpTrapOID.0")
+				break
 			}
+		}
+
+		if trapOID == "" {
+			p.moduleLogger.Warn().
+				Int("varbind_count", len(packet.Variables)).
+				Msg("SNMPv2c/v3 trap missing snmpTrapOID.0 varbind")
+			// Fallback: use first varbind value if available
+			if len(packet.Variables) > 0 {
+				trapOID = packet.Variables[0].Name
+				p.moduleLogger.Debug().
+					Str("trap_oid", trapOID).
+					Msg("Using first varbind OID as fallback")
+			}
+		}
+
+	case gosnmp.Version1:
+		// SNMPv1 format: enterprise.0.specific
+		if packet.Enterprise != "" {
+			trapOID = fmt.Sprintf("%s.0.%d", packet.Enterprise, packet.SpecificTrap)
+			p.moduleLogger.Debug().
+				Str("trap_oid", trapOID).
+				Str("enterprise", packet.Enterprise).
+				Int("specific", packet.SpecificTrap).
+				Msg("Parsed SNMPv1 trap OID")
+		} else {
+			p.moduleLogger.Warn().Msg("SNMPv1 trap missing enterprise OID")
+		}
+
+	default:
+		p.moduleLogger.Warn().
+			Int("version", int(packet.Version)).
+			Msg("Unknown SNMP version")
+	}
+
+	if trapOID == "" {
+		p.moduleLogger.Error().
+			Int("version", int(packet.Version)).
+			Int("varbind_count", len(packet.Variables)).
+			Msg("Failed to parse trap OID - dumping varbinds")
+		for i, v := range packet.Variables {
+			p.moduleLogger.Debug().
+				Int("index", i).
+				Str("oid", v.Name).
+				Interface("value", v.Value).
+				Str("type", getTypeString(v.Type)).
+				Msg("Varbind details")
 		}
 	}
 	
@@ -367,15 +451,16 @@ func (p *SNMPTrapProbe) parseTrap(packet *gosnmp.SnmpPacket, addr string) *Parse
 	}
 	
 	return &ParsedTrap{
-		Timestamp:    time.Now(),
-		SourceIP:     sourceIP,
-		TrapOID:      trapOID,
+		Timestamp:     time.Now(),
+		SourceIP:      sourceIP,
+		AgentAddress:  packet.AgentAddress, // SNMPv1 agent address
+		TrapOID:       trapOID,
 		EnterpriseOID: packet.Enterprise,
-		GenericTrap:  packet.GenericTrap,
-		SpecificTrap: packet.SpecificTrap,
-		Varbinds:     varbinds,
-		Version:      packet.Version,
-		Community:    packet.Community,
+		GenericTrap:   packet.GenericTrap,
+		SpecificTrap:  packet.SpecificTrap,
+		Varbinds:      varbinds,
+		Version:       packet.Version,
+		Community:     packet.Community,
 	}
 }
 
