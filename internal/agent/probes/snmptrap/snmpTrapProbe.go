@@ -443,10 +443,13 @@ func (p *SNMPTrapProbe) parseTrap(packet *gosnmp.SnmpPacket, addr string) *Parse
 	// Parse varbinds
 	varbinds := make([]Varbind, 0, len(packet.Variables))
 	for _, v := range packet.Variables {
+		// Convert value to appropriate format
+		value := convertSnmpValue(v.Type, v.Value)
+
 		varbind := Varbind{
 			OID:   v.Name,
 			Type:  getTypeString(v.Type),
-			Value: v.Value,
+			Value: value,
 		}
 		varbinds = append(varbinds, varbind)
 	}

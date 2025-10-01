@@ -312,3 +312,67 @@ func interfaceToString(v interface{}) string {
 		return "<value>"
 	}
 }
+
+// convertSnmpValue converts SNMP values to appropriate Go types
+// Particularly handles OctetString decoding to text when appropriate
+func convertSnmpValue(valueType gosnmp.Asn1BER, value interface{}) interface{} {
+	switch valueType {
+	case gosnmp.OctetString:
+		// Try to convert []byte to string if it contains text
+		if bytes, ok := value.([]byte); ok {
+			if isTextData(bytes) {
+				return string(bytes)
+			}
+			// Keep as []byte for binary data (will be displayed as hex)
+			return bytes
+		}
+		return value
+
+	case gosnmp.IPAddress:
+		// Already handled by gosnmp as string
+		return value
+
+	case gosnmp.Counter32, gosnmp.Counter64, gosnmp.Gauge32, gosnmp.Uinteger32:
+		// Numeric types - keep as-is
+		return value
+
+	case gosnmp.TimeTicks:
+		// Keep as-is (numeric)
+		return value
+
+	case gosnmp.ObjectIdentifier:
+		// OID as string
+		return value
+
+	default:
+		return value
+	}
+}
+
+// isTextData checks if byte data appears to be text (ASCII or UTF-8)
+// More permissive than isPrintable - allows common control characters
+func isTextData(data []byte) bool {
+	if len(data) == 0 {
+		return false
+	}
+
+	printableCount := 0
+	for _, b := range data {
+		// Allow printable ASCII (32-126)
+		// Allow common control characters: tab(9), newline(10), carriage return(13)
+		if (b >= 32 && b <= 126) || b == 9 || b == 10 || b == 13 {
+			printableCount++
+		} else if b < 128 {
+			// Non-printable ASCII control character (not tab/newline/cr)
+			// If we see too many of these, it's probably binary
+			continue
+		} else {
+			// High byte (128-255) - could be UTF-8 or binary
+			// For simplicity, allow it (UTF-8 continuation bytes)
+			printableCount++
+		}
+	}
+
+	// Consider it text if at least 90% of bytes are printable/allowed
+	return (printableCount * 100 / len(data)) >= 90
+}
