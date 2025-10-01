@@ -8,6 +8,21 @@
 - Development with live reload: `make watch`
 - Clean build artifacts: `make clean`
 
+## ⚠️ RÈGLES STRICTES DE BUILD
+**IMPORTANT - À RESPECTER ABSOLUMENT:**
+- **TOUJOURS utiliser `make build` pour builder** - JAMAIS `go build` directement
+- **TOUJOURS utiliser `make test` pour les tests** - JAMAIS `go test` directement sauf pour un test spécifique
+- Les commandes make gèrent correctement les versions, tags, cross-compilation et ldflags
+- Le build direct avec `go build` ignore la configuration de versioning et peut produire des binaires invalides
+
+## ⚠️ RÈGLES STRICTES DE TEST
+**IMPORTANT - À RESPECTER ABSOLUMENT:**
+- **JAMAIS lancer l'agent localement pour tester** - Ne pas exécuter `./agent run` ou démarrer des services
+- **JAMAIS créer de fichiers de test** - Ne pas polluer l'arborescence avec des configs/fichiers de test
+- **JAMAIS faire de requêtes réseau de test** - Ne pas envoyer de traps SNMP, requêtes HTTP, etc.
+- Seul l'utilisateur peut tester dans son environnement
+- Se concentrer sur le code, la compilation, et la documentation
+
 ## Code Style Guidelines
 - Formatting: Use gofmt (enforced by pre-commit hook)
 - Imports: Standard library first, third-party next, internal last with blank lines between groups
@@ -846,3 +861,71 @@ type "C:\ProgramData\SenHub\logs\senhubagent.log"
 - **DDC Principal** : SW000-209-030.noble-age.fr
 - **DDC Fallback** : SW000-209-031.noble-age.fr
 - **Compte API** : noble-age.fr\svc_api_sensor
+
+## SNMP Trap Probe - État actuel (2025-10-01)
+
+### CONTEXTE DE LA SESSION ACTUELLE
+**Problème initial** : Le probe SNMP trap ne résolvait pas les OIDs standards (linkDown, sysUpTime) - ils restaient numériques au lieu d'être résolus en noms.
+
+**Solution implémentée** : Système de téléchargement dynamique de MIBs depuis un repo central avec cache intelligent basé sur la détection des constructeurs.
+
+### SYSTÈME DYNAMIQUE DE TÉLÉCHARGEMENT DE MIBS
+
+#### Architecture
+- **Repo central** : `https://eu-west-1.intake.senhub.io/mibs/`
+- **Cache local** : `mibs/` dans le répertoire de l'exécutable
+- **TTL du cache** : 24 heures
+- **Librairie MIB** : gosmi (remplace le parser regex custom)
+
+#### Détection des constructeurs
+- **Mécanisme** : Analyse de l'enterprise OID des traps reçus
+- **Mapping vendor → MIBs** : `initializeVendorMIBMappings()` dans `mib_manager.go`
+- **Téléchargement automatique** : Dès qu'un constructeur est détecté
+
+#### Constructeurs supportés (dernière mise à jour)
+```go
+"1.3.6.1.4.1.9":     {"CISCO-SMI", "CISCO-ENVMON-MIB", "CISCO-ENTITY-ALARM-MIB"},
+"1.3.6.1.4.1.2011":  {"HUAWEI-MIB", "HUAWEI-ENTITY-EXTENT-MIB"},
+"1.3.6.1.4.1.25461": {"PAN-COMMON-MIB", "PAN-TRAPS"},
+"1.3.6.1.4.1.12356": {"FORTINET-CORE-MIB", "FORTINET-FORTIGATE-MIB"},
+"1.3.6.1.4.1.11":    {"HP-ICF-OID", "HPICF-CHASSIS-MIB"},
+"1.3.6.1.4.1.232":   {"CPQHOST", "CPQSTSYS", "CPQHLTH"}, // HPE - AJOUTÉ AUJOURD'HUI
+"1.3.6.1.4.1.674":   {"DELL-RAC-MIB", "Dell-10892"},
+"1.3.6.1.4.1.6876":  {"VMWARE-ROOT-MIB", "VMWARE-SYSTEM-MIB"},
+"1.3.6.1.4.1.8072":  {"NET-SNMP-MIB", "NET-SNMP-AGENT-MIB"},
+"1.3.6.1.4.1.1916":  {"EXTREME-BASE-MIB", "EXTREME-SYSTEM-MIB"},
+"1.3.6.1.4.1.1991":  {"FOUNDRY-SN-ROOT-MIB", "FOUNDRY-SN-AGENT-MIB"},
+```
+
+### PROBLÈMES RÉSOLUS DURANT LA SESSION
+1. **URLs 404** : Fichiers MIB sans extension dans le repo (pas `.mib`)
+2. **Cache avec hash** : Utilisation des noms originaux au lieu de hash
+3. **Mauvais répertoire cache** : `mibs/` au lieu de `mibs/downloaded/`
+4. **Résolution "iso"** : Ajout des MIBs de base (SNMPv2-SMI, SNMPv2-TC)
+5. **Détection vendor** : Normalisation des OIDs (suppression du point initial)
+
+### TESTS EFFECTUÉS
+- **Cisco** : ✅ Détecté, MIBs téléchargées, OIDs résolus en "ciscoMgmt"
+- **Fortinet** : ✅ Détecté, MIBs téléchargées (FORTINET-CORE-MIB, FORTINET-FORTIGATE-MIB)
+- **Dell** : ✅ Partiellement (DELL-RAC-MIB téléchargé, Dell-10892 non trouvé)
+- **HPE** : ❌ Pas reconnu (enterprise OID .1.3.6.1.4.1.232 manquant) → **AJOUTÉ AUJOURD'HUI**
+
+### ÉTAT ACTUEL
+- **Build** : Version 0.1.62-beta - commit: 0.1.62-beta-1-g9abd8e9-dirty
+- **HPE Support** : Ajouté dans `initializeVendorMIBMappings()` avec MIBs CPQHOST, CPQSTSYS, CPQHLTH
+- **Prêt pour test** : Agent démarré en arrière-plan avec HPE support
+
+### PROCHAINE ÉTAPE ATTENDUE
+Test du support HPE avec un trap enterprise OID .1.3.6.1.4.1.232 pour vérifier :
+1. Détection du vendor HPE
+2. Téléchargement des MIBs CPQHOST, CPQSTSYS, CPQHLTH
+3. Résolution correcte des OIDs HPE
+
+### COMMANDES UTILES
+```bash
+# Démarrer l'agent avec logs SNMP trap
+./agent run --offline --config-path test-offline-config.yaml --verbose --debug-modules probe.snmptrap
+
+# Envoyer un trap HPE
+snmptrap -v 1 -c public localhost:162 .1.3.6.1.4.1.232 localhost 6 1 12345 .1.3.6.1.4.1.232.0.1 s "HPE ProLiant Server Health Alert"
+```
