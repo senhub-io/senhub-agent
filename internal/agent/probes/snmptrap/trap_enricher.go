@@ -11,6 +11,7 @@ import (
 // TrapEnricher enriches SNMP traps with MIB information
 type TrapEnricher struct {
 	mibManager       *MIBManager
+	mibDownloader    *MIBDownloader
 	enterprises      map[string]EnterpriseInfo
 	severityPatterns map[*regexp.Regexp]string
 	logger           *logger.ModuleLogger
@@ -20,38 +21,57 @@ type TrapEnricher struct {
 func NewTrapEnricher(mibManager *MIBManager, enterprises map[string]EnterpriseInfo, baseLogger *logger.Logger) *TrapEnricher {
 	// Create module-specific logger for trap enricher
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.snmptrap.enricher")
-	
+
 	te := &TrapEnricher{
-		mibManager:  mibManager,
-		enterprises: enterprises,
-		logger:      moduleLogger,
+		mibManager:    mibManager,
+		mibDownloader: mibManager.downloader, // Access to loaded MIB index
+		enterprises:   enterprises,
+		logger:        moduleLogger,
 	}
-	
+
 	// Initialize severity patterns
 	te.initSeverityPatterns()
-	
+
 	return te
 }
 
 // initSeverityPatterns initializes regex patterns for severity inference
 func (te *TrapEnricher) initSeverityPatterns() {
 	te.severityPatterns = map[*regexp.Regexp]string{
-		regexp.MustCompile(`(?i)(critical|fatal|emergency|down|failed|error)`):      "critical",
-		regexp.MustCompile(`(?i)(major|alarm|high|warning|threshold|exceed)`):       "warning",
-		regexp.MustCompile(`(?i)(minor|info|up|ok|normal|clear|restored|start)`):    "info",
-		regexp.MustCompile(`(?i)(debug|trace|test)`):                                "debug",
+		// Critical patterns (highest priority)
+		regexp.MustCompile(`(?i)(critical|fatal|emergency|severe|panic)`):           "critical",
+		regexp.MustCompile(`(?i)(failed|failure|error|fault)`):                      "critical",
+		regexp.MustCompile(`(?i)(down|offline|unavailable|unreachable)`):            "critical",
+		regexp.MustCompile(`(?i)(overload|overheat|overtemp)`):                      "critical",
+
+		// Warning patterns
+		regexp.MustCompile(`(?i)(warning|warn|major|alarm)`):                        "warning",
+		regexp.MustCompile(`(?i)(high|exceed|threshold|limit)`):                     "warning",
+		regexp.MustCompile(`(?i)(degraded|impaired|reduced)`):                       "warning",
+		regexp.MustCompile(`(?i)(approaching|near)`):                                "warning",
+
+		// Info patterns (recovery/normal state)
+		regexp.MustCompile(`(?i)(clear|cleared|resolved|restored)`):                 "info",
+		regexp.MustCompile(`(?i)(up|online|available|reachable|connected)`):         "info",
+		regexp.MustCompile(`(?i)(ok|normal|good|healthy)`):                          "info",
+		regexp.MustCompile(`(?i)(start|started|initialized|ready)`):                 "info",
+		regexp.MustCompile(`(?i)(minor|notification|informational)`):                "info",
+
+		// Debug patterns (lowest priority)
+		regexp.MustCompile(`(?i)(debug|trace|test|diagnostic)`):                     "debug",
 	}
 }
 
 // Enrich enriches a parsed trap with MIB information
 func (te *TrapEnricher) Enrich(trap *ParsedTrap) *EnrichedTrap {
 	enriched := &EnrichedTrap{
-		Timestamp:  trap.Timestamp,
-		SourceHost: trap.SourceIP,
-		TrapOID:    trap.TrapOID,
-		Severity:   "info", // Default severity
-		Varbinds:   make(map[string]interface{}),
-		Analysis:   make(map[string]interface{}),
+		Timestamp:    trap.Timestamp,
+		SourceHost:   trap.SourceIP,
+		AgentAddress: trap.AgentAddress, // SNMPv1 agent address
+		TrapOID:      trap.TrapOID,
+		Severity:     "info", // Default severity
+		Varbinds:     make(map[string]interface{}),
+		Analysis:     make(map[string]interface{}),
 	}
 	
 	te.logger.Debug().
@@ -64,20 +84,30 @@ func (te *TrapEnricher) Enrich(trap *ParsedTrap) *EnrichedTrap {
 		te.logger.Debug().
 			Str("trap_oid", trap.TrapOID).
 			Msg("Attempting to resolve OID")
-			
+
 		if resolved := te.mibManager.ResolveOID(trap.TrapOID); resolved != nil {
 			te.logger.Debug().
 				Str("trap_oid", trap.TrapOID).
 				Str("resolved_name", resolved.Name).
 				Str("description", resolved.Description).
 				Msg("Successfully resolved OID")
-				
+
 			enriched.TrapName = resolved.Name
 			enriched.Description = resolved.Description
-			
+
 			// Infer severity from trap name
 			if severity := te.inferSeverityFromName(resolved.Name); severity != "" {
 				enriched.Severity = severity
+			}
+
+			// Also check description for severity keywords if name didn't match
+			if enriched.Severity == "info" && resolved.Description != "" {
+				if severity := te.inferSeverityFromName(resolved.Description); severity != "" {
+					enriched.Severity = severity
+					te.logger.Debug().
+						Str("severity", severity).
+						Msg("Severity inferred from description")
+				}
 			}
 		} else {
 			te.logger.Debug().
@@ -91,7 +121,7 @@ func (te *TrapEnricher) Enrich(trap *ParsedTrap) *EnrichedTrap {
 	
 	// Enrich varbinds
 	te.enrichVarbinds(enriched, trap.Varbinds)
-	
+
 	// Generate contextual message
 	enriched.Message = te.generateMessage(enriched, trap)
 	
@@ -100,11 +130,14 @@ func (te *TrapEnricher) Enrich(trap *ParsedTrap) *EnrichedTrap {
 	
 	// Add raw data for debugging
 	enriched.RawData = map[string]interface{}{
-		"version":       getVersionString(trap.Version),
-		"community":     trap.Community,
-		"generic_trap":  trap.GenericTrap,
-		"specific_trap": trap.SpecificTrap,
-		"enterprise":    trap.EnterpriseOID,
+		"version":        getVersionString(trap.Version),
+		"community":      trap.Community,
+		"generic_trap":   trap.GenericTrap,
+		"specific_trap":  trap.SpecificTrap,
+		"enterprise":     trap.EnterpriseOID,
+		"agent_address":  trap.AgentAddress,
+		"source_ip":      trap.SourceIP,
+		"varbind_count":  len(trap.Varbinds),
 	}
 	
 	te.logger.Debug().
@@ -120,13 +153,14 @@ func (te *TrapEnricher) Enrich(trap *ParsedTrap) *EnrichedTrap {
 // BasicEnrich provides basic enrichment without MIB resolution
 func (te *TrapEnricher) BasicEnrich(trap *ParsedTrap) *EnrichedTrap {
 	enriched := &EnrichedTrap{
-		Timestamp:  trap.Timestamp,
-		SourceHost: trap.SourceIP,
-		TrapOID:    trap.TrapOID,
-		TrapName:   trap.TrapOID, // Use OID as name
-		Severity:   "info",
-		Varbinds:   make(map[string]interface{}),
-		Analysis:   make(map[string]interface{}),
+		Timestamp:    trap.Timestamp,
+		SourceHost:   trap.SourceIP,
+		AgentAddress: trap.AgentAddress,
+		TrapOID:      trap.TrapOID,
+		TrapName:     trap.TrapOID, // Use OID as name
+		Severity:     "info",
+		Varbinds:     make(map[string]interface{}),
+		Analysis:     make(map[string]interface{}),
 	}
 	
 	// Extract enterprise information
@@ -134,7 +168,7 @@ func (te *TrapEnricher) BasicEnrich(trap *ParsedTrap) *EnrichedTrap {
 	
 	// Basic varbind processing
 	te.basicVarbindProcessing(enriched, trap.Varbinds)
-	
+
 	// Generate basic message
 	enriched.Message = te.generateBasicMessage(enriched, trap)
 	
@@ -155,21 +189,80 @@ func (te *TrapEnricher) enrichEnterpriseInfo(enriched *EnrichedTrap, enterpriseO
 	if enterpriseOID == "" {
 		return
 	}
-	
-	// Get enterprise info from OID
-	if enterprise := GetEnterpriseFromOID(enterpriseOID); enterprise != nil {
-		enriched.Enterprise = enterprise.Name
-		enriched.EnterpriseFull = enterprise.FullName
-		enriched.Category = enterprise.Category
-		
+
+	// Normalize OID (remove leading dot if present)
+	normalizedOID := strings.TrimPrefix(enterpriseOID, ".")
+
+	// Try to get vendor info from loaded MIB index first
+	var vendorName, vendorFullName, category string
+
+	if te.mibDownloader != nil {
+		te.mibDownloader.indexMutex.RLock()
+		if te.mibDownloader.indexLoaded && te.mibDownloader.index != nil {
+			// Search in index
+			for baseOID, entry := range te.mibDownloader.index.Vendors {
+				normalizedBaseOID := strings.TrimPrefix(baseOID, ".")
+
+				// Check if enterprise OID matches or is under this vendor's OID tree
+				if normalizedOID == normalizedBaseOID || strings.HasPrefix(normalizedOID, normalizedBaseOID+".") {
+					vendorName = entry.Name
+					vendorFullName = entry.Name // Index doesn't have full name, use same
+
+					// Try to map vendor name to category from hardcoded map
+					const prefix = "1.3.6.1.4.1."
+					enterpriseID := strings.TrimPrefix(normalizedBaseOID, prefix)
+					if info, exists := KnownEnterprises[enterpriseID]; exists {
+						vendorFullName = info.FullName
+						category = info.Category
+					} else {
+						category = "network" // Default category
+					}
+
+					te.logger.Debug().
+						Str("enterprise_oid", enterpriseOID).
+						Str("vendor_name", vendorName).
+						Str("base_oid", baseOID).
+						Msg("Vendor found in MIB index")
+					break
+				}
+			}
+		}
+		te.mibDownloader.indexMutex.RUnlock()
+	}
+
+	// Fallback to hardcoded mappings if not found in index
+	if vendorName == "" {
+		if enterprise := GetEnterpriseFromOID(enterpriseOID); enterprise != nil {
+			vendorName = enterprise.Name
+			vendorFullName = enterprise.FullName
+			category = enterprise.Category
+
+			te.logger.Debug().
+				Str("enterprise_oid", enterpriseOID).
+				Str("vendor_name", vendorName).
+				Msg("Vendor found in hardcoded mappings")
+		}
+	}
+
+	// Set enterprise information
+	if vendorName != "" {
+		enriched.Enterprise = vendorName
+		enriched.EnterpriseFull = vendorFullName
+		enriched.Category = category
+
 		// Adjust severity based on category
-		te.adjustSeverityByCategory(enriched, enterprise.Category)
-		
+		te.adjustSeverityByCategory(enriched, category)
+
 		te.logger.Debug().
 			Str("enterprise_oid", enterpriseOID).
-			Str("enterprise_name", enterprise.Name).
-			Str("category", enterprise.Category).
+			Str("enterprise_name", vendorName).
+			Str("enterprise_full", vendorFullName).
+			Str("category", category).
 			Msg("Enterprise information enriched")
+	} else {
+		te.logger.Debug().
+			Str("enterprise_oid", enterpriseOID).
+			Msg("Unknown vendor - no enrichment applied")
 	}
 }
 
