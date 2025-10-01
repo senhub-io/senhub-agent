@@ -801,16 +801,47 @@ func (mm *MIBManager) ResolveOID(oid string) *ResolvedOID {
 		
 		mm.logger.Debug().
 			Str("oid", oid).
-			Msg("OID not found in gosmi, trying fallback")
+			Msg("OID not found in gosmi, trying dynamic MIB loading")
+
+		// Try to load vendor MIBs dynamically
+		if mm.tryLoadVendorMIBsForOID(oid) {
+			// Retry resolution after loading vendor MIBs
+			if typeOid, err := types.OidFromString(cleanOID); err == nil {
+				if node, err := gosmi.GetNodeByOID(typeOid); err == nil {
+					module := node.GetModule()
+
+					mm.logger.Info().
+						Str("oid", oid).
+						Str("name", node.Name).
+						Str("module", module.Name).
+						Msg("✅ OID resolved after dynamic MIB loading")
+
+					resolved := &ResolvedOID{
+						OID:         oid,
+						Name:        node.Name,
+						Description: node.Description,
+						Source:      "gosmi",
+						Module:      module.Name,
+					}
+
+					if node.Kind != types.NodeUnknown {
+						resolved.Type = node.Kind.String()
+					}
+
+					mm.cache.Set(oid, resolved)
+					return resolved
+				}
+			}
+		}
 	}
-	
+
 	mm.stats.failedResolutions++
-	
+
 	mm.logger.Info().
 		Str("oid", oid).
 		Int("loaded_mibs", mm.stats.loadedMIBCount).
 		Msg("❌ OID not found in any loaded MIB, returning numeric OID")
-	
+
 	// Return numeric OID if resolution fails
 	resolved := &ResolvedOID{
 		OID:         oid,
@@ -818,11 +849,169 @@ func (mm *MIBManager) ResolveOID(oid string) *ResolvedOID {
 		Description: "Unknown OID",
 		Source:      "numeric",
 	}
-	
+
 	// Cache negative results too (with shorter TTL)
 	mm.cache.Set(oid, resolved)
-	
+
 	return resolved
+}
+
+// tryLoadVendorMIBsForOID attempts to dynamically load vendor MIBs for an OID
+func (mm *MIBManager) tryLoadVendorMIBsForOID(oid string) bool {
+	// Extract enterprise OID from the OID
+	enterpriseOID := extractEnterpriseFromOID(oid)
+	if enterpriseOID == "" {
+		mm.logger.Debug().
+			Str("oid", oid).
+			Msg("Not an enterprise OID, cannot load vendor MIBs")
+		return false
+	}
+
+	// Get vendor directory name from enterprise OID
+	vendorDir := mm.getVendorDirFromEnterpriseOID(enterpriseOID)
+	if vendorDir == "" {
+		mm.logger.Debug().
+			Str("enterprise_oid", enterpriseOID).
+			Msg("Unknown vendor, cannot determine MIB directory")
+		return false
+	}
+
+	// Construct vendor MIB path
+	if mm.config.ExternalMIBsPath == "" {
+		return false
+	}
+
+	resolvedBasePath := mm.resolveExternalMIBsPath()
+	if resolvedBasePath == "" {
+		return false
+	}
+
+	vendorPath := filepath.Join(resolvedBasePath, vendorDir)
+	if _, err := os.Stat(vendorPath); os.IsNotExist(err) {
+		mm.logger.Debug().
+			Str("vendor_path", vendorPath).
+			Msg("Vendor MIB directory does not exist")
+		return false
+	}
+
+	mm.logger.Info().
+		Str("vendor", vendorDir).
+		Str("enterprise_oid", enterpriseOID).
+		Str("path", vendorPath).
+		Msg("🔄 Loading vendor MIBs dynamically")
+
+	// List all MIB files in vendor directory
+	entries, err := os.ReadDir(vendorPath)
+	if err != nil {
+		mm.logger.Warn().
+			Err(err).
+			Str("path", vendorPath).
+			Msg("Failed to read vendor MIB directory")
+		return false
+	}
+
+	// Load each MIB file
+	loadedCount := 0
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		// Skip non-MIB files
+		name := entry.Name()
+		if strings.HasSuffix(name, ".txt") || strings.HasSuffix(name, ".json") {
+			continue
+		}
+
+		// Try to load the MIB
+		mibName := name
+		if strings.HasSuffix(name, ".mib") || strings.HasSuffix(name, ".my") {
+			mibName = strings.TrimSuffix(strings.TrimSuffix(name, ".mib"), ".my")
+		}
+
+		// Check if already loaded
+		if _, err := gosmi.GetModule(mibName); err == nil {
+			continue // Already loaded
+		}
+
+		// Try to load
+		gosmi.AppendPath(vendorPath)
+		if _, err := gosmi.LoadModule(mibName); err == nil {
+			loadedCount++
+			mm.logger.Debug().
+				Str("mib", mibName).
+				Str("vendor", vendorDir).
+				Msg("✅ Loaded vendor MIB")
+		} else {
+			mm.logger.Debug().
+				Err(err).
+				Str("mib", mibName).
+				Msg("Failed to load vendor MIB")
+		}
+	}
+
+	if loadedCount > 0 {
+		mm.logger.Info().
+			Int("loaded", loadedCount).
+			Str("vendor", vendorDir).
+			Msg("✅ Vendor MIBs loaded dynamically")
+		mm.stats.loadedMIBCount += loadedCount
+		return true
+	}
+
+	return false
+}
+
+// getVendorDirFromEnterpriseOID maps an enterprise OID to a vendor directory name
+func (mm *MIBManager) getVendorDirFromEnterpriseOID(enterpriseOID string) string {
+	// Map enterprise OID to directory name
+	vendorDirMap := map[string]string{
+		"1.3.6.1.4.1.9":     "cisco",
+		"1.3.6.1.4.1.11":    "hp",
+		"1.3.6.1.4.1.232":   "hp", // HPE uses same directory
+		"1.3.6.1.4.1.674":   "dell",
+		"1.3.6.1.4.1.2011":  "huawei",
+		"1.3.6.1.4.1.6876":  "vmware",
+		"1.3.6.1.4.1.14823": "aruba",
+		"1.3.6.1.4.1.47196": "arubaos-cx",
+		"1.3.6.1.4.1.25506": "hp", // H3C/Comware (now HP)
+		"1.3.6.1.4.1.12356": "fortinet",
+		"1.3.6.1.4.1.25461": "paloalto",
+		"1.3.6.1.4.1.1916":  "extreme",
+		"1.3.6.1.4.1.1991":  "brocade",
+	}
+
+	// Normalize OID (remove leading dot)
+	normalizedOID := strings.TrimPrefix(enterpriseOID, ".")
+
+	if dir, found := vendorDirMap[normalizedOID]; found {
+		return dir
+	}
+
+	return ""
+}
+
+// extractEnterpriseFromOID extracts enterprise OID from any OID
+// Similar to extractEnterpriseFromTrapOID but works with any OID
+func extractEnterpriseFromOID(oid string) string {
+	const enterprisePrefix = ".1.3.6.1.4.1."
+
+	// Normalize OID
+	if !strings.HasPrefix(oid, ".") {
+		oid = "." + oid
+	}
+
+	if !strings.HasPrefix(oid, enterprisePrefix) {
+		return ""
+	}
+
+	rest := strings.TrimPrefix(oid, enterprisePrefix)
+	parts := strings.Split(rest, ".")
+	if len(parts) == 0 || parts[0] == "" {
+		return ""
+	}
+
+	return enterprisePrefix + parts[0]
 }
 
 // resolveIndexedOID attempts to resolve indexed OIDs (like table entries)
