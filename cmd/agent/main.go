@@ -110,8 +110,8 @@ func main() {
 			serviceArgs = os.Args[2:]
 		}
 
-		// For install and run commands, we need authentication key OR offline mode
-		if (command == "install" || command == "run") && len(serviceArgs) == 0 {
+		// For install command without args, show help
+		if command == "install" && len(serviceArgs) == 0 {
 			showHelp()
 			return
 		}
@@ -119,6 +119,19 @@ func main() {
 		// Parse remaining args as start arguments
 		os.Args = append([]string{os.Args[0]}, serviceArgs...)
 		args := cliArgs.MustParse()
+
+		// If no authentication key provided, try to load from config file
+		if args.AuthenticationKey == "" && !args.Offline {
+			configPath := args.ConfigPath
+			if configPath == "" {
+				configPath = "./agent-config.yaml"
+			}
+			if key, err := extractAgentKeyFromConfig(configPath); err == nil {
+				args.AuthenticationKey = key
+				fmt.Printf("✅ Authentication key loaded from %s\n", configPath)
+			}
+		}
+
 		handleServiceCommand(command, args)
 		return
 	default:
@@ -135,13 +148,19 @@ func main() {
 			return
 		}
 
-		// Auto-detect offline mode if no mode specified but config file exists
-		if !args.Offline && args.AuthenticationKey == "" {
+		// If no authentication key provided, try to load from config file
+		if args.AuthenticationKey == "" && !args.Offline {
 			configPath := args.ConfigPath
 			if configPath == "" {
 				configPath = "./agent-config.yaml"
 			}
-			if _, err := os.Stat(configPath); err == nil {
+
+			// Try to extract authentication key from config
+			if key, err := extractAgentKeyFromConfig(configPath); err == nil {
+				args.AuthenticationKey = key
+				fmt.Printf("✅ Authentication key loaded from %s\n", configPath)
+			} else if _, statErr := os.Stat(configPath); statErr == nil {
+				// Config file exists but no key found - might be offline mode
 				fmt.Printf("📋 Detected offline configuration file: %s\n", configPath)
 				fmt.Printf("🔄 Automatically switching to offline mode\n")
 				args.Offline = true
