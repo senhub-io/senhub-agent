@@ -1,0 +1,6342 @@
+{
+  "version": "1.0",
+  "generated": "2025-10-09T01:10:37Z",
+  "vendors": {
+    "1.3.6.1.4.1.6530": {
+      "name": "2n",
+      "base_path": "2n",
+      "mibs": [
+        {
+          "name": "TEL2N-MIB",
+          "file": "TEL2N-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.43": {
+      "name": "3com",
+      "base_path": "3com",
+      "mibs": [
+        {
+          "name": "A3COM-HUAWEI-OID-MIB",
+          "file": "A3COM-HUAWEI-OID-MIB"
+        },
+        {
+          "name": "A3Com-products-MIB",
+          "file": "A3Com-products-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.14817": {
+      "name": "4rf",
+      "base_path": "4rf",
+      "mibs": [
+        {
+          "name": "4RF-MIB",
+          "file": "4RF-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.22610": {
+      "name": "a10",
+      "base_path": "a10",
+      "mibs": [
+        {
+          "name": "A10-COMMON-MIB",
+          "file": "A10-COMMON-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.53973": {
+      "name": "abb",
+      "base_path": "abb",
+      "mibs": [
+        {
+          "name": "ABB-MODULARUPS-MIB",
+          "file": "ABB-MODULARUPS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.22420": {
+      "name": "accedian",
+      "base_path": "accedian",
+      "mibs": [
+        {
+          "name": "ACCEDIAN-SMI",
+          "file": "ACCEDIAN-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3764": {
+      "name": "adic",
+      "base_path": "adic",
+      "mibs": [
+        {
+          "name": "ADIC-INTELLIGENT-STORAGE-MIB",
+          "file": "ADIC-INTELLIGENT-STORAGE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.664": {
+      "name": "adtran",
+      "base_path": "adtran",
+      "mibs": [
+        {
+          "name": "ADTRAN-MIB",
+          "file": "ADTRAN-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2544": {
+      "name": "adva",
+      "base_path": "adva",
+      "mibs": [
+        {
+          "name": "ADVA-MIB",
+          "file": "ADVA-MIB"
+        },
+        {
+          "name": "ADVA-FSP3000ALM-MIB",
+          "file": "ADVA-FSP3000ALM-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.629": {
+      "name": "mrv",
+      "base_path": "mrv",
+      "mibs": [
+        {
+          "name": "NBS-MIB",
+          "file": "NBS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6926": {
+      "name": "adva",
+      "base_path": "adva",
+      "mibs": [
+        {
+          "name": "OA-SFP-MIB",
+          "file": "OA-SFP-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.10297": {
+      "name": "advantech",
+      "base_path": "advantech",
+      "mibs": [
+        {
+          "name": "ADVANTECH-EKI-PRONEER-MIB",
+          "file": "ADVANTECH-EKI-PRONEER-MIB"
+        },
+        {
+          "name": "ADVANTECH-COMMON-MIB",
+          "file": "ADVANTECH-COMMON-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.26928": {
+      "name": "aerohive",
+      "base_path": "aerohive",
+      "mibs": [
+        {
+          "name": "AH-SMI-MIB",
+          "file": "AH-SMI-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.63": {
+      "name": "airport",
+      "base_path": "airport",
+      "mibs": [
+        {
+          "name": "AIRPORT-BASESTATION-3-MIB",
+          "file": "AIRPORT-BASESTATION-3-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3854": {
+      "name": "akcp",
+      "base_path": "akcp",
+      "mibs": [
+        {
+          "name": "HHMSAGENT-MIB",
+          "file": "HHMSAGENT-MIB"
+        },
+        {
+          "name": "SPAGENT-MIB",
+          "file": "SPAGENT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.11": {
+      "name": "hp",
+      "base_path": "hp",
+      "mibs": [
+        {
+          "name": "SEMI-MIB",
+          "file": "SEMI-MIB"
+        },
+        {
+          "name": "HP-BASE-MIB",
+          "file": "HP-BASE-MIB"
+        },
+        {
+          "name": "NETSWITCH-DMA-MIB",
+          "file": "NETSWITCH-DMA-MIB"
+        },
+        {
+          "name": "HP-LASERJET-COMMON-MIB",
+          "file": "HP-LASERJET-COMMON-MIB"
+        },
+        {
+          "name": "HP-SWITCH-PL-MIB",
+          "file": "HP-SWITCH-PL-MIB"
+        },
+        {
+          "name": "NETSWITCH-DRIVERS-MIB",
+          "file": "NETSWITCH-DRIVERS-MIB"
+        },
+        {
+          "name": "HP-SN-ROOT-MIB",
+          "file": "HP-SN-ROOT-MIB"
+        },
+        {
+          "name": "HP-PROCURVE-420-PRIVATE-MIB",
+          "file": "HP-PROCURVE-420-PRIVATE-MIB"
+        },
+        {
+          "name": "HP-ICF-OID",
+          "file": "HP-ICF-OID"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.637": {
+      "name": "nokia",
+      "base_path": "nokia",
+      "mibs": [
+        {
+          "name": "SYSTEM-MIB",
+          "file": "SYSTEM-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.12140": {
+      "name": "alcoma",
+      "base_path": "alcoma",
+      "mibs": [
+        {
+          "name": "ALCOMA-MIB",
+          "file": "ALCOMA-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.49136": {
+      "name": "algcom",
+      "base_path": "algcom",
+      "mibs": [
+        {
+          "name": "ALGPOWER-v2",
+          "file": "ALGPOWER-v2"
+        },
+        {
+          "name": "ALGSMXS-v0-MIB",
+          "file": "ALGSMXS-v0-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.207": {
+      "name": "awplus",
+      "base_path": "awplus",
+      "mibs": [
+        {
+          "name": "AT-SMI-MIB",
+          "file": "AT-SMI-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.7309": {
+      "name": "alpha",
+      "base_path": "alpha",
+      "mibs": [
+        {
+          "name": "ALPHA-RESOURCE-MIB",
+          "file": "ALPHA-RESOURCE-MIB"
+        },
+        {
+          "name": "Argus-MIB",
+          "file": "Argus-MIB"
+        },
+        {
+          "name": "Argus-Power-System-MIB",
+          "file": "Argus-Power-System-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.26854": {
+      "name": "alpha",
+      "base_path": "alpha",
+      "mibs": [
+        {
+          "name": "SITE-MONITORING-MIB",
+          "file": "SITE-MONITORING-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.52326": {
+      "name": "alpineoe",
+      "base_path": "alpineoe",
+      "mibs": [
+        {
+          "name": "ALPINE-ROOT",
+          "file": "ALPINE-ROOT"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1872": {
+      "name": "alteonos",
+      "base_path": "alteonos",
+      "mibs": [
+        {
+          "name": "ALTEON-ROOT-MIB",
+          "file": "ALTEON-ROOT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.12394": {
+      "name": "alvarion",
+      "base_path": "alvarion",
+      "mibs": [
+        {
+          "name": "BWA-DOT11-WLAN-MIB",
+          "file": "BWA-DOT11-WLAN-MIB"
+        },
+        {
+          "name": "ALVARION-DOT11-WLAN-MIB",
+          "file": "ALVARION-DOT11-WLAN-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.710": {
+      "name": "alvarion",
+      "base_path": "alvarion",
+      "mibs": [
+        {
+          "name": "ALVARION-DOT11-WLAN-TST-MIB",
+          "file": "ALVARION-DOT11-WLAN-TST-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.318": {
+      "name": "apc",
+      "base_path": "apc",
+      "mibs": [
+        {
+          "name": "PowerNet-MIB",
+          "file": "PowerNet-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.9694": {
+      "name": "arbornet",
+      "base_path": "arbornet",
+      "mibs": [
+        {
+          "name": "ARBORNET-SMI",
+          "file": "ARBORNET-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.30065": {
+      "name": "arista",
+      "base_path": "arista",
+      "mibs": [
+        {
+          "name": "ARISTA-SMI-MIB",
+          "file": "ARISTA-SMI-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.7564": {
+      "name": "arraynetworks",
+      "base_path": "arraynetworks",
+      "mibs": [
+        {
+          "name": "CA-SNMP-MIB8",
+          "file": "CA-SNMP-MIB8"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4998": {
+      "name": "arris",
+      "base_path": "arris",
+      "mibs": [
+        {
+          "name": "CADANT-PRODUCTS-MIB",
+          "file": "CADANT-PRODUCTS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1166": {
+      "name": "arris",
+      "base_path": "arris",
+      "mibs": [
+        {
+          "name": "DSR4410MD-MIB",
+          "file": "DSR4410MD-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4491": {
+      "name": "arris",
+      "base_path": "arris",
+      "mibs": [
+        {
+          "name": "DOCS-TEST-MIB",
+          "file": "DOCS-TEST-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4115": {
+      "name": "arris",
+      "base_path": "arris",
+      "mibs": [
+        {
+          "name": "ARRIS-MIB",
+          "file": "ARRIS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.47196": {
+      "name": "arubaos-cx",
+      "base_path": "arubaos-cx",
+      "mibs": [
+        {
+          "name": "ARUBAWIRED-NETWORKING-OID",
+          "file": "ARUBAWIRED-NETWORKING-OID"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.14823": {
+      "name": "arubaos",
+      "base_path": "arubaos",
+      "mibs": [
+        {
+          "name": "ARUBA-MIB",
+          "file": "ARUBA-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.27614": {
+      "name": "ascom",
+      "base_path": "ascom",
+      "mibs": [
+        {
+          "name": "ASCOM-IPDECT-MIB",
+          "file": "ASCOM-IPDECT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3052": {
+      "name": "asentria",
+      "base_path": "asentria",
+      "mibs": [
+        {
+          "name": "ASENTRIA-ROOT-MIB",
+          "file": "ASENTRIA-ROOT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.21317": {
+      "name": "supermicro",
+      "base_path": "supermicro",
+      "mibs": [
+        {
+          "name": "ATEN-IPMI-MIB",
+          "file": "ATEN-IPMI-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.37662": {
+      "name": "ats",
+      "base_path": "ats",
+      "mibs": [
+        {
+          "name": "ATS-MIB",
+          "file": "ATS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.99": {
+      "name": "quanta",
+      "base_path": "quanta",
+      "mibs": [
+        {
+          "name": "snmp-res.my",
+          "file": "snmp-res.my"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.14832": {
+      "name": "junos",
+      "base_path": "junos",
+      "mibs": [
+        {
+          "name": "ESO-CONSORTIUM-MIB",
+          "file": "ESO-CONSORTIUM-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.5003": {
+      "name": "audiocodes",
+      "base_path": "audiocodes",
+      "mibs": [
+        {
+          "name": "AcAtm",
+          "file": "AcAtm"
+        },
+        {
+          "name": "AcPerfMediaServices",
+          "file": "AcPerfMediaServices"
+        },
+        {
+          "name": "AcPerfMediaGateway",
+          "file": "AcPerfMediaGateway"
+        },
+        {
+          "name": "AcBoard",
+          "file": "AcBoard"
+        },
+        {
+          "name": "AC-PMAtm-MIB",
+          "file": "AC-PMAtm-MIB"
+        },
+        {
+          "name": "AC-ALARM-MIB",
+          "file": "AC-ALARM-MIB"
+        },
+        {
+          "name": "AcPerfH323SIPGateway",
+          "file": "AcPerfH323SIPGateway"
+        },
+        {
+          "name": "AC-TYPES",
+          "file": "AC-TYPES"
+        },
+        {
+          "name": "AC-MODULARGATEWAY-MIB",
+          "file": "AC-MODULARGATEWAY-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6889": {
+      "name": "avaya",
+      "base_path": "avaya",
+      "mibs": [
+        {
+          "name": "AVAYAGEN-MIB",
+          "file": "AVAYAGEN-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2509": {
+      "name": "aviat-wtm",
+      "base_path": "aviat-wtm",
+      "mibs": [
+        {
+          "name": "STXN-GLOBALREGISTER-MIB",
+          "file": "STXN-GLOBALREGISTER-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.10418": {
+      "name": "avocent",
+      "base_path": "avocent",
+      "mibs": [
+        {
+          "name": "ACS-MIB",
+          "file": "ACS-MIB"
+        },
+        {
+          "name": "PM-MIB",
+          "file": "PM-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.20916": {
+      "name": "avtech",
+      "base_path": "avtech",
+      "mibs": [
+        {
+          "name": "TEMPAGER-MIB",
+          "file": "TEMPAGER-MIB"
+        },
+        {
+          "name": "ROOMALERT12E-MIB",
+          "file": "ROOMALERT12E-MIB"
+        },
+        {
+          "name": "ROOMALERT7E-MIB",
+          "file": "ROOMALERT7E-MIB"
+        },
+        {
+          "name": "ROOMALERT32E-MIB",
+          "file": "ROOMALERT32E-MIB"
+        },
+        {
+          "name": "ROOMALERT32S-MIB",
+          "file": "ROOMALERT32S-MIB"
+        },
+        {
+          "name": "ROOMALERT4E-MIB",
+          "file": "ROOMALERT4E-MIB"
+        },
+        {
+          "name": "TEMPAGER3E-MIB",
+          "file": "TEMPAGER3E-MIB"
+        },
+        {
+          "name": "ROOMALERT24E-MIB",
+          "file": "ROOMALERT24E-MIB"
+        },
+        {
+          "name": "ROOMALERT26W-MIB",
+          "file": "ROOMALERT26W-MIB"
+        },
+        {
+          "name": "ROOMALERT3E-MIB",
+          "file": "ROOMALERT3E-MIB"
+        },
+        {
+          "name": "ROOMALERT11E-MIB",
+          "file": "ROOMALERT11E-MIB"
+        },
+        {
+          "name": "ROOMALERTST4E-MIB",
+          "file": "ROOMALERTST4E-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.368": {
+      "name": "axis",
+      "base_path": "axis",
+      "mibs": [
+        {
+          "name": "AXIS-ROOT-MIB",
+          "file": "AXIS-ROOT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.7312": {
+      "name": "barco",
+      "base_path": "barco",
+      "mibs": [
+        {
+          "name": "BARCO-CLICKSHARE-MIB",
+          "file": "BARCO-CLICKSHARE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.20632": {
+      "name": "barracuda",
+      "base_path": "barracuda",
+      "mibs": [
+        {
+          "name": "BARRACUDA-REF-MIB",
+          "file": "BARRACUDA-REF-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.10704": {
+      "name": "barracuda",
+      "base_path": "barracuda",
+      "mibs": [
+        {
+          "name": "PHION-MIB",
+          "file": "PHION-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.37069": {
+      "name": "bats",
+      "base_path": "bats",
+      "mibs": [
+        {
+          "name": "AATS-MIB",
+          "file": "AATS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3320": {
+      "name": "bdcom",
+      "base_path": "bdcom",
+      "mibs": [
+        {
+          "name": "BDCOM-SMI",
+          "file": "BDCOM-SMI"
+        },
+        {
+          "name": "NMS-SMI",
+          "file": "NMS-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.39406": {
+      "name": "benuos",
+      "base_path": "benuos",
+      "mibs": [
+        {
+          "name": "BENU-ENTERPRISE-MIB",
+          "file": "BENU-ENTERPRISE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.272": {
+      "name": "bintec",
+      "base_path": "bintec",
+      "mibs": [
+        {
+          "name": "BINTEC-MIB",
+          "file": "BINTEC-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2238": {
+      "name": "pfsense",
+      "base_path": "pfsense",
+      "mibs": [
+        {
+          "name": "FREEBSD-MIB",
+          "file": "FREEBSD-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.27533": {
+      "name": "bke",
+      "base_path": "bke",
+      "mibs": [
+        {
+          "name": "PNETMOD-MIB",
+          "file": "PNETMOD-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.7501": {
+      "name": "bktel",
+      "base_path": "bktel",
+      "mibs": [
+        {
+          "name": "BKTEL-HFC862-BASE-MIB",
+          "file": "BKTEL-HFC862-BASE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.42610": {
+      "name": "bladeshelter",
+      "base_path": "bladeshelter",
+      "mibs": [
+        {
+          "name": "SPSv1-MIB",
+          "file": "SPSv1-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.13315": {
+      "name": "bluecatnetworks",
+      "base_path": "bluecatnetworks",
+      "mibs": [
+        {
+          "name": "BLUECATNETWORKS-MIB",
+          "file": "BLUECATNETWORKS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3417": {
+      "name": "bluecoat",
+      "base_path": "bluecoat",
+      "mibs": [
+        {
+          "name": "BLUECOAT-MIB",
+          "file": "BLUECOAT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6431": {
+      "name": "broadworks",
+      "base_path": "broadworks",
+      "mibs": [
+        {
+          "name": "BroadworksMaintenance",
+          "file": "BroadworksMaintenance"
+        },
+        {
+          "name": "BW-BroadworksMediaServer",
+          "file": "BW-BroadworksMediaServer"
+        },
+        {
+          "name": "BW-BroadworksApplicationServer",
+          "file": "BW-BroadworksApplicationServer"
+        },
+        {
+          "name": "BW-BroadworksNetworkServer",
+          "file": "BW-BroadworksNetworkServer"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1991": {
+      "name": "brocade",
+      "base_path": "brocade",
+      "mibs": [
+        {
+          "name": "FOUNDRY-SN-ROOT-MIB",
+          "file": "FOUNDRY-SN-ROOT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1588": {
+      "name": "extreme",
+      "base_path": "extreme",
+      "mibs": [
+        {
+          "name": "BROCADE-REG-MIB",
+          "file": "BROCADE-REG-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2435": {
+      "name": "brother",
+      "base_path": "brother",
+      "mibs": [
+        {
+          "name": "BROTHER-MIB",
+          "file": "BROTHER-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.30005": {
+      "name": "bti",
+      "base_path": "bti",
+      "mibs": [
+        {
+          "name": "BTI8xx-MIB",
+          "file": "BTI8xx-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6066": {
+      "name": "calix",
+      "base_path": "calix",
+      "mibs": [
+        {
+          "name": "OCCAM-REG-MODULE",
+          "file": "OCCAM-REG-MODULE"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6321": {
+      "name": "calix",
+      "base_path": "calix",
+      "mibs": [
+        {
+          "name": "E5-121-MIB",
+          "file": "E5-121-MIB"
+        },
+        {
+          "name": "CALIX-SMI",
+          "file": "CALIX-SMI"
+        },
+        {
+          "name": "E5-120-MIB",
+          "file": "E5-120-MIB"
+        },
+        {
+          "name": "E5-110-MIB",
+          "file": "E5-110-MIB"
+        },
+        {
+          "name": "E5-111-MIB",
+          "file": "E5-111-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.161": {
+      "name": "cambium",
+      "base_path": "cambium",
+      "mibs": [
+        {
+          "name": "WHISP-GLOBAL-REG-MIB",
+          "file": "WHISP-GLOBAL-REG-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.17713": {
+      "name": "cambium",
+      "base_path": "cambium",
+      "mibs": [
+        {
+          "name": "CAMBIUM-PTP670-MIB",
+          "file": "CAMBIUM-PTP670-MIB"
+        },
+        {
+          "name": "CAMBIUM-PTP250-MIB",
+          "file": "CAMBIUM-PTP250-MIB"
+        },
+        {
+          "name": "CAMBIUM-PTP650-MIB",
+          "file": "CAMBIUM-PTP650-MIB"
+        },
+        {
+          "name": "TERRAGRAPH-RADIO-MIB",
+          "file": "TERRAGRAPH-RADIO-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.9839": {
+      "name": "dataaire",
+      "base_path": "dataaire",
+      "mibs": [
+        {
+          "name": "DataAire-dap4-al-MIB",
+          "file": "DataAire-dap4-al-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.18642": {
+      "name": "ccpower",
+      "base_path": "ccpower",
+      "mibs": [
+        {
+          "name": "CCPOWER-MIB",
+          "file": "CCPOWER-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.33826": {
+      "name": "cdata",
+      "base_path": "cdata",
+      "mibs": [
+        {
+          "name": "LTNET-ROOT",
+          "file": "LTNET-ROOT"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.34592": {
+      "name": "cdata",
+      "base_path": "cdata",
+      "mibs": [
+        {
+          "name": "XXX-MIB",
+          "file": "XXX-MIB"
+        },
+        {
+          "name": "EPON-EOC-MIB",
+          "file": "EPON-EOC-MIB"
+        },
+        {
+          "name": "VENDOR-COMMON-MIB",
+          "file": "VENDOR-COMMON-MIB"
+        },
+        {
+          "name": "CDATA-COMMON-SMI",
+          "file": "CDATA-COMMON-SMI"
+        },
+        {
+          "name": "EDFA-oa-MIB",
+          "file": "EDFA-oa-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.22764": {
+      "name": "cdata",
+      "base_path": "cdata",
+      "mibs": [
+        {
+          "name": "SPIDCOM-MIB",
+          "file": "SPIDCOM-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.17409": {
+      "name": "glassway",
+      "base_path": "glassway",
+      "mibs": [
+        {
+          "name": "NSCRTV-ROOT",
+          "file": "NSCRTV-ROOT"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2281": {
+      "name": "ceraos",
+      "base_path": "ceraos",
+      "mibs": [
+        {
+          "name": "MWRM-RADIO-MIB",
+          "file": "MWRM-RADIO-MIB"
+        },
+        {
+          "name": "MWRM-NETWORK-MIB",
+          "file": "MWRM-NETWORK-MIB"
+        },
+        {
+          "name": "MWRM-UNIT-MIB",
+          "file": "MWRM-UNIT-MIB"
+        },
+        {
+          "name": "MWRM-PM-MIB",
+          "file": "MWRM-PM-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.12551": {
+      "name": "cet",
+      "base_path": "cet",
+      "mibs": [
+        {
+          "name": "CET-TSI-SMI",
+          "file": "CET-TSI-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.30932": {
+      "name": "chatsworth",
+      "base_path": "chatsworth",
+      "mibs": [
+        {
+          "name": "CPI-UNITY-MIB",
+          "file": "CPI-UNITY-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2620": {
+      "name": "checkpoint",
+      "base_path": "checkpoint",
+      "mibs": [
+        {
+          "name": "CHECKPOINT-MIB",
+          "file": "CHECKPOINT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1271": {
+      "name": "ciena",
+      "base_path": "ciena",
+      "mibs": [
+        {
+          "name": "CIENA-WS-MIB",
+          "file": "CIENA-WS-MIB"
+        },
+        {
+          "name": "CIENA-SMI",
+          "file": "CIENA-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6141": {
+      "name": "ciena",
+      "base_path": "ciena",
+      "mibs": [
+        {
+          "name": "CIENA-WWP-SMI",
+          "file": "CIENA-WWP-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.9193": {
+      "name": "cirpack",
+      "base_path": "cirpack",
+      "mibs": [
+        {
+          "name": "KMIB-MIB",
+          "file": "KMIB-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1429": {
+      "name": "cisco",
+      "base_path": "cisco",
+      "mibs": [
+        {
+          "name": "SA-CM-MTA-MIB",
+          "file": "SA-CM-MTA-MIB"
+        },
+        {
+          "name": "SA-MTA-MIB",
+          "file": "SA-MTA-MIB"
+        },
+        {
+          "name": "SA-CM-MIB",
+          "file": "SA-CM-MIB"
+        },
+        {
+          "name": "SA-RG-MIB",
+          "file": "SA-RG-MIB"
+        },
+        {
+          "name": "CISCO-DMN-DSG-ROOT-MIB",
+          "file": "CISCO-DMN-DSG-ROOT-MIB"
+        },
+        {
+          "name": "SA-HARDWARE-MIB",
+          "file": "SA-HARDWARE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.15497": {
+      "name": "cisco",
+      "base_path": "cisco",
+      "mibs": [
+        {
+          "name": "IRONPORT-SMI",
+          "file": "IRONPORT-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.9": {
+      "name": "cisco",
+      "base_path": "cisco",
+      "mibs": [
+        {
+          "name": "CISCO-SMI",
+          "file": "CISCO-SMI"
+        },
+        {
+          "name": "CISCOSMB-MIB",
+          "file": "CISCOSMB-MIB"
+        },
+        {
+          "name": "CISCOSB-MIB",
+          "file": "CISCOSB-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3607": {
+      "name": "cisco",
+      "base_path": "cisco",
+      "mibs": [
+        {
+          "name": "CERENT-GLOBAL-REGISTRY",
+          "file": "CERENT-GLOBAL-REGISTRY"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.351": {
+      "name": "cisco",
+      "base_path": "cisco",
+      "mibs": [
+        {
+          "name": "CISCOWAN-SMI",
+          "file": "CISCOWAN-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.14179": {
+      "name": "cisco",
+      "base_path": "cisco",
+      "mibs": [
+        {
+          "name": "AIRESPACE-REF-MIB",
+          "file": "AIRESPACE-REF-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.5951": {
+      "name": "citrix",
+      "base_path": "citrix",
+      "mibs": [
+        {
+          "name": "NS-MIB-SMIV2-MIB",
+          "file": "NS-MIB-SMIV2-MIB"
+        },
+        {
+          "name": "MAS-MIB-SMIV2-MIB",
+          "file": "MAS-MIB-SMIV2-MIB"
+        },
+        {
+          "name": "SDX-MIB-SMIV2-MIB",
+          "file": "SDX-MIB-SMIV2-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3845": {
+      "name": "citrix",
+      "base_path": "citrix",
+      "mibs": [
+        {
+          "name": "CITRIX-NetScaler-SD-WAN-MIB",
+          "file": "CITRIX-NetScaler-SD-WAN-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.22626": {
+      "name": "comet",
+      "base_path": "comet",
+      "mibs": [
+        {
+          "name": "T3610-MIB",
+          "file": "T3610-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2882": {
+      "name": "comtrol",
+      "base_path": "comtrol",
+      "mibs": [
+        {
+          "name": "ES8510-MIB",
+          "file": "ES8510-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.25506": {
+      "name": "comware",
+      "base_path": "comware",
+      "mibs": [
+        {
+          "name": "HH3C-3GMODEM-MIB",
+          "file": "HH3C-3GMODEM-MIB"
+        },
+        {
+          "name": "HH3C-8021X-EXT-MIB",
+          "file": "HH3C-8021X-EXT-MIB"
+        },
+        {
+          "name": "HH3C-8021X-EXT2-MIB",
+          "file": "HH3C-8021X-EXT2-MIB"
+        },
+        {
+          "name": "HH3C-AAA-MIB",
+          "file": "HH3C-AAA-MIB"
+        },
+        {
+          "name": "HH3C-AAA-NASID-MIB",
+          "file": "HH3C-AAA-NASID-MIB"
+        },
+        {
+          "name": "HH3C-ACFP-MIB",
+          "file": "HH3C-ACFP-MIB"
+        },
+        {
+          "name": "HH3C-ACL-MIB",
+          "file": "HH3C-ACL-MIB"
+        },
+        {
+          "name": "HH3C-AFC-MIB",
+          "file": "HH3C-AFC-MIB"
+        },
+        {
+          "name": "HH3C-ARP-ENTRY-MIB",
+          "file": "HH3C-ARP-ENTRY-MIB"
+        },
+        {
+          "name": "HH3C-ARP-RATELIMIT-MIB",
+          "file": "HH3C-ARP-RATELIMIT-MIB"
+        },
+        {
+          "name": "HH3C-ARP-SOURCE-SUPPRESSION-MIB",
+          "file": "HH3C-ARP-SOURCE-SUPPRESSION-MIB"
+        },
+        {
+          "name": "HH3C-ATM-DXI-MIB",
+          "file": "HH3C-ATM-DXI-MIB"
+        },
+        {
+          "name": "HH3C-BFD-STD-MIB",
+          "file": "HH3C-BFD-STD-MIB"
+        },
+        {
+          "name": "HH3C-BGP-EVPN-MIB",
+          "file": "HH3C-BGP-EVPN-MIB"
+        },
+        {
+          "name": "HH3C-BGP-VPN-MIB",
+          "file": "HH3C-BGP-VPN-MIB"
+        },
+        {
+          "name": "HH3C-BGP4V2-MIB",
+          "file": "HH3C-BGP4V2-MIB"
+        },
+        {
+          "name": "HH3C-BLG-MIB",
+          "file": "HH3C-BLG-MIB"
+        },
+        {
+          "name": "HH3C-BPA-MIB",
+          "file": "HH3C-BPA-MIB"
+        },
+        {
+          "name": "HH3C-BRAS-ACCESS-MIB",
+          "file": "HH3C-BRAS-ACCESS-MIB"
+        },
+        {
+          "name": "HH3C-CATV-TRANSCEIVER-MIB",
+          "file": "HH3C-CATV-TRANSCEIVER-MIB"
+        },
+        {
+          "name": "HH3C-CBQOS2-MIB",
+          "file": "HH3C-CBQOS2-MIB"
+        },
+        {
+          "name": "HH3C-CFCARD-MIB",
+          "file": "HH3C-CFCARD-MIB"
+        },
+        {
+          "name": "HH3C-COMMON-SYSTEM-MIB",
+          "file": "HH3C-COMMON-SYSTEM-MIB"
+        },
+        {
+          "name": "HH3C-CONFIG-MAN-MIB",
+          "file": "HH3C-CONFIG-MAN-MIB"
+        },
+        {
+          "name": "HH3C-CONTEXT-MIB",
+          "file": "HH3C-CONTEXT-MIB"
+        },
+        {
+          "name": "HH3C-CUPM-CP-MIB",
+          "file": "HH3C-CUPM-CP-MIB"
+        },
+        {
+          "name": "HH3C-CUPM-UP-MIB",
+          "file": "HH3C-CUPM-UP-MIB"
+        },
+        {
+          "name": "HH3C-CUSP-MIB",
+          "file": "HH3C-CUSP-MIB"
+        },
+        {
+          "name": "HH3C-DAR-MIB",
+          "file": "HH3C-DAR-MIB"
+        },
+        {
+          "name": "HH3C-DHCP-SERVER-MIB",
+          "file": "HH3C-DHCP-SERVER-MIB"
+        },
+        {
+          "name": "HH3C-DHCP-SNOOP2-MIB",
+          "file": "HH3C-DHCP-SNOOP2-MIB"
+        },
+        {
+          "name": "HH3C-DHCP4-MIB",
+          "file": "HH3C-DHCP4-MIB"
+        },
+        {
+          "name": "HH3C-DHCP6-MIB",
+          "file": "HH3C-DHCP6-MIB"
+        },
+        {
+          "name": "HH3C-DHCP6-SERVER-MIB",
+          "file": "HH3C-DHCP6-SERVER-MIB"
+        },
+        {
+          "name": "HH3C-DHCPR-MIB",
+          "file": "HH3C-DHCPR-MIB"
+        },
+        {
+          "name": "HH3C-DHCPRELAY-MIB",
+          "file": "HH3C-DHCPRELAY-MIB"
+        },
+        {
+          "name": "HH3C-DHCPS-MIB",
+          "file": "HH3C-DHCPS-MIB"
+        },
+        {
+          "name": "HH3C-DHCPSNOOP-MIB",
+          "file": "HH3C-DHCPSNOOP-MIB"
+        },
+        {
+          "name": "HH3C-DISK-MIB",
+          "file": "HH3C-DISK-MIB"
+        },
+        {
+          "name": "HH3C-DLDP-MIB",
+          "file": "HH3C-DLDP-MIB"
+        },
+        {
+          "name": "HH3C-DLDP2-MIB",
+          "file": "HH3C-DLDP2-MIB"
+        },
+        {
+          "name": "HH3C-DNS-MIB",
+          "file": "HH3C-DNS-MIB"
+        },
+        {
+          "name": "HH3C-DOMAIN-MIB",
+          "file": "HH3C-DOMAIN-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-ACMT-MIB",
+          "file": "HH3C-DOT11-ACMT-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-APMT-MIB",
+          "file": "HH3C-DOT11-APMT-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-CFG-MIB",
+          "file": "HH3C-DOT11-CFG-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-CFGEXT-MIB",
+          "file": "HH3C-DOT11-CFGEXT-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-LIC-MIB",
+          "file": "HH3C-DOT11-LIC-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-PROBE-MIB",
+          "file": "HH3C-DOT11-PROBE-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-QOS-MIB",
+          "file": "HH3C-DOT11-QOS-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-REF-MIB",
+          "file": "HH3C-DOT11-REF-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-ROAM-MIB",
+          "file": "HH3C-DOT11-ROAM-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-RRM-MIB",
+          "file": "HH3C-DOT11-RRM-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-SA-MIB",
+          "file": "HH3C-DOT11-SA-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-SAVI-MIB",
+          "file": "HH3C-DOT11-SAVI-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-STATION-MIB",
+          "file": "HH3C-DOT11-STATION-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-WIDS-MIB",
+          "file": "HH3C-DOT11-WIDS-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-WIPS-MIB",
+          "file": "HH3C-DOT11-WIPS-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-WLANEXT-MIB",
+          "file": "HH3C-DOT11-WLANEXT-MIB"
+        },
+        {
+          "name": "HH3C-DOT11-WM2U-MIB",
+          "file": "HH3C-DOT11-WM2U-MIB"
+        },
+        {
+          "name": "HH3C-DOT11S-MESH-MIB",
+          "file": "HH3C-DOT11S-MESH-MIB"
+        },
+        {
+          "name": "HH3C-DOT3-EFM-EPON-MIB",
+          "file": "HH3C-DOT3-EFM-EPON-MIB"
+        },
+        {
+          "name": "HH3C-DRNI-MIB",
+          "file": "HH3C-DRNI-MIB"
+        },
+        {
+          "name": "HH3C-DSP-MIB",
+          "file": "HH3C-DSP-MIB"
+        },
+        {
+          "name": "HH3C-DVPN-MIB",
+          "file": "HH3C-DVPN-MIB"
+        },
+        {
+          "name": "HH3C-E1-MIB",
+          "file": "HH3C-E1-MIB"
+        },
+        {
+          "name": "HH3C-E1T1VI-MIB",
+          "file": "HH3C-E1T1VI-MIB"
+        },
+        {
+          "name": "HH3C-EFM-COMMON-MIB",
+          "file": "HH3C-EFM-COMMON-MIB"
+        },
+        {
+          "name": "HH3C-ENTITY-EXT-MIB",
+          "file": "HH3C-ENTITY-EXT-MIB"
+        },
+        {
+          "name": "HH3C-ENTITY-VENDORTYPE-OID-MIB",
+          "file": "HH3C-ENTITY-VENDORTYPE-OID-MIB"
+        },
+        {
+          "name": "HH3C-ENTRELATION-MIB",
+          "file": "HH3C-ENTRELATION-MIB"
+        },
+        {
+          "name": "HH3C-EOC-COMMON-MIB",
+          "file": "HH3C-EOC-COMMON-MIB"
+        },
+        {
+          "name": "HH3C-EPON-DEVICE-MIB",
+          "file": "HH3C-EPON-DEVICE-MIB"
+        },
+        {
+          "name": "HH3C-EPON-FB-MIB",
+          "file": "HH3C-EPON-FB-MIB"
+        },
+        {
+          "name": "HH3C-EPON-MIB",
+          "file": "HH3C-EPON-MIB"
+        },
+        {
+          "name": "HH3C-EPON-UNI-MIB",
+          "file": "HH3C-EPON-UNI-MIB"
+        },
+        {
+          "name": "HH3C-EVB-MIB",
+          "file": "HH3C-EVB-MIB"
+        },
+        {
+          "name": "HH3C-EVC-MIB",
+          "file": "HH3C-EVC-MIB"
+        },
+        {
+          "name": "HH3C-EVI-MIB",
+          "file": "HH3C-EVI-MIB"
+        },
+        {
+          "name": "HH3C-EVPN-MIB",
+          "file": "HH3C-EVPN-MIB"
+        },
+        {
+          "name": "HH3C-FAILOVER-MIB",
+          "file": "HH3C-FAILOVER-MIB"
+        },
+        {
+          "name": "HH3C-FC-FLOGIN-MIB",
+          "file": "HH3C-FC-FLOGIN-MIB"
+        },
+        {
+          "name": "HH3C-FC-NAME-SERVER-MIB",
+          "file": "HH3C-FC-NAME-SERVER-MIB"
+        },
+        {
+          "name": "HH3C-FC-PING-MIB",
+          "file": "HH3C-FC-PING-MIB"
+        },
+        {
+          "name": "HH3C-FC-PSM-MIB",
+          "file": "HH3C-FC-PSM-MIB"
+        },
+        {
+          "name": "HH3C-FC-TC-MIB",
+          "file": "HH3C-FC-TC-MIB"
+        },
+        {
+          "name": "HH3C-FC-TRACE-ROUTE-MIB",
+          "file": "HH3C-FC-TRACE-ROUTE-MIB"
+        },
+        {
+          "name": "HH3C-FC-ZONE-SERVER-MIB",
+          "file": "HH3C-FC-ZONE-SERVER-MIB"
+        },
+        {
+          "name": "HH3C-FCOE-MIB",
+          "file": "HH3C-FCOE-MIB"
+        },
+        {
+          "name": "HH3C-FCOE-MODE-MIB",
+          "file": "HH3C-FCOE-MODE-MIB"
+        },
+        {
+          "name": "HH3C-FDMI-MIB",
+          "file": "HH3C-FDMI-MIB"
+        },
+        {
+          "name": "HH3C-FIREWALL-MIB",
+          "file": "HH3C-FIREWALL-MIB"
+        },
+        {
+          "name": "HH3C-FLASH-MAN-MIB",
+          "file": "HH3C-FLASH-MAN-MIB"
+        },
+        {
+          "name": "HH3C-FLEXE-MIB",
+          "file": "HH3C-FLEXE-MIB"
+        },
+        {
+          "name": "HH3C-FLOWTEMPLATE-MIB",
+          "file": "HH3C-FLOWTEMPLATE-MIB"
+        },
+        {
+          "name": "HH3C-FR-QOS-MIB",
+          "file": "HH3C-FR-QOS-MIB"
+        },
+        {
+          "name": "HH3C-FTM-MIB",
+          "file": "HH3C-FTM-MIB"
+        },
+        {
+          "name": "HH3C-GOLD-MIB",
+          "file": "HH3C-GOLD-MIB"
+        },
+        {
+          "name": "HH3C-GRE-MIB",
+          "file": "HH3C-GRE-MIB"
+        },
+        {
+          "name": "HH3C-HGMP-MIB",
+          "file": "HH3C-HGMP-MIB"
+        },
+        {
+          "name": "HH3C-HPEOC-MIB",
+          "file": "HH3C-HPEOC-MIB"
+        },
+        {
+          "name": "HH3C-IDS-MIB",
+          "file": "HH3C-IDS-MIB"
+        },
+        {
+          "name": "HH3C-IF-EXT-MIB",
+          "file": "HH3C-IF-EXT-MIB"
+        },
+        {
+          "name": "HH3C-IFQOS2-MIB",
+          "file": "HH3C-IFQOS2-MIB"
+        },
+        {
+          "name": "HH3C-IKE-MONITOR-MIB",
+          "file": "HH3C-IKE-MONITOR-MIB"
+        },
+        {
+          "name": "HH3C-INFOCENTER-MIB",
+          "file": "HH3C-INFOCENTER-MIB"
+        },
+        {
+          "name": "HH3C-IP-ADDRESS-MIB",
+          "file": "HH3C-IP-ADDRESS-MIB"
+        },
+        {
+          "name": "HH3C-IP-BROADCAST-MIB",
+          "file": "HH3C-IP-BROADCAST-MIB"
+        },
+        {
+          "name": "HH3C-IPA-MIB",
+          "file": "HH3C-IPA-MIB"
+        },
+        {
+          "name": "HH3C-IPRAN-DCN-MIB",
+          "file": "HH3C-IPRAN-DCN-MIB"
+        },
+        {
+          "name": "HH3C-IPSEC-MONITOR-MIB",
+          "file": "HH3C-IPSEC-MONITOR-MIB"
+        },
+        {
+          "name": "HH3C-IPSEC-MONITOR-V2-MIB",
+          "file": "HH3C-IPSEC-MONITOR-V2-MIB"
+        },
+        {
+          "name": "HH3C-IPV6-ADDRESS-MIB",
+          "file": "HH3C-IPV6-ADDRESS-MIB"
+        },
+        {
+          "name": "HH3C-IPX-MIB",
+          "file": "HH3C-IPX-MIB"
+        },
+        {
+          "name": "HH3C-ISDN-MIB",
+          "file": "HH3C-ISDN-MIB"
+        },
+        {
+          "name": "HH3C-ISIS-MIB",
+          "file": "HH3C-ISIS-MIB"
+        },
+        {
+          "name": "HH3C-ISSU-MIB",
+          "file": "HH3C-ISSU-MIB"
+        },
+        {
+          "name": "HH3C-L2ISOLATE-MIB",
+          "file": "HH3C-L2ISOLATE-MIB"
+        },
+        {
+          "name": "HH3C-L2TP-MIB",
+          "file": "HH3C-L2TP-MIB"
+        },
+        {
+          "name": "HH3C-L2VPN-MIB",
+          "file": "HH3C-L2VPN-MIB"
+        },
+        {
+          "name": "HH3C-L2VPN-PWE3-MIB",
+          "file": "HH3C-L2VPN-PWE3-MIB"
+        },
+        {
+          "name": "HH3C-L4RDT-MIB",
+          "file": "HH3C-L4RDT-MIB"
+        },
+        {
+          "name": "HH3C-LAG-MIB",
+          "file": "HH3C-LAG-MIB"
+        },
+        {
+          "name": "HH3C-LB-MIB",
+          "file": "HH3C-LB-MIB"
+        },
+        {
+          "name": "HH3C-LBV2-MIB",
+          "file": "HH3C-LBV2-MIB"
+        },
+        {
+          "name": "HH3C-LI-MIB",
+          "file": "HH3C-LI-MIB"
+        },
+        {
+          "name": "HH3C-LICENSE-MIB",
+          "file": "HH3C-LICENSE-MIB"
+        },
+        {
+          "name": "HH3C-LLDP-EXT-MIB",
+          "file": "HH3C-LLDP-EXT-MIB"
+        },
+        {
+          "name": "HH3C-LOCAL-AAA-SERVER-MIB",
+          "file": "HH3C-LOCAL-AAA-SERVER-MIB"
+        },
+        {
+          "name": "HH3C-LOGIC-VOLUME-MIB",
+          "file": "HH3C-LOGIC-VOLUME-MIB"
+        },
+        {
+          "name": "HH3C-LPBKDT-MIB",
+          "file": "HH3C-LPBKDT-MIB"
+        },
+        {
+          "name": "HH3C-LSW-DEV-ADM-MIB",
+          "file": "HH3C-LSW-DEV-ADM-MIB"
+        },
+        {
+          "name": "HH3C-LswDEVM-MIB",
+          "file": "HH3C-LswDEVM-MIB"
+        },
+        {
+          "name": "HH3C-LTE-MEC-MIB",
+          "file": "HH3C-LTE-MEC-MIB"
+        },
+        {
+          "name": "HH3C-MAC-INFORMATION-MIB",
+          "file": "HH3C-MAC-INFORMATION-MIB"
+        },
+        {
+          "name": "HH3C-MACSEC-MIB",
+          "file": "HH3C-MACSEC-MIB"
+        },
+        {
+          "name": "HH3C-MCDR-MIB",
+          "file": "HH3C-MCDR-MIB"
+        },
+        {
+          "name": "HH3C-MDC-MIB",
+          "file": "HH3C-MDC-MIB"
+        },
+        {
+          "name": "HH3C-MINM-MIB",
+          "file": "HH3C-MINM-MIB"
+        },
+        {
+          "name": "HH3C-MIRRORGROUP-MIB",
+          "file": "HH3C-MIRRORGROUP-MIB"
+        },
+        {
+          "name": "HH3C-MP-MIB",
+          "file": "HH3C-MP-MIB"
+        },
+        {
+          "name": "HH3C-MP-V2-MIB",
+          "file": "HH3C-MP-V2-MIB"
+        },
+        {
+          "name": "HH3C-MPLS-LDP-MIB",
+          "file": "HH3C-MPLS-LDP-MIB"
+        },
+        {
+          "name": "HH3C-MPLS-LSR-MIB",
+          "file": "HH3C-MPLS-LSR-MIB"
+        },
+        {
+          "name": "HH3C-MPLS-VPN-BGP-MIB",
+          "file": "HH3C-MPLS-VPN-BGP-MIB"
+        },
+        {
+          "name": "HH3C-MPLS-VPN-MIB",
+          "file": "HH3C-MPLS-VPN-MIB"
+        },
+        {
+          "name": "HH3C-MPLSEXT-MIB",
+          "file": "HH3C-MPLSEXT-MIB"
+        },
+        {
+          "name": "HH3C-MPLSOAM-MIB",
+          "file": "HH3C-MPLSOAM-MIB"
+        },
+        {
+          "name": "HH3C-MPLSOAM-PS-MIB",
+          "file": "HH3C-MPLSOAM-PS-MIB"
+        },
+        {
+          "name": "HH3C-MPLSTE-MIB",
+          "file": "HH3C-MPLSTE-MIB"
+        },
+        {
+          "name": "HH3C-MPM-MIB",
+          "file": "HH3C-MPM-MIB"
+        },
+        {
+          "name": "HH3C-MS-MAN-MIB",
+          "file": "HH3C-MS-MAN-MIB"
+        },
+        {
+          "name": "HH3C-MULTICAST-MIB",
+          "file": "HH3C-MULTICAST-MIB"
+        },
+        {
+          "name": "HH3C-MULTICAST-SNOOPING-MIB",
+          "file": "HH3C-MULTICAST-SNOOPING-MIB"
+        },
+        {
+          "name": "HH3C-NAT-MIB",
+          "file": "HH3C-NAT-MIB"
+        },
+        {
+          "name": "HH3C-NDEC-MIB",
+          "file": "HH3C-NDEC-MIB"
+        },
+        {
+          "name": "HH3C-NET-MAN-MIB",
+          "file": "HH3C-NET-MAN-MIB"
+        },
+        {
+          "name": "HH3C-NPV-MIB",
+          "file": "HH3C-NPV-MIB"
+        },
+        {
+          "name": "HH3C-NQA-MIB",
+          "file": "HH3C-NQA-MIB"
+        },
+        {
+          "name": "HH3C-NS-MIB",
+          "file": "HH3C-NS-MIB"
+        },
+        {
+          "name": "HH3C-NTP-MIB",
+          "file": "HH3C-NTP-MIB"
+        },
+        {
+          "name": "HH3C-NVGRE-MIB",
+          "file": "HH3C-NVGRE-MIB"
+        },
+        {
+          "name": "HH3C-OBJECT-INFO-MIB",
+          "file": "HH3C-OBJECT-INFO-MIB"
+        },
+        {
+          "name": "HH3C-OBJP-MIB",
+          "file": "HH3C-OBJP-MIB"
+        },
+        {
+          "name": "HH3C-OFP-MIB",
+          "file": "HH3C-OFP-MIB"
+        },
+        {
+          "name": "HH3C-OID-MIB",
+          "file": "HH3C-OID-MIB"
+        },
+        {
+          "name": "HH3C-OSPF-MIB",
+          "file": "HH3C-OSPF-MIB"
+        },
+        {
+          "name": "HH3C-PBR-MIB",
+          "file": "HH3C-PBR-MIB"
+        },
+        {
+          "name": "HH3C-PEX-MIB",
+          "file": "HH3C-PEX-MIB"
+        },
+        {
+          "name": "HH3C-PORT-SECURITY-MIB",
+          "file": "HH3C-PORT-SECURITY-MIB"
+        },
+        {
+          "name": "HH3C-PORTAL-MIB",
+          "file": "HH3C-PORTAL-MIB"
+        },
+        {
+          "name": "HH3C-POS-MIB",
+          "file": "HH3C-POS-MIB"
+        },
+        {
+          "name": "HH3C-POSA-MIB",
+          "file": "HH3C-POSA-MIB"
+        },
+        {
+          "name": "HH3C-POWER-ETH-EXT-MIB",
+          "file": "HH3C-POWER-ETH-EXT-MIB"
+        },
+        {
+          "name": "HH3C-POWER-MIB",
+          "file": "HH3C-POWER-MIB"
+        },
+        {
+          "name": "HH3C-PPP-MIB",
+          "file": "HH3C-PPP-MIB"
+        },
+        {
+          "name": "HH3C-PPP-OVER-SONET-MIB",
+          "file": "HH3C-PPP-OVER-SONET-MIB"
+        },
+        {
+          "name": "HH3C-PPPOE-SERVER-MIB",
+          "file": "HH3C-PPPOE-SERVER-MIB"
+        },
+        {
+          "name": "HH3C-PRODUCT-ID-MIB",
+          "file": "HH3C-PRODUCT-ID-MIB"
+        },
+        {
+          "name": "HH3C-PROT-PRIORITY-MIB",
+          "file": "HH3C-PROT-PRIORITY-MIB"
+        },
+        {
+          "name": "HH3C-PROTOCOL-VLAN-MIB",
+          "file": "HH3C-PROTOCOL-VLAN-MIB"
+        },
+        {
+          "name": "HH3C-PU-MAN-MIB",
+          "file": "HH3C-PU-MAN-MIB"
+        },
+        {
+          "name": "HH3C-PVST-MIB",
+          "file": "HH3C-PVST-MIB"
+        },
+        {
+          "name": "HH3C-QINQ-MIB",
+          "file": "HH3C-QINQ-MIB"
+        },
+        {
+          "name": "HH3C-QINQV2-MIB",
+          "file": "HH3C-QINQV2-MIB"
+        },
+        {
+          "name": "HH3C-QOS-CAPABILITY-MIB",
+          "file": "HH3C-QOS-CAPABILITY-MIB"
+        },
+        {
+          "name": "HH3C-QOS-PROFILE-MIB",
+          "file": "HH3C-QOS-PROFILE-MIB"
+        },
+        {
+          "name": "HH3C-RADIUS-MIB",
+          "file": "HH3C-RADIUS-MIB"
+        },
+        {
+          "name": "HH3C-RAID-MIB",
+          "file": "HH3C-RAID-MIB"
+        },
+        {
+          "name": "HH3C-RBAC-MIB",
+          "file": "HH3C-RBAC-MIB"
+        },
+        {
+          "name": "HH3C-RBM-MIB",
+          "file": "HH3C-RBM-MIB"
+        },
+        {
+          "name": "HH3C-RCP-MIB",
+          "file": "HH3C-RCP-MIB"
+        },
+        {
+          "name": "HH3C-RCR-MIB",
+          "file": "HH3C-RCR-MIB"
+        },
+        {
+          "name": "HH3C-RDDC-MIB",
+          "file": "HH3C-RDDC-MIB"
+        },
+        {
+          "name": "HH3C-RES-MON-MIB",
+          "file": "HH3C-RES-MON-MIB"
+        },
+        {
+          "name": "HH3C-RMON-EXT-MIB",
+          "file": "HH3C-RMON-EXT-MIB"
+        },
+        {
+          "name": "HH3C-RMON-EXT2-MIB",
+          "file": "HH3C-RMON-EXT2-MIB"
+        },
+        {
+          "name": "HH3C-RPR-MIB",
+          "file": "HH3C-RPR-MIB"
+        },
+        {
+          "name": "HH3C-RRPP-MIB",
+          "file": "HH3C-RRPP-MIB"
+        },
+        {
+          "name": "HH3C-RS485-MIB",
+          "file": "HH3C-RS485-MIB"
+        },
+        {
+          "name": "HH3C-RSA-MIB",
+          "file": "HH3C-RSA-MIB"
+        },
+        {
+          "name": "HH3C-SAN-AGG-MIB",
+          "file": "HH3C-SAN-AGG-MIB"
+        },
+        {
+          "name": "HH3C-SAVA-MIB",
+          "file": "HH3C-SAVA-MIB"
+        },
+        {
+          "name": "HH3C-SECHIGH-MIB",
+          "file": "HH3C-SECHIGH-MIB"
+        },
+        {
+          "name": "HH3C-SECP-MIB",
+          "file": "HH3C-SECP-MIB"
+        },
+        {
+          "name": "HH3C-SESSION-MIB",
+          "file": "HH3C-SESSION-MIB"
+        },
+        {
+          "name": "HH3C-SLBG-MIB",
+          "file": "HH3C-SLBG-MIB"
+        },
+        {
+          "name": "HH3C-SMLK-MIB",
+          "file": "HH3C-SMLK-MIB"
+        },
+        {
+          "name": "HH3C-SNA-DLSW-EXT-MIB",
+          "file": "HH3C-SNA-DLSW-EXT-MIB"
+        },
+        {
+          "name": "HH3C-SNA-DLSW-MIB",
+          "file": "HH3C-SNA-DLSW-MIB"
+        },
+        {
+          "name": "HH3C-SNMP-EXT-MIB",
+          "file": "HH3C-SNMP-EXT-MIB"
+        },
+        {
+          "name": "HH3C-SPB-MIB",
+          "file": "HH3C-SPB-MIB"
+        },
+        {
+          "name": "HH3C-SPLAT-ARP-MIB",
+          "file": "HH3C-SPLAT-ARP-MIB"
+        },
+        {
+          "name": "HH3C-SPLAT-DHCP-MIB",
+          "file": "HH3C-SPLAT-DHCP-MIB"
+        },
+        {
+          "name": "HH3C-SPLAT-IGSP-MIB",
+          "file": "HH3C-SPLAT-IGSP-MIB"
+        },
+        {
+          "name": "HH3C-SPLAT-INF-MIB",
+          "file": "HH3C-SPLAT-INF-MIB"
+        },
+        {
+          "name": "HH3C-SPLAT-MAM-MIB",
+          "file": "HH3C-SPLAT-MAM-MIB"
+        },
+        {
+          "name": "HH3C-SPLAT-MIX-MIB",
+          "file": "HH3C-SPLAT-MIX-MIB"
+        },
+        {
+          "name": "HH3C-SPLAT-MSTP-MIB",
+          "file": "HH3C-SPLAT-MSTP-MIB"
+        },
+        {
+          "name": "HH3C-SPLAT-QOS-MIB",
+          "file": "HH3C-SPLAT-QOS-MIB"
+        },
+        {
+          "name": "HH3C-SPLAT-RSTP-MIB",
+          "file": "HH3C-SPLAT-RSTP-MIB"
+        },
+        {
+          "name": "HH3C-SPLAT-SMONEXT-MIB",
+          "file": "HH3C-SPLAT-SMONEXT-MIB"
+        },
+        {
+          "name": "HH3C-SPLAT-TRAP-MIB",
+          "file": "HH3C-SPLAT-TRAP-MIB"
+        },
+        {
+          "name": "HH3C-SPLAT-VLAN-MIB",
+          "file": "HH3C-SPLAT-VLAN-MIB"
+        },
+        {
+          "name": "HH3C-SRPOLICY-MIB",
+          "file": "HH3C-SRPOLICY-MIB"
+        },
+        {
+          "name": "HH3C-SRV6-MIB",
+          "file": "HH3C-SRV6-MIB"
+        },
+        {
+          "name": "HH3C-SRV6POLICY-MIB",
+          "file": "HH3C-SRV6POLICY-MIB"
+        },
+        {
+          "name": "HH3C-SSH-MIB",
+          "file": "HH3C-SSH-MIB"
+        },
+        {
+          "name": "HH3C-SSLVPN-MIB",
+          "file": "HH3C-SSLVPN-MIB"
+        },
+        {
+          "name": "HH3C-STACK-MIB",
+          "file": "HH3C-STACK-MIB"
+        },
+        {
+          "name": "HH3C-STORAGE-MIB",
+          "file": "HH3C-STORAGE-MIB"
+        },
+        {
+          "name": "HH3C-STORAGE-REF-MIB",
+          "file": "HH3C-STORAGE-REF-MIB"
+        },
+        {
+          "name": "HH3C-STORAGE-SNAP-MIB",
+          "file": "HH3C-STORAGE-SNAP-MIB"
+        },
+        {
+          "name": "HH3C-STORM-CONSTRAIN-MIB",
+          "file": "HH3C-STORM-CONSTRAIN-MIB"
+        },
+        {
+          "name": "HH3C-SUBNET-VLAN-MIB",
+          "file": "HH3C-SUBNET-VLAN-MIB"
+        },
+        {
+          "name": "HH3C-SYS-MAN-MIB",
+          "file": "HH3C-SYS-MAN-MIB"
+        },
+        {
+          "name": "HH3C-SYSLOG-MIB",
+          "file": "HH3C-SYSLOG-MIB"
+        },
+        {
+          "name": "HH3C-T1-MIB",
+          "file": "HH3C-T1-MIB"
+        },
+        {
+          "name": "HH3C-TE-TUNNEL-MIB",
+          "file": "HH3C-TE-TUNNEL-MIB"
+        },
+        {
+          "name": "HH3C-TRANSCEIVER-INFO-MIB",
+          "file": "HH3C-TRANSCEIVER-INFO-MIB"
+        },
+        {
+          "name": "HH3C-TRAP-MIB",
+          "file": "HH3C-TRAP-MIB"
+        },
+        {
+          "name": "HH3C-TRNG-MIB",
+          "file": "HH3C-TRNG-MIB"
+        },
+        {
+          "name": "HH3C-TRNG2-MIB",
+          "file": "HH3C-TRNG2-MIB"
+        },
+        {
+          "name": "HH3C-TUNNEL-MIB",
+          "file": "HH3C-TUNNEL-MIB"
+        },
+        {
+          "name": "HH3C-TWAMP-MIB",
+          "file": "HH3C-TWAMP-MIB"
+        },
+        {
+          "name": "HH3C-UI-MAN-MIB",
+          "file": "HH3C-UI-MAN-MIB"
+        },
+        {
+          "name": "HH3C-UNICAST-MIB",
+          "file": "HH3C-UNICAST-MIB"
+        },
+        {
+          "name": "HH3C-UPS-MIB",
+          "file": "HH3C-UPS-MIB"
+        },
+        {
+          "name": "HH3C-USER-MIB",
+          "file": "HH3C-USER-MIB"
+        },
+        {
+          "name": "HH3C-USERLOG-MIB",
+          "file": "HH3C-USERLOG-MIB"
+        },
+        {
+          "name": "HH3C-VBR-MIB",
+          "file": "HH3C-VBR-MIB"
+        },
+        {
+          "name": "HH3C-VLANGROUP-MIB",
+          "file": "HH3C-VLANGROUP-MIB"
+        },
+        {
+          "name": "HH3C-VLANTERM-MIB",
+          "file": "HH3C-VLANTERM-MIB"
+        },
+        {
+          "name": "HH3C-VM-MAN-MIB",
+          "file": "HH3C-VM-MAN-MIB"
+        },
+        {
+          "name": "HH3C-VMAP-MIB",
+          "file": "HH3C-VMAP-MIB"
+        },
+        {
+          "name": "HH3C-VNF-DEVICE-MIB",
+          "file": "HH3C-VNF-DEVICE-MIB"
+        },
+        {
+          "name": "HH3C-VOICE-CALL-ACTIVE-MIB",
+          "file": "HH3C-VOICE-CALL-ACTIVE-MIB"
+        },
+        {
+          "name": "HH3C-VOICE-CALL-HISTORY-MIB",
+          "file": "HH3C-VOICE-CALL-HISTORY-MIB"
+        },
+        {
+          "name": "HH3C-VOICE-DIAL-CONTROL-MIB",
+          "file": "HH3C-VOICE-DIAL-CONTROL-MIB"
+        },
+        {
+          "name": "HH3C-VOICE-IF-MIB",
+          "file": "HH3C-VOICE-IF-MIB"
+        },
+        {
+          "name": "HH3C-VOICE-VLAN-MIB",
+          "file": "HH3C-VOICE-VLAN-MIB"
+        },
+        {
+          "name": "HH3C-VPN-PEER-MIB",
+          "file": "HH3C-VPN-PEER-MIB"
+        },
+        {
+          "name": "HH3C-VRRP-EXT-MIB",
+          "file": "HH3C-VRRP-EXT-MIB"
+        },
+        {
+          "name": "HH3C-VSAN-MIB",
+          "file": "HH3C-VSAN-MIB"
+        },
+        {
+          "name": "HH3C-VSI-MIB",
+          "file": "HH3C-VSI-MIB"
+        },
+        {
+          "name": "HH3C-VXLAN-MIB",
+          "file": "HH3C-VXLAN-MIB"
+        },
+        {
+          "name": "HH3C-WAPI-MIB",
+          "file": "HH3C-WAPI-MIB"
+        },
+        {
+          "name": "HH3C-WEB-AUTHENTICATION-MIB",
+          "file": "HH3C-WEB-AUTHENTICATION-MIB"
+        },
+        {
+          "name": "HH3C-WIPS-MIB",
+          "file": "HH3C-WIPS-MIB"
+        },
+        {
+          "name": "HH3C-WLAN-FLEXAPP-CFG-MIB",
+          "file": "HH3C-WLAN-FLEXAPP-CFG-MIB"
+        },
+        {
+          "name": "HH3C-WLANMT-MIB",
+          "file": "HH3C-WLANMT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.17095": {
+      "name": "serverscheck",
+      "base_path": "serverscheck",
+      "mibs": [
+        {
+          "name": "ServersCheck",
+          "file": "ServersCheck"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.41036": {
+      "name": "corero",
+      "base_path": "corero",
+      "mibs": [
+        {
+          "name": "CORERO-CMS-MIB",
+          "file": "CORERO-CMS-MIB"
+        },
+        {
+          "name": "CORERO-MIB",
+          "file": "CORERO-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.20992": {
+      "name": "cradlepoint",
+      "base_path": "cradlepoint",
+      "mibs": [
+        {
+          "name": "WIPIPE-MIB",
+          "file": "WIPIPE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.25868": {
+      "name": "ctm",
+      "base_path": "ctm",
+      "mibs": [
+        {
+          "name": "CTMMIBCUSTOM",
+          "file": "CTMMIBCUSTOM"
+        },
+        {
+          "name": "CTMMIBV2",
+          "file": "CTMMIBV2"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.9304": {
+      "name": "cts",
+      "base_path": "cts",
+      "mibs": [
+        {
+          "name": "HES-3112-MIB",
+          "file": "HES-3112-MIB"
+        },
+        {
+          "name": "IPS-3106-SE-PB-MIB",
+          "file": "IPS-3106-SE-PB-MIB"
+        },
+        {
+          "name": "IPS-3110-PB-MIB",
+          "file": "IPS-3110-PB-MIB"
+        },
+        {
+          "name": "IES-3110-MIB",
+          "file": "IES-3110-MIB"
+        },
+        {
+          "name": "CTS-cvt_wac_wpc_mac_mpc3112-MIB",
+          "file": "CTS-cvt_wac_wpc_mac_mpc3112-MIB"
+        },
+        {
+          "name": "IPS-3110-MIB",
+          "file": "IPS-3110-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.40310": {
+      "name": "cumulus",
+      "base_path": "cumulus",
+      "mibs": [
+        {
+          "name": "CUMULUS-SNMP-MIB",
+          "file": "CUMULUS-SNMP-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1425": {
+      "name": "cxr-networks",
+      "base_path": "cxr-networks",
+      "mibs": [
+        {
+          "name": "CXR-TS-MIB",
+          "file": "CXR-TS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.21067": {
+      "name": "cyberoam",
+      "base_path": "cyberoam",
+      "mibs": [
+        {
+          "name": "CYBEROAM-MIB",
+          "file": "CYBEROAM-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3808": {
+      "name": "cyberpower",
+      "base_path": "cyberpower",
+      "mibs": [
+        {
+          "name": "CPS-MIB",
+          "file": "CPS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1004849": {
+      "name": "dahua",
+      "base_path": "dahua",
+      "mibs": [
+        {
+          "name": "DAHUA-SNMP-MIB",
+          "file": "DAHUA-SNMP-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.994": {
+      "name": "dantel",
+      "base_path": "dantel",
+      "mibs": [
+        {
+          "name": "WEBMON-EDGE-MATRIX-MIB",
+          "file": "WEBMON-EDGE-MATRIX-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.46651": {
+      "name": "dantherm",
+      "base_path": "dantherm",
+      "mibs": [
+        {
+          "name": "DANTHERM-COOLING-MIB",
+          "file": "DANTHERM-COOLING-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6296": {
+      "name": "dasan",
+      "base_path": "dasan",
+      "mibs": [
+        {
+          "name": "DASAN-DHCP-R-MIB",
+          "file": "DASAN-DHCP-R-MIB"
+        },
+        {
+          "name": "DASAN-SMI",
+          "file": "DASAN-SMI"
+        },
+        {
+          "name": "DASAN-DHCP-MIB",
+          "file": "DASAN-DHCP-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3709": {
+      "name": "datacom",
+      "base_path": "datacom",
+      "mibs": [
+        {
+          "name": "DATACOM-SMI",
+          "file": "DATACOM-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.19746": {
+      "name": "datadomain",
+      "base_path": "datadomain",
+      "mibs": [
+        {
+          "name": "DATA-DOMAIN-MIB",
+          "file": "DATA-DOMAIN-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1418": {
+      "name": "dataprobe",
+      "base_path": "dataprobe",
+      "mibs": [
+        {
+          "name": "IBOOTPDU-MIB",
+          "file": "IBOOTPDU-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6339": {
+      "name": "dcn",
+      "base_path": "dcn",
+      "mibs": [
+        {
+          "name": "DCN-MIB",
+          "file": "DCN-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6894": {
+      "name": "ddn",
+      "base_path": "ddn",
+      "mibs": [
+        {
+          "name": "SFA-INFO",
+          "file": "SFA-INFO"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.32761": {
+      "name": "deliberant",
+      "base_path": "deliberant",
+      "mibs": [
+        {
+          "name": "DELIBERANT-MIB",
+          "file": "DELIBERANT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6027": {
+      "name": "dell",
+      "base_path": "dell",
+      "mibs": [
+        {
+          "name": "FORCE10-SMI",
+          "file": "FORCE10-SMI"
+        },
+        {
+          "name": "DELL-NETWORKING-SMI",
+          "file": "DELL-NETWORKING-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.674": {
+      "name": "dell",
+      "base_path": "dell",
+      "mibs": [
+        {
+          "name": "DELL-MM-MIB",
+          "file": "DELL-MM-MIB"
+        },
+        {
+          "name": "IDRAC-MIB",
+          "file": "IDRAC-MIB"
+        },
+        {
+          "name": "DellMDStorageArray-MIB",
+          "file": "DellMDStorageArray-MIB"
+        },
+        {
+          "name": "MIB-Dell-10892",
+          "file": "MIB-Dell-10892"
+        },
+        {
+          "name": "StorageManagement-MIB",
+          "file": "StorageManagement-MIB"
+        },
+        {
+          "name": "DELL-SNMP-UPS-MIB",
+          "file": "DELL-SNMP-UPS-MIB"
+        },
+        {
+          "name": "Dell-Vendor-MIB",
+          "file": "Dell-Vendor-MIB"
+        },
+        {
+          "name": "DELL-RAC-MIB",
+          "file": "DELL-RAC-MIB"
+        },
+        {
+          "name": "DELL-SHADOW-MIB",
+          "file": "DELL-SHADOW-MIB"
+        },
+        {
+          "name": "SanAppliance-MIB",
+          "file": "SanAppliance-MIB"
+        },
+        {
+          "name": "DELL-MM-MIB-SMIv2",
+          "file": "DELL-MM-MIB-SMIv2"
+        },
+        {
+          "name": "DELLEMC-OS10-SMI-MIB",
+          "file": "DELLEMC-OS10-SMI-MIB"
+        },
+        {
+          "name": "DELL-STORAGE-SC-MIB",
+          "file": "DELL-STORAGE-SC-MIB"
+        },
+        {
+          "name": "DellrPDU-MIB",
+          "file": "DellrPDU-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2254": {
+      "name": "delta",
+      "base_path": "delta",
+      "mibs": [
+        {
+          "name": "DeltaUPS-MIB",
+          "file": "DeltaUPS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.20246": {
+      "name": "delta",
+      "base_path": "delta",
+      "mibs": [
+        {
+          "name": "GLOBAL-REG",
+          "file": "GLOBAL-REG"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.35616": {
+      "name": "deltanet",
+      "base_path": "deltanet",
+      "mibs": [
+        {
+          "name": "Deltanet-MIB",
+          "file": "Deltanet-MIB"
+        },
+        {
+          "name": "LAMBDATRAIL-MIB",
+          "file": "LAMBDATRAIL-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.35833": {
+      "name": "deva",
+      "base_path": "deva",
+      "mibs": [
+        {
+          "name": "DB7001-MIB",
+          "file": "DB7001-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.17420": {
+      "name": "digipower",
+      "base_path": "digipower",
+      "mibs": [
+        {
+          "name": "DigiPower-PDU-MIB",
+          "file": "DigiPower-PDU-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.27304": {
+      "name": "dkt",
+      "base_path": "dkt",
+      "mibs": [
+        {
+          "name": "DKT-MIB",
+          "file": "DKT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.171": {
+      "name": "dlink_dgs1250",
+      "base_path": "dlink_dgs1250",
+      "mibs": [
+        {
+          "name": "DLINK-ID-REC-MIB",
+          "file": "DLINK-ID-REC-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2682": {
+      "name": "dpstelecom",
+      "base_path": "dpstelecom",
+      "mibs": [
+        {
+          "name": "DPS-MIB-CG-V1",
+          "file": "DPS-MIB-CG-V1"
+        },
+        {
+          "name": "DPS-MIB-V38-V2EXT",
+          "file": "DPS-MIB-V38-V2EXT"
+        },
+        {
+          "name": "DPS-MIB-V38",
+          "file": "DPS-MIB-V38"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.7262": {
+      "name": "dragonwave",
+      "base_path": "dragonwave",
+      "mibs": [
+        {
+          "name": "HORIZON-MIB",
+          "file": "HORIZON-MIB"
+        },
+        {
+          "name": "DWI-HARMONY-PRIVATE-MIB",
+          "file": "DWI-HARMONY-PRIVATE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1918": {
+      "name": "eaton",
+      "base_path": "eaton",
+      "mibs": [
+        {
+          "name": "RPS-SC200-MIB",
+          "file": "RPS-SC200-MIB"
+        },
+        {
+          "name": "RPS-SC300-MIB",
+          "file": "RPS-SC300-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.705": {
+      "name": "eaton",
+      "base_path": "eaton",
+      "mibs": [
+        {
+          "name": "MG-SNMP-UPS-MIB",
+          "file": "MG-SNMP-UPS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.534": {
+      "name": "eaton",
+      "base_path": "eaton",
+      "mibs": [
+        {
+          "name": "EATON-OIDS",
+          "file": "EATON-OIDS"
+        },
+        {
+          "name": "EATON-EPDU-MIB",
+          "file": "EATON-EPDU-MIB"
+        },
+        {
+          "name": "EATON-EMP-MIB",
+          "file": "EATON-EMP-MIB"
+        },
+        {
+          "name": "PDU-MIB",
+          "file": "PDU-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.935": {
+      "name": "powerwalker",
+      "base_path": "powerwalker",
+      "mibs": [
+        {
+          "name": "EPPC-MIB",
+          "file": "EPPC-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.259": {
+      "name": "ignitenet",
+      "base_path": "ignitenet",
+      "mibs": [
+        {
+          "name": "ES4552BH2-MIB",
+          "file": "ES4552BH2-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4413": {
+      "name": "quanta",
+      "base_path": "quanta",
+      "mibs": [
+        {
+          "name": "cheetahref.my",
+          "file": "cheetahref.my"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.31440": {
+      "name": "eds",
+      "base_path": "eds",
+      "mibs": [
+        {
+          "name": "EDS-MIB",
+          "file": "EDS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2440": {
+      "name": "efficientip",
+      "base_path": "efficientip",
+      "mibs": [
+        {
+          "name": "EIP-MON-MIB",
+          "file": "EIP-MON-MIB"
+        },
+        {
+          "name": "EIP-STATS-MIB",
+          "file": "EIP-STATS-MIB"
+        },
+        {
+          "name": "EIP-DNSBLAST-MIB",
+          "file": "EIP-DNSBLAST-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.20044": {
+      "name": "ekinops",
+      "base_path": "ekinops",
+      "mibs": [
+        {
+          "name": "EKINOPS-MIB",
+          "file": "EKINOPS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.13858": {
+      "name": "eltek",
+      "base_path": "eltek",
+      "mibs": [
+        {
+          "name": "ELTEK-BC2000-DC-POWER-MIB",
+          "file": "ELTEK-BC2000-DC-POWER-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.12148": {
+      "name": "eltek",
+      "base_path": "eltek",
+      "mibs": [
+        {
+          "name": "ELTEK-DISTRIBUTED-MIB",
+          "file": "ELTEK-DISTRIBUTED-MIB"
+        },
+        {
+          "name": "ELTEK-COMMON-MIB",
+          "file": "ELTEK-COMMON-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.35265": {
+      "name": "eltexmes24xx",
+      "base_path": "eltexmes24xx",
+      "mibs": [
+        {
+          "name": "ELTEX-SMI-ACTUAL",
+          "file": "ELTEX-SMI-ACTUAL"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.89": {
+      "name": "radware",
+      "base_path": "radware",
+      "mibs": [
+        {
+          "name": "RADWARE-MIB",
+          "file": "RADWARE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.12124": {
+      "name": "emc",
+      "base_path": "emc",
+      "mibs": [
+        {
+          "name": "ISILON-MIB",
+          "file": "ISILON-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.885": {
+      "name": "emerson",
+      "base_path": "emerson",
+      "mibs": [
+        {
+          "name": "VEC-MIBv5-9",
+          "file": "VEC-MIBv5-9"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6302": {
+      "name": "emerson",
+      "base_path": "emerson",
+      "mibs": [
+        {
+          "name": "NETSURE-MIB-004-A",
+          "file": "NETSURE-MIB-004-A"
+        },
+        {
+          "name": "EES-POWER-MIB",
+          "file": "EES-POWER-MIB"
+        },
+        {
+          "name": "EES-POWER-FERRO-MIB",
+          "file": "EES-POWER-FERRO-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.18418": {
+      "name": "endace",
+      "base_path": "endace",
+      "mibs": [
+        {
+          "name": "ENDACE-MIB",
+          "file": "ENDACE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.13827": {
+      "name": "endrun",
+      "base_path": "endrun",
+      "mibs": [
+        {
+          "name": "SONOMA-MIB",
+          "file": "SONOMA-MIB"
+        },
+        {
+          "name": "MERIDIAN2-MIB",
+          "file": "MERIDIAN2-MIB"
+        },
+        {
+          "name": "TEMPUSLXUNISON-MIB",
+          "file": "TEMPUSLXUNISON-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.38446": {
+      "name": "enlogic",
+      "base_path": "enlogic",
+      "mibs": [
+        {
+          "name": "ENLOGIC-PDU-MIB",
+          "file": "ENLOGIC-PDU-MIB"
+        },
+        {
+          "name": "ENLOGIC-PDU2-MIB",
+          "file": "ENLOGIC-PDU2-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.5624": {
+      "name": "enterasys",
+      "base_path": "enterasys",
+      "mibs": [
+        {
+          "name": "ENTERASYS-MIB-NAMES",
+          "file": "ENTERASYS-MIB-NAMES"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.97": {
+      "name": "enterasys",
+      "base_path": "enterasys",
+      "mibs": [
+        {
+          "name": "CT-ELS10-MIB",
+          "file": "CT-ELS10-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.52": {
+      "name": "enterasys",
+      "base_path": "enterasys",
+      "mibs": [
+        {
+          "name": "CTRON-PORTMAP-MIB",
+          "file": "CTRON-PORTMAP-MIB"
+        },
+        {
+          "name": "CTRON-ROUTERS-INTERNAL-MIB",
+          "file": "CTRON-ROUTERS-INTERNAL-MIB"
+        },
+        {
+          "name": "CTRON-SFCS-MIB",
+          "file": "CTRON-SFCS-MIB"
+        },
+        {
+          "name": "CTRON-REMOTE-ACCESS-MIB",
+          "file": "CTRON-REMOTE-ACCESS-MIB"
+        },
+        {
+          "name": "CTRON-SFPS-INCLUDE-MIB",
+          "file": "CTRON-SFPS-INCLUDE-MIB"
+        },
+        {
+          "name": "NETWORK-DIAGS",
+          "file": "NETWORK-DIAGS"
+        },
+        {
+          "name": "CTRON-WAN-MULTI-IMUX-MIB",
+          "file": "CTRON-WAN-MULTI-IMUX-MIB"
+        },
+        {
+          "name": "CTRON-ETWMIM-MIB",
+          "file": "CTRON-ETWMIM-MIB"
+        },
+        {
+          "name": "CTRMONXT-MIB",
+          "file": "CTRMONXT-MIB"
+        },
+        {
+          "name": "CTFRAMER-CONFIG-MIB",
+          "file": "CTFRAMER-CONFIG-MIB"
+        },
+        {
+          "name": "CTRON-WAN-MIB",
+          "file": "CTRON-WAN-MIB"
+        },
+        {
+          "name": "CTRON-NAT-MIB",
+          "file": "CTRON-NAT-MIB"
+        },
+        {
+          "name": "CTRON-WAN-IMUX-MIB",
+          "file": "CTRON-WAN-IMUX-MIB"
+        },
+        {
+          "name": "CTRON-DHCP-MIB",
+          "file": "CTRON-DHCP-MIB"
+        },
+        {
+          "name": "CTRON-OIDS",
+          "file": "CTRON-OIDS"
+        },
+        {
+          "name": "CTRON-DLSW-MIB",
+          "file": "CTRON-DLSW-MIB"
+        },
+        {
+          "name": "CTRON-MIB-NAMES",
+          "file": "CTRON-MIB-NAMES"
+        },
+        {
+          "name": "CTRON-DCM-MIB",
+          "file": "CTRON-DCM-MIB"
+        },
+        {
+          "name": "CTSMTMIB-MIB",
+          "file": "CTSMTMIB-MIB"
+        },
+        {
+          "name": "CTELS100-NG-MIB",
+          "file": "CTELS100-NG-MIB"
+        },
+        {
+          "name": "CTIF-EXT-MIB",
+          "file": "CTIF-EXT-MIB"
+        },
+        {
+          "name": "CTRON-AP3000-MIB",
+          "file": "CTRON-AP3000-MIB"
+        },
+        {
+          "name": "CT-PIC-MIB",
+          "file": "CT-PIC-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.12740": {
+      "name": "equallogic",
+      "base_path": "equallogic",
+      "mibs": [
+        {
+          "name": "EQLVOLUME-MIB",
+          "file": "EQLVOLUME-MIB"
+        },
+        {
+          "name": "EQLSTORAGECONTAINER-MIB",
+          "file": "EQLSTORAGECONTAINER-MIB"
+        },
+        {
+          "name": "EQLVOLBALANCER-MIB",
+          "file": "EQLVOLBALANCER-MIB"
+        },
+        {
+          "name": "EQLSTORAGEPOOL-MIB",
+          "file": "EQLSTORAGEPOOL-MIB"
+        },
+        {
+          "name": "EQUALLOGIC-SMI",
+          "file": "EQUALLOGIC-SMI"
+        },
+        {
+          "name": "EQLREPLPARTNER-MIB",
+          "file": "EQLREPLPARTNER-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.193": {
+      "name": "ericsson",
+      "base_path": "ericsson",
+      "mibs": [
+        {
+          "name": "ERICSSON-TOP-MIB",
+          "file": "ERICSSON-TOP-MIB"
+        },
+        {
+          "name": "XF-TOP-MIB",
+          "file": "XF-TOP-MIB"
+        },
+        {
+          "name": "MINI-LINK-MIB",
+          "file": "MINI-LINK-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2352": {
+      "name": "ericsson",
+      "base_path": "ericsson",
+      "mibs": [
+        {
+          "name": "RBN-SMI",
+          "file": "RBN-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4329": {
+      "name": "siemens",
+      "base_path": "siemens",
+      "mibs": [
+        {
+          "name": "SN-MSPS-SCX200-MIB",
+          "file": "SN-MSPS-SCX200-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.14941": {
+      "name": "exagrid",
+      "base_path": "exagrid",
+      "mibs": [
+        {
+          "name": "EXAGRID-MIB",
+          "file": "EXAGRID-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.43296": {
+      "name": "exalink-fusion",
+      "base_path": "exalink-fusion",
+      "mibs": [
+        {
+          "name": "EXALINK-FUSION-MIB",
+          "file": "EXALINK-FUSION-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.25651": {
+      "name": "exalt",
+      "base_path": "exalt",
+      "mibs": [
+        {
+          "name": "ExaltComm",
+          "file": "ExaltComm"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.32015": {
+      "name": "extrahop",
+      "base_path": "extrahop",
+      "mibs": [
+        {
+          "name": "EXTRAHOP-MIB",
+          "file": "EXTRAHOP-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1916": {
+      "name": "extreme",
+      "base_path": "extreme",
+      "mibs": [
+        {
+          "name": "EXTREME-BASE-MIB",
+          "file": "EXTREME-BASE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.12276": {
+      "name": "f5",
+      "base_path": "f5",
+      "mibs": [
+        {
+          "name": "F5-COMMON-SMI-MIB",
+          "file": "F5-COMMON-SMI-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3375": {
+      "name": "f5",
+      "base_path": "f5",
+      "mibs": [
+        {
+          "name": "F5-BIGIP-COMMON-MIB",
+          "file": "F5-BIGIP-COMMON-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.5875": {
+      "name": "fiberhome",
+      "base_path": "fiberhome",
+      "mibs": [
+        {
+          "name": "GEPON-OLT-COMMON-MIB",
+          "file": "GEPON-OLT-COMMON-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3807": {
+      "name": "fiberhome",
+      "base_path": "fiberhome",
+      "mibs": [
+        {
+          "name": "WRI-SMI",
+          "file": "WRI-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.29003": {
+      "name": "fibernet",
+      "base_path": "fibernet",
+      "mibs": [
+        {
+          "name": "XMUX4-PLUS",
+          "file": "XMUX4-PLUS"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4467": {
+      "name": "fibrolan",
+      "base_path": "fibrolan",
+      "mibs": [
+        {
+          "name": "FIBROLAN-MIB-GBECONVERTERS",
+          "file": "FIBROLAN-MIB-GBECONVERTERS"
+        },
+        {
+          "name": "METROSTAR-MIB",
+          "file": "METROSTAR-MIB"
+        },
+        {
+          "name": "FIBROLAN-MIB-DEVICECONVERTERS",
+          "file": "FIBROLAN-MIB-DEVICECONVERTERS"
+        },
+        {
+          "name": "FIBROLAN-MIB-MSM622U",
+          "file": "FIBROLAN-MIB-MSM622U"
+        },
+        {
+          "name": "FIBROLAN-MIB-MSMODULE",
+          "file": "FIBROLAN-MIB-MSMODULE"
+        },
+        {
+          "name": "FIBROLAN-MIB-SFP",
+          "file": "FIBROLAN-MIB-SFP"
+        },
+        {
+          "name": "FIBROLAN-MIB-MCM1xx",
+          "file": "FIBROLAN-MIB-MCM1xx"
+        },
+        {
+          "name": "FIBROLAN-MIB-GBE-MCM1000X",
+          "file": "FIBROLAN-MIB-GBE-MCM1000X"
+        },
+        {
+          "name": "FIBROLAN-MIB-REDUNDANCYDEVICES",
+          "file": "FIBROLAN-MIB-REDUNDANCYDEVICES"
+        },
+        {
+          "name": "FIBROLAN-MIB-LTA41MA",
+          "file": "FIBROLAN-MIB-LTA41MA"
+        },
+        {
+          "name": "FIBROLAN-COMMON-MIB",
+          "file": "FIBROLAN-COMMON-MIB"
+        },
+        {
+          "name": "FIBROLAN-MIB-GBE-MCM1000XRL",
+          "file": "FIBROLAN-MIB-GBE-MCM1000XRL"
+        },
+        {
+          "name": "FIBROLAN-MIB-GBE-MCM1000",
+          "file": "FIBROLAN-MIB-GBE-MCM1000"
+        },
+        {
+          "name": "MS-TRAPS-MIB",
+          "file": "MS-TRAPS-MIB"
+        },
+        {
+          "name": "FIBROLAN-MIB-LTA41XE1",
+          "file": "FIBROLAN-MIB-LTA41XE1"
+        },
+        {
+          "name": "FIBROLAN-MIB-MCM100-xE1",
+          "file": "FIBROLAN-MIB-MCM100-xE1"
+        },
+        {
+          "name": "FIBROLAN-MIB-MSM2500U",
+          "file": "FIBROLAN-MIB-MSM2500U"
+        },
+        {
+          "name": "FIBROLAN-MIB-MSM100U",
+          "file": "FIBROLAN-MIB-MSM100U"
+        },
+        {
+          "name": "FIBROLAN-MIB-METRO-STAR-MV",
+          "file": "FIBROLAN-MIB-METRO-STAR-MV"
+        },
+        {
+          "name": "FIBROLAN-MIB-ACM110",
+          "file": "FIBROLAN-MIB-ACM110"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.24693": {
+      "name": "firebrick",
+      "base_path": "firebrick",
+      "mibs": [
+        {
+          "name": "FIREBRICK-MIB",
+          "file": "FIREBRICK-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1369": {
+      "name": "forcepoint",
+      "base_path": "forcepoint",
+      "mibs": [
+        {
+          "name": "STONESOFT-SMI-MIB",
+          "file": "STONESOFT-SMI-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.47565": {
+      "name": "forcepoint",
+      "base_path": "forcepoint",
+      "mibs": [
+        {
+          "name": "FORCEPOINT-NGFW-ENGINE-MIB",
+          "file": "FORCEPOINT-NGFW-ENGINE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.12356": {
+      "name": "fortinet",
+      "base_path": "fortinet",
+      "mibs": [
+        {
+          "name": "FORTINET-CORE-MIB",
+          "file": "FORTINET-CORE-MIB"
+        },
+        {
+          "name": "FORTINET-MIB-280",
+          "file": "FORTINET-MIB-280"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.15983": {
+      "name": "fortinet",
+      "base_path": "fortinet",
+      "mibs": [
+        {
+          "name": "MERU-SMI",
+          "file": "MERU-SMI"
+        },
+        {
+          "name": "MERU-WLAN-MIB",
+          "file": "MERU-WLAN-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.27975": {
+      "name": "fs",
+      "base_path": "fs",
+      "mibs": [
+        {
+          "name": "SWITCH",
+          "file": "SWITCH"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.13464": {
+      "name": "fs",
+      "base_path": "fs",
+      "mibs": [
+        {
+          "name": "LAG-ARCH-MIB",
+          "file": "LAG-ARCH-MIB"
+        },
+        {
+          "name": "ADMIN-MASTER-MIB",
+          "file": "ADMIN-MASTER-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.40989": {
+      "name": "fs",
+      "base_path": "fs",
+      "mibs": [
+        {
+          "name": "OAP-NMU",
+          "file": "OAP-NMU"
+        },
+        {
+          "name": "OAP-C1-OEO",
+          "file": "OAP-C1-OEO"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.52642": {
+      "name": "fs",
+      "base_path": "fs",
+      "mibs": [
+        {
+          "name": "FS-SIWTCH-V2-MIB",
+          "file": "FS-SIWTCH-V2-MIB"
+        },
+        {
+          "name": "FS-MIB",
+          "file": "FS-MIB"
+        },
+        {
+          "name": "FS-SMI",
+          "file": "FS-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.211": {
+      "name": "fujitsu",
+      "base_path": "fujitsu",
+      "mibs": [
+        {
+          "name": "FJDARY-E150",
+          "file": "FJDARY-E150"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.231": {
+      "name": "fujitsu",
+      "base_path": "fujitsu",
+      "mibs": [
+        {
+          "name": "FSC-SERVERCONTROL2-MIB",
+          "file": "FSC-SERVERCONTROL2-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6050": {
+      "name": "gamatronic",
+      "base_path": "gamatronic",
+      "mibs": [
+        {
+          "name": "GAMATRONIC-MIB",
+          "file": "GAMATRONIC-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.26384": {
+      "name": "gandi",
+      "base_path": "gandi",
+      "mibs": [
+        {
+          "name": "GANDI-MIB",
+          "file": "GANDI-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.21239": {
+      "name": "vertiv",
+      "base_path": "vertiv",
+      "mibs": [
+        {
+          "name": "VERTIV-V5-MIB",
+          "file": "VERTIV-V5-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4130": {
+      "name": "gemds",
+      "base_path": "gemds",
+      "mibs": [
+        {
+          "name": "MDS-REG-MIB",
+          "file": "MDS-REG-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.10520": {
+      "name": "gepower",
+      "base_path": "gepower",
+      "mibs": [
+        {
+          "name": "NE843-MIB",
+          "file": "NE843-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.26866": {
+      "name": "gigamon",
+      "base_path": "gigamon",
+      "mibs": [
+        {
+          "name": "GIGAMON-SNMP-MIB",
+          "file": "GIGAMON-SNMP-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.42397": {
+      "name": "grandstream",
+      "base_path": "grandstream",
+      "mibs": [
+        {
+          "name": "GS-GXW42XX-MIB",
+          "file": "GS-GXW42XX-MIB"
+        },
+        {
+          "name": "GS-HT8XX-MIB",
+          "file": "GS-HT8XX-MIB"
+        },
+        {
+          "name": "GRANDSTREAM-GWN-ROOT-MIB",
+          "file": "GRANDSTREAM-GWN-ROOT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.35847": {
+      "name": "greenbone",
+      "base_path": "greenbone",
+      "mibs": [
+        {
+          "name": "GREENBONE-PRODUCT-MIB",
+          "file": "GREENBONE-PRODUCT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.28507": {
+      "name": "gude",
+      "base_path": "gude",
+      "mibs": [
+        {
+          "name": "GUDEADS-ETS-MIB",
+          "file": "GUDEADS-ETS-MIB"
+        },
+        {
+          "name": "GUDEADS-ESB7214-MIB",
+          "file": "GUDEADS-ESB7214-MIB"
+        },
+        {
+          "name": "GUDEADS-ESB7213-MIB",
+          "file": "GUDEADS-ESB7213-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.10072": {
+      "name": "gwd",
+      "base_path": "gwd",
+      "mibs": [
+        {
+          "name": "GWTT-SMI",
+          "file": "GWTT-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.33234": {
+      "name": "halon",
+      "base_path": "halon",
+      "mibs": [
+        {
+          "name": "HALON-SP-MIB",
+          "file": "HALON-SP-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.23263": {
+      "name": "haproxy",
+      "base_path": "haproxy",
+      "mibs": [
+        {
+          "name": "EXCELIANCE-MIB",
+          "file": "EXCELIANCE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.50001": {
+      "name": "hikvision",
+      "base_path": "hikvision",
+      "mibs": [
+        {
+          "name": "HIKVISION-MIB",
+          "file": "HIKVISION-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.39165": {
+      "name": "hikvision",
+      "base_path": "hikvision",
+      "mibs": [
+        {
+          "name": "HIK-DEVICE-MIB",
+          "file": "HIK-DEVICE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.28557": {
+      "name": "hillstone",
+      "base_path": "hillstone",
+      "mibs": [
+        {
+          "name": "HILLSTONE-SMI",
+          "file": "HILLSTONE-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.41809": {
+      "name": "himoinsa",
+      "base_path": "himoinsa",
+      "mibs": [
+        {
+          "name": "DISMUNTELv00-MIB",
+          "file": "DISMUNTELv00-MIB"
+        },
+        {
+          "name": "HIMOINSAv14-MIB",
+          "file": "HIMOINSAv14-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.248": {
+      "name": "hirschmann",
+      "base_path": "hirschmann",
+      "mibs": [
+        {
+          "name": "HMPRIV-MGMT-SNMP-MIB",
+          "file": "HMPRIV-MGMT-SNMP-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.116": {
+      "name": "hitachi",
+      "base_path": "hitachi",
+      "mibs": [
+        {
+          "name": "HM800MIB",
+          "file": "HM800MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.232": {
+      "name": "hp",
+      "base_path": "hp",
+      "mibs": [
+        {
+          "name": "CPQSTDEQ-MIB",
+          "file": "CPQSTDEQ-MIB"
+        },
+        {
+          "name": "CPQHOST-MIB",
+          "file": "CPQHOST-MIB"
+        },
+        {
+          "name": "CPQPOWER-MIB",
+          "file": "CPQPOWER-MIB"
+        },
+        {
+          "name": "CPQHLTH-MIB",
+          "file": "CPQHLTH-MIB"
+        },
+        {
+          "name": "CPQIDA-MIB",
+          "file": "CPQIDA-MIB"
+        },
+        {
+          "name": "CPQRACK-MIB",
+          "file": "CPQRACK-MIB"
+        },
+        {
+          "name": "CPQSINFO-MIB",
+          "file": "CPQSINFO-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.8744": {
+      "name": "hpmsm",
+      "base_path": "hpmsm",
+      "mibs": [
+        {
+          "name": "COLUBRIS-SMI.my",
+          "file": "COLUBRIS-SMI.my"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.34774": {
+      "name": "huawei",
+      "base_path": "huawei",
+      "mibs": [
+        {
+          "name": "HUAWEI-STORAGE-SPACE-MIB",
+          "file": "HUAWEI-STORAGE-SPACE-MIB"
+        },
+        {
+          "name": "ISM-TRAP-MIB",
+          "file": "ISM-TRAP-MIB"
+        },
+        {
+          "name": "HUAWEI-STORAGE-NAS-MIB",
+          "file": "HUAWEI-STORAGE-NAS-MIB"
+        },
+        {
+          "name": "ISM-PERFORMANCE-MIB",
+          "file": "ISM-PERFORMANCE-MIB"
+        },
+        {
+          "name": "ISM-STORAGE-SVC-MIB",
+          "file": "ISM-STORAGE-SVC-MIB"
+        },
+        {
+          "name": "HUAWEI-STORAGE-HARDWARE-MIB",
+          "file": "HUAWEI-STORAGE-HARDWARE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2011": {
+      "name": "huawei",
+      "base_path": "huawei",
+      "mibs": [
+        {
+          "name": "HUAWEI-MIB",
+          "file": "HUAWEI-MIB"
+        },
+        {
+          "name": "HUAWEI-SERVER-IBMC-MIB",
+          "file": "HUAWEI-SERVER-IBMC-MIB"
+        },
+        {
+          "name": "OPTIX-OID-MIB",
+          "file": "OPTIX-OID-MIB"
+        },
+        {
+          "name": "ISM-HUAWEI-MIB",
+          "file": "ISM-HUAWEI-MIB"
+        },
+        {
+          "name": "HUAWEI-SECURITY-PKI-MIB",
+          "file": "HUAWEI-SECURITY-PKI-MIB"
+        },
+        {
+          "name": "HUAWEI-SECURITY-STAT-MIB",
+          "file": "HUAWEI-SECURITY-STAT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.21796": {
+      "name": "hwg",
+      "base_path": "hwg",
+      "mibs": [
+        {
+          "name": "STE-MIB",
+          "file": "STE-MIB"
+        },
+        {
+          "name": "HWg-WLD-MIB",
+          "file": "HWg-WLD-MIB"
+        },
+        {
+          "name": "STE2-MIB",
+          "file": "STE2-MIB"
+        },
+        {
+          "name": "POSEIDON-MIB",
+          "file": "POSEIDON-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.40297": {
+      "name": "hytera",
+      "base_path": "hytera",
+      "mibs": [
+        {
+          "name": "HYTERA-REPEATER-MIB",
+          "file": "HYTERA-REPEATER-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.14851": {
+      "name": "ibm",
+      "base_path": "ibm",
+      "mibs": [
+        {
+          "name": "SNIA-SML-MIB",
+          "file": "SNIA-SML-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.20301": {
+      "name": "ibm",
+      "base_path": "ibm",
+      "mibs": [
+        {
+          "name": "IBM-GbTOR-G8264T-MIB",
+          "file": "IBM-GbTOR-G8264T-MIB"
+        },
+        {
+          "name": "IBM-GbTOR-G8264CS-MIB",
+          "file": "IBM-GbTOR-G8264CS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2": {
+      "name": "ibm",
+      "base_path": "ibm",
+      "mibs": [
+        {
+          "name": "IBM-OSA-MIB",
+          "file": "IBM-OSA-MIB"
+        },
+        {
+          "name": "IBMBNA-MIB",
+          "file": "IBMBNA-MIB"
+        },
+        {
+          "name": "IbmFaultMgmt-MIB",
+          "file": "IbmFaultMgmt-MIB"
+        },
+        {
+          "name": "IBM3172-MIB",
+          "file": "IBM3172-MIB"
+        },
+        {
+          "name": "IBM-6611-APPN-MIB",
+          "file": "IBM-6611-APPN-MIB"
+        },
+        {
+          "name": "IBMHPRROUTETEST-MIB",
+          "file": "IBMHPRROUTETEST-MIB"
+        },
+        {
+          "name": "IBM-CPS-MIB",
+          "file": "IBM-CPS-MIB"
+        },
+        {
+          "name": "IBM-SVC-MIB",
+          "file": "IBM-SVC-MIB"
+        },
+        {
+          "name": "IBMAPPNMEMORY-MIB",
+          "file": "IBMAPPNMEMORY-MIB"
+        },
+        {
+          "name": "IBMACCOUNTING-MIB",
+          "file": "IBMACCOUNTING-MIB"
+        },
+        {
+          "name": "IBMESCON-MIB",
+          "file": "IBMESCON-MIB"
+        },
+        {
+          "name": "IBMIROCDIALOUT-MIB",
+          "file": "IBMIROCDIALOUT-MIB"
+        },
+        {
+          "name": "IBMIROCAUTH-MIB",
+          "file": "IBMIROCAUTH-MIB"
+        },
+        {
+          "name": "SML-MIB",
+          "file": "SML-MIB"
+        },
+        {
+          "name": "IBMIROC-MIB",
+          "file": "IBMIROC-MIB"
+        },
+        {
+          "name": "IBM-SERVERAID-MIB",
+          "file": "IBM-SERVERAID-MIB"
+        },
+        {
+          "name": "IBM-AIX-MIB",
+          "file": "IBM-AIX-MIB"
+        },
+        {
+          "name": "BLADE-MIB",
+          "file": "BLADE-MIB"
+        },
+        {
+          "name": "IBM-TS4500-MIBv2",
+          "file": "IBM-TS4500-MIBv2"
+        },
+        {
+          "name": "IBM6611-MIB",
+          "file": "IBM6611-MIB"
+        },
+        {
+          "name": "IBM-MIB",
+          "file": "IBM-MIB"
+        },
+        {
+          "name": "IBMTCPIPMVS-MIB",
+          "file": "IBMTCPIPMVS-MIB"
+        },
+        {
+          "name": "CME-MIB",
+          "file": "CME-MIB"
+        },
+        {
+          "name": "IMM-MIB",
+          "file": "IMM-MIB"
+        },
+        {
+          "name": "IBM-TS3500-MIBv1",
+          "file": "IBM-TS3500-MIBv1"
+        },
+        {
+          "name": "NWAYSMSS-MIB",
+          "file": "NWAYSMSS-MIB"
+        },
+        {
+          "name": "IBM2212-MIB",
+          "file": "IBM2212-MIB"
+        },
+        {
+          "name": "IMMALERT-MIB",
+          "file": "IMMALERT-MIB"
+        },
+        {
+          "name": "IBM-TS3500-MIBv2",
+          "file": "IBM-TS3500-MIBv2"
+        },
+        {
+          "name": "BLADESPPALT-MIB",
+          "file": "BLADESPPALT-MIB"
+        },
+        {
+          "name": "GPFS-MIB",
+          "file": "GPFS-MIB"
+        },
+        {
+          "name": "IBMNETU-MIB",
+          "file": "IBMNETU-MIB"
+        },
+        {
+          "name": "IBM2216-MIB",
+          "file": "IBM2216-MIB"
+        },
+        {
+          "name": "IBMHPRNCL-MIB",
+          "file": "IBMHPRNCL-MIB"
+        },
+        {
+          "name": "IBM-Director-Alert-MIB",
+          "file": "IBM-Director-Alert-MIB"
+        },
+        {
+          "name": "IBM-LAN-EMULATION-EXTENSION-MIB",
+          "file": "IBM-LAN-EMULATION-EXTENSION-MIB"
+        },
+        {
+          "name": "IBMIROCRLAN-MIB",
+          "file": "IBMIROCRLAN-MIB"
+        },
+        {
+          "name": "IBM-3200-MIB",
+          "file": "IBM-3200-MIB"
+        },
+        {
+          "name": "IBMCPU-MIB",
+          "file": "IBMCPU-MIB"
+        },
+        {
+          "name": "IBM-NetFinity-Text-Alert-MIB",
+          "file": "IBM-NetFinity-Text-Alert-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1": {
+      "name": "ibm",
+      "base_path": "ibm",
+      "mibs": [
+        {
+          "name": "IBM2210-MIB",
+          "file": "IBM2210-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.26543": {
+      "name": "ibm",
+      "base_path": "ibm",
+      "mibs": [
+        {
+          "name": "IBM-GbTOR-G8052-MIB",
+          "file": "IBM-GbTOR-G8052-MIB"
+        },
+        {
+          "name": "IBM-GbTOR-10G-L2L3-MIB",
+          "file": "IBM-GbTOR-10G-L2L3-MIB"
+        },
+        {
+          "name": "IBM-GbTOR-G8264-MIB",
+          "file": "IBM-GbTOR-G8264-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.29865": {
+      "name": "icotera",
+      "base_path": "icotera",
+      "mibs": [
+        {
+          "name": "ICOTERA-I6400-SERIES-MIB",
+          "file": "ICOTERA-I6400-SERIES-MIB"
+        },
+        {
+          "name": "ICOTERA-I6800-SERIES-MIB",
+          "file": "ICOTERA-I6800-SERIES-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.30140": {
+      "name": "icr-os",
+      "base_path": "icr-os",
+      "mibs": [
+        {
+          "name": "CONEL-IO-MIB",
+          "file": "CONEL-IO-MIB"
+        },
+        {
+          "name": "CONEL-GPS-MIB",
+          "file": "CONEL-GPS-MIB"
+        },
+        {
+          "name": "CONEL-XCCNT-MIB",
+          "file": "CONEL-XCCNT-MIB"
+        },
+        {
+          "name": "CONEL-MBUS-MIB",
+          "file": "CONEL-MBUS-MIB"
+        },
+        {
+          "name": "CONEL-MOBILE-MIB",
+          "file": "CONEL-MOBILE-MIB"
+        },
+        {
+          "name": "CONEL-MIB",
+          "file": "CONEL-MIB"
+        },
+        {
+          "name": "CONEL-INFO-MIB",
+          "file": "CONEL-INFO-MIB"
+        },
+        {
+          "name": "CONEL-STATUS-MIB",
+          "file": "CONEL-STATUS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.39145": {
+      "name": "ict",
+      "base_path": "ict",
+      "mibs": [
+        {
+          "name": "ICT-PDU-MIB",
+          "file": "ICT-PDU-MIB"
+        },
+        {
+          "name": "ICT-PLATINUM-MIB",
+          "file": "ICT-PLATINUM-MIB"
+        },
+        {
+          "name": "ICT-POWERSYSTEM-MIB",
+          "file": "ICT-POWERSYSTEM-MIB"
+        },
+        {
+          "name": "ICT-INVERTER-MIB",
+          "file": "ICT-INVERTER-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.21362": {
+      "name": "ifotec",
+      "base_path": "ifotec",
+      "mibs": [
+        {
+          "name": "IFOTEC-SMI",
+          "file": "IFOTEC-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.47307": {
+      "name": "ignitenet",
+      "base_path": "ignitenet",
+      "mibs": [
+        {
+          "name": "IGNITENET-MIB",
+          "file": "IGNITENET-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.33283": {
+      "name": "imco",
+      "base_path": "imco",
+      "mibs": [
+        {
+          "name": "IMCO-LSPS-MIB",
+          "file": "IMCO-LSPS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2185": {
+      "name": "imco",
+      "base_path": "imco",
+      "mibs": [
+        {
+          "name": "IMCO-BIG-MIB",
+          "file": "IMCO-BIG-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.8708": {
+      "name": "infinera",
+      "base_path": "infinera",
+      "mibs": [
+        {
+          "name": "LUM-REG",
+          "file": "LUM-REG"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.42229": {
+      "name": "infinera",
+      "base_path": "infinera",
+      "mibs": [
+        {
+          "name": "CORIANT-GROOVE-MIB",
+          "file": "CORIANT-GROOVE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.7779": {
+      "name": "infoblox",
+      "base_path": "infoblox",
+      "mibs": [
+        {
+          "name": "IB-SMI-MIB",
+          "file": "IB-SMI-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1714": {
+      "name": "infortrend",
+      "base_path": "infortrend",
+      "mibs": [
+        {
+          "name": "IFT-SNMP-MIB",
+          "file": "IFT-SNMP-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2468": {
+      "name": "ingrasys",
+      "base_path": "ingrasys",
+      "mibs": [
+        {
+          "name": "USHA-MIB",
+          "file": "USHA-MIB"
+        },
+        {
+          "name": "IPOMANII-MIB",
+          "file": "IPOMANII-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6666": {
+      "name": "innovaphone",
+      "base_path": "innovaphone",
+      "mibs": [
+        {
+          "name": "INNO-MIB",
+          "file": "INNO-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.42111": {
+      "name": "inovonics",
+      "base_path": "inovonics",
+      "mibs": [
+        {
+          "name": "INOVONICS-MODEL640-MIB",
+          "file": "INOVONICS-MODEL640-MIB"
+        },
+        {
+          "name": "INOVONICS-MODEL650-MIB",
+          "file": "INOVONICS-MODEL650-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.12919": {
+      "name": "inteno",
+      "base_path": "inteno",
+      "mibs": [
+        {
+          "name": "XAVI-XG6846-MIB",
+          "file": "XAVI-XG6846-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.40748": {
+      "name": "ionodes",
+      "base_path": "ionodes",
+      "mibs": [
+        {
+          "name": "IONODES-IONSERIES-MIB",
+          "file": "IONODES-IONSERIES-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.36673": {
+      "name": "ipinfusion",
+      "base_path": "ipinfusion",
+      "mibs": [
+        {
+          "name": "IPI-MODULE-MIB",
+          "file": "IPI-MODULE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.21296": {
+      "name": "iqnos",
+      "base_path": "iqnos",
+      "mibs": [
+        {
+          "name": "INFINERA-REG-MIB",
+          "file": "INFINERA-REG-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.32620": {
+      "name": "ixia",
+      "base_path": "ixia",
+      "mibs": [
+        {
+          "name": "ANUE-MIB",
+          "file": "ANUE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.50536": {
+      "name": "ixsystems",
+      "base_path": "ixsystems",
+      "mibs": [
+        {
+          "name": "FREENAS-MIB",
+          "file": "FREENAS-MIB"
+        },
+        {
+          "name": "TRUENAS-MIB",
+          "file": "TRUENAS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.19011": {
+      "name": "jacarta",
+      "base_path": "jacarta",
+      "mibs": [
+        {
+          "name": "InterSeptor-MIB",
+          "file": "InterSeptor-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.34278": {
+      "name": "janitza",
+      "base_path": "janitza",
+      "mibs": [
+        {
+          "name": "JANITZA-MIB-UMG96",
+          "file": "JANITZA-MIB-UMG96"
+        },
+        {
+          "name": "JANITZA-MIB",
+          "file": "JANITZA-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2636": {
+      "name": "junose",
+      "base_path": "junose",
+      "mibs": [
+        {
+          "name": "JUNIPER-SMI",
+          "file": "JUNIPER-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.14525": {
+      "name": "juniper",
+      "base_path": "juniper",
+      "mibs": [
+        {
+          "name": "TRAPEZE-NETWORKS-ROOT-MIB",
+          "file": "TRAPEZE-NETWORKS-ROOT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.8239": {
+      "name": "junose",
+      "base_path": "junose",
+      "mibs": [
+        {
+          "name": "JUNIPER-WX-GLOBAL-REG",
+          "file": "JUNIPER-WX-GLOBAL-REG"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4874": {
+      "name": "junose",
+      "base_path": "junose",
+      "mibs": [
+        {
+          "name": "Juniper-UNI-SMI",
+          "file": "Juniper-UNI-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.696": {
+      "name": "junos",
+      "base_path": "junos",
+      "mibs": [
+        {
+          "name": "SNMP-FRAMEWORK-MIB",
+          "file": "SNMP-FRAMEWORK-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.10923": {
+      "name": "junos",
+      "base_path": "junos",
+      "mibs": [
+        {
+          "name": "GGSN-MIB",
+          "file": "GGSN-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.12196": {
+      "name": "kemp",
+      "base_path": "kemp",
+      "mibs": [
+        {
+          "name": "ONE4NET-MIB",
+          "file": "ONE4NET-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.244": {
+      "name": "lantronix",
+      "base_path": "lantronix",
+      "mibs": [
+        {
+          "name": "LANTRONIX-MIB",
+          "file": "LANTRONIX-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.19046": {
+      "name": "lenovo",
+      "base_path": "lenovo",
+      "mibs": [
+        {
+          "name": "LENOVO-SMI-MIB",
+          "file": "LENOVO-SMI-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.11369": {
+      "name": "lenovo",
+      "base_path": "lenovo",
+      "mibs": [
+        {
+          "name": "IOMEGANAS-MIB",
+          "file": "IOMEGANAS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.476": {
+      "name": "liebert",
+      "base_path": "liebert",
+      "mibs": [
+        {
+          "name": "LIEBERT-GP-REG-MIB",
+          "file": "LIEBERT-GP-REG-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.32750": {
+      "name": "ligoos",
+      "base_path": "ligoos",
+      "mibs": [
+        {
+          "name": "LIGOWAVE-MIB",
+          "file": "LIGOWAVE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3955": {
+      "name": "linksys",
+      "base_path": "linksys",
+      "mibs": [
+        {
+          "name": "LINKSYS-MIB",
+          "file": "LINKSYS-MIB"
+        },
+        {
+          "name": "LINKSYS-MODEL-MIB",
+          "file": "LINKSYS-MODEL-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.823": {
+      "name": "loop-telecom",
+      "base_path": "loop-telecom",
+      "mibs": [
+        {
+          "name": "L-AM3440-A-Private",
+          "file": "L-AM3440-A-Private"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.5651": {
+      "name": "maipu",
+      "base_path": "maipu",
+      "mibs": [
+        {
+          "name": "MAIPU-SMI",
+          "file": "MAIPU-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1230": {
+      "name": "mcafee",
+      "base_path": "mcafee",
+      "mibs": [
+        {
+          "name": "MCAFEE-SMI",
+          "file": "MCAFEE-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.5597": {
+      "name": "meinberg",
+      "base_path": "meinberg",
+      "mibs": [
+        {
+          "name": "MBG-SNMP-ROOT-MIB",
+          "file": "MBG-SNMP-ROOT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.601": {
+      "name": "microsemi",
+      "base_path": "microsemi",
+      "mibs": [
+        {
+          "name": "DATUM-MIB",
+          "file": "DATUM-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.7428": {
+      "name": "microsemi",
+      "base_path": "microsemi",
+      "mibs": [
+        {
+          "name": "MICROSEMI-PDSINE-MIB",
+          "file": "MICROSEMI-PDSINE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.9070": {
+      "name": "microsemi",
+      "base_path": "microsemi",
+      "mibs": [
+        {
+          "name": "SYMM-SMI",
+          "file": "SYMM-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.311": {
+      "name": "microsoft",
+      "base_path": "microsoft",
+      "mibs": [
+        {
+          "name": "DHCP-MIB",
+          "file": "DHCP-MIB"
+        },
+        {
+          "name": "MSFT-MIB",
+          "file": "MSFT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.14988": {
+      "name": "mikrotik",
+      "base_path": "mikrotik",
+      "mibs": [
+        {
+          "name": "MIKROTIK-MIB",
+          "file": "MIKROTIK-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.43356": {
+      "name": "mimosa",
+      "base_path": "mimosa",
+      "mibs": [
+        {
+          "name": "MIMOSA-NETWORKS-BASE-MIB",
+          "file": "MIMOSA-NETWORKS-BASE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1027": {
+      "name": "mitel",
+      "base_path": "mitel",
+      "mibs": [
+        {
+          "name": "MITEL-MIB",
+          "file": "MITEL-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.13891": {
+      "name": "mitsubishi",
+      "base_path": "mitsubishi",
+      "mibs": [
+        {
+          "name": "UPS-MIB",
+          "file": "UPS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3323": {
+      "name": "mni",
+      "base_path": "mni",
+      "mibs": [
+        {
+          "name": "MNI-PROTEUS-AMT-MIB",
+          "file": "MNI-PROTEUS-AMT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1385": {
+      "name": "montclair",
+      "base_path": "montclair",
+      "mibs": [
+        {
+          "name": "Montclair-MIB",
+          "file": "Montclair-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.33333": {
+      "name": "morningstar",
+      "base_path": "morningstar",
+      "mibs": [
+        {
+          "name": "MORNINGSTAR",
+          "file": "MORNINGSTAR"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.8691": {
+      "name": "moxa",
+      "base_path": "moxa",
+      "mibs": [
+        {
+          "name": "MOXA-EDSP510A8POE-MIB",
+          "file": "MOXA-EDSP510A8POE-MIB"
+        },
+        {
+          "name": "MOXA-SYSTEM-INFO-MIB",
+          "file": "MOXA-SYSTEM-INFO-MIB"
+        },
+        {
+          "name": "MOXA-AWK4131A-MIB",
+          "file": "MOXA-AWK4131A-MIB"
+        },
+        {
+          "name": "MOXA-EDSG516E-MIB",
+          "file": "MOXA-EDSG516E-MIB"
+        },
+        {
+          "name": "MOXA-GENERAL-MIB",
+          "file": "MOXA-GENERAL-MIB"
+        },
+        {
+          "name": "MOXA-EDSG512E8POE-MIB",
+          "file": "MOXA-EDSG512E8POE-MIB"
+        },
+        {
+          "name": "MOXA-EDSP506E-MIB",
+          "file": "MOXA-EDSP506E-MIB"
+        },
+        {
+          "name": "MOXA-SYSTEM-UTILIZATION-MIB",
+          "file": "MOXA-SYSTEM-UTILIZATION-MIB"
+        },
+        {
+          "name": "MOXA-EDSG512E-MIB",
+          "file": "MOXA-EDSG512E-MIB"
+        },
+        {
+          "name": "MOXA-EDSG508E-MIB",
+          "file": "MOXA-EDSG508E-MIB"
+        },
+        {
+          "name": "MOXA-IKS6726A-MIB",
+          "file": "MOXA-IKS6726A-MIB"
+        },
+        {
+          "name": "MOXA-DEVICE-IO-MIB",
+          "file": "MOXA-DEVICE-IO-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4464": {
+      "name": "mpb",
+      "base_path": "mpb",
+      "mibs": [
+        {
+          "name": "MPBC-2RU-MIB",
+          "file": "MPBC-2RU-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.789": {
+      "name": "netapp",
+      "base_path": "netapp",
+      "mibs": [
+        {
+          "name": "NETAPP-MIB",
+          "file": "NETAPP-MIB"
+        },
+        {
+          "name": "NETWORK-APPLIANCE-MIB",
+          "file": "NETWORK-APPLIANCE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.5528": {
+      "name": "netbotz",
+      "base_path": "netbotz",
+      "mibs": [
+        {
+          "name": "NETBOTZV2-MIB",
+          "file": "NETBOTZV2-MIB"
+        },
+        {
+          "name": "NETBOTZ410-MIB",
+          "file": "NETBOTZ410-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.54268": {
+      "name": "netelastic",
+      "base_path": "netelastic",
+      "mibs": [
+        {
+          "name": "NETELASTIC-FLEXBNG-MIB",
+          "file": "NETELASTIC-FLEXBNG-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.46242": {
+      "name": "netonix",
+      "base_path": "netonix",
+      "mibs": [
+        {
+          "name": "NETONIX-SWITCH-MIB",
+          "file": "NETONIX-SWITCH-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.25728": {
+      "name": "netping",
+      "base_path": "netping",
+      "mibs": [
+        {
+          "name": "DKSF-70-6-X-X-1",
+          "file": "DKSF-70-6-X-X-1"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.266": {
+      "name": "nexans",
+      "base_path": "nexans",
+      "mibs": [
+        {
+          "name": "NEXANS-MIB",
+          "file": "NEXANS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.37447": {
+      "name": "nimble",
+      "base_path": "nimble",
+      "mibs": [
+        {
+          "name": "NIMBLE-MIB",
+          "file": "NIMBLE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6486": {
+      "name": "nokia",
+      "base_path": "nokia",
+      "mibs": [
+        {
+          "name": "ALCATEL-IND1-BASE",
+          "file": "ALCATEL-IND1-BASE"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.14706": {
+      "name": "nokia",
+      "base_path": "nokia",
+      "mibs": [
+        {
+          "name": "SFLOW-MIB",
+          "file": "SFLOW-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6527": {
+      "name": "nokia",
+      "base_path": "nokia",
+      "mibs": [
+        {
+          "name": "TIMETRA-GLOBAL-MIB",
+          "file": "TIMETRA-GLOBAL-MIB"
+        },
+        {
+          "name": "ALU-MICROWAVE-MIB",
+          "file": "ALU-MICROWAVE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.23": {
+      "name": "nokia",
+      "base_path": "nokia",
+      "mibs": [
+        {
+          "name": "IPX",
+          "file": "IPX"
+        },
+        {
+          "name": "RIPSAP",
+          "file": "RIPSAP"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.45": {
+      "name": "nortel",
+      "base_path": "nortel",
+      "mibs": [
+        {
+          "name": "SYNOPTICS-ROOT-MIB",
+          "file": "SYNOPTICS-ROOT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4355": {
+      "name": "nortel",
+      "base_path": "nortel",
+      "mibs": [
+        {
+          "name": "RAPID-MIB",
+          "file": "RAPID-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2272": {
+      "name": "nortel",
+      "base_path": "nortel",
+      "mibs": [
+        {
+          "name": "RAPID-CITY",
+          "file": "RAPID-CITY"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.562": {
+      "name": "nortel",
+      "base_path": "nortel",
+      "mibs": [
+        {
+          "name": "NORTEL-MIB",
+          "file": "NORTEL-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3699": {
+      "name": "nti",
+      "base_path": "nti",
+      "mibs": [
+        {
+          "name": "ENVIROMUXMICRO-MIB",
+          "file": "ENVIROMUXMICRO-MIB"
+        },
+        {
+          "name": "ENVIROMUX-1W-MIB",
+          "file": "ENVIROMUX-1W-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.41263": {
+      "name": "nutanix-aos",
+      "base_path": "nutanix-aos",
+      "mibs": [
+        {
+          "name": "NUTANIX-MIB",
+          "file": "NUTANIX-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.7342": {
+      "name": "omnitron",
+      "base_path": "omnitron",
+      "mibs": [
+        {
+          "name": "OMNITRON-TC-MIB",
+          "file": "OMNITRON-TC-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.13191": {
+      "name": "oneaccess",
+      "base_path": "oneaccess",
+      "mibs": [
+        {
+          "name": "ONEACCESS-GLOBAL-REG",
+          "file": "ONEACCESS-GLOBAL-REG"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1732": {
+      "name": "openaccess",
+      "base_path": "openaccess",
+      "mibs": [
+        {
+          "name": "OA-SMI",
+          "file": "OA-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.30155": {
+      "name": "openbsd",
+      "base_path": "openbsd",
+      "mibs": [
+        {
+          "name": "OPENBSD-BASE-MIB",
+          "file": "OPENBSD-BASE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.25049": {
+      "name": "opengear",
+      "base_path": "opengear",
+      "mibs": [
+        {
+          "name": "OGTRAPv2-MIB",
+          "file": "OGTRAPv2-MIB"
+        },
+        {
+          "name": "OGTRAP-MIB",
+          "file": "OGTRAP-MIB"
+        },
+        {
+          "name": "OG-SMI-MIB",
+          "file": "OG-SMI-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.21111": {
+      "name": "orvaldi",
+      "base_path": "orvaldi",
+      "mibs": [
+        {
+          "name": "companyMIB",
+          "file": "companyMIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.39324": {
+      "name": "osnexus",
+      "base_path": "osnexus",
+      "mibs": [
+        {
+          "name": "QUANTASTOR-SYS-STATS",
+          "file": "QUANTASTOR-SYS-STATS"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.32050": {
+      "name": "packetflux",
+      "base_path": "packetflux",
+      "mibs": [
+        {
+          "name": "PACKETFLUX-SMI",
+          "file": "PACKETFLUX-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.164": {
+      "name": "packetlight",
+      "base_path": "packetlight",
+      "mibs": [
+        {
+          "name": "RAD-MIB",
+          "file": "RAD-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4515": {
+      "name": "packetlight",
+      "base_path": "packetlight",
+      "mibs": [
+        {
+          "name": "SL-NE-MIB",
+          "file": "SL-NE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.25461": {
+      "name": "paloaltonetworks",
+      "base_path": "paloaltonetworks",
+      "mibs": [
+        {
+          "name": "PAN-GLOBAL-REG-MIB",
+          "file": "PAN-GLOBAL-REG-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.258": {
+      "name": "panasonic",
+      "base_path": "panasonic",
+      "mibs": [
+        {
+          "name": "ipPbxNs-MIB",
+          "file": "ipPbxNs-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.19536": {
+      "name": "panduit",
+      "base_path": "panduit",
+      "mibs": [
+        {
+          "name": "PANDUIT-MIB",
+          "file": "PANDUIT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.18248": {
+      "name": "papouch",
+      "base_path": "papouch",
+      "mibs": [
+        {
+          "name": "QUIDOS-MIB",
+          "file": "QUIDOS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.50224": {
+      "name": "parks",
+      "base_path": "parks",
+      "mibs": [
+        {
+          "name": "PARKS-PK700",
+          "file": "PARKS-PK700"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1768": {
+      "name": "patton",
+      "base_path": "patton",
+      "mibs": [
+        {
+          "name": "SMARTNODE-MIB",
+          "file": "SMARTNODE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1070": {
+      "name": "pbi",
+      "base_path": "pbi",
+      "mibs": [
+        {
+          "name": "PBI-MAIN-MIB",
+          "file": "PBI-MAIN-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.11606": {
+      "name": "pbn",
+      "base_path": "pbn",
+      "mibs": [
+        {
+          "name": "PBN-MIB",
+          "file": "PBN-MIB"
+        },
+        {
+          "name": "PBN-ROOT",
+          "file": "PBN-ROOT"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6368": {
+      "name": "pegasus",
+      "base_path": "pegasus",
+      "mibs": [
+        {
+          "name": "PEGASUS-MIB",
+          "file": "PEGASUS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.23695": {
+      "name": "peplink",
+      "base_path": "peplink",
+      "mibs": [
+        {
+          "name": "LAN",
+          "file": "LAN"
+        },
+        {
+          "name": "WAN",
+          "file": "WAN"
+        },
+        {
+          "name": "PEPVPN-SPEEDFUSION",
+          "file": "PEPVPN-SPEEDFUSION"
+        },
+        {
+          "name": "DEVICE",
+          "file": "DEVICE"
+        },
+        {
+          "name": "WLC",
+          "file": "WLC"
+        },
+        {
+          "name": "CELLULAR",
+          "file": "CELLULAR"
+        },
+        {
+          "name": "IPSEC-VPN",
+          "file": "IPSEC-VPN"
+        },
+        {
+          "name": "GRE",
+          "file": "GRE"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1966": {
+      "name": "perle",
+      "base_path": "perle",
+      "mibs": [
+        {
+          "name": "PERLE-IOLAN-SDS-MIB",
+          "file": "PERLE-IOLAN-SDS-MIB"
+        },
+        {
+          "name": "PERLE-MCR-MGT-MIB",
+          "file": "PERLE-MCR-MGT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.12325": {
+      "name": "pfsense",
+      "base_path": "pfsense",
+      "mibs": [
+        {
+          "name": "FOKUS-MIB",
+          "file": "FOKUS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.35098": {
+      "name": "picos",
+      "base_path": "picos",
+      "mibs": [
+        {
+          "name": "PICA-PRIVATE-MIB",
+          "file": "PICA-PRIVATE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.10456": {
+      "name": "planet",
+      "base_path": "planet",
+      "mibs": [
+        {
+          "name": "DIGIPDU-MIB",
+          "file": "DIGIPDU-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.13885": {
+      "name": "polycom",
+      "base_path": "polycom",
+      "mibs": [
+        {
+          "name": "POLYCOM-BASE-MIB",
+          "file": "POLYCOM-BASE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.20095": {
+      "name": "positron",
+      "base_path": "positron",
+      "mibs": [
+        {
+          "name": "POSITRON-SMI",
+          "file": "POSITRON-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.850": {
+      "name": "poweralert",
+      "base_path": "poweralert",
+      "mibs": [
+        {
+          "name": "TRIPPLITE-MIB",
+          "file": "TRIPPLITE-MIB"
+        },
+        {
+          "name": "TRIPPLITE",
+          "file": "TRIPPLITE"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.22408": {
+      "name": "primekey",
+      "base_path": "primekey",
+      "mibs": [
+        {
+          "name": "PRIMEKEY-APPLIANCE-MIB",
+          "file": "PRIMEKEY-APPLIANCE-MIB"
+        },
+        {
+          "name": "PK-SOFTWARE-APPLIANCE-V2",
+          "file": "PK-SOFTWARE-APPLIANCE-V2"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.15397": {
+      "name": "procera",
+      "base_path": "procera",
+      "mibs": [
+        {
+          "name": "PACKETLOGIC-MIB",
+          "file": "PACKETLOGIC-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.21222": {
+      "name": "profline",
+      "base_path": "profline",
+      "mibs": [
+        {
+          "name": "PROFLINE",
+          "file": "PROFLINE"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.18086": {
+      "name": "protelevision",
+      "base_path": "protelevision",
+      "mibs": [
+        {
+          "name": "PT-MIB",
+          "file": "PT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.14752": {
+      "name": "proware",
+      "base_path": "proware",
+      "mibs": [
+        {
+          "name": "proware-SNMP-MIB",
+          "file": "proware-SNMP-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.12532": {
+      "name": "pulse",
+      "base_path": "pulse",
+      "mibs": [
+        {
+          "name": "PULSESECURE-PSG-MIB",
+          "file": "PULSESECURE-PSG-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.24681": {
+      "name": "qnap",
+      "base_path": "qnap",
+      "mibs": [
+        {
+          "name": "NAS-MIB",
+          "file": "NAS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.27514": {
+      "name": "qtech",
+      "base_path": "qtech",
+      "mibs": [
+        {
+          "name": "QTECH-MIB",
+          "file": "QTECH-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4458": {
+      "name": "radwin",
+      "base_path": "radwin",
+      "mibs": [
+        {
+          "name": "RADWIN-MIB-WINLINK1000",
+          "file": "RADWIN-MIB-WINLINK1000"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.8886": {
+      "name": "raisecom",
+      "base_path": "raisecom",
+      "mibs": [
+        {
+          "name": "RAISECOM-BASE-MIB",
+          "file": "RAISECOM-BASE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.34861": {
+      "name": "rajant",
+      "base_path": "rajant",
+      "mibs": [
+        {
+          "name": "RAJANT-CORPORATION-MIB",
+          "file": "RAJANT-CORPORATION-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.13742": {
+      "name": "raritan",
+      "base_path": "raritan",
+      "mibs": [
+        {
+          "name": "PDU2-MIB",
+          "file": "PDU2-MIB"
+        },
+        {
+          "name": "RemoteKVMDevice-MIB",
+          "file": "RemoteKVMDevice-MIB"
+        },
+        {
+          "name": "PDU-MIB",
+          "file": "PDU-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.33555": {
+      "name": "ray",
+      "base_path": "ray",
+      "mibs": [
+        {
+          "name": "RAY-MIB",
+          "file": "RAY-MIB"
+        },
+        {
+          "name": "RAY3-MIB",
+          "file": "RAY3-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.28381": {
+      "name": "redlion",
+      "base_path": "redlion",
+      "mibs": [
+        {
+          "name": "NTRON714FX6-MIB",
+          "file": "NTRON714FX6-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.20540": {
+      "name": "redlion",
+      "base_path": "redlion",
+      "mibs": [
+        {
+          "name": "SIXNET-MIB",
+          "file": "SIXNET-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1286": {
+      "name": "ribbon",
+      "base_path": "ribbon",
+      "mibs": [
+        {
+          "name": "NPT-ROOT-MIB",
+          "file": "NPT-ROOT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.55108": {
+      "name": "riedo",
+      "base_path": "riedo",
+      "mibs": [
+        {
+          "name": "RNX-UPDU-MIB",
+          "file": "RNX-UPDU-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.21695": {
+      "name": "riedo",
+      "base_path": "riedo",
+      "mibs": [
+        {
+          "name": "NETTRACK-E3METER-CTR-SNMP-MIB",
+          "file": "NETTRACK-E3METER-CTR-SNMP-MIB"
+        },
+        {
+          "name": "NETTRACK-E3METER-SNMP-MIB",
+          "file": "NETTRACK-E3METER-SNMP-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.5491": {
+      "name": "riello",
+      "base_path": "riello",
+      "mibs": [
+        {
+          "name": "SENSORTRAP-MIB",
+          "file": "SENSORTRAP-MIB"
+        },
+        {
+          "name": "RIELLO-MIB",
+          "file": "RIELLO-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2606": {
+      "name": "rittal",
+      "base_path": "rittal",
+      "mibs": [
+        {
+          "name": "RITTAL-CMC-III-PRODUCTS-MIB",
+          "file": "RITTAL-CMC-III-PRODUCTS-MIB"
+        },
+        {
+          "name": "RITTAL-CMC-TC-MIB",
+          "file": "RITTAL-CMC-TC-MIB"
+        },
+        {
+          "name": "RITTAL-SMI",
+          "file": "RITTAL-SMI"
+        },
+        {
+          "name": "RITTAL-CMC-III-MIB",
+          "file": "RITTAL-CMC-III-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.17163": {
+      "name": "riverbed",
+      "base_path": "riverbed",
+      "mibs": [
+        {
+          "name": "RBT-MIB",
+          "file": "RBT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.15004": {
+      "name": "ros",
+      "base_path": "ros",
+      "mibs": [
+        {
+          "name": "RUGGEDCOM-MIB",
+          "file": "RUGGEDCOM-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2566": {
+      "name": "rs",
+      "base_path": "rs",
+      "mibs": [
+        {
+          "name": "RS-COMMON-MIB",
+          "file": "RS-COMMON-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.19831": {
+      "name": "rs",
+      "base_path": "rs",
+      "mibs": [
+        {
+          "name": "IRT-TRANSMITTER-SMI-MIB",
+          "file": "IRT-TRANSMITTER-SMI-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.25053": {
+      "name": "ruckus",
+      "base_path": "ruckus",
+      "mibs": [
+        {
+          "name": "RUCKUS-ROOT-MIB",
+          "file": "RUCKUS-ROOT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4881": {
+      "name": "ruijie",
+      "base_path": "ruijie",
+      "mibs": [
+        {
+          "name": "RUIJIE-SMI",
+          "file": "RUIJIE-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.48690": {
+      "name": "witchos",
+      "base_path": "witchos",
+      "mibs": [
+        {
+          "name": "TELTONIKA-MIB",
+          "file": "TELTONIKA-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.7571": {
+      "name": "saf",
+      "base_path": "saf",
+      "mibs": [
+        {
+          "name": "SAF-MPMUX-MIB",
+          "file": "SAF-MPMUX-MIB"
+        },
+        {
+          "name": "SAF-INTEGRAB-MIB",
+          "file": "SAF-INTEGRAB-MIB"
+        },
+        {
+          "name": "SAF-INTEGRA-MIB",
+          "file": "SAF-INTEGRA-MIB"
+        },
+        {
+          "name": "SAF-ENTERPRISE",
+          "file": "SAF-ENTERPRISE"
+        },
+        {
+          "name": "SAF-IPRADIO",
+          "file": "SAF-IPRADIO"
+        },
+        {
+          "name": "SAF-INTEGRAW-MIB",
+          "file": "SAF-INTEGRAW-MIB"
+        },
+        {
+          "name": "SAF-INTEGRAE-MIB",
+          "file": "SAF-INTEGRAE-MIB"
+        },
+        {
+          "name": "SAF-INTEGRAX-MIB",
+          "file": "SAF-INTEGRAX-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1038": {
+      "name": "sagemcom",
+      "base_path": "sagemcom",
+      "mibs": [
+        {
+          "name": "SAGEM-DR-MIB",
+          "file": "SAGEM-DR-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.49075": {
+      "name": "samlex",
+      "base_path": "samlex",
+      "mibs": [
+        {
+          "name": "SAMLEXAMERICA-MIB",
+          "file": "SAMLEXAMERICA-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4686": {
+      "name": "sangoma",
+      "base_path": "sangoma",
+      "mibs": [
+        {
+          "name": "VEGA-GATEWAY-MIB",
+          "file": "VEGA-GATEWAY-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.31034": {
+      "name": "schleifenbauer",
+      "base_path": "schleifenbauer",
+      "mibs": [
+        {
+          "name": "SCHLEIFENBAUER-SMI",
+          "file": "SCHLEIFENBAUER-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3833": {
+      "name": "schneider",
+      "base_path": "schneider",
+      "mibs": [
+        {
+          "name": "PM8ECCMIB",
+          "file": "PM8ECCMIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3224": {
+      "name": "screenos",
+      "base_path": "screenos",
+      "mibs": [
+        {
+          "name": "NETSCREEN-SMI",
+          "file": "NETSCREEN-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.347": {
+      "name": "seagate",
+      "base_path": "seagate",
+      "mibs": [
+        {
+          "name": "SEAGATESYSTEMTRAP-MIB",
+          "file": "SEAGATESYSTEMTRAP-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1229": {
+      "name": "seh",
+      "base_path": "seh",
+      "mibs": [
+        {
+          "name": "SEH-PSRV-MIB",
+          "file": "SEH-PSRV-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.16174": {
+      "name": "sensatronics",
+      "base_path": "sensatronics",
+      "mibs": [
+        {
+          "name": "SENSATRONICS-SMI",
+          "file": "SENSATRONICS-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1718": {
+      "name": "sentry",
+      "base_path": "sentry",
+      "mibs": [
+        {
+          "name": "Sentry4-MIB",
+          "file": "Sentry4-MIB"
+        },
+        {
+          "name": "Sentry3-MIB",
+          "file": "Sentry3-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3373": {
+      "name": "siae",
+      "base_path": "siae",
+      "mibs": [
+        {
+          "name": "SIAE-TREE-MIB",
+          "file": "SIAE-TREE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.1887": {
+      "name": "siemens",
+      "base_path": "siemens",
+      "mibs": [
+        {
+          "name": "ULAF2-MIB",
+          "file": "ULAF2-MIB"
+        },
+        {
+          "name": "PLUS-MIB",
+          "file": "PLUS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.31926": {
+      "name": "siklu",
+      "base_path": "siklu",
+      "mibs": [
+        {
+          "name": "RADIO-BRIDGE-MIB",
+          "file": "RADIO-BRIDGE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.23867": {
+      "name": "silverpeak",
+      "base_path": "silverpeak",
+      "mibs": [
+        {
+          "name": "SILVERPEAK-SMI",
+          "file": "SILVERPEAK-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3711": {
+      "name": "sinetica",
+      "base_path": "sinetica",
+      "mibs": [
+        {
+          "name": "HAWK-I2-MIB",
+          "file": "HAWK-I2-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.59732": {
+      "name": "skyhigh",
+      "base_path": "skyhigh",
+      "mibs": [
+        {
+          "name": "SKYHIGHSECURITY-SMI",
+          "file": "SKYHIGHSECURITY-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.30826": {
+      "name": "smartoptics",
+      "base_path": "smartoptics",
+      "mibs": [
+        {
+          "name": "MSERIES-MIB",
+          "file": "MSERIES-MIB"
+        },
+        {
+          "name": "SO-MIB",
+          "file": "SO-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.40418": {
+      "name": "snrerd",
+      "base_path": "snrerd",
+      "mibs": [
+        {
+          "name": "SNR-ERD-4",
+          "file": "SNR-ERD-4"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.4555": {
+      "name": "socomec",
+      "base_path": "socomec",
+      "mibs": [
+        {
+          "name": "SOCOMECPDU-MIB",
+          "file": "SOCOMECPDU-MIB"
+        },
+        {
+          "name": "SOCOMECUPS-MIB",
+          "file": "SOCOMECUPS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.51628": {
+      "name": "solidoptics",
+      "base_path": "solidoptics",
+      "mibs": [
+        {
+          "name": "SO-MUX-MIB",
+          "file": "SO-MUX-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.8741": {
+      "name": "sonicwall",
+      "base_path": "sonicwall",
+      "mibs": [
+        {
+          "name": "SONICWALL-SMI",
+          "file": "SONICWALL-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2604": {
+      "name": "sophos",
+      "base_path": "sophos",
+      "mibs": [
+        {
+          "name": "SFOS-FIREWALL-MIB",
+          "file": "SFOS-FIREWALL-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.18837": {
+      "name": "spectracom",
+      "base_path": "spectracom",
+      "mibs": [
+        {
+          "name": "SPECTRACOM-GLOBAL-MIB",
+          "file": "SPECTRACOM-GLOBAL-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.11256": {
+      "name": "stormshield",
+      "base_path": "stormshield",
+      "mibs": [
+        {
+          "name": "STORMSHIELD-SMI-MIB",
+          "file": "STORMSHIELD-SMI-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.39003": {
+      "name": "sub10",
+      "base_path": "sub10",
+      "mibs": [
+        {
+          "name": "SUB10SYSTEMS-MIB",
+          "file": "SUB10SYSTEMS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.10876": {
+      "name": "supermicro",
+      "base_path": "supermicro",
+      "mibs": [
+        {
+          "name": "SUPERMICRO-SMI",
+          "file": "SUPERMICRO-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6574": {
+      "name": "synology",
+      "base_path": "synology",
+      "mibs": [
+        {
+          "name": "SYNOLOGY-SYSTEM-MIB",
+          "file": "SYNOLOGY-SYSTEM-MIB"
+        },
+        {
+          "name": "SYNOLOGY-DISK-MIB",
+          "file": "SYNOLOGY-DISK-MIB"
+        },
+        {
+          "name": "SYNOLOGY-RAID-MIB",
+          "file": "SYNOLOGY-RAID-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.9557": {
+      "name": "synso",
+      "base_path": "synso",
+      "mibs": [
+        {
+          "name": "SYNSO-UPSMIB",
+          "file": "SYNSO-UPSMIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.57344": {
+      "name": "tachyon",
+      "base_path": "tachyon",
+      "mibs": [
+        {
+          "name": "TACHYON-MIB",
+          "file": "TACHYON-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3570": {
+      "name": "tait",
+      "base_path": "tait",
+      "mibs": [
+        {
+          "name": "TAIT-COMMON-MIB",
+          "file": "TAIT-COMMON-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.43906": {
+      "name": "tegile",
+      "base_path": "tegile",
+      "mibs": [
+        {
+          "name": "TEGILE-MIB",
+          "file": "TEGILE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2007": {
+      "name": "teldat",
+      "base_path": "teldat",
+      "mibs": [
+        {
+          "name": "TELDAT-MIB",
+          "file": "TELDAT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3715": {
+      "name": "teleste",
+      "base_path": "teleste",
+      "mibs": [
+        {
+          "name": "TELESTE-ROOT-MIB",
+          "file": "TELESTE-ROOT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.38783": {
+      "name": "teracom",
+      "base_path": "teracom",
+      "mibs": [
+        {
+          "name": "TERACOM-TCW241-MIB",
+          "file": "TERACOM-TCW241-MIB"
+        },
+        {
+          "name": "TERACOM-TCW242-MIB",
+          "file": "TERACOM-TCW242-MIB"
+        },
+        {
+          "name": "TERACOM-TCW220-MIB",
+          "file": "TERACOM-TCW220-MIB"
+        },
+        {
+          "name": "TERACOM-TCW210-TH-MIB",
+          "file": "TERACOM-TCW210-TH-MIB"
+        },
+        {
+          "name": "TERACOM-TCW260-MIB",
+          "file": "TERACOM-TCW260-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.30631": {
+      "name": "terra",
+      "base_path": "terra",
+      "mibs": [
+        {
+          "name": "TERRA-SMI",
+          "file": "TERRA-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.186": {
+      "name": "toshiba",
+      "base_path": "toshiba",
+      "mibs": [
+        {
+          "name": "TIC-RMTI4-G9000-G2020-MIB",
+          "file": "TIC-RMTI4-G9000-G2020-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.11863": {
+      "name": "tplink",
+      "base_path": "tplink",
+      "mibs": [
+        {
+          "name": "TPLINK-MIB",
+          "file": "TPLINK-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.868": {
+      "name": "transition",
+      "base_path": "transition",
+      "mibs": [
+        {
+          "name": "TRANSITION-SMI",
+          "file": "TRANSITION-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.23180": {
+      "name": "tredess",
+      "base_path": "tredess",
+      "mibs": [
+        {
+          "name": "TREDESS-FS-MIB",
+          "file": "TREDESS-FS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.25597": {
+      "name": "trellix",
+      "base_path": "trellix",
+      "mibs": [
+        {
+          "name": "FE-FIREEYE-MIB",
+          "file": "FE-FIREEYE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.8962": {
+      "name": "trellix",
+      "base_path": "trellix",
+      "mibs": [
+        {
+          "name": "MCAFEE-INTRUVERT-SMI",
+          "file": "MCAFEE-INTRUVERT-SMI"
+        },
+        {
+          "name": "TRELLIX-INTRUVERT-SMI",
+          "file": "TRELLIX-INTRUVERT-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.45621": {
+      "name": "tycon",
+      "base_path": "tycon",
+      "mibs": [
+        {
+          "name": "TPDIN3-MIB",
+          "file": "TPDIN3-MIB"
+        },
+        {
+          "name": "TPDIN2-MIB",
+          "file": "TPDIN2-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.7800": {
+      "name": "ubiquoss",
+      "base_path": "ubiquoss",
+      "mibs": [
+        {
+          "name": "UBQS-SMI",
+          "file": "UBQS-SMI"
+        },
+        {
+          "name": "UBIQUOSS-SMI",
+          "file": "UBIQUOSS-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.41112": {
+      "name": "ubnt",
+      "base_path": "ubnt",
+      "mibs": [
+        {
+          "name": "UBNT-MIB",
+          "file": "UBNT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.31218": {
+      "name": "ucopia",
+      "base_path": "ucopia",
+      "mibs": [
+        {
+          "name": "CONTROLLER-MIB",
+          "file": "CONTROLLER-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.8000": {
+      "name": "uhp",
+      "base_path": "uhp",
+      "mibs": [
+        {
+          "name": "UHP-MIB",
+          "file": "UHP-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.21865": {
+      "name": "unitrends",
+      "base_path": "unitrends",
+      "mibs": [
+        {
+          "name": "UNITRENDS-SNMP",
+          "file": "UNITRENDS-SNMP"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.31023": {
+      "name": "veeam",
+      "base_path": "veeam",
+      "mibs": [
+        {
+          "name": "VEEAM-MIB",
+          "file": "VEEAM-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3382": {
+      "name": "venturi",
+      "base_path": "venturi",
+      "mibs": [
+        {
+          "name": "FOURELLE-SMI",
+          "file": "FOURELLE-SMI"
+        },
+        {
+          "name": "VENTURI-WIRELESS-SMI",
+          "file": "VENTURI-WIRELESS-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.27993": {
+      "name": "vigintos",
+      "base_path": "vigintos",
+      "mibs": [
+        {
+          "name": "VEL-MIB",
+          "file": "VEL-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.35424": {
+      "name": "viprinet",
+      "base_path": "viprinet",
+      "mibs": [
+        {
+          "name": "VIPRINET-MIB",
+          "file": "VIPRINET-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.41916": {
+      "name": "viptela",
+      "base_path": "viptela",
+      "mibs": [
+        {
+          "name": "VIPTELA-GLOBAL",
+          "file": "VIPTELA-GLOBAL"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.45346": {
+      "name": "vmware",
+      "base_path": "vmware",
+      "mibs": [
+        {
+          "name": "VELOCLOUD-MIB",
+          "file": "VELOCLOUD-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6876": {
+      "name": "vmware",
+      "base_path": "vmware",
+      "mibs": [
+        {
+          "name": "VMWARE-ROOT-MIB",
+          "file": "VMWARE-ROOT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.34652": {
+      "name": "volius",
+      "base_path": "volius",
+      "mibs": [
+        {
+          "name": "VOLIUS-OA-MIB",
+          "file": "VOLIUS-OA-MIB"
+        },
+        {
+          "name": "VOLIUS-OR-MIB",
+          "file": "VOLIUS-OR-MIB"
+        },
+        {
+          "name": "VOLIUS-OT-MIB",
+          "file": "VOLIUS-OT-MIB"
+        },
+        {
+          "name": "VOLIUS-OS-MIB",
+          "file": "VOLIUS-OS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.37950": {
+      "name": "vsolution",
+      "base_path": "vsolution",
+      "mibs": [
+        {
+          "name": "V1600D",
+          "file": "V1600D"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.39052": {
+      "name": "vutlan",
+      "base_path": "vutlan",
+      "mibs": [
+        {
+          "name": "VUTLAN-SYSTEM-MIB",
+          "file": "VUTLAN-SYSTEM-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3097": {
+      "name": "watchguard",
+      "base_path": "watchguard",
+      "mibs": [
+        {
+          "name": "WATCHGUARD-MIB",
+          "file": "WATCHGUARD-MIB"
+        },
+        {
+          "name": "WATCHGUARD-SMI",
+          "file": "WATCHGUARD-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.9303": {
+      "name": "waystream",
+      "base_path": "waystream",
+      "mibs": [
+        {
+          "name": "WAYSTREAM-SMI",
+          "file": "WAYSTREAM-SMI"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.16177": {
+      "name": "westermo",
+      "base_path": "westermo",
+      "mibs": [
+        {
+          "name": "WESTERMO-OID-MIB",
+          "file": "WESTERMO-OID-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.15117": {
+      "name": "westmountainradio",
+      "base_path": "westmountainradio",
+      "mibs": [
+        {
+          "name": "RMCU",
+          "file": "RMCU"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.62821": {
+      "name": "wis",
+      "base_path": "wis",
+      "mibs": [
+        {
+          "name": "WIS-MIB",
+          "file": "WIS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.7465": {
+      "name": "wisi",
+      "base_path": "wisi",
+      "mibs": [
+        {
+          "name": "WISI-ROOT-MIB",
+          "file": "WISI-ROOT-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.6404": {
+      "name": "worldcastsystems",
+      "base_path": "worldcastsystems",
+      "mibs": [
+        {
+          "name": "ECRESO-FM-TRANS-MIB",
+          "file": "ECRESO-FM-TRANS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.2634": {
+      "name": "wti",
+      "base_path": "wti",
+      "mibs": [
+        {
+          "name": "WTI-POWER-MIB",
+          "file": "WTI-POWER-MIB"
+        },
+        {
+          "name": "WTI-CONSOLE-MIB",
+          "file": "WTI-CONSOLE-MIB"
+        },
+        {
+          "name": "WTI-MPC-MIB",
+          "file": "WTI-MPC-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.5040": {
+      "name": "wut",
+      "base_path": "wut",
+      "mibs": [
+        {
+          "name": "WebGraph-Thermo-Hygro-Barometer-MIB",
+          "file": "WebGraph-Thermo-Hygro-Barometer-MIB"
+        },
+        {
+          "name": "WebGraph-Thermo-Hygrometer-MIB",
+          "file": "WebGraph-Thermo-Hygrometer-MIB"
+        },
+        {
+          "name": "WebGraph-Thermometer-NTC-MIB",
+          "file": "WebGraph-Thermometer-NTC-MIB"
+        },
+        {
+          "name": "WebGraph-Thermo-Hygrometer-US-MIB",
+          "file": "WebGraph-Thermo-Hygrometer-US-MIB"
+        },
+        {
+          "name": "WebGraph-Thermometer-MIB",
+          "file": "WebGraph-Thermometer-MIB"
+        },
+        {
+          "name": "WebGraph-8xThermometer-US-MIB",
+          "file": "WebGraph-8xThermometer-US-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.21013": {
+      "name": "xirrus_aos",
+      "base_path": "xirrus_aos",
+      "mibs": [
+        {
+          "name": "XIRRUS-MIB",
+          "file": "XIRRUS-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.10642": {
+      "name": "zebra",
+      "base_path": "zebra",
+      "mibs": [
+        {
+          "name": "ZEBRA-QL-MIB",
+          "file": "ZEBRA-QL-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.683": {
+      "name": "zebra",
+      "base_path": "zebra",
+      "mibs": [
+        {
+          "name": "ESI-MIB",
+          "file": "ESI-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.5504": {
+      "name": "zhone",
+      "base_path": "zhone",
+      "mibs": [
+        {
+          "name": "ZHONE-MIB",
+          "file": "ZHONE-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.38595": {
+      "name": "zmtel",
+      "base_path": "zmtel",
+      "mibs": [
+        {
+          "name": "ZMTEL-ODU-MIB",
+          "file": "ZMTEL-ODU-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.3902": {
+      "name": "zte",
+      "base_path": "zte",
+      "mibs": [
+        {
+          "name": "ZTE-AN-SMI",
+          "file": "ZTE-AN-SMI"
+        },
+        {
+          "name": "ZXR10-MIB",
+          "file": "ZXR10-MIB"
+        }
+      ]
+    },
+    "1.3.6.1.4.1.890": {
+      "name": "zyxel",
+      "base_path": "zyxel",
+      "mibs": [
+        {
+          "name": "ZYXEL-GS2200-24-MIB",
+          "file": "ZYXEL-GS2200-24-MIB"
+        },
+        {
+          "name": "ZYXEL-GS4012F-MIB",
+          "file": "ZYXEL-GS4012F-MIB"
+        },
+        {
+          "name": "IES5206-MIB",
+          "file": "IES5206-MIB"
+        },
+        {
+          "name": "ZYXEL-MGS3712-MIB",
+          "file": "ZYXEL-MGS3712-MIB"
+        },
+        {
+          "name": "ZYXEL-SAM1216",
+          "file": "ZYXEL-SAM1216"
+        },
+        {
+          "name": "ZYXEL-IES5000-MIB",
+          "file": "ZYXEL-IES5000-MIB"
+        },
+        {
+          "name": "ZYXEL-NWA-SERIES_v1-4-2",
+          "file": "ZYXEL-NWA-SERIES_v1-4-2"
+        },
+        {
+          "name": "ZYXEL-MIB",
+          "file": "ZYXEL-MIB"
+        },
+        {
+          "name": "ZYXEL-ES-SMI",
+          "file": "ZYXEL-ES-SMI"
+        },
+        {
+          "name": "ZYXEL-AS-MIB",
+          "file": "ZYXEL-AS-MIB"
+        }
+      ]
+    }
+  }
+}
