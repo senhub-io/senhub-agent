@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="agent-key" content="{{.AgentKey}}">
+    <title>SenHub Agent - API Documentation</title>
+    <link rel="icon" type="image/png" href="/web/{{.AgentKey}}/assets/logo.png">
+    
+    <!-- CSS Assets -->
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/variables.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/base.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/layout.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/forms.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/buttons.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/components.css">
+    
+    <style>
+        .api-section {
+            margin-bottom: 2rem;
+        }
+        
+        .endpoint-grid {
+            display: grid;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .endpoint-item {
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            transition: border-color 0.2s ease;
+        }
+        
+        .endpoint-item:hover {
+            border-color: var(--primary-color);
+        }
+        
+        .endpoint-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .endpoint-path {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9rem;
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+        
+        .endpoint-methods {
+            display: flex;
+            gap: 0.25rem;
+        }
+        
+        .method-badge {
+            background-color: var(--gray-100);
+            color: var(--gray-700);
+            padding: 0.125rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .method-badge.get {
+            background-color: #dcfce7;
+            color: #15803d;
+        }
+        
+        .method-badge.post {
+            background-color: #dbeafe;
+            color: #1d4ed8;
+        }
+        
+        .endpoint-description {
+            color: var(--gray-600);
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .endpoint-category {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.125rem 0.5rem;
+            background-color: var(--gray-100);
+            color: var(--gray-600);
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .category-health { background-color: #dcfce7; color: #15803d; }
+        .category-discovery { background-color: #e0f7f7; color: #0891b2; }
+        .category-metrics { background-color: #f3e8ff; color: #7c3aed; }
+        .category-admin { background-color: #fff3e0; color: #ea580c; }
+        
+        .quick-links {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .quick-link {
+            background: var(--primary-color);
+            color: white;
+            padding: 1rem;
+            border-radius: var(--radius-md);
+            text-decoration: none;
+            text-align: center;
+            transition: background-color 0.2s ease;
+        }
+        
+        .quick-link:hover {
+            background-color: #00acc1;
+            color: white;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--primary-color);
+            margin-bottom: 0.25rem;
+        }
+        
+        .stat-label {
+            color: var(--gray-600);
+            font-size: 0.875rem;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--gray-600);
+        }
+        
+        .error {
+            background-color: #fef2f2;
+            color: var(--danger-color);
+            padding: 1rem;
+            border-radius: var(--radius-md);
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
+            API Documentation
+        </h1>
+        <div class="nav-breadcrumb">
+            <a href="/web/{{.AgentKey}}/">Dashboard</a> / API Documentation
+        </div>
+    </div>
+    
+    <div class="container">
+        <div id="loading" class="loading">
+            Loading API documentation...
+        </div>
+        
+        <div id="error" class="error" style="display: none;">
+            Failed to load API documentation. Please check if the agent is running.
+        </div>
+        
+        <div id="content" style="display: none;">
+            <!-- Quick Access Links -->
+            <div class="quick-links">
+                <a href="/web/{{.AgentKey}}/explorer" class="quick-link">
+                    🔍 API Explorer
+                </a>
+                <a href="/health" class="quick-link" target="_blank">
+                    💊 Health Check
+                </a>
+                <a href="/api/{{.AgentKey}}/info/probes" class="quick-link" target="_blank">
+                    🔍 List Probes
+                </a>
+                <a href="/api/{{.AgentKey}}/debug/cache" class="quick-link" target="_blank">
+                    🗄️ Debug Cache
+                </a>
+            </div>
+            
+            <!-- API Statistics -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-endpoints">-</div>
+                    <div class="stat-label">Total Endpoints</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="active-probes">-</div>
+                    <div class="stat-label">Active Probes</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="enabled-formats">-</div>
+                    <div class="stat-label">Output Formats</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="cached-metrics">-</div>
+                    <div class="stat-label">Cached Metrics</div>
+                </div>
+            </div>
+            
+            <!-- API Endpoints by Category -->
+            <div id="api-sections">
+                <!-- Will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript -->
+    <script>
+        // Make agent key available globally
+        window.AGENT_KEY = '{{.AgentKey}}';
+    </script>
+    <script src="/web/{{.AgentKey}}/assets/js/base.js"></script>
+    <script src="/web/{{.AgentKey}}/assets/js/docs.js"></script>
+</body>
+</html>

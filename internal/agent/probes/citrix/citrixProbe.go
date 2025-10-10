@@ -1,0 +1,581 @@
+// Package citrix provides monitoring capabilities for Citrix Virtual Apps and Desktops via OData API
+package citrix
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/types/datapoint"
+)
+
+// citrixProbe implements monitoring for Citrix Virtual Apps and Desktops using OData API
+type citrixProbe struct {
+	*types.BaseProbe
+	config           map[string]interface{}
+	logger           *logger.ModuleLogger
+	interval         time.Duration
+	client           CitrixClient
+	ddcClient        DeliveryControllerClient
+	metricsCollector *MetricsCollector
+	ctx              context.Context
+	cancelFunc       context.CancelFunc
+
+	// Configuration fields
+	baseURL            string
+	authMethod         string
+	username           string
+	password           string
+	verifySSL          bool
+	timeout            time.Duration
+	maxRetryAttempts   int
+	retryBackoffFactor float64
+
+	// Delivery Controller configuration
+	ddcConfig        *DeliveryControllerConfig
+	siteFilter       string
+	filteredMachines []string
+
+	// Site inventory service
+	inventoryService *InventoryService
+
+	// Debug mode
+	debugMode bool
+}
+
+// NewCitrixProbe creates a new instance of the Citrix probe
+func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
+	// Create module-specific logger for citrix probe
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.citrix")
+
+	// Default interval: 2 minutes as specified in requirements
+	interval := 120 * time.Second
+	if cfgInterval, ok := config["interval"].(int); ok {
+		interval = time.Duration(cfgInterval) * time.Second
+	}
+
+	// Extract base configuration parameters
+	baseURL, ok := config["base_url"].(string)
+	if !ok {
+		return nil, fmt.Errorf("citrix probe requires 'base_url' configuration")
+	}
+
+	// environment parameter removed - was not used in metrics generation
+
+	// Extract authentication configuration
+	authConfig, ok := config["auth"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("citrix probe requires 'auth' configuration")
+	}
+
+	// Authentication methods are now automatic:
+	// - NTLM for Director/OData API
+	// - Basic Auth for Delivery Controller/CVAD API
+	authMethod := "ntlm" // Fixed: Always NTLM for Director/OData
+
+	username, ok := authConfig["username"].(string)
+	if !ok {
+		return nil, fmt.Errorf("citrix probe requires 'auth.username' configuration")
+	}
+
+	password, ok := authConfig["password"].(string)
+	if !ok {
+		return nil, fmt.Errorf("citrix probe requires 'auth.password' configuration")
+	}
+
+	// Extract TLS configuration
+	verifySSL := true
+	if tlsConfig, ok := config["tls"].(map[string]interface{}); ok {
+		if cfgVerifySSL, ok := tlsConfig["verify_ssl"].(bool); ok {
+			verifySSL = cfgVerifySSL
+		}
+	}
+
+	// Use interval for probe execution timing
+
+	// Extract timeout configuration
+	timeout := 30 * time.Second
+	if cfgTimeout, ok := config["timeout"].(int); ok {
+		timeout = time.Duration(cfgTimeout) * time.Second
+	}
+
+	// Extract retry configuration
+	maxRetryAttempts := 3
+	retryBackoffFactor := 2.0
+	if retryConfig, ok := config["retry"].(map[string]interface{}); ok {
+		if cfgMaxAttempts, ok := retryConfig["max_attempts"].(int); ok {
+			maxRetryAttempts = cfgMaxAttempts
+		}
+		if cfgBackoffFactor, ok := retryConfig["backoff_factor"].(float64); ok {
+			retryBackoffFactor = cfgBackoffFactor
+		}
+	}
+
+	// Extract Delivery Controller configuration if present
+	var ddcConfig *DeliveryControllerConfig
+	var siteFilter string
+	if ddcCfg, ok := config["delivery_controller"].(map[string]interface{}); ok {
+		ddcConfig = &DeliveryControllerConfig{
+			VerifySSL: verifySSL, // Use same SSL config as main client
+			Timeout:   timeout,
+		}
+
+		if url, ok := ddcCfg["url"].(string); ok {
+			ddcConfig.URL = url
+		}
+
+		if fallbackURLs, ok := ddcCfg["fallback_urls"].([]interface{}); ok {
+			ddcConfig.FallbackURLs = make([]string, 0, len(fallbackURLs))
+			for _, url := range fallbackURLs {
+				if urlStr, ok := url.(string); ok {
+					ddcConfig.FallbackURLs = append(ddcConfig.FallbackURLs, urlStr)
+				}
+			}
+		}
+
+		if site, ok := ddcCfg["site_filter"].(string); ok {
+			siteFilter = site
+			ddcConfig.SiteFilter = site
+		}
+
+		moduleLogger.Info().
+			Str("ddc_url", ddcConfig.URL).
+			Str("site_filter", siteFilter).
+			Int("fallback_count", len(ddcConfig.FallbackURLs)).
+			Msg("Delivery Controller configuration detected")
+	}
+
+	// Extract debug mode configuration
+	debugMode := false
+	if debug, ok := config["debug_identifiers"].(bool); ok {
+		debugMode = debug
+		if debugMode {
+			moduleLogger.Info().Msg("Debug identifier extraction mode enabled")
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	probe := &citrixProbe{
+		BaseProbe:          &types.BaseProbe{},
+		config:             config,
+		logger:             moduleLogger,
+		interval:           interval,
+		ctx:                ctx,
+		cancelFunc:         cancel,
+		baseURL:            baseURL,
+		authMethod:         authMethod,
+		username:           username,
+		password:           password,
+		verifySSL:          verifySSL,
+		timeout:            timeout,
+		maxRetryAttempts:   maxRetryAttempts,
+		retryBackoffFactor: retryBackoffFactor,
+		ddcConfig:          ddcConfig,
+		siteFilter:         siteFilter,
+		debugMode:          debugMode,
+	}
+
+	return probe, nil
+}
+
+// GetName returns the unique identifier of the probe
+func (p *citrixProbe) GetName() string {
+	return "citrix"
+}
+
+// ShouldStart indicates if probe should be activated
+func (p *citrixProbe) ShouldStart() bool {
+	return true
+}
+
+// GetInterval returns the collection frequency
+func (p *citrixProbe) GetInterval() time.Duration {
+	return p.interval
+}
+
+// OnStart initializes the probe when it's started
+func (p *citrixProbe) OnStart(quitChannel chan struct{}) error {
+	// Create Citrix OData client
+	var err error
+	p.client, err = NewCitrixClient(CitrixClientConfig{
+		BaseURL:            p.baseURL,
+		Environment:        "",
+		AuthMethod:         p.authMethod,
+		Username:           p.username,
+		Password:           p.password,
+		VerifySSL:          p.verifySSL,
+		Timeout:            p.timeout,
+		MaxRetryAttempts:   p.maxRetryAttempts,
+		RetryBackoffFactor: p.retryBackoffFactor,
+	}, p.logger.Logger)
+	if err != nil {
+		return fmt.Errorf("failed to create Citrix client: %v", err)
+	}
+
+	// Test connection to the Citrix OData API
+	if err := p.client.Connect(p.ctx); err != nil {
+		return fmt.Errorf("failed to connect to Citrix OData API at %s: %v", p.baseURL, err)
+	}
+
+	// Initialize Delivery Controller client if configured
+	if p.ddcConfig != nil {
+		authConfig := AuthConfig{
+			Method:   "basic", // Fixed: Always Basic Auth for DDC/CVAD
+			Username: p.username,
+			Password: p.password,
+		}
+
+		p.ddcClient, err = NewDeliveryControllerClient(*p.ddcConfig, authConfig, p.logger.Logger)
+		if err != nil {
+			return fmt.Errorf("failed to create Delivery Controller client: %v", err)
+		}
+
+		// Test DDC connectivity
+		if err := p.ddcClient.TestConnectivity(p.ctx); err != nil {
+			p.logger.Warn().
+				Err(err).
+				Str("ddc_url", p.ddcConfig.URL).
+				Msg("Failed to connect to Delivery Controller - site filtering disabled")
+		} else {
+			// If site filter is configured, initialize inventory service
+			if p.siteFilter != "" {
+				// Create inventory service with 5-minute cache
+				p.inventoryService = NewInventoryService(p.ddcClient, 5*time.Minute, p.logger.Logger)
+
+				// Initialize cache (RefreshInventory handles errors internally)
+				if err := p.inventoryService.RefreshInventory(p.ctx, p.siteFilter); err != nil {
+					p.logger.Warn().
+						Err(err).
+						Str("site", p.siteFilter).
+						Msg("Failed to initialize inventory service - OData filtering disabled")
+				} else {
+					// Use ALL machines from the site inventory (Directory-first approach)
+					// This aligns with Director console showing all machines regardless of state
+					machines := p.inventoryService.GetAllMachinesForSite()
+					p.filteredMachines = machines
+
+					// Configure client-side filtering with all machine DNS names
+					p.client.SetValidMachineDNS(machines)
+
+					p.logger.Debug().
+						Str("site", p.siteFilter).
+						Int("machine_count", len(machines)).
+						Msg("CVAD inventory service initialized - using ALL machines from Director (OData filtering enabled)")
+				}
+			}
+		}
+	}
+
+	// Create metrics collector with filtered client wrapper
+	filteredClient := &filteredCitrixClient{
+		originalClient: p.client,
+		probe:          p,
+	}
+	p.metricsCollector = NewMetricsCollectorWithEnv(filteredClient, "", p.baseURL, p.logger.Logger)
+
+	p.logger.Debug().
+		Str("base_url", p.baseURL).
+		Str("auth_method", p.authMethod).
+		Bool("verify_ssl", p.verifySSL).
+		Int("interval_seconds", int(p.interval.Seconds())).
+		Msg("Citrix probe initialized")
+
+	return nil
+}
+
+// Collect gathers metrics and returns collected datapoints
+func (p *citrixProbe) Collect() ([]datapoint.DataPoint, error) {
+	if p.client == nil {
+		return nil, fmt.Errorf("citrix client not initialized")
+	}
+
+	if p.metricsCollector == nil {
+		return nil, fmt.Errorf("citrix metrics collector not initialized")
+	}
+
+	now := time.Now()
+	p.logger.Debug().Msg("Starting Citrix metrics collection")
+
+	// Debug mode: extract identifiers instead of collecting metrics
+	if p.debugMode {
+		p.logger.Debug().Msg("Debug mode active - extracting identifiers instead of collecting metrics")
+		if err := p.DebugIdentifierMapping(); err != nil {
+			p.logger.Error().Err(err).Msg("Debug identifier extraction failed")
+		}
+		// Return empty datapoints in debug mode
+		return []datapoint.DataPoint{}, nil
+	}
+
+	// Collect all metrics - no frequency logic needed
+	allDatapoints, err := p.metricsCollector.CollectMetricsWithInventory(p.ctx, now, p.inventoryService)
+	if err != nil {
+		p.logger.Error().
+			Err(err).
+			Msg("Failed to collect Citrix metrics")
+		return nil, fmt.Errorf("failed to collect Citrix metrics: %v", err)
+	}
+
+	// Enrich with probe name
+	enrichedDatapoints := p.BaseProbe.EnrichDataPointsWithProbeName(allDatapoints, p.GetName())
+
+	// Route data through callback if configured
+	if p.OnDataPoints != nil && len(enrichedDatapoints) > 0 {
+		if err := p.OnDataPoints(enrichedDatapoints, p); err != nil {
+			return nil, fmt.Errorf("error handling data points: %v", err)
+		}
+	}
+
+	p.logger.Debug().
+		Int("datapoints_count", len(enrichedDatapoints)).
+		Msg("Citrix metrics collection completed")
+
+	return enrichedDatapoints, nil
+}
+
+// OnShutdown handles cleanup when probe is stopped
+func (p *citrixProbe) OnShutdown(ctx context.Context) error {
+	p.logger.Debug().Msg("Shutting down Citrix probe")
+	p.cancelFunc() // Cancel the context to signal any ongoing operations to stop
+
+	if p.client != nil {
+		return p.client.Disconnect(ctx)
+	}
+	return nil
+}
+
+// GetTargetStrategies returns the strategies this probe's data should be sent to
+func (p *citrixProbe) GetTargetStrategies() []string {
+	return []string{"senhub", "prtg", "http"}
+}
+
+// GetMachinesForMetrics returns machines using site filtering (Directory-first approach)
+func (p *citrixProbe) GetMachinesForMetrics(ctx context.Context, sinceTime time.Time) ([]Machine, error) {
+	// If we have inventory service and filtered machines, use site filtering
+	if p.inventoryService != nil && len(p.filteredMachines) > 0 {
+		// Refresh inventory cache if stale
+		if p.inventoryService.IsStale() {
+			if err := p.inventoryService.RefreshInventory(ctx, p.siteFilter); err != nil {
+				p.logger.Warn().Err(err).Msg("Failed to refresh inventory - using existing cache")
+			} else {
+				// Update filtered machines list with ALL machines from Director
+				p.filteredMachines = p.inventoryService.GetAllMachinesForSite()
+
+				// Update client-side filtering with refreshed machine DNS names
+				p.client.SetValidMachineDNS(p.filteredMachines)
+
+				p.logger.Debug().
+					Int("machine_count", len(p.filteredMachines)).
+					Msg("Updated filtered machines list with ALL machines from Director")
+			}
+		}
+
+		// Use filtered query with all site machines
+		return p.client.GetMachinesFiltered(ctx, sinceTime, p.filteredMachines)
+	}
+
+	// Fallback to unfiltered query
+	return p.client.GetMachines(ctx, sinceTime)
+}
+
+// filteredCitrixClient wraps the original client to provide filtered results
+type filteredCitrixClient struct {
+	originalClient CitrixClient
+	probe          *citrixProbe
+}
+
+// Implement CitrixClient interface by delegating to original client
+func (f *filteredCitrixClient) Connect(ctx context.Context) error {
+	return f.originalClient.Connect(ctx)
+}
+
+func (f *filteredCitrixClient) Disconnect(ctx context.Context) error {
+	return f.originalClient.Disconnect(ctx)
+}
+
+func (f *filteredCitrixClient) GetSessions(ctx context.Context, sinceTime time.Time) ([]Session, error) {
+	return f.originalClient.GetSessions(ctx, sinceTime)
+}
+
+func (f *filteredCitrixClient) GetSessionsByConnectionState(ctx context.Context, connectionStates []int) ([]Session, error) {
+	return f.originalClient.GetSessionsByConnectionState(ctx, connectionStates)
+}
+
+// GetMachines uses filtering if available
+func (f *filteredCitrixClient) GetMachines(ctx context.Context, sinceTime time.Time) ([]Machine, error) {
+	return f.probe.GetMachinesForMetrics(ctx, sinceTime)
+}
+
+func (f *filteredCitrixClient) GetMachinesFiltered(ctx context.Context, sinceTime time.Time, dnsNames []string) ([]Machine, error) {
+	return f.originalClient.GetMachinesFiltered(ctx, sinceTime, dnsNames)
+}
+
+func (f *filteredCitrixClient) GetDesktopGroups(ctx context.Context) ([]DesktopGroup, error) {
+	return f.originalClient.GetDesktopGroups(ctx)
+}
+
+func (f *filteredCitrixClient) GetConnectionFailureLogs(ctx context.Context, sinceTime time.Time) ([]ConnectionFailureLog, error) {
+	return f.originalClient.GetConnectionFailureLogs(ctx, sinceTime)
+}
+
+func (f *filteredCitrixClient) GetConnectionFailureLogsWithExpand(ctx context.Context, sinceTime time.Time, expand []string) ([]ConnectionFailureLog, error) {
+	return f.originalClient.GetConnectionFailureLogsWithExpand(ctx, sinceTime, expand)
+}
+
+func (f *filteredCitrixClient) GetConnectionFailureCategories(ctx context.Context) ([]ConnectionFailureCategory, error) {
+	return f.originalClient.GetConnectionFailureCategories(ctx)
+}
+
+func (f *filteredCitrixClient) GetDeliveryGroupById(ctx context.Context, deliveryGroupId string) (*DesktopGroup, error) {
+	return f.originalClient.GetDeliveryGroupById(ctx, deliveryGroupId)
+}
+
+func (f *filteredCitrixClient) GetConnections(ctx context.Context, sinceTime time.Time) ([]Connection, error) {
+	return f.originalClient.GetConnections(ctx, sinceTime)
+}
+
+func (f *filteredCitrixClient) SetValidMachineDNS(dnsNames []string) {
+	f.originalClient.SetValidMachineDNS(dnsNames)
+}
+
+// DebugIdentifierMapping extracts identifiers from both CVAD and OData APIs for manual comparison
+func (p *citrixProbe) DebugIdentifierMapping() error {
+	p.logger.Debug().Msg("Starting debug identifier extraction (CVAD vs OData)")
+
+	debugDir := "/tmp/citrix-debug"
+	if err := os.MkdirAll(debugDir, 0755); err != nil {
+		return fmt.Errorf("failed to create debug directory: %w", err)
+	}
+
+	timestamp := time.Now().Format("20060102-150405")
+	siteName := p.siteFilter
+	if siteName == "" {
+		siteName = "default"
+	}
+
+	// Extract CVAD identifiers
+	if err := p.extractCVADIdentifiers(debugDir, timestamp, siteName); err != nil {
+		p.logger.Error().Err(err).Msg("Failed to extract CVAD identifiers")
+	}
+
+	// Extract OData identifiers
+	if err := p.extractODataIdentifiers(debugDir, timestamp, siteName); err != nil {
+		p.logger.Error().Err(err).Msg("Failed to extract OData identifiers")
+	}
+
+	p.logger.Debug().
+		Str("debug_dir", debugDir).
+		Str("timestamp", timestamp).
+		Msg("Debug identifier extraction completed - check files for manual comparison")
+
+	return nil
+}
+
+// extractCVADIdentifiers extracts machine and session identifiers from CVAD API
+func (p *citrixProbe) extractCVADIdentifiers(debugDir, timestamp, siteName string) error {
+	if p.ddcClient == nil {
+		p.logger.Warn().Msg("DDC client not available - skipping CVAD extraction")
+		return nil
+	}
+
+	ctx := context.Background()
+
+	// CVAD Machines
+	p.logger.Debug().Msg("Extracting CVAD machines...")
+	cvadMachines, err := p.ddcClient.GetMachinesDetailedBySite(ctx, siteName)
+	if err != nil {
+		return fmt.Errorf("failed to get CVAD machines: %w", err)
+	}
+
+	// CVAD Sessions (optional - skip if connection issues)
+	var cvadSessions []DDCSession
+	p.logger.Debug().Msg("Extracting CVAD sessions...")
+	if sessions, err := p.ddcClient.GetSessionsBySite(ctx, siteName); err != nil {
+		p.logger.Debug().Err(err).Msg("CVAD sessions extraction failed - skipping (not critical for identifier mapping)")
+		cvadSessions = []DDCSession{} // Empty array for consistent JSON structure
+	} else {
+		cvadSessions = sessions
+	}
+
+	// Create debug data structure
+	cvadData := map[string]interface{}{
+		"extraction_time": time.Now().Format(time.RFC3339),
+		"site_name":       siteName,
+		"api_type":        "CVAD_REST",
+		"machines_count":  len(cvadMachines),
+		"sessions_count":  len(cvadSessions),
+		"machines":        cvadMachines,
+		"sessions":        cvadSessions,
+	}
+
+	// Save to file
+	filename := filepath.Join(debugDir, fmt.Sprintf("cvad_identifiers_%s_%s.json", siteName, timestamp))
+	return p.saveDebugData(filename, cvadData)
+}
+
+// extractODataIdentifiers extracts machine and session identifiers from OData API
+func (p *citrixProbe) extractODataIdentifiers(debugDir, timestamp, siteName string) error {
+	if p.client == nil {
+		return fmt.Errorf("OData client not available")
+	}
+
+	ctx := context.Background()
+
+	// OData Machines (use very old date to get all machines)
+	p.logger.Debug().Msg("Extracting OData machines...")
+	veryOldDate := time.Now().AddDate(-1, 0, 0) // 1 year ago
+	odataMachines, err := p.client.GetMachines(ctx, veryOldDate)
+	if err != nil {
+		return fmt.Errorf("failed to get OData machines: %w", err)
+	}
+
+	// OData Sessions (recent ones only to avoid too much data)
+	p.logger.Debug().Msg("Extracting OData sessions...")
+	since := time.Now().Add(-24 * time.Hour) // Last 24h
+	odataSessions, err := p.client.GetSessions(ctx, since)
+	if err != nil {
+		p.logger.Warn().Err(err).Msg("Failed to get OData sessions - continuing without them")
+		odataSessions = []Session{}
+	}
+
+	// Create debug data structure
+	odataData := map[string]interface{}{
+		"extraction_time": time.Now().Format(time.RFC3339),
+		"site_name":       siteName,
+		"api_type":        "OData_Director",
+		"machines_count":  len(odataMachines),
+		"sessions_count":  len(odataSessions),
+		"machines":        odataMachines,
+		"sessions":        odataSessions,
+	}
+
+	// Save to file
+	filename := filepath.Join(debugDir, fmt.Sprintf("odata_identifiers_%s_%s.json", siteName, timestamp))
+	return p.saveDebugData(filename, odataData)
+}
+
+// saveDebugData saves debug data to JSON file
+func (p *citrixProbe) saveDebugData(filename string, data interface{}) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("failed to create debug file %s: %w", filename, err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ") // Pretty print
+	if err := encoder.Encode(data); err != nil {
+		return fmt.Errorf("failed to encode debug data: %w", err)
+	}
+
+	p.logger.Debug().
+		Str("file", filename).
+		Msg("Debug data saved")
+
+	return nil
+}

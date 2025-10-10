@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="agent-key" content="{{.AgentKey}}">
+    <title>SenHub Agent - Administration</title>
+    
+    <!-- CSS Assets -->
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/variables.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/base.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/layout.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/forms.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/buttons.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/components.css">
+    
+    <style>
+        .admin-section {
+            margin-bottom: 2rem;
+        }
+        
+        .config-panel {
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .config-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .config-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--gray-800);
+        }
+        
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        .status-active {
+            background-color: #dcfce7;
+            color: var(--success-color);
+        }
+        
+        .status-inactive {
+            background-color: #fef3e0;
+            color: var(--warning-color);
+        }
+        
+        .log-level-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .log-module {
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            padding: 1rem;
+        }
+        
+        .log-module-name {
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: var(--gray-700);
+        }
+        
+        .log-level-select {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid var(--gray-300);
+            border-radius: var(--radius-sm);
+            background: white;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .metrics-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        
+        .metrics-table th,
+        .metrics-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--gray-200);
+        }
+        
+        .metrics-table th {
+            background-color: var(--gray-50);
+            font-weight: 600;
+            color: var(--gray-700);
+        }
+        
+        .metrics-table td {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.875rem;
+        }
+        
+        .cache-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            margin-top: 1rem;
+        }
+        
+        .loading {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .success-message {
+            background-color: #dcfce7;
+            color: var(--success-color);
+            padding: 1rem;
+            border-radius: var(--radius-md);
+            margin: 1rem 0;
+            border-left: 4px solid var(--success-color);
+        }
+        
+        .error-message {
+            background-color: #fef2f2;
+            color: var(--danger-color);
+            padding: 1rem;
+            border-radius: var(--radius-md);
+            margin: 1rem 0;
+            border-left: 4px solid var(--danger-color);
+        }
+        
+        .probe-config {
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .probe-name {
+            font-weight: 600;
+            color: var(--gray-800);
+            margin-bottom: 0.5rem;
+        }
+        
+        .probe-details {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
+            SenHub Agent Administration
+        </h1>
+        <div class="nav-breadcrumb">
+            <a href="/web/{{.AgentKey}}/dashboard">Dashboard</a> > Administration
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- Success/Error Messages -->
+        <div id="messages"></div>
+        
+        <!-- Logging Configuration -->
+        <div class="admin-section">
+            <div class="config-panel">
+                <div class="config-header">
+                    <div class="config-title">🔧 Logging Configuration</div>
+                    <div class="status-badge status-active">Active</div>
+                </div>
+                <p>Configure log levels for different modules to control debug output. Changes take effect immediately.</p>
+                
+                <div id="log-levels-loading" class="loading">⏳ Loading current log levels...</div>
+                <div id="log-levels-container" style="display: none;">
+                    <div class="log-level-grid" id="log-modules-grid">
+                        <!-- Log modules will be loaded here -->
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="saveLogLevels()">💾 Save Changes</button>
+                        <button class="btn btn-secondary" onclick="resetLogLevels()">🔄 Reset to Defaults</button>
+                        <button class="btn btn-secondary" onclick="loadLogLevels()">↻ Refresh</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Cache Management -->
+        <div class="admin-section">
+            <div class="config-panel">
+                <div class="config-header">
+                    <div class="config-title">💾 Cache Management</div>
+                    <div class="status-badge status-active">Active</div>
+                </div>
+                <p>Monitor and manage the agent's internal metric cache.</p>
+                
+                <div class="cache-controls">
+                    <span class="metric-label">Cache TTL:</span>
+                    <span class="metric-value" id="cache-ttl">5 minutes</span>
+                    <button class="btn btn-secondary btn-sm" onclick="clearCache()">🗑️ Clear Cache</button>
+                    <button class="btn btn-secondary btn-sm" onclick="loadCacheStats()">↻ Refresh Stats</button>
+                </div>
+                
+                <table class="metrics-table" id="cache-stats-table">
+                    <thead>
+                        <tr>
+                            <th>Probe</th>
+                            <th>Metrics Count</th>
+                            <th>Last Updated</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cache-stats-body">
+                        <tr>
+                            <td colspan="4" style="text-align: center; color: var(--gray-500);">
+                                Loading cache statistics...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Probe Configuration -->
+        <div class="admin-section">
+            <div class="config-panel">
+                <div class="config-header">
+                    <div class="config-title">🔍 Probe Configuration</div>
+                    <div class="status-badge status-active">Read-Only</div>
+                </div>
+                <p>Current probe configuration loaded from agent configuration. Restart required for changes.</p>
+                
+                <div id="probe-config-loading" class="loading">⏳ Loading probe configuration...</div>
+                <div id="probe-config-container" style="display: none;">
+                    <!-- Probe configurations will be loaded here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- System Information -->
+        <div class="admin-section">
+            <div class="config-panel">
+                <div class="config-header">
+                    <div class="config-title">📊 System Information</div>
+                    <div class="status-badge status-active">Live</div>
+                </div>
+                <p>Real-time system and runtime information.</p>
+                
+                <table class="metrics-table">
+                    <tbody>
+                        <tr>
+                            <td><strong>Agent Version</strong></td>
+                            <td id="system-version">Loading...</td>
+                        </tr>
+                        <tr id="system-commit-row" style="display: none;">
+                            <td><strong>Commit</strong></td>
+                            <td id="system-commit">Loading...</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Go Version</strong></td>
+                            <td id="system-go-version">Loading...</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Operating System</strong></td>
+                            <td id="system-os">Loading...</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Architecture</strong></td>
+                            <td id="system-arch">Loading...</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Memory Usage</strong></td>
+                            <td id="system-memory">Loading...</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Goroutines</strong></td>
+                            <td id="system-goroutines">Loading...</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Uptime</strong></td>
+                            <td id="system-uptime">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Navigation -->
+        <div class="nav-buttons">
+            <a href="/web/{{.AgentKey}}/dashboard" class="btn btn-secondary">
+                ← Back to Dashboard
+            </a>
+            <a href="/web/{{.AgentKey}}/explorer" class="btn btn-primary">
+                🔍 API Explorer
+            </a>
+            <a href="/web/{{.AgentKey}}/docs" class="btn btn-secondary">
+                📚 Documentation
+            </a>
+        </div>
+    </div>
+    
+    <!-- JavaScript -->
+    <script>
+        // Make agent key available globally
+        window.AGENT_KEY = '{{.AgentKey}}';
+        
+        // Log level options
+        const LOG_LEVELS = ['debug', 'info', 'warn', 'error', 'fatal', 'panic', 'disabled'];
+        
+        // Predefined modules
+        const MODULES = [
+            'strategy.http', 'strategy.prtg', 'strategy.senhub',
+            'probe.redfish', 'probe.host', 'probe.network', 
+            'probe.webapp', 'probe.otel', 'probe.gateway', 'probe.syslog',
+            'cache', 'transformer', 'scheduler', 'configuration'
+        ];
+    </script>
+    <script src="/web/{{.AgentKey}}/assets/js/base.js"></script>
+    <script src="/web/{{.AgentKey}}/assets/js/admin.js"></script>
+</body>
+</html>

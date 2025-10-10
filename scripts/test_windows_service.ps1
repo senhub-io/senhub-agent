@@ -1,5 +1,30 @@
 # Define the service executable path
-$serviceExecutable = ".\dist\senhub-agent_windows_amd64.exe"
+$distPath = Join-Path $PSScriptRoot "..\dist"
+$relativePath = ".\dist\senhub-agent_windows_amd64.exe"
+$absolutePath = Join-Path $PSScriptRoot "..\dist\senhub-agent_windows_amd64.exe"
+
+# Find the executable - check multiple possible locations
+if (Test-Path $relativePath) {
+    $serviceExecutable = $relativePath
+    Write-Host "Using relative path: $serviceExecutable"
+} elseif (Test-Path $absolutePath) {
+    $serviceExecutable = $absolutePath
+    Write-Host "Using script-relative path: $serviceExecutable"
+} elseif (Test-Path "$env:GITHUB_WORKSPACE\dist\senhub-agent_windows_amd64.exe") {
+    $serviceExecutable = "$env:GITHUB_WORKSPACE\dist\senhub-agent_windows_amd64.exe"
+    Write-Host "Using GITHUB_WORKSPACE path: $serviceExecutable"
+} else {
+    Write-Host "Executable not found in expected locations. Listing dist directory content:"
+    if (Test-Path $distPath) {
+        Get-ChildItem -Path $distPath -Force
+    } else {
+        Write-Host "dist directory not found at: $distPath"
+        Write-Host "Current directory: $PWD"
+        Get-ChildItem -Force
+    }
+    Write-Error "Unable to find the senhub-agent executable"
+    exit 1
+}
 
 # Function to check if the service is installed
 function Check-ServiceInstalled {

@@ -12,8 +12,8 @@ func TestParseDuration(t *testing.T) {
 		want  time.Duration
 	}{
 		{
-			name:  "Float64",
-			value: float64(10),
+			name:  "Int",
+			value: 10,
 			want:  10 * time.Second,
 		},
 		{
@@ -28,7 +28,7 @@ func TestParseDuration(t *testing.T) {
 		},
 		{
 			name:  "Invalid Type",
-			value: 10,
+			value: float64(10),
 			want:  0,
 		},
 	}

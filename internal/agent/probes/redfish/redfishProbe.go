@@ -4,32 +4,35 @@ package redfish
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
-	"time"
 )
 
 // redfishProbe implements monitoring for hardware systems using the Redfish API
 type redfishProbe struct {
 	*types.BaseProbe
-	config         map[string]interface{}
-	logger         *logger.Logger
-	interval       time.Duration
-	collector      RedfishCollector
-	endpoint       string
-	username       string
-	password       string
-	collections    []CollectionType
-	cacheDuration  time.Duration
-	lastCollection map[CollectionType]time.Time
-	ctx            context.Context
-	cancelFunc     context.CancelFunc
+	config      map[string]interface{}
+	logger      *logger.ModuleLogger
+	interval    time.Duration
+	collector   RedfishCollector
+	tagEnhancer *TagEnhancer
+	endpoint    string
+	username    string
+	password    string
+	verifySSL   bool
+	collections []CollectionType
+	ctx         context.Context
+	cancelFunc  context.CancelFunc
 }
 
 // NewRedfishProbe creates a new instance of the Redfish probe
-func NewRedfishProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
+func NewRedfishProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
+	// Create module-specific logger for redfish probe
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.redfish")
 	interval := 300 * time.Second // Default: 5 minutes
 	if cfgInterval, ok := config["interval"].(int); ok {
 		interval = time.Duration(cfgInterval) * time.Second
@@ -51,11 +54,13 @@ func NewRedfishProbe(config map[string]interface{}, logger *logger.Logger) (type
 		return nil, fmt.Errorf("redfish probe requires 'password' configuration")
 	}
 
-	// Cache duration configuration (default: 4 minutes)
-	cacheDuration := 4 * time.Minute
-	if cfgCache, ok := config["cache_duration"].(int); ok {
-		cacheDuration = time.Duration(cfgCache) * time.Second
+	// SSL verification configuration (default: true)
+	verifySSL := true
+	if cfgVerifySSL, ok := config["verify_ssl"].(bool); ok {
+		verifySSL = cfgVerifySSL
 	}
+
+	// Cache duration configuration was removed as scheduling is handled by the probe poller
 
 	// Default collections to gather if not specified
 	collections := []CollectionType{
@@ -64,6 +69,7 @@ func NewRedfishProbe(config map[string]interface{}, logger *logger.Logger) (type
 		CollectionPower,
 		CollectionProcessor,
 		CollectionMemory,
+		CollectionStorage, // Added storage collection by default for PowerVault metrics
 	}
 
 	// Override collections if specified
@@ -79,28 +85,28 @@ func NewRedfishProbe(config map[string]interface{}, logger *logger.Logger) (type
 	ctx, cancel := context.WithCancel(context.Background())
 
 	probe := &redfishProbe{
-		BaseProbe:      &types.BaseProbe{},
-		config:         config,
-		logger:         logger,
-		interval:       interval,
-		endpoint:       endpoint,
-		username:       username,
-		password:       password,
-		collections:    collections,
-		cacheDuration:  cacheDuration,
-		lastCollection: make(map[CollectionType]time.Time),
-		ctx:            ctx,
-		cancelFunc:     cancel,
+		BaseProbe:   &types.BaseProbe{},
+		config:      config,
+		logger:      moduleLogger,
+		interval:    interval,
+		tagEnhancer: NewTagEnhancer(),
+		endpoint:    endpoint,
+		username:    username,
+		password:    password,
+		verifySSL:   verifySSL,
+		collections: collections,
+		ctx:         ctx,
+		cancelFunc:  cancel,
 	}
 
 	// We'll initialize the actual collector in OnStart after we can detect the vendor
-	
+
 	return probe, nil
 }
 
 // GetName returns the unique identifier of the probe
 func (p *redfishProbe) GetName() string {
-	return "redfishProbe"
+	return "redfish"
 }
 
 // ShouldStart indicates if probe should be activated
@@ -118,7 +124,7 @@ func (p *redfishProbe) OnStart(quitChannel chan struct{}) error {
 	// Create an initial generic collector
 	// Later we'll detect the vendor and create the appropriate collector
 	var err error
-	p.collector, err = NewGenericCollector(p.endpoint, p.username, p.password, p.logger)
+	p.collector, err = NewGenericCollector(p.endpoint, p.username, p.password, p.logger.Logger, p.verifySSL)
 	if err != nil {
 		return fmt.Errorf("failed to create Redfish collector: %v", err)
 	}
@@ -138,16 +144,19 @@ func (p *redfishProbe) OnStart(quitChannel chan struct{}) error {
 		switch detectedVendor {
 		case VendorDell:
 			p.logger.Info().Msg("Dell server detected, creating Dell-specific collector")
-			vendorCollector, err = NewDellCollector(p.endpoint, p.username, p.password, p.logger)
+			vendorCollector, err = NewDellCollector(p.endpoint, p.username, p.password, p.logger.Logger, p.verifySSL)
 		case VendorHPE:
 			p.logger.Info().Msg("HPE server detected, creating HPE-specific collector")
-			vendorCollector, err = NewHPECollector(p.endpoint, p.username, p.password, p.logger)
+			vendorCollector, err = NewHPECollector(p.endpoint, p.username, p.password, p.logger.Logger, p.verifySSL)
 		case VendorLenovo:
 			p.logger.Info().Msg("Lenovo server detected, creating Lenovo-specific collector")
-			vendorCollector, err = NewLenovoCollector(p.endpoint, p.username, p.password, p.logger)
+			vendorCollector, err = NewLenovoCollector(p.endpoint, p.username, p.password, p.logger.Logger, p.verifySSL)
 		case VendorCisco:
 			p.logger.Info().Msg("Cisco server detected, creating Cisco-specific collector")
-			vendorCollector, err = NewCiscoCollector(p.endpoint, p.username, p.password, p.logger)
+			vendorCollector, err = NewCiscoCollector(p.endpoint, p.username, p.password, p.logger.Logger, p.verifySSL)
+		case VendorStorage:
+			p.logger.Info().Msg("Storage system detected, creating Storage-specific collector")
+			vendorCollector, err = NewStorageCollector(p.endpoint, p.username, p.password, p.logger.Logger, p.verifySSL)
 		default:
 			p.logger.Info().
 				Str("vendor", string(detectedVendor)).
@@ -178,6 +187,7 @@ func (p *redfishProbe) OnStart(quitChannel chan struct{}) error {
 	p.logger.Info().
 		Str("endpoint", p.endpoint).
 		Str("vendor", string(p.collector.GetVendorType())).
+		Bool("verify_ssl", p.verifySSL).
 		Msg("Redfish probe initialized")
 
 	return nil
@@ -209,17 +219,6 @@ func (p *redfishProbe) Collect() ([]data_store.DataPoint, error) {
 			continue
 		}
 
-		// Check if cache is still valid
-		lastCollect, exists := p.lastCollection[collectionType]
-		if exists && now.Sub(lastCollect) < p.cacheDuration {
-			p.logger.Debug().
-				Str("collection", string(collectionType)).
-				Dur("age", now.Sub(lastCollect)).
-				Dur("cache_duration", p.cacheDuration).
-				Msg("Using cached data")
-			continue
-		}
-
 		// Collect metrics for this collection type
 		datapoints, err := p.collector.CollectMetrics(p.ctx, collectionType, now)
 		if err != nil {
@@ -230,26 +229,30 @@ func (p *redfishProbe) Collect() ([]data_store.DataPoint, error) {
 			continue
 		}
 
-		// Add common tags to all datapoints
+		// Add common tags to all datapoints and enhance tags
 		for i := range datapoints {
+			// Add common tags
 			datapoints[i].Tags = append(datapoints[i].Tags, commonTags...)
-		}
 
-		// Update last collection time
-		p.lastCollection[collectionType] = now
+			// Enhance tags using TagEnhancer for better organization
+			datapoints[i].Tags = p.tagEnhancer.EnhanceMetricTags(datapoints[i].Name, datapoints[i].Tags)
+		}
 
 		// Add to aggregate result
 		allDatapoints = append(allDatapoints, datapoints...)
 	}
 
+	// Enrich with probe name
+	enrichedDatapoints := p.BaseProbe.EnrichDataPointsWithProbeName(allDatapoints, p.GetName())
+
 	// Route data through callback if configured
-	if p.OnDataPoints != nil && len(allDatapoints) > 0 {
-		if err := p.OnDataPoints(allDatapoints, p); err != nil {
+	if p.OnDataPoints != nil && len(enrichedDatapoints) > 0 {
+		if err := p.OnDataPoints(enrichedDatapoints, p); err != nil {
 			return nil, fmt.Errorf("error handling data points: %v", err)
 		}
 	}
 
-	return allDatapoints, nil
+	return enrichedDatapoints, nil
 }
 
 // OnShutdown handles cleanup when probe is stopped
@@ -264,5 +267,5 @@ func (p *redfishProbe) OnShutdown(ctx context.Context) error {
 
 // GetTargetStrategies returns the strategies this probe's data should be sent to
 func (p *redfishProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg"}
+	return []string{"senhub", "prtg", "http"}
 }

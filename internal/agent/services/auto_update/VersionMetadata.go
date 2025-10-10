@@ -21,17 +21,10 @@ func fetchVersionMetadata(
 	wantedVersion string,
 ) (*VersionMetadata, error) {
 	formattedVersion := FormatVersionForUrl(wantedVersion)
-	
-	// Construct the metadata path based on whether it's a beta version or not
-	var metadataPath string
-	if isBetaVersion(wantedVersion) {
-		// For beta versions, use /beta/version/metadata.json path
-		metadataPath = fmt.Sprintf("/beta/%s/metadata.json", formattedVersion)
-	} else {
-		// For regular versions, use normal path
-		metadataPath = fmt.Sprintf(VERSION_METADATA_PATH, formattedVersion)
-	}
-	
+
+	// All versions (including beta) use the same path format
+	metadataPath := fmt.Sprintf(VERSION_METADATA_PATH, formattedVersion)
+
 	metadataUrl, err := url.JoinPath(registryUrl, metadataPath)
 	if err != nil {
 		return nil, err

@@ -1,0 +1,35 @@
+probe_name: "load_webapp"
+friendly_name: "Load WebApp"
+multi_instance_labels: ["url"]
+
+metrics:
+  # WebApp Load Metrics
+  - name: "dnstime"
+    channel: "load_dns_time"
+    display_name: "DNS Resolution Time ({url})"
+    unit: "ms"
+    multi_instance_labels: ["url"]
+    
+  - name: "connecttime"
+    channel: "load_connect_time"
+    display_name: "Connect Time ({url})"
+    unit: "ms"
+    multi_instance_labels: ["url"]
+    
+  - name: "tlstime"
+    channel: "load_tls_time"
+    display_name: "TLS Handshake Time ({url})"
+    unit: "ms"
+    multi_instance_labels: ["url"]
+    
+  - name: "total_time"
+    channel: "load_total_time"
+    display_name: "Total Load Time ({url})"
+    unit: "ms"
+    multi_instance_labels: ["url"]
+    
+  - name: "ttfb"
+    channel: "load_time_to_first_byte"
+    display_name: "Time to First Byte ({url})"
+    unit: "ms"
+    multi_instance_labels: ["url"]

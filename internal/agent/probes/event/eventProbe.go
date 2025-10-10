@@ -45,11 +45,11 @@ type EventProbeConfig struct {
 
 // EventProbe is the main struct for the EventProbe.
 type EventProbe struct {
-	rawConfig map[string]interface{}
-	config    EventProbeConfig
-	logger    *logger.Logger
-	server    *http.Server
-	callback  func([]data_store.DataPoint) error
+	rawConfig    map[string]interface{}
+	config       EventProbeConfig
+	moduleLogger *logger.ModuleLogger
+	server       *http.Server
+	callback     func([]data_store.DataPoint) error
 }
 
 // SetCallback sets the callback function for the EventProbe.
@@ -58,25 +58,23 @@ func (p *EventProbe) SetCallback(callback func([]data_store.DataPoint) error) {
 }
 
 // NewEventProbe creates a new instance of EventProbe.
-func NewEventProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
+func NewEventProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
 	parsedConfig, err := parseEventProbeConfig(config)
 	if err != nil {
 		return nil, err
 	}
-	localLogger := logger.With().
-		Str("url", fmt.Sprintf("%s://%s:%d", parsedConfig.Protocol, parsedConfig.Address, parsedConfig.Port)).
-		Str("protocol", parsedConfig.Protocol).
-		Str("address", parsedConfig.Address).
-		Int("port", parsedConfig.Port).
-		Logger()
 
-	localLogger.Debug().
+	// Create module-specific logger for event probe
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.event")
+
+	moduleLogger.Debug().
 		Any("config", parsedConfig).
 		Msg("Creating new Event probe")
+
 	return &EventProbe{
-		rawConfig: config,
-		config:    parsedConfig,
-		logger:    &localLogger,
+		rawConfig:    config,
+		config:       parsedConfig,
+		moduleLogger: moduleLogger,
 	}, nil
 }
 
@@ -143,30 +141,33 @@ func (p *EventProbe) Collect() ([]data_store.DataPoint, error) {
 
 // OnStart starts the EventProbe.
 func (p *EventProbe) OnStart(quitChannel chan struct{}) error {
-	p.logger.Debug().Msg("Starting Event probe")
+	p.moduleLogger.Debug().Msg("Starting Event probe")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/event", p.handleEvent)
 
 	p.server = &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", p.config.Address, p.config.Port),
-		Handler: mux,
+		Addr:         fmt.Sprintf("%s:%d", p.config.Address, p.config.Port),
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	go func() {
 		if err := p.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			p.logger.Error().Err(err).Msg("Failed to start HTTP server")
+			p.moduleLogger.Error().Err(err).Msg("Failed to start HTTP server")
 		}
 	}()
 
-	p.logger.Info().Msg("Event probe started successfully")
+	p.moduleLogger.Info().Msg("Event probe started successfully")
 	return nil
 }
 
 // OnShutdown stops the EventProbe.
 func (p *EventProbe) OnShutdown(ctx context.Context) error {
 	if p.server != nil {
-		p.logger.Info().Msg("Stopping Event probe")
+		p.moduleLogger.Info().Msg("Stopping Event probe")
 		return p.server.Shutdown(ctx)
 	}
 	return nil
@@ -192,12 +193,12 @@ func (p *EventProbe) handleEvent(w http.ResponseWriter, r *http.Request) {
 
 	dataPoint := p.processEvent(event)
 	if p.callback == nil {
-		p.logger.Warn().Msg("Callback is not set")
+		p.moduleLogger.Warn().Msg("Callback is not set")
 		return
 	}
 
 	if err := p.callback([]data_store.DataPoint{dataPoint}); err != nil {
-		p.logger.Error().Err(err).Msg("Failed to send DataPoint to DataStore")
+		p.moduleLogger.Error().Err(err).Msg("Failed to send DataPoint to DataStore")
 		http.Error(w, "Failed to process event", http.StatusInternalServerError)
 		return
 	}
@@ -258,15 +259,15 @@ func (p *EventProbe) processEvent(event map[string]interface{}) data_store.DataP
 	// 2. A special JSON metadata field that preserves complex types like arrays
 	eventTags := []tags.Tag{}
 	complexValues := make(map[string]interface{})
-	
+
 	for key, value := range event {
 		if key == "timestamp" {
 			continue
 		}
-		
+
 		// Store all values as strings in regular tags for backward compatibility
 		eventTags = append(eventTags, tags.Tag{Key: key, Value: fmt.Sprintf("%v", value), Private: false})
-		
+
 		// Also store complex values in their original form
 		switch v := value.(type) {
 		case []interface{}, map[string]interface{}:
@@ -274,7 +275,7 @@ func (p *EventProbe) processEvent(event map[string]interface{}) data_store.DataP
 			complexValues[key] = v
 		}
 	}
-	
+
 	// If we have complex values, serialize them as JSON and add as a special tag
 	if len(complexValues) > 0 {
 		complexJSON, err := json.Marshal(complexValues)
@@ -285,11 +286,11 @@ func (p *EventProbe) processEvent(event map[string]interface{}) data_store.DataP
 				Private: false,
 			})
 		} else {
-			p.logger.Error().Err(err).Msg("Failed to marshal complex values")
+			p.moduleLogger.Error().Err(err).Msg("Failed to marshal complex values")
 		}
 	}
 
-	p.logger.Debug().
+	p.moduleLogger.Debug().
 		Time("timestamp", timestamp).
 		Any("tags", eventTags).
 		Msg("Received Event")
