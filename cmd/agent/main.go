@@ -190,13 +190,14 @@ Service Commands:
 
 Agent Options:
     --authentication-key KEY                Authentication key for the service
+                                           (optional if present in config file)
     --server-url URL                       Server URL (optional)
+    --config-path PATH                     Path to configuration file (default: ./agent-config.yaml)
     --verbose                              Enable verbose logging (debug level for all key modules)
     --debug-modules module1,module2        Enable debug logging only for specific modules
 
 Offline Mode Options:
     --offline                              Run in offline mode with local configuration
-    --config-path PATH                     Path to local configuration file (default: ./agent-config.yaml)
 
 HTTPS/TLS Options (for offline mode):
     --enable-https                         Enable HTTPS for HTTP strategy
@@ -216,7 +217,11 @@ Examples:
     %s install --authentication-key "your-key"
     %s run --authentication-key "your-key" --server-url "http://example.com"
     %s run --authentication-key "your-key" --verbose --debug-modules strategy.http,cache
-    
+
+    Online Mode (with config file):
+    %s run                                          # Auth key loaded from agent-config.yaml
+    %s run --config-path /etc/agent/config.yaml    # Auth key loaded from custom path
+
     Offline Mode:
     %s install --offline
     %s install --offline --enable-https --https-hosts "agent.company.com,192.168.1.100"
@@ -229,6 +234,6 @@ Examples:
     %s status
     %s update latest
 
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
 
