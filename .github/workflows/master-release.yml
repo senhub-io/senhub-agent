@@ -15,17 +15,30 @@ jobs:
         with:
           fetch-depth: 0
           
-      - name: Get latest tag
+      - name: Get latest tag and create production version
         id: get_tag
         run: |
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
-          # Skip if tag contains beta
-          if [[ $LATEST_TAG == *"beta"* ]]; then
-            # Find the latest non-beta tag
-            LATEST_TAG=$(git tag -l --sort=-v:refname | grep -v "beta" | head -n 1)
+          # Get the latest tag from dev branch (will be a beta tag)
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0-beta")
+          echo "Latest tag found: $LATEST_TAG"
+
+          # Remove -beta suffix to create production version
+          # Example: 0.1.63-beta -> 0.1.63
+          PROD_TAG=${LATEST_TAG%-beta}
+
+          echo "Production version: $PROD_TAG"
+          echo "TAG=$PROD_TAG" >> $GITHUB_ENV
+
+          # Create the production tag if it doesn't exist
+          if ! git tag -l | grep -q "^$PROD_TAG$"; then
+            git config user.name "GitHub Actions Bot"
+            git config user.email "actions@github.com"
+            git tag $PROD_TAG
+            git push origin $PROD_TAG
+            echo "Created and pushed new tag: $PROD_TAG"
+          else
+            echo "Tag $PROD_TAG already exists"
           fi
-          echo "Using tag: $LATEST_TAG"
-          echo "TAG=$LATEST_TAG" >> $GITHUB_ENV
           
       - name: Set up Go
         uses: actions/setup-go@v4
