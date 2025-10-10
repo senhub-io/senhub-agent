@@ -1,0 +1,17 @@
+probe_name: "ping_webapp"
+friendly_name: "Ping WebApp"
+multi_instance_labels: ["url"]
+
+metrics:
+  # WebApp Ping Metrics
+  - name: "averageLatency"
+    channel: "ping_average_latency"
+    display_name: "Average Latency ({url})"
+    unit: "ms"
+    multi_instance_labels: ["url"]
+    
+  - name: "packetLoss"
+    channel: "ping_packet_loss"
+    display_name: "Packet Loss ({url})"
+    unit: "%"
+    multi_instance_labels: ["url"]

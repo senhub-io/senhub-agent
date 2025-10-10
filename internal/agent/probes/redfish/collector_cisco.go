@@ -21,9 +21,9 @@ type CiscoCollector struct {
 }
 
 // NewCiscoCollector creates a new collector for Cisco servers
-func NewCiscoCollector(endpoint, username, password string, logger *logger.Logger) (RedfishCollector, error) {
+func NewCiscoCollector(endpoint, username, password string, logger *logger.Logger, verifySSL bool) (RedfishCollector, error) {
 	// First create a generic collector as the base
-	genericCollector, err := NewGenericCollector(endpoint, username, password, logger)
+	genericCollector, err := NewGenericCollector(endpoint, username, password, logger, verifySSL)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +216,7 @@ func (c *CiscoCollector) collectSystemMetrics(ctx context.Context, timestamp tim
 						biosVersionStr := fmt.Sprintf("%v", biosVersion)
 						systemTags = append(systemTags, tags.Tag{Key: "bios_version", Value: biosVersionStr})
 					}
-					
+
 					// Add CIMC mode if available
 					if cimcMode, hasMode := ciscoOem["CimcMode"]; hasMode {
 						cimcModeStr := fmt.Sprintf("%v", cimcMode)
@@ -247,7 +247,7 @@ func (c *CiscoCollector) collectNetworkMetrics(ctx context.Context, timestamp ti
 	// For Cisco UCS, there are two paths to check for network adapters
 	// 1. Standard Redfish path
 	// 2. Cisco OEM-specific path
-	
+
 	// First get the standard metrics
 	datapoints, err := c.GenericCollector.collectNetworkMetrics(ctx, timestamp)
 	if err != nil {
@@ -471,7 +471,7 @@ func (c *CiscoCollector) collectStorageMetrics(ctx context.Context, timestamp ti
 	// For Cisco UCS, there are two paths to check for storage
 	// 1. Standard Redfish path
 	// 2. Cisco OEM-specific path for StorageController
-	
+
 	// First get the standard metrics
 	datapoints, err := c.GenericCollector.collectStorageMetrics(ctx, timestamp)
 	if err != nil {

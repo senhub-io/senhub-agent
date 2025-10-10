@@ -1,0 +1,63 @@
+# Reusable Display Name Templates
+# Common patterns for generating contextualized display names
+
+templates:
+  # Hardware component templates
+  cpu_with_index: "CPU {index} {metric_type}"
+  memory_with_slot: "Memory {slot} {metric_type}"
+  disk_with_device: "Disk {device} {metric_type}"
+  network_with_interface: "Network {interface} {metric_type}"
+  
+  # Storage templates
+  volume_with_name: "Volume {volume_name} {metric_type}"
+  pool_with_id: "Pool {pool_id} {metric_type}"
+  drive_with_name: "Drive {drive_name} {metric_type}"
+  
+  # System templates
+  system_with_name: "System {system_name} {metric_type}"
+  controller_with_name: "Controller {controller_name} {metric_type}"
+  
+  # Multi-level templates
+  disk_group_with_raid: "Disk Group {diskgroup_name} ({raid_type}) {metric_type}"
+  volume_with_group: "Volume {volume_name} on {disk_group} {metric_type}"
+  
+  # Location-based templates
+  sensor_with_location: "{sensor_location} {metric_type}"
+  fan_with_location: "Fan {fan_name} ({fan_location}) {metric_type}"
+  
+  # Network connectivity templates
+  target_connectivity: "{target} {metric_type}"
+  interface_connectivity: "Interface {interface} {metric_type}"
+
+# Common metric type mappings
+metric_types:
+  temperature: "Temperature"
+  utilization: "Utilization" 
+  usage: "Usage"
+  capacity: "Capacity"
+  throughput: "Throughput"
+  latency: "Latency"
+  speed: "Speed"
+  status: "Status"
+  health: "Health"
+  operations: "Operations"
+  efficiency: "Efficiency"
+  availability: "Availability"
+
+# Tag priority for display name generation
+# Higher priority tags are used first in templates
+tag_priority:
+  1: ["name", "volume_name", "drive_name", "interface", "target"]
+  2: ["id", "volume_id", "drive_id", "controller_id", "pool_id"]
+  3: ["index", "slot", "core", "hop_number"]
+  4: ["type", "raid_type", "drive_type", "operation_type"]
+  5: ["location", "sensor_location", "fan_location", "mountpoint"]
+  6: ["host", "system_name", "enclosure_id"]
+
+# Fallback patterns when specific templates aren't available
+fallback_patterns:
+  # If no template matches, use these patterns based on available tags
+  with_name_and_type: "{name} ({type}) {metric_suffix}"
+  with_id_and_type: "{id} ({type}) {metric_suffix}"
+  with_index: "{metric_prefix} {index}"
+  generic: "{metric_name}"

@@ -31,11 +31,33 @@ jobs:
           # Get the version directly from the git describe command
           CURRENT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
           echo "Using existing tag: $CURRENT_TAG"
+          
+          # Check if tag already ends with -beta
+          if [[ $CURRENT_TAG == *-beta ]]; then
+            # Tag already has -beta, increment the patch version
+            BASE_VERSION=${CURRENT_TAG%-beta}
+            if [[ $BASE_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              MAJOR=${BASH_REMATCH[1]}
+              MINOR=${BASH_REMATCH[2]}
+              PATCH=${BASH_REMATCH[3]}
+              NEW_PATCH=$((PATCH + 1))
+              NEW_TAG="${MAJOR}.${MINOR}.${NEW_PATCH}-beta"
+            else
+              # Fallback if version format is unexpected
+              NEW_TAG="${CURRENT_TAG}-new"
+            fi
+          else
+            # Tag doesn't have -beta, add it
+            NEW_TAG="${CURRENT_TAG}-beta"
+          fi
+          
           echo "CURRENT_TAG=$CURRENT_TAG" >> $GITHUB_ENV
-          echo "beta_tag=${CURRENT_TAG}-beta" >> $GITHUB_ENV
-      - name: Create local beta tag
+          echo "beta_tag=$NEW_TAG" >> $GITHUB_ENV
+          echo "New beta tag will be: $NEW_TAG"
+      - name: Create and push beta tag
         run: |
           git tag ${{ env.beta_tag }}
+          git push origin ${{ env.beta_tag }}
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5

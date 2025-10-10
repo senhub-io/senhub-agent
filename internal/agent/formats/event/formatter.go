@@ -8,7 +8,6 @@ import (
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
 	"senhub-agent.go/internal/agent/types/event"
-	"strings"
 	"unicode"
 )
 
@@ -81,8 +80,8 @@ func (f *Formatter) FormatDataPoint(dp datapoint.DataPoint) event.EventDataPoint
 
 	// Ajouter tous les autres tags comme champs dynamiques (en excluant les métadonnées spéciales)
 	for _, tag := range dp.Tags {
-		if tag.Key != "host" && tag.Key != "severity" && tag.Key != "message" && 
-		   tag.Key != "_complex_values" && !eventData.HasKey(tag.Key) {
+		if tag.Key != "host" && tag.Key != "severity" && tag.Key != "message" &&
+			tag.Key != "_complex_values" && !eventData.HasKey(tag.Key) {
 			eventData[tag.Key] = f.sanitizeUTF8(tag.Value)
 		}
 	}
@@ -103,30 +102,6 @@ func (f *Formatter) getTagValue(tags []tags.Tag, key string) string {
 		}
 	}
 	return ""
-}
-
-// getSeverity convertit une chaîne en niveau de sévérité valide
-func (f *Formatter) getSeverity(value string) event.EventSeverity {
-	switch strings.ToLower(value) {
-	case "emerg", "emergency":
-		return event.Emergency
-	case "alert":
-		return event.Alert
-	case "crit", "critical":
-		return event.Critical
-	case "err", "error":
-		return event.Error
-	case "warning", "warn":
-		return event.Warning
-	case "notice":
-		return event.Notice
-	case "info", "information":
-		return event.Informational
-	case "debug":
-		return event.Debug
-	default:
-		return event.Notice
-	}
 }
 
 // sanitizeUTF8 nettoie et normalise une chaîne en UTF-8

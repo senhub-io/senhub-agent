@@ -1,0 +1,284 @@
+# SenHub Agent Configuration with Citrix Probe
+# Complete example for monitoring Citrix Virtual Apps and Desktops
+
+agent:
+  key: "your-agent-key-here"
+
+# Data storage strategies
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "0.0.0.0"
+      endpoints: ["prtg", "senhub", "web", "nagios"]
+      # Cache configuration for Citrix metrics
+      cache:
+        retention_minutes: 45  # Compromise between 10min metrics and 60min historical
+
+# Monitoring probes configuration
+probes:
+  # Citrix Virtual Apps and Desktops monitoring
+  - name: citrix
+    params:
+      # Citrix Director base URL (API path added automatically)
+      base_url: "https://citrix-director.company.com"
+      
+      # environment parameter removed - was not used in metrics generation
+      
+      # Collection interval (2 minutes recommended)
+      interval: 120
+      
+      # Debug mode: extract identifiers for CVAD vs OData mapping analysis
+      # Set to true to generate /tmp/citrix-debug/*.json files instead of collecting metrics
+      # Use this to understand identifier correspondences between APIs
+      debug_identifiers: false
+      
+      # Authentication configuration
+      # Authentication methods are automatic: NTLM for Director, Basic for DDC
+      auth:
+        username: "DOMAIN\\svc-monitoring"  # Service account with read permissions
+        password: "secure-password"        # Use environment variable: ${CITRIX_PASSWORD}
+      
+      # TLS/SSL configuration
+      tls:
+        verify_ssl: true                   # Set to false for self-signed certificates
+      
+      # API collection settings
+      collection_interval: 120             # Internal collection interval (seconds)
+      timeout: 30                         # Request timeout (seconds)
+      
+      # Retry configuration for reliability
+      retry:
+        max_attempts: 3                   # Maximum retry attempts
+        backoff_factor: 2.0               # Exponential backoff multiplier
+
+  # System monitoring probes (recommended for complete coverage)
+  - name: cpu
+    params:
+      interval: 30
+
+  - name: memory
+    params:
+      interval: 30
+
+  - name: network
+    params:
+      interval: 60
+
+  - name: logicaldisk
+    params:
+      interval: 30
+
+---
+# Alternative configuration for development environment
+
+agent:
+  key: "dev-agent-key"
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      endpoints: ["prtg", "web"]
+
+probes:
+  - name: citrix
+    params:
+      base_url: "https://citrix-dev.company.com"
+# environment parameter removed - was not used
+      interval: 300  # 5 minutes for development
+      
+      auth:
+        username: "admin"
+        password: "devpassword"
+      
+      tls:
+        verify_ssl: false  # Allow self-signed certificates
+      
+      timeout: 60        # Longer timeout for dev environment
+      
+      retry:
+        max_attempts: 5
+        backoff_factor: 1.5
+
+---
+# High-availability configuration with multiple controllers
+
+agent:
+  key: "ha-citrix-agent"
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      endpoints: ["prtg", "senhub", "nagios"]
+
+probes:
+  # Primary Citrix site with Delivery Controller filtering
+  - name: citrix
+    params:
+      base_url: "https://citrix-site1.company.com"
+      
+      # NEW: Delivery Controller configuration for site filtering
+      delivery_controller:
+        url: "https://citrix-ddc1-site1.company.com"
+        fallback_urls:
+          - "https://citrix-ddc2-site1.company.com"
+        site_filter: "SITE1"  # Only monitor machines from this site
+      
+# environment parameter removed
+      interval: 120
+      
+      auth:
+        username: "DOMAIN\\svc-monitoring"
+        password: "${CITRIX_PASSWORD}"
+      
+      tls:
+        verify_ssl: true
+      
+      timeout: 30
+      retry:
+        max_attempts: 3
+        backoff_factor: 2.0
+
+  # Secondary Citrix site with different DDC configuration
+  - name: citrix
+    params:
+      base_url: "https://citrix-site2.company.com"
+      
+      # NEW: Different Delivery Controller for site 2
+      delivery_controller:
+        url: "https://citrix-ddc1-site2.company.com"
+        fallback_urls:
+          - "https://citrix-ddc2-site2.company.com"
+        site_filter: "SITE2"  # Only monitor machines from site 2
+      
+# environment parameter removed
+      interval: 120
+      
+      auth:
+        username: "DOMAIN\\svc-monitoring"
+        password: "${CITRIX_PASSWORD}"
+      
+      tls:
+        verify_ssl: true
+      
+      timeout: 30
+      retry:
+        max_attempts: 3
+        backoff_factor: 2.0
+
+---
+# Security-hardened configuration
+
+agent:
+  key: "${SENHUB_AGENT_KEY}"  # From environment variable
+
+storage:
+  - name: http
+    params:
+      port: 8443  # Non-standard port
+      bind_address: "127.0.0.1"  # Localhost only
+      endpoints: ["prtg"]
+      
+      # HTTPS with custom certificates
+      tls:
+        enabled: true
+        cert_file: "/etc/senhub/tls/cert.pem"
+        key_file: "/etc/senhub/tls/key.pem"
+        min_tls_version: "1.3"
+
+probes:
+  - name: citrix
+    params:
+      base_url: "https://citrix-director.secure.company.com"
+# environment parameter removed
+      interval: 120
+      
+      auth:
+        method: "ntlm"
+        username: "${CITRIX_USERNAME}"    # From environment
+        password: "${CITRIX_PASSWORD}"    # From environment
+      
+      tls:
+        verify_ssl: true                  # Strict SSL verification
+      
+      timeout: 15                       # Shorter timeout
+      retry:
+        max_attempts: 2                 # Fewer retries to avoid detection
+        backoff_factor: 3.0             # Longer backoff
+
+---
+# Configuration with Citrix Cloud / CVAD REST API
+
+agent:
+  key: "citrix-cloud-agent"
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      endpoints: ["prtg", "senhub", "web"]
+
+probes:
+  - name: citrix
+    params:
+      # Citrix Director base URL (API path added automatically)
+      base_url: "https://citrix-director.company.com"
+      
+      # NEW: Delivery Controller with Basic Auth for CVAD REST API
+      delivery_controller:
+        url: "https://citrix-ddc.company.com"
+        fallback_urls:
+          - "https://citrix-ddc-backup.company.com"
+        site_filter: "Paris-DataCenter"  # Filter by site name
+      
+# environment parameter removed
+      interval: 120
+      
+      # Authentication configuration (used for both Director and DDC)
+      # Authentication methods are automatic: NTLM for Director, Basic for DDC
+      auth:
+        username: "DOMAIN\\svc_api_sensor"
+        password: "${CITRIX_API_PASSWORD}"
+      
+      tls:
+        verify_ssl: true
+      
+      timeout: 30
+      retry:
+        max_attempts: 3
+        backoff_factor: 2.0
+
+---
+# Multi-site monitoring without DDC filtering
+
+agent:
+  key: "citrix-global-monitoring"
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      endpoints: ["prtg", "senhub"]
+
+probes:
+  - name: citrix
+    params:
+      # Monitor all sites through Director without filtering
+      base_url: "https://citrix-director-global.company.com"
+      
+      # No delivery_controller section = no site filtering
+      
+# environment parameter removed
+      interval: 120
+      
+      auth:
+        method: "ntlm"
+        username: "DOMAIN\\svc-monitoring-global"
+        password: "${CITRIX_PASSWORD}"
+      
+      tls:
+        verify_ssl: true
+      
+      timeout: 30
