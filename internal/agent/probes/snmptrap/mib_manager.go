@@ -78,14 +78,13 @@ type MIBEntry struct {
 
 // MIBDownloader handles dynamic MIB downloading from central repository
 type MIBDownloader struct {
-	baseURL       string
-	cacheDir      string
-	httpClient    *http.Client
-	logger        *logger.ModuleLogger
-	vendorMIBs    map[string][]string // enterprise OID → MIB list (legacy)
-	index         *MIBIndex           // Loaded MIB index
-	indexLoaded   bool
-	indexMutex    sync.RWMutex
+	baseURL     string
+	cacheDir    string
+	httpClient  *http.Client
+	logger      *logger.ModuleLogger
+	index       *MIBIndex // Loaded MIB index
+	indexLoaded bool
+	indexMutex  sync.RWMutex
 }
 
 // VendorInfo represents detected vendor information
@@ -974,7 +973,7 @@ func (mm *MIBManager) getVendorDirFromEnterpriseOID(enterpriseOID string) string
 		"1.3.6.1.4.1.6876":  "vmware",
 		"1.3.6.1.4.1.14823": "aruba",
 		"1.3.6.1.4.1.47196": "arubaos-cx",
-		"1.3.6.1.4.1.25506": "hp", // H3C/Comware (now HP)
+		"1.3.6.1.4.1.25506": "comware", // H3C/Comware
 		"1.3.6.1.4.1.12356": "fortinet",
 		"1.3.6.1.4.1.25461": "paloalto",
 		"1.3.6.1.4.1.1916":  "extreme",
@@ -1684,7 +1683,6 @@ func NewMIBDownloader(baseURL string, logger *logger.ModuleLogger) *MIBDownloade
 		cacheDir:   cacheDir,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		logger:     logger,
-		vendorMIBs: initializeVendorMIBMappings(),
 	}
 
 	// Try to load index (online or offline)
@@ -1693,22 +1691,6 @@ func NewMIBDownloader(baseURL string, logger *logger.ModuleLogger) *MIBDownloade
 	return downloader
 }
 
-// initializeVendorMIBMappings returns the mapping of enterprise OIDs to required MIBs
-func initializeVendorMIBMappings() map[string][]string {
-	return map[string][]string{
-		"1.3.6.1.4.1.9":     {"CISCO-SMI", "CISCO-ENVMON-MIB", "CISCO-ENTITY-ALARM-MIB"},
-		"1.3.6.1.4.1.2011":  {"HUAWEI-MIB", "HUAWEI-ENTITY-EXTENT-MIB"},
-		"1.3.6.1.4.1.25461": {"PAN-COMMON-MIB", "PAN-TRAPS"},
-		"1.3.6.1.4.1.12356": {"FORTINET-CORE-MIB", "FORTINET-FORTIGATE-MIB"},
-		"1.3.6.1.4.1.11":    {"HP-ICF-OID", "HP-ICF-CHASSIS", "FAN-MIB", "NETSWITCH-MIB", "HP-ICF-TC"},
-		"1.3.6.1.4.1.232":   {"CPQHOST", "CPQSTSYS", "CPQHLTH"},
-		"1.3.6.1.4.1.674":   {"DELL-RAC-MIB", "Dell-10892"},
-		"1.3.6.1.4.1.6876":  {"VMWARE-ROOT-MIB", "VMWARE-SYSTEM-MIB"},
-		"1.3.6.1.4.1.8072":  {"NET-SNMP-MIB", "NET-SNMP-AGENT-MIB"},
-		"1.3.6.1.4.1.1916":  {"EXTREME-BASE-MIB", "EXTREME-SYSTEM-MIB"},
-		"1.3.6.1.4.1.1991":  {"FOUNDRY-SN-ROOT-MIB", "FOUNDRY-SN-AGENT-MIB"},
-	}
-}
 
 // loadIndex attempts to load the MIB index from remote or local sources
 func (md *MIBDownloader) loadIndex() {
@@ -1889,63 +1871,12 @@ func (md *MIBDownloader) DetectVendorFromTrap(trap *ParsedTrap) *VendorInfo {
 		md.indexMutex.RUnlock()
 	}
 
-	// Fallback to legacy hardcoded mappings
-	md.logger.Debug().Msg("Using legacy vendor mappings")
-
-	for baseOID, mibs := range md.vendorMIBs {
-		normalizedBaseOID := strings.TrimPrefix(baseOID, ".")
-
-		if normalizedTrapOID == normalizedBaseOID || strings.HasPrefix(normalizedTrapOID, normalizedBaseOID+".") {
-			md.logger.Info().
-				Str("enterprise_oid", trap.EnterpriseOID).
-				Str("matched_base", baseOID).
-				Msg("✅ Enterprise OID matched vendor base (legacy)")
-			vendor := &VendorInfo{
-				Name:         md.getVendorName(baseOID),
-				EnterpriseOID: trap.EnterpriseOID,
-				RequiredMIBs: mibs,
-				Detected:     true,
-				LastSeen:     time.Now(),
-			}
-
-			md.logger.Info().
-				Str("vendor", vendor.Name).
-				Str("enterprise_oid", trap.EnterpriseOID).
-				Str("base_oid", baseOID).
-				Strs("required_mibs", vendor.RequiredMIBs).
-				Msg("🏢 Detected vendor from trap (legacy)")
-
-			return vendor
-		}
-	}
-	
-	md.logger.Info().
+	// No vendor found in index
+	md.logger.Warn().
 		Str("enterprise_oid", trap.EnterpriseOID).
-		Msg("❌ Unknown vendor detected")
-	
-	return nil
-}
+		Msg("❌ Unknown vendor - not found in MIB index")
 
-// getVendorName returns a human-readable vendor name for an enterprise OID
-func (md *MIBDownloader) getVendorName(enterpriseOID string) string {
-	vendorNames := map[string]string{
-		"1.3.6.1.4.1.9":     "Cisco",
-		"1.3.6.1.4.1.2011":  "Huawei",
-		"1.3.6.1.4.1.25461": "Palo Alto Networks",
-		"1.3.6.1.4.1.12356": "Fortinet",
-		"1.3.6.1.4.1.11":    "HP/HPE",
-		"1.3.6.1.4.1.674":   "Dell",
-		"1.3.6.1.4.1.6876":  "VMware",
-		"1.3.6.1.4.1.8072":  "Net-SNMP",
-		"1.3.6.1.4.1.1916":  "Extreme Networks",
-		"1.3.6.1.4.1.1991":  "Brocade",
-	}
-	
-	if name, exists := vendorNames[enterpriseOID]; exists {
-		return name
-	}
-	
-	return fmt.Sprintf("Unknown (%s)", enterpriseOID)
+	return nil
 }
 
 // DownloadVendorMIBs downloads and caches MIBs for a detected vendor
