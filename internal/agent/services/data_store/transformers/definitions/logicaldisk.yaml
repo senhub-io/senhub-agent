@@ -1,0 +1,104 @@
+probe_name: "logicaldisk"
+friendly_name: "Logical Disk Metrics"
+multi_instance_labels: ["device", "mount_point", "drive"]
+
+metrics:
+  # Windows Performance Counter Metrics
+  - name: "disk_free_mb"
+    channel: "disk_free_mb"
+    display_name: "Disk Free Mb ({drive})"
+    unit: "MB"
+    multi_instance_labels: ["drive"]
+    
+  - name: "disk_free_percent"
+    channel: "disk_free_percent"
+    display_name: "Disk Free Percent ({drive})"
+    unit: "%"
+    multi_instance_labels: ["drive"]
+    
+  - name: "disk_reads_sec"
+    channel: "disk_reads_sec"
+    display_name: "Disk Reads Sec ({drive})"
+    unit: "#"
+    multi_instance_labels: ["drive"]
+    
+  - name: "disk_writes_sec"
+    channel: "disk_writes_sec"
+    display_name: "Disk Writes Sec ({drive})"
+    unit: "#"
+    multi_instance_labels: ["drive"]
+    
+  - name: "disk_read_bytes_sec"
+    channel: "disk_read_bytes_sec"
+    display_name: "Disk Read Bytes Sec ({drive})"
+    unit: "bytes"
+    multi_instance_labels: ["drive"]
+    
+  - name: "disk_write_bytes_sec"
+    channel: "disk_write_bytes_sec"
+    display_name: "Disk Write Bytes Sec ({drive})"
+    unit: "bytes"
+    multi_instance_labels: ["drive"]
+    
+  - name: "disk_queue_length"
+    channel: "disk_queue_length"
+    display_name: "Disk Queue Length ({drive})"
+    unit: "#"
+    multi_instance_labels: ["drive"]
+
+  # Unix/Linux Filesystem Size Metrics (in bytes)
+  - name: "fs_total_bytes"
+    channel: "fs_total_bytes"
+    display_name: "Total Bytes ({mount_point})"
+    unit: "bytes"
+    multi_instance_labels: ["device", "mount_point"]
+    
+  - name: "fs_free_bytes"
+    channel: "fs_free_bytes"
+    display_name: "Free Bytes ({mount_point})"
+    unit: "bytes"
+    multi_instance_labels: ["device", "mount_point"]
+    
+  - name: "fs_used_bytes"
+    channel: "fs_used_bytes"
+    display_name: "Used Bytes ({mount_point})"
+    unit: "bytes"
+    multi_instance_labels: ["device", "mount_point"]
+    
+  - name: "fs_available_bytes"
+    channel: "fs_available_bytes"
+    display_name: "Available Bytes ({mount_point})"
+    unit: "bytes"
+    multi_instance_labels: ["device", "mount_point"]
+
+  # Unix/Linux Filesystem Usage Percentage
+  - name: "fs_used_percent"
+    channel: "fs_used_percent"
+    display_name: "Used Percent ({mount_point})"
+    unit: "%"
+    multi_instance_labels: ["device", "mount_point"]
+
+  # Unix/Linux Inode Metrics
+  - name: "fs_inodes_total"
+    channel: "fs_inodes_total"
+    display_name: "Inodes Total ({mount_point})"
+    unit: "#"
+    multi_instance_labels: ["device", "mount_point"]
+    
+  - name: "fs_inodes_free"
+    channel: "fs_inodes_free"
+    display_name: "Inodes Free ({mount_point})"
+    unit: "#"
+    multi_instance_labels: ["device", "mount_point"]
+    
+  - name: "fs_inodes_used"
+    channel: "fs_inodes_used"
+    display_name: "Inodes Used ({mount_point})"
+    unit: "#"
+    multi_instance_labels: ["device", "mount_point"]
+    
+  - name: "fs_inodes_used_percent"
+    channel: "fs_inodes_used_percent"
+    display_name: "Inodes Used Percent ({mount_point})"
+    unit: "%"
+    multi_instance_labels: ["device", "mount_point"]

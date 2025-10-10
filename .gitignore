@@ -4,7 +4,7 @@
 .LSOverride
 
 # Icon must end with two \r
-Icon
+Icon
 
 # Thumbnails
 ._*
@@ -59,3 +59,12 @@ go.work.sum
 /*.log
 /dist
 .air.toml
+
+**/.claude/settings.local.json
+
+# Security - Exclude certificate files
+*.pem
+*.key
+*.crt
+**/certs/
+/certs/

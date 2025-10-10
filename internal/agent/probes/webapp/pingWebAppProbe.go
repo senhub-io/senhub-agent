@@ -19,26 +19,41 @@ import (
 	"senhub-agent.go/internal/agent/validators"
 )
 
+// validateIPAddress ensures the IP address is valid and safe to use in commands
+func validateIPAddress(ip string) error {
+	if net.ParseIP(ip) == nil {
+		return fmt.Errorf("invalid IP address: %s", ip)
+	}
+	// Additional safety check - ensure no special characters that could be used for injection
+	if strings.ContainsAny(ip, ";|&$`<>(){}[]") {
+		return fmt.Errorf("unsafe characters in IP address: %s", ip)
+	}
+	return nil
+}
+
 type PingWebAppProbeConfig struct {
 	URL string
 }
 
 type PingWebAppProbe struct {
-	rawConfig map[string]interface{}
-	config    PingWebAppProbeConfig
-	logger    *logger.Logger
+	rawConfig    map[string]interface{}
+	config       PingWebAppProbeConfig
+	moduleLogger *logger.ModuleLogger
 }
 
-func NewPingWebAppProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
+func NewPingWebAppProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
 	parsedConfig, err := parsePingWebAppProbeConfig(config)
 	if err != nil {
 		return nil, err
 	}
 
+	// Create module-specific logger for webapp probe
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.webapp")
+
 	return &PingWebAppProbe{
-		rawConfig: config,
-		config:    parsedConfig,
-		logger:    logger,
+		rawConfig:    config,
+		config:       parsedConfig,
+		moduleLogger: moduleLogger,
 	}, nil
 }
 
@@ -61,11 +76,11 @@ func parsePingWebAppProbeConfig(config map[string]interface{}) (PingWebAppProbeC
 }
 
 func (p *PingWebAppProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg"}
+	return []string{"senhub", "prtg", "http"}
 }
 
 func (p *PingWebAppProbe) GetName() string {
-	return "pingWebAppProbe"
+	return "ping_webapp"
 }
 
 func (p *PingWebAppProbe) ShouldStart() bool {
@@ -99,10 +114,16 @@ func (p *PingWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 			fmt.Sprintf("%s_[name]", urlTagKey)),
 	}
 
-	return []data_store.DataPoint{
+	datapoints := []data_store.DataPoint{
 		{Name: "averageLatency", Timestamp: time.Now(), Value: float32(averageLatency), Tags: tags},
 		{Name: "packetLoss", Timestamp: time.Now(), Value: float32(packetLoss), Tags: tags},
-	}, nil
+	}
+
+	// Create base probe for enrichment
+	baseProbe := &types.BaseProbe{}
+	enrichedDatapoints := baseProbe.EnrichDataPointsWithProbeName(datapoints, p.GetName())
+
+	return enrichedDatapoints, nil
 }
 
 func (p *PingWebAppProbe) resolveHostname(rawURL string) (string, error) {
@@ -143,8 +164,12 @@ func (p *PingWebAppProbe) collectPing(ip string) (float32, float32, error) {
 }
 
 func (p *PingWebAppProbe) collectPingWebAppWindows(ip string) (float32, float32, error) {
+	if err := validateIPAddress(ip); err != nil {
+		return 0, 0, fmt.Errorf("invalid IP address: %w", err)
+	}
+
 	count := 10
-	cmd := exec.Command("ping", "-n", strconv.Itoa(count), ip)
+	cmd := exec.Command("ping", "-n", strconv.Itoa(count), ip) // #nosec G204 - IP address is validated above
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -161,8 +186,12 @@ func (p *PingWebAppProbe) collectPingWebAppWindows(ip string) (float32, float32,
 }
 
 func (p *PingWebAppProbe) collectPingWebAppLinux(ip string) (float32, float32, error) {
+	if err := validateIPAddress(ip); err != nil {
+		return 0, 0, fmt.Errorf("invalid IP address: %w", err)
+	}
+
 	count := 10
-	cmd := exec.Command("ping", "-c", strconv.Itoa(count), ip)
+	cmd := exec.Command("ping", "-c", strconv.Itoa(count), ip) // #nosec G204 - IP address is validated above
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -179,8 +208,12 @@ func (p *PingWebAppProbe) collectPingWebAppLinux(ip string) (float32, float32, e
 }
 
 func (p *PingWebAppProbe) collectPingWebAppDarwin(ip string) (float32, float32, error) {
+	if err := validateIPAddress(ip); err != nil {
+		return 0, 0, fmt.Errorf("invalid IP address: %w", err)
+	}
+
 	count := 10
-	cmd := exec.Command("ping", "-c", strconv.Itoa(count), ip)
+	cmd := exec.Command("ping", "-c", strconv.Itoa(count), ip) // #nosec G204 - IP address is validated above
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
