@@ -1,0 +1,22 @@
+# CPU Metrics Friendly Naming Patterns for PRTG
+patterns:
+  # CPU metrics
+  "cpu_usage_total": "CPU Usage"
+  "cpu_system": "CPU System Time"
+  "cpu_user": "CPU User Time"
+  "cpu_idle": "CPU Idle Time"
+  "cpu_nice": "CPU Nice Time"
+  "cpu_iowait": "CPU I/O Wait"
+  "cpu_irq": "CPU IRQ Time"
+  "cpu_softirq": "CPU Soft IRQ Time"
+  "cpu_steal": "CPU Steal Time"
+  "cpu_load1": "CPU Load - 1 minute"
+  "cpu_load5": "CPU Load - 5 minutes" 
+  "cpu_load15": "CPU Load - 15 minutes"
+  "cpu_core_usage": "CPU Core {core} Usage"
+
+# Unit mappings
+units:
+  percentage: "%"
+  load: ""
+  count: "#"

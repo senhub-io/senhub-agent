@@ -6,11 +6,34 @@ package pdh
 import (
 	"fmt"
 	"golang.org/x/sys/windows"
-	"log"
 	"strings"
 	"sync"
 	"unsafe"
+	
+	"senhub-agent.go/internal/agent/services/logger"
 )
+
+var (
+	// moduleLogger for PDH operations - initialized with basic logger
+	moduleLogger *logger.ModuleLogger
+)
+
+// InitializePDHLogger initializes the PDH module logger
+func InitializePDHLogger(baseLogger *logger.Logger) {
+	moduleLogger = logger.NewModuleLogger(baseLogger, "pdh.windows")
+}
+
+// logDebug safely logs debug messages, falling back to no-op if logger not initialized
+func logDebug(msg string, args ...interface{}) {
+	if moduleLogger != nil {
+		if len(args) > 0 {
+			moduleLogger.Debug().Msgf(msg, args...)
+		} else {
+			moduleLogger.Debug().Msg(msg)
+		}
+	}
+	// If moduleLogger is nil, do nothing (silent fallback)
+}
 
 const (
 	PDH_CSTATUS_VALID_DATA                     = 0x00000000
@@ -331,19 +354,19 @@ func GetLocalizedCounterName(englishName string) (string, error) {
 
 func GetInstancesList(objectName string, debug bool) ([]string, error) {
 	if debug {
-		log.Printf("GetInstancesList: Starting enumeration for object '%s'", objectName)
+		logDebug("GetInstancesList: Starting enumeration for object '%s'", objectName)
 	}
 
 	localizedName, err := GetLocalizedCounterName(objectName)
 	if err != nil {
 		if debug {
-			log.Printf("GetInstancesList: Failed to get localized name: %v", err)
+			logDebug("GetInstancesList: Failed to get localized name: %v", err)
 		}
 		return nil, fmt.Errorf("failed to get localized name: %v", err)
 	}
 
 	if debug {
-		log.Printf("GetInstancesList: Got localized name '%s' for '%s'", localizedName, objectName)
+		logDebug("GetInstancesList: Got localized name '%s' for '%s'", localizedName, objectName)
 	}
 
 	objectNameUTF16, err := windows.UTF16PtrFromString(localizedName)
@@ -367,7 +390,7 @@ func GetInstancesList(objectName string, debug bool) ([]string, error) {
 		0)
 
 	if debug {
-		log.Printf("GetInstancesList: First call returned 0x%X, counter size: %d, instance size: %d",
+		logDebug("GetInstancesList: First call returned 0x%X, counter size: %d, instance size: %d",
 			ret, counterSize, instanceSize)
 	}
 
@@ -388,7 +411,7 @@ func GetInstancesList(objectName string, debug bool) ([]string, error) {
 		0)
 
 	if debug {
-		log.Printf("GetInstancesList: Second call returned 0x%X", ret)
+		logDebug("GetInstancesList: Second call returned 0x%X", ret)
 	}
 
 	if ret == PDH_CSTATUS_VALID_DATA {
@@ -402,7 +425,7 @@ func GetInstancesList(objectName string, debug bool) ([]string, error) {
 					instance := windows.UTF16ToString(currentInstance)
 					if instance != "" && instance != "_Total" {
 						if debug {
-							log.Printf("GetInstancesList: Found instance: '%s'", instance)
+							logDebug("GetInstancesList: Found instance: '%s'", instance)
 						}
 						instances = append(instances, instance)
 					}
@@ -419,7 +442,7 @@ func GetInstancesList(objectName string, debug bool) ([]string, error) {
 	}
 
 	if debug {
-		log.Printf("GetInstancesList: No valid instances found, error code: 0x%X", ret)
+		logDebug("GetInstancesList: No valid instances found, error code: 0x%X", ret)
 	}
 	return nil, fmt.Errorf("no valid instances found (error code: 0x%X)", ret)
 }
@@ -438,7 +461,7 @@ func NewQuery() (*Query, error) {
 }
 
 func (q *Query) AddCounter(path string) error {
-	log.Printf("Adding counter with path: %s", path)
+	logDebug("Adding counter with path: %s", path)
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 
@@ -497,7 +520,7 @@ func (q *Query) GetCounterValue(path string) (float64, error) {
 			GetPdhErrorText(counterValue.CStatus), counterValue.CStatus, path)
 	}
 
-	log.Printf("Successfully got value for %s: %f", path, counterValue.Value)
+	logDebug("Successfully got value for %s: %f", path, counterValue.Value)
 	return counterValue.Value, nil
 }
 
@@ -509,7 +532,7 @@ func (q *Query) Close() {
 
 func BuildCounterPath(path string, instance string) string {
 	if instance == "" {
-		log.Printf("Built path without instance: %s", path)
+		logDebug("Built path without instance: %s", path)
 		return path
 	}
 
@@ -519,10 +542,10 @@ func BuildCounterPath(path string, instance string) string {
 			parts[1],
 			instance,
 			strings.Join(parts[2:], "\\"))
-		log.Printf("Built path with instance: %s", builtPath)
+		logDebug("Built path with instance: %s", builtPath)
 		return builtPath
 	}
 
-	log.Printf("Fallback path: %s", path)
+	logDebug("Fallback path: %s", path)
 	return path
 }

@@ -28,10 +28,11 @@ func UpdateAgent(args *cliArgs.ParsedArgs) {
 	remoteConfiguration := configuration.NewRemoteConfiguration(
 		senhubServer,
 		logger,
+		args,
 	)
 
 	updater := auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
-		RemoteConfig: remoteConfiguration,
+		ConfigSource: remoteConfiguration,
 		Logger:       logger,
 		DryRun:       args.DryRun,
 	})
@@ -40,5 +41,7 @@ func UpdateAgent(args *cliArgs.ParsedArgs) {
 	// This is not required given configuration comes from CLI args
 	// err := remoteConfiguration.UpdateSync()
 
-	updater.Update(args.WantedVersion, args.UpdateRegistryUrl)
+	if _, err := updater.Update(args.WantedVersion, args.UpdateRegistryUrl); err != nil {
+		logger.Error().Err(err).Msg("Failed to update agent")
+	}
 }

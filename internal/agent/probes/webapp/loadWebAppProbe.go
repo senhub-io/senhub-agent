@@ -50,21 +50,24 @@ type LoadWebAppProbeConfig struct {
 }
 
 type LoadWebAppProbe struct {
-	rawConfig map[string]interface{}
-	config    LoadWebAppProbeConfig
-	logger    *logger.Logger
+	rawConfig    map[string]interface{}
+	config       LoadWebAppProbeConfig
+	moduleLogger *logger.ModuleLogger
 }
 
-func NewLoadWebAppProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
+func NewLoadWebAppProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
 	parsedConfig, err := parseLoadWebAppProbeConfig(config)
 	if err != nil {
 		return nil, err
 	}
 
+	// Create module-specific logger for loadwebapp probe
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.loadwebapp")
+
 	return &LoadWebAppProbe{
-		rawConfig: config,
-		config:    parsedConfig,
-		logger:    logger,
+		rawConfig:    config,
+		config:       parsedConfig,
+		moduleLogger: moduleLogger,
 	}, nil
 }
 
@@ -103,11 +106,11 @@ func parseLoadWebAppProbeConfig(config map[string]interface{}) (LoadWebAppProbeC
 }
 
 func (p *LoadWebAppProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg"}
+	return []string{"senhub", "prtg", "http"}
 }
 
 func (p *LoadWebAppProbe) GetName() string {
-	return "loadWebAppProbe"
+	return "load_webapp"
 }
 
 func (p *LoadWebAppProbe) ShouldStart() bool {
@@ -135,25 +138,31 @@ func (p *LoadWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 			fmt.Sprintf("%s_[name]", urlTagKey)),
 	}
 
-	return []data_store.DataPoint{
+	datapoints := []data_store.DataPoint{
 		{Name: "dnstime", Timestamp: time.Now(), Value: float32(metrics.dnsDone.Sub(metrics.dnsStart).Milliseconds()), Tags: tags},
 		{Name: "connecttime", Timestamp: time.Now(), Value: float32(metrics.connectDone.Sub(metrics.connectStart).Milliseconds()), Tags: tags},
 		{Name: "tlstime", Timestamp: time.Now(), Value: float32(metrics.tlsHandshakeDone.Sub(metrics.tlsHandshakeStart).Milliseconds()), Tags: tags},
 		{Name: "ttfb", Timestamp: time.Now(), Value: float32(metrics.firstByteDone.Sub(metrics.firstByteStart).Milliseconds()), Tags: tags},
 		{Name: "total_time", Timestamp: time.Now(), Value: float32(metrics.completed.Sub(metrics.dnsStart).Milliseconds()), Tags: tags},
-	}, nil
+	}
+
+	// Create base probe for enrichment
+	baseProbe := &types.BaseProbe{}
+	enrichedDatapoints := baseProbe.EnrichDataPointsWithProbeName(datapoints, p.GetName())
+
+	return enrichedDatapoints, nil
 }
 
 func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error) {
 	parsedURL, err := url.Parse(pageURL)
 	if err != nil {
-		p.logger.Error().Err(err).Msg("Failed to parse URL")
+		p.moduleLogger.Error().Err(err).Msg("Failed to parse URL")
 		return nil, err
 	}
 
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		err := fmt.Errorf("invalid URL scheme: %s, must be http or https", parsedURL.Scheme)
-		p.logger.Error().Msg(err.Error())
+		p.moduleLogger.Error().Msg(err.Error())
 		return nil, err
 	}
 
@@ -187,7 +196,7 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error
 
 	req, err := http.NewRequestWithContext(ctx, "GET", pageURL, nil)
 	if err != nil {
-		p.logger.Error().Err(err).Msg("Failed to create request")
+		p.moduleLogger.Error().Err(err).Msg("Failed to create request")
 		return nil, err
 	}
 
@@ -200,6 +209,7 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: false, // Gardez false pour la sécurité
+				MinVersion:         tls.VersionTLS12,
 			},
 			// Ajout de timeouts plus spécifiques
 			TLSHandshakeTimeout:   10 * time.Second,
@@ -215,25 +225,25 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error
 		var netErr net.Error
 		if errors.As(err, &netErr) {
 			if netErr.Timeout() {
-				p.logger.Error().Err(err).Msg("Request timed out")
+				p.moduleLogger.Error().Err(err).Msg("Request timed out")
 				return nil, fmt.Errorf("request timed out: %w", err)
 			}
 		}
 
 		// Gestion des erreurs de certificat
 		if strings.Contains(err.Error(), "x509") || strings.Contains(err.Error(), "certificate") {
-			p.logger.Error().Err(err).Msg("SSL/TLS certificate error")
+			p.moduleLogger.Error().Err(err).Msg("SSL/TLS certificate error")
 			return nil, fmt.Errorf("certificate error: %w", err)
 		}
 
 		// Gestion des erreurs de contexte
 		if ctx.Err() == context.DeadlineExceeded {
-			p.logger.Error().Err(err).Msgf("Request timed out after %v", p.config.Timeout)
+			p.moduleLogger.Error().Err(err).Msgf("Request timed out after %v", p.config.Timeout)
 			return nil, fmt.Errorf("request timed out after %v: %w", p.config.Timeout, err)
 		}
 
 		// Autres erreurs réseau
-		p.logger.Error().Err(err).Msg("Network error occurred")
+		p.moduleLogger.Error().Err(err).Msg("Network error occurred")
 		return nil, fmt.Errorf("network error: %w", err)
 	}
 	defer resp.Body.Close()
@@ -241,7 +251,7 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error
 	// Vérification du code de statut
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		err := fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-		p.logger.Error().Err(err).Int("status_code", resp.StatusCode).Msg("HTTP error")
+		p.moduleLogger.Error().Err(err).Int("status_code", resp.StatusCode).Msg("HTTP error")
 		return nil, err
 	}
 
@@ -258,11 +268,11 @@ func (p *LoadWebAppProbe) measurePageLoad(pageURL string) (*timingMetrics, error
 	select {
 	case err := <-bodyDone:
 		if err != nil {
-			p.logger.Error().Err(err).Msg("Error reading response body")
+			p.moduleLogger.Error().Err(err).Msg("Error reading response body")
 			return nil, fmt.Errorf("error reading response body: %w", err)
 		}
 	case <-bodyCtx.Done():
-		p.logger.Error().Msg("Timeout reading response body")
+		p.moduleLogger.Error().Msg("Timeout reading response body")
 		return nil, fmt.Errorf("timeout reading response body")
 	}
 

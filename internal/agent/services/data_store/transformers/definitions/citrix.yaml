@@ -1,0 +1,165 @@
+probe_name: "citrix"
+friendly_name: "Citrix Virtual Apps and Desktops"
+
+metrics:
+  # Session Metrics
+  - name: "sessions_connected"
+    channel: "sessions_connected"
+    display_name: "Sessions Connected"
+    unit: "#"
+    
+  - name: "sessions_disconnected"
+    channel: "sessions_disconnected"
+    display_name: "Sessions Disconnected"
+    unit: "#"
+
+  # Machine Infrastructure Metrics
+  - name: "machines_total"
+    channel: "machines_total"
+    display_name: "Machines Total"
+    unit: "#"
+    
+  - name: "machines_registered"
+    channel: "machines_registered"
+    display_name: "Machines Registered"
+    unit: "#"
+    
+  - name: "machines_unregistered"
+    channel: "machines_unregistered"
+    display_name: "Machines Unregistered"
+    unit: "#"
+    
+  - name: "machines_faulty"
+    channel: "machines_faulty"
+    display_name: "Machines Faulty"
+    unit: "#"
+    
+  - name: "machines_maintenance"
+    channel: "machines_maintenance"
+    display_name: "Machines in Maintenance"
+    unit: "#"
+
+  # Logon Performance Metrics (Time units)
+  - name: "logon_duration_avg_1h"
+    channel: "logon_duration_avg_1h"
+    display_name: "Logon Duration Average (1h)"
+    unit: "s"
+    
+  - name: "logon_duration_total"
+    channel: "logon_duration_total"
+    display_name: "Logon Duration Total"
+    unit: "s"
+    
+  - name: "logon_sessions_opened"
+    channel: "logon_sessions_opened"
+    display_name: "Logon Sessions Opened"
+    unit: "#"
+
+  # Logon Phase Breakdown Metrics (Time units)
+  - name: "logon_brokering"
+    channel: "logon_brokering"
+    display_name: "Logon Brokering"
+    unit: "s"
+    
+  - name: "logon_vmstart"
+    channel: "logon_vmstart"
+    display_name: "Logon VM Start"
+    unit: "s"
+    
+  - name: "logon_hdx"
+    channel: "logon_hdx"
+    display_name: "Logon HDX"
+    unit: "s"
+    
+  - name: "logon_authentication"
+    channel: "logon_authentication"
+    display_name: "Logon Authentication"
+    unit: "s"
+    
+  - name: "logon_gpo"
+    channel: "logon_gpo"
+    display_name: "Logon GPO"
+    unit: "s"
+    
+  - name: "logon_scripts"
+    channel: "logon_scripts"
+    display_name: "Logon Scripts"
+    unit: "s"
+    
+  - name: "logon_profile"
+    channel: "logon_profile"
+    display_name: "Logon Profile"
+    unit: "s"
+    
+  - name: "logon_interactive"
+    channel: "logon_interactive"
+    display_name: "Logon Interactive"
+    unit: "s"
+
+  # Connection Failure Metrics (Director: "Échecs de connexion utilisateur")
+  - name: "failures_total"
+    channel: "failures_total"
+    display_name: "Connection Failures Total"
+    unit: "#"
+    
+  - name: "client_connection_failures"
+    channel: "client_connection_failures"
+    display_name: "Client Connection Failures"
+    unit: "#"
+    
+  - name: "configuration_errors"
+    channel: "configuration_errors"
+    display_name: "Configuration Errors"
+    unit: "#"
+    
+  - name: "machine_failures"
+    channel: "machine_failures"
+    display_name: "Machine Failures"
+    unit: "#"
+    
+  - name: "capacity_unavailable"
+    channel: "capacity_unavailable"
+    display_name: "Capacity Unavailable"
+    unit: "#"
+    
+  - name: "licenses_unavailable"
+    channel: "licenses_unavailable"
+    display_name: "Licenses Unavailable"
+    unit: "#"
+    
+  - name: "other_failures"
+    channel: "other_failures"
+    display_name: "Other Failures"
+    unit: "#"
+
+  # Machine Fault State Metrics (Director: "Machines par état")
+  - name: "boot_failure"
+    channel: "boot_failure"
+    display_name: "Boot Failure"
+    unit: "#"
+    
+  - name: "stuck_at_boot"
+    channel: "stuck_at_boot"
+    display_name: "Stuck At Boot"
+    unit: "#"
+    
+  - name: "unregistered"
+    channel: "unregistered"
+    display_name: "Unregistered"
+    unit: "#"
+    
+  - name: "max_capacity"
+    channel: "max_capacity"
+    display_name: "Max Capacity"
+    unit: "#"
+    
+  - name: "vm_not_found"
+    channel: "vm_not_found"
+    display_name: "VM Not Found"
+    unit: "#"
+    
+  - name: "unknown"
+    channel: "unknown"
+    display_name: "Unknown"
+    unit: "#"
+

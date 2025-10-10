@@ -1,0 +1,18 @@
+# Network Metrics Friendly Naming Patterns for PRTG
+patterns:
+  # Network metrics
+  "bytes_sent": "Network Bytes Sent/sec"
+  "bytes_received": "Network Bytes Received/sec"
+  "packets_sent": "Network Packets Sent/sec"
+  "packets_received": "Network Packets Received/sec"
+  "errors_sent": "Network Errors Sent/sec"
+  "errors_received": "Network Errors Received/sec"
+  "discards_sent": "Network Discards Sent/sec"
+  "discards_received": "Network Discards Received/sec"
+
+# Unit mappings
+units:
+  bytes: "Bytes"
+  count: "#"
+  bps: "Bytes/s"
+  mbps: "Mbps"
