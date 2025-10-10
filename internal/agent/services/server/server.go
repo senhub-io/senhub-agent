@@ -29,20 +29,21 @@ type Server interface {
 
 // server implements Server interface
 type server struct {
-	authenticationKey string         // Key for server authentication
-	logger            *logger.Logger // Structured logging
-	url               string         // Base server URL
-	http              *http.Client   // Retry-enabled HTTP client
+	authenticationKey string               // Key for server authentication
+	moduleLogger      *logger.ModuleLogger // Structured logging
+	url               string               // Base server URL
+	http              *http.Client         // Retry-enabled HTTP client
 }
 
 // NewServer creates server client with automatic retry and auth handling
 func NewServer(
 	authenticationKey string,
 	url string,
-	logger *logger.Logger,
+	baseLogger *logger.Logger,
 ) Server {
-	localLogger := logger.With().Str("service", "Server").Logger()
-	localLogger.Debug().
+	// Create module-specific logger for server service
+	moduleLogger := logger.NewModuleLogger(baseLogger, "server")
+	moduleLogger.Debug().
 		Str("url", url).
 		Msg("[DEBUG] Creating new server client")
 	http := httpretry.NewDefaultClient(
@@ -52,14 +53,14 @@ func NewServer(
 	return &server{
 		authenticationKey: authenticationKey,
 		url:               url,
-		logger:            &localLogger,
+		moduleLogger:      moduleLogger,
 		http:              http,
 	}
 }
 
 // NewRequest creates authenticated HTTP request with proper headers
 func (s *server) NewRequest(method string, url string, body io.Reader) (*http.Request, error) {
-	s.logger.Debug().
+	s.moduleLogger.Debug().
 		Str("method", method).
 		Str("url", url).
 		Msg("Creating new request")
@@ -78,7 +79,7 @@ func (s *server) Get(urlPath string) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to join URL path: %v", err)
 	}
 
-	s.logger.Debug().Str("url", fullUrl).Msg("Making GET request")
+	s.moduleLogger.Debug().Str("url", fullUrl).Msg("Making GET request")
 	req, err := s.NewRequest("GET", fullUrl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GET request: %v", err)
@@ -99,7 +100,7 @@ func (s *server) Post(urlPath string, data any) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to marshal JSON: %v", err)
 	}
 
-	s.logger.Debug().Str("url", fullUrl).Msg("Making POST request")
+	s.moduleLogger.Debug().Str("url", fullUrl).Msg("Making POST request")
 	req, err := s.NewRequest("POST", fullUrl, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create POST request: %v", err)
@@ -122,7 +123,7 @@ func (s *server) PostStream(urlPath string, streamBody string) (*http.Response, 
 		return nil, fmt.Errorf("failed to join URL path: %v", err)
 	}
 
-	s.logger.Debug().Str("url", fullUrl).Msg("Making POST stream request")
+	s.moduleLogger.Debug().Str("url", fullUrl).Msg("Making POST stream request")
 	req, err := s.NewRequest("POST", fullUrl, strings.NewReader(streamBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream request: %v", err)

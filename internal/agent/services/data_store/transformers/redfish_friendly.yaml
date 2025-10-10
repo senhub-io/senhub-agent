@@ -1,0 +1,54 @@
+# Redfish Friendly Naming Patterns for PRTG
+patterns:
+  # Thermal metrics
+  "thermal.cpu.{index}.temperature": "CPU Temperature - Processor {index}"
+  "thermal.memory.{index}.temperature": "Memory Temperature - DIMM {index}"
+  "thermal.system.temperature": "System Temperature"
+  "thermal.ambient.temperature": "Ambient Temperature"
+  "thermal.fan.{index}.speed": "Fan Speed - Fan {index}"
+  "thermal.fan.{index}.health": "Fan Health - Fan {index}"
+  
+  # Power metrics
+  "power.psu.{index}.output_watts": "Power Supply - PSU{index} Output"
+  "power.psu.{index}.input_watts": "Power Supply - PSU{index} Input"
+  "power.psu.{index}.health": "Power Supply - PSU{index} Health"
+  "power.system.total_watts": "System Total Power Consumption"
+  "power.cpu.{index}.watts": "CPU Power - Processor {index}"
+  
+  # System metrics
+  "system.health": "System Health Status"
+  "system.power_state": "System Power State"
+  "system.boot_source": "Boot Source Override"
+  
+  # Memory metrics
+  "memory.{index}.health": "Memory Health - DIMM {index}"
+  "memory.{index}.capacity_gb": "Memory Capacity - DIMM {index}"
+  "memory.total.capacity_gb": "Total Memory Capacity"
+  "memory.total.health": "Overall Memory Health"
+  
+  # Processor metrics
+  "processor.{index}.health": "Processor Health - CPU {index}"
+  "processor.{index}.cores": "Processor Cores - CPU {index}"
+  "processor.{index}.threads": "Processor Threads - CPU {index}"
+  
+  # Storage metrics
+  "storage.controller.{index}.health": "Storage Controller - Controller {index} Health"
+  "storage.drive.{index}.health": "Storage Drive - Drive {index} Health"
+  "storage.drive.{index}.capacity_gb": "Storage Drive - Drive {index} Capacity"
+  "storage.volume.{index}.health": "Storage Volume - Volume {index} Health"
+  "storage.volume.{index}.capacity_gb": "Storage Volume - Volume {index} Capacity"
+  "storage.volume.{index}.used_gb": "Storage Volume - Volume {index} Used Space"
+  
+  # Network metrics
+  "network.adapter.{index}.health": "Network Adapter - Port {index} Health"
+  "network.adapter.{index}.link_status": "Network Adapter - Port {index} Link Status"
+
+# Unit mappings
+units:
+  temperature: "°C"
+  power: "W"
+  capacity: "GB"
+  speed: "RPM"
+  percentage: "%"
+  count: "#"
+  status: ""

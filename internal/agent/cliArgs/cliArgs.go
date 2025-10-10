@@ -3,6 +3,7 @@ package cliArgs
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/alexflint/go-arg"
 )
@@ -45,21 +46,53 @@ type UpdateSubcommandArgs struct {
 }
 
 type StartSubcommandArgs struct {
-	AuthenticationKey string `arg:"required,--authentication-key,env:SENHUB_KEY" help:"The authentication key for the agent"`
-	ServerUrl         string `arg:"--server-url,env:SENHUB_SERVER_URL" help:"The URL of senhub server to connect to"`
-	Verbose           bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
+	AuthenticationKey     string            `arg:"--authentication-key,env:SENHUB_KEY" help:"The authentication key for the agent"`
+	ServerUrl             string            `arg:"--server-url,env:SENHUB_SERVER_URL" help:"The URL of senhub server to connect to"`
+	Verbose               bool              `arg:"-v,--verbose" help:"Enable verbose logging"`
+	DebugModules          string            `arg:"--debug-modules" help:"Enable debug logging only for specific modules (comma-separated: strategy.http,cache,probe.redfish)"`
+	DebugLogShipperUrl    string            `arg:"--debug-log-shipper-url,env:SENHUB_DEBUG_LOG_SHIPPER_URL" help:"URL of remote endpoint for shipping debug logs"`
+	DebugLogShipperTags   map[string]string `arg:"--debug-log-shipper-tags,env:SENHUB_DEBUG_LOG_SHIPPER_TAGS" help:"Tags to add to debug log entries (format: key1=value1,key2=value2)"`
+	DebugLogShipperBuffer int               `arg:"--debug-log-shipper-buffer,env:SENHUB_DEBUG_LOG_SHIPPER_BUFFER" help:"Buffer size for debug log shipper"`
+
+	// Offline mode options
+	Offline    bool   `arg:"--offline" help:"Run in offline mode with local configuration"`
+	ConfigPath string `arg:"--config-path" help:"Path to local configuration file (default: ./agent-config.yaml)"`
+
+	// HTTPS options for offline mode
+	EnableHttps   bool   `arg:"--enable-https" help:"Enable HTTPS for HTTP strategy"`
+	HttpsPort     int    `arg:"--https-port" help:"HTTPS port (default: 8443)"`
+	HttpsHosts    string `arg:"--https-hosts" help:"Comma-separated hostnames for certificate SAN (default: localhost,127.0.0.1)"`
+	CertFile      string `arg:"--cert-file" help:"Path to custom TLS certificate file"`
+	KeyFile       string `arg:"--key-file" help:"Path to custom TLS private key file"`
+	MinTlsVersion string `arg:"--min-tls-version" help:"Minimum TLS version (1.2, 1.3) (default: 1.2)"`
 }
 
 type ParsedArgs struct {
-	AuthenticationKey string
-	ServerUrl         string
-	UpdateRegistryUrl string
-	Verbose           bool
-	Env               string
-	Version           string
-	WantedVersion     string
-	CommitHash        string
-	DryRun            bool
+	AuthenticationKey     string
+	ServerUrl             string
+	UpdateRegistryUrl     string
+	Verbose               bool
+	DebugModules          []string
+	Env                   string
+	Version               string
+	WantedVersion         string
+	CommitHash            string
+	DryRun                bool
+	DebugLogShipperUrl    string
+	DebugLogShipperTags   map[string]string
+	DebugLogShipperBuffer int
+
+	// Offline mode options
+	Offline    bool
+	ConfigPath string
+
+	// HTTPS options
+	EnableHttps   bool
+	HttpsPort     int
+	HttpsHosts    []string
+	CertFile      string
+	KeyFile       string
+	MinTlsVersion string
 }
 
 func GetVersionInfo() map[string]string {
@@ -130,22 +163,77 @@ func MustParse() *ParsedArgs {
 }
 
 func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *ParsedArgs {
-	// If ServerUrl is not specified, use default value
+	// If ServerUrl is not specified, use default value (unless offline mode)
 	serverUrl := args.ServerUrl
-	if serverUrl == "" {
+	if serverUrl == "" && !args.Offline {
 		serverUrl = defaultServerURL()
-		if serverUrl == "" {
-			log.Printf("Warning: Default server URL is not set for environment %s", environment)
+		// Note: Default server URL not set for this environment
+	}
+
+	// Parse debug modules from comma-separated string
+	var debugModules []string
+	if args.DebugModules != "" {
+		debugModules = strings.Split(args.DebugModules, ",")
+		// Trim whitespace from each module
+		for i, module := range debugModules {
+			debugModules[i] = strings.TrimSpace(module)
 		}
 	}
 
+	// Parse HTTPS hosts from comma-separated string
+	var httpsHosts []string
+	if args.HttpsHosts != "" {
+		httpsHosts = strings.Split(args.HttpsHosts, ",")
+		// Trim whitespace from each host
+		for i, host := range httpsHosts {
+			httpsHosts[i] = strings.TrimSpace(host)
+		}
+	} else {
+		// Default hosts for certificate SAN
+		httpsHosts = []string{"localhost", "127.0.0.1"}
+	}
+
+	// Set default config path if not specified
+	configPath := args.ConfigPath
+	if configPath == "" {
+		configPath = "./agent-config.yaml"
+	}
+
+	// Set default HTTPS port if not specified
+	httpsPort := args.HttpsPort
+	if httpsPort == 0 {
+		httpsPort = 8443
+	}
+
+	// Set default minimum TLS version
+	minTlsVersion := args.MinTlsVersion
+	if minTlsVersion == "" {
+		minTlsVersion = "1.2"
+	}
+
 	return &ParsedArgs{
-		AuthenticationKey: args.AuthenticationKey,
-		ServerUrl:         serverUrl,
-		Verbose:           args.Verbose,
-		Env:               environment,
-		Version:           Version,
-		CommitHash:        CommitHash,
+		AuthenticationKey:     args.AuthenticationKey,
+		ServerUrl:             serverUrl,
+		Verbose:               args.Verbose,
+		DebugModules:          debugModules,
+		Env:                   environment,
+		Version:               Version,
+		CommitHash:            CommitHash,
+		DebugLogShipperUrl:    args.DebugLogShipperUrl,
+		DebugLogShipperTags:   args.DebugLogShipperTags,
+		DebugLogShipperBuffer: args.DebugLogShipperBuffer,
+
+		// Offline mode options
+		Offline:    args.Offline,
+		ConfigPath: configPath,
+
+		// HTTPS options
+		EnableHttps:   args.EnableHttps,
+		HttpsPort:     httpsPort,
+		HttpsHosts:    httpsHosts,
+		CertFile:      args.CertFile,
+		KeyFile:       args.KeyFile,
+		MinTlsVersion: minTlsVersion,
 	}
 }
 
@@ -154,9 +242,7 @@ func parsedArgsFromUpdateArgs(args *UpdateSubcommandArgs, environment string) *P
 	serverUrl := args.ServerUrl
 	if serverUrl == "" {
 		serverUrl = defaultServerURL()
-		if serverUrl == "" {
-			log.Printf("Warning: Default server URL is not set for environment %s", environment)
-		}
+		// Note: Default server URL not set for this environment
 	}
 
 	return &ParsedArgs{

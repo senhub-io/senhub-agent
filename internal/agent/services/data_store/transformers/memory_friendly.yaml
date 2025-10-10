@@ -1,0 +1,21 @@
+# Memory Metrics Friendly Naming Patterns for PRTG
+patterns:
+  # Memory metrics
+  "memory_used_percent": "Memory Usage"
+  "memory_available_percent": "Memory Available"
+  "memory_total": "Memory Total"
+  "memory_available": "Memory Available"
+  "memory_used": "Memory Used"
+  "memory_free": "Memory Free"
+  "memory_cached": "Memory Cached"
+  "memory_buffers": "Memory Buffers"
+  "swap_total": "Swap Total"
+  "swap_used": "Swap Used"
+  "swap_free": "Swap Free"
+  "swap_used_percent": "Swap Usage"
+
+# Unit mappings
+units:
+  percentage: "%"
+  bytes: "Bytes"
+  count: "#"
