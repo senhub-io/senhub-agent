@@ -17,25 +17,39 @@ import (
 	"senhub-agent.go/internal/agent/tags"
 )
 
-type PingGatewayProbe struct {
-	rawConfig map[string]interface{}
-	logger    *logger.Logger
+// validateIPAddress ensures the IP address is valid and safe to use in commands
+func validateIPAddress(ip string) error {
+	if net.ParseIP(ip) == nil {
+		return fmt.Errorf("invalid IP address: %s", ip)
+	}
+	// Additional safety check - ensure no special characters that could be used for injection
+	if strings.ContainsAny(ip, ";|&$`<>(){}[]") {
+		return fmt.Errorf("unsafe characters in IP address: %s", ip)
+	}
+	return nil
 }
 
-func NewPingGatewayProbe(config map[string]interface{}, logger *logger.Logger) (types.Probe, error) {
-	// No validation needed for this probe
+type PingGatewayProbe struct {
+	rawConfig    map[string]interface{}
+	moduleLogger *logger.ModuleLogger
+}
+
+func NewPingGatewayProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
+	// Create module-specific logger for gateway probe
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.gateway")
+
 	return &PingGatewayProbe{
-		rawConfig: config,
-		logger:    logger,
+		rawConfig:    config,
+		moduleLogger: moduleLogger,
 	}, nil
 }
 
 func (p *PingGatewayProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg"}
+	return []string{"senhub", "prtg", "http"}
 }
 
 func (p *PingGatewayProbe) GetName() string {
-	return "pingGatewayProbe"
+	return "ping_gateway"
 }
 
 func (p *PingGatewayProbe) ShouldStart() bool {
@@ -49,13 +63,13 @@ func (p *PingGatewayProbe) GetInterval() time.Duration {
 func (p *PingGatewayProbe) Collect() ([]data_store.DataPoint, error) {
 	gatewayIP, err := p.getGatewayIP()
 	if err != nil {
-		fmt.Printf("error retrieving gateway IP address: %v", err)
+		p.moduleLogger.Error().Err(err).Msg("error retrieving gateway IP address")
 		return nil, err
 	}
 
 	averageLatency, packetLoss, err := p.collectPing(gatewayIP)
 	if err != nil {
-		fmt.Printf("error collecting ping data: %v", err)
+		p.moduleLogger.Error().Err(err).Msg("error collecting ping data")
 		return nil, err
 	}
 
@@ -63,10 +77,16 @@ func (p *PingGatewayProbe) Collect() ([]data_store.DataPoint, error) {
 		data_store.CreatePrtgMetricIdTag("ping_gateway_[name]"),
 	}
 
-	return []data_store.DataPoint{
+	datapoints := []data_store.DataPoint{
 		{Name: "averageLatency", Timestamp: time.Now(), Value: float32(averageLatency), Tags: tags},
 		{Name: "packetLoss", Timestamp: time.Now(), Value: float32(packetLoss), Tags: tags},
-	}, nil
+	}
+
+	// Create base probe for enrichment
+	baseProbe := &types.BaseProbe{}
+	enrichedDatapoints := baseProbe.EnrichDataPointsWithProbeName(datapoints, p.GetName())
+
+	return enrichedDatapoints, nil
 }
 
 func (p *PingGatewayProbe) getGatewayIP() (string, error) {
@@ -104,8 +124,12 @@ func (p *PingGatewayProbe) collectPing(ip string) (float32, float32, error) {
 }
 
 func (p *PingGatewayProbe) collectPingWindows(ip string) (float32, float32, error) {
+	if err := validateIPAddress(ip); err != nil {
+		return 0, 0, fmt.Errorf("invalid IP address: %w", err)
+	}
+
 	count := 10
-	cmd := exec.Command("ping", "-n", strconv.Itoa(count), ip)
+	cmd := exec.Command("ping", "-n", strconv.Itoa(count), ip) // #nosec G204 - IP address is validated above
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -122,8 +146,12 @@ func (p *PingGatewayProbe) collectPingWindows(ip string) (float32, float32, erro
 }
 
 func (p *PingGatewayProbe) collectPingLinux(ip string) (float32, float32, error) {
+	if err := validateIPAddress(ip); err != nil {
+		return 0, 0, fmt.Errorf("invalid IP address: %w", err)
+	}
+
 	count := 10
-	cmd := exec.Command("ping", "-c", strconv.Itoa(count), ip)
+	cmd := exec.Command("ping", "-c", strconv.Itoa(count), ip) // #nosec G204 - IP address is validated above
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -140,8 +168,12 @@ func (p *PingGatewayProbe) collectPingLinux(ip string) (float32, float32, error)
 }
 
 func (p *PingGatewayProbe) collectPingDarwin(ip string) (float32, float32, error) {
+	if err := validateIPAddress(ip); err != nil {
+		return 0, 0, fmt.Errorf("invalid IP address: %w", err)
+	}
+
 	count := 10
-	cmd := exec.Command("ping", "-c", strconv.Itoa(count), ip)
+	cmd := exec.Command("ping", "-c", strconv.Itoa(count), ip) // #nosec G204 - IP address is validated above
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {

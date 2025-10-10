@@ -7,12 +7,14 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/go-version"
 	"github.com/minio/selfupdate"
 	"github.com/ybbus/httpretry"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/configParser"
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -27,6 +29,15 @@ var (
 	DEFAULT_UPDATE_CHECK_INTERVAL = 1 * time.Hour
 )
 
+// ConfigSource defines interface for auto-update configuration access
+// This allows auto-update to work with both local and remote configurations
+type ConfigSource interface {
+	// GetConfiguration returns the agent configuration data
+	GetConfiguration() configuration.RemoteConfigurationData
+	// OnConfigChanged registers a callback for configuration changes
+	OnConfigChanged(callback func(string))
+}
+
 // Register an event on remote config change
 // This function checks for update and applies the update if required
 
@@ -38,29 +49,30 @@ type AutoUpdate interface {
 }
 
 type AutoUpdateConfig struct {
-	RemoteConfig *configuration.RemoteConfiguration
+	ConfigSource ConfigSource
 	Logger       *logger.Logger
 	DryRun       bool
 }
 
 type autoUpdate struct {
-	remoteConfig *configuration.RemoteConfiguration
-	logger       *logger.Logger
+	configSource ConfigSource
+	logger       *logger.ModuleLogger
 	httpClient   *http.Client
 	scheduler    *periodic_scheduler.PeriodicScheduler
 	dryRun       bool
 }
 
 func NewAutoUpdate(config AutoUpdateConfig) AutoUpdate {
-	localLogger := config.Logger.With().Str("service", "auto_update").Logger()
+	// Create module-specific logger for auto-update service
+	moduleLogger := logger.NewModuleLogger(config.Logger, "service.auto_update")
 
 	httpClient := httpretry.NewDefaultClient(
 		httpretry.WithMaxRetryCount(3),
 	)
 
 	return &autoUpdate{
-		remoteConfig: config.RemoteConfig,
-		logger:       &localLogger,
+		configSource: config.ConfigSource,
+		logger:       moduleLogger,
 		httpClient:   httpClient,
 		dryRun:       config.DryRun,
 	}
@@ -75,7 +87,11 @@ func (a *autoUpdate) createScheduler() {
 	if a.scheduler != nil {
 		scheduler := *a.scheduler
 		// shutdown existing scheduler
-		scheduler.Shutdown(context.Background())
+		if err := scheduler.Shutdown(context.Background()); err != nil {
+			a.logger.Error().
+				Err(err).
+				Msg("Failed to shutdown existing scheduler")
+		}
 	}
 	scheduler = periodic_scheduler.NewPeriodicScheduler(periodic_scheduler.PeriodicSchedulerConfig{
 		Interval:          a.GetUpdateCheckInterval(),
@@ -83,16 +99,21 @@ func (a *autoUpdate) createScheduler() {
 		ExecuteOnStart:    true,
 		ExecuteOnShutdown: false,
 		Execute:           a.PeriodicalCheckForUpdate,
-	}, a.logger)
+	}, a.logger.Logger)
 
 	a.scheduler = &scheduler
 }
 
 func (a *autoUpdate) Start(quitChannel chan struct{}) error {
-	a.remoteConfig.OnConfigChanged(a.onConfigChange)
+	a.configSource.OnConfigChanged(a.onConfigChange)
 
 	a.createScheduler()
-	(*a.scheduler).Start(quitChannel)
+	if err := (*a.scheduler).Start(quitChannel); err != nil {
+		a.logger.Error().
+			Err(err).
+			Msg("Failed to start scheduler")
+		return fmt.Errorf("failed to start auto-update scheduler: %w", err)
+	}
 
 	return nil
 }
@@ -100,19 +121,36 @@ func (a *autoUpdate) Start(quitChannel chan struct{}) error {
 func (a *autoUpdate) Shutdown(ctx context.Context) error {
 	scheduler := *a.scheduler
 	if scheduler != nil {
-		scheduler.Shutdown(ctx)
+		if err := scheduler.Shutdown(ctx); err != nil {
+			a.logger.Error().
+				Err(err).
+				Msg("Failed to shutdown scheduler")
+			return fmt.Errorf("failed to shutdown auto-update scheduler: %w", err)
+		}
 	}
 	return nil
 }
 
 func (a *autoUpdate) onConfigChange(string) {
-	a.PeriodicalCheckForUpdate()
+	if err := a.PeriodicalCheckForUpdate(); err != nil {
+		a.logger.Error().
+			Err(err).
+			Msg("Failed to check for update during config change")
+	}
 	// In case interval config changed, recreate the scheduler
 	scheduler := *a.scheduler
 	if scheduler != nil && scheduler.GetInterval() != a.GetUpdateCheckInterval() {
-		scheduler.Shutdown(context.Background())
+		if err := scheduler.Shutdown(context.Background()); err != nil {
+			a.logger.Error().
+				Err(err).
+				Msg("Failed to shutdown scheduler during config change")
+		}
 		a.createScheduler()
-		a.Start(nil)
+		if err := a.Start(nil); err != nil {
+			a.logger.Error().
+				Err(err).
+				Msg("Failed to restart scheduler during config change")
+		}
 	}
 }
 
@@ -166,18 +204,58 @@ func (a *autoUpdate) doUpdate(url string) error {
 		a.logger.Info().Msg("Dry run: Skipping update")
 		return nil
 	}
-	resp, err := http.Get(url)
+
+	// Validate URL safety
+	if !strings.HasPrefix(url, "https://") {
+		return fmt.Errorf("unsafe URL scheme - only HTTPS URLs are allowed: %s", url)
+	}
+
+	a.logger.Info().
+		Str("download_url", url).
+		Msg("Downloading update binary")
+
+	resp, err := http.Get(url) // #nosec G107 - URL is validated for HTTPS scheme above
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to download update: %w", err)
 	}
 	defer resp.Body.Close()
+
+	// Validate HTTP response
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download update: HTTP %d %s from %s",
+			resp.StatusCode, resp.Status, url)
+	}
+
+	// Validate Content-Type (should be application/octet-stream or similar for binaries)
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "application/json") {
+		return fmt.Errorf("invalid content type for binary download: %s (expected binary, got %s)",
+			contentType, url)
+	}
+
+	// Validate Content-Length (binary should be several MB)
+	contentLength := resp.ContentLength
+	if contentLength > 0 && contentLength < 1024*1024 { // Less than 1MB is suspicious
+		return fmt.Errorf("binary too small: %d bytes (expected at least 1MB)", contentLength)
+	}
+
+	a.logger.Info().
+		Str("content_type", contentType).
+		Int64("content_length", contentLength).
+		Msg("Binary download validation passed, applying update")
+
 	err = selfupdate.Apply(resp.Body, selfupdate.Options{})
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to apply update: %w", err)
+	}
+
+	a.logger.Info().Msg("Update applied successfully")
+	return nil
 }
 
 func (a *autoUpdate) PeriodicalCheckForUpdate() error {
-	expectedVersion := a.remoteConfig.GetConfiguration().Agent.Version
-	registryUrl := a.remoteConfig.GetConfiguration().Agent.RegistryUrl
+	expectedVersion := a.configSource.GetConfiguration().Agent.Version
+	registryUrl := a.configSource.GetConfiguration().Agent.RegistryUrl
 
 	updateApplied, err := a.Update(
 		expectedVersion,
@@ -208,44 +286,31 @@ func (a *autoUpdate) GetRegistryUrl(registryUrl string) string {
 }
 
 func (a *autoUpdate) GetUpdateCheckInterval() time.Duration {
-	rawValue := a.remoteConfig.GetConfiguration().Agent.UpdateCheckInterval
+	rawValue := a.configSource.GetConfiguration().Agent.UpdateCheckInterval
 	if rawValue == nil {
 		return DEFAULT_UPDATE_CHECK_INTERVAL
 	}
 	if !validators.IsDuration(rawValue) {
 		a.logger.Error().
-			Str("update_check_interval", rawValue.(string)).
+			Interface("update_check_interval", rawValue).
 			Msg("Failed to parse update check interval")
 		return DEFAULT_UPDATE_CHECK_INTERVAL
 	}
 
-	var updateCheckIntervalStr string
-	switch rawValue.(type) {
-	case string:
-		updateCheckIntervalStr = rawValue.(string)
-		break
-	case float64:
-		updateCheckIntervalStr = fmt.Sprintf("%d", int(rawValue.(float64)))
-		break
-	default:
-		updateCheckIntervalStr = fmt.Sprintf("%v", rawValue)
-	}
-
-	updateCheckInterval, err := time.ParseDuration(updateCheckIntervalStr)
+	updateCheckInterval, err := configParser.ParseDuration(rawValue)
 	if err != nil {
 		a.logger.Error().
-			Str("update_check_interval", updateCheckIntervalStr).
+			Interface("update_check_interval", rawValue).
 			Err(err).
 			Msg("Failed to parse update check interval")
-
 		return DEFAULT_UPDATE_CHECK_INTERVAL
 	}
 	return updateCheckInterval
 }
 
 func (a *autoUpdate) getExpectedVersionFromConfig() string {
-	expectedVersion := a.remoteConfig.GetConfiguration().Agent.Version
-	registryUrl := a.remoteConfig.GetConfiguration().Agent.RegistryUrl
+	expectedVersion := a.configSource.GetConfiguration().Agent.Version
+	registryUrl := a.configSource.GetConfiguration().Agent.RegistryUrl
 
 	return a.getExpectedVersion(expectedVersion, registryUrl)
 }
@@ -275,7 +340,7 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 		// There is an exact match
 		return expectedVersionMetadata.Version
 	}
-	
+
 	// Special handling for beta versions which don't parse as constraints
 	if isBetaVersion(expectedVersionStr) {
 		a.logger.Info().
@@ -351,10 +416,10 @@ func (a *autoUpdate) GetBinaryUrl(
 
 	filename := a.getBinaryNameForOptions(os, arch)
 	formattedVersion := FormatVersionForUrl(version)
-	
+
 	// Always use the same download path pattern, regardless of beta or not
 	downloadPath := fmt.Sprintf(VERSION_BINARY_PATH, formattedVersion, filename)
-	
+
 	return url.JoinPath(registryUrl, downloadPath)
 }
 

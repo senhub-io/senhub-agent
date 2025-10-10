@@ -42,8 +42,8 @@ func TestIsDuration(t *testing.T) {
 		want  bool
 	}{
 		{
-			name:  "Float64",
-			value: float64(10),
+			name:  "Int",
+			value: 10,
 			want:  true,
 		},
 		{
@@ -58,7 +58,7 @@ func TestIsDuration(t *testing.T) {
 		},
 		{
 			name:  "Invalid Type",
-			value: 10,
+			value: float64(10),
 			want:  false,
 		},
 	}

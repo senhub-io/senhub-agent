@@ -1,0 +1,15 @@
+probe_name: "ping_gateway"
+friendly_name: "Ping Gateway"
+multi_instance_labels: []
+
+metrics:
+  # Gateway Ping Metrics
+  - name: "averageLatency"
+    channel: "gateway_average_latency"
+    display_name: "Gateway Average Latency"
+    unit: "ms"
+    
+  - name: "packetLoss"
+    channel: "gateway_packet_loss"
+    display_name: "Gateway Packet Loss"
+    unit: "%"

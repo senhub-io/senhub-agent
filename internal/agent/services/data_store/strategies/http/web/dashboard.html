@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SenHub Agent Dashboard</title>
+    <style>
+        :root {
+            --primary-color: #00BCD4;    /* Turquoise from logo */
+            --secondary-color: #FF9500;  /* Orange from logo */
+            --success-color: #4CAF50;
+            --warning-color: #FF9500;    /* Use logo orange for warnings */
+            --danger-color: #F44336;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-600: #4b5563;
+            --gray-800: #4A4A4A;         /* Dark gray from logo */
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: var(--gray-800);
+            background-color: var(--gray-100);
+        }
+        
+        .header {
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 1rem 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .header h1 {
+            color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .logo {
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .card h2 {
+            margin-bottom: 1rem;
+            color: var(--gray-800);
+            font-size: 1.25rem;
+        }
+        
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        .status-running {
+            background-color: #dcfce7;
+            color: var(--success-color);
+        }
+        
+        .status-warning {
+            background-color: #fff3e0;
+            color: var(--warning-color);
+        }
+        
+        .status-info {
+            background-color: #e0f7f7;
+            color: var(--primary-color);
+        }
+        
+        .probe-list {
+            list-style: none;
+        }
+        
+        .probe-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--gray-200);
+        }
+        
+        .probe-item:last-child {
+            border-bottom: none;
+        }
+        
+        .probe-name {
+            font-weight: 500;
+        }
+        
+        .probe-metrics {
+            color: var(--gray-600);
+            font-size: 0.875rem;
+        }
+        
+        .nav-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+        
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            font-weight: 500;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #00ACC1;
+        }
+        
+        .btn-accent {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+        
+        .btn-accent:hover {
+            background-color: #E68900;
+        }
+        
+        .btn-secondary {
+            background-color: white;
+            color: var(--gray-800);
+            border: 1px solid var(--gray-200);
+        }
+        
+        .btn-secondary:hover {
+            background-color: var(--gray-100);
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--gray-600);
+        }
+        
+        .error {
+            background-color: #fef2f2;
+            color: var(--danger-color);
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
+            SenHub Agent Dashboard
+        </h1>
+    </div>
+    
+    <div class="container">
+        <div id="loading" class="loading">
+            Loading agent status...
+        </div>
+        
+        <div id="error" class="error" style="display: none;">
+            Failed to load agent status. Please check if the agent is running.
+        </div>
+        
+        <div id="content" style="display: none;">
+            <div class="status-grid">
+                <div class="card">
+                    <h2>Agent Status</h2>
+                    <div class="status-indicator status-running">
+                        <span>●</span>
+                        <span id="agent-status">Running</span>
+                    </div>
+                    <div style="margin-top: 1rem;">
+                        <div><strong>Port:</strong> <span id="agent-port">8080</span></div>
+                        <div><strong>Version:</strong> <span id="agent-version">0.1.24-beta</span></div>
+                        <div><strong>Uptime:</strong> <span id="agent-uptime">-</span></div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h2>Cache Status</h2>
+                    <div>
+                        <div><strong>Total Metrics:</strong> <span id="cache-total">0</span></div>
+                        <div><strong>Memory Usage:</strong> <span id="cache-memory">-</span></div>
+                        <div><strong>TTL:</strong> <span id="cache-ttl">5 minutes</span></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>Active Probes</h2>
+                <ul id="probes-list" class="probe-list">
+                    <!-- Probes will be loaded here -->
+                </ul>
+            </div>
+            
+            <div class="nav-buttons">
+                <a href="/web/{{.AgentKey}}/explorer" class="btn btn-primary">
+                    🔍 API Explorer
+                </a>
+                <a href="/web/{{.AgentKey}}/docs" class="btn btn-secondary">
+                    📚 Documentation
+                </a>
+                <a href="/web/{{.AgentKey}}/admin" class="btn btn-secondary">
+                    ⚙️ Administration
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const AGENT_KEY = '{{.AgentKey}}'; // Will be replaced by Go template
+        
+        async function fetchData(endpoint) {
+            try {
+                const response = await fetch(`/api/${AGENT_KEY}/${endpoint}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error('Fetch error:', error);
+                throw error;
+            }
+        }
+        
+        async function loadDashboard() {
+            try {
+                // Load system info and probes data
+                const [systemData, probesData] = await Promise.all([
+                    fetchData('info/system'),
+                    fetchData('info/probes')
+                ]);
+                
+                // Update system information
+                document.getElementById('agent-port').textContent = systemData.port || '8080';
+                document.getElementById('agent-version').textContent = systemData.version || '0.1.24-beta';
+                document.getElementById('agent-uptime').textContent = systemData.uptime || 'N/A';
+                
+                // Update cache information
+                const cacheInfo = systemData.cache || {};
+                document.getElementById('cache-total').textContent = cacheInfo.total_metrics || 0;
+                document.getElementById('cache-memory').textContent = cacheInfo.memory_usage || 'N/A';
+                document.getElementById('cache-ttl').textContent = cacheInfo.ttl || '5 minutes';
+                
+                // Update probes list
+                const probesList = document.getElementById('probes-list');
+                probesList.innerHTML = '';
+                
+                let totalMetrics = probesData.total_metrics || 0;
+                
+                // Sort probes alphabetically
+                const sortedProbes = (probesData.probes || []).sort();
+                
+                sortedProbes.forEach(probeName => {
+                    const li = document.createElement('li');
+                    li.className = 'probe-item';
+                    
+                    const metricsCount = probesData.probe_metrics[probeName] || 0;
+                    
+                    const status = metricsCount > 0 ? 'running' : 'warning';
+                    const statusText = metricsCount > 0 ? '✅' : '⚠️';
+                    
+                    li.innerHTML = `
+                        <div>
+                            <span class="probe-name">${statusText} ${probeName}</span>
+                        </div>
+                        <div class="probe-metrics">
+                            ${metricsCount} metrics
+                        </div>
+                    `;
+                    
+                    probesList.appendChild(li);
+                });
+                
+                // Show content, hide loading
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+                
+            } catch (error) {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+                console.error('Failed to load dashboard:', error);
+            }
+        }
+        
+        // Load dashboard on page load
+        document.addEventListener('DOMContentLoaded', loadDashboard);
+        
+        // Auto-refresh every 30 seconds
+        setInterval(loadDashboard, 30000);
+    </script>
+</body>
+</html>
