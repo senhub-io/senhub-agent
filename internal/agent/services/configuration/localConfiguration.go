@@ -17,11 +17,12 @@ import (
 
 // LocalConfigurationData represents the YAML configuration structure
 type LocalConfigurationData struct {
-	Agent      LocalAgentConfig  `yaml:"agent"`
-	Storage    []StorageConfig   `yaml:"storage"`
-	Probes     []ProbeConfig     `yaml:"probes"`
-	AutoUpdate *AutoUpdateConfig `yaml:"auto_update,omitempty"`
-	Cache      *CacheConfig      `yaml:"cache,omitempty"`
+	ConfigVersion int               `yaml:"config_version"`           // Configuration format version
+	Agent         LocalAgentConfig  `yaml:"agent"`
+	Storage       []StorageConfig   `yaml:"storage"`
+	Probes        []ProbeConfig     `yaml:"probes"`
+	AutoUpdate    *AutoUpdateConfig `yaml:"auto_update,omitempty"`
+	Cache         *CacheConfig      `yaml:"cache,omitempty"`
 }
 
 // LocalAgentConfig represents agent-specific configuration
