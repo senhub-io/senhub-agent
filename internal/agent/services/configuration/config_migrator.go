@@ -12,10 +12,7 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-// Current configuration version
-const CurrentConfigVersion = 2
-
-// ConfigVersion tracks configuration format version
+// ConfigVersion tracks configuration format version (for backups only)
 type ConfigVersion struct {
 	Version   int    `yaml:"config_version"`
 	Migrated  string `yaml:"migrated_at,omitempty"`
@@ -210,10 +207,14 @@ func (cm *ConfigMigrator) generateMigratedYAML(config map[string]interface{}) ([
 		agentVersion = "unknown"
 	}
 
+	// Add config_version field
+	config["config_version"] = CurrentConfigVersion
+
 	// Create migration header
-	header := fmt.Sprintf(`# Configuration automatically migrated to v2 format on %s
+	header := fmt.Sprintf(`# Configuration automatically migrated to v%d format on %s
 # Original agent version: %s
 # Migration: Added 'type' field to all probes (copied from 'name')
+#            Added 'config_version' field for version tracking
 #
 # In v2 format:
 #   - 'name': Display name (free choice, used for UI identification)
@@ -225,7 +226,7 @@ func (cm *ConfigMigrator) generateMigratedYAML(config map[string]interface{}) ([
 #     params:
 #       base_url: "https://director.example.com"
 
-`, time.Now().Format("2006-01-02 15:04:05 MST"), agentVersion)
+`, CurrentConfigVersion, time.Now().Format("2006-01-02 15:04:05 MST"), agentVersion)
 
 	// Marshal config to YAML
 	yamlData, err := yaml.Marshal(config)

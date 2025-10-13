@@ -16,7 +16,16 @@ import (
 
 func (lc *LocalConfiguration) generateConfigYAML(config *LocalConfigurationData) ([]byte, error) {
 	// This is a simplified version - in production you'd want a proper YAML generator with comments
-	yamlTemplate := `# Agent configuration
+	yamlTemplate := `# SenHub Agent Configuration
+# Configuration Version: %d (automatically managed)
+# Agent Version: %s
+# Generated: %s
+#
+# DO NOT modify config_version manually - it is managed by the agent
+
+config_version: %d
+
+# Agent configuration
 agent:
   key: "%s"
   mode: offline
@@ -203,16 +212,29 @@ probes:
         key_file: "` + keyPathYAML + `"`
 	}
 
+	// Get agent version for header
+	agentVersion := "unknown"
+	if lc.args != nil && lc.args.Version != "" {
+		agentVersion = lc.args.Version
+	}
+
+	// Get timestamp for header
+	timestamp := time.Now().Format("2006-01-02 15:04:05 MST")
+
 	return []byte(fmt.Sprintf(yamlTemplate,
-		config.Agent.Key,
-		config.Agent.Generated,
-		config.AutoUpdate.Enabled,
-		config.AutoUpdate.URL,
-		config.Cache.RetentionMinutes,
-		port,
-		bindAddress,
-		endpointsStr,
-		tlsSection,
+		config.ConfigVersion,                 // Header comment: config version
+		agentVersion,                         // Header comment: agent version
+		timestamp,                            // Header comment: timestamp
+		config.ConfigVersion,                 // YAML field: config_version
+		config.Agent.Key,                     // agent.key
+		config.Agent.Generated,               // agent.generated
+		config.AutoUpdate.Enabled,            // auto_update.enabled
+		config.AutoUpdate.URL,                // auto_update.url
+		config.Cache.RetentionMinutes,        // cache.retention_minutes
+		port,                                 // storage port
+		bindAddress,                          // storage bind_address
+		endpointsStr,                         // storage endpoints
+		tlsSection,                           // storage TLS section (optional)
 	)), nil
 }
 
