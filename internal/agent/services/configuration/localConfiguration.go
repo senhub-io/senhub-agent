@@ -173,6 +173,12 @@ func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
 	lc.logger.Info().Msg("Starting LocalConfiguration with file watching")
 	lc.quitChannel = quitChannel
 
+	// Migrate configuration if needed (before loading)
+	migrator := NewConfigMigrator(lc.configPath, lc.logger.Logger)
+	if err := migrator.MigrateIfNeeded(); err != nil {
+		lc.logger.Warn().Err(err).Msg("Configuration migration failed, continuing with current format")
+	}
+
 	// Load or create configuration
 	if err := lc.loadOrCreateConfiguration(); err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
