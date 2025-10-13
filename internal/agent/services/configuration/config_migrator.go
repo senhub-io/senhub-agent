@@ -71,7 +71,8 @@ func (cm *ConfigMigrator) MigrateIfNeeded() error {
 	}
 
 	// Check if first probe has 'type' field (v2 format)
-	firstProbe, ok := probesList[0].(map[interface{}]interface{})
+	// yaml.v3 returns map[string]interface{} when unmarshaling into map[string]interface{}
+	firstProbe, ok := probesList[0].(map[string]interface{})
 	if !ok {
 		cm.logger.Warn().Msg("Invalid probe format")
 		return nil
@@ -155,7 +156,8 @@ func (cm *ConfigMigrator) migrateFrom1To2(config map[string]interface{}) error {
 
 	// Migrate each probe
 	for i, probeRaw := range probesList {
-		probe, ok := probeRaw.(map[interface{}]interface{})
+		// yaml.v3 returns map[string]interface{} when unmarshaling into map[string]interface{}
+		probe, ok := probeRaw.(map[string]interface{})
 		if !ok {
 			cm.logger.Warn().Int("index", i).Msg("Skipping invalid probe")
 			continue
@@ -401,7 +403,8 @@ func (cm *ConfigMigrator) ValidateMigratedConfig() error {
 	}
 
 	for i, probeRaw := range probesList {
-		probe, ok := probeRaw.(map[interface{}]interface{})
+		// yaml.v3 returns map[string]interface{} when unmarshaling into map[string]interface{}
+		probe, ok := probeRaw.(map[string]interface{})
 		if !ok {
 			return fmt.Errorf("probe %d is not a map", i)
 		}

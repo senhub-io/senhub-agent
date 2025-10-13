@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -114,7 +114,8 @@ probes:
 
 	// Check each probe has 'type' field
 	for i, probeRaw := range probes {
-		probe, ok := probeRaw.(map[interface{}]interface{})
+		// yaml.v3 returns map[string]interface{} when unmarshaling into map[string]interface{}
+		probe, ok := probeRaw.(map[string]interface{})
 		if !ok {
 			t.Errorf("Probe %d is not a map", i)
 			continue
