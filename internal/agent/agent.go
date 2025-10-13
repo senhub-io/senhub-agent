@@ -308,34 +308,43 @@ func detectAgentMode(args *agentCliArgs.ParsedArgs, logger *logger.Logger) bool 
 			Str("auth_key", maskAuthenticationKey(localConfig.AuthenticationKey)).
 			Msg("Configuration file detected - using file-based configuration")
 
-		// Apply configuration file settings to args (backward compatibility)
-		// This ensures that existing code expecting CLI args continues to work
-		if args.AuthenticationKey == "" {
-			// No CLI key provided - use the one from config file
-			args.AuthenticationKey = localConfig.AuthenticationKey
-			logger.Info().Msg("Using authentication key from configuration file")
-		} else if args.AuthenticationKey != localConfig.AuthenticationKey {
-			// CLI key differs from config file - validate CLI key first, fallback to config
-			logger.Warn().
-				Str("cli_key", maskAuthenticationKey(args.AuthenticationKey)).
-				Str("config_key", maskAuthenticationKey(localConfig.AuthenticationKey)).
-				Msg("Authentication key mismatch between CLI and config file")
-
-			// Test CLI key first, if it fails, use config file key
-			if !validateAuthenticationKey(args.AuthenticationKey, args.ServerUrl, logger) {
-				logger.Warn().Msg("CLI authentication key validation failed, falling back to config file key")
-				args.AuthenticationKey = localConfig.AuthenticationKey
-			} else {
-				logger.Info().Msg("CLI authentication key validated successfully, using CLI key")
-			}
-		}
-
-		// Set mode based on configuration file
+		// Set mode and config path first
 		args.ConfigPath = localConfig.ConfigPath
-		if localConfig.Mode == "offline" {
+		isOfflineMode := localConfig.Mode == "offline"
+
+		// Handle authentication key based on mode
+		if isOfflineMode {
+			// OFFLINE MODE: Always use config file key, ignore CLI key
+			if args.AuthenticationKey != "" && args.AuthenticationKey != localConfig.AuthenticationKey {
+				logger.Warn().
+					Str("cli_key", maskAuthenticationKey(args.AuthenticationKey)).
+					Str("config_key", maskAuthenticationKey(localConfig.AuthenticationKey)).
+					Msg("CLI authentication key ignored in offline mode - using config file key")
+			}
+			args.AuthenticationKey = localConfig.AuthenticationKey
 			args.Offline = true
 			return true
 		} else if localConfig.Mode == "online" {
+			// ONLINE MODE: Allow CLI key override with validation
+			if args.AuthenticationKey == "" {
+				// No CLI key provided - use the one from config file
+				args.AuthenticationKey = localConfig.AuthenticationKey
+				logger.Info().Msg("Using authentication key from configuration file")
+			} else if args.AuthenticationKey != localConfig.AuthenticationKey {
+				// CLI key differs from config file - validate CLI key first, fallback to config
+				logger.Warn().
+					Str("cli_key", maskAuthenticationKey(args.AuthenticationKey)).
+					Str("config_key", maskAuthenticationKey(localConfig.AuthenticationKey)).
+					Msg("Authentication key mismatch between CLI and config file")
+
+				// Test CLI key first, if it fails, use config file key
+				if !validateAuthenticationKey(args.AuthenticationKey, args.ServerUrl, logger) {
+					logger.Warn().Msg("CLI authentication key validation failed, falling back to config file key")
+					args.AuthenticationKey = localConfig.AuthenticationKey
+				} else {
+					logger.Info().Msg("CLI authentication key validated successfully, using CLI key")
+				}
+			}
 			args.Offline = false
 			return false
 		} else {
