@@ -40,53 +40,63 @@ storage:
 %s
 
 # Active probes (default system monitoring)
+# Note: 'name' is the display name (free choice), 'type' is the probe type (technical identifier)
 probes:
   # ===== ACTIVE PROBES =====
-  
+
   # CPU monitoring - 30s interval
-  - name: cpu
+  - name: cpu              # Display name (you can change this)
+    type: cpu              # Probe type (must match registered probe)
     params:
       interval: 30
-      
-  # Memory monitoring - 30s interval  
-  - name: memory
+
+  # Memory monitoring - 30s interval
+  - name: memory           # Display name
+    type: memory           # Probe type
     params:
       interval: 30
-      
+
   # Network monitoring - 60s interval (less frequent)
-  - name: network
+  - name: network          # Display name
+    type: network          # Probe type
     params:
       interval: 60
-      
+
   # Disk monitoring - 30s interval
-  - name: logicaldisk
+  - name: logicaldisk      # Display name
+    type: logicaldisk      # Probe type
     params:
       interval: 30
 
 # ===== CONFIGURATION EXAMPLES (COMMENTED) =====
 
 # # Network connectivity
-# - name: ping_gateway
+# - name: ping_gateway    # Display name
+#   type: ping_gateway    # Probe type
 #   params: {}  # Auto-detects gateway
 #
-# - name: ping_webapp  
+# - name: ping_webapp     # Display name
+#   type: ping_webapp     # Probe type
 #   params:
 #     url: "https://example.com"  # REQUIRED
 #
-# - name: load_webapp
+# - name: load_webapp     # Display name
+#   type: load_webapp     # Probe type
 #   params:
 #     url: "https://example.com"  # REQUIRED
 #     timeout: 30                 # Optional, 1-300s, default: 30s
 
 # # WiFi signal strength (auto-detects if WiFi available)
-# - name: wifi_signal_strength
+# - name: wifi_signal_strength   # Display name
+#   type: wifi_signal_strength   # Probe type
 #   params: {}
 
 # # Server hardware via Redfish (iDRAC, iLO, etc.)
-# - name: redfish
+# - name: redfish              # Display name (example: "Production iDRAC")
+#   type: redfish              # Probe type
 #   params:
 #     endpoint: "https://idrac.example.com"  # REQUIRED
-#     username: "admin"                      # REQUIRED  
+#     username: "admin"                      # REQUIRED
 #     password: "password123"                # REQUIRED
 #     interval: 300                          # Optional, default: 300s (5min)
 #     verify_ssl: true                       # Optional, default: true
@@ -95,13 +105,14 @@ probes:
 #       - thermal    # Temperatures, fans
 #       - power      # Power supply, consumption
 #       - processor  # CPU hardware
-#       - memory     # RAM hardware  
+#       - memory     # RAM hardware
 #       - storage    # RAID, disks
 #       - drives     # Individual drives
 #       - networkadapter  # Network cards
 
 # # Citrix Virtual Apps and Desktops monitoring
-# - name: citrix
+# - name: citrix                         # Display name (example: "Production Citrix")
+#   type: citrix                         # Probe type
 #   params:
 #     base_url: "https://citrix-director.company.com"  # REQUIRED (API path added automatically)
 #     
@@ -129,20 +140,23 @@ probes:
 #       backoff_factor: 2.0       # Optional, default: 2.0
 
 # # Syslog event collection
-# - name: syslog
+# - name: syslog           # Display name
+#   type: syslog           # Probe type
 #   params:
 #     port: 514        # Optional, default: 514, range: 1-65535
 #     protocol: "udp"  # Optional, default: "udp", values: "tcp"/"udp"
 
 # # Custom events endpoint (POST /event)
-# - name: event
+# - name: event            # Display name
+#   type: event            # Probe type
 #   params:
-#     address: "127.0.0.1"  # Optional, default: "127.0.0.1" 
+#     address: "127.0.0.1"  # Optional, default: "127.0.0.1"
 #     port: 5656            # Optional, default: 5656, range: 1-65535
 #     protocol: "tcp"       # Optional, default: "tcp", values: "tcp"/"udp"
 
 # # OpenTelemetry collector
-# - name: otel
+# - name: otel             # Display name
+#   type: otel             # Probe type
 #   params:
 #     endpoint: "http://localhost:4318"  # REQUIRED
 #     name: "otel"                       # Optional, default: "otel"
