@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -200,6 +200,7 @@ func (cm *ConfigMigrator) migrateFrom1To2(config map[string]interface{}) error {
 }
 
 // generateMigratedYAML generates YAML with migration header and comments
+// Uses yaml.v3 to preserve field order: name → type → params
 func (cm *ConfigMigrator) generateMigratedYAML(config map[string]interface{}) ([]byte, error) {
 	// Get agent version
 	agentVersion := cliArgs.Version
@@ -228,16 +229,125 @@ func (cm *ConfigMigrator) generateMigratedYAML(config map[string]interface{}) ([
 
 `, CurrentConfigVersion, time.Now().Format("2006-01-02 15:04:05 MST"), agentVersion)
 
-	// Marshal config to YAML
-	yamlData, err := yaml.Marshal(config)
+	// Marshal config to YAML using v3 to get proper node structure
+	var rootNode yaml.Node
+	if err := rootNode.Encode(config); err != nil {
+		return nil, fmt.Errorf("failed to encode config to yaml.v3: %w", err)
+	}
+
+	// Reorder probe fields to: name, type, params, ...
+	if err := cm.reorderProbeFields(&rootNode); err != nil {
+		return nil, fmt.Errorf("failed to reorder probe fields: %w", err)
+	}
+
+	// Marshal with yaml.v3 (preserves order)
+	yamlData, err := yaml.Marshal(&rootNode)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal config: %w", err)
+		return nil, fmt.Errorf("failed to marshal config with yaml.v3: %w", err)
 	}
 
 	// Combine header + YAML
 	fullData := append([]byte(header), yamlData...)
 
 	return fullData, nil
+}
+
+// reorderProbeFields reorders probe fields to: name, type, params, ...
+func (cm *ConfigMigrator) reorderProbeFields(node *yaml.Node) error {
+	// Navigate to document root
+	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
+		return nil
+	}
+
+	rootMap := node.Content[0]
+	if rootMap.Kind != yaml.MappingNode {
+		return nil
+	}
+
+	// Find "probes" key in root map
+	for i := 0; i < len(rootMap.Content); i += 2 {
+		keyNode := rootMap.Content[i]
+		valueNode := rootMap.Content[i+1]
+
+		if keyNode.Value == "probes" && valueNode.Kind == yaml.SequenceNode {
+			// Found probes array, process each probe
+			for _, probeNode := range valueNode.Content {
+				if probeNode.Kind == yaml.MappingNode {
+					cm.reorderProbeMap(probeNode)
+				}
+			}
+			break
+		}
+	}
+
+	return nil
+}
+
+// reorderProbeMap reorders a single probe map to: name, type, params, ...
+func (cm *ConfigMigrator) reorderProbeMap(probeNode *yaml.Node) {
+	if probeNode.Kind != yaml.MappingNode {
+		return
+	}
+
+	// Extract all key-value pairs
+	type kvPair struct {
+		key   *yaml.Node
+		value *yaml.Node
+	}
+	var pairs []kvPair
+	nameIdx := -1
+	typeIdx := -1
+	paramsIdx := -1
+
+	for i := 0; i < len(probeNode.Content); i += 2 {
+		key := probeNode.Content[i]
+		value := probeNode.Content[i+1]
+
+		pairs = append(pairs, kvPair{key: key, value: value})
+
+		switch key.Value {
+		case "name":
+			nameIdx = len(pairs) - 1
+		case "type":
+			typeIdx = len(pairs) - 1
+		case "params":
+			paramsIdx = len(pairs) - 1
+		}
+	}
+
+	// If no reordering needed, return
+	if nameIdx == -1 || typeIdx == -1 {
+		return
+	}
+
+	// Build new ordered pairs: name, type, params, then rest
+	var orderedPairs []kvPair
+
+	// 1. name first
+	orderedPairs = append(orderedPairs, pairs[nameIdx])
+
+	// 2. type second
+	orderedPairs = append(orderedPairs, pairs[typeIdx])
+
+	// 3. params third (if exists)
+	if paramsIdx != -1 {
+		orderedPairs = append(orderedPairs, pairs[paramsIdx])
+	}
+
+	// 4. Add remaining fields
+	for i, pair := range pairs {
+		if i != nameIdx && i != typeIdx && i != paramsIdx {
+			orderedPairs = append(orderedPairs, pair)
+		}
+	}
+
+	// Rebuild Content array with ordered pairs
+	newContent := make([]*yaml.Node, 0, len(orderedPairs)*2)
+	for _, pair := range orderedPairs {
+		newContent = append(newContent, pair.key, pair.value)
+	}
+
+	probeNode.Content = newContent
 }
 
 // AddCommentsForNewParameters adds commented examples of new optional parameters
