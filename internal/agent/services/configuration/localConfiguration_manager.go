@@ -160,21 +160,27 @@ func (lc *LocalConfiguration) createDefaultStorageConfig() []StorageConfig {
 
 // createDefaultProbesConfig creates default probes configuration
 func (lc *LocalConfiguration) createDefaultProbesConfig() []ProbeConfig {
+	// In v2 format: 'name' is display name, 'type' is technical identifier
+	// For default config, we use the same value for both
 	return []ProbeConfig{
 		{
-			Name:   "cpu",
+			Name:   "cpu",           // Display name
+			Type:   "cpu",           // Probe type
 			Params: map[string]interface{}{"interval": 30},
 		},
 		{
-			Name:   "memory",
+			Name:   "memory",        // Display name
+			Type:   "memory",        // Probe type
 			Params: map[string]interface{}{"interval": 30},
 		},
 		{
-			Name:   "network",
+			Name:   "network",       // Display name
+			Type:   "network",       // Probe type
 			Params: map[string]interface{}{"interval": 60},
 		},
 		{
-			Name:   "logicaldisk",
+			Name:   "logicaldisk",   // Display name
+			Type:   "logicaldisk",   // Probe type
 			Params: map[string]interface{}{"interval": 30},
 		},
 	}
@@ -270,10 +276,13 @@ func (lc *LocalConfiguration) validateConfiguration(config *LocalConfigurationDa
 		}
 	}
 
-	// Validate probes config
-	for _, probe := range config.Probes {
+	// Validate probes config (v2 format requires both 'name' and 'type')
+	for i, probe := range config.Probes {
 		if probe.Name == "" {
-			return fmt.Errorf("probe name cannot be empty")
+			return fmt.Errorf("probe %d: name cannot be empty", i)
+		}
+		if probe.Type == "" {
+			return fmt.Errorf("probe %d (%s): type cannot be empty - configuration migration may be needed", i, probe.Name)
 		}
 	}
 

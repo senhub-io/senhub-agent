@@ -101,9 +101,17 @@ func NewProbePoller(
 // getProbeConstructorForConfig retrieves the appropriate constructor function
 // for the specified probe type
 func getProbeConstructorForConfig(config configuration.ProbeConfig) (ProbeConstructor, error) {
-	constructor, exists := probeConstructors[config.Name]
+	// Use Type field for constructor lookup (v2 format)
+	// Type is the technical identifier (cpu, citrix, redfish, etc.)
+	probeType := config.Type
+	if probeType == "" {
+		// Should not happen if migration ran correctly
+		return nil, fmt.Errorf("probe type is empty for probe '%s'", config.Name)
+	}
+
+	constructor, exists := probeConstructors[probeType]
 	if !exists {
-		return nil, fmt.Errorf("unknown probe type: %s", config.Name)
+		return nil, fmt.Errorf("unknown probe type: %s (probe name: %s)", probeType, config.Name)
 	}
 	return constructor, nil
 }

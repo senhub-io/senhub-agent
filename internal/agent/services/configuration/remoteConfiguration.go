@@ -42,7 +42,8 @@ type StorageConfig struct {
 type ProbeConfigParams = map[string]interface{}
 
 type ProbeConfig struct {
-	Name   string            `json:"name"`
+	Name   string            `json:"name"`             // Display name (free-form)
+	Type   string            `json:"type,omitempty"`   // Probe type (technical identifier)
 	Params ProbeConfigParams `json:"params"`
 }
 
@@ -496,6 +497,12 @@ func (rc *RemoteConfiguration) generateProbesYAML(probes []ProbeConfig) (string,
 
 	for _, p := range probes {
 		yamlLines = append(yamlLines, fmt.Sprintf("  - name: %s", p.Name))
+
+		// Add type field (v2 format)
+		if p.Type != "" {
+			yamlLines = append(yamlLines, fmt.Sprintf("    type: %s", p.Type))
+		}
+
 		yamlLines = append(yamlLines, "    params:")
 
 		// Convert params to YAML format
