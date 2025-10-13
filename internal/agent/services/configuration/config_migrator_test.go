@@ -87,7 +87,7 @@ probes:
 	migratedContent := string(migratedData)
 
 	// Verify migration header exists
-	if !strings.Contains(migratedContent, "Configuration automatically migrated to v2 format") {
+	if !strings.Contains(migratedContent, "Configuration automatically migrated to version 2 format") {
 		t.Error("Migration header not found in migrated config")
 	}
 
