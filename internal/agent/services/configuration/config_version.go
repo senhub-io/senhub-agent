@@ -9,16 +9,16 @@ import (
 
 // Configuration Version History
 // =============================
-// v1: Initial format (name only for probes)
-//     - Probes have only 'name' field (used for both display and type)
-//     - No explicit version field
-//     - Agent versions: 0.1.0 - 0.1.63
+// 1: Initial format (name only for probes)
+//    - Probes have only 'name' field (used for both display and type)
+//    - No explicit version field
+//    - Agent versions: 0.1.0 - 0.1.63
 //
-// v2: Name/Type separation (current)
-//     - Probes have 'name' (display) and 'type' (technical ID)
-//     - Explicit config_version field
-//     - Automatic migration from v1
-//     - Agent versions: 0.1.64+
+// 2: Name/Type separation (current)
+//    - Probes have 'name' (display) and 'type' (technical ID)
+//    - Explicit config_version field
+//    - Automatic migration from version 1
+//    - Agent versions: 0.1.65+
 
 // Current configuration version that this agent expects
 const CurrentConfigVersion = 2
@@ -51,7 +51,7 @@ func GetConfigVersionHistory() []ConfigVersionInfo {
 		{
 			Version:          2,
 			Name:             "Name/Type Separation",
-			MinAgentVersion:  "0.1.64",
+			MinAgentVersion:  "0.1.65",
 			MaxAgentVersion:  "", // Current version, no max
 			Description:      "Probes have separate 'name' (display) and 'type' (technical ID) fields",
 			MigrationFromPrv: true,
@@ -112,10 +112,10 @@ func GetVersionDescription(version int) string {
 	history := GetConfigVersionHistory()
 	for _, info := range history {
 		if info.Version == version {
-			return fmt.Sprintf("v%d: %s - %s", info.Version, info.Name, info.Description)
+			return fmt.Sprintf("%d: %s - %s", info.Version, info.Name, info.Description)
 		}
 	}
-	return fmt.Sprintf("v%d: Unknown version", version)
+	return fmt.Sprintf("%d: Unknown version", version)
 }
 
 // ConfigCompatibilityReport provides compatibility information
@@ -149,7 +149,7 @@ func CheckCompatibility(configVersion int) ConfigCompatibilityReport {
 		// Too new config
 		if configVersion > CurrentConfigVersion {
 			report.Errors = append(report.Errors,
-				fmt.Sprintf("Please update the agent to a newer version that supports config v%d", configVersion))
+				fmt.Sprintf("Please update the agent to a newer version that supports config version %d", configVersion))
 		}
 
 		return report
@@ -163,7 +163,7 @@ func CheckCompatibility(configVersion int) ConfigCompatibilityReport {
 		report.NeedsMigration = true
 		report.MigrationPath = GetMigrationPath(configVersion)
 		report.Warnings = append(report.Warnings,
-			fmt.Sprintf("Configuration will be automatically migrated from v%d to v%d", configVersion, CurrentConfigVersion))
+			fmt.Sprintf("Configuration will be automatically migrated from version %d to %d", configVersion, CurrentConfigVersion))
 	}
 
 	return report
@@ -173,9 +173,9 @@ func CheckCompatibility(configVersion int) ConfigCompatibilityReport {
 func FormatCompatibilityReport(report ConfigCompatibilityReport) string {
 	msg := fmt.Sprintf("Configuration Compatibility Check\n")
 	msg += fmt.Sprintf("=====================================\n")
-	msg += fmt.Sprintf("Config Version: v%d\n", report.ConfigVersion)
+	msg += fmt.Sprintf("Config Version: %d\n", report.ConfigVersion)
 	msg += fmt.Sprintf("Agent Version: %s\n", report.AgentVersion)
-	msg += fmt.Sprintf("Expected Config Version: v%d\n", report.CurrentVersion)
+	msg += fmt.Sprintf("Expected Config Version: %d\n", report.CurrentVersion)
 	msg += fmt.Sprintf("\n")
 
 	if !report.Compatible {
@@ -186,9 +186,9 @@ func FormatCompatibilityReport(report ConfigCompatibilityReport) string {
 		}
 	} else if report.NeedsMigration {
 		msg += fmt.Sprintf("⚠️  MIGRATION REQUIRED\n\n")
-		msg += fmt.Sprintf("Migration Path: v%d", report.ConfigVersion)
+		msg += fmt.Sprintf("Migration Path: %d", report.ConfigVersion)
 		for _, v := range report.MigrationPath {
-			msg += fmt.Sprintf(" → v%d", v)
+			msg += fmt.Sprintf(" → %d", v)
 		}
 		msg += fmt.Sprintf("\n\n")
 		msg += fmt.Sprintf("Warnings:\n")
