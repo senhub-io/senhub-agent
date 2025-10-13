@@ -1,5 +1,66 @@
 # SenHub Agent Development Guidelines
 
+## Development Workflow (CRITICAL - READ FIRST)
+
+### Version Management
+- **Production version**: Always tagged without `-beta` suffix (e.g., `0.1.64`)
+- **Development version**: Next version with `-beta` suffix (e.g., `0.1.65-beta`)
+- **Current prod**: `0.1.64`
+- **Next dev**: `0.1.65-beta`
+
+### Branch Strategy
+1. **Feature branches**: Create a new branch for each feature/fix
+   ```bash
+   git checkout -b feature/my-feature-name
+   ```
+2. **Local development**: ALL work stays local until user approval
+   - Commit locally as needed
+   - Build and test locally: `make build-darwin`, `make build-windows`
+   - User tests manually with local binaries
+3. **Merge to dev**: ONLY when feature is sufficiently advanced and tested
+   ```bash
+   git checkout dev
+   git merge feature/my-feature-name
+   # Stay local - DO NOT PUSH yet
+   ```
+4. **Push to remote**: ONLY after user's personal testing and explicit approval
+   ```bash
+   git push origin dev
+   # Only when user says it's ready
+   ```
+
+### Critical Rules
+- ⛔ **NO automatic pushes** to remote repositories
+- ⛔ **NO beta releases** until user approval
+- ⛔ **NO commits directly to dev** - always use feature branches
+- ✅ **YES to local builds** for testing (darwin, windows, linux)
+- ✅ **YES to local commits** on feature branches
+- ✅ **YES to feature branches** that can be built and tested independently
+
+### Example Workflow
+```bash
+# 1. Start new feature
+git checkout -b feature/fix-auth-key
+make build-darwin
+./dist/senhub-agent_darwin_amd64 run --verbose
+
+# 2. Make changes, commit locally
+git add .
+git commit -m "fix: authentication key handling"
+make build-windows
+# User tests on Windows...
+
+# 3. Feature complete and tested - merge to dev (LOCAL)
+git checkout dev
+git merge feature/fix-auth-key
+make build-darwin build-windows
+# Final user testing...
+
+# 4. User approves - push to remote
+git push origin dev
+# Beta release will be triggered automatically
+```
+
 ## Build Commands
 - Build all binaries: `make build`
 - Build for specific OS: `make build-windows`, `make build-linux`, `make build-darwin`
