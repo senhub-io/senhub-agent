@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v2"
+	"senhub-agent.go/internal/agent/cliArgs"
 )
 
 // Configuration Management - Loading, creation, validation, and TLS generation
@@ -40,6 +41,34 @@ func (lc *LocalConfiguration) loadConfiguration() error {
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return fmt.Errorf("failed to parse YAML config: %w", err)
 	}
+
+	// Check config version
+	configVersion := config.ConfigVersion
+	if configVersion == 0 {
+		// No version field = v1 format (legacy)
+		lc.logger.Warn().Msg("Configuration has no version field, assuming v1 (legacy format)")
+		configVersion = 1
+		config.ConfigVersion = 1
+	}
+
+	// Validate configuration version compatibility
+	if err := ValidateConfigVersion(configVersion); err != nil {
+		// Generate compatibility report
+		report := CheckCompatibility(configVersion)
+		lc.logger.Error().
+			Int("config_version", configVersion).
+			Int("expected_version", CurrentConfigVersion).
+			Str("agent_version", cliArgs.Version).
+			Msg(FormatCompatibilityReport(report))
+		return fmt.Errorf("incompatible configuration version: %w", err)
+	}
+
+	// Log version info
+	lc.logger.Info().
+		Int("config_version", configVersion).
+		Int("current_version", CurrentConfigVersion).
+		Bool("needs_migration", NeedsMigration(configVersion)).
+		Msg("Configuration version check completed")
 
 	// Fix YAML interface conversion issues
 	config = lc.fixYAMLTypes(config)
@@ -68,6 +97,7 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 
 	// Create default configuration
 	config := LocalConfigurationData{
+		ConfigVersion: CurrentConfigVersion, // Use current version for new configs
 		Agent: LocalAgentConfig{
 			Key:       agentKey,
 			Mode:      "offline",
