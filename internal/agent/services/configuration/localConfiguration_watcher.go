@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -310,31 +311,32 @@ func (lc *LocalConfiguration) reloadConfiguration() error {
 
 // hasConfigurationChanged compares two configurations for differences
 func (lc *LocalConfiguration) hasConfigurationChanged(old, new LocalConfigurationData) bool {
-	// Compare storage configuration
-	if len(old.Storage) != len(new.Storage) {
+	// Use reflect.DeepEqual for comprehensive comparison
+	// This detects ALL changes including:
+	// - Added/removed probes or storage
+	// - Modified parameters (interval, url, etc.)
+	// - Modified probe types
+	// - Modified storage configuration
+	// - Cache configuration changes
+
+	if !reflect.DeepEqual(old.Storage, new.Storage) {
+		lc.logger.Debug().Msg("Storage configuration changed")
 		return true
 	}
-	for i, storage := range old.Storage {
-		if i >= len(new.Storage) || storage.Name != new.Storage[i].Name {
-			return true
-		}
-		// Deep comparison of parameters would be more thorough
-		// but for now we assume any storage section change matters
-	}
 
-	// Compare probes configuration
-	if len(old.Probes) != len(new.Probes) {
+	if !reflect.DeepEqual(old.Probes, new.Probes) {
+		lc.logger.Debug().Msg("Probes configuration changed")
 		return true
 	}
-	for i, probe := range old.Probes {
-		if i >= len(new.Probes) || probe.Name != new.Probes[i].Name {
-			return true
-		}
-		// Similar to storage, we could do deeper parameter comparison
+
+	if !reflect.DeepEqual(old.Cache, new.Cache) {
+		lc.logger.Debug().Msg("Cache configuration changed")
+		return true
 	}
 
-	// For now, if we reach here, consider configuration unchanged
-	// A more sophisticated comparison could be implemented later
+	// Auto-update config changes don't require reload of probes/storage
+	// but we could handle them separately if needed
+
 	return false
 }
 
