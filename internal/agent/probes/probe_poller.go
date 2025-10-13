@@ -54,8 +54,9 @@ func NewProbePoller(
 ) (*ProbePoller, error) {
 	probeId := GenerateProbeId(config)
 
-	// Create module-specific logger for probe poller with readable probe name
-	probeModuleName := fmt.Sprintf("probe.%s", config.Name)
+	// Create module-specific logger for probe poller using probe type
+	// Type is the technical identifier (e.g., "citrix", "cpu"), ensures consistent logging
+	probeModuleName := fmt.Sprintf("probe.%s", config.Type)
 	moduleLogger := logger.NewModuleLogger(baseLogger, probeModuleName)
 
 	moduleLogger.Debug().Msg("Creating new probe poller")
