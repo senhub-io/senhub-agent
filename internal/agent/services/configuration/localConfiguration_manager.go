@@ -45,8 +45,8 @@ func (lc *LocalConfiguration) loadConfiguration() error {
 	// Check config version
 	configVersion := config.ConfigVersion
 	if configVersion == 0 {
-		// No version field = v1 format (legacy)
-		lc.logger.Warn().Msg("Configuration has no version field, assuming v1 (legacy format)")
+		// No version field = version 1 format (legacy)
+		lc.logger.Warn().Msg("Configuration has no version field, assuming version 1 (legacy format)")
 		configVersion = 1
 		config.ConfigVersion = 1
 	}
@@ -190,7 +190,7 @@ func (lc *LocalConfiguration) createDefaultStorageConfig() []StorageConfig {
 
 // createDefaultProbesConfig creates default probes configuration
 func (lc *LocalConfiguration) createDefaultProbesConfig() []ProbeConfig {
-	// In v2 format: 'name' is display name, 'type' is technical identifier
+	// In config version 2: 'name' is display name, 'type' is technical identifier
 	// For default config, we use the same value for both
 	return []ProbeConfig{
 		{
@@ -306,7 +306,7 @@ func (lc *LocalConfiguration) validateConfiguration(config *LocalConfigurationDa
 		}
 	}
 
-	// Validate probes config (v2 format requires both 'name' and 'type')
+	// Validate probes config (version 2 format requires both 'name' and 'type')
 	for i, probe := range config.Probes {
 		if probe.Name == "" {
 			return fmt.Errorf("probe %d: name cannot be empty", i)

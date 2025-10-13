@@ -78,12 +78,12 @@ func (cm *ConfigMigrator) MigrateIfNeeded() error {
 	}
 
 	if _, hasType := firstProbe["type"]; hasType {
-		cm.logger.Debug().Msg("Configuration already in v2 format (has 'type' field)")
+		cm.logger.Debug().Msg("Configuration already in version 2 format (has 'type' field)")
 		return nil
 	}
 
 	// Migration needed!
-	cm.logger.Info().Msg("Configuration needs migration from v1 to v2")
+	cm.logger.Info().Msg("Configuration needs migration from version 1 to 2")
 
 	// Create backup
 	if err := cm.createBackup(); err != nil {
@@ -91,7 +91,7 @@ func (cm *ConfigMigrator) MigrateIfNeeded() error {
 	}
 
 	// Perform migration
-	if err := cm.migrateV1ToV2(rawConfig); err != nil {
+	if err := cm.migrateFrom1To2(rawConfig); err != nil {
 		return fmt.Errorf("failed to migrate configuration: %w", err)
 	}
 
@@ -123,7 +123,7 @@ func (cm *ConfigMigrator) createBackup() error {
 	// Prepend backup header with version info
 	backupHeader := fmt.Sprintf(`# Configuration backup created: %s
 # Original agent version: %s
-# This backup was created before automatic migration to v2 format
+# This backup was created before automatic migration to version 2 format
 
 `, time.Now().Format("2006-01-02 15:04:05 MST"), agentVersion)
 
@@ -138,9 +138,9 @@ func (cm *ConfigMigrator) createBackup() error {
 	return nil
 }
 
-// migrateV1ToV2 migrates configuration from v1 (name only) to v2 (name + type)
-func (cm *ConfigMigrator) migrateV1ToV2(config map[string]interface{}) error {
-	cm.logger.Info().Msg("Performing v1 → v2 migration")
+// migrateFrom1To2 migrates configuration from version 1 (name only) to version 2 (name + type)
+func (cm *ConfigMigrator) migrateFrom1To2(config map[string]interface{}) error {
+	cm.logger.Info().Msg("Performing version 1 → 2 migration")
 
 	// Process probes section
 	probesRaw, hasProbes := config["probes"]
@@ -211,12 +211,12 @@ func (cm *ConfigMigrator) generateMigratedYAML(config map[string]interface{}) ([
 	config["config_version"] = CurrentConfigVersion
 
 	// Create migration header
-	header := fmt.Sprintf(`# Configuration automatically migrated to v%d format on %s
+	header := fmt.Sprintf(`# Configuration automatically migrated to version %d format on %s
 # Original agent version: %s
 # Migration: Added 'type' field to all probes (copied from 'name')
 #            Added 'config_version' field for version tracking
 #
-# In v2 format:
+# In version 2 format:
 #   - 'name': Display name (free choice, used for UI identification)
 #   - 'type': Probe type (technical identifier: cpu, citrix, redfish, etc.)
 #
