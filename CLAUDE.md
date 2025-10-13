@@ -24,6 +24,59 @@
 - Follow resource management best practices (proper cleanup in Shutdown)
 - Use agent config from server with proper validation
 
+### Configuration Format (v2)
+**Probe Configuration uses name/type system:**
+- `name`: Display name (free-form, used for UI identification) - e.g., "Production Citrix", "CPU Monitor"
+- `type`: Probe type (technical identifier for constructor lookup) - e.g., "citrix", "cpu", "redfish"
+
+**Example:**
+```yaml
+probes:
+  - name: Production Citrix      # Display name (free choice)
+    type: citrix                 # Probe type (must match registry)
+    params:
+      base_url: "https://director.example.com"
+      interval: 120
+
+  - name: Backup Citrix          # Different display name
+    type: citrix                 # Same probe type
+    params:
+      base_url: "https://director-backup.example.com"
+      interval: 120
+```
+
+### Automatic Configuration Migration
+**Zero-downtime migration system** - NO fallback code, automatic config transformation:
+
+**How it works:**
+1. Agent detects old config format (missing `type` field)
+2. Creates timestamped backup: `agent-config.yaml.backup.YYYYMMDD-HHMMSS`
+3. Adds migration header with agent version and timestamp
+4. Transforms config: adds `type` field (copies from `name`)
+5. Saves migrated config
+6. Agent continues startup with migrated config
+
+**Migration is triggered:**
+- On LocalConfiguration startup (offline mode)
+- Before configuration loading
+- Only if `type` field is missing from probes
+
+**Benefits:**
+- No breaking changes for existing deployments
+- Automatic migration preserves user data
+- Clear audit trail with backups and headers
+- Clean code without legacy fallback logic
+- Users discover new features through commented examples
+
+**Implementation:**
+```go
+// In LocalConfiguration.Start()
+migrator := NewConfigMigrator(lc.configPath, lc.logger.Logger)
+if err := migrator.MigrateIfNeeded(); err != nil {
+    lc.logger.Warn().Err(err).Msg("Configuration migration failed")
+}
+```
+
 ## Design Patterns & Best Practices
 
 ### 🏗️ **Modular Architecture Pattern**
