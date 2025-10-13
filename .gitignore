@@ -79,3 +79,7 @@ coverage.out
 
 # Test installation directory
 /test-install/
+
+# Claude Code - Personal documentation and scripts
+scripts/Claude/
+docs/Claude/
