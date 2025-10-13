@@ -498,7 +498,7 @@ func (rc *RemoteConfiguration) generateProbesYAML(probes []ProbeConfig) (string,
 	for _, p := range probes {
 		yamlLines = append(yamlLines, fmt.Sprintf("  - name: %s", p.Name))
 
-		// Add type field (v2 format)
+		// Add type field (version 2 format)
 		if p.Type != "" {
 			yamlLines = append(yamlLines, fmt.Sprintf("    type: %s", p.Type))
 		}
