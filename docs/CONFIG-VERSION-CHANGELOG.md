@@ -16,7 +16,7 @@ Each configuration version is documented with:
 
 ## Version 2 (Current)
 
-**Agent Versions**: 0.1.64+
+**Agent Versions**: 0.1.65+
 **Date**: 2025-10-13
 **Status**: ✅ Current
 
@@ -29,7 +29,7 @@ Each configuration version is documented with:
 - **`config_version` field**: Explicit version tracking in YAML
 - **`type` field for probes**: Separation of display name and technical ID
 - **Multiple probe instances**: Same type with different names (e.g., "Prod Citrix", "Backup Citrix")
-- **Automatic migration**: v1 configs are automatically migrated to v2
+- **Automatic migration**: Version 1 configs are automatically migrated to version 2
 
 ### Configuration Example
 
@@ -55,10 +55,10 @@ probes:
       interval: 120
 ```
 
-### Migration from v1
+### Migration from version 1
 
 **Automatic Migration:**
-- Agent automatically detects v1 format (no `type` field)
+- Agent automatically detects version 1 format (no `type` field)
 - Creates backup: `agent-config.yaml.backup.YYYYMMDD-HHMMSS`
 - Adds `config_version: 2`
 - Adds `type` field to all probes (copies from `name`)
@@ -70,7 +70,7 @@ If you need to manually migrate:
 2. For each probe, add `type` field with the probe type
 3. Optionally update `name` to a descriptive display name
 
-**Before (v1):**
+**Before (version 1):**
 ```yaml
 probes:
   - name: citrix
@@ -78,7 +78,7 @@ probes:
       base_url: "https://director.company.com"
 ```
 
-**After (v2):**
+**After (version 2):**
 ```yaml
 config_version: 2
 
@@ -131,15 +131,15 @@ probes:
 
 | Config Version | Agent Version | Status | Auto-Migration |
 |---------------|---------------|--------|----------------|
-| v1 | 0.1.0 - 0.1.63 | Legacy | ✅ Yes (v1→v2) |
-| v2 | 0.1.64+ | Current | N/A |
+| 1 | 0.1.0 - 0.1.63 | Legacy | ✅ Yes (1→2) |
+| 2 | 0.1.65+ | Current | N/A |
 
 ## Version Detection
 
 The agent automatically detects the configuration version:
 
 1. **Explicit version**: If `config_version` field exists, use that value
-2. **Implicit v1**: If no `config_version` field, assume v1 (legacy)
+2. **Implicit version 1**: If no `config_version` field, assume version 1 (legacy)
 3. **Validation**: Agent validates compatibility with current version
 4. **Migration**: If needed, automatic migration is triggered
 
@@ -158,12 +158,12 @@ Future config versions will be documented here with:
 ### How do I know which config version I have?
 
 Check the top of your `agent-config.yaml`:
-- **Has `config_version: 2`**: You have v2
-- **No `config_version` field**: You have v1 (legacy)
+- **Has `config_version: 2`**: You have version 2
+- **No `config_version` field**: You have version 1 (legacy)
 
 ### Will my old config still work?
 
-✅ Yes! v1 configs are automatically migrated to v2 on agent startup.
+✅ Yes! Version 1 configs are automatically migrated to version 2 on agent startup.
 
 ### Can I manually edit config_version?
 
