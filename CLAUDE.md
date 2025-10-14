@@ -64,10 +64,18 @@ git push origin dev
 ## Build Commands
 - Build all binaries: `make build`
 - Build for specific OS: `make build-windows`, `make build-linux`, `make build-darwin`
-- Run tests: `make test`
+- Run tests: `make test` (ALWAYS use this instead of `go test ./...`)
+- Run tests with race detection: `make test-race`
 - Run single test: `go test -v ./path/to/package -run TestName`
 - Development with live reload: `make watch`
 - Clean build artifacts: `make clean`
+
+### Testing Best Practices
+- **ALWAYS use `make test`** instead of running `go test` directly
+- The Makefile ensures consistent test execution across all environments
+- For specific test cases, use: `go test -v ./path/to/package -run TestName`
+- Before committing, always run: `make test` to verify all tests pass
+- For race condition detection: `make test-race`
 
 ## Code Style Guidelines
 - Formatting: Use gofmt (enforced by pre-commit hook)
