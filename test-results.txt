@@ -1,0 +1,39 @@
+ok  	senhub-agent.go/cmd/agent	(cached)	coverage: 11.2% of statements
+ok  	senhub-agent.go/internal/agent	0.178s	coverage: 37.3% of statements
+	senhub-agent.go/internal/agent/cliArgs		coverage: 0.0% of statements
+ok  	senhub-agent.go/internal/agent/configParser	(cached)	coverage: 100.0% of statements
+	senhub-agent.go/internal/agent/formats/event		coverage: 0.0% of statements
+ok  	senhub-agent.go/internal/agent/periodic_scheduler	(cached)	coverage: 85.7% of statements
+	senhub-agent.go/internal/agent/probes		coverage: 0.0% of statements
+ok  	senhub-agent.go/internal/agent/probes/citrix	(cached)	coverage: 12.1% of statements
+ok  	senhub-agent.go/internal/agent/probes/cpu	(cached)	coverage: 12.0% of statements
+	senhub-agent.go/internal/agent/probes/event		coverage: 0.0% of statements
+ok  	senhub-agent.go/internal/agent/probes/gateway	(cached)	coverage: 1.4% of statements
+ok  	senhub-agent.go/internal/agent/probes/host	(cached)	coverage: 1.6% of statements
+ok  	senhub-agent.go/internal/agent/probes/logicaldisk	(cached)	coverage: 6.2% of statements
+ok  	senhub-agent.go/internal/agent/probes/memory	(cached)	coverage: 14.8% of statements
+ok  	senhub-agent.go/internal/agent/probes/network	(cached)	coverage: 10.2% of statements
+ok  	senhub-agent.go/internal/agent/probes/otel	(cached)	coverage: 0.0% of statements
+ok  	senhub-agent.go/internal/agent/probes/redfish	(cached)	coverage: 20.7% of statements
+ok  	senhub-agent.go/internal/agent/probes/syslog	(cached)	coverage: 27.4% of statements
+	senhub-agent.go/internal/agent/probes/types		coverage: 0.0% of statements
+ok  	senhub-agent.go/internal/agent/probes/webapp	(cached)	coverage: 13.5% of statements
+ok  	senhub-agent.go/internal/agent/services/auto_update	(cached)	coverage: 52.5% of statements
+	senhub-agent.go/internal/agent/services/common		coverage: 0.0% of statements
+ok  	senhub-agent.go/internal/agent/services/configuration	0.408s	coverage: 53.7% of statements
+	senhub-agent.go/internal/agent/services/data_store		coverage: 0.0% of statements
+	senhub-agent.go/internal/agent/services/data_store/strategies/event		coverage: 0.0% of statements
+ok  	senhub-agent.go/internal/agent/services/data_store/strategies/http	(cached)	coverage: 32.4% of statements
+ok  	senhub-agent.go/internal/agent/services/data_store/strategies/prtg	(cached)	coverage: 77.1% of statements
+	senhub-agent.go/internal/agent/services/data_store/strategies/senhub		coverage: 0.0% of statements
+ok  	senhub-agent.go/internal/agent/services/data_store/transformers	(cached)	coverage: 77.5% of statements
+ok  	senhub-agent.go/internal/agent/services/debugshipper	(cached)	coverage: 87.5% of statements
+ok  	senhub-agent.go/internal/agent/services/logger	(cached)	coverage: 57.0% of statements
+	senhub-agent.go/internal/agent/services/sensor		coverage: 0.0% of statements
+	senhub-agent.go/internal/agent/services/server		coverage: 0.0% of statements
+	senhub-agent.go/internal/agent/services/status		coverage: 0.0% of statements
+	senhub-agent.go/internal/agent/tags		coverage: 0.0% of statements
+?   	senhub-agent.go/internal/agent/types/datapoint	[no test files]
+	senhub-agent.go/internal/agent/types/event		coverage: 0.0% of statements
+ok  	senhub-agent.go/internal/agent/validators	(cached)	coverage: 91.7% of statements
+	senhub-agent.go/internal/testUtils		coverage: 0.0% of statements
