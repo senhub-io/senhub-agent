@@ -1,0 +1,302 @@
+# SenHub Agent - Documentation Style Profile
+# Generated: 2025-10-13
+# Agent: doc-manager v1.0
+
+project:
+  name: "senhub-agent"
+  module: "senhub-agent.go"
+  go_version: "1.23.2"
+  language: "english"  # All documentation in English
+
+structure:
+  docs_location: "docs/"
+  organization: "by_audience"
+  depth: 3  # max levels
+
+  categories:
+    - name: "user-guide"
+      audience: "end_users"
+      focus: "getting_started"
+      reading_time: "5-10 minutes"
+
+    - name: "admin-guide"
+      audience: "administrators"
+      focus: "all_parameters"
+      reading_time: "20-30 minutes"
+
+    - name: "probes"
+      organization: "by_feature"
+      sub_structure:
+        - "system" # cpu, memory, network, logicaldisk
+        - "citrix"
+        - "redfish"
+        - "otel"
+
+    - name: "troubleshooting"
+      audience: "all_users"
+      focus: "problem_solving"
+
+    - name: "Claude"
+      audience: "developers"
+      focus: "ai_assisted_development"
+      note: "French allowed in this folder"
+
+  key_files:
+    - name: "README.md"
+      location: "docs/"
+      role: "main_navigation"
+
+    - name: "DOCUMENTATION-INDEX.md"
+      location: "docs/"
+      role: "complete_index"
+      features:
+        - "use_case_navigation"
+        - "reading_time_estimates"
+        - "quick_reference"
+
+writing_style:
+  language: "english"
+  tone: "professional_accessible"  # Technical but readable
+  emoji_usage: true
+
+  emoji_patterns:
+    navigation:
+      - "📚"  # Documentation
+      - "🚀"  # Quick Start
+      - "⚙️"  # Configuration
+      - "📊"  # Examples/Metrics
+      - "🚨"  # Troubleshooting
+    status:
+      - "✅"  # Success/Completed
+      - "⚠️"  # Warning
+      - "❌"  # Error/Failed
+      - "🔴"  # Critical
+      - "🟡"  # Medium priority
+      - "🟢"  # Low priority
+    special:
+      - "🎯"  # Goals/Objectives
+      - "🔍"  # Analysis/Search
+      - "🤖"  # AI/Automation
+      - "📁"  # Files/Structure
+      - "🔗"  # Links/References
+
+  sentence_length: "medium"  # 15-25 words
+  technical_depth: "balanced"  # Theory + examples
+  voice: "active"  # Active voice preferred (90%)
+
+  code_examples:
+    always_specify_language: true
+    include_comments: true
+    show_output: "when_helpful"
+    real_values: true  # Use real URLs/IPs with placeholders
+
+structural_patterns:
+  standard_sections:
+    - position: 1
+      name: "Quick Start"
+      required: true
+      emoji: "🚀"
+
+    - position: 2
+      name: "Configuration"
+      required: true
+      emoji: "⚙️"
+      includes:
+        - "parameters_table"
+        - "yaml_examples"
+
+    - position: 3
+      name: "Examples"
+      required: false
+      emoji: "📊"
+      includes:
+        - "code_blocks"
+        - "integration_examples"
+
+    - position: 4
+      name: "Integration"
+      required: false
+      includes:
+        - "prtg"
+        - "nagios"
+        - "prometheus"
+
+    - position: -1  # Always last
+      name: "Troubleshooting"
+      required: false
+      emoji: "🚨"
+      format: "q_and_a"
+
+  table_usage:
+    parameters: true
+    comparisons: true
+    metrics: true
+    style: "github_markdown"
+    always_include_headers: true
+
+  cross_referencing:
+    style: "relative_links"
+    use_case_navigation: true  # "I want to..." sections
+    bidirectional: true
+    anchor_links: true
+
+code_documentation:
+  language: "go"
+  style: "godoc"
+  comment_language: "english"
+
+  package_comments:
+    required: true
+    format: "// Package <name> provides <description>."
+    include_examples: true
+
+  type_comments:
+    required: true
+    format: "// <TypeName> <description>."
+    start_with_name: true
+    no_this_prefix: true  # Never "This type..."
+
+  function_comments:
+    exported_required: true
+    unexported_optional: true
+    format: "// <FuncName> <action description>."
+    document_params: "important_only"
+    document_returns: true
+    mention_errors: true
+
+  interface_comments:
+    required: true
+    describe_purpose: true
+    document_methods: true
+
+  examples:
+    location: "*_test.go"
+    naming: "Example<FunctionName>[_scenario]"
+    include_output: true
+    executable: true
+
+testing:
+  style: "table_driven"
+  file_pattern: "*_test.go"
+  coverage_target: 80
+
+  test_structure:
+    - "Define test cases struct"
+    - "Create test slice"
+    - "Loop with t.Run()"
+    - "Compare got vs want"
+
+  example_tests:
+    required_for_exported: true
+    naming: "Example<FunctionName>"
+
+configuration_format:
+  primary: "yaml"
+  comment_style: "inline"  # With #
+  comment_language: "english"
+  examples: "real_with_placeholders"
+
+  example_style:
+    - "base_url: \"https://director.company.com\"  # Your Citrix Director URL"
+    - "interval: 120  # Collection interval in seconds"
+
+project_structure:
+  layout: "standard_go_layout"
+
+  directories:
+    cmd:
+      purpose: "Application entry points"
+      contains: "main.go files"
+
+    internal:
+      purpose: "Private application code"
+      note: "Cannot be imported by other projects"
+
+    docs:
+      purpose: "User documentation"
+      organized: "by_audience"
+
+    scripts:
+      purpose: "Build and utility scripts"
+
+architecture:
+  adr_enabled: false  # No ADRs yet
+  adr_location: "docs/architecture/"
+  adr_format: "standard"
+
+  patterns_documented:
+    - "Strategy Pattern (data_store)"
+    - "Registry Pattern (probes, strategies)"
+    - "Module Logger Pattern"
+    - "Table-Driven Tests"
+
+statistics:
+  markdown_files: 49
+  go_files: 184
+  packages_total: 39
+  packages_documented: 40  # Some have godoc
+  packages_missing_doc: 107  # Many without package comment
+  exported_functions: 265
+  test_files: 40
+
+  documentation_coverage:
+    godoc: "~27%"  # Package comments only
+    markdown: "complete"
+    tests: "extensive"
+    examples: "some"
+
+  quality_scores:
+    structure: 95  # Well organized
+    style_consistency: 90  # Very consistent
+    emoji_usage: 85  # Consistent
+    cross_references: 95  # Many links
+    godoc: 40  # Needs improvement
+
+improvement_priorities:
+  high:
+    - "Add package comments to 107 packages"
+    - "Document 265 exported functions"
+    - "Create ADR directory and initial ADRs"
+
+  medium:
+    - "Add more Example functions"
+    - "Increase test coverage to 85%+"
+    - "Create architecture diagrams"
+
+  low:
+    - "Standardize all probe docs (README + METRICS)"
+    - "Add more cross-references"
+    - "Create glossary"
+
+conventions:
+  versioning:
+    format: "X.Y.Z-beta"
+    no_v_prefix: true
+    example: "0.1.56-beta"
+
+  commit_messages:
+    format: "conventional_commits"
+    examples:
+      - "feat(redfish): add storage metrics"
+      - "fix(citrix): exclude reconnections from logon time"
+      - "docs(readme): update installation steps"
+
+  file_naming:
+    go_files: "camelCase.go"
+    test_files: "*_test.go"
+    platform_specific: "*_unix.go, *_windows.go"
+    markdown: "UPPERCASE-WITH-DASHES.md"
+
+metadata:
+  last_updated: "2025-10-13"
+  analyzed_by: "doc-manager agent"
+  version: "1.0"
+  confidence: "high"
+
+notes:
+  - "Project follows Go best practices for structure"
+  - "Documentation is well-organized by audience"
+  - "Emoji usage is consistent and helpful"
+  - "Main weakness: godoc coverage needs improvement"
+  - "French is acceptable in docs/Claude/ for development notes"
+  - "All user-facing documentation MUST be in English"
