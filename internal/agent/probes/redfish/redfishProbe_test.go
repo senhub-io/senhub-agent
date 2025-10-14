@@ -298,3 +298,217 @@ func TestRedfishProbeOnShutdown(t *testing.T) {
 		mockCollector.AssertExpectations(t)
 	})
 }
+
+func TestRedfishProbeCollect(t *testing.T) {
+	testLogger := zerolog.New(os.Stderr)
+	loggerPtr := (*logger.Logger)(&testLogger)
+
+	config := map[string]interface{}{
+		"endpoint":    "https://redfish.example.com",
+		"username":    "admin",
+		"password":    "password123",
+		"collections": []interface{}{"system", "thermal", "power"},
+	}
+
+	t.Run("Collect with no collector initialized", func(t *testing.T) {
+		probe, err := NewRedfishProbe(config, loggerPtr)
+		assert.NoError(t, err)
+		redfishProbe := probe.(*redfishProbe)
+
+		// No collector initialized
+		redfishProbe.collector = nil
+
+		datapoints, err := redfishProbe.Collect()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "collector not initialized")
+		assert.Nil(t, datapoints)
+	})
+
+	t.Run("Collect with successful collection", func(t *testing.T) {
+		probe, err := NewRedfishProbe(config, loggerPtr)
+		assert.NoError(t, err)
+		redfishProbe := probe.(*redfishProbe)
+
+		mockCollector := new(MockRedfishCollector)
+		mockCollector.On("GetVendorType").Return(VendorDell)
+
+		// Mock IsSupported for all collections
+		mockCollector.On("IsSupported", CollectionSystem).Return(true)
+		mockCollector.On("IsSupported", CollectionThermal).Return(true)
+		mockCollector.On("IsSupported", CollectionPower).Return(true)
+
+		// Mock CollectMetrics for all collections
+		systemMetrics := []data_store.DataPoint{
+			{Name: "system.health", Value: 1.0, Timestamp: time.Now()},
+		}
+		thermalMetrics := []data_store.DataPoint{
+			{Name: "thermal.temp", Value: 50.0, Timestamp: time.Now()},
+		}
+		powerMetrics := []data_store.DataPoint{
+			{Name: "power.watts", Value: 500.0, Timestamp: time.Now()},
+		}
+
+		mockCollector.On("CollectMetrics", mock.Anything, CollectionSystem, mock.Anything).Return(systemMetrics, nil)
+		mockCollector.On("CollectMetrics", mock.Anything, CollectionThermal, mock.Anything).Return(thermalMetrics, nil)
+		mockCollector.On("CollectMetrics", mock.Anything, CollectionPower, mock.Anything).Return(powerMetrics, nil)
+
+		redfishProbe.collector = mockCollector
+
+		datapoints, err := redfishProbe.Collect()
+		assert.NoError(t, err)
+		assert.NotNil(t, datapoints)
+		// Should have metrics from all 3 collections
+		assert.GreaterOrEqual(t, len(datapoints), 3)
+
+		mockCollector.AssertExpectations(t)
+	})
+
+	t.Run("Collect with unsupported collection", func(t *testing.T) {
+		probe, err := NewRedfishProbe(config, loggerPtr)
+		assert.NoError(t, err)
+		redfishProbe := probe.(*redfishProbe)
+
+		mockCollector := new(MockRedfishCollector)
+		mockCollector.On("GetVendorType").Return(VendorGeneric)
+
+		// Mock IsSupported - only system is supported
+		mockCollector.On("IsSupported", CollectionSystem).Return(true)
+		mockCollector.On("IsSupported", CollectionThermal).Return(false)
+		mockCollector.On("IsSupported", CollectionPower).Return(false)
+
+		// Mock CollectMetrics only for system
+		systemMetrics := []data_store.DataPoint{
+			{Name: "system.health", Value: 1.0, Timestamp: time.Now()},
+		}
+		mockCollector.On("CollectMetrics", mock.Anything, CollectionSystem, mock.Anything).Return(systemMetrics, nil)
+
+		redfishProbe.collector = mockCollector
+
+		datapoints, err := redfishProbe.Collect()
+		assert.NoError(t, err)
+		assert.NotNil(t, datapoints)
+		// Should only have system metrics
+		assert.GreaterOrEqual(t, len(datapoints), 1)
+
+		mockCollector.AssertExpectations(t)
+	})
+
+	t.Run("Collect with collection error", func(t *testing.T) {
+		probe, err := NewRedfishProbe(config, loggerPtr)
+		assert.NoError(t, err)
+		redfishProbe := probe.(*redfishProbe)
+
+		mockCollector := new(MockRedfishCollector)
+		mockCollector.On("GetVendorType").Return(VendorDell)
+
+		// All collections supported
+		mockCollector.On("IsSupported", mock.Anything).Return(true)
+
+		// First collection succeeds
+		systemMetrics := []data_store.DataPoint{
+			{Name: "system.health", Value: 1.0, Timestamp: time.Now()},
+		}
+		mockCollector.On("CollectMetrics", mock.Anything, CollectionSystem, mock.Anything).Return(systemMetrics, nil)
+
+		// Second collection fails
+		mockCollector.On("CollectMetrics", mock.Anything, CollectionThermal, mock.Anything).Return([]data_store.DataPoint{}, errors.New("thermal collection error"))
+
+		// Third collection succeeds
+		powerMetrics := []data_store.DataPoint{
+			{Name: "power.watts", Value: 500.0, Timestamp: time.Now()},
+		}
+		mockCollector.On("CollectMetrics", mock.Anything, CollectionPower, mock.Anything).Return(powerMetrics, nil)
+
+		redfishProbe.collector = mockCollector
+
+		// Collect should continue despite one error
+		datapoints, err := redfishProbe.Collect()
+		assert.NoError(t, err) // Errors are logged but don't stop collection
+		assert.NotNil(t, datapoints)
+		// Should have metrics from system and power (thermal failed)
+		assert.GreaterOrEqual(t, len(datapoints), 2)
+
+		mockCollector.AssertExpectations(t)
+	})
+}
+
+func TestRedfishProbeGetTargetStrategies(t *testing.T) {
+	testLogger := zerolog.New(os.Stderr)
+	loggerPtr := (*logger.Logger)(&testLogger)
+
+	config := map[string]interface{}{
+		"endpoint": "https://redfish.example.com",
+		"username": "admin",
+		"password": "password123",
+	}
+
+	probe, err := NewRedfishProbe(config, loggerPtr)
+	assert.NoError(t, err)
+
+	redfishProbe := probe.(*redfishProbe)
+	strategies := redfishProbe.GetTargetStrategies()
+
+	expected := []string{"senhub", "prtg", "http"}
+	assert.Equal(t, expected, strategies)
+}
+
+func TestRedfishProbeConfigurationValidation(t *testing.T) {
+	testLogger := zerolog.New(os.Stderr)
+	loggerPtr := (*logger.Logger)(&testLogger)
+
+	tests := []struct {
+		name        string
+		config      map[string]interface{}
+		expectError bool
+		description string
+	}{
+		{
+			name: "with verify_ssl true",
+			config: map[string]interface{}{
+				"endpoint":   "https://redfish.example.com",
+				"username":   "admin",
+				"password":   "password123",
+				"verify_ssl": true,
+			},
+			expectError: false,
+			description: "Should accept verify_ssl=true",
+		},
+		{
+			name: "with large interval",
+			config: map[string]interface{}{
+				"endpoint": "https://redfish.example.com",
+				"username": "admin",
+				"password": "password123",
+				"interval": 3600, // 1 hour
+			},
+			expectError: false,
+			description: "Should accept large interval",
+		},
+		{
+			name: "with all collection types",
+			config: map[string]interface{}{
+				"endpoint": "https://redfish.example.com",
+				"username": "admin",
+				"password": "password123",
+				"collections": []interface{}{
+					"system", "thermal", "power",
+					"processor", "memory", "network", "storage",
+				},
+			},
+			expectError: false,
+			description: "Should accept all collection types",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			probe, err := NewRedfishProbe(tt.config, loggerPtr)
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, probe)
+			}
+		})
+	}
+}
