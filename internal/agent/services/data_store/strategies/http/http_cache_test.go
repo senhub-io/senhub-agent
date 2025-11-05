@@ -176,8 +176,8 @@ func TestTimeSeriesKeyUniqueness(t *testing.T) {
 				probeName2 = tt.probe
 			}
 
-			key1 := cache.generateTimeSeriesKey(probeName1, tt.metric, tt.tags1)
-			key2 := cache.generateTimeSeriesKey(probeName2, tt.metric, tt.tags2)
+			key1 := cache.generateTimeSeriesKey(probeName1, probeName1, tt.metric, tt.tags1)
+			key2 := cache.generateTimeSeriesKey(probeName2, probeName2, tt.metric, tt.tags2)
 
 			if tt.shouldBeEqual {
 				if key1 != key2 {
@@ -271,8 +271,8 @@ func TestKeyStabilityAcrossInfrastructureChanges(t *testing.T) {
 				probeName2 = tt.probe
 			}
 
-			key1 := cache.generateTimeSeriesKey(probeName1, tt.metric, tt.tags1)
-			key2 := cache.generateTimeSeriesKey(probeName2, tt.metric, tt.tags2)
+			key1 := cache.generateTimeSeriesKey(probeName1, probeName1, tt.metric, tt.tags1)
+			key2 := cache.generateTimeSeriesKey(probeName2, probeName2, tt.metric, tt.tags2)
 
 			if key1 != key2 {
 				t.Errorf("Keys should remain stable but changed:\n  key1=%s\n  key2=%s\n  Reason: %s",
@@ -505,7 +505,7 @@ func TestKeyGenerationConsistency(t *testing.T) {
 	// Generate key multiple times
 	keys := make([]string, 100)
 	for i := 0; i < 100; i++ {
-		keys[i] = cache.generateTimeSeriesKey(probe, metric, tags)
+		keys[i] = cache.generateTimeSeriesKey(probe, probe, metric, tags)
 	}
 
 	// All keys should be identical
@@ -530,7 +530,7 @@ func TestDiscriminantVsContextualTagsInKey(t *testing.T) {
 		"vendor":     "Dell",               // Contextual (metadata)
 	}
 
-	key := cache.generateTimeSeriesKey("redfish", "storage.drive.temperature", tags)
+	key := cache.generateTimeSeriesKey("redfish", "redfish", "storage.drive.temperature", tags)
 
 	// Expected key format with discriminant tags registry:
 	// "redfish:storage.drive.temperature:drive_id=disk.bay.0"
