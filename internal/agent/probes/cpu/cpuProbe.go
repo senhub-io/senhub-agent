@@ -57,9 +57,9 @@ func (p *cpuProbe) GetTargetStrategies() []string {
 	return []string{"senhub", "prtg", "http"}
 }
 
-func (p *cpuProbe) GetName() string {
-	return "cpu"
-}
+// Note: GetName() is now inherited from BaseProbe and will return the unique
+// probe name from configuration (e.g., "cpu", "cpu2") instead of the
+// hardcoded type. This enables proper discriminant tagging for multiple instances.
 
 func (p *cpuProbe) ShouldStart() bool {
 	return true

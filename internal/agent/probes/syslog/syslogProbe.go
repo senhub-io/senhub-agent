@@ -28,6 +28,7 @@ type SyslogProbeConfig struct {
 }
 
 type SyslogProbe struct {
+	*types.BaseProbe
 	rawConfig    map[string]interface{}
 	config       SyslogProbeConfig
 	moduleLogger *logger.ModuleLogger
@@ -53,6 +54,7 @@ func NewSyslogProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		Msg("Creating new syslog probe")
 
 	return &SyslogProbe{
+		BaseProbe:    &types.BaseProbe{},
 		rawConfig:    config,
 		config:       parsedConfig,
 		moduleLogger: moduleLogger,
@@ -92,9 +94,9 @@ func (p *SyslogProbe) GetTargetStrategies() []string {
 	return []string{"event"}
 }
 
-func (p *SyslogProbe) GetName() string {
-	return "syslog"
-}
+// Note: GetName() is now inherited from BaseProbe and will return the unique
+// probe name from configuration (e.g., "syslog", "syslog2") instead of the
+// hardcoded type. This enables proper discriminant tagging for multiple instances.
 
 func (p *SyslogProbe) ShouldStart() bool {
 	return true

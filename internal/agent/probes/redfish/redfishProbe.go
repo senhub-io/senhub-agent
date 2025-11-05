@@ -104,10 +104,9 @@ func NewRedfishProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 	return probe, nil
 }
 
-// GetName returns the unique identifier of the probe
-func (p *redfishProbe) GetName() string {
-	return "redfish"
-}
+// Note: GetName() is now inherited from BaseProbe and will return the unique
+// probe name from configuration (e.g., "redfish", "redfish2") instead of the
+// hardcoded type. This enables proper discriminant tagging for multiple instances.
 
 // ShouldStart indicates if probe should be activated
 func (p *redfishProbe) ShouldStart() bool {

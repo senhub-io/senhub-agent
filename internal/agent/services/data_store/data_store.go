@@ -406,20 +406,29 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 			tags[tag.Key] = tag.Value
 		}
 
-		// Get probe name from tags to load appropriate transformer
+		// Get probe name and type from tags to load appropriate transformer
 		probeName := tags["probe_name"]
+		probeType := tags["probe_type"]
 		if probeName == "" {
 			// If no probe_name, copy datapoint as-is
 			correctedDatapoints[i] = dp
 			continue
 		}
 
+		// Fallback: if probe_type is missing, use probe_name (backward compatibility)
+		if probeType == "" {
+			probeType = probeName
+		}
+
 		// Load transformer for this probe
-		transformer, err := d.transformerRegistry.LoadTransformer(probeName, "friendly")
+		// IMPORTANT: Use probeType (technical identifier) NOT probeName (display name)
+		// This ensures multiple probes of the same type share transformer definitions
+		transformer, err := d.transformerRegistry.LoadTransformer(probeType, "friendly")
 		if err != nil {
 			d.logger.Debug().
 				Err(err).
 				Str("probe_name", probeName).
+				Str("probe_type", probeType).
 				Msg("No transformer available for unit correction")
 			correctedDatapoints[i] = dp
 			continue

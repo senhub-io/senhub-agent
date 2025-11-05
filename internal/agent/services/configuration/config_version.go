@@ -120,14 +120,14 @@ func GetVersionDescription(version int) string {
 
 // ConfigCompatibilityReport provides compatibility information
 type ConfigCompatibilityReport struct {
-	ConfigVersion   int
-	AgentVersion    string
-	CurrentVersion  int
-	Compatible      bool
-	NeedsMigration  bool
-	MigrationPath   []int
-	Warnings        []string
-	Errors          []string
+	ConfigVersion  int
+	AgentVersion   string
+	CurrentVersion int
+	Compatible     bool
+	NeedsMigration bool
+	MigrationPath  []int
+	Warnings       []string
+	Errors         []string
 }
 
 // CheckCompatibility performs a full compatibility check
