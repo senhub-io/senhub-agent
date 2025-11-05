@@ -53,12 +53,21 @@ func (f *FormatConverter) GetSenHubMetricsForProbe(probeName string) []SenHubMet
 
 // convertToSenHubFormat converts a cached metric to SenHub format
 func (f *FormatConverter) convertToSenHubFormat(metric CachedMetric) SenHubMetric {
-	// Get transformer for friendly name resolution
-	transformer, err := f.transformerRegistry.LoadTransformer(metric.ProbeName, "friendly")
+	// Extract probe type from tags (fallback to probe name if not present)
+	// Transformers are registered by probe TYPE (redfish, cpu, citrix)
+	// NOT by probe instance NAME (redfish, redfish2, cpu1, cpu2)
+	probeType := metric.Tags["probe_type"]
+	if probeType == "" {
+		probeType = metric.ProbeName
+	}
+
+	// Get transformer for friendly name resolution using probe TYPE
+	transformer, err := f.transformerRegistry.LoadTransformer(probeType, "friendly")
 	if err != nil {
 		f.logger.Warn().
 			Err(err).
 			Str("probe_name", metric.ProbeName).
+			Str("probe_type", probeType).
 			Msg("Failed to get transformer for SenHub format")
 	}
 
@@ -111,8 +120,14 @@ func (f *FormatConverter) GetMetricsForProbeWithFilter(probeName string, filter 
 			continue
 		}
 
+		// Extract probe type from tags (fallback to probe name if not present)
+		probeType := metric.Tags["probe_type"]
+		if probeType == "" {
+			probeType = metric.ProbeName
+		}
+
 		// Generate unique key for transformer
-		tsKey := f.cache.generateTimeSeriesKey(metric.ProbeName, metric.MetricName, metric.Tags)
+		tsKey := f.cache.generateTimeSeriesKey(metric.ProbeName, probeType, metric.MetricName, metric.Tags)
 
 		// Transform to PRTG channel
 		if channel := f.transformToPRTGChannel(tsKey, metric); channel != nil {
@@ -315,12 +330,21 @@ func (f *FormatConverter) transformMetricNameForPRTG(key string, metric CachedMe
 
 // transformMetricNameForPRTGWithLookup transforms metric names using the transformer system with lookup support
 func (f *FormatConverter) transformMetricNameForPRTGWithLookup(key string, metric CachedMetric) (string, string, string) {
-	// Get transformer for friendly name resolution
-	transformer, err := f.transformerRegistry.LoadTransformer(metric.ProbeName, "friendly")
+	// Extract probe type from tags (fallback to probe name if not present)
+	// Transformers are registered by probe TYPE (redfish, cpu, citrix)
+	// NOT by probe instance NAME (redfish, redfish2, cpu1, cpu2)
+	probeType := metric.Tags["probe_type"]
+	if probeType == "" {
+		probeType = metric.ProbeName
+	}
+
+	// Get transformer for friendly name resolution using probe TYPE
+	transformer, err := f.transformerRegistry.LoadTransformer(probeType, "friendly")
 	if err != nil {
 		f.logger.Warn().
 			Err(err).
 			Str("probe_name", metric.ProbeName).
+			Str("probe_type", probeType).
 			Msg("Failed to get transformer for PRTG format")
 		return metric.MetricName, metric.Unit, ""
 	}

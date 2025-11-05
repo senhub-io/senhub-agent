@@ -71,6 +71,32 @@ func NewProbePoller(
 		return nil, fmt.Errorf("unable to start probe %s: %v", config.Name, err)
 	}
 
+	// Set the unique probe name from configuration (v2 format: name field)
+	// This ensures each probe instance has a unique identifier for cache keys
+	// All probes that embed BaseProbe will have this method available
+	if nameable, ok := probe.(interface{ SetName(string) }); ok {
+		nameable.SetName(config.Name)
+	} else {
+		// Should not happen for well-formed probes, but log if it does
+		moduleLogger.Warn().
+			Str("probe_name", config.Name).
+			Str("probe_type", config.Type).
+			Msg("⚠️ Probe does not support SetName - discriminant tags may not work correctly")
+	}
+
+	// Set the probe type from configuration (v2 format: type field)
+	// This is used for discriminant tag lookup in the cache registry
+	// All probes that embed BaseProbe will have this method available
+	if typeable, ok := probe.(interface{ SetProbeType(string) }); ok {
+		typeable.SetProbeType(config.Type)
+	} else {
+		// Should not happen for well-formed probes, but log if it does
+		moduleLogger.Warn().
+			Str("probe_name", config.Name).
+			Str("probe_type", config.Type).
+			Msg("⚠️ Probe does not support SetProbeType - discriminant tags registry lookup may not work correctly")
+	}
+
 	probePoller := &ProbePoller{
 		ProbeId:      probeId,
 		Probe:        probe,
