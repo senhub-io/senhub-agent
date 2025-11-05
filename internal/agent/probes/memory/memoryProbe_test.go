@@ -47,8 +47,12 @@ func TestNewMemoryProbe(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewMemoryProbe() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			if !tt.wantErr && probe.GetName() != "memory" {
-				t.Errorf("Expected name 'memory', got '%s'", probe.GetName())
+			if !tt.wantErr {
+				// Test BaseProbe inheritance: SetName() and GetName()
+				probe.(interface{ SetName(string) }).SetName("memory")
+				if probe.GetName() != "memory" {
+					t.Errorf("Expected name 'memory', got '%s'", probe.GetName())
+				}
 			}
 		})
 	}
