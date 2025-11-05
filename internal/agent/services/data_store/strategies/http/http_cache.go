@@ -22,20 +22,29 @@ import (
 // but don't identify distinct metric sources. Including them would break time series
 // continuity when metadata changes (e.g., endpoint URL change, platform info update).
 //
+// DiscriminantTagsRegistry defines which tags are discriminant (identify unique instances)
+// vs contextual (provide metadata) for each probe type.
+//
 // Based on TIME_SERIES_KEY_DESIGN.md - Universal Uniqueness Rule (RUU):
 // "Une clé de série temporelle DOIT être unique SI ET SEULEMENT SI
 // les valeurs des métriques collectées à cet instant peuvent être DIFFÉRENTES"
+//
+// See docs/engineering/TIME_SERIES_KEY_DESIGN.md for:
+// - Complete design rationale and test scenarios
+// - Rules for classifying tags as discriminant vs contextual
+// - Step-by-step guide for adding new probe types
+// - Troubleshooting cache key issues
 var DiscriminantTagsRegistry = map[string][]string{
 	// System probes - multi-instance metrics
-	"cpu": {"core"},                               // Different CPU cores have independent values
-	"memory": {},                                  // System-level only, no instances
-	"network": {"interface", "adapter"},           // Different network interfaces
+	"cpu":         {"core"},                           // Different CPU cores have independent values
+	"memory":      {},                                 // System-level only, no instances
+	"network":     {"interface", "adapter"},           // Different network interfaces
 	"logicaldisk": {"drive", "mount_point", "device"}, // Different drives/volumes
 
 	// Application probes
-	"citrix": {"metric_type", "failure_category"}, // Citrix aggregation types
-	"webapp": {"url", "endpoint"},                 // Different web endpoints
-	"gateway": {"destination", "target"},          // Different gateway targets
+	"citrix":  {"metric_type", "failure_category"}, // Citrix aggregation types
+	"webapp":  {"url", "endpoint"},                 // Different web endpoints
+	"gateway": {"destination", "target"},           // Different gateway targets
 
 	// Infrastructure probes
 	"redfish": {
@@ -53,7 +62,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
-	"syslog": {"event_id", "source"},    // Syslog events
+	"syslog":    {"event_id", "source"}, // Syslog events
 
 	// OpenTelemetry
 	"otel": {"service_name", "span_name"}, // OTEL traces/metrics
@@ -189,11 +198,11 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 			probeName = "unknown" // Fallback for metrics without probe_name
 		}
 		if probeType == "" {
-			c.logger.Warn().
+			c.logger.Error().
 				Str("metric_name", dp.Name).
 				Str("probe_name", probeName).
 				Interface("all_tags", tags).
-				Msg("⚠️ MISSING PROBE_TYPE: Metric has no probe_type tag!")
+				Msg("⚠️ MISSING PROBE_TYPE: Metric has no probe_type tag! Probe not properly initialized with SetProbeType(). Falling back to probe_name.")
 			probeType = probeName // Fallback to probe_name if type missing
 		}
 
