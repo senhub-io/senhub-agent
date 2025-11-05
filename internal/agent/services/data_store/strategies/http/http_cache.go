@@ -111,14 +111,17 @@ func NewMetricCache(ttl time.Duration, logger *logger.ModuleLogger) *MetricCache
 //   - Time series continuity when metadata changes (endpoint, hostname, etc.)
 //   - Proper cardinality (only multi-instance metrics create multiple series)
 //   - Filtering still works (all tags preserved in CachedMetric.Tags)
-func (c *MetricCache) generateTimeSeriesKey(probeName, metricName string, tags map[string]string) string {
+func (c *MetricCache) generateTimeSeriesKey(probeName, probeType, metricName string, tags map[string]string) string {
 	// Get discriminant tags for this probe type from registry
-	discriminantTagNames, exists := DiscriminantTagsRegistry[probeName]
+	// Use probeType (technical identifier: "redfish", "cpu", etc.) for lookup
+	// NOT probeName (unique instance name: "redfish", "redfish2", etc.)
+	discriminantTagNames, exists := DiscriminantTagsRegistry[probeType]
 	if !exists {
 		// Unknown probe type - log warning and use no discriminant tags
 		// This is safe: creates single time series per metric (like system-level probes)
 		c.logger.Warn().
 			Str("probe_name", probeName).
+			Str("probe_type", probeType).
 			Str("metric_name", metricName).
 			Msg("⚠️ Probe type not in DiscriminantTagsRegistry - using no discriminant tags")
 		discriminantTagNames = []string{}
@@ -173,10 +176,11 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 			tags[tag.Key] = tag.Value
 		}
 
-		// Get probe name from tags
+		// Get probe name and type from tags
 		probeName := tags["probe_name"]
+		probeType := tags["probe_type"]
 
-		// ⚠️ DEBUG: Log if probe_name is missing or empty
+		// ⚠️ DEBUG: Log if probe_name or probe_type is missing or empty
 		if probeName == "" {
 			c.logger.Warn().
 				Str("metric_name", dp.Name).
@@ -184,16 +188,28 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 				Msg("⚠️ MISSING PROBE_NAME: Metric has no probe_name tag!")
 			probeName = "unknown" // Fallback for metrics without probe_name
 		}
+		if probeType == "" {
+			c.logger.Warn().
+				Str("metric_name", dp.Name).
+				Str("probe_name", probeName).
+				Interface("all_tags", tags).
+				Msg("⚠️ MISSING PROBE_TYPE: Metric has no probe_type tag!")
+			probeType = probeName // Fallback to probe_name if type missing
+		}
 
 		// Generate unique time series key
-		tsKey := c.generateTimeSeriesKey(probeName, dp.Name, tags)
+		tsKey := c.generateTimeSeriesKey(probeName, probeType, dp.Name, tags)
 
 		// Get transformer to resolve unit
-		transformer, err := transformerRegistry.LoadTransformer(probeName, "friendly")
+		// IMPORTANT: Use probeType (technical identifier like "redfish", "cpu")
+		// NOT probeName (display name like "storage-me5024", "redfish2")
+		// This ensures multiple probes of the same type share the same transformer definitions
+		transformer, err := transformerRegistry.LoadTransformer(probeType, "friendly")
 		if err != nil {
 			c.logger.Warn().
 				Err(err).
 				Str("probe_name", probeName).
+				Str("probe_type", probeType).
 				Msg("Failed to get transformer for unit resolution")
 		}
 
