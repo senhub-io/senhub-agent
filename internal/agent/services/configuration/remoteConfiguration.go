@@ -42,8 +42,8 @@ type StorageConfig struct {
 type ProbeConfigParams = map[string]interface{}
 
 type ProbeConfig struct {
-	Name   string            `json:"name"`             // Display name (free-form)
-	Type   string            `json:"type,omitempty"`   // Probe type (technical identifier)
+	Name   string            `json:"name"`           // Display name (free-form)
+	Type   string            `json:"type,omitempty"` // Probe type (technical identifier)
 	Params ProbeConfigParams `json:"params"`
 }
 

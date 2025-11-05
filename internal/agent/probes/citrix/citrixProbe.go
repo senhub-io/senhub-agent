@@ -184,10 +184,9 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	return probe, nil
 }
 
-// GetName returns the unique identifier of the probe
-func (p *citrixProbe) GetName() string {
-	return "citrix"
-}
+// Note: GetName() is now inherited from BaseProbe and will return the unique
+// probe name from configuration (e.g., "citrix", "citrix2") instead of the
+// hardcoded type. This enables proper discriminant tagging for multiple instances.
 
 // ShouldStart indicates if probe should be activated
 func (p *citrixProbe) ShouldStart() bool {
