@@ -38,7 +38,6 @@ const (
 
 	// Site Health Metrics
 	MetricSiteHealthScore = "health_score"
-
 )
 
 // GetLogonPhaseMetricName returns the metric name for a logon phase

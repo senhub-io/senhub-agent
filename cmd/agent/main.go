@@ -172,7 +172,6 @@ func main() {
 	}
 }
 
-
 func showHelp() {
 	fmt.Printf(`Usage: %s [command] [options]
 
@@ -236,4 +235,3 @@ Examples:
 
 `, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
-
