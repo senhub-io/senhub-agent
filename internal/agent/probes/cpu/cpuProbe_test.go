@@ -67,6 +67,8 @@ func TestNewCpuProbe(t *testing.T) {
 			}
 
 			if !tt.wantErr {
+				// Test BaseProbe inheritance: SetName() and GetName()
+				probe.(interface{ SetName(string) }).SetName("cpu")
 				if probe.GetName() != "cpu" {
 					t.Errorf("Expected name 'cpu', got '%s'", probe.GetName())
 				}
@@ -84,8 +86,17 @@ func TestCpuProbe_GetName(t *testing.T) {
 		t.Fatalf("Failed to create probe: %v", err)
 	}
 
+	// Test BaseProbe inheritance: SetName() and GetName()
+	// In production, probe_poller.go calls SetName() after probe creation
+	probe.(interface{ SetName(string) }).SetName("cpu")
 	if probe.GetName() != "cpu" {
 		t.Errorf("GetName() = %s, want 'cpu'", probe.GetName())
+	}
+
+	// Test default behavior: GetName() returns empty string before SetName() is called
+	probe2, _ := NewCpuProbe(map[string]interface{}{}, baseLogger)
+	if probe2.GetName() != "" {
+		t.Errorf("GetName() before SetName() = %s, want empty string", probe2.GetName())
 	}
 }
 
