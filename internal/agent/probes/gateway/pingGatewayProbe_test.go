@@ -27,8 +27,12 @@ func TestNewPingGatewayProbe(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewPingGatewayProbe() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			if !tt.wantErr && probe.GetName() != "ping_gateway" {
-				t.Errorf("Expected name 'ping_gateway', got '%s'", probe.GetName())
+			if !tt.wantErr {
+				// Test BaseProbe inheritance: SetName() and GetName()
+				probe.(interface{ SetName(string) }).SetName("ping_gateway")
+				if probe.GetName() != "ping_gateway" {
+					t.Errorf("Expected name 'ping_gateway', got '%s'", probe.GetName())
+				}
 			}
 		})
 	}
@@ -39,8 +43,17 @@ func TestPingGatewayProbe_GetName(t *testing.T) {
 	baseLogger := logger.NewLogger(mockArgs)
 
 	probe, _ := NewPingGatewayProbe(map[string]interface{}{}, baseLogger)
+
+	// Test BaseProbe inheritance: SetName() and GetName()
+	probe.(interface{ SetName(string) }).SetName("ping_gateway")
 	if probe.GetName() != "ping_gateway" {
 		t.Errorf("GetName() = %s, want 'ping_gateway'", probe.GetName())
+	}
+
+	// Test default behavior: GetName() returns empty string before SetName() is called
+	probe2, _ := NewPingGatewayProbe(map[string]interface{}{}, baseLogger)
+	if probe2.GetName() != "" {
+		t.Errorf("GetName() before SetName() = %s, want empty string", probe2.GetName())
 	}
 }
 
