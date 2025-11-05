@@ -70,6 +70,8 @@ func TestNewLogicalDiskProbe(t *testing.T) {
 			}
 
 			if !tt.wantErr {
+				// Test BaseProbe inheritance: SetName() and GetName()
+				probe.(interface{ SetName(string) }).SetName(tt.wantName)
 				if probe.GetName() != tt.wantName {
 					t.Errorf("Expected name '%s', got '%s'", tt.wantName, probe.GetName())
 				}
@@ -95,10 +97,18 @@ func TestLogicalDiskProbe_GetName(t *testing.T) {
 		t.Fatalf("Failed to create probe: %v", err)
 	}
 
-	name := probe.GetName()
+	// Test BaseProbe inheritance: SetName() and GetName()
 	expected := "logicaldisk"
+	probe.(interface{ SetName(string) }).SetName(expected)
+	name := probe.GetName()
 	if name != expected {
 		t.Errorf("GetName() = %s, want %s", name, expected)
+	}
+
+	// Test default behavior: GetName() returns empty string before SetName() is called
+	probe2, _ := NewLogicalDiskProbe(map[string]interface{}{}, baseLogger)
+	if probe2.GetName() != "" {
+		t.Errorf("GetName() before SetName() = %s, want empty string", probe2.GetName())
 	}
 }
 
@@ -198,6 +208,9 @@ func TestLogicalDiskProbe_Collect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create probe: %v", err)
 	}
+
+	// Set probe name for proper enrichment testing
+	probe.(interface{ SetName(string) }).SetName("logicaldisk")
 
 	ldProbe := probe.(*logicaldiskProbe)
 
@@ -447,6 +460,9 @@ func TestLogicalDiskProbe_String(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create probe: %v", err)
 			}
+
+			// Set probe name for String() testing
+			probe.(interface{ SetName(string) }).SetName("logicaldisk")
 
 			ldProbe := probe.(*logicaldiskProbe)
 			str := ldProbe.String()
