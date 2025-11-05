@@ -464,7 +464,7 @@ func (f *FormatConverter) applyMetricFilter(metrics []CachedMetric, filter Metri
 				Interface("metric_tags", metric.Tags).
 				Interface("filter_tags", filter.TagFilters).
 				Msg("🔍 Filtering: Checking metric against tag filters")
-			
+
 			for tagKey, allowedValues := range filter.TagFilters {
 				metricValue, exists := metric.Tags[tagKey]
 				f.logger.Debug().
@@ -473,7 +473,7 @@ func (f *FormatConverter) applyMetricFilter(metrics []CachedMetric, filter Metri
 					Bool("exists", exists).
 					Strs("allowed_values", allowedValues).
 					Msg("🔍 Filtering: Tag comparison")
-				
+
 				if !exists {
 					f.logger.Debug().
 						Str("tag_key", tagKey).

@@ -94,7 +94,7 @@ func (s *ServerManager) startHTTPSServer(address string) {
 	// Get certificate paths from configuration (absolute paths generated during installation)
 	certFile := s.strategy.configManager.GetTLSCertFile()
 	keyFile := s.strategy.configManager.GetTLSKeyFile()
-	
+
 	// Fallback to relative paths if not configured (for backward compatibility)
 	if certFile == "" {
 		certFile = "./certs/agent-cert.pem"
@@ -169,7 +169,7 @@ func (s *ServerManager) GetServerConfig() map[string]interface{} {
 
 	if s.strategy.configManager.IsTLSEnabled() {
 		config["tls_min_version"] = s.strategy.configManager.GetTLSMinVersion()
-		
+
 		// Use configured certificate paths (absolute) or fallback to relative
 		certFile := s.strategy.configManager.GetTLSCertFile()
 		keyFile := s.strategy.configManager.GetTLSKeyFile()

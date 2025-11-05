@@ -14,9 +14,9 @@ import (
 
 // ConfigVersion tracks configuration format version (for backups only)
 type ConfigVersion struct {
-	Version   int    `yaml:"config_version"`
-	Migrated  string `yaml:"migrated_at,omitempty"`
-	AgentVer  string `yaml:"agent_version,omitempty"`
+	Version  int    `yaml:"config_version"`
+	Migrated string `yaml:"migrated_at,omitempty"`
+	AgentVer string `yaml:"agent_version,omitempty"`
 }
 
 // ConfigMigrator handles automatic configuration migration

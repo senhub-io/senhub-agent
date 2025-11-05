@@ -296,10 +296,10 @@ func TestContextualTagsPreservedInMetadata(t *testing.T) {
 			Value: 42.5,
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "redfish"},
-				{Key: "drive_id", Value: "disk.bay.0"},      // Discriminant
+				{Key: "drive_id", Value: "disk.bay.0"},         // Discriminant
 				{Key: "endpoint", Value: "https://server.com"}, // Contextual
-				{Key: "vendor", Value: "Dell"},              // Contextual
-				{Key: "model", Value: "PowerEdge R740"},     // Contextual
+				{Key: "vendor", Value: "Dell"},                 // Contextual
+				{Key: "model", Value: "PowerEdge R740"},        // Contextual
 			},
 		},
 	}
@@ -391,36 +391,36 @@ func TestNoCollisionsInRealisticScenarios(t *testing.T) {
 // TestMultiInstanceMetricsCardinality validates cardinality calculations for multi-instance metrics
 func TestMultiInstanceMetricsCardinality(t *testing.T) {
 	scenarios := []struct {
-		name               string
-		probe              string
-		instances          int
-		metricsPerInstance int
+		name                string
+		probe               string
+		instances           int
+		metricsPerInstance  int
 		expectedCardinality int
-		description        string
+		description         string
 	}{
 		{
-			name:               "CPU with 8 cores",
-			probe:              "cpu",
-			instances:          8,
-			metricsPerInstance: 5, // usage_percent, user_time, system_time, idle_time, iowait_time
+			name:                "CPU with 8 cores",
+			probe:               "cpu",
+			instances:           8,
+			metricsPerInstance:  5, // usage_percent, user_time, system_time, idle_time, iowait_time
 			expectedCardinality: 8 * 5,
-			description:        "8 cores × 5 metrics = 40 time series",
+			description:         "8 cores × 5 metrics = 40 time series",
 		},
 		{
-			name:               "Network with 2 interfaces",
-			probe:              "network",
-			instances:          2,
-			metricsPerInstance: 8, // bytes_sent, bytes_recv, packets_sent, packets_recv, errors_in, errors_out, drops_in, drops_out
+			name:                "Network with 2 interfaces",
+			probe:               "network",
+			instances:           2,
+			metricsPerInstance:  8, // bytes_sent, bytes_recv, packets_sent, packets_recv, errors_in, errors_out, drops_in, drops_out
 			expectedCardinality: 2 * 8,
-			description:        "2 interfaces × 8 metrics = 16 time series",
+			description:         "2 interfaces × 8 metrics = 16 time series",
 		},
 		{
-			name:               "Redfish storage with 12 drives",
-			probe:              "redfish",
-			instances:          12,
-			metricsPerInstance: 6, // status, temperature, capacity, health, rebuild_progress, etc.
+			name:                "Redfish storage with 12 drives",
+			probe:               "redfish",
+			instances:           12,
+			metricsPerInstance:  6, // status, temperature, capacity, health, rebuild_progress, etc.
 			expectedCardinality: 12 * 6,
-			description:        "12 drives × 6 metrics = 72 time series",
+			description:         "12 drives × 6 metrics = 72 time series",
 		},
 	}
 

@@ -146,6 +146,64 @@ if err := migrator.MigrateIfNeeded(); err != nil {
 }
 ```
 
+### Probe Architecture: name vs type Distinction
+
+**Two-level identification system** for probes:
+- `name` (probe instance) - Unique identifier per probe instance in configuration
+- `type` (probe class) - Technical probe type for shared behavior (registry, transformers)
+
+**Architecture components:**
+
+```go
+// BaseProbe provides common functionality for all probes
+type BaseProbe struct {
+    OnDataPoints data_store.AddCallback
+    name         string   // Unique probe instance name (e.g., "cpu", "cpu2", "Production Citrix")
+    probeType    string   // Technical probe type (e.g., "cpu", "citrix", "redfish")
+}
+
+// All probes embed BaseProbe for consistent behavior
+type cpuProbe struct {
+    *types.BaseProbe  // Embedding provides SetName(), SetProbeType(), GetName()
+    rawConfig map[string]interface{}
+    // ... other fields
+}
+```
+
+**Usage across the system:**
+
+| Component | Uses | Purpose |
+|-----------|------|---------|
+| Configuration (v2) | Both `name` and `type` | User provides both values in YAML |
+| BaseProbe | Stores both values | SetName() and SetProbeType() called during initialization |
+| Cache keys | Uses `name` | Uniqueness for multiple probe instances (cpu vs cpu2) |
+| Transformer loading | Uses `type` | Shared definitions (all redfish probes share redfish.yaml) |
+| Registry lookup | Uses `type` | Discriminant tags (all cpu probes share {core} tag) |
+| Metrics tags | Both as tags | `probe_name` + `probe_type` added to all datapoints |
+
+**Example: Multiple Redfish instances**
+
+```yaml
+probes:
+  - name: storage-me5024        # Unique instance name
+    type: redfish               # Technical type
+    params:
+      endpoint: "https://storage.example.com"
+
+  - name: compute-server        # Different instance name
+    type: redfish               # Same technical type
+    params:
+      endpoint: "https://compute.example.com"
+```
+
+**Result:**
+- Both probes share transformer: `redfish_friendly.yaml`
+- Both probes share discriminant tags: `{drive_id, controller, pool_name}`
+- Cache keys are unique: `storage-me5024:metric` vs `compute-server:metric`
+- Metrics have both tags: `probe_name="storage-me5024"` AND `probe_type="redfish"`
+
+**Key benefit:** Multiple instances of the same probe type share configuration (transformers, discriminant tags) while maintaining unique identities (cache keys, instance names).
+
 ## Design Patterns & Best Practices
 
 ### 🏗️ **Modular Architecture Pattern**

@@ -339,4 +339,3 @@ func getServiceStatusText(status service.Status) string {
 		return fmt.Sprintf("Unknown Status (%d)", int(status))
 	}
 }
-
