@@ -1,8 +1,9 @@
 # Time Series Key Design - Engineering Rules
 
-**Date:** 2025-10-30
-**Version:** 1.0
-**Status:** DRAFT - En révision avant implémentation
+**Date:** 2025-11-05 (Updated)
+**Version:** 1.1 - Implemented
+**Status:** ACTIVE - Implementation Complete
+**Branch:** feature/cache-key-discriminant-tags
 
 ---
 

@@ -677,8 +677,8 @@ func TestNewCitrixProbe_ConfigurationValidation(t *testing.T) {
 					"password": "password",
 				},
 				"retry": map[string]interface{}{
-					"max_attempts":    5,
-					"backoff_factor":  1.5,
+					"max_attempts":   5,
+					"backoff_factor": 1.5,
 				},
 			},
 			wantErr: false,
@@ -865,10 +865,10 @@ func TestNewCitrixProbe_AdvancedConfiguration(t *testing.T) {
 	baseLogger := &logger.Logger{}
 
 	tests := []struct {
-		name           string
-		config         map[string]interface{}
-		wantErr        bool
-		checkFunc      func(*testing.T, types.Probe)
+		name      string
+		config    map[string]interface{}
+		wantErr   bool
+		checkFunc func(*testing.T, types.Probe)
 	}{
 		{
 			name: "with fallback DDC URLs",
@@ -904,8 +904,8 @@ func TestNewCitrixProbe_AdvancedConfiguration(t *testing.T) {
 					"password": "password",
 				},
 				"retry": map[string]interface{}{
-					"max_attempts":    5,
-					"backoff_factor":  3.0,
+					"max_attempts":   5,
+					"backoff_factor": 3.0,
 				},
 				"timeout": 60,
 			},

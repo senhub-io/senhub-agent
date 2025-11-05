@@ -11,8 +11,8 @@ import (
 // callback management.
 type BaseProbe struct {
 	OnDataPoints data_store.AddCallback // Callback for collected datapoints
-	name         string                  // Unique probe name from configuration
-	probeType    string                  // Probe type (technical identifier: cpu, redfish, citrix, etc.)
+	name         string                 // Unique probe name from configuration
+	probeType    string                 // Probe type (technical identifier: cpu, redfish, citrix, etc.)
 }
 
 // GetTargetStrategies returns the default storage strategies
