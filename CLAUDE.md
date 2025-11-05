@@ -77,6 +77,72 @@ git push origin dev
 - Before committing, always run: `make test` to verify all tests pass
 - For race condition detection: `make test-race`
 
+## Code Review Guidelines (MANDATORY for code-reviewer agent)
+
+### Critical Verification Checklist
+When reviewing code changes, the code-reviewer agent MUST systematically verify:
+
+#### 1. Test Coverage and Updates (CRITICAL)
+- ✅ **Are tests updated?** For EVERY code change, verify corresponding tests exist and are current
+- ✅ **New functionality?** → New tests MUST be added
+- ✅ **Modified behavior?** → Existing tests MUST be updated to reflect changes
+- ✅ **API changes?** → Integration tests MUST be updated
+- ✅ **Bug fixes?** → Regression tests MUST be added
+- ⚠️ **Red flag:** Code changes without corresponding test updates
+
+**Examples of test mismatches to catch:**
+- Function signature changed but tests still use old signature
+- New struct fields added but tests don't verify them
+- New error cases added but tests don't cover them
+- Method behavior changed (e.g., GetName() now inherited from BaseProbe) but tests still expect old hardcoded behavior
+- New configuration options added but no validation tests
+
+#### 2. Test Execution Status
+- ✅ Verify tests actually pass (check CI/CD status or ask to run tests)
+- ✅ No skipped tests without justification
+- ✅ No commented-out test cases without explanation
+- ✅ Test assertions are meaningful (not just checking `err == nil`)
+
+#### 3. Code Quality Checks
+- ✅ Proper error handling with context
+- ✅ No hardcoded values (use constants/config)
+- ✅ Thread safety for concurrent code
+- ✅ Resource cleanup (defer Close(), context cancellation)
+- ✅ Logging at appropriate levels
+
+#### 4. Architecture Compliance
+- ✅ Follows established patterns (BaseProbe embedding, delegation, etc.)
+- ✅ Respects separation of concerns
+- ✅ No breaking changes to public APIs without deprecation
+- ✅ Documentation updated for behavior changes
+
+### Review Process
+1. **Analyze code changes** → Identify modified/new functionality
+2. **Locate test files** → Find corresponding `*_test.go` files
+3. **Compare implementations** → Verify tests reflect current code behavior
+4. **Check test results** → Confirm all tests pass in CI/CD
+5. **Flag mismatches** → Report any tests that need updates
+6. **Provide specific guidance** → Suggest exact test updates needed
+
+### Review Severity Levels
+- 🔴 **BLOCKER**: Tests missing for new code, tests failing, critical bugs
+- 🟠 **MAJOR**: Tests outdated, incomplete coverage, architectural violations
+- 🟡 **MINOR**: Style issues, missing comments, optimization opportunities
+- 🟢 **SUGGESTION**: Improvements, refactoring ideas, best practices
+
+### Example Review Output Format
+```
+## Test Coverage Analysis
+✅ Unit tests present: Yes
+⚠️ Tests outdated: cpu/cpuProbe_test.go line 70 expects hardcoded "cpu" but GetName() now inherited
+❌ Missing tests: No tests for new SetProbeType() method
+
+## Required Actions
+1. Update cpu/cpuProbe_test.go:70 to call SetName("cpu") before testing GetName()
+2. Add test case for SetProbeType() and GetProbeType() methods
+3. Verify tests pass: `go test ./internal/agent/probes/cpu -v`
+```
+
 ## Code Style Guidelines
 - Formatting: Use gofmt (enforced by pre-commit hook)
 - Imports: Standard library first, third-party next, internal last with blank lines between groups
