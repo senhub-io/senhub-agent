@@ -19,7 +19,6 @@ type DeliveryControllerClient interface {
 	// GetDeliveryGroupsBySite retrieves all delivery groups for a specific site
 	GetDeliveryGroupsBySite(ctx context.Context, siteName string) ([]DDCDeliveryGroup, error)
 
-
 	// GetControllersBySite retrieves all controllers for a specific site
 	GetControllersBySite(ctx context.Context, siteName string) ([]DDCController, error)
 

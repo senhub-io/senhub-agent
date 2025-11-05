@@ -66,4 +66,3 @@ func (mc *MetricsCollector) CollectSessionMetrics(ctx context.Context, timestamp
 }
 
 // calculateSessionsZombie function removed - zombie sessions metric not operationally relevant
-
