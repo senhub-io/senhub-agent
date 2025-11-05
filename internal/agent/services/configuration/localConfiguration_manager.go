@@ -194,23 +194,23 @@ func (lc *LocalConfiguration) createDefaultProbesConfig() []ProbeConfig {
 	// For default config, we use the same value for both
 	return []ProbeConfig{
 		{
-			Name:   "cpu",           // Display name
-			Type:   "cpu",           // Probe type
+			Name:   "cpu", // Display name
+			Type:   "cpu", // Probe type
 			Params: map[string]interface{}{"interval": 30},
 		},
 		{
-			Name:   "memory",        // Display name
-			Type:   "memory",        // Probe type
+			Name:   "memory", // Display name
+			Type:   "memory", // Probe type
 			Params: map[string]interface{}{"interval": 30},
 		},
 		{
-			Name:   "network",       // Display name
-			Type:   "network",       // Probe type
+			Name:   "network", // Display name
+			Type:   "network", // Probe type
 			Params: map[string]interface{}{"interval": 60},
 		},
 		{
-			Name:   "logicaldisk",   // Display name
-			Type:   "logicaldisk",   // Probe type
+			Name:   "logicaldisk", // Display name
+			Type:   "logicaldisk", // Probe type
 			Params: map[string]interface{}{"interval": 30},
 		},
 	}

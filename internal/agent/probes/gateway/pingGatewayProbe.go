@@ -30,6 +30,7 @@ func validateIPAddress(ip string) error {
 }
 
 type PingGatewayProbe struct {
+	*types.BaseProbe
 	rawConfig    map[string]interface{}
 	moduleLogger *logger.ModuleLogger
 }
@@ -39,6 +40,7 @@ func NewPingGatewayProbe(config map[string]interface{}, baseLogger *logger.Logge
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.gateway")
 
 	return &PingGatewayProbe{
+		BaseProbe:    &types.BaseProbe{},
 		rawConfig:    config,
 		moduleLogger: moduleLogger,
 	}, nil
@@ -48,9 +50,9 @@ func (p *PingGatewayProbe) GetTargetStrategies() []string {
 	return []string{"senhub", "prtg", "http"}
 }
 
-func (p *PingGatewayProbe) GetName() string {
-	return "ping_gateway"
-}
+// Note: GetName() is now inherited from BaseProbe and will return the unique
+// probe name from configuration (e.g., "ping_gateway", "gateway2") instead of the
+// hardcoded type. This enables proper discriminant tagging for multiple instances.
 
 func (p *PingGatewayProbe) ShouldStart() bool {
 	return true
@@ -82,9 +84,8 @@ func (p *PingGatewayProbe) Collect() ([]data_store.DataPoint, error) {
 		{Name: "packetLoss", Timestamp: time.Now(), Value: float32(packetLoss), Tags: tags},
 	}
 
-	// Create base probe for enrichment
-	baseProbe := &types.BaseProbe{}
-	enrichedDatapoints := baseProbe.EnrichDataPointsWithProbeName(datapoints, p.GetName())
+	// Enrich datapoints with probe name and type tags
+	enrichedDatapoints := p.BaseProbe.EnrichDataPointsWithProbeName(datapoints, p.GetName())
 
 	return enrichedDatapoints, nil
 }
