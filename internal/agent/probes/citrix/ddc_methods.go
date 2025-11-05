@@ -263,7 +263,6 @@ func (c *deliveryControllerClient) GetDeliveryGroupsBySite(ctx context.Context, 
 	return allGroups, nil
 }
 
-
 // GetControllersBySite retrieves all controllers for a specific site
 func (c *deliveryControllerClient) GetControllersBySite(ctx context.Context, siteName string) ([]DDCController, error) {
 	c.logger.Debug().

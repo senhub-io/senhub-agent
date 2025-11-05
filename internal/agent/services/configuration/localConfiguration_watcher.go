@@ -200,11 +200,11 @@ probes:
 		}
 		certPath := filepath.Join(currentDir, "certs", "agent-cert.pem")
 		keyPath := filepath.Join(currentDir, "certs", "agent-key.pem")
-		
+
 		// Escape backslashes for Windows paths in YAML
 		certPathYAML := strings.ReplaceAll(certPath, "\\", "\\\\")
 		keyPathYAML := strings.ReplaceAll(keyPath, "\\", "\\\\")
-		
+
 		tlsSection = `      tls:
         enabled: true
         min_tls_version: "` + lc.args.MinTlsVersion + `"
@@ -222,19 +222,19 @@ probes:
 	timestamp := time.Now().Format("2006-01-02 15:04:05 MST")
 
 	return []byte(fmt.Sprintf(yamlTemplate,
-		config.ConfigVersion,                 // Header comment: config version
-		agentVersion,                         // Header comment: agent version
-		timestamp,                            // Header comment: timestamp
-		config.ConfigVersion,                 // YAML field: config_version
-		config.Agent.Key,                     // agent.key
-		config.Agent.Generated,               // agent.generated
-		config.AutoUpdate.Enabled,            // auto_update.enabled
-		config.AutoUpdate.URL,                // auto_update.url
-		config.Cache.RetentionMinutes,        // cache.retention_minutes
-		port,                                 // storage port
-		bindAddress,                          // storage bind_address
-		endpointsStr,                         // storage endpoints
-		tlsSection,                           // storage TLS section (optional)
+		config.ConfigVersion,          // Header comment: config version
+		agentVersion,                  // Header comment: agent version
+		timestamp,                     // Header comment: timestamp
+		config.ConfigVersion,          // YAML field: config_version
+		config.Agent.Key,              // agent.key
+		config.Agent.Generated,        // agent.generated
+		config.AutoUpdate.Enabled,     // auto_update.enabled
+		config.AutoUpdate.URL,         // auto_update.url
+		config.Cache.RetentionMinutes, // cache.retention_minutes
+		port,                          // storage port
+		bindAddress,                   // storage bind_address
+		endpointsStr,                  // storage endpoints
+		tlsSection,                    // storage TLS section (optional)
 	)), nil
 }
 

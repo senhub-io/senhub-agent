@@ -77,11 +77,12 @@ func NewProbePoller(
 	if nameable, ok := probe.(interface{ SetName(string) }); ok {
 		nameable.SetName(config.Name)
 	} else {
-		// Should not happen for well-formed probes, but log if it does
+		// Without SetName(), cache keys will not include probe instance name,
+		// causing collisions when multiple probe instances exist (e.g., two redfish probes)
 		moduleLogger.Warn().
 			Str("probe_name", config.Name).
 			Str("probe_type", config.Type).
-			Msg("⚠️ Probe does not support SetName - discriminant tags may not work correctly")
+			Msg("⚠️ Probe does not support SetName() - cache key collisions may occur with multiple probe instances. Probe should embed BaseProbe.")
 	}
 
 	// Set the probe type from configuration (v2 format: type field)
@@ -90,12 +91,12 @@ func NewProbePoller(
 	if typeable, ok := probe.(interface{ SetProbeType(string) }); ok {
 		typeable.SetProbeType(config.Type)
 	} else {
-		// Should not happen for well-formed probes, but log if it does
+		// Without SetProbeType(), transformer loading and discriminant tag registry lookups will fail,
+		// resulting in no metric transformations and incorrect cache key generation
 		moduleLogger.Warn().
 			Str("probe_name", config.Name).
 			Str("probe_type", config.Type).
-			Msg("⚠️ Probe does not support SetProbeType - discriminant tags registry lookup may not work correctly")
-	}
+			Msg("⚠️ Probe does not support SetProbeType() - transformers and discriminant tags will not work. Probe should embed BaseProbe.")
 
 	probePoller := &ProbePoller{
 		ProbeId:      probeId,

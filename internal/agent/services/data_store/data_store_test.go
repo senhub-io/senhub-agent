@@ -38,19 +38,21 @@ func (m *MockAgentConfig) GetServerUrl() string         { return m.serverURL }
 
 // MockStrategy implements SyncStrategy for testing
 type MockStrategy struct {
-	name           string
-	params         map[string]interface{}
-	dataPoints     [][]datapoint.DataPoint
-	started        bool
-	shutdown       bool
-	validateError  error
-	startError     error
-	addError       error
+	name          string
+	params        map[string]interface{}
+	dataPoints    [][]datapoint.DataPoint
+	started       bool
+	shutdown      bool
+	validateError error
+	startError    error
+	addError      error
 }
 
-func (m *MockStrategy) GetStrategyName() string                     { return m.name }
-func (m *MockStrategy) GetStrategyParams() map[string]interface{}   { return m.params }
-func (m *MockStrategy) ValidateConfigParams(configuration.StorageConfigParams) error { return m.validateError }
+func (m *MockStrategy) GetStrategyName() string                   { return m.name }
+func (m *MockStrategy) GetStrategyParams() map[string]interface{} { return m.params }
+func (m *MockStrategy) ValidateConfigParams(configuration.StorageConfigParams) error {
+	return m.validateError
+}
 func (m *MockStrategy) Start() error {
 	m.started = true
 	return m.startError
@@ -99,12 +101,12 @@ func TestGenerateStrategyId(t *testing.T) {
 	ds := NewDataStore(mockConfig, mockProvider, baseLogger).(*dataStore)
 
 	tests := []struct {
-		name        string
+		name         string
 		strategyName string
-		params1     configuration.StorageConfigParams
-		params2     configuration.StorageConfigParams
-		shouldMatch bool
-		description string
+		params1      configuration.StorageConfigParams
+		params2      configuration.StorageConfigParams
+		shouldMatch  bool
+		description  string
 	}{
 		{
 			name:         "Identical configs produce same ID",

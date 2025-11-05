@@ -321,9 +321,9 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 
 		// Adding core tag for ALL CPU metrics for consistent filtering
 		// System metrics: only keep _Total instance to avoid duplicates
-		isSystemMetric := normalizedName == "cpu_dpc_rate" || normalizedName == "cpu_dpc_queued" || 
-						 normalizedName == "cpu_interrupts" || normalizedName == "cpu_queue_length"
-		
+		isSystemMetric := normalizedName == "cpu_dpc_rate" || normalizedName == "cpu_dpc_queued" ||
+			normalizedName == "cpu_interrupts" || normalizedName == "cpu_queue_length"
+
 		// Skip per-core instances of system metrics (keep only _Total)
 		if isSystemMetric && pathInfo.instance != "" && pathInfo.instance != "_Total" {
 			w.logger.Debug().
@@ -332,7 +332,7 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 				Msg("Skipping per-core instance of system metric")
 			continue // Skip this metric completely
 		}
-		
+
 		if pathInfo.instance != "" && pathInfo.instance != "_Total" && !isSystemMetric {
 			// True per-core metrics: use the core number
 			w.logger.Debug().Str("instance", pathInfo.instance).Msg("Adding per-core tag")
