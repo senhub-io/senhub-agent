@@ -73,7 +73,7 @@ func testEmptyMetrics(t *testing.T, converter *FormatConverter) {
 func testNullValues(t *testing.T, converter *FormatConverter, cache *MetricCache, registry *transformers.TransformerRegistry) {
 	// Since DataPoint.Value is float32, we test with direct cache insertion for null values
 	cache.mu.Lock()
-	tsKey := cache.generateTimeSeriesKey("test", "null_metric", map[string]string{"probe_name": "test"})
+	tsKey := cache.generateTimeSeriesKey("test", "test", "null_metric", map[string]string{"probe_name": "test"})
 	cache.timeSeries[tsKey] = CachedMetric{
 		Value:      nil,
 		Timestamp:  time.Now(),
@@ -114,7 +114,7 @@ func testInvalidValues(t *testing.T, converter *FormatConverter, cache *MetricCa
 	cache.mu.Lock()
 
 	// String value
-	tsKey1 := cache.generateTimeSeriesKey("test", "string_metric", map[string]string{"probe_name": "test"})
+	tsKey1 := cache.generateTimeSeriesKey("test", "test", "string_metric", map[string]string{"probe_name": "test"})
 	cache.timeSeries[tsKey1] = CachedMetric{
 		Value:      "not_a_number",
 		Timestamp:  time.Now(),
@@ -125,7 +125,7 @@ func testInvalidValues(t *testing.T, converter *FormatConverter, cache *MetricCa
 	}
 
 	// Object value
-	tsKey2 := cache.generateTimeSeriesKey("test", "object_metric", map[string]string{"probe_name": "test"})
+	tsKey2 := cache.generateTimeSeriesKey("test", "test", "object_metric", map[string]string{"probe_name": "test"})
 	cache.timeSeries[tsKey2] = CachedMetric{
 		Value:      map[string]interface{}{"key": "value"},
 		Timestamp:  time.Now(),
@@ -136,7 +136,7 @@ func testInvalidValues(t *testing.T, converter *FormatConverter, cache *MetricCa
 	}
 
 	// Array value
-	tsKey3 := cache.generateTimeSeriesKey("test", "array_metric", map[string]string{"probe_name": "test"})
+	tsKey3 := cache.generateTimeSeriesKey("test", "test", "array_metric", map[string]string{"probe_name": "test"})
 	cache.timeSeries[tsKey3] = CachedMetric{
 		Value:      []string{"item1", "item2"},
 		Timestamp:  time.Now(),
@@ -251,7 +251,7 @@ func testLargeValues(t *testing.T, converter *FormatConverter, cache *MetricCach
 
 	// Also test with direct cache insertion for int64 values
 	cache.mu.Lock()
-	tsKey := cache.generateTimeSeriesKey("test", "large_int64", map[string]string{"probe_name": "test"})
+	tsKey := cache.generateTimeSeriesKey("test", "test", "large_int64", map[string]string{"probe_name": "test"})
 	cache.timeSeries[tsKey] = CachedMetric{
 		Value:      int64(9223372036854775807), // Max int64
 		Timestamp:  time.Now(),
