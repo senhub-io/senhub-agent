@@ -439,7 +439,14 @@ func TestCitrixProbe_GetName(t *testing.T) {
 
 	probe, err := NewCitrixProbe(config, baseLogger)
 	assert.NoError(t, err)
+
+	// Test BaseProbe inheritance: SetName() and GetName()
+	probe.(interface{ SetName(string) }).SetName("citrix")
 	assert.Equal(t, "citrix", probe.GetName())
+
+	// Test default behavior: GetName() returns empty string before SetName() is called
+	probe2, _ := NewCitrixProbe(config, baseLogger)
+	assert.Equal(t, "", probe2.GetName())
 }
 
 func TestCitrixProbe_ShouldStart(t *testing.T) {

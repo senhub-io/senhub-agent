@@ -204,7 +204,8 @@ func TestRedfishProbeBaseMethods(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, probe)
 
-	// Test GetName
+	// Test GetName - BaseProbe inheritance: SetName() and GetName()
+	probe.(interface{ SetName(string) }).SetName("redfish")
 	assert.Equal(t, "redfish", probe.GetName())
 
 	// Test ShouldStart

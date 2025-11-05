@@ -59,8 +59,12 @@ func TestNewNetworkProbe(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewNetworkProbe() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			if !tt.wantErr && probe.GetName() != "network" {
-				t.Errorf("Expected name 'network', got '%s'", probe.GetName())
+			if !tt.wantErr {
+				// Test BaseProbe inheritance: SetName() and GetName()
+				probe.(interface{ SetName(string) }).SetName("network")
+				if probe.GetName() != "network" {
+					t.Errorf("Expected name 'network', got '%s'", probe.GetName())
+				}
 			}
 		})
 	}
