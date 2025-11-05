@@ -76,7 +76,6 @@ type DDCDeliveryGroup struct {
 	MachineIds            []string `json:"AssociatedMachineIds,omitempty"`
 }
 
-
 // DDCController represents a Delivery Controller
 type DDCController struct {
 	Id                 string    `json:"Id"`
@@ -134,7 +133,6 @@ type DDCDeliveryGroupsResponse struct {
 	Items             []DDCDeliveryGroup `json:"Items"`
 	ContinuationToken string             `json:"ContinuationToken,omitempty"`
 }
-
 
 // DDCControllersResponse represents the response from Controllers endpoint
 type DDCControllersResponse struct {

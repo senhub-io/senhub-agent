@@ -17,7 +17,7 @@ import (
 
 // LocalConfigurationData represents the YAML configuration structure
 type LocalConfigurationData struct {
-	ConfigVersion int               `yaml:"config_version"`           // Configuration format version
+	ConfigVersion int               `yaml:"config_version"` // Configuration format version
 	Agent         LocalAgentConfig  `yaml:"agent"`
 	Storage       []StorageConfig   `yaml:"storage"`
 	Probes        []ProbeConfig     `yaml:"probes"`
@@ -219,4 +219,3 @@ func (lc *LocalConfiguration) Shutdown(ctx context.Context) error {
 
 	return nil
 }
-

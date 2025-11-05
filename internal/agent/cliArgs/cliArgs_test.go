@@ -152,8 +152,8 @@ func TestParsedArgsFromStartArgs(t *testing.T) {
 			description: "Should parse debug log shipper configuration",
 		},
 		{
-			name: "Default values when nothing specified",
-			args: &StartSubcommandArgs{},
+			name:        "Default values when nothing specified",
+			args:        &StartSubcommandArgs{},
 			environment: "production",
 			expected: &ParsedArgs{
 				ServerUrl:     "", // Will use default from function
@@ -371,32 +371,32 @@ func TestDefaultServerURL(t *testing.T) {
 	}()
 
 	tests := []struct {
-		name        string
-		env         string
-		productionURL string
+		name           string
+		env            string
+		productionURL  string
 		developmentURL string
-		expectedURL string
+		expectedURL    string
 	}{
 		{
-			name:          "Production environment",
-			env:           "production",
-			productionURL: "https://prod.example.com",
+			name:           "Production environment",
+			env:            "production",
+			productionURL:  "https://prod.example.com",
 			developmentURL: "https://dev.example.com",
-			expectedURL:   "https://prod.example.com",
+			expectedURL:    "https://prod.example.com",
 		},
 		{
-			name:          "Development environment",
-			env:           "development",
-			productionURL: "https://prod.example.com",
+			name:           "Development environment",
+			env:            "development",
+			productionURL:  "https://prod.example.com",
 			developmentURL: "https://dev.example.com",
-			expectedURL:   "https://dev.example.com",
+			expectedURL:    "https://dev.example.com",
 		},
 		{
-			name:          "Unknown environment defaults to production",
-			env:           "staging",
-			productionURL: "https://prod.example.com",
+			name:           "Unknown environment defaults to production",
+			env:            "staging",
+			productionURL:  "https://prod.example.com",
 			developmentURL: "https://dev.example.com",
-			expectedURL:   "https://prod.example.com",
+			expectedURL:    "https://prod.example.com",
 		},
 	}
 
