@@ -97,6 +97,7 @@ func NewProbePoller(
 			Str("probe_name", config.Name).
 			Str("probe_type", config.Type).
 			Msg("⚠️ Probe does not support SetProbeType() - transformers and discriminant tags will not work. Probe should embed BaseProbe.")
+	}
 
 	probePoller := &ProbePoller{
 		ProbeId:      probeId,
