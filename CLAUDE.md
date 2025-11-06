@@ -159,8 +159,8 @@ See [Current Development](./docs/developer-guide/current-development.md) for det
 
 ## Recent Completions
 
-- ✅ Configuration v1→v2 migration (v0.1.70-beta)
-- ✅ Shared configuration template (v0.1.70-beta)
+- ✅ Configuration v1→v2 migration (0.1.70-beta)
+- ✅ Shared configuration template (0.1.70-beta)
 - ✅ Offline mode implementation
 - ✅ Universal configuration API
 - ✅ Modular logging system
