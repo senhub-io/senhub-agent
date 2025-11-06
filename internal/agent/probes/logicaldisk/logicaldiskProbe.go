@@ -21,6 +21,7 @@ type logicaldiskCollector interface {
 
 // logicaldiskProbe represents the logical disk metrics collector
 type logicaldiskProbe struct {
+	*types.BaseProbe
 	rawConfig map[string]interface{}
 	logger    *logger.ModuleLogger
 	collector logicaldiskCollector
@@ -39,6 +40,7 @@ func NewLogicalDiskProbe(config map[string]interface{}, baseLogger *logger.Logge
 	}
 
 	probe := &logicaldiskProbe{
+		BaseProbe: &types.BaseProbe{},
 		rawConfig: config,
 		logger:    logger.NewModuleLogger(baseLogger, "probe.logicaldisk"),
 		interval:  interval,
@@ -60,9 +62,9 @@ func NewLogicalDiskProbe(config map[string]interface{}, baseLogger *logger.Logge
 	return probe, nil
 }
 
-func (p *logicaldiskProbe) GetName() string {
-	return "logicaldisk"
-}
+// Note: GetName() is now inherited from BaseProbe and will return the unique
+// probe name from configuration (e.g., "logicaldisk", "logicaldisk2") instead of the
+// hardcoded type. This enables proper discriminant tagging for multiple instances.
 
 func (p *logicaldiskProbe) ShouldStart() bool {
 	return true
@@ -79,9 +81,8 @@ func (p *logicaldiskProbe) Collect() ([]data_store.DataPoint, error) {
 		return nil, fmt.Errorf("failed to collect logicaldisk metrics: %v", err)
 	}
 
-	// Create base probe for enrichment
-	baseProbe := &types.BaseProbe{}
-	enrichedMetrics := baseProbe.EnrichDataPointsWithProbeName(metrics, p.GetName())
+	// Enrich datapoints with probe name and type tags
+	enrichedMetrics := p.BaseProbe.EnrichDataPointsWithProbeName(metrics, p.GetName())
 
 	return enrichedMetrics, nil
 }

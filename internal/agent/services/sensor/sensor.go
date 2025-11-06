@@ -60,13 +60,34 @@ func (s *sensor) SyncConfiguration() error {
 		Int("running_probes", len(s.startedProbes)).
 		Msg("Configuration sync status")
 
-	// Phase 1: Start new probes
+	// Pre-validation: Check for duplicate probe names in configuration
+	seenNames := make(map[string]bool)
 	for _, probeConfig := range probeConfigs {
+		if seenNames[probeConfig.Name] {
+			s.moduleLogger.Warn().
+				Str("probe_name", probeConfig.Name).
+				Msg("⚠️ CONFIGURATION ERROR: Duplicate probe name in configuration - only the first instance will be used")
+		}
+		seenNames[probeConfig.Name] = true
+	}
+
+	// Phase 1: Start new probes
+	processedNames := make(map[string]bool)
+	for _, probeConfig := range probeConfigs {
+		// Skip duplicates (already warned in pre-validation)
+		if processedNames[probeConfig.Name] {
+			s.moduleLogger.Debug().
+				Str("probe_name", probeConfig.Name).
+				Msg("⏭️ Skipping duplicate probe name")
+			continue
+		}
+		processedNames[probeConfig.Name] = true
+
 		probeId := probes.GenerateProbeId(probeConfig)
 		validProbeIds = append(validProbeIds, probeId)
 		probeLogger := s.getLoggerForProbe(probeConfig)
 
-		// Check if probe is already running
+		// Check if probe is already running (by ID)
 		probeExists := false
 		for _, startedProbe := range s.startedProbes {
 			if startedProbe.ProbeId == probeId {

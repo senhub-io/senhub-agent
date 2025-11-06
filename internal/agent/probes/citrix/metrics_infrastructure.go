@@ -238,16 +238,11 @@ func (mc *MetricsCollector) createInventoryInfrastructureMetrics(timestamp time.
 	var metrics []datapoint.DataPoint
 
 	// Get inventory statistics
-	inventoryStats := inventoryService.GetInventoryStats()
+	_ = inventoryService.GetInventoryStats()
 	_, siteName := inventoryService.GetSiteInfo()
 
-
-	if cached, ok := inventoryStats["cached"].(bool); ok && cached {
-		// Cache age and update duration metrics removed - internal technical metrics not operationally relevant
-
-		// Delivery groups and controllers metrics removed - static configuration data not operationally relevant
-
-	}
+	// Cache age and update duration metrics removed - internal technical metrics not operationally relevant
+	// Delivery groups and controllers metrics removed - static configuration data not operationally relevant
 
 	mc.logger.Debug().
 		Int("inventory_infrastructure_metrics", len(metrics)).

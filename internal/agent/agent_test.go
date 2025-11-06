@@ -101,7 +101,7 @@ agent:
 			description:   "With CLI key but no config file, should use online mode",
 		},
 		{
-			name: "Config file with CLI key mismatch",
+			name: "Config file with CLI key mismatch in offline mode",
 			configContent: `# Agent configuration
 agent:
   key: "config-file-key-555"
@@ -114,8 +114,26 @@ agent:
 				Offline:           false,
 			},
 			expectedMode:  true,
-			expectAuthKey: "cli-key-different", // CLI key is preserved (validation logic is environment-dependent)
-			description:   "Should respect CLI key when provided, config file determines mode",
+			expectAuthKey: "config-file-key-555", // In offline mode, config file key always takes precedence
+			description:   "In offline mode, config file key should take precedence over CLI key",
+		},
+		{
+			name: "Config file with CLI key mismatch in online mode",
+			configContent: `# Agent configuration
+agent:
+  key: "config-file-key-online"
+  mode: online
+  generated: false
+`,
+			cliArgs: &cliArgs.ParsedArgs{
+				AuthenticationKey: "cli-key-valid-format",
+				ConfigPath:        "",
+				Offline:           false,
+				ServerUrl:         "https://example.com",
+			},
+			expectedMode:  false,
+			expectAuthKey: "cli-key-valid-format", // In online mode, CLI key can override after validation
+			description:   "In online mode, CLI key should override config file key if valid",
 		},
 		{
 			name: "No CLI key, use config file key",

@@ -55,11 +55,11 @@ func (f *ClientFilters) FilterSessionsByMachineDNS(sessions []Session) []Session
 
 	var filteredSessions []Session
 	var debugCount int
-	
+
 	for _, session := range sessions {
 		// RESTORATION: Use the EXACT logic from working version
 		var machineDNS string
-		
+
 		// Get machine DNS from expanded Machine data
 		if session.Machine != nil {
 			machineDNS = session.Machine.DnsName

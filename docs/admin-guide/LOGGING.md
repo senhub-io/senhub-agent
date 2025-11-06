@@ -161,16 +161,31 @@ func (p *newProbe) method() {
 
 ## System Behavior
 
+### Output Destinations
+
+The agent automatically detects the execution mode and routes logs accordingly:
+
+- **Interactive mode** (`./agent run`): Logs to console (stderr) AND file/shipper
+- **Service mode** (daemon): Logs only to file/shipper (no console)
+
+### Log Level Behavior
+
+**IMPORTANT**: Info/Warn/Error messages are **ALWAYS** output for all modules, regardless of debug settings. Only Debug logs are filtered by module.
+
 ### Verbose mode (`--verbose`)
 - **Global level**: DEBUG
 - **Modules**: All at DEBUG level
+- **Info/Warn/Error**: ALL modules (always visible)
+- **Debug**: ALL modules (enabled)
 - **Result**: All logs from all components are visible
 
-### Selective mode (`--debug-modules "module1,module2"`)
-- **Global level**: ERROR (suppresses non-critical logs from other components)
+### Selective mode (`--verbose --debug-modules "module1,module2"`)
+- **Global level**: INFO (for non-module logs)
 - **Specified modules**: DEBUG
-- **Non-specified modules**: Inherit global level (ERROR)
-- **Result**: Only debug logs from specified modules are visible
+- **Non-specified modules**: INFO
+- **Info/Warn/Error**: ALL modules (always visible)
+- **Debug**: Only specified modules
+- **Result**: Info/Warn/Error from all modules + Debug only from specified modules
 
 ### Practical Examples
 
@@ -206,16 +221,35 @@ curl -X POST http://localhost:8080/api/mykey/debug/logs \
 
 ### Log Filtering
 
-The `ModuleLogger` checks the allowed level for each call:
+The `ModuleLogger` filters **only Debug logs** based on module configuration. Info/Warn/Error logs are never filtered:
 
 ```go
+// Debug logs are filtered by module
 func (m *ModuleLogger) Debug() *zerolog.Event {
+    if m.selectiveMode {
+        if _, enabled := m.enabledModules[m.module]; !enabled {
+            disabledLogger := m.Logger.Level(zerolog.Disabled)
+            return disabledLogger.Debug()  // Suppressed
+        }
+    }
     if GetModuleLogLevel(m.module) <= zerolog.DebugLevel {
         return m.Logger.Debug()  // Normal log
     }
-    // Create disabled logger to suppress output
     disabledLogger := m.Logger.Level(zerolog.Disabled)
     return disabledLogger.Debug()  // Suppressed log
+}
+
+// Info/Warn/Error are NEVER filtered
+func (m *ModuleLogger) Info() *zerolog.Event {
+    return m.Logger.Info()  // Always enabled
+}
+
+func (m *ModuleLogger) Warn() *zerolog.Event {
+    return m.Logger.Warn()  // Always enabled
+}
+
+func (m *ModuleLogger) Error() *zerolog.Event {
+    return m.Logger.Error()  // Always enabled
 }
 ```
 
