@@ -108,7 +108,7 @@ docs/
 ### Files
 - **ALL-CAPS-WITH-HYPHENS.md**: Major documents (README.md, GETTING-STARTED.md)
 - **lowercase-with-hyphens.md**: Regular documents (architecture.md, build-system.md)
-- **version.md**: Release notes (0.1.66-beta.md)
+- **version.md**: Release notes (0.1.70-beta.md)
 
 ### Directories
 - **lowercase-with-hyphens**: All directories (user-guide/, admin-guide/)
