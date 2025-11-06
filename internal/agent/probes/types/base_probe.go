@@ -11,6 +11,8 @@ import (
 // callback management.
 type BaseProbe struct {
 	OnDataPoints data_store.AddCallback // Callback for collected datapoints
+	name         string                 // Unique probe name from configuration
+	probeType    string                 // Probe type (technical identifier: cpu, redfish, citrix, etc.)
 }
 
 // GetTargetStrategies returns the default storage strategies
@@ -24,7 +26,27 @@ func (p *BaseProbe) SetOnDataPoints(callback data_store.AddCallback) {
 	p.OnDataPoints = callback
 }
 
-// EnrichDataPointsWithProbeName adds the probe name tag to all datapoints
+// SetName sets the unique name for this probe instance
+func (p *BaseProbe) SetName(name string) {
+	p.name = name
+}
+
+// GetName returns the unique name of this probe instance
+func (p *BaseProbe) GetName() string {
+	return p.name
+}
+
+// SetProbeType sets the technical type for this probe (cpu, redfish, citrix, etc.)
+func (p *BaseProbe) SetProbeType(probeType string) {
+	p.probeType = probeType
+}
+
+// GetProbeType returns the technical type of this probe
+func (p *BaseProbe) GetProbeType() string {
+	return p.probeType
+}
+
+// EnrichDataPointsWithProbeName adds the probe name and probe type tags to all datapoints
 func (p *BaseProbe) EnrichDataPointsWithProbeName(datapoints []data_store.DataPoint, probeName string) []data_store.DataPoint {
 	enrichedDataPoints := make([]data_store.DataPoint, len(datapoints))
 
@@ -32,12 +54,18 @@ func (p *BaseProbe) EnrichDataPointsWithProbeName(datapoints []data_store.DataPo
 		// Copy the datapoint
 		enrichedDataPoints[i] = dp
 
-		// Add probe_name tag
+		// Add probe_name and probe_type tags
 		enrichedDataPoints[i].Tags = append([]tags.Tag{}, dp.Tags...)
-		enrichedDataPoints[i].Tags = append(enrichedDataPoints[i].Tags, tags.Tag{
-			Key:   "probe_name",
-			Value: probeName,
-		})
+		enrichedDataPoints[i].Tags = append(enrichedDataPoints[i].Tags,
+			tags.Tag{
+				Key:   "probe_name",
+				Value: probeName,
+			},
+			tags.Tag{
+				Key:   "probe_type",
+				Value: p.probeType,
+			},
+		)
 	}
 
 	return enrichedDataPoints

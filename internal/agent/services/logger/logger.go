@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/kardianos/service"
 	"github.com/rs/zerolog"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -178,17 +179,16 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 	selectiveDebugMode = false
 	activeDebugModules = make(map[string]bool)
 
-	// Configure debug logging
+	// Configure debug logging based on CLI flags
 	if args.Verbose {
-		// Verbose mode requested - enable debug level globally
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 		if len(args.DebugModules) > 0 {
-			// Selective debug mode: --verbose with --debug-modules = filter to specific modules
+			// Selective debug mode: --verbose with --debug-modules
+			// Only specified modules will output debug logs
+			// All modules continue to output Info/Warn/Error
 			selectiveDebugMode = true
 			activeDebugModules = make(map[string]bool)
 
-			// Set global level to INFO to reduce non-module debug logs
+			// Keep global level at INFO for non-module logs
 			zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 			// Enable debug only for specified modules
@@ -200,24 +200,26 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 			logger.Info().
 				Str("modules", strings.Join(args.DebugModules, ",")).
 				Int("module_count", len(args.DebugModules)).
-				Msg("Selective debug mode enabled - debug logging activated for specific modules only")
+				Msg("Selective debug mode enabled - debug logging for specific modules only")
 		} else {
-			// Full verbose mode: --verbose without --debug-modules = all debug logs
+			// Full verbose mode: --verbose without --debug-modules
+			// All modules output debug logs (no filtering)
 			selectiveDebugMode = false
 			activeDebugModules = make(map[string]bool)
 
-			// Enable debug for key modules
-			SetModuleLogLevel("strategy.http", zerolog.DebugLevel)
-			SetModuleLogLevel("cache", zerolog.DebugLevel)
-			SetModuleLogLevel("probe.redfish", zerolog.DebugLevel)
-			SetModuleLogLevel("configuration", zerolog.DebugLevel)
-			SetModuleLogLevel("scheduler", zerolog.DebugLevel)
+			// Enable debug level globally
+			zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
-			logger.Info().Msg("Full verbose mode enabled - debug logging activated for all components")
+			// Enable debug for all key modules
+			for module := range moduleLogLevels {
+				SetModuleLogLevel(module, zerolog.DebugLevel)
+			}
+
+			logger.Info().Msg("Full verbose mode enabled - debug logging for all modules")
 		}
 	} else if len(args.DebugModules) > 0 {
 		// --debug-modules requires --verbose flag
-		logger.Warn().Msg("--debug-modules flag requires --verbose to be enabled. Ignoring debug modules.")
+		logger.Warn().Msg("--debug-modules requires --verbose flag. Ignoring debug modules configuration.")
 	}
 
 	return logger
@@ -254,7 +256,7 @@ func buildDevelopmentLogger(_ *cliArgs.ParsedArgs, config *LoggerConfig) *Logger
 // - Maximum of 5 backup files
 // - 30-day retention period
 // - Masking of sensitive information
-// If verbose mode is enabled, it will also output to stderr alongside the file
+// Console output is automatically added when running in interactive mode (run command)
 func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logger {
 	logPath := getLogPath()
 
@@ -270,10 +272,15 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 	// Define masked writers - start with log file
 	writers := []io.Writer{NewMaskingWriter(logRotator)}
 
-	// Add console output if verbose or debug modules are specified
-	if args.Verbose || len(args.DebugModules) > 0 {
+	// Detect if running in interactive mode (run command) vs service mode (daemon)
+	isInteractive := service.Interactive()
+
+	// Add console output in interactive mode (run command)
+	// This ensures logs are visible in console when using: ./agent run
+	if isInteractive {
 		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr}
 		writers = append(writers, NewMaskingWriter(consoleWriter))
+		log.Printf("Running in interactive mode - console output enabled")
 	}
 
 	// Add debug log shipper if configured
@@ -422,39 +429,21 @@ func (m *ModuleLogger) Debug() *zerolog.Event {
 	return disabledLogger.Debug()
 }
 
-// Info logs an info message (filtered in selective debug mode)
+// Info logs an info message (always enabled for all modules)
 func (m *ModuleLogger) Info() *zerolog.Event {
-	// In selective debug mode, only allow logs for specifically enabled modules
-	if m.selectiveMode {
-		if _, enabled := m.enabledModules[m.module]; !enabled {
-			disabledLogger := m.Logger.Level(zerolog.Disabled)
-			return disabledLogger.Info()
-		}
-	}
+	// Info level is never filtered - all modules can log info messages
 	return m.Logger.Info()
 }
 
-// Warn logs a warning message (filtered in selective debug mode)
+// Warn logs a warning message (always enabled for all modules)
 func (m *ModuleLogger) Warn() *zerolog.Event {
-	// In selective debug mode, only allow logs for specifically enabled modules
-	if m.selectiveMode {
-		if _, enabled := m.enabledModules[m.module]; !enabled {
-			disabledLogger := m.Logger.Level(zerolog.Disabled)
-			return disabledLogger.Warn()
-		}
-	}
+	// Warn level is never filtered - all modules can log warnings
 	return m.Logger.Warn()
 }
 
-// Error logs an error message (filtered in selective debug mode)
+// Error logs an error message (always enabled for all modules)
 func (m *ModuleLogger) Error() *zerolog.Event {
-	// In selective debug mode, only allow logs for specifically enabled modules
-	if m.selectiveMode {
-		if _, enabled := m.enabledModules[m.module]; !enabled {
-			disabledLogger := m.Logger.Level(zerolog.Disabled)
-			return disabledLogger.Error()
-		}
-	}
+	// Error level is never filtered - all modules can log errors
 	return m.Logger.Error()
 }
 

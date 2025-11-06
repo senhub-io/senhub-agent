@@ -68,3 +68,17 @@ go.work.sum
 *.crt
 **/certs/
 /certs/
+
+# Coverage reports
+coverage.html
+coverage.out
+
+# Compiled executables in root
+/agent
+/agent.exe
+
+# Test installation directory
+/test-install/
+
+# Claude Code - Personal documentation and scripts
+scripts/Claude/

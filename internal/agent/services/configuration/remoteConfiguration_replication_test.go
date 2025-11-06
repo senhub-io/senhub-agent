@@ -88,7 +88,11 @@ func TestRemoteConfiguration_LocalReplication(t *testing.T) {
 		t.Error("Configuration should contain CPU probe")
 	}
 
-	if !strings.Contains(contentStr, "# Agent configuration (replicated from SenHub server)") {
+	if !strings.Contains(contentStr, "type: cpu") {
+		t.Error("Configuration should contain CPU probe type (v2 format)")
+	}
+
+	if !strings.Contains(contentStr, "# SenHub Agent Configuration (Replicated from Server)") {
 		t.Error("Configuration should contain replication comment")
 	}
 
