@@ -51,7 +51,7 @@
 
 ## Releases
 - [All Releases](./releases/README.md)
-- [Latest Beta (0.1.66)](./releases/0.1.66-beta.md)
+- [Latest Beta (0.1.66)](./releases/0.1.70-beta.md)
 
 ## Troubleshooting
 - [Common Issues](./troubleshooting/COMMON-ISSUES.md)
