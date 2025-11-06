@@ -259,17 +259,15 @@ func (rc *RemoteConfiguration) UpdateSync() error {
 					Any("new_config", *config).
 					Msg("Configuration changed")
 
-
-			// Update in-memory configuration with new data from server
-			rc.data = *config
+				// Update in-memory configuration with new data from server
+				rc.data = *config
 				// Write configuration locally (may be v1 format from server)
 				if err := rc.replicateConfigurationLocally(); err != nil {
 					rc.logger.Error().Err(err).Msg("Failed to replicate configuration locally")
 					return fmt.Errorf("failed to replicate configuration: %w", err)
 				}
 
-				// Apply v1→v2 migration if needed
-
+				// Note: v1→v2 migration already applied before validation (line 249)
 				rc.eventNotifier.NotifyObservers("Configuration changed")
 			} else {
 				rc.logger.Debug().Msg("Configuration unchanged")
@@ -283,7 +281,7 @@ func (rc *RemoteConfiguration) UpdateSync() error {
 							return fmt.Errorf("failed to create initial replica: %w", err)
 						}
 
-						// Apply v1→v2 migration on first run
+					// Note: v1→v2 migration already applied before validation (line 249)
 					}
 				}
 			}
