@@ -2,6 +2,12 @@
 
 Ce document explique comment configurer les différentes probes de monitoring dans SenHub Agent.
 
+## Migration automatique v1→v2
+
+**Note importante**: Si vous utilisez une ancienne configuration (version 1), l'agent migrera automatiquement votre configuration vers le format v2 au démarrage. Cette migration est transparente et ne nécessite aucune action de votre part.
+
+Pour plus de détails sur les versions de configuration et la migration, consultez `/docs/admin-guide/CONFIG-VERSION-CHANGELOG.md`.
+
 ## Principe général
 
 ### Configuration simple (une instance par type)
