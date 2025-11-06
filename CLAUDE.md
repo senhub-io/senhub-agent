@@ -4,9 +4,9 @@
 
 ### Version Management
 - **Production version**: Always tagged without `-beta` suffix (e.g., `0.1.64`)
-- **Development version**: Next version with `-beta` suffix (e.g., `0.1.65-beta`)
+- **Development version**: Next version with `-beta` suffix (e.g., `0.1.66-beta`)
 - **Current prod**: `0.1.64`
-- **Next dev**: `0.1.65-beta`
+- **Next dev**: `0.1.66-beta`
 
 ### Branch Strategy
 1. **Feature branches**: Create a new branch for each feature/fix
@@ -476,6 +476,45 @@ Before committing new code, verify compliance with our patterns:
 
 ## Current Development
 
+### Configuration v1→v2 Remote Migration (COMPLETED - v0.1.66-beta)
+- OBJECTIVE: Fix critical production bug where probes fail when server sends v1 config format
+- PROGRESS:
+  - Implemented in-memory migration system in RemoteConfiguration
+  - Migration happens before validation (critical ordering)
+  - Idempotent design - safe to call multiple times
+  - Zero-downtime automatic migration
+  - No backup files created (in-memory only)
+  - Configuration replicated to disk in v2 format
+- IMPLEMENTATION:
+  - `migrateRemoteConfigToV2()` in remoteConfiguration.go
+  - Detects missing `type` field and adds it (copies from `name`)
+  - Works with both v1 and v2 server responses
+  - Preserves all existing configuration data
+- BENEFITS:
+  - Fixes "probe type is empty" errors
+  - Backward compatible with v1 server configs
+  - Forward compatible with v2 server configs
+  - No user action required
+  - Clean migration without file backups
+
+### Shared Configuration Template (COMPLETED - v0.1.66-beta)
+- OBJECTIVE: Eliminate duplication of probe configuration examples between offline and online modes
+- PROGRESS:
+  - Created config_template.go with shared ProbeExamplesTemplate constant
+  - Extracted 200+ lines of duplicated probe examples
+  - Single source of truth for all probe documentation
+  - Used by both LocalConfiguration and RemoteConfiguration
+- IMPLEMENTATION:
+  - `config_template.go` contains comprehensive probe examples
+  - Includes all probe types: Redfish, Citrix, Syslog, OTEL, System probes
+  - Detailed parameter documentation with comments
+  - Clear usage instructions and examples
+- BENEFITS:
+  - Adding new probe = update 1 file only (was 2 files)
+  - Impossible template divergence
+  - Easier maintenance
+  - Consistent documentation across modes
+  - -207 lines of code duplication eliminated
 
 ### Redfish Probe
 - OBJECTIVE: Port Python Redfish monitoring plugin to Go probe with vendor-specific collectors
@@ -631,7 +670,7 @@ curl -X POST http://localhost:8080/api/{agentkey}/debug/logs \
 - FILES CREATED:
   - `/internal/agent/probes/redfish/collector_interface.go` - Interface for vendor-specific collectors
   - `/internal/agent/probes/redfish/redfish_client.go` - Redfish API client implementation
-  - `/internal/agent/probes/redfish/redfishProbe.go` - Main probe implementation 
+  - `/internal/agent/probes/redfish/redfishProbe.go` - Main probe implementation
   - `/internal/agent/probes/redfish/collector_generic.go` - Generic collector for all vendors
   - `/internal/agent/probes/redfish/collector_dell.go` - Dell-specific collector
   - `/internal/agent/probes/redfish/collector_hpe.go` - HPE-specific collector
@@ -655,6 +694,7 @@ curl -X POST http://localhost:8080/api/{agentkey}/debug/logs \
   - `/internal/agent/services/data_store/transformers/definitions/ping_gateway.yaml` - Gateway ping metrics transformations
   - `/internal/agent/services/data_store/transformers/definitions/ping_webapp.yaml` - WebApp ping metrics transformations
   - `/internal/agent/services/data_store/transformers/definitions/load_webapp.yaml` - WebApp load metrics transformations
+  - `/internal/agent/services/configuration/config_template.go` - Shared probe examples template (v0.1.66-beta)
 - REGISTRY UPDATED: 
   - Added "redfish" to probe registry in `/internal/agent/probes/registry.go`
   - Added "winevents" to probe registry in `/internal/agent/probes/registry.go`
