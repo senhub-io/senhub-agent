@@ -76,15 +76,31 @@ Specific documentation for monitoring probes:
   - [README](./probes/otel/README.md) - Overview and configuration
   - [Metrics](./probes/otel/METRICS.md) - Complete metrics reference
 
+### 👨‍💻 [Developer Guide](./developer-guide/)
+Documentation for contributors and developers:
+- [Overview](./developer-guide/README.md) - Developer guide home
+- [Architecture](./developer-guide/architecture.md) - System design and components
+- [Development Workflow](./developer-guide/development-workflow.md) - Git workflow and branching
+- [Build System](./developer-guide/build-system.md) - Compilation and testing
+- [Design Patterns](./developer-guide/design-patterns.md) - Code patterns and best practices
+- [Current Development](./developer-guide/current-development.md) - Active work and roadmap
+- [Engineering](./developer-guide/engineering/) - Technical deep-dives
+
+### 📦 [Releases](./releases/)
+Release notes and version history:
+- [All Releases](./releases/README.md) - Release index and guidelines
+- [Latest Beta (0.1.66)](./releases/0.1.66-beta.md) - Current development version
+
+### 📽️ [Presentations](./presentations/)
+Technical presentations and demos:
+- [Redfish Client Demo](./presentations/redfish-client-demo.md) - Redfish implementation showcase
+
 ### 🚨 [Troubleshooting](./troubleshooting/)
 Troubleshooting guides and common issues:
 - [Offline Mode Issues](./troubleshooting/TROUBLESHOOTING-OFFLINE.md) - Solve offline mode problems
 
 ### 📁 [Archive](./archive/)
 Historical documentation and development notes (for reference only)
-
-### 🤖 [Claude Development Notes](./Claude/)
-AI-assisted development documentation and personal configuration
 
 ## 📖 Additional Resources
 
@@ -108,6 +124,8 @@ AI-assisted development documentation and personal configuration
 | Setup HTTPS | [HTTPS Configuration](./admin-guide/HTTPS-CONFIGURATION.md) |
 | Fix offline issues | [Offline Troubleshooting](./troubleshooting/TROUBLESHOOTING-OFFLINE.md) |
 | Validate configurations | [Universal Configuration API](./admin-guide/UNIVERSAL-CONFIGURATION.md) |
+| Contribute to development | [Developer Guide](./developer-guide/) |
+| Check release notes | [Releases](./releases/) |
 
 ## 📝 Contributing to Documentation
 
@@ -122,8 +140,12 @@ When adding new documentation:
 - **user-guide/** - For end users (installation, basic usage)
 - **admin-guide/** - For administrators (advanced config, APIs)
 - **probes/** - For probe-specific documentation
+- **developer-guide/** - For contributors and developers
+- **releases/** - For version history and release notes
+- **presentations/** - For technical presentations
 - **troubleshooting/** - For problem-solving guides
 - **archive/** - For historical reference only
+- **.internal/** - For internal tools and maintenance (not synced to wiki)
 
 ---
 
