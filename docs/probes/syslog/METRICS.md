@@ -1017,7 +1017,7 @@ sudo sysctl -w net.core.somaxconn=4096
 
 ## Related Documentation
 
-- [Syslog Probe README](./SYSLOG-README.md) - Configuration and quick start
+- [Syslog Probe README](./README.md) - Configuration and quick start
 - [Event Monitoring Guide](../../guides/event-monitoring.md) - Event collection strategies
 - [Security Monitoring](../../guides/security-monitoring.md) - SIEM integration
 - [Troubleshooting Guide](../../troubleshooting/) - Common issues and solutions

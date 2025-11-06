@@ -36,10 +36,18 @@ func NewMockRemoteConfiguration(url string, config string) *RemoteConfiguration 
 func (rc *RemoteConfiguration) SetReplicationParams(args *cliArgs.ParsedArgs) {
 	rc.args = args
 	rc.agentKey = args.AuthenticationKey
-	if args.ConfigPath != "" {
-		rc.localReplicaPath = args.ConfigPath
+
+	// Use absolute path based on binary location (fixes Windows Service issue)
+	absolutePath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+	if err != nil {
+		// Fallback to provided path if absolute path resolution fails
+		if args.ConfigPath != "" {
+			rc.localReplicaPath = args.ConfigPath
+		} else {
+			rc.localReplicaPath = "./agent-config.yaml"
+		}
 	} else {
-		rc.localReplicaPath = "./agent-config.yaml"
+		rc.localReplicaPath = absolutePath
 	}
 
 	// Create a proper logger from args

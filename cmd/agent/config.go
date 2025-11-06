@@ -35,12 +35,16 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 	var filesToRemove []string
 	var dirsToRemove []string
 
-	// Configuration file
-	configPath := args.ConfigPath
-	if configPath == "" {
-		configPath = "./agent-config.yaml"
+	// Configuration file - use absolute path to ensure correct file is found
+	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+	if err != nil {
+		// Fallback to provided path if absolute path resolution fails
+		configPath = args.ConfigPath
+		if configPath == "" {
+			configPath = "./agent-config.yaml"
+		}
 	}
-	if _, err := os.Stat(configPath); err == nil {
+	if _, statErr := os.Stat(configPath); statErr == nil {
 		filesToRemove = append(filesToRemove, configPath)
 	}
 

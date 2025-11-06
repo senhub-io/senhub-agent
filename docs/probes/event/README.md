@@ -55,5 +55,5 @@ probes:
 
 ## Related Documentation
 
-- [EVENT-METRICS.md](./EVENT-METRICS.md) - Event structure reference
+- [METRICS.md](./METRICS.md) - Event structure reference
 - [Syslog Probe](./README.md) - Network log collection
