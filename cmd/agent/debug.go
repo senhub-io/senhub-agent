@@ -107,9 +107,14 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 
 		// Try to get agent key from config file if not provided
 		if agentKey == "" {
-			configPath := args.ConfigPath
-			if configPath == "" {
-				configPath = "./agent-config.yaml"
+			// Use absolute path based on binary location (fixes Windows Service issue)
+			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+			if err != nil {
+				// Fallback to provided path if absolute path resolution fails
+				configPath = args.ConfigPath
+				if configPath == "" {
+					configPath = "./agent-config.yaml"
+				}
 			}
 
 			if extractedKey, err := extractAgentKeyFromConfig(configPath); err == nil {
@@ -207,9 +212,14 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 
 		// Try to get agent key from config file if not provided
 		if agentKey == "" {
-			configPath := args.ConfigPath
-			if configPath == "" {
-				configPath = "./agent-config.yaml"
+			// Use absolute path based on binary location (fixes Windows Service issue)
+			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+			if err != nil {
+				// Fallback to provided path if absolute path resolution fails
+				configPath = args.ConfigPath
+				if configPath == "" {
+					configPath = "./agent-config.yaml"
+				}
 			}
 
 			if extractedKey, err := extractAgentKeyFromConfig(configPath); err == nil {

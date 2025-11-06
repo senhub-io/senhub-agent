@@ -67,18 +67,18 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 | **Network Probes** | | Network connectivity and quality monitoring |
 | **Gateway Ping** | [README](probes/network/README.md) | Default gateway connectivity (latency, packet loss) |
 | | [Metrics](probes/network/METRICS.md) | Complete gateway metrics reference |
-| **WiFi Signal** | [README](probes/network/wifi/README.md) | WiFi signal strength and quality monitoring |
-| | [Metrics](probes/network/wifi/METRICS.md) | Complete WiFi metrics reference |
+| **WiFi Signal** | [README](probes/wifi_signal_strength/README.md) | WiFi signal strength and quality monitoring |
+| | [Metrics](probes/wifi_signal_strength/METRICS.md) | Complete WiFi metrics reference |
 | **WebApp Probes** | | Web application monitoring |
-| **WebApp Ping** | [README](probes/webapp/PING-README.md) | HTTP/HTTPS availability monitoring |
-| | [Metrics](probes/webapp/PING-METRICS.md) | Complete ping metrics reference |
-| **WebApp Load** | [README](probes/webapp/LOAD-README.md) | Web application performance monitoring |
-| | [Metrics](probes/webapp/LOAD-METRICS.md) | Complete load metrics reference |
+| **WebApp Ping** | [README](probes/ping_webapp/README.md) | HTTP/HTTPS availability monitoring |
+| | [Metrics](probes/ping_webapp/METRICS.md) | Complete ping metrics reference |
+| **WebApp Load** | [README](probes/load_webapp/README.md) | Web application performance monitoring |
+| | [Metrics](probes/load_webapp/METRICS.md) | Complete load metrics reference |
 | **Event Probes** | | Event collection and log aggregation |
-| **Syslog** | [README](probes/events/README.md) | Syslog server (RFC 3164/5424) |
-| | [Metrics](probes/events/METRICS.md) | Complete event structure reference |
-| **Event** | [README](probes/events/EVENT-README.md) | Custom HTTP event endpoint |
-| | [Metrics](probes/events/EVENT-METRICS.md) | Complete event API reference |
+| **Syslog** | [README](probes/syslog/README.md) | Syslog server (RFC 3164/5424) |
+| | [Metrics](probes/syslog/METRICS.md) | Complete event structure reference |
+| **Event** | [README](probes/event/README.md) | Custom HTTP event endpoint |
+| | [Metrics](probes/event/METRICS.md) | Complete event API reference |
 | **Citrix CVAD** | [README](probes/citrix/README.md) | Citrix Virtual Apps and Desktops monitoring |
 | | [Metrics](probes/citrix/METRICS.md) | Complete metrics reference |
 | | [Debug Mode](probes/citrix/DEBUG-MODE.md) | Debugging guide |
@@ -125,15 +125,15 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 ### "I want to monitor network connectivity"
 1. **[Gateway Ping](probes/network/README.md)** (local network latency and packet loss)
 2. **[WiFi Signal](probes/network/wifi/README.md)** (wireless signal strength and quality)
-3. **[WebApp Ping](probes/webapp/PING-README.md)** (internet connectivity)
+3. **[WebApp Ping](probes/ping_webapp/README.md)** (internet connectivity)
 
 ### "I want to monitor web applications"
-1. **[WebApp Ping](probes/webapp/PING-README.md)** (HTTP/HTTPS availability)
-2. **[WebApp Load](probes/webapp/LOAD-README.md)** (performance and response time)
+1. **[WebApp Ping](probes/ping_webapp/README.md)** (HTTP/HTTPS availability)
+2. **[WebApp Load](probes/load_webapp/README.md)** (performance and response time)
 
 ### "I want to collect events and logs"
-1. **[Syslog Probe](probes/events/README.md)** (syslog server for network devices)
-2. **[Event Probe](probes/events/EVENT-README.md)** (custom application events)
+1. **[Syslog Probe](probes/syslog/README.md)** (syslog server for network devices)
+2. **[Event Probe](probes/event/README.md)** (custom application events)
 
 ### "I want to monitor Citrix CVAD"
 1. **[Citrix README](probes/citrix/README.md)** (overview and setup)
@@ -165,12 +165,12 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 - **[Network Probes](probes/network/)** - Network connectivity and quality
   - **[Gateway Ping](probes/network/)** - Default gateway latency and packet loss
   - **[WiFi Signal](probes/network/wifi/)** - WiFi signal strength and quality
-- **[WebApp Probes](probes/webapp/)** - Web application monitoring
-  - **[WebApp Ping](probes/webapp/PING-README.md)** - HTTP/HTTPS availability
-  - **[WebApp Load](probes/webapp/LOAD-README.md)** - Performance and response time
-- **[Event Probes](probes/events/)** - Event collection and log aggregation
-  - **[Syslog](probes/events/)** - Syslog server (RFC 3164/5424)
-  - **[Event](probes/events/EVENT-README.md)** - Custom HTTP event endpoint
+- **WebApp Probes** - Web application monitoring
+  - **[WebApp Ping](probes/ping_webapp/README.md)** - HTTP/HTTPS availability
+  - **[WebApp Load](probes/load_webapp/README.md)** - Performance and response time
+- **Event Probes** - Event collection and log aggregation
+  - **[Syslog](probes/syslog/README.md)** - Syslog server (RFC 3164/5424)
+  - **[Event](probes/event/README.md)** - Custom HTTP event endpoint
 - **[Citrix CVAD](probes/citrix/)** - Citrix Virtual Apps and Desktops monitoring
 - **[Redfish Hardware](probes/redfish/)** - Server hardware monitoring via Redfish
 - **[OpenTelemetry](probes/otel/)** - OTEL integration

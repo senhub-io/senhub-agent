@@ -638,8 +638,8 @@ Recommended retention policies:
 
 ## Related Documentation
 
-- [WebApp Ping Probe README](./PING-README.md) - Configuration and quick start
-- [Load WebApp Probe](./LOAD-README.md) - HTTP/HTTPS monitoring
+- [WebApp Ping Probe README](./README.md) - Configuration and quick start
+- [Load WebApp Probe](../load_webapp/README.md) - HTTP/HTTPS monitoring
 - [Network Probe](../network/README.md) - Network interface monitoring
 - [System Monitoring Guide](../../guides/system-monitoring.md) - Comprehensive monitoring
 - [Troubleshooting Guide](../../troubleshooting/) - Common issues and solutions
