@@ -49,5 +49,7 @@ func (rc *RemoteConfiguration) SetReplicationParams(args *cliArgs.ParsedArgs) {
 
 // TestReplication tests the replication functionality directly
 func (rc *RemoteConfiguration) TestReplication() error {
+	// Migrate configuration to v2 format before replicating (add type field if missing)
+	migrateRemoteConfigToV2(&rc.data)
 	return rc.replicateConfigurationLocally()
 }
