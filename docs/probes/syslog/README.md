@@ -60,7 +60,7 @@ The Syslog probe is platform-independent and listens on all network interfaces (
 | `priority` | Combined facility/severity (PRI) | `11` ((1*8)+3) |
 | `timestamp` | Message timestamp | `2025-10-13T14:23:45Z` |
 
-For complete event field reference, see [SYSLOG-METRICS.md](./SYSLOG-METRICS.md).
+For complete event field reference, see [METRICS.md](./METRICS.md).
 
 ## Configuration Parameters
 
@@ -677,7 +677,7 @@ For issues or questions:
    ```
 
 4. **Review documentation:**
-   - [Complete Event Field Reference](./SYSLOG-METRICS.md)
+   - [Complete Event Field Reference](./METRICS.md)
    - [Troubleshooting Guide](../../troubleshooting/)
    - [Agent Configuration Guide](../../../configuration/)
 

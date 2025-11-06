@@ -23,7 +23,7 @@ sudo ./senhub-agent-linux-amd64 start
 open https://localhost:8443/web/{agentkey}/dashboard
 ```
 
-**📚 [5-Minute Setup Guide](QUICK-START-OFFLINE.md)** | **📖 [Complete Offline Documentation](OFFLINE-MODE.md)**
+**📚 [5-Minute Setup Guide](docs/user-guide/QUICK-START-OFFLINE.md)** | **📖 [Complete Offline Documentation](docs/user-guide/OFFLINE-MODE.md)**
 
 ### Online Mode (SenHub Platform)
 
@@ -38,16 +38,16 @@ sudo ./senhub-agent run  # Automatically loads key from config file
 ## 📋 Documentation
 
 ### User Guides
-- **[🏃 Quick Start (5 min)](QUICK-START-OFFLINE.md)** - Get running in 5 minutes
-- **[💻 Offline Mode Guide](OFFLINE-MODE.md)** - Complete standalone deployment guide
-- **[🔒 HTTPS Configuration](HTTPS-CONFIGURATION.md)** - TLS/SSL setup and security
-- **[🛠️ Troubleshooting](TROUBLESHOOTING-OFFLINE.md)** - Common issues and solutions
+- **[🏃 Quick Start (5 min)](docs/user-guide/QUICK-START-OFFLINE.md)** - Get running in 5 minutes
+- **[💻 Offline Mode Guide](docs/user-guide/OFFLINE-MODE.md)** - Complete standalone deployment guide
+- **[🔒 HTTPS Configuration](docs/admin-guide/HTTPS-CONFIGURATION.md)** - TLS/SSL setup and security
+- **[🛠️ Troubleshooting](docs/troubleshooting/TROUBLESHOOTING-OFFLINE.md)** - Common issues and solutions
 
 ### Developer Resources
 - **[👨‍💻 Development Guide](CLAUDE.md)** - Architecture, development, and build instructions
-- **[📝 Logging System](LOGGING.md)** - Advanced logging and debugging
-- **[🔌 Probe Configuration](PROBE-CONFIGURATION.md)** - Configure monitoring probes
-- **[🏷️ Redfish Metrics](REDFISH-METRICS.md)** - Hardware monitoring documentation
+- **[📝 Logging System](docs/admin-guide/LOGGING.md)** - Advanced logging and debugging
+- **[🔌 Probe Configuration](docs/user-guide/PROBE-CONFIGURATION.md)** - Configure monitoring probes
+- **[🏷️ Redfish Metrics](docs/probes/redfish/METRICS.md)** - Hardware monitoring documentation
 
 ## ✨ Key Features
 
@@ -285,7 +285,7 @@ The agent includes various probes for collecting different types of metrics:
 - Syslog collection
 
 ### Infrastructure Probes
-- Redfish monitoring for servers and storage systems (see [REDFISH-METRICS.md](REDFISH-METRICS.md) for details on available metrics)
+- Redfish monitoring for servers and storage systems (see [REDFISH-METRICS.md](docs/probes/redfish/METRICS.md) for details on available metrics)
 - Gateway connectivity monitoring
 
 A configuration has three main sections:
