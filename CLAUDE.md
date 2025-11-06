@@ -24,7 +24,7 @@ The full development documentation has been moved to `/docs/developer-guide/` fo
 
 ### Version Management
 - **Production version**: Without `-beta` suffix (e.g., `0.1.64`)
-- **Development version**: With `-beta` suffix (e.g., `0.1.66-beta`)
+- **Development version**: With `-beta` suffix (e.g., `0.1.70-beta`)
 - **Tag format**: `X.Y.Z-beta` (NO "v" prefix)
 
 ### Branch Strategy
@@ -159,8 +159,8 @@ See [Current Development](./docs/developer-guide/current-development.md) for det
 
 ## Recent Completions
 
-- ✅ Configuration v1→v2 migration (v0.1.66-beta)
-- ✅ Shared configuration template (v0.1.66-beta)
+- ✅ Configuration v1→v2 migration (v0.1.70-beta)
+- ✅ Shared configuration template (v0.1.70-beta)
 - ✅ Offline mode implementation
 - ✅ Universal configuration API
 - ✅ Modular logging system

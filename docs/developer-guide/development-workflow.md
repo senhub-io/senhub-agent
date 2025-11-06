@@ -6,13 +6,13 @@ This document describes the development workflow for SenHub Agent, including ver
 
 ### Version Scheme
 - **Production version**: Always tagged without `-beta` suffix (e.g., `0.1.64`)
-- **Development version**: Next version with `-beta` suffix (e.g., `0.1.66-beta`)
+- **Development version**: Next version with `-beta` suffix (e.g., `0.1.70-beta`)
 - **Current prod**: `0.1.64`
-- **Next dev**: `0.1.66-beta`
+- **Next dev**: `0.1.70-beta`
 
 ### Version Tag Format
 - **IMPORTANT**: All version tags must follow the format `X.Y.Z-beta` (WITHOUT the "v" prefix)
-- Example: `0.1.66-beta` (correct) vs `v0.1.66-beta` (incorrect)
+- Example: `0.1.70-beta` (correct) vs `v0.1.70-beta` (incorrect)
 - Beta releases are automatically generated from dev branch pushes
 - Workflow uses `git describe --tags --abbrev=0` to find latest tag
 

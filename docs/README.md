@@ -89,7 +89,7 @@ Documentation for contributors and developers:
 ### 📦 [Releases](./releases/)
 Release notes and version history:
 - [All Releases](./releases/README.md) - Release index and guidelines
-- [Latest Beta (0.1.66)](./releases/0.1.66-beta.md) - Current development version
+- [Latest Beta (0.1.66)](./releases/0.1.70-beta.md) - Current development version
 
 ### 📽️ [Presentations](./presentations/)
 Technical presentations and demos:

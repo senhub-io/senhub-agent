@@ -4,7 +4,7 @@ This document tracks active development work, completed features, and the roadma
 
 ## Recently Completed
 
-### Configuration v1→v2 Remote Migration (v0.1.66-beta)
+### Configuration v1→v2 Remote Migration (v0.1.70-beta)
 **Status**: ✅ COMPLETED
 
 **Objective**: Fix critical production bug where probes fail when server sends v1 config format
@@ -23,7 +23,7 @@ This document tracks active development work, completed features, and the roadma
 - Forward compatible with v2 server configs
 - No user action required
 
-### Shared Configuration Template (v0.1.66-beta)
+### Shared Configuration Template (v0.1.70-beta)
 **Status**: ✅ COMPLETED
 
 **Objective**: Eliminate duplication of probe configuration examples between offline and online modes
