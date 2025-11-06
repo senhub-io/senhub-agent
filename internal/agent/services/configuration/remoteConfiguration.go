@@ -90,11 +90,22 @@ func NewRemoteConfiguration(
 		parsedArgs = a
 		agentKey = a.AuthenticationKey
 
-		// Determine local replica path
-		if a.ConfigPath != "" {
-			localReplicaPath = a.ConfigPath
+		// Determine local replica path using absolute path based on binary location
+		// This fixes Windows Service issue where working directory != binary directory
+		absolutePath, err := cliArgs.GetAbsoluteConfigPath(a.ConfigPath)
+		if err != nil {
+			moduleLogger.Error().
+				Err(err).
+				Str("config_path", a.ConfigPath).
+				Msg("Failed to determine absolute config path, using provided path as-is")
+			// Fallback to provided path or default
+			if a.ConfigPath != "" {
+				localReplicaPath = a.ConfigPath
+			} else {
+				localReplicaPath = "./agent-config.yaml"
+			}
 		} else {
-			localReplicaPath = "./agent-config.yaml" // Default path
+			localReplicaPath = absolutePath
 		}
 
 		moduleLogger.Debug().

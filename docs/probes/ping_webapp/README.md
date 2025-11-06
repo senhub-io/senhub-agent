@@ -50,7 +50,7 @@ Platform-specific ping commands are automatically used based on the operating sy
 | `averageLatency` | Average ICMP round-trip time | `ms` | Network latency monitoring |
 | `packetLoss` | Percentage of lost ICMP packets | `%` | Network reliability monitoring |
 
-For a complete metrics reference, see [PING-METRICS.md](./PING-METRICS.md).
+For a complete metrics reference, see [METRICS.md](./METRICS.md).
 
 ## Configuration Parameters
 
@@ -631,8 +631,8 @@ For issues or questions:
    ```
 
 4. **Review documentation:**
-   - [Complete Metrics Reference](./PING-METRICS.md)
-   - [Load WebApp Probe](./LOAD-README.md) - HTTP/HTTPS monitoring
+   - [Complete Metrics Reference](./METRICS.md)
+   - [Load WebApp Probe](../load_webapp/README.md) - HTTP/HTTPS monitoring
    - [Troubleshooting Guide](../../troubleshooting/)
    - [Agent Configuration Guide](../../../configuration/)
 
