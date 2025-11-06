@@ -38,7 +38,7 @@ Platform-specific ping implementations are automatically selected based on the o
 | `averageLatency` | Average round-trip time to gateway | ms | > 50ms (warning), > 100ms (critical) |
 | `packetLoss` | Percentage of lost packets | % | > 1% (warning), > 5% (critical) |
 
-For a complete metrics reference, see [GATEWAY-METRICS.md](./GATEWAY-METRICS.md).
+For a complete metrics reference, see [METRICS.md](./METRICS.md).
 
 ## Configuration Parameters
 
@@ -572,7 +572,7 @@ For issues or questions:
    ```
 
 4. **Review documentation:**
-   - [Complete Metrics Reference](./GATEWAY-METRICS.md)
+   - [Complete Metrics Reference](./METRICS.md)
    - [Network Troubleshooting Guide](../../troubleshooting/network.md)
    - [Agent Configuration Guide](../../../configuration/)
 
