@@ -254,11 +254,17 @@ func (rc *RemoteConfiguration) UpdateSync() error {
 					Any("old_config", rc.data).
 					Any("new_config", *config).
 					Msg("Configuration changed")
-				rc.data = *config
 
-				// Replicate configuration locally for transition purposes
+				// Write configuration locally (may be v1 format from server)
 				if err := rc.replicateConfigurationLocally(); err != nil {
-					rc.logger.Warn().Err(err).Msg("Failed to replicate configuration locally")
+					rc.logger.Error().Err(err).Msg("Failed to replicate configuration locally")
+					return fmt.Errorf("failed to replicate configuration: %w", err)
+				}
+
+				// Apply v1→v2 migration if needed
+				if err := rc.migrateAndReloadConfiguration(); err != nil {
+					rc.logger.Error().Err(err).Msg("Failed to migrate configuration")
+					return fmt.Errorf("failed to migrate configuration: %w", err)
 				}
 
 				rc.eventNotifier.NotifyObservers("Configuration changed")
@@ -270,7 +276,14 @@ func (rc *RemoteConfiguration) UpdateSync() error {
 					if _, err := os.Stat(rc.localReplicaPath); os.IsNotExist(err) {
 						rc.logger.Info().Msg("Local replica doesn't exist, creating initial copy")
 						if err := rc.replicateConfigurationLocally(); err != nil {
-							rc.logger.Warn().Err(err).Msg("Failed to create initial local replica")
+							rc.logger.Error().Err(err).Msg("Failed to create initial local replica")
+							return fmt.Errorf("failed to create initial replica: %w", err)
+						}
+
+						// Apply v1→v2 migration on first run
+						if err := rc.migrateAndReloadConfiguration(); err != nil {
+							rc.logger.Error().Err(err).Msg("Failed to migrate initial configuration")
+							return fmt.Errorf("failed to migrate initial configuration: %w", err)
 						}
 					}
 				}
@@ -364,6 +377,54 @@ func (rc *RemoteConfiguration) replicateConfigurationLocally() error {
 	rc.logger.Info().
 		Str("replica_path", rc.localReplicaPath).
 		Msg("Local configuration replica created successfully")
+
+	return nil
+}
+
+// migrateAndReloadConfiguration migrates the local configuration file from v1→v2 if needed,
+// then reloads it into memory. This ensures all configuration (local or remote) goes through
+// the same migration pipeline.
+func (rc *RemoteConfiguration) migrateAndReloadConfiguration() error {
+	if rc.localReplicaPath == "" {
+		return fmt.Errorf("local replica path not configured")
+	}
+
+	rc.logger.Debug().
+		Str("config_path", rc.localReplicaPath).
+		Msg("Applying migration and reloading configuration")
+
+	// Apply v1→v2 migration if needed using ConfigMigrator
+	migrator := NewConfigMigrator(rc.localReplicaPath, rc.logger.Logger)
+	if err := migrator.MigrateIfNeeded(); err != nil {
+		return fmt.Errorf("migration failed: %w", err)
+	}
+
+	// Reload configuration from the (now migrated) local file
+	yamlData, err := os.ReadFile(rc.localReplicaPath)
+	if err != nil {
+		return fmt.Errorf("failed to read migrated config: %w", err)
+	}
+
+	var localConfig LocalConfigurationData
+	if err := yaml.Unmarshal(yamlData, &localConfig); err != nil {
+		return fmt.Errorf("failed to parse migrated config: %w", err)
+	}
+
+	// Convert LocalConfigurationData back to RemoteConfigurationData format
+	rc.data = RemoteConfigurationData{
+		StorageConfig: localConfig.Storage,
+		Probes:        localConfig.Probes,
+		Agent: AgentConfig{
+			RegistryUrl:         rc.data.Agent.RegistryUrl,
+			Version:             rc.data.Agent.Version,
+			UpdateCheckInterval: rc.data.Agent.UpdateCheckInterval,
+		},
+		Cache: localConfig.Cache,
+	}
+
+	rc.logger.Info().
+		Int("probes_count", len(rc.data.Probes)).
+		Msg("Configuration migrated and reloaded successfully")
 
 	return nil
 }

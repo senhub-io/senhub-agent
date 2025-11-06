@@ -134,8 +134,7 @@ func getProbeConstructorForConfig(config configuration.ProbeConfig) (ProbeConstr
 	// Type is the technical identifier (cpu, citrix, redfish, etc.)
 	probeType := config.Type
 	if probeType == "" {
-		// Should not happen if migration ran correctly
-		return nil, fmt.Errorf("probe type is empty for probe '%s'", config.Name)
+		return nil, fmt.Errorf("probe type is empty for probe '%s' - configuration should be v2 format", config.Name)
 	}
 
 	constructor, exists := probeConstructors[probeType]
