@@ -244,14 +244,14 @@ func (rc *RemoteConfiguration) UpdateSync() error {
 
 		config, err := rc.doFetchConfiguration()
 		if err == nil {
+			// Migrate server configuration to v2 format (add type field if missing)
+			// This must happen BEFORE validation to ensure consistent format
+			migrateRemoteConfigToV2(config)
+
 			if err := rc.validateConfiguration(config); err != nil {
 				rc.logger.Error().Err(err).Msg("Invalid configuration received")
 				return fmt.Errorf("invalid configuration: %v", err)
 			}
-
-		// Migrate server configuration to v2 format (add type field if missing)
-		// This ensures rc.data is always in v2 format
-		migrateRemoteConfigToV2(config)
 
 			if !reflect.DeepEqual(rc.data, *config) {
 				rc.logger.Info().
@@ -376,51 +376,6 @@ func (rc *RemoteConfiguration) replicateConfigurationLocally() error {
 	rc.logger.Info().
 		Str("replica_path", rc.localReplicaPath).
 		Msg("Local configuration replica created successfully")
-
-	return nil
-}
-
-// migrateAndReloadConfiguration migrates the local configuration file from v1→v2 if needed,
-// then reloads it into memory. This ensures all configuration (local or remote) goes through
-// the same migration pipeline.
-func (rc *RemoteConfiguration) migrateAndReloadConfiguration() error {
-
-	rc.logger.Debug().
-		Str("config_path", rc.localReplicaPath).
-		Msg("Applying migration and reloading configuration")
-
-	// Apply v1→v2 migration if needed using ConfigMigrator
-	migrator := NewConfigMigrator(rc.localReplicaPath, rc.logger.Logger)
-	if err := migrator.MigrateIfNeeded(); err != nil {
-		return fmt.Errorf("migration failed: %w", err)
-	}
-
-	// Reload configuration from the (now migrated) local file
-	yamlData, err := os.ReadFile(rc.localReplicaPath)
-	if err != nil {
-		return fmt.Errorf("failed to read migrated config: %w", err)
-	}
-
-	var localConfig LocalConfigurationData
-	if err := yaml.Unmarshal(yamlData, &localConfig); err != nil {
-		return fmt.Errorf("failed to parse migrated config: %w", err)
-	}
-
-	// Convert LocalConfigurationData back to RemoteConfigurationData format
-	rc.data = RemoteConfigurationData{
-		StorageConfig: localConfig.Storage,
-		Probes:        localConfig.Probes,
-		Agent: AgentConfig{
-			RegistryUrl:         rc.data.Agent.RegistryUrl,
-			Version:             rc.data.Agent.Version,
-			UpdateCheckInterval: rc.data.Agent.UpdateCheckInterval,
-		},
-		Cache: localConfig.Cache,
-	}
-
-	rc.logger.Info().
-		Int("probes_count", len(rc.data.Probes)).
-		Msg("Configuration migrated and reloaded successfully")
 
 	return nil
 }
@@ -717,8 +672,18 @@ func (rc *RemoteConfiguration) generateProbesYAML(probes []ProbeConfig) (string,
 }
 
 // migrateRemoteConfigToV2 migrates a RemoteConfigurationData from v1→v2 format in place
-// by adding 'type' field (copied from 'name') to all probes if missing
+// by adding 'type' field (copied from 'name') to all probes if missing.
+//
+// This function is idempotent - safe to call multiple times.
+// Migration happens in-memory before writing to disk, avoiding backup files.
+//
+// v1 format: {"name": "cpu", "params": {...}}
+// v2 format: {"name": "cpu", "type": "cpu", "params": {...}}
 func migrateRemoteConfigToV2(config *RemoteConfigurationData) {
+	if config == nil {
+		return // Defensive: prevent nil pointer dereference
+	}
+
 	for i := range config.Probes {
 		if config.Probes[i].Type == "" {
 			config.Probes[i].Type = config.Probes[i].Name
