@@ -249,6 +249,10 @@ func (rc *RemoteConfiguration) UpdateSync() error {
 				return fmt.Errorf("invalid configuration: %v", err)
 			}
 
+		// Migrate server configuration to v2 format (add type field if missing)
+		// This ensures rc.data is always in v2 format
+		migrateRemoteConfigToV2(config)
+
 			if !reflect.DeepEqual(rc.data, *config) {
 				rc.logger.Info().
 					Any("old_config", rc.data).
@@ -265,10 +269,6 @@ func (rc *RemoteConfiguration) UpdateSync() error {
 				}
 
 				// Apply v1→v2 migration if needed
-				if err := rc.migrateAndReloadConfiguration(); err != nil {
-					rc.logger.Error().Err(err).Msg("Failed to migrate configuration")
-					return fmt.Errorf("failed to migrate configuration: %w", err)
-				}
 
 				rc.eventNotifier.NotifyObservers("Configuration changed")
 			} else {
@@ -284,10 +284,6 @@ func (rc *RemoteConfiguration) UpdateSync() error {
 						}
 
 						// Apply v1→v2 migration on first run
-						if err := rc.migrateAndReloadConfiguration(); err != nil {
-							rc.logger.Error().Err(err).Msg("Failed to migrate initial configuration")
-							return fmt.Errorf("failed to migrate initial configuration: %w", err)
-						}
 					}
 				}
 			}
@@ -388,9 +384,6 @@ func (rc *RemoteConfiguration) replicateConfigurationLocally() error {
 // then reloads it into memory. This ensures all configuration (local or remote) goes through
 // the same migration pipeline.
 func (rc *RemoteConfiguration) migrateAndReloadConfiguration() error {
-	if rc.localReplicaPath == "" {
-		return fmt.Errorf("local replica path not configured")
-	}
 
 	rc.logger.Debug().
 		Str("config_path", rc.localReplicaPath).
@@ -616,4 +609,14 @@ func (rc *RemoteConfiguration) generateProbesYAML(probes []ProbeConfig) (string,
 	}
 
 	return strings.Join(yamlLines, "\n"), nil
+}
+
+// migrateRemoteConfigToV2 migrates a RemoteConfigurationData from v1→v2 format in place
+// by adding 'type' field (copied from 'name') to all probes if missing
+func migrateRemoteConfigToV2(config *RemoteConfigurationData) {
+	for i := range config.Probes {
+		if config.Probes[i].Type == "" {
+			config.Probes[i].Type = config.Probes[i].Name
+		}
+	}
 }
