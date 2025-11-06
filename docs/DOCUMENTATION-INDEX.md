@@ -43,9 +43,14 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 ### Core Development
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[CLAUDE.md](../CLAUDE.md)** | Development guide and architecture | Developers |
+| **[Developer Guide](developer-guide/README.md)** | Complete developer documentation | Developers |
+| **[Architecture](developer-guide/architecture.md)** | System design and components | Developers |
+| **[Development Workflow](developer-guide/development-workflow.md)** | Git workflow and branching | Contributors |
+| **[Build System](developer-guide/build-system.md)** | Compilation and testing | Developers |
+| **[Design Patterns](developer-guide/design-patterns.md)** | Code patterns and best practices | Developers |
+| **[Current Development](developer-guide/current-development.md)** | Active work and roadmap | All |
+| **[CLAUDE.md](../CLAUDE.md)** | Quick reference (points to developer guide) | Developers |
 | **[LOGGING.md](admin-guide/LOGGING.md)** | Logging system and debugging | Developers, DevOps |
-| **[HTTP-BIND-ADDRESS.md](admin-guide/HTTP-BIND-ADDRESS.md)** | Network binding configuration | Network admins |
 
 ### Probe Documentation
 | Probe | Documentation | Description |
@@ -99,7 +104,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 ### "I have an issue to resolve"
 1. **[TROUBLESHOOTING-OFFLINE.md](troubleshooting/TROUBLESHOOTING-OFFLINE.md)** (troubleshooting guide)
 2. **[LOGGING.md](admin-guide/LOGGING.md)** (debugging information)
-3. **[CLAUDE.md](../CLAUDE.md)** (development context)
+3. **[Developer Guide](developer-guide/README.md)** (development context)
 
 ### "I want to integrate with monitoring tools"
 1. **[OFFLINE-MODE.md#api-endpoints](user-guide/OFFLINE-MODE.md#api-endpoints)** (API reference)
@@ -137,7 +142,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 
 ### "I want to customize monitoring"
 1. **[PROBE-CONFIGURATION.md](user-guide/PROBE-CONFIGURATION.md)** (probe setup)
-2. **[CLAUDE.md](../CLAUDE.md)** (development guide for custom probes)
+2. **[Developer Guide](developer-guide/README.md)** (development guide for custom probes)
 
 ## 🔍 Documentation by Topic
 
@@ -180,12 +185,15 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 ### Troubleshooting & Debugging
 - **[Troubleshooting Guide](troubleshooting/TROUBLESHOOTING-OFFLINE.md)** - Common issues and solutions
 - **[Logging System](admin-guide/LOGGING.md)** - Advanced logging and debugging
-- **[Debug Mode](../CLAUDE.md#debugging-guide)** - Development debugging
+- **[Debug Mode](developer-guide/build-system.md#troubleshooting)** - Development debugging
 
 ### Development & Architecture
-- **[Development Guide](../CLAUDE.md)** - Architecture and development
-- **[Build Instructions](../CLAUDE.md#build-commands)** - Building from source
-- **[Code Style](../CLAUDE.md#code-style-guidelines)** - Development standards
+- **[Developer Guide](developer-guide/README.md)** - Architecture and development
+- **[Architecture](developer-guide/architecture.md)** - System design and components
+- **[Build Instructions](developer-guide/build-system.md)** - Building from source
+- **[Code Style](developer-guide/architecture.md)** - Development standards
+- **[Design Patterns](developer-guide/design-patterns.md)** - Code patterns and best practices
+- **[Current Development](developer-guide/current-development.md)** - Active work and roadmap
 
 ## 📋 Quick Reference
 
