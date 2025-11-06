@@ -15,6 +15,7 @@ import (
 
 // networkProbe représente le collecteur de métriques réseau
 type networkProbe struct {
+	*types.BaseProbe
 	rawConfig map[string]interface{}
 	logger    *logger.ModuleLogger
 	collector osNetworkCollector
@@ -39,6 +40,7 @@ func NewNetworkProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 	}
 
 	probe := &networkProbe{
+		BaseProbe: &types.BaseProbe{},
 		rawConfig: config,
 		logger:    logger.NewModuleLogger(baseLogger, "probe.network"),
 		interval:  interval,
@@ -61,9 +63,9 @@ func NewNetworkProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 	return probe, nil
 }
 
-func (p *networkProbe) GetName() string {
-	return "network"
-}
+// Note: GetName() is now inherited from BaseProbe and will return the unique
+// probe name from configuration (e.g., "network", "network2") instead of the
+// hardcoded type. This enables proper discriminant tagging for multiple instances.
 
 func (p *networkProbe) ShouldStart() bool {
 	return true
@@ -80,9 +82,8 @@ func (p *networkProbe) Collect() ([]data_store.DataPoint, error) {
 		return nil, fmt.Errorf("failed to collect network metrics: %v", err)
 	}
 
-	// Create base probe for enrichment
-	baseProbe := &types.BaseProbe{}
-	enrichedMetrics := baseProbe.EnrichDataPointsWithProbeName(metrics, p.GetName())
+	// Enrich datapoints with probe name and type tags
+	enrichedMetrics := p.BaseProbe.EnrichDataPointsWithProbeName(metrics, p.GetName())
 
 	return enrichedMetrics, nil
 }

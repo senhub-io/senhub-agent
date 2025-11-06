@@ -177,9 +177,7 @@ func (c *deliveryControllerClient) GetMachinesDetailedBySite(ctx context.Context
 		}
 
 		// Add all machines (server-side filtering via Citrix-InstanceId header should handle site filtering)
-		for _, machine := range response.Items {
-			allMachines = append(allMachines, machine)
-		}
+		allMachines = append(allMachines, response.Items...)
 
 		if response.ContinuationToken == "" {
 			break
@@ -249,9 +247,7 @@ func (c *deliveryControllerClient) GetDeliveryGroupsBySite(ctx context.Context, 
 		}
 
 		// Add all groups (server-side filtering via Citrix-InstanceId header should handle site filtering)
-		for _, group := range response.Items {
-			allGroups = append(allGroups, group)
-		}
+		allGroups = append(allGroups, response.Items...)
 
 		if response.ContinuationToken == "" {
 			break
@@ -266,7 +262,6 @@ func (c *deliveryControllerClient) GetDeliveryGroupsBySite(ctx context.Context, 
 
 	return allGroups, nil
 }
-
 
 // GetControllersBySite retrieves all controllers for a specific site
 func (c *deliveryControllerClient) GetControllersBySite(ctx context.Context, siteName string) ([]DDCController, error) {
@@ -322,9 +317,7 @@ func (c *deliveryControllerClient) GetControllersBySite(ctx context.Context, sit
 		}
 
 		// Add all controllers (server-side filtering via Citrix-InstanceId header should handle site filtering)
-		for _, controller := range response.Items {
-			siteControllers = append(siteControllers, controller)
-		}
+		siteControllers = append(siteControllers, response.Items...)
 
 		if response.ContinuationToken == "" {
 			break
