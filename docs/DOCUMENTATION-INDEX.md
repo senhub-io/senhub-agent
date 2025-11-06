@@ -11,117 +11,189 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 ## 🚀 Getting Started
 
 ### For New Users
-1. **[Quick Start Guide (5 min)](QUICK-START-OFFLINE.md)** - Get your agent running in 5 minutes
-2. **[Offline Mode Guide](OFFLINE-MODE.md)** - Complete standalone deployment documentation
-3. **[Installation Examples](examples/)** - Ready-to-use configuration examples
+1. **[Quick Start Guide (5 min)](user-guide/QUICK-START-OFFLINE.md)** - Get your agent running in 5 minutes
+2. **[Offline Mode Guide](user-guide/OFFLINE-MODE.md)** - Complete standalone deployment documentation
+3. **[Probe Configuration](user-guide/PROBE-CONFIGURATION.md)** - Configure monitoring probes
 
-### For Production Deployment  
-1. **[HTTPS Configuration](HTTPS-CONFIGURATION.md)** - TLS/SSL setup and security
-2. **[Troubleshooting Guide](TROUBLESHOOTING-OFFLINE.md)** - Common issues and solutions
-3. **[Security Best Practices](#security-best-practices)** - Production security guidelines
+### For Production Deployment
+1. **[HTTPS Configuration](admin-guide/HTTPS-CONFIGURATION.md)** - TLS/SSL setup and security
+2. **[Troubleshooting Guide](troubleshooting/TROUBLESHOOTING-OFFLINE.md)** - Common issues and solutions
+3. **[Universal Configuration API](admin-guide/UNIVERSAL-CONFIGURATION.md)** - Configuration validation
 
 ## 📚 User Documentation
 
 ### Core Guides
 | Document | Description | Audience | Time to Read |
 |----------|-------------|----------|--------------|
-| **[QUICK-START-OFFLINE.md](QUICK-START-OFFLINE.md)** | 5-minute setup guide | All users | 5 min |
-| **[OFFLINE-MODE.md](OFFLINE-MODE.md)** | Complete offline mode documentation | Users, Admins | 30 min |
-| **[HTTPS-CONFIGURATION.md](HTTPS-CONFIGURATION.md)** | TLS/SSL configuration guide | Admins, DevOps | 20 min |
-| **[TROUBLESHOOTING-OFFLINE.md](TROUBLESHOOTING-OFFLINE.md)** | Troubleshooting and debugging | All users | 15 min |
+| **[QUICK-START-OFFLINE.md](user-guide/QUICK-START-OFFLINE.md)** | 5-minute setup guide | All users | 5 min |
+| **[OFFLINE-MODE.md](user-guide/OFFLINE-MODE.md)** | Complete offline mode documentation | Users, Admins | 30 min |
+| **[HTTPS-CONFIGURATION.md](admin-guide/HTTPS-CONFIGURATION.md)** | TLS/SSL configuration guide | Admins, DevOps | 20 min |
+| **[TROUBLESHOOTING-OFFLINE.md](troubleshooting/TROUBLESHOOTING-OFFLINE.md)** | Troubleshooting and debugging | All users | 15 min |
 
 ### Configuration References
 | Document | Description | Use Case |
 |----------|-------------|----------|
-| **[examples/offline-config-example.yaml](examples/offline-config-example.yaml)** | Complete configuration reference | Configuration template |
-| **[examples/https-config-example.yaml](examples/https-config-example.yaml)** | HTTPS configuration examples | TLS setup scenarios |
-| **[PROBE-CONFIGURATION.md](PROBE-CONFIGURATION.md)** | Probe configuration guide | Custom monitoring |
-| **[HTTP-STRATEGY.md](HTTP-STRATEGY.md)** | HTTP strategy configuration | API integration |
+| **[PROBE-CONFIGURATION.md](user-guide/PROBE-CONFIGURATION.md)** | Probe configuration guide | Custom monitoring |
+| **[HTTP-STRATEGY.md](admin-guide/HTTP-STRATEGY.md)** | HTTP strategy configuration | API integration |
+| **[HTTP-BIND-ADDRESS.md](admin-guide/HTTP-BIND-ADDRESS.md)** | Network binding configuration | Network setup |
+| **[UNIVERSAL-CONFIGURATION.md](admin-guide/UNIVERSAL-CONFIGURATION.md)** | Configuration validation API | Config testing |
 
 ## 👨‍💻 Developer Documentation
 
 ### Core Development
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[CLAUDE.md](CLAUDE.md)** | Development guide and architecture | Developers |
-| **[LOGGING.md](LOGGING.md)** | Logging system and debugging | Developers, DevOps |
-| **[HTTP-BIND-ADDRESS.md](HTTP-BIND-ADDRESS.md)** | Network binding configuration | Network admins |
-| **[OTEL-METRICS.md](OTEL-METRICS.md)** | OpenTelemetry integration | DevOps, SRE |
+| **[Developer Guide](developer-guide/README.md)** | Complete developer documentation | Developers |
+| **[Architecture](developer-guide/architecture.md)** | System design and components | Developers |
+| **[Development Workflow](developer-guide/development-workflow.md)** | Git workflow and branching | Contributors |
+| **[Build System](developer-guide/build-system.md)** | Compilation and testing | Developers |
+| **[Design Patterns](developer-guide/design-patterns.md)** | Code patterns and best practices | Developers |
+| **[Current Development](developer-guide/current-development.md)** | Active work and roadmap | All |
+| **[CLAUDE.md](../CLAUDE.md)** | Quick reference (points to developer guide) | Developers |
+| **[LOGGING.md](admin-guide/LOGGING.md)** | Logging system and debugging | Developers, DevOps |
 
-### Specialized Features
-| Document | Description | Use Case |
-|----------|-------------|----------|
-| **[REDFISH-METRICS.md](REDFISH-METRICS.md)** | Hardware monitoring via Redfish | Server monitoring |
-| **[REDFISH-TAGS.md](REDFISH-TAGS.md)** | Redfish metric tagging | Hardware metrics |
-| **[OTEL-PROBE.md](OTEL-PROBE.md)** | OpenTelemetry probe configuration | OTEL integration |
-| **[CITRIX-SESSION-METRICS.md](technical-reference/CITRIX-SESSION-METRICS.md)** | Citrix session monitoring documentation | Citrix VDI monitoring |
-| **[CITRIX-BLACK-HOLE-MACHINES.md](CITRIX-BLACK-HOLE-MACHINES.md)** | Black Hole Machine detection | Citrix failure analysis |
-| **[CITRIX-METRICS-COMPLETE-REFERENCE.md](CITRIX-METRICS-COMPLETE-REFERENCE.md)** | Complete Citrix metrics reference | Citrix monitoring |
+### Probe Documentation
+| Probe | Documentation | Description |
+|-------|---------------|-------------|
+| **System Probes** | | System resource monitoring (CPU, Memory, Network, Disk) |
+| **CPU** | [README](probes/system/cpu/README.md) | Processor monitoring (usage, load, per-core metrics) |
+| | [Metrics](probes/system/cpu/METRICS.md) | Complete CPU metrics reference |
+| **Memory** | [README](probes/system/memory/README.md) | RAM and swap monitoring |
+| | [Metrics](probes/system/memory/METRICS.md) | Complete memory metrics reference |
+| **Network** | [README](probes/system/network/README.md) | Network interface monitoring (bandwidth, packets, errors) |
+| | [Metrics](probes/system/network/METRICS.md) | Complete network metrics reference |
+| **LogicalDisk** | [README](probes/system/logicaldisk/README.md) | Disk and filesystem monitoring (space, IOPS, latency) |
+| | [Metrics](probes/system/logicaldisk/METRICS.md) | Complete disk metrics reference |
+| **Network Probes** | | Network connectivity and quality monitoring |
+| **Gateway Ping** | [README](probes/network/README.md) | Default gateway connectivity (latency, packet loss) |
+| | [Metrics](probes/network/METRICS.md) | Complete gateway metrics reference |
+| **WiFi Signal** | [README](probes/network/wifi/README.md) | WiFi signal strength and quality monitoring |
+| | [Metrics](probes/network/wifi/METRICS.md) | Complete WiFi metrics reference |
+| **WebApp Probes** | | Web application monitoring |
+| **WebApp Ping** | [README](probes/webapp/PING-README.md) | HTTP/HTTPS availability monitoring |
+| | [Metrics](probes/webapp/PING-METRICS.md) | Complete ping metrics reference |
+| **WebApp Load** | [README](probes/webapp/LOAD-README.md) | Web application performance monitoring |
+| | [Metrics](probes/webapp/LOAD-METRICS.md) | Complete load metrics reference |
+| **Event Probes** | | Event collection and log aggregation |
+| **Syslog** | [README](probes/events/README.md) | Syslog server (RFC 3164/5424) |
+| | [Metrics](probes/events/METRICS.md) | Complete event structure reference |
+| **Event** | [README](probes/events/EVENT-README.md) | Custom HTTP event endpoint |
+| | [Metrics](probes/events/EVENT-METRICS.md) | Complete event API reference |
+| **Citrix CVAD** | [README](probes/citrix/README.md) | Citrix Virtual Apps and Desktops monitoring |
+| | [Metrics](probes/citrix/METRICS.md) | Complete metrics reference |
+| | [Debug Mode](probes/citrix/DEBUG-MODE.md) | Debugging guide |
+| | [Site Filtering](probes/citrix/SITE_FILTERING_PLAN.md) | Multi-site filtering |
+| **Redfish** | [README](probes/redfish/README.md) | Hardware monitoring via Redfish API |
+| | [Metrics](probes/redfish/METRICS.md) | Complete metrics reference |
+| | [Tags](probes/redfish/REDFISH-TAGS.md) | Redfish tagging system |
+| | [Tag Enhancement](probes/redfish/REDFISH-TAG-ENHANCEMENT.md) | Advanced tagging |
+| **OpenTelemetry** | [README](probes/otel/README.md) | Overview and configuration |
+| | [Metrics](probes/otel/METRICS.md) | Complete metrics reference |
 
 ## 🎯 Quick Navigation by Use Case
 
 ### "I want to get started quickly"
-1. **[QUICK-START-OFFLINE.md](QUICK-START-OFFLINE.md)** (5 minutes)
-2. **[examples/offline-config-example.yaml](examples/offline-config-example.yaml)** (configuration reference)
+1. **[QUICK-START-OFFLINE.md](user-guide/QUICK-START-OFFLINE.md)** (5 minutes)
+2. **[PROBE-CONFIGURATION.md](user-guide/PROBE-CONFIGURATION.md)** (probe setup)
 
 ### "I need to deploy in production"
-1. **[OFFLINE-MODE.md](OFFLINE-MODE.md)** (comprehensive guide)
-2. **[HTTPS-CONFIGURATION.md](HTTPS-CONFIGURATION.md)** (security setup)
-3. **[examples/https-config-example.yaml](examples/https-config-example.yaml)** (HTTPS examples)
+1. **[OFFLINE-MODE.md](user-guide/OFFLINE-MODE.md)** (comprehensive guide)
+2. **[HTTPS-CONFIGURATION.md](admin-guide/HTTPS-CONFIGURATION.md)** (security setup)
+3. **[LOGGING.md](admin-guide/LOGGING.md)** (logging configuration)
 
 ### "I have an issue to resolve"
-1. **[TROUBLESHOOTING-OFFLINE.md](TROUBLESHOOTING-OFFLINE.md)** (troubleshooting guide)
-2. **[LOGGING.md](LOGGING.md)** (debugging information)
-3. **[CLAUDE.md](CLAUDE.md)** (development context)
+1. **[TROUBLESHOOTING-OFFLINE.md](troubleshooting/TROUBLESHOOTING-OFFLINE.md)** (troubleshooting guide)
+2. **[LOGGING.md](admin-guide/LOGGING.md)** (debugging information)
+3. **[Developer Guide](developer-guide/README.md)** (development context)
 
 ### "I want to integrate with monitoring tools"
-1. **[OFFLINE-MODE.md#api-endpoints](OFFLINE-MODE.md#api-endpoints)** (API reference)
-2. **[HTTP-STRATEGY.md](HTTP-STRATEGY.md)** (HTTP strategy details)
-3. **[examples/offline-config-example.yaml](examples/offline-config-example.yaml)** (configuration examples)
+1. **[OFFLINE-MODE.md#api-endpoints](user-guide/OFFLINE-MODE.md#api-endpoints)** (API reference)
+2. **[HTTP-STRATEGY.md](admin-guide/HTTP-STRATEGY.md)** (HTTP strategy details)
+3. **[UNIVERSAL-CONFIGURATION.md](admin-guide/UNIVERSAL-CONFIGURATION.md)** (configuration validation)
 
 ### "I need hardware monitoring"
-1. **[REDFISH-METRICS.md](REDFISH-METRICS.md)** (Redfish documentation)
-2. **[examples/offline-config-example.yaml](examples/offline-config-example.yaml)** (Redfish configuration)
-3. **[REDFISH-TAGS.md](REDFISH-TAGS.md)** (metric tagging)
+1. **[Redfish README](probes/redfish/README.md)** (Redfish overview)
+2. **[Redfish Metrics](probes/redfish/METRICS.md)** (complete metrics reference)
+3. **[REDFISH-TAGS.md](probes/redfish/REDFISH-TAGS.md)** (metric tagging)
+
+### "I want to monitor system resources"
+1. **[CPU Probe](probes/system/cpu/README.md)** (processor usage and load)
+2. **[Memory Probe](probes/system/memory/README.md)** (RAM and swap)
+3. **[Network Probe](probes/system/network/README.md)** (bandwidth and errors)
+4. **[LogicalDisk Probe](probes/system/logicaldisk/README.md)** (disk space and IOPS)
+
+### "I want to monitor network connectivity"
+1. **[Gateway Ping](probes/network/README.md)** (local network latency and packet loss)
+2. **[WiFi Signal](probes/network/wifi/README.md)** (wireless signal strength and quality)
+3. **[WebApp Ping](probes/webapp/PING-README.md)** (internet connectivity)
+
+### "I want to monitor web applications"
+1. **[WebApp Ping](probes/webapp/PING-README.md)** (HTTP/HTTPS availability)
+2. **[WebApp Load](probes/webapp/LOAD-README.md)** (performance and response time)
+
+### "I want to collect events and logs"
+1. **[Syslog Probe](probes/events/README.md)** (syslog server for network devices)
+2. **[Event Probe](probes/events/EVENT-README.md)** (custom application events)
+
+### "I want to monitor Citrix CVAD"
+1. **[Citrix README](probes/citrix/README.md)** (overview and setup)
+2. **[Citrix Metrics](probes/citrix/METRICS.md)** (complete metrics reference)
+3. **[DEBUG-MODE.md](probes/citrix/DEBUG-MODE.md)** (debugging guide)
 
 ### "I want to customize monitoring"
-1. **[PROBE-CONFIGURATION.md](PROBE-CONFIGURATION.md)** (probe setup)
-2. **[examples/offline-config-example.yaml](examples/offline-config-example.yaml)** (probe examples)
-3. **[CLAUDE.md](CLAUDE.md)** (development guide for custom probes)
+1. **[PROBE-CONFIGURATION.md](user-guide/PROBE-CONFIGURATION.md)** (probe setup)
+2. **[Developer Guide](developer-guide/README.md)** (development guide for custom probes)
 
 ## 🔍 Documentation by Topic
 
 ### Installation & Setup
-- **[Quick Start](QUICK-START-OFFLINE.md)** - 5-minute setup
-- **[Complete Guide](OFFLINE-MODE.md)** - Full installation documentation
-- **[Configuration Examples](examples/)** - Ready-to-use configurations
+- **[Quick Start](user-guide/QUICK-START-OFFLINE.md)** - 5-minute setup
+- **[Complete Guide](user-guide/OFFLINE-MODE.md)** - Full installation documentation
+- **[Probe Configuration](user-guide/PROBE-CONFIGURATION.md)** - Configure monitoring probes
 
 ### Security & HTTPS
-- **[HTTPS Configuration](HTTPS-CONFIGURATION.md)** - Complete TLS setup guide
-- **[Security Best Practices](HTTPS-CONFIGURATION.md#security-best-practices)** - Production security
-- **[Certificate Management](HTTPS-CONFIGURATION.md#certificate-management)** - Certificate handling
+- **[HTTPS Configuration](admin-guide/HTTPS-CONFIGURATION.md)** - Complete TLS setup guide
+- **[Security Best Practices](admin-guide/HTTPS-CONFIGURATION.md#security-best-practices)** - Production security
+- **[Certificate Management](admin-guide/HTTPS-CONFIGURATION.md#certificate-management)** - Certificate handling
 
 ### Monitoring & Probes
-- **[Probe Configuration](PROBE-CONFIGURATION.md)** - Configure monitoring probes
-- **[Hardware Monitoring](REDFISH-METRICS.md)** - Server hardware via Redfish
-- **[OpenTelemetry](OTEL-METRICS.md)** - OTEL integration
-- **[Event Collection](OFFLINE-MODE.md#available-monitoring-probes)** - Syslog and events
+- **[System Probes](probes/system/)** - CPU, Memory, Network, Disk monitoring
+  - **[CPU](probes/system/cpu/)** - Processor usage and load averages
+  - **[Memory](probes/system/memory/)** - RAM and swap monitoring
+  - **[Network](probes/system/network/)** - Network interface bandwidth and errors
+  - **[LogicalDisk](probes/system/logicaldisk/)** - Disk space and I/O performance
+- **[Network Probes](probes/network/)** - Network connectivity and quality
+  - **[Gateway Ping](probes/network/)** - Default gateway latency and packet loss
+  - **[WiFi Signal](probes/network/wifi/)** - WiFi signal strength and quality
+- **[WebApp Probes](probes/webapp/)** - Web application monitoring
+  - **[WebApp Ping](probes/webapp/PING-README.md)** - HTTP/HTTPS availability
+  - **[WebApp Load](probes/webapp/LOAD-README.md)** - Performance and response time
+- **[Event Probes](probes/events/)** - Event collection and log aggregation
+  - **[Syslog](probes/events/)** - Syslog server (RFC 3164/5424)
+  - **[Event](probes/events/EVENT-README.md)** - Custom HTTP event endpoint
+- **[Citrix CVAD](probes/citrix/)** - Citrix Virtual Apps and Desktops monitoring
+- **[Redfish Hardware](probes/redfish/)** - Server hardware monitoring via Redfish
+- **[OpenTelemetry](probes/otel/)** - OTEL integration
+- **[All Probes](user-guide/PROBE-CONFIGURATION.md)** - Complete probe configuration guide
 
 ### Integration & APIs
-- **[API Reference](OFFLINE-MODE.md#api-endpoints)** - REST API documentation
-- **[Universal Configuration](docs/admin-guide/UNIVERSAL-CONFIGURATION.md)** - Probe configuration validation API
-- **[HTTP Strategy](HTTP-STRATEGY.md)** - HTTP strategy configuration
-- **[Integration Examples](OFFLINE-MODE.md#integration-examples)** - PRTG, Nagios, Grafana
+- **[API Reference](user-guide/OFFLINE-MODE.md#api-endpoints)** - REST API documentation
+- **[Universal Configuration](admin-guide/UNIVERSAL-CONFIGURATION.md)** - Probe configuration validation API
+- **[HTTP Strategy](admin-guide/HTTP-STRATEGY.md)** - HTTP strategy configuration
+- **[HTTP Bind Address](admin-guide/HTTP-BIND-ADDRESS.md)** - Network binding configuration
 
 ### Troubleshooting & Debugging
-- **[Troubleshooting Guide](TROUBLESHOOTING-OFFLINE.md)** - Common issues and solutions
-- **[Logging System](LOGGING.md)** - Advanced logging and debugging
-- **[Debug Mode](CLAUDE.md#debugging-guide)** - Development debugging
+- **[Troubleshooting Guide](troubleshooting/TROUBLESHOOTING-OFFLINE.md)** - Common issues and solutions
+- **[Logging System](admin-guide/LOGGING.md)** - Advanced logging and debugging
+- **[Debug Mode](developer-guide/build-system.md#troubleshooting)** - Development debugging
 
 ### Development & Architecture
-- **[Development Guide](CLAUDE.md)** - Architecture and development
-- **[Build Instructions](CLAUDE.md#build-commands)** - Building from source
-- **[Code Style](CLAUDE.md#code-style-guidelines)** - Development standards
+- **[Developer Guide](developer-guide/README.md)** - Architecture and development
+- **[Architecture](developer-guide/architecture.md)** - System design and components
+- **[Build Instructions](developer-guide/build-system.md)** - Building from source
+- **[Code Style](developer-guide/architecture.md)** - Development standards
+- **[Design Patterns](developer-guide/design-patterns.md)** - Code patterns and best practices
+- **[Current Development](developer-guide/current-development.md)** - Active work and roadmap
 
 ## 📋 Quick Reference
 

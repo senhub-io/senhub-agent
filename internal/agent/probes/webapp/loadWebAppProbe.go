@@ -50,6 +50,7 @@ type LoadWebAppProbeConfig struct {
 }
 
 type LoadWebAppProbe struct {
+	*types.BaseProbe
 	rawConfig    map[string]interface{}
 	config       LoadWebAppProbeConfig
 	moduleLogger *logger.ModuleLogger
@@ -65,6 +66,7 @@ func NewLoadWebAppProbe(config map[string]interface{}, baseLogger *logger.Logger
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.loadwebapp")
 
 	return &LoadWebAppProbe{
+		BaseProbe:    &types.BaseProbe{},
 		rawConfig:    config,
 		config:       parsedConfig,
 		moduleLogger: moduleLogger,
@@ -109,9 +111,9 @@ func (p *LoadWebAppProbe) GetTargetStrategies() []string {
 	return []string{"senhub", "prtg", "http"}
 }
 
-func (p *LoadWebAppProbe) GetName() string {
-	return "load_webapp"
-}
+// Note: GetName() is now inherited from BaseProbe and will return the unique
+// probe name from configuration (e.g., "load_webapp", "webapp_load2") instead of the
+// hardcoded type. This enables proper discriminant tagging for multiple instances.
 
 func (p *LoadWebAppProbe) ShouldStart() bool {
 	return true
@@ -146,9 +148,8 @@ func (p *LoadWebAppProbe) Collect() ([]data_store.DataPoint, error) {
 		{Name: "total_time", Timestamp: time.Now(), Value: float32(metrics.completed.Sub(metrics.dnsStart).Milliseconds()), Tags: tags},
 	}
 
-	// Create base probe for enrichment
-	baseProbe := &types.BaseProbe{}
-	enrichedDatapoints := baseProbe.EnrichDataPointsWithProbeName(datapoints, p.GetName())
+	// Enrich datapoints with probe name and type tags
+	enrichedDatapoints := p.BaseProbe.EnrichDataPointsWithProbeName(datapoints, p.GetName())
 
 	return enrichedDatapoints, nil
 }

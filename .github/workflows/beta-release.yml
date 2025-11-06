@@ -28,14 +28,20 @@ jobs:
       - name: Get Version from Package
         id: get_version
         run: |
-          # Get the version directly from the git describe command
-          CURRENT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
-          echo "Using existing tag: $CURRENT_TAG"
-          
-          # Check if tag already ends with -beta
-          if [[ $CURRENT_TAG == *-beta ]]; then
+          # Get the latest tag (beta or stable)
+          ALL_TAGS=$(git tag --sort=-version:refname)
+          LATEST_TAG=$(echo "$ALL_TAGS" | head -n 1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="0.0.0"
+          fi
+
+          echo "Latest tag found: $LATEST_TAG"
+
+          # Check if latest tag ends with -beta
+          if [[ $LATEST_TAG == *-beta ]]; then
             # Tag already has -beta, increment the patch version
-            BASE_VERSION=${CURRENT_TAG%-beta}
+            BASE_VERSION=${LATEST_TAG%-beta}
             if [[ $BASE_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
               MAJOR=${BASH_REMATCH[1]}
               MINOR=${BASH_REMATCH[2]}
@@ -44,14 +50,29 @@ jobs:
               NEW_TAG="${MAJOR}.${MINOR}.${NEW_PATCH}-beta"
             else
               # Fallback if version format is unexpected
-              NEW_TAG="${CURRENT_TAG}-new"
+              NEW_TAG="${LATEST_TAG}-new"
             fi
           else
-            # Tag doesn't have -beta, add it
-            NEW_TAG="${CURRENT_TAG}-beta"
+            # Tag doesn't have -beta, check if {TAG}-beta exists
+            BETA_TAG="${LATEST_TAG}-beta"
+            if git tag -l | grep -q "^${BETA_TAG}$"; then
+              # {TAG}-beta exists, increment to next version
+              if [[ $LATEST_TAG =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+                MAJOR=${BASH_REMATCH[1]}
+                MINOR=${BASH_REMATCH[2]}
+                PATCH=${BASH_REMATCH[3]}
+                NEW_PATCH=$((PATCH + 1))
+                NEW_TAG="${MAJOR}.${MINOR}.${NEW_PATCH}-beta"
+              else
+                NEW_TAG="${LATEST_TAG}-new"
+              fi
+            else
+              # {TAG}-beta doesn't exist, create it
+              NEW_TAG="${LATEST_TAG}-beta"
+            fi
           fi
-          
-          echo "CURRENT_TAG=$CURRENT_TAG" >> $GITHUB_ENV
+
+          echo "CURRENT_TAG=$LATEST_TAG" >> $GITHUB_ENV
           echo "beta_tag=$NEW_TAG" >> $GITHUB_ENV
           echo "New beta tag will be: $NEW_TAG"
       - name: Create and push beta tag

@@ -100,14 +100,14 @@ build: build-windows build-linux build-darwin ## Build binaries
 	@echo version: $(VERSION) - commit: $(COMMIT_HASH)
 
 build-windows: create-dist ## Build for Windows
-	    @env GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/main.go
+	    @env GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/
 
 build-linux: create-dist ## Build for Linux
-	    @env GOOS=linux GOARCH=amd64 go build -o $(LINUX_AMD64) -ldflags="$(LDFLAGS)" ./cmd/agent/main.go
-	    @env GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/main.go
+	    @env GOOS=linux GOARCH=amd64 go build -o $(LINUX_AMD64) -ldflags="$(LDFLAGS)" ./cmd/agent/
+	    @env GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/
 
 build-darwin: create-dist ## Build for Darwin (macOS)
-	    @env GOOS=darwin GOARCH=amd64 go build -o $(DARWIN) -ldflags="$(LDFLAGS)" ./cmd/agent/main.go
+	    @env GOOS=darwin GOARCH=amd64 go build -o $(DARWIN) -ldflags="$(LDFLAGS)" ./cmd/agent/
 
 # ========================================
 # PACKAGING TARGETS
