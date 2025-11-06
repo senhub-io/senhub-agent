@@ -363,9 +363,8 @@ func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) 
 	correctionsConfig, err := tr.loadCorrectionsConfigFromEmbed(probeName)
 	if err != nil {
 		tr.moduleLogger.Debug().
-			Err(err).
 			Str("probe", probeName).
-			Msg("No corrections config found (this is optional)")
+			Msg("No corrections config found (using defaults)")
 		correctionsConfig = nil // No corrections available
 	}
 
