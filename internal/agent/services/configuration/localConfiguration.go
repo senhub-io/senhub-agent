@@ -70,9 +70,26 @@ func NewLocalConfiguration(
 	moduleLogger := logger.NewModuleLogger(baseLogger, "configuration.local")
 	moduleLogger.Debug().Msg("Creating new LocalConfiguration instance")
 
+	// Determine config path using absolute path based on binary location
+	// This fixes Windows Service issue where working directory != binary directory
+	configPath := args.ConfigPath
+	absolutePath, err := cliArgs.GetAbsoluteConfigPath(configPath)
+	if err != nil {
+		moduleLogger.Error().
+			Err(err).
+			Str("config_path", configPath).
+			Msg("Failed to determine absolute config path, using provided path as-is")
+		// Fallback to provided path or default
+		if configPath == "" {
+			configPath = "./agent-config.yaml"
+		}
+	} else {
+		configPath = absolutePath
+	}
+
 	lc := &LocalConfiguration{
 		logger:        moduleLogger,
-		configPath:    args.ConfigPath,
+		configPath:    configPath,
 		args:          args,
 		data:          LocalConfigurationData{},
 		eventNotifier: NewEventNotifier(moduleLogger.Logger),
@@ -86,7 +103,9 @@ func NewLocalConfiguration(
 		}
 	}
 
-	moduleLogger.Debug().Msg("LocalConfiguration instance created successfully")
+	moduleLogger.Debug().
+		Str("config_path", configPath).
+		Msg("LocalConfiguration instance created successfully")
 	return lc
 }
 
