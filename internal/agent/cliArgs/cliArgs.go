@@ -1,8 +1,10 @@
 package cliArgs
 
 import (
+	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/alexflint/go-arg"
@@ -104,6 +106,54 @@ func GetVersionInfo() map[string]string {
 		"env":        Env,
 		"defaultURL": defaultServerURL(),
 	}
+}
+
+// GetAbsoluteConfigPath returns an absolute path for the configuration file
+// based on the binary location. This ensures consistent configuration file
+// location across different working directories (critical for Windows Services).
+//
+// Logic:
+//  1. If configPath is already absolute, return it as-is
+//  2. Otherwise, use the binary's directory as base
+//  3. If configPath is empty, use "agent-config.yaml" as default
+//
+// This fixes the issue where Windows Services have unpredictable working directories,
+// causing "./agent-config.yaml" to point to wrong locations (e.g., C:\Windows\System32).
+func GetAbsoluteConfigPath(configPath string) (string, error) {
+	// Use default filename if not specified
+	if configPath == "" {
+		configPath = "agent-config.yaml"
+	}
+
+	// Validate against path traversal attacks
+	if strings.Contains(configPath, "..") {
+		return "", fmt.Errorf("path traversal not allowed in config path")
+	}
+
+	// If already absolute, return cleaned path
+	if filepath.IsAbs(configPath) {
+		return filepath.Clean(configPath), nil
+	}
+
+	// Get binary location
+	execPath, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+
+	// Get binary directory
+	binDir := filepath.Dir(execPath)
+
+	// Join with config path and clean
+	absolutePath := filepath.Join(binDir, configPath)
+	cleanPath := filepath.Clean(absolutePath)
+
+	// Ensure final path is within binary directory (security check)
+	if !strings.HasPrefix(cleanPath, binDir) {
+		return "", fmt.Errorf("config path must be within binary directory")
+	}
+
+	return cleanPath, nil
 }
 
 func MustParse() *ParsedArgs {
