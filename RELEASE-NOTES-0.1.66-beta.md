@@ -319,7 +319,7 @@ make build
 
 ## 📞 Support
 
-**Issues?** Report at: https://github.com/anthropics/senhub-agent/issues
+**Issues?** Contact support or report via your SenHub platform account
 
 **Contact:** Matthieu Noirbusson
 
