@@ -319,6 +319,7 @@ make build
 
 ## 📞 Support
 
+**Issues?** Contact support or report via your SenHub platform account
 
 **Contact:** Matthieu Noirbusson
 
