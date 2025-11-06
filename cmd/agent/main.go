@@ -122,9 +122,14 @@ func main() {
 
 		// If no authentication key provided, try to load from config file
 		if args.AuthenticationKey == "" && !args.Offline {
-			configPath := args.ConfigPath
-			if configPath == "" {
-				configPath = "./agent-config.yaml"
+			// Use absolute path based on binary location (fixes Windows Service issue)
+			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+			if err != nil {
+				// Fallback to provided path if absolute path resolution fails
+				configPath = args.ConfigPath
+				if configPath == "" {
+					configPath = "./agent-config.yaml"
+				}
 			}
 			if key, err := extractAgentKeyFromConfig(configPath); err == nil {
 				args.AuthenticationKey = key
@@ -150,9 +155,14 @@ func main() {
 
 		// If no authentication key provided, try to load from config file
 		if args.AuthenticationKey == "" && !args.Offline {
-			configPath := args.ConfigPath
-			if configPath == "" {
-				configPath = "./agent-config.yaml"
+			// Use absolute path based on binary location (fixes Windows Service issue)
+			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+			if err != nil {
+				// Fallback to provided path if absolute path resolution fails
+				configPath = args.ConfigPath
+				if configPath == "" {
+					configPath = "./agent-config.yaml"
+				}
 			}
 
 			// Try to extract authentication key from config
