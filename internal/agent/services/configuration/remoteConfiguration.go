@@ -255,6 +255,9 @@ func (rc *RemoteConfiguration) UpdateSync() error {
 					Any("new_config", *config).
 					Msg("Configuration changed")
 
+
+			// Update in-memory configuration with new data from server
+			rc.data = *config
 				// Write configuration locally (may be v1 format from server)
 				if err := rc.replicateConfigurationLocally(); err != nil {
 					rc.logger.Error().Err(err).Msg("Failed to replicate configuration locally")
