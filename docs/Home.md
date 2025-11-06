@@ -51,7 +51,7 @@ SenHub Agent is a cross-platform monitoring agent that collects metrics and even
 
 ### Release Information
 - **[Release Notes](./releases/)** - Version history and changelogs
-- **[Latest Release](./releases/0.1.66-beta.md)** - Current beta version
+- **[Latest Release](./releases/0.1.70-beta.md)** - Current beta version
 
 ## Quick Start
 
@@ -139,4 +139,4 @@ See LICENSE file in the repository.
 ---
 
 **Documentation Version**: 2025-11-06
-**Agent Version**: 0.1.66-beta
+**Agent Version**: 0.1.70-beta

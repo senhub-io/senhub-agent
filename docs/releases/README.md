@@ -5,14 +5,14 @@ This directory contains release notes for all versions of SenHub Agent.
 ## Latest Releases
 
 ### Beta Releases (Development Branch)
-- **[0.1.66-beta](./0.1.66-beta.md)** - Latest beta (2025-11-06)
+- **[0.1.70-beta](./0.1.70-beta.md)** - Latest beta (2025-11-06)
 
 ## Release Channels
 
 ### Beta Channel
 - **Branch**: `dev`
 - **Purpose**: Active development, testing new features
-- **Tag Format**: `X.Y.Z-beta` (e.g., `0.1.66-beta`)
+- **Tag Format**: `X.Y.Z-beta` (e.g., `0.1.70-beta`)
 - **Frequency**: On-demand when features are ready
 - **Stability**: Tested but may contain bugs
 - **Audience**: Early adopters, testers, development environments
@@ -35,7 +35,7 @@ SenHub Agent uses semantic versioning:
 
 Examples:
 - `0.1.64` - Production release
-- `0.1.66-beta` - Beta release (development)
+- `0.1.70-beta` - Beta release (development)
 
 ## Accessing Releases
 
@@ -53,7 +53,7 @@ Each release includes binaries for:
 ### Installation
 ```bash
 # Download latest beta
-wget https://github.com/sen-hub/senhub-agent/releases/download/0.1.66-beta/senhub-agent_darwin_amd64
+wget https://github.com/sen-hub/senhub-agent/releases/download/0.1.70-beta/senhub-agent_darwin_amd64
 
 # Make executable
 chmod +x senhub-agent_darwin_amd64
@@ -76,7 +76,7 @@ Each release note includes:
 ## Release History
 
 ### v0.1.x Series (Current)
-- [0.1.66-beta](./0.1.66-beta.md) - Configuration v2 migration, shared templates
+- [0.1.70-beta](./0.1.70-beta.md) - Configuration v2 migration, shared templates
 - 0.1.64 - Latest production release
 - Previous releases available in GitHub
 
