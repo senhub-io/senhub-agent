@@ -358,25 +358,23 @@ func detectAgentMode(args *agentCliArgs.ParsedArgs, logger *logger.Logger) bool 
 	// This maintains compatibility with existing deployments that don't have config files
 
 	// Check if configuration file exists but couldn't be parsed
-	configPath := args.ConfigPath
-	if configPath == "" {
-		configPath = "./agent-config.yaml"
-	}
+	// Use the absolute config path already computed in loadLocalConfigInfo
+	absoluteConfigPath := localConfig.ConfigPath
 
-	if _, err := os.Stat(configPath); err == nil && !localConfig.IsValid {
+	if _, err := os.Stat(absoluteConfigPath); err == nil && !localConfig.IsValid {
 		// Config file exists but couldn't be parsed - try offline mode anyway
 		logger.Warn().
-			Str("config_path", configPath).
+			Str("config_path", absoluteConfigPath).
 			Msg("Configuration file found but invalid - attempting offline mode")
 		args.Offline = true
-		args.ConfigPath = configPath
+		args.ConfigPath = absoluteConfigPath
 		return true
 	}
 
 	// No valid config file - check if we have auth key for online mode (legacy path)
 	if args.AuthenticationKey == "" {
 		logger.Error().
-			Str("config_path", configPath).
+			Str("config_path", absoluteConfigPath).
 			Msg("No valid configuration file found and no authentication key provided")
 		logger.Info().Msg("To run in offline mode: install the agent first with 'install --offline'")
 		logger.Info().Msg("To run in online mode: provide authentication key with '--authentication-key YOUR_KEY'")
@@ -391,30 +389,57 @@ func detectAgentMode(args *agentCliArgs.ParsedArgs, logger *logger.Logger) bool 
 // loadLocalConfigInfo attempts to load and parse local configuration file
 // Returns configuration information for mode detection and key extraction
 func loadLocalConfigInfo(args *agentCliArgs.ParsedArgs, logger *logger.Logger) LocalConfigInfo {
-	configPath := args.ConfigPath
-	if configPath == "" {
-		configPath = "./agent-config.yaml"
+	// Use absolute path based on binary location to fix Windows Service issue
+	absolutePath, err := agentCliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+	if err != nil {
+		logger.Warn().
+			Err(err).
+			Str("config_path", args.ConfigPath).
+			Msg("Failed to determine absolute config path, using fallback")
+		// Fallback: try to use provided path or compute from binary location manually
+		if args.ConfigPath != "" && filepath.IsAbs(args.ConfigPath) {
+			// Provided path is already absolute, use it
+			absolutePath = args.ConfigPath
+		} else {
+			// Last resort: try to get binary directory manually
+			if execPath, execErr := os.Executable(); execErr == nil {
+				binDir := filepath.Dir(execPath)
+				if args.ConfigPath != "" {
+					absolutePath = filepath.Join(binDir, args.ConfigPath)
+				} else {
+					absolutePath = filepath.Join(binDir, "agent-config.yaml")
+				}
+			} else {
+				// Ultimate fallback if even os.Executable() fails
+				logger.Error().Err(execErr).Msg("Failed to get executable path, using current directory")
+				if args.ConfigPath != "" {
+					absolutePath = args.ConfigPath
+				} else {
+					absolutePath = "./agent-config.yaml"
+				}
+			}
+		}
 	}
 
 	result := LocalConfigInfo{
-		ConfigPath: configPath,
+		ConfigPath: absolutePath,
 		IsValid:    false,
 	}
 
 	// Check if configuration file exists
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+	if _, err := os.Stat(absolutePath); os.IsNotExist(err) {
 		logger.Debug().
-			Str("config_path", configPath).
+			Str("config_path", absolutePath).
 			Msg("No local configuration file found")
 		return result
 	}
 
-	// Read configuration file (path is either from args.ConfigPath or hardcoded default)
-	data, err := os.ReadFile(filepath.Clean(configPath)) // #nosec G304 - configPath is from CLI args or hardcoded default
+	// Read configuration file (path is absolute based on binary location)
+	data, err := os.ReadFile(filepath.Clean(absolutePath)) // #nosec G304 - absolutePath is computed from binary location
 	if err != nil {
 		logger.Warn().
 			Err(err).
-			Str("config_path", configPath).
+			Str("config_path", absolutePath).
 			Msg("Failed to read configuration file")
 		return result
 	}
@@ -430,7 +455,7 @@ func loadLocalConfigInfo(args *agentCliArgs.ParsedArgs, logger *logger.Logger) L
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		logger.Warn().
 			Err(err).
-			Str("config_path", configPath).
+			Str("config_path", absolutePath).
 			Msg("Failed to parse configuration file as YAML")
 		return result
 	}
@@ -443,14 +468,14 @@ func loadLocalConfigInfo(args *agentCliArgs.ParsedArgs, logger *logger.Logger) L
 	// Validate extracted information
 	if result.AuthenticationKey == "" {
 		logger.Warn().
-			Str("config_path", configPath).
+			Str("config_path", absolutePath).
 			Msg("No authentication key found in configuration file")
 		result.IsValid = false
 	}
 
 	if result.Mode == "" {
 		logger.Debug().
-			Str("config_path", configPath).
+			Str("config_path", absolutePath).
 			Msg("No mode specified in configuration file, will determine automatically")
 		result.Mode = "offline" // Default assumption for config files
 	}
