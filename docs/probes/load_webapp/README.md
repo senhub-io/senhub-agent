@@ -52,7 +52,7 @@ probes:
 | `ttfb` | Time to First Byte (ms) | Server processing time, backend performance |
 | `total_time` | Complete request time (ms) | End-to-end performance, user experience |
 
-For a complete metrics reference with timing breakdowns and analysis, see [LOAD-METRICS.md](./LOAD-METRICS.md).
+For a complete metrics reference with timing breakdowns and analysis, see [METRICS.md](./METRICS.md).
 
 ## Configuration Parameters
 
@@ -758,7 +758,7 @@ For issues or questions:
    ```
 
 4. **Review documentation:**
-   - [Complete Metrics Reference](./LOAD-METRICS.md)
+   - [Complete Metrics Reference](./METRICS.md)
    - [Troubleshooting Guide](../../troubleshooting/)
    - [Agent Configuration Guide](../../../configuration/)
 

@@ -60,13 +60,18 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	}
 	workingDir := filepath.Dir(executablePath)
 
-	// Convert config path to absolute if it's relative
-	configPath := args.ConfigPath
-	if configPath == "" {
-		configPath = "./agent-config.yaml"
-	}
-	if !filepath.IsAbs(configPath) {
-		configPath = filepath.Join(workingDir, configPath)
+	// Convert config path to absolute using helper function (fixes Windows Service issue)
+	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+	if err != nil {
+		fmt.Printf("Error getting absolute config path: %v\n", err)
+		// Fallback to working directory based path
+		if args.ConfigPath == "" {
+			configPath = filepath.Join(workingDir, "agent-config.yaml")
+		} else if !filepath.IsAbs(args.ConfigPath) {
+			configPath = filepath.Join(workingDir, args.ConfigPath)
+		} else {
+			configPath = args.ConfigPath
+		}
 	}
 
 	// Update service arguments with absolute paths
