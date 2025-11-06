@@ -54,8 +54,9 @@ func NewProbePoller(
 ) (*ProbePoller, error) {
 	probeId := GenerateProbeId(config)
 
-	// Create module-specific logger for probe poller with readable probe name
-	probeModuleName := fmt.Sprintf("probe.%s", config.Name)
+	// Create module-specific logger for probe poller using probe type
+	// Type is the technical identifier (e.g., "citrix", "cpu"), ensures consistent logging
+	probeModuleName := fmt.Sprintf("probe.%s", config.Type)
 	moduleLogger := logger.NewModuleLogger(baseLogger, probeModuleName)
 
 	moduleLogger.Debug().Msg("Creating new probe poller")
@@ -68,6 +69,34 @@ func NewProbePoller(
 	probe, err := probeConstructor(config.Params, baseLogger)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start probe %s: %v", config.Name, err)
+	}
+
+	// Set the unique probe name from configuration (v2 format: name field)
+	// This ensures each probe instance has a unique identifier for cache keys
+	// All probes that embed BaseProbe will have this method available
+	if nameable, ok := probe.(interface{ SetName(string) }); ok {
+		nameable.SetName(config.Name)
+	} else {
+		// Without SetName(), cache keys will not include probe instance name,
+		// causing collisions when multiple probe instances exist (e.g., two redfish probes)
+		moduleLogger.Warn().
+			Str("probe_name", config.Name).
+			Str("probe_type", config.Type).
+			Msg("⚠️ Probe does not support SetName() - cache key collisions may occur with multiple probe instances. Probe should embed BaseProbe.")
+	}
+
+	// Set the probe type from configuration (v2 format: type field)
+	// This is used for discriminant tag lookup in the cache registry
+	// All probes that embed BaseProbe will have this method available
+	if typeable, ok := probe.(interface{ SetProbeType(string) }); ok {
+		typeable.SetProbeType(config.Type)
+	} else {
+		// Without SetProbeType(), transformer loading and discriminant tag registry lookups will fail,
+		// resulting in no metric transformations and incorrect cache key generation
+		moduleLogger.Warn().
+			Str("probe_name", config.Name).
+			Str("probe_type", config.Type).
+			Msg("⚠️ Probe does not support SetProbeType() - transformers and discriminant tags will not work. Probe should embed BaseProbe.")
 	}
 
 	probePoller := &ProbePoller{
@@ -101,9 +130,16 @@ func NewProbePoller(
 // getProbeConstructorForConfig retrieves the appropriate constructor function
 // for the specified probe type
 func getProbeConstructorForConfig(config configuration.ProbeConfig) (ProbeConstructor, error) {
-	constructor, exists := probeConstructors[config.Name]
+	// Use Type field for constructor lookup (v2 format)
+	// Type is the technical identifier (cpu, citrix, redfish, etc.)
+	probeType := config.Type
+	if probeType == "" {
+		return nil, fmt.Errorf("probe type is empty for probe '%s' - configuration should be v2 format", config.Name)
+	}
+
+	constructor, exists := probeConstructors[probeType]
 	if !exists {
-		return nil, fmt.Errorf("unknown probe type: %s", config.Name)
+		return nil, fmt.Errorf("unknown probe type: %s (probe name: %s)", probeType, config.Name)
 	}
 	return constructor, nil
 }
