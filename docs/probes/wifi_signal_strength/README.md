@@ -387,4 +387,4 @@ alerts:
 - [METRICS.md](./METRICS.md) - Complete metrics reference
 - [Gateway Ping Probe](../README.md) - Network latency monitoring
 - [Network Probe](../../system/network/) - Interface metrics
-- [WebApp Ping](../../webapp/PING-README.md) - Internet connectivity
+- [WebApp Ping](../ping_webapp/README.md) - Internet connectivity

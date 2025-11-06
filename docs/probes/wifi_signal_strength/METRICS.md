@@ -631,4 +631,4 @@ sudo setcap cap_net_admin+ep /path/to/agent
 - [WiFi Signal README](./README.md) - Overview and configuration
 - [Gateway Ping Probe](../README.md) - Network latency monitoring
 - [Network Probe](../../system/network/) - Interface traffic metrics
-- [WebApp Ping](../../webapp/PING-README.md) - Internet connectivity testing
+- [WebApp Ping](../ping_webapp/README.md) - Internet connectivity testing
