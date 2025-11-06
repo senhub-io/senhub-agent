@@ -182,7 +182,6 @@ func (s *InventoryService) RefreshInventory(ctx context.Context, siteFilter stri
 			Msg("Loaded controllers into inventory")
 	}
 
-
 	newInventory.UpdateDuration = time.Since(startTime)
 
 	// Update cache atomically

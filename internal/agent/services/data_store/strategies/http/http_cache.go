@@ -11,11 +11,70 @@ import (
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
+// DiscriminantTagsRegistry defines which tags are discriminant (identify unique instances)
+// vs contextual (provide metadata) for each probe type.
+//
+// Discriminant tags MUST be included in the time series key because metrics with different
+// discriminant tag values represent DIFFERENT physical/logical instances that can have
+// different metric values at the same timestamp.
+//
+// Contextual tags should NOT be included in the key - they provide additional metadata
+// but don't identify distinct metric sources. Including them would break time series
+// continuity when metadata changes (e.g., endpoint URL change, platform info update).
+//
+// DiscriminantTagsRegistry defines which tags are discriminant (identify unique instances)
+// vs contextual (provide metadata) for each probe type.
+//
+// Based on TIME_SERIES_KEY_DESIGN.md - Universal Uniqueness Rule (RUU):
+// "Une clé de série temporelle DOIT être unique SI ET SEULEMENT SI
+// les valeurs des métriques collectées à cet instant peuvent être DIFFÉRENTES"
+//
+// See docs/engineering/TIME_SERIES_KEY_DESIGN.md for:
+// - Complete design rationale and test scenarios
+// - Rules for classifying tags as discriminant vs contextual
+// - Step-by-step guide for adding new probe types
+// - Troubleshooting cache key issues
+var DiscriminantTagsRegistry = map[string][]string{
+	// System probes - multi-instance metrics
+	"cpu":         {"core"},                           // Different CPU cores have independent values
+	"memory":      {},                                 // System-level only, no instances
+	"network":     {"interface", "adapter"},           // Different network interfaces
+	"logicaldisk": {"drive", "mount_point", "device"}, // Different drives/volumes
+
+	// Application probes
+	"citrix":  {"metric_type", "failure_category"}, // Citrix aggregation types
+	"webapp":  {"url", "endpoint"},                 // Different web endpoints
+	"gateway": {"destination", "target"},           // Different gateway targets
+
+	// Infrastructure probes
+	"redfish": {
+		// Storage components
+		"controller", "controller_id",
+		"drive_id", "drive_name",
+		"volume_id", "volume_name",
+		"pool_name", "pool_id",
+		// Other hardware components
+		"psu_name", "psu_id",
+		"processor_id",
+		"memory_module_id",
+		"fan_name", "sensor_name",
+	},
+
+	// Event probes
+	"winevents": {"event_id", "source"}, // Windows Event Log events
+	"syslog":    {"event_id", "source"}, // Syslog events
+
+	// OpenTelemetry
+	"otel": {"service_name", "span_name"}, // OTEL traces/metrics
+}
+
 // MetricCache stores the latest metrics in memory with TTL, organized like a TSDB
 type MetricCache struct {
 	mu sync.RWMutex
 	// TSDB-like structure: unique key -> latest metric
-	// Key format: probe_name:metric_name:sorted_tags_hash
+	// Key format: probe_name:metric_name:discriminant_tags
+	// Example: "cpu:usage_percent:core=0" or "redfish:storage.drive.temperature:drive_id=disk.bay.0"
+	// Only discriminant tags are in the key - contextual tags are in CachedMetric.Tags
 	timeSeries map[string]CachedMetric
 	// Index by probe for fast probe-specific queries
 	probeIndex map[string]map[string]bool // probe_name -> set of ts_keys
@@ -45,34 +104,63 @@ func NewMetricCache(ttl time.Duration, logger *logger.ModuleLogger) *MetricCache
 	}
 }
 
-// generateTimeSeriesKey creates a unique key for a time series based on probe, metric name, and tags
-func (c *MetricCache) generateTimeSeriesKey(probeName, metricName string, tags map[string]string) string {
-	// Create a sorted list of tag key-value pairs for consistent key generation
-	var tagParts []string
+// generateTimeSeriesKey creates a unique key for a time series based on probe, metric name,
+// and ONLY discriminant tags (tags that identify unique metric instances).
+//
+// This implements the Universal Uniqueness Rule (RUU) from TIME_SERIES_KEY_DESIGN.md:
+// Keys are unique IF AND ONLY IF the metric values can be different.
+//
+// Example:
+//   - CPU probe with core=0 and core=1 → different keys (different CPU cores)
+//   - Same CPU core with different "platform" tags → SAME key (contextual metadata)
+//   - Redfish with different drive_id → different keys (different physical drives)
+//   - Same drive with different "endpoint" URL → SAME key (same physical drive, DNS changed)
+//
+// This ensures:
+//   - Time series continuity when metadata changes (endpoint, hostname, etc.)
+//   - Proper cardinality (only multi-instance metrics create multiple series)
+//   - Filtering still works (all tags preserved in CachedMetric.Tags)
+func (c *MetricCache) generateTimeSeriesKey(probeName, probeType, metricName string, tags map[string]string) string {
+	// Get discriminant tags for this probe type from registry
+	// Use probeType (technical identifier: "redfish", "cpu", etc.) for lookup
+	// NOT probeName (unique instance name: "redfish", "redfish2", etc.)
+	discriminantTagNames, exists := DiscriminantTagsRegistry[probeType]
+	if !exists {
+		// Unknown probe type - log warning and use no discriminant tags
+		// This is safe: creates single time series per metric (like system-level probes)
+		c.logger.Warn().
+			Str("probe_name", probeName).
+			Str("probe_type", probeType).
+			Str("metric_name", metricName).
+			Msg("⚠️ Probe type not in DiscriminantTagsRegistry - using no discriminant tags")
+		discriminantTagNames = []string{}
+	}
 
-	// Sort tag keys for consistent ordering
-	tagKeys := make([]string, 0, len(tags))
-	for k := range tags {
-		if k != "probe_name" { // Exclude probe_name since it's already in the key prefix
-			tagKeys = append(tagKeys, k)
+	// Extract only discriminant tag values that are present
+	var tagParts []string
+	discriminantTagKeys := make([]string, 0, len(discriminantTagNames))
+
+	for _, tagName := range discriminantTagNames {
+		if _, exists := tags[tagName]; exists {
+			discriminantTagKeys = append(discriminantTagKeys, tagName)
 		}
 	}
 
-	// Simple sort
-	for i := 0; i < len(tagKeys); i++ {
-		for j := i + 1; j < len(tagKeys); j++ {
-			if tagKeys[i] > tagKeys[j] {
-				tagKeys[i], tagKeys[j] = tagKeys[j], tagKeys[i]
+	// Sort discriminant tag keys for consistent key generation
+	for i := 0; i < len(discriminantTagKeys); i++ {
+		for j := i + 1; j < len(discriminantTagKeys); j++ {
+			if discriminantTagKeys[i] > discriminantTagKeys[j] {
+				discriminantTagKeys[i], discriminantTagKeys[j] = discriminantTagKeys[j], discriminantTagKeys[i]
 			}
 		}
 	}
 
-	// Build tag string
-	for _, k := range tagKeys {
+	// Build tag string from discriminant tags only
+	for _, k := range discriminantTagKeys {
 		tagParts = append(tagParts, fmt.Sprintf("%s=%s", k, tags[k]))
 	}
 
-	// Create unique key: probe:metric:tags
+	// Create unique key: probe:metric:discriminant_tags
 	if len(tagParts) > 0 {
 		return fmt.Sprintf("%s:%s:%s", probeName, metricName, joinStrings(tagParts, ","))
 	}
@@ -97,10 +185,11 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 			tags[tag.Key] = tag.Value
 		}
 
-		// Get probe name from tags
+		// Get probe name and type from tags
 		probeName := tags["probe_name"]
+		probeType := tags["probe_type"]
 
-		// ⚠️ DEBUG: Log if probe_name is missing or empty
+		// ⚠️ DEBUG: Log if probe_name or probe_type is missing or empty
 		if probeName == "" {
 			c.logger.Warn().
 				Str("metric_name", dp.Name).
@@ -108,16 +197,28 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 				Msg("⚠️ MISSING PROBE_NAME: Metric has no probe_name tag!")
 			probeName = "unknown" // Fallback for metrics without probe_name
 		}
+		if probeType == "" {
+			c.logger.Error().
+				Str("metric_name", dp.Name).
+				Str("probe_name", probeName).
+				Interface("all_tags", tags).
+				Msg("⚠️ MISSING PROBE_TYPE: Metric has no probe_type tag! Probe not properly initialized with SetProbeType(). Falling back to probe_name.")
+			probeType = probeName // Fallback to probe_name if type missing
+		}
 
 		// Generate unique time series key
-		tsKey := c.generateTimeSeriesKey(probeName, dp.Name, tags)
+		tsKey := c.generateTimeSeriesKey(probeName, probeType, dp.Name, tags)
 
 		// Get transformer to resolve unit
-		transformer, err := transformerRegistry.LoadTransformer(probeName, "friendly")
+		// IMPORTANT: Use probeType (technical identifier like "redfish", "cpu")
+		// NOT probeName (display name like "storage-me5024", "redfish2")
+		// This ensures multiple probes of the same type share the same transformer definitions
+		transformer, err := transformerRegistry.LoadTransformer(probeType, "friendly")
 		if err != nil {
 			c.logger.Warn().
 				Err(err).
 				Str("probe_name", probeName).
+				Str("probe_type", probeType).
 				Msg("Failed to get transformer for unit resolution")
 		}
 

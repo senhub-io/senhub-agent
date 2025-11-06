@@ -28,8 +28,11 @@ open https://localhost:8443/web/{agentkey}/dashboard
 ### Online Mode (SenHub Platform)
 
 ```bash
-# Install with platform integration
+# Option 1: Direct command line
 sudo ./senhub-agent run --authentication-key <your_key> --server-url "https://your-server-url.com"
+
+# Option 2: Authentication key from config file (agent-config.yaml)
+sudo ./senhub-agent run  # Automatically loads key from config file
 ```
 
 ## 📋 Documentation

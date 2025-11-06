@@ -86,9 +86,9 @@ func (p *wifiSignalStrengthProbe) GetTargetStrategies() []string {
 	return []string{"senhub", "prtg", "http"}
 }
 
-func (m *wifiSignalStrengthProbe) GetName() string {
-	return "wifi_signal_strength"
-}
+// Note: GetName() is now inherited from BaseProbe and will return the unique
+// probe name from configuration (e.g., "wifi_signal_strength", "wifi2") instead of the
+// hardcoded type. This enables proper discriminant tagging for multiple instances.
 
 func (m *wifiSignalStrengthProbe) ShouldStart() bool {
 	switch runtime.GOOS {

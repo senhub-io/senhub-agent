@@ -3,7 +3,7 @@ before:
     - go mod tidy
 builds:
   - id: "senhub-agent"
-    main: ./cmd/agent/main.go
+    main: ./cmd/agent
     binary: "senhub-agent_{{ .Os }}_{{ .Arch }}"
     env:
       - CGO_ENABLED=0

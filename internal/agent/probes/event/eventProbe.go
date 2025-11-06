@@ -45,6 +45,7 @@ type EventProbeConfig struct {
 
 // EventProbe is the main struct for the EventProbe.
 type EventProbe struct {
+	*types.BaseProbe
 	rawConfig    map[string]interface{}
 	config       EventProbeConfig
 	moduleLogger *logger.ModuleLogger
@@ -72,6 +73,7 @@ func NewEventProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 		Msg("Creating new Event probe")
 
 	return &EventProbe{
+		BaseProbe:    &types.BaseProbe{},
 		rawConfig:    config,
 		config:       parsedConfig,
 		moduleLogger: moduleLogger,
@@ -119,10 +121,9 @@ func (p *EventProbe) GetTargetStrategies() []string {
 	return []string{"event"}
 }
 
-// GetName returns the name of the EventProbe.
-func (p *EventProbe) GetName() string {
-	return "event"
-}
+// Note: GetName() is now inherited from BaseProbe and will return the unique
+// probe name from configuration (e.g., "event", "event2") instead of the
+// hardcoded type. This enables proper discriminant tagging for multiple instances.
 
 // ShouldStart indicates whether the EventProbe should start.
 func (p *EventProbe) ShouldStart() bool {
