@@ -75,7 +75,7 @@ Each release note includes:
 
 ## Release History
 
-### v0.1.x Series (Current)
+### 0.1.x Series (Current)
 - [0.1.70-beta](./0.1.70-beta.md) - Configuration v2 migration, shared templates
 - 0.1.64 - Latest production release
 - Previous releases available in GitHub
