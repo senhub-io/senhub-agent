@@ -870,8 +870,8 @@ round-trip min/avg/max/stddev = 2.123/2.567/3.890/0.456 ms
 
 ## Related Documentation
 
-- [Ping Gateway Probe README](./GATEWAY-README.md) - Configuration and quick start
+- [Ping Gateway Probe README](./README.md) - Configuration and quick start
 - [Network Probe Metrics](./NETWORK-METRICS.md) - Interface-level network metrics
-- [WebApp Probe Metrics](../webapp/PING-METRICS.md) - External connectivity monitoring
+- [WebApp Probe Metrics](../ping_webapp/METRICS.md) - External connectivity monitoring
 - [Network Troubleshooting Guide](../../troubleshooting/network.md) - Diagnostic procedures
 - [Monitoring Best Practices](../../guides/monitoring-best-practices.md) - General monitoring guidance
