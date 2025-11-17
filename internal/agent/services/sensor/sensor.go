@@ -4,10 +4,12 @@ package sensor
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -22,10 +24,12 @@ type Sensor interface {
 }
 
 type sensor struct {
-	startedProbes  []*probes.ProbePoller
-	addDataPoint   data_store.AddCallback
-	configProvider configuration.ConfigurationProvider
-	moduleLogger   *logger.ModuleLogger
+	startedProbes    []*probes.ProbePoller
+	addDataPoint     data_store.AddCallback
+	configProvider   configuration.ConfigurationProvider
+	moduleLogger     *logger.ModuleLogger
+	licenseValidator license.Validator
+	license          *license.License
 }
 
 // NewSensor creates a new Sensor instance
@@ -36,11 +40,63 @@ func NewSensor(
 ) Sensor {
 	// Create module-specific logger for sensor service
 	moduleLogger := logger.NewModuleLogger(baseLogger, "sensor")
+
+	// Initialize license validator with embedded RSA public key
+	var licenseValidator license.Validator
+	jwtValidator, err := license.GetDefaultValidator(7) // 7-day grace period
+	if err != nil {
+		moduleLogger.Error().
+			Err(err).
+			Msg("Failed to initialize license validator - entering safe mode (free tier only)")
+		// SECURITY: No fallback to MockValidator in production
+		// If RSA public key fails to load, agent runs in free tier mode only
+		licenseValidator = nil
+	} else {
+		licenseValidator = jwtValidator
+	}
+
+	// Try to load and validate license from configuration
+	var validatedLicense *license.License
+	config := configProvider.GetConfiguration()
+	if config.Agent.License != "" {
+		moduleLogger.Info().Msg("License token found in configuration, validating...")
+		lic, err := licenseValidator.ValidateLicense(config.Agent.License)
+		if err != nil {
+			moduleLogger.Warn().
+				Err(err).
+				Msg("⚠️ Invalid license token - only free tier probes will be available")
+		} else {
+			validatedLicense = lic
+			tierName := string(lic.Tier)
+			moduleLogger.Info().
+				Str("tier", tierName).
+				Bool("expired", lic.IsExpired).
+				Time("expires_at", lic.ExpiresAt).
+				Msg("✅ License validated successfully")
+
+			if lic.IsExpired {
+				if licenseValidator.IsInGracePeriod(lic) {
+					gracePeriodEnd := lic.ExpiresAt.Add(time.Duration(lic.GracePeriodDays) * 24 * time.Hour)
+					moduleLogger.Warn().
+						Time("grace_period_ends", gracePeriodEnd).
+						Msg("⚠️ License expired but in grace period")
+				} else {
+					moduleLogger.Error().Msg("❌ License expired and grace period ended - only free tier probes available")
+					validatedLicense = nil // Disable license if expired outside grace period
+				}
+			}
+		}
+	} else {
+		moduleLogger.Info().Msg("No license configured - using free tier (cpu, memory, logicaldisk, network)")
+	}
+
 	return &sensor{
-		startedProbes:  []*probes.ProbePoller{},
-		addDataPoint:   addDataPoint,
-		configProvider: configProvider,
-		moduleLogger:   moduleLogger,
+		startedProbes:    []*probes.ProbePoller{},
+		addDataPoint:     addDataPoint,
+		configProvider:   configProvider,
+		moduleLogger:     moduleLogger,
+		licenseValidator: licenseValidator,
+		license:          validatedLicense,
 	}
 }
 
@@ -202,6 +258,47 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel c
 		}
 	}
 
+	// License validation: Check if probe is authorized
+	probeType := probeConfig.Type
+	if probeType == "" {
+		// Fallback to name if type is not set (for backward compatibility)
+		probeType = probeConfig.Name
+	}
+
+	// If licenseValidator is nil (safe mode), only allow free tier probes
+	if s.licenseValidator == nil {
+		freeTierProbes := license.GetFreeTierProbes()
+		isFreeTier := false
+		for _, freeProbe := range freeTierProbes {
+			if freeProbe == probeType {
+				isFreeTier = true
+				break
+			}
+		}
+		if !isFreeTier {
+			s.moduleLogger.Warn().
+				Str("probe_type", probeType).
+				Str("probe_name", probeConfig.Name).
+				Strs("free_tier_probes", freeTierProbes).
+				Msg("🚫 License validator unavailable - only free tier probes allowed")
+			return fmt.Errorf("probe %q requires a valid license validator", probeType)
+		}
+		// Free tier probe - allow it to continue startup
+	} else {
+		// Normal license validation with validator
+		if !s.licenseValidator.IsProbeAuthorized(s.license, probeType) {
+			// Get list of free tier probes for helpful error message
+			freeTierProbes := license.GetFreeTierProbes()
+			s.moduleLogger.Warn().
+				Str("probe_type", probeType).
+				Str("probe_name", probeConfig.Name).
+				Strs("free_tier_probes", freeTierProbes).
+				Msg("🚫 Probe not authorized by license - skipping (upgrade license to enable)")
+			return fmt.Errorf("probe %q requires a valid license", probeType)
+		}
+	}
+
+	// Probe is authorized - continue with probe initialization
 	probePoller, err := probes.NewProbePoller(
 		probeConfig,
 		s.getLoggerForProbe(probeConfig),
