@@ -491,6 +491,11 @@ func (h *HTTPSyncStrategy) handleAdminCacheClear(w http.ResponseWriter, r *http.
 	h.debugManager.HandleAdminCacheClear(w, r)
 }
 
+func (h *HTTPSyncStrategy) handleLicenseStatus(w http.ResponseWriter, r *http.Request) {
+	// Delegate to API manager (license status is an admin API endpoint)
+	h.apiManager.HandleLicenseStatus(w, r)
+}
+
 // Universal Configuration handlers (delegated to ConfigurationManager)
 
 func (h *HTTPSyncStrategy) handleUniversalConfigValidation(w http.ResponseWriter, r *http.Request) {
