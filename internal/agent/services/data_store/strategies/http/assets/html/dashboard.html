@@ -250,6 +250,33 @@
                         <span class="metric-value" id="resource-cpu-usage">-</span>
                     </div>
                 </div>
+
+                <!-- License Status -->
+                <div class="card">
+                    <div class="metric-row" style="border-bottom: 1px solid var(--gray-200); margin-bottom: 1rem; padding-bottom: 1rem;">
+                        <h2 style="margin: 0;">🔐 License</h2>
+                        <div class="status-indicator" id="license-status-indicator">
+                            <span>●</span>
+                            <span id="license-status">Loading...</span>
+                        </div>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Tier</span>
+                        <span class="metric-value" id="license-tier">-</span>
+                    </div>
+                    <div class="metric-row" id="license-expires-row" style="display: none;">
+                        <span class="metric-label">Expires</span>
+                        <span class="metric-value" id="license-expires">-</span>
+                    </div>
+                    <div class="metric-row" id="license-days-row" style="display: none;">
+                        <span class="metric-label">Days Remaining</span>
+                        <span class="metric-value" id="license-days">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Authorized Probes</span>
+                        <span class="metric-value" id="license-probes-count">-</span>
+                    </div>
+                </div>
             </div>
             
             <!-- Probes Status -->
