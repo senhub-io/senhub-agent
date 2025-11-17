@@ -145,8 +145,9 @@ go run sensor-factory-license-generator.go --generate-license \
 # Activate license via CLI
 ./agent license activate eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 
-# Or via Web UI (if implemented)
-# Navigate to: http://localhost:8080/web/{agentkey}/license
+# Verify activation via web dashboard
+# Navigate to: http://localhost:8080/web/{agentkey}/dashboard
+# Check the "License" card for status
 ```
 
 ### 4. License Validation
@@ -209,6 +210,8 @@ Displays current license information:
 - Authorized probes
 - Expiration date
 - Status (ACTIVE / EXPIRED / GRACE PERIOD)
+
+**API Alternative**: Use `GET /api/{agentkey}/license/status` for programmatic access
 
 ### Remove License
 ```bash
@@ -361,9 +364,234 @@ docs/
 └── LICENSE-SYSTEM.md                    # This document
 ```
 
-## API Integration (Future)
+## Web UI and API Integration
 
-### Sensor Factory REST API (Proposed)
+### License Status API Endpoint
+
+The agent provides a REST API endpoint to retrieve current license information:
+
+**Endpoint**: `GET /api/{agentkey}/license/status`
+
+**Authentication**: Requires valid agent key in URL path
+
+**Response Format**:
+
+```json
+{
+  "status": "active",
+  "tier": "pro",
+  "expires_at": "2026-11-09T17:17:13Z",
+  "days_remaining": 365,
+  "authorized_probes": ["redfish", "citrix"],
+  "free_tier_probes": ["cpu", "memory", "logicaldisk", "network"],
+  "message": "License active (365 days remaining)"
+}
+```
+
+**Response Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | License status: `"active"`, `"expired"`, `"grace_period"`, `"none"`, `"invalid"`, `"error"` |
+| `tier` | string | License tier: `"free"`, `"pro"`, `"enterprise"` |
+| `expires_at` | string | ISO 8601 expiration date (omitted if no license) |
+| `days_remaining` | integer | Days until expiration or end of grace period (omitted if no license) |
+| `authorized_probes` | array | List of probe types authorized by license (empty for free tier) |
+| `free_tier_probes` | array | List of always-available free tier probes |
+| `message` | string | Human-readable status message |
+
+**Status Values**:
+
+- `"active"` - License is valid and not expired
+- `"grace_period"` - License expired but within 7-day grace period
+- `"expired"` - License expired and grace period ended
+- `"none"` - No license configured (free tier mode)
+- `"invalid"` - License token exists but is invalid/tampered
+- `"error"` - Error validating license
+
+**Example Requests**:
+
+```bash
+# Get license status
+curl http://localhost:8080/api/YOUR_AGENT_KEY/license/status
+
+# Example response - Active Pro license
+{
+  "status": "active",
+  "tier": "pro",
+  "expires_at": "2026-11-09T17:17:13Z",
+  "days_remaining": 365,
+  "authorized_probes": ["redfish", "citrix"],
+  "free_tier_probes": ["cpu", "memory", "logicaldisk", "network"],
+  "message": "License active (365 days remaining)"
+}
+
+# Example response - No license (free tier)
+{
+  "status": "none",
+  "tier": "free",
+  "free_tier_probes": ["cpu", "memory", "logicaldisk", "network"],
+  "message": "No license configured - running in free tier mode"
+}
+
+# Example response - Grace period
+{
+  "status": "grace_period",
+  "tier": "pro",
+  "expires_at": "2025-11-01T10:00:00Z",
+  "days_remaining": 5,
+  "authorized_probes": ["redfish", "citrix"],
+  "free_tier_probes": ["cpu", "memory", "logicaldisk", "network"],
+  "message": "License expired but in grace period (5 days remaining)"
+}
+```
+
+### Web Dashboard License Display
+
+The agent's web dashboard displays license information in a dedicated card with automatic refresh.
+
+**Access**: Navigate to `http://localhost:8080/web/{agentkey}/dashboard`
+
+**License Card Features**:
+
+1. **Status Indicator** - Color-coded badge showing current status:
+   - 🟢 Green (`active`) - License is valid
+   - 🟡 Yellow (`grace_period`) - In grace period, renewal needed
+   - 🔵 Blue (`none`) - No license, free tier mode
+   - 🟡 Yellow (`expired`, `invalid`) - License issue
+
+2. **Tier Display** - Shows license tier: Free, Pro, or Enterprise
+
+3. **Expiration Information** - Displays:
+   - Expiration date (formatted for local timezone)
+   - Days remaining until expiration or grace period end
+   - Only visible when a license is configured
+
+4. **Authorized Probes Count** - Shows:
+   - Number of authorized probes (e.g., "2")
+   - "All" for Enterprise wildcard licenses
+   - "4 (free)" for free tier only
+
+5. **Auto-Refresh** - License status updates every 30 seconds automatically
+
+**Visual Example**:
+
+```
+┌─────────────────────────────────┐
+│ 🔐 License        ● Active      │
+├─────────────────────────────────┤
+│ Tier              Pro           │
+│ Expires           2026-11-09    │
+│ Days Remaining    365           │
+│ Authorized Probes 2             │
+└─────────────────────────────────┘
+```
+
+**Status Colors**:
+
+- **Green background** (`status-running`) - Active license
+- **Yellow background** (`status-warning`) - Grace period, expired, or invalid
+- **Blue background** (`status-info`) - No license (free tier)
+
+### Integration Examples
+
+#### Monitor License Expiration
+
+```bash
+#!/bin/bash
+# Check license expiration and send alert if < 30 days
+
+AGENT_KEY="your-agent-key"
+STATUS=$(curl -s http://localhost:8080/api/$AGENT_KEY/license/status)
+
+DAYS=$(echo "$STATUS" | jq -r '.days_remaining')
+LICENSE_STATUS=$(echo "$STATUS" | jq -r '.status')
+
+if [ "$LICENSE_STATUS" = "active" ] && [ "$DAYS" -lt 30 ]; then
+    echo "WARNING: License expires in $DAYS days"
+    # Send notification
+fi
+
+if [ "$LICENSE_STATUS" = "grace_period" ]; then
+    echo "CRITICAL: License in grace period ($DAYS days remaining)"
+    # Send urgent notification
+fi
+```
+
+#### PRTG Custom Sensor
+
+Create a PRTG sensor to monitor license status:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<prtg>
+  <result>
+    <channel>Days Remaining</channel>
+    <value>365</value>
+    <unit>Count</unit>
+    <LimitMinWarning>30</LimitMinWarning>
+    <LimitMinError>7</LimitMinError>
+  </result>
+  <result>
+    <channel>License Active</channel>
+    <value>1</value>
+    <unit>Custom</unit>
+    <customunit>Status</customunit>
+  </result>
+  <text>License active (365 days remaining)</text>
+</prtg>
+```
+
+#### Nagios Check Plugin
+
+```bash
+#!/bin/bash
+# Nagios plugin to check license status
+
+AGENT_KEY="$1"
+WARN_DAYS=30
+CRIT_DAYS=7
+
+STATUS=$(curl -s http://localhost:8080/api/$AGENT_KEY/license/status)
+LICENSE_STATUS=$(echo "$STATUS" | jq -r '.status')
+DAYS=$(echo "$STATUS" | jq -r '.days_remaining // 0')
+MESSAGE=$(echo "$STATUS" | jq -r '.message')
+
+case "$LICENSE_STATUS" in
+    "active")
+        if [ "$DAYS" -lt "$CRIT_DAYS" ]; then
+            echo "CRITICAL: $MESSAGE"
+            exit 2
+        elif [ "$DAYS" -lt "$WARN_DAYS" ]; then
+            echo "WARNING: $MESSAGE"
+            exit 1
+        else
+            echo "OK: $MESSAGE"
+            exit 0
+        fi
+        ;;
+    "grace_period")
+        echo "WARNING: $MESSAGE"
+        exit 1
+        ;;
+    "expired"|"invalid")
+        echo "CRITICAL: $MESSAGE"
+        exit 2
+        ;;
+    "none")
+        echo "OK: $MESSAGE (free tier)"
+        exit 0
+        ;;
+    *)
+        echo "UNKNOWN: $MESSAGE"
+        exit 3
+        ;;
+esac
+```
+
+### Future Enhancements (Proposed)
+
+#### Sensor Factory REST API
 
 ```http
 POST /api/v1/licenses
@@ -386,15 +614,17 @@ Response:
 }
 ```
 
-### Agent Web UI (Proposed)
+#### Agent License Activation UI
+
+Future web interface for license activation:
 
 ```
 GET /web/{agentkey}/license
-→ Show current license status
+→ License management page with activation form
 
 POST /web/{agentkey}/license/activate
 Body: { "license_token": "eyJhbGci..." }
-→ Activate new license
+→ Activate new license via web UI
 ```
 
 ## Migration from Free to Paid
@@ -450,5 +680,8 @@ The SenHub Agent license system provides:
 - ✅ Grace period for renewals
 - ✅ Simple CLI activation
 - ✅ Embedded validation (no internet required)
+- ✅ Web dashboard for visual monitoring
+- ✅ REST API for integration with monitoring systems
+- ✅ Real-time status updates with auto-refresh
 
-This system balances security, usability, and offline operation requirements.
+This system balances security, usability, and offline operation requirements while providing comprehensive monitoring and integration capabilities.
