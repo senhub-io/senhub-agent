@@ -495,41 +495,28 @@ func (a *APIManager) HandleLicenseStatus(w http.ResponseWriter, r *http.Request)
 
 	// Prepare response structure
 	type LicenseStatusResponse struct {
-		Status        string   `json:"status"`         // "active", "expired", "grace_period", "none"
-		Tier          string   `json:"tier,omitempty"` // "free", "pro", "enterprise"
-		ExpiresAt     string   `json:"expires_at,omitempty"`
-		DaysRemaining int      `json:"days_remaining,omitempty"`
+		Status           string   `json:"status"`         // "active", "expired", "grace_period", "none"
+		Tier             string   `json:"tier,omitempty"` // "free", "pro", "enterprise"
+		ExpiresAt        string   `json:"expires_at,omitempty"`
+		DaysRemaining    int      `json:"days_remaining,omitempty"`
 		AuthorizedProbes []string `json:"authorized_probes,omitempty"`
-		FreeTierProbes []string `json:"free_tier_probes"`
-		Message       string   `json:"message,omitempty"`
+		FreeTierProbes   []string `json:"free_tier_probes"`
+		Message          string   `json:"message,omitempty"`
 	}
 
 	response := LicenseStatusResponse{
 		FreeTierProbes: []string{"cpu", "memory", "logicaldisk", "network"},
 	}
 
-	// Get license token from configuration using type assertion
-	// Try LocalConfiguration first
-	var licenseToken string
-	if localConfig, ok := a.strategy.agentConfig.(*configuration.LocalConfiguration); ok {
-		config := localConfig.GetConfiguration()
-		licenseToken = config.Agent.License
-	} else {
-		// Try RemoteConfiguration or other configuration providers
-		if configProvider, ok := a.strategy.agentConfig.(interface {
-			GetConfiguration() configuration.RemoteConfigurationData
-		}); ok {
-			config := configProvider.GetConfiguration()
-			licenseToken = config.Agent.License
-		}
-	}
+	// Get license token from configuration
+	licenseToken := a.getLicenseToken()
 
 	// Check if license is configured
 	if licenseToken == "" {
 		response.Status = "none"
 		response.Tier = "free"
 		response.Message = "No license configured - running in free tier mode"
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			a.logger.Error().Err(err).Msg("Failed to encode license status response")
@@ -558,7 +545,7 @@ func (a *APIManager) HandleLicenseStatus(w http.ResponseWriter, r *http.Request)
 		response.Status = "invalid"
 		response.Tier = "free"
 		response.Message = "Invalid license token - running in free tier mode"
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			a.logger.Error().Err(err).Msg("Failed to encode license status response")
@@ -570,10 +557,10 @@ func (a *APIManager) HandleLicenseStatus(w http.ResponseWriter, r *http.Request)
 	response.Tier = string(license.Tier)
 	response.AuthorizedProbes = license.AuthorizedProbes
 	response.ExpiresAt = license.ExpiresAt.Format(time.RFC3339)
-	
+
 	// Calculate days remaining
 	daysRemaining := int(time.Until(license.ExpiresAt).Hours() / 24)
-	
+
 	if license.IsExpired {
 		if validator.IsInGracePeriod(license) {
 			response.Status = "grace_period"
@@ -599,6 +586,26 @@ func (a *APIManager) HandleLicenseStatus(w http.ResponseWriter, r *http.Request)
 	}
 
 	a.logger.Debug().Str("status", response.Status).Str("tier", response.Tier).Msg("License status response sent")
+}
+
+// getLicenseToken retrieves the license token from configuration
+// Supports both LocalConfiguration and RemoteConfiguration
+func (a *APIManager) getLicenseToken() string {
+	// Try LocalConfiguration first
+	if localConfig, ok := a.strategy.agentConfig.(*configuration.LocalConfiguration); ok {
+		config := localConfig.GetConfiguration()
+		return config.Agent.License
+	}
+
+	// Try RemoteConfiguration or other configuration providers
+	if configProvider, ok := a.strategy.agentConfig.(interface {
+		GetConfiguration() configuration.RemoteConfigurationData
+	}); ok {
+		config := configProvider.GetConfiguration()
+		return config.Agent.License
+	}
+
+	return ""
 }
 
 // getLicenseValidator creates a license validator instance

@@ -21,12 +21,12 @@ const (
 
 // LicenseClaims represents the JWT claims for the license
 type LicenseClaims struct {
-	Tier            LicenseTier `json:"tier"`
-	AuthorizedProbes []string   `json:"authorized_probes"`
-	ExpiresAt       int64      `json:"exp"`
-	IssuedAt        int64      `json:"iat"`
-	Issuer          string     `json:"iss"`
-	Subject         string     `json:"sub"` // Agent key or customer ID
+	Tier             LicenseTier `json:"tier"`
+	AuthorizedProbes []string    `json:"authorized_probes"`
+	ExpiresAt        int64       `json:"exp"`
+	IssuedAt         int64       `json:"iat"`
+	Issuer           string      `json:"iss"`
+	Subject          string      `json:"sub"` // Agent key or customer ID
 	jwt.RegisteredClaims
 }
 

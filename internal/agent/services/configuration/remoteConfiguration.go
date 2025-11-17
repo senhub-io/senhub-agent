@@ -293,7 +293,7 @@ func (rc *RemoteConfiguration) UpdateSync() error {
 							return fmt.Errorf("failed to create initial replica: %w", err)
 						}
 
-					// Note: v1→v2 migration already applied before validation (line 249)
+						// Note: v1→v2 migration already applied before validation (line 249)
 					}
 				}
 			}
