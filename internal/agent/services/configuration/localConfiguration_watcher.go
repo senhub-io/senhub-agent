@@ -30,6 +30,7 @@ agent:
   key: "%s"
   mode: offline
   generated: %t
+%s
 
 # Auto-update configuration (disabled by default in offline mode)
 auto_update:
@@ -126,6 +127,7 @@ probes:
 		config.ConfigVersion,          // YAML field: config_version
 		config.Agent.Key,              // agent.key
 		config.Agent.Generated,        // agent.generated
+		LicenseDocumentationTemplate,  // agent.license (documentation)
 		config.AutoUpdate.Enabled,     // auto_update.enabled
 		config.AutoUpdate.URL,         // auto_update.url
 		config.Cache.RetentionMinutes, // cache.retention_minutes
