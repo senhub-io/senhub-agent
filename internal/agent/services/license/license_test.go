@@ -13,9 +13,9 @@ import (
 
 func TestFreeTierProbes(t *testing.T) {
 	tests := []struct {
-		name     string
+		name      string
 		probeName string
-		expected bool
+		expected  bool
 	}{
 		{"CPU probe is free tier", "cpu", true},
 		{"Memory probe is free tier", "memory", true},
@@ -258,8 +258,8 @@ func TestMockValidator_IsInGracePeriod(t *testing.T) {
 	validator := NewMockValidator(7)
 
 	tests := []struct {
-		name           string
-		license        *License
+		name          string
+		license       *License
 		inGracePeriod bool
 	}{
 		{
@@ -322,6 +322,7 @@ func TestLicenseTiers(t *testing.T) {
 		t.Errorf("TierEnterprise = %q, want 'enterprise'", TierEnterprise)
 	}
 }
+
 // Test helpers for JWT validation
 
 func generateTestRSAKeys(t *testing.T) (*rsa.PrivateKey, *rsa.PublicKey) {
