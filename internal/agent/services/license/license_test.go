@@ -681,3 +681,37 @@ func TestNewJWTValidator_InvalidPublicKey(t *testing.T) {
 		})
 	}
 }
+
+func TestGetDefaultValidator(t *testing.T) {
+	// Test that GetDefaultValidator returns a valid validator with embedded public key
+	validator, err := GetDefaultValidator(7)
+	if err != nil {
+		t.Fatalf("GetDefaultValidator() failed: %v", err)
+	}
+
+	if validator == nil {
+		t.Fatal("GetDefaultValidator() returned nil validator")
+	}
+
+	// Verify grace period is set correctly
+	if validator.gracePeriodDays != 7 {
+		t.Errorf("Expected grace period 7 days, got %d", validator.gracePeriodDays)
+	}
+
+	// Verify the embedded public key is valid by checking we can parse it
+	if validator.publicKey == nil {
+		t.Error("GetDefaultValidator() validator has nil public key")
+	}
+
+	// Test with different grace periods
+	testCases := []int{0, 7, 14, 30}
+	for _, days := range testCases {
+		v, err := GetDefaultValidator(days)
+		if err != nil {
+			t.Errorf("GetDefaultValidator(%d) failed: %v", days, err)
+		}
+		if v.gracePeriodDays != days {
+			t.Errorf("GetDefaultValidator(%d) grace period = %d, want %d", days, v.gracePeriodDays, days)
+		}
+	}
+}
