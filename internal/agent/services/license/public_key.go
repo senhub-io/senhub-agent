@@ -4,21 +4,30 @@ package license
 // This key is embedded in the binary and corresponds to the private key
 // used by SenHub platform to sign licenses
 //
+// ⚠️ DEVELOPMENT KEY: This is a TEST RSA-4096 public key for development/testing.
+// For production deployment, replace this with your production public key.
+//
 // SECURITY: The corresponding private key (license-private-key.pem) must be kept
 // SECRET and stored securely in Sensor Factory. Only Sensor Factory can sign licenses.
+//
+// Key Generation:
+//
+//	cd scripts/
+//	go run sensor-factory-license-generator.go --generate-keys
+//	# Copy the public key from senhub-license-public-key.pem to this constant
 const SenHubPublicKey = `-----BEGIN PUBLIC KEY-----
-MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA3QU/F/S/VGrT/4VO881k
-8YtlcDniOPOS7Lk0lfzjm4c2Zbj0VmX3AMpAgdm23f6Enw8CkAUFayVeQKsteyqj
-i90USB6l1XSRT8WI3fE9BDQJNqU6omMT5GmDqyYuG3qIuO4CsGt20xw640hOX/uZ
-OfA6+5fcQPPQ4KPH1AbKzlNX+XPy0tcbaZmzD62MSpk/z5t3YWFrkP9QkLBNeZtP
-MmHA1mXjLwnlVTSKw7Ka74+YlRv2ki2BFyy7ZuUU3/1k1DYCIcYHn7/KaQ5Wq0in
-UCFKMmmREmuKEkJFXBvj24Q+STMKOk8Odo7jlQEmqYuLx7sR/zEVIr9thymtck2p
-/3HDklX3iz44MpDPiBOjJux92Hsok4WRH0Jk1gyYIAE8T2O6eQLp95s39I6JANI+
-DtTSDTbr+RLDYNO3T0CsqkjsCmQsNe8z6P208RqpPHpFHpx5gkXCsfo/soxXQj4T
-7phlu9HY/ghNx61azGWBvyNeJlfpec6qcs4bXujyOcZ3m5Waf8zWND4YJz+lRUK1
-He6ytSsL3cgE3ou9azmNmKWUsAI7SrVZZEx+08m13tOKfHiy97MhVdCJnKA2K92c
-lxJ4nelVv8iHaYePoYKfjrlQdjbg13Ac65d2a6Ab4scOOZXOFoQiz88Tg58DktQU
-oJANBrDc6hXfPNnf9gtgWwkCAwEAAQ==
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqnYgBiqaumyZHR4Q6ofr
+Qf2jL9/OHvXYwVzGiwBYn535VCgfNNjBcQCo55Qyu5pj/9qX5eRZ3U6Huh4kxroR
+aYkERInPTCoVq4eEOBCG9XY7fQ+GiTKRC5G+t89e2x9Hjw3Okbur4ACpkHZ2DZ/q
+IkXC9wGrlbyu2bQSCvfXA0Ra9ShRbi1MMfOSmabK47WibzDKWd96qRd9h1PD6di1
+QNiUXgz0vD2hvKJXQWYqchEOKls5bUTP2K2R6O0124Ev4VldBwGRMdwW8DKv0yam
+qzGCdzF712fJjpLRwCaMDIUKqPsZrNO7G2pWIdZNmtZRujoOOn8AbDUL5kq+1hKp
+LOjndtIvwjzVfcOY3sBsQxiPJlnhXDmaqnlryaItZhOzk3+u/1dXqXwLQ3IS1JCQ
+1UgkMrPd065aTHdES0hgLijhlLtGTRdJACvC5zoiuULv5CjRINUNqihYxxqPu3M/
+iFJO5R6MFCelbgmVue9cehW6bQGCYo8Ac8M9iYQ57J5p9kjJRPuXGeGT9qMLoJ7+
+fSIMtFFwgd3pl01inUO4M+DpMEoIpWVFukXegm4mSOqEH8bFKTFHmeFV3KxM9RGE
+tAMeqyiZksIWTl78o1raiEqCNJHH0hYZAQtkM7kDuWo4OYSKfmlRMgwG3NW9zehN
+A3FXJDQ0+jjrRZ8n9sNNSp0CAwEAAQ==
 -----END PUBLIC KEY-----`
 
 // GetDefaultValidator returns a validator configured with the embedded SenHub public key
