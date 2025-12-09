@@ -132,9 +132,11 @@ func (v *JWTValidator) IsProbeAuthorized(license *License, probeName string) boo
 		return true
 	}
 
-	// If license is nil, only free tier probes are authorized
+	// ONLINE MODE BYPASS: If license is nil, authorize all probes (Enterprise behavior)
+	// This allows online mode agents to work without JWT license tokens
+	// while offline mode agents require explicit licenses
 	if license == nil {
-		return false
+		return true // ⬅️ CHANGED: nil license = Enterprise (all probes authorized)
 	}
 
 	// Check if expired and not in grace period
