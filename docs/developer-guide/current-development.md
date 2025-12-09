@@ -75,6 +75,44 @@ This document tracks active development work, completed features, and the roadma
 
 **Documentation**: `/docs/admin-guide/UNIVERSAL-CONFIGURATION.md`
 
+### JWT-Based License System
+**Status**: ✅ COMPLETED
+
+**Objective**: Implement production-ready license validation using RSA-signed JWT tokens
+
+**Implementation**:
+- RSA-4096 asymmetric cryptography for signature verification
+- JWT token validation with claims: tier, authorized_probes, exp, iat, iss, sub
+- Three license tiers: Free (basic probes), Pro (advanced probes), Enterprise (all probes)
+- Grace period handling (7 days after expiration)
+- HTTP API endpoint for license status inspection
+- Production key generation tools for Sensor Factory
+
+**Security**:
+- Public key embedded in agent binary (`internal/agent/services/license/public_key.go`)
+- Private key stored securely in Sensor Factory vault (never in agent)
+- Token validation on agent startup and API access
+- License data stored in agent configuration (`agent.license` field)
+
+**Files**:
+- `/internal/agent/services/license/` - License validation service
+- `/scripts/license-generator/` - Production license generation tool (for Sensor Factory)
+- `/scripts/generate-keys/` - Development test key generation
+- `.keys/production/` - Production RSA key pair (private key excluded from Git)
+
+**Benefits**:
+- Flexible probe authorization per customer
+- Offline license validation (no phone-home required)
+- Tamper-proof license tokens
+- Easy integration with Sensor Factory backend
+- Graceful degradation with clear error messages
+
+**API Endpoints**:
+- `GET /api/{key}/license/status` - View license tier, expiration, authorized probes
+- Web UI displays license information in dashboard
+
+**Documentation**: `/docs/LICENSE-SYSTEM.md`
+
 ## Active Development
 
 ### Redfish Probe
@@ -318,4 +356,4 @@ See [Development Workflow](./development-workflow.md) for process details.
 
 ---
 
-Last updated: 2025-11-06
+Last updated: 2025-12-09
