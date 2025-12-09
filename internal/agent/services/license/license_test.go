@@ -219,10 +219,11 @@ func TestMockValidator_IsProbeAuthorized(t *testing.T) {
 		{"Free tier: Network without license", nil, "network", true},
 		{"Free tier: CPU with license", validLicense, "cpu", true},
 
-		// Paid probes without license - not authorized
-		{"Paid: Redfish without license", nil, "redfish", false},
-		{"Paid: Citrix without license", nil, "citrix", false},
-		{"Paid: WebApp without license", nil, "ping_webapp", false},
+		// ONLINE MODE BYPASS: Paid probes without license - AUTHORIZED (Enterprise behavior)
+		// This allows online agents to work without explicit licenses
+		{"Paid: Redfish without license (online mode)", nil, "redfish", true},
+		{"Paid: Citrix without license (online mode)", nil, "citrix", true},
+		{"Paid: WebApp without license (online mode)", nil, "ping_webapp", true},
 
 		// Paid probes with valid license
 		{"Valid license: Authorized probe (redfish)", validLicense, "redfish", true},
