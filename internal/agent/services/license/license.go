@@ -1,0 +1,185 @@
+package license
+
+import (
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+)
+
+// LicenseTier represents the subscription tier
+type LicenseTier string
+
+const (
+	TierFree       LicenseTier = "free"
+	TierPro        LicenseTier = "pro"
+	TierEnterprise LicenseTier = "enterprise"
+)
+
+// LicenseClaims represents the JWT claims for the license
+type LicenseClaims struct {
+	Tier             LicenseTier `json:"tier"`
+	AuthorizedProbes []string    `json:"authorized_probes"`
+	ExpiresAt        int64       `json:"exp"`
+	IssuedAt         int64       `json:"iat"`
+	Issuer           string      `json:"iss"`
+	Subject          string      `json:"sub"` // Agent key or customer ID
+	jwt.RegisteredClaims
+}
+
+// License represents a validated license
+type License struct {
+	Tier             LicenseTier
+	AuthorizedProbes []string
+	ExpiresAt        time.Time
+	IssuedAt         time.Time
+	Subject          string
+	IsExpired        bool
+	GracePeriodDays  int
+}
+
+// Validator validates license tokens
+type Validator interface {
+	// ValidateLicense validates a JWT license token
+	ValidateLicense(token string) (*License, error)
+
+	// IsProbeAuthorized checks if a probe is authorized by the license
+	IsProbeAuthorized(license *License, probeName string) bool
+
+	// IsInGracePeriod checks if an expired license is still in grace period
+	IsInGracePeriod(license *License) bool
+}
+
+// JWTValidator implements the Validator interface using JWT with RSA signature
+type JWTValidator struct {
+	publicKey       *rsa.PublicKey
+	gracePeriodDays int
+}
+
+// NewJWTValidator creates a new JWT validator with the provided RSA public key
+func NewJWTValidator(publicKeyPEM string, gracePeriodDays int) (*JWTValidator, error) {
+	// Parse PEM block
+	block, _ := pem.Decode([]byte(publicKeyPEM))
+	if block == nil {
+		return nil, fmt.Errorf("failed to decode PEM block")
+	}
+
+	// Parse RSA public key
+	pubKey, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse public key: %w", err)
+	}
+
+	rsaPubKey, ok := pubKey.(*rsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("not an RSA public key")
+	}
+
+	return &JWTValidator{
+		publicKey:       rsaPubKey,
+		gracePeriodDays: gracePeriodDays,
+	}, nil
+}
+
+// ValidateLicense validates a JWT license token
+func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
+	// Parse and validate JWT token
+	token, err := jwt.ParseWithClaims(tokenString, &LicenseClaims{}, func(token *jwt.Token) (interface{}, error) {
+		// SECURITY: Verify signing method is specifically RS256 (not just any RSA method)
+		// This prevents algorithm confusion/downgrade attacks
+		method, ok := token.Method.(*jwt.SigningMethodRSA)
+		if !ok || method.Alg() != "RS256" {
+			return nil, fmt.Errorf("unexpected signing method: %v, expected RS256", token.Header["alg"])
+		}
+		return v.publicKey, nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse token: %w", err)
+	}
+
+	// Extract claims
+	claims, ok := token.Claims.(*LicenseClaims)
+	if !ok || !token.Valid {
+		return nil, fmt.Errorf("invalid token claims")
+	}
+
+	// Create license object
+	expiresAt := time.Unix(claims.ExpiresAt, 0)
+	issuedAt := time.Unix(claims.IssuedAt, 0)
+	isExpired := time.Now().After(expiresAt)
+
+	license := &License{
+		Tier:             claims.Tier,
+		AuthorizedProbes: claims.AuthorizedProbes,
+		ExpiresAt:        expiresAt,
+		IssuedAt:         issuedAt,
+		Subject:          claims.Subject,
+		IsExpired:        isExpired,
+		GracePeriodDays:  v.gracePeriodDays,
+	}
+
+	return license, nil
+}
+
+// IsProbeAuthorized checks if a probe is authorized by the license
+func (v *JWTValidator) IsProbeAuthorized(license *License, probeName string) bool {
+	// Check if probe is in free tier (always authorized)
+	if isFreeTierProbe(probeName) {
+		return true
+	}
+
+	// If license is nil, only free tier probes are authorized
+	if license == nil {
+		return false
+	}
+
+	// Check if expired and not in grace period
+	if license.IsExpired && !v.IsInGracePeriod(license) {
+		return false
+	}
+
+	// Check if probe is in authorized list
+	for _, authorizedProbe := range license.AuthorizedProbes {
+		if authorizedProbe == probeName || authorizedProbe == "*" {
+			return true
+		}
+	}
+
+	return false
+}
+
+// IsInGracePeriod checks if an expired license is still in grace period
+func (v *JWTValidator) IsInGracePeriod(license *License) bool {
+	if !license.IsExpired {
+		return false
+	}
+
+	gracePeriodEnd := license.ExpiresAt.Add(time.Duration(v.gracePeriodDays) * 24 * time.Hour)
+	return time.Now().Before(gracePeriodEnd)
+}
+
+// Free tier probes - always available without license
+var freeTierProbes = map[string]bool{
+	"cpu":         true,
+	"memory":      true,
+	"logicaldisk": true,
+	"network":     true,
+}
+
+// isFreeTierProbe checks if a probe is in the free tier
+func isFreeTierProbe(probeName string) bool {
+	return freeTierProbes[probeName]
+}
+
+// GetFreeTierProbes returns the list of free tier probes
+func GetFreeTierProbes() []string {
+	probes := make([]string, 0, len(freeTierProbes))
+	for probe := range freeTierProbes {
+		probes = append(probes, probe)
+	}
+	return probes
+}

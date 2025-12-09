@@ -8,6 +8,7 @@ require (
 	github.com/avast/retry-go/v4 v4.6.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-test/deep v1.1.1
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/gorilla/mux v1.8.1
 	github.com/hashicorp/go-version v1.7.0
 	github.com/kardianos/service v1.2.2

@@ -102,6 +102,18 @@ func (l *agentConfiguration) GetServerUrl() string {
 	return l.ServerUrl
 }
 
+// GetConfiguration returns configuration data from either Local or Remote configuration
+func (l *agentConfiguration) GetConfiguration() RemoteConfigurationData {
+	if l.localConfiguration != nil {
+		return l.localConfiguration.GetConfiguration()
+	}
+	if l.remoteConfiguration != nil {
+		return l.remoteConfiguration.GetConfiguration()
+	}
+	// Return empty configuration if no source
+	return RemoteConfigurationData{}
+}
+
 // GetCacheConfig returns cache configuration from either Local or Remote configuration
 func (l *agentConfiguration) GetCacheConfig() *CacheConfig {
 	if l.localConfiguration != nil {
