@@ -77,6 +77,12 @@ senhub-license-public-key.pem
 example-license-*.jwt
 license-*.jwt
 
+# Production keys and license testing (CRITICAL - NEVER COMMIT)
+.keys/
+test_configs/
+token_*.txt
+config_test_license*.yaml
+
 # Coverage reports
 coverage.html
 coverage.out
