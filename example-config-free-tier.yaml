@@ -1,0 +1,64 @@
+# SenHub Agent Configuration - FREE TIER
+# Configuration Version: 2
+# No license = free tier only (cpu, memory, logicaldisk, network)
+
+config_version: 2
+
+# Agent configuration
+agent:
+  key: "test-agent-free-tier-12345"
+  mode: offline
+  generated: false
+  # license: ""  # No license = free tier
+
+# Auto-update configuration
+auto_update:
+  enabled: false
+  url: "https://eu-west-1.intake.senhub.io/releases"
+
+# Cache configuration
+cache:
+  retention_minutes: 5
+
+# Storage configuration
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+      endpoints: ["prtg", "web", "nagios"]
+
+# Probes configuration
+probes:
+  # ===== FREE TIER PROBES (no license required) =====
+
+  - name: cpu
+    type: cpu
+    params:
+      interval: 30
+
+  - name: memory
+    type: memory
+    params:
+      interval: 30
+
+  - name: logicaldisk
+    type: logicaldisk
+    params:
+      interval: 60
+
+  - name: network
+    type: network
+    params:
+      interval: 60
+
+  # ===== PAID PROBES (will be blocked without license) =====
+
+  # This probe will be BLOCKED without a license
+  # - name: redfish-server
+  #   type: redfish
+  #   params:
+  #     endpoint: "https://idrac.example.com"
+  #     username: "admin"
+  #     password: "password"
+  #     interval: 300
