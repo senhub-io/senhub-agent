@@ -4,13 +4,13 @@ This directory contains utility scripts for the SenHub Agent project.
 
 ## License System Scripts
 
-### 🧪 Development: `generate-license-keys.go`
+### 🧪 Development: `generate-keys/generate-license-keys.go`
 
 **Purpose**: Generate test RSA keys and example JWT licenses for development and testing.
 
 **Usage**:
 ```bash
-go run generate-license-keys.go
+go run generate-keys/generate-license-keys.go
 ```
 
 **Outputs**:
@@ -26,7 +26,7 @@ go run generate-license-keys.go
 - Private key should be deleted before deployment
 - Public key should be replaced with production key
 
-### 🏭 Production: `sensor-factory-license-generator.go`
+### 🏭 Production: `license-generator/sensor-factory-license-generator.go`
 
 **Purpose**: Generate production RSA keys and customer licenses for Sensor Factory.
 
@@ -34,7 +34,7 @@ go run generate-license-keys.go
 
 1. **ONE-TIME: Generate production key pair**
    ```bash
-   go run sensor-factory-license-generator.go --generate-keys
+   go run license-generator/sensor-factory-license-generator.go --generate-keys
    ```
 
    Outputs:
@@ -43,7 +43,7 @@ go run generate-license-keys.go
 
 2. **ONGOING: Generate customer licenses**
    ```bash
-   go run sensor-factory-license-generator.go --generate-license \
+   go run license-generator/sensor-factory-license-generator.go --generate-license \
      --customer-id "customer-name" \
      --tier "pro" \
      --probes "redfish,citrix" \
