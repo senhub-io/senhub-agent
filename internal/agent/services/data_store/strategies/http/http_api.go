@@ -589,22 +589,40 @@ func (a *APIManager) HandleLicenseStatus(w http.ResponseWriter, r *http.Request)
 }
 
 // getLicenseToken retrieves the license token from configuration
-// Supports both LocalConfiguration and RemoteConfiguration
+// Works with any AgentConfiguration that implements GetConfiguration()
 func (a *APIManager) getLicenseToken() string {
-	// Try LocalConfiguration first
-	if localConfig, ok := a.strategy.agentConfig.(*configuration.LocalConfiguration); ok {
-		config := localConfig.GetConfiguration()
-		return config.Agent.License
-	}
+	a.logger.Debug().
+		Str("config_type", fmt.Sprintf("%T", a.strategy.agentConfig)).
+		Msg("Getting license token from configuration")
 
-	// Try RemoteConfiguration or other configuration providers
+	// All AgentConfiguration implementations should have GetConfiguration()
+	// Try the interface method that all configurations support
 	if configProvider, ok := a.strategy.agentConfig.(interface {
 		GetConfiguration() configuration.RemoteConfigurationData
 	}); ok {
+		a.logger.Debug().Msg("Configuration supports GetConfiguration interface")
 		config := configProvider.GetConfiguration()
+
+		licensePreview := ""
+		if len(config.Agent.License) > 20 {
+			licensePreview = config.Agent.License[:20] + "..."
+		} else if len(config.Agent.License) > 0 {
+			licensePreview = config.Agent.License
+		} else {
+			licensePreview = "(empty)"
+		}
+
+		a.logger.Debug().
+			Str("license_preview", licensePreview).
+			Bool("has_license", len(config.Agent.License) > 0).
+			Msg("Retrieved license from configuration")
+
 		return config.Agent.License
 	}
 
+	a.logger.Warn().
+		Str("config_type", fmt.Sprintf("%T", a.strategy.agentConfig)).
+		Msg("Could not retrieve license token - configuration doesn't support GetConfiguration()")
 	return ""
 }
 
