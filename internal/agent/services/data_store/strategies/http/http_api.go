@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -447,6 +449,7 @@ func (a *APIManager) HandleListEndpoints(w http.ResponseWriter, r *http.Request)
 		{"/api/{agentkey}/admin/logs", []string{"POST"}, "Set log levels", "admin"},
 		{"/api/{agentkey}/debug/logs", []string{"GET"}, "View current log levels (legacy)", "admin"},
 		{"/api/{agentkey}/debug/logs", []string{"POST"}, "Set log levels (legacy)", "admin"},
+		{"/api/{agentkey}/license/status", []string{"GET"}, "Get license status and tier information", "admin"},
 
 		// PRTG Format
 		{"/api/{agentkey}/prtg/metrics/{probe}", []string{"GET"}, "Get metrics in PRTG format for specific probe", "prtg"},
@@ -480,3 +483,150 @@ func (a *APIManager) HandleListEndpoints(w http.ResponseWriter, r *http.Request)
 }
 
 // Utility Methods for API Responses
+
+// License API Endpoints
+
+// HandleLicenseStatus returns the current license status
+func (a *APIManager) HandleLicenseStatus(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	// Prepare response structure
+	type LicenseStatusResponse struct {
+		Status           string   `json:"status"`         // "active", "expired", "grace_period", "none"
+		Tier             string   `json:"tier,omitempty"` // "free", "pro", "enterprise"
+		ExpiresAt        string   `json:"expires_at,omitempty"`
+		DaysRemaining    int      `json:"days_remaining,omitempty"`
+		AuthorizedProbes []string `json:"authorized_probes,omitempty"`
+		FreeTierProbes   []string `json:"free_tier_probes"`
+		Message          string   `json:"message,omitempty"`
+	}
+
+	response := LicenseStatusResponse{
+		FreeTierProbes: []string{"cpu", "memory", "logicaldisk", "network"},
+	}
+
+	// Get license token from configuration
+	licenseToken := a.getLicenseToken()
+
+	// Check if license is configured
+	if licenseToken == "" {
+		response.Status = "none"
+		response.Tier = "free"
+		response.Message = "No license configured - running in free tier mode"
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			a.logger.Error().Err(err).Msg("Failed to encode license status response")
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Validate license token
+	validator, err := a.getLicenseValidator()
+	if err != nil {
+		a.logger.Error().Err(err).Msg("Failed to initialize license validator")
+		response.Status = "error"
+		response.Message = "Failed to validate license"
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			a.logger.Error().Err(err).Msg("Failed to encode license status response")
+		}
+		return
+	}
+
+	license, err := validator.ValidateLicense(licenseToken)
+	if err != nil {
+		a.logger.Error().Err(err).Msg("Invalid license token")
+		response.Status = "invalid"
+		response.Tier = "free"
+		response.Message = "Invalid license token - running in free tier mode"
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			a.logger.Error().Err(err).Msg("Failed to encode license status response")
+		}
+		return
+	}
+
+	// Populate response with license info
+	response.Tier = string(license.Tier)
+	response.AuthorizedProbes = license.AuthorizedProbes
+	response.ExpiresAt = license.ExpiresAt.Format(time.RFC3339)
+
+	// Calculate days remaining
+	daysRemaining := int(time.Until(license.ExpiresAt).Hours() / 24)
+
+	if license.IsExpired {
+		if validator.IsInGracePeriod(license) {
+			response.Status = "grace_period"
+			gracePeriodEnd := license.ExpiresAt.Add(time.Duration(license.GracePeriodDays) * 24 * time.Hour)
+			graceDaysRemaining := int(time.Until(gracePeriodEnd).Hours() / 24)
+			response.DaysRemaining = graceDaysRemaining
+			response.Message = fmt.Sprintf("License expired but in grace period (%d days remaining)", graceDaysRemaining)
+		} else {
+			response.Status = "expired"
+			response.Message = "License expired and grace period ended - only free tier probes available"
+		}
+	} else {
+		response.Status = "active"
+		response.DaysRemaining = daysRemaining
+		response.Message = fmt.Sprintf("License active (%d days remaining)", daysRemaining)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode license status response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	a.logger.Debug().Str("status", response.Status).Str("tier", response.Tier).Msg("License status response sent")
+}
+
+// getLicenseToken retrieves the license token from configuration
+// Works with any AgentConfiguration that implements GetConfiguration()
+func (a *APIManager) getLicenseToken() string {
+	a.logger.Debug().
+		Str("config_type", fmt.Sprintf("%T", a.strategy.agentConfig)).
+		Msg("Getting license token from configuration")
+
+	// All AgentConfiguration implementations should have GetConfiguration()
+	// Try the interface method that all configurations support
+	if configProvider, ok := a.strategy.agentConfig.(interface {
+		GetConfiguration() configuration.RemoteConfigurationData
+	}); ok {
+		a.logger.Debug().Msg("Configuration supports GetConfiguration interface")
+		config := configProvider.GetConfiguration()
+
+		licensePreview := ""
+		if len(config.Agent.License) > 20 {
+			licensePreview = config.Agent.License[:20] + "..."
+		} else if len(config.Agent.License) > 0 {
+			licensePreview = config.Agent.License
+		} else {
+			licensePreview = "(empty)"
+		}
+
+		a.logger.Debug().
+			Str("license_preview", licensePreview).
+			Bool("has_license", len(config.Agent.License) > 0).
+			Msg("Retrieved license from configuration")
+
+		return config.Agent.License
+	}
+
+	a.logger.Warn().
+		Str("config_type", fmt.Sprintf("%T", a.strategy.agentConfig)).
+		Msg("Could not retrieve license token - configuration doesn't support GetConfiguration()")
+	return ""
+}
+
+// getLicenseValidator creates a license validator instance
+func (a *APIManager) getLicenseValidator() (license.Validator, error) {
+	return license.GetDefaultValidator(7) // 7-day grace period
+}

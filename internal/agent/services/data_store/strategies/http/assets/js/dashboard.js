@@ -39,7 +39,17 @@ class Dashboard {
         this.resourceGoroutines = this.base.$('#resource-goroutines');
         this.resourceCacheTtl = this.base.$('#resource-cache-ttl');
         this.resourceCpuUsage = this.base.$('#resource-cpu-usage');
-        
+
+        // License
+        this.licenseStatusIndicator = this.base.$('#license-status-indicator');
+        this.licenseStatus = this.base.$('#license-status');
+        this.licenseTier = this.base.$('#license-tier');
+        this.licenseExpires = this.base.$('#license-expires');
+        this.licenseExpiresRow = this.base.$('#license-expires-row');
+        this.licenseDays = this.base.$('#license-days');
+        this.licenseDaysRow = this.base.$('#license-days-row');
+        this.licenseProbesCount = this.base.$('#license-probes-count');
+
         // Probes
         this.probesCount = this.base.$('#probes-count');
         this.probesList = this.base.$('#probes-list');
@@ -49,20 +59,22 @@ class Dashboard {
     async loadDashboard() {
         try {
             this.showLoading();
-            
-            // Load system info and probes data
-            const [systemData, probesData] = await Promise.all([
+
+            // Load system info, probes data, and license status
+            const [systemData, probesData, licenseData] = await Promise.all([
                 this.base.fetchAPI('info/system'),
-                this.base.fetchAPI('info/probes')
+                this.base.fetchAPI('info/probes'),
+                this.base.fetchAPI('license/status')
             ]);
-            
+
             this.updateAgentStatus(systemData);
             this.updateHealthStatus(systemData.health);
             this.updateResources(systemData);
+            this.updateLicenseStatus(licenseData);
             this.updateProbesList(probesData);
-            
+
             this.showContent();
-            
+
         } catch (error) {
             console.error('Failed to load dashboard:', error);
             this.showError();
@@ -112,21 +124,86 @@ class Dashboard {
     updateResources(systemData) {
         const resources = systemData.resources || {};
         const cache = systemData.cache || {};
-        
+
         // Update resource metrics
         if (resources.memory_usage_mb !== undefined) {
             this.resourceMemory.textContent = `${resources.memory_usage_mb.toFixed(2)} MB`;
         }
-        
+
         if (resources.goroutines !== undefined) {
             this.resourceGoroutines.textContent = resources.goroutines.toString();
         }
-        
+
         if (resources.cpu_percent !== undefined) {
             this.resourceCpuUsage.textContent = `${resources.cpu_percent.toFixed(1)}%`;
         }
-        
+
         this.resourceCacheTtl.textContent = cache.ttl || 'unknown';
+    }
+
+    updateLicenseStatus(licenseData) {
+        if (!licenseData) {
+            this.licenseStatus.textContent = 'Error';
+            this.licenseTier.textContent = 'Unknown';
+            this.licenseProbesCount.textContent = '-';
+            this.licenseStatusIndicator.className = 'status-indicator status-warning';
+            return;
+        }
+
+        // Update status text and indicator
+        const status = licenseData.status || 'none';
+        const tier = licenseData.tier || 'free';
+
+        // Set status text with appropriate formatting
+        let statusText = status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
+        this.licenseStatus.textContent = statusText;
+
+        // Update tier
+        this.licenseTier.textContent = tier.charAt(0).toUpperCase() + tier.slice(1);
+
+        // Update status indicator color
+        this.licenseStatusIndicator.className = 'status-indicator';
+        if (status === 'active') {
+            this.licenseStatusIndicator.classList.add('status-running');
+        } else if (status === 'grace_period') {
+            this.licenseStatusIndicator.classList.add('status-warning');
+        } else if (status === 'none') {
+            this.licenseStatusIndicator.classList.add('status-info');
+        } else {
+            this.licenseStatusIndicator.classList.add('status-warning');
+        }
+
+        // Update expiration date and days remaining
+        if (licenseData.expires_at) {
+            const expiresDate = new Date(licenseData.expires_at);
+            this.licenseExpires.textContent = expiresDate.toLocaleDateString();
+            this.licenseExpiresRow.style.display = 'flex';
+        } else {
+            this.licenseExpiresRow.style.display = 'none';
+        }
+
+        if (licenseData.days_remaining !== undefined) {
+            this.licenseDays.textContent = licenseData.days_remaining.toString();
+            this.licenseDaysRow.style.display = 'flex';
+        } else {
+            this.licenseDaysRow.style.display = 'none';
+        }
+
+        // Update authorized probes count
+        const authorizedProbes = licenseData.authorized_probes || [];
+        const freeTierProbes = licenseData.free_tier_probes || [];
+
+        if (authorizedProbes.length > 0) {
+            // Check for wildcard
+            if (authorizedProbes.includes('*')) {
+                this.licenseProbesCount.textContent = 'All';
+            } else {
+                this.licenseProbesCount.textContent = authorizedProbes.length.toString();
+            }
+        } else {
+            // Free tier only
+            this.licenseProbesCount.textContent = `${freeTierProbes.length} (free)`;
+        }
     }
 
     updateProbesList(probesData) {
