@@ -33,20 +33,29 @@ func (u *unixCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, er
 		return nil, err
 	}
 
+	// Try to collect CPU times, but don't fail if not available (e.g., on macOS)
 	if err := u.collectCPUTimes(&dataPoints, timestamp, baseTags); err != nil {
-		return nil, err
+		u.logger.Warn().Err(err).Msg("Could not collect CPU times (may not be supported on this OS)")
 	}
 
+	// Collect CPU usage percentage (usually works on all platforms)
 	if err := u.collectCPUUsage(&dataPoints, timestamp, baseTags); err != nil {
-		return nil, err
+		u.logger.Warn().Err(err).Msg("Could not collect CPU usage percentage")
 	}
 
+	// Collect load average (Unix-specific, usually works)
 	if err := u.collectLoadAverage(&dataPoints, timestamp, baseTags); err != nil {
-		return nil, err
+		u.logger.Warn().Err(err).Msg("Could not collect load average")
 	}
 
+	// Collect per-core metrics
 	if err := u.collectPerCoreMetrics(&dataPoints, timestamp, baseTags); err != nil {
-		return nil, err
+		u.logger.Warn().Err(err).Msg("Could not collect per-core metrics")
+	}
+
+	// If we couldn't collect any metrics at all, return an error
+	if len(dataPoints) == 0 {
+		return nil, fmt.Errorf("failed to collect any CPU metrics")
 	}
 
 	return dataPoints, nil
