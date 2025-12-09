@@ -81,6 +81,7 @@ func (c *unixLogicalDiskCollector) shouldCollectMount(fsType string, mountPoint 
 		"xfs":  true,
 		"vfat": true,
 		"fuse": true,
+		"apfs": true, // macOS APFS filesystem
 	}
 
 	return standardFS[fsType]
