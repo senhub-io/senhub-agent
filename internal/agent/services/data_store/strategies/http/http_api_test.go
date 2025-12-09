@@ -240,4 +240,3 @@ func TestAPIManager_GetLicenseToken(t *testing.T) {
 		})
 	}
 }
-
