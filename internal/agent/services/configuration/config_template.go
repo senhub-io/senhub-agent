@@ -1,5 +1,48 @@
 package configuration
 
+// LicenseDocumentationTemplate contains license configuration documentation.
+// This template is shared between offline and online configuration generation.
+const LicenseDocumentationTemplate = `
+  # license: ""  # Optional: License token for paid probes (leave empty for free tier)
+  #
+  # ===== LICENSE TIERS =====
+  # FREE TIER (no license required):
+  #   - cpu, memory, logicaldisk, network
+  #   - http/https endpoints (prtg, nagios, web)
+  #   - offline mode
+  #
+  # PAID PROBES (license required):
+  #   - redfish, citrix, otel, syslog, event
+  #   - ping_webapp, load_webapp, ping_gateway, wifi_signal_strength
+  #
+  # ===== LICENSE FORMAT =====
+  # License uses JSON format with the following fields:
+  #
+  # Pro License (specific probes):
+  # license: |
+  #   {
+  #     "tier": "pro",
+  #     "authorized_probes": ["redfish", "citrix"],
+  #     "expires_at": "2025-12-31T23:59:59Z",
+  #     "issued_at": "2025-01-01T00:00:00Z",
+  #     "subject": "customer-id"
+  #   }
+  #
+  # Enterprise License (all probes):
+  # license: |
+  #   {
+  #     "tier": "enterprise",
+  #     "authorized_probes": ["*"],
+  #     "expires_at": "2026-12-31T23:59:59Z",
+  #     "issued_at": "2025-01-01T00:00:00Z",
+  #     "subject": "customer-id"
+  #   }
+  #
+  # ===== GRACE PERIOD =====
+  # Expired licenses have a 7-day grace period before being disabled.
+  # During grace period, all authorized probes remain functional.
+`
+
 // ProbeExamplesTemplate contains commented configuration examples for all available probes.
 // This template is shared between offline (LocalConfiguration) and online (RemoteConfiguration)
 // modes to ensure consistency and avoid duplication.

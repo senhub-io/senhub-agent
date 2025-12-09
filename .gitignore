@@ -69,6 +69,20 @@ go.work.sum
 **/certs/
 /certs/
 
+# License system - Exclude test/production keys and licenses
+license-private-key.pem
+license-public-key.pem
+senhub-license-private-key.pem
+senhub-license-public-key.pem
+example-license-*.jwt
+license-*.jwt
+
+# Production keys and license testing (CRITICAL - NEVER COMMIT)
+.keys/
+test_configs/
+token_*.txt
+config_test_license*.yaml
+
 # Coverage reports
 coverage.html
 coverage.out
