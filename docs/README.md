@@ -107,6 +107,7 @@ Historical documentation and development notes (for reference only)
 - [Main README](../README.markdown) - Project overview and basic setup
 - [Documentation Index](./DOCUMENTATION-INDEX.md) - Complete documentation index
 - [CLAUDE.md](../CLAUDE.md) - Development guide and architecture
+- [License System](./LICENSE-SYSTEM.md) - JWT-based license validation and management
 
 ## 🚀 Quick Navigation
 
@@ -122,6 +123,7 @@ Historical documentation and development notes (for reference only)
 | Monitor hardware (servers) | [Redfish Documentation](./probes/redfish/) |
 | Integrate OpenTelemetry | [OTEL Documentation](./probes/otel/) |
 | Setup HTTPS | [HTTPS Configuration](./admin-guide/HTTPS-CONFIGURATION.md) |
+| Manage licenses | [License System](./LICENSE-SYSTEM.md) |
 | Fix offline issues | [Offline Troubleshooting](./troubleshooting/TROUBLESHOOTING-OFFLINE.md) |
 | Validate configurations | [Universal Configuration API](./admin-guide/UNIVERSAL-CONFIGURATION.md) |
 | Contribute to development | [Developer Guide](./developer-guide/) |
