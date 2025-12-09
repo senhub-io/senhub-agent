@@ -106,6 +106,33 @@ curl -X POST http://localhost:8080/api/{key}/debug/logs \
   -d '{"module_levels": [{"module": "probe.redfish", "level": "debug"}]}'
 ```
 
+### License System
+```yaml
+# Configuration (agent.license field)
+agent:
+  authentication_key: "agent-uuid"
+  license: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."  # JWT token
+
+# CLI: Check license status
+curl http://localhost:8080/api/{key}/license/status
+
+# Response includes:
+# - tier: "Free" | "Pro" | "Enterprise"
+# - expires_at: ISO 8601 timestamp
+# - authorized_probes: ["cpu", "memory", ...]
+# - grace_period: boolean (7 days after expiration)
+```
+
+**License Tiers:**
+- **Free**: cpu, memory, logicaldisk, network
+- **Pro**: redfish, citrix, ping, snmp, syslog, event
+- **Enterprise**: all probes (wildcard)
+
+**Key Files:**
+- `/internal/agent/services/license/` - License validation
+- `/scripts/license-generator/` - Production license tool (Sensor Factory)
+- `/docs/LICENSE-SYSTEM.md` - Complete documentation
+
 ### Design Patterns Checklist
 Before committing:
 - [ ] Module-specific logger used
@@ -204,4 +231,4 @@ All commits should appear as authored solely by the repository owner.
 
 **For complete development documentation, start with [Developer Guide](./docs/developer-guide/README.md).**
 
-Last updated: 2025-11-06
+Last updated: 2025-12-09
