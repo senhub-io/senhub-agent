@@ -98,29 +98,7 @@
         .category-discovery { background-color: #e0f7f7; color: #0891b2; }
         .category-metrics { background-color: #f3e8ff; color: #7c3aed; }
         .category-admin { background-color: #fff3e0; color: #ea580c; }
-        
-        .quick-links {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        
-        .quick-link {
-            background: var(--primary-color);
-            color: white;
-            padding: 1rem;
-            border-radius: var(--radius-md);
-            text-decoration: none;
-            text-align: center;
-            transition: background-color 0.2s ease;
-        }
-        
-        .quick-link:hover {
-            background-color: #00acc1;
-            color: white;
-        }
-        
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -184,22 +162,6 @@
         </div>
         
         <div id="content" style="display: none;">
-            <!-- Quick Access Links -->
-            <div class="quick-links">
-                <a href="/web/{{.AgentKey}}/explorer" class="quick-link">
-                    🔍 API Explorer
-                </a>
-                <a href="/health" class="quick-link" target="_blank">
-                    💊 Health Check
-                </a>
-                <a href="/api/{{.AgentKey}}/info/probes" class="quick-link" target="_blank">
-                    🔍 List Probes
-                </a>
-                <a href="/api/{{.AgentKey}}/debug/cache" class="quick-link" target="_blank">
-                    🗄️ Debug Cache
-                </a>
-            </div>
-            
             <!-- API Statistics -->
             <div class="stats-grid">
                 <div class="stat-card">
