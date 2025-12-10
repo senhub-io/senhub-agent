@@ -179,3 +179,20 @@ jobs:
             dist/releases/releases.json
           generate_release_notes: false
           prerelease: true
+
+      - name: Update 'latest' tag to point to this beta release
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+
+          # Delete the existing 'latest' tag locally and remotely
+          git tag -d latest 2>/dev/null || true
+          git push origin :refs/tags/latest 2>/dev/null || true
+
+          # Create new 'latest' tag pointing to current commit
+          git tag latest
+
+          # Push the new 'latest' tag (force to overwrite if it exists)
+          git push origin latest --force
+
+          echo "✓ Tag 'latest' updated to point to ${{ env.BETA_TAG }} (commit: $(git rev-parse HEAD))"
