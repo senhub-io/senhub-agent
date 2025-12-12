@@ -45,7 +45,16 @@
                         <option value="">Loading probes...</option>
                     </select>
                 </div>
-                
+
+                <!-- Show Tags Option -->
+                <div class="form-group" id="show-tags-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="show-tags-checkbox" checked>
+                        <span>Show tags in channel names</span>
+                        <span class="info-icon" title="When unchecked, discriminant tags are hidden from channel/service names (e.g., 'State' instead of 'Interface LO/1 - State'). Currently available for Citrix and Netscaler probes only.">ⓘ</span>
+                    </label>
+                </div>
+
                 <div class="form-group" id="tag-filters-group" style="display: none;">
                     <label class="form-label">Tag Filters</label>
                     <div id="tag-filters">
@@ -88,6 +97,9 @@
                     <button id="clear-response-btn" class="btn btn-secondary">
                         🗑️ Clear
                     </button>
+                    <a href="/api/{{.AgentKey}}/lookups/prtg" class="btn btn-secondary" download="senhub-prtg-lookups.zip" title="Download PRTG lookup definitions for interpreting numeric metric values">
+                        📥 PRTG Lookups
+                    </a>
                 </div>
                 <div id="response-area" class="result-area centered adaptive-height">
                     <span class="placeholder-text">Click "Test Request" to see the response...</span>
