@@ -130,6 +130,7 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 			return
 		}
 		// HTTP failed, fall back to direct method
+		// Note: This happens when HTTP strategy is not enabled or agent is not listening on port 8080
 	}
 
 	// Fallback: Get system status directly using StatusService (no HTTP dependency)
@@ -180,9 +181,10 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 		version = "development"
 	}
 
-	// Format commit hash for display (take first 7 chars if longer)
-	if len(commit) > 7 {
-		commit = commit[:7]
+	// Format commit hash for display (take first 8 chars if longer than 8 and looks like a git hash)
+	// Avoid truncating non-hash values like "latest-dev"
+	if len(commit) > 8 && isGitHash(commit) {
+		commit = commit[:8]
 	}
 
 	// Create status service
@@ -243,6 +245,19 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 	}
 
 	return systemStatus, nil
+}
+
+// isGitHash checks if a string looks like a git commit hash (hex characters only)
+func isGitHash(s string) bool {
+	if len(s) < 7 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 // validateConfigPath validates that the config path is safe to read
