@@ -199,3 +199,39 @@
     border-radius: 2px;
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 }
+
+/* Checkbox labels */
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--gray-700);
+    cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+    cursor: pointer;
+}
+
+/* Info icon with tooltip */
+.info-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    background-color: var(--primary-color);
+    color: white;
+    font-size: 0.75rem;
+    font-weight: bold;
+    cursor: help;
+    margin-left: 0.25rem;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.info-icon:hover {
+    background-color: var(--primary-dark);
+    transform: scale(1.1);
+}
