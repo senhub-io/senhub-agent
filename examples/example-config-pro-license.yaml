@@ -12,7 +12,7 @@ agent:
   license: |
     {
       "tier": "pro",
-      "authorized_probes": ["redfish", "citrix", "ping_webapp"],
+      "authorized_probes": ["redfish", "citrix", "netscaler", "ping_webapp"],
       "expires_at": "2025-12-31T23:59:59Z",
       "issued_at": "2025-01-01T00:00:00Z",
       "subject": "customer-acme-corp"
@@ -84,6 +84,16 @@ probes:
         password: "password"
       tls:
         verify_ssl: true
+
+  - name: netscaler-adc
+    type: netscaler
+    params:
+      base_url: "https://netscaler.company.com"
+      username: "nsroot"
+      password: "password123"
+      insecure_skip_verify: false
+      timeout: 30
+      interval: 60
 
   - name: website-monitoring
     type: ping_webapp
