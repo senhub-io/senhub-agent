@@ -12,7 +12,7 @@ agent:
   license: |
     {
       "tier": "pro",
-      "authorized_probes": ["redfish", "citrix"],
+      "authorized_probes": ["redfish", "citrix", "netscaler"],
       "expires_at": "2025-11-04T10:00:00Z",
       "issued_at": "2024-11-04T00:00:00Z",
       "subject": "customer-grace-test"
@@ -70,3 +70,11 @@ probes:
       auth:
         username: "DOMAIN\\admin"
         password: "password"
+
+  - name: netscaler-adc
+    type: netscaler
+    params:
+      base_url: "https://netscaler.company.com"
+      username: "nsroot"
+      password: "password123"
+      interval: 60
