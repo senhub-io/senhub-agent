@@ -48,7 +48,7 @@ class Dashboard {
         this.licenseExpiresRow = this.base.$('#license-expires-row');
         this.licenseDays = this.base.$('#license-days');
         this.licenseDaysRow = this.base.$('#license-days-row');
-        this.licenseProbesCount = this.base.$('#license-probes-count');
+        this.licenseProbesList = this.base.$('#license-probes-list');
 
         // Probes
         this.probesCount = this.base.$('#probes-count');
@@ -145,7 +145,7 @@ class Dashboard {
         if (!licenseData) {
             this.licenseStatus.textContent = 'Error';
             this.licenseTier.textContent = 'Unknown';
-            this.licenseProbesCount.textContent = '-';
+            this.licenseProbesList.innerHTML = '<span style="color: var(--gray-500);">-</span>';
             this.licenseStatusIndicator.className = 'status-indicator status-warning';
             return;
         }
@@ -189,20 +189,43 @@ class Dashboard {
             this.licenseDaysRow.style.display = 'none';
         }
 
-        // Update authorized probes count
+        // Update authorized probes list
+        this.updateProbesBadges(licenseData);
+    }
+
+    updateProbesBadges(licenseData) {
         const authorizedProbes = licenseData.authorized_probes || [];
         const freeTierProbes = licenseData.free_tier_probes || [];
 
+        // Clear existing badges
+        this.licenseProbesList.innerHTML = '';
+
         if (authorizedProbes.length > 0) {
-            // Check for wildcard
+            // Check for wildcard (Enterprise tier)
             if (authorizedProbes.includes('*')) {
-                this.licenseProbesCount.textContent = 'All';
+                const badge = document.createElement('span');
+                badge.className = 'probe-badge wildcard';
+                badge.textContent = '⭐ All Probes (Enterprise)';
+                this.licenseProbesList.appendChild(badge);
             } else {
-                this.licenseProbesCount.textContent = authorizedProbes.length.toString();
+                // Pro tier - show specific probes
+                const sortedProbes = [...authorizedProbes].sort();
+                sortedProbes.forEach(probe => {
+                    const badge = document.createElement('span');
+                    badge.className = 'probe-badge';
+                    badge.textContent = probe;
+                    this.licenseProbesList.appendChild(badge);
+                });
             }
         } else {
-            // Free tier only
-            this.licenseProbesCount.textContent = `${freeTierProbes.length} (free)`;
+            // Free tier only - show free tier probes
+            const sortedFreeProbes = [...freeTierProbes].sort();
+            sortedFreeProbes.forEach(probe => {
+                const badge = document.createElement('span');
+                badge.className = 'probe-badge free';
+                badge.textContent = probe;
+                this.licenseProbesList.appendChild(badge);
+            });
         }
     }
 
