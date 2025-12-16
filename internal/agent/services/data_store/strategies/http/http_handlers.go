@@ -57,6 +57,11 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/config/preview", h.HandleUniversalConfigPreview).Methods("POST")
 	router.HandleFunc("/api/{agentkey}/config/test", h.HandleUniversalConfigTest).Methods("POST")
 
+	// Lookups endpoints (with agentkey authentication)
+	if h.strategy.lookupsManager != nil {
+		h.strategy.lookupsManager.RegisterRoutes(router)
+	}
+
 	// Configure endpoints based on enabled monitoring tools
 	if h.strategy.configManager.IsEndpointEnabled("prtg") {
 		// PRTG endpoints
