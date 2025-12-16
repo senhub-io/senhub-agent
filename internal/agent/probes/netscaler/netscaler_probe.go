@@ -34,6 +34,10 @@ type netscalerProbe struct {
 	// Configuration cache for enriched tags
 	cache      *configCache
 	customTags []tags.Tag // User-defined tags from configuration
+
+	// System identity (fetched at startup)
+	hostname string // Netscaler hostname (e.g., "SRV0006")
+	nodeID   int    // HA node ID (0 or 1, -1 if not HA)
 }
 
 // NewNetscalerProbe creates a new instance of the Netscaler probe
@@ -99,6 +103,7 @@ func NewNetscalerProbe(config map[string]interface{}, baseLogger *logger.Logger)
 		insecureSkipVerify: insecureSkipVerify,
 		timeout:            timeout,
 		customTags:         customTags,
+		nodeID:             -1, // Default: not HA or unknown
 	}
 
 	// Initialize configuration cache (refresh every 5 minutes)
@@ -181,6 +186,16 @@ func (p *netscalerProbe) OnStart(quitChannel chan struct{}) error {
 	}
 
 	p.logger.Info().Msg("Successfully authenticated with Netscaler")
+
+	// Fetch system identity (hostname and HA node ID)
+	if err := p.fetchSystemIdentity(); err != nil {
+		p.logger.Warn().Err(err).Msg("Failed to fetch system identity, will use defaults")
+	} else {
+		p.logger.Info().
+			Str("hostname", p.hostname).
+			Int("node_id", p.nodeID).
+			Msg("Fetched system identity")
+	}
 
 	// Initial cache refresh
 	p.logger.Info().Msg("Performing initial config cache refresh")
@@ -401,4 +416,103 @@ func (p *netscalerProbe) Collect() ([]datapoint.DataPoint, error) {
 	p.logger.Debug().Int("datapoint_count", len(datapoints)).Msg("Collected Netscaler metrics")
 
 	return datapoints, nil
+}
+
+// fetchSystemIdentity retrieves the system hostname and HA node ID
+// This is called once at probe startup to enrich HA metrics with node identification
+func (p *netscalerProbe) fetchSystemIdentity() error {
+	p.logger.Debug().Msg("Fetching system identity from /config/nshostname")
+
+	// Fetch nshostname configuration
+	// URL: /nitro/v1/config/nshostname
+	// Returns: { "nshostname": [ { "hostname": "SRV0006", "ownernode": 0 }] }
+	resources, err := p.client.FindAllResources("nshostname")
+	if err != nil {
+		p.logger.Warn().Err(err).Msg("Failed to fetch nshostname, will try hanode instead")
+		// Try alternative approach: fetch hanode config to determine our node ID
+		return p.fetchSystemIdentityFromHANode()
+	}
+
+	if len(resources) == 0 {
+		p.logger.Warn().Msg("No nshostname data returned, will try hanode instead")
+		return p.fetchSystemIdentityFromHANode()
+	}
+
+	// Take the first entry (should only be one)
+	hostnameData := resources[0]
+
+	// DEBUG: Log the entire response to see what fields are present
+	p.logger.Debug().Interface("nshostname_response", hostnameData).Msg("Received nshostname data")
+
+	// Extract hostname (string)
+	if hostname, ok := hostnameData["hostname"].(string); ok && hostname != "" {
+		p.hostname = hostname
+		p.logger.Debug().Str("hostname", hostname).Msg("Extracted hostname")
+	} else {
+		p.logger.Warn().Interface("hostnameData", hostnameData).Msg("Hostname not found or invalid type in nshostname response")
+	}
+
+	// Extract ownernode (HA node ID: 0 or 1)
+	// This field only exists in HA configurations
+	if ownernode, ok := hostnameData["ownernode"].(float64); ok {
+		p.nodeID = int(ownernode)
+		p.logger.Debug().Int("node_id", p.nodeID).Msg("Extracted node ID from ownernode field")
+	} else {
+		// Check if field exists but is different type
+		if ownernodeRaw, exists := hostnameData["ownernode"]; exists {
+			p.logger.Warn().
+				Interface("ownernode_value", ownernodeRaw).
+				Str("ownernode_type", fmt.Sprintf("%T", ownernodeRaw)).
+				Msg("ownernode field exists but is not float64")
+		} else {
+			p.logger.Debug().Msg("ownernode field not present in nshostname response (not HA or standalone)")
+		}
+		// Not an HA configuration or field not present
+		p.nodeID = -1
+	}
+
+	p.logger.Info().
+		Str("hostname", p.hostname).
+		Int("node_id", p.nodeID).
+		Msg("System identity fetched from nshostname")
+
+	return nil
+}
+
+// fetchSystemIdentityFromHANode attempts to get system identity from hanode config
+// This is a fallback when nshostname doesn't provide the information
+func (p *netscalerProbe) fetchSystemIdentityFromHANode() error {
+	p.logger.Debug().Msg("Attempting to fetch system identity from /config/hanode")
+
+	resources, err := p.client.FindAllResources("hanode")
+	if err != nil {
+		p.logger.Warn().Err(err).Msg("Failed to fetch hanode config, assuming standalone node")
+		p.nodeID = -1
+		return nil // Not a fatal error - just means not HA
+	}
+
+	if len(resources) == 0 {
+		p.logger.Debug().Msg("No hanode data returned, assuming standalone node")
+		p.nodeID = -1
+		return nil
+	}
+
+	p.logger.Debug().
+		Int("hanode_count", len(resources)).
+		Interface("hanode_data", resources).
+		Msg("Received hanode configuration")
+
+	// In HA setup, we need to identify which node we're connected to
+	// The hanode with state="Primary" or "Secondary" and routemonitor="ENABLED" might be local
+	// But safer approach: check all nodes and see if we can match by some criteria
+	// For now, if we have hanode data, assume node 0 (will be corrected by actual HA stats)
+	if len(resources) > 0 {
+		// Try to find our node ID from the first entry
+		if id, ok := resources[0]["id"].(float64); ok {
+			p.nodeID = int(id)
+			p.logger.Debug().Int("node_id", p.nodeID).Msg("Using first hanode ID as fallback")
+		}
+	}
+
+	return nil
 }
