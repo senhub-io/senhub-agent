@@ -45,56 +45,77 @@ func newConfigCache(refreshInterval time.Duration, logger *logger.ModuleLogger) 
 }
 
 // refresh updates the cache with latest configurations from Netscaler
+// This function minimizes lock duration by fetching data WITHOUT holding the lock,
+// then performing a quick atomic swap with the lock held.
 func (c *configCache) refresh(client *service.NitroClient) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	start := time.Now()
 	c.logger.Debug().Msg("Starting config cache refresh")
 
+	// Step 1: Fetch all data WITHOUT holding the lock (I/O operations)
+	// This prevents blocking readers during potentially slow network calls
+	newVServers := make(map[string]map[string]interface{})
+	newServices := make(map[string]map[string]interface{})
+	newServiceGroups := make(map[string]map[string]interface{})
+	newSSLCertKeys := make(map[string]map[string]interface{})
+	newVServerToServiceGroups := make(map[string][]string)
+	newServiceGroupToVServers := make(map[string][]string)
+	newServiceGroupToServices := make(map[string][]string)
+
 	// Fetch lbvserver configurations
-	if err := c.fetchVServers(client); err != nil {
+	if err := c.fetchVServersInto(client, newVServers); err != nil {
 		c.logger.Warn().Err(err).Msg("Failed to fetch vServer configs")
 		// Continue with other resources even if one fails
 	}
 
 	// Fetch service configurations
-	if err := c.fetchServices(client); err != nil {
+	if err := c.fetchServicesInto(client, newServices); err != nil {
 		c.logger.Warn().Err(err).Msg("Failed to fetch service configs")
 	}
 
 	// Fetch servicegroup configurations
-	if err := c.fetchServiceGroups(client); err != nil {
+	if err := c.fetchServiceGroupsInto(client, newServiceGroups); err != nil {
 		c.logger.Warn().Err(err).Msg("Failed to fetch servicegroup configs")
 	}
 
 	// Fetch SSL certificate configurations
-	if err := c.fetchSSLCertKeys(client); err != nil {
+	if err := c.fetchSSLCertKeysInto(client, newSSLCertKeys); err != nil {
 		c.logger.Warn().Err(err).Msg("Failed to fetch SSL certkey configs")
 	}
 
 	// Fetch bindings (relationships)
-	if err := c.fetchBindings(client); err != nil {
+	if err := c.fetchBindingsInto(client, newVServerToServiceGroups, newServiceGroupToVServers, newServiceGroupToServices); err != nil {
 		c.logger.Warn().Err(err).Msg("Failed to fetch bindings")
 	}
 
+	// Step 2: Atomically swap cached data WITH lock held (fast in-memory operation)
+	// This minimizes lock contention - only the pointer swap is locked
+	c.mu.Lock()
+	c.vservers = newVServers
+	c.services = newServices
+	c.servicegroups = newServiceGroups
+	c.sslcertkeys = newSSLCertKeys
+	c.vserverToServiceGroups = newVServerToServiceGroups
+	c.servicegroupToVServers = newServiceGroupToVServers
+	c.servicegroupToServices = newServiceGroupToServices
 	c.lastRefresh = time.Now()
+	c.mu.Unlock()
+
 	elapsed := time.Since(start)
 
 	c.logger.Info().
-		Int("vservers", len(c.vservers)).
-		Int("services", len(c.services)).
-		Int("servicegroups", len(c.servicegroups)).
-		Int("sslcertkeys", len(c.sslcertkeys)).
-		Int("bindings", len(c.vserverToServiceGroups)).
+		Int("vservers", len(newVServers)).
+		Int("services", len(newServices)).
+		Int("servicegroups", len(newServiceGroups)).
+		Int("sslcertkeys", len(newSSLCertKeys)).
+		Int("bindings", len(newVServerToServiceGroups)).
 		Dur("elapsed_ms", elapsed).
 		Msg("Config cache refreshed")
 
 	return nil
 }
 
-// fetchVServers retrieves all lbvserver configurations
-func (c *configCache) fetchVServers(client *service.NitroClient) error {
+// fetchVServersInto retrieves all lbvserver configurations into the provided map
+func (c *configCache) fetchVServersInto(client *service.NitroClient, dest map[string]map[string]interface{}) error {
 	resources, err := client.FindAllResources("lbvserver")
 	if err != nil {
 		return err
@@ -102,15 +123,15 @@ func (c *configCache) fetchVServers(client *service.NitroClient) error {
 
 	for _, resource := range resources {
 		if name := getString(resource, "name"); name != "" {
-			c.vservers[name] = resource
+			dest[name] = resource
 		}
 	}
 
 	return nil
 }
 
-// fetchServices retrieves all service configurations
-func (c *configCache) fetchServices(client *service.NitroClient) error {
+// fetchServicesInto retrieves all service configurations into the provided map
+func (c *configCache) fetchServicesInto(client *service.NitroClient, dest map[string]map[string]interface{}) error {
 	resources, err := client.FindAllResources("service")
 	if err != nil {
 		return err
@@ -118,15 +139,15 @@ func (c *configCache) fetchServices(client *service.NitroClient) error {
 
 	for _, resource := range resources {
 		if name := getString(resource, "name"); name != "" {
-			c.services[name] = resource
+			dest[name] = resource
 		}
 	}
 
 	return nil
 }
 
-// fetchServiceGroups retrieves all servicegroup configurations
-func (c *configCache) fetchServiceGroups(client *service.NitroClient) error {
+// fetchServiceGroupsInto retrieves all servicegroup configurations into the provided map
+func (c *configCache) fetchServiceGroupsInto(client *service.NitroClient, dest map[string]map[string]interface{}) error {
 	resources, err := client.FindAllResources("servicegroup")
 	if err != nil {
 		return err
@@ -134,15 +155,15 @@ func (c *configCache) fetchServiceGroups(client *service.NitroClient) error {
 
 	for _, resource := range resources {
 		if name := getString(resource, "servicegroupname"); name != "" {
-			c.servicegroups[name] = resource
+			dest[name] = resource
 		}
 	}
 
 	return nil
 }
 
-// fetchSSLCertKeys retrieves all SSL certificate configurations
-func (c *configCache) fetchSSLCertKeys(client *service.NitroClient) error {
+// fetchSSLCertKeysInto retrieves all SSL certificate configurations into the provided map
+func (c *configCache) fetchSSLCertKeysInto(client *service.NitroClient, dest map[string]map[string]interface{}) error {
 	resources, err := client.FindAllResources("sslcertkey")
 	if err != nil {
 		return err
@@ -150,20 +171,20 @@ func (c *configCache) fetchSSLCertKeys(client *service.NitroClient) error {
 
 	for _, resource := range resources {
 		if name := getString(resource, "certkey"); name != "" {
-			c.sslcertkeys[name] = resource
+			dest[name] = resource
 		}
 	}
 
 	return nil
 }
 
-// fetchBindings retrieves binding relationships between resources
-func (c *configCache) fetchBindings(client *service.NitroClient) error {
-	// Clear existing bindings
-	c.vserverToServiceGroups = make(map[string][]string)
-	c.servicegroupToVServers = make(map[string][]string)
-	c.servicegroupToServices = make(map[string][]string)
-
+// fetchBindingsInto retrieves binding relationships between resources into the provided maps
+func (c *configCache) fetchBindingsInto(
+	client *service.NitroClient,
+	vserverToSG map[string][]string,
+	sgToVServer map[string][]string,
+	sgToService map[string][]string,
+) error {
 	// Fetch vServer → ServiceGroup bindings (one call for all bindings)
 	vserverBindings, err := client.FindAllResources("lbvserver_servicegroup_binding")
 	if err != nil {
@@ -174,8 +195,8 @@ func (c *configCache) fetchBindings(client *service.NitroClient) error {
 			servicegroup := getString(binding, "servicegroupname")
 
 			if vserver != "" && servicegroup != "" {
-				c.vserverToServiceGroups[vserver] = append(c.vserverToServiceGroups[vserver], servicegroup)
-				c.servicegroupToVServers[servicegroup] = append(c.servicegroupToVServers[servicegroup], vserver)
+				vserverToSG[vserver] = append(vserverToSG[vserver], servicegroup)
+				sgToVServer[servicegroup] = append(sgToVServer[servicegroup], vserver)
 			}
 		}
 	}
@@ -190,7 +211,7 @@ func (c *configCache) fetchBindings(client *service.NitroClient) error {
 			service := getString(binding, "servername")
 
 			if servicegroup != "" && service != "" {
-				c.servicegroupToServices[servicegroup] = append(c.servicegroupToServices[servicegroup], service)
+				sgToService[servicegroup] = append(sgToService[servicegroup], service)
 			}
 		}
 	}
