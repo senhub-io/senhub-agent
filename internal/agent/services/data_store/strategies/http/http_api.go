@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -28,6 +29,27 @@ func NewAPIManager(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger) *API
 	}
 }
 
+// formatProbeDisplayName formats probe names for display in the UI
+// Capitalizes the first letter (e.g., "netscaler" -> "Netscaler")
+func formatProbeDisplayName(probeName string) string {
+	if probeName == "" {
+		return probeName
+	}
+
+	// Special cases for acronyms or specific probe names
+	switch strings.ToLower(probeName) {
+	case "cpu":
+		return "CPU"
+	case "otel":
+		return "OTEL"
+	case "prtg":
+		return "PRTG"
+	default:
+		// Capitalize first letter, keep rest as-is
+		return strings.ToUpper(string(probeName[0])) + probeName[1:]
+	}
+}
+
 // SenHub API Endpoints
 
 // PRTG API Endpoints
@@ -42,16 +64,20 @@ func (a *APIManager) HandlePRTGMetricsGET(w http.ResponseWriter, r *http.Request
 	vars := mux.Vars(r)
 	probeName := vars["probe"]
 
+	// Normalize probe name to lowercase for cache lookup
+	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
+	probeNameLower := strings.ToLower(probeName)
+
 	// Parse query parameters
 	filter := a.strategy.metricsProcessor.ParseMetricFilter(r)
 
 	a.logger.Debug().
-		Str("probe", probeName).
+		Str("probe", probeNameLower).
 		Interface("filter", filter).
 		Msg("PRTG metrics GET request received")
 
 	// Get metrics from cache for the specified probe with filters
-	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbeWithFilter(probeName, filter)
+	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbeWithFilter(probeNameLower, filter)
 
 	// Build PRTG response
 	response := PRTGResponse{
@@ -142,7 +168,7 @@ func (a *APIManager) HandleListProbes(w http.ResponseWriter, r *http.Request) {
 		}
 
 		probes = append(probes, ProbeInfo{
-			Name:         stats.Name,
+			Name:         formatProbeDisplayName(stats.Name), // Format name for UI display
 			MetricsCount: stats.MetricsCount,
 			LastUpdate:   lastUpdate,
 		})
@@ -183,8 +209,9 @@ func (a *APIManager) HandleInfoProbes(w http.ResponseWriter, r *http.Request) {
 
 	for probe, tsKeys := range a.strategy.cache.probeIndex {
 		count := len(tsKeys)
-		probes = append(probes, probe)
-		probeMetrics[probe] = count
+		displayName := formatProbeDisplayName(probe) // Format name for UI display
+		probes = append(probes, displayName)
+		probeMetrics[displayName] = count
 		totalMetrics += count
 	}
 
@@ -293,11 +320,15 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	probeName := vars["probe"]
 
+	// Normalize probe name to lowercase for cache lookup
+	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
+	probeNameLower := strings.ToLower(probeName)
+
 	a.strategy.cache.mu.RLock()
 	defer a.strategy.cache.mu.RUnlock()
 
 	// Get time series keys for the probe
-	tsKeys, exists := a.strategy.cache.probeIndex[probeName]
+	tsKeys, exists := a.strategy.cache.probeIndex[probeNameLower]
 	if !exists {
 		http.Error(w, "Probe not found", http.StatusNotFound)
 		return
@@ -343,7 +374,7 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := TagInfoResponse{
-		Probe:        probeName,
+		Probe:        probeNameLower, // Use normalized name for consistency
 		Tags:         tags,
 		Metrics:      metricList,
 		TotalMetrics: len(metricList),
@@ -366,9 +397,13 @@ func (a *APIManager) HandleInfoSchema(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	probeName := vars["probe"]
 
+	// Normalize probe name to lowercase for cache lookup
+	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
+	probeNameLower := strings.ToLower(probeName)
+
 	// Reuse tag discovery logic
 	a.strategy.cache.mu.RLock()
-	tsKeys, exists := a.strategy.cache.probeIndex[probeName]
+	tsKeys, exists := a.strategy.cache.probeIndex[probeNameLower]
 	if !exists {
 		a.strategy.cache.mu.RUnlock()
 		http.Error(w, "Probe not found", http.StatusNotFound)
@@ -411,10 +446,10 @@ func (a *APIManager) HandleInfoSchema(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate examples
-	examples := a.strategy.metricsProcessor.GenerateExamples(probeName, tags, metricList)
+	examples := a.strategy.metricsProcessor.GenerateExamples(probeNameLower, tags, metricList)
 
 	response := SchemaInfoResponse{
-		Probe:        probeName,
+		Probe:        probeNameLower, // Use normalized name for consistency
 		Tags:         tags,
 		Metrics:      metricList,
 		TotalMetrics: len(metricList),
