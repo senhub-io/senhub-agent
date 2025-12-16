@@ -22,6 +22,19 @@ The full development documentation has been moved to `/docs/developer-guide/` fo
 - **ALWAYS use `make test`** instead of running `go test` directly
 - **Feature branches first** - merge to dev only when sufficiently tested
 
+### ⚠️ Temporary Dependencies Forks
+
+**IMPORTANT**: We maintain temporary forks of upstream dependencies with critical bug fixes:
+
+- **citrix/adc-nitro-go** → `senhub-io/adc-nitro-go` (singleton stats bug)
+  - **Why**: Fixes panic on system/ns/ssl metrics (issue #35, 3+ years old)
+  - **Fix**: FindAllStats() + FindStat() for singleton resources
+  - **Doc**: `docs/.internal/TEMPORARY-FORK-citrix-adc-nitro-go.md`
+  - **Review**: Quarterly (next: 2025-03-11)
+  - **Revert when**: Upstream merges PR #36
+
+See `docs/.internal/TEMPORARY-FORK-*.md` for all active forks and revert procedures.
+
 ### Version Management
 - **Production version**: Without `-beta` suffix (e.g., `0.1.64`)
 - **Development version**: With `-beta` suffix (e.g., `0.1.70-beta`)
