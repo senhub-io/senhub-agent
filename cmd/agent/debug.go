@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/kardianos/service"
-	"senhub-agent.go/internal/agent"
 	"senhub-agent.go/internal/agent/cliArgs"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
@@ -189,16 +188,25 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 	// Create status service
 	statusService := status.NewStatusService(logger, version, commit)
 
-	// Determine agent mode using the same logic as the agent initialization
+	// Determine agent mode - use safe detection that doesn't crash
 	agentMode := "online" // Default assumption for status checks
-	if args != nil && args.AuthenticationKey != "" {
-		// Use the authoritative agent mode detection only if we have some context
-		isOffline := agent.DetectAgentMode(args)
-		if isOffline {
+	if args != nil {
+		if args.Offline {
+			// Explicit offline flag takes precedence
 			agentMode = "offline"
+		} else {
+			// Check for config file existence to determine mode
+			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+			if err == nil {
+				if _, err := os.Stat(configPath); err == nil {
+					// Config file exists - likely offline mode
+					agentMode = "offline"
+				} else if args.AuthenticationKey != "" {
+					// No config but has auth key - online mode
+					agentMode = "online"
+				}
+			}
 		}
-	} else if args != nil && args.Offline {
-		agentMode = "offline"
 	}
 	statusService.SetAgentMode(agentMode)
 
