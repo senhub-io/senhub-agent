@@ -39,6 +39,7 @@ The SenHub Agent uses a **JWT-based license system with RSA signatures** to cont
 Specific probes authorized by license:
 - **redfish** - BMC/iDRAC/iLO hardware monitoring
 - **citrix** - Citrix Virtual Apps and Desktops monitoring
+- **netscaler** - Citrix NetScaler ADC monitoring (load balancers, SSL, HA)
 - **syslog** - Syslog event collection
 - **otel** - OpenTelemetry metrics collection
 - **event** - Windows Event Log collection
@@ -79,7 +80,7 @@ Specific probes authorized by license:
 ```json
 {
   "tier": "pro|enterprise",
-  "authorized_probes": ["redfish", "citrix"] or ["*"],
+  "authorized_probes": ["redfish", "citrix", "netscaler"] or ["*"],
   "exp": 1794241033,  // Expiration timestamp (Unix epoch)
   "iat": 1762705033,  // Issued at timestamp (Unix epoch)
   "iss": "SenHub",    // Issuer
@@ -124,7 +125,7 @@ go run scripts/sensor-factory-license-generator.go --generate-keys
 go run sensor-factory-license-generator.go --generate-license \
   --customer-id "noble-age" \
   --tier "pro" \
-  --probes "redfish,citrix" \
+  --probes "redfish,citrix,netscaler" \
   --validity-days 365
 
 # Enterprise license with all probes
@@ -419,7 +420,7 @@ The agent provides a REST API endpoint to retrieve current license information:
   "tier": "pro",
   "expires_at": "2026-11-09T17:17:13Z",
   "days_remaining": 365,
-  "authorized_probes": ["redfish", "citrix"],
+  "authorized_probes": ["redfish", "citrix", "netscaler"],
   "free_tier_probes": ["cpu", "memory", "logicaldisk", "network"],
   "message": "License active (365 days remaining)"
 }
@@ -458,7 +459,7 @@ curl http://localhost:8080/api/YOUR_AGENT_KEY/license/status
   "tier": "pro",
   "expires_at": "2026-11-09T17:17:13Z",
   "days_remaining": 365,
-  "authorized_probes": ["redfish", "citrix"],
+  "authorized_probes": ["redfish", "citrix", "netscaler"],
   "free_tier_probes": ["cpu", "memory", "logicaldisk", "network"],
   "message": "License active (365 days remaining)"
 }
@@ -477,7 +478,7 @@ curl http://localhost:8080/api/YOUR_AGENT_KEY/license/status
   "tier": "pro",
   "expires_at": "2025-11-01T10:00:00Z",
   "days_remaining": 5,
-  "authorized_probes": ["redfish", "citrix"],
+  "authorized_probes": ["redfish", "citrix", "netscaler"],
   "free_tier_probes": ["cpu", "memory", "logicaldisk", "network"],
   "message": "License expired but in grace period (5 days remaining)"
 }
@@ -638,7 +639,7 @@ Authorization: Bearer <admin-token>
 {
   "customer_id": "noble-age",
   "tier": "pro",
-  "authorized_probes": ["redfish", "citrix"],
+  "authorized_probes": ["redfish", "citrix", "netscaler"],
   "validity_days": 365
 }
 
