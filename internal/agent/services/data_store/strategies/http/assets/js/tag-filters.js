@@ -25,7 +25,18 @@ class TagFilters {
                 this.updateSelectedTags();
             }
         });
-        
+
+        // Listen for expression input changes (text fields)
+        this.container.addEventListener('input', (e) => {
+            if (e.target.matches('.expression-input')) {
+                // Debounce the update to avoid too many calls while typing
+                clearTimeout(this.expressionTimeout);
+                this.expressionTimeout = setTimeout(() => {
+                    this.updateSelectedTags();
+                }, 300);
+            }
+        });
+
         // Add click handlers for toggling tag sections
         this.container.addEventListener('click', (e) => {
             if (e.target.matches('.tag-header-clickable, .tag-header-clickable *')) {
@@ -61,8 +72,9 @@ class TagFilters {
     renderTags() {
         // Filter out redundant tags
         const redundantTags = ['host', 'probe_name', 'platform', 'os', 'prtg_metric_id', 'drive_id', 'volume_id', 'pool_id', 'adapter', 'connection_name'];
-        const alwaysKeepTags = ['url', 'endpoint', 'interface', 'drive', 'drive_name', 'volume_name', 'volume_type', 'pool_name', 'controller', 'raid_type', 'core'];
+        const alwaysKeepTags = ['url', 'endpoint', 'interface', 'drive', 'drive_name', 'volume_name', 'volume_type', 'pool_name', 'controller', 'raid_type', 'core', 'ha_node_id', 'ha_node_ip', 'is_local_node'];
 // Note: fan_name and sensor_name removed - thermal metrics disabled for consistency
+// Note: ha_node_id, ha_node_ip, is_local_node always shown - critical for HA monitoring even with single node
         
         const filteredTags = Object.fromEntries(
             Object.entries(this.availableTags)
