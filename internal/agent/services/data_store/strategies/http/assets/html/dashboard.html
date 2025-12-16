@@ -139,13 +139,13 @@
             font-size: 0.875rem;
             margin-top: 1rem;
         }
-        
+
         .loading {
             text-align: center;
             padding: 3rem;
             color: var(--gray-600);
         }
-        
+
         .error {
             background-color: #fef2f2;
             color: var(--danger-color);
@@ -153,6 +153,32 @@
             border-radius: 6px;
             margin-bottom: 1rem;
             border-left: 4px solid var(--danger-color);
+        }
+
+        .probe-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            background-color: var(--gray-100);
+            color: var(--gray-700);
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.813rem;
+            font-weight: 500;
+            border: 1px solid var(--gray-200);
+        }
+
+        .probe-badge.wildcard {
+            background-color: #dcfce7;
+            color: var(--success-color);
+            border-color: var(--success-color);
+            font-weight: 600;
+        }
+
+        .probe-badge.free {
+            background-color: #e0f7f7;
+            color: var(--primary-color);
+            border-color: var(--primary-color);
         }
     </style>
 </head>
@@ -272,9 +298,11 @@
                         <span class="metric-label">Days Remaining</span>
                         <span class="metric-value" id="license-days">-</span>
                     </div>
-                    <div class="metric-row">
-                        <span class="metric-label">Authorized Probes</span>
-                        <span class="metric-value" id="license-probes-count">-</span>
+                    <div style="margin-top: 1rem;">
+                        <div class="metric-label" style="margin-bottom: 0.5rem;">Authorized Probes</div>
+                        <div id="license-probes-list" style="display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.875rem;">
+                            <!-- Probes badges will be loaded here -->
+                        </div>
                     </div>
                 </div>
             </div>
