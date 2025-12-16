@@ -162,7 +162,7 @@ metrics:
   # High Availability (HA) Metrics
   - name: "netscaler.ha.state"
     channel: "ha.state"
-    display_name: "HA State ({ha_node_id})"
+    display_name: "HA State ({ha_node_ip})"
     unit: "#"
     multi_instance_labels: ["ha_node_id"]
     lookup: "netscaler.ha.state"
@@ -170,7 +170,7 @@ metrics:
 
   - name: "netscaler.ha.node.state"
     channel: "ha.node.state"
-    display_name: "HA Node Operational State ({ha_node_id})"
+    display_name: "HA Node Operational State ({ha_node_ip})"
     unit: "#"
     multi_instance_labels: ["ha_node_id"]
     lookup: "netscaler.ha.node.state"
@@ -178,7 +178,7 @@ metrics:
 
   - name: "netscaler.ha.sync_status"
     channel: "ha.sync_status"
-    display_name: "HA Sync Status ({ha_node_id})"
+    display_name: "HA Sync Status ({ha_node_ip})"
     unit: "#"
     multi_instance_labels: ["ha_node_id"]
     lookup: "netscaler.ha.sync_status"
@@ -186,7 +186,7 @@ metrics:
 
   - name: "netscaler.ha.sync_failures"
     channel: "ha.sync_failures"
-    display_name: "HA Sync Failures ({ha_node_id})"
+    display_name: "HA Sync Failures ({ha_node_ip})"
     unit: "#"
     multi_instance_labels: ["ha_node_id"]
     description: "Number of HA synchronization failures (per node)"
