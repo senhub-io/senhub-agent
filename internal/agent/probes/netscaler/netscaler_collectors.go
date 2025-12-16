@@ -602,6 +602,15 @@ func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag
 		}
 		nodeTags = append(nodeTags, tags.Tag{Key: "is_local_node", Value: fmt.Sprintf("%t", isLocalNode)})
 
+		// Add data_source tag to distinguish stats from config
+		// Local node uses real telemetry from /stat/hanode
+		// Remote node uses config approximations from /config/hanode
+		dataSource := "config"
+		if isLocalNode {
+			dataSource = "stats"
+		}
+		nodeTags = append(nodeTags, tags.Tag{Key: "data_source", Value: dataSource})
+
 		// For the local node, use real stats from /stat/hanode
 		// For the remote node, use config data (state from hanode config)
 		var masterState string
