@@ -1,0 +1,214 @@
+# SenHub Agent - Universal Lookup Definitions
+#
+# This file defines state/health/enum mappings for metrics that return numeric codes.
+# These lookups are format-agnostic and will be converted to:
+# - PRTG: XML ValueLookup files
+# - Nagios: Status text + thresholds in perfdata
+# - Zabbix: Value mappings
+# - Prometheus: Labels (if needed)
+#
+# IMPORTANT: All values are sourced from official vendor documentation.
+# DO NOT invent or guess values - always reference official docs.
+
+# ==============================================================================
+# NETSCALER LOOKUPS
+# ==============================================================================
+# Source: Citrix ADC NITRO API Documentation
+# https://docs.netscaler.com/en-us/citrix-adc/current-release/load-balancing/load-balancing-vserver-service-states.html
+# https://developer-docs.netscaler.com/en-us/adc-command-reference-int/current-release/basic/service.html
+
+netscaler.lbvserver.state:
+  description: "Load Balancing Virtual Server State"
+  type: status
+  source: "Citrix ADC NITRO API - lbvserver curstate field"
+  mappings:
+    1:
+      text: "DOWN"
+      severity: "error"
+      description: "Virtual server is not responding to health checks"
+    2:
+      text: "UNKNOWN"
+      severity: "warning"
+      description: "State cannot be determined"
+    3:
+      text: "BUSY"
+      severity: "warning"
+      description: "Virtual server is processing maximum requests"
+    4:
+      text: "OUT OF SERVICE"
+      severity: "warning"
+      description: "Virtual server is administratively disabled"
+    5:
+      text: "TROFS"
+      severity: "warning"
+      description: "Transitioning out of service (graceful shutdown)"
+    7:
+      text: "UP"
+      severity: "ok"
+      description: "Virtual server is operational"
+    8:
+      text: "TROFS_DOWN"
+      severity: "error"
+      description: "Down while transitioning out of service"
+  desired_value: 7
+
+netscaler.service.state:
+  description: "Service State"
+  type: status
+  source: "Citrix ADC NITRO API - service curstate field"
+  mappings:
+    1:
+      text: "DOWN"
+      severity: "error"
+      description: "Service is not responding to health checks"
+    2:
+      text: "UNKNOWN"
+      severity: "warning"
+      description: "State cannot be determined"
+    3:
+      text: "BUSY"
+      severity: "warning"
+      description: "Service is processing maximum requests"
+    4:
+      text: "OUT OF SERVICE"
+      severity: "warning"
+      description: "Service is administratively disabled"
+    5:
+      text: "TROFS"
+      severity: "warning"
+      description: "Transitioning out of service (graceful shutdown)"
+    7:
+      text: "UP"
+      severity: "ok"
+      description: "Service is operational"
+    8:
+      text: "TROFS_DOWN"
+      severity: "error"
+      description: "Down while transitioning out of service"
+  desired_value: 7
+
+netscaler.servicegroup.state:
+  description: "Service Group State"
+  type: status
+  source: "Citrix ADC NITRO API - servicegroup curstate field"
+  mappings:
+    1:
+      text: "DOWN"
+      severity: "error"
+    2:
+      text: "UNKNOWN"
+      severity: "warning"
+    3:
+      text: "BUSY"
+      severity: "warning"
+    4:
+      text: "OUT OF SERVICE"
+      severity: "warning"
+    5:
+      text: "TROFS"
+      severity: "warning"
+    7:
+      text: "UP"
+      severity: "ok"
+    8:
+      text: "TROFS_DOWN"
+      severity: "error"
+  desired_value: 7
+
+netscaler.interface.state:
+  description: "Network Interface State"
+  type: status
+  source: "Citrix ADC NITRO API - interface state field"
+  mappings:
+    0:
+      text: "DISABLED"
+      severity: "warning"
+      description: "Interface is administratively disabled"
+    1:
+      text: "ENABLED"
+      severity: "ok"
+      description: "Interface is operational"
+  desired_value: 1
+
+netscaler.sslcertkey.status:
+  description: "SSL Certificate Status"
+  type: status
+  source: "Citrix ADC NITRO API - sslcertkey status field"
+  mappings:
+    0:
+      text: "INVALID"
+      severity: "error"
+      description: "Certificate is invalid or expired"
+    1:
+      text: "VALID"
+      severity: "ok"
+      description: "Certificate is valid"
+  desired_value: 1
+
+netscaler.gslbvserver.state:
+  description: "GSLB Virtual Server State"
+  type: status
+  source: "Citrix ADC NITRO API - gslbvserver curstate field"
+  mappings:
+    1:
+      text: "DOWN"
+      severity: "error"
+    2:
+      text: "UNKNOWN"
+      severity: "warning"
+    3:
+      text: "BUSY"
+      severity: "warning"
+    4:
+      text: "OUT OF SERVICE"
+      severity: "warning"
+    5:
+      text: "TROFS"
+      severity: "warning"
+    7:
+      text: "UP"
+      severity: "ok"
+    8:
+      text: "TROFS_DOWN"
+      severity: "error"
+  desired_value: 7
+
+netscaler.csvserver.state:
+  description: "Content Switching Virtual Server State"
+  type: status
+  source: "Citrix ADC NITRO API - csvserver curstate field"
+  mappings:
+    1:
+      text: "DOWN"
+      severity: "error"
+    2:
+      text: "UNKNOWN"
+      severity: "warning"
+    3:
+      text: "BUSY"
+      severity: "warning"
+    4:
+      text: "OUT OF SERVICE"
+      severity: "warning"
+    5:
+      text: "TROFS"
+      severity: "warning"
+    7:
+      text: "UP"
+      severity: "ok"
+    8:
+      text: "TROFS_DOWN"
+      severity: "error"
+  desired_value: 7
+
+# ==============================================================================
+# CITRIX VIRTUAL APPS & DESKTOPS LOOKUPS
+# ==============================================================================
+# TODO: Add Citrix CVAD lookups when official mapping documentation is found
+# Source: TBD - Citrix Monitor Service API documentation
+
+# ==============================================================================
+# REDFISH LOOKUPS
+# ==============================================================================
+# TODO: Add Redfish health status lookups
+# Source: DMTF Redfish specification
