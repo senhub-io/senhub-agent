@@ -77,6 +77,18 @@ probes:
         username: "DOMAIN\\admin"
         password: "password"
 
+  # Load balancer monitoring
+  - name: netscaler-adc
+    type: netscaler
+    params:
+      base_url: "https://netscaler.company.com"
+      username: "nsroot"
+      password: "password123"
+      # api_key: "your-api-key"  # Alternative to password
+      insecure_skip_verify: false
+      timeout: 30
+      interval: 60
+
   # Network monitoring
   - name: ping-gateway
     type: ping_gateway
