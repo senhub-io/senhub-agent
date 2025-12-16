@@ -164,37 +164,32 @@ func (c *configCache) fetchBindings(client *service.NitroClient) error {
 	c.servicegroupToVServers = make(map[string][]string)
 	c.servicegroupToServices = make(map[string][]string)
 
-	// Fetch vServer → ServiceGroup bindings
-	for vserverName := range c.vservers {
-		bindings, err := client.FindAllResources("lbvserver_servicegroup_binding")
-		if err != nil {
-			// Bindings may not exist, continue
-			continue
-		}
-
-		for _, binding := range bindings {
+	// Fetch vServer → ServiceGroup bindings (one call for all bindings)
+	vserverBindings, err := client.FindAllResources("lbvserver_servicegroup_binding")
+	if err != nil {
+		c.logger.Debug().Err(err).Msg("No lbvserver_servicegroup_binding found (may be normal if no bindings exist)")
+	} else {
+		for _, binding := range vserverBindings {
 			vserver := getString(binding, "name")
 			servicegroup := getString(binding, "servicegroupname")
 
-			if vserver == vserverName && servicegroup != "" {
+			if vserver != "" && servicegroup != "" {
 				c.vserverToServiceGroups[vserver] = append(c.vserverToServiceGroups[vserver], servicegroup)
 				c.servicegroupToVServers[servicegroup] = append(c.servicegroupToVServers[servicegroup], vserver)
 			}
 		}
 	}
 
-	// Fetch ServiceGroup → Service bindings
-	for sgName := range c.servicegroups {
-		bindings, err := client.FindAllResources("servicegroup_servicegroupmember_binding")
-		if err != nil {
-			continue
-		}
-
-		for _, binding := range bindings {
+	// Fetch ServiceGroup → Service bindings (one call for all bindings)
+	servicegroupBindings, err := client.FindAllResources("servicegroup_servicegroupmember_binding")
+	if err != nil {
+		c.logger.Debug().Err(err).Msg("No servicegroup_servicegroupmember_binding found (may be normal if no members)")
+	} else {
+		for _, binding := range servicegroupBindings {
 			servicegroup := getString(binding, "servicegroupname")
 			service := getString(binding, "servername")
 
-			if servicegroup == sgName && service != "" {
+			if servicegroup != "" && service != "" {
 				c.servicegroupToServices[servicegroup] = append(c.servicegroupToServices[servicegroup], service)
 			}
 		}
@@ -263,6 +258,13 @@ func (c *configCache) getServicesForServiceGroup(servicegroupName string) []stri
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.servicegroupToServices[servicegroupName]
+}
+
+// getAllServiceGroups retrieves all cached servicegroups
+func (c *configCache) getAllServiceGroups() map[string]map[string]interface{} {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.servicegroups
 }
 
 // needsRefresh checks if cache needs to be refreshed

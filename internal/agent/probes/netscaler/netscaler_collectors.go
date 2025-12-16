@@ -531,7 +531,30 @@ func (p *netscalerProbe) collectSSLCertificateStats(timestamp time.Time, baseTag
 
 // collectHAStats gathers High Availability (HA) metrics
 func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
-	// hanode is treated as singleton, but with our fixed SDK it returns an array with one element
+	p.logger.Debug().
+		Int("probe_node_id", p.nodeID).
+		Str("probe_hostname", p.hostname).
+		Msg("Starting HA stats collection")
+
+	// Fetch HA configuration to get all nodes in the cluster
+	// /config/hanode returns both nodes with their IDs and hostnames
+	p.logger.Debug().Msg("Calling FindAllResources('hanode')")
+	haNodeConfigs, err := p.client.FindAllResources("hanode")
+	if err != nil {
+		p.logger.Warn().
+			Err(err).
+			Msg("Failed to fetch HA node config - this is expected if HA is not configured")
+		return nil, fmt.Errorf("failed to fetch HA node config: %w", err)
+	}
+
+	p.logger.Debug().
+		Int("config_nodes_count", len(haNodeConfigs)).
+		Int("probe_node_id", p.nodeID).
+		Interface("hanode_configs", haNodeConfigs).
+		Msg("Fetched HA node configurations")
+
+	// Fetch HA stats (this returns stats for the local node only)
+	// /stat/hanode returns stats for the connected node
 	stats, err := p.client.FindAllStats("hanode")
 	if err != nil {
 		return nil, err
@@ -541,53 +564,121 @@ func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag
 		return nil, fmt.Errorf("no HA stats returned")
 	}
 
-	// Take the first (and usually only) HA node
-	hanode := stats[0]
+	// Stats are for the local node only
+	localNodeStats := stats[0]
 
 	var datapoints []datapoint.DataPoint
 
-	// HA State (PRIMARY=7, SECONDARY=6, UNKNOWN=0, etc.)
-	// We'll normalize to: 2=PRIMARY, 1=SECONDARY, 0=UNKNOWN
-	hacurstate := getString(hanode, "hacurstatus")
-	stateValue := float32(0) // UNKNOWN
-	if hacurstate == "UP" {
-		// Check if PRIMARY or SECONDARY
-		curstate := getString(hanode, "hacurstate")
-		if curstate == "Primary" || curstate == "PRIMARY" {
+	// Iterate through ALL HA nodes from config (typically 2: node 0 and node 1)
+	for _, nodeConfig := range haNodeConfigs {
+		// Extract node identification from config
+		// nodeConfig has: id (0 or 1), ipaddress, name (hostname)
+		nodeID := int(getFloat(nodeConfig, "id"))
+		nodeIDStr := fmt.Sprintf("%d", nodeID)
+		nodeIP := getString(nodeConfig, "ipaddress")
+		nodeHostname := getString(nodeConfig, "name")
+
+		// Determine if this is the local node (the one we're connected to)
+		isLocalNode := (p.nodeID == nodeID)
+
+		p.logger.Debug().
+			Int("node_id", nodeID).
+			Str("node_ip", nodeIP).
+			Str("node_hostname", nodeHostname).
+			Bool("is_local", isLocalNode).
+			Msg("Processing HA node")
+
+		// Create node-specific tags (deep copy to avoid modifying baseTags)
+		nodeTags := append([]tags.Tag{}, baseTags...)
+		nodeTags = append(nodeTags, tags.Tag{Key: "ha_node_id", Value: nodeIDStr})
+		if nodeHostname != "" {
+			nodeTags = append(nodeTags, tags.Tag{Key: "ha_node_name", Value: nodeHostname})
+		}
+		if nodeIP != "" {
+			nodeTags = append(nodeTags, tags.Tag{Key: "ha_node_ip", Value: nodeIP})
+		}
+		if p.hostname != "" {
+			nodeTags = append(nodeTags, tags.Tag{Key: "connected_to", Value: p.hostname})
+		}
+		nodeTags = append(nodeTags, tags.Tag{Key: "is_local_node", Value: fmt.Sprintf("%t", isLocalNode)})
+
+		// For the local node, use real stats from /stat/hanode
+		// For the remote node, use config data (state from hanode config)
+		var masterState string
+		var hacurstate string
+		var syncFailures float64
+
+		if isLocalNode {
+			// Use actual stats for local node
+			masterState = getString(localNodeStats, "hacurmasterstate")
+			hacurstate = getString(localNodeStats, "hacurstate")
+			syncFailures = getFloat(localNodeStats, "haerrsyncfailure")
+		} else {
+			// For remote node, use config data
+			masterState = getString(nodeConfig, "masterstate")
+			hacurstate = getString(nodeConfig, "state")
+			// Sync failures not available for remote node
+			syncFailures = 0
+		}
+
+		// HA State using hacurmasterstate (PRIMARY/SECONDARY from NITRO API)
+		// Normalize to: 2=PRIMARY, 1=SECONDARY, 0=UNKNOWN
+		// Source: https://developer-docs.netscaler.com/en-us/adc-nitro-api/current-release/statistics/ha/hanode/
+		// masterState already defined above based on isLocalNode
+		stateValue := float32(0) // UNKNOWN
+		if masterState == "Primary" || masterState == "PRIMARY" {
 			stateValue = 2
-		} else if curstate == "Secondary" || curstate == "SECONDARY" {
+		} else if masterState == "Secondary" || masterState == "SECONDARY" {
 			stateValue = 1
 		}
+
+		datapoints = append(datapoints, datapoint.DataPoint{
+			Name:      "netscaler.ha.state",
+			Value:     stateValue,
+			Tags:      nodeTags,
+			Timestamp: timestamp,
+		})
+
+		// HA node operational state (UP/DOWN)
+		// hacurstate: UP, DOWN, DISABLED, etc.
+		// hacurstate already defined above based on isLocalNode
+		nodeState := float32(0) // DOWN
+		if hacurstate == "UP" {
+			nodeState = 1
+		}
+
+		datapoints = append(datapoints, datapoint.DataPoint{
+			Name:      "netscaler.ha.node.state",
+			Value:     nodeState,
+			Tags:      nodeTags,
+			Timestamp: timestamp,
+		})
+
+		// HA Sync status (1 = success, 0 = failed)
+		// Use correct field name from NITRO API: haerrsyncfailure (not hasyncfailures)
+		// syncFailures already defined above based on isLocalNode
+		syncStatus := float32(1)
+		if syncFailures > 0 {
+			syncStatus = 0
+		}
+
+		datapoints = append(datapoints, datapoint.DataPoint{
+			Name:      "netscaler.ha.sync_status",
+			Value:     syncStatus,
+			Tags:      nodeTags,
+			Timestamp: timestamp,
+		})
+
+		// HA Sync failures count
+		datapoints = append(datapoints, datapoint.DataPoint{
+			Name:      "netscaler.ha.sync_failures",
+			Value:     float32(syncFailures),
+			Tags:      nodeTags,
+			Timestamp: timestamp,
+		})
 	}
 
-	datapoints = append(datapoints, datapoint.DataPoint{
-		Name:      "netscaler.ha.state",
-		Value:     stateValue,
-		Tags:      baseTags,
-		Timestamp: timestamp,
-	})
-
-	// HA Sync status (1 = success, 0 = failed)
-	syncStatus := float32(1)
-	syncFailures := getFloat(hanode, "hasyncfailures")
-	if syncFailures > 0 {
-		syncStatus = 0
-	}
-
-	datapoints = append(datapoints, datapoint.DataPoint{
-		Name:      "netscaler.ha.sync_status",
-		Value:     syncStatus,
-		Tags:      baseTags,
-		Timestamp: timestamp,
-	})
-
-	// HA Sync failures count
-	datapoints = append(datapoints, datapoint.DataPoint{
-		Name:      "netscaler.ha.sync_failures",
-		Value:     float32(syncFailures),
-		Tags:      baseTags,
-		Timestamp: timestamp,
-	})
+	p.logger.Debug().Int("ha_nodes", len(haNodeConfigs)).Msg("Collected HA stats for all nodes")
 
 	return datapoints, nil
 }
