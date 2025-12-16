@@ -169,6 +169,268 @@ If no transformation pattern matches:
 2. Apply generic "make readable" transformation
 3. Return original metric name as last resort
 
+## PRTG Value Lookups
+
+### Overview
+
+PRTG Value Lookups (`.ovl` files) provide **human-readable status values** for numeric metrics in PRTG Network Monitor. Instead of showing raw numbers like `0`, `1`, `2`, PRTG displays meaningful text like `"DOWN"`, `"UP"`, `"PRIMARY"`.
+
+**Benefits:**
+- **Improved readability**: See "UP" instead of "1"
+- **Color coding**: PRTG applies colors based on severity (red for error, green for ok)
+- **Automated alerting**: Trigger alerts based on status values
+- **Dashboard clarity**: Status at a glance without memorizing numeric codes
+
+### Lookup Definition Format
+
+Lookups are defined in `/internal/agent/services/data_store/strategies/http/lookups/lookups.yaml`:
+
+```yaml
+netscaler.lbvserver.state:
+  description: "NetScaler Load Balancer Virtual Server State"
+  type: status
+  source: "Citrix ADC NITRO API - lbvserver state field"
+  mappings:
+    0: {text: "DOWN", severity: "error"}
+    1: {text: "UP", severity: "ok"}
+    2: {text: "OUT OF SERVICE", severity: "warning"}
+    3: {text: "BUSY", severity: "warning"}
+    7: {text: "UNKNOWN", severity: "warning"}
+  desired_value: 1  # "UP" is the desired state
+```
+
+**Field Descriptions:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `description` | Yes | Human-readable description of what this lookup represents |
+| `type` | No | Lookup type (`status`, `health`, `role`, etc.) - for documentation only |
+| `source` | No | Where the values come from (API field, calculation, etc.) |
+| `mappings` | Yes | Numeric value → text + severity mappings |
+| `desired_value` | No | The "good" value that should not trigger alerts (usually 1) |
+
+**Severity Levels:**
+- `ok` - Normal operation (green in PRTG)
+- `warning` - Degraded but operational (yellow in PRTG)
+- `error` - Failed or critical state (red in PRTG)
+
+### Available Lookups
+
+#### NetScaler ADC Probes
+
+- **`netscaler.lbvserver.state`** - Load Balancer Virtual Server state (UP/DOWN/OUT OF SERVICE/BUSY/UNKNOWN)
+- **`netscaler.service.state`** - Backend Service state (UP/DOWN/OUT OF SERVICE/BUSY/UNKNOWN)
+- **`netscaler.servicegroup.state`** - Service Group state (UP/DOWN/OUT OF SERVICE/BUSY/UNKNOWN)
+- **`netscaler.interface.state`** - Network Interface state (ENABLED/DISABLED)
+- **`netscaler.ssl.certificate.status`** - SSL Certificate validity (VALID/INVALID)
+- **`netscaler.ha.state`** - HA Node Role (PRIMARY/SECONDARY/UNKNOWN)
+- **`netscaler.ha.node.state`** - HA Node Operational State (UP/DOWN)
+- **`netscaler.ha.sync_status`** - HA Configuration Sync Status (SUCCESS/FAILED)
+
+#### Redfish Hardware Probes
+
+- **`redfish.health`** - Component health status (OK/WARNING/CRITICAL)
+- **`redfish.state`** - Component state (ENABLED/DISABLED/STANDBY/ABSENT)
+- **`redfish.power_state`** - System power state (ON/OFF/POWERING_ON/POWERING_OFF)
+
+### Downloading Lookups
+
+The agent provides **automatic lookup file generation** accessible via the Web UI:
+
+1. **Open Dashboard**: Navigate to `http://localhost:8080/web/{agentkey}/dashboard`
+2. **Go to API Explorer**: Click on "API Explorer" in navigation
+3. **Download Lookups**: Click the **"Download PRTG Lookups"** button
+4. **Extract Files**: Unzip the downloaded archive to get `.ovl` files
+
+**File Naming Convention**: `senhub.{lookup_name}.ovl`
+
+Example files:
+```
+senhub.netscaler.lbvserver.state.ovl
+senhub.netscaler.ha.state.ovl
+senhub.redfish.health.ovl
+```
+
+### Installing Lookups in PRTG
+
+**Method 1: Manual Installation (Recommended)**
+
+1. Download lookups from agent (see above)
+2. Copy `.ovl` files to PRTG Server:
+   ```
+   C:\Program Files (x86)\PRTG Network Monitor\lookups\custom\
+   ```
+3. Refresh PRTG lookup cache:
+   - Go to: **Setup → System Administration → Administrative Tools**
+   - Click: **Load Lookups and File Lists**
+   - Wait for confirmation message
+
+**Method 2: Direct API Download**
+
+```bash
+# Download all lookups as ZIP
+curl -o prtg-lookups.zip http://localhost:8080/api/{agentkey}/prtg/lookups/download
+
+# Extract to PRTG custom lookups directory
+unzip prtg-lookups.zip -d "C:\Program Files (x86)\PRTG Network Monitor\lookups\custom\"
+```
+
+### Using Lookups in PRTG
+
+Once installed, lookups are **automatically applied** to matching metrics:
+
+**Automatic Application:**
+- PRTG matches the lookup file name to the metric name
+- Example: Metric `netscaler.lbvserver.state` uses `senhub.netscaler.lbvserver.state.ovl`
+- No manual configuration needed
+
+**Verification:**
+1. Create a sensor that collects the metric
+2. View sensor channels
+3. Status values should display as text instead of numbers
+4. Channel background color should reflect severity (green/yellow/red)
+
+**Example:**
+
+Before lookup:
+```
+netscaler.lbvserver.state: 1
+```
+
+After lookup:
+```
+netscaler.lbvserver.state: UP (green background)
+```
+
+### Lookup File Format (.ovl)
+
+Generated `.ovl` files use PRTG's XML format:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SenHub Agent - PRTG Value Lookup
+  Lookup: netscaler.lbvserver.state
+  Description: NetScaler Load Balancer Virtual Server State
+  Source: Citrix ADC NITRO API - lbvserver state field
+-->
+<ValueLookup id="senhub.netscaler.lbvserver.state" desiredValue="1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="PrtgLookup.xsd">
+  <Lookups>
+    <SingleInt state="Error" value="0">
+      DOWN
+    </SingleInt>
+    <SingleInt state="Ok" value="1">
+      UP
+    </SingleInt>
+    <SingleInt state="Warning" value="2">
+      OUT OF SERVICE
+    </SingleInt>
+  </Lookups>
+</ValueLookup>
+```
+
+**XML Elements:**
+- `<ValueLookup id="...">` - Unique lookup identifier
+- `desiredValue="1"` - Expected "good" value (optional)
+- `<SingleInt state="Ok|Warning|Error" value="N">` - Value mapping
+- Text content - Display text for the value
+
+### Adding New Lookups
+
+To add a new lookup:
+
+1. **Edit lookups.yaml**:
+   ```yaml
+   my.metric.name:
+     description: "My custom metric status"
+     mappings:
+       0: {text: "INACTIVE", severity: "warning"}
+       1: {text: "ACTIVE", severity: "ok"}
+     desired_value: 1
+   ```
+
+2. **Reference in transformer definition**:
+   ```yaml
+   # In netscaler.yaml, citrix.yaml, etc.
+   - name: "my.metric.name"
+     channel: "my_channel"
+     display_name: "My Custom Metric"
+     unit: "#"
+     lookup: "my.metric.name"  # ← Add this line
+   ```
+
+3. **Rebuild agent**:
+   ```bash
+   make build
+   ```
+
+4. **Download updated lookups** from Web UI
+
+### Troubleshooting
+
+#### Lookup Not Applied in PRTG
+
+**Symptom**: Metric shows numbers instead of text
+
+**Solutions:**
+1. Verify `.ovl` file exists in `C:\Program Files (x86)\PRTG Network Monitor\lookups\custom\`
+2. Check file naming: Must be `senhub.{exact.metric.name}.ovl`
+3. Refresh PRTG lookups: **Setup → Administrative Tools → Load Lookups**
+4. Check PRTG logs for lookup parsing errors
+5. Verify metric name matches exactly (case-sensitive)
+
+#### Download Button Not Visible
+
+**Symptom**: "Download PRTG Lookups" button missing in API Explorer
+
+**Cause**: No lookups defined or embedded assets not loaded
+
+**Solutions:**
+1. Verify `lookups.yaml` exists and contains lookup definitions
+2. Rebuild agent to embed updated assets
+3. Check browser console for JavaScript errors
+
+#### Incorrect Colors in PRTG
+
+**Symptom**: Wrong severity colors displayed
+
+**Cause**: Severity mapping doesn't match PRTG expectations
+
+**Solution**: Update severity in `lookups.yaml`:
+```yaml
+mappings:
+  0: {text: "DOWN", severity: "error"}    # Red
+  1: {text: "UP", severity: "ok"}          # Green
+  2: {text: "DEGRADED", severity: "warning"} # Yellow
+```
+
+### Best Practices
+
+1. **Consistent Naming**: Use probe prefix (e.g., `netscaler.`, `redfish.`)
+2. **Descriptive Text**: Use clear, standard terminology (UP/DOWN, not 1/0)
+3. **Severity Accuracy**: Match severity to actual impact (error = outage)
+4. **Document Source**: Include API field or calculation in `source` field
+5. **Test Before Deploy**: Verify lookups work in dev PRTG before production
+6. **Version Control**: Commit `lookups.yaml` changes with descriptive messages
+
+### API Endpoints
+
+**Download All Lookups (ZIP)**:
+```
+GET /api/{agentkey}/prtg/lookups/download
+```
+
+**Download Single Lookup**:
+```
+GET /api/{agentkey}/prtg/lookups/{lookup_name}.ovl
+```
+
+Example:
+```bash
+curl -o netscaler.ha.state.ovl \
+  http://localhost:8080/api/{agentkey}/prtg/lookups/netscaler.ha.state.ovl
+```
+
 ## Cache Management
 
 ### TTL and Cleanup
