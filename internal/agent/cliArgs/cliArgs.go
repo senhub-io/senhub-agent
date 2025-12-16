@@ -133,6 +133,27 @@ func GetVersionInfo() map[string]string {
 	}
 }
 
+// PrintVersion prints version information to stdout without timestamps
+func PrintVersion() {
+	if Version != "" {
+		// Production build with version number
+		if CommitHash != "" {
+			fmt.Printf("Version: %s (commit: %s)\n", Version, CommitHash)
+		} else {
+			fmt.Printf("Version: %s\n", Version)
+		}
+	} else if CommitHash != "" {
+		// Development build with commit only
+		fmt.Printf("Development version (commit: %s)\n", CommitHash)
+	} else {
+		fmt.Println("Version information not available")
+	}
+
+	if Env == "development" {
+		fmt.Println("Environment: Development")
+	}
+}
+
 // GetAbsoluteConfigPath returns an absolute path for the configuration file
 // based on the binary location. This ensures consistent configuration file
 // location across different working directories (critical for Windows Services).
@@ -213,17 +234,8 @@ func MustParse() *ParsedArgs {
 	}
 
 	switch {
-	case args.Version != nil && Version != "":
-		log.Printf("Version: %s", Version)
-		if parsedEnv == "development" {
-			log.Printf("Development build")
-		}
-		os.Exit(0)
 	case args.Version != nil:
-		log.Printf("Development version: %s", CommitHash)
-		if parsedEnv == "development" {
-			log.Printf("Development build")
-		}
+		PrintVersion()
 		os.Exit(0)
 	case args.Agent != nil:
 		return parsedArgsFromStartArgs(args.Agent, parsedEnv)
