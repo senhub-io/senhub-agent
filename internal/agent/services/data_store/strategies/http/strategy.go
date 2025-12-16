@@ -40,6 +40,8 @@ type HTTPSyncStrategy struct {
 	nagiosManager       *NagiosManager         // Nagios endpoints and processing manager
 	utilsManager        *UtilsManager          // utility functions and helper methods manager
 	statusService       *status.StatusService  // centralized status calculation service
+	lookupRegistry      *LookupRegistry        // lookup definitions registry for status/health mappings
+	lookupsManager      *LookupsManager        // lookups API endpoints manager
 }
 
 // SenHubMetric represents a metric in standardized SenHub raw format
@@ -142,13 +144,13 @@ func NewHTTPSyncStrategy(
 	strategy.authManager = NewAuthenticationManager(strategy.agentKey, agentConfig, moduleLogger)
 
 	// Initialize web interface handler
-	strategy.webInterface = NewWebInterface(strategy, moduleLogger, strategy.assetHandler)
+	strategy.webInterface = NewWebInterface(strategy, moduleLogger)
 
 	// Initialize health manager
 	strategy.healthManager = NewHealthManager(strategy, moduleLogger, strategy.startTime)
 
 	// Initialize metrics processor
-	strategy.metricsProcessor = NewMetricsProcessor(strategy.cache, strategy.formatConverter, moduleLogger)
+	strategy.metricsProcessor = NewMetricsProcessor(strategy.cache, strategy.formatConverter, strategy.lookupRegistry, moduleLogger)
 
 	// Initialize configuration manager
 	strategy.configManager = NewConfigurationManager(agentConfig, params, moduleLogger)
@@ -168,6 +170,17 @@ func NewHTTPSyncStrategy(
 
 	// Initialize utils manager
 	strategy.utilsManager = NewUtilsManager(strategy, moduleLogger)
+
+	// Initialize lookup registry
+	lookupRegistry, err := NewLookupRegistry(moduleLogger.Logger)
+	if err != nil {
+		moduleLogger.Error().Err(err).Msg("Failed to initialize lookup registry - lookups will be unavailable")
+		// Continue without lookups - non-critical feature
+	} else {
+		strategy.lookupRegistry = lookupRegistry
+		// Initialize lookups manager only if registry loaded successfully
+		strategy.lookupsManager = NewLookupsManager(strategy)
+	}
 
 	// Initialize status service with centralized status calculations
 	strategy.statusService = status.NewStatusService(

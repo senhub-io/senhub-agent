@@ -130,7 +130,7 @@ func (f *FormatConverter) GetMetricsForProbeWithFilter(probeName string, filter 
 		tsKey := f.cache.generateTimeSeriesKey(metric.ProbeName, probeType, metric.MetricName, metric.Tags)
 
 		// Transform to PRTG channel
-		if channel := f.transformToPRTGChannel(tsKey, metric); channel != nil {
+		if channel := f.transformToPRTGChannelWithFilter(tsKey, metric, filter); channel != nil {
 			channels = append(channels, *channel)
 		}
 	}
@@ -144,8 +144,8 @@ func (f *FormatConverter) GetMetricsForProbeWithFilter(probeName string, filter 
 	return channels
 }
 
-// transformToPRTGChannel converts a cached metric to PRTG channel format
-func (f *FormatConverter) transformToPRTGChannel(key string, metric CachedMetric) *PRTGChannel {
+// transformToPRTGChannelWithFilter converts a cached metric to PRTG channel format with filter options
+func (f *FormatConverter) transformToPRTGChannelWithFilter(key string, metric CachedMetric, filter MetricFilter) *PRTGChannel {
 	// Convert value to float64
 	value, ok := f.convertValueToFloat64(metric.Value)
 	if !ok {
@@ -158,6 +158,18 @@ func (f *FormatConverter) transformToPRTGChannel(key string, metric CachedMetric
 
 	// Transform metric name using transformer
 	channelName, unit, valueLookup := f.transformMetricNameForPRTGWithLookup(key, metric)
+
+	// Post-process channel name: remove discriminant tags if ShowTags=false
+	// Only for citrix and netscaler probes (opt-in feature for testing)
+	if !filter.ShowTags {
+		probeType := metric.Tags["probe_type"]
+		if probeType == "" {
+			probeType = metric.ProbeName
+		}
+		if probeType == "citrix" || probeType == "netscaler" {
+			channelName = f.removeDiscriminantTagsFromChannelName(channelName, metric, probeType)
+		}
+	}
 
 	// Apply intelligent unit conversion for better readability
 	convertedValue, convertedUnit := f.convertUnitsForDisplay(value, unit, metric.MetricName)
@@ -187,6 +199,72 @@ func (f *FormatConverter) transformToPRTGChannel(key string, metric CachedMetric
 	}
 
 	return channel
+}
+
+// transformToPRTGChannel converts a cached metric to PRTG channel format (legacy - no filter)
+func (f *FormatConverter) transformToPRTGChannel(key string, metric CachedMetric) *PRTGChannel {
+	// Call new function with empty filter (ShowTags defaults to true)
+	return f.transformToPRTGChannelWithFilter(key, metric, MetricFilter{ShowTags: true})
+}
+
+// removeDiscriminantTagsFromChannelName removes discriminant tag prefixes/suffixes from channel names
+// Example: "Interface LO/1 - State" -> "State" when filtering on interface:LO/1
+// Example: "SSL Certificate Status (Wildcard_LNA-SANTE_2025)" -> "SSL Certificate Status"
+func (f *FormatConverter) removeDiscriminantTagsFromChannelName(channelName string, metric CachedMetric, probeType string) string {
+	// Get discriminant tags for this probe type
+	discriminantTags, exists := DiscriminantTagsRegistry[probeType]
+	if !exists {
+		return channelName // No discriminant tags defined, return as-is
+	}
+
+	// Try to remove each discriminant tag value from the channel name
+	for _, tagKey := range discriminantTags {
+		if tagValue, exists := metric.Tags[tagKey]; exists && tagValue != "" {
+			// Try patterns at the beginning: "TagValue - MetricName"
+			prefixPatterns := []string{
+				tagValue + " - ",
+				tagValue + ": ",
+				tagValue + " ",
+			}
+
+			for _, pattern := range prefixPatterns {
+				if strings.HasPrefix(channelName, pattern) {
+					// Remove the prefix
+					channelName = strings.TrimPrefix(channelName, pattern)
+					f.logger.Debug().
+						Str("original", pattern+channelName).
+						Str("cleaned", channelName).
+						Str("tag_key", tagKey).
+						Str("tag_value", tagValue).
+						Msg("Removed discriminant tag prefix from channel name")
+					break
+				}
+			}
+
+			// Try patterns at the end: "MetricName (TagValue)"
+			suffixPatterns := []string{
+				" (" + tagValue + ")",
+				" [" + tagValue + "]",
+				" - " + tagValue,
+			}
+
+			for _, pattern := range suffixPatterns {
+				if strings.HasSuffix(channelName, pattern) {
+					// Remove the suffix
+					channelName = strings.TrimSuffix(channelName, pattern)
+					f.logger.Debug().
+						Str("original", channelName+pattern).
+						Str("cleaned", channelName).
+						Str("tag_key", tagKey).
+						Str("tag_value", tagValue).
+						Msg("Removed discriminant tag suffix from channel name")
+					break
+				}
+			}
+		}
+	}
+
+	return channelName
 }
 
 // convertUnitsForDisplay applies intelligent unit conversion for better readability
@@ -596,7 +674,8 @@ func (f *FormatConverter) getContextualMetricPrefixes(tagFilters map[string][]st
 		case "interface", "adapter", "connection_name":
 			// If filtering on interface/adapter/connection, show only network metrics
 			// Support both dot notation (hardware probes) and underscore notation (host probes)
-			prefixes = append(prefixes, "network.", "network_", "packets_", "bytes_", "errors_", "discards_", "hardware.network.")
+			// ALSO support netscaler interface metrics
+			prefixes = append(prefixes, "network.", "network_", "packets_", "bytes_", "errors_", "discards_", "hardware.network.", "netscaler.interface.")
 			f.logger.Debug().Str("tag", tagKey).Msg("Applied contextual filtering for network metrics")
 
 		case "core":
