@@ -164,7 +164,7 @@ metrics:
     channel: "ha.state"
     display_name: "HA State ({ha_node_ip})"
     unit: "#"
-    multi_instance_labels: ["ha_node_id"]
+    multi_instance_labels: ["ha_node_id", "ha_node_ip"]
     lookup: "netscaler.ha.state"
     description: "HA role: 2=PRIMARY, 1=SECONDARY, 0=UNKNOWN (per node)"
 
@@ -172,7 +172,7 @@ metrics:
     channel: "ha.node.state"
     display_name: "HA Node Operational State ({ha_node_ip})"
     unit: "#"
-    multi_instance_labels: ["ha_node_id"]
+    multi_instance_labels: ["ha_node_id", "ha_node_ip"]
     lookup: "netscaler.ha.node.state"
     description: "Node operational state: 1=UP, 0=DOWN (per node)"
 
@@ -180,7 +180,7 @@ metrics:
     channel: "ha.sync_status"
     display_name: "HA Sync Status ({ha_node_ip})"
     unit: "#"
-    multi_instance_labels: ["ha_node_id"]
+    multi_instance_labels: ["ha_node_id", "ha_node_ip"]
     lookup: "netscaler.ha.sync_status"
     description: "HA sync status: 1=success, 0=failed (per node)"
 
@@ -188,7 +188,7 @@ metrics:
     channel: "ha.sync_failures"
     display_name: "HA Sync Failures ({ha_node_ip})"
     unit: "#"
-    multi_instance_labels: ["ha_node_id"]
+    multi_instance_labels: ["ha_node_id", "ha_node_ip"]
     description: "Number of HA synchronization failures (per node)"
 
   - name: "netscaler.ha.propagation_timeouts"
