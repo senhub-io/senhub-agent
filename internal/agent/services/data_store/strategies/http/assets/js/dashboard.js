@@ -145,7 +145,9 @@ class Dashboard {
         if (!licenseData) {
             this.licenseStatus.textContent = 'Error';
             this.licenseTier.textContent = 'Unknown';
-            this.licenseProbesList.innerHTML = '<span style="color: var(--gray-500);">-</span>';
+            if (this.licenseProbesList) {
+                this.licenseProbesList.innerHTML = '<span style="color: var(--gray-500);">-</span>';
+            }
             this.licenseStatusIndicator.className = 'status-indicator status-warning';
             return;
         }
@@ -198,6 +200,10 @@ class Dashboard {
         const freeTierProbes = licenseData.free_tier_probes || [];
 
         // Clear existing badges
+        if (!this.licenseProbesList) {
+            console.error('License probes list element not found');
+            return;
+        }
         this.licenseProbesList.innerHTML = '';
 
         if (authorizedProbes.length > 0) {
