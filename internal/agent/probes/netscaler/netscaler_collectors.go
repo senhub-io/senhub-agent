@@ -11,6 +11,9 @@ import (
 
 // collectSystemStats gathers system-level metrics
 func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "system_health"})
+
 	// system is a singleton resource, use FindStat instead of FindAllStats
 	sys, err := p.client.FindStat("system", "")
 	if err != nil {
@@ -174,6 +177,9 @@ func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags
 
 // collectNSStats gathers Netscaler-specific global metrics
 func (p *netscalerProbe) collectNSStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "system_health"})
+
 	// ns is a singleton resource, use FindStat instead of FindAllStats
 	ns, err := p.client.FindStat("ns", "")
 	if err != nil {
@@ -207,6 +213,9 @@ func (p *netscalerProbe) collectNSStats(timestamp time.Time, baseTags []tags.Tag
 
 // collectLBVServerStats gathers load balancer virtual server metrics
 func (p *netscalerProbe) collectLBVServerStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "load_balancing"})
+
 	stats, err := p.client.FindAllStats("lbvserver")
 	if err != nil {
 		return nil, err
@@ -315,6 +324,9 @@ func (p *netscalerProbe) collectLBVServerStats(timestamp time.Time, baseTags []t
 
 // collectServiceStats gathers backend service metrics
 func (p *netscalerProbe) collectServiceStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "load_balancing"})
+
 	stats, err := p.client.FindAllStats("service")
 	if err != nil {
 		return nil, err
@@ -383,6 +395,9 @@ func (p *netscalerProbe) collectServiceStats(timestamp time.Time, baseTags []tag
 
 // collectSSLStats gathers SSL/TLS metrics
 func (p *netscalerProbe) collectSSLStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "ssl_certificates"})
+
 	// ssl is a singleton resource, use FindStat instead of FindAllStats
 	ssl, err := p.client.FindStat("ssl", "")
 	if err != nil {
@@ -416,6 +431,9 @@ func (p *netscalerProbe) collectSSLStats(timestamp time.Time, baseTags []tags.Ta
 
 // collectServiceGroupStats gathers service group metrics
 func (p *netscalerProbe) collectServiceGroupStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "load_balancing"})
+
 	stats, err := p.client.FindAllStats("servicegroup")
 	if err != nil {
 		return nil, err
@@ -491,6 +509,9 @@ func (p *netscalerProbe) collectServiceGroupStats(timestamp time.Time, baseTags 
 
 // collectSSLCertificateStats gathers SSL certificate expiration metrics
 func (p *netscalerProbe) collectSSLCertificateStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "ssl_certificates"})
+
 	// Get all SSL certificates from cache
 	certkeys := p.cache.getAllSSLCertKeys()
 	if len(certkeys) == 0 {
@@ -531,6 +552,9 @@ func (p *netscalerProbe) collectSSLCertificateStats(timestamp time.Time, baseTag
 
 // collectHAStats gathers High Availability (HA) metrics
 func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "high_availability"})
+
 	p.logger.Debug().
 		Int("probe_node_id", p.nodeID).
 		Str("probe_hostname", p.hostname).
@@ -694,6 +718,9 @@ func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag
 
 // collectDiskStats gathers disk usage metrics
 func (p *netscalerProbe) collectDiskStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "system_health"})
+
 	// Disk stats are part of system resource (disk0* = /flash, disk1* = /var)
 	sys, err := p.client.FindStat("system", "")
 	if err != nil {
@@ -759,6 +786,9 @@ func (p *netscalerProbe) collectDiskStats(timestamp time.Time, baseTags []tags.T
 
 // collectInterfaceStats gathers network interface metrics
 func (p *netscalerProbe) collectInterfaceStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "network"})
+
 	// Interface returns stats for all network interfaces (note: capital I)
 	stats, err := p.client.FindAllStats("Interface")
 	if err != nil {
@@ -869,6 +899,9 @@ func (p *netscalerProbe) collectInterfaceStats(timestamp time.Time, baseTags []t
 
 // collectContentSwitchingStats gathers Content Switching vServer metrics
 func (p *netscalerProbe) collectContentSwitchingStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "content_switching"})
+
 	// csvserver returns Content Switching virtual server stats
 	stats, err := p.client.FindAllStats("csvserver")
 	if err != nil {
@@ -928,6 +961,9 @@ func (p *netscalerProbe) collectContentSwitchingStats(timestamp time.Time, baseT
 
 // collectContentSwitchingPolicyStats gathers Content Switching policy metrics
 func (p *netscalerProbe) collectContentSwitchingPolicyStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "content_switching"})
+
 	// cspolicy returns Content Switching policy stats
 	stats, err := p.client.FindAllStats("cspolicy")
 	if err != nil {
@@ -967,6 +1003,9 @@ func (p *netscalerProbe) collectContentSwitchingPolicyStats(timestamp time.Time,
 
 // collectGSLBVServerStats gathers GSLB virtual server metrics
 func (p *netscalerProbe) collectGSLBVServerStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "gslb"})
+
 	// gslbvserver returns GSLB virtual server stats
 	stats, err := p.client.FindAllStats("gslbvserver")
 	if err != nil {
@@ -1026,6 +1065,9 @@ func (p *netscalerProbe) collectGSLBVServerStats(timestamp time.Time, baseTags [
 
 // collectGSLBSiteStats gathers GSLB site metrics
 func (p *netscalerProbe) collectGSLBSiteStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "gslb"})
+
 	// gslbsite returns GSLB site stats
 	stats, err := p.client.FindAllStats("gslbsite")
 	if err != nil {
@@ -1078,6 +1120,9 @@ func (p *netscalerProbe) collectGSLBSiteStats(timestamp time.Time, baseTags []ta
 
 // collectGSLBServiceStats gathers GSLB service metrics
 func (p *netscalerProbe) collectGSLBServiceStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "gslb"})
+
 	// gslbservice returns GSLB service stats
 	stats, err := p.client.FindAllStats("gslbservice")
 	if err != nil {
@@ -1130,6 +1175,9 @@ func (p *netscalerProbe) collectGSLBServiceStats(timestamp time.Time, baseTags [
 
 // collectCacheStats gathers integrated cache metrics
 func (p *netscalerProbe) collectCacheStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "system_health"})
+
 	// cache is a singleton resource
 	cache, err := p.client.FindStat("cache", "")
 	if err != nil {
@@ -1187,6 +1235,9 @@ func (p *netscalerProbe) collectCacheStats(timestamp time.Time, baseTags []tags.
 
 // collectCompressionStats gathers compression metrics
 func (p *netscalerProbe) collectCompressionStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "system_health"})
+
 	// cmp is a singleton resource for compression
 	cmp, err := p.client.FindStat("cmp", "")
 	if err != nil {
@@ -1239,6 +1290,9 @@ func (p *netscalerProbe) collectCompressionStats(timestamp time.Time, baseTags [
 
 // collectAAAStats gathers AAA (Authentication, Authorization, Accounting) metrics
 func (p *netscalerProbe) collectAAAStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "authentication"})
+
 	// aaauser returns AAA user stats
 	stats, err := p.client.FindAllStats("aaauser")
 	if err != nil {
@@ -1262,6 +1316,9 @@ func (p *netscalerProbe) collectAAAStats(timestamp time.Time, baseTags []tags.Ta
 
 // collectAuthenticationVServerStats gathers authentication vServer metrics
 func (p *netscalerProbe) collectAuthenticationVServerStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "authentication"})
+
 	// authenticationvserver returns authentication vServer stats
 	stats, err := p.client.FindAllStats("authenticationvserver")
 	if err != nil {
@@ -1314,6 +1371,9 @@ func (p *netscalerProbe) collectAuthenticationVServerStats(timestamp time.Time, 
 
 // collectVPNStats gathers Citrix Gateway/VPN metrics
 func (p *netscalerProbe) collectVPNStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "vpn"})
+
 	// vpnvserver returns VPN virtual server stats
 	stats, err := p.client.FindAllStats("vpnvserver")
 	if err != nil {
@@ -1374,6 +1434,9 @@ func (p *netscalerProbe) collectVPNStats(timestamp time.Time, baseTags []tags.Ta
 
 // collectApplicationFirewallStats gathers WAF/Application Firewall metrics
 func (p *netscalerProbe) collectApplicationFirewallStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
+	// Add metric view tag for functional grouping
+	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "security"})
+
 	// appfw is a singleton resource for application firewall
 	appfw, err := p.client.FindStat("appfw", "")
 	if err != nil {
