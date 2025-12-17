@@ -72,9 +72,10 @@ class TagFilters {
     renderTags() {
         // Filter out redundant tags
         const redundantTags = ['host', 'probe_name', 'platform', 'os', 'prtg_metric_id', 'drive_id', 'volume_id', 'pool_id', 'adapter', 'connection_name'];
-        const alwaysKeepTags = ['url', 'endpoint', 'interface', 'drive', 'drive_name', 'volume_name', 'volume_type', 'pool_name', 'controller', 'raid_type', 'core', 'ha_node_id', 'ha_node_ip', 'is_local_node'];
+        const alwaysKeepTags = ['url', 'endpoint', 'interface', 'drive', 'drive_name', 'volume_name', 'volume_type', 'pool_name', 'controller', 'raid_type', 'core', 'ha_node_id', 'ha_node_ip', 'is_local_node', 'metric_view', 'metric_type'];
 // Note: fan_name and sensor_name removed - thermal metrics disabled for consistency
 // Note: ha_node_id, ha_node_ip, is_local_node always shown - critical for HA monitoring even with single node
+// Note: metric_view and metric_type always shown - functional grouping tags for filtering
         
         const filteredTags = Object.fromEntries(
             Object.entries(this.availableTags)
