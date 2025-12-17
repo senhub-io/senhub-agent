@@ -57,7 +57,8 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"gslbservice", // GSLB services
 		"authvserver", // AAA authentication vServers
 		"vpnvserver",  // VPN vServers
-		"ha_node_id",  // High Availability nodes
+		"ha_node_id",  // High Availability nodes (ID and IP both discriminant)
+		"ha_node_ip",  // HA node IP address (for ShowTags=false support)
 	},
 
 	// Infrastructure probes
