@@ -356,9 +356,8 @@ func (rc *RemoteConfiguration) replicateConfigurationLocally() error {
 	// Convert RemoteConfigurationData to LocalConfigurationData format
 	localConfig := LocalConfigurationData{
 		Agent: LocalAgentConfig{
-			Key:       rc.agentKey,
-			Mode:      "online", // Important: this stays "online"
-			Generated: false,    // Key was provided via CLI, not generated
+			Key:  rc.agentKey,
+			Mode: "online", // Important: this stays "online"
 		},
 		Storage:    rc.data.StorageConfig,
 		Probes:     rc.data.Probes,
