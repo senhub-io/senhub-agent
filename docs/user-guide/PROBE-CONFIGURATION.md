@@ -89,6 +89,11 @@ Chaque combinaison `name + params` crée une instance unique avec un ID distinct
 - `syslog` - Collecte logs système
 - `event` - Collecte événements personnalisés
 
+### Probes applicatives (multiples instances possibles)
+- `citrix` - Monitoring Citrix Virtual Apps and Desktops (CVAD)
+- `netscaler` - Monitoring Citrix NetScaler ADC (load balancers, SSL, HA)
+- `otel` - Collection métriques OpenTelemetry
+
 ## Règles de nommage
 
 ### ✅ Configuration simple
@@ -184,6 +189,35 @@ probes:
     url: "https://api.example.com/health"
     interval: 60
 ```
+
+### Configuration NetScaler ADC
+```yaml
+probes:
+  # Monitoring NetScaler en production
+  netscaler_prod:
+    probe_type: netscaler
+    enabled: true
+    base_url: "https://netscaler.example.com"
+    username: "monitoring-user"
+    password: "secure-password"
+    insecure_skip_verify: false  # Vérification SSL (recommandé en production)
+    timeout: 30                   # Timeout API en secondes
+    interval: 60                  # Intervalle de collection
+    custom_tags:
+      - key: "environment"
+        value: "production"
+      - key: "datacenter"
+        value: "dc-paris-01"
+```
+
+**Métriques collectées** (33+ métriques Phase 1):
+- SSL certificates (expiration, status)
+- High Availability (HA state, sync status)
+- System resources (CPU, memory, network, disk)
+- Load Balancer vServers (state, requests, connections)
+- Services & Service Groups (health, throughput)
+
+Voir [Documentation NetScaler](../probes/netscaler/README.md) pour plus de détails.
 
 ## Note importante
 
