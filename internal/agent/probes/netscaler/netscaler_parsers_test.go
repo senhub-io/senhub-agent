@@ -96,13 +96,13 @@ func TestParseNetscalerStateOfficialCodes(t *testing.T) {
 	// Official Citrix ADC NITRO API state codes
 	// Source: https://docs.netscaler.com/en-us/citrix-adc/current-release/load-balancing/load-balancing-vserver-service-states.html
 	officialCodes := map[string]float32{
-		"UP":              7,
-		"DOWN":            1,
-		"UNKNOWN":         2,
-		"BUSY":            3,
-		"OUT OF SERVICE":  4,
-		"TROFS":           5,
-		"TROFS_DOWN":      8,
+		"UP":             7,
+		"DOWN":           1,
+		"UNKNOWN":        2,
+		"BUSY":           3,
+		"OUT OF SERVICE": 4,
+		"TROFS":          5,
+		"TROFS_DOWN":     8,
 	}
 
 	for state, expectedCode := range officialCodes {
