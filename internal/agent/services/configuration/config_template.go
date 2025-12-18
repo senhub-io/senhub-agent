@@ -12,7 +12,7 @@ const LicenseDocumentationTemplate = `
   #   - offline mode
   #
   # PAID PROBES (license required):
-  #   - redfish, citrix, otel, syslog, event
+  #   - redfish, citrix, syslog
   #   - ping_webapp, load_webapp, ping_gateway, wifi_signal_strength
   #
   # ===== LICENSE FORMAT =====
@@ -128,28 +128,4 @@ const ProbeExamplesTemplate = `
 #   params:
 #     port: 514        # Optional, default: 514, range: 1-65535
 #     protocol: "udp"  # Optional, default: "udp", values: "tcp"/"udp"
-
-# # Custom events endpoint (POST /event)
-# - name: event            # Display name
-#   type: event            # Probe type
-#   params:
-#     address: "127.0.0.1"  # Optional, default: "127.0.0.1"
-#     port: 5656            # Optional, default: 5656, range: 1-65535
-#     protocol: "tcp"       # Optional, default: "tcp", values: "tcp"/"udp"
-
-# # OpenTelemetry collector
-# - name: otel             # Display name
-#   type: otel             # Probe type
-#   params:
-#     endpoint: "http://localhost:4318"  # REQUIRED
-#     name: "otel"                       # Optional, default: "otel"
-#     interval: 60                       # Optional, default: 60s
-#     protocol: "http"                   # Optional, auto-detected ("http"/"grpc")
-#     telemetry_types:                   # Optional, default: all
-#       - metrics
-#       - traces
-#       - logs
-#     headers:                           # Optional, HTTP only
-#       Authorization: "Bearer token123"
-#     insecure: false                    # Optional, gRPC only
 `
