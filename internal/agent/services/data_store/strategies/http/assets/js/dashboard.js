@@ -238,32 +238,68 @@ class Dashboard {
     updateProbesList(probesData) {
         const probes = probesData.probes || [];
         const probeMetrics = probesData.probe_metrics || {};
-        
+
         // Update probes count
         this.probesCount.textContent = probes.length.toString();
-        
+
         // Clear existing list
         this.probesList.innerHTML = '';
-        
+
+        // STEP 1: Check if we have any probes in cache (regardless of uptime)
         if (probes.length === 0) {
+            // No probes in cache - hide list and show appropriate message
             this.probesList.style.display = 'none';
             this.noProbesDiv.style.display = 'block';
+
+            // STEP 2: Only if no probes, check uptime to distinguish:
+            // - Agent just started (uptime < 2min) → probes are loading
+            // - Agent running for a while (uptime >= 2min) → no probes configured
+            const uptimeText = this.agentUptime.textContent;
+            const isStartingUp = this.isAgentStartingUp(uptimeText);
+
+            if (isStartingUp) {
+                // CASE A: Agent uptime < 2 minutes AND no probes
+                // → Show "starting up" message (probes haven't collected metrics yet)
+                this.noProbesDiv.innerHTML = `
+                    <div class="info-notice" style="text-align: center;">
+                        <div style="font-size: 24px; margin-bottom: 10px;">🔄</div>
+                        <strong>Probes starting up...</strong>
+                        <p style="margin: 10px 0 0 0; color: #666;">
+                            The agent just started. Probes are initializing and will appear here shortly.
+                        </p>
+                    </div>
+                `;
+            } else {
+                // CASE B: Agent uptime >= 2 minutes AND no probes
+                // → Show "no probes configured" message (real configuration issue)
+                this.noProbesDiv.innerHTML = `
+                    <div class="info-notice" style="text-align: center;">
+                        <div style="font-size: 24px; margin-bottom: 10px;">⚠️</div>
+                        <strong>No active probes detected</strong>
+                        <p style="margin: 10px 0 0 0; color: #666;">
+                            No probes are configured or all probes failed to start.
+                            Check your configuration file.
+                        </p>
+                    </div>
+                `;
+            }
             return;
         }
-        
+
+        // CASE C: We have probes in cache → show the list
         this.probesList.style.display = 'block';
         this.noProbesDiv.style.display = 'none';
-        
+
         // Sort probes alphabetically
         const sortedProbes = [...probes].sort();
-        
+
         sortedProbes.forEach(probeName => {
             const li = document.createElement('li');
             li.className = 'probe-item';
-            
+
             const metricsCount = probeMetrics[probeName] || 0;
             const isActive = metricsCount > 0;
-            
+
             li.innerHTML = `
                 <div class="probe-info">
                     <div class="probe-status ${isActive ? 'active' : 'inactive'}"></div>
@@ -273,9 +309,39 @@ class Dashboard {
                     ${metricsCount} metrics
                 </div>
             `;
-            
+
             this.probesList.appendChild(li);
         });
+    }
+
+    /**
+     * Check if agent is starting up (uptime < 2 minutes)
+     * @param {string} uptimeText - Uptime string (e.g., "1m 30s", "2h 15m")
+     * @returns {boolean} - True if uptime < 2 minutes
+     */
+    isAgentStartingUp(uptimeText) {
+        if (!uptimeText || uptimeText === 'unknown') {
+            return true; // Assume starting if uptime unknown
+        }
+
+        // Parse uptime string: "1h 2m 3s", "1m 30s", "45s", etc.
+        const parts = uptimeText.split(' ');
+        let totalSeconds = 0;
+
+        for (const part of parts) {
+            if (part.includes('h')) {
+                totalSeconds += parseInt(part) * 3600;
+            } else if (part.includes('m')) {
+                totalSeconds += parseInt(part) * 60;
+            } else if (part.includes('s')) {
+                totalSeconds += parseInt(part);
+            } else if (part.includes('d')) {
+                totalSeconds += parseInt(part) * 86400;
+            }
+        }
+
+        // Starting up if uptime < 2 minutes (120 seconds)
+        return totalSeconds < 120;
     }
 
     showLoading() {
