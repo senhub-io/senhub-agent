@@ -212,9 +212,9 @@ func TestGetFilenameForLookup(t *testing.T) {
 	generator := NewPRTGLookupGenerator(registry)
 
 	tests := []struct {
-		name       string
-		lookupID   string
-		expected   string
+		name     string
+		lookupID string
+		expected string
 	}{
 		{
 			name:     "Netscaler lbvserver state",
