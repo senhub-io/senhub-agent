@@ -29,10 +29,10 @@ config_version: %d
 agent:
   key: "%s"
   mode: offline
-  generated: %t
+  # license: ""  # Uncomment and add your license token here
 %s
 
-# Auto-update configuration (disabled by default in offline mode)
+# Auto-update configuration
 auto_update:
   enabled: %t      # Enable/disable automatic updates
   url: "%s"        # Update server URL
@@ -126,7 +126,6 @@ probes:
 		timestamp,                     // Header comment: timestamp
 		config.ConfigVersion,          // YAML field: config_version
 		config.Agent.Key,              // agent.key
-		config.Agent.Generated,        // agent.generated
 		LicenseDocumentationTemplate,  // agent.license (documentation)
 		config.AutoUpdate.Enabled,     // auto_update.enabled
 		config.AutoUpdate.URL,         // auto_update.url
