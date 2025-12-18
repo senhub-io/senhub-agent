@@ -346,9 +346,9 @@ func TestLookupsManager_RegisterRoutes(t *testing.T) {
 
 	// Test that routes are registered by making requests
 	testCases := []struct {
-		name           string
-		path           string
-		method         string
+		name            string
+		path            string
+		method          string
 		allowedStatuses []int
 	}{
 		{"List lookups", "/api/test-agent-key/lookups", "GET", []int{http.StatusOK}},
