@@ -11,8 +11,10 @@ import (
 
 // collectSystemStats gathers system-level metrics
 func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
-	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "system_health"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "system_health"})
 
 	// system is a singleton resource, use FindStat instead of FindAllStats
 	sys, err := p.client.FindStat("system", "")
@@ -33,14 +35,14 @@ func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.system.cpu.usage.percent",
 		Value:     float32(getFloat(sys, "pktcpuusagepcnt")), // Packet engine CPU (the real load balancer work)
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.system.cpu.mgmt.usage.percent",
 		Value:     float32(getFloat(sys, "mgmtcpuusagepcnt")), // Management plane CPU (config, API, web UI)
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -48,7 +50,7 @@ func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.system.memory.usage.percent",
 		Value:     float32(getFloat(sys, "memusagepcnt")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -56,14 +58,14 @@ func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.system.network.rx.mbits_per_sec",
 		Value:     float32(getFloat(sys, "rxmbitsrate")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.system.network.tx.mbits_per_sec",
 		Value:     float32(getFloat(sys, "txmbitsrate")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -71,14 +73,14 @@ func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.system.http.requests.rate",
 		Value:     float32(getFloat(sys, "httprequestsrate")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.system.http.responses.rate",
 		Value:     float32(getFloat(sys, "httpresponsesrate")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -86,14 +88,14 @@ func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.system.tcp.client.connections.current",
 		Value:     float32(getFloat(sys, "tcpcurclientconn")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.system.tcp.server.connections.current",
 		Value:     float32(getFloat(sys, "tcpcurserverconn")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -101,7 +103,7 @@ func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.system.network.rx.packets_per_sec",
 		Value:     float32(getFloat(sys, "rxpacketsrate")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -109,7 +111,7 @@ func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.system.network.tx.packets_per_sec",
 		Value:     float32(getFloat(sys, "txpacketsrate")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -117,7 +119,7 @@ func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.system.network.rx.packets.total",
 		Value:     float32(getFloat(sys, "totalpktsrecvd")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -125,13 +127,13 @@ func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.system.network.tx.packets.total",
 		Value:     float32(getFloat(sys, "totalpktssent")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
 	// Disk metrics (disk0 = /flash, disk1 = /var)
 	// Disk 0 (/flash partition)
-	disk0Tags := append(baseTags, tags.Tag{Key: "partition", Value: "/flash"})
+	disk0Tags := append(collectorTags, tags.Tag{Key: "partition", Value: "/flash"})
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.disk.percent_used",
 		Value:     float32(getFloat(sys, "disk0perusage")),
@@ -152,7 +154,7 @@ func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags
 	})
 
 	// Disk 1 (/var partition)
-	disk1Tags := append(baseTags, tags.Tag{Key: "partition", Value: "/var"})
+	disk1Tags := append(collectorTags, tags.Tag{Key: "partition", Value: "/var"})
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.disk.percent_used",
 		Value:     float32(getFloat(sys, "disk1perusage")),
@@ -178,7 +180,10 @@ func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags
 // collectNSStats gathers Netscaler-specific global metrics
 func (p *netscalerProbe) collectNSStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "system_health"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "system_health"})
 
 	// ns is a singleton resource, use FindStat instead of FindAllStats
 	ns, err := p.client.FindStat("ns", "")
@@ -196,7 +201,7 @@ func (p *netscalerProbe) collectNSStats(timestamp time.Time, baseTags []tags.Tag
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.ns.throughput.total.mbits_per_sec",
 		Value:     float32(getFloat(ns, "totalthroughputrate")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -204,7 +209,7 @@ func (p *netscalerProbe) collectNSStats(timestamp time.Time, baseTags []tags.Tag
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.ns.http.throughput.mbits_per_sec",
 		Value:     float32(getFloat(ns, "httpthroughputrate")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -214,7 +219,10 @@ func (p *netscalerProbe) collectNSStats(timestamp time.Time, baseTags []tags.Tag
 // collectLBVServerStats gathers load balancer virtual server metrics
 func (p *netscalerProbe) collectLBVServerStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "load_balancing"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "load_balancing"})
 
 	stats, err := p.client.FindAllStats("lbvserver")
 	if err != nil {
@@ -230,7 +238,7 @@ func (p *netscalerProbe) collectLBVServerStats(timestamp time.Time, baseTags []t
 		}
 
 		// Create tags with vserver name
-		vserverTags := append(baseTags, tags.Tag{Key: "vserver", Value: vserverName})
+		vserverTags := append(collectorTags, tags.Tag{Key: "vserver", Value: vserverName})
 
 		// Enrich with config data from cache
 		if config := p.cache.getVServerConfig(vserverName); config != nil {
@@ -325,7 +333,10 @@ func (p *netscalerProbe) collectLBVServerStats(timestamp time.Time, baseTags []t
 // collectServiceStats gathers backend service metrics
 func (p *netscalerProbe) collectServiceStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "load_balancing"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "load_balancing"})
 
 	stats, err := p.client.FindAllStats("service")
 	if err != nil {
@@ -341,7 +352,7 @@ func (p *netscalerProbe) collectServiceStats(timestamp time.Time, baseTags []tag
 		}
 
 		// Create tags with service name
-		serviceTags := append(baseTags, tags.Tag{Key: "service", Value: serviceName})
+		serviceTags := append(collectorTags, tags.Tag{Key: "service", Value: serviceName})
 
 		// Enrich with config data from cache
 		if config := p.cache.getServiceConfig(serviceName); config != nil {
@@ -396,7 +407,10 @@ func (p *netscalerProbe) collectServiceStats(timestamp time.Time, baseTags []tag
 // collectSSLStats gathers SSL/TLS metrics
 func (p *netscalerProbe) collectSSLStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "ssl_certificates"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "ssl_certificates"})
 
 	// ssl is a singleton resource, use FindStat instead of FindAllStats
 	ssl, err := p.client.FindStat("ssl", "")
@@ -414,7 +428,7 @@ func (p *netscalerProbe) collectSSLStats(timestamp time.Time, baseTags []tags.Ta
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.ssl.transactions.rate",
 		Value:     float32(getFloat(ssl, "ssltransactionsrate")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -422,7 +436,7 @@ func (p *netscalerProbe) collectSSLStats(timestamp time.Time, baseTags []tags.Ta
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.ssl.sessions.total",
 		Value:     float32(getFloat(ssl, "sslsessiontot")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -432,7 +446,10 @@ func (p *netscalerProbe) collectSSLStats(timestamp time.Time, baseTags []tags.Ta
 // collectServiceGroupStats gathers service group metrics
 func (p *netscalerProbe) collectServiceGroupStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "load_balancing"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "load_balancing"})
 
 	stats, err := p.client.FindAllStats("servicegroup")
 	if err != nil {
@@ -448,7 +465,7 @@ func (p *netscalerProbe) collectServiceGroupStats(timestamp time.Time, baseTags 
 		}
 
 		// Create tags with service group name
-		sgTags := append(baseTags, tags.Tag{Key: "servicegroup", Value: sgName})
+		sgTags := append(collectorTags, tags.Tag{Key: "servicegroup", Value: sgName})
 
 		// Add bound vServers
 		if vservers := p.cache.getVServersForServiceGroup(sgName); len(vservers) > 0 {
@@ -510,7 +527,10 @@ func (p *netscalerProbe) collectServiceGroupStats(timestamp time.Time, baseTags 
 // collectSSLCertificateStats gathers SSL certificate expiration metrics
 func (p *netscalerProbe) collectSSLCertificateStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "ssl_certificates"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "ssl_certificates"})
 
 	// Get all SSL certificates from cache
 	certkeys := p.cache.getAllSSLCertKeys()
@@ -523,7 +543,7 @@ func (p *netscalerProbe) collectSSLCertificateStats(timestamp time.Time, baseTag
 
 	for certname, cert := range certkeys {
 		// Create tags with certificate name
-		certTags := append(baseTags, tags.Tag{Key: "certname", Value: certname})
+		certTags := append(collectorTags, tags.Tag{Key: "certname", Value: certname})
 
 		// Days to expiration
 		daysToExpiration := getFloat(cert, "daystoexpiration")
@@ -553,7 +573,10 @@ func (p *netscalerProbe) collectSSLCertificateStats(timestamp time.Time, baseTag
 // collectHAStats gathers High Availability (HA) metrics
 func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "high_availability"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "high_availability"})
 
 	p.logger.Debug().
 		Int("probe_node_id", p.nodeID).
@@ -719,7 +742,10 @@ func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag
 // collectDiskStats gathers disk usage metrics
 func (p *netscalerProbe) collectDiskStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "system_health"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "system_health"})
 
 	// Disk stats are part of system resource (disk0* = /flash, disk1* = /var)
 	sys, err := p.client.FindStat("system", "")
@@ -734,7 +760,7 @@ func (p *netscalerProbe) collectDiskStats(timestamp time.Time, baseTags []tags.T
 	var datapoints []datapoint.DataPoint
 
 	// Disk 0 (/flash partition)
-	disk0Tags := append(baseTags, tags.Tag{Key: "partition", Value: "/flash"})
+	disk0Tags := append(collectorTags, tags.Tag{Key: "partition", Value: "/flash"})
 
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.disk.percent_used",
@@ -758,7 +784,7 @@ func (p *netscalerProbe) collectDiskStats(timestamp time.Time, baseTags []tags.T
 	})
 
 	// Disk 1 (/var partition)
-	disk1Tags := append(baseTags, tags.Tag{Key: "partition", Value: "/var"})
+	disk1Tags := append(collectorTags, tags.Tag{Key: "partition", Value: "/var"})
 
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.disk.percent_used",
@@ -787,7 +813,10 @@ func (p *netscalerProbe) collectDiskStats(timestamp time.Time, baseTags []tags.T
 // collectInterfaceStats gathers network interface metrics
 func (p *netscalerProbe) collectInterfaceStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "network"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "network"})
 
 	// Interface returns stats for all network interfaces (note: capital I)
 	stats, err := p.client.FindAllStats("Interface")
@@ -804,7 +833,7 @@ func (p *netscalerProbe) collectInterfaceStats(timestamp time.Time, baseTags []t
 		}
 
 		// Create tags with interface name (keep original name with /)
-		ifaceTags := append(baseTags, tags.Tag{Key: "interface", Value: interfaceName})
+		ifaceTags := append(collectorTags, tags.Tag{Key: "interface", Value: interfaceName})
 
 		// Interface state - binary ENABLED/DISABLED state
 		// Source: Citrix ADC NITRO API - interface state field
@@ -900,7 +929,10 @@ func (p *netscalerProbe) collectInterfaceStats(timestamp time.Time, baseTags []t
 // collectContentSwitchingStats gathers Content Switching vServer metrics
 func (p *netscalerProbe) collectContentSwitchingStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "content_switching"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "content_switching"})
 
 	// csvserver returns Content Switching virtual server stats
 	stats, err := p.client.FindAllStats("csvserver")
@@ -917,7 +949,7 @@ func (p *netscalerProbe) collectContentSwitchingStats(timestamp time.Time, baseT
 		}
 
 		// Create tags with csvserver name
-		csvserverTags := append(baseTags, tags.Tag{Key: "csvserver", Value: csvserverName})
+		csvserverTags := append(collectorTags, tags.Tag{Key: "csvserver", Value: csvserverName})
 
 		// State - use official Citrix ADC NITRO API numeric codes
 		// Source: https://docs.netscaler.com/en-us/citrix-adc/current-release/load-balancing/load-balancing-vserver-service-states.html
@@ -962,7 +994,10 @@ func (p *netscalerProbe) collectContentSwitchingStats(timestamp time.Time, baseT
 // collectContentSwitchingPolicyStats gathers Content Switching policy metrics
 func (p *netscalerProbe) collectContentSwitchingPolicyStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "content_switching"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "content_switching"})
 
 	// cspolicy returns Content Switching policy stats
 	stats, err := p.client.FindAllStats("cspolicy")
@@ -979,7 +1014,7 @@ func (p *netscalerProbe) collectContentSwitchingPolicyStats(timestamp time.Time,
 		}
 
 		// Create tags with policy name
-		policyTags := append(baseTags, tags.Tag{Key: "cspolicy", Value: policyName})
+		policyTags := append(collectorTags, tags.Tag{Key: "cspolicy", Value: policyName})
 
 		// Policy hits
 		datapoints = append(datapoints, datapoint.DataPoint{
@@ -1004,7 +1039,10 @@ func (p *netscalerProbe) collectContentSwitchingPolicyStats(timestamp time.Time,
 // collectGSLBVServerStats gathers GSLB virtual server metrics
 func (p *netscalerProbe) collectGSLBVServerStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "gslb"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "gslb"})
 
 	// gslbvserver returns GSLB virtual server stats
 	stats, err := p.client.FindAllStats("gslbvserver")
@@ -1021,7 +1059,7 @@ func (p *netscalerProbe) collectGSLBVServerStats(timestamp time.Time, baseTags [
 		}
 
 		// Create tags with GSLB vserver name
-		gslbTags := append(baseTags, tags.Tag{Key: "gslbvserver", Value: vserverName})
+		gslbTags := append(collectorTags, tags.Tag{Key: "gslbvserver", Value: vserverName})
 
 		// State - use official Citrix ADC NITRO API numeric codes
 		// Source: https://docs.netscaler.com/en-us/citrix-adc/current-release/load-balancing/load-balancing-vserver-service-states.html
@@ -1066,7 +1104,10 @@ func (p *netscalerProbe) collectGSLBVServerStats(timestamp time.Time, baseTags [
 // collectGSLBSiteStats gathers GSLB site metrics
 func (p *netscalerProbe) collectGSLBSiteStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "gslb"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "gslb"})
 
 	// gslbsite returns GSLB site stats
 	stats, err := p.client.FindAllStats("gslbsite")
@@ -1083,7 +1124,7 @@ func (p *netscalerProbe) collectGSLBSiteStats(timestamp time.Time, baseTags []ta
 		}
 
 		// Create tags with site name
-		siteTags := append(baseTags, tags.Tag{Key: "gslbsite", Value: siteName})
+		siteTags := append(collectorTags, tags.Tag{Key: "gslbsite", Value: siteName})
 
 		// Site state (UP=1, DOWN=0)
 		state := getString(site, "sitestate")
@@ -1121,7 +1162,10 @@ func (p *netscalerProbe) collectGSLBSiteStats(timestamp time.Time, baseTags []ta
 // collectGSLBServiceStats gathers GSLB service metrics
 func (p *netscalerProbe) collectGSLBServiceStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "gslb"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "gslb"})
 
 	// gslbservice returns GSLB service stats
 	stats, err := p.client.FindAllStats("gslbservice")
@@ -1138,7 +1182,7 @@ func (p *netscalerProbe) collectGSLBServiceStats(timestamp time.Time, baseTags [
 		}
 
 		// Create tags with service name
-		serviceTags := append(baseTags, tags.Tag{Key: "gslbservice", Value: serviceName})
+		serviceTags := append(collectorTags, tags.Tag{Key: "gslbservice", Value: serviceName})
 
 		// State (UP=1, DOWN=0)
 		state := getString(service, "state")
@@ -1176,7 +1220,10 @@ func (p *netscalerProbe) collectGSLBServiceStats(timestamp time.Time, baseTags [
 // collectCacheStats gathers integrated cache metrics
 func (p *netscalerProbe) collectCacheStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "system_health"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "system_health"})
 
 	// cache is a singleton resource
 	cache, err := p.client.FindStat("cache", "")
@@ -1194,7 +1241,7 @@ func (p *netscalerProbe) collectCacheStats(timestamp time.Time, baseTags []tags.
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.cache.hit_ratio_percent",
 		Value:     float32(getFloat(cache, "cachecqahitpercent")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1202,7 +1249,7 @@ func (p *netscalerProbe) collectCacheStats(timestamp time.Time, baseTags []tags.
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.cache.objects.count",
 		Value:     float32(getFloat(cache, "cachecurobjs")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1210,7 +1257,7 @@ func (p *netscalerProbe) collectCacheStats(timestamp time.Time, baseTags []tags.
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.cache.memory.used_kb",
 		Value:     float32(getFloat(cache, "cachecurmemused")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1218,7 +1265,7 @@ func (p *netscalerProbe) collectCacheStats(timestamp time.Time, baseTags []tags.
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.cache.hits.total",
 		Value:     float32(getFloat(cache, "cachetotrequestswhits")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1226,7 +1273,7 @@ func (p *netscalerProbe) collectCacheStats(timestamp time.Time, baseTags []tags.
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.cache.misses.total",
 		Value:     float32(getFloat(cache, "cachetotrequestsmiss")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1236,7 +1283,10 @@ func (p *netscalerProbe) collectCacheStats(timestamp time.Time, baseTags []tags.
 // collectCompressionStats gathers compression metrics
 func (p *netscalerProbe) collectCompressionStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "system_health"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "system_health"})
 
 	// cmp is a singleton resource for compression
 	cmp, err := p.client.FindStat("cmp", "")
@@ -1254,7 +1304,7 @@ func (p *netscalerProbe) collectCompressionStats(timestamp time.Time, baseTags [
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.compression.ratio",
 		Value:     float32(getFloat(cmp, "compratio")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1262,7 +1312,7 @@ func (p *netscalerProbe) collectCompressionStats(timestamp time.Time, baseTags [
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.compression.bytes.compressed.total",
 		Value:     float32(getFloat(cmp, "comptotdatacompressed")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1270,7 +1320,7 @@ func (p *netscalerProbe) collectCompressionStats(timestamp time.Time, baseTags [
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.compression.bytes.original.total",
 		Value:     float32(getFloat(cmp, "comptotuncompresseddata")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1281,7 +1331,7 @@ func (p *netscalerProbe) collectCompressionStats(timestamp time.Time, baseTags [
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.compression.bandwidth_savings.bytes",
 		Value:     float32(bandwidthSavings),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1291,7 +1341,10 @@ func (p *netscalerProbe) collectCompressionStats(timestamp time.Time, baseTags [
 // collectAAAStats gathers AAA (Authentication, Authorization, Accounting) metrics
 func (p *netscalerProbe) collectAAAStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "authentication"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "authentication"})
 
 	// aaauser returns AAA user stats
 	stats, err := p.client.FindAllStats("aaauser")
@@ -1307,7 +1360,7 @@ func (p *netscalerProbe) collectAAAStats(timestamp time.Time, baseTags []tags.Ta
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.aaa.sessions.active.total",
 		Value:     totalSessions,
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1317,7 +1370,10 @@ func (p *netscalerProbe) collectAAAStats(timestamp time.Time, baseTags []tags.Ta
 // collectAuthenticationVServerStats gathers authentication vServer metrics
 func (p *netscalerProbe) collectAuthenticationVServerStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "authentication"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "authentication"})
 
 	// authenticationvserver returns authentication vServer stats
 	stats, err := p.client.FindAllStats("authenticationvserver")
@@ -1334,7 +1390,7 @@ func (p *netscalerProbe) collectAuthenticationVServerStats(timestamp time.Time, 
 		}
 
 		// Create tags with vserver name
-		authTags := append(baseTags, tags.Tag{Key: "authvserver", Value: vserverName})
+		authTags := append(collectorTags, tags.Tag{Key: "authvserver", Value: vserverName})
 
 		// State (UP=1, DOWN=0)
 		state := getString(authvs, "state")
@@ -1372,7 +1428,10 @@ func (p *netscalerProbe) collectAuthenticationVServerStats(timestamp time.Time, 
 // collectVPNStats gathers Citrix Gateway/VPN metrics
 func (p *netscalerProbe) collectVPNStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "vpn"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "vpn"})
 
 	// vpnvserver returns VPN virtual server stats
 	stats, err := p.client.FindAllStats("vpnvserver")
@@ -1389,7 +1448,7 @@ func (p *netscalerProbe) collectVPNStats(timestamp time.Time, baseTags []tags.Ta
 		}
 
 		// Create tags with VPN vserver name
-		vpnTags := append(baseTags, tags.Tag{Key: "vpnvserver", Value: vserverName})
+		vpnTags := append(collectorTags, tags.Tag{Key: "vpnvserver", Value: vserverName})
 
 		// State (UP=1, DOWN=0)
 		state := getString(vpnvs, "state")
@@ -1435,7 +1494,10 @@ func (p *netscalerProbe) collectVPNStats(timestamp time.Time, baseTags []tags.Ta
 // collectApplicationFirewallStats gathers WAF/Application Firewall metrics
 func (p *netscalerProbe) collectApplicationFirewallStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
-	baseTags = append(baseTags, tags.Tag{Key: "metric_view", Value: "security"})
+	// Create a copy to avoid modifying caller's slice
+	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
+	copy(collectorTags, baseTags)
+	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "security"})
 
 	// appfw is a singleton resource for application firewall
 	appfw, err := p.client.FindStat("appfw", "")
@@ -1453,7 +1515,7 @@ func (p *netscalerProbe) collectApplicationFirewallStats(timestamp time.Time, ba
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.appfw.violations.total",
 		Value:     float32(getFloat(appfw, "appfwtotalviolations")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1461,7 +1523,7 @@ func (p *netscalerProbe) collectApplicationFirewallStats(timestamp time.Time, ba
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.appfw.requests.blocked.total",
 		Value:     float32(getFloat(appfw, "appfwreqsblocked")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1469,7 +1531,7 @@ func (p *netscalerProbe) collectApplicationFirewallStats(timestamp time.Time, ba
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.appfw.responses.blocked.total",
 		Value:     float32(getFloat(appfw, "appfwrespblocked")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1477,7 +1539,7 @@ func (p *netscalerProbe) collectApplicationFirewallStats(timestamp time.Time, ba
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.appfw.violations.sqli.total",
 		Value:     float32(getFloat(appfw, "appfwviolsqlinjection")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1485,7 +1547,7 @@ func (p *netscalerProbe) collectApplicationFirewallStats(timestamp time.Time, ba
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.appfw.violations.xss.total",
 		Value:     float32(getFloat(appfw, "appfwviolxss")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
@@ -1493,7 +1555,7 @@ func (p *netscalerProbe) collectApplicationFirewallStats(timestamp time.Time, ba
 	datapoints = append(datapoints, datapoint.DataPoint{
 		Name:      "netscaler.appfw.violations.buffer_overflow.total",
 		Value:     float32(getFloat(appfw, "appfwviolbufferoverflow")),
-		Tags:      baseTags,
+		Tags:      collectorTags,
 		Timestamp: timestamp,
 	})
 
