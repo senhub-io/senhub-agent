@@ -99,9 +99,8 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 	config := LocalConfigurationData{
 		ConfigVersion: CurrentConfigVersion, // Use current version for new configs
 		Agent: LocalAgentConfig{
-			Key:       agentKey,
-			Mode:      "offline",
-			Generated: lc.args.AuthenticationKey == "", // Mark as generated if we created it
+			Key:  agentKey,
+			Mode: "offline",
 		},
 		Storage:    lc.createDefaultStorageConfig(),
 		Probes:     lc.createDefaultProbesConfig(),
@@ -219,7 +218,7 @@ func (lc *LocalConfiguration) createDefaultProbesConfig() []ProbeConfig {
 // createDefaultAutoUpdateConfig creates default auto-update configuration
 func (lc *LocalConfiguration) createDefaultAutoUpdateConfig() *AutoUpdateConfig {
 	return &AutoUpdateConfig{
-		Enabled: false, // Disabled by default in offline mode
+		Enabled: true, // Enabled by default
 		URL:     "https://eu-west-1.intake.senhub.io/releases",
 	}
 }
