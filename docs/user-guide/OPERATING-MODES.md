@@ -1,35 +1,35 @@
-# SenHub Agent - Modes de Fonctionnement
+# SenHub Agent - Operating Modes
 
-## Table des Matières
+## Table of Contents
 
-- [Vue d'Ensemble](#vue-densemble)
-- [Mode Online (Connecté)](#mode-online-connecté)
-- [Mode Offline (Autonome)](#mode-offline-autonome)
-- [Comparaison Détaillée](#comparaison-détaillée)
-- [Basculement Entre Modes](#basculement-entre-modes)
-- [Cas d'Usage par Mode](#cas-dusage-par-mode)
+- [Overview](#overview)
+- [Online Mode (Connected)](#online-mode-connected)
+- [Offline Mode (Autonomous)](#offline-mode-autonomous)
+- [Detailed Comparison](#detailed-comparison)
+- [Switching Between Modes](#switching-between-modes)
+- [Use Cases by Mode](#use-cases-by-mode)
 
 ---
 
-## Vue d'Ensemble
+## Overview
 
-L'agent SenHub supporte deux modes de fonctionnement distincts, adaptés à différents environnements et besoins :
+SenHub Agent supports two distinct operating modes, adapted to different environments and needs:
 
 ```mermaid
 graph TD
-    A[SenHub Agent] --> B{Mode de Fonctionnement}
-    B -->|Connecté| C[Mode Online]
-    B -->|Autonome| D[Mode Offline]
+    A[SenHub Agent] --> B{Operating Mode}
+    B -->|Connected| C[Online Mode]
+    B -->|Autonomous| D[Offline Mode]
 
-    C --> C1[Plateforme SenHub]
-    C --> C2[Config Centralisée]
+    C --> C1[SenHub Platform]
+    C --> C2[Centralized Config]
     C --> C3[Auto-Update]
-    C --> C4[Envoi Métriques]
+    C --> C4[Metrics Sending]
 
     D --> D1[Air-Gap Ready]
-    D --> D2[Config Locale YAML]
+    D --> D2[Local YAML Config]
     D --> D3[Web Interface]
-    D --> D4[Cache Local]
+    D --> D4[Local Cache]
 
     style C fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
     style D fill:#fff4e6,stroke:#f57c00,stroke-width:2px
@@ -43,88 +43,88 @@ graph TD
     style D4 fill:#ffe0b2
 ```
 
-### Tableau Comparatif Rapide
+### Quick Comparison Table
 
-| Aspect | Mode Online 🌐 | Mode Offline 🔒 |
+| Aspect | Online Mode 🌐 | Offline Mode 🔒 |
 |--------|----------------|-----------------|
-| **Connexion externe** | ✅ Requise (plateforme SenHub) | ❌ Aucune nécessaire |
-| **Configuration** | Téléchargée depuis serveur | Fichier local `agent-config.yaml` |
-| **Agent Key** | Fournie par plateforme | Générée localement (UUID v4) |
-| **Updates probes** | Push automatique du serveur | Modification fichier local |
-| **Stockage métriques** | Envoi SenHub + cache local | Cache local uniquement |
-| **Web Interface** | Optionnelle (HTTP strategy) | Principale interface d'accès |
-| **Auto-update agent** | Automatique | Manuel ou automatique (si internet) |
-| **Cas d'usage** | Monitoring centralisé multi-sites | Air-gap, edge, dev, POC |
+| **External connection** | ✅ Required (SenHub platform) | ❌ Not needed |
+| **Configuration** | Downloaded from server | Local `agent-config.yaml` file |
+| **Agent Key** | Provided by platform | Locally generated (UUID v4) |
+| **Probe updates** | Automatic push from server | Local file modification |
+| **Metrics storage** | SenHub sending + local cache | Local cache only |
+| **Web Interface** | Optional (HTTP strategy) | Main access interface |
+| **Auto-update agent** | Automatic | Manual or automatic (if internet) |
+| **Use case** | Centralized multi-site monitoring | Air-gap, edge, dev, POC |
 
 ---
 
-## Mode Online (Connecté)
+## Online Mode (Connected)
 
-### Principe de Fonctionnement
+### Operating Principle
 
 ```mermaid
 sequenceDiagram
     participant A as Agent
-    participant P as Plateforme SenHub
+    participant P as SenHub Platform
     participant S as Probes
 
-    Note over A: Démarrage avec<br/>--authentication-key
+    Note over A: Start with<br/>--authentication-key
 
-    A->>P: Authentification (HTTPS)
-    P-->>A: Configuration + Licence
+    A->>P: Authentication (HTTPS)
+    P-->>A: Configuration + License
 
-    A->>S: Démarrage probes<br/>(config serveur)
+    A->>S: Start probes<br/>(server config)
 
-    loop Collecte
-        S->>A: Métriques (30-300s)
-        A->>P: Envoi métriques (HTTPS)
+    loop Collection
+        S->>A: Metrics (30-300s)
+        A->>P: Send metrics (HTTPS)
         P-->>A: ACK
     end
 
-    P->>A: Nouvelle config (push)
-    A->>S: Redémarrage probes
+    P->>A: New config (push)
+    A->>S: Restart probes
 
-    P->>A: Update disponible
-    A->>P: Téléchargement
-    A->>A: Redémarrage
+    P->>A: Update available
+    A->>P: Download
+    A->>A: Restart
 ```
 
-### Caractéristiques
+### Features
 
-#### ✅ Avantages
+#### ✅ Advantages
 
-1. **Configuration Centralisée**
-   - Gestion depuis la plateforme web SenHub
-   - Push de configuration en temps réel
-   - Pas de SSH/RDP nécessaire pour modifier
+1. **Centralized Configuration**
+   - Management from SenHub web platform
+   - Real-time configuration push
+   - No SSH/RDP needed for modifications
 
-2. **Monitoring Centralisé**
-   - Visualisation multi-agents dans un dashboard unique
-   - Alerting centralisé
-   - Historique longue durée
+2. **Centralized Monitoring**
+   - Multi-agent visualization in single dashboard
+   - Centralized alerting
+   - Long-term history
 
 3. **Auto-Update**
-   - Mises à jour automatiques de l'agent
-   - Nouvelles probes déployées automatiquement
+   - Automatic agent updates
+   - New probes deployed automatically
    - Zero-downtime updates
 
-4. **Authentification Sécurisée**
-   - Clé fournie par la plateforme
-   - Révocation possible depuis le portail
-   - Certificats TLS managés
+4. **Secure Authentication**
+   - Key provided by platform
+   - Revocation possible from portal
+   - Managed TLS certificates
 
 #### ❌ Limitations
 
-1. **Connexion Requise**
-   - Internet obligatoire (HTTPS vers `eu-west-1.intake.senhub.io`)
-   - Peut être bloqué par proxy/firewall
-   - Latence selon localisation
+1. **Connection Required**
+   - Internet mandatory (HTTPS to `eu-west-1.intake.senhub.io`)
+   - Can be blocked by proxy/firewall
+   - Latency depends on location
 
-2. **Dépendance Plateforme**
-   - Si plateforme inaccessible, utilise config répliquée localement
-   - Nécessite compte SenHub actif
+2. **Platform Dependency**
+   - If platform unreachable, uses locally replicated config
+   - Requires active SenHub account
 
-### Installation Mode Online
+### Online Mode Installation
 
 ```bash
 # Windows
@@ -137,17 +137,17 @@ sudo senhub-agent install --authentication-key "YOUR_PLATFORM_KEY"
 sudo senhub-agent install --authentication-key "YOUR_PLATFORM_KEY"
 ```
 
-**📸 SCREENSHOT À INSÉRER**: Portail SenHub avec section "Agent Keys" montrant une clé générée
+**📸 SCREENSHOT TO INSERT**: SenHub portal with "Agent Keys" section showing a generated key
 
-### Configuration Générée (Mode Online)
+### Generated Configuration (Online Mode)
 
 ```yaml
 config_version: 2
 
 agent:
-  key: "platform-provided-key-abc123def456"  # Fournie par SenHub
+  key: "platform-provided-key-abc123def456"  # Provided by SenHub
   mode: online
-  license: "eyJhbGciOiJSUzI1NiIs..."         # JWT (si applicable)
+  license: "eyJhbGciOiJSUzI1NiIs..."         # JWT (if applicable)
 
 auto_update:
   enabled: true
@@ -156,30 +156,30 @@ auto_update:
 cache:
   retention_minutes: 5
 
-# Configuration téléchargée depuis le serveur
-# Probes, storage, etc. managés par la plateforme
+# Configuration downloaded from server
+# Probes, storage, etc. managed by platform
 ```
 
-### Réplication Locale (Fallback)
+### Local Replication (Fallback)
 
-L'agent crée automatiquement une copie locale de la configuration serveur :
+The agent automatically creates a local copy of the server configuration:
 
-**Chemin de réplication**
-- Windows : `C:\ProgramData\SenHub\agent-config-replica.yaml`
-- Linux : `/var/lib/senhub-agent/agent-config-replica.yaml`
-- macOS : `/usr/local/var/senhub-agent/agent-config-replica.yaml`
+**Replication path**
+- Windows: `C:\ProgramData\SenHub\agent-config-replica.yaml`
+- Linux: `/var/lib/senhub-agent/agent-config-replica.yaml`
+- macOS: `/usr/local/var/senhub-agent/agent-config-replica.yaml`
 
-**Utilisation**
-Si la plateforme devient inaccessible, l'agent utilise la réplication locale pour continuer à fonctionner.
+**Usage**
+If the platform becomes unreachable, the agent uses the local replication to continue operating.
 
 ```mermaid
 graph LR
-    A[Agent Démarre] --> B{Serveur<br/>Accessible?}
-    B -->|Oui| C[Config Serveur]
-    B -->|Non| D[Config Répliquée]
+    A[Agent Starts] --> B{Server<br/>Reachable?}
+    B -->|Yes| C[Server Config]
+    B -->|No| D[Replicated Config]
 
-    C --> E[Réplication Locale]
-    E --> F[Fonctionnement Normal]
+    C --> E[Local Replication]
+    E --> F[Normal Operation]
     D --> F
 
     style B fill:#fff3e0
@@ -187,34 +187,34 @@ graph LR
     style E fill:#c8e6c9
 ```
 
-### Environnements Typiques
+### Typical Environments
 
-- **Datacenters avec internet** : Monitoring centralisé de dizaines/centaines de serveurs
-- **Cloud** : AWS, Azure, GCP avec accès sortant HTTPS
-- **Bureaux distants** : Sites avec connexion internet stable
-- **Monitoring-as-a-Service** : Offre de monitoring géré pour clients
+- **Datacenters with internet**: Centralized monitoring of dozens/hundreds of servers
+- **Cloud**: AWS, Azure, GCP with outbound HTTPS access
+- **Remote offices**: Sites with stable internet connection
+- **Monitoring-as-a-Service**: Managed monitoring offering for customers
 
 ---
 
-## Mode Offline (Autonome)
+## Offline Mode (Autonomous)
 
-### Principe de Fonctionnement
+### Operating Principle
 
 ```mermaid
 graph TD
-    A[Agent Démarre] --> B[Lecture<br/>agent-config.yaml]
-    B --> C[Génération UUID<br/>si nouveau]
-    C --> D[Démarrage Probes<br/>config locale]
+    A[Agent Starts] --> B[Read<br/>agent-config.yaml]
+    B --> C[Generate UUID<br/>if new]
+    C --> D[Start Probes<br/>local config]
     D --> E[HTTP Strategy<br/>Port 8080/8443]
 
     E --> F[Web Dashboard]
-    E --> G[API PRTG/Nagios]
-    E --> H[API JSON]
+    E --> G[PRTG/Nagios API]
+    E --> H[JSON API]
 
-    D --> I[(Cache Local)]
+    D --> I[(Local Cache)]
     I --> E
 
-    J[Utilisateur] --> F
+    J[User] --> F
     J --> G
     J --> H
 
@@ -224,80 +224,80 @@ graph TD
     style I fill:#fff9c4
 ```
 
-### Caractéristiques
+### Features
 
-#### ✅ Avantages
+#### ✅ Advantages
 
-1. **Zéro Dépendance Externe**
-   - Fonctionne sans internet
-   - Idéal pour environnements air-gapped
-   - Aucun risque de fuite de données
+1. **Zero External Dependency**
+   - Works without internet
+   - Ideal for air-gapped environments
+   - No risk of data leakage
 
-2. **Configuration Fichier Local**
-   - Contrôle total via YAML
-   - Versionnable (Git, Ansible, etc.)
+2. **Local File Configuration**
+   - Complete control via YAML
+   - Versionable (Git, Ansible, etc.)
    - Infrastructure as Code
 
-3. **Interface Web Locale**
-   - Dashboard de monitoring accessible localement
-   - API REST complète (PRTG, Nagios, JSON)
-   - Lookups PRTG téléchargeables
+3. **Local Web Interface**
+   - Locally accessible monitoring dashboard
+   - Complete REST API (PRTG, Nagios, JSON)
+   - Downloadable PRTG lookups
 
-4. **Rapide à Déployer**
-   - Installation en 2 minutes
-   - Pas de compte plateforme nécessaire
-   - Idéal pour POC et développement
+4. **Quick to Deploy**
+   - 2-minute installation
+   - No platform account needed
+   - Ideal for POC and development
 
 #### ❌ Limitations
 
-1. **Configuration Manuelle**
-   - Modifications via SSH/RDP + édition YAML
-   - Pas de push centralisé
-   - Nécessite redémarrage pour changements
+1. **Manual Configuration**
+   - Modifications via SSH/RDP + YAML editing
+   - No centralized push
+   - Requires restart for changes
 
-2. **Pas d'Historique Long Terme**
-   - Cache mémoire uniquement (5-30 minutes)
-   - Pas de base de données time-series intégrée
-   - Exporter vers système externe si besoin
+2. **No Long-Term History**
+   - Memory cache only (5-30 minutes)
+   - No integrated time-series database
+   - Export to external system if needed
 
-3. **Monitoring Local Uniquement**
-   - Pas de vue multi-agents centralisée
-   - Alerting à gérer via PRTG/Nagios/autre
+3. **Local Monitoring Only**
+   - No centralized multi-agent view
+   - Alerting managed via PRTG/Nagios/other
 
-### Installation Mode Offline
+### Offline Mode Installation
 
-#### Installation HTTP (Localhost uniquement)
+#### HTTP Installation (Localhost only)
 
 ```bash
-# Toutes plateformes
+# All platforms
 senhub-agent install --offline
 
-# Accès
+# Access
 http://localhost:8080/web/{UUID}/dashboard
 ```
 
-**Cas d'usage** : Développement, tests locaux
+**Use case**: Development, local testing
 
-#### Installation HTTPS (Production)
+#### HTTPS Installation (Production)
 
 ```bash
-# Avec certificats auto-générés
+# With auto-generated certificates
 senhub-agent install --offline --enable-https
 
-# Avec certificats personnalisés
+# With custom certificates
 senhub-agent install --offline --enable-https \
   --cert-file /etc/ssl/certs/server.crt \
   --key-file /etc/ssl/private/server.key
 
-# Accès
+# Access
 https://monitoring.local:8443/web/{UUID}/dashboard
 ```
 
-**Cas d'usage** : Production air-gap, edge computing
+**Use case**: Air-gap production, edge computing
 
-**📸 SCREENSHOT À INSÉRER**: Terminal montrant l'installation offline avec génération de l'UUID et message "Agent key: f47ac10b-58cc-4372-a567-0e02b2c3d479"
+**📸 SCREENSHOT TO INSERT**: Terminal showing offline installation with UUID generation and message "Agent key: f47ac10b-58cc-4372-a567-0e02b2c3d479"
 
-### Configuration Générée (Mode Offline)
+### Generated Configuration (Offline Mode)
 
 ```yaml
 # SenHub Agent Configuration
@@ -309,25 +309,25 @@ config_version: 2
 
 # Agent configuration
 agent:
-  key: "f47ac10b-58cc-4372-a567-0e02b2c3d479"  # UUID généré
+  key: "f47ac10b-58cc-4372-a567-0e02b2c3d479"  # Generated UUID
   mode: offline
-  # license: ""  # Décommenter et ajouter licence si nécessaire
+  # license: ""  # Uncomment and add license if needed
 
 # Auto-update configuration
 auto_update:
-  enabled: true  # Vérifie les updates si internet disponible
+  enabled: true  # Checks updates if internet available
   url: "https://eu-west-1.intake.senhub.io/releases"
 
 # Cache configuration
 cache:
-  retention_minutes: 5  # Durée de rétention métriques en mémoire
+  retention_minutes: 5  # Metrics retention duration in memory
 
 # Local storage with web interface
 storage:
   - name: http
     params:
-      port: 8080               # 8443 si HTTPS
-      bind_address: "127.0.0.1"  # "0.0.0.0" si HTTPS
+      port: 8080               # 8443 if HTTPS
+      bind_address: "127.0.0.1"  # "0.0.0.0" if HTTPS
       endpoints: ["prtg", "web", "nagios"]
 
 # Active probes (default system monitoring)
@@ -353,13 +353,13 @@ probes:
       interval: 30
 ```
 
-### Modification de la Configuration
+### Configuration Modification
 
 ```bash
-# 1. Éditer le fichier
+# 1. Edit the file
 sudo nano /etc/senhub-agent/agent-config.yaml
 
-# 2. Exemple : Ajouter une probe Redfish
+# 2. Example: Add Redfish probe
 probes:
   - name: "Production iDRAC"
     type: redfish
@@ -369,44 +369,44 @@ probes:
       password: "secret"
       interval: 300
 
-# 3. Redémarrer l'agent
+# 3. Restart agent
 sudo systemctl restart senhub-agent  # Linux
 sudo launchctl unload /Library/LaunchDaemons/io.senhub.agent.plist && \
 sudo launchctl load /Library/LaunchDaemons/io.senhub.agent.plist  # macOS
 ```
 
-**📸 SCREENSHOT À INSÉRER**: Éditeur nano/vi avec le fichier agent-config.yaml ouvert montrant une probe redfish configurée
+**📸 SCREENSHOT TO INSERT**: nano/vi editor with agent-config.yaml file open showing configured redfish probe
 
-### Environnements Typiques
+### Typical Environments
 
-- **Datacenters Air-Gapped** : Installations sans connexion internet (sécurité, militaire, industrie)
-- **Edge Computing** : Sites distants avec connectivité limitée ou coûteuse
-- **Développement Local** : Tests et développement de probes personnalisées
-- **POC et Démos** : Installation rapide pour démonstrations clients
-- **Environnements Réglementés** : Secteurs interdisant l'envoi de données externes
+- **Air-Gapped Datacenters**: Installations without internet connection (security, military, industrial)
+- **Edge Computing**: Remote sites with limited or expensive connectivity
+- **Local Development**: Testing and development of custom probes
+- **POC and Demos**: Quick installation for customer demonstrations
+- **Regulated Environments**: Sectors prohibiting external data transmission
 
 ---
 
-## Comparaison Détaillée
+## Detailed Comparison
 
-### Architecture Réseau
+### Network Architecture
 
 ```mermaid
 graph TB
-    subgraph Online ["Mode Online 🌐"]
-        A1[Agent] -->|HTTPS| P[Plateforme SenHub<br/>eu-west-1.intake.senhub.io]
-        A1 -->|Collecte| PR1[Probes]
+    subgraph Online ["Online Mode 🌐"]
+        A1[Agent] -->|HTTPS| P[SenHub Platform<br/>eu-west-1.intake.senhub.io]
+        A1 -->|Collect| PR1[Probes]
         P -->|Config Push| A1
         P -->|Update Push| A1
         A1 -->|Metrics| P
     end
 
-    subgraph Offline ["Mode Offline 🔒"]
-        A2[Agent] -->|Lecture| CF[agent-config.yaml]
-        A2 -->|Collecte| PR2[Probes]
+    subgraph Offline ["Offline Mode 🔒"]
+        A2[Agent] -->|Read| CF[agent-config.yaml]
+        A2 -->|Collect| PR2[Probes]
         A2 -->|HTTP/HTTPS| UI[Web Interface<br/>localhost:8080]
-        USER[Utilisateur] -->|Accès Local| UI
-        USER -->|Édition| CF
+        USER[User] -->|Local Access| UI
+        USER -->|Edit| CF
     end
 
     style Online fill:#e1f5ff,stroke:#0288d1
@@ -416,26 +416,26 @@ graph TB
     style UI fill:#ffcc80
 ```
 
-### Flux de Configuration
+### Configuration Flow
 
-#### Mode Online
+#### Online Mode
 
 ```mermaid
 sequenceDiagram
-    participant U as Admin<br/>(Portail Web)
-    participant P as Plateforme
+    participant U as Admin<br/>(Web Portal)
+    participant P as Platform
     participant A as Agent
 
-    U->>P: Modifier config probe
+    U->>P: Modify probe config
     P->>P: Validation
     P->>A: Push config (WebSocket)
-    A->>A: Validation locale
+    A->>A: Local validation
     A->>A: Apply config
     A-->>P: ACK
     P-->>U: Confirmation
 ```
 
-#### Mode Offline
+#### Offline Mode
 
 ```mermaid
 sequenceDiagram
@@ -443,85 +443,85 @@ sequenceDiagram
     participant F as agent-config.yaml
     participant A as Agent
 
-    U->>F: Édition fichier
-    U->>F: Sauvegarde
-    U->>A: Redémarrage service
-    A->>F: Lecture config
+    U->>F: Edit file
+    U->>F: Save
+    U->>A: Restart service
+    A->>F: Read config
     A->>A: Validation
     A->>A: Apply config
-    A-->>U: Logs de démarrage
+    A-->>U: Startup logs
 ```
 
-### Flux de Données
+### Data Flow
 
-#### Mode Online
+#### Online Mode
 
 ```mermaid
 graph LR
-    A[Probes] -->|Métriques| B[Agent Cache]
-    B -->|HTTPS POST| C[Plateforme SenHub]
-    C -->|Stockage| D[(TimeSeries DB)]
-    D -->|Query| E[Dashboard Web]
+    A[Probes] -->|Metrics| B[Agent Cache]
+    B -->|HTTPS POST| C[SenHub Platform]
+    C -->|Storage| D[(TimeSeries DB)]
+    D -->|Query| E[Web Dashboard]
     D -->|Query| F[Alerting]
 
     style C fill:#81d4fa
     style D fill:#81d4fa
 ```
 
-#### Mode Offline
+#### Offline Mode
 
 ```mermaid
 graph LR
-    A[Probes] -->|Métriques| B[Agent Cache]
-    B -->|HTTP GET| C[API Local]
+    A[Probes] -->|Metrics| B[Agent Cache]
+    B -->|HTTP GET| C[Local API]
     C -->|Response| D[PRTG/Nagios]
-    C -->|Response| E[Dashboard Web]
+    C -->|Response| E[Web Dashboard]
 
     style B fill:#ffcc80
     style C fill:#ffcc80
 ```
 
-### Tableau de Fonctionnalités
+### Feature Matrix
 
-| Fonctionnalité | Mode Online | Mode Offline | Notes |
-|----------------|-------------|--------------|-------|
-| **Installation** | Key requise | Autonome | Offline : UUID auto-généré |
-| **Configuration** | Portail web | Fichier YAML | Online : push temps réel |
-| **Probes supportées** | Toutes | Toutes | Selon licence |
-| **Auto-update agent** | Automatique | Manuel/Auto | Offline : si internet disponible |
-| **Web Dashboard** | Optionnel | Obligatoire | Offline : principal accès |
-| **API PRTG** | Via HTTP strategy | Oui (local) | - |
-| **API Nagios** | Via HTTP strategy | Oui (local) | - |
-| **Alerting** | Intégré plateforme | Via PRTG/Nagios | - |
-| **Historique** | Illimité (cloud) | Cache mémoire | Offline : 5-30 minutes |
-| **Multi-agents** | Vue centralisée | Non | Online : dashboard global |
-| **Air-gap ready** | Non | Oui | Offline : zéro dépendance |
-| **Coût** | Selon tier | Gratuit | Online : subscription possible |
+| Feature | Online Mode | Offline Mode | Notes |
+|---------|-------------|--------------|-------|
+| **Installation** | Key required | Autonomous | Offline: auto-generated UUID |
+| **Configuration** | Web portal | YAML file | Online: real-time push |
+| **Supported probes** | All | All | According to license |
+| **Agent auto-update** | Automatic | Manual/Auto | Offline: if internet available |
+| **Web Dashboard** | Optional | Mandatory | Offline: main access |
+| **PRTG API** | Via HTTP strategy | Yes (local) | - |
+| **Nagios API** | Via HTTP strategy | Yes (local) | - |
+| **Alerting** | Integrated platform | Via PRTG/Nagios | - |
+| **History** | Unlimited (cloud) | Memory cache | Offline: 5-30 minutes |
+| **Multi-agents** | Centralized view | No | Online: global dashboard |
+| **Air-gap ready** | No | Yes | Offline: zero dependency |
+| **Cost** | According to tier | Free | Online: subscription possible |
 
 ---
 
-## Basculement Entre Modes
+## Switching Between Modes
 
 ### Online → Offline
 
-**Scénario** : Passer d'une installation connectée à une installation autonome
+**Scenario**: Switch from connected installation to autonomous installation
 
 ```bash
-# 1. Arrêter l'agent
+# 1. Stop agent
 sudo systemctl stop senhub-agent
 
-# 2. Sauvegarder la config répliquée
+# 2. Backup replicated config
 sudo cp /var/lib/senhub-agent/agent-config-replica.yaml \
         /etc/senhub-agent/agent-config.yaml
 
-# 3. Modifier le mode
+# 3. Modify mode
 sudo nano /etc/senhub-agent/agent-config.yaml
 
-# Changer :
+# Change:
 agent:
-  mode: offline  # Était "online"
+  mode: offline  # Was "online"
 
-# 4. Ajouter HTTP strategy si absente
+# 4. Add HTTP strategy if absent
 storage:
   - name: http
     params:
@@ -529,54 +529,54 @@ storage:
       bind_address: "127.0.0.1"
       endpoints: ["prtg", "web", "nagios"]
 
-# 5. Redémarrer
+# 5. Restart
 sudo systemctl start senhub-agent
 ```
 
-**📸 SCREENSHOT À INSÉRER**: Fichier de config avec changement de `mode: online` → `mode: offline` surligné
+**📸 SCREENSHOT TO INSERT**: Config file with change from `mode: online` → `mode: offline` highlighted
 
 ### Offline → Online
 
-**Scénario** : Connecter un agent autonome à la plateforme
+**Scenario**: Connect autonomous agent to platform
 
 ```bash
-# 1. Obtenir une clé d'authentification depuis le portail SenHub
+# 1. Obtain authentication key from SenHub portal
 
-# 2. Arrêter l'agent
+# 2. Stop agent
 sudo systemctl stop senhub-agent
 
-# 3. Modifier la configuration
+# 3. Modify configuration
 sudo nano /etc/senhub-agent/agent-config.yaml
 
-# Remplacer :
+# Replace:
 agent:
-  key: "YOUR_PLATFORM_KEY"  # Remplacer UUID
-  mode: online               # Était "offline"
+  key: "YOUR_PLATFORM_KEY"  # Replace UUID
+  mode: online               # Was "offline"
 
-# 4. Redémarrer
+# 4. Restart
 sudo systemctl start senhub-agent
 
-# 5. Vérifier connexion
+# 5. Verify connection
 sudo tail -f /var/log/senhub-agent/agent.log
-# Attendre : "Connected to SenHub platform"
+# Wait for: "Connected to SenHub platform"
 ```
 
-### Migration Hybride
+### Hybrid Migration
 
-**Scénario** : Utiliser les deux modes (dev offline, prod online)
+**Scenario**: Use both modes (dev offline, prod online)
 
 ```mermaid
 graph LR
-    subgraph Dev ["Environnement Dev"]
-        D1[Agent Offline] -->|Test| D2[Config YAML]
+    subgraph Dev ["Development Environment"]
+        D1[Offline Agent] -->|Test| D2[YAML Config]
     end
 
-    subgraph Staging ["Environnement Staging"]
-        S1[Agent Offline] -->|Validation| S2[Config YAML]
+    subgraph Staging ["Staging Environment"]
+        S1[Offline Agent] -->|Validation| S2[YAML Config]
     end
 
-    subgraph Prod ["Environnement Production"]
-        P1[Agent Online] -->|Push| P2[Plateforme SenHub]
+    subgraph Prod ["Production Environment"]
+        P1[Online Agent] -->|Push| P2[SenHub Platform]
     end
 
     D2 -.->|Copy & Adapt| S2
@@ -589,156 +589,156 @@ graph LR
 
 **Workflow**
 
-1. **Développement** : Mode offline, test des configurations
-2. **Staging** : Mode offline, validation avant prod
-3. **Production** : Mode online, monitoring centralisé
+1. **Development**: Offline mode, test configurations
+2. **Staging**: Offline mode, validation before prod
+3. **Production**: Online mode, centralized monitoring
 
 ---
 
-## Cas d'Usage par Mode
+## Use Cases by Mode
 
-### Quand Utiliser le Mode Online
+### When to Use Online Mode
 
-#### ✅ Scénarios Idéaux
+#### ✅ Ideal Scenarios
 
-1. **Monitoring Multi-Sites**
-   - Plusieurs datacenters/bureaux à surveiller
-   - Vue centralisée nécessaire
-   - Alerting unifié
+1. **Multi-Site Monitoring**
+   - Multiple datacenters/offices to monitor
+   - Centralized view needed
+   - Unified alerting
 
-2. **Gestion Centralisée**
-   - Équipe DevOps/SRE avec portail web
-   - Besoin de modifier configs à distance
-   - Déploiement rapide de nouvelles probes
+2. **Centralized Management**
+   - DevOps/SRE team with web portal
+   - Need to modify configs remotely
+   - Rapid deployment of new probes
 
-3. **Historique Long Terme**
-   - Besoin de métriques sur 6-12 mois
-   - Analyse de tendances
+3. **Long-Term History**
+   - Need metrics over 6-12 months
+   - Trend analysis
    - Capacity planning
 
-4. **Auto-Update Critique**
-   - Vulnérabilités corrigées rapidement
-   - Nouvelles fonctionnalités automatiques
-   - Pas d'intervention manuelle
+4. **Critical Auto-Update**
+   - Vulnerabilities fixed quickly
+   - Automatic new features
+   - No manual intervention
 
-#### 📊 Exemple : E-commerce Multi-Datacenters
+#### 📊 Example: Multi-Datacenter E-commerce
 
 ```mermaid
 graph TB
-    P[Plateforme SenHub<br/>Dashboard Central]
+    P[SenHub Platform<br/>Central Dashboard]
 
-    P -->|Config Push| A1[Agent Online<br/>DC Paris]
-    P -->|Config Push| A2[Agent Online<br/>DC Londres]
-    P -->|Config Push| A3[Agent Online<br/>DC Francfort]
+    P -->|Config Push| A1[Online Agent<br/>DC Paris]
+    P -->|Config Push| A2[Online Agent<br/>DC London]
+    P -->|Config Push| A3[Online Agent<br/>DC Frankfurt]
 
-    A1 -->|Métriques| P
-    A2 -->|Métriques| P
-    A3 -->|Métriques| P
+    A1 -->|Metrics| P
+    A2 -->|Metrics| P
+    A3 -->|Metrics| P
 
-    P --> D[Dashboard<br/>Équipe SRE]
+    P --> D[Dashboard<br/>SRE Team]
     P --> AL[Alerting<br/>Slack/PagerDuty]
 
     style P fill:#81d4fa
 ```
 
-**Bénéfices**
-- Vue unique pour 3 datacenters
-- Alertes corrélées (incident multi-sites)
-- Déploiement nouvelle probe en 1 clic
+**Benefits**
+- Single view for 3 datacenters
+- Correlated alerts (multi-site incident)
+- New probe deployment in 1 click
 
 ---
 
-### Quand Utiliser le Mode Offline
+### When to Use Offline Mode
 
-#### ✅ Scénarios Idéaux
+#### ✅ Ideal Scenarios
 
-1. **Environnements Air-Gapped**
-   - Datacenters militaires, gouvernementaux
-   - Industrie critique (énergie, santé)
-   - Isolation réseau obligatoire
+1. **Air-Gapped Environments**
+   - Military, government datacenters
+   - Critical industry (energy, healthcare)
+   - Mandatory network isolation
 
 2. **Edge Computing**
-   - Sites distants sans internet fiable
-   - Coût connexion prohibitif (satellite, 4G)
-   - Latence inacceptable
+   - Remote sites without reliable internet
+   - Prohibitive connection cost (satellite, 4G)
+   - Unacceptable latency
 
-3. **Développement et Tests**
-   - Développement de probes personnalisées
-   - POC client sans setup plateforme
+3. **Development and Testing**
+   - Custom probe development
+   - Customer POC without platform setup
    - CI/CD pipelines
 
-4. **Conformité Réglementaire**
-   - RGPD strict (pas d'envoi données externes)
-   - Secteur bancaire/financier
-   - Données médicales (HIPAA)
+4. **Regulatory Compliance**
+   - Strict GDPR (no external data sending)
+   - Banking/financial sector
+   - Medical data (HIPAA)
 
-#### 📊 Exemple : Usine de Production Isolée
+#### 📊 Example: Isolated Production Plant
 
 ```mermaid
 graph TB
-    subgraph Usine ["Usine (Air-Gap)"]
-        A[Agent Offline] -->|Collecte| P1[CPU/Memory<br/>Automates]
-        A -->|Collecte| P2[Redfish<br/>Serveurs]
-        A -->|Collecte| P3[Citrix<br/>VDI Opérateurs]
+    subgraph Plant ["Plant (Air-Gap)"]
+        A[Offline Agent] -->|Collect| P1[CPU/Memory<br/>PLCs]
+        A -->|Collect| P2[Redfish<br/>Servers]
+        A -->|Collect| P3[Citrix<br/>Operator VDI]
 
-        A -->|HTTP Local| API[API 127.0.0.1:8080]
-        API -->|Scraping| PRTG[PRTG Local]
-        API -->|Dashboard| WEB[Navigateur<br/>Supervision]
+        A -->|Local HTTP| API[API 127.0.0.1:8080]
+        API -->|Scraping| PRTG[Local PRTG]
+        API -->|Dashboard| WEB[Browser<br/>Supervision]
     end
 
-    style Usine fill:#fff4e6,stroke:#f57c00,stroke-width:3px
+    style Plant fill:#fff4e6,stroke:#f57c00,stroke-width:3px
     style A fill:#ffcc80
 ```
 
-**Bénéfices**
-- Zéro dépendance internet
-- Données ne quittent pas l'usine
-- Supervision temps réel via PRTG local
+**Benefits**
+- Zero internet dependency
+- Data doesn't leave the plant
+- Real-time supervision via local PRTG
 
 ---
 
-## Résumé et Recommandations
+## Summary and Recommendations
 
-### Arbre de Décision
+### Decision Tree
 
 ```mermaid
 graph TD
-    START[Choisir le Mode] --> Q1{Internet<br/>Disponible?}
+    START[Choose Mode] --> Q1{Internet<br/>Available?}
 
-    Q1 -->|Non| OFF[Mode Offline 🔒]
-    Q1 -->|Oui| Q2{Multi-Sites?}
+    Q1 -->|No| OFF[Offline Mode 🔒]
+    Q1 -->|Yes| Q2{Multi-Site?}
 
-    Q2 -->|Non| Q3{Air-Gap<br/>Requis?}
-    Q2 -->|Oui| ON[Mode Online 🌐]
+    Q2 -->|No| Q3{Air-Gap<br/>Required?}
+    Q2 -->|Yes| ON[Online Mode 🌐]
 
-    Q3 -->|Oui| OFF
-    Q3 -->|Non| Q4{Gestion<br/>Centralisée<br/>Nécessaire?}
+    Q3 -->|Yes| OFF
+    Q3 -->|No| Q4{Centralized<br/>Management<br/>Needed?}
 
-    Q4 -->|Oui| ON
-    Q4 -->|Non| Q5{Historique<br/>Long Terme?}
+    Q4 -->|Yes| ON
+    Q4 -->|Non| Q5{Long-Term<br/>History?}
 
-    Q5 -->|Oui| ON
-    Q5 -->|Non| OFF
+    Q5 -->|Yes| ON
+    Q5 -->|No| OFF
 
     style ON fill:#e1f5ff,stroke:#0288d1,stroke-width:3px
     style OFF fill:#fff4e6,stroke:#f57c00,stroke-width:3px
 ```
 
-### Recommandations Finales
+### Final Recommendations
 
-| Environnement | Mode Recommandé | Raison |
-|---------------|-----------------|--------|
-| **Entreprise Multi-Sites** | Online 🌐 | Gestion centralisée, vue d'ensemble |
-| **Datacenter Unique** | Offline 🔒 | Autonomie, pas de dépendance externe |
-| **Cloud (AWS/Azure/GCP)** | Online 🌐 | Internet disponible, scaling facile |
-| **Edge/IoT** | Offline 🔒 | Connectivité limitée, latence |
-| **Développement** | Offline 🔒 | Setup rapide, pas de compte nécessaire |
-| **Air-Gap** | Offline 🔒 | Isolation obligatoire |
-| **Monitoring as a Service** | Online 🌐 | Multi-tenancy, facturation |
+| Environment | Recommended Mode | Reason |
+|-------------|------------------|--------|
+| **Multi-Site Enterprise** | Online 🌐 | Centralized management, overview |
+| **Single Datacenter** | Offline 🔒 | Autonomy, no external dependency |
+| **Cloud (AWS/Azure/GCP)** | Online 🌐 | Internet available, easy scaling |
+| **Edge/IoT** | Offline 🔒 | Limited connectivity, latency |
+| **Development** | Offline 🔒 | Quick setup, no account needed |
+| **Air-Gap** | Offline 🔒 | Mandatory isolation |
+| **Monitoring as a Service** | Online 🌐 | Multi-tenancy, billing |
 
 ---
 
-**Prochaines étapes** :
-- **Configuration de l'agent** : [AGENT-CONFIGURATION.md](./AGENT-CONFIGURATION.md)
-- **Configuration HTTPS/TLS** : [HTTP-HTTPS-CONFIGURATION.md](./HTTP-HTTPS-CONFIGURATION.md)
-- **Configuration des probes** : [PROBES-CONFIGURATION.md](./PROBES-CONFIGURATION.md)
+**Next steps**:
+- **Agent configuration**: [AGENT-CONFIGURATION.md](./AGENT-CONFIGURATION.md)
+- **HTTPS/TLS configuration**: [HTTP-HTTPS-CONFIGURATION.md](./HTTP-HTTPS-CONFIGURATION.md)
+- **Probe configuration**: [PROBES-CONFIGURATION.md](./PROBES-CONFIGURATION.md)
