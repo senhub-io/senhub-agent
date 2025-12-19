@@ -117,3 +117,4 @@ config_demo_web.yaml
 
 # Generated Word documentation
 docs/user-guide/word/
+docs/user-guide/*.docx
