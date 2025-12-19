@@ -7,7 +7,7 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 OUTPUT_FILE="$SCRIPT_DIR/SenHub-Agent-User-Guide-Complete.docx"
 
-echo "🔄 Generating consolidated Word documentation..."
+echo "Generating consolidated Word documentation..."
 
 pandoc \
   "$SCRIPT_DIR/README.md" \
@@ -26,5 +26,5 @@ pandoc \
   --metadata author="SenHub" \
   --metadata date="$(date +%Y-%m-%d)"
 
-echo "✅ Documentation generated: $OUTPUT_FILE"
+echo "Documentation generated: $OUTPUT_FILE"
 ls -lh "$OUTPUT_FILE"
