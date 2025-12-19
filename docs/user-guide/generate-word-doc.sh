@@ -42,8 +42,8 @@ transform_links() {
         "$file" > "$temp_file"
 }
 
-# Transform each file
-for file in README.md INSTALLATION.md OPERATING-MODES.md AGENT-CONFIGURATION.md \
+# Transform each file (excluding README which is GitHub-specific navigation)
+for file in INSTALLATION.md OPERATING-MODES.md AGENT-CONFIGURATION.md \
             HTTP-HTTPS-CONFIGURATION.md PROBES-CONFIGURATION.md WEB-INTERFACE.md \
             METRICS-USAGE.md TROUBLESHOOTING.md; do
     if [ -f "$SCRIPT_DIR/$file" ]; then
@@ -54,7 +54,6 @@ done
 echo "Generating consolidated Word documentation..."
 
 pandoc \
-  "$TEMP_DIR/README.md" \
   "$TEMP_DIR/INSTALLATION.md" \
   "$TEMP_DIR/OPERATING-MODES.md" \
   "$TEMP_DIR/AGENT-CONFIGURATION.md" \
@@ -66,7 +65,9 @@ pandoc \
   -o "$OUTPUT_FILE" \
   --toc \
   --toc-depth=3 \
-  --metadata title="SenHub Agent - User Guide Complete" \
+  --number-sections \
+  --metadata title="SenHub Agent - User Guide" \
+  --metadata subtitle="Complete Documentation" \
   --metadata author="SenHub" \
   --metadata date="$(date +%Y-%m-%d)"
 
