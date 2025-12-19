@@ -158,6 +158,16 @@ echo ""
 
 echo "Generating consolidated Word documentation..."
 
+# Check if reference template exists
+REFERENCE_DOC="$SCRIPT_DIR/reference-template.docx"
+if [ -f "$REFERENCE_DOC" ]; then
+    echo "  Using reference template for styling..."
+    TEMPLATE_ARG="--reference-doc=$REFERENCE_DOC"
+else
+    echo "  No reference template found, using default Pandoc styles..."
+    TEMPLATE_ARG=""
+fi
+
 pandoc \
   "$TEMP_DIR/INSTALLATION.md" \
   "$TEMP_DIR/OPERATING-MODES.md" \
@@ -171,6 +181,7 @@ pandoc \
   --toc \
   --toc-depth=3 \
   --number-sections \
+  $TEMPLATE_ARG \
   --metadata title="SenHub Agent - User Guide" \
   --metadata subtitle="Complete Documentation" \
   --metadata author="SenHub" \
