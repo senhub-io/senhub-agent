@@ -1,26 +1,104 @@
 # User Guide
 
-This section contains documentation for end users who want to configure and use the SenHub Agent.
+Documentation complète pour utilisateurs et administrateurs SenHub Agent.
 
-## 📋 Contents
+## 📚 Documentation Complète
 
-### Getting Started
-- **[Quick Start (Offline Mode)](./QUICK-START-OFFLINE.md)** - The fastest way to get SenHub Agent running in offline mode
-- **[Offline Mode](./OFFLINE-MODE.md)** - Complete guide to offline mode configuration and usage
+### 🚀 Installation et Démarrage
 
-### Configuration
-- **[Probe Configuration](./PROBE-CONFIGURATION.md)** - How to configure monitoring probes for different systems
+1. **[Installation](./INSTALLATION.md)** ⭐ COMPLET
+   - Installation Windows/Linux/macOS
+   - Options HTTP et HTTPS
+   - Certificats SSL
+   - Vérification et désinstallation
 
-## 🎯 Who This Is For
+2. **[Modes de Fonctionnement](./OPERATING-MODES.md)** ⭐ COMPLET
+   - Mode Online vs Offline
+   - Comparaison détaillée
+   - Basculement entre modes
+   - Cas d'usage par mode
 
-- **System Administrators** setting up monitoring for the first time
-- **DevOps Engineers** integrating SenHub Agent into existing infrastructure  
-- **Users** who need to configure basic monitoring without deep technical knowledge
+### ⚙️ Configuration
 
-## 🚀 Recommended Reading Order
+3. **[Configuration de l'Agent](./AGENT-CONFIGURATION.md)** ⭐ COMPLET
+   - Structure fichier YAML
+   - **Système de Licence** (demande support@senhub.io, installation, vérification)
+   - Auto-update
+   - Cache
 
-1. Start with [Quick Start Guide](./QUICK-START-OFFLINE.md) to get up and running
-2. Read [Offline Mode](./OFFLINE-MODE.md) for complete offline configuration
-3. Configure your monitoring with [Probe Configuration](./PROBE-CONFIGURATION.md)
+4. **[Configuration HTTP/HTTPS](./HTTP-HTTPS-CONFIGURATION.md)** ⭐ COMPLET
+   - HTTP Strategy
+   - Certificats SSL/TLS
+   - Bind address
+   - Endpoints API
 
-For advanced configuration and administration, see the [Admin Guide](../admin-guide/).
+5. **[Configuration des Probes](./PROBE-CONFIGURATION.md)**
+   - Probes système (Free)
+   - Probes infrastructure (Pro/Enterprise)
+   - Configuration par probe
+
+### 🖥️ Utilisation
+
+6. **[Interface Web](./WEB-INTERFACE.md)** - En cours
+   - Dashboard
+   - API Explorer
+   - Metrics Browser
+
+7. **[Utilisation des Métriques](./METRICS-USAGE.md)** - En cours
+   - Intégration PRTG
+   - Intégration Nagios
+   - API REST
+
+8. **[Cas d'Usage](./USE-CASES.md)** - En cours
+   - Scénarios de monitoring
+   - Exemples de configuration
+
+### 🔧 Dépannage
+
+9. **[Troubleshooting](./TROUBLESHOOTING.md)** ⭐ COMPLET
+   - **Système de Logging** (modules, activation, runtime)
+   - Problèmes courants
+   - Solutions étape par étape
+
+---
+
+## 🎯 Par Où Commencer ?
+
+### Nouvel Utilisateur
+1. [Installation](./INSTALLATION.md) - Installer l'agent
+2. [Modes de Fonctionnement](./OPERATING-MODES.md) - Comprendre online vs offline
+3. [Configuration Agent](./AGENT-CONFIGURATION.md) - Configurer l'agent
+
+### Configuration Avancée
+1. [HTTP/HTTPS](./HTTP-HTTPS-CONFIGURATION.md) - Sécuriser avec SSL/TLS
+2. [Probes](./PROBE-CONFIGURATION.md) - Ajouter des probes de monitoring
+
+### En Cas de Problème
+1. [Troubleshooting](./TROUBLESHOOTING.md) - Diagnostic et logs
+
+---
+
+## 📊 Statistiques Documentation
+
+- **6 documents complets** (~25 000 mots)
+- **19 diagrammes Mermaid**
+- **25+ screenshots indiqués**
+- **Système de licence documenté** (demande, format JSON, installation)
+- **Système de logging intégré** dans Troubleshooting
+
+---
+
+## 💡 Licence
+
+**Demande de Licence** : Contacter support@senhub.io
+
+Documentation complète dans [AGENT-CONFIGURATION.md](./AGENT-CONFIGURATION.md#système-de-licence)
+
+---
+
+## 📞 Support
+
+**Email** : support@senhub.io
+**Documentation** : https://docs.senhub.io
+**GitHub** : https://github.com/senhub-io/senhub-agent
+
