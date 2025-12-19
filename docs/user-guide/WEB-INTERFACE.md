@@ -1,314 +1,320 @@
-# SenHub Agent - Web Interface
+# Web Interface
+
+This guide covers the agent's web dashboard - a browser-based interface for monitoring metrics, testing APIs, and managing configuration. Understanding the workflow-oriented design of each dashboard section enables efficient troubleshooting, integration testing, and daily monitoring operations.
 
 ## Table of Contents
 
-- [Overview](#overview)
 - [Accessing the Dashboard](#accessing-the-dashboard)
-- [Main Dashboard](#main-dashboard)
-- [API Explorer](#api-explorer)
-- [Metrics Browser](#metrics-browser)
-- [Probes Status](#probes-status)
-- [License Information](#license-information)
-- [PRTG Lookups](#prtg-lookups)
-- [Best Practices](#best-practices)
-
----
-
-## Overview
-
-The SenHub Agent web interface provides comprehensive visual access to agent metrics and configuration via a browser.
-
-```mermaid
-graph TD
-    WEB[Web Dashboard<br/>Port 8080/8443] --> DASH[Main Dashboard<br/>System overview]
-    WEB --> API[API Explorer<br/>Test endpoints]
-    WEB --> METRICS[Metrics Browser<br/>Navigate metrics]
-    WEB --> PROBES[Probes Status<br/>Active probes state]
-    WEB --> LICENSE[License Info<br/>License status]
-    WEB --> LOOKUPS[PRTG Lookups<br/>Download .ovl]
-
-    style WEB fill:#81d4fa
-    style DASH fill:#c8e6c9
-    style API fill:#fff9c4
-    style METRICS fill:#ffe0b2
-```
-
-### Main Features
-
-| Feature | Description | Use Case |
-|---------|-------------|----------|
-| **Dashboard** | Real-time overview | Quick visual monitoring |
-| **API Explorer** | Interactive endpoint testing | Integration and debugging |
-| **Metrics Browser** | Navigate by probe/tag | Detailed exploration |
-| **Probes Status** | Probe health status | Problem diagnosis |
-| **License Info** | Active license information | Tier/expiration verification |
-| **PRTG Lookups** | Download .ovl files | PRTG configuration |
+- [Dashboard Overview](#dashboard-overview)
+- [Workflow: Monitoring System Health](#workflow-monitoring-system-health)
+- [Workflow: Testing API Integration](#workflow-testing-api-integration)
+- [Workflow: Troubleshooting Probe Issues](#workflow-troubleshooting-probe-issues)
+- [Workflow: Managing PRTG Integration](#workflow-managing-prtg-integration)
+- [Dashboard Sections Reference](#dashboard-sections-reference)
 
 ---
 
 ## Accessing the Dashboard
 
-### Connection URL
+### URL Format
 
 ```
-Format: http(s)://<host>:<port>/web/{authentication_key}/dashboard
+http(s)://<server>:<port>/web/{agent-key}/dashboard
 ```
 
-**Examples**:
+**Examples by deployment mode:**
 
-```bash
-# Local HTTP (development)
+**Development (HTTP localhost):**
+```
 http://localhost:8080/web/f47ac10b-58cc-4372-a567-0e02b2c3d479/dashboard
+```
 
-# Production HTTPS
+**Production (HTTPS network):**
+```
 https://monitoring.company.com:8443/web/f47ac10b-58cc-4372-a567-0e02b2c3d479/dashboard
+```
 
-# Remote access (with bind_address: 0.0.0.0)
+**By IP address:**
+```
 https://192.168.1.100:8443/web/f47ac10b-58cc-4372-a567-0e02b2c3d479/dashboard
 ```
 
 ### Authentication
 
+The agent key in the URL provides authentication for all dashboard access. This key is defined in `agent-config.yaml` under `agent.key`.
+
+**Retrieving your agent key:**
+
+```bash
+# Linux/macOS
+grep "key:" /etc/senhub-agent/agent-config.yaml
+
+# Windows PowerShell
+Select-String -Path "C:\Program Files\SenHub\agent-config.yaml" -Pattern "key:"
+
+# Via API (returns system info including key)
+curl http://localhost:8080/api/info/system
+```
+
+**Security considerations:**
+
+| Deployment | Bind Address | Protocol | Key Security Level |
+|------------|--------------|----------|-------------------|
+| Development | 127.0.0.1 | HTTP | Low risk (localhost only) |
+| Testing | 127.0.0.1 | HTTPS | Low risk (localhost only) |
+| Production | 0.0.0.0 | HTTPS | **High risk** - treat as sensitive credential |
+
+**Production recommendation:** With network-accessible deployment (`bind_address: "0.0.0.0"`), treat the agent key as a sensitive credential. Restrict dashboard access via firewall rules limiting source IPs to monitoring systems and administrator workstations only.
+
+---
+
+## Dashboard Overview
+
+### Interface Layout
+
+The dashboard uses a sidebar navigation model with persistent access to all sections:
+
 ```mermaid
 graph LR
-    A[User] -->|URL with {key}| B[HTTP Strategy]
-    B -->|Valid key| C[Dashboard]
-    B -->|Invalid key| D[Error 403]
+    NAV[Side Navigation] --> DASH[Dashboard Home]
+    NAV --> API[API Explorer]
+    NAV --> METRICS[Metrics Browser]
+    NAV --> PROBES[Probes Status]
+    NAV --> LICENSE[License Info]
 
-    style C fill:#c8e6c9
-    style D fill:#ffccbc
+    DASH --> D1[System Summary]
+    DASH --> D2[Active Probes List]
+    DASH --> D3[Quick Metrics View]
+
+    API --> A1[Endpoint Testing]
+    API --> A2[Request Builder]
+    API --> A3[Response Viewer]
+
+    METRICS --> M1[Filter by Probe]
+    METRICS --> M2[Filter by Tags]
+    METRICS --> M3[Export Options]
+
+    PROBES --> P1[Probe Health]
+    PROBES --> P2[Error Details]
+    PROBES --> P3[Debug Controls]
+
+    LICENSE --> L1[Tier Status]
+    LICENSE --> L2[Expiration Date]
+    LICENSE --> L3[Authorized Probes]
+
+    style NAV fill:#81d4fa
+    style DASH fill:#c8e6c9
+    style API fill:#fff9c4
+    style METRICS fill:#ffe0b2
+    style PROBES fill:#ffccbc
+    style LICENSE fill:#e1bee7
 ```
 
-**Authentication key**:
-- Defined in `agent-config.yaml`: `agent.authentication_key`
-- Used in URL: `/web/{key}/...`
-- Validates all API and web requests
+### Navigation Workflow
 
-**Security**:
-- Local access only (`127.0.0.1`): key shareable
-- Remote access (`0.0.0.0`): **ALWAYS use HTTPS**
-- Key = secret: do not expose publicly
+**Typical usage patterns:**
 
-**📸 SCREENSHOT TO INSERT**: Login page or main dashboard with visible URL in address bar
+1. **Morning health check:** Dashboard Home → verify all probes running → check license expiration
+2. **Troubleshooting:** Probes Status → identify failing probe → view error details → enable debug logs
+3. **Integration testing:** API Explorer → test endpoint → copy curl command → configure PRTG sensor
+4. **Metrics investigation:** Metrics Browser → filter by probe → apply tag filters → identify anomaly
+5. **PRTG configuration:** API Explorer → PRTG Lookups Download → install in PRTG
 
 ---
 
-## Main Dashboard
+## Workflow: Monitoring System Health
 
-### Overview
+**Objective:** Quickly assess agent and infrastructure health during daily operations or incident response.
 
-The main dashboard displays a real-time summary of agent status and collected metrics.
+### Step 1: Access Dashboard Home
 
-**Dashboard Sections**:
+Navigate to dashboard URL. First visible screen shows system summary card:
 
-1. **System Header**
-   - Hostname / OS
-   - Agent version
-   - Uptime
-   - Mode (Online/Offline)
+**System Summary displays:**
+- **Hostname:** Server identification
+- **OS:** Operating system and version
+- **Agent Version:** Currently running version
+- **Mode:** offline or online
+- **Uptime:** Time since last agent restart
+- **Cache Retention:** Configured retention period
 
-2. **License Status**
-   - Active tier (Free/Pro/Enterprise)
-   - Expiration date
-   - Authorized probes
-   - ⚠️ Expiration / grace period alerts
-
-3. **Active Probes**
-   - List of running probes
-   - Status (Running/Error)
-   - Last update
-   - Number of metrics per probe
-
-4. **Key Metrics**
-   - Real-time graphs (if available)
-   - Current values
-   - Alert thresholds
-
-**📸 SCREENSHOT TO INSERT**: Complete dashboard showing all sections with multiple active probes and graphs
-
----
-
-### License Status
-
-```mermaid
-graph TD
-    LICENSE[License Status] --> VALID[✅ Valid]
-    LICENSE --> GRACE[⚠️ Grace Period]
-    LICENSE --> EXPIRED[❌ Expired]
-
-    VALID --> V1[Tier: Pro/Enterprise<br/>Expires: 2025-12-31<br/>Probes: 8/10 active]
-    GRACE --> G1[Tier: Pro<br/>Expired: 2025-01-01<br/>Grace: 4 days remaining]
-    EXPIRED --> E1[Tier: Free (fallback)<br/>Paid probes disabled]
-
-    style VALID fill:#c8e6c9
-    style GRACE fill:#fff9c4
-    style EXPIRED fill:#ffccbc
+**Example display:**
+```
+System Information
+Hostname: prod-server-01.company.com
+OS: Ubuntu 22.04.3 LTS (linux/amd64)
+Agent Version: 0.1.72
+Mode: Offline
+Uptime: 3 days, 14 hours, 23 minutes
+Cache Retention: 10 minutes
 ```
 
-**Dashboard Display**:
+**Health indicators:**
+- **Green:** All systems operational
+- **Yellow:** Warnings present (expiring license, probe timeouts)
+- **Red:** Critical issues (expired license, probe failures)
 
-✅ **Valid License**:
+### Step 2: Review License Status
+
+**License status card shows:**
+
+**Active License (Green):**
 ```
-License: Pro
+✓ License Active
+Tier: Pro
 Expires: 2025-12-31 (342 days remaining)
-Authorized Probes: redfish, citrix, netscaler, syslog
+Authorized Probes: 8
 ```
 
-⚠️ **Grace Period**:
+**Expiring Soon (Yellow warning when <30 days):**
 ```
-⚠️ LICENSE EXPIRATION WARNING
-License expired on 2025-01-01
+⚠ License Expiring Soon
+Tier: Pro
+Expires: 2025-01-25 (15 days remaining)
+Action Required: Contact support@senhub.io for renewal
+```
+
+**Grace Period (Orange warning):**
+```
+⚠ LICENSE GRACE PERIOD
+License expired on 2025-01-15
 Grace period: 4 days remaining
-Contact support@senhub.io to renew
+Paid probes still active - renew immediately to avoid service interruption
+Contact: support@senhub.io
 ```
 
-❌ **Expired License**:
+**Expired (Red alert):**
 ```
-❌ LICENSE EXPIRED
-Agent running in Free tier (limited probes)
-Paid probes disabled: redfish, citrix, netscaler
-Contact support@senhub.io to renew
+✗ LICENSE EXPIRED
+License expired 10 days ago
+Agent running in Free tier (system probes only)
+Paid probes disabled: redfish, citrix, netscaler, syslog
+Renewal required to restore full functionality
+Contact: support@senhub.io
 ```
 
-**📸 SCREENSHOT TO INSERT**: Dashboard with orange/red banner for grace period or expiration
+### Step 3: Review Active Probes
+
+**Probes summary table displays:**
+
+| Probe Name | Type | Status | Last Update | Metrics | Action |
+|------------|------|--------|-------------|---------|--------|
+| cpu | cpu | 🟢 Running | 5 seconds ago | 12 | View Metrics |
+| memory | memory | 🟢 Running | 5 seconds ago | 8 | View Metrics |
+| logicaldisk | logicaldisk | 🟢 Running | 30 seconds ago | 15 | View Metrics |
+| Production iDRAC | redfish | 🟢 Running | 2 minutes ago | 47 | View Metrics |
+| NetScaler LB | netscaler | 🟡 Warning | 5 minutes ago | 142 | View Details |
+| Citrix Paris | citrix | 🔴 Error | 10 minutes ago | 0 | **View Error** |
+
+**Status interpretations:**
+
+- **🟢 Running:** Probe collecting normally, metrics current
+- **🟡 Warning:** Probe operational but experiencing timeouts, partial failures, or approaching collection interval timeout
+- **🔴 Error:** Probe failed last collection, no recent metrics
+- **⚪ Disabled:** Probe not authorized (license restriction) or manually disabled
+
+**Quick health assessment:**
+- All probes green → System healthy
+- Yellow warnings → Investigate but not critical
+- Red errors → Immediate investigation required
+
+### Step 4: Identify Issues Requiring Action
+
+**Scenario 1: Citrix probe showing Error status**
+
+Click "View Error" button on Citrix probe row reveals:
+
+```
+Probe: Citrix Paris
+Type: citrix
+Status: Error
+Last Successful Collection: 2025-01-15 09:45:23
+Last Error: 2025-01-15 10:00:15
+Error Message: Authentication failed: HTTP 401 Unauthorized
+Error Details: NTLM authentication rejected by Director API
+Possible Causes:
+  - Incorrect username/password in probe configuration
+  - Monitoring account password expired in Active Directory
+  - Monitoring account lacks required permissions
+
+Troubleshooting Steps:
+1. Verify credentials in agent-config.yaml
+2. Check monitoring account status in Active Directory
+3. Verify account has "Read Only Administrator" role in Citrix Studio
+4. Enable debug logging: POST /api/{key}/debug/logs {"module_levels": [{"module": "probe.citrix", "level": "debug"}]}
+```
+
+**Immediate actions available:**
+- **Enable Debug Logs:** One-click button activates debug logging for this probe
+- **View Configuration:** Shows current probe parameters (passwords masked)
+- **View Logs:** Links to recent log entries for this probe
+- **Retry Collection:** Forces immediate collection attempt
+
+**Scenario 2: License expiring in 10 days**
+
+Dashboard displays persistent banner:
+
+```
+⚠ License Expiration Notice
+Your Pro license expires in 10 days (2025-01-25)
+To avoid service interruption, contact support@senhub.io for renewal
+Your current authorized probes: redfish, citrix, netscaler, syslog
+```
+
+**Action:** Contact support@senhub.io with license subject ID (shown in License Info section) to request renewal.
 
 ---
 
-### Probes Status
+## Workflow: Testing API Integration
 
-**Probes Table**:
+**Objective:** Test API endpoints before configuring PRTG sensors, Nagios checks, or custom scripts.
 
-| Probe Name | Type | Status | Last Update | Metrics | Details |
-|------------|------|--------|-------------|---------|---------|
-| cpu | cpu | 🟢 Running | 5s ago | 12 | View |
-| memory | memory | 🟢 Running | 5s ago | 8 | View |
-| Production iDRAC | redfish | 🟢 Running | 2m ago | 47 | View |
-| Citrix Production | citrix | 🔴 Error | 5m ago | 0 | **View Error** |
+### Step 1: Navigate to API Explorer
 
-**Possible States**:
-- 🟢 **Running**: Probe collecting normally
-- 🟡 **Warning**: Partial metrics or timeouts
-- 🔴 **Error**: Probe in error (see logs)
-- ⚪ **Stopped**: Probe disabled
+Click "API Explorer" in sidebar navigation. API Explorer provides interactive testing interface for all agent REST API endpoints.
 
-**Actions**:
-- **View**: See probe metrics
-- **View Error**: Show detailed error message
-- **Logs**: Enable debug logs for this probe
+### Step 2: Test System Information Endpoint
 
-**📸 SCREENSHOT TO INSERT**: Probes status table with mix of statuses (Running, Error)
-
----
-
-## API Explorer
-
-The API Explorer allows interactive testing of all agent endpoints.
-
-```mermaid
-graph LR
-    EXPLORER[API Explorer] --> INFO[Info Endpoints<br/>/info/*]
-    EXPLORER --> METRICS[Metrics Endpoints<br/>/metrics, /prtg/*]
-    EXPLORER --> LICENSE[License Endpoint<br/>/license/status]
-    EXPLORER --> DEBUG[Debug Endpoint<br/>/debug/logs]
-    EXPLORER --> LOOKUPS[Lookups Endpoint<br/>/prtg/lookups/download]
-
-    style EXPLORER fill:#81d4fa
+**Select endpoint:**
+```
+GET /api/{key}/info/system
 ```
 
-### Available Endpoints
+**Click "Send Request" button.**
 
-#### 1. Info Endpoints
-
-**`GET /api/{key}/info/system`**
-
-Returns agent system information.
-
-**Example response**:
+**Response (200 OK):**
 ```json
 {
-  "hostname": "PROD-SERVER-01",
+  "hostname": "prod-server-01",
   "os": "linux",
   "os_version": "Ubuntu 22.04.3 LTS",
+  "arch": "amd64",
   "agent_version": "0.1.72",
-  "uptime_seconds": 3600,
+  "uptime_seconds": 302543,
   "mode": "offline",
   "cache": {
-    "retention_minutes": 10
+    "retention_minutes": 10,
+    "current_metrics_count": 234
   }
 }
 ```
 
-**📸 SCREENSHOT TO INSERT**: API Explorer showing call to `/info/system` with formatted JSON response
+**Use case:** Verify agent reachability and basic system information before proceeding with metrics testing.
 
----
+### Step 3: Test PRTG XML Endpoint
 
-**`GET /api/{key}/info/probes`**
-
-Lists active probes with statistics.
-
-**Example response**:
-```json
-{
-  "probes": [
-    {
-      "name": "cpu",
-      "type": "cpu",
-      "status": "running",
-      "metrics_count": 12,
-      "last_update": "2025-01-15T10:30:45Z",
-      "interval": 30
-    },
-    {
-      "name": "Production iDRAC",
-      "type": "redfish",
-      "status": "running",
-      "metrics_count": 47,
-      "last_update": "2025-01-15T10:29:12Z",
-      "interval": 300
-    }
-  ]
-}
+**Select endpoint:**
+```
+GET /api/{key}/prtg/metrics/cpu
 ```
 
----
+**Optional parameters:**
+- **Probe filter:** `?probe=cpu` (already in URL path)
+- **Tag filter:** `?filter=tag_name:tag_value` (for probes with tags)
 
-#### 2. Metrics Endpoints
+**Click "Send Request".**
 
-**`GET /api/{key}/metrics`**
-
-Returns all metrics in JSON format.
-
-**Optional parameters**:
-- `?probe=cpu` - Filter by probe
-- `?format=json|prtg|nagios` - Output format
-
-**JSON Example**:
-```json
-{
-  "metrics": [
-    {
-      "name": "cpu_usage_total",
-      "value": 45.2,
-      "unit": "percent",
-      "tags": {
-        "probe": "cpu",
-        "host": "PROD-SERVER-01"
-      },
-      "timestamp": "2025-01-15T10:30:45Z"
-    }
-  ]
-}
-```
-
-**📸 SCREENSHOT TO INSERT**: API Explorer showing metrics response with probe filtering
-
----
-
-**`GET /api/{key}/prtg/metrics`**
-
-PRTG XML format for all sensors.
-
-**XML Example**:
+**Response (200 OK):**
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <prtg>
@@ -319,549 +325,491 @@ PRTG XML format for all sensors.
     <limitmode>1</limitmode>
     <limitmaxwarning>80</limitmaxwarning>
     <limitmaxerror>95</limitmaxerror>
+    <float>1</float>
   </result>
   <result>
-    <channel>Memory Usage</channel>
-    <value>67.8</value>
-    <unit>Percent</unit>
+    <channel>CPU Load 1 Min</channel>
+    <value>1.23</value>
+    <unit>Custom</unit>
+    <float>1</float>
   </result>
+  <result>
+    <channel>CPU Load 5 Min</channel>
+    <value>1.45</value>
+    <unit>Custom</unit>
+    <float>1</float>
+  </result>
+  <text>CPU monitoring active - 12 metrics collected</text>
 </prtg>
 ```
 
-**Filter by probe**:
+**Use case:** Verify PRTG XML format before creating sensor. This exact XML will be consumed by PRTG HTTP XML/REST Value sensor.
+
+### Step 4: Copy Integration Command
+
+API Explorer provides **"Copy as cURL"** button for each endpoint test:
+
+**cURL command:**
+```bash
+curl -X GET "https://monitoring.company.com:8443/api/f47ac10b-58cc-4372-a567-0e02b2c3d479/prtg/metrics/cpu" \
+  -H "Accept: application/xml"
 ```
-GET /api/{key}/prtg/metrics/cpu
-GET /api/{key}/prtg/metrics/redfish
+
+**Use cases:**
+- **PRTG Configuration:** Copy URL for HTTP XML/REST Value sensor configuration
+- **Nagios Check:** Adapt curl command for check_http plugin
+- **Custom Script:** Integrate into monitoring automation scripts
+
+### Step 5: Test with Filters (NetScaler Example)
+
+**NetScaler probe generates high metric cardinality (150+ metrics). Use filters to reduce sensor count:**
+
+**Select endpoint:**
+```
 GET /api/{key}/prtg/metrics/netscaler
 ```
 
-**Filter by tags (NetScaler)**:
+**Apply filter parameter:**
+```
+?filter=metric_view:load_balancing
+```
+
+**Full URL:**
 ```
 GET /api/{key}/prtg/metrics/netscaler?filter=metric_view:load_balancing
-GET /api/{key}/prtg/metrics/netscaler?filter=vserver_name:Web-vServer
 ```
+
+**Response shows only load balancing metrics (virtual servers, services), excluding SSL certificates and system metrics.**
+
+**Available NetScaler filters:**
+- `metric_view:load_balancing` - Virtual servers and services
+- `metric_view:ssl_certificates` - SSL certificate expiration
+- `metric_view:system` - System resources (CPU, memory)
+- `vserver_name:Web-vServer` - Specific virtual server only
+- `metric_type:state` - State metrics only (UP/DOWN)
+- `metric_type:performance` - Performance metrics only
+
+**Use case:** Create targeted PRTG sensors monitoring specific NetScaler aspects without overwhelming PRTG with 150+ channels per sensor.
+
+### Step 6: Test Nagios Text Format
+
+**Select endpoint:**
+```
+GET /api/{key}/nagios/status
+```
+
+**Response (200 OK):**
+```
+OK - Agent Status: 6 probes active, 234 metrics cached
+CPU: 45.2% | cpu_usage=45.2%;80;95;0;100
+Memory: 67.8% | memory_usage=67.8%;80;95;0;100
+Disk C: 72.3% | disk_c_usage=72.3%;80;95;0;100
+```
+
+**Nagios exit codes:**
+- **0 (OK):** All metrics within thresholds
+- **1 (WARNING):** At least one metric exceeded warning threshold
+- **2 (CRITICAL):** At least one metric exceeded critical threshold
+- **3 (UNKNOWN):** Agent error or metrics unavailable
+
+**Use case:** Verify Nagios check output format before configuring check_http command in Nagios/Icinga.
 
 ---
 
-**`GET /api/{key}/nagios/status`**
+## Workflow: Troubleshooting Probe Issues
 
-Nagios text format for checks.
+**Objective:** Diagnose and resolve probe collection failures without restarting the agent.
 
-**Example**:
+### Step 1: Identify Failing Probe
+
+Navigate to **Probes Status** section (sidebar).
+
+**Probes table shows:**
+
+| Probe Name | Type | Status | Last Update | Error Count | Action |
+|------------|------|--------|-------------|-------------|--------|
+| Production iDRAC | redfish | 🔴 Error | 15 minutes ago | 3 consecutive | View Error |
+
+**Click "View Error" button.**
+
+### Step 2: Review Error Details
+
+**Error detail panel displays:**
+
 ```
-OK - CPU: 45.2% | cpu_usage=45.2%;80;95;0;100
-OK - Memory: 67.8% | memory_usage=67.8%;80;95;0;100
-WARNING - Disk C: 85.3% | disk_c_usage=85.3%;80;95;0;100
-```
+Probe: Production iDRAC
+Type: redfish
+Endpoint: https://idrac-srv01.company.com
+Status: Error (3 consecutive failures)
 
----
+Last Successful Collection: 2025-01-15 09:30:12
+Last Error: 2025-01-15 10:00:45
 
-#### 3. License Endpoint
+Error Type: Connection Timeout
+Error Message: dial tcp 192.168.1.50:443: i/o timeout
+Full Stack Trace: [Expand]
 
-**`GET /api/{key}/license/status`**
+Configured Timeout: 30 seconds
+Actual Duration: 30.012 seconds (timeout reached)
 
-Returns complete license status.
+Possible Causes:
+  1. Network connectivity issue to iDRAC (check routing, firewall)
+  2. iDRAC unresponsive (hardware issue, firmware hang)
+  3. Timeout too short for slow iDRAC response
+  4. SSL/TLS handshake failure (certificate issue)
 
-**Example**:
-```json
-{
-  "tier": "pro",
-  "expires_at": "2025-12-31T23:59:59Z",
-  "expires_in_days": 342,
-  "is_valid": true,
-  "in_grace_period": false,
-  "grace_period_days_remaining": 0,
-  "authorized_probes": [
-    "cpu", "memory", "logicaldisk", "network",
-    "redfish", "citrix", "netscaler", "syslog"
-  ],
-  "subject": "production-datacenter"
-}
-```
-
-**📸 SCREENSHOT TO INSERT**: API Explorer displaying license status with Pro tier details
-
----
-
-#### 4. Debug Logs Endpoint
-
-**`GET /api/{key}/debug/logs`**
-
-View current log levels.
-
-**Response**:
-```json
-{
-  "global_level": "info",
-  "modules": {
-    "agent.core": "info",
-    "probe.cpu": "info",
-    "probe.redfish": "debug",
-    "strategy.http": "info"
-  }
-}
+Troubleshooting Steps:
+  1. Test connectivity: ping 192.168.1.50
+  2. Test HTTPS access: curl -k https://idrac-srv01.company.com
+  3. Check iDRAC web interface accessibility from browser
+  4. Increase timeout in probe configuration if iDRAC consistently slow
+  5. Enable debug logging for detailed connection diagnostics
 ```
 
-**`POST /api/{key}/debug/logs`**
+### Step 3: Enable Debug Logging
 
-Modify log levels without restart.
+**Click "Enable Debug Logging" button in error panel.**
 
-**Body**:
-```json
+**Action performed:**
+```
+POST /api/{key}/debug/logs
 {
   "module_levels": [
-    {"module": "probe.redfish", "level": "debug"},
-    {"module": "strategy.http", "level": "debug"}
+    {"module": "probe.redfish", "level": "debug"}
   ]
 }
 ```
 
-**Response**:
-```json
-{
-  "status": "success",
-  "updated_modules": ["probe.redfish", "strategy.http"]
-}
+**Confirmation:**
+```
+✓ Debug logging enabled for probe.redfish
+Debug logs will appear in agent log file:
+  Linux: /var/log/senhub-agent/agent.log
+  Windows: C:\Program Files\SenHub\logs\agent.log
+  macOS: /Library/Logs/SenHub/agent.log
+
+Debug logging remains active until agent restart or manually disabled.
 ```
 
-**📸 SCREENSHOT TO INSERT**: Debug logs interface with module and level selectors
+### Step 4: Force Retry Collection
 
----
+**Click "Retry Collection Now" button.**
 
-## Metrics Browser
+**Agent immediately attempts probe collection (ignores normal interval timer).**
 
-The Metrics Browser allows navigating and filtering metrics by probe, tag, or name.
+**Scenarios:**
 
-```mermaid
-graph TD
-    BROWSER[Metrics Browser] --> FILTER[Filters]
-    FILTER --> F1[By Probe<br/>cpu, memory, redfish]
-    FILTER --> F2[By Tag<br/>host, disk, interface]
-    FILTER --> F3[By Name<br/>cpu_usage, temp_celsius]
-
-    BROWSER --> DISPLAY[Display]
-    DISPLAY --> D1[Table View<br/>Metrics list]
-    DISPLAY --> D2[Graph View<br/>Real-time graphs]
-    DISPLAY --> D3[Export<br/>JSON, CSV, XML]
-
-    style BROWSER fill:#81d4fa
+**Success:**
+```
+✓ Collection successful
+Probe status: Running
+Metrics collected: 47
+Next scheduled collection: 2025-01-15 10:05:00
 ```
 
-### Navigation by Probe
-
-**Probe selection**:
+**Failure:**
 ```
-[Dropdown: All probes ▼]
-├─ cpu (12 metrics)
-├─ memory (8 metrics)
-├─ logicaldisk (15 metrics)
-├─ network (20 metrics)
-├─ Production iDRAC (47 metrics)
-└─ NetScaler Production (156 metrics)
+✗ Collection failed
+Error: dial tcp 192.168.1.50:443: i/o timeout (after 30s)
+Probe remains in Error state
+Next retry: 2025-01-15 10:05:00 (automatic retry per interval)
 ```
 
-**Metrics display**:
+### Step 5: Review Debug Logs
 
-| Metric Name | Value | Unit | Tags | Timestamp |
-|-------------|-------|------|------|-----------|
-| cpu_usage_total | 45.2 | percent | host=PROD-01 | 10:30:45 |
-| cpu_load1 | 1.23 | - | host=PROD-01 | 10:30:45 |
-| cpu_load5 | 1.45 | - | host=PROD-01 | 10:30:45 |
+**Navigate to log file location or use log viewer in dashboard (if available).**
 
-**📸 SCREENSHOT TO INSERT**: Metrics Browser with selected probe dropdown and metrics table
-
----
-
-### Filtering by Tags
-
-**NetScaler Example**:
-
+**Debug log output example:**
 ```
-Active Filters:
-- probe: netscaler
-- metric_view: load_balancing
-- vserver_name: Web-vServer
+2025-01-15T10:00:45Z DBG [probe.redfish] Starting collection probe=Production_iDRAC
+2025-01-15T10:00:45Z DBG [probe.redfish] Connecting to endpoint endpoint=https://idrac-srv01.company.com
+2025-01-15T10:00:45Z DBG [probe.redfish] TLS handshake initiated
+2025-01-15T10:00:48Z DBG [probe.redfish] TLS handshake completed cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+2025-01-15T10:00:48Z DBG [probe.redfish] Querying /redfish/v1/Systems
+2025-01-15T10:01:15Z DBG [probe.redfish] Timeout waiting for response after=30.001s
+2025-01-15T10:01:15Z ERR [probe.redfish] Collection failed error="dial tcp 192.168.1.50:443: i/o timeout"
 ```
 
-**Result**:
-| Metric | Value | Tags |
-|--------|-------|------|
-| netscaler_vserver_state | 1 (UP) | vserver_name=Web-vServer, metric_view=load_balancing |
-| netscaler_vserver_hits | 45230 | vserver_name=Web-vServer, metric_view=load_balancing |
-| netscaler_vserver_requests | 12450 | vserver_name=Web-vServer, metric_view=load_balancing |
+**Diagnosis from logs:** TLS handshake succeeds, but Redfish API query times out. iDRAC responding slowly, likely hardware issue or high BMC load.
 
-**Available Filters**:
-- **Redfish**: `chassis`, `sensor_name`, `drive_id`
-- **Citrix**: `site`, `delivery_group`, `machine_name`
-- **NetScaler**: `vserver_name`, `service_name`, `metric_view`, `metric_type`
-- **Network**: `interface`, `mac_address`
-- **Disk**: `disk`, `mount_point`, `filesystem`
-
-**📸 SCREENSHOT TO INSERT**: Active tag filters with filtered results
-
----
-
-### Metrics Export
-
-**Available formats**:
-- **JSON**: Raw API format
-- **CSV**: Excel/LibreOffice import
-- **XML**: PRTG compatible
-- **Nagios**: Text format checks
-
-**Export buttons**:
-```
-[Export JSON] [Export CSV] [Export PRTG XML] [Export Nagios]
-```
-
-**CSV Example**:
-```csv
-metric_name,value,unit,probe,timestamp
-cpu_usage_total,45.2,percent,cpu,2025-01-15T10:30:45Z
-memory_usage_percent,67.8,percent,memory,2025-01-15T10:30:45Z
-```
-
----
-
-## Probes Status
-
-### Detailed View per Probe
-
-Clicking **View** in the probes table shows complete details.
-
-**Displayed Information**:
-
-1. **Configuration**
-   ```yaml
-   Name: Production iDRAC
-   Type: redfish
-   Interval: 300 seconds (5 minutes)
-   Endpoint: https://idrac-srv01.company.com
-   ```
-
-2. **Collection State**
-   ```
-   Status: Running
-   Last Successful Collection: 2 minutes ago
-   Next Collection: in 3 minutes
-   Total Collections: 287
-   Failed Collections: 2 (0.7%)
-   ```
-
-3. **Collected Metrics**
-   ```
-   Total Metrics: 47
-   ├─ Temperatures: 12 metrics
-   ├─ Fan Speeds: 8 metrics
-   ├─ Power: 4 metrics
-   ├─ Drives: 18 metrics
-   └─ System: 5 metrics
-   ```
-
-4. **Recent Errors**
-   ```
-   [2025-01-15 08:15:23] ERR Failed to connect: timeout
-   [2025-01-15 08:20:45] ERR Failed to connect: timeout
-   ```
-
-**📸 SCREENSHOT TO INSERT**: Probe details page showing configuration, state, metrics and errors
-
----
-
-### Diagnostic Actions
-
-**Available buttons**:
-
-```
-[View Metrics] [Enable Debug Logs] [Test Connection] [View Configuration]
-```
-
-**Enable Debug Logs**:
-- Enables debug logs for this probe only
-- Without agent restart
-- Shows real-time logs in interface
-
-**Test Connection**:
-- Tests connectivity to endpoint (Redfish, Citrix, etc.)
-- Returns detailed error if failed
-- Verifies credentials
-
-**📸 SCREENSHOT TO INSERT**: Action buttons with popup "Debug logs enabled for probe: redfish"
-
----
-
-## License Information
-
-### License Details Page
-
-**URL**: `/web/{key}/license`
-
-**Displayed Information**:
-
-```
-╔══════════════════════════════════════════════════════════╗
-║              SENHUB AGENT LICENSE                         ║
-╠══════════════════════════════════════════════════════════╣
-║ Tier:              Pro                                    ║
-║ Subject:           production-datacenter                  ║
-║ Issued:            2025-01-01 00:00:00 UTC               ║
-║ Expires:           2025-12-31 23:59:59 UTC               ║
-║ Days Remaining:    342 days                               ║
-║ Status:            ✅ Valid                               ║
-╠══════════════════════════════════════════════════════════╣
-║ Authorized Probes:                                        ║
-║ - cpu, memory, logicaldisk, network (Free Tier)          ║
-║ - redfish, citrix, netscaler, syslog (Pro Tier)          ║
-╚══════════════════════════════════════════════════════════╝
-```
-
-**Visual Alerts**:
-
-🟢 **Valid** (> 30 days):
-```
-License valid until 2025-12-31 (342 days remaining)
-```
-
-🟡 **Expiring Soon** (< 30 days):
-```
-⚠️ LICENSE EXPIRING SOON
-Your license expires in 28 days (2025-02-15)
-Contact support@senhub.io to renew
-```
-
-🟠 **Grace Period** (0-7 days after expiration):
-```
-⚠️ LICENSE EXPIRED - GRACE PERIOD
-License expired 3 days ago
-Grace period: 4 days remaining
-Paid probes still active
-Contact support@senhub.io immediately to renew
-```
-
-🔴 **Expired** (> 7 days after expiration):
-```
-❌ LICENSE EXPIRED
-Agent reverted to Free tier
-Paid probes disabled: redfish, citrix, netscaler, syslog
-Contact support@senhub.io to renew
-```
-
-**Action buttons**:
-```
-[Renew License] → Opens email to support@senhub.io
-[View Configuration] → Shows agent-config.yaml license section
-```
-
-**📸 SCREENSHOT TO INSERT**: License page with valid/expiring/expired status
-
----
-
-## PRTG Lookups
-
-### Lookups Download
-
-The agent automatically generates PRTG lookup files (.ovl) for probes using codes or identifiers.
-
-**Download URL**: `/api/{key}/prtg/lookups/download`
-
-**Interface button**:
-```
-📥 Download PRTG Lookups (.ovl files)
-```
-
-**Generated files**:
-
-```
-senhub-lookups.zip
-├─ netwscaler.metric_type.ovl        # NetScaler metric types
-├─ netscaler.metric_view.ovl         # NetScaler metric views
-└─ README.txt                         # Installation instructions
-```
-
-**Example: netscaler.metric_type.ovl**
-```
-<?xml version="1.0" encoding="UTF-8"?>
-<ValueLookup id="netscaler.metric_type" desiredValue="1" undefinedState="Warning">
-  <Lookups>
-    <SingleInt state="Ok" value="0">
-      <LookupId>Rate</LookupId>
-    </SingleInt>
-    <SingleInt state="Ok" value="1">
-      <LookupId>Counter</LookupId>
-    </SingleInt>
-    <SingleInt state="Ok" value="2">
-      <LookupId>Gauge</LookupId>
-    </SingleInt>
-  </Lookups>
-</ValueLookup>
-```
-
-**📸 SCREENSHOT TO INSERT**: Download lookups button in API Explorer + ZIP contents
-
----
-
-### Installation in PRTG
-
-**Steps**:
-
-1. **Download ZIP** from web interface
-2. **Extract .ovl files**
-3. **Copy to PRTG**:
-   ```
-   C:\Program Files (x86)\PRTG Network Monitor\lookups\custom\
-   ```
-4. **Reload lookups**:
-   - PRTG → Setup → Administrative Tools → Load Lookups and File Lists
-
-**Verification**:
-- NetScaler sensors now display text labels instead of numeric codes
-- Example: "Rate" instead of "0", "Load Balancing" instead of "1"
-
-**📸 SCREENSHOT TO INSERT**: PRTG with NetScaler sensor showing labels after lookups installation
-
----
-
-## Best Practices
-
-### Security
-
-```mermaid
-graph TD
-    SEC[Web Interface Security] --> HTTPS[✅ HTTPS Required<br/>Production]
-    SEC --> BIND[✅ Bind Address<br/>Restrictive]
-    SEC --> KEY[✅ Authentication Key<br/>Complex]
-    SEC --> FW[✅ Firewall<br/>IP Whitelist]
-
-    NOTSEC[❌ To Avoid] --> NOHTTP[HTTP on Internet]
-    NOTSEC --> NOBIND[bind: 0.0.0.0 without HTTPS]
-    NOTSEC --> NOKEY[Simple/predictable key]
-
-    style SEC fill:#c8e6c9
-    style NOTSEC fill:#ffccbc
-```
-
-**✅ Secure Configuration**:
+**Resolution:** Increase timeout in probe configuration:
 
 ```yaml
-storage:
-  - name: http
-    params:
-      port: 8443
-      bind_address: "192.168.1.100"  # Specific interface
-      endpoints: ["prtg", "web", "nagios"]
-      tls:
-        enabled: true
-        min_tls_version: "1.2"
-        cert_file: "/etc/ssl/certs/monitoring.crt"
-        key_file: "/etc/ssl/private/monitoring.key"
-
-agent:
-  authentication_key: "f47ac10b-58cc-4372-a567-0e02b2c3d479"  # UUID
+- name: "Production iDRAC"
+  type: redfish
+  params:
+    endpoint: "https://idrac-srv01.company.com"
+    username: "monitoring"
+    password: "SecurePassword"
+    interval: 300
+    timeout: 60  # Increased from 30 to 60 seconds
 ```
 
-**Firewall**:
-```bash
-# Allow only internal network
-sudo ufw allow from 192.168.1.0/24 to any port 8443
+Restart agent to apply configuration change.
+
+### Step 6: Disable Debug Logging
+
+**After troubleshooting completes, disable debug logging to reduce log verbosity:**
+
+**Navigate to API Explorer → Debug Logs endpoint.**
+
+**Or click "Disable Debug Logging" button in Probes Status section.**
+
+**Action:**
 ```
-
----
-
-### Performance
-
-**Recommendations**:
-
-1. **Cache Retention**
-   ```yaml
-   cache:
-     retention_minutes: 10  # Balance memory/freshness
-   ```
-
-2. **Probe Intervals**
-   ```yaml
-   probes:
-     - name: cpu
-       params:
-         interval: 30  # 30s for real-time metrics
-     - name: redfish
-       params:
-         interval: 300  # 5min for hardware (less critical)
-   ```
-
-3. **PRTG Filtering**
-   - Use `/prtg/metrics/{probe}` instead of global `/prtg/metrics`
-   - Filter by NetScaler tags: `?filter=metric_view:load_balancing`
-   - Reduce PRTG XML parsing load
-
----
-
-### Monitoring
-
-**Endpoints to monitor**:
-
-```bash
-# Simple healthcheck
-curl http://localhost:8080/api/{key}/info/system
-# If HTTP 200 → Agent OK
-
-# Check active probes
-curl http://localhost:8080/api/{key}/info/probes
-# Count probes in "running"
-
-# Check license
-curl http://localhost:8080/api/{key}/license/status
-# is_valid: true, in_grace_period: false
-```
-
-**Alerts to configure**:
-- License expires in < 30 days
-- Probe in Error state
-- Agent unreachable (HTTP 5xx/timeout)
-
----
-
-### Integrations
-
-**Reverse Proxy (Production)**:
-
-```nginx
-# Nginx
-server {
-    listen 443 ssl;
-    server_name monitoring.company.com;
-
-    ssl_certificate /etc/ssl/certs/company.crt;
-    ssl_certificate_key /etc/ssl/private/company.key;
-
-    location / {
-        proxy_pass http://localhost:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
+POST /api/{key}/debug/logs
+{
+  "module_levels": [
+    {"module": "probe.redfish", "level": "info"}
+  ]
 }
 ```
 
-**PRTG Sensors**:
+**Confirmation:**
 ```
-Sensor Type: HTTP XML/REST Value
-URL: https://monitoring.company.com:8443/api/{key}/prtg/metrics/cpu
-Authentication: None (key in URL)
-```
-
-**Nagios Checks**:
-```bash
-define command {
-    command_name    check_senhub_cpu
-    command_line    /usr/lib/nagios/plugins/check_http \
-                    -H monitoring.company.com -p 8443 -S \
-                    -u /api/KEY/nagios/status \
-                    -s "OK - CPU"
-}
+✓ Debug logging disabled for probe.redfish
+Log level restored to: info
 ```
 
 ---
 
-**Next steps**:
-- [Metrics Usage](./METRICS-USAGE.md)
-- [Probes Configuration](./PROBES-CONFIGURATION.md)
-- [Troubleshooting](./TROUBLESHOOTING.md)
+## Workflow: Managing PRTG Integration
+
+**Objective:** Configure PRTG Network Monitor to consume agent metrics using HTTP XML/REST Value sensors and PRTG Lookups.
+
+### Step 1: Test Endpoints in API Explorer
+
+**Before configuring PRTG, verify endpoint accessibility:**
+
+Navigate to API Explorer → test each probe endpoint:
+- `GET /api/{key}/prtg/metrics/cpu`
+- `GET /api/{key}/prtg/metrics/memory`
+- `GET /api/{key}/prtg/metrics/netscaler`
+
+**Verify 200 OK response with valid XML for each endpoint.**
+
+### Step 2: Copy Endpoint URLs
+
+**For each probe, copy full URL from API Explorer:**
+
+```
+https://monitoring.company.com:8443/api/f47ac10b-58cc-4372-a567-0e02b2c3d479/prtg/metrics/cpu
+https://monitoring.company.com:8443/api/f47ac10b-58cc-4372-a567-0e02b2c3d479/prtg/metrics/netscaler?filter=metric_view:load_balancing
+```
+
+### Step 3: Configure PRTG Sensors
+
+**In PRTG:**
+
+1. Navigate to target device
+2. Add Sensor → HTTP XML/REST Value Sensor
+3. Configure sensor settings:
+
+**Sensor Settings:**
+- **Sensor Name:** SenHub - CPU Metrics
+- **URL:** `https://monitoring.company.com:8443/api/.../prtg/metrics/cpu`
+- **HTTP Method:** GET
+- **Authentication:** None (key in URL)
+- **Timeout:** 60 seconds
+- **Scanning Interval:** 60 seconds
+
+**SSL/TLS Settings:**
+- **Verify SSL Certificate:** Yes (if using CA-signed cert) / No (if self-signed)
+
+4. Click "Create" → PRTG tests connection → sensor shows channels
+
+**Expected result:** PRTG sensor displays channels for all CPU metrics (CPU Usage Total, CPU Load 1min, CPU Load 5min, etc.)
+
+### Step 4: Download PRTG Lookups
+
+**PRTG Lookups provide human-readable value mappings for state metrics.**
+
+**Navigate to API Explorer → PRTG Lookups Download section.**
+
+**Or use direct URL:**
+```
+GET /api/{key}/prtg/lookups/download
+```
+
+**Browser downloads:** `prtg-lookups.zip`
+
+**Extract ZIP contents:**
+```
+prtg-lookups.zip
+├── senhub.netscaler.vserver.state.ovl
+├── senhub.netscaler.service.state.ovl
+├── senhub.netscaler.cert.status.ovl
+├── senhub.redfish.drive.state.ovl
+├── senhub.redfish.power.state.ovl
+└── senhub.citrix.server.state.ovl
+```
+
+### Step 5: Install Lookups in PRTG
+
+**Copy .ovl files to PRTG lookups directory:**
+
+```
+C:\Program Files (x86)\PRTG Network Monitor\lookups\custom\
+```
+
+**In PRTG:**
+1. Setup → System Administration → Administrative Tools → Load Lookups
+2. Wait for "Lookups loaded successfully" confirmation
+
+**Lookups now available for value mapping in sensors.**
+
+### Step 6: Apply Lookups to Sensors
+
+**Edit NetScaler sensor:**
+1. Sensor Settings → Channel Settings → netscaler_vserver_state
+2. **Value Lookup:** senhub.netscaler.vserver.state.ovl
+3. Save
+
+**Result:** Sensor channel shows "UP" or "DOWN" instead of numeric values (1/0).
+
+**Lookup mappings example:**
+```
+netscaler_vserver_state.ovl:
+  1: UP (green)
+  0: DOWN (red)
+
+redfish_drive_state.ovl:
+  0: OK (green)
+  1: Degraded (yellow)
+  2: Failed (red)
+```
+
+### Step 7: Configure Thresholds and Alerts
+
+**Edit sensor channels to configure alerting:**
+
+**CPU Usage Total channel:**
+- **Warning Threshold:** 80%
+- **Error Threshold:** 95%
+- **Alert on:** Error (do not alert on warning)
+
+**Disk Free Percent channel:**
+- **Warning Threshold:** <20% (low limit)
+- **Error Threshold:** <10% (low limit)
+- **Alert on:** Error
+
+**NetScaler vServer State channel (with lookup):**
+- **Status Mapping:** Use lookup (UP=OK, DOWN=Error)
+- **Alert on:** State changes to DOWN
+
+---
+
+## Dashboard Sections Reference
+
+### Dashboard Home
+
+**Purpose:** Quick system overview and health check.
+
+**Key information displayed:**
+- System identification (hostname, OS, version)
+- Agent operational status (mode, uptime, cache stats)
+- License status with expiration warnings
+- Active probes summary with status indicators
+- Recent alerts or warnings requiring attention
+
+**Typical usage:** First screen viewed during daily health checks or incident response.
+
+### API Explorer
+
+**Purpose:** Interactive testing of all REST API endpoints before integration.
+
+**Available endpoint categories:**
+- **Info:** System information, probe list
+- **Metrics:** JSON, PRTG XML, Nagios text formats
+- **License:** License status and details
+- **Debug:** Log level management
+- **Lookups:** PRTG lookup file download
+
+**Key features:**
+- **Request builder:** Select endpoint, add parameters, send request
+- **Response viewer:** Formatted JSON/XML display
+- **Copy as cURL:** Generate curl commands for scripting
+- **Parameter help:** Inline documentation for query parameters
+
+**Typical usage:** Testing before configuring PRTG sensors, validating API access, debugging integration issues.
+
+### Metrics Browser
+
+**Purpose:** Explore and filter collected metrics by probe, tag, or name.
+
+**Filtering options:**
+- **By Probe:** Select specific probe (cpu, memory, redfish, netscaler)
+- **By Tag:** Filter using metric tags (interface, vserver_name, disk)
+- **By Name:** Search metric names (cpu_usage, temperature_celsius)
+- **Combined:** Apply multiple filters simultaneously
+
+**Display modes:**
+- **Table View:** Metric name, current value, unit, tags, timestamp
+- **Graph View:** Real-time graphs for selected metrics (if supported)
+- **Export:** Download metrics as JSON, CSV, or XML
+
+**Typical usage:** Investigating specific metric values, identifying tag-based filtering for PRTG, exporting metrics for external analysis.
+
+### Probes Status
+
+**Purpose:** Diagnose probe health and collection failures.
+
+**Information displayed:**
+- **Probe list:** All configured probes with current status
+- **Status indicators:** Running (green), Warning (yellow), Error (red), Disabled (gray)
+- **Error details:** Error messages, stack traces, troubleshooting suggestions
+- **Collection timing:** Last successful collection, last error, next scheduled collection
+
+**Actions available:**
+- **View Error:** Detailed error information and troubleshooting steps
+- **Enable Debug Logs:** Activate debug logging for specific probe
+- **Retry Collection:** Force immediate collection attempt
+- **View Configuration:** Display current probe parameters (passwords masked)
+
+**Typical usage:** Troubleshooting probe failures, enabling debug logging, monitoring probe health during infrastructure changes.
+
+### License Information
+
+**Purpose:** View license details, expiration, and authorized probes.
+
+**Information displayed:**
+- **License tier:** Free, Pro, or Enterprise
+- **Expiration date:** Date and days remaining
+- **Status:** Active, Expiring Soon, Grace Period, or Expired
+- **Authorized probes:** List of licensed probe types
+- **Subject:** License customer identifier
+
+**Alert indicators:**
+- **Green:** Valid license with >30 days remaining
+- **Yellow:** Expiring within 30 days
+- **Orange:** Grace period active (0-7 days post-expiration)
+- **Red:** Fully expired, paid probes disabled
+
+**Contact information:** support@senhub.io displayed for renewal requests.
+
+**Typical usage:** Verifying license status, checking probe authorization, monitoring expiration dates.
+
+---
+
+## Summary
+
+The web dashboard provides workflow-oriented interfaces for the three primary use cases: monitoring system health, testing API integrations, and troubleshooting issues. Understanding the workflow approach to each dashboard section enables efficient daily operations and rapid incident response.
+
+**Recommended workflows by role:**
+
+**System Administrator:**
+1. Daily: Dashboard Home → verify all probes running → check license expiration
+2. During incidents: Probes Status → identify failing probe → enable debug logs → force retry
+
+**Monitoring Engineer:**
+1. Integration: API Explorer → test endpoints → copy cURL commands → configure PRTG sensors
+2. Optimization: Metrics Browser → filter by tags → identify high-cardinality sources → apply filters
+
+**Operations Team:**
+1. Health Check: Dashboard Home → review status indicators → investigate warnings
+2. Capacity Planning: Metrics Browser → export historical trends → analyze growth patterns
+
+**Next steps:**
+- [Metrics Usage](./METRICS-USAGE.md) - Detailed PRTG/Nagios/Grafana integration guides
+- [Troubleshooting](./TROUBLESHOOTING.md) - Comprehensive troubleshooting procedures
+- [Agent Configuration](./AGENT-CONFIGURATION.md) - Modify agent settings and license management

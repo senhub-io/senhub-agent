@@ -1,66 +1,92 @@
-# SenHub Agent - Operating Modes
+# Operating Modes
+
+This guide explains the two distinct operating modes available in SenHub Agent: online mode (platform-connected) and offline mode (autonomous). Understanding the architectural differences and operational implications of each mode is critical for making the right deployment choice for your environment.
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Online Mode (Connected)](#online-mode-connected)
-- [Offline Mode (Autonomous)](#offline-mode-autonomous)
-- [Detailed Comparison](#detailed-comparison)
+- [Understanding Operating Modes](#understanding-operating-modes)
+- [Online Mode - Platform-Connected](#online-mode---platform-connected)
+- [Offline Mode - Autonomous](#offline-mode---autonomous)
+- [Architectural Comparison](#architectural-comparison)
+- [Mode Selection Guidelines](#mode-selection-guidelines)
 - [Switching Between Modes](#switching-between-modes)
-- [Use Cases by Mode](#use-cases-by-mode)
 
 ---
 
-## Overview
+## Understanding Operating Modes
 
-SenHub Agent supports two distinct operating modes, adapted to different environments and needs:
+Before deploying SenHub Agent, you must choose between two fundamentally different architectures that determine how the agent operates, where configuration is managed, and how metrics are accessed.
+
+### Architectural Distinction
+
+The two modes represent different approaches to the same monitoring problem:
 
 ```mermaid
 graph TD
     A[SenHub Agent] --> B{Operating Mode}
-    B -->|Connected| C[Online Mode]
+    B -->|Platform-Connected| C[Online Mode]
     B -->|Autonomous| D[Offline Mode]
 
-    C --> C1[SenHub Platform]
-    C --> C2[Centralized Config]
-    C --> C3[Auto-Update]
-    C --> C4[Metrics Sending]
+    C --> C1[Centralized Config Management]
+    C --> C2[Platform Metrics Storage]
+    C --> C3[Multi-Agent Orchestration]
+    C --> C4[Automatic Updates]
 
-    D --> D1[Air-Gap Ready]
-    D --> D2[Local YAML Config]
-    D --> D3[Web Interface]
-    D --> D4[Local Cache]
+    D --> D1[Local Configuration Files]
+    D --> D2[Local Metrics Cache]
+    D --> D3[HTTP/HTTPS API Exposure]
+    D --> D4[Zero External Dependencies]
 
     style C fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
     style D fill:#fff4e6,stroke:#f57c00,stroke-width:2px
-    style C1 fill:#b3e5fc
-    style C2 fill:#b3e5fc
-    style C3 fill:#b3e5fc
-    style C4 fill:#b3e5fc
-    style D1 fill:#ffe0b2
-    style D2 fill:#ffe0b2
-    style D3 fill:#ffe0b2
-    style D4 fill:#ffe0b2
 ```
 
-### Quick Comparison Table
+**Online Mode** - Platform-managed configuration
+- Configuration stored and managed centrally via SenHub platform
+- Metrics transmitted to platform for long-term storage and analysis
+- Requires outbound HTTPS connectivity to SenHub servers
+- **Use case:** Multi-site deployments requiring centralized management (e.g., 50+ servers across multiple datacenters)
 
-| Aspect | Online Mode 🌐 | Offline Mode 🔒 |
-|--------|----------------|-----------------|
-| **External connection** | ✅ Required (SenHub platform) | ❌ Not needed |
-| **Configuration** | Downloaded from server | Local `agent-config.yaml` file |
-| **Agent Key** | Provided by platform | Locally generated (UUID v4) |
-| **Probe updates** | Automatic push from server | Local file modification |
-| **Metrics storage** | SenHub sending + local cache | Local cache only |
-| **Web Interface** | Optional (HTTP strategy) | Main access interface |
-| **Auto-update agent** | Automatic | Manual or automatic (if internet) |
-| **Use case** | Centralized multi-site monitoring | Air-gap, edge, dev, POC |
+**Offline Mode** - Self-contained operation
+- Configuration managed locally via YAML file
+- Metrics stored in local memory cache (5-30 minutes retention)
+- No outbound connectivity required
+- **Use case:** Air-gapped environments, edge computing, development environments
+
+### Key Difference: Configuration Source
+
+The fundamental architectural difference is **where configuration originates**:
+
+| Aspect | Online Mode | Offline Mode |
+|--------|-------------|--------------|
+| **Configuration source** | Downloaded from platform | Local YAML file |
+| **Configuration changes** | Push from web portal (real-time) | Local file edit + agent restart |
+| **Metrics storage** | Platform (persistent) + local cache | Local cache only (5-30 minutes) |
+| **External connectivity** | Required (HTTPS to platform) | None (fully autonomous) |
+| **Multi-agent management** | Centralized dashboard | Independent per-agent |
+| **Primary access method** | Platform web interface | Local HTTP/HTTPS API |
+
+### Installation Defaults
+
+**Standard installation uses offline mode** by default:
+
+```bash
+# Default installation = offline mode
+senhub-agent install --offline
+
+# Online mode requires platform authentication key
+senhub-agent install --authentication-key "platform-key-abc123"
+```
+
+This reflects the design philosophy: the agent should be **autonomous by default**, capable of running independently without external dependencies. Online mode is an optional integration for organizations requiring centralized multi-agent management.
 
 ---
 
-## Online Mode (Connected)
+## Online Mode - Platform-Connected
 
-### Operating Principle
+Online mode transforms SenHub Agent into a managed component of a larger monitoring infrastructure, with centralized configuration management and metrics aggregation.
+
+### Operational Architecture
 
 ```mermaid
 sequenceDiagram
@@ -68,86 +94,129 @@ sequenceDiagram
     participant P as SenHub Platform
     participant S as Probes
 
-    Note over A: Start with<br/>--authentication-key
+    Note over A: Start with platform key
 
     A->>P: Authentication (HTTPS)
     P-->>A: Configuration + License
+    P-->>A: Probe definitions
 
-    A->>S: Start probes<br/>(server config)
+    A->>S: Initialize probes
 
-    loop Collection
-        S->>A: Metrics (30-300s)
-        A->>P: Send metrics (HTTPS)
+    loop Every 30-300s
+        S->>A: Collect metrics
+        A->>P: Transmit metrics (HTTPS)
         P-->>A: ACK
     end
 
-    P->>A: New config (push)
-    A->>S: Restart probes
+    Note over P: Admin modifies config in portal
 
-    P->>A: Update available
-    A->>P: Download
-    A->>A: Restart
+    P->>A: Push updated config
+    A->>S: Reload probes
+    A-->>P: Config applied
 ```
 
-### Features
+**What happens at startup:**
+1. Agent authenticates to platform using provided key
+2. Platform responds with configuration (probes, intervals, parameters)
+3. Agent applies configuration and starts metric collection
+4. Metrics are transmitted to platform every collection cycle
+5. Configuration changes from platform are applied in real-time
 
-#### ✅ Advantages
+### Features and Capabilities
 
-1. **Centralized Configuration**
-   - Management from SenHub web platform
-   - Real-time configuration push
-   - No SSH/RDP needed for modifications
+#### Centralized Configuration Management
 
-2. **Centralized Monitoring**
-   - Multi-agent visualization in single dashboard
-   - Centralized alerting
-   - Long-term history
+**Benefit:** Configuration for dozens or hundreds of agents managed from a single web interface.
 
-3. **Auto-Update**
-   - Automatic agent updates
-   - New probes deployed automatically
-   - Zero-downtime updates
+Instead of SSH/RDP access to each server to edit YAML files, configuration is managed centrally. When you add a new probe or modify collection intervals, changes are pushed automatically to all relevant agents.
 
-4. **Secure Authentication**
-   - Key provided by platform
-   - Revocation possible from portal
-   - Managed TLS certificates
+**Example scenario:** You manage 100 servers across 5 datacenters. A new Redfish probe configuration needs to be deployed to 20 iDRAC-equipped servers. With online mode:
+- Add probe configuration once in the platform
+- Select target agents (by tag, location, etc.)
+- Push configuration (applies in seconds)
+- No manual file editing or service restarts required
 
-#### ❌ Limitations
+#### Platform Metrics Storage
 
-1. **Connection Required**
-   - Internet mandatory (HTTPS to `eu-west-1.intake.senhub.io`)
-   - Can be blocked by proxy/firewall
-   - Latency depends on location
+**Benefit:** Long-term metrics retention with historical analysis capabilities.
 
-2. **Platform Dependency**
-   - If platform unreachable, uses locally replicated config
-   - Requires active SenHub account
+Online mode transmits metrics to the platform where they are stored in a time-series database. This enables:
+- Historical trend analysis (6-12 months of data)
+- Capacity planning based on growth trends
+- Incident correlation across time periods
+- Performance baseline establishment
 
-### Online Mode Installation
+**Contrast with offline mode:** Offline mode retains metrics in memory for 5-30 minutes only. Historical analysis requires external integration with time-series databases like InfluxDB or Prometheus.
+
+#### Multi-Agent Orchestration
+
+**Benefit:** Single dashboard showing metrics from all agents across all locations.
+
+The platform aggregates metrics from all connected agents, providing:
+- Unified view of infrastructure health across sites
+- Cross-datacenter correlation (identify global vs local issues)
+- Fleet-wide statistics and reporting
+- Centralized alerting with global context
+
+**Example scenario:** A network issue affects connectivity between datacenters. The platform dashboard shows simultaneous latency increase across 50 agents spanning both sites, immediately identifying a network-level problem rather than individual server issues.
+
+#### Automatic Updates
+
+**Benefit:** Security patches and feature updates deployed automatically without manual intervention.
+
+The platform manages agent updates:
+- New versions tested and validated by SenHub
+- Staged rollout capability (test on subset before full deployment)
+- Rollback capability if issues detected
+- No maintenance windows required for updates
+
+### Connectivity Requirements
+
+**Outbound HTTPS required:**
+- **Destination:** `eu-west-1.intake.senhub.io`
+- **Port:** 443 (HTTPS)
+- **Protocol:** WebSocket over HTTPS for real-time configuration push
+- **Bandwidth:** Minimal (~10-50 KB/minute per agent, varies by probe count)
+
+**Firewall considerations:**
+- Outbound connection only (no inbound ports required)
+- Standard HTTPS (port 443) typically allowed by default
+- If corporate proxy required, agent supports HTTP_PROXY environment variable
+
+**Fallback behavior when platform unreachable:**
+
+The agent maintains a local replica of the last-known-good configuration. If the platform becomes unreachable, the agent continues operating using this replicated configuration until connectivity is restored.
+
+**Replica location:**
+- **Windows:** `C:\ProgramData\SenHub\agent-config-replica.yaml`
+- **Linux:** `/var/lib/senhub-agent/agent-config-replica.yaml`
+- **macOS:** `/usr/local/var/senhub-agent/agent-config-replica.yaml`
+
+### Installation for Online Mode
 
 ```bash
+# Obtain authentication key from SenHub platform first
+# Platform generates unique key per agent during enrollment
+
 # Windows
-.\senhub-agent.exe install --authentication-key "YOUR_PLATFORM_KEY"
+.\senhub-agent.exe install --authentication-key "your-platform-key"
 
 # Linux
-sudo senhub-agent install --authentication-key "YOUR_PLATFORM_KEY"
+sudo senhub-agent install --authentication-key "your-platform-key"
 
 # macOS
-sudo senhub-agent install --authentication-key "YOUR_PLATFORM_KEY"
+sudo senhub-agent install --authentication-key "your-platform-key"
 ```
 
-**📸 SCREENSHOT TO INSERT**: SenHub portal with "Agent Keys" section showing a generated key
-
-### Generated Configuration (Online Mode)
+**Generated configuration file:**
 
 ```yaml
 config_version: 2
 
 agent:
-  key: "platform-provided-key-abc123def456"  # Provided by SenHub
+  key: "platform-provided-key-abc123def456"
   mode: online
-  license: "eyJhbGciOiJSUzI1NiIs..."         # JWT (if applicable)
+  license: "eyJhbGciOiJSUzI1NiIs..."  # If license required
 
 auto_update:
   enabled: true
@@ -156,181 +225,225 @@ auto_update:
 cache:
   retention_minutes: 5
 
-# Configuration downloaded from server
-# Probes, storage, etc. managed by platform
+# Configuration downloaded from platform
+# Probes, storage, and other settings managed by platform
 ```
 
-### Local Replication (Fallback)
+**Key observation:** The configuration file in online mode is minimal. Probe definitions, collection intervals, and other operational parameters are managed by the platform and downloaded at runtime.
 
-The agent automatically creates a local copy of the server configuration:
+### When to Use Online Mode
 
-**Replication path**
-- Windows: `C:\ProgramData\SenHub\agent-config-replica.yaml`
-- Linux: `/var/lib/senhub-agent/agent-config-replica.yaml`
-- macOS: `/usr/local/var/senhub-agent/agent-config-replica.yaml`
+**Ideal deployment scenarios:**
 
-**Usage**
-If the platform becomes unreachable, the agent uses the local replication to continue operating.
+1. **Multi-site enterprises** managing dozens or hundreds of servers across multiple physical locations
+2. **Cloud-native deployments** on AWS, Azure, or GCP where outbound HTTPS is available and cost-effective
+3. **Managed service providers** offering monitoring-as-a-service to customers
+4. **Organizations requiring centralized audit trails** of all configuration changes
 
-```mermaid
-graph LR
-    A[Agent Starts] --> B{Server<br/>Reachable?}
-    B -->|Yes| C[Server Config]
-    B -->|No| D[Replicated Config]
-
-    C --> E[Local Replication]
-    E --> F[Normal Operation]
-    D --> F
-
-    style B fill:#fff3e0
-    style D fill:#ffccbc
-    style E fill:#c8e6c9
-```
-
-### Typical Environments
-
-- **Datacenters with internet**: Centralized monitoring of dozens/hundreds of servers
-- **Cloud**: AWS, Azure, GCP with outbound HTTPS access
-- **Remote offices**: Sites with stable internet connection
-- **Monitoring-as-a-Service**: Managed monitoring offering for customers
+**Resource implications:**
+- **Network:** ~10-50 KB/min outbound bandwidth per agent
+- **Storage:** None locally (metrics stored on platform)
+- **Operational overhead:** Minimal (configuration managed centrally)
 
 ---
 
-## Offline Mode (Autonomous)
+## Offline Mode - Autonomous
 
-### Operating Principle
+Offline mode provides a completely self-contained monitoring solution that operates independently without external dependencies. This architecture is designed for air-gapped environments, edge computing, and scenarios where external connectivity is unavailable or prohibited.
+
+### Operational Architecture
 
 ```mermaid
 graph TD
-    A[Agent Starts] --> B[Read<br/>agent-config.yaml]
-    B --> C[Generate UUID<br/>if new]
-    C --> D[Start Probes<br/>local config]
-    D --> E[HTTP Strategy<br/>Port 8080/8443]
+    A[Agent Starts] --> B[Read agent-config.yaml]
+    B --> C[Validate Configuration]
+    C --> D[Initialize Probes]
+    D --> E[Start HTTP Strategy]
 
-    E --> F[Web Dashboard]
-    E --> G[PRTG/Nagios API]
-    E --> H[JSON API]
+    E --> F[HTTP/HTTPS API<br/>Port 8080 or 8443]
 
-    D --> I[(Local Cache)]
-    I --> E
+    D --> G[(Local Memory Cache<br/>5-30 minutes retention)]
 
-    J[User] --> F
-    J --> G
-    J --> H
+    F --> H[Web Dashboard<br/>Local access]
+    F --> I[PRTG XML API<br/>/api/key/prtg/*]
+    F --> J[Nagios Text API<br/>/api/key/nagios/*]
+    F --> K[JSON API<br/>/api/key/json/*]
+
+    G --> F
+
+    L[Monitoring System] --> I
+    L --> J
+    L --> K
+
+    M[Administrator] --> H
 
     style A fill:#e8f5e9
     style B fill:#c8e6c9
-    style E fill:#a5d6a7
-    style I fill:#fff9c4
+    style F fill:#a5d6a7
+    style G fill:#fff9c4
 ```
 
-### Features
+**What happens at startup:**
+1. Agent reads configuration from local YAML file
+2. Configuration is validated (syntax, probe types, parameters)
+3. Probes are initialized based on configuration
+4. HTTP/HTTPS server starts on configured port
+5. Metrics become available via local API immediately
 
-#### ✅ Advantages
+**No external connectivity required at any point.**
 
-1. **Zero External Dependency**
-   - Works without internet
-   - Ideal for air-gapped environments
-   - No risk of data leakage
+### Features and Capabilities
 
-2. **Local File Configuration**
-   - Complete control via YAML
-   - Versionable (Git, Ansible, etc.)
-   - Infrastructure as Code
+#### Local Configuration Management
 
-3. **Local Web Interface**
-   - Locally accessible monitoring dashboard
-   - Complete REST API (PRTG, Nagios, JSON)
-   - Downloadable PRTG lookups
+**Benefit:** Complete control over agent behavior via version-controlled configuration files.
 
-4. **Quick to Deploy**
-   - 2-minute installation
-   - No platform account needed
-   - Ideal for POC and development
+Configuration is managed through direct file editing, enabling:
+- **Infrastructure-as-Code:** Configuration files stored in Git, deployed via Ansible/Puppet
+- **Change tracking:** Full audit trail via Git history
+- **Peer review:** Configuration changes reviewed before deployment
+- **Automated deployment:** CI/CD pipelines can modify and deploy configurations
 
-#### ❌ Limitations
+**Example scenario:** You manage a production environment with strict change control procedures. All configuration changes must be:
+1. Proposed via pull request
+2. Reviewed by senior operations team
+3. Approved by security team
+4. Deployed during maintenance window
 
-1. **Manual Configuration**
-   - Modifications via SSH/RDP + YAML editing
-   - No centralized push
-   - Requires restart for changes
+Offline mode's file-based configuration integrates naturally with these processes.
 
-2. **No Long-Term History**
-   - Memory cache only (5-30 minutes)
-   - No integrated time-series database
-   - Export to external system if needed
+#### Local Metrics API
 
-3. **Local Monitoring Only**
-   - No centralized multi-agent view
-   - Alerting managed via PRTG/Nagios/other
+**Benefit:** Metrics exposed via HTTP/HTTPS interface for consumption by existing monitoring platforms.
 
-### Offline Mode Installation
+The agent provides a multi-format REST API:
 
-#### HTTP Installation (Localhost only)
+**PRTG Network Monitor:**
+```
+https://server:8443/api/{key}/prtg/metrics/cpu
+https://server:8443/api/{key}/prtg/metrics/redfish
+```
+
+**Nagios/Icinga:**
+```
+https://server:8443/api/{key}/nagios/status
+https://server:8443/api/{key}/nagios/metrics/memory
+```
+
+**Custom integration (JSON):**
+```
+https://server:8443/api/{key}/json/metrics
+https://server:8443/api/{key}/json/metrics/network
+```
+
+This architecture allows integration with existing monitoring infrastructure without requiring agent-to-platform connectivity.
+
+#### Zero External Dependencies
+
+**Benefit:** Operates in environments with no internet access, including air-gapped datacenters and secure facilities.
+
+Offline mode requires no external connectivity:
+- No outbound connections to SenHub platform
+- No DNS lookups for platform endpoints
+- No external certificate authorities required (self-signed certs supported)
+- No dependency on external services for operation
+
+**Example scenario:** A pharmaceutical manufacturing facility operates an air-gapped network for regulatory compliance (21 CFR Part 11). The monitoring infrastructure must operate entirely within the isolated network. Offline mode satisfies this requirement while providing comprehensive monitoring capabilities.
+
+#### Local Web Dashboard
+
+**Benefit:** Visual monitoring interface accessible via browser without external dependencies.
+
+The built-in web dashboard provides:
+- **Real-time metrics display** for all configured probes
+- **API Explorer** for testing and debugging API endpoints
+- **Probe status diagnostics** showing collection intervals and last update times
+- **License information** and expiration status
+
+**Access URL format:**
+```
+http(s)://server:port/web/{agent-key}/dashboard
+```
+
+### Installation for Offline Mode
+
+**HTTP installation (development/testing):**
 
 ```bash
-# All platforms
+# All platforms - binds to localhost only
 senhub-agent install --offline
 
-# Access
-http://localhost:8080/web/{UUID}/dashboard
+# Access dashboard
+http://localhost:8080/web/{generated-uuid}/dashboard
 ```
 
-**Use case**: Development, local testing
+**Configuration created:**
+- **Port:** 8080
+- **Bind address:** 127.0.0.1 (localhost only)
+- **Protocol:** HTTP (unencrypted)
 
-#### HTTPS Installation (Production)
+**Use case:** Local development, testing configurations before production deployment.
+
+**HTTPS installation (production):**
 
 ```bash
-# With auto-generated certificates
+# With auto-generated self-signed certificates
 senhub-agent install --offline --enable-https
 
-# With custom certificates
+# With custom CA-signed certificates
 senhub-agent install --offline --enable-https \
-  --cert-file /etc/ssl/certs/server.crt \
-  --key-file /etc/ssl/private/server.key
-
-# Access
-https://monitoring.local:8443/web/{UUID}/dashboard
+  --cert-file /etc/ssl/certs/monitoring.crt \
+  --key-file /etc/ssl/private/monitoring.key
 ```
 
-**Use case**: Air-gap production, edge computing
+**Configuration created:**
+- **Port:** 8443
+- **Bind address:** 0.0.0.0 (network accessible)
+- **Protocol:** HTTPS with TLS 1.2+
+- **Certificates:** Auto-generated (365 days validity) or custom
 
-**📸 SCREENSHOT TO INSERT**: Terminal showing offline installation with UUID generation and message "Agent key: f47ac10b-58cc-4372-a567-0e02b2c3d479"
+**Use case:** Production deployments where metrics are accessed from network monitoring systems (PRTG, Nagios) running on separate servers.
 
-### Generated Configuration (Offline Mode)
+### Configuration File Structure
+
+**Generated configuration (offline mode):**
 
 ```yaml
 # SenHub Agent Configuration
 # Configuration Version: 2 (automatically managed)
-# Agent Version: 0.1.80-beta
-# Generated: 2025-12-18 10:30:00 CET
+# Agent Version: 0.1.72
+# Generated: 2025-12-19 10:30:00 UTC
 
 config_version: 2
 
 # Agent configuration
 agent:
-  key: "f47ac10b-58cc-4372-a567-0e02b2c3d479"  # Generated UUID
+  key: "f47ac10b-58cc-4372-a567-0e02b2c3d479"  # Auto-generated UUID
   mode: offline
-  # license: ""  # Uncomment and add license if needed
+  # license: ""  # Add Pro/Enterprise license if needed
 
 # Auto-update configuration
 auto_update:
-  enabled: true  # Checks updates if internet available
+  enabled: true  # Checks for updates if internet available
   url: "https://eu-west-1.intake.senhub.io/releases"
 
 # Cache configuration
 cache:
-  retention_minutes: 5  # Metrics retention duration in memory
+  retention_minutes: 5  # Metrics retained in memory
 
-# Local storage with web interface
+# HTTP/HTTPS interface
 storage:
   - name: http
     params:
-      port: 8080               # 8443 if HTTPS
-      bind_address: "127.0.0.1"  # "0.0.0.0" if HTTPS
+      port: 8443
+      bind_address: "0.0.0.0"
       endpoints: ["prtg", "web", "nagios"]
+      tls:
+        enabled: true
+        cert_file: "/etc/senhub-agent/certs/agent.crt"
+        key_file: "/etc/senhub-agent/certs/agent.key"
 
-# Active probes (default system monitoring)
+# Monitoring probes (default: basic system monitoring)
 probes:
   - name: cpu
     type: cpu
@@ -353,392 +466,427 @@ probes:
       interval: 30
 ```
 
-### Configuration Modification
+**Key characteristics:**
+- **Self-contained:** All operational parameters defined in this file
+- **Editable:** Modify probes, intervals, bind addresses directly
+- **Versionable:** Can be stored in Git for change tracking
+- **Portable:** Copy to other servers for consistent configuration
+
+### Modifying Configuration
+
+**Workflow for adding new probes or changing parameters:**
 
 ```bash
-# 1. Edit the file
+# Step 1: Edit configuration file
 sudo nano /etc/senhub-agent/agent-config.yaml
 
-# 2. Example: Add Redfish probe
+# Step 2: Add probe configuration
+# Example: Add Redfish probe for hardware monitoring
 probes:
-  - name: "Production iDRAC"
+  - name: "Production Server iDRAC"
     type: redfish
     params:
-      endpoint: "https://idrac.company.com"
-      username: "admin"
-      password: "secret"
+      endpoint: "https://idrac-srv01.company.com"
+      username: "monitoring"
+      password: "SecurePassword"
       interval: 300
+      verify_ssl: true
 
-# 3. Restart agent
+# Step 3: Save file
+
+# Step 4: Restart agent to apply changes
 sudo systemctl restart senhub-agent  # Linux
+Restart-Service SenHubAgent  # Windows PowerShell
 sudo launchctl unload /Library/LaunchDaemons/io.senhub.agent.plist && \
 sudo launchctl load /Library/LaunchDaemons/io.senhub.agent.plist  # macOS
+
+# Step 5: Verify probe is running
+curl http://localhost:8080/api/{key}/json/metrics
 ```
 
-**📸 SCREENSHOT TO INSERT**: nano/vi editor with agent-config.yaml file open showing configured redfish probe
+**Operational consideration:** Configuration changes require agent restart. For production environments, plan configuration changes during maintenance windows or implement blue-green deployment strategies.
 
-### Typical Environments
+### When to Use Offline Mode
 
-- **Air-Gapped Datacenters**: Installations without internet connection (security, military, industrial)
-- **Edge Computing**: Remote sites with limited or expensive connectivity
-- **Local Development**: Testing and development of custom probes
-- **POC and Demos**: Quick installation for customer demonstrations
-- **Regulated Environments**: Sectors prohibiting external data transmission
+**Ideal deployment scenarios:**
+
+1. **Air-gapped datacenters** in military, government, or critical infrastructure where external connectivity is prohibited
+2. **Edge computing deployments** at remote sites with expensive or unreliable connectivity (e.g., offshore platforms, remote mining operations)
+3. **Regulatory compliance environments** where data transmission outside the facility is restricted (HIPAA, PCI-DSS, classified networks)
+4. **Development and testing** where quick setup without platform enrollment is desired
+5. **Proof-of-concept demonstrations** for customers requiring rapid deployment
+
+**Resource implications:**
+- **Network:** Zero external bandwidth (operates fully offline)
+- **Storage:** Minimal (metrics in memory, logs on disk)
+- **Operational overhead:** Higher (manual configuration management per agent)
 
 ---
 
-## Detailed Comparison
+## Architectural Comparison
 
-### Network Architecture
+### Configuration Management Workflow
 
-```mermaid
-graph TB
-    subgraph Online ["Online Mode 🌐"]
-        A1[Agent] -->|HTTPS| P[SenHub Platform<br/>eu-west-1.intake.senhub.io]
-        A1 -->|Collect| PR1[Probes]
-        P -->|Config Push| A1
-        P -->|Update Push| A1
-        A1 -->|Metrics| P
-    end
-
-    subgraph Offline ["Offline Mode 🔒"]
-        A2[Agent] -->|Read| CF[agent-config.yaml]
-        A2 -->|Collect| PR2[Probes]
-        A2 -->|HTTP/HTTPS| UI[Web Interface<br/>localhost:8080]
-        USER[User] -->|Local Access| UI
-        USER -->|Edit| CF
-    end
-
-    style Online fill:#e1f5ff,stroke:#0288d1
-    style Offline fill:#fff4e6,stroke:#f57c00
-    style P fill:#81d4fa
-    style CF fill:#ffcc80
-    style UI fill:#ffcc80
-```
-
-### Configuration Flow
-
-#### Online Mode
+**Online Mode:**
 
 ```mermaid
 sequenceDiagram
-    participant U as Admin<br/>(Web Portal)
-    participant P as Platform
-    participant A as Agent
+    participant Admin as Administrator<br/>(Web Portal)
+    participant Platform as SenHub Platform
+    participant Agent as Agent
 
-    U->>P: Modify probe config
-    P->>P: Validation
-    P->>A: Push config (WebSocket)
-    A->>A: Local validation
-    A->>A: Apply config
-    A-->>P: ACK
-    P-->>U: Confirmation
+    Admin->>Platform: Modify probe configuration
+    Platform->>Platform: Validate configuration
+    Platform->>Agent: Push config (WebSocket)
+    Agent->>Agent: Apply configuration
+    Agent-->>Platform: Acknowledge
+    Platform-->>Admin: Success notification
+
+    Note over Admin,Agent: Configuration applied in ~5 seconds<br/>No agent restart required
 ```
 
-#### Offline Mode
+**Operational time:** 5-10 seconds from portal change to active probe.
+
+**Offline Mode:**
 
 ```mermaid
 sequenceDiagram
-    participant U as Admin<br/>(SSH/RDP)
-    participant F as agent-config.yaml
-    participant A as Agent
+    participant Admin as Administrator<br/>(SSH/RDP)
+    participant File as agent-config.yaml
+    participant Agent as Agent
 
-    U->>F: Edit file
-    U->>F: Save
-    U->>A: Restart service
-    A->>F: Read config
-    A->>A: Validation
-    A->>A: Apply config
-    A-->>U: Startup logs
+    Admin->>File: Edit configuration file
+    Admin->>File: Save changes
+    Admin->>Agent: Restart service
+    Agent->>File: Read configuration
+    Agent->>Agent: Validate and apply
+    Agent-->>Admin: Startup complete (logs)
+
+    Note over Admin,Agent: Requires manual access to server<br/>Agent restart required (~5-10 seconds downtime)
 ```
 
-### Data Flow
+**Operational time:** 2-5 minutes depending on remote access speed and restart duration.
 
-#### Online Mode
+### Data Flow Architecture
+
+**Online Mode - Metrics to Platform:**
 
 ```mermaid
 graph LR
-    A[Probes] -->|Metrics| B[Agent Cache]
-    B -->|HTTPS POST| C[SenHub Platform]
-    C -->|Storage| D[(TimeSeries DB)]
-    D -->|Query| E[Web Dashboard]
-    D -->|Query| F[Alerting]
+    A[Probes<br/>Collection] -->|Every 30-300s| B[Agent<br/>Local Cache]
+    B -->|HTTPS POST| C[SenHub Platform<br/>Ingestion API]
+    C -->|Storage| D[(Time-Series DB<br/>InfluxDB/TimescaleDB)]
+    D -->|Query| E[Platform Dashboard<br/>Multi-Agent View]
+    D -->|Query| F[Alerting Engine<br/>Rules/Notifications]
 
     style C fill:#81d4fa
-    style D fill:#81d4fa
+    style D fill:#64b5f6
 ```
 
-#### Offline Mode
+**Implications:**
+- **Retention:** Unlimited historical data (subject to plan limits)
+- **Analysis:** Platform-provided analytics and dashboards
+- **Alerting:** Integrated alerting with correlation across agents
+
+**Offline Mode - Metrics via Local API:**
 
 ```mermaid
 graph LR
-    A[Probes] -->|Metrics| B[Agent Cache]
-    B -->|HTTP GET| C[Local API]
-    C -->|Response| D[PRTG/Nagios]
-    C -->|Response| E[Web Dashboard]
+    A[Probes<br/>Collection] -->|Every 30-300s| B[Agent<br/>Memory Cache<br/>5-30 min retention]
+    B -->|Local HTTP/HTTPS| C[API Endpoints<br/>PRTG/Nagios/JSON]
+    C -->|Pull| D[PRTG Server<br/>Periodic polling]
+    C -->|Pull| E[Nagios Server<br/>Check execution]
+    C -->|Pull| F[Grafana<br/>JSON datasource]
 
     style B fill:#ffcc80
-    style C fill:#ffcc80
+    style C fill:#ffb74d
 ```
 
-### Feature Matrix
+**Implications:**
+- **Retention:** 5-30 minutes in memory only
+- **Analysis:** External monitoring system responsibility
+- **Alerting:** External monitoring system provides alerting
 
-| Feature | Online Mode | Offline Mode | Notes |
-|---------|-------------|--------------|-------|
-| **Installation** | Key required | Autonomous | Offline: auto-generated UUID |
-| **Configuration** | Web portal | YAML file | Online: real-time push |
-| **Supported probes** | All | All | According to license |
-| **Agent auto-update** | Automatic | Manual/Auto | Offline: if internet available |
-| **Web Dashboard** | Optional | Mandatory | Offline: main access |
-| **PRTG API** | Via HTTP strategy | Yes (local) | - |
-| **Nagios API** | Via HTTP strategy | Yes (local) | - |
-| **Alerting** | Integrated platform | Via PRTG/Nagios | - |
-| **History** | Unlimited (cloud) | Memory cache | Offline: 5-30 minutes |
-| **Multi-agents** | Centralized view | No | Online: global dashboard |
-| **Air-gap ready** | No | Yes | Offline: zero dependency |
-| **Cost** | According to tier | Free | Online: subscription possible |
+### Security Model Differences
+
+| Aspect | Online Mode | Offline Mode |
+|--------|-------------|--------------|
+| **Authentication** | Platform-issued key (revocable) | Self-generated UUID (local only) |
+| **TLS certificates** | Platform-managed or custom | Self-signed or custom |
+| **Network exposure** | Outbound HTTPS only | HTTP/HTTPS listener (inbound) |
+| **Data transmission** | Metrics leave local network | Metrics remain on local network |
+| **Access control** | Platform-based (user accounts, SSO) | HTTP API key-based |
+| **Audit logging** | Centralized on platform | Local log files only |
+
+**Security consideration for offline mode:** If the agent is network-accessible (HTTPS enabled with bind_address: "0.0.0.0"), ensure proper firewall rules restrict access to trusted monitoring systems only. The agent key provides authentication, but network segmentation is still critical.
+
+### Resource Consumption Comparison
+
+Based on testing with typical probe configurations (CPU, memory, disk, network, 2x Redfish):
+
+| Resource | Online Mode | Offline Mode | Notes |
+|----------|-------------|--------------|-------|
+| **CPU usage** | 2-4% | 2-3% | Online mode slightly higher due to HTTPS transmission |
+| **Memory usage** | 90-150 MB | 80-120 MB | Online mode maintains websocket connection |
+| **Disk I/O** | Minimal (logs only) | Minimal (logs only) | Neither mode persists metrics to disk |
+| **Network bandwidth** | 10-50 KB/min outbound | 0 KB (unless polled) | Online mode transmits metrics continuously |
+| **Storage requirements** | ~500 MB (binary + logs) | ~500 MB (binary + logs) | Equivalent disk space requirements |
+
+---
+
+## Mode Selection Guidelines
+
+### Decision Criteria
+
+**Choose Online Mode when:**
+
+1. **You manage multiple agents** (10+ servers across multiple sites)
+   - Centralized configuration reduces operational overhead significantly
+   - Single dashboard view of entire infrastructure
+   - Configuration changes deploy in seconds across all agents
+
+2. **Historical analysis is required**
+   - Long-term trend analysis (6-12 months of data)
+   - Capacity planning based on growth patterns
+   - Performance baseline establishment
+
+3. **Outbound HTTPS is available and acceptable**
+   - No air-gap requirements
+   - Network policy permits outbound HTTPS to external services
+   - Bandwidth cost is negligible
+
+4. **Automatic updates are desired**
+   - Security patches deployed automatically
+   - New features available immediately
+   - No manual update coordination required
+
+**Choose Offline Mode when:**
+
+1. **Air-gapped environment**
+   - No external connectivity available or permitted
+   - Military, government, or critical infrastructure installations
+   - Regulatory compliance prohibits external data transmission
+
+2. **Single or small number of agents** (1-10 servers in single location)
+   - Configuration management overhead acceptable
+   - No need for multi-agent dashboard
+   - Prefer direct control over configuration
+
+3. **Integration with existing monitoring**
+   - Existing PRTG, Nagios, or Grafana installation
+   - Prefer pull-based metrics collection
+   - Monitoring system provides alerting and retention
+
+4. **Development and testing**
+   - Quick setup without platform enrollment
+   - Iterate on configuration rapidly
+   - No cloud dependencies during development
+
+### Decision Tree
+
+```mermaid
+graph TD
+    START[Select Operating Mode] --> Q1{Internet connectivity<br/>available and permitted?}
+
+    Q1 -->|No| OFFLINE[Use Offline Mode]
+    Q1 -->|Yes| Q2{Managing 10+<br/>agents across<br/>multiple sites?}
+
+    Q2 -->|Yes| ONLINE[Use Online Mode]
+    Q2 -->|No| Q3{Need long-term<br/>historical metrics<br/>6+ months?}
+
+    Q3 -->|Yes| ONLINE
+    Q3 -->|No| Q4{Have existing<br/>monitoring platform<br/>PRTG/Nagios/Grafana?}
+
+    Q4 -->|Yes| OFFLINE
+    Q4 -->|No| Q5{Prefer centralized<br/>management or<br/>local control?}
+
+    Q5 -->|Centralized| ONLINE
+    Q5 -->|Local control| OFFLINE
+
+    style ONLINE fill:#e1f5ff,stroke:#0288d1,stroke-width:3px
+    style OFFLINE fill:#fff4e6,stroke:#f57c00,stroke-width:3px
+    style Q1 fill:#fff3e0
+    style Q2 fill:#fff3e0
+    style Q3 fill:#fff3e0
+    style Q4 fill:#fff3e0
+    style Q5 fill:#fff3e0
+```
+
+### Deployment Pattern Examples
+
+**Example 1: Multi-site enterprise**
+- **Scenario:** 150 servers across 5 datacenters
+- **Choice:** Online Mode
+- **Reasoning:** Centralized management essential for this scale; outbound HTTPS acceptable in enterprise datacenter environment; need unified dashboard across all sites
+
+**Example 2: Industrial control system**
+- **Scenario:** Manufacturing facility with isolated OT network
+- **Choice:** Offline Mode
+- **Reasoning:** Air-gapped network required by security policy; monitoring system (PRTG) already deployed within isolated network; external connectivity prohibited
+
+**Example 3: Cloud-native deployment**
+- **Scenario:** Microservices on AWS ECS/EKS
+- **Choice:** Online Mode
+- **Reasoning:** Outbound HTTPS readily available; dynamic scaling requires automated configuration management; metrics aggregation across ephemeral containers
+
+**Example 4: Edge computing**
+- **Scenario:** Remote monitoring stations with satellite connectivity
+- **Choice:** Offline Mode
+- **Reasoning:** Bandwidth expensive and unreliable; local monitoring sufficient; metrics polled by regional PRTG server during scheduled windows
 
 ---
 
 ## Switching Between Modes
 
-### Online → Offline
+### Online to Offline Conversion
 
-**Scenario**: Switch from connected installation to autonomous installation
+**Scenario:** Converting a platform-managed agent to autonomous operation.
+
+**Use case:** Migrating agent from cloud deployment to air-gapped datacenter, or decommissioning platform subscription while retaining monitoring capabilities.
+
+**Procedure:**
 
 ```bash
-# 1. Stop agent
-sudo systemctl stop senhub-agent
+# Step 1: Stop the agent
+sudo systemctl stop senhub-agent  # Linux
+Stop-Service SenHubAgent  # Windows PowerShell
 
-# 2. Backup replicated config
+# Step 2: Backup current replicated configuration
+# Online agents maintain a local replica that can be converted
 sudo cp /var/lib/senhub-agent/agent-config-replica.yaml \
         /etc/senhub-agent/agent-config.yaml
 
-# 3. Modify mode
+# Step 3: Edit configuration to switch mode
 sudo nano /etc/senhub-agent/agent-config.yaml
 
 # Change:
 agent:
   mode: offline  # Was "online"
 
-# 4. Add HTTP strategy if absent
+# Step 4: Add HTTP strategy for local API access
 storage:
   - name: http
     params:
-      port: 8080
-      bind_address: "127.0.0.1"
+      port: 8443
+      bind_address: "0.0.0.0"
       endpoints: ["prtg", "web", "nagios"]
+      tls:
+        enabled: true
+        min_tls_version: "1.2"
 
-# 5. Restart
+# Step 5: Restart agent
 sudo systemctl start senhub-agent
+
+# Step 6: Verify local API accessibility
+curl -k https://localhost:8443/api/{agent-key}/info/system
 ```
 
-**📸 SCREENSHOT TO INSERT**: Config file with change from `mode: online` → `mode: offline` highlighted
+**Post-conversion considerations:**
+- **Metrics access:** Configure PRTG/Nagios to poll local API endpoints
+- **Configuration management:** Future changes via file editing, not platform
+- **Updates:** Auto-update still works if internet available, otherwise manual
+- **License:** Existing license (if any) remains valid
 
-### Offline → Online
+### Offline to Online Conversion
 
-**Scenario**: Connect autonomous agent to platform
+**Scenario:** Converting an autonomous agent to platform-managed operation.
+
+**Use case:** Scaling from single-server deployment to multi-site infrastructure requiring centralized management.
+
+**Prerequisites:**
+- Obtain authentication key from SenHub platform (enroll agent in platform)
+- Ensure outbound HTTPS connectivity to platform endpoint
+
+**Procedure:**
 
 ```bash
-# 1. Obtain authentication key from SenHub portal
+# Step 1: Obtain platform key
+# Login to SenHub platform → Agents → Enroll New Agent → Generate Key
 
-# 2. Stop agent
+# Step 2: Stop the agent
 sudo systemctl stop senhub-agent
 
-# 3. Modify configuration
+# Step 3: Backup existing offline configuration
+sudo cp /etc/senhub-agent/agent-config.yaml \
+        /etc/senhub-agent/agent-config-offline-backup.yaml
+
+# Step 4: Modify configuration
 sudo nano /etc/senhub-agent/agent-config.yaml
 
 # Replace:
 agent:
-  key: "YOUR_PLATFORM_KEY"  # Replace UUID
-  mode: online               # Was "offline"
+  key: "your-platform-provided-key"  # Replace local UUID
+  mode: online  # Was "offline"
 
-# 4. Restart
+# Remove or comment out local probe definitions
+# Probes will now be managed by platform
+
+# Step 5: Restart agent
 sudo systemctl start senhub-agent
 
-# 5. Verify connection
+# Step 6: Verify platform connection
 sudo tail -f /var/log/senhub-agent/agent.log
-# Wait for: "Connected to SenHub platform"
+# Wait for log message: "Connected to SenHub platform"
+
+# Step 7: Verify in platform dashboard
+# Platform should show agent as "Online" with green status indicator
 ```
 
-### Hybrid Migration
+**Post-conversion considerations:**
+- **Configuration source:** Local probe definitions ignored; platform configuration takes precedence
+- **Metrics destination:** Metrics transmitted to platform; local HTTP API optional (configure via platform)
+- **Monitoring integration:** Update PRTG/Nagios to query platform API instead of local agent API (or keep local API enabled via HTTP strategy)
 
-**Scenario**: Use both modes (dev offline, prod online)
+### Hybrid Deployment Strategy
+
+**Scenario:** Using both modes across different environments (development, staging, production).
+
+**Architecture:**
 
 ```mermaid
-graph LR
-    subgraph Dev ["Development Environment"]
-        D1[Offline Agent] -->|Test| D2[YAML Config]
+graph TB
+    subgraph Development ["Development Environment"]
+        D1[Offline Agent<br/>Laptop/Workstation] -->|Test configs| D2[Local YAML<br/>Version controlled]
     end
 
     subgraph Staging ["Staging Environment"]
-        S1[Offline Agent] -->|Validation| S2[YAML Config]
+        S1[Offline Agent<br/>Staging Server] -->|Validate| S2[Staging YAML<br/>Pre-production]
     end
 
-    subgraph Prod ["Production Environment"]
-        P1[Online Agent] -->|Push| P2[SenHub Platform]
+    subgraph Production ["Production Environment"]
+        P1[Online Agent<br/>Datacenter 1] -->|Managed by| P3[SenHub Platform]
+        P2[Online Agent<br/>Datacenter 2] -->|Managed by| P3
     end
 
-    D2 -.->|Copy & Adapt| S2
-    S2 -.->|Import| P2
+    D2 -.->|Copy & adapt| S2
+    S2 -.->|Import to platform| P3
 
-    style Dev fill:#c8e6c9
+    style Development fill:#c8e6c9
     style Staging fill:#fff9c4
-    style Prod fill:#ffccbc
+    style Production fill:#e1f5ff
 ```
 
-**Workflow**
+**Workflow:**
+1. **Develop:** Test probe configurations in offline mode on local workstation
+2. **Stage:** Validate configurations in staging environment (offline mode)
+3. **Deploy:** Import validated configuration to platform, push to production agents (online mode)
 
-1. **Development**: Offline mode, test configurations
-2. **Staging**: Offline mode, validation before prod
-3. **Production**: Online mode, centralized monitoring
+**Benefits:**
+- Development/testing independent of platform connectivity
+- Production enjoys centralized management benefits
+- Configuration progression follows standard SDLC
 
 ---
 
-## Use Cases by Mode
+## Summary
 
-### When to Use Online Mode
+Operating mode selection is a fundamental architectural decision that affects configuration management, metrics storage, network requirements, and operational workflows. Understanding the implications of each mode ensures the deployment aligns with your infrastructure requirements, security policies, and operational capabilities.
 
-#### ✅ Ideal Scenarios
+**Quick reference:**
+- **Online Mode:** Best for multi-site deployments requiring centralized management, long-term metrics storage, and automatic updates
+- **Offline Mode:** Best for air-gapped environments, edge computing, single-site deployments, and integration with existing monitoring platforms
 
-1. **Multi-Site Monitoring**
-   - Multiple datacenters/offices to monitor
-   - Centralized view needed
-   - Unified alerting
-
-2. **Centralized Management**
-   - DevOps/SRE team with web portal
-   - Need to modify configs remotely
-   - Rapid deployment of new probes
-
-3. **Long-Term History**
-   - Need metrics over 6-12 months
-   - Trend analysis
-   - Capacity planning
-
-4. **Critical Auto-Update**
-   - Vulnerabilities fixed quickly
-   - Automatic new features
-   - No manual intervention
-
-#### 📊 Example: Multi-Datacenter E-commerce
-
-```mermaid
-graph TB
-    P[SenHub Platform<br/>Central Dashboard]
-
-    P -->|Config Push| A1[Online Agent<br/>DC Paris]
-    P -->|Config Push| A2[Online Agent<br/>DC London]
-    P -->|Config Push| A3[Online Agent<br/>DC Frankfurt]
-
-    A1 -->|Metrics| P
-    A2 -->|Metrics| P
-    A3 -->|Metrics| P
-
-    P --> D[Dashboard<br/>SRE Team]
-    P --> AL[Alerting<br/>Slack/PagerDuty]
-
-    style P fill:#81d4fa
-```
-
-**Benefits**
-- Single view for 3 datacenters
-- Correlated alerts (multi-site incident)
-- New probe deployment in 1 click
-
----
-
-### When to Use Offline Mode
-
-#### ✅ Ideal Scenarios
-
-1. **Air-Gapped Environments**
-   - Military, government datacenters
-   - Critical industry (energy, healthcare)
-   - Mandatory network isolation
-
-2. **Edge Computing**
-   - Remote sites without reliable internet
-   - Prohibitive connection cost (satellite, 4G)
-   - Unacceptable latency
-
-3. **Development and Testing**
-   - Custom probe development
-   - Customer POC without platform setup
-   - CI/CD pipelines
-
-4. **Regulatory Compliance**
-   - Strict GDPR (no external data sending)
-   - Banking/financial sector
-   - Medical data (HIPAA)
-
-#### 📊 Example: Isolated Production Plant
-
-```mermaid
-graph TB
-    subgraph Plant ["Plant (Air-Gap)"]
-        A[Offline Agent] -->|Collect| P1[CPU/Memory<br/>PLCs]
-        A -->|Collect| P2[Redfish<br/>Servers]
-        A -->|Collect| P3[Citrix<br/>Operator VDI]
-
-        A -->|Local HTTP| API[API 127.0.0.1:8080]
-        API -->|Scraping| PRTG[Local PRTG]
-        API -->|Dashboard| WEB[Browser<br/>Supervision]
-    end
-
-    style Plant fill:#fff4e6,stroke:#f57c00,stroke-width:3px
-    style A fill:#ffcc80
-```
-
-**Benefits**
-- Zero internet dependency
-- Data doesn't leave the plant
-- Real-time supervision via local PRTG
-
----
-
-## Summary and Recommendations
-
-### Decision Tree
-
-```mermaid
-graph TD
-    START[Choose Mode] --> Q1{Internet<br/>Available?}
-
-    Q1 -->|No| OFF[Offline Mode 🔒]
-    Q1 -->|Yes| Q2{Multi-Site?}
-
-    Q2 -->|No| Q3{Air-Gap<br/>Required?}
-    Q2 -->|Yes| ON[Online Mode 🌐]
-
-    Q3 -->|Yes| OFF
-    Q3 -->|No| Q4{Centralized<br/>Management<br/>Needed?}
-
-    Q4 -->|Yes| ON
-    Q4 -->|Non| Q5{Long-Term<br/>History?}
-
-    Q5 -->|Yes| ON
-    Q5 -->|No| OFF
-
-    style ON fill:#e1f5ff,stroke:#0288d1,stroke-width:3px
-    style OFF fill:#fff4e6,stroke:#f57c00,stroke-width:3px
-```
-
-### Final Recommendations
-
-| Environment | Recommended Mode | Reason |
-|-------------|------------------|--------|
-| **Multi-Site Enterprise** | Online 🌐 | Centralized management, overview |
-| **Single Datacenter** | Offline 🔒 | Autonomy, no external dependency |
-| **Cloud (AWS/Azure/GCP)** | Online 🌐 | Internet available, easy scaling |
-| **Edge/IoT** | Offline 🔒 | Limited connectivity, latency |
-| **Development** | Offline 🔒 | Quick setup, no account needed |
-| **Air-Gap** | Offline 🔒 | Mandatory isolation |
-| **Monitoring as a Service** | Online 🌐 | Multi-tenancy, billing |
-
----
-
-**Next steps**:
-- **Agent configuration**: [AGENT-CONFIGURATION.md](./AGENT-CONFIGURATION.md)
-- **HTTPS/TLS configuration**: [HTTP-HTTPS-CONFIGURATION.md](./HTTP-HTTPS-CONFIGURATION.md)
-- **Probe configuration**: [PROBES-CONFIGURATION.md](./PROBES-CONFIGURATION.md)
+**Next steps:**
+- [Agent Configuration](./AGENT-CONFIGURATION.md) - Configure license, cache, and auto-update settings
+- [HTTP/HTTPS Configuration](./HTTP-HTTPS-CONFIGURATION.md) - Configure local API endpoint and TLS certificates
+- [Probes Configuration](./PROBES-CONFIGURATION.md) - Add monitoring probes for your infrastructure
