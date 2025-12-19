@@ -1,27 +1,27 @@
-# SenHub Agent - Dépannage et Logging
+# SenHub Agent - Troubleshooting and Logging
 
-## Table des Matières
+## Table of Contents
 
-- [Système de Logging](#système-de-logging)
-- [Problèmes d'Installation](#problèmes-dinstallation)
-- [Problèmes de Configuration](#problèmes-de-configuration)
-- [Problèmes de Licence](#problèmes-de-licence)
-- [Problèmes Réseau](#problèmes-réseau)
-- [Problèmes de Performance](#problèmes-de-performance)
-- [Problèmes de Probes](#problèmes-de-probes)
+- [Logging System](#logging-system)
+- [Installation Issues](#installation-issues)
+- [Configuration Issues](#configuration-issues)
+- [License Issues](#license-issues)
+- [Network Issues](#network-issues)
+- [Performance Issues](#performance-issues)
+- [Probe Issues](#probe-issues)
 
 ---
 
-## Système de Logging
+## Logging System
 
-### Architecture du Logging
+### Logging Architecture
 
-Le système de logging modulaire permet d'activer des logs détaillés par composant sans redémarrer l'agent.
+The modular logging system allows enabling detailed logs per component without restarting the agent.
 
 ```mermaid
 graph TD
     A[Logging System] --> B[Global Level<br/>info/warn/error]
-    A --> C[Module Levels<br/>debug par module]
+    A --> C[Module Levels<br/>debug per module]
 
     C --> C1[agent.core]
     C --> C2[probe.cpu]
@@ -35,63 +35,63 @@ graph TD
     style D fill:#c8e6c9
 ```
 
-### Niveaux de Log
+### Log Levels
 
 ```
 disabled < trace < debug < info < warn < error < fatal < panic
 ```
 
-### Modules Disponibles
+### Available Modules
 
-| Module | Composant |
+| Module | Component |
 |--------|-----------|
-| `agent.core` | Orchestration principale |
-| `configuration.local` | Config offline |
-| `configuration.remote` | Config online |
-| `probe.cpu` | Probe CPU |
-| `probe.memory` | Probe mémoire |
-| `probe.logicaldisk` | Probe disques |
-| `probe.network` | Probe réseau |
-| `probe.redfish` | Probe Redfish |
-| `probe.citrix` | Probe Citrix |
-| `probe.netscaler` | Probe NetScaler |
+| `agent.core` | Main orchestration |
+| `configuration.local` | Offline config |
+| `configuration.remote` | Online config |
+| `probe.cpu` | CPU probe |
+| `probe.memory` | Memory probe |
+| `probe.logicaldisk` | Disk probe |
+| `probe.network` | Network probe |
+| `probe.redfish` | Redfish probe |
+| `probe.citrix` | Citrix probe |
+| `probe.netscaler` | NetScaler probe |
 | `strategy.http` | HTTP strategy + cache |
 
 ---
 
-### Activation des Logs au Démarrage
+### Enabling Logs at Startup
 
-#### Mode Verbose (Tous les modules)
+#### Verbose Mode (All Modules)
 
 ```bash
 senhub-agent run --verbose --offline
 ```
 
-Équivalent à activer tous les modules en debug.
+Equivalent to enabling all modules in debug.
 
-#### Mode Sélectif (Modules Spécifiques)
+#### Selective Mode (Specific Modules)
 
 ```bash
-# Debug uniquement Redfish et HTTP
+# Debug only Redfish and HTTP
 senhub-agent run --debug-modules "probe.redfish,strategy.http" --offline
 
 # Debug configuration
 senhub-agent run --debug-modules "configuration.local" --offline
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Terminal avec logs verbose montrant les messages DEBUG colorés
+**📸 SCREENSHOT TO INSERT**: Terminal with verbose logs showing colored DEBUG messages
 
 ---
 
-### Activation Runtime via API
+### Runtime Activation via API
 
-#### Voir les Niveaux Actuels
+#### View Current Levels
 
 ```bash
 curl http://localhost:8080/api/{key}/debug/logs
 ```
 
-**Réponse** :
+**Response**:
 ```json
 {
   "global_level": "info",
@@ -103,7 +103,7 @@ curl http://localhost:8080/api/{key}/debug/logs
 }
 ```
 
-#### Modifier les Niveaux (Sans Redémarrage)
+#### Modify Levels (Without Restart)
 
 ```bash
 curl -X POST http://localhost:8080/api/{key}/debug/logs \
@@ -116,7 +116,7 @@ curl -X POST http://localhost:8080/api/{key}/debug/logs \
   }'
 ```
 
-**Réponse** :
+**Response**:
 ```json
 {
   "status": "success",
@@ -124,28 +124,28 @@ curl -X POST http://localhost:8080/api/{key}/debug/logs \
 }
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Dashboard web avec section "Debug Logs" permettant d'activer les modules
+**📸 SCREENSHOT TO INSERT**: Web dashboard with "Debug Logs" section allowing module activation
 
 ---
 
-### Fichiers de Logs
+### Log Files
 
-| Plateforme | Chemin |
-|------------|--------|
+| Platform | Path |
+|----------|------|
 | **Linux** | `/var/log/senhub-agent/agent.log` |
 | **macOS** | `/Library/Logs/SenHub/agent.log` |
 | **Windows** | `C:\ProgramData\SenHub\Logs\agent.log` |
 
-### Consultation des Logs
+### Viewing Logs
 
 ```bash
-# Linux/macOS - Suivre en temps réel
+# Linux/macOS - Follow in real time
 sudo tail -f /var/log/senhub-agent/agent.log
 
-# Filtrer par module
+# Filter by module
 sudo tail -f /var/log/senhub-agent/agent.log | grep "probe.redfish"
 
-# Filtrer par niveau
+# Filter by level
 sudo tail -f /var/log/senhub-agent/agent.log | grep "ERR"
 
 # Windows
@@ -154,46 +154,46 @@ Get-Content C:\ProgramData\SenHub\Logs\agent.log -Tail 50 -Wait
 
 ---
 
-## Problèmes d'Installation
+## Installation Issues
 
-### Service Ne Démarre Pas
+### Service Won't Start
 
-**Symptôme** : `systemctl status senhub-agent` montre "failed"
+**Symptom**: `systemctl status senhub-agent` shows "failed"
 
-**Diagnostic** :
+**Diagnosis**:
 ```bash
-# Vérifier les logs
+# Check logs
 sudo journalctl -u senhub-agent -n 50
 
-# Tester manuellement
+# Test manually
 sudo senhub-agent run --offline
 ```
 
-**Causes communes** :
-1. Port déjà utilisé (8080/8443)
-2. Permissions insuffisantes
-3. Configuration invalide
+**Common causes**:
+1. Port already in use (8080/8443)
+2. Insufficient permissions
+3. Invalid configuration
 
-**Solutions** :
+**Solutions**:
 ```bash
-# Port utilisé - changer le port
+# Port in use - change port
 sudo nano /etc/senhub-agent/agent-config.yaml
-# Modifier port: 8080 → 8081
+# Change port: 8080 → 8081
 
-# Permissions - vérifier
+# Permissions - verify
 ls -la /usr/local/bin/senhub-agent
 sudo chmod +x /usr/local/bin/senhub-agent
 ```
 
 ---
 
-### Certificats HTTPS Invalides
+### Invalid HTTPS Certificates
 
-**Symptôme** : Erreur "certificate verify failed"
+**Symptom**: Error "certificate verify failed"
 
-**Solution** :
+**Solution**:
 ```bash
-# Régénérer certificats
+# Regenerate certificates
 sudo senhub-agent stop
 sudo rm -rf ./certs/
 sudo senhub-agent install --offline --enable-https \
@@ -203,29 +203,29 @@ sudo senhub-agent start
 
 ---
 
-## Problèmes de Configuration
+## Configuration Issues
 
-### Configuration YAML Invalide
+### Invalid YAML Configuration
 
-**Symptôme** : Agent refuse de démarrer
+**Symptom**: Agent refuses to start
 
-**Diagnostic** :
+**Diagnosis**:
 ```bash
-# Activer logs debug configuration
+# Enable configuration debug logs
 senhub-agent run --debug-modules "configuration.local" --offline
 ```
 
-**Erreurs communes** :
+**Common errors**:
 ```yaml
-# ❌ Indentation incorrecte
+# ❌ Incorrect indentation
 agent:
-key: "test"  # Manque 2 espaces
+key: "test"  # Missing 2 spaces
 
 # ✅ Correct
 agent:
   key: "test"
 
-# ❌ Guillemets manquants
+# ❌ Missing quotes
 bind_address: 0.0.0.0
 
 # ✅ Correct
@@ -234,185 +234,185 @@ bind_address: "0.0.0.0"
 
 ---
 
-### Probe Ne Démarre Pas
+### Probe Won't Start
 
-**Symptôme** : Probe absente de `/api/{key}/info/probes`
+**Symptom**: Probe absent from `/api/{key}/info/probes`
 
-**Diagnostic** :
+**Diagnosis**:
 ```bash
-# Activer debug pour la probe
+# Enable debug for probe
 curl -X POST http://localhost:8080/api/{key}/debug/logs \
   -d '{"module_levels": [{"module": "probe.redfish", "level": "debug"}]}'
 
-# Consulter les logs
+# Check logs
 sudo tail -f /var/log/senhub-agent/agent.log | grep "probe.redfish"
 ```
 
-**Erreurs communes** :
+**Common errors**:
 ```
 ERR Probe failed to start error="endpoint required" probe=redfish
-→ Solution : Ajouter le champ endpoint dans params
+→ Solution: Add endpoint field in params
 
 ERR Probe not authorized tier=free probe=redfish
-→ Solution : Ajouter une licence Pro/Enterprise
+→ Solution: Add Pro/Enterprise license
 ```
 
 ---
 
-## Problèmes de Licence
+## License Issues
 
-### Licence Non Reconnue
+### License Not Recognized
 
-**Symptôme** : Probes payantes ne démarrent pas
+**Symptom**: Paid probes won't start
 
-**Diagnostic** :
+**Diagnosis**:
 ```bash
-# Vérifier statut
+# Check status
 curl http://localhost:8080/api/{key}/license/status
 
-# Vérifier logs
+# Check logs
 sudo tail -100 /var/log/senhub-agent/agent.log | grep -i license
 ```
 
-**Solutions** :
+**Solutions**:
 
-#### JSON Mal Formaté
+#### Malformed JSON
 ```bash
-# Tester le JSON
+# Test JSON
 echo '{"tier":"pro",...}' | jq .
 
-# Si erreur, corriger dans agent-config.yaml
+# If error, fix in agent-config.yaml
 ```
 
-#### Licence Expirée
+#### Expired License
 ```bash
-# Contacter support@senhub.io pour renouvellement
+# Contact support@senhub.io for renewal
 
-# En attendant, vérifier période de grâce
+# Meanwhile, check grace period
 curl http://localhost:8080/api/{key}/license/status
 # "grace_period_days_remaining": 4
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Dashboard avec banner rouge "License Expired - Grace Period: 4 days remaining"
+**📸 SCREENSHOT TO INSERT**: Dashboard with red banner "License Expired - Grace Period: 4 days remaining"
 
 ---
 
-## Problèmes Réseau
+## Network Issues
 
-### Interface Web Inaccessible
+### Web Interface Inaccessible
 
-**Symptôme** : `curl http://localhost:8080` → connection refused
+**Symptom**: `curl http://localhost:8080` → connection refused
 
-**Diagnostic** :
+**Diagnosis**:
 ```bash
-# Vérifier si agent écoute
+# Check if agent is listening
 sudo lsof -i :8080  # Linux/macOS
 netstat -ano | findstr :8080  # Windows
 
-# Si rien → agent pas démarré
+# If nothing → agent not started
 sudo systemctl status senhub-agent
 
-# Si écoute sur 127.0.0.1 mais accès distant ne marche pas
-# → bind_address restrictif
+# If listening on 127.0.0.1 but remote access doesn't work
+# → restrictive bind_address
 ```
 
-**Solutions** :
+**Solutions**:
 ```yaml
-# Changer bind_address pour accès distant
+# Change bind_address for remote access
 storage:
   - name: http
     params:
-      bind_address: "0.0.0.0"  # Au lieu de 127.0.0.1
+      bind_address: "0.0.0.0"  # Instead of 127.0.0.1
 ```
 
 ---
 
-### Firewall Bloque l'Accès
+### Firewall Blocking Access
 
-**Linux (UFW)** :
+**Linux (UFW)**:
 ```bash
 sudo ufw allow 8080/tcp
 sudo ufw allow 8443/tcp
 sudo ufw reload
 ```
 
-**Linux (firewalld)** :
+**Linux (firewalld)**:
 ```bash
 sudo firewall-cmd --permanent --add-port=8080/tcp
 sudo firewall-cmd --reload
 ```
 
-**Windows** :
+**Windows**:
 ```powershell
 New-NetFirewallRule -DisplayName "SenHub HTTP" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow
 ```
 
 ---
 
-## Problèmes de Performance
+## Performance Issues
 
-### Consommation Mémoire Élevée
+### High Memory Consumption
 
-**Symptôme** : Agent utilise > 500 MB RAM
+**Symptom**: Agent using > 500 MB RAM
 
-**Diagnostic** :
+**Diagnosis**:
 ```bash
-# Vérifier cache retention
+# Check cache retention
 curl http://localhost:8080/api/{key}/info/system
 
 # Response:
-# "cache": {"retention_minutes": 30}  # Trop élevé
+# "cache": {"retention_minutes": 30}  # Too high
 ```
 
-**Solution** :
+**Solution**:
 ```yaml
-# Réduire retention
+# Reduce retention
 cache:
-  retention_minutes: 5  # Au lieu de 30
+  retention_minutes: 5  # Instead of 30
 ```
 
 ---
 
-### CPU Élevé
+### High CPU
 
-**Symptôme** : Agent utilise > 20% CPU constant
+**Symptom**: Agent using > 20% CPU constantly
 
-**Causes communes** :
-1. Intervalles de collecte trop courts
-2. Trop de probes actives
-3. Probe mal configurée (boucle)
+**Common causes**:
+1. Collection intervals too short
+2. Too many active probes
+3. Misconfigured probe (loop)
 
-**Solutions** :
+**Solutions**:
 ```yaml
-# Augmenter intervalles
+# Increase intervals
 probes:
   - name: cpu
     type: cpu
     params:
-      interval: 60  # Au lieu de 10
+      interval: 60  # Instead of 10
 
-# Désactiver probes inutilisées
-# Commenter les probes non nécessaires
+# Disable unused probes
+# Comment out unnecessary probes
 ```
 
 ---
 
-## Problèmes de Probes
+## Probe Issues
 
-### Probe Redfish - Connexion Impossible
+### Redfish Probe - Connection Impossible
 
-**Erreur** :
+**Error**:
 ```
 ERR Failed to connect to Redfish endpoint="https://idrac.local" error="connection refused"
 ```
 
-**Solutions** :
-1. Vérifier endpoint accessible :
+**Solutions**:
+1. Verify endpoint is accessible:
 ```bash
 curl -k https://idrac.local/redfish/v1/
 ```
 
-2. Désactiver SSL si certificat auto-signé :
+2. Disable SSL if self-signed certificate:
 ```yaml
 probes:
   - name: "Production iDRAC"
@@ -421,107 +421,107 @@ probes:
       verify_ssl: false
 ```
 
-3. Vérifier credentials :
+3. Verify credentials:
 ```yaml
 params:
-  username: "root"  # Pas "admin"
+  username: "root"  # Not "admin"
   password: "correct-password"
 ```
 
 ---
 
-### Probe Citrix - Authentication Failed
+### Citrix Probe - Authentication Failed
 
-**Erreur** :
+**Error**:
 ```
 ERR Citrix authentication failed error="401 Unauthorized"
 ```
 
-**Solutions** :
-1. Format username correct :
+**Solutions**:
+1. Correct username format:
 ```yaml
 params:
-  username: "DOMAIN\\user"  # Pas "user@domain"
+  username: "DOMAIN\\user"  # Not "user@domain"
 ```
 
-2. Vérifier URL :
+2. Verify URL:
 ```yaml
 params:
-  base_url: "https://director.company.com"  # Pas "/Director"
+  base_url: "https://director.company.com"  # Not "/Director"
 ```
 
 ---
 
-### Métriques Manquantes
+### Missing Metrics
 
-**Symptôme** : Certaines métriques absentes de `/api/{key}/metrics`
+**Symptom**: Some metrics missing from `/api/{key}/metrics`
 
-**Diagnostic** :
+**Diagnosis**:
 ```bash
-# Activer debug probe
+# Enable probe debug
 curl -X POST http://localhost:8080/api/{key}/debug/logs \
   -d '{"module_levels": [{"module": "probe.cpu", "level": "debug"}]}'
 
-# Vérifier cache
+# Check cache
 curl http://localhost:8080/api/{key}/info/probes
-# "probe_metrics": {"cpu": 12}  # Nombre de métriques
+# "probe_metrics": {"cpu": 12}  # Number of metrics
 ```
 
-**Causes communes** :
-1. Probe pas encore collecté (< interval)
-2. Erreur de collecte (voir logs)
-3. Cache expiré (augmenter retention)
+**Common causes**:
+1. Probe hasn't collected yet (< interval)
+2. Collection error (see logs)
+3. Cache expired (increase retention)
 
 ---
 
-## Checklist de Dépannage
+## Troubleshooting Checklist
 
 ```mermaid
 graph TD
-    START[Problème] --> Q1{Agent<br/>Démarré?}
-    Q1 -->|Non| FIX1[Vérifier logs<br/>journalctl -u senhub-agent]
-    Q1 -->|Oui| Q2{Logs<br/>Erreurs?}
+    START[Problem] --> Q1{Agent<br/>Started?}
+    Q1 -->|No| FIX1[Check logs<br/>journalctl -u senhub-agent]
+    Q1 -->|Yes| Q2{Logs<br/>Errors?}
 
-    Q2 -->|Oui| FIX2[Activer debug<br/>module spécifique]
-    Q2 -->|Non| Q3{API<br/>Accessible?}
+    Q2 -->|Yes| FIX2[Enable debug<br/>specific module]
+    Q2 -->|No| Q3{API<br/>Accessible?}
 
-    Q3 -->|Non| FIX3[Vérifier firewall<br/>+ bind_address]
-    Q3 -->|Oui| Q4{Probes<br/>Actives?}
+    Q3 -->|No| FIX3[Check firewall<br/>+ bind_address]
+    Q3 -->|Yes| Q4{Probes<br/>Active?}
 
-    Q4 -->|Non| FIX4[Vérifier licence<br/>+ config probes]
-    Q4 -->|Oui| Q5{Métriques<br/>Présentes?}
+    Q4 -->|No| FIX4[Check license<br/>+ probe config]
+    Q4 -->|Yes| Q5{Metrics<br/>Present?}
 
-    Q5 -->|Non| FIX5[Vérifier cache<br/>+ interval probe]
-    Q5 -->|Oui| OK[✅ Fonctionnel]
+    Q5 -->|No| FIX5[Check cache<br/>+ probe interval]
+    Q5 -->|Yes| OK[✅ Operational]
 
     style START fill:#ffccbc
     style OK fill:#c8e6c9
 ```
 
-### Étapes Systématiques
+### Systematic Steps
 
-1. **Vérifier service**
+1. **Check service**
 ```bash
 sudo systemctl status senhub-agent
 ```
 
-2. **Consulter logs**
+2. **View logs**
 ```bash
 sudo tail -50 /var/log/senhub-agent/agent.log
 ```
 
-3. **Activer debug**
+3. **Enable debug**
 ```bash
 curl -X POST http://localhost:8080/api/{key}/debug/logs \
   -d '{"module_levels": [{"module": "agent.core", "level": "debug"}]}'
 ```
 
-4. **Tester API**
+4. **Test API**
 ```bash
 curl http://localhost:8080/api/{key}/info/system
 ```
 
-5. **Vérifier probes**
+5. **Check probes**
 ```bash
 curl http://localhost:8080/api/{key}/info/probes
 ```
@@ -530,18 +530,18 @@ curl http://localhost:8080/api/{key}/info/probes
 
 ## Support
 
-**Email** : support@senhub.io
+**Email**: support@senhub.io
 
-**Informations à fournir** :
-- Version agent : `senhub-agent version`
+**Information to provide**:
+- Agent version: `senhub-agent version`
 - OS + version
-- Fichier config (anonymisé)
-- Logs récents (50 dernières lignes)
-- Sortie de `/api/{key}/info/system`
+- Config file (anonymized)
+- Recent logs (last 50 lines)
+- Output of `/api/{key}/info/system`
 
 ---
 
-**Documentation** :
+**Documentation**:
 - [INSTALLATION.md](./INSTALLATION.md)
 - [AGENT-CONFIGURATION.md](./AGENT-CONFIGURATION.md)
 - [HTTP-HTTPS-CONFIGURATION.md](./HTTP-HTTPS-CONFIGURATION.md)
