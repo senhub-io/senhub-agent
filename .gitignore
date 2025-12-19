@@ -114,3 +114,6 @@ config_demo_web.yaml
 # E2E Test automation agents
 .claude/agents/e2e-test-runner.md
 .claude/agents/test-runner.md
+
+# Generated Word documentation
+docs/user-guide/word/
