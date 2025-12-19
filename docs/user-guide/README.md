@@ -1,123 +1,122 @@
 # User Guide
 
-Documentation complète pour utilisateurs et administrateurs SenHub Agent.
+Complete documentation for SenHub Agent users and administrators.
 
-## 📚 Documentation Complète
+## 📚 Complete Documentation
 
-### 🚀 Installation et Démarrage
+### 🚀 Installation and Getting Started
 
-1. **[Installation](./INSTALLATION.md)** ⭐ COMPLET
-   - Installation Windows/Linux/macOS
-   - Options HTTP et HTTPS
-   - Certificats SSL
-   - Vérification et désinstallation
+1. **[Installation](./INSTALLATION.md)** ⭐ COMPLETE
+   - Windows/Linux/macOS installation
+   - HTTP and HTTPS options
+   - SSL certificates
+   - Verification and uninstallation
 
-2. **[Modes de Fonctionnement](./OPERATING-MODES.md)** ⭐ COMPLET
-   - Mode Online vs Offline
-   - Comparaison détaillée
-   - Basculement entre modes
-   - Cas d'usage par mode
+2. **[Operating Modes](./OPERATING-MODES.md)** ⭐ COMPLETE
+   - Online vs Offline mode
+   - Detailed comparison
+   - Switching between modes
+   - Use cases per mode
 
 ### ⚙️ Configuration
 
-3. **[Configuration de l'Agent](./AGENT-CONFIGURATION.md)** ⭐ COMPLET
-   - Structure fichier YAML
-   - **Système de Licence** (demande support@senhub.io, installation, vérification)
+3. **[Agent Configuration](./AGENT-CONFIGURATION.md)** ⭐ COMPLETE
+   - YAML file structure
+   - **License System** (contact support@senhub.io, installation, verification)
    - Auto-update
    - Cache
 
-4. **[Configuration HTTP/HTTPS](./HTTP-HTTPS-CONFIGURATION.md)** ⭐ COMPLET
+4. **[HTTP/HTTPS Configuration](./HTTP-HTTPS-CONFIGURATION.md)** ⭐ COMPLETE
    - HTTP Strategy
-   - Certificats SSL/TLS
+   - SSL/TLS certificates
    - Bind address
-   - Endpoints API
+   - API endpoints
 
-5. **[Configuration des Probes](./PROBES-CONFIGURATION.md)** ⭐ COMPLET
-   - Probes système (Free: cpu, memory, disk, network)
-   - Probes réseau (Pro: ping, wifi)
-   - Probes infrastructure (Pro/Enterprise: redfish, citrix, netscaler, syslog)
-   - Exemples de configuration complète
+5. **[Probes Configuration](./PROBES-CONFIGURATION.md)** ⭐ COMPLETE
+   - System probes (Free: cpu, memory, disk, network)
+   - Network probes (Pro: ping, wifi)
+   - Infrastructure probes (Pro/Enterprise: redfish, citrix, netscaler, syslog)
+   - Complete configuration examples
 
-### 🖥️ Utilisation
+### 🖥️ Usage
 
-6. **[Interface Web](./WEB-INTERFACE.md)** ⭐ COMPLET
-   - Dashboard principal et navigation
-   - API Explorer (test interactif endpoints)
-   - Metrics Browser (filtrage par probe/tag)
-   - Probes Status (diagnostic)
-   - License Information (statut détaillé)
-   - Lookups PRTG (téléchargement .ovl)
+6. **[Web Interface](./WEB-INTERFACE.md)** ⭐ COMPLETE
+   - Main dashboard and navigation
+   - API Explorer (interactive endpoint testing)
+   - Metrics Browser (filtering by probe/tag)
+   - Probes Status (diagnostics)
+   - License Information (detailed status)
+   - PRTG Lookups (.ovl download)
 
-7. **[Utilisation des Métriques](./METRICS-USAGE.md)** ⭐ COMPLET
-   - Intégration PRTG (sensors XML/REST, lookups)
-   - Intégration Nagios/Icinga (checks, NRPE)
-   - Intégration Grafana (datasource JSON, dashboards)
-   - Scripts custom (Python, PowerShell)
-   - Exemples par probe type
+7. **[Metrics Usage](./METRICS-USAGE.md)** ⭐ COMPLETE
+   - PRTG integration (XML/REST sensors, lookups)
+   - Nagios/Icinga integration (checks, NRPE)
+   - Grafana integration (JSON datasource, dashboards)
+   - Custom scripts (Python, PowerShell)
+   - Examples by probe type
 
-### 🔧 Dépannage
+### 🔧 Troubleshooting
 
-9. **[Troubleshooting](./TROUBLESHOOTING.md)** ⭐ COMPLET
-   - **Système de Logging** (modules, activation, runtime)
-   - Problèmes courants
-   - Solutions étape par étape
-
----
-
-## 🎯 Par Où Commencer ?
-
-### Nouvel Utilisateur
-1. [Installation](./INSTALLATION.md) - Installer l'agent
-2. [Modes de Fonctionnement](./OPERATING-MODES.md) - Comprendre online vs offline
-3. [Configuration Agent](./AGENT-CONFIGURATION.md) - Configurer l'agent
-
-### Configuration Avancée
-1. [HTTP/HTTPS](./HTTP-HTTPS-CONFIGURATION.md) - Sécuriser avec SSL/TLS
-2. [Probes](./PROBES-CONFIGURATION.md) - Ajouter des probes de monitoring
-
-### Utilisation et Intégrations
-1. [Interface Web](./WEB-INTERFACE.md) - Utiliser le dashboard et l'API Explorer
-2. [Utilisation des Métriques](./METRICS-USAGE.md) - Intégrer avec PRTG/Nagios/Grafana
-
-### En Cas de Problème
-1. [Troubleshooting](./TROUBLESHOOTING.md) - Diagnostic et logs
+9. **[Troubleshooting](./TROUBLESHOOTING.md)** ⭐ COMPLETE
+   - **Logging System** (modules, activation, runtime)
+   - Common issues
+   - Step-by-step solutions
 
 ---
 
-## 📊 Statistiques Documentation
+## 🎯 Where to Start?
 
-- **8 documents complets** (~35 000 mots, 4 000+ lignes)
-- **26 diagrammes Mermaid** (architecture, flows, decision trees)
-- **45+ screenshots indiqués** avec descriptions détaillées
-- **Système de licence complet** (demande support@senhub.io, format JSON, installation, vérification)
-- **Système de logging modulaire** (16 modules, activation CLI/runtime)
-- **Intégrations monitoring** (PRTG, Nagios, Grafana avec exemples pratiques)
-- **Scripts d'intégration** (Python, PowerShell, Bash)
+### New User
+1. [Installation](./INSTALLATION.md) - Install the agent
+2. [Operating Modes](./OPERATING-MODES.md) - Understand online vs offline
+3. [Agent Configuration](./AGENT-CONFIGURATION.md) - Configure the agent
 
-### Documents Créés
+### Advanced Configuration
+1. [HTTP/HTTPS](./HTTP-HTTPS-CONFIGURATION.md) - Secure with SSL/TLS
+2. [Probes](./PROBES-CONFIGURATION.md) - Add monitoring probes
 
-1. **INSTALLATION.md** (500 lignes) - Installation multi-plateformes
-2. **OPERATING-MODES.md** (400 lignes) - Modes Online/Offline
-3. **AGENT-CONFIGURATION.md** (600 lignes) - Configuration agent et licence
-4. **HTTP-HTTPS-CONFIGURATION.md** (200 lignes) - SSL/TLS et sécurité
-5. **TROUBLESHOOTING.md** (400 lignes) - Dépannage et logging
-6. **PROBES-CONFIGURATION.md** (500 lignes) - Configuration toutes les probes
-7. **WEB-INTERFACE.md** (650 lignes) - Dashboard et API Explorer
-8. **METRICS-USAGE.md** (800 lignes) - Intégrations monitoring
+### Usage and Integrations
+1. [Web Interface](./WEB-INTERFACE.md) - Use the dashboard and API Explorer
+2. [Metrics Usage](./METRICS-USAGE.md) - Integrate with PRTG/Nagios/Grafana
+
+### In Case of Issues
+1. [Troubleshooting](./TROUBLESHOOTING.md) - Diagnostics and logs
 
 ---
 
-## 💡 Licence
+## 📊 Documentation Statistics
 
-**Demande de Licence** : Contacter support@senhub.io
+- **8 complete documents** (~35,000 words, 4,000+ lines)
+- **26 Mermaid diagrams** (architecture, flows, decision trees)
+- **45+ screenshots indicated** with detailed descriptions
+- **Complete license system** (request support@senhub.io, JSON format, installation, verification)
+- **Modular logging system** (16 modules, CLI/runtime activation)
+- **Monitoring integrations** (PRTG, Nagios, Grafana with practical examples)
+- **Integration scripts** (Python, PowerShell, Bash)
 
-Documentation complète dans [AGENT-CONFIGURATION.md](./AGENT-CONFIGURATION.md#système-de-licence)
+### Documents Created
+
+1. **INSTALLATION.md** (500 lines) - Multi-platform installation
+2. **OPERATING-MODES.md** (400 lines) - Online/Offline modes
+3. **AGENT-CONFIGURATION.md** (600 lines) - Agent and license configuration
+4. **HTTP-HTTPS-CONFIGURATION.md** (200 lines) - SSL/TLS and security
+5. **TROUBLESHOOTING.md** (400 lines) - Troubleshooting and logging
+6. **PROBES-CONFIGURATION.md** (500 lines) - All probes configuration
+7. **WEB-INTERFACE.md** (650 lines) - Dashboard and API Explorer
+8. **METRICS-USAGE.md** (800 lines) - Monitoring integrations
+
+---
+
+## 💡 License
+
+**License Request**: Contact support@senhub.io
+
+Complete documentation in [AGENT-CONFIGURATION.md](./AGENT-CONFIGURATION.md#license-system)
 
 ---
 
 ## 📞 Support
 
-**Email** : support@senhub.io
-**Documentation** : https://docs.senhub.io
-**GitHub** : https://github.com/senhub-io/senhub-agent
-
+**Email**: support@senhub.io
+**Documentation**: https://docs.senhub.io
+**GitHub**: https://github.com/senhub-io/senhub-agent

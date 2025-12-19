@@ -1,35 +1,35 @@
-# SenHub Agent - Utilisation des Métriques
+# SenHub Agent - Metrics Usage
 
-## Table des Matières
+## Table of Contents
 
-- [Vue d'Ensemble](#vue-densemble)
-- [Intégration PRTG](#intégration-prtg)
-- [Intégration Nagios](#intégration-nagios)
-- [Intégration Grafana](#intégration-grafana)
-- [API REST Custom](#api-rest-custom)
-- [Exemples par Probe](#exemples-par-probe)
+- [Overview](#overview)
+- [PRTG Integration](#prtg-integration)
+- [Nagios Integration](#nagios-integration)
+- [Grafana Integration](#grafana-integration)
+- [Custom REST API](#custom-rest-api)
+- [Examples by Probe](#examples-by-probe)
 - [Best Practices](#best-practices)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-## Vue d'Ensemble
+## Overview
 
-SenHub Agent expose les métriques collectées via plusieurs formats adaptés aux outils de monitoring populaires.
+SenHub Agent exposes collected metrics via multiple formats adapted to popular monitoring tools.
 
 ```mermaid
 graph TD
-    AGENT[SenHub Agent<br/>HTTP Strategy] --> PRTG[PRTG Network Monitor<br/>Format XML]
-    AGENT --> NAGIOS[Nagios/Icinga<br/>Format Text]
-    AGENT --> GRAFANA[Grafana<br/>Format JSON]
-    AGENT --> CUSTOM[Outils Custom<br/>API REST JSON]
+    AGENT[SenHub Agent<br/>HTTP Strategy] --> PRTG[PRTG Network Monitor<br/>XML Format]
+    AGENT --> NAGIOS[Nagios/Icinga<br/>Text Format]
+    AGENT --> GRAFANA[Grafana<br/>JSON Format]
+    AGENT --> CUSTOM[Custom Tools<br/>REST JSON API]
 
-    PRTG --> P1[Sensors HTTP XML]
-    PRTG --> P2[Lookups .ovl]
+    PRTG --> P1[HTTP XML Sensors]
+    PRTG --> P2[.ovl Lookups]
     NAGIOS --> N1[check_http plugin]
-    NAGIOS --> N2[NRPE custom]
+    NAGIOS --> N2[Custom NRPE]
     GRAFANA --> G1[JSON API datasource]
-    CUSTOM --> C1[Scripts Python/PowerShell]
+    CUSTOM --> C1[Python/PowerShell Scripts]
 
     style AGENT fill:#81d4fa
     style PRTG fill:#fff9c4
@@ -37,20 +37,20 @@ graph TD
     style GRAFANA fill:#f8bbd0
 ```
 
-### Formats Disponibles
+### Available Formats
 
-| Format | Endpoint | Outil Cible | Description |
+| Format | Endpoint | Target Tool | Description |
 |--------|----------|-------------|-------------|
-| **PRTG XML** | `/api/{key}/prtg/metrics` | PRTG | Format XML natif PRTG |
-| **Nagios Text** | `/api/{key}/nagios/status` | Nagios/Icinga | Format text performance data |
-| **JSON** | `/api/{key}/metrics` | Grafana/Custom | Format JSON structuré |
-| **Lookups** | `/api/{key}/prtg/lookups/download` | PRTG | Fichiers .ovl pour labels |
+| **PRTG XML** | `/api/{key}/prtg/metrics` | PRTG | Native PRTG XML format |
+| **Nagios Text** | `/api/{key}/nagios/status` | Nagios/Icinga | Text performance data format |
+| **JSON** | `/api/{key}/metrics` | Grafana/Custom | Structured JSON format |
+| **Lookups** | `/api/{key}/prtg/lookups/download` | PRTG | .ovl files for labels |
 
 ---
 
-## Intégration PRTG
+## PRTG Integration
 
-PRTG Network Monitor peut consommer les métriques SenHub Agent via des sensors HTTP XML/REST.
+PRTG Network Monitor can consume SenHub Agent metrics via HTTP XML/REST sensors.
 
 ```mermaid
 graph LR
@@ -63,30 +63,30 @@ graph LR
     style AGENT fill:#81d4fa
 ```
 
-### Configuration Sensor PRTG
+### PRTG Sensor Configuration
 
 #### Sensor Type: HTTP XML/REST Value
 
-**Étapes** :
+**Steps**:
 
-1. **Ajouter un Device dans PRTG**
-   - IP/Hostname : `monitoring.company.com` (ou IP)
-   - Port : Laisser vide (géré par URL)
+1. **Add Device in PRTG**
+   - IP/Hostname: `monitoring.company.com` (or IP)
+   - Port: Leave empty (handled by URL)
 
-2. **Ajouter un Sensor**
-   - Type : **HTTP XML/REST Value Sensor**
-   - Name : `SenHub Agent - CPU Metrics`
+2. **Add Sensor**
+   - Type: **HTTP XML/REST Value Sensor**
+   - Name: `SenHub Agent - CPU Metrics`
 
-3. **Configuration du Sensor**
+3. **Sensor Configuration**
 
-**Basic Settings** :
+**Basic Settings**:
 ```
 Sensor Name: SenHub Agent - CPU Metrics
 Tags: senhub, system, cpu
 Priority: 3 stars
 ```
 
-**HTTP Specific** :
+**HTTP Specific**:
 ```
 REST Configuration:
   URL: https://monitoring.company.com:8443/api/f47ac10b-58cc-4372-a567-0e02b2c3d479/prtg/metrics/cpu
@@ -98,24 +98,24 @@ Authentication: None (key in URL)
 Timeout (Sec): 60
 ```
 
-**REST Configuration** :
+**REST Configuration**:
 ```
 REST Query: [empty]
 Content Type: [empty - auto-detect XML]
 ```
 
-**Scanning Interval** :
+**Scanning Interval**:
 ```
 Scanning Interval: 60 seconds
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Configuration PRTG sensor montrant les champs URL et REST Configuration
+**📸 SCREENSHOT TO INSERT**: PRTG sensor configuration showing URL and REST Configuration fields
 
 ---
 
-#### URLs par Probe
+#### URLs by Probe
 
-**Probes Système (Free)** :
+**System Probes (Free)**:
 ```
 CPU:
 https://monitoring.company.com:8443/api/{key}/prtg/metrics/cpu
@@ -130,7 +130,7 @@ Network:
 https://monitoring.company.com:8443/api/{key}/prtg/metrics/network
 ```
 
-**Probes Infrastructure (Pro/Enterprise)** :
+**Infrastructure Probes (Pro/Enterprise)**:
 ```
 Redfish:
 https://monitoring.company.com:8443/api/{key}/prtg/metrics/redfish
@@ -147,9 +147,9 @@ https://monitoring.company.com:8443/api/{key}/prtg/metrics/syslog
 
 ---
 
-### Exemple: Sensor CPU complet
+### Example: Complete CPU Sensor
 
-**Résultat PRTG après configuration** :
+**PRTG result after configuration**:
 
 ```
 Sensor: SenHub Agent - CPU Metrics
@@ -165,36 +165,36 @@ Channels:
 ├─ CPU Load 15min: 1.67 [OK]
 ├─ CPU Core 0 Usage: 48.3% [OK]
 ├─ CPU Core 1 Usage: 42.1% [OK]
-└─ ... (tous les cores)
+└─ ... (all cores)
 ```
 
-**Limites configurables** :
-- Warning : 80%
-- Error : 95%
+**Configurable limits**:
+- Warning: 80%
+- Error: 95%
 
-**📸 SCREENSHOT À INSÉRER** : PRTG sensor affichant tous les channels CPU avec graphiques
+**📸 SCREENSHOT TO INSERT**: PRTG sensor showing all CPU channels with graphs
 
 ---
 
-### Installation des Lookups PRTG
+### Installing PRTG Lookups
 
-Les lookups permettent d'afficher des labels texte au lieu de codes numériques pour NetScaler.
+Lookups allow displaying text labels instead of numeric codes for NetScaler.
 
-**Étape 1 : Télécharger les lookups**
+**Step 1: Download lookups**
 
-Via l'interface web SenHub Agent :
+Via SenHub Agent web interface:
 ```
 Dashboard → API Explorer → PRTG Lookups → Download
 ```
 
-Ou directement :
+Or directly:
 ```
 https://monitoring.company.com:8443/api/{key}/prtg/lookups/download
 ```
 
-**Étape 2 : Extraire le ZIP**
+**Step 2: Extract ZIP**
 
-Contenu :
+Contents:
 ```
 senhub-lookups.zip
 ├─ netscaler.metric_type.ovl
@@ -202,60 +202,60 @@ senhub-lookups.zip
 └─ README.txt
 ```
 
-**Étape 3 : Copier dans PRTG**
+**Step 3: Copy to PRTG**
 
 ```powershell
 # Windows - PRTG Server
 Copy-Item *.ovl "C:\Program Files (x86)\PRTG Network Monitor\lookups\custom\"
 ```
 
-**Étape 4 : Recharger les lookups**
+**Step 4: Reload lookups**
 
-Dans PRTG :
+In PRTG:
 ```
 Setup → Administrative Tools → Load Lookups and File Lists
 ```
 
-**Vérification** :
-- Sensors NetScaler affichent maintenant "Rate" au lieu de "0"
-- Labels "Load Balancing", "SSL", "System" au lieu de codes
+**Verification**:
+- NetScaler sensors now display "Rate" instead of "0"
+- Labels "Load Balancing", "SSL", "System" instead of codes
 
-**📸 SCREENSHOT À INSÉRER** : Avant/après installation lookups (codes vs labels texte)
+**📸 SCREENSHOT TO INSERT**: Before/after lookups installation (codes vs text labels)
 
 ---
 
-### Sensor NetScaler avec Filtrage
+### NetScaler Sensor with Filtering
 
-**Créer plusieurs sensors filtrés** :
+**Create multiple filtered sensors**:
 
-**Sensor 1 : Load Balancing uniquement**
+**Sensor 1: Load Balancing only**
 ```
 Name: NetScaler - Load Balancing
 URL: https://monitoring.company.com:8443/api/{key}/prtg/metrics/netscaler?filter=metric_view:load_balancing
 ```
 
-**Sensor 2 : SSL Monitoring**
+**Sensor 2: SSL Monitoring**
 ```
 Name: NetScaler - SSL Metrics
 URL: https://monitoring.company.com:8443/api/{key}/prtg/metrics/netscaler?filter=metric_view:ssl
 ```
 
-**Sensor 3 : Virtual Server spécifique**
+**Sensor 3: Specific Virtual Server**
 ```
 Name: NetScaler - Web vServer
 URL: https://monitoring.company.com:8443/api/{key}/prtg/metrics/netscaler?filter=vserver_name:Web-vServer
 ```
 
-**Avantages** :
-- Sensors plus légers (moins de channels)
-- Organisation claire par fonction
-- Alertes ciblées
+**Benefits**:
+- Lighter sensors (fewer channels)
+- Clear organization by function
+- Targeted alerts
 
 ---
 
-### Multi-Instance avec PRTG
+### Multi-Instance with PRTG
 
-**Scénario** : Plusieurs serveurs avec SenHub Agent
+**Scenario**: Multiple servers with SenHub Agent
 
 ```
 Device: PROD-SERVER-01 (192.168.1.10:8443)
@@ -272,13 +272,13 @@ Device: PROD-SERVER-02 (192.168.1.11:8443)
 └─ ...
 ```
 
-**📸 SCREENSHOT À INSÉRER** : PRTG tree view avec plusieurs devices SenHub Agent
+**📸 SCREENSHOT TO INSERT**: PRTG tree view with multiple SenHub Agent devices
 
 ---
 
-## Intégration Nagios
+## Nagios Integration
 
-Nagios/Icinga peut monitorer SenHub Agent via le plugin `check_http`.
+Nagios/Icinga can monitor SenHub Agent via the `check_http` plugin.
 
 ```mermaid
 graph LR
@@ -290,11 +290,11 @@ graph LR
     style AGENT fill:#81d4fa
 ```
 
-### Configuration Nagios Check
+### Nagios Check Configuration
 
 #### Command Definition
 
-**`/etc/nagios/objects/commands.cfg`** :
+**`/etc/nagios/objects/commands.cfg`**:
 
 ```cfg
 define command {
@@ -306,19 +306,19 @@ define command {
 }
 ```
 
-**Paramètres** :
-- `-H $ARG1$` : Hostname/IP
-- `-p $ARG2$` : Port (8443)
-- `-S` : Use HTTPS
-- `-u /api/$ARG3$/nagios/status` : URL endpoint
-- `-s "OK"` : String to expect
-- `-w 5 -c 10` : Timeout warning/critical (secondes)
+**Parameters**:
+- `-H $ARG1$`: Hostname/IP
+- `-p $ARG2$`: Port (8443)
+- `-S`: Use HTTPS
+- `-u /api/$ARG3$/nagios/status`: URL endpoint
+- `-s "OK"`: String to expect
+- `-w 5 -c 10`: Timeout warning/critical (seconds)
 
 ---
 
 #### Service Definition
 
-**`/etc/nagios/objects/services.cfg`** :
+**`/etc/nagios/objects/services.cfg`**:
 
 ```cfg
 define service {
@@ -331,12 +331,12 @@ define service {
 }
 ```
 
-**Résultat Nagios** :
+**Nagios Result**:
 ```
 OK - CPU: 45.2% | cpu_usage=45.2%;80;95;0;100 memory_usage=67.8%;80;95;0;100
 ```
 
-**Performance Data** :
+**Performance Data**:
 ```
 cpu_usage=45.2%;80;95;0;100
 memory_usage=67.8%;80;95;0;100
@@ -344,13 +344,13 @@ disk_c_usage=35.4%;80;95;0;100
 network_eth0_bytes_sent=1234567
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Nagios service status montrant SenHub checks avec performance data
+**📸 SCREENSHOT TO INSERT**: Nagios service status showing SenHub checks with performance data
 
 ---
 
-### Check avancé par Probe
+### Advanced Check per Probe
 
-**Définir des checks séparés** :
+**Define separate checks**:
 
 ```cfg
 # CPU Check
@@ -378,15 +378,15 @@ define service {
 }
 ```
 
-**Note** : Actuellement l'endpoint `/nagios/status` retourne toutes les métriques. Filtrage par probe à venir dans version future.
+**Note**: Currently the `/nagios/status` endpoint returns all metrics. Filtering by probe coming in future version.
 
 ---
 
-### NRPE Custom Script
+### Custom NRPE Script
 
-Pour plus de flexibilité, créer un script NRPE custom.
+For more flexibility, create a custom NRPE script.
 
-**`/usr/lib/nagios/plugins/check_senhub_custom.sh`** :
+**`/usr/lib/nagios/plugins/check_senhub_custom.sh`**:
 
 ```bash
 #!/bin/bash
@@ -398,13 +398,13 @@ PROBE=$4
 
 URL="https://${HOST}:${PORT}/api/${KEY}/metrics?probe=${PROBE}"
 
-# Récupérer métriques JSON
+# Retrieve JSON metrics
 RESPONSE=$(curl -s -k "$URL")
 
-# Parser avec jq
+# Parse with jq
 CPU_USAGE=$(echo "$RESPONSE" | jq -r '.metrics[] | select(.name=="cpu_usage_total") | .value')
 
-# Appliquer seuils
+# Apply thresholds
 if (( $(echo "$CPU_USAGE > 95" | bc -l) )); then
     echo "CRITICAL - CPU: ${CPU_USAGE}% | cpu_usage=${CPU_USAGE};80;95;0;100"
     exit 2
@@ -417,12 +417,12 @@ else
 fi
 ```
 
-**Rendre exécutable** :
+**Make executable**:
 ```bash
 chmod +x /usr/lib/nagios/plugins/check_senhub_custom.sh
 ```
 
-**Command definition** :
+**Command definition**:
 ```cfg
 define command {
     command_name    check_senhub_custom
@@ -430,7 +430,7 @@ define command {
 }
 ```
 
-**Service** :
+**Service**:
 ```cfg
 define service {
     host_name               PROD-SERVER-01
@@ -441,9 +441,9 @@ define service {
 
 ---
 
-## Intégration Grafana
+## Grafana Integration
 
-Grafana peut consommer les métriques SenHub Agent via le plugin JSON API datasource.
+Grafana can consume SenHub Agent metrics via the JSON API datasource plugin.
 
 ```mermaid
 graph LR
@@ -455,46 +455,46 @@ graph LR
     style AGENT fill:#81d4fa
 ```
 
-### Installation Plugin JSON API
+### Installing JSON API Plugin
 
 ```bash
 grafana-cli plugins install simpod-json-datasource
 systemctl restart grafana-server
 ```
 
-### Configuration Datasource
+### Datasource Configuration
 
-**Grafana UI** :
+**Grafana UI**:
 
 1. **Configuration → Data Sources → Add data source**
-2. **Type** : JSON API
-3. **Settings** :
+2. **Type**: JSON API
+3. **Settings**:
 
 ```
 Name: SenHub Agent - PROD-SERVER-01
 URL: https://monitoring.company.com:8443
 ```
 
-4. **Custom HTTP Headers** :
+4. **Custom HTTP Headers**:
 ```
 Header: X-API-Key
 Value: f47ac10b-58cc-4372-a567-0e02b2c3d479
 ```
 
-5. **TLS Settings** :
+5. **TLS Settings**:
 ```
-Skip TLS Verify: ☑ (si certificat auto-signé)
+Skip TLS Verify: ☑ (if self-signed certificate)
 ```
 
 6. **Save & Test**
 
-**📸 SCREENSHOT À INSÉRER** : Grafana datasource configuration pour SenHub Agent
+**📸 SCREENSHOT TO INSERT**: Grafana datasource configuration for SenHub Agent
 
 ---
 
-### Créer un Dashboard
+### Creating a Dashboard
 
-**Panel 1 : CPU Usage**
+**Panel 1: CPU Usage**
 
 ```json
 {
@@ -514,7 +514,7 @@ Skip TLS Verify: ☑ (si certificat auto-signé)
 }
 ```
 
-**Panel 2 : Memory Usage**
+**Panel 2: Memory Usage**
 
 ```json
 {
@@ -544,17 +544,17 @@ Skip TLS Verify: ☑ (si certificat auto-signé)
 }
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Dashboard Grafana avec panels CPU, Memory, Network
+**📸 SCREENSHOT TO INSERT**: Grafana dashboard with CPU, Memory, Network panels
 
 ---
 
-### Transformation Grafana
+### Grafana Transformation
 
-**Transformer JSON → Time Series** :
+**Transform JSON → Time Series**:
 
-Les métriques SenHub sont exposées avec timestamp. Grafana peut les transformer directement.
+SenHub metrics are exposed with timestamps. Grafana can transform them directly.
 
-**Exemple de réponse JSON** :
+**JSON response example**:
 ```json
 {
   "metrics": [
@@ -568,7 +568,7 @@ Les métriques SenHub sont exposées avec timestamp. Grafana peut les transforme
 }
 ```
 
-**Grafana Query** :
+**Grafana Query**:
 ```
 Metric: cpu_usage_total
 JSONPath: $.metrics[?(@.name=='cpu_usage_total')].value
@@ -576,9 +576,9 @@ JSONPath: $.metrics[?(@.name=='cpu_usage_total')].value
 
 ---
 
-### Dashboard Multi-Server
+### Multi-Server Dashboard
 
-**Variables Grafana** :
+**Grafana Variables**:
 
 ```
 Variable: server
@@ -590,27 +590,27 @@ Type: Custom
 Values: cpu, memory, logicaldisk, redfish
 ```
 
-**Query dynamique** :
+**Dynamic query**:
 ```
 URL: https://$server.company.com:8443/api/{key}/metrics?probe=$probe
 ```
 
-**Résultat** :
-- Dropdown pour sélectionner serveur
-- Dropdown pour sélectionner probe
-- Panels se mettent à jour automatiquement
+**Result**:
+- Dropdown to select server
+- Dropdown to select probe
+- Panels update automatically
 
-**📸 SCREENSHOT À INSÉRER** : Dashboard Grafana avec variables et multi-panels
+**📸 SCREENSHOT TO INSERT**: Grafana dashboard with variables and multi-panels
 
 ---
 
-## API REST Custom
+## Custom REST API
 
-Pour des intégrations custom (scripts, outils maison), utiliser l'API REST JSON.
+For custom integrations (scripts, in-house tools), use the JSON REST API.
 
-### Exemples Python
+### Python Examples
 
-**Script 1 : Récupérer toutes les métriques**
+**Script 1: Retrieve all metrics**
 
 ```python
 #!/usr/bin/env python3
@@ -622,7 +622,7 @@ API_KEY = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
 
 def get_all_metrics():
     url = f"{AGENT_URL}/api/{API_KEY}/metrics"
-    response = requests.get(url, verify=False)  # verify=True en prod
+    response = requests.get(url, verify=False)  # verify=True in prod
 
     if response.status_code == 200:
         data = response.json()
@@ -638,7 +638,7 @@ if __name__ == "__main__":
 
 ---
 
-**Script 2 : Alerting custom**
+**Script 2: Custom alerting**
 
 ```python
 #!/usr/bin/env python3
@@ -693,15 +693,15 @@ if __name__ == "__main__":
     check_metrics()
 ```
 
-**Cron** :
+**Cron**:
 ```bash
-# Vérifier toutes les 5 minutes
+# Check every 5 minutes
 */5 * * * * /usr/local/bin/check_senhub_alerts.py
 ```
 
 ---
 
-**Script 3 : Export CSV**
+**Script 3: CSV Export**
 
 ```python
 #!/usr/bin/env python3
@@ -746,9 +746,9 @@ if __name__ == "__main__":
 
 ---
 
-### Exemples PowerShell
+### PowerShell Examples
 
-**Script 1 : Récupérer métriques**
+**Script 1: Retrieve metrics**
 
 ```powershell
 $AgentUrl = "https://monitoring.company.com:8443"
@@ -781,7 +781,7 @@ $metrics.metrics | Format-Table -Property name, value, unit
 
 ---
 
-**Script 2 : Monitoring Windows Event Log**
+**Script 2: Windows Event Log monitoring**
 
 ```powershell
 $AgentUrl = "https://monitoring.company.com:8443"
@@ -808,14 +808,14 @@ function Check-SenHubHealth {
     }
 }
 
-# Créer event source (une fois)
+# Create event source (once)
 New-EventLog -LogName Application -Source "SenHub Monitor" -ErrorAction SilentlyContinue
 
 # Check
 Check-SenHubHealth
 ```
 
-**Scheduled Task** :
+**Scheduled Task**:
 ```powershell
 $action = New-ScheduledTaskAction -Execute "PowerShell.exe" `
     -Argument "-File C:\Scripts\Check-SenHubHealth.ps1"
@@ -829,25 +829,25 @@ Register-ScheduledTask -TaskName "SenHub Health Check" `
 
 ---
 
-## Exemples par Probe
+## Examples by Probe
 
 ### CPU Metrics
 
-**PRTG** :
+**PRTG**:
 ```
 URL: https://monitoring.company.com:8443/api/{key}/prtg/metrics/cpu
 Interval: 60s
 Channels: cpu_usage_total, cpu_load1, cpu_load5, cpu_core_*
 ```
 
-**Nagios** :
+**Nagios**:
 ```bash
 check_http -H monitoring.company.com -p 8443 -S \
   -u /api/{key}/nagios/status \
   -s "OK - CPU"
 ```
 
-**Grafana Panel** :
+**Grafana Panel**:
 ```json
 {
   "title": "CPU Usage",
@@ -864,14 +864,14 @@ check_http -H monitoring.company.com -p 8443 -S \
 
 ### Memory Metrics
 
-**PRTG** :
+**PRTG**:
 ```
 URL: https://monitoring.company.com:8443/api/{key}/prtg/metrics/memory
 Channels: memory_usage_percent, memory_available, swap_used
 Limits: Warning 80%, Error 95%
 ```
 
-**Grafana Gauge** :
+**Grafana Gauge**:
 ```json
 {
   "title": "Memory Usage",
@@ -890,7 +890,7 @@ Limits: Warning 80%, Error 95%
 
 ### Redfish Hardware
 
-**PRTG Multi-Sensor** :
+**PRTG Multi-Sensor**:
 ```
 Sensor 1: Temperatures
 URL: .../prtg/metrics/redfish
@@ -903,19 +903,19 @@ Sensor 3: Power
 Filter channels: *power*
 ```
 
-**Alertes** :
-- Temperature > 75°C : Warning
-- Temperature > 85°C : Critical
-- Fan Speed < 30% : Warning
-- Fan Speed = 0% : Critical
+**Alerts**:
+- Temperature > 75°C: Warning
+- Temperature > 85°C: Critical
+- Fan Speed < 30%: Warning
+- Fan Speed = 0%: Critical
 
-**📸 SCREENSHOT À INSÉRER** : PRTG sensors Redfish avec températures, ventilateurs et power
+**📸 SCREENSHOT TO INSERT**: PRTG Redfish sensors with temperatures, fans and power
 
 ---
 
 ### Citrix VDI
 
-**PRTG Sensors** :
+**PRTG Sensors**:
 ```
 Sensor 1: Session Metrics
 URL: .../prtg/metrics/citrix
@@ -928,7 +928,7 @@ Sensor 3: Server Load
 Channels: server_load_percent, server_session_count
 ```
 
-**Grafana Dashboard** :
+**Grafana Dashboard**:
 ```
 Panel 1: Active Sessions (Time Series)
 Panel 2: Logon Duration (Heatmap)
@@ -939,26 +939,26 @@ Panel 3: Server Load Distribution (Bar Gauge)
 
 ### NetScaler ADC
 
-**PRTG avec Lookups** :
+**PRTG with Lookups**:
 ```
-1. Télécharger lookups: .../prtg/lookups/download
-2. Installer .ovl dans PRTG
-3. Créer sensors filtrés:
+1. Download lookups: .../prtg/lookups/download
+2. Install .ovl in PRTG
+3. Create filtered sensors:
    - Load Balancing: ?filter=metric_view:load_balancing
    - SSL: ?filter=metric_view:ssl
    - System: ?filter=metric_view:system
 ```
 
-**Channels importants** :
-- `netscaler_vserver_state` : État vServer (UP/DOWN)
-- `netscaler_vserver_hits` : Nombre de hits
-- `netscaler_ssl_cert_days_to_expire` : Expiration certificats
-- `netscaler_cpu_usage` : CPU appliance
+**Important channels**:
+- `netscaler_vserver_state`: vServer state (UP/DOWN)
+- `netscaler_vserver_hits`: Number of hits
+- `netscaler_ssl_cert_days_to_expire`: Certificate expiration
+- `netscaler_cpu_usage`: Appliance CPU
 
-**Alertes critiques** :
-- vServer DOWN : Immédiat
-- Certificat SSL < 30 jours : Warning
-- Certificat SSL < 7 jours : Critical
+**Critical alerts**:
+- vServer DOWN: Immediate
+- SSL Certificate < 30 days: Warning
+- SSL Certificate < 7 days: Critical
 
 ---
 
@@ -968,10 +968,10 @@ Panel 3: Server Load Distribution (Bar Gauge)
 
 ```mermaid
 graph TD
-    PERF[Performance Best Practices] --> P1[Intervalles Adaptés]
-    PERF --> P2[Filtrage Probes]
+    PERF[Performance Best Practices] --> P1[Adapted Intervals]
+    PERF --> P2[Probe Filtering]
     PERF --> P3[Cache Retention]
-    PERF --> P4[Endpoints Dédiés]
+    PERF --> P4[Dedicated Endpoints]
 
     P1 --> P1A[CPU/Memory: 30-60s]
     P1 --> P1B[Redfish: 300s]
@@ -983,41 +983,41 @@ graph TD
     style PERF fill:#81d4fa
 ```
 
-**Recommandations** :
+**Recommendations**:
 
-1. **Intervalles de Scanning**
+1. **Scanning Intervals**
    ```
-   Métriques temps réel (CPU, Memory): 30-60s
+   Real-time metrics (CPU, Memory): 30-60s
    Hardware (Redfish): 300s (5min)
    VDI/Apps (Citrix): 120s (2min)
    Network (NetScaler): 120s (2min)
    ```
 
-2. **Filtrage PRTG**
-   - ✅ Utiliser `/prtg/metrics/{probe}` au lieu de `/prtg/metrics`
-   - ✅ Utiliser filtres tags pour NetScaler
-   - ❌ Éviter sensor global "tout-en-un" (trop de channels)
+2. **PRTG Filtering**
+   - ✅ Use `/prtg/metrics/{probe}` instead of `/prtg/metrics`
+   - ✅ Use tag filters for NetScaler
+   - ❌ Avoid global "all-in-one" sensor (too many channels)
 
-3. **Cache Agent**
+3. **Agent Cache**
    ```yaml
    cache:
-     retention_minutes: 10  # Balance fraîcheur/mémoire
+     retention_minutes: 10  # Balance freshness/memory
    ```
 
-4. **Timeout PRTG/Nagios**
+4. **PRTG/Nagios Timeout**
    ```
-   PRTG: 60 secondes
-   Nagios: 10 secondes (warning: 5s, critical: 10s)
+   PRTG: 60 seconds
+   Nagios: 10 seconds (warning: 5s, critical: 10s)
    ```
 
 ---
 
-### Sécurité
+### Security
 
-**✅ Configuration Sécurisée** :
+**✅ Secure Configuration**:
 
 ```yaml
-# HTTPS obligatoire en production
+# HTTPS mandatory in production
 storage:
   - name: http
     params:
@@ -1028,61 +1028,61 @@ storage:
         min_tls_version: "1.2"
 ```
 
-**Firewall** :
+**Firewall**:
 ```bash
-# Autoriser uniquement monitoring servers
+# Allow only monitoring servers
 sudo ufw allow from 192.168.1.50 to any port 8443 comment "PRTG Server"
 sudo ufw allow from 192.168.1.51 to any port 8443 comment "Nagios Server"
 ```
 
-**Authentication Key** :
-- ✅ UUID complexe : `f47ac10b-58cc-4372-a567-0e02b2c3d479`
-- ❌ Key simple : `test`, `admin`, `monitoring`
+**Authentication Key**:
+- ✅ Complex UUID: `f47ac10b-58cc-4372-a567-0e02b2c3d479`
+- ❌ Simple key: `test`, `admin`, `monitoring`
 
 ---
 
 ### Alerting
 
-**Seuils recommandés** :
+**Recommended thresholds**:
 
-| Métrique | Warning | Critical |
-|----------|---------|----------|
+| Metric | Warning | Critical |
+|--------|---------|----------|
 | CPU Usage | 80% | 95% |
 | Memory Usage | 80% | 95% |
 | Disk Free | 20% | 10% |
 | Temperature | 75°C | 85°C |
-| Fan Speed | < 30% | 0% (arrêté) |
+| Fan Speed | < 30% | 0% (stopped) |
 
-**Escalation** :
+**Escalation**:
 ```
-1. Warning → Email équipe ops
-2. Critical → Email + SMS astreinte
-3. Critical > 15min → Appel téléphonique
+1. Warning → Email ops team
+2. Critical → Email + SMS on-call
+3. Critical > 15min → Phone call
 ```
 
 ---
 
 ### Documentation
 
-**Conventions de Nommage** :
+**Naming Conventions**:
 
 ```
 PRTG Sensors:
 - Format: "SenHub - {Probe Type} - {Server}"
-- Exemples:
+- Examples:
   - "SenHub - CPU - PROD-SERVER-01"
   - "SenHub - Redfish Hardware - PROD-SERVER-01"
   - "SenHub - NetScaler LB - NETSCALER-PROD"
 
 Nagios Services:
 - Format: "SenHub {Probe Type}"
-- Exemples:
+- Examples:
   - "SenHub CPU"
   - "SenHub Memory"
   - "SenHub Redfish"
 ```
 
-**Tags PRTG** :
+**PRTG Tags**:
 ```
 senhub, system, cpu
 senhub, system, memory
@@ -1097,66 +1097,66 @@ senhub, network, netscaler
 
 ### PRTG Sensor Status "Down"
 
-**Symptômes** :
+**Symptoms**:
 ```
 Sensor: Down (0%)
 Last Message: No Response (HTTP 503)
 ```
 
-**Diagnostic** :
+**Diagnosis**:
 ```bash
-# 1. Vérifier agent accessible
+# 1. Check agent accessible
 curl -k https://monitoring.company.com:8443/api/{key}/info/system
 
-# 2. Tester endpoint exact
+# 2. Test exact endpoint
 curl -k https://monitoring.company.com:8443/api/{key}/prtg/metrics/cpu
 
-# 3. Vérifier timeout
+# 3. Check timeout
 time curl -k https://monitoring.company.com:8443/api/{key}/prtg/metrics/cpu
-# Si > 60s → Augmenter timeout PRTG
+# If > 60s → Increase PRTG timeout
 ```
 
-**Solutions** :
-1. Agent down → Redémarrer agent
-2. Timeout → Augmenter timeout sensor (60s → 120s)
-3. Probe en erreur → Voir logs agent
-4. URL incorrecte → Vérifier {key} et probe name
+**Solutions**:
+1. Agent down → Restart agent
+2. Timeout → Increase sensor timeout (60s → 120s)
+3. Probe in error → See agent logs
+4. Wrong URL → Check {key} and probe name
 
 ---
 
 ### Nagios Check CRITICAL
 
-**Symptômes** :
+**Symptoms**:
 ```
 CRITICAL - Socket timeout after 10 seconds
 ```
 
-**Solutions** :
+**Solutions**:
 ```bash
-# 1. Augmenter timeout check
-check_http ... -w 15 -c 30  # Au lieu de -w 5 -c 10
+# 1. Increase check timeout
+check_http ... -w 15 -c 30  # Instead of -w 5 -c 10
 
-# 2. Vérifier probe interval vs check interval
-# Si probe interval = 300s et check interval = 60s
-# → Métriques pas encore disponibles au moment du check
+# 2. Check probe interval vs check interval
+# If probe interval = 300s and check interval = 60s
+# → Metrics not yet available at check time
 ```
 
 ---
 
 ### Grafana "No Data"
 
-**Symptômes** :
+**Symptoms**:
 ```
 Panel: No data
 ```
 
-**Solutions** :
-1. **Vérifier datasource**
+**Solutions**:
+1. **Check datasource**
    ```
-   Grafana → Data Sources → Test (devrait retourner 200 OK)
+   Grafana → Data Sources → Test (should return 200 OK)
    ```
 
-2. **Vérifier query**
+2. **Check query**
    ```json
    {
      "url": "/api/{key}/metrics?probe=cpu",
@@ -1164,31 +1164,31 @@ Panel: No data
    }
    ```
 
-3. **Vérifier timestamp format**
-   - Agent retourne ISO 8601: `2025-01-15T10:30:45Z`
-   - Grafana attend timestamp en ms ou ISO 8601
+3. **Check timestamp format**
+   - Agent returns ISO 8601: `2025-01-15T10:30:45Z`
+   - Grafana expects timestamp in ms or ISO 8601
 
 ---
 
-### Lookups PRTG Non Appliqués
+### PRTG Lookups Not Applied
 
-**Symptômes** :
-- Sensors NetScaler affichent "0", "1", "2" au lieu de "Rate", "Counter", "Gauge"
+**Symptoms**:
+- NetScaler sensors display "0", "1", "2" instead of "Rate", "Counter", "Gauge"
 
-**Solutions** :
+**Solutions**:
 ```powershell
-# 1. Vérifier fichiers .ovl présents
+# 1. Check .ovl files present
 dir "C:\Program Files (x86)\PRTG Network Monitor\lookups\custom\netscaler*.ovl"
 
-# 2. Recharger lookups
+# 2. Reload lookups
 PRTG → Setup → Administrative Tools → Load Lookups and File Lists
 
-# 3. Recréer sensor (pas juste refresh)
-# Supprimer sensor → Recréer avec même URL
+# 3. Recreate sensor (not just refresh)
+# Delete sensor → Recreate with same URL
 ```
 
 ---
 
-**Support** :
-- **Email** : support@senhub.io
-- **Documentation** : [Installation](./INSTALLATION.md), [Configuration](./AGENT-CONFIGURATION.md), [Troubleshooting](./TROUBLESHOOTING.md)
+**Support**:
+- **Email**: support@senhub.io
+- **Documentation**: [Installation](./INSTALLATION.md), [Configuration](./AGENT-CONFIGURATION.md), [Troubleshooting](./TROUBLESHOOTING.md)
