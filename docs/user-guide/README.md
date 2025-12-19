@@ -116,13 +116,19 @@ cd docs/user-guide
 ```
 
 **Output:**
-- SenHub-Agent-User-Guide-Complete.docx (~1.5 MB)
+- SenHub-Agent-User-Guide-Complete.docx (~3.3 MB)
 - Includes all 8 documentation chapters
 - Automatic table of contents with numbered sections
 - **32 Mermaid diagrams converted to PNG images** (architecture, flows, decision trees)
 - Internal cross-reference links (all links work within the document)
-- Professional document structure with title page
+- Professional styling based on Sensor Factory reference template
 - Metadata (title, subtitle, author, date)
+
+**Styling:**
+- Font: Rubik (primary), Arial (subtitle)
+- Heading 1: Rubik SemiBold, 20pt, #28b3d0 (blue)
+- Heading 2-6: Decreasing sizes with professional color scheme
+- Clean, modern corporate appearance
 
 **Features:**
 - Numbered sections (1. Installation, 2. Operating Modes, etc.)
