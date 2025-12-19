@@ -109,3 +109,6 @@ scripts/run-e2e-tests.sh
 config_demo_web.yaml
 
 # E2E Test automation agents
+
+# Generated Word documentation
+docs/user-guide/word/
