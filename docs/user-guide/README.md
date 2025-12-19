@@ -2,45 +2,45 @@
 
 Complete documentation for SenHub Agent users and administrators.
 
-## 📚 Complete Documentation
+## Complete Documentation
 
-### 🚀 Installation and Getting Started
+### Installation and Getting Started
 
-1. **[Installation](./INSTALLATION.md)** ⭐ COMPLETE
+1. **[Installation](./INSTALLATION.md)**
    - Windows/Linux/macOS installation
    - HTTP and HTTPS options
    - SSL certificates
    - Verification and uninstallation
 
-2. **[Operating Modes](./OPERATING-MODES.md)** ⭐ COMPLETE
+2. **[Operating Modes](./OPERATING-MODES.md)**
    - Online vs Offline mode
    - Detailed comparison
    - Switching between modes
    - Use cases per mode
 
-### ⚙️ Configuration
+### Configuration
 
-3. **[Agent Configuration](./AGENT-CONFIGURATION.md)** ⭐ COMPLETE
+3. **[Agent Configuration](./AGENT-CONFIGURATION.md)**
    - YAML file structure
-   - **License System** (contact support@senhub.io, installation, verification)
+   - License System (contact support@senhub.io, installation, verification)
    - Auto-update
    - Cache
 
-4. **[HTTP/HTTPS Configuration](./HTTP-HTTPS-CONFIGURATION.md)** ⭐ COMPLETE
+4. **[HTTP/HTTPS Configuration](./HTTP-HTTPS-CONFIGURATION.md)**
    - HTTP Strategy
    - SSL/TLS certificates
    - Bind address
    - API endpoints
 
-5. **[Probes Configuration](./PROBES-CONFIGURATION.md)** ⭐ COMPLETE
+5. **[Probes Configuration](./PROBES-CONFIGURATION.md)**
    - System probes (Free: cpu, memory, disk, network)
    - Network probes (Pro: ping, wifi)
    - Infrastructure probes (Pro/Enterprise: redfish, citrix, netscaler, syslog)
    - Complete configuration examples
 
-### 🖥️ Usage
+### Usage
 
-6. **[Web Interface](./WEB-INTERFACE.md)** ⭐ COMPLETE
+6. **[Web Interface](./WEB-INTERFACE.md)**
    - Main dashboard and navigation
    - API Explorer (interactive endpoint testing)
    - Metrics Browser (filtering by probe/tag)
@@ -48,23 +48,23 @@ Complete documentation for SenHub Agent users and administrators.
    - License Information (detailed status)
    - PRTG Lookups (.ovl download)
 
-7. **[Metrics Usage](./METRICS-USAGE.md)** ⭐ COMPLETE
+7. **[Metrics Usage](./METRICS-USAGE.md)**
    - PRTG integration (XML/REST sensors, lookups)
    - Nagios/Icinga integration (checks, NRPE)
    - Grafana integration (JSON datasource, dashboards)
    - Custom scripts (Python, PowerShell)
    - Examples by probe type
 
-### 🔧 Troubleshooting
+### Troubleshooting
 
-9. **[Troubleshooting](./TROUBLESHOOTING.md)** ⭐ COMPLETE
-   - **Logging System** (modules, activation, runtime)
+8. **[Troubleshooting](./TROUBLESHOOTING.md)**
+   - Logging System (modules, activation, runtime)
    - Common issues
    - Step-by-step solutions
 
 ---
 
-## 🎯 Where to Start?
+## Where to Start?
 
 ### New User
 1. [Installation](./INSTALLATION.md) - Install the agent
@@ -84,15 +84,15 @@ Complete documentation for SenHub Agent users and administrators.
 
 ---
 
-## 📊 Documentation Statistics
+## Documentation Statistics
 
-- **8 complete documents** (~35,000 words, 4,000+ lines)
-- **26 Mermaid diagrams** (architecture, flows, decision trees)
-- **45+ screenshots indicated** with detailed descriptions
-- **Complete license system** (request support@senhub.io, JSON format, installation, verification)
-- **Modular logging system** (16 modules, CLI/runtime activation)
-- **Monitoring integrations** (PRTG, Nagios, Grafana with practical examples)
-- **Integration scripts** (Python, PowerShell, Bash)
+- 8 complete documents (~35,000 words, 4,000+ lines)
+- 26 Mermaid diagrams (architecture, flows, decision trees)
+- 45+ screenshots indicated with detailed descriptions
+- Complete license system (request support@senhub.io, JSON format, installation, verification)
+- Modular logging system (16 modules, CLI/runtime activation)
+- Monitoring integrations (PRTG, Nagios, Grafana with practical examples)
+- Integration scripts (Python, PowerShell, Bash)
 
 ### Documents Created
 
@@ -107,7 +107,7 @@ Complete documentation for SenHub Agent users and administrators.
 
 ### Microsoft Word Version
 
-A consolidated Word document is available for offline reading and distribution:
+A consolidated Word document is available for offline reading and distribution.
 
 **Generate the Word document:**
 ```bash
@@ -116,8 +116,8 @@ cd docs/user-guide
 ```
 
 **Output:**
-- `SenHub-Agent-User-Guide-Complete.docx` (~173KB)
-- Includes all 9 documentation sections
+- SenHub-Agent-User-Guide-Complete.docx (~173KB)
+- Includes all 8 documentation sections
 - Table of contents with 3 levels
 - Metadata (title, author, date)
 
@@ -125,7 +125,7 @@ cd docs/user-guide
 
 ---
 
-## 💡 License
+## License
 
 **License Request**: Contact support@senhub.io
 
@@ -133,7 +133,7 @@ Complete documentation in [AGENT-CONFIGURATION.md](./AGENT-CONFIGURATION.md#lice
 
 ---
 
-## 📞 Support
+## Support
 
 **Email**: support@senhub.io
 **Documentation**: https://docs.senhub.io
