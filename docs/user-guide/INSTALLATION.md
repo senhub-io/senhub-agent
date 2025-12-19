@@ -1,851 +1,631 @@
-# SenHub Agent - Installation Guide
+# Installing SenHub Agent
 
-This guide walks you through installing SenHub Agent on your infrastructure. Whether you manage Windows, Linux, or macOS servers, you'll find all the steps to install the agent in minutes and start collecting metrics.
+This guide covers the complete installation process for SenHub Agent across Windows, Linux, and macOS environments. The installation is designed to be completed in under 10 minutes, with minimal dependencies and straightforward configuration options.
 
 ## Table of Contents
 
-- [Overview](#overview)
+- [Understanding the Installation](#understanding-the-installation)
 - [System Requirements](#system-requirements)
 - [Download](#download)
 - [Windows Installation](#windows-installation)
 - [Linux Installation](#linux-installation)
 - [macOS Installation](#macos-installation)
-- [Getting Started](#getting-started)
+- [Post-Installation](#post-installation)
 - [Uninstallation](#uninstallation)
 
 ---
 
-## Overview
+## Understanding the Installation
 
-SenHub Agent is a lightweight and versatile monitoring agent that collects system and infrastructure metrics. Installation defaults to **offline mode**, meaning the agent runs autonomously without requiring external connections.
+Before starting, it's important to understand what you're deploying and the choices you'll make during installation.
 
-### What is Offline Mode?
+### What SenHub Agent Provides
 
-In offline mode, the agent:
-- Runs **autonomously** on your server
-- Exposes a **local web interface** to view metrics
-- Configures via a **local YAML file**
-- Sends **no external data**
-- Is perfect for air-gapped environments, edge computing, or development
+SenHub Agent is a monitoring collector that runs locally on your infrastructure and exposes metrics via HTTP/HTTPS API. Think of it as a metrics aggregation layer that sits between your systems and your monitoring tools (PRTG, Nagios, Grafana, etc.).
 
 ```mermaid
 graph LR
-    A[SenHub Agent] -->|Collects| B[Metrics<br/>CPU, Memory, etc.]
-    B -->|Storage| C[Local Cache]
-    C -->|Exposition| D[Web Interface<br/>:8080/:8443]
-    D -->|Access| E[Browser<br/>PRTG/Nagios]
+    SYS[System Resources<br/>CPU, Memory, Disk] --> AGENT[SenHub Agent<br/>Collection & Cache]
+    INFRA[Infrastructure<br/>Redfish, Citrix, NetScaler] --> AGENT
+    AGENT --> API[HTTP/HTTPS API<br/>:8080 or :8443]
+    API --> PRTG[PRTG Sensors]
+    API --> NAGIOS[Nagios Checks]
+    API --> GRAFANA[Grafana Dashboards]
 
-    style A fill:#81d4fa
-    style C fill:#fff9c4
-    style D fill:#c8e6c9
+    style AGENT fill:#81d4fa
+    style API fill:#c8e6c9
 ```
 
-> **💡 Note**: An **online mode** also exists (reserved for connection to the centralized SenHub platform), but this guide focuses on offline installation, the most common mode.
+### Default Installation Mode: Offline
+
+The standard installation configures the agent in **offline mode**, which means:
+
+- **Autonomous operation**: The agent runs independently without external dependencies
+- **Local configuration**: Settings managed via local YAML file
+- **No outbound connections**: Suitable for air-gapped environments or DMZ servers
+- **Local data exposure**: Metrics accessible only via local HTTP/HTTPS interface
+
+This mode is ideal for:
+- Production environments with strict security policies
+- Development and testing scenarios
+- Edge computing deployments
+- Infrastructure with limited or no internet connectivity
+
+> **Note**: An **online mode** exists for integration with the SenHub centralized platform, but this is a reserved feature and not covered in this guide.
 
 ---
 
 ## System Requirements
 
-Before starting, ensure your system meets these minimum requirements.
+### Supported Platforms
 
-### Supported Operating Systems
+SenHub Agent is compiled for all major operating systems and architectures:
 
-SenHub Agent runs on all modern platforms:
-
-| Platform | Supported Versions | Architecture |
-|----------|-------------------|--------------|
-| **Windows** | Windows Server 2012+ / Windows 10+ | x64 |
-| **Linux** | Ubuntu 18.04+, RHEL 7+, CentOS 7+, Debian 10+ | x64, ARM64 |
-| **macOS** | macOS 10.13+ (High Sierra and later) | x64, ARM64 (M1/M2) |
+| Platform | Versions | Architecture | Notes |
+|----------|----------|--------------|-------|
+| **Windows** | Server 2012+, Windows 10+ | x64 | Runs as Windows Service |
+| **Linux** | RHEL 7+, Ubuntu 18.04+, Debian 10+ | x64, ARM64 | Systemd-based distributions |
+| **macOS** | macOS 10.13+ (High Sierra) | x64, ARM64 (M1/M2) | LaunchDaemon integration |
 
 ### Resource Requirements
 
-Requirements are very modest:
+The agent is designed for minimal resource consumption:
 
-| Resource | Minimum | Recommended |
-|----------|---------|-------------|
-| **CPU** | 1 core | 2 cores |
-| **RAM** | 256 MB | 512 MB |
-| **Disk** | 100 MB | 500 MB |
+| Resource | Minimum | Typical | Notes |
+|----------|---------|---------|-------|
+| **CPU** | 1 core | 1 core | Low CPU usage (~1-2% idle) |
+| **RAM** | 256 MB | 512 MB | Varies with cache retention settings |
+| **Disk** | 100 MB | 500 MB | Binary + logs + cache |
 
-> **Note**: Actual consumption varies based on the number of active probes and collection frequency. In practice, the agent typically uses less than 100 MB of RAM in standard configuration.
+**Real-world consumption example**: With 5 active probes (CPU, memory, disk, network, redfish) collecting every 60 seconds:
+- CPU: ~2-3% on average
+- RAM: ~80-120 MB
+- Disk I/O: Minimal (log rotation configured)
 
 ### Network Ports
 
-The agent exposes a local HTTP/HTTPS interface to access metrics:
+The agent requires one listening port for its HTTP/HTTPS interface:
 
-| Port | Protocol | Usage | Required |
-|------|----------|-------|----------|
-| **8080** | HTTP | Web interface, API (default) | ✅ HTTP mode |
-| **8443** | HTTPS | Web interface, secure API | ✅ HTTPS mode |
-| **443** | HTTPS | SenHub platform (if online mode) | ❌ Offline mode |
-| **514** | UDP/TCP | Syslog reception (if syslog probe enabled) | ⚠️ Optional |
+| Port | Protocol | Usage | Configuration |
+|------|----------|-------|---------------|
+| **8080** | HTTP | Default (development) | `--offline` |
+| **8443** | HTTPS | Production (recommended) | `--offline --enable-https` |
 
-**Outbound flows for online mode** (if used):
-- `eu-west-1.intake.senhub.io:443` (HTTPS) - Communication with SenHub platform
+**Additional ports** (only if specific probes are enabled):
+- **514 UDP/TCP**: Syslog reception (if syslog probe configured)
 
-> **💡 Tip**: For complete air-gap usage, only port 8080 or 8443 is needed (accessible only from your local network).
+**Outbound connectivity** (only for online mode - not covered here):
+- `eu-west-1.intake.senhub.io:443` (HTTPS)
 
 ### Required Permissions
 
-System service installation requires administrative rights:
+Installation requires administrative privileges to:
+- Create system service (Windows Service, systemd unit, or LaunchDaemon)
+- Write to system directories (`/usr/local/bin`, `/etc`, `/var/log`)
+- Generate TLS certificates (if HTTPS enabled)
 
-- **Windows**: Administrator
-- **Linux**: root or sudo
-- **macOS**: root or sudo
-
-> **💡 Alternative**: The agent can also be launched manually without elevated privileges if you don't need the system service (useful for console mode testing).
+**Platforms**:
+- Windows: Administrator account
+- Linux: root or sudo access
+- macOS: root or sudo access
 
 ---
 
 ## Download
 
-SenHub Agent binaries are available on the official releases server.
-
-### Download URL
+All official releases are available at:
 
 ```
 https://eu-west-1.intake.senhub.io/releases
 ```
 
-Select the version and architecture matching your system:
+### Selecting Your Binary
+
+Choose the binary matching your platform and architecture:
 
 **Windows**:
-- `senhub-agent_windows_amd64.exe` (x64)
+```
+senhub-agent_windows_amd64.exe
+```
 
 **Linux**:
-- `senhub-agent_linux_amd64` (x64)
-- `senhub-agent_linux_arm64` (ARM64 - Raspberry Pi, etc.)
+```
+senhub-agent_linux_amd64       # Standard x64 servers
+senhub-agent_linux_arm64       # ARM-based systems (Raspberry Pi, AWS Graviton)
+```
 
 **macOS**:
-- `senhub-agent_darwin_amd64` (Intel x64)
-- `senhub-agent_darwin_arm64` (Apple Silicon M1/M2/M3)
+```
+senhub-agent_darwin_amd64      # Intel-based Macs
+senhub-agent_darwin_arm64      # Apple Silicon (M1/M2/M3)
+```
 
-> **📸 SCREENSHOT TO INSERT**: Release page showing list of available versions and binaries
+### Verifying Download Integrity
 
-### Integrity Verification (Optional)
-
-To verify the binary hasn't been tampered with:
+For security-critical deployments, verify the binary checksum:
 
 ```bash
-# Download checksum
+# Download checksum file
 curl -O https://eu-west-1.intake.senhub.io/releases/{version}/checksums.txt
 
-# Verify
+# Verify (Linux/macOS)
 sha256sum -c checksums.txt
+
+# Verify (Windows PowerShell)
+Get-FileHash senhub-agent_windows_amd64.exe -Algorithm SHA256
 ```
 
 ---
 
 ## Windows Installation
 
-This section guides you through installing SenHub Agent on Windows Server or Windows 10/11. Installation creates a Windows service that starts automatically with the system.
+This section covers installation on Windows Server (2012+) and Windows 10/11 client systems.
 
-### Step 1: Download the Binary
+### Installation Overview
 
-Download the Windows binary from:
-```
-https://eu-west-1.intake.senhub.io/releases/senhub-agent_windows_amd64.exe
-```
+The Windows installation process:
+1. Creates installation directory (`C:\Program Files\SenHub`)
+2. Installs the binary with execution permissions
+3. Generates configuration file (`agent-config.yaml`)
+4. Creates Windows Service (auto-start enabled)
+5. Optionally generates self-signed TLS certificates
 
-### Step 2: Prepare the Environment
+### Step 1: Download and Prepare
 
-Create a folder for the agent and move the binary:
+Open PowerShell as Administrator:
 
 ```powershell
-# Open PowerShell as Administrator
+# Create installation directory
 New-Item -ItemType Directory -Force -Path "C:\Program Files\SenHub"
 cd "C:\Program Files\SenHub"
 
-# Move the downloaded binary
-Move-Item "C:\Users\YOUR_USER\Downloads\senhub-agent_windows_amd64.exe" .
+# Download binary (using curl or browser)
+# Then move to installation directory
+Move-Item "$env:USERPROFILE\Downloads\senhub-agent_windows_amd64.exe" .
+
+# Rename for convenience
+Rename-Item senhub-agent_windows_amd64.exe senhub-agent.exe
 ```
 
-### Step 3: Choose Installation Mode
+### Step 2: Choose Installation Mode
 
-You have a choice between two installation modes based on your security needs.
+You must choose between HTTP (development) or HTTPS (production) installation.
 
-#### Option A: HTTP Installation (Development/Testing)
+#### HTTP Installation - Development/Testing
 
-**When to use**: Development environment, localhost access only.
+**Use case**: Local development, testing environments, or when accessing only via localhost.
 
 ```powershell
-.\senhub-agent_windows_amd64.exe install --offline
+.\senhub-agent.exe install --offline
 ```
 
-**What is configured**:
-- Port: `8080`
-- Bind: `127.0.0.1` (localhost only)
-- Protocol: HTTP (unencrypted)
-- Access: `http://localhost:8080/web/{key}/dashboard`
+**Configuration created**:
+- **Port**: 8080
+- **Bind address**: 127.0.0.1 (localhost only)
+- **Protocol**: HTTP (unencrypted)
+- **Access URL**: `http://localhost:8080/web/{key}/dashboard`
 
-> **🔑 Important Note**: Carefully note the agent key (UUID) displayed during installation, you'll need it to access the web interface.
+**Security note**: This configuration is only accessible from the local machine. Suitable for development but not for production networks.
 
-**📸 SCREENSHOT TO INSERT**: PowerShell showing installation output with agent key highlighted
+#### HTTPS Installation - Production (Recommended)
 
-#### Option B: HTTPS Installation (Production Recommended)
-
-**When to use**: Production environment, access from other network machines.
+**Use case**: Production deployments requiring network access from monitoring systems.
 
 ```powershell
-.\senhub-agent_windows_amd64.exe install --offline --enable-https
+.\senhub-agent.exe install --offline --enable-https
 ```
 
-**What is configured**:
-- Port: `8443`
-- Bind: `0.0.0.0` (accessible from network)
-- Protocol: HTTPS (encrypted TLS 1.2+)
-- Certificates: Auto-generated (self-signed)
-- Access: `https://monitoring.company.local:8443/web/{key}/dashboard`
+**Configuration created**:
+- **Port**: 8443
+- **Bind address**: 0.0.0.0 (accessible from network)
+- **Protocol**: HTTPS with TLS 1.2+
+- **Certificates**: Auto-generated self-signed (365 days validity)
+- **Access URL**: `https://server-hostname:8443/web/{key}/dashboard`
 
-**Generated certificates**:
-```
-C:\Program Files\SenHub\certs\
-├── agent-cert.pem  (SSL Certificate)
-└── agent-key.pem   (Private Key)
-```
-
-Installation automatically generates an SSL certificate with SANs for `localhost` and `127.0.0.1`. To add other hostnames:
+**Custom certificate installation** (optional):
 
 ```powershell
-.\senhub-agent_windows_amd64.exe install --offline --enable-https `
-  --https-hosts "monitoring.company.local,192.168.1.100"
+.\senhub-agent.exe install --offline --enable-https \
+  --cert-file "C:\Certs\monitoring.crt" \
+  --key-file "C:\Certs\monitoring.key"
 ```
 
-**📸 SCREENSHOT TO INSERT**: Windows Explorer showing `C:\Program Files\SenHub\certs\` folder with certificate files
+**Certificate requirements**:
+- X.509 format (PEM-encoded)
+- Valid for agent hostname or IP
+- Includes complete certificate chain (if CA-signed)
 
-### Step 4: Start the Service
+### Step 3: Note Your Agent Key
 
-Once installed, start the service:
+During installation, the agent generates a unique UUID authentication key. This key is required to access the web interface and API.
+
+**Save this key securely** - you'll need it for:
+- Accessing the web dashboard
+- Configuring PRTG sensors
+- Setting up Nagios checks
+
+**Retrieving the key later**:
 
 ```powershell
-.\senhub-agent_windows_amd64.exe start
+# Read from configuration file
+Select-String -Path "C:\Program Files\SenHub\agent-config.yaml" -Pattern "key:"
 ```
 
-Verify it's running:
+### Step 4: Verify Installation
+
+Check that the Windows Service is running:
 
 ```powershell
-.\senhub-agent_windows_amd64.exe status
+# Check service status
+Get-Service SenHubAgent
+
+# Should show: Status = Running
+
+# Test HTTP endpoint
+curl http://localhost:8080/api/{YOUR-KEY}/info/system
+# Or for HTTPS:
+curl -k https://localhost:8443/api/{YOUR-KEY}/info/system
 ```
 
-Or via Windows Services console:
-
-```powershell
-Get-Service "SenHub Agent"
+Expected response:
+```json
+{
+  "hostname": "SERVER-01",
+  "os": "windows",
+  "agent_version": "0.1.72",
+  "mode": "offline"
+}
 ```
 
-**📸 SCREENSHOT TO INSERT**: Windows Services showing "SenHub Agent" with "Running" status
+### Windows Firewall Configuration
 
-### Step 5: Configure Firewall
-
-If using HTTPS and wanting to access the agent from other machines, open the port in the firewall:
+If accessing from other machines, configure Windows Firewall:
 
 ```powershell
-# Allow port 8443 (HTTPS)
+# Allow inbound HTTPS
 New-NetFirewallRule -DisplayName "SenHub Agent HTTPS" `
   -Direction Inbound -Protocol TCP -LocalPort 8443 -Action Allow
 
-# Or for HTTP (port 8080)
+# Or for HTTP
 New-NetFirewallRule -DisplayName "SenHub Agent HTTP" `
   -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow
-```
-
-### Windows Files and Folders
-
-After installation, the agent creates this structure:
-
-```
-C:\Program Files\SenHub\
-├── senhub-agent_windows_amd64.exe    # Main binary
-├── agent-config.yaml                 # Configuration (generated at install)
-└── certs\                            # SSL certificates (if HTTPS)
-    ├── agent-cert.pem
-    └── agent-key.pem
-
-C:\ProgramData\SenHub\Logs\
-└── agent.log                         # Agent logs
 ```
 
 ---
 
 ## Linux Installation
 
-Linux installation is straightforward using the standalone binary. This section covers Ubuntu, Debian, RHEL, CentOS, and other modern distributions.
+This section covers installation on systemd-based Linux distributions (RHEL, CentOS, Ubuntu, Debian).
 
-### Step 1: Download the Binary
+### Installation Overview
 
-Download the binary matching your architecture:
+The Linux installation process:
+1. Installs binary to `/usr/local/bin`
+2. Creates configuration directory (`/etc/senhub-agent`)
+3. Generates configuration file
+4. Creates systemd service unit
+5. Enables auto-start on boot
 
-```bash
-# For x64 (most servers)
-wget https://eu-west-1.intake.senhub.io/releases/senhub-agent_linux_amd64
-
-# For ARM64 (Raspberry Pi, ARM servers)
-wget https://eu-west-1.intake.senhub.io/releases/senhub-agent_linux_arm64
-```
-
-### Step 2: Install the Binary
-
-Make it executable and move to `/usr/local/bin`:
+### Step 1: Download Binary
 
 ```bash
+# Download appropriate binary
+cd /tmp
+curl -LO https://eu-west-1.intake.senhub.io/releases/senhub-agent_linux_amd64
+
+# Verify permissions
 chmod +x senhub-agent_linux_amd64
-sudo mv senhub-agent_linux_amd64 /usr/local/bin/senhub-agent
 ```
 
-Verify installation:
+### Step 2: Choose Installation Mode
+
+#### HTTP Installation - Development/Testing
 
 ```bash
-senhub-agent version
+sudo ./senhub-agent_linux_amd64 install --offline
 ```
 
-You should see the agent version displayed.
+**Configuration created**:
+- **Port**: 8080
+- **Bind**: 127.0.0.1
+- **Protocol**: HTTP
+- **Access**: `http://localhost:8080/web/{key}/dashboard`
 
-**📸 SCREENSHOT TO INSERT**: Terminal showing `senhub-agent version` output
-
-### Step 3: Choose Installation Mode
-
-Like Windows, you can choose between HTTP (development) and HTTPS (production).
-
-#### Option A: HTTP Installation (Development)
+#### HTTPS Installation - Production (Recommended)
 
 ```bash
-sudo senhub-agent install --offline
+sudo ./senhub-agent_linux_amd64 install --offline --enable-https
 ```
 
-Agent will be accessible at `http://localhost:8080`
+**Configuration created**:
+- **Port**: 8443
+- **Bind**: 0.0.0.0
+- **Protocol**: HTTPS
+- **Certificates**: `/etc/senhub-agent/certs/`
+- **Access**: `https://server-hostname:8443/web/{key}/dashboard`
 
-#### Option B: HTTPS Installation (Production Recommended)
+**Custom certificates** (Let's Encrypt or CA-signed):
 
 ```bash
-sudo senhub-agent install --offline --enable-https
+sudo ./senhub-agent_linux_amd64 install --offline --enable-https \
+  --cert-file /etc/letsencrypt/live/monitoring.company.com/fullchain.pem \
+  --key-file /etc/letsencrypt/live/monitoring.company.com/privkey.pem
 ```
 
-Agent will be accessible at `https://localhost:8443` (or via server IP from network).
+### Step 3: Save Agent Key
 
-**To specify custom hostnames**:
+During installation, note the generated agent key:
 
 ```bash
-sudo senhub-agent install --offline --enable-https \
-  --https-hosts "monitoring.company.local,192.168.1.100"
+# Retrieve key from configuration
+sudo grep "key:" /etc/senhub-agent/agent-config.yaml
 ```
 
-This generates an SSL certificate with appropriate SANs to avoid browser security warnings.
-
-### Step 4: Start the Service
-
-Installation automatically creates a systemd service. Enable and start it:
-
-```bash
-sudo systemctl enable senhub-agent
-sudo systemctl start senhub-agent
+Output example:
+```yaml
+agent:
+  key: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
 ```
 
-Check status:
+### Step 4: Verify Installation
 
 ```bash
+# Check systemd service
 sudo systemctl status senhub-agent
-```
 
-You should see:
-```
-● senhub-agent.service - SenHub Agent
-   Loaded: loaded (/etc/systemd/system/senhub-agent.service; enabled)
-   Active: active (running) since ...
-```
+# Should show: Active: active (running)
 
-**📸 SCREENSHOT TO INSERT**: Terminal with `systemctl status senhub-agent` output showing "active (running)" in green
+# Test endpoint
+curl http://localhost:8080/api/{YOUR-KEY}/info/system
+# Or for HTTPS:
+curl -k https://localhost:8443/api/{YOUR-KEY}/info/system
+```
 
 ### Step 5: Configure Firewall
 
-Open the necessary port in your firewall.
-
 **UFW (Ubuntu/Debian)**:
-
 ```bash
-sudo ufw allow 8443/tcp comment 'SenHub Agent HTTPS'
+sudo ufw allow 8443/tcp comment "SenHub Agent HTTPS"
 sudo ufw reload
 ```
 
-**firewalld (RHEL/CentOS/Rocky Linux)**:
-
+**Firewalld (RHEL/CentOS)**:
 ```bash
 sudo firewall-cmd --permanent --add-port=8443/tcp
 sudo firewall-cmd --reload
 ```
 
-### Systemd Service Configuration
+### Systemd Service Management
 
-The automatically created service file is in `/etc/systemd/system/senhub-agent.service`:
+```bash
+# Start/Stop/Restart
+sudo systemctl start senhub-agent
+sudo systemctl stop senhub-agent
+sudo systemctl restart senhub-agent
 
-```ini
-[Unit]
-Description=SenHub Agent
-After=network.target
+# Enable/Disable auto-start
+sudo systemctl enable senhub-agent
+sudo systemctl disable senhub-agent
 
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/senhub-agent run --offline
-Restart=on-failure
-RestartSec=10s
-
-[Install]
-WantedBy=multi-user.target
-```
-
-This service starts automatically at boot and restarts on failure.
-
-### Linux Files and Folders
-
-```
-/usr/local/bin/
-└── senhub-agent                      # Main binary
-
-/etc/senhub-agent/
-└── agent-config.yaml                 # Configuration
-
-/var/lib/senhub-agent/
-└── certs/                            # SSL certificates (if HTTPS)
-    ├── agent-cert.pem
-    └── agent-key.pem
-
-/var/log/senhub-agent/
-└── agent.log                         # Logs
+# View logs
+sudo journalctl -u senhub-agent -f
 ```
 
 ---
 
 ## macOS Installation
 
-macOS installation works similarly to Linux, with creation of a LaunchDaemon to manage the service.
+This section covers installation on macOS 10.13+ (High Sierra and later), supporting both Intel and Apple Silicon.
 
-### Step 1: Download the Binary
+### Installation Overview
 
-Download the binary matching your Mac:
+macOS installation creates a LaunchDaemon for system-level service management.
+
+### Step 1: Download Binary
 
 ```bash
-# For Intel Mac (x64)
+# Intel Macs
 curl -LO https://eu-west-1.intake.senhub.io/releases/senhub-agent_darwin_amd64
 
-# For Apple Silicon Mac (M1/M2/M3)
+# Apple Silicon (M1/M2/M3)
 curl -LO https://eu-west-1.intake.senhub.io/releases/senhub-agent_darwin_arm64
-```
 
-### Step 2: Install the Binary
-
-```bash
 # Make executable
-chmod +x senhub-agent_darwin_amd64  # or arm64
-
-# Move to /usr/local/bin
-sudo mv senhub-agent_darwin_amd64 /usr/local/bin/senhub-agent
+chmod +x senhub-agent_darwin_*
 ```
 
-### Step 3: Allow Execution (macOS Security)
+### Step 2: Install
 
-macOS blocks binaries downloaded from the Internet by default. Allow execution:
-
+#### HTTP Mode:
 ```bash
-sudo xattr -d com.apple.quarantine /usr/local/bin/senhub-agent
+sudo ./senhub-agent_darwin_amd64 install --offline
 ```
 
-**Alternative**: If a security popup appears at launch, go to **System Preferences → Security & Privacy** and click "Open Anyway".
-
-**📸 SCREENSHOT TO INSERT**: macOS dialog "The application cannot be opened because it is from an unidentified developer"
-
-### Step 4: Install the Service
-
+#### HTTPS Mode (Recommended):
 ```bash
-# HTTPS installation (recommended)
-sudo senhub-agent install --offline --enable-https
+sudo ./senhub-agent_darwin_amd64 install --offline --enable-https
 ```
 
-This creates a LaunchDaemon in `/Library/LaunchDaemons/io.senhub.agent.plist` that starts the agent automatically at boot.
+Configuration locations:
+- **Binary**: `/usr/local/bin/senhub-agent`
+- **Config**: `/usr/local/etc/senhub-agent/agent-config.yaml`
+- **LaunchDaemon**: `/Library/LaunchDaemons/io.senhub.agent.plist`
+- **Logs**: `/Library/Logs/SenHub/agent.log`
 
-### Step 5: Start the Service
+### Step 3: Verify Installation
 
 ```bash
-# Load the LaunchDaemon
+# Check LaunchDaemon status
+sudo launchctl list | grep senhub
+
+# Test endpoint
+curl http://localhost:8080/api/{YOUR-KEY}/info/system
+```
+
+### LaunchDaemon Management
+
+```bash
+# Start
 sudo launchctl load /Library/LaunchDaemons/io.senhub.agent.plist
 
-# Verify it's running
-sudo launchctl list | grep senhub
-```
+# Stop
+sudo launchctl unload /Library/LaunchDaemons/io.senhub.agent.plist
 
-You should see a line with `io.senhub.agent`.
-
-**📸 SCREENSHOT TO INSERT**: macOS terminal with `launchctl list | grep senhub` output
-
-### LaunchDaemon Configuration
-
-The automatically created plist file:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>io.senhub.agent</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/local/bin/senhub-agent</string>
-        <string>run</string>
-        <string>--offline</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-</dict>
-</plist>
-```
-
-### macOS Files and Folders
-
-```
-/usr/local/bin/
-└── senhub-agent                      # Main binary
-
-/usr/local/etc/senhub-agent/
-└── agent-config.yaml                 # Configuration
-
-/usr/local/var/senhub-agent/
-└── certs/                            # SSL certificates (if HTTPS)
-    ├── agent-cert.pem
-    └── agent-key.pem
-
-/Library/Logs/SenHub/
-└── agent.log                         # Logs
+# View logs
+tail -f /Library/Logs/SenHub/agent.log
 ```
 
 ---
 
-## Getting Started
+## Post-Installation
 
-Congratulations! Your SenHub agent is now installed and running. Here's how to verify everything works correctly and access your first metrics.
+After installation, complete these steps to start using the agent.
 
-### 1. Retrieve the Agent Key
+### Access the Web Dashboard
 
-The agent key (authentication key) is a UUID automatically generated during installation. You need it to access the web interface and APIs.
+The web dashboard provides a visual interface for monitoring and configuration.
 
-**Method 1: Check configuration**
+**URL format**:
+```
+http(s)://<hostname>:<port>/web/{agent-key}/dashboard
+```
 
+**Examples**:
+```
+# HTTP local access
+http://localhost:8080/web/f47ac10b-58cc-4372-a567-0e02b2c3d479/dashboard
+
+# HTTPS network access
+https://monitoring.company.com:8443/web/f47ac10b-58cc-4372-a567-0e02b2c3d479/dashboard
+```
+
+### Configure Initial Probes
+
+The default installation includes basic system probes (CPU, memory, disk, network). To add additional monitoring capabilities, edit the configuration file.
+
+**Configuration file locations**:
+- **Windows**: `C:\Program Files\SenHub\agent-config.yaml`
+- **Linux**: `/etc/senhub-agent/agent-config.yaml`
+- **macOS**: `/usr/local/etc/senhub-agent/agent-config.yaml`
+
+**Example - Adding Redfish hardware monitoring**:
+
+```yaml
+probes:
+  # Existing system probes
+  - name: cpu
+    type: cpu
+    params:
+      interval: 30
+
+  # Add Redfish probe
+  - name: "Production Server iDRAC"
+    type: redfish
+    params:
+      endpoint: "https://idrac.company.com"
+      username: "monitoring"
+      password: "SecurePassword"
+      interval: 300
+      verify_ssl: true
+```
+
+After editing, restart the agent:
 ```bash
+# Windows
+Restart-Service SenHubAgent
+
 # Linux
-cat /etc/senhub-agent/agent-config.yaml | grep "authentication_key:"
+sudo systemctl restart senhub-agent
 
 # macOS
-cat /usr/local/etc/senhub-agent/agent-config.yaml | grep "authentication_key:"
-
-# Windows
-type "C:\Program Files\SenHub\agent-config.yaml" | findstr "authentication_key:"
+sudo launchctl unload /Library/LaunchDaemons/io.senhub.agent.plist
+sudo launchctl load /Library/LaunchDaemons/io.senhub.agent.plist
 ```
 
-**Method 2: Check installation logs**
+See [Probes Configuration](./PROBES-CONFIGURATION.md) for complete probe documentation.
 
-The key is displayed during installation in the logs.
+### Integrate with Monitoring Tools
 
-### 2. Verify the Service
+The agent exposes metrics in formats compatible with popular monitoring platforms:
 
-Ensure the service is running properly.
-
-**Windows**:
-```powershell
-Get-Service "SenHub Agent"
-# Should display: Status = Running
+**PRTG Network Monitor**:
+```
+Sensor Type: HTTP XML/REST Value
+URL: https://monitoring.company.com:8443/api/{key}/prtg/metrics/cpu
 ```
 
-**Linux**:
+**Nagios/Icinga**:
 ```bash
-sudo systemctl status senhub-agent
-# Should display: Active: active (running)
-```
-
-**macOS**:
-```bash
-sudo launchctl list | grep senhub
-# Should return a line with the PID
-```
-
-### 3. Check Logs
-
-Logs confirm the agent is collecting metrics.
-
-**View last 20 lines**:
-
-```bash
-# Linux
-sudo tail -20 /var/log/senhub-agent/agent.log
-
-# macOS
-sudo tail -20 /Library/Logs/SenHub/agent.log
-
-# Windows
-Get-Content "C:\ProgramData\SenHub\Logs\agent.log" -Tail 20
-```
-
-**Expected logs (successful startup)**:
-
-```
-2025-12-19T10:00:00Z INF Agent started version=0.1.80 mode=offline module=agent.core
-2025-12-19T10:00:00Z INF HTTP server started port=8443 tls=true module=strategy.http
-2025-12-19T10:00:01Z INF Probe started probe=cpu interval=30s module=probe.cpu
-2025-12-19T10:00:01Z INF Probe started probe=memory interval=30s module=probe.memory
-2025-12-19T10:00:01Z INF Probe started probe=logicaldisk interval=60s module=probe.logicaldisk
-2025-12-19T10:00:01Z INF Probe started probe=network interval=60s module=probe.network
-```
-
-If you see these lines, everything is working correctly!
-
-### 4. Test the REST API
-
-Before opening the browser, quickly test the API:
-
-```bash
-# Replace {AGENT_KEY} with your actual key
-curl -k https://localhost:8443/api/{AGENT_KEY}/info/system
-```
-
-**Expected response**:
-
-```json
-{
-  "hostname": "PROD-SERVER-01",
-  "os": "linux",
-  "os_version": "Ubuntu 22.04.3 LTS",
-  "agent_version": "0.1.80",
-  "uptime_seconds": 135,
-  "mode": "offline",
-  "cache": {
-    "retention_minutes": 10
-  }
+define command {
+    command_name    check_senhub
+    command_line    $USER1$/check_http -H $HOSTADDRESS$ -p 8443 -S \
+                    -u /api/{key}/nagios/status
 }
 ```
 
-**📸 SCREENSHOT TO INSERT**: Terminal with curl command and formatted JSON response
-
-### 5. Access the Web Interface
-
-Open your browser and go to the dashboard:
-
-**HTTP mode**:
+**Grafana**:
 ```
-http://localhost:8080/web/{AGENT_KEY}/dashboard
+Datasource: JSON API
+URL: https://monitoring.company.com:8443
+Custom Header: X-API-Key: {your-key}
 ```
 
-**HTTPS mode**:
-```
-https://localhost:8443/web/{AGENT_KEY}/dashboard
-```
-
-> **💡 HTTPS Note**: If using a self-signed certificate, your browser will show a security warning. Click "Advanced" then "Continue to site" (labels vary by browser).
-
-**What you should see**:
-- System overview (hostname, OS, uptime)
-- License status (Free tier by default)
-- List of active probes (cpu, memory, logicaldisk, network)
-- Real-time metrics (graphs, values)
-
-**📸 SCREENSHOT TO INSERT**: Complete dashboard showing CPU, Memory, Disk, Network metrics with graphs
-
-### 6. Explore the API
-
-The dashboard includes an interactive **API Explorer** to test all available endpoints.
-
-**Navigate to**: `https://localhost:8443/web/{AGENT_KEY}/api-explorer`
-
-**Try these endpoints**:
-
-| Endpoint | Description | Format |
-|----------|-------------|--------|
-| `/api/{key}/info/probes` | List of active probes | JSON |
-| `/api/{key}/metrics` | All metrics | JSON |
-| `/api/{key}/prtg/metrics/cpu` | CPU metrics for PRTG | XML |
-| `/api/{key}/license/status` | License status | JSON |
-
-**📸 SCREENSHOT TO INSERT**: API Explorer showing call to `/info/probes` with JSON response
-
-### Validation Checklist
-
-Verify everything works:
-
-- [ ] Service started and active
-- [ ] Logs without critical errors (`ERR` or `FATAL`)
-- [ ] Web interface accessible
-- [ ] API responds with code 200
-- [ ] Dashboard displays CPU/Memory metrics
-- [ ] Probes collecting data (`/info/probes` returns counters > 0)
-
-If all points are checked, your installation is successful! 🎉
-
-### Next Steps
-
-Now that the agent is installed, you can:
-
-1. **Understand modes**: Read [OPERATING-MODES.md](./OPERATING-MODES.md) for online/offline differences
-2. **Configure agent**: See [AGENT-CONFIGURATION.md](./AGENT-CONFIGURATION.md) to customize configuration
-3. **Add probes**: Check [PROBES-CONFIGURATION.md](./PROBES-CONFIGURATION.md) to monitor Redfish, Citrix, NetScaler, etc.
-4. **Integrate with PRTG/Nagios**: Read [METRICS-USAGE.md](./METRICS-USAGE.md)
+See [Metrics Usage](./METRICS-USAGE.md) for detailed integration guides.
 
 ---
 
 ## Uninstallation
 
-If you need to uninstall the agent, follow these steps.
-
-### Standard Uninstallation
-
-This method removes the service but keeps configuration and logs.
-
-**Windows**:
+### Windows
 
 ```powershell
-# Stop the service
-.\senhub-agent.exe stop
-
-# Uninstall the service
+# Stop and remove service
+cd "C:\Program Files\SenHub"
 .\senhub-agent.exe uninstall
 
-# Manually remove files
-Remove-Item -Recurse "C:\Program Files\SenHub"
+# Remove files
+cd ..
+Remove-Item -Recurse -Force SenHub
 ```
 
-**Linux**:
+### Linux
 
 ```bash
-# Stop the service
+# Stop and remove service
 sudo systemctl stop senhub-agent
+sudo systemctl disable senhub-agent
+sudo rm /etc/systemd/system/senhub-agent.service
+sudo systemctl daemon-reload
 
-# Uninstall
-sudo senhub-agent uninstall
-
-# Remove binary
+# Remove files
 sudo rm /usr/local/bin/senhub-agent
+sudo rm -rf /etc/senhub-agent
+sudo rm -rf /var/log/senhub-agent
 ```
 
-**macOS**:
+### macOS
 
 ```bash
-# Stop the service
+# Stop and remove LaunchDaemon
 sudo launchctl unload /Library/LaunchDaemons/io.senhub.agent.plist
+sudo rm /Library/LaunchDaemons/io.senhub.agent.plist
 
-# Uninstall
-sudo senhub-agent uninstall
-
-# Remove binary
+# Remove files
 sudo rm /usr/local/bin/senhub-agent
+sudo rm -rf /usr/local/etc/senhub-agent
+sudo rm -rf /Library/Logs/SenHub
 ```
-
-### Complete Uninstallation (Purge)
-
-This method removes **everything**: service, configuration, certificates, logs.
-
-```bash
-# All platforms
-sudo senhub-agent uninstall --purge
-```
-
-**Files removed**:
-- Configuration (`agent-config.yaml`)
-- SSL certificates (`certs/`)
-- Logs (`agent.log`)
-- Local cache
 
 ---
 
-## Installation Troubleshooting
+## Next Steps
 
-Here are common issues and their solutions.
+After installation:
 
-### Issue: Service won't start
+1. **[Configure Operating Mode](./OPERATING-MODES.md)** - Understand offline vs online mode
+2. **[Configure the Agent](./AGENT-CONFIGURATION.md)** - License, cache, auto-update settings
+3. **[Add Monitoring Probes](./PROBES-CONFIGURATION.md)** - Enable additional metrics collection
+4. **[Access Web Interface](./WEB-INTERFACE.md)** - Explore the dashboard and API Explorer
+5. **[Integrate with Tools](./METRICS-USAGE.md)** - Connect PRTG, Nagios, or Grafana
 
-**Symptoms**: `systemctl status senhub-agent` shows "failed" or service stops immediately.
-
-**Solution**:
-
-1. **Check detailed logs**:
-
-```bash
-# Linux
-sudo journalctl -u senhub-agent -n 50
-
-# Windows
-Get-Content "C:\ProgramData\SenHub\Logs\agent.log" -Tail 50
-
-# macOS
-sudo tail -50 /Library/Logs/SenHub/agent.log
-```
-
-2. **Common errors**:
-
-**"Port already in use"**:
-```bash
-# Identify which process is using the port
-sudo lsof -i :8443  # Linux/macOS
-netstat -ano | findstr :8443  # Windows
-
-# Solution: Change port
-senhub-agent install --offline --enable-https --https-port 9443
-```
-
-**"Permission denied"**:
-- Verify you have admin/root rights
-- On Linux: Check binary permissions (`chmod +x`)
-
-**"Configuration file not found"**:
-- Re-run `senhub-agent install --offline` to regenerate config
-
-### Issue: Invalid HTTPS certificates
-
-**Symptoms**: Browser refuses connection with SSL error.
-
-**Solution**:
-
-```bash
-# Regenerate certificates
-sudo senhub-agent stop
-sudo rm -rf ./certs/  # or /var/lib/senhub-agent/certs/
-sudo senhub-agent install --offline --enable-https \
-  --https-hosts "monitoring.local,192.168.1.100"
-sudo senhub-agent start
-```
-
-### Issue: Web interface inaccessible from network
-
-**Symptoms**: `curl http://localhost:8080` works, but not from another machine.
-
-**Solutions**:
-
-1. **Check bind address**:
-
-```bash
-# Configuration must have bind_address: "0.0.0.0"
-cat /etc/senhub-agent/agent-config.yaml | grep bind_address
-```
-
-If you see `127.0.0.1`, reinstall with HTTPS which uses `0.0.0.0` by default.
-
-2. **Check firewall**:
-
-```bash
-# Test if port is open
-sudo netstat -tlnp | grep 8443
-
-# If port not listed, check firewall
-sudo ufw status  # Ubuntu
-sudo firewall-cmd --list-ports  # RHEL/CentOS
-```
-
-### Support
-
-If you encounter other issues:
-
-- **Complete documentation**: See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)
-- **Email**: support@senhub.io
-- **GitHub Issues**: https://github.com/senhub-io/senhub-agent/issues
-
----
-
-**You're ready!** Installation is complete. Now check [AGENT-CONFIGURATION.md](./AGENT-CONFIGURATION.md) to customize your configuration and [PROBES-CONFIGURATION.md](./PROBES-CONFIGURATION.md) to add advanced monitoring probes.
+For installation issues, see [Troubleshooting](./TROUBLESHOOTING.md).
