@@ -1,6 +1,7 @@
 #!/bin/bash
 # Generate consolidated Word documentation from Markdown files
 # Transforms cross-file links into internal section links
+# Converts Mermaid diagrams to PNG images
 # Usage: ./generate-word-doc.sh
 
 set -e
@@ -8,10 +9,12 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 OUTPUT_FILE="$SCRIPT_DIR/SenHub-Agent-User-Guide-Complete.docx"
 TEMP_DIR="$SCRIPT_DIR/.temp-word-gen"
+MERMAID_DIR="$TEMP_DIR/mermaid-images"
 
-# Clean and create temp directory
+# Clean and create temp directories
 rm -rf "$TEMP_DIR"
 mkdir -p "$TEMP_DIR"
+mkdir -p "$MERMAID_DIR"
 
 echo "Preparing documentation files for Word generation..."
 
@@ -42,12 +45,78 @@ transform_links() {
         "$file" > "$temp_file"
 }
 
-# Transform each file (excluding README which is GitHub-specific navigation)
+# Function to extract and convert Mermaid diagrams
+process_mermaid() {
+    local input_file=$1
+    local output_file=$2
+    local file_basename=$(basename "$input_file" .md)
+
+    # Python script to extract and replace Mermaid diagrams
+    python3 - "$input_file" "$output_file" "$MERMAID_DIR" "$file_basename" << 'PYTHON_SCRIPT'
+import sys
+import re
+import os
+import subprocess
+
+input_file = sys.argv[1]
+output_file = sys.argv[2]
+mermaid_dir = sys.argv[3]
+file_basename = sys.argv[4]
+
+with open(input_file, 'r') as f:
+    content = f.read()
+
+# Find all mermaid blocks
+mermaid_pattern = r'```mermaid\n(.*?)\n```'
+matches = list(re.finditer(mermaid_pattern, content, re.DOTALL))
+
+diagram_count = 0
+for match in matches:
+    diagram_count += 1
+    mermaid_code = match.group(1)
+
+    # Create unique filename
+    mermaid_file = os.path.join(mermaid_dir, f'{file_basename}-diagram-{diagram_count}.mmd')
+    png_file = os.path.join(mermaid_dir, f'{file_basename}-diagram-{diagram_count}.png')
+
+    # Write mermaid code to file
+    with open(mermaid_file, 'w') as mf:
+        mf.write(mermaid_code)
+
+    # Convert to PNG using mermaid-cli
+    try:
+        subprocess.run(['mmdc', '-i', mermaid_file, '-o', png_file, '-b', 'transparent'],
+                      check=True, capture_output=True)
+
+        # Replace mermaid block with image reference
+        image_ref = f'![Diagram {diagram_count}]({png_file})'
+        content = content.replace(match.group(0), image_ref, 1)
+
+        print(f'  ✓ Converted diagram {diagram_count} in {file_basename}')
+    except subprocess.CalledProcessError as e:
+        print(f'  ✗ Failed to convert diagram {diagram_count} in {file_basename}: {e}')
+        # Keep original mermaid block on error
+        pass
+
+# Write output file
+with open(output_file, 'w') as f:
+    f.write(content)
+
+print(f'  → Processed {diagram_count} diagrams in {file_basename}')
+PYTHON_SCRIPT
+}
+
+# Process each file
+echo "Converting Mermaid diagrams to images..."
 for file in INSTALLATION.md OPERATING-MODES.md AGENT-CONFIGURATION.md \
             HTTP-HTTPS-CONFIGURATION.md PROBES-CONFIGURATION.md WEB-INTERFACE.md \
             METRICS-USAGE.md TROUBLESHOOTING.md; do
     if [ -f "$SCRIPT_DIR/$file" ]; then
-        transform_links "$SCRIPT_DIR/$file" "$TEMP_DIR/$file"
+        # First transform links
+        transform_links "$SCRIPT_DIR/$file" "$TEMP_DIR/${file}.tmp"
+        # Then process mermaid diagrams
+        process_mermaid "$TEMP_DIR/${file}.tmp" "$TEMP_DIR/$file"
+        rm "$TEMP_DIR/${file}.tmp"
     fi
 done
 
