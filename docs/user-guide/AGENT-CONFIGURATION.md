@@ -1,62 +1,62 @@
-# SenHub Agent - Configuration de l'Agent
+# SenHub Agent - Agent Configuration
 
-## Table des Matières
+## Table of Contents
 
-- [Structure du Fichier de Configuration](#structure-du-fichier-de-configuration)
-- [Configuration Agent](#configuration-agent)
-- [Système de Licence](#système-de-licence)
-- [Configuration Auto-Update](#configuration-auto-update)
-- [Configuration Cache](#configuration-cache)
-- [Exemples Complets](#exemples-complets)
-- [Validation de la Configuration](#validation-de-la-configuration)
+- [Configuration File Structure](#configuration-file-structure)
+- [Agent Configuration](#agent-configuration)
+- [License System](#license-system)
+- [Auto-Update Configuration](#auto-update-configuration)
+- [Cache Configuration](#cache-configuration)
+- [Complete Examples](#complete-examples)
+- [Configuration Validation](#configuration-validation)
 
 ---
 
-## Structure du Fichier de Configuration
+## Configuration File Structure
 
-### Emplacement du Fichier
+### File Location
 
-| Plateforme | Chemin par Défaut | Chemin Personnalisé |
-|------------|-------------------|---------------------|
+| Platform | Default Path | Custom Path |
+|----------|--------------|-------------|
 | **Windows** | `C:\Program Files\SenHub\agent-config.yaml` | `--config-path C:\Custom\Path\config.yaml` |
 | **Linux** | `/etc/senhub-agent/agent-config.yaml` | `--config-path /custom/path/config.yaml` |
 | **macOS** | `/usr/local/etc/senhub-agent/agent-config.yaml` | `--config-path /custom/path/config.yaml` |
 
-### Format YAML
+### YAML Format
 
-Le fichier utilise le format YAML version 2 avec validation stricte.
+The file uses YAML version 2 format with strict validation.
 
 ```yaml
-# Commentaires autorisés
-config_version: 2  # Version obligatoire (actuellement : 2)
+# Comments allowed
+config_version: 2  # Version required (currently: 2)
 
 agent:
-  # Configuration agent
+  # Agent configuration
 
 auto_update:
-  # Configuration auto-update
+  # Auto-update configuration
 
 cache:
-  # Configuration cache
+  # Cache configuration
 
 storage:
-  # Configuration stockage (strategies)
+  # Storage configuration (strategies)
 
 probes:
-  # Configuration probes
+  # Probes configuration
 ```
 
-### Version de Configuration
+### Configuration Version
 
 ```mermaid
 graph LR
-    A[config_version: 2] --> B{Version Supportée?}
-    B -->|Oui| C[Chargement Config]
-    B -->|Non| D[Erreur + Migration Nécessaire]
+    A[config_version: 2] --> B{Supported Version?}
+    B -->|Yes| C[Load Config]
+    B -->|No| D[Error + Migration Required]
 
     C --> E[Validation]
-    E -->|OK| F[Démarrage Agent]
-    E -->|Erreur| G[Logs Détaillés]
+    E -->|OK| F[Start Agent]
+    E -->|Error| G[Detailed Logs]
 
     style A fill:#c8e6c9
     style F fill:#a5d6a7
@@ -64,33 +64,33 @@ graph LR
     style G fill:#ffccbc
 ```
 
-**⚠️ Important** : Ne **jamais** modifier `config_version` manuellement. Cette valeur est gérée automatiquement par l'agent lors des migrations.
+**⚠️ Important**: **Never** modify `config_version` manually. This value is automatically managed by the agent during migrations.
 
 ---
 
-## Configuration Agent
+## Agent Configuration
 
-### Section Agent
+### Agent Section
 
 ```yaml
 agent:
-  key: "<agent-key>"           # Clé d'authentification (UUID ou plateforme)
-  mode: offline|online         # Mode de fonctionnement
-  # license: ""                # Licence (optionnel, voir section dédiée)
+  key: "<agent-key>"           # Authentication key (UUID or platform)
+  mode: offline|online         # Operating mode
+  # license: ""                # License (optional, see dedicated section)
 ```
 
 ### Agent Key
 
-#### Mode Offline (UUID Généré)
+#### Offline Mode (Generated UUID)
 
-Lors d'une installation offline, l'agent génère automatiquement un UUID v4 :
+During offline installation, the agent automatically generates a UUID v4:
 
 ```yaml
 agent:
-  key: "f47ac10b-58cc-4372-a567-0e02b2c3d479"  # UUID v4 aléatoire
+  key: "f47ac10b-58cc-4372-a567-0e02b2c3d479"  # Random UUID v4
 ```
 
-**Récupération de la clé après installation** :
+**Retrieving the key after installation**:
 
 ```bash
 # Linux/macOS
@@ -99,148 +99,148 @@ cat /etc/senhub-agent/agent-config.yaml | grep "key:"
 # Windows
 type "C:\Program Files\SenHub\agent-config.yaml" | findstr "key:"
 
-# Ou via API
+# Or via API
 curl http://localhost:8080/api/info/system
-# Retourne : {"agent_key": "f47ac10b-58cc-4372-a567-0e02b2c3d479", ...}
+# Returns: {"agent_key": "f47ac10b-58cc-4372-a567-0e02b2c3d479", ...}
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Terminal affichant la sortie de `grep "key:"` avec l'UUID surligné
+**📸 SCREENSHOT TO INSERT**: Terminal showing output of `grep "key:"` with highlighted UUID
 
-#### Mode Online (Clé Plateforme)
+#### Online Mode (Platform Key)
 
-En mode online, la clé est fournie par la plateforme SenHub :
+In online mode, the key is provided by the SenHub platform:
 
 ```yaml
 agent:
-  key: "platform-abc123def456ghi789"  # Fournie par SenHub
+  key: "platform-abc123def456ghi789"  # Provided by SenHub
 ```
 
-**Obtention de la clé** :
-1. Se connecter au portail SenHub
+**Getting the key**:
+1. Log in to SenHub portal
 2. Section "Agents" > "Add Agent"
-3. Copier la clé générée
+3. Copy the generated key
 
-**📸 SCREENSHOT À INSÉRER** : Portail SenHub avec dialogue "Add Agent" montrant une clé générée et bouton "Copy"
+**📸 SCREENSHOT TO INSERT**: SenHub portal with "Add Agent" dialog showing generated key and "Copy" button
 
-### Mode de Fonctionnement
+### Operating Mode
 
 ```yaml
 agent:
-  mode: offline  # ou "online"
+  mode: offline  # or "online"
 ```
 
 | Mode | Description | Configuration |
 |------|-------------|---------------|
-| `offline` | Autonome, fichier YAML local | Lecture `agent-config.yaml` |
-| `online` | Connecté à la plateforme SenHub | Téléchargement config depuis serveur |
+| `offline` | Autonomous, local YAML file | Reads `agent-config.yaml` |
+| `online` | Connected to SenHub platform | Downloads config from server |
 
-> **📖 Détails** : Voir [OPERATING-MODES.md](./OPERATING-MODES.md) pour une comparaison complète
+> **📖 Details**: See [OPERATING-MODES.md](./OPERATING-MODES.md) for complete comparison
 
 ---
 
-## Système de Licence
+## License System
 
-### Vue d'Ensemble des Tiers
+### Tiers Overview
 
 ```mermaid
 graph TD
-    A[Licence SenHub] --> B[Free Tier]
+    A[SenHub License] --> B[Free Tier]
     A --> C[Pro Tier]
     A --> D[Enterprise Tier]
 
     B --> B1[cpu, memory<br/>logicaldisk, network]
-    B --> B2[Aucune licence requise]
+    B --> B2[No license required]
 
     C --> C1[Free +<br/>redfish, citrix<br/>syslog, ping, wifi]
-    C --> C2[Licence JSON spécifique]
+    C --> C2[Specific JSON license]
 
-    D --> D1[Toutes les probes<br/>wildcard *]
-    D --> D2[Licence JSON wildcard]
+    D --> D1[All probes<br/>wildcard *]
+    D --> D2[JSON wildcard license]
 
     style B fill:#c8e6c9
     style C fill:#fff9c4
     style D fill:#ffccbc
 ```
 
-### Tableau des Tiers
+### Tiers Table
 
-| Tier | Probes Incluses | Coût | Licence Requise |
-|------|-----------------|------|-----------------|
-| **Free** | `cpu`, `memory`, `logicaldisk`, `network` | Gratuit | ❌ Non |
-| **Pro** | Free + `redfish`, `citrix`, `syslog`, `ping_gateway`, `ping_webapp`, `load_webapp`, `wifi_signal_strength` | Payant | ✅ Oui (JSON) |
-| **Enterprise** | Toutes les probes (wildcard `*`) | Payant | ✅ Oui (JSON wildcard) |
+| Tier | Included Probes | Cost | License Required |
+|------|-----------------|------|------------------|
+| **Free** | `cpu`, `memory`, `logicaldisk`, `network` | Free | ❌ No |
+| **Pro** | Free + `redfish`, `citrix`, `syslog`, `ping_gateway`, `ping_webapp`, `load_webapp`, `wifi_signal_strength` | Paid | ✅ Yes (JSON) |
+| **Enterprise** | All probes (wildcard `*`) | Paid | ✅ Yes (JSON wildcard) |
 
-### Demande de Licence
+### License Request
 
-#### Étape 1 : Contacter le Support
+#### Step 1: Contact Support
 
-**📧 Email** : `support@senhub.io`
+**📧 Email**: `support@senhub.io`
 
-**Informations à Fournir** :
+**Information to Provide**:
 
 ```
-Objet : Demande de Licence SenHub Agent
+Subject: SenHub Agent License Request
 
-Bonjour,
+Hello,
 
-Je souhaite obtenir une licence pour SenHub Agent.
+I would like to obtain a license for SenHub Agent.
 
-Informations :
-- Entreprise : [Nom de l'entreprise]
-- Contact : [Nom, Prénom]
-- Email : [email@entreprise.com]
-- Téléphone : [+33 X XX XX XX XX]
+Information:
+- Company: [Company name]
+- Contact: [First name, Last name]
+- Email: [email@company.com]
+- Phone: [+XX X XX XX XX XX]
 
-Besoins :
-- Tier souhaité : [Pro / Enterprise]
-- Probes nécessaires : [redfish, citrix, etc.]
-- Nombre d'agents : [ex: 5 agents]
-- Environnement : [Production / Développement / POC]
-- Durée souhaitée : [1 an / 2 ans / etc.]
+Requirements:
+- Desired tier: [Pro / Enterprise]
+- Required probes: [redfish, citrix, etc.]
+- Number of agents: [e.g., 5 agents]
+- Environment: [Production / Development / POC]
+- Desired duration: [1 year / 2 years / etc.]
 
-Cas d'usage :
-[Description brève de votre cas d'usage]
+Use case:
+[Brief description of your use case]
 
-Merci,
+Thank you,
 [Signature]
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Client email (Outlook/Gmail) avec modèle d'email de demande de licence
+**📸 SCREENSHOT TO INSERT**: Email client (Outlook/Gmail) with license request email template
 
-#### Étape 2 : Réception de la Licence
+#### Step 2: License Receipt
 
-Le support SenHub vous enverra un email contenant :
+SenHub support will send you an email containing:
 
-1. **Licence au format JSON**
-2. **Instructions d'installation**
-3. **Date d'expiration**
-4. **Probes autorisées**
+1. **License in JSON format**
+2. **Installation instructions**
+3. **Expiration date**
+4. **Authorized probes**
 
-**Exemple de réponse** :
+**Example response**:
 
 ```
-Bonjour,
+Hello,
 
-Voici votre licence SenHub Agent Pro valable jusqu'au 31/12/2025 :
+Here is your SenHub Agent Pro license valid until 12/31/2025:
 
-[Fichier JSON attaché : senhub-license-CUSTOMER-2025.json]
+[Attached JSON file: senhub-license-CUSTOMER-2025.json]
 
-Installation :
-1. Ouvrir le fichier agent-config.yaml
-2. Décommenter la ligne "# license: """
-3. Coller le contenu JSON (voir instructions ci-dessous)
-4. Redémarrer l'agent
+Installation:
+1. Open the agent-config.yaml file
+2. Uncomment the line "# license: ""
+3. Paste the JSON content (see instructions below)
+4. Restart the agent
 
-Support : support@senhub.io
-Documentation : https://docs.senhub.io
+Support: support@senhub.io
+Documentation: https://docs.senhub.io
 
-Cordialement,
-Équipe SenHub
+Best regards,
+SenHub Team
 ```
 
-### Format de la Licence
+### License Format
 
-#### Licence Pro (Probes Spécifiques)
+#### Pro License (Specific Probes)
 
 ```json
 {
@@ -252,7 +252,7 @@ Cordialement,
 }
 ```
 
-#### Licence Enterprise (Toutes les Probes)
+#### Enterprise License (All Probes)
 
 ```json
 {
@@ -264,19 +264,19 @@ Cordialement,
 }
 ```
 
-**Champs de la Licence** :
+**License Fields**:
 
-| Champ | Type | Description | Exemple |
+| Field | Type | Description | Example |
 |-------|------|-------------|---------|
-| `tier` | String | Niveau de licence | `"pro"` ou `"enterprise"` |
-| `authorized_probes` | Array | Liste des probes autorisées | `["redfish", "citrix"]` ou `["*"]` |
-| `expires_at` | ISO 8601 | Date d'expiration | `"2025-12-31T23:59:59Z"` |
-| `issued_at` | ISO 8601 | Date d'émission | `"2025-01-01T00:00:00Z"` |
-| `subject` | String | Identifiant client | `"customer-id"` |
+| `tier` | String | License level | `"pro"` or `"enterprise"` |
+| `authorized_probes` | Array | List of authorized probes | `["redfish", "citrix"]` or `["*"]` |
+| `expires_at` | ISO 8601 | Expiration date | `"2025-12-31T23:59:59Z"` |
+| `issued_at` | ISO 8601 | Issue date | `"2025-01-01T00:00:00Z"` |
+| `subject` | String | Customer identifier | `"customer-id"` |
 
-### Installation de la Licence
+### License Installation
 
-#### Méthode 1 : Via Fichier de Configuration (Recommandée)
+#### Method 1: Via Configuration File (Recommended)
 
 ```yaml
 agent:
@@ -292,14 +292,14 @@ agent:
     }
 ```
 
-**⚠️ Important** :
-- Respecter l'indentation YAML (2 espaces)
-- Utiliser le pipe `|` pour le JSON multi-lignes
-- Pas de guillemets autour du JSON
+**⚠️ Important**:
+- Respect YAML indentation (2 spaces)
+- Use pipe `|` for multi-line JSON
+- No quotes around JSON
 
-**📸 SCREENSHOT À INSÉRER** : Éditeur nano/vim montrant agent-config.yaml avec licence JSON correctement indentée
+**📸 SCREENSHOT TO INSERT**: nano/vim editor showing agent-config.yaml with correctly indented JSON license
 
-#### Méthode 2 : Via Variable d'Environnement (Alternative)
+#### Method 2: Via Environment Variable (Alternative)
 
 ```bash
 # Linux/macOS
@@ -309,20 +309,20 @@ export SENHUB_LICENSE='{"tier":"pro","authorized_probes":["redfish","citrix"],"e
 $env:SENHUB_LICENSE='{"tier":"pro","authorized_probes":["redfish","citrix"],"expires_at":"2025-12-31T23:59:59Z","issued_at":"2025-01-01T00:00:00Z","subject":"customer"}'
 ```
 
-**Priorité** : Variable d'environnement > Fichier de configuration
+**Priority**: Environment variable > Configuration file
 
-#### Étapes d'Installation
+#### Installation Steps
 
 ```bash
-# 1. Arrêter l'agent
+# 1. Stop the agent
 sudo systemctl stop senhub-agent  # Linux
 sudo launchctl unload /Library/LaunchDaemons/io.senhub.agent.plist  # macOS
 sc stop "SenHub Agent"  # Windows
 
-# 2. Éditer la configuration
+# 2. Edit configuration
 sudo nano /etc/senhub-agent/agent-config.yaml
 
-# 3. Ajouter la licence (décommenter et coller JSON)
+# 3. Add license (uncomment and paste JSON)
 agent:
   license: |
     {
@@ -330,24 +330,24 @@ agent:
       ...
     }
 
-# 4. Sauvegarder et redémarrer
+# 4. Save and restart
 sudo systemctl start senhub-agent  # Linux
 sudo launchctl load /Library/LaunchDaemons/io.senhub.agent.plist  # macOS
 sc start "SenHub Agent"  # Windows
 
-# 5. Vérifier
+# 5. Verify
 curl http://localhost:8080/api/{agentkey}/license/status
 ```
 
-### Vérification de la Licence
+### License Verification
 
-#### Via API REST
+#### Via REST API
 
 ```bash
 curl http://localhost:8080/api/{AGENT_KEY}/license/status
 ```
 
-**Réponse (Licence Active)** :
+**Response (Active License)**:
 
 ```json
 {
@@ -360,7 +360,7 @@ curl http://localhost:8080/api/{AGENT_KEY}/license/status
 }
 ```
 
-**Réponse (Période de Grâce)** :
+**Response (Grace Period)**:
 
 ```json
 {
@@ -374,7 +374,7 @@ curl http://localhost:8080/api/{AGENT_KEY}/license/status
 }
 ```
 
-**Réponse (Licence Expirée)** :
+**Response (Expired License)**:
 
 ```json
 {
@@ -388,17 +388,17 @@ curl http://localhost:8080/api/{AGENT_KEY}/license/status
 }
 ```
 
-#### Via Dashboard Web
+#### Via Web Dashboard
 
-**URL** : `http://localhost:8080/web/{AGENT_KEY}/dashboard`
+**URL**: `http://localhost:8080/web/{AGENT_KEY}/dashboard`
 
-**Section "License Information"** :
+**"License Information" Section**:
 
-**📸 SCREENSHOT À INSÉRER** : Dashboard web montrant la carte "License Information" avec :
-- Status: Active (badge vert)
+**📸 SCREENSHOT TO INSERT**: Web dashboard showing "License Information" card with:
+- Status: Active (green badge)
 - Tier: Pro
-- Expires: 31/12/2025 (180 days remaining)
-- Authorized Probes: badges "redfish", "citrix", "syslog"
+- Expires: 12/31/2025 (180 days remaining)
+- Authorized Probes: "redfish", "citrix", "syslog" badges
 
 #### Via Logs
 
@@ -406,153 +406,153 @@ curl http://localhost:8080/api/{AGENT_KEY}/license/status
 # Linux
 sudo tail -f /var/log/senhub-agent/agent.log
 
-# Licence active
+# Active license
 2025-12-18T10:00:00Z INF License validated tier=pro expires=2025-12-31 module=agent.core
 
-# Licence proche expiration (< 30 jours)
+# License expiring soon (< 30 days)
 2025-12-18T10:00:00Z WRN License expires soon days_remaining=15 module=agent.core
 
-# Période de grâce
+# Grace period
 2025-12-18T10:00:00Z WRN License expired, grace period active grace_days=4 module=agent.core
 
-# Licence expirée
+# Expired license
 2025-12-18T10:00:00Z ERR License expired, paid probes disabled module=agent.core
 ```
 
-### Période de Grâce
+### Grace Period
 
 ```mermaid
 gantt
-    title Cycle de Vie d'une Licence
+    title License Lifecycle
     dateFormat YYYY-MM-DD
-    section Licence Active
-    Licence valide           :active, 2025-01-01, 2025-12-31
-    section Période de Grâce
-    7 jours supplémentaires  :crit, 2025-12-31, 7d
+    section Active License
+    Valid license             :active, 2025-01-01, 2025-12-31
+    section Grace Period
+    7 additional days         :crit, 2025-12-31, 7d
     section Expiration
-    Licence expirée          :done, after 7d, 1d
+    License expired           :done, after 7d, 1d
 
     style active fill:#c8e6c9
     style crit fill:#fff9c4
     style done fill:#ffccbc
 ```
 
-**Comportement** :
+**Behavior**:
 
-| Période | Durée | Probes Payantes | Alertes |
-|---------|-------|-----------------|---------|
-| **Active** | Jusqu'à expiration | ✅ Actives | Aucune |
-| **Expiration proche** | J-30 à J-1 | ✅ Actives | Warning dans logs (quotidien) |
-| **Période de grâce** | 7 jours après expiration | ✅ Actives | Warning dans logs + dashboard |
-| **Expirée** | Après période de grâce | ❌ Désactivées | Error dans logs + dashboard |
+| Period | Duration | Paid Probes | Alerts |
+|--------|----------|-------------|--------|
+| **Active** | Until expiration | ✅ Active | None |
+| **Expiring soon** | D-30 to D-1 | ✅ Active | Warning in logs (daily) |
+| **Grace period** | 7 days after expiration | ✅ Active | Warning in logs + dashboard |
+| **Expired** | After grace period | ❌ Disabled | Error in logs + dashboard |
 
-**Pendant la Période de Grâce** :
+**During Grace Period**:
 
-- Les probes payantes continuent de fonctionner
-- Warnings dans les logs à chaque démarrage
-- Banner dans le dashboard
-- Email de rappel (si mode online)
+- Paid probes continue working
+- Warnings in logs at each startup
+- Banner in dashboard
+- Reminder email (if online mode)
 
-**Après la Période de Grâce** :
+**After Grace Period**:
 
-- Les probes payantes sont désactivées au prochain redémarrage
-- Seules les probes free tier restent actives
-- Les métriques existantes en cache restent accessibles
+- Paid probes are disabled at next restart
+- Only free tier probes remain active
+- Existing cached metrics remain accessible
 
-### Renouvellement de Licence
+### License Renewal
 
-#### Avant Expiration (Recommandé)
+#### Before Expiration (Recommended)
 
 ```bash
-# 1. Contacter support@senhub.io 2 semaines avant expiration
+# 1. Contact support@senhub.io 2 weeks before expiration
 
-# 2. Recevoir nouvelle licence
+# 2. Receive new license
 
-# 3. Remplacer dans agent-config.yaml
+# 3. Replace in agent-config.yaml
 agent:
   license: |
     {
       "tier": "pro",
-      "expires_at": "2026-12-31T23:59:59Z",  # Nouvelle date
+      "expires_at": "2026-12-31T23:59:59Z",  # New date
       ...
     }
 
-# 4. Redémarrer (sans interruption de service)
+# 4. Restart (without service interruption)
 sudo systemctl restart senhub-agent
 ```
 
-#### Après Expiration (Période de Grâce)
+#### After Expiration (Grace Period)
 
-Même procédure, mais attention :
-- Les probes payantes se réactiveront immédiatement
-- Pas de perte de données en cache
+Same procedure, but note:
+- Paid probes will reactivate immediately
+- No cached data loss
 
-#### Après Expiration Totale
+#### After Full Expiration
 
 ```bash
-# 1. Obtenir nouvelle licence
+# 1. Obtain new license
 
-# 2. Installer la licence
+# 2. Install license
 
-# 3. Redémarrer l'agent
+# 3. Restart agent
 sudo systemctl restart senhub-agent
 
-# 4. Les probes payantes redémarrent automatiquement
+# 4. Paid probes restart automatically
 ```
 
-### Troubleshooting Licences
+### License Troubleshooting
 
-#### Erreur : "Invalid license format"
+#### Error: "Invalid license format"
 
-**Cause** : JSON mal formaté
+**Cause**: Malformed JSON
 
-**Solution** :
+**Solution**:
 ```bash
-# Vérifier le JSON avec jq
+# Verify JSON with jq
 echo '{"tier":"pro","authorized_probes":["redfish"],"expires_at":"2025-12-31T23:59:59Z","issued_at":"2025-01-01T00:00:00Z","subject":"customer"}' | jq .
 
-# Si erreur, corriger le format dans agent-config.yaml
+# If error, fix format in agent-config.yaml
 ```
 
-#### Erreur : "License signature invalid"
+#### Error: "License signature invalid"
 
-**Cause** : Licence corrompue ou modifiée
+**Cause**: Corrupted or modified license
 
-**Solution** :
-- Redemander la licence à support@senhub.io
-- Copier-coller directement depuis l'email (pas de modification manuelle)
+**Solution**:
+- Request license again from support@senhub.io
+- Copy-paste directly from email (no manual modification)
 
-#### Erreur : "License expired"
+#### Error: "License expired"
 
-**Cause** : Licence expirée et période de grâce terminée
+**Cause**: License expired and grace period over
 
-**Solution** :
+**Solution**:
 ```bash
-# Contacter support pour renouvellement
-# En attendant, seul free tier disponible
+# Contact support for renewal
+# Meanwhile, only free tier available
 ```
 
-#### Probes Payantes Non Démarrées
+#### Paid Probes Not Starting
 
 ```bash
-# Vérifier statut licence
+# Check license status
 curl http://localhost:8080/api/{agentkey}/license/status
 
-# Vérifier logs
+# Check logs
 sudo tail -100 /var/log/senhub-agent/agent.log | grep -i license
 
-# Si "License not found", ajouter la licence
-# Si "License expired", renouveler
-# Si "Invalid format", corriger le JSON
+# If "License not found", add license
+# If "License expired", renew
+# If "Invalid format", fix JSON
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Terminal avec sortie de logs montrant une erreur de licence claire "License validation failed: expired"
+**📸 SCREENSHOT TO INSERT**: Terminal with log output showing clear license error "License validation failed: expired"
 
 ---
 
-## Configuration Auto-Update
+## Auto-Update Configuration
 
-### Principe
+### Principle
 
 ```mermaid
 graph LR
@@ -573,55 +573,55 @@ graph LR
 
 ```yaml
 auto_update:
-  enabled: true   # Activer/désactiver les auto-updates
+  enabled: true   # Enable/disable auto-updates
   url: "https://eu-west-1.intake.senhub.io/releases"
 ```
 
-### Comportement par Mode
+### Behavior by Mode
 
 | Mode | `enabled: true` | `enabled: false` |
 |------|-----------------|------------------|
-| **Online** | Vérification automatique + download + install | Aucune vérification |
-| **Offline** | Vérification si internet disponible (pas d'install forcée) | Aucune vérification |
+| **Online** | Automatic check + download + install | No check |
+| **Offline** | Check if internet available (no forced install) | No check |
 
-### Fréquence de Vérification
+### Check Frequency
 
-- **Mode Online** : Toutes les 6 heures
-- **Mode Offline** : Au démarrage uniquement
+- **Online Mode**: Every 6 hours
+- **Offline Mode**: At startup only
 
-### Update Manuel (Offline)
+### Manual Update (Offline)
 
 ```bash
-# 1. Arrêter l'agent
+# 1. Stop agent
 sudo systemctl stop senhub-agent
 
-# 2. Télécharger nouvelle version
+# 2. Download new version
 wget https://github.com/senhub-io/senhub-agent/releases/download/v0.1.85-beta/senhub-agent_linux_amd64
 
-# 3. Remplacer binaire
+# 3. Replace binary
 sudo mv senhub-agent_linux_amd64 /usr/local/bin/senhub-agent
 sudo chmod +x /usr/local/bin/senhub-agent
 
-# 4. Redémarrer
+# 4. Restart
 sudo systemctl start senhub-agent
 
-# 5. Vérifier version
+# 5. Verify version
 senhub-agent version
 ```
 
 ---
 
-## Configuration Cache
+## Cache Configuration
 
-### Principe
+### Principle
 
 ```mermaid
 graph TB
-    P[Probes] -->|Métriques| C[(Cache Mémoire)]
+    P[Probes] -->|Metrics| C[(Memory Cache)]
     C -->|Retention| T[TTL]
-    T -->|Expiration| E[Éviction]
+    T -->|Expiration| E[Eviction]
 
-    C -->|API Query| R[Réponse HTTP]
+    C -->|API Query| R[HTTP Response]
 
     style C fill:#fff9c4
     style E fill:#ffccbc
@@ -632,35 +632,35 @@ graph TB
 
 ```yaml
 cache:
-  retention_minutes: 5  # Durée de rétention des métriques
+  retention_minutes: 5  # Metrics retention duration
 ```
 
-### Recommandations
+### Recommendations
 
-| Environnement | Valeur | Mémoire Estimée | Use Case |
-|---------------|--------|-----------------|----------|
-| **Développement** | 5 min | ~50 MB | Tests rapides |
-| **Production** | 10 min | ~100 MB | Monitoring standard |
-| **Troubleshooting** | 30 min | ~300 MB | Investigation problèmes |
-| **Ressources limitées** | 2 min | ~20 MB | Edge devices (IoT) |
+| Environment | Value | Estimated Memory | Use Case |
+|-------------|-------|------------------|----------|
+| **Development** | 5 min | ~50 MB | Quick tests |
+| **Production** | 10 min | ~100 MB | Standard monitoring |
+| **Troubleshooting** | 30 min | ~300 MB | Problem investigation |
+| **Limited resources** | 2 min | ~20 MB | Edge devices (IoT) |
 
 ### Impact
 
-**Cache Court (1-2 min)** :
-- ✅ Faible consommation mémoire
-- ❌ Historique très limité
-- ❌ Graphiques saccadés
+**Short Cache (1-2 min)**:
+- ✅ Low memory consumption
+- ❌ Very limited history
+- ❌ Choppy graphs
 
-**Cache Long (20-30 min)** :
-- ✅ Historique plus complet
-- ✅ Graphiques fluides
-- ❌ Consommation mémoire élevée
+**Long Cache (20-30 min)**:
+- ✅ More complete history
+- ✅ Smooth graphs
+- ❌ High memory consumption
 
 ---
 
-## Exemples Complets
+## Complete Examples
 
-### Configuration Minimale (Free Tier)
+### Minimal Configuration (Free Tier)
 
 ```yaml
 config_version: 2
@@ -695,7 +695,7 @@ probes:
       interval: 30
 ```
 
-### Configuration Production (Pro Tier + HTTPS)
+### Production Configuration (Pro Tier + HTTPS)
 
 ```yaml
 config_version: 2
@@ -754,33 +754,33 @@ probes:
       verify_ssl: true
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Fichier de configuration complet dans un éditeur avec coloration syntaxique YAML
+**📸 SCREENSHOT TO INSERT**: Complete configuration file in editor with YAML syntax highlighting
 
 ---
 
-## Validation de la Configuration
+## Configuration Validation
 
-### Validation Automatique
+### Automatic Validation
 
-L'agent valide automatiquement la configuration au démarrage :
+The agent automatically validates configuration at startup:
 
 ```bash
 sudo systemctl start senhub-agent
 sudo journalctl -u senhub-agent -n 20
 
-# Logs attendus
+# Expected logs
 2025-12-18T10:00:00Z INF Configuration loaded version=2 module=configuration.local
 2025-12-18T10:00:00Z INF License validated tier=pro module=agent.core
 2025-12-18T10:00:01Z INF Probe started probe=cpu module=probe.cpu
 ```
 
-### Validation Manuelle
+### Manual Validation
 
 ```bash
-# Tester la configuration sans démarrer l'agent
+# Test configuration without starting agent
 senhub-agent validate --config-path /etc/senhub-agent/agent-config.yaml
 
-# Sortie OK
+# OK output
 ✅ Configuration valid
    - Config version: 2
    - Agent key: f47ac10b-58cc-4372-a567-0e02b2c3d479
@@ -789,25 +789,25 @@ senhub-agent validate --config-path /etc/senhub-agent/agent-config.yaml
    - Probes: 5 configured
    - Storage: 1 strategy
 
-# Sortie Erreur
+# Error output
 ❌ Configuration invalid:
    - Line 12: Invalid probe type "redfish" (license required)
    - Line 25: Missing required field "endpoint" for probe "redfish"
 ```
 
-### Checklist de Validation
+### Validation Checklist
 
-- [ ] `config_version: 2` présent
-- [ ] `agent.key` non vide
-- [ ] `agent.mode` = `offline` ou `online`
-- [ ] Si licence : JSON valide et non expiré
-- [ ] `storage` contient au moins une strategy
-- [ ] `probes` : chaque probe a `name`, `type`, `params`
-- [ ] Syntaxe YAML correcte (indentation 2 espaces)
+- [ ] `config_version: 2` present
+- [ ] `agent.key` not empty
+- [ ] `agent.mode` = `offline` or `online`
+- [ ] If license: valid JSON and not expired
+- [ ] `storage` contains at least one strategy
+- [ ] `probes`: each probe has `name`, `type`, `params`
+- [ ] Correct YAML syntax (2 space indentation)
 
 ---
 
-**Prochaines étapes** :
-- **Configuration HTTP/HTTPS** : [HTTP-HTTPS-CONFIGURATION.md](./HTTP-HTTPS-CONFIGURATION.md)
-- **Configuration des Probes** : [PROBES-CONFIGURATION.md](./PROBES-CONFIGURATION.md)
-- **Troubleshooting** : [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)
+**Next steps**:
+- **HTTP/HTTPS Configuration**: [HTTP-HTTPS-CONFIGURATION.md](./HTTP-HTTPS-CONFIGURATION.md)
+- **Probes Configuration**: [PROBES-CONFIGURATION.md](./PROBES-CONFIGURATION.md)
+- **Troubleshooting**: [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)

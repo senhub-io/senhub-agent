@@ -1,28 +1,28 @@
-# SenHub Agent - Configuration HTTP/HTTPS
+# SenHub Agent - HTTP/HTTPS Configuration
 
-## Table des Matières
+## Table of Contents
 
-- [Vue d'Ensemble HTTP Strategy](#vue-densemble-http-strategy)
-- [Configuration HTTP (Non Sécurisé)](#configuration-http-non-sécurisé)
-- [Configuration HTTPS (Sécurisé)](#configuration-https-sécurisé)
-- [Configuration TLS Avancée](#configuration-tls-avancée)
-- [Configuration Bind Address](#configuration-bind-address)
-- [Endpoints API Disponibles](#endpoints-api-disponibles)
-- [Best Practices de Sécurité](#best-practices-de-sécurité)
+- [HTTP Strategy Overview](#http-strategy-overview)
+- [HTTP Configuration (Unsecured)](#http-configuration-unsecured)
+- [HTTPS Configuration (Secured)](#https-configuration-secured)
+- [Advanced TLS Configuration](#advanced-tls-configuration)
+- [Bind Address Configuration](#bind-address-configuration)
+- [Available API Endpoints](#available-api-endpoints)
+- [Security Best Practices](#security-best-practices)
 
 ---
 
-## Vue d'Ensemble HTTP Strategy
+## HTTP Strategy Overview
 
-La HTTP strategy expose l'agent via une API REST locale permettant :
+The HTTP strategy exposes the agent via a local REST API allowing:
 
 ```mermaid
 graph TD
-    HTTP[HTTP Strategy<br/>Port 8080/8443] --> WEB[Web Dashboard<br/>Monitoring visuel]
-    HTTP --> PRTG[API PRTG<br/>XML Format]
-    HTTP --> NAGIOS[API Nagios<br/>Text Format]
-    HTTP --> JSON[API JSON<br/>REST/Custom]
-    HTTP --> LOOKUPS[Lookups PRTG<br/>.ovl files]
+    HTTP[HTTP Strategy<br/>Port 8080/8443] --> WEB[Web Dashboard<br/>Visual Monitoring]
+    HTTP --> PRTG[PRTG API<br/>XML Format]
+    HTTP --> NAGIOS[Nagios API<br/>Text Format]
+    HTTP --> JSON[JSON API<br/>REST/Custom]
+    HTTP --> LOOKUPS[PRTG Lookups<br/>.ovl files]
 
     style HTTP fill:#81d4fa
     style WEB fill:#c8e6c9
@@ -33,42 +33,42 @@ graph TD
 
 ---
 
-## Configuration HTTP (Non Sécurisé)
+## HTTP Configuration (Unsecured)
 
-### Configuration Basique
+### Basic Configuration
 
 ```yaml
 storage:
   - name: http
     params:
       port: 8080
-      bind_address: "127.0.0.1"  # Localhost uniquement
+      bind_address: "127.0.0.1"  # Localhost only
       endpoints: ["prtg", "web", "nagios"]
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Dashboard accessible sur http://localhost:8080/web/{key}/dashboard
+**📸 SCREENSHOT TO INSERT**: Dashboard accessible at http://localhost:8080/web/{key}/dashboard
 
-### Accès aux Endpoints
+### Endpoint Access
 
 | Endpoint | URL | Usage |
 |----------|-----|-------|
-| **Dashboard** | `http://localhost:8080/web/{key}/dashboard` | Interface visuelle |
-| **PRTG XML** | `http://localhost:8080/api/{key}/prtg/metrics` | Sensors PRTG |
-| **Nagios** | `http://localhost:8080/api/{key}/nagios/status` | Checks Nagios |
-| **JSON** | `http://localhost:8080/api/{key}/metrics` | API REST |
+| **Dashboard** | `http://localhost:8080/web/{key}/dashboard` | Visual interface |
+| **PRTG XML** | `http://localhost:8080/api/{key}/prtg/metrics` | PRTG Sensors |
+| **Nagios** | `http://localhost:8080/api/{key}/nagios/status` | Nagios Checks |
+| **JSON** | `http://localhost:8080/api/{key}/metrics` | REST API |
 
 ---
 
-## Configuration HTTPS (Sécurisé)
+## HTTPS Configuration (Secured)
 
-### Option 1 : Certificats Auto-Générés
+### Option 1: Auto-Generated Certificates
 
-**Installation** :
+**Installation**:
 ```bash
 senhub-agent install --offline --enable-https
 ```
 
-**Configuration générée** :
+**Generated configuration**:
 ```yaml
 storage:
   - name: http
@@ -83,24 +83,24 @@ storage:
         key_file: "./certs/agent-key.pem"
 ```
 
-**Propriétés du Certificat** :
-- Type : Self-signed X.509
-- RSA : 2048 bits
-- Validité : 365 jours
-- SANs : localhost, 127.0.0.1 + hosts personnalisés
+**Certificate Properties**:
+- Type: Self-signed X.509
+- RSA: 2048 bits
+- Validity: 365 days
+- SANs: localhost, 127.0.0.1 + custom hosts
 
-**📸 SCREENSHOT À INSÉRER** : Explorateur de fichiers montrant ./certs/ avec agent-cert.pem et agent-key.pem
+**📸 SCREENSHOT TO INSERT**: File explorer showing ./certs/ with agent-cert.pem and agent-key.pem
 
-### Option 2 : Certificats Personnalisés (Let's Encrypt)
+### Option 2: Custom Certificates (Let's Encrypt)
 
-**Installation** :
+**Installation**:
 ```bash
 senhub-agent install --offline --enable-https \
   --cert-file /etc/letsencrypt/live/monitoring.company.com/fullchain.pem \
   --key-file /etc/letsencrypt/live/monitoring.company.com/privkey.pem
 ```
 
-**Configuration** :
+**Configuration**:
 ```yaml
 storage:
   - name: http
@@ -117,23 +117,23 @@ storage:
 
 ---
 
-## Configuration TLS Avancée
+## Advanced TLS Configuration
 
-### Versions TLS
+### TLS Versions
 
 ```yaml
 tls:
   min_tls_version: "1.3"  # 1.0, 1.1, 1.2, 1.3
 ```
 
-**Recommandations** :
-- **Production** : TLS 1.2 minimum (TLS 1.3 optimal)
-- **Legacy** : TLS 1.1 (uniquement si nécessaire)
-- **⚠️ Déprécié** : TLS 1.0 (vulnérabilités connues)
+**Recommendations**:
+- **Production**: TLS 1.2 minimum (TLS 1.3 optimal)
+- **Legacy**: TLS 1.1 (only if necessary)
+- **⚠️ Deprecated**: TLS 1.0 (known vulnerabilities)
 
 ### Cipher Suites
 
-**TLS 1.3 (Recommandé)** :
+**TLS 1.3 (Recommended)**:
 ```yaml
 tls:
   min_tls_version: "1.3"
@@ -143,7 +143,7 @@ tls:
     - "TLS_CHACHA20_POLY1305_SHA256"
 ```
 
-**TLS 1.2** :
+**TLS 1.2**:
 ```yaml
 tls:
   min_tls_version: "1.2"
@@ -153,109 +153,109 @@ tls:
     - "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Navigateur montrant les détails de connexion HTTPS (cadenas vert, certificat valide)
+**📸 SCREENSHOT TO INSERT**: Browser showing HTTPS connection details (green lock, valid certificate)
 
 ---
 
-## Configuration Bind Address
+## Bind Address Configuration
 
 ```mermaid
 graph LR
     A[Bind Address] --> B[127.0.0.1<br/>Localhost]
-    A --> C[192.168.1.100<br/>Interface Spécifique]
-    A --> D[0.0.0.0<br/>Toutes Interfaces]
+    A --> C[192.168.1.100<br/>Specific Interface]
+    A --> D[0.0.0.0<br/>All Interfaces]
 
-    B --> B1[Sécurité Maximale]
-    C --> C1[Réseau Spécifique]
-    D --> D1[Accès Universel]
+    B --> B1[Maximum Security]
+    C --> C1[Specific Network]
+    D --> D1[Universal Access]
 
     style B fill:#c8e6c9
     style C fill:#fff9c4
     style D fill:#ffccbc
 ```
 
-### Localhost (Développement)
+### Localhost (Development)
 
 ```yaml
 bind_address: "127.0.0.1"
 ```
 
-**Cas d'usage** : Développement local, tests
+**Use case**: Local development, testing
 
-### Interface Spécifique
+### Specific Interface
 
 ```yaml
 bind_address: "192.168.1.100"
 ```
 
-**Cas d'usage** : Multi-homing, contrôle réseau précis
+**Use case**: Multi-homing, precise network control
 
-### Toutes Interfaces (Production HTTPS)
+### All Interfaces (Production HTTPS)
 
 ```yaml
 bind_address: "0.0.0.0"
 ```
 
-**⚠️ ATTENTION** : Utiliser uniquement avec HTTPS + firewall
+**⚠️ WARNING**: Use only with HTTPS + firewall
 
 ---
 
-## Endpoints API Disponibles
+## Available API Endpoints
 
-### Endpoints Système
+### System Endpoints
 
-| Endpoint | Méthode | Description |
-|----------|---------|-------------|
-| `/api/{key}/info/system` | GET | Info système agent |
-| `/api/{key}/info/probes` | GET | Liste probes actives |
-| `/api/{key}/license/status` | GET | Statut licence |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/{key}/info/system` | GET | Agent system info |
+| `/api/{key}/info/probes` | GET | Active probes list |
+| `/api/{key}/license/status` | GET | License status |
 
-### Endpoints Métriques
+### Metrics Endpoints
 
-| Endpoint | Méthode | Format | Description |
-|----------|---------|--------|-------------|
-| `/api/{key}/metrics` | GET | JSON | Toutes métriques |
-| `/api/{key}/prtg/metrics` | GET | XML | Format PRTG |
-| `/api/{key}/prtg/metrics/{probe}` | GET | XML | PRTG par probe |
-| `/api/{key}/nagios/status` | GET | Text | Format Nagios |
+| Endpoint | Method | Format | Description |
+|----------|--------|--------|-------------|
+| `/api/{key}/metrics` | GET | JSON | All metrics |
+| `/api/{key}/prtg/metrics` | GET | XML | PRTG format |
+| `/api/{key}/prtg/metrics/{probe}` | GET | XML | PRTG per probe |
+| `/api/{key}/nagios/status` | GET | Text | Nagios format |
 
-### Endpoints Lookups
+### Lookups Endpoints
 
-| Endpoint | Méthode | Description |
-|----------|---------|-------------|
-| `/api/{key}/prtg/lookups/download` | GET | Télécharge tous les .ovl |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/{key}/prtg/lookups/download` | GET | Download all .ovl files |
 
-**📸 SCREENSHOT À INSÉRER** : API Explorer dans le dashboard web montrant la liste des endpoints
+**📸 SCREENSHOT TO INSERT**: API Explorer in web dashboard showing endpoint list
 
 ---
 
-## Best Practices de Sécurité
+## Security Best Practices
 
-### ✅ Recommandations Production
+### ✅ Production Recommendations
 
 ```yaml
-# Configuration Production Sécurisée
+# Secure Production Configuration
 storage:
   - name: http
     params:
       port: 8443
-      bind_address: "0.0.0.0"  # Avec firewall
+      bind_address: "0.0.0.0"  # With firewall
       endpoints: ["prtg", "web", "nagios"]
       tls:
         enabled: true
-        min_tls_version: "1.2"  # Ou 1.3
-        cert_file: "/etc/ssl/certs/monitoring.crt"  # Certificat CA valide
+        min_tls_version: "1.2"  # Or 1.3
+        cert_file: "/etc/ssl/certs/monitoring.crt"  # Valid CA certificate
         key_file: "/etc/ssl/private/monitoring.key"
 ```
 
-### ❌ À Éviter
+### ❌ To Avoid
 
-- ❌ HTTP en production (sauf localhost)
-- ❌ Certificats auto-signés en production
-- ❌ bind_address 0.0.0.0 sans HTTPS
+- ❌ HTTP in production (except localhost)
+- ❌ Self-signed certificates in production
+- ❌ bind_address 0.0.0.0 without HTTPS
 - ❌ TLS < 1.2
-- ❌ Cipher suites obsolètes (RC4, 3DES)
+- ❌ Obsolete cipher suites (RC4, 3DES)
 
 ---
 
-**Prochaines étapes** : [PROBES-CONFIGURATION.md](./PROBES-CONFIGURATION.md)
+**Next steps**: [PROBES-CONFIGURATION.md](./PROBES-CONFIGURATION.md)
