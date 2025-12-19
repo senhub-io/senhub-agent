@@ -1,31 +1,31 @@
-# SenHub Agent - Interface Web
+# SenHub Agent - Web Interface
 
-## Table des Matières
+## Table of Contents
 
-- [Vue d'Ensemble](#vue-densemble)
-- [Accès au Dashboard](#accès-au-dashboard)
-- [Dashboard Principal](#dashboard-principal)
+- [Overview](#overview)
+- [Accessing the Dashboard](#accessing-the-dashboard)
+- [Main Dashboard](#main-dashboard)
 - [API Explorer](#api-explorer)
 - [Metrics Browser](#metrics-browser)
 - [Probes Status](#probes-status)
 - [License Information](#license-information)
-- [Lookups PRTG](#lookups-prtg)
+- [PRTG Lookups](#prtg-lookups)
 - [Best Practices](#best-practices)
 
 ---
 
-## Vue d'Ensemble
+## Overview
 
-L'interface web SenHub Agent fournit un accès visuel complet aux métriques et à la configuration de l'agent via un navigateur.
+The SenHub Agent web interface provides comprehensive visual access to agent metrics and configuration via a browser.
 
 ```mermaid
 graph TD
-    WEB[Web Dashboard<br/>Port 8080/8443] --> DASH[Dashboard Principal<br/>Vue d'ensemble système]
+    WEB[Web Dashboard<br/>Port 8080/8443] --> DASH[Main Dashboard<br/>System overview]
     WEB --> API[API Explorer<br/>Test endpoints]
-    WEB --> METRICS[Metrics Browser<br/>Navigation métriques]
-    WEB --> PROBES[Probes Status<br/>État probes actives]
-    WEB --> LICENSE[License Info<br/>Statut licence]
-    WEB --> LOOKUPS[Lookups PRTG<br/>Téléchargement .ovl]
+    WEB --> METRICS[Metrics Browser<br/>Navigate metrics]
+    WEB --> PROBES[Probes Status<br/>Active probes state]
+    WEB --> LICENSE[License Info<br/>License status]
+    WEB --> LOOKUPS[PRTG Lookups<br/>Download .ovl]
 
     style WEB fill:#81d4fa
     style DASH fill:#c8e6c9
@@ -33,128 +33,128 @@ graph TD
     style METRICS fill:#ffe0b2
 ```
 
-### Fonctionnalités Principales
+### Main Features
 
-| Fonctionnalité | Description | Cas d'Usage |
-|----------------|-------------|-------------|
-| **Dashboard** | Vue d'ensemble temps réel | Monitoring visuel rapide |
-| **API Explorer** | Test interactif des endpoints | Intégration et debugging |
-| **Metrics Browser** | Navigation par probe/tag | Exploration détaillée |
-| **Probes Status** | État santé des probes | Diagnostic problèmes |
-| **License Info** | Informations licence active | Vérification tier/expiration |
-| **Lookups PRTG** | Téléchargement fichiers .ovl | Configuration PRTG |
+| Feature | Description | Use Case |
+|---------|-------------|----------|
+| **Dashboard** | Real-time overview | Quick visual monitoring |
+| **API Explorer** | Interactive endpoint testing | Integration and debugging |
+| **Metrics Browser** | Navigate by probe/tag | Detailed exploration |
+| **Probes Status** | Probe health status | Problem diagnosis |
+| **License Info** | Active license information | Tier/expiration verification |
+| **PRTG Lookups** | Download .ovl files | PRTG configuration |
 
 ---
 
-## Accès au Dashboard
+## Accessing the Dashboard
 
-### URL de Connexion
+### Connection URL
 
 ```
 Format: http(s)://<host>:<port>/web/{authentication_key}/dashboard
 ```
 
-**Exemples** :
+**Examples**:
 
 ```bash
-# HTTP local (développement)
+# Local HTTP (development)
 http://localhost:8080/web/f47ac10b-58cc-4372-a567-0e02b2c3d479/dashboard
 
-# HTTPS production
+# Production HTTPS
 https://monitoring.company.com:8443/web/f47ac10b-58cc-4372-a567-0e02b2c3d479/dashboard
 
-# Accès distant (avec bind_address: 0.0.0.0)
+# Remote access (with bind_address: 0.0.0.0)
 https://192.168.1.100:8443/web/f47ac10b-58cc-4372-a567-0e02b2c3d479/dashboard
 ```
 
-### Authentification
+### Authentication
 
 ```mermaid
 graph LR
-    A[Utilisateur] -->|URL avec {key}| B[HTTP Strategy]
-    B -->|Valide key| C[Dashboard]
-    B -->|Key invalide| D[Error 403]
+    A[User] -->|URL with {key}| B[HTTP Strategy]
+    B -->|Valid key| C[Dashboard]
+    B -->|Invalid key| D[Error 403]
 
     style C fill:#c8e6c9
     style D fill:#ffccbc
 ```
 
-**Clé d'authentification** :
-- Définie dans `agent-config.yaml` : `agent.authentication_key`
-- Utilisée dans l'URL : `/web/{key}/...`
-- Valide toutes les requêtes API et web
+**Authentication key**:
+- Defined in `agent-config.yaml`: `agent.authentication_key`
+- Used in URL: `/web/{key}/...`
+- Validates all API and web requests
 
-**Sécurité** :
-- Accès local uniquement (`127.0.0.1`) : key partageable
-- Accès distant (`0.0.0.0`) : **TOUJOURS utiliser HTTPS**
-- Key = secret : ne pas exposer publiquement
+**Security**:
+- Local access only (`127.0.0.1`): key shareable
+- Remote access (`0.0.0.0`): **ALWAYS use HTTPS**
+- Key = secret: do not expose publicly
 
-**📸 SCREENSHOT À INSÉRER** : Page de login ou dashboard principal avec URL visible dans la barre d'adresse
+**📸 SCREENSHOT TO INSERT**: Login page or main dashboard with visible URL in address bar
 
 ---
 
-## Dashboard Principal
+## Main Dashboard
 
-### Vue d'Ensemble
+### Overview
 
-Le dashboard principal affiche un résumé temps réel de l'état de l'agent et des métriques collectées.
+The main dashboard displays a real-time summary of agent status and collected metrics.
 
-**Sections du Dashboard** :
+**Dashboard Sections**:
 
-1. **En-tête Système**
-   - Nom d'hôte / OS
-   - Version agent
+1. **System Header**
+   - Hostname / OS
+   - Agent version
    - Uptime
    - Mode (Online/Offline)
 
-2. **Statut Licence**
-   - Tier actif (Free/Pro/Enterprise)
-   - Date d'expiration
-   - Probes autorisées
-   - ⚠️ Alertes expiration / période de grâce
+2. **License Status**
+   - Active tier (Free/Pro/Enterprise)
+   - Expiration date
+   - Authorized probes
+   - ⚠️ Expiration / grace period alerts
 
-3. **Probes Actives**
-   - Liste des probes en cours d'exécution
-   - État (Running/Error)
-   - Dernier update
-   - Nombre de métriques par probe
+3. **Active Probes**
+   - List of running probes
+   - Status (Running/Error)
+   - Last update
+   - Number of metrics per probe
 
-4. **Métriques Clés**
-   - Graphiques temps réel (si disponibles)
-   - Valeurs actuelles
-   - Seuils d'alerte
+4. **Key Metrics**
+   - Real-time graphs (if available)
+   - Current values
+   - Alert thresholds
 
-**📸 SCREENSHOT À INSÉRER** : Dashboard complet montrant toutes les sections avec plusieurs probes actives et graphiques
+**📸 SCREENSHOT TO INSERT**: Complete dashboard showing all sections with multiple active probes and graphs
 
 ---
 
-### Statut Licence
+### License Status
 
 ```mermaid
 graph TD
-    LICENSE[License Status] --> VALID[✅ Valide]
+    LICENSE[License Status] --> VALID[✅ Valid]
     LICENSE --> GRACE[⚠️ Grace Period]
-    LICENSE --> EXPIRED[❌ Expirée]
+    LICENSE --> EXPIRED[❌ Expired]
 
-    VALID --> V1[Tier: Pro/Enterprise<br/>Expires: 2025-12-31<br/>Probes: 8/10 actives]
-    GRACE --> G1[Tier: Pro<br/>Expired: 2025-01-01<br/>Grace: 4 jours restants]
-    EXPIRED --> E1[Tier: Free (fallback)<br/>Probes payantes désactivées]
+    VALID --> V1[Tier: Pro/Enterprise<br/>Expires: 2025-12-31<br/>Probes: 8/10 active]
+    GRACE --> G1[Tier: Pro<br/>Expired: 2025-01-01<br/>Grace: 4 days remaining]
+    EXPIRED --> E1[Tier: Free (fallback)<br/>Paid probes disabled]
 
     style VALID fill:#c8e6c9
     style GRACE fill:#fff9c4
     style EXPIRED fill:#ffccbc
 ```
 
-**Affichage dans le Dashboard** :
+**Dashboard Display**:
 
-✅ **Licence Valide** :
+✅ **Valid License**:
 ```
 License: Pro
 Expires: 2025-12-31 (342 days remaining)
 Authorized Probes: redfish, citrix, netscaler, syslog
 ```
 
-⚠️ **Période de Grâce** :
+⚠️ **Grace Period**:
 ```
 ⚠️ LICENSE EXPIRATION WARNING
 License expired on 2025-01-01
@@ -162,7 +162,7 @@ Grace period: 4 days remaining
 Contact support@senhub.io to renew
 ```
 
-❌ **Licence Expirée** :
+❌ **Expired License**:
 ```
 ❌ LICENSE EXPIRED
 Agent running in Free tier (limited probes)
@@ -170,13 +170,13 @@ Paid probes disabled: redfish, citrix, netscaler
 Contact support@senhub.io to renew
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Dashboard avec banner orange/rouge pour période de grâce ou expiration
+**📸 SCREENSHOT TO INSERT**: Dashboard with orange/red banner for grace period or expiration
 
 ---
 
 ### Probes Status
 
-**Tableau des Probes** :
+**Probes Table**:
 
 | Probe Name | Type | Status | Last Update | Metrics | Details |
 |------------|------|--------|-------------|---------|---------|
@@ -185,24 +185,24 @@ Contact support@senhub.io to renew
 | Production iDRAC | redfish | 🟢 Running | 2m ago | 47 | View |
 | Citrix Production | citrix | 🔴 Error | 5m ago | 0 | **View Error** |
 
-**États possibles** :
-- 🟢 **Running** : Probe collecte normalement
-- 🟡 **Warning** : Métriques partielles ou timeouts
-- 🔴 **Error** : Probe en erreur (voir logs)
-- ⚪ **Stopped** : Probe désactivée
+**Possible States**:
+- 🟢 **Running**: Probe collecting normally
+- 🟡 **Warning**: Partial metrics or timeouts
+- 🔴 **Error**: Probe in error (see logs)
+- ⚪ **Stopped**: Probe disabled
 
-**Actions** :
-- **View** : Voir métriques de la probe
-- **View Error** : Afficher message d'erreur détaillé
-- **Logs** : Activer debug logs pour cette probe
+**Actions**:
+- **View**: See probe metrics
+- **View Error**: Show detailed error message
+- **Logs**: Enable debug logs for this probe
 
-**📸 SCREENSHOT À INSÉRER** : Tableau probes status avec mix de statuts (Running, Error)
+**📸 SCREENSHOT TO INSERT**: Probes status table with mix of statuses (Running, Error)
 
 ---
 
 ## API Explorer
 
-L'API Explorer permet de tester interactivement tous les endpoints de l'agent.
+The API Explorer allows interactive testing of all agent endpoints.
 
 ```mermaid
 graph LR
@@ -215,15 +215,15 @@ graph LR
     style EXPLORER fill:#81d4fa
 ```
 
-### Endpoints Disponibles
+### Available Endpoints
 
 #### 1. Info Endpoints
 
 **`GET /api/{key}/info/system`**
 
-Retourne informations système de l'agent.
+Returns agent system information.
 
-**Exemple de réponse** :
+**Example response**:
 ```json
 {
   "hostname": "PROD-SERVER-01",
@@ -238,15 +238,15 @@ Retourne informations système de l'agent.
 }
 ```
 
-**📸 SCREENSHOT À INSÉRER** : API Explorer montrant appel à `/info/system` avec réponse JSON formatée
+**📸 SCREENSHOT TO INSERT**: API Explorer showing call to `/info/system` with formatted JSON response
 
 ---
 
 **`GET /api/{key}/info/probes`**
 
-Liste les probes actives avec statistiques.
+Lists active probes with statistics.
 
-**Exemple de réponse** :
+**Example response**:
 ```json
 {
   "probes": [
@@ -276,13 +276,13 @@ Liste les probes actives avec statistiques.
 
 **`GET /api/{key}/metrics`**
 
-Retourne toutes les métriques au format JSON.
+Returns all metrics in JSON format.
 
-**Paramètres optionnels** :
-- `?probe=cpu` - Filtrer par probe
-- `?format=json|prtg|nagios` - Format de sortie
+**Optional parameters**:
+- `?probe=cpu` - Filter by probe
+- `?format=json|prtg|nagios` - Output format
 
-**Exemple JSON** :
+**JSON Example**:
 ```json
 {
   "metrics": [
@@ -300,15 +300,15 @@ Retourne toutes les métriques au format JSON.
 }
 ```
 
-**📸 SCREENSHOT À INSÉRER** : API Explorer montrant réponse metrics avec filtrage par probe
+**📸 SCREENSHOT TO INSERT**: API Explorer showing metrics response with probe filtering
 
 ---
 
 **`GET /api/{key}/prtg/metrics`**
 
-Format PRTG XML pour tous les sensors.
+PRTG XML format for all sensors.
 
-**Exemple XML** :
+**XML Example**:
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <prtg>
@@ -328,14 +328,14 @@ Format PRTG XML pour tous les sensors.
 </prtg>
 ```
 
-**Filtrage par probe** :
+**Filter by probe**:
 ```
 GET /api/{key}/prtg/metrics/cpu
 GET /api/{key}/prtg/metrics/redfish
 GET /api/{key}/prtg/metrics/netscaler
 ```
 
-**Filtrage par tags (NetScaler)** :
+**Filter by tags (NetScaler)**:
 ```
 GET /api/{key}/prtg/metrics/netscaler?filter=metric_view:load_balancing
 GET /api/{key}/prtg/metrics/netscaler?filter=vserver_name:Web-vServer
@@ -345,9 +345,9 @@ GET /api/{key}/prtg/metrics/netscaler?filter=vserver_name:Web-vServer
 
 **`GET /api/{key}/nagios/status`**
 
-Format Nagios text pour checks.
+Nagios text format for checks.
 
-**Exemple** :
+**Example**:
 ```
 OK - CPU: 45.2% | cpu_usage=45.2%;80;95;0;100
 OK - Memory: 67.8% | memory_usage=67.8%;80;95;0;100
@@ -360,9 +360,9 @@ WARNING - Disk C: 85.3% | disk_c_usage=85.3%;80;95;0;100
 
 **`GET /api/{key}/license/status`**
 
-Retourne statut complet de la licence.
+Returns complete license status.
 
-**Exemple** :
+**Example**:
 ```json
 {
   "tier": "pro",
@@ -379,7 +379,7 @@ Retourne statut complet de la licence.
 }
 ```
 
-**📸 SCREENSHOT À INSÉRER** : API Explorer affichant statut licence avec détails Pro tier
+**📸 SCREENSHOT TO INSERT**: API Explorer displaying license status with Pro tier details
 
 ---
 
@@ -387,9 +387,9 @@ Retourne statut complet de la licence.
 
 **`GET /api/{key}/debug/logs`**
 
-Voir niveaux de logs actuels.
+View current log levels.
 
-**Réponse** :
+**Response**:
 ```json
 {
   "global_level": "info",
@@ -404,9 +404,9 @@ Voir niveaux de logs actuels.
 
 **`POST /api/{key}/debug/logs`**
 
-Modifier niveaux de logs sans redémarrage.
+Modify log levels without restart.
 
-**Body** :
+**Body**:
 ```json
 {
   "module_levels": [
@@ -416,7 +416,7 @@ Modifier niveaux de logs sans redémarrage.
 }
 ```
 
-**Réponse** :
+**Response**:
 ```json
 {
   "status": "success",
@@ -424,43 +424,43 @@ Modifier niveaux de logs sans redémarrage.
 }
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Interface debug logs avec sélecteurs de modules et niveaux
+**📸 SCREENSHOT TO INSERT**: Debug logs interface with module and level selectors
 
 ---
 
 ## Metrics Browser
 
-Le Metrics Browser permet de naviguer et filtrer les métriques par probe, tag, ou nom.
+The Metrics Browser allows navigating and filtering metrics by probe, tag, or name.
 
 ```mermaid
 graph TD
-    BROWSER[Metrics Browser] --> FILTER[Filtres]
-    FILTER --> F1[Par Probe<br/>cpu, memory, redfish]
-    FILTER --> F2[Par Tag<br/>host, disk, interface]
-    FILTER --> F3[Par Nom<br/>cpu_usage, temp_celsius]
+    BROWSER[Metrics Browser] --> FILTER[Filters]
+    FILTER --> F1[By Probe<br/>cpu, memory, redfish]
+    FILTER --> F2[By Tag<br/>host, disk, interface]
+    FILTER --> F3[By Name<br/>cpu_usage, temp_celsius]
 
-    BROWSER --> DISPLAY[Affichage]
-    DISPLAY --> D1[Table View<br/>Liste métriques]
-    DISPLAY --> D2[Graph View<br/>Graphiques temps réel]
+    BROWSER --> DISPLAY[Display]
+    DISPLAY --> D1[Table View<br/>Metrics list]
+    DISPLAY --> D2[Graph View<br/>Real-time graphs]
     DISPLAY --> D3[Export<br/>JSON, CSV, XML]
 
     style BROWSER fill:#81d4fa
 ```
 
-### Navigation par Probe
+### Navigation by Probe
 
-**Sélection de probe** :
+**Probe selection**:
 ```
-[Dropdown: Toutes les probes ▼]
-├─ cpu (12 métriques)
-├─ memory (8 métriques)
-├─ logicaldisk (15 métriques)
-├─ network (20 métriques)
-├─ Production iDRAC (47 métriques)
-└─ NetScaler Production (156 métriques)
+[Dropdown: All probes ▼]
+├─ cpu (12 metrics)
+├─ memory (8 metrics)
+├─ logicaldisk (15 metrics)
+├─ network (20 metrics)
+├─ Production iDRAC (47 metrics)
+└─ NetScaler Production (156 metrics)
 ```
 
-**Affichage des métriques** :
+**Metrics display**:
 
 | Metric Name | Value | Unit | Tags | Timestamp |
 |-------------|-------|------|------|-----------|
@@ -468,53 +468,53 @@ graph TD
 | cpu_load1 | 1.23 | - | host=PROD-01 | 10:30:45 |
 | cpu_load5 | 1.45 | - | host=PROD-01 | 10:30:45 |
 
-**📸 SCREENSHOT À INSÉRER** : Metrics Browser avec dropdown probe sélectionné et table de métriques
+**📸 SCREENSHOT TO INSERT**: Metrics Browser with selected probe dropdown and metrics table
 
 ---
 
-### Filtrage par Tags
+### Filtering by Tags
 
-**Exemple NetScaler** :
+**NetScaler Example**:
 
 ```
-Filtres actifs:
+Active Filters:
 - probe: netscaler
 - metric_view: load_balancing
 - vserver_name: Web-vServer
 ```
 
-**Résultat** :
+**Result**:
 | Metric | Value | Tags |
 |--------|-------|------|
 | netscaler_vserver_state | 1 (UP) | vserver_name=Web-vServer, metric_view=load_balancing |
 | netscaler_vserver_hits | 45230 | vserver_name=Web-vServer, metric_view=load_balancing |
 | netscaler_vserver_requests | 12450 | vserver_name=Web-vServer, metric_view=load_balancing |
 
-**Filtres disponibles** :
-- **Redfish** : `chassis`, `sensor_name`, `drive_id`
-- **Citrix** : `site`, `delivery_group`, `machine_name`
-- **NetScaler** : `vserver_name`, `service_name`, `metric_view`, `metric_type`
-- **Network** : `interface`, `mac_address`
-- **Disk** : `disk`, `mount_point`, `filesystem`
+**Available Filters**:
+- **Redfish**: `chassis`, `sensor_name`, `drive_id`
+- **Citrix**: `site`, `delivery_group`, `machine_name`
+- **NetScaler**: `vserver_name`, `service_name`, `metric_view`, `metric_type`
+- **Network**: `interface`, `mac_address`
+- **Disk**: `disk`, `mount_point`, `filesystem`
 
-**📸 SCREENSHOT À INSÉRER** : Filtres tags actifs avec résultats filtrés
+**📸 SCREENSHOT TO INSERT**: Active tag filters with filtered results
 
 ---
 
-### Export de Métriques
+### Metrics Export
 
-**Formats disponibles** :
-- **JSON** : Format brut API
-- **CSV** : Import Excel/LibreOffice
-- **XML** : PRTG compatible
-- **Nagios** : Format texte checks
+**Available formats**:
+- **JSON**: Raw API format
+- **CSV**: Excel/LibreOffice import
+- **XML**: PRTG compatible
+- **Nagios**: Text format checks
 
-**Boutons d'export** :
+**Export buttons**:
 ```
 [Export JSON] [Export CSV] [Export PRTG XML] [Export Nagios]
 ```
 
-**Exemple CSV** :
+**CSV Example**:
 ```csv
 metric_name,value,unit,probe,timestamp
 cpu_usage_total,45.2,percent,cpu,2025-01-15T10:30:45Z
@@ -525,11 +525,11 @@ memory_usage_percent,67.8,percent,memory,2025-01-15T10:30:45Z
 
 ## Probes Status
 
-### Vue Détaillée par Probe
+### Detailed View per Probe
 
-Cliquer sur **View** dans le tableau des probes affiche les détails complets.
+Clicking **View** in the probes table shows complete details.
 
-**Informations affichées** :
+**Displayed Information**:
 
 1. **Configuration**
    ```yaml
@@ -539,7 +539,7 @@ Cliquer sur **View** dans le tableau des probes affiche les détails complets.
    Endpoint: https://idrac-srv01.company.com
    ```
 
-2. **État de Collecte**
+2. **Collection State**
    ```
    Status: Running
    Last Successful Collection: 2 minutes ago
@@ -548,7 +548,7 @@ Cliquer sur **View** dans le tableau des probes affiche les détails complets.
    Failed Collections: 2 (0.7%)
    ```
 
-3. **Métriques Collectées**
+3. **Collected Metrics**
    ```
    Total Metrics: 47
    ├─ Temperatures: 12 metrics
@@ -558,45 +558,45 @@ Cliquer sur **View** dans le tableau des probes affiche les détails complets.
    └─ System: 5 metrics
    ```
 
-4. **Dernières Erreurs**
+4. **Recent Errors**
    ```
    [2025-01-15 08:15:23] ERR Failed to connect: timeout
    [2025-01-15 08:20:45] ERR Failed to connect: timeout
    ```
 
-**📸 SCREENSHOT À INSÉRER** : Page détails probe montrant configuration, état, métriques et erreurs
+**📸 SCREENSHOT TO INSERT**: Probe details page showing configuration, state, metrics and errors
 
 ---
 
-### Actions de Diagnostic
+### Diagnostic Actions
 
-**Boutons disponibles** :
+**Available buttons**:
 
 ```
 [View Metrics] [Enable Debug Logs] [Test Connection] [View Configuration]
 ```
 
-**Enable Debug Logs** :
-- Active logs debug pour cette probe uniquement
-- Sans redémarrage de l'agent
-- Affiche logs en temps réel dans l'interface
+**Enable Debug Logs**:
+- Enables debug logs for this probe only
+- Without agent restart
+- Shows real-time logs in interface
 
-**Test Connection** :
-- Teste la connectivité vers l'endpoint (Redfish, Citrix, etc.)
-- Retourne erreur détaillée si échec
-- Vérifie credentials
+**Test Connection**:
+- Tests connectivity to endpoint (Redfish, Citrix, etc.)
+- Returns detailed error if failed
+- Verifies credentials
 
-**📸 SCREENSHOT À INSÉRER** : Boutons d'actions avec popup "Debug logs enabled for probe: redfish"
+**📸 SCREENSHOT TO INSERT**: Action buttons with popup "Debug logs enabled for probe: redfish"
 
 ---
 
 ## License Information
 
-### Page Détails Licence
+### License Details Page
 
-**URL** : `/web/{key}/license`
+**URL**: `/web/{key}/license`
 
-**Informations affichées** :
+**Displayed Information**:
 
 ```
 ╔══════════════════════════════════════════════════════════╗
@@ -615,21 +615,21 @@ Cliquer sur **View** dans le tableau des probes affiche les détails complets.
 ╚══════════════════════════════════════════════════════════╝
 ```
 
-**Alertes visuelles** :
+**Visual Alerts**:
 
-🟢 **Valid** (> 30 jours) :
+🟢 **Valid** (> 30 days):
 ```
 License valid until 2025-12-31 (342 days remaining)
 ```
 
-🟡 **Expiring Soon** (< 30 jours) :
+🟡 **Expiring Soon** (< 30 days):
 ```
 ⚠️ LICENSE EXPIRING SOON
 Your license expires in 28 days (2025-02-15)
 Contact support@senhub.io to renew
 ```
 
-🟠 **Grace Period** (0-7 jours après expiration) :
+🟠 **Grace Period** (0-7 days after expiration):
 ```
 ⚠️ LICENSE EXPIRED - GRACE PERIOD
 License expired 3 days ago
@@ -638,7 +638,7 @@ Paid probes still active
 Contact support@senhub.io immediately to renew
 ```
 
-🔴 **Expired** (> 7 jours après expiration) :
+🔴 **Expired** (> 7 days after expiration):
 ```
 ❌ LICENSE EXPIRED
 Agent reverted to Free tier
@@ -646,39 +646,39 @@ Paid probes disabled: redfish, citrix, netscaler, syslog
 Contact support@senhub.io to renew
 ```
 
-**Boutons d'action** :
+**Action buttons**:
 ```
 [Renew License] → Opens email to support@senhub.io
 [View Configuration] → Shows agent-config.yaml license section
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Page licence avec statut valid/expiring/expired
+**📸 SCREENSHOT TO INSERT**: License page with valid/expiring/expired status
 
 ---
 
-## Lookups PRTG
+## PRTG Lookups
 
-### Téléchargement des Lookups
+### Lookups Download
 
-L'agent génère automatiquement des fichiers lookups PRTG (.ovl) pour les probes qui utilisent des codes ou identifiants.
+The agent automatically generates PRTG lookup files (.ovl) for probes using codes or identifiers.
 
-**URL de téléchargement** : `/api/{key}/prtg/lookups/download`
+**Download URL**: `/api/{key}/prtg/lookups/download`
 
-**Bouton dans l'interface** :
+**Interface button**:
 ```
 📥 Download PRTG Lookups (.ovl files)
 ```
 
-**Fichiers générés** :
+**Generated files**:
 
 ```
 senhub-lookups.zip
-├─ netwscaler.metric_type.ovl        # Types de métriques NetScaler
-├─ netscaler.metric_view.ovl         # Vues de métriques NetScaler
-└─ README.txt                         # Instructions d'installation
+├─ netwscaler.metric_type.ovl        # NetScaler metric types
+├─ netscaler.metric_view.ovl         # NetScaler metric views
+└─ README.txt                         # Installation instructions
 ```
 
-**Exemple: netscaler.metric_type.ovl**
+**Example: netscaler.metric_type.ovl**
 ```
 <?xml version="1.0" encoding="UTF-8"?>
 <ValueLookup id="netscaler.metric_type" desiredValue="1" undefinedState="Warning">
@@ -696,58 +696,58 @@ senhub-lookups.zip
 </ValueLookup>
 ```
 
-**📸 SCREENSHOT À INSÉRER** : Bouton download lookups dans API Explorer + contenu du ZIP
+**📸 SCREENSHOT TO INSERT**: Download lookups button in API Explorer + ZIP contents
 
 ---
 
-### Installation dans PRTG
+### Installation in PRTG
 
-**Étapes** :
+**Steps**:
 
-1. **Télécharger le ZIP** depuis l'interface web
-2. **Extraire les fichiers .ovl**
-3. **Copier vers PRTG** :
+1. **Download ZIP** from web interface
+2. **Extract .ovl files**
+3. **Copy to PRTG**:
    ```
    C:\Program Files (x86)\PRTG Network Monitor\lookups\custom\
    ```
-4. **Recharger les lookups** :
+4. **Reload lookups**:
    - PRTG → Setup → Administrative Tools → Load Lookups and File Lists
 
-**Vérification** :
-- Les sensors NetScaler affichent maintenant des labels texte au lieu de codes numériques
-- Exemple : "Rate" au lieu de "0", "Load Balancing" au lieu de "1"
+**Verification**:
+- NetScaler sensors now display text labels instead of numeric codes
+- Example: "Rate" instead of "0", "Load Balancing" instead of "1"
 
-**📸 SCREENSHOT À INSÉRER** : PRTG avec sensor NetScaler affichant labels après installation lookups
+**📸 SCREENSHOT TO INSERT**: PRTG with NetScaler sensor showing labels after lookups installation
 
 ---
 
 ## Best Practices
 
-### Sécurité
+### Security
 
 ```mermaid
 graph TD
-    SEC[Sécurité Web Interface] --> HTTPS[✅ HTTPS Obligatoire<br/>Production]
-    SEC --> BIND[✅ Bind Address<br/>Restrictif]
-    SEC --> KEY[✅ Authentication Key<br/>Complexe]
+    SEC[Web Interface Security] --> HTTPS[✅ HTTPS Required<br/>Production]
+    SEC --> BIND[✅ Bind Address<br/>Restrictive]
+    SEC --> KEY[✅ Authentication Key<br/>Complex]
     SEC --> FW[✅ Firewall<br/>IP Whitelist]
 
-    NOTSEC[❌ À Éviter] --> NOHTTP[HTTP sur Internet]
-    NOTSEC --> NOBIND[bind: 0.0.0.0 sans HTTPS]
-    NOTSEC --> NOKEY[Key simple/prévisible]
+    NOTSEC[❌ To Avoid] --> NOHTTP[HTTP on Internet]
+    NOTSEC --> NOBIND[bind: 0.0.0.0 without HTTPS]
+    NOTSEC --> NOKEY[Simple/predictable key]
 
     style SEC fill:#c8e6c9
     style NOTSEC fill:#ffccbc
 ```
 
-**✅ Configuration Sécurisée** :
+**✅ Secure Configuration**:
 
 ```yaml
 storage:
   - name: http
     params:
       port: 8443
-      bind_address: "192.168.1.100"  # Interface spécifique
+      bind_address: "192.168.1.100"  # Specific interface
       endpoints: ["prtg", "web", "nagios"]
       tls:
         enabled: true
@@ -759,9 +759,9 @@ agent:
   authentication_key: "f47ac10b-58cc-4372-a567-0e02b2c3d479"  # UUID
 ```
 
-**Firewall** :
+**Firewall**:
 ```bash
-# Autoriser uniquement réseau interne
+# Allow only internal network
 sudo ufw allow from 192.168.1.0/24 to any port 8443
 ```
 
@@ -769,60 +769,60 @@ sudo ufw allow from 192.168.1.0/24 to any port 8443
 
 ### Performance
 
-**Recommandations** :
+**Recommendations**:
 
 1. **Cache Retention**
    ```yaml
    cache:
-     retention_minutes: 10  # Balance mémoire/freshness
+     retention_minutes: 10  # Balance memory/freshness
    ```
 
-2. **Intervalles de Probes**
+2. **Probe Intervals**
    ```yaml
    probes:
      - name: cpu
        params:
-         interval: 30  # 30s pour métriques temps réel
+         interval: 30  # 30s for real-time metrics
      - name: redfish
        params:
-         interval: 300  # 5min pour hardware (moins critique)
+         interval: 300  # 5min for hardware (less critical)
    ```
 
-3. **Filtrage PRTG**
-   - Utiliser `/prtg/metrics/{probe}` au lieu de `/prtg/metrics` global
-   - Filtrer par tags NetScaler : `?filter=metric_view:load_balancing`
-   - Réduire charge XML parsing PRTG
+3. **PRTG Filtering**
+   - Use `/prtg/metrics/{probe}` instead of global `/prtg/metrics`
+   - Filter by NetScaler tags: `?filter=metric_view:load_balancing`
+   - Reduce PRTG XML parsing load
 
 ---
 
 ### Monitoring
 
-**Endpoints à surveiller** :
+**Endpoints to monitor**:
 
 ```bash
-# Healthcheck simple
+# Simple healthcheck
 curl http://localhost:8080/api/{key}/info/system
-# Si HTTP 200 → Agent OK
+# If HTTP 200 → Agent OK
 
-# Vérifier probes actives
+# Check active probes
 curl http://localhost:8080/api/{key}/info/probes
-# Compter probes en "running"
+# Count probes in "running"
 
-# Vérifier licence
+# Check license
 curl http://localhost:8080/api/{key}/license/status
 # is_valid: true, in_grace_period: false
 ```
 
-**Alertes à configurer** :
-- Licence expire dans < 30 jours
-- Probe en état Error
-- Agent injoignable (HTTP 5xx/timeout)
+**Alerts to configure**:
+- License expires in < 30 days
+- Probe in Error state
+- Agent unreachable (HTTP 5xx/timeout)
 
 ---
 
-### Intégrations
+### Integrations
 
-**Reverse Proxy (Production)** :
+**Reverse Proxy (Production)**:
 
 ```nginx
 # Nginx
@@ -841,14 +841,14 @@ server {
 }
 ```
 
-**PRTG Sensors** :
+**PRTG Sensors**:
 ```
 Sensor Type: HTTP XML/REST Value
 URL: https://monitoring.company.com:8443/api/{key}/prtg/metrics/cpu
 Authentication: None (key in URL)
 ```
 
-**Nagios Checks** :
+**Nagios Checks**:
 ```bash
 define command {
     command_name    check_senhub_cpu
@@ -861,7 +861,7 @@ define command {
 
 ---
 
-**Prochaines étapes** :
-- [Utilisation des Métriques](./METRICS-USAGE.md)
-- [Configuration des Probes](./PROBES-CONFIGURATION.md)
+**Next steps**:
+- [Metrics Usage](./METRICS-USAGE.md)
+- [Probes Configuration](./PROBES-CONFIGURATION.md)
 - [Troubleshooting](./TROUBLESHOOTING.md)
