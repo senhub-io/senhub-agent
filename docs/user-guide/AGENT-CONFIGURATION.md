@@ -830,6 +830,35 @@ graph LR
 
 **Operational consideration for offline mode:** If deployed in air-gapped environment (no internet), set `enabled: false` to prevent unnecessary connection attempts during startup. If internet connectivity is intermittent, `enabled: true` allows opportunistic updates during connected periods.
 
+### Network Requirements
+
+**Outbound connectivity required for auto-update and diagnostic features:**
+
+| Feature | Destination | Port | Protocol | Required For |
+|---------|-------------|------|----------|--------------|
+| **Auto-update** | `eu-west-1.intake.senhub.io` | 443 | HTTPS | Downloading new agent versions |
+| **Diagnostic logs** | `eu-west-1.intake.senhub.io` | 443 | HTTPS | Sending logs to Sensor Factory for analysis |
+| **Online mode** | `eu-west-1.intake.senhub.io` | 443 | HTTPS + WebSocket | Configuration and metrics transmission |
+
+**Important notes:**
+- **Offline mode with auto-update disabled:** No outbound connectivity required
+- **Offline mode with auto-update enabled:** Connectivity required only during startup (for version check)
+- **Online mode:** Persistent connectivity required for operation
+
+**Firewall configuration:**
+```bash
+# Allow outbound HTTPS to SenHub infrastructure
+# Adjust according to your firewall solution
+
+# iptables (Linux)
+sudo iptables -A OUTPUT -p tcp -d eu-west-1.intake.senhub.io --dport 443 -j ACCEPT
+
+# Windows Firewall
+New-NetFirewallRule -DisplayName "SenHub Agent Outbound" `
+  -Direction Outbound -Protocol TCP -RemoteAddress eu-west-1.intake.senhub.io `
+  -RemotePort 443 -Action Allow
+```
+
 ### Manual Update Procedure
 
 For environments where automatic updates are disabled or internet access is unavailable:
