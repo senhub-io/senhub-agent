@@ -105,6 +105,24 @@ Complete documentation for SenHub Agent users and administrators.
 7. **WEB-INTERFACE.md** (650 lines) - Dashboard and API Explorer
 8. **METRICS-USAGE.md** (800 lines) - Monitoring integrations
 
+### Microsoft Word Version
+
+A consolidated Word document is available for offline reading and distribution:
+
+**Generate the Word document:**
+```bash
+cd docs/user-guide
+./generate-word-doc.sh
+```
+
+**Output:**
+- `SenHub-Agent-User-Guide-Complete.docx` (~173KB)
+- Includes all 9 documentation sections
+- Table of contents with 3 levels
+- Metadata (title, author, date)
+
+**Requirements:** Pandoc must be installed (`brew install pandoc` on macOS)
+
 ---
 
 ## 💡 License
