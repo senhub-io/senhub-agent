@@ -94,8 +94,13 @@ The agent requires one listening port for its HTTP/HTTPS interface:
 **Additional ports** (only if specific probes are enabled):
 - **514 UDP/TCP**: Syslog reception (if syslog probe configured)
 
-**Outbound connectivity** (only for online mode - not covered here):
-- `eu-west-1.intake.senhub.io:443` (HTTPS)
+**Outbound connectivity** (optional, depending on features):
+- **Destination**: `eu-west-1.intake.senhub.io:443` (HTTPS)
+- **Required for**:
+  - Online mode: Remote configuration and metrics transmission
+  - Auto-update: Automatic agent version updates (even in offline mode)
+  - Diagnostic logs: Sending logs to Sensor Factory for analysis (even in offline mode)
+- **Note**: In offline mode without auto-update, no outbound connectivity is required
 
 ### Required Permissions
 
