@@ -18,6 +18,32 @@ mkdir -p "$MERMAID_DIR"
 
 echo "Preparing documentation files for Word generation..."
 
+# Function to remove local Table of Contents sections
+remove_local_toc() {
+    local file=$1
+    local temp_file=$2
+
+    # Use Python to remove TOC sections (more reliable than sed for multiline)
+    python3 - "$file" "$temp_file" << 'PYTHON_TOC_REMOVAL'
+import sys
+import re
+
+input_file = sys.argv[1]
+output_file = sys.argv[2]
+
+with open(input_file, 'r') as f:
+    content = f.read()
+
+# Remove Table of Contents sections
+# Pattern: ## Table of Contents followed by lines until ---
+toc_pattern = r'## Table of Contents\n.*?\n---\n'
+content = re.sub(toc_pattern, '', content, flags=re.DOTALL)
+
+with open(output_file, 'w') as f:
+    f.write(content)
+PYTHON_TOC_REMOVAL
+}
+
 # Function to transform cross-file links to internal links
 transform_links() {
     local file=$1
@@ -107,18 +133,28 @@ PYTHON_SCRIPT
 }
 
 # Process each file
-echo "Converting Mermaid diagrams to images..."
+echo "Processing documentation files..."
+echo "  - Removing local Table of Contents sections"
+echo "  - Transforming cross-file links to internal anchors"
+echo "  - Converting Mermaid diagrams to PNG images"
+echo ""
+
 for file in INSTALLATION.md OPERATING-MODES.md AGENT-CONFIGURATION.md \
             HTTP-HTTPS-CONFIGURATION.md PROBES-CONFIGURATION.md WEB-INTERFACE.md \
             METRICS-USAGE.md TROUBLESHOOTING.md; do
     if [ -f "$SCRIPT_DIR/$file" ]; then
-        # First transform links
-        transform_links "$SCRIPT_DIR/$file" "$TEMP_DIR/${file}.tmp"
-        # Then process mermaid diagrams
-        process_mermaid "$TEMP_DIR/${file}.tmp" "$TEMP_DIR/$file"
-        rm "$TEMP_DIR/${file}.tmp"
+        # Step 1: Remove local TOC
+        remove_local_toc "$SCRIPT_DIR/$file" "$TEMP_DIR/${file}.step1"
+        # Step 2: Transform cross-file links to internal links
+        transform_links "$TEMP_DIR/${file}.step1" "$TEMP_DIR/${file}.step2"
+        # Step 3: Process Mermaid diagrams
+        process_mermaid "$TEMP_DIR/${file}.step2" "$TEMP_DIR/$file"
+        # Cleanup intermediate files
+        rm -f "$TEMP_DIR/${file}.step1" "$TEMP_DIR/${file}.step2"
     fi
 done
+
+echo ""
 
 echo "Generating consolidated Word documentation..."
 
