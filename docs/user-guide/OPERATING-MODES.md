@@ -338,17 +338,22 @@ https://server:8443/api/{key}/json/metrics/network
 
 This architecture allows integration with existing monitoring infrastructure without requiring agent-to-platform connectivity.
 
-#### Zero External Dependencies
+#### Minimal External Dependencies
 
-**Benefit:** Operates in environments with no internet access, including air-gapped datacenters and secure facilities.
+**Benefit:** Operates in environments with no or limited internet access, including air-gapped datacenters and secure facilities.
 
-Offline mode requires no external connectivity:
-- No outbound connections to SenHub platform
-- No DNS lookups for platform endpoints
+Offline mode core functionality requires no external connectivity:
+- No outbound connections required for metrics collection and exposure
+- No DNS lookups for platform endpoints during normal operation
 - No external certificate authorities required (self-signed certs supported)
-- No dependency on external services for operation
+- No dependency on external services for core monitoring operation
 
-**Example scenario:** A pharmaceutical manufacturing facility operates an air-gapped network for regulatory compliance (21 CFR Part 11). The monitoring infrastructure must operate entirely within the isolated network. Offline mode satisfies this requirement while providing comprehensive monitoring capabilities.
+**Optional external connectivity** (can be disabled if not needed):
+- **Auto-update:** `eu-west-1.intake.senhub.io:443` for automatic agent version updates
+- **Diagnostic logs:** Same endpoint for sending logs to Sensor Factory for analysis
+- **Note:** Disabling auto-update and diagnostic logs allows fully air-gapped operation
+
+**Example scenario:** A pharmaceutical manufacturing facility operates an air-gapped network for regulatory compliance (21 CFR Part 11). The monitoring infrastructure must operate entirely within the isolated network. Offline mode with auto-update disabled satisfies this requirement while providing comprehensive monitoring capabilities.
 
 #### Local Web Dashboard
 
