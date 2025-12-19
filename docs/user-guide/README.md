@@ -119,9 +119,12 @@ cd docs/user-guide
 - SenHub-Agent-User-Guide-Complete.docx (~173KB)
 - Includes all 8 documentation sections
 - Table of contents with 3 levels
+- Internal cross-reference links (all links work within the document)
 - Metadata (title, author, date)
 
 **Requirements:** Pandoc must be installed (`brew install pandoc` on macOS)
+
+**Note:** The script automatically transforms cross-file Markdown links into internal document anchors, ensuring all links work correctly in the consolidated Word format.
 
 ---
 
