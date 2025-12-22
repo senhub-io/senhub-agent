@@ -44,6 +44,37 @@ with open(output_file, 'w') as f:
 PYTHON_TOC_REMOVAL
 }
 
+# Function to fix list formatting (ensure blank line before lists)
+fix_lists() {
+    local file=$1
+    local temp_file=$2
+
+    # Use Python to fix list formatting
+    python3 - "$file" "$temp_file" << 'PYTHON_LIST_FIX'
+import sys
+import re
+
+input_file = sys.argv[1]
+output_file = sys.argv[2]
+
+with open(input_file, 'r') as f:
+    content = f.read()
+
+# Fix lists that follow a colon without blank line
+# Pattern: line ending with : followed immediately by a list item
+content = re.sub(r':(\n)(-\s)', r':\n\n\2', content)
+
+# Also fix numbered lists
+content = re.sub(r':(\n)(\d+\.\s)', r':\n\n\2', content)
+
+# Fix lists after bold text
+content = re.sub(r'(\*\*[^*]+\*\*:)(\n)(-\s)', r'\1\n\n\3', content)
+
+with open(output_file, 'w') as f:
+    f.write(content)
+PYTHON_LIST_FIX
+}
+
 # Function to transform cross-file links to internal links
 transform_links() {
     local file=$1
@@ -135,6 +166,7 @@ PYTHON_SCRIPT
 # Process each file
 echo "Processing documentation files..."
 echo "  - Removing local Table of Contents sections"
+echo "  - Fixing list formatting for proper rendering"
 echo "  - Transforming cross-file links to internal anchors"
 echo "  - Converting Mermaid diagrams to PNG images"
 echo ""
@@ -145,12 +177,14 @@ for file in INSTALLATION.md OPERATING-MODES.md AGENT-CONFIGURATION.md \
     if [ -f "$SCRIPT_DIR/$file" ]; then
         # Step 1: Remove local TOC
         remove_local_toc "$SCRIPT_DIR/$file" "$TEMP_DIR/${file}.step1"
-        # Step 2: Transform cross-file links to internal links
-        transform_links "$TEMP_DIR/${file}.step1" "$TEMP_DIR/${file}.step2"
-        # Step 3: Process Mermaid diagrams
-        process_mermaid "$TEMP_DIR/${file}.step2" "$TEMP_DIR/$file"
+        # Step 2: Fix list formatting
+        fix_lists "$TEMP_DIR/${file}.step1" "$TEMP_DIR/${file}.step2"
+        # Step 3: Transform cross-file links to internal links
+        transform_links "$TEMP_DIR/${file}.step2" "$TEMP_DIR/${file}.step3"
+        # Step 4: Process Mermaid diagrams
+        process_mermaid "$TEMP_DIR/${file}.step3" "$TEMP_DIR/$file"
         # Cleanup intermediate files
-        rm -f "$TEMP_DIR/${file}.step1" "$TEMP_DIR/${file}.step2"
+        rm -f "$TEMP_DIR/${file}.step1" "$TEMP_DIR/${file}.step2" "$TEMP_DIR/${file}.step3"
     fi
 done
 
