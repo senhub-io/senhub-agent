@@ -145,8 +145,19 @@ for match in matches:
         subprocess.run(['mmdc', '-i', mermaid_file, '-o', png_file, '-b', 'transparent'],
                       check=True, capture_output=True)
 
-        # Replace mermaid block with image reference
-        image_ref = f'![Diagram {diagram_count}]({png_file})'
+        # Extract diagram title from first line if it's a comment
+        first_line = mermaid_code.strip().split('\n')[0]
+        diagram_desc = f'Figure {diagram_count}'
+
+        # Try to extract description from Mermaid title
+        if 'title' in first_line.lower():
+            desc_match = re.search(r'title\s+(.+)', first_line, re.IGNORECASE)
+            if desc_match:
+                diagram_desc = desc_match.group(1).strip()
+
+        # Replace mermaid block with image and caption
+        # Use custom caption format that will be styled
+        image_ref = f'\n![]({png_file})\n\n*{diagram_desc}*\n'
         content = content.replace(match.group(0), image_ref, 1)
 
         print(f'  ✓ Converted diagram {diagram_count} in {file_basename}')
