@@ -21,11 +21,7 @@ func TestNewServer(t *testing.T) {
 		t.Fatal("NewServer() returned nil")
 	}
 
-	// Verify it implements Server interface
-	_, ok := server.(Server)
-	if !ok {
-		t.Error("NewServer() does not implement Server interface")
-	}
+	// Type check is implicit: NewServer returns Server interface
 }
 
 func TestServer_NewRequest(t *testing.T) {
@@ -92,7 +88,7 @@ func TestServer_Get(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	}))
 	defer ts.Close()
 
@@ -150,7 +146,7 @@ func TestServer_Post(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(`{"created":"true"}`))
+		_, _ = w.Write([]byte(`{"created":"true"}`))
 	}))
 	defer ts.Close()
 
@@ -265,7 +261,7 @@ func TestServer_Authentication_Missing(t *testing.T) {
 
 	// Create server with empty auth key
 	srv := NewServer("", ts.URL, baseLogger)
-	srv.Get("/api/test")
+	_, _ = srv.Get("/api/test")
 
 	if authReceived {
 		t.Error("Expected no auth header for empty key, but header was received")
@@ -284,7 +280,7 @@ func TestServer_RetryOnFailure(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"success":"true"}`))
+		_, _ = w.Write([]byte(`{"success":"true"}`))
 	}))
 	defer ts.Close()
 
@@ -330,7 +326,7 @@ func TestServer_PathJoining(t *testing.T) {
 	for _, tt := range tests {
 		t.Run("Path: "+tt.path, func(t *testing.T) {
 			receivedPath = ""
-			srv.Get(tt.path)
+			_, _ = srv.Get(tt.path)
 			if receivedPath != tt.expectedPath {
 				t.Errorf("Expected path '%s', got '%s'", tt.expectedPath, receivedPath)
 			}

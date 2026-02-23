@@ -45,7 +45,7 @@ func getFloat(data map[string]interface{}, key string) float64 {
 		case string:
 			// Try to parse string to float
 			var f float64
-			fmt.Sscanf(v, "%f", &f)
+			_, _ = fmt.Sscanf(v, "%f", &f)
 			// Check sentinel after parsing
 			if f >= 4294967295.0 {
 				return 0
