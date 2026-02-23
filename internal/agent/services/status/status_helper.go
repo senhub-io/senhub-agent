@@ -126,7 +126,7 @@ type HTTPSystemInfoResponse struct {
 // convertHTTPResponseToSystemStatus converts HTTP strategy response to our format
 func (h *StatusHelper) convertHTTPResponseToSystemStatus(httpResp HTTPSystemInfoResponse) SystemStatus {
 	// Determine connection mode from health services (which includes mode)
-	mode := "unknown"
+	var mode string
 	if modeStr, ok := httpResp.Health.Services["mode"]; ok {
 		mode = modeStr
 	} else {
