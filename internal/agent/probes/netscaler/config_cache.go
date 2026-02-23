@@ -233,20 +233,6 @@ func (c *configCache) getServiceConfig(name string) map[string]interface{} {
 	return c.services[name]
 }
 
-// getServiceGroupConfig retrieves cached servicegroup configuration
-func (c *configCache) getServiceGroupConfig(name string) map[string]interface{} {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.servicegroups[name]
-}
-
-// getSSLCertKeyConfig retrieves cached SSL certificate configuration
-func (c *configCache) getSSLCertKeyConfig(name string) map[string]interface{} {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.sslcertkeys[name]
-}
-
 // getAllSSLCertKeys retrieves all cached SSL certificates
 func (c *configCache) getAllSSLCertKeys() map[string]map[string]interface{} {
 	c.mu.RLock()
@@ -272,32 +258,4 @@ func (c *configCache) getVServersForServiceGroup(servicegroupName string) []stri
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.servicegroupToVServers[servicegroupName]
-}
-
-// getServicesForServiceGroup retrieves services that are members of a servicegroup
-func (c *configCache) getServicesForServiceGroup(servicegroupName string) []string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.servicegroupToServices[servicegroupName]
-}
-
-// getAllServiceGroups retrieves all cached servicegroups
-func (c *configCache) getAllServiceGroups() map[string]map[string]interface{} {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.servicegroups
-}
-
-// needsRefresh checks if cache needs to be refreshed
-func (c *configCache) needsRefresh() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return time.Since(c.lastRefresh) > c.refreshInterval
-}
-
-// age returns the age of the cached data
-func (c *configCache) age() time.Duration {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return time.Since(c.lastRefresh)
 }

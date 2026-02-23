@@ -72,6 +72,10 @@ func TestGetFreeTierProbes(t *testing.T) {
 func TestMockValidator_ValidateLicense(t *testing.T) {
 	validator := NewMockValidator(7)
 
+	// Use dynamic dates to avoid test failures when hardcoded dates expire
+	futureDate := time.Now().Add(365 * 24 * time.Hour).Format(time.RFC3339)
+	pastIssuedDate := time.Now().Add(-180 * 24 * time.Hour).Format(time.RFC3339)
+
 	tests := []struct {
 		name        string
 		token       string
@@ -83,8 +87,8 @@ func TestMockValidator_ValidateLicense(t *testing.T) {
 			token: `{
 				"tier": "pro",
 				"authorized_probes": ["*"],
-				"expires_at": "2025-12-31T23:59:59Z",
-				"issued_at": "2025-01-01T00:00:00Z",
+				"expires_at": "` + futureDate + `",
+				"issued_at": "` + pastIssuedDate + `",
 				"subject": "customer-123"
 			}`,
 			expectError: false,
