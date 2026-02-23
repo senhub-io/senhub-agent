@@ -574,9 +574,7 @@ func (p *netscalerProbe) collectSSLCertificateStats(timestamp time.Time, baseTag
 func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
 	// Add metric view tag for functional grouping
 	// Create a copy to avoid modifying caller's slice
-	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
-	copy(collectorTags, baseTags)
-	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "high_availability"})
+	baseTags = append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_view", Value: "high_availability"})
 
 	p.logger.Debug().
 		Int("probe_node_id", p.nodeID).
