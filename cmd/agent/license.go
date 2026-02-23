@@ -200,7 +200,7 @@ func handleLicenseRemove(args *cliArgs.LicenseRemoveArgs) {
 	if !args.Force {
 		fmt.Print("Are you sure you want to remove the license? (y/N): ")
 		var response string
-		fmt.Scanln(&response)
+		_, _ = fmt.Scanln(&response)
 		if response != "y" && response != "Y" {
 			fmt.Println("Cancelled.")
 			return
