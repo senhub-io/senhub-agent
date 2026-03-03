@@ -2,7 +2,7 @@ name: Deploy Documentation
 
 on:
   push:
-    branches: [master]
+    branches: [dev, master]
     paths:
       - 'docs/user-guide/content/**'
       - 'docs/user-guide/hugo.toml'
