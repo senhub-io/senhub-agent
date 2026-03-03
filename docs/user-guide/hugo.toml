@@ -9,11 +9,13 @@ enableGitInfo = true
   BookTheme = "auto"
   BookToC = true
   BookSection = "docs"
+  BookLogo = "/logo.png"
   BookRepo = "https://github.com/senhub-io/senhub-agent"
   BookSearch = true
   BookDateFormat = "January 2, 2006"
   BookMenuBundle = "/menu"
   BookComments = false
+  AgentVersion = "0.1.80-beta"
 
 [markup]
   [markup.highlight]
