@@ -117,6 +117,9 @@ config_demo_web.yaml
 
 # Generated Word documentation
 docs/user-guide/word/
-docs/user-guide/*.docx
-!docs/user-guide/reference-template.docx
+docs/user-guide/**/*.docx
 docs/user-guide/.temp-word-gen/
+
+# Hugo generated site
+docs/user-guide/public/
+docs/user-guide/resources/
