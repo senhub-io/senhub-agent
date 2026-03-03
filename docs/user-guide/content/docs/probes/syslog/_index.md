@@ -7,6 +7,10 @@ weight: 8
 **License: Pro** - Requires a Pro or Enterprise license. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
 {{< /hint >}}
 
+{{< hint info >}}
+**Online mode only** - This probe requires an active connection to the SenHub Observability Platform. It is not available in offline mode.
+{{< /hint >}}
+
 # Syslog Probe
 
 The Syslog probe collects system logs and events by running a Syslog server that receives messages from network devices, servers, applications, and infrastructure components via UDP or TCP.
