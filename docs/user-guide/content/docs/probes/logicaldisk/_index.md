@@ -3,6 +3,10 @@ title: "Logical Disk"
 weight: 4
 ---
 
+{{< hint info >}}
+**License: Free** - No license required. Available in all tiers. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+{{< /hint >}}
+
 # LogicalDisk Probe
 
 The LogicalDisk probe monitors disk and filesystem performance across all major operating systems, providing comprehensive metrics for capacity, I/O operations, throughput, and filesystem health.

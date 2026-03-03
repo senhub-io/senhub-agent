@@ -3,6 +3,10 @@ title: "Network"
 weight: 3
 ---
 
+{{< hint info >}}
+**License: Free** - No license required. Available in all tiers. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+{{< /hint >}}
+
 # Network Probe
 
 The Network probe monitors network interface performance across all major operating systems, providing comprehensive metrics for bandwidth, packets, errors, and discards on a per-interface basis.
