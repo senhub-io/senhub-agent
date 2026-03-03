@@ -7,6 +7,10 @@ weight: 9
 **License: Pro** - Requires a Pro or Enterprise license. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
 {{< /hint >}}
 
+{{< hint info >}}
+**Online mode only** - This probe requires an active connection to the SenHub Observability Platform. It is not available in offline mode.
+{{< /hint >}}
+
 # Event Probe
 
 ## Overview
