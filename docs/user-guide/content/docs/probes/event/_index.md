@@ -3,6 +3,10 @@ title: "Event"
 weight: 9
 ---
 
+{{< hint warning >}}
+**License: Pro** - Requires a Pro or Enterprise license. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+{{< /hint >}}
+
 # Event Probe
 
 ## Overview
