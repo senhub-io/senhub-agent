@@ -1,0 +1,28 @@
+baseURL = "https://docs.senhub.io/"
+title = "SenHub Agent Documentation"
+theme = "hugo-book"
+
+defaultContentLanguage = "en"
+enableGitInfo = true
+
+[params]
+  BookTheme = "auto"
+  BookToC = true
+  BookSection = "docs"
+  BookRepo = "https://github.com/senhub-io/senhub-agent"
+  BookSearch = true
+  BookDateFormat = "January 2, 2006"
+  BookMenuBundle = "/menu"
+  BookComments = false
+
+[markup]
+  [markup.highlight]
+    style = "github"
+    lineNos = false
+    noClasses = false
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
+
+[outputs]
+  home = ["HTML", "RSS"]
