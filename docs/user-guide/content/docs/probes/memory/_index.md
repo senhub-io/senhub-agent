@@ -3,6 +3,10 @@ title: "Memory"
 weight: 2
 ---
 
+{{< hint info >}}
+**License: Free** - No license required. Available in all tiers. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+{{< /hint >}}
+
 # Memory Probe
 
 The Memory probe monitors system memory and swap usage across all major operating systems, providing comprehensive metrics for physical memory, cache, buffers, and page file utilization.

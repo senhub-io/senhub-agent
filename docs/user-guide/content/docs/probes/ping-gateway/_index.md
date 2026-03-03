@@ -3,6 +3,10 @@ title: "Ping Gateway"
 weight: 12
 ---
 
+{{< hint warning >}}
+**License: Pro** - Requires a Pro or Enterprise license. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+{{< /hint >}}
+
 # Ping Gateway Probe
 
 The Ping Gateway probe monitors network connectivity to the default gateway or a specified IP address, providing essential metrics for detecting network routing issues, ISP quality problems, and local network connectivity.
