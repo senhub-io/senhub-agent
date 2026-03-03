@@ -8,6 +8,7 @@ on:
       - 'docs/user-guide/hugo.toml'
       - 'docs/user-guide/assets/**'
       - 'docs/user-guide/static/**'
+      - 'docs/user-guide/layouts/**'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
