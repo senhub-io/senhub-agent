@@ -1,6 +1,6 @@
 ---
 title: "Troubleshooting"
-weight: 5
+weight: 20
 ---
 
 # Troubleshooting
