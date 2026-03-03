@@ -1,6 +1,6 @@
 ---
-title: "NetScaler Guide"
-weight: 2
+title: "NetScaler"
+weight: 6
 ---
 
 # Overview
