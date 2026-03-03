@@ -7,6 +7,10 @@ weight: 14
 **License: Enterprise** - Requires an Enterprise license. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
 {{< /hint >}}
 
+{{< hint info >}}
+**Online mode only** - This probe requires an active connection to the SenHub Observability Platform. It is not available in offline mode.
+{{< /hint >}}
+
 # OpenTelemetry Probe
 
 ## Introduction
