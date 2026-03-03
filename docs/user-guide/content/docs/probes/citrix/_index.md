@@ -3,6 +3,10 @@ title: "Citrix"
 weight: 5
 ---
 
+{{< hint warning >}}
+**License: Pro** - Requires a Pro or Enterprise license. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+{{< /hint >}}
+
 # Overview
 
 The Citrix probe monitors Citrix Virtual Apps and Desktops (CVAD) environments through the Director OData API and DDC REST API, providing comprehensive metrics for sessions, infrastructure, logon performance, and connection failures.
