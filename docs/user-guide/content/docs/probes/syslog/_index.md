@@ -3,6 +3,10 @@ title: "Syslog"
 weight: 8
 ---
 
+{{< hint warning >}}
+**License: Pro** - Requires a Pro or Enterprise license. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+{{< /hint >}}
+
 # Syslog Probe
 
 The Syslog probe collects system logs and events by running a Syslog server that receives messages from network devices, servers, applications, and infrastructure components via UDP or TCP.
