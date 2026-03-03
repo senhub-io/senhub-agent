@@ -3,6 +3,10 @@ title: "CPU"
 weight: 1
 ---
 
+{{< hint info >}}
+**License: Free** - No license required. Available in all tiers. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+{{< /hint >}}
+
 # CPU Probe
 
 The CPU probe monitors processor performance across all major operating systems, providing comprehensive metrics for usage, load, and system-level CPU statistics.

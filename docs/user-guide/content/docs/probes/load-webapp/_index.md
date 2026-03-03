@@ -3,6 +3,10 @@ title: "Load WebApp"
 weight: 11
 ---
 
+{{< hint warning >}}
+**License: Pro** - Requires a Pro or Enterprise license. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+{{< /hint >}}
+
 # Load WebApp Probe
 
 The Load WebApp probe monitors HTTP/HTTPS web application performance by measuring detailed timing metrics throughout the request lifecycle. It provides comprehensive insights into DNS resolution, TCP connection, TLS handshake, server response, and data transfer phases.

@@ -3,6 +3,10 @@ title: "Ping WebApp"
 weight: 10
 ---
 
+{{< hint warning >}}
+**License: Pro** - Requires a Pro or Enterprise license. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+{{< /hint >}}
+
 # WebApp Ping Probe
 
 The WebApp Ping probe monitors the network reachability and latency of web applications by resolving hostnames and performing ICMP ping tests against the target IP addresses.

@@ -3,6 +3,10 @@ title: "NetScaler"
 weight: 6
 ---
 
+{{< hint warning >}}
+**License: Pro** - Requires a Pro or Enterprise license. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+{{< /hint >}}
+
 # Overview
 
 The NetScaler probe collects performance, health, and configuration metrics from Citrix NetScaler Application Delivery Controllers using the NITRO REST API. It provides comprehensive visibility into load balancing, SSL offloading, high availability, and system health.
