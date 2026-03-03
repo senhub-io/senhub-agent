@@ -1,6 +1,6 @@
 ---
-title: "Citrix Guide"
-weight: 1
+title: "Citrix"
+weight: 5
 ---
 
 # Overview
