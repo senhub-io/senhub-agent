@@ -14,10 +14,9 @@ SenHub Agent is a monitoring collector that runs on your infrastructure and coll
 3. **[HTTP/HTTPS]({{< relref "/docs/http-https" >}})** - Set up the REST API and HTTPS
 4. **[Web Interface]({{< relref "/docs/web-interface" >}})** - Use the dashboard and integrate with monitoring systems
 
-## Probe Guides
+## Probes
 
-5. **[Citrix Guide]({{< relref "/docs/probes/citrix" >}})** - Monitor Citrix Virtual Apps and Desktops
-6. **[NetScaler Guide]({{< relref "/docs/probes/netscaler" >}})** - Monitor Citrix ADC / NetScaler
+5. **[All Probes]({{< relref "/docs/probes" >}})** - CPU, Memory, Network, Disk, Citrix, NetScaler, Redfish, Syslog, and more
 
 ## Troubleshooting
 
