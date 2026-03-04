@@ -30,7 +30,7 @@ jobs:
 
       - name: Build site
         working-directory: docs/user-guide
-        run: hugo --minify --baseURL "https://senhub-io.github.io/docs/"
+        run: hugo --minify
 
       - name: Deploy to docs repo
         uses: peaceiris/actions-gh-pages@v4

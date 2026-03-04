@@ -4,7 +4,7 @@ weight: 12
 ---
 
 {{< hint warning >}}
-**License: Pro** - Requires a Pro or Enterprise license. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+**License: Pro** - Requires a Pro or Enterprise license.
 {{< /hint >}}
 
 # Ping Gateway Probe
