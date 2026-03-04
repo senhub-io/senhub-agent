@@ -4,7 +4,7 @@ weight: 14
 ---
 
 {{< hint danger >}}
-**License: Enterprise** - Requires an Enterprise license. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+**License: Enterprise** - Requires an Enterprise license.
 {{< /hint >}}
 
 {{< hint info >}}
