@@ -4,7 +4,7 @@ weight: 13
 ---
 
 {{< hint warning >}}
-**License: Pro** - Requires a Pro or Enterprise license. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+**License: Pro** - Requires a Pro or Enterprise license.
 {{< /hint >}}
 
 # WiFi Signal Strength Probe
