@@ -4,7 +4,7 @@ weight: 2
 ---
 
 {{< hint info >}}
-**License: Free** - No license required. Available in all tiers. See [License Tiers]({{< relref "/docs/configuration#license-tiers" >}}).
+**License: Free** - No license required. Available in all tiers.
 {{< /hint >}}
 
 # Memory Probe
