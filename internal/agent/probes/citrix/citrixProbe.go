@@ -447,7 +447,7 @@ func (p *citrixProbe) DebugIdentifierMapping() error {
 	p.logger.Debug().Msg("Starting debug identifier extraction (CVAD vs OData)")
 
 	debugDir := "/tmp/citrix-debug"
-	if err := os.MkdirAll(debugDir, 0755); err != nil {
+	if err := os.MkdirAll(debugDir, 0750); err != nil {
 		return fmt.Errorf("failed to create debug directory: %w", err)
 	}
 

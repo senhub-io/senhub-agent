@@ -322,12 +322,7 @@ func (p *netscalerProbe) Collect() ([]datapoint.DataPoint, error) {
 		datapoints = append(datapoints, haDP...)
 	}
 
-	// Collect Disk usage stats
-	if diskDP, err := p.collectDiskStats(timestamp, baseTags); err != nil {
-		p.logger.Warn().Err(err).Msg("Failed to collect Disk stats")
-	} else {
-		datapoints = append(datapoints, diskDP...)
-	}
+	// Disk stats are already collected inside collectSystemStats (same NITRO "system" resource)
 
 	// Collect Interface stats
 	if ifaceDP, err := p.collectInterfaceStats(timestamp, baseTags); err != nil {
