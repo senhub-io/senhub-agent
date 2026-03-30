@@ -19,14 +19,14 @@ const (
 	TierEnterprise LicenseTier = "enterprise"
 )
 
-// LicenseClaims represents the JWT claims for the license
+// LicenseClaims represents the JWT claims for the license.
+// Standard JWT fields (exp, iat, iss, sub) are handled by RegisteredClaims.
+// We use jwt.WithoutClaimsValidation() at parse time so that expired tokens
+// are not rejected by the library — expiry is managed manually to support
+// the grace period feature.
 type LicenseClaims struct {
 	Tier             LicenseTier `json:"tier"`
 	AuthorizedProbes []string    `json:"authorized_probes"`
-	ExpiresAt        int64       `json:"exp"`
-	IssuedAt         int64       `json:"iat"`
-	Issuer           string      `json:"iss"`
-	Subject          string      `json:"sub"` // Agent key or customer ID
 	jwt.RegisteredClaims
 }
 
@@ -86,7 +86,8 @@ func NewJWTValidator(publicKeyPEM string, gracePeriodDays int) (*JWTValidator, e
 
 // ValidateLicense validates a JWT license token
 func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
-	// Parse and validate JWT token
+	// Parse and validate JWT token.
+	// WithoutClaimsValidation: expiry is managed manually to support grace periods.
 	token, err := jwt.ParseWithClaims(tokenString, &LicenseClaims{}, func(token *jwt.Token) (interface{}, error) {
 		// SECURITY: Verify signing method is specifically RS256 (not just any RSA method)
 		// This prevents algorithm confusion/downgrade attacks
@@ -95,7 +96,7 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v, expected RS256", token.Header["alg"])
 		}
 		return v.publicKey, nil
-	})
+	}, jwt.WithoutClaimsValidation())
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse token: %w", err)
@@ -103,13 +104,18 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 
 	// Extract claims
 	claims, ok := token.Claims.(*LicenseClaims)
-	if !ok || !token.Valid {
+	if !ok {
 		return nil, fmt.Errorf("invalid token claims")
 	}
 
-	// Create license object
-	expiresAt := time.Unix(claims.ExpiresAt, 0)
-	issuedAt := time.Unix(claims.IssuedAt, 0)
+	// Read standard fields from RegisteredClaims
+	var expiresAt, issuedAt time.Time
+	if claims.RegisteredClaims.ExpiresAt != nil {
+		expiresAt = claims.RegisteredClaims.ExpiresAt.Time
+	}
+	if claims.RegisteredClaims.IssuedAt != nil {
+		issuedAt = claims.RegisteredClaims.IssuedAt.Time
+	}
 	isExpired := time.Now().After(expiresAt)
 
 	license := &License{
@@ -117,7 +123,7 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 		AuthorizedProbes: claims.AuthorizedProbes,
 		ExpiresAt:        expiresAt,
 		IssuedAt:         issuedAt,
-		Subject:          claims.Subject,
+		Subject:          claims.RegisteredClaims.Subject,
 		IsExpired:        isExpired,
 		GracePeriodDays:  v.gracePeriodDays,
 	}
