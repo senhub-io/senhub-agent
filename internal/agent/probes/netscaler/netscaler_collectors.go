@@ -738,75 +738,9 @@ func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag
 }
 
 // collectDiskStats gathers disk usage metrics
-func (p *netscalerProbe) collectDiskStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
-	// Add metric view tag for functional grouping
-	// Create a copy to avoid modifying caller's slice
-	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
-	copy(collectorTags, baseTags)
-	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "system_health"})
-
-	// Disk stats are part of system resource (disk0* = /flash, disk1* = /var)
-	sys, err := p.client.FindStat("system", "")
-	if err != nil {
-		return nil, err
-	}
-
-	if sys == nil {
-		return nil, fmt.Errorf("no system stats returned")
-	}
-
-	var datapoints []datapoint.DataPoint
-
-	// Disk 0 (/flash partition)
-	disk0Tags := append(collectorTags, tags.Tag{Key: "partition", Value: "/flash"})
-
-	datapoints = append(datapoints, datapoint.DataPoint{
-		Name:      "netscaler.disk.percent_used",
-		Value:     float32(getFloat(sys, "disk0perusage")),
-		Tags:      disk0Tags,
-		Timestamp: timestamp,
-	})
-
-	datapoints = append(datapoints, datapoint.DataPoint{
-		Name:      "netscaler.disk.used_kb",
-		Value:     float32(getFloat(sys, "disk0used")),
-		Tags:      disk0Tags,
-		Timestamp: timestamp,
-	})
-
-	datapoints = append(datapoints, datapoint.DataPoint{
-		Name:      "netscaler.disk.available_kb",
-		Value:     float32(getFloat(sys, "disk0avail")),
-		Tags:      disk0Tags,
-		Timestamp: timestamp,
-	})
-
-	// Disk 1 (/var partition)
-	disk1Tags := append(collectorTags, tags.Tag{Key: "partition", Value: "/var"})
-
-	datapoints = append(datapoints, datapoint.DataPoint{
-		Name:      "netscaler.disk.percent_used",
-		Value:     float32(getFloat(sys, "disk1perusage")),
-		Tags:      disk1Tags,
-		Timestamp: timestamp,
-	})
-
-	datapoints = append(datapoints, datapoint.DataPoint{
-		Name:      "netscaler.disk.used_kb",
-		Value:     float32(getFloat(sys, "disk1used")),
-		Tags:      disk1Tags,
-		Timestamp: timestamp,
-	})
-
-	datapoints = append(datapoints, datapoint.DataPoint{
-		Name:      "netscaler.disk.available_kb",
-		Value:     float32(getFloat(sys, "disk1avail")),
-		Tags:      disk1Tags,
-		Timestamp: timestamp,
-	})
-
-	return datapoints, nil
-}
+// collectDiskStats is no longer needed — disk metrics are collected inside
+// collectSystemStats using the same NITRO "system" resource, avoiding a
+// duplicate API call.
 
 // collectInterfaceStats gathers network interface metrics
 func (p *netscalerProbe) collectInterfaceStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
