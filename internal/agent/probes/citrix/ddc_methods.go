@@ -13,32 +13,9 @@ func (c *deliveryControllerClient) GetMachinesBySite(ctx context.Context, siteNa
 		Str("site", siteName).
 		Msg("Retrieving machines for site")
 
-	// Get current user info to get their site ID
-	// This is the only reliable way with standard user permissions
-	meResp, err := c.GetMe(ctx)
+	siteID, actualSiteName, err := c.getSiteInfo(ctx, siteName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user info: %w", err)
-	}
-
-	// Extract site ID from customers/sites structure
-	if len(meResp.Customers) == 0 || len(meResp.Customers[0].Sites) == 0 {
-		return nil, fmt.Errorf("user has no accessible sites")
-	}
-
-	// Use the first site (usually there's only one)
-	siteID := meResp.Customers[0].Sites[0].Id
-	actualSiteName := meResp.Customers[0].Sites[0].Name
-
-	// Check if the requested site matches the user's site
-	if siteName != "" && actualSiteName != siteName {
-		c.logger.Warn().
-			Str("requested_site", siteName).
-			Str("user_site", actualSiteName).
-			Msg("User requesting different site than their own - using user's site for security")
-	}
-
-	if siteID == "" {
-		return nil, fmt.Errorf("user site ID not available")
+		return nil, err
 	}
 
 	return c.getMachinesBySiteID(ctx, siteID, actualSiteName)
@@ -129,31 +106,9 @@ func (c *deliveryControllerClient) GetMachinesDetailedBySite(ctx context.Context
 		Str("site", siteName).
 		Msg("Retrieving detailed machines for site")
 
-	// Get current user info to get their site ID
-	meResp, err := c.GetMe(ctx)
+	siteID, _, err := c.getSiteInfo(ctx, siteName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user info: %w", err)
-	}
-
-	// Extract site ID from customers/sites structure
-	if len(meResp.Customers) == 0 || len(meResp.Customers[0].Sites) == 0 {
-		return nil, fmt.Errorf("user has no accessible sites")
-	}
-
-	// Use the first site (usually there's only one)
-	siteID := meResp.Customers[0].Sites[0].Id
-	actualSiteName := meResp.Customers[0].Sites[0].Name
-
-	if siteID == "" {
-		return nil, fmt.Errorf("user site ID not available")
-	}
-
-	// Check if requested site matches user's site
-	if siteName != "" && actualSiteName != siteName {
-		c.logger.Warn().
-			Str("requested_site", siteName).
-			Str("user_site", actualSiteName).
-			Msg("User requesting different site than their own - using user's site for security")
+		return nil, err
 	}
 
 	// Get machines with pagination support
@@ -199,31 +154,9 @@ func (c *deliveryControllerClient) GetDeliveryGroupsBySite(ctx context.Context, 
 		Str("site", siteName).
 		Msg("Retrieving delivery groups for site")
 
-	// Get current user info to get their site ID
-	meResp, err := c.GetMe(ctx)
+	siteID, _, err := c.getSiteInfo(ctx, siteName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user info: %w", err)
-	}
-
-	// Extract site ID from customers/sites structure
-	if len(meResp.Customers) == 0 || len(meResp.Customers[0].Sites) == 0 {
-		return nil, fmt.Errorf("user has no accessible sites")
-	}
-
-	// Use the first site (usually there's only one)
-	siteID := meResp.Customers[0].Sites[0].Id
-	actualSiteName := meResp.Customers[0].Sites[0].Name
-
-	if siteID == "" {
-		return nil, fmt.Errorf("user site ID not available")
-	}
-
-	// Check if requested site matches user's site
-	if siteName != "" && actualSiteName != siteName {
-		c.logger.Warn().
-			Str("requested_site", siteName).
-			Str("user_site", actualSiteName).
-			Msg("User requesting different site than their own - using user's site for security")
+		return nil, err
 	}
 
 	// Get delivery groups with pagination
@@ -269,31 +202,9 @@ func (c *deliveryControllerClient) GetControllersBySite(ctx context.Context, sit
 		Str("site", siteName).
 		Msg("Retrieving controllers for site")
 
-	// Get current user info to get their site ID
-	meResp, err := c.GetMe(ctx)
+	siteID, _, err := c.getSiteInfo(ctx, siteName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user info: %w", err)
-	}
-
-	// Extract site ID from customers/sites structure
-	if len(meResp.Customers) == 0 || len(meResp.Customers[0].Sites) == 0 {
-		return nil, fmt.Errorf("user has no accessible sites")
-	}
-
-	// Use the first site (usually there's only one)
-	siteID := meResp.Customers[0].Sites[0].Id
-	actualSiteName := meResp.Customers[0].Sites[0].Name
-
-	if siteID == "" {
-		return nil, fmt.Errorf("user site ID not available")
-	}
-
-	// Check if requested site matches user's site
-	if siteName != "" && actualSiteName != siteName {
-		c.logger.Warn().
-			Str("requested_site", siteName).
-			Str("user_site", actualSiteName).
-			Msg("User requesting different site than their own - using user's site for security")
+		return nil, err
 	}
 
 	// Get controllers with pagination support
@@ -339,31 +250,9 @@ func (c *deliveryControllerClient) GetSessionsBySite(ctx context.Context, siteNa
 		Str("site", siteName).
 		Msg("Retrieving sessions for site")
 
-	// Get current user info to get their site ID
-	meResp, err := c.GetMe(ctx)
+	siteID, _, err := c.getSiteInfo(ctx, siteName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user info: %w", err)
-	}
-
-	// Extract site ID from customers/sites structure
-	if len(meResp.Customers) == 0 || len(meResp.Customers[0].Sites) == 0 {
-		return nil, fmt.Errorf("user has no accessible sites")
-	}
-
-	// Use the first site (usually there's only one)
-	siteID := meResp.Customers[0].Sites[0].Id
-	actualSiteName := meResp.Customers[0].Sites[0].Name
-
-	if siteID == "" {
-		return nil, fmt.Errorf("user site ID not available")
-	}
-
-	// Check if requested site matches user's site
-	if siteName != "" && actualSiteName != siteName {
-		c.logger.Warn().
-			Str("requested_site", siteName).
-			Str("user_site", actualSiteName).
-			Msg("User requesting different site than their own - using user's site for security")
+		return nil, err
 	}
 
 	// Get active sessions (server-side filtering via Citrix-InstanceId header should handle site filtering)
@@ -409,36 +298,16 @@ func (c *deliveryControllerClient) GetSiteDetails(ctx context.Context, siteName 
 		Str("site", siteName).
 		Msg("Retrieving site details")
 
-	// Get current user info to get their site info
-	meResp, err := c.GetMe(ctx)
+	siteID, actualSiteName, err := c.getSiteInfo(ctx, siteName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user info: %w", err)
+		return nil, err
 	}
 
-	// Extract site info from customers/sites structure
-	if len(meResp.Customers) == 0 || len(meResp.Customers[0].Sites) == 0 {
-		return nil, fmt.Errorf("user has no accessible sites")
-	}
-
-	// Use the first site (usually there's only one)
-	actualSiteName := meResp.Customers[0].Sites[0].Name
 	siteInfo := &Site{
-		Id:   meResp.Customers[0].Sites[0].Id,
-		Name: meResp.Customers[0].Sites[0].Name,
+		Id:   siteID,
+		Name: actualSiteName,
 	}
-
-	if siteInfo.Id == "" {
-		return nil, fmt.Errorf("user site ID not available")
-	}
-
-	// Check if requested site matches user's site
-	if siteName != "" && actualSiteName != siteName {
-		c.logger.Warn().
-			Str("requested_site", siteName).
-			Str("user_site", actualSiteName).
-			Msg("User requesting different site than their own - using user's site for security")
-		siteName = actualSiteName // Use user's site for security
-	}
+	siteName = actualSiteName
 
 	// Get detailed information
 	machines, err := c.GetMachinesDetailedBySite(ctx, siteName)

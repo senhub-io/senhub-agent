@@ -39,7 +39,17 @@ class Dashboard {
         this.resourceGoroutines = this.base.$('#resource-goroutines');
         this.resourceCacheTtl = this.base.$('#resource-cache-ttl');
         this.resourceCpuUsage = this.base.$('#resource-cpu-usage');
-        
+
+        // License
+        this.licenseStatusIndicator = this.base.$('#license-status-indicator');
+        this.licenseStatus = this.base.$('#license-status');
+        this.licenseTier = this.base.$('#license-tier');
+        this.licenseExpires = this.base.$('#license-expires');
+        this.licenseExpiresRow = this.base.$('#license-expires-row');
+        this.licenseDays = this.base.$('#license-days');
+        this.licenseDaysRow = this.base.$('#license-days-row');
+        this.licenseProbesList = this.base.$('#license-probes-list');
+
         // Probes
         this.probesCount = this.base.$('#probes-count');
         this.probesList = this.base.$('#probes-list');
@@ -49,20 +59,22 @@ class Dashboard {
     async loadDashboard() {
         try {
             this.showLoading();
-            
-            // Load system info and probes data
-            const [systemData, probesData] = await Promise.all([
+
+            // Load system info, probes data, and license status
+            const [systemData, probesData, licenseData] = await Promise.all([
                 this.base.fetchAPI('info/system'),
-                this.base.fetchAPI('info/probes')
+                this.base.fetchAPI('info/probes'),
+                this.base.fetchAPI('license/status')
             ]);
-            
+
             this.updateAgentStatus(systemData);
             this.updateHealthStatus(systemData.health);
             this.updateResources(systemData);
+            this.updateLicenseStatus(licenseData);
             this.updateProbesList(probesData);
-            
+
             this.showContent();
-            
+
         } catch (error) {
             console.error('Failed to load dashboard:', error);
             this.showError();
@@ -112,52 +124,182 @@ class Dashboard {
     updateResources(systemData) {
         const resources = systemData.resources || {};
         const cache = systemData.cache || {};
-        
+
         // Update resource metrics
         if (resources.memory_usage_mb !== undefined) {
             this.resourceMemory.textContent = `${resources.memory_usage_mb.toFixed(2)} MB`;
         }
-        
+
         if (resources.goroutines !== undefined) {
             this.resourceGoroutines.textContent = resources.goroutines.toString();
         }
-        
+
         if (resources.cpu_percent !== undefined) {
             this.resourceCpuUsage.textContent = `${resources.cpu_percent.toFixed(1)}%`;
         }
-        
+
         this.resourceCacheTtl.textContent = cache.ttl || 'unknown';
+    }
+
+    updateLicenseStatus(licenseData) {
+        if (!licenseData) {
+            this.licenseStatus.textContent = 'Error';
+            this.licenseTier.textContent = 'Unknown';
+            if (this.licenseProbesList) {
+                this.licenseProbesList.innerHTML = '<span style="color: var(--gray-500);">-</span>';
+            }
+            this.licenseStatusIndicator.className = 'status-indicator status-warning';
+            return;
+        }
+
+        // Update status text and indicator
+        const status = licenseData.status || 'none';
+        const tier = licenseData.tier || 'free';
+
+        // Set status text with appropriate formatting
+        let statusText = status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
+        this.licenseStatus.textContent = statusText;
+
+        // Update tier
+        this.licenseTier.textContent = tier.charAt(0).toUpperCase() + tier.slice(1);
+
+        // Update status indicator color
+        this.licenseStatusIndicator.className = 'status-indicator';
+        if (status === 'active') {
+            this.licenseStatusIndicator.classList.add('status-running');
+        } else if (status === 'grace_period') {
+            this.licenseStatusIndicator.classList.add('status-warning');
+        } else if (status === 'none') {
+            this.licenseStatusIndicator.classList.add('status-info');
+        } else {
+            this.licenseStatusIndicator.classList.add('status-warning');
+        }
+
+        // Update expiration date and days remaining
+        if (licenseData.expires_at) {
+            const expiresDate = new Date(licenseData.expires_at);
+            this.licenseExpires.textContent = expiresDate.toLocaleDateString();
+            this.licenseExpiresRow.style.display = 'flex';
+        } else {
+            this.licenseExpiresRow.style.display = 'none';
+        }
+
+        if (licenseData.days_remaining !== undefined) {
+            this.licenseDays.textContent = licenseData.days_remaining.toString();
+            this.licenseDaysRow.style.display = 'flex';
+        } else {
+            this.licenseDaysRow.style.display = 'none';
+        }
+
+        // Update authorized probes list
+        this.updateProbesBadges(licenseData);
+    }
+
+    updateProbesBadges(licenseData) {
+        const authorizedProbes = licenseData.authorized_probes || [];
+        const freeTierProbes = licenseData.free_tier_probes || [];
+
+        // Clear existing badges
+        if (!this.licenseProbesList) {
+            console.error('License probes list element not found');
+            return;
+        }
+        this.licenseProbesList.innerHTML = '';
+
+        if (authorizedProbes.length > 0) {
+            // Check for wildcard (Enterprise tier)
+            if (authorizedProbes.includes('*')) {
+                const badge = document.createElement('span');
+                badge.className = 'probe-badge wildcard';
+                badge.textContent = '⭐ All Probes (Enterprise)';
+                this.licenseProbesList.appendChild(badge);
+            } else {
+                // Pro tier - show specific probes
+                const sortedProbes = [...authorizedProbes].sort();
+                sortedProbes.forEach(probe => {
+                    const badge = document.createElement('span');
+                    badge.className = 'probe-badge';
+                    badge.textContent = probe;
+                    this.licenseProbesList.appendChild(badge);
+                });
+            }
+        } else {
+            // Free tier only - show free tier probes
+            const sortedFreeProbes = [...freeTierProbes].sort();
+            sortedFreeProbes.forEach(probe => {
+                const badge = document.createElement('span');
+                badge.className = 'probe-badge free';
+                badge.textContent = probe;
+                this.licenseProbesList.appendChild(badge);
+            });
+        }
     }
 
     updateProbesList(probesData) {
         const probes = probesData.probes || [];
         const probeMetrics = probesData.probe_metrics || {};
-        
+
         // Update probes count
         this.probesCount.textContent = probes.length.toString();
-        
+
         // Clear existing list
         this.probesList.innerHTML = '';
-        
+
+        // STEP 1: Check if we have any probes in cache (regardless of uptime)
         if (probes.length === 0) {
+            // No probes in cache - hide list and show appropriate message
             this.probesList.style.display = 'none';
             this.noProbesDiv.style.display = 'block';
+
+            // STEP 2: Only if no probes, check uptime to distinguish:
+            // - Agent just started (uptime < 2min) → probes are loading
+            // - Agent running for a while (uptime >= 2min) → no probes configured
+            const uptimeText = this.agentUptime.textContent;
+            const isStartingUp = this.isAgentStartingUp(uptimeText);
+
+            if (isStartingUp) {
+                // CASE A: Agent uptime < 2 minutes AND no probes
+                // → Show "starting up" message (probes haven't collected metrics yet)
+                this.noProbesDiv.innerHTML = `
+                    <div class="info-notice" style="text-align: center;">
+                        <div style="font-size: 24px; margin-bottom: 10px;">🔄</div>
+                        <strong>Probes starting up...</strong>
+                        <p style="margin: 10px 0 0 0; color: #666;">
+                            The agent just started. Probes are initializing and will appear here shortly.
+                        </p>
+                    </div>
+                `;
+            } else {
+                // CASE B: Agent uptime >= 2 minutes AND no probes
+                // → Show "no probes configured" message (real configuration issue)
+                this.noProbesDiv.innerHTML = `
+                    <div class="info-notice" style="text-align: center;">
+                        <div style="font-size: 24px; margin-bottom: 10px;">⚠️</div>
+                        <strong>No active probes detected</strong>
+                        <p style="margin: 10px 0 0 0; color: #666;">
+                            No probes are configured or all probes failed to start.
+                            Check your configuration file.
+                        </p>
+                    </div>
+                `;
+            }
             return;
         }
-        
+
+        // CASE C: We have probes in cache → show the list
         this.probesList.style.display = 'block';
         this.noProbesDiv.style.display = 'none';
-        
+
         // Sort probes alphabetically
         const sortedProbes = [...probes].sort();
-        
+
         sortedProbes.forEach(probeName => {
             const li = document.createElement('li');
             li.className = 'probe-item';
-            
+
             const metricsCount = probeMetrics[probeName] || 0;
             const isActive = metricsCount > 0;
-            
+
             li.innerHTML = `
                 <div class="probe-info">
                     <div class="probe-status ${isActive ? 'active' : 'inactive'}"></div>
@@ -167,9 +309,39 @@ class Dashboard {
                     ${metricsCount} metrics
                 </div>
             `;
-            
+
             this.probesList.appendChild(li);
         });
+    }
+
+    /**
+     * Check if agent is starting up (uptime < 2 minutes)
+     * @param {string} uptimeText - Uptime string (e.g., "1m 30s", "2h 15m")
+     * @returns {boolean} - True if uptime < 2 minutes
+     */
+    isAgentStartingUp(uptimeText) {
+        if (!uptimeText || uptimeText === 'unknown') {
+            return true; // Assume starting if uptime unknown
+        }
+
+        // Parse uptime string: "1h 2m 3s", "1m 30s", "45s", etc.
+        const parts = uptimeText.split(' ');
+        let totalSeconds = 0;
+
+        for (const part of parts) {
+            if (part.includes('h')) {
+                totalSeconds += parseInt(part) * 3600;
+            } else if (part.includes('m')) {
+                totalSeconds += parseInt(part) * 60;
+            } else if (part.includes('s')) {
+                totalSeconds += parseInt(part);
+            } else if (part.includes('d')) {
+                totalSeconds += parseInt(part) * 86400;
+            }
+        }
+
+        // Starting up if uptime < 2 minutes (120 seconds)
+        return totalSeconds < 120;
     }
 
     showLoading() {

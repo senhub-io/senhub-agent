@@ -68,6 +68,20 @@ go.work.sum
 **/certs/
 /certs/
 
+# License system - Exclude test/production keys and licenses
+license-private-key.pem
+license-public-key.pem
+senhub-license-private-key.pem
+senhub-license-public-key.pem
+example-license-*.jwt
+license-*.jwt
+
+# Production keys and license testing (CRITICAL - NEVER COMMIT)
+.keys/
+test_configs/
+token_*.txt
+config_test_license*.yaml
+
 # Coverage reports
 coverage.html
 coverage.out
@@ -79,3 +93,28 @@ coverage.out
 # Test installation directory
 /test-install/
 
+
+# E2E Testing Infrastructure (Playwright)
+node_modules/
+package.json
+package-lock.json
+playwright.config.js
+playwright-report/
+test-results/
+tests/
+.playwright/
+
+# E2E Test scripts and configuration
+scripts/run-e2e-tests.sh
+config_demo_web.yaml
+
+# E2E Test automation agents
+
+# Generated Word documentation
+docs/user-guide/word/
+docs/user-guide/**/*.docx
+docs/user-guide/.temp-word-gen/
+
+# Hugo generated site
+docs/user-guide/public/
+docs/user-guide/resources/
