@@ -120,13 +120,12 @@ func (g *PRTGLookupGenerator) GenerateXMLForProbe(probeType string) (map[string]
 }
 
 // GetFilenameForLookup returns the PRTG-compatible filename for a lookup
-// Format: prtg.valuelookup.{id}.ovl
-// Example: prtg.valuelookup.netscaler.lbvserver.state.ovl
+// PRTG requires the filename (without .ovl extension) to match exactly the
+// ValueLookup id attribute in the XML. The file must be placed in:
+// C:\Program Files (x86)\PRTG Network Monitor\lookups\custom\
+// Example: netscaler.ha.node.state → netscaler.ha.node.state.ovl
 func (g *PRTGLookupGenerator) GetFilenameForLookup(lookupID string) string {
-	// Replace dots with underscores for filesystem compatibility
-	// But keep the original ID in the XML content
-	safeID := strings.ReplaceAll(lookupID, ".", "_")
-	return fmt.Sprintf("prtg.valuelookup.%s.ovl", safeID)
+	return fmt.Sprintf("%s.ovl", lookupID)
 }
 
 // severityToPRTGState converts severity levels to PRTG state names
