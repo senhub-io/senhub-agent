@@ -3,6 +3,7 @@ package netscaler
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -88,6 +89,18 @@ func parseNetscalerState(state string) float32 {
 	default:
 		return 2 // UNKNOWN for unrecognized states
 	}
+}
+
+// isBaseURLMatchingIP checks if the probe's base_url hostname literally equals the given IP.
+// This does NOT perform DNS resolution — for hostname-based base_urls (e.g. https://ns.example.com),
+// matching will return false even if the hostname resolves to that IP.
+// Use IP-based base_urls for reliable HA node identification.
+func (p *netscalerProbe) isBaseURLMatchingIP(ip string) bool {
+	parsed, err := url.Parse(p.baseURL)
+	if err != nil {
+		return false
+	}
+	return parsed.Hostname() == ip
 }
 
 // parseNetscalerBinaryState converts binary state strings to numeric codes

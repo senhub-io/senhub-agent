@@ -174,11 +174,7 @@ func TestLookupsManager_HandleDownloadAllPRTGLookups(t *testing.T) {
 
 	// Verify each file in ZIP
 	for _, file := range zipReader.File {
-		// Check filename format
-		if !strings.HasPrefix(file.Name, "prtg.valuelookup.") {
-			t.Errorf("File %s should start with 'prtg.valuelookup.'", file.Name)
-		}
-
+		// Check filename format: {lookup_id}.ovl (must match XML id attribute exactly)
 		if !strings.HasSuffix(file.Name, ".ovl") {
 			t.Errorf("File %s should have .ovl extension", file.Name)
 		}

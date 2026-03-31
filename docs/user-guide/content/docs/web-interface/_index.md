@@ -150,9 +150,9 @@ After loading the lookups, PRTG sensors will display human-readable status value
 The ZIP file contains lookup files in the PRTG `.ovl` format:
 ```
 senhub-prtg-lookups.zip
-  prtg.valuelookup.netscaler_lbvserver_state.ovl
-  prtg.valuelookup.netscaler_service_state.ovl
-  prtg.valuelookup.citrix_session_state.ovl
+  netscaler.lbvserver.state.ovl
+  netscaler.service.state.ovl
+  netscaler.ha.node.state.ovl
   ...
 ```
 

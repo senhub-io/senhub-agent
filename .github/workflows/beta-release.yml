@@ -1,4 +1,4 @@
-name: Beta Release
+name: Beta Tag
 on:
   push:
     branches: [ dev ]
@@ -7,28 +7,18 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 jobs:
-  release:
+  create_beta_tag:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.22.0'
-      - name: Get Go Version
-        id: go_version
+
+      - name: Auto-increment patch version and create beta tag
         run: |
-          GO_VERSION=$(go version | cut -d' ' -f3)
-          echo "GO_VERSION=$GO_VERSION" >> $GITHUB_ENV
-      - name: Get Version from Package
-        id: get_version
-        run: |
-          # Get the latest semver tag (X.Y.Z or X.Y.Z-beta), ignoring non-semver tags like 'latest', 'latest-beta'
+          # Get the latest semver tag (X.Y.Z or X.Y.Z-beta), ignoring non-semver tags
           LATEST_TAG=$(git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+(-beta)?$' | sort -V | tail -n 1)
 
           if [ -z "$LATEST_TAG" ]; then
@@ -51,51 +41,12 @@ jobs:
             exit 1
           fi
 
-          echo "CURRENT_TAG=$LATEST_TAG" >> $GITHUB_ENV
-          echo "beta_tag=$NEW_TAG" >> $GITHUB_ENV
-          echo "New beta tag will be: $NEW_TAG"
-      - name: Create and push beta tag
-        run: |
-          git tag ${{ env.beta_tag }}
-          git push origin ${{ env.beta_tag }}
+          echo "New beta tag: $NEW_TAG"
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v5
-        with:
-          distribution: goreleaser
-          version: latest
-          args: release --clean --skip-validate
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GOVERSION: ${{ env.GO_VERSION }}
-      - name: Create Release
-        if: success()
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ env.beta_tag }}
-          name: Beta Release ${{ env.beta_tag }}
-          files: |
-            dist/senhub-agent_linux_*
-            dist/senhub-agent_windows_*
-            dist/senhub-agent_darwin_*
-            dist/metadata.json
-          generate_release_notes: false
-          prerelease: true
-
-      - name: Update 'latest-beta' tag to point to this beta release
-        if: success()
-        run: |
+          # Create and push beta tag (triggers dev-beta-release.yml for build)
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
+          git tag "$NEW_TAG"
+          git push origin "$NEW_TAG"
 
-          # Delete the existing 'latest-beta' tag locally and remotely
-          git tag -d latest-beta 2>/dev/null || true
-          git push origin :refs/tags/latest-beta 2>/dev/null || true
-
-          # Create new 'latest-beta' tag pointing to current commit
-          git tag latest-beta
-
-          # Push the new 'latest-beta' tag (force to overwrite if it exists)
-          git push origin latest-beta --force
-
-          echo "✓ Tag 'latest-beta' updated to point to ${{ env.beta_tag }} (commit: $(git rev-parse HEAD))"
+          echo "Tag $NEW_TAG created and pushed"
