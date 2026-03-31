@@ -28,48 +28,27 @@ jobs:
       - name: Get Version from Package
         id: get_version
         run: |
-          # Get the latest tag (beta or stable)
-          ALL_TAGS=$(git tag --sort=-version:refname)
-          LATEST_TAG=$(echo "$ALL_TAGS" | head -n 1)
+          # Get the latest semver tag (X.Y.Z or X.Y.Z-beta), ignoring non-semver tags like 'latest', 'latest-beta'
+          LATEST_TAG=$(git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+(-beta)?$' | sort -V | tail -n 1)
 
           if [ -z "$LATEST_TAG" ]; then
             LATEST_TAG="0.0.0"
           fi
 
-          echo "Latest tag found: $LATEST_TAG"
+          echo "Latest semver tag found: $LATEST_TAG"
 
-          # Check if latest tag ends with -beta
-          if [[ $LATEST_TAG == *-beta ]]; then
-            # Tag already has -beta, increment the patch version
-            BASE_VERSION=${LATEST_TAG%-beta}
-            if [[ $BASE_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-              MAJOR=${BASH_REMATCH[1]}
-              MINOR=${BASH_REMATCH[2]}
-              PATCH=${BASH_REMATCH[3]}
-              NEW_PATCH=$((PATCH + 1))
-              NEW_TAG="${MAJOR}.${MINOR}.${NEW_PATCH}-beta"
-            else
-              # Fallback if version format is unexpected
-              NEW_TAG="${LATEST_TAG}-new"
-            fi
+          # Extract base version (strip -beta suffix if present)
+          BASE_VERSION=${LATEST_TAG%-beta}
+
+          if [[ $BASE_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            MAJOR=${BASH_REMATCH[1]}
+            MINOR=${BASH_REMATCH[2]}
+            PATCH=${BASH_REMATCH[3]}
+            NEW_PATCH=$((PATCH + 1))
+            NEW_TAG="${MAJOR}.${MINOR}.${NEW_PATCH}-beta"
           else
-            # Tag doesn't have -beta, check if {TAG}-beta exists
-            BETA_TAG="${LATEST_TAG}-beta"
-            if git tag -l | grep -q "^${BETA_TAG}$"; then
-              # {TAG}-beta exists, increment to next version
-              if [[ $LATEST_TAG =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-                MAJOR=${BASH_REMATCH[1]}
-                MINOR=${BASH_REMATCH[2]}
-                PATCH=${BASH_REMATCH[3]}
-                NEW_PATCH=$((PATCH + 1))
-                NEW_TAG="${MAJOR}.${MINOR}.${NEW_PATCH}-beta"
-              else
-                NEW_TAG="${LATEST_TAG}-new"
-              fi
-            else
-              # {TAG}-beta doesn't exist, create it
-              NEW_TAG="${LATEST_TAG}-beta"
-            fi
+            echo "ERROR: Could not parse version from tag: $LATEST_TAG"
+            exit 1
           fi
 
           echo "CURRENT_TAG=$LATEST_TAG" >> $GITHUB_ENV
