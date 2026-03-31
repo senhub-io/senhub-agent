@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
+	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -26,6 +29,27 @@ func NewAPIManager(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger) *API
 	}
 }
 
+// formatProbeDisplayName formats probe names for display in the UI
+// Capitalizes the first letter (e.g., "netscaler" -> "Netscaler")
+func formatProbeDisplayName(probeName string) string {
+	if probeName == "" {
+		return probeName
+	}
+
+	// Special cases for acronyms or specific probe names
+	switch strings.ToLower(probeName) {
+	case "cpu":
+		return "CPU"
+	case "otel":
+		return "OTEL"
+	case "prtg":
+		return "PRTG"
+	default:
+		// Capitalize first letter, keep rest as-is
+		return strings.ToUpper(string(probeName[0])) + probeName[1:]
+	}
+}
+
 // SenHub API Endpoints
 
 // PRTG API Endpoints
@@ -40,16 +64,20 @@ func (a *APIManager) HandlePRTGMetricsGET(w http.ResponseWriter, r *http.Request
 	vars := mux.Vars(r)
 	probeName := vars["probe"]
 
+	// Normalize probe name to lowercase for cache lookup
+	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
+	probeNameLower := strings.ToLower(probeName)
+
 	// Parse query parameters
 	filter := a.strategy.metricsProcessor.ParseMetricFilter(r)
 
 	a.logger.Debug().
-		Str("probe", probeName).
+		Str("probe", probeNameLower).
 		Interface("filter", filter).
 		Msg("PRTG metrics GET request received")
 
 	// Get metrics from cache for the specified probe with filters
-	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbeWithFilter(probeName, filter)
+	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbeWithFilter(probeNameLower, filter)
 
 	// Build PRTG response
 	response := PRTGResponse{
@@ -140,7 +168,7 @@ func (a *APIManager) HandleListProbes(w http.ResponseWriter, r *http.Request) {
 		}
 
 		probes = append(probes, ProbeInfo{
-			Name:         stats.Name,
+			Name:         formatProbeDisplayName(stats.Name), // Format name for UI display
 			MetricsCount: stats.MetricsCount,
 			LastUpdate:   lastUpdate,
 		})
@@ -181,8 +209,9 @@ func (a *APIManager) HandleInfoProbes(w http.ResponseWriter, r *http.Request) {
 
 	for probe, tsKeys := range a.strategy.cache.probeIndex {
 		count := len(tsKeys)
-		probes = append(probes, probe)
-		probeMetrics[probe] = count
+		displayName := formatProbeDisplayName(probe) // Format name for UI display
+		probes = append(probes, displayName)
+		probeMetrics[displayName] = count
 		totalMetrics += count
 	}
 
@@ -291,11 +320,15 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	probeName := vars["probe"]
 
+	// Normalize probe name to lowercase for cache lookup
+	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
+	probeNameLower := strings.ToLower(probeName)
+
 	a.strategy.cache.mu.RLock()
 	defer a.strategy.cache.mu.RUnlock()
 
 	// Get time series keys for the probe
-	tsKeys, exists := a.strategy.cache.probeIndex[probeName]
+	tsKeys, exists := a.strategy.cache.probeIndex[probeNameLower]
 	if !exists {
 		http.Error(w, "Probe not found", http.StatusNotFound)
 		return
@@ -341,7 +374,7 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := TagInfoResponse{
-		Probe:        probeName,
+		Probe:        probeNameLower, // Use normalized name for consistency
 		Tags:         tags,
 		Metrics:      metricList,
 		TotalMetrics: len(metricList),
@@ -364,9 +397,13 @@ func (a *APIManager) HandleInfoSchema(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	probeName := vars["probe"]
 
+	// Normalize probe name to lowercase for cache lookup
+	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
+	probeNameLower := strings.ToLower(probeName)
+
 	// Reuse tag discovery logic
 	a.strategy.cache.mu.RLock()
-	tsKeys, exists := a.strategy.cache.probeIndex[probeName]
+	tsKeys, exists := a.strategy.cache.probeIndex[probeNameLower]
 	if !exists {
 		a.strategy.cache.mu.RUnlock()
 		http.Error(w, "Probe not found", http.StatusNotFound)
@@ -409,10 +446,10 @@ func (a *APIManager) HandleInfoSchema(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate examples
-	examples := a.strategy.metricsProcessor.GenerateExamples(probeName, tags, metricList)
+	examples := a.strategy.metricsProcessor.GenerateExamples(probeNameLower, tags, metricList)
 
 	response := SchemaInfoResponse{
-		Probe:        probeName,
+		Probe:        probeNameLower, // Use normalized name for consistency
 		Tags:         tags,
 		Metrics:      metricList,
 		TotalMetrics: len(metricList),
@@ -447,6 +484,7 @@ func (a *APIManager) HandleListEndpoints(w http.ResponseWriter, r *http.Request)
 		{"/api/{agentkey}/admin/logs", []string{"POST"}, "Set log levels", "admin"},
 		{"/api/{agentkey}/debug/logs", []string{"GET"}, "View current log levels (legacy)", "admin"},
 		{"/api/{agentkey}/debug/logs", []string{"POST"}, "Set log levels (legacy)", "admin"},
+		{"/api/{agentkey}/license/status", []string{"GET"}, "Get license status and tier information", "admin"},
 
 		// PRTG Format
 		{"/api/{agentkey}/prtg/metrics/{probe}", []string{"GET"}, "Get metrics in PRTG format for specific probe", "prtg"},
@@ -480,3 +518,150 @@ func (a *APIManager) HandleListEndpoints(w http.ResponseWriter, r *http.Request)
 }
 
 // Utility Methods for API Responses
+
+// License API Endpoints
+
+// HandleLicenseStatus returns the current license status
+func (a *APIManager) HandleLicenseStatus(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	// Prepare response structure
+	type LicenseStatusResponse struct {
+		Status           string   `json:"status"`         // "active", "expired", "grace_period", "none"
+		Tier             string   `json:"tier,omitempty"` // "free", "pro", "enterprise"
+		ExpiresAt        string   `json:"expires_at,omitempty"`
+		DaysRemaining    int      `json:"days_remaining,omitempty"`
+		AuthorizedProbes []string `json:"authorized_probes,omitempty"`
+		FreeTierProbes   []string `json:"free_tier_probes"`
+		Message          string   `json:"message,omitempty"`
+	}
+
+	response := LicenseStatusResponse{
+		FreeTierProbes: []string{"cpu", "memory", "logicaldisk", "network"},
+	}
+
+	// Get license token from configuration
+	licenseToken := a.getLicenseToken()
+
+	// Check if license is configured
+	if licenseToken == "" {
+		response.Status = "none"
+		response.Tier = "free"
+		response.Message = "No license configured - running in free tier mode"
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			a.logger.Error().Err(err).Msg("Failed to encode license status response")
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Validate license token
+	validator, err := a.getLicenseValidator()
+	if err != nil {
+		a.logger.Error().Err(err).Msg("Failed to initialize license validator")
+		response.Status = "error"
+		response.Message = "Failed to validate license"
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			a.logger.Error().Err(err).Msg("Failed to encode license status response")
+		}
+		return
+	}
+
+	license, err := validator.ValidateLicense(licenseToken)
+	if err != nil {
+		a.logger.Error().Err(err).Msg("Invalid license token")
+		response.Status = "invalid"
+		response.Tier = "free"
+		response.Message = "Invalid license token - running in free tier mode"
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			a.logger.Error().Err(err).Msg("Failed to encode license status response")
+		}
+		return
+	}
+
+	// Populate response with license info
+	response.Tier = string(license.Tier)
+	response.AuthorizedProbes = license.AuthorizedProbes
+	response.ExpiresAt = license.ExpiresAt.Format(time.RFC3339)
+
+	// Calculate days remaining
+	daysRemaining := int(time.Until(license.ExpiresAt).Hours() / 24)
+
+	if license.IsExpired {
+		if validator.IsInGracePeriod(license) {
+			response.Status = "grace_period"
+			gracePeriodEnd := license.ExpiresAt.Add(time.Duration(license.GracePeriodDays) * 24 * time.Hour)
+			graceDaysRemaining := int(time.Until(gracePeriodEnd).Hours() / 24)
+			response.DaysRemaining = graceDaysRemaining
+			response.Message = fmt.Sprintf("License expired but in grace period (%d days remaining)", graceDaysRemaining)
+		} else {
+			response.Status = "expired"
+			response.Message = "License expired and grace period ended - only free tier probes available"
+		}
+	} else {
+		response.Status = "active"
+		response.DaysRemaining = daysRemaining
+		response.Message = fmt.Sprintf("License active (%d days remaining)", daysRemaining)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode license status response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	a.logger.Debug().Str("status", response.Status).Str("tier", response.Tier).Msg("License status response sent")
+}
+
+// getLicenseToken retrieves the license token from configuration
+// Works with any AgentConfiguration that implements GetConfiguration()
+func (a *APIManager) getLicenseToken() string {
+	a.logger.Debug().
+		Str("config_type", fmt.Sprintf("%T", a.strategy.agentConfig)).
+		Msg("Getting license token from configuration")
+
+	// All AgentConfiguration implementations should have GetConfiguration()
+	// Try the interface method that all configurations support
+	if configProvider, ok := a.strategy.agentConfig.(interface {
+		GetConfiguration() configuration.RemoteConfigurationData
+	}); ok {
+		a.logger.Debug().Msg("Configuration supports GetConfiguration interface")
+		config := configProvider.GetConfiguration()
+
+		licensePreview := ""
+		if len(config.Agent.License) > 20 {
+			licensePreview = config.Agent.License[:20] + "..."
+		} else if len(config.Agent.License) > 0 {
+			licensePreview = config.Agent.License
+		} else {
+			licensePreview = "(empty)"
+		}
+
+		a.logger.Debug().
+			Str("license_preview", licensePreview).
+			Bool("has_license", len(config.Agent.License) > 0).
+			Msg("Retrieved license from configuration")
+
+		return config.Agent.License
+	}
+
+	a.logger.Warn().
+		Str("config_type", fmt.Sprintf("%T", a.strategy.agentConfig)).
+		Msg("Could not retrieve license token - configuration doesn't support GetConfiguration()")
+	return ""
+}
+
+// getLicenseValidator creates a license validator instance
+func (a *APIManager) getLicenseValidator() (license.Validator, error) {
+	return license.GetDefaultValidator(7) // 7-day grace period
+}

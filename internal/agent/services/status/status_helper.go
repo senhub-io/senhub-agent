@@ -125,12 +125,17 @@ type HTTPSystemInfoResponse struct {
 
 // convertHTTPResponseToSystemStatus converts HTTP strategy response to our format
 func (h *StatusHelper) convertHTTPResponseToSystemStatus(httpResp HTTPSystemInfoResponse) SystemStatus {
-	// Determine connection mode based on available information
+	// Determine connection mode from health services (which includes mode)
 	var mode string
-	if strings.Contains(httpResp.Health.Version, "offline") {
-		mode = "offline"
+	if modeStr, ok := httpResp.Health.Services["mode"]; ok {
+		mode = modeStr
 	} else {
-		mode = "online"
+		// Fallback: try to detect from version string
+		if strings.Contains(httpResp.Health.Version, "offline") {
+			mode = "offline"
+		} else {
+			mode = "online"
+		}
 	}
 
 	return SystemStatus{

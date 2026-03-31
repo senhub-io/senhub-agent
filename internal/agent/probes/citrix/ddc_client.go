@@ -24,7 +24,15 @@ type deliveryControllerClient struct {
 	authConfig   AuthConfig
 	token        string
 	tokenExpiry  time.Time
+
+	// Cached site info to avoid redundant GetMe calls per collection cycle
+	cachedSiteID   string
+	cachedSiteName string
+	siteIDCachedAt time.Time
 }
+
+// siteIDCacheTTL is how long we cache the site ID from GetMe (sites don't change often)
+const siteIDCacheTTL = 10 * time.Minute
 
 // NewDeliveryControllerClient creates a new Delivery Controller client
 func NewDeliveryControllerClient(config DeliveryControllerConfig, authConfig AuthConfig, baseLogger *logger.Logger) (DeliveryControllerClient, error) {
@@ -106,9 +114,9 @@ func (c *deliveryControllerClient) getToken(ctx context.Context) error {
 			lastErr = err
 			continue
 		}
-		defer resp.Body.Close()
 
 		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
@@ -202,9 +210,9 @@ func (c *deliveryControllerClient) makeRequestWithSiteID(ctx context.Context, me
 			lastErr = err
 			continue
 		}
-		defer resp.Body.Close()
 
 		respBody, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
 			lastErr = err
 			continue
@@ -249,4 +257,44 @@ func (c *deliveryControllerClient) makeRequestWithSiteID(ctx context.Context, me
 	}
 
 	return nil, fmt.Errorf("all controllers failed: %w", lastErr)
+}
+
+// getSiteInfo returns the cached site ID and name, refreshing from GetMe if stale.
+// This avoids redundant /cvad/manage/me API calls during a single collection cycle.
+func (c *deliveryControllerClient) getSiteInfo(ctx context.Context, requestedSiteName string) (siteID, siteName string, err error) {
+	if c.cachedSiteID != "" && time.Since(c.siteIDCachedAt) < siteIDCacheTTL {
+		if requestedSiteName != "" && c.cachedSiteName != requestedSiteName {
+			c.logger.Warn().
+				Str("requested_site", requestedSiteName).
+				Str("user_site", c.cachedSiteName).
+				Msg("User requesting different site than their own - using user's site for security")
+		}
+		return c.cachedSiteID, c.cachedSiteName, nil
+	}
+
+	meResp, err := c.GetMe(ctx)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get user info: %w", err)
+	}
+
+	if len(meResp.Customers) == 0 || len(meResp.Customers[0].Sites) == 0 {
+		return "", "", fmt.Errorf("user has no accessible sites")
+	}
+
+	c.cachedSiteID = meResp.Customers[0].Sites[0].Id
+	c.cachedSiteName = meResp.Customers[0].Sites[0].Name
+	c.siteIDCachedAt = time.Now()
+
+	if c.cachedSiteID == "" {
+		return "", "", fmt.Errorf("user site ID not available")
+	}
+
+	if requestedSiteName != "" && c.cachedSiteName != requestedSiteName {
+		c.logger.Warn().
+			Str("requested_site", requestedSiteName).
+			Str("user_site", c.cachedSiteName).
+			Msg("User requesting different site than their own - using user's site for security")
+	}
+
+	return c.cachedSiteID, c.cachedSiteName, nil
 }

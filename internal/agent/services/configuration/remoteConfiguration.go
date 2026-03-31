@@ -51,6 +51,7 @@ type AgentConfig struct {
 	RegistryUrl         string `json:"registry_url"`
 	Version             string `json:"version"`
 	UpdateCheckInterval any    `json:"update_check_interval" default:"3600"`
+	License             string `json:"license,omitempty"` // JWT license token or JSON for testing
 }
 
 type RemoteConfigurationData struct {
@@ -292,7 +293,7 @@ func (rc *RemoteConfiguration) UpdateSync() error {
 							return fmt.Errorf("failed to create initial replica: %w", err)
 						}
 
-					// Note: v1→v2 migration already applied before validation (line 249)
+						// Note: v1→v2 migration already applied before validation (line 249)
 					}
 				}
 			}
@@ -355,9 +356,8 @@ func (rc *RemoteConfiguration) replicateConfigurationLocally() error {
 	// Convert RemoteConfigurationData to LocalConfigurationData format
 	localConfig := LocalConfigurationData{
 		Agent: LocalAgentConfig{
-			Key:       rc.agentKey,
-			Mode:      "online", // Important: this stays "online"
-			Generated: false,    // Key was provided via CLI, not generated
+			Key:  rc.agentKey,
+			Mode: "online", // Important: this stays "online"
 		},
 		Storage:    rc.data.StorageConfig,
 		Probes:     rc.data.Probes,
@@ -451,6 +451,8 @@ agent:
   key: "%s"
   mode: online      # Agent runs in online mode (connected to SenHub server)
   generated: false  # Agent key provided by SenHub platform
+  license: "%s"     # License token from server (empty = free tier only)
+%s
 
 # Auto-update configuration (from server)
 auto_update:
@@ -505,8 +507,13 @@ probes:
 		serverUrl = rc.args.ServerUrl
 	}
 
+	// Get license documentation (commented out in online mode since it comes from server)
+	licenseDoc := "" // Empty for online mode - license managed by server
+
 	return []byte(fmt.Sprintf(yamlTemplate,
 		config.Agent.Key,
+		config.Agent.License,
+		licenseDoc, // License documentation (empty for online mode)
 		config.AutoUpdate.Enabled,
 		config.AutoUpdate.URL,
 		cacheRetention,

@@ -35,9 +35,34 @@ type CliArgs struct {
 	Version *VersionSubcommandArgs `arg:"subcommand:version" help:"Print version information and exit"`
 	Agent   *StartSubcommandArgs   `arg:"subcommand:start" help:"Start the agent (default)"`
 	Update  *UpdateSubcommandArgs  `arg:"subcommand:update" help:"Update the agent"`
+	License *LicenseSubcommandArgs `arg:"subcommand:license" help:"Manage agent license"`
 }
 
 type VersionSubcommandArgs struct{}
+
+type LicenseSubcommandArgs struct {
+	Activate *LicenseActivateArgs `arg:"subcommand:activate" help:"Activate a license"`
+	Show     *LicenseShowArgs     `arg:"subcommand:show" help:"Show current license information"`
+	Remove   *LicenseRemoveArgs   `arg:"subcommand:remove" help:"Remove current license"`
+}
+
+type LicenseActivateArgs struct {
+	LicenseCode string `arg:"positional,required" help:"License code from Sensor Factory"`
+	ConfigPath  string `arg:"--config-path" help:"Path to configuration file (default: ./agent-config.yaml)"`
+	Verbose     bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
+}
+
+type LicenseShowArgs struct {
+	ConfigPath string `arg:"--config-path" help:"Path to configuration file (default: ./agent-config.yaml)"`
+	Verbose    bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
+}
+
+type LicenseRemoveArgs struct {
+	ConfigPath string `arg:"--config-path" help:"Path to configuration file (default: ./agent-config.yaml)"`
+	Verbose    bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
+	Force      bool   `arg:"-f,--force" help:"Skip confirmation prompt"`
+}
+
 type UpdateSubcommandArgs struct {
 	Version           string `arg:"positional,required" help:"Version to update to"`
 	AuthenticationKey string `arg:"--authentication-key,env:SENHUB_KEY" help:"The authentication key for the agent"`
@@ -105,6 +130,27 @@ func GetVersionInfo() map[string]string {
 		"goVersion":  GoVersion,
 		"env":        Env,
 		"defaultURL": defaultServerURL(),
+	}
+}
+
+// PrintVersion prints version information to stdout without timestamps
+func PrintVersion() {
+	if Version != "" {
+		// Production build with version number
+		if CommitHash != "" {
+			fmt.Printf("Version: %s (commit: %s)\n", Version, CommitHash)
+		} else {
+			fmt.Printf("Version: %s\n", Version)
+		}
+	} else if CommitHash != "" {
+		// Development build with commit only
+		fmt.Printf("Development version (commit: %s)\n", CommitHash)
+	} else {
+		fmt.Println("Version information not available")
+	}
+
+	if Env == "development" {
+		fmt.Println("Environment: Development")
 	}
 }
 
@@ -188,17 +234,8 @@ func MustParse() *ParsedArgs {
 	}
 
 	switch {
-	case args.Version != nil && Version != "":
-		log.Printf("Version: %s", Version)
-		if parsedEnv == "development" {
-			log.Printf("Development build")
-		}
-		os.Exit(0)
 	case args.Version != nil:
-		log.Printf("Development version: %s", CommitHash)
-		if parsedEnv == "development" {
-			log.Printf("Development build")
-		}
+		PrintVersion()
 		os.Exit(0)
 	case args.Agent != nil:
 		return parsedArgsFromStartArgs(args.Agent, parsedEnv)

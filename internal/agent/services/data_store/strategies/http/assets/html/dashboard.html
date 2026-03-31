@@ -139,13 +139,13 @@
             font-size: 0.875rem;
             margin-top: 1rem;
         }
-        
+
         .loading {
             text-align: center;
             padding: 3rem;
             color: var(--gray-600);
         }
-        
+
         .error {
             background-color: #fef2f2;
             color: var(--danger-color);
@@ -153,6 +153,32 @@
             border-radius: 6px;
             margin-bottom: 1rem;
             border-left: 4px solid var(--danger-color);
+        }
+
+        .probe-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            background-color: var(--gray-100);
+            color: var(--gray-700);
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.813rem;
+            font-weight: 500;
+            border: 1px solid var(--gray-200);
+        }
+
+        .probe-badge.wildcard {
+            background-color: #dcfce7;
+            color: var(--success-color);
+            border-color: var(--success-color);
+            font-weight: 600;
+        }
+
+        .probe-badge.free {
+            background-color: #e0f7f7;
+            color: var(--primary-color);
+            border-color: var(--primary-color);
         }
     </style>
 </head>
@@ -248,6 +274,35 @@
                     <div class="metric-row">
                         <span class="metric-label">CPU Usage</span>
                         <span class="metric-value" id="resource-cpu-usage">-</span>
+                    </div>
+                </div>
+
+                <!-- License Status -->
+                <div class="card">
+                    <div class="metric-row" style="border-bottom: 1px solid var(--gray-200); margin-bottom: 1rem; padding-bottom: 1rem;">
+                        <h2 style="margin: 0;">🔐 License</h2>
+                        <div class="status-indicator" id="license-status-indicator">
+                            <span>●</span>
+                            <span id="license-status">Loading...</span>
+                        </div>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Tier</span>
+                        <span class="metric-value" id="license-tier">-</span>
+                    </div>
+                    <div class="metric-row" id="license-expires-row" style="display: none;">
+                        <span class="metric-label">Expires</span>
+                        <span class="metric-value" id="license-expires">-</span>
+                    </div>
+                    <div class="metric-row" id="license-days-row" style="display: none;">
+                        <span class="metric-label">Days Remaining</span>
+                        <span class="metric-value" id="license-days">-</span>
+                    </div>
+                    <div style="margin-top: 1rem;">
+                        <div class="metric-label" style="margin-bottom: 0.5rem;">Authorized Probes</div>
+                        <div id="license-probes-list" style="display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.875rem;">
+                            <!-- Probes badges will be loaded here -->
+                        </div>
                     </div>
                 </div>
             </div>

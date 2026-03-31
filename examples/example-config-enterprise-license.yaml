@@ -1,0 +1,137 @@
+# SenHub Agent Configuration - ENTERPRISE LICENSE
+# Configuration Version: 2
+# Enterprise license with ALL probes authorized (wildcard)
+
+config_version: 2
+
+# Agent configuration
+agent:
+  key: "test-agent-enterprise-12345"
+  mode: offline
+  generated: false
+  license: |
+    {
+      "tier": "enterprise",
+      "authorized_probes": ["*"],
+      "expires_at": "2026-12-31T23:59:59Z",
+      "issued_at": "2025-01-01T00:00:00Z",
+      "subject": "customer-enterprise-megacorp"
+    }
+
+# Auto-update configuration
+auto_update:
+  enabled: true
+  url: "https://eu-west-1.intake.senhub.io/releases"
+
+# Cache configuration
+cache:
+  retention_minutes: 10
+
+# Storage configuration
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "0.0.0.0"  # Listen on all interfaces
+      endpoints: ["prtg", "web", "nagios", "senhub"]
+
+# Probes configuration - ALL PROBES AUTHORIZED
+probes:
+  # System monitoring
+  - name: cpu
+    type: cpu
+    params:
+      interval: 30
+
+  - name: memory
+    type: memory
+    params:
+      interval: 30
+
+  - name: logicaldisk
+    type: logicaldisk
+    params:
+      interval: 60
+
+  - name: network
+    type: network
+    params:
+      interval: 60
+
+  # Hardware monitoring
+  - name: datacenter-redfish
+    type: redfish
+    params:
+      endpoint: "https://idrac.example.com"
+      username: "admin"
+      password: "password123"
+      interval: 300
+
+  # Virtualization monitoring
+  - name: citrix-production
+    type: citrix
+    params:
+      base_url: "https://citrix-director.company.com"
+      interval: 120
+      auth:
+        username: "DOMAIN\\admin"
+        password: "password"
+
+  # Load balancer monitoring
+  - name: netscaler-adc
+    type: netscaler
+    params:
+      base_url: "https://netscaler.company.com"
+      username: "nsroot"
+      password: "password123"
+      # api_key: "your-api-key"  # Alternative to password
+      insecure_skip_verify: false
+      timeout: 30
+      interval: 60
+
+  # Network monitoring
+  - name: ping-gateway
+    type: ping_gateway
+    params: {}
+
+  - name: website-monitoring
+    type: ping_webapp
+    params:
+      url: "https://www.example.com"
+      interval: 60
+
+  - name: website-load-test
+    type: load_webapp
+    params:
+      url: "https://www.example.com"
+      timeout: 30
+
+  # Event collection
+  - name: syslog-collector
+    type: syslog
+    params:
+      port: 514
+      protocol: "udp"
+
+  - name: custom-events
+    type: event
+    params:
+      port: 5656
+      protocol: "tcp"
+
+  # Observability
+  - name: otel-collector
+    type: otel
+    params:
+      endpoint: "http://localhost:4318"
+      interval: 60
+      telemetry_types:
+        - metrics
+        - traces
+        - logs
+
+  # WiFi monitoring (if available)
+  - name: wifi-monitor
+    type: wifi_signal_strength
+    params:
+      interval: 60
