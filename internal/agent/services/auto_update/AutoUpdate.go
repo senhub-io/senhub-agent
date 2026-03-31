@@ -323,21 +323,43 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 		return currentVersionStr
 	}
 
-	// In case expected version is an alias, try to get latest version
+	// Handle "latest" alias: fetch the highest version from the registry
+	if expectedVersionStr == "latest" {
+		a.logger.Info().Msg("Version alias 'latest' requested, fetching from registry")
+		bestMatch, err := FetchBestMatchingVersion(
+			a.httpClient,
+			registryUrl,
+			version.MustConstraints(version.NewConstraint(">= 0")),
+		)
+		if err != nil {
+			a.logger.Warn().Err(err).Msg("Failed to fetch latest version from registry, skipping update")
+			return currentVersionStr
+		}
+		if bestMatch == nil {
+			a.logger.Warn().Msg("No versions found in registry")
+			return currentVersionStr
+		}
+		a.logger.Info().Str("latest_version", bestMatch.Version).Msg("Resolved 'latest' to version")
+		return bestMatch.Version
+	}
+
+	// In case expected version is an exact match, try to get its metadata
 	expectedVersionMetadata, err := fetchVersionMetadata(
 		a.httpClient,
 		registryUrl,
 		expectedVersionStr,
 	)
 	if err != nil {
-		fmt.Println(err)
+		a.logger.Debug().Err(err).
+			Str("expected_version", expectedVersionStr).
+			Msg("Failed to fetch version metadata, trying as constraint")
 	}
 
-	// Given there is a matching version metadata, use the version from the
-	// metadata
+	// Given there is a matching version metadata, use the version from the metadata
 	if expectedVersionMetadata != nil {
-		fmt.Println(expectedVersionMetadata.Version)
-		// There is an exact match
+		a.logger.Debug().
+			Str("resolved_version", expectedVersionMetadata.Version).
+			Msg("Exact version match found in registry")
 		return expectedVersionMetadata.Version
 	}
 

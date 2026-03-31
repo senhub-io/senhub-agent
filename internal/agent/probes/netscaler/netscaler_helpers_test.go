@@ -128,3 +128,30 @@ func TestExtractCustomTags(t *testing.T) {
 		})
 	}
 }
+
+func TestIsBaseURLMatchingIP(t *testing.T) {
+	tests := []struct {
+		name    string
+		baseURL string
+		ip      string
+		want    bool
+	}{
+		{"IP match", "https://10.0.208.7", "10.0.208.7", true},
+		{"IP mismatch", "https://10.0.208.7", "10.0.208.6", false},
+		{"IP with port", "https://10.0.208.7:443", "10.0.208.7", true},
+		{"Hostname does not resolve", "https://ns.example.com", "10.0.208.7", false},
+		{"Empty IP", "https://10.0.208.7", "", false},
+		{"Invalid URL", "://bad", "10.0.208.7", false},
+		{"HTTP scheme", "http://10.0.208.7:8080", "10.0.208.7", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &netscalerProbe{baseURL: tt.baseURL}
+			got := p.isBaseURLMatchingIP(tt.ip)
+			if got != tt.want {
+				t.Errorf("isBaseURLMatchingIP(%q) = %v, want %v", tt.ip, got, tt.want)
+			}
+		})
+	}
+}
