@@ -15,10 +15,31 @@ func (mc *MetricsCollector) CollectInfrastructureMetrics(ctx context.Context, ti
 	var metrics []datapoint.DataPoint
 
 	// Get all machines data (no time filter for current state metrics)
-	machines, err := mc.client.GetMachines(ctx, time.Time{})
+	// OData query already filters by DesktopGroupId ne null (Director Console behavior)
+	allMachines, err := mc.client.GetMachines(ctx, time.Time{})
 	if err != nil {
 		mc.logger.Error().Err(err).Msg("Failed to get machines for infrastructure metrics")
 		return nil, err
+	}
+
+	// Post-fetch filter: exclude phantom machines (no DnsName and no MachineName)
+	// These are ghost entries in the Director SQL database with no usable identity
+	var machines []Machine
+	phantomCount := 0
+	for _, m := range allMachines {
+		if m.DnsName == "" && m.MachineName == "" {
+			phantomCount++
+			continue
+		}
+		machines = append(machines, m)
+	}
+
+	if phantomCount > 0 {
+		mc.logger.Debug().
+			Int("odata_total", len(allMachines)).
+			Int("phantom_excluded", phantomCount).
+			Int("valid_machines", len(machines)).
+			Msg("Excluded phantom machines (no DnsName/MachineName) from infrastructure metrics")
 	}
 
 	mc.logger.Debug().Int("machines_count", len(machines)).Msg("Retrieved machines for infrastructure metrics")
