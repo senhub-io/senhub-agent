@@ -16,14 +16,16 @@ type MetricsProcessor struct {
 	logger          *logger.ModuleLogger
 	cache           *MetricCache
 	formatConverter *FormatConverter
+	lookupRegistry  *LookupRegistry // Lookup definitions for status/health mappings
 }
 
 // NewMetricsProcessor creates a new metrics processing manager
-func NewMetricsProcessor(cache *MetricCache, formatConverter *FormatConverter, logger *logger.ModuleLogger) *MetricsProcessor {
+func NewMetricsProcessor(cache *MetricCache, formatConverter *FormatConverter, lookupRegistry *LookupRegistry, logger *logger.ModuleLogger) *MetricsProcessor {
 	return &MetricsProcessor{
 		logger:          logger,
 		cache:           cache,
 		formatConverter: formatConverter,
+		lookupRegistry:  lookupRegistry,
 	}
 }
 
@@ -34,6 +36,7 @@ type MetricFilter struct {
 	MetricNames []string            // specific metric names to include
 	Limit       int                 // max number of results
 	Offset      int                 // pagination offset
+	ShowTags    bool                // whether to include tags in channel/service names (default: true)
 }
 
 // MetricExample represents an example API call for documentation
@@ -99,6 +102,7 @@ func (m *MetricsProcessor) ParseMetricFilter(r *http.Request) MetricFilter {
 		MetricNames: []string{},
 		Limit:       0, // 0 means no limit
 		Offset:      0,
+		ShowTags:    true, // Default: show tags in channel/service names
 	}
 
 	query := r.URL.Query()
@@ -140,6 +144,16 @@ func (m *MetricsProcessor) ParseMetricFilter(r *http.Request) MetricFilter {
 	if offsetParam := query.Get("offset"); offsetParam != "" {
 		if offset, err := strconv.Atoi(offsetParam); err == nil && offset >= 0 {
 			filter.Offset = offset
+		}
+	}
+
+	// Parse show_tags parameter (default: true)
+	// Allows hiding discriminant tags from channel/service names when filtering
+	// Example: ?tags=interface:LO/1&show_tags=false
+	// Result: "State" instead of "Interface LO/1 - State"
+	if showTagsParam := query.Get("show_tags"); showTagsParam != "" {
+		if showTags, err := strconv.ParseBool(showTagsParam); err == nil {
+			filter.ShowTags = showTags
 		}
 	}
 
@@ -852,8 +866,38 @@ func (m *MetricsProcessor) convertHealthToNagiosStatus(metric CachedMetric) (flo
 		return 0, 3, "UNKNOWN - Invalid health value type"
 	}
 
-	// Map health values to Nagios status
-	// Standard Redfish/generic health mapping:
+	// Try to use lookup if available
+	if m.lookupRegistry != nil {
+		// Get probe type from tags to load transformer
+		if probeType, exists := metric.Tags["probe_type"]; exists && probeType != "" {
+			// Get transformer for this metric to find lookup reference
+			transformer, err := m.formatConverter.transformerRegistry.LoadTransformer(probeType, "friendly")
+			if err == nil && transformer != nil {
+				lookupID := transformer.GetLookup(metric.MetricName)
+				if lookupID != "" {
+					// Get lookup definition
+					if lookup, found := m.lookupRegistry.GetLookup(lookupID); found {
+						// Convert healthValue to int for lookup
+						intValue := int(healthValue)
+						if lookupValue, exists := lookup.Mappings[intValue]; exists {
+							// Map severity to Nagios status
+							nagiosStatus := m.severityToNagiosStatus(lookupValue.Severity)
+							statusText := lookupValue.Text
+
+							// Add description if available and status is not OK
+							if lookupValue.Description != "" && nagiosStatus > 0 {
+								statusText = fmt.Sprintf("%s (%s)", lookupValue.Text, lookupValue.Description)
+							}
+
+							return healthValue, nagiosStatus, statusText
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: Standard Redfish/generic health mapping
 	// 0 = OK/Healthy, 1 = Warning/Degraded, 2 = Critical/Failed, 3 = Unknown
 	switch int(healthValue) {
 	case 0:
@@ -877,13 +921,46 @@ func (m *MetricsProcessor) convertHealthToNagiosStatus(metric CachedMetric) (flo
 	}
 }
 
+// severityToNagiosStatus converts lookup severity to Nagios status code
+func (m *MetricsProcessor) severityToNagiosStatus(severity string) int {
+	switch strings.ToLower(severity) {
+	case "ok":
+		return 0 // Nagios OK
+	case "warning":
+		return 1 // Nagios WARNING
+	case "error":
+		return 2 // Nagios CRITICAL
+	case "unknown":
+		return 3 // Nagios UNKNOWN
+	default:
+		return 3 // Default to UNKNOWN for unrecognized severity
+	}
+}
+
 // buildHealthPerfData builds optimized Nagios performance data for health metrics
 func (m *MetricsProcessor) buildHealthPerfData(name string, value float64) string {
 	// Clean label name (no spaces, special chars)
 	cleanName := m.cleanPerfDataLabel(name)
 
+	// Health metrics format: label=value;warning;critical;min;max
+	// For health metrics with lookups, use desired_value as both warning and critical thresholds
+	// This helps Nagios visualize the expected value
+
+	// Try to get desired_value from lookup if available
+	desiredValue := ""
+	minValue := 0
+	maxValue := 3 // Default range for generic health metrics
+
+	// Note: We would need the metric name to look up the desired_value
+	// For now, use generic format
 	// Health metrics format: label=value;;;min;max
 	// No warning/critical thresholds since health values have predefined meanings
 	// min=0 (OK), max=3 (Unknown) to indicate the valid range
-	return fmt.Sprintf("%s=%.0f;;;0;3", cleanName, value)
+
+	if desiredValue != "" {
+		// Include desired_value as warning/critical threshold when available
+		return fmt.Sprintf("%s=%.0f;%s;%s;%d;%d", cleanName, value, desiredValue, desiredValue, minValue, maxValue)
+	}
+
+	return fmt.Sprintf("%s=%.0f;;;%d;%d", cleanName, value, minValue, maxValue)
 }

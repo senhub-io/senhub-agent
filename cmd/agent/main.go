@@ -93,6 +93,9 @@ func main() {
 	case "debug-modules-list":
 		showDebugModules()
 		return
+	case "license":
+		handleLicenseCommand()
+		return
 	case "update":
 		args := cliArgs.MustParse()
 		agent.UpdateAgent(args)

@@ -304,22 +304,35 @@ fs_inodes_used_percent{mount_point="/",device="/dev/sda1",fs_type="ext4"} = 20.0
 **Collection Method:**
 - Uses `df -h` command for filesystem discovery
 - `syscall.Statfs` for capacity metrics
-- APFS-specific handling
+- APFS-specific handling with automatic whitelist inclusion
 
 **Filesystem Type Detection:**
-- APFS for modern macOS volumes (`/dev/disk*`)
-- Excludes devfs, autofs, system volumes
+- **APFS**: Modern macOS filesystem for volumes starting with `/dev/disk*` (automatically included)
+- **Excludes**: devfs, autofs, system volumes
+
+**APFS Support:**
+The LogicalDisk probe automatically recognizes and monitors APFS filesystems on macOS. APFS (Apple File System) is the default filesystem for macOS 10.13+ and includes:
+- Container-based storage with shared space pools
+- Multiple volumes within a single container
+- Snapshot and cloning capabilities
+- Strong encryption support
+
+All APFS volumes are included in the `standardFS` whitelist for automatic monitoring.
 
 **Mount Point Filtering:**
 - **Included:** `/`, `/System/Volumes/Data`, `/Volumes/*`, APFS volumes
-- **Excluded:** `/dev`, `/System/Volumes/Preboot`, `/System/Volumes/VM`
+- **Excluded:** `/dev`, `/System/Volumes/Preboot`, `/System/Volumes/VM`, `/System/Volumes/Update`
 
 **Example Metrics:**
 ```
 fs_total_bytes{mount_point="/",device="/dev/disk1s1",fs_type="apfs"} = 250685575168
 fs_free_bytes{mount_point="/",device="/dev/disk1s1",fs_type="apfs"} = 123456789120
 fs_used_percent{mount_point="/",device="/dev/disk1s1",fs_type="apfs"} = 50.7
+fs_inodes_total{mount_point="/",device="/dev/disk1s1",fs_type="apfs"} = 9223372036854775807
+fs_inodes_used_percent{mount_point="/",device="/dev/disk1s1",fs_type="apfs"} = 0.01
 ```
+
+**Note**: APFS uses a dynamic inode allocation model, so inode metrics may show very large totals.
 
 ## Troubleshooting
 

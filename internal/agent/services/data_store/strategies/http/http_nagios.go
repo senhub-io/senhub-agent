@@ -40,17 +40,21 @@ func (n *NagiosManager) HandleNagiosMetricsGET(w http.ResponseWriter, r *http.Re
 	vars := mux.Vars(r)
 	probeName := vars["probe"]
 
-	n.logger.Info().Str("probe", probeName).Msg("🔄 Nagios endpoint - Request received")
+	// Normalize probe name to lowercase for cache lookup
+	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
+	probeNameLower := strings.ToLower(probeName)
+
+	n.logger.Info().Str("probe", probeNameLower).Msg("🔄 Nagios endpoint - Request received")
 
 	// Parse query parameters
 	filter := n.strategy.metricsProcessor.ParseMetricFilter(r)
 
 	// Get probe metrics from cache
-	metrics := n.strategy.cache.GetProbeMetrics(probeName)
+	metrics := n.strategy.cache.GetProbeMetrics(probeNameLower)
 	if len(metrics) == 0 {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(500)
-		if _, err := w.Write([]byte("CRITICAL - No metrics available for probe " + probeName)); err != nil {
+		if _, err := w.Write([]byte("CRITICAL - No metrics available for probe " + probeNameLower)); err != nil {
 			n.logger.Error().Err(err).Msg("Failed to write Nagios error response")
 		}
 		return
@@ -60,7 +64,7 @@ func (n *NagiosManager) HandleNagiosMetricsGET(w http.ResponseWriter, r *http.Re
 	filteredMetrics := n.strategy.metricsProcessor.ApplyMetricFilter(metrics, filter)
 
 	// Generate simple probe-based Nagios response
-	response := n.strategy.metricsProcessor.GenerateSimpleNagiosResponse(probeName, filteredMetrics)
+	response := n.strategy.metricsProcessor.GenerateSimpleNagiosResponse(probeNameLower, filteredMetrics)
 
 	w.Header().Set("Content-Type", "text/plain")
 	if response.Status >= 2 {

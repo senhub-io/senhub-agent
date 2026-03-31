@@ -9,17 +9,15 @@ import (
 
 // WebInterface handles all web UI related functionality
 type WebInterface struct {
-	logger       *logger.ModuleLogger
-	assetHandler *AssetHandler
-	strategy     *HTTPSyncStrategy // Reference to parent strategy for validation
+	logger   *logger.ModuleLogger
+	strategy *HTTPSyncStrategy // Reference to parent strategy for validation
 }
 
 // NewWebInterface creates a new web interface handler
-func NewWebInterface(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger, assetHandler *AssetHandler) *WebInterface {
+func NewWebInterface(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger) *WebInterface {
 	return &WebInterface{
-		logger:       logger,
-		assetHandler: assetHandler,
-		strategy:     strategy,
+		logger:   logger,
+		strategy: strategy,
 	}
 }
 
@@ -34,10 +32,14 @@ func (w *WebInterface) setNoCacheHeaders(writer http.ResponseWriter) {
 
 // HandleWebDashboard serves the main dashboard interface
 func (w *WebInterface) HandleWebDashboard(req *http.Request, writer http.ResponseWriter) {
-	_, authenticated := w.strategy.authManager.AuthenticateAndExtract(writer, req)
+	agentKey, authenticated := w.strategy.authManager.AuthenticateAndExtract(writer, req)
 	if !authenticated {
 		return
 	}
+
+	// Create asset handler with PRTG status
+	prtgEnabled := w.strategy.configManager.IsEndpointEnabled("prtg")
+	assetHandler := NewAssetHandlerWithPRTG(agentKey, prtgEnabled)
 
 	// Render the new dashboard template
 	templateName := GetTemplateName(req.URL.Path)
@@ -45,7 +47,7 @@ func (w *WebInterface) HandleWebDashboard(req *http.Request, writer http.Respons
 		templateName = "dashboard" // Default to dashboard for root and dashboard paths
 	}
 
-	content, err := w.assetHandler.RenderTemplate(templateName)
+	content, err := assetHandler.RenderTemplate(templateName)
 	if err != nil {
 		w.logger.Error().Err(err).Str("template", templateName).Msg("Failed to render dashboard template")
 		http.Error(writer, "Internal Server Error", http.StatusInternalServerError)
@@ -86,13 +88,17 @@ func (w *WebInterface) HandleWebExplorer(req *http.Request, writer http.Response
 
 // HandleWebDocs serves the documentation interface
 func (w *WebInterface) HandleWebDocs(req *http.Request, writer http.ResponseWriter) {
-	_, authenticated := w.strategy.authManager.AuthenticateAndExtract(writer, req)
+	agentKey, authenticated := w.strategy.authManager.AuthenticateAndExtract(writer, req)
 	if !authenticated {
 		return
 	}
 
+	// Create asset handler with PRTG status
+	prtgEnabled := w.strategy.configManager.IsEndpointEnabled("prtg")
+	assetHandler := NewAssetHandlerWithPRTG(agentKey, prtgEnabled)
+
 	// Render the documentation template
-	content, err := w.assetHandler.RenderTemplate("docs")
+	content, err := assetHandler.RenderTemplate("docs")
 	if err != nil {
 		w.logger.Error().Err(err).Msg("Failed to render docs template")
 		http.Error(writer, "Internal Server Error", http.StatusInternalServerError)
