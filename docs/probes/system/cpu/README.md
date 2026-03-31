@@ -27,10 +27,20 @@ The CPU probe requires no mandatory parameters and works out-of-the-box with def
 
 - **Windows**: Windows Server 2012+ / Windows 10+
 - **Linux**: All modern distributions (Ubuntu, RHEL, CentOS, Debian, etc.)
-- **macOS**: macOS 10.13+
+- **macOS**: macOS 10.13+ (with graceful degradation)
 - **BSD**: FreeBSD, OpenBSD, NetBSD
 
 Platform-specific metrics are automatically detected and collected based on the operating system.
+
+### macOS Platform Notes
+
+On macOS, the `gopsutil` library has limited support for detailed CPU time metrics (`cpu.Times()`). The CPU probe implements graceful degradation:
+
+- **If detailed CPU times unavailable**: Probe continues with load average metrics (cpu_load1, cpu_load5, cpu_load15)
+- **Always available**: CPU usage percentage (cpu_usage_total, cpu_core_usage)
+- **Behavior**: Logs warnings for unavailable metrics but remains active
+
+This ensures the probe stays functional even when platform limitations exist, providing at minimum load average and usage percentage metrics.
 
 ## Key Metrics Summary
 

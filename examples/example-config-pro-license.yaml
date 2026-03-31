@@ -1,0 +1,111 @@
+# SenHub Agent Configuration - PRO LICENSE
+# Configuration Version: 2
+# Pro license with specific probes authorized
+
+config_version: 2
+
+# Agent configuration
+agent:
+  key: "test-agent-pro-12345"
+  mode: offline
+  generated: false
+  license: |
+    {
+      "tier": "pro",
+      "authorized_probes": ["redfish", "citrix", "netscaler", "ping_webapp"],
+      "expires_at": "2025-12-31T23:59:59Z",
+      "issued_at": "2025-01-01T00:00:00Z",
+      "subject": "customer-acme-corp"
+    }
+
+# Auto-update configuration
+auto_update:
+  enabled: false
+  url: "https://eu-west-1.intake.senhub.io/releases"
+
+# Cache configuration
+cache:
+  retention_minutes: 5
+
+# Storage configuration
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+      endpoints: ["prtg", "web", "nagios"]
+
+# Probes configuration
+probes:
+  # ===== FREE TIER PROBES (always work) =====
+
+  - name: cpu
+    type: cpu
+    params:
+      interval: 30
+
+  - name: memory
+    type: memory
+    params:
+      interval: 30
+
+  - name: logicaldisk
+    type: logicaldisk
+    params:
+      interval: 60
+
+  - name: network
+    type: network
+    params:
+      interval: 60
+
+  # ===== LICENSED PROBES (authorized by Pro license) =====
+
+  - name: datacenter-redfish
+    type: redfish
+    params:
+      endpoint: "https://idrac.example.com"
+      username: "admin"
+      password: "password123"
+      interval: 300
+      verify_ssl: true
+      collections:
+        - system
+        - thermal
+        - power
+
+  - name: citrix-production
+    type: citrix
+    params:
+      base_url: "https://citrix-director.company.com"
+      interval: 120
+      auth:
+        username: "DOMAIN\\admin"
+        password: "password"
+      tls:
+        verify_ssl: true
+
+  - name: netscaler-adc
+    type: netscaler
+    params:
+      base_url: "https://netscaler.company.com"
+      username: "nsroot"
+      password: "password123"
+      insecure_skip_verify: false
+      timeout: 30
+      interval: 60
+
+  - name: website-monitoring
+    type: ping_webapp
+    params:
+      url: "https://www.example.com"
+      interval: 60
+
+  # ===== NOT AUTHORIZED (will be blocked) =====
+
+  # This probe is NOT in the license authorized_probes list
+  # - name: syslog-collector
+  #   type: syslog
+  #   params:
+  #     port: 514
+  #     protocol: "udp"

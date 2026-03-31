@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/kardianos/service"
-	"senhub-agent.go/internal/agent"
 	"senhub-agent.go/internal/agent/cliArgs"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
@@ -131,6 +130,7 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 			return
 		}
 		// HTTP failed, fall back to direct method
+		// Note: This happens when HTTP strategy is not enabled or agent is not listening on port 8080
 	}
 
 	// Fallback: Get system status directly using StatusService (no HTTP dependency)
@@ -181,24 +181,34 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 		version = "development"
 	}
 
-	// Format commit hash for display (take first 7 chars if longer)
-	if len(commit) > 7 {
-		commit = commit[:7]
+	// Format commit hash for display (take first 8 chars if longer than 8 and looks like a git hash)
+	// Avoid truncating non-hash values like "latest-dev"
+	if len(commit) > 8 && isGitHash(commit) {
+		commit = commit[:8]
 	}
 
 	// Create status service
 	statusService := status.NewStatusService(logger, version, commit)
 
-	// Determine agent mode using the same logic as the agent initialization
+	// Determine agent mode - use safe detection that doesn't crash
 	agentMode := "online" // Default assumption for status checks
-	if args != nil && args.AuthenticationKey != "" {
-		// Use the authoritative agent mode detection only if we have some context
-		isOffline := agent.DetectAgentMode(args)
-		if isOffline {
+	if args != nil {
+		if args.Offline {
+			// Explicit offline flag takes precedence
 			agentMode = "offline"
+		} else {
+			// Check for config file existence to determine mode
+			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+			if err == nil {
+				if _, err := os.Stat(configPath); err == nil {
+					// Config file exists - likely offline mode
+					agentMode = "offline"
+				} else if args.AuthenticationKey != "" {
+					// No config but has auth key - online mode
+					agentMode = "online"
+				}
+			}
 		}
-	} else if args != nil && args.Offline {
-		agentMode = "offline"
 	}
 	statusService.SetAgentMode(agentMode)
 
@@ -235,6 +245,19 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 	}
 
 	return systemStatus, nil
+}
+
+// isGitHash checks if a string looks like a git commit hash (hex characters only)
+func isGitHash(s string) bool {
+	if len(s) < 7 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 // validateConfigPath validates that the config path is safe to read

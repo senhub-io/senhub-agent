@@ -45,6 +45,21 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"citrix":  {"metric_type", "failure_category"}, // Citrix aggregation types
 	"webapp":  {"url", "endpoint"},                 // Different web endpoints
 	"gateway": {"destination", "target"},           // Different gateway targets
+	"netscaler": {
+		"vserver", "service", "servicegroup", // Load Balancing
+		"interface",   // Network interfaces
+		"partition",   // Disk partitions
+		"certname",    // SSL certificates
+		"csvserver",   // Content Switching vServers
+		"cspolicy",    // Content Switching policies
+		"gslbvserver", // GSLB vServers
+		"gslbsite",    // GSLB sites
+		"gslbservice", // GSLB services
+		"authvserver", // AAA authentication vServers
+		"vpnvserver",  // VPN vServers
+		"ha_node_id",  // High Availability nodes (ID and IP both discriminant)
+		"ha_node_ip",  // HA node IP address (for ShowTags=false support)
+	},
 
 	// Infrastructure probes
 	"redfish": {
