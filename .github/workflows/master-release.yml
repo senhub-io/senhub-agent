@@ -18,8 +18,12 @@ jobs:
       - name: Get latest tag and create production version
         id: get_tag
         run: |
-          # Get the latest tag from dev branch (will be a beta tag)
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0-beta")
+          # Get the latest semver beta tag (sorted by version, not by commit ancestry)
+          LATEST_TAG=$(git tag --list '*.*.*-beta' | sort -V | tail -1)
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No beta tag found, falling back to git describe"
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0-beta")
+          fi
           echo "Latest tag found: $LATEST_TAG"
 
           # Remove -beta suffix to create production version
@@ -73,20 +77,24 @@ jobs:
           
           # Build for each platform
           echo "Building for Linux amd64"
-          GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_linux_amd64 ./cmd/agent
-          
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_linux_amd64 ./cmd/agent
+
+          echo "Building for Linux arm64"
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_linux_arm64 ./cmd/agent
+
           echo "Building for Windows amd64"
-          GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_windows_amd64.exe ./cmd/agent
-          
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_windows_amd64.exe ./cmd/agent
+
           echo "Building for macOS amd64"
-          GOOS=darwin GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_darwin_amd64 ./cmd/agent
-          
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_darwin_amd64 ./cmd/agent
+
           echo "Building for macOS arm64"
-          GOOS=darwin GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_darwin_arm64 ./cmd/agent
-          
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_darwin_arm64 ./cmd/agent
+
           # ZIP the binaries
           cd dist
           zip senhub-agent_linux_amd64.zip senhub-agent_linux_amd64
+          zip senhub-agent_linux_arm64.zip senhub-agent_linux_arm64
           zip senhub-agent_windows_amd64.zip senhub-agent_windows_amd64.exe
           zip senhub-agent_darwin_amd64.zip senhub-agent_darwin_amd64
           zip senhub-agent_darwin_arm64.zip senhub-agent_darwin_arm64
@@ -151,6 +159,7 @@ jobs:
           files: |
             dist/*.zip
             dist/senhub-agent_linux_amd64
+            dist/senhub-agent_linux_arm64
             dist/senhub-agent_windows_amd64.exe
             dist/senhub-agent_darwin_amd64
             dist/senhub-agent_darwin_arm64

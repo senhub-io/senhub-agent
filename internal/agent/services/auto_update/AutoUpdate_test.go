@@ -191,6 +191,12 @@ func TestAutoUpdate_getExpectedVersion_WithFailingServer(t *testing.T) {
 			expectedVersion: "1.0.1",
 			expectedResult:  "1.0.1",
 		},
+		{
+			name:            "Should not update with latest when list fails",
+			currentVersion:  "1.0.0",
+			expectedVersion: "latest",
+			expectedResult:  "1.0.0",
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {

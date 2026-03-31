@@ -3,6 +3,7 @@ package netscaler
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/tags"
@@ -624,13 +625,26 @@ func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag
 		nodeHostname := getString(nodeConfig, "name")
 
 		// Determine if this is the local node (the one we're connected to)
-		isLocalNode := (p.nodeID == nodeID)
+		// Try multiple matching strategies since nodeID may be -1 (unknown)
+		isLocalNode := false
+		if p.nodeID >= 0 {
+			isLocalNode = (p.nodeID == nodeID)
+		}
+		if !isLocalNode && p.hostname != "" && nodeHostname != "" {
+			isLocalNode = (p.hostname == nodeHostname)
+		}
+		if !isLocalNode && nodeIP != "" {
+			// Match by IP extracted from base_url
+			isLocalNode = p.isBaseURLMatchingIP(nodeIP)
+		}
 
 		p.logger.Debug().
 			Int("node_id", nodeID).
 			Str("node_ip", nodeIP).
 			Str("node_hostname", nodeHostname).
 			Bool("is_local", isLocalNode).
+			Int("probe_node_id", p.nodeID).
+			Str("probe_hostname", p.hostname).
 			Msg("Processing HA node")
 
 		// Create node-specific tags (deep copy to avoid modifying baseTags)
@@ -668,21 +682,21 @@ func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag
 			hacurstate = getString(localNodeStats, "hacurstate")
 			syncFailures = getFloat(localNodeStats, "haerrsyncfailure")
 		} else {
-			// For remote node, use config data
-			masterState = getString(nodeConfig, "masterstate")
-			hacurstate = getString(nodeConfig, "state")
+			// For remote node, use config data from /config/hanode
+			// Config fields: "state" = "Primary"/"Secondary" (HA role)
+			//                "hastatus" = "UP"/"DOWN" (operational state)
+			masterState = getString(nodeConfig, "state")
+			hacurstate = getString(nodeConfig, "hastatus")
 			// Sync failures not available for remote node
 			syncFailures = 0
 		}
 
-		// HA State using hacurmasterstate (PRIMARY/SECONDARY from NITRO API)
-		// Normalize to: 2=PRIMARY, 1=SECONDARY, 0=UNKNOWN
-		// Source: https://developer-docs.netscaler.com/en-us/adc-nitro-api/current-release/statistics/ha/hanode/
-		// masterState already defined above based on isLocalNode
+		// HA State: normalize case since stats returns "PRIMARY" and config returns "Primary"
 		stateValue := float32(0) // UNKNOWN
-		if masterState == "Primary" || masterState == "PRIMARY" {
+		switch strings.ToUpper(masterState) {
+		case "PRIMARY":
 			stateValue = 2
-		} else if masterState == "Secondary" || masterState == "SECONDARY" {
+		case "SECONDARY":
 			stateValue = 1
 		}
 
@@ -693,11 +707,9 @@ func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag
 			Timestamp: timestamp,
 		})
 
-		// HA node operational state (UP/DOWN)
-		// hacurstate: UP, DOWN, DISABLED, etc.
-		// hacurstate already defined above based on isLocalNode
+		// HA node operational state: normalize case for consistency across stats/config
 		nodeState := float32(0) // DOWN
-		if hacurstate == "UP" {
+		if strings.ToUpper(hacurstate) == "UP" {
 			nodeState = 1
 		}
 
