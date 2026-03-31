@@ -77,7 +77,7 @@ func TestBuffer_Sync(t *testing.T) {
 	data1 := []datapoint.DataPoint{
 		{Name: "test.metric1", Value: 10.0, Timestamp: time.Now()},
 	}
-	buffer.Append(data1)
+	_ = buffer.Append(data1)
 
 	// Sync should return data and clear buffer
 	synced := buffer.Sync()
@@ -99,7 +99,7 @@ func TestBuffer_AbortSync(t *testing.T) {
 	data1 := []datapoint.DataPoint{
 		{Name: "test.metric1", Value: 10.0, Timestamp: time.Now()},
 	}
-	buffer.Append(data1)
+	_ = buffer.Append(data1)
 
 	// Sync
 	synced := buffer.Sync()
@@ -108,7 +108,7 @@ func TestBuffer_AbortSync(t *testing.T) {
 	data2 := []datapoint.DataPoint{
 		{Name: "test.metric2", Value: 20.0, Timestamp: time.Now()},
 	}
-	buffer.Append(data2)
+	_ = buffer.Append(data2)
 
 	// Abort sync - should prepend failed data
 	err := buffer.AbortSync(synced)
@@ -138,7 +138,7 @@ func TestBuffer_ConcurrentAccess(t *testing.T) {
 			data := []datapoint.DataPoint{
 				{Name: "concurrent.metric", Value: float32(n), Timestamp: time.Now()},
 			}
-			buffer.Append(data)
+			_ = buffer.Append(data)
 			done <- true
 		}(i)
 	}
@@ -306,7 +306,7 @@ func TestSyncStrategySenhub_Shutdown(t *testing.T) {
 	).(*SyncStrategySenhub)
 
 	// Must call Start() before Shutdown() to initialize scheduler
-	strategy.Start()
+	_ = strategy.Start()
 
 	ctx := context.Background()
 	err := strategy.Shutdown(ctx)
@@ -340,7 +340,7 @@ func TestConvertToSenhubDataPoints(t *testing.T) {
 	strategy.server = mockSrv
 
 	// Add data
-	strategy.AddDataPoints(data)
+	_ = strategy.AddDataPoints(data)
 
 	// Manually trigger sync (normally done by scheduler)
 	syncedData := strategy.buffer.Sync()

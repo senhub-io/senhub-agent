@@ -25,7 +25,18 @@ class TagFilters {
                 this.updateSelectedTags();
             }
         });
-        
+
+        // Listen for expression input changes (text fields)
+        this.container.addEventListener('input', (e) => {
+            if (e.target.matches('.expression-input')) {
+                // Debounce the update to avoid too many calls while typing
+                clearTimeout(this.expressionTimeout);
+                this.expressionTimeout = setTimeout(() => {
+                    this.updateSelectedTags();
+                }, 300);
+            }
+        });
+
         // Add click handlers for toggling tag sections
         this.container.addEventListener('click', (e) => {
             if (e.target.matches('.tag-header-clickable, .tag-header-clickable *')) {
@@ -59,21 +70,34 @@ class TagFilters {
     }
 
     renderTags() {
-        // Filter out redundant tags
-        const redundantTags = ['host', 'probe_name', 'platform', 'os', 'prtg_metric_id', 'drive_id', 'volume_id', 'pool_id', 'adapter', 'connection_name'];
-        const alwaysKeepTags = ['url', 'endpoint', 'interface', 'drive', 'drive_name', 'volume_name', 'volume_type', 'pool_name', 'controller', 'raid_type', 'core'];
+        // Filter out redundant tags (technical/internal tags not useful for filtering)
+        const redundantTags = [
+            'host', 'probe_name', 'platform', 'os', 'prtg_metric_id',
+            'drive_id', 'volume_id', 'pool_id', 'adapter', 'connection_name',
+            'ha_node_ip', 'is_local_node', 'vserver_ip', 'vserver_type'  // HA/VServer technical tags
+        ];
+        const alwaysKeepTags = ['url', 'endpoint', 'interface', 'drive', 'drive_name', 'volume_name', 'volume_type', 'pool_name', 'controller', 'raid_type', 'core', 'metric_view', 'metric_type'];
 // Note: fan_name and sensor_name removed - thermal metrics disabled for consistency
-        
+// Note: metric_view and metric_type always shown - functional grouping tags for filtering
+// Note: ha_node_ip, is_local_node, vserver_ip, vserver_type hidden - too technical for UI filtering
+
         const filteredTags = Object.fromEntries(
             Object.entries(this.availableTags)
                 .filter(([tagKey, tagInfo]) => {
                     if (redundantTags.includes(tagKey)) return false;
                     if (alwaysKeepTags.includes(tagKey)) return true;
-                    
+
                     const values = tagInfo.values || [];
                     return values.length > 1; // Only show tags with multiple values
                 })
-                .sort(([a], [b]) => a.localeCompare(b))
+                .sort(([a], [b]) => {
+                    // Always put metric_view and metric_type first
+                    if (a === 'metric_view') return -1;
+                    if (b === 'metric_view') return 1;
+                    if (a === 'metric_type') return -1;
+                    if (b === 'metric_type') return 1;
+                    return a.localeCompare(b);
+                })
         );
 
         if (Object.keys(filteredTags).length === 0) {

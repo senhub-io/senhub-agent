@@ -27,9 +27,9 @@ type LocalConfigurationData struct {
 
 // LocalAgentConfig represents agent-specific configuration
 type LocalAgentConfig struct {
-	Key       string `yaml:"key"`
-	Mode      string `yaml:"mode"`
-	Generated bool   `yaml:"generated"`
+	Key     string `yaml:"key"`
+	Mode    string `yaml:"mode"`
+	License string `yaml:"license,omitempty"` // JWT license token or JSON for testing
 }
 
 // TLSConfig represents TLS/HTTPS configuration
@@ -178,6 +178,7 @@ func (lc *LocalConfiguration) GetConfiguration() RemoteConfigurationData {
 			RegistryUrl:         autoUpdate.URL,
 			Version:             "",
 			UpdateCheckInterval: updateInterval,
+			License:             lc.data.Agent.License,
 		},
 	}
 }

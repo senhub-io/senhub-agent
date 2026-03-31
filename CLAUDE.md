@@ -22,6 +22,19 @@ The full development documentation has been moved to `/docs/developer-guide/` fo
 - **ALWAYS use `make test`** instead of running `go test` directly
 - **Feature branches first** - merge to dev only when sufficiently tested
 
+### ⚠️ Temporary Dependencies Forks
+
+**IMPORTANT**: We maintain temporary forks of upstream dependencies with critical bug fixes:
+
+- **citrix/adc-nitro-go** → `senhub-io/adc-nitro-go` (singleton stats bug)
+  - **Why**: Fixes panic on system/ns/ssl metrics (issue #35, 3+ years old)
+  - **Fix**: FindAllStats() + FindStat() for singleton resources
+  - **Doc**: `docs/.internal/TEMPORARY-FORK-citrix-adc-nitro-go.md`
+  - **Review**: Quarterly (next: 2025-03-11)
+  - **Revert when**: Upstream merges PR #36
+
+See `docs/.internal/TEMPORARY-FORK-*.md` for all active forks and revert procedures.
+
 ### Version Management
 - **Production version**: Without `-beta` suffix (e.g., `0.1.64`)
 - **Development version**: With `-beta` suffix (e.g., `0.1.70-beta`)
@@ -105,6 +118,33 @@ probes:
 curl -X POST http://localhost:8080/api/{key}/debug/logs \
   -d '{"module_levels": [{"module": "probe.redfish", "level": "debug"}]}'
 ```
+
+### License System
+```yaml
+# Configuration (agent.license field)
+agent:
+  authentication_key: "agent-uuid"
+  license: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."  # JWT token
+
+# CLI: Check license status
+curl http://localhost:8080/api/{key}/license/status
+
+# Response includes:
+# - tier: "Free" | "Pro" | "Enterprise"
+# - expires_at: ISO 8601 timestamp
+# - authorized_probes: ["cpu", "memory", ...]
+# - grace_period: boolean (7 days after expiration)
+```
+
+**License Tiers:**
+- **Free**: cpu, memory, logicaldisk, network
+- **Pro**: redfish, citrix, ping, snmp, syslog, event
+- **Enterprise**: all probes (wildcard)
+
+**Key Files:**
+- `/internal/agent/services/license/` - License validation
+- `/scripts/license-generator/` - Production license tool (Sensor Factory)
+- `/docs/LICENSE-SYSTEM.md` - Complete documentation
 
 ### Design Patterns Checklist
 Before committing:
@@ -204,4 +244,4 @@ All commits should appear as authored solely by the repository owner.
 
 **For complete development documentation, start with [Developer Guide](./docs/developer-guide/README.md).**
 
-Last updated: 2025-11-06
+Last updated: 2025-12-09
