@@ -970,3 +970,78 @@ func TestMetricsCollector_NewMetricsCollector(t *testing.T) {
 		assert.Equal(t, "https://citrix.example.com", collector.citrixURL)
 	})
 }
+
+// TestCollectInfrastructureMetrics_PhantomFiltering verifies that machines without
+// DnsName and MachineName are excluded from infrastructure metrics (phantom entries
+// in Director SQL database that inflate machine counts).
+func TestCollectInfrastructureMetrics_PhantomFiltering(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+
+	// Return a mix of valid machines and phantom entries
+	mockClient.On("GetMachines", mock.Anything, mock.Anything).Return([]Machine{
+		// Valid machines in a Delivery Group
+		{MachineId: "m1", MachineName: "VDI-001", DnsName: "vdi-001.corp.local", DesktopGroupId: "dg1", RegistrationState: RegistrationStateRegistered, FaultState: FaultStateNone},
+		{MachineId: "m2", MachineName: "VDI-002", DnsName: "vdi-002.corp.local", DesktopGroupId: "dg1", RegistrationState: RegistrationStateRegistered, FaultState: FaultStateNone},
+		{MachineId: "m3", MachineName: "VDI-003", DnsName: "vdi-003.corp.local", DesktopGroupId: "dg1", RegistrationState: RegistrationStateUnregistered, FaultState: FaultStateNone},
+		// Phantom: no DnsName, no MachineName (ghost entries in SQL)
+		{MachineId: "m4", MachineName: "", DnsName: "", DesktopGroupId: "", RegistrationState: RegistrationStateUnregistered, FaultState: FaultStateNone},
+		{MachineId: "m5", MachineName: "", DnsName: "", DesktopGroupId: "", RegistrationState: RegistrationStateUnregistered, FaultState: FaultStateNone},
+		// Valid: has MachineName but no DnsName (should be kept)
+		{MachineId: "m6", MachineName: "LEGACY-001", DnsName: "", DesktopGroupId: "dg2", RegistrationState: RegistrationStateRegistered, FaultState: FaultStateNone},
+	}, nil)
+
+	collector := NewMetricsCollector(mockClient, baseLogger)
+	ctx := context.Background()
+
+	metrics, err := collector.CollectInfrastructureMetrics(ctx, time.Now(), nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, metrics)
+
+	// Find the machines_total metric
+	var totalMachines float32
+	for _, m := range metrics {
+		if m.Name == MetricMachinesTotal {
+			for _, tag := range m.Tags {
+				if tag.Key == "metric_type" && tag.Value == "infrastructure" {
+					totalMachines = m.Value
+				}
+			}
+		}
+	}
+
+	// Should be 4 (3 valid VDIs + 1 legacy), not 6 (which includes 2 phantoms)
+	assert.Equal(t, float32(4), totalMachines, "Phantom machines (no DnsName AND no MachineName) should be excluded from total count")
+}
+
+// TestCollectInfrastructureMetrics_RegisteredCounts verifies registered/unregistered breakdown
+func TestCollectInfrastructureMetrics_RegisteredCounts(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+
+	mockClient.On("GetMachines", mock.Anything, mock.Anything).Return([]Machine{
+		{MachineId: "m1", MachineName: "VDI-001", DnsName: "vdi-001.local", DesktopGroupId: "dg1", RegistrationState: RegistrationStateRegistered, FaultState: FaultStateNone},
+		{MachineId: "m2", MachineName: "VDI-002", DnsName: "vdi-002.local", DesktopGroupId: "dg1", RegistrationState: RegistrationStateRegistered, FaultState: FaultStateNone},
+		{MachineId: "m3", MachineName: "VDI-003", DnsName: "vdi-003.local", DesktopGroupId: "dg1", RegistrationState: RegistrationStateUnregistered, FaultState: FaultStateNone},
+		{MachineId: "m4", MachineName: "VDI-004", DnsName: "vdi-004.local", DesktopGroupId: "dg1", RegistrationState: RegistrationStateAgentError, FaultState: FaultStateUnregistered},
+	}, nil)
+
+	collector := NewMetricsCollector(mockClient, baseLogger)
+	ctx := context.Background()
+
+	metrics, err := collector.CollectInfrastructureMetrics(ctx, time.Now(), nil)
+	assert.NoError(t, err)
+
+	metricMap := make(map[string]float32)
+	for _, m := range metrics {
+		for _, tag := range m.Tags {
+			if tag.Key == "metric_type" && tag.Value == "infrastructure" {
+				metricMap[m.Name] = m.Value
+			}
+		}
+	}
+
+	assert.Equal(t, float32(4), metricMap[MetricMachinesTotal])
+	assert.Equal(t, float32(2), metricMap[MetricMachinesRegistered])
+	assert.Equal(t, float32(2), metricMap[MetricMachinesUnregistered]) // Unregistered + AgentError
+}
