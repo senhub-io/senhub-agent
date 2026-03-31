@@ -59,9 +59,19 @@ class DocsPage {
     }
 
     renderEndpointsByCategory(endpoints) {
+        // Filter: only keep GET endpoints and fix admin/debug paths
+        const filteredEndpoints = endpoints.filter(endpoint => {
+            // Only show GET endpoints
+            return endpoint.methods && endpoint.methods.includes('GET');
+        }).map(endpoint => {
+            // Fix paths: admin/* should be debug/* (legacy endpoints)
+            const fixedPath = endpoint.path.replace('/admin/', '/debug/');
+            return { ...endpoint, path: fixedPath };
+        });
+
         // Group endpoints by category
         const categories = {};
-        endpoints.forEach(endpoint => {
+        filteredEndpoints.forEach(endpoint => {
             const category = endpoint.category || 'other';
             if (!categories[category]) {
                 categories[category] = [];
@@ -72,12 +82,11 @@ class DocsPage {
         // Clear container
         this.apiSections.innerHTML = '';
         
-        // Define category order and metadata
+        // Define category order and metadata (only showing main categories, others accessible via Explorer)
         const categoryInfo = {
             health: { title: '💊 Health & Status', description: 'Monitor agent health and status' },
             discovery: { title: '🔍 Discovery', description: 'Discover available probes, metrics, and schemas' },
-            metrics: { title: '📊 Metrics', description: 'Access collected metrics in various formats' },
-            other: { title: '🔧 Other', description: 'Additional utility endpoints' }
+            admin: { title: '⚙️ Administration', description: 'Manage agent configuration, logs, and cache' }
         };
         
         // Render each category
@@ -144,9 +153,10 @@ class DocsPage {
     }
 
     testEndpoint(path) {
-        // Redirect to API Explorer with the endpoint pre-filled
-        const explorerUrl = `/web/${this.base.agentKey}/explorer`;
-        window.open(explorerUrl, '_blank');
+        // Replace {agentkey} placeholder with actual agent key
+        const url = path.replace('{agentkey}', this.base.agentKey);
+        // Open the endpoint directly in a new tab
+        window.open(url, '_blank');
     }
 
     showLoading() {

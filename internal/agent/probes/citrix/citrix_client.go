@@ -228,20 +228,29 @@ func (c *citrixClient) GetSessionsByConnectionState(ctx context.Context, connect
 	return sessions, nil
 }
 
-// GetMachines retrieves machines data from the OData API
+// GetMachines retrieves machines data from the OData API.
+// By default, filters to machines assigned to a Delivery Group (DesktopGroupId ne null)
+// to match Director Console behavior and exclude orphan/test/infrastructure machines.
 func (c *citrixClient) GetMachines(ctx context.Context, sinceTime time.Time) ([]Machine, error) {
 	endpoint := "/Machines"
 
+	// Base filter: only machines in a Delivery Group (matches Director Console view)
+	// This excludes orphan machines, test machines, and infrastructure servers
+	// that exist in the SQL database but are not part of any active Delivery Group.
+	baseFilter := "DesktopGroupId ne null"
+
 	var filter string
 	if !sinceTime.IsZero() {
-		filter = fmt.Sprintf("ModifiedDate ge %s", formatODataDateTime(sinceTime))
+		filter = fmt.Sprintf("%s and ModifiedDate ge %s", baseFilter, formatODataDateTime(sinceTime))
 		c.logger.Debug().
 			Time("since_time", sinceTime).
 			Str("filter", filter).
-			Msg("Getting machines with time filter")
+			Msg("Getting machines with time and Delivery Group filter")
 	} else {
-		// No filter - get all machines for infrastructure metrics
-		c.logger.Debug().Msg("Getting all machines (no time filter)")
+		filter = baseFilter
+		c.logger.Debug().
+			Str("filter", filter).
+			Msg("Getting machines with Delivery Group filter")
 	}
 
 	var machines []Machine

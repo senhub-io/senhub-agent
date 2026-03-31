@@ -155,7 +155,50 @@ type AgentConfigurationWithCache interface {
 - Composable through embedding
 - Easy to mock for testing
 
-### 8. Error Handling Pattern
+### 8. Configuration Wrapper Pattern
+
+Use interface assertion to access wrapped configuration data:
+
+```go
+// Pattern: Type assert to access extended interface
+func getLicenseToken(config AgentConfiguration) string {
+    if configProvider, ok := config.(interface {
+        GetConfiguration() configuration.RemoteConfigurationData
+    }); ok {
+        cfg := configProvider.GetConfiguration()
+        return cfg.Agent.License
+    }
+    return ""
+}
+```
+
+**Implementation in agentConfiguration:**
+```go
+// GetConfiguration exposes configuration data from wrapped providers
+func (l *agentConfiguration) GetConfiguration() RemoteConfigurationData {
+    if l.localConfiguration != nil {
+        return l.localConfiguration.GetConfiguration()
+    }
+    if l.remoteConfiguration != nil {
+        return l.remoteConfiguration.GetConfiguration()
+    }
+    return RemoteConfigurationData{} // Empty if no provider
+}
+```
+
+**Benefits:**
+- Preserves encapsulation of wrapped types
+- Avoids exposing internal implementation details
+- Allows flexible delegation to multiple configuration sources
+- Type-safe access through interface assertion
+
+**Use Cases:**
+- License token access from configuration
+- Probe configuration retrieval
+- Agent metadata access
+- Multi-source configuration management
+
+### 9. Error Handling Pattern
 
 Consistent error handling with context:
 
@@ -435,4 +478,4 @@ func validateConfig(cfg Config) error {
 
 ---
 
-Last updated: 2025-11-06
+Last updated: 2025-12-09

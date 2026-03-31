@@ -171,32 +171,32 @@ func CheckCompatibility(configVersion int) ConfigCompatibilityReport {
 
 // FormatCompatibilityReport formats a compatibility report for display
 func FormatCompatibilityReport(report ConfigCompatibilityReport) string {
-	msg := fmt.Sprintf("Configuration Compatibility Check\n")
-	msg += fmt.Sprintf("=====================================\n")
+	msg := "Configuration Compatibility Check\n"
+	msg += "=====================================\n"
 	msg += fmt.Sprintf("Config Version: %d\n", report.ConfigVersion)
 	msg += fmt.Sprintf("Agent Version: %s\n", report.AgentVersion)
 	msg += fmt.Sprintf("Expected Config Version: %d\n", report.CurrentVersion)
-	msg += fmt.Sprintf("\n")
+	msg += "\n"
 
 	if !report.Compatible {
-		msg += fmt.Sprintf("❌ INCOMPATIBLE\n\n")
-		msg += fmt.Sprintf("Errors:\n")
+		msg += "❌ INCOMPATIBLE\n\n"
+		msg += "Errors:\n"
 		for _, err := range report.Errors {
 			msg += fmt.Sprintf("  - %s\n", err)
 		}
 	} else if report.NeedsMigration {
-		msg += fmt.Sprintf("⚠️  MIGRATION REQUIRED\n\n")
+		msg += "⚠️  MIGRATION REQUIRED\n\n"
 		msg += fmt.Sprintf("Migration Path: %d", report.ConfigVersion)
 		for _, v := range report.MigrationPath {
 			msg += fmt.Sprintf(" → %d", v)
 		}
-		msg += fmt.Sprintf("\n\n")
-		msg += fmt.Sprintf("Warnings:\n")
+		msg += "\n\n"
+		msg += "Warnings:\n"
 		for _, warn := range report.Warnings {
 			msg += fmt.Sprintf("  - %s\n", warn)
 		}
 	} else {
-		msg += fmt.Sprintf("✅ COMPATIBLE\n")
+		msg += "✅ COMPATIBLE\n"
 	}
 
 	return msg

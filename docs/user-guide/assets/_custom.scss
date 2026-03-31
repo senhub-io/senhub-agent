@@ -1,0 +1,38 @@
+// SenHub brand colors
+:root {
+  --senhub-primary: #1a73e8;
+  --senhub-primary-dark: #1557b0;
+  --senhub-accent: #34a853;
+}
+
+// Override hugo-book theme variables
+:root {
+  --color-link: var(--senhub-primary);
+}
+
+// Sidebar brand styling
+.book-brand {
+  font-weight: 700;
+}
+
+// Better table styling
+.book-page table {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+
+  th {
+    background: var(--gray-100);
+    font-weight: 600;
+  }
+}
+
+// Code block improvements
+.highlight pre {
+  border-radius: 4px;
+}
+
+// Responsive table scroll
+.book-page .markdown {
+  overflow-x: auto;
+}

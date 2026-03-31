@@ -1,0 +1,628 @@
+probe_name: "netscaler"
+friendly_name: "Citrix Netscaler ADC"
+multi_instance_labels: ["vserver", "service", "servicegroup", "certname", "partition", "interface", "csvserver", "cspolicy", "gslbvserver", "gslbsite", "gslbservice", "authvserver", "vpnvserver"]
+
+metrics:
+  # System-level Metrics
+  - name: "netscaler.system.cpu.usage.percent"
+    channel: "system.cpu.usage"
+    display_name: "System CPU Usage"
+    unit: "%"
+
+  - name: "netscaler.system.cpu.mgmt.usage.percent"
+    channel: "system.cpu.mgmt.usage"
+    display_name: "System Management CPU Usage"
+    unit: "%"
+
+  - name: "netscaler.system.memory.usage.percent"
+    channel: "system.memory.usage"
+    display_name: "System Memory Usage"
+    unit: "%"
+
+  - name: "netscaler.system.network.rx.mbits_per_sec"
+    channel: "system.network.rx"
+    display_name: "System Network Receive Rate"
+    unit: "Mbits/s"
+
+  - name: "netscaler.system.network.tx.mbits_per_sec"
+    channel: "system.network.tx"
+    display_name: "System Network Transmit Rate"
+    unit: "Mbits/s"
+
+  - name: "netscaler.system.http.requests.rate"
+    channel: "system.http.requests"
+    display_name: "System HTTP Requests Rate"
+    unit: "req/s"
+
+  - name: "netscaler.system.http.responses.rate"
+    channel: "system.http.responses"
+    display_name: "System HTTP Responses Rate"
+    unit: "resp/s"
+
+  - name: "netscaler.system.tcp.client.connections.current"
+    channel: "system.tcp.client.connections"
+    display_name: "System TCP Client Connections"
+    unit: "#"
+
+  - name: "netscaler.system.tcp.server.connections.current"
+    channel: "system.tcp.server.connections"
+    display_name: "System TCP Server Connections"
+    unit: "#"
+
+  # Netscaler Global Metrics
+  - name: "netscaler.ns.throughput.total.mbits_per_sec"
+    channel: "ns.throughput.total"
+    display_name: "NS Total Throughput"
+    unit: "Mbits/s"
+
+  - name: "netscaler.ns.http.throughput.mbits_per_sec"
+    channel: "ns.http.throughput"
+    display_name: "NS HTTP Throughput"
+    unit: "Mbits/s"
+
+  # SSL Metrics
+  - name: "netscaler.ssl.transactions.rate"
+    channel: "ssl.transactions.rate"
+    display_name: "SSL Transactions Rate"
+    unit: "tx/s"
+
+  - name: "netscaler.ssl.sessions.total"
+    channel: "ssl.sessions.total"
+    display_name: "SSL Sessions Total"
+    unit: "#"
+
+  # Load Balancer Virtual Server Metrics
+  - name: "netscaler.lbvserver.state"
+    channel: "lbvserver.state"
+    display_name: "VServer State ({vserver})"
+    unit: "#"
+    multi_instance_labels: ["vserver"]
+    lookup: "netscaler.lbvserver.state"
+
+  - name: "netscaler.lbvserver.requests.rate"
+    channel: "lbvserver.requests.rate"
+    display_name: "VServer Requests Rate ({vserver})"
+    unit: "req/s"
+    multi_instance_labels: ["vserver"]
+
+  - name: "netscaler.lbvserver.connections.current"
+    channel: "lbvserver.connections.current"
+    display_name: "VServer Current Connections ({vserver})"
+    unit: "#"
+    multi_instance_labels: ["vserver"]
+
+  - name: "netscaler.lbvserver.throughput.rx.bytes_per_sec"
+    channel: "lbvserver.throughput.rx.bytes_per_sec"
+    display_name: "VServer Received Throughput ({vserver})"
+    unit: "bytes/s"
+    multi_instance_labels: ["vserver"]
+
+  - name: "netscaler.lbvserver.throughput.tx.bytes_per_sec"
+    channel: "lbvserver.throughput.tx.bytes_per_sec"
+    display_name: "VServer Transmitted Throughput ({vserver})"
+    unit: "bytes/s"
+    multi_instance_labels: ["vserver"]
+
+  # Service Metrics
+  - name: "netscaler.service.state"
+    channel: "service.state"
+    display_name: "Service State ({service})"
+    unit: "#"
+    multi_instance_labels: ["service"]
+    lookup: "netscaler.service.state"
+
+  - name: "netscaler.service.throughput.bytes_per_sec"
+    channel: "service.throughput.bytes_per_sec"
+    display_name: "Service Throughput ({service})"
+    unit: "bytes/s"
+    multi_instance_labels: ["service"]
+
+  - name: "netscaler.service.transactions.active"
+    channel: "service.transactions.active"
+    display_name: "Service Active Transactions ({service})"
+    unit: "#"
+    multi_instance_labels: ["service"]
+
+  # Service Group Metrics
+  - name: "netscaler.servicegroup.state"
+    lookup: "netscaler.servicegroup.state"
+    channel: "servicegroup.state"
+    display_name: "Service Group State ({servicegroup})"
+    unit: "#"
+    multi_instance_labels: ["servicegroup"]
+
+  - name: "netscaler.servicegroup.requests.rate"
+    channel: "servicegroup.requests.rate"
+    display_name: "Service Group Requests Rate ({servicegroup})"
+    unit: "req/s"
+    multi_instance_labels: ["servicegroup"]
+
+  - name: "netscaler.servicegroup.members.active"
+    channel: "servicegroup.members.active"
+    display_name: "Service Group Active Members ({servicegroup})"
+    unit: "#"
+    multi_instance_labels: ["servicegroup"]
+
+  # SSL Certificate Metrics
+  - name: "netscaler.ssl.certificate.days_to_expiration"
+    channel: "ssl.certificate.days_to_expiration"
+    display_name: "SSL Certificate Days to Expiration ({certname})"
+    unit: "days"
+    multi_instance_labels: ["certname"]
+    description: "Days until SSL certificate expires (negative if expired)"
+
+  - name: "netscaler.ssl.certificate.status"
+    channel: "ssl.certificate.status"
+    display_name: "SSL Certificate Status ({certname})"
+    unit: "#"
+    multi_instance_labels: ["certname"]
+    lookup: "netscaler.ssl.certificate.status"
+    description: "Certificate status: 1=valid, 0=expired"
+
+  # High Availability (HA) Metrics
+  - name: "netscaler.ha.state"
+    channel: "ha.state"
+    display_name: "HA State ({ha_node_ip})"
+    unit: "#"
+    multi_instance_labels: ["ha_node_id", "ha_node_ip"]
+    lookup: "netscaler.ha.state"
+    description: "HA role: 2=PRIMARY, 1=SECONDARY, 0=UNKNOWN (per node)"
+
+  - name: "netscaler.ha.node.state"
+    channel: "ha.node.state"
+    display_name: "HA Node Operational State ({ha_node_ip})"
+    unit: "#"
+    multi_instance_labels: ["ha_node_id", "ha_node_ip"]
+    lookup: "netscaler.ha.node.state"
+    description: "Node operational state: 1=UP, 0=DOWN (per node)"
+
+  - name: "netscaler.ha.sync_status"
+    channel: "ha.sync_status"
+    display_name: "HA Sync Status ({ha_node_ip})"
+    unit: "#"
+    multi_instance_labels: ["ha_node_id", "ha_node_ip"]
+    lookup: "netscaler.ha.sync_status"
+    description: "HA sync status: 1=success, 0=failed (per node)"
+
+  - name: "netscaler.ha.sync_failures"
+    channel: "ha.sync_failures"
+    display_name: "HA Sync Failures ({ha_node_ip})"
+    unit: "#"
+    multi_instance_labels: ["ha_node_id", "ha_node_ip"]
+    description: "Number of HA synchronization failures (per node)"
+
+  - name: "netscaler.ha.propagation_timeouts"
+    channel: "ha.propagation_timeouts"
+    display_name: "HA Propagation Timeouts"
+    unit: "#"
+    description: "Number of times configuration propagation timed out"
+
+  - name: "netscaler.ha.heartbeat.rx.packets"
+    channel: "ha.heartbeat.rx.packets"
+    display_name: "HA Heartbeat RX Packets"
+    unit: "#"
+    description: "Total heartbeat packets received from peer node"
+
+  - name: "netscaler.ha.heartbeat.rx.rate"
+    channel: "ha.heartbeat.rx.rate"
+    display_name: "HA Heartbeat RX Rate"
+    unit: "Custom"
+    custom_unit: "pkts/s"
+    description: "Heartbeat packets receive rate (packets/sec)"
+
+  - name: "netscaler.ha.heartbeat.tx.packets"
+    channel: "ha.heartbeat.tx.packets"
+    display_name: "HA Heartbeat TX Packets"
+    unit: "#"
+    description: "Total heartbeat packets transmitted to peer node"
+
+  - name: "netscaler.ha.heartbeat.tx.rate"
+    channel: "ha.heartbeat.tx.rate"
+    display_name: "HA Heartbeat TX Rate"
+    unit: "Custom"
+    custom_unit: "pkts/s"
+    description: "Heartbeat packets transmit rate (packets/sec)"
+
+  # Disk Usage Metrics
+  - name: "netscaler.disk.percent_used"
+    channel: "disk.percent_used"
+    display_name: "Disk Usage ({partition})"
+    unit: "%"
+    multi_instance_labels: ["partition"]
+    description: "Disk partition usage percentage"
+
+  - name: "netscaler.disk.used_kb"
+    channel: "disk.used_kb"
+    display_name: "Disk Used ({partition})"
+    unit: "KB"
+    multi_instance_labels: ["partition"]
+    description: "Disk space used in kilobytes"
+
+  - name: "netscaler.disk.available_kb"
+    channel: "disk.available_kb"
+    display_name: "Disk Available ({partition})"
+    unit: "KB"
+    multi_instance_labels: ["partition"]
+    description: "Disk space available in kilobytes"
+
+  # Phase 2: Advanced Load Balancer Metrics
+  - name: "netscaler.lbvserver.spillovers.total"
+    channel: "lbvserver.spillovers.total"
+    display_name: "VServer Spillovers Total ({vserver})"
+    unit: "#"
+    multi_instance_labels: ["vserver"]
+    description: "Total spillovers to backup vServer (saturation indicator)"
+
+  - name: "netscaler.lbvserver.connections.established"
+    channel: "lbvserver.connections.established"
+    display_name: "VServer Established Connections ({vserver})"
+    unit: "#"
+    multi_instance_labels: ["vserver"]
+    description: "Established connections for capacity planning"
+
+  - name: "netscaler.lbvserver.hits.total"
+    channel: "lbvserver.hits.total"
+    display_name: "VServer Total Hits ({vserver})"
+    unit: "#"
+    multi_instance_labels: ["vserver"]
+    description: "Total hits for request distribution analysis"
+
+  # Phase 2: Advanced Service Metrics
+  - name: "netscaler.service.surge_queue_length"
+    channel: "service.surge_queue_length"
+    display_name: "Service Surge Queue Length ({service})"
+    unit: "#"
+    multi_instance_labels: ["service"]
+    description: "Surge queue length (backend saturation indicator)"
+
+  # Phase 2: Advanced Service Group Metrics
+  - name: "netscaler.servicegroup.members.inactive"
+    channel: "servicegroup.members.inactive"
+    display_name: "Service Group Inactive Members ({servicegroup})"
+    unit: "#"
+    multi_instance_labels: ["servicegroup"]
+    description: "Number of inactive members in service group"
+
+  - name: "netscaler.servicegroup.surge_queue_length"
+    channel: "servicegroup.surge_queue_length"
+    display_name: "Service Group Surge Queue Length ({servicegroup})"
+    unit: "#"
+    multi_instance_labels: ["servicegroup"]
+    description: "Surge queue length (backend saturation indicator)"
+
+  # Phase 2: Packets Per Second Metrics
+  - name: "netscaler.system.network.rx.packets_per_sec"
+    channel: "system.network.rx.packets_per_sec"
+    display_name: "System RX Packets Per Second"
+    unit: "pps"
+    description: "Receive packets per second"
+
+  - name: "netscaler.system.network.tx.packets_per_sec"
+    channel: "system.network.tx.packets_per_sec"
+    display_name: "System TX Packets Per Second"
+    unit: "pps"
+    description: "Transmit packets per second"
+
+  - name: "netscaler.system.network.rx.packets.total"
+    channel: "system.network.rx.packets.total"
+    display_name: "System RX Packets Total"
+    unit: "#"
+    description: "Total packets received (counter)"
+
+  - name: "netscaler.system.network.tx.packets.total"
+    channel: "system.network.tx.packets.total"
+    display_name: "System TX Packets Total"
+    unit: "#"
+    description: "Total packets sent (counter)"
+
+  # Phase 2: Network Interface Metrics
+  - name: "netscaler.interface.state"
+    lookup: "netscaler.interface.state"
+    channel: "interface.state"
+    display_name: "Interface State ({interface})"
+    unit: "#"
+    multi_instance_labels: ["interface"]
+    description: "Interface state: 1=UP, 0=DOWN"
+
+  - name: "netscaler.interface.rx.bytes.total"
+    channel: "interface.rx.bytes.total"
+    display_name: "Interface RX Bytes Total ({interface})"
+    unit: "bytes"
+    multi_instance_labels: ["interface"]
+
+  - name: "netscaler.interface.tx.bytes.total"
+    channel: "interface.tx.bytes.total"
+    display_name: "Interface TX Bytes Total ({interface})"
+    unit: "bytes"
+    multi_instance_labels: ["interface"]
+
+  - name: "netscaler.interface.rx.mbits_per_sec"
+    channel: "interface.rx.mbits_per_sec"
+    display_name: "Interface RX Rate ({interface})"
+    unit: "Mbits/s"
+    multi_instance_labels: ["interface"]
+
+  - name: "netscaler.interface.tx.mbits_per_sec"
+    channel: "interface.tx.mbits_per_sec"
+    display_name: "Interface TX Rate ({interface})"
+    unit: "Mbits/s"
+    multi_instance_labels: ["interface"]
+
+  - name: "netscaler.interface.rx.errors.total"
+    channel: "interface.rx.errors.total"
+    display_name: "Interface RX Errors ({interface})"
+    unit: "#"
+    multi_instance_labels: ["interface"]
+
+  - name: "netscaler.interface.tx.errors.total"
+    channel: "interface.tx.errors.total"
+    display_name: "Interface TX Errors ({interface})"
+    unit: "#"
+    multi_instance_labels: ["interface"]
+
+  - name: "netscaler.interface.rx.drops.total"
+    channel: "interface.rx.drops.total"
+    display_name: "Interface RX Drops ({interface})"
+    unit: "#"
+    multi_instance_labels: ["interface"]
+
+  - name: "netscaler.interface.tx.drops.total"
+    channel: "interface.tx.drops.total"
+    display_name: "Interface TX Drops ({interface})"
+    unit: "#"
+    multi_instance_labels: ["interface"]
+
+  - name: "netscaler.interface.link_speed_mbps"
+    channel: "interface.link_speed_mbps"
+    display_name: "Interface Link Speed ({interface})"
+    unit: "Mbps"
+    multi_instance_labels: ["interface"]
+
+  # Phase 3: Content Switching Metrics
+  - name: "netscaler.cs.vserver.state"
+    lookup: "netscaler.csvserver.state"
+    channel: "cs.vserver.state"
+    display_name: "CS VServer State ({csvserver})"
+    unit: "#"
+    multi_instance_labels: ["csvserver"]
+    description: "Content Switching vServer state: UP=7, DOWN=1, etc."
+
+  - name: "netscaler.cs.vserver.hits.total"
+    channel: "cs.vserver.hits.total"
+    display_name: "CS VServer Hits Total ({csvserver})"
+    unit: "#"
+    multi_instance_labels: ["csvserver"]
+
+  - name: "netscaler.cs.vserver.requests.rate"
+    channel: "cs.vserver.requests.rate"
+    display_name: "CS VServer Requests Rate ({csvserver})"
+    unit: "req/s"
+    multi_instance_labels: ["csvserver"]
+
+  - name: "netscaler.cs.vserver.connections.current"
+    channel: "cs.vserver.connections.current"
+    display_name: "CS VServer Current Connections ({csvserver})"
+    unit: "#"
+    multi_instance_labels: ["csvserver"]
+
+  - name: "netscaler.cs.policy.hits.total"
+    channel: "cs.policy.hits.total"
+    display_name: "CS Policy Hits Total ({cspolicy})"
+    unit: "#"
+    multi_instance_labels: ["cspolicy"]
+
+  - name: "netscaler.cs.policy.undefine_hits.total"
+    channel: "cs.policy.undefine_hits.total"
+    display_name: "CS Policy Undefine Hits ({cspolicy})"
+    unit: "#"
+    multi_instance_labels: ["cspolicy"]
+    description: "Rules not matched"
+
+  # Phase 3: GSLB Metrics
+  - name: "netscaler.gslb.vserver.state"
+    lookup: "netscaler.gslbvserver.state"
+    channel: "gslb.vserver.state"
+    display_name: "GSLB VServer State ({gslbvserver})"
+    unit: "#"
+    multi_instance_labels: ["gslbvserver"]
+    description: "GSLB vServer state: UP=7, DOWN=1, etc."
+
+  - name: "netscaler.gslb.vserver.hits.total"
+    channel: "gslb.vserver.hits.total"
+    display_name: "GSLB VServer Hits Total ({gslbvserver})"
+    unit: "#"
+    multi_instance_labels: ["gslbvserver"]
+
+  - name: "netscaler.gslb.vserver.requests.rate"
+    channel: "gslb.vserver.requests.rate"
+    display_name: "GSLB VServer Requests Rate ({gslbvserver})"
+    unit: "req/s"
+    multi_instance_labels: ["gslbvserver"]
+
+  - name: "netscaler.gslb.vserver.persistence.records"
+    channel: "gslb.vserver.persistence.records"
+    display_name: "GSLB VServer Persistence Records ({gslbvserver})"
+    unit: "#"
+    multi_instance_labels: ["gslbvserver"]
+
+  - name: "netscaler.gslb.site.state"
+    channel: "gslb.site.state"
+    display_name: "GSLB Site State ({gslbsite})"
+    unit: "#"
+    multi_instance_labels: ["gslbsite"]
+    description: "GSLB site state: 1=UP/ACTIVE, 0=DOWN"
+
+  - name: "netscaler.gslb.site.network_rtt_microseconds"
+    channel: "gslb.site.network_rtt_microseconds"
+    display_name: "GSLB Site Network RTT ({gslbsite})"
+    unit: "μs"
+    multi_instance_labels: ["gslbsite"]
+    description: "Network round-trip time in microseconds"
+
+  - name: "netscaler.gslb.site.connections.current"
+    channel: "gslb.site.connections.current"
+    display_name: "GSLB Site Current Connections ({gslbsite})"
+    unit: "#"
+    multi_instance_labels: ["gslbsite"]
+
+  - name: "netscaler.gslb.service.state"
+    channel: "gslb.service.state"
+    display_name: "GSLB Service State ({gslbservice})"
+    unit: "#"
+    multi_instance_labels: ["gslbservice"]
+    description: "GSLB service state: 1=UP, 0=DOWN"
+
+  - name: "netscaler.gslb.service.hits.total"
+    channel: "gslb.service.hits.total"
+    display_name: "GSLB Service Hits Total ({gslbservice})"
+    unit: "#"
+    multi_instance_labels: ["gslbservice"]
+
+  - name: "netscaler.gslb.service.connections.current"
+    channel: "gslb.service.connections.current"
+    display_name: "GSLB Service Current Connections ({gslbservice})"
+    unit: "#"
+    multi_instance_labels: ["gslbservice"]
+
+  # Phase 3: Cache Metrics
+  - name: "netscaler.cache.hit_ratio_percent"
+    channel: "cache.hit_ratio_percent"
+    display_name: "Cache Hit Ratio"
+    unit: "%"
+    description: "Cache hit ratio percentage"
+
+  - name: "netscaler.cache.objects.count"
+    channel: "cache.objects.count"
+    display_name: "Cache Objects Count"
+    unit: "#"
+    description: "Number of objects in cache"
+
+  - name: "netscaler.cache.memory.used_kb"
+    channel: "cache.memory.used_kb"
+    display_name: "Cache Memory Used"
+    unit: "KB"
+    description: "Cache memory used in kilobytes"
+
+  - name: "netscaler.cache.hits.total"
+    channel: "cache.hits.total"
+    display_name: "Cache Hits Total"
+    unit: "#"
+
+  - name: "netscaler.cache.misses.total"
+    channel: "cache.misses.total"
+    display_name: "Cache Misses Total"
+    unit: "#"
+
+  # Phase 3: Compression Metrics
+  - name: "netscaler.compression.ratio"
+    channel: "compression.ratio"
+    display_name: "Compression Ratio"
+    unit: "#"
+    description: "Compression ratio"
+
+  - name: "netscaler.compression.bytes.compressed.total"
+    channel: "compression.bytes.compressed.total"
+    display_name: "Compressed Bytes Total"
+    unit: "bytes"
+
+  - name: "netscaler.compression.bytes.original.total"
+    channel: "compression.bytes.original.total"
+    display_name: "Original Bytes Total"
+    unit: "bytes"
+    description: "Original bytes before compression"
+
+  - name: "netscaler.compression.bandwidth_savings.bytes"
+    channel: "compression.bandwidth_savings.bytes"
+    display_name: "Compression Bandwidth Savings"
+    unit: "bytes"
+    description: "Bandwidth saved by compression"
+
+  # Phase 3: AAA/Authentication Metrics
+  - name: "netscaler.aaa.sessions.active.total"
+    channel: "aaa.sessions.active.total"
+    display_name: "AAA Active Sessions Total"
+    unit: "#"
+    description: "Total active AAA sessions"
+
+  - name: "netscaler.aaa.vserver.state"
+    channel: "aaa.vserver.state"
+    display_name: "AAA VServer State ({authvserver})"
+    unit: "#"
+    multi_instance_labels: ["authvserver"]
+    description: "Authentication vServer state: 1=UP, 0=DOWN"
+
+  - name: "netscaler.aaa.vserver.auth.successes.total"
+    channel: "aaa.vserver.auth.successes.total"
+    display_name: "AAA VServer Auth Successes ({authvserver})"
+    unit: "#"
+    multi_instance_labels: ["authvserver"]
+
+  - name: "netscaler.aaa.vserver.auth.failures.total"
+    channel: "aaa.vserver.auth.failures.total"
+    display_name: "AAA VServer Auth Failures ({authvserver})"
+    unit: "#"
+    multi_instance_labels: ["authvserver"]
+
+  # Phase 3: VPN/Gateway Metrics
+  - name: "netscaler.vpn.vserver.state"
+    channel: "vpn.vserver.state"
+    display_name: "VPN VServer State ({vpnvserver})"
+    unit: "#"
+    multi_instance_labels: ["vpnvserver"]
+    description: "VPN vServer state: 1=UP, 0=DOWN"
+
+  - name: "netscaler.vpn.vserver.hits.total"
+    channel: "vpn.vserver.hits.total"
+    display_name: "VPN VServer Hits Total ({vpnvserver})"
+    unit: "#"
+    multi_instance_labels: ["vpnvserver"]
+
+  - name: "netscaler.vpn.vserver.ica.sessions.active"
+    channel: "vpn.vserver.ica.sessions.active"
+    display_name: "VPN VServer ICA Sessions Active ({vpnvserver})"
+    unit: "#"
+    multi_instance_labels: ["vpnvserver"]
+    description: "Active ICA sessions (Citrix Virtual Apps)"
+
+  - name: "netscaler.vpn.vserver.connections.established"
+    channel: "vpn.vserver.connections.established"
+    display_name: "VPN VServer Connections Established ({vpnvserver})"
+    unit: "#"
+    multi_instance_labels: ["vpnvserver"]
+
+  # Phase 3: Application Firewall Metrics
+  - name: "netscaler.appfw.violations.total"
+    channel: "appfw.violations.total"
+    display_name: "AppFW Violations Total"
+    unit: "#"
+    description: "Total application firewall violations"
+
+  - name: "netscaler.appfw.requests.blocked.total"
+    channel: "appfw.requests.blocked.total"
+    display_name: "AppFW Requests Blocked"
+    unit: "#"
+    description: "Total requests blocked by WAF"
+
+  - name: "netscaler.appfw.responses.blocked.total"
+    channel: "appfw.responses.blocked.total"
+    display_name: "AppFW Responses Blocked"
+    unit: "#"
+    description: "Total responses blocked by WAF"
+
+  - name: "netscaler.appfw.violations.sqli.total"
+    channel: "appfw.violations.sqli.total"
+    display_name: "AppFW SQL Injection Violations"
+    unit: "#"
+    description: "SQL injection violations detected"
+
+  - name: "netscaler.appfw.violations.xss.total"
+    channel: "appfw.violations.xss.total"
+    display_name: "AppFW XSS Violations"
+    unit: "#"
+    description: "Cross-site scripting violations detected"
+
+  - name: "netscaler.appfw.violations.buffer_overflow.total"
+    channel: "appfw.violations.buffer_overflow.total"
+    display_name: "AppFW Buffer Overflow Violations"
+    unit: "#"
+    description: "Buffer overflow violations detected"

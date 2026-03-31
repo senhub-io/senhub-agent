@@ -1,0 +1,41 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches: [dev, master]
+    paths:
+      - 'docs/user-guide/content/**'
+      - 'docs/user-guide/hugo.toml'
+      - 'docs/user-guide/assets/**'
+      - 'docs/user-guide/static/**'
+      - 'docs/user-guide/layouts/**'
+      - '.github/workflows/deploy-docs.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout senhub-agent
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: 'latest'
+          extended: true
+
+      - name: Build site
+        working-directory: docs/user-guide
+        run: hugo --minify
+
+      - name: Deploy to docs repo
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          external_repository: senhub-io/docs
+          personal_token: ${{ secrets.DOCS_DEPLOY_TOKEN }}
+          publish_dir: docs/user-guide/public
+          publish_branch: gh-pages

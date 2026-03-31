@@ -19,27 +19,33 @@ class APIExplorer {
         // Form elements
         this.endpointTypeSelect = this.base.$('#endpoint-type');
         this.probeSelect = this.base.$('#probe-select');
+        this.showTagsGroup = this.base.$('#show-tags-group');
         this.tagFiltersGroup = this.base.$('#tag-filters-group');
         this.tagFiltersContainer = this.base.$('#tag-filters');
-        
+        this.showTagsCheckbox = this.base.$('#show-tags-checkbox');
+
+        console.log('Elements initialized:');
+        console.log('- showTagsGroup:', this.showTagsGroup ? 'FOUND' : 'NOT FOUND');
+        console.log('- showTagsCheckbox:', this.showTagsCheckbox ? 'FOUND' : 'NOT FOUND');
+
         // URL elements
         this.generatedUrlDiv = this.base.$('#generated-url');
         this.manualUrlInput = this.base.$('#manual-url');
-        
+
         // Buttons
         this.editUrlBtn = this.base.$('#edit-url-btn');
         this.copyUrlBtn = this.base.$('#copy-url-btn');
         this.testRequestBtn = this.base.$('#test-request-btn');
         this.copyResponseBtn = this.base.$('#copy-response-btn');
         this.clearResponseBtn = this.base.$('#clear-response-btn');
-        
+
         // Response area
         this.responseArea = this.base.$('#response-area');
 
         // Initialize tag filters
         this.tagFilters = new TagFilters(
-            this.base, 
-            this.tagFiltersContainer, 
+            this.base,
+            this.tagFiltersContainer,
             (tags) => this.onTagsChanged(tags)
         );
     }
@@ -48,16 +54,27 @@ class APIExplorer {
         // Form changes
         this.endpointTypeSelect?.addEventListener('change', () => this.generateURL());
         this.probeSelect?.addEventListener('change', (e) => this.onProbeChange(e.target.value));
-        
+
+        // Show tags checkbox
+        if (this.showTagsCheckbox) {
+            console.log('Show tags checkbox found, adding listener');
+            this.showTagsCheckbox.addEventListener('change', () => {
+                console.log('Show tags checkbox changed!', this.showTagsCheckbox.checked);
+                this.generateURL();
+            });
+        } else {
+            console.error('Show tags checkbox NOT FOUND on initialization');
+        }
+
         // Button clicks
         this.editUrlBtn?.addEventListener('click', () => this.toggleEditMode());
         this.copyUrlBtn?.addEventListener('click', () => this.copyURL());
         this.testRequestBtn?.addEventListener('click', () => this.testRequest());
         this.copyResponseBtn?.addEventListener('click', () => this.copyResponse());
         this.clearResponseBtn?.addEventListener('click', () => this.clearResponse());
-        
+
         // Manual URL input
-        this.manualUrlInput?.addEventListener('input', 
+        this.manualUrlInput?.addEventListener('input',
             this.base.debounce(() => this.onManualUrlChange(), 300)
         );
     }
@@ -142,14 +159,25 @@ class APIExplorer {
     }
 
     showTagFilters(show) {
+        console.log('showTagFilters called with:', show);
+        if (this.showTagsGroup) {
+            this.showTagsGroup.style.display = show ? 'block' : 'none';
+            console.log('- showTagsGroup display set to:', show ? 'block' : 'none');
+        } else {
+            console.error('- showTagsGroup is NULL');
+        }
         if (this.tagFiltersGroup) {
             this.tagFiltersGroup.style.display = show ? 'block' : 'none';
+            console.log('- tagFiltersGroup display set to:', show ? 'block' : 'none');
+        } else {
+            console.error('- tagFiltersGroup is NULL');
         }
     }
 
     generateURL() {
+        console.log('generateURL called');
         const endpointType = this.endpointTypeSelect?.value;
-        
+
         if (!endpointType || !this.selectedProbe) {
             this.updateUrlDisplay('Select an endpoint and probe to generate URL...');
             this.setButtonsEnabled(false);
@@ -159,21 +187,32 @@ class APIExplorer {
         }
 
         let url = `/api/${this.base.agentKey}/${endpointType}/metrics/${this.selectedProbe}`;
-        
+
         // Add tag filters as query parameters
-        const tagParams = [];
+        const queryParams = [];
         Object.entries(this.selectedTags).forEach(([key, value]) => {
-            tagParams.push(`tags=${encodeURIComponent(key)}:${encodeURIComponent(value)}`);
+            queryParams.push(`tags=${encodeURIComponent(key)}:${encodeURIComponent(value)}`);
         });
-        
-        if (tagParams.length > 0) {
-            url += '?' + tagParams.join('&');
+
+        // Add show_tags parameter if checkbox is unchecked
+        if (this.showTagsCheckbox) {
+            console.log('Show tags checkbox state:', this.showTagsCheckbox.checked);
+            if (!this.showTagsCheckbox.checked) {
+                queryParams.push('show_tags=false');
+                console.log('Added show_tags=false to URL');
+            }
+        } else {
+            console.warn('Show tags checkbox not found');
         }
-        
+
+        if (queryParams.length > 0) {
+            url += '?' + queryParams.join('&');
+        }
+
         const fullUrl = window.location.origin + url;
         this.updateUrlDisplay(fullUrl);
         this.setButtonsEnabled(true);
-        
+
         // Update the page URL to reflect current state
         this.updatePageURL(endpointType, this.selectedProbe, this.selectedTags);
     }

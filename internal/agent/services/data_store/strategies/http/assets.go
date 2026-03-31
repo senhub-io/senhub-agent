@@ -34,20 +34,37 @@ var markdownFiles embed.FS
 
 // Template data structure
 type TemplateData struct {
-	AgentKey string
+	AgentKey    string
+	PRTGEnabled bool
 }
 
 // AssetHandler provides methods for serving embedded assets
 type AssetHandler struct {
-	agentKey  string
-	templates map[string]*template.Template
+	agentKey    string
+	prtgEnabled bool
+	templates   map[string]*template.Template
 }
 
 // NewAssetHandler creates a new asset handler
 func NewAssetHandler(agentKey string) *AssetHandler {
 	handler := &AssetHandler{
-		agentKey:  agentKey,
-		templates: make(map[string]*template.Template),
+		agentKey:    agentKey,
+		prtgEnabled: false, // Default to false, will be set by caller if needed
+		templates:   make(map[string]*template.Template),
+	}
+
+	// Parse all HTML templates
+	handler.parseTemplates()
+
+	return handler
+}
+
+// NewAssetHandlerWithPRTG creates a new asset handler with PRTG status
+func NewAssetHandlerWithPRTG(agentKey string, prtgEnabled bool) *AssetHandler {
+	handler := &AssetHandler{
+		agentKey:    agentKey,
+		prtgEnabled: prtgEnabled,
+		templates:   make(map[string]*template.Template),
 	}
 
 	// Parse all HTML templates
@@ -96,7 +113,8 @@ func (ah *AssetHandler) RenderTemplate(name string) (string, error) {
 
 	var buf bytes.Buffer
 	data := TemplateData{
-		AgentKey: ah.agentKey,
+		AgentKey:    ah.agentKey,
+		PRTGEnabled: ah.prtgEnabled,
 	}
 
 	err := tmpl.Execute(&buf, data)

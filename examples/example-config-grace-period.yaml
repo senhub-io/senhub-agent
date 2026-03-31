@@ -1,0 +1,80 @@
+# SenHub Agent Configuration - EXPIRED LICENSE (Grace Period)
+# Configuration Version: 2
+# License expired 3 days ago but still in 7-day grace period
+
+config_version: 2
+
+# Agent configuration
+agent:
+  key: "test-agent-grace-12345"
+  mode: offline
+  generated: false
+  license: |
+    {
+      "tier": "pro",
+      "authorized_probes": ["redfish", "citrix", "netscaler"],
+      "expires_at": "2025-11-04T10:00:00Z",
+      "issued_at": "2024-11-04T00:00:00Z",
+      "subject": "customer-grace-test"
+    }
+
+# Note: This license expired 3 days ago
+# Grace period: 7 days from expiration
+# Status: ACTIVE (grace period active until 2025-11-11T10:00:00Z)
+# After grace period: Only free tier probes will work
+
+# Auto-update configuration
+auto_update:
+  enabled: false
+  url: "https://eu-west-1.intake.senhub.io/releases"
+
+# Cache configuration
+cache:
+  retention_minutes: 5
+
+# Storage configuration
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+      endpoints: ["prtg", "web"]
+
+# Probes configuration
+probes:
+  - name: cpu
+    type: cpu
+    params:
+      interval: 30
+
+  - name: memory
+    type: memory
+    params:
+      interval: 30
+
+  # These probes will work DURING grace period
+  # After grace period ends, they will be blocked
+  - name: datacenter-redfish
+    type: redfish
+    params:
+      endpoint: "https://idrac.example.com"
+      username: "admin"
+      password: "password123"
+      interval: 300
+
+  - name: citrix-production
+    type: citrix
+    params:
+      base_url: "https://citrix-director.company.com"
+      interval: 120
+      auth:
+        username: "DOMAIN\\admin"
+        password: "password"
+
+  - name: netscaler-adc
+    type: netscaler
+    params:
+      base_url: "https://netscaler.company.com"
+      username: "nsroot"
+      password: "password123"
+      interval: 60

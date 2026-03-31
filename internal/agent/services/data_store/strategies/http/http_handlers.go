@@ -50,11 +50,17 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/stats/cache", h.HandleStatsCache).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/config/probes", h.HandleConfigProbes).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/admin/cache/clear", h.HandleAdminCacheClear).Methods("POST")
+	router.HandleFunc("/api/{agentkey}/license/status", h.HandleLicenseStatus).Methods("GET")
 
 	// Universal Configuration endpoints (with agentkey authentication)
 	router.HandleFunc("/api/{agentkey}/config/validate", h.HandleUniversalConfigValidation).Methods("POST")
 	router.HandleFunc("/api/{agentkey}/config/preview", h.HandleUniversalConfigPreview).Methods("POST")
 	router.HandleFunc("/api/{agentkey}/config/test", h.HandleUniversalConfigTest).Methods("POST")
+
+	// Lookups endpoints (with agentkey authentication)
+	if h.strategy.lookupsManager != nil {
+		h.strategy.lookupsManager.RegisterRoutes(router)
+	}
 
 	// Configure endpoints based on enabled monitoring tools
 	if h.strategy.configManager.IsEndpointEnabled("prtg") {
@@ -232,6 +238,10 @@ func (h *HTTPHandlers) HandleConfigProbes(w http.ResponseWriter, r *http.Request
 
 func (h *HTTPHandlers) HandleAdminCacheClear(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleAdminCacheClear(w, r)
+}
+
+func (h *HTTPHandlers) HandleLicenseStatus(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleLicenseStatus(w, r)
 }
 
 // Universal Configuration handlers (delegating to ConfigurationManager)
