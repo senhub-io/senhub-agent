@@ -108,8 +108,26 @@ func (s *sensor) GetName() string {
 func (s *sensor) SyncConfiguration() error {
 	s.moduleLogger.Info().Msg("Starting configuration synchronization")
 
+	// Re-validate license from current configuration (may have been loaded after initial startup)
+	config := s.configProvider.GetConfiguration()
+	if s.license == nil && config.Agent.License != "" && s.licenseValidator != nil {
+		lic, err := s.licenseValidator.ValidateLicense(config.Agent.License)
+		if err != nil {
+			s.moduleLogger.Warn().Err(err).Msg("⚠️ Invalid license token during sync")
+		} else {
+			isExpired := lic.IsExpired && !s.licenseValidator.IsInGracePeriod(lic)
+			if !isExpired {
+				s.license = lic
+				s.moduleLogger.Info().
+					Str("tier", string(lic.Tier)).
+					Strs("probes", lic.AuthorizedProbes).
+					Msg("✅ License validated during configuration sync")
+			}
+		}
+	}
+
 	validProbeIds := []string{}
-	probeConfigs := s.configProvider.GetConfiguration().Probes
+	probeConfigs := config.Probes
 
 	s.moduleLogger.Info().
 		Int("config_probes", len(probeConfigs)).
