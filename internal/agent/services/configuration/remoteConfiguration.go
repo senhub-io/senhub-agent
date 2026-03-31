@@ -256,6 +256,12 @@ func (rc *RemoteConfiguration) UpdateSync() error {
 
 		config, err := rc.doFetchConfiguration()
 		if err == nil {
+			// If server doesn't provide a license, load it from local config file
+			// This allows license to be managed locally in online mode
+			if config.Agent.License == "" {
+				rc.injectLocalLicense(config)
+			}
+
 			// Migrate server configuration to v2 format (add type field if missing)
 			// This must happen BEFORE validation to ensure consistent format
 			migrateRemoteConfigToV2(config)
@@ -342,6 +348,34 @@ func (rc *RemoteConfiguration) doFetchConfiguration() (*RemoteConfigurationData,
 	return &config, nil
 }
 
+// injectLocalLicense reads the license from the local YAML config file and injects it
+// into the remote configuration. This allows managing licenses locally when the server
+// doesn't provide one (intake backend doesn't support license field yet).
+func (rc *RemoteConfiguration) injectLocalLicense(config *RemoteConfigurationData) {
+	if rc.localReplicaPath == "" {
+		return
+	}
+
+	data, err := os.ReadFile(rc.localReplicaPath)
+	if err != nil {
+		return
+	}
+
+	var localConfig struct {
+		Agent struct {
+			License string `yaml:"license"`
+		} `yaml:"agent"`
+	}
+	if err := yaml.Unmarshal(data, &localConfig); err != nil {
+		return
+	}
+
+	if localConfig.Agent.License != "" {
+		config.Agent.License = localConfig.Agent.License
+		rc.logger.Info().Msg("License loaded from local configuration file")
+	}
+}
+
 // replicateConfigurationLocally creates a local YAML replica of the remote configuration
 // This allows for easier transition between online and offline modes
 func (rc *RemoteConfiguration) replicateConfigurationLocally() error {
@@ -356,8 +390,9 @@ func (rc *RemoteConfiguration) replicateConfigurationLocally() error {
 	// Convert RemoteConfigurationData to LocalConfigurationData format
 	localConfig := LocalConfigurationData{
 		Agent: LocalAgentConfig{
-			Key:  rc.agentKey,
-			Mode: "online", // Important: this stays "online"
+			Key:     rc.agentKey,
+			Mode:    "online", // Important: this stays "online"
+			License: rc.data.Agent.License,
 		},
 		Storage:    rc.data.StorageConfig,
 		Probes:     rc.data.Probes,
