@@ -53,31 +53,33 @@ probes:
 # ==============================================================================
 # EXAMPLE 3: High Availability (HA) Cluster Monitoring
 # ==============================================================================
-# Monitor a NetScaler HA pair (connect to ONE node only)
+# Monitor a NetScaler HA pair with automatic failover
 
 probes:
   - name: netscaler-ha-paris
     type: netscaler
     params:
-      # Connect to PRIMARY node (or SECONDARY - agent will detect both)
-      base_url: "https://netscaler-primary.company.com"
+      # Primary node (agent connects here first)
+      base_url: "https://10.0.208.7"
+
+      # Secondary node (agent fails over here if primary is down or demoted)
+      secondary_url: "https://10.0.208.6"
+
       username: "monitoring-user"
       password: "SecureP@ssw0rd!"
-      insecure_skip_verify: false
+      insecure_skip_verify: true   # Required when using IPs instead of hostnames
       timeout: 30
       interval: 60
     custom_tags:
       - key: "ha_cluster"
         value: "paris-cluster-01"
-      - key: "datacenter"
-        value: "dc-paris-01"
-      - key: "environment"
-        value: "production"
 
 # Agent will automatically:
-# - Detect HA configuration
-# - Collect metrics for BOTH nodes (primary + secondary)
-# - Tag metrics with ha_node_id, ha_node_ip, is_local_node
+# - Connect to base_url (primary) at startup
+# - Fail over to secondary_url after 3 consecutive collection errors
+# - Proactively switch if connected node becomes Secondary (detected via /config/hanode)
+# - Collect metrics for BOTH nodes (primary + secondary) with node-specific tags
+# - Tag metrics with ha_node_id, ha_node_ip, is_local_node, data_source
 
 # ==============================================================================
 # EXAMPLE 4: Multi-Datacenter Monitoring
