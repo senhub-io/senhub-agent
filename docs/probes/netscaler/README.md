@@ -62,10 +62,11 @@ probes:
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `base_url` | string | Yes | - | NetScaler management URL (e.g., `https://netscaler.example.com`) |
+| `base_url` | string | Yes | - | NetScaler management URL (primary node IP recommended) |
+| `secondary_url` | string | No | - | Secondary NetScaler URL for HA failover |
 | `username` | string | Yes | - | NITRO API username |
 | `password` | string | Yes | - | NITRO API password |
-| `insecure_skip_verify` | boolean | No | `false` | Skip SSL certificate verification (not recommended for production) |
+| `insecure_skip_verify` | boolean | No | `false` | Skip SSL certificate verification (set `true` when using IPs) |
 | `timeout` | integer | No | `30` | API request timeout in seconds |
 | `interval` | integer | No | `60` | Metric collection interval in seconds |
 | `custom_tags` | array | No | `[]` | Additional tags to attach to all metrics |
@@ -117,9 +118,11 @@ See [METRICS.md](./METRICS.md) for the complete metrics reference.
 The NetScaler probe fully supports **High Availability clusters**:
 
 **Architecture:**
-- Connects to ONE node (primary or secondary)
-- Collects metrics for BOTH nodes (local + remote)
-- Identifies nodes by IP address and node ID
+- Connects to one node (preferably primary via `base_url`)
+- Automatic failover to `secondary_url` after 3 consecutive errors
+- Proactive switch: if connected to secondary, auto-switches to primary
+- Collects metrics for BOTH nodes (local via stats, remote via config)
+- Identifies nodes by IP address, hostname, and node ID
 
 **Per-Node Metrics:**
 - `ha.state`: Node role (PRIMARY/SECONDARY/UNKNOWN)
