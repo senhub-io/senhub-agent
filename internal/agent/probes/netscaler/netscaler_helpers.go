@@ -91,12 +91,16 @@ func parseNetscalerState(state string) float32 {
 	}
 }
 
-// isBaseURLMatchingIP checks if the probe's base_url hostname literally equals the given IP.
-// This does NOT perform DNS resolution — for hostname-based base_urls (e.g. https://ns.example.com),
+// isBaseURLMatchingIP checks if the probe's active URL hostname literally equals the given IP.
+// This does NOT perform DNS resolution — for hostname-based URLs (e.g. https://ns.example.com),
 // matching will return false even if the hostname resolves to that IP.
-// Use IP-based base_urls for reliable HA node identification.
+// Use IP-based URLs for reliable HA node identification.
 func (p *netscalerProbe) isBaseURLMatchingIP(ip string) bool {
-	parsed, err := url.Parse(p.baseURL)
+	p.clientMu.RLock()
+	currentURL := p.activeURL
+	p.clientMu.RUnlock()
+
+	parsed, err := url.Parse(currentURL)
 	if err != nil {
 		return false
 	}

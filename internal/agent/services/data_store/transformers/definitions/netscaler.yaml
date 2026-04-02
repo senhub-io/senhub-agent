@@ -137,6 +137,24 @@ metrics:
     unit: "req/s"
     multi_instance_labels: ["servicegroup"]
 
+  - name: "netscaler.servicegroup.responses.rate"
+    channel: "servicegroup.responses.rate"
+    display_name: "Service Group Responses Rate ({servicegroup})"
+    unit: "resp/s"
+    multi_instance_labels: ["servicegroup"]
+
+  - name: "netscaler.servicegroup.throughput.bytes_per_sec"
+    channel: "servicegroup.throughput.bytes_per_sec"
+    display_name: "Service Group Throughput ({servicegroup})"
+    unit: "Bytes/s"
+    multi_instance_labels: ["servicegroup"]
+
+  - name: "netscaler.servicegroup.connections.current"
+    channel: "servicegroup.connections.current"
+    display_name: "Service Group Current Connections ({servicegroup})"
+    unit: "#"
+    multi_instance_labels: ["servicegroup"]
+
   - name: "netscaler.servicegroup.members.active"
     channel: "servicegroup.members.active"
     display_name: "Service Group Active Members ({servicegroup})"
