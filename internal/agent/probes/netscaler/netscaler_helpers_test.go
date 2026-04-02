@@ -147,7 +147,7 @@ func TestIsBaseURLMatchingIP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &netscalerProbe{baseURL: tt.baseURL}
+			p := &netscalerProbe{activeURL: tt.baseURL}
 			got := p.isBaseURLMatchingIP(tt.ip)
 			if got != tt.want {
 				t.Errorf("isBaseURLMatchingIP(%q) = %v, want %v", tt.ip, got, tt.want)

@@ -198,8 +198,18 @@ class TagFilters {
                 });
                 
                 if (hasAll) {
-                    // If "All" is selected, don't add individual values
-                    // The backend will handle this as no filter
+                    // "All" selected: explicitly include all checked individual values
+                    // so the backend filters to this tag's values only (not all metrics)
+                    const allValueCheckboxes = this.container.querySelectorAll(`input[data-tag="${tagKey}"]:checked:not([value="ALL"])`);
+                    const allValues = [];
+                    allValueCheckboxes.forEach(cb => {
+                        if (cb.id && !cb.id.startsWith('tag-')) {
+                            allValues.push(cb.value);
+                        }
+                    });
+                    if (allValues.length > 0) {
+                        this.selectedTags[tagKey] = allValues.join(',');
+                    }
                 } else if (selectedValues.length > 0) {
                     this.selectedTags[tagKey] = selectedValues.join(',');
                 }
