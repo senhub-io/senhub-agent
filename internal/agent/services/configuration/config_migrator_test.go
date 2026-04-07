@@ -258,175 +258,130 @@ func TestConfigMigrator_NoMigrationNeeded(t *testing.T) {
 	}
 }
 
-func TestConfigMigrator_MigrateParamRenames(t *testing.T) {
-	testArgs := &cliArgs.ParsedArgs{
-		DebugLogShipperUrl: "",
-	}
+func TestConfigMigrator_MigrateParamRenamesInPlace(t *testing.T) {
+	testArgs := &cliArgs.ParsedArgs{}
 	baseLogger := logger.NewLogger(testArgs)
 
-	// We need a valid config path for the migrator, even though we test the method directly
-	tempDir, err := os.MkdirTemp("", "param-rename-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
+	writeConfig := func(t *testing.T, content string) (string, *ConfigMigrator) {
+		t.Helper()
+		tempDir := t.TempDir()
+		configPath := filepath.Join(tempDir, "agent-config.yaml")
+		if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+		return configPath, NewConfigMigrator(configPath, baseLogger)
 	}
-	defer os.RemoveAll(tempDir)
-	configPath := filepath.Join(tempDir, "dummy.yaml")
-	os.WriteFile(configPath, []byte(""), 0600)
-	migrator := NewConfigMigrator(configPath, baseLogger)
 
-	t.Run("citrix probe with base_url should rename to director_url", func(t *testing.T) {
-		probesList := []interface{}{
-			map[string]interface{}{
-				"name": "Production Citrix",
-				"type": "citrix",
-				"params": map[string]interface{}{
-					"base_url": "https://director.example.com",
-					"interval": 120,
-				},
-			},
+	readConfig := func(t *testing.T, path string) string {
+		t.Helper()
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+
+	t.Run("renames base_url to director_url preserving format", func(t *testing.T) {
+		config := `config_version: 2
+probes:
+  - name: citrix
+    type: citrix
+    params:
+      base_url: "https://director.example.com"
+      interval: 120
+      auth:
+        username: "DOMAIN\\user"
+`
+		path, migrator := writeConfig(t, config)
+		err := migrator.migrateParamRenamesInPlace()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
 
-		changed := migrator.migrateParamRenames(probesList)
-		if !changed {
-			t.Error("Expected migrateParamRenames to return true for citrix base_url rename")
+		result := readConfig(t, path)
+		if strings.Contains(result, "base_url:") {
+			t.Error("base_url should have been renamed")
 		}
-
-		probe := probesList[0].(map[string]interface{})
-		params := probe["params"].(map[string]interface{})
-
-		if _, hasOld := params["base_url"]; hasOld {
-			t.Error("base_url should have been removed after rename")
+		if !strings.Contains(result, "director_url:") {
+			t.Error("director_url should be present")
 		}
-		if val, hasNew := params["director_url"]; !hasNew {
-			t.Error("director_url should have been created after rename")
-		} else if val != "https://director.example.com" {
-			t.Errorf("director_url value mismatch: got %v, want https://director.example.com", val)
+		if !strings.Contains(result, "https://director.example.com") {
+			t.Error("URL value should be preserved")
 		}
-		// interval should be untouched
-		if params["interval"] != 120 {
-			t.Errorf("interval should be unchanged, got %v", params["interval"])
+		if !strings.Contains(result, "interval: 120") {
+			t.Error("other fields should be preserved")
 		}
 	})
 
-	t.Run("citrix probe with director_url should not change", func(t *testing.T) {
-		probesList := []interface{}{
-			map[string]interface{}{
-				"name": "Production Citrix",
-				"type": "citrix",
-				"params": map[string]interface{}{
-					"director_url": "https://director.example.com",
-					"interval":     120,
-				},
-			},
+	t.Run("no change when director_url already exists", func(t *testing.T) {
+		config := `probes:
+  - name: citrix
+    type: citrix
+    params:
+      director_url: "https://director.example.com"
+`
+		path, migrator := writeConfig(t, config)
+		err := migrator.migrateParamRenamesInPlace()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
 
-		changed := migrator.migrateParamRenames(probesList)
-		if changed {
-			t.Error("Expected migrateParamRenames to return false when director_url already exists")
-		}
-
-		params := probesList[0].(map[string]interface{})["params"].(map[string]interface{})
-		if params["director_url"] != "https://director.example.com" {
-			t.Errorf("director_url should be unchanged, got %v", params["director_url"])
+		result := readConfig(t, path)
+		if result != config {
+			t.Error("config should not be modified when director_url already exists")
 		}
 	})
 
-	t.Run("citrix probe with both base_url and director_url should not change", func(t *testing.T) {
-		probesList := []interface{}{
-			map[string]interface{}{
-				"name": "Production Citrix",
-				"type": "citrix",
-				"params": map[string]interface{}{
-					"base_url":     "https://old-director.example.com",
-					"director_url": "https://new-director.example.com",
-				},
-			},
+	t.Run("no change when both exist", func(t *testing.T) {
+		config := `probes:
+  - name: citrix
+    type: citrix
+    params:
+      base_url: "https://old.example.com"
+      director_url: "https://new.example.com"
+`
+		path, migrator := writeConfig(t, config)
+		err := migrator.migrateParamRenamesInPlace()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
 
-		changed := migrator.migrateParamRenames(probesList)
-		if changed {
-			t.Error("Expected migrateParamRenames to return false when both old and new params exist")
-		}
-
-		params := probesList[0].(map[string]interface{})["params"].(map[string]interface{})
-		// Both should remain untouched
-		if params["base_url"] != "https://old-director.example.com" {
-			t.Errorf("base_url should be unchanged, got %v", params["base_url"])
-		}
-		if params["director_url"] != "https://new-director.example.com" {
-			t.Errorf("director_url should be unchanged, got %v", params["director_url"])
+		result := readConfig(t, path)
+		if result != config {
+			t.Error("config should not be modified when both params exist")
 		}
 	})
 
-	t.Run("non-citrix probe with base_url should not change", func(t *testing.T) {
-		probesList := []interface{}{
-			map[string]interface{}{
-				"name": "My Redfish Server",
-				"type": "redfish",
-				"params": map[string]interface{}{
-					"base_url": "https://bmc.example.com",
-					"interval": 60,
-				},
-			},
+	t.Run("preserves comments and formatting", func(t *testing.T) {
+		config := `# My agent config
+config_version: 2
+probes:
+  - name: citrix
+    type: citrix
+    params:
+      base_url: "https://director.example.com"  # Director URL
+      # Delivery controller config
+      delivery_controller:
+        url: "https://ddc.example.com"
+`
+		path, migrator := writeConfig(t, config)
+		err := migrator.migrateParamRenamesInPlace()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
 
-		changed := migrator.migrateParamRenames(probesList)
-		if changed {
-			t.Error("Expected migrateParamRenames to return false for non-citrix probe")
+		result := readConfig(t, path)
+		if !strings.Contains(result, "# My agent config") {
+			t.Error("top comment should be preserved")
 		}
-
-		params := probesList[0].(map[string]interface{})["params"].(map[string]interface{})
-		if _, has := params["base_url"]; !has {
-			t.Error("base_url should remain for non-citrix probe")
+		if !strings.Contains(result, "# Director URL") {
+			t.Error("inline comment should be preserved")
 		}
-		if _, has := params["director_url"]; has {
-			t.Error("director_url should not be added to non-citrix probe")
+		if !strings.Contains(result, "# Delivery controller config") {
+			t.Error("block comment should be preserved")
 		}
-	})
-
-	t.Run("mixed probes only renames citrix base_url", func(t *testing.T) {
-		probesList := []interface{}{
-			map[string]interface{}{
-				"name": "CPU Monitor",
-				"type": "cpu",
-				"params": map[string]interface{}{
-					"interval": 30,
-				},
-			},
-			map[string]interface{}{
-				"name": "Production Citrix",
-				"type": "citrix",
-				"params": map[string]interface{}{
-					"base_url": "https://director.example.com",
-				},
-			},
-			map[string]interface{}{
-				"name": "BMC Server",
-				"type": "redfish",
-				"params": map[string]interface{}{
-					"base_url": "https://bmc.example.com",
-				},
-			},
-		}
-
-		changed := migrator.migrateParamRenames(probesList)
-		if !changed {
-			t.Error("Expected migrateParamRenames to return true (citrix base_url was renamed)")
-		}
-
-		// Citrix probe should have director_url
-		citrixParams := probesList[1].(map[string]interface{})["params"].(map[string]interface{})
-		if _, has := citrixParams["base_url"]; has {
-			t.Error("citrix base_url should have been removed")
-		}
-		if citrixParams["director_url"] != "https://director.example.com" {
-			t.Errorf("citrix director_url mismatch: got %v", citrixParams["director_url"])
-		}
-
-		// Redfish probe should still have base_url
-		redfishParams := probesList[2].(map[string]interface{})["params"].(map[string]interface{})
-		if redfishParams["base_url"] != "https://bmc.example.com" {
-			t.Errorf("redfish base_url should be unchanged, got %v", redfishParams["base_url"])
+		if !strings.Contains(result, "director_url:") {
+			t.Error("base_url should be renamed to director_url")
 		}
 	})
 }
