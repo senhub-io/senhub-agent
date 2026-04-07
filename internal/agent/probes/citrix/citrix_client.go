@@ -15,12 +15,13 @@ import (
 
 // citrixClient implements the CitrixClient interface for OData API communication
 type citrixClient struct {
-	config       CitrixClientConfig
-	httpClient   *http.Client
-	logger       *logger.ModuleLogger
-	baseURL      string   // Active OData base URL (with /Citrix/Monitor/OData/v4/Data suffix)
-	allBaseURLs  []string // All OData base URLs (primary + fallbacks, with suffix)
-	filters      *ClientFilters
+	config         CitrixClientConfig
+	httpClient     *http.Client
+	logger         *logger.ModuleLogger
+	baseURL        string   // Active OData base URL (with /Citrix/Monitor/OData/v4/Data suffix)
+	primaryURL     string   // Primary URL (for recovery)
+	fallbackURLs   []string // Fallback URLs (with suffix)
+	filters        *ClientFilters
 }
 
 // Ensure citrixClient implements CitrixClient interface
@@ -42,10 +43,10 @@ func NewCitrixClient(config CitrixClientConfig, baseLogger *logger.Logger) (Citr
 		return u
 	}
 
-	baseURL := normalizeODataURL(config.BaseURL)
-	allBaseURLs := []string{baseURL}
+	primaryURL := normalizeODataURL(config.BaseURL)
+	var fallbackURLs []string
 	for _, fb := range config.FallbackURLs {
-		allBaseURLs = append(allBaseURLs, normalizeODataURL(fb))
+		fallbackURLs = append(fallbackURLs, normalizeODataURL(fb))
 	}
 
 	// Create HTTP client with TLS configuration
@@ -110,68 +111,81 @@ func NewCitrixClient(config CitrixClientConfig, baseLogger *logger.Logger) (Citr
 	}
 
 	client := &citrixClient{
-		config:      config,
-		httpClient:  httpClient,
-		logger:      moduleLogger,
-		baseURL:     baseURL,
-		allBaseURLs: allBaseURLs,
-		filters:     NewClientFilters(baseLogger),
+		config:       config,
+		httpClient:   httpClient,
+		logger:       moduleLogger,
+		baseURL:      primaryURL,
+		primaryURL:   primaryURL,
+		fallbackURLs: fallbackURLs,
+		filters:      NewClientFilters(baseLogger),
 	}
 
 	return client, nil
 }
 
 // Connect establishes a connection to the Citrix OData API endpoint.
-// Tries all configured URLs (primary + fallbacks) and uses the first that responds.
+// Tries the primary URL first. Only tries fallbacks if the primary is unreachable.
 func (c *citrixClient) Connect(ctx context.Context) error {
 	c.logger.Debug().
-		Str("primary_url", c.baseURL).
-		Int("fallback_count", len(c.allBaseURLs)-1).
+		Str("primary_url", c.primaryURL).
+		Int("fallback_count", len(c.fallbackURLs)).
 		Str("auth_method", c.config.AuthMethod).
 		Msg("Connecting to Citrix OData API")
 
-	var lastErr error
-	for _, candidateURL := range c.allBaseURLs {
-		req, err := http.NewRequestWithContext(ctx, "GET", candidateURL, nil)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		c.addCitrixHeaders(req)
-		c.addAuthHeaders(req)
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			c.logger.Debug().
-				Err(err).
-				Str("url", candidateURL).
-				Msg("Director URL unreachable, trying next")
-			lastErr = err
-			continue
-		}
-
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		if resp.StatusCode >= 400 {
-			c.logger.Debug().
-				Int("status_code", resp.StatusCode).
-				Str("url", candidateURL).
-				Msg("Director URL returned error, trying next")
-			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-			continue
-		}
-
-		// Success — use this URL as the active base
-		c.baseURL = candidateURL
+	// Try primary first
+	if err := c.testConnection(ctx, c.primaryURL); err == nil {
+		c.baseURL = c.primaryURL
 		c.logger.Info().
-			Str("active_url", candidateURL).
-			Msg("Successfully connected to Citrix OData API")
+			Str("active_url", c.baseURL).
+			Msg("Connected to primary Director")
 		return nil
+	} else {
+		c.logger.Warn().
+			Err(err).
+			Str("primary_url", c.primaryURL).
+			Msg("Primary Director unreachable, trying fallbacks")
 	}
 
-	return fmt.Errorf("failed to connect to any Director URL: %v", lastErr)
+	// Primary is down — try fallbacks in order
+	for _, fbURL := range c.fallbackURLs {
+		if err := c.testConnection(ctx, fbURL); err == nil {
+			c.baseURL = fbURL
+			c.logger.Warn().
+				Str("active_url", fbURL).
+				Str("primary_url", c.primaryURL).
+				Msg("Using fallback Director (primary is down)")
+			return nil
+		} else {
+			c.logger.Debug().
+				Err(err).
+				Str("url", fbURL).
+				Msg("Fallback Director also unreachable")
+		}
+	}
+
+	return fmt.Errorf("failed to connect to Director: primary %s and %d fallback(s) all unreachable", c.primaryURL, len(c.fallbackURLs))
+}
+
+// testConnection performs a connectivity test against a single URL
+func (c *citrixClient) testConnection(ctx context.Context, url string) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return err
+	}
+	c.addCitrixHeaders(req)
+	c.addAuthHeaders(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
 }
 
 // Disconnect closes the connection
