@@ -62,6 +62,7 @@ type ComponentConfig struct {
 // CitrixClientConfig holds the configuration for the Citrix client
 type CitrixClientConfig struct {
 	BaseURL            string
+	FallbackURLs       []string
 	Environment        string
 	AuthMethod         string
 	Username           string
