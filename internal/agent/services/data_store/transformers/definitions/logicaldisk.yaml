@@ -9,42 +9,56 @@ metrics:
     display_name: "Disk Free Mb ({drive})"
     unit: "MB"
     multi_instance_labels: ["drive"]
-    
+    category: "capacity"
+    description: "Free disk space in megabytes on the logical drive"
+
   - name: "disk_free_percent"
     channel: "disk_free_percent"
     display_name: "Disk Free Percent ({drive})"
     unit: "%"
     multi_instance_labels: ["drive"]
-    
+    category: "capacity"
+    description: "Percentage of total disk space that is free on the logical drive"
+
   - name: "disk_reads_sec"
     channel: "disk_reads_sec"
     display_name: "Disk Reads Sec ({drive})"
     unit: "#"
     multi_instance_labels: ["drive"]
-    
+    category: "performance"
+    description: "Number of read operations per second on the logical drive"
+
   - name: "disk_writes_sec"
     channel: "disk_writes_sec"
     display_name: "Disk Writes Sec ({drive})"
     unit: "#"
     multi_instance_labels: ["drive"]
-    
+    category: "performance"
+    description: "Number of write operations per second on the logical drive"
+
   - name: "disk_read_bytes_sec"
     channel: "disk_read_bytes_sec"
     display_name: "Disk Read Bytes Sec ({drive})"
     unit: "bytes"
     multi_instance_labels: ["drive"]
-    
+    category: "performance"
+    description: "Rate of data read from the logical drive in bytes per second"
+
   - name: "disk_write_bytes_sec"
     channel: "disk_write_bytes_sec"
     display_name: "Disk Write Bytes Sec ({drive})"
     unit: "bytes"
     multi_instance_labels: ["drive"]
-    
+    category: "performance"
+    description: "Rate of data written to the logical drive in bytes per second"
+
   - name: "disk_queue_length"
     channel: "disk_queue_length"
     display_name: "Disk Queue Length ({drive})"
     unit: "#"
     multi_instance_labels: ["drive"]
+    category: "performance"
+    description: "Number of outstanding I/O requests waiting in the disk queue"
 
   # Unix/Linux Filesystem Size Metrics (in bytes)
   - name: "fs_total_bytes"
@@ -52,24 +66,32 @@ metrics:
     display_name: "Total Bytes ({mount_point})"
     unit: "bytes"
     multi_instance_labels: ["device", "mount_point"]
-    
+    category: "capacity"
+    description: "Total capacity of the filesystem in bytes"
+
   - name: "fs_free_bytes"
     channel: "fs_free_bytes"
     display_name: "Free Bytes ({mount_point})"
     unit: "bytes"
     multi_instance_labels: ["device", "mount_point"]
-    
+    category: "capacity"
+    description: "Free space available on the filesystem in bytes"
+
   - name: "fs_used_bytes"
     channel: "fs_used_bytes"
     display_name: "Used Bytes ({mount_point})"
     unit: "bytes"
     multi_instance_labels: ["device", "mount_point"]
-    
+    category: "capacity"
+    description: "Space currently consumed on the filesystem in bytes"
+
   - name: "fs_available_bytes"
     channel: "fs_available_bytes"
     display_name: "Available Bytes ({mount_point})"
     unit: "bytes"
     multi_instance_labels: ["device", "mount_point"]
+    category: "capacity"
+    description: "Space available to non-root users on the filesystem in bytes"
 
   # Unix/Linux Filesystem Usage Percentage
   - name: "fs_used_percent"
@@ -77,6 +99,8 @@ metrics:
     display_name: "Used Percent ({mount_point})"
     unit: "%"
     multi_instance_labels: ["device", "mount_point"]
+    category: "capacity"
+    description: "Percentage of filesystem capacity currently in use"
 
   # Unix/Linux Inode Metrics
   - name: "fs_inodes_total"
@@ -84,21 +108,40 @@ metrics:
     display_name: "Inodes Total ({mount_point})"
     unit: "#"
     multi_instance_labels: ["device", "mount_point"]
-    
+    category: "inodes"
+    description: "Total number of inodes available on the filesystem"
+
   - name: "fs_inodes_free"
     channel: "fs_inodes_free"
     display_name: "Inodes Free ({mount_point})"
     unit: "#"
     multi_instance_labels: ["device", "mount_point"]
-    
+    category: "inodes"
+    description: "Number of unused inodes available on the filesystem"
+
   - name: "fs_inodes_used"
     channel: "fs_inodes_used"
     display_name: "Inodes Used ({mount_point})"
     unit: "#"
     multi_instance_labels: ["device", "mount_point"]
-    
+    category: "inodes"
+    description: "Number of inodes currently allocated on the filesystem"
+
   - name: "fs_inodes_used_percent"
     channel: "fs_inodes_used_percent"
     display_name: "Inodes Used Percent ({mount_point})"
     unit: "%"
     multi_instance_labels: ["device", "mount_point"]
+    category: "inodes"
+    description: "Percentage of total inodes currently in use on the filesystem"
+
+tag_metadata:
+  device:
+    type: resource
+    label: "Disk Device"
+  mount_point:
+    type: resource
+    label: "Mount Point"
+  drive:
+    type: resource
+    label: "Drive Letter"
