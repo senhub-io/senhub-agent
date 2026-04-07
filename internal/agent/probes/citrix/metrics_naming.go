@@ -32,6 +32,23 @@ const (
 	MetricUXFair      = "ux_fair"
 	MetricUXPoor      = "ux_poor"
 
+	// Load Index Metrics
+	MetricLoadIndexEffective = "load_index_effective"
+	MetricLoadIndexCpu       = "load_index_cpu"
+	MetricLoadIndexMemory    = "load_index_memory"
+	MetricLoadIndexDisk      = "load_index_disk"
+	MetricLoadIndexNetwork   = "load_index_network"
+	MetricLoadIndexSessions  = "load_index_sessions"
+	MetricLoadOverloaded     = "load_overloaded_machines"
+
+	// License Metrics
+	MetricLicenseSessionsActive     = "license_sessions_active"
+	MetricLicensePeakConcurrent     = "license_peak_concurrent"
+	MetricLicenseUniqueUsers        = "license_unique_users"
+	MetricLicenseGraceSessionsLeft  = "license_grace_sessions_left"
+	MetricLicenseGracePeriodActive  = "license_grace_period_active"
+	MetricLicenseGraceHoursLeft     = "license_grace_hours_left"
+
 	// Connection Failure Metrics
 	MetricFailuresTotal  = "failures_total"
 	MetricFailuresPrefix = "failures_"

@@ -21,7 +21,7 @@ probes:
   - name: citrix
     params:
       # Citrix Director base URL (API path added automatically)
-      base_url: "https://citrix-director.company.com"
+      director_url: "https://citrix-director.company.com"
       
       # environment parameter removed - was not used in metrics generation
       
@@ -84,7 +84,7 @@ storage:
 probes:
   - name: citrix
     params:
-      base_url: "https://citrix-dev.company.com"
+      director_url: "https://citrix-dev.company.com"
 # environment parameter removed - was not used
       interval: 300  # 5 minutes for development
       
@@ -117,16 +117,18 @@ probes:
   # Primary Citrix site with Delivery Controller filtering
   - name: citrix
     params:
-      base_url: "https://citrix-site1.company.com"
+      director_url: "https://citrix-site1.company.com"
       
-      # NEW: Delivery Controller configuration for site filtering
+      # Delivery Controller configuration for site filtering
       delivery_controller:
         url: "https://citrix-ddc1-site1.company.com"
         fallback_urls:
           - "https://citrix-ddc2-site1.company.com"
         site_filter: "SITE1"  # Only monitor machines from this site
-      
-# environment parameter removed
+
+      # Optional: License Server for license usage monitoring
+      license_server: "https://citrix-license1.company.com:8083"
+
       interval: 120
       
       auth:
@@ -144,7 +146,7 @@ probes:
   # Secondary Citrix site with different DDC configuration
   - name: citrix
     params:
-      base_url: "https://citrix-site2.company.com"
+      director_url: "https://citrix-site2.company.com"
       
       # NEW: Different Delivery Controller for site 2
       delivery_controller:
@@ -191,7 +193,7 @@ storage:
 probes:
   - name: citrix
     params:
-      base_url: "https://citrix-director.secure.company.com"
+      director_url: "https://citrix-director.secure.company.com"
 # environment parameter removed
       interval: 120
       
@@ -224,7 +226,7 @@ probes:
   - name: citrix
     params:
       # Citrix Director base URL (API path added automatically)
-      base_url: "https://citrix-director.company.com"
+      director_url: "https://citrix-director.company.com"
       
       # NEW: Delivery Controller with Basic Auth for CVAD REST API
       delivery_controller:
@@ -266,7 +268,7 @@ probes:
   - name: citrix
     params:
       # Monitor all sites through Director without filtering
-      base_url: "https://citrix-director-global.company.com"
+      director_url: "https://citrix-director-global.company.com"
       
       # No delivery_controller section = no site filtering
       

@@ -46,7 +46,18 @@ func TestNewCitrixProbe(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "missing base_url",
+			name: "valid configuration with director_url",
+			config: map[string]interface{}{
+				"director_url": "https://citrix-director.example.com",
+				"auth": map[string]interface{}{
+					"username": "test\\user",
+					"password": "password",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing base_url and director_url",
 			config: map[string]interface{}{
 				"auth": map[string]interface{}{
 					"username": "test\\user",
@@ -228,6 +239,10 @@ func TestCitrixProbe_Collect(t *testing.T) {
 	mockClient.On("GetConnections", mock.Anything, mock.Anything).Return([]Connection{}, nil).Maybe()
 	mockClient.On("GetConnectionFailureCategories", mock.Anything).Return([]ConnectionFailureCategory{}, nil)
 	mockClient.On("GetConnectionFailureLogs", mock.Anything, mock.Anything).Return(mockFailures, nil)
+	mockClient.On("GetLoadIndexes", mock.Anything).Return([]LoadIndex{
+		{Id: 1, MachineId: "m1", Cpu: 5000, Memory: 3000, Disk: 1000, Network: 500, SessionCount: 2000, EffectiveLoadIndex: 4000},
+		{Id: 2, MachineId: "m2", Cpu: 9000, Memory: 8500, Disk: 2000, Network: 1000, SessionCount: 7000, EffectiveLoadIndex: 8500},
+	}, nil)
 
 	// Test collection using the new specialized modules
 	dataPoints, err := collector.CollectMetrics(context.Background(), timestamp)
@@ -237,7 +252,7 @@ func TestCitrixProbe_Collect(t *testing.T) {
 	assert.NotEmpty(t, dataPoints)
 
 	// Check that we have metrics from different categories
-	var hasInfraMetrics, hasSessionMetrics, hasLogonMetrics, hasFailureMetrics bool
+	var hasInfraMetrics, hasSessionMetrics, hasLogonMetrics, hasFailureMetrics, hasLoadMetrics bool
 	for _, dp := range dataPoints {
 		for _, tag := range dp.Tags {
 			if tag.Key == "metric_type" {
@@ -250,6 +265,8 @@ func TestCitrixProbe_Collect(t *testing.T) {
 					hasLogonMetrics = true
 				case "connection_failures":
 					hasFailureMetrics = true
+				case "load_index":
+					hasLoadMetrics = true
 				}
 			}
 		}
@@ -259,6 +276,7 @@ func TestCitrixProbe_Collect(t *testing.T) {
 	assert.True(t, hasSessionMetrics, "Should have session metrics")
 	assert.True(t, hasLogonMetrics, "Should have logon breakdown metrics (even if zero)")
 	assert.True(t, hasFailureMetrics, "Should have failure metrics")
+	assert.True(t, hasLoadMetrics, "Should have load index metrics")
 
 	// Verify mock expectations were met
 	mockClient.AssertExpectations(t)
@@ -419,6 +437,11 @@ func (m *MockCitrixClient) GetDeliveryGroupById(ctx context.Context, deliveryGro
 func (m *MockCitrixClient) GetConnections(ctx context.Context, sinceTime time.Time) ([]Connection, error) {
 	args := m.Called(ctx, sinceTime)
 	return args.Get(0).([]Connection), args.Error(1)
+}
+
+func (m *MockCitrixClient) GetLoadIndexes(ctx context.Context) ([]LoadIndex, error) {
+	args := m.Called(ctx)
+	return args.Get(0).([]LoadIndex), args.Error(1)
 }
 
 func (m *MockCitrixClient) SetValidMachineDNS(dnsNames []string) {
@@ -612,6 +635,7 @@ func TestCitrixProbe_Collect_Errors(t *testing.T) {
 		// Failure metrics - success
 		mockClient.On("GetConnectionFailureLogs", mock.Anything, mock.Anything).Return([]ConnectionFailureLog{}, nil)
 		mockClient.On("GetConnectionFailureCategories", mock.Anything).Return([]ConnectionFailureCategory{}, nil)
+		mockClient.On("GetLoadIndexes", mock.Anything).Return([]LoadIndex{}, nil)
 
 		dataPoints, err := probe.Collect()
 		// Should succeed even with partial errors (fault-tolerant)
@@ -825,6 +849,15 @@ func TestFilteredCitrixClient(t *testing.T) {
 		conns, err := filteredClient.GetConnections(ctx, sinceTime)
 		assert.NoError(t, err)
 		assert.Equal(t, expectedConns, conns)
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("GetLoadIndexes delegates to original", func(t *testing.T) {
+		expectedIndexes := []LoadIndex{{Id: 1, MachineId: "m1", EffectiveLoadIndex: 5000}}
+		mockClient.On("GetLoadIndexes", mock.Anything).Return(expectedIndexes, nil).Once()
+		indexes, err := filteredClient.GetLoadIndexes(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, expectedIndexes, indexes)
 		mockClient.AssertExpectations(t)
 	})
 
@@ -1044,4 +1077,365 @@ func TestCollectInfrastructureMetrics_RegisteredCounts(t *testing.T) {
 	assert.Equal(t, float32(4), metricMap[MetricMachinesTotal])
 	assert.Equal(t, float32(2), metricMap[MetricMachinesRegistered])
 	assert.Equal(t, float32(2), metricMap[MetricMachinesUnregistered]) // Unregistered + AgentError
+}
+
+// MockDeliveryControllerClient implements DeliveryControllerClient for testing
+type MockDeliveryControllerClient struct {
+	mock.Mock
+}
+
+func (m *MockDeliveryControllerClient) GetMe(ctx context.Context) (*DDCMeResponse, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*DDCMeResponse), args.Error(1)
+}
+
+func (m *MockDeliveryControllerClient) GetMachinesBySite(ctx context.Context, siteName string) ([]string, error) {
+	args := m.Called(ctx, siteName)
+	return args.Get(0).([]string), args.Error(1)
+}
+
+func (m *MockDeliveryControllerClient) GetMachinesDetailedBySite(ctx context.Context, siteName string) ([]DDCMachine, error) {
+	args := m.Called(ctx, siteName)
+	return args.Get(0).([]DDCMachine), args.Error(1)
+}
+
+func (m *MockDeliveryControllerClient) GetDeliveryGroupsBySite(ctx context.Context, siteName string) ([]DDCDeliveryGroup, error) {
+	args := m.Called(ctx, siteName)
+	return args.Get(0).([]DDCDeliveryGroup), args.Error(1)
+}
+
+func (m *MockDeliveryControllerClient) GetControllersBySite(ctx context.Context, siteName string) ([]DDCController, error) {
+	args := m.Called(ctx, siteName)
+	return args.Get(0).([]DDCController), args.Error(1)
+}
+
+func (m *MockDeliveryControllerClient) GetSessionsBySite(ctx context.Context, siteName string) ([]DDCSession, error) {
+	args := m.Called(ctx, siteName)
+	return args.Get(0).([]DDCSession), args.Error(1)
+}
+
+func (m *MockDeliveryControllerClient) GetSiteDetails(ctx context.Context, siteName string) (*DDCSiteDetails, error) {
+	args := m.Called(ctx, siteName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*DDCSiteDetails), args.Error(1)
+}
+
+func (m *MockDeliveryControllerClient) GetLicenseInfo(ctx context.Context, siteName string) (*DDCSiteLicenseInfo, error) {
+	args := m.Called(ctx, siteName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*DDCSiteLicenseInfo), args.Error(1)
+}
+
+func (m *MockDeliveryControllerClient) TestConnectivity(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+// === License Metrics Tests ===
+
+func TestCollectLicenseMetrics_NilDDCAndEmptyLicenseURL(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+
+	collector := NewMetricsCollector(mockClient, baseLogger)
+	// ddcClient is nil by default, licenseServerURL is empty
+
+	metrics, err := collector.CollectLicenseMetrics(context.Background(), time.Now())
+	assert.NoError(t, err)
+	assert.Nil(t, metrics, "Should return nil when no DDC client and no license server URL")
+}
+
+func TestCollectLicenseMetrics_DDCReturnsValidData(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+	mockDDC := &MockDeliveryControllerClient{}
+
+	collector := NewMetricsCollector(mockClient, baseLogger)
+	collector.ddcClient = mockDDC
+	collector.siteFilter = "TestSite"
+
+	mockDDC.On("GetLicenseInfo", mock.Anything, "TestSite").Return(&DDCSiteLicenseInfo{
+		LicensedSessionsActive:         42,
+		PeakConcurrentLicenseUsers:     100,
+		TotalUniqueLicenseUsers:        200,
+		LicenseGraceSessionsRemaining: 500,
+		LicensingGracePeriodActive:     false,
+		LicensingGraceHoursLeft:        0,
+	}, nil)
+
+	metrics, err := collector.CollectLicenseMetrics(context.Background(), time.Now())
+	assert.NoError(t, err)
+	assert.Len(t, metrics, 6, "Should return 6 license metrics")
+
+	// Verify metric names and values
+	metricMap := make(map[string]float32)
+	for _, m := range metrics {
+		metricMap[m.Name] = m.Value
+	}
+	assert.Equal(t, float32(42), metricMap[MetricLicenseSessionsActive])
+	assert.Equal(t, float32(100), metricMap[MetricLicensePeakConcurrent])
+	assert.Equal(t, float32(200), metricMap[MetricLicenseUniqueUsers])
+	assert.Equal(t, float32(500), metricMap[MetricLicenseGraceSessionsLeft])
+	assert.Equal(t, float32(0), metricMap[MetricLicenseGracePeriodActive])
+	assert.Equal(t, float32(0), metricMap[MetricLicenseGraceHoursLeft])
+
+	mockDDC.AssertExpectations(t)
+}
+
+func TestCollectLicenseMetrics_DDCReturnsAllZeros(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+	mockDDC := &MockDeliveryControllerClient{}
+
+	collector := NewMetricsCollector(mockClient, baseLogger)
+	collector.ddcClient = mockDDC
+	collector.siteFilter = "TestSite"
+
+	// All zeros means CVAD version doesn't support these fields - should fall back
+	mockDDC.On("GetLicenseInfo", mock.Anything, "TestSite").Return(&DDCSiteLicenseInfo{
+		LicensedSessionsActive:         0,
+		PeakConcurrentLicenseUsers:     0,
+		TotalUniqueLicenseUsers:        0,
+		LicenseGraceSessionsRemaining: 0,
+		LicensingGracePeriodActive:     false,
+		LicensingGraceHoursLeft:        0,
+	}, nil)
+
+	// No license server URL either, so should return nil
+	metrics, err := collector.CollectLicenseMetrics(context.Background(), time.Now())
+	assert.NoError(t, err)
+	assert.Nil(t, metrics, "Should return nil when DDC returns all zeros and no license server is configured")
+
+	mockDDC.AssertExpectations(t)
+}
+
+func TestCollectLicenseMetrics_DDCError_NoFallback(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+	mockDDC := &MockDeliveryControllerClient{}
+
+	collector := NewMetricsCollector(mockClient, baseLogger)
+	collector.ddcClient = mockDDC
+	collector.siteFilter = "TestSite"
+	// No license server URL
+
+	mockDDC.On("GetLicenseInfo", mock.Anything, "TestSite").Return(nil, assert.AnError)
+
+	metrics, err := collector.CollectLicenseMetrics(context.Background(), time.Now())
+	assert.NoError(t, err)
+	assert.Nil(t, metrics, "Should return nil when DDC errors and no license server is configured")
+
+	mockDDC.AssertExpectations(t)
+}
+
+// === collectLicenseFromDDC Tests ===
+
+func TestCollectLicenseFromDDC_ValidData(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+	mockDDC := &MockDeliveryControllerClient{}
+
+	collector := NewMetricsCollector(mockClient, baseLogger)
+	collector.ddcClient = mockDDC
+	collector.siteFilter = "ProdSite"
+
+	mockDDC.On("GetLicenseInfo", mock.Anything, "ProdSite").Return(&DDCSiteLicenseInfo{
+		LicensedSessionsActive:         10,
+		PeakConcurrentLicenseUsers:     25,
+		TotalUniqueLicenseUsers:        50,
+		LicenseGraceSessionsRemaining: 100,
+		LicensingGracePeriodActive:     true,
+		LicensingGraceHoursLeft:        168,
+	}, nil)
+
+	timestamp := time.Now()
+	metrics, err := collector.collectLicenseFromDDC(context.Background(), timestamp)
+	assert.NoError(t, err)
+	assert.Len(t, metrics, 6)
+
+	metricMap := make(map[string]float32)
+	for _, m := range metrics {
+		metricMap[m.Name] = m.Value
+		// Verify all metrics have the licensing tag
+		assert.Len(t, m.Tags, 1)
+		assert.Equal(t, "metric_type", m.Tags[0].Key)
+		assert.Equal(t, "licensing", m.Tags[0].Value)
+		// Verify timestamp
+		assert.Equal(t, timestamp, m.Timestamp)
+	}
+
+	assert.Equal(t, float32(10), metricMap[MetricLicenseSessionsActive])
+	assert.Equal(t, float32(25), metricMap[MetricLicensePeakConcurrent])
+	assert.Equal(t, float32(50), metricMap[MetricLicenseUniqueUsers])
+	assert.Equal(t, float32(100), metricMap[MetricLicenseGraceSessionsLeft])
+	assert.Equal(t, float32(1), metricMap[MetricLicenseGracePeriodActive], "Grace period active should be 1")
+	assert.Equal(t, float32(168), metricMap[MetricLicenseGraceHoursLeft])
+
+	mockDDC.AssertExpectations(t)
+}
+
+func TestCollectLicenseFromDDC_AllZeroValues(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+	mockDDC := &MockDeliveryControllerClient{}
+
+	collector := NewMetricsCollector(mockClient, baseLogger)
+	collector.ddcClient = mockDDC
+	collector.siteFilter = "TestSite"
+
+	mockDDC.On("GetLicenseInfo", mock.Anything, "TestSite").Return(&DDCSiteLicenseInfo{}, nil)
+
+	metrics, err := collector.collectLicenseFromDDC(context.Background(), time.Now())
+	assert.NoError(t, err)
+	assert.Nil(t, metrics, "Should return nil when all license values are zero")
+
+	mockDDC.AssertExpectations(t)
+}
+
+// === buildLicenseMetrics Tests ===
+
+func TestBuildLicenseMetrics(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+	collector := NewMetricsCollector(mockClient, baseLogger)
+
+	timestamp := time.Date(2025, 6, 15, 10, 30, 0, 0, time.UTC)
+
+	metrics := collector.buildLicenseMetrics(timestamp, 15, 30, 45, 200, true, 72)
+
+	assert.Len(t, metrics, 6, "buildLicenseMetrics should return exactly 6 datapoints")
+
+	expectedMetrics := map[string]float32{
+		MetricLicenseSessionsActive:    15,
+		MetricLicensePeakConcurrent:    30,
+		MetricLicenseUniqueUsers:       45,
+		MetricLicenseGraceSessionsLeft: 200,
+		MetricLicenseGracePeriodActive: 1, // true -> 1
+		MetricLicenseGraceHoursLeft:    72,
+	}
+
+	for _, m := range metrics {
+		expected, ok := expectedMetrics[m.Name]
+		assert.True(t, ok, "Unexpected metric name: %s", m.Name)
+		assert.Equal(t, expected, m.Value, "Metric %s has wrong value", m.Name)
+		assert.Equal(t, timestamp, m.Timestamp, "Metric %s has wrong timestamp", m.Name)
+		assert.Len(t, m.Tags, 1)
+		assert.Equal(t, "metric_type", m.Tags[0].Key)
+		assert.Equal(t, "licensing", m.Tags[0].Value)
+	}
+}
+
+func TestBuildLicenseMetrics_GracePeriodInactive(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+	collector := NewMetricsCollector(mockClient, baseLogger)
+
+	metrics := collector.buildLicenseMetrics(time.Now(), 0, 0, 0, 0, false, 0)
+
+	metricMap := make(map[string]float32)
+	for _, m := range metrics {
+		metricMap[m.Name] = m.Value
+	}
+
+	assert.Equal(t, float32(0), metricMap[MetricLicenseGracePeriodActive], "Grace period inactive should be 0")
+}
+
+// === truncateString Tests ===
+
+func TestTruncateString(t *testing.T) {
+	t.Run("short string unchanged", func(t *testing.T) {
+		result := truncateString("hello", 10)
+		assert.Equal(t, "hello", result)
+	})
+
+	t.Run("exact length unchanged", func(t *testing.T) {
+		result := truncateString("hello", 5)
+		assert.Equal(t, "hello", result)
+	})
+
+	t.Run("long string truncated with ellipsis", func(t *testing.T) {
+		result := truncateString("hello world, this is a long string", 10)
+		assert.Equal(t, "hello worl...", result)
+		assert.Len(t, result, 13) // 10 + "..."
+	})
+
+	t.Run("empty string unchanged", func(t *testing.T) {
+		result := truncateString("", 10)
+		assert.Equal(t, "", result)
+	})
+}
+
+// === Load Metrics Tests ===
+
+func TestCollectLoadMetrics_ValidData(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+
+	mockClient.On("GetLoadIndexes", mock.Anything).Return([]LoadIndex{
+		{Id: 1, MachineId: "m1", Cpu: 5000, Memory: 3000, Disk: 1000, Network: 500, SessionCount: 2000, EffectiveLoadIndex: 4000},
+		{Id: 2, MachineId: "m2", Cpu: 9000, Memory: 8500, Disk: 2000, Network: 1000, SessionCount: 7000, EffectiveLoadIndex: 8500},
+	}, nil)
+
+	collector := NewMetricsCollector(mockClient, baseLogger)
+	timestamp := time.Now()
+
+	metrics, err := collector.CollectLoadMetrics(context.Background(), timestamp)
+	assert.NoError(t, err)
+	assert.Len(t, metrics, 7, "Should return 7 load index metrics")
+
+	metricMap := make(map[string]float32)
+	for _, m := range metrics {
+		metricMap[m.Name] = m.Value
+		assert.Equal(t, "load_index", m.Tags[0].Value)
+	}
+
+	// Average of (5000+9000)/2 = 7000, /100 = 70.0
+	assert.Equal(t, float32(70), metricMap[MetricLoadIndexCpu])
+	// Average of (3000+8500)/2 = 5750, /100 = 57.5
+	assert.Equal(t, float32(57.5), metricMap[MetricLoadIndexMemory])
+	// m2 has EffectiveLoadIndex 8500 >= LoadIndexOverloaded (8000), so 1 overloaded
+	assert.Equal(t, float32(1), metricMap[MetricLoadOverloaded])
+
+	mockClient.AssertExpectations(t)
+}
+
+func TestCollectLoadMetrics_EmptyData(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+
+	mockClient.On("GetLoadIndexes", mock.Anything).Return([]LoadIndex{}, nil)
+
+	collector := NewMetricsCollector(mockClient, baseLogger)
+
+	metrics, err := collector.CollectLoadMetrics(context.Background(), time.Now())
+	assert.NoError(t, err)
+	assert.Len(t, metrics, 7, "Should return 7 zero-value load metrics")
+
+	for _, m := range metrics {
+		assert.Equal(t, float32(0), m.Value, "Metric %s should be 0", m.Name)
+	}
+
+	mockClient.AssertExpectations(t)
+}
+
+func TestCollectLoadMetrics_EndpointError(t *testing.T) {
+	baseLogger := &logger.Logger{}
+	mockClient := &MockCitrixClient{}
+
+	mockClient.On("GetLoadIndexes", mock.Anything).Return([]LoadIndex{}, assert.AnError)
+
+	collector := NewMetricsCollector(mockClient, baseLogger)
+
+	metrics, err := collector.CollectLoadMetrics(context.Background(), time.Now())
+	assert.NoError(t, err, "Should not error - returns zero metrics on endpoint failure")
+	assert.Len(t, metrics, 7, "Should return 7 zero-value load metrics")
+
+	mockClient.AssertExpectations(t)
 }
