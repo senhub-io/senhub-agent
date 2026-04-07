@@ -8,117 +8,145 @@ metrics:
     channel: "cpu_user_time"
     display_name: "CPU User"
     unit: "s"
-    
+    category: "time_breakdown"
+    description: "Time spent running user-space processes"
+
   - name: "cpu_system"
     channel: "cpu_system_time"
     display_name: "CPU System"
     unit: "s"
-    
+    category: "time_breakdown"
+    description: "Time spent running kernel-space operations"
+
   - name: "cpu_idle"
     channel: "cpu_idle_time"
     display_name: "CPU Idle"
     unit: "s"
-    
+    category: "time_breakdown"
+    description: "Time spent idle with no pending work"
+
   - name: "cpu_nice"
     channel: "cpu_nice_time"
     display_name: "CPU Nice"
     unit: "s"
-    
+    category: "time_breakdown"
+    description: "Time spent running low-priority user-space processes"
+
   - name: "cpu_iowait"
     channel: "cpu_iowait_time"
     display_name: "CPU IO Wait"
     unit: "s"
-    
+    category: "time_breakdown"
+    description: "Time spent waiting for I/O operations to complete"
+
   - name: "cpu_irq"
     channel: "cpu_irq_time"
     display_name: "CPU Irq"
     unit: "s"
-    
+    category: "time_breakdown"
+    description: "Time spent handling hardware interrupts"
+
   - name: "cpu_softirq"
     channel: "cpu_softirq_time"
     display_name: "CPU Softirq"
     unit: "s"
-    
+    category: "time_breakdown"
+    description: "Time spent handling software interrupts"
+
   - name: "cpu_steal"
     channel: "cpu_steal_time"
     display_name: "CPU Steal"
     unit: "s"
+    category: "time_breakdown"
+    description: "Time stolen by the hypervisor for other virtual machines"
 
   # CPU Usage Metrics (cross-platform - in percentages)
   - name: "cpu_usage_total"
     channel: "cpu_usage_total"
     display_name: "CPU Total Usage"
     unit: "%"
+    category: "usage"
+    description: "Overall CPU utilization across all cores"
     
   # Per-core CPU Usage (Cross-platform)
   - name: "cpu_core_usage"
     channel: "cpu_core_usage"
     display_name: "CPU Core {core} Usage"
     unit: "%"
+    category: "per_core"
     multi_instance_labels: ["core"]
     description: "CPU usage percentage per core"
-    
+
   - name: "cpu_core_user"
     channel: "cpu_core_user"
     display_name: "CPU Core {core} User"
     unit: "%"
+    category: "per_core"
     multi_instance_labels: ["core"]
     description: "CPU user time percentage per core"
-    
+
   - name: "cpu_core_system"
     channel: "cpu_core_system"
     display_name: "CPU Core {core} System"
     unit: "%"
+    category: "per_core"
     multi_instance_labels: ["core"]
     description: "CPU system time percentage per core"
-    
+
   - name: "cpu_core_irq"
     channel: "cpu_core_irq"
     display_name: "CPU Core {core} IRQ"
     unit: "%"
+    category: "per_core"
     multi_instance_labels: ["core"]
     description: "CPU interrupt time percentage per core"
-    
+
   - name: "cpu_core_softirq"
     channel: "cpu_core_softirq"
     display_name: "CPU Core {core} SoftIRQ"
     unit: "%"
+    category: "per_core"
     multi_instance_labels: ["core"]
     description: "CPU soft interrupt time percentage per core"
-    
+
   # Windows-specific CPU Metrics (in percentages)
   - name: "processor_time"
     channel: "processor_time"
     display_name: "CPU {instance} Usage"
     unit: "%"
+    category: "per_core"
     multi_instance_labels: ["instance", "core"]
     description: "CPU processor time percentage per core"
-    
+
   - name: "user_time"
     channel: "cpu_user_time_percent"
     display_name: "CPU {instance} User Time"
     unit: "%"
+    category: "per_core"
     multi_instance_labels: ["instance", "core"]
     description: "CPU user time percentage per core"
-    
+
   - name: "privileged_time"
     channel: "cpu_privileged_time"
     display_name: "CPU {instance} Privileged Time"
     unit: "%"
+    category: "per_core"
     multi_instance_labels: ["instance", "core"]
     description: "CPU privileged (kernel) time percentage per core"
-    
+
   - name: "interrupt_time"
     channel: "cpu_interrupt_time"
     display_name: "CPU {instance} Interrupt Time"
     unit: "%"
+    category: "per_core"
     multi_instance_labels: ["instance", "core"]
     description: "CPU interrupt time percentage per core"
-    
+
   - name: "dpc_time"
     channel: "cpu_dpc_time"
     display_name: "CPU {instance} DPC Time"
     unit: "%"
+    category: "per_core"
     multi_instance_labels: ["instance", "core"]
     description: "CPU Deferred Procedure Call time percentage per core"
 
@@ -127,52 +155,60 @@ metrics:
     channel: "cpu_dpc_rate"
     display_name: "CPU DPC Rate"
     unit: "#"
+    category: "system_counters"
     description: "Deferred Procedure Calls per second"
-    
+
   - name: "cpu_dpc_queued"
     channel: "cpu_dpc_queued"
     display_name: "CPU DPC Queued"
     unit: "/s"
+    category: "system_counters"
     description: "DPCs queued per second"
-    
+
   - name: "cpu_interrupts"
     channel: "cpu_interrupts"
     display_name: "CPU Interrupts"
     unit: "/s"
+    category: "system_counters"
     description: "CPU interrupts per second"
-    
+
   - name: "cpu_queue_length"
     channel: "cpu_queue_length"
     display_name: "CPU Queue Length"
     unit: "#"
+    category: "system_counters"
     description: "Number of threads waiting in the processor queue"
-    
+
   # Legacy Windows metrics (kept for compatibility)
   - name: "dpc_rate"
     channel: "cpu_dpc_rate"
     display_name: "CPU {instance} DPC Rate"
     unit: "#"
+    category: "system_counters"
     multi_instance_labels: ["instance", "core"]
     description: "Deferred Procedure Calls per second per core"
-    
+
   - name: "dpc_queued"
     channel: "cpu_dpc_queued"
     display_name: "CPU {instance} DPC Queued"
     unit: "/s"
+    category: "system_counters"
     multi_instance_labels: ["instance", "core"]
     description: "DPCs queued per second per core"
-    
+
   - name: "interrupt_sec"
     channel: "cpu_interrupt_rate"
     display_name: "CPU {instance} Interrupt Rate"
     unit: "/s"
+    category: "system_counters"
     multi_instance_labels: ["instance", "core"]
     description: "Interrupts per second per core"
-    
+
   - name: "processor_queue_length"
     channel: "cpu_queue_length"
     display_name: "Processor Queue Length"
     unit: "#"
+    category: "system_counters"
     description: "Number of threads waiting in the processor queue"
 
   # Load Average Metrics (Linux/Unix)
@@ -180,13 +216,27 @@ metrics:
     channel: "cpu_load_1min"
     display_name: "CPU Load Average 1min"
     unit: "#"
-    
+    category: "load_average"
+    description: "Average number of processes in the run queue over the last 1 minute"
+
   - name: "cpu_load5"
     channel: "cpu_load_5min"
     display_name: "CPU Load Average 5min"
     unit: "#"
-    
+    category: "load_average"
+    description: "Average number of processes in the run queue over the last 5 minutes"
+
   - name: "cpu_load15"
     channel: "cpu_load_15min"
     display_name: "CPU Load Average 15min"
     unit: "#"
+    category: "load_average"
+    description: "Average number of processes in the run queue over the last 15 minutes"
+
+tag_metadata:
+  core:
+    type: resource
+    label: "CPU Core"
+  instance:
+    type: resource
+    label: "CPU Instance"

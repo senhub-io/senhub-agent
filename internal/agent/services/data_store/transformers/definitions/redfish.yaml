@@ -19,6 +19,7 @@ metrics:
     unit: "#"
     multi_instance_labels: ["psu_name", "controller", "enclosure_id", "psu_location", "host"]
     description: "Power supply unit health status"
+    category: "power"
     lookup: "sfs.redfish.health"
 
   # Storage Drive Metrics
@@ -28,59 +29,67 @@ metrics:
     unit: "Bytes"
     multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
     description: "Total drive capacity in bytes"
-    
+    category: "drives"
+
   - name: "hardware.storage.drive.failure_predicted"
     channel: "drive_failure_predicted"
     display_name: "{drive_name} Failure Predicted"
     unit: "#"
     multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
     description: "Drive failure prediction status"
+    category: "drives"
     lookup: "sfs.generic.boolean"
-    
+
   - name: "hardware.storage.drive.has_operations"
     channel: "drive_has_operations"
     display_name: "{drive_name} Has Operations"
     unit: "#"
     multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
     description: "Indicates if drive has active operations"
+    category: "drives"
     lookup: "sfs.generic.boolean"
-    
+
   - name: "hardware.storage.drive.health"
     channel: "drive_health"
     display_name: "{drive_name} Health"
     unit: "#"
     multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
     description: "Drive health status"
+    category: "drives"
     lookup: "sfs.redfish.health"
-    
+
   - name: "hardware.storage.drive.operation.progress"
     channel: "drive_operation_progress"
     display_name: "{drive_name} Operation Progress"
     unit: "%"
     multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
     description: "Drive operation progress percentage"
-    
+    category: "drives"
+
   - name: "hardware.storage.drive.speed_gbs"
     channel: "drive_speed_gbs"
     display_name: "{drive_name} Negotiated Speed"
     unit: "Gbps"
     multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
     description: "Drive negotiated speed in Gbps"
-    
+    category: "drives"
+
   - name: "hardware.storage.drive.location_indicator_active"
     channel: "drive_location_indicator_active"
     display_name: "{drive_name} Location Indicator Active"
     unit: "#"
     multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
     description: "Drive location indicator active status"
+    category: "drives"
     lookup: "sfs.generic.boolean"
-    
+
   - name: "hardware.storage.drive.block_size_bytes"
     channel: "drive_block_size_bytes"
     display_name: "{drive_name} Block Size"
     unit: "Bytes"
     multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
     description: "Drive block size in bytes"
+    category: "drives"
 
   # Storage Volume Metrics
   - name: "hardware.storage.volume.capacity.allocated"
@@ -89,51 +98,58 @@ metrics:
     unit: "Bytes"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Allocated volume capacity in bytes"
-    
+    category: "volumes"
+
   - name: "hardware.storage.volume.capacity.allocated_percent"
     channel: "volume_capacity_allocated_percent"
     display_name: "Volume {volume_name} Allocated Percent"
     unit: "%"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Allocated volume capacity percentage"
-    
+    category: "volumes"
+
   - name: "hardware.storage.volume.capacity.free"
     channel: "volume_capacity_free"
     display_name: "Volume {volume_name} Free"
     unit: "Bytes"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Free volume capacity in bytes"
-    
+    category: "volumes"
+
   - name: "hardware.storage.volume.capacity.total"
     channel: "volume_capacity_total"
     display_name: "Volume {volume_name} Total Capacity"
     unit: "Bytes"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Total volume capacity in bytes"
-    
+    category: "volumes"
+
   - name: "hardware.storage.volume.capacity.free_percent"
     channel: "volume_capacity_free_percent"
     display_name: "Volume {volume_name} Free Percent"
     unit: "%"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Free volume capacity percentage"
-    
+    category: "volumes"
+
   - name: "hardware.storage.volume.health"
     channel: "volume_health"
     display_name: "Volume {volume_name} Health"
     unit: "#"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Volume health status"
+    category: "volumes"
     lookup: "sfs.redfish.health"
-    
+
   - name: "hardware.storage.volume.encrypted"
     channel: "volume_encrypted"
     display_name: "Volume {volume_name} Encrypted"
     unit: "#"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Volume encryption status (0=no, 1=yes)"
+    category: "volumes"
     lookup: "sfs.generic.boolean"
-    
+
   # Volume I/O Metrics
   - name: "hardware.storage.volume.io.reads"
     channel: "volume_io_reads"
@@ -141,41 +157,47 @@ metrics:
     unit: "#"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Number of read operations on volume"
-    
+    category: "volumes"
+
   - name: "hardware.storage.volume.io.writes"
     channel: "volume_io_writes"
     display_name: "Volume {volume_name} IO Writes"
     unit: "#"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Number of write operations on volume"
-    
+    category: "volumes"
+
   - name: "hardware.storage.volume.io.total_ops"
     channel: "volume_io_total_ops"
     display_name: "Volume {volume_name} IO Total Ops"
     unit: "#"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Total number of I/O operations on volume"
-    
+    category: "volumes"
+
   - name: "hardware.storage.volume.io.read.bytes"
     channel: "volume_io_read_bytes"
     display_name: "Volume {volume_name} IO Read Bytes"
     unit: "Bytes"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Total bytes read from volume"
-    
+    category: "volumes"
+
   - name: "hardware.storage.volume.io.write.bytes"
     channel: "volume_io_write_bytes"
     display_name: "Volume {volume_name} IO Write Bytes"
     unit: "Bytes"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Total bytes written to volume"
-    
+    category: "volumes"
+
   - name: "hardware.storage.volume.io.total_bytes"
     channel: "volume_io_total_bytes"
     display_name: "Volume {volume_name} IO Total Bytes"
     unit: "Bytes"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Total bytes transferred (read + write) on volume"
+    category: "volumes"
 
   # Storage Pool Metrics
   - name: "hardware.storage.pool.capacity.allocated"
@@ -184,36 +206,41 @@ metrics:
     unit: "Bytes"
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Allocated pool capacity in bytes"
-    
+    category: "pools"
+
   - name: "hardware.storage.pool.capacity.used"
     channel: "pool_capacity_used"
     display_name: "Pool {pool_name} Used"
     unit: "Bytes"
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Used pool capacity in bytes"
-    
+    category: "pools"
+
   - name: "hardware.storage.pool.capacity.free_percent"
     channel: "pool_capacity_free_percent"
     display_name: "Pool {pool_name} Free Percent"
     unit: "%"
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Free pool capacity percentage"
-    
+    category: "pools"
+
   - name: "hardware.storage.pool.capacity.used_percent"
     channel: "pool_capacity_used_percent"
     display_name: "Pool {pool_name} Used Percent"
     unit: "%"
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Used pool capacity percentage"
-    
+    category: "pools"
+
   - name: "hardware.storage.pool.health"
     channel: "pool_health"
     display_name: "Pool {pool_name} Health"
     unit: "#"
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Pool health status"
+    category: "pools"
     lookup: "sfs.redfish.health"
-    
+
   # Pool I/O Metrics
   - name: "hardware.storage.pool.io.reads"
     channel: "pool_io_reads"
@@ -221,7 +248,8 @@ metrics:
     unit: "#"
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Number of read operations on pool"
-    
+    category: "pools"
+
   - name: "hardware.storage.pool.io.writes"
     channel: "pool_io_writes"
     display_name: "Pool {pool_name} IO Writes"

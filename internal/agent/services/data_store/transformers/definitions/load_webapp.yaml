@@ -8,28 +8,43 @@ metrics:
     channel: "load_dns_time"
     display_name: "DNS Resolution Time ({url})"
     unit: "ms"
+    category: "performance"
     multi_instance_labels: ["url"]
-    
+    description: "Time to resolve the web application's domain name via DNS"
+
   - name: "connecttime"
     channel: "load_connect_time"
     display_name: "Connect Time ({url})"
     unit: "ms"
+    category: "performance"
     multi_instance_labels: ["url"]
-    
+    description: "Time to establish a TCP connection to the web server"
+
   - name: "tlstime"
     channel: "load_tls_time"
     display_name: "TLS Handshake Time ({url})"
     unit: "ms"
+    category: "performance"
     multi_instance_labels: ["url"]
-    
+    description: "Time to complete the TLS/SSL handshake with the web server"
+
   - name: "total_time"
     channel: "load_total_time"
     display_name: "Total Load Time ({url})"
     unit: "ms"
+    category: "performance"
     multi_instance_labels: ["url"]
-    
+    description: "Total time from request initiation to full response received"
+
   - name: "ttfb"
     channel: "load_time_to_first_byte"
     display_name: "Time to First Byte ({url})"
     unit: "ms"
+    category: "performance"
     multi_instance_labels: ["url"]
+    description: "Time from request sent to first byte of response received"
+
+tag_metadata:
+  url:
+    type: resource
+    label: "Web Application URL"

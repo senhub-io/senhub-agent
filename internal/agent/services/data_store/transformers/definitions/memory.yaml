@@ -8,87 +8,121 @@ metrics:
     channel: "memory_total"
     display_name: "Memory Total"
     unit: "bytes"
-    
+    category: "capacity"
+    description: "Total physical memory installed on the system"
+
   - name: "memory_available"
     channel: "memory_available"
     display_name: "Memory Available"
     unit: "bytes"
-    
+    category: "capacity"
+    description: "Amount of physical memory immediately available for allocation"
+
   - name: "memory_committed"
     channel: "memory_committed"
     display_name: "Memory Committed"
     unit: "bytes"
-    
+    category: "capacity"
+    description: "Amount of virtual memory that has been committed by the memory manager"
+
   - name: "memory_modified_page_list"
     channel: "memory_modified_page_list"
     display_name: "Memory Modified Page List"
     unit: "bytes"
-    
+    category: "capacity"
+    description: "Amount of memory whose contents have been modified but not yet written to disk"
+
   - name: "memory_nonpaged_pool"
     channel: "memory_nonpaged_pool"
     display_name: "Memory Nonpaged Pool"
     unit: "bytes"
-    
+    category: "capacity"
+    description: "Amount of kernel memory that cannot be paged out to disk"
+
   - name: "memory_paged_pool"
     channel: "memory_paged_pool"
     display_name: "Memory Paged Pool"
     unit: "bytes"
-    
+    category: "capacity"
+    description: "Amount of kernel memory that can be paged out to disk"
+
   - name: "memory_cache"
     channel: "memory_cache"
     display_name: "Memory Cache"
     unit: "bytes"
+    category: "capacity"
+    description: "Amount of physical memory used by the system file cache"
 
   # Windows Performance Counter Metrics (counts per second)
   - name: "memory_page_faults"
     channel: "memory_page_faults"
     display_name: "Memory Page Faults"
     unit: "#"
-    
+    category: "paging"
+    description: "Rate of page faults per second including both hard and soft faults"
+
   - name: "memory_pages_input"
     channel: "memory_pages_input"
     display_name: "Memory Pages Input"
     unit: "#"
-    
+    category: "paging"
+    description: "Rate of pages read from disk per second to resolve hard page faults"
+
   - name: "memory_pages_output"
     channel: "memory_pages_output"
     display_name: "Memory Pages Output"
     unit: "#"
+    category: "paging"
+    description: "Rate of pages written to disk per second to free physical memory"
 
   # Windows Pagefile Metrics (percentages)
   - name: "pagefile_usage"
     channel: "pagefile_usage"
     display_name: "Pagefile Usage"
     unit: "%"
-    
+    category: "paging"
+    description: "Percentage of the system pagefile currently in use"
+
   - name: "pagefile_usage_peak"
     channel: "pagefile_usage_peak"
     display_name: "Pagefile Usage Peak"
     unit: "%"
+    category: "paging"
+    description: "Peak percentage of the system pagefile used since last reboot"
 
   # Unix/Linux Memory Size Metrics (in bytes)
   - name: "memory_used"
     channel: "memory_used"
     display_name: "Memory Used"
     unit: "bytes"
-    
+    category: "capacity"
+    description: "Amount of physical memory currently in use by the system and applications"
+
   - name: "memory_free"
     channel: "memory_free"
     display_name: "Memory Free"
     unit: "bytes"
-    
+    category: "capacity"
+    description: "Amount of physical memory not being used at all"
+
   - name: "memory_cached"
     channel: "memory_cached"
     display_name: "Memory Cached"
     unit: "bytes"
-    
+    category: "capacity"
+    description: "Amount of physical memory used for caching file data and metadata"
+
   - name: "memory_buffers"
     channel: "memory_buffers"
     display_name: "Memory Buffers"
     unit: "bytes"
+    category: "capacity"
+    description: "Amount of physical memory used for kernel buffer cache"
 
   # Memory Usage Percentage (cross-platform)
   - name: "memory_used_percent"
     channel: "memory_usage"
     display_name: "Memory Usage"
     unit: "%"
+    category: "usage"
+    description: "Percentage of total physical memory currently in use"
