@@ -51,6 +51,14 @@ type CitrixClient interface {
 	SetValidMachineDNS(dnsNames []string)
 }
 
+// ComponentConfig holds per-component connection config (Director, DDC, License Server)
+type ComponentConfig struct {
+	URL          string
+	FallbackURLs []string
+	VerifySSL    bool
+	Auth         AuthConfig
+}
+
 // CitrixClientConfig holds the configuration for the Citrix client
 type CitrixClientConfig struct {
 	BaseURL            string
