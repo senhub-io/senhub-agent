@@ -275,6 +275,22 @@ func (c *citrixClient) getODataCollectionWithExpand(ctx context.Context, endpoin
 func (c *citrixClient) performRequest(ctx context.Context, url string, result interface{}) (nextLink string, err error) {
 	var lastErr error
 
+	// Recovery: if we're on a fallback, try to recover to primary
+	if c.baseURL != c.primaryURL {
+		endpoint := strings.TrimPrefix(url, c.baseURL)
+		primaryRequestURL := c.primaryURL + endpoint
+
+		nextLink, err := c.doRequest(ctx, primaryRequestURL, result)
+		if err == nil {
+			c.baseURL = c.primaryURL
+			c.logger.Info().
+				Str("primary_url", c.primaryURL).
+				Msg("Primary Director recovered, switching back")
+			return nextLink, nil
+		}
+		// Primary still down — continue with fallback
+	}
+
 	// Try retries on the active URL
 	for attempt := 0; attempt < c.config.MaxRetryAttempts; attempt++ {
 		if attempt > 0 {
