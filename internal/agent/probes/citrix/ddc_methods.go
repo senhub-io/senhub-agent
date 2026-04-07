@@ -370,6 +370,42 @@ func (c *deliveryControllerClient) GetSiteDetails(ctx context.Context, siteName 
 	return details, nil
 }
 
+// GetLicenseInfo retrieves licensing information from the CVAD Sites endpoint
+func (c *deliveryControllerClient) GetLicenseInfo(ctx context.Context, siteName string) (*DDCSiteLicenseInfo, error) {
+	c.logger.Debug().
+		Str("site", siteName).
+		Msg("Retrieving license information from Sites endpoint")
+
+	siteID, _, err := c.getSiteInfo(ctx, siteName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get site info for licensing: %w", err)
+	}
+
+	// Query the Sites endpoint which returns licensing fields
+	endpoint := fmt.Sprintf("/cvad/manage/Sites/%s", siteID)
+	body, err := c.makeRequestWithSiteID(ctx, "GET", endpoint, nil, siteID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get site license info: %w", err)
+	}
+
+	var licenseInfo DDCSiteLicenseInfo
+	if err := json.Unmarshal(body, &licenseInfo); err != nil {
+		return nil, fmt.Errorf("failed to parse site license info: %w", err)
+	}
+
+	c.logger.Debug().
+		Str("license_server", licenseInfo.LicenseServerName).
+		Str("model", licenseInfo.LicensingModel).
+		Str("edition", licenseInfo.ProductEdition).
+		Int("active_sessions", licenseInfo.LicensedSessionsActive).
+		Int("peak_concurrent", licenseInfo.PeakConcurrentLicenseUsers).
+		Int("unique_users", licenseInfo.TotalUniqueLicenseUsers).
+		Bool("grace_active", licenseInfo.LicensingGracePeriodActive).
+		Msg("Retrieved license information")
+
+	return &licenseInfo, nil
+}
+
 // GetMe retrieves current user information from Delivery Controller
 func (c *deliveryControllerClient) GetMe(ctx context.Context) (*DDCMeResponse, error) {
 	c.logger.Debug().Msg("Retrieving current user information from Delivery Controller")

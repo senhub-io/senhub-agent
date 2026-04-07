@@ -71,7 +71,7 @@ probes:
   - name: citrix-production
     type: citrix
     params:
-      base_url: "https://citrix-director.company.com"
+      director_url: "https://citrix-director.company.com"
       interval: 120
       auth:
         username: "DOMAIN\\admin"
