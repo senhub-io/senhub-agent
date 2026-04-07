@@ -32,13 +32,13 @@ func (mc *MetricsCollector) CollectLicenseMetrics(ctx context.Context, timestamp
 	}
 
 	// Attempt 2: License Server direct (port 8083)
-	if mc.licenseServerURL != "" {
+	if mc.licenseConfig != nil {
 		metrics, err := mc.collectLicenseFromServer(ctx, timestamp)
 		if err == nil && len(metrics) > 0 {
 			return metrics, nil
 		}
 		if err != nil {
-			mc.logger.Warn().Err(err).Str("url", mc.licenseServerURL).Msg("License server query failed")
+			mc.logger.Warn().Err(err).Str("url", mc.licenseConfig.URL).Msg("License server query failed")
 		}
 	}
 
@@ -84,12 +84,12 @@ type LicenseServerResponse struct {
 
 // collectLicenseFromServer queries the Citrix License Server directly via its web API
 func (mc *MetricsCollector) collectLicenseFromServer(ctx context.Context, timestamp time.Time) ([]datapoint.DataPoint, error) {
-	baseURL := strings.TrimSuffix(mc.licenseServerURL, "/")
+	baseURL := strings.TrimSuffix(mc.licenseConfig.URL, "/")
 
 	// Create NTLM-capable HTTP client (same auth as Director)
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: !mc.verifySSL, // #nosec G402 - Configurable SSL verification
+			InsecureSkipVerify: !mc.licenseConfig.VerifySSL, // #nosec G402 - Configurable SSL verification
 		},
 	}
 
@@ -114,7 +114,7 @@ func (mc *MetricsCollector) collectLicenseFromServer(ctx context.Context, timest
 			continue
 		}
 		req.Header.Set("Accept", "application/json")
-		req.SetBasicAuth(mc.username, mc.password)
+		req.SetBasicAuth(mc.licenseConfig.Auth.Username, mc.licenseConfig.Auth.Password)
 
 		resp, err := client.Do(req)
 		if err != nil {
