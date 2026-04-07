@@ -256,20 +256,23 @@ metrics:
     unit: "#"
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Number of write operations on pool"
-    
+    category: "pools"
+
   - name: "hardware.storage.pool.io.read.bytes"
     channel: "pool_io_read_bytes"
     display_name: "Pool {pool_name} IO Read Bytes"
     unit: "Bytes"
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Total bytes read from pool"
-    
+    category: "pools"
+
   - name: "hardware.storage.pool.io.write.bytes"
     channel: "pool_io_write_bytes"
     display_name: "Pool {pool_name} IO Write Bytes"
     unit: "Bytes"
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Total bytes written to pool"
+    category: "pools"
 
   # System Health Metrics
   - name: "hardware.system.health"
@@ -278,31 +281,35 @@ metrics:
     unit: "#"
     multi_instance_labels: ["host", "system_name", "model", "serial_number"]
     description: "Overall system health status"
+    category: "system"
     lookup: "sfs.redfish.health"
-    
+
   - name: "hardware.system.power.state"
     channel: "system_power_state"
     display_name: "System Power State"
     unit: "#"
     multi_instance_labels: ["host", "system_name", "model"]
     description: "System power state"
+    category: "system"
     lookup: "sfs.redfish.power_state"
-    
+
   - name: "hardware.controller.health"
     channel: "controller_health"
     display_name: "Controller {controller_id} Health"
     unit: "#"
     multi_instance_labels: ["controller_id", "controller_name", "controller_slot", "host"]
     description: "Storage controller health status"
+    category: "system"
     lookup: "sfs.redfish.health"
-    
+
   - name: "hardware.eventservice.health"
     channel: "eventservice_health"
     display_name: "Event Service Health"
     unit: "#"
     description: "System event service health status"
+    category: "system"
     lookup: "sfs.redfish.health"
-    
+
   # Redundancy Metrics
   - name: "hardware.redundancy.health"
     channel: "redundancy_health"
@@ -310,28 +317,32 @@ metrics:
     unit: "#"
     multi_instance_labels: ["host", "controller_id", "redundancy_set"]
     description: "Redundancy system health status"
+    category: "redundancy"
     lookup: "sfs.redfish.health"
-    
+
   - name: "hardware.redundancy.controllers.active"
     channel: "redundancy_controllers_active"
     display_name: "{host} Redundancy Controllers Active"
     unit: "#"
     multi_instance_labels: ["host", "redundancy_set"]
     description: "Number of active redundant controllers"
-    
+    category: "redundancy"
+
   - name: "hardware.redundancy.controllers.min"
     channel: "redundancy_controllers_min"
     display_name: "{host} Redundancy Controllers Min"
     unit: "#"
     multi_instance_labels: ["host", "redundancy_set"]
     description: "Minimum number of controllers for redundancy"
-    
+    category: "redundancy"
+
   - name: "hardware.redundancy.controllers.max"
     channel: "redundancy_controllers_max"
     display_name: "{host} Redundancy Controllers Max"
     unit: "#"
     multi_instance_labels: ["host", "redundancy_set"]
     description: "Maximum number of controllers supported"
+    category: "redundancy"
 
   # Storage Redundancy Metrics (Dell PowerVault)
   - name: "hardware.storage.redundancy.health"
@@ -340,25 +351,53 @@ metrics:
     unit: "#"
     multi_instance_labels: ["host", "controller", "redundancy_group", "redundancy_mode"]
     description: "Storage redundancy health status"
+    category: "redundancy"
     lookup: "sfs.redfish.health"
-    
+
   - name: "hardware.storage.redundancy.controllers_active"
     channel: "storage_redundancy_controllers_active"
     display_name: "{redundancy_group} Controllers Active"
     unit: "#"
     multi_instance_labels: ["host", "controller", "redundancy_group", "redundancy_mode"]
     description: "Number of active redundant storage controllers"
-    
+    category: "redundancy"
+
   - name: "hardware.storage.redundancy.controllers_min"
     channel: "storage_redundancy_controllers_min"
     display_name: "{redundancy_group} Controllers Min"
     unit: "#"
     multi_instance_labels: ["host", "controller", "redundancy_group", "redundancy_mode"]
     description: "Minimum number of storage controllers for redundancy"
-    
+    category: "redundancy"
+
   - name: "hardware.storage.redundancy.controllers_max"
     channel: "storage_redundancy_controllers_max"
     display_name: "{redundancy_group} Controllers Max"
     unit: "#"
     multi_instance_labels: ["host", "controller", "redundancy_group", "redundancy_mode"]
     description: "Maximum number of storage controllers supported"
+    category: "redundancy"
+
+tag_metadata:
+  psu_name:
+    type: resource
+    label: "Power Supply"
+    linked_categories: ["power"]
+  drive_name:
+    type: resource
+    label: "Drive"
+    linked_categories: ["drives"]
+  volume_name:
+    type: resource
+    label: "Volume"
+    linked_categories: ["volumes"]
+  pool_name:
+    type: resource
+    label: "Storage Pool"
+    linked_categories: ["pools"]
+  controller_id:
+    type: resource
+    label: "Controller"
+  host:
+    type: resource
+    label: "Host"
