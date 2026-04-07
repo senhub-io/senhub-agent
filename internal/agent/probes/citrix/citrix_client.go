@@ -698,6 +698,47 @@ func (c *citrixClient) GetConnections(ctx context.Context, sinceTime time.Time) 
 	return connections, nil
 }
 
+// GetLoadIndexes retrieves the most recent load index data for machines.
+// Filters to entries modified in the last 10 minutes to avoid fetching
+// the entire historical LoadIndexes table (which can be very large).
+func (c *citrixClient) GetLoadIndexes(ctx context.Context) ([]LoadIndex, error) {
+	endpoint := "/LoadIndexes"
+
+	// Only fetch recent load indexes (last 10 minutes) to avoid massive queries
+	sinceTime := time.Now().Add(-10 * time.Minute).UTC()
+	filter := fmt.Sprintf("ModifiedDate ge %s", formatODataDateTime(sinceTime))
+
+	c.logger.Debug().
+		Str("filter", filter).
+		Msg("Getting recent load indexes")
+
+	var loadIndexes []LoadIndex
+	err := c.getODataCollection(ctx, endpoint, filter, &loadIndexes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get load indexes: %w", err)
+	}
+
+	// Deduplicate: keep only the most recent entry per MachineId
+	latestByMachine := make(map[string]LoadIndex)
+	for _, li := range loadIndexes {
+		if existing, ok := latestByMachine[li.MachineId]; !ok || li.ModifiedDate.After(existing.ModifiedDate) {
+			latestByMachine[li.MachineId] = li
+		}
+	}
+
+	deduplicated := make([]LoadIndex, 0, len(latestByMachine))
+	for _, li := range latestByMachine {
+		deduplicated = append(deduplicated, li)
+	}
+
+	c.logger.Debug().
+		Int("raw_count", len(loadIndexes)).
+		Int("machines_count", len(deduplicated)).
+		Msg("Retrieved and deduplicated load indexes from Citrix API")
+
+	return deduplicated, nil
+}
+
 // SetValidMachineDNS sets the list of valid machine DNS names for filtering
 func (c *citrixClient) SetValidMachineDNS(dnsNames []string) {
 	c.filters.SetValidMachineDNS(dnsNames)
