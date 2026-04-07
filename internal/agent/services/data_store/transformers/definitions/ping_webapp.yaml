@@ -8,10 +8,19 @@ metrics:
     channel: "ping_average_latency"
     display_name: "Average Latency ({url})"
     unit: "ms"
+    category: "connectivity"
     multi_instance_labels: ["url"]
-    
+    description: "Average round-trip time to the web application endpoint"
+
   - name: "packetLoss"
     channel: "ping_packet_loss"
     display_name: "Packet Loss ({url})"
     unit: "%"
+    category: "connectivity"
     multi_instance_labels: ["url"]
+    description: "Percentage of ICMP packets lost to the web application endpoint"
+
+tag_metadata:
+  url:
+    type: resource
+    label: "Web Application URL"
