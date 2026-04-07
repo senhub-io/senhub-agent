@@ -122,6 +122,21 @@ type DDCSiteDetails struct {
 	RegisteredMachines int      `json:"RegisteredMachines"`
 }
 
+// DDCSiteLicenseInfo represents licensing information from the CVAD Sites endpoint
+type DDCSiteLicenseInfo struct {
+	LicenseServerName           string `json:"LicenseServerName"`
+	LicenseServerPort           int    `json:"LicenseServerPort"`
+	LicenseServerUri            string `json:"LicenseServerUri"`
+	LicensingModel              string `json:"LicensingModel"`              // "UserDevice", "Concurrent"
+	ProductEdition              string `json:"ProductEdition"`              // "Premium", "Advanced", "Standard"
+	LicensedSessionsActive      int    `json:"LicensedSessionsActive"`      // Currently active licensed sessions
+	PeakConcurrentLicenseUsers  int    `json:"PeakConcurrentLicenseUsers"`  // Peak concurrent users
+	TotalUniqueLicenseUsers     int    `json:"TotalUniqueLicenseUsers"`     // Total unique users
+	LicenseGraceSessionsRemaining int  `json:"LicenseGraceSessionsRemaining"` // Grace sessions left
+	LicensingGracePeriodActive  bool   `json:"LicensingGracePeriodActive"`  // Grace period active
+	LicensingGraceHoursLeft     int    `json:"LicensingGraceHoursLeft"`     // Grace hours remaining
+}
+
 // DDCMachinesResponse represents the response from Machines endpoint
 type DDCMachinesResponse struct {
 	Items             []DDCMachine `json:"Items"`

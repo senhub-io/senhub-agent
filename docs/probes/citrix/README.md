@@ -10,7 +10,7 @@ The Citrix probe monitors Citrix Virtual Apps and Desktops environments through 
 probes:
   - name: citrix
     params:
-      base_url: "https://citrix-director.company.com"
+      director_url: "https://citrix-director.company.com"
       interval: 120  # 2 minutes recommended
       auth:
         username: "DOMAIN\\svc-monitoring"
@@ -25,10 +25,11 @@ probes:
 probes:
   - name: citrix
     params:
-      base_url: "https://citrix-director.company.com"
+      director_url: "https://citrix-director.company.com"
       delivery_controller:
         url: "https://citrix-ddc.company.com"
         site_filter: "PROD"  # Filter by specific site
+      license_server: "https://citrix-license-server:8083"  # Optional
       interval: 120
       auth:
         username: "DOMAIN\\svc-monitoring"
@@ -69,6 +70,16 @@ probes:
 ### Performance Phases
 - Detailed logon phase breakdown (brokering, HDX, authentication, GPO, scripts, profile, interactive)
 
+### Load Index
+- `load_index_effective` - Average VDA load (0-100%)
+- `load_index_cpu` / `memory` / `disk` / `network` - Per-component load
+- `load_overloaded_machines` - Machines above 80% load
+
+### Licensing (requires `license_server` or DDC with usage fields)
+- `license_sessions_active` - Active licensed sessions
+- `license_peak_concurrent` - Peak concurrent users
+- `license_grace_period_active` - Grace period alert (0/1)
+
 ## Authentication
 
 The probe supports automatic authentication method selection:
@@ -80,6 +91,7 @@ The probe supports automatic authentication method selection:
 - Service account with Citrix monitoring permissions
 - Network access to Citrix Director (port 443)
 - Optional: DDC access for site filtering (port 443)
+- Optional: License Server access for license monitoring (port 8083)
 
 ## Monitoring Integration
 

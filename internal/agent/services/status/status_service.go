@@ -42,9 +42,10 @@ type HealthInfo struct {
 
 // ConnectionInfo represents connection and configuration mode
 type ConnectionInfo struct {
-	Mode   string `json:"mode"`   // "online", "offline"
-	Source string `json:"source"` // "remote_server", "local_config"
-	Status string `json:"status"` // "connected", "disconnected", "local"
+	Mode         string `json:"mode"`                    // "online", "offline"
+	Source       string `json:"source"`                  // "remote_server", "local_config"
+	Status       string `json:"status"`                  // "connected", "disconnected", "local"
+	DashboardURL string `json:"dashboard_url,omitempty"` // URL to the agent dashboard
 }
 
 // ProbeStatus represents individual probe status
