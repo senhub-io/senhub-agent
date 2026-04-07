@@ -359,50 +359,11 @@ func (cm *ConfigMigrator) reorderProbeMap(probeNode *yaml.Node) {
 	probeNode.Content = newContent
 }
 
-// paramRenameRule defines a text replacement for parameter renames
-type paramRenameRule struct {
-	oldText string // exact YAML key to find (e.g. "base_url:")
-	newText string // replacement key (e.g. "director_url:")
-}
-
-// paramRenameRules lists all parameter renames to apply via text replacement
-var paramRenameRules = []paramRenameRule{
-	{oldText: "base_url:", newText: "director_url:"},
-}
-
-// migrateParamRenamesInPlace performs parameter renames directly in the YAML file
-// using text replacement, preserving formatting, comments, and field order.
+// migrateParamRenamesInPlace is a no-op.
+// Auto-rename of base_url→director_url was removed because text replacement
+// cannot distinguish between probe types (would break netscaler's base_url).
+// The old format (base_url/director_url) is handled at runtime with backward compat.
 func (cm *ConfigMigrator) migrateParamRenamesInPlace() error {
-	data, err := os.ReadFile(cm.configPath)
-	if err != nil {
-		return fmt.Errorf("failed to read config: %w", err)
-	}
-
-	content := string(data)
-	changed := false
-
-	for _, rule := range paramRenameRules {
-		// Only replace if old key exists and new key doesn't
-		if strings.Contains(content, rule.oldText) && !strings.Contains(content, rule.newText) {
-			content = strings.ReplaceAll(content, rule.oldText, rule.newText)
-			changed = true
-
-			cm.logger.Info().
-				Str("old", rule.oldText).
-				Str("new", rule.newText).
-				Msg("Renamed deprecated parameter in config file")
-		}
-	}
-
-	if !changed {
-		return nil
-	}
-
-	if err := os.WriteFile(cm.configPath, []byte(content), 0600); err != nil {
-		return fmt.Errorf("failed to write config: %w", err)
-	}
-
-	cm.logger.Info().Msg("Parameter rename migration applied successfully")
 	return nil
 }
 
