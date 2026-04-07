@@ -15,11 +15,12 @@ import (
 
 // citrixClient implements the CitrixClient interface for OData API communication
 type citrixClient struct {
-	config     CitrixClientConfig
-	httpClient *http.Client
-	logger     *logger.ModuleLogger
-	baseURL    string
-	filters    *ClientFilters // DNS filtering functionality extracted to separate module
+	config       CitrixClientConfig
+	httpClient   *http.Client
+	logger       *logger.ModuleLogger
+	baseURL      string   // Active OData base URL (with /Citrix/Monitor/OData/v4/Data suffix)
+	allBaseURLs  []string // All OData base URLs (primary + fallbacks, with suffix)
+	filters      *ClientFilters
 }
 
 // Ensure citrixClient implements CitrixClient interface
@@ -30,14 +31,21 @@ func NewCitrixClient(config CitrixClientConfig, baseLogger *logger.Logger) (Citr
 	// Create module-specific logger for citrix client
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.citrix.client")
 
-	// Normalize baseURL and add Citrix Monitor OData path if not present
-	baseURL := strings.TrimSuffix(config.BaseURL, "/")
+	// Build all OData base URLs (primary + fallbacks)
+	normalizeODataURL := func(rawURL string) string {
+		u := strings.TrimSuffix(rawURL, "/")
+		if !strings.Contains(u, "/Citrix/Monitor/OData") {
+			u += "/Citrix/Monitor/OData/v4/Data"
+		} else if !strings.HasSuffix(u, "/Data") {
+			u += "/Data"
+		}
+		return u
+	}
 
-	// Add complete Citrix Monitor OData API path if not already present
-	if !strings.Contains(baseURL, "/Citrix/Monitor/OData") {
-		baseURL = baseURL + "/Citrix/Monitor/OData/v4/Data"
-	} else if !strings.HasSuffix(baseURL, "/Data") {
-		baseURL = baseURL + "/Data"
+	baseURL := normalizeODataURL(config.BaseURL)
+	allBaseURLs := []string{baseURL}
+	for _, fb := range config.FallbackURLs {
+		allBaseURLs = append(allBaseURLs, normalizeODataURL(fb))
 	}
 
 	// Create HTTP client with TLS configuration
@@ -102,57 +110,68 @@ func NewCitrixClient(config CitrixClientConfig, baseLogger *logger.Logger) (Citr
 	}
 
 	client := &citrixClient{
-		config:     config,
-		httpClient: httpClient,
-		logger:     moduleLogger,
-		baseURL:    baseURL,
-		filters:    NewClientFilters(baseLogger),
+		config:      config,
+		httpClient:  httpClient,
+		logger:      moduleLogger,
+		baseURL:     baseURL,
+		allBaseURLs: allBaseURLs,
+		filters:     NewClientFilters(baseLogger),
 	}
 
 	return client, nil
 }
 
-// Connect establishes a connection to the Citrix OData API endpoint
+// Connect establishes a connection to the Citrix OData API endpoint.
+// Tries all configured URLs (primary + fallbacks) and uses the first that responds.
 func (c *citrixClient) Connect(ctx context.Context) error {
 	c.logger.Debug().
-		Str("base_url", c.baseURL).
+		Str("primary_url", c.baseURL).
+		Int("fallback_count", len(c.allBaseURLs)-1).
 		Str("auth_method", c.config.AuthMethod).
 		Msg("Connecting to Citrix OData API")
 
-	// Test connection by performing a simple GET request to the service root
-	testURL := c.baseURL
-	req, err := http.NewRequestWithContext(ctx, "GET", testURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create test request: %v", err)
-	}
+	var lastErr error
+	for _, candidateURL := range c.allBaseURLs {
+		req, err := http.NewRequestWithContext(ctx, "GET", candidateURL, nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
 
-	// Add required Citrix headers
-	c.addCitrixHeaders(req)
+		c.addCitrixHeaders(req)
+		c.addAuthHeaders(req)
 
-	// Add authentication headers
-	c.addAuthHeaders(req)
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			c.logger.Debug().
+				Err(err).
+				Str("url", candidateURL).
+				Msg("Director URL unreachable, trying next")
+			lastErr = err
+			continue
+		}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to connect to Citrix OData API: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
-		c.logger.Debug().
-			Int("status_code", resp.StatusCode).
-			Str("response_body", string(body)).
-			Str("test_url", testURL).
-			Msg("Connection test failed with error response")
-		return fmt.Errorf("connection test failed with status %d: %s", resp.StatusCode, string(body))
+		resp.Body.Close()
+
+		if resp.StatusCode >= 400 {
+			c.logger.Debug().
+				Int("status_code", resp.StatusCode).
+				Str("url", candidateURL).
+				Msg("Director URL returned error, trying next")
+			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+			continue
+		}
+
+		// Success — use this URL as the active base
+		c.baseURL = candidateURL
+		c.logger.Info().
+			Str("active_url", candidateURL).
+			Msg("Successfully connected to Citrix OData API")
+		return nil
 	}
 
-	c.logger.Debug().
-		Int("status_code", resp.StatusCode).
-		Msg("Successfully connected to Citrix OData API")
-
-	return nil
+	return fmt.Errorf("failed to connect to any Director URL: %v", lastErr)
 }
 
 // Disconnect closes the connection
