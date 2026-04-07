@@ -16,9 +16,9 @@ func (mc *MetricsCollector) CollectLoadMetrics(ctx context.Context, timestamp ti
 
 	loadIndexes, err := mc.client.GetLoadIndexes(ctx)
 	if err != nil {
-		// LoadIndexes endpoint may not exist on all CVAD versions — return zeros silently
-		mc.logger.Debug().Err(err).Msg("LoadIndexes endpoint unavailable - returning zero metrics")
-		return mc.createZeroLoadMetrics(timestamp), nil
+		// LoadIndexes endpoint may not exist on all CVAD versions — skip entirely
+		mc.logger.Debug().Err(err).Msg("LoadIndexes endpoint unavailable - skipping load metrics")
+		return nil, nil
 	}
 
 	if len(loadIndexes) == 0 {

@@ -1434,8 +1434,8 @@ func TestCollectLoadMetrics_EndpointError(t *testing.T) {
 	collector := NewMetricsCollector(mockClient, baseLogger)
 
 	metrics, err := collector.CollectLoadMetrics(context.Background(), time.Now())
-	assert.NoError(t, err, "Should not error - returns zero metrics on endpoint failure")
-	assert.Len(t, metrics, 7, "Should return 7 zero-value load metrics")
+	assert.NoError(t, err, "Should not error on endpoint failure")
+	assert.Nil(t, metrics, "Should return nil when endpoint is unavailable")
 
 	mockClient.AssertExpectations(t)
 }
