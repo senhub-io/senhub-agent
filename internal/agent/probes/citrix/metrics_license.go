@@ -83,12 +83,13 @@ type LicenseServerResponse struct {
 }
 
 // collectLicenseFromServer queries the Citrix License Server directly via its web API.
-// Tries all configured URLs (primary + fallbacks) with multiple known API endpoints.
+// Tries all API endpoints on the primary URL first. Only falls back to secondary URLs
+// if the primary is completely unreachable.
 func (mc *MetricsCollector) collectLicenseFromServer(ctx context.Context, timestamp time.Time) ([]datapoint.DataPoint, error) {
-	// Build list of all license server URLs
-	allURLs := []string{strings.TrimSuffix(mc.licenseConfig.URL, "/")}
+	// Build ordered list: primary first, then fallbacks
+	serverURLs := []string{strings.TrimSuffix(mc.licenseConfig.URL, "/")}
 	for _, fb := range mc.licenseConfig.FallbackURLs {
-		allURLs = append(allURLs, strings.TrimSuffix(fb, "/"))
+		serverURLs = append(serverURLs, strings.TrimSuffix(fb, "/"))
 	}
 
 	// Create NTLM-capable HTTP client
@@ -103,7 +104,6 @@ func (mc *MetricsCollector) collectLicenseFromServer(ctx context.Context, timest
 		Timeout:   15 * time.Second,
 	}
 
-	// Try known API endpoints in order of likelihood
 	endpoints := []string{
 		"/api/1.0/license/usage",
 		"/api/license/usage",
@@ -111,7 +111,15 @@ func (mc *MetricsCollector) collectLicenseFromServer(ctx context.Context, timest
 		"/api/licensing/inventory",
 	}
 
-	for _, serverURL := range allURLs {
+	for i, serverURL := range serverURLs {
+		if i > 0 {
+			mc.logger.Warn().
+				Str("primary", serverURLs[0]).
+				Str("fallback", serverURL).
+				Msg("Primary license server unreachable, trying fallback")
+		}
+
+		serverReachable := false
 		for _, endpoint := range endpoints {
 			url := serverURL + endpoint
 
@@ -122,74 +130,85 @@ func (mc *MetricsCollector) collectLicenseFromServer(ctx context.Context, timest
 			req.Header.Set("Accept", "application/json")
 			req.SetBasicAuth(mc.licenseConfig.Auth.Username, mc.licenseConfig.Auth.Password)
 
-		resp, err := client.Do(req)
-		if err != nil {
-			mc.logger.Debug().Err(err).Str("endpoint", endpoint).Msg("License server endpoint unreachable")
-			continue
-		}
+			resp, err := client.Do(req)
+			if err != nil {
+				mc.logger.Debug().Err(err).Str("url", url).Msg("License server endpoint unreachable")
+				break // Server is down — no point trying other endpoints on this URL
+			}
 
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+			serverReachable = true
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
 
-		if resp.StatusCode != http.StatusOK {
-			mc.logger.Debug().
-				Int("status", resp.StatusCode).
-				Str("endpoint", endpoint).
-				Msg("License server endpoint returned non-200")
-			continue
-		}
-
-		// Try to parse as array of license pools
-		var licenses []LicenseServerResponse
-		if err := json.Unmarshal(body, &licenses); err != nil {
-			// Try single object
-			var single LicenseServerResponse
-			if err2 := json.Unmarshal(body, &single); err2 != nil {
+			if resp.StatusCode != http.StatusOK {
 				mc.logger.Debug().
+					Int("status", resp.StatusCode).
 					Str("endpoint", endpoint).
-					Str("body_preview", truncateString(string(body), 500)).
-					Msg("License server response not parseable - trying next endpoint")
+					Msg("License server endpoint returned non-200, trying next endpoint")
 				continue
 			}
-			licenses = []LicenseServerResponse{single}
-		}
 
-		// Filter out system licenses and aggregate
-		var totalInUse, totalAvailable, totalOverdraft int
-		for _, lic := range licenses {
-			if strings.EqualFold(lic.LicenseType, "SYS") {
+			// Try to parse response
+			metrics, err := mc.parseLicenseResponse(body, endpoint, timestamp)
+			if err != nil {
+				mc.logger.Debug().Err(err).Str("endpoint", endpoint).Msg("Could not parse license response")
 				continue
 			}
-			totalInUse += lic.LicensesInUse
-			totalAvailable += lic.LicensesAvailable
-			totalOverdraft += lic.LicenseOverdraft
+			if metrics != nil {
+				return metrics, nil
+			}
 		}
 
-		if totalAvailable == 0 && totalInUse == 0 {
-			mc.logger.Debug().Str("endpoint", endpoint).Msg("License server returned zero data")
-			continue
-		}
-
-		mc.logger.Info().
-			Int("in_use", totalInUse).
-			Int("available", totalAvailable).
-			Int("overdraft", totalOverdraft).
-			Str("endpoint", endpoint).
-			Msg("License data retrieved from License Server")
-
-		// Map to our standard metrics
-		return mc.buildLicenseMetrics(timestamp,
-			totalInUse,       // active sessions ≈ licenses in use
-			totalInUse,       // peak = current (we don't have historical)
-			0,                // unique users not available from this source
-			totalAvailable,   // grace sessions ≈ available licenses
-			totalOverdraft > 0, // grace active if overdraft
-			0,                // grace hours not available
-		), nil
+		// If server was reachable but no endpoint worked, don't try fallbacks
+		// (the server is up, it just doesn't have the expected API)
+		if serverReachable {
+			return nil, fmt.Errorf("license server %s is reachable but no API endpoint returned valid data", serverURL)
 		}
 	}
 
-	return nil, fmt.Errorf("no working license server endpoint found at %v", allURLs)
+	return nil, fmt.Errorf("no license server reachable (tried %d URL(s))", len(serverURLs))
+}
+
+// parseLicenseResponse parses a license server response body and returns metrics if valid
+func (mc *MetricsCollector) parseLicenseResponse(body []byte, endpoint string, timestamp time.Time) ([]datapoint.DataPoint, error) {
+	var licenses []LicenseServerResponse
+	if err := json.Unmarshal(body, &licenses); err != nil {
+		var single LicenseServerResponse
+		if err2 := json.Unmarshal(body, &single); err2 != nil {
+			return nil, fmt.Errorf("response not parseable: %v", err2)
+		}
+		licenses = []LicenseServerResponse{single}
+	}
+
+	var totalInUse, totalAvailable, totalOverdraft int
+	for _, lic := range licenses {
+		if strings.EqualFold(lic.LicenseType, "SYS") {
+			continue
+		}
+		totalInUse += lic.LicensesInUse
+		totalAvailable += lic.LicensesAvailable
+		totalOverdraft += lic.LicenseOverdraft
+	}
+
+	if totalAvailable == 0 && totalInUse == 0 {
+		return nil, nil // Valid response but no data
+	}
+
+	mc.logger.Info().
+		Int("in_use", totalInUse).
+		Int("available", totalAvailable).
+		Int("overdraft", totalOverdraft).
+		Str("endpoint", endpoint).
+		Msg("License data retrieved from License Server")
+
+	return mc.buildLicenseMetrics(timestamp,
+		totalInUse,
+		totalInUse,
+		0,
+		totalAvailable,
+		totalOverdraft > 0,
+		0,
+	), nil
 }
 
 // buildLicenseMetrics creates the standardized license metric datapoints
