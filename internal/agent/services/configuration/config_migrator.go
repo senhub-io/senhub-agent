@@ -80,6 +80,20 @@ func (cm *ConfigMigrator) MigrateIfNeeded() error {
 
 	if _, hasType := firstProbe["type"]; hasType {
 		cm.logger.Debug().Msg("Configuration already in version 2 format (has 'type' field)")
+
+		// Run param rename migrations on v2 configs
+		if changed := cm.migrateParamRenames(probesList); changed {
+			cm.logger.Info().Msg("Applying parameter rename migration")
+			migratedData, err := yaml.Marshal(rawConfig)
+			if err != nil {
+				return fmt.Errorf("failed to marshal config after param rename: %w", err)
+			}
+			if err := os.WriteFile(cm.configPath, migratedData, 0600); err != nil {
+				return fmt.Errorf("failed to write config after param rename: %w", err)
+			}
+			cm.logger.Info().Msg("Parameter rename migration applied successfully")
+		}
+
 		return nil
 	}
 
@@ -350,6 +364,61 @@ func (cm *ConfigMigrator) reorderProbeMap(probeNode *yaml.Node) {
 	}
 
 	probeNode.Content = newContent
+}
+
+// paramRenameRule defines a parameter rename: probe type + old name → new name
+type paramRenameRule struct {
+	probeType string
+	oldParam  string
+	newParam  string
+}
+
+// paramRenameRules lists all parameter renames to apply automatically
+var paramRenameRules = []paramRenameRule{
+	{probeType: "citrix", oldParam: "base_url", newParam: "director_url"},
+}
+
+// migrateParamRenames renames deprecated parameters in probe configs.
+// Returns true if any change was made.
+func (cm *ConfigMigrator) migrateParamRenames(probesList []interface{}) bool {
+	changed := false
+
+	for _, probeRaw := range probesList {
+		probe, ok := probeRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		probeType, _ := probe["type"].(string)
+		params, ok := probe["params"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		for _, rule := range paramRenameRules {
+			if probeType != rule.probeType {
+				continue
+			}
+
+			// Only rename if old param exists AND new param doesn't
+			if oldVal, hasOld := params[rule.oldParam]; hasOld {
+				if _, hasNew := params[rule.newParam]; !hasNew {
+					params[rule.newParam] = oldVal
+					delete(params, rule.oldParam)
+					changed = true
+
+					probeName, _ := probe["name"].(string)
+					cm.logger.Info().
+						Str("probe", probeName).
+						Str("old_param", rule.oldParam).
+						Str("new_param", rule.newParam).
+						Msg("Renamed deprecated parameter")
+				}
+			}
+		}
+	}
+
+	return changed
 }
 
 // AddCommentsForNewParameters adds commented examples of new optional parameters

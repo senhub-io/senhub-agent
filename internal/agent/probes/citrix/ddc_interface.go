@@ -28,6 +28,9 @@ type DeliveryControllerClient interface {
 	// GetSiteDetails retrieves detailed information about a specific site
 	GetSiteDetails(ctx context.Context, siteName string) (*DDCSiteDetails, error)
 
+	// GetLicenseInfo retrieves licensing information from the CVAD Sites endpoint
+	GetLicenseInfo(ctx context.Context, siteName string) (*DDCSiteLicenseInfo, error)
+
 	// TestConnectivity tests the connection to the Delivery Controller
 	TestConnectivity(ctx context.Context) error
 }
