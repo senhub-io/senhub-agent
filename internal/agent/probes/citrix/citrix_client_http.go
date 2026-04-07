@@ -275,9 +275,9 @@ func (c *citrixClient) getODataCollectionWithExpand(ctx context.Context, endpoin
 func (c *citrixClient) performRequest(ctx context.Context, url string, result interface{}) (nextLink string, err error) {
 	var lastErr error
 
+	// Try retries on the active URL
 	for attempt := 0; attempt < c.config.MaxRetryAttempts; attempt++ {
 		if attempt > 0 {
-			// Exponential backoff
 			delay := time.Duration(float64(time.Second) * c.config.RetryBackoffFactor * float64(attempt))
 			c.logger.Debug().
 				Int("attempt", attempt+1).
@@ -301,6 +301,34 @@ func (c *citrixClient) performRequest(ctx context.Context, url string, result in
 			Int("attempt", attempt+1).
 			Int("max_attempts", c.config.MaxRetryAttempts).
 			Msg("OData request failed, will retry if attempts remaining")
+	}
+
+	// All retries failed on active URL — try failover if we have fallbacks
+	if len(c.fallbackURLs) > 0 {
+		// Determine which endpoint was being called (strip the base URL prefix)
+		endpoint := strings.TrimPrefix(url, c.baseURL)
+
+		for _, fbURL := range c.fallbackURLs {
+			if fbURL == c.baseURL {
+				continue // Skip the current active URL
+			}
+
+			failoverURL := fbURL + endpoint
+			c.logger.Warn().
+				Str("failed_url", c.baseURL).
+				Str("failover_url", fbURL).
+				Msg("Active Director unresponsive, failing over")
+
+			nextLink, lastErr = c.doRequest(ctx, failoverURL, result)
+			if lastErr == nil {
+				// Failover succeeded — switch active URL for subsequent requests
+				c.baseURL = fbURL
+				c.logger.Warn().
+					Str("new_active_url", fbURL).
+					Msg("Failover successful, switched active Director")
+				return nextLink, nil
+			}
+		}
 	}
 
 	return "", fmt.Errorf("request failed after %d attempts: %v", c.config.MaxRetryAttempts, lastErr)
