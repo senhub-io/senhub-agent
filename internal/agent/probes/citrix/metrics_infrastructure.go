@@ -215,7 +215,7 @@ func (mc *MetricsCollector) createDetailedFaultStateMetrics(faultStateCounts map
 
 	// Total multi-session faulty machines
 	metrics = append(metrics, datapoint.DataPoint{
-		Name:      MetricMachinesTotal,
+		Name:      MetricMachinesFaultyTotal,
 		Value:     float32(totalFaultyCount),
 		Timestamp: timestamp,
 		Tags: []tags.Tag{
