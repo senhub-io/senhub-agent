@@ -258,130 +258,39 @@ func TestConfigMigrator_NoMigrationNeeded(t *testing.T) {
 	}
 }
 
-func TestConfigMigrator_MigrateParamRenamesInPlace(t *testing.T) {
+func TestConfigMigrator_MigrateParamRenamesInPlace_NoOp(t *testing.T) {
 	testArgs := &cliArgs.ParsedArgs{}
 	baseLogger := logger.NewLogger(testArgs)
 
-	writeConfig := func(t *testing.T, content string) (string, *ConfigMigrator) {
-		t.Helper()
-		tempDir := t.TempDir()
-		configPath := filepath.Join(tempDir, "agent-config.yaml")
-		if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
-			t.Fatal(err)
-		}
-		return configPath, NewConfigMigrator(configPath, baseLogger)
-	}
-
-	readConfig := func(t *testing.T, path string) string {
-		t.Helper()
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return string(data)
-	}
-
-	t.Run("renames base_url to director_url preserving format", func(t *testing.T) {
-		config := `config_version: 2
-probes:
+	// migrateParamRenamesInPlace is intentionally a no-op.
+	// Auto-rename was removed because text replacement cannot distinguish
+	// between probe types (would break netscaler's base_url).
+	// Old format (base_url/director_url) is handled at runtime.
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "agent-config.yaml")
+	config := `probes:
   - name: citrix
     type: citrix
     params:
       base_url: "https://director.example.com"
-      interval: 120
-      auth:
-        username: "DOMAIN\\user"
-`
-		path, migrator := writeConfig(t, config)
-		err := migrator.migrateParamRenamesInPlace()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		result := readConfig(t, path)
-		if strings.Contains(result, "base_url:") {
-			t.Error("base_url should have been renamed")
-		}
-		if !strings.Contains(result, "director_url:") {
-			t.Error("director_url should be present")
-		}
-		if !strings.Contains(result, "https://director.example.com") {
-			t.Error("URL value should be preserved")
-		}
-		if !strings.Contains(result, "interval: 120") {
-			t.Error("other fields should be preserved")
-		}
-	})
-
-	t.Run("no change when director_url already exists", func(t *testing.T) {
-		config := `probes:
-  - name: citrix
-    type: citrix
+  - name: netscaler
+    type: netscaler
     params:
-      director_url: "https://director.example.com"
+      base_url: "https://netscaler.example.com"
 `
-		path, migrator := writeConfig(t, config)
-		err := migrator.migrateParamRenamesInPlace()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+	if err := os.WriteFile(configPath, []byte(config), 0600); err != nil {
+		t.Fatal(err)
+	}
 
-		result := readConfig(t, path)
-		if result != config {
-			t.Error("config should not be modified when director_url already exists")
-		}
-	})
+	migrator := NewConfigMigrator(configPath, baseLogger)
+	err := migrator.migrateParamRenamesInPlace()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-	t.Run("no change when both exist", func(t *testing.T) {
-		config := `probes:
-  - name: citrix
-    type: citrix
-    params:
-      base_url: "https://old.example.com"
-      director_url: "https://new.example.com"
-`
-		path, migrator := writeConfig(t, config)
-		err := migrator.migrateParamRenamesInPlace()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		result := readConfig(t, path)
-		if result != config {
-			t.Error("config should not be modified when both params exist")
-		}
-	})
-
-	t.Run("preserves comments and formatting", func(t *testing.T) {
-		config := `# My agent config
-config_version: 2
-probes:
-  - name: citrix
-    type: citrix
-    params:
-      base_url: "https://director.example.com"  # Director URL
-      # Delivery controller config
-      delivery_controller:
-        url: "https://ddc.example.com"
-`
-		path, migrator := writeConfig(t, config)
-		err := migrator.migrateParamRenamesInPlace()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		result := readConfig(t, path)
-		if !strings.Contains(result, "# My agent config") {
-			t.Error("top comment should be preserved")
-		}
-		if !strings.Contains(result, "# Director URL") {
-			t.Error("inline comment should be preserved")
-		}
-		if !strings.Contains(result, "# Delivery controller config") {
-			t.Error("block comment should be preserved")
-		}
-		if !strings.Contains(result, "director_url:") {
-			t.Error("base_url should be renamed to director_url")
-		}
-	})
+	// File should be unchanged
+	data, _ := os.ReadFile(configPath)
+	if string(data) != config {
+		t.Error("config should not be modified - migration is a no-op")
+	}
 }
