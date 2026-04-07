@@ -77,7 +77,8 @@ probes:
   - name: citrix-production
     type: citrix
     params:
-      base_url: "https://citrix-director.company.com"
+      director_url: "https://citrix-director.company.com"
+      # license_server: "https://citrix-license:8083"  # Optional: license usage monitoring
       interval: 120
       auth:
         username: "DOMAIN\\admin"

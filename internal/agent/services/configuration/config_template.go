@@ -98,7 +98,7 @@ const ProbeExamplesTemplate = `
 # - name: citrix                         # Display name (example: "Production Citrix")
 #   type: citrix                         # Probe type
 #   params:
-#     base_url: "https://citrix-director.company.com"  # REQUIRED (API path added automatically)
+#     director_url: "https://citrix-director.company.com"  # REQUIRED (API path added automatically)
 #
 #     # Optional: Delivery Controller for site filtering
 #     delivery_controller:
@@ -106,6 +106,9 @@ const ProbeExamplesTemplate = `
 #       fallback_urls:
 #         - "https://citrix-ddc-backup.company.com"
 #       site_filter: "SITE-NAME"  # Only monitor this site
+#
+#     # Optional: License Server for license usage monitoring
+#     license_server: "https://citrix-license-server:8083"
 #
 #     interval: 120               # Optional, default: 120s (2min)
 #

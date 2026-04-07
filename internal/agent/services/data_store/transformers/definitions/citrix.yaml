@@ -132,6 +132,74 @@ metrics:
     display_name: "Other Failures"
     unit: "#"
 
+  # Load Index Metrics (VDA resource utilization, values in %)
+  - name: "load_index_effective"
+    channel: "load_index_effective"
+    display_name: "Load Index Effective Avg"
+    unit: "%"
+
+  - name: "load_index_cpu"
+    channel: "load_index_cpu"
+    display_name: "Load Index CPU Avg"
+    unit: "%"
+
+  - name: "load_index_memory"
+    channel: "load_index_memory"
+    display_name: "Load Index Memory Avg"
+    unit: "%"
+
+  - name: "load_index_disk"
+    channel: "load_index_disk"
+    display_name: "Load Index Disk Avg"
+    unit: "%"
+
+  - name: "load_index_network"
+    channel: "load_index_network"
+    display_name: "Load Index Network Avg"
+    unit: "%"
+
+  - name: "load_index_sessions"
+    channel: "load_index_sessions"
+    display_name: "Load Index Sessions Avg"
+    unit: "%"
+
+  - name: "load_overloaded_machines"
+    channel: "load_overloaded_machines"
+    display_name: "Overloaded Machines"
+    unit: "#"
+
+  # License Metrics (from DDC Sites endpoint)
+  - name: "license_sessions_active"
+    channel: "license_sessions_active"
+    display_name: "Licensed Sessions Active"
+    unit: "#"
+
+  - name: "license_peak_concurrent"
+    channel: "license_peak_concurrent"
+    display_name: "License Peak Concurrent Users"
+    unit: "#"
+
+  - name: "license_unique_users"
+    channel: "license_unique_users"
+    display_name: "License Unique Users"
+    unit: "#"
+
+  - name: "license_grace_sessions_left"
+    channel: "license_grace_sessions_left"
+    display_name: "License Grace Sessions Left"
+    unit: "#"
+
+  - name: "license_grace_period_active"
+    channel: "license_grace_period_active"
+    display_name: "License Grace Period Active"
+    unit: "#"
+
+  - name: "license_grace_hours_left"
+    channel: "license_grace_hours_left"
+    display_name: "License Grace Hours Left"
+    unit: "custom"
+    customunit: "h"
+
   # Machine Fault State Metrics (Director: "Machines par état")
   - name: "boot_failure"
     channel: "boot_failure"

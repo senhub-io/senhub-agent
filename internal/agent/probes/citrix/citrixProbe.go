@@ -41,6 +41,9 @@ type citrixProbe struct {
 	siteFilter       string
 	filteredMachines []string
 
+	// License Server configuration (optional)
+	licenseServerURL string
+
 	// Site inventory service
 	inventoryService *InventoryService
 
@@ -59,10 +62,14 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		interval = time.Duration(cfgInterval) * time.Second
 	}
 
-	// Extract base configuration parameters
-	baseURL, ok := config["base_url"].(string)
+	// Extract Director URL (prefer director_url, fallback to base_url for backward compatibility)
+	baseURL, ok := config["director_url"].(string)
 	if !ok {
-		return nil, fmt.Errorf("citrix probe requires 'base_url' configuration")
+		baseURL, ok = config["base_url"].(string)
+		if !ok {
+			return nil, fmt.Errorf("citrix probe requires 'director_url' (or 'base_url') configuration")
+		}
+		moduleLogger.Info().Str("base_url", baseURL).Msg("Using deprecated 'base_url' parameter - consider renaming to 'director_url'")
 	}
 
 	// environment parameter removed - was not used in metrics generation
@@ -150,6 +157,22 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 			Msg("Delivery Controller configuration detected")
 	}
 
+	// Extract license server configuration (optional)
+	var licenseServerURL string
+	if lsCfg, ok := config["license_server"].(map[string]interface{}); ok {
+		if url, ok := lsCfg["url"].(string); ok {
+			licenseServerURL = url
+			moduleLogger.Info().
+				Str("license_server_url", licenseServerURL).
+				Msg("License Server configuration detected")
+		}
+	} else if lsURL, ok := config["license_server"].(string); ok {
+		licenseServerURL = lsURL
+		moduleLogger.Info().
+			Str("license_server_url", licenseServerURL).
+			Msg("License Server configuration detected")
+	}
+
 	// Extract debug mode configuration
 	debugMode := false
 	if debug, ok := config["debug_identifiers"].(bool); ok {
@@ -178,6 +201,7 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		retryBackoffFactor: retryBackoffFactor,
 		ddcConfig:          ddcConfig,
 		siteFilter:         siteFilter,
+		licenseServerURL:   licenseServerURL,
 		debugMode:          debugMode,
 	}
 
@@ -277,6 +301,14 @@ func (p *citrixProbe) OnStart(quitChannel chan struct{}) error {
 		probe:          p,
 	}
 	p.metricsCollector = NewMetricsCollectorWithEnv(filteredClient, "", p.baseURL, p.logger.Logger)
+
+	// Pass license-related config to the metrics collector
+	p.metricsCollector.ddcClient = p.ddcClient
+	p.metricsCollector.siteFilter = p.siteFilter
+	p.metricsCollector.licenseServerURL = p.licenseServerURL
+	p.metricsCollector.username = p.username
+	p.metricsCollector.password = p.password
+	p.metricsCollector.verifySSL = p.verifySSL
 
 	p.logger.Debug().
 		Str("base_url", p.baseURL).
@@ -436,6 +468,10 @@ func (f *filteredCitrixClient) GetDeliveryGroupById(ctx context.Context, deliver
 
 func (f *filteredCitrixClient) GetConnections(ctx context.Context, sinceTime time.Time) ([]Connection, error) {
 	return f.originalClient.GetConnections(ctx, sinceTime)
+}
+
+func (f *filteredCitrixClient) GetLoadIndexes(ctx context.Context) ([]LoadIndex, error) {
+	return f.originalClient.GetLoadIndexes(ctx)
 }
 
 func (f *filteredCitrixClient) SetValidMachineDNS(dnsNames []string) {
