@@ -10,17 +10,14 @@ import (
 
 // MetricsCollector handles the collection and calculation of all Citrix metrics
 type MetricsCollector struct {
-	client           CitrixClient
-	logger           *logger.ModuleLogger
-	helper           *CommonMetricsHelper
-	environment      string
-	citrixURL        string
-	ddcClient        DeliveryControllerClient // Optional: for license metrics via DDC
-	siteFilter       string                   // Optional: site name for DDC queries
-	licenseServerURL string                   // Optional: direct license server URL (port 8083)
-	username         string                   // Credentials for license server NTLM
-	password         string
-	verifySSL        bool
+	client        CitrixClient
+	logger        *logger.ModuleLogger
+	helper        *CommonMetricsHelper
+	environment   string
+	citrixURL     string
+	ddcClient     DeliveryControllerClient // Optional: for license metrics via DDC
+	siteFilter    string                   // Optional: site name for DDC queries
+	licenseConfig *ComponentConfig         // Optional: license server configuration
 }
 
 // NewMetricsCollector creates a new metrics collector
@@ -94,7 +91,7 @@ func (mc *MetricsCollector) CollectMetricsWithInventory(ctx context.Context, tim
 	}
 
 	// 6. License metrics (DDC fallback → License Server direct → skip)
-	if mc.ddcClient != nil || mc.licenseServerURL != "" {
+	if mc.ddcClient != nil || mc.licenseConfig != nil {
 		if license, err := mc.CollectLicenseMetrics(ctx, timestamp); err != nil {
 			mc.logger.Debug().Err(err).Msg("License metrics collection failed")
 		} else if len(license) > 0 {
