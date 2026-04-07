@@ -81,17 +81,10 @@ func (cm *ConfigMigrator) MigrateIfNeeded() error {
 	if _, hasType := firstProbe["type"]; hasType {
 		cm.logger.Debug().Msg("Configuration already in version 2 format (has 'type' field)")
 
-		// Run param rename migrations on v2 configs
-		if changed := cm.migrateParamRenames(probesList); changed {
-			cm.logger.Info().Msg("Applying parameter rename migration")
-			migratedData, err := yaml.Marshal(rawConfig)
-			if err != nil {
-				return fmt.Errorf("failed to marshal config after param rename: %w", err)
-			}
-			if err := os.WriteFile(cm.configPath, migratedData, 0600); err != nil {
-				return fmt.Errorf("failed to write config after param rename: %w", err)
-			}
-			cm.logger.Info().Msg("Parameter rename migration applied successfully")
+		// Run param rename migrations on v2 configs using text replacement
+		// to preserve original YAML formatting, comments, and field order
+		if err := cm.migrateParamRenamesInPlace(); err != nil {
+			cm.logger.Warn().Err(err).Msg("Param rename migration failed")
 		}
 
 		return nil
@@ -366,59 +359,51 @@ func (cm *ConfigMigrator) reorderProbeMap(probeNode *yaml.Node) {
 	probeNode.Content = newContent
 }
 
-// paramRenameRule defines a parameter rename: probe type + old name → new name
+// paramRenameRule defines a text replacement for parameter renames
 type paramRenameRule struct {
-	probeType string
-	oldParam  string
-	newParam  string
+	oldText string // exact YAML key to find (e.g. "base_url:")
+	newText string // replacement key (e.g. "director_url:")
 }
 
-// paramRenameRules lists all parameter renames to apply automatically
+// paramRenameRules lists all parameter renames to apply via text replacement
 var paramRenameRules = []paramRenameRule{
-	{probeType: "citrix", oldParam: "base_url", newParam: "director_url"},
+	{oldText: "base_url:", newText: "director_url:"},
 }
 
-// migrateParamRenames renames deprecated parameters in probe configs.
-// Returns true if any change was made.
-func (cm *ConfigMigrator) migrateParamRenames(probesList []interface{}) bool {
+// migrateParamRenamesInPlace performs parameter renames directly in the YAML file
+// using text replacement, preserving formatting, comments, and field order.
+func (cm *ConfigMigrator) migrateParamRenamesInPlace() error {
+	data, err := os.ReadFile(cm.configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read config: %w", err)
+	}
+
+	content := string(data)
 	changed := false
 
-	for _, probeRaw := range probesList {
-		probe, ok := probeRaw.(map[string]interface{})
-		if !ok {
-			continue
-		}
+	for _, rule := range paramRenameRules {
+		// Only replace if old key exists and new key doesn't
+		if strings.Contains(content, rule.oldText) && !strings.Contains(content, rule.newText) {
+			content = strings.ReplaceAll(content, rule.oldText, rule.newText)
+			changed = true
 
-		probeType, _ := probe["type"].(string)
-		params, ok := probe["params"].(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		for _, rule := range paramRenameRules {
-			if probeType != rule.probeType {
-				continue
-			}
-
-			// Only rename if old param exists AND new param doesn't
-			if oldVal, hasOld := params[rule.oldParam]; hasOld {
-				if _, hasNew := params[rule.newParam]; !hasNew {
-					params[rule.newParam] = oldVal
-					delete(params, rule.oldParam)
-					changed = true
-
-					probeName, _ := probe["name"].(string)
-					cm.logger.Info().
-						Str("probe", probeName).
-						Str("old_param", rule.oldParam).
-						Str("new_param", rule.newParam).
-						Msg("Renamed deprecated parameter")
-				}
-			}
+			cm.logger.Info().
+				Str("old", rule.oldText).
+				Str("new", rule.newText).
+				Msg("Renamed deprecated parameter in config file")
 		}
 	}
 
-	return changed
+	if !changed {
+		return nil
+	}
+
+	if err := os.WriteFile(cm.configPath, []byte(content), 0600); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	cm.logger.Info().Msg("Parameter rename migration applied successfully")
+	return nil
 }
 
 // AddCommentsForNewParameters adds commented examples of new optional parameters
