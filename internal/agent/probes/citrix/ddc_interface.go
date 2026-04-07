@@ -50,11 +50,12 @@ type TokenResponse struct {
 
 // DeliveryControllerConfig contains configuration for the Delivery Controller client
 type DeliveryControllerConfig struct {
-	URL          string   `json:"url"`
-	FallbackURLs []string `json:"fallback_urls"`
-	SiteFilter   string   `json:"site_filter"`
-	VerifySSL    bool     `json:"verify_ssl"`
+	URL          string        `json:"url"`
+	FallbackURLs []string      `json:"fallback_urls"`
+	SiteFilter   string        `json:"site_filter"`
+	VerifySSL    bool          `json:"verify_ssl"`
 	Timeout      time.Duration
+	Auth         AuthConfig    `json:"auth"`
 }
 
 // AuthConfig contains authentication configuration (shared between Director and DDC)

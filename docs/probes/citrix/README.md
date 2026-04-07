@@ -4,36 +4,73 @@ The Citrix probe monitors Citrix Virtual Apps and Desktops environments through 
 
 ## Quick Start
 
-### Basic Configuration
+### Basic Configuration (Recommended)
+
+```yaml
+probes:
+  - name: citrix
+    params:
+      interval: 120  # 2 minutes recommended
+      timeout: 30
+
+      director:
+        url: "https://citrix-director.company.com"
+        verify_ssl: true
+        auth:
+          username: "DOMAIN\\svc-monitoring"
+          password: "secure-password"
+```
+
+### With Site Filtering and License Monitoring
+
+```yaml
+probes:
+  - name: citrix
+    params:
+      interval: 120
+      timeout: 30
+
+      director:
+        url: "https://citrix-director.company.com"
+        verify_ssl: false
+        auth:
+          username: "DOMAIN\\svc-monitoring"
+          password: "secure-password"
+
+      delivery_controller:         # Optional
+        url: "https://citrix-ddc.company.com"
+        fallback_urls:
+          - "https://citrix-ddc2.company.com"
+        verify_ssl: false
+        site_filter: "PROD"
+        auth:
+          username: "DOMAIN\\svc-ddc"
+          password: "ddc-password"
+
+      license_server:              # Optional
+        url: "https://citrix-license-server:8083"
+        verify_ssl: false
+        auth:
+          username: "DOMAIN\\svc-lic"
+          password: "lic-password"
+```
+
+### Legacy Configuration (Deprecated)
+
+The flat format with global `auth` and `tls` blocks is still supported but deprecated.
+A deprecation warning will be logged at startup. See [Configuration Examples](./configuration-examples.yaml) for migration guidance.
 
 ```yaml
 probes:
   - name: citrix
     params:
       director_url: "https://citrix-director.company.com"
-      interval: 120  # 2 minutes recommended
+      interval: 120
       auth:
         username: "DOMAIN\\svc-monitoring"
         password: "secure-password"
       tls:
         verify_ssl: true
-```
-
-### With Site Filtering (Multi-Site Deployments)
-
-```yaml
-probes:
-  - name: citrix
-    params:
-      director_url: "https://citrix-director.company.com"
-      delivery_controller:
-        url: "https://citrix-ddc.company.com"
-        site_filter: "PROD"  # Filter by specific site
-      license_server: "https://citrix-license-server:8083"  # Optional
-      interval: 120
-      auth:
-        username: "DOMAIN\\svc-monitoring"
-        password: "secure-password"
 ```
 
 ## Documentation Index

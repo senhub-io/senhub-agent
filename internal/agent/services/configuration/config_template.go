@@ -98,29 +98,39 @@ const ProbeExamplesTemplate = `
 # - name: citrix                         # Display name (example: "Production Citrix")
 #   type: citrix                         # Probe type
 #   params:
-#     director_url: "https://citrix-director.company.com"  # REQUIRED (API path added automatically)
+#     interval: 120               # Optional, default: 120s (2min)
+#     timeout: 30                 # Optional, default: 30s
+#
+#     # Director/OData API (REQUIRED)
+#     # Auth method auto-detected: NTLM
+#     director:
+#       url: "https://citrix-director.company.com"  # REQUIRED
+#       verify_ssl: true          # Optional, default: true
+#       auth:
+#         username: "DOMAIN\\user"  # REQUIRED
+#         password: "password"      # REQUIRED
 #
 #     # Optional: Delivery Controller for site filtering
-#     delivery_controller:
-#       url: "https://citrix-ddc.company.com"
-#       fallback_urls:
-#         - "https://citrix-ddc-backup.company.com"
-#       site_filter: "SITE-NAME"  # Only monitor this site
+#     # Auth method auto-detected: Basic
+#     # delivery_controller:
+#     #   url: "https://citrix-ddc.company.com"
+#     #   fallback_urls:
+#     #     - "https://citrix-ddc-backup.company.com"
+#     #   verify_ssl: true
+#     #   site_filter: "SITE-NAME"
+#     #   auth:
+#     #     username: "DOMAIN\\ddc-user"   # Inherits from director if omitted
+#     #     password: "ddc-password"
 #
 #     # Optional: License Server for license usage monitoring
-#     license_server: "https://citrix-license-server:8083"
+#     # Auth method auto-detected: Basic
+#     # license_server:
+#     #   url: "https://citrix-license-server:8083"
+#     #   verify_ssl: true
+#     #   auth:
+#     #     username: "DOMAIN\\lic-user"   # Inherits from director if omitted
+#     #     password: "lic-password"
 #
-#     interval: 120               # Optional, default: 120s (2min)
-#
-#     auth:
-#       # Authentication methods are automatic: NTLM for Director, Basic for DDC
-#       username: "DOMAIN\\user"  # REQUIRED
-#       password: "password"      # REQUIRED
-#
-#     tls:
-#       verify_ssl: true          # Optional, default: true
-#
-#     timeout: 30                 # Optional, default: 30s
 #     retry:
 #       max_attempts: 3           # Optional, default: 3
 #       backoff_factor: 2.0       # Optional, default: 2.0

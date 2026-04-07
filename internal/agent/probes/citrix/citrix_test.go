@@ -1439,3 +1439,206 @@ func TestCollectLoadMetrics_EndpointError(t *testing.T) {
 
 	mockClient.AssertExpectations(t)
 }
+
+// === Per-Component Config Format Tests ===
+
+func TestNewCitrixProbe_NewFormat_DirectorOnly(t *testing.T) {
+	baseLogger := &logger.Logger{}
+
+	config := map[string]interface{}{
+		"interval": 120,
+		"timeout":  30,
+		"director": map[string]interface{}{
+			"url":        "https://director.example.com",
+			"verify_ssl": false,
+			"auth": map[string]interface{}{
+				"username": "DOMAIN\\svc_director",
+				"password": "pass_director",
+			},
+		},
+	}
+
+	probe, err := NewCitrixProbe(config, baseLogger)
+	assert.NoError(t, err)
+	assert.NotNil(t, probe)
+
+	cp := probe.(*citrixProbe)
+	assert.NotNil(t, cp.directorConfig)
+	assert.Equal(t, "https://director.example.com", cp.directorConfig.URL)
+	assert.Equal(t, false, cp.directorConfig.VerifySSL)
+	assert.Equal(t, "ntlm", cp.directorConfig.Auth.Method)
+	assert.Equal(t, "DOMAIN\\svc_director", cp.directorConfig.Auth.Username)
+	assert.Equal(t, "pass_director", cp.directorConfig.Auth.Password)
+	assert.Nil(t, cp.ddcConfig)
+	assert.Nil(t, cp.licenseConfig)
+}
+
+func TestNewCitrixProbe_NewFormat_DirectorMissingAuth(t *testing.T) {
+	baseLogger := &logger.Logger{}
+
+	config := map[string]interface{}{
+		"director": map[string]interface{}{
+			"url": "https://director.example.com",
+		},
+	}
+
+	_, err := NewCitrixProbe(config, baseLogger)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "director.auth.username")
+}
+
+func TestNewCitrixProbe_NewFormat_DirectorMissingURL(t *testing.T) {
+	baseLogger := &logger.Logger{}
+
+	config := map[string]interface{}{
+		"director": map[string]interface{}{
+			"auth": map[string]interface{}{
+				"username": "user",
+				"password": "pass",
+			},
+		},
+	}
+
+	_, err := NewCitrixProbe(config, baseLogger)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "director.url")
+}
+
+func TestNewCitrixProbe_NewFormat_AllComponents(t *testing.T) {
+	baseLogger := &logger.Logger{}
+
+	config := map[string]interface{}{
+		"interval": 120,
+		"timeout":  30,
+		"director": map[string]interface{}{
+			"url":        "https://director.example.com",
+			"verify_ssl": false,
+			"fallback_urls": []interface{}{
+				"https://director2.example.com",
+			},
+			"auth": map[string]interface{}{
+				"username": "DOMAIN\\svc_director",
+				"password": "pass_director",
+			},
+		},
+		"delivery_controller": map[string]interface{}{
+			"url":        "https://ddc1.example.com",
+			"verify_ssl": false,
+			"fallback_urls": []interface{}{
+				"https://ddc2.example.com",
+			},
+			"site_filter": "PROD",
+			"auth": map[string]interface{}{
+				"username": "DOMAIN\\svc_ddc",
+				"password": "pass_ddc",
+			},
+		},
+		"license_server": map[string]interface{}{
+			"url":        "https://license:8083",
+			"verify_ssl": false,
+			"auth": map[string]interface{}{
+				"username": "DOMAIN\\svc_lic",
+				"password": "pass_lic",
+			},
+		},
+	}
+
+	probe, err := NewCitrixProbe(config, baseLogger)
+	assert.NoError(t, err)
+	assert.NotNil(t, probe)
+
+	cp := probe.(*citrixProbe)
+
+	// Director
+	assert.NotNil(t, cp.directorConfig)
+	assert.Equal(t, "https://director.example.com", cp.directorConfig.URL)
+	assert.Equal(t, "ntlm", cp.directorConfig.Auth.Method)
+	assert.Equal(t, "DOMAIN\\svc_director", cp.directorConfig.Auth.Username)
+	assert.Len(t, cp.directorConfig.FallbackURLs, 1)
+
+	// DDC
+	assert.NotNil(t, cp.ddcConfig)
+	assert.Equal(t, "https://ddc1.example.com", cp.ddcConfig.URL)
+	assert.Equal(t, "basic", cp.ddcConfig.Auth.Method)
+	assert.Equal(t, "DOMAIN\\svc_ddc", cp.ddcConfig.Auth.Username)
+	assert.Equal(t, "pass_ddc", cp.ddcConfig.Auth.Password)
+	assert.Equal(t, "PROD", cp.siteFilter)
+	assert.Len(t, cp.ddcConfig.FallbackURLs, 1)
+
+	// License Server
+	assert.NotNil(t, cp.licenseConfig)
+	assert.Equal(t, "https://license:8083", cp.licenseConfig.URL)
+	assert.Equal(t, "basic", cp.licenseConfig.Auth.Method)
+	assert.Equal(t, "DOMAIN\\svc_lic", cp.licenseConfig.Auth.Username)
+	assert.Equal(t, "pass_lic", cp.licenseConfig.Auth.Password)
+}
+
+func TestNewCitrixProbe_NewFormat_DDCInheritsDirectorAuth(t *testing.T) {
+	baseLogger := &logger.Logger{}
+
+	config := map[string]interface{}{
+		"director": map[string]interface{}{
+			"url": "https://director.example.com",
+			"auth": map[string]interface{}{
+				"username": "DOMAIN\\shared_user",
+				"password": "shared_pass",
+			},
+		},
+		"delivery_controller": map[string]interface{}{
+			"url":         "https://ddc.example.com",
+			"site_filter": "SITE1",
+			// No auth block - should inherit from director
+		},
+	}
+
+	probe, err := NewCitrixProbe(config, baseLogger)
+	assert.NoError(t, err)
+
+	cp := probe.(*citrixProbe)
+	assert.NotNil(t, cp.ddcConfig)
+	assert.Equal(t, "basic", cp.ddcConfig.Auth.Method)
+	assert.Equal(t, "DOMAIN\\shared_user", cp.ddcConfig.Auth.Username)
+	assert.Equal(t, "shared_pass", cp.ddcConfig.Auth.Password)
+}
+
+func TestNewCitrixProbe_OldFormat_ProducesSameInternalState(t *testing.T) {
+	baseLogger := &logger.Logger{}
+
+	// Old format config
+	oldConfig := map[string]interface{}{
+		"base_url": "https://director.example.com",
+		"interval": 120,
+		"timeout":  30,
+		"auth": map[string]interface{}{
+			"username": "DOMAIN\\user",
+			"password": "pass",
+		},
+		"tls": map[string]interface{}{
+			"verify_ssl": false,
+		},
+		"delivery_controller": map[string]interface{}{
+			"url":         "https://ddc.example.com",
+			"site_filter": "PROD",
+		},
+	}
+
+	probe, err := NewCitrixProbe(oldConfig, baseLogger)
+	assert.NoError(t, err)
+
+	cp := probe.(*citrixProbe)
+
+	// Director config should be populated from flat fields
+	assert.NotNil(t, cp.directorConfig)
+	assert.Equal(t, "https://director.example.com", cp.directorConfig.URL)
+	assert.Equal(t, "ntlm", cp.directorConfig.Auth.Method)
+	assert.Equal(t, "DOMAIN\\user", cp.directorConfig.Auth.Username)
+	assert.Equal(t, "pass", cp.directorConfig.Auth.Password)
+	assert.Equal(t, false, cp.directorConfig.VerifySSL)
+
+	// DDC config should use global auth
+	assert.NotNil(t, cp.ddcConfig)
+	assert.Equal(t, "https://ddc.example.com", cp.ddcConfig.URL)
+	assert.Equal(t, "basic", cp.ddcConfig.Auth.Method)
+	assert.Equal(t, "DOMAIN\\user", cp.ddcConfig.Auth.Username)
+	assert.Equal(t, "PROD", cp.siteFilter)
+}
