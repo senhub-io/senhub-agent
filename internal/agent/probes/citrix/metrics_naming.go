@@ -11,6 +11,7 @@ const (
 	MetricMachinesUnregistered = "machines_unregistered"
 	MetricMachinesFaulty       = "machines_faulty"
 	MetricMachinesMaintenance  = "machines_maintenance"
+	MetricMachinesFaultyTotal = "machines_faulty_total"
 
 	// Session Metrics
 	MetricSessionsConnected    = "sessions_connected"

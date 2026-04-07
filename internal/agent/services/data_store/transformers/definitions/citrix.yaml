@@ -200,6 +200,11 @@ metrics:
     unit: "custom"
     customunit: "h"
 
+  - name: "machines_faulty_total"
+    channel: "machines_faulty_total"
+    display_name: "Machines Faulty Total (Multi-Session)"
+    unit: "#"
+
   # Machine Fault State Metrics (Director: "Machines par état")
   - name: "boot_failure"
     channel: "boot_failure"
