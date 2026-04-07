@@ -82,11 +82,16 @@ type LicenseServerResponse struct {
 	LicenseType      string `json:"LicenseType"`
 }
 
-// collectLicenseFromServer queries the Citrix License Server directly via its web API
+// collectLicenseFromServer queries the Citrix License Server directly via its web API.
+// Tries all configured URLs (primary + fallbacks) with multiple known API endpoints.
 func (mc *MetricsCollector) collectLicenseFromServer(ctx context.Context, timestamp time.Time) ([]datapoint.DataPoint, error) {
-	baseURL := strings.TrimSuffix(mc.licenseConfig.URL, "/")
+	// Build list of all license server URLs
+	allURLs := []string{strings.TrimSuffix(mc.licenseConfig.URL, "/")}
+	for _, fb := range mc.licenseConfig.FallbackURLs {
+		allURLs = append(allURLs, strings.TrimSuffix(fb, "/"))
+	}
 
-	// Create NTLM-capable HTTP client (same auth as Director)
+	// Create NTLM-capable HTTP client
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: !mc.licenseConfig.VerifySSL, // #nosec G402 - Configurable SSL verification
@@ -106,15 +111,16 @@ func (mc *MetricsCollector) collectLicenseFromServer(ctx context.Context, timest
 		"/api/licensing/inventory",
 	}
 
-	for _, endpoint := range endpoints {
-		url := baseURL + endpoint
+	for _, serverURL := range allURLs {
+		for _, endpoint := range endpoints {
+			url := serverURL + endpoint
 
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			continue
-		}
-		req.Header.Set("Accept", "application/json")
-		req.SetBasicAuth(mc.licenseConfig.Auth.Username, mc.licenseConfig.Auth.Password)
+			req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+			if err != nil {
+				continue
+			}
+			req.Header.Set("Accept", "application/json")
+			req.SetBasicAuth(mc.licenseConfig.Auth.Username, mc.licenseConfig.Auth.Password)
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -180,9 +186,10 @@ func (mc *MetricsCollector) collectLicenseFromServer(ctx context.Context, timest
 			totalOverdraft > 0, // grace active if overdraft
 			0,                // grace hours not available
 		), nil
+		}
 	}
 
-	return nil, fmt.Errorf("no working license server endpoint found at %s", baseURL)
+	return nil, fmt.Errorf("no working license server endpoint found at %v", allURLs)
 }
 
 // buildLicenseMetrics creates the standardized license metric datapoints

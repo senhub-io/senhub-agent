@@ -371,6 +371,7 @@ func (p *citrixProbe) OnStart(quitChannel chan struct{}) error {
 	var err error
 	p.client, err = NewCitrixClient(CitrixClientConfig{
 		BaseURL:            p.directorConfig.URL,
+		FallbackURLs:       p.directorConfig.FallbackURLs,
 		Environment:        "",
 		AuthMethod:         p.directorConfig.Auth.Method,
 		Username:           p.directorConfig.Auth.Username,
