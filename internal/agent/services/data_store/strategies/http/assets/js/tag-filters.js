@@ -168,7 +168,16 @@ class TagFilters {
                 btn.className = 'category-pill active';
                 btn.dataset.category = value;
                 btn.dataset.tag = tagKey;
-                btn.textContent = displayLabel;
+
+                const labelSpan = document.createElement('span');
+                labelSpan.textContent = displayLabel;
+                btn.appendChild(labelSpan);
+
+                const closeIcon = document.createElement('span');
+                closeIcon.className = 'pill-close';
+                closeIcon.textContent = '\u00d7'; // ×
+                btn.appendChild(closeIcon);
+
                 pillsContainer.appendChild(btn);
             });
 
