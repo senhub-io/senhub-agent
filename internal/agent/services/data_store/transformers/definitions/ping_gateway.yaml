@@ -17,3 +17,21 @@ metrics:
     unit: "%"
     category: "connectivity"
     description: "Percentage of ICMP packets lost to the default gateway"
+
+tag_metadata:
+  # System tags (injected by framework)
+  host:
+    type: resource
+    label: "Host"
+  os:
+    type: resource
+    label: "Operating System"
+  platform:
+    type: resource
+    label: "Platform"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"
