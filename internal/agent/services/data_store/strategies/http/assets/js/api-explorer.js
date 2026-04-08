@@ -258,12 +258,12 @@ class APIExplorer {
             this.manualUrlInput.style.display = 'block';
             this.generatedUrlDiv.style.display = 'none';
             this.manualUrlInput.value = this.generatedUrlDiv.textContent;
-            this.editUrlBtn.innerHTML = '🔒 Lock URL';
+            this.editUrlBtn.innerHTML = 'Lock URL';
         } else {
             // Switch back to generated mode
             this.manualUrlInput.style.display = 'none';
             this.generatedUrlDiv.style.display = 'block';
-            this.editUrlBtn.innerHTML = '✏️ Edit URL';
+            this.editUrlBtn.innerHTML = 'Edit URL';
             this.generateURL(); // Regenerate URL
         }
     }
@@ -287,7 +287,7 @@ class APIExplorer {
         const success = await this.base.copyToClipboard(url);
         
         if (success) {
-            this.showButtonSuccess(this.copyUrlBtn, '✅ Copied!', '📋 Copy Sensor URL');
+            this.showButtonSuccess(this.copyUrlBtn, 'Copied!', 'Copy Sensor URL');
         }
     }
 
@@ -451,7 +451,7 @@ class APIExplorer {
         const success = await this.base.copyToClipboard(this.responseArea.textContent);
         
         if (success) {
-            this.showButtonSuccess(this.copyResponseBtn, '✅ Copied!', '📋 Copy Response');
+            this.showButtonSuccess(this.copyResponseBtn, 'Copied!', 'Copy Response');
         }
     }
 

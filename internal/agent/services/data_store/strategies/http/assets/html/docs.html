@@ -143,12 +143,16 @@
 </head>
 <body>
     <div class="header">
-        <h1>
-            <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
-            API Documentation
-        </h1>
-        <div class="nav-breadcrumb">
-            <a href="/web/{{.AgentKey}}/">Dashboard</a> / API Documentation
+        <div class="header-top">
+            <h1>
+                <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
+                SenHub Agent
+            </h1>
+            <nav class="main-nav">
+                <a href="/web/{{.AgentKey}}/dashboard" class="nav-link">Dashboard</a>
+                <a href="/web/{{.AgentKey}}/explorer" class="nav-link">Sensor Builder</a>
+                <a href="/web/{{.AgentKey}}/docs" class="nav-link active">Documentation</a>
+            </nav>
         </div>
     </div>
     
