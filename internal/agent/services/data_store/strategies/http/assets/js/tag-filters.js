@@ -1,7 +1,8 @@
 // SenHub Agent - Tag Filters Module
 
 /**
- * Advanced tag filtering with multi-selection support
+ * Advanced tag filtering with multi-selection support.
+ * Separates category tags (rendered as pills) from resource tags (collapsible sections).
  */
 class TagFilters {
     constructor(base, container, onTagsChanged) {
@@ -10,7 +11,9 @@ class TagFilters {
         this.onTagsChanged = onTagsChanged;
         this.selectedTags = {};
         this.availableTags = {};
-        
+        this.categories = [];
+        this.activeCategories = {}; // tagKey -> Set of active values
+
         this.setupEventListeners();
     }
 
@@ -37,14 +40,18 @@ class TagFilters {
             }
         });
 
-        // Add click handlers for toggling tag sections
+        // Add click handlers for toggling tag sections and category pills
         this.container.addEventListener('click', (e) => {
-            if (e.target.matches('.tag-header-clickable, .tag-header-clickable *')) {
-                // Find the closest tag header
-                const header = e.target.closest('.tag-header-clickable') || e.target;
-                if (header.classList.contains('tag-header-clickable')) {
-                    this.toggleTagSection(header);
-                }
+            // Category pill click
+            const pill = e.target.closest('.category-pill');
+            if (pill) {
+                this.handlePillClick(pill);
+                return;
+            }
+
+            const header = e.target.closest('.tag-header-clickable');
+            if (header) {
+                this.toggleTagSection(header);
             }
         });
     }
@@ -57,129 +64,388 @@ class TagFilters {
 
         try {
             this.base.showLoading(this.container, 'Loading tag filters...');
-            
+
             const data = await this.base.fetchAPI(`info/tags/${probeName}`);
             this.availableTags = data.tags || {};
-            
+            this.categories = data.categories || [];
+
             this.renderTags();
             this.updateSelectedTags();
-            
+
         } catch (error) {
             this.base.showError(this.container, `Failed to load tags: ${error.message}`);
         }
     }
 
     renderTags() {
-        // Filter out redundant tags (technical/internal tags not useful for filtering)
-        const redundantTags = [
-            'host', 'probe_name', 'platform', 'os', 'prtg_metric_id',
-            'drive_id', 'volume_id', 'pool_id', 'adapter', 'connection_name',
-            'ha_node_ip', 'is_local_node', 'vserver_ip', 'vserver_type'  // HA/VServer technical tags
-        ];
-        const alwaysKeepTags = ['url', 'endpoint', 'interface', 'drive', 'drive_name', 'volume_name', 'volume_type', 'pool_name', 'controller', 'raid_type', 'core', 'metric_view', 'metric_type'];
-// Note: fan_name and sensor_name removed - thermal metrics disabled for consistency
-// Note: metric_view and metric_type always shown - functional grouping tags for filtering
-// Note: ha_node_ip, is_local_node, vserver_ip, vserver_type hidden - too technical for UI filtering
+        // Separate tags by type
+        const categoryTags = {};
+        const resourceTags = {};
 
-        const filteredTags = Object.fromEntries(
-            Object.entries(this.availableTags)
-                .filter(([tagKey, tagInfo]) => {
-                    if (redundantTags.includes(tagKey)) return false;
-                    if (alwaysKeepTags.includes(tagKey)) return true;
+        Object.entries(this.availableTags).forEach(([tagKey, tagInfo]) => {
+            const tagType = tagInfo.type || 'resource';
+            const values = tagInfo.values || [];
 
-                    const values = tagInfo.values || [];
-                    return values.length > 1; // Only show tags with multiple values
-                })
-                .sort(([a], [b]) => {
-                    // Always put metric_view and metric_type first
-                    if (a === 'metric_view') return -1;
-                    if (b === 'metric_view') return 1;
-                    if (a === 'metric_type') return -1;
-                    if (b === 'metric_type') return 1;
-                    return a.localeCompare(b);
-                })
-        );
+            if (tagType === 'category') {
+                // Always show category tags (they control visibility of resource tags)
+                if (values.length > 0) {
+                    categoryTags[tagKey] = tagInfo;
+                }
+            } else {
+                // Resource tags: hide if only 1 value (keeps existing behavior)
+                if (values.length > 1) {
+                    resourceTags[tagKey] = tagInfo;
+                }
+            }
+        });
 
-        if (Object.keys(filteredTags).length === 0) {
-            this.container.innerHTML = '<p class="info-notice">No filterable tags available for this probe.</p>';
+        const hasCategoryTags = Object.keys(categoryTags).length > 0;
+        const hasResourceTags = Object.keys(resourceTags).length > 0;
+
+        if (!hasCategoryTags && !hasResourceTags) {
+            this.container.textContent = '';
+            const notice = document.createElement('p');
+            notice.className = 'info-notice';
+            notice.textContent = 'No filterable tags available for this probe.';
+            this.container.appendChild(notice);
             return;
         }
 
-        const html = `
-            <div class="info-notice">
-                💡 <strong>Multi-value support:</strong> Select multiple values per tag for advanced filtering
-            </div>
-            <div class="tags-grid">
-                ${Object.entries(filteredTags).map(([tagKey, tagInfo]) => 
-                    this.renderTagFilter(tagKey, tagInfo)
-                ).join('')}
-            </div>
-        `;
+        // Initialize active categories (all active by default)
+        this.activeCategories = {};
+        Object.entries(categoryTags).forEach(([tagKey, tagInfo]) => {
+            this.activeCategories[tagKey] = new Set(tagInfo.values || []);
+        });
 
-        this.container.innerHTML = html;
+        // Build DOM using safe methods
+        this.container.textContent = '';
+
+        // Render category pills
+        if (hasCategoryTags) {
+            this.buildCategoryPills(categoryTags);
+        }
+
+        // Render resource tag filters
+        if (hasResourceTags) {
+            this.buildResourceFilters(resourceTags);
+        }
+
+        this.updateResourceVisibility();
     }
 
-    renderTagFilter(tagKey, tagInfo) {
-        const values = tagInfo.values || [];
-        const description = tagInfo.description && tagInfo.description !== "No description available" 
-            ? ` - ${tagInfo.description}` 
-            : '';
+    /**
+     * Build category tags as pill/toggle buttons using DOM methods
+     */
+    buildCategoryPills(categoryTags) {
+        // Build category metadata lookup for metric counts
+        const categoriesByKey = {};
+        (this.categories || []).forEach(cat => {
+            categoriesByKey[cat.key] = cat;
+        });
 
-        return `
-            <div class="tag-filter-container" data-tag="${tagKey}">
-                <div class="tag-header">
-                    <input type="checkbox" id="tag-${tagKey}" data-tag="${tagKey}">
-                    <div class="tag-header-clickable" data-tag="${tagKey}">
-                        <label for="tag-${tagKey}">${tagKey} (${values.length} values)${description}</label>
-                        <span class="toggle-indicator">▼</span>
-                    </div>
-                    <select class="mode-select" id="mode-${tagKey}" disabled>
-                        <option value="multi">Multi-select</option>
-                        <option value="expression">Expression</option>
-                    </select>
-                </div>
-                
-                <div class="values-container" id="values-${tagKey}" style="display: none;">
-                    <div class="value-option">
-                        <input type="checkbox" id="value-${tagKey}-ALL" value="ALL" data-tag="${tagKey}">
-                        <label for="value-${tagKey}-ALL" class="all-values-label">All values</label>
-                    </div>
-                    ${values.sort().map(value => `
-                        <div class="value-option">
-                            <input type="checkbox" id="value-${tagKey}-${this.escapeId(value)}" 
-                                   value="${this.escapeHtml(value)}" data-tag="${tagKey}">
-                            <label for="value-${tagKey}-${this.escapeId(value)}">${this.escapeHtml(value)}</label>
-                        </div>
-                    `).join('')}
-                </div>
-                
-                <div class="expression-container" id="expression-${tagKey}" style="display: none;">
-                    <input type="text" class="expression-input" id="expression-input-${tagKey}" 
-                           placeholder="e.g: value1,value2 or value* or [0-9]+" data-tag="${tagKey}">
-                    <small class="expression-help">
-                        Supports: comma-separated values, wildcards (*), regex patterns
-                    </small>
-                </div>
-            </div>
-        `;
+        Object.entries(categoryTags).forEach(([tagKey, tagInfo]) => {
+            const tagLabel = tagInfo.label || tagKey;
+            const values = tagInfo.values || [];
+            const valueLabels = tagInfo.value_labels || {};
+
+            const selector = document.createElement('div');
+            selector.className = 'category-selector';
+            selector.dataset.tag = tagKey;
+
+            const label = document.createElement('div');
+            label.className = 'category-label';
+            label.textContent = tagLabel;
+            selector.appendChild(label);
+
+            const pillsContainer = document.createElement('div');
+            pillsContainer.className = 'category-pills';
+
+            values.sort().forEach(value => {
+                const displayLabel = valueLabels[value] || value;
+                const catMeta = categoriesByKey[value];
+
+                const btn = document.createElement('button');
+                btn.className = 'category-pill active';
+                btn.dataset.category = value;
+                btn.dataset.tag = tagKey;
+                btn.textContent = displayLabel;
+
+                if (catMeta && catMeta.metric_count != null) {
+                    const count = document.createElement('span');
+                    count.className = 'pill-count';
+                    count.textContent = catMeta.metric_count;
+                    btn.appendChild(document.createTextNode(' '));
+                    btn.appendChild(count);
+                }
+
+                pillsContainer.appendChild(btn);
+            });
+
+            selector.appendChild(pillsContainer);
+            this.container.appendChild(selector);
+        });
+    }
+
+    /**
+     * Build resource tags as collapsible filter sections using DOM methods
+     */
+    buildResourceFilters(resourceTags) {
+        const sortedTags = Object.entries(resourceTags).sort(([a], [b]) => a.localeCompare(b));
+
+        const section = document.createElement('div');
+        section.className = 'resource-filters';
+
+        const sectionLabel = document.createElement('div');
+        sectionLabel.className = 'resource-label';
+        sectionLabel.textContent = 'Filter by resource';
+        section.appendChild(sectionLabel);
+
+        const grid = document.createElement('div');
+        grid.className = 'tags-grid';
+
+        sortedTags.forEach(([tagKey, tagInfo]) => {
+            const filterEl = this.buildTagFilter(tagKey, tagInfo);
+            grid.appendChild(filterEl);
+        });
+
+        section.appendChild(grid);
+        this.container.appendChild(section);
+    }
+
+    /**
+     * Build a single resource tag filter element using DOM methods
+     */
+    buildTagFilter(tagKey, tagInfo) {
+        const values = tagInfo.values || [];
+        const label = tagInfo.label || tagKey;
+        const linkedCategories = tagInfo.linked_categories || [];
+        const description = tagInfo.description && tagInfo.description !== "No description available"
+            ? ` - ${tagInfo.description}`
+            : '';
+        const valueLabels = tagInfo.value_labels || {};
+
+        const container = document.createElement('div');
+        container.className = 'tag-filter-container';
+        container.dataset.tag = tagKey;
+        if (linkedCategories.length > 0) {
+            container.dataset.linked = linkedCategories.join(',');
+        }
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'tag-header';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `tag-${tagKey}`;
+        checkbox.dataset.tag = tagKey;
+        header.appendChild(checkbox);
+
+        const clickable = document.createElement('div');
+        clickable.className = 'tag-header-clickable';
+        clickable.dataset.tag = tagKey;
+
+        const headerLabel = document.createElement('label');
+        headerLabel.htmlFor = `tag-${tagKey}`;
+        headerLabel.textContent = `${label} (${values.length} values)${description}`;
+        clickable.appendChild(headerLabel);
+
+        const toggle = document.createElement('span');
+        toggle.className = 'toggle-indicator';
+        toggle.textContent = '\u25B6';
+        clickable.appendChild(toggle);
+        header.appendChild(clickable);
+
+        const modeSelect = document.createElement('select');
+        modeSelect.className = 'mode-select';
+        modeSelect.id = `mode-${tagKey}`;
+        modeSelect.disabled = true;
+        const opt1 = document.createElement('option');
+        opt1.value = 'multi';
+        opt1.textContent = 'Multi-select';
+        const opt2 = document.createElement('option');
+        opt2.value = 'expression';
+        opt2.textContent = 'Expression';
+        modeSelect.appendChild(opt1);
+        modeSelect.appendChild(opt2);
+        header.appendChild(modeSelect);
+
+        container.appendChild(header);
+
+        // Values container
+        const valuesContainer = document.createElement('div');
+        valuesContainer.className = 'values-container';
+        valuesContainer.id = `values-${tagKey}`;
+        valuesContainer.style.display = 'none';
+
+        // "All values" option
+        const allOption = document.createElement('div');
+        allOption.className = 'value-option';
+        const allCb = document.createElement('input');
+        allCb.type = 'checkbox';
+        allCb.id = `value-${tagKey}-ALL`;
+        allCb.value = 'ALL';
+        allCb.dataset.tag = tagKey;
+        const allLabel = document.createElement('label');
+        allLabel.htmlFor = `value-${tagKey}-ALL`;
+        allLabel.className = 'all-values-label';
+        allLabel.textContent = 'All values';
+        allOption.appendChild(allCb);
+        allOption.appendChild(allLabel);
+        valuesContainer.appendChild(allOption);
+
+        // Individual values
+        values.sort().forEach(value => {
+            const vLabel = valueLabels[value] || value;
+            const vOption = document.createElement('div');
+            vOption.className = 'value-option';
+            const vCb = document.createElement('input');
+            vCb.type = 'checkbox';
+            vCb.id = `value-${tagKey}-${this.escapeId(value)}`;
+            vCb.value = value;
+            vCb.dataset.tag = tagKey;
+            const vLbl = document.createElement('label');
+            vLbl.htmlFor = `value-${tagKey}-${this.escapeId(value)}`;
+            vLbl.textContent = vLabel;
+            vOption.appendChild(vCb);
+            vOption.appendChild(vLbl);
+            valuesContainer.appendChild(vOption);
+        });
+
+        container.appendChild(valuesContainer);
+
+        // Expression container
+        const exprContainer = document.createElement('div');
+        exprContainer.className = 'expression-container';
+        exprContainer.id = `expression-${tagKey}`;
+        exprContainer.style.display = 'none';
+
+        const exprInput = document.createElement('input');
+        exprInput.type = 'text';
+        exprInput.className = 'expression-input';
+        exprInput.id = `expression-input-${tagKey}`;
+        exprInput.placeholder = 'e.g: value1,value2 or value* or [0-9]+';
+        exprInput.dataset.tag = tagKey;
+        exprContainer.appendChild(exprInput);
+
+        const exprHelp = document.createElement('small');
+        exprHelp.className = 'expression-help';
+        exprHelp.textContent = 'Supports: comma-separated values, wildcards (*), regex patterns';
+        exprContainer.appendChild(exprHelp);
+
+        container.appendChild(exprContainer);
+
+        return container;
+    }
+
+    /**
+     * Handle category pill click: toggle active/inactive state
+     */
+    handlePillClick(pill) {
+        const tagKey = pill.dataset.tag;
+        const categoryValue = pill.dataset.category;
+
+        pill.classList.toggle('active');
+
+        // Update activeCategories tracking
+        if (!this.activeCategories[tagKey]) {
+            this.activeCategories[tagKey] = new Set();
+        }
+
+        if (pill.classList.contains('active')) {
+            this.activeCategories[tagKey].add(categoryValue);
+        } else {
+            this.activeCategories[tagKey].delete(categoryValue);
+        }
+
+        this.updateResourceVisibility();
+        this.updateSelectedTags();
+    }
+
+    /**
+     * Returns which category values are currently active, keyed by tag.
+     * @returns {Object} e.g. { metric_type: ["sessions", "infrastructure"] }
+     */
+    getActiveCategories() {
+        const result = {};
+        Object.entries(this.activeCategories).forEach(([tagKey, valueSet]) => {
+            if (valueSet.size > 0) {
+                result[tagKey] = Array.from(valueSet);
+            }
+        });
+        return result;
+    }
+
+    /**
+     * Show/hide resource filters based on active category pills.
+     * A resource filter is visible if:
+     *   - it has no linked_categories (always visible), OR
+     *   - at least one of its linked_categories overlaps with active category values
+     */
+    updateResourceVisibility() {
+        const allActiveValues = new Set();
+        Object.values(this.activeCategories).forEach(valueSet => {
+            valueSet.forEach(v => allActiveValues.add(v));
+        });
+
+        const resourceContainers = this.container.querySelectorAll('.tag-filter-container[data-linked]');
+        resourceContainers.forEach(container => {
+            const linked = container.getAttribute('data-linked');
+            if (!linked) return;
+
+            const linkedList = linked.split(',');
+            const isVisible = linkedList.some(cat => allActiveValues.has(cat));
+
+            container.style.display = isVisible ? '' : 'none';
+
+            // If hidden, uncheck and clear selections to avoid stale filters
+            if (!isVisible) {
+                const tagKey = container.dataset.tag;
+                const mainCheckbox = this.base.$(`#tag-${tagKey}`);
+                if (mainCheckbox && mainCheckbox.checked) {
+                    mainCheckbox.checked = false;
+                    this.clearTagSelections(tagKey);
+                }
+            }
+        });
+
+        // Also check if the resource-filters section is entirely empty
+        const resourceSection = this.container.querySelector('.resource-filters');
+        if (resourceSection) {
+            const allContainers = resourceSection.querySelectorAll('.tag-filter-container');
+            const anyVisible = Array.from(allContainers).some(c => c.style.display !== 'none');
+            resourceSection.style.display = anyVisible ? '' : 'none';
+        }
     }
 
     updateSelectedTags() {
         this.selectedTags = {};
 
-        // Get all enabled tag containers
+        // Include active category pill selections as tags
+        Object.entries(this.activeCategories).forEach(([tagKey, valueSet]) => {
+            const tagInfo = this.availableTags[tagKey];
+            if (!tagInfo) return;
+            const allValues = tagInfo.values || [];
+
+            // Only include if not all values are active (all active = no filter needed)
+            if (valueSet.size > 0 && valueSet.size < allValues.length) {
+                this.selectedTags[tagKey] = Array.from(valueSet).join(',');
+            }
+        });
+
+        // Get all enabled resource tag containers
         const enabledTags = this.container.querySelectorAll('input[id^="tag-"]:checked');
-        
+
         enabledTags.forEach(checkbox => {
             const tagKey = checkbox.dataset.tag;
             const modeSelect = this.base.$(`#mode-${tagKey}`);
             const mode = modeSelect ? modeSelect.value : 'multi';
-            
+
             if (mode === 'expression') {
                 // Expression mode
                 const expressionInput = this.base.$(`#expression-input-${tagKey}`);
                 const expression = expressionInput ? expressionInput.value.trim() : '';
-                
+
                 if (expression) {
                     this.selectedTags[tagKey] = expression;
                 }
@@ -187,7 +453,7 @@ class TagFilters {
                 // Multi-select mode
                 const valueCheckboxes = this.container.querySelectorAll(`input[data-tag="${tagKey}"]:checked:not([id^="tag-"])`);
                 const selectedValues = [];
-                
+
                 let hasAll = false;
                 valueCheckboxes.forEach(cb => {
                     if (cb.value === 'ALL') {
@@ -196,10 +462,8 @@ class TagFilters {
                         selectedValues.push(cb.value);
                     }
                 });
-                
+
                 if (hasAll) {
-                    // "All" selected: explicitly include all checked individual values
-                    // so the backend filters to this tag's values only (not all metrics)
                     const allValueCheckboxes = this.container.querySelectorAll(`input[data-tag="${tagKey}"]:checked:not([value="ALL"])`);
                     const allValues = [];
                     allValueCheckboxes.forEach(cb => {
@@ -230,26 +494,26 @@ class TagFilters {
         const expressionContainer = this.base.$(`#expression-${tagKey}`);
         const modeSelect = this.base.$(`#mode-${tagKey}`);
         const toggleIndicator = this.base.$(`.tag-header-clickable[data-tag="${tagKey}"] .toggle-indicator`);
-        
+
         if (modeSelect) modeSelect.disabled = !isEnabled;
-        
+
         if (valuesContainer && expressionContainer) {
             valuesContainer.style.display = isEnabled && mode === 'multi' ? 'block' : 'none';
             expressionContainer.style.display = isEnabled && mode === 'expression' ? 'block' : 'none';
-            
+
             // Update toggle indicator
             if (toggleIndicator) {
-                toggleIndicator.textContent = isEnabled ? '▼' : '▶';
+                toggleIndicator.textContent = isEnabled ? '\u25BC' : '\u25B6';
             }
         }
 
         if (!isEnabled) {
             // Clear selections when disabled
             this.clearTagSelections(tagKey);
-            
+
             // Update toggle indicator for disabled state
             if (toggleIndicator) {
-                toggleIndicator.textContent = '▶';
+                toggleIndicator.textContent = '\u25B6';
             }
         }
 
@@ -260,11 +524,11 @@ class TagFilters {
             allCheckbox.addEventListener('change', () => {
                 const isAllChecked = allCheckbox.checked;
                 const valueCheckboxes = this.container.querySelectorAll(`input[data-tag="${tagKey}"]:not([value="ALL"])`);
-                
+
                 valueCheckboxes.forEach(cb => {
                     cb.checked = isAllChecked;
                 });
-                
+
                 this.updateSelectedTags();
             });
         }
@@ -287,10 +551,12 @@ class TagFilters {
     }
 
     clearTags() {
-        this.container.innerHTML = '';
+        this.container.textContent = '';
         this.selectedTags = {};
         this.availableTags = {};
-        
+        this.categories = [];
+        this.activeCategories = {};
+
         if (this.onTagsChanged) {
             this.onTagsChanged(this.selectedTags);
         }
@@ -310,29 +576,29 @@ class TagFilters {
     escapeId(text) {
         return text.replace(/[^a-zA-Z0-9_-]/g, '_');
     }
-    
+
     /**
      * Handle value checkbox change - auto-check parent when value is selected
      */
     handleValueCheckboxChange(checkbox) {
         const tagKey = checkbox.dataset.tag;
         const mainCheckbox = this.base.$(`#tag-${tagKey}`);
-        
+
         if (checkbox.checked && mainCheckbox && !mainCheckbox.checked) {
             // Auto-check the parent tag when a value is selected
             mainCheckbox.checked = true;
-            
+
             // Update the UI to show the values container and enable mode select
             const modeSelect = this.base.$(`#mode-${tagKey}`);
             const mode = modeSelect ? modeSelect.value : 'multi';
             this.updateTagUI(tagKey, mode, true);
         }
-        
+
         // Check if we should uncheck the parent (when no values are selected)
         if (!checkbox.checked) {
             const allValueCheckboxes = this.container.querySelectorAll(`input[data-tag="${tagKey}"]:not([id^="tag-"])`);
             const hasAnyChecked = Array.from(allValueCheckboxes).some(cb => cb.checked);
-            
+
             if (!hasAnyChecked && mainCheckbox) {
                 mainCheckbox.checked = false;
                 const modeSelect = this.base.$(`#mode-${tagKey}`);
@@ -341,7 +607,7 @@ class TagFilters {
             }
         }
     }
-    
+
     /**
      * Toggle tag section visibility
      */
@@ -351,15 +617,15 @@ class TagFilters {
         const expressionContainer = this.base.$(`#expression-${tagKey}`);
         const toggleIndicator = headerElement.querySelector('.toggle-indicator');
         const mainCheckbox = this.base.$(`#tag-${tagKey}`);
-        
+
         if (!valuesContainer && !expressionContainer) return;
-        
+
         // Determine current visibility
         const modeSelect = this.base.$(`#mode-${tagKey}`);
         const mode = modeSelect ? modeSelect.value : 'multi';
         const currentContainer = mode === 'multi' ? valuesContainer : expressionContainer;
         const isCurrentlyVisible = currentContainer && currentContainer.style.display !== 'none';
-        
+
         // Only toggle if the main checkbox is checked
         if (mainCheckbox && mainCheckbox.checked) {
             if (valuesContainer) {
@@ -368,10 +634,10 @@ class TagFilters {
             if (expressionContainer) {
                 expressionContainer.style.display = (isCurrentlyVisible || mode !== 'expression') ? 'none' : 'block';
             }
-            
+
             // Update toggle indicator
             if (toggleIndicator) {
-                toggleIndicator.textContent = isCurrentlyVisible ? '▶' : '▼';
+                toggleIndicator.textContent = isCurrentlyVisible ? '\u25B6' : '\u25BC';
             }
         } else if (mainCheckbox) {
             // If not checked, check it and show the container
