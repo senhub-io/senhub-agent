@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -353,7 +354,16 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Convert to response format
+	// Load probe definition for tag metadata enrichment
+	probeDef := a.strategy.transformerRegistry.GetProbeDefinition(probeNameLower)
+
+	// Build tag metadata lookup from probe definition
+	tagMeta := make(map[string]transformers.TagMetadata)
+	if probeDef != nil && probeDef.TagMetadata != nil {
+		tagMeta = probeDef.TagMetadata
+	}
+
+	// Convert to response format with metadata enrichment
 	tags := make(map[string]TagInfo)
 	for tagKey, values := range tagValues {
 		var valueList []string
@@ -361,11 +371,22 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 			valueList = append(valueList, value)
 		}
 
-		tags[tagKey] = TagInfo{
+		info := TagInfo{
 			Values:      valueList,
 			Description: a.strategy.utilsManager.getTagDescription(tagKey),
 			SampleCount: len(valueList),
+			Type:        "resource", // default
 		}
+
+		// Enrich with metadata from probe definition
+		if meta, exists := tagMeta[tagKey]; exists {
+			info.Type = string(meta.Type)
+			info.Label = meta.Label
+			info.ValueLabels = meta.ValueLabels
+			info.LinkedCategories = meta.LinkedCategories
+		}
+
+		tags[tagKey] = info
 	}
 
 	var metricList []string
@@ -373,11 +394,40 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 		metricList = append(metricList, metric)
 	}
 
+	// Build categories from probe definition
+	var categories []CategoryInfo
+	if probeDef != nil {
+		categoryCounts := make(map[string]int)
+		for _, m := range probeDef.Metrics {
+			if m.Category != "" {
+				categoryCounts[m.Category]++
+			}
+		}
+		for cat, count := range categoryCounts {
+			label := cat // default: use raw key
+			// Try to find a human label from tag metadata value_labels
+			for _, meta := range tagMeta {
+				if meta.Type == transformers.TagTypeCategory && meta.ValueLabels != nil {
+					if humanLabel, exists := meta.ValueLabels[cat]; exists {
+						label = humanLabel
+						break
+					}
+				}
+			}
+			categories = append(categories, CategoryInfo{
+				Key:         cat,
+				Label:       label,
+				MetricCount: count,
+			})
+		}
+	}
+
 	response := TagInfoResponse{
-		Probe:        probeNameLower, // Use normalized name for consistency
+		Probe:        probeNameLower,
 		Tags:         tags,
 		Metrics:      metricList,
 		TotalMetrics: len(metricList),
+		Categories:   categories,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

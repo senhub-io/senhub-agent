@@ -139,6 +139,27 @@ func NewTransformerRegistry(baseLogger *logger.Logger) *TransformerRegistry {
 	}
 }
 
+// GetProbeDefinition returns the parsed ProbeDefinition for a probe, or nil if not found.
+// Used by the web UI to access tag_metadata, categories, and descriptions.
+func (tr *TransformerRegistry) GetProbeDefinition(probeName string) *ProbeDefinition {
+	// Check if we already have a definition-based transformer loaded
+	for _, t := range tr.transformers {
+		if dbt, ok := t.(*DefinitionBasedTransformer); ok {
+			if dbt.probeName == probeName && dbt.definition != nil {
+				return dbt.definition
+			}
+		}
+	}
+
+	// Try to load it from embedded files
+	filePath := fmt.Sprintf("definitions/%s.yaml", probeName)
+	def, err := tr.loadProbeDefinitionFromEmbed(filePath)
+	if err != nil {
+		return nil
+	}
+	return def
+}
+
 // LoadTransformer loads or creates a transformer for a specific probe and style
 func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricTransformer, error) {
 	key := fmt.Sprintf("%s:%s", probeName, style)

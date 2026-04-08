@@ -364,13 +364,25 @@ type TagInfoResponse struct {
 	Tags         map[string]TagInfo `json:"tags"`
 	Metrics      []string           `json:"metrics"`
 	TotalMetrics int                `json:"total_metrics"`
+	Categories   []CategoryInfo     `json:"categories,omitempty"`
 }
 
 // TagInfo contains information about a specific tag
 type TagInfo struct {
-	Values      []string `json:"values"`
-	Description string   `json:"description"`
-	SampleCount int      `json:"sample_count"`
+	Values           []string          `json:"values"`
+	Description      string            `json:"description"`
+	SampleCount      int               `json:"sample_count"`
+	Type             string            `json:"type"`                        // "category" or "resource"
+	Label            string            `json:"label,omitempty"`             // Human-readable label
+	ValueLabels      map[string]string `json:"value_labels,omitempty"`      // Raw value → human label
+	LinkedCategories []string          `json:"linked_categories,omitempty"` // Show only when these categories are selected
+}
+
+// CategoryInfo describes a metric category for the UI
+type CategoryInfo struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	MetricCount int    `json:"metric_count"`
 }
 
 // SchemaInfoResponse represents the response for /info/schema/{probe}
