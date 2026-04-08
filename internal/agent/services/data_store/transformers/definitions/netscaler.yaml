@@ -801,9 +801,10 @@ metrics:
 tag_metadata:
   metric_view:
     type: category
-    label: "Monitoring View"
+    label: "Metric Category"
     value_labels:
       system: "System"
+      system_health: "System Health"
       load_balancing: "Load Balancing"
       network: "Network & Interfaces"
       ssl_certificates: "SSL Certificates"
@@ -817,6 +818,25 @@ tag_metadata:
       vpn: "VPN / Gateway"
       aaa: "Authentication (AAA)"
       disk: "Disk Usage"
+  data_source:
+    type: resource
+    label: "Data Source"
+  ha_node_id:
+    type: resource
+    label: "HA Node ID"
+    linked_categories: ["high_availability"]
+  is_local_node:
+    type: resource
+    label: "Local Node"
+    linked_categories: ["high_availability"]
+  vserver_ip:
+    type: resource
+    label: "VServer IP"
+    linked_categories: ["load_balancing"]
+  vserver_type:
+    type: resource
+    label: "VServer Type"
+    linked_categories: ["load_balancing"]
   vserver:
     type: resource
     label: "Virtual Server"
