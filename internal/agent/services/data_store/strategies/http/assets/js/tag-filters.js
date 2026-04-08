@@ -169,15 +169,6 @@ class TagFilters {
                 btn.dataset.category = value;
                 btn.dataset.tag = tagKey;
                 btn.textContent = displayLabel;
-
-                if (catMeta && catMeta.metric_count != null) {
-                    const count = document.createElement('span');
-                    count.className = 'pill-count';
-                    count.textContent = catMeta.metric_count;
-                    btn.appendChild(document.createTextNode(' '));
-                    btn.appendChild(count);
-                }
-
                 pillsContainer.appendChild(btn);
             });
 
