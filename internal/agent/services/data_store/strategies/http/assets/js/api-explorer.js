@@ -24,9 +24,6 @@ class APIExplorer {
         this.tagFiltersContainer = this.base.$('#tag-filters');
         this.showTagsCheckbox = this.base.$('#show-tags-checkbox');
 
-        console.log('Elements initialized:');
-        console.log('- showTagsGroup:', this.showTagsGroup ? 'FOUND' : 'NOT FOUND');
-        console.log('- showTagsCheckbox:', this.showTagsCheckbox ? 'FOUND' : 'NOT FOUND');
 
         // URL elements
         this.generatedUrlDiv = this.base.$('#generated-url');
@@ -57,13 +54,10 @@ class APIExplorer {
 
         // Show tags checkbox
         if (this.showTagsCheckbox) {
-            console.log('Show tags checkbox found, adding listener');
             this.showTagsCheckbox.addEventListener('change', () => {
-                console.log('Show tags checkbox changed!', this.showTagsCheckbox.checked);
                 this.generateURL();
             });
         } else {
-            console.error('Show tags checkbox NOT FOUND on initialization');
         }
 
         // Button clicks
@@ -159,23 +153,15 @@ class APIExplorer {
     }
 
     showTagFilters(show) {
-        console.log('showTagFilters called with:', show);
         if (this.showTagsGroup) {
             this.showTagsGroup.style.display = show ? 'block' : 'none';
-            console.log('- showTagsGroup display set to:', show ? 'block' : 'none');
-        } else {
-            console.error('- showTagsGroup is NULL');
         }
         if (this.tagFiltersGroup) {
             this.tagFiltersGroup.style.display = show ? 'block' : 'none';
-            console.log('- tagFiltersGroup display set to:', show ? 'block' : 'none');
-        } else {
-            console.error('- tagFiltersGroup is NULL');
         }
     }
 
     generateURL() {
-        console.log('generateURL called');
         const endpointType = this.endpointTypeSelect?.value;
 
         if (!endpointType || !this.selectedProbe) {
@@ -196,13 +182,10 @@ class APIExplorer {
 
         // Add show_tags parameter if checkbox is unchecked
         if (this.showTagsCheckbox) {
-            console.log('Show tags checkbox state:', this.showTagsCheckbox.checked);
             if (!this.showTagsCheckbox.checked) {
                 queryParams.push('show_tags=false');
-                console.log('Added show_tags=false to URL');
             }
         } else {
-            console.warn('Show tags checkbox not found');
         }
 
         if (queryParams.length > 0) {
