@@ -438,6 +438,8 @@ class TagFilters {
 
         enabledTags.forEach(checkbox => {
             const tagKey = checkbox.dataset.tag;
+            const tagContainer = this.container.querySelector(`.tag-filter-container[data-tag="${tagKey}"]`);
+            if (tagContainer && tagContainer.style.display === 'none') return;
             const modeSelect = this.base.$(`#mode-${tagKey}`);
             const mode = modeSelect ? modeSelect.value : 'multi';
 
