@@ -28,21 +28,29 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 16px;
+}
+
+.header-top h1 {
+    flex-shrink: 1;
+    min-width: 0;
 }
 
 .main-nav {
     display: flex;
     gap: 4px;
+    flex-shrink: 0;
 }
 
 .nav-link {
-    padding: 6px 16px;
+    padding: 6px 14px;
     border-radius: 6px;
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     font-weight: 500;
     color: var(--gray-600);
     text-decoration: none;
     transition: all 0.15s;
+    white-space: nowrap;
 }
 
 .nav-link:hover {
