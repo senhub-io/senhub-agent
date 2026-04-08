@@ -258,11 +258,11 @@
 }
 
 .category-pill {
-    padding: 6px 14px;
+    padding: 5px 12px;
     border-radius: 16px;
-    border: 1px solid var(--primary-color);
-    background: white;
-    color: var(--primary-color);
+    border: 1px solid var(--gray-300, #ccc);
+    background: var(--gray-100, #f0f0f0);
+    color: var(--gray-500, #999);
     cursor: pointer;
     font-size: 13px;
     font-family: inherit;
@@ -276,6 +276,7 @@
 .category-pill.active {
     background: var(--primary-color);
     color: white;
+    border-color: var(--primary-color);
 }
 
 .category-pill:hover {
@@ -287,9 +288,20 @@
     outline-offset: 1px;
 }
 
-.pill-count {
-    font-size: 11px;
-    opacity: 0.7;
+.pill-close {
+    font-size: 14px;
+    line-height: 1;
+    opacity: 0;
+    margin-left: 2px;
+    transition: opacity 0.15s;
+}
+
+.category-pill.active .pill-close {
+    opacity: 0.6;
+}
+
+.category-pill.active:hover .pill-close {
+    opacity: 1;
 }
 
 /* Resource Filters section */
