@@ -28,9 +28,13 @@ class SenHubBase {
     /**
      * Show loading state
      */
-    showLoading(element, message = 'Loading...') {
+    showLoading(element, message) {
         if (element) {
-            element.innerHTML = `<div class="loading">${message}</div>`;
+            element.textContent = '';
+            const div = document.createElement('div');
+            div.className = 'loading';
+            div.textContent = message || 'Loading...';
+            element.appendChild(div);
         }
     }
 
@@ -39,7 +43,11 @@ class SenHubBase {
      */
     showError(element, message) {
         if (element) {
-            element.innerHTML = `<div class="error">Error: ${message}</div>`;
+            element.textContent = '';
+            const div = document.createElement('div');
+            div.className = 'error';
+            div.textContent = 'Error: ' + message;
+            element.appendChild(div);
         }
     }
 

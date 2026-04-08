@@ -334,9 +334,9 @@ tag_metadata:
       sessions: "Sessions"
       infrastructure: "Infrastructure"
       logon: "Logon Performance"
-      connection_failures: "Connection Failures"
-      multi_session_faults: "Machine Health"
-      load_index: "Load Index"
+      failures: "Connection Failures"
+      machine_health: "Machine Health"
+      load: "Load Index"
       licensing: "Licensing"
   failure_category:
     type: category
