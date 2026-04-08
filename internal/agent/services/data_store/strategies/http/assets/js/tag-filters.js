@@ -206,9 +206,14 @@ class TagFilters {
     /**
      * Build a single resource tag filter element using DOM methods
      */
+    // Convert snake_case tag key to human-readable label
+    humanizeKey(key) {
+        return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+
     buildTagFilter(tagKey, tagInfo) {
         const values = tagInfo.values || [];
-        const label = tagInfo.label || tagKey;
+        const label = tagInfo.label || this.humanizeKey(tagKey);
         const linkedCategories = tagInfo.linked_categories || [];
         const description = tagInfo.description && tagInfo.description !== "No description available"
             ? ` - ${tagInfo.description}`
