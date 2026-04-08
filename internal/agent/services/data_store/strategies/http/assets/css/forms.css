@@ -258,9 +258,9 @@
 }
 
 .category-pill {
-    padding: 5px 12px;
+    padding: 6px 14px;
     border-radius: 16px;
-    border: 1px solid var(--gray-300, #ccc);
+    border: none;
     background: var(--gray-100, #f0f0f0);
     color: var(--gray-500, #999);
     cursor: pointer;
@@ -276,7 +276,6 @@
 .category-pill.active {
     background: var(--primary-color);
     color: white;
-    border-color: var(--primary-color);
 }
 
 .category-pill:hover {
