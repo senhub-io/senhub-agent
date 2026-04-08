@@ -360,3 +360,19 @@ tag_metadata:
       max_capacity: "Max Capacity"
       vm_not_found: "VM Not Found"
       unknown: "Unknown"
+  # System tags (injected by framework)
+  host:
+    type: resource
+    label: "Host"
+  os:
+    type: resource
+    label: "Operating System"
+  platform:
+    type: resource
+    label: "Platform"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"
