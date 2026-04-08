@@ -334,13 +334,14 @@ tag_metadata:
       sessions: "Sessions"
       infrastructure: "Infrastructure"
       logon: "Logon Performance"
-      failures: "Connection Failures"
-      machine_health: "Machine Health"
-      load: "Load Index"
+      connection_failures: "Connection Failures"
+      multi_session_faults: "Machine Health"
+      load_index: "Load Index"
       licensing: "Licensing"
   failure_category:
-    type: category
+    type: resource
     label: "Failure Type"
+    linked_categories: ["connection_failures"]
     value_labels:
       client_connection_failures: "Client Connection"
       configuration_errors: "Configuration"
@@ -349,8 +350,9 @@ tag_metadata:
       licenses_unavailable: "Licensing"
       other_failures: "Other"
   fault_state:
-    type: category
+    type: resource
     label: "Fault State"
+    linked_categories: ["multi_session_faults"]
     value_labels:
       boot_failure: "Boot Failure"
       stuck_at_boot: "Stuck at Boot"
