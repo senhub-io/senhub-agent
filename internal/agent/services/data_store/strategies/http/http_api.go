@@ -325,6 +325,9 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
 	probeNameLower := strings.ToLower(probeName)
 
+	// Load probe definition BEFORE acquiring cache lock (GetProbeDefinition is not thread-safe)
+	probeDef := a.strategy.transformerRegistry.GetProbeDefinition(probeNameLower)
+
 	a.strategy.cache.mu.RLock()
 	defer a.strategy.cache.mu.RUnlock()
 
@@ -353,9 +356,6 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-
-	// Load probe definition for tag metadata enrichment
-	probeDef := a.strategy.transformerRegistry.GetProbeDefinition(probeNameLower)
 
 	// Build tag metadata lookup from probe definition
 	tagMeta := make(map[string]transformers.TagMetadata)
