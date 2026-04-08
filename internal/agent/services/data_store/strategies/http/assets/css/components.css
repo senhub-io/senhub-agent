@@ -233,3 +233,100 @@
 }
 
 /* Category Pills and Resource Filters styles are in forms.css */
+
+/* Dashboard Probe Key Values */
+.probe-key-values {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 6px;
+    width: 100%;
+}
+
+.key-metric {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 3px;
+    padding: 2px 8px;
+    background: var(--gray-50, #f8f9fa);
+    border-radius: 4px;
+    font-size: 0.8rem;
+    color: var(--gray-700, #495057);
+}
+
+.key-metric strong {
+    color: var(--primary, #17a2b8);
+    font-size: 0.9rem;
+}
+
+.key-metric small {
+    color: var(--gray-500, #999);
+    font-size: 0.7rem;
+}
+
+/* Metrics Response Table */
+.metrics-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+.metrics-table th {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--gray-200, #dee2e6);
+    color: var(--gray-600, #666);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.metrics-table td {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--gray-100, #f0f0f0);
+}
+.metrics-table tr:hover {
+    background-color: var(--gray-50, #f8f9fa);
+}
+.metrics-table .value-cell {
+    font-family: 'Monaco', 'Menlo', monospace;
+    text-align: right;
+    font-weight: 500;
+}
+
+/* Response View Toggle */
+.response-view-toggle {
+    display: inline-flex;
+    gap: 2px;
+    margin-bottom: 8px;
+    background: var(--gray-100, #f0f0f0);
+    border-radius: 6px;
+    padding: 2px;
+}
+.response-view-toggle .btn-sm {
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--gray-600, #666);
+}
+.response-view-toggle .btn-sm.active {
+    background: var(--primary, #17a2b8);
+    color: white;
+}
+
+/* Table inside dark response area - override colors */
+.result-area .metrics-table {
+    color: #f9fafb;
+}
+.result-area .metrics-table th {
+    color: #9ca3af;
+    border-bottom-color: #374151;
+}
+.result-area .metrics-table td {
+    border-bottom-color: #374151;
+}
+.result-area .metrics-table tr:hover {
+    background-color: #374151;
+}
