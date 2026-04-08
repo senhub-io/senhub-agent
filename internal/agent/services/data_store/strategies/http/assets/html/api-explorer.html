@@ -17,12 +17,16 @@
 </head>
 <body>
     <div class="header">
-        <h1>
-            <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
-            Sensor Builder
-        </h1>
-        <div class="nav-breadcrumb">
-            <a href="/web/{{.AgentKey}}/">Dashboard</a> / Sensor Builder
+        <div class="header-top">
+            <h1>
+                <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
+                SenHub Agent
+            </h1>
+            <nav class="main-nav">
+                <a href="/web/{{.AgentKey}}/dashboard" class="nav-link">Dashboard</a>
+                <a href="/web/{{.AgentKey}}/explorer" class="nav-link active">Sensor Builder</a>
+                <a href="/web/{{.AgentKey}}/docs" class="nav-link">Documentation</a>
+            </nav>
         </div>
     </div>
     
@@ -77,13 +81,13 @@
                     
                     <div class="button-group">
                         <button id="edit-url-btn" class="btn btn-secondary" disabled>
-                            ✏️ Edit URL
+                            Edit URL
                         </button>
                         <button id="copy-url-btn" class="btn btn-secondary" disabled>
-                            📋 Copy Sensor URL
+                            Copy Sensor URL
                         </button>
                         <button id="test-request-btn" class="btn btn-primary" disabled>
-                            🚀 Preview
+                            Preview
                         </button>
                     </div>
                 </div>
@@ -92,13 +96,13 @@
                 <h2>Response</h2>
                 <div class="button-group" style="margin-bottom: var(--spacing-md);">
                     <button id="copy-response-btn" class="btn btn-secondary" disabled>
-                        📋 Copy Response
+                        Copy Response
                     </button>
                     <button id="clear-response-btn" class="btn btn-secondary">
-                        🗑️ Clear
+                        Clear
                     </button>
                     <a href="/api/{{.AgentKey}}/lookups/prtg" class="btn btn-secondary" download="senhub-prtg-lookups.zip" title="Download PRTG lookup definitions for interpreting numeric metric values">
-                        📥 PRTG Lookups
+                        PRTG Lookups
                     </a>
                 </div>
                 <div id="response-view-toggle" class="response-view-toggle" style="display: none;">

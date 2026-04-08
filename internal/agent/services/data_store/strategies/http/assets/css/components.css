@@ -239,8 +239,9 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-top: 6px;
+    margin-top: 4px;
     width: 100%;
+    padding-left: 20px;
 }
 
 .key-metric {
