@@ -123,3 +123,9 @@ docs/user-guide/.temp-word-gen/
 # Hugo generated site
 docs/user-guide/public/
 docs/user-guide/resources/
+
+# Playwright MCP logs
+**/.playwright-mcp/
+
+# Claude Code - Local hookify rules
+.claude/hookify.*.local.md

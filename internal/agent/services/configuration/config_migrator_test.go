@@ -257,3 +257,40 @@ func TestConfigMigrator_NoMigrationNeeded(t *testing.T) {
 		t.Errorf("Backup created for v2 config (should skip migration): found %d files", len(backupFiles))
 	}
 }
+
+func TestConfigMigrator_MigrateParamRenamesInPlace_NoOp(t *testing.T) {
+	testArgs := &cliArgs.ParsedArgs{}
+	baseLogger := logger.NewLogger(testArgs)
+
+	// migrateParamRenamesInPlace is intentionally a no-op.
+	// Auto-rename was removed because text replacement cannot distinguish
+	// between probe types (would break netscaler's base_url).
+	// Old format (base_url/director_url) is handled at runtime.
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "agent-config.yaml")
+	config := `probes:
+  - name: citrix
+    type: citrix
+    params:
+      base_url: "https://director.example.com"
+  - name: netscaler
+    type: netscaler
+    params:
+      base_url: "https://netscaler.example.com"
+`
+	if err := os.WriteFile(configPath, []byte(config), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	migrator := NewConfigMigrator(configPath, baseLogger)
+	err := migrator.migrateParamRenamesInPlace()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// File should be unchanged
+	data, _ := os.ReadFile(configPath)
+	if string(data) != config {
+		t.Error("config should not be modified - migration is a no-op")
+	}
+}

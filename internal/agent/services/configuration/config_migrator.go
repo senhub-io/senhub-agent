@@ -80,6 +80,13 @@ func (cm *ConfigMigrator) MigrateIfNeeded() error {
 
 	if _, hasType := firstProbe["type"]; hasType {
 		cm.logger.Debug().Msg("Configuration already in version 2 format (has 'type' field)")
+
+		// Run param rename migrations on v2 configs using text replacement
+		// to preserve original YAML formatting, comments, and field order
+		if err := cm.migrateParamRenamesInPlace(); err != nil {
+			cm.logger.Warn().Err(err).Msg("Param rename migration failed")
+		}
+
 		return nil
 	}
 
@@ -350,6 +357,14 @@ func (cm *ConfigMigrator) reorderProbeMap(probeNode *yaml.Node) {
 	}
 
 	probeNode.Content = newContent
+}
+
+// migrateParamRenamesInPlace is a no-op.
+// Auto-rename of base_url→director_url was removed because text replacement
+// cannot distinguish between probe types (would break netscaler's base_url).
+// The old format (base_url/director_url) is handled at runtime with backward compat.
+func (cm *ConfigMigrator) migrateParamRenamesInPlace() error {
+	return nil
 }
 
 // AddCommentsForNewParameters adds commented examples of new optional parameters

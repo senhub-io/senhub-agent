@@ -262,11 +262,12 @@ func (a agent) handleStartError() {
 	p, err := os.FindProcess(pid)
 	if err != nil {
 		a.logger.Error().Err(err).Msg("Error finding process")
-		log.Fatal(err)
+		os.Exit(1)
 	}
-	if err := p.Signal(syscall.SIGTERM); err != nil {
-		a.logger.Error().Err(err).Msg("Error sending SIGTERM signal")
-		log.Fatal(err)
+	// On Windows, SIGTERM is not supported — use SIGINT or exit directly
+	if err := p.Signal(syscall.SIGINT); err != nil {
+		a.logger.Error().Err(err).Msg("Error sending shutdown signal")
+		os.Exit(1)
 	}
 }
 

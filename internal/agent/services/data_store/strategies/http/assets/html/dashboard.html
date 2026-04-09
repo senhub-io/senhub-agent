@@ -22,32 +22,7 @@
             gap: 1.5rem;
             margin-bottom: 2rem;
         }
-        
-        .status-indicator {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.875rem;
-            font-weight: 500;
-        }
-        
-        .status-running {
-            background-color: #dcfce7;
-            color: var(--success-color);
-        }
-        
-        .status-warning {
-            background-color: #fff3e0;
-            color: var(--warning-color);
-        }
-        
-        .status-info {
-            background-color: #e0f7f7;
-            color: var(--primary-color);
-        }
-        
+
         .metric-row {
             display: flex;
             justify-content: space-between;
@@ -76,22 +51,25 @@
             overflow-y: auto;
         }
         
+        h2 svg { vertical-align: -2px; margin-right: 6px; opacity: 0.7; }
+
         .probe-item {
             display: flex;
-            justify-content: space-between;
+            flex-wrap: wrap;
             align-items: center;
             padding: 0.75rem 0;
             border-bottom: 1px solid var(--gray-200);
         }
-        
+
         .probe-item:last-child {
             border-bottom: none;
         }
-        
+
         .probe-info {
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            min-width: 120px;
         }
         
         .probe-status {
@@ -114,8 +92,10 @@
         }
         
         .probe-metrics {
-            color: var(--gray-600);
-            font-size: 0.875rem;
+            margin-left: auto;
+            color: var(--gray-500);
+            font-size: 0.8rem;
+            white-space: nowrap;
             font-family: 'Monaco', 'Menlo', monospace;
         }
         
@@ -184,22 +164,26 @@
 </head>
 <body>
     <div class="header">
-        <h1>
-            <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
-            SenHub Agent Dashboard
-        </h1>
-        <div class="nav-breadcrumb">
-            Dashboard
+        <div class="header-top">
+            <h1>
+                <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
+                SenHub Agent
+            </h1>
+            <nav class="main-nav">
+                <a href="/web/{{.AgentKey}}/dashboard" class="nav-link active">Dashboard</a>
+                <a href="/web/{{.AgentKey}}/explorer" class="nav-link">Sensor Builder</a>
+                <a href="/web/{{.AgentKey}}/docs" class="nav-link">Documentation</a>
+            </nav>
         </div>
     </div>
     
     <div class="container">
         <div id="loading" class="loading">
-            <div>⏳ Loading agent status...</div>
+            <div>Loading agent status...</div>
         </div>
         
         <div id="error" class="error" style="display: none;">
-            ❌ Failed to load agent status. Please check if the agent is running.
+            Failed to load agent status. Please check if the agent is running.
             <div style="margin-top: 0.5rem; font-size: 0.875rem;">
                 <a href="#" onclick="loadDashboard()" style="color: inherit; text-decoration: underline;">Click to retry</a>
             </div>
@@ -211,7 +195,7 @@
                 <!-- Agent Status -->
                 <div class="card">
                     <div class="metric-row" style="border-bottom: 1px solid var(--gray-200); margin-bottom: 1rem; padding-bottom: 1rem;">
-                        <h2 style="margin: 0;">🚀 Agent Status</h2>
+                        <h2 style="margin: 0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Agent Status</h2>
                         <div class="status-indicator" id="agent-status-indicator">
                             <span>●</span>
                             <span id="agent-status">Loading...</span>
@@ -237,7 +221,7 @@
                 
                 <!-- Health Check -->
                 <div class="card">
-                    <h2>💊 Health Check</h2>
+                    <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Health Check</h2>
                     <div class="metric-row">
                         <span class="metric-label">HTTP Server</span>
                         <span class="metric-value" id="health-http">-</span>
@@ -258,7 +242,7 @@
                 
                 <!-- Resources -->
                 <div class="card">
-                    <h2>📊 Resources</h2>
+                    <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> Resources</h2>
                     <div class="metric-row">
                         <span class="metric-label">Memory Usage</span>
                         <span class="metric-value" id="resource-memory">-</span>
@@ -280,7 +264,7 @@
                 <!-- License Status -->
                 <div class="card">
                     <div class="metric-row" style="border-bottom: 1px solid var(--gray-200); margin-bottom: 1rem; padding-bottom: 1rem;">
-                        <h2 style="margin: 0;">🔐 License</h2>
+                        <h2 style="margin: 0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> License</h2>
                         <div class="status-indicator" id="license-status-indicator">
                             <span>●</span>
                             <span id="license-status">Loading...</span>
@@ -309,7 +293,7 @@
             
             <!-- Probes Status -->
             <div class="card">
-                <h2>🔍 Active Probes</h2>
+                <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg> Active Probes</h2>
                 <div style="margin-bottom: 1rem;">
                     <span class="metric-label">Total Probes: </span>
                     <span class="metric-value" id="probes-count">-</span>
@@ -322,18 +306,8 @@
                 </div>
             </div>
             
-            <!-- Navigation -->
-            <div class="nav-buttons">
-                <a href="/web/{{.AgentKey}}/explorer" class="btn btn-primary">
-                    🔍 API Explorer
-                </a>
-                <a href="/web/{{.AgentKey}}/docs" class="btn btn-secondary">
-                    📚 API Documentation
-                </a>
-            </div>
-            
             <div class="refresh-info">
-                🔄 Auto-refresh every 30 seconds
+                Auto-refresh every 30 seconds
             </div>
         </div>
     </div>

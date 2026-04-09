@@ -166,7 +166,7 @@ func (ah *AssetHandler) ServeAsset(w http.ResponseWriter, r *http.Request, asset
 
 	// Set appropriate headers
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Cache-Control", "public, max-age=3600") // Cache for 1 hour
+	w.Header().Set("Cache-Control", "no-cache, must-revalidate") // No cache for embedded assets
 
 	// Write content
 	if _, err := w.Write(content); err != nil {

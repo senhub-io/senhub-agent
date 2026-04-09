@@ -1,7 +1,7 @@
-// SenHub Agent - API Explorer JavaScript
+// SenHub Agent - Sensor Builder JavaScript
 
 /**
- * API Explorer main functionality
+ * Sensor Builder main functionality
  */
 class APIExplorer {
     constructor(agentKey) {
@@ -9,7 +9,12 @@ class APIExplorer {
         this.selectedProbe = null;
         this.selectedTags = {};
         this.isEditMode = false;
-        
+        this.tableHTML = null;
+        this.jsonText = null;
+        this.currentView = 'table';
+        this.autoFetchTimeout = null;
+        this.initialized = false;
+
         this.initializeElements();
         this.setupEventListeners();
         this.loadInitialData();
@@ -24,9 +29,6 @@ class APIExplorer {
         this.tagFiltersContainer = this.base.$('#tag-filters');
         this.showTagsCheckbox = this.base.$('#show-tags-checkbox');
 
-        console.log('Elements initialized:');
-        console.log('- showTagsGroup:', this.showTagsGroup ? 'FOUND' : 'NOT FOUND');
-        console.log('- showTagsCheckbox:', this.showTagsCheckbox ? 'FOUND' : 'NOT FOUND');
 
         // URL elements
         this.generatedUrlDiv = this.base.$('#generated-url');
@@ -41,6 +43,11 @@ class APIExplorer {
 
         // Response area
         this.responseArea = this.base.$('#response-area');
+
+        // View toggle
+        this.responseViewToggle = this.base.$('#response-view-toggle');
+        this.viewTableBtn = this.base.$('#view-table-btn');
+        this.viewJsonBtn = this.base.$('#view-json-btn');
 
         // Initialize tag filters
         this.tagFilters = new TagFilters(
@@ -57,13 +64,10 @@ class APIExplorer {
 
         // Show tags checkbox
         if (this.showTagsCheckbox) {
-            console.log('Show tags checkbox found, adding listener');
             this.showTagsCheckbox.addEventListener('change', () => {
-                console.log('Show tags checkbox changed!', this.showTagsCheckbox.checked);
                 this.generateURL();
             });
         } else {
-            console.error('Show tags checkbox NOT FOUND on initialization');
         }
 
         // Button clicks
@@ -72,6 +76,10 @@ class APIExplorer {
         this.testRequestBtn?.addEventListener('click', () => this.testRequest());
         this.copyResponseBtn?.addEventListener('click', () => this.copyResponse());
         this.clearResponseBtn?.addEventListener('click', () => this.clearResponse());
+
+        // View toggle buttons
+        this.viewTableBtn?.addEventListener('click', () => this.switchView('table'));
+        this.viewJsonBtn?.addEventListener('click', () => this.switchView('json'));
 
         // Manual URL input
         this.manualUrlInput?.addEventListener('input',
@@ -99,6 +107,14 @@ class APIExplorer {
         
         // Generate URL with restored state
         this.generateURL();
+
+        // Mark as initialized — enable auto-fetch for subsequent changes
+        this.initialized = true;
+
+        // Initial fetch if we have both endpoint and probe from URL
+        if (urlState.endpointType && urlState.probe) {
+            this.testRequest();
+        }
     }
 
     async loadEndpoints() {
@@ -159,23 +175,15 @@ class APIExplorer {
     }
 
     showTagFilters(show) {
-        console.log('showTagFilters called with:', show);
         if (this.showTagsGroup) {
             this.showTagsGroup.style.display = show ? 'block' : 'none';
-            console.log('- showTagsGroup display set to:', show ? 'block' : 'none');
-        } else {
-            console.error('- showTagsGroup is NULL');
         }
         if (this.tagFiltersGroup) {
             this.tagFiltersGroup.style.display = show ? 'block' : 'none';
-            console.log('- tagFiltersGroup display set to:', show ? 'block' : 'none');
-        } else {
-            console.error('- tagFiltersGroup is NULL');
         }
     }
 
     generateURL() {
-        console.log('generateURL called');
         const endpointType = this.endpointTypeSelect?.value;
 
         if (!endpointType || !this.selectedProbe) {
@@ -196,13 +204,10 @@ class APIExplorer {
 
         // Add show_tags parameter if checkbox is unchecked
         if (this.showTagsCheckbox) {
-            console.log('Show tags checkbox state:', this.showTagsCheckbox.checked);
             if (!this.showTagsCheckbox.checked) {
                 queryParams.push('show_tags=false');
-                console.log('Added show_tags=false to URL');
             }
         } else {
-            console.warn('Show tags checkbox not found');
         }
 
         if (queryParams.length > 0) {
@@ -215,6 +220,14 @@ class APIExplorer {
 
         // Update the page URL to reflect current state
         this.updatePageURL(endpointType, this.selectedProbe, this.selectedTags);
+
+        // Auto-fetch when both probe and endpoint are selected
+        if (endpointType && this.selectedProbe && this.initialized) {
+            if (this.autoFetchTimeout) {
+                clearTimeout(this.autoFetchTimeout);
+            }
+            this.autoFetchTimeout = setTimeout(() => this.testRequest(), 300);
+        }
     }
 
     updateUrlDisplay(url) {
@@ -245,12 +258,12 @@ class APIExplorer {
             this.manualUrlInput.style.display = 'block';
             this.generatedUrlDiv.style.display = 'none';
             this.manualUrlInput.value = this.generatedUrlDiv.textContent;
-            this.editUrlBtn.innerHTML = '🔒 Lock URL';
+            this.editUrlBtn.innerHTML = 'Lock URL';
         } else {
             // Switch back to generated mode
             this.manualUrlInput.style.display = 'none';
             this.generatedUrlDiv.style.display = 'block';
-            this.editUrlBtn.innerHTML = '✏️ Edit URL';
+            this.editUrlBtn.innerHTML = 'Edit URL';
             this.generateURL(); // Regenerate URL
         }
     }
@@ -274,38 +287,163 @@ class APIExplorer {
         const success = await this.base.copyToClipboard(url);
         
         if (success) {
-            this.showButtonSuccess(this.copyUrlBtn, '✅ Copied!', '📋 Copy URL');
+            this.showButtonSuccess(this.copyUrlBtn, 'Copied!', 'Copy Sensor URL');
         }
     }
 
     async testRequest() {
         const url = this.getCurrentURL().replace(window.location.origin, '');
         const endpointType = this.endpointTypeSelect?.value;
-        
+
         this.responseArea.className = 'result-area centered';
-        this.responseArea.innerHTML = '<span class="loading-text">Loading...</span>';
+        this.setLoadingState();
         this.copyResponseBtn.disabled = true;
-        
+        this.tableHTML = null;
+        this.jsonText = null;
+
         try {
             const response = await fetch(url);
-            
-            let responseText;
+
             if (endpointType === 'nagios') {
-                responseText = await response.text();
+                const responseText = await response.text();
+                this.jsonText = responseText;
+                this.tableHTML = null;
+
+                // Hide view toggle for nagios format
+                if (this.responseViewToggle) {
+                    this.responseViewToggle.style.display = 'none';
+                }
+
+                this.responseArea.className = 'result-area';
+                this.responseArea.textContent = responseText;
             } else {
                 const jsonData = await response.json();
-                responseText = JSON.stringify(jsonData, null, 2);
+                this.jsonText = JSON.stringify(jsonData, null, 2);
+
+                // Try to render table for PRTG/API format
+                if (jsonData.prtg?.result) {
+                    this.tableHTML = this.buildResponseTable(jsonData);
+
+                    // Show view toggle
+                    if (this.responseViewToggle) {
+                        this.responseViewToggle.style.display = 'flex';
+                    }
+
+                    // Show table view by default
+                    this.currentView = 'table';
+                    this.viewTableBtn?.classList.add('active');
+                    this.viewJsonBtn?.classList.remove('active');
+                    this.showTableView();
+                } else {
+                    this.tableHTML = null;
+
+                    // Hide view toggle for non-PRTG JSON
+                    if (this.responseViewToggle) {
+                        this.responseViewToggle.style.display = 'none';
+                    }
+
+                    this.responseArea.className = 'result-area';
+                    this.responseArea.textContent = this.jsonText;
+                }
             }
-            
-            // Remove centered class and set content
-            this.responseArea.className = 'result-area';
-            this.responseArea.textContent = responseText;
+
             this.copyResponseBtn.disabled = false;
-            
+
         } catch (error) {
             this.responseArea.className = 'result-area centered';
             this.responseArea.textContent = `Error: ${error.message}`;
             this.copyResponseBtn.disabled = true;
+
+            if (this.responseViewToggle) {
+                this.responseViewToggle.style.display = 'none';
+            }
+        }
+    }
+
+    setLoadingState() {
+        this.responseArea.textContent = '';
+        const loadingSpan = document.createElement('span');
+        loadingSpan.className = 'loading-text';
+        loadingSpan.textContent = 'Loading...';
+        this.responseArea.appendChild(loadingSpan);
+    }
+
+    buildResponseTable(prtgData) {
+        const results = prtgData.prtg?.result || [];
+        if (results.length === 0) return null;
+
+        // Build table using DOM methods for safety, then serialize
+        const table = document.createElement('table');
+        table.className = 'metrics-table';
+
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        ['Metric', 'Value', 'Unit'].forEach(text => {
+            const th = document.createElement('th');
+            th.textContent = text;
+            headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        results.forEach(r => {
+            const tr = document.createElement('tr');
+
+            const tdChannel = document.createElement('td');
+            tdChannel.textContent = r.channel || '';
+            tr.appendChild(tdChannel);
+
+            const tdValue = document.createElement('td');
+            tdValue.className = 'value-cell';
+            const value = typeof r.value === 'number' ?
+                (Number.isInteger(r.value) ? r.value : r.value.toFixed(2)) : r.value;
+            tdValue.textContent = value;
+            tr.appendChild(tdValue);
+
+            const tdUnit = document.createElement('td');
+            tdUnit.textContent = r.customunit || r.unit || '';
+            tr.appendChild(tdUnit);
+
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+
+        // Wrap in a container div
+        const container = document.createElement('div');
+        container.appendChild(table);
+        return container;
+    }
+
+    showTableView() {
+        this.responseArea.className = 'result-area';
+        // Clear and append the table DOM element
+        this.responseArea.textContent = '';
+        if (this.tableHTML) {
+            this.responseArea.appendChild(this.tableHTML.cloneNode(true));
+        } else {
+            const p = document.createElement('p');
+            p.textContent = 'No metrics found';
+            this.responseArea.appendChild(p);
+        }
+    }
+
+    switchView(view) {
+        this.currentView = view;
+
+        if (view === 'table') {
+            this.viewTableBtn?.classList.add('active');
+            this.viewJsonBtn?.classList.remove('active');
+            if (this.tableHTML) {
+                this.showTableView();
+            }
+        } else {
+            this.viewJsonBtn?.classList.add('active');
+            this.viewTableBtn?.classList.remove('active');
+            if (this.jsonText) {
+                this.responseArea.className = 'result-area';
+                this.responseArea.textContent = this.jsonText;
+            }
         }
     }
 
@@ -313,14 +451,25 @@ class APIExplorer {
         const success = await this.base.copyToClipboard(this.responseArea.textContent);
         
         if (success) {
-            this.showButtonSuccess(this.copyResponseBtn, '✅ Copied!', '📋 Copy Response');
+            this.showButtonSuccess(this.copyResponseBtn, 'Copied!', 'Copy Response');
         }
     }
 
     clearResponse() {
         this.responseArea.className = 'result-area centered';
-        this.responseArea.innerHTML = '<span class="placeholder-text">Click "Test Request" to see the response...</span>';
+        this.responseArea.textContent = '';
+        const placeholder = document.createElement('span');
+        placeholder.className = 'placeholder-text';
+        placeholder.textContent = 'Click "Preview" to see the response...';
+        this.responseArea.appendChild(placeholder);
         this.copyResponseBtn.disabled = true;
+        this.tableHTML = null;
+        this.jsonText = null;
+
+        // Hide view toggle
+        if (this.responseViewToggle) {
+            this.responseViewToggle.style.display = 'none';
+        }
     }
 
     showButtonSuccess(button, successText, originalText) {

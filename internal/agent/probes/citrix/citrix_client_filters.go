@@ -144,19 +144,30 @@ func (f *ClientFilters) FilterFailureLogsByMachineDNS(failures []ConnectionFailu
 	var filteredFailures []ConnectionFailureLog
 	for _, failure := range failures {
 		machineName := failure.MachineName
-		if machineName != "" {
-			lowerMachineName := strings.ToLower(machineName)
-			if machineMap[lowerMachineName] {
-				filteredFailures = append(filteredFailures, failure)
-				continue
-			}
 
-			// Also check short hostname
-			if dotIndex := strings.Index(lowerMachineName, "."); dotIndex > 0 {
-				shortName := lowerMachineName[:dotIndex]
-				if machineMap[shortName] {
-					filteredFailures = append(filteredFailures, failure)
-				}
+		// Include failures without a machine name (global failures: licensing, client-side, etc.)
+		if machineName == "" {
+			filteredFailures = append(filteredFailures, failure)
+			continue
+		}
+
+		lowerMachineName := strings.ToLower(machineName)
+
+		// Handle DOMAIN\MACHINE format — extract machine name after backslash
+		if backslash := strings.LastIndex(lowerMachineName, "\\"); backslash >= 0 {
+			lowerMachineName = lowerMachineName[backslash+1:]
+		}
+
+		if machineMap[lowerMachineName] {
+			filteredFailures = append(filteredFailures, failure)
+			continue
+		}
+
+		// Also check short hostname
+		if dotIndex := strings.Index(lowerMachineName, "."); dotIndex > 0 {
+			shortName := lowerMachineName[:dotIndex]
+			if machineMap[shortName] {
+				filteredFailures = append(filteredFailures, failure)
 			}
 		}
 	}
