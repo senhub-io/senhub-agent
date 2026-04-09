@@ -148,6 +148,10 @@ func (f *CLIFormatter) formatConnectionInfo(conn ConnectionInfo) string {
 	output.WriteString(fmt.Sprintf("Source:     %s\n", f.formatSource(conn.Source)))
 	output.WriteString(fmt.Sprintf("Status:     %s\n", f.formatConnectionStatus(conn.Status)))
 
+	if conn.DashboardURL != "" {
+		output.WriteString(fmt.Sprintf("Dashboard:  %s\n", conn.DashboardURL))
+	}
+
 	return output.String()
 }
 

@@ -71,11 +71,14 @@ probes:
   - name: citrix-production
     type: citrix
     params:
-      base_url: "https://citrix-director.company.com"
       interval: 120
-      auth:
-        username: "DOMAIN\\admin"
-        password: "password"
+      timeout: 30
+      director:
+        url: "https://citrix-director.company.com"
+        verify_ssl: true
+        auth:
+          username: "DOMAIN\\admin"
+          password: "password"
 
   # Load balancer monitoring
   - name: netscaler-adc

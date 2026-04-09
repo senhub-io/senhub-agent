@@ -12,4 +12,32 @@ metrics:
     unit: "#"
     multi_instance_labels: ["facility", "facility_name", "hostname", "tag"]
     description: "Syslog message severity level (RFC 3164)"
+    category: "events"
     lookup: "sfs.syslog.severity"
+
+tag_metadata:
+  facility_name:
+    type: resource
+    label: "Syslog Facility"
+  hostname:
+    type: resource
+    label: "Source Host"
+  tag:
+    type: resource
+    label: "Application Tag"
+  # System tags (injected by framework)
+  host:
+    type: resource
+    label: "Host"
+  os:
+    type: resource
+    label: "Operating System"
+  platform:
+    type: resource
+    label: "Platform"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"
