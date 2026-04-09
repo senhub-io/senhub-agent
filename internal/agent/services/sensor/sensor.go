@@ -4,6 +4,7 @@ package sensor
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes"
@@ -12,6 +13,14 @@ import (
 	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/agent/services/logger"
 )
+
+// validProbeNameRegex matches URL-safe probe names: letters, digits, hyphens, underscores
+var validProbeNameRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+
+// isValidProbeName checks if a probe name is safe for use in HTTP URLs
+func isValidProbeName(name string) bool {
+	return name != "" && validProbeNameRegex.MatchString(name)
+}
 
 // Sensor defines interface for starting and stopping probes
 type Sensor interface {
@@ -134,9 +143,17 @@ func (s *sensor) SyncConfiguration() error {
 		Int("running_probes", len(s.startedProbes)).
 		Msg("Configuration sync status")
 
-	// Pre-validation: Check for duplicate probe names in configuration
+	// Pre-validation: Check probe names
 	seenNames := make(map[string]bool)
-	for _, probeConfig := range probeConfigs {
+	for i, probeConfig := range probeConfigs {
+		// Validate probe name is URL-safe (used in HTTP endpoints like /prtg/{name})
+		if !isValidProbeName(probeConfig.Name) {
+			s.moduleLogger.Error().
+				Str("probe_name", probeConfig.Name).
+				Msg("🚫 CONFIGURATION ERROR: Probe name must contain only letters, digits, hyphens and underscores (no spaces or special characters) — skipping probe")
+			probeConfigs[i].Name = "" // Mark for skipping
+			continue
+		}
 		if seenNames[probeConfig.Name] {
 			s.moduleLogger.Warn().
 				Str("probe_name", probeConfig.Name).
@@ -148,6 +165,10 @@ func (s *sensor) SyncConfiguration() error {
 	// Phase 1: Start new probes
 	processedNames := make(map[string]bool)
 	for _, probeConfig := range probeConfigs {
+		// Skip probes with invalid names (marked in pre-validation)
+		if probeConfig.Name == "" {
+			continue
+		}
 		// Skip duplicates (already warned in pre-validation)
 		if processedNames[probeConfig.Name] {
 			s.moduleLogger.Debug().

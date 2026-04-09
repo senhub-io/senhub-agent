@@ -219,17 +219,17 @@ func TestGetFilenameForLookup(t *testing.T) {
 		{
 			name:     "Netscaler lbvserver state",
 			lookupID: "netscaler.lbvserver.state",
-			expected: "prtg.valuelookup.netscaler_lbvserver_state.ovl",
+			expected: "netscaler.lbvserver.state.ovl",
 		},
 		{
 			name:     "Netscaler service state",
 			lookupID: "netscaler.service.state",
-			expected: "prtg.valuelookup.netscaler_service_state.ovl",
+			expected: "netscaler.service.state.ovl",
 		},
 		{
 			name:     "Simple lookup ID",
 			lookupID: "simple",
-			expected: "prtg.valuelookup.simple.ovl",
+			expected: "simple.ovl",
 		},
 	}
 

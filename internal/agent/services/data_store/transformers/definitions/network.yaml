@@ -8,45 +8,82 @@ metrics:
     display_name: "Network {interface} Bytes Sent"
     unit: "bytes"
     multi_instance_labels: ["interface"]
-    
+    category: "throughput"
+    description: "Total number of bytes transmitted on the network interface"
+
   - name: "bytes_received"
     channel: "network_bytes_received"
     display_name: "Network {interface} Bytes Received"
     unit: "bytes"
     multi_instance_labels: ["interface"]
-    
+    category: "throughput"
+    description: "Total number of bytes received on the network interface"
+
   - name: "packets_sent"
     channel: "network_packets_sent"
     display_name: "Network {interface} Packets Sent"
     unit: "#"
     multi_instance_labels: ["interface"]
-    
+    category: "packets"
+    description: "Total number of packets transmitted on the network interface"
+
   - name: "packets_received"
     channel: "network_packets_received"
     display_name: "Network {interface} Packets Received"
     unit: "#"
     multi_instance_labels: ["interface"]
-    
+    category: "packets"
+    description: "Total number of packets received on the network interface"
+
   - name: "errors_sent"
     channel: "network_errors_sent"
     display_name: "Network {interface} Send Errors"
     unit: "#"
     multi_instance_labels: ["interface"]
-    
+    category: "errors"
+    description: "Number of outbound packets that could not be transmitted due to errors"
+
   - name: "errors_received"
     channel: "network_errors_received"
     display_name: "Network {interface} Receive Errors"
     unit: "#"
     multi_instance_labels: ["interface"]
-    
+    category: "errors"
+    description: "Number of inbound packets that contained errors and were discarded"
+
   - name: "discards_sent"
     channel: "network_discards_sent"
     display_name: "Network {interface} Send Discards"
     unit: "#"
     multi_instance_labels: ["interface"]
-    
+    category: "errors"
+    description: "Number of outbound packets discarded even though no errors were detected"
+
   - name: "discards_received"
     channel: "network_discards_received"
     display_name: "Network {interface} Receive Discards"
     unit: "#"
     multi_instance_labels: ["interface"]
+    category: "errors"
+    description: "Number of inbound packets discarded even though no errors were detected"
+
+tag_metadata:
+  interface:
+    type: resource
+    label: "Network Interface"
+  # System tags (injected by framework)
+  host:
+    type: resource
+    label: "Host"
+  os:
+    type: resource
+    label: "Operating System"
+  platform:
+    type: resource
+    label: "Platform"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"

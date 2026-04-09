@@ -4,6 +4,7 @@ package netscaler
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/citrix/adc-nitro-go/service"
@@ -20,16 +21,24 @@ type netscalerProbe struct {
 	logger     *logger.ModuleLogger
 	interval   time.Duration
 	client     *service.NitroClient
+	clientMu   sync.RWMutex // guards p.client swaps during HA failover
 	ctx        context.Context
 	cancelFunc context.CancelFunc
 
 	// Configuration fields
 	baseURL            string
+	secondaryURL       string // Optional secondary NetScaler for HA failover
+	activeURL          string // Currently connected URL
 	username           string
 	password           string
 	apiKey             string
 	insecureSkipVerify bool
 	timeout            int
+
+	// HA failover state
+	consecutiveErrors  int
+	maxFailoverErrors  int    // Number of consecutive errors before failover (default: 3)
+	pendingFailoverURL string // Set by checkHAPrimaryStatus, acted on at start of next Collect()
 
 	// Configuration cache for enriched tags
 	cache      *configCache
@@ -88,6 +97,9 @@ func NewNetscalerProbe(config map[string]interface{}, baseLogger *logger.Logger)
 		probeName = "netscaler-probe"
 	}
 
+	// Extract secondary URL for HA failover
+	secondaryURL, _ := config["secondary_url"].(string)
+
 	// Extract custom tags from configuration
 	customTags := extractCustomTags(config)
 
@@ -97,6 +109,8 @@ func NewNetscalerProbe(config map[string]interface{}, baseLogger *logger.Logger)
 		logger:             moduleLogger,
 		interval:           interval,
 		baseURL:            baseURL,
+		secondaryURL:       secondaryURL,
+		activeURL:          baseURL,
 		username:           username,
 		password:           password,
 		apiKey:             apiKey,
@@ -104,6 +118,7 @@ func NewNetscalerProbe(config map[string]interface{}, baseLogger *logger.Logger)
 		timeout:            timeout,
 		customTags:         customTags,
 		nodeID:             -1, // Default: not HA or unknown
+		maxFailoverErrors:  3,
 	}
 
 	// Initialize configuration cache (refresh every 5 minutes)
@@ -115,9 +130,11 @@ func NewNetscalerProbe(config map[string]interface{}, baseLogger *logger.Logger)
 
 	moduleLogger.Info().
 		Str("base_url", baseURL).
+		Str("secondary_url", secondaryURL).
 		Str("username", username).
 		Bool("api_key_auth", apiKey != "").
 		Bool("insecure_skip_verify", insecureSkipVerify).
+		Bool("ha_failover", secondaryURL != "").
 		Int("timeout", timeout).
 		Int64("interval", int64(interval.Milliseconds())).
 		Msg("Netscaler probe initialized")
@@ -220,7 +237,7 @@ func (p *netscalerProbe) cacheRefreshLoop() {
 			p.logger.Info().Msg("Cache refresh loop stopped")
 			return
 		case <-ticker.C:
-			if err := p.cache.refresh(p.client); err != nil {
+			if err := p.cache.refresh(p.getClient()); err != nil {
 				p.logger.Warn().Err(err).Msg("Periodic cache refresh failed")
 			}
 		}
@@ -236,8 +253,9 @@ func (p *netscalerProbe) OnShutdown(ctx context.Context) error {
 		p.cancelFunc()
 	}
 
-	if p.client != nil && p.client.IsLoggedIn() {
-		if err := p.client.Logout(); err != nil {
+	client := p.getClient()
+	if client != nil && client.IsLoggedIn() {
+		if err := client.Logout(); err != nil {
 			p.logger.Warn().Err(err).Msg("Failed to logout from Netscaler")
 		} else {
 			p.logger.Info().Msg("Successfully logged out from Netscaler")
@@ -249,27 +267,49 @@ func (p *netscalerProbe) OnShutdown(ctx context.Context) error {
 
 // Collect gathers metrics from the Netscaler and returns them as datapoints
 func (p *netscalerProbe) Collect() ([]datapoint.DataPoint, error) {
-	if p.client == nil {
+	if p.getClient() == nil {
 		return nil, fmt.Errorf("netscaler client not initialized")
+	}
+
+	// Handle pending proactive failover (detected in previous cycle's HA check)
+	if p.pendingFailoverURL != "" {
+		targetURL := p.pendingFailoverURL
+		p.pendingFailoverURL = ""
+		p.logger.Info().Str("target", targetURL).Msg("Executing deferred HA failover to primary")
+		if err := p.switchToNode(targetURL); err != nil {
+			p.logger.Error().Err(err).Msg("Deferred failover to primary failed, continuing with current node")
+		} else {
+			p.consecutiveErrors = 0
+		}
 	}
 
 	timestamp := time.Now()
 	var datapoints []datapoint.DataPoint
 
-	// Base tags for all metrics
+	// Base tags for all metrics — snapshot activeURL to ensure consistency within this cycle
+	p.clientMu.RLock()
+	currentURL := p.activeURL
+	p.clientMu.RUnlock()
+
 	baseTags := []tags.Tag{
 		{Key: "probe_name", Value: p.GetName()},
 		{Key: "probe_type", Value: "netscaler"},
-		{Key: "netscaler", Value: p.baseURL},
+		{Key: "netscaler", Value: currentURL},
 	}
 
 	// Append custom tags from configuration
 	baseTags = append(baseTags, p.customTags...)
 
-	// Collect system stats
+	// Collect system stats — this is the primary health indicator for failover
 	if systemDP, err := p.collectSystemStats(timestamp, baseTags); err != nil {
 		p.logger.Warn().Err(err).Msg("Failed to collect system stats")
+		// System stats failure is a strong signal the node is down
+		if p.handleCollectError() {
+			// Failover happened — skip this cycle, next collection will use new node
+			return nil, fmt.Errorf("HA failover triggered to %s, metrics will be collected next cycle", p.activeURL)
+		}
 	} else {
+		p.consecutiveErrors = 0 // Reset on success
 		datapoints = append(datapoints, systemDP...)
 	}
 
@@ -421,7 +461,7 @@ func (p *netscalerProbe) fetchSystemIdentity() error {
 	// Fetch nshostname configuration
 	// URL: /nitro/v1/config/nshostname
 	// Returns: { "nshostname": [ { "hostname": "SRV0006", "ownernode": 0 }] }
-	resources, err := p.client.FindAllResources("nshostname")
+	resources, err := p.getClient().FindAllResources("nshostname")
 	if err != nil {
 		p.logger.Warn().Err(err).Msg("Failed to fetch nshostname, will try hanode instead")
 		// Try alternative approach: fetch hanode config to determine our node ID
@@ -479,7 +519,7 @@ func (p *netscalerProbe) fetchSystemIdentity() error {
 func (p *netscalerProbe) fetchSystemIdentityFromHANode() error {
 	p.logger.Debug().Msg("Attempting to fetch system identity from /config/hanode")
 
-	resources, err := p.client.FindAllResources("hanode")
+	resources, err := p.getClient().FindAllResources("hanode")
 	if err != nil {
 		p.logger.Warn().Err(err).Msg("Failed to fetch hanode config, assuming standalone node")
 		p.nodeID = -1

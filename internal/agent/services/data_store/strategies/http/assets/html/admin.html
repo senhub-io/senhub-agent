@@ -171,12 +171,16 @@
 </head>
 <body>
     <div class="header">
-        <h1>
-            <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
-            SenHub Agent Administration
-        </h1>
-        <div class="nav-breadcrumb">
-            <a href="/web/{{.AgentKey}}/dashboard">Dashboard</a> > Administration
+        <div class="header-top">
+            <h1>
+                <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
+                SenHub Agent
+            </h1>
+            <nav class="main-nav">
+                <a href="/web/{{.AgentKey}}/dashboard" class="nav-link">Dashboard</a>
+                <a href="/web/{{.AgentKey}}/explorer" class="nav-link">Sensor Builder</a>
+                <a href="/web/{{.AgentKey}}/docs" class="nav-link">Documentation</a>
+            </nav>
         </div>
     </div>
     
@@ -313,7 +317,7 @@
                 ← Back to Dashboard
             </a>
             <a href="/web/{{.AgentKey}}/explorer" class="btn btn-primary">
-                🔍 API Explorer
+                🔍 Sensor Builder
             </a>
             <a href="/web/{{.AgentKey}}/docs" class="btn btn-secondary">
                 📚 Documentation

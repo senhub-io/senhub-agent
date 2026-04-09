@@ -20,6 +20,7 @@ type deliveryControllerClient struct {
 	httpClient   *http.Client
 	logger       *logger.ModuleLogger
 	primaryURL   string
+	activeURL    string   // Currently used URL (primary or fallback)
 	fallbackURLs []string
 	authConfig   AuthConfig
 	token        string
@@ -53,11 +54,13 @@ func NewDeliveryControllerClient(config DeliveryControllerConfig, authConfig Aut
 		Timeout:   config.Timeout,
 	}
 
+	primary := strings.TrimSuffix(config.URL, "/")
 	return &deliveryControllerClient{
 		config:       config,
 		httpClient:   httpClient,
 		logger:       moduleLogger,
-		primaryURL:   strings.TrimSuffix(config.URL, "/"),
+		primaryURL:   primary,
+		activeURL:    primary,
 		fallbackURLs: config.FallbackURLs,
 		authConfig:   authConfig,
 	}, nil
@@ -81,11 +84,21 @@ func (c *deliveryControllerClient) getToken(ctx context.Context) error {
 
 	c.logger.Debug().Msg("Getting new CVAD authentication token")
 
-	urls := append([]string{c.primaryURL}, c.fallbackURLs...)
+	// Build URL list: active first, then others as fallback
+	urls := []string{c.activeURL}
+	if c.activeURL != c.primaryURL {
+		urls = append(urls, c.primaryURL)
+	}
+	for _, fb := range c.fallbackURLs {
+		fb = strings.TrimSuffix(fb, "/")
+		if fb != c.activeURL && fb != c.primaryURL {
+			urls = append(urls, fb)
+		}
+	}
 
 	var lastErr error
 	for _, baseURL := range urls {
-		url := fmt.Sprintf("%s/cvad/manage/Tokens", strings.TrimSuffix(baseURL, "/"))
+		url := fmt.Sprintf("%s/cvad/manage/Tokens", baseURL)
 
 		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader([]byte("{}")))
 		if err != nil {
@@ -161,102 +174,112 @@ func (c *deliveryControllerClient) makeRequest(ctx context.Context, method, endp
 	return c.makeRequestWithSiteID(ctx, method, endpoint, body, "")
 }
 
-// makeRequestWithSiteID performs an authenticated HTTP request with optional site ID header
+// makeRequestWithSiteID performs an authenticated HTTP request with optional site ID header.
+// Uses the active URL with recovery to primary and failover to fallbacks.
 func (c *deliveryControllerClient) makeRequestWithSiteID(ctx context.Context, method, endpoint string, body interface{}, siteID string) ([]byte, error) {
-	// Ensure we have a valid token
 	if err := c.getToken(ctx); err != nil {
 		return nil, fmt.Errorf("failed to authenticate: %w", err)
 	}
 
-	urls := append([]string{c.primaryURL}, c.fallbackURLs...)
-
-	var lastErr error
-	for _, baseURL := range urls {
-		url := fmt.Sprintf("%s%s", strings.TrimSuffix(baseURL, "/"), endpoint)
-
-		var bodyReader io.Reader
-		if body != nil {
-			jsonBody, err := json.Marshal(body)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal request body: %w", err)
-			}
-			bodyReader = bytes.NewReader(jsonBody)
+	// Recovery: if on fallback, try primary first
+	if c.activeURL != c.primaryURL {
+		if respBody, err := c.doControllerRequest(ctx, method, c.primaryURL, endpoint, body, siteID); err == nil {
+			c.activeURL = c.primaryURL
+			c.logger.Info().
+				Str("primary_url", c.primaryURL).
+				Msg("Primary DDC recovered, switching back")
+			return respBody, nil
 		}
+	}
 
-		req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		// Set headers for CVAD API requests
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("Content-Type", "application/json")
-		// CVAD uses CWSAuth Bearer format instead of standard Bearer
-		req.Header.Set("Authorization", fmt.Sprintf("CWSAuth Bearer=%s", c.token))
-		// Add Citrix-CustomerId header (required for all operations)
-		req.Header.Set("Citrix-CustomerId", "CitrixOnPremises")
-		// Add Citrix-InstanceId header if site ID is provided (required for site-specific operations)
-		if siteID != "" {
-			req.Header.Set("Citrix-InstanceId", siteID)
-		}
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			c.logger.Debug().
-				Err(err).
-				Str("url", url).
-				Msg("Controller request failed, trying fallback controller")
-			lastErr = err
-			continue
-		}
-
-		respBody, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		// Check for token expiry
-		if resp.StatusCode == http.StatusUnauthorized {
-			c.logger.Debug().Msg("Token expired, refreshing")
-			c.token = ""
-			// Retry with new token
-			if err := c.getToken(ctx); err != nil {
-				lastErr = err
-				continue
-			}
-			// Retry the request once
-			continue
-		}
-
-		if resp.StatusCode >= 400 {
-			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
-
-			// Reduce log level for optional endpoints that may not exist (404)
-			logLevel := c.logger.Warn()
-			if resp.StatusCode == 404 && (strings.Contains(url, "/Controllers") || strings.Contains(url, "/Applications")) {
-				logLevel = c.logger.Debug()
-			}
-
-			logLevel.
-				Int("status", resp.StatusCode).
-				Str("url", url).
-				Str("response", string(respBody)).
-				Msg("Request failed")
-			continue
-		}
-
-		c.logger.Debug().
-			Str("url", url).
-			Str("method", method).
-			Msg("Request successful")
-
+	// Try active URL
+	respBody, err := c.doControllerRequest(ctx, method, c.activeURL, endpoint, body, siteID)
+	if err == nil {
 		return respBody, nil
 	}
 
-	return nil, fmt.Errorf("all controllers failed: %w", lastErr)
+	c.logger.Debug().Err(err).Str("url", c.activeURL).Msg("Active DDC request failed")
+
+	// Failover: try fallbacks
+	for _, fbURL := range c.fallbackURLs {
+		fb := strings.TrimSuffix(fbURL, "/")
+		if fb == c.activeURL {
+			continue
+		}
+
+		respBody, err := c.doControllerRequest(ctx, method, fb, endpoint, body, siteID)
+		if err == nil {
+			c.logger.Warn().
+				Str("failed_url", c.activeURL).
+				Str("new_active_url", fb).
+				Msg("DDC failover successful")
+			c.activeURL = fb
+			return respBody, nil
+		}
+	}
+
+	return nil, fmt.Errorf("all DDC controllers unreachable: %w", err)
+}
+
+// doControllerRequest performs a single HTTP request to a specific controller URL
+func (c *deliveryControllerClient) doControllerRequest(ctx context.Context, method, baseURL, endpoint string, body interface{}, siteID string) ([]byte, error) {
+	url := fmt.Sprintf("%s%s", baseURL, endpoint)
+
+	var bodyReader io.Reader
+	if body != nil {
+		jsonBody, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request body: %w", err)
+		}
+		bodyReader = bytes.NewReader(jsonBody)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("CWSAuth Bearer=%s", c.token))
+	req.Header.Set("Citrix-CustomerId", "CitrixOnPremises")
+	if siteID != "" {
+		req.Header.Set("Citrix-InstanceId", siteID)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle token expiry
+	if resp.StatusCode == http.StatusUnauthorized {
+		c.logger.Debug().Msg("Token expired, refreshing")
+		c.token = ""
+		if err := c.getToken(ctx); err != nil {
+			return nil, err
+		}
+		// Retry once with new token
+		return c.doControllerRequest(ctx, method, baseURL, endpoint, body, siteID)
+	}
+
+	if resp.StatusCode >= 400 {
+		logLevel := c.logger.Warn()
+		if resp.StatusCode == 404 && (strings.Contains(url, "/Controllers") || strings.Contains(url, "/Applications")) {
+			logLevel = c.logger.Debug()
+		}
+		logLevel.Int("status", resp.StatusCode).Str("url", url).Msg("DDC request failed")
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	c.logger.Debug().Str("url", url).Str("method", method).Msg("DDC request successful")
+	return respBody, nil
 }
 
 // getSiteInfo returns the cached site ID and name, refreshing from GetMe if stale.

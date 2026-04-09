@@ -3,6 +3,7 @@ package netscaler
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/tags"
@@ -17,7 +18,7 @@ func (p *netscalerProbe) collectSystemStats(timestamp time.Time, baseTags []tags
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "system_health"})
 
 	// system is a singleton resource, use FindStat instead of FindAllStats
-	sys, err := p.client.FindStat("system", "")
+	sys, err := p.getClient().FindStat("system", "")
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +187,7 @@ func (p *netscalerProbe) collectNSStats(timestamp time.Time, baseTags []tags.Tag
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "system_health"})
 
 	// ns is a singleton resource, use FindStat instead of FindAllStats
-	ns, err := p.client.FindStat("ns", "")
+	ns, err := p.getClient().FindStat("ns", "")
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +225,7 @@ func (p *netscalerProbe) collectLBVServerStats(timestamp time.Time, baseTags []t
 	copy(collectorTags, baseTags)
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "load_balancing"})
 
-	stats, err := p.client.FindAllStats("lbvserver")
+	stats, err := p.getClient().FindAllStats("lbvserver")
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +339,7 @@ func (p *netscalerProbe) collectServiceStats(timestamp time.Time, baseTags []tag
 	copy(collectorTags, baseTags)
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "load_balancing"})
 
-	stats, err := p.client.FindAllStats("service")
+	stats, err := p.getClient().FindAllStats("service")
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +414,7 @@ func (p *netscalerProbe) collectSSLStats(timestamp time.Time, baseTags []tags.Ta
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "ssl_certificates"})
 
 	// ssl is a singleton resource, use FindStat instead of FindAllStats
-	ssl, err := p.client.FindStat("ssl", "")
+	ssl, err := p.getClient().FindStat("ssl", "")
 	if err != nil {
 		return nil, err
 	}
@@ -444,16 +445,51 @@ func (p *netscalerProbe) collectSSLStats(timestamp time.Time, baseTags []tags.Ta
 }
 
 // collectServiceGroupStats gathers service group metrics
+// Group-level stats (/stat/servicegroup) only provide member counts.
+// Traffic metrics require member-level stats (/stat/servicegroupmember).
 func (p *netscalerProbe) collectServiceGroupStats(timestamp time.Time, baseTags []tags.Tag) ([]datapoint.DataPoint, error) {
-	// Add metric view tag for functional grouping
-	// Create a copy to avoid modifying caller's slice
 	collectorTags := make([]tags.Tag, len(baseTags), len(baseTags)+1)
 	copy(collectorTags, baseTags)
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "load_balancing"})
 
-	stats, err := p.client.FindAllStats("servicegroup")
+	// Phase 1: Group-level stats (member counts + state)
+	stats, err := p.getClient().FindAllStats("servicegroup")
 	if err != nil {
 		return nil, err
+	}
+
+	// Phase 2: Member-level stats (traffic metrics)
+	// /stat/servicegroupmember returns per-member stats with servicegroupname field
+	memberStats, memberErr := p.getClient().FindAllStats("servicegroupmember")
+	if memberErr != nil {
+		p.logger.Warn().Err(memberErr).Msg("Could not fetch servicegroupmember stats — service group traffic metrics will be zero")
+	}
+
+	// Index member stats by servicegroup name for O(1) lookup
+	// Aggregate traffic metrics per service group
+	type sgTraffic struct {
+		requestsRate    float64
+		responsesRate   float64
+		throughputBytes float64
+		curConnections  float64
+		surgeCount      float64
+	}
+	sgTrafficMap := make(map[string]*sgTraffic)
+	for _, member := range memberStats {
+		sgName := getString(member, "servicegroupname")
+		if sgName == "" {
+			continue
+		}
+		t, exists := sgTrafficMap[sgName]
+		if !exists {
+			t = &sgTraffic{}
+			sgTrafficMap[sgName] = t
+		}
+		t.requestsRate += getFloat(member, "requestsrate")
+		t.responsesRate += getFloat(member, "responsesrate")
+		t.throughputBytes += getFloat(member, "requestbytesrate") + getFloat(member, "responsebytesrate")
+		t.curConnections += getFloat(member, "curclntconnections")
+		t.surgeCount += getFloat(member, "surgecount")
 	}
 
 	var datapoints []datapoint.DataPoint
@@ -464,60 +500,57 @@ func (p *netscalerProbe) collectServiceGroupStats(timestamp time.Time, baseTags 
 			continue
 		}
 
-		// Create tags with service group name
 		sgTags := append(collectorTags, tags.Tag{Key: "servicegroup", Value: sgName})
 
-		// Add bound vServers
 		if vservers := p.cache.getVServersForServiceGroup(sgName); len(vservers) > 0 {
-			// If multiple vServers, use the first one (most common case is 1:1)
 			sgTags = append(sgTags, tags.Tag{Key: "vserver", Value: vservers[0]})
 		}
 
-		// State - use official Citrix ADC NITRO API numeric codes
-		// Source: https://docs.netscaler.com/en-us/citrix-adc/current-release/load-balancing/load-balancing-vserver-service-states.html
-		// UP=7, DOWN=1, UNKNOWN=2, BUSY=3, OFS=4, TROFS=5, TROFS_DOWN=8
+		// State (from group-level)
 		state := getString(sg, "state")
 		stateValue := parseNetscalerState(state)
 		datapoints = append(datapoints, datapoint.DataPoint{
-			Name:      "netscaler.servicegroup.state",
-			Value:     stateValue,
-			Tags:      sgTags,
-			Timestamp: timestamp,
+			Name: "netscaler.servicegroup.state", Value: stateValue,
+			Tags: sgTags, Timestamp: timestamp,
 		})
 
-		// Requests rate
-		datapoints = append(datapoints, datapoint.DataPoint{
-			Name:      "netscaler.servicegroup.requests.rate",
-			Value:     float32(getFloat(sg, "requestsrate")),
-			Tags:      sgTags,
-			Timestamp: timestamp,
-		})
-
-		// Active members
-		datapoints = append(datapoints, datapoint.DataPoint{
-			Name:      "netscaler.servicegroup.members.active",
-			Value:     float32(getFloat(sg, "activemembers")),
-			Tags:      sgTags,
-			Timestamp: timestamp,
-		})
-
-		// Inactive members
-		totalMembers := getFloat(sg, "totalmembers")
+		// Member counts (from group-level)
 		activeMembers := getFloat(sg, "activemembers")
-		inactiveMembers := totalMembers - activeMembers
+		totalMembers := getFloat(sg, "totalmembers")
 		datapoints = append(datapoints, datapoint.DataPoint{
-			Name:      "netscaler.servicegroup.members.inactive",
-			Value:     float32(inactiveMembers),
-			Tags:      sgTags,
-			Timestamp: timestamp,
+			Name: "netscaler.servicegroup.members.active", Value: float32(activeMembers),
+			Tags: sgTags, Timestamp: timestamp,
+		})
+		datapoints = append(datapoints, datapoint.DataPoint{
+			Name: "netscaler.servicegroup.members.inactive", Value: float32(totalMembers - activeMembers),
+			Tags: sgTags, Timestamp: timestamp,
 		})
 
-		// Surge queue length (backend saturation indicator)
+		// Traffic metrics (aggregated from member-level stats)
+		traffic := sgTrafficMap[sgName]
+		if traffic == nil {
+			traffic = &sgTraffic{}
+		}
+
 		datapoints = append(datapoints, datapoint.DataPoint{
-			Name:      "netscaler.servicegroup.surge_queue_length",
-			Value:     float32(getFloat(sg, "surgecount")),
-			Tags:      sgTags,
-			Timestamp: timestamp,
+			Name: "netscaler.servicegroup.requests.rate", Value: float32(traffic.requestsRate),
+			Tags: sgTags, Timestamp: timestamp,
+		})
+		datapoints = append(datapoints, datapoint.DataPoint{
+			Name: "netscaler.servicegroup.responses.rate", Value: float32(traffic.responsesRate),
+			Tags: sgTags, Timestamp: timestamp,
+		})
+		datapoints = append(datapoints, datapoint.DataPoint{
+			Name: "netscaler.servicegroup.throughput.bytes_per_sec", Value: float32(traffic.throughputBytes),
+			Tags: sgTags, Timestamp: timestamp,
+		})
+		datapoints = append(datapoints, datapoint.DataPoint{
+			Name: "netscaler.servicegroup.connections.current", Value: float32(traffic.curConnections),
+			Tags: sgTags, Timestamp: timestamp,
+		})
+		datapoints = append(datapoints, datapoint.DataPoint{
+			Name: "netscaler.servicegroup.surge_queue_length", Value: float32(traffic.surgeCount),
+			Tags: sgTags, Timestamp: timestamp,
 		})
 	}
 
@@ -584,7 +617,7 @@ func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag
 	// Fetch HA configuration to get all nodes in the cluster
 	// /config/hanode returns both nodes with their IDs and hostnames
 	p.logger.Debug().Msg("Calling FindAllResources('hanode')")
-	haNodeConfigs, err := p.client.FindAllResources("hanode")
+	haNodeConfigs, err := p.getClient().FindAllResources("hanode")
 	if err != nil {
 		p.logger.Warn().
 			Err(err).
@@ -598,9 +631,12 @@ func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag
 		Interface("hanode_configs", haNodeConfigs).
 		Msg("Fetched HA node configurations")
 
+	// Proactive HA check: if we're connected to secondary, switch to primary
+	p.checkHAPrimaryStatus(haNodeConfigs)
+
 	// Fetch HA stats (this returns stats for the local node only)
 	// /stat/hanode returns stats for the connected node
-	stats, err := p.client.FindAllStats("hanode")
+	stats, err := p.getClient().FindAllStats("hanode")
 	if err != nil {
 		return nil, err
 	}
@@ -624,13 +660,26 @@ func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag
 		nodeHostname := getString(nodeConfig, "name")
 
 		// Determine if this is the local node (the one we're connected to)
-		isLocalNode := (p.nodeID == nodeID)
+		// Try multiple matching strategies since nodeID may be -1 (unknown)
+		isLocalNode := false
+		if p.nodeID >= 0 {
+			isLocalNode = (p.nodeID == nodeID)
+		}
+		if !isLocalNode && p.hostname != "" && nodeHostname != "" {
+			isLocalNode = (p.hostname == nodeHostname)
+		}
+		if !isLocalNode && nodeIP != "" {
+			// Match by IP extracted from base_url
+			isLocalNode = p.isBaseURLMatchingIP(nodeIP)
+		}
 
 		p.logger.Debug().
 			Int("node_id", nodeID).
 			Str("node_ip", nodeIP).
 			Str("node_hostname", nodeHostname).
 			Bool("is_local", isLocalNode).
+			Int("probe_node_id", p.nodeID).
+			Str("probe_hostname", p.hostname).
 			Msg("Processing HA node")
 
 		// Create node-specific tags (deep copy to avoid modifying baseTags)
@@ -668,21 +717,21 @@ func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag
 			hacurstate = getString(localNodeStats, "hacurstate")
 			syncFailures = getFloat(localNodeStats, "haerrsyncfailure")
 		} else {
-			// For remote node, use config data
-			masterState = getString(nodeConfig, "masterstate")
-			hacurstate = getString(nodeConfig, "state")
+			// For remote node, use config data from /config/hanode
+			// Config fields: "state" = "Primary"/"Secondary" (HA role)
+			//                "hastatus" = "UP"/"DOWN" (operational state)
+			masterState = getString(nodeConfig, "state")
+			hacurstate = getString(nodeConfig, "hastatus")
 			// Sync failures not available for remote node
 			syncFailures = 0
 		}
 
-		// HA State using hacurmasterstate (PRIMARY/SECONDARY from NITRO API)
-		// Normalize to: 2=PRIMARY, 1=SECONDARY, 0=UNKNOWN
-		// Source: https://developer-docs.netscaler.com/en-us/adc-nitro-api/current-release/statistics/ha/hanode/
-		// masterState already defined above based on isLocalNode
+		// HA State: normalize case since stats returns "PRIMARY" and config returns "Primary"
 		stateValue := float32(0) // UNKNOWN
-		if masterState == "Primary" || masterState == "PRIMARY" {
+		switch strings.ToUpper(masterState) {
+		case "PRIMARY":
 			stateValue = 2
-		} else if masterState == "Secondary" || masterState == "SECONDARY" {
+		case "SECONDARY":
 			stateValue = 1
 		}
 
@@ -693,11 +742,9 @@ func (p *netscalerProbe) collectHAStats(timestamp time.Time, baseTags []tags.Tag
 			Timestamp: timestamp,
 		})
 
-		// HA node operational state (UP/DOWN)
-		// hacurstate: UP, DOWN, DISABLED, etc.
-		// hacurstate already defined above based on isLocalNode
+		// HA node operational state: normalize case for consistency across stats/config
 		nodeState := float32(0) // DOWN
-		if hacurstate == "UP" {
+		if strings.ToUpper(hacurstate) == "UP" {
 			nodeState = 1
 		}
 
@@ -751,7 +798,7 @@ func (p *netscalerProbe) collectInterfaceStats(timestamp time.Time, baseTags []t
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "network"})
 
 	// Interface returns stats for all network interfaces (note: capital I)
-	stats, err := p.client.FindAllStats("Interface")
+	stats, err := p.getClient().FindAllStats("Interface")
 	if err != nil {
 		return nil, err
 	}
@@ -767,10 +814,10 @@ func (p *netscalerProbe) collectInterfaceStats(timestamp time.Time, baseTags []t
 		// Create tags with interface name (keep original name with /)
 		ifaceTags := append(collectorTags, tags.Tag{Key: "interface", Value: interfaceName})
 
-		// Interface state - binary ENABLED/DISABLED state
-		// Source: Citrix ADC NITRO API - interface state field
-		// ENABLED/UP=1, DISABLED/DOWN=0
-		state := getString(iface, "state")
+		// Interface state - combined operational state (link UP + admin ENABLED)
+		// Source: NITRO API /stat/Interface → "curintfstate" field
+		// Returns "UP" only if link state is UP AND admin state is ENABLED
+		state := getString(iface, "curintfstate")
 		stateValue := parseNetscalerBinaryState(state)
 		datapoints = append(datapoints, datapoint.DataPoint{
 			Name:      "netscaler.interface.state",
@@ -828,14 +875,16 @@ func (p *netscalerProbe) collectInterfaceStats(timestamp time.Time, baseTags []t
 		})
 
 		// RX drops total
+		// NITRO field: errdroppedpkts = received packets dropped
 		datapoints = append(datapoints, datapoint.DataPoint{
 			Name:      "netscaler.interface.rx.drops.total",
-			Value:     float32(getFloat(iface, "errdroppedtxpkts")),
+			Value:     float32(getFloat(iface, "errdroppedpkts")),
 			Tags:      ifaceTags,
 			Timestamp: timestamp,
 		})
 
-		// TX drops total (using same field as it's bidirectional)
+		// TX drops total
+		// NITRO field: errdroppedtxpkts = transmitted packets dropped
 		datapoints = append(datapoints, datapoint.DataPoint{
 			Name:      "netscaler.interface.tx.drops.total",
 			Value:     float32(getFloat(iface, "errdroppedtxpkts")),
@@ -867,7 +916,7 @@ func (p *netscalerProbe) collectContentSwitchingStats(timestamp time.Time, baseT
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "content_switching"})
 
 	// csvserver returns Content Switching virtual server stats
-	stats, err := p.client.FindAllStats("csvserver")
+	stats, err := p.getClient().FindAllStats("csvserver")
 	if err != nil {
 		return nil, err
 	}
@@ -932,7 +981,7 @@ func (p *netscalerProbe) collectContentSwitchingPolicyStats(timestamp time.Time,
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "content_switching"})
 
 	// cspolicy returns Content Switching policy stats
-	stats, err := p.client.FindAllStats("cspolicy")
+	stats, err := p.getClient().FindAllStats("cspolicy")
 	if err != nil {
 		return nil, err
 	}
@@ -977,7 +1026,7 @@ func (p *netscalerProbe) collectGSLBVServerStats(timestamp time.Time, baseTags [
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "gslb"})
 
 	// gslbvserver returns GSLB virtual server stats
-	stats, err := p.client.FindAllStats("gslbvserver")
+	stats, err := p.getClient().FindAllStats("gslbvserver")
 	if err != nil {
 		return nil, err
 	}
@@ -1042,7 +1091,7 @@ func (p *netscalerProbe) collectGSLBSiteStats(timestamp time.Time, baseTags []ta
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "gslb"})
 
 	// gslbsite returns GSLB site stats
-	stats, err := p.client.FindAllStats("gslbsite")
+	stats, err := p.getClient().FindAllStats("gslbsite")
 	if err != nil {
 		return nil, err
 	}
@@ -1100,7 +1149,7 @@ func (p *netscalerProbe) collectGSLBServiceStats(timestamp time.Time, baseTags [
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "gslb"})
 
 	// gslbservice returns GSLB service stats
-	stats, err := p.client.FindAllStats("gslbservice")
+	stats, err := p.getClient().FindAllStats("gslbservice")
 	if err != nil {
 		return nil, err
 	}
@@ -1158,7 +1207,7 @@ func (p *netscalerProbe) collectCacheStats(timestamp time.Time, baseTags []tags.
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "system_health"})
 
 	// cache is a singleton resource
-	cache, err := p.client.FindStat("cache", "")
+	cache, err := p.getClient().FindStat("cache", "")
 	if err != nil {
 		return nil, err
 	}
@@ -1221,7 +1270,7 @@ func (p *netscalerProbe) collectCompressionStats(timestamp time.Time, baseTags [
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "system_health"})
 
 	// cmp is a singleton resource for compression
-	cmp, err := p.client.FindStat("cmp", "")
+	cmp, err := p.getClient().FindStat("cmp", "")
 	if err != nil {
 		return nil, err
 	}
@@ -1279,7 +1328,7 @@ func (p *netscalerProbe) collectAAAStats(timestamp time.Time, baseTags []tags.Ta
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "authentication"})
 
 	// aaauser returns AAA user stats
-	stats, err := p.client.FindAllStats("aaauser")
+	stats, err := p.getClient().FindAllStats("aaauser")
 	if err != nil {
 		return nil, err
 	}
@@ -1308,7 +1357,7 @@ func (p *netscalerProbe) collectAuthenticationVServerStats(timestamp time.Time, 
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "authentication"})
 
 	// authenticationvserver returns authentication vServer stats
-	stats, err := p.client.FindAllStats("authenticationvserver")
+	stats, err := p.getClient().FindAllStats("authenticationvserver")
 	if err != nil {
 		return nil, err
 	}
@@ -1366,7 +1415,7 @@ func (p *netscalerProbe) collectVPNStats(timestamp time.Time, baseTags []tags.Ta
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "vpn"})
 
 	// vpnvserver returns VPN virtual server stats
-	stats, err := p.client.FindAllStats("vpnvserver")
+	stats, err := p.getClient().FindAllStats("vpnvserver")
 	if err != nil {
 		return nil, err
 	}
@@ -1432,7 +1481,7 @@ func (p *netscalerProbe) collectApplicationFirewallStats(timestamp time.Time, ba
 	collectorTags = append(collectorTags, tags.Tag{Key: "metric_view", Value: "security"})
 
 	// appfw is a singleton resource for application firewall
-	appfw, err := p.client.FindStat("appfw", "")
+	appfw, err := p.getClient().FindStat("appfw", "")
 	if err != nil {
 		return nil, err
 	}

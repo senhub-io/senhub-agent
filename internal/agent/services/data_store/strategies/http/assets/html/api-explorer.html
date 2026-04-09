@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="agent-key" content="{{.AgentKey}}">
-    <title>SenHub Agent - API Explorer</title>
+    <title>SenHub Agent - Sensor Builder</title>
     <link rel="icon" type="image/png" href="/web/{{.AgentKey}}/assets/logo.png">
     
     <!-- CSS Assets -->
@@ -17,12 +17,16 @@
 </head>
 <body>
     <div class="header">
-        <h1>
-            <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
-            API Explorer
-        </h1>
-        <div class="nav-breadcrumb">
-            <a href="/web/{{.AgentKey}}/">Dashboard</a> / API Explorer
+        <div class="header-top">
+            <h1>
+                <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
+                SenHub Agent
+            </h1>
+            <nav class="main-nav">
+                <a href="/web/{{.AgentKey}}/dashboard" class="nav-link">Dashboard</a>
+                <a href="/web/{{.AgentKey}}/explorer" class="nav-link active">Sensor Builder</a>
+                <a href="/web/{{.AgentKey}}/docs" class="nav-link">Documentation</a>
+            </nav>
         </div>
     </div>
     
@@ -30,10 +34,10 @@
         <div class="explorer-grid">
             <!-- Request Builder -->
             <div class="card">
-                <h2>Request Builder</h2>
+                <h2>Configure Sensor</h2>
                 
                 <div class="form-group">
-                    <label class="form-label" for="endpoint-type">Endpoint Type</label>
+                    <label class="form-label" for="endpoint-type">Output Format</label>
                     <select id="endpoint-type" class="form-select">
                         <option value="">Loading endpoints...</option>
                     </select>
@@ -50,13 +54,13 @@
                 <div class="form-group" id="show-tags-group">
                     <label class="checkbox-label">
                         <input type="checkbox" id="show-tags-checkbox" checked>
-                        <span>Show tags in channel names</span>
-                        <span class="info-icon" title="When unchecked, discriminant tags are hidden from channel/service names (e.g., 'State' instead of 'Interface LO/1 - State'). Currently available for Citrix and Netscaler probes only.">ⓘ</span>
+                        <span>Include resource names in labels</span>
+                        <span class="info-icon" title="When unchecked, resource identifiers are hidden from metric labels (e.g., 'State' instead of 'Interface LO/1 - State'). Currently available for Citrix and Netscaler probes only.">ⓘ</span>
                     </label>
                 </div>
 
                 <div class="form-group" id="tag-filters-group" style="display: none;">
-                    <label class="form-label">Tag Filters</label>
+                    <label class="form-label">Filters</label>
                     <div id="tag-filters">
                         <!-- Dynamic tag filters will be loaded here -->
                     </div>
@@ -67,7 +71,7 @@
             <div class="card">
                 <!-- Generated URL Section -->
                 <div class="form-group">
-                    <label class="form-label">Generated URL</label>
+                    <label class="form-label">Sensor URL</label>
                     <div id="generated-url" class="url-generator">
                         Select an endpoint and probe to generate URL...
                     </div>
@@ -77,13 +81,13 @@
                     
                     <div class="button-group">
                         <button id="edit-url-btn" class="btn btn-secondary" disabled>
-                            ✏️ Edit URL
+                            Edit URL
                         </button>
                         <button id="copy-url-btn" class="btn btn-secondary" disabled>
-                            📋 Copy URL
+                            Copy Sensor URL
                         </button>
                         <button id="test-request-btn" class="btn btn-primary" disabled>
-                            🚀 Test Request
+                            Preview
                         </button>
                     </div>
                 </div>
@@ -92,17 +96,21 @@
                 <h2>Response</h2>
                 <div class="button-group" style="margin-bottom: var(--spacing-md);">
                     <button id="copy-response-btn" class="btn btn-secondary" disabled>
-                        📋 Copy Response
+                        Copy Response
                     </button>
                     <button id="clear-response-btn" class="btn btn-secondary">
-                        🗑️ Clear
+                        Clear
                     </button>
                     <a href="/api/{{.AgentKey}}/lookups/prtg" class="btn btn-secondary" download="senhub-prtg-lookups.zip" title="Download PRTG lookup definitions for interpreting numeric metric values">
-                        📥 PRTG Lookups
+                        PRTG Lookups
                     </a>
                 </div>
+                <div id="response-view-toggle" class="response-view-toggle" style="display: none;">
+                    <button id="view-table-btn" class="btn btn-sm active">Table</button>
+                    <button id="view-json-btn" class="btn btn-sm">JSON</button>
+                </div>
                 <div id="response-area" class="result-area centered adaptive-height">
-                    <span class="placeholder-text">Click "Test Request" to see the response...</span>
+                    <span class="placeholder-text">Click "Preview" to see the response...</span>
                 </div>
             </div>
         </div>
