@@ -15,11 +15,13 @@ import (
 
 // citrixClient implements the CitrixClient interface for OData API communication
 type citrixClient struct {
-	config     CitrixClientConfig
-	httpClient *http.Client
-	logger     *logger.ModuleLogger
-	baseURL    string
-	filters    *ClientFilters // DNS filtering functionality extracted to separate module
+	config         CitrixClientConfig
+	httpClient     *http.Client
+	logger         *logger.ModuleLogger
+	baseURL        string   // Active OData base URL (with /Citrix/Monitor/OData/v4/Data suffix)
+	primaryURL     string   // Primary URL (for recovery)
+	fallbackURLs   []string // Fallback URLs (with suffix)
+	filters        *ClientFilters
 }
 
 // Ensure citrixClient implements CitrixClient interface
@@ -30,14 +32,21 @@ func NewCitrixClient(config CitrixClientConfig, baseLogger *logger.Logger) (Citr
 	// Create module-specific logger for citrix client
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.citrix.client")
 
-	// Normalize baseURL and add Citrix Monitor OData path if not present
-	baseURL := strings.TrimSuffix(config.BaseURL, "/")
+	// Build all OData base URLs (primary + fallbacks)
+	normalizeODataURL := func(rawURL string) string {
+		u := strings.TrimSuffix(rawURL, "/")
+		if !strings.Contains(u, "/Citrix/Monitor/OData") {
+			u += "/Citrix/Monitor/OData/v4/Data"
+		} else if !strings.HasSuffix(u, "/Data") {
+			u += "/Data"
+		}
+		return u
+	}
 
-	// Add complete Citrix Monitor OData API path if not already present
-	if !strings.Contains(baseURL, "/Citrix/Monitor/OData") {
-		baseURL = baseURL + "/Citrix/Monitor/OData/v4/Data"
-	} else if !strings.HasSuffix(baseURL, "/Data") {
-		baseURL = baseURL + "/Data"
+	primaryURL := normalizeODataURL(config.BaseURL)
+	var fallbackURLs []string
+	for _, fb := range config.FallbackURLs {
+		fallbackURLs = append(fallbackURLs, normalizeODataURL(fb))
 	}
 
 	// Create HTTP client with TLS configuration
@@ -102,56 +111,80 @@ func NewCitrixClient(config CitrixClientConfig, baseLogger *logger.Logger) (Citr
 	}
 
 	client := &citrixClient{
-		config:     config,
-		httpClient: httpClient,
-		logger:     moduleLogger,
-		baseURL:    baseURL,
-		filters:    NewClientFilters(baseLogger),
+		config:       config,
+		httpClient:   httpClient,
+		logger:       moduleLogger,
+		baseURL:      primaryURL,
+		primaryURL:   primaryURL,
+		fallbackURLs: fallbackURLs,
+		filters:      NewClientFilters(baseLogger),
 	}
 
 	return client, nil
 }
 
-// Connect establishes a connection to the Citrix OData API endpoint
+// Connect establishes a connection to the Citrix OData API endpoint.
+// Tries the primary URL first. Only tries fallbacks if the primary is unreachable.
 func (c *citrixClient) Connect(ctx context.Context) error {
 	c.logger.Debug().
-		Str("base_url", c.baseURL).
+		Str("primary_url", c.primaryURL).
+		Int("fallback_count", len(c.fallbackURLs)).
 		Str("auth_method", c.config.AuthMethod).
 		Msg("Connecting to Citrix OData API")
 
-	// Test connection by performing a simple GET request to the service root
-	testURL := c.baseURL
-	req, err := http.NewRequestWithContext(ctx, "GET", testURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create test request: %v", err)
+	// Try primary first
+	if err := c.testConnection(ctx, c.primaryURL); err == nil {
+		c.baseURL = c.primaryURL
+		c.logger.Info().
+			Str("active_url", c.baseURL).
+			Msg("Connected to primary Director")
+		return nil
+	} else {
+		c.logger.Warn().
+			Err(err).
+			Str("primary_url", c.primaryURL).
+			Msg("Primary Director unreachable, trying fallbacks")
 	}
 
-	// Add required Citrix headers
-	c.addCitrixHeaders(req)
+	// Primary is down — try fallbacks in order
+	for _, fbURL := range c.fallbackURLs {
+		if err := c.testConnection(ctx, fbURL); err == nil {
+			c.baseURL = fbURL
+			c.logger.Warn().
+				Str("active_url", fbURL).
+				Str("primary_url", c.primaryURL).
+				Msg("Using fallback Director (primary is down)")
+			return nil
+		} else {
+			c.logger.Debug().
+				Err(err).
+				Str("url", fbURL).
+				Msg("Fallback Director also unreachable")
+		}
+	}
 
-	// Add authentication headers
+	return fmt.Errorf("failed to connect to Director: primary %s and %d fallback(s) all unreachable", c.primaryURL, len(c.fallbackURLs))
+}
+
+// testConnection performs a connectivity test against a single URL
+func (c *citrixClient) testConnection(ctx context.Context, url string) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return err
+	}
+	c.addCitrixHeaders(req)
 	c.addAuthHeaders(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to connect to Citrix OData API: %v", err)
+		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
-		c.logger.Debug().
-			Int("status_code", resp.StatusCode).
-			Str("response_body", string(body)).
-			Str("test_url", testURL).
-			Msg("Connection test failed with error response")
-		return fmt.Errorf("connection test failed with status %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
-
-	c.logger.Debug().
-		Int("status_code", resp.StatusCode).
-		Msg("Successfully connected to Citrix OData API")
-
 	return nil
 }
 
@@ -696,6 +729,47 @@ func (c *citrixClient) GetConnections(ctx context.Context, sinceTime time.Time) 
 	}
 
 	return connections, nil
+}
+
+// GetLoadIndexes retrieves the most recent load index data for machines.
+// Filters to entries modified in the last 10 minutes to avoid fetching
+// the entire historical LoadIndexes table (which can be very large).
+func (c *citrixClient) GetLoadIndexes(ctx context.Context) ([]LoadIndex, error) {
+	endpoint := "/LoadIndexes"
+
+	// Only fetch recent load indexes (last 10 minutes) to avoid massive queries
+	sinceTime := time.Now().Add(-10 * time.Minute).UTC()
+	filter := fmt.Sprintf("ModifiedDate ge %s", formatODataDateTime(sinceTime))
+
+	c.logger.Debug().
+		Str("filter", filter).
+		Msg("Getting recent load indexes")
+
+	var loadIndexes []LoadIndex
+	err := c.getODataCollection(ctx, endpoint, filter, &loadIndexes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get load indexes: %w", err)
+	}
+
+	// Deduplicate: keep only the most recent entry per MachineId
+	latestByMachine := make(map[string]LoadIndex)
+	for _, li := range loadIndexes {
+		if existing, ok := latestByMachine[li.MachineId]; !ok || li.ModifiedDate.After(existing.ModifiedDate) {
+			latestByMachine[li.MachineId] = li
+		}
+	}
+
+	deduplicated := make([]LoadIndex, 0, len(latestByMachine))
+	for _, li := range latestByMachine {
+		deduplicated = append(deduplicated, li)
+	}
+
+	c.logger.Debug().
+		Int("raw_count", len(loadIndexes)).
+		Int("machines_count", len(deduplicated)).
+		Msg("Retrieved and deduplicated load indexes from Citrix API")
+
+	return deduplicated, nil
 }
 
 // SetValidMachineDNS sets the list of valid machine DNS names for filtering

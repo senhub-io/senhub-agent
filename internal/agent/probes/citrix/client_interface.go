@@ -44,13 +44,25 @@ type CitrixClient interface {
 	// GetConnections retrieves connection details with logon breakdown metrics
 	GetConnections(ctx context.Context, sinceTime time.Time) ([]Connection, error)
 
+	// GetLoadIndexes retrieves current load index data for machines
+	GetLoadIndexes(ctx context.Context) ([]LoadIndex, error)
+
 	// SetValidMachineDNS sets the list of valid machine DNS names for client-side filtering
 	SetValidMachineDNS(dnsNames []string)
+}
+
+// ComponentConfig holds per-component connection config (Director, DDC, License Server)
+type ComponentConfig struct {
+	URL          string
+	FallbackURLs []string
+	VerifySSL    bool
+	Auth         AuthConfig
 }
 
 // CitrixClientConfig holds the configuration for the Citrix client
 type CitrixClientConfig struct {
 	BaseURL            string
+	FallbackURLs       []string
 	Environment        string
 	AuthMethod         string
 	Username           string
@@ -182,6 +194,28 @@ type Connection struct {
 	CreatedDate            time.Time  `json:"CreatedDate"`
 	ModifiedDate           time.Time  `json:"ModifiedDate"`
 }
+
+// LoadIndex represents load index data for a machine from the OData API
+// The load index is reported by the VDA and indicates resource utilization.
+// EffectiveLoadIndex ranges from 0 (idle) to 10000 (full load).
+type LoadIndex struct {
+	Id                 int       `json:"Id"`
+	MachineId          string    `json:"MachineId"`
+	Cpu                int       `json:"Cpu"`                // CPU load component (0-10000)
+	Memory             int       `json:"Memory"`             // Memory load component (0-10000)
+	Disk               int       `json:"Disk"`               // Disk load component (0-10000)
+	Network            int       `json:"Network"`            // Network load component (0-10000)
+	SessionCount       int       `json:"SessionCount"`       // Session count load component (0-10000)
+	EffectiveLoadIndex int       `json:"EffectiveLoadIndex"` // Combined effective load (0-10000)
+	ModifiedDate       time.Time `json:"ModifiedDate"`
+}
+
+// LoadIndex threshold constants
+const (
+	LoadIndexFull       = 10000 // Machine at full capacity
+	LoadIndexOverloaded = 8000  // Threshold for "overloaded" (80%)
+	LoadIndexHigh       = 6000  // Threshold for "high load" (60%)
+)
 
 // Controller represents a Citrix controller from the API
 type Controller struct {

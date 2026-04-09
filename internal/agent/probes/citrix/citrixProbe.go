@@ -26,18 +26,17 @@ type citrixProbe struct {
 	ctx              context.Context
 	cancelFunc       context.CancelFunc
 
-	// Configuration fields
-	baseURL            string
-	authMethod         string
-	username           string
-	password           string
-	verifySSL          bool
+	// Per-component configuration (new format)
+	directorConfig *ComponentConfig // Required: Director/OData API
+	ddcConfig      *DeliveryControllerConfig // Optional: Delivery Controller/CVAD API
+	licenseConfig  *ComponentConfig // Optional: License Server
+
+	// Probe-level settings (shared across components)
 	timeout            time.Duration
 	maxRetryAttempts   int
 	retryBackoffFactor float64
 
-	// Delivery Controller configuration
-	ddcConfig        *DeliveryControllerConfig
+	// Site filtering
 	siteFilter       string
 	filteredMachines []string
 
@@ -59,52 +58,13 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		interval = time.Duration(cfgInterval) * time.Second
 	}
 
-	// Extract base configuration parameters
-	baseURL, ok := config["base_url"].(string)
-	if !ok {
-		return nil, fmt.Errorf("citrix probe requires 'base_url' configuration")
-	}
-
-	// environment parameter removed - was not used in metrics generation
-
-	// Extract authentication configuration
-	authConfig, ok := config["auth"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("citrix probe requires 'auth' configuration")
-	}
-
-	// Authentication methods are now automatic:
-	// - NTLM for Director/OData API
-	// - Basic Auth for Delivery Controller/CVAD API
-	authMethod := "ntlm" // Fixed: Always NTLM for Director/OData
-
-	username, ok := authConfig["username"].(string)
-	if !ok {
-		return nil, fmt.Errorf("citrix probe requires 'auth.username' configuration")
-	}
-
-	password, ok := authConfig["password"].(string)
-	if !ok {
-		return nil, fmt.Errorf("citrix probe requires 'auth.password' configuration")
-	}
-
-	// Extract TLS configuration
-	verifySSL := true
-	if tlsConfig, ok := config["tls"].(map[string]interface{}); ok {
-		if cfgVerifySSL, ok := tlsConfig["verify_ssl"].(bool); ok {
-			verifySSL = cfgVerifySSL
-		}
-	}
-
-	// Use interval for probe execution timing
-
-	// Extract timeout configuration
+	// Extract timeout configuration (probe-level)
 	timeout := 30 * time.Second
 	if cfgTimeout, ok := config["timeout"].(int); ok {
 		timeout = time.Duration(cfgTimeout) * time.Second
 	}
 
-	// Extract retry configuration
+	// Extract retry configuration (probe-level)
 	maxRetryAttempts := 3
 	retryBackoffFactor := 2.0
 	if retryConfig, ok := config["retry"].(map[string]interface{}); ok {
@@ -116,38 +76,206 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		}
 	}
 
-	// Extract Delivery Controller configuration if present
+	// Detect configuration format: new (per-component) vs old (flat)
+	var directorConfig *ComponentConfig
 	var ddcConfig *DeliveryControllerConfig
+	var licenseConfig *ComponentConfig
 	var siteFilter string
-	if ddcCfg, ok := config["delivery_controller"].(map[string]interface{}); ok {
-		ddcConfig = &DeliveryControllerConfig{
-			VerifySSL: verifySSL, // Use same SSL config as main client
-			Timeout:   timeout,
+
+	if _, isNewFormat := config["director"].(map[string]interface{}); isNewFormat {
+		// ===== NEW FORMAT: per-component config blocks =====
+		var err error
+		directorConfig, err = parseComponentConfig(config["director"].(map[string]interface{}))
+		if err != nil {
+			return nil, fmt.Errorf("citrix probe 'director' block: %w", err)
+		}
+		if directorConfig.URL == "" {
+			return nil, fmt.Errorf("citrix probe requires 'director.url' configuration")
+		}
+		if directorConfig.Auth.Username == "" {
+			return nil, fmt.Errorf("citrix probe requires 'director.auth.username' configuration")
+		}
+		if directorConfig.Auth.Password == "" {
+			return nil, fmt.Errorf("citrix probe requires 'director.auth.password' configuration")
+		}
+		// Director always uses NTLM
+		directorConfig.Auth.Method = "ntlm"
+
+		// Parse delivery_controller block (optional)
+		if ddcBlock, ok := config["delivery_controller"].(map[string]interface{}); ok {
+			ddcComponent, err := parseComponentConfig(ddcBlock)
+			if err != nil {
+				return nil, fmt.Errorf("citrix probe 'delivery_controller' block: %w", err)
+			}
+			// DDC always uses Basic auth
+			ddcComponent.Auth.Method = "basic"
+			// If DDC auth not specified, inherit from director
+			if ddcComponent.Auth.Username == "" {
+				ddcComponent.Auth.Username = directorConfig.Auth.Username
+				ddcComponent.Auth.Password = directorConfig.Auth.Password
+			}
+
+			ddcConfig = &DeliveryControllerConfig{
+				URL:          ddcComponent.URL,
+				FallbackURLs: ddcComponent.FallbackURLs,
+				VerifySSL:    ddcComponent.VerifySSL,
+				Timeout:      timeout,
+				Auth: AuthConfig{
+					Method:   "basic",
+					Username: ddcComponent.Auth.Username,
+					Password: ddcComponent.Auth.Password,
+				},
+			}
+			if site, ok := ddcBlock["site_filter"].(string); ok {
+				siteFilter = site
+				ddcConfig.SiteFilter = site
+			}
+
+			moduleLogger.Info().
+				Str("ddc_url", ddcConfig.URL).
+				Str("site_filter", siteFilter).
+				Int("fallback_count", len(ddcConfig.FallbackURLs)).
+				Msg("Delivery Controller configuration detected")
 		}
 
-		if url, ok := ddcCfg["url"].(string); ok {
-			ddcConfig.URL = url
+		// Parse license_server block (optional)
+		if lsBlock, ok := config["license_server"].(map[string]interface{}); ok {
+			licenseConfig, err = parseComponentConfig(lsBlock)
+			if err != nil {
+				return nil, fmt.Errorf("citrix probe 'license_server' block: %w", err)
+			}
+			// License Server uses Basic auth
+			licenseConfig.Auth.Method = "basic"
+			// If license auth not specified, inherit from director
+			if licenseConfig.Auth.Username == "" {
+				licenseConfig.Auth.Username = directorConfig.Auth.Username
+				licenseConfig.Auth.Password = directorConfig.Auth.Password
+			}
+			moduleLogger.Info().
+				Str("license_server_url", licenseConfig.URL).
+				Msg("License Server configuration detected")
+		}
+	} else {
+		// ===== OLD FORMAT: flat config with global auth (backward compatibility) =====
+		moduleLogger.Warn().Msg("Using deprecated flat configuration format - consider migrating to per-component config blocks (director/delivery_controller/license_server)")
+
+		// Extract Director URL (prefer director_url, fallback to base_url)
+		baseURL, ok := config["director_url"].(string)
+		if !ok {
+			baseURL, ok = config["base_url"].(string)
+			if !ok {
+				return nil, fmt.Errorf("citrix probe requires 'director_url' (or 'base_url') configuration")
+			}
+			moduleLogger.Info().Str("base_url", baseURL).Msg("Using deprecated 'base_url' parameter - consider renaming to 'director_url'")
 		}
 
-		if fallbackURLs, ok := ddcCfg["fallback_urls"].([]interface{}); ok {
-			ddcConfig.FallbackURLs = make([]string, 0, len(fallbackURLs))
-			for _, url := range fallbackURLs {
-				if urlStr, ok := url.(string); ok {
-					ddcConfig.FallbackURLs = append(ddcConfig.FallbackURLs, urlStr)
-				}
+		// Extract global authentication configuration
+		authCfg, ok := config["auth"].(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("citrix probe requires 'auth' configuration")
+		}
+
+		username, ok := authCfg["username"].(string)
+		if !ok {
+			return nil, fmt.Errorf("citrix probe requires 'auth.username' configuration")
+		}
+
+		password, ok := authCfg["password"].(string)
+		if !ok {
+			return nil, fmt.Errorf("citrix probe requires 'auth.password' configuration")
+		}
+
+		// Extract TLS configuration
+		verifySSL := true
+		if tlsConfig, ok := config["tls"].(map[string]interface{}); ok {
+			if cfgVerifySSL, ok := tlsConfig["verify_ssl"].(bool); ok {
+				verifySSL = cfgVerifySSL
 			}
 		}
 
-		if site, ok := ddcCfg["site_filter"].(string); ok {
-			siteFilter = site
-			ddcConfig.SiteFilter = site
+		// Build directorConfig from flat fields
+		directorConfig = &ComponentConfig{
+			URL:       baseURL,
+			VerifySSL: verifySSL,
+			Auth: AuthConfig{
+				Method:   "ntlm",
+				Username: username,
+				Password: password,
+			},
 		}
 
-		moduleLogger.Info().
-			Str("ddc_url", ddcConfig.URL).
-			Str("site_filter", siteFilter).
-			Int("fallback_count", len(ddcConfig.FallbackURLs)).
-			Msg("Delivery Controller configuration detected")
+		// Extract Delivery Controller configuration if present (old format)
+		if ddcCfg, ok := config["delivery_controller"].(map[string]interface{}); ok {
+			ddcConfig = &DeliveryControllerConfig{
+				VerifySSL: verifySSL,
+				Timeout:   timeout,
+				Auth: AuthConfig{
+					Method:   "basic",
+					Username: username,
+					Password: password,
+				},
+			}
+
+			if url, ok := ddcCfg["url"].(string); ok {
+				ddcConfig.URL = url
+			}
+
+			if fallbackURLs, ok := ddcCfg["fallback_urls"].([]interface{}); ok {
+				ddcConfig.FallbackURLs = make([]string, 0, len(fallbackURLs))
+				for _, url := range fallbackURLs {
+					if urlStr, ok := url.(string); ok {
+						ddcConfig.FallbackURLs = append(ddcConfig.FallbackURLs, urlStr)
+					}
+				}
+			}
+
+			// Also support []string (from Go test configs)
+			if fallbackURLs, ok := ddcCfg["fallback_urls"].([]string); ok {
+				ddcConfig.FallbackURLs = fallbackURLs
+			}
+
+			if site, ok := ddcCfg["site_filter"].(string); ok {
+				siteFilter = site
+				ddcConfig.SiteFilter = site
+			}
+
+			moduleLogger.Info().
+				Str("ddc_url", ddcConfig.URL).
+				Str("site_filter", siteFilter).
+				Int("fallback_count", len(ddcConfig.FallbackURLs)).
+				Msg("Delivery Controller configuration detected")
+		}
+
+		// Extract license server configuration (old format - string or map with url)
+		if lsCfg, ok := config["license_server"].(map[string]interface{}); ok {
+			if url, ok := lsCfg["url"].(string); ok {
+				licenseConfig = &ComponentConfig{
+					URL:       url,
+					VerifySSL: verifySSL,
+					Auth: AuthConfig{
+						Method:   "basic",
+						Username: username,
+						Password: password,
+					},
+				}
+				moduleLogger.Info().
+					Str("license_server_url", url).
+					Msg("License Server configuration detected")
+			}
+		} else if lsURL, ok := config["license_server"].(string); ok {
+			licenseConfig = &ComponentConfig{
+				URL:       lsURL,
+				VerifySSL: verifySSL,
+				Auth: AuthConfig{
+					Method:   "basic",
+					Username: username,
+					Password: password,
+				},
+			}
+			moduleLogger.Info().
+				Str("license_server_url", lsURL).
+				Msg("License Server configuration detected")
+		}
 	}
 
 	// Extract debug mode configuration
@@ -168,20 +296,59 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		interval:           interval,
 		ctx:                ctx,
 		cancelFunc:         cancel,
-		baseURL:            baseURL,
-		authMethod:         authMethod,
-		username:           username,
-		password:           password,
-		verifySSL:          verifySSL,
+		directorConfig:     directorConfig,
+		ddcConfig:          ddcConfig,
+		licenseConfig:      licenseConfig,
 		timeout:            timeout,
 		maxRetryAttempts:   maxRetryAttempts,
 		retryBackoffFactor: retryBackoffFactor,
-		ddcConfig:          ddcConfig,
 		siteFilter:         siteFilter,
 		debugMode:          debugMode,
 	}
 
 	return probe, nil
+}
+
+// parseComponentConfig parses a per-component config block (director, delivery_controller, license_server)
+func parseComponentConfig(block map[string]interface{}) (*ComponentConfig, error) {
+	cfg := &ComponentConfig{
+		VerifySSL: true, // default
+	}
+
+	if url, ok := block["url"].(string); ok {
+		cfg.URL = url
+	}
+
+	if verifySSL, ok := block["verify_ssl"].(bool); ok {
+		cfg.VerifySSL = verifySSL
+	}
+
+	// Parse fallback_urls ([]interface{} from YAML or []string from Go)
+	if fallbackURLs, ok := block["fallback_urls"].([]interface{}); ok {
+		cfg.FallbackURLs = make([]string, 0, len(fallbackURLs))
+		for _, url := range fallbackURLs {
+			if urlStr, ok := url.(string); ok {
+				cfg.FallbackURLs = append(cfg.FallbackURLs, urlStr)
+			}
+		}
+	} else if fallbackURLs, ok := block["fallback_urls"].([]string); ok {
+		cfg.FallbackURLs = fallbackURLs
+	}
+
+	// Parse auth sub-block
+	if authBlock, ok := block["auth"].(map[string]interface{}); ok {
+		if username, ok := authBlock["username"].(string); ok {
+			cfg.Auth.Username = username
+		}
+		if password, ok := authBlock["password"].(string); ok {
+			cfg.Auth.Password = password
+		}
+		if method, ok := authBlock["method"].(string); ok {
+			cfg.Auth.Method = method
+		}
+	}
+
+	return cfg, nil
 }
 
 // Note: GetName() is now inherited from BaseProbe and will return the unique
@@ -200,15 +367,16 @@ func (p *citrixProbe) GetInterval() time.Duration {
 
 // OnStart initializes the probe when it's started
 func (p *citrixProbe) OnStart(quitChannel chan struct{}) error {
-	// Create Citrix OData client
+	// Create Citrix OData client using director config
 	var err error
 	p.client, err = NewCitrixClient(CitrixClientConfig{
-		BaseURL:            p.baseURL,
+		BaseURL:            p.directorConfig.URL,
+		FallbackURLs:       p.directorConfig.FallbackURLs,
 		Environment:        "",
-		AuthMethod:         p.authMethod,
-		Username:           p.username,
-		Password:           p.password,
-		VerifySSL:          p.verifySSL,
+		AuthMethod:         p.directorConfig.Auth.Method,
+		Username:           p.directorConfig.Auth.Username,
+		Password:           p.directorConfig.Auth.Password,
+		VerifySSL:          p.directorConfig.VerifySSL,
 		Timeout:            p.timeout,
 		MaxRetryAttempts:   p.maxRetryAttempts,
 		RetryBackoffFactor: p.retryBackoffFactor,
@@ -219,18 +387,12 @@ func (p *citrixProbe) OnStart(quitChannel chan struct{}) error {
 
 	// Test connection to the Citrix OData API
 	if err := p.client.Connect(p.ctx); err != nil {
-		return fmt.Errorf("failed to connect to Citrix OData API at %s: %v", p.baseURL, err)
+		return fmt.Errorf("failed to connect to Citrix OData API at %s: %v", p.directorConfig.URL, err)
 	}
 
 	// Initialize Delivery Controller client if configured
 	if p.ddcConfig != nil {
-		authConfig := AuthConfig{
-			Method:   "basic", // Fixed: Always Basic Auth for DDC/CVAD
-			Username: p.username,
-			Password: p.password,
-		}
-
-		p.ddcClient, err = NewDeliveryControllerClient(*p.ddcConfig, authConfig, p.logger.Logger)
+		p.ddcClient, err = NewDeliveryControllerClient(*p.ddcConfig, p.ddcConfig.Auth, p.logger.Logger)
 		if err != nil {
 			return fmt.Errorf("failed to create Delivery Controller client: %v", err)
 		}
@@ -276,12 +438,17 @@ func (p *citrixProbe) OnStart(quitChannel chan struct{}) error {
 		originalClient: p.client,
 		probe:          p,
 	}
-	p.metricsCollector = NewMetricsCollectorWithEnv(filteredClient, "", p.baseURL, p.logger.Logger)
+	p.metricsCollector = NewMetricsCollectorWithEnv(filteredClient, "", p.directorConfig.URL, p.logger.Logger)
+
+	// Pass license-related config to the metrics collector
+	p.metricsCollector.ddcClient = p.ddcClient
+	p.metricsCollector.siteFilter = p.siteFilter
+	p.metricsCollector.licenseConfig = p.licenseConfig
 
 	p.logger.Debug().
-		Str("base_url", p.baseURL).
-		Str("auth_method", p.authMethod).
-		Bool("verify_ssl", p.verifySSL).
+		Str("director_url", p.directorConfig.URL).
+		Str("auth_method", p.directorConfig.Auth.Method).
+		Bool("verify_ssl", p.directorConfig.VerifySSL).
 		Int("interval_seconds", int(p.interval.Seconds())).
 		Msg("Citrix probe initialized")
 
@@ -436,6 +603,10 @@ func (f *filteredCitrixClient) GetDeliveryGroupById(ctx context.Context, deliver
 
 func (f *filteredCitrixClient) GetConnections(ctx context.Context, sinceTime time.Time) ([]Connection, error) {
 	return f.originalClient.GetConnections(ctx, sinceTime)
+}
+
+func (f *filteredCitrixClient) GetLoadIndexes(ctx context.Context) ([]LoadIndex, error) {
+	return f.originalClient.GetLoadIndexes(ctx)
 }
 
 func (f *filteredCitrixClient) SetValidMachineDNS(dnsNames []string) {

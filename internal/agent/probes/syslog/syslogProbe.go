@@ -159,7 +159,7 @@ func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
 
 func (p *SyslogProbe) OnShutdown(ctx context.Context) error {
 	if p.server != nil {
-		fmt.Printf("[INFO] Stopping syslog probe\n")
+		p.moduleLogger.Info().Msg("Stopping syslog probe")
 		return p.server.Kill()
 	}
 	return nil

@@ -242,13 +242,13 @@ The agent provides **automatic lookup file generation** accessible via the Web U
 3. **Download Lookups**: Click the **"Download PRTG Lookups"** button
 4. **Extract Files**: Unzip the downloaded archive to get `.ovl` files
 
-**File Naming Convention**: `senhub.{lookup_name}.ovl`
+**File Naming Convention**: `{lookup_id}.ovl` — the filename must match the `id` attribute in the XML.
 
 Example files:
 ```
-senhub.netscaler.lbvserver.state.ovl
-senhub.netscaler.ha.state.ovl
-senhub.redfish.health.ovl
+netscaler.lbvserver.state.ovl
+netscaler.ha.state.ovl
+netscaler.ha.node.state.ovl
 ```
 
 ### Installing Lookups in PRTG
@@ -269,7 +269,7 @@ senhub.redfish.health.ovl
 
 ```bash
 # Download all lookups as ZIP
-curl -o prtg-lookups.zip http://localhost:8080/api/{agentkey}/prtg/lookups/download
+curl -o prtg-lookups.zip http://localhost:8080/api/{agentkey}/lookups/prtg
 
 # Extract to PRTG custom lookups directory
 unzip prtg-lookups.zip -d "C:\Program Files (x86)\PRTG Network Monitor\lookups\custom\"
@@ -281,7 +281,7 @@ Once installed, lookups are **automatically applied** to matching metrics:
 
 **Automatic Application:**
 - PRTG matches the lookup file name to the metric name
-- Example: Metric `netscaler.lbvserver.state` uses `senhub.netscaler.lbvserver.state.ovl`
+- Example: Metric `netscaler.lbvserver.state` uses `netscaler.lbvserver.state.ovl`
 - No manual configuration needed
 
 **Verification:**
@@ -417,18 +417,18 @@ mappings:
 
 **Download All Lookups (ZIP)**:
 ```
-GET /api/{agentkey}/prtg/lookups/download
+GET /api/{agentkey}/lookups/prtg
 ```
 
 **Download Single Lookup**:
 ```
-GET /api/{agentkey}/prtg/lookups/{lookup_name}.ovl
+GET /api/{agentkey}/lookups/prtg/{lookup_id}
 ```
 
 Example:
 ```bash
 curl -o netscaler.ha.state.ovl \
-  http://localhost:8080/api/{agentkey}/prtg/lookups/netscaler.ha.state.ovl
+  http://localhost:8080/api/{agentkey}/lookups/prtg/netscaler_ha_state
 ```
 
 ## Cache Management

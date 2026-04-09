@@ -32,6 +32,7 @@ type MetricDefinition struct {
 	Channel                string            `yaml:"channel"`
 	DisplayName            string            `yaml:"display_name"`
 	Unit                   string            `yaml:"unit"`
+	Category               string            `yaml:"category"`
 	MultiInstanceLabels    []string          `yaml:"multi_instance_labels"`
 	TagFilter              map[string]string `yaml:"tag_filter"`
 	Description            string            `yaml:"description"`
@@ -59,11 +60,29 @@ type CorrectionsConfig struct {
 	Corrections []UnitCorrection `yaml:"corrections"`
 }
 
+// TagType distinguishes category tags (for grouping) from resource tags (for filtering)
+type TagType string
+
+const (
+	TagTypeCategory TagType = "category" // Displayed as pills/buttons in UI (e.g. metric_type, metric_view)
+	TagTypeResource TagType = "resource" // Displayed as dropdown filters in UI (e.g. device, certname)
+)
+
+// TagMetadata describes a tag's display properties for the web UI
+type TagMetadata struct {
+	Type             TagType           `yaml:"type" json:"type"`                           // "category" or "resource"
+	Label            string            `yaml:"label" json:"label"`                         // Human-readable label
+	ValueLabels      map[string]string `yaml:"value_labels,omitempty" json:"value_labels"` // Map raw value → human label
+	LinkedCategories []string          `yaml:"linked_categories,omitempty" json:"linked_categories"` // Show only when these categories are selected
+}
+
 // ProbeDefinition represents the structure of a probe definition YAML file
 type ProbeDefinition struct {
-	ProbeName string             `yaml:"probe_name"`
-	Version   string             `yaml:"version"`
-	Metrics   []MetricDefinition `yaml:"metrics"`
+	ProbeName   string                  `yaml:"probe_name"`
+	FriendlyName string                 `yaml:"friendly_name"`
+	Version     string                  `yaml:"version"`
+	Metrics     []MetricDefinition      `yaml:"metrics"`
+	TagMetadata map[string]TagMetadata  `yaml:"tag_metadata,omitempty" json:"tag_metadata"`
 }
 
 // UnitDefinition represents a unit mapping definition
@@ -118,6 +137,27 @@ func NewTransformerRegistry(baseLogger *logger.Logger) *TransformerRegistry {
 		transformers: make(map[string]MetricTransformer),
 		moduleLogger: moduleLogger,
 	}
+}
+
+// GetProbeDefinition returns the parsed ProbeDefinition for a probe, or nil if not found.
+// Used by the web UI to access tag_metadata, categories, and descriptions.
+func (tr *TransformerRegistry) GetProbeDefinition(probeName string) *ProbeDefinition {
+	// Check if we already have a definition-based transformer loaded
+	for _, t := range tr.transformers {
+		if dbt, ok := t.(*DefinitionBasedTransformer); ok {
+			if dbt.probeName == probeName && dbt.definition != nil {
+				return dbt.definition
+			}
+		}
+	}
+
+	// Try to load it from embedded files
+	filePath := fmt.Sprintf("definitions/%s.yaml", probeName)
+	def, err := tr.loadProbeDefinitionFromEmbed(filePath)
+	if err != nil {
+		return nil
+	}
+	return def
 }
 
 // LoadTransformer loads or creates a transformer for a specific probe and style

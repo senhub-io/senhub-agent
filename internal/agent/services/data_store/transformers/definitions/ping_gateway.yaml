@@ -8,8 +8,30 @@ metrics:
     channel: "gateway_average_latency"
     display_name: "Gateway Average Latency"
     unit: "ms"
-    
+    category: "connectivity"
+    description: "Average round-trip time to the default network gateway"
+
   - name: "packetLoss"
     channel: "gateway_packet_loss"
     display_name: "Gateway Packet Loss"
     unit: "%"
+    category: "connectivity"
+    description: "Percentage of ICMP packets lost to the default gateway"
+
+tag_metadata:
+  # System tags (injected by framework)
+  host:
+    type: resource
+    label: "Host"
+  os:
+    type: resource
+    label: "Operating System"
+  platform:
+    type: resource
+    label: "Platform"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"

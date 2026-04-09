@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kardianos/service"
+	"gopkg.in/yaml.v2"
 	"senhub-agent.go/internal/agent/cliArgs"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
@@ -122,9 +123,21 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 		}
 	}
 
+	// Resolve config path once for reuse
+	configPath := ""
+	if args != nil {
+		if resolved, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath); err == nil {
+			configPath = resolved
+		}
+	}
+
 	// Try HTTP endpoint first (for running agent with HTTP strategy)
 	if agentKey != "" {
 		if systemStatus, err := statusHelper.GetDetailedStatusFromHTTP(agentKey, 8080); err == nil {
+			// Enrich with dashboard URL from config
+			if configPath != "" {
+				systemStatus.Connection.DashboardURL = buildDashboardURL(configPath, agentKey)
+			}
 			// Successfully got status from running agent
 			fmt.Print(formatter.FormatSystemStatus(*systemStatus))
 			return
@@ -241,10 +254,72 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 		if agentKey != "" {
 			systemStatus.Connection.Source = "Configuration file"
 			systemStatus.Connection.Status = "Available"
+
+			// Build dashboard URL from config
+			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+			if err == nil {
+				systemStatus.Connection.DashboardURL = buildDashboardURL(configPath, agentKey)
+			}
 		}
 	}
 
 	return systemStatus, nil
+}
+
+// buildDashboardURL constructs the dashboard URL from the agent configuration file
+func buildDashboardURL(configPath string, agentKey string) string {
+	if agentKey == "" {
+		return ""
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return ""
+	}
+
+	// Parse YAML to extract HTTP strategy params
+	var config struct {
+		Strategies []struct {
+			Type   string                 `yaml:"type"`
+			Params map[string]interface{} `yaml:"params"`
+		} `yaml:"strategies"`
+	}
+
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return ""
+	}
+
+	// Find HTTP strategy and extract port/https settings
+	for _, s := range config.Strategies {
+		if s.Type != "http" {
+			continue
+		}
+
+		port := 8080
+		scheme := "http"
+
+		if p, ok := s.Params["port"]; ok {
+			switch v := p.(type) {
+			case int:
+				port = v
+			case float64:
+				port = int(v)
+			}
+		}
+
+		if https, ok := s.Params["enable_https"]; ok {
+			if enabled, ok := https.(bool); ok && enabled {
+				scheme = "https"
+				if port == 8080 {
+					port = 8443
+				}
+			}
+		}
+
+		return fmt.Sprintf("%s://localhost:%d/web/%s/dashboard", scheme, port, agentKey)
+	}
+
+	return ""
 }
 
 // isGitHash checks if a string looks like a git commit hash (hex characters only)
