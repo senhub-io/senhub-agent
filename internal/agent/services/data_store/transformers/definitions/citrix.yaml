@@ -7,159 +7,372 @@ metrics:
     channel: "sessions_connected"
     display_name: "Sessions Connected"
     unit: "#"
-    
+    category: "sessions"
+    description: "Number of active user sessions currently connected to virtual desktops"
+
   - name: "sessions_disconnected"
     channel: "sessions_disconnected"
     display_name: "Sessions Disconnected"
     unit: "#"
+    category: "sessions"
+    description: "Number of user sessions in disconnected state but not yet logged off"
 
   # Machine Infrastructure Metrics
   - name: "machines_total"
     channel: "machines_total"
     display_name: "Machines Total"
     unit: "#"
-    
+    category: "infrastructure"
+    description: "Total number of VDA machines in the delivery group"
+
   - name: "machines_registered"
     channel: "machines_registered"
     display_name: "Machines Registered"
     unit: "#"
-    
+    category: "infrastructure"
+    description: "Number of VDA machines successfully registered with the Delivery Controller"
+
   - name: "machines_unregistered"
     channel: "machines_unregistered"
     display_name: "Machines Unregistered"
     unit: "#"
-    
+    category: "infrastructure"
+    description: "Number of VDA machines not registered with the Delivery Controller"
+
   - name: "machines_faulty"
     channel: "machines_faulty"
     display_name: "Machines Faulty"
     unit: "#"
-    
+    category: "infrastructure"
+    description: "Number of VDA machines in a faulty state unable to accept user connections"
+
   - name: "machines_maintenance"
     channel: "machines_maintenance"
     display_name: "Machines in Maintenance"
     unit: "#"
+    category: "infrastructure"
+    description: "Number of VDA machines placed in maintenance mode by an administrator"
 
   # Logon Performance Metrics (Time units)
   - name: "logon_duration_avg_1h"
     channel: "logon_duration_avg_1h"
     display_name: "Logon Duration Average (1h)"
     unit: "s"
-    
+    category: "logon"
+    description: "Average end-to-end logon duration over the last hour"
+
   - name: "logon_duration_total"
     channel: "logon_duration_total"
     display_name: "Logon Duration Total"
     unit: "s"
-    
+    category: "logon"
+    description: "Total cumulative logon duration for the most recent logon session"
+
   - name: "logon_sessions_opened"
     channel: "logon_sessions_opened"
     display_name: "Logon Sessions Opened"
     unit: "#"
+    category: "logon"
+    description: "Number of new sessions opened during the measurement period"
 
   # Logon Phase Breakdown Metrics (Time units)
   - name: "logon_brokering"
     channel: "logon_brokering"
     display_name: "Logon Brokering"
     unit: "s"
-    
+    category: "logon"
+    description: "Time spent by the Delivery Controller brokering the session to a VDA"
+
   - name: "logon_vmstart"
     channel: "logon_vmstart"
     display_name: "Logon VM Start"
     unit: "s"
-    
+    category: "logon"
+    description: "Time spent starting or resuming the virtual machine for the session"
+
   - name: "logon_hdx"
     channel: "logon_hdx"
     display_name: "Logon HDX"
     unit: "s"
-    
+    category: "logon"
+    description: "Time spent establishing the HDX/ICA connection between client and VDA"
+
   - name: "logon_authentication"
     channel: "logon_authentication"
     display_name: "Logon Authentication"
     unit: "s"
-    
+    category: "logon"
+    description: "Time spent authenticating user credentials during logon"
+
   - name: "logon_gpo"
     channel: "logon_gpo"
     display_name: "Logon GPO"
     unit: "s"
-    
+    category: "logon"
+    description: "Time spent applying Group Policy Objects during session logon"
+
   - name: "logon_scripts"
     channel: "logon_scripts"
     display_name: "Logon Scripts"
     unit: "s"
-    
+    category: "logon"
+    description: "Time spent executing logon scripts during session initialization"
+
   - name: "logon_profile"
     channel: "logon_profile"
     display_name: "Logon Profile"
     unit: "s"
-    
+    category: "logon"
+    description: "Time spent loading the user profile during session logon"
+
   - name: "logon_interactive"
     channel: "logon_interactive"
     display_name: "Logon Interactive"
     unit: "s"
+    category: "logon"
+    description: "Time spent on interactive session setup after profile load completes"
 
   # Connection Failure Metrics (Director: "Échecs de connexion utilisateur")
   - name: "failures_total"
     channel: "failures_total"
     display_name: "Connection Failures Total"
     unit: "#"
-    
+    category: "failures"
+    description: "Total number of failed user connection attempts across all failure categories"
+
   - name: "client_connection_failures"
     channel: "client_connection_failures"
     display_name: "Client Connection Failures"
     unit: "#"
-    
+    category: "failures"
+    description: "Connection failures caused by client-side issues such as network or endpoint errors"
+
   - name: "configuration_errors"
     channel: "configuration_errors"
     display_name: "Configuration Errors"
     unit: "#"
-    
+    category: "failures"
+    description: "Connection failures caused by misconfigured delivery groups or policies"
+
   - name: "machine_failures"
     channel: "machine_failures"
     display_name: "Machine Failures"
     unit: "#"
-    
+    category: "failures"
+    description: "Connection failures caused by VDA machines being unavailable or unresponsive"
+
   - name: "capacity_unavailable"
     channel: "capacity_unavailable"
     display_name: "Capacity Unavailable"
     unit: "#"
-    
+    category: "failures"
+    description: "Connection failures due to no available capacity in the delivery group"
+
   - name: "licenses_unavailable"
     channel: "licenses_unavailable"
     display_name: "Licenses Unavailable"
     unit: "#"
-    
+    category: "failures"
+    description: "Connection failures due to insufficient Citrix licenses available"
+
   - name: "other_failures"
     channel: "other_failures"
     display_name: "Other Failures"
     unit: "#"
+    category: "failures"
+    description: "Connection failures not classified in other failure categories"
+
+  # Load Index Metrics (VDA resource utilization, values in %)
+  - name: "load_index_effective"
+    channel: "load_index_effective"
+    display_name: "Load Index Effective Avg"
+    unit: "%"
+    category: "load"
+    description: "Average effective load evaluator index across all registered VDAs"
+
+  - name: "load_index_cpu"
+    channel: "load_index_cpu"
+    display_name: "Load Index CPU Avg"
+    unit: "%"
+    category: "load"
+    description: "Average CPU load evaluator index across all registered VDAs"
+
+  - name: "load_index_memory"
+    channel: "load_index_memory"
+    display_name: "Load Index Memory Avg"
+    unit: "%"
+    category: "load"
+    description: "Average memory load evaluator index across all registered VDAs"
+
+  - name: "load_index_disk"
+    channel: "load_index_disk"
+    display_name: "Load Index Disk Avg"
+    unit: "%"
+    category: "load"
+    description: "Average disk load evaluator index across all registered VDAs"
+
+  - name: "load_index_network"
+    channel: "load_index_network"
+    display_name: "Load Index Network Avg"
+    unit: "%"
+    category: "load"
+    description: "Average network load evaluator index across all registered VDAs"
+
+  - name: "load_index_sessions"
+    channel: "load_index_sessions"
+    display_name: "Load Index Sessions Avg"
+    unit: "%"
+    category: "load"
+    description: "Average session count load evaluator index across all registered VDAs"
+
+  - name: "load_overloaded_machines"
+    channel: "load_overloaded_machines"
+    display_name: "Overloaded Machines"
+    unit: "#"
+    category: "load"
+    description: "Number of VDA machines reporting a load index at or above the overload threshold"
+
+  # License Metrics (from DDC Sites endpoint)
+  - name: "license_sessions_active"
+    channel: "license_sessions_active"
+    display_name: "Licensed Sessions Active"
+    unit: "#"
+    category: "licensing"
+    description: "Number of currently active sessions consuming a Citrix license"
+
+  - name: "license_peak_concurrent"
+    channel: "license_peak_concurrent"
+    display_name: "License Peak Concurrent Users"
+    unit: "#"
+    category: "licensing"
+    description: "Highest number of concurrent licensed users recorded in the current period"
+
+  - name: "license_unique_users"
+    channel: "license_unique_users"
+    display_name: "License Unique Users"
+    unit: "#"
+    category: "licensing"
+    description: "Number of unique users who have consumed a license in the current period"
+
+  - name: "license_grace_sessions_left"
+    channel: "license_grace_sessions_left"
+    display_name: "License Grace Sessions Left"
+    unit: "#"
+    category: "licensing"
+    description: "Remaining supplemental grace sessions available when license limit is exceeded"
+
+  - name: "license_grace_period_active"
+    channel: "license_grace_period_active"
+    display_name: "License Grace Period Active"
+    unit: "#"
+    category: "licensing"
+    description: "Indicates whether the supplemental grace period is currently active (1) or not (0)"
+
+  - name: "license_grace_hours_left"
+    channel: "license_grace_hours_left"
+    display_name: "License Grace Hours Left"
+    unit: "custom"
+    customunit: "h"
+    category: "licensing"
+    description: "Hours remaining before the supplemental grace period expires"
+
+  - name: "machines_faulty_total"
+    channel: "machines_faulty_total"
+    display_name: "Machines Faulty Total (Multi-Session)"
+    unit: "#"
+    category: "machine_health"
+    description: "Total number of multi-session VDA machines in a fault state"
 
   # Machine Fault State Metrics (Director: "Machines par état")
   - name: "boot_failure"
     channel: "boot_failure"
     display_name: "Boot Failure"
     unit: "#"
-    
+    category: "machine_health"
+    description: "Number of machines that failed to boot within the expected timeframe"
+
   - name: "stuck_at_boot"
     channel: "stuck_at_boot"
     display_name: "Stuck At Boot"
     unit: "#"
-    
+    category: "machine_health"
+    description: "Number of machines stuck in the boot process and not progressing to registration"
+
   - name: "unregistered"
     channel: "unregistered"
     display_name: "Unregistered"
     unit: "#"
-    
+    category: "machine_health"
+    description: "Number of powered-on machines that have not registered with the Delivery Controller"
+
   - name: "max_capacity"
     channel: "max_capacity"
     display_name: "Max Capacity"
     unit: "#"
-    
+    category: "machine_health"
+    description: "Number of machines that have reached their maximum session capacity"
+
   - name: "vm_not_found"
     channel: "vm_not_found"
     display_name: "VM Not Found"
     unit: "#"
-    
+    category: "machine_health"
+    description: "Number of machines whose virtual machine could not be found on the hypervisor"
+
   - name: "unknown"
     channel: "unknown"
     display_name: "Unknown"
     unit: "#"
+    category: "machine_health"
+    description: "Number of machines in an unrecognized or undetermined fault state"
 
+tag_metadata:
+  metric_type:
+    type: category
+    label: "Metric Category"
+    value_labels:
+      sessions: "Sessions"
+      infrastructure: "Infrastructure"
+      logon: "Logon Performance"
+      connection_failures: "Connection Failures"
+      multi_session_faults: "Machine Health"
+      load_index: "Load Index"
+      licensing: "Licensing"
+  failure_category:
+    type: resource
+    label: "Failure Type"
+    linked_categories: ["connection_failures"]
+    value_labels:
+      client_connection_failures: "Client Connection"
+      configuration_errors: "Configuration"
+      machine_failures: "Machine"
+      capacity_unavailable: "Capacity"
+      licenses_unavailable: "Licensing"
+      other_failures: "Other"
+  fault_state:
+    type: resource
+    label: "Fault State"
+    linked_categories: ["multi_session_faults"]
+    value_labels:
+      boot_failure: "Boot Failure"
+      stuck_at_boot: "Stuck at Boot"
+      unregistered: "Unregistered"
+      max_capacity: "Max Capacity"
+      vm_not_found: "VM Not Found"
+      unknown: "Unknown"
+  # System tags (injected by framework)
+  host:
+    type: resource
+    label: "Host"
+  os:
+    type: resource
+    label: "Operating System"
+  platform:
+    type: resource
+    label: "Platform"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"

@@ -186,65 +186,68 @@ func main() {
 }
 
 func showHelp() {
+	exe := os.Args[0]
+
+	// Try to show the console URL if config is available
+	consoleURL := ""
+	configPath, err := cliArgs.GetAbsoluteConfigPath("")
+	if err == nil {
+		if key, err := extractAgentKeyFromConfig(configPath); err == nil && key != "" {
+			consoleURL = fmt.Sprintf("http://127.0.0.1:8080/web/%s/dashboard", key)
+		}
+	}
+
+	fmt.Println("SenHub Agent - Infrastructure Monitoring Agent")
+	fmt.Printf("Version: %s (%s)\n", cliArgs.Version, cliArgs.CommitHash)
+	if consoleURL != "" {
+		fmt.Printf("Console: %s\n", consoleURL)
+	}
+	fmt.Println()
+
 	fmt.Printf(`Usage: %s [command] [options]
 
 Service Commands:
-    install              Install the service (requires --authentication-key OR --offline)
-    uninstall            Remove the service
+    install              Install as system service (requires --authentication-key OR --offline)
+    uninstall            Remove the system service
     start                Start the service
     stop                 Stop the service
-    restart              Restart the service (stop then start)
-    status               Show service status
+    restart              Restart the service
+    status               Show service and probe status
+    run                  Run interactively in console mode
+
+License Commands:
+    license show         Show current license information
+    license activate     Activate a license from a JWT token
+    license remove       Remove current license (revert to free tier)
+
+Other Commands:
     version              Show agent version
-    run                  Run in console mode (requires --authentication-key OR --offline)
-    update               Update the agent to given version (default: latest)
-    debug-modules-list   List all available debug modules
+    update               Update agent to a given version (default: latest)
+    debug-modules-list   List available debug log modules
 
 Agent Options:
-    --authentication-key KEY                Authentication key for the service
-                                           (optional if present in config file)
-    --server-url URL                       Server URL (optional)
-    --config-path PATH                     Path to configuration file (default: ./agent-config.yaml)
-    --verbose                              Enable verbose logging (debug level for all key modules)
-    --debug-modules module1,module2        Enable debug logging only for specific modules
+    --authentication-key KEY               Agent key (optional if present in config file)
+    --config-path PATH                     Configuration file (default: ./agent-config.yaml)
+    --offline                              Run with local YAML configuration (no server)
+    --verbose                              Enable debug logging for all modules
+    --debug-modules module1,module2        Enable debug logging for specific modules
 
-Offline Mode Options:
-    --offline                              Run in offline mode with local configuration
-
-HTTPS/TLS Options (for offline mode):
-    --enable-https                         Enable HTTPS for HTTP strategy
+HTTPS/TLS Options:
+    --enable-https                         Enable HTTPS on the HTTP strategy
     --https-port PORT                      HTTPS port (default: 8443)
-    --https-hosts HOST1,HOST2              Hostnames for certificate SAN (default: localhost,127.0.0.1)
-    --cert-file PATH                       Path to custom TLS certificate file
-    --key-file PATH                        Path to custom TLS private key file
-    --min-tls-version VERSION              Minimum TLS version (1.2, 1.3) (default: 1.2)
-
-Debug Log Shipper Options:
-    --debug-log-shipper-url URL            URL of remote log collection endpoint
-    --debug-log-shipper-tags tags          Custom tags for logs (format: key1=value1,key2=value2)
-    --debug-log-shipper-buffer SIZE        Buffer size for logs before sending (default: 100)
+    --https-hosts HOST1,HOST2              Hostnames for auto-generated certificate SAN
+    --cert-file PATH                       Custom TLS certificate file
+    --key-file PATH                        Custom TLS private key file
+    --min-tls-version VERSION              Minimum TLS version: 1.2 or 1.3 (default: 1.2)
 
 Examples:
-    Online Mode:
-    %s install --authentication-key "your-key"
-    %s run --authentication-key "your-key" --server-url "http://example.com"
-    %s run --authentication-key "your-key" --verbose --debug-modules strategy.http,cache
+    %s run --offline                                # Run with local config
+    %s run --offline --verbose                      # Run with debug output
+    %s install --offline                            # Install as service (offline)
+    %s install --authentication-key "your-key"      # Install as service (online)
+    %s license show --config agent-config.yaml      # Check license status
+    %s status                                       # Show running status
+    %s update latest                                # Update to latest version
 
-    Online Mode (with config file):
-    %s run                                          # Auth key loaded from agent-config.yaml
-    %s run --config-path /etc/agent/config.yaml    # Auth key loaded from custom path
-
-    Offline Mode:
-    %s install --offline
-    %s install --offline --enable-https --https-hosts "agent.company.com,192.168.1.100"
-    %s install --offline --enable-https --cert-file /path/to/cert.pem --key-file /path/to/key.pem
-    %s run --offline --config-path /etc/senhub-agent/config.yaml
-    %s run --offline --enable-https --verbose
-    
-    Service Management:
-    %s start
-    %s status
-    %s update latest
-
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+`, exe, exe, exe, exe, exe, exe, exe, exe)
 }

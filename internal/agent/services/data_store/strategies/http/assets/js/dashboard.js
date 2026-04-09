@@ -239,58 +239,46 @@ class Dashboard {
         const probes = probesData.probes || [];
         const probeMetrics = probesData.probe_metrics || {};
 
-        // Update probes count
         this.probesCount.textContent = probes.length.toString();
+        this.probesList.textContent = '';
 
-        // Clear existing list
-        this.probesList.innerHTML = '';
-
-        // STEP 1: Check if we have any probes in cache (regardless of uptime)
         if (probes.length === 0) {
-            // No probes in cache - hide list and show appropriate message
             this.probesList.style.display = 'none';
             this.noProbesDiv.style.display = 'block';
 
-            // STEP 2: Only if no probes, check uptime to distinguish:
-            // - Agent just started (uptime < 2min) → probes are loading
-            // - Agent running for a while (uptime >= 2min) → no probes configured
             const uptimeText = this.agentUptime.textContent;
             const isStartingUp = this.isAgentStartingUp(uptimeText);
 
-            if (isStartingUp) {
-                // CASE A: Agent uptime < 2 minutes AND no probes
-                // → Show "starting up" message (probes haven't collected metrics yet)
-                this.noProbesDiv.innerHTML = `
-                    <div class="info-notice" style="text-align: center;">
-                        <div style="font-size: 24px; margin-bottom: 10px;">🔄</div>
-                        <strong>Probes starting up...</strong>
-                        <p style="margin: 10px 0 0 0; color: #666;">
-                            The agent just started. Probes are initializing and will appear here shortly.
-                        </p>
-                    </div>
-                `;
-            } else {
-                // CASE B: Agent uptime >= 2 minutes AND no probes
-                // → Show "no probes configured" message (real configuration issue)
-                this.noProbesDiv.innerHTML = `
-                    <div class="info-notice" style="text-align: center;">
-                        <div style="font-size: 24px; margin-bottom: 10px;">⚠️</div>
-                        <strong>No active probes detected</strong>
-                        <p style="margin: 10px 0 0 0; color: #666;">
-                            No probes are configured or all probes failed to start.
-                            Check your configuration file.
-                        </p>
-                    </div>
-                `;
-            }
+            const notice = document.createElement('div');
+            notice.className = 'info-notice';
+            notice.style.textAlign = 'center';
+
+            const icon = document.createElement('div');
+            icon.style.fontSize = '24px';
+            icon.style.marginBottom = '10px';
+            icon.textContent = isStartingUp ? '🔄' : '⚠️';
+            notice.appendChild(icon);
+
+            const title = document.createElement('strong');
+            title.textContent = isStartingUp ? 'Probes starting up...' : 'No active probes detected';
+            notice.appendChild(title);
+
+            const desc = document.createElement('p');
+            desc.style.margin = '10px 0 0 0';
+            desc.style.color = '#666';
+            desc.textContent = isStartingUp
+                ? 'The agent just started. Probes are initializing and will appear here shortly.'
+                : 'No probes are configured or all probes failed to start. Check your configuration file.';
+            notice.appendChild(desc);
+
+            this.noProbesDiv.textContent = '';
+            this.noProbesDiv.appendChild(notice);
             return;
         }
 
-        // CASE C: We have probes in cache → show the list
         this.probesList.style.display = 'block';
         this.noProbesDiv.style.display = 'none';
 
-        // Sort probes alphabetically
         const sortedProbes = [...probes].sort();
 
         sortedProbes.forEach(probeName => {
@@ -300,18 +288,111 @@ class Dashboard {
             const metricsCount = probeMetrics[probeName] || 0;
             const isActive = metricsCount > 0;
 
-            li.innerHTML = `
-                <div class="probe-info">
-                    <div class="probe-status ${isActive ? 'active' : 'inactive'}"></div>
-                    <span class="probe-name">${probeName}</span>
-                </div>
-                <div class="probe-metrics">
-                    ${metricsCount} metrics
-                </div>
-            `;
+            // Probe info row
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'probe-info';
+
+            const statusDot = document.createElement('div');
+            statusDot.className = `probe-status ${isActive ? 'active' : 'inactive'}`;
+            infoDiv.appendChild(statusDot);
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'probe-name';
+            nameSpan.textContent = probeName;
+            infoDiv.appendChild(nameSpan);
+
+            li.appendChild(infoDiv);
+
+            // Metrics count
+            const metricsDiv = document.createElement('div');
+            metricsDiv.className = 'probe-metrics';
+            metricsDiv.textContent = `${metricsCount} metrics`;
+            li.appendChild(metricsDiv);
+
+            // Key values container
+            const valuesDiv = document.createElement('div');
+            valuesDiv.className = 'probe-key-values';
+            valuesDiv.id = `probe-values-${probeName}`;
+            li.appendChild(valuesDiv);
 
             this.probesList.appendChild(li);
+
+            if (isActive) {
+                this.loadProbeKeyValues(probeName);
+            }
         });
+    }
+
+    async loadProbeKeyValues(probeName) {
+        try {
+            const data = await this.base.fetchAPI(`prtg/metrics/${probeName}`);
+            const results = data?.prtg?.result || [];
+            if (results.length === 0) return;
+
+            const container = this.base.$(`#probe-values-${probeName}`);
+            if (!container) return;
+
+            const keyMetrics = this.selectKeyMetrics(results, probeName);
+
+            keyMetrics.forEach(m => {
+                const span = document.createElement('span');
+                span.className = 'key-metric';
+                span.title = m.channel;
+
+                const valueEl = document.createElement('strong');
+                valueEl.textContent = typeof m.value === 'number'
+                    ? (Number.isInteger(m.value) ? m.value : m.value.toFixed(1))
+                    : m.value;
+                span.appendChild(valueEl);
+
+                const unit = m.customunit || m.unit || '';
+                if (unit && unit !== '#') {
+                    span.appendChild(document.createTextNode(' ' + unit));
+                }
+
+                const label = document.createElement('small');
+                label.textContent = ' ' + this.shortenLabel(m.channel);
+                span.appendChild(label);
+
+                container.appendChild(span);
+            });
+        } catch (e) {
+            // Silently fail — key values are optional enhancement
+        }
+    }
+
+    selectKeyMetrics(results, probeName) {
+        const priorities = {
+            cpu: ['CPU Total Usage', 'CPU Load Average 1min'],
+            memory: ['Memory Usage', 'Memory Used', 'Memory Free'],
+            logicaldisk: ['Used Percent', 'Free Bytes', 'Available Bytes'],
+            citrix: ['Sessions Connected', 'Sessions Disconnected', 'Logon Duration Total', 'Machines Total'],
+            netscaler: ['System CPU Usage', 'System Memory Usage', 'System HTTP Requests Rate'],
+        };
+
+        const probeType = probeName.toLowerCase();
+        const priorityList = priorities[probeType] || [];
+
+        const selected = [];
+        for (const prio of priorityList) {
+            const match = results.find(r => r.channel && r.channel.includes(prio));
+            if (match && selected.length < 4) selected.push(match);
+        }
+
+        if (selected.length < 4) {
+            for (const r of results) {
+                if (selected.length >= 4) break;
+                if (!selected.includes(r) && r.value !== 0) selected.push(r);
+            }
+        }
+
+        return selected.slice(0, 4);
+    }
+
+    shortenLabel(channel) {
+        return channel
+            .replace(/^(CPU |Memory |System |Sessions |Logon |Machines )/, '')
+            .replace(/\s*\(.*\)$/, '');
     }
 
     /**

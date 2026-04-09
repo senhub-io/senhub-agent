@@ -1,5 +1,11 @@
 // admin.js - Administration panel functionality
 
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 let currentLogLevels = {};
 
 // Initialize admin panel
@@ -116,13 +122,15 @@ async function loadCacheStats() {
     } catch (error) {
         console.error('Failed to load cache stats:', error);
         const tbody = document.getElementById('cache-stats-body');
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="4" style="text-align: center; color: var(--danger-color);">
-                    Failed to load cache statistics: ${error.message}
-                </td>
-            </tr>
-        `;
+        tbody.textContent = '';
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 4;
+        td.style.textAlign = 'center';
+        td.style.color = 'var(--danger-color)';
+        td.textContent = 'Failed to load cache statistics: ' + error.message;
+        tr.appendChild(td);
+        tbody.appendChild(tr);
     }
 }
 
@@ -130,28 +138,38 @@ function renderCacheStats(data) {
     const tbody = document.getElementById('cache-stats-body');
     
     if (!data || !data.probes || data.probes.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="4" style="text-align: center; color: var(--gray-500);">
-                    No cache data available
-                </td>
-            </tr>
-        `;
+        tbody.textContent = '';
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 4;
+        td.style.textAlign = 'center';
+        td.style.color = 'var(--gray-500)';
+        td.textContent = 'No cache data available';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
         return;
     }
     
-    tbody.innerHTML = data.probes.map(probe => `
-        <tr>
-            <td>${probe.name}</td>
-            <td>${probe.metrics_count || 0}</td>
-            <td>${probe.last_updated ? formatTimestamp(probe.last_updated) : 'Never'}</td>
-            <td>
-                <span class="status-badge ${probe.metrics_count > 0 ? 'status-active' : 'status-inactive'}">
-                    ${probe.metrics_count > 0 ? 'Active' : 'Empty'}
-                </span>
-            </td>
-        </tr>
-    `).join('');
+    tbody.textContent = '';
+    data.probes.forEach(probe => {
+        const tr = document.createElement('tr');
+        const tdName = document.createElement('td');
+        tdName.textContent = probe.name;
+        const tdCount = document.createElement('td');
+        tdCount.textContent = parseInt(probe.metrics_count, 10) || 0;
+        const tdUpdated = document.createElement('td');
+        tdUpdated.textContent = probe.last_updated ? formatTimestamp(probe.last_updated) : 'Never';
+        const tdStatus = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = 'status-badge ' + (probe.metrics_count > 0 ? 'status-active' : 'status-inactive');
+        badge.textContent = probe.metrics_count > 0 ? 'Active' : 'Empty';
+        tdStatus.appendChild(badge);
+        tr.appendChild(tdName);
+        tr.appendChild(tdCount);
+        tr.appendChild(tdUpdated);
+        tr.appendChild(tdStatus);
+        tbody.appendChild(tr);
+    });
 }
 
 async function clearCache() {
@@ -196,11 +214,13 @@ async function loadProbeConfig() {
         console.error('Failed to load probe config:', error);
         hideElement('probe-config-loading');
         const container = document.getElementById('probe-config-container');
-        container.innerHTML = `
-            <div style="text-align: center; color: var(--danger-color); padding: 2rem;">
-                Failed to load probe configuration: ${error.message}
-            </div>
-        `;
+        container.textContent = '';
+        const errorDiv = document.createElement('div');
+        errorDiv.style.textAlign = 'center';
+        errorDiv.style.color = 'var(--danger-color)';
+        errorDiv.style.padding = '2rem';
+        errorDiv.textContent = 'Failed to load probe configuration: ' + error.message;
+        container.appendChild(errorDiv);
         showElement('probe-config-container');
     }
 }
@@ -209,25 +229,63 @@ function renderProbeConfig(data) {
     const container = document.getElementById('probe-config-container');
     
     if (!data || !data.probes || data.probes.length === 0) {
-        container.innerHTML = `
-            <div style="text-align: center; color: var(--gray-500); padding: 2rem;">
-                No probe configuration found
-            </div>
-        `;
+        container.textContent = '';
+        const emptyDiv = document.createElement('div');
+        emptyDiv.style.textAlign = 'center';
+        emptyDiv.style.color = 'var(--gray-500)';
+        emptyDiv.style.padding = '2rem';
+        emptyDiv.textContent = 'No probe configuration found';
+        container.appendChild(emptyDiv);
         return;
     }
     
-    container.innerHTML = data.probes.map(probe => `
-        <div class="probe-config">
-            <div class="probe-name">${probe.name}</div>
-            <div class="probe-details">
-                <div><strong>Type:</strong> ${probe.type || 'Unknown'}</div>
-                <div><strong>Interval:</strong> ${probe.interval || 'Default'}</div>
-                <div><strong>Enabled:</strong> ${probe.enabled !== false ? 'Yes' : 'No'}</div>
-                ${probe.params ? `<div><strong>Parameters:</strong> <pre>${JSON.stringify(probe.params, null, 2)}</pre></div>` : ''}
-            </div>
-        </div>
-    `).join('');
+    container.textContent = '';
+    data.probes.forEach(probe => {
+        const config = document.createElement('div');
+        config.className = 'probe-config';
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'probe-name';
+        nameDiv.textContent = probe.name;
+        config.appendChild(nameDiv);
+
+        const details = document.createElement('div');
+        details.className = 'probe-details';
+
+        const typeDiv = document.createElement('div');
+        const typeLabel = document.createElement('strong');
+        typeLabel.textContent = 'Type: ';
+        typeDiv.appendChild(typeLabel);
+        typeDiv.appendChild(document.createTextNode(probe.type || 'Unknown'));
+        details.appendChild(typeDiv);
+
+        const intervalDiv = document.createElement('div');
+        const intervalLabel = document.createElement('strong');
+        intervalLabel.textContent = 'Interval: ';
+        intervalDiv.appendChild(intervalLabel);
+        intervalDiv.appendChild(document.createTextNode(probe.interval || 'Default'));
+        details.appendChild(intervalDiv);
+
+        const enabledDiv = document.createElement('div');
+        const enabledLabel = document.createElement('strong');
+        enabledLabel.textContent = 'Enabled: ';
+        enabledDiv.appendChild(enabledLabel);
+        enabledDiv.appendChild(document.createTextNode(probe.enabled !== false ? 'Yes' : 'No'));
+        details.appendChild(enabledDiv);
+
+        if (probe.params) {
+            const paramsDiv = document.createElement('div');
+            const paramsLabel = document.createElement('strong');
+            paramsLabel.textContent = 'Parameters: ';
+            paramsDiv.appendChild(paramsLabel);
+            const pre = document.createElement('pre');
+            pre.textContent = JSON.stringify(probe.params, null, 2);
+            paramsDiv.appendChild(pre);
+            details.appendChild(paramsDiv);
+        }
+
+        config.appendChild(details);
+        container.appendChild(config);
+    });
 }
 
 // System Information
@@ -309,10 +367,11 @@ function showMessage(message, type) {
     const messagesDiv = document.getElementById('messages');
     const messageDiv = document.createElement('div');
     messageDiv.className = `${type}-message`;
-    messageDiv.innerHTML = `
-        <strong>${type === 'success' ? '✅ Success:' : '❌ Error:'}</strong> ${message}
-    `;
-    
+    const strong = document.createElement('strong');
+    strong.textContent = type === 'success' ? 'Success: ' : 'Error: ';
+    messageDiv.appendChild(strong);
+    messageDiv.appendChild(document.createTextNode(message));
+
     messagesDiv.appendChild(messageDiv);
     
     // Auto-remove after 5 seconds

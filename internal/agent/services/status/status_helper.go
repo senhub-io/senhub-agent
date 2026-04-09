@@ -86,6 +86,13 @@ func (h *StatusHelper) GetDetailedStatusFromHTTP(agentKey string, port int) (*Sy
 	// Convert to our SystemStatus format
 	systemStatus := h.convertHTTPResponseToSystemStatus(httpResponse)
 
+	// Enrich with individual probe status
+	if probes, err := h.GetDetailedProbeStatusFromHTTP(agentKey, port); err == nil {
+		systemStatus.Probes = probes
+	} else {
+		h.logger.Debug().Err(err).Msg("Could not get detailed probe status, using summary")
+	}
+
 	h.logger.Debug().
 		Int("probe_count", len(systemStatus.Probes)).
 		Str("health", systemStatus.Health.Status).
@@ -142,22 +149,13 @@ func (h *StatusHelper) convertHTTPResponseToSystemStatus(httpResp HTTPSystemInfo
 		Health: HealthInfo{
 			Status:    httpResp.Health.Status,
 			Timestamp: time.Unix(httpResp.Health.Timestamp, 0),
-			Message:   "", // HTTP response doesn't include message
 		},
 		Connection: ConnectionInfo{
 			Mode:   mode,
 			Source: h.determineSource(mode),
 			Status: h.determineConnectionStatus(mode),
 		},
-		Probes: []ProbeStatus{
-			// Note: HTTP system info doesn't include detailed probe status
-			// We'd need to call a different endpoint or enhance the HTTP response
-			{
-				Name:         "unknown",
-				Status:       "unknown",
-				MetricsCount: httpResp.Cache.TotalMetrics,
-			},
-		},
+		Probes: nil, // Will be populated by caller via GetDetailedProbeStatusFromHTTP
 		Performance: PerformanceInfo{
 			Uptime:        httpResp.Uptime,
 			MemoryUsageMB: httpResp.Resources.MemoryUsageMB,
