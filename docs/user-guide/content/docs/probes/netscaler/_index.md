@@ -105,10 +105,11 @@ probes:
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `base_url` | string | Yes | - | NetScaler management URL (e.g., `https://netscaler.example.com`) |
+| `base_url` | string | Yes | - | NetScaler management URL (primary node IP recommended) |
+| `secondary_url` | string | No | - | Secondary NetScaler URL for HA automatic failover |
 | `username` | string | Yes | - | NITRO API username |
 | `password` | string | Yes | - | NITRO API password |
-| `insecure_skip_verify` | boolean | No | `false` | Skip SSL certificate verification (not recommended for production) |
+| `insecure_skip_verify` | boolean | No | `false` | Skip SSL certificate verification (set `true` when using IPs) |
 | `timeout` | integer | No | `30` | API request timeout in seconds |
 | `interval` | integer | No | `60` | Metric collection interval in seconds |
 | `custom_tags` | array | No | `[]` | Additional tags to attach to all metrics |
