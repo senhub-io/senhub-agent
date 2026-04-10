@@ -325,16 +325,6 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
 	probeNameLower := strings.ToLower(probeName)
 
-	// Resolve probe type from cached tags — probe name can differ from type
-	// (e.g., name="veeam-prod" → type="veeam", name="citrix-site2" → type="citrix")
-	probeType := a.resolveProbeType(probeNameLower)
-	if probeType == "" {
-		probeType = probeNameLower // Fallback: assume name == type
-	}
-
-	// Load probe definition using the resolved type
-	probeDef := a.strategy.transformerRegistry.GetProbeDefinition(probeType)
-
 	a.strategy.cache.mu.RLock()
 	defer a.strategy.cache.mu.RUnlock()
 
@@ -344,6 +334,21 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Probe not found", http.StatusNotFound)
 		return
 	}
+
+	// Resolve probe type from cached tags (within the same RLock — no TOCTOU)
+	// Probe name can differ from type (e.g., "veeam-prod" → "veeam")
+	probeType := probeNameLower
+	for tsKey := range tsKeys {
+		if metric, exists := a.strategy.cache.timeSeries[tsKey]; exists {
+			if pt, ok := metric.Tags["probe_type"]; ok && pt != "" {
+				probeType = pt
+				break
+			}
+		}
+	}
+
+	// Load probe definition using the resolved type
+	probeDef := a.strategy.transformerRegistry.GetProbeDefinition(probeType)
 
 	// Analyze tags from all metrics of this probe
 	tagValues := make(map[string]map[string]int)
@@ -442,28 +447,6 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 		a.logger.Error().Err(err).Msg("Failed to encode JSON response")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
-}
-
-// resolveProbeType extracts the probe_type from cached metric tags
-// This handles cases where probe name != probe type (e.g., "veeam-prod" → "veeam")
-func (a *APIManager) resolveProbeType(probeName string) string {
-	a.strategy.cache.mu.RLock()
-	defer a.strategy.cache.mu.RUnlock()
-
-	tsKeys, exists := a.strategy.cache.probeIndex[probeName]
-	if !exists {
-		return ""
-	}
-
-	for tsKey := range tsKeys {
-		if metric, exists := a.strategy.cache.timeSeries[tsKey]; exists {
-			if probeType, ok := metric.Tags["probe_type"]; ok {
-				return probeType
-			}
-		}
-		break // Only need to check one metric
-	}
-	return ""
 }
 
 // HandleInfoSchema provides complete schema information with examples

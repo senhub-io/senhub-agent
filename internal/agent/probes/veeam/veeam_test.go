@@ -291,8 +291,9 @@ func TestCollectMetrics(t *testing.T) {
 		t.Fatalf("failed to create probe: %v", err)
 	}
 
-	// Inject the test server's TLS client
+	// Inject the test server's TLS client and set probe type
 	vp := probe.(*veeamProbe)
+	vp.SetProbeType("veeam")
 	vp.client = &veeamClient{
 		httpClient: ts.Client(),
 		endpoint:   ts.URL,
