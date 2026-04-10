@@ -69,15 +69,16 @@ type licenseInfo struct {
 }
 
 // instanceLicenseSummary holds instance-based license counters
+// Note: Veeam API returns these as floats (e.g. 85.0) not ints
 type instanceLicenseSummary struct {
-	LicensedInstancesNumber int `json:"licensedInstancesNumber"`
-	UsedInstancesNumber     int `json:"usedInstancesNumber"`
+	LicensedInstancesNumber float64 `json:"licensedInstancesNumber"`
+	UsedInstancesNumber     float64 `json:"usedInstancesNumber"`
 }
 
 // socketLicenseSummary holds socket-based license counters
 type socketLicenseSummary struct {
-	LicensedSocketsNumber int `json:"licensedSocketsNumber"`
-	UsedSocketsNumber     int `json:"usedSocketsNumber"`
+	LicensedSocketsNumber float64 `json:"licensedSocketsNumber"`
+	UsedSocketsNumber     float64 `json:"usedSocketsNumber"`
 }
 
 // proxy represents a Veeam backup proxy from /api/v1/backupInfrastructure/proxies
