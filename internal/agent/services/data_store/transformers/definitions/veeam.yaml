@@ -1,0 +1,227 @@
+probe_name: "veeam"
+friendly_name: "Veeam Backup & Replication"
+
+metrics:
+  # Job Overview Metrics (aggregated by job type)
+  - name: "veeam_jobs_total"
+    channel: "veeam_jobs_total"
+    display_name: "Jobs Total ({job_type})"
+    unit: "#"
+    category: "overview"
+    multi_instance_labels: ["job_type"]
+    description: "Total number of backup jobs by type"
+
+  - name: "veeam_jobs_success"
+    channel: "veeam_jobs_success"
+    display_name: "Jobs Success ({job_type})"
+    unit: "#"
+    category: "overview"
+    multi_instance_labels: ["job_type"]
+    description: "Number of jobs with successful last run"
+
+  - name: "veeam_jobs_warning"
+    channel: "veeam_jobs_warning"
+    display_name: "Jobs Warning ({job_type})"
+    unit: "#"
+    category: "overview"
+    multi_instance_labels: ["job_type"]
+    description: "Number of jobs with warnings on last run"
+
+  - name: "veeam_jobs_failed"
+    channel: "veeam_jobs_failed"
+    display_name: "Jobs Failed ({job_type})"
+    unit: "#"
+    category: "overview"
+    multi_instance_labels: ["job_type"]
+    description: "Number of jobs that failed on last run"
+
+  - name: "veeam_jobs_running"
+    channel: "veeam_jobs_running"
+    display_name: "Jobs Running ({job_type})"
+    unit: "#"
+    category: "overview"
+    multi_instance_labels: ["job_type"]
+    description: "Number of jobs currently running"
+
+  # Per-Job Detail Metrics
+  - name: "veeam_job_status"
+    channel: "veeam_job_status"
+    display_name: "Job Status ({job_name})"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["job_name", "job_type"]
+    description: "Last job run status: 0=None, 1=Success, 2=Warning, 3=Failed, 4=Running"
+    lookup: "senhub.veeam.job_status"
+
+  - name: "veeam_job_duration_min"
+    channel: "veeam_job_duration_min"
+    display_name: "Job Duration ({job_name})"
+    unit: "custom"
+    custom_unit: "min"
+    category: "jobs"
+    multi_instance_labels: ["job_name", "job_type"]
+    description: "Duration of the last job run in minutes"
+
+  - name: "veeam_job_hours_since"
+    channel: "veeam_job_hours_since"
+    display_name: "Hours Since Last Run ({job_name})"
+    unit: "custom"
+    custom_unit: "h"
+    category: "jobs"
+    multi_instance_labels: ["job_name", "job_type"]
+    description: "Hours elapsed since the last job run completed"
+
+  # Repository Metrics
+  - name: "veeam_repo_total_gb"
+    channel: "veeam_repo_total_gb"
+    display_name: "Repository Total ({repo_name})"
+    unit: "custom"
+    custom_unit: "GB"
+    category: "repositories"
+    multi_instance_labels: ["repo_name"]
+    description: "Total capacity of the backup repository in GB"
+
+  - name: "veeam_repo_used_gb"
+    channel: "veeam_repo_used_gb"
+    display_name: "Repository Used ({repo_name})"
+    unit: "custom"
+    custom_unit: "GB"
+    category: "repositories"
+    multi_instance_labels: ["repo_name"]
+    description: "Used space in the backup repository in GB"
+
+  - name: "veeam_repo_free_gb"
+    channel: "veeam_repo_free_gb"
+    display_name: "Repository Free ({repo_name})"
+    unit: "custom"
+    custom_unit: "GB"
+    category: "repositories"
+    multi_instance_labels: ["repo_name"]
+    description: "Free space available in the backup repository in GB"
+
+  - name: "veeam_repo_free_pct"
+    channel: "veeam_repo_free_pct"
+    display_name: "Repository Free % ({repo_name})"
+    unit: "%"
+    category: "repositories"
+    multi_instance_labels: ["repo_name"]
+    description: "Percentage of free space in the backup repository"
+
+  # License Metrics
+  - name: "veeam_license_status"
+    channel: "veeam_license_status"
+    display_name: "License Status"
+    unit: "#"
+    category: "license"
+    description: "Veeam license status: 0=Valid, 1=Warning, 2=Expired"
+    lookup: "senhub.veeam.license_status"
+
+  - name: "veeam_license_days_left"
+    channel: "veeam_license_days_left"
+    display_name: "License Days Left"
+    unit: "custom"
+    custom_unit: "days"
+    category: "license"
+    description: "Number of days until the Veeam license expires"
+
+  - name: "veeam_license_instances_total"
+    channel: "veeam_license_instances_total"
+    display_name: "Licensed Instances Total"
+    unit: "#"
+    category: "license"
+    description: "Total number of licensed instances"
+
+  - name: "veeam_license_instances_used"
+    channel: "veeam_license_instances_used"
+    display_name: "Licensed Instances Used"
+    unit: "#"
+    category: "license"
+    description: "Number of licensed instances currently in use"
+
+  - name: "veeam_license_instances_remaining"
+    channel: "veeam_license_instances_remaining"
+    display_name: "Licensed Instances Remaining"
+    unit: "#"
+    category: "license"
+    description: "Number of licensed instances still available"
+
+  # Proxy Metrics
+  - name: "veeam_proxy_status"
+    channel: "veeam_proxy_status"
+    display_name: "Proxy Status ({proxy_name})"
+    unit: "#"
+    category: "proxies"
+    multi_instance_labels: ["proxy_name"]
+    description: "Backup proxy status: 0=Disabled, 1=Enabled"
+
+  - name: "veeam_proxy_max_tasks"
+    channel: "veeam_proxy_max_tasks"
+    display_name: "Proxy Max Tasks ({proxy_name})"
+    unit: "#"
+    category: "proxies"
+    multi_instance_labels: ["proxy_name"]
+    description: "Maximum concurrent tasks allowed for this proxy"
+
+  - name: "veeam_proxies_total"
+    channel: "veeam_proxies_total"
+    display_name: "Proxies Total"
+    unit: "#"
+    category: "proxies"
+    description: "Total number of configured backup proxies"
+
+  - name: "veeam_proxies_enabled"
+    channel: "veeam_proxies_enabled"
+    display_name: "Proxies Enabled"
+    unit: "#"
+    category: "proxies"
+    description: "Number of enabled backup proxies"
+
+  - name: "veeam_proxies_disabled"
+    channel: "veeam_proxies_disabled"
+    display_name: "Proxies Disabled"
+    unit: "#"
+    category: "proxies"
+    description: "Number of disabled backup proxies"
+
+tag_metadata:
+  metric_type:
+    type: category
+    label: "Metric Category"
+    value_labels:
+      overview: "Job Overview"
+      jobs: "Job Details"
+      repositories: "Repositories"
+      license: "License"
+      proxies: "Proxies"
+  job_type:
+    type: resource
+    label: "Job Type"
+    linked_categories: ["overview"]
+  job_name:
+    type: resource
+    label: "Job Name"
+    linked_categories: ["jobs"]
+  repo_name:
+    type: resource
+    label: "Repository"
+    linked_categories: ["repositories"]
+  proxy_name:
+    type: resource
+    label: "Proxy"
+    linked_categories: ["proxies"]
+  # System tags
+  host:
+    type: resource
+    label: "Host"
+  os:
+    type: resource
+    label: "Operating System"
+  platform:
+    type: resource
+    label: "Platform"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"
