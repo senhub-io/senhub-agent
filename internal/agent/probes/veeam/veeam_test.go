@@ -1,6 +1,7 @@
 package veeam
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -173,6 +174,7 @@ func TestTokenRefresh(t *testing.T) {
 		endpoint:   ts.URL,
 		username:   "admin",
 		password:   "secret",
+		ctx:        context.Background(),
 		logger:     logger.NewModuleLogger(newTestLogger(), "probe.veeam.client"),
 	}
 
@@ -278,10 +280,11 @@ func TestCollectMetrics(t *testing.T) {
 
 	// Create probe with test server URL
 	config := map[string]interface{}{
-		"endpoint":   ts.URL,
-		"username":   "admin",
-		"password":   "secret",
-		"verify_ssl": true,
+		"endpoint":       ts.URL,
+		"username":       "admin",
+		"password":       "secret",
+		"verify_ssl":     true,
+		"hours_to_check": 8760, // 1 year window to ensure test sessions are always within range
 	}
 	probe, err := NewVeeamProbe(config, newTestLogger())
 	if err != nil {
@@ -295,6 +298,7 @@ func TestCollectMetrics(t *testing.T) {
 		endpoint:   ts.URL,
 		username:   "admin",
 		password:   "secret",
+		ctx:        context.Background(),
 		logger:     logger.NewModuleLogger(newTestLogger(), "probe.veeam.client"),
 	}
 
@@ -515,7 +519,7 @@ func TestBuildJobOverviewMetrics(t *testing.T) {
 	}
 
 	now := time.Now()
-	points := buildJobOverviewMetrics(jobs, sessionsByJob, now)
+	points := buildJobOverviewMetrics(jobs, sessionsByJob, 24, now)
 
 	// 2 job types x 5 metrics = 10
 	if len(points) != 10 {
@@ -542,7 +546,7 @@ func TestBuildJobDetailMetrics(t *testing.T) {
 		}},
 	}
 
-	points := buildJobDetailMetrics(jobs, sessionsByJob, now)
+	points := buildJobDetailMetrics(jobs, sessionsByJob, 24, now)
 
 	// status + duration + hours_since = 3
 	if len(points) != 3 {

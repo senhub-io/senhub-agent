@@ -112,7 +112,7 @@ func (p *veeamProbe) GetInterval() time.Duration {
 
 // OnStart initializes the probe when it's started
 func (p *veeamProbe) OnStart(quitChannel chan struct{}) error {
-	p.client = newVeeamClient(p.endpoint, p.username, p.password, p.verifySSL, p.logger.Logger)
+	p.client = newVeeamClient(p.endpoint, p.username, p.password, p.verifySSL, p.ctx, p.logger.Logger)
 
 	// Validate connectivity by fetching server info
 	info, err := p.client.GetServerInfo()
@@ -223,8 +223,8 @@ func (p *veeamProbe) collectJobMetrics(now time.Time) ([]datapoint.DataPoint, er
 	}
 
 	var points []datapoint.DataPoint
-	points = append(points, buildJobOverviewMetrics(jobs, sessionsByJob, now)...)
-	points = append(points, buildJobDetailMetrics(jobs, sessionsByJob, now)...)
+	points = append(points, buildJobOverviewMetrics(jobs, sessionsByJob, p.hoursToCheck, now)...)
+	points = append(points, buildJobDetailMetrics(jobs, sessionsByJob, p.hoursToCheck, now)...)
 
 	return points, nil
 }
