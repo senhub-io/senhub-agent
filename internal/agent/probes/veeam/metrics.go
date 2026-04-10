@@ -35,7 +35,8 @@ func jobStateValue(state string) float32 {
 
 // buildJobOverviewMetrics aggregates jobs by type and produces summary metrics
 // based on latest session results within the configured time window
-func buildJobOverviewMetrics(jobs []job, sessionsByJob map[string][]session, now time.Time) []datapoint.DataPoint {
+func buildJobOverviewMetrics(jobs []job, sessionsByJob map[string][]session, hoursToCheck int, now time.Time) []datapoint.DataPoint {
+	cutoff := now.Add(-time.Duration(hoursToCheck) * time.Hour)
 	type jobTypeStats struct {
 		total   int
 		success int
@@ -59,6 +60,14 @@ func buildJobOverviewMetrics(jobs []job, sessionsByJob map[string][]session, now
 		sessions := sessionsByJob[j.ID]
 		if len(sessions) > 0 {
 			latest := sessions[0]
+			// Skip sessions older than the configured time window
+			refTime := latest.EndTime
+			if refTime.IsZero() {
+				refTime = latest.CreationTime
+			}
+			if !refTime.IsZero() && refTime.Before(cutoff) {
+				continue
+			}
 			// Check if the job is currently running
 			if latest.State == "Working" {
 				statsByType[jt].running++
@@ -91,7 +100,8 @@ func buildJobOverviewMetrics(jobs []job, sessionsByJob map[string][]session, now
 }
 
 // buildJobDetailMetrics produces per-job metrics from the latest session
-func buildJobDetailMetrics(jobs []job, sessionsByJob map[string][]session, now time.Time) []datapoint.DataPoint {
+func buildJobDetailMetrics(jobs []job, sessionsByJob map[string][]session, hoursToCheck int, now time.Time) []datapoint.DataPoint {
+	cutoff := now.Add(-time.Duration(hoursToCheck) * time.Hour)
 	var points []datapoint.DataPoint
 
 	for _, j := range jobs {
@@ -109,6 +119,15 @@ func buildJobDetailMetrics(jobs []job, sessionsByJob map[string][]session, now t
 		}
 
 		latest := sessions[0]
+
+		// Skip sessions older than the configured time window
+		sessionRef := latest.EndTime
+		if sessionRef.IsZero() {
+			sessionRef = latest.CreationTime
+		}
+		if !sessionRef.IsZero() && sessionRef.Before(cutoff) {
+			continue
+		}
 
 		// Status
 		status := jobStatusValue(latest.Result)
