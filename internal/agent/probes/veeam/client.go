@@ -1,6 +1,7 @@
 package veeam
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -21,13 +22,14 @@ type veeamClient struct {
 	username     string
 	password     string
 	logger       *logger.ModuleLogger
+	ctx          context.Context
 	token        string
 	tokenExpiry  time.Time
 	tokenMu      sync.Mutex
 }
 
 // newVeeamClient creates a new Veeam REST API client
-func newVeeamClient(endpoint, username, password string, verifySSL bool, baseLogger *logger.Logger) *veeamClient {
+func newVeeamClient(endpoint, username, password string, verifySSL bool, ctx context.Context, baseLogger *logger.Logger) *veeamClient {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: !verifySSL, // #nosec G402 - user-configurable SSL verification
@@ -42,6 +44,7 @@ func newVeeamClient(endpoint, username, password string, verifySSL bool, baseLog
 		endpoint: strings.TrimRight(endpoint, "/"),
 		username: username,
 		password: password,
+		ctx:      ctx,
 		logger:   logger.NewModuleLogger(baseLogger, "probe.veeam.client"),
 	}
 }
@@ -64,7 +67,7 @@ func (c *veeamClient) authenticate() error {
 	form.Set("username", c.username)
 	form.Set("password", c.password)
 
-	req, err := http.NewRequest("POST", tokenURL, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(c.ctx, "POST", tokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return fmt.Errorf("failed to create token request: %w", err)
 	}
@@ -77,7 +80,7 @@ func (c *veeamClient) authenticate() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return fmt.Errorf("authentication failed (HTTP %d): %s", resp.StatusCode, string(body))
 	}
 
@@ -104,7 +107,7 @@ func (c *veeamClient) doRequest(path string) ([]byte, error) {
 
 	reqURL := fmt.Sprintf("%s%s", c.endpoint, path)
 
-	req, err := http.NewRequest("GET", reqURL, nil)
+	req, err := http.NewRequestWithContext(c.ctx, "GET", reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -215,6 +218,11 @@ func fetchAllPaginated[T any](c *veeamClient, basePath string) ([]T, error) {
 		}
 
 		allItems = append(allItems, resp.Data...)
+
+		// Safety check: break if API returns zero items to prevent infinite loop
+		if resp.Pagination.Count == 0 {
+			break
+		}
 
 		// Check if we've fetched all items
 		if skip+resp.Pagination.Count >= resp.Pagination.Total {
