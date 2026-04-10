@@ -4,6 +4,7 @@ package veeam
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -90,11 +91,24 @@ func parseConfig(config map[string]interface{}) (*probeConfig, error) {
 		hoursToCheck = cfgHours
 	}
 
+	port := 9419
+	if cfgPort, ok := config["port"].(int); ok {
+		port = cfgPort
+	}
+
+	// Build full endpoint URL: append port if not already present in the URL
+	fullEndpoint := strings.TrimSuffix(endpoint, "/")
+	hostPart := strings.TrimPrefix(strings.TrimPrefix(fullEndpoint, "https://"), "http://")
+	if !strings.Contains(hostPart, ":") {
+		fullEndpoint = fmt.Sprintf("%s:%d", fullEndpoint, port)
+	}
+
 	return &probeConfig{
-		Endpoint:     endpoint,
+		Endpoint:     fullEndpoint,
 		Username:     username,
 		Password:     password,
 		Interval:     interval,
+		Port:         port,
 		VerifySSL:    verifySSL,
 		HoursToCheck: hoursToCheck,
 	}, nil
