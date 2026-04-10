@@ -101,6 +101,7 @@ type probeConfig struct {
 	Username     string
 	Password     string
 	Interval     int
+	Port         int
 	VerifySSL    bool
 	HoursToCheck int
 }
