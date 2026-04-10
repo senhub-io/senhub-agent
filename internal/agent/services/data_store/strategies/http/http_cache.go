@@ -75,6 +75,13 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"fan_name", "sensor_name",
 	},
 
+	// Backup probes
+	"veeam": {
+		"job_name", "job_type", // Backup jobs
+		"repo_name",            // Repositories
+		"proxy_name",           // Proxies
+	},
+
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	"syslog":    {"event_id", "source"}, // Syslog events
