@@ -316,6 +316,7 @@ var moduleLogLevels = map[string]zerolog.Level{
 	"probe.webapp":    zerolog.InfoLevel, // WebApp probes
 	"probe.otel":      zerolog.InfoLevel, // OpenTelemetry probe
 	"probe.gateway":   zerolog.InfoLevel, // Gateway probe
+	"probe.veeam":     zerolog.InfoLevel, // Veeam Backup probe
 	"probe.syslog":    zerolog.InfoLevel, // Syslog probe
 	"cache":           zerolog.InfoLevel, // Cache operations
 	"transformer":     zerolog.InfoLevel, // Metric transformers
@@ -487,6 +488,8 @@ func GetAvailableModules() []string {
 		"probe.event",
 		"probe.otel",
 		"probe.redfish",
+		"probe.veeam",
+		"probe.veeam.client",
 
 		// Platform-specific
 		"pdh.windows",
