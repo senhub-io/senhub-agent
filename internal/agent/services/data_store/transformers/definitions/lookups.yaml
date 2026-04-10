@@ -212,3 +212,54 @@ netscaler.csvserver.state:
 # ==============================================================================
 # TODO: Add Redfish health status lookups
 # Source: DMTF Redfish specification
+
+# ==============================================================================
+# VEEAM BACKUP & REPLICATION LOOKUPS
+# ==============================================================================
+# Source: Veeam B&R v13 REST API - Session result and license status values
+
+senhub.veeam.job_status:
+  description: "Veeam Backup Job Status"
+  type: status
+  source: "Veeam B&R v13 REST API - Session result field"
+  mappings:
+    0:
+      text: "None"
+      severity: "warning"
+      description: "No session data available for this job"
+    1:
+      text: "Success"
+      severity: "ok"
+      description: "Last backup job completed successfully"
+    2:
+      text: "Warning"
+      severity: "warning"
+      description: "Last backup job completed with warnings"
+    3:
+      text: "Failed"
+      severity: "error"
+      description: "Last backup job failed"
+    4:
+      text: "Running"
+      severity: "ok"
+      description: "Backup job is currently running"
+  desired_value: 1
+
+senhub.veeam.license_status:
+  description: "Veeam License Status"
+  type: status
+  source: "Veeam B&R v13 REST API - License status field"
+  mappings:
+    0:
+      text: "Valid"
+      severity: "ok"
+      description: "License is valid and active"
+    1:
+      text: "Warning"
+      severity: "warning"
+      description: "License is approaching expiration or instance limit"
+    2:
+      text: "Expired"
+      severity: "error"
+      description: "License has expired"
+  desired_value: 0
