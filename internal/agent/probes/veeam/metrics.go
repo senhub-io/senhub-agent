@@ -86,7 +86,10 @@ func buildJobOverviewMetrics(jobs []job, sessionsByJob map[string][]session, hou
 
 	var points []datapoint.DataPoint
 	for jt, stats := range statsByType {
-		typeTags := []tags.Tag{{Key: "job_type", Value: jt}}
+		typeTags := []tags.Tag{
+			{Key: "metric_type", Value: "overview"},
+			{Key: "job_type", Value: jt},
+		}
 		points = append(points,
 			datapoint.DataPoint{Name: "veeam_jobs_total", Timestamp: now, Value: float32(stats.total), Tags: typeTags},
 			datapoint.DataPoint{Name: "veeam_jobs_success", Timestamp: now, Value: float32(stats.success), Tags: typeTags},
@@ -109,6 +112,7 @@ func buildJobDetailMetrics(jobs []job, sessionsByJob map[string][]session, hours
 			continue
 		}
 		jobTags := []tags.Tag{
+			{Key: "metric_type", Value: "jobs"},
 			{Key: "job_name", Value: j.Name},
 			{Key: "job_type", Value: j.Type},
 		}
@@ -165,7 +169,10 @@ func buildRepositoryMetrics(repos []repository, now time.Time) []datapoint.DataP
 	var points []datapoint.DataPoint
 
 	for _, r := range repos {
-		repoTags := []tags.Tag{{Key: "repo_name", Value: r.Name}}
+		repoTags := []tags.Tag{
+			{Key: "metric_type", Value: "repositories"},
+			{Key: "repo_name", Value: r.Name},
+		}
 
 		points = append(points,
 			datapoint.DataPoint{Name: "veeam_repo_total_gb", Timestamp: now, Value: float32(r.CapacityGB), Tags: repoTags},
@@ -202,8 +209,10 @@ func buildLicenseMetrics(lic *licenseInfo, now time.Time) []datapoint.DataPoint 
 	default:
 		statusVal = 2
 	}
+	licTags := []tags.Tag{{Key: "metric_type", Value: "license"}}
+
 	points = append(points, datapoint.DataPoint{
-		Name: "veeam_license_status", Timestamp: now, Value: statusVal,
+		Name: "veeam_license_status", Timestamp: now, Value: statusVal, Tags: licTags,
 	})
 
 	// Days left
@@ -212,7 +221,7 @@ func buildLicenseMetrics(lic *licenseInfo, now time.Time) []datapoint.DataPoint 
 		daysLeft = 0
 	}
 	points = append(points, datapoint.DataPoint{
-		Name: "veeam_license_days_left", Timestamp: now, Value: float32(math.Floor(daysLeft)),
+		Name: "veeam_license_days_left", Timestamp: now, Value: float32(math.Floor(daysLeft)), Tags: licTags,
 	})
 
 	// Instance counters
@@ -224,9 +233,9 @@ func buildLicenseMetrics(lic *licenseInfo, now time.Time) []datapoint.DataPoint 
 	}
 
 	points = append(points,
-		datapoint.DataPoint{Name: "veeam_license_instances_total", Timestamp: now, Value: float32(licensed)},
-		datapoint.DataPoint{Name: "veeam_license_instances_used", Timestamp: now, Value: float32(used)},
-		datapoint.DataPoint{Name: "veeam_license_instances_remaining", Timestamp: now, Value: float32(remaining)},
+		datapoint.DataPoint{Name: "veeam_license_instances_total", Timestamp: now, Value: float32(licensed), Tags: licTags},
+		datapoint.DataPoint{Name: "veeam_license_instances_used", Timestamp: now, Value: float32(used), Tags: licTags},
+		datapoint.DataPoint{Name: "veeam_license_instances_remaining", Timestamp: now, Value: float32(remaining), Tags: licTags},
 	)
 
 	return points
@@ -241,7 +250,10 @@ func buildProxyMetrics(proxies []proxy, now time.Time) []datapoint.DataPoint {
 
 	for _, p := range proxies {
 		totalProxies++
-		proxyTags := []tags.Tag{{Key: "proxy_name", Value: p.Name}}
+		proxyTags := []tags.Tag{
+			{Key: "metric_type", Value: "proxies"},
+			{Key: "proxy_name", Value: p.Name},
+		}
 
 		var statusVal float32
 		if p.IsDisabled {
@@ -258,11 +270,12 @@ func buildProxyMetrics(proxies []proxy, now time.Time) []datapoint.DataPoint {
 		)
 	}
 
-	// Aggregate proxy metrics (no tags)
+	// Aggregate proxy metrics
+	proxyAggTags := []tags.Tag{{Key: "metric_type", Value: "proxies"}}
 	points = append(points,
-		datapoint.DataPoint{Name: "veeam_proxies_total", Timestamp: now, Value: float32(totalProxies)},
-		datapoint.DataPoint{Name: "veeam_proxies_enabled", Timestamp: now, Value: float32(enabledCount)},
-		datapoint.DataPoint{Name: "veeam_proxies_disabled", Timestamp: now, Value: float32(disabledCount)},
+		datapoint.DataPoint{Name: "veeam_proxies_total", Timestamp: now, Value: float32(totalProxies), Tags: proxyAggTags},
+		datapoint.DataPoint{Name: "veeam_proxies_enabled", Timestamp: now, Value: float32(enabledCount), Tags: proxyAggTags},
+		datapoint.DataPoint{Name: "veeam_proxies_disabled", Timestamp: now, Value: float32(disabledCount), Tags: proxyAggTags},
 	)
 
 	return points
