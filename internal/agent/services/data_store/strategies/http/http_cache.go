@@ -77,6 +77,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// Backup probes
 	"veeam": {
+		"metric_type",          // Category filtering
 		"job_name", "job_type", // Backup jobs
 		"repo_name",            // Repositories
 		"proxy_name",           // Proxies
