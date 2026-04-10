@@ -11,9 +11,9 @@ import (
 	"senhub-agent.go/internal/agent/probes/memory"
 	"senhub-agent.go/internal/agent/probes/netscaler" // Import the netscaler probe package
 	"senhub-agent.go/internal/agent/probes/network"
-	"senhub-agent.go/internal/agent/probes/veeam" // Import the veeam probe package
 	"senhub-agent.go/internal/agent/probes/otel"    // Import the otel probe package
 	"senhub-agent.go/internal/agent/probes/redfish" // Import the redfish probe package
+	"senhub-agent.go/internal/agent/probes/veeam"   // Import the veeam probe package
 	"senhub-agent.go/internal/agent/probes/syslog"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/probes/webapp"
