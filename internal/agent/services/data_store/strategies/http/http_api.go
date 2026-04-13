@@ -375,30 +375,29 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 		tagMeta = probeDef.TagMetadata
 	}
 
-	// Convert to response format with metadata enrichment
+	// Convert to response format — only expose tags that have metadata in the transformer
+	// (internal tags like endpoint, probe_name, probe_type are excluded)
 	tags := make(map[string]TagInfo)
 	for tagKey, values := range tagValues {
+		meta, hasMeta := tagMeta[tagKey]
+		if !hasMeta {
+			continue
+		}
+
 		var valueList []string
 		for value := range values {
 			valueList = append(valueList, value)
 		}
 
-		info := TagInfo{
-			Values:      valueList,
-			Description: a.strategy.utilsManager.getTagDescription(tagKey),
-			SampleCount: len(valueList),
-			Type:        "resource", // default
+		tags[tagKey] = TagInfo{
+			Values:           valueList,
+			Description:      a.strategy.utilsManager.getTagDescription(tagKey),
+			SampleCount:      len(valueList),
+			Type:             string(meta.Type),
+			Label:            meta.Label,
+			ValueLabels:      meta.ValueLabels,
+			LinkedCategories: meta.LinkedCategories,
 		}
-
-		// Enrich with metadata from probe definition
-		if meta, exists := tagMeta[tagKey]; exists {
-			info.Type = string(meta.Type)
-			info.Label = meta.Label
-			info.ValueLabels = meta.ValueLabels
-			info.LinkedCategories = meta.LinkedCategories
-		}
-
-		tags[tagKey] = info
 	}
 
 	var metricList []string

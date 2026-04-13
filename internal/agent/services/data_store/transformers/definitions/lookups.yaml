@@ -216,16 +216,16 @@ netscaler.csvserver.state:
 # ==============================================================================
 # VEEAM BACKUP & REPLICATION LOOKUPS
 # ==============================================================================
-# Source: Veeam B&R v13 REST API - Session result and license status values
+# Source: Veeam REST API v1.3-rev1 (ESessionResult, EInstalledLicenseStatus)
 
 senhub.veeam.job_status:
   description: "Veeam Backup Job Status"
   type: status
-  source: "Veeam B&R v13 REST API - Session result field"
+  source: "Veeam REST API v1.3 - ESessionResult enum + Working state"
   mappings:
     0:
       text: "None"
-      severity: "warning"
+      severity: "unknown"
       description: "No session data available for this job"
     1:
       text: "Success"
@@ -241,25 +241,44 @@ senhub.veeam.job_status:
       description: "Last backup job failed"
     4:
       text: "Running"
-      severity: "ok"
+      severity: "warning"
       description: "Backup job is currently running"
   desired_value: 1
 
 senhub.veeam.license_status:
   description: "Veeam License Status"
   type: status
-  source: "Veeam B&R v13 REST API - License status field"
+  source: "Veeam REST API v1.3 - EInstalledLicenseStatus enum"
   mappings:
     0:
       text: "Valid"
       severity: "ok"
       description: "License is valid and active"
     1:
-      text: "Warning"
-      severity: "warning"
-      description: "License is approaching expiration or instance limit"
-    2:
       text: "Expired"
       severity: "error"
       description: "License has expired"
+    2:
+      text: "Invalid"
+      severity: "error"
+      description: "License is invalid"
   desired_value: 0
+
+senhub.veeam.proxy_status:
+  description: "Veeam Proxy Status"
+  type: status
+  source: "Veeam REST API v1.3 - ProxyStateModel isDisabled/isOnline"
+  mappings:
+    0:
+      text: "Disabled"
+      severity: "warning"
+      description: "Proxy is disabled"
+    1:
+      text: "Offline"
+      severity: "error"
+      description: "Proxy is enabled but offline"
+    2:
+      text: "Online"
+      severity: "ok"
+      description: "Proxy is enabled and online"
+  desired_value: 2

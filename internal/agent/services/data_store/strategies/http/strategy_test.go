@@ -526,13 +526,23 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 			}
 
 			if channel != nil {
-				// For PRTG, unit should be "custom" and the real unit should be in CustomUnit
+				// For PRTG, native units map directly; others use Custom + CustomUnit
 				if tt.metric.Unit != "" {
-					if channel.Unit != "custom" {
-						t.Errorf("Expected unit 'custom', got %s", channel.Unit)
+					nativeUnits := map[string]string{
+						"#": "Count", "%": "Percent", "Bytes": "BytesMemory",
+						"°C": "Temperature", "ms": "TimeResponse", "s": "TimeSeconds",
 					}
-					if channel.CustomUnit != tt.metric.Unit {
-						t.Errorf("Expected custom unit %s, got %s", tt.metric.Unit, channel.CustomUnit)
+					if expected, isNative := nativeUnits[tt.metric.Unit]; isNative {
+						if channel.Unit != expected {
+							t.Errorf("Expected native unit '%s', got %s", expected, channel.Unit)
+						}
+					} else {
+						if channel.Unit != "Custom" {
+							t.Errorf("Expected unit 'Custom', got %s", channel.Unit)
+						}
+						if channel.CustomUnit != tt.metric.Unit {
+							t.Errorf("Expected custom unit %s, got %s", tt.metric.Unit, channel.CustomUnit)
+						}
 					}
 				}
 				// Check Float field based on lookup presence

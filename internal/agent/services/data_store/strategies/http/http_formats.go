@@ -160,15 +160,12 @@ func (f *FormatConverter) transformToPRTGChannelWithFilter(key string, metric Ca
 	channelName, unit, valueLookup := f.transformMetricNameForPRTGWithLookup(key, metric)
 
 	// Post-process channel name: remove discriminant tags if ShowTags=false
-	// Only for citrix and netscaler probes (opt-in feature for testing)
 	if !filter.ShowTags {
 		probeType := metric.Tags["probe_type"]
 		if probeType == "" {
 			probeType = metric.ProbeName
 		}
-		if probeType == "citrix" || probeType == "netscaler" {
-			channelName = f.removeDiscriminantTagsFromChannelName(channelName, metric, probeType)
-		}
+		channelName = f.removeDiscriminantTagsFromChannelName(channelName, metric, probeType)
 	}
 
 	// Apply intelligent unit conversion for better readability
@@ -191,10 +188,25 @@ func (f *FormatConverter) transformToPRTGChannelWithFilter(key string, metric Ca
 		floatValue := 1
 		channel.Float = &floatValue // PRTG expects Float=1 for decimal values
 
-		// Format units for PRTG: use "custom" when we have a unit
+		// Format units for PRTG: map to native units or use custom
 		if convertedUnit != "" {
-			channel.Unit = "custom"
-			channel.CustomUnit = convertedUnit
+			switch convertedUnit {
+			case "#":
+				channel.Unit = "Count"
+			case "%":
+				channel.Unit = "Percent"
+			case "Bytes":
+				channel.Unit = "BytesMemory"
+			case "°C":
+				channel.Unit = "Temperature"
+			case "ms":
+				channel.Unit = "TimeResponse"
+			case "s":
+				channel.Unit = "TimeSeconds"
+			default:
+				channel.Unit = "Custom"
+				channel.CustomUnit = convertedUnit
+			}
 		}
 	}
 
