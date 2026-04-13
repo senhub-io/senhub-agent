@@ -253,12 +253,12 @@ func TestSeverityToPRTGState(t *testing.T) {
 		{"OK severity", "ok", "Ok"},
 		{"Warning severity", "warning", "Warning"},
 		{"Error severity", "error", "Error"},
-		{"Unknown severity", "unknown", "Unknown"},
+		{"Unknown severity", "unknown", "None"},
 		{"OK uppercase", "OK", "Ok"},
 		{"WARNING uppercase", "WARNING", "Warning"},
 		{"ERROR uppercase", "ERROR", "Error"},
-		{"Invalid severity", "invalid", "Unknown"},
-		{"Empty severity", "", "Unknown"},
+		{"Invalid severity", "invalid", "None"},
+		{"Empty severity", "", "None"},
 	}
 
 	for _, tt := range tests {
@@ -345,7 +345,7 @@ func TestPRTGXMLStructure(t *testing.T) {
 			"Ok":      true,
 			"Warning": true,
 			"Error":   true,
-			"Unknown": true,
+			"None":    true,
 		}
 
 		if !validStates[entry.State] {

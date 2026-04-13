@@ -273,13 +273,13 @@ checks:
         unit: "status"
         tag_context: "job_name"
         description: "Job status (0=None, 1=Success, 2=Warning, 3=Failed)"
-      - channel: veeam_job_hours_since
+      - channel: veeam_job_seconds_since
         aggregation: max
-        warning: "25"
-        critical: "49"
-        unit: "hours"
+        warning: "90000"
+        critical: "176400"
+        unit: "s"
         tag_context: "job_name"
-        description: "Hours since last backup run"
+        description: "Time since last backup run (warn 25h, crit 49h)"
 
   - name: veeam_repositories
     description: "Veeam repository capacity"

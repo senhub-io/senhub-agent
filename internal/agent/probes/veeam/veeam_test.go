@@ -247,30 +247,39 @@ func TestCollectMetrics(t *testing.T) {
 		case r.URL.Path == "/api/v1/serverInfo":
 			_, _ = w.Write([]byte(`{"platform":"Windows","name":"SIEP-BCK","buildVersion":"13.0.1.180"}`))
 		case r.URL.Path == "/api/v1/jobs":
-			_, _ = w.Write([]byte(`{"data":[
-				{"type":"HyperVBackup","id":"7d5a054a","name":"BCK_HyperV","isDisabled":false},
-				{"type":"WindowsAgentBackup","id":"bc48c775","name":"BCK_SIEP-FLORIAN","isDisabled":false}
-			],"pagination":{"total":2,"count":2,"skip":0,"limit":200}}`))
+			typeFilter := r.URL.Query().Get("typeFilter")
+			switch typeFilter {
+			case "VSphereBackup":
+				_, _ = w.Write([]byte(`{"data":[
+					{"type":"VSphereBackup","id":"7d5a054a","name":"BCK_VMware","isDisabled":false}
+				],"pagination":{"total":1,"count":1,"skip":0,"limit":200}}`))
+			case "WindowsAgentBackup":
+				_, _ = w.Write([]byte(`{"data":[
+					{"type":"WindowsAgentBackup","id":"bc48c775","name":"BCK_Agent","isDisabled":false}
+				],"pagination":{"total":1,"count":1,"skip":0,"limit":200}}`))
+			default:
+				_, _ = w.Write([]byte(`{"data":[],"pagination":{"total":0,"count":0,"skip":0,"limit":200}}`))
+			}
 		case r.URL.Path == "/api/v1/sessions":
 			jobID := r.URL.Query().Get("jobId")
 			if jobID == "7d5a054a" {
 				_, _ = w.Write([]byte(`{"data":[
-					{"id":"sess1","name":"BCK_HyperV","result":"Success","state":"Stopped","creationTime":"2026-04-09T02:00:00Z","endTime":"2026-04-09T03:30:00Z"}
+					{"id":"sess1","name":"BCK_VMware","result":{"result":"Success"},"state":"Stopped","creationTime":"2026-04-09T02:00:00Z","endTime":"2026-04-09T03:30:00Z"}
 				],"pagination":{"total":1,"count":1,"skip":0,"limit":200}}`))
 			} else {
 				_, _ = w.Write([]byte(`{"data":[
-					{"id":"sess2","name":"BCK_SIEP-FLORIAN","result":"Warning","state":"Stopped","creationTime":"2026-04-09T01:00:00Z","endTime":"2026-04-09T01:45:00Z"}
+					{"id":"sess2","name":"BCK_Agent","result":{"result":"Warning"},"state":"Stopped","creationTime":"2026-04-09T01:00:00Z","endTime":"2026-04-09T01:45:00Z"}
 				],"pagination":{"total":1,"count":1,"skip":0,"limit":200}}`))
 			}
-		case r.URL.Path == "/api/v1/backupInfrastructure/repositories":
+		case r.URL.Path == "/api/v1/backupInfrastructure/repositories/states":
 			_, _ = w.Write([]byte(`{"data":[
-				{"id":"repo1","name":"Default Backup Repository","type":"WinLocal","capacityGB":500.0,"freeGB":200.0,"usedSpaceGB":300.0}
+				{"id":"repo1","name":"Default Backup Repository","type":"WinLocal","capacityGB":500.0,"freeGB":200.0,"usedSpaceGB":300.0,"isOnline":true,"isOutOfDate":false}
 			],"pagination":{"total":1,"count":1,"skip":0,"limit":200}}`))
 		case r.URL.Path == "/api/v1/license":
-			_, _ = w.Write([]byte(`{"type":"Rental","status":"Valid","expirationDate":"2026-12-31T00:00:00Z","instanceLicenseSummary":{"licensedInstancesNumber":85,"usedInstancesNumber":92},"socketLicenseSummary":{"licensedSocketsNumber":0,"usedSocketsNumber":0}}`))
-		case r.URL.Path == "/api/v1/backupInfrastructure/proxies":
+			_, _ = w.Write([]byte(`{"status":"Valid","edition":"Standard","licensedTo":"Test","supportId":"123","autoUpdateEnabled":false,"freeAgentInstanceConsumptionEnabled":false,"cloudConnect":"Disabled","IsMultiSection":false,"proactiveSupportEnabled":false,"type":"Rental","expirationDate":"2026-12-31T00:00:00Z","instanceLicenseSummary":{"licensedInstancesNumber":85,"usedInstancesNumber":92,"newInstancesNumber":0,"rentalInstancesNumber":0},"socketLicenseSummary":{"licensedSocketsNumber":0,"usedSocketsNumber":0,"remainingSocketsNumber":0}}`))
+		case r.URL.Path == "/api/v1/backupInfrastructure/proxies/states":
 			_, _ = w.Write([]byte(`{"data":[
-				{"id":"proxy1","name":"VMware Backup Proxy","type":"Vi","server":{"name":"proxy-srv"},"isDisabled":false,"maxTaskCount":4}
+				{"id":"proxy1","name":"VMware Backup Proxy","type":"ViProxy","hostId":"00000000-0000-0000-0000-000000000000","hostName":"proxy-srv","isDisabled":false,"isOnline":true,"isOutOfDate":false}
 			],"pagination":{"total":1,"count":1,"skip":0,"limit":200}}`))
 		default:
 			http.NotFound(w, r)
@@ -320,8 +329,8 @@ func TestCollectMetrics(t *testing.T) {
 		"veeam_jobs_failed",
 		"veeam_jobs_running",
 		"veeam_job_status",
-		"veeam_job_duration_min",
-		"veeam_job_hours_since",
+		"veeam_job_duration_s",
+		"veeam_job_seconds_since",
 		"veeam_repo_total_gb",
 		"veeam_repo_used_gb",
 		"veeam_repo_free_gb",
@@ -332,7 +341,6 @@ func TestCollectMetrics(t *testing.T) {
 		"veeam_license_instances_used",
 		"veeam_license_instances_remaining",
 		"veeam_proxy_status",
-		"veeam_proxy_max_tasks",
 		"veeam_proxies_total",
 		"veeam_proxies_enabled",
 		"veeam_proxies_disabled",
@@ -384,9 +392,9 @@ func TestCollectMetrics(t *testing.T) {
 			if dp.Value != 1 {
 				t.Errorf("veeam_proxies_enabled = %v, want 1", dp.Value)
 			}
-		case "veeam_proxy_max_tasks":
-			if dp.Value != 4 {
-				t.Errorf("veeam_proxy_max_tasks = %v, want 4", dp.Value)
+		case "veeam_proxy_status":
+			if dp.Value != 2 {
+				t.Errorf("veeam_proxy_status = %v, want 2 (enabled+online)", dp.Value)
 			}
 		}
 	}
@@ -479,15 +487,15 @@ func TestBuildLicenseMetrics(t *testing.T) {
 
 func TestBuildProxyMetrics(t *testing.T) {
 	proxies := []proxy{
-		{ID: "p1", Name: "Proxy1", IsDisabled: false, MaxTaskCount: 4},
-		{ID: "p2", Name: "Proxy2", IsDisabled: true, MaxTaskCount: 2},
+		{ID: "p1", Name: "Proxy1", IsDisabled: false, IsOnline: true},
+		{ID: "p2", Name: "Proxy2", IsDisabled: true, IsOnline: false},
 	}
 	now := time.Now()
 	points := buildProxyMetrics(proxies, now)
 
-	// 2 metrics per proxy + 3 aggregates = 7
-	if len(points) != 7 {
-		t.Errorf("expected 7 proxy datapoints, got %d", len(points))
+	// 1 metric per proxy + 3 aggregates = 5
+	if len(points) != 5 {
+		t.Errorf("expected 5 proxy datapoints, got %d", len(points))
 	}
 
 	for _, dp := range points {
@@ -508,15 +516,15 @@ func TestBuildProxyMetrics(t *testing.T) {
 
 func TestBuildJobOverviewMetrics(t *testing.T) {
 	jobs := []job{
-		{ID: "j1", Name: "Job1", Type: "HyperVBackup", IsDisabled: false},
-		{ID: "j2", Name: "Job2", Type: "HyperVBackup", IsDisabled: false},
+		{ID: "j1", Name: "Job1", Type: "VSphereBackup", IsDisabled: false},
+		{ID: "j2", Name: "Job2", Type: "VSphereBackup", IsDisabled: false},
 		{ID: "j3", Name: "Job3", Type: "WindowsAgentBackup", IsDisabled: false},
-		{ID: "j4", Name: "Disabled", Type: "HyperVBackup", IsDisabled: true},
+		{ID: "j4", Name: "Disabled", Type: "VSphereBackup", IsDisabled: true},
 	}
 	sessionsByJob := map[string][]session{
-		"j1": {{Result: "Success", State: "Stopped"}},
-		"j2": {{Result: "Failed", State: "Stopped"}},
-		"j3": {{Result: "Warning", State: "Stopped"}},
+		"j1": {{Result: sessionResult{Result: "Success"}, State: "Stopped"}},
+		"j2": {{Result: sessionResult{Result: "Failed"}, State: "Stopped"}},
+		"j3": {{Result: sessionResult{Result: "Warning"}, State: "Stopped"}},
 	}
 
 	now := time.Now()
@@ -540,7 +548,7 @@ func TestBuildJobDetailMetrics(t *testing.T) {
 	}
 	sessionsByJob := map[string][]session{
 		"j1": {{
-			Result:       "Success",
+			Result:       sessionResult{Result: "Success"},
 			State:        "Stopped",
 			CreationTime: creationTime,
 			EndTime:      endTime,
@@ -549,7 +557,7 @@ func TestBuildJobDetailMetrics(t *testing.T) {
 
 	points := buildJobDetailMetrics(jobs, sessionsByJob, 24, now)
 
-	// status + duration + hours_since = 3
+	// status + duration + seconds_since = 3
 	if len(points) != 3 {
 		t.Errorf("expected 3 detail datapoints, got %d", len(points))
 	}
@@ -560,13 +568,14 @@ func TestBuildJobDetailMetrics(t *testing.T) {
 			if dp.Value != 1 {
 				t.Errorf("expected status 1 (Success), got %v", dp.Value)
 			}
-		case "veeam_job_duration_min":
-			if dp.Value != 90 {
-				t.Errorf("expected duration 90 min, got %v", dp.Value)
+		case "veeam_job_duration_s":
+			if dp.Value != 5400 {
+				t.Errorf("expected duration 5400s (90min), got %v", dp.Value)
 			}
-		case "veeam_job_hours_since":
-			if dp.Value < 8 || dp.Value > 9 {
-				t.Errorf("expected hours_since ~8.5, got %v", dp.Value)
+		case "veeam_job_seconds_since":
+			// 8.5 hours = 30600 seconds
+			if dp.Value < 30000 || dp.Value > 31200 {
+				t.Errorf("expected seconds_since ~30600, got %v", dp.Value)
 			}
 		}
 	}
