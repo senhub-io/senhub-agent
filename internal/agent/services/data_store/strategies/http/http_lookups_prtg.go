@@ -137,10 +137,8 @@ func severityToPRTGState(severity string) string {
 		return "Warning"
 	case "error":
 		return "Error"
-	case "unknown":
-		return "Unknown"
 	default:
-		return "Unknown"
+		return "None"
 	}
 }
 

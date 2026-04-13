@@ -55,31 +55,32 @@ func buildJobOverviewMetrics(jobs []job, sessionsByJob map[string][]session, hou
 		if _, ok := statsByType[jt]; !ok {
 			statsByType[jt] = &jobTypeStats{}
 		}
-		statsByType[jt].total++
 
 		sessions := sessionsByJob[j.ID]
-		if len(sessions) > 0 {
-			latest := sessions[0]
-			// Skip sessions older than the configured time window
-			refTime := latest.EndTime
-			if refTime.IsZero() {
-				refTime = latest.CreationTime
-			}
-			if !refTime.IsZero() && refTime.Before(cutoff) {
-				continue
-			}
-			// Check if the job is currently running
-			if latest.State == "Working" {
-				statsByType[jt].running++
-			} else {
-				switch latest.Result {
-				case "Success":
-					statsByType[jt].success++
-				case "Warning":
-					statsByType[jt].warning++
-				case "Failed":
-					statsByType[jt].failed++
-				}
+		if len(sessions) == 0 {
+			continue
+		}
+
+		latest := sessions[0]
+		refTime := latest.EndTime
+		if refTime.IsZero() {
+			refTime = latest.CreationTime
+		}
+		if !refTime.IsZero() && refTime.Before(cutoff) {
+			continue
+		}
+
+		statsByType[jt].total++
+		if latest.State == "Working" {
+			statsByType[jt].running++
+		} else {
+			switch latest.Result.Result {
+			case "Success":
+				statsByType[jt].success++
+			case "Warning":
+				statsByType[jt].warning++
+			case "Failed":
+				statsByType[jt].failed++
 			}
 		}
 	}
@@ -134,7 +135,7 @@ func buildJobDetailMetrics(jobs []job, sessionsByJob map[string][]session, hours
 		}
 
 		// Status
-		status := jobStatusValue(latest.Result)
+		status := jobStatusValue(latest.Result.Result)
 		if latest.State == "Working" {
 			status = 4 // Running
 		}
@@ -142,22 +143,22 @@ func buildJobDetailMetrics(jobs []job, sessionsByJob map[string][]session, hours
 			Name: "veeam_job_status", Timestamp: now, Value: status, Tags: jobTags,
 		})
 
-		// Duration in minutes (only if session has ended)
+		// Duration in seconds (only if session has ended)
 		if !latest.EndTime.IsZero() && latest.EndTime.After(latest.CreationTime) {
-			durationMin := latest.EndTime.Sub(latest.CreationTime).Minutes()
+			durationSec := latest.EndTime.Sub(latest.CreationTime).Seconds()
 			points = append(points, datapoint.DataPoint{
-				Name: "veeam_job_duration_min", Timestamp: now, Value: float32(durationMin), Tags: jobTags,
+				Name: "veeam_job_duration_s", Timestamp: now, Value: float32(durationSec), Tags: jobTags,
 			})
 		}
 
-		// Hours since last session
+		// Time since last session in seconds
 		refTime := latest.EndTime
 		if refTime.IsZero() {
 			refTime = latest.CreationTime
 		}
-		hoursSince := now.Sub(refTime).Hours()
+		secondsSince := now.Sub(refTime).Seconds()
 		points = append(points, datapoint.DataPoint{
-			Name: "veeam_job_hours_since", Timestamp: now, Value: float32(hoursSince), Tags: jobTags,
+			Name: "veeam_job_seconds_since", Timestamp: now, Value: float32(secondsSince), Tags: jobTags,
 		})
 	}
 
@@ -197,14 +198,14 @@ func buildRepositoryMetrics(repos []repository, now time.Time) []datapoint.DataP
 func buildLicenseMetrics(lic *licenseInfo, now time.Time) []datapoint.DataPoint {
 	var points []datapoint.DataPoint
 
-	// License status
+	// License status (EInstalledLicenseStatus: Valid, Expired, Invalid)
 	var statusVal float32
 	switch lic.Status {
 	case "Valid":
 		statusVal = 0
-	case "Warning":
-		statusVal = 1
 	case "Expired":
+		statusVal = 1
+	case "Invalid":
 		statusVal = 2
 	default:
 		statusVal = 2
@@ -255,18 +256,22 @@ func buildProxyMetrics(proxies []proxy, now time.Time) []datapoint.DataPoint {
 			{Key: "proxy_name", Value: p.Name},
 		}
 
+		// status: 0=disabled, 1=enabled+offline, 2=enabled+online
 		var statusVal float32
 		if p.IsDisabled {
 			statusVal = 0
 			disabledCount++
 		} else {
-			statusVal = 1
 			enabledCount++
+			if p.IsOnline {
+				statusVal = 2
+			} else {
+				statusVal = 1
+			}
 		}
 
 		points = append(points,
 			datapoint.DataPoint{Name: "veeam_proxy_status", Timestamp: now, Value: statusVal, Tags: proxyTags},
-			datapoint.DataPoint{Name: "veeam_proxy_max_tasks", Timestamp: now, Value: float32(p.MaxTaskCount), Tags: proxyTags},
 		)
 	}
 
