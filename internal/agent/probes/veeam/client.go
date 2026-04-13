@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -113,7 +114,7 @@ func (c *veeamClient) doRequest(path string) ([]byte, error) {
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("x-api-version", "1.2-rev0")
+	req.Header.Set("x-api-version", "1.3-rev1")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -130,7 +131,24 @@ func (c *veeamClient) doRequest(path string) ([]byte, error) {
 		return nil, fmt.Errorf("API error (HTTP %d) for %s: %s", resp.StatusCode, path, string(body))
 	}
 
+	// Ensure valid UTF-8: Veeam on Windows may return names with non-UTF8 encoding
+	if !utf8.Valid(body) {
+		body = sanitizeUTF8(body)
+	}
+
 	return body, nil
+}
+
+// sanitizeUTF8 replaces invalid UTF-8 bytes with the Unicode replacement character.
+func sanitizeUTF8(data []byte) []byte {
+	var b strings.Builder
+	b.Grow(len(data))
+	for len(data) > 0 {
+		r, size := utf8.DecodeRune(data)
+		b.WriteRune(r)
+		data = data[size:]
+	}
+	return []byte(b.String())
 }
 
 // GetServerInfo retrieves Veeam server information
@@ -148,9 +166,56 @@ func (c *veeamClient) GetServerInfo() (*serverInfo, error) {
 	return &info, nil
 }
 
-// GetJobs retrieves all backup jobs with pagination support
+// fallbackJobTypes lists EJobType values to query individually when the unfiltered
+// /api/v1/jobs endpoint fails (e.g. HTTP 500 caused by HyperVBackup bug).
+// Source: Veeam REST API v1.3-rev1 swagger.json EJobType enum.
+// HyperVBackup is intentionally excluded — it causes a server-side HTTP 500.
+var fallbackJobTypes = []string{
+	"VSphereBackup",
+	"VSphereReplica",
+	"BackupCopy",
+	"FileBackupCopy",
+	"LegacyBackupCopy",
+	"WindowsAgentBackup",
+	"LinuxAgentBackup",
+	"WindowsAgentBackupWorkstationPolicy",
+	"LinuxAgentBackupWorkstationPolicy",
+	"WindowsAgentBackupServerPolicy",
+	"LinuxAgentBackupServerPolicy",
+	"FileBackup",
+	"ObjectStorageBackup",
+	"CloudDirectorBackup",
+	"CloudBackupAzure",
+	"CloudBackupAWS",
+	"CloudBackupGoogle",
+	"EntraIDTenantBackup",
+	"EntraIDTenantBackupCopy",
+	"EntraIDAuditLogBackup",
+	"SureBackupContentScan",
+}
+
+// GetJobs retrieves all backup jobs by querying each supported type individually.
+// The unfiltered /api/v1/jobs endpoint returns HTTP 500 when the server contains
+// HyperVBackup jobs (Veeam REST API bug), so we always query per type.
 func (c *veeamClient) GetJobs() ([]job, error) {
-	return fetchAllPaginated[job](c, "/api/v1/jobs")
+	var allJobs []job
+	var lastErr error
+
+	for _, jt := range fallbackJobTypes {
+		jobs, err := fetchAllPaginated[job](c, fmt.Sprintf("/api/v1/jobs?typeFilter=%s", jt))
+		if err != nil {
+			c.logger.Debug().Err(err).Str("job_type", jt).Msg("Job type query failed, skipping")
+			lastErr = err
+			continue
+		}
+		allJobs = append(allJobs, jobs...)
+	}
+
+	if len(allJobs) == 0 && lastErr != nil {
+		return nil, fmt.Errorf("failed to get jobs (all type queries failed): %w", lastErr)
+	}
+
+	return allJobs, nil
 }
 
 // GetSessions retrieves recent sessions for a specific job
@@ -169,9 +234,9 @@ func (c *veeamClient) GetSessions(jobID string, limit int) ([]session, error) {
 	return resp.Data, nil
 }
 
-// GetRepositories retrieves all backup repositories with pagination support
+// GetRepositories retrieves all backup repository states (includes capacity metrics)
 func (c *veeamClient) GetRepositories() ([]repository, error) {
-	return fetchAllPaginated[repository](c, "/api/v1/backupInfrastructure/repositories")
+	return fetchAllPaginated[repository](c, "/api/v1/backupInfrastructure/repositories/states")
 }
 
 // GetLicense retrieves Veeam license information
@@ -189,9 +254,9 @@ func (c *veeamClient) GetLicense() (*licenseInfo, error) {
 	return &info, nil
 }
 
-// GetProxies retrieves all backup proxies with pagination support
+// GetProxies retrieves all backup proxy states (includes isDisabled, isOnline)
 func (c *veeamClient) GetProxies() ([]proxy, error) {
-	return fetchAllPaginated[proxy](c, "/api/v1/backupInfrastructure/proxies")
+	return fetchAllPaginated[proxy](c, "/api/v1/backupInfrastructure/proxies/states")
 }
 
 // fetchAllPaginated retrieves all items from a paginated endpoint

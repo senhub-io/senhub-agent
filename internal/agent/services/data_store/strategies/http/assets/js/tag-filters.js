@@ -92,8 +92,8 @@ class TagFilters {
                     categoryTags[tagKey] = tagInfo;
                 }
             } else {
-                // Resource tags: hide if only 1 value (keeps existing behavior)
-                if (values.length > 1) {
+                // Resource tags: show if at least 1 value
+                if (values.length > 0) {
                     resourceTags[tagKey] = tagInfo;
                 }
             }
