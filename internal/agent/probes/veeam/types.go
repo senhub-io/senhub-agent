@@ -39,17 +39,23 @@ type job struct {
 	IsDisabled bool   `json:"isDisabled"`
 }
 
-// session represents a Veeam job session from /api/v1/sessions
-type session struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	Result       string    `json:"result"`
-	State        string    `json:"state"`
-	CreationTime time.Time `json:"creationTime"`
-	EndTime      time.Time `json:"endTime"`
+// sessionResult represents the result object in API v1.3+
+type sessionResult struct {
+	Result    string `json:"result"`
+	Message   string `json:"message"`
 }
 
-// repository represents a Veeam backup repository from /api/v1/backupInfrastructure/repositories
+// session represents a Veeam job session from /api/v1/sessions
+type session struct {
+	ID           string        `json:"id"`
+	Name         string        `json:"name"`
+	Result       sessionResult `json:"result"`
+	State        string        `json:"state"`
+	CreationTime time.Time     `json:"creationTime"`
+	EndTime      time.Time     `json:"endTime"`
+}
+
+// repository represents a Veeam backup repository state from /api/v1/backupInfrastructure/repositories/states
 type repository struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
@@ -81,19 +87,14 @@ type socketLicenseSummary struct {
 	UsedSocketsNumber     float64 `json:"usedSocketsNumber"`
 }
 
-// proxy represents a Veeam backup proxy from /api/v1/backupInfrastructure/proxies
+// proxy represents a Veeam backup proxy state from /api/v1/backupInfrastructure/proxies/states
 type proxy struct {
-	ID           string      `json:"id"`
-	Name         string      `json:"name"`
-	Type         string      `json:"type"`
-	Server       proxyServer `json:"server"`
-	IsDisabled   bool        `json:"isDisabled"`
-	MaxTaskCount int         `json:"maxTaskCount"`
-}
-
-// proxyServer holds proxy server details
-type proxyServer struct {
-	Name string `json:"name"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	HostName   string `json:"hostName"`
+	IsDisabled bool   `json:"isDisabled"`
+	IsOnline   bool   `json:"isOnline"`
 }
 
 // probeConfig holds parsed configuration for the Veeam probe
