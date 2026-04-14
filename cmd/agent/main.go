@@ -97,7 +97,19 @@ func main() {
 		handleLicenseCommand()
 		return
 	case "update":
-		args := cliArgs.MustParse()
+		// Parse update sub-arguments: update [--list | <version>]
+		args := &cliArgs.ParsedArgs{
+			Version:    cliArgs.Version,
+			CommitHash: cliArgs.CommitHash,
+		}
+		if len(os.Args) > 2 {
+			subArg := os.Args[2]
+			if subArg == "--list" || subArg == "-l" {
+				args.WantedVersion = "list"
+			} else {
+				args.WantedVersion = subArg
+			}
+		}
 		agent.UpdateAgent(args)
 		return
 	case "install", "uninstall", "start", "stop", "restart", "status", "run":
@@ -123,22 +135,8 @@ func main() {
 		os.Args = append([]string{os.Args[0]}, serviceArgs...)
 		args := cliArgs.MustParse()
 
-		// If no authentication key provided, try to load from config file
-		if args.AuthenticationKey == "" && !args.Offline {
-			// Use absolute path based on binary location (fixes Windows Service issue)
-			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
-			if err != nil {
-				// Fallback to provided path if absolute path resolution fails
-				configPath = args.ConfigPath
-				if configPath == "" {
-					configPath = "./agent-config.yaml"
-				}
-			}
-			if key, err := extractAgentKeyFromConfig(configPath); err == nil {
-				args.AuthenticationKey = key
-				fmt.Printf("✅ Authentication key loaded from %s\n", configPath)
-			}
-		}
+		// Auto-detect mode from config file
+		args.Offline = agent.DetectAgentMode(args)
 
 		handleServiceCommand(command, args)
 		return
@@ -156,30 +154,8 @@ func main() {
 			return
 		}
 
-		// If no authentication key provided, try to load from config file
-		if args.AuthenticationKey == "" && !args.Offline {
-			// Use absolute path based on binary location (fixes Windows Service issue)
-			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
-			if err != nil {
-				// Fallback to provided path if absolute path resolution fails
-				configPath = args.ConfigPath
-				if configPath == "" {
-					configPath = "./agent-config.yaml"
-				}
-			}
-
-			// Try to extract authentication key from config
-			if key, err := extractAgentKeyFromConfig(configPath); err == nil {
-				args.AuthenticationKey = key
-				fmt.Printf("✅ Authentication key loaded from %s\n", configPath)
-			} else if _, statErr := os.Stat(configPath); statErr == nil {
-				// Config file exists but no key found - might be offline mode
-				fmt.Printf("📋 Detected offline configuration file: %s\n", configPath)
-				fmt.Printf("🔄 Automatically switching to offline mode\n")
-				args.Offline = true
-				args.ConfigPath = configPath
-			}
-		}
+		// Auto-detect mode from config file (same as service path)
+		args.Offline = agent.DetectAgentMode(args)
 
 		runAgent(args)
 	}
@@ -222,15 +198,18 @@ License Commands:
 
 Other Commands:
     version              Show agent version
-    update               Update agent to a given version (default: latest)
+    update               Check for new versions
+    update --list        List all available versions (stable + beta)
+    update <version>     Install a specific version
     debug-modules-list   List available debug log modules
 
 Agent Options:
     --authentication-key KEY               Agent key (optional if present in config file)
     --config-path PATH                     Configuration file (default: ./agent-config.yaml)
     --offline                              Run with local YAML configuration (no server)
-    --verbose                              Enable debug logging for all modules
-    --debug-modules module1,module2        Enable debug logging for specific modules
+    --verbose, -v                          Enable debug logging for all modules
+    --filter, -f  module1,module2          Filter debug logs by module prefix (implies --verbose)
+    --debug-modules module1,module2        [deprecated] Use --filter instead
 
 HTTPS/TLS Options:
     --enable-https                         Enable HTTPS on the HTTP strategy

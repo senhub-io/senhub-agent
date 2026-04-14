@@ -76,7 +76,8 @@ type StartSubcommandArgs struct {
 	AuthenticationKey     string            `arg:"--authentication-key,env:SENHUB_KEY" help:"The authentication key for the agent"`
 	ServerUrl             string            `arg:"--server-url,env:SENHUB_SERVER_URL" help:"The URL of senhub server to connect to"`
 	Verbose               bool              `arg:"-v,--verbose" help:"Enable verbose logging"`
-	DebugModules          string            `arg:"--debug-modules" help:"Enable debug logging only for specific modules (comma-separated: strategy.http,cache,probe.redfish)"`
+	Filter                string            `arg:"-f,--filter" help:"Filter debug logs to matching modules with prefix matching (e.g., 'probe' matches probe.veeam, probe.citrix). Implies --verbose."`
+	DebugModules          string            `arg:"--debug-modules" help:"[deprecated: use --filter] Enable debug logging only for specific modules (comma-separated)"`
 	DebugLogShipperUrl    string            `arg:"--debug-log-shipper-url,env:SENHUB_DEBUG_LOG_SHIPPER_URL" help:"URL of remote endpoint for shipping debug logs"`
 	DebugLogShipperTags   map[string]string `arg:"--debug-log-shipper-tags,env:SENHUB_DEBUG_LOG_SHIPPER_TAGS" help:"Tags to add to debug log entries (format: key1=value1,key2=value2)"`
 	DebugLogShipperBuffer int               `arg:"--debug-log-shipper-buffer,env:SENHUB_DEBUG_LOG_SHIPPER_BUFFER" help:"Buffer size for debug log shipper"`
@@ -257,14 +258,24 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 		// Note: Default server URL not set for this environment
 	}
 
-	// Parse debug modules from comma-separated string
+	// Parse filter modules (--filter takes precedence, --debug-modules kept for compat)
 	var debugModules []string
-	if args.DebugModules != "" {
-		debugModules = strings.Split(args.DebugModules, ",")
-		// Trim whitespace from each module
+	if args.Filter != "" {
+		debugModules = strings.Split(args.Filter, ",")
 		for i, module := range debugModules {
 			debugModules[i] = strings.TrimSpace(module)
 		}
+	} else if args.DebugModules != "" {
+		debugModules = strings.Split(args.DebugModules, ",")
+		for i, module := range debugModules {
+			debugModules[i] = strings.TrimSpace(module)
+		}
+	}
+
+	// --filter implies --verbose
+	verbose := args.Verbose
+	if len(debugModules) > 0 {
+		verbose = true
 	}
 
 	// Parse HTTPS hosts from comma-separated string
@@ -301,7 +312,7 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 	return &ParsedArgs{
 		AuthenticationKey:     args.AuthenticationKey,
 		ServerUrl:             serverUrl,
-		Verbose:               args.Verbose,
+		Verbose:               verbose,
 		DebugModules:          debugModules,
 		Env:                   environment,
 		Version:               Version,

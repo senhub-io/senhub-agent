@@ -377,51 +377,49 @@ func GetModuleLogLevel(module string) zerolog.Level {
 	return moduleLevel
 }
 
-// ModuleLogger wraps a zerolog.Logger with dynamic level checking for a specific module
+// ModuleLogger wraps a zerolog.Logger with dynamic level checking for a specific module.
+// Reads from global state on every call — no snapshots, no staling.
 type ModuleLogger struct {
 	*zerolog.Logger
-	module         string
-	selectiveMode  bool
-	enabledModules map[string]bool
+	module string
 }
 
 func NewModuleLogger(baseLogger *Logger, module string) *ModuleLogger {
-	// Create logger with module context
 	logger := baseLogger.With().
 		Str("module", module).
 		Logger()
 
 	return &ModuleLogger{
-		Logger:         &logger,
-		module:         module,
-		selectiveMode:  selectiveDebugMode,
-		enabledModules: copyMap(activeDebugModules),
+		Logger: &logger,
+		module: module,
 	}
 }
 
-// copyMap creates a copy of the activeDebugModules map to avoid shared state issues
-func copyMap(original map[string]bool) map[string]bool {
-	if original == nil {
-		return make(map[string]bool)
+// isModuleEnabled checks if a module should output debug logs.
+// Supports prefix matching: "probe" matches "probe.veeam", "probe.citrix", etc.
+func isModuleEnabled(module string) bool {
+	if activeDebugModules[module] {
+		return true
 	}
-	copy := make(map[string]bool)
-	for k, v := range original {
-		copy[k] = v
+	for prefix := range activeDebugModules {
+		if strings.HasPrefix(module, prefix+".") {
+			return true
+		}
 	}
-	return copy
+	return false
 }
 
 // Debug logs a debug message if the module's current level allows it
 func (m *ModuleLogger) Debug() *zerolog.Event {
-	// In selective debug mode, only allow debug logs for specifically enabled modules
-	if m.selectiveMode {
-		if _, enabled := m.enabledModules[m.module]; !enabled {
+	// In selective debug mode, only allow debug logs for enabled modules (with prefix matching)
+	if selectiveDebugMode {
+		if !isModuleEnabled(m.module) {
 			disabledLogger := m.Logger.Level(zerolog.Disabled)
 			return disabledLogger.Debug()
 		}
 	}
 
-	// Check module log level for normal mode or enabled modules
+	// Check module log level
 	if GetModuleLogLevel(m.module) <= zerolog.DebugLevel {
 		return m.Logger.Debug()
 	}
