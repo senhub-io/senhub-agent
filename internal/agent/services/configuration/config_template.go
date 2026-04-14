@@ -135,6 +135,18 @@ const ProbeExamplesTemplate = `
 #       max_attempts: 3           # Optional, default: 3
 #       backoff_factor: 2.0       # Optional, default: 2.0
 
+# # Veeam Backup & Replication monitoring
+# - name: veeam-prod              # Display name
+#   type: veeam                   # Probe type
+#   params:
+#     endpoint: "https://veeam-server"  # REQUIRED: Veeam server hostname or IP
+#     port: 9419                        # Optional, default: 9419
+#     username: "DOMAIN\\svc_monitoring" # REQUIRED: Veeam Backup Administrator account
+#     password: "password"              # REQUIRED
+#     interval: 300                     # Optional, default: 300s (5min)
+#     verify_ssl: false                 # Optional, default: true
+#     hours_to_check: 24               # Optional, default: 24 (job history window)
+
 # # Syslog event collection
 # - name: syslog           # Display name
 #   type: syslog           # Probe type

@@ -282,3 +282,45 @@ senhub.veeam.proxy_status:
       severity: "ok"
       description: "Proxy is enabled and online"
   desired_value: 2
+
+senhub.veeam.bottleneck:
+  description: "Veeam Session Bottleneck"
+  type: status
+  source: "Veeam REST API v1.3 - ESessionBottleneckType enum"
+  mappings:
+    0:
+      text: "None"
+      severity: "ok"
+      description: "No bottleneck detected"
+    1:
+      text: "Source"
+      severity: "warning"
+      description: "Bottleneck at source"
+    2:
+      text: "Proxy"
+      severity: "warning"
+      description: "Bottleneck at backup proxy"
+    3:
+      text: "Network"
+      severity: "warning"
+      description: "Bottleneck in network or throttling"
+    4:
+      text: "Target"
+      severity: "warning"
+      description: "Bottleneck at target"
+  desired_value: 0
+
+senhub.veeam.server_status:
+  description: "Veeam Managed Server Status"
+  type: status
+  source: "Veeam REST API v1.3 - EManagedServersStatus enum"
+  mappings:
+    0:
+      text: "Unavailable"
+      severity: "error"
+      description: "Server is unavailable"
+    1:
+      text: "Available"
+      severity: "ok"
+      description: "Server is available"
+  desired_value: 1
