@@ -11,8 +11,8 @@ import (
 )
 
 type VersionMetadata struct {
-	Version     string `json:"version"`
-	ProjectName string `json:"project_name"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
 }
 
 func fetchVersionMetadata(
@@ -43,9 +43,9 @@ func fetchVersionMetadata(
 	return &versionMetadata, nil
 }
 
-// isBetaVersion checks if the version string contains the beta suffix
-func isBetaVersion(version string) bool {
-	return len(version) >= 5 && version[len(version)-5:] == "-beta"
+// IsBetaVersion checks if the version string contains the beta suffix
+func IsBetaVersion(versionStr string) bool {
+	return len(versionStr) >= 5 && versionStr[len(versionStr)-5:] == "-beta"
 }
 
 func FormatVersionForUrl(versionStr string) string {
@@ -123,4 +123,86 @@ func FetchBestMatchingVersion(
 	}
 
 	return getBestMatchingVersion(wantedVersion, metadataList)
+}
+
+// fetchVersionListBeta fetches the beta releases list
+func fetchVersionListBeta(httpClient *http.Client, registryUrl string) ([]VersionMetadata, error) {
+	listUrl, err := url.JoinPath(registryUrl, VERSION_METADATA_LIST_BETA_PATH)
+	if err != nil {
+		return nil, err
+	}
+	listResponse, err := httpClient.Get(listUrl)
+	if err != nil {
+		return nil, err
+	}
+	defer listResponse.Body.Close()
+
+	if listResponse.StatusCode != 200 {
+		return nil, fmt.Errorf("beta releases endpoint returned HTTP %d", listResponse.StatusCode)
+	}
+
+	var versionList []VersionMetadata
+	if err = json.NewDecoder(listResponse.Body).Decode(&versionList); err != nil {
+		return nil, err
+	}
+
+	return versionList, nil
+}
+
+// FetchAllVersions returns all available versions (stable + beta if includeBeta)
+func FetchAllVersions(httpClient *http.Client, registryUrl string, includeBeta bool) ([]VersionMetadata, error) {
+	stable, err := fetchVersionList(httpClient, registryUrl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch stable releases: %w", err)
+	}
+
+	if !includeBeta {
+		return stable, nil
+	}
+
+	beta, err := fetchVersionListBeta(httpClient, registryUrl)
+	if err != nil {
+		// Beta fetch failure is non-fatal
+		return stable, nil
+	}
+
+	// Merge, dedup by version
+	seen := make(map[string]bool)
+	var all []VersionMetadata
+	for _, v := range stable {
+		if !seen[v.Version] {
+			seen[v.Version] = true
+			all = append(all, v)
+		}
+	}
+	for _, v := range beta {
+		if !seen[v.Version] {
+			seen[v.Version] = true
+			all = append(all, v)
+		}
+	}
+
+	return all, nil
+}
+
+// GetLatestVersion returns the highest version from a list
+func GetLatestVersion(versions []VersionMetadata) *VersionMetadata {
+	var best *version.Version
+	var bestMeta *VersionMetadata
+
+	for i, v := range versions {
+		if v.Name == "latest" {
+			continue
+		}
+		parsed, err := version.NewVersion(v.Version)
+		if err != nil {
+			continue
+		}
+		if best == nil || parsed.GreaterThan(best) {
+			best = parsed
+			bestMeta = &versions[i]
+		}
+	}
+
+	return bestMeta
 }

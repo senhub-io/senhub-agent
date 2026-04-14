@@ -243,3 +243,113 @@ checks:
         critical: "3000"
         unit: "ms"
         description: "TLS handshake time"
+
+  # Veeam Backup & Replication
+  - name: veeam_jobs
+    description: "Veeam backup jobs status"
+    probe_filter: "veeam"
+    metrics:
+      - channel: veeam_jobs_failed
+        aggregation: sum
+        warning: "0"
+        critical: "0"
+        unit: "jobs"
+        description: "Number of failed backup jobs"
+      - channel: veeam_jobs_warning
+        aggregation: sum
+        warning: "0"
+        critical: ""
+        unit: "jobs"
+        description: "Number of backup jobs with warnings"
+
+  - name: veeam_job_detail
+    description: "Veeam per-job backup status"
+    probe_filter: "veeam"
+    metrics:
+      - channel: veeam_job_status
+        aggregation: max
+        warning: "2"
+        critical: "3"
+        unit: "status"
+        tag_context: "job_name"
+        description: "Job status (0=None, 1=Success, 2=Warning, 3=Failed)"
+      - channel: veeam_job_seconds_since
+        aggregation: max
+        warning: "90000"
+        critical: "176400"
+        unit: "s"
+        tag_context: "job_name"
+        description: "Time since last backup run (warn 25h, crit 49h)"
+
+  - name: veeam_repositories
+    description: "Veeam repository capacity"
+    probe_filter: "veeam"
+    metrics:
+      - channel: veeam_repo_free_pct
+        aggregation: min
+        warning: "20"
+        critical: "10"
+        unit: "%"
+        invert: true
+        tag_context: "repo_name"
+        description: "Repository free space percentage"
+
+  - name: veeam_license
+    description: "Veeam license status"
+    probe_filter: "veeam"
+    metrics:
+      - channel: veeam_license_days_left
+        aggregation: min
+        warning: "30"
+        critical: "7"
+        unit: "days"
+        invert: true
+        description: "Days until license expiration"
+      - channel: veeam_license_instances_remaining
+        aggregation: min
+        warning: "5"
+        critical: "1"
+        unit: "instances"
+        invert: true
+        description: "Remaining licensed instances"
+
+  - name: veeam_proxies
+    description: "Veeam proxy status"
+    probe_filter: "veeam"
+    metrics:
+      - channel: veeam_proxies_disabled
+        aggregation: sum
+        warning: "0"
+        critical: ""
+        unit: "proxies"
+        description: "Number of disabled proxies"
+
+  - name: veeam_protected_objects
+    description: "Veeam protected objects status"
+    probe_filter: "veeam"
+    metrics:
+      - channel: veeam_objects_failed
+        aggregation: sum
+        warning: "0"
+        critical: "1"
+        unit: "objects"
+        description: "Number of objects whose last backup failed"
+      - channel: veeam_object_restore_points
+        aggregation: min
+        warning: "2"
+        critical: "1"
+        unit: "#"
+        invert: true
+        tag_context: "object_name"
+        description: "Minimum restore points per object (warn <2, crit <1)"
+
+  - name: veeam_infrastructure
+    description: "Veeam infrastructure health"
+    probe_filter: "veeam"
+    metrics:
+      - channel: veeam_servers_unavailable
+        aggregation: sum
+        warning: "0"
+        critical: "1"
+        unit: "servers"
+        description: "Number of unavailable managed servers"

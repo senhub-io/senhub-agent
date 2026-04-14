@@ -316,6 +316,7 @@ var moduleLogLevels = map[string]zerolog.Level{
 	"probe.webapp":    zerolog.InfoLevel, // WebApp probes
 	"probe.otel":      zerolog.InfoLevel, // OpenTelemetry probe
 	"probe.gateway":   zerolog.InfoLevel, // Gateway probe
+	"probe.veeam":     zerolog.InfoLevel, // Veeam Backup probe
 	"probe.syslog":    zerolog.InfoLevel, // Syslog probe
 	"cache":           zerolog.InfoLevel, // Cache operations
 	"transformer":     zerolog.InfoLevel, // Metric transformers
@@ -376,51 +377,49 @@ func GetModuleLogLevel(module string) zerolog.Level {
 	return moduleLevel
 }
 
-// ModuleLogger wraps a zerolog.Logger with dynamic level checking for a specific module
+// ModuleLogger wraps a zerolog.Logger with dynamic level checking for a specific module.
+// Reads from global state on every call — no snapshots, no staling.
 type ModuleLogger struct {
 	*zerolog.Logger
-	module         string
-	selectiveMode  bool
-	enabledModules map[string]bool
+	module string
 }
 
 func NewModuleLogger(baseLogger *Logger, module string) *ModuleLogger {
-	// Create logger with module context
 	logger := baseLogger.With().
 		Str("module", module).
 		Logger()
 
 	return &ModuleLogger{
-		Logger:         &logger,
-		module:         module,
-		selectiveMode:  selectiveDebugMode,
-		enabledModules: copyMap(activeDebugModules),
+		Logger: &logger,
+		module: module,
 	}
 }
 
-// copyMap creates a copy of the activeDebugModules map to avoid shared state issues
-func copyMap(original map[string]bool) map[string]bool {
-	if original == nil {
-		return make(map[string]bool)
+// isModuleEnabled checks if a module should output debug logs.
+// Supports prefix matching: "probe" matches "probe.veeam", "probe.citrix", etc.
+func isModuleEnabled(module string) bool {
+	if activeDebugModules[module] {
+		return true
 	}
-	copy := make(map[string]bool)
-	for k, v := range original {
-		copy[k] = v
+	for prefix := range activeDebugModules {
+		if strings.HasPrefix(module, prefix+".") {
+			return true
+		}
 	}
-	return copy
+	return false
 }
 
 // Debug logs a debug message if the module's current level allows it
 func (m *ModuleLogger) Debug() *zerolog.Event {
-	// In selective debug mode, only allow debug logs for specifically enabled modules
-	if m.selectiveMode {
-		if _, enabled := m.enabledModules[m.module]; !enabled {
+	// In selective debug mode, only allow debug logs for enabled modules (with prefix matching)
+	if selectiveDebugMode {
+		if !isModuleEnabled(m.module) {
 			disabledLogger := m.Logger.Level(zerolog.Disabled)
 			return disabledLogger.Debug()
 		}
 	}
 
-	// Check module log level for normal mode or enabled modules
+	// Check module log level
 	if GetModuleLogLevel(m.module) <= zerolog.DebugLevel {
 		return m.Logger.Debug()
 	}
@@ -456,43 +455,84 @@ func GetModuleLogLevels() map[string]zerolog.Level {
 	return result
 }
 
-// GetAvailableModules returns a list of all available debug modules
-func GetAvailableModules() []string {
-	return []string{
-		// Core services
-		"configuration",
-		"scheduler",
-		"cache",
-		"transformer",
-		"sensor",
-		"auto_update",
+// ModuleInfo describes a debug module with its category
+type ModuleInfo struct {
+	Name     string
+	Category string
+}
 
-		// Data storage strategies
-		"strategy.http",
-		"strategy.prtg",
-		"strategy.senhub",
-		"strategy.event",
+// GetAvailableModules returns all available debug modules with categories
+func GetAvailableModulesInfo() []ModuleInfo {
+	return []ModuleInfo{
+		// Agent core
+		{"sensor", "Agent Core"},
+		{"server", "Agent Core"},
+		{"data_store", "Agent Core"},
+		{"service.auto_update", "Agent Core"},
+
+		// Configuration
+		{"configuration.local", "Configuration"},
+		{"configuration.remote", "Configuration"},
+		{"configuration.agent", "Configuration"},
+		{"configuration.migrator", "Configuration"},
+
+		// Strategies
+		{"strategy.http", "Strategies"},
+		{"strategy.prtg", "Strategies"},
+		{"strategy.senhub", "Strategies"},
+		{"strategy.event", "Strategies"},
+
+		// Transformers & cache
+		{"transformer", "Data Processing"},
+		{"transformer.definition", "Data Processing"},
+		{"lookups", "Data Processing"},
+		{"status.service", "Data Processing"},
+		{"status.helper", "Data Processing"},
+		{"status.cache_adapter", "Data Processing"},
 
 		// System probes
-		"probe.cpu",
-		"probe.memory",
-		"probe.network",
-		"probe.logicaldisk",
-		"probe.host",
+		{"probe.cpu", "System Probes"},
+		{"probe.memory", "System Probes"},
+		{"probe.network", "System Probes"},
+		{"probe.logicaldisk", "System Probes"},
+		{"probe.wifi", "System Probes"},
+		{"probe.host", "System Probes (Windows)"},
+
+		// Infrastructure probes
+		{"probe.netscaler", "Infrastructure Probes"},
+		{"probe.redfish", "Infrastructure Probes"},
+		{"probe.redfish.client", "Infrastructure Probes"},
+		{"probe.veeam", "Infrastructure Probes"},
+		{"probe.veeam.client", "Infrastructure Probes"},
 
 		// Application probes
-		"probe.webapp",
-		"probe.gateway",
-		"probe.syslog",
-		"probe.event",
-		"probe.otel",
-		"probe.redfish",
+		{"probe.citrix", "Application Probes"},
+		{"probe.citrix.client", "Application Probes"},
+		{"probe.citrix.ddc", "Application Probes"},
+		{"probe.citrix.filters", "Application Probes"},
+		{"probe.citrix.inventory", "Application Probes"},
+		{"probe.citrix.metrics", "Application Probes"},
+		{"probe.citrix.common", "Application Probes"},
+		{"probe.webapp", "Application Probes"},
+		{"probe.loadwebapp", "Application Probes"},
+		{"probe.gateway", "Application Probes"},
 
-		// Platform-specific
-		"pdh.windows",
+		// Event probes
+		{"probe.syslog", "Event Probes"},
+		{"probe.event", "Event Probes"},
+		{"probe.otel", "Event Probes"},
 
-		// Sub-modules (examples)
-		"probe.redfish.client",
-		"data_store",
+		// Platform specific
+		{"pdh.windows", "Platform Specific"},
 	}
+}
+
+// GetAvailableModules returns a flat list of module names (backward compat)
+func GetAvailableModules() []string {
+	modules := GetAvailableModulesInfo()
+	names := make([]string, len(modules))
+	for i, m := range modules {
+		names[i] = m.Name
+	}
+	return names
 }

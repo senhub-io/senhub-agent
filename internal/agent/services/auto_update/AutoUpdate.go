@@ -22,11 +22,12 @@ import (
 )
 
 var (
-	DEFAULT_REGISTRY_URL          = "https://eu-west-1.intake-dev.senhub.io/"
-	VERSION_METADATA_LIST_PATH    = "/releases/releases.json"
-	VERSION_METADATA_PATH         = "/download/%s/metadata.json"
-	VERSION_BINARY_PATH           = "/download/%s/%s"
-	DEFAULT_UPDATE_CHECK_INTERVAL = 1 * time.Hour
+	DEFAULT_REGISTRY_URL               = "https://eu-west-1.intake.senhub.io/"
+	VERSION_METADATA_LIST_PATH         = "/releases/releases.json"
+	VERSION_METADATA_LIST_BETA_PATH    = "/releases/beta/releases.json"
+	VERSION_METADATA_PATH              = "/download/%s/metadata.json"
+	VERSION_BINARY_PATH                = "/download/%s/%s"
+	DEFAULT_UPDATE_CHECK_INTERVAL      = 1 * time.Hour
 )
 
 // ConfigSource defines interface for auto-update configuration access
@@ -46,6 +47,8 @@ type AutoUpdate interface {
 	Start(quitChannel chan struct{}) error
 	Shutdown(ctx context.Context) error
 	Update(expectedVersion string, registryUrl ...string) (bool, error)
+	CheckForNewVersion(includeBeta bool) (*VersionMetadata, error)
+	ListAvailableVersions(includeBeta bool) ([]VersionMetadata, error)
 }
 
 type AutoUpdateConfig struct {
@@ -119,14 +122,14 @@ func (a *autoUpdate) Start(quitChannel chan struct{}) error {
 }
 
 func (a *autoUpdate) Shutdown(ctx context.Context) error {
-	scheduler := *a.scheduler
-	if scheduler != nil {
-		if err := scheduler.Shutdown(ctx); err != nil {
-			a.logger.Error().
-				Err(err).
-				Msg("Failed to shutdown scheduler")
-			return fmt.Errorf("failed to shutdown auto-update scheduler: %w", err)
-		}
+	if a.scheduler == nil {
+		return nil
+	}
+	if err := (*a.scheduler).Shutdown(ctx); err != nil {
+		a.logger.Error().
+			Err(err).
+			Msg("Failed to shutdown scheduler")
+		return fmt.Errorf("failed to shutdown auto-update scheduler: %w", err)
 	}
 	return nil
 }
@@ -137,16 +140,15 @@ func (a *autoUpdate) onConfigChange(string) {
 			Err(err).
 			Msg("Failed to check for update during config change")
 	}
-	// In case interval config changed, recreate the scheduler
-	scheduler := *a.scheduler
-	if scheduler != nil && scheduler.GetInterval() != a.GetUpdateCheckInterval() {
-		if err := scheduler.Shutdown(context.Background()); err != nil {
+	// Recreate scheduler if interval changed (without re-registering callback)
+	if a.scheduler != nil && (*a.scheduler).GetInterval() != a.GetUpdateCheckInterval() {
+		if err := (*a.scheduler).Shutdown(context.Background()); err != nil {
 			a.logger.Error().
 				Err(err).
 				Msg("Failed to shutdown scheduler during config change")
 		}
 		a.createScheduler()
-		if err := a.Start(nil); err != nil {
+		if err := (*a.scheduler).Start(nil); err != nil {
 			a.logger.Error().
 				Err(err).
 				Msg("Failed to restart scheduler during config change")
@@ -364,7 +366,7 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 	}
 
 	// Special handling for beta versions which don't parse as constraints
-	if isBetaVersion(expectedVersionStr) {
+	if IsBetaVersion(expectedVersionStr) {
 		a.logger.Info().
 			Str("expected_version", expectedVersionStr).
 			Msg("Detected beta version as target")
@@ -445,4 +447,39 @@ func (a *autoUpdate) GetBinaryUrl(
 	return url.JoinPath(registryUrl, downloadPath)
 }
 
-// Moved to VersionMetadata.go
+// CheckForNewVersion checks if a newer version is available without installing.
+// Returns the latest available version metadata if newer than current, nil otherwise.
+func (a *autoUpdate) CheckForNewVersion(includeBeta bool) (*VersionMetadata, error) {
+	registryUrl := a.GetRegistryUrl("")
+	versions, err := FetchAllVersions(a.httpClient, registryUrl, includeBeta)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch versions: %w", err)
+	}
+
+	latest := GetLatestVersion(versions)
+	if latest == nil {
+		return nil, nil
+	}
+
+	currentVer, err := version.NewVersion(cliArgs.Version)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse current version %s: %w", cliArgs.Version, err)
+	}
+
+	latestVer, err := version.NewVersion(latest.Version)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse latest version %s: %w", latest.Version, err)
+	}
+
+	if latestVer.GreaterThan(currentVer) {
+		return latest, nil
+	}
+
+	return nil, nil
+}
+
+// ListAvailableVersions returns all versions available for update
+func (a *autoUpdate) ListAvailableVersions(includeBeta bool) ([]VersionMetadata, error) {
+	registryUrl := a.GetRegistryUrl("")
+	return FetchAllVersions(a.httpClient, registryUrl, includeBeta)
+}
