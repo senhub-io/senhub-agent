@@ -492,8 +492,9 @@ agent:
 
 # Auto-update configuration (from server)
 auto_update:
-  enabled: %t      # Enable/disable automatic updates
-  url: "%s"        # Update server URL
+  enabled: %t           # Enable/disable automatic updates
+  include_beta: %t      # Include beta versions in update checks
+  url: "%s"             # Update server URL
 
 # Cache configuration (from server)
 cache:
@@ -551,6 +552,7 @@ probes:
 		config.Agent.License,
 		licenseDoc, // License documentation (empty for online mode)
 		config.AutoUpdate.Enabled,
+		false, // include_beta: always false in online mode
 		config.AutoUpdate.URL,
 		cacheRetention,
 		storageYaml,

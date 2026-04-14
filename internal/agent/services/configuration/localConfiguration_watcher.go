@@ -34,8 +34,9 @@ agent:
 
 # Auto-update configuration
 auto_update:
-  enabled: %t      # Enable/disable automatic updates
-  url: "%s"        # Update server URL
+  enabled: %t           # Enable/disable automatic updates
+  include_beta: %t      # Include beta versions in update checks
+  url: "%s"             # Update server URL
 
 # Cache configuration
 cache:
@@ -128,6 +129,7 @@ probes:
 		config.Agent.Key,              // agent.key
 		LicenseDocumentationTemplate,  // agent.license (documentation)
 		config.AutoUpdate.Enabled,     // auto_update.enabled
+		config.AutoUpdate.IncludeBeta, // auto_update.include_beta
 		config.AutoUpdate.URL,         // auto_update.url
 		config.Cache.RetentionMinutes, // cache.retention_minutes
 		port,                          // storage port
