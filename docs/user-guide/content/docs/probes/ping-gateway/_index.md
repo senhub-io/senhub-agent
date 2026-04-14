@@ -142,7 +142,7 @@ curl http://localhost:8080/api/{agentkey}/prtg/metrics
 }
 ```
 
-### Nagios/Icinga
+### Nagios
 
 Access gateway metrics in Nagios format:
 
@@ -171,51 +171,6 @@ define service {
 }
 ```
 
-### Grafana/Prometheus
-
-Access metrics in Prometheus-compatible format:
-
-```bash
-# Prometheus format
-curl http://localhost:8080/api/{agentkey}/prometheus/metrics
-
-# Example output:
-# ping_gateway_average_latency{hostname="server01"} 15.3
-# ping_gateway_packet_loss{hostname="server01"} 0.0
-```
-
-**Grafana Dashboard Queries:**
-
-```promql
-# Gateway latency over time
-ping_gateway_average_latency{hostname="server01"}
-
-# Packet loss percentage
-ping_gateway_packet_loss{hostname="server01"}
-
-# Latency rate of change (detect spikes)
-rate(ping_gateway_average_latency{hostname="server01"}[5m])
-```
-
-**Alert Rules:**
-```yaml
-groups:
-  - name: gateway_connectivity
-    rules:
-      - alert: HighGatewayLatency
-        expr: ping_gateway_average_latency > 50
-        for: 5m
-        annotations:
-          summary: "High gateway latency on {{ $labels.hostname }}"
-          description: "Gateway latency is {{ $value }}ms (threshold: 50ms)"
-
-      - alert: GatewayPacketLoss
-        expr: ping_gateway_packet_loss > 1
-        for: 2m
-        annotations:
-          summary: "Gateway packet loss detected on {{ $labels.hostname }}"
-          description: "Packet loss is {{ $value }}% (threshold: 1%)"
-```
 
 ### Web Interface
 

@@ -278,7 +278,7 @@ After installation:
 1. Configure your monitoring probes (see [Configuration]({{< relref "/docs/configuration" >}}))
 2. Activate your license if you have premium probes (see License section in [Configuration]({{< relref "/docs/configuration" >}}))
 3. Set up HTTPS if required (see [HTTP/HTTPS Configuration]({{< relref "/docs/http-https" >}}))
-4. Configure your monitoring system (PRTG, Nagios, Grafana) to collect metrics (see [Web Interface]({{< relref "/docs/web-interface" >}}))
+4. Configure your monitoring system (PRTG, Nagios) to collect metrics (see [Web Interface]({{< relref "/docs/web-interface" >}}))
 
 ## Uninstallation
 
