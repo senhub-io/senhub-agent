@@ -16,60 +16,34 @@ import (
 )
 
 func showDebugModules() {
-	modules := agentLogger.GetAvailableModules()
+	modules := agentLogger.GetAvailableModulesInfo()
 
 	fmt.Printf("Available Debug Modules (%d modules):\n\n", len(modules))
 
-	// Group modules by category
-	categories := map[string][]string{
-		"Core Services":      {},
-		"Data Strategies":    {},
-		"System Probes":      {},
-		"Application Probes": {},
-		"Platform Specific":  {},
-		"Sub-modules":        {},
-	}
-
-	// Categorize modules
-	for _, module := range modules {
-		switch {
-		case strings.HasPrefix(module, "strategy."):
-			categories["Data Strategies"] = append(categories["Data Strategies"], module)
-		case module == "pdh.windows":
-			categories["Platform Specific"] = append(categories["Platform Specific"], module)
-		case module == "probe.redfish.client":
-			categories["Sub-modules"] = append(categories["Sub-modules"], module)
-		case module == "probe.webapp" || module == "probe.gateway" ||
-			module == "probe.syslog" || module == "probe.event" ||
-			module == "probe.otel" || module == "probe.redfish":
-			categories["Application Probes"] = append(categories["Application Probes"], module)
-		case strings.HasPrefix(module, "probe."):
-			categories["System Probes"] = append(categories["System Probes"], module)
-		default:
-			categories["Core Services"] = append(categories["Core Services"], module)
+	// Group by category, preserving order
+	var categoryOrder []string
+	categories := make(map[string][]string)
+	seen := make(map[string]bool)
+	for _, m := range modules {
+		if !seen[m.Category] {
+			seen[m.Category] = true
+			categoryOrder = append(categoryOrder, m.Category)
 		}
+		categories[m.Category] = append(categories[m.Category], m.Name)
 	}
-
-	// Display categorized modules
-	categoryOrder := []string{"Core Services", "Data Strategies", "System Probes", "Application Probes", "Platform Specific", "Sub-modules"}
 
 	for _, category := range categoryOrder {
-		if len(categories[category]) > 0 {
-			fmt.Printf("📂 %s:\n", category)
-			for _, module := range categories[category] {
-				fmt.Printf("   • %s\n", module)
-			}
-			fmt.Println()
+		fmt.Printf("  %s:\n", category)
+		for _, module := range categories[category] {
+			fmt.Printf("    %s\n", module)
 		}
+		fmt.Println()
 	}
 
-	fmt.Println("Usage Examples:")
-	fmt.Printf("   # Debug specific module:\n")
-	fmt.Printf("   %s run --debug-modules strategy.http\n", os.Args[0])
-	fmt.Printf("\n   # Debug multiple modules:\n")
-	fmt.Printf("   %s run --debug-modules strategy.http,cache,probe.redfish\n", os.Args[0])
-	fmt.Printf("\n   # Debug with offline mode:\n")
-	fmt.Printf("   %s run --offline --debug-modules strategy.http,cache\n", os.Args[0])
+	fmt.Println("Usage:")
+	fmt.Printf("  %s run --filter probe.veeam              # one module\n", os.Args[0])
+	fmt.Printf("  %s run --filter probe                    # all probes (prefix match)\n", os.Args[0])
+	fmt.Printf("  %s run --filter strategy.http,sensor      # multiple modules\n", os.Args[0])
 	fmt.Println()
 }
 
