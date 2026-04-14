@@ -226,7 +226,47 @@ func (a agent) Start() error {
 		a.handleStartError()
 	}
 
+	// Passive version check (non-blocking, log only)
+	a.checkForNewVersionAtStartup()
+
 	return nil
+}
+
+// checkForNewVersionAtStartup logs if a newer version is available
+func (a agent) checkForNewVersionAtStartup() {
+	if a.updater == nil {
+		// No updater configured — create a temporary one just for version check
+		updater := auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
+			Logger: a.logger,
+			DryRun: true,
+		})
+		a.doVersionCheck(updater)
+		return
+	}
+	a.doVersionCheck(a.updater)
+}
+
+func (a agent) doVersionCheck(updater auto_update.AutoUpdate) {
+	includeBeta := false
+	if a.localConfiguration != nil {
+		includeBeta = a.localConfiguration.GetAutoUpdateConfig().IncludeBeta
+	}
+
+	newer, err := updater.CheckForNewVersion(includeBeta)
+	if err != nil {
+		a.logger.Debug().Err(err).Msg("Version check failed (non-critical)")
+		return
+	}
+	if newer != nil {
+		a.logger.Warn().
+			Str("current", agentCliArgs.Version).
+			Str("available", newer.Version).
+			Msg("A newer version is available. Run 'senhub-agent update --list' to see all versions.")
+	} else {
+		a.logger.Info().
+			Str("version", agentCliArgs.Version).
+			Msg("Agent is up to date")
+	}
 }
 
 func (a agent) Shutdown(ctx context.Context) error {
