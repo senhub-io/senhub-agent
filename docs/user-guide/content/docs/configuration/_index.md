@@ -151,8 +151,7 @@ storage:
 |----------|-------------|
 | `prtg` | PRTG-formatted JSON API for PRTG Network Monitor integration |
 | `web` | Built-in web dashboard (Dashboard, API Explorer, Documentation) |
-| `nagios` | Nagios/Icinga-compatible check output |
-| `zabbix` | Zabbix-compatible metrics format |
+| `nagios` | Nagios-compatible check output |
 
 ### HTTPS Configuration
 

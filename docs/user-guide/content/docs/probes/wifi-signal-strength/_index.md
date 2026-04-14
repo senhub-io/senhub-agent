@@ -113,14 +113,6 @@ storage:
 
 Returns: `OK - WiFi connected | signal=85% quality=90%`
 
-### Grafana
-
-Query: `wifi_signal_strength{ssid="CompanyWiFi"}`
-
-**Dashboard Panels**:
-- Signal strength timeline
-- Signal heatmap by SSID
-- Connection quality gauge
 
 ## Use Cases
 
