@@ -5,7 +5,7 @@ type: docs
 
 # SenHub Agent Documentation
 
-SenHub Agent is a monitoring collector that runs on your infrastructure and collects metrics from servers, applications, backup systems, and network devices. It exposes metrics via a REST API compatible with PRTG, Nagios, Zabbix, and Prometheus.
+SenHub Agent is a monitoring collector that runs on your infrastructure and collects metrics from servers, applications, backup systems, and network devices. It exposes metrics via a REST API compatible with PRTG and Nagios.
 
 ## Getting Started
 

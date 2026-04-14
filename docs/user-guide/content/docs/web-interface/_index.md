@@ -156,9 +156,9 @@ senhub-prtg-lookups.zip
   ...
 ```
 
-### Nagios / Icinga
+### Nagios
 
-For Nagios or Icinga, use the Nagios-formatted endpoints:
+For Nagios, use the Nagios-formatted endpoints:
 
 ```
 http://agent-server:8080/api/{key}/nagios/metrics/{probe-name}
@@ -185,15 +185,6 @@ To list available checks:
 curl http://agent-server:8080/api/{key}/nagios/checks
 ```
 
-### Zabbix
-
-For Zabbix, use the Zabbix-formatted endpoint:
-
-```
-http://agent-server:8080/api/{key}/zabbix/metrics/{probe-name}
-```
-
-Configure a Zabbix HTTP agent item to poll this endpoint at your desired interval.
 
 ## Useful API Queries
 

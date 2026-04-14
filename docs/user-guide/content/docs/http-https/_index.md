@@ -5,7 +5,7 @@ weight: 3
 
 # HTTP/HTTPS Configuration
 
-SenHub Agent exposes a REST API that monitoring systems (PRTG, Nagios, Zabbix) and administrators use to collect metrics, check agent health, and manage configuration. By default, the agent listens on HTTP port 8080.
+SenHub Agent exposes a REST API that monitoring systems (PRTG and Nagios) and administrators use to collect metrics, check agent health, and manage configuration. By default, the agent listens on HTTP port 8080.
 
 ## HTTP Mode (Default)
 
@@ -32,7 +32,7 @@ storage:
 |-----------|---------|-------------|
 | `port` | `8080` | TCP port for the HTTP API |
 | `bind_address` | `0.0.0.0` | Network interface to bind to (use `127.0.0.1` for local access only) |
-| `endpoints` | `["prtg", "web"]` | Enabled endpoint types (prtg, web, nagios, zabbix) |
+| `endpoints` | `["prtg", "web"]` | Enabled endpoint types (prtg, web, nagios) |
 
 To change the port or other parameters, edit the `storage` section in `agent-config.yaml`. The change is applied automatically without restarting the service.
 
@@ -160,7 +160,6 @@ All API endpoints require the authentication key in the URL path, except `/healt
 | `/api/{key}/prtg/probes` | GET | Yes | List of available PRTG probe names |
 | `/api/{key}/nagios/metrics/{probe}` | GET | Yes | Metrics in Nagios plugin output format |
 | `/api/{key}/nagios/checks` | GET | Yes | List of available Nagios checks |
-| `/api/{key}/zabbix/metrics/{probe}` | GET | Yes | Metrics in Zabbix format |
 
 ### Configuration and Administration
 
