@@ -325,9 +325,6 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
 	probeNameLower := strings.ToLower(probeName)
 
-	// Load probe definition BEFORE acquiring cache lock (GetProbeDefinition is not thread-safe)
-	probeDef := a.strategy.transformerRegistry.GetProbeDefinition(probeNameLower)
-
 	a.strategy.cache.mu.RLock()
 	defer a.strategy.cache.mu.RUnlock()
 
@@ -337,6 +334,21 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Probe not found", http.StatusNotFound)
 		return
 	}
+
+	// Resolve probe type from cached tags (within the same RLock — no TOCTOU)
+	// Probe name can differ from type (e.g., "veeam-prod" → "veeam")
+	probeType := probeNameLower
+	for tsKey := range tsKeys {
+		if metric, exists := a.strategy.cache.timeSeries[tsKey]; exists {
+			if pt, ok := metric.Tags["probe_type"]; ok && pt != "" {
+				probeType = pt
+				break
+			}
+		}
+	}
+
+	// Load probe definition using the resolved type
+	probeDef := a.strategy.transformerRegistry.GetProbeDefinition(probeType)
 
 	// Analyze tags from all metrics of this probe
 	tagValues := make(map[string]map[string]int)
@@ -363,30 +375,29 @@ func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 		tagMeta = probeDef.TagMetadata
 	}
 
-	// Convert to response format with metadata enrichment
+	// Convert to response format — only expose tags that have metadata in the transformer
+	// (internal tags like endpoint, probe_name, probe_type are excluded)
 	tags := make(map[string]TagInfo)
 	for tagKey, values := range tagValues {
+		meta, hasMeta := tagMeta[tagKey]
+		if !hasMeta {
+			continue
+		}
+
 		var valueList []string
 		for value := range values {
 			valueList = append(valueList, value)
 		}
 
-		info := TagInfo{
-			Values:      valueList,
-			Description: a.strategy.utilsManager.getTagDescription(tagKey),
-			SampleCount: len(valueList),
-			Type:        "resource", // default
+		tags[tagKey] = TagInfo{
+			Values:           valueList,
+			Description:      a.strategy.utilsManager.getTagDescription(tagKey),
+			SampleCount:      len(valueList),
+			Type:             string(meta.Type),
+			Label:            meta.Label,
+			ValueLabels:      meta.ValueLabels,
+			LinkedCategories: meta.LinkedCategories,
 		}
-
-		// Enrich with metadata from probe definition
-		if meta, exists := tagMeta[tagKey]; exists {
-			info.Type = string(meta.Type)
-			info.Label = meta.Label
-			info.ValueLabels = meta.ValueLabels
-			info.LinkedCategories = meta.LinkedCategories
-		}
-
-		tags[tagKey] = info
 	}
 
 	var metricList []string

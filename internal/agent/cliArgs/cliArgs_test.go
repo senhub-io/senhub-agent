@@ -110,6 +110,7 @@ func TestParsedArgsFromStartArgs(t *testing.T) {
 			},
 			environment: "production",
 			expected: &ParsedArgs{
+				Verbose:       true, // --debug-modules implies --verbose
 				DebugModules:  []string{"strategy.http", "cache", "probe.redfish"},
 				ServerUrl:     "",
 				Env:           "production",
@@ -120,7 +121,48 @@ func TestParsedArgsFromStartArgs(t *testing.T) {
 				HttpsHosts:    []string{"localhost", "127.0.0.1"},
 				MinTlsVersion: "1.2",
 			},
-			description: "Should trim whitespace from debug modules",
+			description: "Should trim whitespace from debug modules and imply verbose",
+		},
+		{
+			name: "Filter flag sets debug modules and implies verbose",
+			args: &StartSubcommandArgs{
+				Filter: "probe.veeam,strategy.http",
+			},
+			environment: "production",
+			expected: &ParsedArgs{
+				Verbose:       true,
+				DebugModules:  []string{"probe.veeam", "strategy.http"},
+				ServerUrl:     "",
+				Env:           "production",
+				Version:       Version,
+				CommitHash:    CommitHash,
+				ConfigPath:    "./agent-config.yaml",
+				HttpsPort:     8443,
+				HttpsHosts:    []string{"localhost", "127.0.0.1"},
+				MinTlsVersion: "1.2",
+			},
+			description: "Filter flag should populate DebugModules and set Verbose true",
+		},
+		{
+			name: "Filter takes precedence over debug-modules",
+			args: &StartSubcommandArgs{
+				Filter:       "probe.veeam",
+				DebugModules: "strategy.http",
+			},
+			environment: "production",
+			expected: &ParsedArgs{
+				Verbose:       true,
+				DebugModules:  []string{"probe.veeam"},
+				ServerUrl:     "",
+				Env:           "production",
+				Version:       Version,
+				CommitHash:    CommitHash,
+				ConfigPath:    "./agent-config.yaml",
+				HttpsPort:     8443,
+				HttpsHosts:    []string{"localhost", "127.0.0.1"},
+				MinTlsVersion: "1.2",
+			},
+			description: "Filter should win over deprecated debug-modules",
 		},
 		{
 			name: "Debug log shipper configuration",

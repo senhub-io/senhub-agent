@@ -51,7 +51,8 @@ type AgentConfig struct {
 	RegistryUrl         string `json:"registry_url"`
 	Version             string `json:"version"`
 	UpdateCheckInterval any    `json:"update_check_interval" default:"3600"`
-	License             string `json:"license,omitempty"` // JWT license token or JSON for testing
+	License             string `json:"license,omitempty"`
+	AuthenticationKey   string `json:"authentication_key,omitempty"`
 }
 
 type RemoteConfigurationData struct {
@@ -491,8 +492,9 @@ agent:
 
 # Auto-update configuration (from server)
 auto_update:
-  enabled: %t      # Enable/disable automatic updates
-  url: "%s"        # Update server URL
+  enabled: %t           # Enable/disable automatic updates
+  include_beta: %t      # Include beta versions in update checks
+  url: "%s"             # Update server URL
 
 # Cache configuration (from server)
 cache:
@@ -550,6 +552,7 @@ probes:
 		config.Agent.License,
 		licenseDoc, // License documentation (empty for online mode)
 		config.AutoUpdate.Enabled,
+		false, // include_beta: always false in online mode
 		config.AutoUpdate.URL,
 		cacheRetention,
 		storageYaml,
