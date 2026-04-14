@@ -122,14 +122,14 @@ func (a *autoUpdate) Start(quitChannel chan struct{}) error {
 }
 
 func (a *autoUpdate) Shutdown(ctx context.Context) error {
-	scheduler := *a.scheduler
-	if scheduler != nil {
-		if err := scheduler.Shutdown(ctx); err != nil {
-			a.logger.Error().
-				Err(err).
-				Msg("Failed to shutdown scheduler")
-			return fmt.Errorf("failed to shutdown auto-update scheduler: %w", err)
-		}
+	if a.scheduler == nil {
+		return nil
+	}
+	if err := (*a.scheduler).Shutdown(ctx); err != nil {
+		a.logger.Error().
+			Err(err).
+			Msg("Failed to shutdown scheduler")
+		return fmt.Errorf("failed to shutdown auto-update scheduler: %w", err)
 	}
 	return nil
 }
@@ -140,16 +140,15 @@ func (a *autoUpdate) onConfigChange(string) {
 			Err(err).
 			Msg("Failed to check for update during config change")
 	}
-	// In case interval config changed, recreate the scheduler
-	scheduler := *a.scheduler
-	if scheduler != nil && scheduler.GetInterval() != a.GetUpdateCheckInterval() {
-		if err := scheduler.Shutdown(context.Background()); err != nil {
+	// Recreate scheduler if interval changed (without re-registering callback)
+	if a.scheduler != nil && (*a.scheduler).GetInterval() != a.GetUpdateCheckInterval() {
+		if err := (*a.scheduler).Shutdown(context.Background()); err != nil {
 			a.logger.Error().
 				Err(err).
 				Msg("Failed to shutdown scheduler during config change")
 		}
 		a.createScheduler()
-		if err := a.Start(nil); err != nil {
+		if err := (*a.scheduler).Start(nil); err != nil {
 			a.logger.Error().
 				Err(err).
 				Msg("Failed to restart scheduler during config change")
