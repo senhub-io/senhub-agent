@@ -75,7 +75,7 @@ Invoke-WebRequest -Uri "http://localhost:8080/health"
 
 Expected response:
 ```json
-{"status":"ok","version":"0.1.80","uptime":"1m30s","probes_active":2,"metrics_cached":12}
+{"status":"ok","version":"0.1.87","uptime":"1m30s","probes_active":2,"metrics_cached":12}
 ```
 
 ### Log file location
@@ -185,7 +185,7 @@ The `install` command accepts the following options:
 | Flag | Description |
 |------|-------------|
 | `--verbose` or `-v` | Enable verbose logging for all modules |
-| `--debug-modules MODULES` | Enable debug logging for specific modules (comma-separated) |
+| `--filter MODULES` | Filter debug logs by module prefix (implies verbose). Example: `--filter probe.veeam` |
 
 ### Environment Variables
 
@@ -228,30 +228,37 @@ The agent binary provides built-in service management:
 | `senhub-agent status` | Show service status, health, and resource usage |
 | `senhub-agent version` | Show agent version and build information |
 | `senhub-agent run` | Run interactively in console mode (for debugging) |
-| `senhub-agent update VERSION` | Update the agent to a specific version |
+| `senhub-agent config check` | Validate configuration file |
+| `senhub-agent update` | Check for updates |
+| `senhub-agent update --list` | List available versions |
+| `senhub-agent update VERSION` | Install a specific version |
 
 ### Console Mode
 
 The `run` command starts the agent interactively in the foreground (not as a service). This is useful for debugging:
 
 ```bash
-senhub-agent run --authentication-key KEY --verbose
+senhub-agent run
+senhub-agent run --verbose
+senhub-agent run --filter probe.veeam
 ```
 
-All logs are printed to the console. Press Ctrl+C to stop.
+The agent auto-detects its mode from the configuration file. All logs are printed to the console. Press Ctrl+C to stop.
+
+Use `--filter` to limit debug output to specific modules (see [CLI Reference]({{< relref "/docs/cli" >}})).
 
 ### Updating the Agent
 
-To update the agent to a new version:
+Check for available updates:
 
 ```bash
-senhub-agent update 0.1.85
+senhub-agent update --list
 ```
 
-You can preview the update without applying it:
+Install a specific version:
 
 ```bash
-senhub-agent update 0.1.85 --dry-run
+senhub-agent update 0.1.87
 ```
 
 ## Post-Installation Checklist
