@@ -323,3 +323,33 @@ checks:
         critical: ""
         unit: "proxies"
         description: "Number of disabled proxies"
+
+  - name: veeam_protected_objects
+    description: "Veeam protected objects status"
+    probe_filter: "veeam"
+    metrics:
+      - channel: veeam_objects_failed
+        aggregation: sum
+        warning: "0"
+        critical: "1"
+        unit: "objects"
+        description: "Number of objects whose last backup failed"
+      - channel: veeam_object_restore_points
+        aggregation: min
+        warning: "2"
+        critical: "1"
+        unit: "#"
+        invert: true
+        tag_context: "object_name"
+        description: "Minimum restore points per object (warn <2, crit <1)"
+
+  - name: veeam_infrastructure
+    description: "Veeam infrastructure health"
+    probe_filter: "veeam"
+    metrics:
+      - channel: veeam_servers_unavailable
+        aggregation: sum
+        warning: "0"
+        critical: "1"
+        unit: "servers"
+        description: "Number of unavailable managed servers"
