@@ -7,8 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gopkg.in/yaml.v2"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/license"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -163,4 +166,241 @@ func extractAgentKeyFromConfig(configPath string) (string, error) {
 	}
 
 	return "", fmt.Errorf("agent key not found in config file")
+}
+
+// checkConfig validates a configuration file and reports issues
+func checkConfig(configPath string) {
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		absPath = configPath
+	}
+
+	fmt.Printf("Checking configuration: %s\n\n", absPath)
+
+	// Read and parse YAML
+	content, err := os.ReadFile(configPath) // #nosec G304 - user-provided path for CLI tool
+	if err != nil {
+		fmt.Printf("  [ERROR] Cannot read file: %v\n", err)
+		os.Exit(1)
+	}
+
+	var config configuration.LocalConfigurationData
+	if err := yaml.Unmarshal(content, &config); err != nil {
+		fmt.Println("  [ERROR] Invalid YAML syntax")
+		fmt.Println()
+		// Extract line number from yaml error and show context
+		showYAMLErrorContext(string(content), err)
+		os.Exit(1)
+	}
+
+	errors := 0
+	warnings := 0
+
+	// Config version
+	if config.ConfigVersion == 2 {
+		fmt.Println("  [OK]   config_version: 2")
+	} else if config.ConfigVersion == 0 {
+		fmt.Println("  [ERROR] config_version missing (should be 2)")
+		errors++
+	} else {
+		fmt.Printf("  [WARN] config_version: %d (expected 2)\n", config.ConfigVersion)
+		warnings++
+	}
+
+	// Agent key
+	if config.Agent.Key != "" {
+		fmt.Printf("  [OK]   agent.key: %s\n", config.Agent.Key)
+	} else {
+		fmt.Println("  [ERROR] agent.key is missing")
+		errors++
+	}
+
+	// Agent mode
+	if config.Agent.Mode == "offline" || config.Agent.Mode == "online" {
+		fmt.Printf("  [OK]   agent.mode: %s\n", config.Agent.Mode)
+	} else if config.Agent.Mode == "" {
+		fmt.Println("  [WARN] agent.mode not set (defaults to online)")
+		warnings++
+	} else {
+		fmt.Printf("  [ERROR] agent.mode: invalid value %q (must be online or offline)\n", config.Agent.Mode)
+		errors++
+	}
+
+	// License
+	if config.Agent.License != "" {
+		validator, validatorErr := license.GetDefaultValidator(7)
+		if validatorErr != nil {
+			fmt.Printf("  [WARN] Cannot initialize license validator: %v\n", validatorErr)
+			warnings++
+		} else {
+			lic, licErr := validator.ValidateLicense(config.Agent.License)
+			if licErr != nil {
+				fmt.Printf("  [ERROR] agent.license: invalid (%v)\n", licErr)
+				errors++
+			} else {
+				format := "JWT"
+				if license.IsCompactLicense(config.Agent.License) {
+					format = "compact"
+				}
+				fmt.Printf("  [OK]   agent.license: %s format, tier=%s, expires=%s\n",
+					format, lic.Tier, lic.ExpiresAt.Format("2006-01-02"))
+
+				if lic.IsExpired {
+					fmt.Println("  [WARN] License is EXPIRED")
+					warnings++
+				}
+
+				// Verify binding
+				if config.Agent.Key != "" && !license.VerifyBinding(config.Agent.License, config.Agent.Key, lic) {
+					fmt.Println("  [ERROR] License is not bound to this agent key")
+					errors++
+				} else if config.Agent.Key != "" {
+					fmt.Println("  [OK]   License binding verified")
+				}
+			}
+		}
+	} else {
+		fmt.Println("  [WARN] agent.license not set (free tier only)")
+		warnings++
+	}
+
+	// Probes
+	if len(config.Probes) == 0 {
+		fmt.Println("  [WARN] No probes configured")
+		warnings++
+	} else {
+		fmt.Printf("  [OK]   %d probe(s) configured\n", len(config.Probes))
+		registeredProbes := probes.GetRegisteredProbeTypes()
+		for _, p := range config.Probes {
+			if p.Name == "" {
+				fmt.Println("  [ERROR] Probe with empty name")
+				errors++
+				continue
+			}
+			if p.Type == "" {
+				fmt.Printf("  [ERROR] Probe %q: type is missing\n", p.Name)
+				errors++
+				continue
+			}
+			if !registeredProbes[p.Type] {
+				fmt.Printf("  [ERROR] Probe %q: unknown type %q\n", p.Name, p.Type)
+				errors++
+				continue
+			}
+			fmt.Printf("  [OK]   Probe %q (type: %s)\n", p.Name, p.Type)
+
+			// Validate required params per probe type
+			e, w := validateProbeParams(p.Name, p.Type, p.Params)
+			errors += e
+			warnings += w
+		}
+	}
+
+	// Storage
+	if len(config.Storage) == 0 {
+		fmt.Println("  [WARN] No storage strategies configured")
+		warnings++
+	} else {
+		validStrategies := map[string]bool{"http": true, "prtg": true, "senhub": true, "event": true}
+		for _, s := range config.Storage {
+			if !validStrategies[s.Name] {
+				fmt.Printf("  [WARN] Storage %q: unknown strategy\n", s.Name)
+				warnings++
+			} else {
+				fmt.Printf("  [OK]   Storage: %s\n", s.Name)
+			}
+		}
+	}
+
+	// Summary
+	fmt.Println()
+	if errors == 0 && warnings == 0 {
+		fmt.Println("Configuration is valid.")
+	} else if errors == 0 {
+		fmt.Printf("Configuration is valid with %d warning(s).\n", warnings)
+	} else {
+		fmt.Printf("Configuration has %d error(s) and %d warning(s).\n", errors, warnings)
+		os.Exit(1)
+	}
+}
+
+// showYAMLErrorContext shows the problematic line from the YAML file
+func showYAMLErrorContext(content string, yamlErr error) {
+	errMsg := yamlErr.Error()
+
+	// Extract line number from "yaml: line N: ..."
+	lineNum := 0
+	if _, err := fmt.Sscanf(errMsg, "yaml: line %d:", &lineNum); err != nil || lineNum == 0 {
+		fmt.Printf("  %s\n", errMsg)
+		return
+	}
+
+	lines := strings.Split(content, "\n")
+	fmt.Printf("  Error at line %d: %s\n\n", lineNum, errMsg[strings.Index(errMsg, ":")+2:])
+
+	// Show context: 2 lines before, the error line, 2 lines after
+	start := lineNum - 3
+	if start < 0 {
+		start = 0
+	}
+	end := lineNum + 2
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	for i := start; i < end; i++ {
+		marker := "  "
+		if i == lineNum-1 {
+			marker = ">>"
+		}
+		fmt.Printf("  %s %3d | %s\n", marker, i+1, lines[i])
+	}
+	fmt.Println()
+
+	// Common hints
+	if strings.Contains(errMsg, "could not find expected ':'") {
+		fmt.Println("  Hint: Check for missing space after ':' (e.g., 'key:value' should be 'key: value')")
+	} else if strings.Contains(errMsg, "did not find expected") {
+		fmt.Println("  Hint: Check indentation — YAML uses spaces, not tabs")
+	}
+}
+
+// validateProbeParams checks required parameters for each probe type
+func validateProbeParams(name, probeType string, params map[string]interface{}) (errors, warnings int) {
+	// Required params per probe type
+	requiredParams := map[string][]string{
+		"veeam":      {"endpoint", "username", "password"},
+		"citrix":     {"site_url", "client_id", "client_secret"},
+		"netscaler":  {"base_url", "username", "password"},
+		"redfish":    {"endpoint", "username", "password"},
+		"ping_webapp": {"url"},
+		"load_webapp": {"url"},
+		"ping_gateway": {"destination"},
+		"syslog":     {"listen_address"},
+	}
+
+	required, hasRequired := requiredParams[probeType]
+	if !hasRequired {
+		return 0, 0
+	}
+
+	for _, param := range required {
+		val, exists := params[param]
+		if !exists || val == nil || val == "" {
+			fmt.Printf("         [ERROR] Probe %q: missing required param %q\n", name, param)
+			errors++
+		}
+	}
+
+	// Check for common misconfigurations
+	if probeType == "veeam" {
+		if interval, ok := params["interval"]; ok {
+			if intVal, ok := interval.(int); ok && intVal < 60 {
+				fmt.Printf("         [WARN] Probe %q: interval %ds is very short (recommended: 300s)\n", name, intVal)
+				warnings++
+			}
+		}
+	}
+
+	return errors, warnings
 }

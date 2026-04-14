@@ -13,6 +13,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/network"
 	"senhub-agent.go/internal/agent/probes/otel"    // Import the otel probe package
 	"senhub-agent.go/internal/agent/probes/redfish" // Import the redfish probe package
+	"senhub-agent.go/internal/agent/probes/veeam"   // Import the veeam probe package
 	"senhub-agent.go/internal/agent/probes/syslog"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/probes/webapp"
@@ -42,6 +43,7 @@ type ProbeConstructor func(map[string]interface{}, *logger.Logger) (types.Probe,
 // - redfish: Monitors hardware via Redfish API
 // - citrix: Monitors Citrix Virtual Apps and Desktops via OData API
 // - netscaler: Monitors Citrix Netscaler (ADC) via NITRO API
+// - veeam: Monitors Veeam Backup & Replication via REST API
 var probeConstructors = map[string]ProbeConstructor{
 	"load_webapp":          webapp.NewLoadWebAppProbe,
 	"ping_webapp":          webapp.NewPingWebAppProbe,
@@ -57,4 +59,14 @@ var probeConstructors = map[string]ProbeConstructor{
 	"redfish":              redfish.NewRedfishProbe,
 	"citrix":               citrix.NewCitrixProbe,
 	"netscaler":            netscaler.NewNetscalerProbe,
+	"veeam":                veeam.NewVeeamProbe,
+}
+
+// GetRegisteredProbeTypes returns a set of all registered probe type names
+func GetRegisteredProbeTypes() map[string]bool {
+	result := make(map[string]bool, len(probeConstructors))
+	for name := range probeConstructors {
+		result[name] = true
+	}
+	return result
 }
