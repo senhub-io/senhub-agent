@@ -16,34 +16,41 @@ import (
 )
 
 func showDebugModules() {
-	modules := agentLogger.GetAvailableModulesInfo()
+	exe := os.Args[0]
 
-	fmt.Printf("Available Debug Modules (%d modules):\n\n", len(modules))
-
-	// Group by category, preserving order
-	var categoryOrder []string
-	categories := make(map[string][]string)
-	seen := make(map[string]bool)
-	for _, m := range modules {
-		if !seen[m.Category] {
-			seen[m.Category] = true
-			categoryOrder = append(categoryOrder, m.Category)
-		}
-		categories[m.Category] = append(categories[m.Category], m.Name)
-	}
-
-	for _, category := range categoryOrder {
-		fmt.Printf("  %s:\n", category)
-		for _, module := range categories[category] {
-			fmt.Printf("    %s\n", module)
-		}
-		fmt.Println()
-	}
-
+	fmt.Println("Available debug filters:")
+	fmt.Println()
+	fmt.Println("  Probes:")
+	fmt.Println("    probe                 All probes")
+	fmt.Println("    probe.veeam           Veeam Backup & Replication")
+	fmt.Println("    probe.citrix          Citrix Virtual Apps & Desktops")
+	fmt.Println("    probe.netscaler       Citrix NetScaler / ADC")
+	fmt.Println("    probe.redfish         Redfish hardware monitoring")
+	fmt.Println("    probe.cpu             CPU usage")
+	fmt.Println("    probe.memory          Memory usage")
+	fmt.Println("    probe.network         Network interfaces")
+	fmt.Println("    probe.logicaldisk     Disk usage")
+	fmt.Println("    probe.webapp          Web application monitoring")
+	fmt.Println("    probe.loadwebapp      Web application load testing")
+	fmt.Println("    probe.gateway         Gateway connectivity")
+	fmt.Println("    probe.wifi            WiFi signal strength")
+	fmt.Println("    probe.syslog          Syslog collector")
+	fmt.Println("    probe.event           Event collector")
+	fmt.Println("    probe.otel            OpenTelemetry collector")
+	fmt.Println()
+	fmt.Println("  Agent:")
+	fmt.Println("    sensor                Probe lifecycle management")
+	fmt.Println("    configuration         Configuration loading & watching")
+	fmt.Println("    strategy              All output strategies (http, prtg, senhub)")
+	fmt.Println("    strategy.http         HTTP API & web UI")
+	fmt.Println("    transformer           Metric transformation & lookups")
+	fmt.Println("    data_store            Data routing")
+	fmt.Println("    service.auto_update   Auto-update system")
+	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Printf("  %s run --filter probe.veeam              # one module\n", os.Args[0])
-	fmt.Printf("  %s run --filter probe                    # all probes (prefix match)\n", os.Args[0])
-	fmt.Printf("  %s run --filter strategy.http,sensor      # multiple modules\n", os.Args[0])
+	fmt.Printf("  %s run --filter probe.veeam              # one probe\n", exe)
+	fmt.Printf("  %s run --filter probe                    # all probes\n", exe)
+	fmt.Printf("  %s run --filter probe.veeam,strategy.http # combine filters\n", exe)
 	fmt.Println()
 }
 
