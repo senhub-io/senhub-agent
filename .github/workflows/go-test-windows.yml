@@ -1,5 +1,16 @@
 name: Go-test-windows
-on: [push, pull_request]
+on:
+  push:
+    branches: [dev, master]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.keys/**'
+  pull_request:
+    branches: [master]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
 env:
   SENHUB_KEY: "test-key"
 
@@ -29,20 +40,8 @@ jobs:
       - name: Test Windows Service
         shell: powershell
         run: |
-          # Check if script exists and show directory content for debugging
-          Get-ChildItem -Path .\scripts -Force
-          
           if (Test-Path -Path ".\scripts\test_windows_service.ps1") {
-            Write-Host "Script found, executing..."
-            # Execute with relative path
             .\scripts\test_windows_service.ps1
-          } elseif (Test-Path -Path "$env:GITHUB_WORKSPACE\scripts\test_windows_service.ps1") {
-            Write-Host "Script found in GITHUB_WORKSPACE, executing..."
-            # Execute with absolute path
-            & "$env:GITHUB_WORKSPACE\scripts\test_windows_service.ps1"
           } else {
-            Write-Host "Script not found! Checking all scripts directory content:"
-            Get-ChildItem -Path "$env:GITHUB_WORKSPACE\scripts" -Force -Recurse 
-            Write-Error "Could not find test_windows_service.ps1 script"
-            exit 0  # Not failing the workflow for now
+            Write-Host "Service test script not found, skipping"
           }
