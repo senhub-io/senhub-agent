@@ -67,13 +67,17 @@ func NewSensor(
 	// Try to load and validate license from configuration
 	var validatedLicense *license.License
 	config := configProvider.GetConfiguration()
-	if config.Agent.License != "" {
+	agentKey := config.Agent.AuthenticationKey
+	if config.Agent.License != "" && licenseValidator != nil {
 		moduleLogger.Info().Msg("License token found in configuration, validating...")
 		lic, err := licenseValidator.ValidateLicense(config.Agent.License)
 		if err != nil {
 			moduleLogger.Warn().
 				Err(err).
 				Msg("⚠️ Invalid license token - only free tier probes will be available")
+		} else if agentKey != "" && !license.VerifyBinding(config.Agent.License, agentKey, lic) {
+			moduleLogger.Warn().
+				Msg("⚠️ License is not bound to this agent key - only free tier probes will be available")
 		} else {
 			validatedLicense = lic
 			tierName := string(lic.Tier)
