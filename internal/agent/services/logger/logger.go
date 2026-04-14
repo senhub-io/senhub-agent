@@ -455,45 +455,84 @@ func GetModuleLogLevels() map[string]zerolog.Level {
 	return result
 }
 
-// GetAvailableModules returns a list of all available debug modules
-func GetAvailableModules() []string {
-	return []string{
-		// Core services
-		"configuration",
-		"scheduler",
-		"cache",
-		"transformer",
-		"sensor",
-		"auto_update",
+// ModuleInfo describes a debug module with its category
+type ModuleInfo struct {
+	Name     string
+	Category string
+}
 
-		// Data storage strategies
-		"strategy.http",
-		"strategy.prtg",
-		"strategy.senhub",
-		"strategy.event",
+// GetAvailableModules returns all available debug modules with categories
+func GetAvailableModulesInfo() []ModuleInfo {
+	return []ModuleInfo{
+		// Agent core
+		{"sensor", "Agent Core"},
+		{"server", "Agent Core"},
+		{"data_store", "Agent Core"},
+		{"service.auto_update", "Agent Core"},
+
+		// Configuration
+		{"configuration.local", "Configuration"},
+		{"configuration.remote", "Configuration"},
+		{"configuration.agent", "Configuration"},
+		{"configuration.migrator", "Configuration"},
+
+		// Strategies
+		{"strategy.http", "Strategies"},
+		{"strategy.prtg", "Strategies"},
+		{"strategy.senhub", "Strategies"},
+		{"strategy.event", "Strategies"},
+
+		// Transformers & cache
+		{"transformer", "Data Processing"},
+		{"transformer.definition", "Data Processing"},
+		{"lookups", "Data Processing"},
+		{"status.service", "Data Processing"},
+		{"status.helper", "Data Processing"},
+		{"status.cache_adapter", "Data Processing"},
 
 		// System probes
-		"probe.cpu",
-		"probe.memory",
-		"probe.network",
-		"probe.logicaldisk",
-		"probe.host",
+		{"probe.cpu", "System Probes"},
+		{"probe.memory", "System Probes"},
+		{"probe.network", "System Probes"},
+		{"probe.logicaldisk", "System Probes"},
+		{"probe.wifi", "System Probes"},
+		{"probe.host", "System Probes (Windows)"},
+
+		// Infrastructure probes
+		{"probe.netscaler", "Infrastructure Probes"},
+		{"probe.redfish", "Infrastructure Probes"},
+		{"probe.redfish.client", "Infrastructure Probes"},
+		{"probe.veeam", "Infrastructure Probes"},
+		{"probe.veeam.client", "Infrastructure Probes"},
 
 		// Application probes
-		"probe.webapp",
-		"probe.gateway",
-		"probe.syslog",
-		"probe.event",
-		"probe.otel",
-		"probe.redfish",
-		"probe.veeam",
-		"probe.veeam.client",
+		{"probe.citrix", "Application Probes"},
+		{"probe.citrix.client", "Application Probes"},
+		{"probe.citrix.ddc", "Application Probes"},
+		{"probe.citrix.filters", "Application Probes"},
+		{"probe.citrix.inventory", "Application Probes"},
+		{"probe.citrix.metrics", "Application Probes"},
+		{"probe.citrix.common", "Application Probes"},
+		{"probe.webapp", "Application Probes"},
+		{"probe.loadwebapp", "Application Probes"},
+		{"probe.gateway", "Application Probes"},
 
-		// Platform-specific
-		"pdh.windows",
+		// Event probes
+		{"probe.syslog", "Event Probes"},
+		{"probe.event", "Event Probes"},
+		{"probe.otel", "Event Probes"},
 
-		// Sub-modules (examples)
-		"probe.redfish.client",
-		"data_store",
+		// Platform specific
+		{"pdh.windows", "Platform Specific"},
 	}
+}
+
+// GetAvailableModules returns a flat list of module names (backward compat)
+func GetAvailableModules() []string {
+	modules := GetAvailableModulesInfo()
+	names := make([]string, len(modules))
+	for i, m := range modules {
+		names[i] = m.Name
+	}
+	return names
 }
