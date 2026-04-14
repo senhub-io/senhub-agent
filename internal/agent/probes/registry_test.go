@@ -230,6 +230,7 @@ func TestProbeRegistry(t *testing.T) {
 		"redfish",
 		"citrix",
 		"netscaler",
+		"veeam",
 	}
 
 	for _, probeName := range expectedProbes {

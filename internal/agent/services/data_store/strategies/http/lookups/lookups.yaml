@@ -257,6 +257,118 @@ netscaler.ha.sync_status:
 # Source: TBD - Citrix Monitor Service API documentation
 
 # ==============================================================================
+# VEEAM LOOKUPS
+# ==============================================================================
+# Source: Veeam Backup & Replication REST API v1.3-rev1 (ESessionResult, EInstalledLicenseStatus)
+
+senhub.veeam.job_status:
+  description: "Veeam Job Status"
+  type: status
+  source: "Veeam REST API v1.3 - ESessionResult enum + Working state"
+  mappings:
+    0:
+      text: "NONE"
+      severity: "unknown"
+      description: "No session recorded"
+    1:
+      text: "SUCCESS"
+      severity: "ok"
+      description: "Job completed successfully"
+    2:
+      text: "WARNING"
+      severity: "warning"
+      description: "Job completed with warnings"
+    3:
+      text: "FAILED"
+      severity: "error"
+      description: "Job failed"
+    4:
+      text: "RUNNING"
+      severity: "warning"
+      description: "Job is currently running"
+  desired_value: 1
+
+senhub.veeam.license_status:
+  description: "Veeam License Status"
+  type: status
+  source: "Veeam REST API v1.3 - EInstalledLicenseStatus enum"
+  mappings:
+    0:
+      text: "VALID"
+      severity: "ok"
+      description: "License is valid"
+    1:
+      text: "EXPIRED"
+      severity: "error"
+      description: "License has expired"
+    2:
+      text: "INVALID"
+      severity: "error"
+      description: "License is invalid"
+  desired_value: 0
+
+senhub.veeam.proxy_status:
+  description: "Veeam Proxy Status"
+  type: status
+  source: "Veeam REST API v1.3 - ProxyStateModel isDisabled/isOnline"
+  mappings:
+    0:
+      text: "DISABLED"
+      severity: "warning"
+      description: "Proxy is disabled"
+    1:
+      text: "OFFLINE"
+      severity: "error"
+      description: "Proxy is enabled but offline"
+    2:
+      text: "ONLINE"
+      severity: "ok"
+      description: "Proxy is enabled and online"
+  desired_value: 2
+
+senhub.veeam.bottleneck:
+  description: "Veeam Session Bottleneck"
+  type: status
+  source: "Veeam REST API v1.3 - ESessionBottleneckType enum"
+  mappings:
+    0:
+      text: "NONE"
+      severity: "ok"
+      description: "No bottleneck detected"
+    1:
+      text: "SOURCE"
+      severity: "warning"
+      description: "Bottleneck at source (proxy, network, or WAN)"
+    2:
+      text: "PROXY"
+      severity: "warning"
+      description: "Bottleneck at backup proxy"
+    3:
+      text: "NETWORK"
+      severity: "warning"
+      description: "Bottleneck in network or throttling"
+    4:
+      text: "TARGET"
+      severity: "warning"
+      description: "Bottleneck at target (proxy, network, WAN, or disk)"
+  desired_value: 0
+
+senhub.veeam.server_status:
+  description: "Veeam Managed Server Status"
+  type: status
+  source: "Veeam REST API v1.3 - EManagedServersStatus enum"
+  mappings:
+    0:
+      text: "UNAVAILABLE"
+      severity: "error"
+      description: "Server is unavailable"
+    1:
+      text: "AVAILABLE"
+      severity: "ok"
+      description: "Server is available"
+  desired_value: 1
+
+# ==============================================================================
 # REDFISH LOOKUPS
 # ==============================================================================
 # TODO: Add Redfish health status lookups
