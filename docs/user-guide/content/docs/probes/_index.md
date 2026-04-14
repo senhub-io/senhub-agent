@@ -17,6 +17,7 @@ Detailed documentation for each monitoring probe type supported by SenHub Agent.
 
 ### Infrastructure (Pro)
 
+- **[Veeam]({{< relref "/docs/probes/veeam" >}})** - Veeam Backup & Replication v13 monitoring
 - **[Citrix]({{< relref "/docs/probes/citrix" >}})** - Citrix Virtual Apps and Desktops monitoring
 - **[NetScaler]({{< relref "/docs/probes/netscaler" >}})** - Citrix ADC / NetScaler monitoring
 - **[Redfish]({{< relref "/docs/probes/redfish" >}})** - Hardware monitoring via Redfish API (Dell iDRAC, HPE iLO)

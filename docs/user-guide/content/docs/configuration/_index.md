@@ -85,6 +85,7 @@ Each probe entry defines a monitoring target. The agent collects metrics at regu
 | `memory` | Free | Memory usage (physical and swap) |
 | `logicaldisk` | Free | Disk space and I/O metrics |
 | `network` | Free | Network interface metrics (bandwidth, errors, packets) |
+| `veeam` | Pro | Veeam Backup & Replication v13 monitoring (via REST API) |
 | `citrix` | Pro | Citrix Virtual Apps and Desktops monitoring (via Director API) |
 | `netscaler` | Pro | Citrix ADC / NetScaler monitoring (via NITRO API) |
 | `redfish` | Pro | Hardware monitoring via Redfish API (Dell iDRAC, HPE iLO, etc.) |
@@ -271,7 +272,7 @@ config_version: 2
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
   mode: offline
-  license: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+  license: "SH-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XX"
 
 storage:
   - name: http
@@ -352,7 +353,7 @@ config_version: 2
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
   mode: offline
-  license: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+  license: "SH-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XX"
 
 probes:
   - name: "Website Availability"
@@ -387,37 +388,6 @@ This applies to:
 - Modifying storage configuration (port, endpoints, TLS)
 - Adding or removing custom tags
 
-## Validating Configuration
-
-Before saving changes, you can validate the YAML syntax:
-
-```bash
-python3 -c "import yaml; yaml.safe_load(open('agent-config.yaml'))"
-```
-
-You can also use the configuration validation API to test a probe configuration before applying it:
-
-```bash
-curl -X POST http://localhost:8080/api/{key}/config/validate \
-  -H "Content-Type: application/json" \
-  -d '{"type": "citrix", "params": {"base_url": "https://director.company.com"}}'
-```
-
-Or test the connectivity to a target system:
-
-```bash
-curl -X POST http://localhost:8080/api/{key}/config/test \
-  -H "Content-Type: application/json" \
-  -d '{"type": "citrix", "params": {"base_url": "https://director.company.com", "auth": {"username": "user", "password": "pass"}}}'
-```
-
-### Common YAML Errors
-
-- Incorrect indentation: use spaces, not tabs
-- Missing quotes around special characters (`\` in domain names requires double backslash `\\`)
-- Duplicate probe names (each probe must have a unique `name`)
-- Incorrect config_version (must be `2`)
-
 ## License
 
 ### Free Tier
@@ -431,15 +401,28 @@ Contact SenHub support (support@senhub.io) to request a license token. Specify t
 - **Pro license**: adds Citrix, NetScaler, Redfish, Ping, SNMP, Syslog, Event
 - **Enterprise license**: all current and future probe types
 
-### Activating a License
+### License Formats
 
-Once you receive the license token from support, activate it with:
+SenHub supports two license formats:
 
-```bash
-senhub-agent license activate YOUR-LICENSE-TOKEN
+**Compact key** (recommended): a short 40-character key bound to your agent key.
+```yaml
+agent:
+  key: "17b3cf0a-91b1-486d-8209-90ffe00ece5e"
+  license: "SH-040GMS-000100-02S3S2-HC3HMV-7RBZ4Y-PY"
 ```
 
-This validates the token and saves it in the `agent.license` field of the configuration file. The license takes effect automatically.
+**JWT token** (legacy): a longer token (~700 characters) starting with `eyJ`. Both formats are auto-detected and fully supported.
+
+### Activating a License
+
+Once you receive the license from support, activate it with:
+
+```bash
+senhub-agent license activate SH-040GMS-000100-02S3S2-HC3HMV-7RBZ4Y-PY
+```
+
+This validates the license, verifies the agent key binding, and saves it in the configuration file. The license takes effect automatically.
 
 ### Verifying License Status
 
@@ -471,7 +454,7 @@ Example API response:
 | Tier | Available Probes |
 |------|-----------------|
 | **Free** | cpu, memory, logicaldisk, network |
-| **Pro** | All free + citrix, netscaler, redfish, ping_webapp, load_webapp, ping_gateway, syslog, event, wifi_signal_strength |
+| **Pro** | All free + veeam, citrix, netscaler, redfish, ping_webapp, load_webapp, ping_gateway, syslog, event, wifi_signal_strength |
 | **Enterprise** | All probes (including future additions) |
 
 ### Grace Period
@@ -484,6 +467,56 @@ When a license expires, there is a 7-day grace period during which premium probe
 senhub-agent license show                # Show current license details
 senhub-agent license remove              # Remove license (reverts to free tier)
 senhub-agent license remove --force      # Remove without confirmation prompt
+```
+
+## Auto-Update
+
+The agent can check for new versions and optionally install them automatically.
+
+```yaml
+auto_update:
+  enabled: false          # Automatic installation of new versions
+  include_beta: false     # Include beta versions in update checks
+  url: "https://eu-west-1.intake.senhub.io/releases"
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `enabled` | `false` | Automatically install new versions when available |
+| `include_beta` | `false` | Include beta versions in update checks |
+| `url` | SenHub releases | Update server URL |
+
+Even with `enabled: false`, the agent checks for new versions at startup and logs a message if an update is available. Use `senhub-agent update --list` to see available versions and `senhub-agent update <version>` to install manually.
+
+## Validating Configuration
+
+Use the built-in configuration checker before deploying changes:
+
+```bash
+senhub-agent config check agent-config.yaml
+```
+
+This validates:
+- YAML syntax (with line-level error context for syntax errors)
+- Required fields and values
+- License validity and agent key binding
+- Probe types and required parameters
+- Storage strategy names
+
+Example output:
+```
+Checking configuration: C:\SenHub\agent-config.yaml
+
+  [OK]   config_version: 2
+  [OK]   agent.key: 17b3cf0a-91b1-486d-8209-90ffe00ece5e
+  [OK]   agent.mode: offline
+  [OK]   agent.license: compact format, tier=pro, expires=2031-04-14
+  [OK]   License binding verified
+  [OK]   1 probe(s) configured
+  [OK]   Probe "veeam-prod" (type: veeam)
+  [OK]   Storage: http
+
+Configuration is valid.
 ```
 
 ## Security Recommendations
