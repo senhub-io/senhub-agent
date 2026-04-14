@@ -84,8 +84,22 @@ func NewJWTValidator(publicKeyPEM string, gracePeriodDays int) (*JWTValidator, e
 	}, nil
 }
 
-// ValidateLicense validates a JWT license token
+// ValidateLicense validates a license token (JWT or compact format)
 func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
+	// Auto-detect compact license format
+	if IsCompactLicense(tokenString) {
+		lic, err := ValidateCompactLicense(tokenString)
+		if err != nil {
+			return nil, fmt.Errorf("invalid compact license: %w", err)
+		}
+		lic.GracePeriodDays = v.gracePeriodDays
+		return lic, nil
+	}
+	return v.validateJWT(tokenString)
+}
+
+// validateJWT validates a JWT license token
+func (v *JWTValidator) validateJWT(tokenString string) (*License, error) {
 	// Parse and validate JWT token.
 	// WithoutClaimsValidation: expiry is managed manually to support grace periods.
 	token, err := jwt.ParseWithClaims(tokenString, &LicenseClaims{}, func(token *jwt.Token) (interface{}, error) {

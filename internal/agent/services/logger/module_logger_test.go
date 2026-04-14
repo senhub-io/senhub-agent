@@ -155,6 +155,72 @@ func TestGetModuleLogLevels(t *testing.T) {
 	}
 }
 
+func TestIsModuleEnabled_ExactMatch(t *testing.T) {
+	origModules := activeDebugModules
+	defer func() { activeDebugModules = origModules }()
+
+	activeDebugModules = map[string]bool{"probe.veeam": true}
+
+	if !isModuleEnabled("probe.veeam") {
+		t.Error("exact match should be enabled")
+	}
+	if isModuleEnabled("probe.citrix") {
+		t.Error("non-matching module should not be enabled")
+	}
+}
+
+func TestIsModuleEnabled_PrefixMatch(t *testing.T) {
+	origModules := activeDebugModules
+	defer func() { activeDebugModules = origModules }()
+
+	activeDebugModules = map[string]bool{"probe": true}
+
+	if !isModuleEnabled("probe.veeam") {
+		t.Error("prefix 'probe' should match 'probe.veeam'")
+	}
+	if !isModuleEnabled("probe.citrix.client") {
+		t.Error("prefix 'probe' should match 'probe.citrix.client'")
+	}
+	if isModuleEnabled("strategy.http") {
+		t.Error("prefix 'probe' should not match 'strategy.http'")
+	}
+	if isModuleEnabled("probeX") {
+		t.Error("prefix 'probe' should not match 'probeX' (no dot separator)")
+	}
+}
+
+func TestSelectiveDebugMode_ReadsGlobalState(t *testing.T) {
+	origMode := selectiveDebugMode
+	origModules := activeDebugModules
+	defer func() {
+		selectiveDebugMode = origMode
+		activeDebugModules = origModules
+	}()
+
+	var buf bytes.Buffer
+	baseLogger := zerolog.New(&buf).Level(zerolog.DebugLevel)
+
+	// Create logger BEFORE enabling selective mode
+	moduleLogger := NewModuleLogger(&baseLogger, "probe.veeam")
+
+	// Enable selective mode AFTER creation — should still take effect (no staling)
+	selectiveDebugMode = true
+	activeDebugModules = map[string]bool{"probe.citrix": true}
+
+	moduleLogger.Debug().Msg("should be filtered")
+	if buf.Len() > 0 {
+		t.Error("debug should be filtered: probe.veeam not in activeDebugModules")
+	}
+
+	// Now enable probe.veeam
+	activeDebugModules["probe.veeam"] = true
+	buf.Reset()
+	moduleLogger.Debug().Msg("should appear")
+	if buf.Len() == 0 {
+		t.Error("debug should appear after enabling probe.veeam in global state")
+	}
+}
+
 func TestModuleLoggerWithUnknownModule(t *testing.T) {
 	// Create a base logger
 	var buf bytes.Buffer

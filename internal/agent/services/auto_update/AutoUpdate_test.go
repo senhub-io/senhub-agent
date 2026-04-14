@@ -261,7 +261,7 @@ func TestIsBetaVersion(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := isBetaVersion(tc.version)
+			result := IsBetaVersion(tc.version)
 			if result != tc.expected {
 				t.Errorf("Expected %v, got %v", tc.expected, result)
 			}

@@ -16,60 +16,41 @@ import (
 )
 
 func showDebugModules() {
-	modules := agentLogger.GetAvailableModules()
+	exe := os.Args[0]
 
-	fmt.Printf("Available Debug Modules (%d modules):\n\n", len(modules))
-
-	// Group modules by category
-	categories := map[string][]string{
-		"Core Services":      {},
-		"Data Strategies":    {},
-		"System Probes":      {},
-		"Application Probes": {},
-		"Platform Specific":  {},
-		"Sub-modules":        {},
-	}
-
-	// Categorize modules
-	for _, module := range modules {
-		switch {
-		case strings.HasPrefix(module, "strategy."):
-			categories["Data Strategies"] = append(categories["Data Strategies"], module)
-		case module == "pdh.windows":
-			categories["Platform Specific"] = append(categories["Platform Specific"], module)
-		case module == "probe.redfish.client":
-			categories["Sub-modules"] = append(categories["Sub-modules"], module)
-		case module == "probe.webapp" || module == "probe.gateway" ||
-			module == "probe.syslog" || module == "probe.event" ||
-			module == "probe.otel" || module == "probe.redfish":
-			categories["Application Probes"] = append(categories["Application Probes"], module)
-		case strings.HasPrefix(module, "probe."):
-			categories["System Probes"] = append(categories["System Probes"], module)
-		default:
-			categories["Core Services"] = append(categories["Core Services"], module)
-		}
-	}
-
-	// Display categorized modules
-	categoryOrder := []string{"Core Services", "Data Strategies", "System Probes", "Application Probes", "Platform Specific", "Sub-modules"}
-
-	for _, category := range categoryOrder {
-		if len(categories[category]) > 0 {
-			fmt.Printf("📂 %s:\n", category)
-			for _, module := range categories[category] {
-				fmt.Printf("   • %s\n", module)
-			}
-			fmt.Println()
-		}
-	}
-
-	fmt.Println("Usage Examples:")
-	fmt.Printf("   # Debug specific module:\n")
-	fmt.Printf("   %s run --debug-modules strategy.http\n", os.Args[0])
-	fmt.Printf("\n   # Debug multiple modules:\n")
-	fmt.Printf("   %s run --debug-modules strategy.http,cache,probe.redfish\n", os.Args[0])
-	fmt.Printf("\n   # Debug with offline mode:\n")
-	fmt.Printf("   %s run --offline --debug-modules strategy.http,cache\n", os.Args[0])
+	fmt.Println("Available debug filters:")
+	fmt.Println()
+	fmt.Println("  Probes:")
+	fmt.Println("    probe                 All probes")
+	fmt.Println("    probe.veeam           Veeam Backup & Replication")
+	fmt.Println("    probe.citrix          Citrix Virtual Apps & Desktops")
+	fmt.Println("    probe.netscaler       Citrix NetScaler / ADC")
+	fmt.Println("    probe.redfish         Redfish hardware monitoring")
+	fmt.Println("    probe.cpu             CPU usage")
+	fmt.Println("    probe.memory          Memory usage")
+	fmt.Println("    probe.network         Network interfaces")
+	fmt.Println("    probe.logicaldisk     Disk usage")
+	fmt.Println("    probe.webapp          Web application monitoring")
+	fmt.Println("    probe.loadwebapp      Web application load testing")
+	fmt.Println("    probe.gateway         Gateway connectivity")
+	fmt.Println("    probe.wifi            WiFi signal strength")
+	fmt.Println("    probe.syslog          Syslog collector")
+	fmt.Println("    probe.event           Event collector")
+	fmt.Println("    probe.otel            OpenTelemetry collector")
+	fmt.Println()
+	fmt.Println("  Agent:")
+	fmt.Println("    sensor                Probe lifecycle management")
+	fmt.Println("    configuration         Configuration loading & watching")
+	fmt.Println("    strategy              All output strategies (http, prtg, senhub)")
+	fmt.Println("    strategy.http         HTTP API & web UI")
+	fmt.Println("    transformer           Metric transformation & lookups")
+	fmt.Println("    data_store            Data routing")
+	fmt.Println("    service.auto_update   Auto-update system")
+	fmt.Println()
+	fmt.Println("Usage:")
+	fmt.Printf("  %s run --filter probe.veeam              # one probe\n", exe)
+	fmt.Printf("  %s run --filter probe                    # all probes\n", exe)
+	fmt.Printf("  %s run --filter probe.veeam,strategy.http # combine filters\n", exe)
 	fmt.Println()
 }
 
