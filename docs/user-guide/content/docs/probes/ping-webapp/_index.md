@@ -130,7 +130,7 @@ curl -X POST http://localhost:8080/api/{agentkey}/prtg/metrics \
 - Average Latency (ms) - Tagged with URL
 - Packet Loss (%) - Tagged with URL
 
-### Nagios/Icinga
+### Nagios
 
 Access WebApp Ping metrics in Nagios format:
 
@@ -146,18 +146,6 @@ curl http://localhost:8080/api/{agentkey}/nagios/metrics?probe=ping_webapp
 - `averageLatency` - Average latency with 100ms warning, 200ms critical
 - `packetLoss` - Packet loss with 5% warning, 10% critical
 
-### Grafana/Prometheus
-
-Access metrics in Prometheus-compatible format:
-
-```bash
-# Prometheus format
-curl http://localhost:8080/api/{agentkey}/prometheus/metrics
-
-# Example output:
-# ping_webapp_average_latency{url="https://example.com"} 45.2
-# ping_webapp_packet_loss{url="https://example.com"} 0.0
-```
 
 ### Web Interface
 

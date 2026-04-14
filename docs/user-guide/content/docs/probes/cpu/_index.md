@@ -133,7 +133,7 @@ curl http://localhost:8080/api/{agentkey}/prtg/metrics
 - CPU Load Average (Linux/Unix)
 - DPC Rate & Interrupts (Windows)
 
-### Nagios/Icinga
+### Nagios
 
 Access CPU metrics in Nagios format:
 
@@ -150,19 +150,6 @@ curl http://localhost:8080/api/{agentkey}/nagios/metrics?probe=cpu
 - `cpu_load1`, `cpu_load5`, `cpu_load15` - Load averages (Unix)
 - `cpu_queue_length` - Processor queue (Windows)
 
-### Grafana/Prometheus
-
-Access metrics in Prometheus-compatible format:
-
-```bash
-# Prometheus format
-curl http://localhost:8080/api/{agentkey}/prometheus/metrics
-
-# Example output:
-# cpu_usage_total{hostname="server01"} 42.5
-# cpu_core_usage{hostname="server01",core="0"} 38.2
-# cpu_load1{hostname="server01"} 1.23
-```
 
 ### Web Interface
 
