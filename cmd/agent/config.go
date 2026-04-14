@@ -7,8 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gopkg.in/yaml.v2"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/license"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -163,4 +166,146 @@ func extractAgentKeyFromConfig(configPath string) (string, error) {
 	}
 
 	return "", fmt.Errorf("agent key not found in config file")
+}
+
+// checkConfig validates a configuration file and reports issues
+func checkConfig(configPath string) {
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		absPath = configPath
+	}
+
+	fmt.Printf("Checking configuration: %s\n\n", absPath)
+
+	// Read and parse YAML
+	content, err := os.ReadFile(configPath) // #nosec G304 - user-provided path for CLI tool
+	if err != nil {
+		fmt.Printf("  [ERROR] Cannot read file: %v\n", err)
+		os.Exit(1)
+	}
+
+	var config configuration.LocalConfigurationData
+	if err := yaml.Unmarshal(content, &config); err != nil {
+		fmt.Printf("  [ERROR] Invalid YAML: %v\n", err)
+		os.Exit(1)
+	}
+
+	errors := 0
+	warnings := 0
+
+	// Config version
+	if config.ConfigVersion == 2 {
+		fmt.Println("  [OK]   config_version: 2")
+	} else if config.ConfigVersion == 0 {
+		fmt.Println("  [ERROR] config_version missing (should be 2)")
+		errors++
+	} else {
+		fmt.Printf("  [WARN] config_version: %d (expected 2)\n", config.ConfigVersion)
+		warnings++
+	}
+
+	// Agent key
+	if config.Agent.Key != "" {
+		fmt.Printf("  [OK]   agent.key: %s\n", config.Agent.Key)
+	} else {
+		fmt.Println("  [ERROR] agent.key is missing")
+		errors++
+	}
+
+	// Agent mode
+	if config.Agent.Mode == "offline" || config.Agent.Mode == "online" {
+		fmt.Printf("  [OK]   agent.mode: %s\n", config.Agent.Mode)
+	} else if config.Agent.Mode == "" {
+		fmt.Println("  [WARN] agent.mode not set (defaults to online)")
+		warnings++
+	} else {
+		fmt.Printf("  [ERROR] agent.mode: invalid value %q (must be online or offline)\n", config.Agent.Mode)
+		errors++
+	}
+
+	// License
+	if config.Agent.License != "" {
+		validator, validatorErr := license.GetDefaultValidator(7)
+		if validatorErr != nil {
+			fmt.Printf("  [WARN] Cannot initialize license validator: %v\n", validatorErr)
+			warnings++
+		} else {
+			lic, licErr := validator.ValidateLicense(config.Agent.License)
+			if licErr != nil {
+				fmt.Printf("  [ERROR] agent.license: invalid (%v)\n", licErr)
+				errors++
+			} else {
+				format := "JWT"
+				if license.IsCompactLicense(config.Agent.License) {
+					format = "compact"
+				}
+				fmt.Printf("  [OK]   agent.license: %s format, tier=%s, expires=%s\n",
+					format, lic.Tier, lic.ExpiresAt.Format("2006-01-02"))
+
+				if lic.IsExpired {
+					fmt.Println("  [WARN] License is EXPIRED")
+					warnings++
+				}
+
+				// Verify binding
+				if config.Agent.Key != "" && !license.VerifyBinding(config.Agent.License, config.Agent.Key, lic) {
+					fmt.Println("  [ERROR] License is not bound to this agent key")
+					errors++
+				} else if config.Agent.Key != "" {
+					fmt.Println("  [OK]   License binding verified")
+				}
+			}
+		}
+	} else {
+		fmt.Println("  [WARN] agent.license not set (free tier only)")
+		warnings++
+	}
+
+	// Probes
+	if len(config.Probes) == 0 {
+		fmt.Println("  [WARN] No probes configured")
+		warnings++
+	} else {
+		fmt.Printf("  [OK]   %d probe(s) configured\n", len(config.Probes))
+		registeredProbes := probes.GetRegisteredProbeTypes()
+		for _, p := range config.Probes {
+			if p.Name == "" {
+				fmt.Println("  [ERROR] Probe with empty name")
+				errors++
+				continue
+			}
+			if p.Type == "" {
+				fmt.Printf("  [ERROR] Probe %q: type is missing\n", p.Name)
+				errors++
+				continue
+			}
+			if !registeredProbes[p.Type] {
+				fmt.Printf("  [ERROR] Probe %q: unknown type %q\n", p.Name, p.Type)
+				errors++
+			} else {
+				fmt.Printf("  [OK]   Probe %q (type: %s)\n", p.Name, p.Type)
+			}
+		}
+	}
+
+	// Storage
+	if len(config.Storage) == 0 {
+		fmt.Println("  [WARN] No storage strategies configured")
+		warnings++
+	} else {
+		for _, s := range config.Storage {
+			fmt.Printf("  [OK]   Storage: %s\n", s.Name)
+		}
+	}
+
+	// Summary
+	fmt.Println()
+	if errors == 0 && warnings == 0 {
+		fmt.Println("Configuration is valid.")
+	} else if errors == 0 {
+		fmt.Printf("Configuration is valid with %d warning(s).\n", warnings)
+	} else {
+		fmt.Printf("Configuration has %d error(s) and %d warning(s).\n", errors, warnings)
+		os.Exit(1)
+	}
 }
