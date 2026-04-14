@@ -224,9 +224,15 @@ func MustParse() *ParsedArgs {
 			os.Exit(0)
 		case p.Subcommand() == nil:
 			// No subcommand was provided.
-			// Attempt to parse arguments as start command.
+			// Attempt to parse arguments as start command (all fields optional).
 			var startArgs StartSubcommandArgs
-			arg.MustParse(&startArgs)
+			sp, spErr := arg.NewParser(arg.Config{}, &startArgs)
+			if spErr != nil {
+				log.Fatalf("failed to create start args parser: %v", spErr)
+			}
+			if parseErr := sp.Parse(os.Args[1:]); parseErr != nil && parseErr != arg.ErrHelp {
+				// Ignore parse errors — all start args are optional
+			}
 			return parsedArgsFromStartArgs(&startArgs, parsedEnv)
 		default:
 			p.WriteUsage(os.Stdout)
