@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	goversion "github.com/hashicorp/go-version"
+	"gopkg.in/yaml.v2"
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/auto_update"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -23,15 +24,17 @@ func UpdateAgent(args *cliArgs.ParsedArgs) {
 		DryRun: args.DryRun,
 	})
 
-	// Determine if beta should be included
-	includeBeta := false
+	// Read include_beta from config file
+	includeBeta := readIncludeBetaFromConfig(args.ConfigPath)
+
+	// Also include beta if explicitly requesting a beta version
 	if args.WantedVersion != "" && auto_update.IsBetaVersion(args.WantedVersion) {
 		includeBeta = true
 	}
 
 	// --list: show available versions
 	if args.WantedVersion == "list" {
-		listVersions(updater, log)
+		listVersions(updater, includeBeta, log)
 		return
 	}
 
@@ -45,7 +48,7 @@ func UpdateAgent(args *cliArgs.ParsedArgs) {
 	checkAndPrompt(updater, includeBeta, log)
 }
 
-func listVersions(updater auto_update.AutoUpdate, log *logger.Logger) {
+func listVersions(updater auto_update.AutoUpdate, includeBeta bool, log *logger.Logger) {
 	fmt.Println()
 	fmt.Println("Fetching available versions...")
 	fmt.Println()
@@ -57,10 +60,13 @@ func listVersions(updater auto_update.AutoUpdate, log *logger.Logger) {
 		os.Exit(1)
 	}
 
-	// Fetch beta
-	beta, err := updater.ListAvailableVersions(true)
-	if err != nil {
-		log.Debug().Err(err).Msg("Failed to fetch beta versions")
+	// Fetch beta only if enabled
+	var beta []auto_update.VersionMetadata
+	if includeBeta {
+		beta, err = updater.ListAvailableVersions(true)
+		if err != nil {
+			log.Debug().Err(err).Msg("Failed to fetch beta versions")
+		}
 	}
 
 	// Sort stable versions
@@ -142,6 +148,26 @@ func checkAndPrompt(updater auto_update.AutoUpdate, includeBeta bool, log *logge
 	fmt.Printf("Available version: %s\n", newer.Version)
 	fmt.Println()
 	fmt.Printf("Run 'senhub-agent update %s' to install.\n", newer.Version)
+}
+
+// readIncludeBetaFromConfig reads include_beta from the YAML config file
+func readIncludeBetaFromConfig(configPath string) bool {
+	if configPath == "" {
+		configPath = "./agent-config.yaml"
+	}
+	data, err := os.ReadFile(configPath) // #nosec G304 - CLI tool reads user config
+	if err != nil {
+		return false
+	}
+	var raw struct {
+		AutoUpdate struct {
+			IncludeBeta bool `yaml:"include_beta"`
+		} `yaml:"auto_update"`
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return false
+	}
+	return raw.AutoUpdate.IncludeBeta
 }
 
 func sortVersions(versions []auto_update.VersionMetadata) {
