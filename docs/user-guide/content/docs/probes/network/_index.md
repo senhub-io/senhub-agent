@@ -126,7 +126,7 @@ curl http://localhost:8080/api/{agentkey}/prtg/metrics
 
 Each interface creates a separate set of channels with the interface name embedded (e.g., "Network eth0 Bytes Sent").
 
-### Nagios/Icinga
+### Nagios
 
 Access Network metrics in Nagios format:
 
@@ -146,19 +146,6 @@ curl http://localhost:8080/api/{agentkey}/nagios/metrics?probe=network
 - `errors_sent` - Transmission errors (alert on non-zero)
 - `errors_received` - Reception errors (alert on non-zero)
 
-### Grafana/Prometheus
-
-Access metrics in Prometheus-compatible format:
-
-```bash
-# Prometheus format
-curl http://localhost:8080/api/{agentkey}/prometheus/metrics
-
-# Example output:
-# bytes_sent{hostname="server01",interface="eth0",ip="192.168.1.10"} 1234567
-# bytes_received{hostname="server01",interface="eth0",ip="192.168.1.10"} 9876543
-# packets_sent{hostname="server01",interface="eth0",ip="192.168.1.10"} 8765
-```
 
 ### Web Interface
 

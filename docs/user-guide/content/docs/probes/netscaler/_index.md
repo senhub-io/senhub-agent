@@ -358,7 +358,7 @@ Key Channels: CPU Usage (%), Memory Usage (%), Network Throughput (Mbps), Disk U
 
 Key Channels: HA State (with lookup), HA Node State (with lookup), HA Sync Status (with lookup), HA Sync Failures (counter)
 
-# Nagios/Icinga Integration
+# Nagios Integration
 
 ## Check Command Configuration
 
@@ -404,22 +404,6 @@ define service {
 }
 ```
 
-## Grafana Integration
-
-### JSON Data Source Configuration
-
-1. **Add Data Source:**
-   - Type: **JSON API**
-   - URL: `https://agent:8443/api/{key}/metrics?probe=netscaler`
-   - Method: **GET**
-   - Skip TLS Verify: Enable (if using self-signed cert)
-
-2. **Example Panels:**
-   - Virtual Server Health (Stat): `netscaler.lbvserver.state`
-   - SSL Certificate Expiration (Table): `netscaler.ssl.certificate.days_to_expiration`
-   - System Utilization (Gauge): `netscaler.system.cpu.usage`, `netscaler.system.memory.usage`
-
-# Troubleshooting
 
 ## Common Issues
 
