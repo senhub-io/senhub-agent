@@ -31,30 +31,6 @@ type serverInfo struct {
 	Platform     string `json:"platform"`
 }
 
-// job represents a Veeam backup job from /api/v1/jobs
-type job struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Type       string `json:"type"`
-	IsDisabled bool   `json:"isDisabled"`
-}
-
-// sessionResult represents the result object in API v1.3+
-type sessionResult struct {
-	Result    string `json:"result"`
-	Message   string `json:"message"`
-}
-
-// session represents a Veeam job session from /api/v1/sessions
-type session struct {
-	ID           string        `json:"id"`
-	Name         string        `json:"name"`
-	Result       sessionResult `json:"result"`
-	State        string        `json:"state"`
-	CreationTime time.Time     `json:"creationTime"`
-	EndTime      time.Time     `json:"endTime"`
-}
-
 // repository represents a Veeam backup repository state from /api/v1/backupInfrastructure/repositories/states
 type repository struct {
 	ID          string  `json:"id"`
@@ -95,6 +71,50 @@ type proxy struct {
 	HostName   string `json:"hostName"`
 	IsDisabled bool   `json:"isDisabled"`
 	IsOnline   bool   `json:"isOnline"`
+}
+
+// jobState represents a consolidated job state from /api/v1/jobs/states
+type jobState struct {
+	ID              string          `json:"id"`
+	Name            string          `json:"name"`
+	Type            string          `json:"type"`
+	Status          string          `json:"status"`          // EJobStatus: Running, Inactive, Disabled, etc.
+	LastResult      string          `json:"lastResult"`      // ESessionResult: None, Success, Warning, Failed
+	LastRun         *time.Time      `json:"lastRun"`
+	NextRun         *time.Time      `json:"nextRun"`
+	ObjectsCount    int             `json:"objectsCount"`
+	ProgressPercent int             `json:"progressPercent"`
+	RepositoryName  string          `json:"repositoryName"`
+	SessionProgress *sessionProgress `json:"sessionProgress"`
+}
+
+// sessionProgress holds progress details for a running or completed session
+type sessionProgress struct {
+	Duration        string  `json:"duration"`
+	ProcessingRate  *string `json:"processingRate"`
+	Bottleneck      string  `json:"bottleneck"`       // ESessionBottleneckType
+	ProcessedSize   *int64  `json:"processedSize"`    // bytes
+	ReadSize        *int64  `json:"readSize"`          // bytes
+	TransferredSize *int64  `json:"transferredSize"`   // bytes
+	ProgressPercent *int    `json:"progressPercent"`
+}
+
+// backupObject represents a protected backup object from /api/v1/backupObjects
+type backupObject struct {
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	Type               string `json:"type"`
+	PlatformName       string `json:"platformName"`
+	RestorePointsCount int    `json:"restorePointsCount"`
+	LastRunFailed      bool   `json:"lastRunFailed"`
+}
+
+// managedServer represents a managed server from /api/v1/backupInfrastructure/managedServers
+type managedServer struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	Status string `json:"status"` // EManagedServersStatus: Available, Unavailable
 }
 
 // probeConfig holds parsed configuration for the Veeam probe

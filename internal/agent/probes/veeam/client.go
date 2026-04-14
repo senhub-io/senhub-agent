@@ -166,74 +166,6 @@ func (c *veeamClient) GetServerInfo() (*serverInfo, error) {
 	return &info, nil
 }
 
-// fallbackJobTypes lists EJobType values to query individually when the unfiltered
-// /api/v1/jobs endpoint fails (e.g. HTTP 500 caused by HyperVBackup bug).
-// Source: Veeam REST API v1.3-rev1 swagger.json EJobType enum.
-// HyperVBackup is intentionally excluded — it causes a server-side HTTP 500.
-var fallbackJobTypes = []string{
-	"VSphereBackup",
-	"VSphereReplica",
-	"BackupCopy",
-	"FileBackupCopy",
-	"LegacyBackupCopy",
-	"WindowsAgentBackup",
-	"LinuxAgentBackup",
-	"WindowsAgentBackupWorkstationPolicy",
-	"LinuxAgentBackupWorkstationPolicy",
-	"WindowsAgentBackupServerPolicy",
-	"LinuxAgentBackupServerPolicy",
-	"FileBackup",
-	"ObjectStorageBackup",
-	"CloudDirectorBackup",
-	"CloudBackupAzure",
-	"CloudBackupAWS",
-	"CloudBackupGoogle",
-	"EntraIDTenantBackup",
-	"EntraIDTenantBackupCopy",
-	"EntraIDAuditLogBackup",
-	"SureBackupContentScan",
-}
-
-// GetJobs retrieves all backup jobs by querying each supported type individually.
-// The unfiltered /api/v1/jobs endpoint returns HTTP 500 when the server contains
-// HyperVBackup jobs (Veeam REST API bug), so we always query per type.
-func (c *veeamClient) GetJobs() ([]job, error) {
-	var allJobs []job
-	var lastErr error
-
-	for _, jt := range fallbackJobTypes {
-		jobs, err := fetchAllPaginated[job](c, fmt.Sprintf("/api/v1/jobs?typeFilter=%s", jt))
-		if err != nil {
-			c.logger.Debug().Err(err).Str("job_type", jt).Msg("Job type query failed, skipping")
-			lastErr = err
-			continue
-		}
-		allJobs = append(allJobs, jobs...)
-	}
-
-	if len(allJobs) == 0 && lastErr != nil {
-		return nil, fmt.Errorf("failed to get jobs (all type queries failed): %w", lastErr)
-	}
-
-	return allJobs, nil
-}
-
-// GetSessions retrieves recent sessions for a specific job
-func (c *veeamClient) GetSessions(jobID string, limit int) ([]session, error) {
-	path := fmt.Sprintf("/api/v1/sessions?jobId=%s&limit=%d", jobID, limit)
-	body, err := c.doRequest(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get sessions for job %s: %w", jobID, err)
-	}
-
-	var resp paginatedResponse[session]
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("failed to decode sessions: %w", err)
-	}
-
-	return resp.Data, nil
-}
-
 // GetRepositories retrieves all backup repository states (includes capacity metrics)
 func (c *veeamClient) GetRepositories() ([]repository, error) {
 	return fetchAllPaginated[repository](c, "/api/v1/backupInfrastructure/repositories/states")
@@ -257,6 +189,22 @@ func (c *veeamClient) GetLicense() (*licenseInfo, error) {
 // GetProxies retrieves all backup proxy states (includes isDisabled, isOnline)
 func (c *veeamClient) GetProxies() ([]proxy, error) {
 	return fetchAllPaginated[proxy](c, "/api/v1/backupInfrastructure/proxies/states")
+}
+
+// GetJobStates retrieves consolidated job states in a single call.
+// This replaces the N+1 pattern of GetJobs + GetSessions per job.
+func (c *veeamClient) GetJobStates() ([]jobState, error) {
+	return fetchAllPaginated[jobState](c, "/api/v1/jobs/states")
+}
+
+// GetBackupObjects retrieves all protected backup objects
+func (c *veeamClient) GetBackupObjects() ([]backupObject, error) {
+	return fetchAllPaginated[backupObject](c, "/api/v1/backupObjects")
+}
+
+// GetManagedServers retrieves all managed servers in the backup infrastructure
+func (c *veeamClient) GetManagedServers() ([]managedServer, error) {
+	return fetchAllPaginated[managedServer](c, "/api/v1/backupInfrastructure/managedServers")
 }
 
 // fetchAllPaginated retrieves all items from a paginated endpoint

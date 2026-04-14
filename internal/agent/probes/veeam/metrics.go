@@ -8,9 +8,8 @@ import (
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
-// jobStatusValue maps a Veeam session result string to a numeric value
-// for the veeam_job_status metric
-func jobStatusValue(result string) float32 {
+// jobResultValue maps a Veeam ESessionResult string to a numeric value
+func jobResultValue(result string) float32 {
 	switch result {
 	case "None":
 		return 0
@@ -25,17 +24,8 @@ func jobStatusValue(result string) float32 {
 	}
 }
 
-// jobStateValue returns a numeric value for a session state
-func jobStateValue(state string) float32 {
-	if state == "Working" {
-		return 4 // Running
-	}
-	return jobStatusValue("")
-}
-
-// buildJobOverviewMetrics aggregates jobs by type and produces summary metrics
-// based on latest session results within the configured time window
-func buildJobOverviewMetrics(jobs []job, sessionsByJob map[string][]session, hoursToCheck int, now time.Time) []datapoint.DataPoint {
+// buildJobStateOverviewMetrics aggregates job states by type and produces summary metrics
+func buildJobStateOverviewMetrics(states []jobState, hoursToCheck int, now time.Time) []datapoint.DataPoint {
 	cutoff := now.Add(-time.Duration(hoursToCheck) * time.Hour)
 	type jobTypeStats struct {
 		total   int
@@ -47,34 +37,27 @@ func buildJobOverviewMetrics(jobs []job, sessionsByJob map[string][]session, hou
 
 	statsByType := make(map[string]*jobTypeStats)
 
-	for _, j := range jobs {
-		if j.IsDisabled {
+	for _, js := range states {
+		if js.Status == "Disabled" {
 			continue
 		}
-		jt := j.Type
+		jt := js.Type
 		if _, ok := statsByType[jt]; !ok {
 			statsByType[jt] = &jobTypeStats{}
 		}
 
-		sessions := sessionsByJob[j.ID]
-		if len(sessions) == 0 {
-			continue
-		}
-
-		latest := sessions[0]
-		refTime := latest.EndTime
-		if refTime.IsZero() {
-			refTime = latest.CreationTime
-		}
-		if !refTime.IsZero() && refTime.Before(cutoff) {
-			continue
+		// Skip jobs with no run or last run outside window
+		if js.LastRun == nil || js.LastRun.Before(cutoff) {
+			if js.Status != "Running" {
+				continue
+			}
 		}
 
 		statsByType[jt].total++
-		if latest.State == "Working" {
+		if js.Status == "Running" {
 			statsByType[jt].running++
 		} else {
-			switch latest.Result.Result {
+			switch js.LastResult {
 			case "Success":
 				statsByType[jt].success++
 			case "Warning":
@@ -103,66 +86,97 @@ func buildJobOverviewMetrics(jobs []job, sessionsByJob map[string][]session, hou
 	return points
 }
 
-// buildJobDetailMetrics produces per-job metrics from the latest session
-func buildJobDetailMetrics(jobs []job, sessionsByJob map[string][]session, hoursToCheck int, now time.Time) []datapoint.DataPoint {
+// buildJobStateDetailMetrics produces per-job metrics from consolidated job states
+func buildJobStateDetailMetrics(states []jobState, hoursToCheck int, now time.Time) []datapoint.DataPoint {
 	cutoff := now.Add(-time.Duration(hoursToCheck) * time.Hour)
 	var points []datapoint.DataPoint
 
-	for _, j := range jobs {
-		if j.IsDisabled {
+	for _, js := range states {
+		if js.Status == "Disabled" {
 			continue
 		}
 		jobTags := []tags.Tag{
 			{Key: "metric_type", Value: "jobs"},
-			{Key: "job_name", Value: j.Name},
-			{Key: "job_type", Value: j.Type},
+			{Key: "job_name", Value: js.Name},
+			{Key: "job_type", Value: js.Type},
 		}
 
-		sessions := sessionsByJob[j.ID]
-		if len(sessions) == 0 {
-			continue
+		// Skip jobs with no run or last run outside window (unless running)
+		if js.LastRun == nil || js.LastRun.Before(cutoff) {
+			if js.Status != "Running" {
+				continue
+			}
 		}
 
-		latest := sessions[0]
-
-		// Skip sessions older than the configured time window
-		sessionRef := latest.EndTime
-		if sessionRef.IsZero() {
-			sessionRef = latest.CreationTime
-		}
-		if !sessionRef.IsZero() && sessionRef.Before(cutoff) {
-			continue
-		}
-
-		// Status
-		status := jobStatusValue(latest.Result.Result)
-		if latest.State == "Working" {
-			status = 4 // Running
+		// Status: use Running (4) if actively running, otherwise map LastResult
+		status := jobResultValue(js.LastResult)
+		if js.Status == "Running" {
+			status = 4
 		}
 		points = append(points, datapoint.DataPoint{
 			Name: "veeam_job_status", Timestamp: now, Value: status, Tags: jobTags,
 		})
 
-		// Duration in seconds (only if session has ended)
-		if !latest.EndTime.IsZero() && latest.EndTime.After(latest.CreationTime) {
-			durationSec := latest.EndTime.Sub(latest.CreationTime).Seconds()
+		// Time since last run in seconds
+		if js.LastRun != nil {
+			secondsSince := now.Sub(*js.LastRun).Seconds()
 			points = append(points, datapoint.DataPoint{
-				Name: "veeam_job_duration_s", Timestamp: now, Value: float32(durationSec), Tags: jobTags,
+				Name: "veeam_job_seconds_since", Timestamp: now, Value: float32(secondsSince), Tags: jobTags,
 			})
 		}
 
-		// Time since last session in seconds
-		refTime := latest.EndTime
-		if refTime.IsZero() {
-			refTime = latest.CreationTime
-		}
-		secondsSince := now.Sub(refTime).Seconds()
+		// Objects count
 		points = append(points, datapoint.DataPoint{
-			Name: "veeam_job_seconds_since", Timestamp: now, Value: float32(secondsSince), Tags: jobTags,
+			Name: "veeam_job_objects_count", Timestamp: now, Value: float32(js.ObjectsCount), Tags: jobTags,
 		})
+
+		// Session progress metrics (available for running or recently completed jobs)
+		if js.SessionProgress != nil {
+			sp := js.SessionProgress
+
+			// Bottleneck (as numeric: 0=None, 1=Source, 2=Proxy, 3=Network, 4=Target)
+			points = append(points, datapoint.DataPoint{
+				Name: "veeam_job_bottleneck", Timestamp: now, Value: bottleneckValue(sp.Bottleneck), Tags: jobTags,
+			})
+
+			// Data sizes in bytes
+			if sp.ProcessedSize != nil {
+				points = append(points, datapoint.DataPoint{
+					Name: "veeam_job_processed_bytes", Timestamp: now, Value: float32(*sp.ProcessedSize), Tags: jobTags,
+				})
+			}
+			if sp.ReadSize != nil {
+				points = append(points, datapoint.DataPoint{
+					Name: "veeam_job_read_bytes", Timestamp: now, Value: float32(*sp.ReadSize), Tags: jobTags,
+				})
+			}
+			if sp.TransferredSize != nil {
+				points = append(points, datapoint.DataPoint{
+					Name: "veeam_job_transferred_bytes", Timestamp: now, Value: float32(*sp.TransferredSize), Tags: jobTags,
+				})
+			}
+		}
 	}
 
 	return points
+}
+
+// bottleneckValue maps ESessionBottleneckType to a numeric value
+func bottleneckValue(bottleneck string) float32 {
+	switch bottleneck {
+	case "None", "NotDefined":
+		return 0
+	case "Source", "SourceProxy", "SourceNetwork", "SourceWan":
+		return 1
+	case "Proxy":
+		return 2
+	case "Network", "Throttling":
+		return 3
+	case "Target", "TargetProxy", "TargetNetwork", "TargetWan", "TargetDisk":
+		return 4
+	default:
+		return 0
+	}
 }
 
 // buildRepositoryMetrics produces capacity metrics for each repository
@@ -175,10 +189,12 @@ func buildRepositoryMetrics(repos []repository, now time.Time) []datapoint.DataP
 			{Key: "repo_name", Value: r.Name},
 		}
 
+		// Convert GB to bytes for PRTG native BytesMemory auto-scaling
+		const gbToBytes = 1024 * 1024 * 1024
 		points = append(points,
-			datapoint.DataPoint{Name: "veeam_repo_total_gb", Timestamp: now, Value: float32(r.CapacityGB), Tags: repoTags},
-			datapoint.DataPoint{Name: "veeam_repo_used_gb", Timestamp: now, Value: float32(r.UsedSpaceGB), Tags: repoTags},
-			datapoint.DataPoint{Name: "veeam_repo_free_gb", Timestamp: now, Value: float32(r.FreeGB), Tags: repoTags},
+			datapoint.DataPoint{Name: "veeam_repo_capacity", Timestamp: now, Value: float32(r.CapacityGB * gbToBytes), Tags: repoTags},
+			datapoint.DataPoint{Name: "veeam_repo_used", Timestamp: now, Value: float32(r.UsedSpaceGB * gbToBytes), Tags: repoTags},
+			datapoint.DataPoint{Name: "veeam_repo_free", Timestamp: now, Value: float32(r.FreeGB * gbToBytes), Tags: repoTags},
 		)
 
 		// Free percentage
@@ -281,6 +297,85 @@ func buildProxyMetrics(proxies []proxy, now time.Time) []datapoint.DataPoint {
 		datapoint.DataPoint{Name: "veeam_proxies_total", Timestamp: now, Value: float32(totalProxies), Tags: proxyAggTags},
 		datapoint.DataPoint{Name: "veeam_proxies_enabled", Timestamp: now, Value: float32(enabledCount), Tags: proxyAggTags},
 		datapoint.DataPoint{Name: "veeam_proxies_disabled", Timestamp: now, Value: float32(disabledCount), Tags: proxyAggTags},
+	)
+
+	return points
+}
+
+// buildBackupObjectMetrics produces metrics for protected backup objects
+func buildBackupObjectMetrics(objects []backupObject, now time.Time) []datapoint.DataPoint {
+	var points []datapoint.DataPoint
+	totalObjects := 0
+	failedObjects := 0
+
+	for _, obj := range objects {
+		totalObjects++
+		objTags := []tags.Tag{
+			{Key: "metric_type", Value: "protected_objects"},
+			{Key: "object_name", Value: obj.Name},
+			{Key: "object_type", Value: obj.Type},
+			{Key: "platform", Value: obj.PlatformName},
+		}
+
+		points = append(points, datapoint.DataPoint{
+			Name: "veeam_object_restore_points", Timestamp: now, Value: float32(obj.RestorePointsCount), Tags: objTags,
+		})
+
+		var failedVal float32
+		if obj.LastRunFailed {
+			failedVal = 1
+			failedObjects++
+		}
+		points = append(points, datapoint.DataPoint{
+			Name: "veeam_object_last_run_failed", Timestamp: now, Value: failedVal, Tags: objTags,
+		})
+	}
+
+	// Aggregates
+	aggTags := []tags.Tag{{Key: "metric_type", Value: "protected_objects"}}
+	points = append(points,
+		datapoint.DataPoint{Name: "veeam_objects_total", Timestamp: now, Value: float32(totalObjects), Tags: aggTags},
+		datapoint.DataPoint{Name: "veeam_objects_failed", Timestamp: now, Value: float32(failedObjects), Tags: aggTags},
+	)
+
+	return points
+}
+
+// buildManagedServerMetrics produces infrastructure server status metrics
+func buildManagedServerMetrics(servers []managedServer, now time.Time) []datapoint.DataPoint {
+	var points []datapoint.DataPoint
+	totalServers := 0
+	availableCount := 0
+	unavailableCount := 0
+
+	for _, srv := range servers {
+		totalServers++
+		srvTags := []tags.Tag{
+			{Key: "metric_type", Value: "infrastructure"},
+			{Key: "server_name", Value: srv.Name},
+			{Key: "server_type", Value: srv.Type},
+		}
+
+		var statusVal float32
+		if srv.Status == "Available" {
+			statusVal = 1
+			availableCount++
+		} else {
+			statusVal = 0
+			unavailableCount++
+		}
+
+		points = append(points, datapoint.DataPoint{
+			Name: "veeam_server_status", Timestamp: now, Value: statusVal, Tags: srvTags,
+		})
+	}
+
+	// Aggregates
+	aggTags := []tags.Tag{{Key: "metric_type", Value: "infrastructure"}}
+	points = append(points,
+		datapoint.DataPoint{Name: "veeam_servers_total", Timestamp: now, Value: float32(totalServers), Tags: aggTags},
+		datapoint.DataPoint{Name: "veeam_servers_available", Timestamp: now, Value: float32(availableCount), Tags: aggTags},
+		datapoint.DataPoint{Name: "veeam_servers_unavailable", Timestamp: now, Value: float32(unavailableCount), Tags: aggTags},
 	)
 
 	return points
