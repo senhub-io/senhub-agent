@@ -1,9 +1,10 @@
 name: Beta Tag
 on:
-  push:
-    branches: [ dev ]
-    tags-ignore:
-      - '*'
+  workflow_dispatch:
+    inputs:
+      version_override:
+        description: 'Override version (leave empty for auto-increment)'
+        required: false
 
 permissions:
   contents: write
@@ -17,28 +18,35 @@ jobs:
           fetch-depth: 0
 
       - name: Auto-increment patch version and create beta tag
+        env:
+          VERSION_OVERRIDE: ${{ github.event.inputs.version_override }}
         run: |
-          # Get the latest semver tag (X.Y.Z or X.Y.Z-beta), ignoring non-semver tags
-          LATEST_TAG=$(git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+(-beta)?$' | sort -V | tail -n 1)
-
-          if [ -z "$LATEST_TAG" ]; then
-            LATEST_TAG="0.0.0"
-          fi
-
-          echo "Latest semver tag found: $LATEST_TAG"
-
-          # Extract base version (strip -beta suffix if present)
-          BASE_VERSION=${LATEST_TAG%-beta}
-
-          if [[ $BASE_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            MAJOR=${BASH_REMATCH[1]}
-            MINOR=${BASH_REMATCH[2]}
-            PATCH=${BASH_REMATCH[3]}
-            NEW_PATCH=$((PATCH + 1))
-            NEW_TAG="${MAJOR}.${MINOR}.${NEW_PATCH}-beta"
+          if [ -n "$VERSION_OVERRIDE" ]; then
+            NEW_TAG="$VERSION_OVERRIDE"
+            echo "Using override version: $NEW_TAG"
           else
-            echo "ERROR: Could not parse version from tag: $LATEST_TAG"
-            exit 1
+            # Get the latest semver tag (X.Y.Z or X.Y.Z-beta), ignoring non-semver tags
+            LATEST_TAG=$(git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+(-beta)?$' | sort -V | tail -n 1)
+
+            if [ -z "$LATEST_TAG" ]; then
+              LATEST_TAG="0.0.0"
+            fi
+
+            echo "Latest semver tag found: $LATEST_TAG"
+
+            # Extract base version (strip -beta suffix if present)
+            BASE_VERSION=${LATEST_TAG%-beta}
+
+            if [[ $BASE_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              MAJOR=${BASH_REMATCH[1]}
+              MINOR=${BASH_REMATCH[2]}
+              PATCH=${BASH_REMATCH[3]}
+              NEW_PATCH=$((PATCH + 1))
+              NEW_TAG="${MAJOR}.${MINOR}.${NEW_PATCH}-beta"
+            else
+              echo "ERROR: Could not parse version from tag: $LATEST_TAG"
+              exit 1
+            fi
           fi
 
           echo "New beta tag: $NEW_TAG"
