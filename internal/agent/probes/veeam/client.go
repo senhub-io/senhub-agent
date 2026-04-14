@@ -112,7 +112,10 @@ func (c *veeamClient) doRequest(path string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
+	c.tokenMu.Lock()
+	token := c.token
+	c.tokenMu.Unlock()
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("x-api-version", "1.3-rev1")
 
