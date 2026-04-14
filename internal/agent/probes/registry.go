@@ -61,3 +61,12 @@ var probeConstructors = map[string]ProbeConstructor{
 	"netscaler":            netscaler.NewNetscalerProbe,
 	"veeam":                veeam.NewVeeamProbe,
 }
+
+// GetRegisteredProbeTypes returns a set of all registered probe type names
+func GetRegisteredProbeTypes() map[string]bool {
+	result := make(map[string]bool, len(probeConstructors))
+	for name := range probeConstructors {
+		result[name] = true
+	}
+	return result
+}

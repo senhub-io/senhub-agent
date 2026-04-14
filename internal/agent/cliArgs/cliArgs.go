@@ -76,7 +76,7 @@ type StartSubcommandArgs struct {
 	AuthenticationKey     string            `arg:"--authentication-key,env:SENHUB_KEY" help:"The authentication key for the agent"`
 	ServerUrl             string            `arg:"--server-url,env:SENHUB_SERVER_URL" help:"The URL of senhub server to connect to"`
 	Verbose               bool              `arg:"-v,--verbose" help:"Enable verbose logging"`
-	Filter                string            `arg:"-f,--filter" help:"Filter debug logs to matching modules with prefix matching (e.g., 'probe' matches probe.veeam, probe.citrix). Implies --verbose."`
+	Filter                string            `arg:"--filter" help:"Filter debug logs to matching modules with prefix matching (e.g., 'probe' matches probe.veeam, probe.citrix). Implies --verbose."`
 	DebugModules          string            `arg:"--debug-modules" help:"[deprecated: use --filter] Enable debug logging only for specific modules (comma-separated)"`
 	DebugLogShipperUrl    string            `arg:"--debug-log-shipper-url,env:SENHUB_DEBUG_LOG_SHIPPER_URL" help:"URL of remote endpoint for shipping debug logs"`
 	DebugLogShipperTags   map[string]string `arg:"--debug-log-shipper-tags,env:SENHUB_DEBUG_LOG_SHIPPER_TAGS" help:"Tags to add to debug log entries (format: key1=value1,key2=value2)"`
