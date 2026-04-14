@@ -41,8 +41,9 @@ type TLSConfig struct {
 
 // AutoUpdateConfig represents auto-update configuration
 type AutoUpdateConfig struct {
-	Enabled bool   `yaml:"enabled"`
-	URL     string `yaml:"url"`
+	Enabled     bool   `yaml:"enabled"`
+	IncludeBeta bool   `yaml:"include_beta"`
+	URL         string `yaml:"url"`
 }
 
 // CacheConfig represents cache configuration

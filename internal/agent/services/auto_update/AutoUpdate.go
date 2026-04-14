@@ -22,11 +22,12 @@ import (
 )
 
 var (
-	DEFAULT_REGISTRY_URL          = "https://eu-west-1.intake-dev.senhub.io/"
-	VERSION_METADATA_LIST_PATH    = "/releases/releases.json"
-	VERSION_METADATA_PATH         = "/download/%s/metadata.json"
-	VERSION_BINARY_PATH           = "/download/%s/%s"
-	DEFAULT_UPDATE_CHECK_INTERVAL = 1 * time.Hour
+	DEFAULT_REGISTRY_URL               = "https://eu-west-1.intake.senhub.io/"
+	VERSION_METADATA_LIST_PATH         = "/releases/releases.json"
+	VERSION_METADATA_LIST_BETA_PATH    = "/releases/beta/releases.json"
+	VERSION_METADATA_PATH              = "/download/%s/metadata.json"
+	VERSION_BINARY_PATH                = "/download/%s/%s"
+	DEFAULT_UPDATE_CHECK_INTERVAL      = 1 * time.Hour
 )
 
 // ConfigSource defines interface for auto-update configuration access
@@ -46,6 +47,8 @@ type AutoUpdate interface {
 	Start(quitChannel chan struct{}) error
 	Shutdown(ctx context.Context) error
 	Update(expectedVersion string, registryUrl ...string) (bool, error)
+	CheckForNewVersion(includeBeta bool) (*VersionMetadata, error)
+	ListAvailableVersions(includeBeta bool) ([]VersionMetadata, error)
 }
 
 type AutoUpdateConfig struct {
@@ -364,7 +367,7 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 	}
 
 	// Special handling for beta versions which don't parse as constraints
-	if isBetaVersion(expectedVersionStr) {
+	if IsBetaVersion(expectedVersionStr) {
 		a.logger.Info().
 			Str("expected_version", expectedVersionStr).
 			Msg("Detected beta version as target")
@@ -445,4 +448,39 @@ func (a *autoUpdate) GetBinaryUrl(
 	return url.JoinPath(registryUrl, downloadPath)
 }
 
-// Moved to VersionMetadata.go
+// CheckForNewVersion checks if a newer version is available without installing.
+// Returns the latest available version metadata if newer than current, nil otherwise.
+func (a *autoUpdate) CheckForNewVersion(includeBeta bool) (*VersionMetadata, error) {
+	registryUrl := a.GetRegistryUrl("")
+	versions, err := FetchAllVersions(a.httpClient, registryUrl, includeBeta)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch versions: %w", err)
+	}
+
+	latest := GetLatestVersion(versions)
+	if latest == nil {
+		return nil, nil
+	}
+
+	currentVer, err := version.NewVersion(cliArgs.Version)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse current version %s: %w", cliArgs.Version, err)
+	}
+
+	latestVer, err := version.NewVersion(latest.Version)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse latest version %s: %w", latest.Version, err)
+	}
+
+	if latestVer.GreaterThan(currentVer) {
+		return latest, nil
+	}
+
+	return nil, nil
+}
+
+// ListAvailableVersions returns all versions available for update
+func (a *autoUpdate) ListAvailableVersions(includeBeta bool) ([]VersionMetadata, error) {
+	registryUrl := a.GetRegistryUrl("")
+	return FetchAllVersions(a.httpClient, registryUrl, includeBeta)
+}
