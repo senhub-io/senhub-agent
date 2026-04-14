@@ -2,7 +2,7 @@ name: Dev Beta Release
 on:
   push:
     tags:
-      - '*.*.*'
+      - '*.*.*-beta'
 
 permissions:
   contents: write
