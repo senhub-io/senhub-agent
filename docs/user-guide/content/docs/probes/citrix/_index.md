@@ -266,7 +266,7 @@ Key Channels: `citrix.logon.duration_total`, `citrix.logon.gpo`, `citrix.logon.p
 
 Key Channels: `citrix.machines.registered`, `citrix.machines.unregistered`, `citrix.machines.faulty`, `citrix.failures.total`
 
-## Nagios/Icinga Integration
+## Nagios Integration
 
 ### Check Command Configuration
 
@@ -312,22 +312,6 @@ define service {
 }
 ```
 
-## Grafana Integration
-
-### JSON Data Source Configuration
-
-1. **Add Data Source:**
-   - Type: **JSON API**
-   - URL: `https://agent:8443/api/{key}/metrics?probe=citrix`
-   - Method: **GET**
-   - Skip TLS Verify: Enable (if using self-signed cert)
-
-2. **Example Panels:**
-   - Active Sessions (Time Series): `citrix.sessions.connected`
-   - Logon Duration Breakdown (Bar Gauge): `citrix.logon.brokering`, `citrix.logon.hdx`, `citrix.logon.gpo`, `citrix.logon.profile`
-   - Infrastructure Health (Stat): `citrix.machines.registered`, `citrix.machines.faulty`
-
-# Troubleshooting
 
 ## Common Issues
 

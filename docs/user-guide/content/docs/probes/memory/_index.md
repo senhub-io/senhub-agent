@@ -127,7 +127,7 @@ curl http://localhost:8080/api/{agentkey}/prtg/metrics
 - Page Faults/sec (Windows)
 - Cache Memory (bytes)
 
-### Nagios/Icinga
+### Nagios
 
 Access memory metrics in Nagios format:
 
@@ -144,19 +144,6 @@ curl http://localhost:8080/api/{agentkey}/nagios/metrics?probe=memory
 - `swap_used_percent` - Swap usage with 50% warning, 75% critical
 - `memory_available` - Available memory in bytes
 
-### Grafana/Prometheus
-
-Access metrics in Prometheus-compatible format:
-
-```bash
-# Prometheus format
-curl http://localhost:8080/api/{agentkey}/prometheus/metrics
-
-# Example output:
-# memory_used_percent{hostname="server01"} 65.2
-# memory_available{hostname="server01"} 8589934592
-# swap_used_percent{hostname="server01"} 12.5
-```
 
 ### Web Interface
 

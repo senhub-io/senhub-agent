@@ -150,7 +150,7 @@ curl http://localhost:8080/api/{agentkey}/prtg/metrics
 - Events by Facility (Kernel, User, System, Security)
 - Event Rate (events/second)
 
-### Nagios/Icinga
+### Nagios
 
 Access syslog metrics in Nagios format:
 
@@ -167,18 +167,6 @@ curl http://localhost:8080/api/{agentkey}/nagios/metrics?probe=syslog
 - `syslog_events_by_severity` - Events by severity level
 - `syslog_event_rate` - Events per second
 
-### Grafana/Prometheus
-
-Access syslog event data in Prometheus-compatible format:
-
-```bash
-# Prometheus format
-curl http://localhost:8080/api/{agentkey}/prometheus/metrics
-
-# Example output:
-# syslog_events_total{hostname="server01",facility="1",severity="3"} 1234
-# syslog_event_rate{hostname="server01"} 2.3
-```
 
 ### Web Interface
 

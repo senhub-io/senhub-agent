@@ -145,7 +145,7 @@ curl http://localhost:8080/api/{agentkey}/prtg/metrics
 - Filesystem Usage (bytes and %)
 - Inode Usage (Unix/Linux)
 
-### Nagios/Icinga
+### Nagios
 
 Access LogicalDisk metrics in Nagios format:
 
@@ -163,19 +163,6 @@ curl http://localhost:8080/api/{agentkey}/nagios/metrics?probe=logicaldisk
 - `disk_queue_length` - Disk queue depth (Windows)
 - `fs_inodes_used_percent` - Inode usage (Unix)
 
-### Grafana/Prometheus
-
-Access metrics in Prometheus-compatible format:
-
-```bash
-# Prometheus format
-curl http://localhost:8080/api/{agentkey}/prometheus/metrics
-
-# Example output:
-# disk_free_percent{hostname="server01",drive="C:"} 45.2
-# disk_reads_sec{hostname="server01",drive="C:"} 123.4
-# fs_used_percent{hostname="server01",mount_point="/",device="/dev/sda1"} 67.8
-```
 
 ### Web Interface
 
