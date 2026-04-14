@@ -120,7 +120,7 @@ func TestParseConfig_CustomValues(t *testing.T) {
 
 // --- TestJobStatusMapping ---
 
-func TestJobStatusMapping(t *testing.T) {
+func TestJobResultValue(t *testing.T) {
 	tests := []struct {
 		result   string
 		expected float32
@@ -132,19 +132,22 @@ func TestJobStatusMapping(t *testing.T) {
 		{"Unknown", 0},
 	}
 	for _, tc := range tests {
-		got := jobStatusValue(tc.result)
+		got := jobResultValue(tc.result)
 		if got != tc.expected {
-			t.Errorf("jobStatusValue(%q) = %v, want %v", tc.result, got, tc.expected)
+			t.Errorf("jobResultValue(%q) = %v, want %v", tc.result, got, tc.expected)
 		}
 	}
 }
 
-func TestJobStateValue_Running(t *testing.T) {
-	if got := jobStateValue("Working"); got != 4 {
-		t.Errorf("jobStateValue(Working) = %v, want 4", got)
+func TestBottleneckValue(t *testing.T) {
+	if got := bottleneckValue("None"); got != 0 {
+		t.Errorf("bottleneckValue(None) = %v, want 0", got)
 	}
-	if got := jobStateValue("Stopped"); got != 0 {
-		t.Errorf("jobStateValue(Stopped) = %v, want 0", got)
+	if got := bottleneckValue("Source"); got != 1 {
+		t.Errorf("bottleneckValue(Source) = %v, want 1", got)
+	}
+	if got := bottleneckValue("Target"); got != 4 {
+		t.Errorf("bottleneckValue(Target) = %v, want 4", got)
 	}
 }
 
@@ -246,31 +249,11 @@ func TestCollectMetrics(t *testing.T) {
 			})
 		case r.URL.Path == "/api/v1/serverInfo":
 			_, _ = w.Write([]byte(`{"platform":"Windows","name":"SIEP-BCK","buildVersion":"13.0.1.180"}`))
-		case r.URL.Path == "/api/v1/jobs":
-			typeFilter := r.URL.Query().Get("typeFilter")
-			switch typeFilter {
-			case "VSphereBackup":
-				_, _ = w.Write([]byte(`{"data":[
-					{"type":"VSphereBackup","id":"7d5a054a","name":"BCK_VMware","isDisabled":false}
-				],"pagination":{"total":1,"count":1,"skip":0,"limit":200}}`))
-			case "WindowsAgentBackup":
-				_, _ = w.Write([]byte(`{"data":[
-					{"type":"WindowsAgentBackup","id":"bc48c775","name":"BCK_Agent","isDisabled":false}
-				],"pagination":{"total":1,"count":1,"skip":0,"limit":200}}`))
-			default:
-				_, _ = w.Write([]byte(`{"data":[],"pagination":{"total":0,"count":0,"skip":0,"limit":200}}`))
-			}
-		case r.URL.Path == "/api/v1/sessions":
-			jobID := r.URL.Query().Get("jobId")
-			if jobID == "7d5a054a" {
-				_, _ = w.Write([]byte(`{"data":[
-					{"id":"sess1","name":"BCK_VMware","result":{"result":"Success"},"state":"Stopped","creationTime":"2026-04-09T02:00:00Z","endTime":"2026-04-09T03:30:00Z"}
-				],"pagination":{"total":1,"count":1,"skip":0,"limit":200}}`))
-			} else {
-				_, _ = w.Write([]byte(`{"data":[
-					{"id":"sess2","name":"BCK_Agent","result":{"result":"Warning"},"state":"Stopped","creationTime":"2026-04-09T01:00:00Z","endTime":"2026-04-09T01:45:00Z"}
-				],"pagination":{"total":1,"count":1,"skip":0,"limit":200}}`))
-			}
+		case r.URL.Path == "/api/v1/jobs/states":
+			_, _ = w.Write([]byte(`{"data":[
+				{"id":"7d5a054a","name":"BCK_VMware","type":"VSphereBackup","status":"Inactive","lastResult":"Success","lastRun":"2026-04-09T03:30:00Z","objectsCount":5,"highPriority":false,"progressPercent":0,"workload":"Vm","description":""},
+				{"id":"bc48c775","name":"BCK_Agent","type":"WindowsAgentBackup","status":"Inactive","lastResult":"Warning","lastRun":"2026-04-09T01:45:00Z","objectsCount":1,"highPriority":false,"progressPercent":0,"workload":"Server","description":""}
+			],"pagination":{"total":2,"count":2,"skip":0,"limit":200}}`))
 		case r.URL.Path == "/api/v1/backupInfrastructure/repositories/states":
 			_, _ = w.Write([]byte(`{"data":[
 				{"id":"repo1","name":"Default Backup Repository","type":"WinLocal","capacityGB":500.0,"freeGB":200.0,"usedSpaceGB":300.0,"isOnline":true,"isOutOfDate":false}
@@ -281,6 +264,16 @@ func TestCollectMetrics(t *testing.T) {
 			_, _ = w.Write([]byte(`{"data":[
 				{"id":"proxy1","name":"VMware Backup Proxy","type":"ViProxy","hostId":"00000000-0000-0000-0000-000000000000","hostName":"proxy-srv","isDisabled":false,"isOnline":true,"isOutOfDate":false}
 			],"pagination":{"total":1,"count":1,"skip":0,"limit":200}}`))
+		case r.URL.Path == "/api/v1/backupObjects":
+			_, _ = w.Write([]byte(`{"data":[
+				{"id":"obj1","name":"VM-PROD-01","type":"VirtualMachine","platformName":"VMware","restorePointsCount":14,"lastRunFailed":false},
+				{"id":"obj2","name":"SIEP-FLORIAN","type":"Computer","platformName":"LinuxPhysical","restorePointsCount":7,"lastRunFailed":true}
+			],"pagination":{"total":2,"count":2,"skip":0,"limit":200}}`))
+		case r.URL.Path == "/api/v1/backupInfrastructure/managedServers":
+			_, _ = w.Write([]byte(`{"data":[
+				{"id":"srv1","name":"vcenter.local","type":"ViHost","status":"Available","description":""},
+				{"id":"srv2","name":"hyperv-node1","type":"HvServer","status":"Unavailable","description":""}
+			],"pagination":{"total":2,"count":2,"skip":0,"limit":200}}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -323,27 +316,42 @@ func TestCollectMetrics(t *testing.T) {
 
 	// Verify expected metric names are present
 	expectedMetrics := []string{
+		// Job overview
 		"veeam_jobs_total",
 		"veeam_jobs_success",
 		"veeam_jobs_warning",
 		"veeam_jobs_failed",
 		"veeam_jobs_running",
+		// Job detail
 		"veeam_job_status",
-		"veeam_job_duration_s",
 		"veeam_job_seconds_since",
-		"veeam_repo_total_gb",
-		"veeam_repo_used_gb",
-		"veeam_repo_free_gb",
+		"veeam_job_objects_count",
+		// Repos
+		"veeam_repo_capacity",
+		"veeam_repo_used",
+		"veeam_repo_free",
 		"veeam_repo_free_pct",
+		// License
 		"veeam_license_status",
 		"veeam_license_days_left",
 		"veeam_license_instances_total",
 		"veeam_license_instances_used",
 		"veeam_license_instances_remaining",
+		// Proxies
 		"veeam_proxy_status",
 		"veeam_proxies_total",
 		"veeam_proxies_enabled",
 		"veeam_proxies_disabled",
+		// Protected objects
+		"veeam_object_restore_points",
+		"veeam_object_last_run_failed",
+		"veeam_objects_total",
+		"veeam_objects_failed",
+		// Infrastructure
+		"veeam_server_status",
+		"veeam_servers_total",
+		"veeam_servers_available",
+		"veeam_servers_unavailable",
 	}
 
 	foundMetrics := make(map[string]bool)
@@ -360,13 +368,15 @@ func TestCollectMetrics(t *testing.T) {
 	// Verify specific values
 	for _, dp := range points {
 		switch dp.Name {
-		case "veeam_repo_total_gb":
-			if dp.Value != 500 {
-				t.Errorf("veeam_repo_total_gb = %v, want 500", dp.Value)
+		case "veeam_repo_capacity":
+			// 500 GB = 500 * 1024^3 bytes ≈ 5.37e11
+			if dp.Value < 5e11 || dp.Value > 6e11 {
+				t.Errorf("veeam_repo_capacity = %v, want ~5.37e11 (500GB)", dp.Value)
 			}
-		case "veeam_repo_free_gb":
-			if dp.Value != 200 {
-				t.Errorf("veeam_repo_free_gb = %v, want 200", dp.Value)
+		case "veeam_repo_free":
+			// 200 GB = 200 * 1024^3 bytes ≈ 2.15e11
+			if dp.Value < 2e11 || dp.Value > 2.5e11 {
+				t.Errorf("veeam_repo_free = %v, want ~2.15e11 (200GB)", dp.Value)
 			}
 		case "veeam_repo_free_pct":
 			if dp.Value != 40 {
@@ -402,9 +412,11 @@ func TestCollectMetrics(t *testing.T) {
 	// Verify tags are present
 	verifyTagPresent(t, points, "veeam_job_status", "job_name")
 	verifyTagPresent(t, points, "veeam_job_status", "job_type")
-	verifyTagPresent(t, points, "veeam_repo_total_gb", "repo_name")
+	verifyTagPresent(t, points, "veeam_repo_capacity", "repo_name")
 	verifyTagPresent(t, points, "veeam_proxy_status", "proxy_name")
-	verifyTagPresent(t, points, "veeam_repo_total_gb", "endpoint")
+	verifyTagPresent(t, points, "veeam_repo_capacity", "endpoint")
+	verifyTagPresent(t, points, "veeam_object_restore_points", "object_name")
+	verifyTagPresent(t, points, "veeam_server_status", "server_name")
 }
 
 // verifyTagPresent checks that at least one datapoint with the given name has the specified tag key
@@ -512,23 +524,19 @@ func TestBuildProxyMetrics(t *testing.T) {
 	}
 }
 
-// --- TestBuildJobOverviewMetrics ---
+// --- TestBuildJobStateOverviewMetrics ---
 
-func TestBuildJobOverviewMetrics(t *testing.T) {
-	jobs := []job{
-		{ID: "j1", Name: "Job1", Type: "VSphereBackup", IsDisabled: false},
-		{ID: "j2", Name: "Job2", Type: "VSphereBackup", IsDisabled: false},
-		{ID: "j3", Name: "Job3", Type: "WindowsAgentBackup", IsDisabled: false},
-		{ID: "j4", Name: "Disabled", Type: "VSphereBackup", IsDisabled: true},
-	}
-	sessionsByJob := map[string][]session{
-		"j1": {{Result: sessionResult{Result: "Success"}, State: "Stopped"}},
-		"j2": {{Result: sessionResult{Result: "Failed"}, State: "Stopped"}},
-		"j3": {{Result: sessionResult{Result: "Warning"}, State: "Stopped"}},
+func TestBuildJobStateOverviewMetrics(t *testing.T) {
+	lastRun := time.Now().Add(-1 * time.Hour)
+	states := []jobState{
+		{ID: "j1", Name: "Job1", Type: "VSphereBackup", Status: "Inactive", LastResult: "Success", LastRun: &lastRun, ObjectsCount: 3},
+		{ID: "j2", Name: "Job2", Type: "VSphereBackup", Status: "Inactive", LastResult: "Failed", LastRun: &lastRun, ObjectsCount: 2},
+		{ID: "j3", Name: "Job3", Type: "WindowsAgentBackup", Status: "Inactive", LastResult: "Warning", LastRun: &lastRun, ObjectsCount: 1},
+		{ID: "j4", Name: "Disabled", Type: "VSphereBackup", Status: "Disabled", LastResult: "None"},
 	}
 
 	now := time.Now()
-	points := buildJobOverviewMetrics(jobs, sessionsByJob, 24, now)
+	points := buildJobStateOverviewMetrics(states, 24, now)
 
 	// 2 job types x 5 metrics = 10
 	if len(points) != 10 {
@@ -536,28 +544,23 @@ func TestBuildJobOverviewMetrics(t *testing.T) {
 	}
 }
 
-// --- TestBuildJobDetailMetrics ---
+// --- TestBuildJobStateDetailMetrics ---
 
-func TestBuildJobDetailMetrics(t *testing.T) {
-	creationTime := time.Date(2026, 4, 9, 2, 0, 0, 0, time.UTC)
-	endTime := time.Date(2026, 4, 9, 3, 30, 0, 0, time.UTC)
+func TestBuildJobStateDetailMetrics(t *testing.T) {
+	lastRun := time.Date(2026, 4, 9, 3, 30, 0, 0, time.UTC)
 	now := time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC)
 
-	jobs := []job{
-		{ID: "j1", Name: "TestJob", Type: "Backup", IsDisabled: false},
-	}
-	sessionsByJob := map[string][]session{
-		"j1": {{
-			Result:       sessionResult{Result: "Success"},
-			State:        "Stopped",
-			CreationTime: creationTime,
-			EndTime:      endTime,
-		}},
+	states := []jobState{
+		{
+			ID: "j1", Name: "TestJob", Type: "VSphereBackup",
+			Status: "Inactive", LastResult: "Success",
+			LastRun: &lastRun, ObjectsCount: 5,
+		},
 	}
 
-	points := buildJobDetailMetrics(jobs, sessionsByJob, 24, now)
+	points := buildJobStateDetailMetrics(states, 24, now)
 
-	// status + duration + seconds_since = 3
+	// status + seconds_since + objects_count = 3
 	if len(points) != 3 {
 		t.Errorf("expected 3 detail datapoints, got %d", len(points))
 	}
@@ -568,14 +571,14 @@ func TestBuildJobDetailMetrics(t *testing.T) {
 			if dp.Value != 1 {
 				t.Errorf("expected status 1 (Success), got %v", dp.Value)
 			}
-		case "veeam_job_duration_s":
-			if dp.Value != 5400 {
-				t.Errorf("expected duration 5400s (90min), got %v", dp.Value)
-			}
 		case "veeam_job_seconds_since":
 			// 8.5 hours = 30600 seconds
 			if dp.Value < 30000 || dp.Value > 31200 {
 				t.Errorf("expected seconds_since ~30600, got %v", dp.Value)
+			}
+		case "veeam_job_objects_count":
+			if dp.Value != 5 {
+				t.Errorf("expected objects_count 5, got %v", dp.Value)
 			}
 		}
 	}

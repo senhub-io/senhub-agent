@@ -326,6 +326,48 @@ senhub.veeam.proxy_status:
       description: "Proxy is enabled and online"
   desired_value: 2
 
+senhub.veeam.bottleneck:
+  description: "Veeam Session Bottleneck"
+  type: status
+  source: "Veeam REST API v1.3 - ESessionBottleneckType enum"
+  mappings:
+    0:
+      text: "NONE"
+      severity: "ok"
+      description: "No bottleneck detected"
+    1:
+      text: "SOURCE"
+      severity: "warning"
+      description: "Bottleneck at source (proxy, network, or WAN)"
+    2:
+      text: "PROXY"
+      severity: "warning"
+      description: "Bottleneck at backup proxy"
+    3:
+      text: "NETWORK"
+      severity: "warning"
+      description: "Bottleneck in network or throttling"
+    4:
+      text: "TARGET"
+      severity: "warning"
+      description: "Bottleneck at target (proxy, network, WAN, or disk)"
+  desired_value: 0
+
+senhub.veeam.server_status:
+  description: "Veeam Managed Server Status"
+  type: status
+  source: "Veeam REST API v1.3 - EManagedServersStatus enum"
+  mappings:
+    0:
+      text: "UNAVAILABLE"
+      severity: "error"
+      description: "Server is unavailable"
+    1:
+      text: "AVAILABLE"
+      severity: "ok"
+      description: "Server is available"
+  desired_value: 1
+
 # ==============================================================================
 # REDFISH LOOKUPS
 # ==============================================================================
