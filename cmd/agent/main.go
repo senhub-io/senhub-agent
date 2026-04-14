@@ -93,6 +93,17 @@ func main() {
 	case "debug-modules-list":
 		showDebugModules()
 		return
+	case "config":
+		if len(os.Args) > 2 && os.Args[2] == "check" {
+			configPath := "./agent-config.yaml"
+			if len(os.Args) > 3 {
+				configPath = os.Args[3]
+			}
+			checkConfig(configPath)
+			return
+		}
+		showHelp()
+		return
 	case "license":
 		handleLicenseCommand()
 		return
@@ -201,6 +212,7 @@ Other Commands:
     update               Check for new versions
     update --list        List all available versions (stable + beta)
     update <version>     Install a specific version
+    config check [path]  Validate configuration file
     debug-modules-list   List available debug log modules
 
 Agent Options:
@@ -208,7 +220,7 @@ Agent Options:
     --config-path PATH                     Configuration file (default: ./agent-config.yaml)
     --offline                              Run with local YAML configuration (no server)
     --verbose, -v                          Enable debug logging for all modules
-    --filter, -f  module1,module2          Filter debug logs by module prefix (implies --verbose)
+    --filter module1,module2               Filter debug logs by module prefix (implies --verbose)
     --debug-modules module1,module2        [deprecated] Use --filter instead
 
 HTTPS/TLS Options:

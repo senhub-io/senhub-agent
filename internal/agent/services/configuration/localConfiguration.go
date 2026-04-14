@@ -180,6 +180,7 @@ func (lc *LocalConfiguration) GetConfiguration() RemoteConfigurationData {
 			Version:             "",
 			UpdateCheckInterval: updateInterval,
 			License:             lc.data.Agent.License,
+			AuthenticationKey:   lc.data.Agent.Key,
 		},
 	}
 }

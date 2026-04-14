@@ -51,7 +51,8 @@ type AgentConfig struct {
 	RegistryUrl         string `json:"registry_url"`
 	Version             string `json:"version"`
 	UpdateCheckInterval any    `json:"update_check_interval" default:"3600"`
-	License             string `json:"license,omitempty"` // JWT license token or JSON for testing
+	License             string `json:"license,omitempty"`
+	AuthenticationKey   string `json:"authentication_key,omitempty"`
 }
 
 type RemoteConfigurationData struct {

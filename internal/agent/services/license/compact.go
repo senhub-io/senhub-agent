@@ -198,6 +198,22 @@ func decodePayload(payload []byte) (*License, error) {
 	}, nil
 }
 
+// VerifyBinding checks that a license token is bound to the given agent key.
+// For compact: compares the embedded agent hash.
+// For JWT: compares the Subject claim.
+func VerifyBinding(token string, agentKey string, lic *License) bool {
+	if IsCompactLicense(token) {
+		raw, err := parseCompactKey(token)
+		if err != nil || len(raw) < compactPayloadLen {
+			return false
+		}
+		expected := sha256.Sum256([]byte(agentKey))
+		return raw[8] == expected[0] && raw[9] == expected[1] && raw[10] == expected[2] && raw[11] == expected[3]
+	}
+	// JWT: Subject must match agent key
+	return lic.Subject == "" || lic.Subject == agentKey
+}
+
 func computeHMAC(payload []byte) []byte {
 	mac := hmac.New(sha256.New, compactHMACKey)
 	mac.Write(payload)
