@@ -159,7 +159,7 @@ func (p *veeamProbe) Collect() ([]datapoint.DataPoint, error) {
 		{Key: "endpoint", Value: p.endpoint},
 	}
 
-	// Collect jobs and sessions
+	// Collect job states (single API call replaces N+1 pattern)
 	jobPoints, err := p.collectJobMetrics(now)
 	if err != nil {
 		p.logger.Warn().Err(err).Msg("Failed to collect job metrics, continuing with other endpoints")
@@ -191,6 +191,22 @@ func (p *veeamProbe) Collect() ([]datapoint.DataPoint, error) {
 		allDatapoints = append(allDatapoints, proxyPoints...)
 	}
 
+	// Collect backup objects (restore points, protection status)
+	objPoints, err := p.collectBackupObjectMetrics(now)
+	if err != nil {
+		p.logger.Warn().Err(err).Msg("Failed to collect backup object metrics, continuing with other endpoints")
+	} else {
+		allDatapoints = append(allDatapoints, objPoints...)
+	}
+
+	// Collect managed servers (infrastructure health)
+	srvPoints, err := p.collectManagedServerMetrics(now)
+	if err != nil {
+		p.logger.Warn().Err(err).Msg("Failed to collect managed server metrics, continuing with other endpoints")
+	} else {
+		allDatapoints = append(allDatapoints, srvPoints...)
+	}
+
 	// Add common tags to all datapoints
 	for i := range allDatapoints {
 		allDatapoints[i].Tags = append(allDatapoints[i].Tags, commonTags...)
@@ -199,13 +215,6 @@ func (p *veeamProbe) Collect() ([]datapoint.DataPoint, error) {
 	// Enrich with probe name
 	enrichedDatapoints := p.BaseProbe.EnrichDataPointsWithProbeName(allDatapoints, p.GetName())
 
-	// Route data through callback if configured
-	if p.OnDataPoints != nil && len(enrichedDatapoints) > 0 {
-		if err := p.OnDataPoints(enrichedDatapoints, p); err != nil {
-			return nil, fmt.Errorf("error handling data points: %w", err)
-		}
-	}
-
 	p.logger.Debug().
 		Int("datapoints_count", len(enrichedDatapoints)).
 		Msg("Veeam metrics collection completed")
@@ -213,32 +222,16 @@ func (p *veeamProbe) Collect() ([]datapoint.DataPoint, error) {
 	return enrichedDatapoints, nil
 }
 
-// collectJobMetrics fetches jobs and their latest sessions, then builds metrics
+// collectJobMetrics uses /jobs/states for a single-call consolidated view
 func (p *veeamProbe) collectJobMetrics(now time.Time) ([]datapoint.DataPoint, error) {
-	jobs, err := p.client.GetJobs()
+	states, err := p.client.GetJobStates()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get jobs: %w", err)
-	}
-
-	sessionsByJob := make(map[string][]session)
-	for _, j := range jobs {
-		if j.IsDisabled {
-			continue
-		}
-		sessions, err := p.client.GetSessions(j.ID, 1)
-		if err != nil {
-			p.logger.Warn().
-				Err(err).
-				Str("job_name", j.Name).
-				Msg("Failed to get sessions for job, skipping")
-			continue
-		}
-		sessionsByJob[j.ID] = sessions
+		return nil, fmt.Errorf("failed to get job states: %w", err)
 	}
 
 	var points []datapoint.DataPoint
-	points = append(points, buildJobOverviewMetrics(jobs, sessionsByJob, p.hoursToCheck, now)...)
-	points = append(points, buildJobDetailMetrics(jobs, sessionsByJob, p.hoursToCheck, now)...)
+	points = append(points, buildJobStateOverviewMetrics(states, p.hoursToCheck, now)...)
+	points = append(points, buildJobStateDetailMetrics(states, p.hoursToCheck, now)...)
 
 	return points, nil
 }
@@ -271,6 +264,26 @@ func (p *veeamProbe) collectProxyMetrics(now time.Time) ([]datapoint.DataPoint, 
 	}
 
 	return buildProxyMetrics(proxies, now), nil
+}
+
+// collectBackupObjectMetrics fetches protected objects and builds metrics
+func (p *veeamProbe) collectBackupObjectMetrics(now time.Time) ([]datapoint.DataPoint, error) {
+	objects, err := p.client.GetBackupObjects()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get backup objects: %w", err)
+	}
+
+	return buildBackupObjectMetrics(objects, now), nil
+}
+
+// collectManagedServerMetrics fetches infrastructure servers and builds status metrics
+func (p *veeamProbe) collectManagedServerMetrics(now time.Time) ([]datapoint.DataPoint, error) {
+	servers, err := p.client.GetManagedServers()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get managed servers: %w", err)
+	}
+
+	return buildManagedServerMetrics(servers, now), nil
 }
 
 // OnShutdown handles cleanup when probe is stopped
