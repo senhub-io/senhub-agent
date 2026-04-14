@@ -186,7 +186,10 @@ func checkConfig(configPath string) {
 
 	var config configuration.LocalConfigurationData
 	if err := yaml.Unmarshal(content, &config); err != nil {
-		fmt.Printf("  [ERROR] Invalid YAML: %v\n", err)
+		fmt.Println("  [ERROR] Invalid YAML syntax")
+		fmt.Println()
+		// Extract line number from yaml error and show context
+		showYAMLErrorContext(string(content), err)
 		os.Exit(1)
 	}
 
@@ -282,9 +285,14 @@ func checkConfig(configPath string) {
 			if !registeredProbes[p.Type] {
 				fmt.Printf("  [ERROR] Probe %q: unknown type %q\n", p.Name, p.Type)
 				errors++
-			} else {
-				fmt.Printf("  [OK]   Probe %q (type: %s)\n", p.Name, p.Type)
+				continue
 			}
+			fmt.Printf("  [OK]   Probe %q (type: %s)\n", p.Name, p.Type)
+
+			// Validate required params per probe type
+			e, w := validateProbeParams(p.Name, p.Type, p.Params)
+			errors += e
+			warnings += w
 		}
 	}
 
@@ -293,8 +301,14 @@ func checkConfig(configPath string) {
 		fmt.Println("  [WARN] No storage strategies configured")
 		warnings++
 	} else {
+		validStrategies := map[string]bool{"http": true, "prtg": true, "senhub": true, "event": true}
 		for _, s := range config.Storage {
-			fmt.Printf("  [OK]   Storage: %s\n", s.Name)
+			if !validStrategies[s.Name] {
+				fmt.Printf("  [WARN] Storage %q: unknown strategy\n", s.Name)
+				warnings++
+			} else {
+				fmt.Printf("  [OK]   Storage: %s\n", s.Name)
+			}
 		}
 	}
 
@@ -308,4 +322,85 @@ func checkConfig(configPath string) {
 		fmt.Printf("Configuration has %d error(s) and %d warning(s).\n", errors, warnings)
 		os.Exit(1)
 	}
+}
+
+// showYAMLErrorContext shows the problematic line from the YAML file
+func showYAMLErrorContext(content string, yamlErr error) {
+	errMsg := yamlErr.Error()
+
+	// Extract line number from "yaml: line N: ..."
+	lineNum := 0
+	if _, err := fmt.Sscanf(errMsg, "yaml: line %d:", &lineNum); err != nil || lineNum == 0 {
+		fmt.Printf("  %s\n", errMsg)
+		return
+	}
+
+	lines := strings.Split(content, "\n")
+	fmt.Printf("  Error at line %d: %s\n\n", lineNum, errMsg[strings.Index(errMsg, ":")+2:])
+
+	// Show context: 2 lines before, the error line, 2 lines after
+	start := lineNum - 3
+	if start < 0 {
+		start = 0
+	}
+	end := lineNum + 2
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	for i := start; i < end; i++ {
+		marker := "  "
+		if i == lineNum-1 {
+			marker = ">>"
+		}
+		fmt.Printf("  %s %3d | %s\n", marker, i+1, lines[i])
+	}
+	fmt.Println()
+
+	// Common hints
+	if strings.Contains(errMsg, "could not find expected ':'") {
+		fmt.Println("  Hint: Check for missing space after ':' (e.g., 'key:value' should be 'key: value')")
+	} else if strings.Contains(errMsg, "did not find expected") {
+		fmt.Println("  Hint: Check indentation — YAML uses spaces, not tabs")
+	}
+}
+
+// validateProbeParams checks required parameters for each probe type
+func validateProbeParams(name, probeType string, params map[string]interface{}) (errors, warnings int) {
+	// Required params per probe type
+	requiredParams := map[string][]string{
+		"veeam":      {"endpoint", "username", "password"},
+		"citrix":     {"site_url", "client_id", "client_secret"},
+		"netscaler":  {"base_url", "username", "password"},
+		"redfish":    {"endpoint", "username", "password"},
+		"ping_webapp": {"url"},
+		"load_webapp": {"url"},
+		"ping_gateway": {"destination"},
+		"syslog":     {"listen_address"},
+	}
+
+	required, hasRequired := requiredParams[probeType]
+	if !hasRequired {
+		return 0, 0
+	}
+
+	for _, param := range required {
+		val, exists := params[param]
+		if !exists || val == nil || val == "" {
+			fmt.Printf("         [ERROR] Probe %q: missing required param %q\n", name, param)
+			errors++
+		}
+	}
+
+	// Check for common misconfigurations
+	if probeType == "veeam" {
+		if interval, ok := params["interval"]; ok {
+			if intVal, ok := interval.(int); ok && intVal < 60 {
+				fmt.Printf("         [WARN] Probe %q: interval %ds is very short (recommended: 300s)\n", name, intVal)
+				warnings++
+			}
+		}
+	}
+
+	return errors, warnings
 }
