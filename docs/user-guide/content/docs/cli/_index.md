@@ -64,7 +64,7 @@ Checks performed:
 - Required probe parameters (endpoint, credentials)
 - Storage strategy names
 
-![senhub-agent config check output](/images/cli/config-check.png "Placeholder — terminal output showing a passing config check with warnings highlighted")
+![senhub-agent config check output](/images/cli/config-check.webp "Terminal output of senhub-agent config check on a valid configuration")
 
 ### debug-modules-list
 
@@ -92,7 +92,7 @@ senhub-agent update --list
 
 Lists all stable versions. If `auto_update.include_beta: true` is set in the configuration, beta versions are also listed.
 
-![senhub-agent update --list output](/images/cli/update-list.png "Placeholder — terminal showing available versions with the current version highlighted")
+![senhub-agent update --list output](/images/cli/update-list.webp "Terminal output of senhub-agent update --list showing available versions")
 
 ### Install a specific version
 
