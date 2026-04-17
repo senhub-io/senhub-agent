@@ -99,7 +99,7 @@ Expected response:
 {"status":"ok","version":"0.1.87","uptime":"1m30s","probes_active":2,"metrics_cached":12}
 ```
 
-![Windows service running](/images/installation/windows-service-running.png "Placeholder — Services.msc showing SenHub Agent in Running state")
+![Windows service running](/images/installation/windows-service-running.webp "Services.msc showing SenHub Agent in Running state")
 
 ### Log file location
 
@@ -166,8 +166,6 @@ Or check the health endpoint:
 ```bash
 curl http://localhost:8080/health
 ```
-
-![Linux systemd unit active](/images/installation/linux-systemd-status.png "Placeholder — systemctl status senhub-agent showing active (running)")
 
 ### Log file location
 
