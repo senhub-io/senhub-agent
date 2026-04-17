@@ -367,16 +367,21 @@ func showYAMLErrorContext(content string, yamlErr error) {
 
 // validateProbeParams checks required parameters for each probe type
 func validateProbeParams(name, probeType string, params map[string]interface{}) (errors, warnings int) {
-	// Required params per probe type
+	// Citrix has two accepted formats: nested director block (0.1.87+) or flat director_url/base_url.
+	// Validate manually instead of using a flat required-list.
+	if probeType == "citrix" {
+		return validateCitrixParams(name, params)
+	}
+
+	// Required params per probe type (flat format)
 	requiredParams := map[string][]string{
-		"veeam":      {"endpoint", "username", "password"},
-		"citrix":     {"site_url", "client_id", "client_secret"},
-		"netscaler":  {"base_url", "username", "password"},
-		"redfish":    {"endpoint", "username", "password"},
-		"ping_webapp": {"url"},
-		"load_webapp": {"url"},
+		"veeam":        {"endpoint", "username", "password"},
+		"netscaler":    {"base_url", "username", "password"},
+		"redfish":      {"endpoint", "username", "password"},
+		"ping_webapp":  {"url"},
+		"load_webapp":  {"url"},
 		"ping_gateway": {"destination"},
-		"syslog":     {"listen_address"},
+		"syslog":       {"listen_address"},
 	}
 
 	required, hasRequired := requiredParams[probeType]
@@ -402,5 +407,74 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 		}
 	}
 
+	return errors, warnings
+}
+
+// asStringMap coerces a value that may be map[string]interface{} or map[interface{}]interface{}
+// (yaml.v2 decodes nested maps with interface keys) into map[string]interface{}.
+func asStringMap(v interface{}) (map[string]interface{}, bool) {
+	if m, ok := v.(map[string]interface{}); ok {
+		return m, true
+	}
+	if mi, ok := v.(map[interface{}]interface{}); ok {
+		out := make(map[string]interface{}, len(mi))
+		for k, val := range mi {
+			if ks, ok := k.(string); ok {
+				out[ks] = val
+			}
+		}
+		return out, true
+	}
+	return nil, false
+}
+
+// validateCitrixParams validates Citrix probe config (accepts nested director block or flat director_url/base_url).
+func validateCitrixParams(name string, params map[string]interface{}) (errors, warnings int) {
+	// New format: director: { url, auth: { username, password } }
+	if director, ok := asStringMap(params["director"]); ok {
+		if url, _ := director["url"].(string); url == "" {
+			fmt.Printf("         [ERROR] Probe %q: missing required param %q\n", name, "director.url")
+			errors++
+		}
+		auth, authOK := asStringMap(director["auth"])
+		if !authOK {
+			fmt.Printf("         [ERROR] Probe %q: missing required param %q\n", name, "director.auth")
+			errors++
+		} else {
+			if u, _ := auth["username"].(string); u == "" {
+				fmt.Printf("         [ERROR] Probe %q: missing required param %q\n", name, "director.auth.username")
+				errors++
+			}
+			if p, _ := auth["password"].(string); p == "" {
+				fmt.Printf("         [ERROR] Probe %q: missing required param %q\n", name, "director.auth.password")
+				errors++
+			}
+		}
+		return errors, warnings
+	}
+
+	// Legacy format: director_url (or base_url) + auth: { username, password }
+	url, _ := params["director_url"].(string)
+	if url == "" {
+		url, _ = params["base_url"].(string)
+	}
+	if url == "" {
+		fmt.Printf("         [ERROR] Probe %q: missing required param %q (or %q, or nested %q)\n", name, "director_url", "base_url", "director.url")
+		errors++
+	}
+	auth, authOK := asStringMap(params["auth"])
+	if !authOK {
+		fmt.Printf("         [ERROR] Probe %q: missing required param %q (or nested %q)\n", name, "auth", "director.auth")
+		errors++
+	} else {
+		if u, _ := auth["username"].(string); u == "" {
+			fmt.Printf("         [ERROR] Probe %q: missing required param %q\n", name, "auth.username")
+			errors++
+		}
+		if p, _ := auth["password"].(string); p == "" {
+			fmt.Printf("         [ERROR] Probe %q: missing required param %q\n", name, "auth.password")
+			errors++
+		}
+	}
 	return errors, warnings
 }
