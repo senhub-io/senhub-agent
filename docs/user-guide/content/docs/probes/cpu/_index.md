@@ -18,6 +18,7 @@ The CPU probe monitors processor performance across all major operating systems,
 ```yaml
 probes:
   - name: cpu
+    type: cpu
     params:
       interval: 30  # Collection interval in seconds (default: 30)
 ```
@@ -27,6 +28,7 @@ probes:
 ```yaml
 probes:
   - name: cpu
+    type: cpu
     params: {}
 ```
 
@@ -97,6 +99,7 @@ This ensures the probe stays functional even when platform limitations exist, pr
 ```yaml
 probes:
   - name: cpu
+    type: cpu
     params:
       interval: 10
 ```
@@ -105,6 +108,7 @@ probes:
 ```yaml
 probes:
   - name: cpu
+    type: cpu
     params:
       interval: 60
 ```
@@ -249,6 +253,7 @@ sudo setcap cap_sys_ptrace=eip ./agent
 1. Increase collection interval:
    ```yaml
    - name: cpu
+     type: cpu
      params:
        interval: 60  # Collect every minute instead of 30 seconds
    ```
@@ -299,10 +304,12 @@ Monitor multiple systems with individual configurations:
 ```yaml
 probes:
   - name: cpu_realtime
+    type: cpu
     params:
       interval: 10
 
   - name: cpu_trending
+    type: cpu
     params:
       interval: 300
 ```
@@ -316,14 +323,17 @@ Correlate CPU metrics with other system metrics:
 ```yaml
 probes:
   - name: cpu
+    type: cpu
     params:
       interval: 30
 
   - name: memory
+    type: memory
     params:
       interval: 30
 
   - name: logicaldisk
+    type: logicaldisk
     params:
       interval: 60
 ```

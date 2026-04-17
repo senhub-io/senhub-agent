@@ -18,6 +18,7 @@ The Memory probe monitors system memory and swap usage across all major operatin
 ```yaml
 probes:
   - name: memory
+    type: memory
     params:
       interval: 30  # Collection interval in seconds (default: 30)
 ```
@@ -27,6 +28,7 @@ probes:
 ```yaml
 probes:
   - name: memory
+    type: memory
     params: {}
 ```
 
@@ -91,6 +93,7 @@ Platform-specific metrics are automatically detected and collected based on the 
 ```yaml
 probes:
   - name: memory
+    type: memory
     params:
       interval: 10
 ```
@@ -99,6 +102,7 @@ probes:
 ```yaml
 probes:
   - name: memory
+    type: memory
     params:
       interval: 60
 ```
@@ -244,6 +248,7 @@ sudo setcap cap_sys_admin=eip ./agent
 1. Increase collection interval:
    ```yaml
    - name: memory
+     type: memory
      params:
        interval: 60  # Collect every minute instead of 30 seconds
    ```
@@ -302,10 +307,14 @@ Monitor memory with different collection frequencies:
 ```yaml
 probes:
   - name: memory_realtime
+    type: memory
     params:
       interval: 10
 
   - name: memory_trending
+    type: memory
+
+    type: memory
     params:
       interval: 300
 ```
@@ -319,14 +328,19 @@ Correlate memory metrics with other system metrics:
 ```yaml
 probes:
   - name: cpu
+    type: cpu
     params:
       interval: 30
 
   - name: memory
+    type: memory
+
+    type: memory
     params:
       interval: 30
 
   - name: logicaldisk
+    type: logicaldisk
     params:
       interval: 60
 ```
