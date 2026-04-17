@@ -150,7 +150,7 @@ storage:
 | Endpoint | Description |
 |----------|-------------|
 | `prtg` | PRTG-formatted JSON API for PRTG Network Monitor integration |
-| `web` | Built-in web dashboard (Dashboard, API Explorer, Documentation) |
+| `web` | Built-in web dashboard (Dashboard, Sensor Builder, Documentation) |
 | `nagios` | Nagios-compatible check output |
 
 ### HTTPS Configuration
@@ -379,6 +379,8 @@ probes:
 ## Applying Configuration Changes
 
 The agent watches the configuration file for changes. When you modify `agent-config.yaml`, the changes are detected and applied automatically within a few seconds. **No service restart is required.**
+
+![Config reload detected in logs](/images/configuration/config-reload.png "Placeholder — agent log showing 'configuration file changed, reloading' message")
 
 This applies to:
 
