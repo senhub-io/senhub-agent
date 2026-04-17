@@ -380,8 +380,6 @@ probes:
 
 The agent watches the configuration file for changes. When you modify `agent-config.yaml`, the changes are detected and applied automatically within a few seconds. **No service restart is required.**
 
-![Config reload detected in logs](/images/configuration/config-reload.png "Placeholder — agent log showing 'configuration file changed, reloading' message")
-
 This applies to:
 
 - Adding, removing, or modifying probes
