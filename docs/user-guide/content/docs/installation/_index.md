@@ -20,17 +20,38 @@ SenHub Agent is a monitoring collector that runs on your infrastructure and coll
 
 ## Obtaining the Agent
 
-Contact SenHub support (support@senhub.io) to receive:
+Contact SenHub support (support@senhub.io) or download from the [GitHub releases page](https://github.com/sen-hub/senhub-agent/releases). You will receive:
 
-- The agent binary for your platform (`senhub-agent` or `senhub-agent.exe`)
+- The agent binary for your platform (see naming convention below)
 - An authentication key (UUID format) for online mode
 - A license token (required for premium probes: Citrix, NetScaler, Redfish, etc.)
+
+### Binary Naming Convention
+
+Release artifacts include the OS and architecture in the filename:
+
+| Platform | Binary filename |
+|----------|-----------------|
+| Windows x86_64 | `senhub-agent_windows_amd64.exe` |
+| Linux x86_64 | `senhub-agent_linux_amd64` |
+| Linux ARM64 | `senhub-agent_linux_arm64` |
+| macOS Intel | `senhub-agent_darwin_amd64` |
+| macOS Apple Silicon | `senhub-agent_darwin_arm64` |
+
+The instructions below assume you have **renamed the binary** to `senhub-agent.exe` (Windows) or `senhub-agent` (Linux/macOS) after download. If you prefer to keep the original name, substitute it in every command (e.g. `.\senhub-agent_windows_amd64.exe install …`).
 
 ## Windows Installation
 
 ### 1. Prepare the binary
 
-Copy `senhub-agent.exe` to the desired installation directory, for example `C:\SenHub\`.
+Download `senhub-agent_windows_amd64.exe`, then copy it to your installation directory and rename it for convenience:
+
+```powershell
+mkdir C:\SenHub
+Copy-Item .\senhub-agent_windows_amd64.exe C:\SenHub\senhub-agent.exe
+```
+
+If you prefer to keep the original filename, replace `senhub-agent.exe` with `senhub-agent_windows_amd64.exe` in every command below.
 
 ### 2. Install the service
 
@@ -78,6 +99,8 @@ Expected response:
 {"status":"ok","version":"0.1.87","uptime":"1m30s","probes_active":2,"metrics_cached":12}
 ```
 
+![Windows service running](/images/installation/windows-service-running.png "Placeholder — Services.msc showing SenHub Agent in Running state")
+
 ### Log file location
 
 Windows logs are stored at:
@@ -93,11 +116,15 @@ Log rotation: 10 MB max per file, 5 backup files, 30-day retention, compressed.
 
 ### 1. Prepare the binary
 
+Download the binary for your architecture (`senhub-agent_linux_amd64` or `senhub-agent_linux_arm64`), then rename it to `senhub-agent` for convenience:
+
 ```bash
 sudo mkdir -p /opt/senhub/bin
-sudo cp senhub-agent /opt/senhub/bin/
+sudo cp senhub-agent_linux_amd64 /opt/senhub/bin/senhub-agent
 sudo chmod +x /opt/senhub/bin/senhub-agent
 ```
+
+If you prefer to keep the original filename, replace `senhub-agent` with `senhub-agent_linux_amd64` (or `_arm64`) in every command below.
 
 ### 2. Install the service
 
@@ -139,6 +166,8 @@ Or check the health endpoint:
 ```bash
 curl http://localhost:8080/health
 ```
+
+![Linux systemd unit active](/images/installation/linux-systemd-status.png "Placeholder — systemctl status senhub-agent showing active (running)")
 
 ### Log file location
 

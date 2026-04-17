@@ -186,7 +186,7 @@ All API endpoints require the authentication key in the URL path, except `/healt
 |----------|-------------|
 | `/web/{key}/` | Main dashboard |
 | `/web/{key}/dashboard` | Dashboard (same as above) |
-| `/web/{key}/explorer` | API Explorer (interactive API testing) |
+| `/web/{key}/explorer` | Sensor Builder (interactive API testing) |
 | `/web/{key}/docs` | Embedded documentation |
 
 ### PRTG Lookups

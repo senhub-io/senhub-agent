@@ -292,7 +292,7 @@ The NetScaler probe includes **PRTG Value Lookups** for human-readable status va
 
 1. **Download lookups:**
    - Open SenHub Agent dashboard: `http://localhost:8080/web/{agentkey}/`
-   - Navigate to **API Explorer**
+   - Navigate to **Sensor Builder**
    - Click **"Download PRTG Lookups"** button
    - Save `senhub-prtg-lookups.zip`
 

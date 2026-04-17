@@ -206,6 +206,7 @@ probes:
 # Forward to multiple destinations
 storage:
   - name: event
+    type: event
     params:
       targets: ["senhub", "local_storage", "siem"]
 ```
