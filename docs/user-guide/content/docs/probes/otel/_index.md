@@ -35,6 +35,7 @@ Here is a basic configuration example for the OpenTelemetry probe in the SenHub 
 ```yaml
 probes:
   - name: otel
+    type: otel
     interval: 60  # collection interval in seconds
     telemetry_types:
       - metrics
@@ -47,6 +48,7 @@ probes:
 ```yaml
 probes:
   - name: otel
+    type: otel
     interval: 60
     http:
       endpoint: "http://localhost:4318"
@@ -64,6 +66,7 @@ probes:
 ```yaml
 probes:
   - name: otel
+    type: otel
     interval: 60
     grpc:
       endpoint: "localhost:4317"
@@ -79,6 +82,7 @@ probes:
 ```yaml
 probes:
   - name: otel
+    type: otel
     interval: 60
     telemetry_types:
       - metrics
@@ -100,16 +104,30 @@ probes:
 
 ## Collected Metrics
 
-The OpenTelemetry probe can collect all metrics sent by applications instrumented with OpenTelemetry. Metrics are normalized according to OpenTelemetry conventions.
+The OpenTelemetry probe is a **passive receiver**: it does not emit its own fixed metric set. Instead, it forwards every metric, trace, and log that a client pushes via OTLP. The set of metrics you see in the SenHub back-end depends entirely on how your applications are instrumented.
 
-### Supported Metric Types
+### Probe Operational Metrics
 
-- **Counters** - Monotonically increasing values
-- **Gauges** - Values that can increase and decrease
-- **Histograms** - Value distributions with buckets
-- **UpDown Counters** - Counters that can increase and decrease
+In addition to pass-through data, the probe emits operational metrics so you can observe its own health:
 
-### Example Collected Metrics
+| Metric | Unit | Description |
+|--------|------|-------------|
+| `otel_metrics_received_total` | Count | OTLP metric data points received since startup |
+| `otel_traces_received_total` | Count | OTLP spans received since startup |
+| `otel_logs_received_total` | Count | OTLP log records received since startup |
+| `otel_receiver_up` | Lookup | 1 when configured receivers (HTTP/gRPC) are accepting connections, 0 otherwise |
+| `otel_last_datapoint_age_seconds` | Seconds | Time since the most recent datapoint was received (useful to detect silent clients) |
+
+### Supported OTLP Metric Types
+
+- **Counters** — Monotonically increasing values (forwarded as counter)
+- **Gauges** — Point-in-time observations (forwarded as gauge)
+- **Histograms** — Value distributions with buckets (forwarded as histogram)
+- **UpDown Counters** — Counters that can increase and decrease (forwarded as gauge)
+
+Resource attributes (`service.name`, `service.version`, `host.name`, …) are preserved as tags so metrics remain filterable per-service and per-host downstream.
+
+### Example Received Metrics
 
 ```
 Name: http.server.request.duration
@@ -138,6 +156,7 @@ For gRPC connections, TLS security is enabled by default. You can configure TLS 
 ```yaml
 probes:
   - name: otel
+    type: otel
     grpc:
       endpoint: "localhost:4317"
       insecure: false  # true to disable TLS
@@ -155,6 +174,7 @@ Several authentication methods are supported:
 ```yaml
 probes:
   - name: otel
+    type: otel
     http:
       endpoint: "http://localhost:4318"
       username: "user"
@@ -167,6 +187,7 @@ For HTTP:
 ```yaml
 probes:
   - name: otel
+    type: otel
     http:
       endpoint: "http://localhost:4318"
       headers:
@@ -177,6 +198,7 @@ For gRPC:
 ```yaml
 probes:
   - name: otel
+    type: otel
     grpc:
       endpoint: "localhost:4317"
       token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -232,6 +254,7 @@ senhub-agent validate --config path/to/config.yaml
 ```yaml
 probes:
   - name: otel
+    type: otel
     interval: 30
     telemetry_types:
       - metrics
@@ -245,6 +268,7 @@ probes:
 ```yaml
 probes:
   - name: otel
+    type: otel
     interval: 60
     telemetry_types:
       - traces
@@ -260,6 +284,7 @@ probes:
 ```yaml
 probes:
   - name: otel
+    type: otel
     interval: 60
     telemetry_types:
       - metrics

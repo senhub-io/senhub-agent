@@ -48,9 +48,11 @@ The main dashboard displays:
 
 This page gives you a quick overview of the agent's health and activity.
 
-### API Explorer
+![Agent dashboard overview](/images/dashboard-hero.webp "Main dashboard showing probe status, cache size and uptime")
 
-The API Explorer provides an interactive interface to:
+### Sensor Builder
+
+The Sensor Builder provides an interactive interface to:
 
 - Browse all available API endpoints and their HTTP methods
 - Test API calls directly from the browser with live responses
@@ -58,6 +60,8 @@ The API Explorer provides an interactive interface to:
 - Discover available probes and their metrics
 
 This is especially useful when setting up PRTG, Nagios, or other monitoring tool integrations. You can see exactly what data is available and how it is formatted before configuring your monitoring system.
+
+![Sensor Builder](/images/web-interface/sensor-builder.webp "Sensor Builder with endpoint list and live JSON response")
 
 ### Documentation
 
@@ -81,6 +85,8 @@ For each probe you want to monitor in PRTG:
    - **URL**: `http://agent-server:8080/api/{key}/prtg/metrics/{probe-name}`
    - **Request Method**: GET
    - **Content Type**: Leave default
+
+![PRTG HTTP Data Advanced sensor](/images/web-interface/prtg-sensor-setup.webp "PRTG sensor creation dialog pointing to the agent URL")
 
 The agent returns metrics in the PRTG JSON format:
 
@@ -115,7 +121,7 @@ To see which probe names are available for PRTG sensors:
 curl http://agent-server:8080/api/{key}/prtg/probes
 ```
 
-Or navigate to the API Explorer in the web dashboard.
+Or navigate to the Sensor Builder in the web dashboard.
 
 #### Filtering Metrics by Tags
 
@@ -135,7 +141,7 @@ SenHub Agent provides custom PRTG Lookup files that translate numeric status val
    ```bash
    curl -o senhub-prtg-lookups.zip http://agent-server:8080/api/{key}/lookups/prtg
    ```
-   Or navigate to the API Explorer in the web dashboard and click the download button.
+   Or navigate to the Sensor Builder in the web dashboard and click the download button.
 
 2. Extract the ZIP file to the PRTG custom lookups directory on your PRTG server:
    ```powershell

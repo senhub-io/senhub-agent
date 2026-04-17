@@ -140,7 +140,7 @@ Example for job details:
 http://192.168.1.100:8056/api/17b3cf0a-.../prtg/metrics/veeam-prod?tags=metric_type:jobs
 ```
 
-Download the PRTG lookup files from the web interface (button "PRTG Lookups" in the API Explorer).
+Download the PRTG lookup files from the web interface (button "PRTG Lookups" in the Sensor Builder).
 
 ## Troubleshooting
 

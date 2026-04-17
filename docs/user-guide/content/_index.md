@@ -7,6 +7,8 @@ type: docs
 
 SenHub Agent is a monitoring collector that runs on your infrastructure and collects metrics from servers, applications, backup systems, and network devices. It exposes metrics via a REST API compatible with PRTG and Nagios.
 
+![SenHub Agent dashboard](/images/dashboard-hero.webp "SenHub Agent dashboard showing active probes and metrics")
+
 ## Getting Started
 
 1. **[Installation]({{< relref "/docs/installation" >}})** - Install the agent on Windows or Linux
