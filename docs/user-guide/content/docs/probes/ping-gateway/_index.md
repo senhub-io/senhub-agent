@@ -18,6 +18,7 @@ The Ping Gateway probe monitors network connectivity to the default gateway or a
 ```yaml
 probes:
   - name: ping_gateway
+    type: ping_gateway
     params:
       interval: 30  # Collection interval in seconds (default: 30)
 ```
@@ -27,6 +28,7 @@ probes:
 ```yaml
 probes:
   - name: ping_gateway
+    type: ping_gateway
     params: {}
 ```
 
@@ -59,6 +61,7 @@ Platform-specific ping implementations are automatically selected based on the o
 ```yaml
 probes:
   - name: ping_gateway
+    type: ping_gateway
     params:
       interval: 10
 ```
@@ -67,6 +70,7 @@ probes:
 ```yaml
 probes:
   - name: ping_gateway
+    type: ping_gateway
     params:
       interval: 60
 ```
@@ -75,6 +79,7 @@ probes:
 ```yaml
 probes:
   - name: ping_gateway
+    type: ping_gateway
     params:
       interval: 300
 ```
@@ -443,10 +448,14 @@ Monitor multiple gateways or network paths:
 ```yaml
 probes:
   - name: ping_gateway_primary
+    type: ping_gateway
     params:
       interval: 30
 
   - name: ping_gateway_secondary
+    type: ping_gateway
+
+    type: ping_gateway
     params:
       interval: 60
 ```
@@ -461,11 +470,13 @@ Comprehensive network monitoring setup:
 probes:
   # Local network connectivity
   - name: ping_gateway
+    type: ping_gateway
     params:
       interval: 30
 
   # External connectivity and DNS
   - name: ping_webapp
+    type: ping_webapp
     params:
       interval: 60
       targets:
@@ -474,6 +485,7 @@ probes:
 
   # Interface metrics
   - name: network
+    type: network
     params:
       interval: 30
 ```

@@ -5,7 +5,7 @@ weight: 6
 
 # CLI Reference
 
-All commands are run from the agent binary: `senhub-agent` (Linux) or `senhub-agent.exe` (Windows).
+All commands are run from the agent binary. Release artifacts are named with the OS and architecture (e.g. `senhub-agent_linux_amd64`, `senhub-agent_windows_amd64.exe`). Examples in this page assume the binary has been renamed to `senhub-agent` (Linux/macOS) or `senhub-agent.exe` (Windows) — see the [Installation guide]({{< relref "/docs/installation" >}}#binary-naming-convention) for the full list. If you keep the original filename, substitute it in every command.
 
 ## Service Management
 
@@ -64,6 +64,8 @@ Checks performed:
 - Required probe parameters (endpoint, credentials)
 - Storage strategy names
 
+![senhub-agent config check output](/images/cli/config-check.png "Placeholder — terminal output showing a passing config check with warnings highlighted")
+
 ### debug-modules-list
 
 Lists all available debug filter names.
@@ -89,6 +91,8 @@ senhub-agent update --list
 ```
 
 Lists all stable versions. If `auto_update.include_beta: true` is set in the configuration, beta versions are also listed.
+
+![senhub-agent update --list output](/images/cli/update-list.png "Placeholder — terminal showing available versions with the current version highlighted")
 
 ### Install a specific version
 
