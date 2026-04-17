@@ -18,6 +18,7 @@ The Load WebApp probe monitors HTTP/HTTPS web application performance by measuri
 ```yaml
 probes:
   - name: load_webapp
+    type: load_webapp
     params:
       url: "https://www.example.com"
       timeout: 30  # Request timeout in seconds (default: 30)
@@ -604,14 +605,17 @@ probes:
 
   # Server health
   - name: cpu
+    type: cpu
     params:
       interval: 30
 
   - name: memory
+    type: memory
     params:
       interval: 30
 
   - name: network
+    type: network
     params:
       interval: 60
 ```

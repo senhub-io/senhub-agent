@@ -18,6 +18,7 @@ The Network probe monitors network interface performance across all major operat
 ```yaml
 probes:
   - name: network
+    type: network
     params:
       interval: 30  # Collection interval in seconds (default: 30)
 ```
@@ -27,6 +28,7 @@ probes:
 ```yaml
 probes:
   - name: network
+    type: network
     params: {}
 ```
 
@@ -70,6 +72,7 @@ All metrics include the `interface` tag to identify the specific network interfa
 ```yaml
 probes:
   - name: network
+    type: network
     params:
       interval: 10
 ```
@@ -78,6 +81,7 @@ probes:
 ```yaml
 probes:
   - name: network
+    type: network
     params:
       interval: 60
 ```
@@ -383,10 +387,14 @@ Monitor network with different collection intervals:
 ```yaml
 probes:
   - name: network_realtime
+    type: network
     params:
       interval: 10
 
   - name: network_trending
+    type: network
+
+    type: network
     params:
       interval: 300
 ```
@@ -400,18 +408,22 @@ Correlate network metrics with other system metrics:
 ```yaml
 probes:
   - name: network
+    type: network
     params:
       interval: 30
 
   - name: cpu
+    type: cpu
     params:
       interval: 30
 
   - name: memory
+    type: memory
     params:
       interval: 30
 
   - name: logicaldisk
+    type: logicaldisk
     params:
       interval: 60
 ```

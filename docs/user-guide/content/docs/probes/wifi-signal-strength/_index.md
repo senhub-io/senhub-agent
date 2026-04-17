@@ -19,6 +19,7 @@ The WiFi Signal Strength probe monitors wireless network connectivity quality by
 ```yaml
 probes:
   - name: wifi_signal_strength
+    type: wifi_signal_strength
     params:
       interval: 60
 ```
@@ -27,6 +28,7 @@ probes:
 ```yaml
 probes:
   - name: wifi_signal_strength
+    type: wifi_signal_strength
 ```
 
 ## Key Metrics
@@ -138,6 +140,7 @@ Returns: `OK - WiFi connected | signal=85% quality=90%`
 ```yaml
 probes:
   - name: wifi_signal_strength
+    type: wifi_signal_strength
     params:
       interval: 30  # More frequent checks
 ```
@@ -156,9 +159,11 @@ probes:
 ```yaml
 probes:
   - name: wifi_signal_strength
+    type: wifi_signal_strength
     params:
       interval: 60
   - name: ping_gateway
+    type: ping_gateway
     params:
       interval: 30
 ```
@@ -319,12 +324,15 @@ For complete connectivity monitoring, combine with:
 ```yaml
 probes:
   - name: wifi_signal_strength
+    type: wifi_signal_strength
     params:
       interval: 60
   - name: ping_gateway
+    type: ping_gateway
     params:
       interval: 30
   - name: ping_webapp
+    type: ping_webapp
     params:
       interval: 60
       url: "https://www.google.com"
