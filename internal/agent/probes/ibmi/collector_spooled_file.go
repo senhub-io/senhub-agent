@@ -31,7 +31,10 @@ func (spooledFileCollector) Name() string  { return "spooled_file" }
 func (spooledFileCollector) IsEvent() bool { return false }
 
 func (spooledFileCollector) SQL() string {
-	return "SELECT STATUS, COUNT(*) AS FILE_COUNT, MIN(CREATION_TIMESTAMP) AS OLDEST_CREATED FROM QSYS2.SPOOLED_FILE_INFO GROUP BY STATUS"
+	// SPOOLED_FILE_INFO is a table function in IBM i 7.5, not a view.
+	// `FROM QSYS2.SPOOLED_FILE_INFO` raises SQL0204 on PUB400 (2026-04-18
+	// live check) — the correct call syntax is `FROM TABLE(...())`.
+	return "SELECT STATUS, COUNT(*) AS FILE_COUNT, MIN(CREATION_TIMESTAMP) AS OLDEST_CREATED FROM TABLE(QSYS2.SPOOLED_FILE_INFO()) AS X GROUP BY STATUS"
 }
 
 func (spooledFileCollector) Parse(res *bridge.Result, host string, ts time.Time) ([]datapoint.DataPoint, error) {
