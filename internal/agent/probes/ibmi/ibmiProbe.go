@@ -128,7 +128,6 @@ func defaultCollectors() []collector {
 		spooledFileCollector{},
 		userStorageCollector{},
 		indexAdvisorCollector{},
-		querySupervisorCollector{},
 		hardwareResourceCollector{},
 		newMessageQueueCollector(),
 		newHistoryLogCollector(),
@@ -150,6 +149,7 @@ func allKnownCollectors() []collector {
 		newPtfCollector(),
 		newServiceAgentCollector(),
 		newWatchInfoCollector(),
+		newQuerySupervisorCollector(),
 	)
 }
 
