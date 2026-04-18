@@ -16,6 +16,13 @@ import (
 // estimate, and queries that consume unreasonable temporary storage
 // are the DBA's bread and butter.
 //
+// **Opt-in collector.** ACTIVE_QUERY_INFO requires either `*JOBCTL`
+// special authority or explicit usage of the `QIBM_DB_SQLADM`
+// function usage (SQL0443 verified on PUB400 2026-04-18 — PGMR profile
+// is denied). Activate via `enabled_collectors: [..., query_supervisor]`
+// in the probe config for deployments where the probe profile has been
+// granted the right authority.
+//
 // Cardinality is bounded by two knobs:
 //   - a top-N cap (20) to keep per-query series manageable,
 //   - aggregation by CURRENT_USER_NAME so the overall DB load by
@@ -24,17 +31,20 @@ import (
 // Ref: https://www.ibm.com/docs/en/i/7.5?topic=services-active-query-info
 type querySupervisorCollector struct{}
 
+func newQuerySupervisorCollector() *querySupervisorCollector { return &querySupervisorCollector{} }
+
 func (querySupervisorCollector) Name() string  { return "query_supervisor" }
 func (querySupervisorCollector) IsEvent() bool { return false }
 
 const querySupervisorRowLimit = 20
 
 func (querySupervisorCollector) SQL() string {
-	// ORDER BY OPEN_DATE_TIME ASC puts the longest-running queries
-	// at the top — they're the ones worth surfacing as a top-N.
-	// COUNT(*) OVER () exposes the total concurrency in one pass.
+	// ACTIVE_QUERY_INFO is a table function in IBM i 7.5 — the FROM
+	// clause must wrap it in TABLE(...). ORDER BY OPEN_DATE_TIME ASC
+	// puts the longest-running queries at the top. COUNT(*) OVER ()
+	// exposes the total concurrency in one pass.
 	return fmt.Sprintf(
-		"SELECT JOB_NAME, CURRENT_USER_NAME, CURRENT_TEMPORARY_STORAGE, OPEN_DATE_TIME, QUERY_TIME_ESTIMATE, ROWS_FETCHED, QUERY_TYPE, COUNT(*) OVER () AS TOTAL_ACTIVE FROM QSYS2.ACTIVE_QUERY_INFO ORDER BY OPEN_DATE_TIME ASC FETCH FIRST %d ROWS ONLY",
+		"SELECT JOB_NAME, CURRENT_USER_NAME, CURRENT_TEMPORARY_STORAGE, OPEN_DATE_TIME, QUERY_TIME_ESTIMATE, ROWS_FETCHED, QUERY_TYPE, COUNT(*) OVER () AS TOTAL_ACTIVE FROM TABLE(QSYS2.ACTIVE_QUERY_INFO()) AS X ORDER BY OPEN_DATE_TIME ASC FETCH FIRST %d ROWS ONLY",
 		querySupervisorRowLimit,
 	)
 }
