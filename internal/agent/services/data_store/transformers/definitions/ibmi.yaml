@@ -1,0 +1,673 @@
+probe_name: "ibmi"
+friendly_name: "IBM i / Power Systems"
+version: "1.0.0"
+
+metrics:
+  # ============================================================
+  # System-level CPU, memory, ASP
+  # ============================================================
+  - name: "ibmi.cpu.elapsed_used_percent"
+    channel: "ibmi_cpu_used_percent"
+    display_name: "CPU Used"
+    unit: "%"
+    category: "cpu"
+    description: "Percentage of CPU used over the elapsed interval"
+
+  - name: "ibmi.cpu.configured_count"
+    channel: "ibmi_cpu_configured_count"
+    display_name: "CPU Configured Count"
+    unit: "#"
+    category: "cpu"
+    description: "Number of configured virtual CPUs"
+
+  - name: "ibmi.cpu.current_capacity"
+    channel: "ibmi_cpu_current_capacity"
+    display_name: "CPU Current Capacity"
+    unit: "#"
+    category: "cpu"
+    description: "Current processing capacity"
+
+  - name: "ibmi.memory.main_storage_kb"
+    channel: "ibmi_memory_main_storage_kb"
+    display_name: "Main Storage"
+    unit: "KB"
+    category: "memory"
+
+  - name: "ibmi.asp.system_used_percent"
+    channel: "ibmi_asp_system_used_percent"
+    display_name: "System ASP Used"
+    unit: "%"
+    category: "storage"
+
+  - name: "ibmi.asp.used_percent"
+    channel: "ibmi_asp_used_percent"
+    display_name: "ASP Used ({asp_number})"
+    unit: "%"
+    category: "storage"
+    multi_instance_labels: ["asp_number", "asp_type"]
+
+  - name: "ibmi.asp.total_capacity_mb"
+    channel: "ibmi_asp_total_capacity_mb"
+    display_name: "ASP Total Capacity ({asp_number})"
+    unit: "MB"
+    category: "storage"
+    multi_instance_labels: ["asp_number"]
+
+  - name: "ibmi.asp.storage_threshold_percent"
+    channel: "ibmi_asp_threshold_percent"
+    display_name: "ASP Storage Threshold ({asp_number})"
+    unit: "%"
+    category: "storage"
+    multi_instance_labels: ["asp_number"]
+
+  # ============================================================
+  # Jobs — aggregate
+  # ============================================================
+  - name: "ibmi.jobs.total_count"
+    channel: "ibmi_jobs_total_count"
+    display_name: "Jobs Total"
+    unit: "#"
+    category: "jobs"
+
+  - name: "ibmi.jobs.active_total"
+    channel: "ibmi_jobs_active_total"
+    display_name: "Jobs Active Total"
+    unit: "#"
+    category: "jobs"
+
+  - name: "ibmi.jobs.count_by_status"
+    channel: "ibmi_jobs_count_by_status"
+    display_name: "Jobs {job_type} / {status}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["job_type", "status"]
+
+  - name: "ibmi.jobs.count_by_subsystem"
+    channel: "ibmi_jobs_count_by_subsystem"
+    display_name: "Jobs in {subsystem}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["subsystem"]
+
+  - name: "ibmi.jobs.topn_cap_hit"
+    channel: "ibmi_jobs_topn_cap_hit"
+    display_name: "Top-N Cap Hit"
+    unit: "#"
+    category: "jobs"
+    description: "1 = active_job SQL hit the row cap, counts may be undercounts"
+
+  # ============================================================
+  # Jobs — per-job detail (top-N by elapsed CPU)
+  # ============================================================
+  - name: "ibmi.job.elapsed_cpu_percent"
+    channel: "ibmi_job_elapsed_cpu_percent"
+    display_name: "CPU % — {job_name}"
+    unit: "%"
+    category: "jobs"
+    multi_instance_labels: ["job_name", "job_user", "subsystem"]
+
+  - name: "ibmi.job.elapsed_cpu_ms"
+    channel: "ibmi_job_elapsed_cpu_ms"
+    display_name: "Elapsed CPU — {job_name}"
+    unit: "ms"
+    category: "jobs"
+    multi_instance_labels: ["job_name", "job_user", "subsystem"]
+
+  - name: "ibmi.job.cpu_time_ms"
+    channel: "ibmi_job_cpu_time_ms"
+    display_name: "Cumulative CPU — {job_name}"
+    unit: "ms"
+    category: "jobs"
+    multi_instance_labels: ["job_name", "job_user", "subsystem"]
+
+  - name: "ibmi.job.cpu_time_ms_delta"
+    channel: "ibmi_job_cpu_time_ms_delta"
+    display_name: "CPU Delta — {job_name}"
+    unit: "ms"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+
+  - name: "ibmi.job.cpu_time_ms_rate_per_sec"
+    channel: "ibmi_job_cpu_time_ms_rate"
+    display_name: "CPU Rate — {job_name}"
+    unit: "ms/s"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+
+  - name: "ibmi.job.temp_storage_mb"
+    channel: "ibmi_job_temp_storage_mb"
+    display_name: "Temp Storage — {job_name}"
+    unit: "MB"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+
+  - name: "ibmi.job.total_disk_io"
+    channel: "ibmi_job_total_disk_io"
+    display_name: "Total Disk I/O — {job_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+
+  - name: "ibmi.job.elapsed_total_disk_io"
+    channel: "ibmi_job_elapsed_disk_io"
+    display_name: "Disk I/O (elapsed) — {job_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+
+  - name: "ibmi.job.elapsed_page_faults"
+    channel: "ibmi_job_elapsed_page_faults"
+    display_name: "Page Faults — {job_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+
+  - name: "ibmi.job.thread_count"
+    channel: "ibmi_job_thread_count"
+    display_name: "Threads — {job_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+
+  - name: "ibmi.job.run_priority"
+    channel: "ibmi_job_run_priority"
+    display_name: "Run Priority — {job_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+
+  # ============================================================
+  # Jobs — queues, scheduled, MSGW
+  # ============================================================
+  - name: "ibmi.job_queue.active_jobs"
+    channel: "ibmi_jobq_active"
+    display_name: "Active Jobs — {queue_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["queue_library", "queue_name"]
+
+  - name: "ibmi.job_queue.held_jobs"
+    channel: "ibmi_jobq_held"
+    display_name: "Held Jobs — {queue_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["queue_library", "queue_name"]
+
+  - name: "ibmi.job_queue.released_jobs"
+    channel: "ibmi_jobq_released"
+    display_name: "Released Jobs — {queue_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["queue_library", "queue_name"]
+
+  - name: "ibmi.job_queue.scheduled_jobs"
+    channel: "ibmi_jobq_scheduled"
+    display_name: "Scheduled Jobs — {queue_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["queue_library", "queue_name"]
+
+  - name: "ibmi.job_queue.jobs_total"
+    channel: "ibmi_jobq_jobs_total"
+    display_name: "Total Jobs — {queue_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["queue_library", "queue_name"]
+
+  - name: "ibmi.job_queue.nonempty_total"
+    channel: "ibmi_jobq_nonempty_total"
+    display_name: "Non-empty Job Queues"
+    unit: "#"
+    category: "jobs"
+
+  - name: "ibmi.scheduled_job.total"
+    channel: "ibmi_scheduled_total"
+    display_name: "Scheduled Jobs"
+    unit: "#"
+    category: "jobs"
+
+  - name: "ibmi.scheduled_job.last_run_age_seconds"
+    channel: "ibmi_scheduled_last_run_age"
+    display_name: "Scheduled Last Run Age — {job_name}"
+    unit: "s"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+
+  - name: "ibmi.msgw_job.event"
+    channel: "ibmi_msgw_event"
+    display_name: "MSGW — {job_name}"
+    unit: "s"
+    category: "jobs"
+    multi_instance_labels: ["job_name", "internal_job_id"]
+    description: "Job in message wait; value = seconds stuck"
+
+  # ============================================================
+  # Subsystems
+  # ============================================================
+  - name: "ibmi.subsystem.active_jobs"
+    channel: "ibmi_subsystem_active_jobs"
+    display_name: "Active Jobs in {subsystem}"
+    unit: "#"
+    category: "workload"
+    multi_instance_labels: ["subsystem"]
+
+  - name: "ibmi.memory_pool.defined_size_mb"
+    channel: "ibmi_pool_defined_size_mb"
+    display_name: "Pool Size — {pool_name}"
+    unit: "MB"
+    category: "memory"
+    multi_instance_labels: ["pool_id", "pool_name"]
+
+  - name: "ibmi.memory_pool.current_threads"
+    channel: "ibmi_pool_current_threads"
+    display_name: "Pool Threads — {pool_name}"
+    unit: "#"
+    category: "memory"
+    multi_instance_labels: ["pool_id", "pool_name"]
+
+  - name: "ibmi.memory_pool.ineligible_threads"
+    channel: "ibmi_pool_ineligible_threads"
+    display_name: "Pool Ineligible — {pool_name}"
+    unit: "#"
+    category: "memory"
+    multi_instance_labels: ["pool_id", "pool_name"]
+
+  # ============================================================
+  # Storage & spool
+  # ============================================================
+  - name: "ibmi.disk.percent_busy"
+    channel: "ibmi_disk_percent_busy"
+    display_name: "Disk Busy — unit {unit_number}"
+    unit: "%"
+    category: "storage"
+    multi_instance_labels: ["unit_number", "device_name"]
+
+  - name: "ibmi.disk.data_read_bytes"
+    channel: "ibmi_disk_read_bytes"
+    display_name: "Disk Read — unit {unit_number}"
+    unit: "B"
+    category: "storage"
+    multi_instance_labels: ["unit_number"]
+
+  - name: "ibmi.output_queue.files_count"
+    channel: "ibmi_outq_files"
+    display_name: "Spool Files — {queue_name}"
+    unit: "#"
+    category: "spool"
+    multi_instance_labels: ["queue_library", "queue_name"]
+
+  - name: "ibmi.output_queue.spooled_files_total"
+    channel: "ibmi_outq_spooled_total"
+    display_name: "Spooled Files Total"
+    unit: "#"
+    category: "spool"
+
+  - name: "ibmi.spooled_file.total"
+    channel: "ibmi_spool_total"
+    display_name: "Spooled Files"
+    unit: "#"
+    category: "spool"
+
+  - name: "ibmi.spooled_file.oldest_age_seconds"
+    channel: "ibmi_spool_oldest_age"
+    display_name: "Oldest Spool Age"
+    unit: "s"
+    category: "spool"
+
+  - name: "ibmi.user_storage.used_kb"
+    channel: "ibmi_user_storage_used"
+    display_name: "User Storage — {user}"
+    unit: "KB"
+    category: "storage"
+    multi_instance_labels: ["user", "asp"]
+
+  - name: "ibmi.user_storage.quota_kb"
+    channel: "ibmi_user_storage_quota"
+    display_name: "User Quota — {user}"
+    unit: "KB"
+    category: "storage"
+    multi_instance_labels: ["user", "asp"]
+
+  - name: "ibmi.user_storage.usage_ratio_percent"
+    channel: "ibmi_user_storage_ratio"
+    display_name: "User Storage Ratio — {user}"
+    unit: "%"
+    category: "storage"
+    multi_instance_labels: ["user", "asp"]
+
+  - name: "ibmi.user_storage.users_over_80pct"
+    channel: "ibmi_user_storage_over_80pct"
+    display_name: "Users Over 80% Quota"
+    unit: "#"
+    category: "storage"
+
+  # ============================================================
+  # DB & journaling
+  # ============================================================
+  - name: "ibmi.table.rows_count"
+    channel: "ibmi_table_rows"
+    display_name: "Rows — {table_schema}.{table_name}"
+    unit: "#"
+    category: "database"
+    multi_instance_labels: ["table_schema", "table_name"]
+
+  - name: "ibmi.table.logical_reads_total"
+    channel: "ibmi_table_logical_reads"
+    display_name: "Logical Reads — {table_schema}.{table_name}"
+    unit: "#"
+    category: "database"
+    multi_instance_labels: ["table_schema", "table_name"]
+
+  - name: "ibmi.table.updates_total"
+    channel: "ibmi_table_updates"
+    display_name: "Updates — {table_schema}.{table_name}"
+    unit: "#"
+    category: "database"
+    multi_instance_labels: ["table_schema", "table_name"]
+
+  - name: "ibmi.table.deleted_rows"
+    channel: "ibmi_table_deleted_rows"
+    display_name: "Deleted Rows — {table_schema}.{table_name}"
+    unit: "#"
+    category: "database"
+    multi_instance_labels: ["table_schema", "table_name"]
+
+  - name: "ibmi.index_advisor.times_advised"
+    channel: "ibmi_idx_times_advised"
+    display_name: "Times Advised — {table_schema}.{table_name}"
+    unit: "#"
+    category: "database"
+    multi_instance_labels: ["table_schema", "table_name", "key_columns"]
+    description: "Missing-index recommendation hit count"
+
+  - name: "ibmi.index_advisor.mti_used"
+    channel: "ibmi_idx_mti_used"
+    display_name: "MTI Used — {table_schema}.{table_name}"
+    unit: "#"
+    category: "database"
+    multi_instance_labels: ["table_schema", "table_name", "key_columns"]
+
+  - name: "ibmi.index_advisor.avg_query_estimate_seconds"
+    channel: "ibmi_idx_avg_query_est"
+    display_name: "Avg Query Estimate — {table_schema}.{table_name}"
+    unit: "s"
+    category: "database"
+    multi_instance_labels: ["table_schema", "table_name", "key_columns"]
+
+  - name: "ibmi.index_advisor.total"
+    channel: "ibmi_idx_total"
+    display_name: "Advised Indexes"
+    unit: "#"
+    category: "database"
+
+  - name: "ibmi.index_advisor.recent_advisories_1h"
+    channel: "ibmi_idx_recent_1h"
+    display_name: "Index Advisories (1h)"
+    unit: "#"
+    category: "database"
+
+  - name: "ibmi.journal.active"
+    channel: "ibmi_journal_active"
+    display_name: "Journal {journal} ({journal_library})"
+    unit: "#"
+    category: "database"
+    multi_instance_labels: ["journal", "journal_library"]
+
+  - name: "ibmi.journal.receivers_total_size_kb"
+    channel: "ibmi_journal_receivers_size"
+    display_name: "Receivers Size — {journal}"
+    unit: "KB"
+    category: "database"
+    multi_instance_labels: ["journal", "journal_library"]
+
+  - name: "ibmi.journal.remote_lag_estimated_seconds"
+    channel: "ibmi_journal_remote_lag_est"
+    display_name: "Remote Lag (est) — {journal}"
+    unit: "s"
+    category: "database"
+    multi_instance_labels: ["journal", "journal_library"]
+
+  - name: "ibmi.journal_receiver.size_kb"
+    channel: "ibmi_jrnrcv_size"
+    display_name: "Receiver Size — {receiver}"
+    unit: "KB"
+    category: "database"
+    multi_instance_labels: ["receiver", "receiver_library"]
+
+  - name: "ibmi.journal_receiver.attached_total"
+    channel: "ibmi_jrnrcv_attached"
+    display_name: "Attached Receivers"
+    unit: "#"
+    category: "database"
+
+  # ============================================================
+  # Network
+  # ============================================================
+  - name: "ibmi.tcp.connections_established"
+    channel: "ibmi_tcp_established"
+    display_name: "TCP Connections Established"
+    unit: "#"
+    category: "network"
+
+  - name: "ibmi.netstat.connections_total"
+    channel: "ibmi_netstat_conn_total"
+    display_name: "TCP Connections Total"
+    unit: "#"
+    category: "network"
+
+  - name: "ibmi.netstat.connections_by_state"
+    channel: "ibmi_netstat_conn_by_state"
+    display_name: "TCP {tcp_state}"
+    unit: "#"
+    category: "network"
+    multi_instance_labels: ["tcp_state"]
+
+  - name: "ibmi.netstat.listener_up"
+    channel: "ibmi_netstat_listener_up"
+    display_name: "Listener — port {local_port}"
+    unit: "#"
+    category: "network"
+    multi_instance_labels: ["local_port", "port_name", "protocol"]
+
+  - name: "ibmi.netstat.listener_jobs"
+    channel: "ibmi_netstat_listener_jobs"
+    display_name: "Listener Jobs — port {local_port}"
+    unit: "#"
+    category: "network"
+    multi_instance_labels: ["local_port", "port_name"]
+
+  - name: "ibmi.netstat.listener_total"
+    channel: "ibmi_netstat_listener_total"
+    display_name: "Listeners Total"
+    unit: "#"
+    category: "network"
+
+  - name: "ibmi.netstat.interface_up"
+    channel: "ibmi_netstat_interface_up"
+    display_name: "Interface — {address}"
+    unit: "#"
+    category: "network"
+    multi_instance_labels: ["address", "line_description"]
+
+  - name: "ibmi.netstat.interface_mtu"
+    channel: "ibmi_netstat_interface_mtu"
+    display_name: "Interface MTU — {address}"
+    unit: "B"
+    category: "network"
+    multi_instance_labels: ["address"]
+
+  - name: "ibmi.http_server.active_threads"
+    channel: "ibmi_http_active_threads"
+    display_name: "HTTP Active Threads — {server_name}"
+    unit: "#"
+    category: "network"
+    multi_instance_labels: ["server_name"]
+
+  - name: "ibmi.http_server.idle_threads"
+    channel: "ibmi_http_idle_threads"
+    display_name: "HTTP Idle Threads — {server_name}"
+    unit: "#"
+    category: "network"
+    multi_instance_labels: ["server_name"]
+
+  - name: "ibmi.http_server.total_responses"
+    channel: "ibmi_http_total_responses"
+    display_name: "HTTP Responses — {server_name}"
+    unit: "#"
+    category: "network"
+    multi_instance_labels: ["server_name"]
+
+  # ============================================================
+  # Compliance, hardware, security
+  # ============================================================
+  - name: "ibmi.hardware_resource.count"
+    channel: "ibmi_hw_count"
+    display_name: "HW {category} ({status})"
+    unit: "#"
+    category: "hardware"
+    multi_instance_labels: ["category", "status"]
+
+  - name: "ibmi.hardware_resource.total"
+    channel: "ibmi_hw_total"
+    display_name: "Hardware Resources Total"
+    unit: "#"
+    category: "hardware"
+
+  - name: "ibmi.hardware_resource.non_operational_total"
+    channel: "ibmi_hw_non_operational"
+    display_name: "Non-operational HW"
+    unit: "#"
+    category: "hardware"
+    description: "Resources in any non-OPERATIONAL status"
+
+  - name: "ibmi.user_profile.total"
+    channel: "ibmi_users_total"
+    display_name: "User Profiles Total"
+    unit: "#"
+    category: "security"
+
+  - name: "ibmi.user_profile.count_by_status"
+    channel: "ibmi_users_count_by_status"
+    display_name: "Users — {status}"
+    unit: "#"
+    category: "security"
+    multi_instance_labels: ["status"]
+
+  - name: "ibmi.user_profile.count_by_class"
+    channel: "ibmi_users_count_by_class"
+    display_name: "Users — class {user_class}"
+    unit: "#"
+    category: "security"
+    multi_instance_labels: ["user_class"]
+
+  - name: "ibmi.user_profile.failed_signon_total"
+    channel: "ibmi_users_failed_signon"
+    display_name: "Users with Failed Signons"
+    unit: "#"
+    category: "security"
+
+  - name: "ibmi.sysval.security_level"
+    channel: "ibmi_sysval_security_level"
+    display_name: "QSECURITY"
+    unit: "#"
+    category: "security"
+
+  - name: "ibmi.sysval.audit_level"
+    channel: "ibmi_sysval_audit_level"
+    display_name: "QAUDLVL"
+    unit: "#"
+    category: "security"
+
+  - name: "ibmi.library_list.position"
+    channel: "ibmi_liblist_position"
+    display_name: "Library {library} ({type})"
+    unit: "#"
+    category: "config"
+    multi_instance_labels: ["library", "type"]
+
+  - name: "ibmi.license.licensed_user_count"
+    channel: "ibmi_license_user_count"
+    display_name: "Licensed Users — {product_id}"
+    unit: "#"
+    category: "config"
+    multi_instance_labels: ["product_id", "feature_id"]
+
+  - name: "ibmi.license.usage_limit"
+    channel: "ibmi_license_usage_limit"
+    display_name: "License Usage Limit — {product_id}"
+    unit: "#"
+    category: "config"
+    multi_instance_labels: ["product_id", "feature_id"]
+
+  - name: "ibmi.ptf_group.installed"
+    channel: "ibmi_ptf_group_installed"
+    display_name: "PTF Group — {group}"
+    unit: "#"
+    category: "compliance"
+    multi_instance_labels: ["group"]
+
+  - name: "ibmi.ptf_group.level"
+    channel: "ibmi_ptf_group_level"
+    display_name: "PTF Group Level — {group}"
+    unit: "#"
+    category: "compliance"
+    multi_instance_labels: ["group"]
+
+  - name: "ibmi.watch.session_active"
+    channel: "ibmi_watch_session"
+    display_name: "Watch Session — {session_id}"
+    unit: "#"
+    category: "compliance"
+    multi_instance_labels: ["session_id", "program"]
+
+  # ============================================================
+  # Events (history log, QSYSOPR, audit)
+  # ============================================================
+  - name: "ibmi.message_queue.event"
+    channel: "ibmi_msgq_event"
+    display_name: "QSYSOPR Message"
+    unit: "#"
+    category: "events"
+
+  - name: "ibmi.history_log.event"
+    channel: "ibmi_history_event"
+    display_name: "QHST Event"
+    unit: "#"
+    category: "events"
+
+  - name: "ibmi.audit_journal.event"
+    channel: "ibmi_audit_event"
+    display_name: "Audit Event"
+    unit: "#"
+    category: "events"
+
+  # ============================================================
+  # Probe self-observability
+  # ============================================================
+  - name: "ibmi.collector.success_total"
+    channel: "ibmi_collector_success"
+    display_name: "Collector Success — {collector}"
+    unit: "#"
+    category: "health"
+    multi_instance_labels: ["collector"]
+
+  - name: "ibmi.collector.failure_total"
+    channel: "ibmi_collector_failure"
+    display_name: "Collector Failure — {collector}"
+    unit: "#"
+    category: "health"
+    multi_instance_labels: ["collector"]
+
+  - name: "ibmi.collector.last_duration_ms"
+    channel: "ibmi_collector_duration"
+    display_name: "Collector Duration — {collector}"
+    unit: "ms"
+    category: "health"
+    multi_instance_labels: ["collector"]
+
+  - name: "ibmi.collector.last_success_timestamp"
+    channel: "ibmi_collector_last_success"
+    display_name: "Collector Last Success — {collector}"
+    unit: "s"
+    category: "health"
+    multi_instance_labels: ["collector"]
