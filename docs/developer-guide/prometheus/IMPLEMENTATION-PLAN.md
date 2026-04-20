@@ -147,6 +147,36 @@ otel:
 
 Le mapper Prometheus ignore ces métriques. Les champs `prtg:` / `nagios:` restent actifs (retro-compat). Le contrat "pas de métrique sans mapping" reste respecté : `skip` est un mapping explicite, documenté et auditable.
 
+**Expansion enum `otel.expand`** — pour les métriques "health/state" dont la valeur est un enum numérique (via lookup) qui doit être émis en strict OTel comme 1 data point par état (`hw.status` par ex.), le mapper **expand** automatiquement:
+
+```yaml
+otel:
+  name: hw.status
+  unit: "1"
+  type: updowncounter
+  attributes:
+    hw.type: physical_disk
+  expand:
+    attribute: hw.state
+    values: [ok, degraded, failed, predicted_failure]
+    source_lookup: sfs.redfish.health
+```
+
+**Comportement à l'émission :** pour chaque data point du cache (value = code enum via lookup), le mapper émet **N data points** (un par `values[i]`) avec:
+- value = **1** si le code courant matche `values[i]`
+- value = **0** sinon
+- attribut `<attribute>` = `values[i]`
+
+Exemple concret — un drive en état "ok" (code 0) émet 4 séries:
+```
+senhub_hw_status{hw_id="disk1",hw_type="physical_disk",hw_state="ok"} 1
+senhub_hw_status{hw_id="disk1",hw_type="physical_disk",hw_state="degraded"} 0
+senhub_hw_status{hw_id="disk1",hw_type="physical_disk",hw_state="failed"} 0
+senhub_hw_status{hw_id="disk1",hw_type="physical_disk",hw_state="predicted_failure"} 0
+```
+
+**Rationale** : la conformité OTel vit dans le mapper. Les exports futurs (OTLP native vers VictoriaMetrics OTel, Grafana OTel) n'ont aucune correction à faire — la donnée est déjà strict OTel en sortie.
+
 ## 4bis. Convention OTel sémantique SenHub
 
 Pour les domaines non couverts par OTel semconv (netscaler, citrix, veeam, redfish, webapp probes…), on **crée une extension sous namespace `senhub.*`** documentée dans `docs/developer-guide/otel/senhub-semantic-conventions.md`.
