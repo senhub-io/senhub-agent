@@ -480,6 +480,12 @@ func (h *HTTPSyncStrategy) handlePrometheusMetricsGET(w http.ResponseWriter, r *
 	h.utilsManager.handlePrometheusMetricsGET(w, r)
 }
 
+// handlePrometheusStandardMetricsGET handles GET requests for the standard
+// /metrics route (Bearer auth instead of URL-embedded agent key).
+func (h *HTTPSyncStrategy) handlePrometheusStandardMetricsGET(w http.ResponseWriter, r *http.Request) {
+	h.utilsManager.handlePrometheusStandardMetricsGET(w, r)
+}
+
 // Web UI Handlers (delegating to WebInterface module)
 
 func (h *HTTPSyncStrategy) handleWebDashboard(w http.ResponseWriter, r *http.Request) {
