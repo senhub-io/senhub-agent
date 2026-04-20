@@ -468,10 +468,57 @@ Alignement OTel quand possible (`hw.id`, `hw.name`, `hw.parent`, `hw.model`, `hw
 
 33 métriques internes → 20 noms OTel uniques grâce au collapse via labels. 5 métriques utilisent le pattern `expand` pour les enums de statut (job, bottleneck, license, proxy, server).
 
+### 4.11 Probe `citrix` (Virtual Apps and Desktops)
+
+**Source principale :** aucune convention OTel pour Citrix CVAD
+**Source secondaire :** aucun exporter Prometheus standard (Dynatrace, ControlUp, Nexthink sont propriétaires) — design from scratch cohérent avec nos conventions
+
+Toutes les métriques sous `senhub.citrix.*`. Collapse systématique par catégorie fonctionnelle.
+
+#### 4.11.1 Extensions `senhub.citrix.*`
+
+**Sessions :**
+- `senhub.citrix.sessions.count` (gauge, `{session}`) + `senhub.citrix.session.state` ∈ {connected, disconnected}
+
+**Machines (infrastructure) :**
+- `senhub.citrix.machines.total` (gauge, `{machine}`) — total dans le delivery group
+- `senhub.citrix.machines.by_registration_state` (gauge, `{machine}`) + `senhub.citrix.machine.registration_state` ∈ {registered, unregistered, faulty, maintenance}
+
+**Logon performance :**
+- `senhub.citrix.logon.duration_1h_average` (gauge, `s`)
+- `senhub.citrix.logon.last_session_duration` (gauge, `s`)
+- `senhub.citrix.logon.sessions_opened` (gauge, `{session}`)
+- `senhub.citrix.logon.phase_duration` (gauge, `s`) + `senhub.citrix.logon.phase` ∈ {brokering, vm_start, hdx, authentication, gpo, scripts, profile, interactive} — **8 phases collapsées**
+
+**Connection failures :**
+- `senhub.citrix.connection_failures.total` (gauge, `{failure}`)
+- `senhub.citrix.connection_failures.by_category` (gauge, `{failure}`) + `senhub.citrix.connection_failure.category` ∈ {client_connection, configuration, machine, capacity_unavailable, licenses_unavailable, other}
+
+**Load index (VDA utilisation) :**
+- `senhub.citrix.load_index.ratio` (gauge, `1`) + `senhub.citrix.load_index.dimension` ∈ {effective, cpu, memory, disk, network, sessions} — **mapper ÷100**
+- `senhub.citrix.machines.overloaded` (gauge, `{machine}`)
+
+**License :**
+- `senhub.citrix.license.sessions_active` (gauge, `{session}`)
+- `senhub.citrix.license.peak_concurrent_users` (gauge, `{user}`)
+- `senhub.citrix.license.unique_users` (gauge, `{user}`)
+- `senhub.citrix.license.grace.sessions_remaining` (gauge, `{session}`)
+- `senhub.citrix.license.grace.active` (gauge, `1`) bool
+- `senhub.citrix.license.grace.time_remaining` (gauge, `s`) — **mapper ×3600** (heures → secondes)
+
+**Machine fault states (Director) :**
+- `senhub.citrix.machines.multi_session_fault_total` (gauge, `{machine}`) — distinct de `by_registration_state{faulty}` (source DDC vs Director)
+- `senhub.citrix.machines.by_fault_state` (gauge, `{machine}`) + `senhub.citrix.machine.fault_state` ∈ {boot_failure, stuck_at_boot, unregistered, max_capacity, vm_not_found, unknown}
+
+#### 4.11.2 Récap
+
+**45 métriques internes → 19 noms OTel** via collapse par état/catégorie/phase. Aucun `expand` nécessaire (pas d'enum via lookup — chaque état est déjà un data point séparé).
+
+Conversions côté mapper : `%` → ratio (÷100) pour load_index ; heures → secondes (×3600) pour grace time remaining.
+
 ## 5. Conventions en cours (prochains lots)
 
 Sections à ajouter dans les prochains lots :
-- 4.11 `citrix` — lot 4c
 - 4.12 `netscaler` — lot 4d
 
 
