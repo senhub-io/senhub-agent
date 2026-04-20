@@ -158,14 +158,17 @@ otel:
     hw.type: physical_disk
   expand:
     attribute: hw.state
-    values: [ok, degraded, failed, predicted_failure]
-    source_lookup: sfs.redfish.health
+    mapping:                  # state_name → raw lookup code
+      ok: 0                   # sfs.redfish.health value 0 (OK) → hw.state=ok=1
+      degraded: 1             # value 1 (Warning) → degraded=1
+      failed: 2               # value 2 (Critical) → failed=1
+      unknown: 3              # value 3 (Unknown) → unknown=1 (extension value)
 ```
 
-**Comportement à l'émission :** pour chaque data point du cache (value = code enum via lookup), le mapper émet **N data points** (un par `values[i]`) avec:
-- value = **1** si le code courant matche `values[i]`
+**Comportement à l'émission :** pour chaque data point du cache (value = code enum via lookup), le mapper émet **N data points** (un par entrée de `mapping`) avec:
+- value = **1** si le code courant matche la valeur associée au state
 - value = **0** sinon
-- attribut `<attribute>` = `values[i]`
+- attribut `<attribute>` = nom du state
 
 Exemple concret — un drive en état "ok" (code 0) émet 4 séries:
 ```
