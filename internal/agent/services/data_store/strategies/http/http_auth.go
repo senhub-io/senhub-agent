@@ -90,6 +90,70 @@ func (a *AuthenticationManager) GetAgentKey() string {
 	return a.agentKey
 }
 
+// AuthenticateBearerOrQuery validates a request via Authorization: Bearer header
+// OR ?token= query parameter. Used by the standard Prometheus scrape route
+// `/metrics` which does not embed the agent key in the URL path.
+//
+// Returns (agentKey, true) on success and writes 401 on failure.
+// Comparison is constant-time to avoid timing attacks.
+func (a *AuthenticationManager) AuthenticateBearerOrQuery(w http.ResponseWriter, r *http.Request) (string, bool) {
+	// Try Authorization: Bearer <token>
+	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
+		const prefix = "Bearer "
+		if len(authHeader) > len(prefix) && authHeader[:len(prefix)] == prefix {
+			token := authHeader[len(prefix):]
+			if a.validateKeyConstantTime(token) {
+				return token, true
+			}
+			a.logger.Warn().Msg("Invalid Bearer token on Prometheus scrape route")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return "", false
+		}
+	}
+
+	// Fallback: ?token=<token> query parameter
+	if token := r.URL.Query().Get("token"); token != "" {
+		if a.validateKeyConstantTime(token) {
+			return token, true
+		}
+		a.logger.Warn().Msg("Invalid query-param token on Prometheus scrape route")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return "", false
+	}
+
+	a.logger.Warn().Msg("No Bearer token or ?token= on Prometheus scrape route")
+	w.Header().Set("WWW-Authenticate", `Bearer realm="senhub-agent"`)
+	http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	return "", false
+}
+
+// validateKeyConstantTime compares a provided key against the configured
+// agent key(s) using constant-time comparison to avoid timing attacks.
+func (a *AuthenticationManager) validateKeyConstantTime(provided string) bool {
+	// We intentionally check both keys even if one matches, to avoid leaking
+	// which one matched via timing.
+	match1 := constantTimeEqual(provided, a.agentKey)
+	match2 := false
+	if a.agentConfig != nil {
+		match2 = constantTimeEqual(provided, a.agentConfig.GetAuthenticationKey())
+	}
+	return match1 || match2
+}
+
+// constantTimeEqual is a constant-time string comparison. Returns false if
+// the strings differ in length or content, without short-circuiting on the
+// first differing byte.
+func constantTimeEqual(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	var diff byte
+	for i := 0; i < len(a); i++ {
+		diff |= a[i] ^ b[i]
+	}
+	return diff == 0
+}
+
 // UpdateAgentKey updates the agent key (useful for configuration changes)
 func (a *AuthenticationManager) UpdateAgentKey(newKey string) {
 	a.logger.Info().
