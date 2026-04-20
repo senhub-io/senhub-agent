@@ -290,10 +290,47 @@ Extension complète sous namespace `senhub.system.network.wifi.*`.
 
 > Pas de YAML transformer existant pour `wifi_signal_strength` — créé lors du lot 2.
 
+### 4.8 Probes `syslog`, `event`, `otel` (conduits de flux log)
+
+**Nature :** ces trois probes sont des **conduits de flux log** (collecte + retransmission), pas des collecteurs de métriques. Elles reçoivent des événements/logs et les relaient vers des consommateurs (cloud SenHub, futur OTLP log export, etc.). Ce ne sont pas des sources de signaux Prometheus.
+
+**Décision :** aucune métrique métier exposée via l'endpoint `/metrics`. Déclaration explicite par `otel.skip: true` dans les YAML pour respecter le contrat "pas de métrique sans mapping" (le skip EST un mapping explicite, documenté et auditable).
+
+#### 4.8.1 Schéma `otel.skip`
+
+```yaml
+otel:
+  skip: true
+  reason: "<explication obligatoire pour la revue>"
+```
+
+Le mapper Prometheus ignore ces métriques ; elles n'apparaissent pas dans `/metrics`. Les champs `prtg:` / `nagios:` restent fonctionnels (retro-compat).
+
+#### 4.8.2 Évolution future — instrumentation opérationnelle
+
+Ces probes pourront être **outillées** (chantier dédié, hors scope du mapping OTel-first actuel) pour exposer leurs propres **métriques opérationnelles** :
+
+| Candidat futur | Unit | Type |
+|---|---|---|
+| `senhub.probe.syslog.events_received` | `{event}` | Counter |
+| `senhub.probe.syslog.events_dropped` | `{event}` | Counter |
+| `senhub.probe.syslog.buffer_fill_ratio` | `1` | Gauge |
+| `senhub.probe.event.events_received` | `{event}` | Counter |
+| `senhub.probe.otel.spans_received` | `{span}` | Counter |
+| `senhub.probe.otel.logs_received` | `{log}` | Counter |
+| `senhub.probe.otel.metrics_received` | `{metric}` | Counter |
+
+Ces métriques nécessitent une refonte du code probe pour maintenir des compteurs internes. Séparé.
+
+#### 4.8.3 Probes concernées
+
+- **syslog** : métrique `syslog_event` marquée `skip: true`.
+- **event** : YAML créé avec métrique `event_event` marquée `skip: true`.
+- **otel** : pas de YAML (probe stub, n'émet aucun data point).
+
 ## 5. Conventions en cours (prochains lots)
 
 Sections à ajouter dans les prochains lots :
-- 4.8 `syslog` / `event` / `otel` — lot 3
 - 4.9 `netscaler` / `citrix` / `redfish` / `veeam` — lot 4
 
 ## 6. Processus d'ajout d'une convention
