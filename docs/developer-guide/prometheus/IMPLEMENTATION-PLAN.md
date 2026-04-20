@@ -137,6 +137,16 @@ metrics:
 - `prtg`, `nagios` : champs inchangés par rapport au format actuel (retro-compat stricte).
 - Si `otel:` est absent sur une métrique → **error au démarrage, refus de monter l'endpoint Prometheus** (décision Q4, §12).
 
+**Opt-out explicite `otel.skip`** — certaines métriques ne doivent PAS être exposées en Prometheus (probes de flux log/events qui n'émettent pas de métriques sémantiques) :
+
+```yaml
+otel:
+  skip: true
+  reason: "Event conduit probe — relayed events, not metrics. Future: OTLP log export."
+```
+
+Le mapper Prometheus ignore ces métriques. Les champs `prtg:` / `nagios:` restent actifs (retro-compat). Le contrat "pas de métrique sans mapping" reste respecté : `skip` est un mapping explicite, documenté et auditable.
+
 ## 4bis. Convention OTel sémantique SenHub
 
 Pour les domaines non couverts par OTel semconv (netscaler, citrix, veeam, redfish, webapp probes…), on **crée une extension sous namespace `senhub.*`** documentée dans `docs/developer-guide/otel/senhub-semantic-conventions.md`.

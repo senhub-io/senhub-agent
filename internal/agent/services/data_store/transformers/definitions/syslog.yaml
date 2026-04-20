@@ -1,11 +1,16 @@
 # Syslog Probe Metrics Definitions
 # Based on RFC 3164 Syslog Protocol specification
+#
+# Format v3 — OTel-first source of truth.
+# Syslog is an event conduit probe (relays log messages). Not a metrics source.
+# See senhub-semantic-conventions §4.8.
 
 probe_name: "syslog"
-version: "1.0.0"
+friendly_name: "Syslog"
+version: "3.0.0"
 
 metrics:
-  # Syslog Event Severity
+  # Syslog Event Severity — relayed log message, not a metric.
   - name: "syslog_event"
     channel: "syslog_severity"
     display_name: "Syslog {facility_name} Severity"
@@ -14,6 +19,9 @@ metrics:
     description: "Syslog message severity level (RFC 3164)"
     category: "events"
     lookup: "sfs.syslog.severity"
+    otel:
+      skip: true
+      reason: "Event conduit probe — syslog_event is the severity of the last relayed message, not a meaningful Prometheus metric. Future: OTLP log export in V2."
 
 tag_metadata:
   facility_name:
