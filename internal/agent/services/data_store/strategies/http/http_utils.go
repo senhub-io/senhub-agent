@@ -164,19 +164,23 @@ func (u *UtilsManager) handleZabbixMetricsGET(w http.ResponseWriter, r *http.Req
 	}
 }
 
-// handlePrometheusMetricsGET handles GET requests for Prometheus format metrics (placeholder)
+// handlePrometheusMetricsGET serves the SenHub-patterned scrape route
+// /api/{agentkey}/prometheus/metrics. Authentication is the standard agent
+// key extracted from the URL path.
 func (u *UtilsManager) handlePrometheusMetricsGET(w http.ResponseWriter, r *http.Request) {
-	_, authenticated := u.strategy.authManager.AuthenticateAndExtract(w, r)
-	if !authenticated {
+	if _, authenticated := u.strategy.authManager.AuthenticateAndExtract(w, r); !authenticated {
 		return
 	}
+	u.strategy.servePrometheusExposition(w, r)
+}
 
-	u.logger.Info().Msg("🔄 Prometheus endpoint - Request received")
-
-	// TODO: Implement Prometheus format conversion
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusNotImplemented)
-	if _, err := w.Write([]byte("# Prometheus format endpoint not yet implemented\n")); err != nil {
-		u.logger.Error().Err(err).Msg("Failed to write Prometheus error response")
+// handlePrometheusStandardMetricsGET serves the standard Prometheus scrape
+// route /metrics. Authentication is via Authorization: Bearer <agentkey>
+// header or ?token=<agentkey> query parameter — matches what vmagent,
+// Prometheus and Grafana Agent expect natively.
+func (u *UtilsManager) handlePrometheusStandardMetricsGET(w http.ResponseWriter, r *http.Request) {
+	if _, authenticated := u.strategy.authManager.AuthenticateBearerOrQuery(w, r); !authenticated {
+		return
 	}
+	u.strategy.servePrometheusExposition(w, r)
 }
