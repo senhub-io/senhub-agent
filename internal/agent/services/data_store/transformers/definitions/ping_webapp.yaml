@@ -1,9 +1,13 @@
 probe_name: "ping_webapp"
 friendly_name: "Ping WebApp"
+version: "3.0.0"
 multi_instance_labels: ["url"]
 
+# Format v3 — OTel-first source of truth.
+# Same OTel metric as ping_gateway, distinguished by presence of url.full attribute.
+# See senhub-semantic-conventions §4.5.
+
 metrics:
-  # WebApp Ping Metrics
   - name: "averageLatency"
     channel: "ping_average_latency"
     display_name: "Average Latency ({url})"
@@ -11,6 +15,13 @@ metrics:
     category: "connectivity"
     multi_instance_labels: ["url"]
     description: "Average round-trip time to the web application endpoint"
+    otel:
+      name: senhub.probe.icmp.duration_seconds
+      unit: s
+      type: gauge
+      # Mapper converts ms → s (÷1000)
+    tag_to_attribute:
+      url: url.full
 
   - name: "packetLoss"
     channel: "ping_packet_loss"
@@ -19,6 +30,13 @@ metrics:
     category: "connectivity"
     multi_instance_labels: ["url"]
     description: "Percentage of ICMP packets lost to the web application endpoint"
+    otel:
+      name: senhub.probe.icmp.packet_loss_ratio
+      unit: "1"
+      type: gauge
+      # Mapper converts % → ratio (÷100)
+    tag_to_attribute:
+      url: url.full
 
 tag_metadata:
   url:
