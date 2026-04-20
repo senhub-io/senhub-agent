@@ -338,10 +338,73 @@ Ces métriques nécessitent une refonte du code probe pour maintenir des compteu
 - **event** : YAML créé avec métrique `event_event` marquée `skip: true`.
 - **otel** : pas de YAML (probe stub, n'émet aucun data point).
 
+### 4.9 Probe `redfish` (monitoring hardware serveur)
+
+**Source principale :** [OTel hardware namespace](https://opentelemetry.io/docs/specs/semconv/hardware/) — 16 catégories (power_supply, physical_disk, logical_disk, disk_controller, enclosure, etc.)
+**Source secondaire :** [jenningsloy318/redfish_exporter](https://github.com/jenningsloy318/redfish_exporter) (référence pattern Prometheus)
+
+#### 4.9.1 Métriques OTel natives utilisées
+
+| OTel metric | Unit | Type | Notre usage |
+|---|---|---|---|
+| `hw.status` | `1` | UpDownCounter | Santé avec `hw.type` ∈ {power_supply, physical_disk, logical_disk, disk_controller, enclosure} — pattern expand sur `hw.state` |
+| `hw.physical_disk.size` | `By` | UpDownCounter | Capacité totale drive |
+| `hw.logical_disk.limit` | `By` | UpDownCounter | Capacité totale volume |
+| `hw.logical_disk.usage` | `By` | UpDownCounter | Occupation volume (allocated/free) avec `hw.logical_disk.state` |
+| `hw.logical_disk.utilization` | `1` | Gauge | Ratio d'occupation volume |
+
+**Attribut `hw.state`** — valeurs émises via expansion:
+- Officielles OTel : `ok`, `degraded`, `failed`, `predicted_failure`
+- **Extension `unknown`** — pour le code Redfish 3 (Unknown) qui n'existe pas en OTel standard. Valeur honnête : "Redfish n'a pas pu déterminer l'état".
+
+**Mapping des codes lookup `sfs.redfish.health`** :
+- 0 (OK) → `hw.state=ok`
+- 1 (Warning) → `hw.state=degraded`
+- 2 (Critical) → `hw.state=failed`
+- 3 (Unknown) → `hw.state=unknown` *(extension)*
+
+#### 4.9.2 Extensions `senhub.*`
+
+Extensions créées pour les concepts absents du namespace OTel hardware officiel :
+
+| Senhub metric | Type | Raison |
+|---|---|---|
+| `senhub.hardware.physical_disk.has_active_operations` | Gauge bool | Pas d'OTel |
+| `senhub.hardware.physical_disk.operation.progress_ratio` | Gauge `1` | Pas d'OTel |
+| `senhub.hardware.physical_disk.link_speed_bits_per_second` | Gauge `bit/s` | Pas d'OTel (Redfish expose NegotiatedSpeed Gbps, mapper ×1e9) |
+| `senhub.hardware.physical_disk.location_indicator_active` | Gauge bool | Pas d'OTel |
+| `senhub.hardware.physical_disk.block_size` | Gauge `By` | Pas d'OTel |
+| `senhub.hardware.logical_disk.encrypted` | Gauge bool | Pas d'OTel |
+| `senhub.hardware.logical_disk.io.operations` | Counter `{operation}` | Pas d'OTel I/O logical_disk (vs `system.disk.operations` qui est host-level) |
+| `senhub.hardware.logical_disk.io` | Counter `By` | Idem — bytes I/O par volume |
+| `senhub.hardware.storage.pool.*` | (multiple) | Pools RAID — absent de la taxonomie hw.type OTel |
+| `senhub.hardware.system.power_state` | UpDownCounter | Enum Redfish (Off/On/Powering On/Powering Off/Unknown) |
+| `senhub.hardware.eventservice.status` | UpDownCounter | Redfish-specific |
+| `senhub.hardware.redundancy.status` | UpDownCounter | Groupe de redondance contrôleurs |
+| `senhub.hardware.redundancy.controllers.count` | UpDownCounter | Compte avec `senhub.hardware.redundancy.bound` ∈ {active, min, max} |
+
+#### 4.9.3 Attributs introduits
+
+Alignement OTel quand possible (`hw.id`, `hw.name`, `hw.parent`, `hw.model`, `hw.serial_number`, `hw.physical_disk.type`, `hw.logical_disk.raid_level`, `hw.logical_disk.state`) et extensions pour le reste :
+
+- `senhub.hardware.physical_disk.interface` — SAS/SATA/NVMe
+- `senhub.hardware.physical_disk.slot` — slot number
+- `senhub.hardware.enclosure.id` — enclosure identifier
+- `senhub.hardware.disk_controller.slot` — controller slot
+- `senhub.hardware.storage.pool.name` / `.id` / `.state` / `.raid_level`
+- `senhub.hardware.redundancy.set` / `.state` / `.mode` / `.scope` / `.bound`
+
+#### 4.9.4 Métriques skipées
+
+- `hardware.storage.volume.io.total_ops` et `hardware.storage.volume.io.total_bytes` — redondantes avec reads+writes, skip avec justification (derivables en PromQL par `sum without(disk_io_direction)`).
+
 ## 5. Conventions en cours (prochains lots)
 
 Sections à ajouter dans les prochains lots :
-- 4.9 `netscaler` / `citrix` / `redfish` / `veeam` — lot 4
+- 4.10 `veeam` — lot 4b
+- 4.11 `citrix` — lot 4c
+- 4.12 `netscaler` — lot 4d
+
 
 ## 6. Processus d'ajout d'une convention
 
