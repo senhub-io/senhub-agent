@@ -516,10 +516,82 @@ Toutes les métriques sous `senhub.citrix.*`. Collapse systématique par catégo
 
 Conversions côté mapper : `%` → ratio (÷100) pour load_index ; heures → secondes (×3600) pour grace time remaining.
 
-## 5. Conventions en cours (prochains lots)
+### 4.12 Probe `netscaler` (Citrix ADC)
 
-Sections à ajouter dans les prochains lots :
-- 4.12 `netscaler` — lot 4d
+**Source principale :** aucune convention OTel pour NITRO/NetScaler
+**Source secondaire :** [citrix-adc-metrics-exporter officiel](https://github.com/netscaler/netscaler-adc-metrics-exporter) (`citrixadc_*` pattern) — transposé sous `senhub.netscaler.*`
+
+Scope massif (100 métriques) organisé par **16 entités NITRO** :
+system, ns, ssl (global), lbvserver, service, servicegroup, ssl.certificate, ha, disk, interface, cs (vserver+policy), gslb (vserver+site+service), cache, compression, aaa, vpn, appfw.
+
+#### 4.12.1 OTel native utilisé
+
+- `system.filesystem.usage` + `system.filesystem.utilization` pour les métriques **disk** (partition locale de l'appliance). Le label `probe_type=netscaler` distingue des métriques filesystem de l'OS hôte.
+
+Pas d'autre natif OTel (NITRO n'a pas d'équivalent semconv).
+
+#### 4.12.2 Extensions `senhub.netscaler.*` — vue d'ensemble
+
+Namespace structure:
+- `senhub.netscaler.system.*` — CPU/mémoire/réseau/TCP/HTTP (global appliance)
+- `senhub.netscaler.ns.*` — throughput global
+- `senhub.netscaler.ssl.*` — SSL global et certificats
+- `senhub.netscaler.lbvserver.*` / `.csvserver.*` / `.gslb.*` — load balancing
+- `senhub.netscaler.service.*` / `.servicegroup.*` — backends
+- `senhub.netscaler.interface.*` — interfaces réseau
+- `senhub.netscaler.cache.*` / `.compression.*` — accélération
+- `senhub.netscaler.aaa.*` / `.vpn.*` — auth et gateway
+- `senhub.netscaler.appfw.*` — Web Application Firewall
+- `senhub.netscaler.ha.*` — High Availability
+
+#### 4.12.3 Métriques avec `otel.expand` (11 états)
+
+Tous les enums `state` (lbvserver, service, servicegroup, csvserver, gslbvserver, gslbsite, gslbservice, interface, aaa.vserver, vpn.vserver, ssl.certificate, ha.role, ha.node, ha.sync) — valeurs NITRO courantes:
+
+**Vserver/service/servicegroup/cs/gslb** (`lbvserver.state` enum) :
+1=down, 2=unknown, 3=busy, 4=out_of_service, 5=trofs, 7=up, 8=trofs_down
+
+**Interface** : 0=disabled, 1=enabled
+**SSL certificate** : 0=invalid, 1=valid
+**HA role** : 0=unknown, 1=secondary, 2=primary
+**HA node/sync** : 0=down/failed, 1=up/success
+
+#### 4.12.4 Collapses majeurs
+
+- **rx/tx** partout → `network.io.direction` ∈ {receive, transmit}
+  - System network throughput (Mbps), packets.rate, packets (total counter)
+  - Interface io (bytes total), throughput (Mbps), errors, packets.dropped
+  - LB vserver throughput
+  - HA heartbeat packets + rate
+- **Cache hits/misses** → `senhub.netscaler.cache.lookups` + `senhub.netscaler.cache.lookup_result` ∈ {hit, miss}
+- **Compression compressed/original bytes** → `senhub.netscaler.compression.bytes` + `senhub.netscaler.compression.bytes_type`
+- **AAA auth successes/failures** → `senhub.netscaler.aaa.vserver.auth_attempts` + `senhub.netscaler.aaa.auth_result` ∈ {success, failure}
+- **ServiceGroup members active/inactive** → `senhub.netscaler.servicegroup.members` + `senhub.netscaler.servicegroup.member_state`
+- **CS policy hits/undefine_hits** → `senhub.netscaler.cspolicy.evaluations` + `senhub.netscaler.cspolicy.result` ∈ {hit, undefined}
+- **AppFW requests/responses blocked** → `senhub.netscaler.appfw.blocked` + `senhub.netscaler.http.message_type`
+- **AppFW violations par type** (sqli, xss, buffer_overflow) → `senhub.netscaler.appfw.violations.by_type`
+- **CPU data/management plane** → `senhub.netscaler.system.cpu.utilization` + `senhub.netscaler.cpu.plane` ∈ {data, management}
+- **HTTP requests/responses rates** → `senhub.netscaler.system.http.messages.rate` + `senhub.netscaler.http.message_type`
+- **TCP client/server connections** → `senhub.netscaler.system.tcp.connections.active` + `senhub.netscaler.tcp.side`
+- **NS throughput total/http** → `senhub.netscaler.ns.throughput` + `senhub.netscaler.traffic_type`
+
+#### 4.12.5 Conversions d'unités par le mapper
+
+- `%` → ratio (÷100) — CPU, memory, cache hit ratio, disk %, compression ratio
+- `Mbits/s` / `Mbps` → `bit/s` (×1e6) — system/interface/ns throughput, link speed
+- `KB` → `By` (×1024) — disk, cache memory
+- `μs` → `s` (÷1e6) — gslb site RTT
+
+#### 4.12.6 Récap
+
+**100 métriques internes → ~65 noms OTel uniques** grâce aux collapses.
+**11 métriques** utilisent `otel.expand` pour les enums NITRO.
+**3 métriques disk** mappées à OTel native `system.filesystem.*`.
+**~62 extensions** sous `senhub.netscaler.*` pour les domaines NITRO spécifiques.
+
+## 5. Conventions — lot 4 complet
+
+Tous les probes sont mappés. La phase 0.5 est terminée.
 
 
 ## 6. Processus d'ajout d'une convention

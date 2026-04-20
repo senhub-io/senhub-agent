@@ -1,15 +1,36 @@
 probe_name: "netscaler"
 friendly_name: "Citrix Netscaler ADC"
+version: "3.0.0"
 multi_instance_labels: ["vserver", "service", "servicegroup", "certname", "partition", "interface", "csvserver", "cspolicy", "gslbvserver", "gslbsite", "gslbservice", "authvserver", "vpnvserver"]
 
+# Format v3 — OTel-first source of truth.
+# No OTel semconv for NITRO/NetScaler — extensions under senhub.netscaler.*
+# aligned on citrix-adc-metrics-exporter entity model (lbvserver, csvserver,
+# service, servicegroup, ssl, interface, system, aaa, etc.).
+# Disk metrics reuse OTel system.filesystem.* (native) with probe_type label distinguishing.
+# See senhub-semantic-conventions §4.12.
+#
+# State enums use otel.expand (strict OTel hw.status-like emission).
+# Common NetScaler state values (lbvserver/service/servicegroup/csvserver/gslbvserver):
+#   1=DOWN, 2=UNKNOWN, 3=BUSY, 4=OUT_OF_SERVICE, 5=TROFS, 7=UP, 8=TROFS_DOWN
+
 metrics:
-  # System-level Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # SYSTEM — CPU / Memory / Network / HTTP / TCP
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.system.cpu.usage.percent"
     channel: "system.cpu.usage"
     display_name: "System CPU Usage"
     unit: "%"
     category: "system"
     description: "Percentage of CPU resources consumed by the NetScaler appliance"
+    otel:
+      name: senhub.netscaler.system.cpu.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.netscaler.cpu.plane: data   # NSPPE/data plane
+      # Mapper ÷100 (% → ratio)
 
   - name: "netscaler.system.cpu.mgmt.usage.percent"
     channel: "system.cpu.mgmt.usage"
@@ -17,6 +38,12 @@ metrics:
     unit: "%"
     category: "system"
     description: "CPU usage of the management plane (NSPPE excluded)"
+    otel:
+      name: senhub.netscaler.system.cpu.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.netscaler.cpu.plane: management
 
   - name: "netscaler.system.memory.usage.percent"
     channel: "system.memory.usage"
@@ -24,6 +51,10 @@ metrics:
     unit: "%"
     category: "system"
     description: "Percentage of memory used by the NetScaler appliance"
+    otel:
+      name: senhub.netscaler.system.memory.utilization
+      unit: "1"
+      type: gauge
 
   - name: "netscaler.system.network.rx.mbits_per_sec"
     channel: "system.network.rx"
@@ -31,6 +62,13 @@ metrics:
     unit: "Mbits/s"
     category: "system"
     description: "Aggregate network receive throughput across all interfaces"
+    otel:
+      name: senhub.netscaler.system.network.throughput
+      unit: "bit/s"
+      type: gauge
+      attributes:
+        network.io.direction: receive
+      # Mapper ×1e6 (Mbits/s → bit/s)
 
   - name: "netscaler.system.network.tx.mbits_per_sec"
     channel: "system.network.tx"
@@ -38,6 +76,12 @@ metrics:
     unit: "Mbits/s"
     category: "system"
     description: "Aggregate network transmit throughput across all interfaces"
+    otel:
+      name: senhub.netscaler.system.network.throughput
+      unit: "bit/s"
+      type: gauge
+      attributes:
+        network.io.direction: transmit
 
   - name: "netscaler.system.http.requests.rate"
     channel: "system.http.requests"
@@ -45,6 +89,12 @@ metrics:
     unit: "req/s"
     category: "system"
     description: "Rate of HTTP requests received by the appliance"
+    otel:
+      name: senhub.netscaler.system.http.messages.rate
+      unit: "1/s"
+      type: gauge
+      attributes:
+        senhub.netscaler.http.message_type: request
 
   - name: "netscaler.system.http.responses.rate"
     channel: "system.http.responses"
@@ -52,6 +102,12 @@ metrics:
     unit: "resp/s"
     category: "system"
     description: "Rate of HTTP responses sent by the appliance"
+    otel:
+      name: senhub.netscaler.system.http.messages.rate
+      unit: "1/s"
+      type: gauge
+      attributes:
+        senhub.netscaler.http.message_type: response
 
   - name: "netscaler.system.tcp.client.connections.current"
     channel: "system.tcp.client.connections"
@@ -59,6 +115,12 @@ metrics:
     unit: "#"
     category: "system"
     description: "Current number of client-side TCP connections"
+    otel:
+      name: senhub.netscaler.system.tcp.connections.active
+      unit: "{connection}"
+      type: updowncounter
+      attributes:
+        senhub.netscaler.tcp.side: client
 
   - name: "netscaler.system.tcp.server.connections.current"
     channel: "system.tcp.server.connections"
@@ -66,14 +128,28 @@ metrics:
     unit: "#"
     category: "system"
     description: "Current number of server-side TCP connections"
+    otel:
+      name: senhub.netscaler.system.tcp.connections.active
+      unit: "{connection}"
+      type: updowncounter
+      attributes:
+        senhub.netscaler.tcp.side: server
 
-  # Netscaler Global Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # NS GLOBAL — appliance-wide throughput
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.ns.throughput.total.mbits_per_sec"
     channel: "ns.throughput.total"
     display_name: "NS Total Throughput"
     unit: "Mbits/s"
     category: "network"
     description: "Total network throughput (RX + TX) of the NetScaler"
+    otel:
+      name: senhub.netscaler.ns.throughput
+      unit: "bit/s"
+      type: gauge
+      attributes:
+        senhub.netscaler.traffic_type: total
 
   - name: "netscaler.ns.http.throughput.mbits_per_sec"
     channel: "ns.http.throughput"
@@ -81,14 +157,26 @@ metrics:
     unit: "Mbits/s"
     category: "network"
     description: "HTTP-only throughput of the NetScaler"
+    otel:
+      name: senhub.netscaler.ns.throughput
+      unit: "bit/s"
+      type: gauge
+      attributes:
+        senhub.netscaler.traffic_type: http
 
-  # SSL Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # SSL GLOBAL
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.ssl.transactions.rate"
     channel: "ssl.transactions.rate"
     display_name: "SSL Transactions Rate"
     unit: "tx/s"
     category: "security"
     description: "Rate of SSL/TLS transactions processed"
+    otel:
+      name: senhub.netscaler.ssl.transactions.rate
+      unit: "1/s"
+      type: gauge
 
   - name: "netscaler.ssl.sessions.total"
     channel: "ssl.sessions.total"
@@ -96,8 +184,14 @@ metrics:
     unit: "#"
     category: "security"
     description: "Total number of active SSL sessions"
+    otel:
+      name: senhub.netscaler.ssl.sessions.active
+      unit: "{session}"
+      type: updowncounter
 
-  # Load Balancer Virtual Server Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # LOAD BALANCER VIRTUAL SERVER
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.lbvserver.state"
     channel: "lbvserver.state"
     display_name: "VServer State ({vserver})"
@@ -106,6 +200,22 @@ metrics:
     lookup: "netscaler.lbvserver.state"
     category: "load_balancing"
     description: "Operational state of the LB virtual server"
+    otel:
+      name: senhub.netscaler.lbvserver.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.netscaler.lbvserver.state
+        mapping:
+          down: 1
+          unknown: 2
+          busy: 3
+          out_of_service: 4
+          trofs: 5
+          up: 7
+          trofs_down: 8
+    tag_to_attribute:
+      vserver: senhub.netscaler.lbvserver.name
 
   - name: "netscaler.lbvserver.requests.rate"
     channel: "lbvserver.requests.rate"
@@ -114,6 +224,12 @@ metrics:
     multi_instance_labels: ["vserver"]
     category: "load_balancing"
     description: "Rate of requests hitting the virtual server"
+    otel:
+      name: senhub.netscaler.lbvserver.requests.rate
+      unit: "1/s"
+      type: gauge
+    tag_to_attribute:
+      vserver: senhub.netscaler.lbvserver.name
 
   - name: "netscaler.lbvserver.connections.current"
     channel: "lbvserver.connections.current"
@@ -122,6 +238,12 @@ metrics:
     multi_instance_labels: ["vserver"]
     category: "load_balancing"
     description: "Number of active connections on the virtual server"
+    otel:
+      name: senhub.netscaler.lbvserver.connections.active
+      unit: "{connection}"
+      type: updowncounter
+    tag_to_attribute:
+      vserver: senhub.netscaler.lbvserver.name
 
   - name: "netscaler.lbvserver.throughput.rx.bytes_per_sec"
     channel: "lbvserver.throughput.rx.bytes_per_sec"
@@ -130,6 +252,14 @@ metrics:
     multi_instance_labels: ["vserver"]
     category: "load_balancing"
     description: "Inbound throughput to the virtual server"
+    otel:
+      name: senhub.netscaler.lbvserver.throughput
+      unit: "By/s"
+      type: gauge
+      attributes:
+        network.io.direction: receive
+    tag_to_attribute:
+      vserver: senhub.netscaler.lbvserver.name
 
   - name: "netscaler.lbvserver.throughput.tx.bytes_per_sec"
     channel: "lbvserver.throughput.tx.bytes_per_sec"
@@ -138,8 +268,60 @@ metrics:
     multi_instance_labels: ["vserver"]
     category: "load_balancing"
     description: "Outbound throughput from the virtual server"
+    otel:
+      name: senhub.netscaler.lbvserver.throughput
+      unit: "By/s"
+      type: gauge
+      attributes:
+        network.io.direction: transmit
+    tag_to_attribute:
+      vserver: senhub.netscaler.lbvserver.name
 
-  # Service Metrics
+  - name: "netscaler.lbvserver.spillovers.total"
+    channel: "lbvserver.spillovers.total"
+    display_name: "VServer Spillovers Total ({vserver})"
+    unit: "#"
+    multi_instance_labels: ["vserver"]
+    category: "load_balancing"
+    description: "Total spillovers to backup vServer (saturation indicator)"
+    otel:
+      name: senhub.netscaler.lbvserver.spillovers
+      unit: "{spillover}"
+      type: counter
+    tag_to_attribute:
+      vserver: senhub.netscaler.lbvserver.name
+
+  - name: "netscaler.lbvserver.connections.established"
+    channel: "lbvserver.connections.established"
+    display_name: "VServer Established Connections ({vserver})"
+    unit: "#"
+    multi_instance_labels: ["vserver"]
+    category: "load_balancing"
+    description: "Established connections for capacity planning"
+    otel:
+      name: senhub.netscaler.lbvserver.connections.established
+      unit: "{connection}"
+      type: updowncounter
+    tag_to_attribute:
+      vserver: senhub.netscaler.lbvserver.name
+
+  - name: "netscaler.lbvserver.hits.total"
+    channel: "lbvserver.hits.total"
+    display_name: "VServer Total Hits ({vserver})"
+    unit: "#"
+    multi_instance_labels: ["vserver"]
+    category: "load_balancing"
+    description: "Total hits for request distribution analysis"
+    otel:
+      name: senhub.netscaler.lbvserver.hits
+      unit: "{hit}"
+      type: counter
+    tag_to_attribute:
+      vserver: senhub.netscaler.lbvserver.name
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # SERVICE
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.service.state"
     channel: "service.state"
     display_name: "Service State ({service})"
@@ -148,6 +330,22 @@ metrics:
     lookup: "netscaler.service.state"
     category: "services"
     description: "Operational state of the service"
+    otel:
+      name: senhub.netscaler.service.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.netscaler.service.state
+        mapping:
+          down: 1
+          unknown: 2
+          busy: 3
+          out_of_service: 4
+          trofs: 5
+          up: 7
+          trofs_down: 8
+    tag_to_attribute:
+      service: senhub.netscaler.service.name
 
   - name: "netscaler.service.throughput.bytes_per_sec"
     channel: "service.throughput.bytes_per_sec"
@@ -156,6 +354,12 @@ metrics:
     multi_instance_labels: ["service"]
     category: "services"
     description: "Data throughput of the service"
+    otel:
+      name: senhub.netscaler.service.throughput
+      unit: "By/s"
+      type: gauge
+    tag_to_attribute:
+      service: senhub.netscaler.service.name
 
   - name: "netscaler.service.transactions.active"
     channel: "service.transactions.active"
@@ -164,8 +368,30 @@ metrics:
     multi_instance_labels: ["service"]
     category: "services"
     description: "Number of active transactions on the service"
+    otel:
+      name: senhub.netscaler.service.transactions.active
+      unit: "{transaction}"
+      type: updowncounter
+    tag_to_attribute:
+      service: senhub.netscaler.service.name
 
-  # Service Group Metrics
+  - name: "netscaler.service.surge_queue_length"
+    channel: "service.surge_queue_length"
+    display_name: "Service Surge Queue Length ({service})"
+    unit: "#"
+    multi_instance_labels: ["service"]
+    category: "services"
+    description: "Surge queue length (backend saturation indicator)"
+    otel:
+      name: senhub.netscaler.service.surge_queue_length
+      unit: "{request}"
+      type: updowncounter
+    tag_to_attribute:
+      service: senhub.netscaler.service.name
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # SERVICE GROUP
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.servicegroup.state"
     lookup: "netscaler.servicegroup.state"
     channel: "servicegroup.state"
@@ -174,6 +400,22 @@ metrics:
     multi_instance_labels: ["servicegroup"]
     category: "services"
     description: "Operational state of the service group"
+    otel:
+      name: senhub.netscaler.servicegroup.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.netscaler.servicegroup.state
+        mapping:
+          down: 1
+          unknown: 2
+          busy: 3
+          out_of_service: 4
+          trofs: 5
+          up: 7
+          trofs_down: 8
+    tag_to_attribute:
+      servicegroup: senhub.netscaler.servicegroup.name
 
   - name: "netscaler.servicegroup.requests.rate"
     channel: "servicegroup.requests.rate"
@@ -182,6 +424,14 @@ metrics:
     multi_instance_labels: ["servicegroup"]
     category: "services"
     description: "Rate of requests handled by the service group"
+    otel:
+      name: senhub.netscaler.servicegroup.http.messages.rate
+      unit: "1/s"
+      type: gauge
+      attributes:
+        senhub.netscaler.http.message_type: request
+    tag_to_attribute:
+      servicegroup: senhub.netscaler.servicegroup.name
 
   - name: "netscaler.servicegroup.responses.rate"
     channel: "servicegroup.responses.rate"
@@ -190,6 +440,14 @@ metrics:
     multi_instance_labels: ["servicegroup"]
     category: "services"
     description: "Rate of responses returned by the service group"
+    otel:
+      name: senhub.netscaler.servicegroup.http.messages.rate
+      unit: "1/s"
+      type: gauge
+      attributes:
+        senhub.netscaler.http.message_type: response
+    tag_to_attribute:
+      servicegroup: senhub.netscaler.servicegroup.name
 
   - name: "netscaler.servicegroup.throughput.bytes_per_sec"
     channel: "servicegroup.throughput.bytes_per_sec"
@@ -198,6 +456,12 @@ metrics:
     multi_instance_labels: ["servicegroup"]
     category: "services"
     description: "Data throughput of the service group"
+    otel:
+      name: senhub.netscaler.servicegroup.throughput
+      unit: "By/s"
+      type: gauge
+    tag_to_attribute:
+      servicegroup: senhub.netscaler.servicegroup.name
 
   - name: "netscaler.servicegroup.connections.current"
     channel: "servicegroup.connections.current"
@@ -206,6 +470,12 @@ metrics:
     multi_instance_labels: ["servicegroup"]
     category: "services"
     description: "Number of active connections on the service group"
+    otel:
+      name: senhub.netscaler.servicegroup.connections.active
+      unit: "{connection}"
+      type: updowncounter
+    tag_to_attribute:
+      servicegroup: senhub.netscaler.servicegroup.name
 
   - name: "netscaler.servicegroup.members.active"
     channel: "servicegroup.members.active"
@@ -214,8 +484,48 @@ metrics:
     multi_instance_labels: ["servicegroup"]
     category: "services"
     description: "Number of healthy members serving traffic"
+    otel:
+      name: senhub.netscaler.servicegroup.members
+      unit: "{member}"
+      type: updowncounter
+      attributes:
+        senhub.netscaler.servicegroup.member_state: active
+    tag_to_attribute:
+      servicegroup: senhub.netscaler.servicegroup.name
 
-  # SSL Certificate Metrics
+  - name: "netscaler.servicegroup.members.inactive"
+    channel: "servicegroup.members.inactive"
+    display_name: "Service Group Inactive Members ({servicegroup})"
+    unit: "#"
+    multi_instance_labels: ["servicegroup"]
+    category: "services"
+    description: "Number of inactive members in service group"
+    otel:
+      name: senhub.netscaler.servicegroup.members
+      unit: "{member}"
+      type: updowncounter
+      attributes:
+        senhub.netscaler.servicegroup.member_state: inactive
+    tag_to_attribute:
+      servicegroup: senhub.netscaler.servicegroup.name
+
+  - name: "netscaler.servicegroup.surge_queue_length"
+    channel: "servicegroup.surge_queue_length"
+    display_name: "Service Group Surge Queue Length ({servicegroup})"
+    unit: "#"
+    multi_instance_labels: ["servicegroup"]
+    category: "services"
+    description: "Surge queue length (backend saturation indicator)"
+    otel:
+      name: senhub.netscaler.servicegroup.surge_queue_length
+      unit: "{request}"
+      type: updowncounter
+    tag_to_attribute:
+      servicegroup: senhub.netscaler.servicegroup.name
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # SSL CERTIFICATES
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.ssl.certificate.days_to_expiration"
     channel: "ssl.certificate.days_to_expiration"
     display_name: "SSL Certificate Days to Expiration ({certname})"
@@ -223,6 +533,12 @@ metrics:
     multi_instance_labels: ["certname"]
     category: "ssl_certificates"
     description: "Days until SSL certificate expires (negative if expired)"
+    otel:
+      name: senhub.netscaler.ssl.certificate.days_to_expiration
+      unit: "{day}"
+      type: gauge
+    tag_to_attribute:
+      certname: senhub.netscaler.ssl.certificate.name
 
   - name: "netscaler.ssl.certificate.status"
     channel: "ssl.certificate.status"
@@ -232,8 +548,21 @@ metrics:
     lookup: "netscaler.ssl.certificate.status"
     category: "ssl_certificates"
     description: "Certificate status: 1=valid, 0=expired"
+    otel:
+      name: senhub.netscaler.ssl.certificate.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.netscaler.ssl.certificate.state
+        mapping:
+          invalid: 0
+          valid: 1
+    tag_to_attribute:
+      certname: senhub.netscaler.ssl.certificate.name
 
-  # High Availability (HA) Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # HIGH AVAILABILITY
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.ha.state"
     channel: "ha.state"
     display_name: "HA State ({ha_node_ip})"
@@ -242,6 +571,19 @@ metrics:
     lookup: "netscaler.ha.state"
     category: "high_availability"
     description: "HA role: 2=PRIMARY, 1=SECONDARY, 0=UNKNOWN (per node)"
+    otel:
+      name: senhub.netscaler.ha.role
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.netscaler.ha.role_state
+        mapping:
+          unknown: 0
+          secondary: 1
+          primary: 2
+    tag_to_attribute:
+      ha_node_id: senhub.netscaler.ha.node.id
+      ha_node_ip: senhub.netscaler.ha.node.ip
 
   - name: "netscaler.ha.node.state"
     channel: "ha.node.state"
@@ -251,6 +593,18 @@ metrics:
     lookup: "netscaler.ha.node.state"
     category: "high_availability"
     description: "Node operational state: 1=UP, 0=DOWN (per node)"
+    otel:
+      name: senhub.netscaler.ha.node.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.netscaler.ha.node.state
+        mapping:
+          down: 0
+          up: 1
+    tag_to_attribute:
+      ha_node_id: senhub.netscaler.ha.node.id
+      ha_node_ip: senhub.netscaler.ha.node.ip
 
   - name: "netscaler.ha.sync_status"
     channel: "ha.sync_status"
@@ -260,6 +614,18 @@ metrics:
     lookup: "netscaler.ha.sync_status"
     category: "high_availability"
     description: "HA sync status: 1=success, 0=failed (per node)"
+    otel:
+      name: senhub.netscaler.ha.sync.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.netscaler.ha.sync.state
+        mapping:
+          failed: 0
+          success: 1
+    tag_to_attribute:
+      ha_node_id: senhub.netscaler.ha.node.id
+      ha_node_ip: senhub.netscaler.ha.node.ip
 
   - name: "netscaler.ha.sync_failures"
     channel: "ha.sync_failures"
@@ -268,6 +634,13 @@ metrics:
     multi_instance_labels: ["ha_node_id", "ha_node_ip"]
     category: "high_availability"
     description: "Number of HA synchronization failures (per node)"
+    otel:
+      name: senhub.netscaler.ha.sync.failures
+      unit: "{failure}"
+      type: counter
+    tag_to_attribute:
+      ha_node_id: senhub.netscaler.ha.node.id
+      ha_node_ip: senhub.netscaler.ha.node.ip
 
   - name: "netscaler.ha.propagation_timeouts"
     channel: "ha.propagation_timeouts"
@@ -275,6 +648,10 @@ metrics:
     unit: "#"
     category: "high_availability"
     description: "Number of times configuration propagation timed out"
+    otel:
+      name: senhub.netscaler.ha.propagation.timeouts
+      unit: "{timeout}"
+      type: counter
 
   - name: "netscaler.ha.heartbeat.rx.packets"
     channel: "ha.heartbeat.rx.packets"
@@ -282,6 +659,12 @@ metrics:
     unit: "#"
     category: "high_availability"
     description: "Total heartbeat packets received from peer node"
+    otel:
+      name: senhub.netscaler.ha.heartbeat.packets
+      unit: "{packet}"
+      type: counter
+      attributes:
+        network.io.direction: receive
 
   - name: "netscaler.ha.heartbeat.rx.rate"
     channel: "ha.heartbeat.rx.rate"
@@ -290,6 +673,12 @@ metrics:
     custom_unit: "pkts/s"
     category: "high_availability"
     description: "Heartbeat packets receive rate (packets/sec)"
+    otel:
+      name: senhub.netscaler.ha.heartbeat.rate
+      unit: "1/s"
+      type: gauge
+      attributes:
+        network.io.direction: receive
 
   - name: "netscaler.ha.heartbeat.tx.packets"
     channel: "ha.heartbeat.tx.packets"
@@ -297,6 +686,12 @@ metrics:
     unit: "#"
     category: "high_availability"
     description: "Total heartbeat packets transmitted to peer node"
+    otel:
+      name: senhub.netscaler.ha.heartbeat.packets
+      unit: "{packet}"
+      type: counter
+      attributes:
+        network.io.direction: transmit
 
   - name: "netscaler.ha.heartbeat.tx.rate"
     channel: "ha.heartbeat.tx.rate"
@@ -305,8 +700,16 @@ metrics:
     custom_unit: "pkts/s"
     category: "high_availability"
     description: "Heartbeat packets transmit rate (packets/sec)"
+    otel:
+      name: senhub.netscaler.ha.heartbeat.rate
+      unit: "1/s"
+      type: gauge
+      attributes:
+        network.io.direction: transmit
 
-  # Disk Usage Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # DISK — OTel native system.filesystem.* (distinguished by probe_type label)
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.disk.percent_used"
     channel: "disk.percent_used"
     display_name: "Disk Usage ({partition})"
@@ -314,6 +717,14 @@ metrics:
     multi_instance_labels: ["partition"]
     category: "disk"
     description: "Disk partition usage percentage"
+    otel:
+      name: system.filesystem.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        system.filesystem.state: used
+    tag_to_attribute:
+      partition: system.filesystem.mountpoint
 
   - name: "netscaler.disk.used_kb"
     channel: "disk.used_kb"
@@ -322,6 +733,15 @@ metrics:
     multi_instance_labels: ["partition"]
     category: "disk"
     description: "Disk space used in kilobytes"
+    otel:
+      name: system.filesystem.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.filesystem.state: used
+      # Mapper ×1024 (KB → By)
+    tag_to_attribute:
+      partition: system.filesystem.mountpoint
 
   - name: "netscaler.disk.available_kb"
     channel: "disk.available_kb"
@@ -330,65 +750,30 @@ metrics:
     multi_instance_labels: ["partition"]
     category: "disk"
     description: "Disk space available in kilobytes"
+    otel:
+      name: system.filesystem.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.filesystem.state: free
+    tag_to_attribute:
+      partition: system.filesystem.mountpoint
 
-  # Phase 2: Advanced Load Balancer Metrics
-  - name: "netscaler.lbvserver.spillovers.total"
-    channel: "lbvserver.spillovers.total"
-    display_name: "VServer Spillovers Total ({vserver})"
-    unit: "#"
-    multi_instance_labels: ["vserver"]
-    category: "load_balancing"
-    description: "Total spillovers to backup vServer (saturation indicator)"
-
-  - name: "netscaler.lbvserver.connections.established"
-    channel: "lbvserver.connections.established"
-    display_name: "VServer Established Connections ({vserver})"
-    unit: "#"
-    multi_instance_labels: ["vserver"]
-    category: "load_balancing"
-    description: "Established connections for capacity planning"
-
-  - name: "netscaler.lbvserver.hits.total"
-    channel: "lbvserver.hits.total"
-    display_name: "VServer Total Hits ({vserver})"
-    unit: "#"
-    multi_instance_labels: ["vserver"]
-    category: "load_balancing"
-    description: "Total hits for request distribution analysis"
-
-  # Phase 2: Advanced Service Metrics
-  - name: "netscaler.service.surge_queue_length"
-    channel: "service.surge_queue_length"
-    display_name: "Service Surge Queue Length ({service})"
-    unit: "#"
-    multi_instance_labels: ["service"]
-    category: "services"
-    description: "Surge queue length (backend saturation indicator)"
-
-  # Phase 2: Advanced Service Group Metrics
-  - name: "netscaler.servicegroup.members.inactive"
-    channel: "servicegroup.members.inactive"
-    display_name: "Service Group Inactive Members ({servicegroup})"
-    unit: "#"
-    multi_instance_labels: ["servicegroup"]
-    category: "services"
-    description: "Number of inactive members in service group"
-
-  - name: "netscaler.servicegroup.surge_queue_length"
-    channel: "servicegroup.surge_queue_length"
-    display_name: "Service Group Surge Queue Length ({servicegroup})"
-    unit: "#"
-    multi_instance_labels: ["servicegroup"]
-    category: "services"
-    description: "Surge queue length (backend saturation indicator)"
-
-  # Phase 2: Packets Per Second Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # SYSTEM NETWORK PPS (packets per second rates + cumulative totals)
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.system.network.rx.packets_per_sec"
     channel: "system.network.rx.packets_per_sec"
     display_name: "System RX Packets Per Second"
     unit: "pps"
     category: "system"
     description: "Receive packets per second"
+    otel:
+      name: senhub.netscaler.system.network.packets.rate
+      unit: "1/s"
+      type: gauge
+      attributes:
+        network.io.direction: receive
 
   - name: "netscaler.system.network.tx.packets_per_sec"
     channel: "system.network.tx.packets_per_sec"
@@ -396,6 +781,12 @@ metrics:
     unit: "pps"
     category: "system"
     description: "Transmit packets per second"
+    otel:
+      name: senhub.netscaler.system.network.packets.rate
+      unit: "1/s"
+      type: gauge
+      attributes:
+        network.io.direction: transmit
 
   - name: "netscaler.system.network.rx.packets.total"
     channel: "system.network.rx.packets.total"
@@ -403,6 +794,12 @@ metrics:
     unit: "#"
     category: "system"
     description: "Total packets received (counter)"
+    otel:
+      name: senhub.netscaler.system.network.packets
+      unit: "{packet}"
+      type: counter
+      attributes:
+        network.io.direction: receive
 
   - name: "netscaler.system.network.tx.packets.total"
     channel: "system.network.tx.packets.total"
@@ -410,8 +807,16 @@ metrics:
     unit: "#"
     category: "system"
     description: "Total packets sent (counter)"
+    otel:
+      name: senhub.netscaler.system.network.packets
+      unit: "{packet}"
+      type: counter
+      attributes:
+        network.io.direction: transmit
 
-  # Phase 2: Network Interface Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # NETWORK INTERFACE
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.interface.state"
     lookup: "netscaler.interface.state"
     channel: "interface.state"
@@ -419,7 +824,18 @@ metrics:
     unit: "#"
     multi_instance_labels: ["interface"]
     category: "network"
-    description: "Interface state: 1=UP, 0=DOWN"
+    description: "Interface state: 1=UP/enabled, 0=DOWN/disabled"
+    otel:
+      name: senhub.netscaler.interface.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.netscaler.interface.state
+        mapping:
+          disabled: 0
+          enabled: 1
+    tag_to_attribute:
+      interface: network.interface.name
 
   - name: "netscaler.interface.rx.bytes.total"
     channel: "interface.rx.bytes.total"
@@ -428,6 +844,14 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "network"
     description: "Total bytes received on the interface"
+    otel:
+      name: senhub.netscaler.interface.io
+      unit: By
+      type: counter
+      attributes:
+        network.io.direction: receive
+    tag_to_attribute:
+      interface: network.interface.name
 
   - name: "netscaler.interface.tx.bytes.total"
     channel: "interface.tx.bytes.total"
@@ -436,6 +860,14 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "network"
     description: "Total bytes transmitted on the interface"
+    otel:
+      name: senhub.netscaler.interface.io
+      unit: By
+      type: counter
+      attributes:
+        network.io.direction: transmit
+    tag_to_attribute:
+      interface: network.interface.name
 
   - name: "netscaler.interface.rx.mbits_per_sec"
     channel: "interface.rx.mbits_per_sec"
@@ -444,6 +876,15 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "network"
     description: "Receive throughput rate of the interface"
+    otel:
+      name: senhub.netscaler.interface.throughput
+      unit: "bit/s"
+      type: gauge
+      attributes:
+        network.io.direction: receive
+      # Mapper ×1e6 (Mbits/s → bit/s)
+    tag_to_attribute:
+      interface: network.interface.name
 
   - name: "netscaler.interface.tx.mbits_per_sec"
     channel: "interface.tx.mbits_per_sec"
@@ -452,6 +893,14 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "network"
     description: "Transmit throughput rate of the interface"
+    otel:
+      name: senhub.netscaler.interface.throughput
+      unit: "bit/s"
+      type: gauge
+      attributes:
+        network.io.direction: transmit
+    tag_to_attribute:
+      interface: network.interface.name
 
   - name: "netscaler.interface.rx.errors.total"
     channel: "interface.rx.errors.total"
@@ -460,6 +909,14 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "network"
     description: "Total receive errors on the interface"
+    otel:
+      name: senhub.netscaler.interface.errors
+      unit: "{error}"
+      type: counter
+      attributes:
+        network.io.direction: receive
+    tag_to_attribute:
+      interface: network.interface.name
 
   - name: "netscaler.interface.tx.errors.total"
     channel: "interface.tx.errors.total"
@@ -468,6 +925,14 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "network"
     description: "Total transmit errors on the interface"
+    otel:
+      name: senhub.netscaler.interface.errors
+      unit: "{error}"
+      type: counter
+      attributes:
+        network.io.direction: transmit
+    tag_to_attribute:
+      interface: network.interface.name
 
   - name: "netscaler.interface.rx.drops.total"
     channel: "interface.rx.drops.total"
@@ -476,6 +941,14 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "network"
     description: "Total inbound packets dropped on the interface"
+    otel:
+      name: senhub.netscaler.interface.packets.dropped
+      unit: "{packet}"
+      type: counter
+      attributes:
+        network.io.direction: receive
+    tag_to_attribute:
+      interface: network.interface.name
 
   - name: "netscaler.interface.tx.drops.total"
     channel: "interface.tx.drops.total"
@@ -484,6 +957,14 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "network"
     description: "Total outbound packets dropped on the interface"
+    otel:
+      name: senhub.netscaler.interface.packets.dropped
+      unit: "{packet}"
+      type: counter
+      attributes:
+        network.io.direction: transmit
+    tag_to_attribute:
+      interface: network.interface.name
 
   - name: "netscaler.interface.link_speed_mbps"
     channel: "interface.link_speed_mbps"
@@ -492,8 +973,17 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "network"
     description: "Negotiated link speed of the interface"
+    otel:
+      name: senhub.netscaler.interface.link_speed
+      unit: "bit/s"
+      type: gauge
+      # Mapper ×1e6 (Mbps → bit/s)
+    tag_to_attribute:
+      interface: network.interface.name
 
-  # Phase 3: Content Switching Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # CONTENT SWITCHING
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.cs.vserver.state"
     lookup: "netscaler.csvserver.state"
     channel: "cs.vserver.state"
@@ -502,6 +992,22 @@ metrics:
     multi_instance_labels: ["csvserver"]
     category: "content_switching"
     description: "Content Switching vServer state: UP=7, DOWN=1, etc."
+    otel:
+      name: senhub.netscaler.csvserver.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.netscaler.csvserver.state
+        mapping:
+          down: 1
+          unknown: 2
+          busy: 3
+          out_of_service: 4
+          trofs: 5
+          up: 7
+          trofs_down: 8
+    tag_to_attribute:
+      csvserver: senhub.netscaler.csvserver.name
 
   - name: "netscaler.cs.vserver.hits.total"
     channel: "cs.vserver.hits.total"
@@ -510,6 +1016,12 @@ metrics:
     multi_instance_labels: ["csvserver"]
     category: "content_switching"
     description: "Total hits on the content switching virtual server"
+    otel:
+      name: senhub.netscaler.csvserver.hits
+      unit: "{hit}"
+      type: counter
+    tag_to_attribute:
+      csvserver: senhub.netscaler.csvserver.name
 
   - name: "netscaler.cs.vserver.requests.rate"
     channel: "cs.vserver.requests.rate"
@@ -518,6 +1030,12 @@ metrics:
     multi_instance_labels: ["csvserver"]
     category: "content_switching"
     description: "Rate of requests handled by the CS virtual server"
+    otel:
+      name: senhub.netscaler.csvserver.requests.rate
+      unit: "1/s"
+      type: gauge
+    tag_to_attribute:
+      csvserver: senhub.netscaler.csvserver.name
 
   - name: "netscaler.cs.vserver.connections.current"
     channel: "cs.vserver.connections.current"
@@ -526,6 +1044,12 @@ metrics:
     multi_instance_labels: ["csvserver"]
     category: "content_switching"
     description: "Number of active connections on the CS virtual server"
+    otel:
+      name: senhub.netscaler.csvserver.connections.active
+      unit: "{connection}"
+      type: updowncounter
+    tag_to_attribute:
+      csvserver: senhub.netscaler.csvserver.name
 
   - name: "netscaler.cs.policy.hits.total"
     channel: "cs.policy.hits.total"
@@ -534,6 +1058,14 @@ metrics:
     multi_instance_labels: ["cspolicy"]
     category: "content_switching"
     description: "Total times the content switching policy was matched"
+    otel:
+      name: senhub.netscaler.cspolicy.evaluations
+      unit: "{evaluation}"
+      type: counter
+      attributes:
+        senhub.netscaler.cspolicy.result: hit
+    tag_to_attribute:
+      cspolicy: senhub.netscaler.cspolicy.name
 
   - name: "netscaler.cs.policy.undefine_hits.total"
     channel: "cs.policy.undefine_hits.total"
@@ -542,8 +1074,18 @@ metrics:
     multi_instance_labels: ["cspolicy"]
     category: "content_switching"
     description: "Rules not matched"
+    otel:
+      name: senhub.netscaler.cspolicy.evaluations
+      unit: "{evaluation}"
+      type: counter
+      attributes:
+        senhub.netscaler.cspolicy.result: undefined
+    tag_to_attribute:
+      cspolicy: senhub.netscaler.cspolicy.name
 
-  # Phase 3: GSLB Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # GSLB — Global Server Load Balancing
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.gslb.vserver.state"
     lookup: "netscaler.gslbvserver.state"
     channel: "gslb.vserver.state"
@@ -552,6 +1094,22 @@ metrics:
     multi_instance_labels: ["gslbvserver"]
     category: "gslb"
     description: "GSLB vServer state: UP=7, DOWN=1, etc."
+    otel:
+      name: senhub.netscaler.gslb.vserver.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.netscaler.gslb.vserver.state
+        mapping:
+          down: 1
+          unknown: 2
+          busy: 3
+          out_of_service: 4
+          trofs: 5
+          up: 7
+          trofs_down: 8
+    tag_to_attribute:
+      gslbvserver: senhub.netscaler.gslb.vserver.name
 
   - name: "netscaler.gslb.vserver.hits.total"
     channel: "gslb.vserver.hits.total"
@@ -560,6 +1118,12 @@ metrics:
     multi_instance_labels: ["gslbvserver"]
     category: "gslb"
     description: "Total DNS requests resolved by the GSLB virtual server"
+    otel:
+      name: senhub.netscaler.gslb.vserver.hits
+      unit: "{hit}"
+      type: counter
+    tag_to_attribute:
+      gslbvserver: senhub.netscaler.gslb.vserver.name
 
   - name: "netscaler.gslb.vserver.requests.rate"
     channel: "gslb.vserver.requests.rate"
@@ -568,6 +1132,12 @@ metrics:
     multi_instance_labels: ["gslbvserver"]
     category: "gslb"
     description: "Rate of DNS requests handled by the GSLB virtual server"
+    otel:
+      name: senhub.netscaler.gslb.vserver.requests.rate
+      unit: "1/s"
+      type: gauge
+    tag_to_attribute:
+      gslbvserver: senhub.netscaler.gslb.vserver.name
 
   - name: "netscaler.gslb.vserver.persistence.records"
     channel: "gslb.vserver.persistence.records"
@@ -576,6 +1146,12 @@ metrics:
     multi_instance_labels: ["gslbvserver"]
     category: "gslb"
     description: "Number of active persistence records for site affinity"
+    otel:
+      name: senhub.netscaler.gslb.vserver.persistence_records
+      unit: "{record}"
+      type: updowncounter
+    tag_to_attribute:
+      gslbvserver: senhub.netscaler.gslb.vserver.name
 
   - name: "netscaler.gslb.site.state"
     channel: "gslb.site.state"
@@ -584,6 +1160,17 @@ metrics:
     multi_instance_labels: ["gslbsite"]
     category: "gslb"
     description: "GSLB site state: 1=UP/ACTIVE, 0=DOWN"
+    otel:
+      name: senhub.netscaler.gslb.site.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.netscaler.gslb.site.state
+        mapping:
+          down: 0
+          up: 1
+    tag_to_attribute:
+      gslbsite: senhub.netscaler.gslb.site.name
 
   - name: "netscaler.gslb.site.network_rtt_microseconds"
     channel: "gslb.site.network_rtt_microseconds"
@@ -592,6 +1179,13 @@ metrics:
     multi_instance_labels: ["gslbsite"]
     category: "gslb"
     description: "Network round-trip time in microseconds"
+    otel:
+      name: senhub.netscaler.gslb.site.network_rtt
+      unit: s
+      type: gauge
+      # Mapper ÷1e6 (μs → s)
+    tag_to_attribute:
+      gslbsite: senhub.netscaler.gslb.site.name
 
   - name: "netscaler.gslb.site.connections.current"
     channel: "gslb.site.connections.current"
@@ -600,6 +1194,12 @@ metrics:
     multi_instance_labels: ["gslbsite"]
     category: "gslb"
     description: "Number of active connections at the GSLB site"
+    otel:
+      name: senhub.netscaler.gslb.site.connections.active
+      unit: "{connection}"
+      type: updowncounter
+    tag_to_attribute:
+      gslbsite: senhub.netscaler.gslb.site.name
 
   - name: "netscaler.gslb.service.state"
     channel: "gslb.service.state"
@@ -608,6 +1208,17 @@ metrics:
     multi_instance_labels: ["gslbservice"]
     category: "gslb"
     description: "GSLB service state: 1=UP, 0=DOWN"
+    otel:
+      name: senhub.netscaler.gslb.service.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.netscaler.gslb.service.state
+        mapping:
+          down: 0
+          up: 1
+    tag_to_attribute:
+      gslbservice: senhub.netscaler.gslb.service.name
 
   - name: "netscaler.gslb.service.hits.total"
     channel: "gslb.service.hits.total"
@@ -616,6 +1227,12 @@ metrics:
     multi_instance_labels: ["gslbservice"]
     category: "gslb"
     description: "Total requests directed to the GSLB service"
+    otel:
+      name: senhub.netscaler.gslb.service.hits
+      unit: "{hit}"
+      type: counter
+    tag_to_attribute:
+      gslbservice: senhub.netscaler.gslb.service.name
 
   - name: "netscaler.gslb.service.connections.current"
     channel: "gslb.service.connections.current"
@@ -624,14 +1241,27 @@ metrics:
     multi_instance_labels: ["gslbservice"]
     category: "gslb"
     description: "Number of active connections on the GSLB service"
+    otel:
+      name: senhub.netscaler.gslb.service.connections.active
+      unit: "{connection}"
+      type: updowncounter
+    tag_to_attribute:
+      gslbservice: senhub.netscaler.gslb.service.name
 
-  # Phase 3: Cache Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # CACHE
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.cache.hit_ratio_percent"
     channel: "cache.hit_ratio_percent"
     display_name: "Cache Hit Ratio"
     unit: "%"
     category: "cache"
     description: "Cache hit ratio percentage"
+    otel:
+      name: senhub.netscaler.cache.hit_ratio
+      unit: "1"
+      type: gauge
+      # Mapper ÷100
 
   - name: "netscaler.cache.objects.count"
     channel: "cache.objects.count"
@@ -639,6 +1269,10 @@ metrics:
     unit: "#"
     category: "cache"
     description: "Number of objects in cache"
+    otel:
+      name: senhub.netscaler.cache.objects
+      unit: "{object}"
+      type: updowncounter
 
   - name: "netscaler.cache.memory.used_kb"
     channel: "cache.memory.used_kb"
@@ -646,6 +1280,11 @@ metrics:
     unit: "KB"
     category: "cache"
     description: "Cache memory used in kilobytes"
+    otel:
+      name: senhub.netscaler.cache.memory.used
+      unit: By
+      type: updowncounter
+      # Mapper ×1024 (KB → By)
 
   - name: "netscaler.cache.hits.total"
     channel: "cache.hits.total"
@@ -653,6 +1292,12 @@ metrics:
     unit: "#"
     category: "cache"
     description: "Total number of cache hits"
+    otel:
+      name: senhub.netscaler.cache.lookups
+      unit: "{lookup}"
+      type: counter
+      attributes:
+        senhub.netscaler.cache.lookup_result: hit
 
   - name: "netscaler.cache.misses.total"
     channel: "cache.misses.total"
@@ -660,14 +1305,26 @@ metrics:
     unit: "#"
     category: "cache"
     description: "Total number of cache misses"
+    otel:
+      name: senhub.netscaler.cache.lookups
+      unit: "{lookup}"
+      type: counter
+      attributes:
+        senhub.netscaler.cache.lookup_result: miss
 
-  # Phase 3: Compression Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # COMPRESSION
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.compression.ratio"
     channel: "compression.ratio"
     display_name: "Compression Ratio"
     unit: "#"
     category: "compression"
     description: "Compression ratio"
+    otel:
+      name: senhub.netscaler.compression.ratio
+      unit: "1"
+      type: gauge
 
   - name: "netscaler.compression.bytes.compressed.total"
     channel: "compression.bytes.compressed.total"
@@ -675,6 +1332,12 @@ metrics:
     unit: "bytes"
     category: "compression"
     description: "Total bytes after compression"
+    otel:
+      name: senhub.netscaler.compression.bytes
+      unit: By
+      type: counter
+      attributes:
+        senhub.netscaler.compression.bytes_type: compressed
 
   - name: "netscaler.compression.bytes.original.total"
     channel: "compression.bytes.original.total"
@@ -682,6 +1345,12 @@ metrics:
     unit: "bytes"
     category: "compression"
     description: "Original bytes before compression"
+    otel:
+      name: senhub.netscaler.compression.bytes
+      unit: By
+      type: counter
+      attributes:
+        senhub.netscaler.compression.bytes_type: original
 
   - name: "netscaler.compression.bandwidth_savings.bytes"
     channel: "compression.bandwidth_savings.bytes"
@@ -689,14 +1358,24 @@ metrics:
     unit: "bytes"
     category: "compression"
     description: "Bandwidth saved by compression"
+    otel:
+      name: senhub.netscaler.compression.bandwidth_savings
+      unit: By
+      type: counter
 
-  # Phase 3: AAA/Authentication Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # AAA / Authentication
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.aaa.sessions.active.total"
     channel: "aaa.sessions.active.total"
     display_name: "AAA Active Sessions Total"
     unit: "#"
     category: "aaa"
     description: "Total active AAA sessions"
+    otel:
+      name: senhub.netscaler.aaa.sessions.active
+      unit: "{session}"
+      type: updowncounter
 
   - name: "netscaler.aaa.vserver.state"
     channel: "aaa.vserver.state"
@@ -705,6 +1384,17 @@ metrics:
     multi_instance_labels: ["authvserver"]
     category: "aaa"
     description: "Authentication vServer state: 1=UP, 0=DOWN"
+    otel:
+      name: senhub.netscaler.aaa.vserver.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.netscaler.aaa.vserver.state
+        mapping:
+          down: 0
+          up: 1
+    tag_to_attribute:
+      authvserver: senhub.netscaler.aaa.vserver.name
 
   - name: "netscaler.aaa.vserver.auth.successes.total"
     channel: "aaa.vserver.auth.successes.total"
@@ -713,6 +1403,14 @@ metrics:
     multi_instance_labels: ["authvserver"]
     category: "aaa"
     description: "Total successful authentication attempts"
+    otel:
+      name: senhub.netscaler.aaa.vserver.auth_attempts
+      unit: "{attempt}"
+      type: counter
+      attributes:
+        senhub.netscaler.aaa.auth_result: success
+    tag_to_attribute:
+      authvserver: senhub.netscaler.aaa.vserver.name
 
   - name: "netscaler.aaa.vserver.auth.failures.total"
     channel: "aaa.vserver.auth.failures.total"
@@ -721,8 +1419,18 @@ metrics:
     multi_instance_labels: ["authvserver"]
     category: "aaa"
     description: "Total failed authentication attempts"
+    otel:
+      name: senhub.netscaler.aaa.vserver.auth_attempts
+      unit: "{attempt}"
+      type: counter
+      attributes:
+        senhub.netscaler.aaa.auth_result: failure
+    tag_to_attribute:
+      authvserver: senhub.netscaler.aaa.vserver.name
 
-  # Phase 3: VPN/Gateway Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # VPN / Gateway
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.vpn.vserver.state"
     channel: "vpn.vserver.state"
     display_name: "VPN VServer State ({vpnvserver})"
@@ -730,6 +1438,17 @@ metrics:
     multi_instance_labels: ["vpnvserver"]
     category: "vpn"
     description: "VPN vServer state: 1=UP, 0=DOWN"
+    otel:
+      name: senhub.netscaler.vpn.vserver.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.netscaler.vpn.vserver.state
+        mapping:
+          down: 0
+          up: 1
+    tag_to_attribute:
+      vpnvserver: senhub.netscaler.vpn.vserver.name
 
   - name: "netscaler.vpn.vserver.hits.total"
     channel: "vpn.vserver.hits.total"
@@ -738,6 +1457,12 @@ metrics:
     multi_instance_labels: ["vpnvserver"]
     category: "vpn"
     description: "Total hits on the VPN virtual server"
+    otel:
+      name: senhub.netscaler.vpn.vserver.hits
+      unit: "{hit}"
+      type: counter
+    tag_to_attribute:
+      vpnvserver: senhub.netscaler.vpn.vserver.name
 
   - name: "netscaler.vpn.vserver.ica.sessions.active"
     channel: "vpn.vserver.ica.sessions.active"
@@ -746,6 +1471,12 @@ metrics:
     multi_instance_labels: ["vpnvserver"]
     category: "vpn"
     description: "Active ICA sessions (Citrix Virtual Apps)"
+    otel:
+      name: senhub.netscaler.vpn.vserver.ica_sessions.active
+      unit: "{session}"
+      type: updowncounter
+    tag_to_attribute:
+      vpnvserver: senhub.netscaler.vpn.vserver.name
 
   - name: "netscaler.vpn.vserver.connections.established"
     channel: "vpn.vserver.connections.established"
@@ -754,14 +1485,26 @@ metrics:
     multi_instance_labels: ["vpnvserver"]
     category: "vpn"
     description: "Number of established VPN connections"
+    otel:
+      name: senhub.netscaler.vpn.vserver.connections.established
+      unit: "{connection}"
+      type: updowncounter
+    tag_to_attribute:
+      vpnvserver: senhub.netscaler.vpn.vserver.name
 
-  # Phase 3: Application Firewall Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # APPLICATION FIREWALL (WAF)
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.appfw.violations.total"
     channel: "appfw.violations.total"
     display_name: "AppFW Violations Total"
     unit: "#"
     category: "security"
     description: "Total application firewall violations"
+    otel:
+      name: senhub.netscaler.appfw.violations.total
+      unit: "{violation}"
+      type: counter
 
   - name: "netscaler.appfw.requests.blocked.total"
     channel: "appfw.requests.blocked.total"
@@ -769,6 +1512,12 @@ metrics:
     unit: "#"
     category: "security"
     description: "Total requests blocked by WAF"
+    otel:
+      name: senhub.netscaler.appfw.blocked
+      unit: "{message}"
+      type: counter
+      attributes:
+        senhub.netscaler.http.message_type: request
 
   - name: "netscaler.appfw.responses.blocked.total"
     channel: "appfw.responses.blocked.total"
@@ -776,6 +1525,12 @@ metrics:
     unit: "#"
     category: "security"
     description: "Total responses blocked by WAF"
+    otel:
+      name: senhub.netscaler.appfw.blocked
+      unit: "{message}"
+      type: counter
+      attributes:
+        senhub.netscaler.http.message_type: response
 
   - name: "netscaler.appfw.violations.sqli.total"
     channel: "appfw.violations.sqli.total"
@@ -783,6 +1538,12 @@ metrics:
     unit: "#"
     category: "security"
     description: "SQL injection violations detected"
+    otel:
+      name: senhub.netscaler.appfw.violations.by_type
+      unit: "{violation}"
+      type: counter
+      attributes:
+        senhub.netscaler.appfw.violation_type: sqli
 
   - name: "netscaler.appfw.violations.xss.total"
     channel: "appfw.violations.xss.total"
@@ -790,6 +1551,12 @@ metrics:
     unit: "#"
     category: "security"
     description: "Cross-site scripting violations detected"
+    otel:
+      name: senhub.netscaler.appfw.violations.by_type
+      unit: "{violation}"
+      type: counter
+      attributes:
+        senhub.netscaler.appfw.violation_type: xss
 
   - name: "netscaler.appfw.violations.buffer_overflow.total"
     channel: "appfw.violations.buffer_overflow.total"
@@ -797,6 +1564,12 @@ metrics:
     unit: "#"
     category: "security"
     description: "Buffer overflow violations detected"
+    otel:
+      name: senhub.netscaler.appfw.violations.by_type
+      unit: "{violation}"
+      type: counter
+      attributes:
+        senhub.netscaler.appfw.violation_type: buffer_overflow
 
 tag_metadata:
   metric_view:
