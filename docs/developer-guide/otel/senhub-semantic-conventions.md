@@ -398,10 +398,79 @@ Alignement OTel quand possible (`hw.id`, `hw.name`, `hw.parent`, `hw.model`, `hw
 
 - `hardware.storage.volume.io.total_ops` et `hardware.storage.volume.io.total_bytes` — redondantes avec reads+writes, skip avec justification (derivables en PromQL par `sum without(disk_io_direction)`).
 
+### 4.10 Probe `veeam` (backup & replication)
+
+**Source principale :** aucune convention OTel pour backup
+**Source secondaire :** [peekjef72/veeam_exporter](https://github.com/peekjef72/veeam_exporter) et variantes communautaires (patterns convergents sur job states, repo capacity)
+
+**Décision :** toutes les métriques sous extensions `senhub.veeam.*`. Stratégie de collapse systématique (totaux/counts en labels de state plutôt que noms de métriques séparés).
+
+#### 4.10.1 Extensions `senhub.veeam.*`
+
+**Jobs (overview + détail) :**
+| Senhub metric | Unit | Type |
+|---|---|---|
+| `senhub.veeam.jobs.total` | `{job}` | Gauge |
+| `senhub.veeam.jobs.by_last_result` | `{job}` | Gauge (attribut `senhub.veeam.job.last_result` ∈ {success, warning, failed, running}) |
+| `senhub.veeam.job.status` | `1` | UpDownCounter (**expand** `senhub.veeam.job.state` ∈ {none, success, warning, failed, running}) |
+| `senhub.veeam.job.seconds_since_last_run` | `s` | Gauge |
+| `senhub.veeam.job.objects` | `{object}` | Gauge |
+| `senhub.veeam.job.bottleneck.status` | `1` | UpDownCounter (**expand** `senhub.veeam.job.bottleneck` ∈ {none, source, proxy, network, target}) |
+| `senhub.veeam.job.last_run.bytes` | `By` | Gauge (attribut `senhub.veeam.job.data_phase` ∈ {processed, read, transferred}) |
+
+**Repository :**
+| Senhub metric | Unit | Type |
+|---|---|---|
+| `senhub.veeam.repository.limit` | `By` | UpDownCounter |
+| `senhub.veeam.repository.usage` | `By` | UpDownCounter (attribut `senhub.veeam.repository.state` ∈ {used, free}) |
+| `senhub.veeam.repository.utilization` | `1` | Gauge (attribut `senhub.veeam.repository.state` ∈ {free}) |
+
+**License :**
+| Senhub metric | Unit | Type |
+|---|---|---|
+| `senhub.veeam.license.status` | `1` | UpDownCounter (**expand** `senhub.veeam.license.state` ∈ {valid, expired, invalid}) |
+| `senhub.veeam.license.days_remaining` | `{day}` | Gauge |
+| `senhub.veeam.license.instances` | `{instance}` | Gauge (attribut `senhub.veeam.license.instances_state` ∈ {total, used, remaining}) |
+
+**Proxies :**
+| Senhub metric | Unit | Type |
+|---|---|---|
+| `senhub.veeam.proxy.status` | `1` | UpDownCounter (**expand** `senhub.veeam.proxy.state` ∈ {disabled, offline, online}) |
+| `senhub.veeam.proxies` | `{proxy}` | Gauge (attribut `senhub.veeam.proxies_state` ∈ {total, enabled, disabled}) |
+
+**Protected objects :**
+| Senhub metric | Unit | Type |
+|---|---|---|
+| `senhub.veeam.object.restore_points` | `{restore_point}` | Gauge |
+| `senhub.veeam.object.last_run_failed` | `1` | Gauge bool |
+| `senhub.veeam.objects` | `{object}` | Gauge (attribut `senhub.veeam.objects_state` ∈ {total, failed}) |
+
+**Infrastructure (managed servers) :**
+| Senhub metric | Unit | Type |
+|---|---|---|
+| `senhub.veeam.server.status` | `1` | UpDownCounter (**expand** `senhub.veeam.server.state` ∈ {unavailable, available}) |
+| `senhub.veeam.servers` | `{server}` | Gauge (attribut `senhub.veeam.servers_state` ∈ {total, available, unavailable}) |
+
+#### 4.10.2 Attributs (tag → attribute mapping)
+
+| Tag interne | Attribut OTel |
+|---|---|
+| `job_name` | `senhub.veeam.job.name` |
+| `job_type` | `senhub.veeam.job.type` |
+| `repo_name` | `senhub.veeam.repository.name` |
+| `proxy_name` | `senhub.veeam.proxy.name` |
+| `object_name` | `senhub.veeam.object.name` |
+| `object_type` | `senhub.veeam.object.type` |
+| `server_name` | `senhub.veeam.server.name` |
+| `server_type` | `senhub.veeam.server.type` |
+
+#### 4.10.3 Récap
+
+33 métriques internes → 20 noms OTel uniques grâce au collapse via labels. 5 métriques utilisent le pattern `expand` pour les enums de statut (job, bottleneck, license, proxy, server).
+
 ## 5. Conventions en cours (prochains lots)
 
 Sections à ajouter dans les prochains lots :
-- 4.10 `veeam` — lot 4b
 - 4.11 `citrix` — lot 4c
 - 4.12 `netscaler` — lot 4d
 
