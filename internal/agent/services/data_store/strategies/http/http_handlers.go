@@ -84,8 +84,12 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	}
 
 	if h.strategy.configManager.IsEndpointEnabled("prometheus") {
-		// Prometheus endpoints
+		// Prometheus endpoints — dual route:
+		//   1. SenHub pattern /api/{agentkey}/prometheus/metrics — URL-embedded key
+		//   2. Standard Prometheus /metrics — Bearer token or ?token= auth
+		//      (matches vmagent, Prometheus, Grafana Agent native expectations)
 		router.HandleFunc("/api/{agentkey}/prometheus/metrics", h.HandlePrometheusMetricsGET).Methods("GET")
+		router.HandleFunc("/metrics", h.HandlePrometheusStandardMetricsGET).Methods("GET")
 	}
 
 	if h.strategy.configManager.IsEndpointEnabled("web") {
@@ -202,6 +206,10 @@ func (h *HTTPHandlers) HandleZabbixMetricsGET(w http.ResponseWriter, r *http.Req
 
 func (h *HTTPHandlers) HandlePrometheusMetricsGET(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handlePrometheusMetricsGET(w, r)
+}
+
+func (h *HTTPHandlers) HandlePrometheusStandardMetricsGET(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handlePrometheusStandardMetricsGET(w, r)
 }
 
 // Web UI handlers (delegating to strategy for now)
