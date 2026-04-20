@@ -1,15 +1,25 @@
 probe_name: "ping_gateway"
 friendly_name: "Ping Gateway"
+version: "3.0.0"
 multi_instance_labels: []
 
+# Format v3 — OTel-first source of truth.
+# No OTel ICMP semconv exists — extensions under senhub.probe.icmp.*
+# aligned on blackbox_exporter naming convention.
+# See senhub-semantic-conventions §4.5.
+
 metrics:
-  # Gateway Ping Metrics
   - name: "averageLatency"
     channel: "gateway_average_latency"
     display_name: "Gateway Average Latency"
     unit: "ms"
     category: "connectivity"
     description: "Average round-trip time to the default network gateway"
+    otel:
+      name: senhub.probe.icmp.duration_seconds
+      unit: s
+      type: gauge
+      # Mapper converts ms → s (÷1000)
 
   - name: "packetLoss"
     channel: "gateway_packet_loss"
@@ -17,6 +27,11 @@ metrics:
     unit: "%"
     category: "connectivity"
     description: "Percentage of ICMP packets lost to the default gateway"
+    otel:
+      name: senhub.probe.icmp.packet_loss_ratio
+      unit: "1"
+      type: gauge
+      # Mapper converts % → ratio (÷100)
 
 tag_metadata:
   # System tags (injected by framework)

@@ -226,12 +226,75 @@ Valeurs officielles OTel : `free, reserved, used`
 | `drive` (Windows) | `system.filesystem.mountpoint` (ex: `C:`, `D:`) — harmonisé Linux/Windows |
 | `fs_type` | `system.filesystem.type` (ex: `ext4`, `ntfs`) |
 
+### 4.5 Probes `ping_gateway` et `ping_webapp` (ICMP connectivité)
+
+**Source principale :** aucune OTel (pas de semconv ICMP)
+**Source secondaire :** [Prometheus blackbox_exporter](https://github.com/prometheus/blackbox_exporter) (`probe_icmp_*` convention)
+
+**Note :** nos probes ICMP font de la **mesure continue agrégée** (moyennes sur fenêtre), pas des probes ponctuelles comme blackbox_exporter. Les noms sont adaptés en conséquence sous namespace `senhub.probe.*`.
+
+#### 4.5.1 Extensions `senhub.*`
+
+| Senhub metric | Unit | Type | Attributs |
+|---|---|---|---|
+| `senhub.probe.icmp.duration_seconds` | `s` | Gauge | `url.full` *(optionnel — présent pour ping_webapp, absent pour ping_gateway)* |
+| `senhub.probe.icmp.packet_loss_ratio` | `1` | Gauge | `url.full` *(optionnel)* |
+
+**Unit conversions par le mapper :** ms → s (÷1000) pour latency ; % → ratio (÷100) pour packet loss.
+
+Distinction ping_gateway vs ping_webapp : même nom de métrique, ping_gateway n'émet **pas** le label `url.full` (cible = default gateway détectée au runtime).
+
+### 4.6 Probe `load_webapp` (HTTP phase timing)
+
+**Source principale :** aucune OTel directement applicable (`http.client.*` est orienté histogramme sur requêtes ponctuelles — notre modèle est continu avec moyennes)
+**Source secondaire :** [blackbox_exporter](https://github.com/prometheus/blackbox_exporter/blob/master/prober/http.go) — `probe_http_duration_seconds{phase=…}` avec phases `resolve, connect, tls, processing, transfer`
+
+#### 4.6.1 Extension `senhub.probe.http.*`
+
+| Senhub metric | Unit | Type | Attributs |
+|---|---|---|---|
+| `senhub.probe.http.duration_seconds` | `s` | Gauge | `phase`, `url.full` |
+
+**Valeurs `phase`** (aligné blackbox_exporter + extension `total`) :
+
+| Valeur | Signification |
+|---|---|
+| `resolve` | Résolution DNS |
+| `connect` | Établissement TCP |
+| `tls` | Handshake TLS |
+| `processing` | Time To First Byte (TTFB) |
+| `total` | Durée complète request → full response *(extension — blackbox utilise `probe_duration_seconds` séparément)* |
+
+**Unit conversion :** ms → s (÷1000) par le mapper.
+
+### 4.7 Probe `wifi_signal_strength` (connectivité WiFi)
+
+**Source principale :** aucune OTel (pas de semconv wifi)
+**Source secondaire :** aucune convention communautaire établie
+
+Extension complète sous namespace `senhub.system.network.wifi.*`.
+
+#### 4.7.1 Extensions `senhub.*`
+
+| Senhub metric | Unit | Type | Attributs |
+|---|---|---|---|
+| `senhub.system.network.wifi.signal_strength.dbm` | `dBm` | Gauge | `senhub.network.wifi.ssid`, `senhub.network.wifi.bssid` |
+| `senhub.system.network.wifi.quality_ratio` | `1` | Gauge | `senhub.network.wifi.ssid`, `senhub.network.wifi.bssid` *(÷100)* |
+
+**Attributs :**
+
+| Attribut | Source | Description |
+|---|---|---|
+| `senhub.network.wifi.ssid` | tag `ssid` | Nom du réseau (ESSID) |
+| `senhub.network.wifi.bssid` | tag `bssid` | Adresse MAC du point d'accès (BSSID) |
+
+> Pas de YAML transformer existant pour `wifi_signal_strength` — créé lors du lot 2.
+
 ## 5. Conventions en cours (prochains lots)
 
 Sections à ajouter dans les prochains lots :
-- 4.5 `ping_gateway` / `ping_webapp` / `load_webapp` / `wifi_signal_strength` — lot 2
-- 4.6 `syslog` / `event` / `otel` — lot 3
-- 4.7 `netscaler` / `citrix` / `redfish` / `veeam` — lot 4
+- 4.8 `syslog` / `event` / `otel` — lot 3
+- 4.9 `netscaler` / `citrix` / `redfish` / `veeam` — lot 4
 
 ## 6. Processus d'ajout d'une convention
 
