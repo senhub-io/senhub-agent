@@ -46,6 +46,16 @@ Exemples :
 | `senhub.system.cpu.queue_length` / gauge / `{thread}` | `senhub_system_cpu_queue_length` |
 | `system.linux.cpu.load_1m` / gauge / `{thread}` | `senhub_system_linux_cpu_load_1m` |
 
+## 2bis. Conformité OTel stricte — principe "mapper-side"
+
+**La conformité OTel vit dans le mapper, pas dans le cache.** Quand le probe émet un data point dont la sémantique OTel stricte nécessite un **autre format** en sortie (ex: un enum encodé en valeur numérique doit devenir N data points per-state), le mapper effectue la transformation **au moment de la sérialisation vers le format cible** (Prometheus aujourd'hui, OTLP native demain).
+
+**Conséquence pour les futurs exports** : quand un mapper OTLP native sera ajouté (Phase 3), il émettra du strict OTel **sans aucune correction à faire** — les déviations sont déjà corrigées en amont par la logique du mapper, qui est partagée entre les formats OTel-aware (Prometheus, OTLP, Zabbix-OTel, etc.).
+
+**Mécanisme documenté** : le bloc `otel.expand` dans les YAML transformers déclare une expansion enum → per-state. Le mapper lit cette directive et produit les N data points appropriés à chaque scrape. Voir `IMPLEMENTATION-PLAN.md §4` pour le schéma exact.
+
+Cas typique : toutes les métriques `hw.status` (santé hardware) suivent ce pattern — 1 data point dans le cache (code enum depuis lookup) → N data points à la sérialisation, un par valeur de `hw.state`.
+
 ## 3. Labels systématiques
 
 Sur **toute** métrique émise par une probe, le mapper Prometheus ajoute :
