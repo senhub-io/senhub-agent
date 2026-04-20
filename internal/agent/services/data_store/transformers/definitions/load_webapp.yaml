@@ -1,9 +1,14 @@
 probe_name: "load_webapp"
 friendly_name: "Load WebApp"
+version: "3.0.0"
 multi_instance_labels: ["url"]
 
+# Format v3 — OTel-first source of truth.
+# All phases collapsed under senhub.probe.http.duration_seconds with phase label
+# (aligned on blackbox_exporter probe_http_duration_seconds{phase=...}).
+# See senhub-semantic-conventions §4.6.
+
 metrics:
-  # WebApp Load Metrics
   - name: "dnstime"
     channel: "load_dns_time"
     display_name: "DNS Resolution Time ({url})"
@@ -11,6 +16,15 @@ metrics:
     category: "performance"
     multi_instance_labels: ["url"]
     description: "Time to resolve the web application's domain name via DNS"
+    otel:
+      name: senhub.probe.http.duration_seconds
+      unit: s
+      type: gauge
+      attributes:
+        phase: resolve
+      # Mapper converts ms → s (÷1000)
+    tag_to_attribute:
+      url: url.full
 
   - name: "connecttime"
     channel: "load_connect_time"
@@ -19,6 +33,14 @@ metrics:
     category: "performance"
     multi_instance_labels: ["url"]
     description: "Time to establish a TCP connection to the web server"
+    otel:
+      name: senhub.probe.http.duration_seconds
+      unit: s
+      type: gauge
+      attributes:
+        phase: connect
+    tag_to_attribute:
+      url: url.full
 
   - name: "tlstime"
     channel: "load_tls_time"
@@ -27,14 +49,14 @@ metrics:
     category: "performance"
     multi_instance_labels: ["url"]
     description: "Time to complete the TLS/SSL handshake with the web server"
-
-  - name: "total_time"
-    channel: "load_total_time"
-    display_name: "Total Load Time ({url})"
-    unit: "ms"
-    category: "performance"
-    multi_instance_labels: ["url"]
-    description: "Total time from request initiation to full response received"
+    otel:
+      name: senhub.probe.http.duration_seconds
+      unit: s
+      type: gauge
+      attributes:
+        phase: tls
+    tag_to_attribute:
+      url: url.full
 
   - name: "ttfb"
     channel: "load_time_to_first_byte"
@@ -43,6 +65,30 @@ metrics:
     category: "performance"
     multi_instance_labels: ["url"]
     description: "Time from request sent to first byte of response received"
+    otel:
+      name: senhub.probe.http.duration_seconds
+      unit: s
+      type: gauge
+      attributes:
+        phase: processing
+    tag_to_attribute:
+      url: url.full
+
+  - name: "total_time"
+    channel: "load_total_time"
+    display_name: "Total Load Time ({url})"
+    unit: "ms"
+    category: "performance"
+    multi_instance_labels: ["url"]
+    description: "Total time from request initiation to full response received"
+    otel:
+      name: senhub.probe.http.duration_seconds
+      unit: s
+      type: gauge
+      attributes:
+        phase: total
+    tag_to_attribute:
+      url: url.full
 
 tag_metadata:
   url:
