@@ -6,6 +6,7 @@ package http
 
 import (
 	"net/http"
+	"sync"
 
 	"senhub-agent.go/internal/agent/services/data_store/strategies/http/prometheus"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
@@ -24,9 +25,6 @@ func (a *cacheAdapter) GetAll() []prometheus.CacheMetric {
 	for _, m := range src {
 		val, ok := coerceToFloat64(m.Value)
 		if !ok {
-			// Non-numeric values (strings, booleans expressed as strings, etc.)
-			// cannot be emitted as Prometheus metrics. Skip silently; the
-			// YAML should either provide a lookup or declare skip:true.
 			continue
 		}
 		probeType := m.Tags["probe_type"]
@@ -52,7 +50,6 @@ func (r *registryAdapter) GetProbeDefinition(probeType string) *transformers.Pro
 }
 
 // coerceToFloat64 extracts a float64 from the typed-opaque cache value.
-// Supports the numeric types the probes actually emit.
 func coerceToFloat64(v interface{}) (float64, bool) {
 	switch x := v.(type) {
 	case float64:
@@ -80,27 +77,46 @@ func coerceToFloat64(v interface{}) (float64, bool) {
 	return 0, false
 }
 
+// prometheusWarnedMetrics keeps track of (probe_type, metric_name) pairs for
+// which we've already emitted a "no OTel mapping" warning. Prevents log spam
+// since scrapes happen every 15-60s and an unmapped metric would otherwise
+// warn on every scrape.
+//
+// Package-level: an agent has at most one HTTP strategy, and the dedup state
+// is conceptually an agent-lifetime cache. Keyed by "probe_type:metric_name".
+var prometheusWarnedMetrics sync.Map
+
 // servePrometheusExposition writes the Prometheus text exposition to w by
 // reading the shared cache and resolving each entry through the transformer
 // registry. Used by both the /api/{key}/prometheus/metrics and /metrics routes.
+//
+// Policy on unmapped metrics (Q4 revised, 2026-04-21):
+//   - If a cache entry has no OTel mapping in its probe's YAML definition,
+//     it is skipped (not emitted) and a WARN is logged ONCE per
+//     (probe_type, metric_name) for the lifetime of the agent.
+//   - The scrape continues normally — missing mapping never blocks the
+//     endpoint or prevents the agent from running.
+//   - Operators see the warning, fix the YAML, metric appears in next scrape.
 func (h *HTTPSyncStrategy) servePrometheusExposition(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", prometheus.ContentType)
 
 	reader := &cacheAdapter{cache: h.cache}
 	defs := &registryAdapter{registry: h.transformerRegistry}
 
-	count, err := prometheus.WriteExposition(reader, defs, w, func(m prometheus.CacheMetric, err error) {
-		h.logger.Debug().
-			Err(err).
+	count, err := prometheus.WriteExposition(reader, defs, w, func(m prometheus.CacheMetric, errCb error) {
+		key := m.ProbeType + ":" + m.MetricName
+		if _, seen := prometheusWarnedMetrics.LoadOrStore(key, struct{}{}); seen {
+			return
+		}
+		h.logger.Warn().
+			Err(errCb).
 			Str("probe_name", m.ProbeName).
 			Str("probe_type", m.ProbeType).
 			Str("metric_name", m.MetricName).
-			Msg("Skipping cache entry in Prometheus exposition")
+			Msg("Metric has no OTel mapping - not exposed in /metrics. Add an otel: block to the probe YAML or otel.skip: true to silence.")
 	})
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to write Prometheus exposition")
-		// Headers already sent — cannot change status. The partial body is
-		// still likely parseable; Prometheus scrapers will report what they got.
 		return
 	}
 
