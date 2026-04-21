@@ -15,11 +15,15 @@
 // Credentials are passed only through the child process environment —
 // never on the command line, never written to disk by this package.
 //
-// The whole package is designed to be copied into
-// senhub-agent/internal/agent/probes/ibmi/bridge/ at integration time. It
-// takes its logger as a *zerolog.Logger so the swap from
-// senhub4i.go/pkg/probe.ModuleLogger to senhub-agent's ModuleLogger is
-// zero-cost.
+// The bridge supervises the subprocess: if it exits (TCP reset by the
+// LPAR, OOM, hardware reboot, …) the next Query triggers an automatic
+// respawn + handshake before retrying. Callers see the failure only when
+// respawn itself fails.
+//
+// NativeRunner vs JVM: when Config.NativeRunner is set, the bridge spawns
+// a GraalVM native-image compiled Jt400Runner binary directly — no JRE
+// required at runtime. Otherwise it falls back to `java -cp jt400.jar:.
+// Jt400Runner`.
 package bridge
 
 import (
@@ -32,6 +36,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -50,15 +55,22 @@ type Config struct {
 	// JavaHome is the path to a JRE/JDK installation (bin/java must exist).
 	// If empty, defaults to the JAVA_HOME environment variable, then to a
 	// hard-coded Temurin 17 fallback suitable for local development.
+	// Ignored when NativeRunner is set.
 	JavaHome string
 
+	// NativeRunner is an optional path to a GraalVM native-image compiled
+	// jt400runner binary. When set, the bridge spawns this binary directly
+	// instead of `java -cp jt400.jar:. Jt400Runner` — no JRE required
+	// at runtime. The native binary still speaks the same line-oriented
+	// stdin/stdout protocol and reads credentials from PUB400_* env vars.
+	NativeRunner string
+
 	// RunnerDir is the directory containing Jt400Runner.class and jt400.jar.
-	// Required — there is deliberately no automatic discovery. In the POC
-	// this points at internal/probes/ibmi/bridge/ during development and at
-	// /opt/senhub4i/bridge/ inside the Docker image.
+	// Required on the JVM path; optional when NativeRunner is set (used as
+	// working directory for the native binary).
 	RunnerDir string
 
-	// StartupTimeout bounds how long New waits for the "ready" handshake.
+	// StartupTimeout bounds how long spawn waits for the "ready" handshake.
 	// Zero means 15 seconds.
 	StartupTimeout time.Duration
 
@@ -79,17 +91,25 @@ type Result struct {
 // A Bridge is safe for concurrent Query callers: queries are serialised
 // internally behind a mutex. That is deliberate — the stdin/stdout protocol
 // is strictly request/response and cannot be multiplexed without framing
-// changes on the Java side.
+// changes on the runner side.
+//
+// The bridge has three lifecycle states:
+//   - live: cmd/stdin/stdout are wired and the subprocess is responsive
+//   - dead: subprocess has exited for an external reason (TCP reset,
+//     OOM, etc.); next Query will respawn before retrying
+//   - closed: the user called Close — permanent, no further Queries allowed
 type Bridge struct {
 	cfg    Config
 	logger *zerolog.Logger
 
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	stdout *bufio.Reader
+	mu           sync.Mutex
+	cmd          *exec.Cmd
+	stdin        io.WriteCloser
+	stdout       *bufio.Reader
+	dead         bool // subprocess has exited; needs respawn before next query
+	closedByUser bool // Close() was called; no more queries ever
 
-	mu     sync.Mutex
-	closed bool
+	respawnCount int // bookkeeping, exposed through Stats for tests/metrics
 }
 
 // wireResponse is the on-wire shape of a single JSON line emitted by
@@ -106,124 +126,210 @@ type wireResponse struct {
 //
 // On success the caller owns the returned *Bridge and must eventually call
 // Close to release OS resources. On failure, New leaves no child process
-// behind.
+// behind. The provided ctx bounds the initial spawn+handshake; the
+// subprocess itself is not tied to ctx (it outlives the call).
 func New(ctx context.Context, cfg Config, logger *zerolog.Logger) (*Bridge, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
 	cfg.applyDefaults()
 
-	javaBin := filepath.Join(cfg.JavaHome, "bin", "java")
-	if _, err := os.Stat(javaBin); err != nil {
-		return nil, fmt.Errorf("java binary not found at %s: %w", javaBin, err)
+	b := &Bridge{cfg: cfg, logger: logger}
+	if err := b.spawn(ctx); err != nil {
+		return nil, err
 	}
+	return b, nil
+}
 
-	cmd := exec.CommandContext(ctx, javaBin, "-cp", "jt400.jar:.", "Jt400Runner")
-	cmd.Dir = cfg.RunnerDir
+// spawn launches (or re-launches) the subprocess, performs the handshake
+// and wires b.cmd/stdin/stdout. Caller must hold b.mu, except during New
+// where no concurrent access is possible yet.
+//
+// The subprocess is NOT tied to ctx: we want it to outlive a potentially
+// short caller context. ctx is used only for the handshake timeout.
+func (b *Bridge) spawn(ctx context.Context) error {
+	var cmd *exec.Cmd
+	if b.cfg.NativeRunner != "" {
+		if _, err := os.Stat(b.cfg.NativeRunner); err != nil {
+			return fmt.Errorf("native runner binary not found at %s: %w", b.cfg.NativeRunner, err)
+		}
+		cmd = exec.Command(b.cfg.NativeRunner)
+	} else {
+		javaBin := filepath.Join(b.cfg.JavaHome, "bin", "java")
+		if runtime.GOOS == "windows" {
+			javaBin += ".exe"
+		}
+		if _, err := os.Stat(javaBin); err != nil {
+			return fmt.Errorf("java binary not found at %s: %w", javaBin, err)
+		}
+		// Use the platform path-list separator so the classpath is valid
+		// on Windows (;) as well as Unix (:).
+		classpath := "jt400.jar" + string(os.PathListSeparator) + "."
+		cmd = exec.Command(javaBin, "-cp", classpath, "Jt400Runner")
+	}
+	cmd.Dir = b.cfg.RunnerDir
 	cmd.Env = append(os.Environ(),
-		"PUB400_HOST="+cfg.Host,
-		"PUB400_USER="+cfg.User,
-		"PUB400_PASSWORD="+cfg.Password,
+		"PUB400_HOST="+b.cfg.Host,
+		"PUB400_USER="+b.cfg.User,
+		"PUB400_PASSWORD="+b.cfg.Password,
 	)
 	cmd.Stderr = os.Stderr
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, fmt.Errorf("allocating stdin pipe: %w", err)
+		return fmt.Errorf("allocating stdin pipe: %w", err)
 	}
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("allocating stdout pipe: %w", err)
+		return fmt.Errorf("allocating stdout pipe: %w", err)
 	}
-
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("starting runner: %w", err)
+		return fmt.Errorf("starting runner: %w", err)
 	}
 
-	b := &Bridge{
-		cfg:    cfg,
-		logger: logger,
-		cmd:    cmd,
-		stdin:  stdin,
-		stdout: bufio.NewReader(stdoutPipe),
-	}
+	reader := bufio.NewReader(stdoutPipe)
 
-	// Read the handshake under the configured startup timeout. If the
-	// handshake never arrives we tear the subprocess down before returning.
-	handshakeCtx, cancel := context.WithTimeout(ctx, cfg.StartupTimeout)
+	handshakeCtx, cancel := context.WithTimeout(ctx, b.cfg.StartupTimeout)
 	defer cancel()
 
-	line, err := readLineCtx(handshakeCtx, b.stdout)
+	line, err := readLineCtx(handshakeCtx, reader)
 	if err != nil {
-		b.forceKill()
-		return nil, fmt.Errorf("reading handshake: %w", err)
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return fmt.Errorf("reading handshake: %w", err)
 	}
 	var resp wireResponse
 	if err := json.Unmarshal([]byte(line), &resp); err != nil {
-		b.forceKill()
-		return nil, fmt.Errorf("parsing handshake %q: %w", line, err)
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return fmt.Errorf("parsing handshake %q: %w", line, err)
 	}
 	if !resp.OK {
-		b.forceKill()
-		return nil, fmt.Errorf("runner failed to start: %s", resp.Error)
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return fmt.Errorf("runner failed to start: %s", resp.Error)
 	}
 	if resp.Event != "ready" {
-		b.forceKill()
-		return nil, fmt.Errorf("unexpected handshake event %q", resp.Event)
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return fmt.Errorf("unexpected handshake event %q", resp.Event)
 	}
 
-	if logger != nil {
-		logger.Info().
-			Str("host", cfg.Host).
-			Str("user", cfg.User).
-			Msg("jt400 bridge ready")
+	b.cmd = cmd
+	b.stdin = stdin
+	b.stdout = reader
+	b.dead = false
+
+	if b.logger != nil {
+		event := b.logger.Info().
+			Str("host", b.cfg.Host).
+			Str("user", b.cfg.User)
+		if b.respawnCount > 0 {
+			event = event.Int("respawn_count", b.respawnCount)
+		}
+		event.Msg("jt400 bridge ready")
 	}
-	return b, nil
+	return nil
 }
 
 // Query sends one SQL statement to the runner and returns its decoded
 // response. Queries are serialised: concurrent callers wait their turn.
 //
-// The provided context bounds the wait time for the response line. On
-// context cancellation the Bridge becomes permanently unusable — we have
-// no safe way to abort a query in flight on the Java side without killing
-// the subprocess, so we do exactly that, and subsequent Query calls fail.
+// If the subprocess has died since the last query (EOF on stdout,
+// kill signal, SIGPIPE, …), Query triggers a single automatic respawn
+// and retries. Respawn itself uses a background context so a short
+// ctx from the caller does not cut off the startup handshake.
+//
+// Semantic SQL errors from the runner ({"ok":false,"error":"…"}) are
+// returned as errors but do NOT mark the bridge dead — the subprocess
+// is still healthy and ready for the next query.
 func (b *Bridge) Query(ctx context.Context, sql string) (*Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	queryCtx, cancel := context.WithTimeout(ctx, b.cfg.QueryTimeout)
-	defer cancel()
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if b.closed {
+	if b.closedByUser {
 		return nil, errors.New("bridge is closed")
 	}
 	if containsNewline(sql) {
 		return nil, errors.New("sql statement must be single-line (no embedded newlines)")
 	}
 
+	// If the subprocess died previously, try to respawn before we write.
+	// We use a background context with a generous deadline so a 1s
+	// per-collector query timeout does not cut off the 15s handshake.
+	if b.dead {
+		respawnCtx, cancel := context.WithTimeout(context.Background(), b.cfg.StartupTimeout+5*time.Second)
+		err := b.respawnLocked(respawnCtx)
+		cancel()
+		if err != nil {
+			return nil, fmt.Errorf("bridge dead and respawn failed: %w", err)
+		}
+	}
+
+	queryCtx, cancel := context.WithTimeout(ctx, b.cfg.QueryTimeout)
+	defer cancel()
+
 	if _, err := io.WriteString(b.stdin, sql+"\n"); err != nil {
+		b.markDeadLocked("write failed: " + err.Error())
 		return nil, fmt.Errorf("writing query: %w", err)
 	}
 
 	line, err := readLineCtx(queryCtx, b.stdout)
 	if err != nil {
-		b.forceKill()
-		b.closed = true
+		b.markDeadLocked("read response failed: " + err.Error())
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
 
 	var resp wireResponse
 	if err := json.Unmarshal([]byte(line), &resp); err != nil {
+		// Malformed wire data — we cannot trust the stream anymore.
+		// Treat as dead so the next call respawns.
+		b.markDeadLocked("malformed response")
 		return nil, fmt.Errorf("parsing response %q: %w", line, err)
 	}
 	if !resp.OK {
+		// Semantic SQL error — subprocess still healthy.
 		return nil, fmt.Errorf("runner error: %s", resp.Error)
 	}
 	return &Result{Columns: resp.Columns, Rows: resp.Rows}, nil
+}
+
+// markDeadLocked transitions the bridge to the "dead" state and ensures
+// the subprocess is reaped. Idempotent. Must be called with b.mu held.
+func (b *Bridge) markDeadLocked(reason string) {
+	if b.dead {
+		return
+	}
+	b.dead = true
+	if b.cmd != nil && b.cmd.Process != nil {
+		_ = b.cmd.Process.Kill()
+		_ = b.cmd.Wait()
+	}
+	if b.logger != nil {
+		b.logger.Warn().
+			Str("reason", reason).
+			Msg("jt400 bridge subprocess died; respawn on next query")
+	}
+}
+
+// respawnLocked re-launches the subprocess and performs the handshake.
+// Increments the respawn counter on success. Must be called with b.mu
+// held and b.dead == true.
+func (b *Bridge) respawnLocked(ctx context.Context) error {
+	b.respawnCount++
+	return b.spawn(ctx)
+}
+
+// RespawnCount returns the number of times the subprocess has been
+// automatically restarted since New. Exposed for probe health metrics.
+func (b *Bridge) RespawnCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.respawnCount
 }
 
 // Close shuts the subprocess down cleanly: it sends an empty line, waits
@@ -232,10 +338,16 @@ func (b *Bridge) Close(ctx context.Context) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if b.closed {
+	if b.closedByUser {
 		return nil
 	}
-	b.closed = true
+	b.closedByUser = true
+
+	// If the subprocess already died and we haven't respawned yet,
+	// there's nothing to shut down.
+	if b.dead || b.cmd == nil {
+		return nil
+	}
 
 	_, _ = io.WriteString(b.stdin, "\n")
 	_ = b.stdin.Close()
@@ -258,16 +370,6 @@ func (b *Bridge) Close(ctx context.Context) error {
 	}
 }
 
-// forceKill terminates the child process without serialisation. Only call
-// from code paths that own the construction or error path and know no
-// other goroutine is racing for mu.
-func (b *Bridge) forceKill() {
-	if b.cmd != nil && b.cmd.Process != nil {
-		_ = b.cmd.Process.Kill()
-		_ = b.cmd.Wait()
-	}
-}
-
 // validate enforces the minimum set of fields required by New.
 func (c *Config) validate() error {
 	if c.Host == "" {
@@ -279,8 +381,8 @@ func (c *Config) validate() error {
 	if c.Password == "" {
 		return errors.New("bridge config: Password is required")
 	}
-	if c.RunnerDir == "" {
-		return errors.New("bridge config: RunnerDir is required")
+	if c.NativeRunner == "" && c.RunnerDir == "" {
+		return errors.New("bridge config: either NativeRunner or RunnerDir is required")
 	}
 	return nil
 }
@@ -288,10 +390,10 @@ func (c *Config) validate() error {
 // applyDefaults fills in optional fields with sensible defaults. Mutates
 // the receiver — call after validate.
 func (c *Config) applyDefaults() {
-	if c.JavaHome == "" {
+	if c.NativeRunner == "" && c.JavaHome == "" {
 		if env := os.Getenv("JAVA_HOME"); env != "" {
 			c.JavaHome = env
-		} else {
+		} else if runtime.GOOS == "darwin" {
 			c.JavaHome = "/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home"
 		}
 	}

@@ -32,8 +32,13 @@ type probeConfig struct {
 	Interval        time.Duration
 	BridgeRunnerDir string
 	JavaHome        string
-	QueryTimeout    time.Duration
-	StartupTimeout  time.Duration
+	// NativeRunner is an optional path to a GraalVM native-image
+	// compiled jt400runner binary. When set, the bridge spawns it
+	// directly instead of `java -cp ... Jt400Runner` — no JRE required
+	// at runtime. bridge_runner_dir then becomes optional.
+	NativeRunner   string
+	QueryTimeout   time.Duration
+	StartupTimeout time.Duration
 
 	// EnabledCollectors is an optional allowlist of collector names to
 	// activate. Empty = every collector in defaultCollectors() runs.
@@ -86,9 +91,27 @@ func parseProbeConfig(raw map[string]interface{}) (probeConfig, error) {
 	if err != nil {
 		return cfg, err
 	}
-	cfg.BridgeRunnerDir, err = requireString(raw, "bridge_runner_dir")
-	if err != nil {
-		return cfg, err
+	// native_runner takes priority: if set, bridge_runner_dir + java_home
+	// become optional (no JVM on the runtime path).
+	if v, ok := raw["native_runner"]; ok {
+		s, ok := v.(string)
+		if !ok {
+			return cfg, fmt.Errorf("config key %q: expected string, got %T", "native_runner", v)
+		}
+		cfg.NativeRunner = s
+	}
+	if cfg.NativeRunner == "" {
+		cfg.BridgeRunnerDir, err = requireString(raw, "bridge_runner_dir")
+		if err != nil {
+			return cfg, err
+		}
+	} else if v, ok := raw["bridge_runner_dir"]; ok {
+		// Optional when native_runner is set (used as working dir only).
+		s, ok := v.(string)
+		if !ok {
+			return cfg, fmt.Errorf("config key %q: expected string, got %T", "bridge_runner_dir", v)
+		}
+		cfg.BridgeRunnerDir = s
 	}
 
 	if v, ok := raw["java_home"]; ok {
