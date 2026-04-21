@@ -135,7 +135,7 @@ metrics:
 - `source_keys` : liste des clés bus internes actuellement émises par la probe qui alimentent cette métrique OTel. **Transitoire** — supprimé quand la probe émet OTel nativement.
 - `tag_to_attribute` : mapping tag probe → attribut OTel. Les valeurs de tags sont propagées comme valeurs d'attributs.
 - `prtg`, `nagios` : champs inchangés par rapport au format actuel (retro-compat stricte).
-- Si `otel:` est absent sur une métrique → **error au démarrage, refus de monter l'endpoint Prometheus** (décision Q4, §12).
+- Si `otel:` est absent sur une métrique → elle est **silencieusement non émise** dans `/metrics`, un **WARN loggé une seule fois** par (probe_type, metric_name). L'endpoint reste fonctionnel, l'agent ne bloque pas (Q4 §12, révisée 2026-04-21).
 
 **Opt-out explicite `otel.skip`** — certaines métriques ne doivent PAS être exposées en Prometheus (probes de flux log/events qui n'émettent pas de métriques sémantiques) :
 
@@ -308,7 +308,7 @@ Pour **chaque** métrique de **chaque** probe (15), rédiger :
 3. Le `tag_to_attribute` (translation tags existants → attributs OTel)
 4. Les blocs `prtg:`/`nagios:` inchangés (retro-compat)
 
-Aucun fallback — toute métrique non mappée fait échouer le démarrage de l'endpoint Prometheus.
+Aucun fallback — toute métrique non mappée est silencieusement non émise dans `/metrics`, avec un WARN loggé une fois par (probe_type, metric_name). L'endpoint reste fonctionnel (Q4 révisée — voir §12).
 
 Lots de revue (ordre recommandé, revue user probe par probe) :
 1. **Système léger** (4 probes) : `cpu`, `memory`, `network`, `logicaldisk` — couverts par OTel semconv officiel
@@ -370,10 +370,17 @@ Lots de revue (ordre recommandé, revue user probe par probe) :
 
 3. **Métriques info (version/firmware)** → déclaration **explicite** via `prometheus.type: info` dans le YAML. Pas de détection auto.
 
-4. **Fallback nommage** → **AUCUN. Big bang.** Les 15 probes doivent avoir leur mapping Prometheus complet dans le YAML **avant merge**. Livraison accompagnée de :
-   - Documentation utilisateur complète (`/docs/prometheus/_index.md` + `metrics-reference.md`)
-   - Revue de code complète du package `prometheus/`
-   - Non-régression PRTG/Nagios validée
+4. **Fallback nommage** → **AUCUN**, mais **pas bloquant** *(Q4 révisée 2026-04-21)*.
+   - Une métrique sans bloc `otel:` n'est **pas émise** dans `/metrics`
+   - Un **WARN est loggé** avec `probe_name`, `probe_type`, `metric_name` et un message actionnable ("Add an `otel:` block or `otel.skip: true`")
+   - **Dédupliqué** par (probe_type, metric_name) sur la durée de vie de l'agent — pas de spam à chaque scrape
+   - L'endpoint `/metrics` **continue de servir** les autres métriques normalement
+   - L'agent **ne refuse jamais de démarrer** à cause d'un mapping manquant
+   - Livraison attendue (cible qualité, pas blocage) :
+     - Documentation utilisateur complète (`/docs/prometheus/_index.md` + `metrics-reference.md`)
+     - Revue de code complète du package `prometheus/`
+     - Non-régression PRTG/Nagios validée
+   - **Rationale** : ne jamais bloquer la prod sur un oubli de YAML. Les noms émis restent contractuels (aucun fallback auto-généré qui polluerait le namespace) — le warning trace l'oubli sans casser l'endpoint.
 
 5. **Préfixe configurable** → **figé à `senhub_`**. Pas d'option `metric_prefix` dans la config. Changer le préfixe casserait systématiquement les dashboards utilisateurs.
 
