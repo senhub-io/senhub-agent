@@ -195,3 +195,135 @@ done
 		t.Fatalf("second Close: %v", err)
 	}
 }
+
+// TestQuery_RunnerErrorKeepsBridgeAlive asserts that a semantic runner
+// error ({"ok":false,"error":"..."}) returns a Go error to the caller
+// but does NOT mark the bridge dead — the subprocess is still healthy
+// and serves the next query normally.
+func TestQuery_RunnerErrorKeepsBridgeAlive(t *testing.T) {
+	script := `
+echo '{"ok":true,"event":"ready"}'
+first=1
+while read line; do
+  if [ -z "$line" ]; then
+    exit 0
+  fi
+  if [ "$first" = "1" ]; then
+    echo '{"ok":false,"error":"SQL0204 table not found"}'
+    first=0
+  else
+    echo '{"ok":true,"columns":["A"],"rows":[["42"]]}'
+  fi
+done
+`
+	javaHome, runnerDir := newFakeRunner(t, script)
+	cfg := baseConfig(javaHome, runnerDir)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	br, err := New(ctx, cfg, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer br.Close(context.Background())
+
+	if _, err := br.Query(ctx, "SELECT * FROM DOESNOTEXIST"); err == nil {
+		t.Fatal("expected error on first runner-error response")
+	}
+	if n := br.RespawnCount(); n != 0 {
+		t.Errorf("respawn must not trigger on semantic runner error, got %d", n)
+	}
+	res, err := br.Query(ctx, "SELECT 1 FROM SYSIBM.SYSDUMMY1")
+	if err != nil {
+		t.Fatalf("second query: %v", err)
+	}
+	if len(res.Rows) != 1 || *res.Rows[0][0] != "42" {
+		t.Fatalf("unexpected second query result: %#v", res.Rows)
+	}
+}
+
+// TestQuery_AutoRespawnAfterSubprocessExit exercises the supervision
+// path: after the subprocess dies mid-flight, the next Query call must
+// respawn the runner and return the expected result from the new
+// subprocess.
+//
+// This is the exact scenario that happened against PUB400 after an
+// overnight idle-timeout — without supervision the probe emits only
+// health metrics and every collector climbs failure_total.
+func TestQuery_AutoRespawnAfterSubprocessExit(t *testing.T) {
+	// The fake runner answers one query then exits. The bridge must
+	// detect the death (read error on next call) and respawn on the
+	// call after that.
+	script := `
+echo '{"ok":true,"event":"ready"}'
+read line
+if [ -n "$line" ]; then
+  echo '{"ok":true,"columns":["A"],"rows":[["first-run"]]}'
+fi
+exit 1
+`
+	javaHome, runnerDir := newFakeRunner(t, script)
+	cfg := baseConfig(javaHome, runnerDir)
+	cfg.StartupTimeout = 3 * time.Second
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	br, err := New(ctx, cfg, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer br.Close(context.Background())
+
+	res, err := br.Query(ctx, "SELECT 1 FROM SYSIBM.SYSDUMMY1")
+	if err != nil {
+		t.Fatalf("first query: %v", err)
+	}
+	if *res.Rows[0][0] != "first-run" {
+		t.Fatalf("unexpected first run result: %v", *res.Rows[0][0])
+	}
+
+	// Subprocess now exited. The next Query hits EOF on read and
+	// marks the bridge dead.
+	if _, err := br.Query(ctx, "SELECT 2 FROM SYSIBM.SYSDUMMY1"); err == nil {
+		t.Fatal("expected error on second query (subprocess exited)")
+	}
+
+	// Third Query: bridge respawns + writes + reads successfully.
+	res, err = br.Query(ctx, "SELECT 3 FROM SYSIBM.SYSDUMMY1")
+	if err != nil {
+		t.Fatalf("third query (after respawn): %v", err)
+	}
+	if *res.Rows[0][0] != "first-run" {
+		t.Fatalf("respawned subprocess gave unexpected result: %v", *res.Rows[0][0])
+	}
+	if n := br.RespawnCount(); n != 1 {
+		t.Errorf("expected respawn_count=1 after recovery, got %d", n)
+	}
+}
+
+// TestQuery_ClosedBridgeRejectsCalls asserts Close is terminal: once
+// called, subsequent Queries return an error immediately rather than
+// trying to respawn.
+func TestQuery_ClosedBridgeRejectsCalls(t *testing.T) {
+	script := `
+echo '{"ok":true,"event":"ready"}'
+while read line; do
+  if [ -z "$line" ]; then
+    exit 0
+  fi
+  echo '{"ok":true,"columns":["A"],"rows":[["x"]]}'
+done
+`
+	javaHome, runnerDir := newFakeRunner(t, script)
+	cfg := baseConfig(javaHome, runnerDir)
+	br, err := New(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := br.Close(context.Background()); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := br.Query(context.Background(), "SELECT 1 FROM SYSIBM.SYSDUMMY1"); err == nil {
+		t.Fatal("expected error after Close")
+	}
+}
