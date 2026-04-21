@@ -220,6 +220,7 @@ func NewIBMiProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger) (
 		User:           cfg.User,
 		Password:       cfg.Password,
 		JavaHome:       cfg.JavaHome,
+		NativeRunner:   cfg.NativeRunner,
 		RunnerDir:      cfg.BridgeRunnerDir,
 		StartupTimeout: cfg.StartupTimeout,
 		QueryTimeout:   cfg.QueryTimeout,
