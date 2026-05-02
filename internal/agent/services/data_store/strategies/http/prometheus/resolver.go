@@ -144,9 +144,13 @@ func Resolve(def *transformers.ProbeDefinition, m CacheMetric, opts ResolveOptio
 	}
 
 	// Expand: emit one record per mapping entry with value=1 if the raw
-	// (pre-conversion) cache value matches, else 0.
+	// (pre-conversion) cache value matches, else 0. If the raw value
+	// matches NONE of the declared codes, emit an additional synthetic
+	// record with attribute=unknown so dashboards can distinguish
+	// "probe broken / lookup out of date" from "all states are 0".
 	rawCode := int(m.Value)
-	records := make([]OtelRecord, 0, len(mdef.Otel.Expand.Mapping))
+	records := make([]OtelRecord, 0, len(mdef.Otel.Expand.Mapping)+1)
+	matched := false
 	for stateName, stateCode := range mdef.Otel.Expand.Mapping {
 		attrs := make(map[string]string, len(baseAttrs)+1)
 		for k, v := range baseAttrs {
@@ -156,6 +160,7 @@ func Resolve(def *transformers.ProbeDefinition, m CacheMetric, opts ResolveOptio
 		var matchVal float64
 		if rawCode == stateCode {
 			matchVal = 1
+			matched = true
 		}
 		records = append(records, OtelRecord{
 			Name:        mdef.Otel.Name,
@@ -165,6 +170,25 @@ func Resolve(def *transformers.ProbeDefinition, m CacheMetric, opts ResolveOptio
 			Value:       matchVal,
 			Description: mdef.Description,
 		})
+	}
+	// Synthetic "unknown" record fires only if the raw value didn't match
+	// any declared mapping AND the YAML didn't already enumerate "unknown".
+	if !matched {
+		if _, alreadyDeclared := mdef.Otel.Expand.Mapping["unknown"]; !alreadyDeclared {
+			attrs := make(map[string]string, len(baseAttrs)+1)
+			for k, v := range baseAttrs {
+				attrs[k] = v
+			}
+			attrs[mdef.Otel.Expand.Attribute] = "unknown"
+			records = append(records, OtelRecord{
+				Name:        mdef.Otel.Name,
+				Unit:        mdef.Otel.Unit,
+				Type:        mdef.Otel.Type,
+				Attributes:  attrs,
+				Value:       1,
+				Description: mdef.Description,
+			})
+		}
 	}
 	return records, nil
 }

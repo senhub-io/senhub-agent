@@ -164,7 +164,7 @@ possible `hw_state`, value `1` if active else `0`.
 
 | Prometheus name | `hw_type` values | `hw_state` values |
 |---|---|---|
-| `senhub_hw_status_ratio` | `power_supply`, `physical_disk`, `logical_disk`, `disk_controller`, `enclosure` | `ok`, `degraded`, `failed`, `predicted_failure`, `unknown` |
+| `senhub_hw_status` | `power_supply`, `physical_disk`, `logical_disk`, `disk_controller`, `enclosure` | `ok`, `degraded`, `failed`, `predicted_failure`, `unknown` |
 
 Drive failure prediction is encoded as `hw_state="predicted_failure"` on
 the same metric (independent of overall health).
@@ -195,8 +195,8 @@ the same metric (independent of overall health).
 | Prometheus name | Type | Notes |
 |---|---|---|
 | `senhub_hardware_system_power_state_ratio` | updowncounter | strict-OTel expand: `senhub_hardware_system_power_state_value` ∈ {off, on, powering_on, powering_off, unknown} |
-| `senhub_hardware_eventservice_status_ratio` | updowncounter | with `senhub_hardware_eventservice_state` ∈ {ok, degraded, failed, unknown} |
-| `senhub_hardware_redundancy_status_ratio` | updowncounter | with `senhub_hardware_redundancy_state`, `senhub_hardware_redundancy_scope` (chassis/storage) |
+| `senhub_hardware_eventservice_status` | updowncounter | with `senhub_hardware_eventservice_state` ∈ {ok, degraded, failed, unknown} |
+| `senhub_hardware_redundancy_status` | updowncounter | with `senhub_hardware_redundancy_state`, `senhub_hardware_redundancy_scope` (chassis/storage) |
 | `senhub_hardware_redundancy_controllers_count` | updowncounter | with `senhub_hardware_redundancy_bound` ∈ {active, min, max} |
 
 ## Veeam Backup & Replication — `type: veeam`
@@ -209,10 +209,10 @@ All metrics under `senhub.veeam.*` (no OTel semconv for backup).
 |---|---|---|
 | `senhub_veeam_jobs_total` | gauge | `senhub_veeam_job_type` |
 | `senhub_veeam_jobs_by_last_result` | gauge | `senhub_veeam_job_last_result` ∈ {success, warning, failed, running} |
-| `senhub_veeam_job_status_ratio` | updowncounter | strict-OTel expand: `senhub_veeam_job_state` ∈ {none, success, warning, failed, running} |
+| `senhub_veeam_job_status` | updowncounter | strict-OTel expand: `senhub_veeam_job_state` ∈ {none, success, warning, failed, running} |
 | `senhub_veeam_job_seconds_since_last_run` | gauge (s) | `senhub_veeam_job_name`, `senhub_veeam_job_type` |
 | `senhub_veeam_job_objects` | gauge | per job |
-| `senhub_veeam_job_bottleneck_status_ratio` | updowncounter | expand: `senhub_veeam_job_bottleneck` ∈ {none, source, proxy, network, target} |
+| `senhub_veeam_job_bottleneck_status` | updowncounter | expand: `senhub_veeam_job_bottleneck` ∈ {none, source, proxy, network, target} |
 | `senhub_veeam_job_last_run_bytes` | gauge (By) | `senhub_veeam_job_data_phase` ∈ {processed, read, transferred} |
 
 ### Repository
@@ -227,7 +227,7 @@ All metrics under `senhub.veeam.*` (no OTel semconv for backup).
 
 | Prometheus name | Type | Notes |
 |---|---|---|
-| `senhub_veeam_license_status_ratio` | updowncounter | expand: `senhub_veeam_license_state` ∈ {valid, expired, invalid} |
+| `senhub_veeam_license_status` | updowncounter | expand: `senhub_veeam_license_state` ∈ {valid, expired, invalid} |
 | `senhub_veeam_license_days_remaining` | gauge | – |
 | `senhub_veeam_license_instances` | gauge | `senhub_veeam_license_instances_state` ∈ {total, used, remaining} |
 
@@ -235,12 +235,12 @@ All metrics under `senhub.veeam.*` (no OTel semconv for backup).
 
 | Prometheus name | Type | Notes |
 |---|---|---|
-| `senhub_veeam_proxy_status_ratio` | updowncounter | expand: `senhub_veeam_proxy_state` ∈ {disabled, offline, online} |
+| `senhub_veeam_proxy_status` | updowncounter | expand: `senhub_veeam_proxy_state` ∈ {disabled, offline, online} |
 | `senhub_veeam_proxies` | gauge | `senhub_veeam_proxies_state` ∈ {total, enabled, disabled} |
 | `senhub_veeam_object_restore_points` | gauge | per object |
 | `senhub_veeam_object_last_run_failed_ratio` | gauge | bool |
 | `senhub_veeam_objects` | gauge | `senhub_veeam_objects_state` ∈ {total, failed} |
-| `senhub_veeam_server_status_ratio` | updowncounter | expand: `senhub_veeam_server_state` ∈ {unavailable, available} |
+| `senhub_veeam_server_status` | updowncounter | expand: `senhub_veeam_server_state` ∈ {unavailable, available} |
 | `senhub_veeam_servers` | gauge | `senhub_veeam_servers_state` ∈ {total, available, unavailable} |
 
 ## Citrix Virtual Apps and Desktops — `type: citrix`
@@ -296,20 +296,20 @@ the NITRO state enum mapping (1=down, 2=unknown, 3=busy, 4=out_of_service,
 
 | Metric pattern | strict-OTel expand attribute |
 |---|---|
-| `senhub_netscaler_lbvserver_status_ratio` | `senhub_netscaler_lbvserver_state` |
-| `senhub_netscaler_service_status_ratio` | `senhub_netscaler_service_state` |
-| `senhub_netscaler_servicegroup_status_ratio` | `senhub_netscaler_servicegroup_state` |
-| `senhub_netscaler_csvserver_status_ratio` | `senhub_netscaler_csvserver_state` |
-| `senhub_netscaler_gslb_vserver_status_ratio` | `senhub_netscaler_gslb_vserver_state` |
-| `senhub_netscaler_gslb_site_status_ratio` | `senhub_netscaler_gslb_site_state` ∈ {down, up} |
-| `senhub_netscaler_gslb_service_status_ratio` | `senhub_netscaler_gslb_service_state` ∈ {down, up} |
-| `senhub_netscaler_aaa_vserver_status_ratio` | `senhub_netscaler_aaa_vserver_state` ∈ {down, up} |
-| `senhub_netscaler_vpn_vserver_status_ratio` | `senhub_netscaler_vpn_vserver_state` ∈ {down, up} |
-| `senhub_netscaler_interface_status_ratio` | `senhub_netscaler_interface_state` ∈ {disabled, enabled} |
-| `senhub_netscaler_ssl_certificate_status_ratio` | `senhub_netscaler_ssl_certificate_state` ∈ {invalid, valid} |
+| `senhub_netscaler_lbvserver_status` | `senhub_netscaler_lbvserver_state` |
+| `senhub_netscaler_service_status` | `senhub_netscaler_service_state` |
+| `senhub_netscaler_servicegroup_status` | `senhub_netscaler_servicegroup_state` |
+| `senhub_netscaler_csvserver_status` | `senhub_netscaler_csvserver_state` |
+| `senhub_netscaler_gslb_vserver_status` | `senhub_netscaler_gslb_vserver_state` |
+| `senhub_netscaler_gslb_site_status` | `senhub_netscaler_gslb_site_state` ∈ {down, up} |
+| `senhub_netscaler_gslb_service_status` | `senhub_netscaler_gslb_service_state` ∈ {down, up} |
+| `senhub_netscaler_aaa_vserver_status` | `senhub_netscaler_aaa_vserver_state` ∈ {down, up} |
+| `senhub_netscaler_vpn_vserver_status` | `senhub_netscaler_vpn_vserver_state` ∈ {down, up} |
+| `senhub_netscaler_interface_status` | `senhub_netscaler_interface_state` ∈ {disabled, enabled} |
+| `senhub_netscaler_ssl_certificate_status` | `senhub_netscaler_ssl_certificate_state` ∈ {invalid, valid} |
 | `senhub_netscaler_ha_role_ratio` | `senhub_netscaler_ha_role_state` ∈ {unknown, secondary, primary} |
-| `senhub_netscaler_ha_node_status_ratio` | `senhub_netscaler_ha_node_state` ∈ {down, up} |
-| `senhub_netscaler_ha_sync_status_ratio` | `senhub_netscaler_ha_sync_state` ∈ {failed, success} |
+| `senhub_netscaler_ha_node_status` | `senhub_netscaler_ha_node_state` ∈ {down, up} |
+| `senhub_netscaler_ha_sync_status` | `senhub_netscaler_ha_sync_state` ∈ {failed, success} |
 
 ### System (CPU, memory, throughput, HTTP, TCP)
 

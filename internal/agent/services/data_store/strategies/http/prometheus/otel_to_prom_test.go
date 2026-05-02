@@ -33,7 +33,7 @@ func TestOTelNameToPromName(t *testing.T) {
 		{"load_1m", "system.linux.cpu.load_1m", "{thread}", "gauge", "senhub_system_linux_cpu_load_1m"},
 
 		// Hardware
-		{"hw.status updowncounter", "hw.status", "1", "updowncounter", "senhub_hw_status_ratio"},
+		{"hw.status updowncounter", "hw.status", "1", "updowncounter", "senhub_hw_status"},
 		{"hw.physical_disk.size", "hw.physical_disk.size", "By", "updowncounter", "senhub_hw_physical_disk_size_bytes"},
 
 		// senhub.* extensions
