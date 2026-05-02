@@ -24,6 +24,11 @@ type ConfigurationManager struct {
 	tlsKeyFile       string
 	port             int
 	bindAddress      string
+
+	// Prometheus endpoint options (parsed from params["prometheus"]).
+	// Defaults: include_probe_tags=true, expose_host_metrics=true.
+	prometheusIncludeProbeTags  bool
+	prometheusExposeHostMetrics bool
 }
 
 // NewConfigurationManager creates a new configuration manager
@@ -36,6 +41,10 @@ func NewConfigurationManager(agentConfig configuration.AgentConfiguration, param
 		port:             8080,      // Default port
 		bindAddress:      "0.0.0.0", // Default to all interfaces
 		tlsMinVersion:    "1.2",     // Default TLS version
+
+		// Prometheus defaults (overridden by params["prometheus"] if present)
+		prometheusIncludeProbeTags:  true,
+		prometheusExposeHostMetrics: true,
 	}
 
 	// Initialize configuration from params
@@ -80,6 +89,18 @@ func (cm *ConfigurationManager) loadConfiguration() {
 
 	// If no endpoints specified, default to no endpoints enabled
 	// User must explicitly configure endpoints
+
+	// Parse Prometheus endpoint options
+	if promParam, exists := cm.params["prometheus"]; exists {
+		if promCfg, ok := promParam.(map[string]interface{}); ok {
+			if v, ok := promCfg["include_probe_tags"].(bool); ok {
+				cm.prometheusIncludeProbeTags = v
+			}
+			if v, ok := promCfg["expose_host_metrics"].(bool); ok {
+				cm.prometheusExposeHostMetrics = v
+			}
+		}
+	}
 
 	// Parse TLS configuration
 	if tlsParam, exists := cm.params["tls"]; exists {
@@ -276,4 +297,18 @@ func (cm *ConfigurationManager) GetEnabledEndpointsList() []string {
 		}
 	}
 	return endpoints
+}
+
+// IsPrometheusIncludeProbeTags returns whether custom_tags are propagated as
+// Prometheus labels on probe metrics. Default: true.
+func (cm *ConfigurationManager) IsPrometheusIncludeProbeTags() bool {
+	return cm.prometheusIncludeProbeTags
+}
+
+// IsPrometheusExposeHostMetrics returns whether host-level metrics (CPU,
+// memory, etc. collected by cpu/memory probes) are exposed via /metrics.
+// When false, an operator running a separate node_exporter on the same
+// host can avoid duplicate series. Default: true.
+func (cm *ConfigurationManager) IsPrometheusExposeHostMetrics() bool {
+	return cm.prometheusExposeHostMetrics
 }

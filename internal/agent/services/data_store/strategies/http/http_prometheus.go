@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sync"
 
+	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/http/prometheus"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 )
@@ -103,7 +104,16 @@ func (h *HTTPSyncStrategy) servePrometheusExposition(w http.ResponseWriter, _ *h
 	reader := &cacheAdapter{cache: h.cache}
 	defs := &registryAdapter{registry: h.transformerRegistry}
 
-	count, err := prometheus.WriteExposition(reader, defs, w, func(m prometheus.CacheMetric, errCb error) {
+	// Build agent self-metrics (uptime, cache size, build info)
+	agentRecords := prometheus.BuildAgentRecords(prometheus.AgentMetricsSnapshot{
+		StartTime:    h.startTime,
+		CacheEntries: h.cache.GetCacheInfo().TotalMetrics,
+		ProbesActive: h.cache.GetCacheInfo().ProbeCount,
+		BuildVersion: agentBuildVersion(),
+		BuildCommit:  agentBuildCommit(),
+	})
+
+	count, err := prometheus.WriteExposition(reader, defs, agentRecords, w, func(m prometheus.CacheMetric, errCb error) {
 		key := m.ProbeType + ":" + m.MetricName
 		if _, seen := prometheusWarnedMetrics.LoadOrStore(key, struct{}{}); seen {
 			return
@@ -122,3 +132,19 @@ func (h *HTTPSyncStrategy) servePrometheusExposition(w http.ResponseWriter, _ *h
 
 	h.logger.Debug().Int("record_count", count).Msg("Prometheus exposition served")
 }
+
+// agentBuildVersion returns the agent build version from cliArgs.Version
+// (set at build time via -ldflags). Falls back to "development" if empty.
+func agentBuildVersion() string {
+	if v := cliArgs.Version; v != "" {
+		return v
+	}
+	return "development"
+}
+
+// agentBuildCommit returns the short commit hash from cliArgs.CommitHash,
+// or "" if the build did not embed it.
+func agentBuildCommit() string {
+	return cliArgs.CommitHash
+}
+
