@@ -1,6 +1,7 @@
 probe_name: "cpu"
 friendly_name: "CPU Metrics"
 version: "3.0.0"
+host_level: true
 
 # Format v3 — OTel-first source of truth:
 #   otel:              semantic convention (source of truth)

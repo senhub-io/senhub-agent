@@ -1,6 +1,7 @@
 probe_name: "logicaldisk"
 friendly_name: "Logical Disk Metrics"
 version: "3.0.0"
+host_level: true
 multi_instance_labels: ["device", "mount_point", "drive"]
 
 # Format v3 — OTel-first source of truth:

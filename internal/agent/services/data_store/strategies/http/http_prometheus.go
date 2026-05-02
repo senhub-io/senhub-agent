@@ -18,7 +18,19 @@ import (
 // MetricCache. Converts internal.CachedMetric to prometheus.CacheMetric and
 // coerces interface{} values to float64.
 type cacheAdapter struct {
-	cache *MetricCache
+	cache    *MetricCache
+	registry *transformers.TransformerRegistry
+
+	// When excludeHostLevel is true, metrics from probes whose YAML
+	// definition has `host_level: true` (cpu, memory, network, logicaldisk)
+	// are filtered out — used when storage[].params.prometheus.expose_host_metrics
+	// is set to false.
+	excludeHostLevel bool
+
+	// hostLevelCache memoizes "is this probe_type host-level?" lookups
+	// to avoid hitting the registry on every cache entry. Populated lazily.
+	hostLevelMu    sync.RWMutex
+	hostLevelCache map[string]bool
 }
 
 func (a *cacheAdapter) GetAll() []prometheus.CacheMetric {
@@ -30,6 +42,9 @@ func (a *cacheAdapter) GetAll() []prometheus.CacheMetric {
 			continue
 		}
 		probeType := m.Tags["probe_type"]
+		if a.excludeHostLevel && a.isHostLevelProbe(probeType) {
+			continue
+		}
 		out = append(out, prometheus.CacheMetric{
 			ProbeName:  m.ProbeName,
 			ProbeType:  probeType,
@@ -40,6 +55,35 @@ func (a *cacheAdapter) GetAll() []prometheus.CacheMetric {
 		})
 	}
 	return out
+}
+
+// isHostLevelProbe checks the probe definition's HostLevel flag, with a
+// memoized result to keep per-scrape lookups cheap. Unknown probe types
+// (no YAML definition) are treated as NOT host-level — safer to expose
+// than to silently drop something that might be intentional.
+func (a *cacheAdapter) isHostLevelProbe(probeType string) bool {
+	if probeType == "" {
+		return false
+	}
+	a.hostLevelMu.RLock()
+	cached, found := a.hostLevelCache[probeType]
+	a.hostLevelMu.RUnlock()
+	if found {
+		return cached
+	}
+	hostLevel := false
+	if a.registry != nil {
+		if def := a.registry.GetProbeDefinition(probeType); def != nil {
+			hostLevel = def.HostLevel
+		}
+	}
+	a.hostLevelMu.Lock()
+	if a.hostLevelCache == nil {
+		a.hostLevelCache = map[string]bool{}
+	}
+	a.hostLevelCache[probeType] = hostLevel
+	a.hostLevelMu.Unlock()
+	return hostLevel
 }
 
 // registryAdapter satisfies prometheus.DefinitionLookup.
@@ -102,7 +146,11 @@ var prometheusWarnedMetrics sync.Map
 func (h *HTTPSyncStrategy) servePrometheusExposition(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", prometheus.ContentType)
 
-	reader := &cacheAdapter{cache: h.cache}
+	reader := &cacheAdapter{
+		cache:            h.cache,
+		registry:         h.transformerRegistry,
+		excludeHostLevel: !h.configManager.IsPrometheusExposeHostMetrics(),
+	}
 	defs := &registryAdapter{registry: h.transformerRegistry}
 
 	// Build agent self-metrics (uptime, cache, probes, collect errors,
