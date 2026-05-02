@@ -30,42 +30,77 @@ func GetCollectErrorsTotal() uint64 {
 	return collectErrors.Load()
 }
 
-// ProbeHealthChecker is the minimal interface a probe must implement to
-// participate in the senhub_agent_probes_healthy count. Probes that don't
-// implement it are counted as healthy by default (running == nominally OK).
-type ProbeHealthChecker interface {
-	IsHealthy() bool
+// probeStateMu guards activeProbeIDs and probeHealth.
+var probeStateMu sync.RWMutex
+
+// activeProbeIDs is the set of probes the Sensor reports as running. We keep
+// it as a string set rather than a slice of interfaces because:
+//   - it makes "is this probe still active?" a cheap O(1) lookup
+//   - it lets us prune stale probeHealth entries on every Sensor sync
+//   - we never need to call methods back on the probe (health is pushed in
+//     by ProbePoller, not pulled from the probe)
+var activeProbeIDs = map[string]struct{}{}
+
+// probeHealthState is the last-collect outcome for a probe. unknown means
+// the probe is registered but has not completed its first collect cycle yet
+// (or its scheduler hasn't fired). Counted as NOT-healthy in metrics.
+type probeHealthState int
+
+const (
+	probeHealthUnknown probeHealthState = iota
+	probeHealthOK
+	probeHealthFailed
+)
+
+// probeHealth is keyed by probe ID (the unique identifier from
+// probes.GenerateProbeId). Updated by ProbePoller.collect() after each
+// cycle via RecordProbeHealth, never by readers — no IsHealthy() callbacks
+// invoked at scrape time (which would re-trigger Collect() and cause races).
+var probeHealth = map[string]probeHealthState{}
+
+// SetActiveProbes replaces the set of currently-running probes by their IDs.
+// Called by the Sensor service after every successful configuration sync.
+// Health entries for probes no longer present are pruned to keep the map
+// from growing unbounded across reconfig cycles.
+func SetActiveProbes(probeIDs []string) {
+	probeStateMu.Lock()
+	defer probeStateMu.Unlock()
+	newSet := make(map[string]struct{}, len(probeIDs))
+	for _, id := range probeIDs {
+		newSet[id] = struct{}{}
+	}
+	activeProbeIDs = newSet
+	// Prune health entries for probes no longer active.
+	for id := range probeHealth {
+		if _, alive := newSet[id]; !alive {
+			delete(probeHealth, id)
+		}
+	}
 }
 
-// activeProbesMu guards activeProbes.
-var activeProbesMu sync.RWMutex
-
-// activeProbes is the live snapshot of running probes the Sensor publishes.
-// Stored as the empty interface to keep this package free of agent-internal
-// imports; readers type-assert to ProbeHealthChecker for health checks.
-var activeProbes []interface{}
-
-// SetActiveProbes replaces the published list of currently-running probes.
-// Called by the Sensor service after every successful configuration sync.
-func SetActiveProbes(probes []interface{}) {
-	activeProbesMu.Lock()
-	cp := make([]interface{}, len(probes))
-	copy(cp, probes)
-	activeProbes = cp
-	activeProbesMu.Unlock()
+// RecordProbeHealth is called by ProbePoller after each collect cycle to
+// publish the probe's current health, derived from whether Probe.Collect()
+// returned an error. This replaces calling IsHealthy() at scrape time
+// (which used to re-execute Collect() — wasted work and racy).
+func RecordProbeHealth(probeID string, ok bool) {
+	probeStateMu.Lock()
+	defer probeStateMu.Unlock()
+	if ok {
+		probeHealth[probeID] = probeHealthOK
+	} else {
+		probeHealth[probeID] = probeHealthFailed
+	}
 }
 
 // GetProbeCounts returns (total, healthy) for the currently-active probes.
+// Probes that have not yet run a collect cycle (state=unknown) are NOT
+// counted as healthy — until they prove they can collect, they're suspect.
 func GetProbeCounts() (total, healthy int) {
-	activeProbesMu.RLock()
-	defer activeProbesMu.RUnlock()
-	total = len(activeProbes)
-	for _, p := range activeProbes {
-		if h, ok := p.(ProbeHealthChecker); ok {
-			if h.IsHealthy() {
-				healthy++
-			}
-		} else {
+	probeStateMu.RLock()
+	defer probeStateMu.RUnlock()
+	total = len(activeProbeIDs)
+	for id := range activeProbeIDs {
+		if probeHealth[id] == probeHealthOK {
 			healthy++
 		}
 	}
