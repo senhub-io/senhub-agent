@@ -75,8 +75,8 @@ func TestSerialize_ParsesWithExpfmt(t *testing.T) {
 	if _, ok := parsed["senhub_system_cpu_time_seconds_total"]; !ok {
 		t.Errorf("expected senhub_system_cpu_time_seconds_total in parsed output; got keys: %v", keys(parsed))
 	}
-	if _, ok := parsed["senhub_hw_status_ratio"]; !ok {
-		t.Errorf("expected senhub_hw_status_ratio in parsed output; got keys: %v", keys(parsed))
+	if _, ok := parsed["senhub_hw_status"]; !ok {
+		t.Errorf("expected senhub_hw_status in parsed output; got keys: %v", keys(parsed))
 	}
 }
 
