@@ -47,7 +47,10 @@ func WriteExposition(
 	errorHandler func(metric CacheMetric, err error),
 ) (int, error) {
 	metrics := reader.GetAll()
-	allRecords := make([]OtelRecord, 0, len(agentRecords)+len(metrics)*2)
+	// Capacity is a lower-bound estimate; expand directives can multiply this
+	// (4-state hw.status → 4× per cache entry). The slice grows transparently
+	// — the hint just avoids the first few reallocations on small agents.
+	allRecords := make([]OtelRecord, 0, len(agentRecords)+len(metrics))
 	allRecords = append(allRecords, agentRecords...)
 
 	for _, m := range metrics {
