@@ -30,7 +30,7 @@ func TestResolve_SimpleGauge(t *testing.T) {
 		Unit:       "%",
 		Tags:       map[string]string{"probe_type": "cpu", "probe_name": "cpu-primary"},
 	}
-	recs, err := Resolve(def, m)
+	recs, err := Resolve(def, m, DefaultResolveOptions())
 	if err != nil {
 		t.Fatalf("Resolve err: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestResolve_TagToAttribute(t *testing.T) {
 		Unit:       "%",
 		Tags:       map[string]string{"core": "2", "probe_type": "cpu"},
 	}
-	recs, _ := Resolve(def, m)
+	recs, _ := Resolve(def, m, DefaultResolveOptions())
 	if len(recs) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(recs))
 	}
@@ -113,7 +113,7 @@ func TestResolve_StaticAttributes(t *testing.T) {
 		Value:      123.4,
 		Unit:       "s",
 	}
-	recs, _ := Resolve(def, m)
+	recs, _ := Resolve(def, m, DefaultResolveOptions())
 	if recs[0].Attributes["cpu.mode"] != "user" {
 		t.Errorf("static attribute cpu.mode=user missing: %v", recs[0].Attributes)
 	}
@@ -133,7 +133,7 @@ func TestResolve_Skip(t *testing.T) {
 		},
 	}
 	m := CacheMetric{ProbeType: "syslog", MetricName: "syslog_event", Value: 1}
-	recs, err := Resolve(def, m)
+	recs, err := Resolve(def, m, DefaultResolveOptions())
 	if err != nil {
 		t.Fatalf("Resolve err on skipped metric: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestResolve_Expand(t *testing.T) {
 		Unit:       "#",
 		Tags:       map[string]string{"drive_id": "disk.bay.0"},
 	}
-	recs, err := Resolve(def, m)
+	recs, err := Resolve(def, m, DefaultResolveOptions())
 	if err != nil {
 		t.Fatalf("Resolve err: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestResolve_MissingOtel(t *testing.T) {
 		},
 	}
 	m := CacheMetric{ProbeType: "x", MetricName: "foo", Value: 1}
-	_, err := Resolve(def, m)
+	_, err := Resolve(def, m, DefaultResolveOptions())
 	if err == nil {
 		t.Fatal("expected error for missing otel mapping")
 	}
@@ -228,7 +228,7 @@ func TestResolve_MissingOtel(t *testing.T) {
 func TestResolve_UnknownMetric(t *testing.T) {
 	def := &transformers.ProbeDefinition{ProbeName: "x"}
 	m := CacheMetric{ProbeType: "x", MetricName: "nope"}
-	_, err := Resolve(def, m)
+	_, err := Resolve(def, m, DefaultResolveOptions())
 	if err == nil {
 		t.Fatal("expected error for unknown metric")
 	}

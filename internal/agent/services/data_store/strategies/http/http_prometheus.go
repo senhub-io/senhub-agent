@@ -168,7 +168,10 @@ func (h *HTTPSyncStrategy) servePrometheusExposition(w http.ResponseWriter, _ *h
 		BuildCommit:            agentBuildCommit(),
 	})
 
-	count, err := prometheus.WriteExposition(reader, defs, agentRecords, w, func(m prometheus.CacheMetric, errCb error) {
+	resolveOpts := prometheus.ResolveOptions{
+		IncludeProbeTags: h.configManager.IsPrometheusIncludeProbeTags(),
+	}
+	count, err := prometheus.WriteExposition(reader, defs, agentRecords, resolveOpts, w, func(m prometheus.CacheMetric, errCb error) {
 		key := m.ProbeType + ":" + m.MetricName
 		if _, seen := prometheusWarnedMetrics.LoadOrStore(key, struct{}{}); seen {
 			return
