@@ -62,9 +62,16 @@ func OTelNameToPromName(otelName, unit, metricType string) string {
 	name = collapseUnderscores.ReplaceAllString(name, "_")
 	name = strings.Trim(name, "_")
 
-	// Append unit suffix if it adds information and isn't already there
+	// Append unit suffix if it adds information and isn't already there.
+	// Special case: the "_ratio" suffix (OTel unit "1") is reserved for
+	// gauge-type metrics whose value is in [0,1]. Applying it to status
+	// metrics (e.g. hw.status, which is updowncounter with value 0/1 per
+	// state and emitted as a Prometheus gauge) would mislead users into
+	// expecting fractional readings — they're enumerated booleans. Skip
+	// the suffix when the OTel type is updowncounter or counter.
 	if suffix := unitSuffix(unit); suffix != "" {
-		if !strings.HasSuffix(name, "_"+suffix) {
+		skipSuffix := suffix == "ratio" && (strings.EqualFold(metricType, "updowncounter") || strings.EqualFold(metricType, "counter"))
+		if !skipSuffix && !strings.HasSuffix(name, "_"+suffix) {
 			name = name + "_" + suffix
 		}
 	}
@@ -293,6 +300,12 @@ func ConvertValue(raw float64, sourceUnit, otelUnit string, valueScale float64) 
 // HelpString returns a sanitized single-line help string safe for the
 // Prometheus `# HELP` header. Newlines and backslashes are escaped per
 // the text exposition spec.
+//
+// Note: unlike LabelValueString below, double quotes are NOT escaped here.
+// Per the spec, the HELP value runs from the first non-space character
+// after the metric name until end-of-line, with no quoting — so quotes
+// inside the text are literal characters. Only backslash and newline
+// need escaping.
 func HelpString(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, "\n", `\n`)
@@ -309,8 +322,9 @@ func LabelValueString(v string) string {
 }
 
 // FormatLabels formats a label set into the Prometheus `{k="v",k2="v2"}`
-// representation. Labels are emitted in insertion order of the provided slice
-// of keys — caller decides ordering (usually alphabetical for determinism).
+// representation. The order of emitted labels matches the order of `keys`;
+// callers in this package always pre-sort lexicographically for stable
+// output. Empty values and missing keys are skipped (see body comment).
 func FormatLabels(keys []string, values map[string]string) string {
 	if len(keys) == 0 {
 		return ""
@@ -320,7 +334,11 @@ func FormatLabels(keys []string, values map[string]string) string {
 	first := true
 	for _, k := range keys {
 		v, ok := values[k]
-		if !ok {
+		if !ok || v == "" {
+			// Per Prometheus convention, an empty label is equivalent to
+			// the label being absent — but it can surprise PromQL writers
+			// (`{foo=""}` matches differently from no `foo`). Skip empties
+			// so behavior matches user intuition.
 			continue
 		}
 		if !first {

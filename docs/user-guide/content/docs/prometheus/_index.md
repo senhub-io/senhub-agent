@@ -131,8 +131,10 @@ specification**:
 Rules applied:
 - **Prefix** `senhub_` (frozen, non-configurable)
 - Dots → underscores (in names AND labels)
-- Unit suffixes: `s` → `_seconds`, `By` → `_bytes`, `1` → `_ratio`,
-  `bit/s` → `_bits_per_second`, `By/s` → `_bytes_per_second`
+- Unit suffixes: `s` → `_seconds`, `By` → `_bytes`, `1` → `_ratio` (only
+  on gauges — status/state metrics emitted as updowncounter keep the
+  bare name without `_ratio`), `bit/s` → `_bits_per_second`,
+  `By/s` → `_bytes_per_second`
 - Counters get `_total` suffix when not already present
 - Annotated units in braces (`{packet}`, `{error}`) drop the brackets
 
@@ -148,10 +150,10 @@ per possible state with value `1` (active) or `0` (inactive).
 For example, a healthy physical disk produces:
 
 ```
-senhub_hw_status_ratio{hw_id="disk1",hw_type="physical_disk",hw_state="ok"} 1
-senhub_hw_status_ratio{hw_id="disk1",hw_type="physical_disk",hw_state="degraded"} 0
-senhub_hw_status_ratio{hw_id="disk1",hw_type="physical_disk",hw_state="failed"} 0
-senhub_hw_status_ratio{hw_id="disk1",hw_type="physical_disk",hw_state="predicted_failure"} 0
+senhub_hw_status{hw_id="disk1",hw_type="physical_disk",hw_state="ok"} 1
+senhub_hw_status{hw_id="disk1",hw_type="physical_disk",hw_state="degraded"} 0
+senhub_hw_status{hw_id="disk1",hw_type="physical_disk",hw_state="failed"} 0
+senhub_hw_status{hw_id="disk1",hw_type="physical_disk",hw_state="predicted_failure"} 0
 ```
 
 This matches the OTel spec for `hw.status` and lets you alert on
@@ -256,13 +258,13 @@ sum by (network_interface_name, network_io_direction) (
 senhub_system_filesystem_utilization_ratio{system_filesystem_state="used"} > 0.8
 
 # Hardware health alarms (any drive/PSU/controller in failed state)
-senhub_hw_status_ratio{hw_state="failed"} == 1
+senhub_hw_status{hw_state="failed"} == 1
 
 # Veeam jobs that failed on last run
 senhub_veeam_jobs_by_last_result{senhub_veeam_job_last_result="failed"} > 0
 
 # NetScaler vServers DOWN
-senhub_netscaler_lbvserver_status_ratio{senhub_netscaler_lbvserver_state="down"} == 1
+senhub_netscaler_lbvserver_status{senhub_netscaler_lbvserver_state="down"} == 1
 
 # Agent collect-error rate (issues per minute)
 rate(senhub_agent_collect_errors_total[5m]) * 60

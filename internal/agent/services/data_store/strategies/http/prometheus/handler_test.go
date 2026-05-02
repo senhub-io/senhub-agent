@@ -186,7 +186,7 @@ func TestWriteExposition_EndToEnd(t *testing.T) {
 	expected := []string{
 		"senhub_system_cpu_time_seconds_total",
 		"senhub_system_cpu_utilization_ratio",
-		"senhub_hw_status_ratio",
+		"senhub_hw_status",
 	}
 	for _, name := range expected {
 		if _, ok := parsed[name]; !ok {
@@ -209,9 +209,9 @@ func TestWriteExposition_EndToEnd(t *testing.T) {
 	}
 
 	// Verify hw.status expanded to 4 series (one per state).
-	hw := parsed["senhub_hw_status_ratio"]
+	hw := parsed["senhub_hw_status"]
 	if hw == nil || len(hw.GetMetric()) != 4 {
-		t.Errorf("expected 4 series for senhub_hw_status_ratio (4 states), got %v", hw)
+		t.Errorf("expected 4 series for senhub_hw_status (4 states), got %v", hw)
 	}
 
 	// Verify exactly one hw.state=degraded series has value=1, others=0.
