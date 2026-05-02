@@ -23,9 +23,21 @@ type AgentMetricsSnapshot struct {
 	CacheEntries int
 
 	// ProbesActive is the number of distinct probes that have emitted at
-	// least one data point in the current cache window. Approximation of
-	// "healthy probes" until proper health tracking is wired (follow-up).
+	// least one data point in the current cache window (from cache.ProbeCount).
 	ProbesActive int
+
+	// ProbesTotal is the number of probes the agent is currently running
+	// (from the probes package's published active set).
+	ProbesTotal int
+
+	// ProbesHealthy is the number of running probes whose IsHealthy() is true.
+	ProbesHealthy int
+
+	// CollectErrorsTotal is the lifetime count of probe collection errors.
+	CollectErrorsTotal uint64
+
+	// HTTPRequestsByEndpoint is a snapshot of (route template → request count).
+	HTTPRequestsByEndpoint map[string]uint64
 
 	// Build info — emitted as a gauge of value 1 with version+commit labels.
 	BuildVersion string
@@ -73,6 +85,45 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []OtelRecord {
 			Value:       float64(snap.ProbesActive),
 			Description: "Number of probes that have emitted at least one data point in the cache window.",
 		},
+		{
+			Name:        "senhub.agent.probes.total",
+			Unit:        "{probe}",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(snap.ProbesTotal),
+			Description: "Number of probes the agent is currently running (from configuration).",
+		},
+		{
+			Name:        "senhub.agent.probes.healthy",
+			Unit:        "{probe}",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(snap.ProbesHealthy),
+			Description: "Number of running probes reporting IsHealthy()==true.",
+		},
+		{
+			Name:        "senhub.agent.collect.errors",
+			Unit:        "{error}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(snap.CollectErrorsTotal),
+			Description: "Lifetime count of probe collection errors since agent start.",
+		},
+	}
+
+	// HTTP requests by endpoint — one OtelRecord per (route template) pair.
+	// Endpoint label keeps cardinality bounded to the number of registered routes.
+	for endpoint, count := range snap.HTTPRequestsByEndpoint {
+		records = append(records, OtelRecord{
+			Name: "senhub.agent.http.requests",
+			Unit: "{request}",
+			Type: "counter",
+			Attributes: map[string]string{
+				"endpoint": endpoint,
+			},
+			Value:       float64(count),
+			Description: "Lifetime count of HTTP requests served per route template.",
+		})
 	}
 
 	// Build info — gauge of value 1 with version + commit labels. Standard

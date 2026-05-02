@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/http/prometheus"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 )
@@ -104,13 +105,19 @@ func (h *HTTPSyncStrategy) servePrometheusExposition(w http.ResponseWriter, _ *h
 	reader := &cacheAdapter{cache: h.cache}
 	defs := &registryAdapter{registry: h.transformerRegistry}
 
-	// Build agent self-metrics (uptime, cache size, build info)
+	// Build agent self-metrics (uptime, cache, probes, collect errors,
+	// HTTP requests per endpoint, build info).
+	probesTotal, probesHealthy := agentstate.GetProbeCounts()
 	agentRecords := prometheus.BuildAgentRecords(prometheus.AgentMetricsSnapshot{
-		StartTime:    h.startTime,
-		CacheEntries: h.cache.GetCacheInfo().TotalMetrics,
-		ProbesActive: h.cache.GetCacheInfo().ProbeCount,
-		BuildVersion: agentBuildVersion(),
-		BuildCommit:  agentBuildCommit(),
+		StartTime:              h.startTime,
+		CacheEntries:           h.cache.GetCacheInfo().TotalMetrics,
+		ProbesActive:           h.cache.GetCacheInfo().ProbeCount,
+		ProbesTotal:            probesTotal,
+		ProbesHealthy:          probesHealthy,
+		CollectErrorsTotal:     agentstate.GetCollectErrorsTotal(),
+		HTTPRequestsByEndpoint: GetHTTPRequestCounts(),
+		BuildVersion:           agentBuildVersion(),
+		BuildCommit:            agentBuildCommit(),
 	})
 
 	count, err := prometheus.WriteExposition(reader, defs, agentRecords, w, func(m prometheus.CacheMetric, errCb error) {
