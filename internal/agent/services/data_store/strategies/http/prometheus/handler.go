@@ -42,6 +42,7 @@ func WriteExposition(
 	reader CacheReader,
 	defs DefinitionLookup,
 	agentRecords []OtelRecord,
+	opts ResolveOptions,
 	w io.Writer,
 	errorHandler func(metric CacheMetric, err error),
 ) (int, error) {
@@ -57,7 +58,7 @@ func WriteExposition(
 			}
 			continue
 		}
-		recs, err := Resolve(def, m)
+		recs, err := Resolve(def, m, opts)
 		if err != nil {
 			if errorHandler != nil {
 				errorHandler(m, err)

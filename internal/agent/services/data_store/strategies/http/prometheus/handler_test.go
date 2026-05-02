@@ -157,7 +157,7 @@ func TestWriteExposition_EndToEnd(t *testing.T) {
 
 	var buf bytes.Buffer
 	var handlerErrors []error
-	count, err := WriteExposition(reader, defs, nil, &buf, func(m CacheMetric, err error) {
+	count, err := WriteExposition(reader, defs, nil, DefaultResolveOptions(), &buf, func(m CacheMetric, err error) {
 		handlerErrors = append(handlerErrors, err)
 	})
 	if err != nil {
@@ -239,7 +239,7 @@ func TestWriteExposition_UnknownProbe(t *testing.T) {
 
 	var buf bytes.Buffer
 	var errs []string
-	count, err := WriteExposition(reader, defs, nil, &buf, func(m CacheMetric, err error) {
+	count, err := WriteExposition(reader, defs, nil, DefaultResolveOptions(), &buf, func(m CacheMetric, err error) {
 		errs = append(errs, err.Error())
 	})
 	if err != nil {

@@ -31,6 +31,27 @@ type CacheMetric struct {
 	Tags map[string]string
 }
 
+// ResolveOptions tunes the resolver's per-scrape behavior. Currently used
+// to honor storage[].params.prometheus.include_probe_tags from the agent
+// configuration: when false, tags that are not explicitly mapped via
+// tag_to_attribute or declared as systematic (probe_name, probe_type) are
+// NOT propagated as labels — keeping the label set bounded for operators
+// who prefer to inject custom dimensions on the scraper side via
+// metric_relabel_configs.
+type ResolveOptions struct {
+	// IncludeProbeTags controls whether unmapped tags on the cache entry
+	// are passed through as Prometheus labels. Defaults to true via the
+	// zero-value-ResolveOptions caller path.
+	IncludeProbeTags bool
+}
+
+// DefaultResolveOptions returns the resolver's permissive default
+// (propagate everything) — used in tests and as a back-compat fallback
+// when the http strategy hasn't wired its config through.
+func DefaultResolveOptions() ResolveOptions {
+	return ResolveOptions{IncludeProbeTags: true}
+}
+
 // Resolve converts a single CacheMetric into zero, one or more OtelRecord(s)
 // ready for Prometheus serialization.
 //
@@ -48,7 +69,7 @@ type CacheMetric struct {
 // Returns (nil, nil) when the metric is explicitly skipped. Returns an error
 // if no matching MetricDefinition or no otel section is found — per the
 // design decision, every metric must have an explicit OTel mapping or skip.
-func Resolve(def *transformers.ProbeDefinition, m CacheMetric) ([]OtelRecord, error) {
+func Resolve(def *transformers.ProbeDefinition, m CacheMetric, opts ResolveOptions) ([]OtelRecord, error) {
 	if def == nil {
 		return nil, fmt.Errorf("no probe definition for probe_type=%q", m.ProbeType)
 	}
@@ -85,23 +106,26 @@ func Resolve(def *transformers.ProbeDefinition, m CacheMetric) ([]OtelRecord, er
 		baseAttrs["probe_type"] = m.ProbeType
 	}
 
-	// Passthrough: propagate any remaining tag that isn't already mapped.
-	// Excludes systematic bookkeeping tags that shouldn't leak as labels.
-	for tagName, tagVal := range m.Tags {
-		if tagVal == "" {
-			continue
+	// Passthrough: propagate remaining tags that aren't already mapped, when
+	// the resolver was configured with IncludeProbeTags. Excludes systematic
+	// bookkeeping tags that shouldn't leak as labels.
+	if opts.IncludeProbeTags {
+		for tagName, tagVal := range m.Tags {
+			if tagVal == "" {
+				continue
+			}
+			if isSystemTag(tagName) {
+				continue
+			}
+			if _, alreadyMapped := mdef.TagToAttribute[tagName]; alreadyMapped {
+				continue
+			}
+			// Don't overwrite static attributes declared in the YAML.
+			if _, isStatic := baseAttrs[tagName]; isStatic {
+				continue
+			}
+			baseAttrs[tagName] = tagVal
 		}
-		if isSystemTag(tagName) {
-			continue
-		}
-		if _, alreadyMapped := mdef.TagToAttribute[tagName]; alreadyMapped {
-			continue
-		}
-		// Don't overwrite static attributes declared in the YAML.
-		if _, isStatic := baseAttrs[tagName]; isStatic {
-			continue
-		}
-		baseAttrs[tagName] = tagVal
 	}
 
 	// Apply value conversion.
