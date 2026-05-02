@@ -5,6 +5,7 @@ import (
 	"io"
 	"sort"
 	"strconv"
+	"sync"
 )
 
 // SerializeOptions tweaks the output format (reserved for future flags,
@@ -27,11 +28,12 @@ func SerializeToTextExposition(records []OtelRecord, w io.Writer, opts Serialize
 	// collapsed into the same name (common pattern — e.g. hw.status emitted
 	// from drive.health AND drive.failure_predicted) are merged here.
 	type group struct {
-		promName string
-		promType string
-		help     string
-		unit     string
-		rows     []OtelRecord
+		promName    string
+		promType    string
+		help        string
+		unit        string
+		firstOTel   string // first OTel name that produced this Prom name (for collision warnings)
+		rows        []OtelRecord
 	}
 	groups := map[string]*group{}
 	// Preserve first-seen order for stable, human-friendly output.
@@ -42,16 +44,28 @@ func SerializeToTextExposition(records []OtelRecord, w io.Writer, opts Serialize
 		g, ok := groups[promName]
 		if !ok {
 			g = &group{
-				promName: promName,
-				promType: PromType(r.Type),
-				help:     r.Description,
-				unit:     r.Unit,
+				promName:  promName,
+				promType:  PromType(r.Type),
+				help:      r.Description,
+				unit:      r.Unit,
+				firstOTel: r.Name,
 			}
 			groups[promName] = g
 			order = append(order, promName)
-		} else if g.help == "" && r.Description != "" {
-			// Fill help from later records if the first one had no description.
-			g.help = r.Description
+		} else {
+			// Detect conflicts between records that collapse to the same Prom
+			// name. We pick a deterministic winner (first-seen) but report
+			// any divergence via the dedicated helpers so operators have a
+			// chance to fix the YAML.
+			if got := PromType(r.Type); got != g.promType {
+				warnTypeConflict(promName, g.firstOTel, g.promType, r.Name, got)
+			}
+			if r.Unit != g.unit {
+				warnUnitConflict(promName, g.firstOTel, g.unit, r.Name, r.Unit)
+			}
+			if g.help == "" && r.Description != "" {
+				g.help = r.Description
+			}
 		}
 		g.rows = append(g.rows, r)
 	}
@@ -84,10 +98,19 @@ func writeGroup(w io.Writer, name, promType, help string, rows []OtelRecord, opt
 	for _, r := range rows {
 		labelKeys := make([]string, 0, len(r.Attributes))
 		promLabels := make(map[string]string, len(r.Attributes))
+		// Track which OTel attribute originally produced each Prom label so
+		// we can warn (once) when two distinct attribute names collapse to
+		// the same Prom label after dot→underscore translation.
+		labelOrigin := make(map[string]string, len(r.Attributes))
 		for k, v := range r.Attributes {
 			pk := OTelAttributeToPromLabel(k)
+			if existing, clashes := labelOrigin[pk]; clashes && existing != k {
+				warnLabelCollision(name, pk, existing, k)
+				continue
+			}
 			labelKeys = append(labelKeys, pk)
 			promLabels[pk] = v
+			labelOrigin[pk] = k
 		}
 		sort.Strings(labelKeys)
 		labels := FormatLabels(labelKeys, promLabels)
@@ -130,3 +153,74 @@ func formatValue(v float64) string {
 	}
 	return strconv.FormatFloat(v, 'g', -1, 64)
 }
+
+// serializerWarnDedup memoizes (kind, key) tuples we've already warned
+// about so a single misconfiguration doesn't flood the log on every scrape.
+// Cleared only by process restart — the situations being detected are YAML
+// drift and don't change at runtime.
+var serializerWarnDedup sync.Map
+
+// SerializerWarnFunc is invoked when the serializer detects a YAML drift
+// problem. Defaults to a no-op so the serializer stays self-contained
+// (the bridge wires it to the agent logger at startup via
+// SetSerializerWarnFunc).
+type SerializerWarnFunc func(format string, args ...interface{})
+
+var serializerWarnFn SerializerWarnFunc = func(string, ...interface{}) {}
+
+// SetSerializerWarnFunc lets the host application install a logger for
+// the serializer's drift warnings. Safe to call at startup before any
+// scrape; not safe to call concurrently with serialization.
+func SetSerializerWarnFunc(fn SerializerWarnFunc) {
+	if fn == nil {
+		serializerWarnFn = func(string, ...interface{}) {}
+		return
+	}
+	serializerWarnFn = fn
+}
+
+func warnTypeConflict(promName, firstOTel, firstType, otherOTel, otherType string) {
+	key := "type:" + promName
+	if _, seen := serializerWarnDedup.LoadOrStore(key, struct{}{}); seen {
+		return
+	}
+	serializerWarnFn(
+		"prometheus serializer: OTel name conflict — %q (Prom name %q) declared as %q earlier (from %q) but later seen as %q. Picking the first; fix the YAML to make types consistent.",
+		otherOTel, promName, firstType, firstOTel, otherType,
+	)
+}
+
+func warnUnitConflict(promName, firstOTel, firstUnit, otherOTel, otherUnit string) {
+	key := "unit:" + promName
+	if _, seen := serializerWarnDedup.LoadOrStore(key, struct{}{}); seen {
+		return
+	}
+	serializerWarnFn(
+		"prometheus serializer: OTel unit conflict — %q (Prom name %q) declared with unit %q earlier (from %q) but later seen as %q. Help/TYPE preserved from first; fix the YAML.",
+		otherOTel, promName, firstUnit, firstOTel, otherUnit,
+	)
+}
+
+// warnLabelCollision is invoked from writeGroup when two distinct OTel
+// attribute names collapse to the same Prometheus label after dot→underscore
+// translation (e.g. "cpu.mode" and "cpu_mode").
+func warnLabelCollision(promName, promLabel, kept, dropped string) {
+	key := "label:" + promName + ":" + promLabel
+	if _, seen := serializerWarnDedup.LoadOrStore(key, struct{}{}); seen {
+		return
+	}
+	serializerWarnFn(
+		"prometheus serializer: attribute collision on metric %q — both %q and %q map to label %q. Keeping %q; fix the YAML so attributes do not alias.",
+		promName, kept, dropped, promLabel, kept,
+	)
+}
+
+// resetSerializerWarnDedupForTest clears the per-(kind,key) dedup map.
+// For test isolation only.
+func resetSerializerWarnDedupForTest() {
+	serializerWarnDedup.Range(func(k, _ interface{}) bool {
+		serializerWarnDedup.Delete(k)
+		return true
+	})
+}
+
