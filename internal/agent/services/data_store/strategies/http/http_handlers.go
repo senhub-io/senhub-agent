@@ -26,6 +26,10 @@ func NewHTTPHandlers(strategy *HTTPSyncStrategy) *HTTPHandlers {
 func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router := mux.NewRouter()
 
+	// Count every served request per matched route template — read by
+	// the Prometheus bridge for senhub_agent_http_requests_total{endpoint}.
+	router.Use(CountRequests)
+
 	// Always expose health check endpoint
 	router.HandleFunc("/health", h.HandleHealth).Methods("GET")
 

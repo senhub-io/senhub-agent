@@ -15,8 +15,8 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	}
 	recs := BuildAgentRecords(snap)
 	// Must include uptime, cache.entries, probes.active. No build info because empty.
-	if len(recs) != 3 {
-		t.Fatalf("expected 3 records (no build info), got %d", len(recs))
+	if len(recs) != 6 {
+		t.Fatalf("expected 6 records (no build info, no http requests), got %d", len(recs))
 	}
 
 	names := map[string]bool{}
@@ -27,6 +27,9 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		"senhub.agent.uptime_seconds",
 		"senhub.agent.cache.entries",
 		"senhub.agent.probes.active",
+		"senhub.agent.probes.total",
+		"senhub.agent.probes.healthy",
+		"senhub.agent.collect.errors",
 	} {
 		if !names[want] {
 			t.Errorf("missing record: %q", want)
@@ -114,10 +117,63 @@ func TestBuildAgentRecords_SerializesToValidPrometheus(t *testing.T) {
 		"senhub_agent_uptime_seconds",
 		"senhub_agent_cache_entries",
 		"senhub_agent_probes_active",
+		"senhub_agent_probes_total",
+		"senhub_agent_probes_healthy",
+		"senhub_agent_collect_errors_total",
 		"senhub_agent_build_info",
 	} {
 		if _, ok := parsed[want]; !ok {
 			t.Errorf("missing metric %q in parsed output (got %v)", want, keys(parsed))
+		}
+	}
+}
+
+func TestBuildAgentRecords_HTTPRequestsPerEndpoint(t *testing.T) {
+	snap := AgentMetricsSnapshot{
+		StartTime:    time.Now(),
+		ProbesTotal:  5,
+		ProbesHealthy: 4,
+		CollectErrorsTotal: 17,
+		HTTPRequestsByEndpoint: map[string]uint64{
+			"/api/{agentkey}/prtg/metrics":    123,
+			"/api/{agentkey}/prometheus/metrics": 45,
+			"/health":                          789,
+		},
+	}
+	recs := BuildAgentRecords(snap)
+
+	httpRecs := 0
+	endpointsSeen := map[string]float64{}
+	for _, r := range recs {
+		if r.Name == "senhub.agent.http.requests" {
+			httpRecs++
+			endpointsSeen[r.Attributes["endpoint"]] = r.Value
+		}
+	}
+	if httpRecs != 3 {
+		t.Errorf("expected 3 HTTP request records, got %d", httpRecs)
+	}
+	if endpointsSeen["/health"] != 789 {
+		t.Errorf("/health count: got %v, want 789", endpointsSeen["/health"])
+	}
+
+	// Also verify probes.healthy / collect.errors values
+	for _, r := range recs {
+		if r.Name == "senhub.agent.probes.healthy" && r.Value != 4 {
+			t.Errorf("probes.healthy: got %v, want 4", r.Value)
+		}
+		if r.Name == "senhub.agent.collect.errors" && r.Value != 17 {
+			t.Errorf("collect.errors: got %v, want 17", r.Value)
+		}
+	}
+}
+
+func TestBuildAgentRecords_NoHTTPRecordsWhenMapEmpty(t *testing.T) {
+	snap := AgentMetricsSnapshot{StartTime: time.Now()}
+	recs := BuildAgentRecords(snap)
+	for _, r := range recs {
+		if r.Name == "senhub.agent.http.requests" {
+			t.Errorf("expected no http.requests records when map is empty/nil")
 		}
 	}
 }

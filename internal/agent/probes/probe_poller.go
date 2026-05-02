@@ -9,6 +9,7 @@ import (
 
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -179,6 +180,7 @@ func (p *ProbePoller) collect() error {
 
 	data, err := p.Probe.Collect()
 	if err != nil {
+		agentstate.IncrementCollectErrors()
 		return fmt.Errorf("collect failed: %v", err)
 	}
 
