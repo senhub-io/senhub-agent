@@ -1,6 +1,7 @@
 probe_name: "memory"
 friendly_name: "Memory Metrics"
 version: "3.0.0"
+host_level: true
 multi_instance_labels: []
 
 # Format v3 — OTel-first source of truth:
