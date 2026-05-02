@@ -379,15 +379,21 @@ func (s *sensor) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// publishActiveProbes publishes the currently-running probes to the
+// publishActiveProbes publishes the IDs of currently-running probes to the
 // agentstate package so the Prometheus bridge can expose
 // senhub_agent_probes_total and senhub_agent_probes_healthy without a
 // direct dependency from the http strategy back to the sensor.
+//
+// We send IDs (not the probe objects) because health is pushed via
+// RecordProbeHealth from ProbePoller.collect() — the bridge never needs
+// to call back into a probe instance, eliminating any chance of a scrape
+// triggering a Collect() (and the resulting wasted CPU + races we used
+// to have when IsHealthy() implementations re-collected on demand).
 func publishActiveProbes(pollers []*probes.ProbePoller) {
-	out := make([]interface{}, 0, len(pollers))
+	out := make([]string, 0, len(pollers))
 	for _, pp := range pollers {
-		if pp != nil && pp.Probe != nil {
-			out = append(out, pp.Probe)
+		if pp != nil {
+			out = append(out, pp.ProbeId)
 		}
 	}
 	agentstate.SetActiveProbes(out)
