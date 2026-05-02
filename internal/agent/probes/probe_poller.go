@@ -181,8 +181,10 @@ func (p *ProbePoller) collect() error {
 	data, err := p.Probe.Collect()
 	if err != nil {
 		agentstate.IncrementCollectErrors()
+		agentstate.RecordProbeHealth(p.ProbeId, false)
 		return fmt.Errorf("collect failed: %v", err)
 	}
+	agentstate.RecordProbeHealth(p.ProbeId, true)
 
 	if strategyRouter, ok := p.Probe.(data_store.StrategyRouter); ok {
 		p.moduleLogger.Debug().Msg("Using probe's strategy router")
