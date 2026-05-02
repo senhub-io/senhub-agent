@@ -2,6 +2,7 @@
 package http
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -154,12 +155,28 @@ func constantTimeEqual(a, b string) bool {
 	return diff == 0
 }
 
-// UpdateAgentKey updates the agent key (useful for configuration changes)
+// UpdateAgentKey updates the agent key (useful for configuration changes).
+// Logs only a short prefix of the old/new keys; bounds-safe for short test
+// or development keys (< 8 bytes).
 func (a *AuthenticationManager) UpdateAgentKey(newKey string) {
 	a.logger.Info().
-		Str("old_key_prefix", a.agentKey[:8]+"...").
-		Str("new_key_prefix", newKey[:8]+"...").
+		Str("old_key_prefix", keyPrefixForLog(a.agentKey)).
+		Str("new_key_prefix", keyPrefixForLog(newKey)).
 		Msg("Agent key updated")
 
 	a.agentKey = newKey
+}
+
+// keyPrefixForLog returns at most the first 8 bytes of a key, with a
+// trailing "..." marker. Safe for keys of any length, including empty.
+func keyPrefixForLog(key string) string {
+	const n = 8
+	if len(key) == 0 {
+		return "(empty)"
+	}
+	if len(key) <= n {
+		// Don't reveal a short key in full — collapse to a length hint.
+		return fmt.Sprintf("(short:%dB)", len(key))
+	}
+	return key[:n] + "..."
 }

@@ -31,9 +31,13 @@ var (
 func CountRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Resolve the route template the request matched (e.g.
-		// "/api/{agentkey}/prtg/metrics"). Falls back to the raw URL path
-		// when no route matches (404), so we still count those.
-		endpoint := r.URL.Path
+		// "/api/{agentkey}/prtg/metrics"). gorilla/mux's Use() middleware
+		// only fires for matched routes by default, so unmatched paths
+		// don't reach us. Should that ever change (custom NotFoundHandler,
+		// programmatic invocation), we fall back to a single
+		// "_unmatched" bucket rather than the raw URL path — the latter
+		// would be an unbounded cardinality bomb.
+		endpoint := "_unmatched"
 		if route := mux.CurrentRoute(r); route != nil {
 			if tmpl, err := route.GetPathTemplate(); err == nil {
 				endpoint = tmpl
@@ -72,3 +76,12 @@ func GetHTTPRequestCounts() map[string]uint64 {
 	}
 	return out
 }
+
+// resetHTTPRequestCountersForTest clears all per-route counters. Used by
+// tests to start each scenario from a known zero state. Not exported.
+func resetHTTPRequestCountersForTest() {
+	httpRequestCountersMu.Lock()
+	defer httpRequestCountersMu.Unlock()
+	httpRequestCounters = map[string]*atomic.Uint64{}
+}
+
