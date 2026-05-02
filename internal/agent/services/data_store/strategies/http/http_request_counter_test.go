@@ -5,16 +5,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"sync/atomic"
-
 	"github.com/gorilla/mux"
 )
 
 func TestCountRequests_PerRouteTemplate(t *testing.T) {
 	// Reset the counter map for test isolation.
-	httpRequestCountersMu.Lock()
-	httpRequestCounters = map[string]*atomic.Uint64{}
-	httpRequestCountersMu.Unlock()
+	resetHTTPRequestCountersForTest()
 
 	router := mux.NewRouter()
 	router.Use(CountRequests)
