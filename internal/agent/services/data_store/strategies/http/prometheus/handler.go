@@ -25,22 +25,29 @@ type DefinitionLookup interface {
 // WriteExposition reads all cache entries, resolves each through the probe
 // definition registry, and writes the Prometheus text exposition to w.
 //
+// agentRecords is the slice produced by BuildAgentRecords — these are the
+// agent's own self-observability metrics (uptime, cache size, build info)
+// and are always emitted alongside the probe metrics. Pass nil to omit
+// them (used in some isolated unit tests).
+//
 // Metrics that are explicitly skipped (otel.skip: true) are silently dropped.
-// Metrics with no OTel mapping or no matching definition generate a debug log
-// via the errorHandler callback (if non-nil) and are skipped — the scrape
-// continues rather than failing, so a single misconfigured probe doesn't
-// break the whole /metrics output.
+// Metrics with no OTel mapping or no matching definition generate a callback
+// via errorHandler (if non-nil) and are skipped — the scrape continues
+// rather than failing, so a single misconfigured probe doesn't break the
+// whole /metrics output.
 //
 // Returns the number of OtelRecord lines written and the first error from
 // the io.Writer (if any).
 func WriteExposition(
 	reader CacheReader,
 	defs DefinitionLookup,
+	agentRecords []OtelRecord,
 	w io.Writer,
 	errorHandler func(metric CacheMetric, err error),
 ) (int, error) {
 	metrics := reader.GetAll()
-	allRecords := make([]OtelRecord, 0, len(metrics)*2) // heuristic: some expand
+	allRecords := make([]OtelRecord, 0, len(agentRecords)+len(metrics)*2)
+	allRecords = append(allRecords, agentRecords...)
 
 	for _, m := range metrics {
 		def := defs.GetProbeDefinition(m.ProbeType)
