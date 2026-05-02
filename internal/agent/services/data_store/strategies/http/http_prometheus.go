@@ -132,6 +132,11 @@ func coerceToFloat64(v interface{}) (float64, bool) {
 // is conceptually an agent-lifetime cache. Keyed by "probe_type:metric_name".
 var prometheusWarnedMetrics sync.Map
 
+// serializerWarnInstalled ensures we only register the serializer warn
+// function once per process. Done lazily on the first scrape so we have
+// a real *HTTPSyncStrategy logger to bind to.
+var serializerWarnInstalled sync.Once
+
 // servePrometheusExposition writes the Prometheus text exposition to w by
 // reading the shared cache and resolving each entry through the transformer
 // registry. Used by both the /api/{key}/prometheus/metrics and /metrics routes.
@@ -145,6 +150,16 @@ var prometheusWarnedMetrics sync.Map
 //   - Operators see the warning, fix the YAML, metric appears in next scrape.
 func (h *HTTPSyncStrategy) servePrometheusExposition(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", prometheus.ContentType)
+
+	// Bind the serializer's drift-warning channel to our module logger.
+	// Done once per process — the warn function holds a reference to h.logger
+	// which is safe because the strategy outlives every scrape.
+	serializerWarnInstalled.Do(func() {
+		strategyLogger := h.logger
+		prometheus.SetSerializerWarnFunc(func(format string, args ...interface{}) {
+			strategyLogger.Warn().Msgf(format, args...)
+		})
+	})
 
 	reader := &cacheAdapter{
 		cache:            h.cache,
@@ -204,5 +219,15 @@ func agentBuildVersion() string {
 // or "" if the build did not embed it.
 func agentBuildCommit() string {
 	return cliArgs.CommitHash
+}
+
+// resetPrometheusWarnedMetricsForTest clears the warn-once dedup map so
+// tests in this package can run independently. Not exported beyond the
+// package — tests are the only legitimate caller.
+func resetPrometheusWarnedMetricsForTest() {
+	prometheusWarnedMetrics.Range(func(k, _ interface{}) bool {
+		prometheusWarnedMetrics.Delete(k)
+		return true
+	})
 }
 
