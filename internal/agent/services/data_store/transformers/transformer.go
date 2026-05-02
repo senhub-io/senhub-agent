@@ -115,11 +115,19 @@ type TagMetadata struct {
 
 // ProbeDefinition represents the structure of a probe definition YAML file
 type ProbeDefinition struct {
-	ProbeName   string                  `yaml:"probe_name"`
+	ProbeName    string                 `yaml:"probe_name"`
 	FriendlyName string                 `yaml:"friendly_name"`
-	Version     string                  `yaml:"version"`
-	Metrics     []MetricDefinition      `yaml:"metrics"`
-	TagMetadata map[string]TagMetadata  `yaml:"tag_metadata,omitempty" json:"tag_metadata"`
+	Version      string                 `yaml:"version"`
+	Metrics      []MetricDefinition     `yaml:"metrics"`
+	TagMetadata  map[string]TagMetadata `yaml:"tag_metadata,omitempty" json:"tag_metadata"`
+
+	// HostLevel marks probes that observe the local host (CPU, memory,
+	// network interfaces, filesystem of the agent's machine). When the
+	// Prometheus endpoint is configured with expose_host_metrics: false,
+	// such probes are filtered out of /metrics so an operator running a
+	// separate node_exporter on the same host avoids duplicate series.
+	// Set to true in cpu/memory/network/logicaldisk YAMLs.
+	HostLevel bool `yaml:"host_level,omitempty"`
 }
 
 // UnitDefinition represents a unit mapping definition
