@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 )
 
 // SerializeOptions tweaks the output format (reserved for future flags,
@@ -102,7 +103,19 @@ func writeGroup(w io.Writer, name, promType, help string, rows []OtelRecord, opt
 		// we can warn (once) when two distinct attribute names collapse to
 		// the same Prom label after dot→underscore translation.
 		labelOrigin := make(map[string]string, len(r.Attributes))
-		for k, v := range r.Attributes {
+
+		// Iterate in sorted key order so the "kept vs dropped" decision in
+		// a collision is deterministic across builds. Without this, Go map
+		// iteration randomization would produce non-reproducible warnings
+		// and (more visibly) flip which value lands on the kept label.
+		sortedAttrKeys := make([]string, 0, len(r.Attributes))
+		for k := range r.Attributes {
+			sortedAttrKeys = append(sortedAttrKeys, k)
+		}
+		sort.Strings(sortedAttrKeys)
+
+		for _, k := range sortedAttrKeys {
+			v := r.Attributes[k]
 			pk := OTelAttributeToPromLabel(k)
 			if existing, clashes := labelOrigin[pk]; clashes && existing != k {
 				warnLabelCollision(name, pk, existing, k)
@@ -162,21 +175,43 @@ var serializerWarnDedup sync.Map
 
 // SerializerWarnFunc is invoked when the serializer detects a YAML drift
 // problem. Defaults to a no-op so the serializer stays self-contained
-// (the bridge wires it to the agent logger at startup via
-// SetSerializerWarnFunc).
+// (the bridge wires it to the agent logger via SetSerializerWarnFunc).
 type SerializerWarnFunc func(format string, args ...interface{})
 
-var serializerWarnFn SerializerWarnFunc = func(string, ...interface{}) {}
+// noopSerializerWarn is the default value installed in serializerWarnFn.
+// It is a real value (not nil) so we can read through atomic.Pointer
+// without a nil check on the hot path.
+var noopSerializerWarn SerializerWarnFunc = func(string, ...interface{}) {}
+
+// serializerWarnFn holds the current warn function as an atomic pointer.
+// Read on every scrape (potentially many concurrent goroutines on a
+// busy agent), written rarely (once at startup, plus tests). Atomic.Pointer
+// gives us the lock-free read path with safe replacement.
+var serializerWarnFn atomic.Pointer[SerializerWarnFunc]
+
+func init() {
+	serializerWarnFn.Store(&noopSerializerWarn)
+}
 
 // SetSerializerWarnFunc lets the host application install a logger for
-// the serializer's drift warnings. Safe to call at startup before any
-// scrape; not safe to call concurrently with serialization.
+// the serializer drift warnings. Safe to call concurrently with
+// serialization (atomic pointer swap). Passing nil restores the
+// default no-op.
 func SetSerializerWarnFunc(fn SerializerWarnFunc) {
 	if fn == nil {
-		serializerWarnFn = func(string, ...interface{}) {}
+		serializerWarnFn.Store(&noopSerializerWarn)
 		return
 	}
-	serializerWarnFn = fn
+	// Wrap in a fresh allocation so the pointer we expose is stable for the
+	// lifetime of this Set call — required by atomic.Pointer semantics.
+	stored := fn
+	serializerWarnFn.Store(&stored)
+}
+
+// callSerializerWarn invokes the currently-installed warn function.
+// Pulled out as a helper so call sites stay readable.
+func callSerializerWarn(format string, args ...interface{}) {
+	(*serializerWarnFn.Load())(format, args...)
 }
 
 func warnTypeConflict(promName, firstOTel, firstType, otherOTel, otherType string) {
@@ -184,7 +219,7 @@ func warnTypeConflict(promName, firstOTel, firstType, otherOTel, otherType strin
 	if _, seen := serializerWarnDedup.LoadOrStore(key, struct{}{}); seen {
 		return
 	}
-	serializerWarnFn(
+	callSerializerWarn(
 		"prometheus serializer: OTel name conflict — %q (Prom name %q) declared as %q earlier (from %q) but later seen as %q. Picking the first; fix the YAML to make types consistent.",
 		otherOTel, promName, firstType, firstOTel, otherType,
 	)
@@ -195,7 +230,7 @@ func warnUnitConflict(promName, firstOTel, firstUnit, otherOTel, otherUnit strin
 	if _, seen := serializerWarnDedup.LoadOrStore(key, struct{}{}); seen {
 		return
 	}
-	serializerWarnFn(
+	callSerializerWarn(
 		"prometheus serializer: OTel unit conflict — %q (Prom name %q) declared with unit %q earlier (from %q) but later seen as %q. Help/TYPE preserved from first; fix the YAML.",
 		otherOTel, promName, firstUnit, firstOTel, otherUnit,
 	)
@@ -209,7 +244,7 @@ func warnLabelCollision(promName, promLabel, kept, dropped string) {
 	if _, seen := serializerWarnDedup.LoadOrStore(key, struct{}{}); seen {
 		return
 	}
-	serializerWarnFn(
+	callSerializerWarn(
 		"prometheus serializer: attribute collision on metric %q — both %q and %q map to label %q. Keeping %q; fix the YAML so attributes do not alias.",
 		promName, kept, dropped, promLabel, kept,
 	)
