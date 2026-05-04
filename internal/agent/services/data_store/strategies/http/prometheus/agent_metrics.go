@@ -53,10 +53,10 @@ type AgentMetricsSnapshot struct {
 //   - senhub.agent.probes.active (gauge, {probe})
 //   - senhub.agent.build.info (gauge, value=1, with version/commit labels)
 //
-// Metrics deferred to a follow-up (require new instrumentation):
-//   - senhub.agent.collect.errors_total (counter — needs DataStore wiring)
-//   - senhub.agent.http.requests_total{endpoint} (counter — needs middleware)
-//   - senhub.agent.probes.healthy (gauge — needs HealthManager hook)
+// All metrics listed in IMPLEMENTATION-PLAN §9 are now wired (collect
+// errors via agentstate.IncrementCollectErrors, http requests via the
+// CountRequests middleware, probes.healthy via push-based
+// agentstate.RecordProbeHealth from ProbePoller.collect).
 func BuildAgentRecords(snap AgentMetricsSnapshot) []OtelRecord {
 	uptime := time.Since(snap.StartTime).Seconds()
 
@@ -94,12 +94,15 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []OtelRecord {
 			Description: "Number of probes the agent is currently running (from configuration).",
 		},
 		{
-			Name:        "senhub.agent.probes.healthy",
-			Unit:        "{probe}",
-			Type:        "gauge",
-			Attributes:  map[string]string{},
-			Value:       float64(snap.ProbesHealthy),
-			Description: "Number of running probes reporting IsHealthy()==true.",
+			Name:       "senhub.agent.probes.healthy",
+			Unit:       "{probe}",
+			Type:       "gauge",
+			Attributes: map[string]string{},
+			Value:      float64(snap.ProbesHealthy),
+			Description: "Number of running probes whose last collect cycle succeeded. " +
+				"Probes that have not yet completed their first cycle (or whose " +
+				"collection happens via a callback rather than a scheduler) are " +
+				"NOT counted as healthy until they explicitly publish their state.",
 		},
 		{
 			Name:        "senhub.agent.collect.errors",

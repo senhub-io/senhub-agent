@@ -196,15 +196,32 @@ func (p *ProbePoller) collect() error {
 }
 
 // getWrappedCallback returns a function that handles routing of collected data
-// to appropriate storage strategies for callback-based probes
+// to appropriate storage strategies for callback-based probes (syslog, event).
+//
+// Each successful callback is treated as evidence the probe is alive: we
+// publish ok=true to agentstate so senhub_agent_probes_healthy reflects
+// callback-driven probes too. A routing failure publishes ok=false, mirroring
+// the scheduler-driven path. Note this only proves "the agent received and
+// stored a datapoint at least once recently" — it does NOT detect a silent
+// listener that has stopped receiving traffic. Operators relying on the
+// metric for socket-level health should pair it with an external probe.
 func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 	return func(data []datapoint.DataPoint) error {
 		p.moduleLogger.Debug().Int("datapoints_count", len(data)).Msg("Callback triggered")
 
+		var err error
 		if strategyRouter, ok := p.Probe.(data_store.StrategyRouter); ok {
-			return p.addDataPoint(data, strategyRouter)
+			err = p.addDataPoint(data, strategyRouter)
+		} else {
+			err = p.addDataPoint(data, &defaultStrategyRouter{})
 		}
-		return p.addDataPoint(data, &defaultStrategyRouter{})
+		if err != nil {
+			agentstate.IncrementCollectErrors()
+			agentstate.RecordProbeHealth(p.ProbeId, false)
+		} else {
+			agentstate.RecordProbeHealth(p.ProbeId, true)
+		}
+		return err
 	}
 }
 
