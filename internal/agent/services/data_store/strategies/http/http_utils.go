@@ -179,7 +179,7 @@ func (u *UtilsManager) handlePrometheusMetricsGET(w http.ResponseWriter, r *http
 // header or ?token=<agentkey> query parameter — matches what vmagent,
 // Prometheus and Grafana Agent expect natively.
 func (u *UtilsManager) handlePrometheusStandardMetricsGET(w http.ResponseWriter, r *http.Request) {
-	if _, authenticated := u.strategy.authManager.AuthenticateBearerOrQuery(w, r); !authenticated {
+	if authenticated := u.strategy.authManager.AuthenticateBearerOrQuery(w, r); !authenticated {
 		return
 	}
 	u.strategy.servePrometheusExposition(w, r)
