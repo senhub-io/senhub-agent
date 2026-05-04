@@ -49,7 +49,7 @@ func runBearerOrQuery(t *testing.T, req *http.Request) (int, string) {
 	t.Helper()
 	mgr := newAuthMgrForTest()
 	rec := httptest.NewRecorder()
-	mgr.AuthenticateBearerOrQuery(rec, req)
+	_ = mgr.AuthenticateBearerOrQuery(rec, req)
 	return rec.Code, rec.Header().Get("WWW-Authenticate")
 }
 

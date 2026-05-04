@@ -173,6 +173,9 @@ func Resolve(def *transformers.ProbeDefinition, m CacheMetric, opts ResolveOptio
 	}
 	// Synthetic "unknown" record fires only if the raw value didn't match
 	// any declared mapping AND the YAML didn't already enumerate "unknown".
+	// Note: the expand attribute is set unconditionally to "unknown",
+	// overwriting any value that may have been in baseAttrs under the same
+	// key — same convention as the matched-state branch above.
 	if !matched {
 		if _, alreadyDeclared := mdef.Otel.Expand.Mapping["unknown"]; !alreadyDeclared {
 			attrs := make(map[string]string, len(baseAttrs)+1)
