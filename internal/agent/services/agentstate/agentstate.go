@@ -78,10 +78,20 @@ func SetActiveProbes(probeIDs []string) {
 	}
 }
 
-// RecordProbeHealth is called by ProbePoller after each collect cycle to
-// publish the probe's current health, derived from whether Probe.Collect()
-// returned an error. This replaces calling IsHealthy() at scrape time
-// (which used to re-execute Collect() — wasted work and racy).
+// RecordProbeHealth publishes a probe's current health to the shared map.
+// Called by ProbePoller in two paths:
+//   - scheduler-driven: after each Collect() cycle, ok = (err == nil)
+//   - callback-driven (syslog/event): after each successful datapoint
+//     routing, with ok = (routing err == nil)
+//
+// This means "healthy" reflects "the probe completed its most recent
+// activity without an error". For event-driven probes whose listener
+// could be silently dead (no incoming traffic, but socket still open),
+// "healthy" stays true until traffic resumes and routing fails — pair
+// with external probing for socket-level liveness.
+//
+// Replaces the prior IsHealthy()-at-scrape design which re-executed
+// Collect() inline at scrape time (wasted work + races).
 func RecordProbeHealth(probeID string, ok bool) {
 	probeStateMu.Lock()
 	defer probeStateMu.Unlock()

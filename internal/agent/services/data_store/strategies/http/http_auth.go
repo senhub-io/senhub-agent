@@ -95,37 +95,40 @@ func (a *AuthenticationManager) GetAgentKey() string {
 // OR ?token= query parameter. Used by the standard Prometheus scrape route
 // `/metrics` which does not embed the agent key in the URL path.
 //
-// Returns (agentKey, true) on success and writes 401 on failure.
+// Returns true on success and writes 401 on failure. Returning the agent
+// key here would risk it leaking into caller logs or error responses, so
+// the bool is intentionally minimal.
+//
 // Comparison is constant-time to avoid timing attacks.
-func (a *AuthenticationManager) AuthenticateBearerOrQuery(w http.ResponseWriter, r *http.Request) (string, bool) {
+func (a *AuthenticationManager) AuthenticateBearerOrQuery(w http.ResponseWriter, r *http.Request) bool {
 	// Try Authorization: Bearer <token>
 	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
 		const prefix = "Bearer "
 		if len(authHeader) > len(prefix) && authHeader[:len(prefix)] == prefix {
 			token := authHeader[len(prefix):]
 			if a.validateKeyConstantTime(token) {
-				return token, true
+				return true
 			}
 			a.logger.Warn().Msg("Invalid Bearer token on Prometheus scrape route")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return "", false
+			return false
 		}
 	}
 
 	// Fallback: ?token=<token> query parameter
 	if token := r.URL.Query().Get("token"); token != "" {
 		if a.validateKeyConstantTime(token) {
-			return token, true
+			return true
 		}
 		a.logger.Warn().Msg("Invalid query-param token on Prometheus scrape route")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return "", false
+		return false
 	}
 
 	a.logger.Warn().Msg("No Bearer token or ?token= on Prometheus scrape route")
 	w.Header().Set("WWW-Authenticate", `Bearer realm="senhub-agent"`)
 	http.Error(w, "Unauthorized", http.StatusUnauthorized)
-	return "", false
+	return false
 }
 
 // validateKeyConstantTime compares a provided key against the configured
