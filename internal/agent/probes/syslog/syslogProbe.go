@@ -9,6 +9,7 @@ import (
 	"gopkg.in/mcuadros/go-syslog.v2"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -217,6 +218,28 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 			Err(err).
 			Msg("Failed to send DataPoint to DataStore")
 	}
+
+	// Also publish to the agent's log channel so the OTLP strategy
+	// (and any future log sink) can ship the message as a structured
+	// log record. Independent of the data_store routing — the syslog
+	// message is a log, not a metric, even though the existing event
+	// strategy sees it as a DataPoint.
+	agentstate.PublishLog(agentstate.LogRecord{
+		Timestamp:    timestamp,
+		Severity:     agentstate.SyslogPriorityToSeverity(severity),
+		SeverityText: agentstate.SyslogPriorityToText(severity),
+		Body:         content,
+		Attributes: map[string]string{
+			"syslog.facility":      fmt.Sprintf("%d", facility),
+			"syslog.severity_code": fmt.Sprintf("%d", severity),
+			"syslog.priority":      fmt.Sprintf("%d", priority),
+			"syslog.hostname":      hostname,
+			"syslog.appname":       tag,
+			"syslog.client":        client,
+		},
+		ProducerProbeName: p.GetName(),
+		ProducerProbeType: "syslog",
+	})
 }
 
 func (p *SyslogProbe) String() string {

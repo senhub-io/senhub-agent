@@ -56,6 +56,11 @@ type OTLPSyncStrategy struct {
 
 	exporters *exporters
 
+	// logs holds the SDK BatchProcessor + LoggerProvider + Logger
+	// when Logs.Enabled. nil otherwise.
+	logs     *logsPipeline
+	logsPump *logsPump
+
 	// pushTicker drives the metrics push cadence. nil before Start, nil
 	// after Shutdown.
 	pushTicker *time.Ticker
@@ -171,12 +176,20 @@ func (s *OTLPSyncStrategy) Start() error {
 		s.startMetricsPusher()
 	}
 
+	if s.cfg.Logs.Enabled && s.exporters.log != nil {
+		s.logs = buildLogsPipeline(s.exporters.log, s.resource, s.cfg.Logs, cliArgs.Version)
+		s.logsPump = newLogsPump(s.logs, s.cfg.Logs.BufferSize)
+		s.logsPump.start()
+	}
+
 	s.logger.Info().
 		Str("endpoint", s.cfg.Endpoint).
 		Bool("tls_enabled", s.cfg.TLS.Enabled).
 		Bool("metrics_enabled", s.cfg.Metrics.Enabled).
 		Dur("metrics_interval", s.cfg.Metrics.Interval).
 		Bool("logs_enabled", s.cfg.Logs.Enabled).
+		Int("logs_batch_size", s.cfg.Logs.BatchSize).
+		Dur("logs_batch_timeout", s.cfg.Logs.BatchTimeout).
 		Str("compression", s.cfg.Compression).
 		Dur("timeout", s.cfg.Timeout).
 		Msg("OTLP strategy started")
@@ -293,6 +306,14 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 		s.pushWG.Wait()
 	}
 
+	// Stop the logs pump and unsubscribe from agentstate. The
+	// LoggerProvider's Shutdown (called below via s.logs.shutdown)
+	// drains the BatchProcessor, so any records still queued in the
+	// SDK will be flushed before the gRPC connection closes.
+	if s.logsPump != nil {
+		s.logsPump.stop(ctx)
+	}
+
 	if s.exporters == nil {
 		return nil
 	}
@@ -311,6 +332,17 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// the last push fails (collector down, etc.).
 	if s.exporters.metric != nil && s.cfg.Metrics.Enabled {
 		s.pushOnce(ctx)
+	}
+
+	// Drain the log pipeline before shutting down the gRPC exporter.
+	// The provider.Shutdown call flushes any queued records via the
+	// BatchProcessor, then shuts down the underlying exporter — so
+	// the subsequent exporters.shutdown will see an already-closed
+	// log exporter (its second Shutdown is a no-op per SDK semantics).
+	if s.logs != nil {
+		if err := s.logs.shutdown(ctx); err != nil {
+			s.logger.Warn().Err(err).Msg("OTLP logs pipeline shutdown failed")
+		}
 	}
 
 	if err := s.exporters.shutdown(ctx); err != nil {
