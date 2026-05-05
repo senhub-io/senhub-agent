@@ -6,7 +6,13 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.opentelemetry.io/otel/sdk/resource"
+
+	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
+	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
@@ -18,27 +24,55 @@ const strategyName = "otlp"
 // OTLPSyncStrategy implements data_store.SyncStrategy by exporting
 // metrics and logs over OTLP/gRPC.
 //
-// Phase 1: lifecycle skeleton — config parsing, exporter wiring,
-// graceful shutdown. AddDataPoints currently just counts datapoints
-// for diagnostic purposes; metrics export from the cache and logs
-// export from the log channel land in Phase 2 and Phase 3.
+//   - Phase 1: lifecycle skeleton (config, gRPC client, shutdown)
+//   - Phase 2 (this commit): metrics export — periodic push from a
+//     strategy-local LWW store, resolved through otelmapper
+//   - Phase 3: logs export from syslog + event probes
 type OTLPSyncStrategy struct {
 	agentConfig configuration.AgentConfiguration
 	rawParams   map[string]interface{}
 	cfg         Config
 	logger      *logger.ModuleLogger
 
+	// store holds the most recent value of every series flowing through
+	// AddDataPoints; the push goroutine snapshots and ships it.
+	store *metricStore
+
+	// registry resolves probe types to YAML definitions consumed by
+	// otelmapper.Resolve. Each strategy carries its own — definitions
+	// are read-only after load and cheap enough to duplicate.
+	registry *transformers.TransformerRegistry
+
+	// resource is the OTel Resource (service.name, service.instance.id,
+	// service.version, deployment.environment, plus operator extras)
+	// attached to every emitted batch.
+	resource *resource.Resource
+
+	// startTime is the OTel `start_time_unix_nano` for cumulative
+	// counters. Pinned at strategy.Start so all counters share the same
+	// reference (standard OTel pattern — counter resets on agent
+	// restart, which the consumer handles).
+	startTime time.Time
+
 	exporters *exporters
+
+	// pushTicker drives the metrics push cadence. nil before Start, nil
+	// after Shutdown.
+	pushTicker *time.Ticker
+	// pushDone signals the push goroutine to exit. Closed by Shutdown.
+	pushDone chan struct{}
+	// pushWG tracks the push goroutine for clean Shutdown.
+	pushWG sync.WaitGroup
 
 	startMu  sync.Mutex
 	started  bool
 	shutdown bool
 
-	// dataPointsSeen counts datapoints AddDataPoints has handled. Phase
-	// 1 doesn't ship them yet; Phase 2 wires the cache-based push so
-	// this counter stays only as a diagnostic during the transition.
-	dataPointsSeen uint64
-	dpMu           sync.Mutex
+	// missingMappingWarned dedups the "metric has no OTel mapping"
+	// warning. Same idea as the prometheus side — keyed by
+	// "probe_type:metric_name" — so a single misconfigured probe does
+	// not flood logs on every push tick.
+	missingMappingWarned sync.Map
 }
 
 // NewOTLPSyncStrategy constructs (but does not start) the OTLP strategy.
@@ -80,6 +114,9 @@ func NewOTLPSyncStrategy(
 		rawParams:   params,
 		cfg:         cfg,
 		logger:      moduleLogger,
+		store:       newMetricStore(),
+		registry:    transformers.NewTransformerRegistry(baseLogger),
+		resource:    buildResource(cfg.Resource, cliArgs.Version),
 	}
 }
 
@@ -105,13 +142,10 @@ func (s *OTLPSyncStrategy) ValidateConfigParams(params configuration.StorageConf
 	return err
 }
 
-// Start brings the strategy online: builds the OTel SDK exporters
-// (which do not yet open a gRPC connection — that's lazy on first
-// export). Subsequent calls are no-ops.
-//
-// Phase 1: the goroutines that drive periodic metric pushes (Phase 2)
-// and consume the log channel (Phase 3) are NOT started here yet. We'll
-// add them at the corresponding phase boundaries.
+// Start brings the strategy online: builds the OTel SDK exporters and,
+// when metrics are enabled, launches the periodic push goroutine.
+// Idempotent — subsequent calls are no-ops while running. Once Shutdown
+// has been called, Start returns an error rather than silently restarting.
 func (s *OTLPSyncStrategy) Start() error {
 	s.startMu.Lock()
 	defer s.startMu.Unlock()
@@ -131,38 +165,114 @@ func (s *OTLPSyncStrategy) Start() error {
 		return fmt.Errorf("build exporters: %w", err)
 	}
 	s.exporters = exp
+	s.startTime = time.Now()
+
+	if s.cfg.Metrics.Enabled {
+		s.startMetricsPusher()
+	}
 
 	s.logger.Info().
 		Str("endpoint", s.cfg.Endpoint).
 		Bool("tls_enabled", s.cfg.TLS.Enabled).
 		Bool("metrics_enabled", s.cfg.Metrics.Enabled).
+		Dur("metrics_interval", s.cfg.Metrics.Interval).
 		Bool("logs_enabled", s.cfg.Logs.Enabled).
 		Str("compression", s.cfg.Compression).
 		Dur("timeout", s.cfg.Timeout).
-		Msg("OTLP strategy started — Phase 1 (skeleton; metrics/logs export not yet wired)")
+		Msg("OTLP strategy started")
 
 	s.started = true
 	return nil
 }
 
-// AddDataPoints accepts datapoints from the data_store router. Phase 1
-// just counts them — they sit in the existing MetricCache via the http
-// strategy already, and Phase 2 will read from the cache to push.
-//
-// This is a deliberately quiet no-op rather than an error: configuring
-// `endpoints: [otlp, ...]` on probes during Phase 1 should not break
-// the probe; it should just mean "metrics aren't pushed yet, but they
-// will be once Phase 2 ships".
+// startMetricsPusher launches the periodic push goroutine. Caller must
+// hold startMu.
+func (s *OTLPSyncStrategy) startMetricsPusher() {
+	s.pushTicker = time.NewTicker(s.cfg.Metrics.Interval)
+	s.pushDone = make(chan struct{})
+	s.pushWG.Add(1)
+	go func() {
+		defer s.pushWG.Done()
+		for {
+			select {
+			case <-s.pushDone:
+				return
+			case <-s.pushTicker.C:
+				s.pushOnce(context.Background())
+			}
+		}
+	}()
+}
+
+// pushOnce performs one snapshot/resolve/encode/export cycle. Errors
+// are logged but never propagated — the next tick gets a fresh
+// snapshot. Cumulative counter semantics mean the consumer sees no
+// gap from a transient export failure (the next push carries the same
+// or higher value).
+func (s *OTLPSyncStrategy) pushOnce(parent context.Context) {
+	if s.exporters == nil || s.exporters.metric == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(parent, s.cfg.Timeout)
+	defer cancel()
+
+	now := time.Now()
+	resolveOpts := otelmapper.ResolveOptions{IncludeProbeTags: true}
+
+	count, err := pushMetrics(
+		ctx,
+		s.store,
+		s.registry,
+		s.resource,
+		cliArgs.Version,
+		s.startTime,
+		now,
+		resolveOpts,
+		func(ctx context.Context, rm *metricdata.ResourceMetrics) error {
+			return s.exporters.metric.Export(ctx, rm)
+		},
+		s.warnMissingMappingOnce,
+	)
+	if err != nil {
+		s.logger.Warn().Err(err).Msg("OTLP metrics export failed")
+		return
+	}
+	if count > 0 {
+		s.logger.Debug().Int("records_pushed", count).Msg("OTLP metrics exported")
+	}
+}
+
+// warnMissingMappingOnce logs the "metric has no OTel mapping" warning
+// at most once per (probe_type, metric_name) for the strategy's
+// lifetime. Avoids log spam when an operator has a misconfigured probe.
+func (s *OTLPSyncStrategy) warnMissingMappingOnce(m otelmapper.CacheMetric, err error) {
+	key := m.ProbeType + ":" + m.MetricName
+	if _, seen := s.missingMappingWarned.LoadOrStore(key, struct{}{}); seen {
+		return
+	}
+	s.logger.Warn().
+		Err(err).
+		Str("probe_name", m.ProbeName).
+		Str("probe_type", m.ProbeType).
+		Str("metric_name", m.MetricName).
+		Msg("Metric has no OTel mapping — not exported via OTLP. Add an otel: block to the probe YAML or otel.skip: true to silence.")
+}
+
+// AddDataPoints stores the latest value for each series in the
+// strategy-local LWW cache. The push goroutine reads from this cache
+// every Metrics.Interval. Datapoints without probe identity are
+// silently dropped (they cannot be routed through otelmapper).
 func (s *OTLPSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
-	s.dpMu.Lock()
-	s.dataPointsSeen += uint64(len(data))
-	s.dpMu.Unlock()
+	for _, dp := range data {
+		s.store.upsert(dp)
+	}
 	return nil
 }
 
-// Shutdown stops the strategy and releases the gRPC exporters. Idempotent:
-// once shut down, subsequent calls are no-ops. Start cannot bring the
-// strategy back up — the caller must build a fresh instance.
+// Shutdown stops the strategy: signals the push goroutine, waits for it
+// to drain, performs a final push (so the last interval's data isn't
+// lost), then closes the gRPC exporters. Idempotent: once shut down,
+// subsequent calls are no-ops. Start cannot bring the strategy back up.
 func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	s.startMu.Lock()
 	defer s.startMu.Unlock()
@@ -172,6 +282,16 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	}
 	s.shutdown = true
 	s.started = false
+
+	// Stop the periodic ticker and wait for the goroutine to exit. We
+	// do this BEFORE the final push to avoid a race where both the
+	// timer-driven push and the shutdown-driven push overlap on the
+	// same exporter.
+	if s.pushTicker != nil {
+		s.pushTicker.Stop()
+		close(s.pushDone)
+		s.pushWG.Wait()
+	}
 
 	if s.exporters == nil {
 		return nil
@@ -186,17 +306,24 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 		defer cancel()
 	}
 
+	// Drain — final push of whatever sits in the store. Failures here
+	// are best-effort: we still want to close the exporters even if
+	// the last push fails (collector down, etc.).
+	if s.exporters.metric != nil && s.cfg.Metrics.Enabled {
+		s.pushOnce(ctx)
+	}
+
 	if err := s.exporters.shutdown(ctx); err != nil {
 		s.logger.Warn().Err(err).Msg("OTLP strategy shutdown encountered errors")
 		return err
 	}
 
-	s.logger.Info().Uint64("datapoints_seen", s.dataPointsSeen).Msg("OTLP strategy shut down cleanly")
+	s.logger.Info().Int("series_in_store", s.store.size()).Msg("OTLP strategy shut down cleanly")
 	return nil
 }
 
 // Config returns the parsed configuration. Read-only access for
-// upcoming Phase 2/3 integration code that needs to know intervals,
+// upcoming Phase 3 integration code that needs to know intervals,
 // resource attrs, etc.
 func (s *OTLPSyncStrategy) Config() Config {
 	return s.cfg
