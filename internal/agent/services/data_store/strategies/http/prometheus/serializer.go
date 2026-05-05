@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+
+	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 )
 
 // SerializeOptions tweaks the output format (reserved for future flags,
@@ -24,7 +26,7 @@ type SerializeOptions struct {
 // variants of the metric.
 //
 // Reference: https://prometheus.io/docs/instrumenting/exposition_formats/
-func SerializeToTextExposition(records []OtelRecord, w io.Writer, opts SerializeOptions) error {
+func SerializeToTextExposition(records []otelmapper.OtelRecord, w io.Writer, opts SerializeOptions) error {
 	// Group records by their final Prometheus metric name. Two OTel metrics
 	// collapsed into the same name (common pattern — e.g. hw.status emitted
 	// from drive.health AND drive.failure_predicted) are merged here.
@@ -34,7 +36,7 @@ func SerializeToTextExposition(records []OtelRecord, w io.Writer, opts Serialize
 		help        string
 		unit        string
 		firstOTel   string // first OTel name that produced this Prom name (for collision warnings)
-		rows        []OtelRecord
+		rows        []otelmapper.OtelRecord
 	}
 	groups := map[string]*group{}
 	// Preserve first-seen order for stable, human-friendly output.
@@ -80,7 +82,7 @@ func SerializeToTextExposition(records []OtelRecord, w io.Writer, opts Serialize
 	return nil
 }
 
-func writeGroup(w io.Writer, name, promType, help string, rows []OtelRecord, opts SerializeOptions) error {
+func writeGroup(w io.Writer, name, promType, help string, rows []otelmapper.OtelRecord, opts SerializeOptions) error {
 	if help != "" {
 		if _, err := fmt.Fprintf(w, "# HELP %s %s\n", name, HelpString(help)); err != nil {
 			return err

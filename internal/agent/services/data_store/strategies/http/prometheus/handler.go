@@ -4,23 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 )
-
-// CacheReader is the minimal interface the Prometheus handler requires from
-// the shared MetricCache. Defined locally to avoid a direct dependency on the
-// http package and keep the prometheus package self-contained and testable.
-type CacheReader interface {
-	// GetAll returns all currently cached metrics.
-	GetAll() []CacheMetric
-}
-
-// DefinitionLookup resolves a probe type (registry key) to its YAML
-// definition. In production this is implemented by transformers.TransformerRegistry;
-// in tests a simple map-backed implementation suffices.
-type DefinitionLookup interface {
-	GetProbeDefinition(probeType string) *transformers.ProbeDefinition
-}
 
 // WriteExposition reads all cache entries, resolves each through the probe
 // definition registry, and writes the Prometheus text exposition to w.
@@ -39,18 +24,18 @@ type DefinitionLookup interface {
 // Returns the number of OtelRecord lines written and the first error from
 // the io.Writer (if any).
 func WriteExposition(
-	reader CacheReader,
-	defs DefinitionLookup,
-	agentRecords []OtelRecord,
-	opts ResolveOptions,
+	reader otelmapper.CacheReader,
+	defs otelmapper.DefinitionLookup,
+	agentRecords []otelmapper.OtelRecord,
+	opts otelmapper.ResolveOptions,
 	w io.Writer,
-	errorHandler func(metric CacheMetric, err error),
+	errorHandler func(metric otelmapper.CacheMetric, err error),
 ) (int, error) {
 	metrics := reader.GetAll()
 	// Capacity is a lower-bound estimate; expand directives can multiply this
 	// (4-state hw.status → 4× per cache entry). The slice grows transparently
 	// — the hint just avoids the first few reallocations on small agents.
-	allRecords := make([]OtelRecord, 0, len(agentRecords)+len(metrics))
+	allRecords := make([]otelmapper.OtelRecord, 0, len(agentRecords)+len(metrics))
 	allRecords = append(allRecords, agentRecords...)
 
 	for _, m := range metrics {
@@ -61,7 +46,7 @@ func WriteExposition(
 			}
 			continue
 		}
-		recs, err := Resolve(def, m, opts)
+		recs, err := otelmapper.Resolve(def, m, opts)
 		if err != nil {
 			if errorHandler != nil {
 				errorHandler(m, err)

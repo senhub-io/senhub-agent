@@ -2,12 +2,14 @@ package prometheus
 
 import (
 	"time"
+
+	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 )
 
 // AgentMetricsSnapshot is a frozen-in-time view of the agent's own
 // operational state. The bridge in package http populates this from the
 // running strategy (cache stats, uptime, build info) and passes it to
-// BuildAgentRecords, which converts each field into an OtelRecord ready
+// BuildAgentRecords, which converts each field into an otelmapper.OtelRecord ready
 // for the serializer.
 //
 // Per IMPLEMENTATION-PLAN §9, agent self-metrics are ALWAYS emitted when
@@ -44,7 +46,7 @@ type AgentMetricsSnapshot struct {
 	BuildCommit  string
 }
 
-// BuildAgentRecords produces the OtelRecord set for the agent's own
+// BuildAgentRecords produces the otelmapper.OtelRecord set for the agent's own
 // self-observability metrics. Always emitted regardless of probe state.
 //
 // Metric definitions (per IMPLEMENTATION-PLAN §9):
@@ -57,10 +59,10 @@ type AgentMetricsSnapshot struct {
 // errors via agentstate.IncrementCollectErrors, http requests via the
 // CountRequests middleware, probes.healthy via push-based
 // agentstate.RecordProbeHealth from ProbePoller.collect).
-func BuildAgentRecords(snap AgentMetricsSnapshot) []OtelRecord {
+func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 	uptime := time.Since(snap.StartTime).Seconds()
 
-	records := []OtelRecord{
+	records := []otelmapper.OtelRecord{
 		{
 			Name:        "senhub.agent.uptime_seconds",
 			Unit:        "s",
@@ -114,10 +116,10 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []OtelRecord {
 		},
 	}
 
-	// HTTP requests by endpoint — one OtelRecord per (route template) pair.
+	// HTTP requests by endpoint — one otelmapper.OtelRecord per (route template) pair.
 	// Endpoint label keeps cardinality bounded to the number of registered routes.
 	for endpoint, count := range snap.HTTPRequestsByEndpoint {
-		records = append(records, OtelRecord{
+		records = append(records, otelmapper.OtelRecord{
 			Name: "senhub.agent.http.requests",
 			Unit: "{request}",
 			Type: "counter",
@@ -140,7 +142,7 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []OtelRecord {
 		if snap.BuildCommit != "" {
 			buildAttrs["commit"] = snap.BuildCommit
 		}
-		records = append(records, OtelRecord{
+		records = append(records, otelmapper.OtelRecord{
 			Name: "senhub.agent.build_info",
 			// Empty unit: by Prometheus convention, *_info metrics carry
 			// metadata via labels and have no unit suffix. Compatible with

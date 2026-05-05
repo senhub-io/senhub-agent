@@ -8,6 +8,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
+	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 )
 
 // newTextParser returns a TextParser initialized with LegacyValidation,
@@ -20,7 +21,7 @@ func newTextParser() expfmt.TextParser {
 // TestSerialize_ParsesWithExpfmt is the critical round-trip test: anything
 // we emit MUST parse with the canonical Prometheus text parser.
 func TestSerialize_ParsesWithExpfmt(t *testing.T) {
-	records := []OtelRecord{
+	records := []otelmapper.OtelRecord{
 		{
 			Name:        "system.cpu.utilization",
 			Unit:        "1",
@@ -83,7 +84,7 @@ func TestSerialize_ParsesWithExpfmt(t *testing.T) {
 func TestSerialize_GroupsSameMetricName(t *testing.T) {
 	// Two OTel records that collapse to the same Prometheus name should
 	// share a single HELP/TYPE header.
-	records := []OtelRecord{
+	records := []otelmapper.OtelRecord{
 		{
 			Name:       "system.cpu.time",
 			Unit:       "s",
@@ -110,7 +111,7 @@ func TestSerialize_GroupsSameMetricName(t *testing.T) {
 }
 
 func TestSerialize_LabelsEscaped(t *testing.T) {
-	records := []OtelRecord{
+	records := []otelmapper.OtelRecord{
 		{
 			Name:       "test.metric",
 			Unit:       "1",
@@ -148,7 +149,7 @@ func TestSerialize_DetectsLabelCollision(t *testing.T) {
 	})
 	t.Cleanup(func() { SetSerializerWarnFunc(nil) })
 
-	records := []OtelRecord{
+	records := []otelmapper.OtelRecord{
 		{
 			Name: "x.metric",
 			Unit: "1",
@@ -176,7 +177,7 @@ func TestSerialize_LabelCollisionDedup(t *testing.T) {
 	SetSerializerWarnFunc(func(format string, args ...interface{}) { count++ })
 	t.Cleanup(func() { SetSerializerWarnFunc(nil) })
 
-	records := []OtelRecord{
+	records := []otelmapper.OtelRecord{
 		{
 			Name:       "z.metric",
 			Unit:       "1",

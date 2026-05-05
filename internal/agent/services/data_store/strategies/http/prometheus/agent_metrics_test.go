@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 )
 
 func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
@@ -59,7 +60,7 @@ func TestBuildAgentRecords_BuildInfoEmittedWhenSet(t *testing.T) {
 		BuildCommit:  "abc1234",
 	}
 	recs := BuildAgentRecords(snap)
-	var buildRec *OtelRecord
+	var buildRec *otelmapper.OtelRecord
 	for i := range recs {
 		if recs[i].Name == "senhub.agent.build_info" {
 			buildRec = &recs[i]
