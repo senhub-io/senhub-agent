@@ -18,8 +18,9 @@ first as a pull endpoint; OTLP ships next as a push exporter).
 metric names, units, types, and attributes as the Prometheus `/metrics`
 exposition. Operators who scrape Prometheus today and switch to OTLP
 push tomorrow do **not** rewrite a single PromQL query — the names match
-because both paths consume the same OtelRecord stream produced by the
-existing resolver.
+because both paths consume the same `OtelRecord` stream produced by the
+neutral `otelmapper` package — see
+`internal/agent/services/data_store/otelmapper/`.
 
 **Scope:**
 - OTLP/gRPC over `go.opentelemetry.io/otel/exporters/otlp/otlpmetricgrpc`
@@ -76,13 +77,16 @@ new push sink that an operator opts into via `storage:`.
 
 ### 1.1 Metrics path
 
-Re-uses the resolver from the prometheus package:
+Re-uses the neutral `otelmapper` package — the same mapper that feeds
+the Prometheus exposition. No sink-to-sink dependency: both
+`prometheus/` and the new `otlp/` strategy import `otelmapper`, never
+each other.
 
 1. Periodically (`interval`, default 30 s), the otlp strategy reads all
    entries from `MetricCache.GetAllMetrics()`
-2. Calls `prometheus.Resolve(probeDef, cacheMetric, ResolveOptions{})`
-   — same code path as the Prometheus exposition
-3. Converts the resulting `[]OtelRecord` into the OTel SDK's
+2. Calls `otelmapper.Resolve(probeDef, cacheMetric, otelmapper.DefaultResolveOptions())`
+   — identical resolution to the Prometheus path
+3. Converts the resulting `[]otelmapper.OtelRecord` into the OTel SDK's
    `metricdata.ResourceMetrics` struct
 4. Hands it to `otlpmetricgrpc.Exporter.Export()`
 
@@ -95,9 +99,9 @@ behavior).
 
 ### 1.2 Logs path
 
-`syslog` and `event` probes today emit `DataPoint` instances that the
-resolver currently `skip`s for both Prometheus output and the OTLP
-metrics sink. We add a separate **log channel**:
+`syslog` and `event` probes today emit `DataPoint` instances that
+`otelmapper.Resolve` currently `skip`s for both Prometheus output and
+the OTLP metrics sink. We add a separate **log channel**:
 
 ```go
 // internal/agent/services/agentstate/log_channel.go
@@ -214,13 +218,12 @@ push capability.
 - Tests: lifecycle, config validation, shutdown drain
 
 ### Phase 2 — Metrics export
-- `metrics_exporter.go`: convert `[]OtelRecord` into
+- `metrics_exporter.go`: convert `[]otelmapper.OtelRecord` into
   `metricdata.ResourceMetrics`
 - Periodic push goroutine (driven by `signals.metrics.interval`)
 - Counter cumulative semantics (process start time, last value tracking)
-- Refactor `prometheus.Resolve` to be safely callable from outside the
-  prometheus package (already exported; just need the otlp strategy to
-  import the package)
+- Consume `otelmapper.Resolve` directly — neutral package with no
+  Prometheus or OTLP-specific code
 - Tests: round-trip via SDK's `metricdatatest` helpers
 
 ### Phase 3 — Logs export
