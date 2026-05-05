@@ -17,6 +17,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/event"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/http"
+	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/prtg"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/senhub"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
@@ -356,6 +357,9 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		d.logger.Debug().Msg("Initializing HTTP strategy")
 		strategy = http.NewHTTPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
 		d.logger.Debug().Bool("initialized", strategy != nil).Msg("HTTP strategy created")
+	case "otlp":
+		d.logger.Debug().Msg("Initializing OTLP strategy")
+		strategy = otlp.NewOTLPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
 	default:
 		d.logger.Error().
 			Any("params", strategyConfig.Params).
