@@ -225,6 +225,7 @@ func TestProbeRegistry(t *testing.T) {
 		"network",
 		"logicaldisk",
 		"syslog",
+		"linux_logs",
 		"event",
 		"otel",
 		"redfish",
