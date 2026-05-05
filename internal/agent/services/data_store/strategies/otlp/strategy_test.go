@@ -8,6 +8,7 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
@@ -111,20 +112,33 @@ func TestStrategy_StartShutdown(t *testing.T) {
 	}
 }
 
-func TestStrategy_AddDataPointsCounts(t *testing.T) {
+func TestStrategy_AddDataPointsStoresInLWWStore(t *testing.T) {
 	s := newTestStrategy(t, nil)
-	dps := []datapoint.DataPoint{{Name: "a"}, {Name: "b"}, {Name: "c"}}
+	identity := []tags.Tag{
+		{Key: "probe_name", Value: "cpu-1"},
+		{Key: "probe_type", Value: "cpu"},
+	}
+	dps := []datapoint.DataPoint{
+		{Name: "cpu_user", Value: 1.0, Tags: identity},
+		{Name: "cpu_user", Value: 2.0, Tags: identity}, // overwrites
+		{Name: "cpu_system", Value: 5.0, Tags: identity},
+	}
 	if err := s.AddDataPoints(dps); err != nil {
 		t.Fatalf("AddDataPoints err: %v", err)
 	}
-	if s.dataPointsSeen != 3 {
-		t.Errorf("dataPointsSeen=%d, want 3", s.dataPointsSeen)
+	// LWW: cpu_user collapses to one entry; cpu_system is separate.
+	if got := s.store.size(); got != 2 {
+		t.Errorf("store.size()=%d, want 2", got)
 	}
-	if err := s.AddDataPoints(dps); err != nil {
+
+	// A datapoint with no probe identity must be silently skipped — it
+	// has no way to find its YAML definition.
+	orphan := datapoint.DataPoint{Name: "no-identity", Value: 1.0}
+	if err := s.AddDataPoints([]datapoint.DataPoint{orphan}); err != nil {
 		t.Fatal(err)
 	}
-	if s.dataPointsSeen != 6 {
-		t.Errorf("dataPointsSeen=%d, want 6", s.dataPointsSeen)
+	if got := s.store.size(); got != 2 {
+		t.Errorf("orphan datapoint stored: size=%d, want 2", got)
 	}
 }
 
