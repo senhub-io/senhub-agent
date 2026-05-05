@@ -6,14 +6,15 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 )
 
 // fakeCacheReader implements CacheReader for tests.
 type fakeCacheReader struct {
-	metrics []CacheMetric
+	metrics []otelmapper.CacheMetric
 }
 
-func (f *fakeCacheReader) GetAll() []CacheMetric { return f.metrics }
+func (f *fakeCacheReader) GetAll() []otelmapper.CacheMetric { return f.metrics }
 
 // fakeDefinitionLookup implements DefinitionLookup for tests.
 type fakeDefinitionLookup struct {
@@ -108,7 +109,7 @@ func TestWriteExposition_EndToEnd(t *testing.T) {
 	}
 
 	reader := &fakeCacheReader{
-		metrics: []CacheMetric{
+		metrics: []otelmapper.CacheMetric{
 			{
 				ProbeName:  "cpu",
 				ProbeType:  "cpu",
@@ -157,7 +158,7 @@ func TestWriteExposition_EndToEnd(t *testing.T) {
 
 	var buf bytes.Buffer
 	var handlerErrors []error
-	count, err := WriteExposition(reader, defs, nil, DefaultResolveOptions(), &buf, func(m CacheMetric, err error) {
+	count, err := WriteExposition(reader, defs, nil, otelmapper.DefaultResolveOptions(), &buf, func(m otelmapper.CacheMetric, err error) {
 		handlerErrors = append(handlerErrors, err)
 	})
 	if err != nil {
@@ -231,7 +232,7 @@ func TestWriteExposition_EndToEnd(t *testing.T) {
 
 func TestWriteExposition_UnknownProbe(t *testing.T) {
 	reader := &fakeCacheReader{
-		metrics: []CacheMetric{
+		metrics: []otelmapper.CacheMetric{
 			{ProbeType: "mystery", MetricName: "x", Value: 1},
 		},
 	}
@@ -239,7 +240,7 @@ func TestWriteExposition_UnknownProbe(t *testing.T) {
 
 	var buf bytes.Buffer
 	var errs []string
-	count, err := WriteExposition(reader, defs, nil, DefaultResolveOptions(), &buf, func(m CacheMetric, err error) {
+	count, err := WriteExposition(reader, defs, nil, otelmapper.DefaultResolveOptions(), &buf, func(m otelmapper.CacheMetric, err error) {
 		errs = append(errs, err.Error())
 	})
 	if err != nil {
