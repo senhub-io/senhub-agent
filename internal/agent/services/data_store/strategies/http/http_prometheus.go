@@ -10,12 +10,13 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/http/prometheus"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 )
 
-// cacheAdapter satisfies prometheus.CacheReader by wrapping the strategy's
-// MetricCache. Converts internal.CachedMetric to prometheus.CacheMetric and
+// cacheAdapter satisfies otelmapper.CacheReader by wrapping the strategy's
+// MetricCache. Converts internal.CachedMetric to otelmapper.CacheMetric and
 // coerces interface{} values to float64.
 type cacheAdapter struct {
 	cache    *MetricCache
@@ -33,9 +34,9 @@ type cacheAdapter struct {
 	hostLevelCache map[string]bool
 }
 
-func (a *cacheAdapter) GetAll() []prometheus.CacheMetric {
+func (a *cacheAdapter) GetAll() []otelmapper.CacheMetric {
 	src := a.cache.GetAllMetrics()
-	out := make([]prometheus.CacheMetric, 0, len(src))
+	out := make([]otelmapper.CacheMetric, 0, len(src))
 	for _, m := range src {
 		val, ok := coerceToFloat64(m.Value)
 		if !ok {
@@ -45,7 +46,7 @@ func (a *cacheAdapter) GetAll() []prometheus.CacheMetric {
 		if a.excludeHostLevel && a.isHostLevelProbe(probeType) {
 			continue
 		}
-		out = append(out, prometheus.CacheMetric{
+		out = append(out, otelmapper.CacheMetric{
 			ProbeName:  m.ProbeName,
 			ProbeType:  probeType,
 			MetricName: m.MetricName,
@@ -86,7 +87,7 @@ func (a *cacheAdapter) isHostLevelProbe(probeType string) bool {
 	return hostLevel
 }
 
-// registryAdapter satisfies prometheus.DefinitionLookup.
+// registryAdapter satisfies otelmapper.DefinitionLookup.
 type registryAdapter struct {
 	registry *transformers.TransformerRegistry
 }
@@ -178,10 +179,10 @@ func (h *HTTPSyncStrategy) servePrometheusExposition(w http.ResponseWriter, _ *h
 		BuildCommit:            agentBuildCommit(),
 	})
 
-	resolveOpts := prometheus.ResolveOptions{
+	resolveOpts := otelmapper.ResolveOptions{
 		IncludeProbeTags: h.configManager.IsPrometheusIncludeProbeTags(),
 	}
-	count, err := prometheus.WriteExposition(reader, defs, agentRecords, resolveOpts, w, func(m prometheus.CacheMetric, errCb error) {
+	count, err := prometheus.WriteExposition(reader, defs, agentRecords, resolveOpts, w, func(m otelmapper.CacheMetric, errCb error) {
 		key := m.ProbeType + ":" + m.MetricName
 		if _, seen := prometheusWarnedMetrics.LoadOrStore(key, struct{}{}); seen {
 			return

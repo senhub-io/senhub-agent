@@ -1,4 +1,4 @@
-package prometheus
+package otelmapper
 
 import (
 	"testing"
