@@ -502,7 +502,7 @@ func TestCitrixProbe_GetTargetStrategies(t *testing.T) {
 
 	citrixProbe := probe.(*citrixProbe)
 	strategies := citrixProbe.GetTargetStrategies()
-	expected := []string{"senhub", "prtg", "http"}
+	expected := []string{"senhub", "prtg", "http", "otlp"}
 
 	assert.Equal(t, len(expected), len(strategies))
 	for i, strategy := range expected {
