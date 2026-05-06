@@ -183,12 +183,16 @@ func (v *JWTValidator) IsInGracePeriod(license *License) bool {
 	return time.Now().Before(gracePeriodEnd)
 }
 
-// Free tier probes - always available without license
+// Free tier probes - always available without license.
+// linux_logs joins the free tier as a host-level observability source on
+// the same footing as cpu/memory/network/logicaldisk: it observes the
+// machine the agent runs on, not a remote system.
 var freeTierProbes = map[string]bool{
 	"cpu":         true,
 	"memory":      true,
 	"logicaldisk": true,
 	"network":     true,
+	"linux_logs":  true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
