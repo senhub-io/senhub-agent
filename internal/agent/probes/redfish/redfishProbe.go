@@ -266,5 +266,5 @@ func (p *redfishProbe) OnShutdown(ctx context.Context) error {
 
 // GetTargetStrategies returns the strategies this probe's data should be sent to
 func (p *redfishProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg", "http"}
+	return []string{"senhub", "prtg", "http", "otlp"}
 }
