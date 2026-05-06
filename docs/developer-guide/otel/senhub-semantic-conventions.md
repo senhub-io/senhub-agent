@@ -605,6 +605,82 @@ Tous les probes sont mappés. La phase 0.5 est terminée.
 4. Valider avec l'équipe avant publication
 5. Mettre à jour le YAML de la probe concernée
 
+## 6bis. Single vocabulary, two transports — Prometheus + OTLP
+
+À partir de **0.1.89-beta** l'agent expose les mêmes métriques via deux
+transports : pull Prometheus (`/metrics`) et push OTLP/gRPC (storage
+`otlp`). Les deux chemins consomment **le même flux d'`OtelRecord`**
+produit par `internal/agent/services/data_store/otelmapper/`.
+
+```
+probe data
+   │
+   ▼
+otelmapper.Resolve  ──►  []OtelRecord  ──┬──►  Prometheus serializer  →  /metrics
+                                          │
+                                          └──►  OTLP exporter           →  otelcol / vmagent
+```
+
+**Conséquence pratique :** le chemin OTLP n'introduit aucune nouvelle
+convention. Tout ce qui est documenté dans §4 s'applique à l'identique
+côté push. Ce que change le mapper de sortie :
+
+| Sink              | Préfixe `senhub_` | Dots dans nom | Suffixes d'unité  | Ratios (`unit:1`) |
+|-------------------|-------------------|---------------|--------------------|-------------------|
+| Prometheus        | ajouté            | `_`           | `_seconds/_bytes/...` | converti côté serializer |
+| OTLP (wire OTLP)  | **non**           | `.` conservés | absent (porté par le champ `unit`) | géré côté mapper |
+
+Le `prometheusremotewrite` du collecteur applique ensuite ses propres
+règles, qui correspondent **exactement** aux règles du serializer
+Prometheus de l'agent — sauf le préfixe `senhub_` qui est local au
+serializer. Un opérateur qui ingère le push OTLP dans VictoriaMetrics
+interroge :
+
+```promql
+# Push OTLP via collecteur (prometheusremotewrite)
+system_memory_usage_bytes{system_memory_state="used"}
+# Pull Prometheus direct
+senhub_system_memory_usage_bytes{system_memory_state="used"}
+```
+
+Les **dimensions** (probe_name, probe_type, attributs sémantiques type
+`cpu.mode`, `system.memory.state`, `hw.state`) sont **identiques** sur
+les deux chemins. Aliasing PromQL → un seul vocabulaire à apprendre.
+
+### Resource attributes (OTLP only)
+
+Le push OTLP attache des **resource attributes** par batch que le pull
+Prometheus n'a pas (Prometheus colle ces dimensions sur chaque série
+directement). Mappage standard :
+
+| Attribut OTel              | Source côté agent                            |
+|----------------------------|----------------------------------------------|
+| `service.name`             | `storage[otlp].params.resource.service.name` (défaut `senhub-agent`) |
+| `service.instance.id`      | 8 premiers caractères de `agent.key` par défaut, override possible   |
+| `service.version`          | version de build (ldflags)                   |
+| `deployment.environment`   | operator override                            |
+| Extras                     | n'importe quel autre couple clé-valeur sous `resource:` |
+
+Les receivers convertissent généralement ces attributs en labels
+Prometheus via `resource_to_telemetry_conversion: enabled: true` côté
+collector. Sans cette option, le push OTLP perd `service.name` dans
+VictoriaMetrics — bug courant à diagnostiquer.
+
+### Logs signal — convention OTel respectée
+
+Le signal logs (probes `syslog`, `event`, `linux_logs`) est purement
+OTel : aucune convention `senhub.*` au niveau du log record lui-même,
+les attributs sont les attributs standards (`syslog.facility`,
+`syslog.hostname`, `syslog.appname`, `host.name`, `systemd.unit`,
+`process.pid`, `process.executable.name`). Seul le payload du probe
+`event` (libre par construction) est namespacé `senhub.event.*`.
+
+Mapping severité : la table RFC 5424 → OTel SeverityNumber appliquée
+côté producteur (helper `agentstate.SyslogPriorityToSeverity`). Les
+chemins du probe `event` (qui accepte des sévérités texte type EMERG,
+ERR, WARNING, …) utilisent une table équivalente — mêmes valeurs
+numériques en sortie OTel.
+
 ## 7. Versioning
 
 Ce document n'a pas (encore) de numéro de version. Une fois la V1 complète (15 probes mappées) publiée dans 0.1.88, il passera en SemVer 1.0.0. Tout changement de nom/attribut/unité = major bump.
