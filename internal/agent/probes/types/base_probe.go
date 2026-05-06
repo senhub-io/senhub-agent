@@ -16,9 +16,13 @@ type BaseProbe struct {
 }
 
 // GetTargetStrategies returns the default storage strategies
-// for collected metrics (senhub, prtg, and http)
+// for collected metrics. "otlp" is included so that an operator who
+// declares an otlp storage in their configuration sees probe data
+// flow there automatically, alongside senhub/prtg/http. Strategies
+// that are not configured are silently skipped by the data_store
+// router, so listing them here is harmless when they're absent.
 func (p *BaseProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg", "http"}
+	return []string{"senhub", "prtg", "http", "otlp"}
 }
 
 // SetOnDataPoints registers the callback for handling collected datapoints
