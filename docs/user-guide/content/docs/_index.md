@@ -14,7 +14,8 @@ SenHub Agent is a monitoring collector that runs on your infrastructure and coll
 3. **[CLI Reference]({{< relref "/docs/cli" >}})** - All available commands
 4. **[Web Interface]({{< relref "/docs/web-interface" >}})** - Dashboard and monitoring system integration
 5. **[Prometheus / VictoriaMetrics]({{< relref "/docs/prometheus" >}})** - `/metrics` endpoint, OTel-aligned naming, scrape examples
-6. **[HTTP/HTTPS]({{< relref "/docs/http-https" >}})** - Set up the REST API and HTTPS
+6. **[OTLP / OpenTelemetry]({{< relref "/docs/otlp" >}})** - Native OTLP/gRPC push of metrics + logs (collectors, vmagent, Grafana Cloud)
+7. **[HTTP/HTTPS]({{< relref "/docs/http-https" >}})** - Set up the REST API and HTTPS
 
 ## Probes
 
