@@ -1,10 +1,9 @@
-package prometheus
+package agentmetrics
 
 import (
-	"bytes"
-	"strings"
 	"testing"
 	"time"
+
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 )
 
@@ -103,44 +102,6 @@ func TestBuildAgentRecords_OmitBuildInfoWhenEmpty(t *testing.T) {
 	for _, r := range recs {
 		if r.Name == "senhub.agent.build_info" {
 			t.Errorf("build.info should not be emitted when version+commit are empty")
-		}
-	}
-}
-
-func TestBuildAgentRecords_SerializesToValidPrometheus(t *testing.T) {
-	snap := AgentMetricsSnapshot{
-		StartTime:    time.Now().Add(-1 * time.Minute),
-		CacheEntries: 12,
-		ProbesActive: 2,
-		BuildVersion: "0.1.88",
-		BuildCommit:  "abc1234",
-	}
-	recs := BuildAgentRecords(snap)
-
-	var buf bytes.Buffer
-	if err := SerializeToTextExposition(recs, &buf, SerializeOptions{}); err != nil {
-		t.Fatalf("Serialize err: %v", err)
-	}
-	body := buf.String()
-	t.Logf("Output:\n%s", body)
-
-	// Round-trip through the canonical Prometheus parser.
-	p := newTextParser()
-	parsed, err := p.TextToMetricFamilies(strings.NewReader(body))
-	if err != nil {
-		t.Fatalf("expfmt parse err: %v\nbody:\n%s", err, body)
-	}
-	for _, want := range []string{
-		"senhub_agent_uptime_seconds",
-		"senhub_agent_cache_entries",
-		"senhub_agent_probes_active",
-		"senhub_agent_probes_total",
-		"senhub_agent_probes_healthy",
-		"senhub_agent_collect_errors_total",
-		"senhub_agent_build_info",
-	} {
-		if _, ok := parsed[want]; !ok {
-			t.Errorf("missing metric %q in parsed output (got %v)", want, keys(parsed))
 		}
 	}
 }
