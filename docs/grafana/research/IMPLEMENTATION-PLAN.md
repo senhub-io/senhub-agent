@@ -168,17 +168,63 @@ Each ships with:
 
 ### 2.2 — Windows host (5 dashboards)
 
-**Same order, fewer dashboards.** No live data on sha901/sha501
-(both are Linux). Verification path:
-- Either deploy a third agent on a Windows test VM
-- OR mark dashboards "verified for Linux equivalents, Windows panels
-  to validate when an agent runs there" — accept this gap until a
-  Windows host comes online.
+**Same order, fewer dashboards.** Windows is **fully validated live**
+in this phase — a Windows host gets deployed alongside the existing
+sha901/sha501 Linux agents.
 
-**Decision needed before this step:** spin up a Windows test VM, or
-defer? Recommendation: defer — when the first real Windows customer
-ships, validate then. Mark dashboards as "Windows v1 — Linux-tested
-queries adapted to Windows metric names".
+**Windows host deployment** (~1 h, included in Phase 2 budget):
+
+1. Build: `make build-windows` produces `senhub-agent_windows_amd64.exe`
+   (already present in `dist/`).
+2. Install on the Windows host:
+   - Copy the binary to `C:\Program Files\SenHub\senhub-agent.exe`
+   - Drop the config at `C:\ProgramData\SenHub\config.yaml`
+     (same shape as Linux config — same `${env:OTLP_BEARER_TOKEN}`
+     pattern, `service.name: <hostname>-prod`)
+   - Register as a Windows service via the installer (existing `.msi`)
+     or `sc.exe create`
+3. Set the bearer in the service registry environment:
+   ```powershell
+   $svc = "SenHubAgent"
+   $token = "..."  # from age secret store
+   $env = @("OTLP_BEARER_TOKEN=$token")
+   Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\$svc" `
+     -Name "Environment" -Value $env -Type MultiString
+   Restart-Service $svc
+   ```
+4. Open the firewall on sha901 for the Windows host IP:
+   `ufw allow proto tcp from <ip> to any port 4317`
+5. Verify the host appears in VM with
+   `service_name="<hostname>-prod"` and the same 18 metric families
+   as Linux (Windows probes emit the same OTel names — only the
+   per-CPU-mode breakdown differs slightly).
+
+**Windows host: bbcloud** (Windows Server 2022, hostname `bbcloud`,
+SSH `sfadmin@51.77.231.102:5511`, accessible from this Mac).
+
+Real production-like host — dashboards get validated against actual
+Windows workload (services, processes, event logs) rather than a
+sterile test VM. Pattern mirrors the Linux deploy on sha501 (remote
+host pushes TLS+bearer to sha901:4317).
+
+Concrete steps:
+1. `make build-windows` (binary already in `dist/`).
+2. SCP binary + config to bbcloud (`scp -P 5511` with password).
+3. PowerShell setup script (single shell):
+   - Create `C:\Program Files\SenHub\` and `C:\ProgramData\SenHub\`
+   - Drop `senhub-agent.exe` + `config.yaml`
+   - Register a Windows service via `sc.exe create SenHubAgent`
+   - Set `OTLP_BEARER_TOKEN` on the service via registry
+     MultiString (per the runbook documented earlier)
+   - Start the service
+4. Open ufw on sha901 for bbcloud's IP (51.77.231.102):
+   `ufw allow proto tcp from 51.77.231.102 to any port 4317`
+5. Verify in VM: `service_name="bbcloud-prod"` series appear within
+   2 metric intervals.
+
+Once bbcloud is live, the 5 Windows dashboards get the same panel-
+by-panel validation as the Linux equivalents. No deferral, no
+"awaiting live data" caveat.
 
 ### 2.3 — Agent self-monitoring (1 dashboard)
 
