@@ -138,7 +138,7 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 	cfg := defaultConfig()
 
 	if v, ok := params["endpoint"].(string); ok && v != "" {
-		cfg.Endpoint = v
+		cfg.Endpoint = expandEnv(v)
 	}
 	if cfg.Endpoint == "" {
 		return cfg, fmt.Errorf("endpoint is required")
@@ -162,7 +162,11 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 	}
 
 	if hdrs := readStringMap(params["headers"]); hdrs != nil {
-		cfg.Headers = hdrs
+		// Expand ${env:VAR} references so bearer tokens / API keys can
+		// be loaded from environment (systemd EnvironmentFile on Linux,
+		// service env vars on Windows) instead of living in the config
+		// file in plaintext. Same syntax as the OTel collector.
+		cfg.Headers = expandEnvMap(hdrs)
 	}
 
 	if err := parseTLS(params["tls"], &cfg.TLS); err != nil {
@@ -297,6 +301,7 @@ func parseResource(raw interface{}, out *ResourceConfig) error {
 		if !ok {
 			return fmt.Errorf("resource.%s must be a string", k)
 		}
+		s = expandEnv(s)
 		switch k {
 		case "service.name":
 			out.ServiceName = s
