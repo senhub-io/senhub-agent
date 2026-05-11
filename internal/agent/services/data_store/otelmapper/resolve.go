@@ -83,7 +83,15 @@ func Resolve(def *transformers.ProbeDefinition, m CacheMetric, opts ResolveOptio
 	}
 
 	// Apply value conversion based on source unit → target OTel unit.
-	value := convertValue(m.Value, m.Unit, mdef.Otel.Unit, mdef.Otel.ValueScale)
+	// Source unit fallback: if the cache entry has no unit tag, use the
+	// YAML metric definition's declared probe-side unit. Required for
+	// callers (e.g. the OTLP strategy) that read directly from datapoints
+	// without going through the http cache's transformer enrichment.
+	sourceUnit := m.Unit
+	if sourceUnit == "" {
+		sourceUnit = mdef.Unit
+	}
+	value := convertValue(m.Value, sourceUnit, mdef.Otel.Unit, mdef.Otel.ValueScale)
 
 	// Simple case: no expand — emit a single record.
 	if mdef.Otel.Expand == nil {
