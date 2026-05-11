@@ -152,17 +152,57 @@ If the OTLP push needs to be disabled:
    ~/.senhub/edit-secrets.sh   # remove the otlp: block
    ```
 
-## Known follow-ups
+## 2026-05-11 hardening pass — done
 
-- **Env-var expansion in agent OTLP config** — the agent currently
-  requires the bearer literal in `/etc/senhub-agent/config.yaml`
-  (mode 600 protects it but it's not the OTel collector pattern).
-  Implement `${env:VAR}` expansion in the `headers:` parser so the
-  agent matches the collector's substitution syntax and can read
-  the token from a systemd EnvironmentFile.
-- **Collector privkey access** — switch from `User=root` back to
-  `User=otel-collector` via a certbot deploy hook that copies the
-  material into a path readable by the otel-collector group.
+Three loose ends from the initial deployment were closed:
+
+1. **`${env:VAR}` expansion in agent OTLP config** — same syntax as
+   the OTel collector. Agent config no longer embeds the bearer in
+   plaintext; it references `${env:OTLP_BEARER_TOKEN}` and the value
+   is loaded from `/etc/senhub-agent/bearer.env` (mode 600 root) via
+   the unit's `EnvironmentFile=`. Config itself dropped to mode 644.
+
+2. **Collector hardened off root** — `otel-collector` user added to
+   `ssl-cert` group, certbot deploy hook at
+   `/etc/letsencrypt/renewal-hooks/deploy/otel-collector-perms.sh`
+   keeps the Let's Encrypt privkey at `640 root:ssl-cert` after every
+   renewal and reloads the collector. Unit reverted to
+   `User=otel-collector` with `SupplementaryGroups=ssl-cert`.
+   `bearer.env` ownership changed to `640 root:otel-collector`.
+
+3. **YAML lint guard** — `go test` in
+   `internal/agent/services/data_store/transformers/` walks every
+   definitions YAML and fails if a metric exposes an `otel:` block
+   without declaring its probe-side `unit:`. Prevents reintroducing
+   the OTLP-side scale bug on a new probe.
+
+## Deploying the same pattern on Windows
+
+The agent binary, OTLP config, and `${env:VAR}` expansion are
+cross-OS. Only the secret-loading mechanism differs:
+
+- **Linux (systemd)** — `EnvironmentFile=/etc/senhub-agent/bearer.env`
+  in the unit. File mode 600 root.
+- **Windows (services)** — set the env var on the service itself:
+
+  ```powershell
+  # Run once as Administrator
+  $svcName = "SenHubAgent"
+  $token   = "<paste from age secret store>"
+  $existing = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\$svcName" -Name "Environment" -ErrorAction SilentlyContinue).Environment
+  $newEnv = @("OTLP_BEARER_TOKEN=$token")
+  if ($existing) { $newEnv = $existing + $newEnv }
+  Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\$svcName" -Name "Environment" -Value $newEnv -Type MultiString
+  Restart-Service $svcName
+  ```
+
+  The agent process reads it via `os.Getenv` exactly like on Linux.
+  Acceptable trade-off: the token sits in the registry instead of a
+  file, but only the LocalSystem (or whichever the service runs as)
+  can read it; not visible in `ps`-style listings.
+
+## Known remaining follow-ups
+
 - **Linux logs cardinality** — `priority: 6` filters out debug, but
   on busy hosts the volume may still warrant a stricter filter
   (`priority: 4` for warnings+errors only) once we measure storage
