@@ -3,6 +3,7 @@ package prometheus
 import (
 	"time"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 )
 
@@ -130,6 +131,61 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Lifetime count of HTTP requests served per route template.",
 		})
 	}
+
+	// Process self-monitoring — calqued on Grafana Alloy's resources
+	// mixin so operators recognize the names. Captured at scrape time
+	// via agentstate.GetProcessSnapshot() (cross-OS, ~µs cost).
+	proc := agentstate.GetProcessSnapshot()
+	records = append(records,
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.process.cpu.time",
+			Unit:        "s",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       proc.CPUSecondsTotal,
+			Description: "Cumulative CPU time consumed by the agent process since startup, in seconds.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.process.memory.resident",
+			Unit:        "By",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(proc.ResidentMemoryBytes),
+			Description: "Resident set size of the agent process, in bytes (OS-reported VmRSS / WorkingSetSize). 0 if the running OS exposes no such counter.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.process.memory.heap",
+			Unit:        "By",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(proc.HeapBytes),
+			Description: "Go runtime heap memory currently allocated for objects, in bytes. Useful with process.memory.resident to spot heap-vs-OS memory leaks.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.process.goroutines",
+			Unit:        "{goroutine}",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(proc.Goroutines),
+			Description: "Number of goroutines currently running in the agent process. Monotonic growth typically indicates a goroutine leak.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.process.gc.cycles",
+			Unit:        "{cycle}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(proc.GCCyclesTotal),
+			Description: "Cumulative number of Go garbage collection cycles. Rate over time exposes GC pressure.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.process.open_fds",
+			Unit:        "{fd}",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(proc.OpenFDs),
+			Description: "Open file descriptors / Windows handles for the agent process. 0 if the running OS exposes no such counter.",
+		},
+	)
 
 	// Build info — gauge of value 1 with version + commit labels. Standard
 	// Prometheus pattern for static metadata that lets dashboards and
