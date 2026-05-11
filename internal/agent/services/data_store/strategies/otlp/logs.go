@@ -108,6 +108,7 @@ func (p *logsPipeline) emit(ctx context.Context, rec agentstate.LogRecord) {
 	}
 
 	p.logger.Emit(ctx, apiRec)
+	agentstate.IncrementOTLPLogsPushed()
 }
 
 // shutdown drains the BatchProcessor and shuts the provider down,
