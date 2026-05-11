@@ -10,6 +10,7 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/data_store/agentmetrics"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/http/prometheus"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
@@ -167,7 +168,7 @@ func (h *HTTPSyncStrategy) servePrometheusExposition(w http.ResponseWriter, _ *h
 	// Build agent self-metrics (uptime, cache, probes, collect errors,
 	// HTTP requests per endpoint, build info).
 	probesTotal, probesHealthy := agentstate.GetProbeCounts()
-	agentRecords := prometheus.BuildAgentRecords(prometheus.AgentMetricsSnapshot{
+	agentRecords := agentmetrics.BuildAgentRecords(agentmetrics.AgentMetricsSnapshot{
 		StartTime:              h.startTime,
 		CacheEntries:           h.cache.GetCacheInfo().TotalMetrics,
 		ProbesActive:           h.cache.GetCacheInfo().ProbeCount,
