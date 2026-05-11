@@ -440,6 +440,23 @@ metrics:
       unit: "{thread}"
       type: gauge
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Process count — cross-OS gauge of all processes on the host.
+  # Maps to OTel `system.processes.count` per OTel system semconv.
+  # Used by the SenHub Linux/Windows host dashboards' "running
+  # processes" panel.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "cpu_processes_total"
+    channel: "processes_total"
+    display_name: "Processes Total"
+    unit: "#"
+    category: "processes"
+    description: "Total number of processes on the host."
+    otel:
+      name: system.processes.count
+      unit: "{process}"
+      type: gauge
+
 tag_metadata:
   core:
     type: resource
