@@ -15,9 +15,12 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		ProbesActive: 3,
 	}
 	recs := BuildAgentRecords(snap)
-	// Must include uptime, cache.entries, probes.active. No build info because empty.
-	if len(recs) != 6 {
-		t.Fatalf("expected 6 records (no build info, no http requests), got %d", len(recs))
+	// Must include: uptime + cache.entries + probes.{active,total,healthy} +
+	// collect.errors + 6 process self-monitoring metrics (cpu.time,
+	// memory.{resident,heap}, goroutines, gc.cycles, open_fds). 12 total.
+	// No build info because empty, no http requests because empty map.
+	if len(recs) != 12 {
+		t.Fatalf("expected 12 records (no build info, no http requests), got %d", len(recs))
 	}
 
 	names := map[string]bool{}
@@ -31,6 +34,12 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		"senhub.agent.probes.total",
 		"senhub.agent.probes.healthy",
 		"senhub.agent.collect.errors",
+		"senhub.agent.process.cpu.time",
+		"senhub.agent.process.memory.resident",
+		"senhub.agent.process.memory.heap",
+		"senhub.agent.process.goroutines",
+		"senhub.agent.process.gc.cycles",
+		"senhub.agent.process.open_fds",
 	} {
 		if !names[want] {
 			t.Errorf("missing record: %q", want)
