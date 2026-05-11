@@ -53,6 +53,12 @@ func (u *unixCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, er
 		u.logger.Warn().Err(err).Msg("Could not collect per-core metrics")
 	}
 
+	// Collect process count (cross-OS metric — needed for the host
+	// dashboards' "running processes" panel à la node_exporter)
+	if err := u.collectProcessesCount(&dataPoints, timestamp, baseTags); err != nil {
+		u.logger.Warn().Err(err).Msg("Could not collect process count")
+	}
+
 	// If we couldn't collect any metrics at all, return an error
 	if len(dataPoints) == 0 {
 		return nil, fmt.Errorf("failed to collect any CPU metrics")
@@ -172,6 +178,28 @@ func (u *unixCollector) collectPerCoreMetrics(dataPoints *[]data_store.DataPoint
 		})
 	}
 
+	return nil
+}
+
+// collectProcessesCount emits the count of running processes on the
+// host. Sources `load.Misc()` which on Linux reads /proc/stat
+// (procs_running + procs_blocked + ProcsTotal) — cheap, single file
+// open. On Darwin and *BSD where /proc isn't available, gopsutil
+// falls back to a sysctl call; same single-syscall cost.
+//
+// Mapped via cpu.yaml to OTel `system.processes.count` (gauge,
+// unit `{process}`) per the OTel system semconv.
+func (u *unixCollector) collectProcessesCount(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
+	misc, err := load.Misc()
+	if err != nil {
+		return fmt.Errorf("error getting process count: %v", err)
+	}
+	*dataPoints = append(*dataPoints, data_store.DataPoint{
+		Name:      "cpu_processes_total",
+		Timestamp: timestamp,
+		Value:     float32(misc.ProcsTotal),
+		Tags:      baseTags,
+	})
 	return nil
 }
 
