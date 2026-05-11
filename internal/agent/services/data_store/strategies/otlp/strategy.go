@@ -12,6 +12,7 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/agentmetrics"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -212,18 +213,46 @@ func (s *OTLPSyncStrategy) startMetricsPusher() {
 			case <-s.pushDone:
 				return
 			case <-s.pushTicker.C:
-				s.pushOnce(context.Background())
+				s.pushPeriodic(context.Background())
 			}
 		}
 	}()
 }
 
-// pushOnce performs one snapshot/resolve/encode/export cycle. Errors
-// are logged but never propagated — the next tick gets a fresh
-// snapshot. Cumulative counter semantics mean the consumer sees no
-// gap from a transient export failure (the next push carries the same
-// or higher value).
-func (s *OTLPSyncStrategy) pushOnce(parent context.Context) {
+// pushPeriodic is the scheduled push driven by the metrics ticker.
+// It includes the agent self-metrics in every batch so dashboards
+// see continuous agent telemetry even when no probe data flowed in
+// the current tick.
+func (s *OTLPSyncStrategy) pushPeriodic(parent context.Context) {
+	probesTotal, probesHealthy := agentstate.GetProbeCounts()
+	agentRecords := agentmetrics.BuildAgentRecords(agentmetrics.AgentMetricsSnapshot{
+		StartTime:          s.startTime,
+		ProbesTotal:        probesTotal,
+		ProbesHealthy:      probesHealthy,
+		CollectErrorsTotal: agentstate.GetCollectErrorsTotal(),
+		BuildVersion:       cliArgs.Version,
+		BuildCommit:        cliArgs.CommitHash,
+	})
+	s.doPush(parent, agentRecords)
+}
+
+// pushDrain is the shutdown final push — emits only whatever probe
+// data sits in the store, no agent records. Splitting from the
+// periodic path keeps the shutdown sequence bounded: if the
+// collector is unreachable when the agent is stopping, we don't
+// generate fresh records that'll get stuck waiting for a dial that
+// will never succeed.
+func (s *OTLPSyncStrategy) pushDrain(parent context.Context) {
+	s.doPush(parent, nil)
+}
+
+// doPush is the shared work: snapshot the store, resolve through
+// otelmapper, push via the gRPC exporter. Errors are logged but
+// never propagated — the next tick gets a fresh snapshot.
+// Cumulative counter semantics mean the consumer sees no gap from
+// a transient export failure (the next push carries the same or
+// higher value).
+func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmapper.OtelRecord) {
 	if s.exporters == nil || s.exporters.metric == nil {
 		return
 	}
@@ -242,6 +271,7 @@ func (s *OTLPSyncStrategy) pushOnce(parent context.Context) {
 		s.startTime,
 		now,
 		resolveOpts,
+		extraRecords,
 		func(ctx context.Context, rm *metricdata.ResourceMetrics) error {
 			return s.exporters.metric.Export(ctx, rm)
 		},
@@ -334,7 +364,7 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// are best-effort: we still want to close the exporters even if
 	// the last push fails (collector down, etc.).
 	if s.exporters.metric != nil && s.cfg.Metrics.Enabled {
-		s.pushOnce(ctx)
+		s.pushDrain(ctx)
 	}
 
 	// Drain the log pipeline before shutting down the gRPC exporter.
