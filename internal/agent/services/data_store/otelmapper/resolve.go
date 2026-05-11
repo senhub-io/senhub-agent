@@ -83,10 +83,11 @@ func Resolve(def *transformers.ProbeDefinition, m CacheMetric, opts ResolveOptio
 	}
 
 	// Apply value conversion based on source unit → target OTel unit.
-	// Source unit fallback: if the cache entry has no unit tag, use the
-	// YAML metric definition's declared probe-side unit. Required for
-	// callers (e.g. the OTLP strategy) that read directly from datapoints
-	// without going through the http cache's transformer enrichment.
+	// Primary source: m.Unit (set by data_store.applyUnitCorrections from
+	// the YAML transformer before fan-out to strategies — see
+	// data_store.go). YAML fallback kept here as defense in depth: it
+	// keeps Resolve self-sufficient for direct callers (tests, future
+	// non-data_store entry points) without changing the production path.
 	sourceUnit := m.Unit
 	if sourceUnit == "" {
 		sourceUnit = mdef.Unit
