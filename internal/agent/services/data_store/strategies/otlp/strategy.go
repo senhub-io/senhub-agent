@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
@@ -248,10 +249,12 @@ func (s *OTLPSyncStrategy) pushOnce(parent context.Context) {
 	)
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("OTLP metrics export failed")
+		agentstate.IncrementOTLPExportErrors()
 		return
 	}
 	if count > 0 {
 		s.logger.Debug().Int("records_pushed", count).Msg("OTLP metrics exported")
+		agentstate.IncrementOTLPMetricsPushed(count)
 	}
 }
 
