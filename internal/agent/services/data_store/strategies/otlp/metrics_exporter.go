@@ -37,15 +37,21 @@ func pushMetrics(
 	startTime time.Time,
 	now time.Time,
 	resolveOpts otelmapper.ResolveOptions,
+	extraRecords []otelmapper.OtelRecord,
 	export func(context.Context, *metricdata.ResourceMetrics) error,
 	missingMappingHandler func(otelmapper.CacheMetric, error),
 ) (int, error) {
 	cms, _ := store.snapshot()
-	if len(cms) == 0 {
+	if len(cms) == 0 && len(extraRecords) == 0 {
 		return 0, nil
 	}
 
-	records := make([]otelmapper.OtelRecord, 0, len(cms))
+	// Agent self-metrics (extraRecords) are appended FIRST so they
+	// appear in the export batch even when no probe data flowed
+	// during this tick — operators get continuity on the agent's
+	// own resource graphs even when probes are quiet.
+	records := make([]otelmapper.OtelRecord, 0, len(extraRecords)+len(cms))
+	records = append(records, extraRecords...)
 	for _, cm := range cms {
 		def := defs.GetProbeDefinition(cm.ProbeType)
 		if def == nil {
