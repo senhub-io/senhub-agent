@@ -498,3 +498,85 @@ func TestGenerateStrategyId_UniqueForDifferentConfigs(t *testing.T) {
 		ids[id] = true
 	}
 }
+
+func TestApplyUnitCorrections_InjectsUnitTagFromYAML(t *testing.T) {
+	// The cpu probe sends "cpu_usage_total" with unit "%" declared in
+	// the YAML but no "unit" tag on the datapoint. After applyUnitCorrections,
+	// the datapoint must carry a "unit" tag = "%" so downstream consumers
+	// (OTLP) can trigger the % → ratio conversion in otelmapper.Resolve.
+	mockArgs := &cliArgs.ParsedArgs{}
+	baseLogger := logger.NewLogger(mockArgs)
+	ds := NewDataStore(&MockAgentConfig{}, &MockConfigProvider{}, baseLogger).(*dataStore)
+
+	in := []datapoint.DataPoint{{
+		Name:      "cpu_usage_total",
+		Value:     27.9,
+		Timestamp: time.Now(),
+		Tags: []tags.Tag{
+			{Key: "probe_name", Value: "cpu-local"},
+			{Key: "probe_type", Value: "cpu"},
+		},
+	}}
+	out := ds.applyUnitCorrections(in)
+	if len(out) != 1 {
+		t.Fatalf("got %d datapoints, want 1", len(out))
+	}
+	unitFound := ""
+	for _, tag := range out[0].Tags {
+		if tag.Key == "unit" {
+			unitFound = tag.Value
+		}
+	}
+	if unitFound != "%" {
+		t.Errorf("unit tag = %q, want \"%%\" (sourced from cpu.yaml unit declaration)", unitFound)
+	}
+}
+
+func TestApplyUnitCorrections_PreservesExistingUnitTag(t *testing.T) {
+	// Probes that DO emit a unit tag (e.g. variable-unit probes) must
+	// not be overridden by the YAML default. The injection only fires
+	// when the tag is absent.
+	mockArgs := &cliArgs.ParsedArgs{}
+	baseLogger := logger.NewLogger(mockArgs)
+	ds := NewDataStore(&MockAgentConfig{}, &MockConfigProvider{}, baseLogger).(*dataStore)
+
+	in := []datapoint.DataPoint{{
+		Name:      "cpu_usage_total",
+		Value:     27.9,
+		Timestamp: time.Now(),
+		Tags: []tags.Tag{
+			{Key: "probe_name", Value: "cpu-local"},
+			{Key: "probe_type", Value: "cpu"},
+			{Key: "unit", Value: "custom"},
+		},
+	}}
+	out := ds.applyUnitCorrections(in)
+	unitFound := ""
+	unitCount := 0
+	for _, tag := range out[0].Tags {
+		if tag.Key == "unit" {
+			unitFound = tag.Value
+			unitCount++
+		}
+	}
+	if unitCount != 1 || unitFound != "custom" {
+		t.Errorf("unit tag should be preserved verbatim, got value=%q count=%d", unitFound, unitCount)
+	}
+}
+
+func TestApplyUnitCorrections_NoProbeIdentitySkipsEnrichment(t *testing.T) {
+	// Datapoints without probe identity (probe_name/type tags) are
+	// passed through untouched — they can't be routed to a transformer.
+	mockArgs := &cliArgs.ParsedArgs{}
+	baseLogger := logger.NewLogger(mockArgs)
+	ds := NewDataStore(&MockAgentConfig{}, &MockConfigProvider{}, baseLogger).(*dataStore)
+
+	in := []datapoint.DataPoint{{
+		Name:  "orphan_metric",
+		Value: 42,
+	}}
+	out := ds.applyUnitCorrections(in)
+	if len(out[0].Tags) != 0 {
+		t.Errorf("orphan datapoint got tags injected: %+v", out[0].Tags)
+	}
+}
