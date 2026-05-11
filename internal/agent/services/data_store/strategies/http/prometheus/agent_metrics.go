@@ -132,6 +132,59 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		})
 	}
 
+	// OTLP push self-metrics — counters about the OTLP strategy's
+	// own activity. Per IMPLEMENTATION-PLAN §7, exposed on the
+	// Prometheus path only (not pushed via OTLP itself) to avoid
+	// feedback loops where a failing OTLP export emits metrics that
+	// also need to go through OTLP.
+	//
+	// Always emitted, even when the OTLP strategy is not configured:
+	// counters at 0 communicate "no activity" clearly, and the
+	// dashboards using these metrics handle the all-zero case
+	// gracefully.
+	records = append(records,
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.metrics.pushed",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPMetricsPushedTotal()),
+			Description: "Cumulative count of metric records successfully pushed via OTLP/gRPC.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.logs.pushed",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPLogsPushedTotal()),
+			Description: "Cumulative count of log records emitted via OTLP/gRPC.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.export.errors",
+			Unit:        "{error}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPExportErrorsTotal()),
+			Description: "Cumulative count of OTLP exports that failed after retries were exhausted.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.dropped_log_records",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetDroppedLogRecordsTotal()),
+			Description: "Cumulative count of log records dropped due to subscriber backpressure on the agent log channel.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.buffer.fill_ratio",
+			Unit:        "1",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       agentstate.LogChannelFillRatio(),
+			Description: "Highest fill ratio (0..1) across all active log channel subscriptions at scrape time. Approaches 1 means the consumer is falling behind producers.",
+		},
+	)
+
 	// Process self-monitoring — calqued on Grafana Alloy's resources
 	// mixin so operators recognize the names. Captured at scrape time
 	// via agentstate.GetProcessSnapshot() (cross-OS, ~µs cost).
