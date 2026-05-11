@@ -405,14 +405,14 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 
 	for i, dp := range datapoints {
 		// Convert tags from []tags.Tag to map[string]string for transformer
-		tags := make(map[string]string)
+		tagMap := make(map[string]string)
 		for _, tag := range dp.Tags {
-			tags[tag.Key] = tag.Value
+			tagMap[tag.Key] = tag.Value
 		}
 
 		// Get probe name and type from tags to load appropriate transformer
-		probeName := tags["probe_name"]
-		probeType := tags["probe_type"]
+		probeName := tagMap["probe_name"]
+		probeType := tagMap["probe_type"]
 		if probeName == "" {
 			// If no probe_name, copy datapoint as-is
 			correctedDatapoints[i] = dp
@@ -445,7 +445,7 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 		}); ok {
 			// Convert value to float64 for correction calculation
 			originalFloat64 := float64(dp.Value)
-			if newValue, applied := defTransformer.ApplyUnitCorrection(dp.Name, originalFloat64, tags); applied {
+			if newValue, applied := defTransformer.ApplyUnitCorrection(dp.Name, originalFloat64, tagMap); applied {
 				correctedValue = float32(newValue)
 				correctionCount++
 
@@ -459,12 +459,34 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 			}
 		}
 
+		// Inject the unit tag from the YAML definition when the probe
+		// didn't add one. Producers (cpu, memory, …) emit raw DataPoints
+		// without a unit tag and rely on the YAML to declare it; without
+		// the tag, downstream strategies that consume DataPoints directly
+		// (OTLP push, future Zabbix, …) cannot trigger unit-based
+		// conversions in otelmapper.Resolve (% → ratio, MB → bytes, …)
+		// and emit wrong absolute values.
+		//
+		// Done once here, in the data_store, so every strategy receives
+		// a fully-tagged datapoint. Single source of truth: the YAML.
+		enrichedTags := dp.Tags
+		if _, hasUnit := tagMap["unit"]; !hasUnit {
+			if unitProvider, ok := transformer.(interface {
+				GetUnit(metricName string) string
+			}); ok {
+				if u := unitProvider.GetUnit(dp.Name); u != "" {
+					enrichedTags = append([]tags.Tag{}, dp.Tags...)
+					enrichedTags = append(enrichedTags, tags.Tag{Key: "unit", Value: u})
+				}
+			}
+		}
+
 		// Create corrected datapoint
 		correctedDatapoints[i] = datapoint.DataPoint{
 			Name:      dp.Name,
 			Value:     correctedValue,
 			Timestamp: dp.Timestamp,
-			Tags:      dp.Tags, // Keep original tags structure
+			Tags:      enrichedTags,
 		}
 	}
 
