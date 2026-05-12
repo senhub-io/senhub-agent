@@ -4,7 +4,7 @@ Dashboards deployed via Grafana's file-based provisioning. Drop into
 the Grafana host's provisioned dashboards directory; the running
 Grafana picks them up within ~10 s (default `updateIntervalSeconds`).
 
-## Catalog v1 — 13 dashboards
+## Catalog v1 — 21 dashboards
 
 ### Linux host (7)
 
@@ -33,6 +33,26 @@ Grafana picks them up within ~10 s (default `updateIntervalSeconds`).
 | File | Dashboard | UID |
 |---|---|---|
 | `agent-self-monitoring.json` | SenHub Agent — Self-monitoring | `senhub-agent-self-monitoring` |
+
+### Vendor pack (8 dashboards — Phase 3)
+
+| File | Dashboard | UID |
+|---|---|---|
+| `veeam-jobs.json`              | SenHub Veeam — Jobs                  | `senhub-veeam-jobs` |
+| `veeam-repositories.json`      | SenHub Veeam — Repositories          | `senhub-veeam-repositories` |
+| `redfish-hardware-health.json` | SenHub Redfish — Hardware Health     | `senhub-redfish-hardware-health` |
+| `redfish-storage-raid.json`    | SenHub Redfish — Storage & RAID      | `senhub-redfish-storage-raid` |
+| `netscaler-ha-vservers.json`   | SenHub NetScaler — HA & VServers     | `senhub-netscaler-ha-vservers` |
+| `netscaler-appliance-ssl.json` | SenHub NetScaler — Appliance & SSL   | `senhub-netscaler-appliance-ssl` |
+| `citrix-sessions-logons.json`  | SenHub Citrix VDI — Sessions & Logons | `senhub-citrix-sessions-logons` |
+| `citrix-capacity-health.json`  | SenHub Citrix VDI — Capacity & Health | `senhub-citrix-capacity-health` |
+
+All vendor dashboards carry "**(awaiting live data)**" in their title
+until a customer pilot lights up the corresponding probe. Schema is
+validated, queries are cross-checked against
+`internal/agent/services/data_store/transformers/definitions/<probe>.yaml`
+canonical OTel names, but no production data has yet flowed through
+them on sha901. The annotation drops on the first customer go-live.
 
 ### Earlier / archived
 
