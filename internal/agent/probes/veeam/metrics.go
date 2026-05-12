@@ -161,8 +161,24 @@ func buildJobStateDetailMetrics(states []jobState, hoursToCheck int, now time.Ti
 		if js.Status == "Disabled" {
 			continue
 		}
-		jobTags := []tags.Tag{
-			{Key: "metric_type", Value: "jobs"},
+		// Two distinct metric_type tags split the per-job data into:
+		//   - jobs_status  : the single "Job Status" channel per job. This is
+		//                    what the consolidated PRTG sensor consumes — one
+		//                    coloured channel per job, no clutter.
+		//   - jobs_detail  : everything else (time since last run, bytes,
+		//                    bottleneck, object count). Deep-dive material for
+		//                    Grafana or a dedicated "Veeam Performance" sensor.
+		//
+		// Splitting at tag-level (rather than per-metric naming convention)
+		// keeps the Sensor Builder UX clean: the operator picks "Job Status"
+		// as a single chip and gets exactly six channels for six jobs.
+		statusTags := []tags.Tag{
+			{Key: "metric_type", Value: "jobs_status"},
+			{Key: "job_name", Value: js.Name},
+			{Key: "job_type", Value: js.Type},
+		}
+		detailTags := []tags.Tag{
+			{Key: "metric_type", Value: "jobs_detail"},
 			{Key: "job_name", Value: js.Name},
 			{Key: "job_type", Value: js.Type},
 		}
@@ -173,7 +189,7 @@ func buildJobStateDetailMetrics(states []jobState, hoursToCheck int, now time.Ti
 			Name:      "veeam_job_status",
 			Timestamp: now,
 			Value:     computeJobStatusValue(js, now, hoursToCheck),
-			Tags:      jobTags,
+			Tags:      statusTags,
 		})
 
 		// Time since last run in seconds. Always emitted; -1 indicates
@@ -184,13 +200,13 @@ func buildJobStateDetailMetrics(states []jobState, hoursToCheck int, now time.Ti
 			secondsSince = float32(now.Sub(*js.LastRun).Seconds())
 		}
 		points = append(points, datapoint.DataPoint{
-			Name: "veeam_job_seconds_since", Timestamp: now, Value: secondsSince, Tags: jobTags,
+			Name: "veeam_job_seconds_since", Timestamp: now, Value: secondsSince, Tags: detailTags,
 		})
 
 		// Objects count is part of the job definition (not the last session),
 		// so it's available even for stale or never-run jobs.
 		points = append(points, datapoint.DataPoint{
-			Name: "veeam_job_objects_count", Timestamp: now, Value: float32(js.ObjectsCount), Tags: jobTags,
+			Name: "veeam_job_objects_count", Timestamp: now, Value: float32(js.ObjectsCount), Tags: detailTags,
 		})
 
 		// Session progress metrics (available for running or recently completed jobs)
@@ -199,23 +215,23 @@ func buildJobStateDetailMetrics(states []jobState, hoursToCheck int, now time.Ti
 
 			// Bottleneck (as numeric: 0=None, 1=Source, 2=Proxy, 3=Network, 4=Target)
 			points = append(points, datapoint.DataPoint{
-				Name: "veeam_job_bottleneck", Timestamp: now, Value: bottleneckValue(sp.Bottleneck), Tags: jobTags,
+				Name: "veeam_job_bottleneck", Timestamp: now, Value: bottleneckValue(sp.Bottleneck), Tags: detailTags,
 			})
 
 			// Data sizes in bytes
 			if sp.ProcessedSize != nil {
 				points = append(points, datapoint.DataPoint{
-					Name: "veeam_job_processed_bytes", Timestamp: now, Value: float32(*sp.ProcessedSize), Tags: jobTags,
+					Name: "veeam_job_processed_bytes", Timestamp: now, Value: float32(*sp.ProcessedSize), Tags: detailTags,
 				})
 			}
 			if sp.ReadSize != nil {
 				points = append(points, datapoint.DataPoint{
-					Name: "veeam_job_read_bytes", Timestamp: now, Value: float32(*sp.ReadSize), Tags: jobTags,
+					Name: "veeam_job_read_bytes", Timestamp: now, Value: float32(*sp.ReadSize), Tags: detailTags,
 				})
 			}
 			if sp.TransferredSize != nil {
 				points = append(points, datapoint.DataPoint{
-					Name: "veeam_job_transferred_bytes", Timestamp: now, Value: float32(*sp.TransferredSize), Tags: jobTags,
+					Name: "veeam_job_transferred_bytes", Timestamp: now, Value: float32(*sp.TransferredSize), Tags: detailTags,
 				})
 			}
 		}
