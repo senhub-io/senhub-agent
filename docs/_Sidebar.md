@@ -34,9 +34,6 @@
 - [Syslog](./probes/events/SYSLOG.md)
 - [Windows Events](./probes/winevents/README.md)
 
-### Telemetry
-- [OpenTelemetry](./probes/otel/README.md)
-
 ## Developer Guide
 - [Overview](./developer-guide/README.md)
 - [Architecture](./developer-guide/architecture.md)
