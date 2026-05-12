@@ -112,6 +112,44 @@ func TestStrategy_StartShutdown(t *testing.T) {
 	}
 }
 
+func TestStrategy_StartShutdown_WithTraces(t *testing.T) {
+	params := map[string]interface{}{
+		"endpoint": "127.0.0.1:65000",
+		"tls":      map[string]interface{}{"enabled": false},
+		"signals": map[string]interface{}{
+			"traces": map[string]interface{}{
+				"enabled":      true,
+				"sample_ratio": 1.0,
+			},
+		},
+	}
+	s := newTestStrategy(t, params)
+
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start returned: %v", err)
+	}
+	if s.exporters.trace == nil {
+		t.Errorf("trace exporter not built when traces enabled")
+	}
+	if s.traces == nil {
+		t.Errorf("traces pipeline not built when traces enabled")
+	}
+	// The provider must be registered as the global so any consumer
+	// resolving a tracer via otel.Tracer() reaches our exporter.
+	if s.traces.tracer == nil {
+		t.Errorf("traces pipeline tracer is nil")
+	}
+
+	// Shutdown without emitting spans: the BatchSpanProcessor has
+	// nothing queued so the unreachable endpoint never gets dialed —
+	// shutdown completes cleanly.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.Shutdown(ctx); err != nil {
+		t.Errorf("Shutdown returned: %v", err)
+	}
+}
+
 func TestStrategy_AddDataPointsStoresInLWWStore(t *testing.T) {
 	s := newTestStrategy(t, nil)
 	identity := []tags.Tag{
