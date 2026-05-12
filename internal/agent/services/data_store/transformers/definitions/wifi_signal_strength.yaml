@@ -1,0 +1,62 @@
+probe_name: "wifi_signal_strength"
+friendly_name: "WiFi Signal Strength"
+version: "3.0.0"
+multi_instance_labels: ["ssid", "bssid"]
+
+# Format v3 — OTel-first source of truth.
+# No OTel wifi semconv exists — extensions under senhub.system.network.wifi.*
+# See senhub-semantic-conventions §4.7.
+
+metrics:
+  - name: "wifi_signal_strength"
+    channel: "wifi_signal_strength"
+    display_name: "WiFi Signal Strength"
+    unit: "dBm"
+    category: "signal"
+    description: "WiFi signal strength in dBm (higher = stronger, typical range -30 to -90)"
+    otel:
+      name: senhub.system.network.wifi.signal_strength.dbm
+      unit: dBm
+      type: gauge
+    tag_to_attribute:
+      ssid: senhub.network.wifi.ssid
+      bssid: senhub.network.wifi.bssid
+
+  - name: "wifi_quality"
+    channel: "wifi_quality"
+    display_name: "WiFi Signal Quality"
+    unit: "%"
+    category: "signal"
+    description: "WiFi signal quality as a percentage (0-100)"
+    otel:
+      name: senhub.system.network.wifi.quality_ratio
+      unit: "1"
+      type: gauge
+      # Mapper converts % → ratio (÷100)
+    tag_to_attribute:
+      ssid: senhub.network.wifi.ssid
+      bssid: senhub.network.wifi.bssid
+
+tag_metadata:
+  ssid:
+    type: resource
+    label: "WiFi SSID"
+  bssid:
+    type: resource
+    label: "WiFi BSSID"
+  # System tags (injected by framework)
+  host:
+    type: resource
+    label: "Host"
+  os:
+    type: resource
+    label: "Operating System"
+  platform:
+    type: resource
+    label: "Platform"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"

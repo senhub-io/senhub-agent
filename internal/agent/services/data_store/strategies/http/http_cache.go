@@ -88,9 +88,6 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	"syslog":    {"event_id", "source"}, // Syslog events
-
-	// OpenTelemetry
-	"otel": {"service_name", "span_name"}, // OTEL traces/metrics
 }
 
 // MetricCache stores the latest metrics in memory with TTL, organized like a TSDB

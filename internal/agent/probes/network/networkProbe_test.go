@@ -94,8 +94,8 @@ func TestNetworkProbe_GetTargetStrategies(t *testing.T) {
 	if err == nil {
 		netProbe := probe.(*networkProbe)
 		strategies := netProbe.GetTargetStrategies()
-		if len(strategies) != 3 {
-			t.Errorf("GetTargetStrategies() returned %d, want 3", len(strategies))
+		if len(strategies) != 4 {
+			t.Errorf("GetTargetStrategies() returned %d, want 4", len(strategies))
 		}
 	}
 }

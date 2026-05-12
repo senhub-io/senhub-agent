@@ -8,10 +8,25 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
+
+// eventSeverityToOtel maps the event probe's accepted severity strings
+// (which mirror the syslog severity names) to OTel SeverityNumber per
+// the OTel logs data model. Entries match validSeverities exactly.
+var eventSeverityToOtel = map[string]agentstate.LogSeverity{
+	"EMERG":   24, // FATAL4
+	"ALERT":   23, // FATAL3
+	"CRIT":    22, // FATAL2
+	"ERR":     agentstate.LogSeverityError,
+	"WARNING": agentstate.LogSeverityWarn,
+	"NOTICE":  10, // INFO2
+	"INFO":    agentstate.LogSeverityInfo,
+	"DEBUG":   agentstate.LogSeverityDebug,
+}
 
 // Default values
 const (
@@ -193,6 +208,13 @@ func (p *EventProbe) handleEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dataPoint := p.processEvent(event)
+
+	// Publish to the agent's log channel for the OTLP strategy to
+	// ship as a structured log record. Independent of the data_store
+	// routing — the event is conceptually a log payload, even though
+	// the existing event strategy treats it as a DataPoint.
+	p.publishLog(event, dataPoint.Timestamp)
+
 	if p.callback == nil {
 		p.moduleLogger.Warn().Msg("Callback is not set")
 		return
@@ -206,6 +228,41 @@ func (p *EventProbe) handleEvent(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "Event processed successfully")
+}
+
+// publishLog converts a validated incoming HTTP event into an OTel-shaped
+// log record and pushes it onto the agent log channel. Validation has
+// already guaranteed the required fields are present and well-typed,
+// so this method only handles the safe-extract + map.
+func (p *EventProbe) publishLog(event map[string]interface{}, timestamp time.Time) {
+	severityStr, _ := event["severity"].(string)
+	body, _ := event["message"].(string)
+	host, _ := event["host"].(string)
+
+	attrs := map[string]string{
+		"event.host":     host,
+		"event.severity": severityStr,
+	}
+	for k, v := range event {
+		switch k {
+		case "host", "message", "severity", "timestamp":
+			continue
+		}
+		// Stringify all extras under a senhub.event.* namespace so
+		// the receiver can distinguish probe-supplied attributes
+		// from the standard ones above.
+		attrs["senhub.event."+k] = fmt.Sprintf("%v", v)
+	}
+
+	agentstate.PublishLog(agentstate.LogRecord{
+		Timestamp:         timestamp,
+		Severity:          eventSeverityToOtel[severityStr],
+		SeverityText:      severityStr,
+		Body:              body,
+		Attributes:        attrs,
+		ProducerProbeName: p.GetName(),
+		ProducerProbeType: "event",
+	})
 }
 
 // validateEvent validates the incoming event.

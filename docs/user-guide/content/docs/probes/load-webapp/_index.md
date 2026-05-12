@@ -18,6 +18,7 @@ The Load WebApp probe monitors HTTP/HTTPS web application performance by measuri
 ```yaml
 probes:
   - name: load_webapp
+    type: load_webapp
     params:
       url: "https://www.example.com"
       timeout: 30  # Request timeout in seconds (default: 30)
@@ -158,7 +159,7 @@ curl http://localhost:8080/api/{agentkey}/prtg/metrics
 }
 ```
 
-### Nagios/Icinga
+### Nagios
 
 Access Load WebApp metrics in Nagios format:
 
@@ -177,36 +178,6 @@ curl http://localhost:8080/api/{agentkey}/nagios/metrics?probe=load_webapp
 - `ttfb` - Time to First Byte with 1000ms warning, 5000ms critical
 - `total_time` - Total request time with 3000ms warning, 10000ms critical
 
-### Grafana/Prometheus
-
-Access metrics in Prometheus-compatible format:
-
-```bash
-# Prometheus format
-curl http://localhost:8080/api/{agentkey}/prometheus/metrics
-
-# Example output:
-# load_webapp_dnstime{url="https://www.example.com"} 12.5
-# load_webapp_connecttime{url="https://www.example.com"} 45.3
-# load_webapp_tlstime{url="https://www.example.com"} 87.5
-# load_webapp_ttfb{url="https://www.example.com"} 145.2
-# load_webapp_total_time{url="https://www.example.com"} 245.8
-```
-
-**Grafana Dashboard Queries:**
-```promql
-# Total load time over time
-load_webapp_total_time{url="https://www.example.com"}
-
-# DNS resolution performance
-load_webapp_dnstime{url=~".*"}
-
-# Backend processing time (TTFB)
-load_webapp_ttfb{url="https://api.example.com"}
-
-# TLS overhead percentage
-(load_webapp_tlstime / load_webapp_total_time) * 100
-```
 
 ### Web Interface
 
@@ -634,14 +605,17 @@ probes:
 
   # Server health
   - name: cpu
+    type: cpu
     params:
       interval: 30
 
   - name: memory
+    type: memory
     params:
       interval: 30
 
   - name: network
+    type: network
     params:
       interval: 60
 ```

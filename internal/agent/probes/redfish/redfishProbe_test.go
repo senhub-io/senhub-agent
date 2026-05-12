@@ -449,7 +449,7 @@ func TestRedfishProbeGetTargetStrategies(t *testing.T) {
 	redfishProbe := probe.(*redfishProbe)
 	strategies := redfishProbe.GetTargetStrategies()
 
-	expected := []string{"senhub", "prtg", "http"}
+	expected := []string{"senhub", "prtg", "http", "otlp"}
 	assert.Equal(t, expected, strategies)
 }
 

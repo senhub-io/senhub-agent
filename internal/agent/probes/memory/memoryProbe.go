@@ -23,7 +23,7 @@ type memoryProbe struct {
 }
 
 func (p *memoryProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg", "http"}
+	return []string{"senhub", "prtg", "http", "otlp"}
 }
 
 // NewMemoryProbe crée une nouvelle instance de Memory probe

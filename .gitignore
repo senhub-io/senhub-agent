@@ -122,3 +122,5 @@ docs/user-guide/resources/
 # Playwright MCP logs
 **/.playwright-mcp/
 
+internal/agent/probes/ibmi/
+

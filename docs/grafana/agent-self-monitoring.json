@@ -1,0 +1,240 @@
+{
+  "uid": "senhub-agent-self-monitoring",
+  "title": "SenHub Agent — Self-monitoring",
+  "tags": ["senhub", "agents", "self-monitoring"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Agent",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(senhub_agent_uptime_seconds, service_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "id": 1,
+      "title": "Fleet status",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "id": 10,
+      "title": "Agents reporting",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "count(count by(service_name) (senhub_agent_uptime_seconds{service_name=~\"$service\"}))", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background_solid" }
+    },
+    {
+      "type": "stat",
+      "id": 11,
+      "title": "Probes total",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_agent_probes_total{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat",
+      "id": 12,
+      "title": "Probes healthy",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_agent_probes_healthy{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat",
+      "id": 13,
+      "title": "Collect errors (total)",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_agent_collect_errors_total{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 100 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "row",
+      "id": 2,
+      "title": "Activity",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "id": 20,
+      "title": "Agent uptime (hours)",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_agent_uptime_seconds{service_name=~\"$service\"} / 3600", "legendFormat": "{{service_name}}" }],
+      "fieldConfig": { "defaults": { "decimals": 1, "unit": "h", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 0 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "id": 21,
+      "title": "Probes healthy / total",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "senhub_agent_probes_total{service_name=~\"$service\"}",   "legendFormat": "{{service_name}} total" },
+        { "refId": "B", "expr": "senhub_agent_probes_healthy{service_name=~\"$service\"}", "legendFormat": "{{service_name}} healthy" }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 0, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 0 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "id": 22,
+      "title": "Collect errors rate (per minute)",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "rate(senhub_agent_collect_errors_total{service_name=~\"$service\"}[$__rate_interval]) * 60", "legendFormat": "{{service_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "row",
+      "id": 3,
+      "title": "OTLP export health",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "id": 30,
+      "title": "Records pushed per second",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "rate(senhub_agent_otlp_metrics_pushed_total{service_name=~\"$service\"}[$__rate_interval])", "legendFormat": "{{service_name}} metrics" },
+        { "refId": "B", "expr": "rate(senhub_agent_otlp_logs_pushed_total{service_name=~\"$service\"}[$__rate_interval])",    "legendFormat": "{{service_name}} logs" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "id": 31,
+      "title": "Export errors / dropped records",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "rate(senhub_agent_otlp_export_errors_total{service_name=~\"$service\"}[$__rate_interval])",       "legendFormat": "{{service_name}} export errors/s" },
+        { "refId": "B", "expr": "rate(senhub_agent_otlp_dropped_log_records_total{service_name=~\"$service\"}[$__rate_interval])", "legendFormat": "{{service_name}} dropped logs/s" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "id": 32,
+      "title": "Log buffer fill ratio",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_agent_otlp_buffer_fill_ratio{service_name=~\"$service\"}", "legendFormat": "{{service_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "row",
+      "id": 4,
+      "title": "Process resources",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "id": 40,
+      "title": "CPU usage (fraction of 1 core)",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "rate(senhub_agent_process_cpu_time_seconds_total{service_name=~\"$service\"}[$__rate_interval])", "legendFormat": "{{service_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 2, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "id": 41,
+      "title": "Memory (RSS vs Go heap)",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "senhub_agent_process_memory_resident_bytes{service_name=~\"$service\"}", "legendFormat": "{{service_name}} RSS" },
+        { "refId": "B", "expr": "senhub_agent_process_memory_heap_bytes{service_name=~\"$service\"}",     "legendFormat": "{{service_name}} heap" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "id": 42,
+      "title": "Goroutines & open FDs",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "senhub_agent_process_goroutines{service_name=~\"$service\"}", "legendFormat": "{{service_name}} goroutines" },
+        { "refId": "B", "expr": "senhub_agent_process_open_fds{service_name=~\"$service\"}",   "legendFormat": "{{service_name}} fds" }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 0, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 5 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "row",
+      "id": 5,
+      "title": "Build info",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "id": 50,
+      "title": "Agent versions & commits",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_agent_build_info{service_name=~\"$service\"}", "format": "table", "instant": true }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true, "Value": true, "__name__": true,
+              "deployment_environment": true, "host": true, "host_name": true,
+              "instance": true, "job": true, "os": true, "platform": true,
+              "service_instance_id": true
+            },
+            "renameByName": {
+              "service_name":    "Service",
+              "service_version": "Service version",
+              "version":         "Build version",
+              "commit":          "Commit"
+            }
+          }
+        }
+      ],
+      "options": { "showHeader": true }
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

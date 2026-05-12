@@ -30,7 +30,6 @@ structure:
         - "system" # cpu, memory, network, logicaldisk
         - "citrix"
         - "redfish"
-        - "otel"
 
     - name: "troubleshooting"
       audience: "all_users"

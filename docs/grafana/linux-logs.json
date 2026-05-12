@@ -1,0 +1,149 @@
+{
+  "uid": "senhub-linux-logs",
+  "title": "SenHub Linux — Logs",
+  "tags": ["senhub", "agents", "linux"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Server",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(system_memory_usage_bytes{os=\"linux\"}, service_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "severity",
+        "label": "Severity",
+        "type": "custom",
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": ["WARN", "ERROR", "FATAL"], "value": ["WARN", "ERROR", "FATAL"] },
+        "options": [
+          { "text": "TRACE",  "value": "TRACE",  "selected": false },
+          { "text": "DEBUG",  "value": "DEBUG",  "selected": false },
+          { "text": "INFO",   "value": "INFO",   "selected": false },
+          { "text": "WARN",   "value": "WARN",   "selected": true },
+          { "text": "ERROR",  "value": "ERROR",  "selected": true },
+          { "text": "FATAL",  "value": "FATAL",  "selected": true },
+          { "text": "FATAL2", "value": "FATAL2", "selected": false },
+          { "text": "FATAL3", "value": "FATAL3", "selected": false },
+          { "text": "FATAL4", "value": "FATAL4", "selected": false }
+        ]
+      },
+      {
+        "name": "search",
+        "label": "Search text",
+        "type": "textbox",
+        "current": { "text": "", "value": "" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "id": 1,
+      "title": "Volume",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "id": 10,
+      "title": "Total logs (range)",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 1 },
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
+          "expr": "service.name:~\"$service\" | stats count() AS total",
+          "editorMode": "code",
+          "queryType": "stats"
+        }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background_solid" }
+    },
+    {
+      "type": "stat",
+      "id": 11,
+      "title": "Errors (range)",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 1 },
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
+          "expr": "service.name:~\"$service\" AND severity:~\"ERROR|FATAL\" | stats count() AS errors",
+          "editorMode": "code",
+          "queryType": "stats"
+        }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 50 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat",
+      "id": 12,
+      "title": "Warnings (range)",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 1 },
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
+          "expr": "service.name:~\"$service\" AND severity:\"WARN\" | stats count() AS warnings",
+          "editorMode": "code",
+          "queryType": "stats"
+        }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "row",
+      "id": 2,
+      "title": "Stream",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "panels": []
+    },
+    {
+      "type": "logs",
+      "id": 20,
+      "title": "Recent logs",
+      "gridPos": { "h": 20, "w": 24, "x": 0, "y": 6 },
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
+          "expr": "service.name:~\"$service\" AND severity:~\"$severity\" AND _msg:~\".*${search:raw}.*\"",
+          "editorMode": "code",
+          "queryType": "instant",
+          "maxLines": 500
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

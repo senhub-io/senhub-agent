@@ -1,0 +1,117 @@
+{
+  "uid": "senhub-windows-cpu-system",
+  "title": "SenHub Windows — CPU & System",
+  "tags": ["senhub", "agents", "windows"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Server",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(system_memory_usage_bytes{os=\"windows\"}, service_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "Headline", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "type": "stat", "id": 10, "title": "Avg CPU utilization",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "avg by(service_name) (system_cpu_utilization_ratio{service_name=~\"$service\"})", "legendFormat": "{{service_name}}", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.6 }, { "color": "red", "value": 0.85 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name", "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "type": "stat", "id": 11, "title": "Memory used",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "system_memory_utilization_ratio{service_name=~\"$service\"}", "legendFormat": "{{service_name}}", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.9 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name", "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "type": "stat", "id": 12, "title": "CPU queue length",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_system_cpu_queue_length{service_name=~\"$service\"}", "legendFormat": "{{service_name}}", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 2 }, { "color": "red", "value": 5 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name", "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "type": "stat", "id": 13, "title": "Processes",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "system_processes_count{service_name=~\"$service\"}", "legendFormat": "{{service_name}}", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name", "colorMode": "value" }
+    },
+    { "type": "row", "id": 2, "title": "CPU detail", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 20, "title": "CPU utilization per core",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "system_cpu_utilization_ratio{service_name=~\"$service\"}", "legendFormat": "{{service_name}} / cpu{{cpu_logical_number}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    {
+      "type": "timeseries", "id": 21, "title": "CPU time by mode (rate)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum by(service_name, cpu_mode) (rate(system_cpu_time_seconds_total{service_name=~\"$service\"}[$__rate_interval]))", "legendFormat": "{{service_name}} / {{cpu_mode}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 20, "stacking": { "mode": "normal", "group": "A" } } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    { "type": "row", "id": 3, "title": "Windows-specific", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 30, "title": "DPC + interrupts rate",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "senhub_system_cpu_dpcs_per_second{service_name=~\"$service\"}",       "legendFormat": "{{service_name}} DPCs/s" },
+        { "refId": "B", "expr": "senhub_system_cpu_dpcs_queued_per_second{service_name=~\"$service\"}", "legendFormat": "{{service_name}} DPC queued/s" },
+        { "refId": "C", "expr": "senhub_system_cpu_interrupts_per_second{service_name=~\"$service\"}",  "legendFormat": "{{service_name}} interrupts/s" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 5 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    {
+      "type": "timeseries", "id": 31, "title": "Paging activity",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "senhub_system_paging_faults_per_second{service_name=~\"$service\"}",     "legendFormat": "{{service_name}} faults/s" },
+        { "refId": "B", "expr": "senhub_system_paging_operations_per_second{service_name=~\"$service\"}", "legendFormat": "{{service_name}} ops/s" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    { "type": "row", "id": 4, "title": "Memory", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 40, "title": "Memory usage by state (stacked)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "system_memory_usage_bytes{service_name=~\"$service\",system_memory_state!=\"\"}", "legendFormat": "{{service_name}} / {{system_memory_state}}" }],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15, "stacking": { "mode": "normal", "group": "A" } } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    {
+      "type": "timeseries", "id": 41, "title": "Paging file peak utilization",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_system_paging_utilization_peak_ratio{service_name=~\"$service\"}", "legendFormat": "{{service_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    }
+  ],
+  "schemaVersion": 39, "version": 1
+}
