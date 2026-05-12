@@ -87,8 +87,6 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 | | [Metrics](probes/redfish/METRICS.md) | Complete metrics reference |
 | | [Tags](probes/redfish/REDFISH-TAGS.md) | Redfish tagging system |
 | | [Tag Enhancement](probes/redfish/REDFISH-TAG-ENHANCEMENT.md) | Advanced tagging |
-| **OpenTelemetry** | [README](probes/otel/README.md) | Overview and configuration |
-| | [Metrics](probes/otel/METRICS.md) | Complete metrics reference |
 
 ## 🎯 Quick Navigation by Use Case
 
@@ -173,7 +171,6 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
   - **[Event](probes/event/README.md)** - Custom HTTP event endpoint
 - **[Citrix CVAD](probes/citrix/)** - Citrix Virtual Apps and Desktops monitoring
 - **[Redfish Hardware](probes/redfish/)** - Server hardware monitoring via Redfish
-- **[OpenTelemetry](probes/otel/)** - OTEL integration
 - **[All Probes](user-guide/PROBE-CONFIGURATION.md)** - Complete probe configuration guide
 
 ### Integration & APIs
