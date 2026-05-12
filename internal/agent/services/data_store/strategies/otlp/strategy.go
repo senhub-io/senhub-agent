@@ -6,6 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
 
@@ -267,10 +270,27 @@ func (s *OTLPSyncStrategy) pushDrain(parent context.Context) {
 // Cumulative counter semantics mean the consumer sees no gap from
 // a transient export failure (the next push carries the same or
 // higher value).
+//
+// The push is wrapped in an OTel span so operators can correlate
+// export latency / failure with the same observability backend that
+// receives the metrics. The span is a no-op when traces are disabled
+// (otel.Tracer returns the global noop tracer in that case).
 func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmapper.OtelRecord) {
 	if s.exporters == nil || s.exporters.metric == nil {
 		return
 	}
+
+	tracer := otel.Tracer(tracesScopeName)
+	parent, span := tracer.Start(parent, "otlp.push.metrics",
+		// Endpoint as attribute so split-backend configs (per-signal
+		// override) show the actual target the span pushed to.
+		// Set at start so it's present even if the push panics.
+	)
+	span.SetAttributes(
+		attribute.String("otlp.endpoint", s.cfg.Metrics.ResolveEndpoint(s.cfg.Endpoint)),
+	)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(parent, s.cfg.Timeout)
 	defer cancel()
 
@@ -292,11 +312,15 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 		},
 		s.warnMissingMappingOnce,
 	)
+	span.SetAttributes(attribute.Int("otlp.records_count", count))
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		s.logger.Warn().Err(err).Msg("OTLP metrics export failed")
 		agentstate.IncrementOTLPExportErrors()
 		return
 	}
+	span.SetStatus(codes.Ok, "")
 	if count > 0 {
 		s.logger.Debug().Int("records_pushed", count).Msg("OTLP metrics exported")
 		agentstate.IncrementOTLPMetricsPushed(count)
