@@ -34,4 +34,3 @@ Detailed documentation for each monitoring probe type supported by SenHub Agent.
 ### Advanced
 
 - **[WiFi Signal]({{< relref "/docs/probes/wifi-signal-strength" >}})** - Wireless signal quality (Pro)
-- **[OpenTelemetry]({{< relref "/docs/probes/otel" >}})** - OTLP metrics, traces, and logs (Enterprise)

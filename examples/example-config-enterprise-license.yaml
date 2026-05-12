@@ -122,17 +122,6 @@ probes:
       port: 5656
       protocol: "tcp"
 
-  # Observability
-  - name: otel-collector
-    type: otel
-    params:
-      endpoint: "http://localhost:4318"
-      interval: 60
-      telemetry_types:
-        - metrics
-        - traces
-        - logs
-
   # WiFi monitoring (if available)
   - name: wifi-monitor
     type: wifi_signal_strength

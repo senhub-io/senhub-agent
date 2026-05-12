@@ -313,7 +313,7 @@ Aucun fallback — toute métrique non mappée est silencieusement non émise da
 Lots de revue (ordre recommandé, revue user probe par probe) :
 1. **Système léger** (4 probes) : `cpu`, `memory`, `network`, `logicaldisk` — couverts par OTel semconv officiel
 2. **Réseau** (4 probes) : `ping_gateway`, `ping_webapp`, `load_webapp`, `wifi_signal_strength` — partiellement couverts par HTTP semconv
-3. **Events** (3 probes) : `syslog`, `event`, `otel` — voir [log semconv](https://opentelemetry.io/docs/specs/semconv/logs/)
+3. **Events** (2 probes) : `syslog`, `event` — voir [log semconv](https://opentelemetry.io/docs/specs/semconv/logs/)
 4. **Métier lourd** (4 probes) : `netscaler`, `citrix`, `redfish`, `veeam` — prioriser la veille communautaire (redfish a un exporter Prom reconnu)
 
 À chaque lot : veille OTel → PR YAML + mise à jour `senhub-semantic-conventions.md` → revue nommage → validation user → merge → lot suivant.
