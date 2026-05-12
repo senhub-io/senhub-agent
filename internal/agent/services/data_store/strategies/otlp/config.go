@@ -33,6 +33,10 @@ const (
 	DefaultLogsBatchSize      = 1000
 	DefaultLogsBatchTimeout   = 5 * time.Second
 	DefaultLogsBufferSize     = 10000
+	DefaultTracesBatchSize    = 512
+	DefaultTracesBatchTimeout = 5 * time.Second
+	DefaultTracesBufferSize   = 2048
+	DefaultTracesSampleRatio  = 1.0
 	DefaultRetryInitial       = 5 * time.Second
 	DefaultRetryMax           = 30 * time.Second
 	DefaultRetryMaxElapsed    = 1 * time.Minute
@@ -58,8 +62,29 @@ type RetryConfig struct {
 	MaxElapsedTime  time.Duration
 }
 
+// SignalTransport holds the per-signal transport overrides. Each
+// signal block (metrics/logs/traces) can override the root endpoint,
+// headers, and TLS — matching the OTel SDK convention of
+// OTEL_EXPORTER_OTLP_{METRICS,LOGS,TRACES}_ENDPOINT (etc.) taking
+// precedence over OTEL_EXPORTER_OTLP_ENDPOINT.
+//
+// All fields are optional. When a field is zero/empty/nil, the signal
+// inherits the corresponding root-level value. Headers replace (not
+// merge with) root headers when set — mirrors SDK semantics where
+// OTEL_EXPORTER_OTLP_METRICS_HEADERS fully overrides
+// OTEL_EXPORTER_OTLP_HEADERS rather than being unioned.
+type SignalTransport struct {
+	Endpoint string
+	Headers  map[string]string
+	// TLS is a pointer so we can distinguish "not set, inherit root"
+	// (nil) from "explicit zero value" (e.g., TLS disabled at signal
+	// level even when root has it enabled).
+	TLS *TLSConfig
+}
+
 // MetricsSignal holds metrics-specific knobs.
 type MetricsSignal struct {
+	SignalTransport
 	Enabled     bool
 	Interval    time.Duration
 	Temporality string // "cumulative" | "delta"
@@ -67,10 +92,26 @@ type MetricsSignal struct {
 
 // LogsSignal holds logs-specific knobs.
 type LogsSignal struct {
+	SignalTransport
 	Enabled      bool
 	BatchSize    int
 	BatchTimeout time.Duration
 	BufferSize   int // bounded queue; drop-oldest beyond this
+}
+
+// TracesSignal holds traces-specific knobs. Disabled by default — the
+// agent does not auto-instrument itself yet; this block is plumbing
+// for explicit span emission by future code or third-party libraries
+// that resolve via otel.GetTracerProvider().
+type TracesSignal struct {
+	SignalTransport
+	Enabled      bool
+	BatchSize    int
+	BatchTimeout time.Duration
+	BufferSize   int
+	// SampleRatio is the head sampling ratio (0.0 = drop all, 1.0 =
+	// keep all). Applied via sdktrace.ParentBased(TraceIDRatioBased).
+	SampleRatio float64
 }
 
 // ResourceConfig holds the OTel Resource attributes attached to every
@@ -96,7 +137,37 @@ type Config struct {
 	Retry       RetryConfig
 	Metrics     MetricsSignal
 	Logs        LogsSignal
+	Traces      TracesSignal
 	Resource    ResourceConfig
+}
+
+// ResolveEndpoint returns the endpoint to use for this signal: the
+// signal-specific override when set, else the root endpoint.
+func (t SignalTransport) ResolveEndpoint(rootEndpoint string) string {
+	if t.Endpoint != "" {
+		return t.Endpoint
+	}
+	return rootEndpoint
+}
+
+// ResolveHeaders returns the headers to use for this signal. When the
+// signal sets its own headers, they FULLY replace the root headers
+// (matches OTel SDK env-var semantics). Returns rootHeaders otherwise.
+func (t SignalTransport) ResolveHeaders(rootHeaders map[string]string) map[string]string {
+	if t.Headers != nil {
+		return t.Headers
+	}
+	return rootHeaders
+}
+
+// ResolveTLS returns the TLS config to use for this signal. When the
+// signal has its own TLS block (non-nil pointer), it fully overrides
+// the root TLS. Returns rootTLS otherwise.
+func (t SignalTransport) ResolveTLS(rootTLS TLSConfig) TLSConfig {
+	if t.TLS != nil {
+		return *t.TLS
+	}
+	return rootTLS
 }
 
 // defaultConfig returns a Config with all defaults applied.
@@ -125,6 +196,15 @@ func defaultConfig() Config {
 			BatchTimeout: DefaultLogsBatchTimeout,
 			BufferSize:   DefaultLogsBufferSize,
 		},
+		Traces: TracesSignal{
+			// Disabled by default — opt-in plumbing. Operators
+			// enable explicitly when they want span export.
+			Enabled:      false,
+			BatchSize:    DefaultTracesBatchSize,
+			BatchTimeout: DefaultTracesBatchTimeout,
+			BufferSize:   DefaultTracesBufferSize,
+			SampleRatio:  DefaultTracesSampleRatio,
+		},
 		Resource: ResourceConfig{
 			ServiceName: DefaultServiceName,
 			Extra:       map[string]string{},
@@ -139,9 +219,6 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 
 	if v, ok := params["endpoint"].(string); ok && v != "" {
 		cfg.Endpoint = expandEnv(v)
-	}
-	if cfg.Endpoint == "" {
-		return cfg, fmt.Errorf("endpoint is required")
 	}
 
 	if v, ok := params["compression"].(string); ok && v != "" {
@@ -175,14 +252,37 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 	if err := parseRetry(params["retry"], &cfg.Retry); err != nil {
 		return cfg, fmt.Errorf("retry: %w", err)
 	}
-	if err := parseSignals(params["signals"], &cfg.Metrics, &cfg.Logs); err != nil {
+	if err := parseSignals(params["signals"], &cfg.Metrics, &cfg.Logs, &cfg.Traces); err != nil {
 		return cfg, fmt.Errorf("signals: %w", err)
 	}
 	if err := parseResource(params["resource"], &cfg.Resource); err != nil {
 		return cfg, fmt.Errorf("resource: %w", err)
 	}
 
+	// Endpoint validation runs last so per-signal overrides can satisfy
+	// the requirement when the root is omitted. The root endpoint is
+	// only mandatory when at least one enabled signal lacks its own.
+	if err := validateEndpoints(cfg); err != nil {
+		return cfg, err
+	}
+
 	return cfg, nil
+}
+
+// validateEndpoints ensures that every enabled signal has a reachable
+// endpoint — either via its own SignalTransport.Endpoint or via the
+// root cfg.Endpoint fallback.
+func validateEndpoints(cfg Config) error {
+	if cfg.Metrics.Enabled && cfg.Metrics.ResolveEndpoint(cfg.Endpoint) == "" {
+		return fmt.Errorf("endpoint is required (root endpoint missing and signals.metrics.endpoint not set)")
+	}
+	if cfg.Logs.Enabled && cfg.Logs.ResolveEndpoint(cfg.Endpoint) == "" {
+		return fmt.Errorf("endpoint is required (root endpoint missing and signals.logs.endpoint not set)")
+	}
+	if cfg.Traces.Enabled && cfg.Traces.ResolveEndpoint(cfg.Endpoint) == "" {
+		return fmt.Errorf("endpoint is required (root endpoint missing and signals.traces.endpoint not set)")
+	}
+	return nil
 }
 
 func parseTLS(raw interface{}, out *TLSConfig) error {
@@ -243,7 +343,7 @@ func parseRetry(raw interface{}, out *RetryConfig) error {
 	return nil
 }
 
-func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal) error {
+func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, traces *TracesSignal) error {
 	m := readStringKeyedMap(raw)
 	if m == nil {
 		return nil
@@ -268,6 +368,9 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal) err
 				return fmt.Errorf("metrics.temporality must be 'cumulative' or 'delta', got %q", v)
 			}
 		}
+		if err := parseSignalTransport("metrics", mm, &metrics.SignalTransport); err != nil {
+			return err
+		}
 	}
 
 	if lm := readStringKeyedMap(m["logs"]); lm != nil {
@@ -287,8 +390,77 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal) err
 		if v, ok := readInt(lm["buffer_size"]); ok {
 			logs.BufferSize = v
 		}
+		if err := parseSignalTransport("logs", lm, &logs.SignalTransport); err != nil {
+			return err
+		}
+	}
+
+	if tm := readStringKeyedMap(m["traces"]); tm != nil {
+		if v, ok := tm["enabled"].(bool); ok {
+			traces.Enabled = v
+		}
+		if v, ok := readInt(tm["batch_size"]); ok {
+			traces.BatchSize = v
+		}
+		if v, ok := tm["batch_timeout"].(string); ok && v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil {
+				return fmt.Errorf("traces.batch_timeout: %w", err)
+			}
+			traces.BatchTimeout = d
+		}
+		if v, ok := readInt(tm["buffer_size"]); ok {
+			traces.BufferSize = v
+		}
+		if v, ok := readFloat(tm["sample_ratio"]); ok {
+			if v < 0 || v > 1 {
+				return fmt.Errorf("traces.sample_ratio must be between 0.0 and 1.0, got %v", v)
+			}
+			traces.SampleRatio = v
+		}
+		if err := parseSignalTransport("traces", tm, &traces.SignalTransport); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// parseSignalTransport reads the optional endpoint/headers/tls fields
+// inside a signals.<name> block and assigns them to the SignalTransport.
+// signalName is used purely for error context.
+func parseSignalTransport(signalName string, m map[string]interface{}, out *SignalTransport) error {
+	if v, ok := m["endpoint"].(string); ok && v != "" {
+		out.Endpoint = expandEnv(v)
+	}
+	if hdrs := readStringMap(m["headers"]); hdrs != nil {
+		out.Headers = expandEnvMap(hdrs)
+	}
+	if tlsRaw, present := m["tls"]; present && tlsRaw != nil {
+		// Start from the same defaults as the root TLS (Enabled=true)
+		// so an operator who writes `tls: {}` at the signal level gets
+		// TLS-on rather than accidentally falling back to plaintext.
+		tlsCfg := TLSConfig{Enabled: true}
+		if err := parseTLS(tlsRaw, &tlsCfg); err != nil {
+			return fmt.Errorf("%s.tls: %w", signalName, err)
+		}
+		out.TLS = &tlsCfg
+	}
+	return nil
+}
+
+// readFloat accepts int / int64 / float64 (Go-native or JSON decodes).
+func readFloat(raw interface{}) (float64, bool) {
+	switch v := raw.(type) {
+	case float64:
+		return v, true
+	case float32:
+		return float64(v), true
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	}
+	return 0, false
 }
 
 func parseResource(raw interface{}, out *ResourceConfig) error {
