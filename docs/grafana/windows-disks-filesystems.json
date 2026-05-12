@@ -1,0 +1,88 @@
+{
+  "uid": "senhub-windows-disks-filesystems",
+  "title": "SenHub Windows — Disks & Filesystems",
+  "tags": ["senhub", "agents", "windows"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Server",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(system_memory_usage_bytes{os=\"windows\"}, service_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "drive",
+        "label": "Drive",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(system_filesystem_utilization_ratio{service_name=~\"$service\"}, system_filesystem_mountpoint)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "Drive capacity", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "type": "bargauge", "id": 10, "title": "Drive used %",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "(1 - system_filesystem_utilization_ratio{service_name=~\"$service\",system_filesystem_mountpoint=~\"$drive\",system_filesystem_state=\"free\"})", "legendFormat": "{{service_name}} {{system_filesystem_mountpoint}}", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.8 }, { "color": "red", "value": 0.95 }] } } },
+      "options": { "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true }
+    },
+    {
+      "type": "bargauge", "id": 11, "title": "Drive bytes used",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "system_filesystem_usage_bytes{service_name=~\"$service\",system_filesystem_mountpoint=~\"$drive\",system_filesystem_state=\"free\"}", "legendFormat": "{{service_name}} {{system_filesystem_mountpoint}}", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "options": { "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true }
+    },
+    { "type": "row", "id": 2, "title": "Over time", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 11 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 20, "title": "Drive utilization",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "(1 - system_filesystem_utilization_ratio{service_name=~\"$service\",system_filesystem_mountpoint=~\"$drive\",system_filesystem_state=\"free\"})", "legendFormat": "{{service_name}} {{system_filesystem_mountpoint}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    {
+      "type": "timeseries", "id": 21, "title": "Disk I/O (bytes/sec)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_system_disk_io_per_second_bytes{service_name=~\"$service\"}", "legendFormat": "{{service_name}} {{system_disk_device}}" }],
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    { "type": "row", "id": 3, "title": "Disk activity", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 20 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 30, "title": "Disk operations per second",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_system_disk_operations_per_second{service_name=~\"$service\"}", "legendFormat": "{{service_name}} {{system_disk_device}}" }],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    {
+      "type": "timeseries", "id": 31, "title": "Disk queue length",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_system_disk_queue_length{service_name=~\"$service\"}", "legendFormat": "{{service_name}} {{system_disk_device}}" }],
+      "fieldConfig": { "defaults": { "decimals": 1, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 5 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    }
+  ],
+  "schemaVersion": 39, "version": 1
+}
