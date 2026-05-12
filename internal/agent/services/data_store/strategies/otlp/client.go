@@ -9,6 +9,8 @@ import (
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -24,6 +26,7 @@ import (
 type exporters struct {
 	metric *otlpmetricgrpc.Exporter
 	log    *otlploggrpc.Exporter
+	trace  *otlptrace.Exporter
 }
 
 // buildExporters constructs the OTel SDK exporters based on cfg.
@@ -58,15 +61,48 @@ func buildExporters(ctx context.Context, cfg Config) (*exporters, error) {
 		exp.log = le
 	}
 
+	if cfg.Traces.Enabled {
+		te, err := buildTraceExporter(ctx, cfg)
+		if err != nil {
+			if exp.metric != nil {
+				_ = exp.metric.Shutdown(ctx)
+			}
+			if exp.log != nil {
+				_ = exp.log.Shutdown(ctx)
+			}
+			return nil, fmt.Errorf("trace exporter: %w", err)
+		}
+		exp.trace = te
+	}
+
 	return exp, nil
 }
 
+// resolvedTransport bundles the effective per-signal transport values
+// (endpoint/headers/TLS) after applying root → signal override
+// resolution. Centralizing the resolution here keeps the three signal
+// builders symmetric.
+type resolvedTransport struct {
+	endpoint string
+	headers  map[string]string
+	tls      TLSConfig
+}
+
+func resolveTransport(cfg Config, sig SignalTransport) resolvedTransport {
+	return resolvedTransport{
+		endpoint: sig.ResolveEndpoint(cfg.Endpoint),
+		headers:  sig.ResolveHeaders(cfg.Headers),
+		tls:      sig.ResolveTLS(cfg.TLS),
+	}
+}
+
 func buildMetricExporter(ctx context.Context, cfg Config) (*otlpmetricgrpc.Exporter, error) {
+	rt := resolveTransport(cfg, cfg.Metrics.SignalTransport)
 	opts := []otlpmetricgrpc.Option{
-		otlpmetricgrpc.WithEndpoint(cfg.Endpoint),
+		otlpmetricgrpc.WithEndpoint(rt.endpoint),
 		otlpmetricgrpc.WithTimeout(cfg.Timeout),
 	}
-	creds, insec, err := tlsCredentials(cfg.TLS)
+	creds, insec, err := tlsCredentials(rt.tls)
 	if err != nil {
 		return nil, err
 	}
@@ -76,8 +112,8 @@ func buildMetricExporter(ctx context.Context, cfg Config) (*otlpmetricgrpc.Expor
 		opts = append(opts, otlpmetricgrpc.WithTLSCredentials(creds))
 	}
 
-	if len(cfg.Headers) > 0 {
-		opts = append(opts, otlpmetricgrpc.WithHeaders(cfg.Headers))
+	if len(rt.headers) > 0 {
+		opts = append(opts, otlpmetricgrpc.WithHeaders(rt.headers))
 	}
 	if cfg.Compression == "gzip" {
 		opts = append(opts, otlpmetricgrpc.WithCompressor("gzip"))
@@ -97,11 +133,12 @@ func buildMetricExporter(ctx context.Context, cfg Config) (*otlpmetricgrpc.Expor
 }
 
 func buildLogExporter(ctx context.Context, cfg Config) (*otlploggrpc.Exporter, error) {
+	rt := resolveTransport(cfg, cfg.Logs.SignalTransport)
 	opts := []otlploggrpc.Option{
-		otlploggrpc.WithEndpoint(cfg.Endpoint),
+		otlploggrpc.WithEndpoint(rt.endpoint),
 		otlploggrpc.WithTimeout(cfg.Timeout),
 	}
-	creds, insec, err := tlsCredentials(cfg.TLS)
+	creds, insec, err := tlsCredentials(rt.tls)
 	if err != nil {
 		return nil, err
 	}
@@ -111,8 +148,8 @@ func buildLogExporter(ctx context.Context, cfg Config) (*otlploggrpc.Exporter, e
 		opts = append(opts, otlploggrpc.WithTLSCredentials(creds))
 	}
 
-	if len(cfg.Headers) > 0 {
-		opts = append(opts, otlploggrpc.WithHeaders(cfg.Headers))
+	if len(rt.headers) > 0 {
+		opts = append(opts, otlploggrpc.WithHeaders(rt.headers))
 	}
 	if cfg.Compression == "gzip" {
 		opts = append(opts, otlploggrpc.WithCompressor("gzip"))
@@ -129,6 +166,42 @@ func buildLogExporter(ctx context.Context, cfg Config) (*otlploggrpc.Exporter, e
 	}
 
 	return otlploggrpc.New(ctx, opts...)
+}
+
+func buildTraceExporter(ctx context.Context, cfg Config) (*otlptrace.Exporter, error) {
+	rt := resolveTransport(cfg, cfg.Traces.SignalTransport)
+	opts := []otlptracegrpc.Option{
+		otlptracegrpc.WithEndpoint(rt.endpoint),
+		otlptracegrpc.WithTimeout(cfg.Timeout),
+	}
+	creds, insec, err := tlsCredentials(rt.tls)
+	if err != nil {
+		return nil, err
+	}
+	if insec {
+		opts = append(opts, otlptracegrpc.WithInsecure())
+	} else {
+		opts = append(opts, otlptracegrpc.WithTLSCredentials(creds))
+	}
+
+	if len(rt.headers) > 0 {
+		opts = append(opts, otlptracegrpc.WithHeaders(rt.headers))
+	}
+	if cfg.Compression == "gzip" {
+		opts = append(opts, otlptracegrpc.WithCompressor("gzip"))
+	}
+	if cfg.Retry.Enabled {
+		opts = append(opts, otlptracegrpc.WithRetry(otlptracegrpc.RetryConfig{
+			Enabled:         true,
+			InitialInterval: cfg.Retry.InitialInterval,
+			MaxInterval:     cfg.Retry.MaxInterval,
+			MaxElapsedTime:  cfg.Retry.MaxElapsedTime,
+		}))
+	} else {
+		opts = append(opts, otlptracegrpc.WithRetry(otlptracegrpc.RetryConfig{Enabled: false}))
+	}
+
+	return otlptracegrpc.New(ctx, opts...)
 }
 
 // tlsCredentials returns gRPC transport credentials. The bool result is
@@ -186,6 +259,11 @@ func (e *exporters) shutdown(ctx context.Context) error {
 	if e.log != nil {
 		if err := e.log.Shutdown(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("log exporter shutdown: %w", err))
+		}
+	}
+	if e.trace != nil {
+		if err := e.trace.Shutdown(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("trace exporter shutdown: %w", err))
 		}
 	}
 	if len(errs) == 0 {

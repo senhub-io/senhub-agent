@@ -63,6 +63,12 @@ type OTLPSyncStrategy struct {
 	logs     *logsPipeline
 	logsPump *logsPump
 
+	// traces holds the SDK BatchSpanProcessor + TracerProvider + Tracer
+	// when Traces.Enabled. nil otherwise. The provider also gets
+	// registered as the OTel global, so any code that resolves a tracer
+	// via otel.Tracer() reaches this exporter.
+	traces *tracesPipeline
+
 	// pushTicker drives the metrics push cadence. nil before Start, nil
 	// after Shutdown.
 	pushTicker *time.Ticker
@@ -184,14 +190,23 @@ func (s *OTLPSyncStrategy) Start() error {
 		s.logsPump.start()
 	}
 
+	if s.cfg.Traces.Enabled && s.exporters.trace != nil {
+		s.traces = buildTracesPipeline(s.exporters.trace, s.resource, s.cfg.Traces, cliArgs.Version)
+	}
+
 	s.logger.Info().
 		Str("endpoint", s.cfg.Endpoint).
 		Bool("tls_enabled", s.cfg.TLS.Enabled).
 		Bool("metrics_enabled", s.cfg.Metrics.Enabled).
+		Str("metrics_endpoint", s.cfg.Metrics.ResolveEndpoint(s.cfg.Endpoint)).
 		Dur("metrics_interval", s.cfg.Metrics.Interval).
 		Bool("logs_enabled", s.cfg.Logs.Enabled).
+		Str("logs_endpoint", s.cfg.Logs.ResolveEndpoint(s.cfg.Endpoint)).
 		Int("logs_batch_size", s.cfg.Logs.BatchSize).
 		Dur("logs_batch_timeout", s.cfg.Logs.BatchTimeout).
+		Bool("traces_enabled", s.cfg.Traces.Enabled).
+		Str("traces_endpoint", s.cfg.Traces.ResolveEndpoint(s.cfg.Endpoint)).
+		Float64("traces_sample_ratio", s.cfg.Traces.SampleRatio).
 		Str("compression", s.cfg.Compression).
 		Dur("timeout", s.cfg.Timeout).
 		Msg("OTLP strategy started")
@@ -375,6 +390,14 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	if s.logs != nil {
 		if err := s.logs.shutdown(ctx); err != nil {
 			s.logger.Warn().Err(err).Msg("OTLP logs pipeline shutdown failed")
+		}
+	}
+
+	// Same drain pattern for traces: provider.Shutdown flushes the
+	// BatchSpanProcessor before closing the underlying exporter.
+	if s.traces != nil {
+		if err := s.traces.shutdown(ctx); err != nil {
+			s.logger.Warn().Err(err).Msg("OTLP traces pipeline shutdown failed")
 		}
 	}
 
