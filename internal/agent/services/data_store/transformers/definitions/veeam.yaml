@@ -88,6 +88,38 @@ metrics:
     tag_to_attribute:
       job_type: senhub.veeam.job.type
 
+  - name: "veeam_jobs_stale"
+    channel: "veeam_jobs_stale"
+    display_name: "Jobs Stale ({job_type})"
+    unit: "#"
+    category: "overview"
+    multi_instance_labels: ["job_type"]
+    description: "Number of jobs whose last run is older than the configured hours_to_check window (backup cadence drift)"
+    otel:
+      name: senhub.veeam.jobs.by_last_result
+      unit: "{job}"
+      type: gauge
+      attributes:
+        senhub.veeam.job.last_result: stale
+    tag_to_attribute:
+      job_type: senhub.veeam.job.type
+
+  - name: "veeam_jobs_never_run"
+    channel: "veeam_jobs_never_run"
+    display_name: "Jobs Never Run ({job_type})"
+    unit: "#"
+    category: "overview"
+    multi_instance_labels: ["job_type"]
+    description: "Number of enabled jobs that have never executed (configured but never triggered)"
+    otel:
+      name: senhub.veeam.jobs.by_last_result
+      unit: "{job}"
+      type: gauge
+      attributes:
+        senhub.veeam.job.last_result: never_run
+    tag_to_attribute:
+      job_type: senhub.veeam.job.type
+
   # ═════════════════════════════════════════════════════════════════════════
   # PER-JOB DETAIL
   # ═════════════════════════════════════════════════════════════════════════
@@ -97,7 +129,7 @@ metrics:
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["job_name", "job_type"]
-    description: "Last run result: 0=None, 1=Success, 2=Warning, 3=Failed, 4=Running"
+    description: "Effective job status: 0=NeverRun, 1=Success, 2=Warning, 3=Failed, 4=Running, 5=Stale (last run older than hours_to_check window)"
     lookup: "senhub.veeam.job_status"
     otel:
       name: senhub.veeam.job.status
@@ -106,11 +138,12 @@ metrics:
       expand:
         attribute: senhub.veeam.job.state
         mapping:
-          none: 0
+          never_run: 0
           success: 1
           warning: 2
           failed: 3
           running: 4
+          stale: 5
     tag_to_attribute:
       job_name: senhub.veeam.job.name
       job_type: senhub.veeam.job.type
