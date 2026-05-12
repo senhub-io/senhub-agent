@@ -127,7 +127,9 @@ metrics:
     channel: "veeam_job_status"
     display_name: "Job Status ({job_name})"
     unit: "#"
-    category: "jobs"
+    # Dedicated category so a "Job Status" sensor picks up exactly one channel
+    # per job — the operator's primary backup-health view.
+    category: "jobs_status"
     multi_instance_labels: ["job_name", "job_type"]
     description: "Effective job status: 0=NeverRun, 1=Success, 2=Warning, 3=Failed, 4=Running, 5=Stale (last run older than hours_to_check window)"
     lookup: "senhub.veeam.job_status"
@@ -152,7 +154,7 @@ metrics:
     channel: "veeam_job_seconds_since"
     display_name: "Time Since Last Run ({job_name})"
     unit: "s"
-    category: "jobs"
+    category: "jobs_detail"
     multi_instance_labels: ["job_name", "job_type"]
     description: "Time elapsed since the last job run"
     otel:
@@ -167,7 +169,7 @@ metrics:
     channel: "veeam_job_objects_count"
     display_name: "Objects Count ({job_name})"
     unit: "#"
-    category: "jobs"
+    category: "jobs_detail"
     multi_instance_labels: ["job_name", "job_type"]
     description: "Number of objects processed by the job"
     otel:
@@ -182,7 +184,7 @@ metrics:
     channel: "veeam_job_bottleneck"
     display_name: "Bottleneck ({job_name})"
     unit: "#"
-    category: "jobs"
+    category: "jobs_detail"
     multi_instance_labels: ["job_name", "job_type"]
     description: "Bottleneck type: 0=None, 1=Source, 2=Proxy, 3=Network, 4=Target"
     lookup: "senhub.veeam.bottleneck"
@@ -206,7 +208,7 @@ metrics:
     channel: "veeam_job_processed_bytes"
     display_name: "Processed ({job_name})"
     unit: "Bytes"
-    category: "jobs"
+    category: "jobs_detail"
     multi_instance_labels: ["job_name", "job_type"]
     description: "Total size of all disks processed"
     otel:
@@ -223,7 +225,7 @@ metrics:
     channel: "veeam_job_read_bytes"
     display_name: "Read ({job_name})"
     unit: "Bytes"
-    category: "jobs"
+    category: "jobs_detail"
     multi_instance_labels: ["job_name", "job_type"]
     description: "Data read from source before compression/dedup"
     otel:
@@ -240,7 +242,7 @@ metrics:
     channel: "veeam_job_transferred_bytes"
     display_name: "Transferred ({job_name})"
     unit: "Bytes"
-    category: "jobs"
+    category: "jobs_detail"
     multi_instance_labels: ["job_name", "job_type"]
     description: "Data transferred after compression/dedup"
     otel:
@@ -580,7 +582,12 @@ tag_metadata:
     label: "Metric Category"
     value_labels:
       overview: "Job Overview"
-      jobs: "Job Details"
+      # `jobs_status` is the consolidated per-job channel (1 metric × N jobs).
+      # `jobs_detail` is the deep-dive (time, bytes, bottleneck, objects).
+      # Splitting them lets a PRTG sensor pick "Job Status" alone for a clean
+      # 1-channel-per-job view, without inheriting the performance metrics.
+      jobs_status: "Job Status"
+      jobs_detail: "Job Details"
       repositories: "Repositories"
       license: "License"
       proxies: "Proxies"
@@ -589,11 +596,11 @@ tag_metadata:
   job_type:
     type: resource
     label: "Job Type"
-    linked_categories: ["overview", "jobs"]
+    linked_categories: ["overview", "jobs_status", "jobs_detail"]
   job_name:
     type: resource
     label: "Job Name"
-    linked_categories: ["jobs"]
+    linked_categories: ["jobs_status", "jobs_detail"]
   repo_name:
     type: resource
     label: "Repository"
