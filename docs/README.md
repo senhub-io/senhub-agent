@@ -77,10 +77,6 @@ Specific documentation for monitoring probes:
   - [Tags](./probes/redfish/REDFISH-TAGS.md) - Redfish tagging system
   - [Tag Enhancement](./probes/redfish/REDFISH-TAG-ENHANCEMENT.md) - Advanced tagging
 
-- **[OpenTelemetry](./probes/otel/)** - OTEL metrics collection
-  - [README](./probes/otel/README.md) - Overview and configuration
-  - [Metrics](./probes/otel/METRICS.md) - Complete metrics reference
-
 ### 👨‍💻 [Developer Guide](./developer-guide/)
 Documentation for contributors and developers:
 - [Overview](./developer-guide/README.md) - Developer guide home
@@ -127,7 +123,6 @@ Historical documentation and development notes (for reference only)
 | Monitor Citrix CVAD | [Citrix Documentation](./probes/citrix/) |
 | Monitor NetScaler ADC (load balancers) | [NetScaler Documentation](./probes/netscaler/) |
 | Monitor hardware (servers) | [Redfish Documentation](./probes/redfish/) |
-| Integrate OpenTelemetry | [OTEL Documentation](./probes/otel/) |
 | Setup HTTPS | [HTTPS Configuration](./admin-guide/HTTPS-CONFIGURATION.md) |
 | Manage licenses | [License System](./LICENSE-SYSTEM.md) |
 | Fix offline issues | [Offline Troubleshooting](./troubleshooting/TROUBLESHOOTING-OFFLINE.md) |

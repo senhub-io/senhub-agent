@@ -610,7 +610,7 @@ func TestJWTValidator_IsProbeAuthorized(t *testing.T) {
 		{"Free tier: cpu", "cpu", true},
 		{"Free tier: memory", "memory", true},
 		{"Unauthorized: syslog", "syslog", false},
-		{"Unauthorized: otel", "otel", false},
+		{"Unauthorized: veeam", "veeam", false},
 	}
 
 	for _, tt := range tests {

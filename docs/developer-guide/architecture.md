@@ -71,7 +71,6 @@ type cpuProbe struct {
 - **Application Probes**: citrix (CVAD monitoring)
 - **Network Probes**: gateway (ping), webapp (HTTP monitoring)
 - **Event Probes**: syslog, winevents
-- **Telemetry Probes**: otel (OpenTelemetry)
 
 ### 2. DataStore
 
