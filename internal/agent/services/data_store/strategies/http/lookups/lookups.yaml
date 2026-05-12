@@ -264,12 +264,12 @@ netscaler.ha.sync_status:
 senhub.veeam.job_status:
   description: "Veeam Job Status"
   type: status
-  source: "Veeam REST API v1.3 - ESessionResult enum + Working state"
+  source: "Veeam REST API v1.3 - ESessionResult enum + agent-side derivation (Running/NeverRun/Stale)"
   mappings:
     0:
-      text: "NONE"
-      severity: "unknown"
-      description: "No session recorded"
+      text: "NEVER_RUN"
+      severity: "warning"
+      description: "Job is enabled but has never executed — worth verifying schedule"
     1:
       text: "SUCCESS"
       severity: "ok"
@@ -284,8 +284,12 @@ senhub.veeam.job_status:
       description: "Job failed"
     4:
       text: "RUNNING"
+      severity: "ok"
+      description: "Job is currently running — normal operation"
+    5:
+      text: "STALE"
       severity: "warning"
-      description: "Job is currently running"
+      description: "Last run is older than the configured hours_to_check window — backup cadence may have drifted"
   desired_value: 1
 
 senhub.veeam.license_status:
@@ -327,7 +331,14 @@ senhub.veeam.proxy_status:
   desired_value: 2
 
 senhub.veeam.bottleneck:
-  description: "Veeam Session Bottleneck"
+  # The bottleneck is diagnostic information — by design, every backup session
+  # has some stage that is the slowest (Source / Proxy / Network / Target). A
+  # backup running normally and writing as fast as the storage can absorb is
+  # reported as TARGET, which is the expected state for a well-sized job. We
+  # therefore keep the label visible to operators but never raise a severity
+  # event from it. If a customer wants performance alerts they should consume
+  # this metric in a Grafana threshold, not as a PRTG status channel.
+  description: "Veeam Session Bottleneck (informational, never raises an alert)"
   type: status
   source: "Veeam REST API v1.3 - ESessionBottleneckType enum"
   mappings:
@@ -337,21 +348,20 @@ senhub.veeam.bottleneck:
       description: "No bottleneck detected"
     1:
       text: "SOURCE"
-      severity: "warning"
-      description: "Bottleneck at source (proxy, network, or WAN)"
+      severity: "ok"
+      description: "Bottleneck at source (proxy, network, or WAN) — informational"
     2:
       text: "PROXY"
-      severity: "warning"
-      description: "Bottleneck at backup proxy"
+      severity: "ok"
+      description: "Bottleneck at backup proxy — informational"
     3:
       text: "NETWORK"
-      severity: "warning"
-      description: "Bottleneck in network or throttling"
+      severity: "ok"
+      description: "Bottleneck in network or throttling — informational"
     4:
       text: "TARGET"
-      severity: "warning"
-      description: "Bottleneck at target (proxy, network, WAN, or disk)"
-  desired_value: 0
+      severity: "ok"
+      description: "Bottleneck at target (proxy, network, WAN, or disk) — informational"
 
 senhub.veeam.server_status:
   description: "Veeam Managed Server Status"

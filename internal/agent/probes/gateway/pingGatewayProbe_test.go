@@ -85,7 +85,7 @@ func TestPingGatewayProbe_GetTargetStrategies(t *testing.T) {
 	probe, _ := NewPingGatewayProbe(map[string]interface{}{}, baseLogger)
 	pgProbe := probe.(*PingGatewayProbe)
 	strategies := pgProbe.GetTargetStrategies()
-	expected := []string{"senhub", "prtg", "http"}
+	expected := []string{"senhub", "prtg", "http", "otlp"}
 
 	if len(strategies) != len(expected) {
 		t.Errorf("GetTargetStrategies() returned %d strategies, want %d", len(strategies), len(expected))

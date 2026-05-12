@@ -18,6 +18,7 @@ The Ping Gateway probe monitors network connectivity to the default gateway or a
 ```yaml
 probes:
   - name: ping_gateway
+    type: ping_gateway
     params:
       interval: 30  # Collection interval in seconds (default: 30)
 ```
@@ -27,6 +28,7 @@ probes:
 ```yaml
 probes:
   - name: ping_gateway
+    type: ping_gateway
     params: {}
 ```
 
@@ -59,6 +61,7 @@ Platform-specific ping implementations are automatically selected based on the o
 ```yaml
 probes:
   - name: ping_gateway
+    type: ping_gateway
     params:
       interval: 10
 ```
@@ -67,6 +70,7 @@ probes:
 ```yaml
 probes:
   - name: ping_gateway
+    type: ping_gateway
     params:
       interval: 60
 ```
@@ -75,6 +79,7 @@ probes:
 ```yaml
 probes:
   - name: ping_gateway
+    type: ping_gateway
     params:
       interval: 300
 ```
@@ -142,7 +147,7 @@ curl http://localhost:8080/api/{agentkey}/prtg/metrics
 }
 ```
 
-### Nagios/Icinga
+### Nagios
 
 Access gateway metrics in Nagios format:
 
@@ -171,51 +176,6 @@ define service {
 }
 ```
 
-### Grafana/Prometheus
-
-Access metrics in Prometheus-compatible format:
-
-```bash
-# Prometheus format
-curl http://localhost:8080/api/{agentkey}/prometheus/metrics
-
-# Example output:
-# ping_gateway_average_latency{hostname="server01"} 15.3
-# ping_gateway_packet_loss{hostname="server01"} 0.0
-```
-
-**Grafana Dashboard Queries:**
-
-```promql
-# Gateway latency over time
-ping_gateway_average_latency{hostname="server01"}
-
-# Packet loss percentage
-ping_gateway_packet_loss{hostname="server01"}
-
-# Latency rate of change (detect spikes)
-rate(ping_gateway_average_latency{hostname="server01"}[5m])
-```
-
-**Alert Rules:**
-```yaml
-groups:
-  - name: gateway_connectivity
-    rules:
-      - alert: HighGatewayLatency
-        expr: ping_gateway_average_latency > 50
-        for: 5m
-        annotations:
-          summary: "High gateway latency on {{ $labels.hostname }}"
-          description: "Gateway latency is {{ $value }}ms (threshold: 50ms)"
-
-      - alert: GatewayPacketLoss
-        expr: ping_gateway_packet_loss > 1
-        for: 2m
-        annotations:
-          summary: "Gateway packet loss detected on {{ $labels.hostname }}"
-          description: "Packet loss is {{ $value }}% (threshold: 1%)"
-```
 
 ### Web Interface
 
@@ -488,10 +448,14 @@ Monitor multiple gateways or network paths:
 ```yaml
 probes:
   - name: ping_gateway_primary
+    type: ping_gateway
     params:
       interval: 30
 
   - name: ping_gateway_secondary
+    type: ping_gateway
+
+    type: ping_gateway
     params:
       interval: 60
 ```
@@ -506,11 +470,13 @@ Comprehensive network monitoring setup:
 probes:
   # Local network connectivity
   - name: ping_gateway
+    type: ping_gateway
     params:
       interval: 30
 
   # External connectivity and DNS
   - name: ping_webapp
+    type: ping_webapp
     params:
       interval: 60
       targets:
@@ -519,6 +485,7 @@ probes:
 
   # Interface metrics
   - name: network
+    type: network
     params:
       interval: 30
 ```

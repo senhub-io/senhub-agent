@@ -108,7 +108,7 @@ func parseLoadWebAppProbeConfig(config map[string]interface{}) (LoadWebAppProbeC
 }
 
 func (p *LoadWebAppProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg", "http"}
+	return []string{"senhub", "prtg", "http", "otlp"}
 }
 
 // Note: GetName() is now inherited from BaseProbe and will return the unique

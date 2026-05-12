@@ -1,9 +1,22 @@
 probe_name: "logicaldisk"
 friendly_name: "Logical Disk Metrics"
+version: "3.0.0"
+host_level: true
 multi_instance_labels: ["device", "mount_point", "drive"]
 
+# Format v3 — OTel-first source of truth:
+#   otel:              semantic convention (source of truth)
+#   tag_to_attribute:  mapping of cache tag names → OTel attribute names
+# Retro-compat fields (channel, display_name, category, description) unchanged.
+#
+# Probe type name "logicaldisk" preserved for JWT license + Windows Perfmon compat.
+# Metrics exposed under OTel system.filesystem.* and senhub.system.disk.* namespaces.
+
 metrics:
-  # Windows Performance Counter Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # WINDOWS — LogicalDisk Perfmon counters (per drive letter)
+  # ═════════════════════════════════════════════════════════════════════════
+
   - name: "disk_free_mb"
     channel: "disk_free_mb"
     display_name: "Disk Free Mb ({drive})"
@@ -11,6 +24,16 @@ metrics:
     multi_instance_labels: ["drive"]
     category: "capacity"
     description: "Free disk space in megabytes on the logical drive"
+    otel:
+      name: system.filesystem.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.filesystem.state: free
+      # Mapper converts MB→bytes (×1048576) when emitting to OTel/Prometheus
+      value_scale: 1048576
+    tag_to_attribute:
+      drive: system.filesystem.mountpoint
 
   - name: "disk_free_percent"
     channel: "disk_free_percent"
@@ -19,7 +42,37 @@ metrics:
     multi_instance_labels: ["drive"]
     category: "capacity"
     description: "Percentage of total disk space that is free on the logical drive"
+    otel:
+      name: system.filesystem.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        system.filesystem.state: free
+    tag_to_attribute:
+      drive: system.filesystem.mountpoint
 
+  # Synthetic "used %" complement of disk_free_percent — the Windows
+  # probe emits "100 - free%" alongside the free counter so cross-OS
+  # dashboards can query system_filesystem_state="used" directly
+  # rather than resorting to a `1 - free` workaround. Mirrors what the
+  # Linux probe natively reports via fs_used_percent.
+  - name: "disk_used_percent"
+    channel: "disk_used_percent"
+    display_name: "Disk Used Percent ({drive})"
+    unit: "%"
+    multi_instance_labels: ["drive"]
+    category: "capacity"
+    description: "Percentage of total disk space currently in use on the logical drive"
+    otel:
+      name: system.filesystem.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        system.filesystem.state: used
+    tag_to_attribute:
+      drive: system.filesystem.mountpoint
+
+  # --- Windows disk I/O (instantaneous rates from Perfmon) ---
   - name: "disk_reads_sec"
     channel: "disk_reads_sec"
     display_name: "Disk Reads Sec ({drive})"
@@ -27,6 +80,14 @@ metrics:
     multi_instance_labels: ["drive"]
     category: "performance"
     description: "Number of read operations per second on the logical drive"
+    otel:
+      name: senhub.system.disk.operations_per_second
+      unit: "1/s"
+      type: gauge
+      attributes:
+        disk.io.direction: read
+    tag_to_attribute:
+      drive: system.filesystem.mountpoint
 
   - name: "disk_writes_sec"
     channel: "disk_writes_sec"
@@ -35,6 +96,14 @@ metrics:
     multi_instance_labels: ["drive"]
     category: "performance"
     description: "Number of write operations per second on the logical drive"
+    otel:
+      name: senhub.system.disk.operations_per_second
+      unit: "1/s"
+      type: gauge
+      attributes:
+        disk.io.direction: write
+    tag_to_attribute:
+      drive: system.filesystem.mountpoint
 
   - name: "disk_read_bytes_sec"
     channel: "disk_read_bytes_sec"
@@ -43,6 +112,14 @@ metrics:
     multi_instance_labels: ["drive"]
     category: "performance"
     description: "Rate of data read from the logical drive in bytes per second"
+    otel:
+      name: senhub.system.disk.io_per_second
+      unit: "By/s"
+      type: gauge
+      attributes:
+        disk.io.direction: read
+    tag_to_attribute:
+      drive: system.filesystem.mountpoint
 
   - name: "disk_write_bytes_sec"
     channel: "disk_write_bytes_sec"
@@ -51,6 +128,14 @@ metrics:
     multi_instance_labels: ["drive"]
     category: "performance"
     description: "Rate of data written to the logical drive in bytes per second"
+    otel:
+      name: senhub.system.disk.io_per_second
+      unit: "By/s"
+      type: gauge
+      attributes:
+        disk.io.direction: write
+    tag_to_attribute:
+      drive: system.filesystem.mountpoint
 
   - name: "disk_queue_length"
     channel: "disk_queue_length"
@@ -59,8 +144,17 @@ metrics:
     multi_instance_labels: ["drive"]
     category: "performance"
     description: "Number of outstanding I/O requests waiting in the disk queue"
+    otel:
+      name: senhub.system.disk.queue_length
+      unit: "{operation}"
+      type: gauge
+    tag_to_attribute:
+      drive: system.filesystem.mountpoint
 
-  # Unix/Linux Filesystem Size Metrics (in bytes)
+  # ═════════════════════════════════════════════════════════════════════════
+  # UNIX / LINUX — Filesystem capacity (from statfs)
+  # ═════════════════════════════════════════════════════════════════════════
+
   - name: "fs_total_bytes"
     channel: "fs_total_bytes"
     display_name: "Total Bytes ({mount_point})"
@@ -68,6 +162,14 @@ metrics:
     multi_instance_labels: ["device", "mount_point"]
     category: "capacity"
     description: "Total capacity of the filesystem in bytes"
+    otel:
+      name: system.filesystem.limit
+      unit: By
+      type: updowncounter
+    tag_to_attribute:
+      device: system.device
+      mount_point: system.filesystem.mountpoint
+      fs_type: system.filesystem.type
 
   - name: "fs_free_bytes"
     channel: "fs_free_bytes"
@@ -76,6 +178,16 @@ metrics:
     multi_instance_labels: ["device", "mount_point"]
     category: "capacity"
     description: "Free space available on the filesystem in bytes"
+    otel:
+      name: system.filesystem.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.filesystem.state: free
+    tag_to_attribute:
+      device: system.device
+      mount_point: system.filesystem.mountpoint
+      fs_type: system.filesystem.type
 
   - name: "fs_used_bytes"
     channel: "fs_used_bytes"
@@ -84,6 +196,16 @@ metrics:
     multi_instance_labels: ["device", "mount_point"]
     category: "capacity"
     description: "Space currently consumed on the filesystem in bytes"
+    otel:
+      name: system.filesystem.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.filesystem.state: used
+    tag_to_attribute:
+      device: system.device
+      mount_point: system.filesystem.mountpoint
+      fs_type: system.filesystem.type
 
   - name: "fs_available_bytes"
     channel: "fs_available_bytes"
@@ -92,8 +214,17 @@ metrics:
     multi_instance_labels: ["device", "mount_point"]
     category: "capacity"
     description: "Space available to non-root users on the filesystem in bytes"
+    otel:
+      name: system.filesystem.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.filesystem.state: available   # extension — Linux statfs f_bavail
+    tag_to_attribute:
+      device: system.device
+      mount_point: system.filesystem.mountpoint
+      fs_type: system.filesystem.type
 
-  # Unix/Linux Filesystem Usage Percentage
   - name: "fs_used_percent"
     channel: "fs_used_percent"
     display_name: "Used Percent ({mount_point})"
@@ -101,8 +232,21 @@ metrics:
     multi_instance_labels: ["device", "mount_point"]
     category: "capacity"
     description: "Percentage of filesystem capacity currently in use"
+    otel:
+      name: system.filesystem.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        system.filesystem.state: used
+    tag_to_attribute:
+      device: system.device
+      mount_point: system.filesystem.mountpoint
+      fs_type: system.filesystem.type
 
-  # Unix/Linux Inode Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # UNIX / LINUX — Inode metrics (senhub.* extensions — see semantic conventions §4.4.2)
+  # ═════════════════════════════════════════════════════════════════════════
+
   - name: "fs_inodes_total"
     channel: "fs_inodes_total"
     display_name: "Inodes Total ({mount_point})"
@@ -110,6 +254,14 @@ metrics:
     multi_instance_labels: ["device", "mount_point"]
     category: "inodes"
     description: "Total number of inodes available on the filesystem"
+    otel:
+      name: senhub.system.filesystem.inode.limit
+      unit: "{inode}"
+      type: updowncounter
+    tag_to_attribute:
+      device: system.device
+      mount_point: system.filesystem.mountpoint
+      fs_type: system.filesystem.type
 
   - name: "fs_inodes_free"
     channel: "fs_inodes_free"
@@ -118,6 +270,16 @@ metrics:
     multi_instance_labels: ["device", "mount_point"]
     category: "inodes"
     description: "Number of unused inodes available on the filesystem"
+    otel:
+      name: senhub.system.filesystem.inode.usage
+      unit: "{inode}"
+      type: updowncounter
+      attributes:
+        system.filesystem.state: free
+    tag_to_attribute:
+      device: system.device
+      mount_point: system.filesystem.mountpoint
+      fs_type: system.filesystem.type
 
   - name: "fs_inodes_used"
     channel: "fs_inodes_used"
@@ -126,6 +288,16 @@ metrics:
     multi_instance_labels: ["device", "mount_point"]
     category: "inodes"
     description: "Number of inodes currently allocated on the filesystem"
+    otel:
+      name: senhub.system.filesystem.inode.usage
+      unit: "{inode}"
+      type: updowncounter
+      attributes:
+        system.filesystem.state: used
+    tag_to_attribute:
+      device: system.device
+      mount_point: system.filesystem.mountpoint
+      fs_type: system.filesystem.type
 
   - name: "fs_inodes_used_percent"
     channel: "fs_inodes_used_percent"
@@ -134,6 +306,16 @@ metrics:
     multi_instance_labels: ["device", "mount_point"]
     category: "inodes"
     description: "Percentage of total inodes currently in use on the filesystem"
+    otel:
+      name: senhub.system.filesystem.inode.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        system.filesystem.state: used
+    tag_to_attribute:
+      device: system.device
+      mount_point: system.filesystem.mountpoint
+      fs_type: system.filesystem.type
 
 tag_metadata:
   device:
