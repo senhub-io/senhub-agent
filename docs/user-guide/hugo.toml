@@ -15,7 +15,7 @@ enableGitInfo = true
   BookDateFormat = "January 2, 2006"
   BookMenuBundle = "/menu"
   BookComments = false
-  AgentVersion = "0.1.80-beta"
+  AgentVersion = "0.1.87"
 
 [markup]
   [markup.highlight]

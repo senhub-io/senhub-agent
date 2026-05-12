@@ -1,0 +1,94 @@
+{
+  "uid": "senhub-linux-network",
+  "title": "SenHub Linux — Network",
+  "tags": ["senhub", "agents", "linux"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Server",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(system_memory_usage_bytes{os=\"linux\"}, service_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "iface",
+        "label": "Interface",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(system_network_io_bytes_total{service_name=~\"$service\"}, network_interface_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "id": 1,
+      "title": "Throughput",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "id": 10,
+      "title": "Bytes per second per interface",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum by(service_name, network_interface_name, network_io_direction) (rate(system_network_io_bytes_total{service_name=~\"$service\",network_interface_name=~\"$iface\"}[$__rate_interval]))", "legendFormat": "{{service_name}} / {{network_interface_name}} / {{network_io_direction}}" }],
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    {
+      "type": "timeseries",
+      "id": 11,
+      "title": "Packets per second per interface",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum by(service_name, network_interface_name, network_io_direction) (rate(system_network_packet_count_total{service_name=~\"$service\",network_interface_name=~\"$iface\"}[$__rate_interval]))", "legendFormat": "{{service_name}} / {{network_interface_name}} / {{network_io_direction}}" }],
+      "fieldConfig": { "defaults": { "unit": "pps", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    {
+      "type": "row",
+      "id": 2,
+      "title": "Errors & drops",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "id": 20,
+      "title": "Errors per second per interface",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum by(service_name, network_interface_name) (rate(system_network_errors_total{service_name=~\"$service\",network_interface_name=~\"$iface\"}[$__rate_interval]))", "legendFormat": "{{service_name}} / {{network_interface_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["sum"] } }
+    },
+    {
+      "type": "timeseries",
+      "id": 21,
+      "title": "Dropped packets per second per interface",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum by(service_name, network_interface_name) (rate(system_network_packet_dropped_total{service_name=~\"$service\",network_interface_name=~\"$iface\"}[$__rate_interval]))", "legendFormat": "{{service_name}} / {{network_interface_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["sum"] } }
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

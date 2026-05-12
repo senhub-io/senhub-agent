@@ -1,8 +1,15 @@
 probe_name: "veeam"
 friendly_name: "Veeam Backup & Replication"
+version: "3.0.0"
+
+# Format v3 — OTel-first source of truth.
+# No OTel semconv for backup — all metrics under senhub.veeam.* extensions.
+# See senhub-semantic-conventions §4.10.
 
 metrics:
-  # Job Overview Metrics (aggregated by job type)
+  # ═════════════════════════════════════════════════════════════════════════
+  # JOB OVERVIEW — aggregated counts per job_type
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "veeam_jobs_total"
     channel: "veeam_jobs_total"
     display_name: "Jobs Total ({job_type})"
@@ -10,6 +17,12 @@ metrics:
     category: "overview"
     multi_instance_labels: ["job_type"]
     description: "Total number of backup jobs by type"
+    otel:
+      name: senhub.veeam.jobs.total
+      unit: "{job}"
+      type: gauge
+    tag_to_attribute:
+      job_type: senhub.veeam.job.type
 
   - name: "veeam_jobs_success"
     channel: "veeam_jobs_success"
@@ -18,6 +31,14 @@ metrics:
     category: "overview"
     multi_instance_labels: ["job_type"]
     description: "Number of jobs with successful last run"
+    otel:
+      name: senhub.veeam.jobs.by_last_result
+      unit: "{job}"
+      type: gauge
+      attributes:
+        senhub.veeam.job.last_result: success
+    tag_to_attribute:
+      job_type: senhub.veeam.job.type
 
   - name: "veeam_jobs_warning"
     channel: "veeam_jobs_warning"
@@ -26,6 +47,14 @@ metrics:
     category: "overview"
     multi_instance_labels: ["job_type"]
     description: "Number of jobs with warnings on last run"
+    otel:
+      name: senhub.veeam.jobs.by_last_result
+      unit: "{job}"
+      type: gauge
+      attributes:
+        senhub.veeam.job.last_result: warning
+    tag_to_attribute:
+      job_type: senhub.veeam.job.type
 
   - name: "veeam_jobs_failed"
     channel: "veeam_jobs_failed"
@@ -34,6 +63,14 @@ metrics:
     category: "overview"
     multi_instance_labels: ["job_type"]
     description: "Number of jobs that failed on last run"
+    otel:
+      name: senhub.veeam.jobs.by_last_result
+      unit: "{job}"
+      type: gauge
+      attributes:
+        senhub.veeam.job.last_result: failed
+    tag_to_attribute:
+      job_type: senhub.veeam.job.type
 
   - name: "veeam_jobs_running"
     channel: "veeam_jobs_running"
@@ -42,67 +79,185 @@ metrics:
     category: "overview"
     multi_instance_labels: ["job_type"]
     description: "Number of jobs currently running"
+    otel:
+      name: senhub.veeam.jobs.by_last_result
+      unit: "{job}"
+      type: gauge
+      attributes:
+        senhub.veeam.job.last_result: running
+    tag_to_attribute:
+      job_type: senhub.veeam.job.type
 
-  # Per-Job Detail Metrics
+  - name: "veeam_jobs_stale"
+    channel: "veeam_jobs_stale"
+    display_name: "Jobs Stale ({job_type})"
+    unit: "#"
+    category: "overview"
+    multi_instance_labels: ["job_type"]
+    description: "Number of jobs whose last run is older than the configured hours_to_check window (backup cadence drift)"
+    otel:
+      name: senhub.veeam.jobs.by_last_result
+      unit: "{job}"
+      type: gauge
+      attributes:
+        senhub.veeam.job.last_result: stale
+    tag_to_attribute:
+      job_type: senhub.veeam.job.type
+
+  - name: "veeam_jobs_never_run"
+    channel: "veeam_jobs_never_run"
+    display_name: "Jobs Never Run ({job_type})"
+    unit: "#"
+    category: "overview"
+    multi_instance_labels: ["job_type"]
+    description: "Number of enabled jobs that have never executed (configured but never triggered)"
+    otel:
+      name: senhub.veeam.jobs.by_last_result
+      unit: "{job}"
+      type: gauge
+      attributes:
+        senhub.veeam.job.last_result: never_run
+    tag_to_attribute:
+      job_type: senhub.veeam.job.type
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # PER-JOB DETAIL
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "veeam_job_status"
     channel: "veeam_job_status"
     display_name: "Job Status ({job_name})"
     unit: "#"
-    category: "jobs"
+    # Dedicated category so a "Job Status" sensor picks up exactly one channel
+    # per job — the operator's primary backup-health view.
+    category: "jobs_status"
     multi_instance_labels: ["job_name", "job_type"]
-    description: "Last run result: 0=None, 1=Success, 2=Warning, 3=Failed, 4=Running"
+    description: "Effective job status: 0=NeverRun, 1=Success, 2=Warning, 3=Failed, 4=Running, 5=Stale (last run older than hours_to_check window)"
     lookup: "senhub.veeam.job_status"
+    otel:
+      name: senhub.veeam.job.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.veeam.job.state
+        mapping:
+          never_run: 0
+          success: 1
+          warning: 2
+          failed: 3
+          running: 4
+          stale: 5
+    tag_to_attribute:
+      job_name: senhub.veeam.job.name
+      job_type: senhub.veeam.job.type
 
   - name: "veeam_job_seconds_since"
     channel: "veeam_job_seconds_since"
     display_name: "Time Since Last Run ({job_name})"
     unit: "s"
-    category: "jobs"
+    category: "jobs_detail"
     multi_instance_labels: ["job_name", "job_type"]
     description: "Time elapsed since the last job run"
+    otel:
+      name: senhub.veeam.job.seconds_since_last_run
+      unit: s
+      type: gauge
+    tag_to_attribute:
+      job_name: senhub.veeam.job.name
+      job_type: senhub.veeam.job.type
 
   - name: "veeam_job_objects_count"
     channel: "veeam_job_objects_count"
     display_name: "Objects Count ({job_name})"
     unit: "#"
-    category: "jobs"
+    category: "jobs_detail"
     multi_instance_labels: ["job_name", "job_type"]
     description: "Number of objects processed by the job"
+    otel:
+      name: senhub.veeam.job.objects
+      unit: "{object}"
+      type: gauge
+    tag_to_attribute:
+      job_name: senhub.veeam.job.name
+      job_type: senhub.veeam.job.type
 
   - name: "veeam_job_bottleneck"
     channel: "veeam_job_bottleneck"
     display_name: "Bottleneck ({job_name})"
     unit: "#"
-    category: "jobs"
+    category: "jobs_detail"
     multi_instance_labels: ["job_name", "job_type"]
     description: "Bottleneck type: 0=None, 1=Source, 2=Proxy, 3=Network, 4=Target"
     lookup: "senhub.veeam.bottleneck"
+    otel:
+      name: senhub.veeam.job.bottleneck.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.veeam.job.bottleneck
+        mapping:
+          none: 0
+          source: 1
+          proxy: 2
+          network: 3
+          target: 4
+    tag_to_attribute:
+      job_name: senhub.veeam.job.name
+      job_type: senhub.veeam.job.type
 
   - name: "veeam_job_processed_bytes"
     channel: "veeam_job_processed_bytes"
     display_name: "Processed ({job_name})"
     unit: "Bytes"
-    category: "jobs"
+    category: "jobs_detail"
     multi_instance_labels: ["job_name", "job_type"]
     description: "Total size of all disks processed"
+    otel:
+      name: senhub.veeam.job.last_run.bytes
+      unit: By
+      type: gauge
+      attributes:
+        senhub.veeam.job.data_phase: processed
+    tag_to_attribute:
+      job_name: senhub.veeam.job.name
+      job_type: senhub.veeam.job.type
 
   - name: "veeam_job_read_bytes"
     channel: "veeam_job_read_bytes"
     display_name: "Read ({job_name})"
     unit: "Bytes"
-    category: "jobs"
+    category: "jobs_detail"
     multi_instance_labels: ["job_name", "job_type"]
     description: "Data read from source before compression/dedup"
+    otel:
+      name: senhub.veeam.job.last_run.bytes
+      unit: By
+      type: gauge
+      attributes:
+        senhub.veeam.job.data_phase: read
+    tag_to_attribute:
+      job_name: senhub.veeam.job.name
+      job_type: senhub.veeam.job.type
 
   - name: "veeam_job_transferred_bytes"
     channel: "veeam_job_transferred_bytes"
     display_name: "Transferred ({job_name})"
     unit: "Bytes"
-    category: "jobs"
+    category: "jobs_detail"
     multi_instance_labels: ["job_name", "job_type"]
     description: "Data transferred after compression/dedup"
+    otel:
+      name: senhub.veeam.job.last_run.bytes
+      unit: By
+      type: gauge
+      attributes:
+        senhub.veeam.job.data_phase: transferred
+    tag_to_attribute:
+      job_name: senhub.veeam.job.name
+      job_type: senhub.veeam.job.type
 
-  # Repository Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # REPOSITORY
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "veeam_repo_capacity"
     channel: "veeam_repo_capacity"
     display_name: "Repository Capacity ({repo_name})"
@@ -110,6 +265,12 @@ metrics:
     category: "repositories"
     multi_instance_labels: ["repo_name"]
     description: "Total capacity of the backup repository"
+    otel:
+      name: senhub.veeam.repository.limit
+      unit: By
+      type: updowncounter
+    tag_to_attribute:
+      repo_name: senhub.veeam.repository.name
 
   - name: "veeam_repo_used"
     channel: "veeam_repo_used"
@@ -118,6 +279,14 @@ metrics:
     category: "repositories"
     multi_instance_labels: ["repo_name"]
     description: "Used space in the backup repository"
+    otel:
+      name: senhub.veeam.repository.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        senhub.veeam.repository.state: used
+    tag_to_attribute:
+      repo_name: senhub.veeam.repository.name
 
   - name: "veeam_repo_free"
     channel: "veeam_repo_free"
@@ -126,6 +295,14 @@ metrics:
     category: "repositories"
     multi_instance_labels: ["repo_name"]
     description: "Free space available in the backup repository"
+    otel:
+      name: senhub.veeam.repository.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        senhub.veeam.repository.state: free
+    tag_to_attribute:
+      repo_name: senhub.veeam.repository.name
 
   - name: "veeam_repo_free_pct"
     channel: "veeam_repo_free_pct"
@@ -134,8 +311,18 @@ metrics:
     category: "repositories"
     multi_instance_labels: ["repo_name"]
     description: "Percentage of free space in the backup repository"
+    otel:
+      name: senhub.veeam.repository.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.veeam.repository.state: free
+    tag_to_attribute:
+      repo_name: senhub.veeam.repository.name
 
-  # License Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # LICENSE
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "veeam_license_status"
     channel: "veeam_license_status"
     display_name: "License Status"
@@ -143,6 +330,16 @@ metrics:
     category: "license"
     description: "License status: 0=Valid, 1=Expired, 2=Invalid"
     lookup: "senhub.veeam.license_status"
+    otel:
+      name: senhub.veeam.license.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.veeam.license.state
+        mapping:
+          valid: 0
+          expired: 1
+          invalid: 2
 
   - name: "veeam_license_days_left"
     channel: "veeam_license_days_left"
@@ -150,6 +347,10 @@ metrics:
     unit: "days"
     category: "license"
     description: "Number of days until the Veeam license expires"
+    otel:
+      name: senhub.veeam.license.days_remaining
+      unit: "{day}"
+      type: gauge
 
   - name: "veeam_license_instances_total"
     channel: "veeam_license_instances_total"
@@ -157,6 +358,12 @@ metrics:
     unit: "#"
     category: "license"
     description: "Total number of licensed instances"
+    otel:
+      name: senhub.veeam.license.instances
+      unit: "{instance}"
+      type: gauge
+      attributes:
+        senhub.veeam.license.instances_state: total
 
   - name: "veeam_license_instances_used"
     channel: "veeam_license_instances_used"
@@ -164,6 +371,12 @@ metrics:
     unit: "#"
     category: "license"
     description: "Number of licensed instances currently in use"
+    otel:
+      name: senhub.veeam.license.instances
+      unit: "{instance}"
+      type: gauge
+      attributes:
+        senhub.veeam.license.instances_state: used
 
   - name: "veeam_license_instances_remaining"
     channel: "veeam_license_instances_remaining"
@@ -171,8 +384,16 @@ metrics:
     unit: "#"
     category: "license"
     description: "Number of licensed instances still available"
+    otel:
+      name: senhub.veeam.license.instances
+      unit: "{instance}"
+      type: gauge
+      attributes:
+        senhub.veeam.license.instances_state: remaining
 
-  # Proxy Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # PROXIES
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "veeam_proxy_status"
     channel: "veeam_proxy_status"
     display_name: "Proxy Status ({proxy_name})"
@@ -181,6 +402,18 @@ metrics:
     multi_instance_labels: ["proxy_name"]
     description: "Proxy status: 0=Disabled, 1=Offline, 2=Online"
     lookup: "senhub.veeam.proxy_status"
+    otel:
+      name: senhub.veeam.proxy.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.veeam.proxy.state
+        mapping:
+          disabled: 0
+          offline: 1
+          online: 2
+    tag_to_attribute:
+      proxy_name: senhub.veeam.proxy.name
 
   - name: "veeam_proxies_total"
     channel: "veeam_proxies_total"
@@ -188,6 +421,12 @@ metrics:
     unit: "#"
     category: "proxies"
     description: "Total number of configured backup proxies"
+    otel:
+      name: senhub.veeam.proxies
+      unit: "{proxy}"
+      type: gauge
+      attributes:
+        senhub.veeam.proxies_state: total
 
   - name: "veeam_proxies_enabled"
     channel: "veeam_proxies_enabled"
@@ -195,6 +434,12 @@ metrics:
     unit: "#"
     category: "proxies"
     description: "Number of enabled backup proxies"
+    otel:
+      name: senhub.veeam.proxies
+      unit: "{proxy}"
+      type: gauge
+      attributes:
+        senhub.veeam.proxies_state: enabled
 
   - name: "veeam_proxies_disabled"
     channel: "veeam_proxies_disabled"
@@ -202,8 +447,16 @@ metrics:
     unit: "#"
     category: "proxies"
     description: "Number of disabled backup proxies"
+    otel:
+      name: senhub.veeam.proxies
+      unit: "{proxy}"
+      type: gauge
+      attributes:
+        senhub.veeam.proxies_state: disabled
 
-  # Protected Objects Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # PROTECTED OBJECTS
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "veeam_object_restore_points"
     channel: "veeam_object_restore_points"
     display_name: "Restore Points ({object_name})"
@@ -211,6 +464,13 @@ metrics:
     category: "protected_objects"
     multi_instance_labels: ["object_name", "object_type"]
     description: "Number of restore points for this object"
+    otel:
+      name: senhub.veeam.object.restore_points
+      unit: "{restore_point}"
+      type: gauge
+    tag_to_attribute:
+      object_name: senhub.veeam.object.name
+      object_type: senhub.veeam.object.type
 
   - name: "veeam_object_last_run_failed"
     channel: "veeam_object_last_run_failed"
@@ -219,6 +479,13 @@ metrics:
     category: "protected_objects"
     multi_instance_labels: ["object_name", "object_type"]
     description: "1 if last backup run failed, 0 otherwise"
+    otel:
+      name: senhub.veeam.object.last_run_failed
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      object_name: senhub.veeam.object.name
+      object_type: senhub.veeam.object.type
 
   - name: "veeam_objects_total"
     channel: "veeam_objects_total"
@@ -226,6 +493,12 @@ metrics:
     unit: "#"
     category: "protected_objects"
     description: "Total number of protected backup objects"
+    otel:
+      name: senhub.veeam.objects
+      unit: "{object}"
+      type: gauge
+      attributes:
+        senhub.veeam.objects_state: total
 
   - name: "veeam_objects_failed"
     channel: "veeam_objects_failed"
@@ -233,8 +506,16 @@ metrics:
     unit: "#"
     category: "protected_objects"
     description: "Number of objects whose last backup failed"
+    otel:
+      name: senhub.veeam.objects
+      unit: "{object}"
+      type: gauge
+      attributes:
+        senhub.veeam.objects_state: failed
 
-  # Infrastructure Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # INFRASTRUCTURE (managed servers)
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "veeam_server_status"
     channel: "veeam_server_status"
     display_name: "Server Status ({server_name})"
@@ -243,6 +524,18 @@ metrics:
     multi_instance_labels: ["server_name", "server_type"]
     description: "Server availability: 0=Unavailable, 1=Available"
     lookup: "senhub.veeam.server_status"
+    otel:
+      name: senhub.veeam.server.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.veeam.server.state
+        mapping:
+          unavailable: 0
+          available: 1
+    tag_to_attribute:
+      server_name: senhub.veeam.server.name
+      server_type: senhub.veeam.server.type
 
   - name: "veeam_servers_total"
     channel: "veeam_servers_total"
@@ -250,6 +543,12 @@ metrics:
     unit: "#"
     category: "infrastructure"
     description: "Total number of managed servers"
+    otel:
+      name: senhub.veeam.servers
+      unit: "{server}"
+      type: gauge
+      attributes:
+        senhub.veeam.servers_state: total
 
   - name: "veeam_servers_available"
     channel: "veeam_servers_available"
@@ -257,6 +556,12 @@ metrics:
     unit: "#"
     category: "infrastructure"
     description: "Number of available managed servers"
+    otel:
+      name: senhub.veeam.servers
+      unit: "{server}"
+      type: gauge
+      attributes:
+        senhub.veeam.servers_state: available
 
   - name: "veeam_servers_unavailable"
     channel: "veeam_servers_unavailable"
@@ -264,6 +569,12 @@ metrics:
     unit: "#"
     category: "infrastructure"
     description: "Number of unavailable managed servers"
+    otel:
+      name: senhub.veeam.servers
+      unit: "{server}"
+      type: gauge
+      attributes:
+        senhub.veeam.servers_state: unavailable
 
 tag_metadata:
   metric_type:
@@ -271,7 +582,12 @@ tag_metadata:
     label: "Metric Category"
     value_labels:
       overview: "Job Overview"
-      jobs: "Job Details"
+      # `jobs_status` is the consolidated per-job channel (1 metric × N jobs).
+      # `jobs_detail` is the deep-dive (time, bytes, bottleneck, objects).
+      # Splitting them lets a PRTG sensor pick "Job Status" alone for a clean
+      # 1-channel-per-job view, without inheriting the performance metrics.
+      jobs_status: "Job Status"
+      jobs_detail: "Job Details"
       repositories: "Repositories"
       license: "License"
       proxies: "Proxies"
@@ -280,11 +596,11 @@ tag_metadata:
   job_type:
     type: resource
     label: "Job Type"
-    linked_categories: ["overview", "jobs"]
+    linked_categories: ["overview", "jobs_status", "jobs_detail"]
   job_name:
     type: resource
     label: "Job Name"
-    linked_categories: ["jobs"]
+    linked_categories: ["jobs_status", "jobs_detail"]
   repo_name:
     type: resource
     label: "Repository"

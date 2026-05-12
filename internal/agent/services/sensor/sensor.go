@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/license"
@@ -262,6 +263,10 @@ func (s *sensor) SyncConfiguration() error {
 	// Update the slice to contain only active probes
 	s.startedProbes = activeProbes
 
+	// Publish the live probe set for the Prometheus bridge to read
+	// (senhub_agent_probes_total / senhub_agent_probes_active).
+	publishActiveProbes(s.startedProbes)
+
 	s.moduleLogger.Info().
 		Int("probes_started", len(validProbeIds)-len(activeProbes)+stoppedCount).
 		Int("probes_stopped", stoppedCount).
@@ -373,3 +378,24 @@ func (s *sensor) Shutdown(ctx context.Context) error {
 	}
 	return nil
 }
+
+// publishActiveProbes publishes the IDs of currently-running probes to the
+// agentstate package so the Prometheus bridge can expose
+// senhub_agent_probes_total and senhub_agent_probes_healthy without a
+// direct dependency from the http strategy back to the sensor.
+//
+// We send IDs (not the probe objects) because health is pushed via
+// RecordProbeHealth from ProbePoller.collect() — the bridge never needs
+// to call back into a probe instance, eliminating any chance of a scrape
+// triggering a Collect() (and the resulting wasted CPU + races we used
+// to have when IsHealthy() implementations re-collected on demand).
+func publishActiveProbes(pollers []*probes.ProbePoller) {
+	out := make([]string, 0, len(pollers))
+	for _, pp := range pollers {
+		if pp != nil {
+			out = append(out, pp.ProbeId)
+		}
+	}
+	agentstate.SetActiveProbes(out)
+}
+

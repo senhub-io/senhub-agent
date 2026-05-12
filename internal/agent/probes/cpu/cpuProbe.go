@@ -54,7 +54,7 @@ func NewCpuProbe(config map[string]interface{}, baseLogger *logger.Logger) (type
 }
 
 func (p *cpuProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg", "http"}
+	return []string{"senhub", "prtg", "http", "otlp"}
 }
 
 // Note: GetName() is now inherited from BaseProbe and will return the unique

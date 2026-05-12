@@ -1,18 +1,19 @@
-# Redfish Server Hardware Metrics Definitions  
+# Redfish Server Hardware Metrics Definitions
 # Based on real data from Dell PowerVault ME5024 and other Redfish servers
+#
+# Format v3 — OTel-first source of truth.
+# OTel namespace hw.* used for power supply, physical_disk, logical_disk,
+# disk_controller, enclosure. Extensions senhub.hardware.* for RAID pools,
+# redundancy, and RAID-/Redfish-specific concepts not in OTel semconv.
+# See senhub-semantic-conventions §4.9.
 
 probe_name: "redfish"
 version: "3.0.0"
 
 metrics:
-  # Hardware Thermal Metrics - DISABLED for consistency across strategies
-  # Temperature and fan metrics are skipped in probe collection to avoid naming issues
-  # 
-  # - name: "hardware.temperature"
-  #   display_name: "Temperature"
-  #   (definitions removed for consistency)
-
-  # Hardware Power Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # POWER SUPPLY — OTel native hw.status with hw.type=power_supply
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "hardware.power.health"
     channel: "power_health"
     display_name: "{psu_name} Health"
@@ -21,8 +22,28 @@ metrics:
     description: "Power supply unit health status"
     category: "power"
     lookup: "sfs.redfish.health"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: power_supply
+      expand:
+        attribute: hw.state
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+          unknown: 3
+    tag_to_attribute:
+      psu_name: hw.id
+      psu_location: hw.name
+      controller: hw.parent
+      enclosure_id: senhub.hardware.enclosure.id
 
-  # Storage Drive Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # STORAGE DRIVES — OTel native hw.physical_disk.*
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "hardware.storage.drive.capacity.total"
     channel: "drive_capacity_total"
     display_name: "{drive_name} Total Capacity"
@@ -30,24 +51,18 @@ metrics:
     multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
     description: "Total drive capacity in bytes"
     category: "drives"
-
-  - name: "hardware.storage.drive.failure_predicted"
-    channel: "drive_failure_predicted"
-    display_name: "{drive_name} Failure Predicted"
-    unit: "#"
-    multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
-    description: "Drive failure prediction status"
-    category: "drives"
-    lookup: "sfs.generic.boolean"
-
-  - name: "hardware.storage.drive.has_operations"
-    channel: "drive_has_operations"
-    display_name: "{drive_name} Has Operations"
-    unit: "#"
-    multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
-    description: "Indicates if drive has active operations"
-    category: "drives"
-    lookup: "sfs.generic.boolean"
+    otel:
+      name: hw.physical_disk.size
+      unit: By
+      type: updowncounter
+    tag_to_attribute:
+      drive_id: hw.id
+      drive_name: hw.name
+      controller_id: hw.parent
+      drive_type: hw.physical_disk.type
+      drive_interface: senhub.hardware.physical_disk.interface
+      slot: senhub.hardware.physical_disk.slot
+      enclosure_id: senhub.hardware.enclosure.id
 
   - name: "hardware.storage.drive.health"
     channel: "drive_health"
@@ -57,6 +72,70 @@ metrics:
     description: "Drive health status"
     category: "drives"
     lookup: "sfs.redfish.health"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: physical_disk
+      expand:
+        attribute: hw.state
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+          unknown: 3
+    tag_to_attribute:
+      drive_id: hw.id
+      drive_name: hw.name
+      controller_id: hw.parent
+      drive_type: hw.physical_disk.type
+      drive_interface: senhub.hardware.physical_disk.interface
+      slot: senhub.hardware.physical_disk.slot
+
+  - name: "hardware.storage.drive.failure_predicted"
+    channel: "drive_failure_predicted"
+    display_name: "{drive_name} Failure Predicted"
+    unit: "#"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
+    description: "Drive failure prediction status"
+    category: "drives"
+    lookup: "sfs.generic.boolean"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: physical_disk
+      expand:
+        attribute: hw.state
+        mapping:
+          predicted_failure: 1   # emits only when boolean=true; false → predicted_failure=0
+    tag_to_attribute:
+      drive_id: hw.id
+      drive_name: hw.name
+      controller_id: hw.parent
+      drive_type: hw.physical_disk.type
+      drive_interface: senhub.hardware.physical_disk.interface
+      slot: senhub.hardware.physical_disk.slot
+
+  - name: "hardware.storage.drive.has_operations"
+    channel: "drive_has_operations"
+    display_name: "{drive_name} Has Operations"
+    unit: "#"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
+    description: "Indicates if drive has active operations"
+    category: "drives"
+    lookup: "sfs.generic.boolean"
+    otel:
+      name: senhub.hardware.physical_disk.has_active_operations
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      drive_id: hw.id
+      drive_name: hw.name
+      controller_id: hw.parent
+      drive_type: hw.physical_disk.type
 
   - name: "hardware.storage.drive.operation.progress"
     channel: "drive_operation_progress"
@@ -65,6 +144,15 @@ metrics:
     multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
     description: "Drive operation progress percentage"
     category: "drives"
+    otel:
+      name: senhub.hardware.physical_disk.operation.progress_ratio
+      unit: "1"
+      type: gauge
+      # Mapper converts % → ratio (÷100)
+    tag_to_attribute:
+      drive_id: hw.id
+      drive_name: hw.name
+      controller_id: hw.parent
 
   - name: "hardware.storage.drive.speed_gbs"
     channel: "drive_speed_gbs"
@@ -73,6 +161,15 @@ metrics:
     multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
     description: "Drive negotiated speed in Gbps"
     category: "drives"
+    otel:
+      name: senhub.hardware.physical_disk.link_speed_bits_per_second
+      unit: "bit/s"
+      type: gauge
+      # Mapper converts Gbps → bit/s (×1e9)
+    tag_to_attribute:
+      drive_id: hw.id
+      drive_name: hw.name
+      controller_id: hw.parent
 
   - name: "hardware.storage.drive.location_indicator_active"
     channel: "drive_location_indicator_active"
@@ -82,6 +179,14 @@ metrics:
     description: "Drive location indicator active status"
     category: "drives"
     lookup: "sfs.generic.boolean"
+    otel:
+      name: senhub.hardware.physical_disk.location_indicator_active
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      drive_id: hw.id
+      drive_name: hw.name
+      controller_id: hw.parent
 
   - name: "hardware.storage.drive.block_size_bytes"
     channel: "drive_block_size_bytes"
@@ -90,8 +195,36 @@ metrics:
     multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
     description: "Drive block size in bytes"
     category: "drives"
+    otel:
+      name: senhub.hardware.physical_disk.block_size
+      unit: By
+      type: gauge
+    tag_to_attribute:
+      drive_id: hw.id
+      drive_name: hw.name
+      controller_id: hw.parent
 
-  # Storage Volume Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # VOLUMES — OTel native hw.logical_disk.* + senhub extensions for I/O
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "hardware.storage.volume.capacity.total"
+    channel: "volume_capacity_total"
+    display_name: "Volume {volume_name} Total Capacity"
+    unit: "Bytes"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
+    description: "Total volume capacity in bytes"
+    category: "volumes"
+    otel:
+      name: hw.logical_disk.limit
+      unit: By
+      type: updowncounter
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
+      raid_type: hw.logical_disk.raid_level
+      pool_name: senhub.hardware.storage.pool.name
+
   - name: "hardware.storage.volume.capacity.allocated"
     channel: "volume_capacity_allocated"
     display_name: "Volume {volume_name} Allocated"
@@ -99,14 +232,18 @@ metrics:
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Allocated volume capacity in bytes"
     category: "volumes"
-
-  - name: "hardware.storage.volume.capacity.allocated_percent"
-    channel: "volume_capacity_allocated_percent"
-    display_name: "Volume {volume_name} Allocated Percent"
-    unit: "%"
-    multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
-    description: "Allocated volume capacity percentage"
-    category: "volumes"
+    otel:
+      name: hw.logical_disk.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        hw.logical_disk.state: used
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
+      raid_type: hw.logical_disk.raid_level
+      pool_name: senhub.hardware.storage.pool.name
 
   - name: "hardware.storage.volume.capacity.free"
     channel: "volume_capacity_free"
@@ -115,14 +252,38 @@ metrics:
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Free volume capacity in bytes"
     category: "volumes"
+    otel:
+      name: hw.logical_disk.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        hw.logical_disk.state: free
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
+      raid_type: hw.logical_disk.raid_level
+      pool_name: senhub.hardware.storage.pool.name
 
-  - name: "hardware.storage.volume.capacity.total"
-    channel: "volume_capacity_total"
-    display_name: "Volume {volume_name} Total Capacity"
-    unit: "Bytes"
+  - name: "hardware.storage.volume.capacity.allocated_percent"
+    channel: "volume_capacity_allocated_percent"
+    display_name: "Volume {volume_name} Allocated Percent"
+    unit: "%"
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
-    description: "Total volume capacity in bytes"
+    description: "Allocated volume capacity percentage"
     category: "volumes"
+    otel:
+      name: hw.logical_disk.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        hw.logical_disk.state: used
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
+      raid_type: hw.logical_disk.raid_level
+      pool_name: senhub.hardware.storage.pool.name
 
   - name: "hardware.storage.volume.capacity.free_percent"
     channel: "volume_capacity_free_percent"
@@ -131,6 +292,18 @@ metrics:
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Free volume capacity percentage"
     category: "volumes"
+    otel:
+      name: hw.logical_disk.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        hw.logical_disk.state: free
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
+      raid_type: hw.logical_disk.raid_level
+      pool_name: senhub.hardware.storage.pool.name
 
   - name: "hardware.storage.volume.health"
     channel: "volume_health"
@@ -140,6 +313,24 @@ metrics:
     description: "Volume health status"
     category: "volumes"
     lookup: "sfs.redfish.health"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: logical_disk
+      expand:
+        attribute: hw.state
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+          unknown: 3
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
+      raid_type: hw.logical_disk.raid_level
 
   - name: "hardware.storage.volume.encrypted"
     channel: "volume_encrypted"
@@ -149,8 +340,16 @@ metrics:
     description: "Volume encryption status (0=no, 1=yes)"
     category: "volumes"
     lookup: "sfs.generic.boolean"
+    otel:
+      name: senhub.hardware.logical_disk.encrypted
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
 
-  # Volume I/O Metrics
+  # Volume I/O — senhub extensions (no OTel hw.logical_disk I/O spec)
   - name: "hardware.storage.volume.io.reads"
     channel: "volume_io_reads"
     display_name: "Volume {volume_name} IO Reads"
@@ -158,6 +357,16 @@ metrics:
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Number of read operations on volume"
     category: "volumes"
+    otel:
+      name: senhub.hardware.logical_disk.io.operations
+      unit: "{operation}"
+      type: counter
+      attributes:
+        disk.io.direction: read
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
 
   - name: "hardware.storage.volume.io.writes"
     channel: "volume_io_writes"
@@ -166,6 +375,16 @@ metrics:
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Number of write operations on volume"
     category: "volumes"
+    otel:
+      name: senhub.hardware.logical_disk.io.operations
+      unit: "{operation}"
+      type: counter
+      attributes:
+        disk.io.direction: write
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
 
   - name: "hardware.storage.volume.io.total_ops"
     channel: "volume_io_total_ops"
@@ -174,6 +393,9 @@ metrics:
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Total number of I/O operations on volume"
     category: "volumes"
+    otel:
+      skip: true
+      reason: "Redundant with io.reads + io.writes. Derivable via 'sum without(disk_io_direction)(senhub_hardware_logical_disk_io_operations_total)' in PromQL."
 
   - name: "hardware.storage.volume.io.read.bytes"
     channel: "volume_io_read_bytes"
@@ -182,6 +404,16 @@ metrics:
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Total bytes read from volume"
     category: "volumes"
+    otel:
+      name: senhub.hardware.logical_disk.io
+      unit: By
+      type: counter
+      attributes:
+        disk.io.direction: read
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
 
   - name: "hardware.storage.volume.io.write.bytes"
     channel: "volume_io_write_bytes"
@@ -190,6 +422,16 @@ metrics:
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Total bytes written to volume"
     category: "volumes"
+    otel:
+      name: senhub.hardware.logical_disk.io
+      unit: By
+      type: counter
+      attributes:
+        disk.io.direction: write
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
 
   - name: "hardware.storage.volume.io.total_bytes"
     channel: "volume_io_total_bytes"
@@ -198,8 +440,13 @@ metrics:
     multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
     description: "Total bytes transferred (read + write) on volume"
     category: "volumes"
+    otel:
+      skip: true
+      reason: "Redundant with io.read.bytes + io.write.bytes. Derivable via 'sum without(disk_io_direction)(senhub_hardware_logical_disk_io_bytes_total)' in PromQL."
 
-  # Storage Pool Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # STORAGE POOLS — senhub extensions (no OTel hw.type for RAID pools)
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "hardware.storage.pool.capacity.allocated"
     channel: "pool_capacity_allocated"
     display_name: "Pool {pool_name} Allocated"
@@ -207,6 +454,16 @@ metrics:
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Allocated pool capacity in bytes"
     category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        senhub.hardware.storage.pool.state: allocated
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
+      raid_type: senhub.hardware.storage.pool.raid_level
 
   - name: "hardware.storage.pool.capacity.used"
     channel: "pool_capacity_used"
@@ -215,6 +472,16 @@ metrics:
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Used pool capacity in bytes"
     category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        senhub.hardware.storage.pool.state: used
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
+      raid_type: senhub.hardware.storage.pool.raid_level
 
   - name: "hardware.storage.pool.capacity.free_percent"
     channel: "pool_capacity_free_percent"
@@ -223,6 +490,16 @@ metrics:
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Free pool capacity percentage"
     category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.storage.pool.state: free
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
+      raid_type: senhub.hardware.storage.pool.raid_level
 
   - name: "hardware.storage.pool.capacity.used_percent"
     channel: "pool_capacity_used_percent"
@@ -231,6 +508,16 @@ metrics:
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Used pool capacity percentage"
     category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.storage.pool.state: used
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
+      raid_type: senhub.hardware.storage.pool.raid_level
 
   - name: "hardware.storage.pool.health"
     channel: "pool_health"
@@ -240,8 +527,22 @@ metrics:
     description: "Pool health status"
     category: "pools"
     lookup: "sfs.redfish.health"
+    otel:
+      name: senhub.hardware.storage.pool.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.hardware.storage.pool.state
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+          unknown: 3
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
+      raid_type: senhub.hardware.storage.pool.raid_level
 
-  # Pool I/O Metrics
   - name: "hardware.storage.pool.io.reads"
     channel: "pool_io_reads"
     display_name: "Pool {pool_name} IO Reads"
@@ -249,6 +550,15 @@ metrics:
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Number of read operations on pool"
     category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.io.operations
+      unit: "{operation}"
+      type: counter
+      attributes:
+        disk.io.direction: read
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
 
   - name: "hardware.storage.pool.io.writes"
     channel: "pool_io_writes"
@@ -257,6 +567,15 @@ metrics:
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Number of write operations on pool"
     category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.io.operations
+      unit: "{operation}"
+      type: counter
+      attributes:
+        disk.io.direction: write
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
 
   - name: "hardware.storage.pool.io.read.bytes"
     channel: "pool_io_read_bytes"
@@ -265,6 +584,15 @@ metrics:
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Total bytes read from pool"
     category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.io
+      unit: By
+      type: counter
+      attributes:
+        disk.io.direction: read
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
 
   - name: "hardware.storage.pool.io.write.bytes"
     channel: "pool_io_write_bytes"
@@ -273,8 +601,19 @@ metrics:
     multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
     description: "Total bytes written to pool"
     category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.io
+      unit: By
+      type: counter
+      attributes:
+        disk.io.direction: write
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
 
-  # System Health Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # SYSTEM / CONTROLLERS — OTel hw.status (enclosure, disk_controller)
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "hardware.system.health"
     channel: "system_health"
     display_name: "System Health"
@@ -283,6 +622,23 @@ metrics:
     description: "Overall system health status"
     category: "system"
     lookup: "sfs.redfish.health"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: enclosure
+      expand:
+        attribute: hw.state
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+          unknown: 3
+    tag_to_attribute:
+      system_name: hw.name
+      model: hw.model
+      serial_number: hw.serial_number
 
   - name: "hardware.system.power.state"
     channel: "system_power_state"
@@ -292,6 +648,21 @@ metrics:
     description: "System power state"
     category: "system"
     lookup: "sfs.redfish.power_state"
+    otel:
+      name: senhub.hardware.system.power_state
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.hardware.system.power_state_value
+        mapping:
+          off: 0
+          on: 1
+          powering_on: 2
+          powering_off: 3
+          unknown: 4
+    tag_to_attribute:
+      system_name: hw.name
+      model: hw.model
 
   - name: "hardware.controller.health"
     channel: "controller_health"
@@ -301,6 +672,23 @@ metrics:
     description: "Storage controller health status"
     category: "system"
     lookup: "sfs.redfish.health"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: disk_controller
+      expand:
+        attribute: hw.state
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+          unknown: 3
+    tag_to_attribute:
+      controller_id: hw.id
+      controller_name: hw.name
+      controller_slot: senhub.hardware.disk_controller.slot
 
   - name: "hardware.eventservice.health"
     channel: "eventservice_health"
@@ -309,8 +697,21 @@ metrics:
     description: "System event service health status"
     category: "system"
     lookup: "sfs.redfish.health"
+    otel:
+      name: senhub.hardware.eventservice.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.hardware.eventservice.state
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+          unknown: 3
 
-  # Redundancy Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # REDUNDANCY — senhub extensions (no OTel spec for redundancy groups)
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "hardware.redundancy.health"
     channel: "redundancy_health"
     display_name: "{host} Redundancy Health"
@@ -319,6 +720,20 @@ metrics:
     description: "Redundancy system health status"
     category: "redundancy"
     lookup: "sfs.redfish.health"
+    otel:
+      name: senhub.hardware.redundancy.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.hardware.redundancy.state
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+          unknown: 3
+    tag_to_attribute:
+      controller_id: hw.parent
+      redundancy_set: senhub.hardware.redundancy.set
 
   - name: "hardware.redundancy.controllers.active"
     channel: "redundancy_controllers_active"
@@ -327,6 +742,14 @@ metrics:
     multi_instance_labels: ["host", "redundancy_set"]
     description: "Number of active redundant controllers"
     category: "redundancy"
+    otel:
+      name: senhub.hardware.redundancy.controllers.count
+      unit: "{controller}"
+      type: updowncounter
+      attributes:
+        senhub.hardware.redundancy.bound: active
+    tag_to_attribute:
+      redundancy_set: senhub.hardware.redundancy.set
 
   - name: "hardware.redundancy.controllers.min"
     channel: "redundancy_controllers_min"
@@ -335,6 +758,14 @@ metrics:
     multi_instance_labels: ["host", "redundancy_set"]
     description: "Minimum number of controllers for redundancy"
     category: "redundancy"
+    otel:
+      name: senhub.hardware.redundancy.controllers.count
+      unit: "{controller}"
+      type: updowncounter
+      attributes:
+        senhub.hardware.redundancy.bound: min
+    tag_to_attribute:
+      redundancy_set: senhub.hardware.redundancy.set
 
   - name: "hardware.redundancy.controllers.max"
     channel: "redundancy_controllers_max"
@@ -343,8 +774,16 @@ metrics:
     multi_instance_labels: ["host", "redundancy_set"]
     description: "Maximum number of controllers supported"
     category: "redundancy"
+    otel:
+      name: senhub.hardware.redundancy.controllers.count
+      unit: "{controller}"
+      type: updowncounter
+      attributes:
+        senhub.hardware.redundancy.bound: max
+    tag_to_attribute:
+      redundancy_set: senhub.hardware.redundancy.set
 
-  # Storage Redundancy Metrics (Dell PowerVault)
+  # Storage-scoped redundancy (Dell PowerVault)
   - name: "hardware.storage.redundancy.health"
     channel: "storage_redundancy_health"
     display_name: "{redundancy_group} Health"
@@ -353,6 +792,23 @@ metrics:
     description: "Storage redundancy health status"
     category: "redundancy"
     lookup: "sfs.redfish.health"
+    otel:
+      name: senhub.hardware.redundancy.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        senhub.hardware.redundancy.scope: storage
+      expand:
+        attribute: senhub.hardware.redundancy.state
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+          unknown: 3
+    tag_to_attribute:
+      controller: hw.parent
+      redundancy_group: senhub.hardware.redundancy.set
+      redundancy_mode: senhub.hardware.redundancy.mode
 
   - name: "hardware.storage.redundancy.controllers_active"
     channel: "storage_redundancy_controllers_active"
@@ -361,6 +817,16 @@ metrics:
     multi_instance_labels: ["host", "controller", "redundancy_group", "redundancy_mode"]
     description: "Number of active redundant storage controllers"
     category: "redundancy"
+    otel:
+      name: senhub.hardware.redundancy.controllers.count
+      unit: "{controller}"
+      type: updowncounter
+      attributes:
+        senhub.hardware.redundancy.scope: storage
+        senhub.hardware.redundancy.bound: active
+    tag_to_attribute:
+      redundancy_group: senhub.hardware.redundancy.set
+      redundancy_mode: senhub.hardware.redundancy.mode
 
   - name: "hardware.storage.redundancy.controllers_min"
     channel: "storage_redundancy_controllers_min"
@@ -369,6 +835,16 @@ metrics:
     multi_instance_labels: ["host", "controller", "redundancy_group", "redundancy_mode"]
     description: "Minimum number of storage controllers for redundancy"
     category: "redundancy"
+    otel:
+      name: senhub.hardware.redundancy.controllers.count
+      unit: "{controller}"
+      type: updowncounter
+      attributes:
+        senhub.hardware.redundancy.scope: storage
+        senhub.hardware.redundancy.bound: min
+    tag_to_attribute:
+      redundancy_group: senhub.hardware.redundancy.set
+      redundancy_mode: senhub.hardware.redundancy.mode
 
   - name: "hardware.storage.redundancy.controllers_max"
     channel: "storage_redundancy_controllers_max"
@@ -377,6 +853,16 @@ metrics:
     multi_instance_labels: ["host", "controller", "redundancy_group", "redundancy_mode"]
     description: "Maximum number of storage controllers supported"
     category: "redundancy"
+    otel:
+      name: senhub.hardware.redundancy.controllers.count
+      unit: "{controller}"
+      type: updowncounter
+      attributes:
+        senhub.hardware.redundancy.scope: storage
+        senhub.hardware.redundancy.bound: max
+    tag_to_attribute:
+      redundancy_group: senhub.hardware.redundancy.set
+      redundancy_mode: senhub.hardware.redundancy.mode
 
 tag_metadata:
   psu_name:

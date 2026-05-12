@@ -295,5 +295,5 @@ func (p *veeamProbe) OnShutdown(ctx context.Context) error {
 
 // GetTargetStrategies returns the strategies this probe's data should be sent to
 func (p *veeamProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg", "http"}
+	return []string{"senhub", "prtg", "http", "otlp"}
 }

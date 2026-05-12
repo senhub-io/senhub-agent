@@ -18,6 +18,7 @@ The Network probe monitors network interface performance across all major operat
 ```yaml
 probes:
   - name: network
+    type: network
     params:
       interval: 30  # Collection interval in seconds (default: 30)
 ```
@@ -27,6 +28,7 @@ probes:
 ```yaml
 probes:
   - name: network
+    type: network
     params: {}
 ```
 
@@ -70,6 +72,7 @@ All metrics include the `interface` tag to identify the specific network interfa
 ```yaml
 probes:
   - name: network
+    type: network
     params:
       interval: 10
 ```
@@ -78,6 +81,7 @@ probes:
 ```yaml
 probes:
   - name: network
+    type: network
     params:
       interval: 60
 ```
@@ -126,7 +130,7 @@ curl http://localhost:8080/api/{agentkey}/prtg/metrics
 
 Each interface creates a separate set of channels with the interface name embedded (e.g., "Network eth0 Bytes Sent").
 
-### Nagios/Icinga
+### Nagios
 
 Access Network metrics in Nagios format:
 
@@ -146,19 +150,6 @@ curl http://localhost:8080/api/{agentkey}/nagios/metrics?probe=network
 - `errors_sent` - Transmission errors (alert on non-zero)
 - `errors_received` - Reception errors (alert on non-zero)
 
-### Grafana/Prometheus
-
-Access metrics in Prometheus-compatible format:
-
-```bash
-# Prometheus format
-curl http://localhost:8080/api/{agentkey}/prometheus/metrics
-
-# Example output:
-# bytes_sent{hostname="server01",interface="eth0",ip="192.168.1.10"} 1234567
-# bytes_received{hostname="server01",interface="eth0",ip="192.168.1.10"} 9876543
-# packets_sent{hostname="server01",interface="eth0",ip="192.168.1.10"} 8765
-```
 
 ### Web Interface
 
@@ -396,10 +387,14 @@ Monitor network with different collection intervals:
 ```yaml
 probes:
   - name: network_realtime
+    type: network
     params:
       interval: 10
 
   - name: network_trending
+    type: network
+
+    type: network
     params:
       interval: 300
 ```
@@ -413,18 +408,22 @@ Correlate network metrics with other system metrics:
 ```yaml
 probes:
   - name: network
+    type: network
     params:
       interval: 30
 
   - name: cpu
+    type: cpu
     params:
       interval: 30
 
   - name: memory
+    type: memory
     params:
       interval: 30
 
   - name: logicaldisk
+    type: logicaldisk
     params:
       interval: 60
 ```

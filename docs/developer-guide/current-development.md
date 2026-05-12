@@ -2,7 +2,59 @@
 
 This document tracks active development work, completed features, and the roadmap for SenHub Agent.
 
+## Active
+
+### Zabbix native export — paused after audit
+
+**Branch**: `feat/zabbix-export`
+**Status**: 🟡 Phase 0 audit complete, implementation paused
+
+Spec drafted on 2026-05-04, audited against current code state on
+2026-05-12 (`docs/developer-guide/zabbix/AUDIT-Phase0.md`). The
+audit identifies three decisions to take before Phase 1 starts and
+estimates implementation at ~5 days. Resuming subject to other
+priorities.
+
 ## Recently Completed
+
+### Grafana dashboard catalog v1 (0.1.90-beta)
+**Status**: ✅ COMPLETED — 21 dashboards live
+
+- 7 Linux + 5 Windows host dashboards
+- 1 agent self-monitoring dashboard
+- 8 vendor dashboards (Veeam, Redfish, NetScaler, Citrix VDI)
+  schema-validated, "(awaiting live data)" annotation drops on
+  first customer pilot
+- Calqued on the Grafana Cloud Integrations layout (survey +
+  proposal under `docs/grafana/research/`)
+- Validated live on sha901-prod, sha501-prod (Linux), bbcloud-prod
+  (Windows Server 2022)
+
+### Agent self-observability metrics (0.1.90-beta)
+**Status**: ✅ COMPLETED
+
+6 process resource metrics + 5 OTLP push counters + new
+`system.processes.count` metric. Cross-OS via build tags. The
+`BuildAgentRecords` helper moved into a neutral `agentmetrics`
+package and is injected into the OTLP push so OTLP-only
+deployments see agent self-metrics in their dashboards.
+
+### Native OTLP/gRPC push export (0.1.89-beta → 0.1.90-beta)
+**Status**: ✅ COMPLETED
+
+Strategy `otlp` ships metrics + logs over OTLP/gRPC to any OTel
+receiver. Full TLS / mTLS / Bearer authentication. New `linux_logs`
+probe (free tier) reads the local systemd journal. `${env:VAR}`
+expansion in OTLP storage config matches the OTel collector
+syntax. Validated end-to-end against VictoriaMetrics +
+VictoriaLogs on sha901.
+
+### Prometheus / VictoriaMetrics exposition (0.1.88-beta)
+**Status**: ✅ COMPLETED
+
+`/metrics` endpoint with OTel-aligned naming across all 14 probes.
+Standard Prometheus text exposition v0.0.4, validated through
+expfmt parser in CI. Live validated against VictoriaMetrics.
 
 ### Configuration v1→v2 Remote Migration (0.1.70-beta)
 **Status**: ✅ COMPLETED
@@ -273,7 +325,7 @@ This document tracks active development work, completed features, and the roadma
 
 **Modules**:
 - `strategy.http`, `strategy.prtg`, `strategy.senhub`
-- `probe.redfish`, `probe.host`, `probe.network`, `probe.webapp`, `probe.otel`, `probe.gateway`, `probe.syslog`
+- `probe.redfish`, `probe.host`, `probe.network`, `probe.webapp`, `probe.gateway`, `probe.syslog`
 - `cache`, `transformer`, `scheduler`, `configuration`
 
 **API Endpoints**:

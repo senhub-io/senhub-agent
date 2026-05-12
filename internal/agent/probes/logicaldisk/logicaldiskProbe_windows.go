@@ -264,6 +264,27 @@ func (w *windowsLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store
 			Tags:      metricTags,
 		})
 
+		// Emit a derived "used %" datapoint alongside the PDH-provided
+		// "free %". Windows PDH only exposes the free side; for OTel /
+		// dashboard parity with Linux (which reports both free AND used
+		// states) we compute the complement here.
+		//
+		// Restricted to disk_free_percent so we don't synthesize unit-
+		// less complements of capacity counters where it makes no sense
+		// (free megabytes, read/write counters, etc.).
+		if metricName == "disk_free_percent" {
+			usedPercent := 100.0 - value
+			if usedPercent < 0 {
+				usedPercent = 0
+			}
+			dataPoints = append(dataPoints, data_store.DataPoint{
+				Name:      "disk_used_percent",
+				Timestamp: timestamp,
+				Value:     float32(usedPercent),
+				Tags:      metricTags,
+			})
+		}
+
 		w.logger.Debug().Str("metric", metricName).Float64("value", value).Interface("tags", metricTags).Msg("Collected metric")
 	}
 

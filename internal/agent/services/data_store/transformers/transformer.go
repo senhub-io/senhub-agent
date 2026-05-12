@@ -40,6 +40,43 @@ type MetricDefinition struct {
 	AlertThresholdWarning  int               `yaml:"alert_threshold_warning"`
 	AlertThresholdCritical int               `yaml:"alert_threshold_critical"`
 	Lookup                 string            `yaml:"lookup"`
+
+	// OTel-first mapping (v3+). See docs/developer-guide/otel/senhub-semantic-conventions.md
+	Otel           *OtelMapping      `yaml:"otel,omitempty"`
+	TagToAttribute map[string]string `yaml:"tag_to_attribute,omitempty"`
+}
+
+// OtelMapping is the OTel-shaped target for a probe metric. Consumed by the
+// Prometheus mapper (and future OTLP exporter) to produce strict OTel output.
+type OtelMapping struct {
+	// Skip explicitly excludes this metric from OTel-aware outputs.
+	// If Skip is true, Name/Unit/Type/etc. are ignored.
+	Skip   bool   `yaml:"skip,omitempty"`
+	Reason string `yaml:"reason,omitempty"` // Required when Skip is true
+
+	// OTel semantic convention fields
+	Name       string            `yaml:"name,omitempty"`       // e.g. "system.cpu.time"
+	Unit       string            `yaml:"unit,omitempty"`       // UCUM: "s", "By", "1", "{packet}", "bit/s"...
+	Type       string            `yaml:"type,omitempty"`       // "gauge" | "counter" | "updowncounter"
+	Attributes map[string]string `yaml:"attributes,omitempty"` // static attributes
+
+	// Expand directive for enum-valued "status" metrics (hw.status pattern).
+	// The mapper emits 1 data point per mapping entry; value=1 if raw matches.
+	Expand *ExpandDirective `yaml:"expand,omitempty"`
+
+	// ValueScale multiplies the raw cache value before serialization.
+	// Example: MB → By uses ValueScale: 1048576.
+	// Note: % → ratio (÷100) and similar standard conversions are handled
+	// automatically by the mapper from Unit comparison; ValueScale is for
+	// probe-specific conversions not derivable from units alone.
+	ValueScale float64 `yaml:"value_scale,omitempty"`
+}
+
+// ExpandDirective declares how a numeric-enum metric (via lookup) is emitted
+// as N per-state data points in strict OTel form.
+type ExpandDirective struct {
+	Attribute string         `yaml:"attribute"` // target attribute name, e.g. "hw.state"
+	Mapping   map[string]int `yaml:"mapping"`   // state_name → raw lookup code
 }
 
 // UnitCorrection represents a correction rule for inconsistent source data
@@ -78,11 +115,19 @@ type TagMetadata struct {
 
 // ProbeDefinition represents the structure of a probe definition YAML file
 type ProbeDefinition struct {
-	ProbeName   string                  `yaml:"probe_name"`
+	ProbeName    string                 `yaml:"probe_name"`
 	FriendlyName string                 `yaml:"friendly_name"`
-	Version     string                  `yaml:"version"`
-	Metrics     []MetricDefinition      `yaml:"metrics"`
-	TagMetadata map[string]TagMetadata  `yaml:"tag_metadata,omitempty" json:"tag_metadata"`
+	Version      string                 `yaml:"version"`
+	Metrics      []MetricDefinition     `yaml:"metrics"`
+	TagMetadata  map[string]TagMetadata `yaml:"tag_metadata,omitempty" json:"tag_metadata"`
+
+	// HostLevel marks probes that observe the local host (CPU, memory,
+	// network interfaces, filesystem of the agent's machine). When the
+	// Prometheus endpoint is configured with expose_host_metrics: false,
+	// such probes are filtered out of /metrics so an operator running a
+	// separate node_exporter on the same host avoids duplicate series.
+	// Set to true in cpu/memory/network/logicaldisk YAMLs.
+	HostLevel bool `yaml:"host_level,omitempty"`
 }
 
 // UnitDefinition represents a unit mapping definition
