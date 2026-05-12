@@ -37,7 +37,7 @@
       "type": "bargauge", "id": 10, "title": "Drive used %",
       "gridPos": { "h": 10, "w": 12, "x": 0, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "targets": [{ "refId": "A", "expr": "(1 - system_filesystem_utilization_ratio{service_name=~\"$service\",system_filesystem_mountpoint=~\"$drive\",system_filesystem_state=\"free\"})", "legendFormat": "{{service_name}} {{system_filesystem_mountpoint}}", "instant": true }],
+      "targets": [{ "refId": "A", "expr": "system_filesystem_utilization_ratio{service_name=~\"$service\",system_filesystem_mountpoint=~\"$drive\",system_filesystem_state=\"used\"}", "legendFormat": "{{service_name}} {{system_filesystem_mountpoint}}", "instant": true }],
       "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.8 }, { "color": "red", "value": 0.95 }] } } },
       "options": { "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true }
     },
@@ -54,7 +54,7 @@
       "type": "timeseries", "id": 20, "title": "Drive utilization",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "targets": [{ "refId": "A", "expr": "(1 - system_filesystem_utilization_ratio{service_name=~\"$service\",system_filesystem_mountpoint=~\"$drive\",system_filesystem_state=\"free\"})", "legendFormat": "{{service_name}} {{system_filesystem_mountpoint}}" }],
+      "targets": [{ "refId": "A", "expr": "system_filesystem_utilization_ratio{service_name=~\"$service\",system_filesystem_mountpoint=~\"$drive\",system_filesystem_state=\"used\"}", "legendFormat": "{{service_name}} {{system_filesystem_mountpoint}}" }],
       "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
     },
