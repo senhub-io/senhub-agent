@@ -6,6 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
 
@@ -62,6 +65,12 @@ type OTLPSyncStrategy struct {
 	// when Logs.Enabled. nil otherwise.
 	logs     *logsPipeline
 	logsPump *logsPump
+
+	// traces holds the SDK BatchSpanProcessor + TracerProvider + Tracer
+	// when Traces.Enabled. nil otherwise. The provider also gets
+	// registered as the OTel global, so any code that resolves a tracer
+	// via otel.Tracer() reaches this exporter.
+	traces *tracesPipeline
 
 	// pushTicker drives the metrics push cadence. nil before Start, nil
 	// after Shutdown.
@@ -184,14 +193,23 @@ func (s *OTLPSyncStrategy) Start() error {
 		s.logsPump.start()
 	}
 
+	if s.cfg.Traces.Enabled && s.exporters.trace != nil {
+		s.traces = buildTracesPipeline(s.exporters.trace, s.resource, s.cfg.Traces, cliArgs.Version)
+	}
+
 	s.logger.Info().
 		Str("endpoint", s.cfg.Endpoint).
 		Bool("tls_enabled", s.cfg.TLS.Enabled).
 		Bool("metrics_enabled", s.cfg.Metrics.Enabled).
+		Str("metrics_endpoint", s.cfg.Metrics.ResolveEndpoint(s.cfg.Endpoint)).
 		Dur("metrics_interval", s.cfg.Metrics.Interval).
 		Bool("logs_enabled", s.cfg.Logs.Enabled).
+		Str("logs_endpoint", s.cfg.Logs.ResolveEndpoint(s.cfg.Endpoint)).
 		Int("logs_batch_size", s.cfg.Logs.BatchSize).
 		Dur("logs_batch_timeout", s.cfg.Logs.BatchTimeout).
+		Bool("traces_enabled", s.cfg.Traces.Enabled).
+		Str("traces_endpoint", s.cfg.Traces.ResolveEndpoint(s.cfg.Endpoint)).
+		Float64("traces_sample_ratio", s.cfg.Traces.SampleRatio).
 		Str("compression", s.cfg.Compression).
 		Dur("timeout", s.cfg.Timeout).
 		Msg("OTLP strategy started")
@@ -252,10 +270,27 @@ func (s *OTLPSyncStrategy) pushDrain(parent context.Context) {
 // Cumulative counter semantics mean the consumer sees no gap from
 // a transient export failure (the next push carries the same or
 // higher value).
+//
+// The push is wrapped in an OTel span so operators can correlate
+// export latency / failure with the same observability backend that
+// receives the metrics. The span is a no-op when traces are disabled
+// (otel.Tracer returns the global noop tracer in that case).
 func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmapper.OtelRecord) {
 	if s.exporters == nil || s.exporters.metric == nil {
 		return
 	}
+
+	tracer := otel.Tracer(tracesScopeName)
+	parent, span := tracer.Start(parent, "otlp.push.metrics",
+		// Endpoint as attribute so split-backend configs (per-signal
+		// override) show the actual target the span pushed to.
+		// Set at start so it's present even if the push panics.
+	)
+	span.SetAttributes(
+		attribute.String("otlp.endpoint", s.cfg.Metrics.ResolveEndpoint(s.cfg.Endpoint)),
+	)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(parent, s.cfg.Timeout)
 	defer cancel()
 
@@ -277,11 +312,15 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 		},
 		s.warnMissingMappingOnce,
 	)
+	span.SetAttributes(attribute.Int("otlp.records_count", count))
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		s.logger.Warn().Err(err).Msg("OTLP metrics export failed")
 		agentstate.IncrementOTLPExportErrors()
 		return
 	}
+	span.SetStatus(codes.Ok, "")
 	if count > 0 {
 		s.logger.Debug().Int("records_pushed", count).Msg("OTLP metrics exported")
 		agentstate.IncrementOTLPMetricsPushed(count)
@@ -375,6 +414,14 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	if s.logs != nil {
 		if err := s.logs.shutdown(ctx); err != nil {
 			s.logger.Warn().Err(err).Msg("OTLP logs pipeline shutdown failed")
+		}
+	}
+
+	// Same drain pattern for traces: provider.Shutdown flushes the
+	// BatchSpanProcessor before closing the underlying exporter.
+	if s.traces != nil {
+		if err := s.traces.shutdown(ctx); err != nil {
+			s.logger.Warn().Err(err).Msg("OTLP traces pipeline shutdown failed")
 		}
 	}
 

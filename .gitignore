@@ -130,3 +130,6 @@ docs/user-guide/resources/
 # Claude Code - Local hookify rules
 .claude/hookify.*.local.md
 internal/agent/probes/ibmi/
+
+# Claude Code scheduled wake-up lock (runtime artifact)
+.claude/scheduled_tasks.lock
