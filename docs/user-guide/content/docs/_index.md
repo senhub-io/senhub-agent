@@ -5,7 +5,7 @@ type: docs
 
 # SenHub Agent Documentation
 
-SenHub Agent is a monitoring collector that runs on your infrastructure and collects metrics from servers, applications, backup systems, and network devices. It exposes metrics via a REST API compatible with PRTG, Nagios, and Prometheus / VictoriaMetrics scrape (OTel-aligned exposition).
+SenHub Agent is a monitoring collector that runs on your infrastructure and collects metrics from servers, applications, backup systems, and network devices. It exposes metrics via REST endpoints compatible with PRTG, Nagios, and Prometheus / VictoriaMetrics scrape, and pushes metrics and logs natively over OTLP/gRPC to any OpenTelemetry receiver. All output paths share the same OTel-aligned naming so one query vocabulary covers every sink.
 
 ## Getting Started
 
