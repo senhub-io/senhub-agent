@@ -52,7 +52,7 @@ VictoriaLogs on sha901.
 ### Prometheus / VictoriaMetrics exposition (0.1.88-beta)
 **Status**: ✅ COMPLETED
 
-`/metrics` endpoint with OTel-aligned naming across all 15 probes.
+`/metrics` endpoint with OTel-aligned naming across all 14 probes.
 Standard Prometheus text exposition v0.0.4, validated through
 expfmt parser in CI. Live validated against VictoriaMetrics.
 
@@ -325,7 +325,7 @@ expfmt parser in CI. Live validated against VictoriaMetrics.
 
 **Modules**:
 - `strategy.http`, `strategy.prtg`, `strategy.senhub`
-- `probe.redfish`, `probe.host`, `probe.network`, `probe.webapp`, `probe.otel`, `probe.gateway`, `probe.syslog`
+- `probe.redfish`, `probe.host`, `probe.network`, `probe.webapp`, `probe.gateway`, `probe.syslog`
 - `cache`, `transformer`, `scheduler`, `configuration`
 
 **API Endpoints**:

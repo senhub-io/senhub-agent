@@ -300,9 +300,11 @@ Extension complète sous namespace `senhub.system.network.wifi.*`.
 
 > Pas de YAML transformer existant pour `wifi_signal_strength` — créé lors du lot 2.
 
-### 4.8 Probes `syslog`, `event`, `otel` (conduits de flux log)
+### 4.8 Probes `syslog`, `event` (conduits de flux log)
 
-**Nature :** ces trois probes sont des **conduits de flux log** (collecte + retransmission), pas des collecteurs de métriques. Elles reçoivent des événements/logs et les relaient vers des consommateurs (cloud SenHub, futur OTLP log export, etc.). Ce ne sont pas des sources de signaux Prometheus.
+**Nature :** ces probes sont des **conduits de flux log** (collecte + retransmission), pas des collecteurs de métriques. Elles reçoivent des événements/logs et les relaient vers des consommateurs (cloud SenHub, OTLP log export, etc.). Ce ne sont pas des sources de signaux Prometheus.
+
+> **Note 2026-05-12 :** la probe `otel` (réception OTLP) a été retirée de la registry — implémentation stub jamais terminée. Une réimplementation complète (vrai serveur OTLP gRPC/HTTP) est nécessaire avant réactivation.
 
 **Décision :** aucune métrique métier exposée via l'endpoint `/metrics`. Déclaration explicite par `otel.skip: true` dans les YAML pour respecter le contrat "pas de métrique sans mapping" (le skip EST un mapping explicite, documenté et auditable).
 
@@ -326,9 +328,6 @@ Ces probes pourront être **outillées** (chantier dédié, hors scope du mappin
 | `senhub.probe.syslog.events_dropped` | `{event}` | Counter |
 | `senhub.probe.syslog.buffer_fill_ratio` | `1` | Gauge |
 | `senhub.probe.event.events_received` | `{event}` | Counter |
-| `senhub.probe.otel.spans_received` | `{span}` | Counter |
-| `senhub.probe.otel.logs_received` | `{log}` | Counter |
-| `senhub.probe.otel.metrics_received` | `{metric}` | Counter |
 
 Ces métriques nécessitent une refonte du code probe pour maintenir des compteurs internes. Séparé.
 
@@ -336,7 +335,6 @@ Ces métriques nécessitent une refonte du code probe pour maintenir des compteu
 
 - **syslog** : métrique `syslog_event` marquée `skip: true`.
 - **event** : YAML créé avec métrique `event_event` marquée `skip: true`.
-- **otel** : pas de YAML (probe stub, n'émet aucun data point).
 
 ### 4.9 Probe `redfish` (monitoring hardware serveur)
 
