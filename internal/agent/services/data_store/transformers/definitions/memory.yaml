@@ -1,22 +1,51 @@
 probe_name: "memory"
 friendly_name: "Memory Metrics"
+version: "3.0.0"
+host_level: true
 multi_instance_labels: []
 
+# Format v3 — OTel-first source of truth:
+#   otel:              semantic convention (source of truth)
+#   tag_to_attribute:  mapping of cache tag names → OTel attribute names
+# Retro-compat fields (channel, display_name, category, description) unchanged.
+
 metrics:
-  # Windows Performance Counter Metrics (bytes)
+  # ─────────────────────────────────────────────────────────────────────────
+  # Total RAM installed (Windows)
+  # OTel: system.memory.limit (UpDownCounter, bytes)
+  # ─────────────────────────────────────────────────────────────────────────
   - name: "memory_total"
     channel: "memory_total"
     display_name: "Memory Total"
     unit: "bytes"
     category: "capacity"
     description: "Total physical memory installed on the system"
+    otel:
+      name: system.memory.limit
+      unit: By
+      type: updowncounter
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # RAM usage by state (cross-platform, bytes)
+  # OTel: system.memory.usage (UpDownCounter, By) with system.memory.state
+  # OTel official state values: buffers, cached, free, used
+  # Extensions for Windows: committed, modified, nonpaged_pool, paged_pool
+  # Harmonization: Windows "available" → state=free
+  # ─────────────────────────────────────────────────────────────────────────
+
+  # --- Windows-specific bytes ---
   - name: "memory_available"
     channel: "memory_available"
     display_name: "Memory Available"
     unit: "bytes"
     category: "capacity"
     description: "Amount of physical memory immediately available for allocation"
+    otel:
+      name: system.memory.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.memory.state: free      # harmonized from Windows "available"
 
   - name: "memory_committed"
     channel: "memory_committed"
@@ -24,6 +53,12 @@ metrics:
     unit: "bytes"
     category: "capacity"
     description: "Amount of virtual memory that has been committed by the memory manager"
+    otel:
+      name: system.memory.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.memory.state: committed   # extension — Windows-specific
 
   - name: "memory_modified_page_list"
     channel: "memory_modified_page_list"
@@ -31,6 +66,12 @@ metrics:
     unit: "bytes"
     category: "capacity"
     description: "Amount of memory whose contents have been modified but not yet written to disk"
+    otel:
+      name: system.memory.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.memory.state: modified    # extension — Windows-specific
 
   - name: "memory_nonpaged_pool"
     channel: "memory_nonpaged_pool"
@@ -38,6 +79,12 @@ metrics:
     unit: "bytes"
     category: "capacity"
     description: "Amount of kernel memory that cannot be paged out to disk"
+    otel:
+      name: system.memory.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.memory.state: nonpaged_pool   # extension — Windows-specific
 
   - name: "memory_paged_pool"
     channel: "memory_paged_pool"
@@ -45,6 +92,12 @@ metrics:
     unit: "bytes"
     category: "capacity"
     description: "Amount of kernel memory that can be paged out to disk"
+    otel:
+      name: system.memory.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.memory.state: paged_pool      # extension — Windows-specific
 
   - name: "memory_cache"
     channel: "memory_cache"
@@ -52,51 +105,26 @@ metrics:
     unit: "bytes"
     category: "capacity"
     description: "Amount of physical memory used by the system file cache"
+    otel:
+      name: system.memory.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.memory.state: cached          # Windows file cache → OTel "cached"
 
-  # Windows Performance Counter Metrics (counts per second)
-  - name: "memory_page_faults"
-    channel: "memory_page_faults"
-    display_name: "Memory Page Faults"
-    unit: "#"
-    category: "paging"
-    description: "Rate of page faults per second including both hard and soft faults"
-
-  - name: "memory_pages_input"
-    channel: "memory_pages_input"
-    display_name: "Memory Pages Input"
-    unit: "#"
-    category: "paging"
-    description: "Rate of pages read from disk per second to resolve hard page faults"
-
-  - name: "memory_pages_output"
-    channel: "memory_pages_output"
-    display_name: "Memory Pages Output"
-    unit: "#"
-    category: "paging"
-    description: "Rate of pages written to disk per second to free physical memory"
-
-  # Windows Pagefile Metrics (percentages)
-  - name: "pagefile_usage"
-    channel: "pagefile_usage"
-    display_name: "Pagefile Usage"
-    unit: "%"
-    category: "paging"
-    description: "Percentage of the system pagefile currently in use"
-
-  - name: "pagefile_usage_peak"
-    channel: "pagefile_usage_peak"
-    display_name: "Pagefile Usage Peak"
-    unit: "%"
-    category: "paging"
-    description: "Peak percentage of the system pagefile used since last reboot"
-
-  # Unix/Linux Memory Size Metrics (in bytes)
+  # --- Linux bytes ---
   - name: "memory_used"
     channel: "memory_used"
     display_name: "Memory Used"
     unit: "bytes"
     category: "capacity"
     description: "Amount of physical memory currently in use by the system and applications"
+    otel:
+      name: system.memory.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.memory.state: used
 
   - name: "memory_free"
     channel: "memory_free"
@@ -104,6 +132,12 @@ metrics:
     unit: "bytes"
     category: "capacity"
     description: "Amount of physical memory not being used at all"
+    otel:
+      name: system.memory.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.memory.state: free
 
   - name: "memory_cached"
     channel: "memory_cached"
@@ -111,6 +145,12 @@ metrics:
     unit: "bytes"
     category: "capacity"
     description: "Amount of physical memory used for caching file data and metadata"
+    otel:
+      name: system.memory.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.memory.state: cached
 
   - name: "memory_buffers"
     channel: "memory_buffers"
@@ -118,14 +158,99 @@ metrics:
     unit: "bytes"
     category: "capacity"
     description: "Amount of physical memory used for kernel buffer cache"
+    otel:
+      name: system.memory.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.memory.state: buffers
 
-  # Memory Usage Percentage (cross-platform)
+  # ─────────────────────────────────────────────────────────────────────────
+  # Memory utilization (cross-platform, %)
+  # OTel: system.memory.utilization (Gauge, ratio)
+  # Mapper converts 0-100 → 0-1
+  # ─────────────────────────────────────────────────────────────────────────
   - name: "memory_used_percent"
     channel: "memory_usage"
     display_name: "Memory Usage"
     unit: "%"
     category: "usage"
     description: "Percentage of total physical memory currently in use"
+    otel:
+      name: system.memory.utilization
+      unit: "1"
+      type: gauge
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Windows paging rates (instantaneous /s from Perfmon)
+  # Extensions senhub.system.paging.*_per_second
+  # See senhub-semantic-conventions §4.2.2
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "memory_page_faults"
+    channel: "memory_page_faults"
+    display_name: "Memory Page Faults"
+    unit: "#"
+    category: "paging"
+    description: "Rate of page faults per second including both hard and soft faults"
+    otel:
+      name: senhub.system.paging.faults_per_second
+      unit: "1/s"
+      type: gauge
+
+  - name: "memory_pages_input"
+    channel: "memory_pages_input"
+    display_name: "Memory Pages Input"
+    unit: "#"
+    category: "paging"
+    description: "Rate of pages read from disk per second to resolve hard page faults"
+    otel:
+      name: senhub.system.paging.operations_per_second
+      unit: "1/s"
+      type: gauge
+      attributes:
+        direction: in
+
+  - name: "memory_pages_output"
+    channel: "memory_pages_output"
+    display_name: "Memory Pages Output"
+    unit: "#"
+    category: "paging"
+    description: "Rate of pages written to disk per second to free physical memory"
+    otel:
+      name: senhub.system.paging.operations_per_second
+      unit: "1/s"
+      type: gauge
+      attributes:
+        direction: out
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Pagefile utilization (%)
+  # OTel: system.paging.utilization (OTEP 0119 draft) for current usage
+  # Extension senhub.system.paging.utilization_peak for peak value
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "pagefile_usage"
+    channel: "pagefile_usage"
+    display_name: "Pagefile Usage"
+    unit: "%"
+    category: "paging"
+    description: "Percentage of the system pagefile currently in use"
+    otel:
+      name: system.paging.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        system.paging.state: used
+
+  - name: "pagefile_usage_peak"
+    channel: "pagefile_usage_peak"
+    display_name: "Pagefile Usage Peak"
+    unit: "%"
+    category: "paging"
+    description: "Peak percentage of the system pagefile used since last reboot"
+    otel:
+      name: senhub.system.paging.utilization_peak
+      unit: "1"
+      type: gauge
 
 tag_metadata:
   # System tags (injected by framework)

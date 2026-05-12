@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shirou/gopsutil/v3/process"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -367,6 +368,23 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 			Float64("value", value).
 			Interface("tags", metricTags).
 			Msg("Collected metric")
+	}
+
+	// Process count — sourced via gopsutil/process.Pids which on
+	// Windows wraps EnumProcesses. Cheap single syscall (~10s of
+	// microseconds for a few hundred processes). Mapped via cpu.yaml
+	// to OTel system.processes.count.
+	if pids, perr := process.Pids(); perr == nil {
+		coreTotalTags := append([]tags.Tag{}, baseTags...)
+		coreTotalTags = append(coreTotalTags, tags.Tag{Key: "core", Value: "total"})
+		dataPoints = append(dataPoints, data_store.DataPoint{
+			Name:      "cpu_processes_total",
+			Timestamp: timestamp,
+			Value:     float32(len(pids)),
+			Tags:      coreTotalTags,
+		})
+	} else {
+		w.logger.Warn().Err(perr).Msg("Could not collect process count")
 	}
 
 	w.logger.Debug().

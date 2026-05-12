@@ -1,8 +1,20 @@
 probe_name: "network"
 friendly_name: "Network Interface"
+version: "3.0.0"
+host_level: true
 multi_instance_labels: ["interface"]
 
+# Format v3 — OTel-first source of truth:
+#   otel:              semantic convention (source of truth)
+#   tag_to_attribute:  mapping of cache tag names → OTel attribute names
+# Retro-compat fields (channel, display_name, category, description) unchanged.
+# 100% OTel native — no senhub.* extensions.
+
 metrics:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Throughput (bytes transmitted/received, cumulative)
+  # OTel: system.network.io (Counter, By) with network.io.direction
+  # ─────────────────────────────────────────────────────────────────────────
   - name: "bytes_sent"
     channel: "network_bytes_sent"
     display_name: "Network {interface} Bytes Sent"
@@ -10,6 +22,14 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "throughput"
     description: "Total number of bytes transmitted on the network interface"
+    otel:
+      name: system.network.io
+      unit: By
+      type: counter
+      attributes:
+        network.io.direction: transmit
+    tag_to_attribute:
+      interface: network.interface.name
 
   - name: "bytes_received"
     channel: "network_bytes_received"
@@ -18,7 +38,19 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "throughput"
     description: "Total number of bytes received on the network interface"
+    otel:
+      name: system.network.io
+      unit: By
+      type: counter
+      attributes:
+        network.io.direction: receive
+    tag_to_attribute:
+      interface: network.interface.name
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Packet counts (cumulative)
+  # OTel: system.network.packet.count (Counter, {packet}) with network.io.direction
+  # ─────────────────────────────────────────────────────────────────────────
   - name: "packets_sent"
     channel: "network_packets_sent"
     display_name: "Network {interface} Packets Sent"
@@ -26,6 +58,14 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "packets"
     description: "Total number of packets transmitted on the network interface"
+    otel:
+      name: system.network.packet.count
+      unit: "{packet}"
+      type: counter
+      attributes:
+        network.io.direction: transmit
+    tag_to_attribute:
+      interface: network.interface.name
 
   - name: "packets_received"
     channel: "network_packets_received"
@@ -34,7 +74,19 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "packets"
     description: "Total number of packets received on the network interface"
+    otel:
+      name: system.network.packet.count
+      unit: "{packet}"
+      type: counter
+      attributes:
+        network.io.direction: receive
+    tag_to_attribute:
+      interface: network.interface.name
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Errors (cumulative)
+  # OTel: system.network.errors (Counter, {error}) with network.io.direction
+  # ─────────────────────────────────────────────────────────────────────────
   - name: "errors_sent"
     channel: "network_errors_sent"
     display_name: "Network {interface} Send Errors"
@@ -42,6 +94,14 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "errors"
     description: "Number of outbound packets that could not be transmitted due to errors"
+    otel:
+      name: system.network.errors
+      unit: "{error}"
+      type: counter
+      attributes:
+        network.io.direction: transmit
+    tag_to_attribute:
+      interface: network.interface.name
 
   - name: "errors_received"
     channel: "network_errors_received"
@@ -50,7 +110,19 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "errors"
     description: "Number of inbound packets that contained errors and were discarded"
+    otel:
+      name: system.network.errors
+      unit: "{error}"
+      type: counter
+      attributes:
+        network.io.direction: receive
+    tag_to_attribute:
+      interface: network.interface.name
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Packets dropped / discards (cumulative)
+  # OTel: system.network.packet.dropped (Counter, {packet}) with network.io.direction
+  # ─────────────────────────────────────────────────────────────────────────
   - name: "discards_sent"
     channel: "network_discards_sent"
     display_name: "Network {interface} Send Discards"
@@ -58,6 +130,14 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "errors"
     description: "Number of outbound packets discarded even though no errors were detected"
+    otel:
+      name: system.network.packet.dropped
+      unit: "{packet}"
+      type: counter
+      attributes:
+        network.io.direction: transmit
+    tag_to_attribute:
+      interface: network.interface.name
 
   - name: "discards_received"
     channel: "network_discards_received"
@@ -66,6 +146,14 @@ metrics:
     multi_instance_labels: ["interface"]
     category: "errors"
     description: "Number of inbound packets discarded even though no errors were detected"
+    otel:
+      name: system.network.packet.dropped
+      unit: "{packet}"
+      type: counter
+      attributes:
+        network.io.direction: receive
+    tag_to_attribute:
+      interface: network.interface.name
 
 tag_metadata:
   interface:

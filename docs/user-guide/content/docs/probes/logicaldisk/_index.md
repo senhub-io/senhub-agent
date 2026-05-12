@@ -18,6 +18,7 @@ The LogicalDisk probe monitors disk and filesystem performance across all major 
 ```yaml
 probes:
   - name: logicaldisk
+    type: logicaldisk
     params:
       interval: 30  # Collection interval in seconds (default: 30)
 ```
@@ -27,6 +28,7 @@ probes:
 ```yaml
 probes:
   - name: logicaldisk
+    type: logicaldisk
     params: {}
 ```
 
@@ -88,6 +90,7 @@ Platform-specific metrics are automatically detected and collected based on the 
 ```yaml
 probes:
   - name: logicaldisk
+    type: logicaldisk
     params:
       interval: 10
 ```
@@ -96,6 +99,7 @@ probes:
 ```yaml
 probes:
   - name: logicaldisk
+    type: logicaldisk
     params:
       interval: 60
 ```
@@ -104,6 +108,7 @@ probes:
 ```yaml
 probes:
   - name: logicaldisk
+    type: logicaldisk
     params:
       interval: 30
       filters:
@@ -115,6 +120,7 @@ probes:
 ```yaml
 probes:
   - name: logicaldisk
+    type: logicaldisk
     params:
       interval: 30
       filters:
@@ -145,7 +151,7 @@ curl http://localhost:8080/api/{agentkey}/prtg/metrics
 - Filesystem Usage (bytes and %)
 - Inode Usage (Unix/Linux)
 
-### Nagios/Icinga
+### Nagios
 
 Access LogicalDisk metrics in Nagios format:
 
@@ -163,19 +169,6 @@ curl http://localhost:8080/api/{agentkey}/nagios/metrics?probe=logicaldisk
 - `disk_queue_length` - Disk queue depth (Windows)
 - `fs_inodes_used_percent` - Inode usage (Unix)
 
-### Grafana/Prometheus
-
-Access metrics in Prometheus-compatible format:
-
-```bash
-# Prometheus format
-curl http://localhost:8080/api/{agentkey}/prometheus/metrics
-
-# Example output:
-# disk_free_percent{hostname="server01",drive="C:"} 45.2
-# disk_reads_sec{hostname="server01",drive="C:"} 123.4
-# fs_used_percent{hostname="server01",mount_point="/",device="/dev/sda1"} 67.8
-```
 
 ### Web Interface
 
@@ -401,6 +394,7 @@ sudo setcap cap_sys_ptrace=eip ./agent
 ```yaml
 probes:
   - name: logicaldisk
+    type: logicaldisk
     params:
       filters:
         include: ["C:", "D:", "E:", "Z:"]  # Explicitly include network drive
@@ -494,10 +488,12 @@ Monitor with different intervals for capacity vs. I/O:
 ```yaml
 probes:
   - name: logicaldisk_capacity
+    type: logicaldisk
     params:
       interval: 300  # Check capacity every 5 minutes
 
   - name: logicaldisk_io
+    type: logicaldisk
     params:
       interval: 30  # Check I/O every 30 seconds
 ```
@@ -511,14 +507,19 @@ Correlate disk metrics with system metrics:
 ```yaml
 probes:
   - name: cpu
+    type: cpu
     params:
       interval: 30
 
   - name: memory
+    type: memory
     params:
       interval: 30
 
   - name: logicaldisk
+    type: logicaldisk
+
+    type: logicaldisk
     params:
       interval: 30
 ```
@@ -535,6 +536,7 @@ This provides comprehensive system monitoring:
 ```yaml
 probes:
   - name: logicaldisk
+    type: logicaldisk
     params:
       interval: 30
       filters:
@@ -547,6 +549,7 @@ probes:
 ```yaml
 probes:
   - name: logicaldisk
+    type: logicaldisk
     params:
       interval: 30
       filters:

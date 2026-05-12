@@ -14,9 +14,11 @@ Detailed documentation for each monitoring probe type supported by SenHub Agent.
 - **[Memory]({{< relref "/docs/probes/memory" >}})** - Physical memory and swap usage
 - **[Network]({{< relref "/docs/probes/network" >}})** - Network interface bandwidth and errors
 - **[Logical Disk]({{< relref "/docs/probes/logicaldisk" >}})** - Disk space, I/O, and filesystem health
+- **[Linux Logs]({{< relref "/docs/probes/linux-logs" >}})** - Local systemd journal collection (Linux only)
 
 ### Infrastructure (Pro)
 
+- **[Veeam]({{< relref "/docs/probes/veeam" >}})** - Veeam Backup & Replication v13 monitoring
 - **[Citrix]({{< relref "/docs/probes/citrix" >}})** - Citrix Virtual Apps and Desktops monitoring
 - **[NetScaler]({{< relref "/docs/probes/netscaler" >}})** - Citrix ADC / NetScaler monitoring
 - **[Redfish]({{< relref "/docs/probes/redfish" >}})** - Hardware monitoring via Redfish API (Dell iDRAC, HPE iLO)
@@ -32,4 +34,3 @@ Detailed documentation for each monitoring probe type supported by SenHub Agent.
 ### Advanced
 
 - **[WiFi Signal]({{< relref "/docs/probes/wifi-signal-strength" >}})** - Wireless signal quality (Pro)
-- **[OpenTelemetry]({{< relref "/docs/probes/otel" >}})** - OTLP metrics, traces, and logs (Enterprise)

@@ -29,7 +29,7 @@ type osNetworkCollector interface {
 }
 
 func (p *networkProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg", "http"}
+	return []string{"senhub", "prtg", "http", "otlp"}
 }
 
 // NewNetworkProbe crée une nouvelle instance de Network probe

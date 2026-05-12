@@ -20,17 +20,38 @@ SenHub Agent is a monitoring collector that runs on your infrastructure and coll
 
 ## Obtaining the Agent
 
-Contact SenHub support (support@senhub.io) to receive:
+Contact SenHub support (support@senhub.io) or download from the [GitHub releases page](https://github.com/sen-hub/senhub-agent/releases). You will receive:
 
-- The agent binary for your platform (`senhub-agent` or `senhub-agent.exe`)
+- The agent binary for your platform (see naming convention below)
 - An authentication key (UUID format) for online mode
 - A license token (required for premium probes: Citrix, NetScaler, Redfish, etc.)
+
+### Binary Naming Convention
+
+Release artifacts include the OS and architecture in the filename:
+
+| Platform | Binary filename |
+|----------|-----------------|
+| Windows x86_64 | `senhub-agent_windows_amd64.exe` |
+| Linux x86_64 | `senhub-agent_linux_amd64` |
+| Linux ARM64 | `senhub-agent_linux_arm64` |
+| macOS Intel | `senhub-agent_darwin_amd64` |
+| macOS Apple Silicon | `senhub-agent_darwin_arm64` |
+
+The instructions below assume you have **renamed the binary** to `senhub-agent.exe` (Windows) or `senhub-agent` (Linux/macOS) after download. If you prefer to keep the original name, substitute it in every command (e.g. `.\senhub-agent_windows_amd64.exe install …`).
 
 ## Windows Installation
 
 ### 1. Prepare the binary
 
-Copy `senhub-agent.exe` to the desired installation directory, for example `C:\SenHub\`.
+Download `senhub-agent_windows_amd64.exe`, then copy it to your installation directory and rename it for convenience:
+
+```powershell
+mkdir C:\SenHub
+Copy-Item .\senhub-agent_windows_amd64.exe C:\SenHub\senhub-agent.exe
+```
+
+If you prefer to keep the original filename, replace `senhub-agent.exe` with `senhub-agent_windows_amd64.exe` in every command below.
 
 ### 2. Install the service
 
@@ -75,8 +96,10 @@ Invoke-WebRequest -Uri "http://localhost:8080/health"
 
 Expected response:
 ```json
-{"status":"ok","version":"0.1.80","uptime":"1m30s","probes_active":2,"metrics_cached":12}
+{"status":"ok","version":"0.1.87","uptime":"1m30s","probes_active":2,"metrics_cached":12}
 ```
+
+![Windows service running](/images/installation/windows-service-running.webp "Services.msc showing SenHub Agent in Running state")
 
 ### Log file location
 
@@ -93,11 +116,15 @@ Log rotation: 10 MB max per file, 5 backup files, 30-day retention, compressed.
 
 ### 1. Prepare the binary
 
+Download the binary for your architecture (`senhub-agent_linux_amd64` or `senhub-agent_linux_arm64`), then rename it to `senhub-agent` for convenience:
+
 ```bash
 sudo mkdir -p /opt/senhub/bin
-sudo cp senhub-agent /opt/senhub/bin/
+sudo cp senhub-agent_linux_amd64 /opt/senhub/bin/senhub-agent
 sudo chmod +x /opt/senhub/bin/senhub-agent
 ```
+
+If you prefer to keep the original filename, replace `senhub-agent` with `senhub-agent_linux_amd64` (or `_arm64`) in every command below.
 
 ### 2. Install the service
 
@@ -185,7 +212,7 @@ The `install` command accepts the following options:
 | Flag | Description |
 |------|-------------|
 | `--verbose` or `-v` | Enable verbose logging for all modules |
-| `--debug-modules MODULES` | Enable debug logging for specific modules (comma-separated) |
+| `--filter MODULES` | Filter debug logs by module prefix (implies verbose). Example: `--filter probe.veeam` |
 
 ### Environment Variables
 
@@ -228,30 +255,37 @@ The agent binary provides built-in service management:
 | `senhub-agent status` | Show service status, health, and resource usage |
 | `senhub-agent version` | Show agent version and build information |
 | `senhub-agent run` | Run interactively in console mode (for debugging) |
-| `senhub-agent update VERSION` | Update the agent to a specific version |
+| `senhub-agent config check` | Validate configuration file |
+| `senhub-agent update` | Check for updates |
+| `senhub-agent update --list` | List available versions |
+| `senhub-agent update VERSION` | Install a specific version |
 
 ### Console Mode
 
 The `run` command starts the agent interactively in the foreground (not as a service). This is useful for debugging:
 
 ```bash
-senhub-agent run --authentication-key KEY --verbose
+senhub-agent run
+senhub-agent run --verbose
+senhub-agent run --filter probe.veeam
 ```
 
-All logs are printed to the console. Press Ctrl+C to stop.
+The agent auto-detects its mode from the configuration file. All logs are printed to the console. Press Ctrl+C to stop.
+
+Use `--filter` to limit debug output to specific modules (see [CLI Reference]({{< relref "/docs/cli" >}})).
 
 ### Updating the Agent
 
-To update the agent to a new version:
+Check for available updates:
 
 ```bash
-senhub-agent update 0.1.85
+senhub-agent update --list
 ```
 
-You can preview the update without applying it:
+Install a specific version:
 
 ```bash
-senhub-agent update 0.1.85 --dry-run
+senhub-agent update 0.1.87
 ```
 
 ## Post-Installation Checklist
@@ -271,7 +305,7 @@ After installation:
 1. Configure your monitoring probes (see [Configuration]({{< relref "/docs/configuration" >}}))
 2. Activate your license if you have premium probes (see License section in [Configuration]({{< relref "/docs/configuration" >}}))
 3. Set up HTTPS if required (see [HTTP/HTTPS Configuration]({{< relref "/docs/http-https" >}}))
-4. Configure your monitoring system (PRTG, Nagios, Grafana) to collect metrics (see [Web Interface]({{< relref "/docs/web-interface" >}}))
+4. Configure your monitoring system (PRTG, Nagios) to collect metrics (see [Web Interface]({{< relref "/docs/web-interface" >}}))
 
 ## Uninstallation
 
