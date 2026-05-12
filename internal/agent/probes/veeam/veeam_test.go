@@ -538,9 +538,9 @@ func TestBuildJobStateOverviewMetrics(t *testing.T) {
 	now := time.Now()
 	points := buildJobStateOverviewMetrics(states, 24, now)
 
-	// 2 job types x 5 metrics = 10
-	if len(points) != 10 {
-		t.Errorf("expected 10 overview datapoints, got %d", len(points))
+	// 2 job types × 7 metrics (total, success, warning, failed, running, stale, never_run)
+	if len(points) != 14 {
+		t.Errorf("expected 14 overview datapoints, got %d", len(points))
 	}
 }
 
@@ -581,5 +581,194 @@ func TestBuildJobStateDetailMetrics(t *testing.T) {
 				t.Errorf("expected objects_count 5, got %v", dp.Value)
 			}
 		}
+	}
+}
+
+// --- TestComputeJobStatusValue ---
+// Covers the priority rules: Running > NeverRun > Failed > Stale > result.
+// Each case is the exact pivot a regression would hit — Failed must keep
+// priority over Stale, Running must mask everything, NeverRun (LastRun=nil)
+// must take precedence over the Failed branch (no run = nothing to call
+// "Failed" on yet).
+func TestComputeJobStatusValue(t *testing.T) {
+	now := time.Date(2026, 5, 12, 12, 0, 0, 0, time.UTC)
+	recent := now.Add(-1 * time.Hour)    // inside any reasonable window
+	ancient := now.Add(-48 * time.Hour)  // outside a 24h window
+	hoursWindow := 24
+
+	cases := []struct {
+		name    string
+		state   jobState
+		want    float32
+		comment string
+	}{
+		{
+			name:    "running masks any past result",
+			state:   jobState{Status: "Running", LastResult: "Failed", LastRun: &ancient},
+			want:    jobStatusRunning,
+			comment: "active run overrides past failure or staleness",
+		},
+		{
+			name:    "never_run takes precedence over default Failed mapping",
+			state:   jobState{Status: "Inactive", LastResult: "None", LastRun: nil},
+			want:    jobStatusNeverRun,
+			comment: "no LastRun → NeverRun (0), even though jobResultValue(\"None\") would also be 0",
+		},
+		{
+			name:    "failed wins over stale",
+			state:   jobState{Status: "Inactive", LastResult: "Failed", LastRun: &ancient},
+			want:    jobStatusFailed,
+			comment: "an old failure must not be downgraded to a stale warning",
+		},
+		{
+			name:    "stale when last run older than window and not failed",
+			state:   jobState{Status: "Inactive", LastResult: "Success", LastRun: &ancient},
+			want:    jobStatusStale,
+			comment: "fresh success aged out → flag the cadence drift",
+		},
+		{
+			name:    "fresh success returns Success",
+			state:   jobState{Status: "Inactive", LastResult: "Success", LastRun: &recent},
+			want:    jobStatusSuccess,
+			comment: "happy path",
+		},
+		{
+			name:    "fresh warning returns Warning",
+			state:   jobState{Status: "Inactive", LastResult: "Warning", LastRun: &recent},
+			want:    jobStatusWarning,
+			comment: "recent warning is preserved as-is",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := computeJobStatusValue(tc.state, now, hoursWindow)
+			if got != tc.want {
+				t.Errorf("status = %v, want %v — %s", got, tc.want, tc.comment)
+			}
+		})
+	}
+}
+
+// --- TestBuildJobStateDetailMetrics_AlwaysEmits ---
+// Regression test for the bug where jobs aged out of hours_to_check would
+// silently disappear from PRTG. Every enabled job must produce at least
+// status + seconds_since + objects_count, regardless of how recently it ran.
+func TestBuildJobStateDetailMetrics_AlwaysEmits(t *testing.T) {
+	now := time.Date(2026, 5, 12, 12, 0, 0, 0, time.UTC)
+	ancient := now.Add(-72 * time.Hour) // way outside a 24h window
+	fresh := now.Add(-2 * time.Hour)
+
+	states := []jobState{
+		{ID: "stale-job", Name: "Weekly", Type: "VSphereBackup",
+			Status: "Inactive", LastResult: "Success", LastRun: &ancient},
+		{ID: "never-run", Name: "Pristine", Type: "VSphereBackup",
+			Status: "Inactive", LastResult: "None", LastRun: nil},
+		{ID: "failed-stale", Name: "Broken", Type: "WindowsAgentBackup",
+			Status: "Inactive", LastResult: "Failed", LastRun: &ancient},
+		{ID: "fresh-ok", Name: "Daily", Type: "VSphereBackup",
+			Status: "Inactive", LastResult: "Success", LastRun: &fresh},
+		{ID: "disabled", Name: "Off", Type: "VSphereBackup", Status: "Disabled"},
+	}
+
+	points := buildJobStateDetailMetrics(states, 24, now)
+
+	// Expect 4 enabled jobs × 3 always-emitted metrics = 12 datapoints
+	// (disabled jobs are skipped; bytes/bottleneck require SessionProgress).
+	if len(points) != 12 {
+		t.Fatalf("expected 12 datapoints (4 enabled × 3 metrics), got %d", len(points))
+	}
+
+	// Verify every expected job produces a status and the value matches the
+	// priority rules. Index by job_name for assertion clarity.
+	statusByJob := map[string]float32{}
+	secondsByJob := map[string]float32{}
+	for _, dp := range points {
+		var jobName string
+		for _, tag := range dp.Tags {
+			if tag.Key == "job_name" {
+				jobName = tag.Value
+			}
+		}
+		switch dp.Name {
+		case "veeam_job_status":
+			statusByJob[jobName] = dp.Value
+		case "veeam_job_seconds_since":
+			secondsByJob[jobName] = dp.Value
+		}
+	}
+
+	expectations := map[string]float32{
+		"Weekly":   jobStatusStale,    // aged out
+		"Pristine": jobStatusNeverRun, // LastRun nil
+		"Broken":   jobStatusFailed,   // failed wins over stale
+		"Daily":    jobStatusSuccess,  // happy path
+	}
+	for job, want := range expectations {
+		if got, ok := statusByJob[job]; !ok {
+			t.Errorf("job %q has no veeam_job_status (regression: aged-out jobs must still emit)", job)
+		} else if got != want {
+			t.Errorf("job %q status = %v, want %v", job, got, want)
+		}
+	}
+
+	// Never-run job must report seconds_since=-1 sentinel, not 0.
+	if secondsByJob["Pristine"] != jobSecondsSinceNeverRun {
+		t.Errorf("Pristine seconds_since = %v, want %v (never-run sentinel)",
+			secondsByJob["Pristine"], jobSecondsSinceNeverRun)
+	}
+
+	// Disabled job must NOT appear in the output.
+	if _, present := statusByJob["Off"]; present {
+		t.Errorf("disabled job leaked into per-job metrics")
+	}
+}
+
+// --- TestBuildJobStateOverviewMetrics_StaleBucket ---
+// Confirms the overview totals reconcile when jobs are stale: total stays
+// equal to the count of enabled jobs (no hidden bucket), and stale-classified
+// jobs land in `veeam_jobs_stale` rather than vanishing.
+func TestBuildJobStateOverviewMetrics_StaleBucket(t *testing.T) {
+	now := time.Date(2026, 5, 12, 12, 0, 0, 0, time.UTC)
+	ancient := now.Add(-72 * time.Hour)
+	fresh := now.Add(-2 * time.Hour)
+
+	states := []jobState{
+		{Type: "VSphereBackup", Status: "Inactive", LastResult: "Success", LastRun: &ancient}, // stale
+		{Type: "VSphereBackup", Status: "Inactive", LastResult: "Success", LastRun: &fresh},   // success
+		{Type: "VSphereBackup", Status: "Inactive", LastResult: "Failed", LastRun: &ancient},  // failed (priority over stale)
+		{Type: "VSphereBackup", Status: "Inactive", LastResult: "None", LastRun: nil},         // never_run
+	}
+
+	points := buildJobStateOverviewMetrics(states, 24, now)
+
+	values := map[string]float32{}
+	for _, dp := range points {
+		values[dp.Name] = dp.Value
+	}
+
+	if values["veeam_jobs_total"] != 4 {
+		t.Errorf("total = %v, want 4 (no hidden bucket)", values["veeam_jobs_total"])
+	}
+	if values["veeam_jobs_stale"] != 1 {
+		t.Errorf("stale = %v, want 1", values["veeam_jobs_stale"])
+	}
+	if values["veeam_jobs_success"] != 1 {
+		t.Errorf("success = %v, want 1", values["veeam_jobs_success"])
+	}
+	if values["veeam_jobs_failed"] != 1 {
+		t.Errorf("failed = %v, want 1 (kept priority over stale)", values["veeam_jobs_failed"])
+	}
+	if values["veeam_jobs_never_run"] != 1 {
+		t.Errorf("never_run = %v, want 1", values["veeam_jobs_never_run"])
+	}
+
+	// Reconciliation: the per-status buckets must sum to total.
+	sum := values["veeam_jobs_success"] + values["veeam_jobs_warning"] +
+		values["veeam_jobs_failed"] + values["veeam_jobs_running"] +
+		values["veeam_jobs_stale"] + values["veeam_jobs_never_run"]
+	if sum != values["veeam_jobs_total"] {
+		t.Errorf("buckets sum to %v but total is %v — every enabled job must land in exactly one bucket",
+			sum, values["veeam_jobs_total"])
 	}
 }

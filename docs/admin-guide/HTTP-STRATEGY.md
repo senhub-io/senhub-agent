@@ -33,8 +33,7 @@ The HTTP Strategy provides a REST API interface for external monitoring tools to
     "port": 8080,
     "naming": {
       "redfish": "friendly",
-      "host": "friendly", 
-      "otel": "technical"
+      "host": "friendly"
     }
   }
 }
@@ -132,7 +131,6 @@ Transformations are defined in YAML files located in `internal/agent/services/da
 
 - `redfish_friendly.yaml`: Redfish hardware metrics
 - `host_friendly.yaml`: System/host metrics
-- `otel_technical.yaml`: OpenTelemetry metrics
 
 ### Transformation Patterns
 

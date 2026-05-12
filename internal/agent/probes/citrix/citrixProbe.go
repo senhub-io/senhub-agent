@@ -517,7 +517,7 @@ func (p *citrixProbe) OnShutdown(ctx context.Context) error {
 
 // GetTargetStrategies returns the strategies this probe's data should be sent to
 func (p *citrixProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg", "http"}
+	return []string{"senhub", "prtg", "http", "otlp"}
 }
 
 // GetMachinesForMetrics returns machines using site filtering (Directory-first approach)

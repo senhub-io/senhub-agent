@@ -48,8 +48,8 @@ var probeBitmap = map[string]uint{
 	"wifi_signal_strength": 7,
 	"syslog":               8,
 	"event":                9,
-	"otel":                 10,
-	"redfish":              11,
+	// bit 10 reserved (formerly otel; probe removed pending implementation)
+	"redfish": 11,
 	"citrix":               12,
 	"netscaler":            13,
 	"veeam":                14,

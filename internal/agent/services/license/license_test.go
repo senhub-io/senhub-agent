@@ -21,6 +21,7 @@ func TestFreeTierProbes(t *testing.T) {
 		{"Memory probe is free tier", "memory", true},
 		{"LogicalDisk probe is free tier", "logicaldisk", true},
 		{"Network probe is free tier", "network", true},
+		{"LinuxLogs probe is free tier", "linux_logs", true},
 		{"Redfish probe is NOT free tier", "redfish", false},
 		{"Citrix probe is NOT free tier", "citrix", false},
 		{"WebApp probe is NOT free tier", "ping_webapp", false},
@@ -41,9 +42,9 @@ func TestFreeTierProbes(t *testing.T) {
 func TestGetFreeTierProbes(t *testing.T) {
 	probes := GetFreeTierProbes()
 
-	// Check we have exactly 4 free tier probes
-	if len(probes) != 4 {
-		t.Errorf("GetFreeTierProbes() returned %d probes, want 4", len(probes))
+	// Check we have exactly 5 free tier probes
+	if len(probes) != 5 {
+		t.Errorf("GetFreeTierProbes() returned %d probes, want 5", len(probes))
 	}
 
 	// Check all expected probes are present
@@ -52,6 +53,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"memory":      false,
 		"logicaldisk": false,
 		"network":     false,
+		"linux_logs":  false,
 	}
 
 	for _, probe := range probes {
@@ -608,7 +610,7 @@ func TestJWTValidator_IsProbeAuthorized(t *testing.T) {
 		{"Free tier: cpu", "cpu", true},
 		{"Free tier: memory", "memory", true},
 		{"Unauthorized: syslog", "syslog", false},
-		{"Unauthorized: otel", "otel", false},
+		{"Unauthorized: veeam", "veeam", false},
 	}
 
 	for _, tt := range tests {

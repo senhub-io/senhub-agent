@@ -18,6 +18,7 @@ The CPU probe monitors processor performance across all major operating systems,
 ```yaml
 probes:
   - name: cpu
+    type: cpu
     params:
       interval: 30  # Collection interval in seconds (default: 30)
 ```
@@ -27,6 +28,7 @@ probes:
 ```yaml
 probes:
   - name: cpu
+    type: cpu
     params: {}
 ```
 
@@ -97,6 +99,7 @@ This ensures the probe stays functional even when platform limitations exist, pr
 ```yaml
 probes:
   - name: cpu
+    type: cpu
     params:
       interval: 10
 ```
@@ -105,6 +108,7 @@ probes:
 ```yaml
 probes:
   - name: cpu
+    type: cpu
     params:
       interval: 60
 ```
@@ -133,7 +137,7 @@ curl http://localhost:8080/api/{agentkey}/prtg/metrics
 - CPU Load Average (Linux/Unix)
 - DPC Rate & Interrupts (Windows)
 
-### Nagios/Icinga
+### Nagios
 
 Access CPU metrics in Nagios format:
 
@@ -150,19 +154,6 @@ curl http://localhost:8080/api/{agentkey}/nagios/metrics?probe=cpu
 - `cpu_load1`, `cpu_load5`, `cpu_load15` - Load averages (Unix)
 - `cpu_queue_length` - Processor queue (Windows)
 
-### Grafana/Prometheus
-
-Access metrics in Prometheus-compatible format:
-
-```bash
-# Prometheus format
-curl http://localhost:8080/api/{agentkey}/prometheus/metrics
-
-# Example output:
-# cpu_usage_total{hostname="server01"} 42.5
-# cpu_core_usage{hostname="server01",core="0"} 38.2
-# cpu_load1{hostname="server01"} 1.23
-```
 
 ### Web Interface
 
@@ -262,6 +253,7 @@ sudo setcap cap_sys_ptrace=eip ./agent
 1. Increase collection interval:
    ```yaml
    - name: cpu
+     type: cpu
      params:
        interval: 60  # Collect every minute instead of 30 seconds
    ```
@@ -312,10 +304,12 @@ Monitor multiple systems with individual configurations:
 ```yaml
 probes:
   - name: cpu_realtime
+    type: cpu
     params:
       interval: 10
 
   - name: cpu_trending
+    type: cpu
     params:
       interval: 300
 ```
@@ -329,14 +323,17 @@ Correlate CPU metrics with other system metrics:
 ```yaml
 probes:
   - name: cpu
+    type: cpu
     params:
       interval: 30
 
   - name: memory
+    type: memory
     params:
       interval: 30
 
   - name: logicaldisk
+    type: logicaldisk
     params:
       interval: 60
 ```

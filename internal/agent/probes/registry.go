@@ -7,11 +7,11 @@ import (
 	"senhub-agent.go/internal/agent/probes/event" // Import the new event probe package
 	"senhub-agent.go/internal/agent/probes/gateway"
 	"senhub-agent.go/internal/agent/probes/host"
+	"senhub-agent.go/internal/agent/probes/linuxlogs"
 	"senhub-agent.go/internal/agent/probes/logicaldisk"
 	"senhub-agent.go/internal/agent/probes/memory"
 	"senhub-agent.go/internal/agent/probes/netscaler" // Import the netscaler probe package
 	"senhub-agent.go/internal/agent/probes/network"
-	"senhub-agent.go/internal/agent/probes/otel"    // Import the otel probe package
 	"senhub-agent.go/internal/agent/probes/redfish" // Import the redfish probe package
 	"senhub-agent.go/internal/agent/probes/veeam"   // Import the veeam probe package
 	"senhub-agent.go/internal/agent/probes/syslog"
@@ -37,9 +37,9 @@ type ProbeConstructor func(map[string]interface{}, *logger.Logger) (types.Probe,
 // - cpu: Monitors CPU utilization
 // - network: Collects network interface metrics
 // - logicaldisk: Monitors disk space and IO
-// - syslog: Collects system logs
+// - syslog: Collects system logs (over UDP/TCP, this agent is the syslog server)
+// - linux_logs: Reads the local Linux systemd journal (Linux-only)
 // - event: Collects custom events via HTTP
-// - otel: Collects OpenTelemetry data
 // - redfish: Monitors hardware via Redfish API
 // - citrix: Monitors Citrix Virtual Apps and Desktops via OData API
 // - netscaler: Monitors Citrix Netscaler (ADC) via NITRO API
@@ -54,8 +54,8 @@ var probeConstructors = map[string]ProbeConstructor{
 	"network":              network.NewNetworkProbe,
 	"logicaldisk":          logicaldisk.NewLogicalDiskProbe,
 	"syslog":               syslog.NewSyslogProbe,
+	"linux_logs":           linuxlogs.NewLinuxLogsProbe,
 	"event":                event.NewEventProbe,
-	"otel":                 otel.NewOtelProbe,
 	"redfish":              redfish.NewRedfishProbe,
 	"citrix":               citrix.NewCitrixProbe,
 	"netscaler":            netscaler.NewNetscalerProbe,

@@ -47,7 +47,7 @@ func NewPingGatewayProbe(config map[string]interface{}, baseLogger *logger.Logge
 }
 
 func (p *PingGatewayProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg", "http"}
+	return []string{"senhub", "prtg", "http", "otlp"}
 }
 
 // Note: GetName() is now inherited from BaseProbe and will return the unique

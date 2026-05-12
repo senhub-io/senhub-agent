@@ -1,0 +1,43 @@
+# Event Probe Metrics Definitions
+# HTTP-ingested custom events (JSON payloads with host/message/severity + arbitrary fields)
+#
+# Format v3 — OTel-first source of truth.
+# Event is an event conduit probe (relays custom events). Not a metrics source.
+# See senhub-semantic-conventions §4.8.
+
+probe_name: "event"
+friendly_name: "Event Collector"
+version: "3.0.0"
+
+metrics:
+  # Custom event — relayed, not metered.
+  - name: "event_event"
+    channel: "event_event"
+    display_name: "Custom Event"
+    unit: "#"
+    category: "events"
+    description: "Custom event received via HTTP POST (RFC 5424-style severity, host, message + arbitrary fields)"
+    otel:
+      skip: true
+      reason: "Event conduit probe — event_event is a presence marker (value=1) for the last received event, not a meaningful Prometheus metric. Future: OTLP log export in V2."
+
+tag_metadata:
+  host:
+    type: resource
+    label: "Event Host"
+  severity:
+    type: category
+    label: "Event Severity"
+  # System tags (injected by framework)
+  os:
+    type: resource
+    label: "Operating System"
+  platform:
+    type: resource
+    label: "Platform"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"

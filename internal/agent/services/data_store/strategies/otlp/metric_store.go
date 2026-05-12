@@ -1,0 +1,183 @@
+package otlp
+
+import (
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
+	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/internal/agent/types/datapoint"
+)
+
+// metricStore is the OTLP strategy's last-writer-wins (LWW) cache for
+// the most recent value of every (probe, metric, tag-set) series. Each
+// AddDataPoints call upserts; the periodic push goroutine snapshots and
+// ships the current contents.
+//
+// Why a strategy-local store rather than reading from the http
+// strategy's MetricCache: the OTLP strategy must not depend on http
+// being configured. Operators may want OTLP-only deployments. Each
+// strategy receives its own copy of every datapoint via the data_store
+// router, so each can keep whatever shape of state it needs.
+//
+// Memory bound: one entry per distinct series. Cardinality is governed
+// by the probes' YAML mappings (already controlled in the otelmapper
+// package via "_unmatched" fallback for expand mismatches), so the
+// store does not need its own eviction.
+type metricStore struct {
+	mu      sync.RWMutex
+	entries map[string]storedMetric
+}
+
+// storedMetric is one LWW slot — the metadata we need to feed
+// otelmapper.Resolve plus the wall-clock time of the most recent
+// observation (becomes the OTLP `time_unix_nano`).
+type storedMetric struct {
+	probeName  string
+	probeType  string
+	metricName string
+	value      float64
+	unit       string
+	tags       map[string]string
+	observedAt time.Time
+}
+
+func newMetricStore() *metricStore {
+	return &metricStore{entries: make(map[string]storedMetric)}
+}
+
+// upsert records a datapoint, replacing any prior observation for the
+// same (probe_name, probe_type, metric_name, tag-set) tuple. Datapoints
+// without probe identity are skipped — they cannot be routed through
+// otelmapper.Resolve which keys on probe_type to find the YAML.
+func (s *metricStore) upsert(dp datapoint.DataPoint) {
+	tagMap := flattenTags(dp.Tags)
+	probeName := tagMap["probe_name"]
+	probeType := tagMap["probe_type"]
+	if probeName == "" || probeType == "" {
+		return
+	}
+
+	key := storeKey(probeName, probeType, dp.Name, tagMap)
+
+	when := dp.Timestamp
+	if when.IsZero() {
+		when = time.Now()
+	}
+
+	// Copy tags into a fresh map so later mutations to the source
+	// can't reach inside our store. Cheap relative to the upsert path.
+	tagsCopy := make(map[string]string, len(tagMap))
+	for k, v := range tagMap {
+		tagsCopy[k] = v
+	}
+
+	s.mu.Lock()
+	s.entries[key] = storedMetric{
+		probeName:  probeName,
+		probeType:  probeType,
+		metricName: dp.Name,
+		value:      float64(dp.Value),
+		unit:       tagMap["unit"],
+		tags:       tagsCopy,
+		observedAt: when,
+	}
+	s.mu.Unlock()
+}
+
+// snapshot returns a slice of CacheMetric ready to feed into
+// otelmapper.Resolve, plus the per-series observedAt time aligned by
+// index. Callers must not retain references — the maps inside are
+// snapshots and may be reused on the next call.
+func (s *metricStore) snapshot() ([]otelmapper.CacheMetric, []time.Time) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	cms := make([]otelmapper.CacheMetric, 0, len(s.entries))
+	times := make([]time.Time, 0, len(s.entries))
+	for _, e := range s.entries {
+		cms = append(cms, otelmapper.CacheMetric{
+			ProbeName:  e.probeName,
+			ProbeType:  e.probeType,
+			MetricName: e.metricName,
+			Value:      e.value,
+			Unit:       e.unit,
+			Tags:       e.tags,
+		})
+		times = append(times, e.observedAt)
+	}
+	return cms, times
+}
+
+// size reports the current number of stored series; used by tests and
+// self-observability.
+func (s *metricStore) size() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.entries)
+}
+
+// flattenTags converts the datapoint's tag list into a map. Later tags
+// with the same key overwrite earlier ones — same precedence as the
+// existing http strategy's MetricCache.
+func flattenTags(tagList []tags.Tag) map[string]string {
+	out := make(map[string]string, len(tagList))
+	for _, t := range tagList {
+		out[t.Key] = t.Value
+	}
+	return out
+}
+
+// storeKey produces a stable, unique string for a (probe_name,
+// probe_type, metric_name, tags) tuple. Built by sorting tag keys to
+// make the key deterministic regardless of tag-list ordering.
+func storeKey(probeName, probeType, metricName string, tagMap map[string]string) string {
+	keys := make([]string, 0, len(tagMap))
+	for k := range tagMap {
+		// Skip the systematic identity tags — they're already in the
+		// fixed prefix. Keeping them in the suffix would be redundant
+		// and just bloats the key.
+		if k == "probe_name" || k == "probe_type" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var b strings.Builder
+	b.Grow(len(probeName) + len(probeType) + len(metricName) + 32)
+	b.WriteString(probeName)
+	b.WriteByte('|')
+	b.WriteString(probeType)
+	b.WriteByte('|')
+	b.WriteString(metricName)
+	for _, k := range keys {
+		b.WriteByte('|')
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(tagMap[k])
+	}
+	return b.String()
+}
+
+// coerceToFloat64 mirrors the http strategy helper: we may receive
+// values typed-opaque on the cache route, but here on AddDataPoints the
+// value comes as float32 from datapoint.DataPoint. Kept here so future
+// non-numeric extensions have one obvious place to extend.
+func coerceToFloat64(v interface{}) (float64, bool) {
+	switch x := v.(type) {
+	case float64:
+		return x, true
+	case float32:
+		return float64(x), true
+	case int:
+		return float64(x), true
+	case int32:
+		return float64(x), true
+	case int64:
+		return float64(x), true
+	}
+	return 0, false
+}

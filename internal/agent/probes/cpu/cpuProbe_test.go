@@ -138,7 +138,7 @@ func TestCpuProbe_GetTargetStrategies(t *testing.T) {
 	probe, _ := NewCpuProbe(map[string]interface{}{}, baseLogger)
 	cpuProbe := probe.(*cpuProbe)
 	strategies := cpuProbe.GetTargetStrategies()
-	expected := []string{"senhub", "prtg", "http"}
+	expected := []string{"senhub", "prtg", "http", "otlp"}
 
 	if len(strategies) != len(expected) {
 		t.Errorf("GetTargetStrategies() returned %d strategies, want %d", len(strategies), len(expected))
