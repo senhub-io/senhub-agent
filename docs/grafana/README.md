@@ -1,43 +1,113 @@
 # Grafana dashboards for SenHub Agent
 
-Dashboards JSON deployed via Grafana's file-based provisioning. Drop
-into the Grafana host's provisioned dashboards directory; the running
-Grafana picks them up within ~10 s (default
-`updateIntervalSeconds`).
+Dashboards deployed via Grafana's file-based provisioning. Drop into
+the Grafana host's provisioned dashboards directory; the running
+Grafana picks them up within ~10 s (default `updateIntervalSeconds`).
 
-## senhub-agents-otlp.json
+## Catalog v1 — 13 dashboards
 
-Overview for agents pushing telemetry via the OTLP strategy. Shows:
+### Linux host (7)
 
-- Top stat row: memory %, CPU utilization, load 1m, max filesystem %
-- CPU: utilization-by-mode time series + load averages (1m/5m/15m)
-- Memory: usage-by-state stacked + utilization ratio
-- Network: throughput per interface/direction (rate of
-  `system_network_io_bytes_total`) + errors/drops rate
-- Filesystem: bargauge per mountpoint + inode utilization
-- Logs: VictoriaLogs LogsQL panel filtered on the same servers
+| File | Dashboard | UID |
+|---|---|---|
+| `linux-overview.json`   | SenHub Linux — Overview     | `senhub-linux-overview` |
+| `linux-fleet.json`      | SenHub Linux — Fleet        | `senhub-linux-fleet` |
+| `linux-cpu-system.json` | SenHub Linux — CPU & System | `senhub-linux-cpu-system` |
+| `linux-memory.json`     | SenHub Linux — Memory       | `senhub-linux-memory` |
+| `linux-filesystem.json` | SenHub Linux — Filesystem   | `senhub-linux-filesystem` |
+| `linux-network.json`    | SenHub Linux — Network      | `senhub-linux-network` |
+| `linux-logs.json`       | SenHub Linux — Logs         | `senhub-linux-logs` |
 
-Variables:
+### Windows host (5)
 
-- `service` — multi-select of `service_name` values matching
-  `sha\d{3}-prod` (auto-populated from VM)
-- `iface` — multi-select of `network_interface_name` values for the
-  current `service` selection
+| File | Dashboard | UID |
+|---|---|---|
+| `windows-overview.json`          | SenHub Windows — Overview            | `senhub-windows-overview` |
+| `windows-fleet.json`             | SenHub Windows — Fleet               | `senhub-windows-fleet` |
+| `windows-cpu-system.json`        | SenHub Windows — CPU & System        | `senhub-windows-cpu-system` |
+| `windows-disks-filesystems.json` | SenHub Windows — Disks & Filesystems | `senhub-windows-disks-filesystems` |
+| `windows-logs.json`              | SenHub Windows — Logs                | `senhub-windows-logs` |
 
-Datasources expected (provisioned on sha901):
+### Agent self-monitoring (1)
 
-- `victoriametrics` — Prometheus-compatible
-  (`http://localhost:8427` → vmauth → victoria-metrics)
-- `victorialogs` — VictoriaLogs datasource plugin
-  (`http://localhost:9428`)
+| File | Dashboard | UID |
+|---|---|---|
+| `agent-self-monitoring.json` | SenHub Agent — Self-monitoring | `senhub-agent-self-monitoring` |
 
-Deployment on sha901:
+### Earlier / archived
 
+- `senhub-agents-otlp.json` — the original Phase 4 single dashboard,
+  superseded by the v1 catalog. Kept for reference until next
+  release.
+
+## Standard layout grammar
+
+Every dashboard follows the same shape (see
+`research/REFERENCE-DASHBOARDS.md` §3 for the rationale):
+
+- Top row: 4 stat tiles with the headline KPIs of the audience.
+- Second row: 2 chunky timeseries for the same KPIs over time.
+- Subsequent rows: per-resource drilldowns.
+- Last row when applicable: a logs panel filtered by the same vars.
+
+Time range default `now-1h`, refresh `30s`, tags
+`["senhub", "agents", "<audience>"]`, schemaVersion 39.
+
+## Datasources expected
+
+Provisioned on sha901 today (must exist on the target Grafana):
+
+- **VictoriaMetrics** — Prometheus-compatible, UID `victoriametrics`,
+  URL `http://localhost:8427` (via vmauth)
+- **VictoriaMetrics Logs** — UID `defqbr545b18gf` (the
+  `victoriametrics-logs-datasource` plugin, name "VL-SF" on this
+  Grafana instance)
+
+## Deployment
+
+### Grafana folder
+
+A dedicated Grafana folder `senhub-agents` (UID `senhub-agents`) is
+provisioned via
+`/etc/grafana/provisioning/dashboards/senhub-agents.yml`:
+
+```yaml
+apiVersion: 1
+providers:
+  - name: senhub-agents
+    orgId: 1
+    type: file
+    folder: senhub-agents
+    folderUid: senhub-agents
+    options:
+      path: /var/lib/grafana/dashboards/senhub-agents
+      foldersFromFilesStructure: false
 ```
+
+### Per-dashboard install
+
+```bash
 sudo install -m 0644 -o grafana -g grafana \
-  docs/grafana/senhub-agents-otlp.json \
-  /var/lib/grafana/dashboards/senhub/senhub-agents-otlp.json
+  docs/grafana/<file>.json \
+  /var/lib/grafana/dashboards/senhub-agents/<file>.json
 ```
 
-URL (once provisioning picks it up):
-`https://eu-west-1.intake-dev.senhub.io/grafana/d/senhub-agents-otlp/`
+Grafana picks it up within ~10 s. Re-installing the same file
+updates the dashboard in place.
+
+### URL once live
+
+`https://eu-west-1.intake-dev.senhub.io/grafana/dashboards/f/senhub-agents/`
+
+## Research artefacts
+
+See `research/`:
+
+- `REFERENCE-DASHBOARDS.md` — survey of canonical dashboards (Grafana
+  Cloud Linux/Windows integrations, Node Exporter Full, Grafana
+  Alloy mixin, Citrix/NetScaler/Veeam/Redfish references) and the
+  layout grammar adopted.
+- `CATALOG-PROPOSAL.md` — dashboard-by-dashboard target structure.
+- `IMPLEMENTATION-PLAN.md` — 3-phase execution plan (this catalog
+  ships Phase 2; Phase 3 adds the vendor pack: Citrix, NetScaler,
+  Veeam, Redfish).
