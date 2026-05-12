@@ -201,9 +201,54 @@ cross-OS. Only the secret-loading mechanism differs:
   file, but only the LocalSystem (or whichever the service runs as)
   can read it; not visible in `ps`-style listings.
 
+## 2026-05-12 Grafana catalog rollout — done
+
+21 dashboards shipped in the Grafana folder `senhub-agents` on the
+sha901 instance:
+
+- **Linux (7)** — Overview / Fleet / CPU & System / Memory /
+  Filesystem / Network / Logs — live with sha901-prod + sha501-prod.
+- **Windows (5)** — Overview / Fleet / CPU & System / Disks &
+  Filesystems / Logs — live with bbcloud-prod (Windows Server 2022).
+- **Agent self-monitoring (1)** — live on all three agents,
+  surfaces the new senhub.agent.process.* + senhub.agent.otlp.*
+  metric families added in the feat/agent-self-observability branch.
+- **Vendor pack (8 — Veeam x2, Redfish x2, NetScaler x2, Citrix
+  VDI x2)** — schema-validated, queries cross-checked against the
+  canonical OTel names in definitions/*.yaml, all titled
+  "(awaiting live data)" until a customer pilot lights them up.
+
+bbcloud deployment specifics — Windows service installed via
+sc.exe, OTLP_BEARER_TOKEN set in service registry MultiString
+(see PowerShell snippet above), ufw rule on sha901 allowing
+4317/tcp from 51.77.231.102.
+
+Cross-OS asymmetry resolved: the Windows logicaldisk probe now
+emits system_filesystem state="used" alongside state="free" (was
+free-only). The dashboards moved off the `1 - free` workaround.
+Bytes-used (vs percent-used) on Windows still requires a WMI
+source — see follow-ups below.
+
 ## Known remaining follow-ups
 
 - **Linux logs cardinality** — `priority: 6` filters out debug, but
   on busy hosts the volume may still warrant a stricter filter
   (`priority: 4` for warnings+errors only) once we measure storage
   growth in VictoriaLogs.
+
+- **Windows logicaldisk: bytes used via WMI** — `disk_used_percent`
+  is now emitted, but `system_filesystem_usage_bytes` with
+  `state="used"` is NOT. The percent ratio covers most dashboard
+  needs; bytes-used requires `Win32_LogicalDisk.Size` via WMI,
+  which is heavier than the existing PDH path. Defer until a
+  dashboard panel actually needs it.
+
+- **Vendor dashboards `(awaiting live data)` drop** — manual edit
+  of the JSON title on first customer pilot of each probe type
+  (Citrix / NetScaler / Veeam / Redfish). Document on go-live; the
+  schema and queries are already known-correct.
+
+- **Customer pilot for vendor probes** — first live data flow per
+  probe type will validate every query and inevitably surface
+  small dashboard adjustments. Plan a 1-day per-probe iteration
+  window when the first customer ships each one.
