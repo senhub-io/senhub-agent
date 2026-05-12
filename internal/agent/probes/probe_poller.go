@@ -7,6 +7,10 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/agentstate"
@@ -15,6 +19,11 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
+
+// probeTracerScope is the OTel instrumentation scope name for all
+// probe.collect spans. Distinct from the otlp strategy scope so a
+// consumer can filter traces by source (collection vs export).
+const probeTracerScope = "senhub-agent/probes"
 
 // ProbePoller handles the lifecycle and scheduling of a probe.
 // It manages initialization, periodic collection, error tracking,
@@ -175,24 +184,64 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 
 // collect gathers metrics from the probe and routes them to the appropriate
 // storage strategies. It handles both direct collection and callback-based collection.
+//
+// The collection is wrapped in a "probe.collect" span. When traces are
+// disabled the span is a no-op (otel.Tracer resolves to the global noop
+// provider). When enabled, span duration captures Collect() latency and
+// attributes carry probe identity + emitted datapoints — useful for
+// detecting probes that have grown slow or stopped emitting.
 func (p *ProbePoller) collect() error {
 	p.moduleLogger.Debug().Msg("Collecting data")
 
+	tracer := otel.Tracer(probeTracerScope)
+	ctx, span := tracer.Start(context.Background(), "probe.collect")
+	span.SetAttributes(
+		attribute.String("probe.name", p.Probe.GetName()),
+		attribute.String("probe.type", p.probeType()),
+		attribute.String("probe.id", p.ProbeId),
+	)
+	defer span.End()
+
 	data, err := p.Probe.Collect()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		agentstate.IncrementCollectErrors()
 		agentstate.RecordProbeHealth(p.ProbeId, false)
 		return fmt.Errorf("collect failed: %v", err)
 	}
+	span.SetAttributes(attribute.Int("probe.datapoints_emitted", len(data)))
+	span.SetStatus(codes.Ok, "")
 	agentstate.RecordProbeHealth(p.ProbeId, true)
 
 	if strategyRouter, ok := p.Probe.(data_store.StrategyRouter); ok {
 		p.moduleLogger.Debug().Msg("Using probe's strategy router")
-		return p.addDataPoint(data, strategyRouter)
+		return p.addDataPointCtx(ctx, data, strategyRouter)
 	}
 
 	p.moduleLogger.Debug().Msg("Using default strategy router")
-	return p.addDataPoint(data, &defaultStrategyRouter{})
+	return p.addDataPointCtx(ctx, data, &defaultStrategyRouter{})
+}
+
+// addDataPointCtx is a thin wrapper that exists so future code can
+// thread ctx (and thus span context) into the data_store callback if
+// it grows a context-aware variant. Today the callback is non-context
+// based, so we just call it and ignore ctx — but the call site reads
+// naturally and the ctx parameter is non-trivial to remove later.
+func (p *ProbePoller) addDataPointCtx(ctx context.Context, data []datapoint.DataPoint, router data_store.StrategyRouter) error {
+	_ = ctx
+	return p.addDataPoint(data, router)
+}
+
+// probeType returns the probe's technical type ("cpu", "redfish", …)
+// when the probe embeds BaseProbe; falls back to "unknown" otherwise.
+// Used to tag spans without hard-coding a non-existent interface
+// method on the Probe interface.
+func (p *ProbePoller) probeType() string {
+	if t, ok := p.Probe.(interface{ GetProbeType() string }); ok {
+		return t.GetProbeType()
+	}
+	return "unknown"
 }
 
 // getWrappedCallback returns a function that handles routing of collected data
