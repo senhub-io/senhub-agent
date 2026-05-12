@@ -15,6 +15,11 @@ Welcome to the SenHub Agent Developer Guide. This documentation provides compreh
 - **[Engineering Documentation](./engineering/)** - Technical deep-dives and implementation details
   - [Time Series Key Design](./engineering/TIME_SERIES_KEY_DESIGN.md)
   - [Discriminant Tags Registry](./engineering/DISCRIMINANT-TAGS-REGISTRY.md)
+- **[OTel semantic conventions](./otel/senhub-semantic-conventions.md)** - Cross-sink metric naming, attribute mapping, ratio/unit conversions
+- **[OTLP implementation plan](./otlp/IMPLEMENTATION-PLAN.md)** - Phase 0-5 design history for the OTLP/gRPC push strategy
+- **[Prometheus implementation plan](./prometheus/IMPLEMENTATION-PLAN.md)** - Phase history for the `/metrics` exposition endpoint
+- **[Zabbix integration audit](./zabbix/AUDIT-Phase0.md)** - Phase 0 spec-vs-code audit (implementation paused)
+- **[Grafana catalog research](../grafana/research/)** - Reference dashboards survey, catalog proposal, implementation plan
 
 ### Code Quality
 - **[Code Review Guidelines](./development-workflow.md#code-review-guidelines)** - Mandatory checklist for reviewers
