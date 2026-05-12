@@ -14,6 +14,7 @@ Detailed documentation for each monitoring probe type supported by SenHub Agent.
 - **[Memory]({{< relref "/docs/probes/memory" >}})** - Physical memory and swap usage
 - **[Network]({{< relref "/docs/probes/network" >}})** - Network interface bandwidth and errors
 - **[Logical Disk]({{< relref "/docs/probes/logicaldisk" >}})** - Disk space, I/O, and filesystem health
+- **[Linux Logs]({{< relref "/docs/probes/linux-logs" >}})** - Local systemd journal collection (Linux only)
 
 ### Infrastructure (Pro)
 
