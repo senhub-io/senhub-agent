@@ -8,31 +8,84 @@ import (
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
-// jobResultValue maps a Veeam ESessionResult string to a numeric value
+// Job status numeric values exposed via the senhub.veeam.job_status lookup.
+// Order matters for the priority rules below (see computeJobStatusValue).
+const (
+	jobStatusNeverRun float32 = 0 // job exists and is enabled but has never executed
+	jobStatusSuccess  float32 = 1
+	jobStatusWarning  float32 = 2
+	jobStatusFailed   float32 = 3
+	jobStatusRunning  float32 = 4
+	jobStatusStale    float32 = 5 // last run is older than the operator-configured window
+)
+
+// jobResultValue maps a Veeam ESessionResult string to the corresponding
+// job-status numeric value. Used when the job has run and we already know
+// it's neither Running nor Stale.
 func jobResultValue(result string) float32 {
 	switch result {
 	case "None":
-		return 0
+		return jobStatusNeverRun
 	case "Success":
-		return 1
+		return jobStatusSuccess
 	case "Warning":
-		return 2
+		return jobStatusWarning
 	case "Failed":
-		return 3
+		return jobStatusFailed
 	default:
-		return 0
+		return jobStatusNeverRun
 	}
 }
 
-// buildJobStateOverviewMetrics aggregates job states by type and produces summary metrics
-func buildJobStateOverviewMetrics(states []jobState, hoursToCheck int, now time.Time) []datapoint.DataPoint {
+// computeJobStatusValue produces the effective status value PRTG sees per job,
+// applying these priority rules (highest precedence first):
+//
+//  1. Running → return Running (4) regardless of past results
+//  2. No LastRun at all → NeverRun (0) — job is enabled but never executed
+//  3. LastResult=Failed → Failed (3) — failures keep priority even when stale,
+//     so an old failure is never hidden behind a "stale" warning
+//  4. LastRun older than the operator window → Stale (5)
+//  5. Otherwise map LastResult (Success / Warning)
+//
+// The priority on Failed (rule 3 before rule 4) is the key contract: if a job
+// failed and then stopped running entirely, the operator still sees the failure
+// — not a "stale" warning that would suggest the only problem is freshness.
+func computeJobStatusValue(js jobState, now time.Time, hoursToCheck int) float32 {
+	if js.Status == "Running" {
+		return jobStatusRunning
+	}
+	if js.LastRun == nil {
+		return jobStatusNeverRun
+	}
+	if js.LastResult == "Failed" {
+		return jobStatusFailed
+	}
 	cutoff := now.Add(-time.Duration(hoursToCheck) * time.Hour)
+	if js.LastRun.Before(cutoff) {
+		return jobStatusStale
+	}
+	return jobResultValue(js.LastResult)
+}
+
+// buildJobStateOverviewMetrics aggregates job states by type and produces
+// summary metrics. Every enabled job is counted exactly once, classified
+// according to the same priority rules as computeJobStatusValue: Running →
+// Failed → Stale → (Success/Warning) → NeverRun. The classification follows
+// the per-job rule so the overview totals reconcile with the per-job channels.
+//
+// In particular, total = success + warning + failed + running + stale +
+// never_run for every job_type. There is no longer a "hidden bucket" of
+// jobs whose last run aged out of the window — those land in `stale` instead
+// of disappearing, so operators can spot a backup cadence drift.
+func buildJobStateOverviewMetrics(states []jobState, hoursToCheck int, now time.Time) []datapoint.DataPoint {
 	type jobTypeStats struct {
-		total   int
-		success int
-		warning int
-		failed  int
-		running int
+		total    int
+		success  int
+		warning  int
+		failed   int
+		running  int
+		stale    int
+		neverRun int
 	}
 
 	statsByType := make(map[string]*jobTypeStats)
@@ -46,25 +99,20 @@ func buildJobStateOverviewMetrics(states []jobState, hoursToCheck int, now time.
 			statsByType[jt] = &jobTypeStats{}
 		}
 
-		// Skip jobs with no run or last run outside window
-		if js.LastRun == nil || js.LastRun.Before(cutoff) {
-			if js.Status != "Running" {
-				continue
-			}
-		}
-
 		statsByType[jt].total++
-		if js.Status == "Running" {
+		switch computeJobStatusValue(js, now, hoursToCheck) {
+		case jobStatusRunning:
 			statsByType[jt].running++
-		} else {
-			switch js.LastResult {
-			case "Success":
-				statsByType[jt].success++
-			case "Warning":
-				statsByType[jt].warning++
-			case "Failed":
-				statsByType[jt].failed++
-			}
+		case jobStatusFailed:
+			statsByType[jt].failed++
+		case jobStatusStale:
+			statsByType[jt].stale++
+		case jobStatusSuccess:
+			statsByType[jt].success++
+		case jobStatusWarning:
+			statsByType[jt].warning++
+		case jobStatusNeverRun:
+			statsByType[jt].neverRun++
 		}
 	}
 
@@ -80,54 +128,85 @@ func buildJobStateOverviewMetrics(states []jobState, hoursToCheck int, now time.
 			datapoint.DataPoint{Name: "veeam_jobs_warning", Timestamp: now, Value: float32(stats.warning), Tags: typeTags},
 			datapoint.DataPoint{Name: "veeam_jobs_failed", Timestamp: now, Value: float32(stats.failed), Tags: typeTags},
 			datapoint.DataPoint{Name: "veeam_jobs_running", Timestamp: now, Value: float32(stats.running), Tags: typeTags},
+			datapoint.DataPoint{Name: "veeam_jobs_stale", Timestamp: now, Value: float32(stats.stale), Tags: typeTags},
+			datapoint.DataPoint{Name: "veeam_jobs_never_run", Timestamp: now, Value: float32(stats.neverRun), Tags: typeTags},
 		)
 	}
 
 	return points
 }
 
-// buildJobStateDetailMetrics produces per-job metrics from consolidated job states
+// jobSecondsSinceNeverRun is the sentinel emitted for veeam_job_seconds_since
+// when a job has never executed. PRTG/Grafana consumers treat a negative
+// duration as "no measurement available" — distinct from the legitimate 0s
+// (just finished) and from any positive elapsed time.
+const jobSecondsSinceNeverRun float32 = -1
+
+// buildJobStateDetailMetrics produces per-job metrics from consolidated job
+// states. Every enabled job emits a `veeam_job_status` datapoint regardless of
+// how recently it ran — that's the single channel PRTG consumes to colour the
+// job in dashboards. The historical bug where a job aged out of
+// `hours_to_check` simply disappeared from the metrics is fixed here: the
+// status now becomes Stale (5) so the channel keeps emitting and the operator
+// sees the cadence problem instead of an empty channel.
+//
+// Session-progress data (bytes, bottleneck) only emits when the Veeam API
+// supplies it — for stale jobs this typically means "no fresh figures", which
+// is correct: stale jobs shouldn't backfill old bytes counters as if they were
+// current.
 func buildJobStateDetailMetrics(states []jobState, hoursToCheck int, now time.Time) []datapoint.DataPoint {
-	cutoff := now.Add(-time.Duration(hoursToCheck) * time.Hour)
 	var points []datapoint.DataPoint
 
 	for _, js := range states {
 		if js.Status == "Disabled" {
 			continue
 		}
-		jobTags := []tags.Tag{
-			{Key: "metric_type", Value: "jobs"},
+		// Two distinct metric_type tags split the per-job data into:
+		//   - jobs_status  : the single "Job Status" channel per job. This is
+		//                    what the consolidated PRTG sensor consumes — one
+		//                    coloured channel per job, no clutter.
+		//   - jobs_detail  : everything else (time since last run, bytes,
+		//                    bottleneck, object count). Deep-dive material for
+		//                    Grafana or a dedicated "Veeam Performance" sensor.
+		//
+		// Splitting at tag-level (rather than per-metric naming convention)
+		// keeps the Sensor Builder UX clean: the operator picks "Job Status"
+		// as a single chip and gets exactly six channels for six jobs.
+		statusTags := []tags.Tag{
+			{Key: "metric_type", Value: "jobs_status"},
+			{Key: "job_name", Value: js.Name},
+			{Key: "job_type", Value: js.Type},
+		}
+		detailTags := []tags.Tag{
+			{Key: "metric_type", Value: "jobs_detail"},
 			{Key: "job_name", Value: js.Name},
 			{Key: "job_type", Value: js.Type},
 		}
 
-		// Skip jobs with no run or last run outside window (unless running)
-		if js.LastRun == nil || js.LastRun.Before(cutoff) {
-			if js.Status != "Running" {
-				continue
-			}
-		}
-
-		// Status: use Running (4) if actively running, otherwise map LastResult
-		status := jobResultValue(js.LastResult)
-		if js.Status == "Running" {
-			status = 4
-		}
+		// Status channel — always emitted, see computeJobStatusValue for
+		// the priority rules (Running > NeverRun > Failed > Stale > result).
 		points = append(points, datapoint.DataPoint{
-			Name: "veeam_job_status", Timestamp: now, Value: status, Tags: jobTags,
+			Name:      "veeam_job_status",
+			Timestamp: now,
+			Value:     computeJobStatusValue(js, now, hoursToCheck),
+			Tags:      statusTags,
 		})
 
-		// Time since last run in seconds
+		// Time since last run in seconds. Always emitted; -1 indicates
+		// "never run" so dashboards can distinguish "just finished" (0) from
+		// "no data" (-1).
+		secondsSince := jobSecondsSinceNeverRun
 		if js.LastRun != nil {
-			secondsSince := now.Sub(*js.LastRun).Seconds()
-			points = append(points, datapoint.DataPoint{
-				Name: "veeam_job_seconds_since", Timestamp: now, Value: float32(secondsSince), Tags: jobTags,
-			})
+			secondsSince = float32(now.Sub(*js.LastRun).Seconds())
 		}
-
-		// Objects count
 		points = append(points, datapoint.DataPoint{
-			Name: "veeam_job_objects_count", Timestamp: now, Value: float32(js.ObjectsCount), Tags: jobTags,
+			Name: "veeam_job_seconds_since", Timestamp: now, Value: secondsSince, Tags: detailTags,
+		})
+
+		// Objects count is part of the job definition (not the last session),
+		// so it's available even for stale or never-run jobs.
+		points = append(points, datapoint.DataPoint{
+			Name: "veeam_job_objects_count", Timestamp: now, Value: float32(js.ObjectsCount), Tags: detailTags,
 		})
 
 		// Session progress metrics (available for running or recently completed jobs)
@@ -136,23 +215,23 @@ func buildJobStateDetailMetrics(states []jobState, hoursToCheck int, now time.Ti
 
 			// Bottleneck (as numeric: 0=None, 1=Source, 2=Proxy, 3=Network, 4=Target)
 			points = append(points, datapoint.DataPoint{
-				Name: "veeam_job_bottleneck", Timestamp: now, Value: bottleneckValue(sp.Bottleneck), Tags: jobTags,
+				Name: "veeam_job_bottleneck", Timestamp: now, Value: bottleneckValue(sp.Bottleneck), Tags: detailTags,
 			})
 
 			// Data sizes in bytes
 			if sp.ProcessedSize != nil {
 				points = append(points, datapoint.DataPoint{
-					Name: "veeam_job_processed_bytes", Timestamp: now, Value: float32(*sp.ProcessedSize), Tags: jobTags,
+					Name: "veeam_job_processed_bytes", Timestamp: now, Value: float32(*sp.ProcessedSize), Tags: detailTags,
 				})
 			}
 			if sp.ReadSize != nil {
 				points = append(points, datapoint.DataPoint{
-					Name: "veeam_job_read_bytes", Timestamp: now, Value: float32(*sp.ReadSize), Tags: jobTags,
+					Name: "veeam_job_read_bytes", Timestamp: now, Value: float32(*sp.ReadSize), Tags: detailTags,
 				})
 			}
 			if sp.TransferredSize != nil {
 				points = append(points, datapoint.DataPoint{
-					Name: "veeam_job_transferred_bytes", Timestamp: now, Value: float32(*sp.TransferredSize), Tags: jobTags,
+					Name: "veeam_job_transferred_bytes", Timestamp: now, Value: float32(*sp.TransferredSize), Tags: detailTags,
 				})
 			}
 		}
