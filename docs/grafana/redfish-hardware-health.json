@@ -1,0 +1,124 @@
+{
+  "uid": "senhub-redfish-hardware-health",
+  "title": "SenHub Redfish — Hardware Health (awaiting live data)",
+  "tags": ["senhub", "agents", "redfish"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Redfish endpoint",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(hw_status, service_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "Health summary", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "type": "stat", "id": 10, "title": "Chassis reporting",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "count(count by(service_name) (hw_status{service_name=~\"$service\"}))", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background_solid" }
+    },
+    {
+      "type": "stat", "id": 11, "title": "Components in degraded state",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(hw_status{service_name=~\"$service\",hw_state=\"degraded\"} == 1)", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat", "id": 12, "title": "Components failed",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(hw_status{service_name=~\"$service\",hw_state=\"failed\"} == 1)", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat", "id": 13, "title": "Predicted-failure drives",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(hw_status{service_name=~\"$service\",hw_state=\"predicted_failure\"} == 1)", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 3 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    { "type": "row", "id": 2, "title": "Status matrix", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "panels": [] },
+    {
+      "type": "table", "id": 20, "title": "All components — current state",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "hw_status{service_name=~\"$service\"} == 1", "legendFormat": "{{hw_type}}", "format": "table", "instant": true }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true, "Value": true, "__name__": true,
+              "deployment_environment": true, "host": true, "host_name": true,
+              "instance": true, "job": true, "os": true, "platform": true,
+              "probe_name": true, "probe_type": true,
+              "service_instance_id": true, "service_version": true,
+              "unit": true
+            },
+            "renameByName": {
+              "service_name": "Endpoint",
+              "hw_type":   "Type",
+              "hw_id":     "ID",
+              "hw_name":   "Name",
+              "hw_state":  "State"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "State" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+              { "id": "mappings", "value": [
+                { "type": "value", "options": { "ok":                { "color": "green",  "index": 0 } } },
+                { "type": "value", "options": { "degraded":          { "color": "yellow", "index": 1 } } },
+                { "type": "value", "options": { "failed":            { "color": "red",    "index": 2 } } },
+                { "type": "value", "options": { "predicted_failure": { "color": "orange", "index": 3 } } },
+                { "type": "value", "options": { "unknown":           { "color": "purple", "index": 4 } } }
+              ]}
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "State", "desc": true }] }
+    },
+    { "type": "row", "id": 3, "title": "Component counts by type and state", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 30, "title": "Physical disks by state",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum by(hw_state) (hw_status{service_name=~\"$service\",hw_type=\"physical_disk\"} == 1)", "legendFormat": "{{hw_state}}" }],
+      "fieldConfig": { "defaults": { "decimals": 0, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 15, "stacking": { "mode": "normal", "group": "A" } } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last"] } }
+    },
+    {
+      "type": "timeseries", "id": 31, "title": "Power supplies by state",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum by(hw_state) (hw_status{service_name=~\"$service\",hw_type=\"power_supply\"} == 1)", "legendFormat": "{{hw_state}}" }],
+      "fieldConfig": { "defaults": { "decimals": 0, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 15, "stacking": { "mode": "normal", "group": "A" } } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last"] } }
+    }
+  ],
+  "schemaVersion": 39, "version": 1
+}
