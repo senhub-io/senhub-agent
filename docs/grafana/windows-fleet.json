@@ -36,7 +36,7 @@
       "type": "stat", "id": 13, "title": "Hosts with FS > 95%",
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "targets": [{ "refId": "A", "expr": "count(max by(service_name) ((1 - system_filesystem_utilization_ratio{os=\"windows\",system_filesystem_state=\"free\"})) > 0.95)", "instant": true }],
+      "targets": [{ "refId": "A", "expr": "count(max by(service_name) (system_filesystem_utilization_ratio{os=\"windows\",system_filesystem_state=\"used\"}) > 0.95)", "instant": true }],
       "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 3 }] } } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
     },
@@ -48,7 +48,7 @@
       "targets": [
         { "refId": "A", "expr": "avg by(service_name) (system_cpu_utilization_ratio{os=\"windows\"})", "legendFormat": "CPU", "format": "table", "instant": true },
         { "refId": "B", "expr": "system_memory_utilization_ratio{os=\"windows\"}", "legendFormat": "Memory", "format": "table", "instant": true },
-        { "refId": "C", "expr": "max by(service_name) ((1 - system_filesystem_utilization_ratio{os=\"windows\",system_filesystem_state=\"free\"}))", "legendFormat": "Max FS", "format": "table", "instant": true },
+        { "refId": "C", "expr": "max by(service_name) (system_filesystem_utilization_ratio{os=\"windows\",system_filesystem_state=\"used\"})", "legendFormat": "Max FS", "format": "table", "instant": true },
         { "refId": "D", "expr": "senhub_system_cpu_queue_length{os=\"windows\"}", "legendFormat": "CPU queue", "format": "table", "instant": true },
         { "refId": "E", "expr": "system_processes_count{os=\"windows\"}", "legendFormat": "Processes", "format": "table", "instant": true }
       ],
