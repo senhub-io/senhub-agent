@@ -41,8 +41,6 @@ func formatProbeDisplayName(probeName string) string {
 	switch strings.ToLower(probeName) {
 	case "cpu":
 		return "CPU"
-	case "otel":
-		return "OTEL"
 	case "prtg":
 		return "PRTG"
 	default:
