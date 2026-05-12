@@ -30,6 +30,11 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	// the Prometheus bridge for senhub_agent_http_requests_total{endpoint}.
 	router.Use(CountRequests)
 
+	// Emit one OTel SERVER span per request (no-op when traces are
+	// disabled). Placed AFTER CountRequests so counters always increment
+	// even if a future tracing change introduces a regression.
+	router.Use(TraceRequests)
+
 	// Always expose health check endpoint
 	router.HandleFunc("/health", h.HandleHealth).Methods("GET")
 
