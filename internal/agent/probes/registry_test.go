@@ -227,7 +227,6 @@ func TestProbeRegistry(t *testing.T) {
 		"syslog",
 		"linux_logs",
 		"event",
-		"otel",
 		"redfish",
 		"citrix",
 		"netscaler",
