@@ -51,6 +51,27 @@ metrics:
     tag_to_attribute:
       drive: system.filesystem.mountpoint
 
+  # Synthetic "used %" complement of disk_free_percent — the Windows
+  # probe emits "100 - free%" alongside the free counter so cross-OS
+  # dashboards can query system_filesystem_state="used" directly
+  # rather than resorting to a `1 - free` workaround. Mirrors what the
+  # Linux probe natively reports via fs_used_percent.
+  - name: "disk_used_percent"
+    channel: "disk_used_percent"
+    display_name: "Disk Used Percent ({drive})"
+    unit: "%"
+    multi_instance_labels: ["drive"]
+    category: "capacity"
+    description: "Percentage of total disk space currently in use on the logical drive"
+    otel:
+      name: system.filesystem.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        system.filesystem.state: used
+    tag_to_attribute:
+      drive: system.filesystem.mountpoint
+
   # --- Windows disk I/O (instantaneous rates from Perfmon) ---
   - name: "disk_reads_sec"
     channel: "disk_reads_sec"

@@ -50,7 +50,7 @@
       "type": "stat", "id": 13, "title": "Filesystem max % used",
       "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "targets": [{ "refId": "A", "expr": "max by(service_name) ((1 - system_filesystem_utilization_ratio{service_name=~\"$service\",system_filesystem_state=\"free\"}))", "legendFormat": "{{service_name}}", "instant": true }],
+      "targets": [{ "refId": "A", "expr": "max by(service_name) (system_filesystem_utilization_ratio{service_name=~\"$service\",system_filesystem_state=\"used\"})", "legendFormat": "{{service_name}}", "instant": true }],
       "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.8 }, { "color": "red", "value": 0.95 }] } } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name", "colorMode": "value", "graphMode": "area" }
     },
@@ -76,7 +76,7 @@
       "type": "bargauge", "id": 30, "title": "Drive usage per logical disk",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "targets": [{ "refId": "A", "expr": "(1 - system_filesystem_utilization_ratio{service_name=~\"$service\",system_filesystem_state=\"free\"})", "legendFormat": "{{service_name}} {{system_filesystem_mountpoint}}", "instant": true }],
+      "targets": [{ "refId": "A", "expr": "system_filesystem_utilization_ratio{service_name=~\"$service\",system_filesystem_state=\"used\"}", "legendFormat": "{{service_name}} {{system_filesystem_mountpoint}}", "instant": true }],
       "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.8 }, { "color": "red", "value": 0.95 }] } } },
       "options": { "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true }
     },

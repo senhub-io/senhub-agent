@@ -54,12 +54,6 @@ validated, queries are cross-checked against
 canonical OTel names, but no production data has yet flowed through
 them on sha901. The annotation drops on the first customer go-live.
 
-### Earlier / archived
-
-- `senhub-agents-otlp.json` — the original Phase 4 single dashboard,
-  superseded by the v1 catalog. Kept for reference until next
-  release.
-
 ## Standard layout grammar
 
 Every dashboard follows the same shape (see
