@@ -1,0 +1,82 @@
+{
+  "uid": "senhub-redfish-storage-raid",
+  "title": "SenHub Redfish — Storage & RAID (awaiting live data)",
+  "tags": ["senhub", "agents", "redfish"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Redfish endpoint",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(hw_status, service_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "Logical disk capacity", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "type": "bargauge", "id": 10, "title": "Logical disk used %",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "hw_logical_disk_utilization{service_name=~\"$service\"}", "legendFormat": "{{hw_id}} {{hw_name}}", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.8 }, { "color": "red", "value": 0.95 }] } } },
+      "options": { "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true }
+    },
+    {
+      "type": "bargauge", "id": 11, "title": "Logical disk usage (bytes)",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "hw_logical_disk_usage_bytes{service_name=~\"$service\"}", "legendFormat": "{{hw_id}} {{hw_name}}", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "options": { "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true }
+    },
+    { "type": "row", "id": 2, "title": "Physical disks", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 11 }, "panels": [] },
+    {
+      "type": "table", "id": 20, "title": "Physical disks — state + size",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "hw_status{service_name=~\"$service\",hw_type=\"physical_disk\"} == 1", "format": "table", "instant": true },
+        { "refId": "B", "expr": "hw_physical_disk_size_bytes{service_name=~\"$service\"}",                "format": "table", "instant": true },
+        { "refId": "C", "expr": "senhub_hardware_physical_disk_link_speed_bits_per_second{service_name=~\"$service\"}", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "hw_id", "mode": "outer" } }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Value #B" }, "properties": [{ "id": "unit", "value": "bytes" }, { "id": "displayName", "value": "Size" }] },
+          { "matcher": { "id": "byName", "options": "Value #C" }, "properties": [{ "id": "unit", "value": "bps" }, { "id": "displayName", "value": "Link speed" }] }
+        ]
+      },
+      "options": { "showHeader": true }
+    },
+    { "type": "row", "id": 3, "title": "Storage pools & redundancy", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 30, "title": "Storage pool utilization",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_hardware_storage_pool_utilization{service_name=~\"$service\"}", "legendFormat": "{{hw_id}} {{hw_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    {
+      "type": "timeseries", "id": 31, "title": "Storage pool IO bytes",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "rate(senhub_hardware_storage_pool_io_bytes_total{service_name=~\"$service\"}[$__rate_interval])", "legendFormat": "{{hw_id}}" }],
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    }
+  ],
+  "schemaVersion": 39, "version": 1
+}
