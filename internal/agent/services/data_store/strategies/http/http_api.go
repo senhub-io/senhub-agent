@@ -41,8 +41,6 @@ func formatProbeDisplayName(probeName string) string {
 	switch strings.ToLower(probeName) {
 	case "cpu":
 		return "CPU"
-	case "otel":
-		return "OTEL"
 	case "prtg":
 		return "PRTG"
 	default:
@@ -238,8 +236,9 @@ func (a *APIManager) HandleInfoEndpoints(w http.ResponseWriter, r *http.Request)
 
 	// Define all possible endpoints with their descriptions
 	allEndpoints := map[string]string{
-		"prtg":   "PRTG JSON format for monitoring integration",
-		"nagios": "Nagios-compatible output format",
+		"prtg":       "PRTG JSON format for monitoring integration",
+		"nagios":     "Nagios-compatible output format",
+		"prometheus": "Prometheus text exposition format",
 	}
 
 	var endpoints []EndpointInfoStatus

@@ -1,0 +1,116 @@
+# Configuration de scrape de référence — SenHub Agent
+#
+# Exemples pour Prometheus, vmagent (VictoriaMetrics) et Grafana Agent.
+# Le port et l'URL correspondent à la config HTTP de l'agent.
+
+# ============================================================
+# Prometheus — prometheus.yml
+# ============================================================
+
+# Configuration minimale
+# ----------------------
+# scrape_configs:
+#   - job_name: 'senhub-agent'
+#     scrape_interval: 30s
+#     metrics_path: /metrics
+#     authorization:
+#       type: Bearer
+#       credentials: '<votre-token>'
+#     static_configs:
+#       - targets: ['10.0.0.42:8080']
+#         labels:
+#           agent: 'agent-prod-001'
+#           datacenter: 'paris-dc1'
+
+# Configuration complète avec TLS et relabeling
+# ----------------------------------------------
+# scrape_configs:
+#   - job_name: 'senhub-agent'
+#     scrape_interval: 30s
+#     scrape_timeout: 10s
+#     metrics_path: /metrics
+#
+#     authorization:
+#       type: Bearer
+#       credentials_file: /etc/prometheus/senhub-token.secret
+#
+#     scheme: https
+#     tls_config:
+#       insecure_skip_verify: true
+#
+#     static_configs:
+#       - targets: ['10.0.0.42:8080']
+#         labels:
+#           agent: 'agent-prod-001'
+#           datacenter: 'paris-dc1'
+#
+#     metric_relabel_configs:
+#       # Ne garder que les probes d'un site
+#       - source_labels: [site]
+#         regex: 'paris'
+#         action: keep
+#
+#       # Ne garder qu'un type de probe
+#       - source_labels: [probe_type]
+#         regex: 'netscaler'
+#         action: keep
+#
+#       # Supprimer un label trop cardinalisant
+#       - regex: 'subgroup'
+#         action: labeldrop
+
+# ============================================================
+# vmagent (VictoriaMetrics) — vmagent.yml
+# ============================================================
+# 100% compatible avec la config Prometheus.
+
+# scrape_configs:
+#   - job_name: 'senhub-agent'
+#     scrape_interval: 30s
+#     metrics_path: /metrics
+#     authorization:
+#       type: Bearer
+#       credentials: '<votre-token>'
+#     static_configs:
+#       - targets: ['10.0.0.42:8080']
+#         labels:
+#           agent: 'agent-prod-001'
+#
+#     # vmagent : streaming parse pour gros volumes
+#     stream_parse: true
+
+# Lancement vmagent :
+# vmagent \
+#   -promscrape.config=vmagent.yml \
+#   -remoteWrite.url=http://victoria:8428/api/v1/write
+
+# ============================================================
+# Grafana Agent / Alloy — config.river
+# ============================================================
+# prometheus.scrape "senhub" {
+#   targets = [{"__address__" = "10.0.0.42:8080"}]
+#   forward_to = [prometheus.remote_write.victoria.receiver]
+#   scrape_interval = "30s"
+#   bearer_token = "<token>"
+# }
+
+# ============================================================
+# Vérification rapide
+# ============================================================
+#
+#   # Scrape manuel
+#   curl -s -H "Authorization: Bearer <token>" http://10.0.0.42:8080/metrics
+#
+#   # Vérifier les métriques senhub_*
+#   curl -s -H "Authorization: Bearer <token>" http://10.0.0.42:8080/metrics | grep "^senhub_"
+#
+#   # Vérifier les probes
+#   curl -s -H "Authorization: Bearer <token>" http://10.0.0.42:8080/metrics | grep senhub_probe_up
+#
+#   # Valider le format (promtool)
+#   curl -s -H "Authorization: Bearer <token>" http://10.0.0.42:8080/metrics | promtool check metrics
+#
+#   # Côté VictoriaMetrics
+#   curl -s 'http://victoria:8428/api/v1/series?match[]=senhub_probe_up'
+#
+#   # Côté Prometheus : http://prometheus:9090/targets → job senhub-agent = UP

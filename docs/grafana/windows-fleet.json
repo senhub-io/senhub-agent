@@ -1,0 +1,115 @@
+{
+  "uid": "senhub-windows-fleet",
+  "title": "SenHub Windows — Fleet",
+  "tags": ["senhub", "agents", "windows"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    { "type": "row", "id": 1, "title": "Health summary", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "type": "stat", "id": 10, "title": "Hosts reporting",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "count(count by(service_name) (system_memory_usage_bytes{os=\"windows\"}))", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background_solid" }
+    },
+    {
+      "type": "stat", "id": 11, "title": "Hosts > 80% CPU",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "count(avg by(service_name) (system_cpu_utilization_ratio{os=\"windows\"}) > 0.8)", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 3 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat", "id": 12, "title": "Hosts > 90% memory",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "count(system_memory_utilization_ratio{os=\"windows\"} > 0.9)", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 3 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat", "id": 13, "title": "Hosts with FS > 95%",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "count(max by(service_name) (system_filesystem_utilization_ratio{os=\"windows\",system_filesystem_state=\"used\"}) > 0.95)", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 3 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    { "type": "row", "id": 2, "title": "Per-host snapshot", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "panels": [] },
+    {
+      "type": "table", "id": 20, "title": "Hosts at a glance",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "avg by(service_name) (system_cpu_utilization_ratio{os=\"windows\"})", "legendFormat": "CPU", "format": "table", "instant": true },
+        { "refId": "B", "expr": "system_memory_utilization_ratio{os=\"windows\"}", "legendFormat": "Memory", "format": "table", "instant": true },
+        { "refId": "C", "expr": "max by(service_name) (system_filesystem_utilization_ratio{os=\"windows\",system_filesystem_state=\"used\"})", "legendFormat": "Max FS", "format": "table", "instant": true },
+        { "refId": "D", "expr": "senhub_system_cpu_queue_length{os=\"windows\"}", "legendFormat": "CPU queue", "format": "table", "instant": true },
+        { "refId": "E", "expr": "system_processes_count{os=\"windows\"}", "legendFormat": "Processes", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "service_name", "mode": "outer" } },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time 1": true, "Time 2": true, "Time 3": true, "Time 4": true, "Time 5": true,
+              "__name__ 1": true, "__name__ 2": true, "__name__ 3": true, "__name__ 4": true, "__name__ 5": true,
+              "deployment_environment 1": true, "deployment_environment 2": true, "deployment_environment 3": true, "deployment_environment 4": true, "deployment_environment 5": true,
+              "host 1": true, "host 2": true, "host 3": true, "host 4": true, "host 5": true,
+              "host_name 1": true, "host_name 2": true, "host_name 3": true, "host_name 4": true, "host_name 5": true,
+              "instance 1": true, "instance 2": true, "instance 3": true, "instance 4": true, "instance 5": true,
+              "job 1": true, "job 2": true, "job 3": true, "job 4": true, "job 5": true,
+              "os 1": true, "os 2": true, "os 3": true, "os 4": true, "os 5": true,
+              "platform 1": true, "platform 2": true, "platform 3": true, "platform 4": true, "platform 5": true,
+              "probe_name 1": true, "probe_name 2": true, "probe_name 3": true, "probe_name 4": true, "probe_name 5": true,
+              "probe_type 1": true, "probe_type 2": true, "probe_type 3": true, "probe_type 4": true, "probe_type 5": true,
+              "service_instance_id 1": true, "service_instance_id 2": true, "service_instance_id 3": true, "service_instance_id 4": true, "service_instance_id 5": true,
+              "service_version 1": true, "service_version 2": true, "service_version 3": true, "service_version 4": true, "service_version 5": true,
+              "system_memory_state": true, "system_filesystem_mountpoint": true, "system_filesystem_state": true, "system_filesystem_type": true, "system_device": true,
+              "core 1": true, "core 2": true, "core 3": true, "core 4": true, "core 5": true,
+              "unit 1": true, "unit 2": true, "unit 3": true, "unit 4": true, "unit 5": true
+            },
+            "renameByName": {
+              "service_name": "Host", "Value #A": "CPU", "Value #B": "Memory used", "Value #C": "Max FS", "Value #D": "CPU queue", "Value #E": "Processes"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "CPU" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 1 }, { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.6 }, { "color": "red", "value": 0.85 }] } }] },
+          { "matcher": { "id": "byName", "options": "Memory used" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 1 }, { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.9 }] } }] },
+          { "matcher": { "id": "byName", "options": "Max FS" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 1 }, { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.8 }, { "color": "red", "value": 0.95 }] } }] },
+          { "matcher": { "id": "byName", "options": "CPU queue" }, "properties": [{ "id": "decimals", "value": 1 }] },
+          { "matcher": { "id": "byName", "options": "Processes" }, "properties": [{ "id": "decimals", "value": 0 }] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "Max FS", "desc": true }] }
+    },
+    { "type": "row", "id": 3, "title": "Distribution over time", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 30, "title": "CPU utilization per host",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "avg by(service_name) (system_cpu_utilization_ratio{os=\"windows\"})", "legendFormat": "{{service_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 0 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    {
+      "type": "timeseries", "id": 31, "title": "Memory utilization per host",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "system_memory_utilization_ratio{os=\"windows\"}", "legendFormat": "{{service_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 0 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    }
+  ],
+  "schemaVersion": 39, "version": 1
+}

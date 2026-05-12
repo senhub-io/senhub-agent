@@ -5,18 +5,21 @@ type: docs
 
 # SenHub Agent Documentation
 
-SenHub Agent is a monitoring collector that runs on your infrastructure and collects metrics from various sources (servers, applications, network devices). It exposes metrics via a REST API compatible with PRTG, Nagios, Zabbix, and Grafana.
+SenHub Agent is a monitoring collector that runs on your infrastructure and collects metrics from servers, applications, backup systems, and network devices. It exposes metrics via REST endpoints compatible with PRTG, Nagios, and Prometheus / VictoriaMetrics scrape, and pushes metrics and logs natively over OTLP/gRPC to any OpenTelemetry receiver. All output paths share the same OTel-aligned naming so one query vocabulary covers every sink.
 
 ## Getting Started
 
 1. **[Installation]({{< relref "/docs/installation" >}})** - Install the agent on Windows or Linux
-2. **[Configuration]({{< relref "/docs/configuration" >}})** - Configure probes, storage, and licensing
-3. **[HTTP/HTTPS]({{< relref "/docs/http-https" >}})** - Set up the REST API and HTTPS
-4. **[Web Interface]({{< relref "/docs/web-interface" >}})** - Use the dashboard and integrate with monitoring systems
+2. **[Configuration]({{< relref "/docs/configuration" >}})** - Configure probes, storage, licensing, and updates
+3. **[CLI Reference]({{< relref "/docs/cli" >}})** - All available commands
+4. **[Web Interface]({{< relref "/docs/web-interface" >}})** - Dashboard and monitoring system integration
+5. **[Prometheus / VictoriaMetrics]({{< relref "/docs/prometheus" >}})** - `/metrics` endpoint, OTel-aligned naming, scrape examples
+6. **[OTLP / OpenTelemetry]({{< relref "/docs/otlp" >}})** - Native OTLP/gRPC push of metrics + logs (collectors, vmagent, Grafana Cloud)
+7. **[HTTP/HTTPS]({{< relref "/docs/http-https" >}})** - Set up the REST API and HTTPS
 
 ## Probes
 
-5. **[All Probes]({{< relref "/docs/probes" >}})** - CPU, Memory, Network, Disk, Citrix, NetScaler, Redfish, Syslog, and more
+6. **[All Probes]({{< relref "/docs/probes" >}})** - System, infrastructure, application, and backup monitoring
 
 ## Troubleshooting
 

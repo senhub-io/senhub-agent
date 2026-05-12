@@ -1,0 +1,98 @@
+{
+  "uid": "senhub-veeam-jobs",
+  "title": "SenHub Veeam — Jobs (awaiting live data)",
+  "tags": ["senhub", "agents", "veeam"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Veeam server",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(senhub_veeam_jobs_total, service_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "Headline", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "type": "stat", "id": 10, "title": "Total jobs",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_veeam_jobs_total{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background_solid" }
+    },
+    {
+      "type": "stat", "id": 11, "title": "Successful runs (last 24h)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_veeam_jobs_by_last_result{service_name=~\"$service\",senhub_veeam_job_last_result=\"success\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat", "id": 12, "title": "Failed runs (last 24h)",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_veeam_jobs_by_last_result{service_name=~\"$service\",senhub_veeam_job_last_result=\"failed\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 3 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat", "id": 13, "title": "Warning runs (last 24h)",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_veeam_jobs_by_last_result{service_name=~\"$service\",senhub_veeam_job_last_result=\"warning\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    { "type": "row", "id": 2, "title": "Outcomes by job", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "panels": [] },
+    {
+      "type": "table", "id": 20, "title": "Jobs status snapshot",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "senhub_veeam_job_status{service_name=~\"$service\"} == 1", "legendFormat": "{{job_name}}", "format": "table", "instant": true },
+        { "refId": "B", "expr": "senhub_veeam_job_seconds_since_last_run{service_name=~\"$service\"}", "legendFormat": "{{job_name}}", "format": "table", "instant": true },
+        { "refId": "C", "expr": "sum by(service_name, senhub_veeam_job_name) (senhub_veeam_job_last_run_bytes{service_name=~\"$service\",senhub_veeam_job_data_phase=\"transferred\"})", "legendFormat": "{{job_name}}", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "senhub_veeam_job_name", "mode": "outer" } }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Value #B" }, "properties": [{ "id": "unit", "value": "s" }, { "id": "displayName", "value": "Since last run" }] },
+          { "matcher": { "id": "byName", "options": "Value #C" }, "properties": [{ "id": "unit", "value": "bytes" }, { "id": "displayName", "value": "Transferred (last run)" }] }
+        ]
+      },
+      "options": { "showHeader": true }
+    },
+    { "type": "row", "id": 3, "title": "Trends", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 30, "title": "Job outcomes over time",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum by(senhub_veeam_job_last_result) (senhub_veeam_jobs_by_last_result{service_name=~\"$service\"})", "legendFormat": "{{senhub_veeam_job_last_result}}" }],
+      "fieldConfig": { "defaults": { "decimals": 0, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 15, "stacking": { "mode": "normal", "group": "A" } } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last"] } }
+    },
+    {
+      "type": "timeseries", "id": 31, "title": "Bytes transferred per job (last run)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_veeam_job_last_run_bytes{service_name=~\"$service\",senhub_veeam_job_data_phase=\"transferred\"}", "legendFormat": "{{senhub_veeam_job_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    }
+  ],
+  "schemaVersion": 39, "version": 1
+}

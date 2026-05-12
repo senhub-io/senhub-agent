@@ -189,16 +189,24 @@ Before committing:
 ## Current Development Status
 
 Active work:
-- **Redfish Probe**: Hardware monitoring (in progress)
-- **Citrix Probe**: CVAD monitoring (investigating logon duration)
+- **Zabbix native export**: Phase 0 audit complete on `feat/zabbix-export`,
+  implementation paused (~5 days estimated when prioritized)
 - **Windows Event Log Probe**: Event collection (early stage)
-- **HTTP Strategy**: REST API exposure (production ready)
-- **Modular Logging**: Per-module log control (production ready)
 
 See [Current Development](./docs/developer-guide/current-development.md) for details.
 
 ## Recent Completions
 
+- ✅ Grafana dashboard catalog v1 — 21 dashboards (Linux + Windows
+  + agent self-monitoring + 8 vendor) shipped in 0.1.90-beta
+- ✅ Agent self-observability metrics — 6 process + 5 OTLP push
+  counters + system.processes.count (0.1.90-beta)
+- ✅ Windows logicaldisk state="used" parity with Linux (0.1.90-beta)
+- ✅ OTLP/gRPC push export of metrics + logs (0.1.89-beta → consolidated into 0.1.90-beta)
+- ✅ `linux_logs` probe — journald via subprocess, free tier (0.1.90-beta)
+- ✅ Prometheus / VictoriaMetrics exposition endpoint (0.1.88-beta)
+- ✅ OTel-first refactor — neutral `otelmapper` package shared by
+  every metric sink (0.1.88-beta → 0.1.90-beta)
 - ✅ Configuration v1→v2 migration (0.1.70-beta)
 - ✅ Shared configuration template (0.1.70-beta)
 - ✅ Offline mode implementation
@@ -244,4 +252,4 @@ All commits should appear as authored solely by the repository owner.
 
 **For complete development documentation, start with [Developer Guide](./docs/developer-guide/README.md).**
 
-Last updated: 2025-12-09
+Last updated: 2026-05-12 (0.1.90-beta)

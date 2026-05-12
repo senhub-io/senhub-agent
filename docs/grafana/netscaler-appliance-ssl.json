@@ -1,0 +1,122 @@
+{
+  "uid": "senhub-netscaler-appliance-ssl",
+  "title": "SenHub NetScaler — Appliance & SSL (awaiting live data)",
+  "tags": ["senhub", "agents", "netscaler"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "NetScaler appliance",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(senhub_netscaler_system_cpu_utilization, service_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "Appliance resources", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 10, "title": "CPU utilization (data plane vs management)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_netscaler_system_cpu_utilization{service_name=~\"$service\"}", "legendFormat": "{{service_name}} / {{senhub_netscaler_cpu_plane}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    {
+      "type": "timeseries", "id": 11, "title": "Memory utilization",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "system_memory_utilization_ratio{service_name=~\"$service\"}", "legendFormat": "{{service_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    {
+      "type": "bargauge", "id": 12, "title": "Filesystem usage (appliance disks)",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "system_filesystem_utilization_ratio{service_name=~\"$service\",system_filesystem_state=\"used\"}", "legendFormat": "{{system_filesystem_mountpoint}}", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.8 }, { "color": "red", "value": 0.95 }] } } },
+      "options": { "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true }
+    },
+    { "type": "row", "id": 2, "title": "SSL certificates", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 }, "panels": [] },
+    {
+      "type": "table", "id": 20, "title": "Top-10 certificates closest to expiry",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "bottomk(10, senhub_netscaler_ssl_certificate_days_to_expiration{service_name=~\"$service\"})", "format": "table", "instant": true }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true, "__name__": true, "deployment_environment": true, "host": true,
+              "host_name": true, "instance": true, "job": true, "os": true, "platform": true,
+              "probe_name": true, "probe_type": true, "service_instance_id": true, "service_version": true,
+              "unit": true
+            },
+            "renameByName": {
+              "Value": "Days remaining",
+              "service_name": "Appliance",
+              "senhub_netscaler_ssl_certificate_name": "Certificate"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Days remaining" },
+            "properties": [
+              { "id": "unit", "value": "d" }, { "id": "decimals", "value": 0 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 30 }, { "color": "green", "value": 90 }] } }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "Days remaining", "desc": false }] }
+    },
+    {
+      "type": "timeseries", "id": 21, "title": "SSL transactions per second",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_netscaler_ssl_transactions_rate{service_name=~\"$service\"}", "legendFormat": "{{service_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    { "type": "row", "id": 3, "title": "Cache, compression, AppFW", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 30, "title": "Cache hit ratio",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_netscaler_cache_hit_ratio{service_name=~\"$service\"}", "legendFormat": "{{service_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries", "id": 31, "title": "Compression ratio",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_netscaler_compression_ratio{service_name=~\"$service\"}", "legendFormat": "{{service_name}}" }],
+      "fieldConfig": { "defaults": { "decimals": 2, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries", "id": 32, "title": "AppFW violations by type (rate)",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "rate(senhub_netscaler_appfw_violations_by_type{service_name=~\"$service\"}[$__rate_interval])", "legendFormat": "{{senhub_netscaler_appfw_violation_type}}" }],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    }
+  ],
+  "schemaVersion": 39, "version": 1
+}

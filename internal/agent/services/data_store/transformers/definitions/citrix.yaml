@@ -1,14 +1,29 @@
 probe_name: "citrix"
 friendly_name: "Citrix Virtual Apps and Desktops"
+version: "3.0.0"
+
+# Format v3 — OTel-first source of truth.
+# No OTel semconv for Citrix CVAD — all metrics under senhub.citrix.* extensions.
+# Collapse strategy: states/categories/phases grouped under a single metric name
+# with a discriminating attribute (Prometheus-idiomatic).
+# See senhub-semantic-conventions §4.11.
 
 metrics:
-  # Session Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # SESSIONS — collapsed by session state
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "sessions_connected"
     channel: "sessions_connected"
     display_name: "Sessions Connected"
     unit: "#"
     category: "sessions"
     description: "Number of active user sessions currently connected to virtual desktops"
+    otel:
+      name: senhub.citrix.sessions.count
+      unit: "{session}"
+      type: gauge
+      attributes:
+        senhub.citrix.session.state: connected
 
   - name: "sessions_disconnected"
     channel: "sessions_disconnected"
@@ -16,14 +31,26 @@ metrics:
     unit: "#"
     category: "sessions"
     description: "Number of user sessions in disconnected state but not yet logged off"
+    otel:
+      name: senhub.citrix.sessions.count
+      unit: "{session}"
+      type: gauge
+      attributes:
+        senhub.citrix.session.state: disconnected
 
-  # Machine Infrastructure Metrics
+  # ═════════════════════════════════════════════════════════════════════════
+  # MACHINE INFRASTRUCTURE
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "machines_total"
     channel: "machines_total"
     display_name: "Machines Total"
     unit: "#"
     category: "infrastructure"
     description: "Total number of VDA machines in the delivery group"
+    otel:
+      name: senhub.citrix.machines.total
+      unit: "{machine}"
+      type: gauge
 
   - name: "machines_registered"
     channel: "machines_registered"
@@ -31,6 +58,12 @@ metrics:
     unit: "#"
     category: "infrastructure"
     description: "Number of VDA machines successfully registered with the Delivery Controller"
+    otel:
+      name: senhub.citrix.machines.by_registration_state
+      unit: "{machine}"
+      type: gauge
+      attributes:
+        senhub.citrix.machine.registration_state: registered
 
   - name: "machines_unregistered"
     channel: "machines_unregistered"
@@ -38,6 +71,12 @@ metrics:
     unit: "#"
     category: "infrastructure"
     description: "Number of VDA machines not registered with the Delivery Controller"
+    otel:
+      name: senhub.citrix.machines.by_registration_state
+      unit: "{machine}"
+      type: gauge
+      attributes:
+        senhub.citrix.machine.registration_state: unregistered
 
   - name: "machines_faulty"
     channel: "machines_faulty"
@@ -45,6 +84,12 @@ metrics:
     unit: "#"
     category: "infrastructure"
     description: "Number of VDA machines in a faulty state unable to accept user connections"
+    otel:
+      name: senhub.citrix.machines.by_registration_state
+      unit: "{machine}"
+      type: gauge
+      attributes:
+        senhub.citrix.machine.registration_state: faulty
 
   - name: "machines_maintenance"
     channel: "machines_maintenance"
@@ -52,14 +97,26 @@ metrics:
     unit: "#"
     category: "infrastructure"
     description: "Number of VDA machines placed in maintenance mode by an administrator"
+    otel:
+      name: senhub.citrix.machines.by_registration_state
+      unit: "{machine}"
+      type: gauge
+      attributes:
+        senhub.citrix.machine.registration_state: maintenance
 
-  # Logon Performance Metrics (Time units)
+  # ═════════════════════════════════════════════════════════════════════════
+  # LOGON PERFORMANCE
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "logon_duration_avg_1h"
     channel: "logon_duration_avg_1h"
     display_name: "Logon Duration Average (1h)"
     unit: "s"
     category: "logon"
     description: "Average end-to-end logon duration over the last hour"
+    otel:
+      name: senhub.citrix.logon.duration_1h_average
+      unit: s
+      type: gauge
 
   - name: "logon_duration_total"
     channel: "logon_duration_total"
@@ -67,6 +124,10 @@ metrics:
     unit: "s"
     category: "logon"
     description: "Total cumulative logon duration for the most recent logon session"
+    otel:
+      name: senhub.citrix.logon.last_session_duration
+      unit: s
+      type: gauge
 
   - name: "logon_sessions_opened"
     channel: "logon_sessions_opened"
@@ -74,14 +135,26 @@ metrics:
     unit: "#"
     category: "logon"
     description: "Number of new sessions opened during the measurement period"
+    otel:
+      name: senhub.citrix.logon.sessions_opened
+      unit: "{session}"
+      type: gauge
 
-  # Logon Phase Breakdown Metrics (Time units)
+  # ═════════════════════════════════════════════════════════════════════════
+  # LOGON PHASE BREAKDOWN — all 8 phases collapsed under a single metric
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "logon_brokering"
     channel: "logon_brokering"
     display_name: "Logon Brokering"
     unit: "s"
     category: "logon"
     description: "Time spent by the Delivery Controller brokering the session to a VDA"
+    otel:
+      name: senhub.citrix.logon.phase_duration
+      unit: s
+      type: gauge
+      attributes:
+        senhub.citrix.logon.phase: brokering
 
   - name: "logon_vmstart"
     channel: "logon_vmstart"
@@ -89,6 +162,12 @@ metrics:
     unit: "s"
     category: "logon"
     description: "Time spent starting or resuming the virtual machine for the session"
+    otel:
+      name: senhub.citrix.logon.phase_duration
+      unit: s
+      type: gauge
+      attributes:
+        senhub.citrix.logon.phase: vm_start
 
   - name: "logon_hdx"
     channel: "logon_hdx"
@@ -96,6 +175,12 @@ metrics:
     unit: "s"
     category: "logon"
     description: "Time spent establishing the HDX/ICA connection between client and VDA"
+    otel:
+      name: senhub.citrix.logon.phase_duration
+      unit: s
+      type: gauge
+      attributes:
+        senhub.citrix.logon.phase: hdx
 
   - name: "logon_authentication"
     channel: "logon_authentication"
@@ -103,6 +188,12 @@ metrics:
     unit: "s"
     category: "logon"
     description: "Time spent authenticating user credentials during logon"
+    otel:
+      name: senhub.citrix.logon.phase_duration
+      unit: s
+      type: gauge
+      attributes:
+        senhub.citrix.logon.phase: authentication
 
   - name: "logon_gpo"
     channel: "logon_gpo"
@@ -110,6 +201,12 @@ metrics:
     unit: "s"
     category: "logon"
     description: "Time spent applying Group Policy Objects during session logon"
+    otel:
+      name: senhub.citrix.logon.phase_duration
+      unit: s
+      type: gauge
+      attributes:
+        senhub.citrix.logon.phase: gpo
 
   - name: "logon_scripts"
     channel: "logon_scripts"
@@ -117,6 +214,12 @@ metrics:
     unit: "s"
     category: "logon"
     description: "Time spent executing logon scripts during session initialization"
+    otel:
+      name: senhub.citrix.logon.phase_duration
+      unit: s
+      type: gauge
+      attributes:
+        senhub.citrix.logon.phase: scripts
 
   - name: "logon_profile"
     channel: "logon_profile"
@@ -124,6 +227,12 @@ metrics:
     unit: "s"
     category: "logon"
     description: "Time spent loading the user profile during session logon"
+    otel:
+      name: senhub.citrix.logon.phase_duration
+      unit: s
+      type: gauge
+      attributes:
+        senhub.citrix.logon.phase: profile
 
   - name: "logon_interactive"
     channel: "logon_interactive"
@@ -131,14 +240,26 @@ metrics:
     unit: "s"
     category: "logon"
     description: "Time spent on interactive session setup after profile load completes"
+    otel:
+      name: senhub.citrix.logon.phase_duration
+      unit: s
+      type: gauge
+      attributes:
+        senhub.citrix.logon.phase: interactive
 
-  # Connection Failure Metrics (Director: "Échecs de connexion utilisateur")
+  # ═════════════════════════════════════════════════════════════════════════
+  # CONNECTION FAILURES — total + collapsed by category
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "failures_total"
     channel: "failures_total"
     display_name: "Connection Failures Total"
     unit: "#"
     category: "failures"
     description: "Total number of failed user connection attempts across all failure categories"
+    otel:
+      name: senhub.citrix.connection_failures.total
+      unit: "{failure}"
+      type: gauge
 
   - name: "client_connection_failures"
     channel: "client_connection_failures"
@@ -146,6 +267,12 @@ metrics:
     unit: "#"
     category: "failures"
     description: "Connection failures caused by client-side issues such as network or endpoint errors"
+    otel:
+      name: senhub.citrix.connection_failures.by_category
+      unit: "{failure}"
+      type: gauge
+      attributes:
+        senhub.citrix.connection_failure.category: client_connection
 
   - name: "configuration_errors"
     channel: "configuration_errors"
@@ -153,6 +280,12 @@ metrics:
     unit: "#"
     category: "failures"
     description: "Connection failures caused by misconfigured delivery groups or policies"
+    otel:
+      name: senhub.citrix.connection_failures.by_category
+      unit: "{failure}"
+      type: gauge
+      attributes:
+        senhub.citrix.connection_failure.category: configuration
 
   - name: "machine_failures"
     channel: "machine_failures"
@@ -160,6 +293,12 @@ metrics:
     unit: "#"
     category: "failures"
     description: "Connection failures caused by VDA machines being unavailable or unresponsive"
+    otel:
+      name: senhub.citrix.connection_failures.by_category
+      unit: "{failure}"
+      type: gauge
+      attributes:
+        senhub.citrix.connection_failure.category: machine
 
   - name: "capacity_unavailable"
     channel: "capacity_unavailable"
@@ -167,6 +306,12 @@ metrics:
     unit: "#"
     category: "failures"
     description: "Connection failures due to no available capacity in the delivery group"
+    otel:
+      name: senhub.citrix.connection_failures.by_category
+      unit: "{failure}"
+      type: gauge
+      attributes:
+        senhub.citrix.connection_failure.category: capacity_unavailable
 
   - name: "licenses_unavailable"
     channel: "licenses_unavailable"
@@ -174,6 +319,12 @@ metrics:
     unit: "#"
     category: "failures"
     description: "Connection failures due to insufficient Citrix licenses available"
+    otel:
+      name: senhub.citrix.connection_failures.by_category
+      unit: "{failure}"
+      type: gauge
+      attributes:
+        senhub.citrix.connection_failure.category: licenses_unavailable
 
   - name: "other_failures"
     channel: "other_failures"
@@ -181,14 +332,29 @@ metrics:
     unit: "#"
     category: "failures"
     description: "Connection failures not classified in other failure categories"
+    otel:
+      name: senhub.citrix.connection_failures.by_category
+      unit: "{failure}"
+      type: gauge
+      attributes:
+        senhub.citrix.connection_failure.category: other
 
-  # Load Index Metrics (VDA resource utilization, values in %)
+  # ═════════════════════════════════════════════════════════════════════════
+  # LOAD INDEX — 6 dimensions collapsed; overloaded machines separate
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "load_index_effective"
     channel: "load_index_effective"
     display_name: "Load Index Effective Avg"
     unit: "%"
     category: "load"
     description: "Average effective load evaluator index across all registered VDAs"
+    otel:
+      name: senhub.citrix.load_index.ratio
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.citrix.load_index.dimension: effective
+      # Mapper converts % → ratio (÷100)
 
   - name: "load_index_cpu"
     channel: "load_index_cpu"
@@ -196,6 +362,12 @@ metrics:
     unit: "%"
     category: "load"
     description: "Average CPU load evaluator index across all registered VDAs"
+    otel:
+      name: senhub.citrix.load_index.ratio
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.citrix.load_index.dimension: cpu
 
   - name: "load_index_memory"
     channel: "load_index_memory"
@@ -203,6 +375,12 @@ metrics:
     unit: "%"
     category: "load"
     description: "Average memory load evaluator index across all registered VDAs"
+    otel:
+      name: senhub.citrix.load_index.ratio
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.citrix.load_index.dimension: memory
 
   - name: "load_index_disk"
     channel: "load_index_disk"
@@ -210,6 +388,12 @@ metrics:
     unit: "%"
     category: "load"
     description: "Average disk load evaluator index across all registered VDAs"
+    otel:
+      name: senhub.citrix.load_index.ratio
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.citrix.load_index.dimension: disk
 
   - name: "load_index_network"
     channel: "load_index_network"
@@ -217,6 +401,12 @@ metrics:
     unit: "%"
     category: "load"
     description: "Average network load evaluator index across all registered VDAs"
+    otel:
+      name: senhub.citrix.load_index.ratio
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.citrix.load_index.dimension: network
 
   - name: "load_index_sessions"
     channel: "load_index_sessions"
@@ -224,6 +414,12 @@ metrics:
     unit: "%"
     category: "load"
     description: "Average session count load evaluator index across all registered VDAs"
+    otel:
+      name: senhub.citrix.load_index.ratio
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.citrix.load_index.dimension: sessions
 
   - name: "load_overloaded_machines"
     channel: "load_overloaded_machines"
@@ -231,14 +427,24 @@ metrics:
     unit: "#"
     category: "load"
     description: "Number of VDA machines reporting a load index at or above the overload threshold"
+    otel:
+      name: senhub.citrix.machines.overloaded
+      unit: "{machine}"
+      type: gauge
 
-  # License Metrics (from DDC Sites endpoint)
+  # ═════════════════════════════════════════════════════════════════════════
+  # LICENSE (semantically distinct — no collapse)
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "license_sessions_active"
     channel: "license_sessions_active"
     display_name: "Licensed Sessions Active"
     unit: "#"
     category: "licensing"
     description: "Number of currently active sessions consuming a Citrix license"
+    otel:
+      name: senhub.citrix.license.sessions_active
+      unit: "{session}"
+      type: gauge
 
   - name: "license_peak_concurrent"
     channel: "license_peak_concurrent"
@@ -246,6 +452,10 @@ metrics:
     unit: "#"
     category: "licensing"
     description: "Highest number of concurrent licensed users recorded in the current period"
+    otel:
+      name: senhub.citrix.license.peak_concurrent_users
+      unit: "{user}"
+      type: gauge
 
   - name: "license_unique_users"
     channel: "license_unique_users"
@@ -253,6 +463,10 @@ metrics:
     unit: "#"
     category: "licensing"
     description: "Number of unique users who have consumed a license in the current period"
+    otel:
+      name: senhub.citrix.license.unique_users
+      unit: "{user}"
+      type: gauge
 
   - name: "license_grace_sessions_left"
     channel: "license_grace_sessions_left"
@@ -260,6 +474,10 @@ metrics:
     unit: "#"
     category: "licensing"
     description: "Remaining supplemental grace sessions available when license limit is exceeded"
+    otel:
+      name: senhub.citrix.license.grace.sessions_remaining
+      unit: "{session}"
+      type: gauge
 
   - name: "license_grace_period_active"
     channel: "license_grace_period_active"
@@ -267,6 +485,10 @@ metrics:
     unit: "#"
     category: "licensing"
     description: "Indicates whether the supplemental grace period is currently active (1) or not (0)"
+    otel:
+      name: senhub.citrix.license.grace.active
+      unit: "1"
+      type: gauge
 
   - name: "license_grace_hours_left"
     channel: "license_grace_hours_left"
@@ -275,21 +497,38 @@ metrics:
     customunit: "h"
     category: "licensing"
     description: "Hours remaining before the supplemental grace period expires"
+    otel:
+      name: senhub.citrix.license.grace.time_remaining
+      unit: s
+      type: gauge
+      # Mapper converts hours → seconds (×3600)
 
+  # ═════════════════════════════════════════════════════════════════════════
+  # MACHINE FAULT STATES (Director: "Machines par état")
+  # ═════════════════════════════════════════════════════════════════════════
   - name: "machines_faulty_total"
     channel: "machines_faulty_total"
     display_name: "Machines Faulty Total (Multi-Session)"
     unit: "#"
     category: "machine_health"
     description: "Total number of multi-session VDA machines in a fault state"
+    otel:
+      name: senhub.citrix.machines.multi_session_fault_total
+      unit: "{machine}"
+      type: gauge
 
-  # Machine Fault State Metrics (Director: "Machines par état")
   - name: "boot_failure"
     channel: "boot_failure"
     display_name: "Boot Failure"
     unit: "#"
     category: "machine_health"
     description: "Number of machines that failed to boot within the expected timeframe"
+    otel:
+      name: senhub.citrix.machines.by_fault_state
+      unit: "{machine}"
+      type: gauge
+      attributes:
+        senhub.citrix.machine.fault_state: boot_failure
 
   - name: "stuck_at_boot"
     channel: "stuck_at_boot"
@@ -297,6 +536,12 @@ metrics:
     unit: "#"
     category: "machine_health"
     description: "Number of machines stuck in the boot process and not progressing to registration"
+    otel:
+      name: senhub.citrix.machines.by_fault_state
+      unit: "{machine}"
+      type: gauge
+      attributes:
+        senhub.citrix.machine.fault_state: stuck_at_boot
 
   - name: "unregistered"
     channel: "unregistered"
@@ -304,6 +549,12 @@ metrics:
     unit: "#"
     category: "machine_health"
     description: "Number of powered-on machines that have not registered with the Delivery Controller"
+    otel:
+      name: senhub.citrix.machines.by_fault_state
+      unit: "{machine}"
+      type: gauge
+      attributes:
+        senhub.citrix.machine.fault_state: unregistered
 
   - name: "max_capacity"
     channel: "max_capacity"
@@ -311,6 +562,12 @@ metrics:
     unit: "#"
     category: "machine_health"
     description: "Number of machines that have reached their maximum session capacity"
+    otel:
+      name: senhub.citrix.machines.by_fault_state
+      unit: "{machine}"
+      type: gauge
+      attributes:
+        senhub.citrix.machine.fault_state: max_capacity
 
   - name: "vm_not_found"
     channel: "vm_not_found"
@@ -318,6 +575,12 @@ metrics:
     unit: "#"
     category: "machine_health"
     description: "Number of machines whose virtual machine could not be found on the hypervisor"
+    otel:
+      name: senhub.citrix.machines.by_fault_state
+      unit: "{machine}"
+      type: gauge
+      attributes:
+        senhub.citrix.machine.fault_state: vm_not_found
 
   - name: "unknown"
     channel: "unknown"
@@ -325,6 +588,12 @@ metrics:
     unit: "#"
     category: "machine_health"
     description: "Number of machines in an unrecognized or undetermined fault state"
+    otel:
+      name: senhub.citrix.machines.by_fault_state
+      unit: "{machine}"
+      type: gauge
+      attributes:
+        senhub.citrix.machine.fault_state: unknown
 
 tag_metadata:
   metric_type:
