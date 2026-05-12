@@ -1,0 +1,114 @@
+{
+  "uid": "senhub-netscaler-ha-vservers",
+  "title": "SenHub NetScaler — HA & VServers (awaiting live data)",
+  "tags": ["senhub", "agents", "netscaler"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "NetScaler appliance",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(senhub_netscaler_system_cpu_utilization, service_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "HA cluster", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "type": "stat", "id": 10, "title": "HA role per node",
+      "gridPos": { "h": 5, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_netscaler_ha_role{service_name=~\"$service\"} == 1", "legendFormat": "{{service_name}} — {{senhub_netscaler_ha_role_state}}", "instant": true }],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "active", "color": "green", "index": 0 } } }
+          ]
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name", "colorMode": "value" }
+    },
+    {
+      "type": "stat", "id": 11, "title": "Last sync status",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_netscaler_ha_sync_status{service_name=~\"$service\"} == 1", "legendFormat": "{{senhub_netscaler_ha_sync_status_state}}", "instant": true }],
+      "fieldConfig": {
+        "defaults": { "decimals": 0,
+          "mappings": [{ "type": "value", "options": { "1": { "text": "OK", "color": "green", "index": 0 } } }] }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name", "colorMode": "value" }
+    },
+    {
+      "type": "stat", "id": 12, "title": "HA sync failures",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_netscaler_ha_sync_failures{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 10 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    { "type": "row", "id": 2, "title": "Load-balanced vServers", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 }, "panels": [] },
+    {
+      "type": "table", "id": 20, "title": "LB vServers status snapshot",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 7 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "senhub_netscaler_lbvserver_status{service_name=~\"$service\"} == 1", "format": "table", "instant": true },
+        { "refId": "B", "expr": "senhub_netscaler_lbvserver_connections_active{service_name=~\"$service\"}", "format": "table", "instant": true },
+        { "refId": "C", "expr": "senhub_netscaler_lbvserver_requests_rate{service_name=~\"$service\"}",      "format": "table", "instant": true }
+      ],
+      "transformations": [{ "id": "joinByField", "options": { "byField": "senhub_netscaler_lbvserver_name", "mode": "outer" } }],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "senhub_netscaler_lbvserver_state" },
+            "properties": [
+              { "id": "displayName", "value": "State" },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+              { "id": "mappings", "value": [
+                { "type": "value", "options": { "up":             { "color": "green",  "index": 0 } } },
+                { "type": "value", "options": { "down":           { "color": "red",    "index": 1 } } },
+                { "type": "value", "options": { "out_of_service": { "color": "orange", "index": 2 } } },
+                { "type": "value", "options": { "trofs":          { "color": "orange", "index": 3 } } },
+                { "type": "value", "options": { "trofs_down":     { "color": "red",    "index": 4 } } },
+                { "type": "value", "options": { "busy":           { "color": "yellow", "index": 5 } } },
+                { "type": "value", "options": { "unknown":        { "color": "purple", "index": 6 } } }
+              ]}
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "Value #B" }, "properties": [{ "id": "displayName", "value": "Active conns" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "Value #C" }, "properties": [{ "id": "displayName", "value": "Req/s" }, { "id": "decimals", "value": 1 }] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "State", "desc": true }] }
+    },
+    { "type": "row", "id": 3, "title": "Throughput", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 19 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 30, "title": "NS throughput",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_netscaler_ns_throughput{service_name=~\"$service\"}", "legendFormat": "{{service_name}} / {{senhub_netscaler_traffic_type}}" }],
+      "fieldConfig": { "defaults": { "unit": "bps", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    {
+      "type": "timeseries", "id": 31, "title": "Top-10 LB vServer throughput",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "topk(10, senhub_netscaler_lbvserver_throughput{service_name=~\"$service\"})", "legendFormat": "{{senhub_netscaler_lbvserver_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "bps", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    }
+  ],
+  "schemaVersion": 39, "version": 1
+}
