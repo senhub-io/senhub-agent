@@ -405,7 +405,13 @@ metrics:
       type: gauge
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Load Average (Linux/Unix) — OTEP 0119 OS-prefixed convention
+  # Load Average (Unix-family — Linux + BSD + macOS)
+  #
+  # Deviation from OTEP 0119, which scopes load average to
+  # system.linux.cpu.load_* — but the probe also emits these on macOS
+  # via sysctl(vm.loadavg). Using system.linux.* on a darwin host
+  # produces misleading metric names. We drop the linux. infix so the
+  # name matches the actual data and stays portable.
   # ─────────────────────────────────────────────────────────────────────────
   - name: "cpu_load1"
     channel: "cpu_load_1min"
@@ -414,7 +420,7 @@ metrics:
     category: "load_average"
     description: "Average number of processes in the run queue over the last 1 minute"
     otel:
-      name: system.linux.cpu.load_1m
+      name: system.cpu.load_1m
       unit: "{thread}"
       type: gauge
 
@@ -425,7 +431,7 @@ metrics:
     category: "load_average"
     description: "Average number of processes in the run queue over the last 5 minutes"
     otel:
-      name: system.linux.cpu.load_5m
+      name: system.cpu.load_5m
       unit: "{thread}"
       type: gauge
 
@@ -436,7 +442,7 @@ metrics:
     category: "load_average"
     description: "Average number of processes in the run queue over the last 15 minutes"
     otel:
-      name: system.linux.cpu.load_15m
+      name: system.cpu.load_15m
       unit: "{thread}"
       type: gauge
 
