@@ -162,17 +162,38 @@ func (p *mysqlProbe) Collect() ([]datapoint.DataPoint, error) {
 	}
 
 	var points []datapoint.DataPoint
+	points = append(points, p.buildUpDatapoint(timestamp, true))
 
-	// Order matters only in that the role detect feeds the
-	// replication family. The other families are independent.
-	role, err := p.detectRole(ctx)
+	// Fetch SHOW GLOBAL STATUS and SHOW GLOBAL VARIABLES once,
+	// then derive every family from the resulting maps. Two
+	// round-trips per cycle instead of dozens.
+	status, err := p.fetchGlobalStatus(ctx)
+	if err != nil {
+		p.logger.Warn().Err(err).Msg("SHOW GLOBAL STATUS failed")
+		return points, err
+	}
+	vars, err := p.fetchGlobalVariables(ctx)
+	if err != nil {
+		p.logger.Warn().Err(err).Msg("SHOW GLOBAL VARIABLES failed")
+		return points, err
+	}
+
+	// Role detect feeds the replication family. Other families
+	// are independent and can be appended in any order.
+	role, err := p.detectRole(ctx, status)
 	if err != nil {
 		p.logger.Warn().Err(err).Msg("role detection failed; defaulting to standalone")
 		role = dbcommon.RoleStandalone
 	}
 
-	points = append(points, p.buildUpDatapoint(timestamp, true))
-	points = append(points, p.buildOverviewMetrics(ctx, timestamp, role)...)
+	points = append(points, p.buildOverviewMetrics(timestamp, status, vars, role)...)
+	points = append(points, p.buildConnectionsMetrics(timestamp, status, vars)...)
+	points = append(points, p.buildThroughputMetrics(timestamp, status)...)
+	points = append(points, p.buildReplicationMetrics(ctx, timestamp, status, role)...)
+	points = append(points, p.buildCacheMetrics(timestamp, status)...)
+	points = append(points, p.buildLocksMetrics(timestamp, status)...)
+	points = append(points, p.buildIOMetrics(timestamp, status)...)
+	points = append(points, p.buildStorageMetrics(ctx, timestamp)...)
 
 	return points, nil
 }
