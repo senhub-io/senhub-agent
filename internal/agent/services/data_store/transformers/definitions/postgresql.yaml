@@ -356,6 +356,41 @@ metrics:
       unit: "ms"
       type: gauge
 
+  # ═════════════════════════════════════════════════════════════════════════
+  # PER-DATABASE (opt-in: expose_per_database)
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "db_database_size_bytes"
+    channel: "db_database_size_{database}"
+    display_name: "Database Size ({database})"
+    unit: "Bytes"
+    category: "per_database"
+    multi_instance_labels: ["database"]
+    description: "Per-database storage size (pg_database_size)"
+    otel:
+      name: system.db.database.size.bytes
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      database: senhub.db.database
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # PER-TABLE (opt-in: expose_top_tables = N)
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "db_table_size_bytes"
+    channel: "db_table_size_{schema}_{table}"
+    display_name: "Table Size ({schema}.{table})"
+    unit: "Bytes"
+    category: "per_table"
+    multi_instance_labels: ["schema", "table"]
+    description: "Top-N largest user tables by pg_relation_size"
+    otel:
+      name: system.db.table.size.bytes
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      schema: senhub.db.schema
+      table: senhub.db.table
+
 tag_metadata:
   metric_type:
     type: category
@@ -370,6 +405,8 @@ tag_metadata:
       storage: "Storage"
       backups: "Backups"
       engine: "Engine (pg_stat_statements)"
+      per_database: "Per-Database"
+      per_table: "Per-Table (Top-N)"
   engine:
     type: resource
     label: "Engine"
@@ -386,11 +423,19 @@ tag_metadata:
   schema:
     type: resource
     label: "Schema"
-    linked_categories: ["storage"]
+    linked_categories: ["storage", "per_table"]
   relation:
     type: resource
     label: "Relation"
     linked_categories: ["storage"]
+  database:
+    type: resource
+    label: "Database"
+    linked_categories: ["per_database"]
+  table:
+    type: resource
+    label: "Table"
+    linked_categories: ["per_table"]
   version:
     type: resource
     label: "Version"
