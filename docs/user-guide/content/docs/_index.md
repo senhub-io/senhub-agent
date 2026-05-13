@@ -3,27 +3,43 @@ title: "SenHub Agent"
 type: docs
 ---
 
-# SenHub Agent Documentation
+# SenHub Agent
 
-SenHub Agent is a monitoring collector that runs on your infrastructure and collects metrics from servers, applications, backup systems, and network devices. It exposes metrics via REST endpoints compatible with PRTG, Nagios, and Prometheus / VictoriaMetrics scrape, and pushes metrics and logs natively over OTLP/gRPC to any OpenTelemetry receiver. All output paths share the same OTel-aligned naming so one query vocabulary covers every sink.
+A single agent, deployed on a server you control, that turns the
+state of your infrastructure into clean, queryable telemetry. It
+collects metrics, status changes and logs from operating systems,
+backup software, hyperconverged appliances, virtualization stacks
+and network gear — then exposes them through whichever monitoring
+or observability tool you already operate.
+
+See [Presentation]({{< relref "/docs/presentation" >}}) for the
+short product overview — what the agent is for, what it ships, and
+what it explicitly does not do.
 
 ## Getting Started
 
-1. **[Installation]({{< relref "/docs/installation" >}})** - Install the agent on Windows or Linux
-2. **[Configuration]({{< relref "/docs/configuration" >}})** - Configure probes, storage, licensing, and updates
-3. **[CLI Reference]({{< relref "/docs/cli" >}})** - All available commands
-4. **[Web Interface]({{< relref "/docs/web-interface" >}})** - Dashboard and monitoring system integration
-5. **[Prometheus / VictoriaMetrics]({{< relref "/docs/prometheus" >}})** - `/metrics` endpoint, OTel-aligned naming, scrape examples
-6. **[OTLP / OpenTelemetry]({{< relref "/docs/otlp" >}})** - Native OTLP/gRPC push of metrics + logs (collectors, vmagent, Grafana Cloud)
-7. **[HTTP/HTTPS]({{< relref "/docs/http-https" >}})** - Set up the REST API and HTTPS
+1. **[Presentation]({{< relref "/docs/presentation" >}})** — What the agent does, output paths at a glance
+2. **[Installation]({{< relref "/docs/installation" >}})** — Install the agent on Windows or Linux
+3. **[Configuration]({{< relref "/docs/configuration" >}})** — Configure probes, storage, licensing, and updates
+4. **[CLI Reference]({{< relref "/docs/cli" >}})** — All available commands
+5. **[Web Interface]({{< relref "/docs/web-interface" >}})** — Dashboard, API Explorer and monitoring integration
+
+## Output / Integration
+
+The agent exposes data through four sinks; you enable the ones you
+need in the `storage` block of the YAML.
+
+6. **[HTTP / HTTPS endpoint]({{< relref "/docs/http-https" >}})** — REST API, TLS, authentication
+7. **[Prometheus / VictoriaMetrics]({{< relref "/docs/prometheus" >}})** — `/metrics` scrape endpoint, OTel-aligned naming, scrape examples
+8. **[OTLP / OpenTelemetry]({{< relref "/docs/otlp" >}})** — Native OTLP/gRPC push of metrics + logs (collectors, vmagent, Grafana Cloud)
 
 ## Probes
 
-6. **[All Probes]({{< relref "/docs/probes" >}})** - System, infrastructure, application, and backup monitoring
+9. **[All Probes]({{< relref "/docs/probes" >}})** — Browse probes by family (Systems, Synthetic, Application Delivery, Virtualization, Hardware, Data Protection, Logs & Events)
 
 ## Troubleshooting
 
-7. **[Troubleshooting]({{< relref "/docs/troubleshooting" >}})** - Diagnose and resolve common issues
+10. **[Troubleshooting]({{< relref "/docs/troubleshooting" >}})** — Diagnose and resolve common issues
 
 ## Support
 
