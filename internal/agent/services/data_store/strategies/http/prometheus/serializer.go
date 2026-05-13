@@ -117,6 +117,9 @@ func writeGroup(w io.Writer, name, promType, help string, rows []otelmapper.Otel
 		sort.Strings(sortedAttrKeys)
 
 		for _, k := range sortedAttrKeys {
+			if isInternalAttribute(k) {
+				continue
+			}
 			v := r.Attributes[k]
 			pk := OTelAttributeToPromLabel(k)
 			if existing, clashes := labelOrigin[pk]; clashes && existing != k {
@@ -139,6 +142,20 @@ func writeGroup(w io.Writer, name, promType, help string, rows []otelmapper.Otel
 		return err
 	}
 	return nil
+}
+
+// isInternalAttribute reports whether an OTel attribute should be dropped
+// before emission as a Prometheus label. Prometheus encodes the unit in the
+// metric name suffix (e.g. _bytes, _seconds), so the "unit" attribute would
+// be redundant and confusing on every label set. Other internal tags that
+// describe the cache row plumbing (rather than the metric's semantic
+// dimensions) are filtered here too.
+func isInternalAttribute(name string) bool {
+	switch name {
+	case "unit":
+		return true
+	}
+	return false
 }
 
 // labelString produces a stable string representation of a label set
