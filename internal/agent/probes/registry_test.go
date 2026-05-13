@@ -232,6 +232,7 @@ func TestProbeRegistry(t *testing.T) {
 		"netscaler",
 		"veeam",
 		"mysql",
+		"postgresql",
 	}
 
 	for _, probeName := range expectedProbes {
