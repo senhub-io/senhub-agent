@@ -220,6 +220,38 @@ func TestSerialize_TypeConflictWarnerDirect(t *testing.T) {
 	}
 }
 
+// TestSerialize_FiltersInternalUnitAttribute confirms the "unit" attribute
+// is stripped from the emitted Prometheus labels. The unit is already
+// encoded in the metric-name suffix (_bytes, _seconds, etc.), so emitting
+// it again as a label key is redundant and confusing.
+func TestSerialize_FiltersInternalUnitAttribute(t *testing.T) {
+	records := []otelmapper.OtelRecord{
+		{
+			Name: "system.memory.usage",
+			Unit: "By",
+			Type: "updowncounter",
+			Attributes: map[string]string{
+				"system.memory.state": "used",
+				"unit":                "Bytes",
+				"host":                "host-1",
+			},
+			Value: 12345,
+		},
+	}
+	var buf bytes.Buffer
+	if err := SerializeToTextExposition(records, &buf, SerializeOptions{}); err != nil {
+		t.Fatalf("Serialize err: %v", err)
+	}
+	body := buf.String()
+	if strings.Contains(body, `unit="Bytes"`) || strings.Contains(body, `unit=`) {
+		t.Errorf("emitted output should not contain unit= label, got:\n%s", body)
+	}
+	// Sanity: the other attributes should still appear.
+	if !strings.Contains(body, `system_memory_state="used"`) {
+		t.Errorf("legitimate attribute lost; body:\n%s", body)
+	}
+}
+
 // TestSerialize_UnitConflictWarner: two records sharing the same Prom name
 // (same OTel name + same OTel type implying same suffix path) but DIFFERENT
 // raw OTel units. In practice this is hard to reach via the YAMLs in the
