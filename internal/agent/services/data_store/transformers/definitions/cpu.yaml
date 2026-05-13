@@ -11,109 +11,118 @@ host_level: true
 metrics:
   # ─────────────────────────────────────────────────────────────────────────
   # CPU time cumulative (Linux/Unix — /proc/stat counters)
-  # OTel: system.cpu.time (counter, seconds) with cpu.mode attribute
+  # OTel: system.cpu.utilization (gauge, ratio) with cpu.mode attribute
+  #
+  # NOTE: deviation from OTel semconv `system.cpu.time` (a cumulative
+  # counter in seconds). Both probes here emit instantaneous per-mode
+  # percentages: Unix computes the delta of cpu.Times() between two
+  # collections; Windows reads `\Processor\% User Time` etc. from PDH
+  # which is already a rate. Exposing them as utilization gauges
+  # (ratio 0-1) is the honest description of what the agent actually
+  # measures and matches what PRTG/Nagios users expect to see on the
+  # corresponding channels.
   # ─────────────────────────────────────────────────────────────────────────
   - name: "cpu_user"
     channel: "cpu_user_time"
     display_name: "CPU User"
-    unit: "s"
-    category: "time_breakdown"
-    description: "Time spent running user-space processes"
+    unit: "%"
+    category: "usage_breakdown"
+    description: "Percentage of CPU time spent running user-space processes"
     otel:
-      name: system.cpu.time
-      unit: s
-      type: counter
+      name: system.cpu.utilization
+      unit: "1"
+      type: gauge
       attributes:
         cpu.mode: user
 
   - name: "cpu_system"
     channel: "cpu_system_time"
     display_name: "CPU System"
-    unit: "s"
-    category: "time_breakdown"
-    description: "Time spent running kernel-space operations"
+    unit: "%"
+    category: "usage_breakdown"
+    description: "Percentage of CPU time spent running kernel-space operations"
     otel:
-      name: system.cpu.time
-      unit: s
-      type: counter
+      name: system.cpu.utilization
+      unit: "1"
+      type: gauge
       attributes:
         cpu.mode: system
 
   - name: "cpu_idle"
     channel: "cpu_idle_time"
     display_name: "CPU Idle"
-    unit: "s"
-    category: "time_breakdown"
-    description: "Time spent idle with no pending work"
+    unit: "%"
+    category: "usage_breakdown"
+    description: "Percentage of CPU time spent idle with no pending work"
     otel:
-      name: system.cpu.time
-      unit: s
-      type: counter
+      name: system.cpu.utilization
+      unit: "1"
+      type: gauge
       attributes:
         cpu.mode: idle
 
   - name: "cpu_nice"
     channel: "cpu_nice_time"
     display_name: "CPU Nice"
-    unit: "s"
-    category: "time_breakdown"
-    description: "Time spent running low-priority user-space processes"
+    unit: "%"
+    category: "usage_breakdown"
+    description: "Percentage of CPU time spent running low-priority user-space processes"
     otel:
-      name: system.cpu.time
-      unit: s
-      type: counter
+      name: system.cpu.utilization
+      unit: "1"
+      type: gauge
       attributes:
         cpu.mode: nice
 
   - name: "cpu_iowait"
     channel: "cpu_iowait_time"
     display_name: "CPU IO Wait"
-    unit: "s"
-    category: "time_breakdown"
-    description: "Time spent waiting for I/O operations to complete"
+    unit: "%"
+    category: "usage_breakdown"
+    description: "Percentage of CPU time spent waiting for I/O operations to complete"
     otel:
-      name: system.cpu.time
-      unit: s
-      type: counter
+      name: system.cpu.utilization
+      unit: "1"
+      type: gauge
       attributes:
         cpu.mode: iowait
 
   - name: "cpu_irq"
     channel: "cpu_irq_time"
     display_name: "CPU Irq"
-    unit: "s"
-    category: "time_breakdown"
-    description: "Time spent handling hardware interrupts"
+    unit: "%"
+    category: "usage_breakdown"
+    description: "Percentage of CPU time spent handling hardware interrupts"
     otel:
-      name: system.cpu.time
-      unit: s
-      type: counter
+      name: system.cpu.utilization
+      unit: "1"
+      type: gauge
       attributes:
         cpu.mode: interrupt
 
   - name: "cpu_softirq"
     channel: "cpu_softirq_time"
     display_name: "CPU Softirq"
-    unit: "s"
-    category: "time_breakdown"
-    description: "Time spent handling software interrupts"
+    unit: "%"
+    category: "usage_breakdown"
+    description: "Percentage of CPU time spent handling software interrupts"
     otel:
-      name: system.cpu.time
-      unit: s
-      type: counter
+      name: system.cpu.utilization
+      unit: "1"
+      type: gauge
       attributes:
         cpu.mode: softirq
 
   - name: "cpu_steal"
     channel: "cpu_steal_time"
     display_name: "CPU Steal"
-    unit: "s"
-    category: "time_breakdown"
-    description: "Time stolen by the hypervisor for other virtual machines"
+    unit: "%"
+    category: "usage_breakdown"
+    description: "Percentage of CPU time stolen by the hypervisor for other virtual machines"
     otel:
-      name: system.cpu.time
-      unit: s
-      type: counter
+      name: system.cpu.utilization
+      unit: "1"
+      type: gauge
       attributes:
         cpu.mode: steal
 
@@ -212,96 +221,18 @@ metrics:
       core: cpu.logical_number
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Windows-specific per-core CPU metrics (Perfmon)
-  # Mapped to OTel system.cpu.utilization with cpu.mode attribute
-  # Windows "privileged" harmonized to OTel "system" (see semantic-conventions §4.1)
-  # ─────────────────────────────────────────────────────────────────────────
-  - name: "processor_time"
-    channel: "processor_time"
-    display_name: "CPU {instance} Usage"
-    unit: "%"
-    category: "per_core"
-    multi_instance_labels: ["instance", "core"]
-    description: "CPU processor time percentage per core"
-    otel:
-      name: system.cpu.utilization
-      unit: "1"
-      type: gauge
-    tag_to_attribute:
-      core: cpu.logical_number
-      instance: senhub.cpu.perfmon_instance
-
-  - name: "user_time"
-    channel: "cpu_user_time_percent"
-    display_name: "CPU {instance} User Time"
-    unit: "%"
-    category: "per_core"
-    multi_instance_labels: ["instance", "core"]
-    description: "CPU user time percentage per core"
-    otel:
-      name: system.cpu.utilization
-      unit: "1"
-      type: gauge
-      attributes:
-        cpu.mode: user
-    tag_to_attribute:
-      core: cpu.logical_number
-      instance: senhub.cpu.perfmon_instance
-
-  - name: "privileged_time"
-    channel: "cpu_privileged_time"
-    display_name: "CPU {instance} Privileged Time"
-    unit: "%"
-    category: "per_core"
-    multi_instance_labels: ["instance", "core"]
-    description: "CPU privileged (kernel) time percentage per core"
-    otel:
-      name: system.cpu.utilization
-      unit: "1"
-      type: gauge
-      attributes:
-        cpu.mode: system          # harmonized from Windows "privileged"
-    tag_to_attribute:
-      core: cpu.logical_number
-      instance: senhub.cpu.perfmon_instance
-
-  - name: "interrupt_time"
-    channel: "cpu_interrupt_time"
-    display_name: "CPU {instance} Interrupt Time"
-    unit: "%"
-    category: "per_core"
-    multi_instance_labels: ["instance", "core"]
-    description: "CPU interrupt time percentage per core"
-    otel:
-      name: system.cpu.utilization
-      unit: "1"
-      type: gauge
-      attributes:
-        cpu.mode: interrupt
-    tag_to_attribute:
-      core: cpu.logical_number
-      instance: senhub.cpu.perfmon_instance
-
-  - name: "dpc_time"
-    channel: "cpu_dpc_time"
-    display_name: "CPU {instance} DPC Time"
-    unit: "%"
-    category: "per_core"
-    multi_instance_labels: ["instance", "core"]
-    description: "CPU Deferred Procedure Call time percentage per core"
-    otel:
-      name: system.cpu.utilization
-      unit: "1"
-      type: gauge
-      attributes:
-        cpu.mode: dpc             # extension — aligned with windows_exporter mode values
-    tag_to_attribute:
-      core: cpu.logical_number
-      instance: senhub.cpu.perfmon_instance
-
-  # ─────────────────────────────────────────────────────────────────────────
   # Windows system-wide DPC/IRQ rates and queue length
   # Extensions senhub.system.cpu.* — see semantic-conventions §4.1.3
+  #
+  # Historical note: this section previously also defined raw PDH-name
+  # entries (processor_time, user_time, privileged_time, interrupt_time,
+  # dpc_time) intended to route Windows _Total percentages to
+  # system.cpu.utilization. The Windows probe renames those PDH names
+  # to cpu_user / cpu_system / cpu_irq / cpu_softirq / cpu_usage_total
+  # BEFORE pushing to the cache, so the raw entries were never reached.
+  # They were removed in May 2026 along with the cpu_user/cpu_system
+  # remap to system.cpu.utilization (now correct for both Unix derived
+  # percentages and Windows PDH percentages).
   # ─────────────────────────────────────────────────────────────────────────
   - name: "cpu_dpc_rate"
     channel: "cpu_dpc_rate"
@@ -339,63 +270,6 @@ metrics:
   - name: "cpu_queue_length"
     channel: "cpu_queue_length"
     display_name: "CPU Queue Length"
-    unit: "#"
-    category: "system_counters"
-    description: "Number of threads waiting in the processor queue"
-    otel:
-      name: senhub.system.cpu.queue_length
-      unit: "{thread}"
-      type: gauge
-
-  # Legacy per-core Windows counters (same semantic as above with core label)
-  - name: "dpc_rate"
-    channel: "cpu_dpc_rate"
-    display_name: "CPU {instance} DPC Rate"
-    unit: "#"
-    category: "system_counters"
-    multi_instance_labels: ["instance", "core"]
-    description: "Deferred Procedure Calls per second per core"
-    otel:
-      name: senhub.system.cpu.dpcs_per_second
-      unit: "1/s"
-      type: gauge
-    tag_to_attribute:
-      core: cpu.logical_number
-      instance: senhub.cpu.perfmon_instance
-
-  - name: "dpc_queued"
-    channel: "cpu_dpc_queued"
-    display_name: "CPU {instance} DPC Queued"
-    unit: "/s"
-    category: "system_counters"
-    multi_instance_labels: ["instance", "core"]
-    description: "DPCs queued per second per core"
-    otel:
-      name: senhub.system.cpu.dpcs_queued_per_second
-      unit: "1/s"
-      type: gauge
-    tag_to_attribute:
-      core: cpu.logical_number
-      instance: senhub.cpu.perfmon_instance
-
-  - name: "interrupt_sec"
-    channel: "cpu_interrupt_rate"
-    display_name: "CPU {instance} Interrupt Rate"
-    unit: "/s"
-    category: "system_counters"
-    multi_instance_labels: ["instance", "core"]
-    description: "Interrupts per second per core"
-    otel:
-      name: senhub.system.cpu.interrupts_per_second
-      unit: "1/s"
-      type: gauge
-    tag_to_attribute:
-      core: cpu.logical_number
-      instance: senhub.cpu.perfmon_instance
-
-  - name: "processor_queue_length"
-    channel: "cpu_queue_length"
-    display_name: "Processor Queue Length"
     unit: "#"
     category: "system_counters"
     description: "Number of threads waiting in the processor queue"
