@@ -7,10 +7,6 @@ weight: 9
 **License: Pro** - Requires a Pro or Enterprise license.
 {{< /hint >}}
 
-{{< hint info >}}
-**Online mode only** - This probe requires an active connection to the SenHub Observability Platform. It is not available in offline mode.
-{{< /hint >}}
-
 # Event Probe
 
 The Event probe exposes an HTTP endpoint that accepts custom events from applications, scripts, or external systems. Events are validated, enriched with timestamps and tags, and forwarded to the configured strategies (Senhub, PRTG, Nagios) for storage and alerting.

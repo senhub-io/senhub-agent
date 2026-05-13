@@ -24,7 +24,6 @@ The status command displays:
 - Service status (Running / Stopped)
 - Agent version and build information
 - Health status (healthy / degraded / unhealthy)
-- Operating mode (online / offline)
 - Memory and CPU usage
 - Number of active probes and cached metrics
 - Uptime
