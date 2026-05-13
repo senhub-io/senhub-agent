@@ -57,12 +57,17 @@ func (u *unixMemoryCollector) collectVirtualMemory(dataPoints *[]data_store.Data
 		return fmt.Errorf("error getting virtual memory metrics: %v", err)
 	}
 
+	// NOTE: vmem.Available is intentionally NOT emitted on Unix. The
+	// memory.yaml definition maps both memory_available and memory_free to
+	// system.memory.state=free, so emitting both produces duplicate
+	// Prometheus time series with conflicting values. memory_available
+	// remains available on the Windows path where "available" is the
+	// canonical Windows term and harmonization to state=free is meaningful.
 	metrics := []struct {
 		name  string
 		value uint64
 	}{
 		{"memory_total", vmem.Total},
-		{"memory_available", vmem.Available},
 		{"memory_used", vmem.Used},
 		{"memory_free", vmem.Free},
 		{"memory_cached", vmem.Cached},
