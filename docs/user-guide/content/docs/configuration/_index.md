@@ -1,6 +1,6 @@
 ---
 title: "Configuration"
-weight: 2
+weight: 3
 ---
 
 # Configuration
@@ -16,16 +16,8 @@ The configuration file `agent-config.yaml` is located in the agent's installatio
 
 You can specify a custom path during installation:
 ```bash
-senhub-agent install --offline --config-path /etc/senhub/agent-config.yaml
+senhub-agent install --config-path /etc/senhub/agent-config.yaml
 ```
-
-## Configuration Modes
-
-SenHub Agent supports two operating modes:
-
-**Online mode** (default): The agent connects to the SenHub platform and receives its configuration remotely. Probes and settings are managed centrally from the SenHub platform.
-
-**Offline mode**: The agent reads its configuration entirely from the local `agent-config.yaml` file. This mode is for air-gapped environments or local testing. This documentation focuses on offline mode configuration.
 
 ## Configuration Structure Overview
 
@@ -56,12 +48,11 @@ probes:
 
 ## Agent Section
 
-The `agent` section defines the agent identity and operating mode.
+The `agent` section defines the agent identity.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `key` | Yes | Authentication key (UUID format), provided by SenHub support |
-| `mode` | Yes | `offline` for local configuration, `online` for remote management |
 | `license` | No | License token for premium probes (see License section) |
 
 ## Probes Section
@@ -196,7 +187,7 @@ Monitoring systems (PRTG, Nagios, etc.) read metrics from the cache. Set the ret
 
 ## Configuration Examples
 
-### Minimal Offline Configuration
+### Minimal Configuration
 
 The simplest configuration with system monitoring probes:
 
