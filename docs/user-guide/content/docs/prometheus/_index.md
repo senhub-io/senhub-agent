@@ -1,6 +1,6 @@
 ---
 title: "Prometheus / VictoriaMetrics"
-weight: 5
+weight: 6
 bookCollapseSection: false
 ---
 
