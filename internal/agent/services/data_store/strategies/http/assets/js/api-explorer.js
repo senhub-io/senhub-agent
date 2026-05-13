@@ -185,16 +185,28 @@ class APIExplorer {
 
     generateURL() {
         const endpointType = this.endpointTypeSelect?.value;
+        const isPrometheus = endpointType === 'prometheus';
 
-        if (!endpointType || !this.selectedProbe) {
-            this.updateUrlDisplay('Select an endpoint and probe to generate URL...');
+        // Prometheus exposes the whole agent at a single endpoint, so the
+        // probe selector is not required for it. Other formats route per
+        // probe and still need a probe selection.
+        if (!endpointType || (!this.selectedProbe && !isPrometheus)) {
+            this.updateUrlDisplay(
+                isPrometheus
+                    ? 'Select an endpoint to generate URL...'
+                    : 'Select an endpoint and probe to generate URL...'
+            );
             this.setButtonsEnabled(false);
-            // Clear URL parameters when no selection
             this.updatePageURL();
             return;
         }
 
-        let url = `/api/${this.base.agentKey}/${endpointType}/metrics/${this.selectedProbe}`;
+        let url;
+        if (isPrometheus) {
+            url = `/api/${this.base.agentKey}/prometheus/metrics`;
+        } else {
+            url = `/api/${this.base.agentKey}/${endpointType}/metrics/${this.selectedProbe}`;
+        }
 
         // Add tag filters as query parameters
         const queryParams = [];
@@ -221,8 +233,9 @@ class APIExplorer {
         // Update the page URL to reflect current state
         this.updatePageURL(endpointType, this.selectedProbe, this.selectedTags);
 
-        // Auto-fetch when both probe and endpoint are selected
-        if (endpointType && this.selectedProbe && this.initialized) {
+        // Auto-fetch as soon as the URL is buildable. For Prometheus the
+        // probe selection is optional; for the others a probe is required.
+        if (endpointType && (this.selectedProbe || isPrometheus) && this.initialized) {
             if (this.autoFetchTimeout) {
                 clearTimeout(this.autoFetchTimeout);
             }
@@ -304,12 +317,14 @@ class APIExplorer {
         try {
             const response = await fetch(url);
 
-            if (endpointType === 'nagios') {
+            // Text-only formats (Nagios performance line, Prometheus
+            // exposition) must NOT go through JSON.parse — they're plain
+            // text and the parser fails on the very first token.
+            if (endpointType === 'nagios' || endpointType === 'prometheus') {
                 const responseText = await response.text();
                 this.jsonText = responseText;
                 this.tableHTML = null;
 
-                // Hide view toggle for nagios format
                 if (this.responseViewToggle) {
                     this.responseViewToggle.style.display = 'none';
                 }
