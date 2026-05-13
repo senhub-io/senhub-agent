@@ -6,7 +6,30 @@ import (
 
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/internal/agent/utils/sanitize"
 )
+
+// bottleneckMapping maps Veeam ESessionBottleneckType strings to the
+// numeric codes our PRTG lookup expects (senhub.veeam.bottleneck.ovl).
+// Strings outside this set are NOT silently turned into 0 — the probe
+// drops the bottleneck metric for that scrape and logs the unknown name,
+// so an API change shows up loudly instead of being masked.
+var bottleneckMapping = map[string]float32{
+	"None":          0,
+	"NotDefined":    0,
+	"Source":        1,
+	"SourceProxy":   1,
+	"SourceNetwork": 1,
+	"SourceWan":     1,
+	"Proxy":         2,
+	"Network":       3,
+	"Throttling":    3,
+	"Target":        4,
+	"TargetProxy":   4,
+	"TargetNetwork": 4,
+	"TargetWan":     4,
+	"TargetDisk":    4,
+}
 
 // Job status numeric values exposed via the senhub.veeam.job_status lookup.
 // Order matters for the priority rules below (see computeJobStatusValue).
@@ -194,68 +217,68 @@ func buildJobStateDetailMetrics(states []jobState, hoursToCheck int, now time.Ti
 
 		// Time since last run in seconds. Always emitted; -1 indicates
 		// "never run" so dashboards can distinguish "just finished" (0) from
-		// "no data" (-1).
+		// "no data" (-1). sanitize.Duration handles both nil and the Go
+		// zero time (0001-01-01) — a non-nil pointer to the zero time was
+		// the source of the historical 540 442-day spike observed at
+		// SIEP-BCK before this guard existed.
 		secondsSince := jobSecondsSinceNeverRun
-		if js.LastRun != nil {
-			secondsSince = float32(now.Sub(*js.LastRun).Seconds())
+		if sec, ok := sanitize.Duration(js.LastRun, now); ok {
+			secondsSince = sec
 		}
 		points = append(points, datapoint.DataPoint{
 			Name: "veeam_job_seconds_since", Timestamp: now, Value: secondsSince, Tags: detailTags,
 		})
 
 		// Objects count is part of the job definition (not the last session),
-		// so it's available even for stale or never-run jobs.
-		points = append(points, datapoint.DataPoint{
-			Name: "veeam_job_objects_count", Timestamp: now, Value: float32(js.ObjectsCount), Tags: detailTags,
-		})
+		// so it's available even for stale or never-run jobs. Clamped to
+		// MaxInt32 to keep PRTG happy on jobs with billions of file objects
+		// (typically a sign of an API anomaly rather than a real count).
+		if objCount, _ := sanitize.CountInt32(int64(js.ObjectsCount)); true {
+			points = append(points, datapoint.DataPoint{
+				Name: "veeam_job_objects_count", Timestamp: now, Value: objCount, Tags: detailTags,
+			})
+		}
 
 		// Session progress metrics (available for running or recently completed jobs)
 		if js.SessionProgress != nil {
 			sp := js.SessionProgress
 
-			// Bottleneck (as numeric: 0=None, 1=Source, 2=Proxy, 3=Network, 4=Target)
+			// Bottleneck. Unknown strings (API evolution, wire corruption)
+			// map to 0 (= None) so the PRTG channel always has a value —
+			// an empty channel looks like an agent failure to operators.
+			// The probe still surfaces unknown strings via WARN logs (see
+			// veeam.go collection wrapper) so an API drift shows up in the
+			// log even though the dashboard stays sane.
+			val, _ := sanitize.EnumValue(sp.Bottleneck, bottleneckMapping)
 			points = append(points, datapoint.DataPoint{
-				Name: "veeam_job_bottleneck", Timestamp: now, Value: bottleneckValue(sp.Bottleneck), Tags: detailTags,
+				Name: "veeam_job_bottleneck", Timestamp: now, Value: val, Tags: detailTags,
 			})
 
-			// Data sizes in bytes
+			// Data sizes in bytes. CountInt32 clamps to MaxInt32 so a
+			// runaway uint64 cannot reach the channel as an over-32-bit
+			// value that PRTG would refuse with "Valeur hors des limites".
 			if sp.ProcessedSize != nil {
+				v, _ := sanitize.BytesInt32(int64(*sp.ProcessedSize))
 				points = append(points, datapoint.DataPoint{
-					Name: "veeam_job_processed_bytes", Timestamp: now, Value: float32(*sp.ProcessedSize), Tags: detailTags,
+					Name: "veeam_job_processed_bytes", Timestamp: now, Value: v, Tags: detailTags,
 				})
 			}
 			if sp.ReadSize != nil {
+				v, _ := sanitize.BytesInt32(int64(*sp.ReadSize))
 				points = append(points, datapoint.DataPoint{
-					Name: "veeam_job_read_bytes", Timestamp: now, Value: float32(*sp.ReadSize), Tags: detailTags,
+					Name: "veeam_job_read_bytes", Timestamp: now, Value: v, Tags: detailTags,
 				})
 			}
 			if sp.TransferredSize != nil {
+				v, _ := sanitize.BytesInt32(int64(*sp.TransferredSize))
 				points = append(points, datapoint.DataPoint{
-					Name: "veeam_job_transferred_bytes", Timestamp: now, Value: float32(*sp.TransferredSize), Tags: detailTags,
+					Name: "veeam_job_transferred_bytes", Timestamp: now, Value: v, Tags: detailTags,
 				})
 			}
 		}
 	}
 
 	return points
-}
-
-// bottleneckValue maps ESessionBottleneckType to a numeric value
-func bottleneckValue(bottleneck string) float32 {
-	switch bottleneck {
-	case "None", "NotDefined":
-		return 0
-	case "Source", "SourceProxy", "SourceNetwork", "SourceWan":
-		return 1
-	case "Proxy":
-		return 2
-	case "Network", "Throttling":
-		return 3
-	case "Target", "TargetProxy", "TargetNetwork", "TargetWan", "TargetDisk":
-		return 4
-	default:
-		return 0
-	}
 }
 
 // buildRepositoryMetrics produces capacity metrics for each repository

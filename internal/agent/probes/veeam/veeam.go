@@ -229,6 +229,22 @@ func (p *veeamProbe) collectJobMetrics(now time.Time) ([]datapoint.DataPoint, er
 		return nil, fmt.Errorf("failed to get job states: %w", err)
 	}
 
+	// Surface any bottleneck strings the Veeam API returned outside our
+	// known mapping. The metric itself falls back to 0 (= None) so the
+	// PRTG channel stays populated; this WARN exists so an operator can
+	// see API drift in the log and add the new value to bottleneckMapping.
+	for _, s := range states {
+		if s.SessionProgress == nil {
+			continue
+		}
+		if _, ok := bottleneckMapping[s.SessionProgress.Bottleneck]; !ok && s.SessionProgress.Bottleneck != "" {
+			p.logger.Warn().
+				Str("job_name", s.Name).
+				Str("bottleneck_raw", s.SessionProgress.Bottleneck).
+				Msg("unknown Veeam bottleneck value — emitting as None (0); add to bottleneckMapping if this is a legitimate API value")
+		}
+	}
+
 	var points []datapoint.DataPoint
 	points = append(points, buildJobStateOverviewMetrics(states, p.hoursToCheck, now)...)
 	points = append(points, buildJobStateDetailMetrics(states, p.hoursToCheck, now)...)

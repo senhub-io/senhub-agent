@@ -1,6 +1,6 @@
 ---
 title: "Installation"
-weight: 1
+weight: 2
 ---
 
 # Installation
@@ -16,14 +16,14 @@ SenHub Agent is a monitoring collector that runs on your infrastructure and coll
 
 **Resource requirements**: 1 CPU core, 512 MB RAM, 500 MB disk space.
 
-**Network requirements** (online mode only): The agent needs outbound HTTPS access to the SenHub platform for configuration synchronization and metrics delivery. In offline mode, no outbound connections are required.
+**Network requirements**: outbound HTTPS from the agent host to whichever sink you configure (Prometheus scraper, OTLP collector, vmagent, Grafana Cloud OTLP). For an agent that only exposes data through its local HTTPS endpoint, no outbound connection is required at all.
 
 ## Obtaining the Agent
 
 Contact SenHub support (support@senhub.io) or download from the [GitHub releases page](https://github.com/sen-hub/senhub-agent/releases). You will receive:
 
 - The agent binary for your platform (see naming convention below)
-- An authentication key (UUID format) for online mode
+- An authentication key (UUID format) used as the URL token in HTTPS endpoints
 - A license token (required for premium probes: Citrix, NetScaler, Redfish, etc.)
 
 ### Binary Naming Convention
@@ -64,16 +64,10 @@ cd C:\SenHub\
 
 This registers `SenHub Agent` as a Windows Service with automatic restart on failure.
 
-For offline mode (local configuration only, no connection to SenHub platform):
+To install with HTTPS enabled on the local API:
 
 ```powershell
-.\senhub-agent.exe install --offline
-```
-
-To install with HTTPS enabled on the API:
-
-```powershell
-.\senhub-agent.exe install --offline --enable-https --https-port 8443
+.\senhub-agent.exe install --authentication-key YOUR-UUID-KEY --enable-https --https-port 8443
 ```
 
 ### 3. Start the service
@@ -134,16 +128,10 @@ sudo /opt/senhub/bin/senhub-agent install --authentication-key YOUR-UUID-KEY
 
 This creates and registers a systemd service (`senhub-agent.service`) with automatic restart on failure (10-second delay between restarts).
 
-For offline mode:
-
-```bash
-sudo /opt/senhub/bin/senhub-agent install --offline
-```
-
 To install with HTTPS enabled and a custom certificate hostname:
 
 ```bash
-sudo /opt/senhub/bin/senhub-agent install --offline \
+sudo /opt/senhub/bin/senhub-agent install --authentication-key YOUR-UUID-KEY \
   --enable-https \
   --https-hosts "agent.company.com,192.168.1.100" \
   --https-port 8443
@@ -186,15 +174,13 @@ The `install` command accepts the following options:
 
 | Flag | Description |
 |------|-------------|
-| `--authentication-key KEY` | Agent authentication key (UUID) for online mode |
-| `--offline` | Install in offline mode (local configuration only) |
+| `--authentication-key KEY` | Agent authentication key (UUID) used as the URL token in HTTPS endpoints |
 
 ### Configuration
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--config-path PATH` | `./agent-config.yaml` | Path to the configuration file |
-| `--server-url URL` | SenHub platform | Custom server URL (online mode) |
 
 ### HTTPS / TLS
 
@@ -230,7 +216,7 @@ When you run `senhub-agent install`, the agent:
 1. Checks for administrator/root privileges (required on Windows and Linux)
 2. Registers the system service (`SenHub Agent` on Windows, `senhub-agent.service` on Linux)
 3. Configures automatic restart on failure
-4. In offline mode: generates a default `agent-config.yaml` file with a unique agent key
+4. Generates a default `agent-config.yaml` next to the binary if none exists, with a fresh agent key
 5. If `--enable-https` is specified: creates a `certs/` directory with a self-signed certificate and private key (valid for 365 days)
 
 ### Files Created
