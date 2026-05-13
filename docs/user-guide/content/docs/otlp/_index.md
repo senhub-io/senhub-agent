@@ -1,6 +1,6 @@
 ---
 title: "OTLP / OpenTelemetry"
-weight: 6
+weight: 8
 bookCollapseSection: false
 ---
 
