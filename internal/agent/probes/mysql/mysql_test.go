@@ -3,6 +3,10 @@ package mysql
 import (
 	"strings"
 	"testing"
+	"time"
+
+	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 func TestParseConfig_MinimumRequired(t *testing.T) {
@@ -143,4 +147,174 @@ func TestBuildDSN_TLSEnabledVerify(t *testing.T) {
 	if !strings.Contains(dsn, "tls=true") {
 		t.Errorf("DSN should set tls=true, got %q", dsn)
 	}
+}
+
+// TestBuildOverviewMetrics_FromStubMaps drives the family builders
+// with synthetic SHOW GLOBAL STATUS / VARIABLES maps so the
+// metric-shape contract can be pinned without a real MySQL server.
+// Integration with a live MySQL via testcontainers is a separate
+// test target (make test-database).
+func TestBuildOverviewMetrics_FromStubMaps(t *testing.T) {
+	p := stubProbe()
+	now := mustParseTime(t, "2026-05-13T11:00:00Z")
+	status := map[string]string{"Uptime": "12345", "Threads_connected": "42"}
+	vars := map[string]string{"max_connections": "200"}
+
+	points := p.buildOverviewMetrics(now, status, vars, dbcommon.RoleStandalone)
+
+	got := nameSet(points)
+	for _, expect := range []string{
+		"db_uptime_seconds", "db_version_info",
+		"db_connections_utilization", "db_replication_role",
+	} {
+		if !got[expect] {
+			t.Errorf("overview missing %q (got %v)", expect, keys(got))
+		}
+	}
+}
+
+func TestBuildConnectionsMetrics_FromStubMaps(t *testing.T) {
+	p := stubProbe()
+	now := mustParseTime(t, "2026-05-13T11:00:00Z")
+	status := map[string]string{
+		"Threads_running":                   "5",
+		"Threads_connected":                 "20",
+		"Aborted_clients":                   "3",
+		"Aborted_connects":                  "1",
+		"Connection_errors_max_connections": "0",
+	}
+	vars := map[string]string{"max_connections": "100"}
+
+	points := p.buildConnectionsMetrics(now, status, vars)
+
+	want := map[string]float32{
+		"db_connections_active":   5,
+		"db_connections_idle":     15,
+		"db_connections_max":      100,
+		"db_connections_aborted":  4,
+		"db_connections_refused":  0,
+	}
+	gotByName := valueByName(points)
+	for n, expected := range want {
+		if v, ok := gotByName[n]; !ok || v != expected {
+			t.Errorf("%s = %v (present=%v), want %v", n, v, ok, expected)
+		}
+	}
+}
+
+func TestBuildThroughputMetrics_PerCommandTag(t *testing.T) {
+	p := stubProbe()
+	now := mustParseTime(t, "2026-05-13T11:00:00Z")
+	status := map[string]string{
+		"Questions":               "100000",
+		"Com_commit":              "50000",
+		"Com_rollback":            "100",
+		"Com_select":              "80000",
+		"Com_insert":              "10000",
+		"Com_update":              "5000",
+		"Com_delete":              "5000",
+		"Com_replace":             "0",
+		"Slow_queries":            "12",
+		"Created_tmp_disk_tables": "2",
+		"Created_tmp_tables":      "98",
+	}
+	points := p.buildThroughputMetrics(now, status)
+
+	// Per-verb metric: same metric name across verbs, distinguished
+	// by the `command` tag. Five verbs → five points.
+	verbCount := 0
+	for _, pt := range points {
+		if pt.Name == "db_mysql_command_count" {
+			verbCount++
+			var verb string
+			for _, t := range pt.Tags {
+				if t.Key == "command" {
+					verb = t.Value
+				}
+			}
+			if verb == "" {
+				t.Errorf("db_mysql_command_count without command tag")
+			}
+		}
+	}
+	if verbCount != 5 {
+		t.Errorf("expected 5 per-verb points, got %d", verbCount)
+	}
+}
+
+func TestBuildReplicationMetrics_StandaloneEmitsNothing(t *testing.T) {
+	p := stubProbe()
+	now := mustParseTime(t, "2026-05-13T11:00:00Z")
+	points := p.buildReplicationMetrics(nil, now, map[string]string{}, dbcommon.RoleStandalone)
+	if len(points) != 0 {
+		t.Errorf("standalone role should emit no replication points, got %d", len(points))
+	}
+}
+
+func TestBuildCacheMetrics_HitRatioClamp(t *testing.T) {
+	p := stubProbe()
+	now := mustParseTime(t, "2026-05-13T11:00:00Z")
+	status := map[string]string{
+		"Innodb_buffer_pool_reads":           "10",
+		"Innodb_buffer_pool_read_requests":   "1000",
+		"Innodb_buffer_pool_pages_data":      "9000",
+		"Innodb_buffer_pool_pages_total":     "10000",
+		"Innodb_buffer_pool_pages_dirty":     "150",
+	}
+	points := p.buildCacheMetrics(now, status)
+	got := valueByName(points)
+	// Hit ratio = (1000-10)/1000 = 0.99
+	if v := got["db_buffer_hit_ratio"]; v < 0.989 || v > 0.991 {
+		t.Errorf("buffer hit ratio = %v, want ~0.99", v)
+	}
+	// Utilization = 9000/10000 = 0.9
+	if v := got["db_buffer_utilization"]; v < 0.89 || v > 0.91 {
+		t.Errorf("buffer utilization = %v, want ~0.9", v)
+	}
+	if v := got["db_buffer_dirty_pages"]; v != 150 {
+		t.Errorf("dirty pages = %v, want 150", v)
+	}
+}
+
+// --- helpers ---
+
+func stubProbe() *mysqlProbe {
+	return &mysqlProbe{
+		cfg:           &probeConfig{Host: "test", Port: 3306},
+		versionString: "8.0.32-MockServer",
+		environment:   "self_hosted",
+	}
+}
+
+func mustParseTime(t *testing.T, s string) time.Time {
+	t.Helper()
+	v, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+func nameSet(points []datapoint.DataPoint) map[string]bool {
+	out := make(map[string]bool, len(points))
+	for _, p := range points {
+		out[p.Name] = true
+	}
+	return out
+}
+
+func valueByName(points []datapoint.DataPoint) map[string]float32 {
+	out := make(map[string]float32, len(points))
+	for _, p := range points {
+		out[p.Name] = p.Value
+	}
+	return out
+}
+
+func keys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
