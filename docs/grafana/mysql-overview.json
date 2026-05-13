@@ -1,0 +1,126 @@
+{
+  "uid": "senhub-mysql-overview",
+  "title": "SenHub MySQL / MariaDB — Overview",
+  "tags": ["senhub", "agents", "mysql", "mariadb", "database"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(senhub_system_db_up{engine=\"mysql\"}, instance)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "Health", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "type": "stat", "id": 10, "title": "Up",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "min(senhub_system_db_up{engine=\"mysql\",instance=~\"$instance\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }] } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background" }
+    },
+    {
+      "type": "stat", "id": 11, "title": "Uptime",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "max(senhub_system_db_uptime_seconds{engine=\"mysql\",instance=~\"$instance\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value" }
+    },
+    {
+      "type": "stat", "id": 12, "title": "Connections used",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "max(senhub_system_db_connections_utilization_ratio{engine=\"mysql\",instance=~\"$instance\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.9 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background" }
+    },
+    {
+      "type": "stat", "id": 13, "title": "Replication health",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "min(senhub_system_db_replication_health{engine=\"mysql\",instance=~\"$instance\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "UNHEALTHY", "color": "red" }, "1": { "text": "HEALTHY", "color": "green" } } }] } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background" }
+    },
+    {
+      "type": "stat", "id": 14, "title": "Replication lag",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "max(senhub_system_db_replication_lag_seconds{engine=\"mysql\",instance=~\"$instance\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 30 }, { "color": "red", "value": 60 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background" }
+    },
+    {
+      "type": "stat", "id": 15, "title": "Database size",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "max(senhub_system_db_size_bytes{engine=\"mysql\",instance=~\"$instance\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value" }
+    },
+    { "type": "row", "id": 2, "title": "Connections", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 20, "title": "Connections by state",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (instance) (senhub_system_db_connections_active{engine=\"mysql\",instance=~\"$instance\"})", "legendFormat": "active — {{instance}}" },
+        { "refId": "B", "expr": "sum by (instance) (senhub_system_db_connections_idle{engine=\"mysql\",instance=~\"$instance\"})", "legendFormat": "idle — {{instance}}" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 30, "stacking": { "mode": "normal" } } } }
+    },
+    {
+      "type": "timeseries", "id": 21, "title": "Connection refusals + aborts",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (instance) (rate(senhub_system_db_connections_aborted{engine=\"mysql\",instance=~\"$instance\"}[5m]))", "legendFormat": "aborted — {{instance}}" },
+        { "refId": "B", "expr": "sum by (instance) (rate(senhub_system_db_connections_refused{engine=\"mysql\",instance=~\"$instance\"}[5m]))", "legendFormat": "refused — {{instance}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "cps" } }
+    },
+    { "type": "row", "id": 3, "title": "Workload", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 30, "title": "Queries / sec",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum by (instance) (rate(senhub_system_db_queries_count{engine=\"mysql\",instance=~\"$instance\"}[5m]))", "legendFormat": "QPS — {{instance}}" }],
+      "fieldConfig": { "defaults": { "unit": "qps" } }
+    },
+    {
+      "type": "timeseries", "id": 31, "title": "Transactions (commits / rollbacks)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (instance) (rate(senhub_system_db_transactions_committed{engine=\"mysql\",instance=~\"$instance\"}[5m]))", "legendFormat": "committed — {{instance}}" },
+        { "refId": "B", "expr": "sum by (instance) (rate(senhub_system_db_transactions_rolled_back{engine=\"mysql\",instance=~\"$instance\"}[5m]))", "legendFormat": "rolled back — {{instance}}" }
+      ]
+    },
+    { "type": "row", "id": 4, "title": "InnoDB", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 40, "title": "Buffer hit ratio",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_system_db_buffer_hit_ratio{engine=\"mysql\",instance=~\"$instance\"}", "legendFormat": "{{instance}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } }
+    },
+    {
+      "type": "timeseries", "id": 41, "title": "Deadlocks / minute",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum by (instance) (rate(senhub_system_db_locks_deadlocks{engine=\"mysql\",instance=~\"$instance\"}[5m])) * 60", "legendFormat": "{{instance}}" }]
+    }
+  ]
+}
