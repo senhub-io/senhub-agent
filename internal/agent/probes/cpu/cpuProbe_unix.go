@@ -17,6 +17,13 @@ import (
 
 type unixCollector struct {
 	logger *logger.Logger
+	// lastTimes holds the previous cumulative CPU time snapshot used to
+	// derive per-mode utilization percentages. cpu.Times() returns
+	// cumulative seconds since boot; we keep the previous reading so
+	// each Collect() can emit (current - last) normalized over the
+	// elapsed wall time as a 0-100 % value per mode.
+	lastTimes     *cpu.TimesStat
+	lastTimestamp time.Time
 }
 
 func newCPUCollector(config map[string]interface{}, logger *logger.Logger) (osCollector, error) {
@@ -85,19 +92,67 @@ func (u *unixCollector) collectCPUTimes(dataPoints *[]data_store.DataPoint, time
 		return nil
 	}
 
-	cpuTime := times[0]
+	curr := times[0]
+
+	// On the first collection we have nothing to diff against — store the
+	// snapshot and return without emitting per-mode percentages. The first
+	// real datapoints arrive on the second tick of the probe interval.
+	// Total CPU usage (cpu_usage_total) and per-core values come from
+	// gopsutil's blocking cpu.Percent path and don't need this warm-up.
+	if u.lastTimes == nil {
+		u.lastTimes = &curr
+		u.lastTimestamp = timestamp
+		return nil
+	}
+
+	prev := *u.lastTimes
+	// Sum of all mode deltas — denominator for the per-mode percentage.
+	// We compute it from the times themselves (not wall-clock × NumCPU)
+	// so the math matches what `top` / `mpstat` report and stays
+	// consistent across single-CPU containers, virtualized environments
+	// and physical multi-core hosts.
+	totalDelta := (curr.User - prev.User) +
+		(curr.System - prev.System) +
+		(curr.Idle - prev.Idle) +
+		(curr.Nice - prev.Nice) +
+		(curr.Iowait - prev.Iowait) +
+		(curr.Irq - prev.Irq) +
+		(curr.Softirq - prev.Softirq) +
+		(curr.Steal - prev.Steal)
+
+	u.lastTimes = &curr
+	u.lastTimestamp = timestamp
+
+	if totalDelta <= 0 {
+		// Clock skew, hibernate/resume, or a tick interval below kernel
+		// granularity — skip this round rather than emit divide-by-zero
+		// or negative percentages.
+		return nil
+	}
+
+	pct := func(delta float64) float64 {
+		v := (delta / totalDelta) * 100.0
+		if v < 0 {
+			return 0
+		}
+		if v > 100 {
+			return 100
+		}
+		return v
+	}
+
 	metrics := []struct {
 		name  string
 		value float64
 	}{
-		{"cpu_user", cpuTime.User},
-		{"cpu_system", cpuTime.System},
-		{"cpu_idle", cpuTime.Idle},
-		{"cpu_nice", cpuTime.Nice},
-		{"cpu_iowait", cpuTime.Iowait},
-		{"cpu_irq", cpuTime.Irq},
-		{"cpu_softirq", cpuTime.Softirq},
-		{"cpu_steal", cpuTime.Steal},
+		{"cpu_user", pct(curr.User - prev.User)},
+		{"cpu_system", pct(curr.System - prev.System)},
+		{"cpu_idle", pct(curr.Idle - prev.Idle)},
+		{"cpu_nice", pct(curr.Nice - prev.Nice)},
+		{"cpu_iowait", pct(curr.Iowait - prev.Iowait)},
+		{"cpu_irq", pct(curr.Irq - prev.Irq)},
+		{"cpu_softirq", pct(curr.Softirq - prev.Softirq)},
+		{"cpu_steal", pct(curr.Steal - prev.Steal)},
 	}
 
 	for _, metric := range metrics {
