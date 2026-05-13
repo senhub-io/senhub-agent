@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
@@ -43,7 +44,7 @@ func (p *mysqlProbe) buildUpDatapoint(now time.Time, up bool) datapoint.DataPoin
 // Slaves_connected into the Role enum (see DESIGN §5.1). Returns
 // the role on success, RoleStandalone + error on failure (callers
 // log the error and use Standalone as a safe fallback).
-func (p *mysqlProbe) detectRole(ctx context.Context) (dbcommon.Role, error) {
+func (p *mysqlProbe) detectRole(ctx context.Context, status map[string]string) (dbcommon.Role, error) {
 	// MySQL 8.0.22+ prefers SHOW REPLICA STATUS; older versions
 	// only know SHOW SLAVE STATUS. Try the newer one first; on a
 	// syntax error fall back to the legacy form.
@@ -54,135 +55,470 @@ func (p *mysqlProbe) detectRole(ctx context.Context) (dbcommon.Role, error) {
 			return dbcommon.RoleStandalone, err
 		}
 	}
-	defer rows.Close()
+	hasReplicaStatus := rows.Next()
+	rows.Close()
 
-	if rows.Next() {
-		// At least one row → this server is a replica.
+	if hasReplicaStatus {
 		return dbcommon.RoleReplica, nil
 	}
 
-	// No replica status → this server is either primary or
-	// standalone. Look for connected replicas via SHOW STATUS.
-	var name string
-	var value string
-	err = p.db.QueryRowContext(ctx,
-		"SHOW GLOBAL STATUS WHERE Variable_name IN ('Slaves_connected', 'Replicas_connected')",
-	).Scan(&name, &value)
-	if err != nil {
-		// No replicas connected and the variable does not exist —
-		// safe default is Standalone. Some MySQL builds (e.g. older
-		// MariaDB) lack the variable entirely; we treat absence as
-		// "no connected replicas" rather than erroring out.
-		return dbcommon.RoleStandalone, nil
-	}
-	if value != "" && value != "0" {
-		return dbcommon.RolePrimary, nil
+	// No replica status → primary or standalone. Inspect the bulk
+	// status map for connected replicas (variable name differs
+	// between MySQL 5.7, 8.0, MariaDB).
+	for _, k := range []string{"Slaves_connected", "Replicas_connected"} {
+		if v, ok := status[k]; ok && v != "" && v != "0" {
+			return dbcommon.RolePrimary, nil
+		}
 	}
 	return dbcommon.RoleStandalone, nil
 }
 
-// buildOverviewMetrics emits the small handful of metrics that
-// belong to the `overview` metric_type family — uptime, version
-// info, connections.utilization, replication.role,
-// replication.health. The deep-dive families (connections,
-// throughput, replication, cache, locks, io, storage) land in
-// follow-up patches; this slice is the end-to-end smoke test that
-// the probe + cache + sinks plumbing works.
-func (p *mysqlProbe) buildOverviewMetrics(ctx context.Context, now time.Time, role dbcommon.Role) []datapoint.DataPoint {
-	tagsOverview := p.commonTags(dbcommon.MetricTypeOverview)
+// fetchGlobalStatus runs a single SHOW GLOBAL STATUS and returns
+// the result as a name→value map. One bulk query per cycle is
+// cheaper than N targeted queries (each `SHOW GLOBAL STATUS WHERE
+// Variable_name = …` is its own round-trip), so every family
+// helper reads from this map.
+func (p *mysqlProbe) fetchGlobalStatus(ctx context.Context) (map[string]string, error) {
+	rows, err := p.db.QueryContext(ctx, "SHOW GLOBAL STATUS")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]string, 512)
+	for rows.Next() {
+		var name, value string
+		if err := rows.Scan(&name, &value); err != nil {
+			return nil, err
+		}
+		out[name] = value
+	}
+	return out, rows.Err()
+}
 
+// fetchGlobalVariables mirrors fetchGlobalStatus for SHOW GLOBAL
+// VARIABLES. Variables are configuration (max_connections,
+// long_query_time, …); STATUS is observation. They live in
+// different SHOW commands and the probe needs both.
+func (p *mysqlProbe) fetchGlobalVariables(ctx context.Context) (map[string]string, error) {
+	rows, err := p.db.QueryContext(ctx, "SHOW GLOBAL VARIABLES")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]string, 512)
+	for rows.Next() {
+		var name, value string
+		if err := rows.Scan(&name, &value); err != nil {
+			return nil, err
+		}
+		out[name] = value
+	}
+	return out, rows.Err()
+}
+
+// asInt parses a value from a status/variable map. Returns
+// (0, false) on missing or non-numeric — both are normal across
+// MySQL versions (variables come and go) so callers handle the
+// false case as "metric not available right now" without warning.
+func asInt(m map[string]string, key string) (int64, bool) {
+	v, ok := m[key]
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// asFloat is the float64 counterpart for variables that carry
+// non-integer values (e.g. long_query_time).
+func asFloat(m map[string]string, key string) (float64, bool) {
+	v, ok := m[key]
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// addCount appends a counter/gauge datapoint when the source value
+// is available. Wraps sanitize.CountInt32 so PRTG never gets an
+// over-range integer.
+func (p *mysqlProbe) addCount(points []datapoint.DataPoint, name string, raw int64, ts time.Time, family dbcommon.MetricType) []datapoint.DataPoint {
+	v, _ := sanitize.CountInt32(raw)
+	return append(points, datapoint.DataPoint{
+		Name: name, Timestamp: ts, Value: v, Tags: p.commonTags(family),
+	})
+}
+
+// addRatio appends a ratio (gauge in [0,1]) when both numerator
+// and denominator are non-zero. NaN and ±Inf are filtered.
+func (p *mysqlProbe) addRatio(points []datapoint.DataPoint, name string, num, den int64, ts time.Time, family dbcommon.MetricType) []datapoint.DataPoint {
+	if den <= 0 {
+		return points
+	}
+	r := float32(num) / float32(den)
+	if !sanitize.IsFinite(r) {
+		return points
+	}
+	if r < 0 {
+		r = 0
+	}
+	if r > 1 {
+		r = 1
+	}
+	return append(points, datapoint.DataPoint{
+		Name: name, Timestamp: ts, Value: r, Tags: p.commonTags(family),
+	})
+}
+
+// Collect families ---------------------------------------------------
+
+// buildOverviewMetrics emits the small handful of metrics that
+// belong to the `overview` metric_type family (always emitted).
+func (p *mysqlProbe) buildOverviewMetrics(now time.Time, status, vars map[string]string, role dbcommon.Role) []datapoint.DataPoint {
+	t := p.commonTags(dbcommon.MetricTypeOverview)
 	var points []datapoint.DataPoint
 
-	// Uptime — single SHOW GLOBAL STATUS variable.
-	if uptime, ok := p.queryGlobalStatusInt(ctx, "Uptime"); ok {
-		if v, _ := sanitize.CountInt32(uptime); true {
-			points = append(points, datapoint.DataPoint{
-				Name: "db_uptime_seconds", Timestamp: now, Value: v, Tags: tagsOverview,
-			})
-		}
+	if uptime, ok := asInt(status, "Uptime"); ok {
+		v, _ := sanitize.CountInt32(uptime)
+		points = append(points, datapoint.DataPoint{
+			Name: "db_uptime_seconds", Timestamp: now, Value: v, Tags: t,
+		})
 	}
 
-	// Version info — always 1, version carried as a label so a
-	// dashboard can group by it.
-	versionTags := append([]tags.Tag{}, tagsOverview...)
+	// Version info — always 1, version carried as a label.
+	versionTags := append([]tags.Tag{}, t...)
 	versionTags = append(versionTags, tags.Tag{Key: "version", Value: p.versionString})
 	points = append(points, datapoint.DataPoint{
 		Name: "db_version_info", Timestamp: now, Value: 1, Tags: versionTags,
 	})
 
-	// Connections utilization — primary saturation alarm. Threads
-	// connected divided by max_connections.
-	threadsConnected, okT := p.queryGlobalStatusInt(ctx, "Threads_connected")
-	maxConnections, okM := p.queryGlobalVariableInt(ctx, "max_connections")
+	// Connections utilization (overview rollup; the full
+	// breakdown is in the connections family).
+	threadsConnected, okT := asInt(status, "Threads_connected")
+	maxConnections, okM := asInt(vars, "max_connections")
 	if okT && okM && maxConnections > 0 {
-		ratio := float32(threadsConnected) / float32(maxConnections)
-		if sanitize.IsFinite(ratio) {
-			points = append(points, datapoint.DataPoint{
-				Name: "db_connections_utilization", Timestamp: now, Value: ratio, Tags: tagsOverview,
-			})
-		}
+		points = p.addRatio(points, "db_connections_utilization", threadsConnected, maxConnections, now, dbcommon.MetricTypeOverview)
 	}
 
-	// Replication role — numeric so the PRTG lookup colours the
-	// channel. The role is included as a string tag for Grafana
-	// legend readability.
-	roleTags := append([]tags.Tag{}, tagsOverview...)
+	// Replication role.
+	roleTags := append([]tags.Tag{}, t...)
 	roleTags = append(roleTags, tags.Tag{Key: "role", Value: role.String()})
 	points = append(points, datapoint.DataPoint{
 		Name: "db_replication_role", Timestamp: now, Value: role.RoleValue(), Tags: roleTags,
 	})
 
-	// Composite replication health — only meaningful for a replica
-	// (primary and standalone report 1 by convention, signalling
-	// "no replication problem to detect here").
-	healthValue := float32(1)
-	if role == dbcommon.RoleReplica {
-		// The full composite formula (DESIGN §5.2) needs the
-		// replication family helper that lands in a later patch.
-		// For the skeleton we expose 1 unconditionally — better
-		// than emitting an inaccurate 0 with no underlying check.
-		healthValue = 1
+	return points
+}
+
+// buildConnectionsMetrics emits the `connections` family.
+func (p *mysqlProbe) buildConnectionsMetrics(now time.Time, status, vars map[string]string) []datapoint.DataPoint {
+	t := p.commonTags(dbcommon.MetricTypeConnections)
+	var points []datapoint.DataPoint
+
+	threadsRunning, okR := asInt(status, "Threads_running")
+	threadsConnected, okC := asInt(status, "Threads_connected")
+	if okR {
+		points = p.addCount(points, "db_connections_active", threadsRunning, now, dbcommon.MetricTypeConnections)
 	}
-	points = append(points, datapoint.DataPoint{
-		Name: "db_replication_health", Timestamp: now, Value: healthValue, Tags: roleTags,
-	})
+	if okR && okC && threadsConnected >= threadsRunning {
+		points = p.addCount(points, "db_connections_idle", threadsConnected-threadsRunning, now, dbcommon.MetricTypeConnections)
+	}
+	if max, ok := asInt(vars, "max_connections"); ok {
+		points = p.addCount(points, "db_connections_max", max, now, dbcommon.MetricTypeConnections)
+	}
+	// Aborted = clients dropping + auth failures. Both counters,
+	// summed because most operators care about the aggregate.
+	if abClients, okA := asInt(status, "Aborted_clients"); okA {
+		if abConnects, okB := asInt(status, "Aborted_connects"); okB {
+			points = p.addCount(points, "db_connections_aborted", abClients+abConnects, now, dbcommon.MetricTypeConnections)
+		}
+	}
+	// Refused = out-of-slots events. Distinct from aborted —
+	// signals capacity rather than client misbehaviour.
+	if refused, ok := asInt(status, "Connection_errors_max_connections"); ok {
+		points = p.addCount(points, "db_connections_refused", refused, now, dbcommon.MetricTypeConnections)
+	}
+
+	_ = t // tags returned by helpers, kept for visual symmetry
+	return points
+}
+
+// buildThroughputMetrics emits the `throughput` family.
+func (p *mysqlProbe) buildThroughputMetrics(now time.Time, status map[string]string) []datapoint.DataPoint {
+	var points []datapoint.DataPoint
+
+	if q, ok := asInt(status, "Questions"); ok {
+		points = p.addCount(points, "db_queries_count", q, now, dbcommon.MetricTypeThroughput)
+	}
+	if c, ok := asInt(status, "Com_commit"); ok {
+		points = p.addCount(points, "db_transactions_committed", c, now, dbcommon.MetricTypeThroughput)
+	}
+	if r, ok := asInt(status, "Com_rollback"); ok {
+		points = p.addCount(points, "db_transactions_rolled_back", r, now, dbcommon.MetricTypeThroughput)
+	}
+	if s, ok := asInt(status, "Slow_queries"); ok {
+		points = p.addCount(points, "db_mysql_slow_queries_count", s, now, dbcommon.MetricTypeThroughput)
+	}
+
+	// Per-command counters carry the verb as a label so PromQL
+	// users can group by command without an explosion of metric
+	// names. Cardinality stays bounded (a handful of well-known
+	// verbs).
+	for _, verb := range []string{"select", "insert", "update", "delete", "replace"} {
+		if v, ok := asInt(status, "Com_"+verb); ok {
+			verbTags := append([]tags.Tag{}, p.commonTags(dbcommon.MetricTypeThroughput)...)
+			verbTags = append(verbTags, tags.Tag{Key: "command", Value: verb})
+			val, _ := sanitize.CountInt32(v)
+			points = append(points, datapoint.DataPoint{
+				Name: "db_mysql_command_count", Timestamp: now, Value: val, Tags: verbTags,
+			})
+		}
+	}
+
+	// Tmp-tables-to-disk ratio — a tuning hint, not a SLA. Above
+	// 25 % usually means tmp_table_size is too small.
+	tmpDisk, okD := asInt(status, "Created_tmp_disk_tables")
+	tmpTotal, okT := asInt(status, "Created_tmp_tables")
+	if okD && okT {
+		points = p.addRatio(points, "db_mysql_tmp_tables_disk_ratio", tmpDisk, tmpDisk+tmpTotal, now, dbcommon.MetricTypeThroughput)
+	}
 
 	return points
 }
 
-// queryGlobalStatusInt returns the int value of a SHOW GLOBAL
-// STATUS variable. Returns (0, false) when the variable is absent
-// or the value is non-numeric — both paths are normal across MySQL
-// versions and engine forks so callers handle the false case
-// without logging a warn.
-func (p *mysqlProbe) queryGlobalStatusInt(ctx context.Context, name string) (int64, bool) {
-	var k, v string
-	row := p.db.QueryRowContext(ctx,
-		"SHOW GLOBAL STATUS WHERE Variable_name = ?", name)
-	if err := row.Scan(&k, &v); err != nil {
-		return 0, false
+// buildReplicationMetrics emits the `replication` family. Only
+// useful when role is Primary or Replica — Standalone returns
+// an empty slice so dashboards don't see misleading zeros.
+func (p *mysqlProbe) buildReplicationMetrics(ctx context.Context, now time.Time, status map[string]string, role dbcommon.Role) []datapoint.DataPoint {
+	if role == dbcommon.RoleStandalone {
+		return nil
 	}
-	parsed, err := strconv.ParseInt(v, 10, 64)
-	if err != nil {
-		return 0, false
+	t := p.commonTags(dbcommon.MetricTypeReplication)
+	roleTagged := append([]tags.Tag{}, t...)
+	roleTagged = append(roleTagged, tags.Tag{Key: "role", Value: role.String()})
+
+	var points []datapoint.DataPoint
+
+	if role == dbcommon.RoleReplica {
+		// Re-query SHOW REPLICA STATUS to get the full row. We
+		// only need a few columns out of ~50 — Scan-by-column
+		// avoids the brittle Scan(&col1, &col2, …) approach.
+		points = append(points, p.queryReplicaStatus(ctx, now, roleTagged)...)
 	}
-	return parsed, true
+
+	// Replicas connected (primary or replica with downstream).
+	for _, k := range []string{"Slaves_connected", "Replicas_connected"} {
+		if v, ok := asInt(status, k); ok {
+			val, _ := sanitize.CountInt32(v)
+			points = append(points, datapoint.DataPoint{
+				Name: "db_replication_replicas_connected", Timestamp: now, Value: val, Tags: roleTagged,
+			})
+			break
+		}
+	}
+
+	return points
 }
 
-// queryGlobalVariableInt is the SHOW GLOBAL VARIABLES counterpart.
-// Kept separate because the two are distinct concepts in MySQL —
-// status is current observation, variable is configuration — and a
-// future helper may want to expose them with different semantics.
-func (p *mysqlProbe) queryGlobalVariableInt(ctx context.Context, name string) (int64, bool) {
-	var k, v string
-	row := p.db.QueryRowContext(ctx,
-		"SHOW GLOBAL VARIABLES WHERE Variable_name = ?", name)
-	if err := row.Scan(&k, &v); err != nil {
-		return 0, false
-	}
-	parsed, err := strconv.ParseInt(v, 10, 64)
+// queryReplicaStatus runs SHOW REPLICA STATUS (or SHOW SLAVE
+// STATUS on older versions), reads the columns into a map keyed
+// by column name, and emits the IO/SQL thread state and lag.
+func (p *mysqlProbe) queryReplicaStatus(ctx context.Context, now time.Time, repTags []tags.Tag) []datapoint.DataPoint {
+	stmt := "SHOW REPLICA STATUS"
+	rows, err := p.db.QueryContext(ctx, stmt)
 	if err != nil {
-		return 0, false
+		stmt = "SHOW SLAVE STATUS"
+		rows, err = p.db.QueryContext(ctx, stmt)
+		if err != nil {
+			p.logger.Warn().Err(err).Msg("replica status query failed")
+			return nil
+		}
 	}
-	return parsed, true
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil
+	}
+	if !rows.Next() {
+		return nil
+	}
+	raw := make([]interface{}, len(cols))
+	rawPtr := make([]interface{}, len(cols))
+	for i := range raw {
+		rawPtr[i] = &raw[i]
+	}
+	if err := rows.Scan(rawPtr...); err != nil {
+		return nil
+	}
+	values := make(map[string]string, len(cols))
+	for i, name := range cols {
+		values[name] = stringifyRaw(raw[i])
+	}
+
+	var points []datapoint.DataPoint
+	emit := func(name string, val float32) {
+		points = append(points, datapoint.DataPoint{
+			Name: name, Timestamp: now, Value: val, Tags: repTags,
+		})
+	}
+
+	// Thread state — Slave_IO_Running / Replica_IO_Running →
+	// "Yes" / "No" string. 1 if Yes, 0 otherwise.
+	for _, key := range []string{"Slave_IO_Running", "Replica_IO_Running"} {
+		if v, ok := values[key]; ok {
+			val := float32(0)
+			if strings.EqualFold(v, "Yes") {
+				val = 1
+			}
+			emit("db_replication_io_running", val)
+			break
+		}
+	}
+	for _, key := range []string{"Slave_SQL_Running", "Replica_SQL_Running"} {
+		if v, ok := values[key]; ok {
+			val := float32(0)
+			if strings.EqualFold(v, "Yes") {
+				val = 1
+			}
+			emit("db_replication_sql_running", val)
+			break
+		}
+	}
+
+	// Lag in seconds.
+	for _, key := range []string{"Seconds_Behind_Master", "Seconds_Behind_Source"} {
+		if v, ok := values[key]; ok {
+			if n, err := strconv.ParseFloat(v, 64); err == nil {
+				lag := float32(n)
+				if !sanitize.IsFinite(lag) {
+					break
+				}
+				if lag < 0 {
+					lag = 0
+				}
+				emit("db_replication_lag_seconds", lag)
+			}
+			break
+		}
+	}
+
+	return points
+}
+
+// buildCacheMetrics emits the `cache` family.
+func (p *mysqlProbe) buildCacheMetrics(now time.Time, status map[string]string) []datapoint.DataPoint {
+	var points []datapoint.DataPoint
+
+	// InnoDB buffer pool hit ratio. The canonical computation is
+	// 1 - (Innodb_buffer_pool_reads / Innodb_buffer_pool_read_requests).
+	reads, okR := asInt(status, "Innodb_buffer_pool_reads")
+	reqs, okQ := asInt(status, "Innodb_buffer_pool_read_requests")
+	if okR && okQ && reqs > 0 {
+		hits := reqs - reads
+		points = p.addRatio(points, "db_buffer_hit_ratio", hits, reqs, now, dbcommon.MetricTypeCache)
+	}
+
+	// Buffer utilization — pages_data / pages_total.
+	pData, okD := asInt(status, "Innodb_buffer_pool_pages_data")
+	pTotal, okT := asInt(status, "Innodb_buffer_pool_pages_total")
+	if okD && okT {
+		points = p.addRatio(points, "db_buffer_utilization", pData, pTotal, now, dbcommon.MetricTypeCache)
+	}
+
+	// Dirty pages — pressure on the checkpointer.
+	if dirty, ok := asInt(status, "Innodb_buffer_pool_pages_dirty"); ok {
+		points = p.addCount(points, "db_buffer_dirty_pages", dirty, now, dbcommon.MetricTypeCache)
+	}
+
+	return points
+}
+
+// buildLocksMetrics emits the `locks` family.
+func (p *mysqlProbe) buildLocksMetrics(now time.Time, status map[string]string) []datapoint.DataPoint {
+	var points []datapoint.DataPoint
+
+	if d, ok := asInt(status, "Innodb_deadlocks"); ok {
+		points = p.addCount(points, "db_locks_deadlocks", d, now, dbcommon.MetricTypeLocks)
+	}
+	if w, ok := asInt(status, "Innodb_row_lock_current_waits"); ok {
+		points = p.addCount(points, "db_locks_waiting", w, now, dbcommon.MetricTypeLocks)
+	}
+	if avg, ok := asInt(status, "Innodb_row_lock_time_avg"); ok {
+		// Innodb_row_lock_time_avg is already in milliseconds.
+		points = p.addCount(points, "db_locks_row_lock_time_avg_ms", avg, now, dbcommon.MetricTypeLocks)
+	}
+
+	return points
+}
+
+// buildIOMetrics emits the `io` family.
+func (p *mysqlProbe) buildIOMetrics(now time.Time, status map[string]string) []datapoint.DataPoint {
+	var points []datapoint.DataPoint
+
+	if r, ok := asInt(status, "Innodb_data_read"); ok {
+		points = p.addCount(points, "db_io_read_bytes", r, now, dbcommon.MetricTypeIO)
+	}
+	if w, ok := asInt(status, "Innodb_data_written"); ok {
+		points = p.addCount(points, "db_io_write_bytes", w, now, dbcommon.MetricTypeIO)
+	}
+
+	return points
+}
+
+// buildStorageMetrics emits the `storage` family. Queries
+// information_schema.tables once, summed across all user
+// databases. Cheap on a healthy server but can take seconds on
+// schemas with tens of thousands of tables — the per-cycle
+// timeout protects against runaway queries.
+func (p *mysqlProbe) buildStorageMetrics(ctx context.Context, now time.Time) []datapoint.DataPoint {
+	var points []datapoint.DataPoint
+	t := p.commonTags(dbcommon.MetricTypeStorage)
+
+	var totalBytes int64
+	var tableCount int64
+	row := p.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(data_length + index_length), 0), COALESCE(COUNT(*), 0)
+		 FROM information_schema.tables
+		 WHERE table_schema NOT IN ('mysql','performance_schema','information_schema','sys')`)
+	if err := row.Scan(&totalBytes, &tableCount); err != nil {
+		p.logger.Warn().Err(err).Msg("storage query failed (information_schema not readable)")
+		return nil
+	}
+
+	if v, _ := sanitize.BytesInt32(totalBytes); true {
+		points = append(points, datapoint.DataPoint{
+			Name: "db_size_bytes", Timestamp: now, Value: v, Tags: t,
+		})
+	}
+	if v, _ := sanitize.CountInt32(tableCount); true {
+		points = append(points, datapoint.DataPoint{
+			Name: "db_tables_count", Timestamp: now, Value: v, Tags: t,
+		})
+	}
+	return points
+}
+
+// stringifyRaw normalises the values coming back from a
+// rows.Scan(&interface{}) into a string. database/sql may return
+// []byte for VARCHAR depending on the driver; SHOW SLAVE STATUS
+// is full of stringly-typed columns so we coerce defensively.
+func stringifyRaw(v interface{}) string {
+	switch x := v.(type) {
+	case nil:
+		return ""
+	case []byte:
+		return string(x)
+	case string:
+		return x
+	default:
+		return strconv.FormatInt(0, 10)
+	}
 }
