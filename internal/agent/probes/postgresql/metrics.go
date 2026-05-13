@@ -531,3 +531,75 @@ func (p *postgresqlProbe) buildBackupsMetrics(ctx context.Context, now time.Time
 
 	return points
 }
+
+// buildPerDatabaseMetrics emits one db_database_size_bytes point
+// per non-system database when expose_per_database is set.
+func (p *postgresqlProbe) buildPerDatabaseMetrics(ctx context.Context, now time.Time) []datapoint.DataPoint {
+	if !p.cfg.ExposePerDatabase {
+		return nil
+	}
+	rows, err := p.db.QueryContext(ctx,
+		"SELECT datname, pg_database_size(datname) FROM pg_database WHERE datistemplate = false")
+	if err != nil {
+		p.logger.Warn().Err(err).Msg("per-database query failed")
+		return nil
+	}
+	defer rows.Close()
+
+	var points []datapoint.DataPoint
+	for rows.Next() {
+		var dbName string
+		var sizeBytes int64
+		if err := rows.Scan(&dbName, &sizeBytes); err != nil {
+			continue
+		}
+		if !p.cfg.IncludeSystemDatabases && dbcommon.IsSystemDatabase(dbName) {
+			continue
+		}
+		tagsRow := append([]tags.Tag{}, p.commonTags(dbcommon.MetricTypePerDatabase)...)
+		tagsRow = append(tagsRow, tags.Tag{Key: "database", Value: dbName})
+		v, _ := sanitize.BytesInt32(sizeBytes)
+		points = append(points, datapoint.DataPoint{
+			Name: "db_database_size_bytes", Timestamp: now, Value: v, Tags: tagsRow,
+		})
+	}
+	return points
+}
+
+// buildPerTableMetrics emits db_table_size_bytes for the top-N
+// largest user relations when expose_top_tables > 0. The cap is
+// enforced via LIMIT so the agent never streams every row.
+func (p *postgresqlProbe) buildPerTableMetrics(ctx context.Context, now time.Time) []datapoint.DataPoint {
+	if p.cfg.ExposeTopTables <= 0 {
+		return nil
+	}
+	rows, err := p.db.QueryContext(ctx, `
+		SELECT schemaname, relname, pg_relation_size(relid) AS size_bytes
+		FROM pg_stat_user_tables
+		ORDER BY size_bytes DESC
+		LIMIT $1`, p.cfg.ExposeTopTables)
+	if err != nil {
+		p.logger.Warn().Err(err).Msg("per-table query failed")
+		return nil
+	}
+	defer rows.Close()
+
+	var points []datapoint.DataPoint
+	for rows.Next() {
+		var schema, rel string
+		var sizeBytes int64
+		if err := rows.Scan(&schema, &rel, &sizeBytes); err != nil {
+			continue
+		}
+		tagsRow := append([]tags.Tag{}, p.commonTags(dbcommon.MetricTypePerTable)...)
+		tagsRow = append(tagsRow,
+			tags.Tag{Key: "schema", Value: schema},
+			tags.Tag{Key: "table", Value: rel},
+		)
+		v, _ := sanitize.BytesInt32(sizeBytes)
+		points = append(points, datapoint.DataPoint{
+			Name: "db_table_size_bytes", Timestamp: now, Value: v, Tags: tagsRow,
+		})
+	}
+	return points
+}
