@@ -414,14 +414,11 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 			})
 		}
 
-		// Add other IPs with index
-		for i, ip := range interfaceInfo.otherIPs {
-			metricTags = append(metricTags, tags.Tag{
-				Key:     fmt.Sprintf("ip_%d", i+1),
-				Value:   ip,
-				Private: false,
-			})
-		}
+		// Secondary IPs are intentionally NOT emitted. Earlier versions
+		// produced positional ip_1, ip_2, ... ip_N labels which exploded
+		// Prometheus cardinality on adapters with many addresses (e.g.
+		// IPv6 temporary addresses rotated by Windows). The primary IPv4
+		// or IPv6 already identifies the interface uniquely.
 
 		dataPoints = append(dataPoints, data_store.DataPoint{
 			Name:      strings.Split(name, "|")[0],
