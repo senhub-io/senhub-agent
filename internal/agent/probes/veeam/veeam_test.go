@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/internal/agent/utils/sanitize"
 )
 
 // newTestLogger creates a zerolog logger suitable for tests
@@ -139,15 +140,37 @@ func TestJobResultValue(t *testing.T) {
 	}
 }
 
-func TestBottleneckValue(t *testing.T) {
-	if got := bottleneckValue("None"); got != 0 {
-		t.Errorf("bottleneckValue(None) = %v, want 0", got)
+func TestBottleneckMapping(t *testing.T) {
+	cases := []struct {
+		in      string
+		wantOK  bool
+		wantVal float32
+	}{
+		{"None", true, 0},
+		{"NotDefined", true, 0},
+		{"Source", true, 1},
+		{"SourceProxy", true, 1},
+		{"Proxy", true, 2},
+		{"Network", true, 3},
+		{"Throttling", true, 3},
+		{"Target", true, 4},
+		{"TargetDisk", true, 4},
+		// Veeam API additions or wire corruption — must NOT default to 0.
+		{"NotABottleneckType", false, 0},
+		{"", false, 0},
+		// The numbers from the SIEP-BCK regression — they should NEVER
+		// parse into a valid bottleneck slot.
+		{"61418", false, 0},
+		{"6527658229760", false, 0},
 	}
-	if got := bottleneckValue("Source"); got != 1 {
-		t.Errorf("bottleneckValue(Source) = %v, want 1", got)
-	}
-	if got := bottleneckValue("Target"); got != 4 {
-		t.Errorf("bottleneckValue(Target) = %v, want 4", got)
+	for _, tc := range cases {
+		got, ok := sanitize.EnumValue(tc.in, bottleneckMapping)
+		if ok != tc.wantOK {
+			t.Errorf("bottleneck %q: ok=%v, want %v", tc.in, ok, tc.wantOK)
+		}
+		if got != tc.wantVal {
+			t.Errorf("bottleneck %q: value=%v, want %v", tc.in, got, tc.wantVal)
+		}
 	}
 }
 
@@ -770,5 +793,111 @@ func TestBuildJobStateOverviewMetrics_StaleBucket(t *testing.T) {
 	if sum != values["veeam_jobs_total"] {
 		t.Errorf("buckets sum to %v but total is %v — every enabled job must land in exactly one bucket",
 			sum, values["veeam_jobs_total"])
+	}
+}
+
+// TestBuildJobStateDetailMetrics_HandlesCorruptInputs is the regression
+// test for the SIEP-BCK incident (2026-05-13): the PRTG sensor showed
+// Bottleneck = 6 527 658 229 760 then 61418 on a second occurrence, plus
+// Time Since Last Run = 540 442 days, plus Objects Count = 53 691 387 904.
+// We do not know what produced those values upstream (Veeam API anomaly,
+// race condition, parser bug), but the probe must not propagate any of
+// them to the cache. The cases below pin the contract:
+//
+//   - LastRun pointing at the Go zero time → seconds_since stays at the
+//     -1 sentinel ("never run"), not a 64-billion-second duration.
+//   - LastRun in the future (clock skew) → seconds_since clamps to 0.
+//   - ProcessedSize / ReadSize / TransferredSize larger than MaxInt32 →
+//     clamped to MaxInt32 (PRTG-safe), so the channel value never trips
+//     PRTG's 32-bit-integer rejection.
+//   - ObjectsCount larger than MaxInt32 → clamped to MaxInt32.
+//   - Bottleneck string outside the known mapping → the channel is NOT
+//     emitted (rather than silently mapped to 0), so a future API change
+//     surfaces as a missing channel rather than a wrong-looking "None".
+func TestBuildJobStateDetailMetrics_HandlesCorruptInputs(t *testing.T) {
+	now := time.Date(2026, 5, 13, 12, 0, 0, 0, time.UTC)
+	zero := time.Time{} // 0001-01-01 — what the screenshots tracked back to
+	future := now.Add(15 * time.Minute)
+	huge := int64(1) << 40 // 1 TiB worth of bytes/objects — clearly over MaxInt32
+
+	states := []jobState{
+		{
+			ID: "zero-time", Name: "ZeroTimeJob", Type: "VSphereBackup",
+			Status: "Inactive", LastResult: "Success",
+			LastRun:      &zero, // pointer non-nil, value is the Go zero time
+			ObjectsCount: 3,
+		},
+		{
+			ID: "future", Name: "FutureClockJob", Type: "VSphereBackup",
+			Status: "Inactive", LastResult: "Success",
+			LastRun:      &future,
+			ObjectsCount: 3,
+		},
+		{
+			ID: "huge-counts", Name: "RunawayJob", Type: "VSphereBackup",
+			Status: "Inactive", LastResult: "Success",
+			LastRun:      &now,
+			ObjectsCount: int(huge),
+			SessionProgress: &sessionProgress{
+				Bottleneck:      "Source",
+				ProcessedSize:   &huge,
+				ReadSize:        &huge,
+				TransferredSize: &huge,
+			},
+		},
+		{
+			ID: "weird-bottleneck", Name: "VeeamApiV99", Type: "VSphereBackup",
+			Status: "Inactive", LastResult: "Success",
+			LastRun:      &now,
+			ObjectsCount: 1,
+			SessionProgress: &sessionProgress{
+				Bottleneck: "BrandNewBottleneckTypeNotInOurMapping",
+			},
+		},
+	}
+
+	points := buildJobStateDetailMetrics(states, 24, now)
+
+	// Group by (job_name, metric_name) for clean assertions.
+	type key struct{ job, metric string }
+	got := map[key]float32{}
+	for _, dp := range points {
+		var jobName string
+		for _, tag := range dp.Tags {
+			if tag.Key == "job_name" {
+				jobName = tag.Value
+			}
+		}
+		got[key{jobName, dp.Name}] = dp.Value
+	}
+
+	// Zero-time job: seconds_since stays at the sentinel.
+	if v := got[key{"ZeroTimeJob", "veeam_job_seconds_since"}]; v != jobSecondsSinceNeverRun {
+		t.Errorf("zero-time LastRun: seconds_since=%v, want sentinel %v (the 540 442-day bug must not return)", v, jobSecondsSinceNeverRun)
+	}
+
+	// Future LastRun: clamps to 0.
+	if v := got[key{"FutureClockJob", "veeam_job_seconds_since"}]; v != 0 {
+		t.Errorf("future LastRun: seconds_since=%v, want 0 (negative durations must not flow through)", v)
+	}
+
+	// Huge counts: clamped to MaxInt32 — PRTG safe.
+	if v := got[key{"RunawayJob", "veeam_job_objects_count"}]; v != sanitize.MaxInt32 {
+		t.Errorf("huge ObjectsCount: got %v, want clamped %v", v, sanitize.MaxInt32)
+	}
+	for _, m := range []string{"veeam_job_processed_bytes", "veeam_job_read_bytes", "veeam_job_transferred_bytes"} {
+		if v := got[key{"RunawayJob", m}]; v != sanitize.MaxInt32 {
+			t.Errorf("huge %s: got %v, want clamped %v", m, v, sanitize.MaxInt32)
+		}
+	}
+
+	// Unknown bottleneck string: channel NOT emitted.
+	if _, present := got[key{"VeeamApiV99", "veeam_job_bottleneck"}]; present {
+		t.Errorf("unknown bottleneck string should drop the channel, not emit a default 0")
+	}
+
+	// Known bottleneck (Source) on the huge-counts job IS emitted with value 1.
+	if v, present := got[key{"RunawayJob", "veeam_job_bottleneck"}]; !present || v != 1 {
+		t.Errorf("known bottleneck 'Source': present=%v value=%v, want present=true value=1", present, v)
 	}
 }
