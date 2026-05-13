@@ -245,9 +245,12 @@ func TestBuildThroughputMetrics_PerCommandTag(t *testing.T) {
 func TestBuildReplicationMetrics_StandaloneEmitsNothing(t *testing.T) {
 	p := stubProbe()
 	now := mustParseTime(t, "2026-05-13T11:00:00Z")
-	points := p.buildReplicationMetrics(nil, now, map[string]string{}, dbcommon.RoleStandalone)
+	points, health := p.buildReplicationMetrics(nil, now, map[string]string{}, dbcommon.RoleStandalone)
 	if len(points) != 0 {
 		t.Errorf("standalone role should emit no replication points, got %d", len(points))
+	}
+	if health != 1 {
+		t.Errorf("standalone health = %v, want 1 (no replication problem to detect)", health)
 	}
 }
 
