@@ -156,6 +156,10 @@ func (p *postgresqlProbe) Collect() ([]datapoint.DataPoint, error) {
 	points = append(points, p.buildStatStatementsMetrics(ctx, timestamp)...)
 	points = append(points, p.buildBackupsMetrics(ctx, timestamp)...)
 
+	// Opt-in cardinality (no-op when their flag is off).
+	points = append(points, p.buildPerDatabaseMetrics(ctx, timestamp)...)
+	points = append(points, p.buildPerTableMetrics(ctx, timestamp)...)
+
 	return points, nil
 }
 

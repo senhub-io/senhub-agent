@@ -558,3 +558,84 @@ func stringifyRaw(v interface{}) string {
 		return strconv.FormatInt(0, 10)
 	}
 }
+
+// buildPerDatabaseMetrics emits one db_database_size_bytes point
+// per non-system database when the operator has set
+// expose_per_database. Cardinality scales with the number of
+// databases; system schemas are skipped unless
+// include_system_databases is also set.
+func (p *mysqlProbe) buildPerDatabaseMetrics(ctx context.Context, now time.Time) []datapoint.DataPoint {
+	if !p.cfg.ExposePerDatabase {
+		return nil
+	}
+	q := `SELECT table_schema, COALESCE(SUM(data_length + index_length), 0)
+	      FROM information_schema.tables
+	      GROUP BY table_schema`
+	rows, err := p.db.QueryContext(ctx, q)
+	if err != nil {
+		p.logger.Warn().Err(err).Msg("per-database query failed")
+		return nil
+	}
+	defer rows.Close()
+
+	var points []datapoint.DataPoint
+	for rows.Next() {
+		var dbName string
+		var sizeBytes int64
+		if err := rows.Scan(&dbName, &sizeBytes); err != nil {
+			continue
+		}
+		if !p.cfg.IncludeSystemDatabases && dbcommon.IsSystemDatabase(dbName) {
+			continue
+		}
+		tagsRow := append([]tags.Tag{}, p.commonTags(dbcommon.MetricTypePerDatabase)...)
+		tagsRow = append(tagsRow, tags.Tag{Key: "database", Value: dbName})
+		v, _ := sanitize.BytesInt32(sizeBytes)
+		points = append(points, datapoint.DataPoint{
+			Name: "db_database_size_bytes", Timestamp: now, Value: v, Tags: tagsRow,
+		})
+	}
+	return points
+}
+
+// buildPerTableMetrics emits db_table_size_bytes for the top-N
+// largest user tables when expose_top_tables > 0. The cap is
+// enforced at the SQL layer (ORDER BY size DESC LIMIT N) so the
+// agent never streams every row of information_schema.tables for
+// a database with thousands of tables.
+func (p *mysqlProbe) buildPerTableMetrics(ctx context.Context, now time.Time) []datapoint.DataPoint {
+	if p.cfg.ExposeTopTables <= 0 {
+		return nil
+	}
+	q := `SELECT table_schema, table_name, (data_length + index_length) AS size_bytes
+	      FROM information_schema.tables
+	      WHERE table_schema NOT IN ('mysql','performance_schema','information_schema','sys')
+	        AND data_length IS NOT NULL
+	      ORDER BY size_bytes DESC
+	      LIMIT ?`
+	rows, err := p.db.QueryContext(ctx, q, p.cfg.ExposeTopTables)
+	if err != nil {
+		p.logger.Warn().Err(err).Msg("per-table query failed")
+		return nil
+	}
+	defer rows.Close()
+
+	var points []datapoint.DataPoint
+	for rows.Next() {
+		var schema, table string
+		var sizeBytes int64
+		if err := rows.Scan(&schema, &table, &sizeBytes); err != nil {
+			continue
+		}
+		tagsRow := append([]tags.Tag{}, p.commonTags(dbcommon.MetricTypePerTable)...)
+		tagsRow = append(tagsRow,
+			tags.Tag{Key: "schema", Value: schema},
+			tags.Tag{Key: "table", Value: table},
+		)
+		v, _ := sanitize.BytesInt32(sizeBytes)
+		points = append(points, datapoint.DataPoint{
+			Name: "db_table_size_bytes", Timestamp: now, Value: v, Tags: tagsRow,
+		})
+	}
+	return points
+}

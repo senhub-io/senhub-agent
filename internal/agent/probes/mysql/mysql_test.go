@@ -321,3 +321,25 @@ func keys(m map[string]bool) []string {
 	}
 	return out
 }
+
+// TestBuildPerDatabaseMetrics_OptInGate confirms that the
+// per-database family is silently skipped when the operator hasn't
+// flipped the expose_per_database flag. The Prometheus cardinality
+// contract (per DESIGN §6) hinges on this gate.
+func TestBuildPerDatabaseMetrics_OptInGate(t *testing.T) {
+	p := stubProbe()
+	// expose_per_database left at default false
+	points := p.buildPerDatabaseMetrics(nil, time.Now())
+	if len(points) != 0 {
+		t.Errorf("opt-in OFF should emit nothing, got %d points", len(points))
+	}
+}
+
+func TestBuildPerTableMetrics_OptInGate(t *testing.T) {
+	p := stubProbe()
+	// expose_top_tables left at default 0
+	points := p.buildPerTableMetrics(nil, time.Now())
+	if len(points) != 0 {
+		t.Errorf("opt-in OFF (expose_top_tables=0) should emit nothing, got %d", len(points))
+	}
+}
