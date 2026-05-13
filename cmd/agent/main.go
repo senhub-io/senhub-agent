@@ -107,6 +107,9 @@ func main() {
 	case "license":
 		handleLicenseCommand()
 		return
+	case "db-monitoring":
+		handleDbMonitoringCommand()
+		return
 	case "update":
 		// Parse update sub-arguments: update [--list | <version>]
 		args := &cliArgs.ParsedArgs{
