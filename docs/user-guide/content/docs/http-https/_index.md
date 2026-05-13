@@ -1,6 +1,6 @@
 ---
 title: "HTTP/HTTPS Configuration"
-weight: 3
+weight: 4
 ---
 
 # HTTP/HTTPS Configuration
@@ -46,12 +46,12 @@ The simplest way to enable HTTPS is during installation:
 
 **Windows:**
 ```powershell
-.\senhub-agent.exe install --offline --enable-https
+.\senhub-agent.exe install --enable-https
 ```
 
 **Linux:**
 ```bash
-sudo /opt/senhub/bin/senhub-agent install --offline --enable-https
+sudo /opt/senhub/bin/senhub-agent install --enable-https
 ```
 
 The agent automatically generates a self-signed certificate valid for 365 days and saves it in a `certs/` subdirectory:
@@ -75,7 +75,7 @@ The default HTTPS port is 8443.
 Example with custom hostnames for the certificate:
 
 ```bash
-sudo /opt/senhub/bin/senhub-agent install --offline \
+sudo /opt/senhub/bin/senhub-agent install \
   --enable-https \
   --https-hosts "agent.company.com,192.168.1.100" \
   --https-port 8443
