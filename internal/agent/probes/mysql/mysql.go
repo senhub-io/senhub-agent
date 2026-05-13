@@ -199,6 +199,12 @@ func (p *mysqlProbe) Collect() ([]datapoint.DataPoint, error) {
 	points = append(points, p.buildIOMetrics(timestamp, status)...)
 	points = append(points, p.buildStorageMetrics(ctx, timestamp)...)
 
+	// Opt-in cardinality. Both helpers no-op when their flag is
+	// off, so the cost is zero for operators who don't enable
+	// them.
+	points = append(points, p.buildPerDatabaseMetrics(ctx, timestamp)...)
+	points = append(points, p.buildPerTableMetrics(ctx, timestamp)...)
+
 	return points, nil
 }
 
