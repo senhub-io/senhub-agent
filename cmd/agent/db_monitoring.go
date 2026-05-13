@@ -52,8 +52,7 @@ FLAGS
 
 EXAMPLES
   senhub-agent db-monitoring init --engine postgresql
-  senhub-agent db-monitoring init --engine mysql --user mon_user --host 10.0.0.5
-`)
+  senhub-agent db-monitoring init --engine mysql --user mon_user --host 10.0.0.5`)
 }
 
 func handleDbMonitoringInit(args []string) {
@@ -94,7 +93,8 @@ func handleDbMonitoringInit(args []string) {
 	}
 
 	if engine == "" {
-		fmt.Fprintln(os.Stderr, "error: --engine is required\n")
+		fmt.Fprintln(os.Stderr, "error: --engine is required")
+		fmt.Fprintln(os.Stderr, "")
 		printDbMonitoringHelp()
 		os.Exit(2)
 	}
