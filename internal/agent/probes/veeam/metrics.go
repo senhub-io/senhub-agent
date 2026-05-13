@@ -243,15 +243,16 @@ func buildJobStateDetailMetrics(states []jobState, hoursToCheck int, now time.Ti
 		if js.SessionProgress != nil {
 			sp := js.SessionProgress
 
-			// Bottleneck. The mapping rejects unknown strings — if the Veeam
-			// API introduces a new bottleneck name we'd rather drop the
-			// channel for one scrape and surface a WARN in the log than
-			// silently emit 0 (which a default switch would have done).
-			if val, ok := sanitize.EnumValue(sp.Bottleneck, bottleneckMapping); ok {
-				points = append(points, datapoint.DataPoint{
-					Name: "veeam_job_bottleneck", Timestamp: now, Value: val, Tags: detailTags,
-				})
-			}
+			// Bottleneck. Unknown strings (API evolution, wire corruption)
+			// map to 0 (= None) so the PRTG channel always has a value —
+			// an empty channel looks like an agent failure to operators.
+			// The probe still surfaces unknown strings via WARN logs (see
+			// veeam.go collection wrapper) so an API drift shows up in the
+			// log even though the dashboard stays sane.
+			val, _ := sanitize.EnumValue(sp.Bottleneck, bottleneckMapping)
+			points = append(points, datapoint.DataPoint{
+				Name: "veeam_job_bottleneck", Timestamp: now, Value: val, Tags: detailTags,
+			})
 
 			// Data sizes in bytes. CountInt32 clamps to MaxInt32 so a
 			// runaway uint64 cannot reach the channel as an over-32-bit
