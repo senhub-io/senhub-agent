@@ -10,6 +10,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/linuxlogs"
 	"senhub-agent.go/internal/agent/probes/logicaldisk"
 	"senhub-agent.go/internal/agent/probes/memory"
+	"senhub-agent.go/internal/agent/probes/mysql" // Import the mysql probe package
 	"senhub-agent.go/internal/agent/probes/netscaler" // Import the netscaler probe package
 	"senhub-agent.go/internal/agent/probes/network"
 	"senhub-agent.go/internal/agent/probes/redfish" // Import the redfish probe package
@@ -60,6 +61,7 @@ var probeConstructors = map[string]ProbeConstructor{
 	"citrix":               citrix.NewCitrixProbe,
 	"netscaler":            netscaler.NewNetscalerProbe,
 	"veeam":                veeam.NewVeeamProbe,
+	"mysql":                mysql.NewMySQLProbe,
 }
 
 // GetRegisteredProbeTypes returns a set of all registered probe type names
