@@ -475,3 +475,59 @@ func (p *postgresqlProbe) buildStatStatementsMetrics(ctx context.Context, now ti
 
 	return points
 }
+
+// buildBackupsMetrics implements DESIGN §5.5 — backup freshness
+// for PostgreSQL. Uses pg_stat_archiver.last_archived_time as the
+// canary for WAL archiving (DR pipeline). When WAL archiving is
+// not configured the view's row exists but last_archived_time is
+// NULL — we skip the metric in that case (a "no backup pipeline"
+// signal is itself useful but it's already inferable from the
+// archiver count being 0).
+//
+// The 'should-have-SenHub-differentiator' here is exposing this
+// metric as a first-class channel rather than burying it in a
+// custom dashboard query — operators get an obvious sensor for
+// "is my disaster recovery working".
+func (p *postgresqlProbe) buildBackupsMetrics(ctx context.Context, now time.Time) []datapoint.DataPoint {
+	var points []datapoint.DataPoint
+	t := p.commonTags(dbcommon.MetricTypeBackups)
+
+	// Last archived WAL file timestamp + failure count. Both come
+	// from pg_stat_archiver, which exists since PG 9.4 and is
+	// readable by anyone with pg_monitor.
+	var lastArchived *time.Time
+	var failedCount int64
+	err := p.db.QueryRowContext(ctx,
+		"SELECT last_archived_time, failed_count FROM pg_stat_archiver",
+	).Scan(&lastArchived, &failedCount)
+	if err != nil {
+		// Most likely cause: lacking grant or the archiver view
+		// is unavailable (very old PG or stripped-down fork).
+		// Silent skip.
+		return nil
+	}
+
+	if lastArchived != nil && !lastArchived.IsZero() {
+		ageSeconds := float32(now.Sub(*lastArchived).Seconds())
+		if ageSeconds < 0 {
+			// Clock skew between agent and DB host. Clamp to 0
+			// rather than emit a negative age which dashboards
+			// can't represent.
+			ageSeconds = 0
+		}
+		if sanitize.IsFinite(ageSeconds) {
+			points = append(points, datapoint.DataPoint{
+				Name: "db_postgres_archiver_last_archived_age_seconds",
+				Timestamp: now, Value: ageSeconds, Tags: t,
+			})
+		}
+	}
+
+	v, _ := sanitize.CountInt32(failedCount)
+	points = append(points, datapoint.DataPoint{
+		Name: "db_postgres_archiver_failed_count",
+		Timestamp: now, Value: v, Tags: t,
+	})
+
+	return points
+}
