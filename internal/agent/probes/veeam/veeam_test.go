@@ -891,9 +891,13 @@ func TestBuildJobStateDetailMetrics_HandlesCorruptInputs(t *testing.T) {
 		}
 	}
 
-	// Unknown bottleneck string: channel NOT emitted.
-	if _, present := got[key{"VeeamApiV99", "veeam_job_bottleneck"}]; present {
-		t.Errorf("unknown bottleneck string should drop the channel, not emit a default 0")
+	// Unknown bottleneck string: channel IS emitted with value 0 (= None
+	// per senhub.veeam.bottleneck lookup). An empty channel would look
+	// like an agent failure to PRTG operators; falling back to None keeps
+	// the dashboard readable while a WARN log captures the unknown string
+	// for follow-up.
+	if v, present := got[key{"VeeamApiV99", "veeam_job_bottleneck"}]; !present || v != 0 {
+		t.Errorf("unknown bottleneck: present=%v value=%v, want present=true value=0 (None)", present, v)
 	}
 
 	// Known bottleneck (Source) on the huge-counts job IS emitted with value 1.
