@@ -189,7 +189,11 @@ func (p *mysqlProbe) Collect() ([]datapoint.DataPoint, error) {
 	points = append(points, p.buildOverviewMetrics(timestamp, status, vars, role)...)
 	points = append(points, p.buildConnectionsMetrics(timestamp, status, vars)...)
 	points = append(points, p.buildThroughputMetrics(timestamp, status)...)
-	points = append(points, p.buildReplicationMetrics(ctx, timestamp, status, role)...)
+
+	repPoints, health := p.buildReplicationMetrics(ctx, timestamp, status, role)
+	points = append(points, repPoints...)
+	points = append(points, p.buildReplicationHealth(timestamp, role, health))
+
 	points = append(points, p.buildCacheMetrics(timestamp, status)...)
 	points = append(points, p.buildLocksMetrics(timestamp, status)...)
 	points = append(points, p.buildIOMetrics(timestamp, status)...)
