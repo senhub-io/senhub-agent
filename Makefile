@@ -177,6 +177,23 @@ test:
 	@echo "Testing..."
 	@go test ./... -v
 
+# Database probes integration tests — gated behind a build tag so
+# they're opt-in. Spins up MySQL + Postgres via the docker-compose
+# fixture under test/database/, waits for the engines to be ready,
+# runs the probes against them, then tears the fixture down.
+test-database: ## Integration tests against a real MySQL + Postgres
+	@echo "$(GREEN)🐳 Starting database fixture...$(NC)"
+	@docker compose -f test/database/docker-compose.yml up -d --wait
+	@echo "$(GREEN)🧪 Running database integration tests...$(NC)"
+	@MYSQL_TEST_DSN='root:test@tcp(127.0.0.1:3306)/' \
+		POSTGRES_TEST_DSN='host=127.0.0.1 port=5432 user=postgres password=test dbname=postgres sslmode=disable' \
+		go test -tags=database_integration -v \
+			./internal/agent/probes/mysql/... \
+			./internal/agent/probes/postgresql/...
+	@echo "$(GREEN)🧹 Tearing down database fixture...$(NC)"
+	@docker compose -f test/database/docker-compose.yml down -v
+	@echo "$(GREEN)✅ Database integration tests done$(NC)"
+
 # NEW: Test avec détection de race conditions
 test-race: ## Test avec détection de race conditions
 	@echo "$(GREEN)🏃‍♂️ Tests avec détection de race conditions...$(NC)"
