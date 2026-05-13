@@ -46,22 +46,20 @@ OTel-aligned via `system.cpu.*`. Time-mode breakdown collapsed under
 
 | Prometheus name | Type | Unit | Key labels |
 |---|---|---|---|
-| `senhub_system_cpu_time_seconds_total` | counter | s | `cpu_mode` ∈ {user, system, idle, nice, iowait, interrupt, softirq, steal} |
-| `senhub_system_cpu_utilization_ratio` | gauge | 1 (0-1) | `cpu_mode` (per-mode), `cpu_logical_number` (per-core), `senhub_cpu_perfmon_instance` (Windows) |
-| `senhub_system_linux_cpu_load_1m` | gauge | {thread} | – |
-| `senhub_system_linux_cpu_load_5m` | gauge | {thread} | – |
-| `senhub_system_linux_cpu_load_15m` | gauge | {thread} | – |
+| `senhub_system_cpu_utilization_ratio` | gauge | 1 (0-1) | `cpu_mode` ∈ {user, system, idle, nice, iowait, interrupt, softirq, steal}; per-core via `cpu_logical_number`; `senhub_cpu_perfmon_instance` on Windows |
+| `senhub_system_cpu_load_1m` | gauge | {thread} | – (Unix-family) |
+| `senhub_system_cpu_load_5m` | gauge | {thread} | – (Unix-family) |
+| `senhub_system_cpu_load_15m` | gauge | {thread} | – (Unix-family) |
 | `senhub_system_cpu_dpcs_per_second` | gauge | 1/s | `cpu_logical_number`, `senhub_cpu_perfmon_instance` (Windows) |
 | `senhub_system_cpu_dpcs_queued_per_second` | gauge | 1/s | – |
 | `senhub_system_cpu_interrupts_per_second` | gauge | 1/s | `cpu_logical_number`, `senhub_cpu_perfmon_instance` (Windows) |
 | `senhub_system_cpu_queue_length` | gauge | {thread} | – |
+| `senhub_system_processes_count` | gauge | {process} | – |
 
-Notes:
-- **Cross-OS harmonization**: Windows `privileged_time` is mapped to
-  `cpu_mode="system"` (rather than `kernel`) so a single PromQL query
-  reflects kernel time on both Linux and Windows.
-- Linux load averages use the OTEP 0119 `system.linux.cpu.load_*`
-  convention with explicit OS prefix — they're not emitted on Windows.
+Notes (since 0.1.91):
+- **Per-mode utilization** is exposed as `senhub_system_cpu_utilization_ratio` with a `cpu_mode` label, value in [0,1]. On Unix the probe diffs `cpu.Times()` between two collect cycles; on Windows it reads `\Processor\% User Time` and siblings directly from PDH. The previous `senhub_system_cpu_time_seconds_total` counter was retired because Windows could not produce a true cumulative seconds value through PDH — the metric is now honest about being a gauge rate.
+- **Cross-OS harmonization**: Windows `privileged_time` is mapped to `cpu_mode="system"` so one PromQL query reflects kernel time on both Linux and Windows.
+- **Load average** dropped the `linux.` infix in 0.1.91. The metric is emitted on every Unix-family host (Linux, BSD, macOS) — Windows still has no load average concept and does not emit these series.
 
 ### Memory (`type: memory`)
 
@@ -88,10 +86,14 @@ Notes:
 
 | Prometheus name | Type | Unit | Key labels |
 |---|---|---|---|
-| `senhub_system_network_io_bytes_total` | counter | By | `network_interface_name`, `network_io_direction` ∈ {receive, transmit} |
-| `senhub_system_network_packet_count_total` | counter | – | `network_interface_name`, `network_io_direction` |
-| `senhub_system_network_errors_total` | counter | – | `network_interface_name`, `network_io_direction` |
-| `senhub_system_network_packet_dropped_total` | counter | – | `network_interface_name`, `network_io_direction` |
+| `senhub_system_network_io_bytes_per_second` | gauge | By/s | `network_interface_name`, `network_io_direction` ∈ {receive, transmit}, `ip` (primary IP) |
+| `senhub_system_network_packet_count_per_second` | gauge | {packet}/s | `network_interface_name`, `network_io_direction` |
+| `senhub_system_network_errors_per_second` | gauge | {error}/s | `network_interface_name`, `network_io_direction` |
+| `senhub_system_network_packet_dropped_per_second` | gauge | {packet}/s | `network_interface_name`, `network_io_direction` |
+
+Notes (since 0.1.91):
+- These four metrics ship as **gauges in `_per_second`**, not cumulative counters. The agent already computes the rate (probe-side delta over the collect interval, or `\Network Interface\Bytes Sent/sec` on Windows), so wrapping the metric in `rate()` would be wrong — query the gauge directly.
+- Only the **primary IP** is exposed via the `ip` label. The positional `ip_1, ip_2, … ip_N` labels of pre-0.1.91 releases produced unstable cardinality on interfaces with multiple IPv6 addresses and have been dropped.
 
 ### Logical Disk → Filesystem (`type: logicaldisk`)
 
