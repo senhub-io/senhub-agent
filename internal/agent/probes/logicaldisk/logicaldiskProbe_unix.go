@@ -34,6 +34,15 @@ func (c *unixLogicalDiskCollector) shouldCollectMount(fsType string, mountPoint 
 		return false
 	}
 
+	// macOS firmlink / synthetic system volumes (iSCPreboot, xarts,
+	// Hardware, Update, etc.) share the same APFS container as the
+	// main user volumes — statfs reports the parent container's space,
+	// producing N near-duplicate series per filesystem metric. Only
+	// keep / and the writable Data volume (Catalina+ split).
+	if runtime.GOOS == "darwin" && strings.HasPrefix(mountPoint, "/System/Volumes/") && mountPoint != "/System/Volumes/Data" {
+		return false
+	}
+
 	// Skip special filesystem types that df doesn't show
 	excludedTypes := map[string]bool{
 		"sysfs":       true,

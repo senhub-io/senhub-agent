@@ -1,6 +1,6 @@
 ---
 title: "CLI Reference"
-weight: 6
+weight: 7
 ---
 
 # CLI Reference
@@ -27,7 +27,7 @@ senhub-agent run --verbose
 senhub-agent run --filter probe.veeam
 ```
 
-The agent auto-detects its operating mode from the configuration file. The `--offline` flag is no longer required.
+The agent reads its configuration from the YAML file pointed at by `--config-path` (default `./agent-config.yaml`).
 
 | Flag | Description |
 |------|-------------|

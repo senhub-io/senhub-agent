@@ -1,6 +1,6 @@
 ---
 title: "OTLP / OpenTelemetry"
-weight: 6
+weight: 8
 bookCollapseSection: false
 ---
 
@@ -168,8 +168,9 @@ identical** at the query layer.
 
 | OTel name (OTLP wire) | Prometheus exposition | After OTLP→PromQL ingest in VM |
 |---|---|---|
-| `system.cpu.time` (counter, `s`) | `senhub_system_cpu_time_seconds_total` | `system_cpu_time_seconds_total` |
+| `system.cpu.utilization` (gauge, `1`, `cpu.mode=user`) | `senhub_system_cpu_utilization_ratio` | `system_cpu_utilization_ratio` |
 | `system.memory.usage` (updowncounter, `By`) | `senhub_system_memory_usage_bytes` | `system_memory_usage_bytes` |
+| `system.network.io` (gauge, `By/s`, `network.io.direction=receive`) | `senhub_system_network_io_bytes_per_second` | `system_network_io_bytes_per_second` |
 | `senhub.netscaler.lbvserver.connections.active` | `senhub_netscaler_lbvserver_connections_active` | `senhub_netscaler_lbvserver_connections_active` |
 
 The collector applies the standard `senhub_` prefix loss when going
