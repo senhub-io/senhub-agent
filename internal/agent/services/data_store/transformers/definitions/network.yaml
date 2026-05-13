@@ -12,8 +12,14 @@ multi_instance_labels: ["interface"]
 
 metrics:
   # ─────────────────────────────────────────────────────────────────────────
-  # Throughput (bytes transmitted/received, cumulative)
-  # OTel: system.network.io (Counter, By) with network.io.direction
+  # Throughput (bytes per second, instantaneous rate)
+  # OTel: system.network.io (Gauge, By/s) with network.io.direction
+  #
+  # NOTE: deviation from OTel semconv (which defines system.network.io as a
+  # cumulative counter in By). Our probe emits the per-second rate computed
+  # since the last poll — what Windows perfmon natively gives us, and what
+  # PRTG/Nagios consumers expect. Exposing this as a gauge in By/s is the
+  # honest description of what the agent measures.
   # ─────────────────────────────────────────────────────────────────────────
   - name: "bytes_sent"
     channel: "network_bytes_sent"
@@ -21,11 +27,11 @@ metrics:
     unit: "bytes"
     multi_instance_labels: ["interface"]
     category: "throughput"
-    description: "Total number of bytes transmitted on the network interface"
+    description: "Bytes per second transmitted on the network interface"
     otel:
       name: system.network.io
-      unit: By
-      type: counter
+      unit: By/s
+      type: gauge
       attributes:
         network.io.direction: transmit
     tag_to_attribute:
@@ -37,19 +43,20 @@ metrics:
     unit: "bytes"
     multi_instance_labels: ["interface"]
     category: "throughput"
-    description: "Total number of bytes received on the network interface"
+    description: "Bytes per second received on the network interface"
     otel:
       name: system.network.io
-      unit: By
-      type: counter
+      unit: By/s
+      type: gauge
       attributes:
         network.io.direction: receive
     tag_to_attribute:
       interface: network.interface.name
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Packet counts (cumulative)
-  # OTel: system.network.packet.count (Counter, {packet}) with network.io.direction
+  # Packet counts (packets per second, instantaneous rate)
+  # OTel: system.network.packet.count (Gauge, {packet}/s) with network.io.direction
+  # See deviation note on throughput above.
   # ─────────────────────────────────────────────────────────────────────────
   - name: "packets_sent"
     channel: "network_packets_sent"
@@ -57,11 +64,11 @@ metrics:
     unit: "#"
     multi_instance_labels: ["interface"]
     category: "packets"
-    description: "Total number of packets transmitted on the network interface"
+    description: "Packets per second transmitted on the network interface"
     otel:
       name: system.network.packet.count
-      unit: "{packet}"
-      type: counter
+      unit: "{packet}/s"
+      type: gauge
       attributes:
         network.io.direction: transmit
     tag_to_attribute:
@@ -73,19 +80,20 @@ metrics:
     unit: "#"
     multi_instance_labels: ["interface"]
     category: "packets"
-    description: "Total number of packets received on the network interface"
+    description: "Packets per second received on the network interface"
     otel:
       name: system.network.packet.count
-      unit: "{packet}"
-      type: counter
+      unit: "{packet}/s"
+      type: gauge
       attributes:
         network.io.direction: receive
     tag_to_attribute:
       interface: network.interface.name
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Errors (cumulative)
-  # OTel: system.network.errors (Counter, {error}) with network.io.direction
+  # Errors (per second, instantaneous rate)
+  # OTel: system.network.errors (Gauge, {error}/s) with network.io.direction
+  # See deviation note on throughput above.
   # ─────────────────────────────────────────────────────────────────────────
   - name: "errors_sent"
     channel: "network_errors_sent"
@@ -93,11 +101,11 @@ metrics:
     unit: "#"
     multi_instance_labels: ["interface"]
     category: "errors"
-    description: "Number of outbound packets that could not be transmitted due to errors"
+    description: "Outbound packets per second that could not be transmitted due to errors"
     otel:
       name: system.network.errors
-      unit: "{error}"
-      type: counter
+      unit: "{error}/s"
+      type: gauge
       attributes:
         network.io.direction: transmit
     tag_to_attribute:
@@ -109,19 +117,20 @@ metrics:
     unit: "#"
     multi_instance_labels: ["interface"]
     category: "errors"
-    description: "Number of inbound packets that contained errors and were discarded"
+    description: "Inbound packets per second that contained errors and were discarded"
     otel:
       name: system.network.errors
-      unit: "{error}"
-      type: counter
+      unit: "{error}/s"
+      type: gauge
       attributes:
         network.io.direction: receive
     tag_to_attribute:
       interface: network.interface.name
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Packets dropped / discards (cumulative)
-  # OTel: system.network.packet.dropped (Counter, {packet}) with network.io.direction
+  # Packets dropped / discards (per second, instantaneous rate)
+  # OTel: system.network.packet.dropped (Gauge, {packet}/s) with network.io.direction
+  # See deviation note on throughput above.
   # ─────────────────────────────────────────────────────────────────────────
   - name: "discards_sent"
     channel: "network_discards_sent"
@@ -129,11 +138,11 @@ metrics:
     unit: "#"
     multi_instance_labels: ["interface"]
     category: "errors"
-    description: "Number of outbound packets discarded even though no errors were detected"
+    description: "Outbound packets per second discarded even though no errors were detected"
     otel:
       name: system.network.packet.dropped
-      unit: "{packet}"
-      type: counter
+      unit: "{packet}/s"
+      type: gauge
       attributes:
         network.io.direction: transmit
     tag_to_attribute:
@@ -145,11 +154,11 @@ metrics:
     unit: "#"
     multi_instance_labels: ["interface"]
     category: "errors"
-    description: "Number of inbound packets discarded even though no errors were detected"
+    description: "Inbound packets per second discarded even though no errors were detected"
     otel:
       name: system.network.packet.dropped
-      unit: "{packet}"
-      type: counter
+      unit: "{packet}/s"
+      type: gauge
       attributes:
         network.io.direction: receive
     tag_to_attribute:
