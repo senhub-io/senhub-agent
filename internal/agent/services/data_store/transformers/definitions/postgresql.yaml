@@ -1,0 +1,397 @@
+probe_name: "postgresql"
+friendly_name: "PostgreSQL"
+version: "1.0.0"
+
+# OTel-first source of truth.
+# system.db.* is shared with the mysql probe so cross-engine
+# dashboards can pivot on `engine` label. Engine-specific
+# metrics use senhub.db.postgres.* extensions.
+
+metrics:
+  # ═════════════════════════════════════════════════════════════════════════
+  # OVERVIEW
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "db_up"
+    channel: "db_up"
+    display_name: "Database Up"
+    unit: "#"
+    category: "overview"
+    description: "1 if the agent's most recent ping reached the server"
+    lookup: "senhub.db.up"
+    otel:
+      name: system.db.up
+      unit: "1"
+      type: updowncounter
+
+  - name: "db_uptime_seconds"
+    channel: "db_uptime"
+    display_name: "Uptime"
+    unit: "s"
+    category: "overview"
+    description: "Seconds since pg_postmaster_start_time()"
+    otel:
+      name: system.db.uptime.seconds
+      unit: "s"
+      type: gauge
+
+  - name: "db_version_info"
+    channel: "db_version"
+    display_name: "Version"
+    unit: "#"
+    category: "overview"
+    description: "Always 1; engine version carried as label"
+    otel:
+      name: system.db.version.info
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      version: senhub.db.version
+
+  - name: "db_connections_utilization"
+    channel: "db_connections_utilization"
+    display_name: "Connections Used %"
+    unit: "%"
+    category: "overview"
+    description: "active count / max_connections — saturation alarm"
+    otel:
+      name: system.db.connections.utilization
+      unit: "1"
+      type: gauge
+
+  - name: "db_replication_role"
+    channel: "db_replication_role"
+    display_name: "Replication Role"
+    unit: "#"
+    category: "overview"
+    description: "0=standalone, 1=primary, 2=replica"
+    lookup: "senhub.db.replication.role"
+    otel:
+      name: system.db.replication.role
+      unit: "1"
+      type: updowncounter
+
+  - name: "db_replication_health"
+    channel: "db_replication_health"
+    display_name: "Replication Health"
+    unit: "#"
+    category: "overview"
+    description: "Composite: io_running AND lag<threshold. Standalone reports 1."
+    lookup: "senhub.db.replication.health"
+    otel:
+      name: system.db.replication.health
+      unit: "1"
+      type: updowncounter
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # CONNECTIONS
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "db_connections_active"
+    channel: "db_connections_active"
+    display_name: "Connections Active"
+    unit: "#"
+    category: "connections"
+    description: "pg_stat_activity state='active'"
+    otel:
+      name: system.db.connections.active
+      unit: "{connection}"
+      type: gauge
+
+  - name: "db_connections_idle"
+    channel: "db_connections_idle"
+    display_name: "Connections Idle"
+    unit: "#"
+    category: "connections"
+    description: "pg_stat_activity state='idle'"
+    otel:
+      name: system.db.connections.idle
+      unit: "{connection}"
+      type: gauge
+
+  - name: "db_connections_idle_in_transaction"
+    channel: "db_idle_in_transaction"
+    display_name: "Idle in Transaction"
+    unit: "#"
+    category: "connections"
+    description: "Vacuum killer — sessions holding open transactions while idle"
+    otel:
+      name: system.db.connections.idle_in_transaction
+      unit: "{connection}"
+      type: gauge
+
+  - name: "db_connections_max"
+    channel: "db_connections_max"
+    display_name: "Connections Max"
+    unit: "#"
+    category: "connections"
+    description: "max_connections GUC"
+    otel:
+      name: system.db.connections.max
+      unit: "{connection}"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # THROUGHPUT
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "db_queries_count"
+    channel: "db_queries_count"
+    display_name: "Queries"
+    unit: "#"
+    category: "throughput"
+    description: "Commits + rollbacks across non-system DBs"
+    otel:
+      name: system.db.queries.count
+      unit: "{query}"
+      type: counter
+
+  - name: "db_transactions_committed"
+    channel: "db_transactions_committed"
+    display_name: "Transactions Committed"
+    unit: "#"
+    category: "throughput"
+    description: "Sum of pg_stat_database.xact_commit"
+    otel:
+      name: system.db.transactions.committed
+      unit: "{txn}"
+      type: counter
+
+  - name: "db_transactions_rolled_back"
+    channel: "db_transactions_rolled_back"
+    display_name: "Transactions Rolled Back"
+    unit: "#"
+    category: "throughput"
+    description: "Sum of pg_stat_database.xact_rollback"
+    otel:
+      name: system.db.transactions.rolled_back
+      unit: "{txn}"
+      type: counter
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # REPLICATION
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "db_replication_lag_seconds"
+    channel: "db_replication_lag"
+    display_name: "Replication Lag"
+    unit: "s"
+    category: "replication"
+    description: "now() - pg_last_xact_replay_timestamp() (replica side)"
+    otel:
+      name: system.db.replication.lag.seconds
+      unit: "s"
+      type: gauge
+
+  - name: "db_replication_io_running"
+    channel: "db_replication_io_running"
+    display_name: "WAL Receiver Streaming"
+    unit: "#"
+    category: "replication"
+    description: "1 if pg_stat_wal_receiver.status='streaming'"
+    otel:
+      name: system.db.replication.io_running
+      unit: "1"
+      type: updowncounter
+
+  - name: "db_replication_replicas_connected"
+    channel: "db_replication_replicas"
+    display_name: "Replicas Connected"
+    unit: "#"
+    category: "replication"
+    description: "count(pg_stat_replication) (primary side)"
+    otel:
+      name: system.db.replication.replicas.connected
+      unit: "{replica}"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # CACHE
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "db_buffer_hit_ratio"
+    channel: "db_buffer_hit_ratio"
+    display_name: "Buffer Hit Ratio"
+    unit: "%"
+    category: "cache"
+    description: "blks_hit / (blks_hit + blks_read) across non-system DBs"
+    otel:
+      name: system.db.buffer.hit_ratio
+      unit: "1"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # LOCKS
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "db_locks_deadlocks"
+    channel: "db_locks_deadlocks"
+    display_name: "Deadlocks"
+    unit: "#"
+    category: "locks"
+    description: "Sum of pg_stat_database.deadlocks"
+    otel:
+      name: system.db.locks.deadlocks
+      unit: "{event}"
+      type: counter
+
+  - name: "db_locks_waiting"
+    channel: "db_locks_waiting"
+    display_name: "Locks Waiting"
+    unit: "#"
+    category: "locks"
+    description: "pg_locks WHERE granted=false"
+    otel:
+      name: system.db.locks.waiting
+      unit: "{lock}"
+      type: gauge
+
+  - name: "db_postgres_long_running_xact_seconds"
+    channel: "db_long_running_xact"
+    display_name: "Long-Running Transaction Age"
+    unit: "s"
+    category: "locks"
+    description: "Age of the oldest open transaction — predicts vacuum starvation"
+    otel:
+      name: senhub.db.postgres.long_running_xact.seconds
+      unit: "s"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # STORAGE
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "db_size_bytes"
+    channel: "db_size"
+    display_name: "Database Size"
+    unit: "Bytes"
+    category: "storage"
+    description: "Sum of pg_database_size() across non-system DBs"
+    otel:
+      name: system.db.size.bytes
+      unit: "By"
+      type: gauge
+
+  - name: "db_tables_count"
+    channel: "db_tables_count"
+    display_name: "Tables Count"
+    unit: "#"
+    category: "storage"
+    description: "pg_stat_user_tables row count"
+    otel:
+      name: system.db.tables.count
+      unit: "{table}"
+      type: gauge
+
+  - name: "db_postgres_bloat_ratio"
+    channel: "db_bloat_ratio_{schema}_{relation}"
+    display_name: "Bloat Ratio ({schema}.{relation})"
+    unit: "%"
+    category: "storage"
+    multi_instance_labels: ["schema", "relation"]
+    description: "dead / (live + dead) tuples — top-N tables by heap size"
+    otel:
+      name: senhub.db.postgres.bloat.ratio
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      schema: senhub.db.postgres.schema
+      relation: senhub.db.postgres.relation
+
+  - name: "db_postgres_bloat_bytes"
+    channel: "db_bloat_bytes_{schema}_{relation}"
+    display_name: "Bloat Bytes ({schema}.{relation})"
+    unit: "Bytes"
+    category: "storage"
+    multi_instance_labels: ["schema", "relation"]
+    description: "Wasted bytes per top-N table"
+    otel:
+      name: senhub.db.postgres.bloat.bytes
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      schema: senhub.db.postgres.schema
+      relation: senhub.db.postgres.relation
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # BACKUPS
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "db_postgres_archiver_last_archived_age_seconds"
+    channel: "db_archiver_age"
+    display_name: "Last WAL Archived Age"
+    unit: "s"
+    category: "backups"
+    description: "DR canary — staleness of WAL archiving pipeline"
+    otel:
+      name: senhub.db.postgres.archiver.last_archived.age.seconds
+      unit: "s"
+      type: gauge
+
+  - name: "db_postgres_archiver_failed_count"
+    channel: "db_archiver_failed"
+    display_name: "Archiver Failures"
+    unit: "#"
+    category: "backups"
+    description: "Cumulative pg_stat_archiver.failed_count"
+    otel:
+      name: senhub.db.postgres.archiver.failed.count
+      unit: "{event}"
+      type: counter
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # ENGINE (pg_stat_statements aggregate)
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "db_postgres_stat_statements_calls_count"
+    channel: "db_stat_statements_calls"
+    display_name: "pg_stat_statements Calls"
+    unit: "#"
+    category: "engine"
+    description: "Aggregate sum(calls) — opt-in via pg_stat_statements extension"
+    otel:
+      name: senhub.db.postgres.stat_statements.calls.count
+      unit: "{call}"
+      type: counter
+
+  - name: "db_postgres_stat_statements_exec_time_mean_ms"
+    channel: "db_stat_statements_mean_ms"
+    display_name: "pg_stat_statements Mean Exec Time"
+    unit: "ms"
+    category: "engine"
+    description: "Aggregate mean exec time across all statements (version-aware)"
+    otel:
+      name: senhub.db.postgres.stat_statements.exec_time.mean_ms
+      unit: "ms"
+      type: gauge
+
+tag_metadata:
+  metric_type:
+    type: category
+    label: "Metric Category"
+    value_labels:
+      overview: "Overview"
+      connections: "Connections"
+      throughput: "Throughput"
+      replication: "Replication"
+      cache: "Cache"
+      locks: "Locks"
+      storage: "Storage"
+      backups: "Backups"
+      engine: "Engine (pg_stat_statements)"
+  engine:
+    type: resource
+    label: "Engine"
+  instance:
+    type: resource
+    label: "Instance"
+  environment:
+    type: resource
+    label: "Environment"
+  role:
+    type: resource
+    label: "Replication Role"
+    linked_categories: ["overview", "replication"]
+  schema:
+    type: resource
+    label: "Schema"
+    linked_categories: ["storage"]
+  relation:
+    type: resource
+    label: "Relation"
+    linked_categories: ["storage"]
+  version:
+    type: resource
+    label: "Version"
+    linked_categories: ["overview"]
