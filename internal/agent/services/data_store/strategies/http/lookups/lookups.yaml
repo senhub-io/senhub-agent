@@ -383,3 +383,57 @@ senhub.veeam.server_status:
 # ==============================================================================
 # TODO: Add Redfish health status lookups
 # Source: DMTF Redfish specification
+
+# ==============================================================================
+# DATABASE PROBES (MySQL / MariaDB / PostgreSQL)
+# ==============================================================================
+# Three lookups shared by the mysql and postgresql probes — same role,
+# health, up/down semantics regardless of the engine.
+
+senhub.db.up:
+  description: "Database Connectivity (cross-engine)"
+  type: status
+  source: "SenHub Agent — last ping result"
+  mappings:
+    0:
+      text: "DOWN"
+      severity: "error"
+      description: "Last collect cycle's ping failed"
+    1:
+      text: "UP"
+      severity: "ok"
+      description: "Last collect cycle's ping succeeded"
+  desired_value: 1
+
+senhub.db.replication.role:
+  description: "Database Replication Role (cross-engine)"
+  type: status
+  source: "SenHub Agent — auto role-detect per scrape"
+  mappings:
+    0:
+      text: "STANDALONE"
+      severity: "ok"
+      description: "No replication configured"
+    1:
+      text: "PRIMARY"
+      severity: "ok"
+      description: "Server is the primary; at least one downstream replica connected"
+    2:
+      text: "REPLICA"
+      severity: "ok"
+      description: "Server is a replica catching up from an upstream primary"
+
+senhub.db.replication.health:
+  description: "Database Replication Health (composite)"
+  type: status
+  source: "SenHub Agent — composite of io_running/sql_running/lag (DESIGN §5.2)"
+  mappings:
+    0:
+      text: "UNHEALTHY"
+      severity: "error"
+      description: "Replica IO or SQL thread stopped, or lag above the configured threshold"
+    1:
+      text: "HEALTHY"
+      severity: "ok"
+      description: "Replication is keeping up, or this is a primary/standalone"
+  desired_value: 1
