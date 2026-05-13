@@ -118,20 +118,41 @@ class APIExplorer {
     }
 
     async loadEndpoints() {
+        const setPlaceholder = (text) => {
+            this.endpointTypeSelect.replaceChildren();
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = text;
+            this.endpointTypeSelect.appendChild(opt);
+        };
+
         try {
             const data = await this.base.fetchAPI('info/endpoints');
             const endpoints = data.endpoints || [];
-            
-            this.endpointTypeSelect.innerHTML = '<option value="">Select an endpoint...</option>';
-            endpoints.forEach(endpoint => {
+
+            // Only surface endpoints that are actually enabled in the
+            // storage config. Listing every known format here meant a
+            // user could pick "Prometheus" on an agent that did not have
+            // the prometheus endpoint in its endpoints array and get a
+            // 404 on Preview. The backend already returns an `enabled`
+            // flag per endpoint — filter on it here.
+            const enabled = endpoints.filter(ep => ep.enabled === true);
+
+            if (enabled.length === 0) {
+                setPlaceholder('No output format enabled in the storage config');
+                return;
+            }
+
+            setPlaceholder('Select an endpoint...');
+            enabled.forEach(endpoint => {
                 const option = document.createElement('option');
                 option.value = endpoint.name;
                 option.textContent = `${endpoint.name.toUpperCase()} - ${endpoint.description}`;
                 this.endpointTypeSelect.appendChild(option);
             });
-            
+
         } catch (error) {
-            this.endpointTypeSelect.innerHTML = '<option value="">Error loading endpoints</option>';
+            setPlaceholder('Error loading endpoints');
             console.error('Failed to load endpoints:', error);
         }
     }
