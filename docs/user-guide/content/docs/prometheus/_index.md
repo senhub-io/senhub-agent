@@ -123,9 +123,9 @@ specification**:
 
 | OTel | Prometheus |
 |---|---|
-| `system.cpu.time` (counter, seconds, `cpu.mode=user`) | `senhub_system_cpu_time_seconds_total{cpu_mode="user"}` |
-| `system.memory.usage` (updowncounter, bytes, `system.memory.state=used`) | `senhub_system_memory_usage_bytes{system_memory_state="used"}` |
 | `system.cpu.utilization` (gauge, ratio, `cpu.mode=user`) | `senhub_system_cpu_utilization_ratio{cpu_mode="user"}` |
+| `system.memory.usage` (updowncounter, bytes, `system.memory.state=used`) | `senhub_system_memory_usage_bytes{system_memory_state="used"}` |
+| `system.network.io` (gauge, By/s, `network.io.direction=receive`) | `senhub_system_network_io_bytes_per_second{network_io_direction="receive"}` |
 | `senhub.netscaler.lbvserver.connections.active` | `senhub_netscaler_lbvserver_connections_active` |
 
 Rules applied:
@@ -249,9 +249,9 @@ senhub_system_cpu_utilization_ratio{cpu_mode!=""}
 # Memory used percentage
 senhub_system_memory_utilization_ratio * 100
 
-# Network throughput per interface (last 5 min average)
+# Network throughput per interface (instantaneous gauge in By/s)
 sum by (network_interface_name, network_io_direction) (
-  rate(senhub_system_network_io_bytes_total[5m])
+  senhub_system_network_io_bytes_per_second
 )
 
 # Filesystems above 80 % usage
