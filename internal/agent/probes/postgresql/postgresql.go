@@ -160,6 +160,11 @@ func (p *postgresqlProbe) Collect() ([]datapoint.DataPoint, error) {
 	points = append(points, p.buildPerDatabaseMetrics(ctx, timestamp)...)
 	points = append(points, p.buildPerTableMetrics(ctx, timestamp)...)
 
+	p.logger.Debug().
+		Int("datapoints_count", len(points)).
+		Str("role", role.String()).
+		Msg("PostgreSQL metrics collection completed")
+
 	return points, nil
 }
 
