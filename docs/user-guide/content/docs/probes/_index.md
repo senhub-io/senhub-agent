@@ -76,6 +76,15 @@ the proxies and managed servers are reachable.
 
 - **[Veeam]({{< relref "/docs/probes/veeam" >}})** *(Pro)* — Veeam Backup & Replication v12+ jobs, repositories, proxies, managed servers, license status, session bottleneck (informational)
 
+## Databases
+
+Relational database engines — connection state, throughput,
+replication health, buffer cache, locks, storage, and engine
+internals via vendor-specific views.
+
+- **[MySQL / MariaDB]({{< relref "/docs/probes/mysql" >}})** *(Pro)* — MySQL 5.7+ and MariaDB 10.3+, self-hosted and managed (RDS, Aurora, Cloud SQL, Azure Flexible, Supabase). Connections, replication threads, InnoDB buffer pool, deadlocks, slow queries.
+- **[PostgreSQL]({{< relref "/docs/probes/postgresql" >}})** *(Pro)* — PostgreSQL 12+ self-hosted and managed. Includes the SenHub differentiators: composite replication health, table bloat estimate, backup freshness via `pg_stat_archiver`, idle-in-transaction and long-running-transaction first-class channels, version-aware `pg_stat_statements`.
+
 ## Logs & Events
 
 Open-ended ingestion paths for log streams and custom event data.
@@ -88,7 +97,7 @@ Open-ended ingestion paths for log streams and custom event data.
 | Tier | Probes included |
 |---|---|
 | **Free** | CPU, Memory, Network, Logical Disk, Linux Logs |
-| **Pro** | Free + Citrix, NetScaler, Redfish, Syslog, Event, Ping Gateway, Ping WebApp, Load WebApp, WiFi Signal, Veeam |
+| **Pro** | Free + Citrix, NetScaler, Redfish, Syslog, Event, Ping Gateway, Ping WebApp, Load WebApp, WiFi Signal, Veeam, MySQL, PostgreSQL |
 | **Enterprise** | All probes (wildcard) |
 
 See [Configuration → Licensing]({{< relref "/docs/configuration" >}})
