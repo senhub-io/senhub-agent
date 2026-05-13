@@ -144,10 +144,16 @@ func (p *postgresqlProbe) Collect() ([]datapoint.DataPoint, error) {
 	points = append(points, p.buildOverviewMetrics(ctx, timestamp, role)...)
 	points = append(points, p.buildConnectionsMetrics(ctx, timestamp)...)
 	points = append(points, p.buildThroughputMetrics(ctx, timestamp)...)
-	points = append(points, p.buildReplicationMetrics(ctx, timestamp, role)...)
+
+	repPoints, health := p.buildReplicationMetrics(ctx, timestamp, role)
+	points = append(points, repPoints...)
+	points = append(points, p.buildReplicationHealth(timestamp, role, health))
+
 	points = append(points, p.buildCacheMetrics(ctx, timestamp)...)
 	points = append(points, p.buildLocksMetrics(ctx, timestamp)...)
 	points = append(points, p.buildStorageMetrics(ctx, timestamp)...)
+	points = append(points, p.buildBloatMetrics(ctx, timestamp)...)
+	points = append(points, p.buildStatStatementsMetrics(ctx, timestamp)...)
 
 	return points, nil
 }

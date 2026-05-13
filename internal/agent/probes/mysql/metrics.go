@@ -296,21 +296,31 @@ func (p *mysqlProbe) buildThroughputMetrics(now time.Time, status map[string]str
 // buildReplicationMetrics emits the `replication` family. Only
 // useful when role is Primary or Replica — Standalone returns
 // an empty slice so dashboards don't see misleading zeros.
-func (p *mysqlProbe) buildReplicationMetrics(ctx context.Context, now time.Time, status map[string]string, role dbcommon.Role) []datapoint.DataPoint {
+//
+// As a side effect, returns the composite health value (0 or 1)
+// so the overview family helper can expose it as
+// db_replication_health (see DESIGN §5.2). Standalone reports 1
+// by convention — no replication problem to detect.
+func (p *mysqlProbe) buildReplicationMetrics(ctx context.Context, now time.Time, status map[string]string, role dbcommon.Role) ([]datapoint.DataPoint, float32) {
 	if role == dbcommon.RoleStandalone {
-		return nil
+		return nil, 1
 	}
 	t := p.commonTags(dbcommon.MetricTypeReplication)
 	roleTagged := append([]tags.Tag{}, t...)
 	roleTagged = append(roleTagged, tags.Tag{Key: "role", Value: role.String()})
 
 	var points []datapoint.DataPoint
+	health := float32(1)
 
 	if role == dbcommon.RoleReplica {
-		// Re-query SHOW REPLICA STATUS to get the full row. We
-		// only need a few columns out of ~50 — Scan-by-column
-		// avoids the brittle Scan(&col1, &col2, …) approach.
-		points = append(points, p.queryReplicaStatus(ctx, now, roleTagged)...)
+		replicaPts, ok := p.queryReplicaStatus(ctx, now, roleTagged)
+		points = append(points, replicaPts...)
+		// Composite health: io_running AND sql_running AND
+		// lag_seconds < threshold. Anything missing fails the
+		// check rather than passing silently.
+		if !ok.io || !ok.sql || ok.lagSeconds < 0 || ok.lagSeconds > float32(p.cfg.MaxReplicationLagSeconds) {
+			health = 0
+		}
 	}
 
 	// Replicas connected (primary or replica with downstream).
@@ -324,13 +334,36 @@ func (p *mysqlProbe) buildReplicationMetrics(ctx context.Context, now time.Time,
 		}
 	}
 
-	return points
+	return points, health
+}
+
+// replicationProbe holds the parsed signals from SHOW REPLICA
+// STATUS that feed the composite health computation.
+type replicationProbe struct {
+	io         bool
+	sql        bool
+	lagSeconds float32 // -1 = unknown
+}
+
+// buildReplicationHealth emits db_replication_health under the
+// overview family. The value is the composite 0/1 derived from the
+// SHOW REPLICA STATUS signals (see DESIGN §5.2). Standalone gets 1
+// by convention — "no replication problem to detect".
+func (p *mysqlProbe) buildReplicationHealth(now time.Time, role dbcommon.Role, health float32) datapoint.DataPoint {
+	t := p.commonTags(dbcommon.MetricTypeOverview)
+	roleTagged := append([]tags.Tag{}, t...)
+	roleTagged = append(roleTagged, tags.Tag{Key: "role", Value: role.String()})
+	return datapoint.DataPoint{
+		Name: "db_replication_health", Timestamp: now, Value: health, Tags: roleTagged,
+	}
 }
 
 // queryReplicaStatus runs SHOW REPLICA STATUS (or SHOW SLAVE
-// STATUS on older versions), reads the columns into a map keyed
-// by column name, and emits the IO/SQL thread state and lag.
-func (p *mysqlProbe) queryReplicaStatus(ctx context.Context, now time.Time, repTags []tags.Tag) []datapoint.DataPoint {
+// STATUS on older versions), emits the IO/SQL thread state + lag
+// metrics, and returns the parsed signals so the caller can fold
+// them into the composite replication.health computation.
+func (p *mysqlProbe) queryReplicaStatus(ctx context.Context, now time.Time, repTags []tags.Tag) ([]datapoint.DataPoint, replicationProbe) {
+	probe := replicationProbe{lagSeconds: -1}
 	stmt := "SHOW REPLICA STATUS"
 	rows, err := p.db.QueryContext(ctx, stmt)
 	if err != nil {
@@ -338,17 +371,17 @@ func (p *mysqlProbe) queryReplicaStatus(ctx context.Context, now time.Time, repT
 		rows, err = p.db.QueryContext(ctx, stmt)
 		if err != nil {
 			p.logger.Warn().Err(err).Msg("replica status query failed")
-			return nil
+			return nil, probe
 		}
 	}
 	defer rows.Close()
 
 	cols, err := rows.Columns()
 	if err != nil {
-		return nil
+		return nil, probe
 	}
 	if !rows.Next() {
-		return nil
+		return nil, probe
 	}
 	raw := make([]interface{}, len(cols))
 	rawPtr := make([]interface{}, len(cols))
@@ -356,7 +389,7 @@ func (p *mysqlProbe) queryReplicaStatus(ctx context.Context, now time.Time, repT
 		rawPtr[i] = &raw[i]
 	}
 	if err := rows.Scan(rawPtr...); err != nil {
-		return nil
+		return nil, probe
 	}
 	values := make(map[string]string, len(cols))
 	for i, name := range cols {
@@ -377,6 +410,7 @@ func (p *mysqlProbe) queryReplicaStatus(ctx context.Context, now time.Time, repT
 			val := float32(0)
 			if strings.EqualFold(v, "Yes") {
 				val = 1
+				probe.io = true
 			}
 			emit("db_replication_io_running", val)
 			break
@@ -387,6 +421,7 @@ func (p *mysqlProbe) queryReplicaStatus(ctx context.Context, now time.Time, repT
 			val := float32(0)
 			if strings.EqualFold(v, "Yes") {
 				val = 1
+				probe.sql = true
 			}
 			emit("db_replication_sql_running", val)
 			break
@@ -404,13 +439,14 @@ func (p *mysqlProbe) queryReplicaStatus(ctx context.Context, now time.Time, repT
 				if lag < 0 {
 					lag = 0
 				}
+				probe.lagSeconds = lag
 				emit("db_replication_lag_seconds", lag)
 			}
 			break
 		}
 	}
 
-	return points
+	return points, probe
 }
 
 // buildCacheMetrics emits the `cache` family.
