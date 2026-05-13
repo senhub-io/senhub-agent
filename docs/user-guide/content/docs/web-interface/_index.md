@@ -1,6 +1,6 @@
 ---
 title: "Web Interface"
-weight: 4
+weight: 5
 ---
 
 # Web Interface
@@ -40,7 +40,6 @@ storage:
 The main dashboard displays:
 
 - Agent status and version
-- Operating mode (online or offline)
 - List of configured probes and their collection status
 - Number of cached metrics per probe
 - Memory and CPU usage
