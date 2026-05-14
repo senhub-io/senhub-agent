@@ -15,13 +15,13 @@ import (
 
 // citrixClient implements the CitrixClient interface for OData API communication
 type citrixClient struct {
-	config         CitrixClientConfig
-	httpClient     *http.Client
-	logger         *logger.ModuleLogger
-	baseURL        string   // Active OData base URL (with /Citrix/Monitor/OData/v4/Data suffix)
-	primaryURL     string   // Primary URL (for recovery)
-	fallbackURLs   []string // Fallback URLs (with suffix)
-	filters        *ClientFilters
+	config       CitrixClientConfig
+	httpClient   *http.Client
+	logger       *logger.ModuleLogger
+	baseURL      string   // Active OData base URL (with /Citrix/Monitor/OData/v4/Data suffix)
+	primaryURL   string   // Primary URL (for recovery)
+	fallbackURLs []string // Fallback URLs (with suffix)
+	filters      *ClientFilters
 }
 
 // Ensure citrixClient implements CitrixClient interface

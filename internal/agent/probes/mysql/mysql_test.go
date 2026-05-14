@@ -269,11 +269,11 @@ func TestBuildCacheMetrics_HitRatioClamp(t *testing.T) {
 	p := stubProbe()
 	now := mustParseTime(t, "2026-05-13T11:00:00Z")
 	status := map[string]string{
-		"Innodb_buffer_pool_reads":           "10",
-		"Innodb_buffer_pool_read_requests":   "1000",
-		"Innodb_buffer_pool_pages_data":      "9000",
-		"Innodb_buffer_pool_pages_total":     "10000",
-		"Innodb_buffer_pool_pages_dirty":     "150",
+		"Innodb_buffer_pool_reads":         "10",
+		"Innodb_buffer_pool_read_requests": "1000",
+		"Innodb_buffer_pool_pages_data":    "9000",
+		"Innodb_buffer_pool_pages_total":   "10000",
+		"Innodb_buffer_pool_pages_dirty":   "150",
 	}
 	points := p.buildCacheMetrics(now, status)
 	got := valueByName(points)

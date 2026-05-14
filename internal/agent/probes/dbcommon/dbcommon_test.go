@@ -103,24 +103,24 @@ func TestIsSystemDatabase(t *testing.T) {
 	// databases must all be flagged. The list is the contract for
 	// the default skip-list applied when expose_per_database is on.
 	cases := map[string]bool{
-		"mysql":               true,
-		"performance_schema":  true,
-		"information_schema":  true,
-		"sys":                 true,
-		"postgres":            true,
-		"template0":           true,
-		"template1":           true,
-		"rdsadmin":            true,
-		"azure_sys":           true,
-		"azure_maintenance":   true,
+		"mysql":              true,
+		"performance_schema": true,
+		"information_schema": true,
+		"sys":                true,
+		"postgres":           true,
+		"template0":          true,
+		"template1":          true,
+		"rdsadmin":           true,
+		"azure_sys":          true,
+		"azure_maintenance":  true,
 		// Case-insensitivity matters: a user might create a DB
 		// named "Postgres" thinking that's distinct from "postgres".
-		"Postgres":            true,
-		"INFORMATION_SCHEMA":  true,
+		"Postgres":           true,
+		"INFORMATION_SCHEMA": true,
 		// User databases must NOT be flagged.
-		"production":          false,
-		"app_db":              false,
-		"users":               false,
+		"production": false,
+		"app_db":     false,
+		"users":      false,
 	}
 	for name, want := range cases {
 		if got := IsSystemDatabase(name); got != want {

@@ -10,14 +10,14 @@ import (
 	"senhub-agent.go/internal/agent/probes/linuxlogs"
 	"senhub-agent.go/internal/agent/probes/logicaldisk"
 	"senhub-agent.go/internal/agent/probes/memory"
-	"senhub-agent.go/internal/agent/probes/mysql" // Import the mysql probe package
+	"senhub-agent.go/internal/agent/probes/mysql"     // Import the mysql probe package
 	"senhub-agent.go/internal/agent/probes/netscaler" // Import the netscaler probe package
 	"senhub-agent.go/internal/agent/probes/network"
 	"senhub-agent.go/internal/agent/probes/postgresql" // Import the postgresql probe package
-	"senhub-agent.go/internal/agent/probes/redfish" // Import the redfish probe package
-	"senhub-agent.go/internal/agent/probes/veeam"   // Import the veeam probe package
+	"senhub-agent.go/internal/agent/probes/redfish"    // Import the redfish probe package
 	"senhub-agent.go/internal/agent/probes/syslog"
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/probes/veeam" // Import the veeam probe package
 	"senhub-agent.go/internal/agent/probes/webapp"
 	"senhub-agent.go/internal/agent/services/logger"
 )
