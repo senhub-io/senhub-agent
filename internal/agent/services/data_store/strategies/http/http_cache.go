@@ -88,6 +88,29 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	"syslog":    {"event_id", "source"}, // Syslog events
+
+	// Database probes — the probes emit multiple datapoints per OTel metric
+	// name discriminated by attribute tags (see docs/developer-guide/otel/
+	// senhub-semantic-conventions.md §4.13 for the full collapse list).
+	"mysql": {
+		"kind",         // mysql.threads{kind=running|connected}
+		"command",      // mysql.commands{command=select|insert|...}
+		"error",        // mysql.connection.errors{error=aborted_clients|...}
+		"status",       // mysql.buffer_pool.data_pages{status=dirty}
+		"state",        // senhub.db.mysql.transaction.count{state=committed|rolled_back}
+		"io.direction", // senhub.db.mysql.io{io.direction=read|write}
+		"role",         // senhub.db.replication.role/health (per-instance, role tag carries semantic)
+		"database",     // per-database opt-in metrics
+		"table",        // per-table opt-in metrics
+	},
+	"postgresql": {
+		"state",     // postgresql.backends{state=active|idle|idle_in_transaction}
+		"operation", // postgresql.wal.lag{operation=replay}
+		"role",      // senhub.db.replication.role/health
+		"schema",    // bloat per-table
+		"table",     // bloat per-table + size per-table
+		"database",  // per-database opt-in metrics
+	},
 }
 
 // MetricCache stores the latest metrics in memory with TTL, organized like a TSDB
