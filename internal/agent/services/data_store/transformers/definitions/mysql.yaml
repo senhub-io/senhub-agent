@@ -1,467 +1,472 @@
 probe_name: "mysql"
 friendly_name: "MySQL / MariaDB"
-version: "1.0.0"
+version: "2.0.0"
 
-# OTel-first source of truth.
-# system.db.* is a SenHub semantic-conventions extension (no
-# stable OTel semconv exists for relational databases yet); for
-# the family of stat-statements / bloat metrics we use the
-# senhub.db.postgres.* / senhub.db.mysql.* namespace.
+# OTel-first transformer (format v3, lot 5 — databases).
+#
+# Source canonique : OTel Collector contrib mysqlreceiver
+# (https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/mysqlreceiver).
+# Quand le receiver contrib expose la métrique, on suit son nom et ses attributs
+# tel quel (drop-in interop avec Grafana, New Relic, etc.). Quand il ne l'expose
+# pas, extension sous `senhub.db.*` (cross-engine) ou `senhub.db.mysql.*`
+# (mysql-specific). Voir docs/developer-guide/otel/senhub-semantic-conventions.md §4.13.
+#
+# Internal probe metric names suivent l'OTel name à 1:1 (engine-prefixé). Quand
+# plusieurs valeurs partagent un même OTel name, on dispatche par attribut via
+# tag_to_attribute (kind, command, state, error, status, io.direction).
 
 metrics:
   # ═════════════════════════════════════════════════════════════════════════
-  # OVERVIEW
+  # OVERVIEW — heartbeat, version, uptime
   # ═════════════════════════════════════════════════════════════════════════
-  - name: "db_up"
+  - name: "senhub.db.up"
     channel: "db_up"
     display_name: "Database Up"
     unit: "#"
     category: "overview"
-    description: "1 if the agent's most recent ping reached the server"
+    description: "1 if the agent's most recent ping reached the server, 0 otherwise"
     lookup: "senhub.db.up"
     otel:
-      name: system.db.up
+      name: senhub.db.up
       unit: "1"
-      type: updowncounter
+      type: gauge
 
-  - name: "db_uptime_seconds"
+  - name: "mysql.uptime"
     channel: "db_uptime"
     display_name: "Uptime"
     unit: "s"
     category: "overview"
-    description: "Seconds since the engine started"
+    description: "Seconds since the engine started (SHOW GLOBAL STATUS LIKE 'Uptime')"
     otel:
-      name: system.db.uptime.seconds
+      name: mysql.uptime
       unit: "s"
-      type: gauge
+      type: counter
 
-  - name: "db_version_info"
+  - name: "senhub.db.version.info"
     channel: "db_version"
     display_name: "Version"
     unit: "#"
     category: "overview"
-    description: "Always 1; engine version carried as label"
+    description: "Engine version banner — value=1, version string carried in attribute db.system.version"
     otel:
-      name: system.db.version.info
+      name: senhub.db.version.info
       unit: "1"
       type: gauge
     tag_to_attribute:
-      version: senhub.db.version
-
-  - name: "db_connections_utilization"
-    channel: "db_connections_utilization"
-    display_name: "Connections Used %"
-    unit: "%"
-    category: "overview"
-    description: "active + idle / max — primary saturation alarm"
-    otel:
-      name: system.db.connections.utilization
-      unit: "1"
-      type: gauge
-
-  - name: "db_replication_role"
-    channel: "db_replication_role"
-    display_name: "Replication Role"
-    unit: "#"
-    category: "overview"
-    description: "0=standalone, 1=primary, 2=replica"
-    lookup: "senhub.db.replication.role"
-    otel:
-      name: system.db.replication.role
-      unit: "1"
-      type: updowncounter
-
-  - name: "db_replication_health"
-    channel: "db_replication_health"
-    display_name: "Replication Health"
-    unit: "#"
-    category: "overview"
-    description: "Composite: io_running AND sql_running AND lag<threshold. Standalone reports 1."
-    lookup: "senhub.db.replication.health"
-    otel:
-      name: system.db.replication.health
-      unit: "1"
-      type: updowncounter
+      version: db.system.version
 
   # ═════════════════════════════════════════════════════════════════════════
-  # CONNECTIONS
+  # CONNECTIONS — threads kind=connected|running, derived idle, max, errors
   # ═════════════════════════════════════════════════════════════════════════
-  - name: "db_connections_active"
-    channel: "db_connections_active"
-    display_name: "Connections Active"
+  - name: "mysql.threads.connected"
+    channel: "mysql_threads_connected"
+    display_name: "Threads Connected"
     unit: "#"
     category: "connections"
-    description: "Sessions currently running a query"
+    description: "Currently open client sessions (Threads_connected)"
     otel:
-      name: system.db.connections.active
-      unit: "{connection}"
+      name: mysql.threads
+      unit: "{thread}"
       type: gauge
+      attributes:
+        kind: connected
 
-  - name: "db_connections_idle"
-    channel: "db_connections_idle"
+  - name: "mysql.threads.running"
+    channel: "mysql_threads_running"
+    display_name: "Threads Running"
+    unit: "#"
+    category: "connections"
+    description: "Threads not sleeping — includes InnoDB background threads on MariaDB (Threads_running)"
+    otel:
+      name: mysql.threads
+      unit: "{thread}"
+      type: gauge
+      attributes:
+        kind: running
+
+  - name: "senhub.db.connection.idle"
+    channel: "db_connection_idle"
     display_name: "Connections Idle"
     unit: "#"
     category: "connections"
-    description: "Sessions connected but doing nothing"
+    description: "Idle client sessions — clamped max(0, Threads_connected − Threads_running)"
     otel:
-      name: system.db.connections.idle
+      name: senhub.db.connection.idle
       unit: "{connection}"
       type: gauge
 
-  - name: "db_connections_max"
-    channel: "db_connections_max"
+  - name: "senhub.db.mysql.connection.max"
+    channel: "mysql_connection_max"
     display_name: "Connections Max"
     unit: "#"
     category: "connections"
-    description: "Engine cap before refusals"
+    description: "max_connections variable (instantaneous cap)"
     otel:
-      name: system.db.connections.max
+      name: senhub.db.mysql.connection.max
       unit: "{connection}"
       type: gauge
 
-  - name: "db_connections_aborted"
-    channel: "db_connections_aborted"
-    display_name: "Connections Aborted"
+  - name: "senhub.db.connection.utilization"
+    channel: "db_connection_utilization"
+    display_name: "Connections Used %"
+    unit: "%"
+    category: "connections"
+    description: "Threads_connected / max_connections, ratio"
+    otel:
+      name: senhub.db.connection.utilization
+      unit: "1"
+      type: gauge
+
+  - name: "mysql.connection.errors.aborted_clients"
+    channel: "mysql_connection_errors_aborted_clients"
+    display_name: "Aborted Clients"
     unit: "#"
     category: "connections"
-    description: "Auth failures + protocol errors (cumulative)"
+    description: "Connections aborted because the client died without closing properly (Aborted_clients)"
     otel:
-      name: system.db.connections.aborted
-      unit: "{connection}"
+      name: mysql.connection.errors
+      unit: "{error}"
       type: counter
+      attributes:
+        error: aborted_clients
 
-  - name: "db_connections_refused"
-    channel: "db_connections_refused"
-    display_name: "Connections Refused"
+  - name: "mysql.connection.errors.aborted_connects"
+    channel: "mysql_connection_errors_aborted_connects"
+    display_name: "Aborted Connects"
     unit: "#"
     category: "connections"
-    description: "Out-of-slots events — capacity alarm"
+    description: "Failed connection attempts — auth or protocol errors (Aborted_connects)"
     otel:
-      name: system.db.connections.refused
-      unit: "{connection}"
+      name: mysql.connection.errors
+      unit: "{error}"
       type: counter
+      attributes:
+        error: aborted_connects
+
+  - name: "mysql.connection.errors.max_connections"
+    channel: "mysql_connection_errors_max_connections"
+    display_name: "Connections Refused (Cap)"
+    unit: "#"
+    category: "connections"
+    description: "Connections rejected due to max_connections cap (Connection_errors_max_connections)"
+    otel:
+      name: mysql.connection.errors
+      unit: "{error}"
+      type: counter
+      attributes:
+        error: max_connections
 
   # ═════════════════════════════════════════════════════════════════════════
-  # THROUGHPUT
+  # THROUGHPUT — queries, commands per verb, transactions, slow queries
   # ═════════════════════════════════════════════════════════════════════════
-  - name: "db_queries_count"
-    channel: "db_queries_count"
+  - name: "mysql.query.count"
+    channel: "mysql_query_count"
     display_name: "Queries"
     unit: "#"
     category: "throughput"
-    description: "Total statements (rate = QPS)"
+    description: "Statements executed (Questions counter)"
     otel:
-      name: system.db.queries.count
+      name: mysql.query.count
       unit: "{query}"
       type: counter
 
-  - name: "db_transactions_committed"
-    channel: "db_transactions_committed"
-    display_name: "Transactions Committed"
-    unit: "#"
-    category: "throughput"
-    description: "Successful commits"
-    otel:
-      name: system.db.transactions.committed
-      unit: "{txn}"
-      type: counter
-
-  - name: "db_transactions_rolled_back"
-    channel: "db_transactions_rolled_back"
-    display_name: "Transactions Rolled Back"
-    unit: "#"
-    category: "throughput"
-    description: "Rollbacks — app errors or deadlocks"
-    otel:
-      name: system.db.transactions.rolled_back
-      unit: "{txn}"
-      type: counter
-
-  - name: "db_mysql_slow_queries_count"
-    channel: "db_slow_queries"
+  - name: "mysql.query.slow.count"
+    channel: "mysql_query_slow_count"
     display_name: "Slow Queries"
     unit: "#"
     category: "throughput"
-    description: "Queries crossing long_query_time threshold"
+    description: "Queries exceeding long_query_time (Slow_queries counter)"
     otel:
-      name: senhub.db.mysql.slow_queries.count
+      name: mysql.query.slow.count
       unit: "{query}"
       type: counter
 
-  - name: "db_mysql_command_count"
-    channel: "db_mysql_command_count_{command}"
+  - name: "mysql.commands"
+    channel: "mysql_commands_{command}"
     display_name: "Commands ({command})"
     unit: "#"
-    category: "throughput"
     multi_instance_labels: ["command"]
-    description: "Per-verb command count (select/insert/update/delete/replace)"
+    category: "throughput"
+    description: "Statements executed per verb (Com_select, Com_insert, Com_update, Com_delete, Com_replace)"
     otel:
-      name: senhub.db.mysql.command.count
-      unit: "{op}"
+      name: mysql.commands
+      unit: "{command}"
       type: counter
     tag_to_attribute:
-      command: senhub.db.mysql.command
+      command: command
 
-  - name: "db_mysql_tmp_tables_disk_ratio"
-    channel: "db_tmp_tables_disk_ratio"
+  - name: "senhub.db.mysql.transaction.count.committed"
+    channel: "mysql_transaction_committed"
+    display_name: "Transactions Committed"
+    unit: "#"
+    category: "throughput"
+    description: "Commits cumulatif (Com_commit). MySQL contrib n'expose pas les transactions — extension SenHub homogène avec mysql.commands."
+    otel:
+      name: senhub.db.mysql.transaction.count
+      unit: "{transaction}"
+      type: counter
+      attributes:
+        state: committed
+
+  - name: "senhub.db.mysql.transaction.count.rolled_back"
+    channel: "mysql_transaction_rolled_back"
+    display_name: "Transactions Rolled Back"
+    unit: "#"
+    category: "throughput"
+    description: "Rollbacks cumulatif (Com_rollback)."
+    otel:
+      name: senhub.db.mysql.transaction.count
+      unit: "{transaction}"
+      type: counter
+      attributes:
+        state: rolled_back
+
+  - name: "senhub.db.mysql.tmp_tables.disk_ratio"
+    channel: "mysql_tmp_tables_disk_ratio"
     display_name: "Tmp Tables to Disk %"
     unit: "%"
     category: "throughput"
-    description: "Created_tmp_disk_tables / total — >25% = tuning needed"
+    description: "Created_tmp_disk_tables / (Created_tmp_disk_tables + Created_tmp_tables) — > 25% suggests increasing tmp_table_size"
     otel:
-      name: senhub.db.mysql.tmp_tables.disk.ratio
+      name: senhub.db.mysql.tmp_tables.disk_ratio
       unit: "1"
       type: gauge
 
   # ═════════════════════════════════════════════════════════════════════════
-  # REPLICATION
+  # CACHE — InnoDB buffer pool
   # ═════════════════════════════════════════════════════════════════════════
-  - name: "db_replication_lag_seconds"
-    channel: "db_replication_lag"
-    display_name: "Replication Lag"
-    unit: "s"
-    category: "replication"
-    description: "Seconds_Behind_Source / Master (replica side)"
-    otel:
-      name: system.db.replication.lag.seconds
-      unit: "s"
-      type: gauge
-
-  - name: "db_replication_io_running"
-    channel: "db_replication_io_running"
-    display_name: "Replication IO Thread"
-    unit: "#"
-    category: "replication"
-    description: "1 = IO thread Yes; 0 = stopped"
-    otel:
-      name: system.db.replication.io_running
-      unit: "1"
-      type: updowncounter
-
-  - name: "db_replication_sql_running"
-    channel: "db_replication_sql_running"
-    display_name: "Replication SQL Thread"
-    unit: "#"
-    category: "replication"
-    description: "1 = SQL thread Yes; 0 = stopped"
-    otel:
-      name: system.db.replication.sql_running
-      unit: "1"
-      type: updowncounter
-
-  - name: "db_replication_replicas_connected"
-    channel: "db_replication_replicas"
-    display_name: "Replicas Connected"
-    unit: "#"
-    category: "replication"
-    description: "Downstream replicas attached (primary side)"
-    otel:
-      name: system.db.replication.replicas.connected
-      unit: "{replica}"
-      type: gauge
-
-  # ═════════════════════════════════════════════════════════════════════════
-  # CACHE
-  # ═════════════════════════════════════════════════════════════════════════
-  - name: "db_buffer_hit_ratio"
-    channel: "db_buffer_hit_ratio"
+  - name: "senhub.db.mysql.buffer_pool.hit_ratio"
+    channel: "mysql_buffer_pool_hit_ratio"
     display_name: "Buffer Hit Ratio"
     unit: "%"
     category: "cache"
-    description: "InnoDB buffer pool hit ratio — <99% = under-provisioned RAM"
+    description: "1 − (Innodb_buffer_pool_reads / Innodb_buffer_pool_read_requests). Derived ratio — contrib expose les compteurs bruts."
     otel:
-      name: system.db.buffer.hit_ratio
+      name: senhub.db.mysql.buffer_pool.hit_ratio
       unit: "1"
       type: gauge
 
-  - name: "db_buffer_utilization"
-    channel: "db_buffer_utilization"
+  - name: "senhub.db.mysql.buffer_pool.utilization"
+    channel: "mysql_buffer_pool_utilization"
     display_name: "Buffer Utilization"
     unit: "%"
     category: "cache"
-    description: "InnoDB buffer pool pages_data / pages_total"
+    description: "Innodb_buffer_pool_pages_data / Innodb_buffer_pool_pages_total"
     otel:
-      name: system.db.buffer.utilization
+      name: senhub.db.mysql.buffer_pool.utilization
       unit: "1"
       type: gauge
 
-  - name: "db_buffer_dirty_pages"
-    channel: "db_buffer_dirty_pages"
+  - name: "mysql.buffer_pool.data_pages.dirty"
+    channel: "mysql_buffer_pool_data_pages_dirty"
     display_name: "Buffer Dirty Pages"
     unit: "#"
     category: "cache"
-    description: "Pressure on the checkpointer"
+    description: "InnoDB pages waiting to be flushed to disk (Innodb_buffer_pool_pages_dirty)"
     otel:
-      name: system.db.buffer.dirty.pages
+      name: mysql.buffer_pool.data_pages
       unit: "{page}"
       type: gauge
+      attributes:
+        status: dirty
 
   # ═════════════════════════════════════════════════════════════════════════
-  # LOCKS
+  # LOCKS — deadlocks (mysql-only — MariaDB doesn't expose), waiting, wait time
   # ═════════════════════════════════════════════════════════════════════════
-  - name: "db_locks_deadlocks"
-    channel: "db_locks_deadlocks"
+  - name: "senhub.db.mysql.lock.deadlocks"
+    channel: "mysql_lock_deadlocks"
     display_name: "Deadlocks"
     unit: "#"
     category: "locks"
-    description: "App-level deadlock count — should be near zero"
+    description: "Cumulative deadlocks detected (Innodb_deadlocks) — silently absent on MariaDB (variable not exposed)"
     otel:
-      name: system.db.locks.deadlocks
-      unit: "{event}"
+      name: senhub.db.mysql.lock.deadlocks
+      unit: "{lock}"
       type: counter
 
-  - name: "db_locks_waiting"
-    channel: "db_locks_waiting"
+  - name: "senhub.db.mysql.lock.waiting"
+    channel: "mysql_lock_waiting"
     display_name: "Locks Waiting"
     unit: "#"
     category: "locks"
-    description: "Sessions currently blocked"
+    description: "Instantaneous count of transactions waiting on a row lock (Innodb_row_lock_current_waits)"
     otel:
-      name: system.db.locks.waiting
+      name: senhub.db.mysql.lock.waiting
       unit: "{lock}"
       type: gauge
 
-  - name: "db_locks_row_lock_time_avg_ms"
-    channel: "db_row_lock_time"
+  - name: "senhub.db.mysql.row_lock.time.avg"
+    channel: "mysql_row_lock_time_avg"
     display_name: "Row Lock Time Avg"
     unit: "ms"
     category: "locks"
-    description: "Innodb_row_lock_time_avg — contention proxy"
+    description: "Average row lock wait time. Source Innodb_row_lock_time_avg in ms — converted to seconds for OTel (mapper ÷ 1000)."
     otel:
-      name: system.db.locks.row_lock_time.avg_ms
-      unit: "ms"
+      name: senhub.db.mysql.row_lock.time.avg
+      unit: "s"
       type: gauge
 
   # ═════════════════════════════════════════════════════════════════════════
-  # IO
+  # IO — InnoDB bytes read/written (split by direction)
   # ═════════════════════════════════════════════════════════════════════════
-  - name: "db_io_read_bytes"
-    channel: "db_io_read"
+  - name: "senhub.db.mysql.io.read"
+    channel: "mysql_io_read"
     display_name: "IO Read"
-    unit: "Bytes"
+    unit: "B"
     category: "io"
-    description: "InnoDB engine-side bytes read"
+    description: "Bytes read by InnoDB (Innodb_data_read)"
     otel:
-      name: system.db.io.read.bytes
+      name: senhub.db.mysql.io
       unit: "By"
       type: counter
+      attributes:
+        io.direction: read
 
-  - name: "db_io_write_bytes"
-    channel: "db_io_write"
+  - name: "senhub.db.mysql.io.write"
+    channel: "mysql_io_write"
     display_name: "IO Write"
-    unit: "Bytes"
+    unit: "B"
     category: "io"
-    description: "InnoDB engine-side bytes written"
+    description: "Bytes written by InnoDB (Innodb_data_written)"
     otel:
-      name: system.db.io.write.bytes
+      name: senhub.db.mysql.io
       unit: "By"
       type: counter
+      attributes:
+        io.direction: write
 
   # ═════════════════════════════════════════════════════════════════════════
-  # STORAGE
+  # STORAGE — database size, tables count
   # ═════════════════════════════════════════════════════════════════════════
-  - name: "db_size_bytes"
-    channel: "db_size"
+  - name: "senhub.db.database.size"
+    channel: "db_database_size"
     display_name: "Database Size"
-    unit: "Bytes"
+    unit: "B"
     category: "storage"
-    description: "Sum of data_length+index_length across non-system schemas"
+    description: "Total size of all user databases (information_schema.tables sum)"
     otel:
-      name: system.db.size.bytes
+      name: senhub.db.database.size
       unit: "By"
       type: gauge
 
-  - name: "db_tables_count"
-    channel: "db_tables_count"
+  - name: "senhub.db.mysql.table.count"
+    channel: "mysql_table_count"
     display_name: "Tables Count"
     unit: "#"
     category: "storage"
-    description: "User tables across non-system schemas"
+    description: "Number of user tables across all databases (excludes information_schema, performance_schema, mysql, sys)"
     otel:
-      name: system.db.tables.count
+      name: senhub.db.mysql.table.count
       unit: "{table}"
       type: gauge
 
   # ═════════════════════════════════════════════════════════════════════════
-  # PER-DATABASE (opt-in: expose_per_database)
+  # REPLICATION — role (expand enum), composite health, replica metrics
   # ═════════════════════════════════════════════════════════════════════════
-  - name: "db_database_size_bytes"
-    channel: "db_database_size_{database}"
+  - name: "senhub.db.replication.role"
+    channel: "db_replication_role"
+    display_name: "Replication Role"
+    unit: "#"
+    category: "replication"
+    description: "Detected replication role of this instance"
+    lookup: "senhub.db.replication.role"
+    otel:
+      name: senhub.db.replication.role
+      unit: "1"
+      type: gauge
+      expand:
+        attribute: role
+        mapping:
+          standalone: 0
+          primary: 1
+          replica: 2
+
+  - name: "senhub.db.replication.health"
+    channel: "db_replication_health"
+    display_name: "Replication Health"
+    unit: "#"
+    category: "replication"
+    description: "Composite gauge: 1 if replication looks healthy (or instance is standalone), 0 if degraded"
+    otel:
+      name: senhub.db.replication.health
+      unit: "1"
+      type: gauge
+
+  - name: "senhub.db.replication.replicas.connected"
+    channel: "db_replication_replicas_connected"
+    display_name: "Replicas Connected"
+    unit: "#"
+    category: "replication"
+    description: "On primary: number of replicas currently connected (SHOW REPLICAS / pg_stat_replication count)"
+    otel:
+      name: senhub.db.replication.replicas.connected
+      unit: "{replica}"
+      type: gauge
+
+  - name: "mysql.replica.time_behind_source"
+    channel: "mysql_replica_time_behind_source"
+    display_name: "Replication Lag"
+    unit: "s"
+    category: "replication"
+    description: "On replica: seconds behind source (Seconds_Behind_Master / Seconds_Behind_Source)"
+    otel:
+      name: mysql.replica.time_behind_source
+      unit: "s"
+      type: gauge
+
+  - name: "senhub.db.mysql.replica.io_thread.running"
+    channel: "mysql_replica_io_thread_running"
+    display_name: "Replica IO Thread Running"
+    unit: "#"
+    category: "replication"
+    description: "On replica: 1 if Slave_IO_Running='Yes', 0 otherwise"
+    otel:
+      name: senhub.db.mysql.replica.io_thread.running
+      unit: "1"
+      type: gauge
+
+  - name: "senhub.db.mysql.replica.sql_thread.running"
+    channel: "mysql_replica_sql_thread_running"
+    display_name: "Replica SQL Thread Running"
+    unit: "#"
+    category: "replication"
+    description: "On replica: 1 if Slave_SQL_Running='Yes', 0 otherwise"
+    otel:
+      name: senhub.db.mysql.replica.sql_thread.running
+      unit: "1"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # PER-DATABASE (opt-in, cardinality-bounded)
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "senhub.db.database.size.per_database"
+    channel: "db_database_size_per_database_{database}"
     display_name: "Database Size ({database})"
-    unit: "Bytes"
-    category: "per_database"
+    unit: "B"
     multi_instance_labels: ["database"]
-    description: "Per-database storage size (data + index)"
+    category: "storage"
+    description: "Size of an individual database (opt-in via per_database flag)"
     otel:
-      name: system.db.database.size.bytes
+      name: senhub.db.database.size
       unit: "By"
       type: gauge
     tag_to_attribute:
-      database: senhub.db.database
+      database: db.namespace
 
   # ═════════════════════════════════════════════════════════════════════════
-  # PER-TABLE (opt-in: expose_top_tables = N)
+  # PER-TABLE (opt-in, cardinality-bounded)
   # ═════════════════════════════════════════════════════════════════════════
-  - name: "db_table_size_bytes"
-    channel: "db_table_size_{schema}_{table}"
-    display_name: "Table Size ({schema}.{table})"
-    unit: "Bytes"
-    category: "per_table"
-    multi_instance_labels: ["schema", "table"]
-    description: "Top-N largest user tables — data + index length"
+  - name: "senhub.db.mysql.table.size"
+    channel: "mysql_table_size_{database}_{table}"
+    display_name: "Table Size ({database}.{table})"
+    unit: "B"
+    multi_instance_labels: ["database", "table"]
+    category: "storage"
+    description: "Size of an individual table (opt-in via per_table flag)"
     otel:
-      name: system.db.table.size.bytes
+      name: senhub.db.mysql.table.size
       unit: "By"
       type: gauge
     tag_to_attribute:
-      schema: senhub.db.schema
-      table: senhub.db.table
-
-tag_metadata:
-  metric_type:
-    type: category
-    label: "Metric Category"
-    value_labels:
-      overview: "Overview"
-      connections: "Connections"
-      throughput: "Throughput"
-      replication: "Replication"
-      cache: "Buffer / Cache"
-      locks: "Locks"
-      io: "IO"
-      storage: "Storage"
-      per_database: "Per-Database"
-      per_table: "Per-Table (Top-N)"
-  engine:
-    type: resource
-    label: "Engine"
-  instance:
-    type: resource
-    label: "Instance"
-  environment:
-    type: resource
-    label: "Environment"
-  role:
-    type: resource
-    label: "Replication Role"
-    linked_categories: ["overview", "replication"]
-  command:
-    type: resource
-    label: "MySQL Command"
-    linked_categories: ["throughput"]
-  database:
-    type: resource
-    label: "Database"
-    linked_categories: ["per_database"]
-  schema:
-    type: resource
-    label: "Schema"
-    linked_categories: ["per_table"]
-  table:
-    type: resource
-    label: "Table"
-    linked_categories: ["per_table"]
-  version:
-    type: resource
-    label: "Version"
-    linked_categories: ["overview"]
+      database: db.namespace
+      table: db.table.name
