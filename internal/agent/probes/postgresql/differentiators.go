@@ -81,7 +81,7 @@ func (p *postgresqlProbe) buildBloatMetrics(ctx context.Context, now time.Time) 
 		// Approximation only; pgstattuple_approx() returns a more
 		// precise number.
 		bloatBytes := int64(float64(size) * float64(ratio))
-		v, _ := sanitize.BytesInt32(bloatBytes)
+		v, _ := sanitize.Bytes(bloatBytes)
 		points = append(points, datapoint.DataPoint{
 			Name: "db_postgres_bloat_bytes", Timestamp: now, Value: v, Tags: tagsRow,
 		})
