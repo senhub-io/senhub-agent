@@ -60,7 +60,7 @@ func (p *mysqlProbe) buildReplicationMetrics(ctx context.Context, now time.Time,
 		if v, ok := asInt(status, k); ok {
 			val, _ := sanitize.CountInt32(v)
 			points = append(points, datapoint.DataPoint{
-				Name: "db_replication_replicas_connected", Timestamp: now, Value: val, Tags: roleTagged,
+				Name: "senhub.db.replication.replicas.connected", Timestamp: now, Value: val, Tags: roleTagged,
 			})
 			break
 		}
@@ -69,16 +69,16 @@ func (p *mysqlProbe) buildReplicationMetrics(ctx context.Context, now time.Time,
 	return points, health
 }
 
-// buildReplicationHealth emits db_replication_health under the
-// overview family. The value is the composite 0/1 derived from the
-// SHOW REPLICA STATUS signals (DESIGN §5.2). Standalone gets 1 by
-// convention — "no replication problem to detect".
+// buildReplicationHealth emits senhub.db.replication.health under
+// the overview family. The value is the composite 0/1 derived from
+// the SHOW REPLICA STATUS signals (DESIGN §5.2). Standalone gets 1
+// by convention — "no replication problem to detect".
 func (p *mysqlProbe) buildReplicationHealth(now time.Time, role dbcommon.Role, health float32) datapoint.DataPoint {
 	t := p.commonTags(dbcommon.MetricTypeOverview)
 	roleTagged := append([]tags.Tag{}, t...)
 	roleTagged = append(roleTagged, tags.Tag{Key: "role", Value: role.String()})
 	return datapoint.DataPoint{
-		Name: "db_replication_health", Timestamp: now, Value: health, Tags: roleTagged,
+		Name: "senhub.db.replication.health", Timestamp: now, Value: health, Tags: roleTagged,
 	}
 }
 
@@ -136,7 +136,7 @@ func (p *mysqlProbe) queryReplicaStatus(ctx context.Context, now time.Time, repT
 				val = 1
 				probe.io = true
 			}
-			emit("db_replication_io_running", val)
+			emit("senhub.db.mysql.replica.io_thread.running", val)
 			break
 		}
 	}
@@ -147,7 +147,7 @@ func (p *mysqlProbe) queryReplicaStatus(ctx context.Context, now time.Time, repT
 				val = 1
 				probe.sql = true
 			}
-			emit("db_replication_sql_running", val)
+			emit("senhub.db.mysql.replica.sql_thread.running", val)
 			break
 		}
 	}
@@ -164,7 +164,7 @@ func (p *mysqlProbe) queryReplicaStatus(ctx context.Context, now time.Time, repT
 					lag = 0
 				}
 				probe.lagSeconds = lag
-				emit("db_replication_lag_seconds", lag)
+				emit("mysql.replica.time_behind_source", lag)
 			}
 			break
 		}

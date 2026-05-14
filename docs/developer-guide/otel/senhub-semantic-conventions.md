@@ -1,7 +1,7 @@
 # SenHub OpenTelemetry Semantic Conventions
 
 **Statut :** WIP — document vivant, mis à jour à chaque lot de probes
-**Dernière mise à jour :** 2026-04-18 (Lot 1: cpu)
+**Dernière mise à jour :** 2026-05-14 (Lot 5: databases)
 **Audience :** développeurs de probes, mainteneurs des mappers
 
 ## 0. Objet
@@ -586,6 +586,150 @@ Tous les enums `state` (lbvserver, service, servicegroup, csvserver, gslbvserver
 **11 métriques** utilisent `otel.expand` pour les enums NITRO.
 **3 métriques disk** mappées à OTel native `system.filesystem.*`.
 **~62 extensions** sous `senhub.netscaler.*` pour les domaines NITRO spécifiques.
+
+### 4.13 Probes `mysql` / `postgresql` (databases)
+
+**Sources principales :**
+- [OTel Collector contrib — mysqlreceiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/mysqlreceiver) (convention de facto `mysql.*`)
+- [OTel Collector contrib — postgresqlreceiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/postgresqlreceiver) (convention de facto `postgresql.*`)
+- [OTel Semantic Conventions — Database](https://opentelemetry.io/docs/specs/semconv/database/) (resource attrs `db.system.name`, `db.namespace`, `server.address`, `server.port`)
+
+**Stratégie :** suivre les receivers contrib comme canon (drop-in interop avec dashboards Grafana publics + outils tiers). Étendre en `senhub.db.<engine>.*` uniquement quand le contrib n'a pas la métrique, ou en `senhub.db.*` (sans préfixe engine) quand la sémantique est cross-engine et identique.
+
+OTel n'a pas de semconv officielle pour le monitoring server-side DB — les `mysql.*` / `postgresql.*` des receivers contrib sont des conventions de facto largement adoptées (Grafana Cloud, New Relic, etc.).
+
+#### 4.13.1 Resource attributes
+
+Chaque export OTLP de probe DB ajoute (au-delà de `service.*` et `host.*` déjà émis) :
+
+| Attribute | Value | Source |
+|---|---|---|
+| `db.system.name` | `"mysql"` ou `"postgresql"` | OTel semconv canonique |
+| `server.address` | host du serveur DB | OTel semconv |
+| `server.port` | port (3306 / 5432) | OTel semconv |
+| `db.namespace` | database par défaut (config) | OTel semconv |
+
+Le tag agent `probe_type=mysql\|postgresql` reste émis comme metric attribute (universel à toutes les probes SenHub).
+
+#### 4.13.2 MySQL — métriques (32)
+
+**Contrib mysql receiver utilisé tel quel (10) :**
+
+| Notre métrique | OTel name | Unit | Type | Attributes |
+|---|---|---|---|---|
+| Threads running | `mysql.threads` | `{thread}` | gauge | `kind=running` |
+| Threads connected | `mysql.threads` | `{thread}` | gauge | `kind=connected` |
+| Aborted connections (clients + connects) | `mysql.connection.errors` | `{error}` | counter | `error=aborted_clients` ou `aborted_connects` (2 datapoints distincts) |
+| Refused connections | `mysql.connection.errors` | `{error}` | counter | `error=max_connections` |
+| Queries (Questions) | `mysql.query.count` | `{query}` | counter | (none) |
+| Slow queries | `mysql.query.slow.count` | `{query}` | counter | (none) |
+| Commands per verb | `mysql.commands` | `{command}` | counter | `command=select\|insert\|update\|delete\|replace` |
+| Buffer pool dirty pages | `mysql.buffer_pool.data_pages` | `{page}` | gauge | `status=dirty` |
+| Uptime | `mysql.uptime` | `s` | counter | (none) |
+| Replica lag | `mysql.replica.time_behind_source` | `s` | gauge | (none) |
+
+**Extensions `senhub.db.*` (cross-engine, 5) :**
+
+| Métrique | OTel name | Unit | Type | Attributes |
+|---|---|---|---|---|
+| Probe heartbeat (DB reachable) | `senhub.db.up` | `1` | gauge | (none) |
+| Version banner | `senhub.db.version.info` | `1` | gauge | `db.system.version`=<str> |
+| Connection idle (computed: connected−running) | `senhub.db.connection.idle` | `{connection}` | gauge | (none) |
+| Connection utilization | `senhub.db.connection.utilization` | `1` | gauge | (none) — ratio threads_connected/max_connections |
+| Database total size | `senhub.db.database.size` | `By` | gauge | (none) |
+
+**Extensions `senhub.db.mysql.*` (12) :**
+
+| Métrique | OTel name | Unit | Type | Attributes |
+|---|---|---|---|---|
+| Max connections (gauge, distinct du counter contrib `mysql.connection.count`) | `senhub.db.mysql.connection.max` | `{connection}` | gauge | (none) |
+| Transaction count | `senhub.db.mysql.transaction.count` | `{transaction}` | counter | `state=committed\|rolled_back` |
+| Buffer pool hit ratio (dérivé reads/requests) | `senhub.db.mysql.buffer_pool.hit_ratio` | `1` | gauge | (none) |
+| Buffer pool utilization (dérivé pages_data/pages_total) | `senhub.db.mysql.buffer_pool.utilization` | `1` | gauge | (none) |
+| Deadlocks cumulatif | `senhub.db.mysql.lock.deadlocks` | `{lock}` | counter | (none) — silently absent sur MariaDB |
+| Row locks waiting (gauge instantané) | `senhub.db.mysql.lock.waiting` | `{lock}` | gauge | (none) |
+| Row lock wait time avg | `senhub.db.mysql.row_lock.time.avg` | `s` | gauge | (none) — **conversion ms→s** |
+| IO bytes (read/write) | `senhub.db.mysql.io` | `By` | counter | `io.direction=read\|write` |
+| Tmp tables disk ratio | `senhub.db.mysql.tmp_tables.disk_ratio` | `1` | gauge | (none) |
+| Tables count | `senhub.db.mysql.table.count` | `{table}` | gauge | (none) |
+| Replica IO thread running | `senhub.db.mysql.replica.io_thread.running` | `1` | gauge | (none) |
+| Replica SQL thread running | `senhub.db.mysql.replica.sql_thread.running` | `1` | gauge | (none) |
+
+**Extensions `senhub.db.*` réplication (3, partagées avec postgres) :**
+
+| Métrique | OTel name | Unit | Type | Attributes |
+|---|---|---|---|---|
+| Role | `senhub.db.replication.role` | `1` | gauge | `role=primary\|replica\|standalone` (via `otel.expand`) |
+| Composite health | `senhub.db.replication.health` | `1` | gauge | (none) |
+| Replicas connected | `senhub.db.replication.replicas.connected` | `{replica}` | gauge | (none) |
+
+#### 4.13.3 PostgreSQL — métriques (30)
+
+**Contrib postgresql receiver utilisé tel quel (8) :**
+
+| Notre métrique | OTel name | Unit | Type | Attributes |
+|---|---|---|---|---|
+| Backends actifs/idle/idle in tx | `postgresql.backends` | `{backend}` | gauge | `state=active\|idle\|idle_in_transaction` |
+| Max connections | `postgresql.connection.max` | `{connection}` | gauge | (none) |
+| Commits cumulatif | `postgresql.commits` | `{transaction}` | counter | (none) |
+| Rollbacks cumulatif | `postgresql.rollbacks` | `{transaction}` | counter | (none) |
+| Deadlocks cumulatif | `postgresql.deadlocks` | `{deadlock}` | counter | (none) |
+| Database size | `postgresql.db_size` | `By` | gauge | (none) |
+| Tables count | `postgresql.table.count` | `{table}` | gauge | (none) |
+| WAL replication lag (replay) | `postgresql.wal.lag` | `s` | gauge | `operation=replay` |
+
+**Extensions `senhub.db.*` (5, cross-engine partagées) :** `senhub.db.up`, `senhub.db.version.info`, `senhub.db.connection.utilization`, `senhub.db.replication.role` + `.health` + `.replicas.connected` (idem mysql ci-dessus).
+
+**Extensions `senhub.db.postgresql.*` (9) :**
+
+| Métrique | OTel name | Unit | Type | Attributes |
+|---|---|---|---|---|
+| Uptime | `senhub.db.postgresql.uptime` | `s` | gauge | (none) — `pg_postmaster_start_time` (contrib n'expose pas l'uptime) |
+| Buffer hit ratio (dérivé blocks_hit/blocks_read) | `senhub.db.postgresql.buffer.hit_ratio` | `1` | gauge | (none) |
+| Locks waiting (gauge instantané) | `senhub.db.postgresql.lock.waiting` | `{lock}` | gauge | (none) |
+| Long-running transaction age (oldest active xact) | `senhub.db.postgresql.long_running_xact` | `s` | gauge | (none) |
+| Archiver failures cumulatif | `senhub.db.postgresql.archiver.failed` | `{failure}` | counter | (none) |
+| Archive freshness (age last_archived_wal) | `senhub.db.postgresql.archiver.last_archived.age` | `s` | gauge | (none) |
+| Replica IO running (composite) | `senhub.db.postgresql.replica.io.running` | `1` | gauge | (none) |
+| Bloat ratio (per table, opt-in) | `senhub.db.postgresql.bloat.ratio` | `1` | gauge | `db.table.name` |
+| Bloat bytes (per table, opt-in) | `senhub.db.postgresql.bloat.size` | `By` | gauge | `db.table.name` |
+
+**Extensions `senhub.db.postgresql.statement.*` (2, pg_stat_statements opt-in) :**
+
+| Métrique | OTel name | Unit | Type | Attributes |
+|---|---|---|---|---|
+| Total query calls | `senhub.db.postgresql.statement.calls` | `{call}` | counter | (none) |
+| Mean exec time | `senhub.db.postgresql.statement.exec_time.mean` | `s` | gauge | (none) — **conversion ms→s** |
+
+#### 4.13.4 Collapses majeurs
+
+Décisions de design qui réduisent le nombre de métriques distinctes en utilisant des attributs :
+
+- **`mysql.threads{kind=running|connected}`** au lieu de deux métriques séparées. L'idle (`connected − running`) reste émis comme métrique dérivée `senhub.db.connection.idle` pour les sinks non-arithmétiques (PRTG, Nagios).
+- **`mysql.connection.errors{error=aborted_clients|aborted_connects|max_connections}`** au lieu de trois métriques séparées. **Plus de fidélité que l'ancienne implémentation** qui sommait `aborted_clients + aborted_connects` en un seul `connections_aborted`.
+- **`mysql.commands{command=…}`** : 5 séries (select/insert/update/delete/replace) sous un seul nom. Cardinality bornée, pas d'explosion.
+- **`senhub.db.mysql.io{io.direction=read|write}`** au lieu de `_read_bytes` / `_write_bytes` séparés. Aligné sur l'attribut `io.direction` OTel semconv (utilisé aussi par `system.disk.io`, `system.network.io`).
+- **`senhub.db.mysql.transaction.count{state=committed|rolled_back}`** au lieu de deux métriques. **Asymétrie volontaire avec postgres** : postgres expose `postgresql.commits` + `postgresql.rollbacks` séparés (canon contrib), mysql contrib n'a pas → on étend en `senhub.db.mysql.*` avec attribut.
+- **`postgresql.backends{state=…}`** : 3 séries (active/idle/idle_in_transaction) sous un seul nom — pattern contrib.
+- **`senhub.db.replication.role`** avec `otel.expand`: 3 datapoints `role=primary|replica|standalone`, chacun à 1 si match, 0 sinon. Pattern strict OTel pour les enums (cf. §2bis).
+
+#### 4.13.5 Asymétries assumées entre mysql et postgres
+
+| Concept | MySQL | PostgreSQL | Pourquoi |
+|---|---|---|---|
+| Commits/Rollbacks | `senhub.db.mysql.transaction.count{state}` | `postgresql.commits` + `postgresql.rollbacks` | Contrib postgres a deux métriques distinctes, contrib mysql n'a pas de tx → on s'aligne sur chaque canon |
+| Threads/Backends | `mysql.threads{kind}` | `postgresql.backends{state}` | Deux conventions différentes du contrib — attribut nommé différemment (kind vs state) |
+| Lag de réplication | `mysql.replica.time_behind_source` | `postgresql.wal.lag{operation=replay}` | Sémantiques natives engine-specific |
+| Uptime | `mysql.uptime` (counter) | `senhub.db.postgresql.uptime` (gauge) | Contrib postgres n'expose pas uptime ; on dérive de `pg_postmaster_start_time` (gauge logique) |
+
+Les requêtes cross-engine se font via le resource attribute `db.system.name` ou le tag `probe_type` ; pas via un nom de métrique commun.
+
+#### 4.13.6 Récap
+
+- **MySQL** : 27 métriques actives (sans deadlocks sur MariaDB), réparties en 10 contrib + 5 senhub-cross-db + 12 senhub-mysql.
+- **PostgreSQL** : 30 métriques (21 sur primary standalone, +bloat/stat_statements/per-db en opt-in), réparties en 8 contrib + 5 senhub-cross-db + 9+2 senhub-pg.
+- **3 métriques** utilisent `otel.expand` (`senhub.db.replication.role`).
+- **Aucune métrique avec suffixe d'unité dans le nom** (ms/seconds/bytes/count) — règle OTel respectée stricte.
 
 ## 5. Conventions — lot 4 complet
 

@@ -164,8 +164,8 @@ func TestBuildOverviewMetrics_FromStubMaps(t *testing.T) {
 
 	got := nameSet(points)
 	for _, expect := range []string{
-		"db_uptime_seconds", "db_version_info",
-		"db_connections_utilization", "db_replication_role",
+		"mysql.uptime", "senhub.db.version.info",
+		"senhub.db.connection.utilization", "senhub.db.replication.role",
 	} {
 		if !got[expect] {
 			t.Errorf("overview missing %q (got %v)", expect, keys(got))
@@ -187,12 +187,22 @@ func TestBuildConnectionsMetrics_FromStubMaps(t *testing.T) {
 
 	points := p.buildConnectionsMetrics(now, status, vars)
 
+	// OTel-canonical names + collapses:
+	//   mysql.threads kind=running (T_running=5)
+	//   mysql.threads kind=connected (T_connected=20)
+	//   senhub.db.connection.idle = max(0, 20-5) = 15
+	//   senhub.db.mysql.connection.max = 100
+	//   mysql.connection.errors error=aborted_clients (=3)
+	//   mysql.connection.errors error=aborted_connects (=1)
+	//   mysql.connection.errors error=max_connections (=0)
 	want := map[string]float32{
-		"db_connections_active":   5,
-		"db_connections_idle":     15,
-		"db_connections_max":      100,
-		"db_connections_aborted":  4,
-		"db_connections_refused":  0,
+		"mysql.threads.running":                    5,
+		"mysql.threads.connected":                  20,
+		"senhub.db.connection.idle":                15,
+		"senhub.db.mysql.connection.max":           100,
+		"mysql.connection.errors.aborted_clients":  3,
+		"mysql.connection.errors.aborted_connects": 1,
+		"mysql.connection.errors.max_connections":  0,
 	}
 	gotByName := valueByName(points)
 	for n, expected := range want {
@@ -220,11 +230,12 @@ func TestBuildThroughputMetrics_PerCommandTag(t *testing.T) {
 	}
 	points := p.buildThroughputMetrics(now, status)
 
-	// Per-verb metric: same metric name across verbs, distinguished
-	// by the `command` tag. Five verbs → five points.
+	// Per-verb metric: same OTel name across verbs, distinguished by
+	// the `command` tag (mapped to OTel attribute via YAML). Five
+	// verbs → five points.
 	verbCount := 0
 	for _, pt := range points {
-		if pt.Name == "db_mysql_command_count" {
+		if pt.Name == "mysql.commands" {
 			verbCount++
 			var verb string
 			for _, t := range pt.Tags {
@@ -233,7 +244,7 @@ func TestBuildThroughputMetrics_PerCommandTag(t *testing.T) {
 				}
 			}
 			if verb == "" {
-				t.Errorf("db_mysql_command_count without command tag")
+				t.Errorf("mysql.commands without command tag")
 			}
 		}
 	}
@@ -267,14 +278,14 @@ func TestBuildCacheMetrics_HitRatioClamp(t *testing.T) {
 	points := p.buildCacheMetrics(now, status)
 	got := valueByName(points)
 	// Hit ratio = (1000-10)/1000 = 0.99
-	if v := got["db_buffer_hit_ratio"]; v < 0.989 || v > 0.991 {
+	if v := got["senhub.db.mysql.buffer_pool.hit_ratio"]; v < 0.989 || v > 0.991 {
 		t.Errorf("buffer hit ratio = %v, want ~0.99", v)
 	}
 	// Utilization = 9000/10000 = 0.9
-	if v := got["db_buffer_utilization"]; v < 0.89 || v > 0.91 {
+	if v := got["senhub.db.mysql.buffer_pool.utilization"]; v < 0.89 || v > 0.91 {
 		t.Errorf("buffer utilization = %v, want ~0.9", v)
 	}
-	if v := got["db_buffer_dirty_pages"]; v != 150 {
+	if v := got["mysql.buffer_pool.data_pages.dirty"]; v != 150 {
 		t.Errorf("dirty pages = %v, want 150", v)
 	}
 }
