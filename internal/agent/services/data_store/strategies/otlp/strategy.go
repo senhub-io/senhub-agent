@@ -281,11 +281,10 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 	}
 
 	tracer := otel.Tracer(tracesScopeName)
-	parent, span := tracer.Start(parent, "otlp.push.metrics",
-		// Endpoint as attribute so split-backend configs (per-signal
-		// override) show the actual target the span pushed to.
-		// Set at start so it's present even if the push panics.
-	)
+	parent, span := tracer.Start(parent, "otlp.push.metrics")// Endpoint as attribute so split-backend configs (per-signal
+	// override) show the actual target the span pushed to.
+	// Set at start so it's present even if the push panics.
+
 	span.SetAttributes(
 		attribute.String("otlp.endpoint", s.cfg.Metrics.ResolveEndpoint(s.cfg.Endpoint)),
 	)

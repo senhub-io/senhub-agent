@@ -226,7 +226,7 @@ metrics:
     display_name: "Tmp Tables to Disk %"
     unit: "%"
     category: "throughput"
-    description: "Created_tmp_disk_tables / (Created_tmp_disk_tables + Created_tmp_tables) — > 25% suggests increasing tmp_table_size"
+    description: "Created_tmp_disk_tables / Created_tmp_tables — `Created_tmp_tables` already includes the disk-spilled subset on MySQL 8.0 and MariaDB; > 25% suggests increasing tmp_table_size."
     otel:
       name: senhub.db.mysql.tmp_tables.disk_ratio
       unit: "1"

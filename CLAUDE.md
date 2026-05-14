@@ -197,6 +197,13 @@ See [Current Development](./docs/developer-guide/current-development.md) for det
 
 ## Recent Completions
 
+- ✅ Database probes OTel-first — mysql + postgresql metric names fully
+  migrated to OTel-canonical (`mysql.*`, `postgresql.*`,
+  `senhub.db.*`). `sanitize.Bytes` lifted 2 GB cap. `row_lock.time.avg`
+  and `stat_statements.exec_time.mean` now in seconds. Resource
+  attributes `db.system.name`, `server.address`, `server.port` on every
+  DB datapoint. DiscriminantTagsRegistry updated. (0.1.92-beta)
+- ✅ Prometheus output cleanup + CPU semantics across OS (0.1.91-beta)
 - ✅ Grafana dashboard catalog v1 — 21 dashboards (Linux + Windows
   + agent self-monitoring + 8 vendor) shipped in 0.1.90-beta
 - ✅ Agent self-observability metrics — 6 process + 5 OTLP push
@@ -252,4 +259,4 @@ All commits should appear as authored solely by the repository owner.
 
 **For complete development documentation, start with [Developer Guide](./docs/developer-guide/README.md).**
 
-Last updated: 2026-05-12 (0.1.90-beta)
+Last updated: 2026-05-13 (0.1.92-beta)

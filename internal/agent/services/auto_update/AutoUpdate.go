@@ -22,12 +22,12 @@ import (
 )
 
 var (
-	DEFAULT_REGISTRY_URL               = "https://eu-west-1.intake.senhub.io/"
-	VERSION_METADATA_LIST_PATH         = "/releases/releases.json"
-	VERSION_METADATA_LIST_BETA_PATH    = "/releases/beta/releases.json"
-	VERSION_METADATA_PATH              = "/download/%s/metadata.json"
-	VERSION_BINARY_PATH                = "/download/%s/%s"
-	DEFAULT_UPDATE_CHECK_INTERVAL      = 1 * time.Hour
+	DEFAULT_REGISTRY_URL            = "https://eu-west-1.intake.senhub.io/"
+	VERSION_METADATA_LIST_PATH      = "/releases/releases.json"
+	VERSION_METADATA_LIST_BETA_PATH = "/releases/beta/releases.json"
+	VERSION_METADATA_PATH           = "/download/%s/metadata.json"
+	VERSION_BINARY_PATH             = "/download/%s/%s"
+	DEFAULT_UPDATE_CHECK_INTERVAL   = 1 * time.Hour
 )
 
 // ConfigSource defines interface for auto-update configuration access
