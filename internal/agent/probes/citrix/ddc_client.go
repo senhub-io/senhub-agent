@@ -20,7 +20,7 @@ type deliveryControllerClient struct {
 	httpClient   *http.Client
 	logger       *logger.ModuleLogger
 	primaryURL   string
-	activeURL    string   // Currently used URL (primary or fallback)
+	activeURL    string // Currently used URL (primary or fallback)
 	fallbackURLs []string
 	authConfig   AuthConfig
 	token        string

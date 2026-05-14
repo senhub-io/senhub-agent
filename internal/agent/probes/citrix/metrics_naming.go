@@ -11,7 +11,7 @@ const (
 	MetricMachinesUnregistered = "machines_unregistered"
 	MetricMachinesFaulty       = "machines_faulty"
 	MetricMachinesMaintenance  = "machines_maintenance"
-	MetricMachinesFaultyTotal = "machines_faulty_total"
+	MetricMachinesFaultyTotal  = "machines_faulty_total"
 
 	// Session Metrics
 	MetricSessionsConnected    = "sessions_connected"
@@ -43,12 +43,12 @@ const (
 	MetricLoadOverloaded     = "load_overloaded_machines"
 
 	// License Metrics
-	MetricLicenseSessionsActive     = "license_sessions_active"
-	MetricLicensePeakConcurrent     = "license_peak_concurrent"
-	MetricLicenseUniqueUsers        = "license_unique_users"
-	MetricLicenseGraceSessionsLeft  = "license_grace_sessions_left"
-	MetricLicenseGracePeriodActive  = "license_grace_period_active"
-	MetricLicenseGraceHoursLeft     = "license_grace_hours_left"
+	MetricLicenseSessionsActive    = "license_sessions_active"
+	MetricLicensePeakConcurrent    = "license_peak_concurrent"
+	MetricLicenseUniqueUsers       = "license_unique_users"
+	MetricLicenseGraceSessionsLeft = "license_grace_sessions_left"
+	MetricLicenseGracePeriodActive = "license_grace_period_active"
+	MetricLicenseGraceHoursLeft    = "license_grace_hours_left"
 
 	// Connection Failure Metrics
 	MetricFailuresTotal  = "failures_total"

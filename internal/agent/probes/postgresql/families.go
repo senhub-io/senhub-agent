@@ -55,7 +55,7 @@ func (p *postgresqlProbe) buildOverviewMetrics(ctx context.Context, now time.Tim
 	// max_connections.
 	var active, maxConn int64
 	_ = p.db.QueryRowContext(ctx, "SELECT count(*) FROM pg_stat_activity").Scan(&active)
-	_ = p.db.QueryRowContext(ctx, "SHOW max_connections").Scan(&maxConn)
+	_ = p.db.QueryRowContext(ctx, "SELECT current_setting('max_connections')::int").Scan(&maxConn)
 	if active > 0 && maxConn > 0 {
 		points = p.addRatio(points, "senhub.db.connection.utilization", active, maxConn, now, dbcommon.MetricTypeOverview)
 	}
@@ -94,6 +94,9 @@ func (p *postgresqlProbe) buildConnectionsMetrics(ctx context.Context, now time.
 			}
 			counts[s] = n
 		}
+		if err := rows.Err(); err != nil {
+			p.logger.Warn().Err(err).Msg("connections row scan interrupted; partial counts may flow this cycle")
+		}
 		points = p.addCountTagged(points, "postgresql.backends.active", counts["active"], now, dbcommon.MetricTypeConnections, "state", "active")
 		points = p.addCountTagged(points, "postgresql.backends.idle", counts["idle"], now, dbcommon.MetricTypeConnections, "state", "idle")
 		points = p.addCountTagged(points, "postgresql.backends.idle_in_transaction",
@@ -103,7 +106,7 @@ func (p *postgresqlProbe) buildConnectionsMetrics(ctx context.Context, now time.
 
 	// max_connections — config, not state.
 	var maxConn int64
-	if err := p.db.QueryRowContext(ctx, "SHOW max_connections").Scan(&maxConn); err == nil {
+	if err := p.db.QueryRowContext(ctx, "SELECT current_setting('max_connections')::int").Scan(&maxConn); err == nil {
 		points = p.addCount(points, "postgresql.connection.max", maxConn, now, dbcommon.MetricTypeConnections)
 	}
 
@@ -298,6 +301,9 @@ func (p *postgresqlProbe) buildPerDatabaseMetrics(ctx context.Context, now time.
 			Name: "postgresql.db_size.per_database", Timestamp: now, Value: v, Tags: tagsRow,
 		})
 	}
+	if err := rows.Err(); err != nil {
+		p.logger.Warn().Err(err).Msg("per-database row scan interrupted; partial results may flow this cycle")
+	}
 	return points
 }
 
@@ -335,6 +341,9 @@ func (p *postgresqlProbe) buildPerTableMetrics(ctx context.Context, now time.Tim
 		points = append(points, datapoint.DataPoint{
 			Name: "postgresql.table.size", Timestamp: now, Value: v, Tags: tagsRow,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		p.logger.Warn().Err(err).Msg("per-table row scan interrupted; partial results may flow this cycle")
 	}
 	return points
 }

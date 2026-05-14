@@ -238,7 +238,7 @@ Uses the `pgstattuple_approx()` function when the extension is
 available, falling back to the lightweight estimate from
 `pg_class.reltuples` and average row width. Capped to the top N
 tables by size (default 10, configurable via `bloat_top_n`). Two
-metrics: `system.db.postgres.bloat.ratio` and `…bloat.bytes`,
+metrics: `senhub.db.postgres.bloat.ratio` and `…bloat.bytes`,
 tagged with `relation` and `schema`.
 
 No OSS exporter ships this today.
@@ -256,9 +256,9 @@ all statements). Per-statement metrics are explicitly out of scope.
 
 ### 5.5 Backup freshness
 
-- PG: `system.db.postgres.archiver.last_archived.age.seconds` from
+- PG: `senhub.db.postgres.archiver.last_archived.age.seconds` from
   `pg_stat_archiver.last_archived_time`.
-- MySQL: `system.db.mysql.last_binlog.age.seconds` derived from
+- MySQL: `senhub.db.mysql.last_binlog.age.seconds` derived from
   `SHOW BINARY LOGS` mtime of the newest file (where the agent has
   filesystem access; managed instances fall back to "unavailable"
   + WARN log).
@@ -275,11 +275,11 @@ is what dashboards and PRTG thresholds bind to.
 
 ### 5.7 Idle-in-transaction as a first-class channel
 
-`system.db.connections.idle_in_transaction` is a top-tier metric,
+`senhub.db.connections.idle_in_transaction` is a top-tier metric,
 not buried in a per-state breakdown. PG-only.
 
 A long-running variant —
-`system.db.postgres.long_running_xact.seconds` — exposes the age of
+`senhub.db.postgres.long_running_xact.seconds` — exposes the age of
 the **oldest** transaction currently open. This is the metric that
 predicts vacuum starvation.
 
