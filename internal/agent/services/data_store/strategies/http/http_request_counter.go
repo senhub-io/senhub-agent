@@ -84,4 +84,3 @@ func resetHTTPRequestCountersForTest() {
 	defer httpRequestCountersMu.Unlock()
 	httpRequestCounters = map[string]*atomic.Uint64{}
 }
-

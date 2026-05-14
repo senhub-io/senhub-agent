@@ -8,11 +8,11 @@ import (
 )
 
 var (
-	kernel32                   = syscall.NewLazyDLL("kernel32.dll")
-	psapi                      = syscall.NewLazyDLL("psapi.dll")
-	procGetCurrentProcess      = kernel32.NewProc("GetCurrentProcess")
-	procGetProcessHandleCount  = kernel32.NewProc("GetProcessHandleCount")
-	procGetProcessMemoryInfo   = psapi.NewProc("GetProcessMemoryInfo")
+	kernel32                  = syscall.NewLazyDLL("kernel32.dll")
+	psapi                     = syscall.NewLazyDLL("psapi.dll")
+	procGetCurrentProcess     = kernel32.NewProc("GetCurrentProcess")
+	procGetProcessHandleCount = kernel32.NewProc("GetProcessHandleCount")
+	procGetProcessMemoryInfo  = psapi.NewProc("GetProcessMemoryInfo")
 )
 
 // processMemoryCounters mirrors PROCESS_MEMORY_COUNTERS from psapi.h.

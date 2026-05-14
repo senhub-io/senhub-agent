@@ -8,19 +8,19 @@ import (
 // probe instance. Fields mirror the user-facing YAML keys 1:1 so the
 // parse function is easy to audit against the user docs.
 type probeConfig struct {
-	Host                    string
-	Port                    int
-	Username                string
-	Password                string
-	Database                string
-	Interval                int
-	Timeout                 int
-	TLSEnabled              bool
-	TLSSkipVerify           bool
-	TLSCAFile               string
-	ExposePerDatabase       bool
-	IncludeSystemDatabases  bool
-	ExposeTopTables         int
+	Host                   string
+	Port                   int
+	Username               string
+	Password               string
+	Database               string
+	Interval               int
+	Timeout                int
+	TLSEnabled             bool
+	TLSSkipVerify          bool
+	TLSCAFile              string
+	ExposePerDatabase      bool
+	IncludeSystemDatabases bool
+	ExposeTopTables        int
 
 	// Composite replication health thresholds — used to derive the
 	// senhub.db.replication.health gauge (see DESIGN §5.2).

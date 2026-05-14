@@ -398,4 +398,3 @@ func publishActiveProbes(pollers []*probes.ProbePoller) {
 	}
 	agentstate.SetActiveProbes(out)
 }
-

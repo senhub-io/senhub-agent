@@ -1,6 +1,8 @@
 // Command otlp-validate is a one-off validation tool that ships a few
 // log records over OTLP/gRPC to verify the wire path
-//   agent host → SDK → otlploggrpc → collector → VictoriaLogs
+//
+//	agent host → SDK → otlploggrpc → collector → VictoriaLogs
+//
 // independent of the running agent.
 //
 // Used in the OTLP feature's Phase 4 live validation against a sha901
