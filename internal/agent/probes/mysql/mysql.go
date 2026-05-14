@@ -59,14 +59,19 @@ func NewMySQLProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &mysqlProbe{
+	probe := &mysqlProbe{
 		BaseProbe:  &types.BaseProbe{},
 		logger:     moduleLogger,
 		cfg:        cfg,
 		interval:   time.Duration(cfg.Interval) * time.Second,
 		ctx:        ctx,
 		cancelFunc: cancel,
-	}, nil
+	}
+	// Set the probe type so EnrichDataPointsWithProbeName at the
+	// end of Collect emits the probe_type tag every cache consumer
+	// (PRTG, Nagios, Prometheus, OTLP) expects.
+	probe.SetProbeType("mysql")
+	return probe, nil
 }
 
 func (p *mysqlProbe) ShouldStart() bool { return true }
@@ -205,12 +210,18 @@ func (p *mysqlProbe) Collect() ([]datapoint.DataPoint, error) {
 	points = append(points, p.buildPerDatabaseMetrics(ctx, timestamp)...)
 	points = append(points, p.buildPerTableMetrics(ctx, timestamp)...)
 
+	// Enrich every datapoint with probe_name + probe_type so each
+	// sink (PRTG, Nagios, Prometheus, OTLP) sees the standard
+	// identity tags. The cache consumers warn loudly if these tags
+	// are missing — they're the primary join key downstream.
+	enriched := p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName())
+
 	p.logger.Debug().
-		Int("datapoints_count", len(points)).
+		Int("datapoints_count", len(enriched)).
 		Str("role", role.String()).
 		Msg("MySQL metrics collection completed")
 
-	return points, nil
+	return enriched, nil
 }
 
 // buildDSN assembles the database/sql connection string from the
