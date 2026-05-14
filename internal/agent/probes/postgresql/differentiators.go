@@ -86,6 +86,9 @@ func (p *postgresqlProbe) buildBloatMetrics(ctx context.Context, now time.Time) 
 			Name: "senhub.db.postgresql.bloat.size", Timestamp: now, Value: v, Tags: tagsRow,
 		})
 	}
+	if err := rows.Err(); err != nil {
+		p.logger.Warn().Err(err).Msg("bloat row scan interrupted; partial results may flow this cycle")
+	}
 	return points
 }
 
