@@ -94,6 +94,9 @@ func (p *postgresqlProbe) buildConnectionsMetrics(ctx context.Context, now time.
 			}
 			counts[s] = n
 		}
+		if err := rows.Err(); err != nil {
+			p.logger.Warn().Err(err).Msg("connections row scan interrupted; partial counts may flow this cycle")
+		}
 		points = p.addCountTagged(points, "postgresql.backends.active", counts["active"], now, dbcommon.MetricTypeConnections, "state", "active")
 		points = p.addCountTagged(points, "postgresql.backends.idle", counts["idle"], now, dbcommon.MetricTypeConnections, "state", "idle")
 		points = p.addCountTagged(points, "postgresql.backends.idle_in_transaction",
@@ -298,6 +301,9 @@ func (p *postgresqlProbe) buildPerDatabaseMetrics(ctx context.Context, now time.
 			Name: "postgresql.db_size.per_database", Timestamp: now, Value: v, Tags: tagsRow,
 		})
 	}
+	if err := rows.Err(); err != nil {
+		p.logger.Warn().Err(err).Msg("per-database row scan interrupted; partial results may flow this cycle")
+	}
 	return points
 }
 
@@ -335,6 +341,9 @@ func (p *postgresqlProbe) buildPerTableMetrics(ctx context.Context, now time.Tim
 		points = append(points, datapoint.DataPoint{
 			Name: "postgresql.table.size", Timestamp: now, Value: v, Tags: tagsRow,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		p.logger.Warn().Err(err).Msg("per-table row scan interrupted; partial results may flow this cycle")
 	}
 	return points
 }
