@@ -321,31 +321,33 @@ metrics:
   # DIFFERENTIATORS — bloat (per-table, opt-in)
   # ═════════════════════════════════════════════════════════════════════════
   - name: "senhub.db.postgresql.bloat.ratio"
-    channel: "pg_bloat_ratio_{table}"
-    display_name: "Table Bloat Ratio ({table})"
+    channel: "pg_bloat_ratio_{schema}_{table}"
+    display_name: "Table Bloat Ratio ({schema}.{table})"
     unit: "%"
-    multi_instance_labels: ["table"]
+    multi_instance_labels: ["schema", "table"]
     category: "bloat"
-    description: "Estimated bloat ratio per table (heuristic from pg_class stats)"
+    description: "Estimated bloat ratio per table (heuristic from pg_class stats). Schema is part of the channel key so public.orders and staging.orders never collide."
     otel:
       name: senhub.db.postgresql.bloat.ratio
       unit: "1"
       type: gauge
     tag_to_attribute:
+      schema: db.schema.name
       table: db.table.name
 
   - name: "senhub.db.postgresql.bloat.size"
-    channel: "pg_bloat_size_{table}"
-    display_name: "Table Bloat Size ({table})"
+    channel: "pg_bloat_size_{schema}_{table}"
+    display_name: "Table Bloat Size ({schema}.{table})"
     unit: "B"
-    multi_instance_labels: ["table"]
+    multi_instance_labels: ["schema", "table"]
     category: "bloat"
-    description: "Estimated bloat in bytes per table"
+    description: "Estimated bloat in bytes per table."
     otel:
       name: senhub.db.postgresql.bloat.size
       unit: "By"
       type: gauge
     tag_to_attribute:
+      schema: db.schema.name
       table: db.table.name
 
   # ═════════════════════════════════════════════════════════════════════════

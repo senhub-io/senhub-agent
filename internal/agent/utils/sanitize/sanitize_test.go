@@ -47,16 +47,16 @@ func TestDuration_FutureClampsToZero(t *testing.T) {
 
 func TestCountInt32_Bounds(t *testing.T) {
 	cases := []struct {
-		in       int64
-		wantOk   bool
-		wantVal  float32
+		in      int64
+		wantOk  bool
+		wantVal float32
 	}{
 		{0, true, 0},
 		{42, true, 42},
 		{math.MaxInt32, true, MaxInt32},
 		{int64(math.MaxInt32) + 1, false, MaxInt32}, // clamped
-		{1 << 40, false, MaxInt32},                   // wildly over
-		{-1, false, 0},                                // negative
+		{1 << 40, false, MaxInt32},                  // wildly over
+		{-1, false, 0},                              // negative
 	}
 	for _, c := range cases {
 		got, ok := CountInt32(c.in)

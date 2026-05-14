@@ -107,9 +107,9 @@ const (
 
 // TagMetadata describes a tag's display properties for the web UI
 type TagMetadata struct {
-	Type             TagType           `yaml:"type" json:"type"`                           // "category" or "resource"
-	Label            string            `yaml:"label" json:"label"`                         // Human-readable label
-	ValueLabels      map[string]string `yaml:"value_labels,omitempty" json:"value_labels"` // Map raw value → human label
+	Type             TagType           `yaml:"type" json:"type"`                                     // "category" or "resource"
+	Label            string            `yaml:"label" json:"label"`                                   // Human-readable label
+	ValueLabels      map[string]string `yaml:"value_labels,omitempty" json:"value_labels"`           // Map raw value → human label
 	LinkedCategories []string          `yaml:"linked_categories,omitempty" json:"linked_categories"` // Show only when these categories are selected
 }
 

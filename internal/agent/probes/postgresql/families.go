@@ -55,7 +55,7 @@ func (p *postgresqlProbe) buildOverviewMetrics(ctx context.Context, now time.Tim
 	// max_connections.
 	var active, maxConn int64
 	_ = p.db.QueryRowContext(ctx, "SELECT count(*) FROM pg_stat_activity").Scan(&active)
-	_ = p.db.QueryRowContext(ctx, "SHOW max_connections").Scan(&maxConn)
+	_ = p.db.QueryRowContext(ctx, "SELECT current_setting('max_connections')::int").Scan(&maxConn)
 	if active > 0 && maxConn > 0 {
 		points = p.addRatio(points, "senhub.db.connection.utilization", active, maxConn, now, dbcommon.MetricTypeOverview)
 	}
@@ -103,7 +103,7 @@ func (p *postgresqlProbe) buildConnectionsMetrics(ctx context.Context, now time.
 
 	// max_connections — config, not state.
 	var maxConn int64
-	if err := p.db.QueryRowContext(ctx, "SHOW max_connections").Scan(&maxConn); err == nil {
+	if err := p.db.QueryRowContext(ctx, "SELECT current_setting('max_connections')::int").Scan(&maxConn); err == nil {
 		points = p.addCount(points, "postgresql.connection.max", maxConn, now, dbcommon.MetricTypeConnections)
 	}
 
