@@ -69,13 +69,13 @@ func (p *postgresqlProbe) buildBloatMetrics(ctx context.Context, now time.Time) 
 			ratio = 1
 		}
 
-		tagsRow := append([]tags.Tag{}, p.commonTags(dbcommon.MetricTypeStorage)...)
+		tagsRow := append([]tags.Tag{}, p.commonTags(dbcommon.MetricTypeBloat)...)
 		tagsRow = append(tagsRow,
 			tags.Tag{Key: "schema", Value: schema},
-			tags.Tag{Key: "relation", Value: rel},
+			tags.Tag{Key: "table", Value: rel},
 		)
 		points = append(points, datapoint.DataPoint{
-			Name: "db_postgres_bloat_ratio", Timestamp: now, Value: ratio, Tags: tagsRow,
+			Name: "senhub.db.postgresql.bloat.ratio", Timestamp: now, Value: ratio, Tags: tagsRow,
 		})
 		// Bloat in bytes — ratio applied to current heap size.
 		// Approximation only; pgstattuple_approx() returns a more
@@ -83,7 +83,7 @@ func (p *postgresqlProbe) buildBloatMetrics(ctx context.Context, now time.Time) 
 		bloatBytes := int64(float64(size) * float64(ratio))
 		v, _ := sanitize.BytesInt32(bloatBytes)
 		points = append(points, datapoint.DataPoint{
-			Name: "db_postgres_bloat_bytes", Timestamp: now, Value: v, Tags: tagsRow,
+			Name: "senhub.db.postgresql.bloat.size", Timestamp: now, Value: v, Tags: tagsRow,
 		})
 	}
 	return points
@@ -120,20 +120,22 @@ func (p *postgresqlProbe) buildStatStatementsMetrics(ctx context.Context, now ti
 		return nil
 	}
 
-	t := p.commonTags(dbcommon.MetricTypeEngine)
+	t := p.commonTags(dbcommon.MetricTypeStatStatements)
 	var points []datapoint.DataPoint
 
 	v, _ := sanitize.CountInt32(calls)
 	points = append(points, datapoint.DataPoint{
-		Name: "db_postgres_stat_statements_calls_count", Timestamp: now, Value: v, Tags: t,
+		Name: "senhub.db.postgresql.statement.calls", Timestamp: now, Value: v, Tags: t,
 	})
 
 	if calls > 0 && totalMs != nil {
-		mean := float32(*totalMs / float64(calls))
-		if sanitize.IsFinite(mean) && mean >= 0 {
+		// Source pg_stat_statements measures time in ms. OTel
+		// canonical unit for durations is seconds — convert ÷ 1000.
+		meanSeconds := float32(*totalMs / float64(calls) / 1000.0)
+		if sanitize.IsFinite(meanSeconds) && meanSeconds >= 0 {
 			points = append(points, datapoint.DataPoint{
-				Name: "db_postgres_stat_statements_exec_time_mean_ms",
-				Timestamp: now, Value: mean, Tags: t,
+				Name:      "senhub.db.postgresql.statement.exec_time.mean",
+				Timestamp: now, Value: meanSeconds, Tags: t,
 			})
 		}
 	}

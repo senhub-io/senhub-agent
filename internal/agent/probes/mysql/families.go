@@ -4,6 +4,12 @@ package mysql
 // builder reads from the shared status / variables maps (filled
 // once per Collect cycle) and appends datapoints. Replication is
 // big enough to live on its own (replication.go).
+//
+// Metric naming follows the OTel-first conventions defined in
+// docs/developer-guide/otel/senhub-semantic-conventions.md §4.13.
+// Internal probe metric names match the YAML transformer entries
+// (mysql.*, senhub.db.*, senhub.db.mysql.*) — see mysql.yaml for
+// the canonical list and OTel mapping.
 
 import (
 	"context"
@@ -24,15 +30,16 @@ func (p *mysqlProbe) buildOverviewMetrics(now time.Time, status, vars map[string
 	if uptime, ok := asInt(status, "Uptime"); ok {
 		v, _ := sanitize.CountInt32(uptime)
 		points = append(points, datapoint.DataPoint{
-			Name: "db_uptime_seconds", Timestamp: now, Value: v, Tags: t,
+			Name: "mysql.uptime", Timestamp: now, Value: v, Tags: t,
 		})
 	}
 
-	// Version info — always 1, version carried as a label.
+	// Version info — always 1, version carried as a label that the
+	// YAML's tag_to_attribute lifts into db.system.version on OTLP.
 	versionTags := append([]tags.Tag{}, t...)
 	versionTags = append(versionTags, tags.Tag{Key: "version", Value: p.versionString})
 	points = append(points, datapoint.DataPoint{
-		Name: "db_version_info", Timestamp: now, Value: 1, Tags: versionTags,
+		Name: "senhub.db.version.info", Timestamp: now, Value: 1, Tags: versionTags,
 	})
 
 	// Connections utilization (overview rollup; the full breakdown
@@ -40,45 +47,67 @@ func (p *mysqlProbe) buildOverviewMetrics(now time.Time, status, vars map[string
 	threadsConnected, okT := asInt(status, "Threads_connected")
 	maxConnections, okM := asInt(vars, "max_connections")
 	if okT && okM && maxConnections > 0 {
-		points = p.addRatio(points, "db_connections_utilization", threadsConnected, maxConnections, now, dbcommon.MetricTypeOverview)
+		points = p.addRatio(points, "senhub.db.connection.utilization", threadsConnected, maxConnections, now, dbcommon.MetricTypeOverview)
 	}
 
-	// Replication role.
+	// Replication role (raw enum value — the OTel mapper expands it
+	// into N per-state datapoints at serialization time via
+	// otel.expand).
 	roleTags := append([]tags.Tag{}, t...)
 	roleTags = append(roleTags, tags.Tag{Key: "role", Value: role.String()})
 	points = append(points, datapoint.DataPoint{
-		Name: "db_replication_role", Timestamp: now, Value: role.RoleValue(), Tags: roleTags,
+		Name: "senhub.db.replication.role", Timestamp: now, Value: role.RoleValue(), Tags: roleTags,
 	})
 
 	return points
 }
 
 // buildConnectionsMetrics emits the `connections` family.
+//
+// Naming reflects the OTel contrib mysqlreceiver `mysql.threads`
+// collapse: we emit kind=connected (raw Threads_connected) and
+// kind=running (raw Threads_running). The derived `senhub.db.connection.idle`
+// is the clamped subtraction — emitted explicitly so PRTG / Nagios
+// don't have to do arithmetic. `mysql.connection.errors` is split
+// into three counters, one per cause (aborted_clients / aborted_connects
+// / max_connections) for fidelity vs SHOW GLOBAL STATUS.
 func (p *mysqlProbe) buildConnectionsMetrics(now time.Time, status, vars map[string]string) []datapoint.DataPoint {
 	var points []datapoint.DataPoint
 
 	threadsRunning, okR := asInt(status, "Threads_running")
 	threadsConnected, okC := asInt(status, "Threads_connected")
 	if okR {
-		points = p.addCount(points, "db_connections_active", threadsRunning, now, dbcommon.MetricTypeConnections)
+		points = p.addCountTagged(points, "mysql.threads.running", threadsRunning, now, dbcommon.MetricTypeConnections, "kind", "running")
 	}
-	if okR && okC && threadsConnected >= threadsRunning {
-		points = p.addCount(points, "db_connections_idle", threadsConnected-threadsRunning, now, dbcommon.MetricTypeConnections)
+	if okC {
+		points = p.addCountTagged(points, "mysql.threads.connected", threadsConnected, now, dbcommon.MetricTypeConnections, "kind", "connected")
+	}
+	// Derived idle. Clamped to 0 because Threads_running includes
+	// InnoDB background threads on MariaDB and can exceed
+	// Threads_connected — without the clamp we'd publish a negative
+	// "idle" count that confuses dashboards.
+	if okR && okC {
+		idle := threadsConnected - threadsRunning
+		if idle < 0 {
+			idle = 0
+		}
+		points = p.addCount(points, "senhub.db.connection.idle", idle, now, dbcommon.MetricTypeConnections)
 	}
 	if max, ok := asInt(vars, "max_connections"); ok {
-		points = p.addCount(points, "db_connections_max", max, now, dbcommon.MetricTypeConnections)
+		points = p.addCount(points, "senhub.db.mysql.connection.max", max, now, dbcommon.MetricTypeConnections)
 	}
-	// Aborted = clients dropping + auth failures. Both counters,
-	// summed because most operators care about the aggregate.
-	if abClients, okA := asInt(status, "Aborted_clients"); okA {
-		if abConnects, okB := asInt(status, "Aborted_connects"); okB {
-			points = p.addCount(points, "db_connections_aborted", abClients+abConnects, now, dbcommon.MetricTypeConnections)
-		}
+	// Aborted clients and aborted connects are reported as two
+	// separate counters with the `error` attribute = aborted_clients
+	// or aborted_connects (canon mysql.connection.errors). Refused
+	// (cap-exhaustion) is the third variant.
+	if abClients, ok := asInt(status, "Aborted_clients"); ok {
+		points = p.addCountTagged(points, "mysql.connection.errors.aborted_clients", abClients, now, dbcommon.MetricTypeConnections, "error", "aborted_clients")
 	}
-	// Refused = out-of-slots events. Distinct from aborted —
-	// signals capacity rather than client misbehaviour.
+	if abConnects, ok := asInt(status, "Aborted_connects"); ok {
+		points = p.addCountTagged(points, "mysql.connection.errors.aborted_connects", abConnects, now, dbcommon.MetricTypeConnections, "error", "aborted_connects")
+	}
 	if refused, ok := asInt(status, "Connection_errors_max_connections"); ok {
-		points = p.addCount(points, "db_connections_refused", refused, now, dbcommon.MetricTypeConnections)
+		points = p.addCountTagged(points, "mysql.connection.errors.max_connections", refused, now, dbcommon.MetricTypeConnections, "error", "max_connections")
 	}
 
 	return points
@@ -89,30 +118,25 @@ func (p *mysqlProbe) buildThroughputMetrics(now time.Time, status map[string]str
 	var points []datapoint.DataPoint
 
 	if q, ok := asInt(status, "Questions"); ok {
-		points = p.addCount(points, "db_queries_count", q, now, dbcommon.MetricTypeThroughput)
+		points = p.addCount(points, "mysql.query.count", q, now, dbcommon.MetricTypeThroughput)
 	}
 	if c, ok := asInt(status, "Com_commit"); ok {
-		points = p.addCount(points, "db_transactions_committed", c, now, dbcommon.MetricTypeThroughput)
+		points = p.addCountTagged(points, "senhub.db.mysql.transaction.count.committed", c, now, dbcommon.MetricTypeThroughput, "state", "committed")
 	}
 	if r, ok := asInt(status, "Com_rollback"); ok {
-		points = p.addCount(points, "db_transactions_rolled_back", r, now, dbcommon.MetricTypeThroughput)
+		points = p.addCountTagged(points, "senhub.db.mysql.transaction.count.rolled_back", r, now, dbcommon.MetricTypeThroughput, "state", "rolled_back")
 	}
 	if s, ok := asInt(status, "Slow_queries"); ok {
-		points = p.addCount(points, "db_mysql_slow_queries_count", s, now, dbcommon.MetricTypeThroughput)
+		points = p.addCount(points, "mysql.query.slow.count", s, now, dbcommon.MetricTypeThroughput)
 	}
 
 	// Per-command counters carry the verb as a label so PromQL
 	// users can group by command without an explosion of metric
 	// names. Cardinality stays bounded (a handful of well-known
-	// verbs).
+	// verbs). The YAML maps tag `command` → OTel attr `command`.
 	for _, verb := range []string{"select", "insert", "update", "delete", "replace"} {
 		if v, ok := asInt(status, "Com_"+verb); ok {
-			verbTags := append([]tags.Tag{}, p.commonTags(dbcommon.MetricTypeThroughput)...)
-			verbTags = append(verbTags, tags.Tag{Key: "command", Value: verb})
-			val, _ := sanitize.CountInt32(v)
-			points = append(points, datapoint.DataPoint{
-				Name: "db_mysql_command_count", Timestamp: now, Value: val, Tags: verbTags,
-			})
+			points = p.addCountTagged(points, "mysql.commands", v, now, dbcommon.MetricTypeThroughput, "command", verb)
 		}
 	}
 
@@ -121,7 +145,7 @@ func (p *mysqlProbe) buildThroughputMetrics(now time.Time, status map[string]str
 	tmpDisk, okD := asInt(status, "Created_tmp_disk_tables")
 	tmpTotal, okT := asInt(status, "Created_tmp_tables")
 	if okD && okT {
-		points = p.addRatio(points, "db_mysql_tmp_tables_disk_ratio", tmpDisk, tmpDisk+tmpTotal, now, dbcommon.MetricTypeThroughput)
+		points = p.addRatio(points, "senhub.db.mysql.tmp_tables.disk_ratio", tmpDisk, tmpDisk+tmpTotal, now, dbcommon.MetricTypeThroughput)
 	}
 
 	return points
@@ -138,17 +162,18 @@ func (p *mysqlProbe) buildCacheMetrics(now time.Time, status map[string]string) 
 	reqs, okQ := asInt(status, "Innodb_buffer_pool_read_requests")
 	if okR && okQ && reqs > 0 {
 		hits := reqs - reads
-		points = p.addRatio(points, "db_buffer_hit_ratio", hits, reqs, now, dbcommon.MetricTypeCache)
+		points = p.addRatio(points, "senhub.db.mysql.buffer_pool.hit_ratio", hits, reqs, now, dbcommon.MetricTypeCache)
 	}
 	// Buffer utilization — pages_data / pages_total.
 	pData, okD := asInt(status, "Innodb_buffer_pool_pages_data")
 	pTotal, okT := asInt(status, "Innodb_buffer_pool_pages_total")
 	if okD && okT {
-		points = p.addRatio(points, "db_buffer_utilization", pData, pTotal, now, dbcommon.MetricTypeCache)
+		points = p.addRatio(points, "senhub.db.mysql.buffer_pool.utilization", pData, pTotal, now, dbcommon.MetricTypeCache)
 	}
-	// Dirty pages — pressure on the checkpointer.
+	// Dirty pages — pressure on the checkpointer. OTel canon:
+	// mysql.buffer_pool.data_pages{status=dirty}.
 	if dirty, ok := asInt(status, "Innodb_buffer_pool_pages_dirty"); ok {
-		points = p.addCount(points, "db_buffer_dirty_pages", dirty, now, dbcommon.MetricTypeCache)
+		points = p.addCountTagged(points, "mysql.buffer_pool.data_pages.dirty", dirty, now, dbcommon.MetricTypeCache, "status", "dirty")
 	}
 
 	return points
@@ -159,29 +184,38 @@ func (p *mysqlProbe) buildLocksMetrics(now time.Time, status map[string]string) 
 	var points []datapoint.DataPoint
 
 	if d, ok := asInt(status, "Innodb_deadlocks"); ok {
-		points = p.addCount(points, "db_locks_deadlocks", d, now, dbcommon.MetricTypeLocks)
+		points = p.addCount(points, "senhub.db.mysql.lock.deadlocks", d, now, dbcommon.MetricTypeLocks)
 	}
 	if w, ok := asInt(status, "Innodb_row_lock_current_waits"); ok {
-		points = p.addCount(points, "db_locks_waiting", w, now, dbcommon.MetricTypeLocks)
+		points = p.addCount(points, "senhub.db.mysql.lock.waiting", w, now, dbcommon.MetricTypeLocks)
 	}
-	if avg, ok := asInt(status, "Innodb_row_lock_time_avg"); ok {
-		// Innodb_row_lock_time_avg is already in milliseconds.
-		points = p.addCount(points, "db_locks_row_lock_time_avg_ms", avg, now, dbcommon.MetricTypeLocks)
+	if avgMs, ok := asInt(status, "Innodb_row_lock_time_avg"); ok {
+		// Source is milliseconds; OTel canonical unit for durations
+		// is seconds. Convert ÷1000 here so OTLP/Prom see the right
+		// unit semantics. PRTG/Nagios display still works through the
+		// YAML `unit: "ms"` field, which is purely presentational.
+		seconds := float32(avgMs) / 1000.0
+		if !sanitize.IsFinite(seconds) {
+			seconds = 0
+		}
+		points = append(points, datapoint.DataPoint{
+			Name: "senhub.db.mysql.row_lock.time.avg", Timestamp: now, Value: seconds, Tags: p.commonTags(dbcommon.MetricTypeLocks),
+		})
 	}
 
 	return points
 }
 
 // buildIOMetrics emits the `io` family — InnoDB engine-side reads
-// and writes. Complements (does not replace) host-level disk stats
-// from the logicaldisk probe.
+// and writes. Two datapoints under a single OTel metric name
+// (senhub.db.mysql.io) discriminated by attribute io.direction.
 func (p *mysqlProbe) buildIOMetrics(now time.Time, status map[string]string) []datapoint.DataPoint {
 	var points []datapoint.DataPoint
 	if r, ok := asInt(status, "Innodb_data_read"); ok {
-		points = p.addCount(points, "db_io_read_bytes", r, now, dbcommon.MetricTypeIO)
+		points = p.addCountTagged(points, "senhub.db.mysql.io.read", r, now, dbcommon.MetricTypeIO, "io.direction", "read")
 	}
 	if w, ok := asInt(status, "Innodb_data_written"); ok {
-		points = p.addCount(points, "db_io_write_bytes", w, now, dbcommon.MetricTypeIO)
+		points = p.addCountTagged(points, "senhub.db.mysql.io.write", w, now, dbcommon.MetricTypeIO, "io.direction", "write")
 	}
 	return points
 }
@@ -208,18 +242,18 @@ func (p *mysqlProbe) buildStorageMetrics(ctx context.Context, now time.Time) []d
 
 	if v, _ := sanitize.BytesInt32(totalBytes); true {
 		points = append(points, datapoint.DataPoint{
-			Name: "db_size_bytes", Timestamp: now, Value: v, Tags: t,
+			Name: "senhub.db.database.size", Timestamp: now, Value: v, Tags: t,
 		})
 	}
 	if v, _ := sanitize.CountInt32(tableCount); true {
 		points = append(points, datapoint.DataPoint{
-			Name: "db_tables_count", Timestamp: now, Value: v, Tags: t,
+			Name: "senhub.db.mysql.table.count", Timestamp: now, Value: v, Tags: t,
 		})
 	}
 	return points
 }
 
-// buildPerDatabaseMetrics emits one db_database_size_bytes point
+// buildPerDatabaseMetrics emits one senhub.db.database.size point
 // per non-system database when the operator has set
 // expose_per_database. Cardinality scales with the number of
 // databases; system schemas are skipped unless
@@ -252,13 +286,13 @@ func (p *mysqlProbe) buildPerDatabaseMetrics(ctx context.Context, now time.Time)
 		tagsRow = append(tagsRow, tags.Tag{Key: "database", Value: dbName})
 		v, _ := sanitize.BytesInt32(sizeBytes)
 		points = append(points, datapoint.DataPoint{
-			Name: "db_database_size_bytes", Timestamp: now, Value: v, Tags: tagsRow,
+			Name: "senhub.db.database.size.per_database", Timestamp: now, Value: v, Tags: tagsRow,
 		})
 	}
 	return points
 }
 
-// buildPerTableMetrics emits db_table_size_bytes for the top-N
+// buildPerTableMetrics emits senhub.db.mysql.table.size for the top-N
 // largest user tables when expose_top_tables > 0. The cap is
 // enforced at the SQL layer (ORDER BY size DESC LIMIT N) so the
 // agent never streams every row of information_schema.tables for
@@ -289,12 +323,12 @@ func (p *mysqlProbe) buildPerTableMetrics(ctx context.Context, now time.Time) []
 		}
 		tagsRow := append([]tags.Tag{}, p.commonTags(dbcommon.MetricTypePerTable)...)
 		tagsRow = append(tagsRow,
-			tags.Tag{Key: "schema", Value: schema},
+			tags.Tag{Key: "database", Value: schema},
 			tags.Tag{Key: "table", Value: table},
 		)
 		v, _ := sanitize.BytesInt32(sizeBytes)
 		points = append(points, datapoint.DataPoint{
-			Name: "db_table_size_bytes", Timestamp: now, Value: v, Tags: tagsRow,
+			Name: "senhub.db.mysql.table.size", Timestamp: now, Value: v, Tags: tagsRow,
 		})
 	}
 	return points
