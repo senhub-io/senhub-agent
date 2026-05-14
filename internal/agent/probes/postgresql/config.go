@@ -8,19 +8,19 @@ import (
 // probe instance. Mirrors the user-facing YAML keys 1:1 (see
 // DESIGN §3).
 type probeConfig struct {
-	Host                    string
-	Port                    int
-	Username                string
-	Password                string
-	Database                string // libpq DB name; defaults to "postgres"
-	Interval                int
-	Timeout                 int
-	SSLMode                 string // libpq sslmode: disable, allow, prefer, require, verify-ca, verify-full
-	SSLRootCert             string
-	ExposePerDatabase       bool
-	IncludeSystemDatabases  bool
-	ExposeTopTables         int
-	BloatTopN               int
+	Host                   string
+	Port                   int
+	Username               string
+	Password               string
+	Database               string // libpq DB name; defaults to "postgres"
+	Interval               int
+	Timeout                int
+	SSLMode                string // libpq sslmode: disable, allow, prefer, require, verify-ca, verify-full
+	SSLRootCert            string
+	ExposePerDatabase      bool
+	IncludeSystemDatabases bool
+	ExposeTopTables        int
+	BloatTopN              int
 
 	MaxReplicationLagSeconds int
 	MaxHeartbeatAgeSeconds   int
