@@ -258,19 +258,19 @@ func buildJobStateDetailMetrics(states []jobState, hoursToCheck int, now time.Ti
 			// runaway uint64 cannot reach the channel as an over-32-bit
 			// value that PRTG would refuse with "Valeur hors des limites".
 			if sp.ProcessedSize != nil {
-				v, _ := sanitize.BytesInt32(int64(*sp.ProcessedSize))
+				v, _ := sanitize.Bytes(int64(*sp.ProcessedSize))
 				points = append(points, datapoint.DataPoint{
 					Name: "veeam_job_processed_bytes", Timestamp: now, Value: v, Tags: detailTags,
 				})
 			}
 			if sp.ReadSize != nil {
-				v, _ := sanitize.BytesInt32(int64(*sp.ReadSize))
+				v, _ := sanitize.Bytes(int64(*sp.ReadSize))
 				points = append(points, datapoint.DataPoint{
 					Name: "veeam_job_read_bytes", Timestamp: now, Value: v, Tags: detailTags,
 				})
 			}
 			if sp.TransferredSize != nil {
-				v, _ := sanitize.BytesInt32(int64(*sp.TransferredSize))
+				v, _ := sanitize.Bytes(int64(*sp.TransferredSize))
 				points = append(points, datapoint.DataPoint{
 					Name: "veeam_job_transferred_bytes", Timestamp: now, Value: v, Tags: detailTags,
 				})
