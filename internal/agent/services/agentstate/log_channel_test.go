@@ -143,13 +143,13 @@ loop:
 func TestSyslogPriorityToSeverity_Mapping(t *testing.T) {
 	// Smoke-test the standard mapping. Out-of-range returns Unspecified.
 	cases := map[int]LogSeverity{
-		0:   24,                   // FATAL4
-		3:   LogSeverityError,     // ERROR
-		4:   LogSeverityWarn,      // WARN
-		6:   LogSeverityInfo,      // INFO
-		7:   LogSeverityDebug,     // DEBUG
-		99:  LogSeverityUnspecified,
-		-1:  LogSeverityUnspecified,
+		0:  24,               // FATAL4
+		3:  LogSeverityError, // ERROR
+		4:  LogSeverityWarn,  // WARN
+		6:  LogSeverityInfo,  // INFO
+		7:  LogSeverityDebug, // DEBUG
+		99: LogSeverityUnspecified,
+		-1: LogSeverityUnspecified,
 	}
 	for pri, want := range cases {
 		if got := SyslogPriorityToSeverity(pri); got != want {

@@ -31,12 +31,12 @@ func SerializeToTextExposition(records []otelmapper.OtelRecord, w io.Writer, opt
 	// collapsed into the same name (common pattern — e.g. hw.status emitted
 	// from drive.health AND drive.failure_predicted) are merged here.
 	type group struct {
-		promName    string
-		promType    string
-		help        string
-		unit        string
-		firstOTel   string // first OTel name that produced this Prom name (for collision warnings)
-		rows        []otelmapper.OtelRecord
+		promName  string
+		promType  string
+		help      string
+		unit      string
+		firstOTel string // first OTel name that produced this Prom name (for collision warnings)
+		rows      []otelmapper.OtelRecord
 	}
 	groups := map[string]*group{}
 	// Preserve first-seen order for stable, human-friendly output.
@@ -277,4 +277,3 @@ func resetSerializerWarnDedupForTest() {
 		return true
 	})
 }
-

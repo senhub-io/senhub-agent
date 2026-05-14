@@ -90,6 +90,10 @@ var DiscriminantTagsRegistry = map[string][]string{
         "fan_name", "sensor_name",
     },
 
+    // Database probes
+    "mysql":      {"database"},  // per-database metrics require separate series
+    "postgresql": {"database"},  // per-database metrics require separate series
+
     // Event probes
     "syslog": {},
     "event":  {},
