@@ -49,14 +49,16 @@ func NewPostgreSQLProbe(config map[string]interface{}, baseLogger *logger.Logger
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &postgresqlProbe{
+	probe := &postgresqlProbe{
 		BaseProbe:  &types.BaseProbe{},
 		logger:     moduleLogger,
 		cfg:        cfg,
 		interval:   time.Duration(cfg.Interval) * time.Second,
 		ctx:        ctx,
 		cancelFunc: cancel,
-	}, nil
+	}
+	probe.SetProbeType("postgresql")
+	return probe, nil
 }
 
 func (p *postgresqlProbe) ShouldStart() bool         { return true }
@@ -160,12 +162,14 @@ func (p *postgresqlProbe) Collect() ([]datapoint.DataPoint, error) {
 	points = append(points, p.buildPerDatabaseMetrics(ctx, timestamp)...)
 	points = append(points, p.buildPerTableMetrics(ctx, timestamp)...)
 
+	enriched := p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName())
+
 	p.logger.Debug().
-		Int("datapoints_count", len(points)).
+		Int("datapoints_count", len(enriched)).
 		Str("role", role.String()).
 		Msg("PostgreSQL metrics collection completed")
 
-	return points, nil
+	return enriched, nil
 }
 
 // buildDSN assembles a libpq-style key=value connection string.
