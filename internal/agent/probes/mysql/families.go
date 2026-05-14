@@ -142,10 +142,21 @@ func (p *mysqlProbe) buildThroughputMetrics(now time.Time, status map[string]str
 
 	// Tmp-tables-to-disk ratio — a tuning hint, not a SLA. Above
 	// 25 % usually means tmp_table_size is too small.
+	//
+	// Denominator semantics: MySQL 8.0 and MariaDB 10.x both define
+	// `Created_tmp_tables` as the total of internal temp tables
+	// created (in-memory + on-disk). The disk subset is reported
+	// separately as `Created_tmp_disk_tables`. So the right ratio is
+	// disk / total, not disk / (disk + total) which would double-count
+	// the disk-spilled subset and inflate the ratio by ~2x.
+	//
+	// `addRatio` clamps to [0, 1] which absorbs the edge case where a
+	// server somehow reports `tmpDisk > tmpTotal` (unexpected on any
+	// supported version but safe by construction).
 	tmpDisk, okD := asInt(status, "Created_tmp_disk_tables")
 	tmpTotal, okT := asInt(status, "Created_tmp_tables")
 	if okD && okT {
-		points = p.addRatio(points, "senhub.db.mysql.tmp_tables.disk_ratio", tmpDisk, tmpDisk+tmpTotal, now, dbcommon.MetricTypeThroughput)
+		points = p.addRatio(points, "senhub.db.mysql.tmp_tables.disk_ratio", tmpDisk, tmpTotal, now, dbcommon.MetricTypeThroughput)
 	}
 
 	return points
@@ -289,6 +300,9 @@ func (p *mysqlProbe) buildPerDatabaseMetrics(ctx context.Context, now time.Time)
 			Name: "senhub.db.database.size.per_database", Timestamp: now, Value: v, Tags: tagsRow,
 		})
 	}
+	if err := rows.Err(); err != nil {
+		p.logger.Warn().Err(err).Msg("per-database row scan interrupted; partial results may flow this cycle")
+	}
 	return points
 }
 
@@ -330,6 +344,9 @@ func (p *mysqlProbe) buildPerTableMetrics(ctx context.Context, now time.Time) []
 		points = append(points, datapoint.DataPoint{
 			Name: "senhub.db.mysql.table.size", Timestamp: now, Value: v, Tags: tagsRow,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		p.logger.Warn().Err(err).Msg("per-table row scan interrupted; partial results may flow this cycle")
 	}
 	return points
 }
