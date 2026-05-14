@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
+	"senhub-agent.go/internal/agent/services/data_store/transformers"
 )
 
 // fakeCacheReader implements CacheReader for tests.

@@ -61,7 +61,7 @@ func NewPostgreSQLProbe(config map[string]interface{}, baseLogger *logger.Logger
 	return probe, nil
 }
 
-func (p *postgresqlProbe) ShouldStart() bool         { return true }
+func (p *postgresqlProbe) ShouldStart() bool          { return true }
 func (p *postgresqlProbe) GetInterval() time.Duration { return p.interval }
 
 func (p *postgresqlProbe) OnStart(quitChannel chan struct{}) error {

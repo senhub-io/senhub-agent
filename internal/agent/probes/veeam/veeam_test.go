@@ -615,8 +615,8 @@ func TestBuildJobStateDetailMetrics(t *testing.T) {
 // "Failed" on yet).
 func TestComputeJobStatusValue(t *testing.T) {
 	now := time.Date(2026, 5, 12, 12, 0, 0, 0, time.UTC)
-	recent := now.Add(-1 * time.Hour)    // inside any reasonable window
-	ancient := now.Add(-48 * time.Hour)  // outside a 24h window
+	recent := now.Add(-1 * time.Hour)   // inside any reasonable window
+	ancient := now.Add(-48 * time.Hour) // outside a 24h window
 	hoursWindow := 24
 
 	cases := []struct {
