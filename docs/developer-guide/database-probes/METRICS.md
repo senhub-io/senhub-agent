@@ -84,7 +84,7 @@ Emitted only when role is `primary` or `replica` (see DESIGN §5.1).
 |---|---|---|---|---|---|
 | `senhub.db.locks.deadlocks` | `{event}` | counter | App bug indicator; should be near zero | must | MySQL: `Innodb_deadlocks` or perf_schema; PG: `pg_stat_database.deadlocks` |
 | `senhub.db.locks.waiting` | `{lock}` | gauge | Sessions blocked right now | should | MySQL: `Innodb_row_lock_current_waits`; PG: `pg_locks` not granted |
-| `senhub.db.locks.row_lock_time.avg_ms` | `ms` | gauge | Average lock wait | should | MySQL: `Innodb_row_lock_time_avg` |
+| `senhub.db.mysql.row_lock.time.avg` | `s` | gauge | Average row lock wait | should | MySQL: `Innodb_row_lock_time_avg` (source in ms; converted to seconds for OTel canon — PRTG/Nagios display still in ms via `display_name`) |
 | `senhub.db.postgres.long_running_xact.seconds` | `s` | gauge | Oldest open transaction age | should (SenHub) | max(now()-xact_start) from `pg_stat_activity` |
 
 ## Family: `io`
@@ -163,8 +163,8 @@ each scrape. Carries `schema` + `relation` labels.
 
 | OTel name | Unit | Type | Description | Tier | Source |
 |---|---|---|---|---|---|
-| `senhub.db.postgres.stat_statements.calls.count` | `{call}` | counter | Aggregate calls across all statements | nice | `sum(pg_stat_statements.calls)` (version-aware) |
-| `senhub.db.postgres.stat_statements.exec_time.mean_ms` | `ms` | gauge | Aggregate mean exec time | nice | weighted mean from `pg_stat_statements` |
+| `senhub.db.postgresql.statement.calls` | `{call}` | counter | Aggregate calls across all statements | nice | `sum(pg_stat_statements.calls)` (version-aware) |
+| `senhub.db.postgresql.statement.exec_time.mean` | `s` | gauge | Aggregate mean exec time | nice | weighted mean from `pg_stat_statements` (source in ms; converted to seconds for OTel canon) |
 | `senhub.db.postgres.temp_files.count` | `{file}` | counter | Tmp file spills — needs `work_mem` tuning | should | `pg_stat_database.temp_files` |
 | `senhub.db.postgres.temp_files.bytes` | `By` | counter | Tmp file bytes written | should | `pg_stat_database.temp_bytes` |
 

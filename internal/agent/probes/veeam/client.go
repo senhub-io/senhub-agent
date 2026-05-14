@@ -18,15 +18,15 @@ import (
 
 // veeamClient handles HTTP communication with the Veeam Backup & Replication REST API
 type veeamClient struct {
-	httpClient   *http.Client
-	endpoint     string
-	username     string
-	password     string
-	logger       *logger.ModuleLogger
-	ctx          context.Context
-	token        string
-	tokenExpiry  time.Time
-	tokenMu      sync.Mutex
+	httpClient  *http.Client
+	endpoint    string
+	username    string
+	password    string
+	logger      *logger.ModuleLogger
+	ctx         context.Context
+	token       string
+	tokenExpiry time.Time
+	tokenMu     sync.Mutex
 }
 
 // newVeeamClient creates a new Veeam REST API client

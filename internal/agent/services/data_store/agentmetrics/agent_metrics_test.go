@@ -108,14 +108,14 @@ func TestBuildAgentRecords_OmitBuildInfoWhenEmpty(t *testing.T) {
 
 func TestBuildAgentRecords_HTTPRequestsPerEndpoint(t *testing.T) {
 	snap := AgentMetricsSnapshot{
-		StartTime:    time.Now(),
-		ProbesTotal:  5,
-		ProbesHealthy: 4,
+		StartTime:          time.Now(),
+		ProbesTotal:        5,
+		ProbesHealthy:      4,
 		CollectErrorsTotal: 17,
 		HTTPRequestsByEndpoint: map[string]uint64{
-			"/api/{agentkey}/prtg/metrics":    123,
+			"/api/{agentkey}/prtg/metrics":       123,
 			"/api/{agentkey}/prometheus/metrics": 45,
-			"/health":                          789,
+			"/health":                            789,
 		},
 	}
 	recs := BuildAgentRecords(snap)
