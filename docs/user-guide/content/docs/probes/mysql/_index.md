@@ -53,7 +53,7 @@ probes:
 | `tls.enabled` | No | `false` | Connect over TLS |
 | `tls.skip_verify` | No | `false` | Skip server certificate verification |
 | `tls.ca_file` | No | `""` | Path to CA certificate |
-| `max_replication_lag_seconds` | No | `60` | Threshold used by the composite `db_replication_health` channel |
+| `max_replication_lag_seconds` | No | `60` | Threshold used by the composite `senhub.db.replication.health` channel |
 | `expose_per_database` | No | `false` | Emit per-database metrics (cardinality scales with #databases) |
 | `expose_top_tables` | No | `0` | Emit metrics for the top-N tables by size; `0` disables this feature |
 
@@ -85,39 +85,43 @@ Every metric is tagged with `metric_type` so the PRTG Sensor
 Builder splits them into family chips. The categories below match
 those chips.
 
+Every datapoint also carries the OTel resource attributes
+`db.system.name` (`mysql`), `server.address`, and `server.port`.
+
 ### Overview
 
 The 6 metrics every dashboard wants at a glance.
 
 | Metric | Unit | Description |
 |---|---|---|
-| `db_up` | bool | 1 = last ping reached the server |
-| `db_uptime_seconds` | s | Engine uptime |
-| `db_version_info` | – | Always 1; version carried as label |
-| `db_connections_utilization` | ratio | `(active+idle) / max_connections` |
-| `db_replication_role` | enum | 0=standalone, 1=primary, 2=replica |
-| `db_replication_health` | bool | Composite: io+sql threads running AND lag below threshold |
+| `senhub.db.up` | bool | 1 = last ping reached the server |
+| `mysql.uptime` | s | Engine uptime |
+| `senhub.db.version.info` | – | Always 1; version carried as label |
+| `senhub.db.connections.utilization` | ratio | `(active+idle) / max_connections` |
+| `senhub.db.replication.role` | enum | 0=standalone, 1=primary, 2=replica |
+| `senhub.db.replication.health` | bool | Composite: io+sql threads running AND lag below threshold |
 
 ### Connections
 
 | Metric | Unit | Description |
 |---|---|---|
-| `db_connections_active` | count | Sessions running a query |
-| `db_connections_idle` | count | Connected but doing nothing |
-| `db_connections_max` | count | Engine cap |
-| `db_connections_aborted` | counter | Auth failures + protocol errors |
-| `db_connections_refused` | counter | Out-of-slots events |
+| `mysql.threads{kind=running}` | count | Sessions running a query |
+| `senhub.db.connection.idle` | count | Connected but doing nothing |
+| `senhub.db.connections.max` | count | Engine cap |
+| `mysql.connection.errors{error=aborted_clients}` | counter | Client-side connection drops |
+| `mysql.connection.errors{error=aborted_connects}` | counter | Auth failures + protocol errors |
+| `mysql.connection.errors{error=max_connections}` | counter | Out-of-slots events |
 
 ### Throughput
 
 | Metric | Unit | Description |
 |---|---|---|
-| `db_queries_count` | counter | Total statements (rate = QPS) |
-| `db_transactions_committed` | counter | Successful commits |
-| `db_transactions_rolled_back` | counter | Rollbacks (app errors / deadlocks) |
-| `db_mysql_slow_queries_count` | counter | Queries above `long_query_time` |
-| `db_mysql_command_count{command=...}` | counter | Per-verb rate (select/insert/update/delete/replace) |
-| `db_mysql_tmp_tables_disk_ratio` | ratio | Disk temp / total temp — >25% suggests tuning |
+| `mysql.query.count` | counter | Total statements (rate = QPS) |
+| `senhub.db.mysql.transaction.count{state=committed}` | counter | Successful commits |
+| `senhub.db.mysql.transaction.count{state=rolled_back}` | counter | Rollbacks (app errors / deadlocks) |
+| `senhub.db.mysql.slow_queries.count` | counter | Queries above `long_query_time` |
+| `mysql.commands{command=…}` | counter | Per-verb rate (select/insert/update/delete/replace) |
+| `senhub.db.mysql.tmp_tables.disk.ratio` | ratio | Disk temp / total temp — >25% suggests tuning |
 
 ### Replication
 
@@ -126,40 +130,40 @@ role via `SHOW REPLICA STATUS` — no per-host configuration needed.
 
 | Metric | Unit | Description |
 |---|---|---|
-| `db_replication_lag_seconds` | s | Replica `Seconds_Behind_Source` |
-| `db_replication_io_running` | bool | 1 = IO thread Yes |
-| `db_replication_sql_running` | bool | 1 = SQL thread Yes |
-| `db_replication_replicas_connected` | count | Downstream replicas (primary side) |
+| `senhub.db.replication.lag.seconds` | s | Replica `Seconds_Behind_Source` |
+| `senhub.db.replication.io_running` | bool | 1 = IO thread Yes |
+| `senhub.db.replication.sql_running` | bool | 1 = SQL thread Yes |
+| `senhub.db.replication.replicas.connected` | count | Downstream replicas (primary side) |
 
 ### Cache
 
 | Metric | Unit | Description |
 |---|---|---|
-| `db_buffer_hit_ratio` | ratio | InnoDB buffer pool hit ratio — <99% under-provisioned |
-| `db_buffer_utilization` | ratio | Pages data / pages total |
-| `db_buffer_dirty_pages` | count | Pressure on the checkpointer |
+| `senhub.db.mysql.buffer_pool.hit_ratio` | ratio | InnoDB buffer pool hit ratio — <99% under-provisioned |
+| `senhub.db.buffer.utilization` | ratio | Pages data / pages total |
+| `mysql.buffer_pool.data_pages{status=dirty}` | count | Pressure on the checkpointer |
 
 ### Locks
 
 | Metric | Unit | Description |
 |---|---|---|
-| `db_locks_deadlocks` | counter | App-level deadlocks — should be near zero |
-| `db_locks_waiting` | count | Sessions currently blocked |
-| `db_locks_row_lock_time_avg_ms` | ms | Innodb_row_lock_time_avg |
+| `senhub.db.mysql.lock.deadlocks` | counter | App-level deadlocks — should be near zero |
+| `senhub.db.locks.waiting` | count | Sessions currently blocked |
+| `senhub.db.locks.row_lock_time.avg` | s | Average InnoDB row lock wait (was ms in ≤0.1.91) |
 
 ### IO
 
 | Metric | Unit | Description |
 |---|---|---|
-| `db_io_read_bytes` | counter (bytes) | InnoDB engine-side reads |
-| `db_io_write_bytes` | counter (bytes) | InnoDB engine-side writes |
+| `senhub.db.mysql.io{io.direction=read}` | counter (bytes) | InnoDB engine-side reads |
+| `senhub.db.mysql.io{io.direction=write}` | counter (bytes) | InnoDB engine-side writes |
 
 ### Storage
 
 | Metric | Unit | Description |
 |---|---|---|
-| `db_size_bytes` | bytes | Total user-schema size |
-| `db_tables_count` | count | User tables across non-system schemas |
+| `senhub.db.database.size` | bytes | Total user-schema size |
+| `senhub.db.mysql.table.count` | count | User tables across non-system schemas |
 
 ## Output formats
 
@@ -170,9 +174,9 @@ wants via the `metric_type` tag.
   uses one "MySQL Overview" sensor (6 channels) and a "MySQL
   Replication" sensor (4 channels) per instance.
 - **Nagios** — `/api/{key}/nagios/metrics/{probe-name}?tags=metric_type:overview`
-- **Prometheus** — all metrics exposed under `senhub_system_db_*`
-  and `senhub_db_mysql_*` names at `/api/{key}/prometheus/metrics`.
-- **OTLP** — pushed as `system.db.*` and `senhub.db.mysql.*` to any
+- **Prometheus** — all metrics exposed under `senhub_db_mysql_*` and
+  `mysql_*` names at `/api/{key}/prometheus/metrics`.
+- **OTLP** — pushed as `senhub.db.mysql.*` and `mysql.*` to any
   OTel receiver.
 
 ## Auto-detected environments
@@ -204,7 +208,7 @@ behind the control plane).
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `db_up = 0` | Network / firewall | Verify connectivity from the agent to `host:port` |
-| `db_replication_*` all missing on a primary | `role=standalone` detected because no replica connected | Expected — replication family is replica-side |
-| All `db_*` missing | GRANTs incomplete | Re-run the `db-monitoring init` helper |
+| `senhub.db.up = 0` | Network / firewall | Verify connectivity from the agent to `host:port` |
+| `senhub.db.replication.*` all missing on a primary | `role=standalone` detected because no replica connected | Expected — replication family is replica-side |
+| All metrics missing | GRANTs incomplete | Re-run the `db-monitoring init` helper |
 | Empty per-table data | `expose_top_tables: 0` | Set `expose_top_tables: 20` (or another N) and reload |

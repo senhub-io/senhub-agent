@@ -99,7 +99,7 @@ func (p *postgresqlProbe) buildBloatMetrics(ctx context.Context, now time.Time) 
 //   - PG ≤ 12: total_time
 //   - PG 13+: total_exec_time (and total_plan_time, ignored)
 //   - PG 17:  schema additions for top-N statements (ignored —
-//             we only emit the aggregate, never per-statement)
+//     we only emit the aggregate, never per-statement)
 func (p *postgresqlProbe) buildStatStatementsMetrics(ctx context.Context, now time.Time) []datapoint.DataPoint {
 	// Column selection picks itself based on server_version_num
 	// captured at OnStart. 130000 = PG 13.0.

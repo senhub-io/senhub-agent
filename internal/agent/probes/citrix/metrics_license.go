@@ -75,11 +75,11 @@ func (mc *MetricsCollector) collectLicenseFromDDC(ctx context.Context, timestamp
 
 // LicenseServerResponse represents the license usage data from the Citrix License Server
 type LicenseServerResponse struct {
-	LicensesInUse    int    `json:"LicensesInUse"`
-	LicensesAvailable int   `json:"LicensesAvailable"`
-	LicenseOverdraft int    `json:"LicenseOverdraft"`
-	ProductName      string `json:"LocalizedLicenseProductName"`
-	LicenseType      string `json:"LicenseType"`
+	LicensesInUse     int    `json:"LicensesInUse"`
+	LicensesAvailable int    `json:"LicensesAvailable"`
+	LicenseOverdraft  int    `json:"LicenseOverdraft"`
+	ProductName       string `json:"LocalizedLicenseProductName"`
+	LicenseType       string `json:"LicenseType"`
 }
 
 // collectLicenseFromServer queries the Citrix License Server directly via its web API.

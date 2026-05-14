@@ -10,7 +10,7 @@ func TestOTLPCounters_IncrementAndRead(t *testing.T) {
 
 	IncrementOTLPMetricsPushed(10)
 	IncrementOTLPMetricsPushed(5)
-	IncrementOTLPMetricsPushed(0) // ignored
+	IncrementOTLPMetricsPushed(0)  // ignored
 	IncrementOTLPMetricsPushed(-3) // ignored (defensive)
 
 	IncrementOTLPLogsPushed()

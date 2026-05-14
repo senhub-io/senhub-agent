@@ -27,7 +27,7 @@ func TestConstantTimeEqual_BasicAndEdgeCases(t *testing.T) {
 	}{
 		{"abc", "abc", true},
 		{"abc", "abd", false},
-		{"abc", "ab", false},      // length differs
+		{"abc", "ab", false}, // length differs
 		{"", "", true},
 		{"", "x", false},
 		{"x", "", false},
