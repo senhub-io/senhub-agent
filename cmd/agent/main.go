@@ -102,6 +102,11 @@ func main() {
 			checkConfig(configPath)
 			return
 		}
+		if len(os.Args) > 2 && os.Args[2] == "show" {
+			// agent config show [--raw|--resolved|--redact] [path]
+			showConfig(os.Args[3:])
+			return
+		}
 		showHelp()
 		return
 	case "license":
@@ -216,6 +221,11 @@ Other Commands:
     update --list        List all available versions (stable + beta)
     update <version>     Install a specific version
     config check [path]  Validate configuration file
+    config show [opts]   Print merged + resolved configuration as YAML
+                           --resolved (default)  env/file references substituted
+                           --raw                 references preserved as written
+                           --redact              substituted but secrets masked
+                           [path]                config file path (default: ./agent-config.yaml)
     debug-modules-list   List available debug log modules
 
 Agent Options:
