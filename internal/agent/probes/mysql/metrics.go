@@ -19,12 +19,23 @@ import (
 // commonTags returns the systematic tags applied to every datapoint
 // emitted by this probe instance. The metric_type tag is added per
 // family by the helper that builds the family.
+//
+// Three of these tags carry OTel-canonical semantic-conventions
+// attribute names (db.system.name, server.address, server.port) and
+// are passed through as OTLP/Prometheus attributes by the mapper when
+// IncludeProbeTags is enabled — which is the default for both sinks.
+// This is how the probe gets its "resource-like" identity onto every
+// datapoint without configuring resource attributes per-instance in
+// the OTLP strategy config.
 func (p *mysqlProbe) commonTags(family dbcommon.MetricType) []tags.Tag {
 	return []tags.Tag{
 		{Key: "metric_type", Value: string(family)},
 		{Key: "engine", Value: "mysql"},
 		{Key: "instance", Value: p.cfg.Host + ":" + strconv.Itoa(p.cfg.Port)},
 		{Key: "environment", Value: string(p.environment)},
+		{Key: "db.system.name", Value: "mysql"},
+		{Key: "server.address", Value: p.cfg.Host},
+		{Key: "server.port", Value: strconv.Itoa(p.cfg.Port)},
 	}
 }
 
@@ -37,7 +48,7 @@ func (p *mysqlProbe) buildUpDatapoint(now time.Time, up bool) datapoint.DataPoin
 		v = 1
 	}
 	return datapoint.DataPoint{
-		Name:      "db_up",
+		Name:      "senhub.db.up",
 		Timestamp: now,
 		Value:     v,
 		Tags:      p.commonTags(dbcommon.MetricTypeOverview),
@@ -151,12 +162,28 @@ func asFloat(m map[string]string, key string) (float64, bool) {
 	return n, true
 }
 
-// addCount appends a counter/gauge datapoint. Wraps
-// sanitize.CountInt32 so PRTG never gets an over-range integer.
+// addCount appends a counter/gauge datapoint with the standard
+// family tags. Wraps sanitize.CountInt32 so PRTG never receives an
+// over-range integer.
 func (p *mysqlProbe) addCount(points []datapoint.DataPoint, name string, raw int64, ts time.Time, family dbcommon.MetricType) []datapoint.DataPoint {
 	v, _ := sanitize.CountInt32(raw)
 	return append(points, datapoint.DataPoint{
 		Name: name, Timestamp: ts, Value: v, Tags: p.commonTags(family),
+	})
+}
+
+// addCountTagged is the variant for collapsed metrics whose internal
+// names already include the discriminator suffix (e.g.
+// mysql.threads.connected) but whose OTel mapping requires an
+// attribute (kind=connected). The extra tag is appended on top of the
+// family tags so the data_store layer ships it through to the OTel
+// mapper without losing it on the cache step.
+func (p *mysqlProbe) addCountTagged(points []datapoint.DataPoint, name string, raw int64, ts time.Time, family dbcommon.MetricType, tagKey, tagValue string) []datapoint.DataPoint {
+	v, _ := sanitize.CountInt32(raw)
+	t := append([]tags.Tag{}, p.commonTags(family)...)
+	t = append(t, tags.Tag{Key: tagKey, Value: tagValue})
+	return append(points, datapoint.DataPoint{
+		Name: name, Timestamp: ts, Value: v, Tags: t,
 	})
 }
 
