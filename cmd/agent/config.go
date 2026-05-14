@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v2"
+
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -320,6 +322,83 @@ func checkConfig(configPath string) {
 		fmt.Printf("Configuration is valid with %d warning(s).\n", warnings)
 	} else {
 		fmt.Printf("Configuration has %d error(s) and %d warning(s).\n", errors, warnings)
+		os.Exit(1)
+	}
+}
+
+// showConfig prints the merged configuration as YAML for diffability
+// and audit. Modes:
+//
+//   --resolved (default) — ${env:..} / ${file:..} references resolved
+//                          against the current environment / FS.
+//                          This is what the agent boots with.
+//   --raw                — references preserved as written, useful
+//                          for reviewing the loaded layout before
+//                          comparing against the resolved output.
+//   --redact             — resolved, but values that came from
+//                          ${file:..} OR sit under a YAML key whose
+//                          name matches (?i)(key|token|password|secret)
+//                          are masked with "***". Safe for tickets.
+//
+// Output: YAML, with map keys sorted alphabetically (yaml.v3 + a
+// post-pass over the marshaled node tree) so two runs produce
+// byte-identical output and dashboards/diffs stay stable.
+//
+// Errors abort with exit 1 and a single human-readable line on
+// stderr — the goal is "fits in a CI log".
+func showConfig(args []string) {
+	mode := configuration.ShowResolved
+	configPath := "./agent-config.yaml"
+
+	for _, a := range args {
+		switch a {
+		case "--raw":
+			mode = configuration.ShowRaw
+		case "--resolved":
+			mode = configuration.ShowResolved
+		case "--redact":
+			mode = configuration.ShowRedact
+		case "-h", "--help":
+			fmt.Println("Usage: agent config show [--raw|--resolved|--redact] [path]")
+			return
+		default:
+			if strings.HasPrefix(a, "--") {
+				fmt.Fprintf(os.Stderr, "config show: unknown flag %q\n", a)
+				os.Exit(2)
+			}
+			configPath = a
+		}
+	}
+
+	// Resolve to absolute so error messages and the user's intent
+	// stay aligned (working-directory drift on Windows services has
+	// bitten us before — see localConfiguration.go comment).
+	absPath, err := filepath.Abs(configPath)
+	if err == nil {
+		configPath = absPath
+	}
+
+	// We need a logger so the loader can WARN about legacy detection
+	// and duplicate strategies. Build a minimal one writing to stderr
+	// at WARN level; --verbose flips it to debug if the operator wants
+	// to see the loader's chatter.
+	zlog := zerolog.New(os.Stderr).Level(zerolog.WarnLevel)
+	base := (*agentLogger.Logger)(&zlog)
+	log := agentLogger.NewModuleLogger(base, "configuration.show")
+
+	data, err := configuration.LoadForShow(configPath, mode, log)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config show: %v\n", err)
+		os.Exit(1)
+	}
+
+	out, err := configuration.MarshalSortedYAML(&data)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config show: marshaling output: %v\n", err)
+		os.Exit(1)
+	}
+	if _, err := os.Stdout.Write(out); err != nil {
+		fmt.Fprintf(os.Stderr, "config show: write: %v\n", err)
 		os.Exit(1)
 	}
 }
