@@ -17,24 +17,33 @@ import (
 
 // commonTags returns the systematic tags applied to every datapoint
 // emitted by this probe instance.
+//
+// Three of these tags carry OTel-canonical semantic-conventions
+// attribute names (db.system.name, server.address, server.port) and
+// flow through as OTLP/Prometheus attributes via the IncludeProbeTags
+// path of the mapper.
 func (p *postgresqlProbe) commonTags(family dbcommon.MetricType) []tags.Tag {
 	return []tags.Tag{
 		{Key: "metric_type", Value: string(family)},
 		{Key: "engine", Value: "postgresql"},
 		{Key: "instance", Value: p.cfg.Host + ":" + strconv.Itoa(p.cfg.Port)},
 		{Key: "environment", Value: string(p.environment)},
+		{Key: "db.system.name", Value: "postgresql"},
+		{Key: "server.address", Value: p.cfg.Host},
+		{Key: "server.port", Value: strconv.Itoa(p.cfg.Port)},
 	}
 }
 
-// buildUpDatapoint emits db_up. Called both on a successful ping
-// and on a failed ping so the dashboard always sees a fresh value.
+// buildUpDatapoint emits senhub.db.up. Called both on a successful
+// ping and on a failed ping so the dashboard always sees a fresh
+// value.
 func (p *postgresqlProbe) buildUpDatapoint(now time.Time, up bool) datapoint.DataPoint {
 	v := float32(0)
 	if up {
 		v = 1
 	}
 	return datapoint.DataPoint{
-		Name:      "db_up",
+		Name:      "senhub.db.up",
 		Timestamp: now,
 		Value:     v,
 		Tags:      p.commonTags(dbcommon.MetricTypeOverview),
@@ -70,6 +79,20 @@ func (p *postgresqlProbe) addCount(points []datapoint.DataPoint, name string, ra
 	v, _ := sanitize.CountInt32(raw)
 	return append(points, datapoint.DataPoint{
 		Name: name, Timestamp: ts, Value: v, Tags: p.commonTags(family),
+	})
+}
+
+// addCountTagged is the variant for collapsed metrics whose internal
+// names already include the discriminator suffix (e.g.
+// postgresql.backends.active) but whose OTel mapping requires an
+// attribute (state=active). The extra tag is appended on top of the
+// family tags so the data_store layer carries it to the OTel mapper.
+func (p *postgresqlProbe) addCountTagged(points []datapoint.DataPoint, name string, raw int64, ts time.Time, family dbcommon.MetricType, tagKey, tagValue string) []datapoint.DataPoint {
+	v, _ := sanitize.CountInt32(raw)
+	t := append([]tags.Tag{}, p.commonTags(family)...)
+	t = append(t, tags.Tag{Key: tagKey, Value: tagValue})
+	return append(points, datapoint.DataPoint{
+		Name: name, Timestamp: ts, Value: v, Tags: t,
 	})
 }
 

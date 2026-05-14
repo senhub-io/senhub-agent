@@ -64,19 +64,21 @@ func (r Role) String() string {
 type MetricType string
 
 const (
-	MetricTypeOverview     MetricType = "overview"
-	MetricTypeConnections  MetricType = "connections"
-	MetricTypeThroughput   MetricType = "throughput"
-	MetricTypeReplication  MetricType = "replication"
-	MetricTypeCache        MetricType = "cache"
-	MetricTypeLocks        MetricType = "locks"
-	MetricTypeIO           MetricType = "io"
-	MetricTypeStorage      MetricType = "storage"
-	MetricTypePerDatabase  MetricType = "per_database"
-	MetricTypePerTable     MetricType = "per_table"
-	MetricTypeBackups      MetricType = "backups"
-	MetricTypeAutovacuum   MetricType = "autovacuum"
-	MetricTypeEngine       MetricType = "engine"
+	MetricTypeOverview       MetricType = "overview"
+	MetricTypeConnections    MetricType = "connections"
+	MetricTypeThroughput     MetricType = "throughput"
+	MetricTypeReplication    MetricType = "replication"
+	MetricTypeCache          MetricType = "cache"
+	MetricTypeLocks          MetricType = "locks"
+	MetricTypeIO             MetricType = "io"
+	MetricTypeStorage        MetricType = "storage"
+	MetricTypePerDatabase    MetricType = "per_database"
+	MetricTypePerTable       MetricType = "per_table"
+	MetricTypeAutovacuum     MetricType = "autovacuum"
+	MetricTypeEngine         MetricType = "engine"
+	MetricTypeArchiver       MetricType = "archiver"
+	MetricTypeBloat          MetricType = "bloat"
+	MetricTypeStatStatements MetricType = "stat_statements"
 )
 
 // Environment is the heuristic-detected hosting environment for
