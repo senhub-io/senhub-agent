@@ -205,7 +205,7 @@ func (p *postgresqlProbe) buildStorageMetrics(ctx context.Context, now time.Time
 		 WHERE datname NOT IN ('postgres','template0','template1')`,
 	).Scan(&totalBytes)
 	if err == nil {
-		v, _ := sanitize.BytesInt32(totalBytes)
+		v, _ := sanitize.Bytes(totalBytes)
 		points = append(points, datapoint.DataPoint{
 			Name: "postgresql.db_size", Timestamp: now, Value: v, Tags: t,
 		})
@@ -293,7 +293,7 @@ func (p *postgresqlProbe) buildPerDatabaseMetrics(ctx context.Context, now time.
 		}
 		tagsRow := append([]tags.Tag{}, p.commonTags(dbcommon.MetricTypePerDatabase)...)
 		tagsRow = append(tagsRow, tags.Tag{Key: "database", Value: dbName})
-		v, _ := sanitize.BytesInt32(sizeBytes)
+		v, _ := sanitize.Bytes(sizeBytes)
 		points = append(points, datapoint.DataPoint{
 			Name: "postgresql.db_size.per_database", Timestamp: now, Value: v, Tags: tagsRow,
 		})
@@ -331,7 +331,7 @@ func (p *postgresqlProbe) buildPerTableMetrics(ctx context.Context, now time.Tim
 			tags.Tag{Key: "database", Value: schema},
 			tags.Tag{Key: "table", Value: rel},
 		)
-		v, _ := sanitize.BytesInt32(sizeBytes)
+		v, _ := sanitize.Bytes(sizeBytes)
 		points = append(points, datapoint.DataPoint{
 			Name: "postgresql.table.size", Timestamp: now, Value: v, Tags: tagsRow,
 		})
