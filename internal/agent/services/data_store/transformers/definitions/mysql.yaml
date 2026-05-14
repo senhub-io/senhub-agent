@@ -185,6 +185,7 @@ metrics:
     channel: "mysql_commands_{command}"
     display_name: "Commands ({command})"
     unit: "#"
+    multi_instance_labels: ["command"]
     category: "throughput"
     description: "Statements executed per verb (Com_select, Com_insert, Com_update, Com_delete, Com_replace)"
     otel:
