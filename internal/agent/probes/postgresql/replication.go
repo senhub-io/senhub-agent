@@ -45,8 +45,11 @@ func (p *postgresqlProbe) buildReplicationMetrics(ctx context.Context, now time.
 				lag = 0
 			}
 		}
+		// postgresql.wal.lag with operation=replay (contrib canon).
+		lagTagged := append([]tags.Tag{}, roleTagged...)
+		lagTagged = append(lagTagged, tags.Tag{Key: "operation", Value: "replay"})
 		points = append(points, datapoint.DataPoint{
-			Name: "db_replication_lag_seconds", Timestamp: now, Value: lag, Tags: roleTagged,
+			Name: "postgresql.wal.lag", Timestamp: now, Value: lag, Tags: lagTagged,
 		})
 
 		// IO thread health — pg_stat_wal_receiver.status='streaming'
@@ -60,7 +63,7 @@ func (p *postgresqlProbe) buildReplicationMetrics(ctx context.Context, now time.
 			ioRunning = 1
 		}
 		points = append(points, datapoint.DataPoint{
-			Name: "db_replication_io_running", Timestamp: now, Value: ioRunning, Tags: roleTagged,
+			Name: "senhub.db.postgresql.replica.io.running", Timestamp: now, Value: ioRunning, Tags: roleTagged,
 		})
 
 		// Composite health: io_running AND lag<threshold.
@@ -75,7 +78,7 @@ func (p *postgresqlProbe) buildReplicationMetrics(ctx context.Context, now time.
 		if err := p.db.QueryRowContext(ctx, "SELECT count(*) FROM pg_stat_replication").Scan(&n); err == nil {
 			v, _ := sanitize.CountInt32(n)
 			points = append(points, datapoint.DataPoint{
-				Name: "db_replication_replicas_connected", Timestamp: now, Value: v, Tags: roleTagged,
+				Name: "senhub.db.replication.replicas.connected", Timestamp: now, Value: v, Tags: roleTagged,
 			})
 		}
 	}
@@ -83,13 +86,13 @@ func (p *postgresqlProbe) buildReplicationMetrics(ctx context.Context, now time.
 	return points, health
 }
 
-// buildReplicationHealth emits db_replication_health under the
-// overview family — same shape as the MySQL probe.
+// buildReplicationHealth emits senhub.db.replication.health under
+// the overview family — same shape as the MySQL probe.
 func (p *postgresqlProbe) buildReplicationHealth(now time.Time, role dbcommon.Role, health float32) datapoint.DataPoint {
 	t := p.commonTags(dbcommon.MetricTypeOverview)
 	roleTagged := append([]tags.Tag{}, t...)
 	roleTagged = append(roleTagged, tags.Tag{Key: "role", Value: role.String()})
 	return datapoint.DataPoint{
-		Name: "db_replication_health", Timestamp: now, Value: health, Tags: roleTagged,
+		Name: "senhub.db.replication.health", Timestamp: now, Value: health, Tags: roleTagged,
 	}
 }
