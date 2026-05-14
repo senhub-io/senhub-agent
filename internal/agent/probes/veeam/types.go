@@ -43,11 +43,11 @@ type repository struct {
 
 // licenseInfo represents Veeam license details from /api/v1/license
 type licenseInfo struct {
-	Type                  string                `json:"type"`
-	Status                string                `json:"status"`
-	ExpirationDate        time.Time             `json:"expirationDate"`
+	Type                   string                 `json:"type"`
+	Status                 string                 `json:"status"`
+	ExpirationDate         time.Time              `json:"expirationDate"`
 	InstanceLicenseSummary instanceLicenseSummary `json:"instanceLicenseSummary"`
-	SocketLicenseSummary  socketLicenseSummary   `json:"socketLicenseSummary"`
+	SocketLicenseSummary   socketLicenseSummary   `json:"socketLicenseSummary"`
 }
 
 // instanceLicenseSummary holds instance-based license counters
@@ -75,16 +75,16 @@ type proxy struct {
 
 // jobState represents a consolidated job state from /api/v1/jobs/states
 type jobState struct {
-	ID              string          `json:"id"`
-	Name            string          `json:"name"`
-	Type            string          `json:"type"`
-	Status          string          `json:"status"`          // EJobStatus: Running, Inactive, Disabled, etc.
-	LastResult      string          `json:"lastResult"`      // ESessionResult: None, Success, Warning, Failed
-	LastRun         *time.Time      `json:"lastRun"`
-	NextRun         *time.Time      `json:"nextRun"`
-	ObjectsCount    int             `json:"objectsCount"`
-	ProgressPercent int             `json:"progressPercent"`
-	RepositoryName  string          `json:"repositoryName"`
+	ID              string           `json:"id"`
+	Name            string           `json:"name"`
+	Type            string           `json:"type"`
+	Status          string           `json:"status"`     // EJobStatus: Running, Inactive, Disabled, etc.
+	LastResult      string           `json:"lastResult"` // ESessionResult: None, Success, Warning, Failed
+	LastRun         *time.Time       `json:"lastRun"`
+	NextRun         *time.Time       `json:"nextRun"`
+	ObjectsCount    int              `json:"objectsCount"`
+	ProgressPercent int              `json:"progressPercent"`
+	RepositoryName  string           `json:"repositoryName"`
 	SessionProgress *sessionProgress `json:"sessionProgress"`
 }
 
@@ -92,10 +92,10 @@ type jobState struct {
 type sessionProgress struct {
 	Duration        string  `json:"duration"`
 	ProcessingRate  *string `json:"processingRate"`
-	Bottleneck      string  `json:"bottleneck"`       // ESessionBottleneckType
-	ProcessedSize   *int64  `json:"processedSize"`    // bytes
-	ReadSize        *int64  `json:"readSize"`          // bytes
-	TransferredSize *int64  `json:"transferredSize"`   // bytes
+	Bottleneck      string  `json:"bottleneck"`      // ESessionBottleneckType
+	ProcessedSize   *int64  `json:"processedSize"`   // bytes
+	ReadSize        *int64  `json:"readSize"`        // bytes
+	TransferredSize *int64  `json:"transferredSize"` // bytes
 	ProgressPercent *int    `json:"progressPercent"`
 }
 

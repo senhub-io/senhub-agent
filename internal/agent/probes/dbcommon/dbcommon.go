@@ -89,13 +89,13 @@ const (
 type Environment string
 
 const (
-	EnvironmentSelfHosted     Environment = "self_hosted"
-	EnvironmentRDS            Environment = "rds"
-	EnvironmentAurora         Environment = "aurora"
-	EnvironmentCloudSQL       Environment = "cloudsql"
-	EnvironmentAzureFlexible  Environment = "azure_flexible"
-	EnvironmentSupabase       Environment = "supabase"
-	EnvironmentUnknown        Environment = "unknown"
+	EnvironmentSelfHosted    Environment = "self_hosted"
+	EnvironmentRDS           Environment = "rds"
+	EnvironmentAurora        Environment = "aurora"
+	EnvironmentCloudSQL      Environment = "cloudsql"
+	EnvironmentAzureFlexible Environment = "azure_flexible"
+	EnvironmentSupabase      Environment = "supabase"
+	EnvironmentUnknown       Environment = "unknown"
 )
 
 // DetectEnvironment maps a free-form engine version string (the
