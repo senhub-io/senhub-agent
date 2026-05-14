@@ -881,13 +881,22 @@ func TestBuildJobStateDetailMetrics_HandlesCorruptInputs(t *testing.T) {
 		t.Errorf("future LastRun: seconds_since=%v, want 0 (negative durations must not flow through)", v)
 	}
 
-	// Huge counts: clamped to MaxInt32 — PRTG safe.
+	// Huge OBJECTS count: clamped to MaxInt32 — object counts are
+	// PRTG-int-safe; 53 691 387 904 from the SIEP-BCK incident was
+	// clearly a parser bug, not a legitimate object count.
 	if v := got[key{"RunawayJob", "veeam_job_objects_count"}]; v != sanitize.MaxInt32 {
 		t.Errorf("huge ObjectsCount: got %v, want clamped %v", v, sanitize.MaxInt32)
 	}
+	// Huge BYTES values are NOT clamped anymore — 1 TiB+ databases and
+	// repositories exist legitimately. The SIEP-BCK "6.5 TB processed"
+	// anomaly will surface as the actual large value rather than the
+	// saturated MaxInt32; the contract has moved from "clamp at the
+	// agent" to "trust the source for bytes, alert if implausible at
+	// the dashboard layer".
 	for _, m := range []string{"veeam_job_processed_bytes", "veeam_job_read_bytes", "veeam_job_transferred_bytes"} {
-		if v := got[key{"RunawayJob", m}]; v != sanitize.MaxInt32 {
-			t.Errorf("huge %s: got %v, want clamped %v", m, v, sanitize.MaxInt32)
+		wantTiB := float32(int64(1) << 40)
+		if v := got[key{"RunawayJob", m}]; v != wantTiB {
+			t.Errorf("huge %s: got %v, want pass-through %v (1 TiB)", m, v, wantTiB)
 		}
 	}
 
