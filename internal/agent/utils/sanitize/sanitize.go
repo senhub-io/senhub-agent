@@ -73,12 +73,33 @@ func CountInt32(v int64) (float32, bool) {
 	return float32(v), true
 }
 
-// BytesInt32 is identical to CountInt32 today but kept as a distinct
-// entry point so future tuning (e.g. clamping at petabyte scale rather
-// than MaxInt32) can target byte-typed metrics specifically without
-// affecting object counts.
-func BytesInt32(v int64) (float32, bool) {
-	return CountInt32(v)
+// Bytes converts a non-negative int64 byte count into a float32 metric
+// value. Distinct from CountInt32 because byte counters (IO bytes,
+// database sizes, transferred bytes, …) routinely exceed 2 GB on busy
+// systems — capping at MaxInt32 like CountInt32 does would saturate
+// the metric within the first few minutes of monitoring and report a
+// stuck value for hours.
+//
+// The returned float32 trades precision for range:
+//   - values up to 2^24 (16 MiB) are exact
+//   - at 1 GB:  precision is ~64 bytes
+//   - at 1 TB:  precision is ~256 KiB
+//   - at 1 PB:  precision is ~256 MiB
+//   - at 1 EB:  precision is ~256 GiB
+//
+// For monitoring purposes this is fine — sub-MB precision on a 1 TB
+// counter is meaningless. PRTG/Nagios consumers receive the value as
+// float and serialize it that way (not as int32). OTLP transmits the
+// value as float64 over the wire so the precision loss is local to
+// the agent's in-memory representation.
+//
+// Returns (value, true) for any non-negative input. Negative inputs
+// return (0, false) — bytes can't be negative.
+func Bytes(v int64) (float32, bool) {
+	if v < 0 {
+		return 0, false
+	}
+	return float32(v), true
 }
 
 // EnumValue looks `name` up in `mapping`. The mapping should be a small,

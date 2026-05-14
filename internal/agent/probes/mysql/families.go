@@ -240,7 +240,7 @@ func (p *mysqlProbe) buildStorageMetrics(ctx context.Context, now time.Time) []d
 		return nil
 	}
 
-	if v, _ := sanitize.BytesInt32(totalBytes); true {
+	if v, _ := sanitize.Bytes(totalBytes); true {
 		points = append(points, datapoint.DataPoint{
 			Name: "senhub.db.database.size", Timestamp: now, Value: v, Tags: t,
 		})
@@ -284,7 +284,7 @@ func (p *mysqlProbe) buildPerDatabaseMetrics(ctx context.Context, now time.Time)
 		}
 		tagsRow := append([]tags.Tag{}, p.commonTags(dbcommon.MetricTypePerDatabase)...)
 		tagsRow = append(tagsRow, tags.Tag{Key: "database", Value: dbName})
-		v, _ := sanitize.BytesInt32(sizeBytes)
+		v, _ := sanitize.Bytes(sizeBytes)
 		points = append(points, datapoint.DataPoint{
 			Name: "senhub.db.database.size.per_database", Timestamp: now, Value: v, Tags: tagsRow,
 		})
@@ -326,7 +326,7 @@ func (p *mysqlProbe) buildPerTableMetrics(ctx context.Context, now time.Time) []
 			tags.Tag{Key: "database", Value: schema},
 			tags.Tag{Key: "table", Value: table},
 		)
-		v, _ := sanitize.BytesInt32(sizeBytes)
+		v, _ := sanitize.Bytes(sizeBytes)
 		points = append(points, datapoint.DataPoint{
 			Name: "senhub.db.mysql.table.size", Timestamp: now, Value: v, Tags: tagsRow,
 		})
