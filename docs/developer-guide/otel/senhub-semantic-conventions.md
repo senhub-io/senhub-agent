@@ -735,6 +735,189 @@ Les requêtes cross-engine se font via le resource attribute `db.system.name` ou
 
 Tous les probes sont mappés. La phase 0.5 est terminée.
 
+### 4.14 Probe `ibmi` (IBM i / Power Systems)
+
+**Sources principales :**
+- [IBM i Services — DB2 for i](https://www.ibm.com/docs/en/i/7.5?topic=services-system-supplied-routines-views) (tables et vues SYSIBM/QSYS2 utilisées par le probe)
+- [Lot 4 conventions internes](#412-probe-citrix) — `senhub.citrix.*`, `senhub.netscaler.*`, `senhub.veeam.*` comme modèle de namespace vendor-specific
+
+**Stratégie :** aucune convention OTel canonique n'existe pour IBM i (OS propriétaire, non couvert par les receivers `opentelemetry-collector-contrib`). Le probe namespace donc l'intégralité de ses métriques sous `senhub.ibmi.*`, sur le même modèle que Lot 4 (veeam/citrix/netscaler).
+
+**Politique de nommage :** `senhub.ibmi.<famille>.<mesure>`. Familles couvertes : `cpu`, `memory`, `asp`, `disk`, `job`, `jobs`, `job_queue`, `scheduled_job`, `subsystem`, `memory_pool`, `output_queue`, `spooled_file`, `user_storage`, `table`, `index_advisor`, `journal`, `journal_receiver`, `tcp`, `netstat`, `http_server`, `hardware`, `user_profile`, `sysval`, `library_list`, `license`, `ptf_group`, `watch`, `collector`. Pas de suffixe d'unité dans le nom (`.bytes`, `.seconds`, `.kb`, `.ms`, `.percent`) — l'unité OTel canonique vit dans `otel.unit`. Pas de suffixe `.count` / `.total` — le `type` (counter vs gauge) le porte.
+
+#### 4.14.1 Couverture (94 métriques, 90 OTel-mappées + 4 event-conduit skip)
+
+**Système (CPU, mémoire, ASP, disque) — 9 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| CPU utilisation | `senhub.ibmi.cpu.utilization` | `1` | gauge | — |
+| CPU configured count | `senhub.ibmi.cpu.configured` | `{cpu}` | gauge | — |
+| CPU current capacity | `senhub.ibmi.cpu.capacity` | `{cpu}` | gauge | — |
+| Main storage | `senhub.ibmi.memory.main_storage` | `By` | gauge | — |
+| System ASP utilisation | `senhub.ibmi.asp.system.utilization` | `1` | gauge | — |
+| ASP utilisation (per-ASP) | `senhub.ibmi.asp.utilization` | `1` | gauge | `ibmi.asp.number`, `ibmi.asp.type` |
+| ASP capacity | `senhub.ibmi.asp.capacity` | `By` | gauge | `ibmi.asp.number` |
+| ASP threshold | `senhub.ibmi.asp.threshold` | `1` | gauge | `ibmi.asp.number` |
+| Disk utilisation | `senhub.ibmi.disk.utilization` | `1` | gauge | `ibmi.disk.unit`, `ibmi.disk.device` |
+| Disk bytes read | `senhub.ibmi.disk.read` | `By` | counter | `ibmi.disk.unit` |
+
+**Jobs (aggregate + per-job top-N) — 17 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Total jobs | `senhub.ibmi.jobs.total` | `{job}` | gauge | — |
+| Active jobs | `senhub.ibmi.jobs.active` | `{job}` | gauge | — |
+| Jobs by status | `senhub.ibmi.jobs.by_status` | `{job}` | gauge | `ibmi.job.type`, `ibmi.job.status` |
+| Jobs by subsystem | `senhub.ibmi.jobs.by_subsystem` | `{job}` | gauge | `ibmi.subsystem` |
+| Top-N cap hit flag | `senhub.ibmi.jobs.topn_cap_hit` | `1` | gauge | — |
+| Per-job CPU utilisation | `senhub.ibmi.job.cpu.utilization` | `1` | gauge | `ibmi.job.name`, `ibmi.job.user`, `ibmi.subsystem` |
+| Per-job elapsed CPU | `senhub.ibmi.job.cpu.elapsed_time` | `s` | gauge | id. |
+| Per-job cumulative CPU | `senhub.ibmi.job.cpu.cumulative_time` | `s` | counter | id. |
+| Per-job CPU delta | `senhub.ibmi.job.cpu.delta_time` | `s` | gauge | `ibmi.job.name` |
+| Per-job CPU rate | `senhub.ibmi.job.cpu.rate` | `1` | gauge | `ibmi.job.name` (value_scale 0.001 : ms/s → ratio) |
+| Per-job temp storage | `senhub.ibmi.job.temp_storage` | `By` | gauge | `ibmi.job.name` |
+| Per-job disk I/O | `senhub.ibmi.job.disk.io` | `{operation}` | counter | `ibmi.job.name` |
+| Per-job disk I/O (elapsed) | `senhub.ibmi.job.disk.elapsed_io` | `{operation}` | gauge | `ibmi.job.name` |
+| Per-job page faults | `senhub.ibmi.job.page_faults` | `{fault}` | gauge | `ibmi.job.name` |
+| Per-job threads | `senhub.ibmi.job.threads` | `{thread}` | gauge | `ibmi.job.name` |
+| Per-job priority | `senhub.ibmi.job.priority` | `1` | gauge | `ibmi.job.name` |
+| Subsystem active jobs | `senhub.ibmi.subsystem.active_jobs` | `{job}` | gauge | `ibmi.subsystem` |
+
+**Job queues & scheduled — 8 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Job queue — active | `senhub.ibmi.job_queue.active` | `{job}` | gauge | `ibmi.queue.library`, `ibmi.queue.name` |
+| Job queue — held | `senhub.ibmi.job_queue.held` | `{job}` | gauge | id. |
+| Job queue — released | `senhub.ibmi.job_queue.released` | `{job}` | gauge | id. |
+| Job queue — scheduled | `senhub.ibmi.job_queue.scheduled` | `{job}` | gauge | id. |
+| Job queue — depth | `senhub.ibmi.job_queue.depth` | `{job}` | gauge | id. |
+| Non-empty queues | `senhub.ibmi.job_queue.nonempty` | `{queue}` | gauge | — |
+| Scheduled jobs count | `senhub.ibmi.scheduled_job.count` | `{job}` | gauge | — |
+| Scheduled last-run age | `senhub.ibmi.scheduled_job.last_run_age` | `s` | gauge | `ibmi.job.name` |
+
+**Memory pools — 3 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Pool size | `senhub.ibmi.memory_pool.size` | `By` | gauge | `ibmi.pool.id`, `ibmi.pool.name` |
+| Pool current threads | `senhub.ibmi.memory_pool.threads` | `{thread}` | gauge | id. |
+| Pool ineligible threads | `senhub.ibmi.memory_pool.ineligible_threads` | `{thread}` | gauge | id. |
+
+**Spool & user storage — 8 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Output queue files | `senhub.ibmi.output_queue.files` | `{file}` | gauge | `ibmi.queue.library`, `ibmi.queue.name` |
+| Output queue spooled total | `senhub.ibmi.output_queue.spooled_files` | `{file}` | gauge | — |
+| Spooled file count | `senhub.ibmi.spooled_file.count` | `{file}` | gauge | — |
+| Spooled file oldest age | `senhub.ibmi.spooled_file.oldest_age` | `s` | gauge | — |
+| User storage used | `senhub.ibmi.user_storage.used` | `By` | gauge | `ibmi.user.name`, `ibmi.asp.number` |
+| User storage quota | `senhub.ibmi.user_storage.quota` | `By` | gauge | id. |
+| User storage utilisation | `senhub.ibmi.user_storage.utilization` | `1` | gauge | id. |
+| Users over 80% quota | `senhub.ibmi.user_storage.over_threshold` | `{user}` | gauge | — |
+
+**Database — tables & index advisor — 9 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Rows | `senhub.ibmi.table.rows` | `{row}` | gauge | `ibmi.table.schema`, `ibmi.table.name` |
+| Logical reads | `senhub.ibmi.table.logical_reads` | `{read}` | counter | id. |
+| Updates | `senhub.ibmi.table.updates` | `{update}` | counter | id. |
+| Deleted rows | `senhub.ibmi.table.deleted_rows` | `{row}` | gauge | id. |
+| Index times-advised | `senhub.ibmi.index_advisor.times_advised` | `{advisory}` | counter | + `ibmi.table.key_columns` |
+| Index MTI used | `senhub.ibmi.index_advisor.mti_used` | `{use}` | counter | id. |
+| Index avg query estimate | `senhub.ibmi.index_advisor.avg_query_estimate` | `s` | gauge | id. |
+| Index advised total | `senhub.ibmi.index_advisor.advised_indexes` | `{index}` | gauge | — |
+| Index recent advisories (1h) | `senhub.ibmi.index_advisor.recent_advisories` | `{advisory}` | gauge | — |
+
+**Journals — 5 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Journal active flag | `senhub.ibmi.journal.active` | `1` | gauge | `ibmi.journal.name`, `ibmi.journal.library` |
+| Receivers total size | `senhub.ibmi.journal.receivers_size` | `By` | gauge | id. |
+| Remote lag (estimé) | `senhub.ibmi.journal.remote_lag` | `s` | gauge | id. |
+| Receiver size | `senhub.ibmi.journal_receiver.size` | `By` | gauge | `ibmi.receiver.name`, `ibmi.receiver.library` |
+| Attached receivers count | `senhub.ibmi.journal_receiver.attached` | `{receiver}` | gauge | — |
+
+**Réseau (TCP, netstat, HTTP server) — 11 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| TCP connections established | `senhub.ibmi.tcp.connections.established` | `{connection}` | gauge | — |
+| Netstat connections total | `senhub.ibmi.netstat.connections` | `{connection}` | gauge | — |
+| Connections by state | `senhub.ibmi.netstat.connections_by_state` | `{connection}` | gauge | `ibmi.tcp.state` |
+| Listener up | `senhub.ibmi.netstat.listener.up` | `1` | gauge | `ibmi.net.local_port`, `ibmi.net.port_name`, `network.transport` |
+| Listener jobs | `senhub.ibmi.netstat.listener.jobs` | `{job}` | gauge | `ibmi.net.local_port`, `ibmi.net.port_name` |
+| Listeners total | `senhub.ibmi.netstat.listeners` | `{listener}` | gauge | — |
+| Interface up | `senhub.ibmi.netstat.interface.up` | `1` | gauge | `ibmi.net.address`, `ibmi.net.line_description` |
+| Interface MTU | `senhub.ibmi.netstat.interface.mtu` | `By` | gauge | `ibmi.net.address` |
+| HTTP active threads | `senhub.ibmi.http_server.threads.active` | `{thread}` | gauge | `ibmi.http.server_name` |
+| HTTP idle threads | `senhub.ibmi.http_server.threads.idle` | `{thread}` | gauge | id. |
+| HTTP responses | `senhub.ibmi.http_server.responses` | `{response}` | counter | id. |
+
+**Hardware — 3 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Hardware count (by category & status) | `senhub.ibmi.hardware.count` | `{resource}` | gauge | `ibmi.hardware.category`, `ibmi.hardware.status` |
+| Hardware total | `senhub.ibmi.hardware.total` | `{resource}` | gauge | — |
+| Non-operational hardware | `senhub.ibmi.hardware.non_operational` | `{resource}` | gauge | — |
+
+**Sécurité (users, sysval) — 6 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Users total | `senhub.ibmi.user_profile.count` | `{user}` | gauge | — |
+| Users by status | `senhub.ibmi.user_profile.by_status` | `{user}` | gauge | `ibmi.user.status` |
+| Users by class | `senhub.ibmi.user_profile.by_class` | `{user}` | gauge | `ibmi.user.class` |
+| Users with failed signons | `senhub.ibmi.user_profile.failed_signons` | `{user}` | gauge | — |
+| QSECURITY level | `senhub.ibmi.sysval.security_level` | `1` | gauge | — |
+| QAUDLVL level | `senhub.ibmi.sysval.audit_level` | `1` | gauge | — |
+
+**Configuration & compliance (library, license, PTF, watch) — 7 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Library list position | `senhub.ibmi.library_list.position` | `1` | gauge | `ibmi.library.name`, `ibmi.library.type` |
+| Licensed users | `senhub.ibmi.license.licensed_users` | `{user}` | gauge | `ibmi.license.product_id`, `ibmi.license.feature_id` |
+| License usage limit | `senhub.ibmi.license.usage_limit` | `1` | gauge | id. |
+| PTF group installed | `senhub.ibmi.ptf_group.installed` | `1` | gauge | `ibmi.ptf.group` |
+| PTF group level | `senhub.ibmi.ptf_group.level` | `1` | gauge | `ibmi.ptf.group` |
+| Watch session active | `senhub.ibmi.watch.session_active` | `1` | gauge | `ibmi.watch.session_id`, `ibmi.watch.program` |
+
+**Self-observability (collector health) — 4 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Collector success total | `senhub.ibmi.collector.success` | `{collection}` | counter | `ibmi.collector` |
+| Collector failure total | `senhub.ibmi.collector.failure` | `{collection}` | counter | `ibmi.collector` |
+| Collector last duration | `senhub.ibmi.collector.last_duration` | `s` | gauge | `ibmi.collector` |
+| Collector last success ts | `senhub.ibmi.collector.last_success_timestamp` | `s` | gauge | `ibmi.collector` |
+
+**Event-conduit (skip OTel, log export V2) — 4 métriques :**
+
+`ibmi.message_queue.event` (QSYSOPR), `ibmi.history_log.event` (QHST), `ibmi.audit_journal.event` (QAUDJRN), `ibmi.msgw_job.event` (job in message wait) portent toutes `otel.skip: true` avec une raison explicite. Même politique que `syslog`/`event` (§4.8) : ce sont des marqueurs d'événement relayé, pas des métriques agrégeables sur le canal Prom/OTLP. Cible V2 : export OTLP logs.
+
+#### 4.14.2 Conventions d'attributs
+
+Les tags du cache probe sont renommés vers des clés OTel propres via `tag_to_attribute`. Toutes les clés sont préfixées `ibmi.*` sauf `network.transport` (attr OTel canonique pour `tcp`/`udp`). Le tableau ci-dessus liste les attributs résultants. La discrimination dans le cache (`DiscriminantTagsRegistry["ibmi"]` dans `http_cache.go`) conserve les noms de tags d'origine — c'est uniquement la sortie OTel/Prometheus qui voit la version renommée.
+
+#### 4.14.3 Conversions d'unités
+
+Tout converti automatiquement par `otelmapper/convert.go` :
+
+- `%` → `1` (÷100)
+- `KB` → `By` (×1024)
+- `MB` → `By` (×1048576)
+- `B` → `By` (no scale)
+- `ms` → `s` (÷1000)
+- `s` → `s` (no conversion)
+
+Exception : `ibmi.job.cpu_time_ms_rate_per_sec` a `unit: "ms/s"` côté probe (non-canonique) ; le mapping utilise `value_scale: 0.001` explicite pour produire un ratio sans dimension côté OTel.
+
 
 ## 6. Processus d'ajout d'une convention
 
