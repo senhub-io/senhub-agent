@@ -122,5 +122,8 @@ docs/user-guide/resources/
 # Playwright MCP logs
 **/.playwright-mcp/
 
-internal/agent/probes/ibmi/
+
+# IBM i bridge — locally compiled native runner (per-arch, opt-in
+# alternative to `java -cp jt400.jar:. Jt400Runner`).
+internal/agent/probes/ibmi/bridge/jt400runner
 
