@@ -918,6 +918,73 @@ Tout converti automatiquement par `otelmapper/convert.go` :
 
 Exception : `ibmi.job.cpu_time_ms_rate_per_sec` a `unit: "ms/s"` côté probe (non-canonique) ; le mapping utilise `value_scale: 0.001` explicite pour produire un ratio sans dimension côté OTel.
 
+### 4.15 Probe `linux_logs` (systemd journal → OTLP logs)
+
+**Sources principales :**
+- [OTel Semantic Conventions — General Logs](https://opentelemetry.io/docs/specs/semconv/general/logs/) (resource & log record attrs)
+- [OTel Semantic Conventions — Process](https://opentelemetry.io/docs/specs/semconv/attributes-registry/process/) (`process.pid`, `process.executable.name`, `process.owner.uid`)
+- [OTel Logs Data Model §4.2](https://opentelemetry.io/docs/specs/otel/logs/data-model/) (SeverityNumber + SeverityText)
+- [RFC 5424 §6.2.1 PRI](https://datatracker.ietf.org/doc/html/rfc5424#section-6.2.1) (syslog severity 0..7)
+
+**Stratégie :** `linux_logs` est **exclusivement un producteur sur le signal logs**. Aucun DataPoint métrique n'est émis (`Collect()` retourne `nil, nil`), donc pas de YAML transformer — la shape du log record est déjà OTel par construction, le mapping vit dans `internal/agent/probes/linuxlogs/journal_reader.go::parseEntry`. Les records flow `journalctl JSON → LogRecord → agentstate.LogChannel → OTLP logsPump → OTel SDK Logger → BatchProcessor → OTLP gRPC export` (typiquement vers VictoriaLogs, Loki, ou un OpenTelemetry Collector).
+
+#### 4.15.1 Attributs OTel-canoniques produits
+
+Chaque record porte les attributs ci-dessous (lus depuis le JSON de `journalctl --output=json --follow`) :
+
+| Attribute OTel | Source journalctl | Notes |
+|---|---|---|
+| `host.name` | `_HOSTNAME` | resource attr canonique |
+| `systemd.unit` | `_SYSTEMD_UNIT` | OTel attr canonique pour le service systemd |
+| `syslog.appname` | `SYSLOG_IDENTIFIER` | OTel attr canonique (équivalent du `appname` RFC 5424) |
+| `process.pid` | `_PID` | OTel attr canonique |
+| `process.executable.name` | `_COMM` | OTel attr canonique |
+| `process.owner.uid` | `_UID` | extension `process.owner.*` (pas encore canonique mais cohérent avec le namespace OTel `process.*`) |
+| `systemd.transport` | `_TRANSPORT` | extension `systemd.*` (journalctl-spécifique : `kernel`, `stdout`, `syslog`, `journal`, …) |
+| `senhub.probe.name` | (poseur framework) | nom de l'instance probe configurée |
+| `senhub.probe.type` | `"linux_logs"` (constante) | universel à toutes les probes SenHub sur OTLP |
+
+Tous les attributs émis suivent la nomenclature OTel `<namespace>.<key>` (pas de `senhub.linux_logs.*` côté record — voir [§5 Logs signal](#logs-signal--convention-otel-respectée)).
+
+#### 4.15.2 Body & timestamp
+
+- **Body** = `MESSAGE` du journal (string).
+- **Timestamp** = `__REALTIME_TIMESTAMP` parsé en µs → `time.Time` (UTC). Fallback `time.Now()` si parsing échoue (préférable à un drop).
+- **ObservedTimestamp** = identique au Timestamp (le probe consomme le `--follow` en temps réel).
+
+#### 4.15.3 Severity mapping (RFC 5424 → OTel)
+
+Helper `agentstate.SyslogPriorityToSeverity` partagé avec `syslog` et `event` (l'event accepte des sévérités texte mais le résultat numérique est identique) :
+
+| PRI | RFC 5424 | OTel SeverityNumber | OTel SeverityText |
+|---:|---|---:|---|
+| 0 | Emergency | 24 (FATAL4) | `FATAL4` |
+| 1 | Alert     | 23 (FATAL3) | `FATAL3` |
+| 2 | Critical  | 22 (FATAL2) | `FATAL2` |
+| 3 | Error     | 17 (ERROR)  | `ERROR`  |
+| 4 | Warning   | 13 (WARN)   | `WARN`   |
+| 5 | Notice    | 10 (INFO2)  | `INFO2`  |
+| 6 | Info      |  9 (INFO)   | `INFO`   |
+| 7 | Debug     |  5 (DEBUG)  | `DEBUG`  |
+
+Out-of-range → `SeverityUnspecified` (0), `SeverityText` vide. Résilient aux records malformés.
+
+#### 4.15.4 Filtrage côté probe (pas côté OTel)
+
+`linux_logs` accepte côté config :
+- `units: ["nginx.service", "ssh.service"]` → flag `journalctl --unit=…`
+- `identifiers: ["sshd", "kernel"]` → flag `journalctl --identifier=…`
+- `priority: 4` → flag `journalctl --priority=…` (filtrage côté journal, ne dépasse pas le pipe)
+- `include_boot: false` (défaut) → seuls les records arrivant après `OnStart` sont émis
+
+Le filtrage opère donc en amont — un record qui n'est pas dans le périmètre de la probe ne touche jamais le canal OTLP. Pour appliquer un filtrage supplémentaire en aval, c'est au consommateur OTLP (collector / VictoriaLogs ingest filter) de le faire.
+
+#### 4.15.5 Pas de signal metric (par design)
+
+`linux_logs` n'a pas de fichier `definitions/linux_logs.yaml` et n'émet pas de DataPoint. C'est **différent de `syslog` et `event`** (§4.8) qui émettent un DataPoint synthétique par event relayé pour rétro-compat PRTG / Nagios (`syslog_event`, `event_event`, tous deux marqués `otel.skip: true`). `linux_logs` est arrivé après cette politique, exclusivement comme producteur logs — pas de canal PRTG synthétique à entretenir.
+
+Conséquence : un usage typique `linux_logs` requiert l'OTLP logs export activé sur la storage (`storage[otlp].signals.logs: true`), sinon les records sont publiés mais consommés par personne.
+
 
 ## 6. Processus d'ajout d'une convention
 
