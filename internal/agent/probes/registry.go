@@ -7,6 +7,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/event" // Import the new event probe package
 	"senhub-agent.go/internal/agent/probes/gateway"
 	"senhub-agent.go/internal/agent/probes/host"
+	"senhub-agent.go/internal/agent/probes/ibmi"
 	"senhub-agent.go/internal/agent/probes/linuxlogs"
 	"senhub-agent.go/internal/agent/probes/logicaldisk"
 	"senhub-agent.go/internal/agent/probes/memory"
@@ -46,6 +47,7 @@ type ProbeConstructor func(map[string]interface{}, *logger.Logger) (types.Probe,
 // - citrix: Monitors Citrix Virtual Apps and Desktops via OData API
 // - netscaler: Monitors Citrix Netscaler (ADC) via NITRO API
 // - veeam: Monitors Veeam Backup & Replication via REST API
+// - ibmi: Monitors IBM i / Power Systems via remote JDBC (JT400 bridge)
 var probeConstructors = map[string]ProbeConstructor{
 	"load_webapp":          webapp.NewLoadWebAppProbe,
 	"ping_webapp":          webapp.NewPingWebAppProbe,
@@ -64,6 +66,7 @@ var probeConstructors = map[string]ProbeConstructor{
 	"veeam":                veeam.NewVeeamProbe,
 	"mysql":                mysql.NewMySQLProbe,
 	"postgresql":           postgresql.NewPostgreSQLProbe,
+	"ibmi":                 ibmi.NewIBMiProbe,
 }
 
 // GetRegisteredProbeTypes returns a set of all registered probe type names
