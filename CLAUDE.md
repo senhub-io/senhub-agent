@@ -1,55 +1,30 @@
 # SenHub Agent — Project Index
 
-Infrastructure monitoring agent (Go, ~72k LOC). Single binary, ships to PRTG / Nagios / Prometheus / OTLP / SenHub cloud. Source of truth for code conventions, architectural rules and per-area contracts lives in `.claude/rules/`.
+Infrastructure monitoring agent (Go, ~72k LOC). Single binary, ships to PRTG / Nagios / Prometheus / OTLP / SenHub cloud. Universal Go/git/build/commit conventions live in `~/.claude/CLAUDE.md`; project-specific contracts live in `.claude/rules/` and load contextually by path.
 
 ## Where things are
 
-- **Code conventions & rules** → `.claude/rules/` (modular, path-scoped)
+- **Per-area rules (path-scoped)** → `.claude/rules/` (auto-loaded when files match)
 - **Full developer documentation** → [`docs/developer-guide/README.md`](./docs/developer-guide/README.md)
 - **User documentation** → `docs/user-guide/`
 - **Admin / operations** → `docs/admin-guide/`
 - **OTel semantic conventions (canonical)** → `docs/developer-guide/otel/senhub-semantic-conventions.md`
 - **Release notes** → `docs/releases/`
 
-## Critical rules (the five NOs)
-
-Full text in `.claude/rules/00-critical.md`. The reflex layer:
-
-1. **NO automatic push** — every `git push` requires fresh explicit approval.
-2. **NO automatic release** — tags, beta releases and master merges go through the `release-manager` agent + explicit approval.
-3. **NO direct commit on `dev` or `master`** — feature branch + PR.
-4. **Feature branches only** — branch from `dev`, merge via PR.
-5. **ALWAYS `make test`** — never `go test` directly. Same for `make build`, `make test-race`, `make test-database`.
-
-## Branch strategy
-
-```bash
-git checkout -b feat/my-feature        # branch from dev
-# … work + commits …
-make test                              # always green before merge
-# open PR → dev (and later → master with explicit approval)
-```
-
-## Build commands
-
-```bash
-make test              # unit tests
-make test-race         # race detector
-make build-darwin      # macOS
-make build-linux       # Linux
-make build-windows     # Windows
-make build             # all 3 platforms
-```
-
 ## ⚠️ Temporary dependency fork
 
 `github.com/citrix/adc-nitro-go` is replaced by `github.com/senhub-io/adc-nitro-go` (singleton stats panic fix, upstream PR #36 pending). See `docs/.internal/TEMPORARY-FORK-citrix-adc-nitro-go.md`. Quarterly review; revert when upstream merges.
 
-## Commit conventions (full text: `.claude/rules/20-commits.md`)
+## Project-specific build conventions
 
-`verb(scope): description` — examples: `feat(probes): ...`, `fix(otlp): ...`, `chore(0.1.93-beta): ...`.
+- **Beta tag format**: `X.Y.Z-beta` — **no `v` prefix** (matches the `dev-beta-release.yml` workflow trigger `*.*.*-beta`).
+- **Production tag format**: `X.Y.Z`.
+- `make bump-version` adds a `v` prefix that breaks the workflow trigger; prefer manual tag creation through the `release-manager` agent flow.
+- Distributed binaries matrix: 5 platforms — darwin amd64 / darwin arm64 / linux amd64 / linux arm64 / windows amd64 (plus zipped variants).
 
-**Never include** `Co-Authored-By: Claude` or `Generated with Claude Code` in commit messages.
+## Release workflow
+
+ALWAYS use the `release-manager` agent + PR merge to `master`. Direct push to `master` does NOT trigger `master-release.yml`. See memory `feedback_release_workflow.md`.
 
 ## Architecture in one diagram
 
@@ -70,7 +45,7 @@ Strategies (internal/agent/services/data_store/strategies/)
    └── event/      → syslog / winevents flows
 ```
 
-OTel-first design principle: every internal metric name follows OTel semantic conventions; sink-specific formats are derived in the mapper, not in probe code. Memory note `feedback_otel_first.md` carries the full principle.
+OTel-first design principle: every internal metric name follows OTel semantic conventions; sink-specific formats are derived in the mapper, not in probe code. Full principle in memory `feedback_otel_first.md`.
 
 ## Configuration
 
@@ -96,7 +71,7 @@ See `docs/developer-guide/current-development.md` for the live roadmap.
 ## License system
 
 Tiers: **Free** (cpu, memory, logicaldisk, network, linux_logs), **Pro** (most observability probes), **Enterprise** (wildcard).
-Full reference: `docs/LICENSE-SYSTEM.md`. License files live in `internal/agent/services/license/`.
+Full reference: `docs/LICENSE-SYSTEM.md`. License code in `internal/agent/services/license/`.
 
 ## Where to look for what
 
@@ -109,4 +84,4 @@ Full reference: `docs/LICENSE-SYSTEM.md`. License files live in `internal/agent/
 | Writing tests | `.claude/rules/tests.md` |
 | Editing documentation | `.claude/rules/docs.md` |
 
-Rules under `.claude/rules/` auto-load when their `paths:` glob matches the files you're touching. The four always-on rules (`00-critical`, `10-go-style`, `20-commits`, `30-build`) load on every session.
+Rules under `.claude/rules/` auto-load when their `paths:` glob matches the files you're touching.
