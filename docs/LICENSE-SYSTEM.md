@@ -29,27 +29,41 @@ The SenHub Agent uses a **JWT-based license system with RSA signatures** to cont
 
 ## License Tiers
 
+Source of truth for the lists below:
+- Free tier — `freeTierProbes` map in `internal/agent/services/license/license.go`
+- Pro tier — `probeBitmap` map in `internal/agent/services/license/compact.go` (compact-license slot allocation) + the `authorized_probes` array in customer-specific JWTs
+- Enterprise tier — wildcard `"*"` in `authorized_probes`
+
+A structural test in `internal/agent/probes/registry_invariant_test.go` enforces that every probe registered for boot must be in one of these lists. CI fails if a future probe is added to the registry without claiming a free-tier seat or a bitmap slot.
+
 ### Free Tier (No License Required)
+Host-local observability — probes that watch the machine the agent runs on, not a remote system:
+
 - **cpu** - CPU utilization monitoring
 - **memory** - Memory usage monitoring
 - **logicaldisk** - Disk space and I/O monitoring
 - **network** - Network interface statistics
+- **linux_logs** - Local systemd journal log shipping (Linux only)
 
 ### Pro Tier (License Required)
-Specific probes authorized by license:
+Specific probes authorized by customer JWT (or compact-license bitmap slot):
+
 - **redfish** - BMC/iDRAC/iLO hardware monitoring
 - **citrix** - Citrix Virtual Apps and Desktops monitoring
 - **netscaler** - Citrix NetScaler ADC monitoring (load balancers, SSL, HA)
-- **syslog** - Syslog event collection
-- **otel** - OpenTelemetry metrics collection
-- **event** - Windows Event Log collection
+- **veeam** - Veeam Backup & Replication monitoring
+- **mysql** - MySQL server monitoring (OTel-first, mysql.* semconv)
+- **postgresql** - PostgreSQL server monitoring (OTel-first, postgresql.* semconv)
+- **ibmi** - IBM i / Power Systems monitoring (JT400 JDBC bridge, senhub.ibmi.* semconv)
+- **syslog** - Syslog server (UDP/TCP relay + OTLP logs export)
+- **event** - Custom HTTP event ingestion
 - **ping_gateway** - Gateway connectivity monitoring
 - **ping_webapp** - Web application availability
-- **load_webapp** - Web application performance
+- **load_webapp** - Web application performance phase timing
 - **wifi_signal_strength** - WiFi signal quality
 
 ### Enterprise Tier (License Required)
-- **All probes** (wildcard "*" authorization)
+- **All probes** (wildcard `"*"` authorization in the JWT — also matches any probe added in future releases without requiring a JWT reissue)
 
 ## Security Model
 
