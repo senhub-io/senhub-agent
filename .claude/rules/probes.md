@@ -97,9 +97,20 @@ Each `tag_to_attribute` in the YAML maps probe tags to OTel attributes. Add the 
 - `Collect`: one cycle. Ping/validate the connection before issuing queries (server restarts, idle timeouts). Emit datapoints even on partial failure (always emit `senhub.db.up` for DB probes).
 - `OnShutdown`: close connections cleanly; cancel any in-flight context.
 
-## License gating
+## License touch-points — every new probe MUST update all four
 
-Probes outside the free tier (`cpu, memory, logicaldisk, network, linux_logs`) must require a valid license token. The license check happens in the sensor service automatically — probe code doesn't need to call it directly. But the probe **type name** must be a deliberate, stable identifier because it's part of the license JWT claims.
+When adding a probe, register it in the **four** places below in the **same PR**. The structural invariant test `TestEveryRegisteredProbeIsAuthorizable` in `internal/agent/probes/registry_invariant_test.go` makes the license half non-skippable — CI fails if you wire the probe in `registry.go` without claiming a license seat. The other places are not test-enforced today but matter just as much.
+
+1. **`internal/agent/probes/registry.go`** — add the entry to `probeConstructors`. The registry name MUST match the YAML transformer file name (`mysql.yaml`, `ibmi.yaml`).
+2. **License authorization** — pick one:
+   - **Free tier** → add to `freeTierProbes` in `internal/agent/services/license/license.go`. Only for **host-local** observability (cpu/memory/network/logicaldisk/linux_logs). Anything that monitors a remote system is paid.
+   - **Paid (Pro/Enterprise)** → claim the next free slot in `probeBitmap` in `internal/agent/services/license/compact.go` so the compact-license format can authorize it. 13 slots free at the time of writing; reserved slots leave a comment in place. JWT-based licenses also need this entry so `authorized_probes` array entries match the canonical names.
+3. **`docs/LICENSE-SYSTEM.md`** — add the probe to the correct tier section (Free or Pro). The doc has drifted multiple times in the past; the structural test catches code drift, not doc drift.
+4. **YAML transformer** at `internal/agent/services/data_store/transformers/definitions/<probe>.yaml` (unless the probe is a pure log conduit like `linux_logs` — in that case document the absence in `senhub-semantic-conventions.md`). Every metric in the YAML needs an `otel:` block (see `feedback_otel_first.md`); the prometheus mapper warns once per unmapped metric and silently drops, so a missing block ships as a silent feature gap.
+
+For probes that emit collapsed metrics (one OTel name + discriminator attribute), also add the discriminator tag key to `DiscriminantTagsRegistry["<probe>"]` in `internal/agent/services/data_store/strategies/http/http_cache.go`. Without this, the cache key collapses all variants onto one slot.
+
+The probe **type name** must be a deliberate, stable identifier — it's part of license JWT claims, transformer file paths, `DiscriminantTagsRegistry` keys, and customer JWTs already in the wild. Renaming a probe type is a breaking change for every customer holding a license that names it.
 
 ## Tests
 
