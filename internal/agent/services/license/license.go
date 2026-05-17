@@ -208,3 +208,31 @@ func GetFreeTierProbes() []string {
 	}
 	return probes
 }
+
+// IsProbeAuthorizable returns true when the probe can be authorized by
+// at least one supported license mechanism — either the free tier
+// (no license needed) or the compact-license probe bitmap (paid).
+//
+// This is the structural check enforced by the registry invariant test
+// in internal/agent/probes/registry_invariant_test.go. It does NOT take
+// a license token; it answers the question "would any well-formed
+// license be able to grant this probe?".
+func IsProbeAuthorizable(probeName string) bool {
+	if isFreeTierProbe(probeName) {
+		return true
+	}
+	_, ok := probeBitmap[probeName]
+	return ok
+}
+
+// CompactBitmapProbeNames returns the names of every probe that has
+// claimed a slot in the compact-license bitmap. Used by structural
+// tests to catch stale entries (bitmap claims for probes that no
+// longer exist in the registry).
+func CompactBitmapProbeNames() []string {
+	names := make([]string, 0, len(probeBitmap))
+	for name := range probeBitmap {
+		names = append(names, name)
+	}
+	return names
+}
