@@ -4,7 +4,7 @@ Dashboards deployed via Grafana's file-based provisioning. Drop into
 the Grafana host's provisioned dashboards directory; the running
 Grafana picks them up within ~10 s (default `updateIntervalSeconds`).
 
-## Catalog v1 — 21 dashboards
+## Catalog v1 — 27 dashboards
 
 ### Linux host (7)
 
@@ -34,7 +34,7 @@ Grafana picks them up within ~10 s (default `updateIntervalSeconds`).
 |---|---|---|
 | `agent-self-monitoring.json` | SenHub Agent — Self-monitoring | `senhub-agent-self-monitoring` |
 
-### Vendor pack (8 dashboards — Phase 3)
+### Vendor pack (14 dashboards — Phase 3 + IBM i)
 
 | File | Dashboard | UID |
 |---|---|---|
@@ -46,6 +46,12 @@ Grafana picks them up within ~10 s (default `updateIntervalSeconds`).
 | `netscaler-appliance-ssl.json` | SenHub NetScaler — Appliance & SSL   | `senhub-netscaler-appliance-ssl` |
 | `citrix-sessions-logons.json`  | SenHub Citrix VDI — Sessions & Logons | `senhub-citrix-sessions-logons` |
 | `citrix-capacity-health.json`  | SenHub Citrix VDI — Capacity & Health | `senhub-citrix-capacity-health` |
+| `ibmi-overview.json`           | SenHub IBM i — Overview              | `senhub-ibmi-overview` |
+| `ibmi-jobs.json`               | SenHub IBM i — Jobs                  | `senhub-ibmi-jobs` |
+| `ibmi-storage.json`            | SenHub IBM i — Storage               | `senhub-ibmi-storage` |
+| `ibmi-database.json`           | SenHub IBM i — Database              | `senhub-ibmi-database` |
+| `ibmi-network.json`            | SenHub IBM i — Network               | `senhub-ibmi-network` |
+| `ibmi-security.json`           | SenHub IBM i — Security              | `senhub-ibmi-security` |
 
 All vendor dashboards carry "**(awaiting live data)**" in their title
 until a customer pilot lights up the corresponding probe. Schema is
@@ -53,6 +59,20 @@ validated, queries are cross-checked against
 `internal/agent/services/data_store/transformers/definitions/<probe>.yaml`
 canonical OTel names, but no production data has yet flowed through
 them on sha901. The annotation drops on the first customer go-live.
+
+The IBM i pack covers the 94 metrics shipped in 0.1.93-beta (semconv
+§4.14): cpu/memory/asp, jobs (aggregate + per-job top-N) + queues
++ scheduled, ASP/disk/spool/user_storage, tables + index_advisor
++ journals, TCP/netstat/HTTP server, user_profile/sysval/watch.
+Queries target `senhub_ibmi_*` Prometheus series and are derived
+mechanically from the YAML transformer's OTel block (name + unit +
+type) following the Prometheus naming rules in
+`internal/agent/services/data_store/strategies/http/prometheus/otel_to_prom.go`
+(dot→underscore + unit suffix `s`→`seconds`, `By`→`bytes`, `1`→`ratio`;
+counters get `_total`). The dashboards will be validated end-to-end
+against **pub400.com** (the public IBM i 7.5 test system) during the
+0.1.93-beta test campaign; the "awaiting live data" tag drops on the
+first customer pilot.
 
 ## Standard layout grammar
 
