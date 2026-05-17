@@ -1,262 +1,87 @@
-# SenHub Agent Development Guidelines
+# SenHub Agent — Project Index
 
-This file serves as the primary development guide reference for Claude Code and human developers.
+Infrastructure monitoring agent (Go, ~72k LOC). Single binary, ships to PRTG / Nagios / Prometheus / OTLP / SenHub cloud. Universal Go/git/build/commit conventions live in `~/.claude/CLAUDE.md`; project-specific contracts live in `.claude/rules/` and load contextually by path.
 
-## Complete Developer Documentation
+## Where things are
 
-The full development documentation has been moved to `/docs/developer-guide/` for better organization:
+- **Per-area rules (path-scoped)** → `.claude/rules/` (auto-loaded when files match)
+- **Full developer documentation** → [`docs/developer-guide/README.md`](./docs/developer-guide/README.md)
+- **User documentation** → `docs/user-guide/`
+- **Admin / operations** → `docs/admin-guide/`
+- **OTel semantic conventions (canonical)** → `docs/developer-guide/otel/senhub-semantic-conventions.md`
+- **Release notes** → `docs/releases/`
 
-- **[Developer Guide Home](./docs/developer-guide/README.md)** - Start here
-- **[Architecture](./docs/developer-guide/architecture.md)** - System design and patterns
-- **[Development Workflow](./docs/developer-guide/development-workflow.md)** - Git, branches, releases
-- **[Build System](./docs/developer-guide/build-system.md)** - Makefile, compilation, testing
-- **[Design Patterns](./docs/developer-guide/design-patterns.md)** - Code patterns and best practices
-- **[Current Development](./docs/developer-guide/current-development.md)** - Active work and roadmap
+## ⚠️ Temporary dependency fork
 
-## Quick Reference
+`github.com/citrix/adc-nitro-go` is replaced by `github.com/senhub-io/adc-nitro-go` (singleton stats panic fix, upstream PR #36 pending). See `docs/.internal/TEMPORARY-FORK-citrix-adc-nitro-go.md`. Quarterly review; revert when upstream merges.
 
-### Critical Rules (READ FIRST)
-- **NO automatic pushes** to remote repositories
-- **NO beta releases** until user approval
-- **NO commits directly to dev** - always use feature branches
-- **ALWAYS use `make test`** instead of running `go test` directly
-- **Feature branches first** - merge to dev only when sufficiently tested
+## Project-specific build conventions
 
-### ⚠️ Temporary Dependencies Forks
+- **Beta tag format**: `X.Y.Z-beta` — **no `v` prefix** (matches the `dev-beta-release.yml` workflow trigger `*.*.*-beta`).
+- **Production tag format**: `X.Y.Z`.
+- `make bump-version` adds a `v` prefix that breaks the workflow trigger; prefer manual tag creation through the `release-manager` agent flow.
+- Distributed binaries matrix: 5 platforms — darwin amd64 / darwin arm64 / linux amd64 / linux arm64 / windows amd64 (plus zipped variants).
 
-**IMPORTANT**: We maintain temporary forks of upstream dependencies with critical bug fixes:
+## Release workflow
 
-- **citrix/adc-nitro-go** → `senhub-io/adc-nitro-go` (singleton stats bug)
-  - **Why**: Fixes panic on system/ns/ssl metrics (issue #35, 3+ years old)
-  - **Fix**: FindAllStats() + FindStat() for singleton resources
-  - **Doc**: `docs/.internal/TEMPORARY-FORK-citrix-adc-nitro-go.md`
-  - **Review**: Quarterly (next: 2025-03-11)
-  - **Revert when**: Upstream merges PR #36
+ALWAYS use the `release-manager` agent + PR merge to `master`. Direct push to `master` does NOT trigger `master-release.yml`. See memory `feedback_release_workflow.md`.
 
-See `docs/.internal/TEMPORARY-FORK-*.md` for all active forks and revert procedures.
+## Architecture in one diagram
 
-### Version Management
-- **Production version**: Without `-beta` suffix (e.g., `0.1.64`)
-- **Development version**: With `-beta` suffix (e.g., `0.1.70-beta`)
-- **Tag format**: `X.Y.Z-beta` (NO "v" prefix)
-
-### Branch Strategy
-```bash
-# 1. Create feature branch
-git checkout -b feature/my-feature-name
-
-# 2. Develop and test locally
-make build-darwin && make test
-git commit -m "feat: add new feature"
-
-# 3. Merge to dev (LOCAL)
-git checkout dev
-git merge feature/my-feature-name
-
-# 4. Push to remote (ONLY with user approval)
-git push origin dev
+```
+Probes (internal/agent/probes/*)
+   │
+   ▼
+DataStore (internal/agent/services/data_store/)
+   │  ├── buffer.go (cloud batching)
+   │  ├── otelmapper/ (neutral OTel mapper, shared by Prom + OTLP)
+   │  └── transformers/ (per-probe YAML, format v3)
+   ▼
+Strategies (internal/agent/services/data_store/strategies/)
+   ├── senhub/     → cloud push (intake.senhub.io)
+   ├── otlp/       → OTLP gRPC push
+   ├── http/       → pull formats (Prometheus, Nagios, PRTG, Zabbix, Web UI)
+   ├── prtg/       → PRTG cache format converter
+   └── event/      → syslog / winevents flows
 ```
 
-### Build Commands
-```bash
-make build              # Build all binaries
-make build-darwin       # Build for macOS
-make build-windows      # Build for Windows
-make build-linux        # Build for Linux
-make test               # Run all tests (ALWAYS use this)
-make test-race          # Run tests with race detection
-make clean              # Clean build artifacts
-```
+OTel-first design principle: every internal metric name follows OTel semantic conventions; sink-specific formats are derived in the mapper, not in probe code. Full principle in memory `feedback_otel_first.md`.
 
-### Testing Requirements
-- **New functionality** → Add new tests
-- **Modified behavior** → Update existing tests
-- **Bug fixes** → Add regression tests
-- **Before committing** → Run `make test`
+## Configuration
 
-### Code Style
-- **Formatting**: gofmt (enforced by pre-commit hook)
-- **Imports**: Standard library, third-party, internal (with blank lines between)
-- **Naming**: PascalCase (exported), camelCase (unexported)
-- **Error handling**: Add context with `fmt.Errorf("message: %w", err)`
+Two layouts supported, auto-detected:
 
-### Project Architecture
-```
-Probes → DataStore → Strategies
-         ↑
-    Configuration Provider (Remote/Local)
-```
+- **Legacy monolithic** — single `agent-config.yaml` with `probes:` + `storage:` (existing installs).
+- **Multi-file** — `agent.yaml` + `probes.d/*.yaml` + `strategies.d/*.yaml` (added 0.1.93). Full details in `.claude/rules/configuration.md`.
 
-- **Probes**: Collect metrics (embed BaseProbe)
-- **DataStore**: Route data to strategies
-- **Strategies**: senhub, prtg, event, http
-- **Configuration**: Remote (online) or Local (offline)
+Value substitution: `${env:VAR}`, `${env:VAR:-default}`, `${file:/path}`, `${file:/path:-default}`, `$$` → literal `$`.
 
-### Configuration Format (v2)
-```yaml
-probes:
-  - name: Production Citrix    # Display name (free choice)
-    type: citrix               # Probe type (must match registry)
-    params:
-      base_url: "https://..."
-      interval: 120
-```
+`config show` CLI: `agent config show [--raw|--resolved|--redact]`.
 
-**Key distinction**:
-- `name`: Unique instance identifier (cache keys, metrics tags)
-- `type`: Technical probe class (registry, transformers, discriminant tags)
+## Current development
 
-### Debugging
-```bash
-# Full debug mode
-./agent run --authentication-key KEY --verbose
+Active areas:
 
-# Selective debug mode
-./agent run --authentication-key KEY --verbose --debug-modules strategy.http,cache
+- Sprint A — Multi-file config + env/file substitution (branch `feat/conf-multifile-envsubst`).
+- Zabbix output integration — starting 2026-05-17 (HTTP sub-format).
+- Prometheus integration — Phase 2 in progress on `feat/prometheus-otel-mapping`.
 
-# Runtime log level changes
-curl -X POST http://localhost:8080/api/{key}/debug/logs \
-  -d '{"module_levels": [{"module": "probe.redfish", "level": "debug"}]}'
-```
+See `docs/developer-guide/current-development.md` for the live roadmap.
 
-### License System
-```yaml
-# Configuration (agent.license field)
-agent:
-  authentication_key: "agent-uuid"
-  license: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."  # JWT token
+## License system
 
-# CLI: Check license status
-curl http://localhost:8080/api/{key}/license/status
+Tiers: **Free** (cpu, memory, logicaldisk, network, linux_logs), **Pro** (most observability probes), **Enterprise** (wildcard).
+Full reference: `docs/LICENSE-SYSTEM.md`. License code in `internal/agent/services/license/`.
 
-# Response includes:
-# - tier: "Free" | "Pro" | "Enterprise"
-# - expires_at: ISO 8601 timestamp
-# - authorized_probes: ["cpu", "memory", ...]
-# - grace_period: boolean (7 days after expiration)
-```
+## Where to look for what
 
-**License Tiers:**
-- **Free**: cpu, memory, logicaldisk, network
-- **Pro**: redfish, citrix, ping, snmp, syslog, event
-- **Enterprise**: all probes (wildcard)
+| Task | Rule file (path-scoped) |
+|---|---|
+| Writing or editing a probe | `.claude/rules/probes.md` |
+| Adding a strategy / sink | `.claude/rules/output-{cloud,otlp,http}.md` |
+| Touching the data store / mapper / transformers | `.claude/rules/data-store.md` |
+| Configuration loader, substitution, schema bump | `.claude/rules/configuration.md` |
+| Writing tests | `.claude/rules/tests.md` |
+| Editing documentation | `.claude/rules/docs.md` |
 
-**Key Files:**
-- `/internal/agent/services/license/` - License validation
-- `/scripts/license-generator/` - Production license tool (Sensor Factory)
-- `/docs/LICENSE-SYSTEM.md` - Complete documentation
-
-### Design Patterns Checklist
-Before committing:
-- [ ] Module-specific logger used
-- [ ] Errors wrapped with context
-- [ ] Tests updated/added
-- [ ] Follows established patterns (BaseProbe, delegation, etc.)
-- [ ] Public functions documented
-- [ ] Resource cleanup implemented
-
-### Code Review Checklist
-- [ ] Tests updated for ALL code changes
-- [ ] Tests actually pass
-- [ ] Error handling with context
-- [ ] Follows architecture patterns
-- [ ] Documentation updated
-
-### Adding New Components
-
-**New Probe**:
-1. Implement `types.Probe` interface
-2. Embed `types.BaseProbe`
-3. Register in `probes/registry.go`
-4. Add transformer definitions
-5. Add comprehensive tests
-
-**New Strategy**:
-1. Implement `Strategy` interface
-2. Register in `data_store/data_store.go`
-3. Add configuration schema
-4. Add tests
-
-**New HTTP Endpoint**:
-1. Create handler in appropriate manager
-2. Register route with authentication
-3. Add integration tests
-
-## Work Directory
-
-`/Users/matthieu/Documents/GitHub/senhub-agent/`
-
-## Current Development Status
-
-Active work:
-- **Zabbix native export**: Phase 0 audit complete on `feat/zabbix-export`,
-  implementation paused (~5 days estimated when prioritized)
-- **Windows Event Log Probe**: Event collection (early stage)
-
-See [Current Development](./docs/developer-guide/current-development.md) for details.
-
-## Recent Completions
-
-- ✅ Database probes OTel-first — mysql + postgresql metric names fully
-  migrated to OTel-canonical (`mysql.*`, `postgresql.*`,
-  `senhub.db.*`). `sanitize.Bytes` lifted 2 GB cap. `row_lock.time.avg`
-  and `stat_statements.exec_time.mean` now in seconds. Resource
-  attributes `db.system.name`, `server.address`, `server.port` on every
-  DB datapoint. DiscriminantTagsRegistry updated. (0.1.92-beta)
-- ✅ Prometheus output cleanup + CPU semantics across OS (0.1.91-beta)
-- ✅ Grafana dashboard catalog v1 — 21 dashboards (Linux + Windows
-  + agent self-monitoring + 8 vendor) shipped in 0.1.90-beta
-- ✅ Agent self-observability metrics — 6 process + 5 OTLP push
-  counters + system.processes.count (0.1.90-beta)
-- ✅ Windows logicaldisk state="used" parity with Linux (0.1.90-beta)
-- ✅ OTLP/gRPC push export of metrics + logs (0.1.89-beta → consolidated into 0.1.90-beta)
-- ✅ `linux_logs` probe — journald via subprocess, free tier (0.1.90-beta)
-- ✅ Prometheus / VictoriaMetrics exposition endpoint (0.1.88-beta)
-- ✅ OTel-first refactor — neutral `otelmapper` package shared by
-  every metric sink (0.1.88-beta → 0.1.90-beta)
-- ✅ Configuration v1→v2 migration (0.1.70-beta)
-- ✅ Shared configuration template (0.1.70-beta)
-- ✅ Offline mode implementation
-- ✅ Universal configuration API
-- ✅ Modular logging system
-
-## Documentation Structure
-
-- `/docs/user-guide/` - End-user documentation
-- `/docs/admin-guide/` - Administration and configuration
-- `/docs/probes/` - Probe-specific documentation
-- `/docs/developer-guide/` - This expanded guide
-- `/docs/releases/` - Release notes and changelog
-- `/docs/.internal/` - Internal documentation and tooling
-
-For complete documentation, see [Documentation Index](./docs/README.md).
-
-## Dependencies
-
-- `github.com/gorilla/mux` - HTTP routing
-- `github.com/rs/zerolog` - Structured logging
-- `gopkg.in/yaml.v2` - YAML configuration parsing
-
-See `go.mod` for complete list.
-
-## Git Commit Guidelines
-
-**DO NOT** add:
-- "Co-Authored-By: Claude" signatures
-- "Generated with Claude Code" footers
-- Any automated attribution or AI signatures
-
-All commits should appear as authored solely by the repository owner.
-
-## Support
-
-- **Documentation**: See `/docs/` directory
-- **Issues**: GitHub Issues for bug reports
-- **Discussions**: GitHub Discussions for questions
-- **Commercial**: Contact SenHub for enterprise support
-
----
-
-**For complete development documentation, start with [Developer Guide](./docs/developer-guide/README.md).**
-
-Last updated: 2026-05-13 (0.1.92-beta)
+Rules under `.claude/rules/` auto-load when their `paths:` glob matches the files you're touching.
