@@ -3,6 +3,7 @@ package status
 import (
 	"fmt"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -323,12 +324,7 @@ func sortedKeys(m map[string]uint64) []string {
 	for k := range m {
 		out = append(out, k)
 	}
-	// simple insertion sort — maps here have ≤10 entries in practice.
-	for i := 1; i < len(out); i++ {
-		for j := i; j > 0 && out[j-1] > out[j]; j-- {
-			out[j-1], out[j] = out[j], out[j-1]
-		}
-	}
+	sort.Strings(out)
 	return out
 }
 
