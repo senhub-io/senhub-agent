@@ -7,7 +7,7 @@ on:
       - '*.md'
       - '.keys/**'
   pull_request:
-    branches: [master]
+    branches: [dev, master]
     paths-ignore:
       - 'docs/**'
       - '*.md'
