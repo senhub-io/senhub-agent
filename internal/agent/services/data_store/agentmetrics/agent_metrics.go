@@ -224,6 +224,49 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		})
 	}
 
+	// Checkpoint self-metrics. These are emitted regardless of whether
+	// persistence is enabled — the size+age gauges read 0 when disabled
+	// (distinguishable from "never saved" only by also checking the
+	// errors counter for nonzero values, which always start at 0
+	// regardless). Operators rely on these to detect a stuck
+	// checkpoint (size_bytes flat for hours, errors rising).
+	records = append(records,
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.checkpoint.size",
+			Unit:        "By",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPCheckpointSize()),
+			Description: "Size in bytes of the most recently written OTLP checkpoint file. 0 when persistence disabled or no save has succeeded yet.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.checkpoint.last_save_age",
+			Unit:        "s",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       agentstate.GetOTLPCheckpointLastSaveAge().Seconds(),
+			Description: "Seconds since the most recent successful OTLP checkpoint save. 0 when persistence disabled or no save has succeeded yet.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.checkpoint.restored_entries",
+			Unit:        "{series}",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPCheckpointRestoredCount()),
+			Description: "Number of entries restored from the OTLP checkpoint at the last agent boot. 0 means no restore (no file present, persistence disabled, or fresh install).",
+		},
+	)
+	for stage, n := range agentstate.GetOTLPCheckpointErrorsByStage() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.checkpoint.errors",
+			Unit:        "{error}",
+			Type:        "counter",
+			Attributes:  map[string]string{"stage": stage},
+			Value:       float64(n),
+			Description: "Cumulative count of OTLP checkpoint operation failures, by stage (read, parse, version_mismatch, mkdir, create_tmp, encode, fsync, close, rename).",
+		})
+	}
+
 	// Process self-monitoring — calqued on Grafana Alloy's resources
 	// mixin so operators recognize the names. Captured at scrape time
 	// via agentstate.GetProcessSnapshot() (cross-OS, ~µs cost).
