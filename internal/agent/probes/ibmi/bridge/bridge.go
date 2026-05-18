@@ -35,7 +35,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -148,26 +147,24 @@ func New(ctx context.Context, cfg Config, logger *zerolog.Logger) (*Bridge, erro
 // The subprocess is NOT tied to ctx: we want it to outlive a potentially
 // short caller context. ctx is used only for the handshake timeout.
 func (b *Bridge) spawn(ctx context.Context) error {
+	res := ResolveRuntime(b.cfg)
+	if res.Err != nil {
+		return res.Err
+	}
+
 	var cmd *exec.Cmd
-	if b.cfg.NativeRunner != "" {
-		if _, err := os.Stat(b.cfg.NativeRunner); err != nil {
-			return fmt.Errorf("native runner binary not found at %s: %w", b.cfg.NativeRunner, err)
-		}
-		cmd = exec.Command(b.cfg.NativeRunner)
-	} else {
-		javaBin := filepath.Join(b.cfg.JavaHome, "bin", "java")
-		if runtime.GOOS == "windows" {
-			javaBin += ".exe"
-		}
-		if _, err := os.Stat(javaBin); err != nil {
-			return fmt.Errorf("java binary not found at %s: %w", javaBin, err)
-		}
+	switch res.Mode {
+	case RuntimeModeNative:
+		cmd = exec.Command(res.NativeRunner)
+	case RuntimeModeJava:
 		// Use the platform path-list separator so the classpath is valid
 		// on Windows (;) as well as Unix (:).
 		classpath := "jt400.jar" + string(os.PathListSeparator) + "."
-		cmd = exec.Command(javaBin, "-cp", classpath, "Jt400Runner")
+		cmd = exec.Command(res.JavaBin, "-cp", classpath, "Jt400Runner")
+	default:
+		return fmt.Errorf("internal: resolver returned no Mode despite no Err — this is a bug")
 	}
-	cmd.Dir = b.cfg.RunnerDir
+	cmd.Dir = res.RunnerDir
 	cmd.Env = append(os.Environ(),
 		"PUB400_HOST="+b.cfg.Host,
 		"PUB400_USER="+b.cfg.User,
