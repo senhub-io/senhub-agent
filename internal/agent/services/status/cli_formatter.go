@@ -240,6 +240,130 @@ func (f *CLIFormatter) FormatProbeStatuses(probes []ProbeStatus) string {
 	return output.String()
 }
 
+// FormatOTLPInfo renders the OTLP self-metric snapshot for the CLI
+// `agent status --otlp` view. Layout mirrors the dashboard card:
+// Pipeline (counters), Store (size + log fill), Export (last/mean),
+// Checkpoint (file + restore), Parallel (sub-batches).
+//
+// Returns an empty string when info is nil so callers can chain it
+// unconditionally after FormatSystemStatus.
+func (f *CLIFormatter) FormatOTLPInfo(info *OTLPInfo) string {
+	if info == nil {
+		return ""
+	}
+
+	var output strings.Builder
+
+	if runtime.GOOS == "windows" {
+		output.WriteString("OTLP Pipeline\n")
+	} else {
+		output.WriteString("📡 OTLP Pipeline\n")
+	}
+	output.WriteString(strings.Repeat("-", 30) + "\n")
+
+	output.WriteString(fmt.Sprintf("Metrics pushed:    %d\n", info.Pipeline.MetricsPushedTotal))
+	output.WriteString(fmt.Sprintf("Logs pushed:       %d\n", info.Pipeline.LogsPushedTotal))
+	output.WriteString(fmt.Sprintf("Export errors:     %d\n", info.Pipeline.ExportErrorsTotal))
+	output.WriteString(fmt.Sprintf("Dropped:           %d\n", info.Pipeline.DroppedTotal))
+	if len(info.Pipeline.DroppedByReason) > 0 {
+		for _, reason := range sortedKeys(info.Pipeline.DroppedByReason) {
+			output.WriteString(fmt.Sprintf("  by %-14s %d\n", reason+":", info.Pipeline.DroppedByReason[reason]))
+		}
+	}
+
+	output.WriteString("\n")
+	output.WriteString("Store size:        " + fmt.Sprintf("%d series", info.Store.Size) + "\n")
+	output.WriteString(fmt.Sprintf("Log buffer fill:   %.1f%%\n", info.Store.LogBufferFillRatio*100))
+	output.WriteString(fmt.Sprintf("Export last:       %s\n", formatMsDuration(info.ExportDuration.LastMs)))
+	output.WriteString(fmt.Sprintf("Export mean:       %s\n", formatMsDuration(info.ExportDuration.MeanMs)))
+
+	output.WriteString("\n")
+	if runtime.GOOS == "windows" {
+		output.WriteString("Checkpoint\n")
+	} else {
+		output.WriteString("💾 Checkpoint\n")
+	}
+	output.WriteString(strings.Repeat("-", 30) + "\n")
+	if info.Checkpoint.SizeBytes == 0 && info.Checkpoint.LastSaveAgeSeconds == 0 && info.Checkpoint.RestoredEntries == 0 {
+		output.WriteString("Disabled (no save observed)\n")
+	} else {
+		output.WriteString(fmt.Sprintf("Size:              %s\n", formatBytes(info.Checkpoint.SizeBytes)))
+		if info.Checkpoint.LastSaveAgeSeconds > 0 {
+			output.WriteString(fmt.Sprintf("Last save:         %s ago\n", formatSecDuration(info.Checkpoint.LastSaveAgeSeconds)))
+		} else {
+			output.WriteString("Last save:         never\n")
+		}
+		output.WriteString(fmt.Sprintf("Restored at boot:  %d entries\n", info.Checkpoint.RestoredEntries))
+	}
+	if info.Checkpoint.ErrorsTotal > 0 {
+		output.WriteString(fmt.Sprintf("Errors:            %d\n", info.Checkpoint.ErrorsTotal))
+		for _, stage := range sortedKeys(info.Checkpoint.ErrorsByStage) {
+			output.WriteString(fmt.Sprintf("  at %-14s %d\n", stage+":", info.Checkpoint.ErrorsByStage[stage]))
+		}
+	}
+
+	output.WriteString("\n")
+	if runtime.GOOS == "windows" {
+		output.WriteString("Parallel export\n")
+	} else {
+		output.WriteString("🔀 Parallel export\n")
+	}
+	output.WriteString(strings.Repeat("-", 30) + "\n")
+	if info.Parallel.SubBatches <= 1 {
+		output.WriteString(fmt.Sprintf("Sub-batches:       %d (single-batch path)\n", info.Parallel.SubBatches))
+	} else {
+		output.WriteString(fmt.Sprintf("Sub-batches:       %d (fan-out by probe)\n", info.Parallel.SubBatches))
+	}
+
+	return output.String()
+}
+
+func sortedKeys(m map[string]uint64) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	// simple insertion sort — maps here have ≤10 entries in practice.
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j-1] > out[j]; j-- {
+			out[j-1], out[j] = out[j], out[j-1]
+		}
+	}
+	return out
+}
+
+func formatBytes(b int64) string {
+	switch {
+	case b >= 1<<20:
+		return fmt.Sprintf("%.1f MiB", float64(b)/(1<<20))
+	case b >= 1<<10:
+		return fmt.Sprintf("%.1f KiB", float64(b)/(1<<10))
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
+}
+
+func formatMsDuration(ms float64) string {
+	if ms <= 0 {
+		return "—"
+	}
+	if ms < 1000 {
+		return fmt.Sprintf("%.0f ms", ms)
+	}
+	return fmt.Sprintf("%.2f s", ms/1000)
+}
+
+func formatSecDuration(secs float64) string {
+	d := time.Duration(secs * float64(time.Second))
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
+	}
+	return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
+}
+
 // Helper functions for icons and formatting
 
 func (f *CLIFormatter) getHealthIcon(status string) string {
