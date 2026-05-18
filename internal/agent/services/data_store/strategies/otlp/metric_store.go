@@ -33,10 +33,12 @@ import (
 //     incremented. Updates of existing series never drop. 0 means
 //     unbounded (the historical behaviour).
 type metricStore struct {
-	mu         sync.RWMutex
-	entries    map[string]storedMetric
-	maxEntries int            // 0 = unbounded
-	memGuard   *memoryLimiter // optional; nil = no memory limiter
+	mu          sync.RWMutex
+	entries     map[string]storedMetric
+	maxEntries  int            // global cap; 0 = unbounded
+	probeBudget int            // per-probe cap; 0 = unbounded
+	probeCounts map[string]int // probe_name → currently active series count
+	memGuard    *memoryLimiter // optional; nil = no memory limiter
 }
 
 // storedMetric is one LWW slot — the metadata we need to feed
@@ -53,13 +55,25 @@ type storedMetric struct {
 }
 
 func newMetricStore() *metricStore {
-	return &metricStore{entries: make(map[string]storedMetric)}
+	return &metricStore{entries: make(map[string]storedMetric), probeCounts: map[string]int{}}
 }
 
 // newMetricStoreWithCap returns a store that drops new series past
-// maxEntries. Pass 0 for unbounded.
+// maxEntries (global cap). Pass 0 for unbounded.
 func newMetricStoreWithCap(maxEntries int) *metricStore {
-	return &metricStore{entries: make(map[string]storedMetric), maxEntries: maxEntries}
+	return &metricStore{
+		entries:     make(map[string]storedMetric),
+		maxEntries:  maxEntries,
+		probeCounts: map[string]int{},
+	}
+}
+
+// withProbeBudget sets the per-probe cardinality budget on top of any
+// existing global cap. 0 means no per-probe budget. Returns the store
+// for chaining.
+func (s *metricStore) withProbeBudget(maxPerProbe int) *metricStore {
+	s.probeBudget = maxPerProbe
+	return s
 }
 
 // withMemoryLimiter attaches a memory limiter to the store. The
@@ -130,12 +144,23 @@ func (s *metricStore) upsert(dp datapoint.DataPoint) {
 	}
 
 	s.mu.Lock()
-	if s.maxEntries > 0 {
-		if _, exists := s.entries[key]; !exists && len(s.entries) >= s.maxEntries {
+	_, exists := s.entries[key]
+	if !exists {
+		// Per-probe budget: each probe instance gets its own
+		// cardinality cap. Protects a fleet from one rogue probe
+		// stealing all of the global store slots from its peers.
+		if s.probeBudget > 0 && s.probeCounts[probeName] >= s.probeBudget {
+			s.mu.Unlock()
+			agentstate.IncrementOTLPDropped("probe_cardinality")
+			return
+		}
+		// Global cap: total store size across all probes.
+		if s.maxEntries > 0 && len(s.entries) >= s.maxEntries {
 			s.mu.Unlock()
 			agentstate.IncrementOTLPDropped("store_cap")
 			return
 		}
+		s.probeCounts[probeName]++
 	}
 	s.entries[key] = storedMetric{
 		probeName:  probeName,
@@ -147,6 +172,15 @@ func (s *metricStore) upsert(dp datapoint.DataPoint) {
 		observedAt: when,
 	}
 	s.mu.Unlock()
+}
+
+// probeSeriesCount returns the current number of distinct series held
+// for the given probe_name. Used by tests and by self-metrics for
+// per-probe cardinality visibility.
+func (s *metricStore) probeSeriesCount(probeName string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.probeCounts[probeName]
 }
 
 // snapshot returns a slice of CacheMetric ready to feed into
