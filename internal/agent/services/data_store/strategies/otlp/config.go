@@ -26,8 +26,17 @@ const (
 	// No default endpoint on purpose: silently shipping metrics/logs to
 	// localhost when an operator forgets to set `endpoint:` is a much
 	// worse failure mode than refusing to start. Always require it.
-	DefaultCompression        = "gzip"
-	DefaultTimeout            = 10 * time.Second
+	DefaultCompression = "gzip"
+	// DefaultTimeout bounds a single OTLP export call. The OTel SDK uses
+	// it as the gRPC context deadline. 60 s is generous enough to absorb
+	// batches of 1000+ datapoints from the larger probes (IBM i with
+	// its 29 collectors produced batches of ~2000 datapoints during
+	// 0.1.93-beta validation; the previous 10 s default timed out
+	// consistently, silently grew the export buffer cumulatively, and
+	// looked like a probe stall from the operator perspective). Keep
+	// it ≤ probe interval so a misconfigured endpoint surfaces quickly
+	// without piling more datapoints on the buffer.
+	DefaultTimeout            = 60 * time.Second
 	DefaultMetricsInterval    = 30 * time.Second
 	DefaultMetricsTemporality = "cumulative"
 	DefaultLogsBatchSize      = 1000
