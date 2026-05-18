@@ -14,14 +14,20 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		ProbesActive: 3,
 	}
 	recs := BuildAgentRecords(snap)
-	// 17 records when neither build info nor http_requests is set:
+	// 20 records when neither build info nor http_requests is set and no
+	// OTLP drops have occurred yet:
 	//   6 core         (uptime, cache.entries, probes.{active,total,healthy}, collect.errors)
-	//   5 OTLP push    (metrics.pushed, logs.pushed, export.errors,
-	//                   dropped_log_records, buffer.fill_ratio)
+	//   8 OTLP push    (metrics.pushed, logs.pushed, export.errors,
+	//                   dropped_log_records, buffer.fill_ratio,
+	//                   store_size, export.duration{window=last},
+	//                   export.duration{window=mean})
 	//   6 process      (cpu.time, memory.{resident,heap}, goroutines,
 	//                   gc.cycles, open_fds)
-	if len(recs) != 17 {
-		t.Fatalf("expected 17 records (no build info, no http requests), got %d", len(recs))
+	//
+	// Note: `senhub.agent.otlp.dropped{reason=...}` is emitted only when
+	// drops have occurred, so it doesn't count here.
+	if len(recs) != 20 {
+		t.Fatalf("expected 20 records (no build info, no http requests, no OTLP drops), got %d", len(recs))
 	}
 
 	names := map[string]bool{}
@@ -40,6 +46,8 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		"senhub.agent.otlp.export.errors",
 		"senhub.agent.otlp.dropped_log_records",
 		"senhub.agent.otlp.buffer.fill_ratio",
+		"senhub.agent.otlp.store_size",
+		"senhub.agent.otlp.export.duration",
 		"senhub.agent.process.cpu.time",
 		"senhub.agent.process.memory.resident",
 		"senhub.agent.process.memory.heap",

@@ -126,3 +126,64 @@ func TestStoreKey_IgnoresIdentityTags(t *testing.T) {
 		t.Errorf("identity tags affected suffix: %q vs %q", a, b)
 	}
 }
+
+func TestMetricStore_CardinalityCap_DropsNewSeries(t *testing.T) {
+	store := newMetricStoreWithCap(2)
+	mk := func(metric, host string) datapoint.DataPoint {
+		return datapoint.DataPoint{
+			Name:  metric,
+			Value: 1,
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: "p"},
+				{Key: "probe_type", Value: "t"},
+				{Key: "host", Value: host},
+			},
+		}
+	}
+
+	store.upsert(mk("a", "h1")) // 1 series
+	store.upsert(mk("b", "h1")) // 2 series — at cap
+	store.upsert(mk("c", "h1")) // 3rd series — DROPPED
+
+	if got := store.size(); got != 2 {
+		t.Errorf("size=%d after cap exhaustion, want 2", got)
+	}
+
+	// Existing series must still update.
+	store.upsert(mk("a", "h1"))
+	if got := store.size(); got != 2 {
+		t.Errorf("size=%d after update of existing series, want 2", got)
+	}
+}
+
+func TestMetricStore_CardinalityCap_ZeroMeansUnbounded(t *testing.T) {
+	store := newMetricStoreWithCap(0)
+	for i := 0; i < 100; i++ {
+		store.upsert(datapoint.DataPoint{
+			Name:  "m",
+			Value: float32(i),
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: "p"},
+				{Key: "probe_type", Value: "t"},
+				{Key: "host", Value: hostOf(i)},
+			},
+		})
+	}
+	if got := store.size(); got != 100 {
+		t.Errorf("size=%d with cap=0 (unbounded), want 100", got)
+	}
+}
+
+func hostOf(i int) string { return "h" + itoa(i) }
+
+func itoa(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	digits := []byte{}
+	for i > 0 {
+		digits = append([]byte{byte('0' + i%10)}, digits...)
+		i /= 10
+	}
+	return string(digits)
+}
