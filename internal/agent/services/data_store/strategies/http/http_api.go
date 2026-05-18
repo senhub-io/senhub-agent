@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/license"
@@ -724,4 +725,71 @@ func (a *APIManager) getLicenseToken() string {
 // getLicenseValidator creates a license validator instance
 func (a *APIManager) getLicenseValidator() (license.Validator, error) {
 	return license.GetDefaultValidator(7) // 7-day grace period
+}
+
+// HandleInfoOTLP snapshots the OTLP self-metric counters maintained in
+// the `agentstate` package and returns them as JSON. Designed for the
+// CLI `agent status --otlp` view and the dashboard's OTLP card so they
+// don't need to scrape Prometheus.
+//
+// Counter maps (`dropped_by_reason`, `checkpoint.errors_by_stage`) are
+// returned as empty objects when no event has occurred — easier for
+// frontends than distinguishing missing vs. zero.
+func (a *APIManager) HandleInfoOTLP(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	droppedByReason := agentstate.GetOTLPDroppedByReason()
+	if droppedByReason == nil {
+		droppedByReason = map[string]uint64{}
+	}
+	var droppedTotal uint64
+	for _, n := range droppedByReason {
+		droppedTotal += n
+	}
+
+	errorsByStage := agentstate.GetOTLPCheckpointErrorsByStage()
+	if errorsByStage == nil {
+		errorsByStage = map[string]uint64{}
+	}
+	var errorsTotal uint64
+	for _, n := range errorsByStage {
+		errorsTotal += n
+	}
+
+	resp := OTLPInfoResponse{
+		Pipeline: OTLPPipelineInfo{
+			MetricsPushedTotal: agentstate.GetOTLPMetricsPushedTotal(),
+			LogsPushedTotal:    agentstate.GetOTLPLogsPushedTotal(),
+			ExportErrorsTotal:  agentstate.GetOTLPExportErrorsTotal(),
+			DroppedTotal:       droppedTotal,
+			DroppedByReason:    droppedByReason,
+		},
+		Store: OTLPStoreInfo{
+			Size:               agentstate.GetOTLPStoreSize(),
+			LogBufferFillRatio: agentstate.LogChannelFillRatio(),
+		},
+		ExportDuration: OTLPExportDurationInfo{
+			LastMs: float64(agentstate.GetOTLPLastExportDuration()) / float64(time.Millisecond),
+			MeanMs: float64(agentstate.GetOTLPMeanExportDuration()) / float64(time.Millisecond),
+		},
+		Checkpoint: OTLPCheckpointInfo{
+			SizeBytes:          agentstate.GetOTLPCheckpointSize(),
+			LastSaveAgeSeconds: agentstate.GetOTLPCheckpointLastSaveAge().Seconds(),
+			RestoredEntries:    agentstate.GetOTLPCheckpointRestoredCount(),
+			ErrorsTotal:        errorsTotal,
+			ErrorsByStage:      errorsByStage,
+		},
+		Parallel: OTLPParallelInfo{
+			SubBatches: agentstate.GetOTLPSubBatchCount(),
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode OTLP info response")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
