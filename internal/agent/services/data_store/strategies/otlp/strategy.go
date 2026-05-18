@@ -379,6 +379,7 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 			return s.exporters.metric.Export(ctx, rm)
 		},
 		s.warnMissingMappingOnce,
+		s.cfg.MaxConcurrentExports,
 	)
 	exportDuration := time.Since(exportStart)
 	span.SetAttributes(attribute.Int("otlp.records_count", count))
