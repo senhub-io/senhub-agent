@@ -1,6 +1,10 @@
 package agentstate
 
-import "sync/atomic"
+import (
+	"sync"
+	"sync/atomic"
+	"time"
+)
 
 // OTLP push counters live here (not in the otlp strategy package) so
 // the Prometheus exposition bridge can read them without creating an
@@ -11,10 +15,23 @@ import "sync/atomic"
 // are non-blocking via Load — safe from any goroutine.
 
 var (
-	otlpMetricsPushed atomic.Uint64
-	otlpLogsPushed    atomic.Uint64
-	otlpExportErrors  atomic.Uint64
+	otlpMetricsPushed         atomic.Uint64
+	otlpLogsPushed            atomic.Uint64
+	otlpExportErrors          atomic.Uint64
+	otlpStoreSize             atomic.Int64 // last reported gauge
+	otlpLastExportDurationNs  atomic.Int64 // duration of the last successful export
+	otlpExportDurationCountNs atomic.Uint64
+	otlpExportDurationCalls   atomic.Uint64
 )
+
+// otlpDropped is a string-keyed counter (one per drop reason). The
+// hot path (upsert at cap) acquires the mutex only on drop, so the
+// happy path remains lock-free. Reasons are stable enums set by the
+// strategy; keep the set small so dashboards can pivot on them.
+var otlpDropped = struct {
+	mu sync.RWMutex
+	m  map[string]uint64
+}{m: map[string]uint64{}}
 
 // IncrementOTLPMetricsPushed records `n` metric records successfully
 // exported in one batch. Called by the OTLP strategy after the
@@ -48,6 +65,71 @@ func IncrementOTLPExportErrors() {
 func GetOTLPMetricsPushedTotal() uint64 { return otlpMetricsPushed.Load() }
 func GetOTLPLogsPushedTotal() uint64    { return otlpLogsPushed.Load() }
 func GetOTLPExportErrorsTotal() uint64  { return otlpExportErrors.Load() }
+
+// IncrementOTLPDropped records one OTLP datapoint dropped before the
+// export call, labelled by reason ("store_cap" today; future reasons
+// may include "queue_full", "memory_limit", "size_limit"). Reasons
+// surface as the `reason` attribute on the
+// `senhub.agent.otlp.dropped` counter — keep them stable and small.
+func IncrementOTLPDropped(reason string) {
+	if reason == "" {
+		reason = "unknown"
+	}
+	otlpDropped.mu.Lock()
+	otlpDropped.m[reason]++
+	otlpDropped.mu.Unlock()
+}
+
+// GetOTLPDroppedByReason returns a snapshot copy of the per-reason
+// drop counters. The map is safe to mutate by the caller.
+func GetOTLPDroppedByReason() map[string]uint64 {
+	otlpDropped.mu.RLock()
+	defer otlpDropped.mu.RUnlock()
+	out := make(map[string]uint64, len(otlpDropped.m))
+	for k, v := range otlpDropped.m {
+		out[k] = v
+	}
+	return out
+}
+
+// RecordOTLPStoreSize is called by the OTLP strategy after every
+// snapshot to publish the current cardinality of the strategy-local
+// metric store. Surfaces as the `senhub.agent.otlp.store_size` gauge.
+func RecordOTLPStoreSize(n int) {
+	otlpStoreSize.Store(int64(n))
+}
+
+// GetOTLPStoreSize returns the most recently reported store size.
+func GetOTLPStoreSize() int64 { return otlpStoreSize.Load() }
+
+// RecordOTLPExportDuration records the duration of one successful
+// OTLP metric export. Maintains a simple running mean alongside the
+// last-observed value so a single histogram-emit path can pick either.
+// (We don't ship a real histogram yet — out of scope for Tier 1 — but
+// the average + last is enough for operator alerts of the form
+// "export is taking 30 s when it used to take 1 s".)
+func RecordOTLPExportDuration(d time.Duration) {
+	otlpLastExportDurationNs.Store(int64(d))
+	otlpExportDurationCountNs.Add(uint64(d))
+	otlpExportDurationCalls.Add(1)
+}
+
+// GetOTLPLastExportDuration returns the duration of the most recent
+// successful export.
+func GetOTLPLastExportDuration() time.Duration {
+	return time.Duration(otlpLastExportDurationNs.Load())
+}
+
+// GetOTLPMeanExportDuration returns the all-time mean of successful
+// export durations. Returns 0 before the first call.
+func GetOTLPMeanExportDuration() time.Duration {
+	calls := otlpExportDurationCalls.Load()
+	if calls == 0 {
+		return 0
+	}
+	total := otlpExportDurationCountNs.Load()
+	return time.Duration(total / calls)
+}
 
 // LogChannelFillRatio returns the highest fill ratio (0..1) across
 // all currently-subscribed log channels. Used by the Prometheus
@@ -84,4 +166,11 @@ func resetOTLPCountersForTest() {
 	otlpMetricsPushed.Store(0)
 	otlpLogsPushed.Store(0)
 	otlpExportErrors.Store(0)
+	otlpStoreSize.Store(0)
+	otlpLastExportDurationNs.Store(0)
+	otlpExportDurationCountNs.Store(0)
+	otlpExportDurationCalls.Store(0)
+	otlpDropped.mu.Lock()
+	otlpDropped.m = map[string]uint64{}
+	otlpDropped.mu.Unlock()
 }

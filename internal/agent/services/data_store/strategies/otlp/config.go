@@ -42,6 +42,13 @@ const (
 	DefaultLogsBatchSize      = 1000
 	DefaultLogsBatchTimeout   = 5 * time.Second
 	DefaultLogsBufferSize     = 10000
+	// DefaultMaxStoreSize caps the OTLP strategy's metric-store
+	// cardinality. 50 000 distinct series is comfortable for typical
+	// SenHub agent profiles (host + 1-3 vendor probes ≈ 1-5 k series);
+	// the cap fires for runaway-cardinality bugs (e.g. a probe emitting
+	// per-request unique IDs as labels) before they OOM the agent.
+	// Operators expecting >50 k series should bump this in YAML.
+	DefaultMaxStoreSize = 50000
 	DefaultTracesBatchSize    = 512
 	DefaultTracesBatchTimeout = 5 * time.Second
 	DefaultTracesBufferSize   = 2048
@@ -148,6 +155,16 @@ type Config struct {
 	Logs        LogsSignal
 	Traces      TracesSignal
 	Resource    ResourceConfig
+	// MaxStoreSize bounds the OTLP strategy's in-memory metric store
+	// (the last-writer-wins cache of every distinct series since the
+	// last successful export). Once the store reaches this many series,
+	// new series are dropped and `senhub.agent.otlp.dropped` is
+	// incremented with `reason="store_cap"`. Existing series continue
+	// to update normally — known series are preferred over admitting
+	// unbounded new cardinality, which protects the agent from a probe
+	// that goes rogue on a high-cardinality label (e.g. unique IDs as
+	// tag values). 0 = unbounded (the historical default).
+	MaxStoreSize int
 }
 
 // ResolveEndpoint returns the endpoint to use for this signal: the
@@ -218,6 +235,7 @@ func defaultConfig() Config {
 			ServiceName: DefaultServiceName,
 			Extra:       map[string]string{},
 		},
+		MaxStoreSize: DefaultMaxStoreSize,
 	}
 }
 
@@ -245,6 +263,13 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 			return cfg, fmt.Errorf("invalid timeout: %w", err)
 		}
 		cfg.Timeout = d
+	}
+
+	if v, ok := readInt(params["max_store_size"]); ok {
+		if v < 0 {
+			return cfg, fmt.Errorf("max_store_size must be >= 0 (0 = unbounded), got %d", v)
+		}
+		cfg.MaxStoreSize = v
 	}
 
 	if hdrs := readStringMap(params["headers"]); hdrs != nil {
