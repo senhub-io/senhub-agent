@@ -264,9 +264,18 @@ func LogChannelFillRatio() float64 {
 	return max
 }
 
+// ResetOTLPCountersForTest is the exported gate for in-process tests
+// living outside the agentstate package (e.g. the http strategy tests
+// that hit /info/otlp). Keeps tests isolated from counter state
+// leaked by prior runs in the same `go test` process. Production code
+// must never call this — the name carries the warning.
+func ResetOTLPCountersForTest() {
+	resetOTLPCountersForTest()
+}
+
 // resetOTLPCountersForTest is the standard reset pattern used by
-// other agentstate counters. Not exported; tests in the same
-// package call it via the package-private helper.
+// other agentstate counters. Tests in the same package call it
+// directly; cross-package callers go through ResetOTLPCountersForTest.
 func resetOTLPCountersForTest() {
 	otlpMetricsPushed.Store(0)
 	otlpLogsPushed.Store(0)
