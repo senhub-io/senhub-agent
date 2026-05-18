@@ -197,6 +197,70 @@ func (h *StatusHelper) determineConnectionStatus(mode string) string {
 	}
 }
 
+// OTLPInfo mirrors the JSON shape returned by /api/{agentkey}/info/otlp.
+// Defined here (rather than importing from the http strategy) so the
+// CLI doesn't pull in the entire HTTP-server package graph.
+type OTLPInfo struct {
+	Pipeline struct {
+		MetricsPushedTotal uint64            `json:"metrics_pushed_total"`
+		LogsPushedTotal    uint64            `json:"logs_pushed_total"`
+		ExportErrorsTotal  uint64            `json:"export_errors_total"`
+		DroppedTotal       uint64            `json:"dropped_total"`
+		DroppedByReason    map[string]uint64 `json:"dropped_by_reason"`
+	} `json:"pipeline"`
+	Store struct {
+		Size               int64   `json:"size"`
+		LogBufferFillRatio float64 `json:"log_buffer_fill_ratio"`
+	} `json:"store"`
+	ExportDuration struct {
+		LastMs float64 `json:"last_ms"`
+		MeanMs float64 `json:"mean_ms"`
+	} `json:"export_duration"`
+	Checkpoint struct {
+		SizeBytes          int64             `json:"size_bytes"`
+		LastSaveAgeSeconds float64           `json:"last_save_age_seconds"`
+		RestoredEntries    int64             `json:"restored_entries"`
+		ErrorsTotal        uint64            `json:"errors_total"`
+		ErrorsByStage      map[string]uint64 `json:"errors_by_stage"`
+	} `json:"checkpoint"`
+	Parallel struct {
+		SubBatches int32 `json:"sub_batches"`
+	} `json:"parallel"`
+}
+
+// GetOTLPInfoFromHTTP fetches the OTLP self-metric snapshot from the
+// running agent's HTTP strategy. Returns an error if the agent is not
+// reachable or the HTTP strategy is disabled.
+func (h *StatusHelper) GetOTLPInfoFromHTTP(agentKey string, port int) (*OTLPInfo, error) {
+	if agentKey == "" {
+		return nil, fmt.Errorf("agent key required for OTLP info")
+	}
+
+	url := fmt.Sprintf("http://localhost:%d/api/%s/info/otlp", port, agentKey)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to HTTP endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP endpoint returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var info OTLPInfo
+	if err := json.Unmarshal(body, &info); err != nil {
+		return nil, fmt.Errorf("failed to parse OTLP info response: %w", err)
+	}
+	return &info, nil
+}
+
 // GetDetailedProbeStatusFromHTTP gets detailed probe information
 func (h *StatusHelper) GetDetailedProbeStatusFromHTTP(agentKey string, port int) ([]ProbeStatus, error) {
 	if agentKey == "" {

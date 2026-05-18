@@ -208,6 +208,7 @@ Service Commands:
     stop                 Stop the service
     restart              Restart the service
     status               Show service and probe status
+    status --otlp        Also show OTLP pipeline self-metrics
     run                  Run interactively in console mode
 
 License Commands:
