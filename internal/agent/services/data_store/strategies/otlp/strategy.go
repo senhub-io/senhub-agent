@@ -141,6 +141,9 @@ func NewOTLPSyncStrategy(
 	}
 
 	store := newMetricStoreWithCap(cfg.MaxStoreSize)
+	if cfg.MaxActiveSeriesPerProbe > 0 {
+		store = store.withProbeBudget(cfg.MaxActiveSeriesPerProbe)
+	}
 	if ml != nil {
 		store = store.withMemoryLimiter(ml)
 	}
