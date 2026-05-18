@@ -85,6 +85,10 @@ type OTLPSyncStrategy struct {
 	// the YAML (cfg.MemoryLimit.SoftMiB == 0 && HardMiB == 0).
 	memLimiter *memoryLimiter
 
+	// chkpt persists the LWW store to disk periodically and restores
+	// it at boot. nil when cfg.Persistence.Path is empty.
+	chkpt *checkpointer
+
 	startMu  sync.Mutex
 	started  bool
 	shutdown bool
@@ -148,7 +152,7 @@ func NewOTLPSyncStrategy(
 		store = store.withMemoryLimiter(ml)
 	}
 
-	return &OTLPSyncStrategy{
+	s := &OTLPSyncStrategy{
 		agentConfig: agentConfig,
 		rawParams:   params,
 		cfg:         cfg,
@@ -158,6 +162,15 @@ func NewOTLPSyncStrategy(
 		resource:    buildResource(cfg.Resource, cliArgs.Version),
 		memLimiter:  ml,
 	}
+
+	if cfg.Persistence.Path != "" {
+		s.chkpt = newCheckpointer(checkpointConfig{
+			Path:     cfg.Persistence.Path,
+			Interval: cfg.Persistence.Interval,
+		}, store, moduleLogger)
+	}
+
+	return s
 }
 
 // GetStrategyName returns the strategy identifier used by the data_store
@@ -213,6 +226,19 @@ func (s *OTLPSyncStrategy) Start() error {
 		s.memLimiter.start(context.Background())
 	}
 
+	// Restore the LWW store from the on-disk checkpoint (if any)
+	// before the first push so the consumer sees continuity across
+	// restarts. Restore is best-effort: corrupt or missing files
+	// start with an empty store and log a warn, no boot failure.
+	if s.chkpt != nil {
+		if n, err := s.chkpt.loadAndRestore(); err != nil {
+			s.logger.Warn().Err(err).Msg("OTLP checkpoint restore failed; starting with empty store")
+		} else if n > 0 {
+			s.logger.Info().Int("entries", n).Msg("OTLP checkpoint restored")
+		}
+		s.chkpt.start(context.Background())
+	}
+
 	if s.cfg.Metrics.Enabled {
 		s.startMetricsPusher()
 	}
@@ -232,6 +258,9 @@ func (s *OTLPSyncStrategy) Start() error {
 		Int("memory_limit_soft_mib", s.cfg.MemoryLimit.SoftMiB).
 		Int("memory_limit_hard_mib", s.cfg.MemoryLimit.HardMiB).
 		Int("max_store_size", s.cfg.MaxStoreSize).
+		Bool("persistence_enabled", s.chkpt != nil && s.chkpt.enabled()).
+		Str("persistence_path", s.cfg.Persistence.Path).
+		Dur("persistence_interval", s.cfg.Persistence.Interval).
 		Str("endpoint", s.cfg.Endpoint).
 		Bool("tls_enabled", s.cfg.TLS.Enabled).
 		Bool("metrics_enabled", s.cfg.Metrics.Enabled).
@@ -423,6 +452,13 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// called (stop becomes a no-op via the once-guard).
 	if s.memLimiter != nil {
 		s.memLimiter.stop()
+	}
+
+	// Stop the checkpointer — performs a final synchronous save so
+	// graceful shutdown preserves the latest state. Same once-guard
+	// pattern as memLimiter.
+	if s.chkpt != nil {
+		s.chkpt.stop()
 	}
 
 	// Stop the logs pump and unsubscribe from agentstate. The
