@@ -384,9 +384,11 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 	exportDuration := time.Since(exportStart)
 	span.SetAttributes(attribute.Int("otlp.records_count", count))
 	if err != nil {
+		// Span status is also exported via OTLP — redact the same way.
+		redacted := redactSensitive(err.Error())
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		s.logger.Warn().Err(err).Dur("duration", exportDuration).Msg("OTLP metrics export failed")
+		span.SetStatus(codes.Error, redacted)
+		s.logger.Warn().Str("error", redacted).Dur("duration", exportDuration).Msg("OTLP metrics export failed")
 		agentstate.IncrementOTLPExportErrors()
 		return
 	}
