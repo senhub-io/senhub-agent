@@ -239,6 +239,7 @@ The agent binary provides built-in service management:
 | `senhub-agent stop` | Stop the service |
 | `senhub-agent restart` | Restart the service |
 | `senhub-agent status` | Show service status, health, and resource usage |
+| `senhub-agent status --otlp` | Same as above, plus a block showing the OTLP push pipeline self-metrics |
 | `senhub-agent version` | Show agent version and build information |
 | `senhub-agent run` | Run interactively in console mode (for debugging) |
 | `senhub-agent config check` | Validate configuration file |

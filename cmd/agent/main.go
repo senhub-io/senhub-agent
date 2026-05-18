@@ -74,6 +74,19 @@ func checkPrivileges() error {
 	return nil
 }
 
+// hasArg reports whether one of the os.Args (skipping argv[0]) is
+// exactly `name`. Used for the small set of view-flags that the
+// simple-command code path (status, etc.) recognises before the
+// service handler dispatches.
+func hasArg(name string) bool {
+	for _, a := range os.Args[1:] {
+		if a == name {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	// Check privileges first
 	if err := checkPrivileges(); err != nil {
@@ -132,9 +145,15 @@ func main() {
 		agent.UpdateAgent(args)
 		return
 	case "install", "uninstall", "start", "stop", "restart", "status", "run":
-		// For simple commands without required args, handle directly
+		// For simple commands without required args, handle directly.
+		// `status` carries optional view flags (--otlp); other commands
+		// take no arguments here.
 		if command == "start" || command == "stop" || command == "restart" || command == "status" || command == "uninstall" {
-			handleServiceCommand(command, &cliArgs.ParsedArgs{})
+			args := &cliArgs.ParsedArgs{}
+			if command == "status" {
+				args.ShowOTLP = hasArg("--otlp")
+			}
+			handleServiceCommand(command, args)
 			return
 		}
 

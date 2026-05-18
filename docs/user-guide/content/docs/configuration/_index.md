@@ -5,16 +5,25 @@ weight: 3
 
 # Configuration
 
-SenHub Agent uses a YAML configuration file (`agent-config.yaml`) to define monitoring probes, data storage, and agent settings. Changes to this file are detected automatically and applied without restarting the service.
+SenHub Agent uses YAML configuration to define monitoring probes, data storage, and agent settings. Changes are detected automatically and applied without restarting the service.
+
+Two layouts are supported and the agent auto-detects which one you use:
+
+- **Single file** — one `agent-config.yaml` with everything (default, used by the installer).
+- **Multi-file** — `agent.yaml` for global settings plus `probes.d/` and `strategies.d/` directories for fragments (introduced in 0.1.93). Cleaner once you start managing more than a handful of probes or sinks. See [Multi-File Configuration Layout](#multi-file-configuration-layout) below.
 
 ## Configuration File Location
 
-The configuration file `agent-config.yaml` is located in the agent's installation directory:
+The default single-file `agent-config.yaml` lives next to the agent binary:
 
-- **Windows**: Same directory as the agent binary (e.g., `C:\SenHub\agent-config.yaml`)
-- **Linux**: Same directory as the agent binary (e.g., `/opt/senhub/bin/agent-config.yaml`)
+| OS | Default path |
+|---|---|
+| **Windows** | `C:\SenHub\agent-config.yaml` (same directory as `senhub-agent.exe`) |
+| **Linux** | `/opt/senhub/bin/agent-config.yaml` (or `/etc/senhub-agent/agent.yaml` for systemd installs) |
+| **macOS** | `/usr/local/senhub/agent-config.yaml` |
 
-You can specify a custom path during installation:
+You can override the path at install time:
+
 ```bash
 senhub-agent install --config-path /etc/senhub/agent-config.yaml
 ```
@@ -513,10 +522,23 @@ Configuration is valid.
 
 Starting from version 0.1.93, the configuration can be split across multiple files. This is optional: an existing monolithic `agent-config.yaml` continues to work unchanged.
 
+### Per-OS default paths
+
+The agent looks for the multi-file layout in the **same directory as `agent.yaml`** (or `agent-config.yaml`). The defaults match how the installer lays things out per OS:
+
+| OS | `agent.yaml` | `probes.d/` | `strategies.d/` |
+|---|---|---|---|
+| **Linux (systemd)** | `/etc/senhub-agent/agent.yaml` | `/etc/senhub-agent/probes.d/` | `/etc/senhub-agent/strategies.d/` |
+| **Linux (tarball)** | `/opt/senhub/bin/agent.yaml` | `/opt/senhub/bin/probes.d/` | `/opt/senhub/bin/strategies.d/` |
+| **Windows** | `C:\SenHub\agent.yaml` | `C:\SenHub\probes.d\` | `C:\SenHub\strategies.d\` |
+| **macOS** | `/usr/local/senhub/agent.yaml` | `/usr/local/senhub/probes.d/` | `/usr/local/senhub/strategies.d/` |
+
+Override any of these by passing `--config-path` to the agent — the directories `probes.d/` and `strategies.d/` are always resolved next to whichever `agent.yaml` is loaded.
+
 ### Layout
 
 ```
-/etc/senhub/                       # Linux/macOS; Windows: %PROGRAMDATA%\SenHub
+<config dir>/
 ├── agent.yaml                     # Global settings only (no probes/storage)
 ├── probes.d/
 │   ├── 01-system.yaml             # YAML array of probe configs
@@ -528,7 +550,7 @@ Starting from version 0.1.93, the configuration can be split across multiple fil
     └── 10-otlp.yaml
 ```
 
-- Files are loaded in **alphabetical order** within each directory.
+- Files are loaded in **alphabetical order** within each directory. The two-digit prefix is a convention, not a requirement — use it to control merge order.
 - Files matching `.*` (dotfiles) or `*.disabled` are **skipped**. Disable a fragment by renaming it: `mv 20-citrix.yaml 20-citrix.yaml.disabled`.
 - An **empty** `probes.d/` or `strategies.d/` directory is valid (zero entries, no error).
 - Each file in `strategies.d/` has **exactly one** top-level key, which is the strategy name. Duplicate strategy across files: later file wins, a WARN log surfaces the override.

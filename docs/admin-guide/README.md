@@ -10,6 +10,9 @@ This section contains documentation for system administrators and advanced users
 - **[HTTP Bind Address](./HTTP-BIND-ADDRESS.md)** - Configure network binding and interfaces
 - **[Universal Configuration](./UNIVERSAL-CONFIGURATION.md)** - Validate probe configurations before deployment
 
+### Observability
+- **[OTLP Observability](./OTLP-OBSERVABILITY.md)** - Field reference for the OTLP self-metric surfaces (HTTP endpoint `/info/otlp`, CLI `status --otlp`, dashboard card) and starter alert recipes
+
 ### System Management
 - **[Logging](./LOGGING.md)** - Configure logging levels, outputs, and log management
 
@@ -36,6 +39,7 @@ Before using this guide, you should:
 | Configure network interfaces | [HTTP Bind Address](./HTTP-BIND-ADDRESS.md) |
 | Set up monitoring endpoints | [HTTP Strategy](./HTTP-STRATEGY.md) |
 | Validate probe configurations | [Universal Configuration](./UNIVERSAL-CONFIGURATION.md) |
+| Watch the OTLP push pipeline | [OTLP Observability](./OTLP-OBSERVABILITY.md) |
 | Manage log levels | [Logging](./LOGGING.md) |
 
 ## ⚠️ Security Considerations
