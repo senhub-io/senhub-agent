@@ -83,7 +83,7 @@ probes:
     type: mysql
     params:
       host: localhost
-      password: "${file:`+secretFile+`}"
+      password: '${file:`+secretFile+`}'
       api_token: "raw-token-no-ref"
 storage:
   - name: http
