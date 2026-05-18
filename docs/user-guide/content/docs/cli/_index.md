@@ -17,7 +17,28 @@ All commands are run from the agent binary. Release artifacts are named with the
 | `stop` | Stop the service |
 | `restart` | Restart the service |
 | `status` | Show service status and health |
+| `status --otlp` | Same as `status`, plus an OTLP pipeline self-metrics block |
 | `run` | Run interactively in console mode |
+
+### Status
+
+```bash
+senhub-agent status
+senhub-agent status --otlp
+```
+
+The default `status` view prints service state, version, health, probes summary and resource usage. `--otlp` appends a four-section block summarising the OTLP push pipeline:
+
+| Section | What it shows |
+|---|---|
+| Pipeline | Metrics / logs pushed totals, export errors, drops by reason |
+| Store & Export | Store size, log buffer fill, last and mean export duration |
+| Checkpoint | On-disk checkpoint size, age, restored-at-boot count, errors by stage |
+| Parallel export | Number of sub-batches in the last push (1 = single-batch, >1 = fan-out by probe) |
+
+Drops with `reason=probe_cardinality` indicate the per-probe cardinality budget was hit; `store_cap`, `memory_soft_limit` and `memory_hard_limit` flag other backpressure paths. See the [OTLP guide]({{< relref "/docs/otlp" >}}#monitoring-the-otlp-pipeline) for how to interpret each field.
+
+`--otlp` calls the local HTTP strategy on port 8080 — the agent must have the `web` (or any other HTTP) endpoint enabled for the flag to return data. If the call fails, the standard `status` output still prints; a single-line note explains what went wrong.
 
 ### Run (Console Mode)
 
