@@ -121,6 +121,17 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 			}
 			// Successfully got status from running agent
 			fmt.Print(formatter.FormatSystemStatus(*systemStatus))
+
+			// --otlp adds an OTLP self-metric block after the standard view.
+			// Failure here is non-fatal: the standard status already printed.
+			if hasStatusFlag("--otlp") {
+				if info, err := statusHelper.GetOTLPInfoFromHTTP(agentKey, 8080); err == nil {
+					fmt.Print("\n")
+					fmt.Print(formatter.FormatOTLPInfo(info))
+				} else {
+					fmt.Printf("\nNote: could not fetch OTLP info (%v)\n", err)
+				}
+			}
 			return
 		}
 		// HTTP failed, fall back to direct method
@@ -301,6 +312,18 @@ func buildDashboardURL(configPath string, agentKey string) string {
 	}
 
 	return ""
+}
+
+// hasStatusFlag reports whether one of the os.Args (skipping argv[0])
+// matches the given flag exactly. Used to thread `--otlp` into the
+// status command without expanding cliArgs.ParsedArgs.
+func hasStatusFlag(name string) bool {
+	for _, a := range os.Args[1:] {
+		if a == name {
+			return true
+		}
+	}
+	return false
 }
 
 // isGitHash checks if a string looks like a git commit hash (hex characters only)
