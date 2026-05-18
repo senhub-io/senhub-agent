@@ -47,6 +47,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/info/probes", h.HandleInfoProbes).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/tags/{probe}", h.HandleInfoTags).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/schema/{probe}", h.HandleInfoSchema).Methods("GET")
+	router.HandleFunc("/api/{agentkey}/info/otlp", h.HandleInfoOTLP).Methods("GET")
 
 	// Debug endpoints (with agentkey authentication)
 	router.HandleFunc("/api/{agentkey}/debug/cache", h.HandleDebugCache).Methods("GET")
@@ -151,6 +152,10 @@ func (h *HTTPHandlers) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 
 func (h *HTTPHandlers) HandleInfoSchema(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleInfoSchema(w, r)
+}
+
+func (h *HTTPHandlers) HandleInfoOTLP(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleInfoOTLP(w, r)
 }
 
 // Debug handlers (delegating to strategy for now)
