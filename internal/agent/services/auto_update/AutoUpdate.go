@@ -173,6 +173,28 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 		return false, nil
 	}
 
+	// Auto-update used to fire on any version-string mismatch — including
+	// downgrades. An agent running a beta would silently revert to the
+	// latest prod when the update server's "latest" alias resolved to a
+	// release older than the running beta. shouldUpdateTo enforces
+	// strict-greater-than per semver, with pre-release ordering honoured.
+	ok, err := shouldUpdateTo(currentVersionStr, expectedVersion)
+	if err != nil {
+		a.logger.Warn().
+			Str("current_version", currentVersionStr).
+			Str("expected_version", expectedVersion).
+			Err(err).
+			Msg("Auto-update skipped: cannot parse version for comparison")
+		return false, nil
+	}
+	if !ok {
+		a.logger.Info().
+			Str("current_version", currentVersionStr).
+			Str("expected_version", expectedVersion).
+			Msg("Auto-update skipped: expected version is not newer than current")
+		return false, nil
+	}
+
 	a.logger.Info().
 		Str("current_version", currentVersionStr).
 		Str("expected_version", expectedVersion).
