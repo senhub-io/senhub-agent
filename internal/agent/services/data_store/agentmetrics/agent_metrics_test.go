@@ -14,7 +14,7 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		ProbesActive: 3,
 	}
 	recs := BuildAgentRecords(snap)
-	// 23 records when neither build info nor http_requests is set and no
+	// 24 records when neither build info nor http_requests is set and no
 	// OTLP drops / checkpoint errors have occurred yet:
 	//   6 core         (uptime, cache.entries, probes.{active,total,healthy}, collect.errors)
 	//   8 OTLP push    (metrics.pushed, logs.pushed, export.errors,
@@ -22,14 +22,15 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	//                   store_size, export.duration{window=last},
 	//                   export.duration{window=mean})
 	//   3 OTLP checkpoint (size, last_save_age, restored_entries)
+	//   1 OTLP parallel  (sub_batches)
 	//   6 process      (cpu.time, memory.{resident,heap}, goroutines,
 	//                   gc.cycles, open_fds)
 	//
 	// Note: `senhub.agent.otlp.dropped{reason=...}` and
 	// `senhub.agent.otlp.checkpoint.errors{stage=...}` are emitted only
 	// when their counter has been touched, so they don't count here.
-	if len(recs) != 23 {
-		t.Fatalf("expected 23 records (no build info, no http requests, no OTLP drops, no checkpoint errors), got %d", len(recs))
+	if len(recs) != 24 {
+		t.Fatalf("expected 24 records (no build info, no http requests, no OTLP drops, no checkpoint errors), got %d", len(recs))
 	}
 
 	names := map[string]bool{}
@@ -53,6 +54,7 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		"senhub.agent.otlp.checkpoint.size",
 		"senhub.agent.otlp.checkpoint.last_save_age",
 		"senhub.agent.otlp.checkpoint.restored_entries",
+		"senhub.agent.otlp.parallel.sub_batches",
 		"senhub.agent.process.cpu.time",
 		"senhub.agent.process.memory.resident",
 		"senhub.agent.process.memory.heap",
