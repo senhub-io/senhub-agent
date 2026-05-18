@@ -80,6 +80,11 @@ type OTLPSyncStrategy struct {
 	// pushWG tracks the push goroutine for clean Shutdown.
 	pushWG sync.WaitGroup
 
+	// memLimiter polls the Go heap and sets a pressure flag the store
+	// reads on the hot path. nil when both thresholds are disabled in
+	// the YAML (cfg.MemoryLimit.SoftMiB == 0 && HardMiB == 0).
+	memLimiter *memoryLimiter
+
 	startMu  sync.Mutex
 	started  bool
 	shutdown bool
@@ -125,14 +130,30 @@ func NewOTLPSyncStrategy(
 		}
 	}
 
+	// Build optional memory limiter from config. Pass it to the store
+	// so the upsert hot path can check its state without taking a
+	// reference to the strategy.
+	var ml *memoryLimiter
+	if cfg.MemoryLimit.SoftMiB > 0 || cfg.MemoryLimit.HardMiB > 0 {
+		soft := uint64(cfg.MemoryLimit.SoftMiB) * 1024 * 1024
+		hard := uint64(cfg.MemoryLimit.HardMiB) * 1024 * 1024
+		ml = newMemoryLimiter(soft, hard, cfg.MemoryLimit.CheckInterval)
+	}
+
+	store := newMetricStoreWithCap(cfg.MaxStoreSize)
+	if ml != nil {
+		store = store.withMemoryLimiter(ml)
+	}
+
 	return &OTLPSyncStrategy{
 		agentConfig: agentConfig,
 		rawParams:   params,
 		cfg:         cfg,
 		logger:      moduleLogger,
-		store:       newMetricStoreWithCap(cfg.MaxStoreSize),
+		store:       store,
 		registry:    transformers.NewTransformerRegistry(baseLogger),
 		resource:    buildResource(cfg.Resource, cliArgs.Version),
+		memLimiter:  ml,
 	}
 }
 
@@ -183,6 +204,12 @@ func (s *OTLPSyncStrategy) Start() error {
 	s.exporters = exp
 	s.startTime = time.Now()
 
+	// Start the memory limiter poller before the metrics pusher so
+	// the first cycle's upsert path sees an accurate state flag.
+	if s.memLimiter != nil {
+		s.memLimiter.start(context.Background())
+	}
+
 	if s.cfg.Metrics.Enabled {
 		s.startMetricsPusher()
 	}
@@ -198,6 +225,10 @@ func (s *OTLPSyncStrategy) Start() error {
 	}
 
 	s.logger.Info().
+		Bool("memory_limit_enabled", s.memLimiter != nil && s.memLimiter.enabled()).
+		Int("memory_limit_soft_mib", s.cfg.MemoryLimit.SoftMiB).
+		Int("memory_limit_hard_mib", s.cfg.MemoryLimit.HardMiB).
+		Int("max_store_size", s.cfg.MaxStoreSize).
 		Str("endpoint", s.cfg.Endpoint).
 		Bool("tls_enabled", s.cfg.TLS.Enabled).
 		Bool("metrics_enabled", s.cfg.Metrics.Enabled).
@@ -383,6 +414,12 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 		s.pushTicker.Stop()
 		close(s.pushDone)
 		s.pushWG.Wait()
+	}
+
+	// Stop the memory limiter poller. Safe even if start() was never
+	// called (stop becomes a no-op via the once-guard).
+	if s.memLimiter != nil {
+		s.memLimiter.stop()
 	}
 
 	// Stop the logs pump and unsubscribe from agentstate. The

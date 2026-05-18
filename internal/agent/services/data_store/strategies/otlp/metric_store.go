@@ -35,7 +35,8 @@ import (
 type metricStore struct {
 	mu         sync.RWMutex
 	entries    map[string]storedMetric
-	maxEntries int // 0 = unbounded
+	maxEntries int            // 0 = unbounded
+	memGuard   *memoryLimiter // optional; nil = no memory limiter
 }
 
 // storedMetric is one LWW slot — the metadata we need to feed
@@ -59,6 +60,14 @@ func newMetricStore() *metricStore {
 // maxEntries. Pass 0 for unbounded.
 func newMetricStoreWithCap(maxEntries int) *metricStore {
 	return &metricStore{entries: make(map[string]storedMetric), maxEntries: maxEntries}
+}
+
+// withMemoryLimiter attaches a memory limiter to the store. The
+// limiter's poll loop must be started separately via memoryLimiter.start.
+// Returns the store for chaining.
+func (s *metricStore) withMemoryLimiter(ml *memoryLimiter) *metricStore {
+	s.memGuard = ml
+	return s
 }
 
 // upsert records a datapoint, replacing any prior observation for the
@@ -91,6 +100,33 @@ func (s *metricStore) upsert(dp datapoint.DataPoint) {
 	tagsCopy := make(map[string]string, len(tagMap))
 	for k, v := range tagMap {
 		tagsCopy[k] = v
+	}
+
+	// Memory-pressure check FIRST — checked before the lock so it
+	// doesn't contend with the read path under pressure. Lock-free
+	// atomic load of the state flag set by the background poller.
+	if s.memGuard != nil {
+		switch s.memGuard.currentState() {
+		case memoryHard:
+			// Hard limit: drop everything to give the runtime a chance
+			// to GC and recover. Drops are counted by reason so the
+			// operator can see they are happening.
+			agentstate.IncrementOTLPDropped("memory_hard_limit")
+			return
+		case memorySoft:
+			// Soft limit: keep updating existing series, refuse new
+			// series. This is consistent with the cardinality-cap
+			// policy (preserve continuity of known series; cut off the
+			// runaway-cardinality probe). The drop is recorded only if
+			// we actually skip the upsert below.
+			s.mu.RLock()
+			_, exists := s.entries[key]
+			s.mu.RUnlock()
+			if !exists {
+				agentstate.IncrementOTLPDropped("memory_soft_limit")
+				return
+			}
+		}
 	}
 
 	s.mu.Lock()
