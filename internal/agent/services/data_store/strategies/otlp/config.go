@@ -49,6 +49,17 @@ const (
 	// per-request unique IDs as labels) before they OOM the agent.
 	// Operators expecting >50 k series should bump this in YAML.
 	DefaultMaxStoreSize = 50000
+
+	// Memory-limiter defaults. Soft and hard limits are measured
+	// against runtime.MemStats.HeapAlloc (Go heap currently allocated,
+	// not RSS — see memory_limiter.go for the rationale). The
+	// soft/hard split mirrors the OTel Collector memory_limiter
+	// processor's `limit_mib` / `spike_limit_mib` pair: soft refuses
+	// new series, hard refuses everything and forces a GC. Operators
+	// can disable each independently by setting it to 0.
+	DefaultMemoryLimitSoftMiB     = 200
+	DefaultMemoryLimitHardMiB     = 400
+	DefaultMemoryLimitCheckPeriod = 5 * time.Second
 	DefaultTracesBatchSize    = 512
 	DefaultTracesBatchTimeout = 5 * time.Second
 	DefaultTracesBufferSize   = 2048
@@ -165,6 +176,24 @@ type Config struct {
 	// that goes rogue on a high-cardinality label (e.g. unique IDs as
 	// tag values). 0 = unbounded (the historical default).
 	MaxStoreSize int
+	// MemoryLimit defines the circuit-breaker thresholds for the OTLP
+	// strategy's metric store. A background poller reads Go heap
+	// pressure every CheckInterval; when soft is hit, new series are
+	// dropped (existing keep updating); when hard is hit, all writes
+	// are dropped and a GC is forced to try to recover. 0 disables
+	// each threshold independently.
+	MemoryLimit MemoryLimitConfig
+}
+
+// MemoryLimitConfig configures the OTLP strategy's heap pressure
+// circuit breaker. Modelled on the OTel Collector memory_limiter
+// processor (limit_mib + spike_limit_mib), but applied per-strategy
+// rather than agent-wide because the OTLP metric store is the only
+// unbounded heap consumer in the data path.
+type MemoryLimitConfig struct {
+	SoftMiB       int           // 0 disables
+	HardMiB       int           // 0 disables
+	CheckInterval time.Duration // poll cadence; falls back to default if 0
 }
 
 // ResolveEndpoint returns the endpoint to use for this signal: the
@@ -236,6 +265,11 @@ func defaultConfig() Config {
 			Extra:       map[string]string{},
 		},
 		MaxStoreSize: DefaultMaxStoreSize,
+		MemoryLimit: MemoryLimitConfig{
+			SoftMiB:       DefaultMemoryLimitSoftMiB,
+			HardMiB:       DefaultMemoryLimitHardMiB,
+			CheckInterval: DefaultMemoryLimitCheckPeriod,
+		},
 	}
 }
 
@@ -270,6 +304,10 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 			return cfg, fmt.Errorf("max_store_size must be >= 0 (0 = unbounded), got %d", v)
 		}
 		cfg.MaxStoreSize = v
+	}
+
+	if err := parseMemoryLimit(params["memory_limit"], &cfg.MemoryLimit); err != nil {
+		return cfg, fmt.Errorf("memory_limit: %w", err)
 	}
 
 	if hdrs := readStringMap(params["headers"]); hdrs != nil {
@@ -373,6 +411,39 @@ func parseRetry(raw interface{}, out *RetryConfig) error {
 			return fmt.Errorf("max_elapsed_time: %w", err)
 		}
 		out.MaxElapsedTime = d
+	}
+	return nil
+}
+
+func parseMemoryLimit(raw interface{}, out *MemoryLimitConfig) error {
+	m := readStringKeyedMap(raw)
+	if m == nil {
+		return nil
+	}
+	if v, ok := readInt(m["soft_mib"]); ok {
+		if v < 0 {
+			return fmt.Errorf("soft_mib must be >= 0 (0 = disabled), got %d", v)
+		}
+		out.SoftMiB = v
+	}
+	if v, ok := readInt(m["hard_mib"]); ok {
+		if v < 0 {
+			return fmt.Errorf("hard_mib must be >= 0 (0 = disabled), got %d", v)
+		}
+		out.HardMiB = v
+	}
+	if v, ok := m["check_interval"].(string); ok && v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("check_interval: %w", err)
+		}
+		if d <= 0 {
+			return fmt.Errorf("check_interval must be > 0, got %v", d)
+		}
+		out.CheckInterval = d
+	}
+	if out.SoftMiB > 0 && out.HardMiB > 0 && out.SoftMiB >= out.HardMiB {
+		return fmt.Errorf("soft_mib (%d) must be < hard_mib (%d)", out.SoftMiB, out.HardMiB)
 	}
 	return nil
 }
