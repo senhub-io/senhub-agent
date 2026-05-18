@@ -1,7 +1,9 @@
 package bridge
 
 import (
+	"bufio"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,46 +11,162 @@ import (
 	"time"
 )
 
-// newFakeRunner writes a shell-script "java" and a stub runner directory so
-// tests can exercise the bridge lifecycle without touching a real JVM.
+// TestMain doubles as a dispatch point for the fake JT400 runner used
+// by every test below. When BRIDGE_FAKE_BEHAVIOR is set in the
+// environment, the test binary acts as the runner instead of executing
+// the test suite. Tests spawn `os.Args[0]` via `NativeRunner`, so the
+// fake works identically on Linux, macOS and Windows — no /bin/sh, no
+// .exe shebang shenanigans.
 //
-// The returned javaHome satisfies the Config.JavaHome contract: it contains
-// a bin/java file which is the fake itself. The fake ignores its arguments
-// and produces whatever protocol lines the test asked for via `script`.
-func newFakeRunner(t *testing.T, script string) (javaHome, runnerDir string) {
-	t.Helper()
-
-	root := t.TempDir()
-	javaHome = filepath.Join(root, "javahome")
-	runnerDir = filepath.Join(root, "runner")
-	if err := os.MkdirAll(filepath.Join(javaHome, "bin"), 0o755); err != nil {
-		t.Fatalf("mkdir javahome: %v", err)
+// The bridge inherits `os.Environ()` when it spawns a subprocess
+// (see bridge.go:cmd.Env). t.Setenv in each test arms a single
+// behavior; subprocess inherits the var, TestMain catches it before
+// m.Run() and dispatches.
+func TestMain(m *testing.M) {
+	if behavior := os.Getenv("BRIDGE_FAKE_BEHAVIOR"); behavior != "" {
+		os.Exit(runFakeBehavior(behavior))
 	}
+	os.Exit(m.Run())
+}
+
+// runFakeBehavior implements the small set of canned JT400-runner
+// behaviors that the bridge tests need. Each behavior maps 1:1 to one
+// of the legacy shell scripts the suite used to inline.
+//
+// The protocol is line-oriented: bridge writes one SQL per line on the
+// runner's stdin (empty line = quit signal), runner writes one JSON
+// response per query on stdout. The bridge expects a single
+// `{"ok":true,"event":"ready"}` line on startup before it considers
+// the handshake complete.
+func runFakeBehavior(name string) int {
+	out := bufio.NewWriter(os.Stdout)
+	in := bufio.NewReader(os.Stdin)
+	emit := func(s string) {
+		_, _ = out.WriteString(s)
+		_ = out.WriteByte('\n')
+		_ = out.Flush()
+	}
+	// emitReady is a no-op when the behavior is a handshake-error
+	// variant; callers decide.
+	emitReady := func() { emit(`{"ok":true,"event":"ready"}`) }
+
+	// readQuery returns the next non-empty SQL line, or ("", false)
+	// when the client signalled quit (empty line) or stdin EOF.
+	readQuery := func() (string, bool) {
+		line, err := in.ReadString('\n')
+		if err != nil {
+			return "", false
+		}
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			return "", false
+		}
+		return trimmed, true
+	}
+
+	switch name {
+	case "handshake_error":
+		// One JSON error line on startup, then exit — used to test
+		// the bridge's New() handshake-error path.
+		emit(`{"ok":false,"error":"boom"}`)
+		return 0
+
+	case "ready_echo_ok":
+		// Ready, then echo a constant OK row for every query.
+		emitReady()
+		for {
+			if _, ok := readQuery(); !ok {
+				return 0
+			}
+			emit(`{"ok":true,"columns":["A"],"rows":[["42"]]}`)
+		}
+
+	case "ready_echo_error":
+		// Ready, then echo a runner-level error for every query.
+		emitReady()
+		for {
+			if _, ok := readQuery(); !ok {
+				return 0
+			}
+			emit(`{"ok":false,"error":"SQL0206 column not found"}`)
+		}
+
+	case "ready_read_one":
+		// Ready, then read exactly one line and exit — used by the
+		// multiline-SQL rejection test where the bridge rejects the
+		// query before writing it to us.
+		emitReady()
+		_, _ = in.ReadString('\n')
+		return 0
+
+	case "ready_exit_on_empty":
+		// Ready, then echo a constant OK row for each query, exit
+		// cleanly on quit signal. Used by Close lifecycle tests.
+		emitReady()
+		for {
+			if _, ok := readQuery(); !ok {
+				return 0
+			}
+			emit(`{"ok":true,"columns":["A"],"rows":[["x"]]}`)
+		}
+
+	case "ready_error_then_ok":
+		// First query → runner-level error (semantic, not transport);
+		// subsequent queries → OK. Verifies that a semantic error
+		// doesn't tear the bridge down.
+		emitReady()
+		first := true
+		for {
+			if _, ok := readQuery(); !ok {
+				return 0
+			}
+			if first {
+				emit(`{"ok":false,"error":"SQL0204 table not found"}`)
+				first = false
+			} else {
+				emit(`{"ok":true,"columns":["A"],"rows":[["42"]]}`)
+			}
+		}
+
+	case "one_query_then_exit":
+		// Ready, answer one query, exit(1). The bridge must detect
+		// the death on the next call and respawn (which lands back
+		// in this same behavior — same canned answer).
+		emitReady()
+		if _, ok := readQuery(); ok {
+			emit(`{"ok":true,"columns":["A"],"rows":[["first-run"]]}`)
+		}
+		return 1
+
+	default:
+		fmt.Fprintf(os.Stderr, "unknown BRIDGE_FAKE_BEHAVIOR: %s\n", name)
+		return 2
+	}
+}
+
+// newFakeRunner arms the test binary to act as the JT400 runner for
+// the duration of the test (via t.Setenv) and returns a writable
+// `runnerDir` that satisfies the bridge's config contract. The actual
+// runner binary is `os.Args[0]` — the test binary itself, wired
+// through Config.NativeRunner so the bridge skips the Java-home
+// lookup.
+func newFakeRunner(t *testing.T, behavior string) (runnerDir string) {
+	t.Helper()
+	root := t.TempDir()
+	runnerDir = filepath.Join(root, "runner")
 	if err := os.MkdirAll(runnerDir, 0o755); err != nil {
 		t.Fatalf("mkdir runnerDir: %v", err)
 	}
-
-	// The fake reads its script from a sibling file so tests can tweak it
-	// without re-escaping shell quoting inside Go string literals.
-	scriptPath := filepath.Join(root, "script.sh")
-	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("write script: %v", err)
-	}
-
-	javaBin := filepath.Join(javaHome, "bin", "java")
-	content := "#!/bin/sh\nexec /bin/sh " + scriptPath + "\n"
-	if err := os.WriteFile(javaBin, []byte(content), 0o755); err != nil {
-		t.Fatalf("write fake java: %v", err)
-	}
-	return javaHome, runnerDir
+	t.Setenv("BRIDGE_FAKE_BEHAVIOR", behavior)
+	return runnerDir
 }
 
-func baseConfig(javaHome, runnerDir string) Config {
+func baseConfig(runnerDir string) Config {
 	return Config{
 		Host:           "example.test",
 		User:           "USR",
 		Password:       "PWD",
-		JavaHome:       javaHome,
+		NativeRunner:   os.Args[0],
 		RunnerDir:      runnerDir,
 		StartupTimeout: 2 * time.Second,
 		QueryTimeout:   2 * time.Second,
@@ -56,17 +174,8 @@ func baseConfig(javaHome, runnerDir string) Config {
 }
 
 func TestNew_HandshakeAndQuery(t *testing.T) {
-	script := `
-echo '{"ok":true,"event":"ready"}'
-while read line; do
-  if [ -z "$line" ]; then
-    exit 0
-  fi
-  echo '{"ok":true,"columns":["A"],"rows":[["42"]]}'
-done
-`
-	javaHome, runnerDir := newFakeRunner(t, script)
-	cfg := baseConfig(javaHome, runnerDir)
+	runnerDir := newFakeRunner(t, "ready_echo_ok")
+	cfg := baseConfig(runnerDir)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -90,9 +199,8 @@ done
 }
 
 func TestNew_HandshakeError(t *testing.T) {
-	script := `echo '{"ok":false,"error":"boom"}'`
-	javaHome, runnerDir := newFakeRunner(t, script)
-	cfg := baseConfig(javaHome, runnerDir)
+	runnerDir := newFakeRunner(t, "handshake_error")
+	cfg := baseConfig(runnerDir)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -105,12 +213,8 @@ func TestNew_HandshakeError(t *testing.T) {
 }
 
 func TestQuery_RejectsEmbeddedNewlines(t *testing.T) {
-	script := `
-echo '{"ok":true,"event":"ready"}'
-read line
-`
-	javaHome, runnerDir := newFakeRunner(t, script)
-	cfg := baseConfig(javaHome, runnerDir)
+	runnerDir := newFakeRunner(t, "ready_read_one")
+	cfg := baseConfig(runnerDir)
 
 	ctx := context.Background()
 	br, err := New(ctx, cfg, nil)
@@ -129,15 +233,8 @@ read line
 }
 
 func TestQuery_RunnerErrorResponse(t *testing.T) {
-	script := `
-echo '{"ok":true,"event":"ready"}'
-while read line; do
-  if [ -z "$line" ]; then exit 0; fi
-  echo '{"ok":false,"error":"SQL0206 column not found"}'
-done
-`
-	javaHome, runnerDir := newFakeRunner(t, script)
-	cfg := baseConfig(javaHome, runnerDir)
+	runnerDir := newFakeRunner(t, "ready_echo_error")
+	cfg := baseConfig(runnerDir)
 
 	ctx := context.Background()
 	br, err := New(ctx, cfg, nil)
@@ -175,14 +272,8 @@ func TestConfig_Validation(t *testing.T) {
 }
 
 func TestClose_Idempotent(t *testing.T) {
-	script := `
-echo '{"ok":true,"event":"ready"}'
-while read line; do
-  if [ -z "$line" ]; then exit 0; fi
-done
-`
-	javaHome, runnerDir := newFakeRunner(t, script)
-	cfg := baseConfig(javaHome, runnerDir)
+	runnerDir := newFakeRunner(t, "ready_exit_on_empty")
+	cfg := baseConfig(runnerDir)
 
 	br, err := New(context.Background(), cfg, nil)
 	if err != nil {
@@ -201,23 +292,8 @@ done
 // but does NOT mark the bridge dead — the subprocess is still healthy
 // and serves the next query normally.
 func TestQuery_RunnerErrorKeepsBridgeAlive(t *testing.T) {
-	script := `
-echo '{"ok":true,"event":"ready"}'
-first=1
-while read line; do
-  if [ -z "$line" ]; then
-    exit 0
-  fi
-  if [ "$first" = "1" ]; then
-    echo '{"ok":false,"error":"SQL0204 table not found"}'
-    first=0
-  else
-    echo '{"ok":true,"columns":["A"],"rows":[["42"]]}'
-  fi
-done
-`
-	javaHome, runnerDir := newFakeRunner(t, script)
-	cfg := baseConfig(javaHome, runnerDir)
+	runnerDir := newFakeRunner(t, "ready_error_then_ok")
+	cfg := baseConfig(runnerDir)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -253,17 +329,11 @@ done
 func TestQuery_AutoRespawnAfterSubprocessExit(t *testing.T) {
 	// The fake runner answers one query then exits. The bridge must
 	// detect the death (read error on next call) and respawn on the
-	// call after that.
-	script := `
-echo '{"ok":true,"event":"ready"}'
-read line
-if [ -n "$line" ]; then
-  echo '{"ok":true,"columns":["A"],"rows":[["first-run"]]}'
-fi
-exit 1
-`
-	javaHome, runnerDir := newFakeRunner(t, script)
-	cfg := baseConfig(javaHome, runnerDir)
+	// call after that. The respawned process lands in the same
+	// behavior (env var is still set) and answers the same canned
+	// "first-run" row.
+	runnerDir := newFakeRunner(t, "one_query_then_exit")
+	cfg := baseConfig(runnerDir)
 	cfg.StartupTimeout = 3 * time.Second
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -305,17 +375,8 @@ exit 1
 // called, subsequent Queries return an error immediately rather than
 // trying to respawn.
 func TestQuery_ClosedBridgeRejectsCalls(t *testing.T) {
-	script := `
-echo '{"ok":true,"event":"ready"}'
-while read line; do
-  if [ -z "$line" ]; then
-    exit 0
-  fi
-  echo '{"ok":true,"columns":["A"],"rows":[["x"]]}'
-done
-`
-	javaHome, runnerDir := newFakeRunner(t, script)
-	cfg := baseConfig(javaHome, runnerDir)
+	runnerDir := newFakeRunner(t, "ready_exit_on_empty")
+	cfg := baseConfig(runnerDir)
 	br, err := New(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
