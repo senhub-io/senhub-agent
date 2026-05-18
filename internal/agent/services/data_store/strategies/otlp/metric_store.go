@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
@@ -23,12 +24,18 @@ import (
 // router, so each can keep whatever shape of state it needs.
 //
 // Memory bound: one entry per distinct series. Cardinality is governed
-// by the probes' YAML mappings (already controlled in the otelmapper
-// package via "_unmatched" fallback for expand mismatches), so the
-// store does not need its own eviction.
+// by:
+//   - Probe YAML mappings (the otelmapper package collapses tag values
+//     via the `_unmatched` fallback for `expand` mismatches).
+//   - `maxEntries` cap (operator-tunable via `otlp.max_store_size`):
+//     once the store reaches this many series, new series are dropped
+//     and `senhub_agent_otlp_dropped_total{reason="store_cap"}` is
+//     incremented. Updates of existing series never drop. 0 means
+//     unbounded (the historical behaviour).
 type metricStore struct {
-	mu      sync.RWMutex
-	entries map[string]storedMetric
+	mu         sync.RWMutex
+	entries    map[string]storedMetric
+	maxEntries int // 0 = unbounded
 }
 
 // storedMetric is one LWW slot — the metadata we need to feed
@@ -48,10 +55,22 @@ func newMetricStore() *metricStore {
 	return &metricStore{entries: make(map[string]storedMetric)}
 }
 
+// newMetricStoreWithCap returns a store that drops new series past
+// maxEntries. Pass 0 for unbounded.
+func newMetricStoreWithCap(maxEntries int) *metricStore {
+	return &metricStore{entries: make(map[string]storedMetric), maxEntries: maxEntries}
+}
+
 // upsert records a datapoint, replacing any prior observation for the
 // same (probe_name, probe_type, metric_name, tag-set) tuple. Datapoints
 // without probe identity are skipped — they cannot be routed through
 // otelmapper.Resolve which keys on probe_type to find the YAML.
+//
+// When the store has reached maxEntries, NEW series are dropped and
+// `senhub_agent_otlp_dropped_total{reason="store_cap"}` is incremented.
+// Existing series continue to update — preferring continuity of known
+// series over admitting unbounded new cardinality, which is the
+// expected operator preference when a probe goes rogue on a label.
 func (s *metricStore) upsert(dp datapoint.DataPoint) {
 	tagMap := flattenTags(dp.Tags)
 	probeName := tagMap["probe_name"]
@@ -75,6 +94,13 @@ func (s *metricStore) upsert(dp datapoint.DataPoint) {
 	}
 
 	s.mu.Lock()
+	if s.maxEntries > 0 {
+		if _, exists := s.entries[key]; !exists && len(s.entries) >= s.maxEntries {
+			s.mu.Unlock()
+			agentstate.IncrementOTLPDropped("store_cap")
+			return
+		}
+	}
 	s.entries[key] = storedMetric{
 		probeName:  probeName,
 		probeType:  probeType,
