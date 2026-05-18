@@ -121,6 +121,10 @@ type ParsedArgs struct {
 	CertFile      string
 	KeyFile       string
 	MinTlsVersion string
+
+	// Status command flags. Only meaningful when command == "status";
+	// set by main.go before the service handler dispatches.
+	ShowOTLP bool
 }
 
 func GetVersionInfo() map[string]string {

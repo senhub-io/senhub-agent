@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kardianos/service"
+
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
