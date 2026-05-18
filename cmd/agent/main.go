@@ -128,6 +128,9 @@ func main() {
 	case "db-monitoring":
 		handleDbMonitoringCommand()
 		return
+	case "ibmi":
+		handleIBMICommand()
+		return
 	case "update":
 		// Parse update sub-arguments: update [--list | <version>]
 		args := &cliArgs.ParsedArgs{
@@ -234,6 +237,11 @@ License Commands:
     license show         Show current license information
     license activate     Activate a license from a JWT token
     license remove       Remove current license (revert to free tier)
+
+IBM i Diagnostics:
+    ibmi check [path]    Verify the IBM i runtime (native binary or JRE)
+                         each ibmi probe in the config would resolve at
+                         startup. Does NOT connect to the IBM i host.
 
 Other Commands:
     version              Show agent version
