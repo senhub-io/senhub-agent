@@ -187,3 +187,68 @@ func itoa(i int) string {
 	}
 	return string(digits)
 }
+
+func TestMetricStore_ProbeBudget_DropsAtBudget(t *testing.T) {
+	store := newMetricStoreWithCap(0).withProbeBudget(2)
+	mk := func(probe, metric string) datapoint.DataPoint {
+		return datapoint.DataPoint{
+			Name:  metric,
+			Value: 1,
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: probe},
+				{Key: "probe_type", Value: "t"},
+			},
+		}
+	}
+
+	store.upsert(mk("p1", "a"))
+	store.upsert(mk("p1", "b"))
+	store.upsert(mk("p1", "c")) // p1 at budget — DROPPED
+
+	if got := store.probeSeriesCount("p1"); got != 2 {
+		t.Errorf("p1 count=%d after budget, want 2", got)
+	}
+
+	// p2 still has its own budget — admits 2 series of its own
+	store.upsert(mk("p2", "a"))
+	store.upsert(mk("p2", "b"))
+	if got := store.probeSeriesCount("p2"); got != 2 {
+		t.Errorf("p2 count=%d, want 2 (isolated budget)", got)
+	}
+
+	// updates of existing series don't increment the counter
+	store.upsert(mk("p1", "a"))
+	if got := store.probeSeriesCount("p1"); got != 2 {
+		t.Errorf("p1 count=%d after re-upsert of existing, want 2", got)
+	}
+}
+
+func TestMetricStore_ProbeBudget_ZeroMeansUnbounded(t *testing.T) {
+	store := newMetricStoreWithCap(0).withProbeBudget(0)
+	mk := func(metric string) datapoint.DataPoint {
+		return datapoint.DataPoint{Name: metric, Value: 1, Tags: []tags.Tag{
+			{Key: "probe_name", Value: "p"}, {Key: "probe_type", Value: "t"}}}
+	}
+	for i := 0; i < 50; i++ {
+		store.upsert(mk("m" + itoa(i)))
+	}
+	if got := store.probeSeriesCount("p"); got != 50 {
+		t.Errorf("count=%d with budget=0 (unbounded), want 50", got)
+	}
+}
+
+func TestMetricStore_ProbeBudget_StacksWithGlobalCap(t *testing.T) {
+	// Global cap 3, per-probe budget 5. The smaller (global) wins.
+	store := newMetricStoreWithCap(3).withProbeBudget(5)
+	mk := func(probe, metric string) datapoint.DataPoint {
+		return datapoint.DataPoint{Name: metric, Value: 1, Tags: []tags.Tag{
+			{Key: "probe_name", Value: probe}, {Key: "probe_type", Value: "t"}}}
+	}
+	store.upsert(mk("p1", "a"))
+	store.upsert(mk("p1", "b"))
+	store.upsert(mk("p2", "a"))
+	store.upsert(mk("p2", "b")) // global cap hit at this point (4 > 3)
+	if got := store.size(); got != 3 {
+		t.Errorf("global cap should win: size=%d, want 3", got)
+	}
+}
