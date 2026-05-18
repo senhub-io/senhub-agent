@@ -186,55 +186,6 @@
             border-radius: 6px;
             margin-bottom: 1rem;
         }
-
-        .otlp-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 1rem;
-            margin-top: 0.5rem;
-        }
-
-        .otlp-section {
-            border-left: 3px solid var(--primary-color);
-            padding: 0.5rem 0.75rem;
-            background-color: #fafafa;
-            border-radius: 4px;
-        }
-
-        .otlp-section h3 {
-            font-size: 0.875rem;
-            color: var(--gray-600);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 0.5rem;
-        }
-
-        .otlp-section .kv {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.875rem;
-            padding: 0.125rem 0;
-        }
-
-        .otlp-section .kv .k {
-            color: var(--gray-600);
-        }
-
-        .otlp-section .kv .v {
-            font-variant-numeric: tabular-nums;
-            font-weight: 500;
-        }
-
-        .otlp-section .sub {
-            margin-top: 0.25rem;
-            padding-left: 0.75rem;
-            border-left: 1px dashed var(--gray-200);
-            font-size: 0.8125rem;
-            color: var(--gray-600);
-        }
-
-        .otlp-warn { color: var(--warning-color); }
-        .otlp-err  { color: var(--danger-color); }
     </style>
 </head>
 <body>
@@ -285,40 +236,6 @@
                     <!-- Probes will be loaded here -->
                 </ul>
             </div>
-
-            <div class="card" id="otlp-card" style="display: none;">
-                <h2>📡 OTLP Pipeline</h2>
-                <div class="otlp-grid">
-                    <div class="otlp-section">
-                        <h3>Pipeline</h3>
-                        <div class="kv"><span class="k">Metrics pushed</span><span class="v" id="otlp-metrics-pushed">—</span></div>
-                        <div class="kv"><span class="k">Logs pushed</span><span class="v" id="otlp-logs-pushed">—</span></div>
-                        <div class="kv"><span class="k">Export errors</span><span class="v" id="otlp-export-errors">—</span></div>
-                        <div class="kv"><span class="k">Dropped</span><span class="v" id="otlp-dropped">—</span></div>
-                        <div class="sub" id="otlp-dropped-breakdown" style="display: none;"></div>
-                    </div>
-                    <div class="otlp-section">
-                        <h3>Store &amp; Export</h3>
-                        <div class="kv"><span class="k">Store size</span><span class="v" id="otlp-store-size">—</span></div>
-                        <div class="kv"><span class="k">Log buffer fill</span><span class="v" id="otlp-log-fill">—</span></div>
-                        <div class="kv"><span class="k">Export last</span><span class="v" id="otlp-export-last">—</span></div>
-                        <div class="kv"><span class="k">Export mean</span><span class="v" id="otlp-export-mean">—</span></div>
-                    </div>
-                    <div class="otlp-section">
-                        <h3>Checkpoint</h3>
-                        <div class="kv"><span class="k">Size</span><span class="v" id="otlp-cp-size">—</span></div>
-                        <div class="kv"><span class="k">Last save</span><span class="v" id="otlp-cp-age">—</span></div>
-                        <div class="kv"><span class="k">Restored entries</span><span class="v" id="otlp-cp-restored">—</span></div>
-                        <div class="kv"><span class="k">Errors</span><span class="v" id="otlp-cp-errors">—</span></div>
-                        <div class="sub" id="otlp-cp-errors-breakdown" style="display: none;"></div>
-                    </div>
-                    <div class="otlp-section">
-                        <h3>Parallel export</h3>
-                        <div class="kv"><span class="k">Sub-batches</span><span class="v" id="otlp-subbatches">—</span></div>
-                        <div class="kv"><span class="k">Path</span><span class="v" id="otlp-path">—</span></div>
-                    </div>
-                </div>
-            </div>
             
             <div class="nav-buttons">
                 <a href="/web/{{.AgentKey}}/explorer" class="btn btn-primary">
@@ -350,90 +267,6 @@
             }
         }
         
-        function fmtBytes(b) {
-            if (!b || b < 1024) return (b || 0) + ' B';
-            if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KiB';
-            return (b / (1024 * 1024)).toFixed(1) + ' MiB';
-        }
-        function fmtMs(ms) {
-            if (!ms || ms <= 0) return '—';
-            if (ms < 1000) return ms.toFixed(0) + ' ms';
-            return (ms / 1000).toFixed(2) + ' s';
-        }
-        function fmtAge(sec) {
-            if (!sec || sec <= 0) return 'never';
-            sec = Math.round(sec);
-            if (sec < 60) return sec + 's';
-            if (sec < 3600) return Math.floor(sec / 60) + 'm' + (sec % 60) + 's';
-            return Math.floor(sec / 3600) + 'h' + Math.floor((sec % 3600) / 60) + 'm';
-        }
-        // renderBreakdown uses DOM APIs (no innerHTML) so reason/stage
-        // strings — though sourced from server-controlled enums — never
-        // hit the HTML parser.
-        function renderBreakdown(el, m, prefix) {
-            while (el.firstChild) el.removeChild(el.firstChild);
-            if (!m || Object.keys(m).length === 0) {
-                el.style.display = 'none';
-                return;
-            }
-            el.style.display = 'block';
-            const keys = Object.keys(m).sort();
-            keys.forEach((k, i) => {
-                if (i > 0) el.appendChild(document.createElement('br'));
-                el.appendChild(document.createTextNode(prefix + ' '));
-                const strong = document.createElement('strong');
-                strong.textContent = k;
-                el.appendChild(strong);
-                el.appendChild(document.createTextNode(': ' + m[k]));
-            });
-        }
-        function renderOtlp(data) {
-            const card = document.getElementById('otlp-card');
-            if (!data) { card.style.display = 'none'; return; }
-            card.style.display = 'block';
-            const p = data.pipeline || {};
-            const s = data.store || {};
-            const d = data.export_duration || {};
-            const c = data.checkpoint || {};
-            const par = data.parallel || {};
-
-            document.getElementById('otlp-metrics-pushed').textContent = (p.metrics_pushed_total || 0).toLocaleString();
-            document.getElementById('otlp-logs-pushed').textContent    = (p.logs_pushed_total || 0).toLocaleString();
-            const eErr = document.getElementById('otlp-export-errors');
-            eErr.textContent = p.export_errors_total || 0;
-            eErr.className = 'v' + ((p.export_errors_total || 0) > 0 ? ' otlp-err' : '');
-            const eDrop = document.getElementById('otlp-dropped');
-            eDrop.textContent = p.dropped_total || 0;
-            eDrop.className = 'v' + ((p.dropped_total || 0) > 0 ? ' otlp-warn' : '');
-            renderBreakdown(document.getElementById('otlp-dropped-breakdown'), p.dropped_by_reason, '↳');
-
-            document.getElementById('otlp-store-size').textContent = (s.size || 0).toLocaleString() + ' series';
-            document.getElementById('otlp-log-fill').textContent   = ((s.log_buffer_fill_ratio || 0) * 100).toFixed(1) + '%';
-            document.getElementById('otlp-export-last').textContent = fmtMs(d.last_ms);
-            document.getElementById('otlp-export-mean').textContent = fmtMs(d.mean_ms);
-
-            const cpSize = document.getElementById('otlp-cp-size');
-            const cpAge  = document.getElementById('otlp-cp-age');
-            const cpRest = document.getElementById('otlp-cp-restored');
-            const cpErr  = document.getElementById('otlp-cp-errors');
-            if ((c.size_bytes || 0) === 0 && (c.last_save_age_seconds || 0) === 0 && (c.restored_entries || 0) === 0) {
-                cpSize.textContent = 'disabled';
-                cpAge.textContent = '—';
-                cpRest.textContent = '—';
-            } else {
-                cpSize.textContent = fmtBytes(c.size_bytes);
-                cpAge.textContent = fmtAge(c.last_save_age_seconds);
-                cpRest.textContent = (c.restored_entries || 0).toLocaleString();
-            }
-            cpErr.textContent = c.errors_total || 0;
-            cpErr.className = 'v' + ((c.errors_total || 0) > 0 ? ' otlp-err' : '');
-            renderBreakdown(document.getElementById('otlp-cp-errors-breakdown'), c.errors_by_stage, '↳ at');
-
-            const subN = par.sub_batches || 0;
-            document.getElementById('otlp-subbatches').textContent = subN;
-            document.getElementById('otlp-path').textContent = subN > 1 ? 'fan-out by probe' : 'single-batch';
-        }
-
         async function loadDashboard() {
             try {
                 // Load system info and probes data
@@ -441,12 +274,6 @@
                     fetchData('info/system'),
                     fetchData('info/probes')
                 ]);
-
-                // OTLP info is best-effort — older agents won't have the
-                // endpoint, so we tolerate a 404 / network error here.
-                fetchData('info/otlp')
-                    .then(renderOtlp)
-                    .catch(() => renderOtlp(null));
                 
                 // Update system information
                 document.getElementById('agent-port').textContent = systemData.port || '8080';
