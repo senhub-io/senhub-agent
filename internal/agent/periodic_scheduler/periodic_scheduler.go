@@ -111,20 +111,49 @@ func (l *periodicScheduler) setupIntervalCall() error {
 	errorCount := 0
 
 	go func(ticker *time.Ticker) {
+		// Recover from any panic in Execute so a buggy probe collector
+		// does not silently kill the scheduler goroutine — historically
+		// caused the IBM i probe to stop running cycles after a few
+		// minutes with no log entry, no error counter increment, and
+		// no visible signal.
+		defer func() {
+			if r := recover(); r != nil {
+				l.logger.Error().
+					Interface("panic", r).
+					Msgf("scheduler goroutine PANICKED — probe is now stalled forever (restart agent to recover): %v", r)
+			} else {
+				// Clean exit without quit signal is also abnormal —
+				// the for-select should only exit via quitChannel.
+				l.logger.Warn().Msg("scheduler goroutine exited without quit signal — probe is now stalled")
+			}
+		}()
+
+		l.logger.Info().
+			Dur("interval", l.config.Interval).
+			Int("max_retries", l.config.MaxRetries).
+			Msg("scheduler tick loop started")
+
 		for {
 			select {
 			case <-ticker.C:
-				if err := l.doCall(); err != nil {
+				tickStarted := time.Now()
+				l.logger.Info().
+					Int("error_count", errorCount).
+					Msg("scheduler tick → calling doCall")
+				err := l.doCall()
+				if err != nil {
 					errorCount++
 					if errorCount < l.config.MaxRetries {
-						l.logger.Debug().
+						l.logger.Warn().
 							Err(err).
+							Dur("duration", time.Since(tickStarted)).
 							Int("error_count", errorCount).
 							Int("max_retry", l.config.MaxRetries).
-							Msg("Call error")
+							Msg("doCall returned error (will retry)")
 					} else {
 						l.logger.Error().
 							Err(err).
+							Dur("duration", time.Since(tickStarted)).
 							Int("error_count", errorCount).
 							Int("max_retry", l.config.MaxRetries).
 							Msg("Max retries reached, shutting down")
@@ -133,15 +162,18 @@ func (l *periodicScheduler) setupIntervalCall() error {
 						}
 					}
 				} else {
+					l.logger.Info().
+						Dur("duration", time.Since(tickStarted)).
+						Msg("doCall ok")
 					if errorCount > 0 {
-						l.logger.Debug().
+						l.logger.Info().
 							Int("error_count", errorCount).
 							Msg("Recovered")
 					}
 					errorCount = 0
 				}
 			case <-l.quitChannel:
-				l.logger.Debug().Msg("Scheduler goroutine terminating on quit signal")
+				l.logger.Info().Msg("Scheduler goroutine terminating on quit signal")
 				return
 			}
 		}
