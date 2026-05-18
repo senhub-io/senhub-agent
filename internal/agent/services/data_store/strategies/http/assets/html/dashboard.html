@@ -160,6 +160,38 @@
             color: var(--primary-color);
             border-color: var(--primary-color);
         }
+
+        .otlp-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+        .otlp-section {
+            border-left: 3px solid var(--primary-color);
+            background-color: var(--gray-50, #fafafa);
+            padding: 0.5rem 0.75rem;
+            border-radius: 4px;
+        }
+        .otlp-section h3 {
+            font-size: 0.75rem;
+            color: var(--gray-600);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+        .otlp-section .metric-row { padding: 0.25rem 0; }
+        .otlp-section .metric-row:last-child { border-bottom: none; }
+        .otlp-sub {
+            margin-top: 0.25rem;
+            padding-left: 0.75rem;
+            border-left: 1px dashed var(--gray-200);
+            font-size: 0.8125rem;
+            color: var(--gray-600);
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+        .otlp-warn { color: var(--warning-color); }
+        .otlp-err  { color: var(--danger-color); }
     </style>
 </head>
 <body>
@@ -291,6 +323,41 @@
                 </div>
             </div>
             
+            <!-- OTLP Pipeline self-metrics (hidden when no /info/otlp data) -->
+            <div class="card" id="otlp-card" style="display: none;">
+                <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg> OTLP Pipeline</h2>
+                <div class="otlp-grid">
+                    <div class="otlp-section">
+                        <h3>Pipeline</h3>
+                        <div class="metric-row"><span class="metric-label">Metrics pushed</span><span class="metric-value" id="otlp-metrics-pushed">-</span></div>
+                        <div class="metric-row"><span class="metric-label">Logs pushed</span><span class="metric-value" id="otlp-logs-pushed">-</span></div>
+                        <div class="metric-row"><span class="metric-label">Export errors</span><span class="metric-value" id="otlp-export-errors">-</span></div>
+                        <div class="metric-row"><span class="metric-label">Dropped</span><span class="metric-value" id="otlp-dropped">-</span></div>
+                        <div class="otlp-sub" id="otlp-dropped-breakdown" style="display: none;"></div>
+                    </div>
+                    <div class="otlp-section">
+                        <h3>Store &amp; Export</h3>
+                        <div class="metric-row"><span class="metric-label">Store size</span><span class="metric-value" id="otlp-store-size">-</span></div>
+                        <div class="metric-row"><span class="metric-label">Log buffer fill</span><span class="metric-value" id="otlp-log-fill">-</span></div>
+                        <div class="metric-row"><span class="metric-label">Export last</span><span class="metric-value" id="otlp-export-last">-</span></div>
+                        <div class="metric-row"><span class="metric-label">Export mean</span><span class="metric-value" id="otlp-export-mean">-</span></div>
+                    </div>
+                    <div class="otlp-section">
+                        <h3>Checkpoint</h3>
+                        <div class="metric-row"><span class="metric-label">Size</span><span class="metric-value" id="otlp-cp-size">-</span></div>
+                        <div class="metric-row"><span class="metric-label">Last save</span><span class="metric-value" id="otlp-cp-age">-</span></div>
+                        <div class="metric-row"><span class="metric-label">Restored entries</span><span class="metric-value" id="otlp-cp-restored">-</span></div>
+                        <div class="metric-row"><span class="metric-label">Errors</span><span class="metric-value" id="otlp-cp-errors">-</span></div>
+                        <div class="otlp-sub" id="otlp-cp-errors-breakdown" style="display: none;"></div>
+                    </div>
+                    <div class="otlp-section">
+                        <h3>Parallel export</h3>
+                        <div class="metric-row"><span class="metric-label">Sub-batches</span><span class="metric-value" id="otlp-subbatches">-</span></div>
+                        <div class="metric-row"><span class="metric-label">Path</span><span class="metric-value" id="otlp-path">-</span></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Probes Status -->
             <div class="card">
                 <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg> Active Probes</h2>
