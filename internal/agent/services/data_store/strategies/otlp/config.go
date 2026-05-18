@@ -50,6 +50,15 @@ const (
 	// Operators expecting >50 k series should bump this in YAML.
 	DefaultMaxStoreSize = 50000
 
+	// DefaultMaxActiveSeriesPerProbe is the per-probe cardinality
+	// budget. Each probe instance (matched by probe_name) gets at most
+	// this many distinct series before the limiter drops new ones with
+	// `reason="probe_cardinality"`. Default 10 000 matches a heavy
+	// vendor probe (IBM i ≈ 2k series, NetScaler with many vservers
+	// ≈ 5k, headroom for spikes). 0 disables the per-probe budget
+	// and falls back to MaxStoreSize alone.
+	DefaultMaxActiveSeriesPerProbe = 10000
+
 	// Memory-limiter defaults. Soft and hard limits are measured
 	// against runtime.MemStats.HeapAlloc (Go heap currently allocated,
 	// not RSS — see memory_limiter.go for the rationale). The
@@ -176,6 +185,14 @@ type Config struct {
 	// that goes rogue on a high-cardinality label (e.g. unique IDs as
 	// tag values). 0 = unbounded (the historical default).
 	MaxStoreSize int
+	// MaxActiveSeriesPerProbe bounds the number of distinct series a
+	// single probe instance (matched by probe_name) can register in the
+	// store. When a probe hits its budget, new series are dropped with
+	// `senhub.agent.otlp.dropped{reason="probe_cardinality"}` and
+	// existing series keep updating. 0 = no per-probe budget; series
+	// admission is then governed only by MaxStoreSize. Stacks on top
+	// of MaxStoreSize — first whichever fires wins.
+	MaxActiveSeriesPerProbe int
 	// MemoryLimit defines the circuit-breaker thresholds for the OTLP
 	// strategy's metric store. A background poller reads Go heap
 	// pressure every CheckInterval; when soft is hit, new series are
@@ -264,7 +281,8 @@ func defaultConfig() Config {
 			ServiceName: DefaultServiceName,
 			Extra:       map[string]string{},
 		},
-		MaxStoreSize: DefaultMaxStoreSize,
+		MaxStoreSize:            DefaultMaxStoreSize,
+		MaxActiveSeriesPerProbe: DefaultMaxActiveSeriesPerProbe,
 		MemoryLimit: MemoryLimitConfig{
 			SoftMiB:       DefaultMemoryLimitSoftMiB,
 			HardMiB:       DefaultMemoryLimitHardMiB,
@@ -304,6 +322,13 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 			return cfg, fmt.Errorf("max_store_size must be >= 0 (0 = unbounded), got %d", v)
 		}
 		cfg.MaxStoreSize = v
+	}
+
+	if v, ok := readInt(params["max_active_series_per_probe"]); ok {
+		if v < 0 {
+			return cfg, fmt.Errorf("max_active_series_per_probe must be >= 0 (0 = unbounded), got %d", v)
+		}
+		cfg.MaxActiveSeriesPerProbe = v
 	}
 
 	if err := parseMemoryLimit(params["memory_limit"], &cfg.MemoryLimit); err != nil {
