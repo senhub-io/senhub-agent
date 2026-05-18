@@ -69,6 +69,13 @@ const (
 	DefaultMemoryLimitSoftMiB     = 200
 	DefaultMemoryLimitHardMiB     = 400
 	DefaultMemoryLimitCheckPeriod = 5 * time.Second
+
+	// Persistence defaults. When `persistence.enabled: true`, the LWW
+	// store is checkpointed to disk every CheckpointInterval. Restores
+	// at boot so dashboards see continuity across agent restarts (the
+	// motivating use case: upgrade, OOM kill, OS reboot). Default OFF
+	// for back-compat — operators opt in by setting the path.
+	DefaultPersistenceInterval = 30 * time.Second
 	DefaultTracesBatchSize    = 512
 	DefaultTracesBatchTimeout = 5 * time.Second
 	DefaultTracesBufferSize   = 2048
@@ -200,6 +207,21 @@ type Config struct {
 	// are dropped and a GC is forced to try to recover. 0 disables
 	// each threshold independently.
 	MemoryLimit MemoryLimitConfig
+	// Persistence configures the optional on-disk LWW checkpoint that
+	// the strategy writes periodically and restores at boot. When
+	// disabled (Persistence.Path == ""), the strategy behaves exactly
+	// as before — store lives entirely in memory.
+	Persistence PersistenceConfig
+}
+
+// PersistenceConfig opts into the on-disk LWW checkpoint. The agent
+// writes the metric store snapshot to Path/snapshot.json every
+// Interval and restores it at boot. Survives routine restarts,
+// upgrades, OOM kills, and OS reboots — at the cost of one disk
+// write per Interval. Atomic write via .tmp + rename.
+type PersistenceConfig struct {
+	Path     string        // empty = disabled (no checkpoint)
+	Interval time.Duration // save cadence; falls back to default if 0
 }
 
 // MemoryLimitConfig configures the OTLP strategy's heap pressure
@@ -288,6 +310,12 @@ func defaultConfig() Config {
 			HardMiB:       DefaultMemoryLimitHardMiB,
 			CheckInterval: DefaultMemoryLimitCheckPeriod,
 		},
+		Persistence: PersistenceConfig{
+			// Path empty by default = disabled. Operators opt in by
+			// setting otlp.persistence.path in YAML.
+			Path:     "",
+			Interval: DefaultPersistenceInterval,
+		},
 	}
 }
 
@@ -333,6 +361,10 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 
 	if err := parseMemoryLimit(params["memory_limit"], &cfg.MemoryLimit); err != nil {
 		return cfg, fmt.Errorf("memory_limit: %w", err)
+	}
+
+	if err := parsePersistence(params["persistence"], &cfg.Persistence); err != nil {
+		return cfg, fmt.Errorf("persistence: %w", err)
 	}
 
 	if hdrs := readStringMap(params["headers"]); hdrs != nil {
@@ -436,6 +468,36 @@ func parseRetry(raw interface{}, out *RetryConfig) error {
 			return fmt.Errorf("max_elapsed_time: %w", err)
 		}
 		out.MaxElapsedTime = d
+	}
+	return nil
+}
+
+func parsePersistence(raw interface{}, out *PersistenceConfig) error {
+	m := readStringKeyedMap(raw)
+	if m == nil {
+		return nil
+	}
+	// The "enabled" key is convenience sugar: enabled:false clears the
+	// path even if set, enabled:true requires a path to be meaningful.
+	enabled := true
+	if v, ok := m["enabled"].(bool); ok {
+		enabled = v
+	}
+	if v, ok := m["path"].(string); ok {
+		out.Path = v
+	}
+	if !enabled {
+		out.Path = ""
+	}
+	if v, ok := m["interval"].(string); ok && v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("interval: %w", err)
+		}
+		if d < time.Second {
+			return fmt.Errorf("interval must be >= 1s, got %v", d)
+		}
+		out.Interval = d
 	}
 	return nil
 }
