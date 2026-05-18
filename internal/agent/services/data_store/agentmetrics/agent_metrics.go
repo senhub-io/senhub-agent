@@ -183,7 +183,46 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       agentstate.LogChannelFillRatio(),
 			Description: "Highest fill ratio (0..1) across all active log channel subscriptions at scrape time. Approaches 1 means the consumer is falling behind producers.",
 		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.store_size",
+			Unit:        "{series}",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPStoreSize()),
+			Description: "Number of distinct series held in the OTLP strategy's last-writer-wins metric store at the last push.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.export.duration",
+			Unit:        "s",
+			Type:        "gauge",
+			Attributes:  map[string]string{"window": "last"},
+			Value:       agentstate.GetOTLPLastExportDuration().Seconds(),
+			Description: "Wall-clock duration of the most recent successful OTLP metrics export.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.export.duration",
+			Unit:        "s",
+			Type:        "gauge",
+			Attributes:  map[string]string{"window": "mean"},
+			Value:       agentstate.GetOTLPMeanExportDuration().Seconds(),
+			Description: "All-time mean of successful OTLP metrics export durations.",
+		},
 	)
+
+	// Per-reason drop counters — emitted as a single OTel metric with
+	// `reason` attribute. Operators alert on this rising. Today the only
+	// reason emitted is `store_cap` (cardinality cap on the metric store);
+	// future reasons will be added without changing this metric shape.
+	for reason, n := range agentstate.GetOTLPDroppedByReason() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.dropped",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{"reason": reason},
+			Value:       float64(n),
+			Description: "Cumulative count of OTLP records dropped before export, by reason (store_cap, queue_full, …).",
+		})
+	}
 
 	// Process self-monitoring — calqued on Grafana Alloy's resources
 	// mixin so operators recognize the names. Captured at scrape time
