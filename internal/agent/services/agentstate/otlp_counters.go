@@ -27,6 +27,8 @@ var (
 	otlpCheckpointLastSaveNanos  atomic.Int64  // unix-nanos of the most recent successful save (0 = never)
 	otlpCheckpointRestoredCount  atomic.Int64  // entries restored at boot (0 = no restore happened)
 	otlpCheckpointRestoredAtNs   atomic.Int64  // unix-nanos of the boot restore (0 = none)
+
+	otlpSubBatchCount atomic.Int32 // number of sub-batches produced by the last push (1 if single-batch path)
 )
 
 // otlpCheckpointErrors is a per-stage counter (read/parse/encode/etc.)
@@ -218,6 +220,22 @@ func GetOTLPCheckpointRestoredCount() int64 {
 	return otlpCheckpointRestoredCount.Load()
 }
 
+// RecordOTLPSubBatchCount records the number of sub-batches the last
+// push fanned out across. 1 means the single-batch path was taken
+// (small cycle or max_concurrent_exports=1); >1 means the parallel
+// per-probe split fired. Surfaces as
+// `senhub.agent.otlp.parallel.sub_batches` so operators can see when
+// the parallel path is active and how it scales with load.
+func RecordOTLPSubBatchCount(n int) {
+	if n < 1 {
+		n = 1
+	}
+	otlpSubBatchCount.Store(int32(n))
+}
+
+// GetOTLPSubBatchCount returns the last reported sub-batch count.
+func GetOTLPSubBatchCount() int32 { return otlpSubBatchCount.Load() }
+
 // LogChannelFillRatio returns the highest fill ratio (0..1) across
 // all currently-subscribed log channels. Used by the Prometheus
 // bridge to expose senhub.agent.otlp.buffer.fill_ratio.
@@ -267,4 +285,5 @@ func resetOTLPCountersForTest() {
 	otlpCheckpointErrors.mu.Lock()
 	otlpCheckpointErrors.m = map[string]uint64{}
 	otlpCheckpointErrors.mu.Unlock()
+	otlpSubBatchCount.Store(0)
 }
