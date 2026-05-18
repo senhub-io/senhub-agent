@@ -130,7 +130,7 @@ func NewOTLPSyncStrategy(
 		rawParams:   params,
 		cfg:         cfg,
 		logger:      moduleLogger,
-		store:       newMetricStore(),
+		store:       newMetricStoreWithCap(cfg.MaxStoreSize),
 		registry:    transformers.NewTransformerRegistry(baseLogger),
 		resource:    buildResource(cfg.Resource, cliArgs.Version),
 	}
@@ -296,6 +296,12 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 	now := time.Now()
 	resolveOpts := otelmapper.ResolveOptions{IncludeProbeTags: true}
 
+	// Snapshot store cardinality before the push so the gauge reflects
+	// the size that drove this batch — useful when correlating export
+	// duration spikes with cardinality growth.
+	agentstate.RecordOTLPStoreSize(s.store.size())
+
+	exportStart := time.Now()
 	count, err := pushMetrics(
 		ctx,
 		s.store,
@@ -311,18 +317,20 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 		},
 		s.warnMissingMappingOnce,
 	)
+	exportDuration := time.Since(exportStart)
 	span.SetAttributes(attribute.Int("otlp.records_count", count))
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		s.logger.Warn().Err(err).Msg("OTLP metrics export failed")
+		s.logger.Warn().Err(err).Dur("duration", exportDuration).Msg("OTLP metrics export failed")
 		agentstate.IncrementOTLPExportErrors()
 		return
 	}
 	span.SetStatus(codes.Ok, "")
 	if count > 0 {
-		s.logger.Debug().Int("records_pushed", count).Msg("OTLP metrics exported")
+		s.logger.Debug().Int("records_pushed", count).Dur("duration", exportDuration).Msg("OTLP metrics exported")
 		agentstate.IncrementOTLPMetricsPushed(count)
+		agentstate.RecordOTLPExportDuration(exportDuration)
 	}
 }
 
