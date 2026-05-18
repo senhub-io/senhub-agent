@@ -22,7 +22,21 @@ var (
 	otlpLastExportDurationNs  atomic.Int64 // duration of the last successful export
 	otlpExportDurationCountNs atomic.Uint64
 	otlpExportDurationCalls   atomic.Uint64
+
+	otlpCheckpointSize           atomic.Int64  // bytes of the last saved file
+	otlpCheckpointLastSaveNanos  atomic.Int64  // unix-nanos of the most recent successful save (0 = never)
+	otlpCheckpointRestoredCount  atomic.Int64  // entries restored at boot (0 = no restore happened)
+	otlpCheckpointRestoredAtNs   atomic.Int64  // unix-nanos of the boot restore (0 = none)
 )
+
+// otlpCheckpointErrors is a per-stage counter (read/parse/encode/etc.)
+// so operators can pinpoint which step of the save/load cycle is
+// failing without parsing logs. Stages are stable enums set by the
+// checkpoint package.
+var otlpCheckpointErrors = struct {
+	mu sync.RWMutex
+	m  map[string]uint64
+}{m: map[string]uint64{}}
 
 // otlpDropped is a string-keyed counter (one per drop reason). The
 // hot path (upsert at cap) acquires the mutex only on drop, so the
@@ -131,6 +145,79 @@ func GetOTLPMeanExportDuration() time.Duration {
 	return time.Duration(total / calls)
 }
 
+// IncrementOTLPCheckpointErrors records one failed checkpoint
+// operation, attributed by stage ("read", "parse", "version_mismatch",
+// "mkdir", "create_tmp", "encode", "fsync", "close", "rename").
+// Operators alert on this rising — a stuck checkpoint means the
+// agent has lost restart-resilience even though the in-memory store
+// keeps working.
+func IncrementOTLPCheckpointErrors(stage string) {
+	if stage == "" {
+		stage = "unknown"
+	}
+	otlpCheckpointErrors.mu.Lock()
+	otlpCheckpointErrors.m[stage]++
+	otlpCheckpointErrors.mu.Unlock()
+}
+
+// GetOTLPCheckpointErrorsByStage returns a snapshot map of error
+// counts per stage. Safe to mutate.
+func GetOTLPCheckpointErrorsByStage() map[string]uint64 {
+	otlpCheckpointErrors.mu.RLock()
+	defer otlpCheckpointErrors.mu.RUnlock()
+	out := make(map[string]uint64, len(otlpCheckpointErrors.m))
+	for k, v := range otlpCheckpointErrors.m {
+		out[k] = v
+	}
+	return out
+}
+
+// RecordOTLPCheckpointSize updates the gauge tracking the size in
+// bytes of the most recently saved checkpoint file. Surfaces as
+// `senhub.agent.otlp.checkpoint.size_bytes`.
+func RecordOTLPCheckpointSize(b int64) {
+	if b < 0 {
+		b = 0
+	}
+	otlpCheckpointSize.Store(b)
+}
+
+// GetOTLPCheckpointSize returns the last reported file size in bytes.
+func GetOTLPCheckpointSize() int64 { return otlpCheckpointSize.Load() }
+
+// RecordOTLPCheckpointLastSave updates the timestamp (unix-nanos) of
+// the most recent successful save. Pass 0 to reset.
+func RecordOTLPCheckpointLastSave(ns int64) { otlpCheckpointLastSaveNanos.Store(ns) }
+
+// GetOTLPCheckpointLastSaveAge returns the time elapsed since the
+// most recent successful save. Returns 0 when no save has occurred
+// (e.g. checkpoint disabled).
+func GetOTLPCheckpointLastSaveAge() time.Duration {
+	ns := otlpCheckpointLastSaveNanos.Load()
+	if ns == 0 {
+		return 0
+	}
+	return time.Since(time.Unix(0, ns))
+}
+
+// RecordOTLPCheckpointRestored records the number of entries restored
+// from a checkpoint at boot. Called once on Start when a checkpoint
+// is found and successfully parsed.
+func RecordOTLPCheckpointRestored(n int) {
+	if n < 0 {
+		n = 0
+	}
+	otlpCheckpointRestoredCount.Store(int64(n))
+	otlpCheckpointRestoredAtNs.Store(time.Now().UnixNano())
+}
+
+// GetOTLPCheckpointRestoredCount returns the number of entries
+// restored at the last agent boot. 0 means no restore happened
+// (either no checkpoint file or a fresh start).
+func GetOTLPCheckpointRestoredCount() int64 {
+	return otlpCheckpointRestoredCount.Load()
+}
+
 // LogChannelFillRatio returns the highest fill ratio (0..1) across
 // all currently-subscribed log channels. Used by the Prometheus
 // bridge to expose senhub.agent.otlp.buffer.fill_ratio.
@@ -173,4 +260,11 @@ func resetOTLPCountersForTest() {
 	otlpDropped.mu.Lock()
 	otlpDropped.m = map[string]uint64{}
 	otlpDropped.mu.Unlock()
+	otlpCheckpointSize.Store(0)
+	otlpCheckpointLastSaveNanos.Store(0)
+	otlpCheckpointRestoredCount.Store(0)
+	otlpCheckpointRestoredAtNs.Store(0)
+	otlpCheckpointErrors.mu.Lock()
+	otlpCheckpointErrors.m = map[string]uint64{}
+	otlpCheckpointErrors.mu.Unlock()
 }

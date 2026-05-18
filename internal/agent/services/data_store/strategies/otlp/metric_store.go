@@ -183,6 +183,57 @@ func (s *metricStore) probeSeriesCount(probeName string) int {
 	return s.probeCounts[probeName]
 }
 
+// snapshotForCheckpoint returns the store contents as JSON-shaped
+// entrySnapshot values, ready for the checkpointer to serialize. The
+// tag map is shared by reference — the caller must treat it as
+// read-only.
+func (s *metricStore) snapshotForCheckpoint() []entrySnapshot {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]entrySnapshot, 0, len(s.entries))
+	for _, e := range s.entries {
+		out = append(out, entrySnapshot{
+			ProbeName:  e.probeName,
+			ProbeType:  e.probeType,
+			MetricName: e.metricName,
+			Value:      e.value,
+			Unit:       e.unit,
+			Tags:       e.tags,
+			ObservedAt: e.observedAt,
+		})
+	}
+	return out
+}
+
+// restoreFromSnapshot replaces the store contents with the given
+// entries. Used at agent boot when a persistent checkpoint is loaded.
+// Bypasses the upsert hot-path checks (cardinality cap, probe budget,
+// memory limiter) — restoring a snapshot is a privileged path that
+// trusts whatever was last successfully persisted. Probe counts are
+// rebuilt to match.
+func (s *metricStore) restoreFromSnapshot(entries []entrySnapshot) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.entries = make(map[string]storedMetric, len(entries))
+	s.probeCounts = map[string]int{}
+	for _, e := range entries {
+		if e.ProbeName == "" || e.ProbeType == "" {
+			continue
+		}
+		key := storeKey(e.ProbeName, e.ProbeType, e.MetricName, e.Tags)
+		s.entries[key] = storedMetric{
+			probeName:  e.ProbeName,
+			probeType:  e.ProbeType,
+			metricName: e.MetricName,
+			value:      e.Value,
+			unit:       e.Unit,
+			tags:       e.Tags,
+			observedAt: e.ObservedAt,
+		}
+		s.probeCounts[e.ProbeName]++
+	}
+}
+
 // snapshot returns a slice of CacheMetric ready to feed into
 // otelmapper.Resolve, plus the per-series observedAt time aligned by
 // index. Callers must not retain references — the maps inside are
