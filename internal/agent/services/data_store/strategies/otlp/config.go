@@ -76,6 +76,24 @@ const (
 	// motivating use case: upgrade, OOM kill, OS reboot). Default OFF
 	// for back-compat — operators opt in by setting the path.
 	DefaultPersistenceInterval = 30 * time.Second
+
+	// DefaultMaxConcurrentExports controls how many OTLP gRPC Export
+	// calls can fire in parallel during one push cycle when the
+	// strategy splits a large snapshot into per-probe sub-batches.
+	// 4 is the sweet spot for the typical "1-5 probes × few-k series"
+	// profile — splits the work but doesn't fan out so wide that
+	// gRPC connection-level contention overwhelms otelcol-side
+	// receivers. Set to 1 to disable splitting (back-compat single
+	// gRPC Export per cycle, exactly as 0.1.93-beta pre-tier-2d).
+	// Larger fleets can bump.
+	DefaultMaxConcurrentExports = 4
+
+	// SplitBatchThreshold gates the parallel-export path. Below this
+	// many resolved records, splitting is pure overhead — encoding a
+	// dozen series in a single batch is faster than spinning up 4
+	// goroutines + 4 protobuf encoders. Above the threshold, the
+	// per-probe split pays for itself.
+	SplitBatchThreshold = 100
 	DefaultTracesBatchSize    = 512
 	DefaultTracesBatchTimeout = 5 * time.Second
 	DefaultTracesBufferSize   = 2048
@@ -212,6 +230,17 @@ type Config struct {
 	// disabled (Persistence.Path == ""), the strategy behaves exactly
 	// as before — store lives entirely in memory.
 	Persistence PersistenceConfig
+	// MaxConcurrentExports caps how many OTLP gRPC Export calls fire
+	// in parallel during one push cycle. When > 1 (default 4) and
+	// the resolved record count exceeds SplitBatchThreshold, the
+	// strategy partitions records by probe_name and dispatches each
+	// partition to its own goroutine sharing the single gRPC client
+	// (HTTP/2 multiplexes streams over one connection). Set to 1 to
+	// disable the parallel path entirely (back-compat single-batch
+	// export). Lower values mean fewer in-flight goroutines but
+	// longer cycles; higher values mean more parallelism but more
+	// chance of overwhelming the receiver.
+	MaxConcurrentExports int
 }
 
 // PersistenceConfig opts into the on-disk LWW checkpoint. The agent
@@ -316,6 +345,7 @@ func defaultConfig() Config {
 			Path:     "",
 			Interval: DefaultPersistenceInterval,
 		},
+		MaxConcurrentExports: DefaultMaxConcurrentExports,
 	}
 }
 
@@ -365,6 +395,16 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 
 	if err := parsePersistence(params["persistence"], &cfg.Persistence); err != nil {
 		return cfg, fmt.Errorf("persistence: %w", err)
+	}
+
+	if v, ok := readInt(params["max_concurrent_exports"]); ok {
+		if v < 1 {
+			return cfg, fmt.Errorf("max_concurrent_exports must be >= 1 (1 = no parallelism), got %d", v)
+		}
+		if v > 64 {
+			return cfg, fmt.Errorf("max_concurrent_exports must be <= 64 to bound goroutine fan-out, got %d", v)
+		}
+		cfg.MaxConcurrentExports = v
 	}
 
 	if hdrs := readStringMap(params["headers"]); hdrs != nil {
