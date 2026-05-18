@@ -54,6 +54,25 @@ class Dashboard {
         this.probesCount = this.base.$('#probes-count');
         this.probesList = this.base.$('#probes-list');
         this.noProbesDiv = this.base.$('#no-probes');
+
+        // OTLP self-metrics (card is hidden until /info/otlp returns data)
+        this.otlpCard            = this.base.$('#otlp-card');
+        this.otlpMetricsPushed   = this.base.$('#otlp-metrics-pushed');
+        this.otlpLogsPushed      = this.base.$('#otlp-logs-pushed');
+        this.otlpExportErrors    = this.base.$('#otlp-export-errors');
+        this.otlpDropped         = this.base.$('#otlp-dropped');
+        this.otlpDroppedBreakdown= this.base.$('#otlp-dropped-breakdown');
+        this.otlpStoreSize       = this.base.$('#otlp-store-size');
+        this.otlpLogFill         = this.base.$('#otlp-log-fill');
+        this.otlpExportLast      = this.base.$('#otlp-export-last');
+        this.otlpExportMean      = this.base.$('#otlp-export-mean');
+        this.otlpCpSize          = this.base.$('#otlp-cp-size');
+        this.otlpCpAge           = this.base.$('#otlp-cp-age');
+        this.otlpCpRestored      = this.base.$('#otlp-cp-restored');
+        this.otlpCpErrors        = this.base.$('#otlp-cp-errors');
+        this.otlpCpErrorsBreakdown = this.base.$('#otlp-cp-errors-breakdown');
+        this.otlpSubBatches      = this.base.$('#otlp-subbatches');
+        this.otlpPath            = this.base.$('#otlp-path');
     }
 
     async loadDashboard() {
@@ -72,6 +91,13 @@ class Dashboard {
             this.updateResources(systemData);
             this.updateLicenseStatus(licenseData);
             this.updateProbesList(probesData);
+
+            // OTLP info is best-effort: older agents don't expose it, and
+            // a failure here must not blank the dashboard. The card hides
+            // itself when the fetch fails.
+            this.base.fetchAPI('info/otlp')
+                .then((otlp) => this.updateOtlp(otlp))
+                .catch(() => this.updateOtlp(null));
 
             this.showContent();
 
@@ -321,6 +347,92 @@ class Dashboard {
                 this.loadProbeKeyValues(probeName);
             }
         });
+    }
+
+    // updateOtlp renders the OTLP self-metric snapshot from /info/otlp.
+    // Hides the card when data is null (endpoint absent / unreachable)
+    // so dashboards on older agents look unchanged.
+    updateOtlp(data) {
+        if (!data) { this.otlpCard.style.display = 'none'; return; }
+        this.otlpCard.style.display = 'block';
+
+        const p = data.pipeline || {};
+        const s = data.store || {};
+        const d = data.export_duration || {};
+        const c = data.checkpoint || {};
+        const par = data.parallel || {};
+
+        this.otlpMetricsPushed.textContent = (p.metrics_pushed_total || 0).toLocaleString();
+        this.otlpLogsPushed.textContent    = (p.logs_pushed_total || 0).toLocaleString();
+
+        const errCount = p.export_errors_total || 0;
+        this.otlpExportErrors.textContent = errCount;
+        this.otlpExportErrors.className = 'metric-value' + (errCount > 0 ? ' otlp-err' : '');
+
+        const dropCount = p.dropped_total || 0;
+        this.otlpDropped.textContent = dropCount;
+        this.otlpDropped.className = 'metric-value' + (dropCount > 0 ? ' otlp-warn' : '');
+        this.renderOtlpBreakdown(this.otlpDroppedBreakdown, p.dropped_by_reason, '↳');
+
+        this.otlpStoreSize.textContent = (s.size || 0).toLocaleString() + ' series';
+        this.otlpLogFill.textContent   = ((s.log_buffer_fill_ratio || 0) * 100).toFixed(1) + '%';
+        this.otlpExportLast.textContent = this.fmtMs(d.last_ms);
+        this.otlpExportMean.textContent = this.fmtMs(d.mean_ms);
+
+        const cpDisabled = (c.size_bytes || 0) === 0 && (c.last_save_age_seconds || 0) === 0 && (c.restored_entries || 0) === 0;
+        if (cpDisabled) {
+            this.otlpCpSize.textContent = 'disabled';
+            this.otlpCpAge.textContent = '—';
+            this.otlpCpRestored.textContent = '—';
+        } else {
+            this.otlpCpSize.textContent = this.fmtBytes(c.size_bytes);
+            this.otlpCpAge.textContent = this.fmtAge(c.last_save_age_seconds);
+            this.otlpCpRestored.textContent = (c.restored_entries || 0).toLocaleString();
+        }
+        const cpErrCount = c.errors_total || 0;
+        this.otlpCpErrors.textContent = cpErrCount;
+        this.otlpCpErrors.className = 'metric-value' + (cpErrCount > 0 ? ' otlp-err' : '');
+        this.renderOtlpBreakdown(this.otlpCpErrorsBreakdown, c.errors_by_stage, '↳ at');
+
+        const subN = par.sub_batches || 0;
+        this.otlpSubBatches.textContent = subN;
+        this.otlpPath.textContent = subN > 1 ? 'fan-out by probe' : 'single-batch';
+    }
+
+    // renderOtlpBreakdown writes a sub-list of `prefix key: count` rows
+    // using DOM APIs only — reason/stage strings come from server-side
+    // enums but are never interpreted as HTML.
+    renderOtlpBreakdown(el, m, prefix) {
+        while (el.firstChild) el.removeChild(el.firstChild);
+        if (!m || Object.keys(m).length === 0) { el.style.display = 'none'; return; }
+        el.style.display = 'block';
+        const keys = Object.keys(m).sort();
+        keys.forEach((k, i) => {
+            if (i > 0) el.appendChild(document.createElement('br'));
+            el.appendChild(document.createTextNode(prefix + ' '));
+            const strong = document.createElement('strong');
+            strong.textContent = k;
+            el.appendChild(strong);
+            el.appendChild(document.createTextNode(': ' + m[k]));
+        });
+    }
+
+    fmtBytes(b) {
+        if (!b || b < 1024) return (b || 0) + ' B';
+        if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KiB';
+        return (b / (1024 * 1024)).toFixed(1) + ' MiB';
+    }
+    fmtMs(ms) {
+        if (!ms || ms <= 0) return '—';
+        if (ms < 1000) return ms.toFixed(0) + ' ms';
+        return (ms / 1000).toFixed(2) + ' s';
+    }
+    fmtAge(sec) {
+        if (!sec || sec <= 0) return 'never';
+        sec = Math.round(sec);
+        if (sec < 60) return sec + 's';
+        if (sec < 3600) return Math.floor(sec / 60) + 'm' + (sec % 60) + 's';
+        return Math.floor(sec / 3600) + 'h' + Math.floor((sec % 3600) / 60) + 'm';
     }
 
     async loadProbeKeyValues(probeName) {
