@@ -255,6 +255,14 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       float64(agentstate.GetOTLPCheckpointRestoredCount()),
 			Description: "Number of entries restored from the OTLP checkpoint at the last agent boot. 0 means no restore (no file present, persistence disabled, or fresh install).",
 		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.parallel.sub_batches",
+			Unit:        "{batch}",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPSubBatchCount()),
+			Description: "Number of sub-batches the most recent OTLP push fanned out across. 1 means the single-batch path (max_concurrent_exports=1 or cycle below threshold); >1 means per-probe parallel export fired.",
+		},
 	)
 	for stage, n := range agentstate.GetOTLPCheckpointErrorsByStage() {
 		records = append(records, otelmapper.OtelRecord{
