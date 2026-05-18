@@ -101,7 +101,11 @@ func TestResolveRuntime_NothingFound_ListsCandidates(t *testing.T) {
 	if res.Err == nil {
 		t.Fatal("expected error")
 	}
-	for _, want := range []string{"no IBM i runtime found", "Paths tried", "/nonexistent/run", "/nonexistent/jdk"} {
+	// NativeRunner is consumed verbatim by os.Stat so the slash form
+	// survives on every platform. JavaHome is passed through
+	// filepath.Join which normalises to backslashes on Windows — so
+	// we check by component rather than by full slash-prefixed path.
+	for _, want := range []string{"no IBM i runtime found", "Paths tried", "/nonexistent/run", "nonexistent", "jdk"} {
 		if !strings.Contains(res.Err.Error(), want) {
 			t.Errorf("error missing %q; full error:\n%v", want, res.Err)
 		}
