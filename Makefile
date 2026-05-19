@@ -203,6 +203,17 @@ prod-smoke: ## Prod smoke tests against sha901 + bbcloud (read-only)
 	@go test -tags=prod_smoke -v ./tools/prod_smoke/...
 	@echo "$(GREEN)✅ Database integration tests done$(NC)"
 
+# Boot smoke tests — build the agent binary, exec it against shipped
+# example configs to catch bring-up regressions (linker errors, config
+# schema breakage, platform-gated probe drift). Gated behind the
+# `boot_smoke` build tag so the inner `go build` invoked by the test
+# doesn't contend with the outer `make test` / `make test-race` build
+# cache. Wired into CI as a dedicated job; should take ~10s.
+boot-smoke: ## Boot smoke tests against example configs
+	@echo "$(GREEN)🚀 Running boot smoke tests...$(NC)"
+	@go test -tags=boot_smoke -v ./cmd/agent/...
+	@echo "$(GREEN)✅ Boot smoke tests done$(NC)"
+
 # NEW: Test avec détection de race conditions
 test-race: ## Test avec détection de race conditions
 	@echo "$(GREEN)🏃‍♂️ Tests avec détection de race conditions...$(NC)"
