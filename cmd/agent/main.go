@@ -214,9 +214,6 @@ func main() {
 		os.Args = append([]string{os.Args[0]}, serviceArgs...)
 		args := cliArgs.MustParse()
 
-		// Auto-detect mode from config file
-		args.Offline = agent.DetectAgentMode(args)
-
 		handleServiceCommand(command, args)
 		return
 	default:
@@ -232,9 +229,6 @@ func main() {
 			showHelp()
 			return
 		}
-
-		// Auto-detect mode from config file (same as service path)
-		args.Offline = agent.DetectAgentMode(args)
 
 		runAgent(args)
 	}
@@ -262,7 +256,7 @@ func showHelp() {
 	fmt.Printf(`Usage: %s [command] [options]
 
 Service Commands:
-    install              Install as system service (requires --authentication-key OR --offline)
+    install              Install as system service (auto-generates a UUID agent key)
     uninstall            Remove the system service
     start                Start the service
     stop                 Stop the service
@@ -277,9 +271,8 @@ License Commands:
     license remove       Remove current license (revert to free tier)
 
 IBM i Diagnostics:
-    ibmi check [path]    Verify the IBM i runtime (native binary or JRE)
-                         each ibmi probe in the config would resolve at
-                         startup. Does NOT connect to the IBM i host.
+    ibmi check [path]    Verify the IBM i runtime (native binary or JRE).
+                         The ibmi probe is Linux-only (0.1.97+).
 
 Other Commands:
     version              Show agent version
@@ -291,13 +284,15 @@ Other Commands:
                            --resolved (default)  env/file references substituted
                            --raw                 references preserved as written
                            --redact              substituted but secrets masked
-                           [path]                config file path (default: ./agent-config.yaml)
+                           [path]                config file path
     debug-modules-list   List available debug log modules
 
 Agent Options:
-    --authentication-key KEY               Agent key (optional if present in config file)
-    --config-path PATH                     Configuration file (default: ./agent-config.yaml)
-    --offline                              Run with local YAML configuration (no server)
+    --config-path PATH                     Path to the agent configuration file.
+                                           Default per OS:
+                                             Linux   /etc/senhub-agent/agent.yaml
+                                             Windows %%ProgramData%%\SenHub\agent.yaml
+                                             macOS   /usr/local/etc/senhub-agent/agent.yaml
     --verbose, -v                          Enable debug logging for all modules
     --filter module1,module2               Filter debug logs by module prefix (implies --verbose)
     --debug-modules module1,module2        [deprecated] Use --filter instead
@@ -311,13 +306,16 @@ HTTPS/TLS Options:
     --min-tls-version VERSION              Minimum TLS version: 1.2 or 1.3 (default: 1.2)
 
 Examples:
-    %s run --offline                                # Run with local config
-    %s run --offline --verbose                      # Run with debug output
-    %s install --offline                            # Install as service (offline)
-    %s install --authentication-key "your-key"      # Install as service (online)
-    %s license show --config agent-config.yaml      # Check license status
+    %s install                                      # Install service + generate config
+    %s run                                          # Run interactively (uses default config path)
+    %s run --verbose                                # Run with debug output
+    %s license show                                 # Check license status
     %s status                                       # Show running status
     %s update latest                                # Update to latest version
 
-`, exe, exe, exe, exe, exe, exe, exe, exe)
+Note: the pre-0.2.0 flags --offline, --authentication-key and --server-url
+were removed. Offline is the only mode; the agent key is generated at
+install time and persisted in the config file.
+
+`, exe, exe, exe, exe, exe, exe, exe)
 }
