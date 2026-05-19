@@ -61,4 +61,23 @@ If a build starts failing after a JT400 upgrade, add reflection hints under `MET
 
 ## Release integration
 
-Not wired into `dev-beta-release.yml` / `master-release.yml` yet — that ships in a follow-up once the build is proven to be stable across the matrix. Until then, the native binaries live as workflow artifacts (14-day retention); customers needing the IBM i probe download them via the GitHub Actions UI or `gh run download`.
+`dev-beta-release.yml` and `master-release.yml` invoke `native-runner-build.yml` as a reusable workflow on every tag push. The release job waits on the native build (`needs: build_native_runners`) and attaches the resulting binaries to the GitHub Release alongside the agent binary:
+
+| Asset | Source |
+|---|---|
+| `jt400runner-linux-amd64` | linux-amd64 native build job |
+| `jt400runner-linux-arm64` | linux-arm64 native build job |
+| `jt400runner-windows-amd64.exe` | windows-amd64 native build job |
+
+The reusable workflow is also still triggerable manually (`workflow_dispatch`) for iteration between releases. Manual runs upload artifacts on the workflow run; release runs upload them on the Release itself.
+
+If one of the matrix jobs fails (e.g. a JT400 upgrade introduces a new reflection path), the release proceeds without that platform — `continue-on-error: true` on the download step prevents a missing artifact from blocking the entire release. The release notes commit step should reference the gap so operators know to redeploy when the build is fixed.
+
+### Reflection / resource-bundle inclusion
+
+The build is **not** vanilla `native-image -cp jt400.jar:. Jt400Runner`. JT400 uses Java reflection (Class.forName for impl class loading) and ListResourceBundle for i18n; native-image strips those by default. The workflow handles both:
+
+- `IncludeResourceBundles=` enumerates every MRI*-named class under `com/ibm/as400/*` (excluding `vaccess/*` UI bundles).
+- A generated `reflect-config.json` lists every `.class` under `com/ibm/as400/*` with `allDeclaredConstructors|Methods|Fields|Classes` so JDBC's dynamic impl lookups succeed at runtime.
+
+These flags inflate the binary from ~6 MB (raw build, fails at runtime) to ~17 MB (functional). Slimmer builds are possible — generate a precise `reflect-config.json` from a GraalVM tracing-agent run against the real IBM i — but adds CI complexity. The current size is acceptable for the use case.
