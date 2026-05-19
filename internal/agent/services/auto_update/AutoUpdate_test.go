@@ -284,7 +284,7 @@ func TestAutoUpdate_GetBinaryUrl(t *testing.T) {
 			version:        "1.0.0",
 			os:             "linux",
 			arch:           "amd64",
-			expectedResult: "https://registry.example.com/download/1.0.0/senhub-agent_linux_amd64",
+			expectedResult: "https://registry.example.com/download/1.0.0/senhub-agent-linux-amd64.zip",
 		},
 		{
 			name:           "Beta version",
@@ -292,7 +292,7 @@ func TestAutoUpdate_GetBinaryUrl(t *testing.T) {
 			version:        "1.0.0-beta",
 			os:             "linux",
 			arch:           "amd64",
-			expectedResult: "https://registry.example.com/download/1.0.0-beta/senhub-agent_linux_amd64",
+			expectedResult: "https://registry.example.com/download/1.0.0-beta/senhub-agent-linux-amd64.zip",
 		},
 		{
 			name:           "Windows beta version",
@@ -300,7 +300,7 @@ func TestAutoUpdate_GetBinaryUrl(t *testing.T) {
 			version:        "1.0.0-beta",
 			os:             "windows",
 			arch:           "amd64",
-			expectedResult: "https://registry.example.com/download/1.0.0-beta/senhub-agent_windows_amd64.exe",
+			expectedResult: "https://registry.example.com/download/1.0.0-beta/senhub-agent-windows-amd64.zip",
 		},
 	}
 
@@ -350,13 +350,13 @@ func TestAutoUpdate_GetBinaryName(t *testing.T) {
 			name:           "Linux amd64",
 			os:             "linux",
 			arch:           "amd64",
-			expectedResult: "senhub-agent_linux_amd64",
+			expectedResult: "senhub-agent-linux-amd64.zip",
 		},
 		{
 			name:           "Window amd64",
 			os:             "windows",
 			arch:           "amd64",
-			expectedResult: "senhub-agent_windows_amd64.exe",
+			expectedResult: "senhub-agent-windows-amd64.zip",
 		},
 	}
 
