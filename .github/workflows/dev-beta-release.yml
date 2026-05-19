@@ -8,13 +8,20 @@ permissions:
   contents: write
 
 jobs:
+  # Build the IBM i native runner first; release job waits for it so
+  # the binaries can be attached as release assets. fail-fast is off
+  # inside the reusable workflow — see native-runner-build.yml.
+  build_native_runners:
+    uses: ./.github/workflows/native-runner-build.yml
+
   create_beta_release:
+    needs: build_native_runners
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          
+
       - name: Check if tag is on dev branch
         id: check_branch
         run: |
@@ -165,6 +172,25 @@ jobs:
             echo "Le tag ${{ env.BETA_TAG }} existe déjà, on l'utilise directement"
           fi
           
+      # Pull the IBM i native binaries built in build_native_runners.
+      # Each matrix job uploaded its artifact under jt400runner-<os>-<arch>;
+      # pattern + merge-multiple flattens them into dist/native/ which we
+      # then move next to the agent binaries so the release files: list
+      # picks them up as siblings.
+      - name: Download native runners
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'jt400runner-*'
+          path: dist/native
+          merge-multiple: true
+        continue-on-error: true
+      - name: Stage native runners into dist/
+        run: |
+          if [ -d dist/native ]; then
+            cp -v dist/native/jt400runner-* dist/ 2>/dev/null || echo "no native binaries to stage"
+            ls -la dist/jt400runner-* 2>/dev/null || true
+          fi
+
       - name: Create Beta Release
         id: create_release
         uses: softprops/action-gh-release@v1
@@ -178,6 +204,9 @@ jobs:
             dist/senhub-agent_windows_amd64.exe
             dist/senhub-agent_darwin_amd64
             dist/senhub-agent_darwin_arm64
+            dist/jt400runner-linux-amd64
+            dist/jt400runner-linux-arm64
+            dist/jt400runner-windows-amd64.exe
             dist/metadata.json
             dist/releases/releases.json
           generate_release_notes: false
