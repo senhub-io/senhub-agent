@@ -214,6 +214,34 @@ func GetAbsoluteConfigPath(configPath string) (string, error) {
 	return cleanPath, nil
 }
 
+// ParseStartArgs parses a slice of CLI flag tokens as if they came
+// after `install` or `run`. Used by the service-command dispatcher
+// when the leading subcommand is a service verb rather than `start`
+// — the top-level parser needs an explicit subcommand, so we call
+// the start parser directly. Empty input is valid and yields a
+// ParsedArgs filled with sensible defaults.
+func ParseStartArgs(flags []string) *ParsedArgs {
+	parsedEnv := Env
+	if parsedEnv != "development" {
+		parsedEnv = "production"
+	}
+
+	var startArgs StartSubcommandArgs
+	p, err := arg.NewParser(arg.Config{}, &startArgs)
+	if err != nil {
+		log.Fatalf("failed to create start args parser: %v", err)
+	}
+	if parseErr := p.Parse(flags); parseErr != nil {
+		if parseErr == arg.ErrHelp {
+			p.WriteHelp(os.Stdout)
+			os.Exit(0)
+		}
+		fmt.Fprintf(os.Stderr, "error parsing arguments: %v\n", parseErr)
+		os.Exit(1)
+	}
+	return parsedArgsFromStartArgs(&startArgs, parsedEnv)
+}
+
 func MustParse() *ParsedArgs {
 	var args CliArgs
 	parsedEnv := Env
