@@ -35,6 +35,12 @@ func TestBearerLeak_NoBearerInLog(t *testing.T) {
 			if !ok {
 				t.Skipf("%s unreachable; skipping", h.Name)
 			}
+			// Scope the check to the slice after the most recent
+			// service restart. The 0.1.95-beta agent's redaction
+			// only applies to entries it writes itself — historical
+			// entries from a previous (vulnerable) version stay on
+			// disk and shouldn't fail the test.
+			out = sinceLastRestart(out)
 			matches := bearerCredentialPattern.FindAllString(out, -1)
 			if len(matches) > 0 {
 				// Don't print the matches themselves — defeats the
@@ -56,18 +62,27 @@ func TestBearerLeak_NoBearerInLog(t *testing.T) {
 }
 
 // logTailCommand returns the host-appropriate command to dump the
-// recent agent log content. Linux: tail. Windows: PowerShell on the
-// known path. We pull a generous tail (last 5000 lines) so the test
-// covers a full restart + several push cycles.
+// recent agent log content. Linux: journalctl (the user has read
+// access without sudo via the systemd-journal group). Windows:
+// PowerShell on the known path. We pull a generous tail (last 5000
+// lines) so the test covers a full restart + several push cycles.
+//
+// Importantly: we never use `sudo` here. The test SSH session runs
+// in BatchMode (no TTY), so if sudo prompted for a password the
+// session would hang until the SSH command timeout — easier to keep
+// the command itself non-interactive.
 func logTailCommand(h host) string {
 	switch h.Name {
 	case "bbcloud":
-		// PowerShell quoting via SSH: single-arg command — wrap in
-		// `powershell -Command "..."` and use Get-Content -Tail.
-		return `powershell -Command "Get-Content -Tail 5000 C:\ProgramData\SenHub\logs\senhubagent.log"`
+		// The agent log on Windows is written as a single physical
+		// line containing concatenated JSON blobs (zerolog default,
+		// no newlines). `Get-Content -Tail N` would scan backwards
+		// looking for newlines that don't exist — that's an infinite
+		// loop in practice. `-Raw` reads the whole file as one
+		// string in one shot; the file is ~20 MB max in our window,
+		// trivial to slurp once per test.
+		return `powershell -Command "Get-Content -Raw C:\ProgramData\SenHub\logs\senhubagent.log"`
 	default:
-		// Linux / systemd: journalctl preferred over file-tail because
-		// log rotation may have moved the on-disk file.
-		return "sudo journalctl -u senhub-agent --no-pager -n 5000 2>/dev/null || tail -n 5000 /var/log/senhub-agent/senhubagent.log"
+		return "journalctl -u senhub-agent --no-pager -n 5000"
 	}
 }
