@@ -203,14 +203,17 @@ func main() {
 		// OS-canonical default config path. Pre-0.2.0 the install
 		// path forced the user to choose between --offline and
 		// --authentication-key; that gate is gone.
-		serviceArgs := make([]string, 0)
+		//
+		// We parse the remaining args via `start`-subcommand parsing
+		// rather than calling MustParse() directly, because the
+		// top-level parser expects an explicit subcommand and would
+		// fail on the empty input that an arg-less `install` / `run`
+		// produces.
+		serviceArgs := []string{}
 		if len(os.Args) > 2 {
 			serviceArgs = os.Args[2:]
 		}
-
-		os.Args = append([]string{os.Args[0]}, serviceArgs...)
-		args := cliArgs.MustParse()
-
+		args := cliArgs.ParseStartArgs(serviceArgs)
 		handleServiceCommand(command, args)
 		return
 	default:
