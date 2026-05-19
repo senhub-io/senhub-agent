@@ -13,11 +13,11 @@ import (
 // asterisk pattern when the key name is sensitive.
 var probeStartLogPattern = regexp.MustCompile(`"message":"Starting new probe"[^}]*"probe_params":\{[^}]*\}`)
 
-// secretKeyWithPlainValuePattern looks for any "probe_params" entry
-// where a sensitive key name (key|token|password|secret|user|login|
-// email|credential — case-insensitive) is followed by a non-"***"
-// value. If PR #121's redaction is effective, this returns no matches.
-var secretKeyWithPlainValuePattern = regexp.MustCompile(`(?i)"(api_?key|auth_?key|password|token|secret|user(name)?|login|email|credential)[^"]*":"(?!\*\*\*")[^"]+"`)
+// secretKeyValuePattern captures every `"<sensitive-key>":"<value>"`
+// pair under probe_params. Go's RE2 has no negative lookahead so we
+// pull all matches and filter the value (must equal "***") in code
+// rather than in the regex itself.
+var secretKeyValuePattern = regexp.MustCompile(`(?i)"(api_?key|auth_?key|password|token|secret|user(?:name)?|login|email|credential)[^"]*":"([^"]*)"`)
 
 // TestProbeParamsLeak_NoUserInLog asserts that the redaction shipped
 // by PR #121 covers identifier-style fields the legacy log dumped
@@ -52,12 +52,17 @@ func TestProbeParamsLeak_NoUserInLog(t *testing.T) {
 
 			var leaks []string
 			for _, entry := range probeStartEntries {
-				for _, m := range secretKeyWithPlainValuePattern.FindAllString(entry, -1) {
-					// Fingerprint the matched key only, not the value.
-					if i := indexOf(m, `":"`); i != -1 {
-						leaks = append(leaks, m[:i+3]+"…")
-					} else {
-						leaks = append(leaks, "<match>")
+				for _, sub := range secretKeyValuePattern.FindAllStringSubmatch(entry, -1) {
+					// sub[1] = key family name, sub[2] = the value.
+					// A clean log has every sensitive value equal to
+					// "***" (post-PR-121 redaction).
+					if len(sub) < 3 {
+						continue
+					}
+					if sub[2] != "***" {
+						// Fingerprint the leaked KEY family only — never
+						// the value, which is the whole point of the test.
+						leaks = append(leaks, sub[1]+":\"…\"")
 					}
 				}
 			}
@@ -69,13 +74,3 @@ func TestProbeParamsLeak_NoUserInLog(t *testing.T) {
 	}
 }
 
-// indexOf is a stdlib-free strings.Index, kept tiny so tests don't
-// pull strings just for this.
-func indexOf(s, substr string) int {
-	for i := 0; i+len(substr) <= len(s); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
-}
