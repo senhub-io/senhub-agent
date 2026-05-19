@@ -13,8 +13,18 @@ on:
       - '*.md'
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  # Multi-OS test matrix. Linux is the primary CI gate (race detector +
+  # govulncheck run there); macOS runs the default test suite to catch
+  # darwin-specific drift (build-tag-gated platform stubs, syscall
+  # signatures, file path expectations). Windows lives in its own
+  # workflow because the Windows service smoke step needs an
+  # interactive shell.
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -29,3 +39,59 @@ jobs:
         run: go vet ./...
       - name: Test
         run: make test
+
+  # Race detector runs on linux only and EXCLUDES
+  # internal/agent/services/configuration — that package has 4
+  # documented pre-existing race flakes (tracked in CLAUDE.md) which
+  # pass under plain `make test` and individually but fire under -race
+  # parallel scheduling. Excluding the package keeps the CI signal
+  # tight: any new -race failure here is a fresh regression, not noise
+  # from the pre-existing four.
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: Test with race detector (excluding known-flaky configuration package)
+        run: |
+          # xargs feeds each package as a separate argument so newlines
+          # in the package list don't end up concatenated into a single
+          # malformed import path on the `go test` command line.
+          go list ./... \
+            | grep -v '^senhub-agent\.go/internal/agent/services/configuration$' \
+            | xargs go test -race
+
+  # Boot smoke: builds the agent binary, exec's `version` + parses
+  # every shipped free-tier example config via `config check`. Catches
+  # the kind of bring-up regression that unit tests can't see — linker
+  # errors, config-schema-breakage, platform-gate drift.
+  boot-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: Boot smoke
+        run: make boot-smoke
+
+  # govulncheck flags known CVEs against the resolved dependency graph
+  # (direct + transitive). Fails the pipeline on any finding so that
+  # the dependency upgrade is part of the PR that introduced it,
+  # rather than a separate maintenance task.
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Run govulncheck
+        run: govulncheck ./...
