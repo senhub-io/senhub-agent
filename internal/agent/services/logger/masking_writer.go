@@ -16,7 +16,17 @@ func NewMaskingWriter(out io.Writer) *MaskingWriter {
 	return &MaskingWriter{out: out}
 }
 
-// Write implements the io.Writer interface
+// Write implements the io.Writer interface.
+//
+// zerolog calls Write with one log entry per call, the payload
+// already terminated by '\n'. json.Unmarshal silently ignores the
+// trailing newline; json.Marshal does NOT emit one. Without a fix,
+// successive entries concatenate into one giant physical line in the
+// file, breaking `tail -f`, `Get-Content -Tail`, jq, and every
+// line-oriented log aggregator (Loki / fluent-bit / Splunk forwarder).
+// Always append '\n' to whatever shape we forward downstream — we
+// preserve NDJSON whether the input was JSON, masked-as-string, or
+// fell back to raw masking.
 func (w *MaskingWriter) Write(p []byte) (n int, err error) {
 	// Detect if it's valid JSON
 	var jsonObj map[string]interface{}
@@ -28,14 +38,12 @@ func (w *MaskingWriter) Write(p []byte) (n int, err error) {
 		if err != nil {
 			// In case of error, mask the raw string
 			maskedStr := MaskSensitiveData(string(p))
-			_, writeErr := w.out.Write([]byte(maskedStr))
-			if writeErr != nil {
+			if _, writeErr := w.out.Write(appendNewlineIfMissing([]byte(maskedStr))); writeErr != nil {
 				return 0, writeErr
 			}
 			return len(p), nil // Return original input length
 		}
-		_, writeErr := w.out.Write(maskedJSON)
-		if writeErr != nil {
+		if _, writeErr := w.out.Write(appendNewlineIfMissing(maskedJSON)); writeErr != nil {
 			return 0, writeErr
 		}
 		return len(p), nil // Return original input length
@@ -43,8 +51,7 @@ func (w *MaskingWriter) Write(p []byte) (n int, err error) {
 
 	// If it's not JSON, treat as string
 	maskedStr := MaskSensitiveData(string(p))
-	_, writeErr := w.out.Write([]byte(maskedStr))
-	if writeErr != nil {
+	if _, writeErr := w.out.Write(appendNewlineIfMissing([]byte(maskedStr))); writeErr != nil {
 		return 0, writeErr
 	}
 	return len(p), nil // Return original input length
@@ -106,4 +113,15 @@ func isSensitiveFieldName(fieldName string) bool {
 	}
 
 	return false
+}
+
+// appendNewlineIfMissing ensures the buffer ends with exactly one '\n'.
+// Cheap (one byte check + at most one append) — fine on the hot
+// log-write path. Idempotent: returns the input unchanged when it
+// already terminates with a newline.
+func appendNewlineIfMissing(b []byte) []byte {
+	if len(b) > 0 && b[len(b)-1] == '\n' {
+		return b
+	}
+	return append(b, '\n')
 }
