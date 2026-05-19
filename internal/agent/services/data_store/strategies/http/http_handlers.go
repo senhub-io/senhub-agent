@@ -56,6 +56,13 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/debug/inject-test-metrics", h.HandleTestInjectMetrics).Methods("POST") // TEMPORARY TEST ENDPOINT
 	router.HandleFunc("/api/{agentkey}/debug/inject-real-metrics", h.HandleInjectRealMetrics).Methods("POST") // PRODUCTION DATA INJECTION
 
+	// Runtime profiling — Go's net/http/pprof handlers mounted under
+	// /api/{agentkey}/debug/pprof/. Same agentkey auth as the other
+	// debug endpoints; needed for goroutine-dump-based investigation
+	// of stalls (the bbcloud "agent silent after JT400 respawn" is
+	// the motivating case).
+	registerPprofRoutes(router, h)
+
 	// Admin endpoints (with agentkey authentication)
 	router.HandleFunc("/api/{agentkey}/stats/cache", h.HandleStatsCache).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/config/probes", h.HandleConfigProbes).Methods("GET")
