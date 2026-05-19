@@ -35,23 +35,30 @@ jobs:
           - target: linux-amd64
             runs_on: ubuntu-latest
             artifact: jt400runner-linux-amd64
+            ni_output: jt400runner-linux-amd64
             classpath_sep: ':'
+            ni_launcher: native-image
           - target: linux-arm64
             runs_on: ubuntu-24.04-arm
             artifact: jt400runner-linux-arm64
+            ni_output: jt400runner-linux-arm64
             classpath_sep: ':'
-          - target: darwin-amd64
-            runs_on: macos-13
-            artifact: jt400runner-darwin-amd64
-            classpath_sep: ':'
-          - target: darwin-arm64
-            runs_on: macos-14
-            artifact: jt400runner-darwin-arm64
-            classpath_sep: ':'
+            ni_launcher: native-image
+          # macOS targets dropped from the matrix: no customer hosts
+          # run the agent there. A macOS arm64 binary already lives in
+          # the repo (built locally) for dev iteration; macOS amd64
+          # was always queuing forever on GitHub's scarce macos-13
+          # runners. Re-add if a real deployment need surfaces.
           - target: windows-amd64
             runs_on: windows-latest
             artifact: jt400runner-windows-amd64.exe
+            # native-image auto-appends .exe on Windows — strip the
+            # suffix from -o or you get `.exe.exe`.
+            ni_output: jt400runner-windows-amd64
             classpath_sep: ';'
+            # On Windows GraalVM ships native-image.cmd, not a shebang
+            # script — bash needs the explicit suffix to exec it.
+            ni_launcher: native-image.cmd
     runs-on: ${{ matrix.runs_on }}
     steps:
       - uses: actions/checkout@v4
@@ -61,7 +68,8 @@ jobs:
         with:
           java-version: '21'
           distribution: 'graalvm-community'
-          components: 'native-image'
+          # native-image bundled by default since GraalVM JDK 17;
+          # explicit `components:` is deprecated.
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build native-image
@@ -70,25 +78,65 @@ jobs:
         env:
           CP_SEP: ${{ matrix.classpath_sep }}
           ARTIFACT: ${{ matrix.artifact }}
+          NI_OUTPUT: ${{ matrix.ni_output }}
+          NI_LAUNCHER: ${{ matrix.ni_launcher }}
         run: |
           set -euo pipefail
           # Classpath needs both jt400.jar (the IBM toolbox) and the
           # directory containing Jt400Runner.class (the entry point).
           # $CP_SEP is ';' on Windows, ':' elsewhere.
           CP="jt400.jar${CP_SEP}."
+          # Invoke through $JAVA_HOME because Git Bash on Windows
+          # doesn't pick up the runner's PATH addition; works on
+          # every platform since setup-graalvm exports JAVA_HOME.
+          # Launcher name varies: `native-image` on Unix, `native-image.cmd`
+          # on Windows (no shebang, must be invoked through cmd).
           # --no-fallback : refuse a runtime that needs a JVM — the
           #                 whole point of native-image is to be
           #                 self-contained.
           # -O2           : release-build optimisation level.
           # -H:+ReportExceptionStackTraces : keep traces visible on
           #                 build failure or runtime crash.
-          native-image \
+          # JT400 ships its resource bundles as Java classes (extending
+          # ListResourceBundle), not .properties files. We enumerate
+          # them all from the jar and pass to IncludeResourceBundles so
+          # the JDBC driver's <clinit> bundle lookups succeed at runtime
+          # (MissingResourceException otherwise crashes the runner on
+          # first connection).
+          BUNDLES=$("${JAVA_HOME}/bin/jar" -tf jt400.jar \
+            | grep -E '^com/ibm/as400/.+MRI[^/]*\.class$' \
+            | grep -vE '/vaccess/' \
+            | grep -vE '\$' \
+            | sed 's|/|.|g; s|\.class$||' \
+            | sort -u \
+            | tr '\n' ',' | sed 's/,$//')
+          echo "Including bundles: $BUNDLES"
+
+          # JT400 also loads Impl classes via Class.forName at runtime
+          # (proxy/native split). native-image strips anything not
+          # statically reachable, so we emit a reflect-config.json
+          # listing every JT400 class to force inclusion. Cost is
+          # ~5 MB of extra binary; benefit is that any reflective
+          # lookup JT400 makes — Impl classes, JDBC driver internals,
+          # date/time converters — is guaranteed available.
+          "${JAVA_HOME}/bin/jar" -tf jt400.jar \
+            | grep -E '^com/ibm/as400/.+\.class$' \
+            | grep -vE '\$' \
+            | sed 's|/|.|g; s|\.class$||' \
+            | sort -u \
+            | awk 'BEGIN{print "["} NR>1{print ","} {printf "  {\"name\":\"%s\",\"allDeclaredConstructors\":true,\"allDeclaredMethods\":true,\"allDeclaredFields\":true,\"allDeclaredClasses\":true}", $0} END{print "\n]"}' \
+            > reflect-config.json
+          echo "reflect-config.json entries: $(grep -c '\"name\"' reflect-config.json)"
+
+          "${JAVA_HOME}/bin/${NI_LAUNCHER}" \
             -cp "$CP" \
             --no-fallback \
             -O2 \
             -H:+UnlockExperimentalVMOptions \
             -H:+ReportExceptionStackTraces \
-            -o "$ARTIFACT" \
+            -H:IncludeResourceBundles="$BUNDLES" \
+            -H:ReflectionConfigurationFiles=reflect-config.json \
+            -o "$NI_OUTPUT" \
             Jt400Runner
 
       - name: Smoke check (binary starts and exits on missing creds)
