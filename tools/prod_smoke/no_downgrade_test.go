@@ -65,11 +65,16 @@ func TestNoDowngrade_AgentIsAtExpectedVersion(t *testing.T) {
 // agentVersionCommand returns the host-appropriate command to print
 // the agent version. Both Linux and Windows agents emit the same
 // "Version: …" shape via cliArgs.Version ldflags.
+//
+// On Linux the agent binary refuses to run without root privileges
+// (privilege check inside main.go); we go through `sudo -n` so we get
+// a fail-fast if the policy ever regresses, instead of a password
+// prompt that would hang the SSH session.
 func agentVersionCommand(h host) string {
 	switch h.Name {
 	case "bbcloud":
 		return `"C:\SenHub\senhub-agent.exe" version`
 	default:
-		return "/usr/local/bin/senhub-agent version"
+		return "sudo -n /usr/local/bin/senhub-agent version"
 	}
 }
