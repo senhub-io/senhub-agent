@@ -206,7 +206,6 @@ jobs:
             dist/senhub-agent_darwin_arm64
             dist/jt400runner-linux-amd64
             dist/jt400runner-linux-arm64
-            dist/jt400runner-windows-amd64.exe
             dist/metadata.json
             dist/releases/releases.json
           generate_release_notes: false
