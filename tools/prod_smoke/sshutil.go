@@ -104,13 +104,22 @@ func remoteShell(t *testing.T, h host, cmd string) (string, bool) {
 		user = u
 	}
 
+	// ConnectTimeout + ServerAlive* keep this from hanging on an
+	// unreachable host or a stalled remote command (e.g. a sudo
+	// prompt sitting on input).
 	args := []string{
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "ConnectTimeout=10",
+		"-o", "ServerAliveInterval=15",
+		"-o", "ServerAliveCountMax=4",
 		"-p", fmt.Sprintf("%d", port),
 	}
 	if h.Default.KeyFile != "" {
-		args = append(args, "-i", expandHome(h.Default.KeyFile))
+		// Key auth path: refuse any interactive prompt.
+		// (sshpass+password path skips BatchMode because sshpass
+		// uses the prompt to inject the password.)
+		args = append(args, "-o", "BatchMode=yes", "-i", expandHome(h.Default.KeyFile))
 	}
 	args = append(args, fmt.Sprintf("%s@%s", user, hostAddr), cmd)
 
@@ -130,15 +139,18 @@ func remoteShell(t *testing.T, h host, cmd string) (string, bool) {
 		sshCmd.Env = append(sshCmd.Env, "SSHPASS="+pw, "PATH="+envOr("PATH", "/usr/bin:/usr/local/bin"))
 	}
 
-	var out bytes.Buffer
-	sshCmd.Stdout = &out
-	sshCmd.Stderr = &out
-	if err := sshCmd.Run(); err != nil {
-		t.Logf("host %s: ssh %q failed: %v\noutput:\n%s", h.Name, cmd, err, out.String())
+	// CombinedOutput, NOT Stdout=Stderr=&buf — the latter shares a
+	// bytes.Buffer between the two writer goroutines os/exec spawns
+	// (one per pipe), which is not thread-safe and can deadlock on
+	// large outputs. CombinedOutput uses internal synchronisation.
+	rawOut, err := sshCmd.CombinedOutput()
+	output := string(rawOut)
+	if err != nil {
+		t.Logf("host %s: ssh %q failed: %v\noutput:\n%s", h.Name, cmd, err, output)
 		// Return what we got anyway — callers may want to inspect
 		// stderr for diagnostic purposes (e.g. file-not-found is
 		// expected for the no-downgrade probe).
-		return out.String(), true
+		return output, true
 	}
-	return out.String(), true
+	return output, true
 }
