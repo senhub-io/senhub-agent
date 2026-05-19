@@ -87,17 +87,55 @@ func hasArg(name string) bool {
 	return false
 }
 
-func main() {
-	// Check privileges first
-	if err := checkPrivileges(); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+// readOnlyCommand reports whether the invocation is a diagnostic /
+// inspection subcommand that should bypass the privilege check.
+//
+// These commands only read state (config files, embedded version
+// string, license JWT) and emit to stdout — they don't touch the
+// service, the network, the log directory, or the binary itself, so
+// running them as a non-root user must not fail. Without this
+// exemption, every CI smoke test, every contributor checking
+// `agent version` from a clone, and every operator running
+// `agent config check` before sudo'ing into the install would hit
+// the privilege gate.
+func readOnlyCommand(args []string) bool {
+	if len(args) <= 1 {
+		return true // showHelp() — informational only
 	}
+	switch args[1] {
+	case "--help", "-h", "help", "version", "debug-modules-list":
+		return true
+	case "config":
+		if len(args) > 2 && (args[2] == "check" || args[2] == "show") {
+			return true
+		}
+	}
+	return false
+}
 
-	// Show help if no arguments or help is requested
+func main() {
+	// Show help if no arguments or help is requested. Help is
+	// information-only so it runs even without root — placed before
+	// checkPrivileges so a fresh checkout / CI smoke test sees usage
+	// without hitting the gate.
 	if len(os.Args) <= 1 || os.Args[1] == "--help" || os.Args[1] == "-h" {
 		showHelp()
 		return
+	}
+
+	// Privilege gate runs before the subcommand dispatch, EXCEPT for
+	// diagnostic commands enumerated in readOnlyCommand. The agent
+	// binary writes logs to /var/log/senhub (Linux) and to
+	// %ProgramData%\SenHub (Windows), reads /etc/senhub-agent/, and
+	// can manage a system service — all of which require elevation.
+	// Diagnostic subcommands (version, config check, config show)
+	// don't touch any of that, so making them require root would only
+	// hurt usability (CI smoke checks, contributor onboarding).
+	if !readOnlyCommand(os.Args) {
+		if err := checkPrivileges(); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	// If first argument is a service command
