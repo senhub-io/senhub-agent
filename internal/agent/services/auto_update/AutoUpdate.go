@@ -1,8 +1,11 @@
 package auto_update
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -223,53 +226,99 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 	return true, nil
 }
 
-func (a *autoUpdate) doUpdate(url string) error {
+// doUpdate downloads the per-platform release ZIP, extracts the agent
+// binary from inside it and applies the upgrade via selfupdate.Apply
+// (atomic rename). Pre-0.2.0 the registry served raw binaries directly;
+// 0.2.0+ wraps them in OS-named ZIPs so the file name matches what an
+// operator downloading from the GitHub release would see, and so the
+// release matrix stops shipping duplicate raw + zipped variants.
+func (a *autoUpdate) doUpdate(downloadURL string) error {
 	if a.dryRun {
 		a.logger.Info().Msg("Dry run: Skipping update")
 		return nil
 	}
 
-	// Validate URL safety
-	if !strings.HasPrefix(url, "https://") {
-		return fmt.Errorf("unsafe URL scheme - only HTTPS URLs are allowed: %s", url)
+	if !strings.HasPrefix(downloadURL, "https://") {
+		return fmt.Errorf("unsafe URL scheme - only HTTPS URLs are allowed: %s", downloadURL)
 	}
 
 	a.logger.Info().
-		Str("download_url", url).
-		Msg("Downloading update binary")
+		Str("download_url", downloadURL).
+		Msg("Downloading update archive")
 
-	resp, err := http.Get(url) // #nosec G107 - URL is validated for HTTPS scheme above
+	resp, err := http.Get(downloadURL) // #nosec G107 - URL is validated for HTTPS scheme above
 	if err != nil {
 		return fmt.Errorf("failed to download update: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Validate HTTP response
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to download update: HTTP %d %s from %s",
-			resp.StatusCode, resp.Status, url)
+			resp.StatusCode, resp.Status, downloadURL)
 	}
 
-	// Validate Content-Type (should be application/octet-stream or similar for binaries)
+	// The release pipeline serves ZIPs as application/zip; some CDNs
+	// (GitHub's release storage in particular) report
+	// application/octet-stream. Reject html / json which would
+	// indicate we landed on an error page rather than the archive.
 	contentType := resp.Header.Get("Content-Type")
 	if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "application/json") {
-		return fmt.Errorf("invalid content type for binary download: %s (expected binary, got %s)",
-			contentType, url)
+		return fmt.Errorf("invalid content type for archive download: %s (expected zip/octet-stream, got %s)",
+			contentType, downloadURL)
 	}
 
-	// Validate Content-Length (binary should be several MB)
-	contentLength := resp.ContentLength
-	if contentLength > 0 && contentLength < 1024*1024 { // Less than 1MB is suspicious
-		return fmt.Errorf("binary too small: %d bytes (expected at least 1MB)", contentLength)
+	// Buffer the whole download in memory so we can open it as a ZIP.
+	// Release archives weigh ~10 MB compressed; that's an acceptable
+	// peak. Refuse anything > 200 MB as a sanity check.
+	const maxArchiveSize = 200 * 1024 * 1024
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxArchiveSize+1))
+	if err != nil {
+		return fmt.Errorf("reading update archive body: %w", err)
+	}
+	if int64(len(body)) > maxArchiveSize {
+		return fmt.Errorf("update archive too large (> %d bytes)", maxArchiveSize)
+	}
+	if len(body) < 1024*1024 {
+		return fmt.Errorf("update archive too small: %d bytes (expected at least 1MB)", len(body))
+	}
+
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		return fmt.Errorf("opening update archive as zip: %w", err)
+	}
+
+	// The archive ships exactly one entry: the agent binary. On
+	// Windows it's named `senhub-agent.exe`; everywhere else
+	// `senhub-agent`. We accept either to be tolerant of an
+	// upgrade-from-different-OS-arch packaging mistake.
+	var entry *zip.File
+	for _, f := range zr.File {
+		if f.Name == "senhub-agent" || f.Name == "senhub-agent.exe" {
+			entry = f
+			break
+		}
+	}
+	if entry == nil {
+		names := make([]string, 0, len(zr.File))
+		for _, f := range zr.File {
+			names = append(names, f.Name)
+		}
+		return fmt.Errorf("update archive does not contain senhub-agent binary; found entries: %v", names)
 	}
 
 	a.logger.Info().
 		Str("content_type", contentType).
-		Int64("content_length", contentLength).
-		Msg("Binary download validation passed, applying update")
+		Int("archive_size", len(body)).
+		Uint64("binary_size", entry.UncompressedSize64).
+		Msg("Update archive download validation passed, applying update")
 
-	err = selfupdate.Apply(resp.Body, selfupdate.Options{})
+	rc, err := entry.Open()
 	if err != nil {
+		return fmt.Errorf("opening binary entry inside archive: %w", err)
+	}
+	defer rc.Close()
+
+	if err := selfupdate.Apply(rc, selfupdate.Options{}); err != nil {
 		return fmt.Errorf("failed to apply update: %w", err)
 	}
 
@@ -443,13 +492,16 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 	return metadata.Version
 }
 
-func (a *autoUpdate) getBinaryNameForOptions(os, arch string) string {
-	suffix := ""
-	if os == "windows" {
-		suffix = ".exe"
-	}
-
-	return fmt.Sprintf("senhub-agent_%s_%s%s", os, arch, suffix)
+// getBinaryNameForOptions returns the asset filename to download for
+// the given OS/arch. 0.2.0+ ships ZIP archives named
+// `senhub-agent-<os>-<arch>.zip`; the binary inside the archive is
+// always `senhub-agent` (or `senhub-agent.exe` on Windows). Pre-0.2.0
+// shipped raw binaries with an `_os_arch` suffix; the auto-updater
+// will not be able to upgrade from a pre-0.2.0 install to a 0.2.0
+// release using the registry directly — operators must replace the
+// binary manually for that one transition.
+func (a *autoUpdate) getBinaryNameForOptions(goos, goarch string) string {
+	return fmt.Sprintf("senhub-agent-%s-%s.zip", goos, goarch)
 }
 
 func (a *autoUpdate) GetBinaryUrl(

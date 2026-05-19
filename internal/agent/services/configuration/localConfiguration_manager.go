@@ -85,16 +85,14 @@ func (lc *LocalConfiguration) loadConfiguration() error {
 	return nil
 }
 
-// createDefaultConfiguration creates a default configuration file
+// createDefaultConfiguration creates a default configuration file.
+// Always generates a fresh UUID for the agent key — pre-0.2.0 the
+// caller could pass one in via --authentication-key, but that flag
+// has been removed alongside online mode.
 func (lc *LocalConfiguration) createDefaultConfiguration() error {
-	// Generate agent key if not provided
-	agentKey := lc.args.AuthenticationKey
-	if agentKey == "" {
-		var err error
-		agentKey, err = lc.generateOfflineAgentKey()
-		if err != nil {
-			return fmt.Errorf("failed to generate agent key: %w", err)
-		}
+	agentKey, err := lc.generateOfflineAgentKey()
+	if err != nil {
+		return fmt.Errorf("failed to generate agent key: %w", err)
 	}
 
 	// Create default configuration
