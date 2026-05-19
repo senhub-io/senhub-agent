@@ -1,3 +1,19 @@
+// Package cliArgs parses the senhub-agent command line.
+//
+// Mode model (0.2.0+): the agent runs offline only. The following CLI
+// flags were removed in 0.2.0 and now produce a parse error if passed:
+//
+//   --offline           (was: enable offline mode; offline is now the only mode)
+//   --authentication-key  (was: agent identity key — now read from the
+//                          config file only, generated at install time)
+//   --server-url          (was: SaaS configuration server URL — no longer
+//                          reached; the cloud intake URL used by the
+//                          senhub data-push strategy is build-time
+//                          injected via ldflags)
+//
+// Operators who still pass any of these flags from a systemd unit or
+// Windows service ExecStart MUST update those before upgrading to
+// 0.2.0 — Go's go-arg parser rejects unknown flags at startup.
 package cliArgs
 
 import (
@@ -10,7 +26,7 @@ import (
 	"github.com/alexflint/go-arg"
 )
 
-// Those variables are set by the build system
+// Build-injected variables (set via ldflags from the Makefile).
 var (
 	Version        string
 	CommitHash     string
@@ -21,13 +37,14 @@ var (
 	DevelopmentURL string
 )
 
-// defaultServerURL returns the default server URL based on the environment
-func defaultServerURL() string {
+// CloudIntakeURL returns the cloud intake URL appropriate for the
+// build environment. The senhub data-push strategy uses this when an
+// operator wires it up in strategies.d/; offline-only mode means the
+// URL is fixed at build time, not selectable at runtime.
+func CloudIntakeURL() string {
 	if Env == "development" {
-		log.Printf("Debug: Using development URL: %s", DevelopmentURL)
 		return DevelopmentURL
 	}
-	log.Printf("Debug: Using production URL: %s", ProductionURL)
 	return ProductionURL
 }
 
@@ -48,33 +65,29 @@ type LicenseSubcommandArgs struct {
 
 type LicenseActivateArgs struct {
 	LicenseCode string `arg:"positional,required" help:"License code from Sensor Factory"`
-	ConfigPath  string `arg:"--config-path" help:"Path to configuration file (default: ./agent-config.yaml)"`
+	ConfigPath  string `arg:"--config-path" help:"Path to configuration file"`
 	Verbose     bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
 }
 
 type LicenseShowArgs struct {
-	ConfigPath string `arg:"--config-path" help:"Path to configuration file (default: ./agent-config.yaml)"`
+	ConfigPath string `arg:"--config-path" help:"Path to configuration file"`
 	Verbose    bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
 }
 
 type LicenseRemoveArgs struct {
-	ConfigPath string `arg:"--config-path" help:"Path to configuration file (default: ./agent-config.yaml)"`
+	ConfigPath string `arg:"--config-path" help:"Path to configuration file"`
 	Verbose    bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
 	Force      bool   `arg:"-f,--force" help:"Skip confirmation prompt"`
 }
 
 type UpdateSubcommandArgs struct {
-	Version           string `arg:"positional,required" help:"Version to update to"`
-	AuthenticationKey string `arg:"--authentication-key,env:SENHUB_KEY" help:"The authentication key for the agent"`
-	RegistryUrl       string `arg:"--registry-url" help:"URL of the registry to use"`
-	ServerUrl         string `arg:"--server-url,env:SENHUB_SERVER_URL" help:"The URL of senhub server to connect to"`
-	Verbose           bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
-	DryRun            bool   `arg:"-d,--dry-run" help:"Do not perform the update, only print the new version"`
+	Version     string `arg:"positional,required" help:"Version to update to"`
+	RegistryUrl string `arg:"--registry-url" help:"URL of the registry to use"`
+	Verbose     bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
+	DryRun      bool   `arg:"-d,--dry-run" help:"Do not perform the update, only print the new version"`
 }
 
 type StartSubcommandArgs struct {
-	AuthenticationKey     string            `arg:"--authentication-key,env:SENHUB_KEY" help:"The authentication key for the agent"`
-	ServerUrl             string            `arg:"--server-url,env:SENHUB_SERVER_URL" help:"The URL of senhub server to connect to"`
 	Verbose               bool              `arg:"-v,--verbose" help:"Enable verbose logging"`
 	Filter                string            `arg:"--filter" help:"Filter debug logs to matching modules with prefix matching (e.g., 'probe' matches probe.veeam, probe.citrix). Implies --verbose."`
 	DebugModules          string            `arg:"--debug-modules" help:"[deprecated: use --filter] Enable debug logging only for specific modules (comma-separated)"`
@@ -82,11 +95,9 @@ type StartSubcommandArgs struct {
 	DebugLogShipperTags   map[string]string `arg:"--debug-log-shipper-tags,env:SENHUB_DEBUG_LOG_SHIPPER_TAGS" help:"Tags to add to debug log entries (format: key1=value1,key2=value2)"`
 	DebugLogShipperBuffer int               `arg:"--debug-log-shipper-buffer,env:SENHUB_DEBUG_LOG_SHIPPER_BUFFER" help:"Buffer size for debug log shipper"`
 
-	// Offline mode options
-	Offline    bool   `arg:"--offline" help:"Run in offline mode with local configuration"`
-	ConfigPath string `arg:"--config-path" help:"Path to local configuration file (default: ./agent-config.yaml)"`
+	ConfigPath string `arg:"--config-path" help:"Path to the agent configuration file"`
 
-	// HTTPS options for offline mode
+	// HTTPS options for the HTTP strategy
 	EnableHttps   bool   `arg:"--enable-https" help:"Enable HTTPS for HTTP strategy"`
 	HttpsPort     int    `arg:"--https-port" help:"HTTPS port (default: 8443)"`
 	HttpsHosts    string `arg:"--https-hosts" help:"Comma-separated hostnames for certificate SAN (default: localhost,127.0.0.1)"`
@@ -95,9 +106,16 @@ type StartSubcommandArgs struct {
 	MinTlsVersion string `arg:"--min-tls-version" help:"Minimum TLS version (1.2, 1.3) (default: 1.2)"`
 }
 
+// ParsedArgs is the unified runtime view of the CLI arguments + any
+// values loaded from the configuration file at boot.
+//
+// Fields:
+//   - AuthenticationKey is populated by the agent from the config
+//     file (or the install path) — NOT from a CLI flag.
+//   - UpdateRegistryUrl is the only registry-side URL still set via
+//     CLI; it gates `agent update` to a custom registry for testing.
 type ParsedArgs struct {
 	AuthenticationKey     string
-	ServerUrl             string
 	UpdateRegistryUrl     string
 	Verbose               bool
 	DebugModules          []string
@@ -110,8 +128,6 @@ type ParsedArgs struct {
 	DebugLogShipperTags   map[string]string
 	DebugLogShipperBuffer int
 
-	// Offline mode options
-	Offline    bool
 	ConfigPath string
 
 	// HTTPS options
@@ -134,21 +150,19 @@ func GetVersionInfo() map[string]string {
 		"buildTime":  BuildTime,
 		"goVersion":  GoVersion,
 		"env":        Env,
-		"defaultURL": defaultServerURL(),
+		"defaultURL": CloudIntakeURL(),
 	}
 }
 
 // PrintVersion prints version information to stdout without timestamps
 func PrintVersion() {
 	if Version != "" {
-		// Production build with version number
 		if CommitHash != "" {
 			fmt.Printf("Version: %s (commit: %s)\n", Version, CommitHash)
 		} else {
 			fmt.Printf("Version: %s\n", Version)
 		}
 	} else if CommitHash != "" {
-		// Development build with commit only
 		fmt.Printf("Development version (commit: %s)\n", CommitHash)
 	} else {
 		fmt.Println("Version information not available")
@@ -159,52 +173,73 @@ func PrintVersion() {
 	}
 }
 
-// GetAbsoluteConfigPath returns an absolute path for the configuration file
-// based on the binary location. This ensures consistent configuration file
-// location across different working directories (critical for Windows Services).
+// GetAbsoluteConfigPath returns an absolute path for the configuration
+// file. Resolution order:
 //
-// Logic:
-//  1. If configPath is already absolute, return it as-is
-//  2. Otherwise, use the binary's directory as base
-//  3. If configPath is empty, use "agent-config.yaml" as default
+//  1. If configPath is absolute, return it (cleaned).
+//  2. If configPath is empty, use the OS-canonical default
+//     (/etc/senhub-agent/agent.yaml on Linux, %ProgramData%\SenHub\agent.yaml
+//     on Windows, /usr/local/etc/senhub-agent/agent.yaml on macOS).
+//  3. Otherwise, resolve relative to the binary directory — this
+//     historical behaviour is kept for callers that still pass a bare
+//     filename like "agent-config.yaml".
 //
-// This fixes the issue where Windows Services have unpredictable working directories,
-// causing "./agent-config.yaml" to point to wrong locations (e.g., C:\Windows\System32).
+// Path traversal (`..`) is rejected explicitly.
 func GetAbsoluteConfigPath(configPath string) (string, error) {
-	// Use default filename if not specified
-	if configPath == "" {
-		configPath = "agent-config.yaml"
-	}
-
-	// Validate against path traversal attacks
 	if strings.Contains(configPath, "..") {
 		return "", fmt.Errorf("path traversal not allowed in config path")
 	}
 
-	// If already absolute, return cleaned path
+	if configPath == "" {
+		return canonicalConfigPath(), nil
+	}
+
 	if filepath.IsAbs(configPath) {
 		return filepath.Clean(configPath), nil
 	}
 
-	// Get binary location
 	execPath, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
 
-	// Get binary directory
 	binDir := filepath.Dir(execPath)
-
-	// Join with config path and clean
 	absolutePath := filepath.Join(binDir, configPath)
 	cleanPath := filepath.Clean(absolutePath)
 
-	// Ensure final path is within binary directory (security check)
 	if !strings.HasPrefix(cleanPath, binDir) {
 		return "", fmt.Errorf("config path must be within binary directory")
 	}
 
 	return cleanPath, nil
+}
+
+// ParseStartArgs parses a slice of CLI flag tokens as if they came
+// after `install` or `run`. Used by the service-command dispatcher
+// when the leading subcommand is a service verb rather than `start`
+// — the top-level parser needs an explicit subcommand, so we call
+// the start parser directly. Empty input is valid and yields a
+// ParsedArgs filled with sensible defaults.
+func ParseStartArgs(flags []string) *ParsedArgs {
+	parsedEnv := Env
+	if parsedEnv != "development" {
+		parsedEnv = "production"
+	}
+
+	var startArgs StartSubcommandArgs
+	p, err := arg.NewParser(arg.Config{}, &startArgs)
+	if err != nil {
+		log.Fatalf("failed to create start args parser: %v", err)
+	}
+	if parseErr := p.Parse(flags); parseErr != nil {
+		if parseErr == arg.ErrHelp {
+			p.WriteHelp(os.Stdout)
+			os.Exit(0)
+		}
+		fmt.Fprintf(os.Stderr, "error parsing arguments: %v\n", parseErr)
+		os.Exit(1)
+	}
+	return parsedArgsFromStartArgs(&startArgs, parsedEnv)
 }
 
 func MustParse() *ParsedArgs {
@@ -214,7 +249,6 @@ func MustParse() *ParsedArgs {
 		parsedEnv = "production"
 	}
 
-	// Attempt to parse arguments as subcommand
 	p, err := arg.NewParser(arg.Config{}, &args)
 	if err != nil {
 		log.Fatalf("there was an error in the definition of the Go struct: %v", err)
@@ -227,15 +261,15 @@ func MustParse() *ParsedArgs {
 			p.WriteHelp(os.Stdout)
 			os.Exit(0)
 		case p.Subcommand() == nil:
-			// No subcommand was provided.
-			// Attempt to parse arguments as start command (all fields optional).
+			// No subcommand was provided. Attempt to parse arguments
+			// as start command (all fields optional).
 			var startArgs StartSubcommandArgs
 			sp, spErr := arg.NewParser(arg.Config{}, &startArgs)
 			if spErr != nil {
 				log.Fatalf("failed to create start args parser: %v", spErr)
 			}
 			if parseErr := sp.Parse(os.Args[1:]); parseErr != nil && parseErr != arg.ErrHelp {
-				// Ignore parse errors — all start args are optional
+				// Ignore parse errors — all start args are optional.
 			}
 			return parsedArgsFromStartArgs(&startArgs, parsedEnv)
 		default:
@@ -253,7 +287,6 @@ func MustParse() *ParsedArgs {
 	case args.Update != nil:
 		return parsedArgsFromUpdateArgs(args.Update, parsedEnv)
 	default:
-		// No subcommand was provided.
 		p.Fail("Run with --help for usage information.")
 		os.Exit(1)
 	}
@@ -261,13 +294,6 @@ func MustParse() *ParsedArgs {
 }
 
 func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *ParsedArgs {
-	// If ServerUrl is not specified, use default value (unless offline mode)
-	serverUrl := args.ServerUrl
-	if serverUrl == "" && !args.Offline {
-		serverUrl = defaultServerURL()
-		// Note: Default server URL not set for this environment
-	}
-
 	// Parse filter modules (--filter takes precedence, --debug-modules kept for compat)
 	var debugModules []string
 	if args.Filter != "" {
@@ -292,36 +318,25 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 	var httpsHosts []string
 	if args.HttpsHosts != "" {
 		httpsHosts = strings.Split(args.HttpsHosts, ",")
-		// Trim whitespace from each host
 		for i, host := range httpsHosts {
 			httpsHosts[i] = strings.TrimSpace(host)
 		}
 	} else {
-		// Default hosts for certificate SAN
 		httpsHosts = []string{"localhost", "127.0.0.1"}
 	}
 
-	// Set default config path if not specified
+	// Set defaults
 	configPath := args.ConfigPath
-	if configPath == "" {
-		configPath = "./agent-config.yaml"
-	}
-
-	// Set default HTTPS port if not specified
 	httpsPort := args.HttpsPort
 	if httpsPort == 0 {
 		httpsPort = 8443
 	}
-
-	// Set default minimum TLS version
 	minTlsVersion := args.MinTlsVersion
 	if minTlsVersion == "" {
 		minTlsVersion = "1.2"
 	}
 
 	return &ParsedArgs{
-		AuthenticationKey:     args.AuthenticationKey,
-		ServerUrl:             serverUrl,
 		Verbose:               verbose,
 		DebugModules:          debugModules,
 		Env:                   environment,
@@ -331,11 +346,8 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 		DebugLogShipperTags:   args.DebugLogShipperTags,
 		DebugLogShipperBuffer: args.DebugLogShipperBuffer,
 
-		// Offline mode options
-		Offline:    args.Offline,
 		ConfigPath: configPath,
 
-		// HTTPS options
 		EnableHttps:   args.EnableHttps,
 		HttpsPort:     httpsPort,
 		HttpsHosts:    httpsHosts,
@@ -346,16 +358,7 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 }
 
 func parsedArgsFromUpdateArgs(args *UpdateSubcommandArgs, environment string) *ParsedArgs {
-	// If ServerUrl is not specified, use default value
-	serverUrl := args.ServerUrl
-	if serverUrl == "" {
-		serverUrl = defaultServerURL()
-		// Note: Default server URL not set for this environment
-	}
-
 	return &ParsedArgs{
-		AuthenticationKey: args.AuthenticationKey,
-		ServerUrl:         serverUrl,
 		UpdateRegistryUrl: args.RegistryUrl,
 		Verbose:           args.Verbose,
 		Env:               environment,
@@ -364,4 +367,14 @@ func parsedArgsFromUpdateArgs(args *UpdateSubcommandArgs, environment string) *P
 		CommitHash:        CommitHash,
 		DryRun:            args.DryRun,
 	}
+}
+
+// canonicalConfigPath returns the OS-canonical default location for
+// the agent's configuration file. Used by GetAbsoluteConfigPath when
+// no explicit path is provided.
+func canonicalConfigPath() string {
+	// canonicalConfigPath is implemented per-platform in
+	// paths_<goos>.go to avoid sprinkling runtime.GOOS conditionals
+	// through this resolution path.
+	return canonicalConfigPathForOS()
 }
