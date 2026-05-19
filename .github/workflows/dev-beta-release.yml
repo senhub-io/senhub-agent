@@ -58,19 +58,15 @@ jobs:
           
       - name: Build binaries manually
         run: |
-          # Create dist directory
           mkdir -p dist
-          
-          # Get build information
           CURRENT_COMMIT=$(git rev-parse HEAD)
           CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.%NZ")
           GO_VERSION=$(go version | cut -d' ' -f3)
-          
-          # Set API URLs
           PRODUCTION_URL="https://eu-west-1.intake.senhub.io"
           DEVELOPMENT_URL="https://eu-west-1.intake-dev.senhub.io"
-          
-          # Set ldflags
+
+          # ldflags inject build-time identity used by the agent at
+          # runtime (version, commit, env, default URLs).
           LDFLAGS="-s -w \
           -X 'senhub-agent.go/internal/agent/cliArgs.Version=$BETA_TAG' \
           -X 'senhub-agent.go/internal/agent/cliArgs.CommitHash=$CURRENT_COMMIT' \
@@ -79,44 +75,40 @@ jobs:
           -X 'senhub-agent.go/internal/agent/cliArgs.Env=production' \
           -X 'senhub-agent.go/internal/agent/cliArgs.ProductionURL=$PRODUCTION_URL' \
           -X 'senhub-agent.go/internal/agent/cliArgs.DevelopmentURL=$DEVELOPMENT_URL'"
-          
           echo "Using ldflags: $LDFLAGS"
-          
-          # Build for each platform
-          echo "Building for Linux amd64"
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_linux_amd64 ./cmd/agent
-          
-          echo "Building for Linux arm64"
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_linux_arm64 ./cmd/agent
-          
-          echo "Building for Windows amd64"
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_windows_amd64.exe ./cmd/agent
-          
-          echo "Building for macOS amd64"
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_darwin_amd64 ./cmd/agent
-          
-          echo "Building for macOS arm64"
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/senhub-agent_darwin_arm64 ./cmd/agent
-          
-          # ZIP the binaries
-          cd dist
-          zip senhub-agent_linux_amd64.zip senhub-agent_linux_amd64
-          zip senhub-agent_linux_arm64.zip senhub-agent_linux_arm64
-          zip senhub-agent_windows_amd64.zip senhub-agent_windows_amd64.exe
-          zip senhub-agent_darwin_amd64.zip senhub-agent_darwin_amd64
-          zip senhub-agent_darwin_arm64.zip senhub-agent_darwin_arm64
-          cd ..
-          
-          # List the contents of dist
+
+          # 0.2.0+ layout: per-platform subdirectory, binary always
+          # named senhub-agent[.exe] — platform identity carried by
+          # the ZIP wrapper, not the file name.
+          build_one() {
+            local goos="$1" goarch="$2" binname="$3"
+            local outdir="dist/${goos}-${goarch}"
+            mkdir -p "$outdir"
+            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+              go build -ldflags="$LDFLAGS" -o "$outdir/$binname" ./cmd/agent
+          }
+          build_one linux   amd64 senhub-agent
+          build_one linux   arm64 senhub-agent
+          build_one windows amd64 senhub-agent.exe
+          build_one darwin  amd64 senhub-agent
+          build_one darwin  arm64 senhub-agent
+
+          # Wrap each binary in an OS-named ZIP. The release attaches
+          # the ZIPs only — operators that want a raw binary unzip
+          # locally.
+          ( cd dist/linux-amd64    && zip ../senhub-agent-linux-amd64.zip   senhub-agent )
+          ( cd dist/linux-arm64    && zip ../senhub-agent-linux-arm64.zip   senhub-agent )
+          ( cd dist/windows-amd64  && zip ../senhub-agent-windows-amd64.zip senhub-agent.exe )
+          ( cd dist/darwin-amd64   && zip ../senhub-agent-darwin-amd64.zip  senhub-agent )
+          ( cd dist/darwin-arm64   && zip ../senhub-agent-darwin-arm64.zip  senhub-agent )
+
           echo "Contents of dist directory:"
           ls -la dist
-          
 
-          # Test version info in binaries
-          echo "Testing version info in Linux binary:"
-          chmod +x dist/senhub-agent_linux_amd64
-          # La commande version peut échouer sur certains environnements, on l'ignore avec || true
-          dist/senhub-agent_linux_amd64 version || true
+          # Smoke check: run --version against the linux/amd64 binary
+          # (we're on a linux runner so this is the one we can exec).
+          chmod +x dist/linux-amd64/senhub-agent
+          dist/linux-amd64/senhub-agent version || true
           
 
           # Create metadata.json
@@ -197,13 +189,18 @@ jobs:
         with:
           tag_name: ${{ env.BETA_TAG }}
           name: Beta Release ${{ env.BETA_TAG }}
+          # 0.2.0+ release asset list: ZIPs only, no raw binaries.
+          # Each ZIP holds a single senhub-agent / senhub-agent.exe
+          # entry (no platform suffix inside). The two
+          # jt400runner-linux-* entries are the IBM i bridge native
+          # binaries — kept raw because they're consumed by the
+          # agent at runtime, not the auto-updater.
           files: |
-            dist/*.zip
-            dist/senhub-agent_linux_amd64
-            dist/senhub-agent_linux_arm64
-            dist/senhub-agent_windows_amd64.exe
-            dist/senhub-agent_darwin_amd64
-            dist/senhub-agent_darwin_arm64
+            dist/senhub-agent-linux-amd64.zip
+            dist/senhub-agent-linux-arm64.zip
+            dist/senhub-agent-windows-amd64.zip
+            dist/senhub-agent-darwin-amd64.zip
+            dist/senhub-agent-darwin-arm64.zip
             dist/jt400runner-linux-amd64
             dist/jt400runner-linux-arm64
             dist/metadata.json
