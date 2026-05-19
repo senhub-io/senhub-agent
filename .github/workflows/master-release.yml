@@ -6,15 +6,22 @@ on:
       - master
 
 jobs:
+  # Build the IBM i native runner first; release job waits for it so
+  # the binaries can be attached as release assets.
+  build_native_runners:
+    if: github.event.pull_request.merged == true
+    uses: ./.github/workflows/native-runner-build.yml
+
   create_release:
     # Only run when PR is merged, not when it's closed without merging
     if: github.event.pull_request.merged == true
+    needs: build_native_runners
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          
+
       - name: Get latest tag and create production version
         id: get_tag
         run: |
@@ -150,6 +157,22 @@ jobs:
             }
           ]' > dist/releases/releases.json
           
+      # Pull the IBM i native binaries built in build_native_runners.
+      # Same staging logic as dev-beta-release.yml.
+      - name: Download native runners
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'jt400runner-*'
+          path: dist/native
+          merge-multiple: true
+        continue-on-error: true
+      - name: Stage native runners into dist/
+        run: |
+          if [ -d dist/native ]; then
+            cp -v dist/native/jt400runner-* dist/ 2>/dev/null || echo "no native binaries to stage"
+            ls -la dist/jt400runner-* 2>/dev/null || true
+          fi
+
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
@@ -163,6 +186,9 @@ jobs:
             dist/senhub-agent_windows_amd64.exe
             dist/senhub-agent_darwin_amd64
             dist/senhub-agent_darwin_arm64
+            dist/jt400runner-linux-amd64
+            dist/jt400runner-linux-arm64
+            dist/jt400runner-windows-amd64.exe
             dist/metadata.json
             dist/releases/releases.json
           generate_release_notes: false
