@@ -217,14 +217,18 @@ func checkConfig(configPath string) {
 		errors++
 	}
 
-	// Agent mode
-	if config.Agent.Mode == "offline" || config.Agent.Mode == "online" {
-		fmt.Printf("  [OK]   agent.mode: %s\n", config.Agent.Mode)
-	} else if config.Agent.Mode == "" {
-		fmt.Println("  [WARN] agent.mode not set (defaults to online)")
+	// Agent mode. In 0.2.0+ offline is the only supported mode;
+	// "online" is accepted with a deprecation warning so that operators
+	// upgrading from a pre-0.2.0 install with `mode: online` still
+	// pass the config-check (the agent ignores the field anyway).
+	switch config.Agent.Mode {
+	case "offline", "":
+		fmt.Printf("  [OK]   agent.mode: offline\n")
+	case "online":
+		fmt.Println("  [WARN] agent.mode: online (no longer supported in 0.2.0+ — agent ignores this value and runs offline). Update the config to mode: offline.")
 		warnings++
-	} else {
-		fmt.Printf("  [ERROR] agent.mode: invalid value %q (must be online or offline)\n", config.Agent.Mode)
+	default:
+		fmt.Printf("  [ERROR] agent.mode: invalid value %q (must be omitted or set to offline)\n", config.Agent.Mode)
 		errors++
 	}
 
