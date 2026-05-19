@@ -82,13 +82,13 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 		return
 	}
 
-	// Try to get detailed status from running agent first (via HTTP)
+	// Try to get detailed status from running agent first (via HTTP).
+	// The authentication key always comes from the configuration file
+	// in 0.2.0+ — the CLI flag was removed alongside online mode.
 	agentKey := ""
 	if args != nil {
-		agentKey = args.AuthenticationKey
-
-		// Try to get agent key from config file if not provided
-		if agentKey == "" {
+		// Read agent key from config file
+		{
 			// Use absolute path based on binary location (fixes Windows Service issue)
 			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
 			if err != nil {
@@ -196,38 +196,18 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 	// Create status service
 	statusService := status.NewStatusService(logger, version, commit)
 
-	// Determine agent mode - use safe detection that doesn't crash
-	agentMode := "online" // Default assumption for status checks
-	if args != nil {
-		if args.Offline {
-			// Explicit offline flag takes precedence
-			agentMode = "offline"
-		} else {
-			// Check for config file existence to determine mode
-			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
-			if err == nil {
-				if _, err := os.Stat(configPath); err == nil {
-					// Config file exists - likely offline mode
-					agentMode = "offline"
-				} else if args.AuthenticationKey != "" {
-					// No config but has auth key - online mode
-					agentMode = "online"
-				}
-			}
-		}
-	}
-	statusService.SetAgentMode(agentMode)
+	// Offline is the only supported mode in 0.2.0+.
+	statusService.SetAgentMode("offline")
 
 	// Note: Without actual probe/cache data, we'll get basic system info
 	// In a real deployment, this would connect to the running agent's internal state
 	systemStatus := statusService.GetSystemStatus()
 
-	// Try to enhance with agent key if available
+	// Try to enhance with the agent key extracted from the config file.
 	if args != nil {
-		agentKey := args.AuthenticationKey
+		agentKey := ""
 
-		// Try to get agent key from config file if not provided
-		if agentKey == "" {
+		{
 			// Use absolute path based on binary location (fixes Windows Service issue)
 			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
 			if err != nil {
