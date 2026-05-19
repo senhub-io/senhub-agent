@@ -44,21 +44,20 @@ jobs:
             ni_output: jt400runner-linux-arm64
             classpath_sep: ':'
             ni_launcher: native-image
-          # macOS targets dropped from the matrix: no customer hosts
-          # run the agent there. A macOS arm64 binary already lives in
-          # the repo (built locally) for dev iteration; macOS amd64
-          # was always queuing forever on GitHub's scarce macos-13
-          # runners. Re-add if a real deployment need surfaces.
-          - target: windows-amd64
-            runs_on: windows-latest
-            artifact: jt400runner-windows-amd64.exe
-            # native-image auto-appends .exe on Windows — strip the
-            # suffix from -o or you get `.exe.exe`.
-            ni_output: jt400runner-windows-amd64
-            classpath_sep: ';'
-            # On Windows GraalVM ships native-image.cmd, not a shebang
-            # script — bash needs the explicit suffix to exec it.
-            ni_launcher: native-image.cmd
+          # macOS + Windows targets dropped from the matrix.
+          #
+          # macOS: no customer hosts run the agent there. A macOS arm64
+          # binary already lives in the repo (built locally) for dev
+          # iteration; macOS amd64 was always queuing forever on
+          # GitHub's scarce macos-13 runners.
+          #
+          # Windows: the ibmi probe is Linux-only at the constructor
+          # level (see internal/agent/probes/ibmi/platform_other.go).
+          # The Windows runner artifact was previously shipped on a
+          # best-effort basis but a stall-after-respawn pattern was
+          # observed during 0.1.96-beta validation on bbcloud and the
+          # platform support was withdrawn. Re-add when each platform
+          # is shipped with its own stall-resilience test pass.
     runs-on: ${{ matrix.runs_on }}
     steps:
       - uses: actions/checkout@v4
