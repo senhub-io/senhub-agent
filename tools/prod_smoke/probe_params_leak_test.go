@@ -13,11 +13,11 @@ import (
 // asterisk pattern when the key name is sensitive.
 var probeStartLogPattern = regexp.MustCompile(`"message":"Starting new probe"[^}]*"probe_params":\{[^}]*\}`)
 
-// secretKeyWithPlainValuePattern looks for any "probe_params" entry
-// where a sensitive key name (key|token|password|secret|user|login|
-// email|credential — case-insensitive) is followed by a non-"***"
-// value. If PR #121's redaction is effective, this returns no matches.
-var secretKeyWithPlainValuePattern = regexp.MustCompile(`(?i)"(api_?key|auth_?key|password|token|secret|user(name)?|login|email|credential)[^"]*":"(?!\*\*\*")[^"]+"`)
+// secretKeyValuePattern captures every `"<sensitive-key>":"<value>"`
+// pair under probe_params. Go's RE2 has no negative lookahead so we
+// pull all matches and filter the value (must equal "***") in code
+// rather than in the regex itself.
+var secretKeyValuePattern = regexp.MustCompile(`(?i)"(api_?key|auth_?key|password|token|secret|user(?:name)?|login|email|credential)[^"]*":"([^"]*)"`)
 
 // TestProbeParamsLeak_NoUserInLog asserts that the redaction shipped
 // by PR #121 covers identifier-style fields the legacy log dumped
@@ -37,6 +37,13 @@ func TestProbeParamsLeak_NoUserInLog(t *testing.T) {
 			if !ok {
 				t.Skipf("%s unreachable; skipping", h.Name)
 			}
+			// Scope to entries written after the most recent service
+			// restart. Historical "Starting new probe" entries from
+			// a vulnerable agent version stay on disk on hosts that
+			// don't rotate the log on redeploy — they are not the
+			// 0.1.95-beta agent's behaviour and shouldn't fail this
+			// regression test.
+			out = sinceLastRestart(out)
 
 			// First narrow to probe-start lines — anything else may
 			// legitimately mention user identifiers (e.g. license
@@ -52,12 +59,21 @@ func TestProbeParamsLeak_NoUserInLog(t *testing.T) {
 
 			var leaks []string
 			for _, entry := range probeStartEntries {
-				for _, m := range secretKeyWithPlainValuePattern.FindAllString(entry, -1) {
-					// Fingerprint the matched key only, not the value.
-					if i := indexOf(m, `":"`); i != -1 {
-						leaks = append(leaks, m[:i+3]+"…")
-					} else {
-						leaks = append(leaks, "<match>")
+				for _, sub := range secretKeyValuePattern.FindAllStringSubmatch(entry, -1) {
+					// sub[1] = key family name, sub[2] = the value.
+					// A clean log has every sensitive value reduced to
+					// asterisks — either "***" from sensor's
+					// SanitizeParamsForLog (PR #121) or "********"
+					// from the logger's MaskSensitiveData post-hook
+					// (length-aware padding). Anything else means a
+					// real credential reached the file.
+					if len(sub) < 3 {
+						continue
+					}
+					if !isAsterisks(sub[2]) {
+						// Fingerprint the leaked KEY family only — never
+						// the value, which is the whole point of the test.
+						leaks = append(leaks, sub[1]+":\"…\"")
 					}
 				}
 			}
@@ -69,13 +85,19 @@ func TestProbeParamsLeak_NoUserInLog(t *testing.T) {
 	}
 }
 
-// indexOf is a stdlib-free strings.Index, kept tiny so tests don't
-// pull strings just for this.
-func indexOf(s, substr string) int {
-	for i := 0; i+len(substr) <= len(s); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
+
+// isAsterisks reports whether s is a non-empty run of '*' characters
+// — the canonical "masked" rendering after the agent's two-layer
+// redaction (SanitizeParamsForLog in sensor + MaskSensitiveData in
+// the logger output hook).
+func isAsterisks(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c != '*' {
+			return false
 		}
 	}
-	return -1
+	return true
 }
