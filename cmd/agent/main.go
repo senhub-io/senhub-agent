@@ -186,9 +186,8 @@ func main() {
 		agent.UpdateAgent(args)
 		return
 	case "install", "uninstall", "start", "stop", "restart", "status", "run":
-		// For simple commands without required args, handle directly.
-		// `status` carries optional view flags (--otlp); other commands
-		// take no arguments here.
+		// Commands that take no positional args: dispatched directly.
+		// `status` carries the optional --otlp view flag.
 		if command == "start" || command == "stop" || command == "restart" || command == "status" || command == "uninstall" {
 			args := &cliArgs.ParsedArgs{}
 			if command == "status" {
@@ -198,19 +197,17 @@ func main() {
 			return
 		}
 
-		// For commands requiring args, parse remaining arguments
+		// `install` and `run` accept optional flags (--config-path,
+		// --enable-https, …). In 0.2.0+ they also work with no args
+		// — install auto-generates a UUID agent key, run uses the
+		// OS-canonical default config path. Pre-0.2.0 the install
+		// path forced the user to choose between --offline and
+		// --authentication-key; that gate is gone.
 		serviceArgs := make([]string, 0)
 		if len(os.Args) > 2 {
 			serviceArgs = os.Args[2:]
 		}
 
-		// For install command without args, show help
-		if command == "install" && len(serviceArgs) == 0 {
-			showHelp()
-			return
-		}
-
-		// Parse remaining args as start arguments
 		os.Args = append([]string{os.Args[0]}, serviceArgs...)
 		args := cliArgs.MustParse()
 
