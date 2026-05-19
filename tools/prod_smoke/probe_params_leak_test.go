@@ -37,6 +37,13 @@ func TestProbeParamsLeak_NoUserInLog(t *testing.T) {
 			if !ok {
 				t.Skipf("%s unreachable; skipping", h.Name)
 			}
+			// Scope to entries written after the most recent service
+			// restart. Historical "Starting new probe" entries from
+			// a vulnerable agent version stay on disk on hosts that
+			// don't rotate the log on redeploy — they are not the
+			// 0.1.95-beta agent's behaviour and shouldn't fail this
+			// regression test.
+			out = sinceLastRestart(out)
 
 			// First narrow to probe-start lines — anything else may
 			// legitimately mention user identifiers (e.g. license
@@ -54,12 +61,16 @@ func TestProbeParamsLeak_NoUserInLog(t *testing.T) {
 			for _, entry := range probeStartEntries {
 				for _, sub := range secretKeyValuePattern.FindAllStringSubmatch(entry, -1) {
 					// sub[1] = key family name, sub[2] = the value.
-					// A clean log has every sensitive value equal to
-					// "***" (post-PR-121 redaction).
+					// A clean log has every sensitive value reduced to
+					// asterisks — either "***" from sensor's
+					// SanitizeParamsForLog (PR #121) or "********"
+					// from the logger's MaskSensitiveData post-hook
+					// (length-aware padding). Anything else means a
+					// real credential reached the file.
 					if len(sub) < 3 {
 						continue
 					}
-					if sub[2] != "***" {
+					if !isAsterisks(sub[2]) {
 						// Fingerprint the leaked KEY family only — never
 						// the value, which is the whole point of the test.
 						leaks = append(leaks, sub[1]+":\"…\"")
@@ -74,3 +85,19 @@ func TestProbeParamsLeak_NoUserInLog(t *testing.T) {
 	}
 }
 
+
+// isAsterisks reports whether s is a non-empty run of '*' characters
+// — the canonical "masked" rendering after the agent's two-layer
+// redaction (SanitizeParamsForLog in sensor + MaskSensitiveData in
+// the logger output hook).
+func isAsterisks(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c != '*' {
+			return false
+		}
+	}
+	return true
+}
