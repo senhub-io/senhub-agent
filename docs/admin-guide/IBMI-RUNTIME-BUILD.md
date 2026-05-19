@@ -2,17 +2,16 @@
 
 The `ibmi` probe needs either a JRE on the host OR a self-contained native binary (`jt400runner`). This page describes the native-binary build process — operators don't normally run it; it's automated via the `Native Runner Build` GitHub Actions workflow.
 
-## What the workflow produces
+## Supported platforms
 
-`Native Runner Build` (`.github/workflows/native-runner-build.yml`) cross-compiles the Java `Jt400Runner` entry point against `jt400.jar` using GraalVM native-image, one job per platform:
+The `ibmi` probe is **Linux-only** on the agent side, regardless of which IBM i target the probe connects to. The constructor refuses to instantiate on Windows and macOS (see `internal/agent/probes/ibmi/platform_other.go`). The supported matrix is:
 
 | Target | Runner | Artifact name |
 |---|---|---|
 | Linux amd64 | `ubuntu-latest` | `jt400runner-linux-amd64` |
 | Linux arm64 | `ubuntu-24.04-arm` | `jt400runner-linux-arm64` |
-| macOS amd64 | `macos-13` | `jt400runner-darwin-amd64` |
-| macOS arm64 | `macos-14` | `jt400runner-darwin-arm64` |
-| Windows amd64 | `windows-latest` | `jt400runner-windows-amd64.exe` |
+
+macOS and Windows native runner builds were removed during the 0.1.97-beta cut. The agent still ships for those platforms; only the `ibmi` probe is gated. Operators running the agent on Windows or macOS should leave `type: ibmi` out of their probes config and run the IBM i probe from a separate Linux host that has network access to the IBM i partition.
 
 Each binary is a ~40–50 MB self-contained executable that speaks the same line-oriented JSON protocol over stdin/stdout as the JVM-launched runner — no class path, no JRE required at deploy time.
 
@@ -43,8 +42,6 @@ gh run download <run-id>
    | OS | Path |
    |---|---|
    | Linux | `<dir-of-senhub-agent>/bridge/jt400runner` |
-   | macOS | same |
-   | Windows | `<dir-of-senhub-agent>\bridge\jt400runner.exe` |
 
 3. Mark it executable (Linux/macOS): `chmod +x bridge/jt400runner`.
 4. Confirm the agent finds it: `senhub-agent ibmi check`.
@@ -67,7 +64,6 @@ If a build starts failing after a JT400 upgrade, add reflection hints under `MET
 |---|---|
 | `jt400runner-linux-amd64` | linux-amd64 native build job |
 | `jt400runner-linux-arm64` | linux-arm64 native build job |
-| `jt400runner-windows-amd64.exe` | windows-amd64 native build job |
 
 The reusable workflow is also still triggerable manually (`workflow_dispatch`) for iteration between releases. Manual runs upload artifacts on the workflow run; release runs upload them on the Release itself.
 

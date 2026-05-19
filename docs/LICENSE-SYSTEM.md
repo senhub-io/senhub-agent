@@ -54,7 +54,7 @@ Specific probes authorized by customer JWT (or compact-license bitmap slot):
 - **veeam** - Veeam Backup & Replication monitoring
 - **mysql** - MySQL server monitoring (OTel-first, mysql.* semconv)
 - **postgresql** - PostgreSQL server monitoring (OTel-first, postgresql.* semconv)
-- **ibmi** - IBM i / Power Systems monitoring (JT400 JDBC bridge, senhub.ibmi.* semconv)
+- **ibmi** - IBM i / Power Systems monitoring (JT400 JDBC bridge, senhub.ibmi.* semconv) — **Linux-only** agent runtime
 - **syslog** - Syslog server (UDP/TCP relay + OTLP logs export)
 - **event** - Custom HTTP event ingestion
 - **ping_gateway** - Gateway connectivity monitoring

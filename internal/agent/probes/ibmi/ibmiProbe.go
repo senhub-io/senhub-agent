@@ -209,6 +209,9 @@ func filterCollectors(cfg probeConfig) []collector {
 // logger.Logger becomes logger.Logger and logger.ModuleLogger becomes
 // logger.ModuleLogger without any call-site changes.
 func NewIBMiProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
+	if err := platformGate(); err != nil {
+		return nil, fmt.Errorf("ibmi probe: %w", err)
+	}
 	cfg, err := parseProbeConfig(rawConfig)
 	if err != nil {
 		return nil, fmt.Errorf("ibmi probe: invalid configuration: %w", err)
