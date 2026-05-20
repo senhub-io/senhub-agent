@@ -241,14 +241,24 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
 		}
 
-		// Wait for 3 calls
+		// Wait until Execute has fired at least 3 times, then stop the
+		// scheduler so no further tick can land. The assertion is
+		// `>= 3`, not `== 3`: the ticker runs at 10ms and the polling
+		// loop checks every 1ms, so on a loaded runner the count can
+		// advance past 3 between the loop exit and the read — the
+		// test's intent is "Execute is called periodically", not
+		// "exactly 3 times". Pinning it to an exact value made the
+		// test flaky on the Windows CI runner.
 		for atomic.LoadInt64(&called) < 3 {
 			time.Sleep(1 * time.Millisecond)
 		}
+		if err := periodicScheduler.Shutdown(context.Background()); err != nil {
+			t.Errorf("PeriodicScheduler.Shutdown() error = %v", err)
+		}
 
 		callCount := atomic.LoadInt64(&called)
-		if callCount != 3 {
-			t.Errorf("PeriodicScheduler.Start() should call Execute periodically %d", callCount)
+		if callCount < 3 {
+			t.Errorf("PeriodicScheduler.Start() should call Execute periodically, got %d (want >= 3)", callCount)
 		}
 	})
 }

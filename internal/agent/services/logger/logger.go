@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/kardianos/service"
@@ -39,30 +38,17 @@ type ModuleLogConfig struct {
 	Level  string `json:"level" yaml:"level"`
 }
 
-// getLogPath determines the appropriate log file location based on the operating system.
-// It follows OS-specific conventions for log placement:
-// - Windows: %ProgramData%\SenHub\logs
-// - macOS: /Library/Logs/SenHub
-// - Linux/Unix: /var/log/senhub
-// If the desired location is not writable, it falls back to the executable's directory
+// getLogPath determines the appropriate log file location based on the
+// operating system. OS-canonical paths in 0.2.0+:
+//   - Linux:   /var/log/senhub-agent/senhubagent.log
+//   - Windows: %ProgramData%\SenHub\logs\senhubagent.log
+//   - macOS:   /Library/Logs/SenHub/senhubagent.log
+//
+// Pre-0.2.0 the Linux path was /var/log/senhub (without "-agent" suffix).
+// LogBaseDir() exposes the canonical directory so install / uninstall
+// can share the same constant.
 func getLogPath() string {
-	var basePath string
-
-	switch runtime.GOOS {
-	case "windows":
-		// For Windows, try to use %ProgramData% directory first
-		programData := os.Getenv("ProgramData")
-		if programData == "" {
-			programData = `C:\ProgramData`
-		}
-		basePath = filepath.Join(programData, "SenHub", "logs")
-	case "darwin":
-		// For macOS, use the standard system logs directory
-		basePath = "/Library/Logs/SenHub"
-	default:
-		// For Linux/Unix systems, use the conventional /var/log directory
-		basePath = "/var/log/senhub"
-	}
+	basePath := LogBaseDir()
 
 	// Attempt to create the log directory and test write permissions
 	logPath := filepath.Join(basePath, "senhubagent.log")

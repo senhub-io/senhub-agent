@@ -6,66 +6,37 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 )
 
+// TestGetSystemStatusDirect pins the post-0.2.0 contract: the status
+// command reports mode = "offline" unconditionally. The pre-0.2.0
+// test cases that exercised "online" mode have been removed alongside
+// the rest of the online dispatch.
 func TestGetSystemStatusDirect(t *testing.T) {
 	tests := []struct {
-		name     string
-		args     *cliArgs.ParsedArgs
-		wantMode string
-		wantErr  bool
+		name string
+		args *cliArgs.ParsedArgs
 	}{
 		{
-			name: "Offline mode from args",
-			args: &cliArgs.ParsedArgs{
-				Offline:           true,
-				AuthenticationKey: "test-key-123",
-			},
-			wantMode: "offline",
-			wantErr:  false,
+			name: "No args - status reports offline",
+			args: &cliArgs.ParsedArgs{},
 		},
 		{
-			name: "Online mode from args",
-			args: &cliArgs.ParsedArgs{
-				Offline:           false,
-				AuthenticationKey: "test-key-456",
-			},
-			wantMode: "online",
-			wantErr:  false,
-		},
-		{
-			name:     "No args - online mode default",
-			args:     &cliArgs.ParsedArgs{}, // Empty args, no offline flag, no auth key
-			wantMode: "online",              // Default assumption for status checks
-			wantErr:  false,
+			name: "With config path - status reports offline",
+			args: &cliArgs.ParsedArgs{ConfigPath: "/nonexistent.yaml"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			status, err := getSystemStatusDirect(tt.args)
-
-			if (err != nil) != tt.wantErr {
-				t.Errorf("getSystemStatusDirect() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if err != nil {
+				t.Fatalf("getSystemStatusDirect() returned unexpected error: %v", err)
 			}
-
-			// Verify the mode is one of the expected values (using real agent detection logic)
-			validModes := []string{"online", "offline"}
-			validMode := false
-			for _, mode := range validModes {
-				if status.Connection.Mode == mode {
-					validMode = true
-					break
-				}
+			if status.Connection.Mode != "offline" {
+				t.Errorf("Connection mode = %q; want \"offline\"", status.Connection.Mode)
 			}
-			if !validMode {
-				t.Errorf("Connection mode '%s' should be one of %v", status.Connection.Mode, validModes)
-			}
-
-			// Basic validation of returned status
 			if status.Agent.Version == "" {
 				t.Error("Agent version should not be empty")
 			}
-
 			if status.Health.Status == "" {
 				t.Error("Health status should not be empty")
 			}

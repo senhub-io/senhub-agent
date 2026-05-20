@@ -126,3 +126,129 @@ func TestStoreKey_IgnoresIdentityTags(t *testing.T) {
 		t.Errorf("identity tags affected suffix: %q vs %q", a, b)
 	}
 }
+
+func TestMetricStore_CardinalityCap_DropsNewSeries(t *testing.T) {
+	store := newMetricStoreWithCap(2)
+	mk := func(metric, host string) datapoint.DataPoint {
+		return datapoint.DataPoint{
+			Name:  metric,
+			Value: 1,
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: "p"},
+				{Key: "probe_type", Value: "t"},
+				{Key: "host", Value: host},
+			},
+		}
+	}
+
+	store.upsert(mk("a", "h1")) // 1 series
+	store.upsert(mk("b", "h1")) // 2 series — at cap
+	store.upsert(mk("c", "h1")) // 3rd series — DROPPED
+
+	if got := store.size(); got != 2 {
+		t.Errorf("size=%d after cap exhaustion, want 2", got)
+	}
+
+	// Existing series must still update.
+	store.upsert(mk("a", "h1"))
+	if got := store.size(); got != 2 {
+		t.Errorf("size=%d after update of existing series, want 2", got)
+	}
+}
+
+func TestMetricStore_CardinalityCap_ZeroMeansUnbounded(t *testing.T) {
+	store := newMetricStoreWithCap(0)
+	for i := 0; i < 100; i++ {
+		store.upsert(datapoint.DataPoint{
+			Name:  "m",
+			Value: float32(i),
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: "p"},
+				{Key: "probe_type", Value: "t"},
+				{Key: "host", Value: hostOf(i)},
+			},
+		})
+	}
+	if got := store.size(); got != 100 {
+		t.Errorf("size=%d with cap=0 (unbounded), want 100", got)
+	}
+}
+
+func hostOf(i int) string { return "h" + itoa(i) }
+
+func itoa(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	digits := []byte{}
+	for i > 0 {
+		digits = append([]byte{byte('0' + i%10)}, digits...)
+		i /= 10
+	}
+	return string(digits)
+}
+
+func TestMetricStore_ProbeBudget_DropsAtBudget(t *testing.T) {
+	store := newMetricStoreWithCap(0).withProbeBudget(2)
+	mk := func(probe, metric string) datapoint.DataPoint {
+		return datapoint.DataPoint{
+			Name:  metric,
+			Value: 1,
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: probe},
+				{Key: "probe_type", Value: "t"},
+			},
+		}
+	}
+
+	store.upsert(mk("p1", "a"))
+	store.upsert(mk("p1", "b"))
+	store.upsert(mk("p1", "c")) // p1 at budget — DROPPED
+
+	if got := store.probeSeriesCount("p1"); got != 2 {
+		t.Errorf("p1 count=%d after budget, want 2", got)
+	}
+
+	// p2 still has its own budget — admits 2 series of its own
+	store.upsert(mk("p2", "a"))
+	store.upsert(mk("p2", "b"))
+	if got := store.probeSeriesCount("p2"); got != 2 {
+		t.Errorf("p2 count=%d, want 2 (isolated budget)", got)
+	}
+
+	// updates of existing series don't increment the counter
+	store.upsert(mk("p1", "a"))
+	if got := store.probeSeriesCount("p1"); got != 2 {
+		t.Errorf("p1 count=%d after re-upsert of existing, want 2", got)
+	}
+}
+
+func TestMetricStore_ProbeBudget_ZeroMeansUnbounded(t *testing.T) {
+	store := newMetricStoreWithCap(0).withProbeBudget(0)
+	mk := func(metric string) datapoint.DataPoint {
+		return datapoint.DataPoint{Name: metric, Value: 1, Tags: []tags.Tag{
+			{Key: "probe_name", Value: "p"}, {Key: "probe_type", Value: "t"}}}
+	}
+	for i := 0; i < 50; i++ {
+		store.upsert(mk("m" + itoa(i)))
+	}
+	if got := store.probeSeriesCount("p"); got != 50 {
+		t.Errorf("count=%d with budget=0 (unbounded), want 50", got)
+	}
+}
+
+func TestMetricStore_ProbeBudget_StacksWithGlobalCap(t *testing.T) {
+	// Global cap 3, per-probe budget 5. The smaller (global) wins.
+	store := newMetricStoreWithCap(3).withProbeBudget(5)
+	mk := func(probe, metric string) datapoint.DataPoint {
+		return datapoint.DataPoint{Name: metric, Value: 1, Tags: []tags.Tag{
+			{Key: "probe_name", Value: probe}, {Key: "probe_type", Value: "t"}}}
+	}
+	store.upsert(mk("p1", "a"))
+	store.upsert(mk("p1", "b"))
+	store.upsert(mk("p2", "a"))
+	store.upsert(mk("p2", "b")) // global cap hit at this point (4 > 3)
+	if got := store.size(); got != 3 {
+		t.Errorf("global cap should win: size=%d, want 3", got)
+	}
+}

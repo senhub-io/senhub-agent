@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v2"
+
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -15,14 +17,38 @@ import (
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
 
+// generateOfflineConfiguration runs at install time. In addition to
+// triggering the LocalConfiguration loader (which creates the
+// config-file parent directory and writes a default config), it
+// eagerly creates the multi-file layout directories (probes.d,
+// strategies.d) and the log directory so the first `agent run` finds
+// a fully-formed install layout.
 func generateOfflineConfiguration(args *cliArgs.ParsedArgs) error {
-	// Import the configuration package
 	appLogger := agentLogger.NewLogger(args)
 
-	// Create local configuration instance
+	// Resolve absolute config path so we know where to create the
+	// sibling probes.d / strategies.d directories.
+	absConfigPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+	if err == nil {
+		configDir := filepath.Dir(absConfigPath)
+		for _, sub := range []string{"probes.d", "strategies.d"} {
+			d := filepath.Join(configDir, sub)
+			if mkErr := os.MkdirAll(d, 0750); mkErr != nil {
+				appLogger.Warn().Err(mkErr).Str("dir", d).Msg("Failed to pre-create install directory")
+			}
+		}
+	}
+
+	// Eager-create the log directory so it doesn't have to wait for
+	// the first log write. Soft-fail (warn only) because the directory
+	// is also lazy-created by the logger on first write.
+	logDir := agentLogger.LogBaseDir()
+	if mkErr := os.MkdirAll(logDir, 0750); mkErr != nil {
+		appLogger.Warn().Err(mkErr).Str("dir", logDir).Msg("Failed to pre-create log directory at install time")
+	}
+
 	localConfig := configuration.NewLocalConfiguration(args, appLogger)
 
-	// Start the local configuration to trigger creation
 	quitChannel := make(chan struct{})
 	defer close(quitChannel)
 
@@ -60,11 +86,16 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 		}
 	}
 
-	// Log files and directory
+	// Log files and directory. Paths must match exactly what
+	// logger.LogBaseDir() returns; in 0.2.0+ Linux moved from
+	// /var/log/senhub to /var/log/senhub-agent, and the Windows
+	// casing was lowercased (logs, not Logs).
 	logPaths := []string{
 		"/Library/Logs/SenHub",          // macOS
-		"/var/log/senhub-agent",         // Linux
-		"C:\\ProgramData\\SenHub\\Logs", // Windows
+		"/var/log/senhub-agent",         // Linux (0.2.0+)
+		"/var/log/senhub",               // Linux (pre-0.2.0) — cleanup leftover
+		"C:\\ProgramData\\SenHub\\logs", // Windows (0.2.0+ casing)
+		"C:\\ProgramData\\SenHub\\Logs", // Windows (pre-0.2.0 casing) — cleanup leftover
 		"./logs",                        // Local logs if any
 	}
 
@@ -215,14 +246,18 @@ func checkConfig(configPath string) {
 		errors++
 	}
 
-	// Agent mode
-	if config.Agent.Mode == "offline" || config.Agent.Mode == "online" {
-		fmt.Printf("  [OK]   agent.mode: %s\n", config.Agent.Mode)
-	} else if config.Agent.Mode == "" {
-		fmt.Println("  [WARN] agent.mode not set (defaults to online)")
+	// Agent mode. In 0.2.0+ offline is the only supported mode;
+	// "online" is accepted with a deprecation warning so that operators
+	// upgrading from a pre-0.2.0 install with `mode: online` still
+	// pass the config-check (the agent ignores the field anyway).
+	switch config.Agent.Mode {
+	case "offline", "":
+		fmt.Printf("  [OK]   agent.mode: offline\n")
+	case "online":
+		fmt.Println("  [WARN] agent.mode: online (no longer supported in 0.2.0+ — agent ignores this value and runs offline). Update the config to mode: offline.")
 		warnings++
-	} else {
-		fmt.Printf("  [ERROR] agent.mode: invalid value %q (must be online or offline)\n", config.Agent.Mode)
+	default:
+		fmt.Printf("  [ERROR] agent.mode: invalid value %q (must be omitted or set to offline)\n", config.Agent.Mode)
 		errors++
 	}
 
@@ -320,6 +355,89 @@ func checkConfig(configPath string) {
 		fmt.Printf("Configuration is valid with %d warning(s).\n", warnings)
 	} else {
 		fmt.Printf("Configuration has %d error(s) and %d warning(s).\n", errors, warnings)
+		os.Exit(1)
+	}
+}
+
+// showConfig prints the merged configuration as YAML for diffability
+// and audit. Modes:
+//
+//   --resolved (default) — ${env:..} / ${file:..} references resolved
+//                          against the current environment / FS.
+//                          This is what the agent boots with.
+//   --raw                — references preserved as written, useful
+//                          for reviewing the loaded layout before
+//                          comparing against the resolved output.
+//   --redact             — resolved, but values that came from
+//                          ${file:..} OR sit under a YAML key whose
+//                          name matches (?i)(key|token|password|secret)
+//                          are masked with "***". Safe for tickets.
+//
+// Output: YAML, with map keys sorted alphabetically (yaml.v3 + a
+// post-pass over the marshaled node tree) so two runs produce
+// byte-identical output and dashboards/diffs stay stable.
+//
+// Errors abort with exit 1 and a single human-readable line on
+// stderr — the goal is "fits in a CI log".
+func showConfig(args []string) {
+	mode := configuration.ShowResolved
+	// Empty string means "use the OS-canonical default" — resolved
+	// below via GetAbsoluteConfigPath. An explicit positional path
+	// argument overrides it.
+	configPath := ""
+
+	for _, a := range args {
+		switch a {
+		case "--raw":
+			mode = configuration.ShowRaw
+		case "--resolved":
+			mode = configuration.ShowResolved
+		case "--redact":
+			mode = configuration.ShowRedact
+		case "-h", "--help":
+			fmt.Println("Usage: agent config show [--raw|--resolved|--redact] [path]")
+			return
+		default:
+			if strings.HasPrefix(a, "--") {
+				fmt.Fprintf(os.Stderr, "config show: unknown flag %q\n", a)
+				os.Exit(2)
+			}
+			configPath = a
+		}
+	}
+
+	// Resolve to the OS-canonical absolute path when no explicit path
+	// was given, mirroring what `agent run` / `agent start` use. The
+	// pre-0.2.0 default was the working-directory-relative
+	// ./agent-config.yaml, which diverged from where the agent
+	// actually reads its config.
+	if resolved, err := cliArgs.GetAbsoluteConfigPath(configPath); err == nil {
+		configPath = resolved
+	} else if absPath, absErr := filepath.Abs(configPath); absErr == nil {
+		configPath = absPath
+	}
+
+	// We need a logger so the loader can WARN about legacy detection
+	// and duplicate strategies. Build a minimal one writing to stderr
+	// at WARN level; --verbose flips it to debug if the operator wants
+	// to see the loader's chatter.
+	zlog := zerolog.New(os.Stderr).Level(zerolog.WarnLevel)
+	base := (*agentLogger.Logger)(&zlog)
+	log := agentLogger.NewModuleLogger(base, "configuration.show")
+
+	data, err := configuration.LoadForShow(configPath, mode, log)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config show: %v\n", err)
+		os.Exit(1)
+	}
+
+	out, err := configuration.MarshalSortedYAML(&data)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config show: marshaling output: %v\n", err)
+		os.Exit(1)
+	}
+	if _, err := os.Stdout.Write(out); err != nil {
+		fmt.Fprintf(os.Stderr, "config show: write: %v\n", err)
 		os.Exit(1)
 	}
 }
