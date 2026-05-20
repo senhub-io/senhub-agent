@@ -278,7 +278,7 @@ Diagnose network issues:
 **Check probe status:**
 ```bash
 # View agent logs with gateway probe debugging
-./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.gateway
+./agent run --verbose --debug-modules probe.gateway
 ```
 
 **Verify probe is enabled:**
@@ -412,7 +412,7 @@ Most modern systems allow unprivileged users to ping, but if you encounter permi
 
 ```bash
 # Option 1: Run agent as root
-sudo ./agent run --authentication-key YOUR_KEY
+sudo ./agent run
 
 # Option 2: Grant ping capabilities (Linux)
 sudo setcap cap_net_raw+ep /usr/bin/ping
@@ -554,7 +554,7 @@ For issues or questions:
 
 1. **Enable debug logging:**
    ```bash
-   ./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.gateway
+   ./agent run --verbose --debug-modules probe.gateway
    ```
 
 2. **Test connectivity manually:**

@@ -9,23 +9,23 @@ SenHub Agent uses YAML configuration to define monitoring probes, data storage, 
 
 Two layouts are supported and the agent auto-detects which one you use:
 
-- **Single file** — one `agent-config.yaml` with everything (default, used by the installer).
+- **Single file** — one `agent.yaml` (or legacy `agent-config.yaml`) with everything, used by the installer.
 - **Multi-file** — `agent.yaml` for global settings plus `probes.d/` and `strategies.d/` directories for fragments (introduced in 0.1.93). Cleaner once you start managing more than a handful of probes or sinks. See [Multi-File Configuration Layout](#multi-file-configuration-layout) below.
 
 ## Configuration File Location
 
-The default single-file `agent-config.yaml` lives next to the agent binary:
+The default configuration file is `agent.yaml` at the OS canonical path:
 
 | OS | Default path |
 |---|---|
-| **Windows** | `C:\SenHub\agent-config.yaml` (same directory as `senhub-agent.exe`) |
-| **Linux** | `/opt/senhub/bin/agent-config.yaml` (or `/etc/senhub-agent/agent.yaml` for systemd installs) |
-| **macOS** | `/usr/local/senhub/agent-config.yaml` |
+| **Windows** | `%ProgramData%\SenHub\agent.yaml` |
+| **Linux** | `/etc/senhub-agent/agent.yaml` |
+| **macOS** | `/usr/local/etc/senhub-agent/agent.yaml` |
 
-You can override the path at install time:
+Legacy `agent-config.yaml` files continue to work unchanged. You can override the path at install time:
 
 ```bash
-senhub-agent install --config-path /etc/senhub/agent-config.yaml
+senhub-agent install --config-path /etc/senhub-agent/agent.yaml
 ```
 
 ## Configuration Structure Overview
@@ -378,7 +378,7 @@ probes:
 
 ## Applying Configuration Changes
 
-The agent watches the configuration file for changes. When you modify `agent-config.yaml`, the changes are detected and applied automatically within a few seconds. **No service restart is required.**
+The agent watches the configuration file for changes. When you modify `agent.yaml` (or `agent-config.yaml`), the changes are detected and applied automatically within a few seconds. **No service restart is required.**
 
 This applies to:
 
@@ -663,7 +663,7 @@ Output is deterministic — two runs of the same input produce byte-identical ou
 Check agent logs for errors:
 
 - Windows: `%ProgramData%\SenHub\logs\senhubagent.log`
-- Linux: `/var/log/senhub/senhubagent.log`
+- Linux: `/var/log/senhub-agent/senhubagent.log`
 
 If there is a YAML syntax error, the agent keeps the previous valid configuration and logs the error.
 

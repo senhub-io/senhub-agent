@@ -1093,8 +1093,8 @@ Correlate with other metrics:
 # Reinstall with absolute config path
 sc stop "SenHub Agent"
 sc delete "SenHub Agent"
-senhub-agent_windows_amd64.exe install --offline \
-  --config-path "C:\Program Files\Senhub\Senhub Agent\agent-config.yaml"
+senhub-agent.exe install \
+  --config-path "C:\Program Files\Senhub\Senhub Agent\agent.yaml"
 sc start "SenHub Agent"
 
 # Check logs
