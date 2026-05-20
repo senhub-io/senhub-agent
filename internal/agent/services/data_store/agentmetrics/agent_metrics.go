@@ -183,7 +183,97 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       agentstate.LogChannelFillRatio(),
 			Description: "Highest fill ratio (0..1) across all active log channel subscriptions at scrape time. Approaches 1 means the consumer is falling behind producers.",
 		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.store_size",
+			Unit:        "{series}",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPStoreSize()),
+			Description: "Number of distinct series held in the OTLP strategy's last-writer-wins metric store at the last push.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.export.duration",
+			Unit:        "s",
+			Type:        "gauge",
+			Attributes:  map[string]string{"window": "last"},
+			Value:       agentstate.GetOTLPLastExportDuration().Seconds(),
+			Description: "Wall-clock duration of the most recent successful OTLP metrics export.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.export.duration",
+			Unit:        "s",
+			Type:        "gauge",
+			Attributes:  map[string]string{"window": "mean"},
+			Value:       agentstate.GetOTLPMeanExportDuration().Seconds(),
+			Description: "All-time mean of successful OTLP metrics export durations.",
+		},
 	)
+
+	// Per-reason drop counters — emitted as a single OTel metric with
+	// `reason` attribute. Operators alert on this rising. Today the only
+	// reason emitted is `store_cap` (cardinality cap on the metric store);
+	// future reasons will be added without changing this metric shape.
+	for reason, n := range agentstate.GetOTLPDroppedByReason() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.dropped",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{"reason": reason},
+			Value:       float64(n),
+			Description: "Cumulative count of OTLP records dropped before export, by reason (store_cap, queue_full, …).",
+		})
+	}
+
+	// Checkpoint self-metrics. These are emitted regardless of whether
+	// persistence is enabled — the size+age gauges read 0 when disabled
+	// (distinguishable from "never saved" only by also checking the
+	// errors counter for nonzero values, which always start at 0
+	// regardless). Operators rely on these to detect a stuck
+	// checkpoint (size_bytes flat for hours, errors rising).
+	records = append(records,
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.checkpoint.size",
+			Unit:        "By",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPCheckpointSize()),
+			Description: "Size in bytes of the most recently written OTLP checkpoint file. 0 when persistence disabled or no save has succeeded yet.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.checkpoint.last_save_age",
+			Unit:        "s",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       agentstate.GetOTLPCheckpointLastSaveAge().Seconds(),
+			Description: "Seconds since the most recent successful OTLP checkpoint save. 0 when persistence disabled or no save has succeeded yet.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.checkpoint.restored_entries",
+			Unit:        "{series}",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPCheckpointRestoredCount()),
+			Description: "Number of entries restored from the OTLP checkpoint at the last agent boot. 0 means no restore (no file present, persistence disabled, or fresh install).",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.parallel.sub_batches",
+			Unit:        "{batch}",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPSubBatchCount()),
+			Description: "Number of sub-batches the most recent OTLP push fanned out across. 1 means the single-batch path (max_concurrent_exports=1 or cycle below threshold); >1 means per-probe parallel export fired.",
+		},
+	)
+	for stage, n := range agentstate.GetOTLPCheckpointErrorsByStage() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.checkpoint.errors",
+			Unit:        "{error}",
+			Type:        "counter",
+			Attributes:  map[string]string{"stage": stage},
+			Value:       float64(n),
+			Description: "Cumulative count of OTLP checkpoint operation failures, by stage (read, parse, version_mismatch, mkdir, create_tmp, encode, fsync, close, rename).",
+		})
+	}
 
 	// Process self-monitoring — calqued on Grafana Alloy's resources
 	// mixin so operators recognize the names. Captured at scrape time

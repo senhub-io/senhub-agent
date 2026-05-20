@@ -1162,12 +1162,12 @@ func TestCollectLicenseMetrics_DDCReturnsValidData(t *testing.T) {
 	collector.siteFilter = "TestSite"
 
 	mockDDC.On("GetLicenseInfo", mock.Anything, "TestSite").Return(&DDCSiteLicenseInfo{
-		LicensedSessionsActive:         42,
-		PeakConcurrentLicenseUsers:     100,
-		TotalUniqueLicenseUsers:        200,
+		LicensedSessionsActive:        42,
+		PeakConcurrentLicenseUsers:    100,
+		TotalUniqueLicenseUsers:       200,
 		LicenseGraceSessionsRemaining: 500,
-		LicensingGracePeriodActive:     false,
-		LicensingGraceHoursLeft:        0,
+		LicensingGracePeriodActive:    false,
+		LicensingGraceHoursLeft:       0,
 	}, nil)
 
 	metrics, err := collector.CollectLicenseMetrics(context.Background(), time.Now())
@@ -1200,12 +1200,12 @@ func TestCollectLicenseMetrics_DDCReturnsAllZeros(t *testing.T) {
 
 	// All zeros means CVAD version doesn't support these fields - should fall back
 	mockDDC.On("GetLicenseInfo", mock.Anything, "TestSite").Return(&DDCSiteLicenseInfo{
-		LicensedSessionsActive:         0,
-		PeakConcurrentLicenseUsers:     0,
-		TotalUniqueLicenseUsers:        0,
+		LicensedSessionsActive:        0,
+		PeakConcurrentLicenseUsers:    0,
+		TotalUniqueLicenseUsers:       0,
 		LicenseGraceSessionsRemaining: 0,
-		LicensingGracePeriodActive:     false,
-		LicensingGraceHoursLeft:        0,
+		LicensingGracePeriodActive:    false,
+		LicensingGraceHoursLeft:       0,
 	}, nil)
 
 	// No license server URL either, so should return nil
@@ -1247,12 +1247,12 @@ func TestCollectLicenseFromDDC_ValidData(t *testing.T) {
 	collector.siteFilter = "ProdSite"
 
 	mockDDC.On("GetLicenseInfo", mock.Anything, "ProdSite").Return(&DDCSiteLicenseInfo{
-		LicensedSessionsActive:         10,
-		PeakConcurrentLicenseUsers:     25,
-		TotalUniqueLicenseUsers:        50,
+		LicensedSessionsActive:        10,
+		PeakConcurrentLicenseUsers:    25,
+		TotalUniqueLicenseUsers:       50,
 		LicenseGraceSessionsRemaining: 100,
-		LicensingGracePeriodActive:     true,
-		LicensingGraceHoursLeft:        168,
+		LicensingGracePeriodActive:    true,
+		LicensingGraceHoursLeft:       168,
 	}, nil)
 
 	timestamp := time.Now()

@@ -1,9 +1,20 @@
 EXECUTABLE=senhub-agent
 DIST_DIR=dist
-WINDOWS=$(DIST_DIR)/$(EXECUTABLE)_windows_amd64.exe
-LINUX_AMD64=$(DIST_DIR)/$(EXECUTABLE)_linux_amd64
-LINUX_ARM64=$(DIST_DIR)/$(EXECUTABLE)_linux_arm64
-DARWIN=$(DIST_DIR)/$(EXECUTABLE)_darwin_amd64
+
+# Per-platform build trees. The binary inside each is always named
+# senhub-agent / senhub-agent.exe — no platform suffix in the file
+# name itself (0.2.0+ convention). The platform-suffixed wrapper is
+# the ZIP archive (see PACKAGING TARGETS).
+LINUX_AMD64_DIR=$(DIST_DIR)/linux-amd64
+LINUX_ARM64_DIR=$(DIST_DIR)/linux-arm64
+WINDOWS_AMD64_DIR=$(DIST_DIR)/windows-amd64
+DARWIN_AMD64_DIR=$(DIST_DIR)/darwin-amd64
+DARWIN_ARM64_DIR=$(DIST_DIR)/darwin-arm64
+LINUX_AMD64=$(LINUX_AMD64_DIR)/$(EXECUTABLE)
+LINUX_ARM64=$(LINUX_ARM64_DIR)/$(EXECUTABLE)
+WINDOWS=$(WINDOWS_AMD64_DIR)/$(EXECUTABLE).exe
+DARWIN=$(DARWIN_AMD64_DIR)/$(EXECUTABLE)
+DARWIN_ARM64=$(DARWIN_ARM64_DIR)/$(EXECUTABLE)
 VERSION=$(shell git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+.*$$' | sort -V | tail -n1)
 COMMIT_HASH=$(shell git describe --tags --always --long --dirty)
 ENV ?= production
@@ -100,45 +111,54 @@ build: build-windows build-linux build-darwin ## Build binaries
 	@echo version: $(VERSION) - commit: $(COMMIT_HASH)
 
 build-windows: create-dist ## Build for Windows
-	    @env GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@mkdir -p $(WINDOWS_AMD64_DIR)
+		@env GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/
 
 build-linux: create-dist ## Build for Linux
-	    @env GOOS=linux GOARCH=amd64 go build -o $(LINUX_AMD64) -ldflags="$(LDFLAGS)" ./cmd/agent/
-	    @env GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@mkdir -p $(LINUX_AMD64_DIR) $(LINUX_ARM64_DIR)
+		@env GOOS=linux GOARCH=amd64 go build -o $(LINUX_AMD64) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/
 
 build-darwin: create-dist ## Build for Darwin (macOS)
-	    @env GOOS=darwin GOARCH=amd64 go build -o $(DARWIN) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@mkdir -p $(DARWIN_AMD64_DIR) $(DARWIN_ARM64_DIR)
+		@env GOOS=darwin GOARCH=amd64 go build -o $(DARWIN) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env GOOS=darwin GOARCH=arm64 go build -o $(DARWIN_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/
 
 # ========================================
 # PACKAGING TARGETS
 # ========================================
 
-# Create ZIP packages for all binaries
+# Create ZIP packages for all platforms. Each ZIP holds a single
+# file — senhub-agent / senhub-agent.exe (no platform suffix inside).
+# Pre-0.2.0 the ZIP held a suffixed binary (senhub-agent_linux_amd64);
+# the wrapper now carries the platform identity, the binary inside is
+# always the same name.
 package: build ## Create ZIP packages for all platforms
 	@echo "$(GREEN)📦 Creating ZIP packages...$(NC)"
-	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_windows_amd64.zip $(EXECUTABLE)_windows_amd64.exe
-	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_linux_amd64.zip $(EXECUTABLE)_linux_amd64
-	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_linux_arm64.zip $(EXECUTABLE)_linux_arm64
-	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_darwin_amd64.zip $(EXECUTABLE)_darwin_amd64
+	@cd $(WINDOWS_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-windows-amd64.zip $(EXECUTABLE).exe
+	@cd $(LINUX_AMD64_DIR)   && zip -9 ../$(EXECUTABLE)-linux-amd64.zip   $(EXECUTABLE)
+	@cd $(LINUX_ARM64_DIR)   && zip -9 ../$(EXECUTABLE)-linux-arm64.zip   $(EXECUTABLE)
+	@cd $(DARWIN_AMD64_DIR)  && zip -9 ../$(EXECUTABLE)-darwin-amd64.zip  $(EXECUTABLE)
+	@cd $(DARWIN_ARM64_DIR)  && zip -9 ../$(EXECUTABLE)-darwin-arm64.zip  $(EXECUTABLE)
 	@echo "$(GREEN)✅ ZIP packages created in $(DIST_DIR)/$(NC)"
 	@ls -la $(DIST_DIR)/*.zip
 
-# Create ZIP package for specific platform
 package-windows: build-windows ## Create ZIP package for Windows
 	@echo "$(GREEN)📦 Creating Windows ZIP package...$(NC)"
-	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_windows_amd64.zip $(EXECUTABLE)_windows_amd64.exe
-	@echo "$(GREEN)✅ Windows ZIP package created: $(DIST_DIR)/$(EXECUTABLE)_windows_amd64.zip$(NC)"
+	@cd $(WINDOWS_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-windows-amd64.zip $(EXECUTABLE).exe
+	@echo "$(GREEN)✅ Windows ZIP package created: $(DIST_DIR)/$(EXECUTABLE)-windows-amd64.zip$(NC)"
 
 package-linux: build-linux ## Create ZIP packages for Linux
 	@echo "$(GREEN)📦 Creating Linux ZIP packages...$(NC)"
-	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_linux_amd64.zip $(EXECUTABLE)_linux_amd64
-	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_linux_arm64.zip $(EXECUTABLE)_linux_arm64
+	@cd $(LINUX_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-linux-amd64.zip $(EXECUTABLE)
+	@cd $(LINUX_ARM64_DIR) && zip -9 ../$(EXECUTABLE)-linux-arm64.zip $(EXECUTABLE)
 	@echo "$(GREEN)✅ Linux ZIP packages created$(NC)"
 
 package-darwin: build-darwin ## Create ZIP package for macOS
-	@echo "$(GREEN)📦 Creating macOS ZIP package...$(NC)"
-	@cd $(DIST_DIR) && zip -9 $(EXECUTABLE)_darwin_amd64.zip $(EXECUTABLE)_darwin_amd64
-	@echo "$(GREEN)✅ macOS ZIP package created: $(DIST_DIR)/$(EXECUTABLE)_darwin_amd64.zip$(NC)"
+	@echo "$(GREEN)📦 Creating macOS ZIP packages...$(NC)"
+	@cd $(DARWIN_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-darwin-amd64.zip $(EXECUTABLE)
+	@cd $(DARWIN_ARM64_DIR) && zip -9 ../$(EXECUTABLE)-darwin-arm64.zip $(EXECUTABLE)
+	@echo "$(GREEN)✅ macOS ZIP packages created$(NC)"
 
 install: ## Install the application
 	@./scripts/setup
@@ -176,6 +196,43 @@ watch: clean
 test:
 	@echo "Testing..."
 	@go test ./... -v
+
+# Database probes integration tests — gated behind a build tag so
+# they're opt-in. Spins up MySQL + Postgres via the docker-compose
+# fixture under test/database/, waits for the engines to be ready,
+# runs the probes against them, then tears the fixture down.
+test-database: ## Integration tests against a real MySQL + Postgres
+	@echo "$(GREEN)🐳 Starting database fixture...$(NC)"
+	@docker compose -f test/database/docker-compose.yml up -d --wait
+	@echo "$(GREEN)🧪 Running database integration tests...$(NC)"
+	@MYSQL_TEST_DSN='root:test@tcp(127.0.0.1:3306)/' \
+		POSTGRES_TEST_DSN='host=127.0.0.1 port=5432 user=postgres password=test dbname=postgres sslmode=disable' \
+		go test -tags=database_integration -v \
+			./internal/agent/probes/mysql/... \
+			./internal/agent/probes/postgresql/...
+	@echo "$(GREEN)🧹 Tearing down database fixture...$(NC)"
+	@docker compose -f test/database/docker-compose.yml down -v
+
+# Prod smoke tests — hit the live agents on sha901 + bbcloud via SSH,
+# verify post-deploy invariants (no bearer leak, no probe-params leak,
+# no silent downgrade). Gated by the `prod_smoke` build tag so they
+# never run in regular CI. Requires the senhub secret store to be
+# resolvable (~/.senhub/read-secret.sh).
+prod-smoke: ## Prod smoke tests against sha901 + bbcloud (read-only)
+	@echo "$(GREEN)🔬 Running prod smoke tests...$(NC)"
+	@go test -tags=prod_smoke -v ./tools/prod_smoke/...
+	@echo "$(GREEN)✅ Database integration tests done$(NC)"
+
+# Boot smoke tests — build the agent binary, exec it against shipped
+# example configs to catch bring-up regressions (linker errors, config
+# schema breakage, platform-gated probe drift). Gated behind the
+# `boot_smoke` build tag so the inner `go build` invoked by the test
+# doesn't contend with the outer `make test` / `make test-race` build
+# cache. Wired into CI as a dedicated job; should take ~10s.
+boot-smoke: ## Boot smoke tests against example configs
+	@echo "$(GREEN)🚀 Running boot smoke tests...$(NC)"
+	@go test -tags=boot_smoke -v ./cmd/agent/...
+	@echo "$(GREEN)✅ Boot smoke tests done$(NC)"
 
 # NEW: Test avec détection de race conditions
 test-race: ## Test avec détection de race conditions
@@ -298,4 +355,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows build-linux build-darwin package package-windows package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist help
+.PHONY: all build build-windows build-linux build-darwin package package-windows package-linux package-darwin run test test-race test-database prod-smoke benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist help

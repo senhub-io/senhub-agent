@@ -47,16 +47,16 @@ func TestDuration_FutureClampsToZero(t *testing.T) {
 
 func TestCountInt32_Bounds(t *testing.T) {
 	cases := []struct {
-		in       int64
-		wantOk   bool
-		wantVal  float32
+		in      int64
+		wantOk  bool
+		wantVal float32
 	}{
 		{0, true, 0},
 		{42, true, 42},
 		{math.MaxInt32, true, MaxInt32},
 		{int64(math.MaxInt32) + 1, false, MaxInt32}, // clamped
-		{1 << 40, false, MaxInt32},                   // wildly over
-		{-1, false, 0},                                // negative
+		{1 << 40, false, MaxInt32},                  // wildly over
+		{-1, false, 0},                              // negative
 	}
 	for _, c := range cases {
 		got, ok := CountInt32(c.in)
@@ -66,6 +66,43 @@ func TestCountInt32_Bounds(t *testing.T) {
 		if got != c.wantVal {
 			t.Errorf("CountInt32(%d) value=%v, want %v", c.in, got, c.wantVal)
 		}
+	}
+}
+
+func TestBytes_BeyondInt32(t *testing.T) {
+	// Bytes counters routinely exceed 2 GB. Verify that values above
+	// MaxInt32 come back ok=true (precision loss is acceptable; cap
+	// is unacceptable).
+	cases := []struct {
+		in     int64
+		wantOk bool
+	}{
+		{0, true},
+		{1024, true},
+		{int64(math.MaxInt32), true},     // exactly 2 GB - 1 byte
+		{int64(math.MaxInt32) + 1, true}, // 2 GB, was the old cap
+		{int64(1) << 40, true},           // 1 TiB
+		{int64(1) << 50, true},           // 1 PiB
+		{-1, false},                      // negative bytes makes no sense
+	}
+	for _, c := range cases {
+		got, ok := Bytes(c.in)
+		if ok != c.wantOk {
+			t.Errorf("Bytes(%d) ok=%v, want %v (value=%v)", c.in, ok, c.wantOk, got)
+		}
+		if c.wantOk && got < 0 {
+			t.Errorf("Bytes(%d) returned negative %v — should not happen for non-negative input", c.in, got)
+		}
+	}
+
+	// Spot-check: 2 GB round-trips through float32 within ~1 KB
+	// precision (more than enough for monitoring).
+	twoGB := int64(2) * 1024 * 1024 * 1024
+	v, _ := Bytes(twoGB)
+	round := int64(v)
+	delta := round - twoGB
+	if delta < -1024 || delta > 1024 {
+		t.Errorf("Bytes(2 GiB) round-trip delta = %d bytes, want |Δ| ≤ 1024", delta)
 	}
 }
 

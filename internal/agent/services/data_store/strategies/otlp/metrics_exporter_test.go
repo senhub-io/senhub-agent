@@ -90,7 +90,7 @@ func TestPushMetrics_BuildsResourceMetricsWithCounter(t *testing.T) {
 	now := time.Unix(1700000010, 0)
 
 	count, err := pushMetrics(context.Background(), store, defs, res, "1.2.3",
-		startTime, now, otelmapper.DefaultResolveOptions(), nil, export, nil)
+		startTime, now, otelmapper.DefaultResolveOptions(), nil, export, nil, 1)
 	if err != nil {
 		t.Fatalf("pushMetrics: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestPushMetrics_BuildsResourceMetricsWithGauge(t *testing.T) {
 		func(_ context.Context, rm *metricdata.ResourceMetrics) error {
 			captured = rm
 			return nil
-		}, nil)
+		}, nil, 1)
 	if err != nil {
 		t.Fatalf("pushMetrics: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestPushMetrics_NoStoredMetricsIsNoOp(t *testing.T) {
 		func(_ context.Context, _ *metricdata.ResourceMetrics) error {
 			called = true
 			return nil
-		}, nil)
+		}, nil, 1)
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
@@ -235,7 +235,7 @@ func TestPushMetrics_MissingProbeDefTriggersHandlerAndContinues(t *testing.T) {
 		func(_ context.Context, rm *metricdata.ResourceMetrics) error {
 			capturedCount = len(rm.ScopeMetrics[0].Metrics)
 			return nil
-		}, handler)
+		}, handler, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestPushMetrics_ExportErrorPropagates(t *testing.T) {
 	_, err := pushMetrics(context.Background(), store, defs, resource.NewSchemaless(), "",
 		time.Now(), time.Now(), otelmapper.DefaultResolveOptions(), nil,
 		func(_ context.Context, _ *metricdata.ResourceMetrics) error { return expected },
-		nil)
+		nil, 1)
 	if err == nil || !errors.Is(err, expected) {
 		t.Errorf("err=%v, want wrapped %v", err, expected)
 	}

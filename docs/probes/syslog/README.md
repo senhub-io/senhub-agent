@@ -283,7 +283,7 @@ ss -tulpn | grep 514
 **Check agent logs:**
 ```bash
 # View syslog probe debugging
-./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.syslog
+./agent run --verbose --debug-modules probe.syslog
 ```
 
 **Verify probe configuration:**
@@ -301,7 +301,7 @@ Ports below 1024 require elevated privileges on Unix/Linux:
 
 ```bash
 # Option 1: Run agent as root (not recommended)
-sudo ./agent run --authentication-key YOUR_KEY
+sudo ./agent run
 
 # Option 2: Grant port binding capability (Linux)
 sudo setcap cap_net_bind_service=+ep ./agent
@@ -659,7 +659,7 @@ For issues or questions:
 
 1. **Enable debug logging:**
    ```bash
-   ./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.syslog
+   ./agent run --verbose --debug-modules probe.syslog
    ```
 
 2. **Check probe health:**

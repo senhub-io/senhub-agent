@@ -86,12 +86,12 @@ func TestOTelAttributeToPromLabel(t *testing.T) {
 
 func TestConvertValue(t *testing.T) {
 	tests := []struct {
-		name          string
-		raw           float64
-		sourceUnit    string
-		otelUnit      string
-		valueScale    float64
-		want          float64
+		name       string
+		raw        float64
+		sourceUnit string
+		otelUnit   string
+		valueScale float64
+		want       float64
 	}{
 		{"percent to ratio", 50.0, "%", "1", 0, 0.5},
 		{"percent case", 22.4, "percent", "1", 0, 0.224},

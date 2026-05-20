@@ -111,7 +111,7 @@ func TestExtractCustomTags(t *testing.T) {
 			"non-string tag values are skipped",
 			map[string]interface{}{
 				"custom_tags": map[string]interface{}{
-					"valid": "yes",
+					"valid":  "yes",
 					"number": 42,
 				},
 			},

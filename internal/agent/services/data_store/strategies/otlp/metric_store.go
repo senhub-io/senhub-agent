@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
@@ -23,12 +24,21 @@ import (
 // router, so each can keep whatever shape of state it needs.
 //
 // Memory bound: one entry per distinct series. Cardinality is governed
-// by the probes' YAML mappings (already controlled in the otelmapper
-// package via "_unmatched" fallback for expand mismatches), so the
-// store does not need its own eviction.
+// by:
+//   - Probe YAML mappings (the otelmapper package collapses tag values
+//     via the `_unmatched` fallback for `expand` mismatches).
+//   - `maxEntries` cap (operator-tunable via `otlp.max_store_size`):
+//     once the store reaches this many series, new series are dropped
+//     and `senhub_agent_otlp_dropped_total{reason="store_cap"}` is
+//     incremented. Updates of existing series never drop. 0 means
+//     unbounded (the historical behaviour).
 type metricStore struct {
-	mu      sync.RWMutex
-	entries map[string]storedMetric
+	mu          sync.RWMutex
+	entries     map[string]storedMetric
+	maxEntries  int            // global cap; 0 = unbounded
+	probeBudget int            // per-probe cap; 0 = unbounded
+	probeCounts map[string]int // probe_name → currently active series count
+	memGuard    *memoryLimiter // optional; nil = no memory limiter
 }
 
 // storedMetric is one LWW slot — the metadata we need to feed
@@ -45,13 +55,45 @@ type storedMetric struct {
 }
 
 func newMetricStore() *metricStore {
-	return &metricStore{entries: make(map[string]storedMetric)}
+	return &metricStore{entries: make(map[string]storedMetric), probeCounts: map[string]int{}}
+}
+
+// newMetricStoreWithCap returns a store that drops new series past
+// maxEntries (global cap). Pass 0 for unbounded.
+func newMetricStoreWithCap(maxEntries int) *metricStore {
+	return &metricStore{
+		entries:     make(map[string]storedMetric),
+		maxEntries:  maxEntries,
+		probeCounts: map[string]int{},
+	}
+}
+
+// withProbeBudget sets the per-probe cardinality budget on top of any
+// existing global cap. 0 means no per-probe budget. Returns the store
+// for chaining.
+func (s *metricStore) withProbeBudget(maxPerProbe int) *metricStore {
+	s.probeBudget = maxPerProbe
+	return s
+}
+
+// withMemoryLimiter attaches a memory limiter to the store. The
+// limiter's poll loop must be started separately via memoryLimiter.start.
+// Returns the store for chaining.
+func (s *metricStore) withMemoryLimiter(ml *memoryLimiter) *metricStore {
+	s.memGuard = ml
+	return s
 }
 
 // upsert records a datapoint, replacing any prior observation for the
 // same (probe_name, probe_type, metric_name, tag-set) tuple. Datapoints
 // without probe identity are skipped — they cannot be routed through
 // otelmapper.Resolve which keys on probe_type to find the YAML.
+//
+// When the store has reached maxEntries, NEW series are dropped and
+// `senhub_agent_otlp_dropped_total{reason="store_cap"}` is incremented.
+// Existing series continue to update — preferring continuity of known
+// series over admitting unbounded new cardinality, which is the
+// expected operator preference when a probe goes rogue on a label.
 func (s *metricStore) upsert(dp datapoint.DataPoint) {
 	tagMap := flattenTags(dp.Tags)
 	probeName := tagMap["probe_name"]
@@ -74,7 +116,52 @@ func (s *metricStore) upsert(dp datapoint.DataPoint) {
 		tagsCopy[k] = v
 	}
 
+	// Memory-pressure check FIRST — checked before the lock so it
+	// doesn't contend with the read path under pressure. Lock-free
+	// atomic load of the state flag set by the background poller.
+	if s.memGuard != nil {
+		switch s.memGuard.currentState() {
+		case memoryHard:
+			// Hard limit: drop everything to give the runtime a chance
+			// to GC and recover. Drops are counted by reason so the
+			// operator can see they are happening.
+			agentstate.IncrementOTLPDropped("memory_hard_limit")
+			return
+		case memorySoft:
+			// Soft limit: keep updating existing series, refuse new
+			// series. This is consistent with the cardinality-cap
+			// policy (preserve continuity of known series; cut off the
+			// runaway-cardinality probe). The drop is recorded only if
+			// we actually skip the upsert below.
+			s.mu.RLock()
+			_, exists := s.entries[key]
+			s.mu.RUnlock()
+			if !exists {
+				agentstate.IncrementOTLPDropped("memory_soft_limit")
+				return
+			}
+		}
+	}
+
 	s.mu.Lock()
+	_, exists := s.entries[key]
+	if !exists {
+		// Per-probe budget: each probe instance gets its own
+		// cardinality cap. Protects a fleet from one rogue probe
+		// stealing all of the global store slots from its peers.
+		if s.probeBudget > 0 && s.probeCounts[probeName] >= s.probeBudget {
+			s.mu.Unlock()
+			agentstate.IncrementOTLPDropped("probe_cardinality")
+			return
+		}
+		// Global cap: total store size across all probes.
+		if s.maxEntries > 0 && len(s.entries) >= s.maxEntries {
+			s.mu.Unlock()
+			agentstate.IncrementOTLPDropped("store_cap")
+			return
+		}
+		s.probeCounts[probeName]++
+	}
 	s.entries[key] = storedMetric{
 		probeName:  probeName,
 		probeType:  probeType,
@@ -85,6 +172,66 @@ func (s *metricStore) upsert(dp datapoint.DataPoint) {
 		observedAt: when,
 	}
 	s.mu.Unlock()
+}
+
+// probeSeriesCount returns the current number of distinct series held
+// for the given probe_name. Used by tests and by self-metrics for
+// per-probe cardinality visibility.
+func (s *metricStore) probeSeriesCount(probeName string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.probeCounts[probeName]
+}
+
+// snapshotForCheckpoint returns the store contents as JSON-shaped
+// entrySnapshot values, ready for the checkpointer to serialize. The
+// tag map is shared by reference — the caller must treat it as
+// read-only.
+func (s *metricStore) snapshotForCheckpoint() []entrySnapshot {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]entrySnapshot, 0, len(s.entries))
+	for _, e := range s.entries {
+		out = append(out, entrySnapshot{
+			ProbeName:  e.probeName,
+			ProbeType:  e.probeType,
+			MetricName: e.metricName,
+			Value:      e.value,
+			Unit:       e.unit,
+			Tags:       e.tags,
+			ObservedAt: e.observedAt,
+		})
+	}
+	return out
+}
+
+// restoreFromSnapshot replaces the store contents with the given
+// entries. Used at agent boot when a persistent checkpoint is loaded.
+// Bypasses the upsert hot-path checks (cardinality cap, probe budget,
+// memory limiter) — restoring a snapshot is a privileged path that
+// trusts whatever was last successfully persisted. Probe counts are
+// rebuilt to match.
+func (s *metricStore) restoreFromSnapshot(entries []entrySnapshot) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.entries = make(map[string]storedMetric, len(entries))
+	s.probeCounts = map[string]int{}
+	for _, e := range entries {
+		if e.ProbeName == "" || e.ProbeType == "" {
+			continue
+		}
+		key := storeKey(e.ProbeName, e.ProbeType, e.MetricName, e.Tags)
+		s.entries[key] = storedMetric{
+			probeName:  e.ProbeName,
+			probeType:  e.ProbeType,
+			metricName: e.MetricName,
+			value:      e.Value,
+			unit:       e.Unit,
+			tags:       e.Tags,
+			observedAt: e.ObservedAt,
+		}
+		s.probeCounts[e.ProbeName]++
+	}
 }
 
 // snapshot returns a slice of CacheMetric ready to feed into

@@ -1,0 +1,1435 @@
+# IBM i / Power Systems Probe — Format v3 (OTel-first source of truth)
+#
+# All metrics carry an `otel:` block. There is no canonical OTel
+# semantic convention for IBM i / Power Systems (the OS is proprietary
+# and not covered by opentelemetry-collector-contrib receivers), so the
+# whole probe namespaces under `senhub.ibmi.*` — same pattern as Lot 4
+# (veeam, citrix, netscaler) for vendor-specific systems.
+#
+# Naming policy:
+#   - Family-prefixed name: senhub.ibmi.<family>.<measure> (cpu,
+#     memory, asp, disk, job, jobs, job_queue, scheduled_job,
+#     subsystem, memory_pool, output_queue, spooled_file, user_storage,
+#     table, index_advisor, journal, journal_receiver, tcp, netstat,
+#     http_server, hardware, user_profile, sysval, library_list,
+#     license, ptf_group, watch, collector).
+#   - No unit suffix in metric names (no .seconds, .bytes, .kb, .mb,
+#     .ms, .percent). Unit moves to otel.unit.
+#   - No .count/.total suffix. Type (counter vs gauge) carries that.
+#   - Probe-side `unit:` kept intact so the OTel mapper auto-converts
+#     (%→1, KB/MB→By, ms→s) per otelmapper/convert.go.
+#
+# Tag-to-attribute renaming maps probe cache tags to clean OTel
+# attribute keys under the `ibmi.*` namespace (e.g. job_name →
+# ibmi.job.name). Standard OTel attrs (network.transport) used where a
+# canonical key exists.
+#
+# Event-conduit metrics (message_queue, history_log, audit_journal,
+# msgw_job) carry otel.skip:true with reason — same pattern as
+# syslog/event probes, since the relayed event isn't a meaningful
+# Prometheus/OTLP metric.
+
+probe_name: "ibmi"
+friendly_name: "IBM i / Power Systems"
+version: "3.0.0"
+
+metrics:
+  # ============================================================
+  # System-level CPU
+  # ============================================================
+  - name: "ibmi.cpu.elapsed_used_percent"
+    channel: "ibmi_cpu_used_percent"
+    display_name: "CPU Used"
+    unit: "%"
+    category: "cpu"
+    description: "Percentage of CPU used over the elapsed interval"
+    otel:
+      name: senhub.ibmi.cpu.utilization
+      unit: "1"
+      type: gauge
+
+  - name: "ibmi.cpu.configured_count"
+    channel: "ibmi_cpu_configured_count"
+    display_name: "CPU Configured Count"
+    unit: "#"
+    category: "cpu"
+    description: "Number of configured virtual CPUs"
+    otel:
+      name: senhub.ibmi.cpu.configured
+      unit: "{cpu}"
+      type: gauge
+
+  - name: "ibmi.cpu.current_capacity"
+    channel: "ibmi_cpu_current_capacity"
+    display_name: "CPU Current Capacity"
+    unit: "#"
+    category: "cpu"
+    description: "Current processing capacity"
+    otel:
+      name: senhub.ibmi.cpu.capacity
+      unit: "{cpu}"
+      type: gauge
+
+  # ============================================================
+  # Memory & ASP (Auxiliary Storage Pool)
+  # ============================================================
+  - name: "ibmi.memory.main_storage_kb"
+    channel: "ibmi_memory_main_storage_kb"
+    display_name: "Main Storage"
+    unit: "KB"
+    category: "memory"
+    otel:
+      name: senhub.ibmi.memory.main_storage
+      unit: "By"
+      type: gauge
+
+  - name: "ibmi.asp.system_used_percent"
+    channel: "ibmi_asp_system_used_percent"
+    display_name: "System ASP Used"
+    unit: "%"
+    category: "storage"
+    otel:
+      name: senhub.ibmi.asp.system.utilization
+      unit: "1"
+      type: gauge
+
+  - name: "ibmi.asp.used_percent"
+    channel: "ibmi_asp_used_percent"
+    display_name: "ASP Used ({asp_number})"
+    unit: "%"
+    category: "storage"
+    multi_instance_labels: ["asp_number", "asp_type"]
+    otel:
+      name: senhub.ibmi.asp.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      asp_number: ibmi.asp.number
+      asp_type: ibmi.asp.type
+
+  - name: "ibmi.asp.total_capacity_mb"
+    channel: "ibmi_asp_total_capacity_mb"
+    display_name: "ASP Total Capacity ({asp_number})"
+    unit: "MB"
+    category: "storage"
+    multi_instance_labels: ["asp_number"]
+    otel:
+      name: senhub.ibmi.asp.capacity
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      asp_number: ibmi.asp.number
+
+  - name: "ibmi.asp.storage_threshold_percent"
+    channel: "ibmi_asp_threshold_percent"
+    display_name: "ASP Storage Threshold ({asp_number})"
+    unit: "%"
+    category: "storage"
+    multi_instance_labels: ["asp_number"]
+    otel:
+      name: senhub.ibmi.asp.threshold
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      asp_number: ibmi.asp.number
+
+  # ============================================================
+  # Jobs — aggregate
+  # ============================================================
+  - name: "ibmi.jobs.total_count"
+    channel: "ibmi_jobs_total_count"
+    display_name: "Jobs Total"
+    unit: "#"
+    category: "jobs"
+    otel:
+      name: senhub.ibmi.jobs.total
+      unit: "{job}"
+      type: gauge
+
+  - name: "ibmi.jobs.active_total"
+    channel: "ibmi_jobs_active_total"
+    display_name: "Jobs Active Total"
+    unit: "#"
+    category: "jobs"
+    otel:
+      name: senhub.ibmi.jobs.active
+      unit: "{job}"
+      type: gauge
+
+  - name: "ibmi.jobs.count_by_status"
+    channel: "ibmi_jobs_count_by_status"
+    display_name: "Jobs {job_type} / {status}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["job_type", "status"]
+    otel:
+      name: senhub.ibmi.jobs.by_status
+      unit: "{job}"
+      type: gauge
+    tag_to_attribute:
+      job_type: ibmi.job.type
+      status: ibmi.job.status
+
+  - name: "ibmi.jobs.count_by_subsystem"
+    channel: "ibmi_jobs_count_by_subsystem"
+    display_name: "Jobs in {subsystem}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["subsystem"]
+    otel:
+      name: senhub.ibmi.jobs.by_subsystem
+      unit: "{job}"
+      type: gauge
+    tag_to_attribute:
+      subsystem: ibmi.subsystem
+
+  - name: "ibmi.jobs.topn_cap_hit"
+    channel: "ibmi_jobs_topn_cap_hit"
+    display_name: "Top-N Cap Hit"
+    unit: "#"
+    category: "jobs"
+    description: "1 = active_job SQL hit the row cap, counts may be undercounts"
+    otel:
+      name: senhub.ibmi.jobs.topn_cap_hit
+      unit: "1"
+      type: gauge
+
+  # ============================================================
+  # Jobs — per-job detail (top-N by elapsed CPU)
+  # ============================================================
+  - name: "ibmi.job.elapsed_cpu_percent"
+    channel: "ibmi_job_elapsed_cpu_percent"
+    display_name: "CPU % — {job_name}"
+    unit: "%"
+    category: "jobs"
+    multi_instance_labels: ["job_name", "job_user", "subsystem"]
+    otel:
+      name: senhub.ibmi.job.cpu.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      job_name: ibmi.job.name
+      job_user: ibmi.job.user
+      subsystem: ibmi.subsystem
+
+  - name: "ibmi.job.elapsed_cpu_ms"
+    channel: "ibmi_job_elapsed_cpu_ms"
+    display_name: "Elapsed CPU — {job_name}"
+    unit: "ms"
+    category: "jobs"
+    multi_instance_labels: ["job_name", "job_user", "subsystem"]
+    otel:
+      name: senhub.ibmi.job.cpu.elapsed_time
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      job_name: ibmi.job.name
+      job_user: ibmi.job.user
+      subsystem: ibmi.subsystem
+
+  - name: "ibmi.job.cpu_time_ms"
+    channel: "ibmi_job_cpu_time_ms"
+    display_name: "Cumulative CPU — {job_name}"
+    unit: "ms"
+    category: "jobs"
+    multi_instance_labels: ["job_name", "job_user", "subsystem"]
+    otel:
+      name: senhub.ibmi.job.cpu.cumulative_time
+      unit: "s"
+      type: counter
+    tag_to_attribute:
+      job_name: ibmi.job.name
+      job_user: ibmi.job.user
+      subsystem: ibmi.subsystem
+
+  - name: "ibmi.job.cpu_time_ms_delta"
+    channel: "ibmi_job_cpu_time_ms_delta"
+    display_name: "CPU Delta — {job_name}"
+    unit: "ms"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+    otel:
+      name: senhub.ibmi.job.cpu.delta_time
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      job_name: ibmi.job.name
+
+  - name: "ibmi.job.cpu_time_ms_rate_per_sec"
+    channel: "ibmi_job_cpu_time_ms_rate"
+    display_name: "CPU Rate — {job_name}"
+    unit: "ms/s"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+    description: "CPU milliseconds consumed per wallclock second — dimensionless ratio when divided by 1000"
+    otel:
+      name: senhub.ibmi.job.cpu.rate
+      unit: "1"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      job_name: ibmi.job.name
+
+  - name: "ibmi.job.temp_storage_mb"
+    channel: "ibmi_job_temp_storage_mb"
+    display_name: "Temp Storage — {job_name}"
+    unit: "MB"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+    otel:
+      name: senhub.ibmi.job.temp_storage
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      job_name: ibmi.job.name
+
+  - name: "ibmi.job.total_disk_io"
+    channel: "ibmi_job_total_disk_io"
+    display_name: "Total Disk I/O — {job_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+    otel:
+      name: senhub.ibmi.job.disk.io
+      unit: "{operation}"
+      type: counter
+    tag_to_attribute:
+      job_name: ibmi.job.name
+
+  - name: "ibmi.job.elapsed_total_disk_io"
+    channel: "ibmi_job_elapsed_disk_io"
+    display_name: "Disk I/O (elapsed) — {job_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+    otel:
+      name: senhub.ibmi.job.disk.elapsed_io
+      unit: "{operation}"
+      type: gauge
+    tag_to_attribute:
+      job_name: ibmi.job.name
+
+  - name: "ibmi.job.elapsed_page_faults"
+    channel: "ibmi_job_elapsed_page_faults"
+    display_name: "Page Faults — {job_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+    otel:
+      name: senhub.ibmi.job.page_faults
+      unit: "{fault}"
+      type: gauge
+    tag_to_attribute:
+      job_name: ibmi.job.name
+
+  - name: "ibmi.job.thread_count"
+    channel: "ibmi_job_thread_count"
+    display_name: "Threads — {job_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+    otel:
+      name: senhub.ibmi.job.threads
+      unit: "{thread}"
+      type: gauge
+    tag_to_attribute:
+      job_name: ibmi.job.name
+
+  - name: "ibmi.job.run_priority"
+    channel: "ibmi_job_run_priority"
+    display_name: "Run Priority — {job_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+    otel:
+      name: senhub.ibmi.job.priority
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      job_name: ibmi.job.name
+
+  # ============================================================
+  # Job queues
+  # ============================================================
+  - name: "ibmi.job_queue.active_jobs"
+    channel: "ibmi_jobq_active"
+    display_name: "Active Jobs — {queue_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["queue_library", "queue_name"]
+    otel:
+      name: senhub.ibmi.job_queue.active
+      unit: "{job}"
+      type: gauge
+    tag_to_attribute:
+      queue_library: ibmi.queue.library
+      queue_name: ibmi.queue.name
+
+  - name: "ibmi.job_queue.held_jobs"
+    channel: "ibmi_jobq_held"
+    display_name: "Held Jobs — {queue_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["queue_library", "queue_name"]
+    otel:
+      name: senhub.ibmi.job_queue.held
+      unit: "{job}"
+      type: gauge
+    tag_to_attribute:
+      queue_library: ibmi.queue.library
+      queue_name: ibmi.queue.name
+
+  - name: "ibmi.job_queue.released_jobs"
+    channel: "ibmi_jobq_released"
+    display_name: "Released Jobs — {queue_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["queue_library", "queue_name"]
+    otel:
+      name: senhub.ibmi.job_queue.released
+      unit: "{job}"
+      type: gauge
+    tag_to_attribute:
+      queue_library: ibmi.queue.library
+      queue_name: ibmi.queue.name
+
+  - name: "ibmi.job_queue.scheduled_jobs"
+    channel: "ibmi_jobq_scheduled"
+    display_name: "Scheduled Jobs — {queue_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["queue_library", "queue_name"]
+    otel:
+      name: senhub.ibmi.job_queue.scheduled
+      unit: "{job}"
+      type: gauge
+    tag_to_attribute:
+      queue_library: ibmi.queue.library
+      queue_name: ibmi.queue.name
+
+  - name: "ibmi.job_queue.jobs_total"
+    channel: "ibmi_jobq_jobs_total"
+    display_name: "Total Jobs — {queue_name}"
+    unit: "#"
+    category: "jobs"
+    multi_instance_labels: ["queue_library", "queue_name"]
+    otel:
+      name: senhub.ibmi.job_queue.depth
+      unit: "{job}"
+      type: gauge
+    tag_to_attribute:
+      queue_library: ibmi.queue.library
+      queue_name: ibmi.queue.name
+
+  - name: "ibmi.job_queue.nonempty_total"
+    channel: "ibmi_jobq_nonempty_total"
+    display_name: "Non-empty Job Queues"
+    unit: "#"
+    category: "jobs"
+    otel:
+      name: senhub.ibmi.job_queue.nonempty
+      unit: "{queue}"
+      type: gauge
+
+  # ============================================================
+  # Scheduled jobs
+  # ============================================================
+  - name: "ibmi.scheduled_job.total"
+    channel: "ibmi_scheduled_total"
+    display_name: "Scheduled Jobs"
+    unit: "#"
+    category: "jobs"
+    otel:
+      name: senhub.ibmi.scheduled_job.count
+      unit: "{job}"
+      type: gauge
+
+  - name: "ibmi.scheduled_job.last_run_age_seconds"
+    channel: "ibmi_scheduled_last_run_age"
+    display_name: "Scheduled Last Run Age — {job_name}"
+    unit: "s"
+    category: "jobs"
+    multi_instance_labels: ["job_name"]
+    otel:
+      name: senhub.ibmi.scheduled_job.last_run_age
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      job_name: ibmi.job.name
+
+  # ============================================================
+  # Message-wait jobs (event conduit)
+  # ============================================================
+  - name: "ibmi.msgw_job.event"
+    channel: "ibmi_msgw_event"
+    display_name: "MSGW — {job_name}"
+    unit: "s"
+    category: "jobs"
+    multi_instance_labels: ["job_name", "internal_job_id"]
+    description: "Job in message wait; value = seconds stuck"
+    otel:
+      skip: true
+      reason: "Event conduit — relayed message-wait condition, not a meaningful Prometheus metric. Future: OTLP log export in V2."
+
+  # ============================================================
+  # Subsystems
+  # ============================================================
+  - name: "ibmi.subsystem.active_jobs"
+    channel: "ibmi_subsystem_active_jobs"
+    display_name: "Active Jobs in {subsystem}"
+    unit: "#"
+    category: "workload"
+    multi_instance_labels: ["subsystem"]
+    otel:
+      name: senhub.ibmi.subsystem.active_jobs
+      unit: "{job}"
+      type: gauge
+    tag_to_attribute:
+      subsystem: ibmi.subsystem
+
+  # ============================================================
+  # Memory pools
+  # ============================================================
+  - name: "ibmi.memory_pool.defined_size_mb"
+    channel: "ibmi_pool_defined_size_mb"
+    display_name: "Pool Size — {pool_name}"
+    unit: "MB"
+    category: "memory"
+    multi_instance_labels: ["pool_id", "pool_name"]
+    otel:
+      name: senhub.ibmi.memory_pool.size
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      pool_id: ibmi.pool.id
+      pool_name: ibmi.pool.name
+
+  - name: "ibmi.memory_pool.current_threads"
+    channel: "ibmi_pool_current_threads"
+    display_name: "Pool Threads — {pool_name}"
+    unit: "#"
+    category: "memory"
+    multi_instance_labels: ["pool_id", "pool_name"]
+    otel:
+      name: senhub.ibmi.memory_pool.threads
+      unit: "{thread}"
+      type: gauge
+    tag_to_attribute:
+      pool_id: ibmi.pool.id
+      pool_name: ibmi.pool.name
+
+  - name: "ibmi.memory_pool.ineligible_threads"
+    channel: "ibmi_pool_ineligible_threads"
+    display_name: "Pool Ineligible — {pool_name}"
+    unit: "#"
+    category: "memory"
+    multi_instance_labels: ["pool_id", "pool_name"]
+    otel:
+      name: senhub.ibmi.memory_pool.ineligible_threads
+      unit: "{thread}"
+      type: gauge
+    tag_to_attribute:
+      pool_id: ibmi.pool.id
+      pool_name: ibmi.pool.name
+
+  # ============================================================
+  # Disk
+  # ============================================================
+  - name: "ibmi.disk.percent_busy"
+    channel: "ibmi_disk_percent_busy"
+    display_name: "Disk Busy — unit {unit_number}"
+    unit: "%"
+    category: "storage"
+    multi_instance_labels: ["unit_number", "device_name"]
+    otel:
+      name: senhub.ibmi.disk.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      unit_number: ibmi.disk.unit
+      device_name: ibmi.disk.device
+
+  - name: "ibmi.disk.data_read_bytes"
+    channel: "ibmi_disk_read_bytes"
+    display_name: "Disk Read — unit {unit_number}"
+    unit: "B"
+    category: "storage"
+    multi_instance_labels: ["unit_number"]
+    otel:
+      name: senhub.ibmi.disk.read
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      unit_number: ibmi.disk.unit
+
+  # ============================================================
+  # Output queues & spool
+  # ============================================================
+  - name: "ibmi.output_queue.files_count"
+    channel: "ibmi_outq_files"
+    display_name: "Spool Files — {queue_name}"
+    unit: "#"
+    category: "spool"
+    multi_instance_labels: ["queue_library", "queue_name"]
+    otel:
+      name: senhub.ibmi.output_queue.files
+      unit: "{file}"
+      type: gauge
+    tag_to_attribute:
+      queue_library: ibmi.queue.library
+      queue_name: ibmi.queue.name
+
+  - name: "ibmi.output_queue.spooled_files_total"
+    channel: "ibmi_outq_spooled_total"
+    display_name: "Spooled Files Total"
+    unit: "#"
+    category: "spool"
+    otel:
+      name: senhub.ibmi.output_queue.spooled_files
+      unit: "{file}"
+      type: gauge
+
+  - name: "ibmi.spooled_file.total"
+    channel: "ibmi_spool_total"
+    display_name: "Spooled Files"
+    unit: "#"
+    category: "spool"
+    otel:
+      name: senhub.ibmi.spooled_file.count
+      unit: "{file}"
+      type: gauge
+
+  - name: "ibmi.spooled_file.oldest_age_seconds"
+    channel: "ibmi_spool_oldest_age"
+    display_name: "Oldest Spool Age"
+    unit: "s"
+    category: "spool"
+    otel:
+      name: senhub.ibmi.spooled_file.oldest_age
+      unit: "s"
+      type: gauge
+
+  # ============================================================
+  # User storage
+  # ============================================================
+  - name: "ibmi.user_storage.used_kb"
+    channel: "ibmi_user_storage_used"
+    display_name: "User Storage — {user}"
+    unit: "KB"
+    category: "storage"
+    multi_instance_labels: ["user", "asp"]
+    otel:
+      name: senhub.ibmi.user_storage.used
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      user: ibmi.user.name
+      asp: ibmi.asp.number
+
+  - name: "ibmi.user_storage.quota_kb"
+    channel: "ibmi_user_storage_quota"
+    display_name: "User Quota — {user}"
+    unit: "KB"
+    category: "storage"
+    multi_instance_labels: ["user", "asp"]
+    otel:
+      name: senhub.ibmi.user_storage.quota
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      user: ibmi.user.name
+      asp: ibmi.asp.number
+
+  - name: "ibmi.user_storage.usage_ratio_percent"
+    channel: "ibmi_user_storage_ratio"
+    display_name: "User Storage Ratio — {user}"
+    unit: "%"
+    category: "storage"
+    multi_instance_labels: ["user", "asp"]
+    otel:
+      name: senhub.ibmi.user_storage.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      user: ibmi.user.name
+      asp: ibmi.asp.number
+
+  - name: "ibmi.user_storage.users_over_80pct"
+    channel: "ibmi_user_storage_over_80pct"
+    display_name: "Users Over 80% Quota"
+    unit: "#"
+    category: "storage"
+    otel:
+      name: senhub.ibmi.user_storage.over_threshold
+      unit: "{user}"
+      type: gauge
+
+  # ============================================================
+  # DB tables & index advisor
+  # ============================================================
+  - name: "ibmi.table.rows_count"
+    channel: "ibmi_table_rows"
+    display_name: "Rows — {table_schema}.{table_name}"
+    unit: "#"
+    category: "database"
+    multi_instance_labels: ["table_schema", "table_name"]
+    otel:
+      name: senhub.ibmi.table.rows
+      unit: "{row}"
+      type: gauge
+    tag_to_attribute:
+      table_schema: ibmi.table.schema
+      table_name: ibmi.table.name
+
+  - name: "ibmi.table.logical_reads_total"
+    channel: "ibmi_table_logical_reads"
+    display_name: "Logical Reads — {table_schema}.{table_name}"
+    unit: "#"
+    category: "database"
+    multi_instance_labels: ["table_schema", "table_name"]
+    otel:
+      name: senhub.ibmi.table.logical_reads
+      unit: "{read}"
+      type: counter
+    tag_to_attribute:
+      table_schema: ibmi.table.schema
+      table_name: ibmi.table.name
+
+  - name: "ibmi.table.updates_total"
+    channel: "ibmi_table_updates"
+    display_name: "Updates — {table_schema}.{table_name}"
+    unit: "#"
+    category: "database"
+    multi_instance_labels: ["table_schema", "table_name"]
+    otel:
+      name: senhub.ibmi.table.updates
+      unit: "{update}"
+      type: counter
+    tag_to_attribute:
+      table_schema: ibmi.table.schema
+      table_name: ibmi.table.name
+
+  - name: "ibmi.table.deleted_rows"
+    channel: "ibmi_table_deleted_rows"
+    display_name: "Deleted Rows — {table_schema}.{table_name}"
+    unit: "#"
+    category: "database"
+    multi_instance_labels: ["table_schema", "table_name"]
+    otel:
+      name: senhub.ibmi.table.deleted_rows
+      unit: "{row}"
+      type: gauge
+    tag_to_attribute:
+      table_schema: ibmi.table.schema
+      table_name: ibmi.table.name
+
+  - name: "ibmi.index_advisor.times_advised"
+    channel: "ibmi_idx_times_advised"
+    display_name: "Times Advised — {table_schema}.{table_name}"
+    unit: "#"
+    category: "database"
+    multi_instance_labels: ["table_schema", "table_name", "key_columns"]
+    description: "Missing-index recommendation hit count"
+    otel:
+      name: senhub.ibmi.index_advisor.times_advised
+      unit: "{advisory}"
+      type: counter
+    tag_to_attribute:
+      table_schema: ibmi.table.schema
+      table_name: ibmi.table.name
+      key_columns: ibmi.table.key_columns
+
+  - name: "ibmi.index_advisor.mti_used"
+    channel: "ibmi_idx_mti_used"
+    display_name: "MTI Used — {table_schema}.{table_name}"
+    unit: "#"
+    category: "database"
+    multi_instance_labels: ["table_schema", "table_name", "key_columns"]
+    otel:
+      name: senhub.ibmi.index_advisor.mti_used
+      unit: "{use}"
+      type: counter
+    tag_to_attribute:
+      table_schema: ibmi.table.schema
+      table_name: ibmi.table.name
+      key_columns: ibmi.table.key_columns
+
+  - name: "ibmi.index_advisor.avg_query_estimate_seconds"
+    channel: "ibmi_idx_avg_query_est"
+    display_name: "Avg Query Estimate — {table_schema}.{table_name}"
+    unit: "s"
+    category: "database"
+    multi_instance_labels: ["table_schema", "table_name", "key_columns"]
+    otel:
+      name: senhub.ibmi.index_advisor.avg_query_estimate
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      table_schema: ibmi.table.schema
+      table_name: ibmi.table.name
+      key_columns: ibmi.table.key_columns
+
+  - name: "ibmi.index_advisor.total"
+    channel: "ibmi_idx_total"
+    display_name: "Advised Indexes"
+    unit: "#"
+    category: "database"
+    otel:
+      name: senhub.ibmi.index_advisor.advised_indexes
+      unit: "{index}"
+      type: gauge
+
+  - name: "ibmi.index_advisor.recent_advisories_1h"
+    channel: "ibmi_idx_recent_1h"
+    display_name: "Index Advisories (1h)"
+    unit: "#"
+    category: "database"
+    otel:
+      name: senhub.ibmi.index_advisor.recent_advisories
+      unit: "{advisory}"
+      type: gauge
+
+  # ============================================================
+  # Journals & receivers
+  # ============================================================
+  - name: "ibmi.journal.active"
+    channel: "ibmi_journal_active"
+    display_name: "Journal {journal} ({journal_library})"
+    unit: "#"
+    category: "database"
+    multi_instance_labels: ["journal", "journal_library"]
+    otel:
+      name: senhub.ibmi.journal.active
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      journal: ibmi.journal.name
+      journal_library: ibmi.journal.library
+
+  - name: "ibmi.journal.receivers_total_size_kb"
+    channel: "ibmi_journal_receivers_size"
+    display_name: "Receivers Size — {journal}"
+    unit: "KB"
+    category: "database"
+    multi_instance_labels: ["journal", "journal_library"]
+    otel:
+      name: senhub.ibmi.journal.receivers_size
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      journal: ibmi.journal.name
+      journal_library: ibmi.journal.library
+
+  - name: "ibmi.journal.remote_lag_estimated_seconds"
+    channel: "ibmi_journal_remote_lag_est"
+    display_name: "Remote Lag (est) — {journal}"
+    unit: "s"
+    category: "database"
+    multi_instance_labels: ["journal", "journal_library"]
+    otel:
+      name: senhub.ibmi.journal.remote_lag
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      journal: ibmi.journal.name
+      journal_library: ibmi.journal.library
+
+  - name: "ibmi.journal_receiver.size_kb"
+    channel: "ibmi_jrnrcv_size"
+    display_name: "Receiver Size — {receiver}"
+    unit: "KB"
+    category: "database"
+    multi_instance_labels: ["receiver", "receiver_library"]
+    otel:
+      name: senhub.ibmi.journal_receiver.size
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      receiver: ibmi.receiver.name
+      receiver_library: ibmi.receiver.library
+
+  - name: "ibmi.journal_receiver.attached_total"
+    channel: "ibmi_jrnrcv_attached"
+    display_name: "Attached Receivers"
+    unit: "#"
+    category: "database"
+    otel:
+      name: senhub.ibmi.journal_receiver.attached
+      unit: "{receiver}"
+      type: gauge
+
+  # ============================================================
+  # Network — TCP & netstat
+  # ============================================================
+  - name: "ibmi.tcp.connections_established"
+    channel: "ibmi_tcp_established"
+    display_name: "TCP Connections Established"
+    unit: "#"
+    category: "network"
+    otel:
+      name: senhub.ibmi.tcp.connections.established
+      unit: "{connection}"
+      type: gauge
+
+  - name: "ibmi.netstat.connections_total"
+    channel: "ibmi_netstat_conn_total"
+    display_name: "TCP Connections Total"
+    unit: "#"
+    category: "network"
+    otel:
+      name: senhub.ibmi.netstat.connections
+      unit: "{connection}"
+      type: gauge
+
+  - name: "ibmi.netstat.connections_by_state"
+    channel: "ibmi_netstat_conn_by_state"
+    display_name: "TCP {tcp_state}"
+    unit: "#"
+    category: "network"
+    multi_instance_labels: ["tcp_state"]
+    otel:
+      name: senhub.ibmi.netstat.connections_by_state
+      unit: "{connection}"
+      type: gauge
+    tag_to_attribute:
+      tcp_state: ibmi.tcp.state
+
+  - name: "ibmi.netstat.listener_up"
+    channel: "ibmi_netstat_listener_up"
+    display_name: "Listener — port {local_port}"
+    unit: "#"
+    category: "network"
+    multi_instance_labels: ["local_port", "port_name", "protocol"]
+    otel:
+      name: senhub.ibmi.netstat.listener.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      local_port: ibmi.net.local_port
+      port_name: ibmi.net.port_name
+      protocol: network.transport
+
+  - name: "ibmi.netstat.listener_jobs"
+    channel: "ibmi_netstat_listener_jobs"
+    display_name: "Listener Jobs — port {local_port}"
+    unit: "#"
+    category: "network"
+    multi_instance_labels: ["local_port", "port_name"]
+    otel:
+      name: senhub.ibmi.netstat.listener.jobs
+      unit: "{job}"
+      type: gauge
+    tag_to_attribute:
+      local_port: ibmi.net.local_port
+      port_name: ibmi.net.port_name
+
+  - name: "ibmi.netstat.listener_total"
+    channel: "ibmi_netstat_listener_total"
+    display_name: "Listeners Total"
+    unit: "#"
+    category: "network"
+    otel:
+      name: senhub.ibmi.netstat.listeners
+      unit: "{listener}"
+      type: gauge
+
+  - name: "ibmi.netstat.interface_up"
+    channel: "ibmi_netstat_interface_up"
+    display_name: "Interface — {address}"
+    unit: "#"
+    category: "network"
+    multi_instance_labels: ["address", "line_description"]
+    otel:
+      name: senhub.ibmi.netstat.interface.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      address: ibmi.net.address
+      line_description: ibmi.net.line_description
+
+  - name: "ibmi.netstat.interface_mtu"
+    channel: "ibmi_netstat_interface_mtu"
+    display_name: "Interface MTU — {address}"
+    unit: "B"
+    category: "network"
+    multi_instance_labels: ["address"]
+    otel:
+      name: senhub.ibmi.netstat.interface.mtu
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      address: ibmi.net.address
+
+  # ============================================================
+  # HTTP server
+  # ============================================================
+  - name: "ibmi.http_server.active_threads"
+    channel: "ibmi_http_active_threads"
+    display_name: "HTTP Active Threads — {server_name}"
+    unit: "#"
+    category: "network"
+    multi_instance_labels: ["server_name"]
+    otel:
+      name: senhub.ibmi.http_server.threads.active
+      unit: "{thread}"
+      type: gauge
+    tag_to_attribute:
+      server_name: ibmi.http.server_name
+
+  - name: "ibmi.http_server.idle_threads"
+    channel: "ibmi_http_idle_threads"
+    display_name: "HTTP Idle Threads — {server_name}"
+    unit: "#"
+    category: "network"
+    multi_instance_labels: ["server_name"]
+    otel:
+      name: senhub.ibmi.http_server.threads.idle
+      unit: "{thread}"
+      type: gauge
+    tag_to_attribute:
+      server_name: ibmi.http.server_name
+
+  - name: "ibmi.http_server.total_responses"
+    channel: "ibmi_http_total_responses"
+    display_name: "HTTP Responses — {server_name}"
+    unit: "#"
+    category: "network"
+    multi_instance_labels: ["server_name"]
+    otel:
+      name: senhub.ibmi.http_server.responses
+      unit: "{response}"
+      type: counter
+    tag_to_attribute:
+      server_name: ibmi.http.server_name
+
+  # ============================================================
+  # Hardware resources
+  # ============================================================
+  - name: "ibmi.hardware_resource.count"
+    channel: "ibmi_hw_count"
+    display_name: "HW {category} ({status})"
+    unit: "#"
+    category: "hardware"
+    multi_instance_labels: ["category", "status"]
+    otel:
+      name: senhub.ibmi.hardware.count
+      unit: "{resource}"
+      type: gauge
+    tag_to_attribute:
+      category: ibmi.hardware.category
+      status: ibmi.hardware.status
+
+  - name: "ibmi.hardware_resource.total"
+    channel: "ibmi_hw_total"
+    display_name: "Hardware Resources Total"
+    unit: "#"
+    category: "hardware"
+    otel:
+      name: senhub.ibmi.hardware.total
+      unit: "{resource}"
+      type: gauge
+
+  - name: "ibmi.hardware_resource.non_operational_total"
+    channel: "ibmi_hw_non_operational"
+    display_name: "Non-operational HW"
+    unit: "#"
+    category: "hardware"
+    description: "Resources in any non-OPERATIONAL status"
+    otel:
+      name: senhub.ibmi.hardware.non_operational
+      unit: "{resource}"
+      type: gauge
+
+  # ============================================================
+  # User profiles
+  # ============================================================
+  - name: "ibmi.user_profile.total"
+    channel: "ibmi_users_total"
+    display_name: "User Profiles Total"
+    unit: "#"
+    category: "security"
+    otel:
+      name: senhub.ibmi.user_profile.count
+      unit: "{user}"
+      type: gauge
+
+  - name: "ibmi.user_profile.count_by_status"
+    channel: "ibmi_users_count_by_status"
+    display_name: "Users — {status}"
+    unit: "#"
+    category: "security"
+    multi_instance_labels: ["status"]
+    otel:
+      name: senhub.ibmi.user_profile.by_status
+      unit: "{user}"
+      type: gauge
+    tag_to_attribute:
+      status: ibmi.user.status
+
+  - name: "ibmi.user_profile.count_by_class"
+    channel: "ibmi_users_count_by_class"
+    display_name: "Users — class {user_class}"
+    unit: "#"
+    category: "security"
+    multi_instance_labels: ["user_class"]
+    otel:
+      name: senhub.ibmi.user_profile.by_class
+      unit: "{user}"
+      type: gauge
+    tag_to_attribute:
+      user_class: ibmi.user.class
+
+  - name: "ibmi.user_profile.failed_signon_total"
+    channel: "ibmi_users_failed_signon"
+    display_name: "Users with Failed Signons"
+    unit: "#"
+    category: "security"
+    otel:
+      name: senhub.ibmi.user_profile.failed_signons
+      unit: "{user}"
+      type: gauge
+
+  # ============================================================
+  # System values (sysval)
+  # ============================================================
+  - name: "ibmi.sysval.security_level"
+    channel: "ibmi_sysval_security_level"
+    display_name: "QSECURITY"
+    unit: "#"
+    category: "security"
+    otel:
+      name: senhub.ibmi.sysval.security_level
+      unit: "1"
+      type: gauge
+
+  - name: "ibmi.sysval.audit_level"
+    channel: "ibmi_sysval_audit_level"
+    display_name: "QAUDLVL"
+    unit: "#"
+    category: "security"
+    otel:
+      name: senhub.ibmi.sysval.audit_level
+      unit: "1"
+      type: gauge
+
+  # ============================================================
+  # Library list
+  # ============================================================
+  - name: "ibmi.library_list.position"
+    channel: "ibmi_liblist_position"
+    display_name: "Library {library} ({type})"
+    unit: "#"
+    category: "config"
+    multi_instance_labels: ["library", "type"]
+    otel:
+      name: senhub.ibmi.library_list.position
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      library: ibmi.library.name
+      type: ibmi.library.type
+
+  # ============================================================
+  # License
+  # ============================================================
+  - name: "ibmi.license.licensed_user_count"
+    channel: "ibmi_license_user_count"
+    display_name: "Licensed Users — {product_id}"
+    unit: "#"
+    category: "config"
+    multi_instance_labels: ["product_id", "feature_id"]
+    otel:
+      name: senhub.ibmi.license.licensed_users
+      unit: "{user}"
+      type: gauge
+    tag_to_attribute:
+      product_id: ibmi.license.product_id
+      feature_id: ibmi.license.feature_id
+
+  - name: "ibmi.license.usage_limit"
+    channel: "ibmi_license_usage_limit"
+    display_name: "License Usage Limit — {product_id}"
+    unit: "#"
+    category: "config"
+    multi_instance_labels: ["product_id", "feature_id"]
+    otel:
+      name: senhub.ibmi.license.usage_limit
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      product_id: ibmi.license.product_id
+      feature_id: ibmi.license.feature_id
+
+  # ============================================================
+  # PTF groups (compliance)
+  # ============================================================
+  - name: "ibmi.ptf_group.installed"
+    channel: "ibmi_ptf_group_installed"
+    display_name: "PTF Group — {group}"
+    unit: "#"
+    category: "compliance"
+    multi_instance_labels: ["group"]
+    otel:
+      name: senhub.ibmi.ptf_group.installed
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      group: ibmi.ptf.group
+
+  - name: "ibmi.ptf_group.level"
+    channel: "ibmi_ptf_group_level"
+    display_name: "PTF Group Level — {group}"
+    unit: "#"
+    category: "compliance"
+    multi_instance_labels: ["group"]
+    otel:
+      name: senhub.ibmi.ptf_group.level
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      group: ibmi.ptf.group
+
+  # ============================================================
+  # Watch (compliance)
+  # ============================================================
+  - name: "ibmi.watch.session_active"
+    channel: "ibmi_watch_session"
+    display_name: "Watch Session — {session_id}"
+    unit: "#"
+    category: "compliance"
+    multi_instance_labels: ["session_id", "program"]
+    otel:
+      name: senhub.ibmi.watch.session_active
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      session_id: ibmi.watch.session_id
+      program: ibmi.watch.program
+
+  # ============================================================
+  # Events (QSYSOPR, QHST, audit) — log conduit
+  # ============================================================
+  - name: "ibmi.message_queue.event"
+    channel: "ibmi_msgq_event"
+    display_name: "QSYSOPR Message"
+    unit: "#"
+    category: "events"
+    otel:
+      skip: true
+      reason: "Event conduit — relayed QSYSOPR message. Not meaningful as a Prometheus metric. Future: OTLP log export in V2."
+
+  - name: "ibmi.history_log.event"
+    channel: "ibmi_history_event"
+    display_name: "QHST Event"
+    unit: "#"
+    category: "events"
+    otel:
+      skip: true
+      reason: "Event conduit — relayed QHST history event. Not meaningful as a Prometheus metric. Future: OTLP log export in V2."
+
+  - name: "ibmi.audit_journal.event"
+    channel: "ibmi_audit_event"
+    display_name: "Audit Event"
+    unit: "#"
+    category: "events"
+    otel:
+      skip: true
+      reason: "Event conduit — relayed QAUDJRN entry. Not meaningful as a Prometheus metric. Future: OTLP log export in V2."
+
+  # ============================================================
+  # Probe self-observability
+  # ============================================================
+  - name: "ibmi.collector.success_total"
+    channel: "ibmi_collector_success"
+    display_name: "Collector Success — {collector}"
+    unit: "#"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    otel:
+      name: senhub.ibmi.collector.success
+      unit: "{collection}"
+      type: counter
+    tag_to_attribute:
+      collector: ibmi.collector
+
+  - name: "ibmi.collector.failure_total"
+    channel: "ibmi_collector_failure"
+    display_name: "Collector Failure — {collector}"
+    unit: "#"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    otel:
+      name: senhub.ibmi.collector.failure
+      unit: "{collection}"
+      type: counter
+    tag_to_attribute:
+      collector: ibmi.collector
+
+  - name: "ibmi.collector.last_duration_ms"
+    channel: "ibmi_collector_duration"
+    display_name: "Collector Duration — {collector}"
+    unit: "ms"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    otel:
+      name: senhub.ibmi.collector.last_duration
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      collector: ibmi.collector
+
+  - name: "ibmi.collector.last_success_timestamp"
+    channel: "ibmi_collector_last_success"
+    display_name: "Collector Last Success — {collector}"
+    unit: "s"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    otel:
+      name: senhub.ibmi.collector.last_success_timestamp
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      collector: ibmi.collector
+
+tag_metadata:
+  # Resource identifiers
+  asp_number:
+    type: resource
+    label: "ASP Number"
+  asp_type:
+    type: resource
+    label: "ASP Type"
+  job_name:
+    type: resource
+    label: "Job Name"
+  job_user:
+    type: resource
+    label: "Job User"
+  subsystem:
+    type: resource
+    label: "Subsystem"
+  internal_job_id:
+    type: resource
+    label: "Internal Job ID"
+  queue_library:
+    type: resource
+    label: "Queue Library"
+  queue_name:
+    type: resource
+    label: "Queue Name"
+  pool_id:
+    type: resource
+    label: "Memory Pool ID"
+  pool_name:
+    type: resource
+    label: "Memory Pool Name"
+  unit_number:
+    type: resource
+    label: "Disk Unit"
+  device_name:
+    type: resource
+    label: "Device"
+  user:
+    type: resource
+    label: "User"
+  asp:
+    type: resource
+    label: "ASP"
+  table_schema:
+    type: resource
+    label: "Schema"
+  table_name:
+    type: resource
+    label: "Table"
+  key_columns:
+    type: resource
+    label: "Key Columns"
+  journal:
+    type: resource
+    label: "Journal"
+  journal_library:
+    type: resource
+    label: "Journal Library"
+  receiver:
+    type: resource
+    label: "Journal Receiver"
+  receiver_library:
+    type: resource
+    label: "Receiver Library"
+  local_port:
+    type: resource
+    label: "Local Port"
+  port_name:
+    type: resource
+    label: "Port Name"
+  address:
+    type: resource
+    label: "Network Address"
+  line_description:
+    type: resource
+    label: "Line Description"
+  server_name:
+    type: resource
+    label: "HTTP Server"
+  library:
+    type: resource
+    label: "Library"
+  product_id:
+    type: resource
+    label: "Product ID"
+  feature_id:
+    type: resource
+    label: "Feature ID"
+  group:
+    type: resource
+    label: "PTF Group"
+  session_id:
+    type: resource
+    label: "Watch Session"
+  program:
+    type: resource
+    label: "Program"
+  collector:
+    type: resource
+    label: "Collector"
+  # Categorical / enum dimensions
+  job_type:
+    type: category
+    label: "Job Type"
+  status:
+    type: category
+    label: "Status"
+  state:
+    type: category
+    label: "State"
+  category:
+    type: category
+    label: "HW Category"
+  user_class:
+    type: category
+    label: "User Class"
+  tcp_state:
+    type: category
+    label: "TCP State"
+  protocol:
+    type: category
+    label: "Protocol"
+  type:
+    type: category
+    label: "Type"
+  # System tags (injected by framework)
+  host:
+    type: resource
+    label: "Host"
+  os:
+    type: resource
+    label: "Operating System"
+  platform:
+    type: resource
+    label: "Platform"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"

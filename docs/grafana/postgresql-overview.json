@@ -1,0 +1,121 @@
+{
+  "uid": "senhub-postgresql-overview",
+  "title": "SenHub PostgreSQL — Overview",
+  "tags": ["senhub", "agents", "postgresql", "postgres", "database"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(senhub_db_up_ratio{db_system_name=\"postgresql\"}, instance)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "Health", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "type": "stat", "id": 10, "title": "Up",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "min(senhub_db_up_ratio{db_system_name=\"postgresql\",instance=~\"$instance\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }] } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background" }
+    },
+    {
+      "type": "stat", "id": 11, "title": "Uptime",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "max(senhub_db_postgresql_uptime_seconds{db_system_name=\"postgresql\",instance=~\"$instance\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value" }
+    },
+    {
+      "type": "stat", "id": 12, "title": "Connections used",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "max(senhub_db_connection_utilization_ratio{db_system_name=\"postgresql\",instance=~\"$instance\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.9 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background" }
+    },
+    {
+      "type": "stat", "id": 13, "title": "Replication health",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "min(senhub_db_replication_health_ratio{db_system_name=\"postgresql\",instance=~\"$instance\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "UNHEALTHY", "color": "red" }, "1": { "text": "HEALTHY", "color": "green" } } }] } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background" }
+    },
+    {
+      "type": "stat", "id": 14, "title": "Idle in transaction",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_postgresql_backends{db_system_name=\"postgresql\",state=\"idle_in_transaction\",instance=~\"$instance\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background" }
+    },
+    {
+      "type": "stat", "id": 15, "title": "Last WAL archived age",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "max(senhub_db_postgresql_archiver_last_archived_age_seconds{db_system_name=\"postgresql\",instance=~\"$instance\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 300 }, { "color": "red", "value": 1800 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background" }
+    },
+    { "type": "row", "id": 2, "title": "Connections", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 20, "title": "Backends by state",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (instance, state) (senhub_postgresql_backends{db_system_name=\"postgresql\",instance=~\"$instance\"})", "legendFormat": "{{state}} — {{instance}}" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 30, "stacking": { "mode": "normal" } } } }
+    },
+    {
+      "type": "timeseries", "id": 21, "title": "Long-running transaction age",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "max by (instance) (senhub_db_postgresql_long_running_xact_seconds{db_system_name=\"postgresql\",instance=~\"$instance\"})", "legendFormat": "{{instance}}" }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    { "type": "row", "id": 3, "title": "Workload", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 30, "title": "Transactions / sec (commits + rollbacks)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (instance) (rate(senhub_postgresql_commits_total{db_system_name=\"postgresql\",instance=~\"$instance\"}[5m]))", "legendFormat": "committed — {{instance}}" },
+        { "refId": "B", "expr": "sum by (instance) (rate(senhub_postgresql_rollbacks_total{db_system_name=\"postgresql\",instance=~\"$instance\"}[5m]))", "legendFormat": "rolled back — {{instance}}" }
+      ]
+    },
+    {
+      "type": "timeseries", "id": 31, "title": "Deadlocks / minute",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum by (instance) (rate(senhub_postgresql_deadlocks_total{db_system_name=\"postgresql\",instance=~\"$instance\"}[5m])) * 60", "legendFormat": "{{instance}}" }]
+    },
+    { "type": "row", "id": 4, "title": "Storage & bloat", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 40, "title": "Buffer hit ratio",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_db_postgresql_buffer_hit_ratio{db_system_name=\"postgresql\",instance=~\"$instance\"}", "legendFormat": "{{instance}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } }
+    },
+    {
+      "type": "table", "id": 41, "title": "Top tables by bloat ratio",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "topk(10, senhub_db_postgresql_bloat_ratio{db_system_name=\"postgresql\",instance=~\"$instance\"})", "instant": true, "format": "table" }]
+    }
+  ]
+}
