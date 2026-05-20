@@ -381,7 +381,10 @@ func checkConfig(configPath string) {
 // stderr — the goal is "fits in a CI log".
 func showConfig(args []string) {
 	mode := configuration.ShowResolved
-	configPath := "./agent-config.yaml"
+	// Empty string means "use the OS-canonical default" — resolved
+	// below via GetAbsoluteConfigPath. An explicit positional path
+	// argument overrides it.
+	configPath := ""
 
 	for _, a := range args {
 		switch a {
@@ -403,11 +406,14 @@ func showConfig(args []string) {
 		}
 	}
 
-	// Resolve to absolute so error messages and the user's intent
-	// stay aligned (working-directory drift on Windows services has
-	// bitten us before — see localConfiguration.go comment).
-	absPath, err := filepath.Abs(configPath)
-	if err == nil {
+	// Resolve to the OS-canonical absolute path when no explicit path
+	// was given, mirroring what `agent run` / `agent start` use. The
+	// pre-0.2.0 default was the working-directory-relative
+	// ./agent-config.yaml, which diverged from where the agent
+	// actually reads its config.
+	if resolved, err := cliArgs.GetAbsoluteConfigPath(configPath); err == nil {
+		configPath = resolved
+	} else if absPath, absErr := filepath.Abs(configPath); absErr == nil {
 		configPath = absPath
 	}
 

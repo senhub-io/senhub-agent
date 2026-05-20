@@ -366,7 +366,7 @@ probes:
 #     -d '{"login":{"username":"user","password":"pass"}}'
 #
 # Enable debug logging:
-#   ./agent run --authentication-key KEY --verbose --debug-modules probe.netscaler
+#   ./agent run --verbose --debug-modules probe.netscaler
 #
 # Check collected metrics:
 #   curl http://localhost:8080/api/{agentkey}/debug/cache | grep netscaler

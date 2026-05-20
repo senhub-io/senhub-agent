@@ -207,7 +207,7 @@ Diagnose system issues:
 **Check probe status:**
 ```bash
 # View agent logs with CPU probe debugging
-./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.cpu
+./agent run --verbose --debug-modules probe.cpu
 ```
 
 **Verify probe is enabled:**
@@ -241,7 +241,7 @@ cat agent-config.yaml | grep -A5 "name: cpu"
 Run the agent with appropriate permissions:
 ```bash
 # Option 1: Run as root
-sudo ./agent run --authentication-key YOUR_KEY
+sudo ./agent run
 
 # Option 2: Grant capabilities (Linux)
 sudo setcap cap_sys_ptrace=eip ./agent
@@ -362,7 +362,7 @@ For issues or questions:
 
 1. **Enable debug logging:**
    ```bash
-   ./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.cpu
+   ./agent run --verbose --debug-modules probe.cpu
    ```
 
 2. **Check probe health:**

@@ -78,13 +78,13 @@ expfmt parser in CI. Live validated against VictoriaMetrics.
 ### Shared Configuration Template (0.1.70-beta)
 **Status**: ✅ COMPLETED
 
-**Objective**: Eliminate duplication of probe configuration examples between offline and online modes
+**Objective**: Eliminate duplication of probe configuration examples across configuration paths
 
 **Implementation**:
 - Created `config_template.go` with shared ProbeExamplesTemplate constant
 - Extracted 200+ lines of duplicated probe examples
 - Single source of truth for all probe documentation
-- Used by both LocalConfiguration and RemoteConfiguration
+- Used by LocalConfiguration
 
 **Benefits**:
 - Adding new probe = update 1 file only (was 2 files)
@@ -92,21 +92,21 @@ expfmt parser in CI. Live validated against VictoriaMetrics.
 - Easier maintenance
 - -207 lines of code duplication eliminated
 
-### Offline Mode Implementation
+### Standalone Deployment Implementation
 **Status**: ✅ COMPLETED
 
-**Objective**: Enable zero-configuration deployment without SenHub platform connectivity
+**Objective**: Zero-configuration local deployment
 
 **Features Implemented**:
 - Local Configuration System with YAML-based config
 - Automatic agent key generation
 - HTTPS/TLS support with auto-generated certificates
-- Comprehensive CLI for offline installation
+- Comprehensive CLI for installation and management
 - Local dashboard with system overview and API explorer
 - Multiple API formats (PRTG, Nagios, SenHub, Prometheus)
 - Certificate management with auto-renewal
 
-**Documentation**: See `/docs/user-guide/` for complete offline mode guides
+**Documentation**: See `/docs/user-guide/` for complete deployment guides
 
 ### Universal Configuration API
 **Status**: ✅ COMPLETED
@@ -338,7 +338,7 @@ expfmt parser in CI. Live validated against VictoriaMetrics.
 curl http://localhost:8080/api/YOUR_AGENT_KEY/debug/logs
 
 # Enable debug for specific modules
-./agent run --authentication-key YOUR_KEY --verbose --debug-modules strategy.http,cache
+./agent run --verbose --debug-modules strategy.http,cache
 ```
 
 **TODO**:
@@ -377,7 +377,7 @@ curl http://localhost:8080/api/YOUR_AGENT_KEY/debug/logs
 **Workaround**:
 ```powershell
 # Reinstall with absolute config path
-senhub-agent_windows_amd64.exe install --offline --config-path "C:\Program Files\Senhub\Senhub Agent\agent-config.yaml"
+senhub-agent.exe install --config-path "C:\Program Files\Senhub\Senhub Agent\agent.yaml"
 ```
 
 ## Development Session Info
