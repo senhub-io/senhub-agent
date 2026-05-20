@@ -199,8 +199,14 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		// expects to find its YAML configuration on disk; the
 		// install path generates a default one if missing, so a
 		// missing file here means run was invoked before install.
-		if _, err := os.Stat(args.ConfigPath); os.IsNotExist(err) {
-			fmt.Printf("Error: Configuration file not found: %s\n", args.ConfigPath)
+		//
+		// We check the RESOLVED path (configPath), not args.ConfigPath
+		// — the latter is empty when the operator runs `agent run`
+		// with no --config-path flag, and os.Stat("") always returns
+		// ENOENT, which would reject a perfectly valid install at the
+		// OS-canonical location.
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
+			fmt.Printf("Error: Configuration file not found: %s\n", configPath)
 			fmt.Printf("\nInstall the agent first to generate the configuration:\n")
 			fmt.Printf("    %s install\n", os.Args[0])
 			fmt.Printf("\nThen you can run the agent:\n")
@@ -208,6 +214,10 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			os.Exit(1)
 		}
 
+		// Pin the resolved absolute path so every downstream consumer
+		// (logger, LocalConfiguration) sees the same file the
+		// existence check above validated.
+		args.ConfigPath = configPath
 		runAgent(args)
 		return
 	}

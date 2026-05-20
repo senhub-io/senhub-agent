@@ -247,7 +247,7 @@ probes:
 **Check probe status:**
 ```bash
 # View agent logs with WebApp probe debugging
-./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.webapp
+./agent run --verbose --debug-modules probe.webapp
 ```
 
 **Verify probe is enabled:**
@@ -312,7 +312,7 @@ ping -n 4 app.example.com  # Windows
 **Solution:**
 ```bash
 # Option 1: Run agent as root
-sudo ./agent run --authentication-key YOUR_KEY
+sudo ./agent run
 
 # Option 2: Grant raw socket capabilities (Linux)
 sudo setcap cap_net_raw=eip ./agent
@@ -610,7 +610,7 @@ For issues or questions:
 
 1. **Enable debug logging:**
    ```bash
-   ./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.webapp
+   ./agent run --verbose --debug-modules probe.webapp
    ```
 
 2. **Test connectivity manually:**

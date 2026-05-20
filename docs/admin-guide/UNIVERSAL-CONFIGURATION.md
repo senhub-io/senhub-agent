@@ -433,7 +433,7 @@ Enable debug logging for detailed validation information:
 
 ```bash
 # Start agent with debug logging for HTTP strategy
-./agent run --authentication-key YOUR_KEY --verbose --debug-modules strategy.http
+./agent run --verbose --debug-modules strategy.http
 ```
 
 This will provide detailed logs for all Universal Configuration API operations, including validation steps and error details.

@@ -246,7 +246,12 @@ func (a *autoUpdate) doUpdate(downloadURL string) error {
 		Str("download_url", downloadURL).
 		Msg("Downloading update archive")
 
-	resp, err := http.Get(downloadURL) // #nosec G107 - URL is validated for HTTPS scheme above
+	// Use the retry-wrapped client (a.httpClient), not http.DefaultClient:
+	// the default client has no timeout, so a CDN that accepts the
+	// connection but never sends bytes would hang this goroutine
+	// forever — and since the caller os.Exit(0)s on success, a hung
+	// download silently stalls the hourly update check with no log.
+	resp, err := a.httpClient.Get(downloadURL) // #nosec G107 - URL is validated for HTTPS scheme above
 	if err != nil {
 		return fmt.Errorf("failed to download update: %w", err)
 	}
