@@ -80,6 +80,21 @@ func TestParseConfig_ProtocolHTTP(t *testing.T) {
 	}
 }
 
+func TestParseConfig_ProtocolHTTPProtobufAlias(t *testing.T) {
+	// The OTel spec env var spelling `http/protobuf` is accepted and
+	// normalized to the file-config-ergonomic `http`.
+	cfg, err := ParseConfig(map[string]interface{}{
+		"endpoint": "otlp.example.com:4318",
+		"protocol": "http/protobuf",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Protocol != "http" {
+		t.Errorf("Protocol=%q, want http (normalized from http/protobuf)", cfg.Protocol)
+	}
+}
+
 func TestParseConfig_RejectsBadProtocol(t *testing.T) {
 	_, err := ParseConfig(map[string]interface{}{
 		"endpoint": "x:4317",
