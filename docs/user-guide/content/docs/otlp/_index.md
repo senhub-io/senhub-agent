@@ -298,6 +298,48 @@ The collector's own self-metrics (`otelcol_exporter_sent_*`,
 `otelcol_receiver_accepted_*`) cover the OTLP transport health from
 the receiver side.
 
+## Monitoring the OTLP pipeline
+
+The agent maintains its own snapshot of OTLP pipeline counters that
+you can read without scraping Prometheus, via three surfaces:
+
+- **CLI** — `senhub-agent status --otlp` appends a four-section block
+  (Pipeline / Store & Export / Checkpoint / Parallel) to the standard
+  status view. See the [CLI reference]({{< relref "/docs/cli" >}}#status).
+- **Web dashboard** — when the HTTP strategy is enabled the dashboard
+  renders an **OTLP Pipeline** card with the same four sections,
+  refreshed every 30 seconds. See [Web Interface]({{< relref "/docs/web-interface" >}}#otlp-pipeline-card).
+- **JSON endpoint** — `GET /api/{agentkey}/info/otlp` returns the same
+  data as a single JSON snapshot. Useful for custom dashboards or
+  external alerting. The field reference lives in
+  [OTLP observability](/admin-guide/OTLP-OBSERVABILITY.md) (admin guide).
+
+### What to look at
+
+| Symptom | What to check |
+|---|---|
+| Operator dashboards lag the agent by minutes | `Export last` and `Export mean` durations — sustained values close to the configured `timeout` (default 60 s) mean the sink is the bottleneck. |
+| Series are missing without an explicit error | `Dropped` total and its `by_reason` breakdown. `probe_cardinality` = the per-probe budget was hit; `store_cap` = the global cap; `memory_soft_limit`/`memory_hard_limit` = the agent shed load to stay under its memory budget. |
+| Recovery after a restart looks slow | `Checkpoint.Restored entries` — if 0 with persistence enabled, the checkpoint wasn't found or failed to parse (check `Errors` by stage). |
+| Throughput plateaus despite headroom on the collector | `Parallel.Sub-batches` — value of 1 means the single-batch path; > 1 means the per-probe fan-out is firing. |
+
+### Cardinality controls
+
+If `Dropped by probe_cardinality` keeps climbing, lift the per-probe
+budget in your strategy YAML:
+
+```yaml
+otlp:
+  endpoint: "otel-collector.internal:4317"
+  max_active_series_per_probe: 20000   # default 10000
+  max_store_size: 100000               # default 50000 (global cap)
+```
+
+Both knobs are gauges of last resort — they protect the agent's memory
+under runaway-cardinality conditions. Raise them only when you know
+what's generating the series, otherwise the agent will happily eat
+RAM tracking churning timeseries.
+
 ## Backward compatibility
 
 - **Existing storages** (PRTG, Nagios, SenHub, HTTP/Prometheus) are

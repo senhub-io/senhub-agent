@@ -49,6 +49,19 @@ This page gives you a quick overview of the agent's health and activity.
 
 ![Agent dashboard overview](/images/dashboard-hero.webp "Main dashboard showing probe status, cache size and uptime")
 
+#### OTLP Pipeline card
+
+When the agent is configured with the [OTLP push strategy]({{< relref "/docs/otlp" >}}), the dashboard renders a dedicated **OTLP Pipeline** card next to the probe list with four sub-sections:
+
+- **Pipeline** — total metrics / logs pushed since boot, export errors, dropped data-points broken down by reason (`probe_cardinality`, `store_cap`, `memory_soft_limit`, `memory_hard_limit`).
+- **Store & Export** — current in-memory store size, log buffer fill ratio, last and mean export duration.
+- **Checkpoint** — when persistence is enabled: file size, time since the last save, entries restored at boot, errors by stage.
+- **Parallel export** — number of sub-batches the last push fanned out across.
+
+The card is hidden when the agent has no OTLP strategy, so older deployments render unchanged. Values refresh on the dashboard's 30-second cycle.
+
+For an operator-level reference of every field exposed by this card, see [OTLP observability](/admin-guide/OTLP-OBSERVABILITY.md) in the admin guide.
+
 ### Sensor Builder
 
 The Sensor Builder provides an interactive interface to:

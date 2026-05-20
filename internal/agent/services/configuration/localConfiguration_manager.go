@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"gopkg.in/yaml.v2"
 	"senhub-agent.go/internal/agent/cliArgs"
 )
 
@@ -30,16 +29,19 @@ func (lc *LocalConfiguration) loadOrCreateConfiguration() error {
 	return lc.loadConfiguration()
 }
 
-// loadConfiguration loads configuration from YAML file
+// loadConfiguration loads configuration from disk.
+//
+// Since Sprint A this delegates to LoadFromDisk which transparently
+// handles both the legacy monolithic agent-config.yaml AND the new
+// multi-file layout (agent.yaml + probes.d/ + strategies.d/),
+// applying ${env:..} / ${file:..} substitution on the merged result.
+// Backward compatibility for existing single-file installs is
+// preserved by content-based detection inside LoadFromDisk — no
+// operator action needed to keep an older config working.
 func (lc *LocalConfiguration) loadConfiguration() error {
-	data, err := os.ReadFile(lc.configPath)
+	config, err := LoadFromDisk(lc.configPath, lc.logger)
 	if err != nil {
-		return fmt.Errorf("failed to read config file: %w", err)
-	}
-
-	var config LocalConfigurationData
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return fmt.Errorf("failed to parse YAML config: %w", err)
+		return err // already wrapped with the offending path
 	}
 
 	// Check config version
@@ -83,16 +85,14 @@ func (lc *LocalConfiguration) loadConfiguration() error {
 	return nil
 }
 
-// createDefaultConfiguration creates a default configuration file
+// createDefaultConfiguration creates a default configuration file.
+// Always generates a fresh UUID for the agent key — pre-0.2.0 the
+// caller could pass one in via --authentication-key, but that flag
+// has been removed alongside online mode.
 func (lc *LocalConfiguration) createDefaultConfiguration() error {
-	// Generate agent key if not provided
-	agentKey := lc.args.AuthenticationKey
-	if agentKey == "" {
-		var err error
-		agentKey, err = lc.generateOfflineAgentKey()
-		if err != nil {
-			return fmt.Errorf("failed to generate agent key: %w", err)
-		}
+	agentKey, err := lc.generateOfflineAgentKey()
+	if err != nil {
+		return fmt.Errorf("failed to generate agent key: %w", err)
 	}
 
 	// Create default configuration
