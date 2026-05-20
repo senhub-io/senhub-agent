@@ -5,18 +5,27 @@ weight: 3
 
 # Configuration
 
-SenHub Agent uses a YAML configuration file (`agent-config.yaml`) to define monitoring probes, data storage, and agent settings. Changes to this file are detected automatically and applied without restarting the service.
+SenHub Agent uses YAML configuration to define monitoring probes, data storage, and agent settings. Changes are detected automatically and applied without restarting the service.
+
+Two layouts are supported and the agent auto-detects which one you use:
+
+- **Single file** — one `agent.yaml` (or legacy `agent-config.yaml`) with everything, used by the installer.
+- **Multi-file** — `agent.yaml` for global settings plus `probes.d/` and `strategies.d/` directories for fragments (introduced in 0.1.93). Cleaner once you start managing more than a handful of probes or sinks. See [Multi-File Configuration Layout](#multi-file-configuration-layout) below.
 
 ## Configuration File Location
 
-The configuration file `agent-config.yaml` is located in the agent's installation directory:
+The default configuration file is `agent.yaml` at the OS canonical path:
 
-- **Windows**: Same directory as the agent binary (e.g., `C:\SenHub\agent-config.yaml`)
-- **Linux**: Same directory as the agent binary (e.g., `/opt/senhub/bin/agent-config.yaml`)
+| OS | Default path |
+|---|---|
+| **Windows** | `%ProgramData%\SenHub\agent.yaml` |
+| **Linux** | `/etc/senhub-agent/agent.yaml` |
+| **macOS** | `/usr/local/etc/senhub-agent/agent.yaml` |
 
-You can specify a custom path during installation:
+Legacy `agent-config.yaml` files continue to work unchanged. You can override the path at install time:
+
 ```bash
-senhub-agent install --config-path /etc/senhub/agent-config.yaml
+senhub-agent install --config-path /etc/senhub-agent/agent.yaml
 ```
 
 ## Configuration Structure Overview
@@ -369,7 +378,7 @@ probes:
 
 ## Applying Configuration Changes
 
-The agent watches the configuration file for changes. When you modify `agent-config.yaml`, the changes are detected and applied automatically within a few seconds. **No service restart is required.**
+The agent watches the configuration file for changes. When you modify `agent.yaml` (or `agent-config.yaml`), the changes are detected and applied automatically within a few seconds. **No service restart is required.**
 
 This applies to:
 
@@ -509,6 +518,135 @@ Checking configuration: C:\SenHub\agent-config.yaml
 Configuration is valid.
 ```
 
+## Multi-File Configuration Layout
+
+Starting from version 0.1.93, the configuration can be split across multiple files. This is optional: an existing monolithic `agent-config.yaml` continues to work unchanged.
+
+### Per-OS default paths
+
+The agent looks for the multi-file layout in the **same directory as `agent.yaml`** (or `agent-config.yaml`). The defaults match how the installer lays things out per OS:
+
+| OS | `agent.yaml` | `probes.d/` | `strategies.d/` |
+|---|---|---|---|
+| **Linux (systemd)** | `/etc/senhub-agent/agent.yaml` | `/etc/senhub-agent/probes.d/` | `/etc/senhub-agent/strategies.d/` |
+| **Linux (tarball)** | `/opt/senhub/bin/agent.yaml` | `/opt/senhub/bin/probes.d/` | `/opt/senhub/bin/strategies.d/` |
+| **Windows** | `C:\SenHub\agent.yaml` | `C:\SenHub\probes.d\` | `C:\SenHub\strategies.d\` |
+| **macOS** | `/usr/local/senhub/agent.yaml` | `/usr/local/senhub/probes.d/` | `/usr/local/senhub/strategies.d/` |
+
+Override any of these by passing `--config-path` to the agent — the directories `probes.d/` and `strategies.d/` are always resolved next to whichever `agent.yaml` is loaded.
+
+### Layout
+
+```
+<config dir>/
+├── agent.yaml                     # Global settings only (no probes/storage)
+├── probes.d/
+│   ├── 01-system.yaml             # YAML array of probe configs
+│   ├── 10-citrix.yaml
+│   └── 20-netscaler.yaml
+└── strategies.d/
+    ├── 01-http.yaml               # One strategy per file
+    ├── 02-prometheus.yaml
+    └── 10-otlp.yaml
+```
+
+- Files are loaded in **alphabetical order** within each directory. The two-digit prefix is a convention, not a requirement — use it to control merge order.
+- Files matching `.*` (dotfiles) or `*.disabled` are **skipped**. Disable a fragment by renaming it: `mv 20-citrix.yaml 20-citrix.yaml.disabled`.
+- An **empty** `probes.d/` or `strategies.d/` directory is valid (zero entries, no error).
+- Each file in `strategies.d/` has **exactly one** top-level key, which is the strategy name. Duplicate strategy across files: later file wins, a WARN log surfaces the override.
+
+### `agent.yaml` example (global only)
+
+```yaml
+config_version: 2
+agent:
+  key: "550e8400-e29b-41d4-a716-446655440000"
+  mode: offline
+  license: "${file:/etc/senhub/license.jwt}"
+cache:
+  retention_minutes: 5
+auto_update:
+  enabled: false
+```
+
+### `probes.d/01-system.yaml` example
+
+```yaml
+- name: CPU
+  type: cpu
+  params:
+    interval: 30
+- name: Memory
+  type: memory
+  params:
+    interval: 30
+```
+
+### `strategies.d/01-http.yaml` example
+
+```yaml
+http:
+  bind_address: "127.0.0.1"
+  port: 8080
+  endpoints: [prtg, nagios, prometheus, web]
+```
+
+### Backward compatibility
+
+If `agent.yaml` (or `agent-config.yaml`) contains a top-level `probes:` or `storage:` block, the agent uses the **legacy monolithic** path and **ignores** `probes.d/` and `strategies.d/`. A WARN log surfaces the situation so you can migrate at your own pace:
+
+> Legacy monolithic config detected (top-level probes:/storage: present) — *.d/ directories are IGNORED. Migrate by trimming probes and storage out of the top file.
+
+To migrate: remove the inline `probes:` and `storage:` blocks from `agent.yaml`, redistribute their entries across `probes.d/` and `strategies.d/`, restart the agent.
+
+## Environment and File Substitution
+
+String values in any configuration file can reference environment variables or file contents:
+
+| Syntax | Resolves to |
+|---|---|
+| `${env:VAR}` | Value of `$VAR`, or empty string if unset |
+| `${env:VAR:-fallback}` | Value of `$VAR`, or `fallback` if unset |
+| `${file:/path/to/file}` | File contents, **trimmed of whitespace**. Error if the file is missing. |
+| `${file:/path:-fallback}` | File contents, or `fallback` if the file is missing |
+| `$$` | Literal `$` character (escape) |
+
+Substitution applies to **values** only — never to YAML keys. References inside `params:` blocks of probes and strategies are also resolved.
+
+### Examples
+
+```yaml
+agent:
+  license: "${file:/etc/senhub/license.jwt}"
+
+probes:
+  - name: db
+    type: mysql
+    params:
+      host: "${env:DB_HOST:-127.0.0.1}"
+      username: monitor
+      password: "${file:/etc/senhub/secrets/db_password}"
+```
+
+A missing required reference (file not found, no default) **aborts agent boot** with the offending reference in the error message. An unset environment variable without a default substitutes to an empty string and does **not** abort — match POSIX shell behaviour.
+
+## Inspecting the merged configuration
+
+The `agent config show` command prints the final, merged configuration as YAML with map keys sorted alphabetically:
+
+```bash
+senhub-agent config show              # default: --resolved
+senhub-agent config show --resolved   # references substituted
+senhub-agent config show --raw        # references preserved
+senhub-agent config show --redact     # secrets masked with ***
+```
+
+- `--resolved` (default): the same configuration the agent boots with — `${env:..}` / `${file:..}` resolved against the current environment and filesystem.
+- `--raw`: the merged configuration BEFORE substitution. Useful for auditing the layout (which files contributed which entries) before comparing against the resolved output.
+- `--redact`: resolved configuration but with values that came from `${file:..}` AND any value whose YAML key matches `(?i)(key|token|password|secret)` masked with `***`. Safe to copy into a support ticket or commit to source control.
+
+Output is deterministic — two runs of the same input produce byte-identical output, suitable for `diff` and CI checks.
+
 ## Security Recommendations
 
 - Protect configuration file permissions: Windows (Administrators only), Linux (`chmod 600`)
@@ -516,6 +654,7 @@ Configuration is valid.
 - Use HTTPS in production for the agent API
 - Never commit configuration files containing passwords to version control
 - Bind the agent to a specific network interface (`bind_address: "127.0.0.1"`) when remote access is not needed
+- For secrets, prefer `${file:/path/to/secret}` references over inline values — file permissions limit blast radius and `agent config show --redact` masks them safely
 
 ## Troubleshooting Configuration
 
@@ -524,7 +663,7 @@ Configuration is valid.
 Check agent logs for errors:
 
 - Windows: `%ProgramData%\SenHub\logs\senhubagent.log`
-- Linux: `/var/log/senhub/senhubagent.log`
+- Linux: `/var/log/senhub-agent/senhubagent.log`
 
 If there is a YAML syntax error, the agent keeps the previous valid configuration and logs the error.
 

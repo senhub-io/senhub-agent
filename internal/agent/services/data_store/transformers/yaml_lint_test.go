@@ -28,11 +28,11 @@ func TestYAMLDefinitions_HaveProbeSideUnitForOtelConvertibleMetrics(t *testing.T
 	}
 
 	type violation struct {
-		probe      string
-		metric     string
-		probeUnit  string
-		otelUnit   string
-		hint       string
+		probe     string
+		metric    string
+		probeUnit string
+		otelUnit  string
+		hint      string
 	}
 	var violations []violation
 

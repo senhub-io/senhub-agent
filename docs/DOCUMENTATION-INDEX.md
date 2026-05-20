@@ -12,7 +12,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 
 ### For New Users
 1. **[Quick Start Guide (5 min)](user-guide/QUICK-START-OFFLINE.md)** - Get your agent running in 5 minutes
-2. **[Offline Mode Guide](user-guide/OFFLINE-MODE.md)** - Complete standalone deployment documentation
+2. **[Standalone Deployment Guide](user-guide/OFFLINE-MODE.md)** - Complete standalone deployment documentation
 3. **[Probe Configuration](user-guide/PROBE-CONFIGURATION.md)** - Configure monitoring probes
 
 ### For Production Deployment
@@ -26,7 +26,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 | Document | Description | Audience | Time to Read |
 |----------|-------------|----------|--------------|
 | **[QUICK-START-OFFLINE.md](user-guide/QUICK-START-OFFLINE.md)** | 5-minute setup guide | All users | 5 min |
-| **[OFFLINE-MODE.md](user-guide/OFFLINE-MODE.md)** | Complete offline mode documentation | Users, Admins | 30 min |
+| **[OFFLINE-MODE.md](user-guide/OFFLINE-MODE.md)** | Complete standalone deployment documentation | Users, Admins | 30 min |
 | **[HTTPS-CONFIGURATION.md](admin-guide/HTTPS-CONFIGURATION.md)** | TLS/SSL configuration guide | Admins, DevOps | 20 min |
 | **[TROUBLESHOOTING-OFFLINE.md](troubleshooting/TROUBLESHOOTING-OFFLINE.md)** | Troubleshooting and debugging | All users | 15 min |
 
@@ -37,6 +37,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 | **[HTTP-STRATEGY.md](admin-guide/HTTP-STRATEGY.md)** | HTTP strategy configuration | API integration |
 | **[HTTP-BIND-ADDRESS.md](admin-guide/HTTP-BIND-ADDRESS.md)** | Network binding configuration | Network setup |
 | **[UNIVERSAL-CONFIGURATION.md](admin-guide/UNIVERSAL-CONFIGURATION.md)** | Configuration validation API | Config testing |
+| **[OTLP-OBSERVABILITY.md](admin-guide/OTLP-OBSERVABILITY.md)** | OTLP self-metrics field reference + alert recipes | Operational monitoring |
 
 ## 👨‍💻 Developer Documentation
 
@@ -196,8 +197,8 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 
 ### Essential Commands
 ```bash
-# Install offline mode
-./agent install --offline --enable-https
+# Install the agent (with HTTPS)
+./agent install --enable-https
 
 # Start/stop service
 ./agent start
@@ -205,14 +206,16 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 ./agent status
 
 # Run interactively with debug
-./agent run --offline --verbose
+./agent run --verbose
 
 # Test health
 curl http://localhost:8080/health
 ```
 
 ### Key Configuration Locations
-- **Configuration File**: `./agent-config.yaml`
+- **Linux**: `/etc/senhub-agent/agent.yaml`
+- **Windows**: `%ProgramData%\SenHub\agent.yaml`
+- **macOS**: `/usr/local/etc/senhub-agent/agent.yaml`
 - **Certificates**: `./certs/agent-cert.pem`, `./certs/agent-key.pem`
 - **Log Files**: `/var/log/senhub-agent/` (Linux), Event Viewer (Windows)
 
@@ -230,15 +233,15 @@ curl http://localhost:8080/health
 
 ## 🆕 Recent Updates
 
-### Version 0.8.0+ (Offline Mode)
-- ✅ Complete offline mode implementation
+### Version 0.2.0+
+- ✅ Standalone (offline-only) mode — online mode removed
 - ✅ HTTPS/TLS support with auto-generated certificates
 - ✅ Local web interface and API endpoints
 - ✅ Comprehensive documentation suite
 - ✅ Multiple monitoring tool integrations
 
 ### Documentation Updates
-- 📚 Complete documentation rewrite for offline mode
+- 📚 Complete documentation rewrite for standalone deployment
 - 🎯 User-focused quick start guides
 - 🔒 Comprehensive security documentation
 - 🛠️ Troubleshooting and debugging guides

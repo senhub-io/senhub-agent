@@ -74,17 +74,68 @@ func checkPrivileges() error {
 	return nil
 }
 
-func main() {
-	// Check privileges first
-	if err := checkPrivileges(); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+// hasArg reports whether one of the os.Args (skipping argv[0]) is
+// exactly `name`. Used for the small set of view-flags that the
+// simple-command code path (status, etc.) recognises before the
+// service handler dispatches.
+func hasArg(name string) bool {
+	for _, a := range os.Args[1:] {
+		if a == name {
+			return true
+		}
 	}
+	return false
+}
 
-	// Show help if no arguments or help is requested
+// readOnlyCommand reports whether the invocation is a diagnostic /
+// inspection subcommand that should bypass the privilege check.
+//
+// These commands only read state (config files, embedded version
+// string, license JWT) and emit to stdout — they don't touch the
+// service, the network, the log directory, or the binary itself, so
+// running them as a non-root user must not fail. Without this
+// exemption, every CI smoke test, every contributor checking
+// `agent version` from a clone, and every operator running
+// `agent config check` before sudo'ing into the install would hit
+// the privilege gate.
+func readOnlyCommand(args []string) bool {
+	if len(args) <= 1 {
+		return true // showHelp() — informational only
+	}
+	switch args[1] {
+	case "--help", "-h", "help", "version", "debug-modules-list":
+		return true
+	case "config":
+		if len(args) > 2 && (args[2] == "check" || args[2] == "show") {
+			return true
+		}
+	}
+	return false
+}
+
+func main() {
+	// Show help if no arguments or help is requested. Help is
+	// information-only so it runs even without root — placed before
+	// checkPrivileges so a fresh checkout / CI smoke test sees usage
+	// without hitting the gate.
 	if len(os.Args) <= 1 || os.Args[1] == "--help" || os.Args[1] == "-h" {
 		showHelp()
 		return
+	}
+
+	// Privilege gate runs before the subcommand dispatch, EXCEPT for
+	// diagnostic commands enumerated in readOnlyCommand. The agent
+	// binary writes logs to /var/log/senhub (Linux) and to
+	// %ProgramData%\SenHub (Windows), reads /etc/senhub-agent/, and
+	// can manage a system service — all of which require elevation.
+	// Diagnostic subcommands (version, config check, config show)
+	// don't touch any of that, so making them require root would only
+	// hurt usability (CI smoke checks, contributor onboarding).
+	if !readOnlyCommand(os.Args) {
+		if err := checkPrivileges(); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	// If first argument is a service command
@@ -102,10 +153,21 @@ func main() {
 			checkConfig(configPath)
 			return
 		}
+		if len(os.Args) > 2 && os.Args[2] == "show" {
+			// agent config show [--raw|--resolved|--redact] [path]
+			showConfig(os.Args[3:])
+			return
+		}
 		showHelp()
 		return
 	case "license":
 		handleLicenseCommand()
+		return
+	case "db-monitoring":
+		handleDbMonitoringCommand()
+		return
+	case "ibmi":
+		handleIBMICommand()
 		return
 	case "update":
 		// Parse update sub-arguments: update [--list | <version>]
@@ -124,31 +186,34 @@ func main() {
 		agent.UpdateAgent(args)
 		return
 	case "install", "uninstall", "start", "stop", "restart", "status", "run":
-		// For simple commands without required args, handle directly
+		// Commands that take no positional args: dispatched directly.
+		// `status` carries the optional --otlp view flag.
 		if command == "start" || command == "stop" || command == "restart" || command == "status" || command == "uninstall" {
-			handleServiceCommand(command, &cliArgs.ParsedArgs{})
+			args := &cliArgs.ParsedArgs{}
+			if command == "status" {
+				args.ShowOTLP = hasArg("--otlp")
+			}
+			handleServiceCommand(command, args)
 			return
 		}
 
-		// For commands requiring args, parse remaining arguments
-		serviceArgs := make([]string, 0)
+		// `install` and `run` accept optional flags (--config-path,
+		// --enable-https, …). In 0.2.0+ they also work with no args
+		// — install auto-generates a UUID agent key, run uses the
+		// OS-canonical default config path. Pre-0.2.0 the install
+		// path forced the user to choose between --offline and
+		// --authentication-key; that gate is gone.
+		//
+		// We parse the remaining args via `start`-subcommand parsing
+		// rather than calling MustParse() directly, because the
+		// top-level parser expects an explicit subcommand and would
+		// fail on the empty input that an arg-less `install` / `run`
+		// produces.
+		serviceArgs := []string{}
 		if len(os.Args) > 2 {
 			serviceArgs = os.Args[2:]
 		}
-
-		// For install command without args, show help
-		if command == "install" && len(serviceArgs) == 0 {
-			showHelp()
-			return
-		}
-
-		// Parse remaining args as start arguments
-		os.Args = append([]string{os.Args[0]}, serviceArgs...)
-		args := cliArgs.MustParse()
-
-		// Auto-detect mode from config file
-		args.Offline = agent.DetectAgentMode(args)
-
+		args := cliArgs.ParseStartArgs(serviceArgs)
 		handleServiceCommand(command, args)
 		return
 	default:
@@ -164,9 +229,6 @@ func main() {
 			showHelp()
 			return
 		}
-
-		// Auto-detect mode from config file (same as service path)
-		args.Offline = agent.DetectAgentMode(args)
 
 		runAgent(args)
 	}
@@ -194,12 +256,13 @@ func showHelp() {
 	fmt.Printf(`Usage: %s [command] [options]
 
 Service Commands:
-    install              Install as system service (requires --authentication-key OR --offline)
+    install              Install as system service (auto-generates a UUID agent key)
     uninstall            Remove the system service
     start                Start the service
     stop                 Stop the service
     restart              Restart the service
     status               Show service and probe status
+    status --otlp        Also show OTLP pipeline self-metrics
     run                  Run interactively in console mode
 
 License Commands:
@@ -207,18 +270,29 @@ License Commands:
     license activate     Activate a license from a JWT token
     license remove       Remove current license (revert to free tier)
 
+IBM i Diagnostics:
+    ibmi check [path]    Verify the IBM i runtime (native binary or JRE).
+                         The ibmi probe is Linux-only (0.1.97+).
+
 Other Commands:
     version              Show agent version
     update               Check for new versions
     update --list        List all available versions (stable + beta)
     update <version>     Install a specific version
     config check [path]  Validate configuration file
+    config show [opts]   Print merged + resolved configuration as YAML
+                           --resolved (default)  env/file references substituted
+                           --raw                 references preserved as written
+                           --redact              substituted but secrets masked
+                           [path]                config file path
     debug-modules-list   List available debug log modules
 
 Agent Options:
-    --authentication-key KEY               Agent key (optional if present in config file)
-    --config-path PATH                     Configuration file (default: ./agent-config.yaml)
-    --offline                              Run with local YAML configuration (no server)
+    --config-path PATH                     Path to the agent configuration file.
+                                           Default per OS:
+                                             Linux   /etc/senhub-agent/agent.yaml
+                                             Windows %%ProgramData%%\SenHub\agent.yaml
+                                             macOS   /usr/local/etc/senhub-agent/agent.yaml
     --verbose, -v                          Enable debug logging for all modules
     --filter module1,module2               Filter debug logs by module prefix (implies --verbose)
     --debug-modules module1,module2        [deprecated] Use --filter instead
@@ -232,13 +306,16 @@ HTTPS/TLS Options:
     --min-tls-version VERSION              Minimum TLS version: 1.2 or 1.3 (default: 1.2)
 
 Examples:
-    %s run --offline                                # Run with local config
-    %s run --offline --verbose                      # Run with debug output
-    %s install --offline                            # Install as service (offline)
-    %s install --authentication-key "your-key"      # Install as service (online)
-    %s license show --config agent-config.yaml      # Check license status
+    %s install                                      # Install service + generate config
+    %s run                                          # Run interactively (uses default config path)
+    %s run --verbose                                # Run with debug output
+    %s license show                                 # Check license status
     %s status                                       # Show running status
     %s update latest                                # Update to latest version
 
-`, exe, exe, exe, exe, exe, exe, exe, exe)
+Note: the pre-0.2.0 flags --offline, --authentication-key and --server-url
+were removed. Offline is the only mode; the agent key is generated at
+install time and persisted in the config file.
+
+`, exe, exe, exe, exe, exe, exe, exe)
 }

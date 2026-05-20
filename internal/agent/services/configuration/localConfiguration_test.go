@@ -24,7 +24,6 @@ func TestNewLocalConfiguration(t *testing.T) {
 	configPath := filepath.Join(tempDir, "test-config.yaml")
 
 	args := &cliArgs.ParsedArgs{
-		Offline:    true,
 		ConfigPath: configPath,
 	}
 
@@ -45,7 +44,6 @@ func TestLocalConfiguration_Start_CreatesConfigFile(t *testing.T) {
 	configPath := filepath.Join(tempDir, "test-config.yaml")
 
 	args := &cliArgs.ParsedArgs{
-		Offline:    true,
 		ConfigPath: configPath,
 	}
 
@@ -78,7 +76,6 @@ func TestLocalConfiguration_HTTPS_Certificate_Generation(t *testing.T) {
 	certDir := filepath.Join(tempDir, "certs")
 
 	args := &cliArgs.ParsedArgs{
-		Offline:     true,
 		ConfigPath:  configPath,
 		EnableHttps: true,
 		HttpsHosts:  []string{"localhost", "127.0.0.1", "test.local"},
@@ -124,7 +121,6 @@ func TestLocalConfiguration_CustomCertificates(t *testing.T) {
 	}
 
 	args := &cliArgs.ParsedArgs{
-		Offline:     true,
 		ConfigPath:  configPath,
 		EnableHttps: true,
 		CertFile:    certFile,
@@ -154,7 +150,6 @@ func TestLocalConfiguration_AgentKeyGeneration(t *testing.T) {
 	configPath := filepath.Join(tempDir, "test-config.yaml")
 
 	args := &cliArgs.ParsedArgs{
-		Offline:    true,
 		ConfigPath: configPath,
 	}
 
@@ -191,7 +186,6 @@ func TestLocalConfiguration_Shutdown(t *testing.T) {
 	configPath := filepath.Join(tempDir, "test-config.yaml")
 
 	args := &cliArgs.ParsedArgs{
-		Offline:    true,
 		ConfigPath: configPath,
 	}
 
@@ -243,7 +237,6 @@ probes:
 	}
 
 	args := &cliArgs.ParsedArgs{
-		Offline:    true,
 		ConfigPath: configPath,
 	}
 
@@ -270,7 +263,6 @@ func TestLocalConfiguration_ReloadConfiguration(t *testing.T) {
 	configPath := filepath.Join(tempDir, "reload-config.yaml")
 
 	args := &cliArgs.ParsedArgs{
-		Offline:    true,
 		ConfigPath: configPath,
 	}
 
@@ -301,7 +293,6 @@ func TestLocalConfiguration_Interface(t *testing.T) {
 	configPath := filepath.Join(tempDir, "interface-config.yaml")
 
 	args := &cliArgs.ParsedArgs{
-		Offline:    true,
 		ConfigPath: configPath,
 	}
 
@@ -338,7 +329,6 @@ func TestGenerateSelfSignedCert_ValidityAndFields(t *testing.T) {
 	keyFile := filepath.Join(tempDir, "test-key.pem")
 
 	args := &cliArgs.ParsedArgs{
-		Offline:    true,
 		HttpsHosts: []string{"localhost", "127.0.0.1", "test.example.com"},
 	}
 

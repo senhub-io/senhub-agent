@@ -77,8 +77,8 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// Backup probes
 	"veeam": {
-		"metric_type",                // Category filtering
-		"job_name", "job_type",       // Backup jobs
+		"metric_type",          // Category filtering
+		"job_name", "job_type", // Backup jobs
 		"repo_name",                  // Repositories
 		"proxy_name",                 // Proxies
 		"object_name", "object_type", // Protected objects
@@ -88,6 +88,69 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	"syslog":    {"event_id", "source"}, // Syslog events
+
+	// Database probes — the probes emit multiple datapoints per OTel metric
+	// name discriminated by attribute tags (see docs/developer-guide/otel/
+	// senhub-semantic-conventions.md §4.13 for the full collapse list).
+	"mysql": {
+		"kind",         // mysql.threads{kind=running|connected}
+		"command",      // mysql.commands{command=select|insert|...}
+		"error",        // mysql.connection.errors{error=aborted_clients|...}
+		"status",       // mysql.buffer_pool.data_pages{status=dirty}
+		"state",        // senhub.db.mysql.transaction.count{state=committed|rolled_back}
+		"io.direction", // senhub.db.mysql.io{io.direction=read|write}
+		"role",         // senhub.db.replication.role/health (per-instance, role tag carries semantic)
+		"database",     // per-database opt-in metrics
+		"table",        // per-table opt-in metrics
+	},
+	"postgresql": {
+		"state",     // postgresql.backends{state=active|idle|idle_in_transaction}
+		"operation", // postgresql.wal.lag{operation=replay}
+		"role",      // senhub.db.replication.role/health
+		"schema",    // bloat per-table
+		"table",     // bloat per-table + size per-table
+		"database",  // per-database opt-in metrics
+	},
+
+	// IBM i / Power Systems — collectors emit multiple rows per metric
+	// name, one per resource instance. These tags identify the instance.
+	"ibmi": {
+		// Job identity (active_job, msgw_job, scheduled_job top-N,
+		// query_supervisor). job_name is fully-qualified NUMBER/USER/PROG.
+		"job_name", "job_user", "subsystem", "internal_job_id",
+		// Work queues & spool backlog (job_queue, output_queue,
+		// message_queue multi-instance, spooled_file).
+		"queue_name", "queue_library",
+		// Storage pools & ASPs (asp, memory_pool, disk_status).
+		"asp_number", "pool_name", "pool_id",
+		"unit_number", "device_name",
+		// DB & journaling (sys_table_stats, index_advisor, journal_*).
+		"table_schema", "table_name", "key_columns",
+		"journal", "journal_library",
+		"receiver", "receiver_library",
+		// Identity, security, config (user_profile, user_storage,
+		// system_value, library_list, license).
+		"user", "user_name", "schema",
+		"sysval",
+		"library",
+		"product_id", "feature_id",
+		// Network (netstat_listener, netstat_interface,
+		// netstat_connection, http_server, jvm).
+		"address", "local_port", "port_name", "protocol",
+		"tcp_state", "interface",
+		"server_name",
+		// Compliance & hardware (ptf_group, watch_info,
+		// hardware_resource, authority_collection).
+		"group", "session_id", "category",
+		// Dimensions on count_by_* aggregates.
+		"status", "state", "job_type", "type",
+		// Event discriminants (history_log, message_queue,
+		// audit_journal, msgw_job events).
+		"message_id", "message_type", "entry_type",
+		"from_job", "from_user", "from_program",
+		// Probe self-observability (per-collector health metrics).
+		"collector",
+	},
 }
 
 // MetricCache stores the latest metrics in memory with TTL, organized like a TSDB

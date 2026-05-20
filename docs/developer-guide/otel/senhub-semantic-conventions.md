@@ -1,7 +1,7 @@
 # SenHub OpenTelemetry Semantic Conventions
 
 **Statut :** WIP — document vivant, mis à jour à chaque lot de probes
-**Dernière mise à jour :** 2026-04-18 (Lot 1: cpu)
+**Dernière mise à jour :** 2026-05-14 (Lot 5: databases)
 **Audience :** développeurs de probes, mainteneurs des mappers
 
 ## 0. Objet
@@ -587,9 +587,403 @@ Tous les enums `state` (lbvserver, service, servicegroup, csvserver, gslbvserver
 **3 métriques disk** mappées à OTel native `system.filesystem.*`.
 **~62 extensions** sous `senhub.netscaler.*` pour les domaines NITRO spécifiques.
 
+### 4.13 Probes `mysql` / `postgresql` (databases)
+
+**Sources principales :**
+- [OTel Collector contrib — mysqlreceiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/mysqlreceiver) (convention de facto `mysql.*`)
+- [OTel Collector contrib — postgresqlreceiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/postgresqlreceiver) (convention de facto `postgresql.*`)
+- [OTel Semantic Conventions — Database](https://opentelemetry.io/docs/specs/semconv/database/) (resource attrs `db.system.name`, `db.namespace`, `server.address`, `server.port`)
+
+**Stratégie :** suivre les receivers contrib comme canon (drop-in interop avec dashboards Grafana publics + outils tiers). Étendre en `senhub.db.<engine>.*` uniquement quand le contrib n'a pas la métrique, ou en `senhub.db.*` (sans préfixe engine) quand la sémantique est cross-engine et identique.
+
+OTel n'a pas de semconv officielle pour le monitoring server-side DB — les `mysql.*` / `postgresql.*` des receivers contrib sont des conventions de facto largement adoptées (Grafana Cloud, New Relic, etc.).
+
+#### 4.13.1 Resource attributes
+
+Chaque export OTLP de probe DB ajoute (au-delà de `service.*` et `host.*` déjà émis) :
+
+| Attribute | Value | Source |
+|---|---|---|
+| `db.system.name` | `"mysql"` ou `"postgresql"` | OTel semconv canonique |
+| `server.address` | host du serveur DB | OTel semconv |
+| `server.port` | port (3306 / 5432) | OTel semconv |
+| `db.namespace` | database par défaut (config) | OTel semconv |
+
+Le tag agent `probe_type=mysql\|postgresql` reste émis comme metric attribute (universel à toutes les probes SenHub).
+
+#### 4.13.2 MySQL — métriques (32)
+
+**Contrib mysql receiver utilisé tel quel (10) :**
+
+| Notre métrique | OTel name | Unit | Type | Attributes |
+|---|---|---|---|---|
+| Threads running | `mysql.threads` | `{thread}` | gauge | `kind=running` |
+| Threads connected | `mysql.threads` | `{thread}` | gauge | `kind=connected` |
+| Aborted connections (clients + connects) | `mysql.connection.errors` | `{error}` | counter | `error=aborted_clients` ou `aborted_connects` (2 datapoints distincts) |
+| Refused connections | `mysql.connection.errors` | `{error}` | counter | `error=max_connections` |
+| Queries (Questions) | `mysql.query.count` | `{query}` | counter | (none) |
+| Slow queries | `mysql.query.slow.count` | `{query}` | counter | (none) |
+| Commands per verb | `mysql.commands` | `{command}` | counter | `command=select\|insert\|update\|delete\|replace` |
+| Buffer pool dirty pages | `mysql.buffer_pool.data_pages` | `{page}` | gauge | `status=dirty` |
+| Uptime | `mysql.uptime` | `s` | counter | (none) |
+| Replica lag | `mysql.replica.time_behind_source` | `s` | gauge | (none) |
+
+**Extensions `senhub.db.*` (cross-engine, 5) :**
+
+| Métrique | OTel name | Unit | Type | Attributes |
+|---|---|---|---|---|
+| Probe heartbeat (DB reachable) | `senhub.db.up` | `1` | gauge | (none) |
+| Version banner | `senhub.db.version.info` | `1` | gauge | `db.system.version`=<str> |
+| Connection idle (computed: connected−running) | `senhub.db.connection.idle` | `{connection}` | gauge | (none) |
+| Connection utilization | `senhub.db.connection.utilization` | `1` | gauge | (none) — ratio threads_connected/max_connections |
+| Database total size | `senhub.db.database.size` | `By` | gauge | (none) |
+
+**Extensions `senhub.db.mysql.*` (12) :**
+
+| Métrique | OTel name | Unit | Type | Attributes |
+|---|---|---|---|---|
+| Max connections (gauge, distinct du counter contrib `mysql.connection.count`) | `senhub.db.mysql.connection.max` | `{connection}` | gauge | (none) |
+| Transaction count | `senhub.db.mysql.transaction.count` | `{transaction}` | counter | `state=committed\|rolled_back` |
+| Buffer pool hit ratio (dérivé reads/requests) | `senhub.db.mysql.buffer_pool.hit_ratio` | `1` | gauge | (none) |
+| Buffer pool utilization (dérivé pages_data/pages_total) | `senhub.db.mysql.buffer_pool.utilization` | `1` | gauge | (none) |
+| Deadlocks cumulatif | `senhub.db.mysql.lock.deadlocks` | `{lock}` | counter | (none) — silently absent sur MariaDB |
+| Row locks waiting (gauge instantané) | `senhub.db.mysql.lock.waiting` | `{lock}` | gauge | (none) |
+| Row lock wait time avg | `senhub.db.mysql.row_lock.time.avg` | `s` | gauge | (none) — **conversion ms→s** |
+| IO bytes (read/write) | `senhub.db.mysql.io` | `By` | counter | `io.direction=read\|write` |
+| Tmp tables disk ratio | `senhub.db.mysql.tmp_tables.disk_ratio` | `1` | gauge | (none) |
+| Tables count | `senhub.db.mysql.table.count` | `{table}` | gauge | (none) |
+| Replica IO thread running | `senhub.db.mysql.replica.io_thread.running` | `1` | gauge | (none) |
+| Replica SQL thread running | `senhub.db.mysql.replica.sql_thread.running` | `1` | gauge | (none) |
+
+**Extensions `senhub.db.*` réplication (3, partagées avec postgres) :**
+
+| Métrique | OTel name | Unit | Type | Attributes |
+|---|---|---|---|---|
+| Role | `senhub.db.replication.role` | `1` | gauge | `role=primary\|replica\|standalone` (via `otel.expand`) |
+| Composite health | `senhub.db.replication.health` | `1` | gauge | (none) |
+| Replicas connected | `senhub.db.replication.replicas.connected` | `{replica}` | gauge | (none) |
+
+#### 4.13.3 PostgreSQL — métriques (30)
+
+**Contrib postgresql receiver utilisé tel quel (8) :**
+
+| Notre métrique | OTel name | Unit | Type | Attributes |
+|---|---|---|---|---|
+| Backends actifs/idle/idle in tx | `postgresql.backends` | `{backend}` | gauge | `state=active\|idle\|idle_in_transaction` |
+| Max connections | `postgresql.connection.max` | `{connection}` | gauge | (none) |
+| Commits cumulatif | `postgresql.commits` | `{transaction}` | counter | (none) |
+| Rollbacks cumulatif | `postgresql.rollbacks` | `{transaction}` | counter | (none) |
+| Deadlocks cumulatif | `postgresql.deadlocks` | `{deadlock}` | counter | (none) |
+| Database size | `postgresql.db_size` | `By` | gauge | (none) |
+| Tables count | `postgresql.table.count` | `{table}` | gauge | (none) |
+| WAL replication lag (replay) | `postgresql.wal.lag` | `s` | gauge | `operation=replay` |
+
+**Extensions `senhub.db.*` (5, cross-engine partagées) :** `senhub.db.up`, `senhub.db.version.info`, `senhub.db.connection.utilization`, `senhub.db.replication.role` + `.health` + `.replicas.connected` (idem mysql ci-dessus).
+
+**Extensions `senhub.db.postgresql.*` (9) :**
+
+| Métrique | OTel name | Unit | Type | Attributes |
+|---|---|---|---|---|
+| Uptime | `senhub.db.postgresql.uptime` | `s` | gauge | (none) — `pg_postmaster_start_time` (contrib n'expose pas l'uptime) |
+| Buffer hit ratio (dérivé blocks_hit/blocks_read) | `senhub.db.postgresql.buffer.hit_ratio` | `1` | gauge | (none) |
+| Locks waiting (gauge instantané) | `senhub.db.postgresql.lock.waiting` | `{lock}` | gauge | (none) |
+| Long-running transaction age (oldest active xact) | `senhub.db.postgresql.long_running_xact` | `s` | gauge | (none) |
+| Archiver failures cumulatif | `senhub.db.postgresql.archiver.failed` | `{failure}` | counter | (none) |
+| Archive freshness (age last_archived_wal) | `senhub.db.postgresql.archiver.last_archived.age` | `s` | gauge | (none) |
+| Replica IO running (composite) | `senhub.db.postgresql.replica.io.running` | `1` | gauge | (none) |
+| Bloat ratio (per table, opt-in) | `senhub.db.postgresql.bloat.ratio` | `1` | gauge | `db.table.name` |
+| Bloat bytes (per table, opt-in) | `senhub.db.postgresql.bloat.size` | `By` | gauge | `db.table.name` |
+
+**Extensions `senhub.db.postgresql.statement.*` (2, pg_stat_statements opt-in) :**
+
+| Métrique | OTel name | Unit | Type | Attributes |
+|---|---|---|---|---|
+| Total query calls | `senhub.db.postgresql.statement.calls` | `{call}` | counter | (none) |
+| Mean exec time | `senhub.db.postgresql.statement.exec_time.mean` | `s` | gauge | (none) — **conversion ms→s** |
+
+#### 4.13.4 Collapses majeurs
+
+Décisions de design qui réduisent le nombre de métriques distinctes en utilisant des attributs :
+
+- **`mysql.threads{kind=running|connected}`** au lieu de deux métriques séparées. L'idle (`connected − running`) reste émis comme métrique dérivée `senhub.db.connection.idle` pour les sinks non-arithmétiques (PRTG, Nagios).
+- **`mysql.connection.errors{error=aborted_clients|aborted_connects|max_connections}`** au lieu de trois métriques séparées. **Plus de fidélité que l'ancienne implémentation** qui sommait `aborted_clients + aborted_connects` en un seul `connections_aborted`.
+- **`mysql.commands{command=…}`** : 5 séries (select/insert/update/delete/replace) sous un seul nom. Cardinality bornée, pas d'explosion.
+- **`senhub.db.mysql.io{io.direction=read|write}`** au lieu de `_read_bytes` / `_write_bytes` séparés. Aligné sur l'attribut `io.direction` OTel semconv (utilisé aussi par `system.disk.io`, `system.network.io`).
+- **`senhub.db.mysql.transaction.count{state=committed|rolled_back}`** au lieu de deux métriques. **Asymétrie volontaire avec postgres** : postgres expose `postgresql.commits` + `postgresql.rollbacks` séparés (canon contrib), mysql contrib n'a pas → on étend en `senhub.db.mysql.*` avec attribut.
+- **`postgresql.backends{state=…}`** : 3 séries (active/idle/idle_in_transaction) sous un seul nom — pattern contrib.
+- **`senhub.db.replication.role`** avec `otel.expand`: 3 datapoints `role=primary|replica|standalone`, chacun à 1 si match, 0 sinon. Pattern strict OTel pour les enums (cf. §2bis).
+
+#### 4.13.5 Asymétries assumées entre mysql et postgres
+
+| Concept | MySQL | PostgreSQL | Pourquoi |
+|---|---|---|---|
+| Commits/Rollbacks | `senhub.db.mysql.transaction.count{state}` | `postgresql.commits` + `postgresql.rollbacks` | Contrib postgres a deux métriques distinctes, contrib mysql n'a pas de tx → on s'aligne sur chaque canon |
+| Threads/Backends | `mysql.threads{kind}` | `postgresql.backends{state}` | Deux conventions différentes du contrib — attribut nommé différemment (kind vs state) |
+| Lag de réplication | `mysql.replica.time_behind_source` | `postgresql.wal.lag{operation=replay}` | Sémantiques natives engine-specific |
+| Uptime | `mysql.uptime` (counter) | `senhub.db.postgresql.uptime` (gauge) | Contrib postgres n'expose pas uptime ; on dérive de `pg_postmaster_start_time` (gauge logique) |
+
+Les requêtes cross-engine se font via le resource attribute `db.system.name` ou le tag `probe_type` ; pas via un nom de métrique commun.
+
+#### 4.13.6 Récap
+
+- **MySQL** : 27 métriques actives (sans deadlocks sur MariaDB), réparties en 10 contrib + 5 senhub-cross-db + 12 senhub-mysql.
+- **PostgreSQL** : 30 métriques (21 sur primary standalone, +bloat/stat_statements/per-db en opt-in), réparties en 8 contrib + 5 senhub-cross-db + 9+2 senhub-pg.
+- **3 métriques** utilisent `otel.expand` (`senhub.db.replication.role`).
+- **Aucune métrique avec suffixe d'unité dans le nom** (ms/seconds/bytes/count) — règle OTel respectée stricte.
+
 ## 5. Conventions — lot 4 complet
 
 Tous les probes sont mappés. La phase 0.5 est terminée.
+
+### 4.14 Probe `ibmi` (IBM i / Power Systems)
+
+**Sources principales :**
+- [IBM i Services — DB2 for i](https://www.ibm.com/docs/en/i/7.5?topic=services-system-supplied-routines-views) (tables et vues SYSIBM/QSYS2 utilisées par le probe)
+- [Lot 4 conventions internes](#412-probe-citrix) — `senhub.citrix.*`, `senhub.netscaler.*`, `senhub.veeam.*` comme modèle de namespace vendor-specific
+
+**Stratégie :** aucune convention OTel canonique n'existe pour IBM i (OS propriétaire, non couvert par les receivers `opentelemetry-collector-contrib`). Le probe namespace donc l'intégralité de ses métriques sous `senhub.ibmi.*`, sur le même modèle que Lot 4 (veeam/citrix/netscaler).
+
+**Politique de nommage :** `senhub.ibmi.<famille>.<mesure>`. Familles couvertes : `cpu`, `memory`, `asp`, `disk`, `job`, `jobs`, `job_queue`, `scheduled_job`, `subsystem`, `memory_pool`, `output_queue`, `spooled_file`, `user_storage`, `table`, `index_advisor`, `journal`, `journal_receiver`, `tcp`, `netstat`, `http_server`, `hardware`, `user_profile`, `sysval`, `library_list`, `license`, `ptf_group`, `watch`, `collector`. Pas de suffixe d'unité dans le nom (`.bytes`, `.seconds`, `.kb`, `.ms`, `.percent`) — l'unité OTel canonique vit dans `otel.unit`. Pas de suffixe `.count` / `.total` — le `type` (counter vs gauge) le porte.
+
+#### 4.14.1 Couverture (94 métriques, 90 OTel-mappées + 4 event-conduit skip)
+
+**Système (CPU, mémoire, ASP, disque) — 9 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| CPU utilisation | `senhub.ibmi.cpu.utilization` | `1` | gauge | — |
+| CPU configured count | `senhub.ibmi.cpu.configured` | `{cpu}` | gauge | — |
+| CPU current capacity | `senhub.ibmi.cpu.capacity` | `{cpu}` | gauge | — |
+| Main storage | `senhub.ibmi.memory.main_storage` | `By` | gauge | — |
+| System ASP utilisation | `senhub.ibmi.asp.system.utilization` | `1` | gauge | — |
+| ASP utilisation (per-ASP) | `senhub.ibmi.asp.utilization` | `1` | gauge | `ibmi.asp.number`, `ibmi.asp.type` |
+| ASP capacity | `senhub.ibmi.asp.capacity` | `By` | gauge | `ibmi.asp.number` |
+| ASP threshold | `senhub.ibmi.asp.threshold` | `1` | gauge | `ibmi.asp.number` |
+| Disk utilisation | `senhub.ibmi.disk.utilization` | `1` | gauge | `ibmi.disk.unit`, `ibmi.disk.device` |
+| Disk bytes read | `senhub.ibmi.disk.read` | `By` | counter | `ibmi.disk.unit` |
+
+**Jobs (aggregate + per-job top-N) — 17 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Total jobs | `senhub.ibmi.jobs.total` | `{job}` | gauge | — |
+| Active jobs | `senhub.ibmi.jobs.active` | `{job}` | gauge | — |
+| Jobs by status | `senhub.ibmi.jobs.by_status` | `{job}` | gauge | `ibmi.job.type`, `ibmi.job.status` |
+| Jobs by subsystem | `senhub.ibmi.jobs.by_subsystem` | `{job}` | gauge | `ibmi.subsystem` |
+| Top-N cap hit flag | `senhub.ibmi.jobs.topn_cap_hit` | `1` | gauge | — |
+| Per-job CPU utilisation | `senhub.ibmi.job.cpu.utilization` | `1` | gauge | `ibmi.job.name`, `ibmi.job.user`, `ibmi.subsystem` |
+| Per-job elapsed CPU | `senhub.ibmi.job.cpu.elapsed_time` | `s` | gauge | id. |
+| Per-job cumulative CPU | `senhub.ibmi.job.cpu.cumulative_time` | `s` | counter | id. |
+| Per-job CPU delta | `senhub.ibmi.job.cpu.delta_time` | `s` | gauge | `ibmi.job.name` |
+| Per-job CPU rate | `senhub.ibmi.job.cpu.rate` | `1` | gauge | `ibmi.job.name` (value_scale 0.001 : ms/s → ratio) |
+| Per-job temp storage | `senhub.ibmi.job.temp_storage` | `By` | gauge | `ibmi.job.name` |
+| Per-job disk I/O | `senhub.ibmi.job.disk.io` | `{operation}` | counter | `ibmi.job.name` |
+| Per-job disk I/O (elapsed) | `senhub.ibmi.job.disk.elapsed_io` | `{operation}` | gauge | `ibmi.job.name` |
+| Per-job page faults | `senhub.ibmi.job.page_faults` | `{fault}` | gauge | `ibmi.job.name` |
+| Per-job threads | `senhub.ibmi.job.threads` | `{thread}` | gauge | `ibmi.job.name` |
+| Per-job priority | `senhub.ibmi.job.priority` | `1` | gauge | `ibmi.job.name` |
+| Subsystem active jobs | `senhub.ibmi.subsystem.active_jobs` | `{job}` | gauge | `ibmi.subsystem` |
+
+**Job queues & scheduled — 8 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Job queue — active | `senhub.ibmi.job_queue.active` | `{job}` | gauge | `ibmi.queue.library`, `ibmi.queue.name` |
+| Job queue — held | `senhub.ibmi.job_queue.held` | `{job}` | gauge | id. |
+| Job queue — released | `senhub.ibmi.job_queue.released` | `{job}` | gauge | id. |
+| Job queue — scheduled | `senhub.ibmi.job_queue.scheduled` | `{job}` | gauge | id. |
+| Job queue — depth | `senhub.ibmi.job_queue.depth` | `{job}` | gauge | id. |
+| Non-empty queues | `senhub.ibmi.job_queue.nonempty` | `{queue}` | gauge | — |
+| Scheduled jobs count | `senhub.ibmi.scheduled_job.count` | `{job}` | gauge | — |
+| Scheduled last-run age | `senhub.ibmi.scheduled_job.last_run_age` | `s` | gauge | `ibmi.job.name` |
+
+**Memory pools — 3 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Pool size | `senhub.ibmi.memory_pool.size` | `By` | gauge | `ibmi.pool.id`, `ibmi.pool.name` |
+| Pool current threads | `senhub.ibmi.memory_pool.threads` | `{thread}` | gauge | id. |
+| Pool ineligible threads | `senhub.ibmi.memory_pool.ineligible_threads` | `{thread}` | gauge | id. |
+
+**Spool & user storage — 8 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Output queue files | `senhub.ibmi.output_queue.files` | `{file}` | gauge | `ibmi.queue.library`, `ibmi.queue.name` |
+| Output queue spooled total | `senhub.ibmi.output_queue.spooled_files` | `{file}` | gauge | — |
+| Spooled file count | `senhub.ibmi.spooled_file.count` | `{file}` | gauge | — |
+| Spooled file oldest age | `senhub.ibmi.spooled_file.oldest_age` | `s` | gauge | — |
+| User storage used | `senhub.ibmi.user_storage.used` | `By` | gauge | `ibmi.user.name`, `ibmi.asp.number` |
+| User storage quota | `senhub.ibmi.user_storage.quota` | `By` | gauge | id. |
+| User storage utilisation | `senhub.ibmi.user_storage.utilization` | `1` | gauge | id. |
+| Users over 80% quota | `senhub.ibmi.user_storage.over_threshold` | `{user}` | gauge | — |
+
+**Database — tables & index advisor — 9 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Rows | `senhub.ibmi.table.rows` | `{row}` | gauge | `ibmi.table.schema`, `ibmi.table.name` |
+| Logical reads | `senhub.ibmi.table.logical_reads` | `{read}` | counter | id. |
+| Updates | `senhub.ibmi.table.updates` | `{update}` | counter | id. |
+| Deleted rows | `senhub.ibmi.table.deleted_rows` | `{row}` | gauge | id. |
+| Index times-advised | `senhub.ibmi.index_advisor.times_advised` | `{advisory}` | counter | + `ibmi.table.key_columns` |
+| Index MTI used | `senhub.ibmi.index_advisor.mti_used` | `{use}` | counter | id. |
+| Index avg query estimate | `senhub.ibmi.index_advisor.avg_query_estimate` | `s` | gauge | id. |
+| Index advised total | `senhub.ibmi.index_advisor.advised_indexes` | `{index}` | gauge | — |
+| Index recent advisories (1h) | `senhub.ibmi.index_advisor.recent_advisories` | `{advisory}` | gauge | — |
+
+**Journals — 5 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Journal active flag | `senhub.ibmi.journal.active` | `1` | gauge | `ibmi.journal.name`, `ibmi.journal.library` |
+| Receivers total size | `senhub.ibmi.journal.receivers_size` | `By` | gauge | id. |
+| Remote lag (estimé) | `senhub.ibmi.journal.remote_lag` | `s` | gauge | id. |
+| Receiver size | `senhub.ibmi.journal_receiver.size` | `By` | gauge | `ibmi.receiver.name`, `ibmi.receiver.library` |
+| Attached receivers count | `senhub.ibmi.journal_receiver.attached` | `{receiver}` | gauge | — |
+
+**Réseau (TCP, netstat, HTTP server) — 11 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| TCP connections established | `senhub.ibmi.tcp.connections.established` | `{connection}` | gauge | — |
+| Netstat connections total | `senhub.ibmi.netstat.connections` | `{connection}` | gauge | — |
+| Connections by state | `senhub.ibmi.netstat.connections_by_state` | `{connection}` | gauge | `ibmi.tcp.state` |
+| Listener up | `senhub.ibmi.netstat.listener.up` | `1` | gauge | `ibmi.net.local_port`, `ibmi.net.port_name`, `network.transport` |
+| Listener jobs | `senhub.ibmi.netstat.listener.jobs` | `{job}` | gauge | `ibmi.net.local_port`, `ibmi.net.port_name` |
+| Listeners total | `senhub.ibmi.netstat.listeners` | `{listener}` | gauge | — |
+| Interface up | `senhub.ibmi.netstat.interface.up` | `1` | gauge | `ibmi.net.address`, `ibmi.net.line_description` |
+| Interface MTU | `senhub.ibmi.netstat.interface.mtu` | `By` | gauge | `ibmi.net.address` |
+| HTTP active threads | `senhub.ibmi.http_server.threads.active` | `{thread}` | gauge | `ibmi.http.server_name` |
+| HTTP idle threads | `senhub.ibmi.http_server.threads.idle` | `{thread}` | gauge | id. |
+| HTTP responses | `senhub.ibmi.http_server.responses` | `{response}` | counter | id. |
+
+**Hardware — 3 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Hardware count (by category & status) | `senhub.ibmi.hardware.count` | `{resource}` | gauge | `ibmi.hardware.category`, `ibmi.hardware.status` |
+| Hardware total | `senhub.ibmi.hardware.total` | `{resource}` | gauge | — |
+| Non-operational hardware | `senhub.ibmi.hardware.non_operational` | `{resource}` | gauge | — |
+
+**Sécurité (users, sysval) — 6 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Users total | `senhub.ibmi.user_profile.count` | `{user}` | gauge | — |
+| Users by status | `senhub.ibmi.user_profile.by_status` | `{user}` | gauge | `ibmi.user.status` |
+| Users by class | `senhub.ibmi.user_profile.by_class` | `{user}` | gauge | `ibmi.user.class` |
+| Users with failed signons | `senhub.ibmi.user_profile.failed_signons` | `{user}` | gauge | — |
+| QSECURITY level | `senhub.ibmi.sysval.security_level` | `1` | gauge | — |
+| QAUDLVL level | `senhub.ibmi.sysval.audit_level` | `1` | gauge | — |
+
+**Configuration & compliance (library, license, PTF, watch) — 7 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Library list position | `senhub.ibmi.library_list.position` | `1` | gauge | `ibmi.library.name`, `ibmi.library.type` |
+| Licensed users | `senhub.ibmi.license.licensed_users` | `{user}` | gauge | `ibmi.license.product_id`, `ibmi.license.feature_id` |
+| License usage limit | `senhub.ibmi.license.usage_limit` | `1` | gauge | id. |
+| PTF group installed | `senhub.ibmi.ptf_group.installed` | `1` | gauge | `ibmi.ptf.group` |
+| PTF group level | `senhub.ibmi.ptf_group.level` | `1` | gauge | `ibmi.ptf.group` |
+| Watch session active | `senhub.ibmi.watch.session_active` | `1` | gauge | `ibmi.watch.session_id`, `ibmi.watch.program` |
+
+**Self-observability (collector health) — 4 métriques :**
+
+| Notre métrique | OTel name | Unit | Type | Attributs |
+|---|---|---|---|---|
+| Collector success total | `senhub.ibmi.collector.success` | `{collection}` | counter | `ibmi.collector` |
+| Collector failure total | `senhub.ibmi.collector.failure` | `{collection}` | counter | `ibmi.collector` |
+| Collector last duration | `senhub.ibmi.collector.last_duration` | `s` | gauge | `ibmi.collector` |
+| Collector last success ts | `senhub.ibmi.collector.last_success_timestamp` | `s` | gauge | `ibmi.collector` |
+
+**Event-conduit (skip OTel, log export V2) — 4 métriques :**
+
+`ibmi.message_queue.event` (QSYSOPR), `ibmi.history_log.event` (QHST), `ibmi.audit_journal.event` (QAUDJRN), `ibmi.msgw_job.event` (job in message wait) portent toutes `otel.skip: true` avec une raison explicite. Même politique que `syslog`/`event` (§4.8) : ce sont des marqueurs d'événement relayé, pas des métriques agrégeables sur le canal Prom/OTLP. Cible V2 : export OTLP logs.
+
+#### 4.14.2 Conventions d'attributs
+
+Les tags du cache probe sont renommés vers des clés OTel propres via `tag_to_attribute`. Toutes les clés sont préfixées `ibmi.*` sauf `network.transport` (attr OTel canonique pour `tcp`/`udp`). Le tableau ci-dessus liste les attributs résultants. La discrimination dans le cache (`DiscriminantTagsRegistry["ibmi"]` dans `http_cache.go`) conserve les noms de tags d'origine — c'est uniquement la sortie OTel/Prometheus qui voit la version renommée.
+
+#### 4.14.3 Conversions d'unités
+
+Tout converti automatiquement par `otelmapper/convert.go` :
+
+- `%` → `1` (÷100)
+- `KB` → `By` (×1024)
+- `MB` → `By` (×1048576)
+- `B` → `By` (no scale)
+- `ms` → `s` (÷1000)
+- `s` → `s` (no conversion)
+
+Exception : `ibmi.job.cpu_time_ms_rate_per_sec` a `unit: "ms/s"` côté probe (non-canonique) ; le mapping utilise `value_scale: 0.001` explicite pour produire un ratio sans dimension côté OTel.
+
+### 4.15 Probe `linux_logs` (systemd journal → OTLP logs)
+
+**Sources principales :**
+- [OTel Semantic Conventions — General Logs](https://opentelemetry.io/docs/specs/semconv/general/logs/) (resource & log record attrs)
+- [OTel Semantic Conventions — Process](https://opentelemetry.io/docs/specs/semconv/attributes-registry/process/) (`process.pid`, `process.executable.name`, `process.owner.uid`)
+- [OTel Logs Data Model §4.2](https://opentelemetry.io/docs/specs/otel/logs/data-model/) (SeverityNumber + SeverityText)
+- [RFC 5424 §6.2.1 PRI](https://datatracker.ietf.org/doc/html/rfc5424#section-6.2.1) (syslog severity 0..7)
+
+**Stratégie :** `linux_logs` est **exclusivement un producteur sur le signal logs**. Aucun DataPoint métrique n'est émis (`Collect()` retourne `nil, nil`), donc pas de YAML transformer — la shape du log record est déjà OTel par construction, le mapping vit dans `internal/agent/probes/linuxlogs/journal_reader.go::parseEntry`. Les records flow `journalctl JSON → LogRecord → agentstate.LogChannel → OTLP logsPump → OTel SDK Logger → BatchProcessor → OTLP gRPC export` (typiquement vers VictoriaLogs, Loki, ou un OpenTelemetry Collector).
+
+#### 4.15.1 Attributs OTel-canoniques produits
+
+Chaque record porte les attributs ci-dessous (lus depuis le JSON de `journalctl --output=json --follow`) :
+
+| Attribute OTel | Source journalctl | Notes |
+|---|---|---|
+| `host.name` | `_HOSTNAME` | resource attr canonique |
+| `systemd.unit` | `_SYSTEMD_UNIT` | OTel attr canonique pour le service systemd |
+| `syslog.appname` | `SYSLOG_IDENTIFIER` | OTel attr canonique (équivalent du `appname` RFC 5424) |
+| `process.pid` | `_PID` | OTel attr canonique |
+| `process.executable.name` | `_COMM` | OTel attr canonique |
+| `process.owner.uid` | `_UID` | extension `process.owner.*` (pas encore canonique mais cohérent avec le namespace OTel `process.*`) |
+| `systemd.transport` | `_TRANSPORT` | extension `systemd.*` (journalctl-spécifique : `kernel`, `stdout`, `syslog`, `journal`, …) |
+| `senhub.probe.name` | (poseur framework) | nom de l'instance probe configurée |
+| `senhub.probe.type` | `"linux_logs"` (constante) | universel à toutes les probes SenHub sur OTLP |
+
+Tous les attributs émis suivent la nomenclature OTel `<namespace>.<key>` (pas de `senhub.linux_logs.*` côté record — voir [§5 Logs signal](#logs-signal--convention-otel-respectée)).
+
+#### 4.15.2 Body & timestamp
+
+- **Body** = `MESSAGE` du journal (string).
+- **Timestamp** = `__REALTIME_TIMESTAMP` parsé en µs → `time.Time` (UTC). Fallback `time.Now()` si parsing échoue (préférable à un drop).
+- **ObservedTimestamp** = identique au Timestamp (le probe consomme le `--follow` en temps réel).
+
+#### 4.15.3 Severity mapping (RFC 5424 → OTel)
+
+Helper `agentstate.SyslogPriorityToSeverity` partagé avec `syslog` et `event` (l'event accepte des sévérités texte mais le résultat numérique est identique) :
+
+| PRI | RFC 5424 | OTel SeverityNumber | OTel SeverityText |
+|---:|---|---:|---|
+| 0 | Emergency | 24 (FATAL4) | `FATAL4` |
+| 1 | Alert     | 23 (FATAL3) | `FATAL3` |
+| 2 | Critical  | 22 (FATAL2) | `FATAL2` |
+| 3 | Error     | 17 (ERROR)  | `ERROR`  |
+| 4 | Warning   | 13 (WARN)   | `WARN`   |
+| 5 | Notice    | 10 (INFO2)  | `INFO2`  |
+| 6 | Info      |  9 (INFO)   | `INFO`   |
+| 7 | Debug     |  5 (DEBUG)  | `DEBUG`  |
+
+Out-of-range → `SeverityUnspecified` (0), `SeverityText` vide. Résilient aux records malformés.
+
+#### 4.15.4 Filtrage côté probe (pas côté OTel)
+
+`linux_logs` accepte côté config :
+- `units: ["nginx.service", "ssh.service"]` → flag `journalctl --unit=…`
+- `identifiers: ["sshd", "kernel"]` → flag `journalctl --identifier=…`
+- `priority: 4` → flag `journalctl --priority=…` (filtrage côté journal, ne dépasse pas le pipe)
+- `include_boot: false` (défaut) → seuls les records arrivant après `OnStart` sont émis
+
+Le filtrage opère donc en amont — un record qui n'est pas dans le périmètre de la probe ne touche jamais le canal OTLP. Pour appliquer un filtrage supplémentaire en aval, c'est au consommateur OTLP (collector / VictoriaLogs ingest filter) de le faire.
+
+#### 4.15.5 Pas de signal metric (par design)
+
+`linux_logs` n'a pas de fichier `definitions/linux_logs.yaml` et n'émet pas de DataPoint. C'est **différent de `syslog` et `event`** (§4.8) qui émettent un DataPoint synthétique par event relayé pour rétro-compat PRTG / Nagios (`syslog_event`, `event_event`, tous deux marqués `otel.skip: true`). `linux_logs` est arrivé après cette politique, exclusivement comme producteur logs — pas de canal PRTG synthétique à entretenir.
+
+Conséquence : un usage typique `linux_logs` requiert l'OTLP logs export activé sur la storage (`storage[otlp].signals.logs: true`), sinon les records sont publiés mais consommés par personne.
 
 
 ## 6. Processus d'ajout d'une convention

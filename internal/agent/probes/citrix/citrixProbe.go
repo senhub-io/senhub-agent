@@ -27,9 +27,9 @@ type citrixProbe struct {
 	cancelFunc       context.CancelFunc
 
 	// Per-component configuration (new format)
-	directorConfig *ComponentConfig // Required: Director/OData API
+	directorConfig *ComponentConfig          // Required: Director/OData API
 	ddcConfig      *DeliveryControllerConfig // Optional: Delivery Controller/CVAD API
-	licenseConfig  *ComponentConfig // Optional: License Server
+	licenseConfig  *ComponentConfig          // Optional: License Server
 
 	// Probe-level settings (shared across components)
 	timeout            time.Duration
