@@ -136,7 +136,7 @@ Typically: `C:\ProgramData\SenHub\logs\senhubagent.log`
 
 **Linux:**
 ```
-/var/log/senhub/senhubagent.log
+/var/log/senhub-agent/senhubagent.log
 ```
 
 If the Linux log directory is not writable, logs are written to the agent binary directory.
@@ -157,12 +157,12 @@ Get-Content "C:\ProgramData\SenHub\logs\senhubagent.log" -Tail 50 -Wait
 
 **Linux:**
 ```bash
-tail -100 /var/log/senhub/senhubagent.log
+tail -100 /var/log/senhub-agent/senhubagent.log
 ```
 
 To follow logs in real-time:
 ```bash
-tail -f /var/log/senhub/senhubagent.log
+tail -f /var/log/senhub-agent/senhubagent.log
 ```
 
 You can also view logs via systemd journal on Linux:
@@ -195,7 +195,7 @@ To find errors:
 
 **Linux:**
 ```bash
-grep '"level":"error"' /var/log/senhub/senhubagent.log | tail -20
+grep '"level":"error"' /var/log/senhub-agent/senhubagent.log | tail -20
 ```
 
 **Windows (PowerShell):**
@@ -206,7 +206,7 @@ Select-String -Path "C:\ProgramData\SenHub\logs\senhubagent.log" -Pattern '"leve
 To find logs for a specific probe:
 
 ```bash
-grep '"module":"probe.citrix"' /var/log/senhub/senhubagent.log | tail -20
+grep '"module":"probe.citrix"' /var/log/senhub-agent/senhubagent.log | tail -20
 ```
 
 ## Enabling Debug Logging
@@ -283,12 +283,12 @@ For troubleshooting startup issues or when the API is not available, run the age
 
 **All modules (verbose):**
 ```bash
-senhub-agent run --authentication-key KEY --verbose
+senhub-agent run --verbose
 ```
 
 **Specific modules only:**
 ```bash
-senhub-agent run --authentication-key KEY --verbose --debug-modules probe.citrix,strategy.http
+senhub-agent run --verbose --debug-modules probe.citrix,strategy.http
 ```
 
 This runs the agent in the foreground (not as a service) and outputs detailed logs to the console. Press Ctrl+C to stop. This is useful for:
@@ -308,8 +308,7 @@ This runs the agent in the foreground (not as a service) and outputs detailed lo
 
 | Cause | How to Diagnose | Solution |
 |-------|-----------------|----------|
-| Invalid YAML syntax | Check logs for "yaml" errors | Validate: `python3 -c "import yaml; yaml.safe_load(open('agent-config.yaml'))"` |
-| Missing authentication key | Check logs for "authentication" errors | Add a valid key to `agent-config.yaml` or use `--authentication-key` flag |
+| Invalid YAML syntax | Check logs for "yaml" errors | Validate: `python3 -c "import yaml; yaml.safe_load(open('agent.yaml'))"` |
 | Port already in use | Check logs for "bind" or "address already in use" | Linux: `ss -tlnp \| grep 8080` / Windows: `netstat -an \| findstr 8080` |
 | Insufficient permissions | Check logs for "permission denied" | Run as Administrator (Windows) or root (Linux) |
 | Invalid config_version | Check logs for "config_version" errors | Ensure `config_version: 2` is at the top of the config file |

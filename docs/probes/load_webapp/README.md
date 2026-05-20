@@ -328,7 +328,7 @@ Compare connect times and total times to optimize CDN configuration.
 **Check probe status:**
 ```bash
 # View agent logs with Load WebApp probe debugging
-./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.loadwebapp
+./agent run --verbose --debug-modules probe.loadwebapp
 ```
 
 **Verify probe is enabled:**
@@ -731,7 +731,7 @@ For issues or questions:
 
 1. **Enable debug logging:**
    ```bash
-   ./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.loadwebapp
+   ./agent run --verbose --debug-modules probe.loadwebapp
    ```
 
 2. **Check probe health:**

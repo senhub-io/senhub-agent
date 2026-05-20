@@ -150,7 +150,7 @@ go mod tidy
 
 # Test with netscaler probe
 make build-darwin
-./dist/senhub-agent_darwin_amd64 run --authentication-key YOUR_KEY --verbose
+./dist/senhub-agent run --verbose
 ```
 
 ### 3. Update go.mod
