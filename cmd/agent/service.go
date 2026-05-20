@@ -12,47 +12,15 @@ import (
 	"time"
 
 	"github.com/kardianos/service"
-	"senhub-agent.go/internal/agent"
 	"senhub-agent.go/internal/agent/cliArgs"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
 
 func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
-	// Check for required auth key when installing (unless offline mode)
-	if command == "install" && args.AuthenticationKey == "" && !args.Offline {
-		fmt.Println("Error: Authentication key is required for installation (or use --offline)")
-		fmt.Printf("\nUsage: %s install --authentication-key YOUR_KEY\n", os.Args[0])
-		fmt.Printf("    or: %s install --offline\n", os.Args[0])
-		os.Exit(1)
-	}
-
-	// Build service arguments based on mode
-	var serviceArgs []string
-
-	if args.Offline {
-		// Offline mode: only add basic offline parameters
-		// All other configuration (HTTPS, ports, etc.) will be read from config file
-		serviceArgs = append(serviceArgs, "--offline")
-		if args.ConfigPath != "" {
-			serviceArgs = append(serviceArgs, "--config-path", args.ConfigPath)
-		}
-	} else {
-		// Online mode: add authentication key and server URL
-		serviceArgs = append(serviceArgs, "--authentication-key", args.AuthenticationKey)
-		if args.ServerUrl != "" {
-			serviceArgs = append(serviceArgs, "--server-url", args.ServerUrl)
-		}
-	}
-
-	// Add common optional arguments
-	if args.Verbose {
-		serviceArgs = append(serviceArgs, "--verbose")
-	}
-	if len(args.DebugModules) > 0 {
-		serviceArgs = append(serviceArgs, "--debug-modules", strings.Join(args.DebugModules, ","))
-	}
-
-	// Get the directory where the agent binary is located
+	// Build the ExecStart arguments for the installed service.
+	// Offline is the only supported mode (0.2.0+); we always pass
+	// --config-path with the resolved absolute path so the service
+	// finds the file regardless of working directory.
 	executablePath, err := os.Executable()
 	if err != nil {
 		fmt.Printf("Error getting executable path: %v\n", err)
@@ -60,11 +28,9 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	}
 	workingDir := filepath.Dir(executablePath)
 
-	// Convert config path to absolute using helper function (fixes Windows Service issue)
 	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
 	if err != nil {
 		fmt.Printf("Error getting absolute config path: %v\n", err)
-		// Fallback to working directory based path
 		if args.ConfigPath == "" {
 			configPath = filepath.Join(workingDir, "agent-config.yaml")
 		} else if !filepath.IsAbs(args.ConfigPath) {
@@ -74,15 +40,13 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		}
 	}
 
-	// Update service arguments with absolute paths
-	if args.Offline {
-		// Update the config path argument to absolute path
-		for i, arg := range serviceArgs {
-			if arg == "--config-path" && i+1 < len(serviceArgs) {
-				serviceArgs[i+1] = configPath
-				break
-			}
-		}
+	serviceArgs := []string{"run", "--config-path", configPath}
+
+	if args.Verbose {
+		serviceArgs = append(serviceArgs, "--verbose")
+	}
+	if len(args.DebugModules) > 0 {
+		serviceArgs = append(serviceArgs, "--debug-modules", strings.Join(args.DebugModules, ","))
 	}
 
 	svcConfig := &service.Config{
@@ -127,18 +91,17 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		if err == nil {
 			fmt.Println("Service installed successfully")
 
-			// Generate offline configuration if in offline mode
-			if args.Offline {
-				if err := generateOfflineConfiguration(args); err != nil {
-					fmt.Printf("Warning: Failed to generate offline configuration: %v\n", err)
+			// Always generate the local configuration at install time
+			// (offline is the only mode in 0.2.0+).
+			if err := generateOfflineConfiguration(args); err != nil {
+				fmt.Printf("Warning: Failed to generate configuration: %v\n", err)
+			} else {
+				fmt.Printf("✅ Configuration generated: %s\n", configPath)
+				if args.EnableHttps {
+					fmt.Printf("✅ HTTPS certificates generated in ./certs/\n")
+					fmt.Printf("\nAccess your agent at: https://localhost:%d/web/{agentkey}/dashboard\n", args.HttpsPort)
 				} else {
-					fmt.Printf("✅ Offline configuration generated: %s\n", args.ConfigPath)
-					if args.EnableHttps {
-						fmt.Printf("✅ HTTPS certificates generated in ./certs/\n")
-						fmt.Printf("\nAccess your agent at: https://localhost:%d/web/{agentkey}/dashboard\n", args.HttpsPort)
-					} else {
-						fmt.Printf("\nAccess your agent at: http://localhost:8080/web/{agentkey}/dashboard\n")
-					}
+					fmt.Printf("\nAccess your agent at: http://localhost:8080/web/{agentkey}/dashboard\n")
 				}
 			}
 
@@ -232,25 +195,29 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	case "status":
 		showEnhancedStatus(s, args)
 	case "run":
-		// Intelligent mode detection with backward compatibility
-		// This function detects the appropriate mode (online/offline) based on:
-		// 1. Configuration file content (mode: online/offline)
-		// 2. Authentication key availability (CLI vs config file)
-		// 3. Legacy fallback for backward compatibility
-		args.Offline = agent.DetectAgentMode(args)
-
-		// Check if configuration file exists when running in offline mode
-		if args.Offline {
-			if _, err := os.Stat(args.ConfigPath); os.IsNotExist(err) {
-				fmt.Printf("Error: Configuration file not found: %s\n", args.ConfigPath)
-				fmt.Printf("\nIn offline mode, you must first install the agent to generate the configuration:\n")
-				fmt.Printf("    %s install --offline\n", os.Args[0])
-				fmt.Printf("\nThen you can run the agent:\n")
-				fmt.Printf("    %s run --offline\n", os.Args[0])
-				os.Exit(1)
-			}
+		// Offline is the only supported mode (0.2.0+). The agent
+		// expects to find its YAML configuration on disk; the
+		// install path generates a default one if missing, so a
+		// missing file here means run was invoked before install.
+		//
+		// We check the RESOLVED path (configPath), not args.ConfigPath
+		// — the latter is empty when the operator runs `agent run`
+		// with no --config-path flag, and os.Stat("") always returns
+		// ENOENT, which would reject a perfectly valid install at the
+		// OS-canonical location.
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
+			fmt.Printf("Error: Configuration file not found: %s\n", configPath)
+			fmt.Printf("\nInstall the agent first to generate the configuration:\n")
+			fmt.Printf("    %s install\n", os.Args[0])
+			fmt.Printf("\nThen you can run the agent:\n")
+			fmt.Printf("    %s run\n", os.Args[0])
+			os.Exit(1)
 		}
 
+		// Pin the resolved absolute path so every downstream consumer
+		// (logger, LocalConfiguration) sees the same file the
+		// existence check above validated.
+		args.ConfigPath = configPath
 		runAgent(args)
 		return
 	}

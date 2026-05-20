@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -11,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 )
 
@@ -40,6 +42,7 @@ func pushMetrics(
 	extraRecords []otelmapper.OtelRecord,
 	export func(context.Context, *metricdata.ResourceMetrics) error,
 	missingMappingHandler func(otelmapper.CacheMetric, error),
+	maxConcurrent int,
 ) (int, error) {
 	cms, _ := store.snapshot()
 	if len(cms) == 0 && len(extraRecords) == 0 {
@@ -74,11 +77,98 @@ func pushMetrics(
 		return 0, nil
 	}
 
-	rm := buildResourceMetrics(records, res, scopeVersion, startTime, now)
-	if err := export(ctx, rm); err != nil {
-		return 0, fmt.Errorf("export: %w", err)
+	// Decide between single-batch and parallel-by-probe paths. Below
+	// SplitBatchThreshold or when maxConcurrent<=1, the goroutine
+	// fan-out is pure overhead — encoding 50 records in one batch is
+	// faster than spinning up 4 goroutines each encoding 12.
+	if maxConcurrent <= 1 || len(records) < SplitBatchThreshold {
+		rm := buildResourceMetrics(records, res, scopeVersion, startTime, now)
+		if err := export(ctx, rm); err != nil {
+			return 0, fmt.Errorf("export: %w", err)
+		}
+		agentstate.RecordOTLPSubBatchCount(1)
+		return len(records), nil
 	}
-	return len(records), nil
+
+	parts := partitionRecordsByProbe(records)
+	agentstate.RecordOTLPSubBatchCount(len(parts))
+	return exportInParallel(ctx, parts, res, scopeVersion, startTime, now, export, maxConcurrent)
+}
+
+// partitionRecordsByProbe groups records by their probe_name
+// attribute. Records with an empty probe_name (agent self-metrics)
+// land in the "__agent__" partition — same shape as any other so the
+// downstream code stays uniform.
+func partitionRecordsByProbe(records []otelmapper.OtelRecord) map[string][]otelmapper.OtelRecord {
+	parts := map[string][]otelmapper.OtelRecord{}
+	for _, r := range records {
+		probe := r.Attributes["probe_name"]
+		if probe == "" {
+			probe = "__agent__"
+		}
+		parts[probe] = append(parts[probe], r)
+	}
+	return parts
+}
+
+// exportInParallel fans out one Export() call per partition, bounded
+// by a semaphore of size maxConcurrent. The shared gRPC client (held
+// inside the export func closure) handles concurrent calls via
+// HTTP/2 stream multiplexing — no need for per-goroutine connections.
+//
+// Error semantics: returns the number of records successfully exported
+// across all partitions, plus the FIRST error encountered (the others
+// are logged via the OTel SDK retry path but not surfaced). A partial
+// failure (3/4 partitions OK) still propagates an error so the strategy
+// logs it and increments the export-errors counter — partial-success
+// is still a degraded state the operator should see.
+func exportInParallel(
+	ctx context.Context,
+	parts map[string][]otelmapper.OtelRecord,
+	res *resource.Resource,
+	scopeVersion string,
+	startTime time.Time,
+	now time.Time,
+	export func(context.Context, *metricdata.ResourceMetrics) error,
+	maxConcurrent int,
+) (int, error) {
+	type result struct {
+		count int
+		err   error
+	}
+	results := make(chan result, len(parts))
+	sem := make(chan struct{}, maxConcurrent)
+	var wg sync.WaitGroup
+
+	for _, recs := range parts {
+		recs := recs // capture
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			rm := buildResourceMetrics(recs, res, scopeVersion, startTime, now)
+			if err := export(ctx, rm); err != nil {
+				results <- result{err: fmt.Errorf("export: %w", err)}
+				return
+			}
+			results <- result{count: len(recs)}
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+
+	total := 0
+	var firstErr error
+	for r := range results {
+		if r.err != nil && firstErr == nil {
+			firstErr = r.err
+			continue
+		}
+		total += r.count
+	}
+	return total, firstErr
 }
 
 // buildResourceMetrics groups OtelRecords into the SDK's

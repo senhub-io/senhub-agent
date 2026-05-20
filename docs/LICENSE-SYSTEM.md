@@ -29,27 +29,41 @@ The SenHub Agent uses a **JWT-based license system with RSA signatures** to cont
 
 ## License Tiers
 
+Source of truth for the lists below:
+- Free tier — `freeTierProbes` map in `internal/agent/services/license/license.go`
+- Pro tier — `probeBitmap` map in `internal/agent/services/license/compact.go` (compact-license slot allocation) + the `authorized_probes` array in customer-specific JWTs
+- Enterprise tier — wildcard `"*"` in `authorized_probes`
+
+A structural test in `internal/agent/probes/registry_invariant_test.go` enforces that every probe registered for boot must be in one of these lists. CI fails if a future probe is added to the registry without claiming a free-tier seat or a bitmap slot.
+
 ### Free Tier (No License Required)
+Host-local observability — probes that watch the machine the agent runs on, not a remote system:
+
 - **cpu** - CPU utilization monitoring
 - **memory** - Memory usage monitoring
 - **logicaldisk** - Disk space and I/O monitoring
 - **network** - Network interface statistics
+- **linux_logs** - Local systemd journal log shipping (Linux only)
 
 ### Pro Tier (License Required)
-Specific probes authorized by license:
+Specific probes authorized by customer JWT (or compact-license bitmap slot):
+
 - **redfish** - BMC/iDRAC/iLO hardware monitoring
 - **citrix** - Citrix Virtual Apps and Desktops monitoring
 - **netscaler** - Citrix NetScaler ADC monitoring (load balancers, SSL, HA)
-- **syslog** - Syslog event collection
-- **otel** - OpenTelemetry metrics collection
-- **event** - Windows Event Log collection
+- **veeam** - Veeam Backup & Replication monitoring
+- **mysql** - MySQL server monitoring (OTel-first, mysql.* semconv)
+- **postgresql** - PostgreSQL server monitoring (OTel-first, postgresql.* semconv)
+- **ibmi** - IBM i / Power Systems monitoring (JT400 JDBC bridge, senhub.ibmi.* semconv) — **Linux-only** agent runtime
+- **syslog** - Syslog server (UDP/TCP relay + OTLP logs export)
+- **event** - Custom HTTP event ingestion
 - **ping_gateway** - Gateway connectivity monitoring
 - **ping_webapp** - Web application availability
-- **load_webapp** - Web application performance
+- **load_webapp** - Web application performance phase timing
 - **wifi_signal_strength** - WiFi signal quality
 
 ### Enterprise Tier (License Required)
-- **All probes** (wildcard "*" authorization)
+- **All probes** (wildcard `"*"` authorization in the JWT — also matches any probe added in future releases without requiring a JWT reissue)
 
 ## Security Model
 
@@ -173,36 +187,11 @@ if !validator.IsProbeAuthorized(validatedLicense, probeType) {
 - Warning messages logged
 - After grace period: probes disabled, falls back to free tier
 
-## Deployment Modes
+## Deployment Mode
 
-### Online Mode (SaaS) - IMPORTANT
+The agent runs standalone (offline-only). There is no SenHub platform connection mode. All license validation is local.
 
-**How it works:**
-- Agent connects to SenHub platform via `server_url`
-- License validation delegated to backend API
-- **NO local JWT token required**
-- Platform controls authorization centrally
-
-**Behavior:**
-- `license == nil` → **Enterprise tier** (all probes authorized)
-- Simplified deployment (zero license management)
-- Requires internet connectivity for configuration pull
-- Backend can update authorization without agent restart
-
-**Configuration:**
-```yaml
-agent:
-  authentication_key: "9bb3df79-2973-4662-8687-8da602175e0b"
-  server_url: "https://eu-west-1.intake.senhub.io"
-  # NO license field - online mode = Enterprise
-```
-
-**⚠️ CRITICAL DESIGN**: The online mode bypass is intentional:
-- **Backend trust model**: Online agents trust SenHub platform for authorization
-- **Dual nil check protection** (see Architecture section) prevents abuse
-- **Future enhancement**: Backend will include license JWT in configuration API response
-
-### Offline Mode (Self-Hosted)
+### Self-Hosted (Local Configuration)
 
 **How it works:**
 - Agent runs standalone without SenHub platform
@@ -694,15 +683,6 @@ Body: { "license_token": "eyJhbGci..." }
 
 ## FAQ
 
-**Q: Why do online agents get Enterprise tier automatically?**
-A: Online agents trust the SenHub platform for authorization. The backend controls which probes are authorized via configuration API. This eliminates local license management while maintaining security through platform authentication.
-
-**Q: Is the online mode bypass secure?**
-A: Yes. The system uses dual nil check protection:
-- No validator = Safe mode (free tier only)
-- Validator + No license = Online mode (Enterprise, backend-controlled)
-- Validator + License = Offline mode (JWT verification)
-
 **Q: Can one license be used on multiple agents?**
 A: Technically yes (JWT doesn't prevent copying), but this violates license terms. Server-side enforcement can be added in future.
 
@@ -710,7 +690,7 @@ A: Technically yes (JWT doesn't prevent copying), but this violates license term
 A: 7-day grace period, then fallback to free tier probes only.
 
 **Q: Can licenses be revoked?**
-A: Not currently. Revocation would require agent to check with Sensor Factory on startup (online mode).
+A: Not currently. License validation is fully local; revocation would require network-based checks.
 
 **Q: How to upgrade from Pro to Enterprise?**
 A: Activate new Enterprise license - it replaces the existing one.
@@ -718,11 +698,8 @@ A: Activate new Enterprise license - it replaces the existing one.
 **Q: What if private key is compromised?**
 A: Generate new key pair, update all agents with new public key, reissue all customer licenses.
 
-**Q: How do I switch from online to offline mode?**
-A: Remove `server_url` from configuration and add `license` field with JWT token. Agent will switch to offline mode on next restart.
-
-**Q: Can offline agents use syslog or citrix probes without a license?**
-A: No. Offline mode requires explicit JWT license with authorized probes. Only online mode gets automatic Enterprise access.
+**Q: Can agents use syslog or citrix probes without a license?**
+A: No. Premium probes require an explicit JWT license with the relevant probes authorized.
 
 ## Conclusion
 

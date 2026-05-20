@@ -26,13 +26,74 @@ const (
 	// No default endpoint on purpose: silently shipping metrics/logs to
 	// localhost when an operator forgets to set `endpoint:` is a much
 	// worse failure mode than refusing to start. Always require it.
-	DefaultCompression        = "gzip"
-	DefaultTimeout            = 10 * time.Second
+	DefaultCompression = "gzip"
+	// DefaultTimeout bounds a single OTLP export call. The OTel SDK uses
+	// it as the gRPC context deadline. 60 s is generous enough to absorb
+	// batches of 1000+ datapoints from the larger probes (IBM i with
+	// its 29 collectors produced batches of ~2000 datapoints during
+	// 0.1.93-beta validation; the previous 10 s default timed out
+	// consistently, silently grew the export buffer cumulatively, and
+	// looked like a probe stall from the operator perspective). Keep
+	// it ≤ probe interval so a misconfigured endpoint surfaces quickly
+	// without piling more datapoints on the buffer.
+	DefaultTimeout            = 60 * time.Second
 	DefaultMetricsInterval    = 30 * time.Second
 	DefaultMetricsTemporality = "cumulative"
 	DefaultLogsBatchSize      = 1000
 	DefaultLogsBatchTimeout   = 5 * time.Second
 	DefaultLogsBufferSize     = 10000
+	// DefaultMaxStoreSize caps the OTLP strategy's metric-store
+	// cardinality. 50 000 distinct series is comfortable for typical
+	// SenHub agent profiles (host + 1-3 vendor probes ≈ 1-5 k series);
+	// the cap fires for runaway-cardinality bugs (e.g. a probe emitting
+	// per-request unique IDs as labels) before they OOM the agent.
+	// Operators expecting >50 k series should bump this in YAML.
+	DefaultMaxStoreSize = 50000
+
+	// DefaultMaxActiveSeriesPerProbe is the per-probe cardinality
+	// budget. Each probe instance (matched by probe_name) gets at most
+	// this many distinct series before the limiter drops new ones with
+	// `reason="probe_cardinality"`. Default 10 000 matches a heavy
+	// vendor probe (IBM i ≈ 2k series, NetScaler with many vservers
+	// ≈ 5k, headroom for spikes). 0 disables the per-probe budget
+	// and falls back to MaxStoreSize alone.
+	DefaultMaxActiveSeriesPerProbe = 10000
+
+	// Memory-limiter defaults. Soft and hard limits are measured
+	// against runtime.MemStats.HeapAlloc (Go heap currently allocated,
+	// not RSS — see memory_limiter.go for the rationale). The
+	// soft/hard split mirrors the OTel Collector memory_limiter
+	// processor's `limit_mib` / `spike_limit_mib` pair: soft refuses
+	// new series, hard refuses everything and forces a GC. Operators
+	// can disable each independently by setting it to 0.
+	DefaultMemoryLimitSoftMiB     = 200
+	DefaultMemoryLimitHardMiB     = 400
+	DefaultMemoryLimitCheckPeriod = 5 * time.Second
+
+	// Persistence defaults. When `persistence.enabled: true`, the LWW
+	// store is checkpointed to disk every CheckpointInterval. Restores
+	// at boot so dashboards see continuity across agent restarts (the
+	// motivating use case: upgrade, OOM kill, OS reboot). Default OFF
+	// for back-compat — operators opt in by setting the path.
+	DefaultPersistenceInterval = 30 * time.Second
+
+	// DefaultMaxConcurrentExports controls how many OTLP gRPC Export
+	// calls can fire in parallel during one push cycle when the
+	// strategy splits a large snapshot into per-probe sub-batches.
+	// 4 is the sweet spot for the typical "1-5 probes × few-k series"
+	// profile — splits the work but doesn't fan out so wide that
+	// gRPC connection-level contention overwhelms otelcol-side
+	// receivers. Set to 1 to disable splitting (back-compat single
+	// gRPC Export per cycle, exactly as 0.1.93-beta pre-tier-2d).
+	// Larger fleets can bump.
+	DefaultMaxConcurrentExports = 4
+
+	// SplitBatchThreshold gates the parallel-export path. Below this
+	// many resolved records, splitting is pure overhead — encoding a
+	// dozen series in a single batch is faster than spinning up 4
+	// goroutines + 4 protobuf encoders. Above the threshold, the
+	// per-probe split pays for itself.
+	SplitBatchThreshold = 100
 	DefaultTracesBatchSize    = 512
 	DefaultTracesBatchTimeout = 5 * time.Second
 	DefaultTracesBufferSize   = 2048
@@ -139,6 +200,68 @@ type Config struct {
 	Logs        LogsSignal
 	Traces      TracesSignal
 	Resource    ResourceConfig
+	// MaxStoreSize bounds the OTLP strategy's in-memory metric store
+	// (the last-writer-wins cache of every distinct series since the
+	// last successful export). Once the store reaches this many series,
+	// new series are dropped and `senhub.agent.otlp.dropped` is
+	// incremented with `reason="store_cap"`. Existing series continue
+	// to update normally — known series are preferred over admitting
+	// unbounded new cardinality, which protects the agent from a probe
+	// that goes rogue on a high-cardinality label (e.g. unique IDs as
+	// tag values). 0 = unbounded (the historical default).
+	MaxStoreSize int
+	// MaxActiveSeriesPerProbe bounds the number of distinct series a
+	// single probe instance (matched by probe_name) can register in the
+	// store. When a probe hits its budget, new series are dropped with
+	// `senhub.agent.otlp.dropped{reason="probe_cardinality"}` and
+	// existing series keep updating. 0 = no per-probe budget; series
+	// admission is then governed only by MaxStoreSize. Stacks on top
+	// of MaxStoreSize — first whichever fires wins.
+	MaxActiveSeriesPerProbe int
+	// MemoryLimit defines the circuit-breaker thresholds for the OTLP
+	// strategy's metric store. A background poller reads Go heap
+	// pressure every CheckInterval; when soft is hit, new series are
+	// dropped (existing keep updating); when hard is hit, all writes
+	// are dropped and a GC is forced to try to recover. 0 disables
+	// each threshold independently.
+	MemoryLimit MemoryLimitConfig
+	// Persistence configures the optional on-disk LWW checkpoint that
+	// the strategy writes periodically and restores at boot. When
+	// disabled (Persistence.Path == ""), the strategy behaves exactly
+	// as before — store lives entirely in memory.
+	Persistence PersistenceConfig
+	// MaxConcurrentExports caps how many OTLP gRPC Export calls fire
+	// in parallel during one push cycle. When > 1 (default 4) and
+	// the resolved record count exceeds SplitBatchThreshold, the
+	// strategy partitions records by probe_name and dispatches each
+	// partition to its own goroutine sharing the single gRPC client
+	// (HTTP/2 multiplexes streams over one connection). Set to 1 to
+	// disable the parallel path entirely (back-compat single-batch
+	// export). Lower values mean fewer in-flight goroutines but
+	// longer cycles; higher values mean more parallelism but more
+	// chance of overwhelming the receiver.
+	MaxConcurrentExports int
+}
+
+// PersistenceConfig opts into the on-disk LWW checkpoint. The agent
+// writes the metric store snapshot to Path/snapshot.json every
+// Interval and restores it at boot. Survives routine restarts,
+// upgrades, OOM kills, and OS reboots — at the cost of one disk
+// write per Interval. Atomic write via .tmp + rename.
+type PersistenceConfig struct {
+	Path     string        // empty = disabled (no checkpoint)
+	Interval time.Duration // save cadence; falls back to default if 0
+}
+
+// MemoryLimitConfig configures the OTLP strategy's heap pressure
+// circuit breaker. Modelled on the OTel Collector memory_limiter
+// processor (limit_mib + spike_limit_mib), but applied per-strategy
+// rather than agent-wide because the OTLP metric store is the only
+// unbounded heap consumer in the data path.
+type MemoryLimitConfig struct {
+	SoftMiB       int           // 0 disables
+	HardMiB       int           // 0 disables
+	CheckInterval time.Duration // poll cadence; falls back to default if 0
 }
 
 // ResolveEndpoint returns the endpoint to use for this signal: the
@@ -209,6 +332,20 @@ func defaultConfig() Config {
 			ServiceName: DefaultServiceName,
 			Extra:       map[string]string{},
 		},
+		MaxStoreSize:            DefaultMaxStoreSize,
+		MaxActiveSeriesPerProbe: DefaultMaxActiveSeriesPerProbe,
+		MemoryLimit: MemoryLimitConfig{
+			SoftMiB:       DefaultMemoryLimitSoftMiB,
+			HardMiB:       DefaultMemoryLimitHardMiB,
+			CheckInterval: DefaultMemoryLimitCheckPeriod,
+		},
+		Persistence: PersistenceConfig{
+			// Path empty by default = disabled. Operators opt in by
+			// setting otlp.persistence.path in YAML.
+			Path:     "",
+			Interval: DefaultPersistenceInterval,
+		},
+		MaxConcurrentExports: DefaultMaxConcurrentExports,
 	}
 }
 
@@ -236,6 +373,38 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 			return cfg, fmt.Errorf("invalid timeout: %w", err)
 		}
 		cfg.Timeout = d
+	}
+
+	if v, ok := readInt(params["max_store_size"]); ok {
+		if v < 0 {
+			return cfg, fmt.Errorf("max_store_size must be >= 0 (0 = unbounded), got %d", v)
+		}
+		cfg.MaxStoreSize = v
+	}
+
+	if v, ok := readInt(params["max_active_series_per_probe"]); ok {
+		if v < 0 {
+			return cfg, fmt.Errorf("max_active_series_per_probe must be >= 0 (0 = unbounded), got %d", v)
+		}
+		cfg.MaxActiveSeriesPerProbe = v
+	}
+
+	if err := parseMemoryLimit(params["memory_limit"], &cfg.MemoryLimit); err != nil {
+		return cfg, fmt.Errorf("memory_limit: %w", err)
+	}
+
+	if err := parsePersistence(params["persistence"], &cfg.Persistence); err != nil {
+		return cfg, fmt.Errorf("persistence: %w", err)
+	}
+
+	if v, ok := readInt(params["max_concurrent_exports"]); ok {
+		if v < 1 {
+			return cfg, fmt.Errorf("max_concurrent_exports must be >= 1 (1 = no parallelism), got %d", v)
+		}
+		if v > 64 {
+			return cfg, fmt.Errorf("max_concurrent_exports must be <= 64 to bound goroutine fan-out, got %d", v)
+		}
+		cfg.MaxConcurrentExports = v
 	}
 
 	if hdrs := readStringMap(params["headers"]); hdrs != nil {
@@ -339,6 +508,69 @@ func parseRetry(raw interface{}, out *RetryConfig) error {
 			return fmt.Errorf("max_elapsed_time: %w", err)
 		}
 		out.MaxElapsedTime = d
+	}
+	return nil
+}
+
+func parsePersistence(raw interface{}, out *PersistenceConfig) error {
+	m := readStringKeyedMap(raw)
+	if m == nil {
+		return nil
+	}
+	// The "enabled" key is convenience sugar: enabled:false clears the
+	// path even if set, enabled:true requires a path to be meaningful.
+	enabled := true
+	if v, ok := m["enabled"].(bool); ok {
+		enabled = v
+	}
+	if v, ok := m["path"].(string); ok {
+		out.Path = v
+	}
+	if !enabled {
+		out.Path = ""
+	}
+	if v, ok := m["interval"].(string); ok && v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("interval: %w", err)
+		}
+		if d < time.Second {
+			return fmt.Errorf("interval must be >= 1s, got %v", d)
+		}
+		out.Interval = d
+	}
+	return nil
+}
+
+func parseMemoryLimit(raw interface{}, out *MemoryLimitConfig) error {
+	m := readStringKeyedMap(raw)
+	if m == nil {
+		return nil
+	}
+	if v, ok := readInt(m["soft_mib"]); ok {
+		if v < 0 {
+			return fmt.Errorf("soft_mib must be >= 0 (0 = disabled), got %d", v)
+		}
+		out.SoftMiB = v
+	}
+	if v, ok := readInt(m["hard_mib"]); ok {
+		if v < 0 {
+			return fmt.Errorf("hard_mib must be >= 0 (0 = disabled), got %d", v)
+		}
+		out.HardMiB = v
+	}
+	if v, ok := m["check_interval"].(string); ok && v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("check_interval: %w", err)
+		}
+		if d <= 0 {
+			return fmt.Errorf("check_interval must be > 0, got %v", d)
+		}
+		out.CheckInterval = d
+	}
+	if out.SoftMiB > 0 && out.HardMiB > 0 && out.SoftMiB >= out.HardMiB {
+		return fmt.Errorf("soft_mib (%d) must be < hard_mib (%d)", out.SoftMiB, out.HardMiB)
 	}
 	return nil
 }
