@@ -470,7 +470,7 @@ curl -X POST http://localhost:8080/api/{agentkey}/debug/logs \
 
 **Or start agent with verbose logging:**
 ```bash
-./senhub-agent run --authentication-key KEY --verbose --debug-modules probe.netscaler
+./senhub-agent run --verbose --debug-modules probe.netscaler
 ```
 
 ## License Requirements

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The SenHub Agent supports comprehensive HTTPS/TLS configuration for secure monitoring in offline mode. This guide covers all aspects of TLS setup, from auto-generated certificates to production-ready configurations.
+The SenHub Agent supports comprehensive HTTPS/TLS configuration for secure monitoring. This guide covers all aspects of TLS setup, from auto-generated certificates to production-ready configurations.
 
 ## TLS Modes
 
@@ -13,7 +13,7 @@ The SenHub Agent supports comprehensive HTTPS/TLS configuration for secure monit
 **Configuration**: No TLS parameters needed
 
 ```bash
-./agent install --offline
+./agent install
 # Access: http://localhost:8080/web/{agentkey}/dashboard
 ```
 
@@ -24,7 +24,7 @@ The SenHub Agent supports comprehensive HTTPS/TLS configuration for secure monit
 **Configuration**: Automatic certificate generation
 
 ```bash
-./agent install --offline --enable-https
+./agent install --enable-https
 # Access: https://localhost:8443/web/{agentkey}/dashboard
 ```
 
@@ -35,7 +35,7 @@ The SenHub Agent supports comprehensive HTTPS/TLS configuration for secure monit
 **Configuration**: User-provided certificate files
 
 ```bash
-./agent install --offline --enable-https \
+./agent install --enable-https \
   --cert-file /path/to/cert.pem \
   --key-file /path/to/key.pem
 # Access: https://your-domain.com:8443/web/{agentkey}/dashboard
@@ -68,7 +68,7 @@ Subject Alternative Names: DNS:localhost, IP:127.0.0.1, [custom hosts]
 
 ```bash
 # Multiple hostnames for certificate
-./agent install --offline --enable-https \
+./agent install --enable-https \
   --https-hosts "agent.company.com,192.168.1.100,monitoring.local,10.0.0.50"
 ```
 
@@ -150,7 +150,7 @@ certbot certonly --standalone \
 #### 2. Configure Agent
 
 ```bash
-./agent install --offline --enable-https \
+./agent install --enable-https \
   --cert-file /etc/letsencrypt/live/agent.company.com/fullchain.pem \
   --key-file /etc/letsencrypt/live/agent.company.com/privkey.pem \
   --https-port 443 \
@@ -184,7 +184,7 @@ Submit `agent.csr` to your certificate authority and receive signed certificate.
 #### 3. Configure Agent
 
 ```bash
-./agent install --offline --enable-https \
+./agent install --enable-https \
   --cert-file /etc/ssl/company/agent.crt \
   --key-file /etc/ssl/company/agent.key \
   --https-port 8443 \
@@ -201,7 +201,7 @@ Submit `agent.csr` to your certificate authority and receive signed certificate.
 - **Use Case**: General purpose, mixed environments
 
 ```bash
-./agent install --offline --enable-https --min-tls-version 1.2
+./agent install --enable-https --min-tls-version 1.2
 ```
 
 #### TLS 1.3 (Recommended)
@@ -210,7 +210,7 @@ Submit `agent.csr` to your certificate authority and receive signed certificate.
 - **Use Case**: High-security environments, modern infrastructure
 
 ```bash
-./agent install --offline --enable-https --min-tls-version 1.3
+./agent install --enable-https --min-tls-version 1.3
 ```
 
 ### Cipher Suite Configuration
@@ -490,7 +490,7 @@ echo "Key:  $key_modulus"
 openssl x509 -in cert.pem -text -noout | grep -A1 "Subject Alternative Name"
 
 # Add missing hostnames
-./agent install --offline --enable-https \
+./agent install --enable-https \
   --https-hosts "missing-hostname.com,another-host.local"
 ```
 
@@ -552,10 +552,10 @@ curl --cacert cert.pem https://localhost:8443/health
 #### Agent Debugging
 ```bash
 # Enable TLS debugging
-./agent run --offline --enable-https --verbose --debug-modules strategy.http
+./agent run --enable-https --verbose --debug-modules strategy.http
 
 # Check certificate loading
-./agent run --offline --enable-https --debug-modules configuration
+./agent run --enable-https --debug-modules configuration
 ```
 
 ## Integration Examples

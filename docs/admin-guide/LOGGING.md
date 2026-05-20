@@ -62,13 +62,13 @@ The system defines 16 modules for different components:
 
 #### Full verbose mode (backward compatible)
 ```bash
-./senhub-agent --verbose --authentication-key "..."
+./senhub-agent --verbose
 ```
 Enables DEBUG level for all modules.
 
 #### Selective debug mode
 ```bash
-./senhub-agent --debug-modules "strategy.http,probe.redfish" --authentication-key "..."
+./senhub-agent --debug-modules "strategy.http,probe.redfish"
 ```
 Enables DEBUG level only for specified modules.
 
@@ -191,17 +191,17 @@ The agent automatically detects the execution mode and routes logs accordingly:
 
 #### Debug only HTTP cache issues
 ```bash
-./senhub-agent --debug-modules "strategy.http" --authentication-key "..."
+./senhub-agent --debug-modules "strategy.http"
 ```
 
 #### Debug Redfish and network probes
 ```bash
-./senhub-agent --debug-modules "probe.redfish,probe.network" --authentication-key "..."
+./senhub-agent --debug-modules "probe.redfish,probe.network"
 ```
 
 #### Debug Windows performance counters (PDH)
 ```bash
-./senhub-agent --debug-modules "pdh.windows" --authentication-key "..."
+./senhub-agent --debug-modules "pdh.windows"
 ```
 
 #### Runtime level changes
@@ -337,7 +337,7 @@ The system is fully compatible with zerolog API:
 # Problem: Metrics not appearing in PRTG endpoint
 # Solution: Enable cache and HTTP strategy logs
 
-./senhub-agent --debug-modules "strategy.http" --authentication-key "..."
+./senhub-agent --debug-modules "strategy.http"
 
 # Or via API:
 curl -X POST http://localhost:8080/api/mykey/debug/logs \
@@ -349,7 +349,7 @@ curl -X POST http://localhost:8080/api/mykey/debug/logs \
 # Problem: Redfish probe not collecting metrics
 # Solution: Enable only Redfish logs
 
-./senhub-agent --debug-modules "probe.redfish" --authentication-key "..."
+./senhub-agent --debug-modules "probe.redfish"
 ```
 
 ### Scenario 3: Reduce log noise in production
@@ -372,7 +372,7 @@ curl -X POST http://localhost:8080/api/mykey/debug/logs \
 ### Verify the system works
 ```bash
 # 1. Start agent with specific module
-./senhub-agent --debug-modules "strategy.http" --authentication-key "test"
+./senhub-agent --debug-modules "strategy.http"
 
 # 2. Verify only strategy.http debug logs appear
 # 3. Other components should only show errors

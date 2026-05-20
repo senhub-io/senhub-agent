@@ -349,7 +349,7 @@ curl -X POST http://localhost:8080/api/{key}/debug/logs \
   -d '{"module_levels": [{"module": "probe.redfish", "level": "debug"}]}'
 
 # Or start agent with verbose logging
-./senhub-agent run --authentication-key KEY --verbose --debug-modules probe.redfish
+./senhub-agent run --verbose --debug-modules probe.redfish
 ```
 
 ## License Requirements
