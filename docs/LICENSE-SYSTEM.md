@@ -187,36 +187,11 @@ if !validator.IsProbeAuthorized(validatedLicense, probeType) {
 - Warning messages logged
 - After grace period: probes disabled, falls back to free tier
 
-## Deployment Modes
+## Deployment Mode
 
-### Online Mode (SaaS) - IMPORTANT
+The agent runs standalone (offline-only). There is no SenHub platform connection mode. All license validation is local.
 
-**How it works:**
-- Agent connects to SenHub platform via `server_url`
-- License validation delegated to backend API
-- **NO local JWT token required**
-- Platform controls authorization centrally
-
-**Behavior:**
-- `license == nil` → **Enterprise tier** (all probes authorized)
-- Simplified deployment (zero license management)
-- Requires internet connectivity for configuration pull
-- Backend can update authorization without agent restart
-
-**Configuration:**
-```yaml
-agent:
-  authentication_key: "9bb3df79-2973-4662-8687-8da602175e0b"
-  server_url: "https://eu-west-1.intake.senhub.io"
-  # NO license field - online mode = Enterprise
-```
-
-**⚠️ CRITICAL DESIGN**: The online mode bypass is intentional:
-- **Backend trust model**: Online agents trust SenHub platform for authorization
-- **Dual nil check protection** (see Architecture section) prevents abuse
-- **Future enhancement**: Backend will include license JWT in configuration API response
-
-### Offline Mode (Self-Hosted)
+### Self-Hosted (Local Configuration)
 
 **How it works:**
 - Agent runs standalone without SenHub platform
@@ -708,15 +683,6 @@ Body: { "license_token": "eyJhbGci..." }
 
 ## FAQ
 
-**Q: Why do online agents get Enterprise tier automatically?**
-A: Online agents trust the SenHub platform for authorization. The backend controls which probes are authorized via configuration API. This eliminates local license management while maintaining security through platform authentication.
-
-**Q: Is the online mode bypass secure?**
-A: Yes. The system uses dual nil check protection:
-- No validator = Safe mode (free tier only)
-- Validator + No license = Online mode (Enterprise, backend-controlled)
-- Validator + License = Offline mode (JWT verification)
-
 **Q: Can one license be used on multiple agents?**
 A: Technically yes (JWT doesn't prevent copying), but this violates license terms. Server-side enforcement can be added in future.
 
@@ -724,7 +690,7 @@ A: Technically yes (JWT doesn't prevent copying), but this violates license term
 A: 7-day grace period, then fallback to free tier probes only.
 
 **Q: Can licenses be revoked?**
-A: Not currently. Revocation would require agent to check with Sensor Factory on startup (online mode).
+A: Not currently. License validation is fully local; revocation would require network-based checks.
 
 **Q: How to upgrade from Pro to Enterprise?**
 A: Activate new Enterprise license - it replaces the existing one.
@@ -732,11 +698,8 @@ A: Activate new Enterprise license - it replaces the existing one.
 **Q: What if private key is compromised?**
 A: Generate new key pair, update all agents with new public key, reissue all customer licenses.
 
-**Q: How do I switch from online to offline mode?**
-A: Remove `server_url` from configuration and add `license` field with JWT token. Agent will switch to offline mode on next restart.
-
-**Q: Can offline agents use syslog or citrix probes without a license?**
-A: No. Offline mode requires explicit JWT license with authorized probes. Only online mode gets automatic Enterprise access.
+**Q: Can agents use syslog or citrix probes without a license?**
+A: No. Premium probes require an explicit JWT license with the relevant probes authorized.
 
 ## Conclusion
 

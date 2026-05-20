@@ -8,22 +8,22 @@
 
 **Symptoms:**
 ```bash
-./agent install --offline
+./agent install
 Error: open /Library/LaunchDaemons/senhub-agent.plist: permission denied
 ```
 
 **Solution:**
 ```bash
 # Run with sudo for service installation
-sudo ./agent install --offline
+sudo ./agent install
 
-# Or install without service registration
-./agent run --offline  # No service, just direct execution
+# Or run without service registration
+./agent run  # No service, just direct execution
 ```
 
 **Prevention:**
 - Always use `sudo` for system service installation
-- Use `./agent run --offline` for non-privileged testing
+- Use `./agent run` for non-privileged testing
 
 #### 2. Configuration File Not Generated
 
@@ -37,7 +37,7 @@ sudo ./agent install --offline
 ls -la ./
 touch test-file && rm test-file  # Test write permissions
 
-# Check if agent is actually running in offline mode
+# Check if agent is actually running
 ps aux | grep agent
 ```
 
@@ -47,8 +47,8 @@ ps aux | grep agent
 chmod 755 .
 sudo chown $USER:$USER .
 
-# Verify offline mode is enabled
-./agent run --offline --verbose --config-path ./debug-config.yaml
+# Verify agent configuration
+./agent run --verbose --config-path ./debug-config.yaml
 ```
 
 #### 3. Binary Not Found or Executable
@@ -113,7 +113,7 @@ sudo lsof -i :8080
 sudo lsof -i :8443
 
 # Use different port
-./agent run --offline --https-port 9443
+./agent run --https-port 9443
 ```
 
 **If firewall is blocking:**
@@ -152,7 +152,7 @@ sudo netstat -tlnp | grep agent
 # For HTTP mode, agent binds to 127.0.0.1 (localhost only)
 # Enable HTTPS for external access
 sudo ./agent stop
-sudo ./agent install --offline --enable-https
+sudo ./agent install --enable-https
 sudo ./agent start
 
 # Or manually edit configuration
@@ -171,7 +171,7 @@ sudo ./agent restart
 ```bash
 # Regenerate certificate with correct hostnames
 sudo ./agent stop
-./agent install --offline --enable-https \
+./agent install --enable-https \
   --https-hosts "$(hostname),$(hostname -f),$(hostname -I | awk '{print $1}')"
 sudo ./agent start
 
@@ -194,7 +194,7 @@ ERR Failed to configure TLS error="auto-generated certificate not found at ./cer
 mkdir -p ./certs
 
 # Regenerate certificates by running agent
-./agent run --offline --enable-https --verbose
+./agent run --enable-https --verbose
 
 # Check certificate files
 ls -la ./certs/
@@ -241,7 +241,7 @@ echo "Key:  $key_mod"
 ```bash
 # If using auto-generated certificates, regenerate
 rm -rf ./certs/
-./agent run --offline --enable-https
+./agent run --enable-https
 
 # If using custom certificates, verify files
 openssl x509 -in /path/to/cert.pem -text -noout
@@ -263,7 +263,7 @@ openssl rsa -in /path/to/key.pem -check -noout
 **For Production:**
 ```bash
 # Option 1: Use valid certificates from CA
-./agent install --offline --enable-https \
+./agent install --enable-https \
   --cert-file /etc/ssl/certs/valid-cert.pem \
   --key-file /etc/ssl/private/valid-key.pem
 
@@ -287,7 +287,7 @@ openssl x509 -outform DER -in ./certs/agent-cert.pem -out agent-cert.der
 curl "http://localhost:8080/api/{agentkey}/info/probes"
 
 # Check probe status in logs
-./agent run --offline --verbose --debug-modules probe.cpu,probe.memory
+./agent run --verbose --debug-modules probe.cpu,probe.memory
 
 # Test individual probe endpoints
 curl "http://localhost:8080/api/{agentkey}/senhub/metrics/cpu"
@@ -375,7 +375,7 @@ python -c "import yaml; yaml.safe_load(open('./agent-config.yaml'))"
 
 # Regenerate configuration if corrupted
 mv agent-config.yaml agent-config.yaml.backup
-./agent run --offline  # Generates new configuration
+./agent run  # Generates new configuration if none exists
 ```
 
 #### 2. Probe Configuration Errors
@@ -388,7 +388,7 @@ ERR Error starting probe error="invalid probe parameters"
 **Diagnosis:**
 ```bash
 # Check probe configuration syntax
-./agent run --offline --verbose --debug-modules probe.cpu,probe.memory,configuration
+./agent run --verbose --debug-modules probe.cpu,probe.memory,configuration
 
 # Validate specific probe
 grep -A 5 "name: cpu" ./agent-config.yaml
@@ -481,7 +481,7 @@ sudo setsebool -P httpd_can_network_connect 1
 **Service Registration:**
 ```cmd
 # Run as Administrator
-agent.exe install --offline --enable-https
+agent.exe install --enable-https
 
 # Check Windows Service
 sc query senhub-agent
@@ -504,7 +504,7 @@ netsh advfirewall firewall add rule name="SenHub Agent HTTPS" dir=in action=allo
 ```bash
 # Allow unsigned binary
 sudo spctl --master-disable
-./agent run --offline
+./agent run
 sudo spctl --master-enable
 
 # Or sign the binary (for distribution)
@@ -524,13 +524,13 @@ sudo chmod 644 /Library/LaunchDaemons/senhub-agent.plist
 
 ```bash
 # Full debug mode
-./agent run --offline --verbose
+./agent run --verbose
 
 # Specific module debugging
-./agent run --offline --debug-modules strategy.http,cache,configuration,probe.cpu
+./agent run --debug-modules strategy.http,cache,configuration,probe.cpu
 
 # HTTP strategy specific debugging
-./agent run --offline --debug-modules strategy.http
+./agent run --debug-modules strategy.http
 ```
 
 #### Log Analysis
@@ -557,7 +557,7 @@ zerolog: could not write event: can't rename log file: permission denied
 ```
 
 **Cause:**
-The agent tries to write logs to system directories (`/Library/Logs/SenHub` on macOS, `/var/log/senhub` on Linux) but lacks the necessary permissions.
+The agent tries to write logs to system directories (`/Library/Logs/SenHub` on macOS, `/var/log/senhub-agent` on Linux) but lacks the necessary permissions.
 
 **Solution:**
 The agent automatically detects permission issues and falls back to a local directory. No action needed - this is expected behavior when running without elevated privileges.
@@ -565,7 +565,7 @@ The agent automatically detects permission issues and falls back to a local dire
 **Verification:**
 ```bash
 # Check where logs are actually being written
-./agent run --offline --verbose 2>&1 | grep "Using log file"
+./agent run --verbose 2>&1 | grep "Using log file"
 
 # The output will show the actual log location, e.g.:
 # Using log file: /Users/username/agent-directory/senhubagent.log
