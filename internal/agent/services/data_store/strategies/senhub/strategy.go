@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -100,9 +101,14 @@ func NewSyncStrategySenhub(
 	// Create module-specific logger for SenHub strategy
 	moduleLogger := logger.NewModuleLogger(baseLogger, "strategy.senhub")
 
+	// The cloud intake URL is injected at build time (see Makefile
+	// ldflags); pre-0.2.0 it was also overridable via --server-url,
+	// but that CLI flag was removed alongside online mode. Operators
+	// who need a non-default intake (staging / dev) get the alternate
+	// URL from the build env.
 	srv := server.NewServer(
 		agentConfig.GetAuthenticationKey(),
-		agentConfig.GetServerUrl(),
+		cliArgs.ProductionURL,
 		baseLogger,
 	)
 

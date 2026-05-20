@@ -3,6 +3,7 @@ package agentstate
 import (
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestOTLPCounters_IncrementAndRead(t *testing.T) {
@@ -10,7 +11,7 @@ func TestOTLPCounters_IncrementAndRead(t *testing.T) {
 
 	IncrementOTLPMetricsPushed(10)
 	IncrementOTLPMetricsPushed(5)
-	IncrementOTLPMetricsPushed(0) // ignored
+	IncrementOTLPMetricsPushed(0)  // ignored
 	IncrementOTLPMetricsPushed(-3) // ignored (defensive)
 
 	IncrementOTLPLogsPushed()
@@ -83,5 +84,43 @@ func TestLogChannelFillRatio_EmptyAndFilled(t *testing.T) {
 	PublishLog(LogRecord{Body: "b"})
 	if r := LogChannelFillRatio(); r != 0.5 {
 		t.Errorf("fill ratio after 2 of 4 = %v, want 0.5", r)
+	}
+}
+
+func TestOTLPDroppedByReason(t *testing.T) {
+	resetOTLPCountersForTest()
+
+	IncrementOTLPDropped("store_cap")
+	IncrementOTLPDropped("store_cap")
+	IncrementOTLPDropped("queue_full")
+	IncrementOTLPDropped("") // becomes "unknown"
+
+	got := GetOTLPDroppedByReason()
+	if got["store_cap"] != 2 {
+		t.Errorf("store_cap=%d, want 2", got["store_cap"])
+	}
+	if got["queue_full"] != 1 {
+		t.Errorf("queue_full=%d, want 1", got["queue_full"])
+	}
+	if got["unknown"] != 1 {
+		t.Errorf("unknown=%d, want 1", got["unknown"])
+	}
+}
+
+func TestOTLPStoreSizeAndExportDuration(t *testing.T) {
+	resetOTLPCountersForTest()
+
+	RecordOTLPStoreSize(1234)
+	if got := GetOTLPStoreSize(); got != 1234 {
+		t.Errorf("store_size=%d, want 1234", got)
+	}
+
+	RecordOTLPExportDuration(100 * time.Millisecond)
+	RecordOTLPExportDuration(300 * time.Millisecond)
+	if got := GetOTLPLastExportDuration(); got != 300*time.Millisecond {
+		t.Errorf("last_export_duration=%v, want 300ms", got)
+	}
+	if got := GetOTLPMeanExportDuration(); got != 200*time.Millisecond {
+		t.Errorf("mean_export_duration=%v, want 200ms", got)
 	}
 }

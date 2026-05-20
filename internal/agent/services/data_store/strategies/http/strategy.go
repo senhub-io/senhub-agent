@@ -351,6 +351,48 @@ type SystemInfoResponse struct {
 	Resources ResourcesInfo       `json:"resources"`
 }
 
+// OTLPInfoResponse represents the response for /info/otlp — a snapshot
+// of every OTLP self-metric exposed by `agentstate`. Designed to feed
+// the CLI `agent status --otlp` view and the web dashboard's OTLP card
+// without forcing either to scrape the Prometheus bridge.
+type OTLPInfoResponse struct {
+	Pipeline       OTLPPipelineInfo       `json:"pipeline"`
+	Store          OTLPStoreInfo          `json:"store"`
+	ExportDuration OTLPExportDurationInfo `json:"export_duration"`
+	Checkpoint     OTLPCheckpointInfo     `json:"checkpoint"`
+	Parallel       OTLPParallelInfo       `json:"parallel"`
+}
+
+type OTLPPipelineInfo struct {
+	MetricsPushedTotal uint64            `json:"metrics_pushed_total"`
+	LogsPushedTotal    uint64            `json:"logs_pushed_total"`
+	ExportErrorsTotal  uint64            `json:"export_errors_total"`
+	DroppedTotal       uint64            `json:"dropped_total"`
+	DroppedByReason    map[string]uint64 `json:"dropped_by_reason"`
+}
+
+type OTLPStoreInfo struct {
+	Size               int64   `json:"size"`
+	LogBufferFillRatio float64 `json:"log_buffer_fill_ratio"`
+}
+
+type OTLPExportDurationInfo struct {
+	LastMs float64 `json:"last_ms"`
+	MeanMs float64 `json:"mean_ms"`
+}
+
+type OTLPCheckpointInfo struct {
+	SizeBytes          int64             `json:"size_bytes"`
+	LastSaveAgeSeconds float64           `json:"last_save_age_seconds"`
+	RestoredEntries    int64             `json:"restored_entries"`
+	ErrorsTotal        uint64            `json:"errors_total"`
+	ErrorsByStage      map[string]uint64 `json:"errors_by_stage"`
+}
+
+type OTLPParallelInfo struct {
+	SubBatches int32 `json:"sub_batches"`
+}
+
 // ProbesInfoResponse represents the response for /info/probes
 type ProbesInfoResponse struct {
 	Probes       []string       `json:"probes"`
@@ -409,6 +451,11 @@ func (h *HTTPSyncStrategy) handleInfoEndpoints(w http.ResponseWriter, r *http.Re
 // handleInfoSystem provides system status and resource information (delegated to APIManager)
 func (h *HTTPSyncStrategy) handleInfoSystem(w http.ResponseWriter, r *http.Request) {
 	h.apiManager.HandleInfoSystem(w, r)
+}
+
+// handleInfoOTLP exposes the OTLP self-metric snapshot (delegated to APIManager)
+func (h *HTTPSyncStrategy) handleInfoOTLP(w http.ResponseWriter, r *http.Request) {
+	h.apiManager.HandleInfoOTLP(w, r)
 }
 
 // handleInfoTags provides tag discovery for a specific probe (delegated to APIManager)

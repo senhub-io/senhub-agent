@@ -49,11 +49,15 @@ var probeBitmap = map[string]uint{
 	"syslog":               8,
 	"event":                9,
 	// bit 10 reserved (formerly otel; probe removed pending implementation)
-	"redfish": 11,
-	"citrix":               12,
-	"netscaler":            13,
-	"veeam":                14,
-	// 15-31 reserved for future probes
+	"redfish":    11,
+	"citrix":     12,
+	"netscaler":  13,
+	"veeam":      14,
+	"mysql":      15,
+	"postgresql": 16,
+	"linux_logs": 17,
+	"ibmi":       18,
+	// 19-31 reserved for future probes (next slots: zabbix, snmp, …)
 }
 
 // Reverse bitmap for decoding

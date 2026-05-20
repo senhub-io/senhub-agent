@@ -17,7 +17,7 @@ SenHub Agent is a cross-platform monitoring agent that collects metrics and even
 ### Key Features
 
 - **Multi-Probe Architecture**: CPU, memory, network, Redfish, Citrix, and more
-- **Flexible Deployment**: Online (SenHub platform) or offline (standalone) modes
+- **Flexible Deployment**: Standalone local-config deployment
 - **Multiple Integrations**: PRTG, Nagios, Grafana, SenHub, and custom monitoring systems
 - **HTTPS/TLS Support**: Secure communication with certificate management
 - **Web Interface**: Local dashboard for configuration and monitoring
@@ -28,7 +28,7 @@ SenHub Agent is a cross-platform monitoring agent that collects metrics and even
 ### For Users
 - **[Getting Started](./user-guide/GETTING-STARTED.md)** - Quick start guide
 - **[Installation](./user-guide/INSTALLATION.md)** - Detailed installation instructions
-- **[Offline Mode](./user-guide/OFFLINE-MODE.md)** - Standalone deployment guide
+- **[Standalone Deployment](./user-guide/OFFLINE-MODE.md)** - Standalone deployment guide
 - **[Configuration](./user-guide/CONFIGURATION.md)** - Configuration overview
 
 ### For Administrators
@@ -55,19 +55,10 @@ SenHub Agent is a cross-platform monitoring agent that collects metrics and even
 
 ## Quick Start
 
-### Online Mode (with SenHub Platform)
+### Basic Installation
 ```bash
-# Install with agent key from SenHub platform
-./senhub-agent install --authentication-key YOUR_AGENT_KEY
-
-# Start the agent
-./senhub-agent start
-```
-
-### Offline Mode (Standalone)
-```bash
-# Install in offline mode
-./senhub-agent install --offline
+# Install the agent (auto-generates a UUID agent key)
+./senhub-agent install
 
 # Start the agent
 ./senhub-agent start
@@ -79,7 +70,7 @@ SenHub Agent is a cross-platform monitoring agent that collects metrics and even
 ### With HTTPS
 ```bash
 # Install with HTTPS support
-./senhub-agent install --offline --enable-https
+./senhub-agent install --enable-https
 
 # Access web interface
 # https://localhost:8443/web/{agentkey}/dashboard
@@ -107,9 +98,10 @@ type "C:\ProgramData\SenHub\logs\senhubagent.log"
 ```
 
 ### Update Configuration
-Edit the configuration file:
-- **Online mode**: Configuration managed by SenHub platform
-- **Offline mode**: Edit `agent-config.yaml`
+Edit the configuration file. The default path depends on your OS:
+- **Linux**: `/etc/senhub-agent/agent.yaml`
+- **Windows**: `%ProgramData%\SenHub\agent.yaml`
+- **macOS**: `/usr/local/etc/senhub-agent/agent.yaml`
 
 ## Support
 

@@ -47,6 +47,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/info/probes", h.HandleInfoProbes).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/tags/{probe}", h.HandleInfoTags).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/schema/{probe}", h.HandleInfoSchema).Methods("GET")
+	router.HandleFunc("/api/{agentkey}/info/otlp", h.HandleInfoOTLP).Methods("GET")
 
 	// Debug endpoints (with agentkey authentication)
 	router.HandleFunc("/api/{agentkey}/debug/cache", h.HandleDebugCache).Methods("GET")
@@ -54,6 +55,13 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/debug/logs", h.HandleSetLogLevels).Methods("POST")
 	router.HandleFunc("/api/{agentkey}/debug/inject-test-metrics", h.HandleTestInjectMetrics).Methods("POST") // TEMPORARY TEST ENDPOINT
 	router.HandleFunc("/api/{agentkey}/debug/inject-real-metrics", h.HandleInjectRealMetrics).Methods("POST") // PRODUCTION DATA INJECTION
+
+	// Runtime profiling — Go's net/http/pprof handlers mounted under
+	// /api/{agentkey}/debug/pprof/. Same agentkey auth as the other
+	// debug endpoints; needed for goroutine-dump-based investigation
+	// of stalls (the bbcloud "agent silent after JT400 respawn" is
+	// the motivating case).
+	registerPprofRoutes(router, h)
 
 	// Admin endpoints (with agentkey authentication)
 	router.HandleFunc("/api/{agentkey}/stats/cache", h.HandleStatsCache).Methods("GET")
@@ -151,6 +159,10 @@ func (h *HTTPHandlers) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
 
 func (h *HTTPHandlers) HandleInfoSchema(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleInfoSchema(w, r)
+}
+
+func (h *HTTPHandlers) HandleInfoOTLP(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleInfoOTLP(w, r)
 }
 
 // Debug handlers (delegating to strategy for now)
