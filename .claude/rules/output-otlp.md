@@ -1,18 +1,29 @@
 ---
-title: OTLP output (gRPC push)
+title: OTLP output (gRPC or HTTP push)
 paths:
   - internal/agent/services/data_store/strategies/otlp/**
 ---
 
 ## What this is
 
-The `otlp` strategy pushes signals via OpenTelemetry Protocol over gRPC to a configured collector. Three signals supported:
+The `otlp` strategy pushes signals via OpenTelemetry Protocol to a configured collector or a compatible backend. Three signals supported:
 
 - **metrics** — primary use case (probe data → OTLP MetricsService)
 - **logs** — agent + probe logs (when enabled)
 - **traces** — Phase 3 / future
 
-Per-signal transport overrides exist (`signals.metrics.endpoint`, `signals.logs.endpoint`) so an operator can split signal targets if their collector setup demands it.
+## Transport: `protocol: grpc | http`
+
+The `protocol` config key selects the OTLP transport for all three signals:
+
+- `grpc` (default) — OTLP/gRPC. Talk to an `otelcol` or any gRPC OTLP receiver.
+- `http` — OTLP/HTTP protobuf. This is what VictoriaMetrics / VictoriaLogs / VictoriaTraces accept on their **native** `/opentelemetry/...` ingestion endpoints, so `http` is the transport to use when pushing straight to a Victoria backend (no otelcol hop).
+
+`protocol` is strategy-wide — there is no per-signal transport override (mixing gRPC and HTTP against one endpoint is almost always a config mistake, not an intent). The exporter wiring lives in `client.go`: `buildMetricExporter` / `buildLogExporter` / `buildTraceExporter` each branch to a `*GRPC` or `*HTTP` builder. The `exporters` struct holds interface types (`sdkmetric.Exporter`, `sdklog.Exporter`) so the same struct carries either transport.
+
+With `http`, the OTLP/HTTP exporters use the standard signal paths (`/v1/metrics`, `/v1/logs`, `/v1/traces`) appended to `endpoint`. When fronting a Victoria backend behind nginx, nginx rewrites those standard paths to the Victoria-native ones.
+
+Per-signal transport overrides for endpoint/headers/TLS still exist (`signals.metrics.endpoint`, `signals.logs.endpoint`) so an operator can split signal targets — useful with `http` when each signal lands in a different Victoria service.
 
 ## Mapper-side conformance
 
@@ -44,6 +55,8 @@ Currently `IncludeProbeTags: true` is hardcoded for OTLP (see `strategy.go`), so
 ## Signal config
 
 ```yaml
+protocol: grpc          # grpc (default) | http
+endpoint: "otlp.example.com:4317"
 signals:
   metrics:
     enabled: true
