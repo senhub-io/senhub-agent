@@ -525,7 +525,7 @@ for channel in metrics['prtg']['result']:
 Enable verbose logging to see detailed HTTP request/response information:
 
 ```bash
-./senhub-agent run --verbose --authentication-key <key>
+./senhub-agent run --verbose
 ```
 
 ### Performance Monitoring
