@@ -198,5 +198,5 @@ curl -X POST http://localhost:8080/api/{key}/debug/logs \
 Or start the agent with:
 
 ```bash
-./senhub-agent run --authentication-key KEY --verbose --debug-modules probe.event
+./senhub-agent run --verbose --debug-modules probe.event
 ```
