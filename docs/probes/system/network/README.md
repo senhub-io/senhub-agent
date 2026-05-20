@@ -204,7 +204,7 @@ Detect anomalies:
 **Check probe status:**
 ```bash
 # View agent logs with Network probe debugging
-./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.network
+./agent run --verbose --debug-modules probe.network
 ```
 
 **Verify probe is enabled:**
@@ -248,7 +248,7 @@ ifconfig
 
 4. **Enable debug logging:**
    ```bash
-   ./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.host
+   ./agent run --verbose --debug-modules probe.host
    ```
 
 ### Unix/Linux: Missing Interfaces
@@ -506,10 +506,10 @@ For issues or questions:
 1. **Enable debug logging:**
    ```bash
    # Windows: probe.host module handles network on Windows
-   ./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.host
+   ./agent run --verbose --debug-modules probe.host
 
    # Unix/Linux/macOS: probe.network module
-   ./agent run --authentication-key YOUR_KEY --verbose --debug-modules probe.network
+   ./agent run --verbose --debug-modules probe.network
    ```
 
 2. **Check probe health:**

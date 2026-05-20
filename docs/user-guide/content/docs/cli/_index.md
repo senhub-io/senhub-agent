@@ -5,7 +5,7 @@ weight: 7
 
 # CLI Reference
 
-All commands are run from the agent binary. Release artifacts are named with the OS and architecture (e.g. `senhub-agent_linux_amd64`, `senhub-agent_windows_amd64.exe`). Examples in this page assume the binary has been renamed to `senhub-agent` (Linux/macOS) or `senhub-agent.exe` (Windows) — see the [Installation guide]({{< relref "/docs/installation" >}}#binary-naming-convention) for the full list. If you keep the original filename, substitute it in every command.
+All commands are run from the agent binary. Release artifacts are ZIP archives named `senhub-agent-<os>-<arch>.zip` (e.g. `senhub-agent-linux-amd64.zip`, `senhub-agent-windows-amd64.zip`). Each ZIP contains a binary already named `senhub-agent` (Linux/macOS) or `senhub-agent.exe` (Windows) — no renaming needed after extraction. See the [Installation guide]({{< relref "/docs/installation" >}}) for details.
 
 ## Service Management
 
@@ -48,13 +48,13 @@ senhub-agent run --verbose
 senhub-agent run --filter probe.veeam
 ```
 
-The agent reads its configuration from the YAML file pointed at by `--config-path` (default `./agent-config.yaml`).
+The agent reads its configuration from the YAML file pointed at by `--config-path`. The default path is OS-specific: `/etc/senhub-agent/agent.yaml` (Linux), `%ProgramData%\SenHub\agent.yaml` (Windows), `/usr/local/etc/senhub-agent/agent.yaml` (macOS).
 
 | Flag | Description |
 |------|-------------|
 | `--verbose`, `-v` | Enable debug logging for all modules |
 | `--filter MODULES` | Filter debug logs by module prefix (implies verbose) |
-| `--config-path PATH` | Configuration file path (default: `./agent-config.yaml`) |
+| `--config-path PATH` | Configuration file path (default: OS canonical path) |
 
 ### Debug Filter Examples
 

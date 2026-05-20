@@ -268,8 +268,13 @@ func MustParse() *ParsedArgs {
 			if spErr != nil {
 				log.Fatalf("failed to create start args parser: %v", spErr)
 			}
+			// Parse errors are deliberately tolerated here: every
+			// StartSubcommandArgs field is optional, so a bare
+			// `senhub-agent` (no subcommand, no flags) must still
+			// yield a usable ParsedArgs. The discard makes the
+			// intent explicit for the linter (SA9003).
 			if parseErr := sp.Parse(os.Args[1:]); parseErr != nil && parseErr != arg.ErrHelp {
-				// Ignore parse errors — all start args are optional.
+				_ = parseErr
 			}
 			return parsedArgsFromStartArgs(&startArgs, parsedEnv)
 		default:
