@@ -22,36 +22,35 @@ SenHub Agent is a monitoring collector that runs on your infrastructure and coll
 
 Contact SenHub support (support@senhub.io) or download from the [GitHub releases page](https://github.com/sen-hub/senhub-agent/releases). You will receive:
 
-- The agent binary for your platform (see naming convention below)
-- An authentication key (UUID format) used as the URL token in HTTPS endpoints
+- The agent ZIP for your platform (see naming convention below)
 - A license token (required for premium probes: Citrix, NetScaler, Redfish, etc.)
 
-### Binary Naming Convention
+### Release Artifact Naming
 
-Release artifacts include the OS and architecture in the filename:
+Release artifacts are ZIP archives named with dashes between OS and architecture:
 
-| Platform | Binary filename |
-|----------|-----------------|
-| Windows x86_64 | `senhub-agent_windows_amd64.exe` |
-| Linux x86_64 | `senhub-agent_linux_amd64` |
-| Linux ARM64 | `senhub-agent_linux_arm64` |
-| macOS Intel | `senhub-agent_darwin_amd64` |
-| macOS Apple Silicon | `senhub-agent_darwin_arm64` |
+| Platform | ZIP filename | Binary inside ZIP |
+|----------|-------------|-------------------|
+| Windows x86_64 | `senhub-agent-windows-amd64.zip` | `senhub-agent.exe` |
+| Linux x86_64 | `senhub-agent-linux-amd64.zip` | `senhub-agent` |
+| Linux ARM64 | `senhub-agent-linux-arm64.zip` | `senhub-agent` |
+| macOS Intel | `senhub-agent-darwin-amd64.zip` | `senhub-agent` |
+| macOS Apple Silicon | `senhub-agent-darwin-arm64.zip` | `senhub-agent` |
 
-The instructions below assume you have **renamed the binary** to `senhub-agent.exe` (Windows) or `senhub-agent` (Linux/macOS) after download. If you prefer to keep the original name, substitute it in every command (e.g. `.\senhub-agent_windows_amd64.exe install …`).
+Each ZIP contains a binary already named `senhub-agent` (or `senhub-agent.exe` on Windows). No renaming is needed after extraction.
 
 ## Windows Installation
 
 ### 1. Prepare the binary
 
-Download `senhub-agent_windows_amd64.exe`, then copy it to your installation directory and rename it for convenience:
+Download `senhub-agent-windows-amd64.zip`, then extract it to your installation directory:
 
 ```powershell
 mkdir C:\SenHub
-Copy-Item .\senhub-agent_windows_amd64.exe C:\SenHub\senhub-agent.exe
+Expand-Archive .\senhub-agent-windows-amd64.zip -DestinationPath C:\SenHub\
 ```
 
-If you prefer to keep the original filename, replace `senhub-agent.exe` with `senhub-agent_windows_amd64.exe` in every command below.
+The ZIP contains `senhub-agent.exe`, already correctly named.
 
 ### 2. Install the service
 
@@ -59,15 +58,15 @@ Open a **PowerShell terminal as Administrator** and run:
 
 ```powershell
 cd C:\SenHub\
-.\senhub-agent.exe install --authentication-key YOUR-UUID-KEY
+.\senhub-agent.exe install
 ```
 
-This registers `SenHub Agent` as a Windows Service with automatic restart on failure.
+This registers `SenHub Agent` as a Windows Service with automatic restart on failure. A UUID agent key is generated automatically and saved to the configuration file.
 
 To install with HTTPS enabled on the local API:
 
 ```powershell
-.\senhub-agent.exe install --authentication-key YOUR-UUID-KEY --enable-https --https-port 8443
+.\senhub-agent.exe install --enable-https --https-port 8443
 ```
 
 ### 3. Start the service
@@ -110,28 +109,28 @@ Log rotation: 10 MB max per file, 5 backup files, 30-day retention, compressed.
 
 ### 1. Prepare the binary
 
-Download the binary for your architecture (`senhub-agent_linux_amd64` or `senhub-agent_linux_arm64`), then rename it to `senhub-agent` for convenience:
+Download the ZIP for your architecture (`senhub-agent-linux-amd64.zip` or `senhub-agent-linux-arm64.zip`), then extract it:
 
 ```bash
 sudo mkdir -p /opt/senhub/bin
-sudo cp senhub-agent_linux_amd64 /opt/senhub/bin/senhub-agent
+sudo unzip senhub-agent-linux-amd64.zip -d /opt/senhub/bin/
 sudo chmod +x /opt/senhub/bin/senhub-agent
 ```
 
-If you prefer to keep the original filename, replace `senhub-agent` with `senhub-agent_linux_amd64` (or `_arm64`) in every command below.
+The ZIP contains `senhub-agent`, already correctly named.
 
 ### 2. Install the service
 
 ```bash
-sudo /opt/senhub/bin/senhub-agent install --authentication-key YOUR-UUID-KEY
+sudo /opt/senhub/bin/senhub-agent install
 ```
 
-This creates and registers a systemd service (`senhub-agent.service`) with automatic restart on failure (10-second delay between restarts).
+This creates and registers a systemd service (`senhub-agent.service`) with automatic restart on failure (10-second delay between restarts). A UUID agent key is generated automatically and saved to the configuration file.
 
 To install with HTTPS enabled and a custom certificate hostname:
 
 ```bash
-sudo /opt/senhub/bin/senhub-agent install --authentication-key YOUR-UUID-KEY \
+sudo /opt/senhub/bin/senhub-agent install \
   --enable-https \
   --https-hosts "agent.company.com,192.168.1.100" \
   --https-port 8443
@@ -159,7 +158,7 @@ curl http://localhost:8080/health
 
 Linux logs are stored at:
 ```
-/var/log/senhub/senhubagent.log
+/var/log/senhub-agent/senhubagent.log
 ```
 
 If this directory is not writable, logs fall back to the binary directory.
@@ -170,17 +169,11 @@ Log rotation: 10 MB max per file, 5 backup files, 30-day retention, compressed.
 
 The `install` command accepts the following options:
 
-### Authentication
-
-| Flag | Description |
-|------|-------------|
-| `--authentication-key KEY` | Agent authentication key (UUID) used as the URL token in HTTPS endpoints |
-
 ### Configuration
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--config-path PATH` | `./agent-config.yaml` | Path to the configuration file |
+| `--config-path PATH` | OS canonical path | Path to the configuration file |
 
 ### HTTPS / TLS
 
@@ -200,15 +193,6 @@ The `install` command accepts the following options:
 | `--verbose` or `-v` | Enable verbose logging for all modules |
 | `--filter MODULES` | Filter debug logs by module prefix (implies verbose). Example: `--filter probe.veeam` |
 
-### Environment Variables
-
-These environment variables can be used as alternatives to command-line flags:
-
-| Variable | Equivalent Flag |
-|----------|----------------|
-| `SENHUB_KEY` | `--authentication-key` |
-| `SENHUB_SERVER_URL` | `--server-url` |
-
 ## What Happens During Installation
 
 When you run `senhub-agent install`, the agent:
@@ -216,14 +200,14 @@ When you run `senhub-agent install`, the agent:
 1. Checks for administrator/root privileges (required on Windows and Linux)
 2. Registers the system service (`SenHub Agent` on Windows, `senhub-agent.service` on Linux)
 3. Configures automatic restart on failure
-4. Generates a default `agent-config.yaml` next to the binary if none exists, with a fresh agent key
+4. Generates a default `agent.yaml` at the OS canonical path if none exists, with a fresh auto-generated UUID agent key
 5. If `--enable-https` is specified: creates a `certs/` directory with a self-signed certificate and private key (valid for 365 days)
 
 ### Files Created
 
 | File | Permissions | Description |
 |------|-------------|-------------|
-| `agent-config.yaml` | `0600` (owner only) | Agent configuration file |
+| `agent.yaml` | `0600` (owner only) | Agent configuration file (at OS canonical path) |
 | `certs/agent-cert.pem` | `0600` (owner only) | TLS certificate (if HTTPS enabled) |
 | `certs/agent-key.pem` | `0600` (owner only) | TLS private key (if HTTPS enabled) |
 

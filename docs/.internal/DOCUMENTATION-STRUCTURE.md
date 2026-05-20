@@ -245,8 +245,8 @@ Always include:
 
 ```bash
 # Good: Clear, commented, complete
-# Install SenHub Agent in offline mode
-./senhub-agent install --offline
+# Install SenHub Agent
+./senhub-agent install
 
 # Start the agent service
 ./senhub-agent start
