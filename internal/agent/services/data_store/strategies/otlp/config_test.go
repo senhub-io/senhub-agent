@@ -19,6 +19,9 @@ func TestParseConfig_DefaultsApplied(t *testing.T) {
 	if cfg.Compression != DefaultCompression {
 		t.Errorf("Compression=%q, want %q", cfg.Compression, DefaultCompression)
 	}
+	if cfg.Protocol != DefaultProtocol {
+		t.Errorf("Protocol=%q, want %q", cfg.Protocol, DefaultProtocol)
+	}
 	if cfg.Timeout != DefaultTimeout {
 		t.Errorf("Timeout=%v, want %v", cfg.Timeout, DefaultTimeout)
 	}
@@ -61,6 +64,47 @@ func TestParseConfig_RejectsBadCompression(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "compression") {
 		t.Errorf("error doesn't mention compression: %v", err)
+	}
+}
+
+func TestParseConfig_ProtocolHTTP(t *testing.T) {
+	cfg, err := ParseConfig(map[string]interface{}{
+		"endpoint": "otlp.example.com:4318",
+		"protocol": "http",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Protocol != "http" {
+		t.Errorf("Protocol=%q, want http", cfg.Protocol)
+	}
+}
+
+func TestParseConfig_ProtocolHTTPProtobufAlias(t *testing.T) {
+	// The OTel spec env var spelling `http/protobuf` is accepted and
+	// normalized to the file-config-ergonomic `http`.
+	cfg, err := ParseConfig(map[string]interface{}{
+		"endpoint": "otlp.example.com:4318",
+		"protocol": "http/protobuf",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Protocol != "http" {
+		t.Errorf("Protocol=%q, want http (normalized from http/protobuf)", cfg.Protocol)
+	}
+}
+
+func TestParseConfig_RejectsBadProtocol(t *testing.T) {
+	_, err := ParseConfig(map[string]interface{}{
+		"endpoint": "x:4317",
+		"protocol": "thrift",
+	})
+	if err == nil {
+		t.Fatal("expected error for unsupported protocol")
+	}
+	if !strings.Contains(err.Error(), "protocol") {
+		t.Errorf("error doesn't mention protocol: %v", err)
 	}
 }
 
