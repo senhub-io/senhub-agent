@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog"
-	"gopkg.in/yaml.v2"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes"
@@ -199,7 +198,19 @@ func extractAgentKeyFromConfig(configPath string) (string, error) {
 	return "", fmt.Errorf("agent key not found in config file")
 }
 
-// checkConfig validates a configuration file and reports issues
+// checkConfig validates a configuration file and reports issues.
+//
+// In 0.2.x+ the agent supports two layouts (monolithic agent-config.yaml
+// or multi-file agent.yaml + probes.d/ + strategies.d/) — they are
+// auto-detected by configuration.LoadFromDisk. checkConfig now uses
+// LoadFromDisk so the result of `agent config check` matches what the
+// running agent actually sees: probes declared in probes.d/ fragments
+// no longer fall through as "no probes configured" warnings.
+//
+// Errors that prevent loading (file missing, malformed YAML, broken
+// substitution) abort with exit 1 + a context dump for YAML parse
+// errors. Validation errors are collected, reported, and reflected in
+// the final non-zero exit code.
 func checkConfig(configPath string) {
 	absPath, err := filepath.Abs(configPath)
 	if err != nil {
@@ -208,19 +219,34 @@ func checkConfig(configPath string) {
 
 	fmt.Printf("Checking configuration: %s\n\n", absPath)
 
-	// Read and parse YAML
+	// Read raw bytes once so YAML-syntax errors can still print a
+	// useful "near this line" context (LoadFromDisk only returns a
+	// wrapped error).
 	content, err := os.ReadFile(configPath) // #nosec G304 - user-provided path for CLI tool
 	if err != nil {
 		fmt.Printf("  [ERROR] Cannot read file: %v\n", err)
 		os.Exit(1)
 	}
 
-	var config configuration.LocalConfigurationData
-	if err := yaml.Unmarshal(content, &config); err != nil {
-		fmt.Println("  [ERROR] Invalid YAML syntax")
+	// Build a minimal logger for the loader so the WARN events
+	// (legacy monolithic detection, duplicate strategy override) reach
+	// the operator. WarnLevel keeps the noise low.
+	zlog := zerolog.New(os.Stderr).Level(zerolog.WarnLevel)
+	base := (*agentLogger.Logger)(&zlog)
+	loaderLog := agentLogger.NewModuleLogger(base, "configuration.check")
+
+	config, err := configuration.LoadFromDisk(configPath, loaderLog)
+	if err != nil {
+		// LoadFromDisk returns wrapped errors for: open failures,
+		// YAML parse failures, substitution failures. We've already
+		// confirmed the file is readable; the most operator-useful
+		// case is a YAML parse error — show the near-context block.
+		fmt.Println("  [ERROR] Configuration load failed")
+		fmt.Printf("           %v\n", err)
 		fmt.Println()
-		// Extract line number from yaml error and show context
-		showYAMLErrorContext(string(content), err)
+		if strings.Contains(err.Error(), "yaml") {
+			showYAMLErrorContext(string(content), err)
+		}
 		os.Exit(1)
 	}
 

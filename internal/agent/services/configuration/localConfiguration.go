@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -207,21 +208,49 @@ func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Initialize file watcher
+	// Initialize file watcher. We watch:
+	//   - the top-level config file (configPath / agent.yaml) — for
+	//     monolithic configs this is the whole story; for multi-file
+	//     it carries the global blocks.
+	//   - the probes.d/ and strategies.d/ sibling directories when
+	//     they exist. fsnotify on a directory emits events for every
+	//     entry inside, so add/remove/edit of a fragment file
+	//     triggers a reload without an agent restart. Pre-0.2.x
+	//     these directories were silently unwatched — operators had
+	//     to restart to pick up new fragments.
 	var err error
 	lc.watcher, err = fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("failed to create file watcher: %w", err)
 	}
 
-	// Add config file to watcher
-	err = lc.watcher.Add(lc.configPath)
-	if err != nil {
+	if err := lc.watcher.Add(lc.configPath); err != nil {
 		_ = lc.watcher.Close()
 		return fmt.Errorf("failed to watch config file %s: %w", lc.configPath, err)
 	}
-
 	lc.logger.Info().Str("config_path", lc.configPath).Msg("Started watching configuration file")
+
+	baseDir := filepath.Dir(lc.configPath)
+	for _, sub := range []string{"probes.d", "strategies.d"} {
+		dir := filepath.Join(baseDir, sub)
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			// Directory absent (typical for a legacy monolithic
+			// install) — skip silently. A later `agent config
+			// migrate` will create it and we'll be watching once
+			// the operator restarts the agent. The trade-off here
+			// is deliberate: hot-detecting a new directory means
+			// watching the PARENT for create events, which then
+			// triggers reloads on every unrelated file in
+			// /etc/senhub-agent/ — too noisy.
+			lc.logger.Debug().Str("dir", dir).Msg("fragment directory not watched (absent)")
+			continue
+		}
+		if err := lc.watcher.Add(dir); err != nil {
+			_ = lc.watcher.Close()
+			return fmt.Errorf("failed to watch fragment directory %s: %w", dir, err)
+		}
+		lc.logger.Info().Str("dir", dir).Msg("Started watching fragment directory")
+	}
 
 	// Start watching goroutine
 	go lc.watchConfigFile()
