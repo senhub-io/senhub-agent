@@ -200,16 +200,30 @@ When you run `senhub-agent install`, the agent:
 1. Checks for administrator/root privileges (required on Windows and Linux)
 2. Registers the system service (`SenHub Agent` on Windows, `senhub-agent.service` on Linux)
 3. Configures automatic restart on failure
-4. Generates a default `agent.yaml` at the OS canonical path if none exists, with a fresh auto-generated UUID agent key
-5. If `--enable-https` is specified: creates a `certs/` directory with a self-signed certificate and private key (valid for 365 days)
+4. Generates the **multi-file configuration layout** at the OS canonical path: a globals-only `agent.yaml` plus sibling `probes.d/` and `strategies.d/` directories prefilled with sane defaults (host probes + HTTP strategy). A fresh UUID is generated for the agent key.
+5. If `--enable-https` is specified: creates a `certs/` directory with a self-signed certificate and private key (valid for 365 days), and configures the HTTP strategy fragment to use them.
 
 ### Files Created
 
 | File | Permissions | Description |
 |------|-------------|-------------|
-| `agent.yaml` | `0600` (owner only) | Agent configuration file (at OS canonical path) |
-| `certs/agent-cert.pem` | `0600` (owner only) | TLS certificate (if HTTPS enabled) |
-| `certs/agent-key.pem` | `0600` (owner only) | TLS private key (if HTTPS enabled) |
+| `agent.yaml` | `0600` (owner only) | Globals only (agent identity, auto-update, cache). At the OS canonical path. |
+| `probes.d/00-host.yaml` | `0600` (owner only) | Default host probes: cpu, memory, network, logicaldisk. |
+| `strategies.d/00-http.yaml` | `0600` (owner only) | Default HTTP strategy (PRTG / Web / Nagios on 127.0.0.1:8080). |
+| `certs/agent-cert.pem` | `0600` (owner only) | TLS certificate (if HTTPS enabled). |
+| `certs/agent-key.pem` | `0600` (owner only) | TLS private key (if HTTPS enabled). |
+
+Add additional probes by creating new fragment files under `probes.d/` (e.g. `10-mysql.yaml` — files load alphabetically). Add another strategy by creating a new file under `strategies.d/` with exactly one top-level key (the strategy name). Disable any fragment by renaming it to `*.disabled` — no deletion required. The agent watches both directories with fsnotify, so add/modify/remove reloads automatically without a restart.
+
+### Migrating an existing monolithic install
+
+If you upgraded from a pre-0.2.x agent that used the single-file `agent-config.yaml` layout, the agent keeps loading it transparently — no immediate action required. To move to the multi-file layout cleanly:
+
+```bash
+sudo senhub-agent config migrate /etc/senhub-agent/agent-config.yaml
+```
+
+The command takes a timestamped backup of the original, splits globals into `agent.yaml`, probes into `probes.d/00-host.yaml`, and strategies into per-strategy files under `strategies.d/`. It then verifies the post-split data matches the original (and restores the backup on any mismatch). Comments from the monolithic file are NOT carried into the fragments — they live in the backup for reference. The command is idempotent: running it on an already-multi-file install reports "nothing to do" and exits 0.
 
 ## Service Management Commands
 
