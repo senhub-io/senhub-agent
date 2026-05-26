@@ -262,6 +262,7 @@ func (s *OTLPSyncStrategy) Start() error {
 		Str("persistence_path", s.cfg.Persistence.Path).
 		Dur("persistence_interval", s.cfg.Persistence.Interval).
 		Str("endpoint", s.cfg.Endpoint).
+		Str("protocol", s.cfg.Protocol).
 		Bool("tls_enabled", s.cfg.TLS.Enabled).
 		Bool("metrics_enabled", s.cfg.Metrics.Enabled).
 		Str("metrics_endpoint", s.cfg.Metrics.ResolveEndpoint(s.cfg.Endpoint)).
