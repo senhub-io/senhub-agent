@@ -12,134 +12,16 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// File Watching and YAML Generation
-
-func (lc *LocalConfiguration) generateConfigYAML(config *LocalConfigurationData) ([]byte, error) {
-	// This is a simplified version - in production you'd want a proper YAML generator with comments
-	yamlTemplate := `# SenHub Agent Configuration
-# Configuration Version: %d (automatically managed)
-# Agent Version: %s
-# Generated: %s
-#
-# DO NOT modify config_version manually - it is managed by the agent
-
-config_version: %d
-
-# Agent configuration
-agent:
-  key: "%s"
-  mode: offline
-  # license: ""  # Uncomment and add your license token here
-%s
-
-# Auto-update configuration
-auto_update:
-  enabled: %t           # Enable/disable automatic updates
-  include_beta: %t      # Include beta versions in update checks
-  url: "%s"             # Update server URL
-
-# Cache configuration
-cache:
-  retention_minutes: %d  # Cache retention time in minutes
-
-# Local storage with web interface
-storage:
-  - name: http
-    params:
-      port: %d
-      bind_address: "%s"
-      endpoints: [%s]
-%s
-
-# Active probes (default system monitoring)
-# Note: 'name' is the display name (free choice), 'type' is the probe type (technical identifier)
-probes:
-  # ===== ACTIVE PROBES =====
-
-  # CPU monitoring - 30s interval
-  - name: cpu              # Display name (you can change this)
-    type: cpu              # Probe type (must match registered probe)
-    params:
-      interval: 30
-
-  # Memory monitoring - 30s interval
-  - name: memory           # Display name
-    type: memory           # Probe type
-    params:
-      interval: 30
-
-  # Network monitoring - 60s interval (less frequent)
-  - name: network          # Display name
-    type: network          # Probe type
-    params:
-      interval: 60
-
-  # Disk monitoring - 30s interval
-  - name: logicaldisk      # Display name
-    type: logicaldisk      # Probe type
-    params:
-      interval: 30
-` + ProbeExamplesTemplate + `
-`
-
-	// Extract storage config values
-	httpStorage := config.Storage[0]
-	port := httpStorage.Params["port"].(int)
-	bindAddress := httpStorage.Params["bind_address"].(string)
-
-	endpoints := httpStorage.Params["endpoints"].([]string)
-	endpointsStr := `"` + strings.Join(endpoints, `", "`) + `"`
-
-	// TLS configuration section
-	tlsSection := ""
-	if lc.args.EnableHttps {
-		// Get absolute paths for certificates
-		currentDir, err := os.Getwd()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get current working directory for TLS config: %w", err)
-		}
-		certPath := filepath.Join(currentDir, "certs", "agent-cert.pem")
-		keyPath := filepath.Join(currentDir, "certs", "agent-key.pem")
-
-		// Escape backslashes for Windows paths in YAML
-		certPathYAML := strings.ReplaceAll(certPath, "\\", "\\\\")
-		keyPathYAML := strings.ReplaceAll(keyPath, "\\", "\\\\")
-
-		tlsSection = `      tls:
-        enabled: true
-        min_tls_version: "` + lc.args.MinTlsVersion + `"
-        cert_file: "` + certPathYAML + `"
-        key_file: "` + keyPathYAML + `"`
-	}
-
-	// Get agent version for header
-	agentVersion := "unknown"
-	if lc.args != nil && lc.args.Version != "" {
-		agentVersion = lc.args.Version
-	}
-
-	// Get timestamp for header
-	timestamp := time.Now().Format("2006-01-02 15:04:05 MST")
-
-	return []byte(fmt.Sprintf(yamlTemplate,
-		config.ConfigVersion,          // Header comment: config version
-		agentVersion,                  // Header comment: agent version
-		timestamp,                     // Header comment: timestamp
-		config.ConfigVersion,          // YAML field: config_version
-		config.Agent.Key,              // agent.key
-		LicenseDocumentationTemplate,  // agent.license (documentation)
-		config.AutoUpdate.Enabled,     // auto_update.enabled
-		config.AutoUpdate.IncludeBeta, // auto_update.include_beta
-		config.AutoUpdate.URL,         // auto_update.url
-		config.Cache.RetentionMinutes, // cache.retention_minutes
-		port,                          // storage port
-		bindAddress,                   // storage bind_address
-		endpointsStr,                  // storage endpoints
-		tlsSection,                    // storage TLS section (optional)
-	)), nil
-}
-
-// watchConfigFile monitors the configuration file for changes
+// watchConfigFile monitors the configuration file AND the multi-file
+// fragment directories (probes.d/, strategies.d/) for changes. Any
+// event from either source triggers a reload; the loader re-merges
+// fragments and the observers fire if the merged data changed.
+//
+// Events that come from inside the fragment directories carry the
+// fragment file path in event.Name. We filter out dotfiles and
+// `*.disabled` entries (the loader ignores them anyway) so a
+// `mv 00-host.yaml 00-host.yaml.disabled` triggers exactly one
+// useful reload rather than two noisy ones.
 func (lc *LocalConfiguration) watchConfigFile() {
 	lc.logger.Debug().Msg("Started configuration file watching goroutine")
 
@@ -155,24 +37,39 @@ func (lc *LocalConfiguration) watchConfigFile() {
 				return
 			}
 
+			if shouldIgnoreEvent(event) {
+				lc.logger.Debug().
+					Str("event", event.String()).
+					Msg("Configuration event ignored (dotfile / .disabled)")
+				continue
+			}
+
 			lc.logger.Debug().
 				Str("event", event.String()).
-				Msg("Configuration file event received")
+				Msg("Configuration event received")
+
+			isMainFile := event.Name == lc.configPath
 
 			// Handle various file change events
 			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Chmod) {
 				lc.logger.Info().
-					Str("config_path", lc.configPath).
+					Str("path", event.Name).
 					Str("event_type", event.Op.String()).
-					Msg("Configuration file changed, reloading...")
+					Bool("main_file", isMainFile).
+					Msg("Configuration changed, reloading...")
 
 				// Small delay to ensure file write is complete
 				time.Sleep(200 * time.Millisecond)
 
-				// Check if file still exists (some editors delete/recreate)
-				if _, err := os.Stat(lc.configPath); os.IsNotExist(err) {
-					lc.logger.Warn().Msg("Configuration file was deleted, skipping reload")
-					continue
+				// For events on the MAIN file only: an editor that
+				// deletes-then-recreates the file briefly produces a
+				// missing-file state. Skip the reload — attemptRewatch
+				// covers that path.
+				if isMainFile {
+					if _, err := os.Stat(lc.configPath); os.IsNotExist(err) {
+						lc.logger.Warn().Msg("Configuration file was deleted, skipping reload")
+						continue
+					}
 				}
 
 				if err := lc.reloadConfiguration(); err != nil {
@@ -183,13 +80,27 @@ func (lc *LocalConfiguration) watchConfigFile() {
 					lc.logger.Info().Msg("Configuration reloaded successfully")
 				}
 			} else if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
-				lc.logger.Warn().
-					Str("event_type", event.Op.String()).
-					Msg("Configuration file was removed or renamed, attempting to re-watch...")
-
-				// Try to re-add the file to the watcher after a delay
-				// This handles editors that delete/recreate files
-				go lc.attemptRewatch()
+				if isMainFile {
+					// Editor delete-then-recreate dance on the main
+					// file. Try to re-add the watch after the file
+					// reappears.
+					lc.logger.Warn().
+						Str("event_type", event.Op.String()).
+						Msg("Configuration file was removed or renamed, attempting to re-watch...")
+					go lc.attemptRewatch()
+				} else {
+					// Fragment file removed or renamed. The directory
+					// watch is still active; reload so the operator
+					// sees the new effective configuration immediately.
+					lc.logger.Info().
+						Str("path", event.Name).
+						Str("event_type", event.Op.String()).
+						Msg("Fragment file removed/renamed, reloading...")
+					time.Sleep(200 * time.Millisecond)
+					if err := lc.reloadConfiguration(); err != nil {
+						lc.logger.Error().Err(err).Msg("Failed to reload configuration after fragment change")
+					}
+				}
 			}
 
 		case err, ok := <-lc.watcher.Errors:
@@ -202,6 +113,35 @@ func (lc *LocalConfiguration) watchConfigFile() {
 				Msg("Configuration file watcher error")
 		}
 	}
+}
+
+// shouldIgnoreEvent returns true for events the loader will not act
+// on: dotfiles (e.g. an editor's `.swp`), `*.disabled` fragments, and
+// non-YAML files. fsnotify on a directory fires for every entry —
+// without this filter, an editor saving its swap file would trigger
+// a reload-and-no-op cycle on every keystroke.
+func shouldIgnoreEvent(event fsnotify.Event) bool {
+	base := filepath.Base(event.Name)
+	if strings.HasPrefix(base, ".") {
+		return true
+	}
+	if strings.HasSuffix(base, ".disabled") {
+		return true
+	}
+	// The main config file may be agent.yaml or agent-config.yaml or
+	// any path the operator chose — we can't filter on extension at
+	// the top level. But fragment files MUST be .yaml/.yml; anything
+	// else dropped in probes.d/ or strategies.d/ would be ignored
+	// by the loader. Filter them here so an editor's `~` backup
+	// doesn't cause noise.
+	dir := filepath.Base(filepath.Dir(event.Name))
+	if dir == "probes.d" || dir == "strategies.d" {
+		ext := strings.ToLower(filepath.Ext(base))
+		if ext != ".yaml" && ext != ".yml" {
+			return true
+		}
+	}
+	return false
 }
 
 // reloadConfiguration reloads the configuration and notifies observers

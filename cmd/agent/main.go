@@ -146,9 +146,12 @@ func main() {
 		return
 	case "config":
 		if len(os.Args) > 2 && os.Args[2] == "check" {
-			configPath := "./agent-config.yaml"
+			configPath := ""
 			if len(os.Args) > 3 {
 				configPath = os.Args[3]
+			}
+			if resolved, err := cliArgs.GetAbsoluteConfigPath(configPath); err == nil {
+				configPath = resolved
 			}
 			checkConfig(configPath)
 			return
@@ -156,6 +159,24 @@ func main() {
 		if len(os.Args) > 2 && os.Args[2] == "show" {
 			// agent config show [--raw|--resolved|--redact] [path]
 			showConfig(os.Args[3:])
+			return
+		}
+		if len(os.Args) > 2 && os.Args[2] == "migrate" {
+			// agent config migrate [path]
+			// Convert a legacy monolithic agent-config.yaml into the
+			// 0.2.x+ multi-file layout (agent.yaml + probes.d/ +
+			// strategies.d/), with a timestamped backup of the
+			// original. Idempotent: if the file is already multi-file
+			// (no top-level probes:/storage: blocks), the command
+			// reports "nothing to do" and exits 0.
+			configPath := ""
+			if len(os.Args) > 3 {
+				configPath = os.Args[3]
+			}
+			if resolved, err := cliArgs.GetAbsoluteConfigPath(configPath); err == nil {
+				configPath = resolved
+			}
+			migrateConfig(configPath)
 			return
 		}
 		showHelp()
@@ -279,13 +300,18 @@ Other Commands:
     update               Check for new versions
     update --list        List all available versions (stable + beta)
     update <version>     Install a specific version
-    config check [path]  Validate configuration file
-    config show [opts]   Print merged + resolved configuration as YAML
-                           --resolved (default)  env/file references substituted
-                           --raw                 references preserved as written
-                           --redact              substituted but secrets masked
-                           [path]                config file path
-    debug-modules-list   List available debug log modules
+    config check [path]   Validate configuration (covers fragments under
+                          probes.d/ and strategies.d/ if present)
+    config show [opts]    Print merged + resolved configuration as YAML
+                            --resolved (default)  env/file references substituted
+                            --raw                 references preserved as written
+                            --redact              substituted but secrets masked
+                            [path]                config file path
+    config migrate [path] Convert a legacy monolithic agent-config.yaml
+                          into the 0.2.x multi-file layout
+                          (agent.yaml + probes.d/ + strategies.d/) with
+                          a timestamped backup. Idempotent.
+    debug-modules-list    List available debug log modules
 
 Agent Options:
     --config-path PATH                     Path to the agent configuration file.
