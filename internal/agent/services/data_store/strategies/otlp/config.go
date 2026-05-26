@@ -1,10 +1,14 @@
-// Package otlp implements the OTLP/gRPC export strategy for SenHub Agent.
+// Package otlp implements the OTLP export strategy for SenHub Agent.
 //
 // The strategy ships metrics (sourced from the same MetricCache as the
 // Prometheus exposition, resolved through the neutral otelmapper package)
 // and logs (sourced from a pub/sub log channel populated by syslog and
-// event probes) over OTLP/gRPC to an OTel collector or a compatible
-// backend (vmagent, victoria-metrics, otelcol-contrib, …).
+// event probes) over OTLP to any conformant OTLP receiver — an OTel
+// collector or an OTLP-native backend.
+//
+// The transport is selectable via `protocol: grpc | http`, mirroring
+// the two transports defined by the OpenTelemetry protocol spec. gRPC
+// is the default. See client.go for the exporter wiring.
 //
 // Phase 1 (this commit) only wires up configuration parsing, the gRPC
 // exporter clients, and the strategy lifecycle. Metrics export lands in
@@ -27,6 +31,13 @@ const (
 	// localhost when an operator forgets to set `endpoint:` is a much
 	// worse failure mode than refusing to start. Always require it.
 	DefaultCompression = "gzip"
+	// DefaultProtocol is the OTLP transport. The OTel spec defines two:
+	// "grpc" (OTLP/gRPC) and "http" (OTLP/HTTP protobuf). "grpc" is the
+	// historical — and pre-0.2.x only — behaviour, kept as the default
+	// so existing deployments are unchanged. "http" is used to push to
+	// any OTLP/HTTP receiver directly (e.g. a backend that ingests
+	// OTLP/HTTP on its native /opentelemetry endpoints).
+	DefaultProtocol = "grpc"
 	// DefaultTimeout bounds a single OTLP export call. The OTel SDK uses
 	// it as the gRPC context deadline. 60 s is generous enough to absorb
 	// batches of 1000+ datapoints from the larger probes (IBM i with
@@ -190,7 +201,13 @@ type ResourceConfig struct {
 // Config is the fully-parsed, validated configuration for the OTLP strategy.
 // Populated by ParseConfig; consumed by the strategy and exporter wiring.
 type Config struct {
-	Endpoint    string
+	Endpoint string
+	// Protocol selects the OTLP transport: "grpc" (default) or "http",
+	// the two transports defined by the OTel protocol spec. It applies
+	// to all three signals — a per-signal override is not supported
+	// because mixing transports against one endpoint is a
+	// configuration mistake far more often than an intent.
+	Protocol    string
 	Headers     map[string]string
 	TLS         TLSConfig
 	Compression string
@@ -300,6 +317,7 @@ func defaultConfig() Config {
 		TLS: TLSConfig{
 			Enabled: true,
 		},
+		Protocol:    DefaultProtocol,
 		Compression: DefaultCompression,
 		Timeout:     DefaultTimeout,
 		Retry: RetryConfig{
@@ -356,6 +374,22 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 
 	if v, ok := params["endpoint"].(string); ok && v != "" {
 		cfg.Endpoint = expandEnv(v)
+	}
+
+	if v, ok := params["protocol"].(string); ok && v != "" {
+		cfg.Protocol = v
+	}
+	// `http/protobuf` is the value the OTel spec env var
+	// (OTEL_EXPORTER_OTLP_PROTOCOL) uses; accept it as an alias and
+	// normalize to the file-config-ergonomic `http`. `http/json` is
+	// not supported — the SDK exporters we wire emit protobuf.
+	if cfg.Protocol == "http/protobuf" {
+		cfg.Protocol = "http"
+	}
+	switch cfg.Protocol {
+	case "grpc", "http":
+	default:
+		return cfg, fmt.Errorf("protocol must be 'grpc' or 'http' (alias 'http/protobuf'), got %q", cfg.Protocol)
 	}
 
 	if v, ok := params["compression"].(string); ok && v != "" {
