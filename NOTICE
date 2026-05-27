@@ -1,0 +1,15 @@
+SenHub Agent
+Copyright 2025 SenHub.io
+
+This product includes software developed at SenHub.io
+(https://senhub.io/).
+
+Licensed under the Apache License, Version 2.0 (the "License"); see
+LICENSE for the full text. Third-party dependencies retain their own
+licenses; see the modules listed in go.mod and their respective LICENSE
+files in the Go module cache.
+
+The proprietary Pro and Enterprise tier probes, the licence minting
+tooling, and SenHub-specific operational tooling do not ship with this
+open-source distribution. They are maintained in a separate, private
+companion repository and licensed commercially by SenHub.io.
