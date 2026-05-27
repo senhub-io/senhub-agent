@@ -1,11 +1,5 @@
 name: Go-test-windows
 on:
-  push:
-    branches: [dev, master]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.keys/**'
   pull_request:
     branches: [dev, master]
     paths-ignore:
