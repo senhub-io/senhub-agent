@@ -103,7 +103,7 @@ func readOnlyCommand(args []string) bool {
 		return true // showHelp() — informational only
 	}
 	switch args[1] {
-	case "--help", "-h", "help", "version", "debug-modules-list":
+	case "--help", "-h", "help", "--version", "version", "debug-modules-list":
 		return true
 	case "config":
 		if len(args) > 2 && (args[2] == "check" || args[2] == "show") {
@@ -113,7 +113,38 @@ func readOnlyCommand(args []string) bool {
 	return false
 }
 
+// knownTopLevelArgs is the closed set of subcommands and flags the
+// agent accepts as os.Args[1]. Anything outside this set is treated
+// as a user error rather than silently falling through to the
+// default `run` path — that fallthrough was the failure mode in
+// issue #134 where `senhub-agent --version` quietly spawned a
+// second agent process.
+var knownTopLevelArgs = map[string]struct{}{
+	"--help": {}, "-h": {}, "help": {},
+	"--version": {}, "version": {},
+	"debug-modules-list": {},
+	"config":             {},
+	"license":            {},
+	"db-monitoring":      {},
+	"ibmi":               {},
+	"update":             {},
+	"install":            {}, "uninstall": {},
+	"start": {}, "stop": {}, "restart": {},
+	"status": {}, "run": {},
+}
+
 func main() {
+	// `--version` short-circuit: print version + exit, BEFORE any
+	// subcommand dispatch or privilege gate. The pre-0.2.x agent had
+	// no such handling — `senhub-agent --version` fell through to
+	// `run` and silently spawned a second agent, surfacing as a
+	// "bind: address already in use" only after the second process
+	// raced the systemd-managed one for the listener (issue #134).
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		cliArgs.PrintVersion()
+		return
+	}
+
 	// Show help if no arguments or help is requested. Help is
 	// information-only so it runs even without root — placed before
 	// checkPrivileges so a fresh checkout / CI smoke test sees usage
@@ -121,6 +152,17 @@ func main() {
 	if len(os.Args) <= 1 || os.Args[1] == "--help" || os.Args[1] == "-h" {
 		showHelp()
 		return
+	}
+
+	// Reject unknown top-level args. Pre-0.2.x the parser silently
+	// fell through to `run`, which is how `--version` (and any
+	// typo'd flag) ended up spawning an agent. We now exit non-zero
+	// with a clear error so a wrong invocation can never
+	// accidentally start a second monitoring process.
+	if _, known := knownTopLevelArgs[os.Args[1]]; !known {
+		fmt.Fprintf(os.Stderr, "Error: unknown command or flag %q\n", os.Args[1])
+		fmt.Fprintln(os.Stderr, "Run with --help for usage information.")
+		os.Exit(2)
 	}
 
 	// Privilege gate runs before the subcommand dispatch, EXCEPT for

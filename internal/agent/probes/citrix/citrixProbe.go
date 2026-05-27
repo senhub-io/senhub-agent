@@ -68,10 +68,10 @@ func NewCitrixProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	maxRetryAttempts := 3
 	retryBackoffFactor := 2.0
 	if retryConfig, ok := config["retry"].(map[string]interface{}); ok {
-		if cfgMaxAttempts, ok := retryConfig["max_attempts"].(int); ok {
+		if cfgMaxAttempts, ok := types.IntParam(retryConfig, "max_attempts"); ok {
 			maxRetryAttempts = cfgMaxAttempts
 		}
-		if cfgBackoffFactor, ok := retryConfig["backoff_factor"].(float64); ok {
+		if cfgBackoffFactor, ok := types.FloatParam(retryConfig, "backoff_factor"); ok {
 			retryBackoffFactor = cfgBackoffFactor
 		}
 	}
