@@ -59,7 +59,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	// Runtime profiling — Go's net/http/pprof handlers mounted under
 	// /api/{agentkey}/debug/pprof/. Same agentkey auth as the other
 	// debug endpoints; needed for goroutine-dump-based investigation
-	// of stalls (the bbcloud "agent silent after JT400 respawn" is
+	// of stalls (the Windows "agent silent after JT400 respawn" incident is
 	// the motivating case).
 	registerPprofRoutes(router, h)
 

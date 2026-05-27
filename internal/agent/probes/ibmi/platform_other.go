@@ -16,7 +16,7 @@ import (
 // Java fallback have been hardened only against the Linux runtime. On
 // Windows the bridge subprocess can wedge the agent's logger after a
 // respawn (see incident audit captured during 0.1.96-beta validation
-// on bbcloud — 37-minute log silences correlated with ibmi doCall
+// on the Windows test host — 37-minute log silences correlated with ibmi doCall
 // durations of 2200s+). Re-enable per platform once each is shipped
 // with its own stall-resilience test pass.
 const platformSupported = false
