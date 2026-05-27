@@ -158,8 +158,8 @@ func TestBottleneckMapping(t *testing.T) {
 		// Veeam API additions or wire corruption — must NOT default to 0.
 		{"NotABottleneckType", false, 0},
 		{"", false, 0},
-		// The numbers from the SIEP-BCK regression — they should NEVER
-		// parse into a valid bottleneck slot.
+		// The garbage values from the production regression — they
+		// should NEVER parse into a valid bottleneck slot.
 		{"61418", false, 0},
 		{"6527658229760", false, 0},
 	}
@@ -271,7 +271,7 @@ func TestCollectMetrics(t *testing.T) {
 				ExpiresIn:   900,
 			})
 		case r.URL.Path == "/api/v1/serverInfo":
-			_, _ = w.Write([]byte(`{"platform":"Windows","name":"SIEP-BCK","buildVersion":"13.0.1.180"}`))
+			_, _ = w.Write([]byte(`{"platform":"Windows","name":"acme-backup","buildVersion":"13.0.1.180"}`))
 		case r.URL.Path == "/api/v1/jobs/states":
 			_, _ = w.Write([]byte(`{"data":[
 				{"id":"7d5a054a","name":"BCK_VMware","type":"VSphereBackup","status":"Inactive","lastResult":"Success","lastRun":"2026-04-09T03:30:00Z","objectsCount":5,"highPriority":false,"progressPercent":0,"workload":"Vm","description":""},
@@ -797,7 +797,7 @@ func TestBuildJobStateOverviewMetrics_StaleBucket(t *testing.T) {
 }
 
 // TestBuildJobStateDetailMetrics_HandlesCorruptInputs is the regression
-// test for the SIEP-BCK incident (2026-05-13): the PRTG sensor showed
+// test for the 2026-05-13 incident: the PRTG sensor showed
 // Bottleneck = 6 527 658 229 760 then 61418 on a second occurrence, plus
 // Time Since Last Run = 540 442 days, plus Objects Count = 53 691 387 904.
 // We do not know what produced those values upstream (Veeam API anomaly,
@@ -882,14 +882,14 @@ func TestBuildJobStateDetailMetrics_HandlesCorruptInputs(t *testing.T) {
 	}
 
 	// Huge OBJECTS count: clamped to MaxInt32 — object counts are
-	// PRTG-int-safe; 53 691 387 904 from the SIEP-BCK incident was
-	// clearly a parser bug, not a legitimate object count.
+	// PRTG-int-safe; 53 691 387 904 from the incident was clearly a
+	// parser bug, not a legitimate object count.
 	if v := got[key{"RunawayJob", "veeam_job_objects_count"}]; v != sanitize.MaxInt32 {
 		t.Errorf("huge ObjectsCount: got %v, want clamped %v", v, sanitize.MaxInt32)
 	}
 	// Huge BYTES values are NOT clamped anymore — 1 TiB+ databases and
-	// repositories exist legitimately. The SIEP-BCK "6.5 TB processed"
-	// anomaly will surface as the actual large value rather than the
+	// repositories exist legitimately. The "6.5 TB processed" anomaly
+	// from the incident will surface as the actual large value rather than the
 	// saturated MaxInt32; the contract has moved from "clamp at the
 	// agent" to "trust the source for bytes, alert if implausible at
 	// the dashboard layer".
