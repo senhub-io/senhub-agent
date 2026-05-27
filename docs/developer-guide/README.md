@@ -61,7 +61,7 @@ This developer guide is part of a larger documentation system:
 - `/docs/admin-guide/` - Administration and configuration
 - `/docs/probes/` - Probe-specific documentation
 - `/docs/developer-guide/` - This guide
-- `/docs/.internal/` - Internal documentation and tooling
+- Private companion repo `senhub-io/senhub-internal-docs` — internal documentation and tooling (deployment notes, customer-specific audits, Claude Code agent specs)
 
 ## Contributing
 
