@@ -26,8 +26,8 @@ priorities.
   schema-validated, "(awaiting live data)" annotation drops on
   first customer pilot
 - Calqued on the Grafana Cloud Integrations layout (survey +
-  proposal under `docs/grafana/research/`)
-- Validated live on sha901-prod, sha501-prod (Linux), bbcloud-prod
+  proposal kept in the private `senhub-internal-docs` repo)
+- Validated live on Linux production hosts and on a Windows production host
   (Windows Server 2022)
 
 ### Agent self-observability metrics (0.1.90-beta)
@@ -47,7 +47,7 @@ receiver. Full TLS / mTLS / Bearer authentication. New `linux_logs`
 probe (free tier) reads the local systemd journal. `${env:VAR}`
 expansion in OTLP storage config matches the OTel collector
 syntax. Validated end-to-end against VictoriaMetrics +
-VictoriaLogs on sha901.
+VictoriaLogs on the operations Grafana host.
 
 ### Prometheus / VictoriaMetrics exposition (0.1.88-beta)
 **Status**: ✅ COMPLETED
