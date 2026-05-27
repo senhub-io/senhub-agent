@@ -31,10 +31,12 @@ The SenHub Agent uses a **JWT-based license system with RSA signatures** to cont
 
 Source of truth for the lists below:
 - Free tier — `freeTierProbes` map in `internal/agent/services/license/license.go`
-- Pro tier — `probeBitmap` map in `internal/agent/services/license/compact.go` (compact-license slot allocation) + the `authorized_probes` array in customer-specific JWTs
+- Pro tier — `paidProbes` map in `internal/agent/services/license/probe_catalog.go` + the `authorized_probes` array in customer-specific JWTs
 - Enterprise tier — wildcard `"*"` in `authorized_probes`
 
-A structural test in `internal/agent/probes/registry_invariant_test.go` enforces that every probe registered for boot must be in one of these lists. CI fails if a future probe is added to the registry without claiming a free-tier seat or a bitmap slot.
+A structural test in `internal/agent/probes/registry_invariant_test.go` enforces that every probe registered for boot must be in one of these lists. CI fails if a future probe is added to the registry without claiming a free-tier seat or a paid-catalogue entry.
+
+Only JWT licences are supported. The previous compact-licence format (a short HMAC-signed token) was retired with the open-source flip because its shared HMAC secret could not survive a public source tree.
 
 ### Free Tier (No License Required)
 Host-local observability — probes that watch the machine the agent runs on, not a remote system:
@@ -46,7 +48,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **linux_logs** - Local systemd journal log shipping (Linux only)
 
 ### Pro Tier (License Required)
-Specific probes authorized by customer JWT (or compact-license bitmap slot):
+Specific probes authorized by entries in the customer JWT `authorized_probes` array:
 
 - **redfish** - BMC/iDRAC/iLO hardware monitoring
 - **citrix** - Citrix Virtual Apps and Desktops monitoring
