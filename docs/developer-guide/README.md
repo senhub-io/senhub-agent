@@ -61,7 +61,6 @@ This developer guide is part of a larger documentation system:
 - `/docs/admin-guide/` - Administration and configuration
 - `/docs/probes/` - Probe-specific documentation
 - `/docs/developer-guide/` - This guide
-- `/docs/.internal/` - Internal documentation and tooling
 
 ## Contributing
 
