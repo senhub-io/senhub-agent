@@ -97,6 +97,12 @@ coverage.out
 # Claude Code - Personal documentation and scripts
 scripts/Claude/
 
+# Local audit / migration notes (POC audits, OSS migration runbook,
+# issues triage). Drafted in-tree for convenience but must never reach
+# a public mirror — they reference customers, infra, and commercial
+# decisions.
+docs/audit/
+
 # E2E Testing Infrastructure (Playwright)
 node_modules/
 package.json

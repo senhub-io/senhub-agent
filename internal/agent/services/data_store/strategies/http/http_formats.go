@@ -218,7 +218,7 @@ func (f *FormatConverter) transformToPRTGChannel(key string, metric CachedMetric
 
 // removeDiscriminantTagsFromChannelName removes discriminant tag prefixes/suffixes from channel names
 // Example: "Interface LO/1 - State" -> "State" when filtering on interface:LO/1
-// Example: "SSL Certificate Status (Wildcard_LNA-SANTE_2025)" -> "SSL Certificate Status"
+// Example: "SSL Certificate Status (Wildcard_ACME-CORP_2025)" -> "SSL Certificate Status"
 func (f *FormatConverter) removeDiscriminantTagsFromChannelName(channelName string, metric CachedMetric, probeType string) string {
 	// Get discriminant tags for this probe type
 	discriminantTags, exists := DiscriminantTagsRegistry[probeType]

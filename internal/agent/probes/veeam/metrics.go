@@ -219,8 +219,8 @@ func buildJobStateDetailMetrics(states []jobState, hoursToCheck int, now time.Ti
 		// "never run" so dashboards can distinguish "just finished" (0) from
 		// "no data" (-1). sanitize.Duration handles both nil and the Go
 		// zero time (0001-01-01) — a non-nil pointer to the zero time was
-		// the source of the historical 540 442-day spike observed at
-		// SIEP-BCK before this guard existed.
+		// the source of the historical 540 442-day spike observed at a
+		// production deployment before this guard existed.
 		secondsSince := jobSecondsSinceNeverRun
 		if sec, ok := sanitize.Duration(js.LastRun, now); ok {
 			secondsSince = sec
