@@ -6,7 +6,7 @@ title: Follow-ups — open a GitHub issue every time
 
 Whenever a follow-up is detected during a session — something real that
 won't be addressed before the session ends — you **MUST** open a
-GitHub issue against `senhub-io/senhubagent` to track it. No follow-up
+GitHub issue against `senhub-io/senhub-agent` to track it. No follow-up
 left in commit messages, release notes, code comments or chat without
 an issue number you can quote.
 
@@ -51,21 +51,21 @@ wrote one right now. Concretely:
 Before creating, check the repo doesn't already track it:
 
 ```bash
-gh issue list --repo senhub-io/senhubagent --state open --search "<short keywords>" --limit 10
+gh issue list --repo senhub-io/senhub-agent --state open --search "<short keywords>" --limit 10
 ```
 
 If a matching issue exists, **add a comment** with the new context
 instead of opening a duplicate:
 
 ```bash
-gh issue comment <number> --repo senhub-io/senhubagent --body "<note>"
+gh issue comment <number> --repo senhub-io/senhub-agent --body "<note>"
 ```
 
 ### 2. Create the issue
 
 ```bash
 gh issue create \
-  --repo senhub-io/senhubagent \
+  --repo senhub-io/senhub-agent \
   --title "<area>: <one-line specifics>" \
   --label <one-of: bug|enhancement|documentation|question> \
   --body "<see body template below>"
