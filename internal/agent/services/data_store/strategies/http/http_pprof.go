@@ -6,7 +6,7 @@
 // authentication that protects every other `/api/*` route also
 // gates the profiling surface. Operators can then do:
 //
-//	# print every goroutine's stack — needed for the bbcloud
+//	# print every goroutine's stack — needed for the Windows-stall
 //	# "agent silent after JT400 respawn" stall investigation
 //	curl http://localhost:8080/api/$KEY/debug/pprof/goroutine?debug=2
 //
