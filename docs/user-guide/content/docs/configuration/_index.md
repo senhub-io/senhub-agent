@@ -509,7 +509,7 @@ Checking configuration: C:\SenHub\agent-config.yaml
   [OK]   config_version: 2
   [OK]   agent.key: 17b3cf0a-91b1-486d-8209-90ffe00ece5e
   [OK]   agent.mode: offline
-  [OK]   agent.license: compact format, tier=pro, expires=2031-04-14
+  [OK]   agent.license: tier=pro, expires=2031-04-14
   [OK]   License binding verified
   [OK]   1 probe(s) configured
   [OK]   Probe "veeam-prod" (type: veeam)

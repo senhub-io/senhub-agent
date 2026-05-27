@@ -299,12 +299,8 @@ func checkConfig(configPath string) {
 				fmt.Printf("  [ERROR] agent.license: invalid (%v)\n", licErr)
 				errors++
 			} else {
-				format := "JWT"
-				if license.IsCompactLicense(config.Agent.License) {
-					format = "compact"
-				}
-				fmt.Printf("  [OK]   agent.license: %s format, tier=%s, expires=%s\n",
-					format, lic.Tier, lic.ExpiresAt.Format("2006-01-02"))
+				fmt.Printf("  [OK]   agent.license: tier=%s, expires=%s\n",
+					lic.Tier, lic.ExpiresAt.Format("2006-01-02"))
 
 				if lic.IsExpired {
 					fmt.Println("  [WARN] License is EXPIRED")
