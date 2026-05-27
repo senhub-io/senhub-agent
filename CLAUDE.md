@@ -13,7 +13,7 @@ Infrastructure monitoring agent (Go, ~72k LOC). Single binary, ships to PRTG / N
 
 ## ⚠️ Temporary dependency fork
 
-`github.com/citrix/adc-nitro-go` is replaced by `github.com/senhub-io/adc-nitro-go` (singleton stats panic fix, upstream PR #36 pending). See `docs/.internal/TEMPORARY-FORK-citrix-adc-nitro-go.md`. Quarterly review; revert when upstream merges.
+`github.com/citrix/adc-nitro-go` is replaced by `github.com/senhub-io/adc-nitro-go` (singleton stats panic fix, upstream PR #36 pending). Detailed rationale lives in the private companion repo `senhub-io/senhub-internal-docs` (`TEMPORARY-FORK-citrix-adc-nitro-go.md`). Quarterly review; revert when upstream merges.
 
 ## Project-specific build conventions
 

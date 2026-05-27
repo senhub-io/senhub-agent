@@ -64,7 +64,7 @@ Pour corriger le bug des ressources singleton (system, ns, ssl), nous utilisons 
 **Branch**: `fix/singleton-stats-support`
 **Commit**: `ee923d74da8155d8caec51efdd3739116cb62f81`
 
-**Documentation complète**: `docs/.internal/TEMPORARY-FORK-citrix-adc-nitro-go.md`
+**Documentation complète**: private repo `senhub-io/senhub-internal-docs` (`TEMPORARY-FORK-citrix-adc-nitro-go.md`)
 
 ### Métriques réactivées
 
