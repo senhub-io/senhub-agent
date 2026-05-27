@@ -7,7 +7,7 @@ import (
 )
 
 // TestMaskingWriter_PreservesNewlineBetweenEntries pins the
-// regression that produced the bbcloud "log file is a single physical
+// regression that produced the Windows-host "log file is a single physical
 // line" symptom. zerolog sends one entry per Write() call, payload
 // terminated by '\n'. The MaskingWriter used to drop the newline
 // when the payload was valid JSON (json.Marshal doesn't emit one).

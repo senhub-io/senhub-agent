@@ -19,7 +19,7 @@ Welcome to the SenHub Agent Developer Guide. This documentation provides compreh
 - **[OTLP implementation plan](./otlp/IMPLEMENTATION-PLAN.md)** - Phase 0-5 design history for the OTLP/gRPC push strategy
 - **[Prometheus implementation plan](./prometheus/IMPLEMENTATION-PLAN.md)** - Phase history for the `/metrics` exposition endpoint
 - **[Zabbix integration audit](./zabbix/AUDIT-Phase0.md)** - Phase 0 spec-vs-code audit (implementation paused)
-- **[Grafana catalog research](../grafana/research/)** - Reference dashboards survey, catalog proposal, implementation plan
+- **Grafana catalog research** — kept in the private companion repo `senhub-io/senhub-internal-docs` (`grafana-research/`)
 
 ### Code Quality
 - **[Code Review Guidelines](./development-workflow.md#code-review-guidelines)** - Mandatory checklist for reviewers
