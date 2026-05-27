@@ -169,7 +169,7 @@ func TestResolve_Expand(t *testing.T) {
 	}
 	// Cache value 1 ("Warning" in sfs.redfish.health) → hw.state=degraded should be 1, others 0.
 	m := CacheMetric{
-		ProbeName:  "redfish-sha901",
+		ProbeName:  "redfish-lab",
 		ProbeType:  "redfish",
 		MetricName: "hardware.storage.drive.health",
 		Value:      1,

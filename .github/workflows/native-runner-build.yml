@@ -55,7 +55,7 @@ jobs:
           # level (see internal/agent/probes/ibmi/platform_other.go).
           # The Windows runner artifact was previously shipped on a
           # best-effort basis but a stall-after-respawn pattern was
-          # observed during 0.1.96-beta validation on bbcloud and the
+          # observed during 0.1.96-beta validation on the Windows test host and the
           # platform support was withdrawn. Re-add when each platform
           # is shipped with its own stall-resilience test pass.
     runs-on: ${{ matrix.runs_on }}
