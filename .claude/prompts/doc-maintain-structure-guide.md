@@ -100,7 +100,7 @@ senhub-agent/
 | Probe documentation | `/docs/probes/{category}/{probe}/` | `redfish/README.md` |
 | Troubleshooting | `/docs/troubleshooting/` | `offline-issues.md` |
 | Presentations | `/docs/presentations/` | `client-demo.md` |
-| Internal configs | `/docs/.internal/` | `claude-config/` |
+| Internal configs | private repo `senhub-io/senhub-internal-docs` | `claude-config/` |
 
 ### What Should NOT Be at Root
 
@@ -108,7 +108,7 @@ senhub-agent/
 - Release notes (goes to `/docs/releases/`)
 - Detailed development guides (goes to `/docs/developer-guide/`)
 - Presentations (goes to `/docs/presentations/`)
-- Internal configurations (goes to `/docs/.internal/`)
+- Internal configurations (goes to the private repo `senhub-io/senhub-internal-docs`)
 
 ✅ **Only at root:**
 - `README.md` - Project overview (short, welcoming)
@@ -158,7 +158,7 @@ senhub-agent/
 ### Wiki Sync Strategy
 
 - **Manual Sync**: Currently done manually
-- **Excluded from Wiki**: `/docs/.internal/` directory
+- **Excluded from Wiki**: internal docs live in the private repo `senhub-io/senhub-internal-docs`
 - **Future**: Automated sync via GitHub Actions
 
 ---
@@ -248,7 +248,7 @@ Location: `/docs/releases/vX.Y.Z-beta.md`
    - User-facing → `/docs/user-guide/`
    - Admin-facing → `/docs/admin-guide/`
    - Developer-facing → `/docs/developer-guide/`
-   - Internal → `/docs/.internal/`
+   - Internal → private repo `senhub-io/senhub-internal-docs`
 
 2. **Check Existing Structure**:
    - Is there an existing category?
