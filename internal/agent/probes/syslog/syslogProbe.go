@@ -67,8 +67,8 @@ func parseSyslogProbeConfig(config map[string]interface{}) (SyslogProbeConfig, e
 	var port int = DefaultPort
 	var protocol string = DefaultProtocol
 
-	if portVal, ok := config["port"].(float64); ok {
-		port = int(portVal)
+	if v, ok := types.IntParam(config, "port"); ok {
+		port = v
 		if port < MinPort || port > MaxPort {
 			errs = append(errs, fmt.Errorf("port must be between %d and %d", MinPort, MaxPort))
 		}
@@ -169,12 +169,34 @@ func (p *SyslogProbe) OnShutdown(ctx context.Context) error {
 func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 	facility, _ := logParts["facility"].(int)
 	severity, _ := logParts["severity"].(int)
-	content, _ := logParts["content"].(string)
 	hostname, _ := logParts["hostname"].(string)
-	tag, _ := logParts["tag"].(string)
 	client, _ := logParts["client"].(string)
 	priority, _ := logParts["priority"].(int)
 	timestamp, _ := logParts["timestamp"].(time.Time)
+
+	// The server is configured with syslog.Automatic format
+	// detection: per-message the library decides RFC3164 vs RFC5424
+	// and populates either {content, tag} or {message, app_name}.
+	// facility / severity / priority / hostname / client share the
+	// same key names across both parsers (which is why they were the
+	// only fields that survived for RFC5424 traffic pre-#135), but
+	// the body and application name do not. Read the RFC3164 keys
+	// first; fall back to RFC5424 keys when they are empty so a
+	// mixed-traffic deployment (Ubuntu 24.04's `logger` defaults to
+	// RFC5424, older clients still emit RFC3164) lands every body
+	// in OTLP.
+	content, _ := logParts["content"].(string)
+	if content == "" {
+		if v, ok := logParts["message"].(string); ok {
+			content = v
+		}
+	}
+	tag, _ := logParts["tag"].(string)
+	if tag == "" {
+		if v, ok := logParts["app_name"].(string); ok {
+			tag = v
+		}
+	}
 	if timestamp.IsZero() {
 		timestamp = time.Now()
 	}
