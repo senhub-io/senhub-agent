@@ -213,16 +213,6 @@ test-database: ## Integration tests against a real MySQL + Postgres
 	@echo "$(GREEN)🧹 Tearing down database fixture...$(NC)"
 	@docker compose -f test/database/docker-compose.yml down -v
 
-# Prod smoke tests — hit the live agents on sha901 + bbcloud via SSH,
-# verify post-deploy invariants (no bearer leak, no probe-params leak,
-# no silent downgrade). Gated by the `prod_smoke` build tag so they
-# never run in regular CI. Requires the senhub secret store to be
-# resolvable (~/.senhub/read-secret.sh).
-prod-smoke: ## Prod smoke tests against sha901 + bbcloud (read-only)
-	@echo "$(GREEN)🔬 Running prod smoke tests...$(NC)"
-	@go test -tags=prod_smoke -v ./tools/prod_smoke/...
-	@echo "$(GREEN)✅ Database integration tests done$(NC)"
-
 # Boot smoke tests — build the agent binary, exec it against shipped
 # example configs to catch bring-up regressions (linker errors, config
 # schema breakage, platform-gated probe drift). Gated behind the
@@ -355,4 +345,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows build-linux build-darwin package package-windows package-linux package-darwin run test test-race test-database prod-smoke benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist help
+.PHONY: all build build-windows build-linux build-darwin package package-windows package-linux package-darwin run test test-race test-database benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist help
