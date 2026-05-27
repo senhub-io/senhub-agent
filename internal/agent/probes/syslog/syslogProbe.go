@@ -67,8 +67,8 @@ func parseSyslogProbeConfig(config map[string]interface{}) (SyslogProbeConfig, e
 	var port int = DefaultPort
 	var protocol string = DefaultProtocol
 
-	if portVal, ok := config["port"].(float64); ok {
-		port = int(portVal)
+	if v, ok := types.IntParam(config, "port"); ok {
+		port = v
 		if port < MinPort || port > MaxPort {
 			errs = append(errs, fmt.Errorf("port must be between %d and %d", MinPort, MaxPort))
 		}

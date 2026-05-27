@@ -66,6 +66,20 @@ func TestParseConfig_RejectsBadPriority(t *testing.T) {
 	}
 }
 
+// Regression for #136: yaml.v2 decodes integer literals into `int`,
+// not `float64`. Pre-fix `parseConfig` only matched float64 so any
+// YAML config (the real-world shape) silently fell back to the
+// default priority.
+func TestParseConfig_AcceptsIntPriority(t *testing.T) {
+	cfg, err := parseConfig(map[string]interface{}{"priority": 3})
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+	if cfg.Priority != 3 {
+		t.Errorf("Priority=%d, want 3", cfg.Priority)
+	}
+}
+
 func TestBuildJournalctlArgs_DefaultsSinceNow(t *testing.T) {
 	args := buildJournalctlArgs(LinuxLogsProbeConfig{Priority: DefaultPriority})
 

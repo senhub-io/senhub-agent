@@ -76,7 +76,7 @@ func TestParseSyslogProbeConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "custom values",
+			name: "custom values (json float64 port)",
 			config: map[string]interface{}{
 				"port":     float64(5140),
 				"protocol": "tcp",
@@ -84,6 +84,21 @@ func TestParseSyslogProbeConfig(t *testing.T) {
 			want: SyslogProbeConfig{
 				Port:     5140,
 				Protocol: "tcp",
+			},
+			wantErr: false,
+		},
+		// Regression for #136: yaml.v2 decodes integer literals into
+		// `int`, not `float64`. Pre-fix the probe only matched float64
+		// and silently fell back to DefaultPort for any int-shaped
+		// input — i.e. every real YAML config.
+		{
+			name: "yaml.v2 int port literal",
+			config: map[string]interface{}{
+				"port": 5140,
+			},
+			want: SyslogProbeConfig{
+				Port:     5140,
+				Protocol: DefaultProtocol,
 			},
 			wantErr: false,
 		},
