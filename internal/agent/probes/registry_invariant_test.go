@@ -18,23 +18,14 @@ import (
 	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/license"
 
-	_ "senhub-agent.go/internal/agent/probes/citrix"
 	_ "senhub-agent.go/internal/agent/probes/cpu"
 	_ "senhub-agent.go/internal/agent/probes/event"
-	_ "senhub-agent.go/internal/agent/probes/gateway"
 	_ "senhub-agent.go/internal/agent/probes/host"
-	_ "senhub-agent.go/internal/agent/probes/ibmi"
 	_ "senhub-agent.go/internal/agent/probes/linuxlogs"
 	_ "senhub-agent.go/internal/agent/probes/logicaldisk"
 	_ "senhub-agent.go/internal/agent/probes/memory"
-	_ "senhub-agent.go/internal/agent/probes/mysql"
-	_ "senhub-agent.go/internal/agent/probes/netscaler"
 	_ "senhub-agent.go/internal/agent/probes/network"
-	_ "senhub-agent.go/internal/agent/probes/postgresql"
-	_ "senhub-agent.go/internal/agent/probes/redfish"
 	_ "senhub-agent.go/internal/agent/probes/syslog"
-	_ "senhub-agent.go/internal/agent/probes/veeam"
-	_ "senhub-agent.go/internal/agent/probes/webapp"
 )
 
 // TestEveryRegisteredProbeIsAuthorizable enforces a structural
@@ -85,25 +76,12 @@ func TestEveryRegisteredProbeIsAuthorizable(t *testing.T) {
 	}
 }
 
-// TestNoStalePaidProbe enforces the reverse direction: every probe
-// claiming a slot in the paid catalogue MUST still be registered.
-// A stale entry would let a JWT licence reference a probe that does
-// not exist in the binary — confusing to debug, and may leak the
-// existence of removed features.
-func TestNoStalePaidProbe(t *testing.T) {
-	registered := probes.GetRegisteredProbeTypes()
-
-	var stale []string
-	for _, name := range license.KnownPaidProbes() {
-		if _, ok := registered[name]; !ok {
-			stale = append(stale, name)
-		}
-	}
-
-	if len(stale) > 0 {
-		sort.Strings(stale)
-		t.Fatalf("paid-probe catalogue entries with no matching registered probe: %s\n\n"+
-			"either restore the probe registration or remove the entry in probe_catalog.go",
-			strings.Join(stale, ", "))
-	}
-}
+// The reverse invariant — every paid-catalogue entry MUST be backed by
+// a registered probe (formerly TestNoStalePaidProbe) — does not hold in
+// the open-source build: the paid catalogue stays in core so the licence
+// validator recognises the names a JWT may grant, but the paid probe
+// packages live in the senhub-agent-enterprise module and are not
+// registered here. That completeness check belongs to the enterprise
+// repository's test suite, where all probes are registered (see #183).
+// The OSS direction — no paid probe leaks into the public binary — is
+// guarded by TestOSSBuildRegistersOnlyPublicProbes in the app package.
