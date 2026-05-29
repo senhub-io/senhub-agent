@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"senhub-agent.go/internal/agent/tags"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/tags"
 )
 
 // CollectLogonMetrics collects all logon performance metrics for the last 2 complete minutes.

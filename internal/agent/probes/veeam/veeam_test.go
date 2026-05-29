@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/types/datapoint"
-	"senhub-agent.go/internal/agent/utils/sanitize"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/logger"
+	"senhub-agent.go/probesdk/sanitize"
 )
 
 // newTestLogger creates a zerolog logger suitable for tests

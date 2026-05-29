@@ -4,7 +4,7 @@ package redfish
 import (
 	"context"
 	"fmt"
-	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/probesdk/datastore"
 	"time"
 )
 

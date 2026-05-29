@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/tags"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/logger"
+	"senhub-agent.go/probesdk/tags"
+	"senhub-agent.go/probesdk/types"
 )
 
 // veeamProbe implements monitoring for Veeam Backup & Replication using the REST API

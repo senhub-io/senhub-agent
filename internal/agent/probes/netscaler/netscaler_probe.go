@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/citrix/adc-nitro-go/service"
-	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/tags"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/logger"
+	"senhub-agent.go/probesdk/tags"
+	"senhub-agent.go/probesdk/types"
 )
 
 // netscalerProbe implements monitoring for Citrix Netscaler (ADC) using official NITRO library

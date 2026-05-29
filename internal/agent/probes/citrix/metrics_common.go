@@ -7,9 +7,9 @@ import (
 	"sort"
 	"time"
 
-	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/tags"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/logger"
+	"senhub-agent.go/probesdk/tags"
 )
 
 // roundToTwoDecimals rounds a float32 to exactly 2 decimal places

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/ibmi/bridge"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
 )
 
 // TestIntegration_AllCollectors_PUB400 exercises every registered

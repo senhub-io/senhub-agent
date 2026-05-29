@@ -16,10 +16,10 @@ import (
 	// can.
 	_ "github.com/go-sql-driver/mysql"
 
-	"senhub-agent.go/internal/agent/probes/dbcommon"
-	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/dbcommon"
+	"senhub-agent.go/probesdk/logger"
+	"senhub-agent.go/probesdk/types"
 )
 
 // mysqlProbe implements monitoring for MySQL and MariaDB.

@@ -2,8 +2,8 @@ package redfish
 
 import (
 	"context"
-	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/probesdk/datastore"
+	"senhub-agent.go/probesdk/logger"
 	"testing"
 	"time"
 

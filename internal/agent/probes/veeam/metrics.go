@@ -4,9 +4,9 @@ import (
 	"math"
 	"time"
 
-	"senhub-agent.go/internal/agent/tags"
-	"senhub-agent.go/internal/agent/types/datapoint"
-	"senhub-agent.go/internal/agent/utils/sanitize"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/sanitize"
+	"senhub-agent.go/probesdk/tags"
 )
 
 // bottleneckMapping maps Veeam ESessionBottleneckType strings to the

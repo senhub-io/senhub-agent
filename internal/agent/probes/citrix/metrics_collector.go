@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/logger"
 )
 
 // MetricsCollector handles the collection and calculation of all Citrix metrics

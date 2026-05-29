@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/ibmi/bridge"
-	"senhub-agent.go/internal/agent/tags"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/tags"
 )
 
 // auditJournalCollector reads security-relevant events from the IBM i

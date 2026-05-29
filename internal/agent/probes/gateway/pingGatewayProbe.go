@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/probesdk/datastore"
+	"senhub-agent.go/probesdk/logger"
+	"senhub-agent.go/probesdk/tags"
+	"senhub-agent.go/probesdk/types"
 )
 
 // validateIPAddress ensures the IP address is valid and safe to use in commands

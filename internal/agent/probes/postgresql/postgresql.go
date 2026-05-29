@@ -15,10 +15,10 @@ import (
 	// directly so the surface stays similar to the mysql probe.
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"senhub-agent.go/internal/agent/probes/dbcommon"
-	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/dbcommon"
+	"senhub-agent.go/probesdk/logger"
+	"senhub-agent.go/probesdk/types"
 )
 
 type postgresqlProbe struct {

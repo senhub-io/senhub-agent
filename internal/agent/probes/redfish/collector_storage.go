@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/probesdk/logger"
 	"strings"
 )
 

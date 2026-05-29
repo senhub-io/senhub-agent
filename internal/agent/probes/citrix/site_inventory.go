@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/probesdk/logger"
 )
 
 // SiteInventory holds cached information about a Citrix site

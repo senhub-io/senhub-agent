@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/probesdk/logger"
 )
 
 // deliveryControllerClient implements the DeliveryControllerClient interface

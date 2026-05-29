@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
-	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/probesdk/logger"
+	"senhub-agent.go/probesdk/types"
 )
 
 func newTestProbeWithFailover(baseURL, secondaryURL string) *netscalerProbe {
