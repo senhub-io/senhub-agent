@@ -65,7 +65,7 @@ func TestEveryRegisteredProbeIsAuthorizable(t *testing.T) {
 	if len(registered) == 0 {
 		t.Fatalf("probes.GetRegisteredProbeTypes() returned an empty map — " +
 			"no probe package's init() ran. " +
-			"Check the blank imports in this test file and in cmd/agent/probes_register.go")
+			"Check the blank imports in this test file and in app/probes_register.go")
 	}
 
 	var orphans []string
