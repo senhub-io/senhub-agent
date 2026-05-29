@@ -384,16 +384,16 @@ func checkConfig(configPath string) {
 // showConfig prints the merged configuration as YAML for diffability
 // and audit. Modes:
 //
-//   --resolved (default) — ${env:..} / ${file:..} references resolved
-//                          against the current environment / FS.
-//                          This is what the agent boots with.
-//   --raw                — references preserved as written, useful
-//                          for reviewing the loaded layout before
-//                          comparing against the resolved output.
-//   --redact             — resolved, but values that came from
-//                          ${file:..} OR sit under a YAML key whose
-//                          name matches (?i)(key|token|password|secret)
-//                          are masked with "***". Safe for tickets.
+//	--resolved (default) — ${env:..} / ${file:..} references resolved
+//	                       against the current environment / FS.
+//	                       This is what the agent boots with.
+//	--raw                — references preserved as written, useful
+//	                       for reviewing the loaded layout before
+//	                       comparing against the resolved output.
+//	--redact             — resolved, but values that came from
+//	                       ${file:..} OR sit under a YAML key whose
+//	                       name matches (?i)(key|token|password|secret)
+//	                       are masked with "***". Safe for tickets.
 //
 // Output: YAML, with map keys sorted alphabetically (yaml.v3 + a
 // post-pass over the marshaled node tree) so two runs produce
