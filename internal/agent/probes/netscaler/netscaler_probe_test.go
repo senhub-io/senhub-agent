@@ -4,8 +4,8 @@ package netscaler
 import (
 	"testing"
 
-	"senhub-agent.go/internal/agent/cliArgs"
-	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/probesdk/cliargs"
+	"senhub-agent.go/probesdk/logger"
 )
 
 // TestNewNetscalerProbe tests probe creation

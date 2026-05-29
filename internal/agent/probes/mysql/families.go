@@ -15,10 +15,10 @@ import (
 	"context"
 	"time"
 
-	"senhub-agent.go/internal/agent/probes/dbcommon"
-	"senhub-agent.go/internal/agent/tags"
-	"senhub-agent.go/internal/agent/types/datapoint"
-	"senhub-agent.go/internal/agent/utils/sanitize"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/dbcommon"
+	"senhub-agent.go/probesdk/sanitize"
+	"senhub-agent.go/probesdk/tags"
 )
 
 // buildOverviewMetrics emits the small handful of metrics that

@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes/ibmi/bridge"
-	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/cliargs"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/logger"
 )
 
 // fakeExecutor is a hand-rolled stub satisfying queryExecutor. We avoid

@@ -20,9 +20,9 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/ibmi/bridge"
-	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/logger"
+	"senhub-agent.go/probesdk/types"
 )
 
 // probeType is the technical identifier used in the probe_type tag and

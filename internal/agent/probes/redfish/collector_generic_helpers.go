@@ -3,7 +3,7 @@ package redfish
 import (
 	"encoding/json"
 	"fmt"
-	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/probesdk/tags"
 	"strings"
 )
 

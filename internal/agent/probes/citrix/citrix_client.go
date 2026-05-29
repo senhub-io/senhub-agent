@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Azure/go-ntlmssp"
-	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/probesdk/logger"
 )
 
 // citrixClient implements the CitrixClient interface for OData API communication

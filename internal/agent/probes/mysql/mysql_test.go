@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"senhub-agent.go/internal/agent/probes/dbcommon"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/dbcommon"
 )
 
 func TestParseConfig_MinimumRequired(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/citrix/adc-nitro-go/service"
-	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/probesdk/logger"
 )
 
 // configCache stores Netscaler configuration data to enrich metrics with contextual tags

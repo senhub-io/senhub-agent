@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/ibmi/bridge"
-	"senhub-agent.go/internal/agent/tags"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/tags"
 )
 
 // diskStatusCollector reads per-disk-unit stats from QSYS2.SYSDISKSTAT.

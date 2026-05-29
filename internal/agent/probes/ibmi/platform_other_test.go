@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"senhub-agent.go/internal/agent/cliArgs"
-	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/probesdk/cliargs"
+	"senhub-agent.go/probesdk/logger"
 )
 
 // TestNewIBMiProbe_RefusesOnNonLinux pins the platform-gate behaviour:

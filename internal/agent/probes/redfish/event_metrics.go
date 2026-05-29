@@ -4,8 +4,8 @@ package redfish
 import (
 	"context"
 	"encoding/json"
-	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/probesdk/datastore"
+	"senhub-agent.go/probesdk/tags"
 	"strings"
 	"time"
 )

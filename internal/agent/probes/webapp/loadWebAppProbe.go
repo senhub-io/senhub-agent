@@ -14,12 +14,12 @@ import (
 	"strings"
 	"time"
 
-	"senhub-agent.go/internal/agent/configParser"
-	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/tags"
-	"senhub-agent.go/internal/agent/validators"
+	"senhub-agent.go/probesdk/configparser"
+	"senhub-agent.go/probesdk/datastore"
+	"senhub-agent.go/probesdk/logger"
+	"senhub-agent.go/probesdk/tags"
+	"senhub-agent.go/probesdk/types"
+	"senhub-agent.go/probesdk/validators"
 )
 
 // Default configuration

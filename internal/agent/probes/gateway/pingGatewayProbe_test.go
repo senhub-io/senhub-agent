@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"senhub-agent.go/internal/agent/cliArgs"
-	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/probesdk/cliargs"
+	"senhub-agent.go/probesdk/logger"
 )
 
 func TestNewPingGatewayProbe(t *testing.T) {
