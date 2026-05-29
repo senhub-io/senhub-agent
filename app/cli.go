@@ -110,6 +110,9 @@ func readOnlyCommand(args []string) bool {
 			return true
 		}
 	}
+	if c, ok := extraCommands[args[1]]; ok {
+		return c.ReadOnly
+	}
 	return false
 }
 
@@ -126,7 +129,6 @@ var knownTopLevelArgs = map[string]struct{}{
 	"config":             {},
 	"license":            {},
 	"db-monitoring":      {},
-	"ibmi":               {},
 	"update":             {},
 	"install":            {}, "uninstall": {},
 	"start": {}, "stop": {}, "restart": {},
@@ -159,7 +161,9 @@ func Main() {
 	// typo'd flag) ended up spawning an agent. We now exit non-zero
 	// with a clear error so a wrong invocation can never
 	// accidentally start a second monitoring process.
-	if _, known := knownTopLevelArgs[os.Args[1]]; !known {
+	_, known := knownTopLevelArgs[os.Args[1]]
+	_, registered := extraCommands[os.Args[1]]
+	if !known && !registered {
 		fmt.Fprintf(os.Stderr, "Error: unknown command or flag %q\n", os.Args[1])
 		fmt.Fprintln(os.Stderr, "Run with --help for usage information.")
 		os.Exit(2)
@@ -182,6 +186,15 @@ func Main() {
 
 	// If first argument is a service command
 	command := os.Args[1]
+
+	// Registered (out-of-core) subcommands take precedence over the
+	// built-in switch. The enterprise build wires its `ibmi` command
+	// here; the core dispatch stays unaware of it.
+	if cmd, ok := extraCommands[command]; ok {
+		cmd.Run()
+		return
+	}
+
 	switch command {
 	case "debug-modules-list":
 		showDebugModules()
@@ -228,9 +241,6 @@ func Main() {
 		return
 	case "db-monitoring":
 		handleDbMonitoringCommand()
-		return
-	case "ibmi":
-		handleIBMICommand()
 		return
 	case "update":
 		// Parse update sub-arguments: update [--list | <version>]
