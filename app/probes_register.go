@@ -1,4 +1,4 @@
-package main
+package app
 
 // Blank-import every probe package the agent binary should know about.
 // Each package's init() calls probes.RegisterProbe(...) and populates

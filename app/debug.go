@@ -1,5 +1,5 @@
 // Debug and status utilities
-package main
+package app
 
 import (
 	"fmt"

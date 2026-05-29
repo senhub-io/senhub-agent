@@ -4,7 +4,7 @@
 // actually spawning the bridge subprocess. Operators run it after
 // deploying the agent to confirm the runtime is reachable; CI gates
 // can run it against a staged config to catch drift.
-package main
+package app
 
 import (
 	"fmt"
