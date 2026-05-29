@@ -16,6 +16,15 @@ import (
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
 
+// The ibmi verb registers itself rather than being hardcoded in the
+// dispatch switch, so it can move to the senhub-agent-enterprise module
+// (alongside the ibmi probe and its jt400 bridge) without the core CLI
+// referencing it. ReadOnly is left false to preserve the existing
+// privilege-gated behaviour.
+func init() {
+	RegisterCommand(ExtraCommand{Name: "ibmi", Run: handleIBMICommand})
+}
+
 // handleIBMICommand dispatches the `senhub-agent ibmi <subcommand>`
 // verbs. Only `check` is wired today; the slot is here so future
 // sub-verbs (e.g. `ibmi smoke` for a live connection test) can be
