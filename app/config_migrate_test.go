@@ -236,14 +236,14 @@ func TestHasMonolithicMarkers(t *testing.T) {
 // not filename, but the filename still needs to be portable.
 func TestSafeFilenameComponent(t *testing.T) {
 	cases := map[string]string{
-		"http":          "http",
-		"my_strategy":   "my_strategy",
-		"my-strategy":   "my-strategy",
-		"weird/name":    "weird-name",
-		"with spaces":   "with-spaces",
-		"":              "strategy",
-		"!@#$%^&*()":    "----------",
-		"unicode-é":     "unicode--",
+		"http":        "http",
+		"my_strategy": "my_strategy",
+		"my-strategy": "my-strategy",
+		"weird/name":  "weird-name",
+		"with spaces": "with-spaces",
+		"":            "strategy",
+		"!@#$%^&*()":  "----------",
+		"unicode-é":   "unicode--",
 	}
 	for in, want := range cases {
 		got := safeFilenameComponent(in)
