@@ -3,7 +3,7 @@
 // strategies.d/). Idempotent: a config already in the multi-file
 // shape produces a "nothing to do" exit. The original file is
 // preserved as a timestamped backup before any change.
-package main
+package app
 
 import (
 	"fmt"

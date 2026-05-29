@@ -1,5 +1,5 @@
 // Configuration management - offline config generation and validation
-package main
+package app
 
 import (
 	"fmt"

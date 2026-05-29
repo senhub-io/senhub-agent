@@ -1,5 +1,5 @@
 // Service command handling - install, uninstall, start, stop, status, update
-package main
+package app
 
 import (
 	"fmt"
