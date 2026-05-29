@@ -1,0 +1,30 @@
+package app
+
+// Blank-import every probe package the open-source agent binary ships.
+// Each package's init() calls probes.RegisterProbe(...) and populates
+// the runtime catalogue. Without these imports the registry is empty
+// and `config check` reports `unknown type "<probe>"` for everything.
+//
+// This file is the canonical catalogue for the OSS build: the
+// host-local probes whose source lives in this public repository.
+//
+//   - Add a line here when you create a new public probe package.
+//   - Remove a line here to ship a build without a given probe.
+//
+// The paid probes (citrix, veeam, netscaler, redfish, ibmi, mysql,
+// postgresql, webapp, gateway) are NOT imported here — they live in the
+// senhub-agent-enterprise module and are blank-imported by that repo's
+// own cmd/agent entrypoint, which reuses app.Main(). Keeping them out of
+// this file is what makes the default build the OSS edition; it also
+// prevents a duplicate-registration panic when the enterprise entrypoint
+// adds them on top of this set.
+import (
+	_ "senhub-agent.go/internal/agent/probes/cpu"
+	_ "senhub-agent.go/internal/agent/probes/event"
+	_ "senhub-agent.go/internal/agent/probes/host"
+	_ "senhub-agent.go/internal/agent/probes/linuxlogs"
+	_ "senhub-agent.go/internal/agent/probes/logicaldisk"
+	_ "senhub-agent.go/internal/agent/probes/memory"
+	_ "senhub-agent.go/internal/agent/probes/network"
+	_ "senhub-agent.go/internal/agent/probes/syslog"
+)
