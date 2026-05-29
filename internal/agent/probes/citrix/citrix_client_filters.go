@@ -3,7 +3,7 @@ package citrix
 import (
 	"strings"
 
-	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/probesdk/logger"
 )
 
 // ClientFilters provides DNS-based filtering functionality for Citrix data

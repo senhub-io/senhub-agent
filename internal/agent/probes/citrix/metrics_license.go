@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/Azure/go-ntlmssp"
-	"senhub-agent.go/internal/agent/tags"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/tags"
 )
 
 // CollectLicenseMetrics collects licensing metrics using a fallback chain:

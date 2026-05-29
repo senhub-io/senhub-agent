@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/probesdk/logger"
 )
 
 // veeamClient handles HTTP communication with the Veeam Backup & Replication REST API

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/probesdk/logger"
 )
 
 // RedfishClient provides a client for interacting with Redfish API endpoints

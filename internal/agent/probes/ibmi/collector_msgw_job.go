@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/ibmi/bridge"
-	"senhub-agent.go/internal/agent/tags"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/tags"
 )
 
 // msgwJobCollector is a stateful event collector that detects jobs

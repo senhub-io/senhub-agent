@@ -2,7 +2,7 @@
 package redfish
 
 import (
-	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/probesdk/tags"
 	"strings"
 )
 

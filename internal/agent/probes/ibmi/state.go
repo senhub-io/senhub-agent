@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
 )
 
 // deltaStore keeps the last observed numeric value for every

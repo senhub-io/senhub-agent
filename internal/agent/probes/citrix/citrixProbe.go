@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/datapoint"
+	"senhub-agent.go/probesdk/logger"
+	"senhub-agent.go/probesdk/types"
 )
 
 // citrixProbe implements monitoring for Citrix Virtual Apps and Desktops using OData API

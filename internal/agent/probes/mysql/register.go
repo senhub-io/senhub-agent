@@ -1,5 +1,5 @@
 package mysql
 
-import "senhub-agent.go/internal/agent/probes"
+import "senhub-agent.go/probesdk/probes"
 
 func init() { probes.RegisterProbe("mysql", NewMySQLProbe) }
