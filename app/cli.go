@@ -343,10 +343,6 @@ License Commands:
     license activate     Activate a license from a JWT token
     license remove       Remove current license (revert to free tier)
 
-IBM i Diagnostics:
-    ibmi check [path]    Verify the IBM i runtime (native binary or JRE).
-                         The ibmi probe is Linux-only (0.1.97+).
-
 Other Commands:
     version              Show agent version
     update               Check for new versions

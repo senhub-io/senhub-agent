@@ -2,31 +2,42 @@ package app
 
 import "testing"
 
-// TestIBMICommandSelfRegisters pins that the ibmi verb is wired through
-// the command registry (via ibmi.go's init), not the hardcoded dispatch
-// switch — the decoupling that lets it move to the enterprise module.
-func TestIBMICommandSelfRegisters(t *testing.T) {
-	cmd, ok := extraCommands["ibmi"]
+// TestRegisterCommand verifies a contributed subcommand lands in the
+// registry and is dispatchable. Uses a throwaway verb and cleans up the
+// process-global registry so it can't bleed into other tests.
+func TestRegisterCommand(t *testing.T) {
+	const name = "test-verb-register"
+	t.Cleanup(func() { delete(extraCommands, name) })
+
+	RegisterCommand(ExtraCommand{Name: name, ReadOnly: true, Run: func() {}})
+
+	cmd, ok := extraCommands[name]
 	if !ok {
-		t.Fatal("ibmi is not registered in extraCommands — its init() should call RegisterCommand")
+		t.Fatalf("RegisterCommand(%q) did not populate extraCommands", name)
 	}
 	if cmd.Run == nil {
-		t.Error("registered ibmi command has a nil Run")
+		t.Error("registered command has a nil Run")
 	}
-	if cmd.ReadOnly {
-		t.Error("ibmi is registered ReadOnly=true; it was privilege-gated before the refactor — behaviour changed")
+	if !cmd.ReadOnly {
+		t.Error("ReadOnly flag was not preserved")
 	}
 }
 
+// TestRegisterCommandPanics pins the programmer-error guards: empty
+// name, nil Run, a name that shadows a built-in verb, and a duplicate.
 func TestRegisterCommandPanics(t *testing.T) {
+	const dup = "test-verb-dup"
+	RegisterCommand(ExtraCommand{Name: dup, Run: func() {}})
+	t.Cleanup(func() { delete(extraCommands, dup) })
+
 	cases := []struct {
 		name string
 		cmd  ExtraCommand
 	}{
 		{"empty name", ExtraCommand{Name: "", Run: func() {}}},
-		{"nil run", ExtraCommand{Name: "totally-new-verb", Run: nil}},
+		{"nil run", ExtraCommand{Name: "test-verb-nil", Run: nil}},
 		{"shadows builtin", ExtraCommand{Name: "config", Run: func() {}}},
-		{"duplicate", ExtraCommand{Name: "ibmi", Run: func() {}}},
+		{"duplicate", ExtraCommand{Name: dup, Run: func() {}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

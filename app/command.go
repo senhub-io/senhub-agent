@@ -32,7 +32,7 @@ var extraCommands = map[string]ExtraCommand{}
 // Intended to be called from an init() in the command's own package:
 //
 //	func init() {
-//	    app.RegisterCommand(app.ExtraCommand{Name: "ibmi", Run: handleIBMICommand})
+//	    app.RegisterCommand(app.ExtraCommand{Name: "myverb", Run: runMyVerb})
 //	}
 //
 // Panics on a programmer error — empty name, nil Run, a name that
