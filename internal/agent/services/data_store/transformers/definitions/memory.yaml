@@ -252,6 +252,63 @@ metrics:
       unit: "1"
       type: gauge
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Swap usage (Linux) — the Linux counterpart of the Windows pagefile.
+  # OTel models swap as "paging"; swap_used/swap_free collapse onto
+  # system.paging.usage via system.paging.state, mirroring pagefile_usage.
+  # swap_total has no OTel paging equivalent → senhub.system.paging.limit
+  # extension, mirroring system.memory.limit for RAM.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "swap_total"
+    channel: "swap_total"
+    display_name: "Swap Total"
+    unit: "bytes"
+    category: "paging"
+    description: "Total swap space configured on the system"
+    otel:
+      name: senhub.system.paging.limit
+      unit: By
+      type: updowncounter
+
+  - name: "swap_used"
+    channel: "swap_used"
+    display_name: "Swap Used"
+    unit: "bytes"
+    category: "paging"
+    description: "Amount of swap space currently in use"
+    otel:
+      name: system.paging.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.paging.state: used
+
+  - name: "swap_free"
+    channel: "swap_free"
+    display_name: "Swap Free"
+    unit: "bytes"
+    category: "paging"
+    description: "Amount of swap space not in use"
+    otel:
+      name: system.paging.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        system.paging.state: free
+
+  - name: "swap_used_percent"
+    channel: "swap_usage"
+    display_name: "Swap Usage"
+    unit: "%"
+    category: "paging"
+    description: "Percentage of total swap space currently in use"
+    otel:
+      name: system.paging.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        system.paging.state: used
+
 tag_metadata:
   # System tags (injected by framework)
   host:
