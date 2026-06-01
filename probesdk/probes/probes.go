@@ -21,3 +21,15 @@ type ProbeConstructor = iprobes.ProbeConstructor
 func RegisterProbe(name string, ctor ProbeConstructor) {
 	iprobes.RegisterProbe(name, ctor)
 }
+
+// GetRegisteredProbeTypes returns the set of probe type names registered
+// in this binary. Exposed so an out-of-module test (e.g. the enterprise
+// repo's structural invariants) can inspect the full catalogue.
+func GetRegisteredProbeTypes() map[string]bool {
+	return iprobes.GetRegisteredProbeTypes()
+}
+
+// RegisteredProbeNames returns the registered probe names, sorted.
+func RegisteredProbeNames() []string {
+	return iprobes.RegisteredProbeNames()
+}
