@@ -1,0 +1,154 @@
+name: Windows MSI
+
+# Builds a signed Windows MSI from the existing Windows binary.
+#
+# Triggers:
+#   - manually (workflow_dispatch), for ad-hoc / test builds
+#   - on a production tag (X.Y.Z), so a signed MSI is attached to the
+#     GitHub release alongside the ZIPs produced by master-release.yml
+#
+# Signing requires the Sensor Factory code-signing certificate. Until
+# that certificate is provisioned, the `sign` step is GUARDED behind the
+# presence of the WINDOWS_CODESIGN_PFX_BASE64 secret: without it the job
+# still produces an UNSIGNED MSI (useful for layout/install testing) and
+# logs a clear warning. A signed MSI is required for SmartScreen-clean
+# GPO/SCCM/Intune deployment (see issue #153 acceptance criteria).
+#
+# Cross-platform signing note: we sign on a Linux runner with
+# osslsigncode so no Windows runner / signtool is needed. jsign is the
+# Java alternative if the cert lives in an HSM / Azure Key Vault.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to stamp into the MSI (e.g. 0.2.0). Defaults to latest tag."
+        required: false
+        default: ""
+  push:
+    tags:
+      - "*.*.*"          # production tags only; beta tags carry the -beta suffix
+
+permissions:
+  contents: write
+
+jobs:
+  build-msi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+
+      - name: Resolve version
+        id: ver
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          VERSION="$INPUT_VERSION"
+          if [ -z "$VERSION" ]; then
+            if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+              VERSION="${GITHUB_REF#refs/tags/}"
+            else
+              VERSION="$(git tag --list '[0-9]*.[0-9]*.[0-9]*' | grep -v -- '-beta' | sort -V | tail -1)"
+            fi
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "No version could be resolved" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Build Windows binary
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          mkdir -p dist/windows-amd64
+          COMMIT=$(git rev-parse HEAD)
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.%NZ")
+          GO_VERSION=$(go version | cut -d' ' -f3)
+          LDFLAGS="-s -w \
+            -X 'senhub-agent.go/internal/agent/cliArgs.Version=$VERSION' \
+            -X 'senhub-agent.go/internal/agent/cliArgs.CommitHash=$COMMIT' \
+            -X 'senhub-agent.go/internal/agent/cliArgs.BuildTime=$DATE' \
+            -X 'senhub-agent.go/internal/agent/cliArgs.GoVersion=$GO_VERSION' \
+            -X 'senhub-agent.go/internal/agent/cliArgs.Env=production' \
+            -X 'senhub-agent.go/internal/agent/cliArgs.ProductionURL=https://eu-west-1.intake.senhub.io' \
+            -X 'senhub-agent.go/internal/agent/cliArgs.DevelopmentURL=https://eu-west-1.intake-dev.senhub.io'"
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go build -trimpath -ldflags="$LDFLAGS" \
+            -o dist/windows-amd64/senhub-agent.exe ./cmd/agent
+
+      - name: Install WiX Toolset (v4, dotnet tool)
+        run: |
+          dotnet tool install --global wix --version 4.*
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Add WiX Util extension
+        run: |
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          wix extension add -g WixToolset.Util.wixext
+
+      - name: Build MSI
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          mkdir -p dist
+          wix build packaging/windows/senhub-agent.wxs \
+            -d Version="$VERSION" \
+            -d BinDir="dist/windows-amd64" \
+            -arch x64 \
+            -ext WixToolset.Util.wixext \
+            -out "dist/senhub-agent-${VERSION}-amd64.msi"
+          ls -la dist/*.msi
+
+      - name: Sign MSI (osslsigncode)
+        id: sign
+        env:
+          PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          MSI="dist/senhub-agent-${VERSION}-amd64.msi"
+          if [ -z "$PFX_BASE64" ]; then
+            echo "::warning::WINDOWS_CODESIGN_PFX_BASE64 not set — producing UNSIGNED MSI."
+            echo "::warning::A signed MSI is required for SmartScreen-clean GPO/SCCM/Intune deployment (issue #153)."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sudo apt-get update && sudo apt-get install -y osslsigncode
+          echo "$PFX_BASE64" | base64 -d > /tmp/codesign.pfx
+          # Dual SHA-1 + SHA-256 timestamp for broad Windows compatibility.
+          osslsigncode sign \
+            -pkcs12 /tmp/codesign.pfx \
+            -pass "$PFX_PASSWORD" \
+            -n "SenHub Agent" \
+            -i "https://senhub.io" \
+            -h sha256 \
+            -ts "http://timestamp.digicert.com" \
+            -in "$MSI" \
+            -out "${MSI}.signed"
+          mv "${MSI}.signed" "$MSI"
+          osslsigncode verify "$MSI" || true
+          rm -f /tmp/codesign.pfx
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: senhub-agent-msi-${{ steps.ver.outputs.version }}
+          path: dist/*.msi
+
+      - name: Attach MSI to release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.ver.outputs.version }}
+          files: dist/*.msi
