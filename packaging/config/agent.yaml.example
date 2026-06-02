@@ -1,0 +1,57 @@
+# SenHub Agent — default Linux package configuration (example)
+#
+# Installed at /etc/senhub-agent/agent.yaml.example. On a fresh
+# install the postinstall hook copies this file to
+# /etc/senhub-agent/agent.yaml if that file does not already exist.
+# Edit /etc/senhub-agent/agent.yaml, then:
+#   systemctl restart senhub-agent
+#
+# This default runs the free-tier probes (cpu, memory, logicaldisk,
+# network, linux_logs) and exposes a local HTTP endpoint. To push to
+# SenHub cloud, set agent.mode to "online" and provide agent.key /
+# agent.license.
+
+config_version: 2
+
+agent:
+  # Replace with the agent key issued for this host. In offline mode
+  # the key only identifies the host locally.
+  key: ""
+  mode: offline
+  generated: false
+  # license: ""  # No license = free tier only
+
+auto_update:
+  enabled: false
+  url: "https://eu-west-1.intake.senhub.io/releases"
+
+cache:
+  retention_minutes: 5
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+      endpoints: ["prtg", "web", "nagios", "prometheus"]
+
+probes:
+  - name: cpu
+    type: cpu
+    params:
+      interval: 30
+
+  - name: memory
+    type: memory
+    params:
+      interval: 30
+
+  - name: logicaldisk
+    type: logicaldisk
+    params:
+      interval: 60
+
+  - name: network
+    type: network
+    params:
+      interval: 30
