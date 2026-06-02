@@ -57,7 +57,10 @@ func (d *Detector) Run(ctx context.Context) {
 		now = time.Now
 	}
 
-	d.emitOnce(now(), publish)
+	// One Tracker for the detector's lifetime: it remembers the last-seen
+	// set so it can emit deletes when an item disappears between cycles.
+	tracker := NewTracker(publish)
+	d.reconcile(tracker, now())
 
 	ticker := time.NewTicker(d.interval)
 	defer ticker.Stop()
@@ -66,15 +69,16 @@ func (d *Detector) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			d.emitOnce(now(), publish)
+			d.reconcile(tracker, now())
 		}
 	}
 }
 
-// emitOnce observes the host + agent at instant ts and publishes the
-// foundation events. A failure to read host identity skips this cycle
-// rather than emitting a host entity with an empty id.
-func (d *Detector) emitOnce(ts time.Time, publish func(Event)) {
+// reconcile observes the host + agent at instant ts and feeds the resulting
+// snapshot to the tracker, which emits state (heartbeat) + any deletes. A
+// failure to read host identity skips this cycle rather than emitting a host
+// entity with an empty id.
+func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	h, err := d.host()
 	if err != nil || h.ID == "" {
 		return
@@ -85,7 +89,5 @@ func (d *Detector) emitOnce(ts time.Time, publish func(Event)) {
 	}
 	// Tick at d.interval; emit a slacked Interval so a late heartbeat does
 	// not expire a live entity (see livenessSlackFactor).
-	for _, ev := range DetectFoundation(h, a, ts, d.interval*livenessSlackFactor) {
-		publish(ev)
-	}
+	t.Reconcile(DetectFoundation(h, a, ts, d.interval*livenessSlackFactor), ts)
 }
