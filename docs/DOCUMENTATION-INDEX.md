@@ -50,6 +50,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 | **[Build System](developer-guide/build-system.md)** | Compilation and testing | Developers |
 | **[Design Patterns](developer-guide/design-patterns.md)** | Code patterns and best practices | Developers |
 | **[Current Development](developer-guide/current-development.md)** | Active work and roadmap | All |
+| **[Entity Detection](developer-guide/engineering/ENTITY-DETECTION.md)** | OTel entity-event emitter & topology discovery (#185) | Developers |
 | **[CLAUDE.md](../CLAUDE.md)** | Quick reference (points to developer guide) | Developers |
 | **[LOGGING.md](admin-guide/LOGGING.md)** | Logging system and debugging | Developers, DevOps |
 
