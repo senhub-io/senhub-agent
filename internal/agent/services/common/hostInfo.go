@@ -6,6 +6,32 @@ import (
 	"senhub-agent.go/internal/agent/tags"
 )
 
+// HostIdentity is the stable identity plus descriptive facts of the machine
+// the agent runs on. ID is the machine-id / UUID (stable across rename and
+// reboot) — the identifying attribute for the host entity. Name and OSType
+// are descriptive.
+type HostIdentity struct {
+	ID     string
+	Name   string
+	OSType string
+}
+
+// GetHostIdentity returns the host's stable identity for entity detection.
+// ID comes from gopsutil's HostID (the OS machine-id), which — unlike the
+// hostname — does not change on rename, so it is safe to use as immutable
+// entity identity.
+func GetHostIdentity() (HostIdentity, error) {
+	hostInfo, err := host.Info()
+	if err != nil {
+		return HostIdentity{}, fmt.Errorf("error getting host info: %v", err)
+	}
+	return HostIdentity{
+		ID:     hostInfo.HostID,
+		Name:   hostInfo.Hostname,
+		OSType: hostInfo.OS,
+	}, nil
+}
+
 // GetHostTags returns common tags based on host information
 func GetHostTags() ([]tags.Tag, error) {
 	hostInfo, err := host.Info()

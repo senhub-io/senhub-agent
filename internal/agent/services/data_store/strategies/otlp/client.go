@@ -52,7 +52,9 @@ func buildExporters(ctx context.Context, cfg Config) (*exporters, error) {
 		exp.metric = me
 	}
 
-	if cfg.Logs.Enabled {
+	// Entity events are carried on the OTLP log signal, so the log exporter
+	// is needed when either raw logs or entity emission is enabled.
+	if cfg.Logs.Enabled || cfg.Entities.Enabled {
 		le, err := buildLogExporter(ctx, cfg)
 		if err != nil {
 			// Roll back metric exporter on log exporter failure so we
