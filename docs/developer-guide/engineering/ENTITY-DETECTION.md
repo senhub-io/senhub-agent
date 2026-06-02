@@ -147,6 +147,36 @@ entities/relations and their last-emitted descriptive state. It emits:
 `Interval` is emitted so a consumer can expire entities/edges if a delete is
 lost (crash, kill -9, partition).
 
+## 6b. Multiple producers, same entity
+
+Two agents observing the **same** entity reconcile because identity is exact
+and **observer-independent** (this is why `db.instance.id` is a source id like
+`system_identifier`, never a network address — every agent derives the same
+id). They converge on one node in the graph.
+
+Two consequences, frozen with the Toise team:
+
+- **Attribute discipline.** `entity_state` is a *complete* state, so two
+  producers writing *different* descriptive attributes for the same entity
+  would flap (last-writer-wins). Rule: a shared entity carries only
+  **observer-independent** attributes (system name, version…). Any
+  per-observer fact ("*this* agent monitors this db") is a separate
+  `monitors` **relation** per agent — never an attribute of the entity.
+
+- **Delete is per-identity, not per-producer (phase-1 limitation).** An
+  explicit `entity_delete` from one agent clears the entity even if another
+  still observes it; that other agent recreates it on its next heartbeat
+  (~one-cadence flap). The `Interval` backstop already handles the
+  *crash-without-delete* case (the entity survives while any agent
+  heartbeats). The clean fix is **per-producer reference counting** on the
+  consumer, keyed on `service.instance.id` (already carried on every export's
+  resource, so it is a Toise-only change). Deferred; documented as a known
+  phase-1 limitation.
+
+Relations carry **no** interval: an edge expires when one of its endpoints
+expires or is deleted (consumer-side cascade); `relation_delete` removes an
+edge whose endpoints are still alive.
+
 ## 7. Phasing (rollout aligned with Toise)
 - **Lot 1** — `host` + `service.instance` entities + `runs_on`. host.id
   activated. Exercises the full chain with a real producer (replaces Toise
