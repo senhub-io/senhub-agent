@@ -135,6 +135,47 @@ func TestParseConfig_RejectsHalfMTLS(t *testing.T) {
 	}
 }
 
+func TestParseConfig_EntitiesSignalDefault(t *testing.T) {
+	cfg, err := ParseConfig(map[string]interface{}{"endpoint": "x:4317"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Entities.Enabled {
+		t.Errorf("Entities.Enabled should default to false (opt-in)")
+	}
+	if cfg.Entities.Interval != DefaultEntitiesInterval {
+		t.Errorf("Entities.Interval=%v, want %v", cfg.Entities.Interval, DefaultEntitiesInterval)
+	}
+	if cfg.Entities.BufferSize != DefaultEntitiesBufferSize {
+		t.Errorf("Entities.BufferSize=%d, want %d", cfg.Entities.BufferSize, DefaultEntitiesBufferSize)
+	}
+}
+
+func TestParseConfig_EntitiesSignalOverride(t *testing.T) {
+	cfg, err := ParseConfig(map[string]interface{}{
+		"endpoint": "x:4317",
+		"signals": map[string]interface{}{
+			"entities": map[string]interface{}{
+				"enabled":     true,
+				"interval":    "120s",
+				"buffer_size": 512,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.Entities.Enabled {
+		t.Errorf("Entities.Enabled should be true")
+	}
+	if cfg.Entities.Interval != 120*time.Second {
+		t.Errorf("Entities.Interval=%v, want 120s", cfg.Entities.Interval)
+	}
+	if cfg.Entities.BufferSize != 512 {
+		t.Errorf("Entities.BufferSize=%d, want 512", cfg.Entities.BufferSize)
+	}
+}
+
 func TestParseConfig_RetryAndSignals(t *testing.T) {
 	cfg, err := ParseConfig(map[string]interface{}{
 		"endpoint": "x:4317",

@@ -53,6 +53,8 @@ const (
 	DefaultLogsBatchSize      = 1000
 	DefaultLogsBatchTimeout   = 5 * time.Second
 	DefaultLogsBufferSize     = 10000
+	DefaultEntitiesInterval   = 60 * time.Second
+	DefaultEntitiesBufferSize = 256
 	// DefaultMaxStoreSize caps the OTLP strategy's metric-store
 	// cardinality. 50 000 distinct series is comfortable for typical
 	// SenHub agent profiles (host + 1-3 vendor probes ≈ 1-5 k series);
@@ -104,7 +106,7 @@ const (
 	// dozen series in a single batch is faster than spinning up 4
 	// goroutines + 4 protobuf encoders. Above the threshold, the
 	// per-probe split pays for itself.
-	SplitBatchThreshold = 100
+	SplitBatchThreshold       = 100
 	DefaultTracesBatchSize    = 512
 	DefaultTracesBatchTimeout = 5 * time.Second
 	DefaultTracesBufferSize   = 2048
@@ -171,6 +173,21 @@ type LogsSignal struct {
 	BufferSize   int // bounded queue; drop-oldest beyond this
 }
 
+// EntitiesSignal holds entity-event emission knobs. Entity events are
+// carried on the OTLP log signal (they are log records), so this signal
+// reuses the log exporter/transport — it has no endpoint/batch knobs of its
+// own. Disabled by default: emitting entity events is a deliberate opt-in
+// for an entity-aware backend, not something to switch on for every logs
+// consumer.
+type EntitiesSignal struct {
+	Enabled bool
+	// Interval is the heartbeat cadence: every entity/relation is re-emitted
+	// each interval (at-least-once, idempotent) and the interval travels on
+	// each event as the consumer's liveness backstop.
+	Interval   time.Duration
+	BufferSize int
+}
+
 // TracesSignal holds traces-specific knobs. Disabled by default — the
 // agent does not auto-instrument itself yet; this block is plumbing
 // for explicit span emission by future code or third-party libraries
@@ -215,6 +232,7 @@ type Config struct {
 	Retry       RetryConfig
 	Metrics     MetricsSignal
 	Logs        LogsSignal
+	Entities    EntitiesSignal
 	Traces      TracesSignal
 	Resource    ResourceConfig
 	// MaxStoreSize bounds the OTLP strategy's in-memory metric store
@@ -337,6 +355,11 @@ func defaultConfig() Config {
 			BatchTimeout: DefaultLogsBatchTimeout,
 			BufferSize:   DefaultLogsBufferSize,
 		},
+		Entities: EntitiesSignal{
+			Enabled:    false,
+			Interval:   DefaultEntitiesInterval,
+			BufferSize: DefaultEntitiesBufferSize,
+		},
 		Traces: TracesSignal{
 			// Disabled by default — opt-in plumbing. Operators
 			// enable explicitly when they want span export.
@@ -455,7 +478,7 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 	if err := parseRetry(params["retry"], &cfg.Retry); err != nil {
 		return cfg, fmt.Errorf("retry: %w", err)
 	}
-	if err := parseSignals(params["signals"], &cfg.Metrics, &cfg.Logs, &cfg.Traces); err != nil {
+	if err := parseSignals(params["signals"], &cfg.Metrics, &cfg.Logs, &cfg.Traces, &cfg.Entities); err != nil {
 		return cfg, fmt.Errorf("signals: %w", err)
 	}
 	if err := parseResource(params["resource"], &cfg.Resource); err != nil {
@@ -609,7 +632,7 @@ func parseMemoryLimit(raw interface{}, out *MemoryLimitConfig) error {
 	return nil
 }
 
-func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, traces *TracesSignal) error {
+func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, traces *TracesSignal, entities *EntitiesSignal) error {
 	m := readStringKeyedMap(raw)
 	if m == nil {
 		return nil
@@ -658,6 +681,22 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 		}
 		if err := parseSignalTransport("logs", lm, &logs.SignalTransport); err != nil {
 			return err
+		}
+	}
+
+	if em := readStringKeyedMap(m["entities"]); em != nil {
+		if v, ok := em["enabled"].(bool); ok {
+			entities.Enabled = v
+		}
+		if v, ok := em["interval"].(string); ok && v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil {
+				return fmt.Errorf("entities.interval: %w", err)
+			}
+			entities.Interval = d
+		}
+		if v, ok := readInt(em["buffer_size"]); ok {
+			entities.BufferSize = v
 		}
 	}
 
