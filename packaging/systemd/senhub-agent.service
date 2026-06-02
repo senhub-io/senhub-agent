@@ -1,0 +1,29 @@
+[Unit]
+Description=SenHub Agent — infrastructure monitoring agent
+Documentation=https://github.com/senhub-io/senhub-agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=senhub
+Group=senhub
+ExecStart=/usr/bin/senhub-agent run --config-path /etc/senhub-agent/agent.yaml
+Restart=on-failure
+RestartSec=5
+
+# State and runtime directories (created/managed by systemd, 0750).
+StateDirectory=senhub-agent
+LogsDirectory=senhub-agent
+ConfigurationDirectory=senhub-agent
+
+# Hardening — the agent reads host metrics, so it needs broad read
+# access but should not be able to write outside its own directories.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/senhub-agent /var/log/senhub-agent
+
+[Install]
+WantedBy=multi-user.target
