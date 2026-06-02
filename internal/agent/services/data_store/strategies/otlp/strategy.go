@@ -14,10 +14,12 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/agentmetrics"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
@@ -65,6 +67,14 @@ type OTLPSyncStrategy struct {
 	// when Logs.Enabled. nil otherwise.
 	logs     *logsPipeline
 	logsPump *logsPump
+
+	// entityPump emits entity/relation events on the OTLP log signal; the
+	// entity Detector goroutine produces them. Both nil/zero unless
+	// Entities.Enabled. entityDetectorCancel stops the detector,
+	// entityDetectorWG waits for it.
+	entityPump           *entityPump
+	entityDetectorCancel context.CancelFunc
+	entityDetectorWG     sync.WaitGroup
 
 	// traces holds the SDK BatchSpanProcessor + TracerProvider + Tracer
 	// when Traces.Enabled. nil otherwise. The provider also gets
@@ -243,10 +253,17 @@ func (s *OTLPSyncStrategy) Start() error {
 		s.startMetricsPusher()
 	}
 
-	if s.cfg.Logs.Enabled && s.exporters.log != nil {
+	// Entity events ride the log signal, so the pipeline (provider + both
+	// loggers) is built when either logs or entities are enabled.
+	if (s.cfg.Logs.Enabled || s.cfg.Entities.Enabled) && s.exporters.log != nil {
 		s.logs = buildLogsPipeline(s.exporters.log, s.resource, s.cfg.Logs, cliArgs.Version)
+	}
+	if s.cfg.Logs.Enabled && s.logs != nil {
 		s.logsPump = newLogsPump(s.logs, s.cfg.Logs.BufferSize)
 		s.logsPump.start()
+	}
+	if s.cfg.Entities.Enabled && s.logs != nil {
+		s.startEntityEmission()
 	}
 
 	if s.cfg.Traces.Enabled && s.exporters.trace != nil {
@@ -345,7 +362,7 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 	}
 
 	tracer := otel.Tracer(tracesScopeName)
-	parent, span := tracer.Start(parent, "otlp.push.metrics")// Endpoint as attribute so split-backend configs (per-signal
+	parent, span := tracer.Start(parent, "otlp.push.metrics") // Endpoint as attribute so split-backend configs (per-signal
 	// override) show the actual target the span pushed to.
 	// Set at start so it's present even if the push panics.
 
@@ -428,6 +445,46 @@ func (s *OTLPSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
 	return nil
 }
 
+// startEntityEmission wires the entity pump (consumer of the neutral
+// entity-event channel) and the Detector (producer of the Lot 1 foundation
+// events: host + service.instance + runs_on). Called from Start only when
+// Entities.Enabled and the log pipeline exists.
+//
+// The entity's service.instance.id is the resource's service.instance.id so
+// the entity identity and the OTLP resource agree on who the agent is.
+func (s *OTLPSyncStrategy) startEntityEmission() {
+	s.entityPump = newEntityPump(s.logs, s.cfg.Entities.BufferSize, s.logger)
+	s.entityPump.start()
+
+	serviceName := s.cfg.Resource.ServiceName
+	if serviceName == "" {
+		serviceName = "senhub-agent"
+	}
+	hostFn := func() (entity.HostIdentity, error) {
+		hi, err := common.GetHostIdentity()
+		if err != nil {
+			return entity.HostIdentity{}, err
+		}
+		return entity.HostIdentity{ID: hi.ID, Name: hi.Name, OSType: hi.OSType}, nil
+	}
+	agentFn := func() entity.AgentIdentity {
+		return entity.AgentIdentity{
+			InstanceID:     s.cfg.Resource.ServiceInstance,
+			ServiceName:    serviceName,
+			ServiceVersion: cliArgs.Version,
+		}
+	}
+
+	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
+	ctx, cancel := context.WithCancel(context.Background())
+	s.entityDetectorCancel = cancel
+	s.entityDetectorWG.Add(1)
+	go func() {
+		defer s.entityDetectorWG.Done()
+		det.Run(ctx)
+	}()
+}
+
 // Shutdown stops the strategy: signals the push goroutine, waits for it
 // to drain, performs a final push (so the last interval's data isn't
 // lost), then closes the gRPC exporters. Idempotent: once shut down,
@@ -463,6 +520,17 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// pattern as memLimiter.
 	if s.chkpt != nil {
 		s.chkpt.stop()
+	}
+
+	// Stop entity emission: cancel the Detector (producer) and wait, then
+	// stop the pump (consumer). Producer-before-consumer so no event is
+	// published after the channel subscription is gone.
+	if s.entityDetectorCancel != nil {
+		s.entityDetectorCancel()
+		s.entityDetectorWG.Wait()
+	}
+	if s.entityPump != nil {
+		s.entityPump.stop(ctx)
 	}
 
 	// Stop the logs pump and unsubscribe from agentstate. The
