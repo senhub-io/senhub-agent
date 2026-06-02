@@ -89,5 +89,13 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	}
 	// Tick at d.interval; emit a slacked Interval so a late heartbeat does
 	// not expire a live entity (see livenessSlackFactor).
-	t.Reconcile(DetectFoundation(h, a, ts, d.interval*livenessSlackFactor), ts)
+	interval := d.interval * livenessSlackFactor
+
+	// Foundation (host + service.instance + runs_on) plus everything the
+	// registered sources observe this cycle (probe-monitored systems).
+	events := DetectFoundation(h, a, ts, interval)
+	for _, src := range registeredSources() {
+		events = append(events, src.Observe().toEvents(ts, interval)...)
+	}
+	t.Reconcile(events, ts)
 }
