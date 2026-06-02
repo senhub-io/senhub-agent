@@ -120,6 +120,41 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
+// enrichWithConfiguredTags overlays the agent-level global_tags and each
+// probe instance's custom_tags onto every datapoint, in one place for all
+// sinks. Priority on a key conflict is custom_tags > global_tags > built-in
+// (the tags the probe already emitted). Per-probe custom_tags are matched to
+// a datapoint by its probe_name tag. No-op (and no allocation) when neither
+// is configured.
+func (d *dataStore) enrichWithConfiguredTags(data []datapoint.DataPoint) []datapoint.DataPoint {
+	cfg := d.configProvider.GetConfiguration()
+	global := tags.MapToTags(cfg.Agent.GlobalTags)
+
+	var customByProbe map[string][]tags.Tag
+	for _, p := range cfg.Probes {
+		if len(p.CustomTags) == 0 {
+			continue
+		}
+		if customByProbe == nil {
+			customByProbe = make(map[string][]tags.Tag)
+		}
+		customByProbe[p.Name] = tags.MapToTags(p.CustomTags)
+	}
+
+	if len(global) == 0 && customByProbe == nil {
+		return data
+	}
+
+	for i := range data {
+		custom := customByProbe[getTagValue(data[i].Tags, "probe_name")]
+		if len(global) == 0 && len(custom) == 0 {
+			continue
+		}
+		data[i].Tags = tags.MergeTags(data[i].Tags, global, custom)
+	}
+	return data
+}
+
 func (d *dataStore) GetCallback() AddCallback {
 	d.logger.Debug().Msg("GetCallback called")
 	return func(data []datapoint.DataPoint, probe StrategyRouter) error {
@@ -138,6 +173,11 @@ func (d *dataStore) GetCallback() AddCallback {
 				Int("corrected_count", len(correctedData)).
 				Msg("Unit corrections applied to datapoints")
 		}
+
+		// Apply configured tags uniformly before routing to any sink:
+		// agent global_tags + per-probe custom_tags, priority
+		// custom_tags > global_tags > built-in probe tags.
+		correctedData = d.enrichWithConfiguredTags(correctedData)
 
 		for _, strategy := range d.strategies {
 			targetStrategies := probe.GetTargetStrategies()
