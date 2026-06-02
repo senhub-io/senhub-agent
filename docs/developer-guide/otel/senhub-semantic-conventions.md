@@ -135,7 +135,8 @@ Attributs: `cpu.logical_number` (optionnel, présent si mesuré par core).
 | `system.memory.limit` | `By` | UpDownCounter | Total RAM installée (Win `memory_total`) |
 | `system.memory.usage` | `By` | UpDownCounter | Occupation RAM par état (attribut `system.memory.state`) |
 | `system.memory.utilization` | `1` | Gauge | % RAM utilisée (cross-platform, `memory_used_percent`) |
-| `system.paging.utilization` | `1` | Gauge | % pagefile (`pagefile_usage`) — OTEP 0119 draft |
+| `system.paging.usage` | `By` | UpDownCounter | Occupation swap par état (attribut `system.paging.state`) — Linux `swap_used`/`swap_free` |
+| `system.paging.utilization` | `1` | Gauge | % pagefile (`pagefile_usage`) + % swap (`swap_used_percent`) — attribut `system.paging.state`, OTEP 0119 draft |
 
 **Attribut `system.memory.state`**
 
@@ -152,15 +153,20 @@ Valeurs officielles OTel : `buffers, cached, free, used`
 | `nonpaged_pool` | `memory_nonpaged_pool` | Kernel memory that cannot be paged out |
 | `paged_pool` | `memory_paged_pool` | Kernel memory that can be paged out |
 
-#### 4.2.2 Extensions `senhub.*` (paging rates Windows)
+**Attribut `system.paging.state`**
 
-**Justification :** notre probe expose les paging Windows sous forme de **rates instantanés** depuis Perfmon. OTEP 0119 propose `system.paging.faults` et `system.paging.operations` en counters. Nous créons des variantes `_per_second` en gauge le temps de la migration. À aligner sur OTel standard lors de la refonte de la probe (counter cumulatif).
+Valeurs : `used, free`. Le **swap Linux** (`swap_used`/`swap_free`) est le pendant du **pagefile Windows** : OTel modélise les deux sous `system.paging.*`. Ils ne se confondent pas — l'OS de l'hôte (attribut ressource) sépare les séries — et l'harmonisation rend les dashboards de pagination cross-OS (même logique que `available → free` pour la RAM).
+
+#### 4.2.2 Extensions `senhub.*` (paging)
+
+**Justification :** notre probe expose les paging Windows sous forme de **rates instantanés** depuis Perfmon. OTEP 0119 propose `system.paging.faults` et `system.paging.operations` en counters. Nous créons des variantes `_per_second` en gauge le temps de la migration. À aligner sur OTel standard lors de la refonte de la probe (counter cumulatif). `senhub.system.paging.limit` couvre le total swap (`swap_total`), pour lequel OTel n'expose aucun équivalent (miroir de `system.memory.limit` pour la RAM).
 
 | Senhub metric | Unit | Type | Attributs |
 |---|---|---|---|
 | `senhub.system.paging.faults_per_second` | `1/s` | Gauge | – |
 | `senhub.system.paging.operations_per_second` | `1/s` | Gauge | `direction: in` ou `out` |
 | `senhub.system.paging.utilization_peak` | `1` | Gauge | – *(pas d'équivalent OTEP 0119)* |
+| `senhub.system.paging.limit` | `By` | UpDownCounter | – Total swap configuré (`swap_total`) ; *(pas d'équivalent OTEP 0119)* |
 
 ### 4.3 Probe `network` (système)
 
