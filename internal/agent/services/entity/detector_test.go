@@ -51,6 +51,15 @@ func TestDetector_EmitOnce_PublishesFoundation(t *testing.T) {
 	if got[2].Relation == nil || got[2].Relation.Type != "runs_on" {
 		t.Errorf("event[2] = %+v, want runs_on", got[2])
 	}
+
+	// The emitted Interval is slacked above the tick cadence so a late
+	// heartbeat does not expire a live entity.
+	wantInterval := time.Minute * livenessSlackFactor
+	for i, ev := range got {
+		if ev.Interval != wantInterval {
+			t.Errorf("event[%d].Interval = %v, want %v (cadence × slack)", i, ev.Interval, wantInterval)
+		}
+	}
 }
 
 func TestDetector_EmitOnce_SkipsOnMissingIdentity(t *testing.T) {
