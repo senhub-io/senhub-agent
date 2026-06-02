@@ -38,6 +38,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 | **[HTTP-BIND-ADDRESS.md](admin-guide/HTTP-BIND-ADDRESS.md)** | Network binding configuration | Network setup |
 | **[UNIVERSAL-CONFIGURATION.md](admin-guide/UNIVERSAL-CONFIGURATION.md)** | Configuration validation API | Config testing |
 | **[OTLP-OBSERVABILITY.md](admin-guide/OTLP-OBSERVABILITY.md)** | OTLP self-metrics field reference + alert recipes | Operational monitoring |
+| **[windows-msi.md](deployment/windows-msi.md)** | Windows MSI mass deployment (GPO / SCCM / Intune) | Endpoint / VDI rollout |
 
 ## 👨‍💻 Developer Documentation
 
