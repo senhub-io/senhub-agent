@@ -32,10 +32,16 @@ jobs:
         working-directory: docs/user-guide
         run: hugo --minify
 
-      - name: Deploy to docs repo
+      # Publishes into the landing repo under /docs. keep_files: true is
+      # REQUIRED so the hand-authored landing at the repo root is preserved
+      # (actions-gh-pages wipes the publish branch otherwise). destination_dir
+      # scopes the output to the /docs subtree.
+      - name: Deploy to landing repo (/docs)
         uses: peaceiris/actions-gh-pages@v4
         with:
-          external_repository: senhub-io/docs
+          external_repository: senhub-io/agent.senhub.io
           personal_token: ${{ secrets.DOCS_DEPLOY_TOKEN }}
           publish_dir: docs/user-guide/public
-          publish_branch: gh-pages
+          publish_branch: main
+          destination_dir: docs
+          keep_files: true
