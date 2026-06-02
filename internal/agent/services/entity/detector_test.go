@@ -24,7 +24,7 @@ func TestEventChannel_PublishSubscribe(t *testing.T) {
 	}
 }
 
-func TestDetector_EmitOnce_PublishesFoundation(t *testing.T) {
+func TestDetector_Reconcile_PublishesFoundation(t *testing.T) {
 	var (
 		mu  sync.Mutex
 		got []Event
@@ -40,7 +40,7 @@ func TestDetector_EmitOnce_PublishesFoundation(t *testing.T) {
 		},
 		time.Minute,
 	)
-	d.emitOnce(time.Unix(1780272000, 0).UTC(), publish)
+	d.reconcile(NewTracker(publish), time.Unix(1780272000, 0).UTC())
 
 	if len(got) != 3 {
 		t.Fatalf("published %d events, want 3 (host, service.instance, runs_on)", len(got))
@@ -62,7 +62,7 @@ func TestDetector_EmitOnce_PublishesFoundation(t *testing.T) {
 	}
 }
 
-func TestDetector_EmitOnce_SkipsOnMissingIdentity(t *testing.T) {
+func TestDetector_Reconcile_SkipsOnMissingIdentity(t *testing.T) {
 	publishCount := 0
 	publish := func(Event) { publishCount++ }
 
@@ -72,7 +72,7 @@ func TestDetector_EmitOnce_SkipsOnMissingIdentity(t *testing.T) {
 		func() AgentIdentity { return AgentIdentity{InstanceID: "agent-7f3a"} },
 		time.Minute,
 	)
-	d.emitOnce(time.Unix(1780272000, 0).UTC(), publish)
+	d.reconcile(NewTracker(publish), time.Unix(1780272000, 0).UTC())
 
 	// Empty agent instance id → also skip.
 	d2 := NewDetector(
@@ -80,7 +80,7 @@ func TestDetector_EmitOnce_SkipsOnMissingIdentity(t *testing.T) {
 		func() AgentIdentity { return AgentIdentity{} },
 		time.Minute,
 	)
-	d2.emitOnce(time.Unix(1780272000, 0).UTC(), publish)
+	d2.reconcile(NewTracker(publish), time.Unix(1780272000, 0).UTC())
 
 	if publishCount != 0 {
 		t.Fatalf("published %d events on missing identity, want 0", publishCount)
