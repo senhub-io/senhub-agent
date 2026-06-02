@@ -70,6 +70,7 @@ func TestBuildEntityRecord_Foundation(t *testing.T) {
 				"otel.entity.type":       "host",
 				"otel.entity.id":         map[string]any{"host.id": "h-001"},
 				"otel.entity.attributes": map[string]any{"host.name": "web-server-1", "os.type": "linux"},
+				"otel.entity.interval":   int64(60000),
 			},
 		},
 		{
@@ -80,6 +81,7 @@ func TestBuildEntityRecord_Foundation(t *testing.T) {
 				"otel.entity.type":       "service.instance",
 				"otel.entity.id":         map[string]any{"service.instance.id": "agent-7f3a"},
 				"otel.entity.attributes": map[string]any{"service.name": "senhub-agent", "service.version": "1.0.0"},
+				"otel.entity.interval":   int64(60000),
 			},
 		},
 		{
