@@ -89,6 +89,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	"syslog":    {"event_id", "source"}, // Syslog events
 
+	// SNMP polling — one series per (target, interface row); metric_type
+	// separates interface / system / status families.
+	"snmp_poll": {"instance", "if_index", "metric_type"},
+
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
 	// senhub-semantic-conventions.md §4.13 for the full collapse list).
