@@ -1,4 +1,4 @@
-baseURL = "https://docs.senhub.io/"
+baseURL = "https://agent.senhub.io/docs/"
 title = "SenHub Agent Documentation"
 theme = "hugo-book"
 
