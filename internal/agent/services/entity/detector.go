@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+// livenessSlackFactor multiplies the heartbeat cadence to produce the
+// Interval carried on each event. The consumer expires an entity at
+// last_seen + Interval, so the emitted window must tolerate a few missed or
+// late heartbeats — 3× the cadence means a single delayed heartbeat never
+// expires a live entity.
+const livenessSlackFactor = 3
+
 // HostIdentityFunc resolves the current host identity. It may fail (e.g. the
 // OS host info is briefly unavailable); the detector skips that cycle.
 type HostIdentityFunc func() (HostIdentity, error)
@@ -76,7 +83,9 @@ func (d *Detector) emitOnce(ts time.Time, publish func(Event)) {
 	if a.InstanceID == "" {
 		return
 	}
-	for _, ev := range DetectFoundation(h, a, ts, d.interval) {
+	// Tick at d.interval; emit a slacked Interval so a late heartbeat does
+	// not expire a live entity (see livenessSlackFactor).
+	for _, ev := range DetectFoundation(h, a, ts, d.interval*livenessSlackFactor) {
 		publish(ev)
 	}
 }

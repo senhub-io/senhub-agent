@@ -19,6 +19,7 @@ const (
 	attrEntityType      = "otel.entity.type"
 	attrEntityID        = "otel.entity.id"
 	attrEntityAttrs     = "otel.entity.attributes"
+	attrEntityInterval  = "otel.entity.interval"
 
 	attrRelEventType = "entity.relation.event.type"
 	attrRelType      = "entity.relation.type"
@@ -74,6 +75,14 @@ func buildEntityRecord(ev entity.Event) (log.Record, error) {
 				return rec, err
 			}
 			attrs = append(attrs, a)
+		}
+		// Liveness backstop: the heartbeat validity window in milliseconds.
+		// The consumer arms a deadline (last_seen + interval) and expires
+		// the entity if no heartbeat or explicit delete arrives — covers
+		// producers that die without a clean delete (kill -9, partition).
+		// Emitted on state only; a delete needs no interval.
+		if ev.Kind == entity.EntityState && ev.Interval > 0 {
+			attrs = append(attrs, log.Int64(attrEntityInterval, ev.Interval.Milliseconds()))
 		}
 
 	case entity.RelationState, entity.RelationDelete:
