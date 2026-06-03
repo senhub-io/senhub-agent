@@ -106,8 +106,14 @@ func (s *snmpEntitySource) sweep(client snmpClient) entity.Observation {
 			Msg("FDB walk failed; emitting device without forwards_to")
 		fdb = nil
 	}
+	arp, err := collectARP(client)
+	if err != nil {
+		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
+			Msg("ARP walk failed; next-hops stay provisional mgmt:")
+		arp = nil
+	}
 	self := readSelfIdentity(client, s.cfg.Target, topo.Local)
-	return buildObservation(self, topo, routes, fdb)
+	return buildObservation(self, topo, routes, fdb, arp)
 }
 
 // readSelfIdentity reads the polled device's identifiers in the Toise-frozen
@@ -199,33 +205,51 @@ func asString(v any) string {
 	return s
 }
 
-// buildObservation maps the polled device, its LLDP neighbours and its routing
-// next-hops to the frozen wire shapes (all network.device↔network.device):
+// buildObservation maps the polled device, its LLDP neighbours, routing
+// next-hops and bridge FDB to the frozen wire shapes (all
+// network.device↔network.device):
 //   - adjacent_to — one directed edge polled→neighbour (no reciprocal);
-//   - routes_via  — one edge per distinct next-hop device (deduped: a full
-//     table routes many destinations through a handful of next-hops; the
-//     next-hop is known only as an IP → id mgmt:<ip>).
-//   - forwards_to — bridge FDB, restricted to MACs we can confirm are network
+//   - routes_via  — one edge per distinct next-hop device (deduped). The
+//     next-hop is known as an IP → mgmt:<ip>, UNLESS ARP converges it to a
+//     confirmed device's canonical mac:<addr> (Toise D3: resolve before emit);
+//   - forwards_to — bridge FDB, restricted to MACs confirmed to be network
 //     devices (LLDP neighbour chassis MACs); host MACs are out of scope and
 //     would flood the graph (Toise: no card entity yet).
 //
 // Returns empty when the device cannot be identified (no usable id rung).
-func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, fdb []fdbEntry) entity.Observation {
+func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, fdb []fdbEntry, arp []arpEntry) entity.Observation {
 	selfID := resolveDeviceID(self)
 	if selfID == "" {
 		return entity.Observation{}
 	}
 
-	obs := entity.Observation{
-		Entities: []entity.Entity{deviceEntity(selfID, selfAttrs(self))},
+	obs := entity.Observation{}
+	emitted := map[string]bool{}
+	addEntity := func(id string, attrs map[string]any) {
+		if id == "" || emitted[id] {
+			return
+		}
+		emitted[id] = true
+		obs.Entities = append(obs.Entities, deviceEntity(id, attrs))
+	}
+	addEntity(selfID, selfAttrs(self))
+
+	// Confirmed network devices (LLDP neighbour chassis MACs) — gates
+	// forwards_to and the ARP next-hop convergence.
+	deviceMACs := map[string]bool{}
+	for _, n := range topo.Neighbors {
+		if n.ChassisIdSubtype == subtypeMacAddress {
+			deviceMACs["mac:"+macHex(n.ChassisId)] = true
+		}
 	}
 
+	// adjacent_to — one directed edge polled→neighbour.
 	for _, n := range topo.Neighbors {
 		nID := resolveDeviceID(neighborIdentity(n))
 		if nID == "" || nID == selfID {
 			continue
 		}
-		obs.Entities = append(obs.Entities, deviceEntity(nID, neighborAttrs(n)))
+		addEntity(nID, neighborAttrs(n))
 		obs.Relations = append(obs.Relations, entity.Relation{
 			Type:     relAdjacentTo,
 			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
@@ -237,14 +261,30 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		})
 	}
 
-	// routes_via, deduped by next-hop in first-seen order.
+	// ARP convergence (Toise D3): an IP bound to a confirmed device MAC lets a
+	// provisional mgmt:<ip> next-hop resolve to the device's canonical mac:.
+	arpDevice := map[string]string{}
+	for _, a := range arp {
+		id := "mac:" + a.MAC
+		if deviceMACs[id] {
+			arpDevice[a.IP] = id
+		}
+	}
+	nextHopID := func(ip string) string {
+		if id, ok := arpDevice[ip]; ok {
+			return id
+		}
+		return "mgmt:" + ip
+	}
+
+	// routes_via — one edge per distinct (resolved) next-hop, first-seen order.
 	var nhOrder []string
 	nhCount := map[string]int{}
 	for _, r := range routes {
 		if r.Type != routeTypeRemote || !usableNextHop(r.NextHop, self.MgmtIP) {
 			continue
 		}
-		id := "mgmt:" + r.NextHop
+		id := nextHopID(r.NextHop)
 		if id == selfID {
 			continue
 		}
@@ -254,7 +294,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		nhCount[id]++
 	}
 	for _, nhID := range nhOrder {
-		obs.Entities = append(obs.Entities, deviceEntity(nhID, map[string]any{}))
+		addEntity(nhID, map[string]any{}) // mgmt: new node; converged mac: already emitted
 		obs.Relations = append(obs.Relations, entity.Relation{
 			Type:     relRoutesVia,
 			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
@@ -266,15 +306,8 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		})
 	}
 
-	// forwards_to — FDB entries whose MAC is a known network device (an LLDP
-	// neighbour chassis MAC). The endpoint entity is already emitted by the
-	// adjacent_to loop, so we add only the edge. Host MACs are filtered out.
-	deviceMACs := map[string]bool{}
-	for _, n := range topo.Neighbors {
-		if n.ChassisIdSubtype == subtypeMacAddress {
-			deviceMACs["mac:"+macHex(n.ChassisId)] = true
-		}
-	}
+	// forwards_to — FDB entries whose MAC is a confirmed device (endpoint
+	// entity already emitted by adjacent_to). Host MACs are filtered out.
 	emittedFwd := map[string]bool{}
 	for _, e := range fdb {
 		id := "mac:" + e.MAC
