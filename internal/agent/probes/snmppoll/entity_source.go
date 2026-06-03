@@ -20,6 +20,7 @@ const (
 	idKeyNetworkDevice      = "network.device.id"
 	relAdjacentTo           = "adjacent_to"
 	relRoutesVia            = "routes_via"
+	relForwardsTo           = "forwards_to"
 
 	// Polled-device identity OIDs (dotted, no leading dot).
 	oidEntPhysicalSerialNum = "1.3.6.1.2.1.47.1.1.1.1.11" // ENTITY-MIB (per physical entity)
@@ -99,8 +100,14 @@ func (s *snmpEntitySource) sweep(client snmpClient) entity.Observation {
 			Msg("routing walk failed; emitting device without routes_via")
 		routes = nil
 	}
+	fdb, err := collectFDB(client)
+	if err != nil {
+		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
+			Msg("FDB walk failed; emitting device without forwards_to")
+		fdb = nil
+	}
 	self := readSelfIdentity(client, s.cfg.Target, topo.Local)
-	return buildObservation(self, topo, routes)
+	return buildObservation(self, topo, routes, fdb)
 }
 
 // readSelfIdentity reads the polled device's identifiers in the Toise-frozen
@@ -198,9 +205,12 @@ func asString(v any) string {
 //   - routes_via  — one edge per distinct next-hop device (deduped: a full
 //     table routes many destinations through a handful of next-hops; the
 //     next-hop is known only as an IP → id mgmt:<ip>).
+//   - forwards_to — bridge FDB, restricted to MACs we can confirm are network
+//     devices (LLDP neighbour chassis MACs); host MACs are out of scope and
+//     would flood the graph (Toise: no card entity yet).
 //
 // Returns empty when the device cannot be identified (no usable id rung).
-func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow) entity.Observation {
+func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, fdb []fdbEntry) entity.Observation {
 	selfID := resolveDeviceID(self)
 	if selfID == "" {
 		return entity.Observation{}
@@ -253,6 +263,30 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow)
 			// flap across routes sharing it, so we carry the destination count.
 			// (Attribute shape flagged back to Toise.)
 			Attributes: map[string]any{"destinations": int64(nhCount[nhID])},
+		})
+	}
+
+	// forwards_to — FDB entries whose MAC is a known network device (an LLDP
+	// neighbour chassis MAC). The endpoint entity is already emitted by the
+	// adjacent_to loop, so we add only the edge. Host MACs are filtered out.
+	deviceMACs := map[string]bool{}
+	for _, n := range topo.Neighbors {
+		if n.ChassisIdSubtype == subtypeMacAddress {
+			deviceMACs["mac:"+macHex(n.ChassisId)] = true
+		}
+	}
+	emittedFwd := map[string]bool{}
+	for _, e := range fdb {
+		id := "mac:" + e.MAC
+		if id == selfID || !deviceMACs[id] || emittedFwd[id] {
+			continue
+		}
+		emittedFwd[id] = true
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     relForwardsTo,
+			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
+			ToType: entityTypeNetworkDevice, ToID: deviceKey(id),
+			Attributes: map[string]any{"bridge_port": e.BridgePort},
 		})
 	}
 

@@ -25,7 +25,7 @@ func TestBuildObservation(t *testing.T) {
 			SysName:          "neigh",
 		}},
 	}
-	obs := buildObservation(self, topo, nil)
+	obs := buildObservation(self, topo, nil, nil)
 
 	if len(obs.Entities) != 2 {
 		t.Fatalf("want 2 entities, got %d", len(obs.Entities))
@@ -51,14 +51,14 @@ func TestBuildObservation(t *testing.T) {
 }
 
 func TestBuildObservation_NoNeighbors(t *testing.T) {
-	obs := buildObservation(deviceIdentity{Serial: "X", VendorPEN: "9"}, lldpTopology{}, nil)
+	obs := buildObservation(deviceIdentity{Serial: "X", VendorPEN: "9"}, lldpTopology{}, nil, nil)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-only expected, got %+v", obs)
 	}
 }
 
 func TestBuildObservation_NoIdentity(t *testing.T) {
-	obs := buildObservation(deviceIdentity{}, lldpTopology{}, nil)
+	obs := buildObservation(deviceIdentity{}, lldpTopology{}, nil, nil)
 	if len(obs.Entities) != 0 || len(obs.Relations) != 0 {
 		t.Errorf("expected nothing when device unidentifiable, got %+v", obs)
 	}
@@ -69,7 +69,7 @@ func TestBuildObservation_SkipsSelfLoop(t *testing.T) {
 	topo := lldpTopology{Neighbors: []lldpNeighbor{
 		{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0x01, 0x02}},
 	}}
-	obs := buildObservation(self, topo, nil)
+	obs := buildObservation(self, topo, nil, nil)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-loop should be skipped, got %+v", obs)
 	}
@@ -85,7 +85,7 @@ func TestBuildObservation_RoutesVia(t *testing.T) {
 		{NextHop: "10.0.0.1", Type: routeTypeRemote},              // == self mgmt → skip
 		{NextHop: "10.0.0.99", Type: 3},                           // not remote → skip
 	}
-	obs := buildObservation(self, lldpTopology{}, routes)
+	obs := buildObservation(self, lldpTopology{}, routes, nil)
 
 	// self + 2 distinct next-hop devices
 	if len(obs.Entities) != 3 {
@@ -106,6 +106,47 @@ func TestBuildObservation_RoutesVia(t *testing.T) {
 	}
 	if via != 2 {
 		t.Fatalf("expected 2 routes_via edges, got %d", via)
+	}
+}
+
+func TestBuildObservation_ForwardsTo(t *testing.T) {
+	neighMAC := []byte{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
+	self := deviceIdentity{Serial: "S1", VendorPEN: "9"}
+	topo := lldpTopology{Neighbors: []lldpNeighbor{
+		{LocalPortNum: "5", ChassisIdSubtype: subtypeMacAddress, ChassisId: neighMAC, SysName: "neigh"},
+	}}
+	fdb := []fdbEntry{
+		{MAC: "aa:bb:cc:dd:ee:ff", BridgePort: "5"}, // known device (LLDP neighbour) → forwards_to
+		{MAC: "11:22:33:44:55:66", BridgePort: "9"}, // unknown (host) → filtered out
+	}
+	obs := buildObservation(self, topo, nil, fdb)
+
+	fwd := 0
+	for _, r := range obs.Relations {
+		if r.Type != relForwardsTo {
+			continue
+		}
+		fwd++
+		if r.ToID[idKeyNetworkDevice] != "mac:aa:bb:cc:dd:ee:ff" || r.Attributes["bridge_port"] != "5" {
+			t.Errorf("forwards_to wrong: %+v", r)
+		}
+	}
+	if fwd != 1 {
+		t.Fatalf("expected 1 forwards_to (host MAC filtered), got %d", fwd)
+	}
+}
+
+// TestConformanceFixture_CiscoSerial reproduces the Toise conformance fixture
+// token serial:9:FOC2150X0AB (Cisco PEN 9), validating the frozen identity.
+func TestConformanceFixture_CiscoSerial(t *testing.T) {
+	fc := &fakeClient{walkRawResult: map[string][]snmpRawBind{
+		oidEntPhysicalClass:     {{OID: oidEntPhysicalClass + ".1", Value: entPhysicalClassChassis}},
+		oidEntPhysicalSerialNum: {{OID: oidEntPhysicalSerialNum + ".1", Value: []byte("FOC2150X0AB")}},
+		oidSysObjectIDBase:      {{OID: oidSysObjectID, Value: "1.3.6.1.4.1.9.1.2068"}}, // Cisco
+	}}
+	di := readSelfIdentity(fc, "10.0.0.1", lldpLocal{})
+	if got := resolveDeviceID(di); got != "serial:9:FOC2150X0AB" {
+		t.Errorf("conformance token = %q, want serial:9:FOC2150X0AB", got)
 	}
 }
 
