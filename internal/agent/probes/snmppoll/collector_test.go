@@ -14,12 +14,14 @@ import (
 // concrete fakes over a mocking framework). Shared by the collector and
 // probe tests.
 type fakeClient struct {
-	connectErr error
-	getResult  []snmpVarBind
-	getErr     error
-	walkResult map[string][]snmpVarBind // keyed by base OID
-	walkErr    error
-	closed     bool
+	connectErr    error
+	getResult     []snmpVarBind
+	getErr        error
+	walkResult    map[string][]snmpVarBind // keyed by base OID
+	walkErr       error
+	walkRawResult map[string][]snmpRawBind // keyed by base OID
+	walkRawErr    error
+	closed        bool
 }
 
 func (f *fakeClient) Connect() error                      { return f.connectErr }
@@ -30,6 +32,12 @@ func (f *fakeClient) BulkWalk(base string) ([]snmpVarBind, error) {
 		return nil, f.walkErr
 	}
 	return f.walkResult[base], nil
+}
+func (f *fakeClient) WalkRaw(base string) ([]snmpRawBind, error) {
+	if f.walkRawErr != nil {
+		return nil, f.walkRawErr
+	}
+	return f.walkRawResult[base], nil
 }
 
 func testLogger(t *testing.T) *logger.ModuleLogger {
