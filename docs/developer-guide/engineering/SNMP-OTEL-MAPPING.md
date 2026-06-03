@@ -117,15 +117,25 @@ emits exact ids per source; convergence happens because two observers of the
 same device derive byte-identical ids.
 
 - **`network.device.id` — single key, subtype-prefixed, frozen precedence:**
-  `serial:<entPhysicalSerialNum>` > `engine:<snmpEngineID>` >
+  `serial:<PEN>:<entPhysicalSerialNum>` > `engine:<snmpEngineID>` >
   `mac:<LLDP chassis-id, only when subtype is MAC>` > `name:<sysName>` >
   `mgmt:<ip>`. Identity does **not** anchor on LLDP (often disabled); it
-  anchors on the SNMP-readable serial/engine id. Everything not chosen as the
-  id (raw chassis-id, sysName, mgmt IP, serial, vendor) goes in **descriptive
-  attributes**, never as a second identity key. Canonicalization (producer
-  side): `mac` = lowercase hex `:`-separated; `engine` = lowercase hex;
-  `serial`/`name` = trimmed (case preserved); `mgmt` = `net.IP` canonical
-  form. All of this lives in one function: `resolveDeviceID` (lldp.go).
+  anchors on the SNMP-readable serial/engine id. Two identity-semantics
+  rules on the serial rung (Toise Q1/Q2): a serial is vendor-scoped, so it is
+  namespaced by the vendor **IANA PEN** read from `sysObjectID`
+  (`serial:<PEN>:<serial>`); without a PEN it falls through to `engine`
+  (globally unique by RFC 3411). The serial is taken only when there is
+  **exactly one** `entPhysicalClass=chassis` row — a **stack** (N chassis)
+  leaves it empty and uses the stack-wide `engineID` (one logical device per
+  SNMP management entity, failover-stable; a master-member serial would flap),
+  and this also avoids latching onto a swappable module/PSU serial. Everything
+  not chosen as the id (raw chassis-id, sysName, mgmt IP, serial, vendor) goes
+  in **descriptive attributes**, never as a second identity key.
+  Canonicalization (producer side): `mac` = lowercase hex `:`-separated;
+  `engine`/`PEN` = lowercase hex / decimal; `serial`/`name` = trimmed (case
+  preserved); `mgmt` = `net.IP` canonical form. All in one function:
+  `resolveDeviceID` (lldp.go); identity reads in `readSelfIdentity`/
+  `chassisSerial` (entity_source.go).
 - **Relations** (network.device↔network.device, single directed edge,
   endpoints emitted before/with the edge):
   - LLDP `lldpRemTable` → `adjacent_to`, polled→neighbour, **one edge, no
