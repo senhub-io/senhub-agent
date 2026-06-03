@@ -21,12 +21,12 @@
 // OnStart, so a single probe definition compiles and registers across
 // mixed-OS fleets (same approach as linux_logs).
 //
-// SCAFFOLD STATUS: the Windows wevtapi subscription, the EvtRender XML
-// extraction and the bookmark file format are written but NOT yet
-// validated on a real Windows host (see subscription_windows.go and
-// docs/probes/windows_eventlog/README.md). The OS-agnostic surface —
-// config parsing, event XML parsing, filtering, PII redaction and the
-// LogRecord mapping — is complete and unit-tested on any platform.
+// Validated end-to-end on Windows Server 2022: the wevtapi subscription,
+// EvtRender XML extraction and per-channel bookmark resume all work
+// against a live Event Log (see subscription_windows.go for the live
+// results). The OS-agnostic surface — config parsing, event XML parsing,
+// filtering, PII redaction and the LogRecord mapping — is unit-tested on
+// any platform.
 package windowseventlog
 
 import (
