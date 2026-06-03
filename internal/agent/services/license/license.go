@@ -177,21 +177,23 @@ func (v *JWTValidator) IsInGracePeriod(license *License) bool {
 }
 
 // Free tier probes - always available without license.
-// linux_logs joins the free tier as a host-level observability source on
-// the same footing as cpu/memory/network/logicaldisk: it observes the
-// machine the agent runs on, not a remote system.
+// linux_logs and windows_eventlog join the free tier as host-level
+// observability sources on the same footing as cpu/memory/network/
+// logicaldisk: they observe the machine the agent runs on, not a remote
+// system (the OS log rail, one source per platform).
 //
 // snmp_poll is the deliberate exception to "remote = paid": it is the
 // open-core wedge meant to replace PRTG's free SNMP polling, so generic
 // SNMP collection is free. Deep vendor-specific SNMP (device profiles,
 // discovery, vendor MIBs) remains paid — see the tiering strategy.
 var freeTierProbes = map[string]bool{
-	"cpu":         true,
-	"memory":      true,
-	"logicaldisk": true,
-	"network":     true,
-	"linux_logs":  true,
-	"snmp_poll":   true,
+	"cpu":              true,
+	"memory":           true,
+	"logicaldisk":      true,
+	"network":          true,
+	"linux_logs":       true,
+	"windows_eventlog": true,
+	"snmp_poll":        true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
