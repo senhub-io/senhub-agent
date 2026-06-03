@@ -20,6 +20,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/entity/hostnet"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
@@ -474,6 +475,17 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 			ServiceVersion: cliArgs.Version,
 		}
 	}
+
+	// Host-side topology source (entity Lot 4): emits the host's upstream
+	// gateways as network.device + routes_via, reusing the entity rail. Only
+	// active while entity emission runs.
+	entity.RegisterSource(hostnet.New(func() string {
+		hi, err := common.GetHostIdentity()
+		if err != nil {
+			return ""
+		}
+		return hi.ID
+	}))
 
 	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
 	ctx, cancel := context.WithCancel(context.Background())
