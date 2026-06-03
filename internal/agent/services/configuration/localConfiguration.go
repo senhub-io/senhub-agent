@@ -31,6 +31,10 @@ type LocalAgentConfig struct {
 	Key     string `yaml:"key"`
 	Mode    string `yaml:"mode"`
 	License string `yaml:"license,omitempty"` // JWT license token or JSON for testing
+	// GlobalTags are applied to every datapoint of every probe (multi-site /
+	// multi-tenant labelling). A probe's own custom_tags override a global_tag
+	// with the same key. Keep small (< ~10 keys) to bound backend cardinality.
+	GlobalTags map[string]string `yaml:"global_tags,omitempty"`
 }
 
 // TLSConfig represents TLS/HTTPS configuration
@@ -182,6 +186,7 @@ func (lc *LocalConfiguration) GetConfiguration() RemoteConfigurationData {
 			UpdateCheckInterval: updateInterval,
 			License:             lc.data.Agent.License,
 			AuthenticationKey:   lc.data.Agent.Key,
+			GlobalTags:          lc.data.Agent.GlobalTags,
 		},
 	}
 }
