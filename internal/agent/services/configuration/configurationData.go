@@ -27,6 +27,10 @@ type ProbeConfig struct {
 	Name   string            `json:"name"`
 	Type   string            `json:"type,omitempty"`
 	Params ProbeConfigParams `json:"params"`
+	// CustomTags are applied to every datapoint this probe instance emits;
+	// they override agent global_tags (and built-in probe tags) on a key
+	// conflict. Matched to datapoints by probe name in the data store.
+	CustomTags map[string]string `json:"custom_tags,omitempty" yaml:"custom_tags,omitempty"`
 }
 
 // AgentConfig is the small "identity" block (key, license, version,
@@ -39,6 +43,9 @@ type AgentConfig struct {
 	UpdateCheckInterval any    `json:"update_check_interval" default:"3600"`
 	License             string `json:"license,omitempty"`
 	AuthenticationKey   string `json:"authentication_key,omitempty"`
+	// GlobalTags are applied to every datapoint of every probe. Set from the
+	// agent.yaml `agent.global_tags` block.
+	GlobalTags map[string]string `json:"global_tags,omitempty"`
 }
 
 // RemoteConfigurationData is the full configuration shape consumed by
