@@ -10,7 +10,7 @@ import (
 func TestResolveDeviceID_Precedence(t *testing.T) {
 	mac := []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55}
 	full := deviceIdentity{
-		Serial: "FOC1234", EngineID: []byte{0x80, 0x01}, ChassisMAC: mac,
+		Serial: "FOC1234", VendorPEN: "9", EngineID: []byte{0x80, 0x01}, ChassisMAC: mac,
 		SysName: "core-sw-1", MgmtIP: "192.0.2.10",
 	}
 	cases := []struct {
@@ -18,7 +18,8 @@ func TestResolveDeviceID_Precedence(t *testing.T) {
 		id   deviceIdentity
 		want string
 	}{
-		{"serial wins", full, "serial:FOC1234"},
+		{"serial+PEN wins", full, "serial:9:FOC1234"},
+		{"serial without PEN falls to engine", deviceIdentity{Serial: "FOC1234", EngineID: []byte{0x01}, SysName: "x"}, "engine:01"},
 		{"engine when no serial", deviceIdentity{EngineID: []byte{0x80, 0x01, 0x02}, ChassisMAC: mac, SysName: "x"}, "engine:800102"},
 		{"mac when no serial/engine", deviceIdentity{ChassisMAC: mac, SysName: "x"}, "mac:00:11:22:33:44:55"},
 		{"name when only name", deviceIdentity{SysName: "  sw1 "}, "name:sw1"},
@@ -32,6 +33,20 @@ func TestResolveDeviceID_Precedence(t *testing.T) {
 				t.Errorf("resolveDeviceID(%+v) = %q, want %q", c.id, got, c.want)
 			}
 		})
+	}
+}
+
+func TestVendorPEN(t *testing.T) {
+	cases := map[string]string{
+		"1.3.6.1.4.1.9.1.516":     "9",    // Cisco
+		".1.3.6.1.4.1.2636.1.1.2": "2636", // Juniper, leading dot
+		"1.3.6.1.2.1.1":           "",     // not under the enterprise arc
+		"":                        "",
+	}
+	for in, want := range cases {
+		if got := vendorPEN(in); got != want {
+			t.Errorf("vendorPEN(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
