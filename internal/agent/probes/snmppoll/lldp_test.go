@@ -7,25 +7,44 @@ import (
 	"github.com/gosnmp/gosnmp"
 )
 
-func TestRenderDeviceID(t *testing.T) {
+func TestResolveDeviceID_Precedence(t *testing.T) {
 	mac := []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55}
+	full := deviceIdentity{
+		Serial: "FOC1234", EngineID: []byte{0x80, 0x01}, ChassisMAC: mac,
+		SysName: "core-sw-1", MgmtIP: "192.0.2.10",
+	}
 	cases := []struct {
-		name    string
-		subtype int
-		id      []byte
-		want    string
+		name string
+		id   deviceIdentity
+		want string
 	}{
-		{"mac", subtypeMacAddress, mac, "mac:00:11:22:33:44:55"},
-		{"local", subtypeIfName, []byte("switch-a"), "local:switch-a"},
-		{"networkAddr", subtypeNetworkAddr, []byte{0x01, 0x0a, 0x00, 0x00, 0x01}, "addr:010a000001"},
-		{"other", 3, []byte("comp1"), "chassis3:comp1"},
+		{"serial wins", full, "serial:FOC1234"},
+		{"engine when no serial", deviceIdentity{EngineID: []byte{0x80, 0x01, 0x02}, ChassisMAC: mac, SysName: "x"}, "engine:800102"},
+		{"mac when no serial/engine", deviceIdentity{ChassisMAC: mac, SysName: "x"}, "mac:00:11:22:33:44:55"},
+		{"name when only name", deviceIdentity{SysName: "  sw1 "}, "name:sw1"},
+		{"mgmt last resort v4", deviceIdentity{MgmtIP: "192.0.2.10"}, "mgmt:192.0.2.10"},
+		{"mgmt canon v6", deviceIdentity{MgmtIP: "2001:DB8::1"}, "mgmt:2001:db8::1"},
+		{"empty", deviceIdentity{}, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := renderDeviceID(c.subtype, c.id); got != c.want {
-				t.Errorf("renderDeviceID(%d,%x) = %q, want %q", c.subtype, c.id, got, c.want)
+			if got := resolveDeviceID(c.id); got != c.want {
+				t.Errorf("resolveDeviceID(%+v) = %q, want %q", c.id, got, c.want)
 			}
 		})
+	}
+}
+
+func TestNeighborIdentity(t *testing.T) {
+	// MAC chassis subtype → usable mac id.
+	macN := lldpNeighbor{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0xaa, 0xbb}, SysName: "n1"}
+	if got := resolveDeviceID(neighborIdentity(macN)); got != "mac:aa:bb" {
+		t.Errorf("mac neighbor id = %q, want mac:aa:bb", got)
+	}
+	// Non-MAC chassis subtype → fall back to advertised sysName.
+	localN := lldpNeighbor{ChassisIdSubtype: 7, ChassisId: []byte("edge-b"), SysName: "n2"}
+	if got := resolveDeviceID(neighborIdentity(localN)); got != "name:n2" {
+		t.Errorf("non-mac neighbor id = %q, want name:n2", got)
 	}
 }
 
@@ -61,9 +80,9 @@ func TestParseLLDPLocal(t *testing.T) {
 	if !reflect.DeepEqual(loc.ChassisId, []byte{0xde, 0xad, 0xbe, 0xef, 0x00, 0x01}) {
 		t.Errorf("chassisId = %x", loc.ChassisId)
 	}
-	// And the contract-bound rendering on top of the parse:
-	if got := renderDeviceID(loc.ChassisIdSubtype, loc.ChassisId); got != "mac:de:ad:be:ef:00:01" {
-		t.Errorf("rendered local id = %q", got)
+	// And the contract-bound identity on top of the parse (chassis MAC rung):
+	if got := resolveDeviceID(deviceIdentity{ChassisMAC: loc.ChassisId}); got != "mac:de:ad:be:ef:00:01" {
+		t.Errorf("resolved local id = %q", got)
 	}
 }
 
@@ -93,16 +112,16 @@ func TestParseLLDPNeighbors(t *testing.T) {
 	if a.LocalPortNum != "5" || a.ChassisIdSubtype != 4 || a.SysName != "neighbor-a" {
 		t.Errorf("neighbor a wrong: %+v", a)
 	}
-	if renderDeviceID(a.ChassisIdSubtype, a.ChassisId) != "mac:aa:bb:cc:dd:ee:ff" {
-		t.Errorf("neighbor a id = %q", renderDeviceID(a.ChassisIdSubtype, a.ChassisId))
+	if resolveDeviceID(neighborIdentity(a)) != "mac:aa:bb:cc:dd:ee:ff" {
+		t.Errorf("neighbor a id = %q", resolveDeviceID(neighborIdentity(a)))
 	}
 	if renderPortID(a.PortIdSubtype, a.PortId) != "Gi0/1" {
 		t.Errorf("neighbor a port = %q", renderPortID(a.PortIdSubtype, a.PortId))
 	}
 
 	bn := ns[1]
-	if bn.LocalPortNum != "7" || renderDeviceID(bn.ChassisIdSubtype, bn.ChassisId) != "local:edge-b" {
-		t.Errorf("neighbor b wrong: %+v -> %q", bn, renderDeviceID(bn.ChassisIdSubtype, bn.ChassisId))
+	if bn.LocalPortNum != "7" || resolveDeviceID(neighborIdentity(bn)) != "name:neighbor-b" {
+		t.Errorf("neighbor b wrong: %+v -> %q", bn, resolveDeviceID(neighborIdentity(bn)))
 	}
 }
 
