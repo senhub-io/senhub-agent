@@ -3,6 +3,7 @@ package snmppoll
 import (
 	"encoding/hex"
 	"fmt"
+	"net"
 	"strings"
 )
 
@@ -37,11 +38,9 @@ const (
 // IdSubtype enumerations from the LLDP-MIB (LldpChassisIdSubtype /
 // LldpPortIdSubtype). Only the values we render specially are named.
 const (
-	subtypeMacAddress  = 4 // chassis & port: MAC
-	subtypeNetworkAddr = 5 // chassis: networkAddress / port: not used
-	subtypeIfName      = 7 // chassis: local / port: differs — see render funcs
-	portSubtypeIfName  = 5 // port: interfaceName
-	portSubtypeLocal   = 7 // port: locally assigned
+	subtypeMacAddress = 4 // chassis & port: MAC address
+	portSubtypeIfName = 5 // port: interfaceName
+	portSubtypeLocal  = 7 // port: locally assigned
 )
 
 // lldpLocal is the polled device's own LLDP identity.
@@ -162,22 +161,67 @@ func localPortOf(rowKey string) string {
 	return ""
 }
 
-// renderDeviceID is THE contract-bound function (frozen with Toise, Lot 5 —
-// see docs/audit/LOT5-TOISE-DISCUSSION.md). It maps an LLDP chassis-id +
-// subtype to the network.device.id string. The current scheme is the
-// recommended subtype-prefixed form; it is provisional until Toise confirms.
-// Keep all id-format decisions in this one function.
-func renderDeviceID(subtype int, chassisId []byte) string {
-	switch subtype {
-	case subtypeMacAddress:
-		return "mac:" + macHex(chassisId)
-	case subtypeNetworkAddr:
-		return "addr:" + hex.EncodeToString(chassisId)
-	case subtypeIfName: // chassis subtype 7 = locally assigned
-		return "local:" + octetText(chassisId)
+// network.device.id — THE contract, frozen with the Toise team (ADR 0018:
+// identity is exact, byte-by-byte, observer-independent, no fuzzy merge —
+// see docs/audit/LOT5-TOISE-DISCUSSION.md). ALL id-format decisions live in
+// resolveDeviceID and the canon helpers — the only contract-bound code on the
+// entity rail besides relation endpoints/attributes.
+
+// deviceIdentity carries the raw identifiers read for a device. Empty fields
+// are skipped; resolveDeviceID applies the frozen precedence. Identity does
+// NOT anchor on LLDP: the polled device's id comes from its serial / engine
+// id read over SNMP, so it is stable even when LLDP is disabled.
+type deviceIdentity struct {
+	Serial     string // ENTITY-MIB entPhysicalSerialNum (chassis) — most stable
+	EngineID   []byte // snmpEngineID — stable fallback when no serial
+	ChassisMAC []byte // LLDP chassis-id, only when its subtype is MAC
+	SysName    string // sysName / lldpRemSysName
+	MgmtIP     string // the polled target address (mutable — last resort)
+}
+
+// resolveDeviceID produces the single network.device.id with the Toise-frozen
+// precedence serial > engine > mac > name > mgmt. The chosen value is
+// canonicalized so two observers of the same device derive byte-identical ids.
+// Everything not chosen (raw chassis-id, sysName, mgmt IP, serial, vendor)
+// belongs in descriptive attributes, never as a second identity key.
+func resolveDeviceID(id deviceIdentity) string {
+	switch {
+	case strings.TrimSpace(id.Serial) != "":
+		return "serial:" + strings.TrimSpace(id.Serial)
+	case len(id.EngineID) > 0:
+		return "engine:" + hex.EncodeToString(id.EngineID)
+	case len(id.ChassisMAC) > 0:
+		return "mac:" + macHex(id.ChassisMAC)
+	case strings.TrimSpace(id.SysName) != "":
+		return "name:" + strings.TrimSpace(id.SysName)
+	case strings.TrimSpace(id.MgmtIP) != "":
+		return "mgmt:" + canonIP(id.MgmtIP)
 	default:
-		return fmt.Sprintf("chassis%d:%s", subtype, octetText(chassisId))
+		return ""
 	}
+}
+
+// neighborIdentity maps an LLDP-discovered neighbour (LLDP data only — the
+// neighbour itself is not polled) to its usable identifiers: its chassis-id
+// is a usable id only when it is a MAC; otherwise we fall back to its
+// advertised sysName.
+func neighborIdentity(n lldpNeighbor) deviceIdentity {
+	di := deviceIdentity{SysName: n.SysName}
+	if n.ChassisIdSubtype == subtypeMacAddress {
+		di.ChassisMAC = n.ChassisId
+	}
+	return di
+}
+
+// canonIP renders an IP in one canonical form (IPv4 dotted no-leading-zeros,
+// IPv6 RFC 5952 lowercase compressed). A non-IP literal (hostname) is
+// lowercased/trimmed as a last resort.
+func canonIP(s string) string {
+	s = strings.TrimSpace(s)
+	if ip := net.ParseIP(s); ip != nil {
+		return ip.String()
+	}
+	return strings.ToLower(s)
 }
 
 // renderPortID renders an LLDP port-id for relation attributes. Not a frozen
