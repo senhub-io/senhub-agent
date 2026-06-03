@@ -46,6 +46,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **logicaldisk** - Disk space and I/O monitoring
 - **network** - Network interface statistics
 - **linux_logs** - Local systemd journal log shipping (Linux only)
+- **snmp_poll** - Generic SNMP polling. The deliberate exception to "remote = paid": it is the open-core wedge to replace PRTG's free SNMP polling. Deep vendor-specific SNMP (device profiles, discovery, vendor MIBs) remains paid.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:

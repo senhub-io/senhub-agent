@@ -12,6 +12,7 @@ require (
 	github.com/go-test/deep v1.1.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/mux v1.8.1
+	github.com/gosnmp/gosnmp v1.43.2
 	github.com/hashicorp/go-version v1.9.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/kardianos/service v1.2.4
