@@ -25,11 +25,17 @@ import (
 // the bookmark set is flushed to disk so restarts resume without
 // duplication or loss.
 //
-// SCAFFOLD STATUS: written against the documented wevtapi contract and
-// compiled for windows/amd64, but NOT yet validated against a live
-// Windows Event Log (no Windows host in the dev loop). The runtime
-// acceptance — bookmark survival, ~500 events/min under 1% CPU — is the
-// Windows-CI gate tracked on issue #154.
+// Runtime-validated on Windows Server 2022 (build 20348): real System +
+// Application events flow end-to-end to OTLP logs with all attributes;
+// per-channel bookmarks persist and resume after restart with no
+// duplication and no loss; steady-state tail footprint ~22 MB / ~0% CPU
+// (a 53k-event backlog flood drains at ~4400/s, ~1 core, 83 MB peak).
+//
+// Note the signal model: wevtapi's pull subscription needs the signal
+// event INITIALLY SIGNALLED to drive the first drain, and the wait below
+// uses a poll_interval timeout so draining never depends solely on
+// wevtapi re-signalling. A non-signalled event + INFINITE wait drains
+// nothing (the bug the live validation caught).
 
 // wevtapi entry points, resolved lazily on first use so the package
 // links on any Windows SKU (the DLL ships with every supported Windows).
@@ -118,7 +124,14 @@ func newEventReader(cfg WindowsEventLogProbeConfig, log *logger.ModuleLogger, pr
 func (r *eventReader) runChannel(channel string) {
 	defer r.wg.Done()
 
-	signal, err := windows.CreateEvent(nil, 1 /*manual reset*/, 0, nil)
+	// Manual-reset, INITIALLY SIGNALED. wevtapi's pull model relies on
+	// the initial signaled state to drive the first drain (it does not
+	// reliably re-signal a manual-reset event created non-signalled for
+	// the pre-existing backlog). We also wait with a poll_interval
+	// timeout below, so draining never depends solely on wevtapi setting
+	// the event — the timeout guarantees liveness, the signal just makes
+	// new events prompt.
+	signal, err := windows.CreateEvent(nil, 1 /*manual reset*/, 1 /*initially signalled*/, nil)
 	if err != nil {
 		r.log.Error().Err(err).Str("channel", channel).Msg("create signal event")
 		return
@@ -162,22 +175,27 @@ func (r *eventReader) runChannel(channel string) {
 	r.log.Info().Str("channel", channel).Uint32("flags", flags).
 		Bool("resumed", bmXML != "").Msg("Subscribed to Event Log channel")
 
+	// Wait timeout = poll_interval: we drain on every signal AND on every
+	// timeout tick, so events flow even if wevtapi never re-signals.
+	pollMs := uint32(r.cfg.PollInterval / time.Millisecond)
+	if pollMs < 1000 {
+		pollMs = 1000
+	}
+
 	waitHandles := []windows.Handle{signal, r.stopEvent}
 	for {
-		w, err := windows.WaitForMultipleObjects(waitHandles, false, windows.INFINITE)
-		if err != nil {
+		w, err := windows.WaitForMultipleObjects(waitHandles, false, pollMs)
+		switch {
+		case err != nil && w != uint32(windows.WAIT_TIMEOUT):
 			r.log.Error().Err(err).Str("channel", channel).Msg("wait failed; stopping channel")
 			return
-		}
-		switch w {
-		case windows.WAIT_OBJECT_0: // signal: events ready
+		case w == windows.WAIT_OBJECT_0+1: // stop event
+			return
+		case w == windows.WAIT_OBJECT_0: // signal: events ready
 			r.drain(channel, sub, bookmark)
 			windows.ResetEvent(signal)
-		case windows.WAIT_OBJECT_0 + 1: // stop event
-			return
-		default:
-			r.log.Warn().Uint32("wait", w).Str("channel", channel).Msg("unexpected wait result; stopping channel")
-			return
+		default: // WAIT_TIMEOUT (or benign): poll for events anyway
+			r.drain(channel, sub, bookmark)
 		}
 	}
 }
@@ -187,6 +205,7 @@ func (r *eventReader) runChannel(channel string) {
 // returns when EvtNext reports no more items.
 func (r *eventReader) drain(channel string, sub, bookmark windows.Handle) {
 	advanced := false
+	emitted := 0
 	for {
 		events, err := evtNext(sub, drainBatchSize)
 		if err != nil {
@@ -197,6 +216,7 @@ func (r *eventReader) drain(channel string, sub, bookmark windows.Handle) {
 			break
 		}
 		for _, ev := range events {
+			emitted++
 			if xmlStr, rerr := evtRenderXML(ev); rerr != nil {
 				r.log.Debug().Err(rerr).Str("channel", channel).Msg("EvtRender failed; event skipped")
 			} else if parsed, ok := parseEventXML(xmlStr); !ok {
@@ -218,6 +238,7 @@ func (r *eventReader) drain(channel string, sub, bookmark windows.Handle) {
 	if !advanced {
 		return
 	}
+	r.log.Debug().Str("channel", channel).Int("events", emitted).Msg("drained event batch")
 	if bmXML, perr := evtRenderBookmarkXML(bookmark); perr != nil {
 		r.log.Debug().Err(perr).Str("channel", channel).Msg("render bookmark failed")
 	} else {
