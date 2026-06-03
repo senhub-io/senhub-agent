@@ -14,7 +14,7 @@ func TestObserve_EmptyBeforeSweep(t *testing.T) {
 }
 
 func TestBuildObservation(t *testing.T) {
-	self := deviceIdentity{Serial: "FOC1", SysName: "core-sw"}
+	self := deviceIdentity{Serial: "FOC1", VendorPEN: "9", SysName: "core-sw"}
 	topo := lldpTopology{
 		Neighbors: []lldpNeighbor{{
 			LocalPortNum:     "5",
@@ -30,7 +30,7 @@ func TestBuildObservation(t *testing.T) {
 	if len(obs.Entities) != 2 {
 		t.Fatalf("want 2 entities, got %d", len(obs.Entities))
 	}
-	if obs.Entities[0].ID[idKeyNetworkDevice] != "serial:FOC1" {
+	if obs.Entities[0].ID[idKeyNetworkDevice] != "serial:9:FOC1" {
 		t.Errorf("self id = %v", obs.Entities[0].ID)
 	}
 	if obs.Entities[1].ID[idKeyNetworkDevice] != "mac:aa:bb:cc:dd:ee:ff" {
@@ -41,7 +41,7 @@ func TestBuildObservation(t *testing.T) {
 	}
 	r := obs.Relations[0]
 	if r.Type != relAdjacentTo ||
-		r.FromID[idKeyNetworkDevice] != "serial:FOC1" ||
+		r.FromID[idKeyNetworkDevice] != "serial:9:FOC1" ||
 		r.ToID[idKeyNetworkDevice] != "mac:aa:bb:cc:dd:ee:ff" {
 		t.Errorf("relation wrong: %+v", r)
 	}
@@ -51,7 +51,7 @@ func TestBuildObservation(t *testing.T) {
 }
 
 func TestBuildObservation_NoNeighbors(t *testing.T) {
-	obs := buildObservation(deviceIdentity{Serial: "X"}, lldpTopology{}, nil)
+	obs := buildObservation(deviceIdentity{Serial: "X", VendorPEN: "9"}, lldpTopology{}, nil)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-only expected, got %+v", obs)
 	}
@@ -76,7 +76,7 @@ func TestBuildObservation_SkipsSelfLoop(t *testing.T) {
 }
 
 func TestBuildObservation_RoutesVia(t *testing.T) {
-	self := deviceIdentity{Serial: "S1", MgmtIP: "10.0.0.1"}
+	self := deviceIdentity{Serial: "S1", VendorPEN: "9", MgmtIP: "10.0.0.1"}
 	routes := []routeRow{
 		{NextHop: "10.0.0.254", Type: routeTypeRemote, Metric: 1}, // gateway
 		{NextHop: "10.0.0.254", Type: routeTypeRemote, Metric: 1}, // same next-hop → deduped
@@ -97,7 +97,7 @@ func TestBuildObservation_RoutesVia(t *testing.T) {
 			continue
 		}
 		via++
-		if r.FromID[idKeyNetworkDevice] != "serial:S1" {
+		if r.FromID[idKeyNetworkDevice] != "serial:9:S1" {
 			t.Errorf("routes_via from = %v", r.FromID)
 		}
 		if r.ToID[idKeyNetworkDevice] == "mgmt:10.0.0.254" && r.Attributes["destinations"] != int64(2) {
@@ -109,21 +109,48 @@ func TestBuildObservation_RoutesVia(t *testing.T) {
 	}
 }
 
-func TestReadSelfIdentity_Precedence(t *testing.T) {
+func TestReadSelfIdentity_SingleChassis(t *testing.T) {
 	fc := &fakeClient{walkRawResult: map[string][]snmpRawBind{
-		oidEntPhysicalSerialNum: {
-			{OID: oidEntPhysicalSerialNum + ".1", Value: []byte("   ")},    // blank → skipped
-			{OID: oidEntPhysicalSerialNum + ".2", Value: []byte("ABC123")}, // first real serial
+		oidEntPhysicalClass: {
+			{OID: oidEntPhysicalClass + ".1", Value: entPhysicalClassChassis}, // chassis
+			{OID: oidEntPhysicalClass + ".2", Value: 9},                       // module → ignored
 		},
+		oidEntPhysicalSerialNum: {
+			{OID: oidEntPhysicalSerialNum + ".1", Value: []byte("ABC123")}, // chassis serial
+			{OID: oidEntPhysicalSerialNum + ".2", Value: []byte("MODSER")}, // module serial → ignored
+		},
+		oidSysObjectIDBase:  {{OID: oidSysObjectID, Value: "1.3.6.1.4.1.9.1.1"}}, // Cisco PEN 9
 		oidSnmpEngineIDBase: {{OID: oidSnmpEngineID, Value: []byte{0x80, 0x00}}},
 		oidSysNameBase:      {{OID: oidSysName, Value: []byte("sw1")}},
 	}}
 	di := readSelfIdentity(fc, "192.0.2.10", lldpLocal{})
-	if di.Serial != "ABC123" || di.SysName != "sw1" {
+	if di.Serial != "ABC123" || di.VendorPEN != "9" || di.SysName != "sw1" {
 		t.Fatalf("identity = %+v", di)
 	}
-	if got := resolveDeviceID(di); got != "serial:ABC123" {
-		t.Errorf("resolved = %q, want serial:ABC123", got)
+	if got := resolveDeviceID(di); got != "serial:9:ABC123" {
+		t.Errorf("resolved = %q, want serial:9:ABC123", got)
+	}
+}
+
+func TestReadSelfIdentity_StackFallsToEngine(t *testing.T) {
+	fc := &fakeClient{walkRawResult: map[string][]snmpRawBind{
+		oidEntPhysicalClass: {
+			{OID: oidEntPhysicalClass + ".1", Value: entPhysicalClassChassis},
+			{OID: oidEntPhysicalClass + ".2", Value: entPhysicalClassChassis}, // 2nd chassis → stack
+		},
+		oidEntPhysicalSerialNum: {
+			{OID: oidEntPhysicalSerialNum + ".1", Value: []byte("M1")},
+			{OID: oidEntPhysicalSerialNum + ".2", Value: []byte("M2")},
+		},
+		oidSysObjectIDBase:  {{OID: oidSysObjectID, Value: "1.3.6.1.4.1.9.1.1"}},
+		oidSnmpEngineIDBase: {{OID: oidSnmpEngineID, Value: []byte{0xab, 0xcd}}},
+	}}
+	di := readSelfIdentity(fc, "10.0.0.1", lldpLocal{})
+	if di.Serial != "" {
+		t.Errorf("a stack must not set a member serial, got %q", di.Serial)
+	}
+	if got := resolveDeviceID(di); got != "engine:abcd" {
+		t.Errorf("stack id = %q, want engine:abcd", got)
 	}
 }
 

@@ -22,11 +22,15 @@ const (
 	relRoutesVia            = "routes_via"
 
 	// Polled-device identity OIDs (dotted, no leading dot).
-	oidEntPhysicalSerialNum = "1.3.6.1.2.1.47.1.1.1.1.11" // ENTITY-MIB (walk; chassis serial)
+	oidEntPhysicalSerialNum = "1.3.6.1.2.1.47.1.1.1.1.11" // ENTITY-MIB (per physical entity)
+	oidEntPhysicalClass     = "1.3.6.1.2.1.47.1.1.1.1.5"  // entPhysicalClass (3 = chassis)
+	entPhysicalClassChassis = 3
 	oidSnmpEngineIDBase     = "1.3.6.1.6.3.10.2.1.1"
 	oidSnmpEngineID         = "1.3.6.1.6.3.10.2.1.1.0" // SNMP-FRAMEWORK-MIB
 	oidSysNameBase          = "1.3.6.1.2.1.1.5"
 	oidSysName              = "1.3.6.1.2.1.1.5.0"
+	oidSysObjectIDBase      = "1.3.6.1.2.1.1.2"
+	oidSysObjectID          = "1.3.6.1.2.1.1.2.0" // → vendor PEN
 )
 
 // snmpEntitySource feeds the entity rail. Observe() never blocks: it returns
@@ -105,14 +109,21 @@ func (s *snmpEntitySource) sweep(client snmpClient) entity.Observation {
 func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIdentity {
 	di := deviceIdentity{MgmtIP: mgmtIP}
 
-	if binds, err := client.WalkRaw(oidEntPhysicalSerialNum); err == nil {
+	// Chassis serial: take the serial of the single entPhysicalClass=chassis
+	// row. A stack exposes N chassis rows — leave Serial empty so the id falls
+	// to the stack-scoped snmpEngineID rather than a failover-unstable member
+	// serial. Picking the chassis row (not "first serial") also avoids latching
+	// onto a module/PSU serial that can change on a part swap.
+	di.Serial = chassisSerial(client)
+	// Vendor PEN namespaces the serial (serial is vendor-scoped, not global).
+	if binds, err := client.WalkRaw(oidSysObjectIDBase); err == nil {
 		for _, b := range binds {
-			if sn := strings.TrimSpace(octetText(asBytes(b.Value))); sn != "" {
-				di.Serial = sn
-				break
+			if b.OID == oidSysObjectID {
+				di.VendorPEN = vendorPEN(asString(b.Value))
 			}
 		}
 	}
+
 	if binds, err := client.WalkRaw(oidSnmpEngineIDBase); err == nil {
 		for _, b := range binds {
 			if b.OID == oidSnmpEngineID {
@@ -134,6 +145,51 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 		di.ChassisMAC = loc.ChassisId
 	}
 	return di
+}
+
+// chassisSerial returns the serial of the device's single chassis, or "" when
+// there is no chassis row, no serial, or MORE THAN ONE chassis (a stack —
+// which is identified by its stack-wide snmpEngineID instead). It correlates
+// entPhysicalClass and entPhysicalSerialNum by entPhysical index.
+func chassisSerial(client snmpClient) string {
+	class := map[string]int{}
+	if binds, err := client.WalkRaw(oidEntPhysicalClass); err == nil {
+		for _, b := range binds {
+			if idx, ok := strings.CutPrefix(b.OID, oidEntPhysicalClass+"."); ok {
+				if v, ok := asIntVal(b.Value); ok {
+					class[idx] = v
+				}
+			}
+		}
+	}
+	serial := map[string]string{}
+	if binds, err := client.WalkRaw(oidEntPhysicalSerialNum); err == nil {
+		for _, b := range binds {
+			if idx, ok := strings.CutPrefix(b.OID, oidEntPhysicalSerialNum+"."); ok {
+				if sn := strings.TrimSpace(octetText(asBytes(b.Value))); sn != "" {
+					serial[idx] = sn
+				}
+			}
+		}
+	}
+
+	var chassis []string
+	for idx, cls := range class {
+		if cls == entPhysicalClassChassis {
+			if sn := serial[idx]; sn != "" {
+				chassis = append(chassis, sn)
+			}
+		}
+	}
+	if len(chassis) == 1 {
+		return chassis[0]
+	}
+	return "" // 0 → no usable serial; >1 → stack, use engineID
+}
+
+func asString(v any) string {
+	s, _ := v.(string)
+	return s
 }
 
 // buildObservation maps the polled device, its LLDP neighbours and its routing
