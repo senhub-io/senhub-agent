@@ -358,7 +358,7 @@ func checkConfig(configPath string) {
 		fmt.Println("  [WARN] No storage strategies configured")
 		warnings++
 	} else {
-		validStrategies := map[string]bool{"http": true, "prtg": true, "senhub": true, "event": true}
+		validStrategies := map[string]bool{"http": true, "prtg": true, "senhub": true, "event": true, "otlp": true}
 		for _, s := range config.Storage {
 			if !validStrategies[s.Name] {
 				fmt.Printf("  [WARN] Storage %q: unknown strategy\n", s.Name)
