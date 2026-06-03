@@ -4,12 +4,12 @@
 // the frozen entity rail — the host-side equivalent of snmp_poll Lot 5, with
 // no SNMP needed.
 //
-// ⚠️ Contract note: the routes_via edge here is host→network.device, which is
-// the host↔network.device linking that ENTITY-DETECTION §6b leaves DEFERRED /
-// unfrozen (Toise froze routes_via as network.device↔network.device). The
-// From=host endpoint shape is PROVISIONAL pending Toise confirmation and is
-// isolated in buildObservation so the contract touches one place. The
-// discovered network.device ENTITIES are contract-safe regardless.
+// Contract (confirmed with Toise — option a): a host-sourced edge reuses the
+// frozen relation types with From=host (the From/To types are indicative, not
+// enforced; same as monitors). The host endpoint resolves by exact identity on
+// the existing host.id entity (Lot 1) — no fusion with a network.device twin.
+// Host-sourced edges are tagged with a `source` attribute to distinguish them
+// from device-sourced ones at query time.
 //
 // Scope: gateways only (bounded, high value). adjacent_to to every ARP
 // neighbour is deferred — it would flood the graph with host MACs and we have
@@ -70,8 +70,8 @@ func (s *Source) Observe() entity.Observation {
 }
 
 // buildObservation maps gateways → network.device entities + host routes_via
-// edges. PROVISIONAL host-endpoint shape (flag to Toise). ARP converges a
-// gateway IP to its canonical mac:; otherwise the gateway stays mgmt:<ip>.
+// edges (From=host, Toise-confirmed). ARP converges a gateway IP to its
+// canonical mac:; otherwise the gateway stays mgmt:<ip>.
 func buildObservation(hostID string, gateways []string, arp map[string]string) entity.Observation {
 	if hostID == "" || len(gateways) == 0 {
 		return entity.Observation{}
@@ -97,6 +97,9 @@ func buildObservation(hostID string, gateways []string, arp map[string]string) e
 			Type:     relRoutesVia,
 			FromType: entityTypeHost, FromID: hostKey,
 			ToType: entityTypeNetworkDevice, ToID: map[string]any{idKeyNetworkDevice: id},
+			// Distinguish host-sourced edges from device-sourced ones at query
+			// time (Toise: use an attribute, not a new relation type).
+			Attributes: map[string]any{"source": "host-route"},
 		})
 	}
 	return obs
