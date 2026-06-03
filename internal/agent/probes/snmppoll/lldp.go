@@ -172,8 +172,9 @@ func localPortOf(rowKey string) string {
 // NOT anchor on LLDP: the polled device's id comes from its serial / engine
 // id read over SNMP, so it is stable even when LLDP is disabled.
 type deviceIdentity struct {
-	Serial     string // ENTITY-MIB entPhysicalSerialNum (chassis) — most stable
-	EngineID   []byte // snmpEngineID — stable fallback when no serial
+	Serial     string // entPhysicalSerialNum of the *single* chassis (empty for a stack)
+	VendorPEN  string // IANA enterprise number from sysObjectID — namespaces Serial
+	EngineID   []byte // snmpEngineID — globally unique (RFC 3411) + stack-scoped fallback
 	ChassisMAC []byte // LLDP chassis-id, only when its subtype is MAC
 	SysName    string // sysName / lldpRemSysName
 	MgmtIP     string // the polled target address (mutable — last resort)
@@ -186,8 +187,13 @@ type deviceIdentity struct {
 // belongs in descriptive attributes, never as a second identity key.
 func resolveDeviceID(id deviceIdentity) string {
 	switch {
-	case strings.TrimSpace(id.Serial) != "":
-		return "serial:" + strings.TrimSpace(id.Serial)
+	// Serial is vendor-scoped (unique per vendor, not globally), so it is a
+	// usable identity ONLY when namespaced by the vendor's IANA enterprise
+	// number (from sysObjectID). Without a PEN — or for a stack, where the
+	// reader leaves Serial empty — fall through to engine, which RFC 3411
+	// makes globally unique and stack-scoped on its own.
+	case strings.TrimSpace(id.Serial) != "" && strings.TrimSpace(id.VendorPEN) != "":
+		return "serial:" + strings.TrimSpace(id.VendorPEN) + ":" + strings.TrimSpace(id.Serial)
 	case len(id.EngineID) > 0:
 		return "engine:" + hex.EncodeToString(id.EngineID)
 	case len(id.ChassisMAC) > 0:
@@ -222,6 +228,19 @@ func canonIP(s string) string {
 		return ip.String()
 	}
 	return strings.ToLower(s)
+}
+
+// vendorPEN extracts the IANA Private Enterprise Number from a sysObjectID
+// value (an OID under 1.3.6.1.4.1.<PEN>...). Returns "" when the OID is not
+// under the enterprise arc.
+func vendorPEN(sysObjectID string) string {
+	const arc = "1.3.6.1.4.1."
+	s := strings.TrimPrefix(strings.TrimSpace(sysObjectID), ".")
+	if !strings.HasPrefix(s, arc) {
+		return ""
+	}
+	pen, _, _ := strings.Cut(s[len(arc):], ".")
+	return pen
 }
 
 // renderPortID renders an LLDP port-id for relation attributes. Not a frozen
