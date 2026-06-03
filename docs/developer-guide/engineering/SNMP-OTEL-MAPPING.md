@@ -107,25 +107,61 @@ operators point at a **local** directory for vendor MIBs.
   derives name+type from the cache datapoint rather than a pre-enumerated
   YAML entry — tracked in #207.
 
-## Layer 2′ — entity mapping, entity rail
+## Layer 2′ — entity mapping, entity rail (FROZEN with Toise 2026-06-03)
 
-The entity vocabulary is **frozen** with the Toise team (ENTITY-DETECTION.md
-§0, §2). snmp_poll reuses it, it does not extend it:
+The entity vocabulary and identity are **frozen** with the Toise team
+(ENTITY-DETECTION.md §0/§2, ADR 0018: identity is exact, byte-by-byte,
+observer-independent, no fuzzy merge). snmp_poll reuses it, never extends it.
+Toise does NOT normalize or merge ids — the producer canonicalizes and
+emits exact ids per source; convergence happens because two observers of the
+same device derive byte-identical ids.
 
-- **The polled device** → a `network.device` entity. Identity
-  `network.device.id` = LLDP chassis-id, fallback management IP
-  (ENTITY-DETECTION.md §2, frozen at Lot 5). Descriptive attributes from
-  the system group (sysName, sysDescr, sysObjectID → vendor) and the
-  feature/profile class.
-- **Topology rows** → relations (endpoints emitted before/with the edge):
-  - LLDP `lldpRemTable` → `adjacent_to` (local device ↔ remote chassis/port)
-  - ipCidrRouteTable / ipForwardTable → `routes_via`
-  - dot1dTpFdbTable / dot1qTpFdbTable → `forwards_to` (MAC ↔ port)
-  - ipNetToMediaTable (ARP) → `adjacent_to` (IP↔MAC binding on an ifIndex)
+- **`network.device.id` — single key, subtype-prefixed, frozen precedence:**
+  `serial:<PEN>:<entPhysicalSerialNum>` > `engine:<snmpEngineID>` >
+  `mac:<LLDP chassis-id, only when subtype is MAC>` > `name:<sysName>` >
+  `mgmt:<ip>`. Identity does **not** anchor on LLDP (often disabled); it
+  anchors on the SNMP-readable serial/engine id. Two identity-semantics
+  rules on the serial rung (Toise Q1/Q2): a serial is vendor-scoped, so it is
+  namespaced by the vendor **IANA PEN** read from `sysObjectID`
+  (`serial:<PEN>:<serial>`); without a PEN it falls through to `engine`
+  (globally unique by RFC 3411). The serial is taken only when there is
+  **exactly one** `entPhysicalClass=chassis` row — a **stack** (N chassis)
+  leaves it empty and uses the stack-wide `engineID` (one logical device per
+  SNMP management entity, failover-stable; a master-member serial would flap),
+  and this also avoids latching onto a swappable module/PSU serial. Everything
+  not chosen as the id (raw chassis-id, sysName, mgmt IP, serial, vendor) goes
+  in **descriptive attributes**, never as a second identity key.
+  Canonicalization (producer side): `mac` = lowercase hex `:`-separated;
+  `engine`/`PEN` = lowercase hex / decimal; `serial`/`name` = trimmed (case
+  preserved); `mgmt` = `net.IP` canonical form. All in one function:
+  `resolveDeviceID` (lldp.go); identity reads in `readSelfIdentity`/
+  `chassisSerial` (entity_source.go).
+- **Relations** (network.device↔network.device, single directed edge,
+  endpoints emitted before/with the edge):
+  - LLDP `lldpRemTable` → `adjacent_to`, polled→neighbour, **one edge, no
+    reciprocal duplicate** (Toise's get_neighbors reads both directions).
+    Attributes `local_port` / `remote_port`.
+  - ipCidrRouteTable / ipForwardTable → `routes_via`, device→next-hop; when
+    the next-hop is only an IP, `to` = `mgmt:<ip>`. Attributes
+    destination / mask / metric.
+  - dot1dTpFdbTable / dot1qTpFdbTable → `forwards_to`, `to` = `mac:<addr>`.
+    **Filter FDB to inter-device MACs** (LLDP chassis / uplink ports);
+    host terminal MACs are out of scope (no card entity, would flood). 5c.
+  - ipNetToMediaTable (ARP) → IP↔MAC binding; bridges `name:`/`mgmt:` →
+    canonical `mac:` via the polled device's `ifPhysAddress`. 5d.
 
-Identity must be **observer-independent** (a peer seen by two agents must
-get the same id) — use the device's own identifiers (chassis-id, MACs),
-never the polling agent's transient view.
+**Cross-source convergence (no Toise merge):** LLDP chassis MAC == FDB/ARP
+MAC == `mac:<addr>` matches automatically. Without LLDP, the polled device's
+`ifPhysAddress` is the bridge from `name:`/`mgmt:` to the canonical `mac:`;
+promote provisional `mgmt:` ids to canonical and let the old node expire
+(cascade + interval). `host` ↔ `network.device` stay distinct (different
+type/id) — linked by a relation later, never merged.
+
+**Cadence (frozen):** poll topology slower than metrics (~5–15 min); set
+`otel.entity.interval` to ~3× the *topology* cadence (not the metric
+cadence) so the GC doesn't expire devices between sweeps. No sampling
+(partial snapshot → false deletes) — emit the complete snapshot in one OTLP
+export. Relations carry no interval (edge expires with its endpoint).
 
 ## Vendor-neutrality (hard constraint)
 

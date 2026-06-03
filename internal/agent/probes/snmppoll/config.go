@@ -16,6 +16,9 @@ const (
 	defaultTimeout          = 5 * time.Second
 	defaultRetries          = 2
 	defaultInterval         = 60 * time.Second
+	// defaultTopologyInterval — the entity rail sweeps topology far slower
+	// than metrics (Toise guidance ~5-15 min); see entity_source.go.
+	defaultTopologyInterval = 10 * time.Minute
 
 	minPort = 1
 	maxPort = 65535
@@ -46,6 +49,9 @@ type config struct {
 	Timeout   time.Duration
 	Retries   int
 	Interval  time.Duration
+	// TopologyInterval is the (slow) cadence for the entity-rail topology
+	// sweep, independent of the metric Interval. Zero → defaultTopologyInterval.
+	TopologyInterval time.Duration
 
 	// MIBs is the ordered list of built-in MIB selectors to poll
 	// (e.g. "mib-2", "if-mib").
@@ -112,6 +118,12 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 		errs = append(errs, fmt.Sprintf("interval: %v", err))
 	} else if ok {
 		cfg.Interval = d
+	}
+
+	if d, ok, err := durationParam(raw, "topology_interval"); err != nil {
+		errs = append(errs, fmt.Sprintf("topology_interval: %v", err))
+	} else if ok {
+		cfg.TopologyInterval = d
 	}
 
 	mibs, err := parseMIBs(raw["mibs"])
