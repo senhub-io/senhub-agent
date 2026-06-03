@@ -19,6 +19,7 @@ const (
 	entityTypeNetworkDevice = "network.device"
 	idKeyNetworkDevice      = "network.device.id"
 	relAdjacentTo           = "adjacent_to"
+	relRoutesVia            = "routes_via"
 
 	// Polled-device identity OIDs (dotted, no leading dot).
 	oidEntPhysicalSerialNum = "1.3.6.1.2.1.47.1.1.1.1.11" // ENTITY-MIB (walk; chassis serial)
@@ -88,8 +89,14 @@ func (s *snmpEntitySource) sweep(client snmpClient) entity.Observation {
 			Msg("LLDP walk failed; emitting device without neighbours")
 		topo = lldpTopology{}
 	}
+	routes, err := collectRoutes(client)
+	if err != nil {
+		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
+			Msg("routing walk failed; emitting device without routes_via")
+		routes = nil
+	}
 	self := readSelfIdentity(client, s.cfg.Target, topo.Local)
-	return buildObservation(self, topo)
+	return buildObservation(self, topo, routes)
 }
 
 // readSelfIdentity reads the polled device's identifiers in the Toise-frozen
@@ -129,11 +136,15 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 	return di
 }
 
-// buildObservation maps the polled device + its LLDP neighbours to the frozen
-// wire shapes: network.device↔network.device, adjacent_to as a single directed
-// edge polled→neighbour (no reciprocal). Returns empty when the device cannot
-// be identified (no usable id rung).
-func buildObservation(self deviceIdentity, topo lldpTopology) entity.Observation {
+// buildObservation maps the polled device, its LLDP neighbours and its routing
+// next-hops to the frozen wire shapes (all network.device↔network.device):
+//   - adjacent_to — one directed edge polled→neighbour (no reciprocal);
+//   - routes_via  — one edge per distinct next-hop device (deduped: a full
+//     table routes many destinations through a handful of next-hops; the
+//     next-hop is known only as an IP → id mgmt:<ip>).
+//
+// Returns empty when the device cannot be identified (no usable id rung).
+func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow) entity.Observation {
 	selfID := resolveDeviceID(self)
 	if selfID == "" {
 		return entity.Observation{}
@@ -142,6 +153,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology) entity.Observation
 	obs := entity.Observation{
 		Entities: []entity.Entity{deviceEntity(selfID, selfAttrs(self))},
 	}
+
 	for _, n := range topo.Neighbors {
 		nID := resolveDeviceID(neighborIdentity(n))
 		if nID == "" || nID == selfID {
@@ -158,6 +170,36 @@ func buildObservation(self deviceIdentity, topo lldpTopology) entity.Observation
 			},
 		})
 	}
+
+	// routes_via, deduped by next-hop in first-seen order.
+	var nhOrder []string
+	nhCount := map[string]int{}
+	for _, r := range routes {
+		if r.Type != routeTypeRemote || !usableNextHop(r.NextHop, self.MgmtIP) {
+			continue
+		}
+		id := "mgmt:" + r.NextHop
+		if id == selfID {
+			continue
+		}
+		if _, seen := nhCount[id]; !seen {
+			nhOrder = append(nhOrder, id)
+		}
+		nhCount[id]++
+	}
+	for _, nhID := range nhOrder {
+		obs.Entities = append(obs.Entities, deviceEntity(nhID, map[string]any{}))
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     relRoutesVia,
+			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
+			ToType: entityTypeNetworkDevice, ToID: deviceKey(nhID),
+			// One structural edge per next-hop; per-destination dest/mask would
+			// flap across routes sharing it, so we carry the destination count.
+			// (Attribute shape flagged back to Toise.)
+			Attributes: map[string]any{"destinations": int64(nhCount[nhID])},
+		})
+	}
+
 	return obs
 }
 
