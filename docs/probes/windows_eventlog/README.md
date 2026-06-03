@@ -115,10 +115,24 @@ replaced rather than silently re-reading everything.
 
 ## Status
 
+Validated end-to-end on **Windows Server 2022** (build 20348):
+
+- Real `System` + `Application` events flow to OTLP logs with every
+  mandated attribute (`event_id`, `event_level`, `event_channel`,
+  `event_provider`, `event_source`, `record_id`) plus `host.name`,
+  `process.pid` and the `eventdata.*` payload.
+- Per-channel bookmarks persist and resume after a restart
+  (`StartAfterBookmark`) with **no duplication and no loss**.
+- Steady-state tail footprint ~22 MB / ~0% CPU; a 53k-event backlog
+  flood drains at ~4400 events/s (~1 core, 83 MB peak).
+
 The OS-agnostic surface (config, XML parsing, filtering, PII redaction,
 bookmark persistence, LogRecord mapping) is unit-tested on every
-platform. The `wevtapi` subscription binding compiles for windows/amd64;
-runtime validation on a live Windows host (bookmark survival across
-restarts, the ~500 events/min performance gate) is tracked on
-[issue #154](https://github.com/senhub-io/senhub-agent/issues/154) for
-Windows CI.
+platform.
+
+> **Level vs EventType**: the `levels:` filter matches the Event schema
+> `System/Level` field. Events written through the legacy ReportEvent API
+> (e.g. `eventcreate`, some older providers) carry `Level=0` (LogAlways)
+> even when their *EventType* is Error/Warning, so a `levels:` filter will
+> exclude them. Modern providers set `Level` correctly. Omit `levels:` to
+> capture legacy-API events regardless.
