@@ -25,7 +25,7 @@ func TestBuildObservation(t *testing.T) {
 			SysName:          "neigh",
 		}},
 	}
-	obs := buildObservation(self, topo)
+	obs := buildObservation(self, topo, nil)
 
 	if len(obs.Entities) != 2 {
 		t.Fatalf("want 2 entities, got %d", len(obs.Entities))
@@ -51,14 +51,14 @@ func TestBuildObservation(t *testing.T) {
 }
 
 func TestBuildObservation_NoNeighbors(t *testing.T) {
-	obs := buildObservation(deviceIdentity{Serial: "X"}, lldpTopology{})
+	obs := buildObservation(deviceIdentity{Serial: "X"}, lldpTopology{}, nil)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-only expected, got %+v", obs)
 	}
 }
 
 func TestBuildObservation_NoIdentity(t *testing.T) {
-	obs := buildObservation(deviceIdentity{}, lldpTopology{})
+	obs := buildObservation(deviceIdentity{}, lldpTopology{}, nil)
 	if len(obs.Entities) != 0 || len(obs.Relations) != 0 {
 		t.Errorf("expected nothing when device unidentifiable, got %+v", obs)
 	}
@@ -69,9 +69,43 @@ func TestBuildObservation_SkipsSelfLoop(t *testing.T) {
 	topo := lldpTopology{Neighbors: []lldpNeighbor{
 		{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0x01, 0x02}},
 	}}
-	obs := buildObservation(self, topo)
+	obs := buildObservation(self, topo, nil)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-loop should be skipped, got %+v", obs)
+	}
+}
+
+func TestBuildObservation_RoutesVia(t *testing.T) {
+	self := deviceIdentity{Serial: "S1", MgmtIP: "10.0.0.1"}
+	routes := []routeRow{
+		{NextHop: "10.0.0.254", Type: routeTypeRemote, Metric: 1}, // gateway
+		{NextHop: "10.0.0.254", Type: routeTypeRemote, Metric: 1}, // same next-hop → deduped
+		{NextHop: "10.0.0.2", Type: routeTypeRemote},              // another next-hop
+		{NextHop: "0.0.0.0", Type: routeTypeRemote},               // unspecified → skip
+		{NextHop: "10.0.0.1", Type: routeTypeRemote},              // == self mgmt → skip
+		{NextHop: "10.0.0.99", Type: 3},                           // not remote → skip
+	}
+	obs := buildObservation(self, lldpTopology{}, routes)
+
+	// self + 2 distinct next-hop devices
+	if len(obs.Entities) != 3 {
+		t.Fatalf("entities = %d (%+v)", len(obs.Entities), obs.Entities)
+	}
+	via := 0
+	for _, r := range obs.Relations {
+		if r.Type != relRoutesVia {
+			continue
+		}
+		via++
+		if r.FromID[idKeyNetworkDevice] != "serial:S1" {
+			t.Errorf("routes_via from = %v", r.FromID)
+		}
+		if r.ToID[idKeyNetworkDevice] == "mgmt:10.0.0.254" && r.Attributes["destinations"] != int64(2) {
+			t.Errorf("expected 2 destinations via gateway, got %v", r.Attributes["destinations"])
+		}
+	}
+	if via != 2 {
+		t.Fatalf("expected 2 routes_via edges, got %d", via)
 	}
 }
 
