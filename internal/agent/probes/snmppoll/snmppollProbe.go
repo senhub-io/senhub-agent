@@ -48,7 +48,7 @@ func NewSnmpPollProbe(rawConfig map[string]interface{}, baseLogger *logger.Logge
 		cfg:          cfg,
 		instance:     cfg.Target + ":" + strconv.Itoa(int(cfg.Port)),
 		moduleLogger: moduleLogger,
-		entitySource: newEntitySource(cfg),
+		entitySource: newEntitySource(cfg, moduleLogger),
 		newClient:    func(c *config) snmpClient { return newGosnmpClient(c) },
 	}
 	probe.SetProbeType(probeType)
@@ -96,6 +96,10 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 			}
 		}()
 		points = collect(client, p.cfg, p.instance, start, p.moduleLogger)
+		// Entity rail: refresh the topology snapshot on its own slow cadence,
+		// reusing this already-connected client. Observe() (detector goroutine)
+		// reads the cache; this only walks when topologyInterval has elapsed.
+		p.entitySource.maybeSweep(client, start)
 	}
 
 	end := time.Now()
