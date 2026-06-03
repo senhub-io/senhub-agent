@@ -255,6 +255,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
 			ToType: entityTypeNetworkDevice, ToID: deviceKey(nID),
 			Attributes: map[string]any{
+				"source":      "snmp",
 				"local_port":  n.LocalPortNum,
 				"remote_port": renderPortID(n.PortIdSubtype, n.PortId),
 			},
@@ -302,7 +303,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 			// One structural edge per next-hop; per-destination dest/mask would
 			// flap across routes sharing it, so we carry the destination count.
 			// (Attribute shape flagged back to Toise.)
-			Attributes: map[string]any{"destinations": int64(nhCount[nhID])},
+			Attributes: map[string]any{"source": "snmp", "destinations": int64(nhCount[nhID])},
 		})
 	}
 
@@ -319,7 +320,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 			Type:     relForwardsTo,
 			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
 			ToType: entityTypeNetworkDevice, ToID: deviceKey(id),
-			Attributes: map[string]any{"bridge_port": e.BridgePort},
+			Attributes: map[string]any{"source": "snmp", "bridge_port": e.BridgePort},
 		})
 	}
 
