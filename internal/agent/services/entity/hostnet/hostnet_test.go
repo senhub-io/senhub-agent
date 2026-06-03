@@ -56,6 +56,9 @@ func TestBuildObservation_ConvergesGatewayViaARP(t *testing.T) {
 		r.ToID[idKeyNetworkDevice] != "mac:aa:bb:cc:dd:ee:ff" {
 		t.Errorf("relation wrong: %+v", r)
 	}
+	if r.Attributes["source"] != "host-route" {
+		t.Errorf("expected source=host-route, got %v", r.Attributes["source"])
+	}
 }
 
 func TestBuildObservation_MgmtWhenNoARP(t *testing.T) {
