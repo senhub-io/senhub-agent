@@ -21,15 +21,30 @@ type snmpVarBind struct {
 	IsNumeric bool
 }
 
-// snmpClient is the minimal SNMP surface the collector depends on. The
+// snmpRawBind is an undecoded variable binding for the topology rail, which
+// needs the non-numeric SYNTAXes the metric rail discards: OCTET STRING
+// (chassis-id, port-id, sysName — MAC/text), INTEGER enums (subtypes),
+// OBJECT IDENTIFIER. Value is gosnmp's native decode ([]byte for OctetString,
+// int for Integer, string for OID); the LLDP parser renders it.
+type snmpRawBind struct {
+	OID   string
+	Type  gosnmp.Asn1BER
+	Value any
+}
+
+// snmpClient is the minimal SNMP surface the collectors depend on. The
 // production implementation wraps gosnmp; tests provide a fake.
 type snmpClient interface {
 	// Connect opens the transport. Must be called before Get/BulkWalk.
 	Connect() error
 	// Get fetches the given scalar OIDs (dotted, no leading dot).
 	Get(oids []string) ([]snmpVarBind, error)
-	// BulkWalk walks a table column rooted at baseOID (GETBULK on v2c).
+	// BulkWalk walks a table column rooted at baseOID (GETBULK on v2c),
+	// numeric-only (metric rail).
 	BulkWalk(baseOID string) ([]snmpVarBind, error)
+	// WalkRaw walks a subtree rooted at baseOID returning undecoded binds
+	// (topology rail — strings, OIDs, enums included).
+	WalkRaw(baseOID string) ([]snmpRawBind, error)
 	// Close releases the transport.
 	Close() error
 }
@@ -95,6 +110,20 @@ func (c *gosnmpClient) BulkWalk(baseOID string) ([]snmpVarBind, error) {
 	out := make([]snmpVarBind, 0, len(pdus))
 	for _, pdu := range pdus {
 		out = append(out, pduToVarBind(pdu))
+	}
+	return out, nil
+}
+
+// WalkRaw mirrors BulkWalk but keeps every SYNTAX undecoded, for the
+// topology rail. It does not filter non-numeric binds.
+func (c *gosnmpClient) WalkRaw(baseOID string) ([]snmpRawBind, error) {
+	pdus, err := c.handle.BulkWalkAll("." + baseOID)
+	if err != nil {
+		return nil, fmt.Errorf("snmp walkraw %s: %w", baseOID, err)
+	}
+	out := make([]snmpRawBind, 0, len(pdus))
+	for _, pdu := range pdus {
+		out = append(out, snmpRawBind{OID: trimLeadingDot(pdu.Name), Type: pdu.Type, Value: pdu.Value})
 	}
 	return out, nil
 }
