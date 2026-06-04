@@ -37,6 +37,7 @@ var paidProbes = map[string]bool{
 	"mysql":                true,
 	"postgresql":           true,
 	"linux_logs":           true,
+	"filetail":             true,
 	"ibmi":                 true,
 }
 

@@ -1048,6 +1048,41 @@ Le record porte les clés mandatées par l'issue #154 plus les attributs OTel-ca
 
 Comme `linux_logs` : pas de `definitions/windows_eventlog.yaml`, pas de DataPoint. Requiert l'OTLP logs export activé (`storage[otlp].signals.logs: true`) pour que les records soient consommés.
 
+### 4.17 Probe `filetail` (tail de fichiers plats → OTLP logs)
+
+**Sources principales :**
+- [OTel Semantic Conventions — General Logs](https://opentelemetry.io/docs/specs/semconv/general/logs/)
+- [OTel Logs Data Model §4.2](https://opentelemetry.io/docs/specs/otel/logs/data-model/) (SeverityNumber + SeverityText)
+- [OTel `log.file.*` attributes](https://opentelemetry.io/docs/specs/semconv/attributes-registry/log/) (`log.file.path`)
+
+**Stratégie :** générique et cross-platform, pendant flat-file de `linux_logs`/`windows_eventlog`. **Exclusivement producteur sur le signal logs** (`Collect()` → `nil, nil`, pas de YAML transformer). Mapping dans `internal/agent/probes/filetail/parser.go::parseLine`. Flow : `github.com/nxadm/tail (rotation/reopen) → assemblage multiline → parser (regex/json/logfmt/raw) → LogRecord → agentstate.LogChannel → OTLP logs`.
+
+#### 4.17.1 Attributs produits
+
+| Attribute | Source | Notes |
+|---|---|---|
+| `log.file.path` | chemin du fichier tailé | attr OTel canonique `log.file.*` |
+| `<champ parsé>` | groupe nommé regex / clé JSON / clé logfmt | chaque champ extrait devient un attribut |
+| `senhub.probe.name` / `senhub.probe.type` | framework | `senhub.probe.type = "filetail"` |
+
+#### 4.17.2 Body, severity, timestamp
+
+- **Body** = champ `message`/`msg`/`body` si extrait par un parser structuré, sinon la ligne brute.
+- **Severity** = champ `level`/`severity`/`lvl` mappé (TRACE/DEBUG/INFO/WARN/ERROR/FATAL, insensible casse) via `severityFromText`.
+- **Timestamp** = `parser.timestamp_field` parsé avec `timestamp_format` (ou layouts communs + epoch unix en repli) ; sinon l'instant de lecture de la ligne.
+
+#### 4.17.3 Parsers
+
+`regex` (groupes nommés, au moins un requis), `json` (jsonl ; ligne non-objet → skip+log), `logfmt` (key=value), `raw` (ligne entière en body, défaut). Multiline pour replier stacktraces (`match: after`/`before`).
+
+#### 4.17.4 Rotation, bookmark, identité fichier
+
+Rotation gérée par nxadm/tail (reopen). `bookmark_path` persiste l'offset par fichier (atomique, ~2s + à l'arrêt) → reprise sans perte ni duplication. Identité par fingerprint (CRC32 des 1000 premiers octets) **stable seulement à partir de 1000 octets** ; en-dessous le fingerprint est "" (instable car le head change quand le fichier grossit) et l'identité retombe sur une comparaison offset/taille — sinon un petit fichier qui grossit serait relu depuis 0 au restart (duplication).
+
+#### 4.17.5 Pas de signal metric (par design)
+
+Comme `linux_logs`/`windows_eventlog` : pas de `definitions/filetail.yaml`, pas de DataPoint. Requiert `storage[otlp].signals.logs: true`.
+
 
 ## 6. Processus d'ajout d'une convention
 

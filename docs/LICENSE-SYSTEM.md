@@ -47,6 +47,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **network** - Network interface statistics
 - **linux_logs** - Local systemd journal log shipping (Linux only)
 - **windows_eventlog** - Local Windows Event Log shipping (Windows only) — the host-local OS log rail counterpart to linux_logs
+- **filetail** - Generic flat-file log tailing (regex/JSON/logfmt parsing, rotation-aware), cross-platform — feeds VictoriaLogs alongside linux_logs/windows_eventlog
 - **snmp_poll** - Generic SNMP polling. The deliberate exception to "remote = paid": it is the open-core wedge to replace PRTG's free SNMP polling. Deep vendor-specific SNMP (device profiles, discovery, vendor MIBs) remains paid.
 
 ### Pro Tier (License Required)
