@@ -144,6 +144,7 @@ The directory must be writable by the user the agent runs as. On systemd, that i
 
 ## Related
 
+- [Backpressure & Resilience](./BACKPRESSURE.md) — configuring the cardinality caps, memory limiter and persistent checkpoint that drive these counters.
 - [HTTP Strategy](./HTTP-STRATEGY.md) — how the HTTP endpoint that serves `/info/otlp` is wired up.
 - [OTLP user guide](../user-guide/content/docs/otlp/_index.md) — end-user view of the OTLP push pipeline.
 - [Logging](./LOGGING.md) — log levels and where to look when these counters indicate something is wrong.
