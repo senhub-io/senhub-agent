@@ -991,6 +991,63 @@ Le filtrage opère donc en amont — un record qui n'est pas dans le périmètre
 
 Conséquence : un usage typique `linux_logs` requiert l'OTLP logs export activé sur la storage (`storage[otlp].signals.logs: true`), sinon les records sont publiés mais consommés par personne.
 
+### 4.16 Probe `windows_eventlog` (Windows Event Log → OTLP logs)
+
+**Sources principales :**
+- [OTel Semantic Conventions — General Logs](https://opentelemetry.io/docs/specs/semconv/general/logs/) (resource & log record attrs)
+- [OTel Logs Data Model §4.2](https://opentelemetry.io/docs/specs/otel/logs/data-model/) (SeverityNumber + SeverityText)
+- [Windows Event Schema](https://learn.microsoft.com/windows/win32/wes/eventschema-schema) (forme XML rendue par `EvtRender`)
+- [wevtapi `EvtSubscribe`](https://learn.microsoft.com/windows/win32/api/winevt/nf-winevt-evtsubscribe) (modèle pull + bookmark)
+
+**Stratégie :** pendant logique Windows de `linux_logs`. **Exclusivement producteur sur le signal logs** : aucun DataPoint métrique (`Collect()` retourne `nil, nil`), donc pas de YAML transformer. Le mapping vit dans `internal/agent/probes/windowseventlog/event_xml.go::toLogRecord`. Flow : `wevtapi EvtSubscribe → EvtRender(EventXml) → parseEventXML → LogRecord → agentstate.LogChannel → OTLP logsPump → OTel gRPC export`. Windows-only ; sur les autres OS la probe s'enregistre mais `OnStart` échoue explicitement (stub `subscription_other.go`), comme `linux_logs` hors Linux.
+
+#### 4.16.1 Attributs produits
+
+Le record porte les clés mandatées par l'issue #154 plus les attributs OTel-canoniques quand un équivalent existe :
+
+| Attribute | Source (Event XML) | Notes |
+|---|---|---|
+| `event_id` | `System/EventID` | clé mandatée #154 |
+| `event_level` | `System/Level` → label | clé mandatée #154 (Critical/Error/Warning/Information/Verbose) |
+| `event_channel` | `System/Channel` | clé mandatée #154 |
+| `event_provider` | `System/Provider/@Name` | clé mandatée #154 |
+| `event_source` | `System/Provider/@Name` | clé mandatée #154 (alias de provider, parité PRTG) |
+| `record_id` | `System/EventRecordID` | clé mandatée #154 |
+| `host.name` | `System/Computer` | resource attr OTel canonique |
+| `process.pid` | `System/Execution/@ProcessID` | OTel attr canonique |
+| `user.id` | `System/Security/@UserID` | SID ; omis si `redact_pii: true` |
+| `eventdata.<Name>` | `EventData/Data` | payload structuré ; champs sensibles masqués en mode PII |
+| `senhub.probe.name` / `senhub.probe.type` | (framework) | `senhub.probe.type = "windows_eventlog"` |
+
+#### 4.16.2 Body & timestamp
+
+- **Body** = `RenderingInfo/Message` (message rendu par le provider). Fallback si absent (DLL de messages non installée) : `"<Provider> event <EventID>: k=v, …"` à partir des `EventData` triés.
+- **Timestamp** = `System/TimeCreated/@SystemTime` (RFC 3339 nano) → `time.Time`. Fallback `time.Now()` si parsing échoue.
+
+#### 4.16.3 Severity mapping (Windows Level → OTel)
+
+| Level | Windows | OTel SeverityNumber | SeverityText |
+|---:|---|---:|---|
+| 1 | Critical | 21 (FATAL) | `Critical` |
+| 2 | Error | 17 (ERROR) | `Error` |
+| 3 | Warning | 13 (WARN) | `Warning` |
+| 4 | Information | 9 (INFO) | `Information` |
+| 5 | Verbose | 5 (DEBUG) | `Verbose` |
+| 0 | LogAlways | 9 (INFO) | `Information` |
+
+#### 4.16.4 Filtrage côté probe
+
+`levels:` est pré-filtré à la source via une requête XPath wevtapi (`*[System[(Level=1 or Level=2)]]`) ; `include_event_ids` / `exclude_event_ids` (exclude prioritaire) et `sources` (glob provider, insensible à la casse) sont appliqués en second passage en Go. Un event hors périmètre ne touche jamais le canal OTLP.
+
+#### 4.16.5 Bookmark & RGPD
+
+- **Bookmark** : un bookmark wevtapi par channel, persisté en JSON (`bookmark_path`) via écriture atomique. Au redémarrage la souscription reprend `StartAfterBookmark` — pas de duplication ni de perte. Sans `bookmark_path`, tail-from-now à chaque start.
+- **RGPD** : `redact_pii: true` masque les champs `EventData` sensibles (logons du canal Security : `TargetUserName`, `IpAddress`, SID, …) et remplace le body Security par un marqueur. À activer sur les collectes du canal `Security`.
+
+#### 4.16.6 Pas de signal metric (par design)
+
+Comme `linux_logs` : pas de `definitions/windows_eventlog.yaml`, pas de DataPoint. Requiert l'OTLP logs export activé (`storage[otlp].signals.logs: true`) pour que les records soient consommés.
+
 
 ## 6. Processus d'ajout d'une convention
 

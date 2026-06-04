@@ -28,4 +28,5 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/network"
 	_ "senhub-agent.go/internal/agent/probes/snmppoll"
 	_ "senhub-agent.go/internal/agent/probes/syslog"
+	_ "senhub-agent.go/internal/agent/probes/windowseventlog"
 )
