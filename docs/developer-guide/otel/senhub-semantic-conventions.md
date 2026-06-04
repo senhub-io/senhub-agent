@@ -1105,6 +1105,40 @@ Chaque DataPoint ingéré porte le tag **`metric_type=otlp_ingest`** (constante 
 
 Ré-export en `gauge` (la distinction gauge/sum entrante n'est pas préservée sur le bus DataPoint plat). Histograms/summaries non ingérés. Free tier.
 
+### 4.19 Probe `snmp_trap` (récepteur de traps SNMP → OTLP logs)
+
+**Sources principales :**
+- [SNMPv2-MIB (RFC 3418)](https://datatracker.ietf.org/doc/html/rfc3418) — traps génériques + snmpTrapOID.0 / sysUpTime.0
+- [OTel Logs Data Model §4.2](https://opentelemetry.io/docs/specs/otel/logs/data-model/)
+- gosnmp `TrapListener` (réutilisé de snmp_poll #156)
+
+**Stratégie :** pendant push de `snmp_poll`. Probe event-driven qui écoute en UDP les traps v2c/v3, décode via gosnmp, et publie chaque trap en **OTel log** sur `agentstate.PublishLog` (logs-only, comme `linux_logs`/`syslog` — `Collect()` → `nil`, pas de YAML transformer). Code : `internal/agent/probes/snmptrap/` (`snmptrap_probe.go` listener, `traps.go` décodage).
+
+#### 4.19.1 Attributs produits
+
+| Attribute | Source | Notes |
+|---|---|---|
+| `trap_oid` | valeur de `snmpTrapOID.0` (1.3.6.1.6.3.1.1.4.1.0) | clé mandatée #161 |
+| `trap_name` | table compilée des 6 traps génériques, sinon `unknown` | clé mandatée #161 |
+| `source_ip` | `*net.UDPAddr` de l'émetteur | clé mandatée #161 |
+| `snmp_version` | v1/v2c/v3 | |
+| `sysuptime` | `sysUpTime.0` | |
+| `varbind.<oid>` | une par binding (hors snmpTrapOID/sysUpTime) | valeur formatée |
+| `senhub.probe.name` / `senhub.probe.type` | framework | `senhub.probe.type = "snmp_trap"` |
+
+#### 4.19.2 Severity & body
+
+- **Severity** : heuristique fixe (pas de champ severity dans un trap). `linkDown`/`authenticationFailure`/`egpNeighborLoss` → WARN ; reste → INFO.
+- **Body** : `SNMP trap <name> (<oid>) from <ip> with N varbind(s)`.
+
+#### 4.19.3 Résolution de noms (PAS de MIB runtime)
+
+Table compilée des 6 traps génériques SNMPv2-MIB (coldStart/warmStart/linkDown/linkUp/authenticationFailure/egpNeighborLoss). **Aucun chargement ni fetch runtime de MIB** (anti-pattern documenté). Les traps vendor surfacent par `trap_oid` numérique + `trap_name=unknown`.
+
+#### 4.19.4 Limites
+
+v3 USM best-effort (gosnmp listener = une identité USM, v3-trap flaggé unreliable upstream) ; v2c solide. Port 162 privilégié → root/CAP_NET_BIND_SERVICE (#223). Free tier.
+
 
 ## 6. Processus d'ajout d'une convention
 
