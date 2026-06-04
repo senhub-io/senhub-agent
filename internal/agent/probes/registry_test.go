@@ -224,6 +224,7 @@ func TestProbeRegistry(t *testing.T) {
 		"linux_logs",
 		"event",
 		"snmp_poll",
+		"filetail",
 	}
 
 	for _, probeName := range expectedProbes {

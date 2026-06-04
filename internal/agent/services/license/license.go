@@ -177,10 +177,10 @@ func (v *JWTValidator) IsInGracePeriod(license *License) bool {
 }
 
 // Free tier probes - always available without license.
-// linux_logs and windows_eventlog join the free tier as host-level
-// observability sources on the same footing as cpu/memory/network/
-// logicaldisk: they observe the machine the agent runs on, not a remote
-// system (the OS log rail, one source per platform).
+// linux_logs, windows_eventlog and filetail join the free tier as
+// host-level observability sources on the same footing as cpu/memory/
+// network/logicaldisk: they read logs from the machine the agent runs on,
+// not a remote system (the OS log rails + generic flat-file tailing).
 //
 // snmp_poll is the deliberate exception to "remote = paid": it is the
 // open-core wedge meant to replace PRTG's free SNMP polling, so generic
@@ -193,6 +193,7 @@ var freeTierProbes = map[string]bool{
 	"network":          true,
 	"linux_logs":       true,
 	"windows_eventlog": true,
+	"filetail":         true,
 	"snmp_poll":        true,
 }
 
