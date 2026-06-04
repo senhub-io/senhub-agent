@@ -7,10 +7,12 @@
 // snmp_poll probe and reuses the same gosnmp dependency. Free tier
 // (universal collection).
 //
-// Trap OID → name resolution uses a small compiled-in table of the six
-// generic SNMPv2-MIB traps (traps.go); the probe deliberately does NOT
-// load or runtime-fetch MIB files (a documented anti-pattern for this
-// agent). Enterprise trap OIDs surface by their numeric OID.
+// Trap OID → name resolution: the six generic SNMPv2-MIB traps resolve
+// from a compiled-in table (traps.go); vendor OIDs resolve from
+// operator-supplied LOCAL MIB files loaded at startup via the shared
+// snmpmib package (config `mib_paths`). The agent NEVER fetches MIBs over
+// the network — only local files the operator provides. Unresolved OIDs
+// surface by their numeric form.
 //
 // Port 162 is privileged (<1024): binding the default 0.0.0.0:162 needs
 // root or CAP_NET_BIND_SERVICE (see issue #223). Use a high port for
@@ -34,6 +36,7 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/services/snmpmib"
 )
 
 // SNMPTrapProbe is the trap receiver. Event-driven: Collect returns nil
@@ -46,6 +49,7 @@ type SNMPTrapProbe struct {
 
 	mu       sync.Mutex
 	listener *gosnmp.TrapListener
+	mibs     *snmpmib.Resolver
 	quitOnce sync.Once
 }
 
@@ -95,7 +99,12 @@ func (p *SNMPTrapProbe) OnStart(quitChannel chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("bind_address", p.config.BindAddress).
 		Str("version", p.config.Version).
+		Strs("mib_paths", p.config.MibPaths).
 		Msg("Starting snmp_trap probe")
+
+	// Load operator-supplied local MIBs (never fetched) so trap/varbind
+	// OIDs resolve to names. Safe with no paths (disabled resolver).
+	p.mibs = snmpmib.Load(p.config.MibPaths, p.moduleLogger)
 
 	tl := gosnmp.NewTrapListener()
 	tl.OnNewTrap = p.handleTrap
@@ -163,7 +172,7 @@ func (p *SNMPTrapProbe) handleTrap(s *gosnmp.SnmpPacket, u *net.UDPAddr) {
 	if u != nil {
 		sourceIP = u.IP.String()
 	}
-	rec := packetToLogRecord(s, sourceIP, p.GetName())
+	rec := packetToLogRecord(s, sourceIP, p.GetName(), p.mibs)
 	agentstate.PublishLog(rec)
 	p.moduleLogger.Debug().
 		Str("source_ip", sourceIP).
