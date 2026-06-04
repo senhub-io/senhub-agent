@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -281,7 +282,11 @@ func (p *FileTailProbe) consume(file string, t *tail.Tail) {
 			readTime = time.Now()
 		}
 
-		for _, logical := range asm.Append(line.Text) {
+		// nxadm/tail splits on "\n" and keeps a trailing "\r" on Windows
+		// CRLF files; strip it so bodies/attributes are clean and parsers
+		// behave identically across platforms.
+		text := strings.TrimSuffix(line.Text, "\r")
+		for _, logical := range asm.Append(text) {
 			p.publish(p.config.Parser, logical, readTime, probeName, file)
 		}
 
