@@ -1131,9 +1131,9 @@ Ré-export en `gauge` (la distinction gauge/sum entrante n'est pas préservée s
 - **Severity** : heuristique fixe (pas de champ severity dans un trap). `linkDown`/`authenticationFailure`/`egpNeighborLoss` → WARN ; reste → INFO.
 - **Body** : `SNMP trap <name> (<oid>) from <ip> with N varbind(s)`.
 
-#### 4.19.3 Résolution de noms (PAS de MIB runtime)
+#### 4.19.3 Résolution de noms (MIBs LOCALES, jamais fetchées)
 
-Table compilée des 6 traps génériques SNMPv2-MIB (coldStart/warmStart/linkDown/linkUp/authenticationFailure/egpNeighborLoss). **Aucun chargement ni fetch runtime de MIB** (anti-pattern documenté). Les traps vendor surfacent par `trap_oid` numérique + `trap_name=unknown`.
+Deux couches : (1) table compilée des 6 traps génériques SNMPv2-MIB ; (2) **MIBs locales fournies par l'opérateur** via `mib_paths`, parsées au démarrage par le package partagé `internal/agent/services/snmpmib/` (basé sur `gosmi`), qui résout `trap_oid` ET les OIDs de varbinds (`varbind.ifOperStatus.3` au lieu du numérique). Distinction clé : **jamais de fetch réseau** — uniquement les fichiers locaux déposés par l'opérateur (le fetch runtime depuis une URL est l'anti-pattern documenté). Un OID sans MIB chargée reste numérique (`trap_name=unknown`). `snmpmib` est réutilisable par les autres probes SNMP (snmp_poll Lot 2).
 
 #### 4.19.4 Limites
 

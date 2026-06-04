@@ -40,7 +40,7 @@ func TestPacketToLogRecord_KnownTrap(t *testing.T) {
 			{Name: ".1.3.6.1.2.1.2.2.1.1.2", Type: gosnmp.Integer, Value: 2},                               // ifIndex
 		},
 	}
-	rec := packetToLogRecord(pkt, "10.0.0.9", "trap_rx")
+	rec := packetToLogRecord(pkt, "10.0.0.9", "trap_rx", nil)
 
 	if rec.ProducerProbeType != ProbeType {
 		t.Errorf("ProducerProbeType = %q", rec.ProducerProbeType)
@@ -76,7 +76,7 @@ func TestPacketToLogRecord_UnknownTrapIsInfo(t *testing.T) {
 			{Name: ".1.3.6.1.6.3.1.1.4.1.0", Type: gosnmp.ObjectIdentifier, Value: ".1.3.6.1.4.1.9999.1.2.3"},
 		},
 	}
-	rec := packetToLogRecord(pkt, "10.0.0.5", "trap_rx")
+	rec := packetToLogRecord(pkt, "10.0.0.5", "trap_rx", nil)
 	if rec.Attributes["trap_name"] != "unknown" {
 		t.Errorf("enterprise trap_name = %q, want unknown", rec.Attributes["trap_name"])
 	}
@@ -89,7 +89,7 @@ func TestPacketToLogRecord_UnknownTrapIsInfo(t *testing.T) {
 }
 
 func TestPacketToLogRecord_NilDoesNotCrash(t *testing.T) {
-	rec := packetToLogRecord(nil, "1.2.3.4", "trap_rx")
+	rec := packetToLogRecord(nil, "1.2.3.4", "trap_rx", nil)
 	if rec.Attributes["trap_oid"] != "" || rec.Attributes["trap_name"] != "unknown" {
 		t.Errorf("nil packet should yield empty trap_oid/unknown name: %v", rec.Attributes)
 	}
