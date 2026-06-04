@@ -14,6 +14,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gosnmp/gosnmp v1.43.2
 	github.com/hashicorp/go-version v1.9.0
+	github.com/sleepinggenius2/gosmi v0.4.4
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/kardianos/service v1.2.4
 	github.com/minio/selfupdate v0.6.0
@@ -50,6 +51,7 @@ require (
 require (
 	aead.dev/minisign v0.2.0 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
+	github.com/alecthomas/participle v0.4.1 // indirect
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

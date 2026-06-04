@@ -42,6 +42,12 @@ type receiverConfig struct {
 
 	// V3Users are the USM credentials for v3 traps.
 	V3Users []v3User
+
+	// MibPaths are local directories or files of operator-supplied MIB
+	// modules, loaded at startup to resolve trap and varbind OIDs to
+	// names (never fetched over the network). Empty = numeric OIDs only
+	// (plus the built-in generic-trap table).
+	MibPaths []string
 }
 
 func parseConfig(config map[string]interface{}) (receiverConfig, error) {
@@ -63,6 +69,8 @@ func parseConfig(config map[string]interface{}) (receiverConfig, error) {
 	if v, ok := config["community"].(string); ok {
 		cfg.Community = v
 	}
+
+	cfg.MibPaths = stringSlice(config["mib_paths"])
 
 	users, err := parseV3Users(config["v3"])
 	if err != nil {
@@ -115,4 +123,28 @@ func stringField(m map[string]interface{}, key string) string {
 		return v
 	}
 	return ""
+}
+
+// stringSlice coerces a YAML-decoded value into []string (the loader
+// yields []interface{}), dropping empties. A lone string is accepted too.
+func stringSlice(raw interface{}) []string {
+	switch v := raw.(type) {
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, e := range v {
+			if s, ok := e.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case []string:
+		return v
+	case string:
+		if v == "" {
+			return nil
+		}
+		return []string{v}
+	default:
+		return nil
+	}
 }
