@@ -22,6 +22,7 @@ func TestFreeTierProbes(t *testing.T) {
 		{"LogicalDisk probe is free tier", "logicaldisk", true},
 		{"Network probe is free tier", "network", true},
 		{"LinuxLogs probe is free tier", "linux_logs", true},
+		{"WindowsEventLog probe is free tier", "windows_eventlog", true},
 		{"Redfish probe is NOT free tier", "redfish", false},
 		{"Citrix probe is NOT free tier", "citrix", false},
 		{"WebApp probe is NOT free tier", "ping_webapp", false},
@@ -42,19 +43,20 @@ func TestFreeTierProbes(t *testing.T) {
 func TestGetFreeTierProbes(t *testing.T) {
 	probes := GetFreeTierProbes()
 
-	// Check we have exactly 6 free tier probes
-	if len(probes) != 6 {
-		t.Errorf("GetFreeTierProbes() returned %d probes, want 6", len(probes))
+	// Check we have exactly 7 free tier probes
+	if len(probes) != 7 {
+		t.Errorf("GetFreeTierProbes() returned %d probes, want 7", len(probes))
 	}
 
 	// Check all expected probes are present
 	expectedProbes := map[string]bool{
-		"cpu":         false,
-		"memory":      false,
-		"logicaldisk": false,
-		"network":     false,
-		"linux_logs":  false,
-		"snmp_poll":   false,
+		"cpu":              false,
+		"memory":           false,
+		"logicaldisk":      false,
+		"network":          false,
+		"linux_logs":       false,
+		"windows_eventlog": false,
+		"snmp_poll":        false,
 	}
 
 	for _, probe := range probes {
