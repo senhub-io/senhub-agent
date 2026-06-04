@@ -186,6 +186,11 @@ func (v *JWTValidator) IsInGracePeriod(license *License) bool {
 // open-core wedge meant to replace PRTG's free SNMP polling, so generic
 // SNMP collection is free. Deep vendor-specific SNMP (device profiles,
 // discovery, vendor MIBs) remains paid — see the tiering strategy.
+//
+// otlp_receiver is free as universal collection: the agent acting as an
+// edge collector ingesting OTLP streams from other instrumented sources
+// is the same open-core "bring everything in" wedge, not a paid vendor
+// integration.
 var freeTierProbes = map[string]bool{
 	"cpu":              true,
 	"memory":           true,
@@ -195,6 +200,7 @@ var freeTierProbes = map[string]bool{
 	"windows_eventlog": true,
 	"filetail":         true,
 	"snmp_poll":        true,
+	"otlp_receiver":    true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

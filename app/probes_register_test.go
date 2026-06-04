@@ -26,6 +26,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"logicaldisk",
 		"memory",
 		"network",
+		"otlp_receiver",
 		"snmp_poll",
 		"syslog",
 		"wifi_signal_strength",

@@ -56,13 +56,9 @@ func pushMetrics(
 	records := make([]otelmapper.OtelRecord, 0, len(extraRecords)+len(cms))
 	records = append(records, extraRecords...)
 	for _, cm := range cms {
+		// def may be nil — Resolve handles that (an error for probe metrics
+		// with no definition, a pass-through for OTLP-ingested metrics).
 		def := defs.GetProbeDefinition(cm.ProbeType)
-		if def == nil {
-			if missingMappingHandler != nil {
-				missingMappingHandler(cm, fmt.Errorf("no probe definition for probe_type=%q", cm.ProbeType))
-			}
-			continue
-		}
 		recs, err := otelmapper.Resolve(def, cm, resolveOpts)
 		if err != nil {
 			if missingMappingHandler != nil {
