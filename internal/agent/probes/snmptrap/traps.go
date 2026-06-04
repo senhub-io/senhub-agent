@@ -11,6 +11,7 @@ import (
 	"github.com/gosnmp/gosnmp"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/snmpmib"
 )
 
 // Well-known OIDs from SNMPv2-MIB (RFC 3418). snmpTrapOID.0 carries the
@@ -63,7 +64,7 @@ func normalizeOID(oid string) string {
 // malformed packet (nil, no snmpTrapOID varbind) still yields a record so
 // nothing is silently dropped — trap_oid is left empty and trap_name is
 // "unknown".
-func packetToLogRecord(s *gosnmp.SnmpPacket, sourceIP, probeName string) agentstate.LogRecord {
+func packetToLogRecord(s *gosnmp.SnmpPacket, sourceIP, probeName string, mibs *snmpmib.Resolver) agentstate.LogRecord {
 	attrs := map[string]string{"source_ip": sourceIP}
 
 	trapOID := ""
@@ -82,13 +83,25 @@ func packetToLogRecord(s *gosnmp.SnmpPacket, sourceIP, probeName string) agentst
 				attrs["sysuptime"] = formatVarbindValue(vb)
 				continue
 			}
-			attrs["varbind."+oid] = formatVarbindValue(vb)
+			// Key the varbind by its operator-MIB name when one resolves
+			// (e.g. varbind.ifOperStatus.3), else by its numeric OID.
+			key := "varbind." + oid
+			if label, ok := mibs.Resolve(oid); ok {
+				key = "varbind." + label
+			}
+			attrs[key] = formatVarbindValue(vb)
 			varbindCount++
 		}
 	}
 
-	trapName := standardTraps[trapOID]
-	if trapName == "" {
+	// trap_name precedence: operator-MIB name > built-in generic trap >
+	// "unknown". trap_oid always carries the numeric identity.
+	trapName := ""
+	if label, ok := mibs.Resolve(trapOID); ok && trapOID != "" {
+		trapName = label
+	} else if name := standardTraps[trapOID]; name != "" {
+		trapName = name
+	} else {
 		trapName = "unknown"
 	}
 	attrs["trap_oid"] = trapOID
