@@ -1083,6 +1083,28 @@ Rotation gérée par nxadm/tail (reopen). `bookmark_path` persiste l'offset par 
 
 Comme `linux_logs`/`windows_eventlog` : pas de `definitions/filetail.yaml`, pas de DataPoint. Requiert `storage[otlp].signals.logs: true`.
 
+### 4.18 Probe `otlp_receiver` (collecteur edge OTLP entrant → sinks)
+
+**Sources principales :**
+- [OTLP MetricsService](https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto)
+- [OTLP Metrics Data Model](https://opentelemetry.io/docs/specs/otel/metrics/data-model/)
+
+**Stratégie :** l'agent comme **collecteur edge**. Probe event-driven (contrat `ProbeWithCallback`, comme `syslog`) qui ouvre un serveur OTLP gRPC ou HTTP, décode les métriques entrantes en DataPoint internes, et les pousse au data_store → tous les sinks. Code : `internal/agent/probes/otlpreceiver/` (`grpc_server.go`, `http_server.go`, `decode.go`).
+
+#### 4.18.1 Décodage (decode.go)
+
+- **Gauge** + **Sum** number datapoints → un DataPoint scalaire chacun, **nom OTel conservé tel quel** (ex. `system.cpu.utilization`).
+- Resource attributes + datapoint attributes repliés en tags (datapoint gagne sur collision).
+- **Histogram / ExponentialHistogram / Summary** : pas de valeur scalaire → non ingérés, comptés et renvoyés à l'émetteur via `PartialSuccess.rejected_data_points`.
+
+#### 4.18.2 Pass-through mapper (clé de l'intégration)
+
+Chaque DataPoint ingéré porte le tag **`metric_type=otlp_ingest`** (constante `otelmapper.MetricTypeOTLPIngest`) + `probe_name`/`probe_type=otlp_receiver`. Les métriques entrantes étant **déjà OTel-shaped** (noms externes arbitraires, aucune définition de transformer possible), `otelmapper.Resolve` les détecte via ce marqueur et les **passe directement** en `OtelRecord` (nom/valeur/unité tels quels, type `gauge`) **sans** lookup de définition. Sans ce pass-through, les exporters OTLP et Prometheus dropperaient ces métriques (def==nil) — elles n'atteindraient que le cache http. Le marqueur est neutre (pas de couplage au package probe), conforme à la règle « otelmapper neutre ».
+
+#### 4.18.3 Limites
+
+Ré-export en `gauge` (la distinction gauge/sum entrante n'est pas préservée sur le bus DataPoint plat). Histograms/summaries non ingérés. Free tier.
+
 
 ## 6. Processus d'ajout d'une convention
 
