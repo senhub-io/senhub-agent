@@ -21,6 +21,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 	want := []string{
 		"cpu",
 		"event",
+		"filetail",
 		"linux_logs",
 		"logicaldisk",
 		"memory",

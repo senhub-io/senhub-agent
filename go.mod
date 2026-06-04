@@ -17,6 +17,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/kardianos/service v1.2.4
 	github.com/minio/selfupdate v0.6.0
+	github.com/nxadm/tail v1.4.11
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.67.5
 	github.com/rs/zerolog v1.35.1
@@ -83,6 +84,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
+	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )
 
 // TEMPORARY FORK: Using senhub-io fork with singleton stats fix
