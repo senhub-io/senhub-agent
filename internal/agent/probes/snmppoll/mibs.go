@@ -43,6 +43,12 @@ type oidMapping struct {
 	// IndexLabel is the attribute key carrying the row index for walked
 	// columns (e.g. "if_index"). Empty for scalars.
 	IndexLabel string
+	// Dynamic marks an operator custom_mappings entry (no built-in
+	// transformer YAML row). The mapper cannot resolve it by exact name,
+	// so the probe emits it under a canonical senhub.snmp.* name carrying
+	// its OTel type for a deterministic pass-through (issue #207).
+	// Built-in module mappings leave this false (resolved via YAML).
+	Dynamic bool
 }
 
 // builtinMIBs maps a built-in MIB selector (as used in the YAML "mibs:"
