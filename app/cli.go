@@ -49,8 +49,35 @@ func (p *program) run() {
 	}
 }
 
-// checkPrivileges verifies if the program is running with the required privileges
-func checkPrivileges() error {
+// linuxCommandNeedsRoot reports whether a subcommand genuinely needs
+// root on Linux. Only the service-lifecycle commands do: they register
+// or control a systemd unit and own the on-disk install. The
+// long-running daemon (`run`) does NOT — it relies on filesystem
+// ownership of its config/state/log paths (set up at install time as
+// the dedicated `senhub` user) and on targeted capabilities for the
+// few probes that need one, so it runs least-privilege as an
+// unprivileged user. See issue #223 and the hardened systemd unit
+// (packaging/systemd/senhub-agent.service, User=senhub).
+func linuxCommandNeedsRoot(command string) bool {
+	switch command {
+	case "install", "uninstall", "start", "stop", "restart":
+		return true
+	default:
+		return false
+	}
+}
+
+// checkPrivileges verifies the program has the privileges its
+// subcommand requires.
+//
+//   - darwin: never gated.
+//   - windows: service-affecting commands need administrator. (The
+//     daemon path is unchanged here; #223 scopes the non-root work to
+//     Linux.)
+//   - linux: only service-lifecycle commands need root; `run` and the
+//     rest run unprivileged, gaining access through path ownership and
+//     per-probe capabilities rather than blanket root.
+func checkPrivileges(command string) error {
 	if runtime.GOOS == "darwin" {
 		return nil
 	}
@@ -60,16 +87,21 @@ func checkPrivileges() error {
 		if err != nil {
 			return fmt.Errorf("this program must be run with administrator privileges. Please right-click and select 'Run as administrator'")
 		}
-	} else {
-		// Check for root privileges on Unix-like systems
-		currentUser, err := user.Current()
-		if err != nil {
-			return fmt.Errorf("unable to determine current user: %v", err)
-		}
+		return nil
+	}
 
-		if currentUser.Uid != "0" {
-			return fmt.Errorf("this program must be run with root privileges. Please use 'sudo' or run as root")
-		}
+	// Linux: relax the blanket root requirement to the commands that
+	// actually need it.
+	if !linuxCommandNeedsRoot(command) {
+		return nil
+	}
+
+	currentUser, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("unable to determine current user: %v", err)
+	}
+	if currentUser.Uid != "0" {
+		return fmt.Errorf("the %q command manages the system service and must be run with root privileges. Please use 'sudo' or run as root", command)
 	}
 	return nil
 }
@@ -169,23 +201,25 @@ func Main() {
 		os.Exit(2)
 	}
 
+	// If first argument is a service command
+	command := os.Args[1]
+
 	// Privilege gate runs before the subcommand dispatch, EXCEPT for
-	// diagnostic commands enumerated in readOnlyCommand. The agent
-	// binary writes logs to /var/log/senhub (Linux) and to
-	// %ProgramData%\SenHub (Windows), reads /etc/senhub-agent/, and
-	// can manage a system service — all of which require elevation.
-	// Diagnostic subcommands (version, config check, config show)
-	// don't touch any of that, so making them require root would only
-	// hurt usability (CI smoke checks, contributor onboarding).
+	// diagnostic commands enumerated in readOnlyCommand. On Linux only
+	// service-lifecycle commands now require root; the daemon (`run`)
+	// runs least-privilege as the dedicated `senhub` user, reaching its
+	// config/state/log paths through ownership and any probe-specific
+	// capability rather than blanket root (issue #223). On Windows
+	// service-affecting commands still require administrator.
+	// Diagnostic subcommands (version, config check, config show) don't
+	// touch the service or its paths, so they stay ungated for usability
+	// (CI smoke checks, contributor onboarding).
 	if !readOnlyCommand(os.Args) {
-		if err := checkPrivileges(); err != nil {
+		if err := checkPrivileges(command); err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}
 	}
-
-	// If first argument is a service command
-	command := os.Args[1]
 
 	// Registered (out-of-core) subcommands take precedence over the
 	// built-in switch. The enterprise build wires its `ibmi` command
