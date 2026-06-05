@@ -40,17 +40,25 @@ import (
 )
 
 // SNMPTrapProbe is the trap receiver. Event-driven: Collect returns nil
-// and the gosnmp TrapListener pushes records onto the agent log channel
+// and a dedicated UDP read loop pushes records onto the agent log channel
 // as traps arrive.
+//
+// It runs its own net.ListenUDP loop rather than gosnmp's TrapListener:
+// the latter does not receive datagrams on Windows (a plain net.ListenUDP
+// socket does), so we own the socket and only borrow gosnmp's exported
+// UnmarshalTrap to decode each packet. See issue #226 / the Windows
+// runtime-validation finding.
 type SNMPTrapProbe struct {
 	*types.BaseProbe
 	config       receiverConfig
 	moduleLogger *logger.ModuleLogger
 
-	mu       sync.Mutex
-	listener *gosnmp.TrapListener
-	mibs     *snmpmib.Resolver
-	quitOnce sync.Once
+	mu        sync.Mutex
+	conn      *net.UDPConn
+	params    *gosnmp.GoSNMP
+	mibs      *snmpmib.Resolver
+	quitOnce  sync.Once
+	firstTrap sync.Once
 }
 
 // NewSNMPTrapProbe constructs the probe. Config errors (bad version,
@@ -92,9 +100,11 @@ func (p *SNMPTrapProbe) GetInterval() time.Duration { return 5 * time.Minute }
 // the log channel as they come.
 func (p *SNMPTrapProbe) Collect() ([]data_store.DataPoint, error) { return nil, nil }
 
-// OnStart opens the trap listener and starts serving. A bind failure
+// OnStart opens the UDP socket and starts the read loop. A bind failure
 // (e.g. port 162 without privileges, or address already in use) is
-// returned so the framework marks the probe unhealthy.
+// returned synchronously so the framework marks the probe unhealthy —
+// net.ListenUDP opens the socket before returning, so there is no
+// readiness race to guard against.
 func (p *SNMPTrapProbe) OnStart(quitChannel chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("bind_address", p.config.BindAddress).
@@ -106,36 +116,28 @@ func (p *SNMPTrapProbe) OnStart(quitChannel chan struct{}) error {
 	// OIDs resolve to names. Safe with no paths (disabled resolver).
 	p.mibs = snmpmib.Load(p.config.MibPaths, p.moduleLogger)
 
-	tl := gosnmp.NewTrapListener()
-	tl.OnNewTrap = p.handleTrap
 	params, err := p.buildParams()
 	if err != nil {
 		return err
 	}
-	tl.Params = params
+	p.params = params
+
+	udpAddr, err := net.ResolveUDPAddr("udp", p.config.BindAddress)
+	if err != nil {
+		return fmt.Errorf("snmp_trap: resolve %s: %w", p.config.BindAddress, err)
+	}
+	conn, err := net.ListenUDP("udp", udpAddr)
+	if err != nil {
+		return fmt.Errorf("snmp_trap: listen on %s: %w", p.config.BindAddress, err)
+	}
 
 	p.mu.Lock()
-	p.listener = tl
+	p.conn = conn
 	p.mu.Unlock()
 
-	errCh := make(chan error, 1)
-	go func() {
-		if listenErr := tl.Listen(p.config.BindAddress); listenErr != nil {
-			errCh <- listenErr
-		}
-	}()
+	p.moduleLogger.Info().Str("bind_address", p.config.BindAddress).Msg("SNMP trap receiver listening")
 
-	// Surface a bind error synchronously: Listen returns it fast on
-	// failure, and signals Listening() once the socket is open.
-	select {
-	case <-tl.Listening():
-		p.moduleLogger.Info().Str("bind_address", p.config.BindAddress).Msg("SNMP trap receiver listening")
-	case err := <-errCh:
-		return fmt.Errorf("snmp_trap: listen on %s: %w", p.config.BindAddress, err)
-	case <-time.After(2 * time.Second):
-		p.moduleLogger.Warn().Str("bind_address", p.config.BindAddress).
-			Msg("snmp_trap listener readiness not confirmed within 2s; assuming up")
-	}
+	go p.serve(conn)
 
 	go func() {
 		<-quitChannel
@@ -148,6 +150,43 @@ func (p *SNMPTrapProbe) OnStart(quitChannel chan struct{}) error {
 	return nil
 }
 
+// serve is the UDP read loop. It blocks on ReadFromUDP, decodes each
+// datagram with gosnmp's UnmarshalTrap, and hands valid packets to
+// handleTrap. A read error after the socket has been closed (nil conn)
+// ends the loop cleanly; any other read or decode error is logged at
+// debug and the loop continues — a malformed packet must not take the
+// receiver down.
+func (p *SNMPTrapProbe) serve(conn *net.UDPConn) {
+	buf := make([]byte, 4096)
+	for {
+		n, remote, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			p.mu.Lock()
+			closed := p.conn == nil
+			p.mu.Unlock()
+			if closed {
+				return
+			}
+			p.moduleLogger.Debug().Err(err).Msg("snmp_trap: UDP read error")
+			continue
+		}
+
+		// Copy out: UnmarshalTrap may retain slices, and buf is reused on
+		// the next read.
+		msg := make([]byte, n)
+		copy(msg, buf[:n])
+
+		trap, err := p.params.UnmarshalTrap(msg, false)
+		if err != nil {
+			p.moduleLogger.Debug().Err(err).
+				Str("source_ip", remote.IP.String()).
+				Msg("snmp_trap: failed to decode datagram")
+			continue
+		}
+		p.handleTrap(trap, remote)
+	}
+}
+
 // OnShutdown closes the listener.
 func (p *SNMPTrapProbe) OnShutdown(_ context.Context) error {
 	p.closeListener()
@@ -156,17 +195,17 @@ func (p *SNMPTrapProbe) OnShutdown(_ context.Context) error {
 
 func (p *SNMPTrapProbe) closeListener() {
 	p.mu.Lock()
-	tl := p.listener
-	p.listener = nil
+	conn := p.conn
+	p.conn = nil
 	p.mu.Unlock()
-	if tl != nil {
-		tl.Close()
+	if conn != nil {
+		conn.Close()
 	}
 }
 
-// handleTrap is the gosnmp callback: decode the packet into a LogRecord
-// and publish it. Must not retain references into s/u (gosnmp reuses
-// them) — packetToLogRecord copies out everything it needs.
+// handleTrap turns a decoded packet into a LogRecord and publishes it.
+// Called serially from serve. Must not retain references into s/u —
+// packetToLogRecord copies out everything it needs.
 func (p *SNMPTrapProbe) handleTrap(s *gosnmp.SnmpPacket, u *net.UDPAddr) {
 	sourceIP := ""
 	if u != nil {
@@ -174,6 +213,18 @@ func (p *SNMPTrapProbe) handleTrap(s *gosnmp.SnmpPacket, u *net.UDPAddr) {
 	}
 	rec := packetToLogRecord(s, sourceIP, p.GetName(), p.mibs)
 	agentstate.PublishLog(rec)
+	// The trap itself is the output (an OTel log record); per-trap logging
+	// stays at debug to avoid duplicating a high-volume stream. Surface the
+	// FIRST trap at info, though, so an operator gets a one-line "the
+	// receiver is actually getting traps" confirmation without enabling
+	// debug.
+	p.firstTrap.Do(func() {
+		p.moduleLogger.Info().
+			Str("source_ip", sourceIP).
+			Str("trap_oid", rec.Attributes["trap_oid"]).
+			Str("trap_name", rec.Attributes["trap_name"]).
+			Msg("First SNMP trap received (receiver is working)")
+	})
 	p.moduleLogger.Debug().
 		Str("source_ip", sourceIP).
 		Str("trap_oid", rec.Attributes["trap_oid"]).
