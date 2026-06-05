@@ -45,6 +45,7 @@ func buildPlan(cfg *config) (scalars, walks []oidMapping) {
 			Kind:       c.Kind,
 			Walk:       c.IndexLabel != "",
 			IndexLabel: c.IndexLabel,
+			Dynamic:    true,
 		})
 	}
 	return scalars, walks
@@ -77,7 +78,7 @@ func collect(client snmpClient, cfg *config, instance string, now time.Time, log
 					continue
 				}
 				if m, ok := byOID[vb.OID]; ok {
-					points = append(points, newPoint(m.Metric, vb.Value, now, baseTags(instance, m.Metric)))
+					points = append(points, newPoint(m, vb.Value, now, instance, nil))
 				}
 			}
 		}
@@ -99,29 +100,78 @@ func collect(client snmpClient, cfg *config, instance string, now time.Time, log
 			if index == "" || index == vb.OID {
 				continue
 			}
-			t := baseTags(instance, m.Metric)
+			var extra []tags.Tag
 			if m.IndexLabel != "" {
-				t = append(t, tags.Tag{Key: m.IndexLabel, Value: index})
+				extra = append(extra, tags.Tag{Key: m.IndexLabel, Value: index})
 			}
-			points = append(points, newPoint(m.Metric, vb.Value, now, t))
+			points = append(points, newPoint(m, vb.Value, now, instance, extra))
 		}
 	}
 
 	return points
 }
 
-func newPoint(name string, value float64, now time.Time, t []tags.Tag) data_store.DataPoint {
+func newPoint(m oidMapping, value float64, now time.Time, instance string, extra []tags.Tag) data_store.DataPoint {
+	t := baseTags(instance, m)
+	t = append(t, extra...)
 	return data_store.DataPoint{
-		Name:      name,
+		Name:      metricName(m),
 		Timestamp: now,
 		Value:     float32(value),
 		Tags:      t,
 	}
 }
 
-func baseTags(instance, metric string) []tags.Tag {
-	return []tags.Tag{
-		{Key: "instance", Value: instance},
-		{Key: "metric_type", Value: familyFor(metric)},
+// metricName is the datapoint name emitted for a mapping. Built-in module
+// metrics keep their internal name (resolved via the transformer YAML).
+// Operator custom mappings are emitted under a canonical senhub.snmp.*
+// OTel name so the mapper passes them through deterministically (#207).
+func metricName(m oidMapping) string {
+	if m.Dynamic {
+		return dynamicOtelName(m.Metric)
 	}
+	return m.Metric
+}
+
+// dynamicOtelName derives the canonical OTel name for an operator custom
+// mapping. The senhub.snmp.* namespace keeps long-tail SNMP objects in a
+// deterministic, non-colliding space (SNMP-OTEL-MAPPING.md, Lot 1b). A
+// name the operator already namespaced under senhub.* keeps its prefix.
+// The result is sanitised to OTel-valid characters so a sloppy config
+// value can't produce an unexportable Prometheus/OTLP name.
+func dynamicOtelName(metric string) string {
+	if strings.HasPrefix(metric, "senhub.") {
+		return sanitizeOtelName(metric)
+	}
+	return "senhub.snmp." + sanitizeOtelName(metric)
+}
+
+// sanitizeOtelName replaces any character outside the OTel metric-name set
+// (letters, digits, dot, underscore) with an underscore. Dots are kept so
+// the hierarchical namespace survives.
+func sanitizeOtelName(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	return b.String()
+}
+
+func baseTags(instance string, m oidMapping) []tags.Tag {
+	t := []tags.Tag{
+		{Key: "instance", Value: instance},
+		{Key: "metric_type", Value: familyFor(m.Metric)},
+	}
+	// Dynamic metrics have no transformer YAML row; carry the OTel type so
+	// the mapper passes them through with the right counter/gauge semantics.
+	if m.Dynamic {
+		t = append(t, tags.Tag{Key: "otel_type", Value: string(m.Kind)})
+	}
+	return t
 }
