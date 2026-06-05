@@ -102,10 +102,10 @@ infrastructure (`snmpmib`) so other SNMP probes can adopt it.
 - **SNMPv3**: wired best-effort. The receiver carries a single USM
   identity (the first configured user) and upstream gosnmp flags v3 trap
   handling as not fully reliable. **v2c is the solid path.**
-- **Informs**: received and logged like traps, but **not yet
-  acknowledged** — a sender that uses InformRequest will retransmit and
-  produce duplicate records until it gives up. Plain traps (the common
-  case) are unaffected. Tracked in
-  [#228](https://github.com/senhub-io/senhub-agent/issues/228).
+- **Informs**: v2c informs are acknowledged (the receiver replies with
+  the matching `GetResponse`), so a sender stops after one send and no
+  duplicate records are produced. v3 informs are logged but **not**
+  acknowledged — their scoped PDU may be encrypted — so a v3 inform
+  sender may retransmit. v2c is the solid path.
 - Malformed packets do not crash the receiver — they are logged at debug
   and the loop continues.

@@ -136,6 +136,100 @@ func packetToLogRecord(s *gosnmp.SnmpPacket, sourceIP, probeName string, mibs *s
 	}
 }
 
+// ASN.1 BER identifier octets used to walk an SNMP message far enough
+// to locate the PDU type tag.
+const (
+	asnSequence      = 0x30 // outer message + varbind-list SEQUENCE
+	asnInteger       = 0x02 // version
+	asnOctetString   = 0x04 // community
+	pduInformRequest = 0xa6
+	pduGetResponse   = 0xa2
+)
+
+// asn1Len reads a BER length at b[i] (i points at the first length
+// octet). It returns the length value and the index just past the
+// length octets. Only definite short/long form up to 4 bytes is
+// accepted — SNMP messages never use indefinite form. ok is false on
+// truncated or unsupported input.
+func asn1Len(b []byte, i int) (length, next int, ok bool) {
+	if i >= len(b) {
+		return 0, 0, false
+	}
+	n := int(b[i])
+	if n < 0x80 {
+		return n, i + 1, true
+	}
+	numBytes := n & 0x7f
+	if numBytes == 0 || numBytes > 4 {
+		return 0, 0, false
+	}
+	i++
+	if i+numBytes > len(b) {
+		return 0, 0, false
+	}
+	val := 0
+	for k := 0; k < numBytes; k++ {
+		val = val<<8 | int(b[i+k])
+	}
+	return val, i + numBytes, true
+}
+
+// buildInformAck turns a received v2c InformRequest datagram into its
+// GetResponse acknowledgement. An inform and its ack are identical on
+// the wire except for the PDU type tag (0xa6 -> 0xa2): the request-id,
+// community, version, varbinds and every length octet are preserved,
+// and error-status / error-index are already zero in a request. So we
+// walk the outer SEQUENCE { version, community, PDU } to find the PDU
+// tag and flip just that one byte in a copy — no fragile re-encoding of
+// arbitrary varbind values.
+//
+// Returns ok=false (caller sends no ack) for anything that is not a
+// well-formed v2c inform. v3 informs are not acked: the scoped PDU may
+// be encrypted, and v3 trap handling is best-effort.
+func buildInformAck(raw []byte) ([]byte, bool) {
+	// Outer message SEQUENCE.
+	if len(raw) < 2 || raw[0] != asnSequence {
+		return nil, false
+	}
+	_, pos, ok := asn1Len(raw, 1)
+	if !ok {
+		return nil, false
+	}
+
+	// version INTEGER — value 1 identifies v2c.
+	if pos >= len(raw) || raw[pos] != asnInteger {
+		return nil, false
+	}
+	vLen, vPos, ok := asn1Len(raw, pos+1)
+	if !ok || vLen != 1 || vPos+vLen > len(raw) {
+		return nil, false
+	}
+	if raw[vPos] != 0x01 {
+		return nil, false // not v2c
+	}
+	pos = vPos + vLen
+
+	// community OCTET STRING — skip its value.
+	if pos >= len(raw) || raw[pos] != asnOctetString {
+		return nil, false
+	}
+	cLen, cPos, ok := asn1Len(raw, pos+1)
+	if !ok || cPos+cLen > len(raw) {
+		return nil, false
+	}
+	pos = cPos + cLen
+
+	// PDU tag — must be an InformRequest to be ackable here.
+	if pos >= len(raw) || raw[pos] != pduInformRequest {
+		return nil, false
+	}
+
+	ack := make([]byte, len(raw))
+	copy(ack, raw)
+	ack[pos] = pduGetResponse
+	return ack, true
+}
+
 func snmpVersionString(v gosnmp.SnmpVersion) string {
 	switch v {
 	case gosnmp.Version1:
