@@ -39,6 +39,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 | **[UNIVERSAL-CONFIGURATION.md](admin-guide/UNIVERSAL-CONFIGURATION.md)** | Configuration validation API | Config testing |
 | **[OTLP-OBSERVABILITY.md](admin-guide/OTLP-OBSERVABILITY.md)** | OTLP self-metrics field reference + alert recipes | Operational monitoring |
 | **[BACKPRESSURE.md](admin-guide/BACKPRESSURE.md)** | OTLP cardinality caps, memory limiter, persistent checkpoint — config & tuning | Operational resilience |
+| **[LEAST-PRIVILEGE.md](admin-guide/LEAST-PRIVILEGE.md)** | Run the daemon as a non-root user with per-probe capabilities | Hardening / compliance |
 | **[windows-msi.md](deployment/windows-msi.md)** | Windows MSI mass deployment (GPO / SCCM / Intune) | Endpoint / VDI rollout |
 
 ## 👨‍💻 Developer Documentation

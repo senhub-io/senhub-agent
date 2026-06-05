@@ -15,6 +15,7 @@ This section contains documentation for system administrators and advanced users
 
 ### System Management
 - **[Logging](./LOGGING.md)** - Configure logging levels, outputs, and log management
+- **[Least-Privilege](./LEAST-PRIVILEGE.md)** - Run the daemon as a non-root user with per-probe capabilities
 
 ## 🎯 Who This Is For
 
