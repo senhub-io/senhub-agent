@@ -11,8 +11,10 @@ multi_instance_labels: ["instance", "if_index"]
 # to gauges. These snmp.* names are fixed and OTel-exported now; promoting
 # the standard IF-MIB objects to system.network.* semconv via the curated
 # dictionary is a later refinement (see SNMP-OTEL-MAPPING.md, Layer 2).
-# Operator custom_mappings emit under their configured names and are
-# resolved via the senhub.snmp.* path tracked in #207. Hardware
+# Operator custom_mappings have no row here (their names cannot be
+# pre-enumerated): the probe emits them under a canonical senhub.snmp.*
+# name carrying their OTel type in the otel_type tag, and the mapper passes
+# them through deterministically (typed pass-through, #207). Hardware
 # (ENTITY-SENSOR/HOST-RESOURCES) and topology (entity rail) are later lots.
 
 metrics:
