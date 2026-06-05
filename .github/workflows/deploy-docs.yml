@@ -4,44 +4,66 @@ on:
   push:
     branches: [dev, master]
     paths:
-      - 'docs/user-guide/content/**'
-      - 'docs/user-guide/hugo.toml'
-      - 'docs/user-guide/assets/**'
-      - 'docs/user-guide/static/**'
-      - 'docs/user-guide/layouts/**'
+      - 'docs/user-guide/**'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout senhub-agent
+      - name: Checkout docs source (senhub-agent)
         uses: actions/checkout@v4
         with:
-          submodules: true
+          path: src
           fetch-depth: 0
 
-      - name: Setup Hugo
-        uses: peaceiris/actions-hugo@v3
+      # The versioned docs are published into the landing repo under /docs via
+      # mike, which operates on a checkout of that repo. DOCS_DEPLOY_TOKEN must
+      # have Contents:write on senhub-io/agent.senhub.io.
+      - name: Checkout deploy target (agent.senhub.io)
+        uses: actions/checkout@v4
         with:
-          hugo-version: 'latest'
-          extended: true
+          repository: senhub-io/agent.senhub.io
+          token: ${{ secrets.DOCS_DEPLOY_TOKEN }}
+          path: site
+          fetch-depth: 0
 
-      - name: Build site
-        working-directory: docs/user-guide
-        run: hugo --minify
-
-      # Publishes into the landing repo under /docs. keep_files: true is
-      # REQUIRED so the hand-authored landing at the repo root is preserved
-      # (actions-gh-pages wipes the publish branch otherwise). destination_dir
-      # scopes the output to the /docs subtree.
-      - name: Deploy to landing repo (/docs)
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          external_repository: senhub-io/agent.senhub.io
-          personal_token: ${{ secrets.DOCS_DEPLOY_TOKEN }}
-          publish_dir: docs/user-guide/public
-          publish_branch: main
-          destination_dir: docs
-          keep_files: true
+          python-version: '3.12'
+
+      - name: Install MkDocs Material + mike (pinned)
+        run: pip install "mkdocs-material==9.7.*" "mike==2.2.*"
+
+      - name: Configure git identity
+        working-directory: site
+        run: |
+          git config user.name "senhub-io"
+          git config user.email "senhub-io@users.noreply.github.com"
+
+      - name: Pick version line from branch
+        id: ver
+        run: |
+          if [ "${GITHUB_REF_NAME}" = "master" ]; then
+            echo "version=latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Builds from the source repo's mkdocs.yml and publishes the version into
+      # the landing repo's main branch under /docs. mike manages
+      # /docs/<version> + /docs/versions.json and leaves the landing root alone.
+      - name: Deploy with mike
+        working-directory: site
+        run: |
+          mike deploy \
+            --config-file ../src/docs/user-guide/mkdocs.yml \
+            --deploy-prefix docs \
+            --branch main \
+            --push \
+            "${{ steps.ver.outputs.version }}"
