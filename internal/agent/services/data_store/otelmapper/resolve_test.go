@@ -278,6 +278,69 @@ func TestResolve_OTLPIngestPassThrough(t *testing.T) {
 	}
 }
 
+func TestResolve_TypedPassThrough(t *testing.T) {
+	// An snmp_poll dynamic metric: a canonical senhub.snmp.* name with no
+	// transformer row, carrying its OTel type in the otel_type tag. Resolve
+	// must pass it through (not drop it) with the declared counter type.
+	m := CacheMetric{
+		ProbeName:  "core-sw",
+		ProbeType:  "snmp_poll",
+		MetricName: "senhub.snmp.vendor.temperature",
+		Value:      28.5,
+		Tags: map[string]string{
+			"otel_type":   "counter",
+			"metric_type": "snmp",
+			"instance":    "10.0.0.1:161",
+		},
+	}
+	recs, err := Resolve(nil, m, DefaultResolveOptions())
+	if err != nil {
+		t.Fatalf("typed pass-through must not error, got %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(recs))
+	}
+	r := recs[0]
+	if r.Name != "senhub.snmp.vendor.temperature" {
+		t.Errorf("name=%q, want canonical name verbatim", r.Name)
+	}
+	if r.Type != "counter" {
+		t.Errorf("type=%q, want counter (from otel_type tag)", r.Type)
+	}
+	if !floatApprox(r.Value, 28.5) {
+		t.Errorf("value=%v, want 28.5 (no conversion)", r.Value)
+	}
+	if r.Attributes["probe_name"] != "core-sw" || r.Attributes["probe_type"] != "snmp_poll" {
+		t.Errorf("systematic attrs missing: %v", r.Attributes)
+	}
+	if r.Attributes["instance"] != "10.0.0.1:161" {
+		t.Errorf("contextual tag not propagated: %v", r.Attributes)
+	}
+	if _, leaked := r.Attributes["otel_type"]; leaked {
+		t.Errorf("otel_type marker must not leak as an attribute: %v", r.Attributes)
+	}
+	if _, leaked := r.Attributes["metric_type"]; leaked {
+		t.Errorf("metric_type marker must not leak as an attribute: %v", r.Attributes)
+	}
+}
+
+func TestResolve_TypedPassThroughUnknownTypeFallsBackToGauge(t *testing.T) {
+	m := CacheMetric{
+		ProbeName:  "core-sw",
+		ProbeType:  "snmp_poll",
+		MetricName: "senhub.snmp.vendor.thing",
+		Value:      1,
+		Tags:       map[string]string{"otel_type": "bogus"},
+	}
+	recs, err := Resolve(nil, m, DefaultResolveOptions())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if recs[0].Type != "gauge" {
+		t.Errorf("type=%q, want gauge fallback for unrecognised otel_type", recs[0].Type)
+	}
+}
+
 func TestResolve_OTLPIngestExcludesTagsWhenDisabled(t *testing.T) {
 	m := CacheMetric{
 		ProbeName:  "edge_in",

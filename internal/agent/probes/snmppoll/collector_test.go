@@ -111,6 +111,11 @@ func TestCollect_ScalarsAndWalks(t *testing.T) {
 	if tagVal(up, "metric_type") != "system" {
 		t.Errorf("sys.uptime metric_type = %q, want system", tagVal(up, "metric_type"))
 	}
+	// Built-in metrics resolve via the YAML, so they must NOT carry the
+	// typed-pass-through marker.
+	if tagVal(up, "otel_type") != "" {
+		t.Errorf("built-in sys.uptime must not carry otel_type, got %q", tagVal(up, "otel_type"))
+	}
 
 	fans := 0
 	for _, p := range points {
@@ -126,6 +131,55 @@ func TestCollect_ScalarsAndWalks(t *testing.T) {
 	}
 	if fans != 2 {
 		t.Errorf("expected 2 fan points (non-numeric skipped), got %d", fans)
+	}
+}
+
+func TestCollect_DynamicCustomMappingCanonicalName(t *testing.T) {
+	// A custom mapping whose name is not yet namespaced gets the canonical
+	// senhub.snmp.* prefix and an otel_type tag carrying its kind, so the
+	// mapper can pass it through to OTLP/Prometheus (#207).
+	cfg := &config{
+		Custom: []customMapping{
+			{OID: "1.3.6.1.4.1.9999.1", Metric: "vendor.temperature", Kind: kindGauge},
+			{OID: "1.3.6.1.4.1.9999.2", Metric: "vendor.bytes", Kind: kindCounter},
+		},
+	}
+	fc := &fakeClient{
+		getResult: []snmpVarBind{
+			{OID: "1.3.6.1.4.1.9999.1.0", Value: 28, IsNumeric: true},
+			{OID: "1.3.6.1.4.1.9999.2.0", Value: 1000, IsNumeric: true},
+		},
+	}
+
+	points := collect(fc, cfg, "10.0.0.1:161", time.Now(), testLogger(t))
+
+	temp, ok := find(points, "senhub.snmp.vendor.temperature")
+	if !ok {
+		t.Fatalf("dynamic custom metric not emitted under canonical name; points=%+v", points)
+	}
+	if tagVal(temp, "otel_type") != "gauge" {
+		t.Errorf("otel_type = %q, want gauge", tagVal(temp, "otel_type"))
+	}
+	bytesP, ok := find(points, "senhub.snmp.vendor.bytes")
+	if !ok {
+		t.Fatal("counter custom metric not emitted under canonical name")
+	}
+	if tagVal(bytesP, "otel_type") != "counter" {
+		t.Errorf("otel_type = %q, want counter", tagVal(bytesP, "otel_type"))
+	}
+}
+
+func TestDynamicOtelName(t *testing.T) {
+	cases := map[string]string{
+		"vendor.temperature": "senhub.snmp.vendor.temperature",
+		"senhub.snmp.fanRpm": "senhub.snmp.fanRpm",      // already namespaced, kept
+		"weird name!":        "senhub.snmp.weird_name_", // sanitised
+		"a/b":                "senhub.snmp.a_b",
+	}
+	for in, want := range cases {
+		if got := dynamicOtelName(in); got != want {
+			t.Errorf("dynamicOtelName(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
