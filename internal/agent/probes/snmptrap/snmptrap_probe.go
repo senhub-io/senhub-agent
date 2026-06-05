@@ -184,6 +184,42 @@ func (p *SNMPTrapProbe) serve(conn *net.UDPConn) {
 			continue
 		}
 		p.handleTrap(trap, remote)
+
+		// An InformRequest is a confirmed notification: the sender keeps
+		// retransmitting (producing duplicate records) until it receives
+		// a GetResponse. Acknowledge v2c informs from the raw datagram.
+		if trap.PDUType == gosnmp.InformRequest {
+			p.ackInform(trap, msg, remote)
+		}
+	}
+}
+
+// ackInform replies to a v2c InformRequest with its GetResponse so the
+// sender stops retransmitting. v3 informs are not acked (the scoped PDU
+// may be encrypted; v3 is best-effort) — they are still logged, but a
+// v3 inform sender may retransmit.
+func (p *SNMPTrapProbe) ackInform(trap *gosnmp.SnmpPacket, raw []byte, remote *net.UDPAddr) {
+	if trap.Version != gosnmp.Version2c {
+		p.moduleLogger.Debug().Str("source_ip", remote.IP.String()).
+			Msg("snmp_trap: inform acknowledgement only supported for v2c; sender may retransmit")
+		return
+	}
+	ack, ok := buildInformAck(raw)
+	if !ok {
+		p.moduleLogger.Debug().Str("source_ip", remote.IP.String()).
+			Msg("snmp_trap: could not build inform ack; sender may retransmit")
+		return
+	}
+
+	p.mu.Lock()
+	conn := p.conn
+	p.mu.Unlock()
+	if conn == nil {
+		return
+	}
+	if _, err := conn.WriteToUDP(ack, remote); err != nil {
+		p.moduleLogger.Debug().Err(err).Str("source_ip", remote.IP.String()).
+			Msg("snmp_trap: failed to send inform ack")
 	}
 }
 
