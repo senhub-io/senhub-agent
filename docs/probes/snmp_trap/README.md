@@ -99,8 +99,13 @@ infrastructure (`snmpmib`) so other SNMP probes can adopt it.
 
 ## Notes / limitations
 
-- **SNMPv3**: wired best-effort. gosnmp's trap listener carries a single
-  USM identity (the first configured user) and upstream flags v3 trap
+- **SNMPv3**: wired best-effort. The receiver carries a single USM
+  identity (the first configured user) and upstream gosnmp flags v3 trap
   handling as not fully reliable. **v2c is the solid path.**
-- Malformed packets do not crash the receiver — a record is still emitted
-  (empty `trap_oid`, `trap_name=unknown`).
+- **Informs**: received and logged like traps, but **not yet
+  acknowledged** — a sender that uses InformRequest will retransmit and
+  produce duplicate records until it gives up. Plain traps (the common
+  case) are unaffected. Tracked in
+  [#228](https://github.com/senhub-io/senhub-agent/issues/228).
+- Malformed packets do not crash the receiver — they are logged at debug
+  and the loop continues.
