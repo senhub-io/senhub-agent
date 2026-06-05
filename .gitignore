@@ -138,3 +138,4 @@ docs/user-guide/resources/
 # alternative to `java -cp jt400.jar:. Jt400Runner`).
 internal/agent/probes/ibmi/bridge/jt400runner
 
+docs/user-guide/site/
