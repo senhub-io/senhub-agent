@@ -25,7 +25,7 @@ func TestBuildObservation(t *testing.T) {
 			SysName:          "neigh",
 		}},
 	}
-	obs := buildObservation(self, topo, nil, nil, nil)
+	obs := buildObservation(self, topo, nil, nil)
 
 	if len(obs.Entities) != 2 {
 		t.Fatalf("want 2 entities, got %d", len(obs.Entities))
@@ -51,14 +51,14 @@ func TestBuildObservation(t *testing.T) {
 }
 
 func TestBuildObservation_NoNeighbors(t *testing.T) {
-	obs := buildObservation(deviceIdentity{Serial: "X", VendorPEN: "9"}, lldpTopology{}, nil, nil, nil)
+	obs := buildObservation(deviceIdentity{Serial: "X", VendorPEN: "9"}, lldpTopology{}, nil, nil)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-only expected, got %+v", obs)
 	}
 }
 
 func TestBuildObservation_NoIdentity(t *testing.T) {
-	obs := buildObservation(deviceIdentity{}, lldpTopology{}, nil, nil, nil)
+	obs := buildObservation(deviceIdentity{}, lldpTopology{}, nil, nil)
 	if len(obs.Entities) != 0 || len(obs.Relations) != 0 {
 		t.Errorf("expected nothing when device unidentifiable, got %+v", obs)
 	}
@@ -69,43 +69,59 @@ func TestBuildObservation_SkipsSelfLoop(t *testing.T) {
 	topo := lldpTopology{Neighbors: []lldpNeighbor{
 		{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0x01, 0x02}},
 	}}
-	obs := buildObservation(self, topo, nil, nil, nil)
+	obs := buildObservation(self, topo, nil, nil)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-loop should be skipped, got %+v", obs)
 	}
 }
 
-func TestBuildObservation_RoutesVia(t *testing.T) {
+func TestBuildObservation_NetworkRoute(t *testing.T) {
 	self := deviceIdentity{Serial: "S1", VendorPEN: "9", MgmtIP: "10.0.0.1"}
 	routes := []routeRow{
-		{NextHop: "10.0.0.254", Type: routeTypeRemote, Metric: 1}, // gateway
-		{NextHop: "10.0.0.254", Type: routeTypeRemote, Metric: 1}, // same next-hop → deduped
-		{NextHop: "10.0.0.2", Type: routeTypeRemote},              // another next-hop
-		{NextHop: "0.0.0.0", Type: routeTypeRemote},               // unspecified → skip
-		{NextHop: "10.0.0.1", Type: routeTypeRemote},              // == self mgmt → skip
-		{NextHop: "10.0.0.99", Type: 3},                           // not remote → skip
+		{Destination: "10.20.0.0/16", NextHop: "10.0.0.254", Type: routeTypeRemote, Metric: 10},
+		{Destination: "10.20.0.0/16", NextHop: "10.0.0.2", Type: routeTypeRemote}, // same dest (ECMP) → keep first
+		{Destination: "0.0.0.0/0", NextHop: "10.0.0.254", Type: routeTypeRemote},  // default route
+		{Destination: "10.30.0.0/16", NextHop: "0.0.0.0", Type: routeTypeRemote},  // unspecified next-hop → skip
+		{Destination: "10.40.0.0/16", NextHop: "10.0.0.1", Type: routeTypeRemote}, // == self mgmt → skip
+		{Destination: "10.50.0.0/16", NextHop: "10.0.0.9", Type: 3},               // not remote → skip
+		{Destination: "", NextHop: "10.0.0.7", Type: routeTypeRemote},             // unparseable index → skip
 	}
-	obs := buildObservation(self, lldpTopology{}, routes, nil, nil)
+	obs := buildObservation(self, lldpTopology{}, routes, nil)
 
-	// self + 2 distinct next-hop devices
+	// self device + 2 distinct route destinations (10.20.0.0/16, 0.0.0.0/0)
 	if len(obs.Entities) != 3 {
 		t.Fatalf("entities = %d (%+v)", len(obs.Entities), obs.Entities)
 	}
-	via := 0
-	for _, r := range obs.Relations {
-		if r.Type != relRoutesVia {
+	var routeEnts, hasRoute int
+	for _, e := range obs.Entities {
+		if e.Type != entityTypeNetworkRoute {
 			continue
 		}
-		via++
-		if r.FromID[idKeyNetworkDevice] != "serial:9:S1" {
-			t.Errorf("routes_via from = %v", r.FromID)
+		routeEnts++
+		if e.ID[idKeyNetworkDevice] != "serial:9:S1" {
+			t.Errorf("route owner = %v, want serial:9:S1", e.ID[idKeyNetworkDevice])
 		}
-		if r.ToID[idKeyNetworkDevice] == "mgmt:10.0.0.254" && r.Attributes["destinations"] != int64(2) {
-			t.Errorf("expected 2 destinations via gateway, got %v", r.Attributes["destinations"])
+		if e.ID[idKeyRouteDestination] == "10.20.0.0/16" {
+			if e.Attributes[attrNextHopIP] != "10.0.0.254" || e.Attributes[attrRouteMetric] != int64(10) {
+				t.Errorf("route 10.20.0.0/16 attrs = %+v", e.Attributes)
+			}
 		}
 	}
-	if via != 2 {
-		t.Fatalf("expected 2 routes_via edges, got %d", via)
+	for _, r := range obs.Relations {
+		if r.Type != relHasRoute {
+			continue
+		}
+		hasRoute++
+		if r.FromType != entityTypeNetworkDevice || r.FromID[idKeyNetworkDevice] != "serial:9:S1" ||
+			r.ToType != entityTypeNetworkRoute {
+			t.Errorf("has_route wrong: %+v", r)
+		}
+		if len(r.Attributes) != 0 {
+			t.Errorf("has_route should be a bare edge, got attrs %v", r.Attributes)
+		}
+	}
+	if routeEnts != 2 || hasRoute != 2 {
+		t.Fatalf("routeEnts=%d hasRoute=%d, want 2/2", routeEnts, hasRoute)
 	}
 }
 
@@ -119,7 +135,7 @@ func TestBuildObservation_ForwardsTo(t *testing.T) {
 		{MAC: "aa:bb:cc:dd:ee:ff", BridgePort: "5"}, // known device (LLDP neighbour) → forwards_to
 		{MAC: "11:22:33:44:55:66", BridgePort: "9"}, // unknown (host) → filtered out
 	}
-	obs := buildObservation(self, topo, nil, fdb, nil)
+	obs := buildObservation(self, topo, nil, fdb)
 
 	fwd := 0
 	for _, r := range obs.Relations {
@@ -133,37 +149,6 @@ func TestBuildObservation_ForwardsTo(t *testing.T) {
 	}
 	if fwd != 1 {
 		t.Fatalf("expected 1 forwards_to (host MAC filtered), got %d", fwd)
-	}
-}
-
-func TestBuildObservation_ARPConvergesNextHop(t *testing.T) {
-	neighMAC := []byte{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
-	self := deviceIdentity{Serial: "S1", VendorPEN: "9", MgmtIP: "10.0.0.1"}
-	topo := lldpTopology{Neighbors: []lldpNeighbor{
-		{ChassisIdSubtype: subtypeMacAddress, ChassisId: neighMAC, SysName: "gw"},
-	}}
-	routes := []routeRow{
-		{NextHop: "10.0.0.254", Type: routeTypeRemote}, // ARP-resolvable to the device
-		{NextHop: "10.0.0.99", Type: routeTypeRemote},  // ARP MAC is a host → stays mgmt:
-	}
-	arp := []arpEntry{
-		{IfIndex: "1", IP: "10.0.0.254", MAC: "aa:bb:cc:dd:ee:ff"}, // confirmed device
-		{IfIndex: "1", IP: "10.0.0.99", MAC: "11:22:33:44:55:66"},  // host MAC, not a device
-	}
-	obs := buildObservation(self, topo, routes, nil, arp)
-
-	via := map[string]bool{}
-	for _, r := range obs.Relations {
-		if r.Type == relRoutesVia {
-			id, _ := r.ToID[idKeyNetworkDevice].(string)
-			via[id] = true
-		}
-	}
-	if !via["mac:aa:bb:cc:dd:ee:ff"] {
-		t.Error("next-hop 10.0.0.254 should converge to mac:aa:bb:cc:dd:ee:ff")
-	}
-	if !via["mgmt:10.0.0.99"] {
-		t.Error("next-hop 10.0.0.99 should stay provisional mgmt: (MAC not a confirmed device)")
 	}
 }
 

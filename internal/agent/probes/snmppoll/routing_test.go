@@ -21,6 +21,25 @@ func TestParseRoutes(t *testing.T) {
 	if r.NextHop != "10.0.0.254" || r.Type != 4 || r.IfIndex != "2" || r.Metric != 1 {
 		t.Errorf("row = %+v", r)
 	}
+	if r.Destination != "10.0.0.0/24" {
+		t.Errorf("destination = %q, want 10.0.0.0/24 (parsed from the entry index)", r.Destination)
+	}
+}
+
+func TestRouteDestFromIndex(t *testing.T) {
+	cases := map[string]string{
+		// dest(4).mask(4).tos(1).nextHop(4)
+		"10.0.0.0.255.255.255.0.0.10.0.0.254": "10.0.0.0/24",
+		"0.0.0.0.0.0.0.0.0.10.0.0.1":          "0.0.0.0/0", // default route
+		"10.20.0.0.255.255.0.0.0.10.0.0.254":  "10.20.0.0/16",
+		"10.0.0.0.255.0.255.0.0.10.0.0.1":     "", // non-canonical mask → reject
+		"10.0.0.0.255.255.255.0":              "", // short index → reject
+	}
+	for idx, want := range cases {
+		if got := routeDestFromIndex(idx); got != want {
+			t.Errorf("routeDestFromIndex(%q) = %q, want %q", idx, got, want)
+		}
+	}
 }
 
 func TestUsableNextHop(t *testing.T) {
