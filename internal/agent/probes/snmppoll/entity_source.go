@@ -9,25 +9,31 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-// Entity rail (#185, #156) — the polled device + its LLDP neighbours as
-// network.device entities, and its routing table as network.route entities
-// the device owns (has_route, next hop a scalar next_hop.ip — topology-as-
-// entities, ADR 0022, frozen with Toise #222/#87). Wire shapes
-// (network.device.id, route.destination) are the Toise-frozen contract — see
-// SNMP-OTEL-MAPPING.md Layer 2′; id-format decisions live in resolveDeviceID
-// (lldp.go). The link-layer edges (adjacent_to / forwards_to) remain in the
-// legacy device-to-device form for now; their connected_to migration follows.
+// Entity rail (#185, #156) — the polled device as a network.device entity, its
+// IF-MIB ports as network.interface entities (has_interface) and its routing
+// table as network.route entities (has_route, next hop a scalar next_hop.ip) —
+// topology-as-entities, ADR 0022, frozen with Toise #222/#87. Wire shapes
+// (network.device.id, interface.name, route.destination) are the Toise-frozen
+// contract — see SNMP-OTEL-MAPPING.md Layer 2′; id-format decisions live in
+// resolveDeviceID (lldp.go). The link-layer edges (adjacent_to / forwards_to)
+// remain in the legacy device-to-device form for now; their connected_to
+// migration between the port entities follows.
 
 const (
-	entityTypeNetworkDevice = "network.device"
-	entityTypeNetworkRoute  = "network.route"
-	idKeyNetworkDevice      = "network.device.id"
-	idKeyRouteDestination   = "route.destination"
-	attrNextHopIP           = "next_hop.ip"
-	attrRouteMetric         = "metric"
-	relAdjacentTo           = "adjacent_to"
-	relHasRoute             = "has_route"
-	relForwardsTo           = "forwards_to"
+	entityTypeNetworkDevice    = "network.device"
+	entityTypeNetworkRoute     = "network.route"
+	entityTypeNetworkInterface = "network.interface"
+	idKeyNetworkDevice         = "network.device.id"
+	idKeyRouteDestination      = "route.destination"
+	idKeyInterfaceName         = "interface.name"
+	attrNextHopIP              = "next_hop.ip"
+	attrRouteMetric            = "metric"
+	attrOperState              = "oper.state"
+	attrSpeed                  = "speed"
+	relAdjacentTo              = "adjacent_to"
+	relHasRoute                = "has_route"
+	relHasInterface            = "has_interface"
+	relForwardsTo              = "forwards_to"
 
 	// Polled-device identity OIDs (dotted, no leading dot).
 	oidEntPhysicalSerialNum = "1.3.6.1.2.1.47.1.1.1.1.11" // ENTITY-MIB (per physical entity)
@@ -113,8 +119,14 @@ func (s *snmpEntitySource) sweep(client snmpClient) entity.Observation {
 			Msg("FDB walk failed; emitting device without forwards_to")
 		fdb = nil
 	}
+	ifaces, err := collectInterfaces(client)
+	if err != nil {
+		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
+			Msg("ifTable walk failed; emitting device without interfaces")
+		ifaces = nil
+	}
 	self := readSelfIdentity(client, s.cfg.Target, topo.Local)
-	return buildObservation(self, topo, routes, fdb)
+	return buildObservation(self, topo, routes, fdb, ifaces)
 }
 
 // readSelfIdentity reads the polled device's identifiers in the Toise-frozen
@@ -206,8 +218,11 @@ func asString(v any) string {
 	return s
 }
 
-// buildObservation maps the polled device, its LLDP neighbours, routing table
-// and bridge FDB to the frozen wire shapes:
+// buildObservation maps the polled device, its interfaces, LLDP neighbours,
+// routing table and bridge FDB to the frozen wire shapes:
+//   - network.interface — one entity per named IF-MIB port the device owns
+//     (has_interface), oper.state / speed descriptive; the port inventory that
+//     anchors connected_to;
 //   - network.route — one entity per distinct destination CIDR the device owns
 //     (has_route), next hop a scalar next_hop.ip; supersedes routes_via, no
 //     next-hop device synthesized (network.address deferred);
@@ -218,7 +233,7 @@ func asString(v any) string {
 //     would flood the graph. Legacy form, pending connected_to.
 //
 // Returns empty when the device cannot be identified (no usable id rung).
-func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, fdb []fdbEntry) entity.Observation {
+func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, fdb []fdbEntry, ifaces []ifaceRow) entity.Observation {
 	selfID := resolveDeviceID(self)
 	if selfID == "" {
 		return entity.Observation{}
@@ -234,6 +249,30 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		obs.Entities = append(obs.Entities, deviceEntity(id, attrs))
 	}
 	addEntity(selfID, selfAttrs(self))
+
+	// network.interface — the device's ports as entities it owns. Bounded by
+	// the device's port count; notPresent and unnamed rows are skipped, and a
+	// duplicate interface.name keeps the first (identity is {device, name}).
+	ifaceSeen := map[string]bool{}
+	for _, ifc := range ifaces {
+		if ifc.Name == "" || ifc.OperStatus == ifOperNotPresent || ifaceSeen[ifc.Name] {
+			continue
+		}
+		ifaceSeen[ifc.Name] = true
+		portID := map[string]any{idKeyNetworkDevice: selfID, idKeyInterfaceName: ifc.Name}
+		attrs := map[string]any{attrOperState: operStateName(ifc.OperStatus)}
+		if ifc.SpeedMbps > 0 {
+			attrs[attrSpeed] = ifc.SpeedMbps * 1_000_000 // Mbit/s → bit/s
+		}
+		obs.Entities = append(obs.Entities, entity.Entity{
+			Type: entityTypeNetworkInterface, ID: portID, Attributes: attrs,
+		})
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     relHasInterface,
+			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
+			ToType: entityTypeNetworkInterface, ToID: portID,
+		})
+	}
 
 	// Confirmed network devices (LLDP neighbour chassis MACs) — gates
 	// forwards_to and the ARP next-hop convergence.
