@@ -61,6 +61,14 @@ type snmpEntitySource struct {
 	mu        sync.Mutex
 	cache     entity.Observation
 	lastSweep time.Time
+	// deviceID + ifNames are the resolved identity of the polled device and its
+	// ifIndex→ifName map, cached from the last sweep so the METRIC collector can
+	// tag SNMP metrics with network.device.id / interface.name — the same
+	// identity as the topology entities, so a backend joins device/interface
+	// metrics to their entities. Replaced wholesale each sweep (never mutated in
+	// place), so a reader holding the returned map sees a stable snapshot.
+	deviceID string
+	ifNames  map[string]string
 }
 
 func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
@@ -79,6 +87,25 @@ func (s *snmpEntitySource) Observe() entity.Observation {
 	return s.cache
 }
 
+// DeviceID returns the resolved network.device.id of the polled device from the
+// last sweep ("" before the first sweep). The metric collector tags every
+// datapoint with it so device metrics join to the network.device entity.
+func (s *snmpEntitySource) DeviceID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.deviceID
+}
+
+// InterfaceNames returns the ifIndex→ifName map from the last sweep (nil before
+// the first sweep). The metric collector resolves an interface metric's
+// if_index to interface.name so per-port metrics join to the network.interface
+// entity. The returned map is a read-only snapshot (replaced, never mutated).
+func (s *snmpEntitySource) InterfaceNames() map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ifNames
+}
+
 // maybeSweep refreshes the cached snapshot when topologyInterval has elapsed,
 // reusing the probe's already-connected client. Called from Collect.
 func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
@@ -89,18 +116,21 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 		return
 	}
 
-	obs := s.sweep(client)
+	obs, deviceID, ifNames := s.sweep(client)
 
 	s.mu.Lock()
 	s.cache = obs
+	s.deviceID = deviceID
+	s.ifNames = ifNames
 	s.lastSweep = now
 	s.mu.Unlock()
 }
 
 // sweep performs the SNMP reads and builds the observation. Best-effort: a
 // failed LLDP walk still yields the polled device itself (identity from
-// serial/engine/sysName, no neighbours).
-func (s *snmpEntitySource) sweep(client snmpClient) entity.Observation {
+// serial/engine/sysName, no neighbours). It also returns the resolved device id
+// and the ifIndex→ifName map for the metric collector's correlation tags.
+func (s *snmpEntitySource) sweep(client snmpClient) (entity.Observation, string, map[string]string) {
 	topo, err := collectLLDP(client)
 	if err != nil {
 		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
@@ -126,7 +156,18 @@ func (s *snmpEntitySource) sweep(client snmpClient) entity.Observation {
 		ifaces = nil
 	}
 	self := readSelfIdentity(client, s.cfg.Target, topo.Local)
-	return buildObservation(self, topo, routes, fdb, ifaces)
+
+	deviceID := resolveDeviceID(self)
+	var ifNames map[string]string
+	if len(ifaces) > 0 {
+		ifNames = make(map[string]string, len(ifaces))
+		for _, ifc := range ifaces {
+			if ifc.Name != "" {
+				ifNames[ifc.Index] = ifc.Name
+			}
+		}
+	}
+	return buildObservation(self, topo, routes, fdb, ifaces), deviceID, ifNames
 }
 
 // readSelfIdentity reads the polled device's identifiers in the Toise-frozen

@@ -50,6 +50,16 @@ The probe therefore has a metric collector (rail 1) and registers an
 `entity.Source` (rail 2). They share the gosnmp client and poll cycle but
 emit on independent rails.
 
+**The two rails are correlated by shared identity.** The entity source resolves
+the device id once per topology sweep and caches it (+ the ifIndex→ifName map);
+the metric collector tags every datapoint with `network.device.id` and, on
+interface metrics, `interface.name` (resolved from `if_index`). So a device's
+interface-traffic metric carries the **same identity** as its
+`network.interface` entity — a backend joins the traffic to the topology node.
+The device id / interface names are empty until the first sweep (the tags are
+omitted, never empty-valued); the sweep runs before `collect` so the metrics of
+the same cycle carry them.
+
 ## The MIB-module registry
 
 To keep the probe extensible across the four classes without rewriting the
