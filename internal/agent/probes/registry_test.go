@@ -42,31 +42,28 @@ func TestGetProbeConstructorForConfig(t *testing.T) {
 			description: "Should return constructor for memory probe",
 		},
 		{
-			name: "Valid probe type - citrix",
+			name: "Valid probe type - network",
 			config: configuration.ProbeConfig{
-				Name: "Production Citrix",
-				Type: "citrix",
+				Name: "Network Monitor",
+				Type: "network",
 				Params: map[string]interface{}{
-					"base_url": "https://director.example.com",
-					"interval": 120,
+					"interval": 30,
 				},
 			},
 			shouldError: false,
-			description: "Should return constructor for Citrix probe",
+			description: "Should return constructor for network probe",
 		},
 		{
-			name: "Valid probe type - redfish",
+			name: "Valid probe type - logicaldisk",
 			config: configuration.ProbeConfig{
-				Name: "Server Hardware",
-				Type: "redfish",
+				Name: "Disk Monitor",
+				Type: "logicaldisk",
 				Params: map[string]interface{}{
-					"endpoint": "https://server-bmc.example.com",
-					"username": "admin",
-					"password": "secret",
+					"interval": 30,
 				},
 			},
 			shouldError: false,
-			description: "Should return constructor for Redfish probe",
+			description: "Should return constructor for logicaldisk probe",
 		},
 		{
 			name: "Invalid probe type",
@@ -214,11 +211,10 @@ func TestGenerateProbeId(t *testing.T) {
 }
 
 func TestProbeRegistry(t *testing.T) {
-	// Test that all expected probes are registered
+	// The open-source build registers only the public, host-local probes
+	// whose source lives in this repository. The paid probes are
+	// registered in the senhub-agent-enterprise module's own tests.
 	expectedProbes := []string{
-		"load_webapp",
-		"ping_webapp",
-		"ping_gateway",
 		"wifi_signal_strength",
 		"memory",
 		"cpu",
@@ -227,13 +223,10 @@ func TestProbeRegistry(t *testing.T) {
 		"syslog",
 		"linux_logs",
 		"event",
-		"redfish",
-		"citrix",
-		"netscaler",
-		"veeam",
-		"mysql",
-		"postgresql",
-		"ibmi",
+		"snmp_poll",
+		"filetail",
+		"otlp_receiver",
+		"snmp_trap",
 	}
 
 	for _, probeName := range expectedProbes {
@@ -343,8 +336,8 @@ func TestGenerateProbeId_UniqueForDifferentConfigs(t *testing.T) {
 		{Name: "cpu-1", Type: "cpu", Params: map[string]interface{}{"interval": 30}},
 		{Name: "cpu-2", Type: "cpu", Params: map[string]interface{}{"interval": 60}},
 		{Name: "memory-1", Type: "memory", Params: map[string]interface{}{"interval": 30}},
-		{Name: "citrix-prod", Type: "citrix", Params: map[string]interface{}{"base_url": "https://prod.example.com"}},
-		{Name: "citrix-dev", Type: "citrix", Params: map[string]interface{}{"base_url": "https://dev.example.com"}},
+		{Name: "network-1", Type: "network", Params: map[string]interface{}{"interval": 30}},
+		{Name: "network-2", Type: "network", Params: map[string]interface{}{"interval": 60}},
 	}
 
 	ids := make(map[string]bool)
