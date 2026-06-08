@@ -23,7 +23,7 @@ func errFirst(errs ...error) error {
 // Fail-closed on parse errors: if either side is unparseable the
 // function returns (false, err) — the alternative (proceed on
 // unparseable input) is exactly what triggered the production
-// downgrade incident on bbcloud.
+// downgrade incident on a Windows production host.
 func shouldUpdateTo(currentStr, expectedStr string) (bool, error) {
 	cur, errCur := version.NewVersion(currentStr)
 	exp, errExp := version.NewVersion(expectedStr)

@@ -236,12 +236,12 @@ push capability.
 - Tests: probe → channel → batch → exporter mock
 
 ### Phase 4 — Live validation
-- Spin up an OTLP receiver on sha901: either vmagent's OTLP gRPC
+- Spin up an OTLP receiver on the operations host: either vmagent's OTLP gRPC
   endpoint, or a fresh otelcol-contrib instance
 - Verify metrics arrive in VictoriaMetrics with the **same names** as
   the Prometheus path — concrete proof of the "no query rewrite"
   promise
-- Verify logs arrive in VictoriaLogs (already running on sha901)
+- Verify logs arrive in VictoriaLogs (already running on the operations host)
 - Same SSH reverse-tunnel pattern as Prometheus Phase 4
 
 ### Phase 5 — Documentation + release notes

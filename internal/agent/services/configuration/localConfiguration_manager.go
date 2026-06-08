@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -85,19 +86,63 @@ func (lc *LocalConfiguration) loadConfiguration() error {
 	return nil
 }
 
-// createDefaultConfiguration creates a default configuration file.
-// Always generates a fresh UUID for the agent key — pre-0.2.0 the
-// caller could pass one in via --authentication-key, but that flag
-// has been removed alongside online mode.
+// createDefaultConfiguration writes a fresh multi-file configuration
+// layout: `agent.yaml` (globals only) next to the configured config
+// path, plus sibling `probes.d/00-host.yaml` (default host probes)
+// and `strategies.d/00-http.yaml` (default HTTP strategy).
+//
+// Pre-0.2.x the install path wrote a monolithic agent-config.yaml
+// with everything inline. The multi-file layout is the supported
+// default from 0.2.x onward — operators can drop fragments into the
+// `.d/` directories without editing the central file. Legacy
+// monolithic configs are still LOADED transparently by loader.go's
+// auto-detection; only the install-time *writer* has switched.
+//
+// The agent key is always freshly generated (UUID v4). Pre-0.2.0
+// the caller could seed it via --authentication-key; that flag was
+// removed alongside online mode.
 func (lc *LocalConfiguration) createDefaultConfiguration() error {
 	agentKey, err := lc.generateOfflineAgentKey()
 	if err != nil {
 		return fmt.Errorf("failed to generate agent key: %w", err)
 	}
 
-	// Create default configuration
-	config := LocalConfigurationData{
-		ConfigVersion: CurrentConfigVersion, // Use current version for new configs
+	configDir := filepath.Dir(lc.configPath)
+	probesDir := filepath.Join(configDir, "probes.d")
+	strategiesDir := filepath.Join(configDir, "strategies.d")
+
+	for _, dir := range []string{configDir, probesDir, strategiesDir} {
+		if err := os.MkdirAll(dir, 0750); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
+	}
+
+	// 1. agent.yaml — globals only.
+	agentYAML, err := lc.generateAgentYAML(agentKey)
+	if err != nil {
+		return fmt.Errorf("failed to generate agent.yaml: %w", err)
+	}
+	if err := os.WriteFile(lc.configPath, agentYAML, 0600); err != nil {
+		return fmt.Errorf("failed to write agent.yaml: %w", err)
+	}
+
+	// 2. probes.d/00-host.yaml — default host probes.
+	probesPath := filepath.Join(probesDir, "00-host.yaml")
+	if err := os.WriteFile(probesPath, []byte(HostProbesFragmentTemplate), 0600); err != nil {
+		return fmt.Errorf("failed to write %s: %w", probesPath, err)
+	}
+
+	// 3. strategies.d/00-http.yaml — default HTTP strategy.
+	httpPath := filepath.Join(strategiesDir, "00-http.yaml")
+	httpYAML := lc.generateHTTPStrategyFragment()
+	if err := os.WriteFile(httpPath, []byte(httpYAML), 0600); err != nil {
+		return fmt.Errorf("failed to write %s: %w", httpPath, err)
+	}
+
+	// Populate the in-memory data so the rest of Start() works without
+	// re-reading the files we just wrote.
+	lc.data = LocalConfigurationData{
+		ConfigVersion: CurrentConfigVersion,
 		Agent: LocalAgentConfig{
 			Key:  agentKey,
 			Mode: "offline",
@@ -107,28 +152,12 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 		AutoUpdate: lc.createDefaultAutoUpdateConfig(),
 		Cache:      lc.createDefaultCacheConfig(),
 	}
+	lc.logger.Info().
+		Str("agent_yaml", lc.configPath).
+		Str("probes_d", probesDir).
+		Str("strategies_d", strategiesDir).
+		Msg("Default multi-file configuration created")
 
-	// Create directory if it doesn't exist
-	configDir := filepath.Dir(lc.configPath)
-	if err := os.MkdirAll(configDir, 0750); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-
-	// Generate YAML with comments
-	yamlData, err := lc.generateConfigYAML(&config)
-	if err != nil {
-		return fmt.Errorf("failed to generate YAML: %w", err)
-	}
-
-	// Write configuration file
-	if err := os.WriteFile(lc.configPath, yamlData, 0600); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
-	}
-
-	lc.data = config
-	lc.logger.Info().Msgf("Default configuration created: %s", lc.configPath)
-
-	// Generate TLS certificates if HTTPS is enabled
 	if lc.args.EnableHttps {
 		if err := lc.generateTLSCertificates(); err != nil {
 			lc.logger.Warn().Err(err).Msg("Failed to generate TLS certificates")
@@ -136,6 +165,71 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 	}
 
 	return nil
+}
+
+// generateAgentYAML renders the globals-only top-level file for a
+// fresh install. The TLS knobs go into the HTTP strategy fragment
+// (generateHTTPStrategyFragment), not here — agent.yaml is strictly
+// globals.
+func (lc *LocalConfiguration) generateAgentYAML(agentKey string) ([]byte, error) {
+	autoUpdate := lc.createDefaultAutoUpdateConfig()
+	cache := lc.createDefaultCacheConfig()
+
+	agentVersion := "unknown"
+	if lc.args != nil && lc.args.Version != "" {
+		agentVersion = lc.args.Version
+	}
+	timestamp := time.Now().Format("2006-01-02 15:04:05 MST")
+
+	out := fmt.Sprintf(AgentYAMLTemplate,
+		CurrentConfigVersion,
+		agentVersion,
+		timestamp,
+		CurrentConfigVersion,
+		agentKey,
+		LicenseDocumentationTemplate,
+		autoUpdate.Enabled,
+		autoUpdate.IncludeBeta,
+		autoUpdate.URL,
+		cache.RetentionMinutes,
+	)
+	return []byte(out), nil
+}
+
+// generateHTTPStrategyFragment renders the default HTTP strategy
+// fragment (strategies.d/00-http.yaml). When --enable-https is set,
+// the strategy gets a TLS block + flips to the HTTPS port and binds
+// to 0.0.0.0; otherwise it stays on 127.0.0.1:8080 with PRTG / Web /
+// Nagios endpoints.
+func (lc *LocalConfiguration) generateHTTPStrategyFragment() string {
+	port := 8080
+	bindAddress := "127.0.0.1"
+	tlsSection := ""
+
+	if lc.args != nil && lc.args.EnableHttps {
+		port = lc.args.HttpsPort
+		bindAddress = "0.0.0.0"
+
+		// HTTPS certificates are written under the working directory
+		// by generateTLSCertificates; reference them as absolute paths
+		// here so the strategy keeps working when the agent is
+		// invoked from a different cwd.
+		cwd, _ := os.Getwd()
+		certPath := filepath.Join(cwd, "certs", "agent-cert.pem")
+		keyPath := filepath.Join(cwd, "certs", "agent-key.pem")
+		// Escape backslashes for Windows paths.
+		certPathYAML := strings.ReplaceAll(certPath, "\\", "\\\\")
+		keyPathYAML := strings.ReplaceAll(keyPath, "\\", "\\\\")
+
+		tlsSection = "  tls:\n" +
+			"    enabled: true\n" +
+			"    min_tls_version: \"" + lc.args.MinTlsVersion + "\"\n" +
+			"    cert_file: \"" + certPathYAML + "\"\n" +
+			"    key_file: \"" + keyPathYAML + "\"\n"
+	}
+
+	endpointsCSV := `"prtg", "web", "nagios"`
+	return fmt.Sprintf(HTTPStrategyFragmentTemplate, port, bindAddress, endpointsCSV, tlsSection)
 }
 
 // generateOfflineAgentKey creates a unique agent key for offline mode
@@ -415,5 +509,3 @@ func (lc *LocalConfiguration) generateSelfSignedCert() ([]byte, []byte, error) {
 
 	return certPEM, keyPEM, nil
 }
-
-// generateConfigYAML generates YAML configuration with comments

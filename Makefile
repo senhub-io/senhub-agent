@@ -148,6 +148,22 @@ package-windows: build-windows ## Create ZIP package for Windows
 	@cd $(WINDOWS_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-windows-amd64.zip $(EXECUTABLE).exe
 	@echo "$(GREEN)✅ Windows ZIP package created: $(DIST_DIR)/$(EXECUTABLE)-windows-amd64.zip$(NC)"
 
+# Build a Windows MSI from the staged Windows binary using WiX v4.
+# Requires the `wix` dotnet tool + the WixToolset.Util.wixext extension
+# (see docs/deployment/windows-msi.md). CI builds the canonical signed
+# MSI via .github/workflows/windows-msi.yml; this target is for local
+# unsigned test builds.
+package-windows-msi: build-windows ## Build Windows MSI (requires WiX v4 `wix` tool)
+	@command -v wix >/dev/null 2>&1 || { echo "$(RED)wix tool not found. Install: dotnet tool install --global wix --version '4.*'$(NC)"; exit 1; }
+	@echo "$(GREEN)📦 Building Windows MSI (version $(VERSION))...$(NC)"
+	@wix build packaging/windows/senhub-agent.wxs \
+		-d Version="$(VERSION)" \
+		-d BinDir="$(WINDOWS_AMD64_DIR)" \
+		-arch x64 \
+		-ext WixToolset.Util.wixext \
+		-out "$(DIST_DIR)/$(EXECUTABLE)-$(VERSION)-amd64.msi"
+	@echo "$(GREEN)✅ Windows MSI created: $(DIST_DIR)/$(EXECUTABLE)-$(VERSION)-amd64.msi$(NC)"
+
 package-linux: build-linux ## Create ZIP packages for Linux
 	@echo "$(GREEN)📦 Creating Linux ZIP packages...$(NC)"
 	@cd $(LINUX_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-linux-amd64.zip $(EXECUTABLE)
@@ -212,16 +228,6 @@ test-database: ## Integration tests against a real MySQL + Postgres
 			./internal/agent/probes/postgresql/...
 	@echo "$(GREEN)🧹 Tearing down database fixture...$(NC)"
 	@docker compose -f test/database/docker-compose.yml down -v
-
-# Prod smoke tests — hit the live agents on sha901 + bbcloud via SSH,
-# verify post-deploy invariants (no bearer leak, no probe-params leak,
-# no silent downgrade). Gated by the `prod_smoke` build tag so they
-# never run in regular CI. Requires the senhub secret store to be
-# resolvable (~/.senhub/read-secret.sh).
-prod-smoke: ## Prod smoke tests against sha901 + bbcloud (read-only)
-	@echo "$(GREEN)🔬 Running prod smoke tests...$(NC)"
-	@go test -tags=prod_smoke -v ./tools/prod_smoke/...
-	@echo "$(GREEN)✅ Database integration tests done$(NC)"
 
 # Boot smoke tests — build the agent binary, exec it against shipped
 # example configs to catch bring-up regressions (linker errors, config
@@ -355,4 +361,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows build-linux build-darwin package package-windows package-linux package-darwin run test test-race test-database prod-smoke benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist help
+.PHONY: all build build-windows build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race test-database benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist help

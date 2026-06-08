@@ -169,7 +169,7 @@ func TestResolve_Expand(t *testing.T) {
 	}
 	// Cache value 1 ("Warning" in sfs.redfish.health) → hw.state=degraded should be 1, others 0.
 	m := CacheMetric{
-		ProbeName:  "redfish-sha901",
+		ProbeName:  "redfish-lab",
 		ProbeType:  "redfish",
 		MetricName: "hardware.storage.drive.health",
 		Value:      1,
@@ -231,5 +231,135 @@ func TestResolve_UnknownMetric(t *testing.T) {
 	_, err := Resolve(def, m, DefaultResolveOptions())
 	if err == nil {
 		t.Fatal("expected error for unknown metric")
+	}
+}
+
+func TestResolve_OTLPIngestPassThrough(t *testing.T) {
+	// Externally-ingested OTLP metrics have no probe definition (def=nil)
+	// and an arbitrary OTel name; Resolve must pass them through verbatim.
+	m := CacheMetric{
+		ProbeName:  "edge_in",
+		ProbeType:  "otlp_receiver",
+		MetricName: "system.cpu.utilization",
+		Value:      0.73,
+		Unit:       "1",
+		Tags: map[string]string{
+			"metric_type": MetricTypeOTLPIngest,
+			"probe_name":  "edge_in",
+			"probe_type":  "otlp_receiver",
+			"host.name":   "remote-host-1",
+		},
+	}
+	recs, err := Resolve(nil, m, DefaultResolveOptions())
+	if err != nil {
+		t.Fatalf("pass-through must not error, got %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(recs))
+	}
+	r := recs[0]
+	if r.Name != "system.cpu.utilization" {
+		t.Errorf("name=%q, want verbatim external name", r.Name)
+	}
+	if !floatApprox(r.Value, 0.73) {
+		t.Errorf("value=%v, want 0.73 (no conversion)", r.Value)
+	}
+	if r.Unit != "1" || r.Type != "gauge" {
+		t.Errorf("unit=%q type=%q, want \"1\"/gauge", r.Unit, r.Type)
+	}
+	if r.Attributes["probe_name"] != "edge_in" || r.Attributes["probe_type"] != "otlp_receiver" {
+		t.Errorf("systematic attrs missing: %v", r.Attributes)
+	}
+	if r.Attributes["host.name"] != "remote-host-1" {
+		t.Errorf("ingested resource attr not propagated: %v", r.Attributes)
+	}
+	if _, leaked := r.Attributes["metric_type"]; leaked {
+		t.Errorf("metric_type marker must not leak as an attribute: %v", r.Attributes)
+	}
+}
+
+func TestResolve_TypedPassThrough(t *testing.T) {
+	// An snmp_poll dynamic metric: a canonical senhub.snmp.* name with no
+	// transformer row, carrying its OTel type in the otel_type tag. Resolve
+	// must pass it through (not drop it) with the declared counter type.
+	m := CacheMetric{
+		ProbeName:  "core-sw",
+		ProbeType:  "snmp_poll",
+		MetricName: "senhub.snmp.vendor.temperature",
+		Value:      28.5,
+		Tags: map[string]string{
+			"otel_type":   "counter",
+			"metric_type": "snmp",
+			"instance":    "10.0.0.1:161",
+		},
+	}
+	recs, err := Resolve(nil, m, DefaultResolveOptions())
+	if err != nil {
+		t.Fatalf("typed pass-through must not error, got %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(recs))
+	}
+	r := recs[0]
+	if r.Name != "senhub.snmp.vendor.temperature" {
+		t.Errorf("name=%q, want canonical name verbatim", r.Name)
+	}
+	if r.Type != "counter" {
+		t.Errorf("type=%q, want counter (from otel_type tag)", r.Type)
+	}
+	if !floatApprox(r.Value, 28.5) {
+		t.Errorf("value=%v, want 28.5 (no conversion)", r.Value)
+	}
+	if r.Attributes["probe_name"] != "core-sw" || r.Attributes["probe_type"] != "snmp_poll" {
+		t.Errorf("systematic attrs missing: %v", r.Attributes)
+	}
+	if r.Attributes["instance"] != "10.0.0.1:161" {
+		t.Errorf("contextual tag not propagated: %v", r.Attributes)
+	}
+	if _, leaked := r.Attributes["otel_type"]; leaked {
+		t.Errorf("otel_type marker must not leak as an attribute: %v", r.Attributes)
+	}
+	if _, leaked := r.Attributes["metric_type"]; leaked {
+		t.Errorf("metric_type marker must not leak as an attribute: %v", r.Attributes)
+	}
+}
+
+func TestResolve_TypedPassThroughUnknownTypeFallsBackToGauge(t *testing.T) {
+	m := CacheMetric{
+		ProbeName:  "core-sw",
+		ProbeType:  "snmp_poll",
+		MetricName: "senhub.snmp.vendor.thing",
+		Value:      1,
+		Tags:       map[string]string{"otel_type": "bogus"},
+	}
+	recs, err := Resolve(nil, m, DefaultResolveOptions())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if recs[0].Type != "gauge" {
+		t.Errorf("type=%q, want gauge fallback for unrecognised otel_type", recs[0].Type)
+	}
+}
+
+func TestResolve_OTLPIngestExcludesTagsWhenDisabled(t *testing.T) {
+	m := CacheMetric{
+		ProbeName:  "edge_in",
+		ProbeType:  "otlp_receiver",
+		MetricName: "custom.app.latency",
+		Value:      12,
+		Tags: map[string]string{
+			"metric_type": MetricTypeOTLPIngest,
+			"region":      "eu",
+		},
+	}
+	recs, err := Resolve(nil, m, ResolveOptions{IncludeProbeTags: false})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if _, present := recs[0].Attributes["region"]; present {
+		t.Errorf("unmapped tag must not propagate when IncludeProbeTags=false: %v", recs[0].Attributes)
+	}
+	if recs[0].Attributes["probe_name"] != "edge_in" {
+		t.Errorf("systematic probe_name must still be present: %v", recs[0].Attributes)
 	}
 }

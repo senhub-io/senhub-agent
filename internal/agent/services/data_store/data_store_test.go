@@ -33,8 +33,9 @@ type MockAgentConfig struct {
 	serverURL string
 }
 
-func (m *MockAgentConfig) GetAuthenticationKey() string { return m.authKey }
-func (m *MockAgentConfig) GetServerUrl() string         { return m.serverURL }
+func (m *MockAgentConfig) GetAuthenticationKey() string     { return m.authKey }
+func (m *MockAgentConfig) GetServerUrl() string             { return m.serverURL }
+func (m *MockAgentConfig) GetGlobalTags() map[string]string { return nil }
 
 // MockStrategy implements SyncStrategy for testing
 type MockStrategy struct {
@@ -267,6 +268,56 @@ func TestGetCallback(t *testing.T) {
 
 	if len(mockStrategy.dataPoints[0]) != 1 {
 		t.Errorf("Expected 1 datapoint, got %d", len(mockStrategy.dataPoints[0]))
+	}
+}
+
+func TestGetCallback_AppliesConfiguredTags(t *testing.T) {
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
+	mockProvider := &MockConfigProvider{config: configuration.RemoteConfigurationData{
+		Agent: configuration.AgentConfig{GlobalTags: map[string]string{"site": "global-x", "region": "west"}},
+		Probes: []configuration.ProbeConfig{
+			{Name: "p1", CustomTags: map[string]string{"site": "custom-x", "tier": "gold"}},
+		},
+	}}
+	ds := NewDataStore(&MockAgentConfig{}, mockProvider, baseLogger).(*dataStore)
+	mockStrategy := &MockStrategy{name: "s", params: map[string]interface{}{}}
+	ds.strategies = []SyncStrategy{mockStrategy}
+
+	in := []datapoint.DataPoint{
+		{Name: "m", Tags: []tags.Tag{{Key: "probe_name", Value: "p1"}, {Key: "site", Value: "builtin"}}},
+		{Name: "m", Tags: []tags.Tag{{Key: "probe_name", Value: "p2"}}},
+	}
+	if err := ds.GetCallback()(in, &MockStrategyRouter{targets: []string{"s"}}); err != nil {
+		t.Fatalf("callback error: %v", err)
+	}
+	if len(mockStrategy.dataPoints) != 1 {
+		t.Fatalf("want 1 AddDataPoints call, got %d", len(mockStrategy.dataPoints))
+	}
+	got := mockStrategy.dataPoints[0]
+	val := func(tt []tags.Tag, k string) string {
+		for _, x := range tt {
+			if x.Key == k {
+				return x.Value
+			}
+		}
+		return ""
+	}
+	// p1: custom_tags > global_tags > built-in
+	if v := val(got[0].Tags, "site"); v != "custom-x" {
+		t.Errorf("p1 site = %q, want custom-x (custom wins)", v)
+	}
+	if v := val(got[0].Tags, "region"); v != "west" {
+		t.Errorf("p1 region = %q, want west (global)", v)
+	}
+	if v := val(got[0].Tags, "tier"); v != "gold" {
+		t.Errorf("p1 tier = %q, want gold (custom)", v)
+	}
+	// p2: no custom_tags → global wins over built-in (none here), applied to all probes
+	if v := val(got[1].Tags, "site"); v != "global-x" {
+		t.Errorf("p2 site = %q, want global-x (global applies to every probe)", v)
+	}
+	if v := val(got[1].Tags, "tier"); v != "" {
+		t.Errorf("p2 tier = %q, want empty (custom_tags are per-probe)", v)
 	}
 }
 

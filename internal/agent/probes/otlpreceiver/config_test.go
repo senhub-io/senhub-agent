@@ -1,0 +1,70 @@
+package otlpreceiver
+
+import "testing"
+
+func TestParseReceiverConfig_Defaults(t *testing.T) {
+	cfg, err := parseReceiverConfig(map[string]interface{}{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Protocol != protocolGRPC {
+		t.Errorf("Protocol = %q, want grpc", cfg.Protocol)
+	}
+	if cfg.Address != defaultGRPCAddr {
+		t.Errorf("Address = %q, want %q", cfg.Address, defaultGRPCAddr)
+	}
+	if cfg.HTTPPath != defaultHTTPPath {
+		t.Errorf("HTTPPath = %q, want %q", cfg.HTTPPath, defaultHTTPPath)
+	}
+}
+
+func TestParseReceiverConfig_HTTPDefaultAddress(t *testing.T) {
+	cfg, err := parseReceiverConfig(map[string]interface{}{"protocol": "http"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Address != defaultHTTPAddr {
+		t.Errorf("Address = %q, want %q", cfg.Address, defaultHTTPAddr)
+	}
+}
+
+func TestParseReceiverConfig_PortOverride(t *testing.T) {
+	cfg, err := parseReceiverConfig(map[string]interface{}{"port": 14317})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Address != "0.0.0.0:14317" {
+		t.Errorf("Address = %q, want 0.0.0.0:14317", cfg.Address)
+	}
+}
+
+func TestParseReceiverConfig_ExplicitAddress(t *testing.T) {
+	cfg, err := parseReceiverConfig(map[string]interface{}{"address": "127.0.0.1:5555"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Address != "127.0.0.1:5555" {
+		t.Errorf("Address = %q, want 127.0.0.1:5555", cfg.Address)
+	}
+}
+
+func TestParseReceiverConfig_RejectsBadProtocol(t *testing.T) {
+	if _, err := parseReceiverConfig(map[string]interface{}{"protocol": "udp"}); err == nil {
+		t.Fatal("expected error for protocol=udp, got nil")
+	}
+}
+
+func TestParseReceiverConfig_RejectsBadPort(t *testing.T) {
+	if _, err := parseReceiverConfig(map[string]interface{}{"port": 70000}); err == nil {
+		t.Fatal("expected error for port=70000, got nil")
+	}
+}
+
+func TestReplacePort(t *testing.T) {
+	if got := replacePort("0.0.0.0:4317", 9999); got != "0.0.0.0:9999" {
+		t.Errorf("replacePort = %q, want 0.0.0.0:9999", got)
+	}
+	if got := replacePort("localhost", 1234); got != "localhost:1234" {
+		t.Errorf("replacePort(no port) = %q, want localhost:1234", got)
+	}
+}

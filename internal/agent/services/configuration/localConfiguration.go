@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -30,6 +31,10 @@ type LocalAgentConfig struct {
 	Key     string `yaml:"key"`
 	Mode    string `yaml:"mode"`
 	License string `yaml:"license,omitempty"` // JWT license token or JSON for testing
+	// GlobalTags are applied to every datapoint of every probe (multi-site /
+	// multi-tenant labelling). A probe's own custom_tags override a global_tag
+	// with the same key. Keep small (< ~10 keys) to bound backend cardinality.
+	GlobalTags map[string]string `yaml:"global_tags,omitempty"`
 }
 
 // TLSConfig represents TLS/HTTPS configuration
@@ -125,6 +130,12 @@ func (lc *LocalConfiguration) GetAuthenticationKey() string {
 	return lc.data.Agent.Key
 }
 
+// GetGlobalTags implements AgentConfiguration interface — the
+// agent-level global_tags emitted as OTLP Resource attributes (#202).
+func (lc *LocalConfiguration) GetGlobalTags() map[string]string {
+	return lc.data.Agent.GlobalTags
+}
+
 // GetServerUrl implements AgentConfiguration interface
 func (lc *LocalConfiguration) GetServerUrl() string {
 	// In offline mode, we don't have a server URL
@@ -181,6 +192,7 @@ func (lc *LocalConfiguration) GetConfiguration() RemoteConfigurationData {
 			UpdateCheckInterval: updateInterval,
 			License:             lc.data.Agent.License,
 			AuthenticationKey:   lc.data.Agent.Key,
+			GlobalTags:          lc.data.Agent.GlobalTags,
 		},
 	}
 }
@@ -207,21 +219,49 @@ func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Initialize file watcher
+	// Initialize file watcher. We watch:
+	//   - the top-level config file (configPath / agent.yaml) — for
+	//     monolithic configs this is the whole story; for multi-file
+	//     it carries the global blocks.
+	//   - the probes.d/ and strategies.d/ sibling directories when
+	//     they exist. fsnotify on a directory emits events for every
+	//     entry inside, so add/remove/edit of a fragment file
+	//     triggers a reload without an agent restart. Pre-0.2.x
+	//     these directories were silently unwatched — operators had
+	//     to restart to pick up new fragments.
 	var err error
 	lc.watcher, err = fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("failed to create file watcher: %w", err)
 	}
 
-	// Add config file to watcher
-	err = lc.watcher.Add(lc.configPath)
-	if err != nil {
+	if err := lc.watcher.Add(lc.configPath); err != nil {
 		_ = lc.watcher.Close()
 		return fmt.Errorf("failed to watch config file %s: %w", lc.configPath, err)
 	}
-
 	lc.logger.Info().Str("config_path", lc.configPath).Msg("Started watching configuration file")
+
+	baseDir := filepath.Dir(lc.configPath)
+	for _, sub := range []string{"probes.d", "strategies.d"} {
+		dir := filepath.Join(baseDir, sub)
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			// Directory absent (typical for a legacy monolithic
+			// install) — skip silently. A later `agent config
+			// migrate` will create it and we'll be watching once
+			// the operator restarts the agent. The trade-off here
+			// is deliberate: hot-detecting a new directory means
+			// watching the PARENT for create events, which then
+			// triggers reloads on every unrelated file in
+			// /etc/senhub-agent/ — too noisy.
+			lc.logger.Debug().Str("dir", dir).Msg("fragment directory not watched (absent)")
+			continue
+		}
+		if err := lc.watcher.Add(dir); err != nil {
+			_ = lc.watcher.Close()
+			return fmt.Errorf("failed to watch fragment directory %s: %w", dir, err)
+		}
+		lc.logger.Info().Str("dir", dir).Msg("Started watching fragment directory")
+	}
 
 	// Start watching goroutine
 	go lc.watchConfigFile()

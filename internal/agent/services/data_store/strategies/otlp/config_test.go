@@ -19,6 +19,9 @@ func TestParseConfig_DefaultsApplied(t *testing.T) {
 	if cfg.Compression != DefaultCompression {
 		t.Errorf("Compression=%q, want %q", cfg.Compression, DefaultCompression)
 	}
+	if cfg.Protocol != DefaultProtocol {
+		t.Errorf("Protocol=%q, want %q", cfg.Protocol, DefaultProtocol)
+	}
 	if cfg.Timeout != DefaultTimeout {
 		t.Errorf("Timeout=%v, want %v", cfg.Timeout, DefaultTimeout)
 	}
@@ -64,6 +67,47 @@ func TestParseConfig_RejectsBadCompression(t *testing.T) {
 	}
 }
 
+func TestParseConfig_ProtocolHTTP(t *testing.T) {
+	cfg, err := ParseConfig(map[string]interface{}{
+		"endpoint": "otlp.example.com:4318",
+		"protocol": "http",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Protocol != "http" {
+		t.Errorf("Protocol=%q, want http", cfg.Protocol)
+	}
+}
+
+func TestParseConfig_ProtocolHTTPProtobufAlias(t *testing.T) {
+	// The OTel spec env var spelling `http/protobuf` is accepted and
+	// normalized to the file-config-ergonomic `http`.
+	cfg, err := ParseConfig(map[string]interface{}{
+		"endpoint": "otlp.example.com:4318",
+		"protocol": "http/protobuf",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Protocol != "http" {
+		t.Errorf("Protocol=%q, want http (normalized from http/protobuf)", cfg.Protocol)
+	}
+}
+
+func TestParseConfig_RejectsBadProtocol(t *testing.T) {
+	_, err := ParseConfig(map[string]interface{}{
+		"endpoint": "x:4317",
+		"protocol": "thrift",
+	})
+	if err == nil {
+		t.Fatal("expected error for unsupported protocol")
+	}
+	if !strings.Contains(err.Error(), "protocol") {
+		t.Errorf("error doesn't mention protocol: %v", err)
+	}
+}
+
 func TestParseConfig_RejectsBadTimeout(t *testing.T) {
 	_, err := ParseConfig(map[string]interface{}{
 		"endpoint": "x:4317",
@@ -88,6 +132,47 @@ func TestParseConfig_RejectsHalfMTLS(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "cert_file") && !strings.Contains(err.Error(), "key_file") {
 		t.Errorf("error doesn't mention cert/key file: %v", err)
+	}
+}
+
+func TestParseConfig_EntitiesSignalDefault(t *testing.T) {
+	cfg, err := ParseConfig(map[string]interface{}{"endpoint": "x:4317"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Entities.Enabled {
+		t.Errorf("Entities.Enabled should default to false (opt-in)")
+	}
+	if cfg.Entities.Interval != DefaultEntitiesInterval {
+		t.Errorf("Entities.Interval=%v, want %v", cfg.Entities.Interval, DefaultEntitiesInterval)
+	}
+	if cfg.Entities.BufferSize != DefaultEntitiesBufferSize {
+		t.Errorf("Entities.BufferSize=%d, want %d", cfg.Entities.BufferSize, DefaultEntitiesBufferSize)
+	}
+}
+
+func TestParseConfig_EntitiesSignalOverride(t *testing.T) {
+	cfg, err := ParseConfig(map[string]interface{}{
+		"endpoint": "x:4317",
+		"signals": map[string]interface{}{
+			"entities": map[string]interface{}{
+				"enabled":     true,
+				"interval":    "120s",
+				"buffer_size": 512,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.Entities.Enabled {
+		t.Errorf("Entities.Enabled should be true")
+	}
+	if cfg.Entities.Interval != 120*time.Second {
+		t.Errorf("Entities.Interval=%v, want 120s", cfg.Entities.Interval)
+	}
+	if cfg.Entities.BufferSize != 512 {
+		t.Errorf("Entities.BufferSize=%d, want 512", cfg.Entities.BufferSize)
 	}
 }
 

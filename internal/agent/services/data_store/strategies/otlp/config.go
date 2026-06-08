@@ -1,10 +1,14 @@
-// Package otlp implements the OTLP/gRPC export strategy for SenHub Agent.
+// Package otlp implements the OTLP export strategy for SenHub Agent.
 //
 // The strategy ships metrics (sourced from the same MetricCache as the
 // Prometheus exposition, resolved through the neutral otelmapper package)
 // and logs (sourced from a pub/sub log channel populated by syslog and
-// event probes) over OTLP/gRPC to an OTel collector or a compatible
-// backend (vmagent, victoria-metrics, otelcol-contrib, …).
+// event probes) over OTLP to any conformant OTLP receiver — an OTel
+// collector or an OTLP-native backend.
+//
+// The transport is selectable via `protocol: grpc | http`, mirroring
+// the two transports defined by the OpenTelemetry protocol spec. gRPC
+// is the default. See client.go for the exporter wiring.
 //
 // Phase 1 (this commit) only wires up configuration parsing, the gRPC
 // exporter clients, and the strategy lifecycle. Metrics export lands in
@@ -27,6 +31,13 @@ const (
 	// localhost when an operator forgets to set `endpoint:` is a much
 	// worse failure mode than refusing to start. Always require it.
 	DefaultCompression = "gzip"
+	// DefaultProtocol is the OTLP transport. The OTel spec defines two:
+	// "grpc" (OTLP/gRPC) and "http" (OTLP/HTTP protobuf). "grpc" is the
+	// historical — and pre-0.2.x only — behaviour, kept as the default
+	// so existing deployments are unchanged. "http" is used to push to
+	// any OTLP/HTTP receiver directly (e.g. a backend that ingests
+	// OTLP/HTTP on its native /opentelemetry endpoints).
+	DefaultProtocol = "grpc"
 	// DefaultTimeout bounds a single OTLP export call. The OTel SDK uses
 	// it as the gRPC context deadline. 60 s is generous enough to absorb
 	// batches of 1000+ datapoints from the larger probes (IBM i with
@@ -42,6 +53,8 @@ const (
 	DefaultLogsBatchSize      = 1000
 	DefaultLogsBatchTimeout   = 5 * time.Second
 	DefaultLogsBufferSize     = 10000
+	DefaultEntitiesInterval   = 60 * time.Second
+	DefaultEntitiesBufferSize = 256
 	// DefaultMaxStoreSize caps the OTLP strategy's metric-store
 	// cardinality. 50 000 distinct series is comfortable for typical
 	// SenHub agent profiles (host + 1-3 vendor probes ≈ 1-5 k series);
@@ -93,7 +106,7 @@ const (
 	// dozen series in a single batch is faster than spinning up 4
 	// goroutines + 4 protobuf encoders. Above the threshold, the
 	// per-probe split pays for itself.
-	SplitBatchThreshold = 100
+	SplitBatchThreshold       = 100
 	DefaultTracesBatchSize    = 512
 	DefaultTracesBatchTimeout = 5 * time.Second
 	DefaultTracesBufferSize   = 2048
@@ -160,6 +173,21 @@ type LogsSignal struct {
 	BufferSize   int // bounded queue; drop-oldest beyond this
 }
 
+// EntitiesSignal holds entity-event emission knobs. Entity events are
+// carried on the OTLP log signal (they are log records), so this signal
+// reuses the log exporter/transport — it has no endpoint/batch knobs of its
+// own. Disabled by default: emitting entity events is a deliberate opt-in
+// for an entity-aware backend, not something to switch on for every logs
+// consumer.
+type EntitiesSignal struct {
+	Enabled bool
+	// Interval is the heartbeat cadence: every entity/relation is re-emitted
+	// each interval (at-least-once, idempotent) and the interval travels on
+	// each event as the consumer's liveness backstop.
+	Interval   time.Duration
+	BufferSize int
+}
+
 // TracesSignal holds traces-specific knobs. Disabled by default — the
 // agent does not auto-instrument itself yet; this block is plumbing
 // for explicit span emission by future code or third-party libraries
@@ -190,7 +218,13 @@ type ResourceConfig struct {
 // Config is the fully-parsed, validated configuration for the OTLP strategy.
 // Populated by ParseConfig; consumed by the strategy and exporter wiring.
 type Config struct {
-	Endpoint    string
+	Endpoint string
+	// Protocol selects the OTLP transport: "grpc" (default) or "http",
+	// the two transports defined by the OTel protocol spec. It applies
+	// to all three signals — a per-signal override is not supported
+	// because mixing transports against one endpoint is a
+	// configuration mistake far more often than an intent.
+	Protocol    string
 	Headers     map[string]string
 	TLS         TLSConfig
 	Compression string
@@ -198,6 +232,7 @@ type Config struct {
 	Retry       RetryConfig
 	Metrics     MetricsSignal
 	Logs        LogsSignal
+	Entities    EntitiesSignal
 	Traces      TracesSignal
 	Resource    ResourceConfig
 	// MaxStoreSize bounds the OTLP strategy's in-memory metric store
@@ -300,6 +335,7 @@ func defaultConfig() Config {
 		TLS: TLSConfig{
 			Enabled: true,
 		},
+		Protocol:    DefaultProtocol,
 		Compression: DefaultCompression,
 		Timeout:     DefaultTimeout,
 		Retry: RetryConfig{
@@ -318,6 +354,11 @@ func defaultConfig() Config {
 			BatchSize:    DefaultLogsBatchSize,
 			BatchTimeout: DefaultLogsBatchTimeout,
 			BufferSize:   DefaultLogsBufferSize,
+		},
+		Entities: EntitiesSignal{
+			Enabled:    false,
+			Interval:   DefaultEntitiesInterval,
+			BufferSize: DefaultEntitiesBufferSize,
 		},
 		Traces: TracesSignal{
 			// Disabled by default — opt-in plumbing. Operators
@@ -356,6 +397,22 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 
 	if v, ok := params["endpoint"].(string); ok && v != "" {
 		cfg.Endpoint = expandEnv(v)
+	}
+
+	if v, ok := params["protocol"].(string); ok && v != "" {
+		cfg.Protocol = v
+	}
+	// `http/protobuf` is the value the OTel spec env var
+	// (OTEL_EXPORTER_OTLP_PROTOCOL) uses; accept it as an alias and
+	// normalize to the file-config-ergonomic `http`. `http/json` is
+	// not supported — the SDK exporters we wire emit protobuf.
+	if cfg.Protocol == "http/protobuf" {
+		cfg.Protocol = "http"
+	}
+	switch cfg.Protocol {
+	case "grpc", "http":
+	default:
+		return cfg, fmt.Errorf("protocol must be 'grpc' or 'http' (alias 'http/protobuf'), got %q", cfg.Protocol)
 	}
 
 	if v, ok := params["compression"].(string); ok && v != "" {
@@ -421,7 +478,7 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 	if err := parseRetry(params["retry"], &cfg.Retry); err != nil {
 		return cfg, fmt.Errorf("retry: %w", err)
 	}
-	if err := parseSignals(params["signals"], &cfg.Metrics, &cfg.Logs, &cfg.Traces); err != nil {
+	if err := parseSignals(params["signals"], &cfg.Metrics, &cfg.Logs, &cfg.Traces, &cfg.Entities); err != nil {
 		return cfg, fmt.Errorf("signals: %w", err)
 	}
 	if err := parseResource(params["resource"], &cfg.Resource); err != nil {
@@ -575,7 +632,7 @@ func parseMemoryLimit(raw interface{}, out *MemoryLimitConfig) error {
 	return nil
 }
 
-func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, traces *TracesSignal) error {
+func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, traces *TracesSignal, entities *EntitiesSignal) error {
 	m := readStringKeyedMap(raw)
 	if m == nil {
 		return nil
@@ -624,6 +681,22 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 		}
 		if err := parseSignalTransport("logs", lm, &logs.SignalTransport); err != nil {
 			return err
+		}
+	}
+
+	if em := readStringKeyedMap(m["entities"]); em != nil {
+		if v, ok := em["enabled"].(bool); ok {
+			entities.Enabled = v
+		}
+		if v, ok := em["interval"].(string); ok && v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil {
+				return fmt.Errorf("entities.interval: %w", err)
+			}
+			entities.Interval = d
+		}
+		if v, ok := readInt(em["buffer_size"]); ok {
+			entities.BufferSize = v
 		}
 	}
 
