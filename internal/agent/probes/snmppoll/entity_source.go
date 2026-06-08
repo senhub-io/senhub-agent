@@ -15,9 +15,9 @@ import (
 // topology-as-entities, ADR 0022, frozen with Toise #222/#87. Wire shapes
 // (network.device.id, interface.name, route.destination) are the Toise-frozen
 // contract — see SNMP-OTEL-MAPPING.md Layer 2′; id-format decisions live in
-// resolveDeviceID (lldp.go). The link-layer edges (adjacent_to / forwards_to)
-// remain in the legacy device-to-device form for now; their connected_to
-// migration between the port entities follows.
+// resolveDeviceID (lldp.go). LLDP adjacency is emitted as bare connected_to
+// between the port entities; forwards_to (bridge FDB) is the last edge still in
+// the legacy device-to-device form.
 
 const (
 	entityTypeNetworkDevice    = "network.device"
@@ -30,7 +30,7 @@ const (
 	attrRouteMetric            = "metric"
 	attrOperState              = "oper.state"
 	attrSpeed                  = "speed"
-	relAdjacentTo              = "adjacent_to"
+	relConnectedTo             = "connected_to"
 	relHasRoute                = "has_route"
 	relHasInterface            = "has_interface"
 	relForwardsTo              = "forwards_to"
@@ -274,8 +274,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		})
 	}
 
-	// Confirmed network devices (LLDP neighbour chassis MACs) — gates
-	// forwards_to and the ARP next-hop convergence.
+	// Confirmed network devices (LLDP neighbour chassis MACs) — gates forwards_to.
 	deviceMACs := map[string]bool{}
 	for _, n := range topo.Neighbors {
 		if n.ChassisIdSubtype == subtypeMacAddress {
@@ -283,22 +282,40 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		}
 	}
 
-	// adjacent_to — one directed edge polled→neighbour.
+	// interface.name lookups for connected_to: prefer the IF-MIB ifName so the
+	// local port matches the network.interface entity emitted above (most gear
+	// numbers lldpLocPortNum as ifIndex, so this hits); fall back to the LLDP
+	// local-port table.
+	ifIndexName := make(map[string]string, len(ifaces))
+	for _, ifc := range ifaces {
+		ifIndexName[ifc.Index] = ifc.Name
+	}
+
+	// connected_to — bare port-to-port link adjacency (supersedes adjacent_to).
+	// Both endpoints are network.interface entities; the local one was emitted
+	// above. The neighbour device is still emitted as a discovered network.device.
+	// The link is skipped when either port cannot be named by exact identity (no
+	// phantom port — point 7): an unnamed local port, an unresolvable neighbour,
+	// or a MAC-only remote port.
 	for _, n := range topo.Neighbors {
 		nID := resolveDeviceID(neighborIdentity(n))
 		if nID == "" || nID == selfID {
 			continue
 		}
 		addEntity(nID, neighborAttrs(n))
+
+		localIf := ifIndexName[n.LocalPortNum]
+		if localIf == "" {
+			localIf = topo.Local.Ports[n.LocalPortNum]
+		}
+		remoteIf := namedPortID(n.PortIdSubtype, n.PortId)
+		if localIf == "" || remoteIf == "" {
+			continue
+		}
 		obs.Relations = append(obs.Relations, entity.Relation{
-			Type:     relAdjacentTo,
-			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
-			ToType: entityTypeNetworkDevice, ToID: deviceKey(nID),
-			Attributes: map[string]any{
-				"source":      "snmp",
-				"local_port":  n.LocalPortNum,
-				"remote_port": renderPortID(n.PortIdSubtype, n.PortId),
-			},
+			Type:     relConnectedTo,
+			FromType: entityTypeNetworkInterface, FromID: interfacePortKey(selfID, localIf),
+			ToType: entityTypeNetworkInterface, ToID: interfacePortKey(nID, remoteIf),
 		})
 	}
 
@@ -362,6 +379,12 @@ func deviceEntity(id string, attrs map[string]any) entity.Entity {
 
 func deviceKey(id string) map[string]any {
 	return map[string]any{idKeyNetworkDevice: id}
+}
+
+// interfacePortKey is the exact identity of a network.interface entity: its
+// owning device plus the port name.
+func interfacePortKey(deviceID, ifName string) map[string]any {
+	return map[string]any{idKeyNetworkDevice: deviceID, idKeyInterfaceName: ifName}
 }
 
 // selfAttrs / neighborAttrs carry only observer-independent descriptive
