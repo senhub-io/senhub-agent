@@ -75,6 +75,10 @@ type OTLPSyncStrategy struct {
 	logs     *logsPipeline
 	logsPump *logsPump
 
+	// logsQueue is the on-disk dead-letter queue for the logs signal,
+	// set when persistence is enabled and logs are emitted (#217).
+	logsQueue *logsQueue
+
 	// entityPump emits entity/relation events on the OTLP log signal; the
 	// entity Detector goroutine produces them. Both nil/zero unless
 	// Entities.Enabled. entityDetectorCancel stops the detector,
@@ -267,11 +271,32 @@ func (s *OTLPSyncStrategy) Start() error {
 		s.startMetricsPusher()
 	}
 
+	// Durable dead-letter queue for the logs signal (#217): wrap the log
+	// exporter so a failed export persists event-log records to disk for
+	// replay at boot and on backend recovery. Only when persistence is on
+	// and raw logs are emitted; entity events are a re-emitted state
+	// stream and are not queued.
+	var logExp *persistentLogExporter
+	if s.cfg.Persistence.Path != "" && s.cfg.Logs.Enabled && s.exporters.log != nil {
+		s.logsQueue = newLogsQueue(s.cfg.Persistence.Path, s.cfg.Persistence.LogsQueueMaxBytes, s.logger)
+		logExp = newPersistentLogExporter(s.exporters.log, s.logsQueue, s.logger)
+		s.exporters.log = logExp
+	}
+
 	// Entity events ride the log signal, so the pipeline (provider + both
 	// loggers) is built when either logs or entities are enabled.
 	if (s.cfg.Logs.Enabled || s.cfg.Entities.Enabled) && s.exporters.log != nil {
 		s.logs = buildLogsPipeline(s.exporters.log, s.resource, s.cfg.Logs, cliArgs.Version)
 	}
+
+	// Wire queue replay to the pipeline: drain at boot and whenever the
+	// backend recovers from a failed export.
+	if logExp != nil && s.logs != nil {
+		rp := newLogsReplayer(s.logsQueue, s.logs, s.logger)
+		logExp.setOnRecovered(rp.replay)
+		go rp.replay()
+	}
+
 	if s.cfg.Logs.Enabled && s.logs != nil {
 		s.logsPump = newLogsPump(s.logs, s.cfg.Logs.BufferSize)
 		s.logsPump.start()
