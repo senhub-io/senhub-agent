@@ -26,7 +26,7 @@ func TestBuildObservation_ConnectedTo(t *testing.T) {
 			SysName:          "neigh",
 		}},
 	}
-	obs := buildObservation(self, topo, nil, nil, nil, nil)
+	obs := buildObservation(self, topo, nil, nil, nil)
 
 	// self device + neighbour device (the remote port entity is referenced by
 	// the edge, not emitted here — the neighbour's own poll emits it).
@@ -72,7 +72,7 @@ func TestBuildObservation_ConnectedTo_Gating(t *testing.T) {
 			PortIdSubtype: portSubtypeIfName, PortId: []byte("Gi0/2"), SysName: "n2",
 		},
 	}}
-	obs := buildObservation(self, topo, nil, nil, ifaces, nil)
+	obs := buildObservation(self, topo, nil, ifaces, nil)
 
 	for _, r := range obs.Relations {
 		if r.Type == relConnectedTo {
@@ -92,14 +92,14 @@ func TestBuildObservation_ConnectedTo_Gating(t *testing.T) {
 }
 
 func TestBuildObservation_NoNeighbors(t *testing.T) {
-	obs := buildObservation(deviceIdentity{Serial: "X", VendorPEN: "9"}, lldpTopology{}, nil, nil, nil, nil)
+	obs := buildObservation(deviceIdentity{Serial: "X", VendorPEN: "9"}, lldpTopology{}, nil, nil, nil)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-only expected, got %+v", obs)
 	}
 }
 
 func TestBuildObservation_NoIdentity(t *testing.T) {
-	obs := buildObservation(deviceIdentity{}, lldpTopology{}, nil, nil, nil, nil)
+	obs := buildObservation(deviceIdentity{}, lldpTopology{}, nil, nil, nil)
 	if len(obs.Entities) != 0 || len(obs.Relations) != 0 {
 		t.Errorf("expected nothing when device unidentifiable, got %+v", obs)
 	}
@@ -110,7 +110,7 @@ func TestBuildObservation_SkipsSelfLoop(t *testing.T) {
 	topo := lldpTopology{Neighbors: []lldpNeighbor{
 		{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0x01, 0x02}},
 	}}
-	obs := buildObservation(self, topo, nil, nil, nil, nil)
+	obs := buildObservation(self, topo, nil, nil, nil)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-loop should be skipped, got %+v", obs)
 	}
@@ -127,7 +127,7 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 		{Destination: "10.50.0.0/16", NextHop: "10.0.0.9", Type: 3},               // not remote → skip
 		{Destination: "", NextHop: "10.0.0.7", Type: routeTypeRemote},             // unparseable index → skip
 	}
-	obs := buildObservation(self, lldpTopology{}, routes, nil, nil, nil)
+	obs := buildObservation(self, lldpTopology{}, routes, nil, nil)
 
 	// self device + 2 distinct route destinations (10.20.0.0/16, 0.0.0.0/0)
 	if len(obs.Entities) != 3 {
@@ -175,7 +175,7 @@ func TestBuildObservation_NetworkInterface(t *testing.T) {
 		{Index: "4", Name: "", OperStatus: ifOperUp},            // unnamed → skip
 		{Index: "5", Name: "Lo0", OperStatus: ifOperNotPresent}, // notPresent → skip
 	}
-	obs := buildObservation(self, lldpTopology{}, nil, nil, ifaces, nil)
+	obs := buildObservation(self, lldpTopology{}, nil, ifaces, nil)
 
 	// self device + 2 named present interfaces (Gi0/1, Gi0/2)
 	if len(obs.Entities) != 3 {
@@ -230,7 +230,7 @@ func TestBuildObservation_NetworkAddress(t *testing.T) {
 		{IP: "10.0.0.1", IfIndex: "1"},    // dup IP → skip
 		{IP: "192.168.9.9", IfIndex: "9"}, // ifIndex 9 not among ifaces → can't bind, skip
 	}
-	obs := buildObservation(self, lldpTopology{}, nil, nil, ifaces, addrs)
+	obs := buildObservation(self, lldpTopology{}, nil, ifaces, addrs)
 
 	var addrEnts, boundTo int
 	for _, e := range obs.Entities {
@@ -259,33 +259,6 @@ func TestBuildObservation_NetworkAddress(t *testing.T) {
 	}
 	if addrEnts != 1 || boundTo != 1 {
 		t.Fatalf("addrEnts=%d boundTo=%d, want 1/1 (dup + unbindable skipped)", addrEnts, boundTo)
-	}
-}
-
-func TestBuildObservation_ForwardsTo(t *testing.T) {
-	neighMAC := []byte{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
-	self := deviceIdentity{Serial: "S1", VendorPEN: "9"}
-	topo := lldpTopology{Neighbors: []lldpNeighbor{
-		{LocalPortNum: "5", ChassisIdSubtype: subtypeMacAddress, ChassisId: neighMAC, SysName: "neigh"},
-	}}
-	fdb := []fdbEntry{
-		{MAC: "aa:bb:cc:dd:ee:ff", BridgePort: "5"}, // known device (LLDP neighbour) → forwards_to
-		{MAC: "11:22:33:44:55:66", BridgePort: "9"}, // unknown (host) → filtered out
-	}
-	obs := buildObservation(self, topo, nil, fdb, nil, nil)
-
-	fwd := 0
-	for _, r := range obs.Relations {
-		if r.Type != relForwardsTo {
-			continue
-		}
-		fwd++
-		if r.ToID[idKeyNetworkDevice] != "mac:aa:bb:cc:dd:ee:ff" || r.Attributes["bridge_port"] != "5" {
-			t.Errorf("forwards_to wrong: %+v", r)
-		}
-	}
-	if fwd != 1 {
-		t.Fatalf("expected 1 forwards_to (host MAC filtered), got %d", fwd)
 	}
 }
 
