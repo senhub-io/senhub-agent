@@ -56,7 +56,13 @@ func buildPlan(cfg *config) (scalars, walks []oidMapping) {
 // best-effort: a failed scalar Get or a failed column walk is logged and
 // skipped so one unreadable OID does not drop the whole cycle. The caller
 // has already verified reachability (Connect) and emits senhub.snmp.up.
-func collect(client snmpClient, cfg *config, instance string, now time.Time, log *logger.ModuleLogger) []data_store.DataPoint {
+// collect reads the configured OIDs and returns datapoints. deviceID and
+// ifNames carry the polled device's resolved network.device.id and its
+// ifIndex→ifName map (from the entity source's last sweep); they tag the
+// metrics with the SAME identity as the topology entities so a backend joins
+// device/interface metrics to their entities. Both may be empty before the
+// first topology sweep — the tags are simply omitted until then.
+func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames map[string]string, now time.Time, log *logger.ModuleLogger) []data_store.DataPoint {
 	scalars, walks := buildPlan(cfg)
 	points := make([]data_store.DataPoint, 0, len(scalars)+len(walks)*8)
 
@@ -78,7 +84,7 @@ func collect(client snmpClient, cfg *config, instance string, now time.Time, log
 					continue
 				}
 				if m, ok := byOID[vb.OID]; ok {
-					points = append(points, newPoint(m, vb.Value, now, instance, nil))
+					points = append(points, newPoint(m, vb.Value, now, instance, deviceID, nil))
 				}
 			}
 		}
@@ -103,16 +109,23 @@ func collect(client snmpClient, cfg *config, instance string, now time.Time, log
 			var extra []tags.Tag
 			if m.IndexLabel != "" {
 				extra = append(extra, tags.Tag{Key: m.IndexLabel, Value: index})
+				// Interface metrics: resolve the ifIndex to interface.name so the
+				// datapoint joins to its network.interface entity.
+				if m.IndexLabel == "if_index" {
+					if name := ifNames[index]; name != "" {
+						extra = append(extra, tags.Tag{Key: "interface.name", Value: name})
+					}
+				}
 			}
-			points = append(points, newPoint(m, vb.Value, now, instance, extra))
+			points = append(points, newPoint(m, vb.Value, now, instance, deviceID, extra))
 		}
 	}
 
 	return points
 }
 
-func newPoint(m oidMapping, value float64, now time.Time, instance string, extra []tags.Tag) data_store.DataPoint {
-	t := baseTags(instance, m)
+func newPoint(m oidMapping, value float64, now time.Time, instance, deviceID string, extra []tags.Tag) data_store.DataPoint {
+	t := baseTags(instance, deviceID, m)
 	t = append(t, extra...)
 	return data_store.DataPoint{
 		Name:      metricName(m),
@@ -163,10 +176,15 @@ func sanitizeOtelName(s string) string {
 	return b.String()
 }
 
-func baseTags(instance string, m oidMapping) []tags.Tag {
+func baseTags(instance, deviceID string, m oidMapping) []tags.Tag {
 	t := []tags.Tag{
 		{Key: "instance", Value: instance},
 		{Key: "metric_type", Value: familyFor(m.Metric)},
+	}
+	// network.device.id ties every metric of this device to its network.device
+	// entity (same resolved id). Empty before the first topology sweep.
+	if deviceID != "" {
+		t = append(t, tags.Tag{Key: "network.device.id", Value: deviceID})
 	}
 	// Dynamic metrics have no transformer YAML row; carry the OTel type so
 	// the mapper passes them through with the right counter/gauge semantics.
