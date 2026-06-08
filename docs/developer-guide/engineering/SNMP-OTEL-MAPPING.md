@@ -141,8 +141,11 @@ same device derive byte-identical ids.
   leaves it empty and uses the stack-wide `engineID` (one logical device per
   SNMP management entity, failover-stable; a master-member serial would flap),
   and this also avoids latching onto a swappable module/PSU serial. Everything
-  not chosen as the id (raw chassis-id, sysName, mgmt IP, serial, vendor) goes
-  in **descriptive attributes**, never as a second identity key.
+  not chosen as the id goes in **descriptive attributes** (dotted lowercase,
+  frozen casing — `sys.name`, `mgmt.ip`, `device.role` from the sysServices
+  bitmask, `vendor` from the PEN), never as a second identity key. These make
+  the device readable in a backend instead of just its cryptic id; neighbours
+  carry `sys.name`.
   Canonicalization (producer side): `mac` = lowercase hex `:`-separated;
   `engine`/`PEN` = lowercase hex / decimal; `serial`/`name` = trimmed (case
   preserved); `mgmt` = `net.IP` canonical form. All in one function:
