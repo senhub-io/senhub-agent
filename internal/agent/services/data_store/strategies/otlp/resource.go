@@ -30,10 +30,15 @@ const (
 //   - service.instance.id = first 8 chars of agent key (set by
 //     NewOTLPSyncStrategy when the operator did not supply one)
 //   - service.version  = build version, when known via cliArgs.Version
+//   - agent-level global_tags are attached as resource attributes:
+//     they describe the agent/host as a whole, so they belong on the
+//     Resource (one per process) rather than multiplying as per-metric
+//     attributes (issue #202)
 //   - any custom keys from cfg.Resource.Extra are passed through
-//     verbatim — callers are responsible for using valid OTel names
-func buildResource(cfg ResourceConfig, version string) *resource.Resource {
-	attrs := make([]attribute.KeyValue, 0, 4+len(cfg.Extra))
+//     verbatim — callers are responsible for using valid OTel names.
+//     Explicit resource: config wins over a same-named global_tag.
+func buildResource(cfg ResourceConfig, version string, globalTags map[string]string) *resource.Resource {
+	attrs := make([]attribute.KeyValue, 0, 4+len(globalTags)+len(cfg.Extra))
 
 	if cfg.ServiceName != "" {
 		attrs = append(attrs, attribute.String(resourceKeyServiceName, cfg.ServiceName))
@@ -46,6 +51,11 @@ func buildResource(cfg ResourceConfig, version string) *resource.Resource {
 	}
 	if cfg.Environment != "" {
 		attrs = append(attrs, attribute.String(resourceKeyEnvironment, cfg.Environment))
+	}
+	// global_tags first so an explicit resource: Extra of the same key
+	// takes precedence (resource.NewSchemaless keeps the last value).
+	for k, v := range globalTags {
+		attrs = append(attrs, attribute.String(k, v))
 	}
 	for k, v := range cfg.Extra {
 		attrs = append(attrs, attribute.String(k, v))

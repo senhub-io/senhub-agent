@@ -12,6 +12,13 @@ Two levels are available:
 Both apply uniformly across all outputs (PRTG, Nagios, Prometheus, OTLP,
 SenHub cloud) — there is no per-output configuration.
 
+> **OTLP placement.** On the OTLP output, `global_tags` are emitted as
+> **Resource attributes** (they describe the agent/host as a whole, so
+> they sit on the one process-level Resource instead of being repeated on
+> every series — lower cardinality). `custom_tags` are per-probe, so they
+> stay metric attributes. Other outputs (Prometheus, PRTG, …) carry both
+> as labels as before.
+
 ## Priority
 
 On a key conflict, the most specific value wins:
