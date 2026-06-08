@@ -19,6 +19,12 @@ type AgentConfiguration interface {
 	// GetAuthenticationKey returns the agent's stable identity key,
 	// generated at first install and persisted in the config file.
 	GetAuthenticationKey() string
+
+	// GetGlobalTags returns the agent-level global_tags (key→value).
+	// These describe the agent/host as a whole, so the OTLP strategy
+	// emits them as Resource attributes rather than per-metric
+	// attributes (issue #202). May be nil/empty.
+	GetGlobalTags() map[string]string
 }
 
 // ConfigurationProvider is the interface the data store / sensor pool
@@ -81,6 +87,13 @@ func NewAgentConfigurationWithLocal(
 
 func (l *agentConfiguration) GetAuthenticationKey() string {
 	return l.AuthenticationKey
+}
+
+func (l *agentConfiguration) GetGlobalTags() map[string]string {
+	if l.localConfiguration != nil {
+		return l.localConfiguration.GetConfiguration().Agent.GlobalTags
+	}
+	return nil
 }
 
 // GetConfiguration returns the active configuration snapshot from the

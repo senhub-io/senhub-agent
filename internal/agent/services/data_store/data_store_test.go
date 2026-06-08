@@ -33,8 +33,9 @@ type MockAgentConfig struct {
 	serverURL string
 }
 
-func (m *MockAgentConfig) GetAuthenticationKey() string { return m.authKey }
-func (m *MockAgentConfig) GetServerUrl() string         { return m.serverURL }
+func (m *MockAgentConfig) GetAuthenticationKey() string     { return m.authKey }
+func (m *MockAgentConfig) GetServerUrl() string             { return m.serverURL }
+func (m *MockAgentConfig) GetGlobalTags() map[string]string { return nil }
 
 // MockStrategy implements SyncStrategy for testing
 type MockStrategy struct {
