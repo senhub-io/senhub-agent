@@ -179,6 +179,15 @@ func NewOTLPSyncStrategy(
 		globalTagKeys[k] = true
 	}
 
+	// host.*/os.* on the resource so the agent's own metrics and logs carry the
+	// same host.id as the host entity (entity↔telemetry correlation). Best-effort:
+	// degrade to no host attrs rather than fail strategy construction.
+	hostAttrs, hostErr := common.GetHostResourceAttributes()
+	if hostErr != nil {
+		moduleLogger.Warn().Err(hostErr).Msg("host resource attributes unavailable; OTLP resource omits host.id (entity↔telemetry correlation degraded)")
+		hostAttrs = nil
+	}
+
 	s := &OTLPSyncStrategy{
 		agentConfig:   agentConfig,
 		rawParams:     params,
@@ -186,7 +195,7 @@ func NewOTLPSyncStrategy(
 		logger:        moduleLogger,
 		store:         store,
 		registry:      transformers.NewTransformerRegistry(baseLogger),
-		resource:      buildResource(cfg.Resource, cliArgs.Version, globalTags),
+		resource:      buildResource(cfg.Resource, cliArgs.Version, hostAttrs, globalTags),
 		globalTagKeys: globalTagKeys,
 		memLimiter:    ml,
 	}
