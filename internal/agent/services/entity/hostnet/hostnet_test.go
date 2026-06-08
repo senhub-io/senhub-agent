@@ -1,6 +1,10 @@
 package hostnet
 
-import "testing"
+import (
+	"testing"
+
+	"senhub-agent.go/internal/agent/services/entity"
+)
 
 func TestHexLEToIP(t *testing.T) {
 	cases := map[string]string{
@@ -53,31 +57,54 @@ func TestBuildObservation_HostRoute(t *testing.T) {
 	routes := []hostRoute{{Destination: "0.0.0.0/0", NextHop: "192.168.1.1", Metric: 100}}
 	obs := buildObservation("h1", routes)
 
-	if len(obs.Entities) != 1 {
-		t.Fatalf("entities = %+v, want 1 network.route", obs.Entities)
+	// network.route + the gateway network.address node.
+	if len(obs.Entities) != 2 {
+		t.Fatalf("entities = %+v, want network.route + network.address", obs.Entities)
 	}
-	e := obs.Entities[0]
-	if e.Type != entityTypeNetworkRoute ||
-		e.ID[idKeyHost] != "h1" || e.ID[idKeyRouteDestination] != "0.0.0.0/0" {
-		t.Errorf("route entity id wrong: %+v", e)
+	route, ok := entityOfType(obs.Entities, entityTypeNetworkRoute)
+	if !ok || route.ID[idKeyHost] != "h1" || route.ID[idKeyRouteDestination] != "0.0.0.0/0" {
+		t.Errorf("route entity wrong: %+v", route)
 	}
-	if e.Attributes[attrNextHopIP] != "192.168.1.1" || e.Attributes[attrMetric] != int64(100) {
-		t.Errorf("route attrs wrong: %+v", e.Attributes)
+	if route.Attributes[attrNextHopIP] != "192.168.1.1" || route.Attributes[attrMetric] != int64(100) {
+		t.Errorf("route attrs wrong: %+v", route.Attributes)
+	}
+	addr, ok := entityOfType(obs.Entities, entityTypeNetworkAddress)
+	if !ok || addr.ID[idKeyNetworkAddress] != "192.168.1.1" {
+		t.Errorf("address entity wrong: %+v", addr)
 	}
 
-	if len(obs.Relations) != 1 {
-		t.Fatalf("relations = %d, want 1 has_route", len(obs.Relations))
+	// has_route (host→route) + next_hop_via (route→address).
+	if len(obs.Relations) != 2 {
+		t.Fatalf("relations = %d, want has_route + next_hop_via", len(obs.Relations))
 	}
-	r := obs.Relations[0]
-	if r.Type != relHasRoute ||
-		r.FromType != entityTypeHost || r.FromID[idKeyHost] != "h1" ||
-		r.ToType != entityTypeNetworkRoute || r.ToID[idKeyRouteDestination] != "0.0.0.0/0" {
-		t.Errorf("has_route relation wrong: %+v", r)
+	hr, ok := relationOfType(obs.Relations, relHasRoute)
+	if !ok || hr.FromType != entityTypeHost || hr.FromID[idKeyHost] != "h1" ||
+		hr.ToType != entityTypeNetworkRoute || hr.ToID[idKeyRouteDestination] != "0.0.0.0/0" || len(hr.Attributes) != 0 {
+		t.Errorf("has_route relation wrong: %+v", hr)
 	}
-	// Edge carries no attributes — the embedded descriptor is bare.
-	if len(r.Attributes) != 0 {
-		t.Errorf("has_route should carry no edge attributes, got %v", r.Attributes)
+	nhv, ok := relationOfType(obs.Relations, relNextHopVia)
+	if !ok || nhv.FromType != entityTypeNetworkRoute || nhv.ToType != entityTypeNetworkAddress ||
+		nhv.ToID[idKeyNetworkAddress] != "192.168.1.1" || len(nhv.Attributes) != 0 {
+		t.Errorf("next_hop_via relation wrong: %+v", nhv)
 	}
+}
+
+func entityOfType(es []entity.Entity, typ string) (entity.Entity, bool) {
+	for _, e := range es {
+		if e.Type == typ {
+			return e, true
+		}
+	}
+	return entity.Entity{}, false
+}
+
+func relationOfType(rs []entity.Relation, typ string) (entity.Relation, bool) {
+	for _, r := range rs {
+		if r.Type == typ {
+			return r, true
+		}
+	}
+	return entity.Relation{}, false
 }
 
 func TestBuildObservation_MetricOmittedWhenZero(t *testing.T) {
@@ -102,11 +129,17 @@ func TestObserve_InjectedReader(t *testing.T) {
 		readRoute: func() ([]byte, error) { return []byte(routeSample), nil },
 	}
 	obs := s.Observe()
-	if len(obs.Entities) != 1 || len(obs.Relations) != 1 {
+	// network.route + network.address ; has_route + next_hop_via.
+	if len(obs.Entities) != 2 || len(obs.Relations) != 2 {
 		t.Fatalf("observe = %+v", obs)
 	}
-	if obs.Entities[0].ID[idKeyRouteDestination] != "0.0.0.0/0" ||
-		obs.Entities[0].Attributes[attrNextHopIP] != "192.168.1.1" {
-		t.Errorf("unexpected route entity: %+v", obs.Entities[0])
+	route, ok := entityOfType(obs.Entities, entityTypeNetworkRoute)
+	if !ok || route.ID[idKeyRouteDestination] != "0.0.0.0/0" ||
+		route.Attributes[attrNextHopIP] != "192.168.1.1" {
+		t.Errorf("unexpected route entity: %+v", route)
+	}
+	if addr, ok := entityOfType(obs.Entities, entityTypeNetworkAddress); !ok ||
+		addr.ID[idKeyNetworkAddress] != "192.168.1.1" {
+		t.Errorf("unexpected address entity: %+v", addr)
 	}
 }
