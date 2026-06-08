@@ -19,11 +19,15 @@ import (
 
 // LLDP-MIB OIDs (dotted, no leading dot). Base: 1.0.8802.1.1.2.1.
 const (
-	// Local system group (scalars at .0).
+	// Local system group (scalars at .0) + local port table (lldpLocPortTable
+	// at .7, indexed by lldpLocPortNum — the same numbering as a neighbour's
+	// lldpRemLocalPortNum, so it names the local end of each link).
 	lldpLocBase             = "1.0.8802.1.1.2.1.3"
 	lldpLocChassisIdSubtype = "1.0.8802.1.1.2.1.3.1.0"
 	lldpLocChassisId        = "1.0.8802.1.1.2.1.3.2.0"
 	lldpLocSysName          = "1.0.8802.1.1.2.1.3.3.0"
+	lldpLocPortIdSubtype    = "1.0.8802.1.1.2.1.3.7.1.2"
+	lldpLocPortId           = "1.0.8802.1.1.2.1.3.7.1.3"
 
 	// Remote systems table lldpRemTable / lldpRemEntry.
 	// Row index = lldpRemTimeMark . lldpRemLocalPortNum . lldpRemIndex.
@@ -43,11 +47,13 @@ const (
 	portSubtypeLocal  = 7 // port: locally assigned
 )
 
-// lldpLocal is the polled device's own LLDP identity.
+// lldpLocal is the polled device's own LLDP identity, plus the local port
+// table (lldpLocPortNum → port name) used to name the local end of a link.
 type lldpLocal struct {
 	ChassisIdSubtype int
 	ChassisId        []byte
 	SysName          string
+	Ports            map[string]string // lldpLocPortNum → port name (ifName/local subtype)
 }
 
 // lldpNeighbor is one decoded remote-system table row.
@@ -89,6 +95,8 @@ func collectLLDP(client snmpClient) (lldpTopology, error) {
 
 func parseLLDPLocal(binds []snmpRawBind) lldpLocal {
 	var loc lldpLocal
+	portSubtype := map[string]int{}  // lldpLocPortNum → subtype
+	portRawID := map[string][]byte{} // lldpLocPortNum → raw lldpLocPortId
 	for _, b := range binds {
 		switch b.OID {
 		case lldpLocChassisIdSubtype:
@@ -99,6 +107,27 @@ func parseLLDPLocal(binds []snmpRawBind) lldpLocal {
 			loc.ChassisId = asBytes(b.Value)
 		case lldpLocSysName:
 			loc.SysName = octetText(asBytes(b.Value))
+		default:
+			if num, ok := strings.CutPrefix(b.OID, lldpLocPortIdSubtype+"."); ok {
+				if v, ok := asIntVal(b.Value); ok {
+					portSubtype[num] = v
+				}
+			} else if num, ok := strings.CutPrefix(b.OID, lldpLocPortId+"."); ok {
+				portRawID[num] = asBytes(b.Value)
+			}
+		}
+	}
+	// Keep only ports whose id is a usable name (interfaceName / local); a
+	// MAC-only local port has no name to anchor connected_to.
+	for num, raw := range portRawID {
+		switch portSubtype[num] {
+		case portSubtypeIfName, portSubtypeLocal:
+			if name := octetText(raw); name != "" {
+				if loc.Ports == nil {
+					loc.Ports = map[string]string{}
+				}
+				loc.Ports[num] = name
+			}
 		}
 	}
 	return loc
@@ -254,6 +283,20 @@ func renderPortID(subtype int, portId []byte) string {
 		return octetText(portId)
 	default:
 		return octetText(portId)
+	}
+}
+
+// namedPortID renders an LLDP port-id as a network.interface name, but ONLY
+// when the subtype is a usable name (interfaceName / locally-assigned). A
+// MAC-only or address-only remote port has no name to serve as exact identity,
+// so it returns "" and the caller skips the link rather than fabricate a
+// phantom port (frozen contract, point 7).
+func namedPortID(subtype int, portId []byte) string {
+	switch subtype {
+	case portSubtypeIfName, portSubtypeLocal:
+		return octetText(portId)
+	default:
+		return ""
 	}
 }
 
