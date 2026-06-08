@@ -152,15 +152,28 @@ flat (dotted keys), never nested (relationship descriptors are the one fixed
 two-level shape). The encoder rejects/warns on a non-scalar leaf — never
 silently drops.
 
-## 5. host.id — stable host identity (prerequisite)
-`common.GetHostTags()` emits `host`/`os`/`platform` only; gopsutil `HostID`
-is commented out. Activate it as the host entity's `host.id`. It is
-**mandatory on the entity-event record** as `otel.entity.id = {host.id: …}` —
-the consumer reads identity off the record, not the resource (a record with
-no `otel.entity.id` is rejected). Putting `host.id`/`host.name` in the **OTLP
-resource** too is optional (OTel resource semantics). Never emit it as a
-per-datapoint tag (a constant tag on every metric would only pollute
-PRTG/Prometheus labels).
+## 5. host.id — stable host identity + telemetry correlation
+gopsutil `HostID` is the host entity's `host.id`. It is **mandatory on the
+entity-event record** as `entity.id = {host.id: …}` — the consumer reads
+identity off the record, not the resource (a record with no `entity.id` is
+rejected).
+
+**It is also emitted on the OTLP resource** of every signal the agent produces,
+via `common.GetHostResourceAttributes()` (`host.id` + `host.name` / `host.arch`
+/ `os.type` / `os.description` / `os.name` / `os.version` / `os.build_id`, OTel
+resource semconv) → `buildResource`. This is **not optional**: it is the join
+that lets a backend correlate the host **node** in the infra graph with the
+host's **metrics and logs** (same `host.id` on the entity and on the telemetry
+resource). Operator `global_tags` / `resource:` Extra of the same key override
+the detected value (host attrs are lowest precedence). Never emit `host.id` as a
+per-datapoint tag — it belongs on the resource, not on every metric (it would
+only pollute PRTG/Prometheus labels).
+
+Remote targets (SNMP devices, DBs) do **not** ride the agent's host resource:
+their identity (`network.device.id`, `db.instance.id`) is a **per-metric**
+attribute, so a device's interface metric joins to its `network.interface`
+entity by those metric attributes, not by the resource (which always describes
+the agent's own host).
 
 ## 6. Lifecycle tracker (required)
 Because liveness is delete-driven, the emitter keeps a store of currently-known
