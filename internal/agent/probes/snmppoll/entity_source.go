@@ -45,6 +45,8 @@ const (
 	oidSysName              = "1.3.6.1.2.1.1.5.0"
 	oidSysObjectIDBase      = "1.3.6.1.2.1.1.2"
 	oidSysObjectID          = "1.3.6.1.2.1.1.2.0" // → vendor PEN
+	oidSysServicesBase      = "1.3.6.1.2.1.1.7"
+	oidSysServices          = "1.3.6.1.2.1.1.7.0" // OSI-layer bitmask → device.role
 )
 
 // snmpEntitySource feeds the entity rail. Observe() never blocks: it returns
@@ -195,6 +197,15 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 		for _, b := range binds {
 			if b.OID == oidSnmpEngineID {
 				di.EngineID = asBytes(b.Value)
+			}
+		}
+	}
+	if binds, err := client.WalkRaw(oidSysServicesBase); err == nil {
+		for _, b := range binds {
+			if b.OID == oidSysServices {
+				if v, ok := asIntVal(b.Value); ok {
+					di.Services = v
+				}
 			}
 		}
 	}
@@ -433,16 +444,69 @@ func interfacePortKey(deviceID, ifName string) map[string]any {
 // must not flap on last-writer-wins.
 func selfAttrs(self deviceIdentity) map[string]any {
 	attrs := map[string]any{}
-	if self.SysName != "" {
-		attrs["sys_name"] = self.SysName
+	add := func(k, v string) {
+		if v != "" {
+			attrs[k] = v
+		}
 	}
+	add("sys.name", self.SysName)
+	add("mgmt.ip", canonIP(self.MgmtIP))
+	add("device.role", deviceRole(self.Services))
+	add("vendor", vendorName(self.VendorPEN))
 	return attrs
 }
 
 func neighborAttrs(n lldpNeighbor) map[string]any {
 	attrs := map[string]any{}
 	if n.SysName != "" {
-		attrs["sys_name"] = n.SysName
+		attrs["sys.name"] = n.SysName
 	}
 	return attrs
+}
+
+// deviceRole infers a readable role from the IF-MIB-adjacent sysServices
+// bitmask (sum of 2^(layer-1) over the OSI layers the device offers): a device
+// that forwards at layer 3 is a router, one that only bridges at layer 2 is a
+// switch. Returns "" when sysServices is unread or offers neither.
+func deviceRole(services int) string {
+	switch {
+	case services&0x04 != 0: // layer 3 (internet) → forwards/routes
+		return "router"
+	case services&0x02 != 0: // layer 2 (datalink) only → bridges/switches
+		return "switch"
+	default:
+		return ""
+	}
+}
+
+// vendorName maps a vendor's IANA Private Enterprise Number to a readable name
+// for the common network vendors; an unknown PEN returns "" (the PEN already
+// rides in the serial:<PEN>:… identity, so it is never lost).
+func vendorName(pen string) string {
+	switch pen {
+	case "9":
+		return "cisco"
+	case "2636":
+		return "juniper"
+	case "30065":
+		return "arista"
+	case "2011":
+		return "huawei"
+	case "11":
+		return "hp"
+	case "674":
+		return "dell"
+	case "6027":
+		return "dell-force10"
+	case "25506":
+		return "h3c"
+	case "1916":
+		return "extreme"
+	case "14988":
+		return "mikrotik"
+	case "8072":
+		return "net-snmp"
+	default:
+		return ""
+	}
 }
