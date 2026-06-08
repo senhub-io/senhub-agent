@@ -84,22 +84,15 @@ func NewJWTValidator(publicKeyPEM string, gracePeriodDays int) (*JWTValidator, e
 	}, nil
 }
 
-// ValidateLicense validates a license token (JWT or compact format)
+// ValidateLicense validates a JWT licence token. RS256 with the
+// embedded SenHub public key; expiry is checked manually so the
+// grace-period semantics in IsInGracePeriod stay authoritative.
+//
+// The compact-licence path that used to live here was removed when
+// the repository went open-source — its HMAC secret could not
+// survive a public source tree. JWT is now the only supported
+// format.
 func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
-	// Auto-detect compact license format
-	if IsCompactLicense(tokenString) {
-		lic, err := ValidateCompactLicense(tokenString)
-		if err != nil {
-			return nil, fmt.Errorf("invalid compact license: %w", err)
-		}
-		lic.GracePeriodDays = v.gracePeriodDays
-		return lic, nil
-	}
-	return v.validateJWT(tokenString)
-}
-
-// validateJWT validates a JWT license token
-func (v *JWTValidator) validateJWT(tokenString string) (*License, error) {
 	// Parse and validate JWT token.
 	// WithoutClaimsValidation: expiry is managed manually to support grace periods.
 	token, err := jwt.ParseWithClaims(tokenString, &LicenseClaims{}, func(token *jwt.Token) (interface{}, error) {
@@ -184,15 +177,34 @@ func (v *JWTValidator) IsInGracePeriod(license *License) bool {
 }
 
 // Free tier probes - always available without license.
-// linux_logs joins the free tier as a host-level observability source on
-// the same footing as cpu/memory/network/logicaldisk: it observes the
-// machine the agent runs on, not a remote system.
+// linux_logs, windows_eventlog and filetail join the free tier as
+// host-level observability sources on the same footing as cpu/memory/
+// network/logicaldisk: they read logs from the machine the agent runs on,
+// not a remote system (the OS log rails + generic flat-file tailing).
+//
+// snmp_poll is the deliberate exception to "remote = paid": it is the
+// open-core wedge meant to replace PRTG's free SNMP polling, so generic
+// SNMP collection is free. Deep vendor-specific SNMP (device profiles,
+// discovery, vendor MIBs) remains paid — see the tiering strategy.
+//
+// snmp_trap follows snmp_poll: receiving generic SNMP traps is part of
+// the same free PRTG-replacement wedge (the push counterpart of polling).
+//
+// otlp_receiver is free as universal collection: the agent acting as an
+// edge collector ingesting OTLP streams from other instrumented sources
+// is the same open-core "bring everything in" wedge, not a paid vendor
+// integration.
 var freeTierProbes = map[string]bool{
-	"cpu":         true,
-	"memory":      true,
-	"logicaldisk": true,
-	"network":     true,
-	"linux_logs":  true,
+	"cpu":              true,
+	"memory":           true,
+	"logicaldisk":      true,
+	"network":          true,
+	"linux_logs":       true,
+	"windows_eventlog": true,
+	"filetail":         true,
+	"snmp_poll":        true,
+	"snmp_trap":        true,
+	"otlp_receiver":    true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
@@ -209,30 +221,32 @@ func GetFreeTierProbes() []string {
 	return probes
 }
 
-// IsProbeAuthorizable returns true when the probe can be authorized by
-// at least one supported license mechanism — either the free tier
-// (no license needed) or the compact-license probe bitmap (paid).
+// IsProbeAuthorizable returns true when the probe can be authorized
+// by at least one supported licence mechanism — either the free
+// tier (no licence needed) or the paid-probe catalogue (claimable
+// by a JWT licence).
 //
-// This is the structural check enforced by the registry invariant test
-// in internal/agent/probes/registry_invariant_test.go. It does NOT take
-// a license token; it answers the question "would any well-formed
-// license be able to grant this probe?".
+// This is the structural check enforced by the registry invariant
+// test in internal/agent/probes/registry_invariant_test.go. It does
+// NOT take a licence token; it answers the question "would any
+// well-formed licence be able to grant this probe?".
 func IsProbeAuthorizable(probeName string) bool {
 	if isFreeTierProbe(probeName) {
 		return true
 	}
-	_, ok := probeBitmap[probeName]
-	return ok
+	return paidProbes[probeName]
 }
 
-// CompactBitmapProbeNames returns the names of every probe that has
-// claimed a slot in the compact-license bitmap. Used by structural
-// tests to catch stale entries (bitmap claims for probes that no
-// longer exist in the registry).
-func CompactBitmapProbeNames() []string {
-	names := make([]string, 0, len(probeBitmap))
-	for name := range probeBitmap {
-		names = append(names, name)
+// VerifyBinding returns true when the licence is bound to the given
+// agent key. A JWT licence binds via its Subject claim — an empty
+// Subject is treated as a wildcard (test fixtures, dev tokens) so
+// that operators using unsigned-tier-only setups are not blocked.
+//
+// The compact-licence binding (a 4-byte agent-key hash embedded in
+// the token) was retired together with the compact format.
+func VerifyBinding(_ string, agentKey string, lic *License) bool {
+	if lic == nil {
+		return false
 	}
-	return names
+	return lic.Subject == "" || lic.Subject == agentKey
 }

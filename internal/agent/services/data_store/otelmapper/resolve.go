@@ -26,6 +26,25 @@ import (
 // callers may choose to skip-with-warn rather than fail (the Prometheus
 // path does this; OTLP does the same).
 func Resolve(def *transformers.ProbeDefinition, m CacheMetric, opts ResolveOptions) ([]OtelRecord, error) {
+	// OTLP-ingested metrics arrive already OTel-shaped: the otlp_receiver
+	// probe decodes an inbound OTLP stream straight into datapoints whose
+	// name is a canonical OTel name. There is no per-probe transformer
+	// definition to look up (the names are arbitrary external identifiers),
+	// so pass them through as-is. Keyed on the neutral metric_type marker —
+	// not a probe package — so the mapper stays probe-agnostic.
+	if m.Tags[metricTypeTag] == MetricTypeOTLPIngest {
+		return resolveOTLPIngested(m, opts), nil
+	}
+
+	// Typed pass-through: a datapoint that already carries a canonical OTel
+	// name and declares its OTel type in the otel_type tag has no
+	// transformer row to look up. snmp_poll uses this for its dynamic
+	// per-OID long-tail metrics (issue #207); the mechanism is probe-neutral
+	// — any probe that pre-shapes a name + type can opt in.
+	if otelType := m.Tags[otelTypeTag]; otelType != "" {
+		return resolveTypedPassthrough(m, otelType, opts), nil
+	}
+
 	if def == nil {
 		return nil, fmt.Errorf("no probe definition for probe_type=%q", m.ProbeType)
 	}
@@ -157,6 +176,88 @@ func Resolve(def *transformers.ProbeDefinition, m CacheMetric, opts ResolveOptio
 		}
 	}
 	return records, nil
+}
+
+const (
+	// metricTypeTag is the internal tag key carrying a datapoint's family
+	// / origin marker.
+	metricTypeTag = "metric_type"
+
+	// MetricTypeOTLPIngest marks datapoints decoded from an inbound OTLP
+	// stream by the otlp_receiver probe. Resolve passes these through
+	// without a transformer definition lookup. The otlp_receiver probe
+	// sets this value on every datapoint it emits.
+	MetricTypeOTLPIngest = "otlp_ingest"
+
+	// otelTypeTag, when present on a datapoint, opts it into a typed
+	// pass-through: the name is taken as a canonical OTel name and this tag
+	// carries the OTel instrument type (counter / gauge / updowncounter).
+	// Used for metrics that cannot be pre-enumerated in a transformer YAML
+	// (snmp_poll dynamic per-OID metrics, #207).
+	otelTypeTag = "otel_type"
+)
+
+// resolveTypedPassthrough emits an OtelRecord for a datapoint that already
+// carries a canonical OTel name and declares its instrument type in the
+// otel_type tag, with no transformer definition. Value and unit are taken
+// as received; an unrecognised type falls back to gauge (the safe default).
+func resolveTypedPassthrough(m CacheMetric, otelType string, opts ResolveOptions) []OtelRecord {
+	switch otelType {
+	case "counter", "gauge", "updowncounter":
+		// declared type accepted as-is
+	default:
+		otelType = "gauge"
+	}
+
+	attrs := map[string]string{"probe_name": m.ProbeName}
+	if m.ProbeType != "" {
+		attrs["probe_type"] = m.ProbeType
+	}
+	if opts.IncludeProbeTags {
+		for tagName, tagVal := range m.Tags {
+			if tagVal == "" || isSystemTag(tagName) || tagName == metricTypeTag || tagName == otelTypeTag {
+				continue
+			}
+			attrs[tagName] = tagVal
+		}
+	}
+	return []OtelRecord{{
+		Name:        m.MetricName,
+		Unit:        m.Unit,
+		Type:        otelType,
+		Attributes:  attrs,
+		Value:       m.Value,
+		Description: "pass-through metric (no transformer definition)",
+	}}
+}
+
+// resolveOTLPIngested passes an already-OTel-shaped, externally-ingested
+// metric straight through to an OtelRecord: its name is a canonical OTel
+// name and it has no transformer definition. Value and unit are taken as
+// received. Type is reported as gauge — the inbound OTLP gauge/sum
+// distinction is not preserved across the flat datapoint bus, and gauge
+// is the safe re-export default.
+func resolveOTLPIngested(m CacheMetric, opts ResolveOptions) []OtelRecord {
+	attrs := map[string]string{"probe_name": m.ProbeName}
+	if m.ProbeType != "" {
+		attrs["probe_type"] = m.ProbeType
+	}
+	if opts.IncludeProbeTags {
+		for tagName, tagVal := range m.Tags {
+			if tagVal == "" || isSystemTag(tagName) || tagName == metricTypeTag {
+				continue
+			}
+			attrs[tagName] = tagVal
+		}
+	}
+	return []OtelRecord{{
+		Name:        m.MetricName,
+		Unit:        m.Unit,
+		Type:        "gauge",
+		Attributes:  attrs,
+		Value:       m.Value,
+		Description: "OTLP-ingested metric",
+	}}
 }
 
 // findMetricDefinition locates the MetricDefinition matching an internal
