@@ -320,7 +320,7 @@ func TestMaybeSweep_PopulatesAndRateLimits(t *testing.T) {
 	t0 := time.Now()
 	s.maybeSweep(mk("first"), t0)
 	obs := s.Observe()
-	if len(obs.Entities) != 1 || obs.Entities[0].Attributes["sys_name"] != "first" {
+	if len(obs.Entities) != 1 || obs.Entities[0].Attributes["sys.name"] != "first" {
 		t.Fatalf("after first sweep: %+v", obs)
 	}
 	if obs.Entities[0].ID[idKeyNetworkDevice] != "name:first" {
@@ -329,13 +329,62 @@ func TestMaybeSweep_PopulatesAndRateLimits(t *testing.T) {
 
 	// Within the interval → no re-sweep; cache unchanged even with fresh data.
 	s.maybeSweep(mk("second"), t0.Add(1*time.Second))
-	if s.Observe().Entities[0].Attributes["sys_name"] != "first" {
+	if s.Observe().Entities[0].Attributes["sys.name"] != "first" {
 		t.Errorf("should not re-sweep within interval")
 	}
 
 	// After the interval → re-sweep.
 	s.maybeSweep(mk("third"), t0.Add(11*time.Minute))
-	if s.Observe().Entities[0].Attributes["sys_name"] != "third" {
+	if s.Observe().Entities[0].Attributes["sys.name"] != "third" {
 		t.Errorf("should re-sweep after interval")
+	}
+}
+
+func TestSelfAttrs_Readable(t *testing.T) {
+	// Descriptive attributes use the frozen dotted casing so a backend shows a
+	// readable device, not just the cryptic id.
+	self := deviceIdentity{SysName: "core-sw-01", MgmtIP: "10.0.0.1", VendorPEN: "9", Services: 0x06}
+	a := selfAttrs(self)
+	if a["sys.name"] != "core-sw-01" {
+		t.Errorf("sys.name = %v, want core-sw-01 (dotted key, not sys_name)", a["sys.name"])
+	}
+	if a["mgmt.ip"] != "10.0.0.1" {
+		t.Errorf("mgmt.ip = %v", a["mgmt.ip"])
+	}
+	if a["device.role"] != "router" {
+		t.Errorf("device.role = %v, want router (L2+L3)", a["device.role"])
+	}
+	if a["vendor"] != "cisco" {
+		t.Errorf("vendor = %v, want cisco (PEN 9)", a["vendor"])
+	}
+	if _, ok := a["sys_name"]; ok {
+		t.Error("legacy sys_name (underscore) must not be emitted")
+	}
+}
+
+func TestDeviceRole(t *testing.T) {
+	cases := map[int]string{
+		0x04: "router", // layer 3
+		0x06: "router", // layer 2+3 → router
+		0x02: "switch", // layer 2 only
+		0x00: "",       // unread / none
+		0x40: "",       // application layer only
+	}
+	for in, want := range cases {
+		if got := deviceRole(in); got != want {
+			t.Errorf("deviceRole(%#x) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestVendorName(t *testing.T) {
+	if vendorName("9") != "cisco" {
+		t.Error("PEN 9 → cisco")
+	}
+	if vendorName("2636") != "juniper" {
+		t.Error("PEN 2636 → juniper")
+	}
+	if vendorName("99999") != "" {
+		t.Error("unknown PEN → empty (PEN still lives in the serial: identity)")
 	}
 }
