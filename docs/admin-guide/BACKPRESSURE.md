@@ -19,6 +19,7 @@ runtime counters these mechanisms expose, see
 | Memory limiter | Heap blow-up during a prolonged backend outage | `memory_soft_limit`, `memory_hard_limit` |
 | Persistent checkpoint (metrics) | Losing the **metric** store across an agent restart while the backend is down | — (no loss) |
 | Logs dead-letter queue | Losing **event logs** during a backend outage (queued to disk, replayed at boot and on recovery) | `logs_queue_full` (only when the disk cap is hit) |
+| Endpoint failover | The primary ingress being down (switch to a standby ingress, return to primary on recovery) | — (no loss; switch is logged + counted) |
 
 A fifth, **parallel export** (`max_concurrent_exports`), splits a large
 snapshot into per-probe sub-batches exported concurrently — throughput,
@@ -33,6 +34,8 @@ storage:
   - name: otlp
     params:
       endpoint: "otel-collector.internal:4317"
+      fallback_endpoints:                 # standby ingresses for failover (#217); empty = none
+        - "otel-collector-dr.internal:4317"
       signals:
         metrics: { enabled: true, interval: 30s }
 
@@ -160,6 +163,9 @@ Every mechanism is visible at `/api/<agent-key>/info/otlp`, via
   dead-letter queue (gauges); `logs.queued_total` / `logs.replayed_total`
   — cumulative records persisted vs re-emitted. A queue depth that never
   drains means the backend is still unreachable for the logs signal.
+- `failover.active_endpoint_index` (0 = primary) / `failover.switches_total`
+  — endpoint failover state. A non-zero index means the agent is on a
+  standby ingress; a rising switch count means the primary is flapping.
 
 Full field reference and suggested alerts: [OTLP Pipeline
 Observability](./OTLP-OBSERVABILITY.md).
