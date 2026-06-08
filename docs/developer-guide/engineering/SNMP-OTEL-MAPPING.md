@@ -138,19 +138,25 @@ same device derive byte-identical ids.
   preserved); `mgmt` = `net.IP` canonical form. All in one function:
   `resolveDeviceID` (lldp.go); identity reads in `readSelfIdentity`/
   `chassisSerial` (entity_source.go).
-- **Relations** (network.device↔network.device, single directed edge,
-  endpoints emitted before/with the edge):
+- **Routing → `network.route` entities** (topology-as-entities, ADR 0022,
+  pinned with Toise #87): ipCidrRouteTable / ipForwardTable → one
+  `network.route` entity `{network.device.id, route.destination}` (CIDR from
+  the entry index) that the device **owns** via `has_route` (mirror of
+  `has_interface`), the next hop carried as a scalar `next_hop.ip` attribute
+  (+ `metric`). The gateway is **not** a node — `network.address` is deferred,
+  so no `mgmt:`/`mac:` device is synthesized for it. This supersedes the legacy
+  `routes_via` device→next-hop edge; ARP convergence (which existed only to
+  give that edge a device-typed next-hop) is therefore gone. **DONE (#156).**
+- **Link-layer relations** (network.device↔network.device — **legacy form,
+  pending `connected_to` migration to port entities**; the frontier still
+  accepts them):
   - LLDP `lldpRemTable` → `adjacent_to`, polled→neighbour, **one edge, no
-    reciprocal duplicate** (Toise's get_neighbors reads both directions).
-    Attributes `local_port` / `remote_port`.
-  - ipCidrRouteTable / ipForwardTable → `routes_via`, device→next-hop; when
-    the next-hop is only an IP, `to` = `mgmt:<ip>`. Attributes
-    destination / mask / metric.
+    reciprocal duplicate**. Attributes `local_port` / `remote_port`. → will
+    become port-to-port `connected_to` once ports are `network.interface`
+    entities (ifXTable walk).
   - dot1dTpFdbTable / dot1qTpFdbTable → `forwards_to`, `to` = `mac:<addr>`.
     **Filter FDB to inter-device MACs** (LLDP chassis / uplink ports);
-    host terminal MACs are out of scope (no card entity, would flood). 5c.
-  - ipNetToMediaTable (ARP) → IP↔MAC binding; bridges `name:`/`mgmt:` →
-    canonical `mac:` via the polled device's `ifPhysAddress`. 5d.
+    host terminal MACs are out of scope (no card entity, would flood).
 
 **Cross-source convergence (no Toise merge):** LLDP chassis MAC == FDB/ARP
 MAC == `mac:<addr>` matches automatically. Without LLDP, the polled device's
@@ -197,9 +203,10 @@ Reconciled with ENTITY-DETECTION.md §7 (where SNMP topology is its Lot 5).
   attributes. Local vendor-MIB directory loading.
 - **Lot 3** — device discovery (sysObjectID → vendor) + device profiles +
   the "activated features" class → `network.device` entity attributes.
-- **Lot 5 (topology → entity rail)** — LLDP / BRIDGE-FDB / ipCidrRoute /
-  ARP modules emitting `network.device` + `adjacent_to` / `routes_via` /
-  `forwards_to` via `entity.Source` (#185 → Toise). This is the
+- **Lot 5 (topology → entity rail)** — LLDP / BRIDGE-FDB / ipCidrRoute modules
+  emitting `network.device` + `network.route` (`has_route`, **done #156**) and,
+  next, `network.interface` ports + `connected_to` (superseding `adjacent_to` /
+  `forwards_to`) via `entity.Source` (#185 → Toise). This is the
   vendor-neutral infrastructure-graph wedge.
 
 Tiering (`project_tiering_strategy`): interface collection + basic system +
