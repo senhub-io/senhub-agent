@@ -38,34 +38,37 @@ func logValueToAny(v log.Value) any {
 			m[kv.Key] = logValueToAny(kv.Value)
 		}
 		return m
+	case log.KindSlice:
+		s := []any{}
+		for _, e := range v.AsSlice() {
+			s = append(s, logValueToAny(e))
+		}
+		return s
 	default:
 		return nil
 	}
 }
 
-// TestBuildEntityRecord_Foundation pins the Lot 1 wire shapes (host +
-// service.instance entities + the runs_on relation) against the agreed
-// Toise entity-events contract.
+// TestBuildEntityRecord_Foundation pins the Lot 1 wire shapes against the
+// agreed Toise entity-events contract: host (no edges) and service.instance
+// carrying the runs_on edge embedded in entity.relationships (the folded
+// form, matching conformance records #0 and #1). The entities here are built
+// in their post-fold shape; fold correctness is covered in the entity package.
 func TestBuildEntityRecord_Foundation(t *testing.T) {
 	now := time.Unix(1780272000, 0).UTC()
-	h := entity.HostIdentity{ID: "h-001", Name: "web-server-1", OSType: "linux"}
-	a := entity.AgentIdentity{InstanceID: "agent-7f3a", ServiceName: "senhub-agent", ServiceVersion: "1.0.0"}
-
-	events := entity.DetectFoundation(h, a, now, time.Minute)
-	if len(events) != 3 {
-		t.Fatalf("DetectFoundation: got %d events, want 3", len(events))
-	}
 
 	cases := []struct {
-		name      string
-		ev        entity.Event
-		eventName string
-		want      map[string]any
+		name   string
+		entity entity.Entity
+		want   map[string]any
 	}{
 		{
-			name:      "host",
-			ev:        events[0],
-			eventName: "entity.state",
+			name: "host",
+			entity: entity.Entity{
+				Type:       "host",
+				ID:         map[string]any{"host.id": "h-001"},
+				Attributes: map[string]any{"host.name": "web-server-1", "os.type": "linux"},
+			},
 			want: map[string]any{
 				"entity.type":            "host",
 				"entity.id":              map[string]any{"host.id": "h-001"},
@@ -74,45 +77,44 @@ func TestBuildEntityRecord_Foundation(t *testing.T) {
 			},
 		},
 		{
-			name:      "service.instance",
-			ev:        events[1],
-			eventName: "entity.state",
+			name: "service.instance",
+			entity: entity.Entity{
+				Type:       "service.instance",
+				ID:         map[string]any{"service.instance.id": "agent-7f3a"},
+				Attributes: map[string]any{"service.name": "senhub-agent", "service.version": "1.0.0"},
+				Relationships: []entity.Relationship{
+					{Type: "runs_on", TargetType: "host", TargetID: map[string]any{"host.id": "h-001"}},
+				},
+			},
 			want: map[string]any{
 				"entity.type":            "service.instance",
 				"entity.id":              map[string]any{"service.instance.id": "agent-7f3a"},
 				"entity.description":     map[string]any{"service.name": "senhub-agent", "service.version": "1.0.0"},
 				"entity.report.interval": int64(60),
-			},
-		},
-		{
-			// Relations stay on the entity.relation.* extension until lot 0b
-			// (embedded entity.relationships). No EventName on a relation
-			// record yet.
-			name:      "runs_on",
-			ev:        events[2],
-			eventName: "",
-			want: map[string]any{
-				"entity.relation.event.type": "state",
-				"entity.relation.type":       "runs_on",
-				"entity.relation.from.type":  "service.instance",
-				"entity.relation.from.id":    map[string]any{"service.instance.id": "agent-7f3a"},
-				"entity.relation.to.type":    "host",
-				"entity.relation.to.id":      map[string]any{"host.id": "h-001"},
+				"entity.relationships": []any{
+					map[string]any{
+						"relationship.type": "runs_on",
+						"entity.type":       "host",
+						"entity.id":         map[string]any{"host.id": "h-001"},
+					},
+				},
 			},
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rec, err := buildEntityRecord(tc.ev)
+			e := tc.entity
+			ev := entity.Event{Kind: entity.EntityState, Entity: &e, Time: now, Interval: time.Minute}
+			rec, err := buildEntityRecord(ev)
 			if err != nil {
 				t.Fatalf("buildEntityRecord: %v", err)
 			}
 			if !rec.Timestamp().Equal(now) {
 				t.Errorf("timestamp = %v, want %v (event_time must be the observation instant)", rec.Timestamp(), now)
 			}
-			if rec.EventName() != tc.eventName {
-				t.Errorf("EventName = %q, want %q", rec.EventName(), tc.eventName)
+			if rec.EventName() != "entity.state" {
+				t.Errorf("EventName = %q, want entity.state", rec.EventName())
 			}
 			got := recordAttrs(rec)
 			if !reflect.DeepEqual(got, tc.want) {
@@ -122,39 +124,43 @@ func TestBuildEntityRecord_Foundation(t *testing.T) {
 	}
 }
 
-// TestBuildEntityRecord_RelationPurity asserts a relation record carries no
-// node attribute (entity.type/id/description) and no entity-state EventName,
-// so a strict entity-event consumer doesn't mistake it for a malformed
-// entity event. (Relations remain the entity.relation.* extension until
-// lot 0b folds them into entity.relationships.)
-func TestBuildEntityRecord_RelationPurity(t *testing.T) {
-	now := time.Unix(1780272180, 0).UTC()
-	rel := entity.Event{
-		Kind: entity.RelationState,
-		Time: now,
-		Relation: &entity.Relation{
-			Type:     "runs_on",
-			FromType: "service.instance",
-			FromID:   map[string]any{"service.instance.id": "agent-7f3a"},
-			ToType:   "host",
-			ToID:     map[string]any{"host.id": "h-001"},
+// TestBuildEntityRecord_EmbeddedRelationships pins the entity.relationships
+// array shape — multiple bare descriptors {relationship.type, entity.type,
+// entity.id} on one entity.state record — against the Toise contract (record
+// #3: service.instance with runs_on + monitors).
+func TestBuildEntityRecord_EmbeddedRelationships(t *testing.T) {
+	ev := entity.Event{
+		Kind: entity.EntityState,
+		Time: time.Unix(1780272060, 0).UTC(),
+		Entity: &entity.Entity{
+			Type:       "service.instance",
+			ID:         map[string]any{"service.instance.id": "agent-7f3a"},
+			Attributes: map[string]any{"service.name": "senhub-agent", "service.version": "1.0.0"},
+			Relationships: []entity.Relationship{
+				{Type: "runs_on", TargetType: "host", TargetID: map[string]any{"host.id": "h-001"}},
+				{Type: "monitors", TargetType: "db", TargetID: map[string]any{"db.instance.id": "postgresql:7311168095704935424"}},
+			},
 		},
 	}
-	rec, err := buildEntityRecord(rel)
+	rec, err := buildEntityRecord(ev)
 	if err != nil {
 		t.Fatalf("buildEntityRecord: %v", err)
 	}
-	if rec.EventName() != "" {
-		t.Errorf("relation record must not carry an entity EventName, got %q", rec.EventName())
+	got := recordAttrs(rec)["entity.relationships"]
+	want := []any{
+		map[string]any{
+			"relationship.type": "runs_on",
+			"entity.type":       "host",
+			"entity.id":         map[string]any{"host.id": "h-001"},
+		},
+		map[string]any{
+			"relationship.type": "monitors",
+			"entity.type":       "db",
+			"entity.id":         map[string]any{"db.instance.id": "postgresql:7311168095704935424"},
+		},
 	}
-	nodeKeys := map[string]bool{
-		attrEntityType: true, attrEntityID: true,
-		attrEntityDescription: true, attrEntityReportInterval: true,
-	}
-	for k := range recordAttrs(rec) {
-		if nodeKeys[k] {
-			t.Errorf("relation record carries forbidden node attribute %q", k)
-		}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("entity.relationships mismatch\n got: %#v\nwant: %#v", got, want)
 	}
 }
 

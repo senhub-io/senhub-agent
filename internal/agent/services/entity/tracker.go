@@ -7,10 +7,14 @@ import (
 	"time"
 )
 
-// Tracker turns a per-cycle snapshot of observed entities/relations into the
-// event stream the consumer expects: it re-emits every current item as a
-// state event (the heartbeat — coalesced consumer-side) and emits a delete
-// for anything that was present last cycle but is absent now.
+// Tracker turns a per-cycle snapshot of observed entities into the event
+// stream the consumer expects: it re-emits every current entity as a state
+// event (the heartbeat — coalesced consumer-side) and emits a delete for any
+// entity that was present last cycle but is absent now.
+//
+// Relations are not tracked here: they ride embedded on their source entity's
+// state and are retired by absence (a heartbeat that stops listing a
+// relationship retires it), so only entities have an explicit delete.
 //
 // It holds the last-seen set across cycles, so one Tracker lives for the
 // lifetime of a Detector. Foundation entities (host, the agent) never
@@ -28,10 +32,10 @@ func NewTracker(publish func(Event)) *Tracker {
 	return &Tracker{publish: publish, seen: map[string]Event{}}
 }
 
-// Reconcile publishes a state event for every item in current (the full set
+// Reconcile publishes a state event for every entity in current (the full set
 // observed this cycle, all state-kind), then a delete for every previously
-// seen item absent from current. Deletes are stamped with now. current is
-// expected to carry only EntityState / RelationState events.
+// seen entity absent from current. Deletes are stamped with now. current is
+// expected to carry only EntityState events.
 func (t *Tracker) Reconcile(current []Event, now time.Time) {
 	cur := make(map[string]bool, len(current))
 	for _, ev := range current {
@@ -50,21 +54,22 @@ func (t *Tracker) Reconcile(current []Event, now time.Time) {
 	}
 }
 
-// eventKey is the stable identity key of an entity or relation event. It is
-// built from the immutable identity only (type + id set, and for relations
-// the endpoints), never from mutable descriptive attributes — so a heartbeat
-// with changed attributes keeps the same key.
+// eventKey is the stable identity key of an entity event. It is built from the
+// immutable identity only (type + id set), never from mutable descriptive
+// attributes or the embedded relationships — so a heartbeat with changed
+// attributes or relationships keeps the same key.
 func eventKey(ev Event) string {
-	if ev.Relation != nil {
-		r := ev.Relation
-		return "R\x00" + r.Type +
-			"\x00F" + r.FromType + "\x00" + canonicalID(r.FromID) +
-			"\x00T" + r.ToType + "\x00" + canonicalID(r.ToID)
-	}
 	if ev.Entity != nil {
-		return "E\x00" + ev.Entity.Type + "\x00" + canonicalID(ev.Entity.ID)
+		return entityKey(ev.Entity.Type, ev.Entity.ID)
 	}
 	return ""
+}
+
+// entityKey is the stable identity key of an entity from its type + id set.
+// Shared by the tracker (heartbeat/delete diffing) and the relationship fold
+// (matching a relation's source endpoint to an entity).
+func entityKey(typ string, id map[string]any) string {
+	return "E\x00" + typ + "\x00" + canonicalID(id)
 }
 
 // canonicalID renders an identity map as a stable, sorted string.
@@ -86,22 +91,10 @@ func canonicalID(id map[string]any) string {
 	return b.String()
 }
 
-// deleteFor builds the delete event that retires the item described by a
-// state event, carrying only its type + identity (no descriptive attributes).
+// deleteFor builds the delete event that retires the entity described by a
+// state event, carrying only its type + identity (no descriptive attributes,
+// no relationships).
 func deleteFor(ev Event) Event {
-	if ev.Relation != nil {
-		r := ev.Relation
-		return Event{
-			Kind: RelationDelete,
-			Relation: &Relation{
-				Type:     r.Type,
-				FromType: r.FromType,
-				FromID:   r.FromID,
-				ToType:   r.ToType,
-				ToID:     r.ToID,
-			},
-		}
-	}
 	return Event{
 		Kind: EntityDelete,
 		Entity: &Entity{
