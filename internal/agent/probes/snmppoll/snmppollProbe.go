@@ -95,11 +95,15 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 				p.moduleLogger.Warn().Err(cErr).Msg("error closing SNMP connection")
 			}
 		}()
-		points = collect(client, p.cfg, p.instance, start, p.moduleLogger)
 		// Entity rail: refresh the topology snapshot on its own slow cadence,
 		// reusing this already-connected client. Observe() (detector goroutine)
 		// reads the cache; this only walks when topologyInterval has elapsed.
+		// Done BEFORE collect so the metrics carry the freshly-resolved device
+		// id / interface names (correlation tags); between sweeps the cached
+		// values are reused.
 		p.entitySource.maybeSweep(client, start)
+		points = collect(client, p.cfg, p.instance,
+			p.entitySource.DeviceID(), p.entitySource.InterfaceNames(), start, p.moduleLogger)
 	}
 
 	end := time.Now()
