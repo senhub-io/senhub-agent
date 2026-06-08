@@ -241,7 +241,7 @@ func (s *OTLPSyncStrategy) Start() error {
 	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.Timeout)
 	defer cancel()
 
-	exp, err := buildExporters(ctx, s.cfg)
+	exp, err := buildExporters(ctx, s.cfg, s.logger)
 	if err != nil {
 		return fmt.Errorf("build exporters: %w", err)
 	}

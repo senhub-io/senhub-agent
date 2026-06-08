@@ -34,6 +34,9 @@ var (
 	otlpLogsReplayed     atomic.Uint64 // log records re-emitted from the queue (cumulative)
 	otlpLogsQueueRecords atomic.Int64  // log records currently on disk (gauge)
 	otlpLogsQueueBytes   atomic.Int64  // bytes currently held by the queue (gauge)
+
+	otlpEndpointSwitches    atomic.Uint64 // endpoint failover switches (cumulative)
+	otlpActiveEndpointIndex atomic.Int64  // index of the OTLP endpoint currently in use (0 = primary)
 )
 
 // otlpCheckpointErrors is a per-stage counter (read/parse/encode/etc.)
@@ -143,6 +146,18 @@ func GetOTLPLogsQueuedTotal() uint64   { return otlpLogsQueued.Load() }
 func GetOTLPLogsReplayedTotal() uint64 { return otlpLogsReplayed.Load() }
 func GetOTLPLogsQueueRecords() int64   { return otlpLogsQueueRecords.Load() }
 func GetOTLPLogsQueueBytes() int64     { return otlpLogsQueueBytes.Load() }
+
+// IncrementOTLPEndpointSwitches records one failover switch (the active
+// OTLP endpoint changed). RecordOTLPActiveEndpointIndex publishes which
+// endpoint is currently serving (0 = primary, >0 = a fallback). Issue
+// #217 resilience layer 2.
+func IncrementOTLPEndpointSwitches()      { otlpEndpointSwitches.Add(1) }
+func RecordOTLPActiveEndpointIndex(i int) { otlpActiveEndpointIndex.Store(int64(i)) }
+
+// GetOTLPEndpointSwitchesTotal / GetOTLPActiveEndpointIndex are
+// scrape-time accessors.
+func GetOTLPEndpointSwitchesTotal() uint64 { return otlpEndpointSwitches.Load() }
+func GetOTLPActiveEndpointIndex() int64    { return otlpActiveEndpointIndex.Load() }
 
 // RecordOTLPStoreSize is called by the OTLP strategy after every
 // snapshot to publish the current cardinality of the strategy-local
