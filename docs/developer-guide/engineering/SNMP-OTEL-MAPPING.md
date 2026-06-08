@@ -158,6 +158,13 @@ same device derive byte-identical ids.
   (ifHighSpeed Mbit/s → bit/s) descriptive. The port inventory that anchors
   `connected_to`; `notPresent` and unnamed rows are skipped. Bounded by the
   device's port count. **DONE (#156).**
+- **Interface IPs → `network.address` entities** (topology-as-entities, ADR
+  0022): IP-MIB `ipAdEntIfIndex` (ipAddrTable) → one `network.address` entity
+  `{network.address}` per non-loopback interface IP, `bound_to` the
+  `network.interface` it sits on. The **same** `network.address {ip}` node is
+  the one a host's `next_hop_via` reaches, so a host's gateway resolves to this
+  device's interface — the host↔device topology join, by exact IP. **DONE
+  (#156).**
 - **Routing → `network.route` entities** (topology-as-entities, ADR 0022,
   pinned with Toise #87): ipCidrRouteTable / ipForwardTable → one
   `network.route` entity `{network.device.id, route.destination}` (CIDR from
