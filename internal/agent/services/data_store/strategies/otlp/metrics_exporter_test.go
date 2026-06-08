@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
 
@@ -90,7 +91,7 @@ func TestPushMetrics_BuildsResourceMetricsWithCounter(t *testing.T) {
 	now := time.Unix(1700000010, 0)
 
 	count, err := pushMetrics(context.Background(), store, defs, res, "1.2.3",
-		startTime, now, otelmapper.DefaultResolveOptions(), nil, export, nil, 1)
+		startTime, now, otelmapper.DefaultResolveOptions(), nil, nil, export, nil, 1)
 	if err != nil {
 		t.Fatalf("pushMetrics: %v", err)
 	}
@@ -157,7 +158,7 @@ func TestPushMetrics_BuildsResourceMetricsWithGauge(t *testing.T) {
 
 	var captured *metricdata.ResourceMetrics
 	count, err := pushMetrics(context.Background(), store, defs, resource.NewSchemaless(), "",
-		time.Now(), time.Now(), otelmapper.DefaultResolveOptions(), nil,
+		time.Now(), time.Now(), otelmapper.DefaultResolveOptions(), nil, nil,
 		func(_ context.Context, rm *metricdata.ResourceMetrics) error {
 			captured = rm
 			return nil
@@ -183,7 +184,7 @@ func TestPushMetrics_NoStoredMetricsIsNoOp(t *testing.T) {
 
 	called := false
 	count, err := pushMetrics(context.Background(), store, defs, resource.NewSchemaless(), "",
-		time.Now(), time.Now(), otelmapper.DefaultResolveOptions(), nil,
+		time.Now(), time.Now(), otelmapper.DefaultResolveOptions(), nil, nil,
 		func(_ context.Context, _ *metricdata.ResourceMetrics) error {
 			called = true
 			return nil
@@ -231,7 +232,7 @@ func TestPushMetrics_MissingProbeDefTriggersHandlerAndContinues(t *testing.T) {
 
 	var capturedCount int
 	count, err := pushMetrics(context.Background(), store, defs, resource.NewSchemaless(), "",
-		time.Now(), time.Now(), otelmapper.DefaultResolveOptions(), nil,
+		time.Now(), time.Now(), otelmapper.DefaultResolveOptions(), nil, nil,
 		func(_ context.Context, rm *metricdata.ResourceMetrics) error {
 			capturedCount = len(rm.ScopeMetrics[0].Metrics)
 			return nil
@@ -264,11 +265,49 @@ func TestPushMetrics_ExportErrorPropagates(t *testing.T) {
 
 	expected := errors.New("collector down")
 	_, err := pushMetrics(context.Background(), store, defs, resource.NewSchemaless(), "",
-		time.Now(), time.Now(), otelmapper.DefaultResolveOptions(), nil,
+		time.Now(), time.Now(), otelmapper.DefaultResolveOptions(), nil, nil,
 		func(_ context.Context, _ *metricdata.ResourceMetrics) error { return expected },
 		nil, 1)
 	if err == nil || !errors.Is(err, expected) {
 		t.Errorf("err=%v, want wrapped %v", err, expected)
+	}
+}
+
+func TestPushMetrics_GlobalTagsStrippedFromMetricAttributes(t *testing.T) {
+	// A global_tag ("site") is enriched onto the datapoint like any tag.
+	// It rides on the Resource, so pushMetrics must strip it from the
+	// per-metric attributes when globalTagKeys names it (issue #202).
+	store := newMetricStore()
+	store.upsert(datapoint.DataPoint{
+		Name:  "cpu_utilization",
+		Value: 50,
+		Tags: []tags.Tag{
+			{Key: "probe_name", Value: "host-a"},
+			{Key: "probe_type", Value: "cpu"},
+			{Key: "site", Value: "paris"},
+			{Key: "unit", Value: "%"},
+		},
+	})
+	defs := &fakeDefs{defs: map[string]*transformers.ProbeDefinition{"cpu": newGaugeDef()}}
+
+	var captured *metricdata.ResourceMetrics
+	_, err := pushMetrics(context.Background(), store, defs, resource.NewSchemaless(), "",
+		time.Now(), time.Now(),
+		otelmapper.ResolveOptions{IncludeProbeTags: true},
+		map[string]bool{"site": true},
+		nil,
+		func(_ context.Context, rm *metricdata.ResourceMetrics) error { captured = rm; return nil },
+		nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := captured.ScopeMetrics[0].Metrics[0].Data.(metricdata.Gauge[float64])
+	attrs := g.DataPoints[0].Attributes
+	if _, ok := attrs.Value(attribute.Key("site")); ok {
+		t.Error("global_tag 'site' must be stripped from metric attributes (it lives on the Resource)")
+	}
+	if _, ok := attrs.Value(attribute.Key("probe_name")); !ok {
+		t.Error("probe_name must remain a metric attribute")
 	}
 }
 

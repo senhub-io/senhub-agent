@@ -130,6 +130,12 @@ func (lc *LocalConfiguration) GetAuthenticationKey() string {
 	return lc.data.Agent.Key
 }
 
+// GetGlobalTags implements AgentConfiguration interface — the
+// agent-level global_tags emitted as OTLP Resource attributes (#202).
+func (lc *LocalConfiguration) GetGlobalTags() map[string]string {
+	return lc.data.Agent.GlobalTags
+}
+
 // GetServerUrl implements AgentConfiguration interface
 func (lc *LocalConfiguration) GetServerUrl() string {
 	// In offline mode, we don't have a server URL
