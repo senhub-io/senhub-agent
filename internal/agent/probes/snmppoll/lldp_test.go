@@ -86,7 +86,12 @@ func TestParseLLDPLocal(t *testing.T) {
 		{OID: lldpLocChassisIdSubtype, Type: gosnmp.Integer, Value: 4},
 		{OID: lldpLocChassisId, Type: gosnmp.OctetString, Value: []byte{0xde, 0xad, 0xbe, 0xef, 0x00, 0x01}},
 		{OID: lldpLocSysName, Type: gosnmp.OctetString, Value: []byte("core-sw-1")},
-		{OID: "1.0.8802.1.1.2.1.3.7.1.4.1", Type: gosnmp.OctetString, Value: []byte("ignored port row")},
+		{OID: "1.0.8802.1.1.2.1.3.7.1.4.1", Type: gosnmp.OctetString, Value: []byte("ignored desc")},
+		// Local port table: port 5 named (ifName subtype), port 7 MAC-only (no name).
+		{OID: lldpLocPortIdSubtype + ".5", Type: gosnmp.Integer, Value: portSubtypeIfName},
+		{OID: lldpLocPortId + ".5", Type: gosnmp.OctetString, Value: []byte("Gi1/0/5")},
+		{OID: lldpLocPortIdSubtype + ".7", Type: gosnmp.Integer, Value: subtypeMacAddress},
+		{OID: lldpLocPortId + ".7", Type: gosnmp.OctetString, Value: []byte{0xaa, 0xbb}},
 	}
 	loc := parseLLDPLocal(binds)
 	if loc.ChassisIdSubtype != 4 || loc.SysName != "core-sw-1" {
@@ -98,6 +103,25 @@ func TestParseLLDPLocal(t *testing.T) {
 	// And the contract-bound identity on top of the parse (chassis MAC rung):
 	if got := resolveDeviceID(deviceIdentity{ChassisMAC: loc.ChassisId}); got != "mac:de:ad:be:ef:00:01" {
 		t.Errorf("resolved local id = %q", got)
+	}
+	// Local port table: only the named port is kept; the MAC-only one is dropped.
+	if loc.Ports["5"] != "Gi1/0/5" {
+		t.Errorf("local port 5 = %q, want Gi1/0/5", loc.Ports["5"])
+	}
+	if _, ok := loc.Ports["7"]; ok {
+		t.Errorf("MAC-only local port 7 should be dropped, got %q", loc.Ports["7"])
+	}
+}
+
+func TestNamedPortID(t *testing.T) {
+	if got := namedPortID(portSubtypeIfName, []byte("Gi0/1")); got != "Gi0/1" {
+		t.Errorf("ifName subtype = %q, want Gi0/1", got)
+	}
+	if got := namedPortID(portSubtypeLocal, []byte("uplink-2")); got != "uplink-2" {
+		t.Errorf("local subtype = %q, want uplink-2", got)
+	}
+	if got := namedPortID(3 /* macAddress */, []byte{0xaa, 0xbb}); got != "" {
+		t.Errorf("MAC subtype must yield no name, got %q", got)
 	}
 }
 
