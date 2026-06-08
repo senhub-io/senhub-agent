@@ -15,9 +15,11 @@ import (
 // (entity.type / entity.id / entity.description / entity.report.interval),
 // no otel.entity.* prefix and no event-type payload attribute.
 //
-// Edges still use the entity.relation.* extension here — the embedded
-// entity.relationships form is the next lot (#222 lot 0b); until then a
-// relation is a separate record a strict-spec consumer ignores.
+// Edges are embedded in the source entity's state via entity.relationships: an
+// array of bare descriptors {relationship.type, entity.type, entity.id} naming
+// the target only (the source is the carrying entity). There are no separate
+// relation records and no edge delete — a relation a heartbeat stops listing
+// is retired by absence.
 const (
 	eventNameEntityState  = "entity.state"
 	eventNameEntityDelete = "entity.delete"
@@ -27,16 +29,8 @@ const (
 	attrEntityDescription    = "entity.description"
 	attrEntityReportInterval = "entity.report.interval"
 
-	attrRelEventType = "entity.relation.event.type"
-	attrRelType      = "entity.relation.type"
-	attrRelFromType  = "entity.relation.from.type"
-	attrRelFromID    = "entity.relation.from.id"
-	attrRelToType    = "entity.relation.to.type"
-	attrRelToID      = "entity.relation.to.id"
-	attrRelAttrs     = "entity.relation.attributes"
-
-	relationEventStateValue  = "state"
-	relationEventDeleteValue = "delete"
+	attrEntityRelationships = "entity.relationships"
+	attrRelationshipType    = "relationship.type"
 )
 
 // buildEntityRecord encodes a neutral entity.Event into the OTel log Record
@@ -89,38 +83,15 @@ func buildEntityRecord(ev entity.Event) (log.Record, error) {
 		if ev.Kind == entity.EntityState && ev.Interval > 0 {
 			attrs = append(attrs, log.Int64(attrEntityReportInterval, int64(ev.Interval.Seconds())))
 		}
-
-	case entity.RelationState, entity.RelationDelete:
-		r := ev.Relation
-		if r == nil {
-			return rec, fmt.Errorf("relation event kind %d has nil Relation", ev.Kind)
-		}
-		eventType := relationEventStateValue
-		if ev.Kind == entity.RelationDelete {
-			eventType = relationEventDeleteValue
-		}
-		from, err := scalarMap(attrRelFromID, r.FromID)
-		if err != nil {
-			return rec, err
-		}
-		to, err := scalarMap(attrRelToID, r.ToID)
-		if err != nil {
-			return rec, err
-		}
-		attrs = []log.KeyValue{
-			log.String(attrRelEventType, eventType),
-			log.String(attrRelType, r.Type),
-			log.String(attrRelFromType, r.FromType),
-			from,
-			log.String(attrRelToType, r.ToType),
-			to,
-		}
-		if ev.Kind == entity.RelationState && len(r.Attributes) > 0 {
-			a, err := scalarMap(attrRelAttrs, r.Attributes)
+		// Embedded outgoing edges. State only — a delete retires the whole
+		// node, relationships included. The set is full each heartbeat;
+		// removal is by absence (no edge delete on the wire).
+		if ev.Kind == entity.EntityState && len(e.Relationships) > 0 {
+			rels, err := relationshipsValue(e.Relationships)
 			if err != nil {
 				return rec, err
 			}
-			attrs = append(attrs, a)
+			attrs = append(attrs, rels)
 		}
 
 	default:
@@ -131,9 +102,38 @@ func buildEntityRecord(ev entity.Event) (log.Record, error) {
 	return rec, nil
 }
 
+// relationshipsValue encodes the embedded entity.relationships array: one bare
+// descriptor per outgoing edge, in producer order (the consumer treats it as a
+// set, so order is not significant).
+func relationshipsValue(rels []entity.Relationship) (log.KeyValue, error) {
+	vals := make([]log.Value, 0, len(rels))
+	for _, rel := range rels {
+		idKVs, err := scalarKVs(rel.TargetID)
+		if err != nil {
+			return log.KeyValue{}, fmt.Errorf("%s[%s→%s]: %w", attrEntityRelationships, rel.Type, rel.TargetType, err)
+		}
+		vals = append(vals, log.MapValue(
+			log.String(attrRelationshipType, rel.Type),
+			log.String(attrEntityType, rel.TargetType),
+			log.Map(attrEntityID, idKVs...),
+		))
+	}
+	return log.Slice(attrEntityRelationships, vals...), nil
+}
+
 // scalarMap builds a kvlist log attribute from a flat map of scalar values,
 // keys sorted for deterministic output.
 func scalarMap(key string, m map[string]any) (log.KeyValue, error) {
+	kvs, err := scalarKVs(m)
+	if err != nil {
+		return log.KeyValue{}, fmt.Errorf("%s%w", key, err)
+	}
+	return log.Map(key, kvs...), nil
+}
+
+// scalarKVs renders a flat map of scalar values to sorted log.KeyValues. The
+// returned error is prefixed with [key] so a caller can name the field.
+func scalarKVs(m map[string]any) ([]log.KeyValue, error) {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -144,11 +144,11 @@ func scalarMap(key string, m map[string]any) (log.KeyValue, error) {
 	for _, k := range keys {
 		kv, err := scalarKV(k, m[k])
 		if err != nil {
-			return log.KeyValue{}, fmt.Errorf("%s[%s]: %w", key, k, err)
+			return nil, fmt.Errorf("[%s]: %w", k, err)
 		}
 		kvs = append(kvs, kv)
 	}
-	return log.Map(key, kvs...), nil
+	return kvs, nil
 }
 
 // scalarKV converts a single scalar value to a log.KeyValue. Only the four

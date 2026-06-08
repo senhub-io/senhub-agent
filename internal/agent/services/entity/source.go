@@ -54,18 +54,58 @@ func registeredSources() []Source {
 	return cp
 }
 
-// toEvents stamps an Observation into state events at instant ts with the
-// given liveness interval. Entities first, then relations, so a single
-// snapshot carries endpoints before the edges that reference them.
-func (o Observation) toEvents(ts time.Time, interval time.Duration) []Event {
-	out := make([]Event, 0, len(o.Entities)+len(o.Relations))
-	for i := range o.Entities {
-		e := o.Entities[i]
-		out = append(out, Event{Kind: EntityState, Entity: &e, Time: ts, Interval: interval})
+// merge folds another observation into this one. The detector merges the
+// foundation and every source into a single per-cycle observation so a
+// relation can resolve its source endpoint against any entity seen this cycle,
+// not only the ones from the same source.
+func (o Observation) merge(other Observation) Observation {
+	o.Entities = append(o.Entities, other.Entities...)
+	o.Relations = append(o.Relations, other.Relations...)
+	return o
+}
+
+// foldRelationships attaches each relation to its source entity (matched by
+// the relation's From endpoint = an entity's type+identity) as an embedded
+// Relationship, and returns the entities with their relationship sets filled.
+// The embedded descriptor is bare: only the target type+id survive — an edge
+// attribute that must persist belongs on an entity, not the wire (re-homing
+// the currently-dropped host/SNMP edge attributes is tracked in #239).
+//
+// A relation whose source entity is absent from the set is returned as an
+// orphan rather than silently dropped (every producer is expected to emit the
+// source endpoint in the same cycle; an orphan is a producer bug worth
+// surfacing).
+func (o Observation) foldRelationships() (entities []Entity, orphans []Relation) {
+	entities = make([]Entity, len(o.Entities))
+	copy(entities, o.Entities)
+
+	idx := make(map[string]int, len(entities))
+	for i := range entities {
+		entities[i].Relationships = nil
+		idx[entityKey(entities[i].Type, entities[i].ID)] = i
 	}
-	for i := range o.Relations {
-		r := o.Relations[i]
-		out = append(out, Event{Kind: RelationState, Relation: &r, Time: ts, Interval: interval})
+	for _, r := range o.Relations {
+		i, ok := idx[entityKey(r.FromType, r.FromID)]
+		if !ok {
+			orphans = append(orphans, r)
+			continue
+		}
+		entities[i].Relationships = append(entities[i].Relationships, Relationship{
+			Type:       r.Type,
+			TargetType: r.ToType,
+			TargetID:   r.ToID,
+		})
+	}
+	return entities, orphans
+}
+
+// stateEvents stamps entities into state events at instant ts with the given
+// liveness interval.
+func stateEvents(entities []Entity, ts time.Time, interval time.Duration) []Event {
+	out := make([]Event, len(entities))
+	for i := range entities {
+		e := entities[i]
+		out[i] = Event{Kind: EntityState, Entity: &e, Time: ts, Interval: interval}
 	}
 	return out
 }

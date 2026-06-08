@@ -527,6 +527,15 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 	}))
 
 	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
+	det.OnOrphanRelations(func(orphans []entity.Relation) {
+		for _, r := range orphans {
+			s.logger.Warn().
+				Str("relation", r.Type).
+				Str("from_type", r.FromType).
+				Str("to_type", r.ToType).
+				Msg("entity relation has no source entity this cycle; dropped from the wire")
+		}
+	})
 	ctx, cancel := context.WithCancel(context.Background())
 	s.entityDetectorCancel = cancel
 	s.entityDetectorWG.Add(1)
