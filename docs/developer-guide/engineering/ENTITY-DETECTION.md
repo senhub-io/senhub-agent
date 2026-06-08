@@ -80,8 +80,12 @@ A typed directed edge, embedded in the source entity's state. Internally a
 producer reports a flat `Relation` (`type` + `from.{type,id}` +
 `to.{type,id}`); the detector folds it onto the source entity as a bare
 `entity.relationships` descriptor (`relationship.type` + target `entity.type`
-+ target `entity.id`). Agreed types: `runs_on`, `monitors`, `routes_via`,
-`forwards_to`, `adjacent_to`. **Endpoints resolved by exact identity** — the
++ target `entity.id`). Agreed types: `runs_on`, `monitors`, `has_interface`,
+`has_route`, `connected_to` (topology-as-entities, ADR 0022). The device-level
+`routes_via` / `adjacent_to` / `forwards_to` are **legacy/not emitted** —
+superseded by `network.route` + `has_route`, port-to-port `connected_to`, and
+`connected_to` to the learned port respectively (the frontier still accepts
+them, but producers emit the entity form). **Endpoints resolved by exact identity** — the
 producer MUST emit the source-endpoint entity in the same observation (the
 fold drops an edge with no source entity, with a warning); the target entity
 is emitted before/with the edge and Toise reconciles out-of-order arrivals.
@@ -96,10 +100,13 @@ fact belongs on an entity.
 3. **Datapoint-stream resource tags** → sub-component entities. The
    transformer `tag_metadata` `type: resource` set already *is* an entity
    identity → generic synthesis, no per-probe code.
-4. **Host network tables** (topology, now) → discovered devices + relations
-   (routing → `routes_via`, ARP/neighbour → `adjacent_to`).
-5. **SNMP topology MIBs** (with #156) → LLDP/CDP (`adjacent_to`), BRIDGE-MIB
-   FDB (`forwards_to`), ipCidrRouteTable (`routes_via`).
+4. **Host routing table** (topology, now — #212) → the host's routes as
+   `network.route` entities `{host.id, route.destination}` with a scalar
+   `next_hop.ip`, attached by `has_route` (host → route). No gateway-as-device
+   (that is an SNMP poll's job); the next hop is an IP, not a node.
+5. **SNMP topology MIBs** (with #156) → ports as `network.interface` entities
+   (`has_interface`), link adjacency as port-to-port `connected_to`, routing as
+   `network.route` + `has_route`.
 
 ## 4. Encoding — LogRecords
 
@@ -205,9 +212,12 @@ an edge whose target was removed while the source stays alive).
   M4's synthetic producer).
 - **Lot 2** — `db` entity + `monitors`.
 - **Lot 3** — datapoint-stream sub-components (generic from `resource` tags).
-- **Lot 4** — host network tables → discovered devices + `routes_via`/`adjacent_to`.
-- **Lot 5** — `network.device` + SNMP topology (`routes_via`/`forwards_to`/
-  `adjacent_to`); depends on #156. Freezes `network.device.id`.
+- **Lot 4** — host routing table → `network.route` entities owned by the host
+  (`has_route`, scalar `next_hop.ip`); #212. Interfaces (`network.interface` +
+  `has_interface`) follow as a sub-lot.
+- **Lot 5** — `network.device` + SNMP topology in the entity form
+  (`network.interface`/`connected_to`, `network.route`/`has_route`); depends on
+  #156. Freezes `network.device.id`.
 
 ## 8. Open questions
 - agent→own-host edge: `runs_on` vs `monitors` vs both.
