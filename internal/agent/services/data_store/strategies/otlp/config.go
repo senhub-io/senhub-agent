@@ -286,6 +286,10 @@ type Config struct {
 type PersistenceConfig struct {
 	Path     string        // empty = disabled (no checkpoint)
 	Interval time.Duration // save cadence; falls back to default if 0
+	// LogsQueueMaxBytes caps the on-disk dead-letter queue for the logs
+	// signal (#217). 0 = built-in default (128 MiB). Beyond it the oldest
+	// batches are evicted (reason="logs_queue_full").
+	LogsQueueMaxBytes int64
 }
 
 // MemoryLimitConfig configures the OTLP strategy's heap pressure
@@ -595,6 +599,12 @@ func parsePersistence(raw interface{}, out *PersistenceConfig) error {
 			return fmt.Errorf("interval must be >= 1s, got %v", d)
 		}
 		out.Interval = d
+	}
+	if v, ok := readInt(m["logs_queue_max_bytes"]); ok {
+		if v < 0 {
+			return fmt.Errorf("logs_queue_max_bytes must be >= 0, got %d", v)
+		}
+		out.LogsQueueMaxBytes = int64(v)
 	}
 	return nil
 }
