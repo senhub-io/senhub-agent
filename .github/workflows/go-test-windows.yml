@@ -1,12 +1,20 @@
 name: Go-test-windows
 on:
   pull_request:
-    branches: [dev, master]
+    # Windows runners bill at 2x. Windows-specific code is runtime-validated on
+    # a real host (bbcloud) and packaged by the windows-msi workflow, so CI
+    # Windows tests run ONLY on PRs to master (the release gate), not on every
+    # feature PR to dev.
+    branches: [master]
     paths-ignore:
       - 'docs/**'
       - '*.md'
 env:
   SENHUB_KEY: "test-key"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test-and-build:
