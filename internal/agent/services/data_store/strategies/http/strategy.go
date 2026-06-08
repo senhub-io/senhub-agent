@@ -361,7 +361,16 @@ type OTLPInfoResponse struct {
 	ExportDuration OTLPExportDurationInfo `json:"export_duration"`
 	Checkpoint     OTLPCheckpointInfo     `json:"checkpoint"`
 	LogsQueue      OTLPLogsQueueInfo      `json:"logs_queue"`
+	Failover       OTLPFailoverInfo       `json:"failover"`
 	Parallel       OTLPParallelInfo       `json:"parallel"`
+}
+
+// OTLPFailoverInfo reports endpoint failover state (#217): the index of
+// the endpoint currently serving (0 = primary) and the cumulative number
+// of switches. Both 0 when no fallback_endpoints are configured.
+type OTLPFailoverInfo struct {
+	ActiveEndpointIndex int64  `json:"active_endpoint_index"`
+	SwitchesTotal       uint64 `json:"switches_total"`
 }
 
 // OTLPLogsQueueInfo reports the on-disk dead-letter queue for the logs

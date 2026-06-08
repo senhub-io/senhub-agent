@@ -57,6 +57,8 @@ Concretely: when `Export(metrics)` runs each cycle, the strategy:
 ```yaml
 protocol: grpc          # grpc (default) | http
 endpoint: "otlp.example.com:4317"
+fallback_endpoints:     # optional standby ingresses for failover (#217)
+  - "otlp-dr.example.com:4317"
 signals:
   metrics:
     enabled: true
@@ -73,6 +75,20 @@ signals:
 ```
 
 The interval is independent of probe `Collect` cadence — OTLP pulls the latest cache snapshot at its own rhythm.
+
+## Endpoint failover (`fallback_endpoints`)
+
+When `fallback_endpoints` is set, `buildExporters` builds one exporter per
+endpoint (primary + fallbacks) and wraps them in a failover decorator
+(`failover.go`) for the metric and log signals (traces stay single-endpoint).
+It prefers the primary, switches to the next standby on a failed export,
+and returns to the primary automatically once it recovers — a per-endpoint
+cooldown (30 s) avoids re-paying the primary's failed-retry latency every
+cycle. The failover exporter sits *under* the logs dead-letter queue, so a
+record is only persisted to disk when EVERY endpoint is down. State is on
+`/info/otlp` (`failover.*`) and the `senhub.agent.otlp.active_endpoint_index`
+/ `endpoint_switches` self-metrics. This is the agent-side complement to a
+DNS/LB-fronted ingress — not a replacement for it.
 
 ## Common pitfalls
 

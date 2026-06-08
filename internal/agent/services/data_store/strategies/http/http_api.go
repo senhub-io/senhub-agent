@@ -789,6 +789,10 @@ func (a *APIManager) HandleInfoOTLP(w http.ResponseWriter, r *http.Request) {
 			QueuedTotal:   agentstate.GetOTLPLogsQueuedTotal(),
 			ReplayedTotal: agentstate.GetOTLPLogsReplayedTotal(),
 		},
+		Failover: OTLPFailoverInfo{
+			ActiveEndpointIndex: agentstate.GetOTLPActiveEndpointIndex(),
+			SwitchesTotal:       agentstate.GetOTLPEndpointSwitchesTotal(),
+		},
 		Parallel: OTLPParallelInfo{
 			SubBatches: agentstate.GetOTLPSubBatchCount(),
 		},
