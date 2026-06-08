@@ -13,9 +13,10 @@ func TestObserve_EmptyBeforeSweep(t *testing.T) {
 	}
 }
 
-func TestBuildObservation(t *testing.T) {
+func TestBuildObservation_ConnectedTo(t *testing.T) {
 	self := deviceIdentity{Serial: "FOC1", VendorPEN: "9", SysName: "core-sw"}
 	topo := lldpTopology{
+		Local: lldpLocal{Ports: map[string]string{"5": "Gi1/0/5"}}, // local port name for port num 5
 		Neighbors: []lldpNeighbor{{
 			LocalPortNum:     "5",
 			ChassisIdSubtype: subtypeMacAddress,
@@ -27,8 +28,10 @@ func TestBuildObservation(t *testing.T) {
 	}
 	obs := buildObservation(self, topo, nil, nil, nil)
 
+	// self device + neighbour device (the remote port entity is referenced by
+	// the edge, not emitted here — the neighbour's own poll emits it).
 	if len(obs.Entities) != 2 {
-		t.Fatalf("want 2 entities, got %d", len(obs.Entities))
+		t.Fatalf("want 2 entities, got %d (%+v)", len(obs.Entities), obs.Entities)
 	}
 	if obs.Entities[0].ID[idKeyNetworkDevice] != "serial:9:FOC1" {
 		t.Errorf("self id = %v", obs.Entities[0].ID)
@@ -40,13 +43,51 @@ func TestBuildObservation(t *testing.T) {
 		t.Fatalf("want 1 relation, got %d", len(obs.Relations))
 	}
 	r := obs.Relations[0]
-	if r.Type != relAdjacentTo ||
-		r.FromID[idKeyNetworkDevice] != "serial:9:FOC1" ||
-		r.ToID[idKeyNetworkDevice] != "mac:aa:bb:cc:dd:ee:ff" {
-		t.Errorf("relation wrong: %+v", r)
+	if r.Type != relConnectedTo ||
+		r.FromType != entityTypeNetworkInterface || r.ToType != entityTypeNetworkInterface {
+		t.Errorf("relation type/endpoints wrong: %+v", r)
 	}
-	if r.Attributes["local_port"] != "5" || r.Attributes["remote_port"] != "Gi0/1" {
-		t.Errorf("relation attrs: %+v", r.Attributes)
+	if r.FromID[idKeyNetworkDevice] != "serial:9:FOC1" || r.FromID[idKeyInterfaceName] != "Gi1/0/5" {
+		t.Errorf("local port = %v, want serial:9:FOC1 / Gi1/0/5", r.FromID)
+	}
+	if r.ToID[idKeyNetworkDevice] != "mac:aa:bb:cc:dd:ee:ff" || r.ToID[idKeyInterfaceName] != "Gi0/1" {
+		t.Errorf("remote port = %v, want mac:aa:bb:cc:dd:ee:ff / Gi0/1", r.ToID)
+	}
+	if len(r.Attributes) != 0 {
+		t.Errorf("connected_to should be a bare edge, got attrs %v", r.Attributes)
+	}
+}
+
+func TestBuildObservation_ConnectedTo_Gating(t *testing.T) {
+	self := deviceIdentity{Serial: "S1", VendorPEN: "9"}
+	// ifaces give the local port name via ifIndex == lldpLocPortNum.
+	ifaces := []ifaceRow{{Index: "1", Name: "Gi0/1", OperStatus: ifOperUp}}
+	topo := lldpTopology{Neighbors: []lldpNeighbor{
+		{ // remote port is MAC-only → no phantom port, skip the link (point 7)
+			LocalPortNum: "1", ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+			PortIdSubtype: 3 /* macAddress */, PortId: []byte{0x0a, 0x0b}, SysName: "n1",
+		},
+		{ // local port unknown (no ifIndex 9, no LLDP loc port) → cannot anchor, skip
+			LocalPortNum: "9", ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66},
+			PortIdSubtype: portSubtypeIfName, PortId: []byte("Gi0/2"), SysName: "n2",
+		},
+	}}
+	obs := buildObservation(self, topo, nil, nil, ifaces)
+
+	for _, r := range obs.Relations {
+		if r.Type == relConnectedTo {
+			t.Errorf("no connected_to expected (MAC-only remote + unanchored local), got %+v", r)
+		}
+	}
+	// Both neighbours are still discovered as network.device entities.
+	var devs int
+	for _, e := range obs.Entities {
+		if e.Type == entityTypeNetworkDevice {
+			devs++
+		}
+	}
+	if devs != 3 { // self + 2 neighbours
+		t.Errorf("device entities = %d, want 3 (self + 2 neighbours)", devs)
 	}
 }
 
