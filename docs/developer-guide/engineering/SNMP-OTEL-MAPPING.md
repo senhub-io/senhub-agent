@@ -138,6 +138,13 @@ same device derive byte-identical ids.
   preserved); `mgmt` = `net.IP` canonical form. All in one function:
   `resolveDeviceID` (lldp.go); identity reads in `readSelfIdentity`/
   `chassisSerial` (entity_source.go).
+- **Interfaces → `network.interface` entities** (topology-as-entities, ADR
+  0022, pinned with Toise #87): IF-MIB ifXTable `ifName` → one
+  `network.interface` entity `{network.device.id, interface.name}` the device
+  **owns** via `has_interface`, with `oper.state` (ifOperStatus) and `speed`
+  (ifHighSpeed Mbit/s → bit/s) descriptive. The port inventory that anchors
+  `connected_to`; `notPresent` and unnamed rows are skipped. Bounded by the
+  device's port count. **DONE (#156).**
 - **Routing → `network.route` entities** (topology-as-entities, ADR 0022,
   pinned with Toise #87): ipCidrRouteTable / ipForwardTable → one
   `network.route` entity `{network.device.id, route.destination}` (CIDR from
@@ -151,9 +158,9 @@ same device derive byte-identical ids.
   pending `connected_to` migration to port entities**; the frontier still
   accepts them):
   - LLDP `lldpRemTable` → `adjacent_to`, polled→neighbour, **one edge, no
-    reciprocal duplicate**. Attributes `local_port` / `remote_port`. → will
-    become port-to-port `connected_to` once ports are `network.interface`
-    entities (ifXTable walk).
+    reciprocal duplicate**. Attributes `local_port` / `remote_port`. → next:
+    becomes port-to-port `connected_to` between the `network.interface` ports
+    (now emitted) — local port via lldpLocPortTable / ifName, remote per LLDP.
   - dot1dTpFdbTable / dot1qTpFdbTable → `forwards_to`, `to` = `mac:<addr>`.
     **Filter FDB to inter-device MACs** (LLDP chassis / uplink ports);
     host terminal MACs are out of scope (no card entity, would flood).
@@ -203,10 +210,10 @@ Reconciled with ENTITY-DETECTION.md §7 (where SNMP topology is its Lot 5).
   attributes. Local vendor-MIB directory loading.
 - **Lot 3** — device discovery (sysObjectID → vendor) + device profiles +
   the "activated features" class → `network.device` entity attributes.
-- **Lot 5 (topology → entity rail)** — LLDP / BRIDGE-FDB / ipCidrRoute modules
-  emitting `network.device` + `network.route` (`has_route`, **done #156**) and,
-  next, `network.interface` ports + `connected_to` (superseding `adjacent_to` /
-  `forwards_to`) via `entity.Source` (#185 → Toise). This is the
+- **Lot 5 (topology → entity rail)** — emitting `network.device` +
+  `network.route` (`has_route`) + `network.interface` ports (`has_interface`)
+  (**done #156**) and, next, `connected_to` between those ports (superseding
+  `adjacent_to` / `forwards_to`) via `entity.Source` (#185 → Toise). This is the
   vendor-neutral infrastructure-graph wedge.
 
 Tiering (`project_tiering_strategy`): interface collection + basic system +
