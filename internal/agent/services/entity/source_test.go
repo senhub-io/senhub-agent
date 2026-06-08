@@ -10,33 +10,52 @@ type sourceFunc func() Observation
 
 func (f sourceFunc) Observe() Observation { return f() }
 
-func TestObservation_ToEvents(t *testing.T) {
-	ts := time.Unix(1000, 0).UTC()
+// TestObservation_FoldRelationships verifies a relation is folded onto its
+// source entity (matched by the From endpoint) as a bare embedded
+// relationship, and that a relation with no source entity is reported as an
+// orphan rather than silently dropped.
+func TestObservation_FoldRelationships(t *testing.T) {
 	obs := Observation{
-		Entities:  []Entity{{Type: "db", ID: map[string]any{"db.instance.id": "pg1"}}},
-		Relations: []Relation{{Type: "monitors", FromType: "service.instance", ToType: "db"}},
+		Entities: []Entity{{
+			Type: "service.instance", ID: map[string]any{"service.instance.id": "agent-1"},
+		}},
+		Relations: []Relation{
+			{
+				Type:     "monitors",
+				FromType: "service.instance", FromID: map[string]any{"service.instance.id": "agent-1"},
+				ToType: "db", ToID: map[string]any{"db.instance.id": "pg1"},
+				// Edge attributes are intentionally dropped by the bare embed.
+				Attributes: map[string]any{"source": "probe"},
+			},
+			{
+				Type:     "runs_on",
+				FromType: "service.instance", FromID: map[string]any{"service.instance.id": "missing"},
+				ToType: "host", ToID: map[string]any{"host.id": "h-1"},
+			},
+		},
 	}
-	got := obs.toEvents(ts, time.Minute)
-	if len(got) != 2 {
-		t.Fatalf("got %d events, want 2", len(got))
+
+	entities, orphans := obs.foldRelationships()
+	if len(entities) != 1 {
+		t.Fatalf("got %d entities, want 1", len(entities))
 	}
-	// Entities precede relations so endpoints land before edges.
-	if got[0].Kind != EntityState || got[0].Entity == nil || got[0].Entity.Type != "db" {
-		t.Errorf("event[0] = %+v, want db entity_state", got[0])
+	rels := entities[0].Relationships
+	if len(rels) != 1 {
+		t.Fatalf("source entity carries %d relationships, want 1", len(rels))
 	}
-	if got[1].Kind != RelationState || got[1].Relation == nil {
-		t.Errorf("event[1] = %+v, want relation_state", got[1])
+	if rels[0].Type != "monitors" || rels[0].TargetType != "db" || rels[0].TargetID["db.instance.id"] != "pg1" {
+		t.Errorf("embedded relationship = %+v, want monitors → db pg1", rels[0])
 	}
-	for i, ev := range got {
-		if !ev.Time.Equal(ts) || ev.Interval != time.Minute {
-			t.Errorf("event[%d] time/interval = %v/%v, want %v/1m", i, ev.Time, ev.Interval, ts)
-		}
+	if len(orphans) != 1 || orphans[0].Type != "runs_on" {
+		t.Errorf("orphans = %+v, want 1 (runs_on with no source entity)", orphans)
 	}
 }
 
 // TestSource_DetectorMergesAndTracksDeletes verifies the detector folds a
-// source's observation into the snapshot, and that when the source stops
-// observing an item the tracker emits its delete.
+// source's observation into the snapshot — the monitors edge rides embedded on
+// the service.instance entity — and that when the source stops observing the
+// db, the db is deleted and its monitors edge is retired by absence (the
+// service.instance heartbeat simply stops listing it).
 func TestSource_DetectorMergesAndTracksDeletes(t *testing.T) {
 	resetSourcesForTest()
 	defer resetSourcesForTest()
@@ -67,39 +86,64 @@ func TestSource_DetectorMergesAndTracksDeletes(t *testing.T) {
 	)
 	tr := NewTracker(func(ev Event) { got = append(got, ev) })
 
-	// Cycle 1: foundation (host + service.instance + runs_on) + db + monitors = 5.
+	// Cycle 1: foundation (host + service.instance) + db = 3 entity events.
+	// runs_on and monitors both fold onto the service.instance.
 	d.reconcile(tr, time.Unix(1000, 0).UTC())
-	if len(got) != 5 {
-		t.Fatalf("cycle 1 published %d events, want 5 (3 foundation + db + monitors)", len(got))
+	if len(got) != 3 {
+		t.Fatalf("cycle 1 published %d events, want 3 (host + service.instance + db)", len(got))
 	}
-	var dbState, monState int
+	var dbState int
+	var svcRels []Relationship
 	for _, ev := range got {
-		if ev.Kind == EntityState && ev.Entity != nil && ev.Entity.Type == "db" {
-			dbState++
+		if ev.Entity == nil {
+			continue
 		}
-		if ev.Kind == RelationState && ev.Relation != nil && ev.Relation.Type == "monitors" {
-			monState++
+		switch ev.Entity.Type {
+		case "db":
+			if ev.Kind == EntityState {
+				dbState++
+			}
+		case "service.instance":
+			svcRels = ev.Entity.Relationships
 		}
 	}
-	if dbState != 1 || monState != 1 {
-		t.Fatalf("cycle 1: dbState=%d monState=%d, want 1/1", dbState, monState)
+	if dbState != 1 {
+		t.Fatalf("cycle 1: dbState=%d, want 1", dbState)
+	}
+	if !hasRel(svcRels, "runs_on", "host") || !hasRel(svcRels, "monitors", "db") {
+		t.Fatalf("cycle 1: service.instance relationships = %+v, want runs_on→host and monitors→db", svcRels)
 	}
 
-	// Cycle 2: the source no longer observes the db → db + monitors deleted.
+	// Cycle 2: the source no longer observes the db. The db gets an explicit
+	// delete; the monitors edge is retired by absence (svc no longer lists it).
 	got = nil
 	present = false
 	d.reconcile(tr, time.Unix(1060, 0).UTC())
 
-	var dbDel, monDel int
+	var dbDel int
 	for _, ev := range got {
-		if ev.Kind == EntityDelete && ev.Entity != nil && ev.Entity.Type == "db" {
+		if ev.Entity == nil {
+			continue
+		}
+		if ev.Kind == EntityDelete && ev.Entity.Type == "db" {
 			dbDel++
 		}
-		if ev.Kind == RelationDelete && ev.Relation != nil && ev.Relation.Type == "monitors" {
-			monDel++
+		if ev.Kind == EntityState && ev.Entity.Type == "service.instance" {
+			if hasRel(ev.Entity.Relationships, "monitors", "db") {
+				t.Errorf("cycle 2: monitors edge still present on service.instance, want retired by absence")
+			}
 		}
 	}
-	if dbDel != 1 || monDel != 1 {
-		t.Errorf("cycle 2: dbDel=%d monDel=%d, want 1/1 (db + monitors retired)", dbDel, monDel)
+	if dbDel != 1 {
+		t.Errorf("cycle 2: dbDel=%d, want 1 (db retired)", dbDel)
 	}
+}
+
+func hasRel(rels []Relationship, typ, targetType string) bool {
+	for _, r := range rels {
+		if r.Type == typ && r.TargetType == targetType {
+			return true
+		}
+	}
+	return false
 }
