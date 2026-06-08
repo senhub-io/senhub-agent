@@ -360,7 +360,17 @@ type OTLPInfoResponse struct {
 	Store          OTLPStoreInfo          `json:"store"`
 	ExportDuration OTLPExportDurationInfo `json:"export_duration"`
 	Checkpoint     OTLPCheckpointInfo     `json:"checkpoint"`
+	LogsQueue      OTLPLogsQueueInfo      `json:"logs_queue"`
 	Parallel       OTLPParallelInfo       `json:"parallel"`
+}
+
+// OTLPLogsQueueInfo reports the on-disk dead-letter queue for the logs
+// signal (#217): live depth plus cumulative persisted/replayed counts.
+type OTLPLogsQueueInfo struct {
+	Records       int64  `json:"records"`
+	Bytes         int64  `json:"bytes"`
+	QueuedTotal   uint64 `json:"queued_total"`
+	ReplayedTotal uint64 `json:"replayed_total"`
 }
 
 type OTLPPipelineInfo struct {

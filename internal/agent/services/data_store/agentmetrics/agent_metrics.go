@@ -263,6 +263,38 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       float64(agentstate.GetOTLPSubBatchCount()),
 			Description: "Number of sub-batches the most recent OTLP push fanned out across. 1 means the single-batch path (max_concurrent_exports=1 or cycle below threshold); >1 means per-probe parallel export fired.",
 		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.logs.queue.records",
+			Unit:        "{record}",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPLogsQueueRecords()),
+			Description: "Event-log records currently held in the on-disk dead-letter queue (awaiting replay). 0 when the backend is healthy or persistence is disabled.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.logs.queue.bytes",
+			Unit:        "By",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPLogsQueueBytes()),
+			Description: "Bytes currently held by the on-disk logs dead-letter queue.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.logs.queued",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPLogsQueuedTotal()),
+			Description: "Cumulative event-log records written to the dead-letter queue after a failed export.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.logs.replayed",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPLogsReplayedTotal()),
+			Description: "Cumulative event-log records re-emitted from the dead-letter queue at boot or on backend recovery.",
+		},
 	)
 	for stage, n := range agentstate.GetOTLPCheckpointErrorsByStage() {
 		records = append(records, otelmapper.OtelRecord{
