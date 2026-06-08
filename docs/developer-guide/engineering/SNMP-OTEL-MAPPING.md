@@ -101,11 +101,13 @@ operators point at a **local** directory for vendor MIBs.
   transformer YAML with full `otel:` blocks → fixed names that export on
   OTLP/Prometheus immediately and satisfy the #189 mapping guard.
 - **Everything else** (custom OIDs, long-tail objects) → deterministic
-  derivation: `senhub.snmp.<symbolic_name>`, OTel type from the SNMP SYNTAX
-  (Counter32/64 → counter, Gauge32/Integer → gauge). `otelmapper.Resolve`
-  is exact-match today, so the `senhub.snmp.*` family needs a resolver that
-  derives name+type from the cache datapoint rather than a pre-enumerated
-  YAML entry — tracked in #207.
+  derivation: `senhub.snmp.<symbolic_name>`, OTel type from the configured
+  `type:` (counter/gauge). **Done (#207):** the probe emits each custom
+  mapping under its canonical `senhub.snmp.*` name and tags it with
+  `otel_type`; `otelmapper.Resolve` recognises that tag and passes the
+  metric through with the declared type instead of dropping it for lack of
+  an exact-match YAML row. The pass-through is probe-neutral (any probe
+  pre-shaping a name + type can opt in via `otel_type`).
 
 ## Layer 2′ — entity mapping, entity rail (FROZEN with Toise 2026-06-03)
 
@@ -187,7 +189,9 @@ Reconciled with ENTITY-DETECTION.md §7 (where SNMP topology is its Lot 5).
   resolution, metric rail only.
 - **Lot 1b** — MIB-module registry + embedded IF-MIB module (BulkWalk of
   ifTable/ifXTable → fixed OTel metric names) + the `senhub.snmp.*`
-  resolver on OTLP/Prometheus (#207). Metric rail, fully OTel-exported.
+  typed pass-through on OTLP/Prometheus *(landed, #207)*: custom mappings
+  export under their canonical name + configured type instead of being
+  dropped. Metric rail, fully OTel-exported.
 - **Lot 2** — hardware modules: ENTITY-SENSOR-MIB + HOST-RESOURCES-MIB →
   `hw.*` / `system.*` metrics; ENTITY-MIB inventory → device entity
   attributes. Local vendor-MIB directory loading.
@@ -205,7 +209,6 @@ vendor-specific infra stays paid.
 ## Open sub-questions
 - MIB parsing in Go: build-time compile of the standard set into modules
   (lean) vs. a runtime SMI parser for operator vendor dirs (gosmi).
-- `senhub.snmp.*` name sanitization to OTel-valid metric names (#207).
 - Counter rate vs cumulative (emit cumulative; let the backend rate).
 - `network.device.id` resolution order when LLDP is absent (sysName vs
   mgmt IP) — must stay observer-independent.
