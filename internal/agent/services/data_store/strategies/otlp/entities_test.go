@@ -2,7 +2,6 @@ package otlp
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -58,35 +57,40 @@ func TestBuildEntityRecord_Foundation(t *testing.T) {
 	}
 
 	cases := []struct {
-		name string
-		ev   entity.Event
-		want map[string]any
+		name      string
+		ev        entity.Event
+		eventName string
+		want      map[string]any
 	}{
 		{
-			name: "host",
-			ev:   events[0],
+			name:      "host",
+			ev:        events[0],
+			eventName: "entity.state",
 			want: map[string]any{
-				"otel.entity.event.type": "entity_state",
-				"otel.entity.type":       "host",
-				"otel.entity.id":         map[string]any{"host.id": "h-001"},
-				"otel.entity.attributes": map[string]any{"host.name": "web-server-1", "os.type": "linux"},
-				"otel.entity.interval":   int64(60000),
+				"entity.type":            "host",
+				"entity.id":              map[string]any{"host.id": "h-001"},
+				"entity.description":     map[string]any{"host.name": "web-server-1", "os.type": "linux"},
+				"entity.report.interval": int64(60),
 			},
 		},
 		{
-			name: "service.instance",
-			ev:   events[1],
+			name:      "service.instance",
+			ev:        events[1],
+			eventName: "entity.state",
 			want: map[string]any{
-				"otel.entity.event.type": "entity_state",
-				"otel.entity.type":       "service.instance",
-				"otel.entity.id":         map[string]any{"service.instance.id": "agent-7f3a"},
-				"otel.entity.attributes": map[string]any{"service.name": "senhub-agent", "service.version": "1.0.0"},
-				"otel.entity.interval":   int64(60000),
+				"entity.type":            "service.instance",
+				"entity.id":              map[string]any{"service.instance.id": "agent-7f3a"},
+				"entity.description":     map[string]any{"service.name": "senhub-agent", "service.version": "1.0.0"},
+				"entity.report.interval": int64(60),
 			},
 		},
 		{
-			name: "runs_on",
-			ev:   events[2],
+			// Relations stay on the entity.relation.* extension until lot 0b
+			// (embedded entity.relationships). No EventName on a relation
+			// record yet.
+			name:      "runs_on",
+			ev:        events[2],
+			eventName: "",
 			want: map[string]any{
 				"entity.relation.event.type": "state",
 				"entity.relation.type":       "runs_on",
@@ -107,6 +111,9 @@ func TestBuildEntityRecord_Foundation(t *testing.T) {
 			if !rec.Timestamp().Equal(now) {
 				t.Errorf("timestamp = %v, want %v (event_time must be the observation instant)", rec.Timestamp(), now)
 			}
+			if rec.EventName() != tc.eventName {
+				t.Errorf("EventName = %q, want %q", rec.EventName(), tc.eventName)
+			}
 			got := recordAttrs(rec)
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("wire shape mismatch\n got: %#v\nwant: %#v", got, tc.want)
@@ -116,8 +123,10 @@ func TestBuildEntityRecord_Foundation(t *testing.T) {
 }
 
 // TestBuildEntityRecord_RelationPurity asserts a relation record carries no
-// otel.entity.* attribute, so a standard OTel entity-event consumer ignores
-// it cleanly rather than seeing a malformed entity event.
+// node attribute (entity.type/id/description) and no entity-state EventName,
+// so a strict entity-event consumer doesn't mistake it for a malformed
+// entity event. (Relations remain the entity.relation.* extension until
+// lot 0b folds them into entity.relationships.)
 func TestBuildEntityRecord_RelationPurity(t *testing.T) {
 	now := time.Unix(1780272180, 0).UTC()
 	rel := entity.Event{
@@ -135,15 +144,23 @@ func TestBuildEntityRecord_RelationPurity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildEntityRecord: %v", err)
 	}
+	if rec.EventName() != "" {
+		t.Errorf("relation record must not carry an entity EventName, got %q", rec.EventName())
+	}
+	nodeKeys := map[string]bool{
+		attrEntityType: true, attrEntityID: true,
+		attrEntityDescription: true, attrEntityReportInterval: true,
+	}
 	for k := range recordAttrs(rec) {
-		if strings.HasPrefix(k, "otel.entity.") {
-			t.Errorf("relation record carries forbidden otel.entity.* attribute %q", k)
+		if nodeKeys[k] {
+			t.Errorf("relation record carries forbidden node attribute %q", k)
 		}
 	}
 }
 
-// TestBuildEntityRecord_DeleteCarriesTypeAndID asserts entity_delete still
-// carries both otel.entity.type and otel.entity.id (both required on delete).
+// TestBuildEntityRecord_DeleteCarriesTypeAndID asserts entity.delete uses the
+// entity.delete EventName and still carries both entity.type and entity.id
+// (both required on delete), with no description.
 func TestBuildEntityRecord_DeleteCarriesTypeAndID(t *testing.T) {
 	ev := entity.Event{
 		Kind: entity.EntityDelete,
@@ -158,11 +175,13 @@ func TestBuildEntityRecord_DeleteCarriesTypeAndID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildEntityRecord: %v", err)
 	}
+	if rec.EventName() != "entity.delete" {
+		t.Errorf("EventName = %q, want entity.delete", rec.EventName())
+	}
 	got := recordAttrs(rec)
 	want := map[string]any{
-		"otel.entity.event.type": "entity_delete",
-		"otel.entity.type":       "db",
-		"otel.entity.id":         map[string]any{"db.instance.id": "pg@10.0.1.5:5432"},
+		"entity.type": "db",
+		"entity.id":   map[string]any{"db.instance.id": "pg@10.0.1.5:5432"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("delete wire shape mismatch\n got: %#v\nwant: %#v", got, want)
@@ -190,7 +209,7 @@ func TestBuildEntityRecord_TypedScalars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildEntityRecord: %v", err)
 	}
-	attrs := recordAttrs(rec)["otel.entity.attributes"].(map[string]any)
+	attrs := recordAttrs(rec)["entity.description"].(map[string]any)
 	if got, ok := attrs["server.port"].(int64); !ok || got != 5432 {
 		t.Errorf("server.port = %#v, want int64(5432)", attrs["server.port"])
 	}
