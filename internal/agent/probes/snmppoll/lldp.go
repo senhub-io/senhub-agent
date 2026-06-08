@@ -207,6 +207,7 @@ type deviceIdentity struct {
 	ChassisMAC []byte // LLDP chassis-id, only when its subtype is MAC
 	SysName    string // sysName / lldpRemSysName
 	MgmtIP     string // the polled target address (mutable — last resort)
+	Services   int    // sysServices bitmask — descriptive device.role (router/switch)
 }
 
 // resolveDeviceID produces the single network.device.id with the Toise-frozen
