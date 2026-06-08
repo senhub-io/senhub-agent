@@ -25,7 +25,7 @@ func TestBuildObservation(t *testing.T) {
 			SysName:          "neigh",
 		}},
 	}
-	obs := buildObservation(self, topo, nil, nil)
+	obs := buildObservation(self, topo, nil, nil, nil)
 
 	if len(obs.Entities) != 2 {
 		t.Fatalf("want 2 entities, got %d", len(obs.Entities))
@@ -51,14 +51,14 @@ func TestBuildObservation(t *testing.T) {
 }
 
 func TestBuildObservation_NoNeighbors(t *testing.T) {
-	obs := buildObservation(deviceIdentity{Serial: "X", VendorPEN: "9"}, lldpTopology{}, nil, nil)
+	obs := buildObservation(deviceIdentity{Serial: "X", VendorPEN: "9"}, lldpTopology{}, nil, nil, nil)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-only expected, got %+v", obs)
 	}
 }
 
 func TestBuildObservation_NoIdentity(t *testing.T) {
-	obs := buildObservation(deviceIdentity{}, lldpTopology{}, nil, nil)
+	obs := buildObservation(deviceIdentity{}, lldpTopology{}, nil, nil, nil)
 	if len(obs.Entities) != 0 || len(obs.Relations) != 0 {
 		t.Errorf("expected nothing when device unidentifiable, got %+v", obs)
 	}
@@ -69,7 +69,7 @@ func TestBuildObservation_SkipsSelfLoop(t *testing.T) {
 	topo := lldpTopology{Neighbors: []lldpNeighbor{
 		{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0x01, 0x02}},
 	}}
-	obs := buildObservation(self, topo, nil, nil)
+	obs := buildObservation(self, topo, nil, nil, nil)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-loop should be skipped, got %+v", obs)
 	}
@@ -86,7 +86,7 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 		{Destination: "10.50.0.0/16", NextHop: "10.0.0.9", Type: 3},               // not remote → skip
 		{Destination: "", NextHop: "10.0.0.7", Type: routeTypeRemote},             // unparseable index → skip
 	}
-	obs := buildObservation(self, lldpTopology{}, routes, nil)
+	obs := buildObservation(self, lldpTopology{}, routes, nil, nil)
 
 	// self device + 2 distinct route destinations (10.20.0.0/16, 0.0.0.0/0)
 	if len(obs.Entities) != 3 {
@@ -125,6 +125,62 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 	}
 }
 
+func TestBuildObservation_NetworkInterface(t *testing.T) {
+	self := deviceIdentity{Serial: "S1", VendorPEN: "9"}
+	ifaces := []ifaceRow{
+		{Index: "1", Name: "Gi0/1", OperStatus: ifOperUp, SpeedMbps: 1000},
+		{Index: "2", Name: "Gi0/2", OperStatus: ifOperDown},     // no speed → omitted
+		{Index: "3", Name: "Gi0/1", OperStatus: ifOperUp},       // dup name → skip
+		{Index: "4", Name: "", OperStatus: ifOperUp},            // unnamed → skip
+		{Index: "5", Name: "Lo0", OperStatus: ifOperNotPresent}, // notPresent → skip
+	}
+	obs := buildObservation(self, lldpTopology{}, nil, nil, ifaces)
+
+	// self device + 2 named present interfaces (Gi0/1, Gi0/2)
+	if len(obs.Entities) != 3 {
+		t.Fatalf("entities = %d (%+v)", len(obs.Entities), obs.Entities)
+	}
+	var portEnts, hasIface int
+	for _, e := range obs.Entities {
+		if e.Type != entityTypeNetworkInterface {
+			continue
+		}
+		portEnts++
+		if e.ID[idKeyNetworkDevice] != "serial:9:S1" {
+			t.Errorf("port owner = %v, want serial:9:S1", e.ID[idKeyNetworkDevice])
+		}
+		switch e.ID[idKeyInterfaceName] {
+		case "Gi0/1":
+			if e.Attributes[attrOperState] != "up" || e.Attributes[attrSpeed] != int64(1_000_000_000) {
+				t.Errorf("Gi0/1 attrs = %+v, want up/1e9 bit/s", e.Attributes)
+			}
+		case "Gi0/2":
+			if e.Attributes[attrOperState] != "down" {
+				t.Errorf("Gi0/2 oper.state = %v, want down", e.Attributes[attrOperState])
+			}
+			if _, ok := e.Attributes[attrSpeed]; ok {
+				t.Errorf("Gi0/2 speed should be omitted (0), got %v", e.Attributes[attrSpeed])
+			}
+		}
+	}
+	for _, r := range obs.Relations {
+		if r.Type != relHasInterface {
+			continue
+		}
+		hasIface++
+		if r.FromType != entityTypeNetworkDevice || r.FromID[idKeyNetworkDevice] != "serial:9:S1" ||
+			r.ToType != entityTypeNetworkInterface {
+			t.Errorf("has_interface wrong: %+v", r)
+		}
+		if len(r.Attributes) != 0 {
+			t.Errorf("has_interface should be a bare edge, got attrs %v", r.Attributes)
+		}
+	}
+	if portEnts != 2 || hasIface != 2 {
+		t.Fatalf("portEnts=%d hasIface=%d, want 2/2", portEnts, hasIface)
+	}
+}
+
 func TestBuildObservation_ForwardsTo(t *testing.T) {
 	neighMAC := []byte{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
 	self := deviceIdentity{Serial: "S1", VendorPEN: "9"}
@@ -135,7 +191,7 @@ func TestBuildObservation_ForwardsTo(t *testing.T) {
 		{MAC: "aa:bb:cc:dd:ee:ff", BridgePort: "5"}, // known device (LLDP neighbour) → forwards_to
 		{MAC: "11:22:33:44:55:66", BridgePort: "9"}, // unknown (host) → filtered out
 	}
-	obs := buildObservation(self, topo, nil, fdb)
+	obs := buildObservation(self, topo, nil, fdb, nil)
 
 	fwd := 0
 	for _, r := range obs.Relations {
