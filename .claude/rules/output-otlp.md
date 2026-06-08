@@ -41,8 +41,19 @@ Concretely: when `Export(metrics)` runs each cycle, the strategy:
 
 | Type | Source | Lives on |
 |---|---|---|
-| Resource attributes | Strategy config `resource:` block + agent-level `global_tags` (#202) | The whole batch (one `Resource` per process) |
+| Resource attributes | Detected `host.*`/`os.*` (`common.GetHostResourceAttributes`) + strategy config `resource:` block + agent-level `global_tags` (#202) | The whole batch (one `Resource` per process) |
 | Metric attributes | Probe-emitted tags + per-probe `custom_tags` + `tag_to_attribute` mappings + YAML static `otel.attributes` | Per datapoint |
+
+The resource carries the detected **host identity** in OTel semconv keys —
+`host.id` + `host.name`/`host.arch`/`os.type`/`os.description`/`os.name`/`os.version`/`os.build_id`
+— so the agent's own metrics and logs carry the **same `host.id` as the host
+entity** on the entity rail. That shared `host.id` is the join a backend uses to
+correlate the host node in the infra graph with its telemetry. Precedence is
+host attrs (lowest) → `global_tags` → `resource:` Extra, so an operator value of
+the same key wins. The host resource describes the **agent's own host**; remote
+targets (SNMP devices, DBs) keep their identity as **per-metric** attributes
+(`network.device.id`, `db.system.name`), since one agent process hosts many
+probe instances and the resource is batch-level.
 
 `IncludeProbeTags: true` is hardcoded for OTLP (see `strategy.go`), so every probe tag flows as a metric attribute — **except agent-level `global_tags`**, which are emitted as **Resource** attributes and stripped from per-metric attributes (`buildResource` + the `globalTagKeys` filter in `pushMetrics`, issue #202). `global_tags` are agent-global (site/region/tenant) so they describe the one process-level Resource; `custom_tags` are per-probe, so they cannot go on the shared Resource and stay metric attributes. The OTel-canonical attrs `db.system.name`, `server.address`, `server.port` likewise stay metric attributes (not resource attrs) because the agent can host multiple probe instances and resource attrs are batch-level. Document this trade-off if a user asks why their dashboard groups by `db.system.name` show as labels rather than resource fields.
 
