@@ -23,7 +23,7 @@ type AgentIdentity struct {
 // on, the agent's own service.instance, and the runs_on edge between them.
 //
 // It always returns the COMPLETE current descriptive attribute set per
-// entity (entity_state is a full state, never a delta). now is the
+// entity (entity.state is a full state, never a delta). now is the
 // observation time and becomes each event's event_time. interval is the
 // heartbeat period, carried so a consumer can use it as a liveness backstop.
 //

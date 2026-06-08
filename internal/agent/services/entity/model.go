@@ -10,7 +10,7 @@
 //
 // Wire contract (frozen with the Toise team, see
 // docs/developer-guide/engineering/ENTITY-DETECTION.md):
-//   - nodes  → standard OTel entity events (entity_state / entity_delete)
+//   - nodes  → standard OTel entity events (entity.state / entity.delete)
 //   - edges  → neutral entity.relation.* extension (relation state / delete)
 //   - identity is exact and immutable; attribute values are flat scalars.
 package entity
