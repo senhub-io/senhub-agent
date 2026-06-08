@@ -21,6 +21,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/entity/hostnet"
+	"senhub-agent.go/internal/agent/services/entity/hostsvc"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
@@ -524,16 +525,20 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 		}
 	}
 
-	// Host-side topology source (entity Lot 4): emits the host's upstream
-	// gateways as network.device + routes_via, reusing the entity rail. Only
-	// active while entity emission runs.
-	entity.RegisterSource(hostnet.New(func() string {
+	// Host-side entity sources (only active while entity emission runs):
+	// hostnet emits the host's routes as network.route + the gateway
+	// network.address; hostsvc emits the host's listening services as
+	// service.listener entities. Both key off the host's stable id so they hang
+	// off the same host node as the foundation host entity.
+	hostIDFn := func() string {
 		hi, err := common.GetHostIdentity()
 		if err != nil {
 			return ""
 		}
 		return hi.ID
-	}))
+	}
+	entity.RegisterSource(hostnet.New(hostIDFn))
+	entity.RegisterSource(hostsvc.New(hostIDFn))
 
 	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
 	det.OnOrphanRelations(func(orphans []entity.Relation) {
