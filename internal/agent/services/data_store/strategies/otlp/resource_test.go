@@ -15,7 +15,7 @@ func TestBuildResource_AllFields(t *testing.T) {
 			"k8s.cluster.name": "edge-01",
 		},
 	}
-	res := buildResource(cfg, "1.2.3")
+	res := buildResource(cfg, "1.2.3", nil)
 	got := map[string]string{}
 	for _, kv := range res.Attributes() {
 		got[string(kv.Key)] = kv.Value.AsString()
@@ -41,7 +41,7 @@ func TestBuildResource_OmitsEmpty(t *testing.T) {
 	cfg := ResourceConfig{
 		ServiceName: "x",
 	}
-	res := buildResource(cfg, "")
+	res := buildResource(cfg, "", nil)
 	for _, kv := range res.Attributes() {
 		if kv.Value.Type() == attribute.STRING && kv.Value.AsString() == "" {
 			t.Errorf("empty-string attribute leaked: %s", kv.Key)
@@ -50,5 +50,39 @@ func TestBuildResource_OmitsEmpty(t *testing.T) {
 	// Only service.name should be set.
 	if got := len(res.Attributes()); got != 1 {
 		t.Errorf("attrs len=%d, want 1", got)
+	}
+}
+
+func TestBuildResource_GlobalTagsOnResource(t *testing.T) {
+	// global_tags must land on the Resource (issue #202).
+	cfg := ResourceConfig{
+		ServiceName: "agent-x",
+		Extra:       map[string]string{"k8s.cluster.name": "edge-01"},
+	}
+	res := buildResource(cfg, "1.0.0", map[string]string{
+		"site":   "paris",
+		"tenant": "acme",
+	})
+	got := map[string]string{}
+	for _, kv := range res.Attributes() {
+		got[string(kv.Key)] = kv.Value.AsString()
+	}
+	if got["site"] != "paris" || got["tenant"] != "acme" {
+		t.Errorf("global_tags missing from Resource: %v", got)
+	}
+	if got["k8s.cluster.name"] != "edge-01" {
+		t.Errorf("explicit resource Extra lost: %v", got)
+	}
+}
+
+func TestBuildResource_ExtraWinsOverGlobalTag(t *testing.T) {
+	// A same-named key declared in the explicit resource: block overrides
+	// the global_tag value.
+	cfg := ResourceConfig{Extra: map[string]string{"site": "explicit"}}
+	res := buildResource(cfg, "", map[string]string{"site": "from-global"})
+	for _, kv := range res.Attributes() {
+		if string(kv.Key) == "site" && kv.Value.AsString() != "explicit" {
+			t.Errorf("site=%q, want explicit (resource Extra must win)", kv.Value.AsString())
+		}
 	}
 }
