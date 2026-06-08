@@ -104,17 +104,24 @@ Events travel as OTLP `LogRecord`s on the existing log rail:
 **No new transport wiring.** One isolated encoder owns all wire shape so OTel
 spec churn is contained.
 
-**Entity event** (`entity_state` / `entity_delete`):
-- `otel.entity.event.type` = `entity_state` | `entity_delete`
-- `otel.entity.type` = string
-- `otel.entity.id` = kvlist (scalar leaves, dotted keys) — **self-contained**
+**Entity event** — merged OTel entity-events spec, frozen with Toise
+(#222, lot 0a). The event kind is the **LogRecord `EventName`**, not a
+payload attribute; node attributes use **bare keys** (no `otel.entity.*`):
+- `EventName` = `entity.state` | `entity.delete`
+- `entity.type` = string
+- `entity.id` = kvlist (scalar leaves, dotted keys) — **self-contained**
   (identity lives here, not referenced from the resource)
-- `otel.entity.attributes` = kvlist (scalar leaves; omitted on delete)
-- LogRecord timestamp = `event_time`; `Interval` emitted for the TTL backstop
-- Scope flag `otel.entity.entity_event=true` set (accepted; consumers may
-  ignore it — never rejected)
+- `entity.description` = kvlist (scalar leaves; omitted on delete) — the
+  descriptive attributes (formerly `otel.entity.attributes`)
+- `entity.report.interval` = int **seconds** (TTL backstop; state only)
+- LogRecord timestamp = `event_time`
+- Scope flag `otel.entity.entity_event=true` still set (contrib fast-path
+  filter convention; Toise ignores it). Its removal is tracked separately
+  from the record encoding.
 
-**Relation event** (`relation_state` / `relation_delete`), neutral namespace:
+**Relation event** (`relation_state` / `relation_delete`), neutral namespace
+— still the extension form until lot 0b folds relations into an embedded
+`entity.relationships` array on the source's `entity.state` event:
 - `entity.relation.event.type` = `state` | `delete`  *(recommended; pending
   Toise — fixture currently overloads `otel.entity.event.type`)*
 - `entity.relation.type`, `entity.relation.from.{type,id}`,

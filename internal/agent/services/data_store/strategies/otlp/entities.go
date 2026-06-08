@@ -9,17 +9,23 @@ import (
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
-// Entity-event wire attribute keys (frozen with the Toise team — see
-// docs/developer-guide/engineering/ENTITY-DETECTION.md). Nodes use the
-// standard OTel entity-event keys; edges use the neutral entity.relation.*
-// extension so a relation record carries no otel.entity.* attribute and a
-// standard OTel entity consumer ignores it cleanly.
+// Entity-event wire encoding, frozen with Toise on the merged OTel
+// entity-events spec (#222). A node event's kind is the LogRecord
+// EventName (entity.state / entity.delete); node attributes use bare keys
+// (entity.type / entity.id / entity.description / entity.report.interval),
+// no otel.entity.* prefix and no event-type payload attribute.
+//
+// Edges still use the entity.relation.* extension here — the embedded
+// entity.relationships form is the next lot (#222 lot 0b); until then a
+// relation is a separate record a strict-spec consumer ignores.
 const (
-	attrEntityEventType = "otel.entity.event.type"
-	attrEntityType      = "otel.entity.type"
-	attrEntityID        = "otel.entity.id"
-	attrEntityAttrs     = "otel.entity.attributes"
-	attrEntityInterval  = "otel.entity.interval"
+	eventNameEntityState  = "entity.state"
+	eventNameEntityDelete = "entity.delete"
+
+	attrEntityType           = "entity.type"
+	attrEntityID             = "entity.id"
+	attrEntityDescription    = "entity.description"
+	attrEntityReportInterval = "entity.report.interval"
 
 	attrRelEventType = "entity.relation.event.type"
 	attrRelType      = "entity.relation.type"
@@ -29,8 +35,6 @@ const (
 	attrRelToID      = "entity.relation.to.id"
 	attrRelAttrs     = "entity.relation.attributes"
 
-	entityEventStateValue    = "entity_state"
-	entityEventDeleteValue   = "entity_delete"
 	relationEventStateValue  = "state"
 	relationEventDeleteValue = "delete"
 )
@@ -55,9 +59,11 @@ func buildEntityRecord(ev entity.Event) (log.Record, error) {
 		if e == nil {
 			return rec, fmt.Errorf("entity event kind %d has nil Entity", ev.Kind)
 		}
-		eventType := entityEventStateValue
+		// The event kind is the LogRecord EventName, not a payload attribute.
 		if ev.Kind == entity.EntityDelete {
-			eventType = entityEventDeleteValue
+			rec.SetEventName(eventNameEntityDelete)
+		} else {
+			rec.SetEventName(eventNameEntityState)
 		}
 		id, err := scalarMap(attrEntityID, e.ID)
 		if err != nil {
@@ -65,24 +71,23 @@ func buildEntityRecord(ev entity.Event) (log.Record, error) {
 		}
 		// type AND id are required on both state and delete.
 		attrs = []log.KeyValue{
-			log.String(attrEntityEventType, eventType),
 			log.String(attrEntityType, e.Type),
 			id,
 		}
 		if ev.Kind == entity.EntityState && len(e.Attributes) > 0 {
-			a, err := scalarMap(attrEntityAttrs, e.Attributes)
+			a, err := scalarMap(attrEntityDescription, e.Attributes)
 			if err != nil {
 				return rec, err
 			}
 			attrs = append(attrs, a)
 		}
-		// Liveness backstop: the heartbeat validity window in milliseconds.
-		// The consumer arms a deadline (last_seen + interval) and expires
-		// the entity if no heartbeat or explicit delete arrives — covers
-		// producers that die without a clean delete (kill -9, partition).
-		// Emitted on state only; a delete needs no interval.
+		// Liveness backstop: the heartbeat validity window. The consumer
+		// arms a deadline (last_seen + interval) and expires the entity if
+		// no heartbeat or explicit delete arrives — covers producers that
+		// die without a clean delete (kill -9, partition). Emitted on state
+		// only, in SECONDS per the merged spec; a delete needs no interval.
 		if ev.Kind == entity.EntityState && ev.Interval > 0 {
-			attrs = append(attrs, log.Int64(attrEntityInterval, ev.Interval.Milliseconds()))
+			attrs = append(attrs, log.Int64(attrEntityReportInterval, int64(ev.Interval.Seconds())))
 		}
 
 	case entity.RelationState, entity.RelationDelete:
