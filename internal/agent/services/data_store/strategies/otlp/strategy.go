@@ -52,9 +52,15 @@ type OTLPSyncStrategy struct {
 	registry *transformers.TransformerRegistry
 
 	// resource is the OTel Resource (service.name, service.instance.id,
-	// service.version, deployment.environment, plus operator extras)
-	// attached to every emitted batch.
+	// service.version, deployment.environment, operator extras, plus the
+	// agent-level global_tags) attached to every emitted batch.
 	resource *resource.Resource
+
+	// globalTagKeys is the set of agent-level global_tag keys. They are
+	// carried on the Resource, so they are stripped from per-metric
+	// attributes before export to avoid duplicating them on every series
+	// (issue #202).
+	globalTagKeys map[string]bool
 
 	// startTime is the OTel `start_time_unix_nano` for cumulative
 	// counters. Pinned at strategy.Start so all counters share the same
@@ -163,15 +169,22 @@ func NewOTLPSyncStrategy(
 		store = store.withMemoryLimiter(ml)
 	}
 
+	globalTags := agentConfig.GetGlobalTags()
+	globalTagKeys := make(map[string]bool, len(globalTags))
+	for k := range globalTags {
+		globalTagKeys[k] = true
+	}
+
 	s := &OTLPSyncStrategy{
-		agentConfig: agentConfig,
-		rawParams:   params,
-		cfg:         cfg,
-		logger:      moduleLogger,
-		store:       store,
-		registry:    transformers.NewTransformerRegistry(baseLogger),
-		resource:    buildResource(cfg.Resource, cliArgs.Version),
-		memLimiter:  ml,
+		agentConfig:   agentConfig,
+		rawParams:     params,
+		cfg:           cfg,
+		logger:        moduleLogger,
+		store:         store,
+		registry:      transformers.NewTransformerRegistry(baseLogger),
+		resource:      buildResource(cfg.Resource, cliArgs.Version, globalTags),
+		globalTagKeys: globalTagKeys,
+		memLimiter:    ml,
 	}
 
 	if cfg.Persistence.Path != "" {
@@ -393,6 +406,7 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 		s.startTime,
 		now,
 		resolveOpts,
+		s.globalTagKeys,
 		extraRecords,
 		func(ctx context.Context, rm *metricdata.ResourceMetrics) error {
 			return s.exporters.metric.Export(ctx, rm)
