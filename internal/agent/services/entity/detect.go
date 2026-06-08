@@ -1,7 +1,5 @@
 package entity
 
-import "time"
-
 // HostIdentity is the identity + descriptive facts of the machine the agent
 // runs on. ID is the stable machine identifier (machine-id / UUID), not the
 // hostname — the hostname is descriptive and may change.
@@ -19,18 +17,15 @@ type AgentIdentity struct {
 	ServiceVersion string // service.version — descriptive
 }
 
-// DetectFoundation builds the Lot 1 entity events: the host the agent runs
-// on, the agent's own service.instance, and the runs_on edge between them.
+// DetectFoundation builds the Lot 1 observation: the host the agent runs on,
+// the agent's own service.instance, and the runs_on edge between them
+// (service.instance → host). The detector stamps event_time and the liveness
+// interval and folds runs_on onto the service.instance entity.
 //
 // It always returns the COMPLETE current descriptive attribute set per
-// entity (entity.state is a full state, never a delta). now is the
-// observation time and becomes each event's event_time. interval is the
-// heartbeat period, carried so a consumer can use it as a liveness backstop.
-//
-// Order matters: both endpoint entities precede the relation so a single
-// batch carries endpoints before the edge that references them.
-func DetectFoundation(h HostIdentity, a AgentIdentity, now time.Time, interval time.Duration) []Event {
-	host := &Entity{
+// entity (entity.state is a full state, never a delta).
+func DetectFoundation(h HostIdentity, a AgentIdentity) Observation {
+	host := Entity{
 		Type:       "host",
 		ID:         map[string]any{"host.id": h.ID},
 		Attributes: map[string]any{},
@@ -42,7 +37,7 @@ func DetectFoundation(h HostIdentity, a AgentIdentity, now time.Time, interval t
 		host.Attributes["os.type"] = h.OSType
 	}
 
-	svc := &Entity{
+	svc := Entity{
 		Type:       "service.instance",
 		ID:         map[string]any{"service.instance.id": a.InstanceID},
 		Attributes: map[string]any{},
@@ -54,7 +49,7 @@ func DetectFoundation(h HostIdentity, a AgentIdentity, now time.Time, interval t
 		svc.Attributes["service.version"] = a.ServiceVersion
 	}
 
-	runsOn := &Relation{
+	runsOn := Relation{
 		Type:     "runs_on",
 		FromType: "service.instance",
 		FromID:   map[string]any{"service.instance.id": a.InstanceID},
@@ -62,9 +57,8 @@ func DetectFoundation(h HostIdentity, a AgentIdentity, now time.Time, interval t
 		ToID:     map[string]any{"host.id": h.ID},
 	}
 
-	return []Event{
-		{Kind: EntityState, Entity: host, Time: now, Interval: interval},
-		{Kind: EntityState, Entity: svc, Time: now, Interval: interval},
-		{Kind: RelationState, Relation: runsOn, Time: now, Interval: interval},
+	return Observation{
+		Entities:  []Entity{host, svc},
+		Relations: []Relation{runsOn},
 	}
 }
