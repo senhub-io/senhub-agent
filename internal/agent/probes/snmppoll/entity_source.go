@@ -23,9 +23,11 @@ const (
 	entityTypeNetworkDevice    = "network.device"
 	entityTypeNetworkRoute     = "network.route"
 	entityTypeNetworkInterface = "network.interface"
+	entityTypeNetworkAddress   = "network.address"
 	idKeyNetworkDevice         = "network.device.id"
 	idKeyRouteDestination      = "route.destination"
 	idKeyInterfaceName         = "interface.name"
+	idKeyNetworkAddress        = "network.address"
 	attrNextHopIP              = "next_hop.ip"
 	attrRouteMetric            = "metric"
 	attrOperState              = "oper.state"
@@ -33,6 +35,7 @@ const (
 	relConnectedTo             = "connected_to"
 	relHasRoute                = "has_route"
 	relHasInterface            = "has_interface"
+	relBoundTo                 = "bound_to"
 	relForwardsTo              = "forwards_to"
 
 	// Polled-device identity OIDs (dotted, no leading dot).
@@ -157,6 +160,12 @@ func (s *snmpEntitySource) sweep(client snmpClient) (entity.Observation, string,
 			Msg("ifTable walk failed; emitting device without interfaces")
 		ifaces = nil
 	}
+	addrs, err := collectIPAddrs(client)
+	if err != nil {
+		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
+			Msg("ipAddrTable walk failed; emitting device without addresses")
+		addrs = nil
+	}
 	self := readSelfIdentity(client, s.cfg.Target, topo.Local)
 
 	deviceID := resolveDeviceID(self)
@@ -169,7 +178,7 @@ func (s *snmpEntitySource) sweep(client snmpClient) (entity.Observation, string,
 			}
 		}
 	}
-	return buildObservation(self, topo, routes, fdb, ifaces), deviceID, ifNames
+	return buildObservation(self, topo, routes, fdb, ifaces, addrs), deviceID, ifNames
 }
 
 // readSelfIdentity reads the polled device's identifiers in the Toise-frozen
@@ -285,7 +294,7 @@ func asString(v any) string {
 //     would flood the graph. Legacy form, pending connected_to.
 //
 // Returns empty when the device cannot be identified (no usable id rung).
-func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, fdb []fdbEntry, ifaces []ifaceRow) entity.Observation {
+func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, fdb []fdbEntry, ifaces []ifaceRow, addrs []ipAddr) entity.Observation {
 	selfID := resolveDeviceID(self)
 	if selfID == "" {
 		return entity.Observation{}
@@ -368,6 +377,28 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 			Type:     relConnectedTo,
 			FromType: entityTypeNetworkInterface, FromID: interfacePortKey(selfID, localIf),
 			ToType: entityTypeNetworkInterface, ToID: interfacePortKey(nID, remoteIf),
+		})
+	}
+
+	// network.address — the device's interface IPs as entities, bound to their
+	// interface. The SAME network.address {ip} node is referenced by a host's
+	// next_hop_via when this device is that host's gateway, so the shared
+	// address joins the host and device topology graphs. Keyed by IP alone
+	// (a flat address space, the frozen contract's choice). Skipped when the
+	// interface cannot be named.
+	addrSeen := map[string]bool{}
+	for _, a := range addrs {
+		ifName := ifIndexName[a.IfIndex]
+		if ifName == "" || addrSeen[a.IP] {
+			continue
+		}
+		addrSeen[a.IP] = true
+		addrID := map[string]any{idKeyNetworkAddress: a.IP}
+		obs.Entities = append(obs.Entities, entity.Entity{Type: entityTypeNetworkAddress, ID: addrID})
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     relBoundTo,
+			FromType: entityTypeNetworkAddress, FromID: addrID,
+			ToType: entityTypeNetworkInterface, ToID: interfacePortKey(selfID, ifName),
 		})
 	}
 

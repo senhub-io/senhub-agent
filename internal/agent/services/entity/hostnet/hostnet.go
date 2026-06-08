@@ -28,13 +28,16 @@ import (
 )
 
 const (
-	entityTypeHost         = "host"
-	entityTypeNetworkRoute = "network.route"
-	idKeyHost              = "host.id"
-	idKeyRouteDestination  = "route.destination"
-	attrNextHopIP          = "next_hop.ip"
-	attrMetric             = "metric"
-	relHasRoute            = "has_route"
+	entityTypeHost           = "host"
+	entityTypeNetworkRoute   = "network.route"
+	entityTypeNetworkAddress = "network.address"
+	idKeyHost                = "host.id"
+	idKeyRouteDestination    = "route.destination"
+	idKeyNetworkAddress      = "network.address"
+	attrNextHopIP            = "next_hop.ip"
+	attrMetric               = "metric"
+	relHasRoute              = "has_route"
+	relNextHopVia            = "next_hop_via"
 
 	procRoute = "/proc/net/route"
 )
@@ -73,7 +76,11 @@ func (s *Source) Observe() entity.Observation {
 }
 
 // buildObservation maps next-hop routes → network.route entities owned by the
-// host (has_route), next hop carried as the scalar next_hop.ip attribute.
+// host (has_route). The next hop is carried both as the scalar next_hop.ip
+// attribute and as a network.address entity the route reaches via next_hop_via:
+// that same network.address {ip} node is bound_to a device's interface by the
+// SNMP poll when the gateway is a managed device, so the shared address joins
+// the host and device topology graphs.
 func buildObservation(hostID string, routes []hostRoute) entity.Observation {
 	if hostID == "" || len(routes) == 0 {
 		return entity.Observation{}
@@ -81,6 +88,7 @@ func buildObservation(hostID string, routes []hostRoute) entity.Observation {
 	hostKey := map[string]any{idKeyHost: hostID}
 
 	obs := entity.Observation{}
+	addrSeen := map[string]bool{}
 	for _, r := range routes {
 		routeID := map[string]any{idKeyHost: hostID, idKeyRouteDestination: r.Destination}
 		attrs := map[string]any{attrNextHopIP: r.NextHop}
@@ -96,6 +104,18 @@ func buildObservation(hostID string, routes []hostRoute) entity.Observation {
 			Type:     relHasRoute,
 			FromType: entityTypeHost, FromID: hostKey,
 			ToType: entityTypeNetworkRoute, ToID: routeID,
+		})
+
+		// The gateway IP as a shared network.address node + next_hop_via edge.
+		addrID := map[string]any{idKeyNetworkAddress: r.NextHop}
+		if !addrSeen[r.NextHop] {
+			addrSeen[r.NextHop] = true
+			obs.Entities = append(obs.Entities, entity.Entity{Type: entityTypeNetworkAddress, ID: addrID})
+		}
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     relNextHopVia,
+			FromType: entityTypeNetworkRoute, FromID: routeID,
+			ToType: entityTypeNetworkAddress, ToID: addrID,
 		})
 	}
 	return obs
