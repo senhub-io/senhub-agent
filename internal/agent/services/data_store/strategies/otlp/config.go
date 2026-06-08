@@ -17,6 +17,7 @@ package otlp
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -219,6 +220,13 @@ type ResourceConfig struct {
 // Populated by ParseConfig; consumed by the strategy and exporter wiring.
 type Config struct {
 	Endpoint string
+	// FallbackEndpoints are standby OTLP ingresses tried in order when the
+	// primary Endpoint is failing (#217 resilience layer 2). Empty = no
+	// failover (single endpoint). The agent prefers the primary and falls
+	// back on a failed export, returning to the primary automatically once
+	// it recovers (a per-endpoint cooldown avoids re-probing a dead one
+	// every cycle).
+	FallbackEndpoints []string
 	// Protocol selects the OTLP transport: "grpc" (default) or "http",
 	// the two transports defined by the OTel protocol spec. It applies
 	// to all three signals — a per-signal override is not supported
@@ -401,6 +409,18 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 
 	if v, ok := params["endpoint"].(string); ok && v != "" {
 		cfg.Endpoint = expandEnv(v)
+	}
+
+	if raw, ok := params["fallback_endpoints"].([]interface{}); ok {
+		for _, item := range raw {
+			s, ok := item.(string)
+			if !ok {
+				return cfg, fmt.Errorf("fallback_endpoints entries must be strings")
+			}
+			if s = expandEnv(strings.TrimSpace(s)); s != "" {
+				cfg.FallbackEndpoints = append(cfg.FallbackEndpoints, s)
+			}
+		}
 	}
 
 	if v, ok := params["protocol"].(string); ok && v != "" {

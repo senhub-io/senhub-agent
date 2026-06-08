@@ -24,7 +24,7 @@ func testConfigForProtocol(proto string) Config {
 }
 
 func TestBuildExporters_GRPC(t *testing.T) {
-	exp, err := buildExporters(context.Background(), testConfigForProtocol("grpc"))
+	exp, err := buildExporters(context.Background(), testConfigForProtocol("grpc"), testModuleLogger(t))
 	if err != nil {
 		t.Fatalf("buildExporters(grpc) error: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestBuildExporters_GRPC(t *testing.T) {
 }
 
 func TestBuildExporters_HTTP(t *testing.T) {
-	exp, err := buildExporters(context.Background(), testConfigForProtocol("http"))
+	exp, err := buildExporters(context.Background(), testConfigForProtocol("http"), testModuleLogger(t))
 	if err != nil {
 		t.Fatalf("buildExporters(http) error: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestBuildExporters_HTTPWithTLS(t *testing.T) {
 	cfg.TLS.Enabled = true
 	cfg.TLS.InsecureSkipVerify = true // no CA file needed
 
-	exp, err := buildExporters(context.Background(), cfg)
+	exp, err := buildExporters(context.Background(), cfg, testModuleLogger(t))
 	if err != nil {
 		t.Fatalf("buildExporters(http+tls) error: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestBuildExporters_DisabledSignals(t *testing.T) {
 			cfg.Logs.Enabled = false
 			cfg.Traces.Enabled = false
 
-			exp, err := buildExporters(context.Background(), cfg)
+			exp, err := buildExporters(context.Background(), cfg, testModuleLogger(t))
 			if err != nil {
 				t.Fatalf("buildExporters error: %v", err)
 			}
