@@ -2,6 +2,7 @@ package snmppoll
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -22,6 +23,10 @@ const (
 
 	minPort = 1
 	maxPort = 65535
+
+	// Discovery crawl bounds (defaults; overridable in the discovery: block).
+	defaultMaxDevices = 200
+	defaultMaxHops    = 4
 
 	// metricUp is 1 when the last poll reached the device, 0 otherwise.
 	metricUp = "senhub.snmp.up"
@@ -58,6 +63,29 @@ type config struct {
 	MIBs []string
 	// Custom holds operator OID mappings beyond the built-in modules.
 	Custom []customMapping
+
+	// Discovery, when set, enables the SNMP crawl: from the seeds the probe
+	// expands the poll set across the LLDP neighbour graph, bounded. nil when
+	// the "discovery:" block is absent (single-target mode). The multi-target
+	// poll lifecycle that consumes it is a later lot.
+	Discovery *discoveryConfig
+}
+
+// discoveryConfig is the validated "discovery:" block.
+type discoveryConfig struct {
+	Seeds        []string         // entry device IPs
+	Profile      discoveryProfile // single credential profile for discovered devices
+	MaxDevices   int              // hard cap on discovered devices
+	MaxHops      int              // BFS depth bound
+	AllowedCIDRs []*net.IPNet     // neighbours are crawled only within these
+	Interval     time.Duration    // crawl cadence; 0 → topology interval
+}
+
+// discoveryProfile is the single SNMP credential applied to every discovered
+// device. v2c only for now (snmp_poll does not support v3 yet).
+type discoveryProfile struct {
+	Version   string
+	Community string
 }
 
 // parseConfig validates and normalizes the free-form probe params,
@@ -137,6 +165,12 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 		errs = append(errs, err.Error())
 	}
 	cfg.Custom = custom
+
+	disc, err := parseDiscovery(raw["discovery"])
+	if err != nil {
+		errs = append(errs, err.Error())
+	}
+	cfg.Discovery = disc
 
 	if len(cfg.MIBs) == 0 && len(cfg.Custom) == 0 {
 		errs = append(errs, "at least one entry under 'mibs' or 'custom_mappings' is required")
@@ -219,6 +253,117 @@ func parseCustomMappings(v interface{}) ([]customMapping, error) {
 			Kind:       kind,
 			IndexLabel: strings.TrimSpace(strOf(m["index_label"])),
 		})
+	}
+	return out, nil
+}
+
+// parseDiscovery validates the optional "discovery:" block. Returns nil when
+// absent (single-target mode). Requires seeds (valid IPs), a v2c profile with a
+// community, and at least one allowed CIDR so the crawl cannot wander off the
+// managed network; max_devices / max_hops default to 200 / 4.
+func parseDiscovery(v interface{}) (*discoveryConfig, error) {
+	if v == nil {
+		return nil, nil
+	}
+	m, ok := toStringMap(v)
+	if !ok {
+		return nil, fmt.Errorf("'discovery' must be a mapping")
+	}
+
+	d := &discoveryConfig{MaxDevices: defaultMaxDevices, MaxHops: defaultMaxHops}
+
+	seeds, err := parseIPList(m["seeds"])
+	if err != nil {
+		return nil, fmt.Errorf("discovery.seeds: %w", err)
+	}
+	if len(seeds) == 0 {
+		return nil, fmt.Errorf("discovery.seeds is required (at least one entry device IP)")
+	}
+	d.Seeds = seeds
+
+	prof, ok := toStringMap(m["profile"])
+	if !ok {
+		return nil, fmt.Errorf("discovery.profile is required (a mapping with version + community)")
+	}
+	if vs := strings.TrimSpace(strOf(prof["version"])); vs != "" {
+		if err := checkVersion(vs); err != nil {
+			return nil, fmt.Errorf("discovery.profile.version: %w", err)
+		}
+	}
+	d.Profile.Version = "v2c"
+	d.Profile.Community = strings.TrimSpace(strOf(prof["community"]))
+	if d.Profile.Community == "" {
+		return nil, fmt.Errorf("discovery.profile.community is required (v2c)")
+	}
+
+	cidrs, err := parseCIDRList(m["allowed_cidrs"])
+	if err != nil {
+		return nil, fmt.Errorf("discovery.allowed_cidrs: %w", err)
+	}
+	if len(cidrs) == 0 {
+		return nil, fmt.Errorf("discovery.allowed_cidrs is required (bounds the crawl to the managed network)")
+	}
+	d.AllowedCIDRs = cidrs
+
+	if n, ok := types.IntParam(m, "max_devices"); ok {
+		if n <= 0 {
+			return nil, fmt.Errorf("discovery.max_devices must be positive")
+		}
+		d.MaxDevices = n
+	}
+	if n, ok := types.IntParam(m, "max_hops"); ok {
+		if n < 1 {
+			return nil, fmt.Errorf("discovery.max_hops must be at least 1")
+		}
+		d.MaxHops = n
+	}
+	if iv, ok, err := durationParam(m, "interval"); err != nil {
+		return nil, fmt.Errorf("discovery.interval: %w", err)
+	} else if ok {
+		d.Interval = iv
+	}
+
+	return d, nil
+}
+
+// parseIPList parses a YAML list of IP-address strings, rejecting malformed
+// entries.
+func parseIPList(v interface{}) ([]string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	list, ok := v.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("must be a list")
+	}
+	out := make([]string, 0, len(list))
+	for _, item := range list {
+		s := strings.TrimSpace(strOf(item))
+		if net.ParseIP(s) == nil {
+			return nil, fmt.Errorf("%q is not a valid IP", s)
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+// parseCIDRList parses a YAML list of CIDR strings into networks.
+func parseCIDRList(v interface{}) ([]*net.IPNet, error) {
+	if v == nil {
+		return nil, nil
+	}
+	list, ok := v.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("must be a list")
+	}
+	out := make([]*net.IPNet, 0, len(list))
+	for _, item := range list {
+		s := strings.TrimSpace(strOf(item))
+		_, n, err := net.ParseCIDR(s)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a valid CIDR", s)
+		}
+		out = append(out, n)
 	}
 	return out, nil
 }
