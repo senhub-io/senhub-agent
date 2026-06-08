@@ -14,10 +14,13 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/agentmetrics"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/entity/hostnet"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
@@ -49,9 +52,15 @@ type OTLPSyncStrategy struct {
 	registry *transformers.TransformerRegistry
 
 	// resource is the OTel Resource (service.name, service.instance.id,
-	// service.version, deployment.environment, plus operator extras)
-	// attached to every emitted batch.
+	// service.version, deployment.environment, operator extras, plus the
+	// agent-level global_tags) attached to every emitted batch.
 	resource *resource.Resource
+
+	// globalTagKeys is the set of agent-level global_tag keys. They are
+	// carried on the Resource, so they are stripped from per-metric
+	// attributes before export to avoid duplicating them on every series
+	// (issue #202).
+	globalTagKeys map[string]bool
 
 	// startTime is the OTel `start_time_unix_nano` for cumulative
 	// counters. Pinned at strategy.Start so all counters share the same
@@ -65,6 +74,14 @@ type OTLPSyncStrategy struct {
 	// when Logs.Enabled. nil otherwise.
 	logs     *logsPipeline
 	logsPump *logsPump
+
+	// entityPump emits entity/relation events on the OTLP log signal; the
+	// entity Detector goroutine produces them. Both nil/zero unless
+	// Entities.Enabled. entityDetectorCancel stops the detector,
+	// entityDetectorWG waits for it.
+	entityPump           *entityPump
+	entityDetectorCancel context.CancelFunc
+	entityDetectorWG     sync.WaitGroup
 
 	// traces holds the SDK BatchSpanProcessor + TracerProvider + Tracer
 	// when Traces.Enabled. nil otherwise. The provider also gets
@@ -152,15 +169,22 @@ func NewOTLPSyncStrategy(
 		store = store.withMemoryLimiter(ml)
 	}
 
+	globalTags := agentConfig.GetGlobalTags()
+	globalTagKeys := make(map[string]bool, len(globalTags))
+	for k := range globalTags {
+		globalTagKeys[k] = true
+	}
+
 	s := &OTLPSyncStrategy{
-		agentConfig: agentConfig,
-		rawParams:   params,
-		cfg:         cfg,
-		logger:      moduleLogger,
-		store:       store,
-		registry:    transformers.NewTransformerRegistry(baseLogger),
-		resource:    buildResource(cfg.Resource, cliArgs.Version),
-		memLimiter:  ml,
+		agentConfig:   agentConfig,
+		rawParams:     params,
+		cfg:           cfg,
+		logger:        moduleLogger,
+		store:         store,
+		registry:      transformers.NewTransformerRegistry(baseLogger),
+		resource:      buildResource(cfg.Resource, cliArgs.Version, globalTags),
+		globalTagKeys: globalTagKeys,
+		memLimiter:    ml,
 	}
 
 	if cfg.Persistence.Path != "" {
@@ -243,10 +267,17 @@ func (s *OTLPSyncStrategy) Start() error {
 		s.startMetricsPusher()
 	}
 
-	if s.cfg.Logs.Enabled && s.exporters.log != nil {
+	// Entity events ride the log signal, so the pipeline (provider + both
+	// loggers) is built when either logs or entities are enabled.
+	if (s.cfg.Logs.Enabled || s.cfg.Entities.Enabled) && s.exporters.log != nil {
 		s.logs = buildLogsPipeline(s.exporters.log, s.resource, s.cfg.Logs, cliArgs.Version)
+	}
+	if s.cfg.Logs.Enabled && s.logs != nil {
 		s.logsPump = newLogsPump(s.logs, s.cfg.Logs.BufferSize)
 		s.logsPump.start()
+	}
+	if s.cfg.Entities.Enabled && s.logs != nil {
+		s.startEntityEmission()
 	}
 
 	if s.cfg.Traces.Enabled && s.exporters.trace != nil {
@@ -262,6 +293,7 @@ func (s *OTLPSyncStrategy) Start() error {
 		Str("persistence_path", s.cfg.Persistence.Path).
 		Dur("persistence_interval", s.cfg.Persistence.Interval).
 		Str("endpoint", s.cfg.Endpoint).
+		Str("protocol", s.cfg.Protocol).
 		Bool("tls_enabled", s.cfg.TLS.Enabled).
 		Bool("metrics_enabled", s.cfg.Metrics.Enabled).
 		Str("metrics_endpoint", s.cfg.Metrics.ResolveEndpoint(s.cfg.Endpoint)).
@@ -344,7 +376,7 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 	}
 
 	tracer := otel.Tracer(tracesScopeName)
-	parent, span := tracer.Start(parent, "otlp.push.metrics")// Endpoint as attribute so split-backend configs (per-signal
+	parent, span := tracer.Start(parent, "otlp.push.metrics") // Endpoint as attribute so split-backend configs (per-signal
 	// override) show the actual target the span pushed to.
 	// Set at start so it's present even if the push panics.
 
@@ -374,6 +406,7 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 		s.startTime,
 		now,
 		resolveOpts,
+		s.globalTagKeys,
 		extraRecords,
 		func(ctx context.Context, rm *metricdata.ResourceMetrics) error {
 			return s.exporters.metric.Export(ctx, rm)
@@ -427,6 +460,57 @@ func (s *OTLPSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
 	return nil
 }
 
+// startEntityEmission wires the entity pump (consumer of the neutral
+// entity-event channel) and the Detector (producer of the Lot 1 foundation
+// events: host + service.instance + runs_on). Called from Start only when
+// Entities.Enabled and the log pipeline exists.
+//
+// The entity's service.instance.id is the resource's service.instance.id so
+// the entity identity and the OTLP resource agree on who the agent is.
+func (s *OTLPSyncStrategy) startEntityEmission() {
+	s.entityPump = newEntityPump(s.logs, s.cfg.Entities.BufferSize, s.logger)
+	s.entityPump.start()
+
+	serviceName := s.cfg.Resource.ServiceName
+	if serviceName == "" {
+		serviceName = "senhub-agent"
+	}
+	hostFn := func() (entity.HostIdentity, error) {
+		hi, err := common.GetHostIdentity()
+		if err != nil {
+			return entity.HostIdentity{}, err
+		}
+		return entity.HostIdentity{ID: hi.ID, Name: hi.Name, OSType: hi.OSType}, nil
+	}
+	agentFn := func() entity.AgentIdentity {
+		return entity.AgentIdentity{
+			InstanceID:     s.cfg.Resource.ServiceInstance,
+			ServiceName:    serviceName,
+			ServiceVersion: cliArgs.Version,
+		}
+	}
+
+	// Host-side topology source (entity Lot 4): emits the host's upstream
+	// gateways as network.device + routes_via, reusing the entity rail. Only
+	// active while entity emission runs.
+	entity.RegisterSource(hostnet.New(func() string {
+		hi, err := common.GetHostIdentity()
+		if err != nil {
+			return ""
+		}
+		return hi.ID
+	}))
+
+	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
+	ctx, cancel := context.WithCancel(context.Background())
+	s.entityDetectorCancel = cancel
+	s.entityDetectorWG.Add(1)
+	go func() {
+		defer s.entityDetectorWG.Done()
+		det.Run(ctx)
+	}()
+}
+
 // Shutdown stops the strategy: signals the push goroutine, waits for it
 // to drain, performs a final push (so the last interval's data isn't
 // lost), then closes the gRPC exporters. Idempotent: once shut down,
@@ -462,6 +546,17 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// pattern as memLimiter.
 	if s.chkpt != nil {
 		s.chkpt.stop()
+	}
+
+	// Stop entity emission: cancel the Detector (producer) and wait, then
+	// stop the pump (consumer). Producer-before-consumer so no event is
+	// published after the channel subscription is gone.
+	if s.entityDetectorCancel != nil {
+		s.entityDetectorCancel()
+		s.entityDetectorWG.Wait()
+	}
+	if s.entityPump != nil {
+		s.entityPump.stop(ctx)
 	}
 
 	// Stop the logs pump and unsubscribe from agentstate. The

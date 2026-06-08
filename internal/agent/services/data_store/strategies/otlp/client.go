@@ -8,35 +8,39 @@ import (
 	"os"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// exporters bundles the SDK exporters created from a Config. They are
-// constructed lazily — the gRPC dial does NOT happen at construction
-// time (the SDK uses lazy connection); the first export call is what
-// actually opens the TCP socket.
+// exporters bundles the SDK exporters created from a Config. Each field
+// is an interface type so the same struct holds either the gRPC or the
+// HTTP exporter, selected by Config.Protocol:
 //
-// This means buildExporters never blocks on network and never returns a
-// connection error — that gets surfaced on the first export attempt and
-// is handled by the retry policy.
+//   - metric: otlpmetricgrpc.Exporter | otlpmetrichttp.Exporter
+//   - log:    otlploggrpc.Exporter   | otlploghttp.Exporter
+//   - trace:  *otlptrace.Exporter wrapping a grpc or http otlptrace.Client
+//
+// They are constructed lazily — the transport dial does NOT happen at
+// construction time; the first export call is what actually opens the
+// socket. buildExporters therefore never blocks on network and never
+// returns a connection error — that surfaces on the first export
+// attempt and is handled by the retry policy.
 type exporters struct {
-	metric *otlpmetricgrpc.Exporter
-	log    *otlploggrpc.Exporter
+	metric sdkmetric.Exporter
+	log    sdklog.Exporter
 	trace  *otlptrace.Exporter
 }
 
 // buildExporters constructs the OTel SDK exporters based on cfg.
-// Either or both can be nil if the corresponding signal is disabled.
-//
-// All gRPC dialing is lazy — the exporters do not open a connection
-// until their first Export call. This is intentional: it lets the agent
-// start cleanly even when the OTLP collector is unreachable, with
-// failures surfacing as retried export attempts rather than blocking
-// the whole startup sequence.
+// Any of the three can be nil if its signal is disabled.
 func buildExporters(ctx context.Context, cfg Config) (*exporters, error) {
 	exp := &exporters{}
 
@@ -48,7 +52,9 @@ func buildExporters(ctx context.Context, cfg Config) (*exporters, error) {
 		exp.metric = me
 	}
 
-	if cfg.Logs.Enabled {
+	// Entity events are carried on the OTLP log signal, so the log exporter
+	// is needed when either raw logs or entity emission is enabled.
+	if cfg.Logs.Enabled || cfg.Entities.Enabled {
 		le, err := buildLogExporter(ctx, cfg)
 		if err != nil {
 			// Roll back metric exporter on log exporter failure so we
@@ -96,7 +102,16 @@ func resolveTransport(cfg Config, sig SignalTransport) resolvedTransport {
 	}
 }
 
-func buildMetricExporter(ctx context.Context, cfg Config) (*otlpmetricgrpc.Exporter, error) {
+// ── Metrics ──────────────────────────────────────────────────────────
+
+func buildMetricExporter(ctx context.Context, cfg Config) (sdkmetric.Exporter, error) {
+	if cfg.Protocol == "http" {
+		return buildMetricExporterHTTP(ctx, cfg)
+	}
+	return buildMetricExporterGRPC(ctx, cfg)
+}
+
+func buildMetricExporterGRPC(ctx context.Context, cfg Config) (sdkmetric.Exporter, error) {
 	rt := resolveTransport(cfg, cfg.Metrics.SignalTransport)
 	opts := []otlpmetricgrpc.Option{
 		otlpmetricgrpc.WithEndpoint(rt.endpoint),
@@ -111,7 +126,6 @@ func buildMetricExporter(ctx context.Context, cfg Config) (*otlpmetricgrpc.Expor
 	} else {
 		opts = append(opts, otlpmetricgrpc.WithTLSCredentials(creds))
 	}
-
 	if len(rt.headers) > 0 {
 		opts = append(opts, otlpmetricgrpc.WithHeaders(rt.headers))
 	}
@@ -128,11 +142,53 @@ func buildMetricExporter(ctx context.Context, cfg Config) (*otlpmetricgrpc.Expor
 	} else {
 		opts = append(opts, otlpmetricgrpc.WithRetry(otlpmetricgrpc.RetryConfig{Enabled: false}))
 	}
-
 	return otlpmetricgrpc.New(ctx, opts...)
 }
 
-func buildLogExporter(ctx context.Context, cfg Config) (*otlploggrpc.Exporter, error) {
+func buildMetricExporterHTTP(ctx context.Context, cfg Config) (sdkmetric.Exporter, error) {
+	rt := resolveTransport(cfg, cfg.Metrics.SignalTransport)
+	opts := []otlpmetrichttp.Option{
+		otlpmetrichttp.WithEndpoint(rt.endpoint),
+		otlpmetrichttp.WithTimeout(cfg.Timeout),
+	}
+	tlsConf, insec, err := buildTLSConfig(rt.tls)
+	if err != nil {
+		return nil, err
+	}
+	if insec {
+		opts = append(opts, otlpmetrichttp.WithInsecure())
+	} else {
+		opts = append(opts, otlpmetrichttp.WithTLSClientConfig(tlsConf))
+	}
+	if len(rt.headers) > 0 {
+		opts = append(opts, otlpmetrichttp.WithHeaders(rt.headers))
+	}
+	if cfg.Compression == "gzip" {
+		opts = append(opts, otlpmetrichttp.WithCompression(otlpmetrichttp.GzipCompression))
+	}
+	if cfg.Retry.Enabled {
+		opts = append(opts, otlpmetrichttp.WithRetry(otlpmetrichttp.RetryConfig{
+			Enabled:         true,
+			InitialInterval: cfg.Retry.InitialInterval,
+			MaxInterval:     cfg.Retry.MaxInterval,
+			MaxElapsedTime:  cfg.Retry.MaxElapsedTime,
+		}))
+	} else {
+		opts = append(opts, otlpmetrichttp.WithRetry(otlpmetrichttp.RetryConfig{Enabled: false}))
+	}
+	return otlpmetrichttp.New(ctx, opts...)
+}
+
+// ── Logs ─────────────────────────────────────────────────────────────
+
+func buildLogExporter(ctx context.Context, cfg Config) (sdklog.Exporter, error) {
+	if cfg.Protocol == "http" {
+		return buildLogExporterHTTP(ctx, cfg)
+	}
+	return buildLogExporterGRPC(ctx, cfg)
+}
+
+func buildLogExporterGRPC(ctx context.Context, cfg Config) (sdklog.Exporter, error) {
 	rt := resolveTransport(cfg, cfg.Logs.SignalTransport)
 	opts := []otlploggrpc.Option{
 		otlploggrpc.WithEndpoint(rt.endpoint),
@@ -147,7 +203,6 @@ func buildLogExporter(ctx context.Context, cfg Config) (*otlploggrpc.Exporter, e
 	} else {
 		opts = append(opts, otlploggrpc.WithTLSCredentials(creds))
 	}
-
 	if len(rt.headers) > 0 {
 		opts = append(opts, otlploggrpc.WithHeaders(rt.headers))
 	}
@@ -164,11 +219,53 @@ func buildLogExporter(ctx context.Context, cfg Config) (*otlploggrpc.Exporter, e
 	} else {
 		opts = append(opts, otlploggrpc.WithRetry(otlploggrpc.RetryConfig{Enabled: false}))
 	}
-
 	return otlploggrpc.New(ctx, opts...)
 }
 
+func buildLogExporterHTTP(ctx context.Context, cfg Config) (sdklog.Exporter, error) {
+	rt := resolveTransport(cfg, cfg.Logs.SignalTransport)
+	opts := []otlploghttp.Option{
+		otlploghttp.WithEndpoint(rt.endpoint),
+		otlploghttp.WithTimeout(cfg.Timeout),
+	}
+	tlsConf, insec, err := buildTLSConfig(rt.tls)
+	if err != nil {
+		return nil, err
+	}
+	if insec {
+		opts = append(opts, otlploghttp.WithInsecure())
+	} else {
+		opts = append(opts, otlploghttp.WithTLSClientConfig(tlsConf))
+	}
+	if len(rt.headers) > 0 {
+		opts = append(opts, otlploghttp.WithHeaders(rt.headers))
+	}
+	if cfg.Compression == "gzip" {
+		opts = append(opts, otlploghttp.WithCompression(otlploghttp.GzipCompression))
+	}
+	if cfg.Retry.Enabled {
+		opts = append(opts, otlploghttp.WithRetry(otlploghttp.RetryConfig{
+			Enabled:         true,
+			InitialInterval: cfg.Retry.InitialInterval,
+			MaxInterval:     cfg.Retry.MaxInterval,
+			MaxElapsedTime:  cfg.Retry.MaxElapsedTime,
+		}))
+	} else {
+		opts = append(opts, otlploghttp.WithRetry(otlploghttp.RetryConfig{Enabled: false}))
+	}
+	return otlploghttp.New(ctx, opts...)
+}
+
+// ── Traces ───────────────────────────────────────────────────────────
+
 func buildTraceExporter(ctx context.Context, cfg Config) (*otlptrace.Exporter, error) {
+	if cfg.Protocol == "http" {
+		return buildTraceExporterHTTP(ctx, cfg)
+	}
+	return buildTraceExporterGRPC(ctx, cfg)
+}
+
+func buildTraceExporterGRPC(ctx context.Context, cfg Config) (*otlptrace.Exporter, error) {
 	rt := resolveTransport(cfg, cfg.Traces.SignalTransport)
 	opts := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(rt.endpoint),
@@ -183,7 +280,6 @@ func buildTraceExporter(ctx context.Context, cfg Config) (*otlptrace.Exporter, e
 	} else {
 		opts = append(opts, otlptracegrpc.WithTLSCredentials(creds))
 	}
-
 	if len(rt.headers) > 0 {
 		opts = append(opts, otlptracegrpc.WithHeaders(rt.headers))
 	}
@@ -200,24 +296,61 @@ func buildTraceExporter(ctx context.Context, cfg Config) (*otlptrace.Exporter, e
 	} else {
 		opts = append(opts, otlptracegrpc.WithRetry(otlptracegrpc.RetryConfig{Enabled: false}))
 	}
-
-	return otlptracegrpc.New(ctx, opts...)
+	return otlptrace.New(ctx, otlptracegrpc.NewClient(opts...))
 }
 
-// tlsCredentials returns gRPC transport credentials. The bool result is
-// true when the operator explicitly disabled TLS (plaintext mode); in
-// that case the credentials value is ignored and the caller must use
-// WithInsecure() instead. Returning the bool out-of-band rather than a
-// nil credentials value lets the caller distinguish "no TLS" from "TLS
-// build failed but we masked it as nil".
-func tlsCredentials(tlsCfg TLSConfig) (credentials.TransportCredentials, bool, error) {
+func buildTraceExporterHTTP(ctx context.Context, cfg Config) (*otlptrace.Exporter, error) {
+	rt := resolveTransport(cfg, cfg.Traces.SignalTransport)
+	opts := []otlptracehttp.Option{
+		otlptracehttp.WithEndpoint(rt.endpoint),
+		otlptracehttp.WithTimeout(cfg.Timeout),
+	}
+	tlsConf, insec, err := buildTLSConfig(rt.tls)
+	if err != nil {
+		return nil, err
+	}
+	if insec {
+		opts = append(opts, otlptracehttp.WithInsecure())
+	} else {
+		opts = append(opts, otlptracehttp.WithTLSClientConfig(tlsConf))
+	}
+	if len(rt.headers) > 0 {
+		opts = append(opts, otlptracehttp.WithHeaders(rt.headers))
+	}
+	if cfg.Compression == "gzip" {
+		opts = append(opts, otlptracehttp.WithCompression(otlptracehttp.GzipCompression))
+	}
+	if cfg.Retry.Enabled {
+		opts = append(opts, otlptracehttp.WithRetry(otlptracehttp.RetryConfig{
+			Enabled:         true,
+			InitialInterval: cfg.Retry.InitialInterval,
+			MaxInterval:     cfg.Retry.MaxInterval,
+			MaxElapsedTime:  cfg.Retry.MaxElapsedTime,
+		}))
+	} else {
+		opts = append(opts, otlptracehttp.WithRetry(otlptracehttp.RetryConfig{Enabled: false}))
+	}
+	return otlptrace.New(ctx, otlptracehttp.NewClient(opts...))
+}
+
+// ── TLS ──────────────────────────────────────────────────────────────
+
+// buildTLSConfig builds the *tls.Config for a signal. The bool result
+// is true when the operator explicitly disabled TLS (plaintext mode);
+// in that case the *tls.Config is nil and the caller must use the
+// transport's WithInsecure() option instead.
+//
+// The OTLP/HTTP exporters consume the *tls.Config directly via
+// WithTLSClientConfig; the gRPC exporters wrap it in transport
+// credentials — see tlsCredentials.
+func buildTLSConfig(tlsCfg TLSConfig) (*tls.Config, bool, error) {
 	if !tlsCfg.Enabled {
-		return insecure.NewCredentials(), true, nil
+		return nil, true, nil
 	}
 
 	conf := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: tlsCfg.InsecureSkipVerify,
+		InsecureSkipVerify: tlsCfg.InsecureSkipVerify, // #nosec G402 - operator-controlled, off by default
 	}
 
 	if tlsCfg.CAFile != "" {
@@ -240,12 +373,27 @@ func tlsCredentials(tlsCfg TLSConfig) (credentials.TransportCredentials, bool, e
 		conf.Certificates = []tls.Certificate{cert}
 	}
 
+	return conf, false, nil
+}
+
+// tlsCredentials returns gRPC transport credentials. The bool result is
+// true when the operator explicitly disabled TLS (plaintext mode); in
+// that case the credentials value is ignored and the caller must use
+// WithInsecure() instead.
+func tlsCredentials(tlsCfg TLSConfig) (credentials.TransportCredentials, bool, error) {
+	conf, insec, err := buildTLSConfig(tlsCfg)
+	if err != nil {
+		return nil, false, err
+	}
+	if insec {
+		return insecure.NewCredentials(), true, nil
+	}
 	return credentials.NewTLS(conf), false, nil
 }
 
-// shutdown closes both exporters with the provided context. Errors from
-// each exporter are accumulated; we never short-circuit so that one
-// signal's failure does not prevent the other from being torn down.
+// shutdown closes every exporter with the provided context. Errors from
+// each are accumulated; we never short-circuit so that one signal's
+// failure does not prevent the others from being torn down.
 func (e *exporters) shutdown(ctx context.Context) error {
 	if e == nil {
 		return nil

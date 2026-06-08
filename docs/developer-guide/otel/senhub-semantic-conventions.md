@@ -135,7 +135,8 @@ Attributs: `cpu.logical_number` (optionnel, présent si mesuré par core).
 | `system.memory.limit` | `By` | UpDownCounter | Total RAM installée (Win `memory_total`) |
 | `system.memory.usage` | `By` | UpDownCounter | Occupation RAM par état (attribut `system.memory.state`) |
 | `system.memory.utilization` | `1` | Gauge | % RAM utilisée (cross-platform, `memory_used_percent`) |
-| `system.paging.utilization` | `1` | Gauge | % pagefile (`pagefile_usage`) — OTEP 0119 draft |
+| `system.paging.usage` | `By` | UpDownCounter | Occupation swap par état (attribut `system.paging.state`) — Linux `swap_used`/`swap_free` |
+| `system.paging.utilization` | `1` | Gauge | % pagefile (`pagefile_usage`) + % swap (`swap_used_percent`) — attribut `system.paging.state`, OTEP 0119 draft |
 
 **Attribut `system.memory.state`**
 
@@ -152,15 +153,20 @@ Valeurs officielles OTel : `buffers, cached, free, used`
 | `nonpaged_pool` | `memory_nonpaged_pool` | Kernel memory that cannot be paged out |
 | `paged_pool` | `memory_paged_pool` | Kernel memory that can be paged out |
 
-#### 4.2.2 Extensions `senhub.*` (paging rates Windows)
+**Attribut `system.paging.state`**
 
-**Justification :** notre probe expose les paging Windows sous forme de **rates instantanés** depuis Perfmon. OTEP 0119 propose `system.paging.faults` et `system.paging.operations` en counters. Nous créons des variantes `_per_second` en gauge le temps de la migration. À aligner sur OTel standard lors de la refonte de la probe (counter cumulatif).
+Valeurs : `used, free`. Le **swap Linux** (`swap_used`/`swap_free`) est le pendant du **pagefile Windows** : OTel modélise les deux sous `system.paging.*`. Ils ne se confondent pas — l'OS de l'hôte (attribut ressource) sépare les séries — et l'harmonisation rend les dashboards de pagination cross-OS (même logique que `available → free` pour la RAM).
+
+#### 4.2.2 Extensions `senhub.*` (paging)
+
+**Justification :** notre probe expose les paging Windows sous forme de **rates instantanés** depuis Perfmon. OTEP 0119 propose `system.paging.faults` et `system.paging.operations` en counters. Nous créons des variantes `_per_second` en gauge le temps de la migration. À aligner sur OTel standard lors de la refonte de la probe (counter cumulatif). `senhub.system.paging.limit` couvre le total swap (`swap_total`), pour lequel OTel n'expose aucun équivalent (miroir de `system.memory.limit` pour la RAM).
 
 | Senhub metric | Unit | Type | Attributs |
 |---|---|---|---|
 | `senhub.system.paging.faults_per_second` | `1/s` | Gauge | – |
 | `senhub.system.paging.operations_per_second` | `1/s` | Gauge | `direction: in` ou `out` |
 | `senhub.system.paging.utilization_peak` | `1` | Gauge | – *(pas d'équivalent OTEP 0119)* |
+| `senhub.system.paging.limit` | `By` | UpDownCounter | – Total swap configuré (`swap_total`) ; *(pas d'équivalent OTEP 0119)* |
 
 ### 4.3 Probe `network` (système)
 
@@ -984,6 +990,154 @@ Le filtrage opère donc en amont — un record qui n'est pas dans le périmètre
 `linux_logs` n'a pas de fichier `definitions/linux_logs.yaml` et n'émet pas de DataPoint. C'est **différent de `syslog` et `event`** (§4.8) qui émettent un DataPoint synthétique par event relayé pour rétro-compat PRTG / Nagios (`syslog_event`, `event_event`, tous deux marqués `otel.skip: true`). `linux_logs` est arrivé après cette politique, exclusivement comme producteur logs — pas de canal PRTG synthétique à entretenir.
 
 Conséquence : un usage typique `linux_logs` requiert l'OTLP logs export activé sur la storage (`storage[otlp].signals.logs: true`), sinon les records sont publiés mais consommés par personne.
+
+### 4.16 Probe `windows_eventlog` (Windows Event Log → OTLP logs)
+
+**Sources principales :**
+- [OTel Semantic Conventions — General Logs](https://opentelemetry.io/docs/specs/semconv/general/logs/) (resource & log record attrs)
+- [OTel Logs Data Model §4.2](https://opentelemetry.io/docs/specs/otel/logs/data-model/) (SeverityNumber + SeverityText)
+- [Windows Event Schema](https://learn.microsoft.com/windows/win32/wes/eventschema-schema) (forme XML rendue par `EvtRender`)
+- [wevtapi `EvtSubscribe`](https://learn.microsoft.com/windows/win32/api/winevt/nf-winevt-evtsubscribe) (modèle pull + bookmark)
+
+**Stratégie :** pendant logique Windows de `linux_logs`. **Exclusivement producteur sur le signal logs** : aucun DataPoint métrique (`Collect()` retourne `nil, nil`), donc pas de YAML transformer. Le mapping vit dans `internal/agent/probes/windowseventlog/event_xml.go::toLogRecord`. Flow : `wevtapi EvtSubscribe → EvtRender(EventXml) → parseEventXML → LogRecord → agentstate.LogChannel → OTLP logsPump → OTel gRPC export`. Windows-only ; sur les autres OS la probe s'enregistre mais `OnStart` échoue explicitement (stub `subscription_other.go`), comme `linux_logs` hors Linux.
+
+#### 4.16.1 Attributs produits
+
+Le record porte les clés mandatées par l'issue #154 plus les attributs OTel-canoniques quand un équivalent existe :
+
+| Attribute | Source (Event XML) | Notes |
+|---|---|---|
+| `event_id` | `System/EventID` | clé mandatée #154 |
+| `event_level` | `System/Level` → label | clé mandatée #154 (Critical/Error/Warning/Information/Verbose) |
+| `event_channel` | `System/Channel` | clé mandatée #154 |
+| `event_provider` | `System/Provider/@Name` | clé mandatée #154 |
+| `event_source` | `System/Provider/@Name` | clé mandatée #154 (alias de provider, parité PRTG) |
+| `record_id` | `System/EventRecordID` | clé mandatée #154 |
+| `host.name` | `System/Computer` | resource attr OTel canonique |
+| `process.pid` | `System/Execution/@ProcessID` | OTel attr canonique |
+| `user.id` | `System/Security/@UserID` | SID ; omis si `redact_pii: true` |
+| `eventdata.<Name>` | `EventData/Data` | payload structuré ; champs sensibles masqués en mode PII |
+| `senhub.probe.name` / `senhub.probe.type` | (framework) | `senhub.probe.type = "windows_eventlog"` |
+
+#### 4.16.2 Body & timestamp
+
+- **Body** = `RenderingInfo/Message` (message rendu par le provider). Fallback si absent (DLL de messages non installée) : `"<Provider> event <EventID>: k=v, …"` à partir des `EventData` triés.
+- **Timestamp** = `System/TimeCreated/@SystemTime` (RFC 3339 nano) → `time.Time`. Fallback `time.Now()` si parsing échoue.
+
+#### 4.16.3 Severity mapping (Windows Level → OTel)
+
+| Level | Windows | OTel SeverityNumber | SeverityText |
+|---:|---|---:|---|
+| 1 | Critical | 21 (FATAL) | `Critical` |
+| 2 | Error | 17 (ERROR) | `Error` |
+| 3 | Warning | 13 (WARN) | `Warning` |
+| 4 | Information | 9 (INFO) | `Information` |
+| 5 | Verbose | 5 (DEBUG) | `Verbose` |
+| 0 | LogAlways | 9 (INFO) | `Information` |
+
+#### 4.16.4 Filtrage côté probe
+
+`levels:` est pré-filtré à la source via une requête XPath wevtapi (`*[System[(Level=1 or Level=2)]]`) ; `include_event_ids` / `exclude_event_ids` (exclude prioritaire) et `sources` (glob provider, insensible à la casse) sont appliqués en second passage en Go. Un event hors périmètre ne touche jamais le canal OTLP.
+
+#### 4.16.5 Bookmark & RGPD
+
+- **Bookmark** : un bookmark wevtapi par channel, persisté en JSON (`bookmark_path`) via écriture atomique. Au redémarrage la souscription reprend `StartAfterBookmark` — pas de duplication ni de perte. Sans `bookmark_path`, tail-from-now à chaque start.
+- **RGPD** : `redact_pii: true` masque les champs `EventData` sensibles (logons du canal Security : `TargetUserName`, `IpAddress`, SID, …) et remplace le body Security par un marqueur. À activer sur les collectes du canal `Security`.
+
+#### 4.16.6 Pas de signal metric (par design)
+
+Comme `linux_logs` : pas de `definitions/windows_eventlog.yaml`, pas de DataPoint. Requiert l'OTLP logs export activé (`storage[otlp].signals.logs: true`) pour que les records soient consommés.
+
+### 4.17 Probe `filetail` (tail de fichiers plats → OTLP logs)
+
+**Sources principales :**
+- [OTel Semantic Conventions — General Logs](https://opentelemetry.io/docs/specs/semconv/general/logs/)
+- [OTel Logs Data Model §4.2](https://opentelemetry.io/docs/specs/otel/logs/data-model/) (SeverityNumber + SeverityText)
+- [OTel `log.file.*` attributes](https://opentelemetry.io/docs/specs/semconv/attributes-registry/log/) (`log.file.path`)
+
+**Stratégie :** générique et cross-platform, pendant flat-file de `linux_logs`/`windows_eventlog`. **Exclusivement producteur sur le signal logs** (`Collect()` → `nil, nil`, pas de YAML transformer). Mapping dans `internal/agent/probes/filetail/parser.go::parseLine`. Flow : `github.com/nxadm/tail (rotation/reopen) → assemblage multiline → parser (regex/json/logfmt/raw) → LogRecord → agentstate.LogChannel → OTLP logs`.
+
+#### 4.17.1 Attributs produits
+
+| Attribute | Source | Notes |
+|---|---|---|
+| `log.file.path` | chemin du fichier tailé | attr OTel canonique `log.file.*` |
+| `<champ parsé>` | groupe nommé regex / clé JSON / clé logfmt | chaque champ extrait devient un attribut |
+| `senhub.probe.name` / `senhub.probe.type` | framework | `senhub.probe.type = "filetail"` |
+
+#### 4.17.2 Body, severity, timestamp
+
+- **Body** = champ `message`/`msg`/`body` si extrait par un parser structuré, sinon la ligne brute.
+- **Severity** = champ `level`/`severity`/`lvl` mappé (TRACE/DEBUG/INFO/WARN/ERROR/FATAL, insensible casse) via `severityFromText`.
+- **Timestamp** = `parser.timestamp_field` parsé avec `timestamp_format` (ou layouts communs + epoch unix en repli) ; sinon l'instant de lecture de la ligne.
+
+#### 4.17.3 Parsers
+
+`regex` (groupes nommés, au moins un requis), `json` (jsonl ; ligne non-objet → skip+log), `logfmt` (key=value), `raw` (ligne entière en body, défaut). Multiline pour replier stacktraces (`match: after`/`before`).
+
+#### 4.17.4 Rotation, bookmark, identité fichier
+
+Rotation gérée par nxadm/tail (reopen). `bookmark_path` persiste l'offset par fichier (atomique, ~2s + à l'arrêt) → reprise sans perte ni duplication. Identité par fingerprint (CRC32 des 1000 premiers octets) **stable seulement à partir de 1000 octets** ; en-dessous le fingerprint est "" (instable car le head change quand le fichier grossit) et l'identité retombe sur une comparaison offset/taille — sinon un petit fichier qui grossit serait relu depuis 0 au restart (duplication).
+
+#### 4.17.5 Pas de signal metric (par design)
+
+Comme `linux_logs`/`windows_eventlog` : pas de `definitions/filetail.yaml`, pas de DataPoint. Requiert `storage[otlp].signals.logs: true`.
+
+### 4.18 Probe `otlp_receiver` (collecteur edge OTLP entrant → sinks)
+
+**Sources principales :**
+- [OTLP MetricsService](https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto)
+- [OTLP Metrics Data Model](https://opentelemetry.io/docs/specs/otel/metrics/data-model/)
+
+**Stratégie :** l'agent comme **collecteur edge**. Probe event-driven (contrat `ProbeWithCallback`, comme `syslog`) qui ouvre un serveur OTLP gRPC ou HTTP, décode les métriques entrantes en DataPoint internes, et les pousse au data_store → tous les sinks. Code : `internal/agent/probes/otlpreceiver/` (`grpc_server.go`, `http_server.go`, `decode.go`).
+
+#### 4.18.1 Décodage (decode.go)
+
+- **Gauge** + **Sum** number datapoints → un DataPoint scalaire chacun, **nom OTel conservé tel quel** (ex. `system.cpu.utilization`).
+- Resource attributes + datapoint attributes repliés en tags (datapoint gagne sur collision).
+- **Histogram / ExponentialHistogram / Summary** : pas de valeur scalaire → non ingérés, comptés et renvoyés à l'émetteur via `PartialSuccess.rejected_data_points`.
+
+#### 4.18.2 Pass-through mapper (clé de l'intégration)
+
+Chaque DataPoint ingéré porte le tag **`metric_type=otlp_ingest`** (constante `otelmapper.MetricTypeOTLPIngest`) + `probe_name`/`probe_type=otlp_receiver`. Les métriques entrantes étant **déjà OTel-shaped** (noms externes arbitraires, aucune définition de transformer possible), `otelmapper.Resolve` les détecte via ce marqueur et les **passe directement** en `OtelRecord` (nom/valeur/unité tels quels, type `gauge`) **sans** lookup de définition. Sans ce pass-through, les exporters OTLP et Prometheus dropperaient ces métriques (def==nil) — elles n'atteindraient que le cache http. Le marqueur est neutre (pas de couplage au package probe), conforme à la règle « otelmapper neutre ».
+
+#### 4.18.3 Limites
+
+Ré-export en `gauge` (la distinction gauge/sum entrante n'est pas préservée sur le bus DataPoint plat). Histograms/summaries non ingérés. Free tier.
+
+### 4.19 Probe `snmp_trap` (récepteur de traps SNMP → OTLP logs)
+
+**Sources principales :**
+- [SNMPv2-MIB (RFC 3418)](https://datatracker.ietf.org/doc/html/rfc3418) — traps génériques + snmpTrapOID.0 / sysUpTime.0
+- [OTel Logs Data Model §4.2](https://opentelemetry.io/docs/specs/otel/logs/data-model/)
+- gosnmp `TrapListener` (réutilisé de snmp_poll #156)
+
+**Stratégie :** pendant push de `snmp_poll`. Probe event-driven qui écoute en UDP les traps v2c/v3, décode via gosnmp, et publie chaque trap en **OTel log** sur `agentstate.PublishLog` (logs-only, comme `linux_logs`/`syslog` — `Collect()` → `nil`, pas de YAML transformer). Code : `internal/agent/probes/snmptrap/` (`snmptrap_probe.go` listener, `traps.go` décodage).
+
+#### 4.19.1 Attributs produits
+
+| Attribute | Source | Notes |
+|---|---|---|
+| `trap_oid` | valeur de `snmpTrapOID.0` (1.3.6.1.6.3.1.1.4.1.0) | clé mandatée #161 |
+| `trap_name` | table compilée des 6 traps génériques, sinon `unknown` | clé mandatée #161 |
+| `source_ip` | `*net.UDPAddr` de l'émetteur | clé mandatée #161 |
+| `snmp_version` | v1/v2c/v3 | |
+| `sysuptime` | `sysUpTime.0` | |
+| `varbind.<oid>` | une par binding (hors snmpTrapOID/sysUpTime) | valeur formatée |
+| `senhub.probe.name` / `senhub.probe.type` | framework | `senhub.probe.type = "snmp_trap"` |
+
+#### 4.19.2 Severity & body
+
+- **Severity** : heuristique fixe (pas de champ severity dans un trap). `linkDown`/`authenticationFailure`/`egpNeighborLoss` → WARN ; reste → INFO.
+- **Body** : `SNMP trap <name> (<oid>) from <ip> with N varbind(s)`.
+
+#### 4.19.3 Résolution de noms (MIBs LOCALES, jamais fetchées)
+
+Deux couches : (1) table compilée des 6 traps génériques SNMPv2-MIB ; (2) **MIBs locales fournies par l'opérateur** via `mib_paths`, parsées au démarrage par le package partagé `internal/agent/services/snmpmib/` (basé sur `gosmi`), qui résout `trap_oid` ET les OIDs de varbinds (`varbind.ifOperStatus.3` au lieu du numérique). Distinction clé : **jamais de fetch réseau** — uniquement les fichiers locaux déposés par l'opérateur (le fetch runtime depuis une URL est l'anti-pattern documenté). Un OID sans MIB chargée reste numérique (`trap_name=unknown`). `snmpmib` est réutilisable par les autres probes SNMP (snmp_poll Lot 2).
+
+#### 4.19.4 Limites
+
+v3 USM best-effort (gosnmp listener = une identité USM, v3-trap flaggé unreliable upstream) ; v2c solide. Port 162 privilégié → root/CAP_NET_BIND_SERVICE (#223). Free tier.
 
 
 ## 6. Processus d'ajout d'une convention

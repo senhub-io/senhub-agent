@@ -18,10 +18,12 @@ import (
 // focused on the strategy itself.
 type fakeAgentConfig struct {
 	configuration.AgentConfiguration
-	key string
+	key        string
+	globalTags map[string]string
 }
 
-func (f *fakeAgentConfig) GetAuthenticationKey() string { return f.key }
+func (f *fakeAgentConfig) GetAuthenticationKey() string     { return f.key }
+func (f *fakeAgentConfig) GetGlobalTags() map[string]string { return f.globalTags }
 
 func newTestStrategy(t *testing.T, params map[string]interface{}) *OTLPSyncStrategy {
 	t.Helper()

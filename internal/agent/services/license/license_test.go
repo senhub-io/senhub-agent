@@ -22,6 +22,10 @@ func TestFreeTierProbes(t *testing.T) {
 		{"LogicalDisk probe is free tier", "logicaldisk", true},
 		{"Network probe is free tier", "network", true},
 		{"LinuxLogs probe is free tier", "linux_logs", true},
+		{"WindowsEventLog probe is free tier", "windows_eventlog", true},
+		{"FileTail probe is free tier", "filetail", true},
+		{"OTLPReceiver probe is free tier", "otlp_receiver", true},
+		{"SNMPTrap probe is free tier", "snmp_trap", true},
 		{"Redfish probe is NOT free tier", "redfish", false},
 		{"Citrix probe is NOT free tier", "citrix", false},
 		{"WebApp probe is NOT free tier", "ping_webapp", false},
@@ -42,18 +46,23 @@ func TestFreeTierProbes(t *testing.T) {
 func TestGetFreeTierProbes(t *testing.T) {
 	probes := GetFreeTierProbes()
 
-	// Check we have exactly 5 free tier probes
-	if len(probes) != 5 {
-		t.Errorf("GetFreeTierProbes() returned %d probes, want 5", len(probes))
+	// Check we have exactly 10 free tier probes
+	if len(probes) != 10 {
+		t.Errorf("GetFreeTierProbes() returned %d probes, want 10", len(probes))
 	}
 
 	// Check all expected probes are present
 	expectedProbes := map[string]bool{
-		"cpu":         false,
-		"memory":      false,
-		"logicaldisk": false,
-		"network":     false,
-		"linux_logs":  false,
+		"cpu":              false,
+		"memory":           false,
+		"logicaldisk":      false,
+		"network":          false,
+		"linux_logs":       false,
+		"windows_eventlog": false,
+		"filetail":         false,
+		"snmp_poll":        false,
+		"otlp_receiver":    false,
+		"snmp_trap":        false,
 	}
 
 	for _, probe := range probes {
@@ -723,130 +732,8 @@ func TestGetDefaultValidator(t *testing.T) {
 	}
 }
 
-// --- Compact License Tests ---
-
-func TestCompactLicense_RoundTrip(t *testing.T) {
-	expiry := time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)
-	probes := []string{"veeam", "citrix", "netscaler"}
-
-	key, err := GenerateCompactLicense(TierPro, expiry, probes, "test-agent-001")
-	if err != nil {
-		t.Fatalf("GenerateCompactLicense failed: %v", err)
-	}
-
-	if !IsCompactLicense(key) {
-		t.Fatalf("IsCompactLicense returned false for %q", key)
-	}
-
-	t.Logf("Compact key: %s (len=%d)", key, len(key))
-
-	lic, err := ValidateCompactLicense(key)
-	if err != nil {
-		t.Fatalf("ValidateCompactLicense failed: %v", err)
-	}
-
-	if lic.Tier != TierPro {
-		t.Errorf("tier = %v, want Pro", lic.Tier)
-	}
-	if len(lic.AuthorizedProbes) != 3 {
-		t.Errorf("probes count = %d, want 3", len(lic.AuthorizedProbes))
-	}
-	if lic.IsExpired {
-		t.Error("should not be expired")
-	}
-}
-
-func TestCompactLicense_Enterprise(t *testing.T) {
-	expiry := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
-
-	key, err := GenerateCompactLicense(TierEnterprise, expiry, []string{"*"}, "ent-agent")
-	if err != nil {
-		t.Fatalf("GenerateCompactLicense failed: %v", err)
-	}
-
-	lic, err := ValidateCompactLicense(key)
-	if err != nil {
-		t.Fatalf("ValidateCompactLicense failed: %v", err)
-	}
-
-	if lic.Tier != TierEnterprise {
-		t.Errorf("tier = %v, want Enterprise", lic.Tier)
-	}
-	if len(lic.AuthorizedProbes) != 1 || lic.AuthorizedProbes[0] != "*" {
-		t.Errorf("probes = %v, want [*]", lic.AuthorizedProbes)
-	}
-}
-
-func TestCompactLicense_Expired(t *testing.T) {
-	expiry := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
-
-	key, err := GenerateCompactLicense(TierPro, expiry, []string{"veeam"}, "expired-agent")
-	if err != nil {
-		t.Fatalf("GenerateCompactLicense failed: %v", err)
-	}
-
-	lic, err := ValidateCompactLicense(key)
-	if err != nil {
-		t.Fatalf("ValidateCompactLicense failed: %v", err)
-	}
-
-	if !lic.IsExpired {
-		t.Error("should be expired")
-	}
-}
-
-func TestCompactLicense_TamperedSignature(t *testing.T) {
-	expiry := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
-
-	key, err := GenerateCompactLicense(TierPro, expiry, []string{"veeam"}, "test-agent")
-	if err != nil {
-		t.Fatalf("GenerateCompactLicense failed: %v", err)
-	}
-
-	// Tamper with a character
-	runes := []rune(key)
-	lastDash := len(runes) - 3
-	if runes[lastDash] == 'A' {
-		runes[lastDash] = 'B'
-	} else {
-		runes[lastDash] = 'A'
-	}
-	tampered := string(runes)
-
-	_, err = ValidateCompactLicense(tampered)
-	if err == nil {
-		t.Error("should reject tampered license")
-	}
-}
-
-func TestCompactLicense_JWTValidatorAutoDetect(t *testing.T) {
-	// Generate a compact license
-	expiry := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
-	key, err := GenerateCompactLicense(TierPro, expiry, []string{"veeam"}, "test-agent")
-	if err != nil {
-		t.Fatalf("GenerateCompactLicense failed: %v", err)
-	}
-
-	// Create a JWTValidator with a generated RSA key (needed for constructor)
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("GenerateKey failed: %v", err)
-	}
-	pubKeyBytes, _ := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
-	pubKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubKeyBytes})
-
-	validator, err := NewJWTValidator(string(pubKeyPEM), 7)
-	if err != nil {
-		t.Fatalf("NewJWTValidator failed: %v", err)
-	}
-
-	// Validate compact license through JWTValidator (auto-detect)
-	lic, err := validator.ValidateLicense(key)
-	if err != nil {
-		t.Fatalf("ValidateLicense with compact key failed: %v", err)
-	}
-
-	if lic.Tier != TierPro {
-		t.Errorf("tier = %v, want Pro", lic.Tier)
-	}
-}
+// Compact-licence tests were removed alongside the compact format
+// itself when the agent went open-source. The HMAC secret that
+// authenticated compact tokens could not survive a public source
+// tree (see docs/LICENSE-SYSTEM.md for the JWT-only design that
+// replaced it).
