@@ -142,6 +142,37 @@ func (p *logsPipeline) emit(ctx context.Context, rec agentstate.LogRecord) {
 	agentstate.IncrementOTLPLogsPushed()
 }
 
+// replayEventLog rebuilds an API log.Record from a persisted event log
+// and re-emits it through the ordinary-logs Logger (logsScopeName), which
+// re-attaches scope + resource — neither is settable on a raw record, so
+// replay must go through the pipeline rather than the exporter (#217).
+func (p *logsPipeline) replayEventLog(ctx context.Context, pr persistedLogRecord) {
+	if p == nil || p.logger == nil {
+		return
+	}
+	var apiRec log.Record
+	apiRec.SetTimestamp(time.Unix(0, pr.TimestampUnixNano))
+	if pr.ObservedTimestampUnixNano != 0 {
+		apiRec.SetObservedTimestamp(time.Unix(0, pr.ObservedTimestampUnixNano))
+	} else {
+		apiRec.SetObservedTimestamp(time.Unix(0, pr.TimestampUnixNano))
+	}
+	apiRec.SetSeverity(log.Severity(pr.SeverityNumber))
+	if pr.SeverityText != "" {
+		apiRec.SetSeverityText(pr.SeverityText)
+	}
+	apiRec.SetBody(log.StringValue(pr.Body))
+	if len(pr.Attributes) > 0 {
+		attrs := make([]log.KeyValue, 0, len(pr.Attributes))
+		for k, v := range pr.Attributes {
+			attrs = append(attrs, log.String(k, v))
+		}
+		apiRec.AddAttributes(attrs...)
+	}
+	p.logger.Emit(ctx, apiRec)
+	agentstate.IncrementOTLPLogsPushed()
+}
+
 // shutdown drains the BatchProcessor and shuts the provider down,
 // honoring the caller's context deadline.
 func (p *logsPipeline) shutdown(ctx context.Context) error {

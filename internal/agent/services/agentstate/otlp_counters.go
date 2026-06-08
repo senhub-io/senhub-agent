@@ -23,12 +23,17 @@ var (
 	otlpExportDurationCountNs atomic.Uint64
 	otlpExportDurationCalls   atomic.Uint64
 
-	otlpCheckpointSize           atomic.Int64  // bytes of the last saved file
-	otlpCheckpointLastSaveNanos  atomic.Int64  // unix-nanos of the most recent successful save (0 = never)
-	otlpCheckpointRestoredCount  atomic.Int64  // entries restored at boot (0 = no restore happened)
-	otlpCheckpointRestoredAtNs   atomic.Int64  // unix-nanos of the boot restore (0 = none)
+	otlpCheckpointSize          atomic.Int64 // bytes of the last saved file
+	otlpCheckpointLastSaveNanos atomic.Int64 // unix-nanos of the most recent successful save (0 = never)
+	otlpCheckpointRestoredCount atomic.Int64 // entries restored at boot (0 = no restore happened)
+	otlpCheckpointRestoredAtNs  atomic.Int64 // unix-nanos of the boot restore (0 = none)
 
 	otlpSubBatchCount atomic.Int32 // number of sub-batches produced by the last push (1 if single-batch path)
+
+	otlpLogsQueued       atomic.Uint64 // log records written to the on-disk dead-letter queue (cumulative)
+	otlpLogsReplayed     atomic.Uint64 // log records re-emitted from the queue (cumulative)
+	otlpLogsQueueRecords atomic.Int64  // log records currently on disk (gauge)
+	otlpLogsQueueBytes   atomic.Int64  // bytes currently held by the queue (gauge)
 )
 
 // otlpCheckpointErrors is a per-stage counter (read/parse/encode/etc.)
@@ -107,6 +112,37 @@ func GetOTLPDroppedByReason() map[string]uint64 {
 	}
 	return out
 }
+
+// IncrementOTLPLogsQueued records `n` log records written to the on-disk
+// dead-letter queue after an export failure (durability for the logs
+// signal when the backend is down — issue #217). Cumulative.
+func IncrementOTLPLogsQueued(n int) {
+	if n > 0 {
+		otlpLogsQueued.Add(uint64(n))
+	}
+}
+
+// IncrementOTLPLogsReplayed records `n` log records re-emitted from the
+// dead-letter queue (at boot or on backend recovery).
+func IncrementOTLPLogsReplayed(n int) {
+	if n > 0 {
+		otlpLogsReplayed.Add(uint64(n))
+	}
+}
+
+// RecordOTLPLogsQueueSize publishes the current depth of the on-disk log
+// dead-letter queue (records + bytes). Surfaces as the
+// `senhub.agent.otlp.logs.queue` gauges.
+func RecordOTLPLogsQueueSize(records int, bytes int64) {
+	otlpLogsQueueRecords.Store(int64(records))
+	otlpLogsQueueBytes.Store(bytes)
+}
+
+// GetOTLPLogsQueued* / GetOTLPLogsQueue* are scrape-time accessors.
+func GetOTLPLogsQueuedTotal() uint64   { return otlpLogsQueued.Load() }
+func GetOTLPLogsReplayedTotal() uint64 { return otlpLogsReplayed.Load() }
+func GetOTLPLogsQueueRecords() int64   { return otlpLogsQueueRecords.Load() }
+func GetOTLPLogsQueueBytes() int64     { return otlpLogsQueueBytes.Load() }
 
 // RecordOTLPStoreSize is called by the OTLP strategy after every
 // snapshot to publish the current cardinality of the strategy-local
