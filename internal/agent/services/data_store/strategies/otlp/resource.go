@@ -30,6 +30,11 @@ const (
 //   - service.instance.id = first 8 chars of agent key (set by
 //     NewOTLPSyncStrategy when the operator did not supply one)
 //   - service.version  = build version, when known via cliArgs.Version
+//   - hostAttrs (host.* / os.* from gopsutil) so the agent's own metrics and
+//     logs carry the SAME host.id as the host entity — the join that lets a
+//     backend correlate the host node in the infra graph with its telemetry.
+//     Lowest precedence: an operator global_tag or resource: Extra of the same
+//     key wins.
 //   - agent-level global_tags are attached as resource attributes:
 //     they describe the agent/host as a whole, so they belong on the
 //     Resource (one per process) rather than multiplying as per-metric
@@ -37,8 +42,8 @@ const (
 //   - any custom keys from cfg.Resource.Extra are passed through
 //     verbatim — callers are responsible for using valid OTel names.
 //     Explicit resource: config wins over a same-named global_tag.
-func buildResource(cfg ResourceConfig, version string, globalTags map[string]string) *resource.Resource {
-	attrs := make([]attribute.KeyValue, 0, 4+len(globalTags)+len(cfg.Extra))
+func buildResource(cfg ResourceConfig, version string, hostAttrs, globalTags map[string]string) *resource.Resource {
+	attrs := make([]attribute.KeyValue, 0, 4+len(hostAttrs)+len(globalTags)+len(cfg.Extra))
 
 	if cfg.ServiceName != "" {
 		attrs = append(attrs, attribute.String(resourceKeyServiceName, cfg.ServiceName))
@@ -52,8 +57,11 @@ func buildResource(cfg ResourceConfig, version string, globalTags map[string]str
 	if cfg.Environment != "" {
 		attrs = append(attrs, attribute.String(resourceKeyEnvironment, cfg.Environment))
 	}
-	// global_tags first so an explicit resource: Extra of the same key
-	// takes precedence (resource.NewSchemaless keeps the last value).
+	// host.*/os.* first (lowest precedence), then global_tags, then Extra so an
+	// explicit operator value of the same key wins (NewSchemaless keeps last).
+	for k, v := range hostAttrs {
+		attrs = append(attrs, attribute.String(k, v))
+	}
 	for k, v := range globalTags {
 		attrs = append(attrs, attribute.String(k, v))
 	}
