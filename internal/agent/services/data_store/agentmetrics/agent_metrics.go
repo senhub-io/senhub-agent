@@ -295,6 +295,22 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       float64(agentstate.GetOTLPLogsReplayedTotal()),
 			Description: "Cumulative event-log records re-emitted from the dead-letter queue at boot or on backend recovery.",
 		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.active_endpoint_index",
+			Unit:        "1",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPActiveEndpointIndex()),
+			Description: "Index of the OTLP endpoint currently serving exports: 0 = primary, >0 = a configured fallback (endpoint failover, #217). Always 0 when no fallback_endpoints are configured.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.endpoint_switches",
+			Unit:        "{switch}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPEndpointSwitchesTotal()),
+			Description: "Cumulative endpoint failover switches (the active OTLP endpoint changed). Rising means the primary is flapping.",
+		},
 	)
 	for stage, n := range agentstate.GetOTLPCheckpointErrorsByStage() {
 		records = append(records, otelmapper.OtelRecord{
