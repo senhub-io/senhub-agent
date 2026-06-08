@@ -9,17 +9,24 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-// Entity rail (#185) — Lot 5a: the polled device + its LLDP neighbours as
-// network.device entities and adjacent_to relations, on the frozen entity
-// emitter. The wire shapes (network.device.id, relation endpoints/attrs) are
-// the Toise-frozen contract — see SNMP-OTEL-MAPPING.md Layer 2′; all id-format
-// decisions live in resolveDeviceID (lldp.go).
+// Entity rail (#185, #156) — the polled device + its LLDP neighbours as
+// network.device entities, and its routing table as network.route entities
+// the device owns (has_route, next hop a scalar next_hop.ip — topology-as-
+// entities, ADR 0022, frozen with Toise #222/#87). Wire shapes
+// (network.device.id, route.destination) are the Toise-frozen contract — see
+// SNMP-OTEL-MAPPING.md Layer 2′; id-format decisions live in resolveDeviceID
+// (lldp.go). The link-layer edges (adjacent_to / forwards_to) remain in the
+// legacy device-to-device form for now; their connected_to migration follows.
 
 const (
 	entityTypeNetworkDevice = "network.device"
+	entityTypeNetworkRoute  = "network.route"
 	idKeyNetworkDevice      = "network.device.id"
+	idKeyRouteDestination   = "route.destination"
+	attrNextHopIP           = "next_hop.ip"
+	attrRouteMetric         = "metric"
 	relAdjacentTo           = "adjacent_to"
-	relRoutesVia            = "routes_via"
+	relHasRoute             = "has_route"
 	relForwardsTo           = "forwards_to"
 
 	// Polled-device identity OIDs (dotted, no leading dot).
@@ -97,7 +104,7 @@ func (s *snmpEntitySource) sweep(client snmpClient) entity.Observation {
 	routes, err := collectRoutes(client)
 	if err != nil {
 		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
-			Msg("routing walk failed; emitting device without routes_via")
+			Msg("routing walk failed; emitting device without routes")
 		routes = nil
 	}
 	fdb, err := collectFDB(client)
@@ -106,14 +113,8 @@ func (s *snmpEntitySource) sweep(client snmpClient) entity.Observation {
 			Msg("FDB walk failed; emitting device without forwards_to")
 		fdb = nil
 	}
-	arp, err := collectARP(client)
-	if err != nil {
-		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
-			Msg("ARP walk failed; next-hops stay provisional mgmt:")
-		arp = nil
-	}
 	self := readSelfIdentity(client, s.cfg.Target, topo.Local)
-	return buildObservation(self, topo, routes, fdb, arp)
+	return buildObservation(self, topo, routes, fdb)
 }
 
 // readSelfIdentity reads the polled device's identifiers in the Toise-frozen
@@ -205,19 +206,19 @@ func asString(v any) string {
 	return s
 }
 
-// buildObservation maps the polled device, its LLDP neighbours, routing
-// next-hops and bridge FDB to the frozen wire shapes (all
-// network.device↔network.device):
-//   - adjacent_to — one directed edge polled→neighbour (no reciprocal);
-//   - routes_via  — one edge per distinct next-hop device (deduped). The
-//     next-hop is known as an IP → mgmt:<ip>, UNLESS ARP converges it to a
-//     confirmed device's canonical mac:<addr> (Toise D3: resolve before emit);
+// buildObservation maps the polled device, its LLDP neighbours, routing table
+// and bridge FDB to the frozen wire shapes:
+//   - network.route — one entity per distinct destination CIDR the device owns
+//     (has_route), next hop a scalar next_hop.ip; supersedes routes_via, no
+//     next-hop device synthesized (network.address deferred);
+//   - adjacent_to — one directed edge polled→neighbour (no reciprocal); legacy
+//     device-to-device form, pending the connected_to migration;
 //   - forwards_to — bridge FDB, restricted to MACs confirmed to be network
 //     devices (LLDP neighbour chassis MACs); host MACs are out of scope and
-//     would flood the graph (Toise: no card entity yet).
+//     would flood the graph. Legacy form, pending connected_to.
 //
 // Returns empty when the device cannot be identified (no usable id rung).
-func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, fdb []fdbEntry, arp []arpEntry) entity.Observation {
+func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, fdb []fdbEntry) entity.Observation {
 	selfID := resolveDeviceID(self)
 	if selfID == "" {
 		return entity.Observation{}
@@ -262,48 +263,37 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		})
 	}
 
-	// ARP convergence (Toise D3): an IP bound to a confirmed device MAC lets a
-	// provisional mgmt:<ip> next-hop resolve to the device's canonical mac:.
-	arpDevice := map[string]string{}
-	for _, a := range arp {
-		id := "mac:" + a.MAC
-		if deviceMACs[id] {
-			arpDevice[a.IP] = id
-		}
-	}
-	nextHopID := func(ip string) string {
-		if id, ok := arpDevice[ip]; ok {
-			return id
-		}
-		return "mgmt:" + ip
-	}
-
-	// routes_via — one edge per distinct (resolved) next-hop, first-seen order.
-	var nhOrder []string
-	nhCount := map[string]int{}
+	// network.route — the polled device's remote routes as entities it owns
+	// (has_route, mirror of has_interface), the next hop carried as a scalar
+	// next_hop.ip (network.address — the gateway as its own node — is deferred,
+	// so no provisional mgmt:/mac: device for it). One entity per destination
+	// CIDR, first-seen order; ECMP (a destination with several next-hops) keeps
+	// the first. This supersedes the legacy routes_via device-to-device edge.
+	routeSeen := map[string]bool{}
 	for _, r := range routes {
-		if r.Type != routeTypeRemote || !usableNextHop(r.NextHop, self.MgmtIP) {
+		if r.Type != routeTypeRemote || r.Destination == "" {
 			continue
 		}
-		id := nextHopID(r.NextHop)
-		if id == selfID {
+		if !usableNextHop(r.NextHop, self.MgmtIP) {
 			continue
 		}
-		if _, seen := nhCount[id]; !seen {
-			nhOrder = append(nhOrder, id)
+		if routeSeen[r.Destination] {
+			continue
 		}
-		nhCount[id]++
-	}
-	for _, nhID := range nhOrder {
-		addEntity(nhID, map[string]any{}) // mgmt: new node; converged mac: already emitted
+		routeSeen[r.Destination] = true
+
+		routeID := map[string]any{idKeyNetworkDevice: selfID, idKeyRouteDestination: r.Destination}
+		attrs := map[string]any{attrNextHopIP: r.NextHop}
+		if r.Metric > 0 {
+			attrs[attrRouteMetric] = int64(r.Metric)
+		}
+		obs.Entities = append(obs.Entities, entity.Entity{
+			Type: entityTypeNetworkRoute, ID: routeID, Attributes: attrs,
+		})
 		obs.Relations = append(obs.Relations, entity.Relation{
-			Type:     relRoutesVia,
+			Type:     relHasRoute,
 			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
-			ToType: entityTypeNetworkDevice, ToID: deviceKey(nhID),
-			// One structural edge per next-hop; per-destination dest/mask would
-			// flap across routes sharing it, so we carry the destination count.
-			// (Attribute shape flagged back to Toise.)
-			Attributes: map[string]any{"source": "snmp", "destinations": int64(nhCount[nhID])},
+			ToType: entityTypeNetworkRoute, ToID: routeID,
 		})
 	}
 
