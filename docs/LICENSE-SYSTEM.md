@@ -51,6 +51,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **otlp_receiver** - Embedded OTLP gRPC/HTTP receiver; the agent acts as an edge collector ingesting OTLP metric streams from other instrumented sources (universal collection wedge)
 - **snmp_trap** - SNMP v2c/v3 trap receiver (UDP, default :162) — push counterpart of snmp_poll, emits traps as OTel logs
 - **icmp_check** - Multi-target ICMP ping (RTT min/avg/max/stddev, packet loss, reachability) — free active check, the PRTG-migration wedge sensor
+- **http_check** - Multi-target HTTP(S) check: status, latency phases (DNS/connect/TLS/TTFB), response size, content match, TLS certificate expiry
 - **snmp_poll** - Generic SNMP polling. The deliberate exception to "remote = paid": it is the open-core wedge to replace PRTG's free SNMP polling. Deep vendor-specific SNMP (device profiles, discovery, vendor MIBs) remains paid.
 
 ### Pro Tier (License Required)

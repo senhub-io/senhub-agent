@@ -22,6 +22,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"cpu",
 		"event",
 		"filetail",
+		"http_check",
 		"icmp_check",
 		"linux_logs",
 		"logicaldisk",
