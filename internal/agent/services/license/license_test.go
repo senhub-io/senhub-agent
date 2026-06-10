@@ -46,9 +46,9 @@ func TestFreeTierProbes(t *testing.T) {
 func TestGetFreeTierProbes(t *testing.T) {
 	probes := GetFreeTierProbes()
 
-	// Check we have exactly 10 free tier probes
-	if len(probes) != 10 {
-		t.Errorf("GetFreeTierProbes() returned %d probes, want 10", len(probes))
+	// Check we have exactly 11 free tier probes
+	if len(probes) != 11 {
+		t.Errorf("GetFreeTierProbes() returned %d probes, want 11", len(probes))
 	}
 
 	// Check all expected probes are present
@@ -63,6 +63,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"snmp_poll":        false,
 		"otlp_receiver":    false,
 		"snmp_trap":        false,
+		"icmp_check":       false,
 	}
 
 	for _, probe := range probes {

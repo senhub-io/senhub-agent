@@ -1139,6 +1139,19 @@ Deux couches : (1) table compilée des 6 traps génériques SNMPv2-MIB ; (2) **M
 
 v3 USM best-effort (gosnmp listener = une identité USM, v3-trap flaggé unreliable upstream) ; v2c solide. Port 162 privilégié → root/CAP_NET_BIND_SERVICE (#223). Free tier.
 
+### 4.20 icmp_check (free, #299)
+
+Aucun receiver otelcol-contrib ne couvre l'ICMP actif → namespace `senhub.icmp.*`. Une série par cible (attributs `icmp.target` + `icmp.target.ip`).
+
+| Métrique OTel | Unité | Type | Source wire |
+|---|---|---|---|
+| `senhub.icmp.up` | `1` | gauge | reachability du cycle (≥1 réponse) |
+| `senhub.icmp.packet_loss` | `1` | gauge | wire en % → ratio côté mapper |
+| `senhub.icmp.packets.sent` / `.received` | `{packet}` | gauge | comptes du cycle |
+| `senhub.icmp.rtt.min/.avg/.max/.stddev` | `s` | gauge | wire en ms, `value_scale: 0.001` ; émis seulement si ≥1 réponse |
+
+Modes privilégié (raw ICMP) / non-privilégié (datagram, sysctl `ping_group_range` sous Linux) ; défaut privilégié sur Windows uniquement. Châssis multi-cibles réutilisable par tcp_dial (#159) / dns_latency (#158).
+
 
 ## 6. Processus d'ajout d'une convention
 
