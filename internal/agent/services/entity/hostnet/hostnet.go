@@ -1,24 +1,24 @@
-// Package hostnet is the host-side topology entity source (entity Lot 4,
-// #212): it reads the local kernel routing table + ARP cache and emits the
-// host's upstream gateways as network.device entities + routes_via edges, on
-// the frozen entity rail — the host-side equivalent of snmp_poll Lot 5, with
-// no SNMP needed.
+// Package hostnet is the host-side routing entity source (entity Lot 4, #212):
+// it reads the local kernel routing table and emits the host's routes as
+// network.route entities on the frozen entity rail — the host-side equivalent
+// of snmp_poll's device routing, with no SNMP needed.
 //
-// Contract (confirmed with Toise — option a): a host-sourced edge reuses the
-// frozen relation types with From=host (the From/To types are indicative, not
-// enforced; same as monitors). The host endpoint resolves by exact identity on
-// the existing host.id entity (Lot 1) — no fusion with a network.device twin.
-// Host-sourced edges are tagged with a `source` attribute to distinguish them
-// from device-sourced ones at query time.
+// Contract (topology-as-entities, ADR 0022, frozen with Toise #222/#87): a
+// host route is a network.route entity identified by {host.id, route.destination}
+// (route.destination a canonical CIDR), carrying the next hop as a scalar
+// next_hop.ip attribute — network.address (and the gateway as its own entity)
+// is deferred, so the next hop stays an IP, not a node. The route attaches to
+// the host by has_route (host → network.route), mirroring has_interface.
 //
-// Scope: gateways only (bounded, high value). adjacent_to to every ARP
-// neighbour is deferred — it would flood the graph with host MACs and we have
-// no device-classification signal on the host (same reasoning as the SNMP FDB
-// filter). ARP is used here only to converge a gateway IP to its canonical
-// device MAC.
+// This supersedes the earlier gateway-as-network.device + routes_via model:
+// the host does not discover its gateway as a managed device (that is what an
+// SNMP poll does); it records where its traffic egresses. Scope: routes with a
+// next hop (default + gateway'd routes); link-local/connected routes are
+// skipped (no next hop, low value, would flood).
 package hostnet
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"strconv"
@@ -28,125 +28,136 @@ import (
 )
 
 const (
-	entityTypeNetworkDevice = "network.device"
-	entityTypeHost          = "host"
-	idKeyNetworkDevice      = "network.device.id"
-	idKeyHost               = "host.id"
-	relRoutesVia            = "routes_via"
+	entityTypeHost           = "host"
+	entityTypeNetworkRoute   = "network.route"
+	entityTypeNetworkAddress = "network.address"
+	idKeyHost                = "host.id"
+	idKeyRouteDestination    = "route.destination"
+	idKeyNetworkAddress      = "network.address"
+	attrNextHopIP            = "next_hop.ip"
+	attrMetric               = "metric"
+	relHasRoute              = "has_route"
+	relNextHopVia            = "next_hop_via"
 
 	procRoute = "/proc/net/route"
-	procARP   = "/proc/net/arp"
 )
 
-// Source implements entity.Source for host network tables.
+// hostRoute is one next-hop route parsed from the kernel routing table.
+type hostRoute struct {
+	Destination string // canonical CIDR, e.g. "0.0.0.0/0"
+	NextHop     string // gateway IP (dotted)
+	Metric      int64
+}
+
+// Source implements entity.Source for the host routing table.
 type Source struct {
 	hostID    func() string
 	readRoute func() ([]byte, error)
-	readARP   func() ([]byte, error)
 }
 
-// New builds the host-net source. hostID returns the host's stable id
-// (gopsutil HostID) for the relation's From endpoint.
+// New builds the host-route source. hostID returns the host's stable id
+// (gopsutil HostID) used as the route entity's owning host.id.
 func New(hostID func() string) *Source {
 	return &Source{
 		hostID:    hostID,
 		readRoute: func() ([]byte, error) { return os.ReadFile(procRoute) },
-		readARP:   func() ([]byte, error) { return os.ReadFile(procARP) },
 	}
 }
 
-// Observe reads the routing/ARP tables and builds the snapshot. Reading the
-// local /proc files is fast and non-blocking; on non-Linux (or unreadable
-// /proc) it degrades to an empty observation.
+// Observe reads the routing table and builds the snapshot. Reading the local
+// /proc file is fast and non-blocking; on non-Linux (or unreadable /proc) it
+// degrades to an empty observation.
 func (s *Source) Observe() entity.Observation {
-	var routeData, arpData []byte
+	var routeData []byte
 	if b, err := s.readRoute(); err == nil {
 		routeData = b
 	}
-	if b, err := s.readARP(); err == nil {
-		arpData = b
-	}
-	return buildObservation(s.hostID(), parseProcRoute(routeData), parseProcARP(arpData))
+	return buildObservation(s.hostID(), parseProcRoute(routeData))
 }
 
-// buildObservation maps gateways → network.device entities + host routes_via
-// edges (From=host, Toise-confirmed). ARP converges a gateway IP to its
-// canonical mac:; otherwise the gateway stays mgmt:<ip>.
-func buildObservation(hostID string, gateways []string, arp map[string]string) entity.Observation {
-	if hostID == "" || len(gateways) == 0 {
+// buildObservation maps next-hop routes → network.route entities owned by the
+// host (has_route). The next hop is carried both as the scalar next_hop.ip
+// attribute and as a network.address entity the route reaches via next_hop_via:
+// that same network.address {ip} node is bound_to a device's interface by the
+// SNMP poll when the gateway is a managed device, so the shared address joins
+// the host and device topology graphs.
+func buildObservation(hostID string, routes []hostRoute) entity.Observation {
+	if hostID == "" || len(routes) == 0 {
 		return entity.Observation{}
 	}
 	hostKey := map[string]any{idKeyHost: hostID}
 
 	obs := entity.Observation{}
-	seen := map[string]bool{}
-	for _, gw := range gateways {
-		id := "mgmt:" + gw
-		if mac := arp[gw]; mac != "" {
-			id = "mac:" + mac
+	addrSeen := map[string]bool{}
+	for _, r := range routes {
+		routeID := map[string]any{idKeyHost: hostID, idKeyRouteDestination: r.Destination}
+		attrs := map[string]any{attrNextHopIP: r.NextHop}
+		if r.Metric > 0 {
+			attrs[attrMetric] = r.Metric
 		}
-		if seen[id] {
-			continue
-		}
-		seen[id] = true
 		obs.Entities = append(obs.Entities, entity.Entity{
-			Type: entityTypeNetworkDevice,
-			ID:   map[string]any{idKeyNetworkDevice: id},
+			Type:       entityTypeNetworkRoute,
+			ID:         routeID,
+			Attributes: attrs,
 		})
 		obs.Relations = append(obs.Relations, entity.Relation{
-			Type:     relRoutesVia,
+			Type:     relHasRoute,
 			FromType: entityTypeHost, FromID: hostKey,
-			ToType: entityTypeNetworkDevice, ToID: map[string]any{idKeyNetworkDevice: id},
-			// Distinguish host-sourced edges from device-sourced ones at query
-			// time (Toise: use an attribute, not a new relation type).
-			Attributes: map[string]any{"source": "host-route"},
+			ToType: entityTypeNetworkRoute, ToID: routeID,
+		})
+
+		// The gateway IP as a shared network.address node + next_hop_via edge.
+		addrID := map[string]any{idKeyNetworkAddress: r.NextHop}
+		if !addrSeen[r.NextHop] {
+			addrSeen[r.NextHop] = true
+			obs.Entities = append(obs.Entities, entity.Entity{Type: entityTypeNetworkAddress, ID: addrID})
+		}
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     relNextHopVia,
+			FromType: entityTypeNetworkRoute, FromID: routeID,
+			ToType: entityTypeNetworkAddress, ToID: addrID,
 		})
 	}
 	return obs
 }
 
-// parseProcRoute returns the distinct non-zero next-hop gateway IPs from the
-// Linux /proc/net/route table (Gateway column is hex, little-endian).
-func parseProcRoute(data []byte) []string {
-	var out []string
+// parseProcRoute returns the distinct next-hop routes from the Linux
+// /proc/net/route table. Destination/Gateway/Mask are hex little-endian;
+// connected routes (zero gateway) are skipped — only routes with a next hop
+// are topology. Routes are deduped by destination CIDR, first-seen order.
+func parseProcRoute(data []byte) []hostRoute {
+	var out []hostRoute
 	seen := map[string]bool{}
 	for i, line := range strings.Split(string(data), "\n") {
 		if i == 0 { // header
 			continue
 		}
 		f := strings.Fields(line)
-		if len(f) < 3 {
+		if len(f) < 8 {
 			continue
 		}
-		ip := hexLEToIP(f[2])
-		if ip == "" || ip == "0.0.0.0" {
+		gw := hexLEToIP(f[2])
+		if gw == "" || gw == "0.0.0.0" {
 			continue
 		}
-		if !seen[ip] {
-			seen[ip] = true
-			out = append(out, ip)
-		}
-	}
-	return out
-}
-
-// parseProcARP returns IP→MAC bindings from the Linux /proc/net/arp table,
-// dropping incomplete (zero-MAC) entries.
-func parseProcARP(data []byte) map[string]string {
-	out := map[string]string{}
-	for i, line := range strings.Split(string(data), "\n") {
-		if i == 0 {
+		dst := hexLEToIP(f[1])
+		if dst == "" {
 			continue
 		}
-		f := strings.Fields(line)
-		if len(f) < 4 {
+		prefix := maskHexToPrefix(f[7])
+		if prefix < 0 {
 			continue
 		}
-		ip, mac := f[0], strings.ToLower(f[3])
-		if net.ParseIP(ip) == nil || mac == "" || mac == "00:00:00:00:00:00" {
+		cidr := fmt.Sprintf("%s/%d", dst, prefix)
+		if seen[cidr] {
 			continue
 		}
-		out[ip] = mac
+		seen[cidr] = true
+		var metric int64
+		if m, err := strconv.ParseInt(f[6], 10, 64); err == nil {
+			metric = m
+		}
+		out = append(out, hostRoute{Destination: cidr, NextHop: gw, Metric: metric})
 	}
 	return out
 }
@@ -166,4 +177,23 @@ func hexLEToIP(h string) string {
 		b[3-i] = byte(v) // little-endian → network order
 	}
 	return net.IP(b).String()
+}
+
+// maskHexToPrefix decodes an 8-hex-char little-endian IPv4 netmask to its
+// prefix length (e.g. "00FFFFFF" → 24, "00000000" → 0). Returns -1 on a
+// malformed or non-canonical mask.
+func maskHexToPrefix(h string) int {
+	dotted := hexLEToIP(h)
+	if dotted == "" {
+		return -1
+	}
+	ip := net.ParseIP(dotted).To4()
+	if ip == nil {
+		return -1
+	}
+	ones, bits := net.IPMask(ip).Size()
+	if bits == 0 { // non-canonical mask
+		return -1
+	}
+	return ones
 }

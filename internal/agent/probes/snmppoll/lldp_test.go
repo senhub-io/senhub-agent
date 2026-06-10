@@ -86,7 +86,12 @@ func TestParseLLDPLocal(t *testing.T) {
 		{OID: lldpLocChassisIdSubtype, Type: gosnmp.Integer, Value: 4},
 		{OID: lldpLocChassisId, Type: gosnmp.OctetString, Value: []byte{0xde, 0xad, 0xbe, 0xef, 0x00, 0x01}},
 		{OID: lldpLocSysName, Type: gosnmp.OctetString, Value: []byte("core-sw-1")},
-		{OID: "1.0.8802.1.1.2.1.3.7.1.4.1", Type: gosnmp.OctetString, Value: []byte("ignored port row")},
+		{OID: "1.0.8802.1.1.2.1.3.7.1.4.1", Type: gosnmp.OctetString, Value: []byte("ignored desc")},
+		// Local port table: port 5 named (ifName subtype), port 7 MAC-only (no name).
+		{OID: lldpLocPortIdSubtype + ".5", Type: gosnmp.Integer, Value: portSubtypeIfName},
+		{OID: lldpLocPortId + ".5", Type: gosnmp.OctetString, Value: []byte("Gi1/0/5")},
+		{OID: lldpLocPortIdSubtype + ".7", Type: gosnmp.Integer, Value: subtypeMacAddress},
+		{OID: lldpLocPortId + ".7", Type: gosnmp.OctetString, Value: []byte{0xaa, 0xbb}},
 	}
 	loc := parseLLDPLocal(binds)
 	if loc.ChassisIdSubtype != 4 || loc.SysName != "core-sw-1" {
@@ -98,6 +103,25 @@ func TestParseLLDPLocal(t *testing.T) {
 	// And the contract-bound identity on top of the parse (chassis MAC rung):
 	if got := resolveDeviceID(deviceIdentity{ChassisMAC: loc.ChassisId}); got != "mac:de:ad:be:ef:00:01" {
 		t.Errorf("resolved local id = %q", got)
+	}
+	// Local port table: only the named port is kept; the MAC-only one is dropped.
+	if loc.Ports["5"] != "Gi1/0/5" {
+		t.Errorf("local port 5 = %q, want Gi1/0/5", loc.Ports["5"])
+	}
+	if _, ok := loc.Ports["7"]; ok {
+		t.Errorf("MAC-only local port 7 should be dropped, got %q", loc.Ports["7"])
+	}
+}
+
+func TestNamedPortID(t *testing.T) {
+	if got := namedPortID(portSubtypeIfName, []byte("Gi0/1")); got != "Gi0/1" {
+		t.Errorf("ifName subtype = %q, want Gi0/1", got)
+	}
+	if got := namedPortID(portSubtypeLocal, []byte("uplink-2")); got != "uplink-2" {
+		t.Errorf("local subtype = %q, want uplink-2", got)
+	}
+	if got := namedPortID(3 /* macAddress */, []byte{0xaa, 0xbb}); got != "" {
+		t.Errorf("MAC subtype must yield no name, got %q", got)
 	}
 }
 
@@ -118,7 +142,8 @@ func TestParseLLDPNeighbors(t *testing.T) {
 		b(colRemSysName, "0.7.2", gosnmp.OctetString, []byte("neighbor-b")),
 	}
 
-	ns := parseLLDPNeighbors(binds)
+	// Neighbour a (row 0.5.1) has a management address; b (0.7.2) does not.
+	ns := parseLLDPNeighbors(binds, map[string]string{"0.5.1": "10.0.0.7"})
 	if len(ns) != 2 {
 		t.Fatalf("expected 2 neighbors, got %d (%+v)", len(ns), ns)
 	}
@@ -126,6 +151,12 @@ func TestParseLLDPNeighbors(t *testing.T) {
 	a := ns[0]
 	if a.LocalPortNum != "5" || a.ChassisIdSubtype != 4 || a.SysName != "neighbor-a" {
 		t.Errorf("neighbor a wrong: %+v", a)
+	}
+	if a.MgmtIP != "10.0.0.7" {
+		t.Errorf("neighbor a mgmt IP = %q, want 10.0.0.7 (crawl seed)", a.MgmtIP)
+	}
+	if ns[1].MgmtIP != "" {
+		t.Errorf("neighbor b should have no mgmt IP, got %q", ns[1].MgmtIP)
 	}
 	if resolveDeviceID(neighborIdentity(a)) != "mac:aa:bb:cc:dd:ee:ff" {
 		t.Errorf("neighbor a id = %q", resolveDeviceID(neighborIdentity(a)))
@@ -137,6 +168,25 @@ func TestParseLLDPNeighbors(t *testing.T) {
 	bn := ns[1]
 	if bn.LocalPortNum != "7" || resolveDeviceID(neighborIdentity(bn)) != "name:neighbor-b" {
 		t.Errorf("neighbor b wrong: %+v -> %q", bn, resolveDeviceID(neighborIdentity(bn)))
+	}
+}
+
+func TestParseLLDPManAddrs(t *testing.T) {
+	// Index = timeMark.localPort.remIndex.addrSubtype.addrLen.<addr octets>.
+	binds := []snmpRawBind{
+		{OID: lldpRemManAddrIfId + ".0.5.1.1.4.10.0.0.7", Value: 1},                           // IPv4 → kept
+		{OID: lldpRemManAddrIfId + ".0.7.2.2.16.32.1.13.184.0.0.0.0.0.0.0.0.0.0.1", Value: 1}, // IPv6 subtype → skipped
+		{OID: lldpRemManAddrIfId + ".0.9.3.1.4.300.1.2.3", Value: 1},                          // not a valid IP → skipped
+	}
+	m := parseLLDPManAddrs(binds)
+	if m["0.5.1"] != "10.0.0.7" {
+		t.Errorf("0.5.1 mgmt = %q, want 10.0.0.7", m["0.5.1"])
+	}
+	if _, ok := m["0.7.2"]; ok {
+		t.Error("IPv6 management address should be skipped (IPv4-only for now)")
+	}
+	if _, ok := m["0.9.3"]; ok {
+		t.Error("malformed address should be skipped")
 	}
 }
 

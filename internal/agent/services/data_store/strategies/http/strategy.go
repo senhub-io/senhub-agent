@@ -88,6 +88,8 @@ type PRTGChannel struct {
 	Float           *int    `json:"float,omitempty"` // Pointer to make optional for lookup metrics
 	Unit            string  `json:"unit,omitempty"`
 	CustomUnit      string  `json:"customunit,omitempty"`
+	SpeedSize       string  `json:"speedsize,omitempty"` // Input scale for Speed* units (Byte, Bit, MegaBit, ...)
+	SpeedTime       string  `json:"speedtime,omitempty"` // Input period for Speed* units (Second, Minute, ...)
 	LimitMode       int     `json:"limitmode,omitempty"`
 	LimitMaxWarning float64 `json:"limitmaxwarning,omitempty"`
 	LimitMaxError   float64 `json:"limitmaxerror,omitempty"`
@@ -360,7 +362,26 @@ type OTLPInfoResponse struct {
 	Store          OTLPStoreInfo          `json:"store"`
 	ExportDuration OTLPExportDurationInfo `json:"export_duration"`
 	Checkpoint     OTLPCheckpointInfo     `json:"checkpoint"`
+	LogsQueue      OTLPLogsQueueInfo      `json:"logs_queue"`
+	Failover       OTLPFailoverInfo       `json:"failover"`
 	Parallel       OTLPParallelInfo       `json:"parallel"`
+}
+
+// OTLPFailoverInfo reports endpoint failover state (#217): the index of
+// the endpoint currently serving (0 = primary) and the cumulative number
+// of switches. Both 0 when no fallback_endpoints are configured.
+type OTLPFailoverInfo struct {
+	ActiveEndpointIndex int64  `json:"active_endpoint_index"`
+	SwitchesTotal       uint64 `json:"switches_total"`
+}
+
+// OTLPLogsQueueInfo reports the on-disk dead-letter queue for the logs
+// signal (#217): live depth plus cumulative persisted/replayed counts.
+type OTLPLogsQueueInfo struct {
+	Records       int64  `json:"records"`
+	Bytes         int64  `json:"bytes"`
+	QueuedTotal   uint64 `json:"queued_total"`
+	ReplayedTotal uint64 `json:"replayed_total"`
 }
 
 type OTLPPipelineInfo struct {

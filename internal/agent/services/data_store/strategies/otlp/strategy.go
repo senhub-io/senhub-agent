@@ -21,6 +21,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/entity/hostnet"
+	"senhub-agent.go/internal/agent/services/entity/hostsvc"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
@@ -74,6 +75,10 @@ type OTLPSyncStrategy struct {
 	// when Logs.Enabled. nil otherwise.
 	logs     *logsPipeline
 	logsPump *logsPump
+
+	// logsQueue is the on-disk dead-letter queue for the logs signal,
+	// set when persistence is enabled and logs are emitted (#217).
+	logsQueue *logsQueue
 
 	// entityPump emits entity/relation events on the OTLP log signal; the
 	// entity Detector goroutine produces them. Both nil/zero unless
@@ -175,6 +180,15 @@ func NewOTLPSyncStrategy(
 		globalTagKeys[k] = true
 	}
 
+	// host.*/os.* on the resource so the agent's own metrics and logs carry the
+	// same host.id as the host entity (entity↔telemetry correlation). Best-effort:
+	// degrade to no host attrs rather than fail strategy construction.
+	hostAttrs, hostErr := common.GetHostResourceAttributes()
+	if hostErr != nil {
+		moduleLogger.Warn().Err(hostErr).Msg("host resource attributes unavailable; OTLP resource omits host.id (entity↔telemetry correlation degraded)")
+		hostAttrs = nil
+	}
+
 	s := &OTLPSyncStrategy{
 		agentConfig:   agentConfig,
 		rawParams:     params,
@@ -182,7 +196,7 @@ func NewOTLPSyncStrategy(
 		logger:        moduleLogger,
 		store:         store,
 		registry:      transformers.NewTransformerRegistry(baseLogger),
-		resource:      buildResource(cfg.Resource, cliArgs.Version, globalTags),
+		resource:      buildResource(cfg.Resource, cliArgs.Version, hostAttrs, globalTags),
 		globalTagKeys: globalTagKeys,
 		memLimiter:    ml,
 	}
@@ -237,7 +251,7 @@ func (s *OTLPSyncStrategy) Start() error {
 	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.Timeout)
 	defer cancel()
 
-	exp, err := buildExporters(ctx, s.cfg)
+	exp, err := buildExporters(ctx, s.cfg, s.logger)
 	if err != nil {
 		return fmt.Errorf("build exporters: %w", err)
 	}
@@ -267,11 +281,32 @@ func (s *OTLPSyncStrategy) Start() error {
 		s.startMetricsPusher()
 	}
 
+	// Durable dead-letter queue for the logs signal (#217): wrap the log
+	// exporter so a failed export persists event-log records to disk for
+	// replay at boot and on backend recovery. Only when persistence is on
+	// and raw logs are emitted; entity events are a re-emitted state
+	// stream and are not queued.
+	var logExp *persistentLogExporter
+	if s.cfg.Persistence.Path != "" && s.cfg.Logs.Enabled && s.exporters.log != nil {
+		s.logsQueue = newLogsQueue(s.cfg.Persistence.Path, s.cfg.Persistence.LogsQueueMaxBytes, s.logger)
+		logExp = newPersistentLogExporter(s.exporters.log, s.logsQueue, s.logger)
+		s.exporters.log = logExp
+	}
+
 	// Entity events ride the log signal, so the pipeline (provider + both
 	// loggers) is built when either logs or entities are enabled.
 	if (s.cfg.Logs.Enabled || s.cfg.Entities.Enabled) && s.exporters.log != nil {
 		s.logs = buildLogsPipeline(s.exporters.log, s.resource, s.cfg.Logs, cliArgs.Version)
 	}
+
+	// Wire queue replay to the pipeline: drain at boot and whenever the
+	// backend recovers from a failed export.
+	if logExp != nil && s.logs != nil {
+		rp := newLogsReplayer(s.logsQueue, s.logs, s.logger)
+		logExp.setOnRecovered(rp.replay)
+		go rp.replay()
+	}
+
 	if s.cfg.Logs.Enabled && s.logs != nil {
 		s.logsPump = newLogsPump(s.logs, s.cfg.Logs.BufferSize)
 		s.logsPump.start()
@@ -490,18 +525,31 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 		}
 	}
 
-	// Host-side topology source (entity Lot 4): emits the host's upstream
-	// gateways as network.device + routes_via, reusing the entity rail. Only
-	// active while entity emission runs.
-	entity.RegisterSource(hostnet.New(func() string {
+	// Host-side entity sources (only active while entity emission runs):
+	// hostnet emits the host's routes as network.route + the gateway
+	// network.address; hostsvc emits the host's listening services as
+	// service.listener entities. Both key off the host's stable id so they hang
+	// off the same host node as the foundation host entity.
+	hostIDFn := func() string {
 		hi, err := common.GetHostIdentity()
 		if err != nil {
 			return ""
 		}
 		return hi.ID
-	}))
+	}
+	entity.RegisterSource(hostnet.New(hostIDFn))
+	entity.RegisterSource(hostsvc.New(hostIDFn))
 
 	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
+	det.OnOrphanRelations(func(orphans []entity.Relation) {
+		for _, r := range orphans {
+			s.logger.Warn().
+				Str("relation", r.Type).
+				Str("from_type", r.FromType).
+				Str("to_type", r.ToType).
+				Msg("entity relation has no source entity this cycle; dropped from the wire")
+		}
+	})
 	ctx, cancel := context.WithCancel(context.Background())
 	s.entityDetectorCancel = cancel
 	s.entityDetectorWG.Add(1)

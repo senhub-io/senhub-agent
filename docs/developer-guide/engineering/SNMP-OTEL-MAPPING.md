@@ -50,6 +50,16 @@ The probe therefore has a metric collector (rail 1) and registers an
 `entity.Source` (rail 2). They share the gosnmp client and poll cycle but
 emit on independent rails.
 
+**The two rails are correlated by shared identity.** The entity source resolves
+the device id once per topology sweep and caches it (+ the ifIndex→ifName map);
+the metric collector tags every datapoint with `network.device.id` and, on
+interface metrics, `interface.name` (resolved from `if_index`). So a device's
+interface-traffic metric carries the **same identity** as its
+`network.interface` entity — a backend joins the traffic to the topology node.
+The device id / interface names are empty until the first sweep (the tags are
+omitted, never empty-valued); the sweep runs before `collect` so the metrics of
+the same cycle carry them.
+
 ## The MIB-module registry
 
 To keep the probe extensible across the four classes without rewriting the
@@ -131,26 +141,56 @@ same device derive byte-identical ids.
   leaves it empty and uses the stack-wide `engineID` (one logical device per
   SNMP management entity, failover-stable; a master-member serial would flap),
   and this also avoids latching onto a swappable module/PSU serial. Everything
-  not chosen as the id (raw chassis-id, sysName, mgmt IP, serial, vendor) goes
-  in **descriptive attributes**, never as a second identity key.
+  not chosen as the id goes in **descriptive attributes** (dotted lowercase,
+  frozen casing — `sys.name`, `mgmt.ip`, `device.role` from the sysServices
+  bitmask, `vendor` from the PEN), never as a second identity key. These make
+  the device readable in a backend instead of just its cryptic id; neighbours
+  carry `sys.name`.
   Canonicalization (producer side): `mac` = lowercase hex `:`-separated;
   `engine`/`PEN` = lowercase hex / decimal; `serial`/`name` = trimmed (case
   preserved); `mgmt` = `net.IP` canonical form. All in one function:
   `resolveDeviceID` (lldp.go); identity reads in `readSelfIdentity`/
   `chassisSerial` (entity_source.go).
-- **Relations** (network.device↔network.device, single directed edge,
-  endpoints emitted before/with the edge):
-  - LLDP `lldpRemTable` → `adjacent_to`, polled→neighbour, **one edge, no
-    reciprocal duplicate** (Toise's get_neighbors reads both directions).
-    Attributes `local_port` / `remote_port`.
-  - ipCidrRouteTable / ipForwardTable → `routes_via`, device→next-hop; when
-    the next-hop is only an IP, `to` = `mgmt:<ip>`. Attributes
-    destination / mask / metric.
-  - dot1dTpFdbTable / dot1qTpFdbTable → `forwards_to`, `to` = `mac:<addr>`.
-    **Filter FDB to inter-device MACs** (LLDP chassis / uplink ports);
-    host terminal MACs are out of scope (no card entity, would flood). 5c.
-  - ipNetToMediaTable (ARP) → IP↔MAC binding; bridges `name:`/`mgmt:` →
-    canonical `mac:` via the polled device's `ifPhysAddress`. 5d.
+- **Interfaces → `network.interface` entities** (topology-as-entities, ADR
+  0022, pinned with Toise #87): IF-MIB ifXTable `ifName` → one
+  `network.interface` entity `{network.device.id, interface.name}` the device
+  **owns** via `has_interface`, with `oper.state` (ifOperStatus) and `speed`
+  (ifHighSpeed Mbit/s → bit/s) descriptive. The port inventory that anchors
+  `connected_to`; `notPresent` and unnamed rows are skipped. Bounded by the
+  device's port count. **DONE (#156).**
+- **Interface IPs → `network.address` entities** (topology-as-entities, ADR
+  0022): IP-MIB `ipAdEntIfIndex` (ipAddrTable) → one `network.address` entity
+  `{network.address}` per non-loopback interface IP, `bound_to` the
+  `network.interface` it sits on. The **same** `network.address {ip}` node is
+  the one a host's `next_hop_via` reaches, so a host's gateway resolves to this
+  device's interface — the host↔device topology join, by exact IP. **DONE
+  (#156).**
+- **Routing → `network.route` entities** (topology-as-entities, ADR 0022,
+  pinned with Toise #87): ipCidrRouteTable / ipForwardTable → one
+  `network.route` entity `{network.device.id, route.destination}` (CIDR from
+  the entry index) that the device **owns** via `has_route` (mirror of
+  `has_interface`), the next hop carried as a scalar `next_hop.ip` attribute
+  (+ `metric`). The gateway is **not** a node — `network.address` is deferred,
+  so no `mgmt:`/`mac:` device is synthesized for it. This supersedes the legacy
+  `routes_via` device→next-hop edge; ARP convergence (which existed only to
+  give that edge a device-typed next-hop) is therefore gone. **DONE (#156).**
+- **LLDP adjacency → bare `connected_to`** (topology-as-entities, ADR 0022):
+  `lldpRemTable` → one `connected_to` edge between the **local** port
+  `network.interface` (named via the IF-MIB ifName for `lldpLocPortNum`,
+  falling back to lldpLocPortTable) and the **remote** port
+  `{remote network.device.id, remote interface.name}`. The neighbour is still
+  emitted as a discovered `network.device`; the remote port entity is referenced
+  (the neighbour's own poll emits it). The edge is **skipped** when a port can't
+  be named by exact identity — an unanchored local port, an unresolvable
+  neighbour, or a **MAC-only remote port** (no phantom port, point 7). Supersedes
+  `adjacent_to` + `local_port`/`remote_port` attributes. **DONE (#156).**
+- **`forwards_to` (bridge FDB) — RETIRED** (#156). The legacy device-to-device
+  edge is no longer emitted, and the FDB walk is removed. The FDB gives the
+  local learned port and the remote *MAC*, but **not the remote port**, so it
+  cannot form a proper port-to-port `connected_to` (LLDP already gives both
+  ports and is the canonical adjacency source). A future FDB use — filling in a
+  `connected_to` local port where LLDP is sparse — would need remote-port
+  resolution the FDB does not provide; deferred.
 
 **Cross-source convergence (no Toise merge):** LLDP chassis MAC == FDB/ARP
 MAC == `mac:<addr>` matches automatically. Without LLDP, the polled device's
@@ -197,10 +237,11 @@ Reconciled with ENTITY-DETECTION.md §7 (where SNMP topology is its Lot 5).
   attributes. Local vendor-MIB directory loading.
 - **Lot 3** — device discovery (sysObjectID → vendor) + device profiles +
   the "activated features" class → `network.device` entity attributes.
-- **Lot 5 (topology → entity rail)** — LLDP / BRIDGE-FDB / ipCidrRoute /
-  ARP modules emitting `network.device` + `adjacent_to` / `routes_via` /
-  `forwards_to` via `entity.Source` (#185 → Toise). This is the
-  vendor-neutral infrastructure-graph wedge.
+- **Lot 5 (topology → entity rail)** — emitting `network.device` +
+  `network.route` (`has_route`) + `network.interface` ports (`has_interface`) +
+  `connected_to` port-to-port adjacency (superseding `adjacent_to`; `forwards_to`
+  retired) + interface IPs as `network.address` (`bound_to`) via `entity.Source`
+  (**done #156**). This is the vendor-neutral infrastructure-graph wedge.
 
 Tiering (`project_tiering_strategy`): interface collection + basic system +
 topology/entity are the **FREE** universal-collection wedge; deep

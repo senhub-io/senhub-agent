@@ -36,6 +36,7 @@ type Detector struct {
 	interval time.Duration
 	publish  func(Event)
 	now      func() time.Time
+	onOrphan func([]Relation)
 }
 
 // NewDetector builds a Detector. interval is the heartbeat cadence and is
@@ -43,6 +44,14 @@ type Detector struct {
 // to PublishEvent and now to time.Now when nil (overridable in tests).
 func NewDetector(host HostIdentityFunc, agent AgentIdentityFunc, interval time.Duration) *Detector {
 	return &Detector{host: host, agent: agent, interval: interval}
+}
+
+// OnOrphanRelations registers a hook called with any relations that could not
+// be folded onto a source entity this cycle (the source endpoint was absent
+// from the observation). Nil-safe; used by the wiring layer to surface the
+// producer bug via its logger.
+func (d *Detector) OnOrphanRelations(fn func([]Relation)) {
+	d.onOrphan = fn
 }
 
 // Run emits the foundation once immediately, then on every interval tick,
@@ -92,10 +101,18 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	interval := d.interval * livenessSlackFactor
 
 	// Foundation (host + service.instance + runs_on) plus everything the
-	// registered sources observe this cycle (probe-monitored systems).
-	events := DetectFoundation(h, a, ts, interval)
+	// registered sources observe this cycle (probe-monitored systems), merged
+	// so a relation can resolve its source endpoint against any entity seen
+	// this cycle.
+	obs := DetectFoundation(h, a)
 	for _, src := range registeredSources() {
-		events = append(events, src.Observe().toEvents(ts, interval)...)
+		obs = obs.merge(src.Observe())
 	}
-	t.Reconcile(events, ts)
+	// Fold each relation onto its source entity (embedded entity.relationships)
+	// before the tracker, so the tracker reconciles entities only.
+	entities, orphans := obs.foldRelationships()
+	if len(orphans) > 0 && d.onOrphan != nil {
+		d.onOrphan(orphans)
+	}
+	t.Reconcile(stateEvents(entities, ts, interval), ts)
 }

@@ -156,3 +156,13 @@
   text-decoration: underline;
   white-space: nowrap;
 }
+
+/* Left nav: indent items nested under a section, with a hairline guide, so
+   sections read as distinct groups rather than a flat list. */
+.md-nav--primary .md-nav__list .md-nav__list {
+  margin-left: .55rem;
+  padding-left: .55rem;
+  border-left: 1px solid var(--md-default-fg-color--lightest);
+}
+/* a touch more air above each section label */
+.md-nav--primary .md-nav__item--section { margin-top: .6rem; }

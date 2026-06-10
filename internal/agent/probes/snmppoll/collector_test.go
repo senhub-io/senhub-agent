@@ -102,7 +102,7 @@ func TestCollect_ScalarsAndWalks(t *testing.T) {
 		},
 	}
 
-	points := collect(fc, cfg, "192.0.2.10:161", time.Now(), testLogger(t))
+	points := collect(fc, cfg, "192.0.2.10:161", "", nil, time.Now(), testLogger(t))
 
 	up, ok := find(points, "snmp.sys.uptime")
 	if !ok || up.Value != 12345 {
@@ -151,7 +151,7 @@ func TestCollect_DynamicCustomMappingCanonicalName(t *testing.T) {
 		},
 	}
 
-	points := collect(fc, cfg, "10.0.0.1:161", time.Now(), testLogger(t))
+	points := collect(fc, cfg, "10.0.0.1:161", "", nil, time.Now(), testLogger(t))
 
 	temp, ok := find(points, "senhub.snmp.vendor.temperature")
 	if !ok {
@@ -188,8 +188,54 @@ func TestCollect_BestEffortOnWalkError(t *testing.T) {
 	fc := &fakeClient{walkErr: errors.New("walk timeout")}
 
 	// Should not panic or return partial garbage; failed walks are skipped.
-	points := collect(fc, cfg, "192.0.2.10:161", time.Now(), testLogger(t))
+	points := collect(fc, cfg, "192.0.2.10:161", "", nil, time.Now(), testLogger(t))
 	if len(points) != 0 {
 		t.Errorf("expected no points when every walk fails, got %d", len(points))
+	}
+}
+
+func TestCollect_CorrelationTags(t *testing.T) {
+	// network.device.id (device-level) + interface.name (resolved from if_index)
+	// tag the metrics with the SAME identity as the topology entities, so a
+	// backend joins this interface's traffic to its network.interface entity.
+	cfg := &config{MIBs: []string{"if-mib"}}
+	fc := &fakeClient{walkResult: map[string][]snmpVarBind{
+		"1.3.6.1.2.1.2.2.1.10": {{OID: "1.3.6.1.2.1.2.2.1.10.5", Value: 12345, IsNumeric: true}}, // ifInOctets @ ifIndex 5
+	}}
+	points := collect(fc, cfg, "10.0.0.1:161", "serial:9:S1", map[string]string{"5": "Gi0/5"}, time.Now(), testLogger(t))
+
+	p, ok := find(points, "snmp.interface.in_octets")
+	if !ok {
+		t.Fatalf("interface metric not emitted; points=%+v", points)
+	}
+	if got := tagVal(p, "network.device.id"); got != "serial:9:S1" {
+		t.Errorf("network.device.id = %q, want serial:9:S1", got)
+	}
+	if got := tagVal(p, "if_index"); got != "5" {
+		t.Errorf("if_index = %q, want 5", got)
+	}
+	if got := tagVal(p, "interface.name"); got != "Gi0/5" {
+		t.Errorf("interface.name = %q, want Gi0/5 (joins to the network.interface entity)", got)
+	}
+}
+
+func TestCollect_NoCorrelationTagsBeforeSweep(t *testing.T) {
+	// Before the first topology sweep deviceID/ifNames are empty → the
+	// correlation tags are omitted, never emitted empty-valued.
+	cfg := &config{MIBs: []string{"if-mib"}}
+	fc := &fakeClient{walkResult: map[string][]snmpVarBind{
+		"1.3.6.1.2.1.2.2.1.10": {{OID: "1.3.6.1.2.1.2.2.1.10.5", Value: 1, IsNumeric: true}},
+	}}
+	points := collect(fc, cfg, "10.0.0.1:161", "", nil, time.Now(), testLogger(t))
+
+	p, ok := find(points, "snmp.interface.in_octets")
+	if !ok {
+		t.Fatal("interface metric not emitted")
+	}
+	if got := tagVal(p, "network.device.id"); got != "" {
+		t.Errorf("network.device.id = %q, want absent before first sweep", got)
+	}
+	if got := tagVal(p, "interface.name"); got != "" {
+		t.Errorf("interface.name = %q, want absent without ifNames", got)
 	}
 }

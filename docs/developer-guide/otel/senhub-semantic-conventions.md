@@ -1227,6 +1227,56 @@ chemins du probe `event` (qui accepte des sévérités texte type EMERG,
 ERR, WARNING, …) utilisent une table équivalente — mêmes valeurs
 numériques en sortie OTel.
 
+## 6ter. Entity events — contrat wire + filtrage
+
+Le rail entités suit la **spec OTel entity-events mergée** (modèle
+embarqué). Les events sont des LogRecords transportés sur le signal logs
+OTLP ; il n'existe **aucun event de relation séparé**.
+
+### Marqueurs sur le fil
+
+| Niveau | Marqueur | Valeur |
+|---|---|---|
+| Scope | `scope.name` | `senhub-agent/otlp-entities` |
+| Scope | attribut `otel.entity.entity_event` | `true` |
+| LogRecord | `EventName` | `entity.state` \| `entity.delete` |
+| LogRecord | attributs nus | `entity.type`, `entity.id.*`, `entity.description.*`, `entity.report.interval` |
+| LogRecord | `entity.relationships` | tableau embarqué de descripteurs nus `{relationship.type, entity.type, entity.id}` |
+
+Les relations vivent **dans** l'event `entity.state` de leur entité
+source ; une relation que la source cesse de lister est retirée
+(removal-by-absence). Il n'y a donc rien d'autre à router que les events
+d'entité eux-mêmes.
+
+### Filtre otelcol canonique
+
+Pour ne transmettre que les entity events à un consommateur dédié
+(backend de graphe type Toise), filtrer sur la présence de `entity.type` :
+
+```yaml
+processors:
+  filter/entity_events:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'attributes["entity.type"] == nil'   # drop tout ce qui n'est pas un entity event
+```
+
+Un seul prédicat suffit : les relations étant embarquées, **elles suivent
+automatiquement** — aucun second marqueur à conserver.
+
+### Note historique (#227)
+
+Le modèle pré-mergé (retiré au resync #222, lots 0a/0b) émettait les
+relations comme enregistrements séparés sous `entity.relation.event.type`.
+Un filtre qui ne gardait que `otel.entity.event.type` perdait alors
+**silencieusement** toutes les relations (constaté sur le POC Toise du
+2026-06-05 : 5 entités, 0 relation, zéro erreur). Ce mode de défaillance
+est impossible par construction dans le modèle embarqué — c'est l'une des
+raisons du choix. Si un déploiement expose encore un filtre à deux
+marqueurs, il date de l'ancien modèle et peut être réduit au prédicat
+unique ci-dessus.
+
 ## 7. Versioning
 
 Ce document n'a pas (encore) de numéro de version. Une fois la V1 complète (15 probes mappées) publiée dans 0.1.88, il passera en SemVer 1.0.0. Tout changement de nom/attribut/unité = major bump.

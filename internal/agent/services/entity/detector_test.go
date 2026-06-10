@@ -42,14 +42,20 @@ func TestDetector_Reconcile_PublishesFoundation(t *testing.T) {
 	)
 	d.reconcile(NewTracker(publish), time.Unix(1780272000, 0).UTC())
 
-	if len(got) != 3 {
-		t.Fatalf("published %d events, want 3 (host, service.instance, runs_on)", len(got))
+	// Foundation is two entity events now (host + service.instance); runs_on
+	// rides embedded on the service.instance, not as its own event.
+	if len(got) != 2 {
+		t.Fatalf("published %d events, want 2 (host, service.instance)", len(got))
 	}
 	if got[0].Entity == nil || got[0].Entity.Type != "host" {
 		t.Errorf("event[0] = %+v, want host", got[0])
 	}
-	if got[2].Relation == nil || got[2].Relation.Type != "runs_on" {
-		t.Errorf("event[2] = %+v, want runs_on", got[2])
+	svc := got[1].Entity
+	if svc == nil || svc.Type != "service.instance" {
+		t.Fatalf("event[1] = %+v, want service.instance", got[1])
+	}
+	if len(svc.Relationships) != 1 || svc.Relationships[0].Type != "runs_on" || svc.Relationships[0].TargetType != "host" {
+		t.Errorf("service.instance relationships = %+v, want [runs_on → host]", svc.Relationships)
 	}
 
 	// The emitted Interval is slacked above the tick cadence so a late

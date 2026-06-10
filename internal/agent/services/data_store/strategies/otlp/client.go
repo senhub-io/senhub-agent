@@ -18,6 +18,8 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // exporters bundles the SDK exporters created from a Config. Each field
@@ -41,11 +43,22 @@ type exporters struct {
 
 // buildExporters constructs the OTel SDK exporters based on cfg.
 // Any of the three can be nil if its signal is disabled.
-func buildExporters(ctx context.Context, cfg Config) (*exporters, error) {
+func buildExporters(ctx context.Context, cfg Config, log *logger.ModuleLogger) (*exporters, error) {
 	exp := &exporters{}
 
+	// With fallback_endpoints configured, each signal's exporter is a
+	// failover decorator over one exporter per endpoint (#217). Traces
+	// keep a single endpoint (failover not wired for the trace signal).
+	failover := len(cfg.FallbackEndpoints) > 0
+
 	if cfg.Metrics.Enabled {
-		me, err := buildMetricExporter(ctx, cfg)
+		var me sdkmetric.Exporter
+		var err error
+		if failover {
+			me, err = buildFailoverMetricExporter(ctx, cfg, log)
+		} else {
+			me, err = buildMetricExporter(ctx, cfg)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("metric exporter: %w", err)
 		}
@@ -55,7 +68,13 @@ func buildExporters(ctx context.Context, cfg Config) (*exporters, error) {
 	// Entity events are carried on the OTLP log signal, so the log exporter
 	// is needed when either raw logs or entity emission is enabled.
 	if cfg.Logs.Enabled || cfg.Entities.Enabled {
-		le, err := buildLogExporter(ctx, cfg)
+		var le sdklog.Exporter
+		var err error
+		if failover {
+			le, err = buildFailoverLogExporter(ctx, cfg, log)
+		} else {
+			le, err = buildLogExporter(ctx, cfg)
+		}
 		if err != nil {
 			// Roll back metric exporter on log exporter failure so we
 			// don't leak a half-built bundle on the caller.

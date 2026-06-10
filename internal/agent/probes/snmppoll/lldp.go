@@ -19,11 +19,15 @@ import (
 
 // LLDP-MIB OIDs (dotted, no leading dot). Base: 1.0.8802.1.1.2.1.
 const (
-	// Local system group (scalars at .0).
+	// Local system group (scalars at .0) + local port table (lldpLocPortTable
+	// at .7, indexed by lldpLocPortNum — the same numbering as a neighbour's
+	// lldpRemLocalPortNum, so it names the local end of each link).
 	lldpLocBase             = "1.0.8802.1.1.2.1.3"
 	lldpLocChassisIdSubtype = "1.0.8802.1.1.2.1.3.1.0"
 	lldpLocChassisId        = "1.0.8802.1.1.2.1.3.2.0"
 	lldpLocSysName          = "1.0.8802.1.1.2.1.3.3.0"
+	lldpLocPortIdSubtype    = "1.0.8802.1.1.2.1.3.7.1.2"
+	lldpLocPortId           = "1.0.8802.1.1.2.1.3.7.1.3"
 
 	// Remote systems table lldpRemTable / lldpRemEntry.
 	// Row index = lldpRemTimeMark . lldpRemLocalPortNum . lldpRemIndex.
@@ -33,6 +37,16 @@ const (
 	colRemPortIdSubtype    = "6"
 	colRemPortId           = "7"
 	colRemSysName          = "9"
+
+	// Remote management address table. The neighbour's management IP is encoded
+	// in the ROW INDEX (not a column value):
+	//   timeMark . localPort . remIndex . addrSubtype . addrLen . <addr bytes>
+	// The first three sub-ids match the lldpRemTable row key, so an entry maps
+	// a neighbour to its management address — what the crawl needs to poll it.
+	// Walking any column of the table exposes the index; we walk ifId (col 4).
+	lldpRemManAddrIfId = "1.0.8802.1.1.2.1.4.2.1.4"
+	manAddrSubtypeIPv4 = "1"
+	manAddrLenIPv4     = 4
 )
 
 // IdSubtype enumerations from the LLDP-MIB (LldpChassisIdSubtype /
@@ -43,11 +57,13 @@ const (
 	portSubtypeLocal  = 7 // port: locally assigned
 )
 
-// lldpLocal is the polled device's own LLDP identity.
+// lldpLocal is the polled device's own LLDP identity, plus the local port
+// table (lldpLocPortNum → port name) used to name the local end of a link.
 type lldpLocal struct {
 	ChassisIdSubtype int
 	ChassisId        []byte
 	SysName          string
+	Ports            map[string]string // lldpLocPortNum → port name (ifName/local subtype)
 }
 
 // lldpNeighbor is one decoded remote-system table row.
@@ -58,6 +74,7 @@ type lldpNeighbor struct {
 	PortIdSubtype    int
 	PortId           []byte
 	SysName          string
+	MgmtIP           string // lldpRemManAddr (neighbour management IP) — crawl seed
 }
 
 // lldpTopology is the parsed snapshot: the local device + its neighbours.
@@ -82,13 +99,46 @@ func collectLLDP(client snmpClient) (lldpTopology, error) {
 	if err != nil {
 		return topo, fmt.Errorf("lldp remote walk: %w", err)
 	}
-	topo.Neighbors = parseLLDPNeighbors(remBinds)
+	// Neighbour management addresses are best-effort: a device that omits the
+	// table still yields neighbours (without a crawl seed IP).
+	manBinds, _ := client.WalkRaw(lldpRemManAddrIfId)
+	topo.Neighbors = parseLLDPNeighbors(remBinds, parseLLDPManAddrs(manBinds))
 
 	return topo, nil
 }
 
+// parseLLDPManAddrs maps a neighbour row key (timeMark.localPort.remIndex) to
+// its management IPv4 address, decoded from the lldpRemManAddrTable row index.
+// First usable IPv4 per neighbour wins.
+func parseLLDPManAddrs(binds []snmpRawBind) map[string]string {
+	out := map[string]string{}
+	prefix := lldpRemManAddrIfId + "."
+	for _, b := range binds {
+		idx, ok := strings.CutPrefix(b.OID, prefix)
+		if !ok {
+			continue
+		}
+		p := strings.Split(idx, ".")
+		// timeMark.localPort.remIndex.subtype.len.<4 addr octets>
+		if len(p) < 5+manAddrLenIPv4 || p[3] != manAddrSubtypeIPv4 {
+			continue
+		}
+		key := p[0] + "." + p[1] + "." + p[2]
+		if _, exists := out[key]; exists {
+			continue
+		}
+		ip := strings.Join(p[5:5+manAddrLenIPv4], ".")
+		if net.ParseIP(ip) != nil {
+			out[key] = ip
+		}
+	}
+	return out
+}
+
 func parseLLDPLocal(binds []snmpRawBind) lldpLocal {
 	var loc lldpLocal
+	portSubtype := map[string]int{}  // lldpLocPortNum → subtype
+	portRawID := map[string][]byte{} // lldpLocPortNum → raw lldpLocPortId
 	for _, b := range binds {
 		switch b.OID {
 		case lldpLocChassisIdSubtype:
@@ -99,12 +149,33 @@ func parseLLDPLocal(binds []snmpRawBind) lldpLocal {
 			loc.ChassisId = asBytes(b.Value)
 		case lldpLocSysName:
 			loc.SysName = octetText(asBytes(b.Value))
+		default:
+			if num, ok := strings.CutPrefix(b.OID, lldpLocPortIdSubtype+"."); ok {
+				if v, ok := asIntVal(b.Value); ok {
+					portSubtype[num] = v
+				}
+			} else if num, ok := strings.CutPrefix(b.OID, lldpLocPortId+"."); ok {
+				portRawID[num] = asBytes(b.Value)
+			}
+		}
+	}
+	// Keep only ports whose id is a usable name (interfaceName / local); a
+	// MAC-only local port has no name to anchor connected_to.
+	for num, raw := range portRawID {
+		switch portSubtype[num] {
+		case portSubtypeIfName, portSubtypeLocal:
+			if name := octetText(raw); name != "" {
+				if loc.Ports == nil {
+					loc.Ports = map[string]string{}
+				}
+				loc.Ports[num] = name
+			}
 		}
 	}
 	return loc
 }
 
-func parseLLDPNeighbors(binds []snmpRawBind) []lldpNeighbor {
+func parseLLDPNeighbors(binds []snmpRawBind, manAddrs map[string]string) []lldpNeighbor {
 	// Group cells by row key (timeMark.localPort.remIndex), preserving first-seen
 	// order so the output is deterministic.
 	rows := map[string]*lldpNeighbor{}
@@ -146,6 +217,7 @@ func parseLLDPNeighbors(binds []snmpRawBind) []lldpNeighbor {
 
 	out := make([]lldpNeighbor, 0, len(order))
 	for _, k := range order {
+		rows[k].MgmtIP = manAddrs[k]
 		out = append(out, *rows[k])
 	}
 	return out
@@ -178,6 +250,7 @@ type deviceIdentity struct {
 	ChassisMAC []byte // LLDP chassis-id, only when its subtype is MAC
 	SysName    string // sysName / lldpRemSysName
 	MgmtIP     string // the polled target address (mutable — last resort)
+	Services   int    // sysServices bitmask — descriptive device.role (router/switch)
 }
 
 // resolveDeviceID produces the single network.device.id with the Toise-frozen
@@ -254,6 +327,20 @@ func renderPortID(subtype int, portId []byte) string {
 		return octetText(portId)
 	default:
 		return octetText(portId)
+	}
+}
+
+// namedPortID renders an LLDP port-id as a network.interface name, but ONLY
+// when the subtype is a usable name (interfaceName / locally-assigned). A
+// MAC-only or address-only remote port has no name to serve as exact identity,
+// so it returns "" and the caller skips the link rather than fabricate a
+// phantom port (frozen contract, point 7).
+func namedPortID(subtype int, portId []byte) string {
+	switch subtype {
+	case portSubtypeIfName, portSubtypeLocal:
+		return octetText(portId)
+	default:
+		return ""
 	}
 }
 

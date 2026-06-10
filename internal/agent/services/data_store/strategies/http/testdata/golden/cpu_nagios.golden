@@ -1,0 +1,11 @@
+cpu_cores/cpu_core_usage status=0  | 
+cpu_detailed/cpu_iowait status=0  | 
+cpu_detailed/cpu_load1 status=0  | 
+cpu_detailed/cpu_load15 status=0  | 
+cpu_detailed/cpu_load5 status=0  | 
+cpu_detailed/cpu_system status=0  | 
+cpu_detailed/cpu_usage_total status=0  | 
+cpu_detailed/cpu_user status=0  | 
+system_health/cpu_load1 status=0  | 
+system_health/cpu_usage_total status=0 OK: cpu_usage_total 53.50% (aggregated from 1 metrics) | cpu_usage_total=53.50%;80;90;0;100
+system_health/memory_used_percent status=3 No metrics found for channel: memory_used_percent | 
