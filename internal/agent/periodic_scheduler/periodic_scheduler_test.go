@@ -264,18 +264,28 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 }
 
 func TestPeriodicScheduler_Retry(t *testing.T) {
-	t.Run("Retry should call Execute until MaxRetries and then Shutdown", func(t *testing.T) {
+	// The historical contract — self-Shutdown once MaxRetries
+	// consecutive failures were reached — was the #258 resilience
+	// inversion: one transient error permanently killed cloud/PRTG
+	// push (MaxRetries unset = 0) and probes died after 3 failed
+	// collects with no recovery path. The scheduler now NEVER shuts
+	// itself down on Execute errors: it keeps retrying, backing off
+	// (skipping ticks) once the threshold is crossed, and resets on
+	// the first success.
+
+	t.Run("MaxRetries zero keeps retrying forever, never shuts down", func(t *testing.T) {
 		logger := zerolog.New(os.Stderr)
 		quitChannel := make(chan struct{})
 		var called int64
 		var shutdownCalled int64
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
-			Interval:   10 * time.Millisecond,
-			MaxRetries: 3,
+			Interval: 5 * time.Millisecond,
+			// MaxRetries deliberately unset (= 0): the senhub and
+			// PRTG push schedulers are constructed exactly like this.
 			Execute: func() error {
 				atomic.AddInt64(&called, 1)
-				return fmt.Errorf("Error")
+				return fmt.Errorf("transient error")
 			},
 			OnShutdown: func(context.Context) error {
 				atomic.AddInt64(&shutdownCalled, 1)
@@ -283,20 +293,95 @@ func TestPeriodicScheduler_Retry(t *testing.T) {
 			},
 		}, &logger)
 
-		err := periodicScheduler.Start(quitChannel)
-		if err != nil {
-			t.Errorf("PeriodicScheduler.Start() error = %v", err)
+		if err := periodicScheduler.Start(quitChannel); err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+		defer periodicScheduler.Shutdown(context.Background())
+
+		deadline := time.Now().Add(2 * time.Second)
+		for atomic.LoadInt64(&called) < 10 && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
 		}
 
-		for atomic.LoadInt64(&shutdownCalled) == 0 {
-			time.Sleep(1 * time.Millisecond)
+		if got := atomic.LoadInt64(&called); got < 10 {
+			t.Errorf("Execute called %d times; the first error must not stop the pipeline", got)
+		}
+		if atomic.LoadInt64(&shutdownCalled) != 0 {
+			t.Error("scheduler shut itself down on Execute errors")
+		}
+	})
+
+	t.Run("MaxRetries crossed backs off but keeps retrying, never shuts down", func(t *testing.T) {
+		logger := zerolog.New(os.Stderr)
+		quitChannel := make(chan struct{})
+		var called int64
+		var shutdownCalled int64
+
+		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
+			Interval:   5 * time.Millisecond,
+			MaxRetries: 3,
+			Execute: func() error {
+				atomic.AddInt64(&called, 1)
+				return fmt.Errorf("persistent error")
+			},
+			OnShutdown: func(context.Context) error {
+				atomic.AddInt64(&shutdownCalled, 1)
+				return nil
+			},
+		}, &logger)
+
+		if err := periodicScheduler.Start(quitChannel); err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+		defer periodicScheduler.Shutdown(context.Background())
+
+		// Past the old kill point (3 calls) the scheduler must still
+		// attempt — backoff makes attempts sparser, not absent.
+		deadline := time.Now().Add(3 * time.Second)
+		for atomic.LoadInt64(&called) <= 4 && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
 		}
 
-		callCount := atomic.LoadInt64(&called)
-		if callCount != 3 {
-			t.Errorf("PeriodicScheduler.Start() should call Execute until MaxRetries %d", callCount)
+		if got := atomic.LoadInt64(&called); got <= 4 {
+			t.Errorf("Execute called %d times; crossing MaxRetries must back off, not stop", got)
 		}
+		if atomic.LoadInt64(&shutdownCalled) != 0 {
+			t.Error("scheduler shut itself down after MaxRetries")
+		}
+	})
 
+	t.Run("success resets the failure backoff", func(t *testing.T) {
+		logger := zerolog.New(os.Stderr)
+		quitChannel := make(chan struct{})
+		var called int64
+		failures := int64(5)
+
+		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
+			Interval:   5 * time.Millisecond,
+			MaxRetries: 2,
+			Execute: func() error {
+				n := atomic.AddInt64(&called, 1)
+				if n <= failures {
+					return fmt.Errorf("failing warmup %d", n)
+				}
+				return nil
+			},
+		}, &logger)
+
+		if err := periodicScheduler.Start(quitChannel); err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+		defer periodicScheduler.Shutdown(context.Background())
+
+		// After recovery the scheduler must settle back to every-tick
+		// cadence: expect a healthy stream of successful calls.
+		deadline := time.Now().Add(5 * time.Second)
+		for atomic.LoadInt64(&called) < failures+10 && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+		if got := atomic.LoadInt64(&called); got < failures+10 {
+			t.Errorf("Execute called %d times; recovery must reset the backoff", got)
+		}
 	})
 }
 
