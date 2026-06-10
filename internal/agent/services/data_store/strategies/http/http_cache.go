@@ -91,7 +91,8 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// SNMP polling — one series per (target, interface row); metric_type
 	// separates interface / system / status families.
-	"snmp_poll": {"instance", "if_index", "metric_type"},
+	"icmp_check": {"target", "metric_type"},
+	"snmp_poll":  {"instance", "if_index", "metric_type"},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
