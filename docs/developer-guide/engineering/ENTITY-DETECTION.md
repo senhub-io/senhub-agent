@@ -101,12 +101,16 @@ fact belongs on an entity.
    transformer `tag_metadata` `type: resource` set already *is* an entity
    identity → generic synthesis, no per-probe code.
 4. **Host routing table** (topology, now — #212) → the host's routes as
-   `network.route` entities `{host.id, route.destination}` with a scalar
-   `next_hop.ip`, attached by `has_route` (host → route). No gateway-as-device
-   (that is an SNMP poll's job); the next hop is an IP, not a node.
+   `network.route` entities `{host.id, route.destination}`, attached by
+   `has_route` (host → route). The gateway is a shared `network.address` node
+   the route reaches via `next_hop_via` (plus a scalar `next_hop.ip`).
 5. **SNMP topology MIBs** (with #156) → ports as `network.interface` entities
    (`has_interface`), link adjacency as port-to-port `connected_to`, routing as
-   `network.route` + `has_route`.
+   `network.route` + `has_route`, interface IPs as `network.address` entities
+   (`bound_to`). **Host↔device join:** the host's `next_hop_via` and the
+   device's `bound_to` reference the **same** `network.address {ip}` node, so a
+   host's gateway resolves to the polled device's interface — the two topology
+   planes reconcile by exact IP.
 
 ## 4. Encoding — LogRecords
 
