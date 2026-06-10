@@ -1,0 +1,131 @@
+[
+  {
+    "channel": "Memory Available",
+    "value": 53.5,
+    "float": 1,
+    "unit": "BytesMemory"
+  },
+  {
+    "channel": "Memory Buffers",
+    "value": 76.5,
+    "float": 1,
+    "unit": "BytesMemory"
+  },
+  {
+    "channel": "Memory Cache",
+    "value": 111,
+    "float": 1,
+    "unit": "BytesMemory"
+  },
+  {
+    "channel": "Memory Cached",
+    "value": 65,
+    "float": 1,
+    "unit": "BytesMemory"
+  },
+  {
+    "channel": "Memory Committed",
+    "value": 65,
+    "float": 1,
+    "unit": "BytesMemory"
+  },
+  {
+    "channel": "Memory Free",
+    "value": 53.5,
+    "float": 1,
+    "unit": "BytesMemory"
+  },
+  {
+    "channel": "Memory Modified Page List",
+    "value": 76.5,
+    "float": 1,
+    "unit": "BytesMemory"
+  },
+  {
+    "channel": "Memory Nonpaged Pool",
+    "value": 88,
+    "float": 1,
+    "unit": "BytesMemory"
+  },
+  {
+    "channel": "Memory Page Faults",
+    "value": 99.5,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "/s"
+  },
+  {
+    "channel": "Memory Paged Pool",
+    "value": 99.5,
+    "float": 1,
+    "unit": "BytesMemory"
+  },
+  {
+    "channel": "Memory Pages Input",
+    "value": 111,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "/s"
+  },
+  {
+    "channel": "Memory Pages Output",
+    "value": 42,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "/s"
+  },
+  {
+    "channel": "Memory Total",
+    "value": 42,
+    "float": 1,
+    "unit": "BytesMemory"
+  },
+  {
+    "channel": "Memory Usage",
+    "value": 88,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "Memory Used",
+    "value": 42,
+    "float": 1,
+    "unit": "BytesMemory"
+  },
+  {
+    "channel": "Pagefile Usage",
+    "value": 53.5,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "Pagefile Usage Peak",
+    "value": 65,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "Swap Free",
+    "value": 99.5,
+    "float": 1,
+    "unit": "BytesMemory"
+  },
+  {
+    "channel": "Swap Total",
+    "value": 76.5,
+    "float": 1,
+    "unit": "BytesMemory"
+  },
+  {
+    "channel": "Swap Usage",
+    "value": 111,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "Swap Used",
+    "value": 88,
+    "float": 1,
+    "unit": "BytesMemory"
+  }
+]

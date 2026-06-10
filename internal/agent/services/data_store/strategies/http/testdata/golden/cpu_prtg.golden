@@ -1,0 +1,137 @@
+[
+  {
+    "channel": "CPU Core tcore IRQ",
+    "value": 99.5,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "CPU Core tcore SoftIRQ",
+    "value": 111,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "CPU Core tcore System",
+    "value": 88,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "CPU Core tcore Usage",
+    "value": 65,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "CPU Core tcore User",
+    "value": 76.5,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "CPU DPC Queued",
+    "value": 53.5,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "/s"
+  },
+  {
+    "channel": "CPU DPC Rate",
+    "value": 42,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "/s"
+  },
+  {
+    "channel": "CPU IO Wait",
+    "value": 88,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "CPU Idle",
+    "value": 65,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "CPU Interrupts",
+    "value": 65,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "/s"
+  },
+  {
+    "channel": "CPU Irq",
+    "value": 99.5,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "CPU Load Average 15min",
+    "value": 111,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "CPU Load Average 1min",
+    "value": 88,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "CPU Load Average 5min",
+    "value": 99.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "CPU Nice",
+    "value": 76.5,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "CPU Queue Length",
+    "value": 76.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "CPU Softirq",
+    "value": 111,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "CPU Steal",
+    "value": 42,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "CPU System",
+    "value": 53.5,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "CPU Total Usage",
+    "value": 53.5,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "CPU User",
+    "value": 42,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "Processes Total",
+    "value": 42,
+    "float": 1,
+    "unit": "Count"
+  }
+]
