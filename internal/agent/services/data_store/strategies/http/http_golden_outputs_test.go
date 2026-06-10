@@ -39,6 +39,15 @@ func TestGoldenOutputs_PRTG(t *testing.T) {
 			}
 			sort.Slice(channels, func(i, j int) bool { return channels[i].Channel < channels[j].Channel })
 
+			// No rendered channel may leak a literal {placeholder}
+			// (#317: per-device snmp_poll channels rendered
+			// "SNMP {instance} Reachability").
+			for _, ch := range channels {
+				if strings.ContainsAny(ch.Channel, "{}") {
+					t.Errorf("channel name leaks an unsubstituted placeholder: %q", ch.Channel)
+				}
+			}
+
 			rendered, err := json.MarshalIndent(channels, "", "  ")
 			if err != nil {
 				t.Fatalf("marshal: %v", err)
@@ -102,14 +111,15 @@ func newGoldenHarness(t *testing.T, probe string) (*FormatConverter, *MetricCach
 	cache := NewMetricCache(5*time.Minute, newTestLogger())
 	converter := NewFormatConverter(registry, newTestLogger(), cache)
 
-	defs, err := transformers.DefinitionMetrics()
+	defs, err := transformers.Definitions()
 	if err != nil {
-		t.Fatalf("DefinitionMetrics: %v", err)
+		t.Fatalf("Definitions: %v", err)
 	}
-	metricDefs, ok := defs[probe]
+	probeDef, ok := defs[probe]
 	if !ok {
 		t.Fatalf("no embedded definition for probe %s", probe)
 	}
+	metricDefs := probeDef.Metrics
 
 	points := make([]datapoint.DataPoint, 0, len(metricDefs))
 	seen := map[string]bool{}
@@ -123,8 +133,10 @@ func newGoldenHarness(t *testing.T, probe string) (*FormatConverter, *MetricCach
 			{Key: "probe_type", Value: probe},
 		}
 		// Multi-instance metrics need their labels present so channel
-		// templates expand instead of leaking "{placeholder}".
-		for _, label := range m.MultiInstanceLabels {
+		// templates expand instead of leaking "{placeholder}" — both
+		// the metric's own labels and the definition-level defaults
+		// (the production probes tag every datapoint the same way).
+		for _, label := range append(append([]string{}, m.MultiInstanceLabels...), probeDef.MultiInstanceLabels...) {
 			dpTags = append(dpTags, tags.Tag{Key: label, Value: "t" + label})
 		}
 		points = append(points, datapoint.DataPoint{
