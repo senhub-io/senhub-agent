@@ -184,11 +184,13 @@ same device derive byte-identical ids.
   be named by exact identity — an unanchored local port, an unresolvable
   neighbour, or a **MAC-only remote port** (no phantom port, point 7). Supersedes
   `adjacent_to` + `local_port`/`remote_port` attributes. **DONE (#156).**
-- **Bridge FDB → `forwards_to`** (network.device↔network.device — **legacy form,
-  the last edge pending a port-entity migration**; the frontier still accepts
-  it): dot1dTpFdbTable / dot1qTpFdbTable → `forwards_to`, `to` = `mac:<addr>`.
-  **Filter FDB to inter-device MACs** (LLDP chassis / uplink ports); host
-  terminal MACs are out of scope (no card entity, would flood).
+- **`forwards_to` (bridge FDB) — RETIRED** (#156). The legacy device-to-device
+  edge is no longer emitted, and the FDB walk is removed. The FDB gives the
+  local learned port and the remote *MAC*, but **not the remote port**, so it
+  cannot form a proper port-to-port `connected_to` (LLDP already gives both
+  ports and is the canonical adjacency source). A future FDB use — filling in a
+  `connected_to` local port where LLDP is sparse — would need remote-port
+  resolution the FDB does not provide; deferred.
 
 **Cross-source convergence (no Toise merge):** LLDP chassis MAC == FDB/ARP
 MAC == `mac:<addr>` matches automatically. Without LLDP, the polled device's
@@ -237,9 +239,9 @@ Reconciled with ENTITY-DETECTION.md §7 (where SNMP topology is its Lot 5).
   the "activated features" class → `network.device` entity attributes.
 - **Lot 5 (topology → entity rail)** — emitting `network.device` +
   `network.route` (`has_route`) + `network.interface` ports (`has_interface`) +
-  `connected_to` port-to-port adjacency (superseding `adjacent_to`) via
-  `entity.Source` (**done #156**). Remaining: migrate `forwards_to` (FDB) to a
-  port-entity form. This is the vendor-neutral infrastructure-graph wedge.
+  `connected_to` port-to-port adjacency (superseding `adjacent_to`; `forwards_to`
+  retired) + interface IPs as `network.address` (`bound_to`) via `entity.Source`
+  (**done #156**). This is the vendor-neutral infrastructure-graph wedge.
 
 Tiering (`project_tiering_strategy`): interface collection + basic system +
 topology/entity are the **FREE** universal-collection wedge; deep
