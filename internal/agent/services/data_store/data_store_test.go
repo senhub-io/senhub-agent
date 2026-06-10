@@ -238,7 +238,7 @@ func TestGetCallback(t *testing.T) {
 		name:   "test-strategy",
 		params: map[string]interface{}{},
 	}
-	ds.strategies = []SyncStrategy{mockStrategy}
+	func() { v := []SyncStrategy{mockStrategy}; ds.strategies.Store(&v) }()
 
 	callback := ds.GetCallback()
 	if callback == nil {
@@ -281,7 +281,7 @@ func TestGetCallback_AppliesConfiguredTags(t *testing.T) {
 	}}
 	ds := NewDataStore(&MockAgentConfig{}, mockProvider, baseLogger).(*dataStore)
 	mockStrategy := &MockStrategy{name: "s", params: map[string]interface{}{}}
-	ds.strategies = []SyncStrategy{mockStrategy}
+	func() { v := []SyncStrategy{mockStrategy}; ds.strategies.Store(&v) }()
 
 	in := []datapoint.DataPoint{
 		{Name: "m", Tags: []tags.Tag{{Key: "probe_name", Value: "p1"}, {Key: "site", Value: "builtin"}}},
@@ -353,7 +353,7 @@ func TestGetCallback_StrategyFiltering(t *testing.T) {
 	// Add multiple strategies
 	strategy1 := &MockStrategy{name: "strategy1"}
 	strategy2 := &MockStrategy{name: "strategy2"}
-	ds.strategies = []SyncStrategy{strategy1, strategy2}
+	func() { v := []SyncStrategy{strategy1, strategy2}; ds.strategies.Store(&v) }()
 
 	callback := ds.GetCallback()
 
@@ -413,7 +413,7 @@ func TestShutdown_WithStrategies(t *testing.T) {
 	// Add mock strategies
 	strategy1 := &MockStrategy{name: "strategy1"}
 	strategy2 := &MockStrategy{name: "strategy2"}
-	ds.strategies = []SyncStrategy{strategy1, strategy2}
+	func() { v := []SyncStrategy{strategy1, strategy2}; ds.strategies.Store(&v) }()
 
 	ctx := context.Background()
 	err := ds.Shutdown(ctx)
@@ -489,8 +489,8 @@ func TestOnConfigRefreshed(t *testing.T) {
 	ds.OnConfigRefreshed("test-reason")
 
 	// Strategies should be empty with empty config
-	if len(ds.strategies) != 0 {
-		t.Errorf("Expected 0 strategies with empty config, got %d", len(ds.strategies))
+	if len(ds.activeStrategies()) != 0 {
+		t.Errorf("Expected 0 strategies with empty config, got %d", len(ds.activeStrategies()))
 	}
 }
 
