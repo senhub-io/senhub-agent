@@ -37,6 +37,16 @@ const (
 	colRemPortIdSubtype    = "6"
 	colRemPortId           = "7"
 	colRemSysName          = "9"
+
+	// Remote management address table. The neighbour's management IP is encoded
+	// in the ROW INDEX (not a column value):
+	//   timeMark . localPort . remIndex . addrSubtype . addrLen . <addr bytes>
+	// The first three sub-ids match the lldpRemTable row key, so an entry maps
+	// a neighbour to its management address — what the crawl needs to poll it.
+	// Walking any column of the table exposes the index; we walk ifId (col 4).
+	lldpRemManAddrIfId = "1.0.8802.1.1.2.1.4.2.1.4"
+	manAddrSubtypeIPv4 = "1"
+	manAddrLenIPv4     = 4
 )
 
 // IdSubtype enumerations from the LLDP-MIB (LldpChassisIdSubtype /
@@ -64,6 +74,7 @@ type lldpNeighbor struct {
 	PortIdSubtype    int
 	PortId           []byte
 	SysName          string
+	MgmtIP           string // lldpRemManAddr (neighbour management IP) — crawl seed
 }
 
 // lldpTopology is the parsed snapshot: the local device + its neighbours.
@@ -88,9 +99,40 @@ func collectLLDP(client snmpClient) (lldpTopology, error) {
 	if err != nil {
 		return topo, fmt.Errorf("lldp remote walk: %w", err)
 	}
-	topo.Neighbors = parseLLDPNeighbors(remBinds)
+	// Neighbour management addresses are best-effort: a device that omits the
+	// table still yields neighbours (without a crawl seed IP).
+	manBinds, _ := client.WalkRaw(lldpRemManAddrIfId)
+	topo.Neighbors = parseLLDPNeighbors(remBinds, parseLLDPManAddrs(manBinds))
 
 	return topo, nil
+}
+
+// parseLLDPManAddrs maps a neighbour row key (timeMark.localPort.remIndex) to
+// its management IPv4 address, decoded from the lldpRemManAddrTable row index.
+// First usable IPv4 per neighbour wins.
+func parseLLDPManAddrs(binds []snmpRawBind) map[string]string {
+	out := map[string]string{}
+	prefix := lldpRemManAddrIfId + "."
+	for _, b := range binds {
+		idx, ok := strings.CutPrefix(b.OID, prefix)
+		if !ok {
+			continue
+		}
+		p := strings.Split(idx, ".")
+		// timeMark.localPort.remIndex.subtype.len.<4 addr octets>
+		if len(p) < 5+manAddrLenIPv4 || p[3] != manAddrSubtypeIPv4 {
+			continue
+		}
+		key := p[0] + "." + p[1] + "." + p[2]
+		if _, exists := out[key]; exists {
+			continue
+		}
+		ip := strings.Join(p[5:5+manAddrLenIPv4], ".")
+		if net.ParseIP(ip) != nil {
+			out[key] = ip
+		}
+	}
+	return out
 }
 
 func parseLLDPLocal(binds []snmpRawBind) lldpLocal {
@@ -133,7 +175,7 @@ func parseLLDPLocal(binds []snmpRawBind) lldpLocal {
 	return loc
 }
 
-func parseLLDPNeighbors(binds []snmpRawBind) []lldpNeighbor {
+func parseLLDPNeighbors(binds []snmpRawBind, manAddrs map[string]string) []lldpNeighbor {
 	// Group cells by row key (timeMark.localPort.remIndex), preserving first-seen
 	// order so the output is deterministic.
 	rows := map[string]*lldpNeighbor{}
@@ -175,6 +217,7 @@ func parseLLDPNeighbors(binds []snmpRawBind) []lldpNeighbor {
 
 	out := make([]lldpNeighbor, 0, len(order))
 	for _, k := range order {
+		rows[k].MgmtIP = manAddrs[k]
 		out = append(out, *rows[k])
 	}
 	return out
