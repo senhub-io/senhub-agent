@@ -392,7 +392,14 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		strategy = prtg.NewSyncStrategyPrtg(d.agentConfig, strategyConfig.Params, d.logger.Logger)
 	case "event":
 		d.logger.Debug().Msg("Initializing event strategy")
-		strategy = event.NewEventSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
+		eventStrategy, err := event.NewEventSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger)
+		if err != nil {
+			d.logger.Error().
+				Err(err).
+				Msg("Invalid event strategy configuration, strategy skipped")
+			return nil
+		}
+		strategy = eventStrategy
 	case "http":
 		d.logger.Debug().Msg("Initializing HTTP strategy")
 		strategy = http.NewHTTPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
