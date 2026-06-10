@@ -57,14 +57,19 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		Arguments:        serviceArgs,
 		WorkingDirectory: workingDir,
 		Option: map[string]interface{}{
-			"LogOutput":             true,
-			"User":                  "root",
-			"ServiceName":           "senhub-agent.service",
-			"SystemdScript":         true,
-			"Restart":               "always",
-			"RestartSec":            "10",
-			"StartLimitIntervalSec": "0",
-			"StartLimitBurst":       "0",
+			"LogOutput":     true,
+			"User":          "root",
+			"ServiceName":   "senhub-agent.service",
+			"SystemdScript": true,
+			"Restart":       "always",
+			"RestartSec":    "10",
+			// Bounded restart storm: 5 failures within 5 minutes stop
+			// the unit instead of looping every 10s forever. Paired
+			// with Start() now exiting non-zero on boot failure, a
+			// permanent misconfiguration surfaces as a FAILED unit
+			// rather than an infinite silent crash loop (#265).
+			"StartLimitIntervalSec": "300",
+			"StartLimitBurst":       "5",
 			"OnFailure":             "restart",
 			"RecoveryActions":       []string{"restart", "restart", "restart", "restart", "none"},
 			"RecoveryCallback":      "",

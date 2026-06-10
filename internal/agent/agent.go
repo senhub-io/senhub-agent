@@ -17,8 +17,7 @@ package agent
 
 import (
 	"context"
-	"os"
-	"syscall"
+	"fmt"
 
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/auto_update"
@@ -139,6 +138,25 @@ func (a agent) Start() error {
 		servicesToStart = append(servicesToStart, a.updater)
 	}
 
+	if err := a.startServices(servicesToStart); err != nil {
+		return err
+	}
+
+	// Passive version check (non-blocking, log only). The auto-updater
+	// (when wired) performs the active upgrade; this only logs the
+	// drift between the embedded build tag and the latest release.
+	a.checkForNewVersionAtStartup()
+
+	return nil
+}
+
+// startServices starts the given services in order, recording the ones
+// that came up. A failure propagates to the caller and from there to a
+// non-zero process exit. The historical path signalled SIGINT to self:
+// the process then exited 0, systemd Restart=always (with no
+// StartLimit) restarted it every 10s, and a permanent misconfiguration
+// became an infinite crash loop disguised as a clean stop (#265).
+func (a agent) startServices(servicesToStart []Service) error {
 	var errors []error
 	for _, service := range servicesToStart {
 		a.logger.Debug().
@@ -160,14 +178,8 @@ func (a agent) Start() error {
 	}
 
 	if len(errors) > 0 {
-		a.handleStartError()
+		return fmt.Errorf("starting services: %d of %d failed, first error: %w", len(errors), len(servicesToStart), errors[0])
 	}
-
-	// Passive version check (non-blocking, log only). The auto-updater
-	// (when wired) performs the active upgrade; this only logs the
-	// drift between the embedded build tag and the latest release.
-	a.checkForNewVersionAtStartup()
-
 	return nil
 }
 
@@ -215,7 +227,13 @@ func (a agent) Shutdown(ctx context.Context) error {
 	close(a.messageChannel)
 
 	var errors []error
-	for _, service := range *a.startedServices {
+	// Reverse start order: producers (sensors) stop before consumers
+	// (DataStore), so the final flush still has a live pipeline.
+	// Iterating in start order closed the DataStore first and lost
+	// every datapoint emitted during shutdown, on each clean stop (#265).
+	started := *a.startedServices
+	for i := len(started) - 1; i >= 0; i-- {
+		service := started[i]
 		a.logger.Debug().
 			Str("service", service.GetName()).
 			Msg("Shutting down service")
@@ -238,18 +256,3 @@ func (a agent) Shutdown(ctx context.Context) error {
 	}
 	return nil
 }
-
-func (a agent) handleStartError() {
-	pid := os.Getpid()
-	p, err := os.FindProcess(pid)
-	if err != nil {
-		a.logger.Error().Err(err).Msg("Error finding process")
-		os.Exit(1)
-	}
-	// On Windows, SIGTERM is not supported — use SIGINT or exit directly.
-	if err := p.Signal(syscall.SIGINT); err != nil {
-		a.logger.Error().Err(err).Msg("Error sending shutdown signal")
-		os.Exit(1)
-	}
-}
-

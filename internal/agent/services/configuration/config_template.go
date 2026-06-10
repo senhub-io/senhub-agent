@@ -50,16 +50,16 @@ const LicenseDocumentationTemplate = `
 //
 // Sprintf args:
 //
-//	1. config_version (int)         %d
-//	2. agent version string (str)   %s
-//	3. timestamp (str)              %s
-//	4. config_version (int, body)   %d
-//	5. agent.key (UUID str)         %s
-//	6. license documentation block  %s — LicenseDocumentationTemplate
-//	7. auto_update.enabled (bool)   %t
-//	8. auto_update.include_beta     %t
-//	9. auto_update.url (str)        %s
-//	10. cache.retention_minutes     %d
+//  1. config_version (int)         %d
+//  2. agent version string (str)   %s
+//  3. timestamp (str)              %s
+//  4. config_version (int, body)   %d
+//  5. agent.key (UUID str)         %s
+//  6. license documentation block  %s — LicenseDocumentationTemplate
+//  7. auto_update.enabled (bool)   %t
+//  8. auto_update.include_beta     %t
+//  9. auto_update.url (str)        %s
+//  10. cache.retention_minutes     %d
 const AgentYAMLTemplate = `# SenHub Agent — global configuration (multi-file layout)
 # Configuration Version: %d (automatically managed)
 # Agent Version: %s
@@ -130,10 +130,10 @@ const HostProbesFragmentTemplate = `# Default host monitoring probes (multi-file
 //
 // Sprintf args:
 //
-//	1. port (int)            %d
-//	2. bind_address (str)    %s
-//	3. endpoints (str list)  %s — already formatted: "prtg", "web", ...
-//	4. TLS section (str)     %s — empty when HTTPS is not enabled
+//  1. port (int)            %d
+//  2. bind_address (str)    %s
+//  3. endpoints (str list)  %s — already formatted: "prtg", "web", ...
+//  4. TLS section (str)     %s — empty when HTTPS is not enabled
 const HTTPStrategyFragmentTemplate = `# Default HTTP strategy — exposes PRTG / Nagios / Web UI endpoints.
 # Each file in strategies.d/ MUST have exactly ONE top-level key (the
 # strategy name). Add other strategies (otlp, prtg, ...) by creating

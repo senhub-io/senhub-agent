@@ -44,8 +44,13 @@ func (p *program) Stop(s service.Service) error {
 
 func (p *program) run() {
 	if err := p.agent.Start(); err != nil {
-		log.Printf("agent error: %s", err)
-		return
+		// Exit non-zero so the service manager sees a FAILURE: systemd
+		// applies Restart/StartLimit semantics and Windows SCM its
+		// recovery actions. The historical SIGINT-to-self path exited 0
+		// — a permanent misconfiguration looked like a clean stop and
+		// Restart=always relaunched it forever (#265).
+		log.Printf("agent failed to start: %s", err)
+		os.Exit(1)
 	}
 }
 
