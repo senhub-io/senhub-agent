@@ -33,12 +33,10 @@ jobs:
         run: make test
 
   # macOS catches darwin-specific drift (build-tag-gated platform stubs,
-  # syscall signatures, file path expectations). macOS runners bill at 10x, so
-  # it runs ONLY on PRs to master (the release gate), not on every feature PR
-  # to dev — that keeps the darwin signal at release time without paying 10x on
-  # every iteration. Skipped (neutral/green) on dev PRs.
+  # syscall signatures, file path expectations). It runs on every PR again:
+  # the repository is public, so Actions minutes are free — the 10x-billing
+  # master-only restriction (#251) no longer applies.
   test-macos:
-    if: github.base_ref == 'master'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
