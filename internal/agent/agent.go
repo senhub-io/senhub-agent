@@ -252,4 +252,3 @@ func (a agent) handleStartError() {
 		os.Exit(1)
 	}
 }
-
