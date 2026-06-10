@@ -52,6 +52,19 @@ func (dt *DefinitionBasedTransformer) GetUnit(metricName string) string {
 	return ""
 }
 
+// GetOtelMapping returns the OTel mapping declared for a metric, or nil
+// when the metric has none. Sink converters use it to derive
+// semantically correct display units (rate vs absolute, byte context)
+// that the legacy display `unit:` field cannot express.
+func (dt *DefinitionBasedTransformer) GetOtelMapping(metricName string) *OtelMapping {
+	for _, metric := range dt.definition.Metrics {
+		if metric.Name == metricName {
+			return metric.Otel
+		}
+	}
+	return nil
+}
+
 // GetLookup implements MetricTransformer interface for definition-based transformer
 func (dt *DefinitionBasedTransformer) GetLookup(metricName string) string {
 	// Find matching metric definition

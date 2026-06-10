@@ -22,10 +22,11 @@ const (
 
 // routeRow is one decoded ipCidrRouteTable entry (only the fields we use).
 type routeRow struct {
-	NextHop string // canonicalized IP, or "" when unusable
-	Type    int
-	IfIndex string
-	Metric  int
+	Destination string // canonical CIDR from the entry index, "" when unparseable
+	NextHop     string // canonicalized IP, or "" when unusable
+	Type        int
+	IfIndex     string
+	Metric      int
 }
 
 func collectRoutes(client snmpClient) ([]routeRow, error) {
@@ -52,7 +53,7 @@ func parseRoutes(binds []snmpRawBind) []routeRow {
 		}
 		r := rows[rowKey]
 		if r == nil {
-			r = &routeRow{}
+			r = &routeRow{Destination: routeDestFromIndex(rowKey)}
 			rows[rowKey] = r
 			order = append(order, rowKey)
 		}
@@ -79,6 +80,26 @@ func parseRoutes(binds []snmpRawBind) []routeRow {
 		out = append(out, *rows[k])
 	}
 	return out
+}
+
+// routeDestFromIndex extracts the destination CIDR from an ipCidrRouteTable
+// entry index: dest(4).mask(4).tos(1).nextHop(4), octets in decimal. Returns
+// "" when the index is short or the mask is non-canonical.
+func routeDestFromIndex(rowKey string) string {
+	p := strings.Split(rowKey, ".")
+	if len(p) < 13 {
+		return ""
+	}
+	dest := net.ParseIP(strings.Join(p[0:4], ".")).To4()
+	mask := net.ParseIP(strings.Join(p[4:8], ".")).To4()
+	if dest == nil || mask == nil {
+		return ""
+	}
+	ones, bits := net.IPMask(mask).Size()
+	if bits == 0 { // non-canonical mask
+		return ""
+	}
+	return fmt.Sprintf("%s/%d", dest.String(), ones)
 }
 
 // usableNextHop keeps only next-hops that name a distinct remote device: a

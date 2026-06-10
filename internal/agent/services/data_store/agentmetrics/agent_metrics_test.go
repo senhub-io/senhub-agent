@@ -23,14 +23,17 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	//                   export.duration{window=mean})
 	//   3 OTLP checkpoint (size, last_save_age, restored_entries)
 	//   1 OTLP parallel  (sub_batches)
+	//   4 OTLP logs queue (queue.records, queue.bytes, logs.queued,
+	//                   logs.replayed)
+	//   2 OTLP failover (active_endpoint_index, endpoint_switches)
 	//   6 process      (cpu.time, memory.{resident,heap}, goroutines,
 	//                   gc.cycles, open_fds)
 	//
 	// Note: `senhub.agent.otlp.dropped{reason=...}` and
 	// `senhub.agent.otlp.checkpoint.errors{stage=...}` are emitted only
 	// when their counter has been touched, so they don't count here.
-	if len(recs) != 24 {
-		t.Fatalf("expected 24 records (no build info, no http requests, no OTLP drops, no checkpoint errors), got %d", len(recs))
+	if len(recs) != 30 {
+		t.Fatalf("expected 30 records (no build info, no http requests, no OTLP drops, no checkpoint errors), got %d", len(recs))
 	}
 
 	names := map[string]bool{}

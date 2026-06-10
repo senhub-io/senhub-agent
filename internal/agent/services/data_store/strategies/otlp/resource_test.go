@@ -15,7 +15,7 @@ func TestBuildResource_AllFields(t *testing.T) {
 			"k8s.cluster.name": "edge-01",
 		},
 	}
-	res := buildResource(cfg, "1.2.3", nil)
+	res := buildResource(cfg, "1.2.3", nil, nil)
 	got := map[string]string{}
 	for _, kv := range res.Attributes() {
 		got[string(kv.Key)] = kv.Value.AsString()
@@ -41,7 +41,7 @@ func TestBuildResource_OmitsEmpty(t *testing.T) {
 	cfg := ResourceConfig{
 		ServiceName: "x",
 	}
-	res := buildResource(cfg, "", nil)
+	res := buildResource(cfg, "", nil, nil)
 	for _, kv := range res.Attributes() {
 		if kv.Value.Type() == attribute.STRING && kv.Value.AsString() == "" {
 			t.Errorf("empty-string attribute leaked: %s", kv.Key)
@@ -59,7 +59,7 @@ func TestBuildResource_GlobalTagsOnResource(t *testing.T) {
 		ServiceName: "agent-x",
 		Extra:       map[string]string{"k8s.cluster.name": "edge-01"},
 	}
-	res := buildResource(cfg, "1.0.0", map[string]string{
+	res := buildResource(cfg, "1.0.0", nil, map[string]string{
 		"site":   "paris",
 		"tenant": "acme",
 	})
@@ -79,10 +79,41 @@ func TestBuildResource_ExtraWinsOverGlobalTag(t *testing.T) {
 	// A same-named key declared in the explicit resource: block overrides
 	// the global_tag value.
 	cfg := ResourceConfig{Extra: map[string]string{"site": "explicit"}}
-	res := buildResource(cfg, "", map[string]string{"site": "from-global"})
+	res := buildResource(cfg, "", nil, map[string]string{"site": "from-global"})
 	for _, kv := range res.Attributes() {
 		if string(kv.Key) == "site" && kv.Value.AsString() != "explicit" {
 			t.Errorf("site=%q, want explicit (resource Extra must win)", kv.Value.AsString())
+		}
+	}
+}
+
+func TestBuildResource_HostAttrsForCorrelation(t *testing.T) {
+	// host.*/os.* land on the resource so telemetry carries the same host.id as
+	// the host entity (entity↔telemetry join).
+	cfg := ResourceConfig{ServiceName: "agent-x"}
+	hostAttrs := map[string]string{
+		"host.id":   "h-001",
+		"host.name": "web-1",
+		"os.type":   "linux",
+	}
+	res := buildResource(cfg, "1.0.0", hostAttrs, nil)
+	got := map[string]string{}
+	for _, kv := range res.Attributes() {
+		got[string(kv.Key)] = kv.Value.AsString()
+	}
+	if got["host.id"] != "h-001" || got["host.name"] != "web-1" || got["os.type"] != "linux" {
+		t.Errorf("host resource attrs missing: %v", got)
+	}
+}
+
+func TestBuildResource_OperatorOverridesHostAttr(t *testing.T) {
+	// An operator global_tag / Extra of the same key wins over the detected host
+	// attribute (host attrs are lowest precedence).
+	cfg := ResourceConfig{Extra: map[string]string{"host.name": "operator-name"}}
+	res := buildResource(cfg, "", map[string]string{"host.name": "detected"}, nil)
+	for _, kv := range res.Attributes() {
+		if string(kv.Key) == "host.name" && kv.Value.AsString() != "operator-name" {
+			t.Errorf("host.name=%q, want operator-name (Extra must win)", kv.Value.AsString())
 		}
 	}
 }

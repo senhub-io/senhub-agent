@@ -17,7 +17,9 @@ runtime counters these mechanisms expose, see
 | Global cardinality cap | Unbounded series growth across the whole agent | `store_cap` |
 | Per-probe cardinality budget | One probe (e.g. multi-instance Citrix/NetScaler) exploding series | `probe_cardinality` |
 | Memory limiter | Heap blow-up during a prolonged backend outage | `memory_soft_limit`, `memory_hard_limit` |
-| Persistent checkpoint | Losing buffered data across an agent restart while the backend is down | — (no loss) |
+| Persistent checkpoint (metrics) | Losing the **metric** store across an agent restart while the backend is down | — (no loss) |
+| Logs dead-letter queue | Losing **event logs** during a backend outage (queued to disk, replayed at boot and on recovery) | `logs_queue_full` (only when the disk cap is hit) |
+| Endpoint failover | The primary ingress being down (switch to a standby ingress, return to primary on recovery) | — (no loss; switch is logged + counted) |
 
 A fifth, **parallel export** (`max_concurrent_exports`), splits a large
 snapshot into per-probe sub-batches exported concurrently — throughput,
@@ -32,6 +34,8 @@ storage:
   - name: otlp
     params:
       endpoint: "otel-collector.internal:4317"
+      fallback_endpoints:                 # standby ingresses for failover (#217); empty = none
+        - "otel-collector-dr.internal:4317"
       signals:
         metrics: { enabled: true, interval: 30s }
 
@@ -46,10 +50,23 @@ storage:
 
       persistence:
         path: "/var/lib/senhub-agent/otlp-checkpoint"  # DIRECTORY; empty = persistence off
-        interval: 30s                                   # checkpoint save cadence
+        interval: 30s                                   # metric checkpoint save cadence
+        logs_queue_max_bytes: 134217728                 # logs dead-letter disk cap (0 = default 128 MiB)
 
       max_concurrent_exports: 4   # parallel per-probe export fan-out (1..64)
 ```
+
+When `persistence.path` is set and the logs signal is enabled, event-log
+records that fail to export (backend down past the SDK retry) are written
+to a dead-letter queue under `<path>/logqueue/` and replayed automatically
+at boot and the moment the backend recovers — so a backend outage no
+longer loses event logs (linux_logs / syslog / snmp_trap / filetail /
+windows_eventlog). Entity events are NOT queued: they are a state stream
+re-emitted in full at every heartbeat, so an outage is caught up on the
+next sweep. Past `logs_queue_max_bytes` the oldest batches are evicted
+(`logs_queue_full`). Residual loss window: a hard crash (`kill -9`) while
+records sit in the in-memory batch never handed to the exporter — the
+graceful shutdown flush covers normal stops.
 
 Defaults if a key is omitted: `max_store_size` 50000, `max_active_series_per_probe`
 10000, `memory_limit` 200/400 MiB @ 5s, `persistence` **off**, `max_concurrent_exports` 4.
@@ -142,6 +159,13 @@ Every mechanism is visible at `/api/<agent-key>/info/otlp`, via
 - `store.size` — current distinct series held.
 - `pipeline.dropped_by_reason` — per-reason drop counters (the table above).
 - `checkpoint.restored_entries` / `last_save_age_seconds` / `errors_total`.
+- `logs.queue.records` / `logs.queue.bytes` — current depth of the logs
+  dead-letter queue (gauges); `logs.queued_total` / `logs.replayed_total`
+  — cumulative records persisted vs re-emitted. A queue depth that never
+  drains means the backend is still unreachable for the logs signal.
+- `failover.active_endpoint_index` (0 = primary) / `failover.switches_total`
+  — endpoint failover state. A non-zero index means the agent is on a
+  standby ingress; a rising switch count means the primary is flapping.
 
 Full field reference and suggested alerts: [OTLP Pipeline
 Observability](./OTLP-OBSERVABILITY.md).

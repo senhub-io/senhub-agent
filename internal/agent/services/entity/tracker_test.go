@@ -19,30 +19,36 @@ func TestTracker_DeletesDisappearedItems(t *testing.T) {
 	t1 := time.Unix(1000, 0).UTC()
 	t2 := time.Unix(1060, 0).UTC()
 
+	// host A carries a monitors edge to db B (embedded, the folded form).
+	hostAB := Event{Kind: EntityState, Time: t1, Entity: &Entity{
+		Type: "host", ID: map[string]any{"host.id": "A"},
+		Attributes:    map[string]any{"host.name": "a"},
+		Relationships: []Relationship{{Type: "monitors", TargetType: "db", TargetID: map[string]any{"db.instance.id": "B"}}},
+	}}
 	dbB := Event{Kind: EntityState, Time: t1, Entity: &Entity{
 		Type: "db", ID: map[string]any{"db.instance.id": "B"},
 	}}
-	relAB := Event{Kind: RelationState, Time: t1, Relation: &Relation{
-		Type:     "monitors",
-		FromType: "host", FromID: map[string]any{"host.id": "A"},
-		ToType: "db", ToID: map[string]any{"db.instance.id": "B"},
-	}}
 
-	// Cycle 1: host A + db B + relation A→B present.
-	tr.Reconcile([]Event{hostState("A", "a", t1), dbB, relAB}, t1)
+	// Cycle 1: host A (→ monitors B) + db B present.
+	tr.Reconcile([]Event{hostAB, dbB}, t1)
 
-	// Cycle 2: only host A remains. B and the relation disappear.
+	// Cycle 2: only host A remains, and it no longer lists the monitors edge.
+	// B disappears → explicit entity delete; the edge is retired by absence
+	// (it simply isn't on A's heartbeat anymore — no edge delete on the wire).
 	got = nil
 	tr.Reconcile([]Event{hostState("A", "a", t2)}, t2)
 
-	if len(got) != 3 {
-		t.Fatalf("cycle 2 published %d events, want 3 (A state + B delete + relation delete)", len(got))
+	if len(got) != 2 {
+		t.Fatalf("cycle 2 published %d events, want 2 (A state + B delete)", len(got))
 	}
-	var stateA, delB, delRel int
+	var stateA, delB int
 	for _, ev := range got {
 		switch {
 		case ev.Kind == EntityState && ev.Entity != nil && ev.Entity.ID["host.id"] == "A":
 			stateA++
+			if len(ev.Entity.Relationships) != 0 {
+				t.Errorf("A heartbeat still lists relationships, want none: %v", ev.Entity.Relationships)
+			}
 		case ev.Kind == EntityDelete && ev.Entity != nil && ev.Entity.ID["db.instance.id"] == "B":
 			delB++
 			if !ev.Time.Equal(t2) {
@@ -51,15 +57,10 @@ func TestTracker_DeletesDisappearedItems(t *testing.T) {
 			if len(ev.Entity.Attributes) != 0 {
 				t.Errorf("delete carries descriptive attributes, want none: %v", ev.Entity.Attributes)
 			}
-		case ev.Kind == RelationDelete && ev.Relation != nil && ev.Relation.Type == "monitors":
-			delRel++
-			if !ev.Time.Equal(t2) {
-				t.Errorf("relation delete time = %v, want %v", ev.Time, t2)
-			}
 		}
 	}
-	if stateA != 1 || delB != 1 || delRel != 1 {
-		t.Errorf("got stateA=%d delB=%d delRel=%d, want 1/1/1", stateA, delB, delRel)
+	if stateA != 1 || delB != 1 {
+		t.Errorf("got stateA=%d delB=%d, want 1/1", stateA, delB)
 	}
 }
 

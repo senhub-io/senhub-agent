@@ -1,12 +1,20 @@
 name: Go-test-windows
 on:
   pull_request:
+    # Runs on every PR again: the repository is public, so Actions minutes
+    # are free — the 2x-billing master-only restriction (#251) no longer
+    # applies. Windows-specific code is additionally runtime-validated on a
+    # real host (bbcloud) before releases.
     branches: [dev, master]
     paths-ignore:
       - 'docs/**'
       - '*.md'
 env:
   SENHUB_KEY: "test-key"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test-and-build:
