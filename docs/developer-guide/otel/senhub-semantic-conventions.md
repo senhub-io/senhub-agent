@@ -1153,6 +1153,22 @@ Aucun receiver otelcol-contrib ne couvre l'ICMP actif → namespace `senhub.icmp
 Modes privilégié (raw ICMP) / non-privilégié (datagram, sysctl `ping_group_range` sous Linux) ; défaut privilégié sur Windows uniquement. Châssis multi-cibles réutilisable par tcp_dial (#159) / dns_latency (#158).
 
 
+### 4.21 http_check (free, #300)
+
+Aligné sur le receiver otelcol-contrib httpcheck quand la métrique existe (`httpcheck.duration`) ; extensions `senhub.httpcheck.*` sinon. Une série par cible (attribut `httpcheck.target`).
+
+| Métrique OTel | Unité | Type | Source wire |
+|---|---|---|---|
+| `senhub.httpcheck.up` | `1` | gauge | statut attendu (+ content_match) |
+| `senhub.httpcheck.status.code` | `1` | gauge | code HTTP |
+| `httpcheck.duration` | `s` | gauge | total, wire ms `value_scale: 0.001` (nom contrib) |
+| `senhub.httpcheck.duration.{dns,connect,tls,ttfb}` | `s` | gauge | phases httptrace, wire ms |
+| `senhub.httpcheck.response.size` | `By` | gauge | corps lu (cap 1 MiB) |
+| `senhub.httpcheck.tls.expiry` | `d` | gauge | jours restants du certificat leaf (négatif si expiré) |
+| `senhub.httpcheck.content.match` | `1` | gauge | émis seulement si content_match configuré |
+
+Redirections rapportées non suivies ; keep-alive désactivé (chaque cycle mesure un handshake complet).
+
 ## 6. Processus d'ajout d'une convention
 
 1. Lire les sources §1 pour le domaine concerné
