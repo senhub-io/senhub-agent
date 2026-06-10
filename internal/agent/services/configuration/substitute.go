@@ -35,9 +35,9 @@ const dollarSentinel = "\x00DOLLAR\x00"
 // substitutionPattern captures the three pieces of a reference:
 //   - kind  = "env" or "file"
 //   - ref   = the variable name or file path (non-greedy so the
-//             optional `:-default` boundary is found first)
+//     optional `:-default` boundary is found first)
 //   - dflt  = the default expression after `:-`, if any (empty means
-//             no default was supplied)
+//     no default was supplied)
 //
 // `[^}]+?` is non-greedy on purpose: it lets the optional `:-default`
 // branch claim the suffix when present, while a Windows-style file
