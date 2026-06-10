@@ -16,18 +16,16 @@ func DefaultNagiosConfigYAML() ([]byte, error) {
 	return definitionFiles.ReadFile("definitions/nagios.yaml")
 }
 
-// DefinitionMetrics returns, per probe definition shipped in the
-// embedded definitions/ directory, the full metric definitions. Files
-// that are not probe definitions (nagios.yaml, lookups.yaml, shared/)
-// are skipped. Used by structural tests to verify cross-references and
-// unit semantics across sink formats.
-func DefinitionMetrics() (map[string][]MetricDefinition, error) {
+// Definitions returns every probe definition shipped in the embedded
+// definitions/ directory, keyed by probe name. Files that are not
+// probe definitions (nagios.yaml, lookups.yaml, shared/) are skipped.
+func Definitions() (map[string]ProbeDefinition, error) {
 	entries, err := fs.ReadDir(definitionFiles, "definitions")
 	if err != nil {
 		return nil, fmt.Errorf("listing embedded definitions: %w", err)
 	}
 
-	metrics := make(map[string][]MetricDefinition)
+	defs := make(map[string]ProbeDefinition)
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
 			continue
@@ -43,7 +41,23 @@ func DefinitionMetrics() (map[string][]MetricDefinition, error) {
 		if def.ProbeName == "" || len(def.Metrics) == 0 {
 			continue
 		}
-		metrics[def.ProbeName] = append(metrics[def.ProbeName], def.Metrics...)
+		defs[def.ProbeName] = def
+	}
+	return defs, nil
+}
+
+// DefinitionMetrics returns, per probe definition shipped in the
+// embedded definitions/ directory, the full metric definitions. Used
+// by structural tests to verify cross-references and unit semantics
+// across sink formats.
+func DefinitionMetrics() (map[string][]MetricDefinition, error) {
+	defs, err := Definitions()
+	if err != nil {
+		return nil, err
+	}
+	metrics := make(map[string][]MetricDefinition, len(defs))
+	for probe, def := range defs {
+		metrics[probe] = def.Metrics
 	}
 	return metrics, nil
 }
