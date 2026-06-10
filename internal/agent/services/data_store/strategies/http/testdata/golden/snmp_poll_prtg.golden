@@ -56,19 +56,19 @@
     "speedtime": "Second"
   },
   {
-    "channel": "SNMP {instance} Poll Duration",
+    "channel": "SNMP tinstance Poll Duration",
     "value": 53.5,
     "float": 1,
     "unit": "TimeSeconds"
   },
   {
-    "channel": "SNMP {instance} Reachability",
+    "channel": "SNMP tinstance Reachability",
     "value": 42,
     "float": 1,
     "unit": "Count"
   },
   {
-    "channel": "SNMP {instance} Uptime",
+    "channel": "SNMP tinstance Uptime",
     "value": 65,
     "float": 1,
     "unit": "Custom",
