@@ -193,6 +193,9 @@ func (v *JWTValidator) IsInGracePeriod(license *License) bool {
 // icmp_check is free for the same wedge reason: ping/uptime is PRTG's
 // most-deployed sensor class — the migration story needs it at zero cost.
 //
+// http_check follows: HTTP/TLS-cert checks are top-3 PRTG sensors and
+// the OTel Collector gives them away (httpcheck receiver).
+//
 // otlp_receiver is free as universal collection: the agent acting as an
 // edge collector ingesting OTLP streams from other instrumented sources
 // is the same open-core "bring everything in" wedge, not a paid vendor
@@ -205,6 +208,7 @@ var freeTierProbes = map[string]bool{
 	"linux_logs":       true,
 	"windows_eventlog": true,
 	"filetail":         true,
+	"http_check":       true,
 	"icmp_check":       true,
 	"snmp_poll":        true,
 	"snmp_trap":        true,
