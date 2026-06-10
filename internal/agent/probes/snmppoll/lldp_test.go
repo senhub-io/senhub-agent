@@ -142,7 +142,8 @@ func TestParseLLDPNeighbors(t *testing.T) {
 		b(colRemSysName, "0.7.2", gosnmp.OctetString, []byte("neighbor-b")),
 	}
 
-	ns := parseLLDPNeighbors(binds)
+	// Neighbour a (row 0.5.1) has a management address; b (0.7.2) does not.
+	ns := parseLLDPNeighbors(binds, map[string]string{"0.5.1": "10.0.0.7"})
 	if len(ns) != 2 {
 		t.Fatalf("expected 2 neighbors, got %d (%+v)", len(ns), ns)
 	}
@@ -150,6 +151,12 @@ func TestParseLLDPNeighbors(t *testing.T) {
 	a := ns[0]
 	if a.LocalPortNum != "5" || a.ChassisIdSubtype != 4 || a.SysName != "neighbor-a" {
 		t.Errorf("neighbor a wrong: %+v", a)
+	}
+	if a.MgmtIP != "10.0.0.7" {
+		t.Errorf("neighbor a mgmt IP = %q, want 10.0.0.7 (crawl seed)", a.MgmtIP)
+	}
+	if ns[1].MgmtIP != "" {
+		t.Errorf("neighbor b should have no mgmt IP, got %q", ns[1].MgmtIP)
 	}
 	if resolveDeviceID(neighborIdentity(a)) != "mac:aa:bb:cc:dd:ee:ff" {
 		t.Errorf("neighbor a id = %q", resolveDeviceID(neighborIdentity(a)))
@@ -161,6 +168,25 @@ func TestParseLLDPNeighbors(t *testing.T) {
 	bn := ns[1]
 	if bn.LocalPortNum != "7" || resolveDeviceID(neighborIdentity(bn)) != "name:neighbor-b" {
 		t.Errorf("neighbor b wrong: %+v -> %q", bn, resolveDeviceID(neighborIdentity(bn)))
+	}
+}
+
+func TestParseLLDPManAddrs(t *testing.T) {
+	// Index = timeMark.localPort.remIndex.addrSubtype.addrLen.<addr octets>.
+	binds := []snmpRawBind{
+		{OID: lldpRemManAddrIfId + ".0.5.1.1.4.10.0.0.7", Value: 1},                           // IPv4 → kept
+		{OID: lldpRemManAddrIfId + ".0.7.2.2.16.32.1.13.184.0.0.0.0.0.0.0.0.0.0.1", Value: 1}, // IPv6 subtype → skipped
+		{OID: lldpRemManAddrIfId + ".0.9.3.1.4.300.1.2.3", Value: 1},                          // not a valid IP → skipped
+	}
+	m := parseLLDPManAddrs(binds)
+	if m["0.5.1"] != "10.0.0.7" {
+		t.Errorf("0.5.1 mgmt = %q, want 10.0.0.7", m["0.5.1"])
+	}
+	if _, ok := m["0.7.2"]; ok {
+		t.Error("IPv6 management address should be skipped (IPv4-only for now)")
+	}
+	if _, ok := m["0.9.3"]; ok {
+		t.Error("malformed address should be skipped")
 	}
 }
 

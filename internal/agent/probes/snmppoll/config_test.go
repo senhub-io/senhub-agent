@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -95,6 +96,86 @@ func TestParseConfig_Errors(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			_, err := parseConfig(c.raw)
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", c.wantSub)
+			}
+			if !strings.Contains(err.Error(), c.wantSub) {
+				t.Errorf("error = %q, want substring %q", err.Error(), c.wantSub)
+			}
+		})
+	}
+}
+
+func TestParseConfig_Discovery(t *testing.T) {
+	cfg, err := parseConfig(map[string]interface{}{
+		"target": "10.0.0.1",
+		"mibs":   []interface{}{"if-mib"},
+		"discovery": map[string]interface{}{
+			"seeds":         []interface{}{"10.0.0.1", "10.0.0.2"},
+			"profile":       map[string]interface{}{"version": "v2c", "community": "discover-ro"},
+			"allowed_cidrs": []interface{}{"10.0.0.0/8", "192.168.0.0/16"},
+			"max_hops":      6, // override; max_devices defaults
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	d := cfg.Discovery
+	if d == nil {
+		t.Fatal("discovery is nil")
+	}
+	if len(d.Seeds) != 2 || d.Seeds[0] != "10.0.0.1" {
+		t.Errorf("seeds = %+v", d.Seeds)
+	}
+	if d.Profile.Version != "v2c" || d.Profile.Community != "discover-ro" {
+		t.Errorf("profile = %+v", d.Profile)
+	}
+	if len(d.AllowedCIDRs) != 2 {
+		t.Fatalf("allowed_cidrs = %d, want 2", len(d.AllowedCIDRs))
+	}
+	if !d.AllowedCIDRs[0].Contains(net.ParseIP("10.255.1.1")) {
+		t.Error("10.0.0.0/8 should contain 10.255.1.1")
+	}
+	if d.MaxHops != 6 {
+		t.Errorf("max_hops = %d, want 6", d.MaxHops)
+	}
+	if d.MaxDevices != defaultMaxDevices {
+		t.Errorf("max_devices = %d, want default %d", d.MaxDevices, defaultMaxDevices)
+	}
+}
+
+func TestParseConfig_DiscoveryAbsentIsNil(t *testing.T) {
+	cfg, err := parseConfig(map[string]interface{}{"target": "10.0.0.1", "mibs": []interface{}{"if-mib"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Discovery != nil {
+		t.Errorf("discovery should be nil when absent, got %+v", cfg.Discovery)
+	}
+}
+
+func TestParseConfig_DiscoveryErrors(t *testing.T) {
+	base := func(disc map[string]interface{}) map[string]interface{} {
+		return map[string]interface{}{"target": "10.0.0.1", "mibs": []interface{}{"if-mib"}, "discovery": disc}
+	}
+	goodProfile := map[string]interface{}{"version": "v2c", "community": "ro"}
+	cases := []struct {
+		name    string
+		disc    map[string]interface{}
+		wantSub string
+	}{
+		{"no seeds", map[string]interface{}{"profile": goodProfile, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "seeds is required"},
+		{"bad seed ip", map[string]interface{}{"seeds": []interface{}{"not-an-ip"}, "profile": goodProfile, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "not a valid IP"},
+		{"no profile", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "discovery.profile is required"},
+		{"no community", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": map[string]interface{}{"version": "v2c"}, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "community is required"},
+		{"v3 rejected", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": map[string]interface{}{"version": "v3", "community": "ro"}, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "SNMPv3 is not supported"},
+		{"no allowed_cidrs", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": goodProfile}, "allowed_cidrs is required"},
+		{"bad cidr", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": goodProfile, "allowed_cidrs": []interface{}{"10.0.0.0/99"}}, "not a valid CIDR"},
+		{"zero max_devices", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": goodProfile, "allowed_cidrs": []interface{}{"10.0.0.0/8"}, "max_devices": 0}, "max_devices must be positive"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := parseConfig(base(c.disc))
 			if err == nil {
 				t.Fatalf("expected error containing %q, got nil", c.wantSub)
 			}
