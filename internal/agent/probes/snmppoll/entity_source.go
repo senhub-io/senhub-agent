@@ -16,8 +16,8 @@ import (
 // (network.device.id, interface.name, route.destination) are the Toise-frozen
 // contract — see SNMP-OTEL-MAPPING.md Layer 2′; id-format decisions live in
 // resolveDeviceID (lldp.go). LLDP adjacency is emitted as bare connected_to
-// between the port entities; forwards_to (bridge FDB) is the last edge still in
-// the legacy device-to-device form.
+// between the port entities. The legacy device-to-device edges (adjacent_to,
+// routes_via, forwards_to) are gone — all replaced by the entity forms.
 
 const (
 	entityTypeNetworkDevice    = "network.device"
@@ -36,7 +36,6 @@ const (
 	relHasRoute                = "has_route"
 	relHasInterface            = "has_interface"
 	relBoundTo                 = "bound_to"
-	relForwardsTo              = "forwards_to"
 
 	// Polled-device identity OIDs (dotted, no leading dot).
 	oidEntPhysicalSerialNum = "1.3.6.1.2.1.47.1.1.1.1.11" // ENTITY-MIB (per physical entity)
@@ -148,12 +147,6 @@ func (s *snmpEntitySource) sweep(client snmpClient) (entity.Observation, string,
 			Msg("routing walk failed; emitting device without routes")
 		routes = nil
 	}
-	fdb, err := collectFDB(client)
-	if err != nil {
-		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
-			Msg("FDB walk failed; emitting device without forwards_to")
-		fdb = nil
-	}
 	ifaces, err := collectInterfaces(client)
 	if err != nil {
 		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
@@ -178,7 +171,7 @@ func (s *snmpEntitySource) sweep(client snmpClient) (entity.Observation, string,
 			}
 		}
 	}
-	return buildObservation(self, topo, routes, fdb, ifaces, addrs), deviceID, ifNames
+	return buildObservation(self, topo, routes, ifaces, addrs), deviceID, ifNames
 }
 
 // readSelfIdentity reads the polled device's identifiers in the Toise-frozen
@@ -285,16 +278,12 @@ func asString(v any) string {
 //     (has_interface), oper.state / speed descriptive; the port inventory that
 //     anchors connected_to;
 //   - network.route — one entity per distinct destination CIDR the device owns
-//     (has_route), next hop a scalar next_hop.ip; supersedes routes_via, no
-//     next-hop device synthesized (network.address deferred);
-//   - adjacent_to — one directed edge polled→neighbour (no reciprocal); legacy
-//     device-to-device form, pending the connected_to migration;
-//   - forwards_to — bridge FDB, restricted to MACs confirmed to be network
-//     devices (LLDP neighbour chassis MACs); host MACs are out of scope and
-//     would flood the graph. Legacy form, pending connected_to.
+//     (has_route), next hop a scalar next_hop.ip;
+//   - connected_to — bare port-to-port link adjacency from LLDP (supersedes the
+//     legacy adjacent_to / forwards_to device-to-device edges, now retired).
 //
 // Returns empty when the device cannot be identified (no usable id rung).
-func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, fdb []fdbEntry, ifaces []ifaceRow, addrs []ipAddr) entity.Observation {
+func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, ifaces []ifaceRow, addrs []ipAddr) entity.Observation {
 	selfID := resolveDeviceID(self)
 	if selfID == "" {
 		return entity.Observation{}
@@ -333,14 +322,6 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
 			ToType: entityTypeNetworkInterface, ToID: portID,
 		})
-	}
-
-	// Confirmed network devices (LLDP neighbour chassis MACs) — gates forwards_to.
-	deviceMACs := map[string]bool{}
-	for _, n := range topo.Neighbors {
-		if n.ChassisIdSubtype == subtypeMacAddress {
-			deviceMACs["mac:"+macHex(n.ChassisId)] = true
-		}
 	}
 
 	// interface.name lookups for connected_to: prefer the IF-MIB ifName so the
@@ -433,23 +414,6 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 			Type:     relHasRoute,
 			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
 			ToType: entityTypeNetworkRoute, ToID: routeID,
-		})
-	}
-
-	// forwards_to — FDB entries whose MAC is a confirmed device (endpoint
-	// entity already emitted by adjacent_to). Host MACs are filtered out.
-	emittedFwd := map[string]bool{}
-	for _, e := range fdb {
-		id := "mac:" + e.MAC
-		if id == selfID || !deviceMACs[id] || emittedFwd[id] {
-			continue
-		}
-		emittedFwd[id] = true
-		obs.Relations = append(obs.Relations, entity.Relation{
-			Type:     relForwardsTo,
-			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
-			ToType: entityTypeNetworkDevice, ToID: deviceKey(id),
-			Attributes: map[string]any{"source": "snmp", "bridge_port": e.BridgePort},
 		})
 	}
 
