@@ -91,6 +91,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// SNMP polling — one series per (target, interface row); metric_type
 	// separates interface / system / status families.
+	"http_check": {"target", "metric_type"},
 	"icmp_check": {"target", "metric_type"},
 	"snmp_poll":  {"instance", "if_index", "metric_type"},
 
