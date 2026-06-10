@@ -130,6 +130,13 @@ type ProbeDefinition struct {
 	Metrics      []MetricDefinition     `yaml:"metrics"`
 	TagMetadata  map[string]TagMetadata `yaml:"tag_metadata,omitempty" json:"tag_metadata"`
 
+	// MultiInstanceLabels at the definition level are a default applied
+	// to every metric, merged with each metric's own list. Definitions
+	// like snmp_poll template {instance} into most display names; the
+	// definition-level list used to be silently ignored, leaving the
+	// literal placeholder in rendered channels (#317).
+	MultiInstanceLabels []string `yaml:"multi_instance_labels,omitempty"`
+
 	// HostLevel marks probes that observe the local host (CPU, memory,
 	// network interfaces, filesystem of the agent's machine). When the
 	// Prometheus endpoint is configured with expose_host_metrics: false,
