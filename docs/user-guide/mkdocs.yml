@@ -103,6 +103,7 @@ nav:
       - Network: probes/network.md
       - Logical disk: probes/logicaldisk.md
       - Linux logs: probes/linux-logs.md
+      - ICMP check: probes/icmp-check.md
       - Citrix: probes/citrix.md
       - NetScaler: probes/netscaler.md
       - Redfish: probes/redfish.md

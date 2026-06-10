@@ -24,6 +24,7 @@ and form the baseline for every install.
 - **[Network](network.md)** *(Free)* — Per-interface throughput, packet, error and discard rates (gauge, bytes per second)
 - **[Logical Disk](logicaldisk.md)** *(Free)* — Filesystem capacity (total / used / free / available), inode usage; APFS firmlinks filtered on macOS
 - **[Linux Logs](linux-logs.md)** *(Free, Linux only)* — Local systemd journal subscription, OTLP log push
+- **[ICMP Check](icmp-check.md)** *(Free)* — Multi-target ping: reachability, packet loss, RTT statistics
 
 ## Synthetic Monitoring
 
