@@ -1,0 +1,32 @@
+probe_name: "snmp_trap"
+friendly_name: "SNMP Trap Receiver"
+version: "1.0.0"
+host_level: false
+
+# The trap payloads themselves ride the OTLP log rail (this probe is a
+# log conduit); Collect() only emits the receiver's self-metrics —
+# added by #263 when community validation and per-datagram panic
+# recovery landed.
+
+metrics:
+  - name: "senhub.snmp_trap.rejected_community"
+    channel: "snmp_trap_rejected_community"
+    display_name: "Rejected Community"
+    unit: "#"
+    category: "status"
+    description: "Datagrams rejected because their v1/v2c community did not match the configured one"
+    otel:
+      name: senhub.snmp_trap.rejected_community
+      unit: "{datagram}"
+      type: counter
+
+  - name: "senhub.snmp_trap.decode_panics"
+    channel: "snmp_trap_decode_panics"
+    display_name: "Decode Panics"
+    unit: "#"
+    category: "status"
+    description: "Decoder/handler panics recovered while processing received datagrams"
+    otel:
+      name: senhub.snmp_trap.decode_panics
+      unit: "{panic}"
+      type: counter
