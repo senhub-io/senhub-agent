@@ -3,13 +3,13 @@
 // Mode model (0.2.0+): the agent runs offline only. The following CLI
 // flags were removed in 0.2.0 and now produce a parse error if passed:
 //
-//   --offline           (was: enable offline mode; offline is now the only mode)
-//   --authentication-key  (was: agent identity key — now read from the
-//                          config file only, generated at install time)
-//   --server-url          (was: SaaS configuration server URL — no longer
-//                          reached; the cloud intake URL used by the
-//                          senhub data-push strategy is build-time
-//                          injected via ldflags)
+//	--offline           (was: enable offline mode; offline is now the only mode)
+//	--authentication-key  (was: agent identity key — now read from the
+//	                       config file only, generated at install time)
+//	--server-url          (was: SaaS configuration server URL — no longer
+//	                       reached; the cloud intake URL used by the
+//	                       senhub data-push strategy is build-time
+//	                       injected via ldflags)
 //
 // Operators who still pass any of these flags from a systemd unit or
 // Windows service ExecStart MUST update those before upgrading to

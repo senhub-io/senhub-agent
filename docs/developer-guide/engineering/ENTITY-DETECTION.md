@@ -8,9 +8,9 @@ events** (and, as an explicit extension, relation events). Tracks issue
 > **Vendor-neutral.** The agent emits standard OTel entity events (OTel
 > Entity Data Model). The SenHub *Toise* platform is one consumer that
 > ingests them to build a temporal infrastructure graph — nothing here is
-> Toise-specific. Relations use a **neutral** `entity.relation.*` namespace
-> (not `senhub.*`, not `toise.*`, not the reserved `otel.*`). See
-> `feedback_agent_vendor_neutral`.
+> Toise-specific. Relations are **embedded** in the source entity's state via
+> the standard `entity.relationships` array (merged OTel entity-events spec),
+> not a `senhub.*` / `toise.*` extension. See `feedback_agent_vendor_neutral`.
 
 ## 0. Contract status (frozen 2026-06-01)
 
@@ -23,9 +23,9 @@ agent's encoder MUST reproduce that fixture's shapes.
 Agreed:
 - **Nodes = pure standard OTel entity events.** `entity_state` /
   `entity_delete`.
-- **Relations = neutral `entity.relation.*` extension** (`relation_state` /
-  `relation_delete`), migrate to the OTel standard when the relationship
-  spec lands (it's OTel Future Work today).
+- **Relations = embedded `entity.relationships`** on the source entity's
+  state (merged OTel entity-events spec). Bare descriptors (target only),
+  retired by absence — no separate edge record, no edge delete.
 - **Exact, immutable identity** — no fuzzy matching. Never put a mutable
   value (pid, leased IP) in identity; those are descriptive attributes. A
   restart is an `attribute` update, not an identity change.
@@ -36,12 +36,10 @@ Agreed:
 - **Bi-temporal:** `event_time` = LogRecord timestamp; `recorded_at` set by
   the consumer (never sent).
 
-Open micro-points: (1) relation discriminant — we recommend the strict
-`entity.relation.event.type=state|delete` over the fixture's current
-`otel.entity.event.type=relation_state` (keeps relation records free of any
-`otel.entity.*`, so a standard OTel consumer never sees a malformed entity
-event); pending Toise regen. (2) the agent→its-own-host edge: `runs_on`,
-`monitors`, or both. (3) `network.device` id — frozen at Lot 5.
+Open micro-points: (1) the agent→its-own-host edge: `runs_on`, `monitors`,
+or both. (2) `network.device` id — frozen at Lot 5. (The earlier relation
+discriminant point is closed: edges are embedded in `entity.relationships`,
+lot 0b, so there is no separate relation record to discriminate.)
 
 ## 1. Two detection planes
 
@@ -55,8 +53,8 @@ topology discovery** from everything the probes can read.
 
 The value for a temporal graph is in the **edges** (relations). Topology
 discovery makes the agent a *sensor of the infrastructure graph*, not just a
-reporter of its own configuration. Note relations are a non-standard
-extension today (§4) — emitted deliberately, isolated, migratable.
+reporter of its own configuration. Edges ride embedded on the source entity's
+state (§4, `entity.relationships`).
 
 ## 2. Data model
 
@@ -77,12 +75,22 @@ Agreed identities:
 | `db` | `db.instance.id` | **single composite string** e.g. `pg@10.0.1.5:5432`. `db.system.name`, `server.address`, `server.port` descriptive. |
 | `network.device` | `network.device.id` | LLDP chassis-id, fallback mgmt IP. Frozen at Lot 5. |
 
-### Relation (neutral extension)
-A typed directed edge: `type` + `from.{type,id}` + `to.{type,id}` +
-optional `attributes`. Agreed types: `runs_on`, `monitors`, `routes_via`,
-`forwards_to`, `adjacent_to`. **Endpoints resolved by exact identity** — the
-encoder MUST emit both endpoint entities (current identity) before/with the
-edge; Toise reconciles out-of-order arrivals within a window.
+### Relation (embedded)
+A typed directed edge, embedded in the source entity's state. Internally a
+producer reports a flat `Relation` (`type` + `from.{type,id}` +
+`to.{type,id}`); the detector folds it onto the source entity as a bare
+`entity.relationships` descriptor (`relationship.type` + target `entity.type`
++ target `entity.id`). Agreed types: `runs_on`, `monitors`, `has_interface`,
+`has_route`, `connected_to` (topology-as-entities, ADR 0022). The device-level
+`routes_via` / `adjacent_to` / `forwards_to` are **legacy/not emitted** —
+superseded by `network.route` + `has_route`, port-to-port `connected_to`, and
+`connected_to` to the learned port respectively (the frontier still accepts
+them, but producers emit the entity form). **Endpoints resolved by exact identity** — the
+producer MUST emit the source-endpoint entity in the same observation (the
+fold drops an edge with no source entity, with a warning); the target entity
+is emitted before/with the edge and Toise reconciles out-of-order arrivals.
+Edge attributes are **not** carried on the wire (bare embed) — a persistent
+fact belongs on an entity.
 
 ## 3. Detection sources
 1. **Host self-info** → the `host` entity (`common.GetHostTags()` + `host.id`).
@@ -92,10 +100,17 @@ edge; Toise reconciles out-of-order arrivals within a window.
 3. **Datapoint-stream resource tags** → sub-component entities. The
    transformer `tag_metadata` `type: resource` set already *is* an entity
    identity → generic synthesis, no per-probe code.
-4. **Host network tables** (topology, now) → discovered devices + relations
-   (routing → `routes_via`, ARP/neighbour → `adjacent_to`).
-5. **SNMP topology MIBs** (with #156) → LLDP/CDP (`adjacent_to`), BRIDGE-MIB
-   FDB (`forwards_to`), ipCidrRouteTable (`routes_via`).
+4. **Host routing table** (topology, now — #212) → the host's routes as
+   `network.route` entities `{host.id, route.destination}`, attached by
+   `has_route` (host → route). The gateway is a shared `network.address` node
+   the route reaches via `next_hop_via` (plus a scalar `next_hop.ip`).
+5. **SNMP topology MIBs** (with #156) → ports as `network.interface` entities
+   (`has_interface`), link adjacency as port-to-port `connected_to`, routing as
+   `network.route` + `has_route`, interface IPs as `network.address` entities
+   (`bound_to`). **Host↔device join:** the host's `next_hop_via` and the
+   device's `bound_to` reference the **same** `network.address {ip}` node, so a
+   host's gateway resolves to the polled device's interface — the two topology
+   planes reconcile by exact IP.
 
 ## 4. Encoding — LogRecords
 
@@ -104,37 +119,65 @@ Events travel as OTLP `LogRecord`s on the existing log rail:
 **No new transport wiring.** One isolated encoder owns all wire shape so OTel
 spec churn is contained.
 
-**Entity event** (`entity_state` / `entity_delete`):
-- `otel.entity.event.type` = `entity_state` | `entity_delete`
-- `otel.entity.type` = string
-- `otel.entity.id` = kvlist (scalar leaves, dotted keys) — **self-contained**
+**Entity event** — merged OTel entity-events spec, frozen with Toise
+(#222, lots 0a + 0b). The event kind is the **LogRecord `EventName`**, not a
+payload attribute; node attributes use **bare keys** (no `otel.entity.*`):
+- `EventName` = `entity.state` | `entity.delete`
+- `entity.type` = string
+- `entity.id` = kvlist (scalar leaves, dotted keys) — **self-contained**
   (identity lives here, not referenced from the resource)
-- `otel.entity.attributes` = kvlist (scalar leaves; omitted on delete)
-- LogRecord timestamp = `event_time`; `Interval` emitted for the TTL backstop
-- Scope flag `otel.entity.entity_event=true` set (accepted; consumers may
-  ignore it — never rejected)
+- `entity.description` = kvlist (scalar leaves; omitted on delete) — the
+  descriptive attributes (formerly `otel.entity.attributes`)
+- `entity.report.interval` = int **seconds** (TTL backstop; state only)
+- `entity.relationships` = array of bare descriptors (state only; see below)
+- LogRecord timestamp = `event_time`
+- Scope flag `otel.entity.entity_event=true` still set (contrib fast-path
+  filter convention; Toise ignores it). Its removal is tracked separately
+  from the record encoding.
 
-**Relation event** (`relation_state` / `relation_delete`), neutral namespace:
-- `entity.relation.event.type` = `state` | `delete`  *(recommended; pending
-  Toise — fixture currently overloads `otel.entity.event.type`)*
-- `entity.relation.type`, `entity.relation.from.{type,id}`,
-  `entity.relation.to.{type,id}`, optional `entity.relation.attributes`
-- carries **no** `otel.entity.*` attribute → invisible to standard OTel
-  entity consumers
+**Relationships are embedded, not separate records** (#222, lot 0b). The
+source entity's `entity.state` carries its outgoing edges in
+`entity.relationships`, each a bare kvlist naming **only the target** (the
+source is the carrying entity):
+- `relationship.type` = string (`runs_on`, `monitors`, `routes_via`, …)
+- `entity.type` = target entity type
+- `entity.id` = target entity identity (kvlist, scalar leaves)
+
+There are **no** `entity.relation.*` records and **no edge delete** on the
+wire: the set is full on every heartbeat, so an edge the source stops listing
+is **retired by absence**. The embedded descriptor is **bare** — no edge
+attributes; a fact that must persist (a route metric, a port) belongs on an
+entity, never on the edge. The detector folds the flat `Relation`s a `Source`
+reports onto their source entity (matched by the `from` endpoint); a relation
+whose source entity is absent this cycle is logged, never silently dropped.
 
 Values restricted to scalars (`string`/`int64`/`double`/`bool`); maps are
-flat (dotted keys), never nested. The encoder rejects/warns on a non-scalar
-leaf — never silently drops.
+flat (dotted keys), never nested (relationship descriptors are the one fixed
+two-level shape). The encoder rejects/warns on a non-scalar leaf — never
+silently drops.
 
-## 5. host.id — stable host identity (prerequisite)
-`common.GetHostTags()` emits `host`/`os`/`platform` only; gopsutil `HostID`
-is commented out. Activate it as the host entity's `host.id`. It is
-**mandatory on the entity-event record** as `otel.entity.id = {host.id: …}` —
-the consumer reads identity off the record, not the resource (a record with
-no `otel.entity.id` is rejected). Putting `host.id`/`host.name` in the **OTLP
-resource** too is optional (OTel resource semantics). Never emit it as a
-per-datapoint tag (a constant tag on every metric would only pollute
-PRTG/Prometheus labels).
+## 5. host.id — stable host identity + telemetry correlation
+gopsutil `HostID` is the host entity's `host.id`. It is **mandatory on the
+entity-event record** as `entity.id = {host.id: …}` — the consumer reads
+identity off the record, not the resource (a record with no `entity.id` is
+rejected).
+
+**It is also emitted on the OTLP resource** of every signal the agent produces,
+via `common.GetHostResourceAttributes()` (`host.id` + `host.name` / `host.arch`
+/ `os.type` / `os.description` / `os.name` / `os.version` / `os.build_id`, OTel
+resource semconv) → `buildResource`. This is **not optional**: it is the join
+that lets a backend correlate the host **node** in the infra graph with the
+host's **metrics and logs** (same `host.id` on the entity and on the telemetry
+resource). Operator `global_tags` / `resource:` Extra of the same key override
+the detected value (host attrs are lowest precedence). Never emit `host.id` as a
+per-datapoint tag — it belongs on the resource, not on every metric (it would
+only pollute PRTG/Prometheus labels).
+
+Remote targets (SNMP devices, DBs) do **not** ride the agent's host resource:
+their identity (`network.device.id`, `db.instance.id`) is a **per-metric**
+attribute, so a device's interface metric joins to its `network.interface`
+entity by those metric attributes, not by the resource (which always describes
+the agent's own host).
 
 ## 6. Lifecycle tracker (required)
 Because liveness is delete-driven, the emitter keeps a store of currently-known
@@ -143,9 +186,11 @@ entities/relations and their last-emitted descriptive state. It emits:
   configurable cadence aligned with the OTLP push interval);
 - `entity_delete` when an entity is no longer detected (config removed,
   target unreachable, instance gone);
-- the same state/delete model for relations.
-`Interval` is emitted so a consumer can expire entities/edges if a delete is
-lost (crash, kill -9, partition).
+- relationships need no separate lifecycle: they ride embedded on the source
+  entity's heartbeat and are retired by absence (dropped from one state to the
+  next), so the tracker reconciles **entities only**.
+`Interval` is emitted so a consumer can expire entities if a delete is lost
+(crash, kill -9, partition); an edge expires with its source entity.
 
 ## 6b. Multiple producers, same entity
 
@@ -173,9 +218,10 @@ Two consequences, frozen with the Toise team:
   resource, so it is a Toise-only change). Deferred; documented as a known
   phase-1 limitation.
 
-Relations carry **no** interval: an edge expires when one of its endpoints
-expires or is deleted (consumer-side cascade); `relation_delete` removes an
-edge whose endpoints are still alive.
+Relations carry **no** interval and no explicit delete: an embedded edge
+expires when its source entity expires or is deleted (consumer-side cascade),
+and is retired by absence when the source's heartbeat stops listing it (e.g.
+an edge whose target was removed while the source stays alive).
 
 ## 7. Phasing (rollout aligned with Toise)
 - **Lot 1** — `host` + `service.instance` entities + `runs_on`. host.id
@@ -183,11 +229,16 @@ edge whose endpoints are still alive.
   M4's synthetic producer).
 - **Lot 2** — `db` entity + `monitors`.
 - **Lot 3** — datapoint-stream sub-components (generic from `resource` tags).
-- **Lot 4** — host network tables → discovered devices + `routes_via`/`adjacent_to`.
-- **Lot 5** — `network.device` + SNMP topology (`routes_via`/`forwards_to`/
-  `adjacent_to`); depends on #156. Freezes `network.device.id`.
+- **Lot 4** — host routing table → `network.route` entities owned by the host
+  (`has_route`, scalar `next_hop.ip`); #212. Interfaces (`network.interface` +
+  `has_interface`) follow as a sub-lot.
+- **Lot 5** — `network.device` + SNMP topology in the entity form
+  (`network.interface`/`connected_to`, `network.route`/`has_route`); depends on
+  #156. Freezes `network.device.id`.
 
 ## 8. Open questions
-- Relation discriminant final form (see §0/§4) — pending Toise regen.
 - agent→own-host edge: `runs_on` vs `monitors` vs both.
 - De-dup / change-detection store internals for the lifecycle tracker.
+- Re-homing the dropped edge attributes (host-route `source`, SNMP
+  `local_port`/`remote_port`/route `metric`) onto entities — the bare embed
+  drops them today; tracked in #239 (carried by the topology remodel #212/#156).

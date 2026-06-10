@@ -9,30 +9,28 @@ import (
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
-// Entity-event wire attribute keys (frozen with the Toise team — see
-// docs/developer-guide/engineering/ENTITY-DETECTION.md). Nodes use the
-// standard OTel entity-event keys; edges use the neutral entity.relation.*
-// extension so a relation record carries no otel.entity.* attribute and a
-// standard OTel entity consumer ignores it cleanly.
+// Entity-event wire encoding, frozen with Toise on the merged OTel
+// entity-events spec (#222). A node event's kind is the LogRecord
+// EventName (entity.state / entity.delete); node attributes use bare keys
+// (entity.type / entity.id / entity.description / entity.report.interval),
+// no otel.entity.* prefix and no event-type payload attribute.
+//
+// Edges are embedded in the source entity's state via entity.relationships: an
+// array of bare descriptors {relationship.type, entity.type, entity.id} naming
+// the target only (the source is the carrying entity). There are no separate
+// relation records and no edge delete — a relation a heartbeat stops listing
+// is retired by absence.
 const (
-	attrEntityEventType = "otel.entity.event.type"
-	attrEntityType      = "otel.entity.type"
-	attrEntityID        = "otel.entity.id"
-	attrEntityAttrs     = "otel.entity.attributes"
-	attrEntityInterval  = "otel.entity.interval"
+	eventNameEntityState  = "entity.state"
+	eventNameEntityDelete = "entity.delete"
 
-	attrRelEventType = "entity.relation.event.type"
-	attrRelType      = "entity.relation.type"
-	attrRelFromType  = "entity.relation.from.type"
-	attrRelFromID    = "entity.relation.from.id"
-	attrRelToType    = "entity.relation.to.type"
-	attrRelToID      = "entity.relation.to.id"
-	attrRelAttrs     = "entity.relation.attributes"
+	attrEntityType           = "entity.type"
+	attrEntityID             = "entity.id"
+	attrEntityDescription    = "entity.description"
+	attrEntityReportInterval = "entity.report.interval"
 
-	entityEventStateValue    = "entity_state"
-	entityEventDeleteValue   = "entity_delete"
-	relationEventStateValue  = "state"
-	relationEventDeleteValue = "delete"
+	attrEntityRelationships = "entity.relationships"
+	attrRelationshipType    = "relationship.type"
 )
 
 // buildEntityRecord encodes a neutral entity.Event into the OTel log Record
@@ -55,9 +53,11 @@ func buildEntityRecord(ev entity.Event) (log.Record, error) {
 		if e == nil {
 			return rec, fmt.Errorf("entity event kind %d has nil Entity", ev.Kind)
 		}
-		eventType := entityEventStateValue
+		// The event kind is the LogRecord EventName, not a payload attribute.
 		if ev.Kind == entity.EntityDelete {
-			eventType = entityEventDeleteValue
+			rec.SetEventName(eventNameEntityDelete)
+		} else {
+			rec.SetEventName(eventNameEntityState)
 		}
 		id, err := scalarMap(attrEntityID, e.ID)
 		if err != nil {
@@ -65,57 +65,33 @@ func buildEntityRecord(ev entity.Event) (log.Record, error) {
 		}
 		// type AND id are required on both state and delete.
 		attrs = []log.KeyValue{
-			log.String(attrEntityEventType, eventType),
 			log.String(attrEntityType, e.Type),
 			id,
 		}
 		if ev.Kind == entity.EntityState && len(e.Attributes) > 0 {
-			a, err := scalarMap(attrEntityAttrs, e.Attributes)
+			a, err := scalarMap(attrEntityDescription, e.Attributes)
 			if err != nil {
 				return rec, err
 			}
 			attrs = append(attrs, a)
 		}
-		// Liveness backstop: the heartbeat validity window in milliseconds.
-		// The consumer arms a deadline (last_seen + interval) and expires
-		// the entity if no heartbeat or explicit delete arrives — covers
-		// producers that die without a clean delete (kill -9, partition).
-		// Emitted on state only; a delete needs no interval.
+		// Liveness backstop: the heartbeat validity window. The consumer
+		// arms a deadline (last_seen + interval) and expires the entity if
+		// no heartbeat or explicit delete arrives — covers producers that
+		// die without a clean delete (kill -9, partition). Emitted on state
+		// only, in SECONDS per the merged spec; a delete needs no interval.
 		if ev.Kind == entity.EntityState && ev.Interval > 0 {
-			attrs = append(attrs, log.Int64(attrEntityInterval, ev.Interval.Milliseconds()))
+			attrs = append(attrs, log.Int64(attrEntityReportInterval, int64(ev.Interval.Seconds())))
 		}
-
-	case entity.RelationState, entity.RelationDelete:
-		r := ev.Relation
-		if r == nil {
-			return rec, fmt.Errorf("relation event kind %d has nil Relation", ev.Kind)
-		}
-		eventType := relationEventStateValue
-		if ev.Kind == entity.RelationDelete {
-			eventType = relationEventDeleteValue
-		}
-		from, err := scalarMap(attrRelFromID, r.FromID)
-		if err != nil {
-			return rec, err
-		}
-		to, err := scalarMap(attrRelToID, r.ToID)
-		if err != nil {
-			return rec, err
-		}
-		attrs = []log.KeyValue{
-			log.String(attrRelEventType, eventType),
-			log.String(attrRelType, r.Type),
-			log.String(attrRelFromType, r.FromType),
-			from,
-			log.String(attrRelToType, r.ToType),
-			to,
-		}
-		if ev.Kind == entity.RelationState && len(r.Attributes) > 0 {
-			a, err := scalarMap(attrRelAttrs, r.Attributes)
+		// Embedded outgoing edges. State only — a delete retires the whole
+		// node, relationships included. The set is full each heartbeat;
+		// removal is by absence (no edge delete on the wire).
+		if ev.Kind == entity.EntityState && len(e.Relationships) > 0 {
+			rels, err := relationshipsValue(e.Relationships)
 			if err != nil {
 				return rec, err
 			}
-			attrs = append(attrs, a)
+			attrs = append(attrs, rels)
 		}
 
 	default:
@@ -126,9 +102,38 @@ func buildEntityRecord(ev entity.Event) (log.Record, error) {
 	return rec, nil
 }
 
+// relationshipsValue encodes the embedded entity.relationships array: one bare
+// descriptor per outgoing edge, in producer order (the consumer treats it as a
+// set, so order is not significant).
+func relationshipsValue(rels []entity.Relationship) (log.KeyValue, error) {
+	vals := make([]log.Value, 0, len(rels))
+	for _, rel := range rels {
+		idKVs, err := scalarKVs(rel.TargetID)
+		if err != nil {
+			return log.KeyValue{}, fmt.Errorf("%s[%s→%s]: %w", attrEntityRelationships, rel.Type, rel.TargetType, err)
+		}
+		vals = append(vals, log.MapValue(
+			log.String(attrRelationshipType, rel.Type),
+			log.String(attrEntityType, rel.TargetType),
+			log.Map(attrEntityID, idKVs...),
+		))
+	}
+	return log.Slice(attrEntityRelationships, vals...), nil
+}
+
 // scalarMap builds a kvlist log attribute from a flat map of scalar values,
 // keys sorted for deterministic output.
 func scalarMap(key string, m map[string]any) (log.KeyValue, error) {
+	kvs, err := scalarKVs(m)
+	if err != nil {
+		return log.KeyValue{}, fmt.Errorf("%s%w", key, err)
+	}
+	return log.Map(key, kvs...), nil
+}
+
+// scalarKVs renders a flat map of scalar values to sorted log.KeyValues. The
+// returned error is prefixed with [key] so a caller can name the field.
+func scalarKVs(m map[string]any) ([]log.KeyValue, error) {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -139,11 +144,11 @@ func scalarMap(key string, m map[string]any) (log.KeyValue, error) {
 	for _, k := range keys {
 		kv, err := scalarKV(k, m[k])
 		if err != nil {
-			return log.KeyValue{}, fmt.Errorf("%s[%s]: %w", key, k, err)
+			return nil, fmt.Errorf("[%s]: %w", k, err)
 		}
 		kvs = append(kvs, kv)
 	}
-	return log.Map(key, kvs...), nil
+	return kvs, nil
 }
 
 // scalarKV converts a single scalar value to a log.KeyValue. Only the four

@@ -17,6 +17,7 @@ package otlp
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -219,6 +220,13 @@ type ResourceConfig struct {
 // Populated by ParseConfig; consumed by the strategy and exporter wiring.
 type Config struct {
 	Endpoint string
+	// FallbackEndpoints are standby OTLP ingresses tried in order when the
+	// primary Endpoint is failing (#217 resilience layer 2). Empty = no
+	// failover (single endpoint). The agent prefers the primary and falls
+	// back on a failed export, returning to the primary automatically once
+	// it recovers (a per-endpoint cooldown avoids re-probing a dead one
+	// every cycle).
+	FallbackEndpoints []string
 	// Protocol selects the OTLP transport: "grpc" (default) or "http",
 	// the two transports defined by the OTel protocol spec. It applies
 	// to all three signals — a per-signal override is not supported
@@ -286,6 +294,10 @@ type Config struct {
 type PersistenceConfig struct {
 	Path     string        // empty = disabled (no checkpoint)
 	Interval time.Duration // save cadence; falls back to default if 0
+	// LogsQueueMaxBytes caps the on-disk dead-letter queue for the logs
+	// signal (#217). 0 = built-in default (128 MiB). Beyond it the oldest
+	// batches are evicted (reason="logs_queue_full").
+	LogsQueueMaxBytes int64
 }
 
 // MemoryLimitConfig configures the OTLP strategy's heap pressure
@@ -397,6 +409,18 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 
 	if v, ok := params["endpoint"].(string); ok && v != "" {
 		cfg.Endpoint = expandEnv(v)
+	}
+
+	if raw, ok := params["fallback_endpoints"].([]interface{}); ok {
+		for _, item := range raw {
+			s, ok := item.(string)
+			if !ok {
+				return cfg, fmt.Errorf("fallback_endpoints entries must be strings")
+			}
+			if s = expandEnv(strings.TrimSpace(s)); s != "" {
+				cfg.FallbackEndpoints = append(cfg.FallbackEndpoints, s)
+			}
+		}
 	}
 
 	if v, ok := params["protocol"].(string); ok && v != "" {
@@ -595,6 +619,12 @@ func parsePersistence(raw interface{}, out *PersistenceConfig) error {
 			return fmt.Errorf("interval must be >= 1s, got %v", d)
 		}
 		out.Interval = d
+	}
+	if v, ok := readInt(m["logs_queue_max_bytes"]); ok {
+		if v < 0 {
+			return fmt.Errorf("logs_queue_max_bytes must be >= 0, got %d", v)
+		}
+		out.LogsQueueMaxBytes = int64(v)
 	}
 	return nil
 }
