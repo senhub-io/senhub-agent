@@ -4,11 +4,11 @@ import "testing"
 
 func TestShouldUpdateTo(t *testing.T) {
 	tests := []struct {
-		name    string
-		current string
+		name     string
+		current  string
 		expected string
-		want    bool
-		wantErr bool
+		want     bool
+		wantErr  bool
 	}{
 		// The motivating regression: prod-release "latest" cannot
 		// downgrade a beta that is on a higher minor.

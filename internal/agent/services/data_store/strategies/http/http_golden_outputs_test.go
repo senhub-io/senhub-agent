@@ -165,9 +165,13 @@ func compareGolden(t *testing.T, path string, rendered []byte) {
 	if err != nil {
 		t.Fatalf("read golden %s (run with -update to create): %v", path, err)
 	}
-	if string(want) != string(rendered) {
+	// Normalize line endings: a checkout with eol conversion (or an
+	// editor) must not turn every comparison into a CRLF diff.
+	wantS := strings.ReplaceAll(string(want), "\r\n", "\n")
+	renderedS := strings.ReplaceAll(string(rendered), "\r\n", "\n")
+	if wantS != renderedS {
 		t.Errorf("output differs from %s — if the contract change is deliberate, regenerate with -update.\n--- got ---\n%s\n--- want ---\n%s",
-			path, truncateForDiff(rendered), truncateForDiff(want))
+			path, truncateForDiff([]byte(renderedS)), truncateForDiff([]byte(wantS)))
 	}
 }
 
