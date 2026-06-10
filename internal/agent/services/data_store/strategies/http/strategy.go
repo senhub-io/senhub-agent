@@ -88,6 +88,8 @@ type PRTGChannel struct {
 	Float           *int    `json:"float,omitempty"` // Pointer to make optional for lookup metrics
 	Unit            string  `json:"unit,omitempty"`
 	CustomUnit      string  `json:"customunit,omitempty"`
+	SpeedSize       string  `json:"speedsize,omitempty"` // Input scale for Speed* units (Byte, Bit, MegaBit, ...)
+	SpeedTime       string  `json:"speedtime,omitempty"` // Input period for Speed* units (Second, Minute, ...)
 	LimitMode       int     `json:"limitmode,omitempty"`
 	LimitMaxWarning float64 `json:"limitmaxwarning,omitempty"`
 	LimitMaxError   float64 `json:"limitmaxerror,omitempty"`
