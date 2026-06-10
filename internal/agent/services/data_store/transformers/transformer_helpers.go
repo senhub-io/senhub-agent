@@ -82,7 +82,10 @@ func (dt *DefinitionBasedTransformer) replaceTemplateVariablesWithDefinition(tem
 	// Process multi_instance_labels: the metric's own list first, then
 	// the definition-level defaults (e.g. snmp_poll declares
 	// {instance} once for the whole file) — #317.
-	labels := append(append([]string{}, def.MultiInstanceLabels...), dt.definition.MultiInstanceLabels...)
+	labels := append([]string{}, def.MultiInstanceLabels...)
+	if dt.definition != nil {
+		labels = append(labels, dt.definition.MultiInstanceLabels...)
+	}
 	for _, labelName := range labels {
 		placeholder := fmt.Sprintf("{%s}", labelName)
 		if strings.Contains(result, placeholder) {
