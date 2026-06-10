@@ -3,6 +3,7 @@ package data_store
 import (
 	"context"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -38,7 +39,13 @@ func (m *MockAgentConfig) GetServerUrl() string             { return m.serverURL
 func (m *MockAgentConfig) GetGlobalTags() map[string]string { return nil }
 
 // MockStrategy implements SyncStrategy for testing
+// MockStrategy records lifecycle and datapoint calls. It is mutex-
+// protected: production strategies synchronize internally, and tests
+// like the hot-reload regression hammer the same instance from several
+// callback goroutines — an unsynchronized mock made the race job
+// flaky on a race that only existed in the test double.
 type MockStrategy struct {
+	mu            sync.Mutex
 	name          string
 	params        map[string]interface{}
 	dataPoints    [][]datapoint.DataPoint
@@ -55,16 +62,28 @@ func (m *MockStrategy) ValidateConfigParams(configuration.StorageConfigParams) e
 	return m.validateError
 }
 func (m *MockStrategy) Start() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.started = true
 	return m.startError
 }
 func (m *MockStrategy) AddDataPoints(data []datapoint.DataPoint) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.dataPoints = append(m.dataPoints, data)
 	return m.addError
 }
 func (m *MockStrategy) Shutdown(context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.shutdown = true
 	return nil
+}
+
+func (m *MockStrategy) wasShutdown() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.shutdown
 }
 
 // MockStrategyRouter implements StrategyRouter for testing
@@ -422,10 +441,10 @@ func TestShutdown_WithStrategies(t *testing.T) {
 	}
 
 	// Verify both strategies were shutdown
-	if !strategy1.shutdown {
+	if !strategy1.wasShutdown() {
 		t.Error("Strategy1 was not shutdown")
 	}
-	if !strategy2.shutdown {
+	if !strategy2.wasShutdown() {
 		t.Error("Strategy2 was not shutdown")
 	}
 }
