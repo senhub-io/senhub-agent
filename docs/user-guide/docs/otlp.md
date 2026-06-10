@@ -258,6 +258,74 @@ resource attributes (service.name, service.instance.id, etc.) become
 Prometheus labels rather than being discarded — usually what operators
 want.
 
+### Single public intake for a fleet (collector-fronted)
+
+The recommended pattern for a fleet of agents across sites: every agent —
+local or remote — pushes its whole OTLP stream (metrics, logs, entities) to
+**one** public HTTPS endpoint, fronted by a reverse proxy that terminates TLS
+and forwards to a central collector. The collector authenticates the bearer
+token and fans out to the storage backends.
+
+Agent-side, the entire client configuration is one strategy fragment:
+
+```yaml
+# strategies.d/10-otlp.yaml
+otlp:
+  endpoint: "ingest.example.com:443"
+  tls:
+    enabled: true
+  headers:
+    Authorization: "Bearer ${env:OTLP_BEARER_TOKEN}"
+  compression: gzip
+  timeout: 60s
+  signals:
+    metrics:
+      enabled: true
+      interval: 30s
+    logs:
+      enabled: true
+    entities:
+      enabled: true
+      interval: 5m
+  resource:
+    service.name: my-host-prod        # one value per agent
+    deployment.environment: prod
+```
+
+Notes:
+
+- **One URL, one token, three signals.** Entity events ride the logs
+  transport — enabling `signals.entities` requires no extra endpoint.
+- The bearer token comes from the environment (`${env:}`) or a root-only
+  file (`${file:/etc/senhub-agent/bearer.token}`); never inline it.
+- `host.id`, `host.name` and `os.*` resource attributes are auto-detected
+  and attached to every signal — don't set them manually.
+- gRPC works through standard reverse proxies. nginx needs one location for
+  OTLP/gRPC and one for OTLP/HTTP (the agent uses the standard `/v1/*`
+  paths):
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name ingest.example.com;
+
+    # OTLP/gRPC -> collector
+    location /opentelemetry.proto.collector. {
+        grpc_pass grpcs://127.0.0.1:4317;
+    }
+    # OTLP/HTTP -> collector
+    location /v1/ {
+        proxy_pass http://127.0.0.1:4318;
+    }
+}
+```
+
+Authentication belongs on the collector (for example the `bearertokenauth`
+extension), keeping the proxy a pure transport. To feed a second consumer
+(another OTLP backend, an entity-graph store, ...), fan out **at the
+collector** — add a second exporter there — rather than configuring a
+second OTLP strategy on every agent.
+
 ### vmagent's native OTLP endpoint
 
 vmagent v1.95+ ingests OTLP/gRPC directly. Configure the agent to
