@@ -16,19 +16,18 @@ func DefaultNagiosConfigYAML() ([]byte, error) {
 	return definitionFiles.ReadFile("definitions/nagios.yaml")
 }
 
-// DefinitionMetricNames returns, per probe definition shipped in the
-// embedded definitions/ directory, the set of raw metric names the
-// probe emits (the `name:` field of each metric entry). Files that are
-// not probe definitions (nagios.yaml, lookups.yaml, shared/) are
-// skipped. Used by structural tests to verify cross-references such as
-// Nagios check channels.
-func DefinitionMetricNames() (map[string][]string, error) {
+// DefinitionMetrics returns, per probe definition shipped in the
+// embedded definitions/ directory, the full metric definitions. Files
+// that are not probe definitions (nagios.yaml, lookups.yaml, shared/)
+// are skipped. Used by structural tests to verify cross-references and
+// unit semantics across sink formats.
+func DefinitionMetrics() (map[string][]MetricDefinition, error) {
 	entries, err := fs.ReadDir(definitionFiles, "definitions")
 	if err != nil {
 		return nil, fmt.Errorf("listing embedded definitions: %w", err)
 	}
 
-	names := make(map[string][]string)
+	metrics := make(map[string][]MetricDefinition)
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
 			continue
@@ -44,9 +43,26 @@ func DefinitionMetricNames() (map[string][]string, error) {
 		if def.ProbeName == "" || len(def.Metrics) == 0 {
 			continue
 		}
-		for _, m := range def.Metrics {
+		metrics[def.ProbeName] = append(metrics[def.ProbeName], def.Metrics...)
+	}
+	return metrics, nil
+}
+
+// DefinitionMetricNames returns, per probe definition shipped in the
+// embedded definitions/ directory, the set of raw metric names the
+// probe emits (the `name:` field of each metric entry). Used by
+// structural tests to verify cross-references such as Nagios check
+// channels.
+func DefinitionMetricNames() (map[string][]string, error) {
+	metrics, err := DefinitionMetrics()
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[string][]string, len(metrics))
+	for probe, defs := range metrics {
+		for _, m := range defs {
 			if m.Name != "" {
-				names[def.ProbeName] = append(names[def.ProbeName], m.Name)
+				names[probe] = append(names[probe], m.Name)
 			}
 		}
 	}

@@ -20,6 +20,15 @@ type MetricTransformer interface {
 	GetLookup(key string) string
 }
 
+// OtelAware is the optional capability of transformers backed by a v3
+// probe definition: exposing the per-metric OTel mapping so sink
+// converters can derive semantically correct display units (rate vs
+// absolute, byte context). Legacy pattern-based transformers don't
+// implement it; callers type-assert.
+type OtelAware interface {
+	GetOtelMapping(metricName string) *OtelMapping
+}
+
 // TransformConfig represents the structure of a transformation YAML file (legacy)
 type TransformConfig struct {
 	Patterns map[string]string `yaml:"patterns"`
