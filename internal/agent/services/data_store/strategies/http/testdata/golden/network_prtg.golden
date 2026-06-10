@@ -1,0 +1,60 @@
+[
+  {
+    "channel": "Network tinterface Bytes Received",
+    "value": 53.5,
+    "float": 1,
+    "unit": "SpeedNet",
+    "speedsize": "Byte",
+    "speedtime": "Second"
+  },
+  {
+    "channel": "Network tinterface Bytes Sent",
+    "value": 42,
+    "float": 1,
+    "unit": "SpeedNet",
+    "speedsize": "Byte",
+    "speedtime": "Second"
+  },
+  {
+    "channel": "Network tinterface Packets Received",
+    "value": 76.5,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "pkt/s"
+  },
+  {
+    "channel": "Network tinterface Packets Sent",
+    "value": 65,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "pkt/s"
+  },
+  {
+    "channel": "Network tinterface Receive Discards",
+    "value": 42,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "pkt/s"
+  },
+  {
+    "channel": "Network tinterface Receive Errors",
+    "value": 99.5,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "err/s"
+  },
+  {
+    "channel": "Network tinterface Send Discards",
+    "value": 111,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "pkt/s"
+  },
+  {
+    "channel": "Network tinterface Send Errors",
+    "value": 88,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "err/s"
+  }
+]
