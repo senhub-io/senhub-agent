@@ -129,6 +129,11 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			cleanupFiles(args)
 		}
 	case "start":
+		// Heal a pre-0.2.x Windows registration whose command line
+		// lacks the `run` subcommand before attempting the start —
+		// otherwise the binary prints usage, exits, and the SCM
+		// reports a connect timeout (#309).
+		migrateLegacyServiceRegistration()
 		err = s.Start()
 		if err == nil {
 			fmt.Println("Service started successfully")
@@ -183,6 +188,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 
 		// Start the service
 		fmt.Println("Starting service...")
+		migrateLegacyServiceRegistration() // see the "start" case (#309)
 		err = s.Start()
 		if err == nil {
 			fmt.Println("Service restarted successfully")
