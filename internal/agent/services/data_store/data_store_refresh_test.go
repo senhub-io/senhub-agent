@@ -26,10 +26,10 @@ func TestOnConfigRefreshed_ShutsDownRemovedStrategies(t *testing.T) {
 	// Empty storage config: the refresh drops every strategy.
 	ds.OnConfigRefreshed("test-removal")
 
-	if !removed.shutdown {
+	if !removed.wasShutdown() {
 		t.Error("strategy removed by config refresh was not Shutdown — port/goroutine leak (#260)")
 	}
-	if !kept.shutdown {
+	if !kept.wasShutdown() {
 		t.Error("second removed strategy was not Shutdown")
 	}
 	if got := len(ds.activeStrategies()); got != 0 {
