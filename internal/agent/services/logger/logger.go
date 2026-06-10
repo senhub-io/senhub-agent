@@ -371,6 +371,14 @@ type ModuleLogger struct {
 }
 
 func NewModuleLogger(baseLogger *Logger, module string) *ModuleLogger {
+	// Nil-safe: callers (notably probe constructors driven by tests or
+	// embedding code) may pass a nil base logger. Fall back to a no-op
+	// logger instead of panicking before any work happens.
+	if baseLogger == nil {
+		nop := zerolog.Nop()
+		baseLogger = &nop
+	}
+
 	logger := baseLogger.With().
 		Str("module", module).
 		Logger()
