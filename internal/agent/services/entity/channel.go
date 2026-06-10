@@ -28,21 +28,33 @@ func SubscribeEvents(buf int) <-chan Event {
 	}
 	ch := make(chan Event, buf)
 	eventCh.mu.Lock()
-	eventCh.subs = append(eventCh.subs, ch)
+	// Copy-on-write: publishers snapshot the slice header under RLock
+	// and iterate after releasing — the backing array must therefore
+	// never be mutated in place (#262).
+	next := make([]chan Event, len(eventCh.subs), len(eventCh.subs)+1)
+	copy(next, eventCh.subs)
+	eventCh.subs = append(next, ch)
 	eventCh.mu.Unlock()
 	return ch
 }
 
-// UnsubscribeEvents disconnects and closes a previously-subscribed channel.
-// Safe to call from a different goroutine than the consumer; the close
-// unblocks any select the consumer sits in.
+// UnsubscribeEvents disconnects a previously-subscribed channel. The
+// channel is NOT closed: PublishEvent snapshots the subscriber list
+// under RLock and sends after releasing it, so a close here could
+// interleave into a send-on-closed-channel panic (#262). Consumers
+// exit via their own context (both pumps cancel before
+// unsubscribing); the orphaned channel is garbage-collected.
 func UnsubscribeEvents(ch <-chan Event) {
 	eventCh.mu.Lock()
 	defer eventCh.mu.Unlock()
 	for i, sub := range eventCh.subs {
 		if (<-chan Event)(sub) == ch {
-			eventCh.subs = append(eventCh.subs[:i], eventCh.subs[i+1:]...)
-			close(sub)
+			// Copy-on-write removal — never shift the shared backing
+			// array in place (#262).
+			next := make([]chan Event, 0, len(eventCh.subs)-1)
+			next = append(next, eventCh.subs[:i]...)
+			next = append(next, eventCh.subs[i+1:]...)
+			eventCh.subs = next
 			return
 		}
 	}
@@ -86,9 +98,6 @@ func GetDroppedEntityEventsTotal() uint64 {
 // Test-only, keeps package state from leaking across cases.
 func resetEventChannelForTest() {
 	eventCh.mu.Lock()
-	for _, sub := range eventCh.subs {
-		close(sub)
-	}
 	eventCh.subs = nil
 	eventCh.dropped.Store(0)
 	eventCh.mu.Unlock()
