@@ -190,6 +190,9 @@ func (v *JWTValidator) IsInGracePeriod(license *License) bool {
 // snmp_trap follows snmp_poll: receiving generic SNMP traps is part of
 // the same free PRTG-replacement wedge (the push counterpart of polling).
 //
+// icmp_check is free for the same wedge reason: ping/uptime is PRTG's
+// most-deployed sensor class — the migration story needs it at zero cost.
+//
 // otlp_receiver is free as universal collection: the agent acting as an
 // edge collector ingesting OTLP streams from other instrumented sources
 // is the same open-core "bring everything in" wedge, not a paid vendor
@@ -202,6 +205,7 @@ var freeTierProbes = map[string]bool{
 	"linux_logs":       true,
 	"windows_eventlog": true,
 	"filetail":         true,
+	"icmp_check":       true,
 	"snmp_poll":        true,
 	"snmp_trap":        true,
 	"otlp_receiver":    true,
