@@ -465,15 +465,21 @@ func (m *MetricsProcessor) aggregateValues(values []float64, aggregation string)
 
 // evaluateThreshold evaluates a value against warning and critical thresholds
 func (m *MetricsProcessor) evaluateThreshold(value float64, warning, critical string, invert bool) int {
-	// Parse thresholds
+	// Parse thresholds. An empty critical means a warn-only check
+	// (standard Nagios practice — e.g. veeam_jobs_warning): the
+	// metric can reach WARNING but never escalates to CRITICAL.
 	warnThreshold, err := strconv.ParseFloat(warning, 64)
 	if err != nil {
 		return 3 // UNKNOWN
 	}
 
-	critThreshold, err := strconv.ParseFloat(critical, 64)
-	if err != nil {
-		return 3 // UNKNOWN
+	hasCritical := strings.TrimSpace(critical) != ""
+	var critThreshold float64
+	if hasCritical {
+		critThreshold, err = strconv.ParseFloat(critical, 64)
+		if err != nil {
+			return 3 // UNKNOWN
+		}
 	}
 
 	// Evaluate status
@@ -481,14 +487,14 @@ func (m *MetricsProcessor) evaluateThreshold(value float64, warning, critical st
 
 	if !invert {
 		// Normal evaluation: higher values are worse
-		if value >= critThreshold {
+		if hasCritical && value >= critThreshold {
 			status = 2 // CRITICAL
 		} else if value >= warnThreshold {
 			status = 1 // WARNING
 		}
 	} else {
 		// Inverted evaluation: lower values are worse
-		if value <= critThreshold {
+		if hasCritical && value <= critThreshold {
 			status = 2 // CRITICAL
 		} else if value <= warnThreshold {
 			status = 1 // WARNING
