@@ -13,6 +13,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/event"
@@ -61,11 +64,25 @@ type DataStore interface {
 }
 
 type dataStore struct {
-	strategies          []SyncStrategy
+	// strategies holds an immutable snapshot of the active strategy
+	// set. Probe goroutines Load() it on every datapoint callback;
+	// the config watcher builds a NEW slice and Store()s it — readers
+	// never observe a partially rebuilt list (#260).
+	strategies atomic.Pointer[[]SyncStrategy]
+	// refreshMu serializes configuration refreshes (single writer).
+	refreshMu           sync.Mutex
 	logger              *logger.ModuleLogger
 	configProvider      configuration.ConfigurationProvider
 	agentConfig         configuration.AgentConfiguration
 	transformerRegistry *transformers.TransformerRegistry
+}
+
+// activeStrategies returns the current immutable strategy snapshot.
+func (d *dataStore) activeStrategies() []SyncStrategy {
+	if p := d.strategies.Load(); p != nil {
+		return *p
+	}
+	return nil
 }
 
 func NewDataStore(
@@ -81,9 +98,10 @@ func NewDataStore(
 		logger:              moduleLogger,
 		configProvider:      configProvider,
 		agentConfig:         agentConfig,
-		strategies:          make([]SyncStrategy, 0),
 		transformerRegistry: transformers.NewTransformerRegistry(baseLogger),
 	}
+	empty := make([]SyncStrategy, 0)
+	ds.strategies.Store(&empty)
 	moduleLogger.Debug().Msg("DataStore instance created successfully")
 	return ds
 }
@@ -160,7 +178,8 @@ func (d *dataStore) GetCallback() AddCallback {
 	return func(data []datapoint.DataPoint, probe StrategyRouter) error {
 		d.logger.Debug().Int("datapoints_count", len(data)).Msg("Callback called")
 
-		if len(d.strategies) == 0 {
+		strategies := d.activeStrategies()
+		if len(strategies) == 0 {
 			d.logger.Warn().Msg("No strategies configured in datastore")
 			return nil
 		}
@@ -179,7 +198,7 @@ func (d *dataStore) GetCallback() AddCallback {
 		// custom_tags > global_tags > built-in probe tags.
 		correctedData = d.enrichWithConfiguredTags(correctedData)
 
-		for _, strategy := range d.strategies {
+		for _, strategy := range strategies {
 			targetStrategies := probe.GetTargetStrategies()
 			d.logger.Debug().
 				Strs("target_strategies", targetStrategies).
@@ -243,7 +262,7 @@ func (d *dataStore) Start(quitChannel chan struct{}) error {
 
 func (d *dataStore) Shutdown(ctx context.Context) error {
 	errs := []error{}
-	for _, strategy := range d.strategies {
+	for _, strategy := range d.activeStrategies() {
 		err := strategy.Shutdown(ctx)
 		if err != nil {
 			errs = append(errs, err)
@@ -316,6 +335,10 @@ func (d *dataStore) convertMapTypes(input interface{}) interface{} {
 func (d *dataStore) OnConfigRefreshed(reason string) {
 	d.logger.Debug().Str("reason", reason).Msg("OnConfigRefreshed called")
 
+	d.refreshMu.Lock()
+	defer d.refreshMu.Unlock()
+
+	previous := d.activeStrategies()
 	newStrategies := make(map[string]SyncStrategy)
 
 	for _, storageConfig := range d.configProvider.GetConfiguration().StorageConfig {
@@ -328,9 +351,32 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 		}
 	}
 
-	d.strategies = make([]SyncStrategy, 0, len(newStrategies))
+	next := make([]SyncStrategy, 0, len(newStrategies))
+	kept := make(map[SyncStrategy]bool, len(newStrategies))
 	for _, strategy := range newStrategies {
-		d.strategies = append(d.strategies, strategy)
+		next = append(next, strategy)
+		kept[strategy] = true
+	}
+	d.strategies.Store(&next)
+
+	// Shut down strategies dropped or replaced by this refresh —
+	// otherwise their listener ports, gRPC connections and scheduler
+	// goroutines leak (and a recreated HTTP strategy fails to bind).
+	for _, old := range previous {
+		if kept[old] {
+			continue
+		}
+		d.logger.Info().
+			Str("strategy", old.GetStrategyName()).
+			Msg("Shutting down strategy removed by config refresh")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := old.Shutdown(ctx); err != nil {
+			d.logger.Error().
+				Err(err).
+				Str("strategy", old.GetStrategyName()).
+				Msg("Failed to shut down removed strategy")
+		}
+		cancel()
 	}
 }
 
@@ -342,7 +388,7 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 	searchStrategyId := d.GenerateStrategyId(strategyConfig.Name, strategyConfig.Params)
 
 	// Search for existing strategy with the same name
-	for _, strategy := range d.strategies {
+	for _, strategy := range d.activeStrategies() {
 		if strategy.GetStrategyName() == strategyConfig.Name {
 			// Strategy of same type found, check if parameters have changed
 			strategyId := d.GenerateStrategyId(strategy.GetStrategyName(), strategy.GetStrategyParams())
@@ -429,7 +475,6 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		return nil
 	}
 
-	d.strategies = append(d.strategies, strategy)
 	d.logger.Debug().Msg("Strategy created successfully")
 	return strategy
 }
