@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gosnmp/gosnmp"
@@ -59,6 +60,15 @@ type SNMPTrapProbe struct {
 	mibs      *snmpmib.Resolver
 	quitOnce  sync.Once
 	firstTrap sync.Once
+
+	// Receiver self-metrics (#263): datagrams rejected for a community
+	// mismatch and decode/handle panics recovered per-datagram.
+	rejectedCommunity atomic.Uint64
+	decodePanics      atomic.Uint64
+
+	// decode is the datagram decoder, defaulting to params.UnmarshalTrap.
+	// A test seam: hostile-input tests inject panicking/failing decoders.
+	decode func(data []byte, useResponseSecurityParameters bool) (*gosnmp.SnmpPacket, error)
 }
 
 // NewSNMPTrapProbe constructs the probe. Config errors (bad version,
@@ -98,7 +108,17 @@ func (p *SNMPTrapProbe) GetInterval() time.Duration { return 5 * time.Minute }
 
 // Collect is a no-op: traps arrive via the listener and are published to
 // the log channel as they come.
-func (p *SNMPTrapProbe) Collect() ([]data_store.DataPoint, error) { return nil, nil }
+// Collect emits the receiver's self-metrics: cumulative counts of
+// community-rejected datagrams and recovered decode panics (#263). The
+// trap payloads themselves ride the log rail, not Collect.
+func (p *SNMPTrapProbe) Collect() ([]data_store.DataPoint, error) {
+	now := time.Now()
+	points := []data_store.DataPoint{
+		{Name: "senhub.snmp_trap.rejected_community", Value: float32(p.rejectedCommunity.Load()), Timestamp: now},
+		{Name: "senhub.snmp_trap.decode_panics", Value: float32(p.decodePanics.Load()), Timestamp: now},
+	}
+	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
 
 // OnStart opens the UDP socket and starts the read loop. A bind failure
 // (e.g. port 162 without privileges, or address already in use) is
@@ -176,22 +196,66 @@ func (p *SNMPTrapProbe) serve(conn *net.UDPConn) {
 		msg := make([]byte, n)
 		copy(msg, buf[:n])
 
-		trap, err := p.params.UnmarshalTrap(msg, false)
-		if err != nil {
-			p.moduleLogger.Debug().Err(err).
-				Str("source_ip", remote.IP.String()).
-				Msg("snmp_trap: failed to decode datagram")
-			continue
-		}
-		p.handleTrap(trap, remote)
-
-		// An InformRequest is a confirmed notification: the sender keeps
-		// retransmitting (producing duplicate records) until it receives
-		// a GetResponse. Acknowledge v2c informs from the raw datagram.
-		if trap.PDUType == gosnmp.InformRequest {
-			p.ackInform(trap, msg, remote)
-		}
+		p.processDatagram(msg, remote)
 	}
+}
+
+// processDatagram decodes and handles one raw datagram. Hardened per
+// #263: a decode/handle panic on attacker-controlled bytes is recovered
+// (counted, never fatal), and the v2c/v1 community is compared against
+// the configured one before the packet is accepted — previously the
+// community was documented as authenticating v2c but never checked, so
+// any reachable UDP sender could inject forged log records (and have
+// informs acked back, a reflection primitive).
+func (p *SNMPTrapProbe) processDatagram(msg []byte, remote *net.UDPAddr) {
+	defer func() {
+		if r := recover(); r != nil {
+			p.decodePanics.Add(1)
+			p.moduleLogger.Error().
+				Interface("panic", r).
+				Str("source_ip", remoteIP(remote)).
+				Msg("snmp_trap: recovered panic while decoding/handling datagram")
+		}
+	}()
+
+	decode := p.decode
+	if decode == nil {
+		decode = p.params.UnmarshalTrap
+	}
+	trap, err := decode(msg, false)
+	if err != nil {
+		p.moduleLogger.Debug().Err(err).
+			Str("source_ip", remoteIP(remote)).
+			Msg("snmp_trap: failed to decode datagram")
+		return
+	}
+
+	// Authenticate v1/v2c by community. v3 is authenticated by gosnmp's
+	// USM layer inside UnmarshalTrap. Rejected datagrams are counted and
+	// never handled nor acked.
+	if trap.Version != gosnmp.Version3 && p.config.Community != "" && trap.Community != p.config.Community {
+		p.rejectedCommunity.Add(1)
+		p.moduleLogger.Debug().
+			Str("source_ip", remoteIP(remote)).
+			Msg("snmp_trap: rejected datagram with mismatched community")
+		return
+	}
+
+	p.handleTrap(trap, remote)
+
+	// An InformRequest is a confirmed notification: the sender keeps
+	// retransmitting (producing duplicate records) until it receives
+	// a GetResponse. Acknowledge v2c informs from the raw datagram.
+	if trap.PDUType == gosnmp.InformRequest {
+		p.ackInform(trap, msg, remote)
+	}
+}
+
+func remoteIP(u *net.UDPAddr) string {
+	if u == nil {
+		return ""
+	}
+	return u.IP.String()
 }
 
 // ackInform replies to a v2c InformRequest with its GetResponse so the
