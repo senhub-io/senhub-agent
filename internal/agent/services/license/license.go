@@ -215,6 +215,10 @@ var freeTierProbes = map[string]bool{
 	"snmp_trap":        true,
 	"tcp_dial":         true,
 	"otlp_receiver":    true,
+	// prometheus_scrape: pull-side twin of otlp_receiver — scraping
+	// exporters and appliances is universal collection, not a vendor
+	// integration.
+	"prometheus_scrape": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
