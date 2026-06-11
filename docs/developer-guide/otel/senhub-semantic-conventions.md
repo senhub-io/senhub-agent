@@ -1194,6 +1194,21 @@ self-metrics sont définies :
 | `senhub.promscrape.scrape.duration` | `s` | gauge | wire ms, `value_scale: 0.001` |
 | `senhub.promscrape.samples` / `.dropped` | `{sample}` | gauge | `promscrape.target` |
 
+### 4.24 exec (free, #305)
+
+Probe de checks custom : code de sortie Nagios → `senhub.exec.status`
+(0 ok / 1 warning / 2 critical / 3 unknown), perfdata et contrat JSON
+en **pass-through typé** sous `senhub.exec.<label>` (tag `otel_type`,
+même mécanisme que prometheus_scrape §4.23). Normalisation perfdata :
+temps → secondes, octets → bytes, UOM `c` → counter. Self-metrics
+définies en YAML :
+
+| Métrique OTel | Unité | Type | Notes |
+|---|---|---|---|
+| `senhub.exec.status` | `{status}` | gauge | unité-annotation, pas de suffixe `_ratio` |
+| `senhub.exec.duration` | `s` | gauge | wire ms, `value_scale: 0.001` |
+| `senhub.exec.timeout` / `.skipped` | `1` | gauge | booléens |
+
 ## 6. Processus d'ajout d'une convention
 
 1. Lire les sources §1 pour le domaine concerné

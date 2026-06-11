@@ -219,6 +219,9 @@ var freeTierProbes = map[string]bool{
 	// exporters and appliances is universal collection, not a vendor
 	// integration.
 	"prometheus_scrape": true,
+	// exec: the custom-sensor long tail every PRTG estate ends in;
+	// Telegraf (exec) and Nagios (plugins) both cover it for free.
+	"exec": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
