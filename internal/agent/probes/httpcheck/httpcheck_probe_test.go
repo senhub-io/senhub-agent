@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -217,16 +218,16 @@ func TestCheck_RedirectIsMeasuredNotFollowed(t *testing.T) {
 func TestCollect_SeamForChassis(t *testing.T) {
 	// The chassis seam stays available for deterministic fan-out tests.
 	p := newTestProbe(t, map[string]interface{}{"targets": []interface{}{"http://a", "http://b"}})
-	calls := 0
+	var calls atomic.Int32
 	p.check = func(target string) httpResult {
-		calls++
+		calls.Add(1)
 		return httpResult{target: target, up: true, statusCode: 200, tlsDaysLeft: noTLSSentinel}
 	}
 	if _, err := p.Collect(); err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	if calls != 2 {
-		t.Errorf("check called %d times, want 2", calls)
+	if calls.Load() != 2 {
+		t.Errorf("check called %d times, want 2", calls.Load())
 	}
 }
 
