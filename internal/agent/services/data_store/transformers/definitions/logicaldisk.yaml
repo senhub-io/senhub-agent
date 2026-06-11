@@ -81,7 +81,7 @@ metrics:
     category: "performance"
     description: "Number of read operations per second on the logical drive"
     otel:
-      name: senhub.system.disk.operations_per_second
+      name: senhub.system.disk.operations
       unit: "1/s"
       type: gauge
       attributes:
@@ -97,7 +97,7 @@ metrics:
     category: "performance"
     description: "Number of write operations per second on the logical drive"
     otel:
-      name: senhub.system.disk.operations_per_second
+      name: senhub.system.disk.operations
       unit: "1/s"
       type: gauge
       attributes:
@@ -113,7 +113,7 @@ metrics:
     category: "performance"
     description: "Rate of data read from the logical drive in bytes per second"
     otel:
-      name: senhub.system.disk.io_per_second
+      name: senhub.system.disk.io
       unit: "By/s"
       type: gauge
       attributes:
@@ -129,7 +129,7 @@ metrics:
     category: "performance"
     description: "Rate of data written to the logical drive in bytes per second"
     otel:
-      name: senhub.system.disk.io_per_second
+      name: senhub.system.disk.io
       unit: "By/s"
       type: gauge
       attributes:
