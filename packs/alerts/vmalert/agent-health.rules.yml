@@ -1,0 +1,61 @@
+# SenHub agent alerting starter pack — agent self-health.
+#
+# Monitors the monitor: probe health, collection errors, and the OTLP
+# export pipeline (drops, export errors, buffer growth).
+
+groups:
+  - name: senhub-agent-health
+    rules:
+      - alert: AgentProbesUnhealthy
+        expr: senhub_agent_probes_healthy < senhub_agent_probes_total
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Unhealthy probes on {{ $labels.host_name }}{{ $labels.instance }}"
+          description: "{{ $value }} healthy probes; some configured probes are failing."
+
+      - alert: AgentCollectErrors
+        expr: rate(senhub_agent_collect_errors_total[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Probe collection errors on {{ $labels.host_name }}{{ $labels.instance }}"
+          description: "Sustained collection errors; check the agent log."
+
+      - alert: AgentOtlpDroppingData
+        expr: rate(senhub_agent_otlp_dropped_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Agent dropping datapoints on {{ $labels.host_name }}{{ $labels.instance }}"
+          description: "The OTLP buffer overflowed; the backend is unreachable or too slow. Data is being lost."
+
+      - alert: AgentOtlpExportErrors
+        expr: rate(senhub_agent_otlp_export_errors_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTLP export errors on {{ $labels.host_name }}{{ $labels.instance }}"
+          description: "Exports failing for 10 minutes; the buffer is absorbing the backlog for now."
+
+      - alert: AgentOtlpStoreNearCapacity
+        # Default max_store_size is 50000; adjust if you changed it.
+        expr: senhub_agent_otlp_store_size > 40000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTLP buffer near capacity on {{ $labels.host_name }}{{ $labels.instance }}"
+          description: "Above 80% of the default 50000-point cap; drops start at 100%."
+
+      - alert: AgentRestarted
+        expr: senhub_agent_uptime_seconds < 300
+        labels:
+          severity: info
+        annotations:
+          summary: "Agent restarted on {{ $labels.host_name }}{{ $labels.instance }}"
+          description: "Uptime under 5 minutes. Expected during upgrades; investigate if it repeats."

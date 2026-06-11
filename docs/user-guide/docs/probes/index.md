@@ -14,16 +14,44 @@ unlocks it.
 
 ## Systems & OS
 
-Host-level metrics from the operating system itself — CPU usage,
-memory pressure, network throughput, filesystem capacity, and the
-local journald stream. These five probes ship in the **free tier**
-and form the baseline for every install.
+Host-level metrics and logs from the operating system itself — CPU
+usage, memory pressure, network throughput, filesystem capacity,
+and the local log streams. All in the **free tier**, the baseline
+for every install.
 
 - **[CPU](cpu.md)** *(Free)* — Per-mode utilization (user / system / idle / iowait / interrupt / softirq / nice / steal), per-core breakdown, Unix load average, process count
 - **[Memory](memory.md)** *(Free)* — Physical memory by state (used / free / cached / buffers), swap, Windows paging rates
 - **[Network](network.md)** *(Free)* — Per-interface throughput, packet, error and discard rates (gauge, bytes per second)
 - **[Logical Disk](logicaldisk.md)** *(Free)* — Filesystem capacity (total / used / free / available), inode usage; APFS firmlinks filtered on macOS
 - **[Linux Logs](linux-logs.md)** *(Free, Linux only)* — Local systemd journal subscription, OTLP log push
+- **[Windows Event Log](windows-eventlog.md)** *(Free, Windows only)* — Event Log channel subscription with level/EventID/provider filtering, OTLP log push
+- **[File Tail](filetail.md)** *(Free)* — Flat-file log tailing: globs, rotation-safe, multiline folding, regex/JSON/logfmt parsing
+
+## Active Checks
+
+Free synthetic checks issued from the agent host — the building
+blocks for availability monitoring. Each probe checks a list of
+targets in parallel; a failing target is a measurement (`up = 0`),
+never a probe failure.
+
+- **[ICMP Check](icmp-check.md)** *(Free)* — Multi-target ping: reachability, packet loss, RTT statistics
+- **[HTTP Check](http-check.md)** *(Free)* — HTTP(S) status, latency phases, content match, TLS certificate expiry
+- **[TCP Dial](tcp-dial.md)** *(Free)* — Raw TCP connect latency to host:port
+- **[DNS Latency](dns-latency.md)** *(Free)* — Resolution latency per name, per resolver
+
+## Network (SNMP)
+
+Poll and receive from network devices — switches, routers,
+firewalls, UPS, printers — over SNMP.
+
+- **[SNMP Poll](snmp-poll.md)** *(Free)* — SNMPv2c polling: MIB-2 / IF-MIB modules, custom OID mappings, LLDP topology discovery
+- **[SNMP Trap](snmp-trap.md)** *(Free)* — Trap/inform receiver (v2c + v3), operator-supplied MIB resolution, OTLP log records
+
+## Universal Ingestion
+
+- **[OTLP Receiver](otlp-receiver.md)** *(Free)* — The agent as edge OTLP collector: applications push OTLP metrics (gRPC or HTTP) and they flow to every configured output
+- **[Prometheus Scrape](prometheus-scrape.md)** *(Free)* — Pull-side twin: scrape /metrics endpoints (node_exporter, appliance exporters) into the same pipeline
+- **[Exec](exec.md)** *(Free)* — Custom checks: run any Nagios plugin or JSON-emitting script on interval, with hard timeout and overlap protection
 
 ## Synthetic Monitoring
 
@@ -83,15 +111,15 @@ internals via vendor-specific views.
 
 Open-ended ingestion paths for log streams and custom event data.
 
-- **[Syslog](syslog.md)** *(Pro)* — Syslog server (UDP/TCP) — receives RFC3164 / RFC5424 messages and forwards them as OTLP log records
+- **[Syslog](syslog.md)** *(Free)* — Syslog server (UDP/TCP) — receives RFC3164 / RFC5424 messages and forwards them as OTLP log records
 - **[Event](event.md)** *(Pro)* — HTTP receiver — accepts custom JSON events from any source script and republishes them as structured log records
 
 ## License tiers
 
 | Tier | Probes included |
 |---|---|
-| **Free** | CPU, Memory, Network, Logical Disk, Linux Logs |
-| **Pro** | Free + Citrix, NetScaler, Redfish, Syslog, Event, Ping Gateway, Ping WebApp, Load WebApp, WiFi Signal, Veeam, MySQL, PostgreSQL |
+| **Free** | CPU, Memory, Network, Logical Disk, Linux Logs, Windows Event Log, File Tail, ICMP Check, HTTP Check, TCP Dial, DNS Latency, SNMP Poll, SNMP Trap, OTLP Receiver, Prometheus Scrape, Exec, Syslog |
+| **Pro** | Free + Citrix, NetScaler, Redfish, Event, Ping Gateway, Ping WebApp, Load WebApp, WiFi Signal, Veeam, MySQL, PostgreSQL |
 | **Enterprise** | All probes (wildcard) |
 
 See [Configuration → Licensing](../configuration.md)

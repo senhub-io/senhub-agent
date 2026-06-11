@@ -36,8 +36,10 @@ type receiverConfig struct {
 	// Version is "v2c" (community-based) or "v3" (USM).
 	Version string
 
-	// Community authenticates v2c traps. Empty accepts any community
-	// (gosnmp does not enforce it on receive); operators should set it.
+	// Community authenticates v1/v2c traps: received datagrams whose
+	// community does not match are rejected and counted
+	// (senhub.snmp_trap.rejected_community). An empty value accepts
+	// any community — operators should always set it (#263).
 	Community string
 
 	// V3Users are the USM credentials for v3 traps.

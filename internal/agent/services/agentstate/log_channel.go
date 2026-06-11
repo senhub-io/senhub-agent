@@ -148,23 +148,34 @@ func SubscribeLogs(buf int) <-chan LogRecord {
 	}
 	ch := make(chan LogRecord, buf)
 	logCh.mu.Lock()
-	logCh.subs = append(logCh.subs, ch)
+	// Copy-on-write: publishers snapshot the slice header under RLock
+	// and iterate after releasing — the backing array must therefore
+	// never be mutated in place (#262).
+	next := make([]chan LogRecord, len(logCh.subs), len(logCh.subs)+1)
+	copy(next, logCh.subs)
+	logCh.subs = append(next, ch)
 	logCh.mu.Unlock()
 	return ch
 }
 
-// UnsubscribeLogs disconnects a previously-subscribed channel and
-// closes it. Safe to call from a different goroutine than the consumer
-// — the channel close will unblock any select{} the consumer is
-// sitting in.
+// UnsubscribeLogs disconnects a previously-subscribed channel. The
+// channel is NOT closed: PublishLog snapshots the subscriber list
+// under RLock and sends after releasing it, so a close here could
+// interleave into a send-on-closed-channel panic (#262). Consumers
+// exit via their own context (the OTLP logs pump cancels before
+// unsubscribing); the orphaned channel is garbage-collected.
 func UnsubscribeLogs(ch <-chan LogRecord) {
 	logCh.mu.Lock()
 	defer logCh.mu.Unlock()
 	for i, sub := range logCh.subs {
 		// Compare by pointer through the receive-only conversion.
 		if (<-chan LogRecord)(sub) == ch {
-			logCh.subs = append(logCh.subs[:i], logCh.subs[i+1:]...)
-			close(sub)
+			// Copy-on-write removal — never shift the shared backing
+			// array in place (#262).
+			next := make([]chan LogRecord, 0, len(logCh.subs)-1)
+			next = append(next, logCh.subs[:i]...)
+			next = append(next, logCh.subs[i+1:]...)
+			logCh.subs = next
 			return
 		}
 	}
@@ -217,9 +228,6 @@ func GetDroppedLogRecordsTotal() uint64 {
 // leaking across test cases.
 func resetLogChannelForTest() {
 	logCh.mu.Lock()
-	for _, sub := range logCh.subs {
-		close(sub)
-	}
 	logCh.subs = nil
 	logCh.dropped.Store(0)
 	logCh.mu.Unlock()

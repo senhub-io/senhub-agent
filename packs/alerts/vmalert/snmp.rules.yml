@@ -1,0 +1,52 @@
+# SenHub agent alerting starter pack — SNMP (free tier):
+# snmp_poll device/interface health + snmp_trap receiver self-metrics.
+#
+# ifOperStatus / ifAdminStatus values follow IF-MIB: 1=up, 2=down,
+# 3=testing, ...
+
+groups:
+  - name: senhub-snmp
+    rules:
+      - alert: SnmpDeviceDown
+        expr: senhub_snmp_up_ratio == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SNMP device {{ $labels.instance }} unreachable"
+          description: "Device not answering SNMP for 5 minutes."
+
+      - alert: SnmpInterfaceDown
+        expr: senhub_snmp_interface_oper_status == 2 and senhub_snmp_interface_admin_status == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Interface {{ $labels.if_index }} down on {{ $labels.instance }}"
+          description: "Operationally down while administratively up for 5 minutes."
+
+      - alert: SnmpInterfaceErrors
+        expr: rate(senhub_snmp_interface_in_errors_total[5m]) + rate(senhub_snmp_interface_out_errors_total[5m]) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Errors on interface {{ $labels.if_index }} of {{ $labels.instance }}"
+          description: "More than 1 error/s sustained for 10 minutes."
+
+      - alert: SnmpTrapCommunityMismatch
+        expr: rate(senhub_snmp_trap_rejected_community_total[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Trap datagrams rejected for community mismatch"
+          description: "Devices are sending traps with the wrong community string, or someone is probing the receiver."
+
+      - alert: SnmpTrapDecodeFailures
+        expr: increase(senhub_snmp_trap_decode_panics_total[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Malformed SNMP trap datagrams received"
+          description: "The receiver recovered from decoder failures in the last 15 minutes; inspect the sending device."

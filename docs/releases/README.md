@@ -5,7 +5,8 @@ This directory contains release notes for all versions of SenHub Agent.
 ## Latest Releases
 
 ### Stable
-- **[0.2.1](./0.2.1.md)** - Latest stable (2026-06-10): entity rail, network topology, free-tier expansion, QA-campaign fixes
+- **[0.2.2](./0.2.2.md)** - Latest stable (2026-06-11): active checks, exec + Prometheus scrape, PRTG migration path, free tier to 17 probes
+- **[0.2.1](./0.2.1.md)** - Stable (2026-06-10): entity rail, network topology, free-tier expansion, QA-campaign fixes
 - **[0.2.0-beta](./0.2.0-beta.md)** - Breaking-change housekeeping (offline-only, OS-canonical paths, ZIP artifacts)
 
 ## Release Channels
