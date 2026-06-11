@@ -54,20 +54,35 @@ type gosnmpClient struct {
 	handle *gosnmp.GoSNMP
 }
 
-// newGosnmpClient builds a v2c gosnmp handle from the resolved config.
-// SNMPv3 (USM) is deferred to a later lot; cfg.Version is validated to be
-// v2c before this is reached.
+// newGosnmpClient builds a gosnmp handle from the resolved config:
+// community auth under v2c, USM under v3 (security level derived from
+// the configured protocols via snmpcore, like snmp_trap).
 func newGosnmpClient(cfg *config) *gosnmpClient {
-	return &gosnmpClient{handle: &gosnmp.GoSNMP{
+	h := &gosnmp.GoSNMP{
 		Target:    cfg.Target,
 		Port:      cfg.Port,
-		Community: cfg.Community,
-		Version:   gosnmp.Version2c,
+		Version:   cfg.Version,
 		Timeout:   cfg.Timeout,
 		Retries:   cfg.Retries,
 		Transport: "udp",
 		MaxOids:   gosnmp.MaxOids,
-	}}
+	}
+	if cfg.Version == gosnmp.Version3 && cfg.V3 != nil {
+		auth := snmpcore.AuthProtocol(cfg.V3.AuthProtocol)
+		priv := snmpcore.PrivProtocol(cfg.V3.PrivProtocol)
+		h.SecurityModel = gosnmp.UserSecurityModel
+		h.MsgFlags = snmpcore.MsgFlags(auth, priv)
+		h.SecurityParameters = &gosnmp.UsmSecurityParameters{
+			UserName:                 cfg.V3.Username,
+			AuthenticationProtocol:   auth,
+			AuthenticationPassphrase: cfg.V3.AuthPassword,
+			PrivacyProtocol:          priv,
+			PrivacyPassphrase:        cfg.V3.PrivPassword,
+		}
+	} else {
+		h.Community = cfg.Community
+	}
+	return &gosnmpClient{handle: h}
 }
 
 func (c *gosnmpClient) Connect() error {
