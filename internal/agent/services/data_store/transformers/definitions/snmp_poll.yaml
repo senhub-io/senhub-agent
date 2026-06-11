@@ -175,7 +175,7 @@ metrics:
     description: "ifAdminStatus — desired interface state (1=up, 2=down, 3=testing)"
     otel:
       name: snmp.interface.admin_status
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       instance: snmp.target
@@ -190,7 +190,7 @@ metrics:
     description: "ifOperStatus — current operational interface state (1=up, 2=down, 3=testing, ...)"
     otel:
       name: snmp.interface.oper_status
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       instance: snmp.target

@@ -1160,7 +1160,7 @@ Aligné sur le receiver otelcol-contrib httpcheck quand la métrique existe (`ht
 | Métrique OTel | Unité | Type | Source wire |
 |---|---|---|---|
 | `senhub.httpcheck.up` | `1` | gauge | statut attendu (+ content_match) |
-| `senhub.httpcheck.status.code` | `1` | gauge | code HTTP |
+| `senhub.httpcheck.status.code` | `{code}` | gauge | code HTTP (unité-annotation : pas de suffixe `_ratio` côté Prometheus) |
 | `httpcheck.duration` | `s` | gauge | total, wire ms `value_scale: 0.001` (nom contrib) |
 | `senhub.httpcheck.duration.{dns,connect,tls,ttfb}` | `s` | gauge | phases httptrace, wire ms |
 | `senhub.httpcheck.response.size` | `By` | gauge | corps lu (cap 1 MiB) |
