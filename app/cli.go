@@ -385,9 +385,9 @@ Other Commands:
     config check [path]   Validate configuration (covers fragments under
                           probes.d/ and strategies.d/ if present)
     config show [opts]    Print merged + resolved configuration as YAML
-                            --resolved (default)  env/file references substituted
+                            --resolved            env/file references substituted, secrets in cleartext
                             --raw                 references preserved as written
-                            --redact              substituted but secrets masked
+                            --redact              substituted but secrets masked (default)
                             [path]                config file path
     config migrate [path] Convert a legacy monolithic agent-config.yaml
                           into the 0.2.x multi-file layout
