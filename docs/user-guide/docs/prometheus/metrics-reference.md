@@ -142,12 +142,116 @@ HTTP phase timing aligned on `blackbox_exporter` convention.
 | `senhub_system_network_wifi_signal_strength_dbm` | gauge | dBm | `senhub_network_wifi_ssid`, `senhub_network_wifi_bssid` |
 | `senhub_system_network_wifi_quality_ratio` | gauge | 1 (0-1) | `senhub_network_wifi_ssid`, `senhub_network_wifi_bssid` |
 
+## Active checks
+
+All four check probes share the same semantics: a failing target is a
+measurement (`up = 0`), never a missing series. Durations are seconds.
+
+### ICMP Check (`type: icmp_check`)
+
+| Prometheus name | Type | Unit | Key labels |
+|---|---|---|---|
+| `senhub_icmp_up_ratio` | gauge | bool 0/1 | `icmp_target`, `icmp_target_ip` |
+| `senhub_icmp_packet_loss_ratio` | gauge | 1 (0-1) | `icmp_target` |
+| `senhub_icmp_packets_sent` / `_received` | gauge | {packet} | `icmp_target` |
+| `senhub_icmp_rtt_min_seconds` / `_avg_` / `_max_` / `_stddev_` | gauge | s | `icmp_target` |
+
+### HTTP Check (`type: http_check`)
+
+| Prometheus name | Type | Unit | Key labels |
+|---|---|---|---|
+| `senhub_httpcheck_up_ratio` | gauge | bool 0/1 | `httpcheck_target` |
+| `senhub_httpcheck_status_code` | gauge | {code} | `httpcheck_target` |
+| `senhub_httpcheck_duration_seconds` | gauge | s | `httpcheck_target` |
+| `senhub_httpcheck_duration_dns_seconds` / `_connect_` / `_tls_` / `_ttfb_` | gauge | s | `httpcheck_target` |
+| `senhub_httpcheck_response_size_bytes` | gauge | By | `httpcheck_target` |
+| `senhub_httpcheck_tls_expiry` | gauge | days (negative once expired) | `httpcheck_target` (TLS targets only) |
+| `senhub_httpcheck_content_match_ratio` | gauge | bool 0/1 | `httpcheck_target` (only with `content_match`) |
+
+### TCP Dial (`type: tcp_dial`)
+
+| Prometheus name | Type | Unit | Key labels |
+|---|---|---|---|
+| `senhub_tcpdial_up_ratio` | gauge | bool 0/1 | `tcpdial_target` |
+| `senhub_tcpdial_duration_seconds` | gauge | s | `tcpdial_target` |
+
+### DNS Latency (`type: dns_latency`)
+
+One series per (name x resolver) pair.
+
+| Prometheus name | Type | Unit | Key labels |
+|---|---|---|---|
+| `senhub_dns_up_ratio` | gauge | bool 0/1 | `dns_question_name`, `dns_resolver` |
+| `senhub_dns_lookup_duration_seconds` | gauge | s | `dns_question_name`, `dns_resolver` |
+| `senhub_dns_answers` | gauge | {answer} | `dns_question_name`, `dns_resolver` |
+
+## SNMP
+
+### SNMP Poll (`type: snmp_poll`)
+
+One series per device (`snmp_target`); interface metrics add
+`network_interface_index`. Counters are raw — compute rates in the
+backend (`rate(...[5m])`).
+
+| Prometheus name | Type | Unit | Key labels |
+|---|---|---|---|
+| `senhub_snmp_up_ratio` | gauge | bool 0/1 | `snmp_target` |
+| `senhub_snmp_poll_duration_seconds` | gauge | s | `snmp_target` |
+| `senhub_snmp_sys_uptime` | gauge | centiseconds (native SNMP unit) | `snmp_target` |
+| `senhub_snmp_interface_in_octets_bytes_total` / `_out_` | counter | By | `snmp_target`, `network_interface_index` |
+| `senhub_snmp_interface_in_errors_total` / `_out_` | counter | {error} | `snmp_target`, `network_interface_index` |
+| `senhub_snmp_interface_in_discards_total` / `_out_` | counter | {packet} | `snmp_target`, `network_interface_index` |
+| `senhub_snmp_interface_speed_bits_per_second` | gauge | bit/s | `snmp_target`, `network_interface_index` |
+| `senhub_snmp_interface_admin_status` / `_oper_status` | gauge | IF-MIB enum (1=up, 2=down, ...) | `snmp_target`, `network_interface_index` |
+
+Custom mappings and dynamic OIDs surface under the name configured in
+`custom_mappings` (typed pass-through; counters gain `_total`).
+
+### SNMP Trap (`type: snmp_trap`)
+
+Trap payloads ride the OTLP **log** rail; only the receiver's
+self-metrics appear here.
+
+| Prometheus name | Type | Unit | Key labels |
+|---|---|---|---|
+| `senhub_snmp_trap_rejected_community_total` | counter | {datagram} | – |
+| `senhub_snmp_trap_decode_panics_total` | counter | {datagram} | – |
+
+## Universal ingestion
+
+### Prometheus Scrape (`type: prometheus_scrape`)
+
+Scraped series are re-exported under the `senhub_` prefix with their
+original name and labels; counter/gauge types are preserved (counters
+gain `_total` if absent). Self-metrics:
+
+| Prometheus name | Type | Unit | Key labels |
+|---|---|---|---|
+| `senhub_promscrape_up_ratio` | gauge | bool 0/1 | `promscrape_target` |
+| `senhub_promscrape_scrape_duration_seconds` | gauge | s | `promscrape_target` |
+| `senhub_promscrape_samples` | gauge | {sample} | `promscrape_target` |
+| `senhub_promscrape_dropped` | gauge | {sample} (histogram/summary series) | `promscrape_target` |
+
+### Exec (`type: exec`)
+
+Perfdata / JSON metrics surface as `senhub_exec_<label>` pass-through
+gauges (or counters with `_total` for the `c` UOM), time normalized to
+seconds and bytes to bytes. Self-metrics:
+
+| Prometheus name | Type | Unit | Key labels |
+|---|---|---|---|
+| `senhub_exec_status` | gauge | 0 ok / 1 warning / 2 critical / 3 unknown | – |
+| `senhub_exec_duration_seconds` | gauge | s | – |
+| `senhub_exec_timeout_ratio` | gauge | bool 0/1 | – |
+| `senhub_exec_skipped_ratio` | gauge | bool 0/1 (overlap guard) | – |
+
 ## Event-conduit probes (skipped)
 
-The `syslog`, `event` and `otel` probes are **log/event flow conduits** —
-they relay messages, they don't produce metric time series. Their data
-points are explicitly skipped from `/metrics` via `otel.skip: true`.
-A future OTLP **log** export will surface them properly.
+The `syslog`, `event`, `filetail`, `windows_eventlog` and `linux_logs`
+probes are **log-flow conduits** — they relay records, they don't
+produce metric time series here. Their records ship through the OTLP
+**logs** transport (see the OTLP guide); `snmp_trap` is the same, with
+the two self-metrics listed above.
 
 ## Hardware (Redfish) — `type: redfish`
 
