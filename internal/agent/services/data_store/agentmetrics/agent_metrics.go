@@ -237,6 +237,20 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		})
 	}
 
+	// HTTP MetricCache drop counters — same emitted-only-when-touched
+	// shape as senhub.agent.otlp.dropped above. Today the only reason
+	// is `http_cache_cap` (cardinality cap on the shared cache, #281).
+	for reason, n := range agentstate.GetHTTPCacheDroppedByReason() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.cache.dropped",
+			Unit:        "{datapoint}",
+			Type:        "counter",
+			Attributes:  map[string]string{"reason": reason},
+			Value:       float64(n),
+			Description: "Cumulative count of datapoints refused by the shared HTTP metric cache, by reason (http_cache_cap, …).",
+		})
+	}
+
 	// Checkpoint self-metrics. These are emitted regardless of whether
 	// persistence is enabled — the size+age gauges read 0 when disabled
 	// (distinguishable from "never saved" only by also checking the
