@@ -2,6 +2,7 @@ package snmppoll
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/services/snmpmib"
 	"senhub-agent.go/internal/agent/tags"
 )
 
@@ -42,6 +44,34 @@ func NewSnmpPollProbe(rawConfig map[string]interface{}, baseLogger *logger.Logge
 		Int("mibs", len(cfg.MIBs)).
 		Int("custom_mappings", len(cfg.Custom)).
 		Msg("Creating new SNMP poll probe")
+
+	// Operator MIBs resolve custom-mapping names left empty in config
+	// (#291: snmppoll adopts snmpmib like snmptrap — local files only,
+	// never fetched over the network). Fail fast on an unresolvable OID:
+	// a mapping with no name would emit an unidentifiable metric.
+	if len(cfg.MibPaths) > 0 {
+		resolver := snmpmib.Load(cfg.MibPaths, moduleLogger)
+		for i := range cfg.Custom {
+			if cfg.Custom[i].Metric != "" {
+				continue
+			}
+			label, ok := resolver.Resolve(cfg.Custom[i].OID)
+			if !ok {
+				return nil, fmt.Errorf("snmp_poll custom_mappings[%d]: no 'metric' and OID %s not found in the configured MIBs", i, cfg.Custom[i].OID)
+			}
+			cfg.Custom[i].Metric = label
+			moduleLogger.Debug().
+				Str("oid", cfg.Custom[i].OID).
+				Str("metric", label).
+				Msg("custom mapping name resolved from operator MIBs")
+		}
+	} else {
+		for i := range cfg.Custom {
+			if cfg.Custom[i].Metric == "" {
+				return nil, fmt.Errorf("snmp_poll custom_mappings[%d]: 'metric' is required without mib_paths", i)
+			}
+		}
+	}
 
 	if cfg.Discovery != nil {
 		// The crawl engine is merged but not yet wired to the poll
