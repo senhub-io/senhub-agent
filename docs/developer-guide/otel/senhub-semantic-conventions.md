@@ -1209,6 +1209,28 @@ définies en YAML :
 | `senhub.exec.duration` | `s` | gauge | wire ms, `value_scale: 0.001` |
 | `senhub.exec.timeout` / `.skipped` | `1` | gauge | booléens |
 
+### 4.25 snmp_poll (free, #156) — backfill
+
+Section ajoutée a posteriori (#345) : la probe a livré ses lots 1a/1b
+sans table semconv, le YAML transformer était la seule source.
+
+Modules built-in (MIB-2, IF-MIB) — une série par device (`snmp.target`),
+les métriques d'interface ajoutent `network.interface.index` :
+
+| Métrique OTel | Unité | Type | Source MIB |
+|---|---|---|---|
+| `senhub.snmp.up` | `1` | gauge | joignabilité du cycle |
+| `senhub.snmp.poll.duration` | `s` | gauge | wall-clock du poll |
+| `snmp.sys.uptime` | `cs` | gauge | sysUpTime (centisecondes, unité SNMP native) |
+| `snmp.interface.in_octets` / `out_octets` | `By` | counter | ifInOctets / ifOutOctets |
+| `snmp.interface.in_errors` / `out_errors` | `{error}` | counter | ifInErrors / ifOutErrors |
+| `snmp.interface.in_discards` / `out_discards` | `{packet}` | counter | ifInDiscards / ifOutDiscards |
+| `snmp.interface.speed` | `bit/s` | gauge | ifSpeed |
+| `snmp.interface.admin_status` / `oper_status` | `{status}` | gauge | ifAdminStatus / ifOperStatus (enums IF-MIB 1..7 ; unité-annotation depuis #344, pas de suffixe `_ratio`) |
+
+Les `custom_mappings` et OIDs dynamiques passent par le pass-through
+typé (tag `otel_type`) — pas d'énumération ici par construction.
+
 ## 6. Processus d'ajout d'une convention
 
 1. Lire les sources §1 pour le domaine concerné
