@@ -25,7 +25,7 @@ single probe instance.
 | `timeout` | 5 | Per-target budget in seconds for the whole round |
 | `interval` | 60 | Seconds between collection cycles |
 | `packet_size` | 56 | ICMP payload size in bytes |
-| `privileged` | OS-dependent | Raw ICMP sockets (`true`) vs ICMP datagram sockets (`false`). Defaults to `true` on Windows, `false` elsewhere |
+| `privileged` | OS-dependent | Raw ICMP sockets (`true`) vs ICMP datagram sockets (`false`). Defaults to `true` on Windows and on Linux when running as root, `false` elsewhere |
 
 Targets are pinged in parallel (bounded), so a large list does not
 stretch the cycle by the sum of timeouts.
@@ -47,10 +47,14 @@ probe failure: the probe stays healthy and keeps reporting.
 
 ## Privileges
 
-- **Linux**: the default unprivileged mode uses ICMP datagram sockets,
-  gated by the `net.ipv4.ping_group_range` sysctl. If pings fail with a
-  permission error, either widen that range to include the agent's
-  group or set `privileged: true` (requires root or `CAP_NET_RAW`).
+- **Linux**: running as root (the current agent requirement), the
+  probe defaults to privileged raw sockets — unprivileged ICMP
+  datagram sockets are gated by `net.ipv4.ping_group_range`, which
+  stock Ubuntu/Debian servers ship disabled, and root does not bypass
+  that sysctl. As a non-root process the default is unprivileged: if
+  pings fail with a permission error, widen the range to include the
+  agent's group or set `privileged: true` (requires `CAP_NET_RAW`).
+  The permission error now carries this hint in the log.
 - **Windows**: raw sockets only — the probe defaults to
   `privileged: true` and the agent service runs elevated.
 - **macOS**: unprivileged mode works out of the box.
