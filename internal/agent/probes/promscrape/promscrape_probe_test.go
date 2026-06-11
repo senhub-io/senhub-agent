@@ -3,6 +3,7 @@ package promscrape
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -201,16 +202,16 @@ func TestScrape_BearerTokenSent(t *testing.T) {
 
 func TestCollect_SeamForChassis(t *testing.T) {
 	p := newTestProbe(t, map[string]interface{}{"targets": []interface{}{"http://a/metrics", "http://b/metrics"}})
-	calls := 0
+	var calls atomic.Int32
 	p.scrape = func(target string) scrapeResult {
-		calls++
+		calls.Add(1)
 		return scrapeResult{target: target}
 	}
 	if _, err := p.Collect(); err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	if calls != 2 {
-		t.Errorf("scrape called %d times, want 2", calls)
+	if calls.Load() != 2 {
+		t.Errorf("scrape called %d times, want 2", calls.Load())
 	}
 }
 
