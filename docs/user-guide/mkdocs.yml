@@ -103,11 +103,10 @@ nav:
       - Network: probes/network.md
       - Logical disk: probes/logicaldisk.md
       - Linux logs: probes/linux-logs.md
-<<<<<<< Updated upstream
       - ICMP check: probes/icmp-check.md
-=======
       - HTTP check: probes/http-check.md
->>>>>>> Stashed changes
+      - TCP dial: probes/tcp-dial.md
+      - DNS latency: probes/dns-latency.md
       - Citrix: probes/citrix.md
       - NetScaler: probes/netscaler.md
       - Redfish: probes/redfish.md
