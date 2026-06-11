@@ -6,19 +6,29 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 )
 
-// configureSysProcAttr is a no-op on Windows: exec.CommandContext's
-// default kill terminates the direct child, and Windows has no Unix
-// process groups to detach into.
+// configureSysProcAttr is a no-op on Windows: there is no Unix
+// process group to detach into; tree termination happens in
+// killProcessGroup.
 func configureSysProcAttr(cmd *exec.Cmd) {}
 
-// killProcessGroup falls back to killing the direct child.
+// killProcessGroup terminates the child and its descendants. Killing
+// only the direct child (cmd.exe for a .bat check) leaves grandchildren
+// holding the stdout/stderr pipes, which blocks Run() until they exit;
+// taskkill /T walks the tree by PID. The probe's WaitDelay is the
+// backstop if even that leaves a pipe holder behind.
 func killProcessGroup(cmd *exec.Cmd) error {
 	if cmd.Process == nil {
 		return nil
 	}
-	return cmd.Process.Kill()
+	// PID-targeted by design — never an image-name kill.
+	kill := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid))
+	if err := kill.Run(); err != nil {
+		return cmd.Process.Kill()
+	}
+	return nil
 }
 
 // checkExecutable validates the target exists and is a file. The
