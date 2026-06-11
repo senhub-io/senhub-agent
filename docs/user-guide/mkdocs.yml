@@ -113,6 +113,7 @@ nav:
       - SNMP trap: probes/snmp-trap.md
       - OTLP receiver: probes/otlp-receiver.md
       - Prometheus scrape: probes/prometheus-scrape.md
+      - Exec: probes/exec.md
       - Citrix: probes/citrix.md
       - NetScaler: probes/netscaler.md
       - Redfish: probes/redfish.md
