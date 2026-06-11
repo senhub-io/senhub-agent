@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -58,7 +59,6 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		WorkingDirectory: workingDir,
 		Option: map[string]interface{}{
 			"LogOutput":             true,
-			"User":                  "root",
 			"ServiceName":           "senhub-agent.service",
 			"SystemdScript":         true,
 			"Restart":               "always",
@@ -74,6 +74,19 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		},
 	}
 
+	// On Linux the installer emits the hardened unit shipped in the
+	// .deb/.rpm packages (User=senhub, capabilities dropped — #223)
+	// instead of an implicit root unit. `install --user root` keeps
+	// the legacy root unit for operators whose probes need blanket
+	// root (e.g. icmp_check raw sockets without granting CAP_NET_RAW).
+	serviceUser := args.ServiceUser
+	if serviceUser == "" {
+		serviceUser = defaultServiceUser
+	}
+	if runtime.GOOS == "linux" && serviceUser != rootServiceUser {
+		svcConfig.Option["SystemdScript"] = hardenedSystemdScript(serviceUser)
+	}
+
 	prg := &program{
 		done: make(chan bool, 1),
 		args: args,
@@ -87,6 +100,15 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 
 	switch command {
 	case "install":
+		// The dedicated user must exist before systemd validates the
+		// unit. A creation failure aborts the install: registering a
+		// unit whose User= cannot be resolved produces a service that
+		// never starts, which is worse than a clear error here.
+		if userErr := ensureServiceUser(serviceUser); userErr != nil {
+			fmt.Printf("Error: %v\n", userErr)
+			fmt.Println("Re-run with '--user root' to install the legacy root service if a dedicated user cannot be created.")
+			os.Exit(1)
+		}
 		err = s.Install()
 		if err == nil {
 			fmt.Println("Service installed successfully")
@@ -103,6 +125,14 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 				} else {
 					fmt.Printf("\nAccess your agent at: http://localhost:8080/web/{agentkey}/dashboard\n")
 				}
+			}
+
+			// The installer runs as root but the daemon does not; the
+			// generated 0600 config (and certs/logs) must belong to
+			// the service user or the first start fails on a read.
+			if chownErr := chownServiceTree(serviceUser, configPath); chownErr != nil {
+				fmt.Printf("Warning: failed to hand install files to user %q: %v\n", serviceUser, chownErr)
+				fmt.Printf("Fix manually with: chown -R %s:%s %s\n", serviceUser, serviceUser, filepath.Dir(configPath))
 			}
 
 			fmt.Printf("\nYou can now start the service with:\n    %s start\n", os.Args[0])

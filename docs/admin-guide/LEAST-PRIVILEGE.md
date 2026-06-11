@@ -1,11 +1,12 @@
 # Running the agent least-privilege (non-root)
 
 The SenHub Agent daemon does **not** require root on Linux. The `.deb`
-and `.rpm` packages install it to run as a dedicated, unprivileged
-system user (`senhub`) under a hardened systemd unit. Only the
-service-lifecycle commands (`install`, `uninstall`, `start`, `stop`,
-`restart`) need root, because they register and control the systemd
-unit and own the on-disk install.
+and `.rpm` packages — and, since 0.2.3, the `senhub-agent install` CLI
+command — install it to run as a dedicated, unprivileged system user
+(`senhub`) under a hardened systemd unit. Only the service-lifecycle
+commands (`install`, `uninstall`, `start`, `stop`, `restart`) need
+root, because they register and control the systemd unit and own the
+on-disk install.
 
 Running a long-lived, network-facing daemon as root widens the blast
 radius of any vulnerability from "service account" to "host root".
@@ -14,10 +15,11 @@ defense-in-depth posture security and compliance reviews (CIS, NIST
 least-privilege) expect — and what peer agents (node_exporter,
 OpenTelemetry Collector, Datadog agent, Telegraf) do.
 
-## What the packages set up for you
+## What the installers set up for you
 
-Installing the `.deb` / `.rpm` performs all of the following so the
-agent starts unprivileged out of the box:
+Installing the `.deb` / `.rpm`, or running `senhub-agent install`
+from a ZIP install, performs all of the following so the agent starts
+unprivileged out of the box:
 
 | Item | Value |
 |---|---|
@@ -94,6 +96,33 @@ sudo systemctl restart senhub-agent.service
 ```
 
 The shipped unit lists these lines commented for reference.
+
+## CLI installs (`senhub-agent install`) and migration
+
+Since 0.2.3, `senhub-agent install` writes the same hardened unit the
+packages ship (it embeds the packaged unit, re-templating only
+`ExecStart` / `WorkingDirectory` to the actual binary location), and
+creates the `senhub` user/group if missing. The generated config, log
+and certificate files are handed to the service user during install.
+
+To keep the daemon running as root — for example while a probe that
+relied on blanket root is migrated to a targeted capability — install
+the legacy unit explicitly:
+
+```bash
+sudo senhub-agent install --user root
+```
+
+### Existing installs are not changed on upgrade
+
+`install` never overwrites an existing `senhub-agent.service` unit:
+re-running it over a registered service fails with "Init already
+exists". A binary upgrade (auto-update or manual replace) keeps the
+unit — and therefore the user — you installed with. The hardened unit
+applies only after an explicit `uninstall` + `install`; before doing
+that on a host that ran as root, check the per-probe privilege map
+above for anything that needs a capability drop-in (privileged ports,
+raw ICMP sockets).
 
 ## Running manually as a non-root user
 
