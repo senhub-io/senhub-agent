@@ -1,0 +1,42 @@
+name: Repo-hygiene
+# Cheap guards that the Go matrix cannot catch: committed merge-conflict
+# markers (PR #340 shipped literal <<<<<<< blocks into the docs nav) and
+# a broken MkDocs build. Runs on every PR, including docs-only changes
+# that go-test.yml's paths-ignore skips. See #343.
+on:
+  pull_request:
+    branches: [dev, master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  conflict-markers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse committed conflict markers
+        # Only <<<<<<< / >>>>>>> are flagged: a bare ======= line is a
+        # legitimate Markdown setext underline. Golden files excluded.
+        run: |
+          if git grep -nE '^(<{7}|>{7})( |$)' -- ':!*.golden'; then
+            echo '::error::Merge-conflict markers committed (see lines above)'
+            exit 1
+          fi
+          echo "No conflict markers."
+
+  docs-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install MkDocs
+        # Same pin as deploy-docs.yml — a drift here would let a PR pass
+        # and the deploy fail.
+        run: pip install "mkdocs-material==9.7.*" "mike==2.2.*"
+      - name: Build user guide (strict)
+        run: mkdocs build --strict
+        working-directory: docs/user-guide
