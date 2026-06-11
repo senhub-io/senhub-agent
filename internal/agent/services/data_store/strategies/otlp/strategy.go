@@ -429,6 +429,21 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 	now := time.Now()
 	resolveOpts := otelmapper.ResolveOptions{IncludeProbeTags: true}
 
+	// Evict series that stopped receiving datapoints before they get
+	// re-exported with fresh timestamps as zombies (#308). Runs every
+	// push cycle, so a removed or license-denied probe's series vanish
+	// within one staleness window — checkpoint-restored entries
+	// included (the next checkpoint save persists the shrunken store).
+	if evicted := s.store.evictStale(now, s.cfg.StalenessTTL); evicted > 0 {
+		for i := 0; i < evicted; i++ {
+			agentstate.IncrementOTLPDropped("staleness")
+		}
+		s.logger.Info().
+			Int("evicted", evicted).
+			Dur("staleness_ttl", s.cfg.StalenessTTL).
+			Msg("evicted stale series from the OTLP store (no datapoints within the staleness window)")
+	}
+
 	// Snapshot store cardinality before the push so the gauge reflects
 	// the size that drove this batch — useful when correlating export
 	// duration spikes with cardinality growth.
