@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"senhub-agent.go/internal/agent/services/snmpcore"
 	"strings"
 	"sync"
 	"time"
@@ -198,14 +199,14 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 	if binds, err := client.WalkRaw(oidSnmpEngineIDBase); err == nil {
 		for _, b := range binds {
 			if b.OID == oidSnmpEngineID {
-				di.EngineID = asBytes(b.Value)
+				di.EngineID = snmpcore.AsBytes(b.Value)
 			}
 		}
 	}
 	if binds, err := client.WalkRaw(oidSysServicesBase); err == nil {
 		for _, b := range binds {
 			if b.OID == oidSysServices {
-				if v, ok := asIntVal(b.Value); ok {
+				if v, ok := snmpcore.AsInt(b.Value); ok {
 					di.Services = v
 				}
 			}
@@ -214,7 +215,7 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 	if binds, err := client.WalkRaw(oidSysNameBase); err == nil {
 		for _, b := range binds {
 			if b.OID == oidSysName {
-				di.SysName = octetText(asBytes(b.Value))
+				di.SysName = snmpcore.OctetText(snmpcore.AsBytes(b.Value))
 			}
 		}
 	}
@@ -236,7 +237,7 @@ func chassisSerial(client snmpClient) string {
 	if binds, err := client.WalkRaw(oidEntPhysicalClass); err == nil {
 		for _, b := range binds {
 			if idx, ok := strings.CutPrefix(b.OID, oidEntPhysicalClass+"."); ok {
-				if v, ok := asIntVal(b.Value); ok {
+				if v, ok := snmpcore.AsInt(b.Value); ok {
 					class[idx] = v
 				}
 			}
@@ -246,7 +247,7 @@ func chassisSerial(client snmpClient) string {
 	if binds, err := client.WalkRaw(oidEntPhysicalSerialNum); err == nil {
 		for _, b := range binds {
 			if idx, ok := strings.CutPrefix(b.OID, oidEntPhysicalSerialNum+"."); ok {
-				if sn := strings.TrimSpace(octetText(asBytes(b.Value))); sn != "" {
+				if sn := strings.TrimSpace(snmpcore.OctetText(snmpcore.AsBytes(b.Value))); sn != "" {
 					serial[idx] = sn
 				}
 			}
