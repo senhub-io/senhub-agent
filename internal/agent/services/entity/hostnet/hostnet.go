@@ -65,14 +65,16 @@ func New(hostID func() string) *Source {
 }
 
 // Observe reads the routing table and builds the snapshot. Reading the local
-// /proc file is fast and non-blocking; on non-Linux (or unreadable /proc) it
-// degrades to an empty observation.
-func (s *Source) Observe() entity.Observation {
-	var routeData []byte
-	if b, err := s.readRoute(); err == nil {
-		routeData = b
+// /proc file is fast and non-blocking. A read failure reports ok=false so
+// the detector keeps the last good snapshot instead of deleting the host's
+// routes on a transient error (audit D3); on non-Linux the read fails every
+// cycle and the source simply never contributes.
+func (s *Source) Observe() (entity.Observation, bool) {
+	b, err := s.readRoute()
+	if err != nil {
+		return entity.Observation{}, false
 	}
-	return buildObservation(s.hostID(), parseProcRoute(routeData))
+	return buildObservation(s.hostID(), parseProcRoute(b)), true
 }
 
 // buildObservation maps next-hop routes → network.route entities owned by the
