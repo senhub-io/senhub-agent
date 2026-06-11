@@ -81,7 +81,7 @@ func (lc *LocalConfiguration) loadConfiguration() error {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	lc.data = config
+	lc.storeData(config)
 	lc.logger.Info().Msg("Configuration loaded successfully")
 	return nil
 }
@@ -141,7 +141,7 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 
 	// Populate the in-memory data so the rest of Start() works without
 	// re-reading the files we just wrote.
-	lc.data = LocalConfigurationData{
+	lc.storeData(LocalConfigurationData{
 		ConfigVersion: CurrentConfigVersion,
 		Agent: LocalAgentConfig{
 			Key:  agentKey,
@@ -151,7 +151,7 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 		Probes:     lc.createDefaultProbesConfig(),
 		AutoUpdate: lc.createDefaultAutoUpdateConfig(),
 		Cache:      lc.createDefaultCacheConfig(),
-	}
+	})
 	lc.logger.Info().
 		Str("agent_yaml", lc.configPath).
 		Str("probes_d", probesDir).
