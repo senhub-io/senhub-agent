@@ -285,6 +285,10 @@ func (p *ExecProbe) runOnce() execResult {
 	cmd := exec.CommandContext(ctx, p.config.Command, p.config.Args...)
 	configureSysProcAttr(cmd)
 	cmd.Cancel = func() error { return killProcessGroup(cmd) }
+	// Backstop: if a surviving grandchild still holds the stdout pipe
+	// after the kill, force Wait to return instead of blocking the
+	// collection cycle until that process exits.
+	cmd.WaitDelay = 5 * time.Second
 	if p.config.WorkDir != "" {
 		cmd.Dir = p.config.WorkDir
 	}
