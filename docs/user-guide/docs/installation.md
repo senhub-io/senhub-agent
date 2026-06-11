@@ -120,7 +120,16 @@ The ZIP contains `senhub-agent`, already correctly named.
 sudo /opt/senhub/bin/senhub-agent install
 ```
 
-This creates and registers a systemd service (`senhub-agent.service`) with automatic restart on failure (10-second delay between restarts). A UUID agent key is generated automatically and saved to the configuration file.
+This creates and registers a hardened systemd service (`senhub-agent.service`) that runs the agent as a dedicated unprivileged system user (`senhub`, created during install if missing) with all Linux capabilities dropped — the same unit the `.deb`/`.rpm` packages ship. A UUID agent key is generated automatically and saved to the configuration file, and the configuration and log directories are handed to the `senhub` user.
+
+If a probe needs a privilege the default unit does not grant (for example `snmp_trap` on UDP/162 or ICMP raw sockets), grant the single capability with a unit drop-in — see [Running the agent least-privilege](https://github.com/senhub-io/senhub-agent/blob/dev/docs/admin-guide/LEAST-PRIVILEGE.md). To keep the previous behavior of running the service as root:
+
+```bash
+sudo /opt/senhub/bin/senhub-agent install --user root
+```
+
+!!! note "Upgrading from an earlier version"
+    `install` never touches an existing `senhub-agent.service` unit — it fails with "Init already exists". Existing installs keep running as before. The hardened unit applies only after an explicit `uninstall` followed by `install`; at that point review any probe that relied on root (privileged ports, raw sockets) against the per-probe privilege map in the least-privilege guide, or reinstall with `--user root`.
 
 To install with HTTPS enabled and a custom certificate hostname:
 
@@ -169,6 +178,7 @@ The `install` command accepts the following options:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--config-path PATH` | OS canonical path | Path to the configuration file |
+| `--user USER` | `senhub` | System user the installed Linux service runs as. Use `root` to keep the legacy root unit. Ignored on Windows and macOS. |
 
 ### HTTPS / TLS
 
@@ -193,10 +203,12 @@ The `install` command accepts the following options:
 When you run `senhub-agent install`, the agent:
 
 1. Checks for administrator/root privileges (required on Windows and Linux)
-2. Registers the system service (`SenHub Agent` on Windows, `senhub-agent.service` on Linux)
-3. Configures automatic restart on failure
-4. Generates the **multi-file configuration layout** at the OS canonical path: a globals-only `agent.yaml` plus sibling `probes.d/` and `strategies.d/` directories prefilled with sane defaults (host probes + HTTP strategy). A fresh UUID is generated for the agent key.
-5. If `--enable-https` is specified: creates a `certs/` directory with a self-signed certificate and private key (valid for 365 days), and configures the HTTP strategy fragment to use them.
+2. On Linux: creates the dedicated `senhub` system user and group if they do not exist (skipped with `--user root`)
+3. Registers the system service (`SenHub Agent` on Windows, the hardened `senhub-agent.service` running as `senhub` on Linux)
+4. Configures automatic restart on failure
+5. Generates the **multi-file configuration layout** at the OS canonical path: a globals-only `agent.yaml` plus sibling `probes.d/` and `strategies.d/` directories prefilled with sane defaults (host probes + HTTP strategy). A fresh UUID is generated for the agent key.
+6. If `--enable-https` is specified: creates a `certs/` directory with a self-signed certificate and private key (valid for 365 days), and configures the HTTP strategy fragment to use them.
+7. On Linux: hands the configuration, log and certificate files to the service user so the unprivileged daemon can read them.
 
 ### Files Created
 
