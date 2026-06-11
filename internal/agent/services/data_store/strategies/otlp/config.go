@@ -73,6 +73,16 @@ const (
 	// and falls back to MaxStoreSize alone.
 	DefaultMaxActiveSeriesPerProbe = 10000
 
+	// DefaultStalenessTTL is how long a stored series may go without a
+	// new datapoint before the store evicts it instead of re-exporting
+	// it with fresh timestamps forever (#308 zombie series: a probe
+	// removed from config or denied by license left its checkpoint-
+	// restored series exporting indefinitely, indistinguishable from
+	// live data downstream). 10 minutes covers the slowest shipping
+	// probe cadences (ibmi 120s, snmp topology sweeps) with margin.
+	// 0 disables staleness eviction.
+	DefaultStalenessTTL = 10 * time.Minute
+
 	// Memory-limiter defaults. Soft and hard limits are measured
 	// against runtime.MemStats.HeapAlloc (Go heap currently allocated,
 	// not RSS — see memory_limiter.go for the rationale). The
@@ -261,6 +271,9 @@ type Config struct {
 	// admission is then governed only by MaxStoreSize. Stacks on top
 	// of MaxStoreSize — first whichever fires wins.
 	MaxActiveSeriesPerProbe int
+	// StalenessTTL evicts series that received no datapoint for this
+	// long (see DefaultStalenessTTL). 0 disables eviction.
+	StalenessTTL time.Duration
 	// MemoryLimit defines the circuit-breaker thresholds for the OTLP
 	// strategy's metric store. A background poller reads Go heap
 	// pressure every CheckInterval; when soft is hit, new series are
@@ -387,6 +400,7 @@ func defaultConfig() Config {
 		},
 		MaxStoreSize:            DefaultMaxStoreSize,
 		MaxActiveSeriesPerProbe: DefaultMaxActiveSeriesPerProbe,
+		StalenessTTL:            DefaultStalenessTTL,
 		MemoryLimit: MemoryLimitConfig{
 			SoftMiB:       DefaultMemoryLimitSoftMiB,
 			HardMiB:       DefaultMemoryLimitHardMiB,
@@ -468,6 +482,21 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 			return cfg, fmt.Errorf("max_active_series_per_probe must be >= 0 (0 = unbounded), got %d", v)
 		}
 		cfg.MaxActiveSeriesPerProbe = v
+	}
+
+	if raw, ok := params["staleness_ttl"]; ok {
+		str, isStr := raw.(string)
+		if !isStr {
+			return cfg, fmt.Errorf("staleness_ttl must be a duration string (e.g. \"10m\"), got %T", raw)
+		}
+		d, err := time.ParseDuration(str)
+		if err != nil {
+			return cfg, fmt.Errorf("staleness_ttl: %w", err)
+		}
+		if d < 0 {
+			return cfg, fmt.Errorf("staleness_ttl must be >= 0 (0 disables eviction), got %s", d)
+		}
+		cfg.StalenessTTL = d
 	}
 
 	if err := parseMemoryLimit(params["memory_limit"], &cfg.MemoryLimit); err != nil {
