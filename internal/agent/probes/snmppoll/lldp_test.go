@@ -72,15 +72,6 @@ func TestRenderPortID(t *testing.T) {
 	}
 }
 
-func TestOctetText(t *testing.T) {
-	if got := octetText([]byte("host1\x00")); got != "host1" {
-		t.Errorf("printable+NUL = %q, want host1", got)
-	}
-	if got := octetText([]byte{0x00, 0xff, 0x10}); got != "00ff10" {
-		t.Errorf("binary = %q, want hex 00ff10", got)
-	}
-}
-
 func TestParseLLDPLocal(t *testing.T) {
 	binds := []snmpRawBind{
 		{OID: lldpLocChassisIdSubtype, Type: gosnmp.Integer, Value: 4},

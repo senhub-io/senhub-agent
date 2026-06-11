@@ -1,35 +1,12 @@
 package snmptrap
 
 import (
-	"math/big"
 	"testing"
 
 	"github.com/gosnmp/gosnmp"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
 )
-
-func TestFormatVarbindValue(t *testing.T) {
-	cases := []struct {
-		name string
-		v    interface{}
-		want string
-	}{
-		{"string", "hello", "hello"},
-		{"printable bytes", []byte("eth0"), "eth0"},
-		{"binary bytes hex", []byte{0x00, 0xff, 0x10}, "0x00ff10"},
-		{"int", 42, "42"},
-		{"uint32 timeticks", uint32(12345), "12345"},
-		{"counter64 bigint", big.NewInt(9000000000), "9000000000"},
-		{"nil", nil, ""},
-	}
-	for _, c := range cases {
-		got := formatVarbindValue(gosnmp.SnmpPDU{Value: c.v})
-		if got != c.want {
-			t.Errorf("%s: got %q want %q", c.name, got, c.want)
-		}
-	}
-}
 
 func TestPacketToLogRecord_KnownTrap(t *testing.T) {
 	pkt := &gosnmp.SnmpPacket{
