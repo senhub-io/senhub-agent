@@ -3,6 +3,7 @@ package snmppoll
 import (
 	"fmt"
 	"net"
+	"senhub-agent.go/internal/agent/services/snmpcore"
 	"strconv"
 	"strings"
 )
@@ -61,15 +62,15 @@ func parseRoutes(binds []snmpRawBind) []routeRow {
 		case colRouteNextHop:
 			r.NextHop = canonIP(asIPString(b.Value))
 		case colRouteType:
-			if v, ok := asIntVal(b.Value); ok {
+			if v, ok := snmpcore.AsInt(b.Value); ok {
 				r.Type = v
 			}
 		case colRouteIfIndex:
-			if v, ok := asIntVal(b.Value); ok {
+			if v, ok := snmpcore.AsInt(b.Value); ok {
 				r.IfIndex = strconv.Itoa(v)
 			}
 		case colRouteMetric1:
-			if v, ok := asIntVal(b.Value); ok {
+			if v, ok := snmpcore.AsInt(b.Value); ok {
 				r.Metric = v
 			}
 		}

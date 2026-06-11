@@ -43,6 +43,7 @@ one series per interface (`if_index` tag).
 | `interval` | `60s` | Metric polling cadence |
 | `topology_interval` | `10m` | Entity/topology sweep cadence (slower rail, independent of metrics) |
 | `mibs` | `[]` | Built-in MIB modules to poll: `mib-2`, `if-mib` |
+| `mib_paths` | `[]` | Local directories or files of MIB modules used to name custom mappings (never fetched over the network) |
 | `custom_mappings` | `[]` | Operator-supplied OID-to-metric mappings (see below) |
 | `discovery` | none | Topology crawl from seed devices (see below) |
 
@@ -70,7 +71,7 @@ params:
 | Field | Default | Description |
 |---|---|---|
 | `oid` | required | OID, leading dot optional |
-| `metric` | required | Metric name to emit |
+| `metric` | required unless `mib_paths` is set | Metric name to emit. When omitted and `mib_paths` is configured, the name is resolved from your MIB files at startup (e.g. `upsAdvBatteryCapacity`); an unresolvable OID is a startup error, never a silent gap |
 | `type` | `gauge` | `gauge` or `counter` |
 | `index_label` | none | When set, the OID is walked as a table and the row index becomes this tag |
 

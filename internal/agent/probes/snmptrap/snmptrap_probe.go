@@ -37,6 +37,7 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/services/snmpcore"
 	"senhub-agent.go/internal/agent/services/snmpmib"
 )
 
@@ -345,9 +346,9 @@ func (p *SNMPTrapProbe) buildParams() (*gosnmp.GoSNMP, error) {
 		params.Version = gosnmp.Version3
 		params.SecurityModel = gosnmp.UserSecurityModel
 		u := p.config.V3Users[0] // validated non-empty in parseConfig
-		auth := authProtocol(u.AuthProtocol)
-		priv := privProtocol(u.PrivProtocol)
-		params.MsgFlags = msgFlags(auth, priv)
+		auth := snmpcore.AuthProtocol(u.AuthProtocol)
+		priv := snmpcore.PrivProtocol(u.PrivProtocol)
+		params.MsgFlags = snmpcore.MsgFlags(auth, priv)
 		params.SecurityParameters = &gosnmp.UsmSecurityParameters{
 			UserName:                 u.Username,
 			AuthenticationProtocol:   auth,
@@ -359,51 +360,6 @@ func (p *SNMPTrapProbe) buildParams() (*gosnmp.GoSNMP, error) {
 		return nil, fmt.Errorf("snmp_trap: unsupported version %q", p.config.Version)
 	}
 	return params, nil
-}
-
-func authProtocol(name string) gosnmp.SnmpV3AuthProtocol {
-	switch name {
-	case "MD5":
-		return gosnmp.MD5
-	case "SHA":
-		return gosnmp.SHA
-	case "SHA224":
-		return gosnmp.SHA224
-	case "SHA256":
-		return gosnmp.SHA256
-	case "SHA384":
-		return gosnmp.SHA384
-	case "SHA512":
-		return gosnmp.SHA512
-	default:
-		return gosnmp.NoAuth
-	}
-}
-
-func privProtocol(name string) gosnmp.SnmpV3PrivProtocol {
-	switch name {
-	case "DES":
-		return gosnmp.DES
-	case "AES":
-		return gosnmp.AES
-	case "AES192":
-		return gosnmp.AES192
-	case "AES256":
-		return gosnmp.AES256
-	default:
-		return gosnmp.NoPriv
-	}
-}
-
-func msgFlags(auth gosnmp.SnmpV3AuthProtocol, priv gosnmp.SnmpV3PrivProtocol) gosnmp.SnmpV3MsgFlags {
-	switch {
-	case auth != gosnmp.NoAuth && priv != gosnmp.NoPriv:
-		return gosnmp.AuthPriv
-	case auth != gosnmp.NoAuth:
-		return gosnmp.AuthNoPriv
-	default:
-		return gosnmp.NoAuthNoPriv
-	}
 }
 
 // gosnmpLog routes gosnmp's internal logging (unmarshal errors, dropped
