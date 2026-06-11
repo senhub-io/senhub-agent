@@ -128,7 +128,10 @@ func TestObserve_InjectedReader(t *testing.T) {
 		hostID:    func() string { return "h1" },
 		readRoute: func() ([]byte, error) { return []byte(routeSample), nil },
 	}
-	obs := s.Observe()
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("successful read must report ok")
+	}
 	// network.route + network.address ; has_route + next_hop_via.
 	if len(obs.Entities) != 2 || len(obs.Relations) != 2 {
 		t.Fatalf("observe = %+v", obs)

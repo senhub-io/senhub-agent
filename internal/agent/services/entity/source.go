@@ -23,33 +23,69 @@ type Observation struct {
 // Observe must return the COMPLETE current set the source sees (not a delta):
 // the tracker diffs full snapshots. It is called from the detector goroutine
 // and should not block.
+//
+// The boolean reports whether the observation is trustworthy this cycle.
+// Returning ok=false means "my view failed transiently — keep my last good
+// one": the detector then reuses the source's previous observation (bounded
+// by a staleness TTL) instead of treating everything the source used to see
+// as deleted. A transient SNMP timeout must not delete a whole device tree
+// in the consumer (audit D3). An EMPTY observation with ok=true is the
+// legitimate way to say "everything I watched is gone".
 type Source interface {
-	Observe() Observation
+	Observe() (Observation, bool)
+}
+
+// registered pairs a Source with the registry id its detector-side caches
+// key on. Ids are never reused, so a re-registered source starts clean.
+type registered struct {
+	id  uint64
+	src Source
 }
 
 var (
 	sourcesMu sync.RWMutex
-	sources   []Source
+	sources   []registered
+	nextID    uint64
 )
 
-// RegisterSource adds a Source the detector will poll every cycle. Probes
-// register their entity source at startup. Process-global, mirroring the
-// entity/log channels — there is one detector per agent.
-func RegisterSource(s Source) {
+// RegisterSource adds a Source the detector will poll every cycle and
+// returns the function that unregisters it. Probes register their entity
+// source at startup and MUST call the returned function on shutdown —
+// otherwise the source keeps heartbeating its cached topology forever
+// (dead devices never expire in the consumer, reloads duplicate sources;
+// audit D4). Process-global, mirroring the entity/log channels — there is
+// one detector per agent. Nil-safe: a nil source returns a no-op.
+func RegisterSource(s Source) (unregister func()) {
 	if s == nil {
-		return
+		return func() {}
 	}
 	sourcesMu.Lock()
-	sources = append(sources, s)
+	nextID++
+	id := nextID
+	sources = append(sources, registered{id: id, src: s})
 	sourcesMu.Unlock()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			sourcesMu.Lock()
+			for i := range sources {
+				if sources[i].id == id {
+					sources = append(sources[:i], sources[i+1:]...)
+					break
+				}
+			}
+			sourcesMu.Unlock()
+		})
+	}
 }
 
 // registeredSources returns a snapshot copy of the registered sources, safe
 // to range over without holding the lock.
-func registeredSources() []Source {
+func registeredSources() []registered {
 	sourcesMu.RLock()
 	defer sourcesMu.RUnlock()
-	cp := make([]Source, len(sources))
+	cp := make([]registered, len(sources))
 	copy(cp, sources)
 	return cp
 }

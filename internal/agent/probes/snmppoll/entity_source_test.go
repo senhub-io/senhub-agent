@@ -7,7 +7,10 @@ import (
 
 func TestObserve_EmptyBeforeSweep(t *testing.T) {
 	s := newEntitySource(&config{Target: "192.0.2.10"}, testLogger(t))
-	obs := s.Observe()
+	obs, ok := s.Observe()
+	if ok {
+		t.Error("before the first successful sweep the observation must report ok=false")
+	}
 	if len(obs.Entities) != 0 || len(obs.Relations) != 0 {
 		t.Errorf("expected empty before sweep, got %+v", obs)
 	}
@@ -332,7 +335,10 @@ func TestMaybeSweep_PopulatesAndRateLimits(t *testing.T) {
 
 	t0 := time.Now()
 	s.maybeSweep(mk("first"), t0)
-	obs := s.Observe()
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("after a successful sweep the observation must report ok")
+	}
 	if len(obs.Entities) != 1 || obs.Entities[0].Attributes["sys.name"] != "first" {
 		t.Fatalf("after first sweep: %+v", obs)
 	}
@@ -342,13 +348,13 @@ func TestMaybeSweep_PopulatesAndRateLimits(t *testing.T) {
 
 	// Within the interval → no re-sweep; cache unchanged even with fresh data.
 	s.maybeSweep(mk("second"), t0.Add(1*time.Second))
-	if s.Observe().Entities[0].Attributes["sys.name"] != "first" {
+	if o, _ := s.Observe(); o.Entities[0].Attributes["sys.name"] != "first" {
 		t.Errorf("should not re-sweep within interval")
 	}
 
 	// After the interval → re-sweep.
 	s.maybeSweep(mk("third"), t0.Add(11*time.Minute))
-	if s.Observe().Entities[0].Attributes["sys.name"] != "third" {
+	if o, _ := s.Observe(); o.Entities[0].Attributes["sys.name"] != "third" {
 		t.Errorf("should re-sweep after interval")
 	}
 }
