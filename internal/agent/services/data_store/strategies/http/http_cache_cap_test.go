@@ -168,3 +168,38 @@ func TestMetricCacheCap_DefaultMatchesOTLPStoreCap(t *testing.T) {
 		t.Errorf("DefaultMaxCacheSeries: got %d, want 50000 (same as the OTLP store)", DefaultMaxCacheSeries)
 	}
 }
+
+// TestUpdateConfiguration_PropagatesMaxCacheSize pins the reviewer
+// finding on #281: a runtime config reload must re-apply the
+// cardinality cap to the live cache — port, bind_address and TTL were
+// already handled, max_cache_size was the one knob left stale (the
+// config manager reported the new value while the cache enforced the
+// old one until restart).
+func TestUpdateConfiguration_PropagatesMaxCacheSize(t *testing.T) {
+	agentstate.ResetHTTPCacheDroppedForTest()
+	t.Cleanup(agentstate.ResetHTTPCacheDroppedForTest)
+
+	strategy := newServerTestStrategy(t, 0)
+	strategy.cache.SetMaxSeries(2)
+	registry := transformers.NewTransformerRegistry(createTestModuleLogger().Logger)
+
+	fill := func(n int) {
+		var dps []datapoint.DataPoint
+		for i := 0; i < n; i++ {
+			dps = append(dps, networkSeriesDataPoint(fmt.Sprintf("eth%d", i), 1))
+		}
+		strategy.cache.AddDataPointsWithTransformer(dps, registry)
+	}
+	fill(5)
+	if got := len(strategy.cache.GetAllMetrics()); got != 2 {
+		t.Fatalf("pre-reload size = %d, want capped at 2", got)
+	}
+
+	if err := strategy.UpdateConfiguration(map[string]interface{}{"max_cache_size": 10}); err != nil {
+		t.Fatalf("UpdateConfiguration: %v", err)
+	}
+	fill(5)
+	if got := len(strategy.cache.GetAllMetrics()); got <= 2 {
+		t.Fatalf("post-reload size = %d; the raised cap was not propagated to the live cache", got)
+	}
+}
