@@ -36,7 +36,7 @@ jobs:
   build-msi:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -141,14 +141,14 @@ jobs:
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload MSI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: senhub-agent-msi-${{ steps.ver.outputs.version }}
           path: dist/*.msi
 
       - name: Attach MSI to release (tag builds only)
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.version }}
           files: dist/*.msi
