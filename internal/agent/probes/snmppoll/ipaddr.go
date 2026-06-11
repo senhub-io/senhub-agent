@@ -3,6 +3,7 @@ package snmppoll
 import (
 	"fmt"
 	"net"
+	"senhub-agent.go/internal/agent/services/snmpcore"
 	"strconv"
 	"strings"
 )
@@ -46,7 +47,7 @@ func parseIPAddrs(binds []snmpRawBind) []ipAddr {
 		if ip == nil || ip.To4() == nil || ip.IsLoopback() || ip.IsUnspecified() {
 			continue
 		}
-		idx, ok := asIntVal(b.Value)
+		idx, ok := snmpcore.AsInt(b.Value)
 		if !ok {
 			continue
 		}

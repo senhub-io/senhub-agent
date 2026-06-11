@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"senhub-agent.go/internal/agent/services/snmpcore"
 	"strings"
 )
 
@@ -142,20 +143,20 @@ func parseLLDPLocal(binds []snmpRawBind) lldpLocal {
 	for _, b := range binds {
 		switch b.OID {
 		case lldpLocChassisIdSubtype:
-			if v, ok := asIntVal(b.Value); ok {
+			if v, ok := snmpcore.AsInt(b.Value); ok {
 				loc.ChassisIdSubtype = v
 			}
 		case lldpLocChassisId:
-			loc.ChassisId = asBytes(b.Value)
+			loc.ChassisId = snmpcore.AsBytes(b.Value)
 		case lldpLocSysName:
-			loc.SysName = octetText(asBytes(b.Value))
+			loc.SysName = snmpcore.OctetText(snmpcore.AsBytes(b.Value))
 		default:
 			if num, ok := strings.CutPrefix(b.OID, lldpLocPortIdSubtype+"."); ok {
-				if v, ok := asIntVal(b.Value); ok {
+				if v, ok := snmpcore.AsInt(b.Value); ok {
 					portSubtype[num] = v
 				}
 			} else if num, ok := strings.CutPrefix(b.OID, lldpLocPortId+"."); ok {
-				portRawID[num] = asBytes(b.Value)
+				portRawID[num] = snmpcore.AsBytes(b.Value)
 			}
 		}
 	}
@@ -164,7 +165,7 @@ func parseLLDPLocal(binds []snmpRawBind) lldpLocal {
 	for num, raw := range portRawID {
 		switch portSubtype[num] {
 		case portSubtypeIfName, portSubtypeLocal:
-			if name := octetText(raw); name != "" {
+			if name := snmpcore.OctetText(raw); name != "" {
 				if loc.Ports == nil {
 					loc.Ports = map[string]string{}
 				}
@@ -199,19 +200,19 @@ func parseLLDPNeighbors(binds []snmpRawBind, manAddrs map[string]string) []lldpN
 		}
 		switch col {
 		case colRemChassisIdSubtype:
-			if v, ok := asIntVal(b.Value); ok {
+			if v, ok := snmpcore.AsInt(b.Value); ok {
 				n.ChassisIdSubtype = v
 			}
 		case colRemChassisId:
-			n.ChassisId = asBytes(b.Value)
+			n.ChassisId = snmpcore.AsBytes(b.Value)
 		case colRemPortIdSubtype:
-			if v, ok := asIntVal(b.Value); ok {
+			if v, ok := snmpcore.AsInt(b.Value); ok {
 				n.PortIdSubtype = v
 			}
 		case colRemPortId:
-			n.PortId = asBytes(b.Value)
+			n.PortId = snmpcore.AsBytes(b.Value)
 		case colRemSysName:
-			n.SysName = octetText(asBytes(b.Value))
+			n.SysName = snmpcore.OctetText(snmpcore.AsBytes(b.Value))
 		}
 	}
 
@@ -324,9 +325,9 @@ func renderPortID(subtype int, portId []byte) string {
 	case subtypeMacAddress:
 		return macHex(portId)
 	case portSubtypeIfName, portSubtypeLocal:
-		return octetText(portId)
+		return snmpcore.OctetText(portId)
 	default:
-		return octetText(portId)
+		return snmpcore.OctetText(portId)
 	}
 }
 
@@ -338,63 +339,10 @@ func renderPortID(subtype int, portId []byte) string {
 func namedPortID(subtype int, portId []byte) string {
 	switch subtype {
 	case portSubtypeIfName, portSubtypeLocal:
-		return octetText(portId)
+		return snmpcore.OctetText(portId)
 	default:
 		return ""
 	}
-}
-
-// --- decode helpers (no contract impact) ---
-
-func asBytes(v any) []byte {
-	switch b := v.(type) {
-	case []byte:
-		return b
-	case string:
-		return []byte(b)
-	default:
-		return nil
-	}
-}
-
-func asIntVal(v any) (int, bool) {
-	switch n := v.(type) {
-	case int:
-		return n, true
-	case int64:
-		return int(n), true
-	case uint:
-		return int(n), true
-	case uint32:
-		return int(n), true
-	case uint64:
-		return int(n), true
-	default:
-		return 0, false
-	}
-}
-
-// octetText renders an OCTET STRING as text when it is printable, else as hex.
-func octetText(b []byte) string {
-	if len(b) == 0 {
-		return ""
-	}
-	if isPrintable(b) {
-		return strings.TrimRight(string(b), "\x00")
-	}
-	return hex.EncodeToString(b)
-}
-
-func isPrintable(b []byte) bool {
-	for _, c := range b {
-		if c == 0 {
-			continue // trailing NULs are common and tolerated
-		}
-		if c < 0x20 || c > 0x7e {
-			return false
-		}
-	}
-	return true
 }
 
 // macHex renders bytes as lowercase colon-separated hex (00:11:22:...).

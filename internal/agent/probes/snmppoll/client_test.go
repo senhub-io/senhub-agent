@@ -7,20 +7,6 @@ import (
 	"github.com/gosnmp/gosnmp"
 )
 
-func TestTrimLeadingDot(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{".1.3.6.1", "1.3.6.1"},
-		{"1.3.6.1", "1.3.6.1"},
-		{"  .1.3.6  ", "1.3.6"},
-		{"", ""},
-	}
-	for _, c := range cases {
-		if got := trimLeadingDot(c.in); got != c.want {
-			t.Errorf("trimLeadingDot(%q) = %q, want %q", c.in, got, c.want)
-		}
-	}
-}
-
 func TestPduToVarBind(t *testing.T) {
 	cases := []struct {
 		name      string

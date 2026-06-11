@@ -2,6 +2,7 @@ package snmppoll
 
 import (
 	"fmt"
+	"senhub-agent.go/internal/agent/services/snmpcore"
 	"strings"
 )
 
@@ -51,7 +52,7 @@ func parseInterfaces(nameBinds, speedBinds, operBinds []snmpRawBind) []ifaceRow 
 		if !ok {
 			continue
 		}
-		name := octetText(asBytes(b.Value))
+		name := snmpcore.OctetText(snmpcore.AsBytes(b.Value))
 		if name == "" {
 			continue
 		}
@@ -66,7 +67,7 @@ func parseInterfaces(nameBinds, speedBinds, operBinds []snmpRawBind) []ifaceRow 
 	for _, b := range speedBinds {
 		if idx, ok := strings.CutPrefix(b.OID, ifHighSpeed+"."); ok {
 			if r := rows[idx]; r != nil {
-				if v, ok := asIntVal(b.Value); ok {
+				if v, ok := snmpcore.AsInt(b.Value); ok {
 					r.SpeedMbps = int64(v)
 				}
 			}
@@ -75,7 +76,7 @@ func parseInterfaces(nameBinds, speedBinds, operBinds []snmpRawBind) []ifaceRow 
 	for _, b := range operBinds {
 		if idx, ok := strings.CutPrefix(b.OID, ifOperStatus+"."); ok {
 			if r := rows[idx]; r != nil {
-				if v, ok := asIntVal(b.Value); ok {
+				if v, ok := snmpcore.AsInt(b.Value); ok {
 					r.OperStatus = v
 				}
 			}
