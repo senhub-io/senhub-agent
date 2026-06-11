@@ -17,7 +17,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/event"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/http"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
@@ -75,6 +77,11 @@ type dataStore struct {
 	configProvider      configuration.ConfigurationProvider
 	agentConfig         configuration.AgentConfiguration
 	transformerRegistry *transformers.TransformerRegistry
+	// transformerFallbackWarned memoizes probe types already warned
+	// about a missing transformer YAML, so the warning fires once per
+	// probe type instead of once per datapoint per cycle. Same
+	// warn-once pattern as prometheusWarnedMetrics in the http strategy.
+	transformerFallbackWarned sync.Map
 }
 
 // activeStrategies returns the current immutable strategy snapshot.
@@ -526,6 +533,7 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 				Str("probe_name", probeName).
 				Str("probe_type", probeType).
 				Msg("No transformer available for unit correction")
+			d.noteTransformerFallback(probeName, probeType, tagMap)
 			correctedDatapoints[i] = dp
 			continue
 		}
@@ -549,6 +557,12 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 					Float64("correction_factor", newValue/originalFloat64).
 					Msg("🔧 Unit correction applied to datapoint - ensuring consistent units across all strategies")
 			}
+		} else {
+			// Only the legacy fallback transformer (created when a probe
+			// has no YAML definition) lacks ApplyUnitCorrection: the
+			// datapoint ships with no unit injection and no corrections.
+			// Make that visible instead of silently degrading.
+			d.noteTransformerFallback(probeName, probeType, tagMap)
 		}
 
 		// Inject the unit tag from the YAML definition when the probe
@@ -590,4 +604,27 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 	}
 
 	return correctedDatapoints
+}
+
+// noteTransformerFallback surfaces a probe shipping datapoints without a
+// transformer YAML definition: it bumps the lifetime
+// senhub.agent.transformer.fallback counter on every affected datapoint
+// and logs a Warn once per probe type — symmetric with the OTel path,
+// which warns once per metric when no OTel mapping exists.
+//
+// Datapoints that carry no definition by design are exempt: OTLP-ingested
+// metrics (metric_type=otlp_ingest) and typed pass-through metrics
+// (otel_type tag) are already OTel-shaped and never had a YAML row.
+func (d *dataStore) noteTransformerFallback(probeName, probeType string, tagMap map[string]string) {
+	if tagMap["metric_type"] == otelmapper.MetricTypeOTLPIngest || tagMap["otel_type"] != "" {
+		return
+	}
+	agentstate.IncrementTransformerFallbacks()
+	if _, seen := d.transformerFallbackWarned.LoadOrStore(probeType, struct{}{}); seen {
+		return
+	}
+	d.logger.Warn().
+		Str("probe_name", probeName).
+		Str("probe_type", probeType).
+		Msg("Probe has no transformer definition - datapoints ship without unit injection or corrections. Add a YAML under transformers/definitions to fix.")
 }
