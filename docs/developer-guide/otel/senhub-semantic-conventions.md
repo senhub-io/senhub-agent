@@ -1169,6 +1169,15 @@ Aligné sur le receiver otelcol-contrib httpcheck quand la métrique existe (`ht
 
 Redirections rapportées non suivies ; keep-alive désactivé (chaque cycle mesure un handshake complet).
 
+### 4.22 tcp_dial + dns_latency (free, #159/#158)
+
+Mêmes principes que §4.20/4.21 (châssis actif, wire ms → `value_scale: 0.001`, échec = mesure up=0).
+
+| Métrique OTel | Unité | Type | Attributs |
+|---|---|---|---|
+| `senhub.tcpdial.up` / `.duration` | `1` / `s` | gauge | `tcpdial.target` |
+| `senhub.dns.up` / `.lookup.duration` / `.answers` | `1` / `s` / `{answer}` | gauge | `dns.question.name` (semconv DNS), `dns.resolver` (`system` = resolver OS) |
+
 ## 6. Processus d'ajout d'une convention
 
 1. Lire les sources §1 pour le domaine concerné

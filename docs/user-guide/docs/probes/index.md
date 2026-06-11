@@ -28,6 +28,8 @@ and form the baseline for every install.
 - **[ICMP Check](icmp-check.md)** *(Free)* — Multi-target ping: reachability, packet loss, RTT statistics
 =======
 - **[HTTP Check](http-check.md)** *(Free)* — HTTP(S) status, latency phases, content match, TLS certificate expiry
+- **[TCP Dial](tcp-dial.md)** *(Free)* — Raw TCP connect latency to host:port
+- **[DNS Latency](dns-latency.md)** *(Free)* — Resolution latency per name, per resolver
 >>>>>>> Stashed changes
 
 ## Synthetic Monitoring
