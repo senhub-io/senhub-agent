@@ -14,7 +14,7 @@ func hostState(id, name string, ts time.Time) Event {
 
 func TestTracker_DeletesDisappearedItems(t *testing.T) {
 	var got []Event
-	tr := NewTracker(func(ev Event) { got = append(got, ev) })
+	tr := NewTracker(func(ev Event) { got = append(got, ev) }, 0)
 
 	t1 := time.Unix(1000, 0).UTC()
 	t2 := time.Unix(1060, 0).UTC()
@@ -66,7 +66,7 @@ func TestTracker_DeletesDisappearedItems(t *testing.T) {
 
 func TestTracker_StableIdentityNoSpuriousDelete(t *testing.T) {
 	var got []Event
-	tr := NewTracker(func(ev Event) { got = append(got, ev) })
+	tr := NewTracker(func(ev Event) { got = append(got, ev) }, 0)
 	t1 := time.Unix(1000, 0).UTC()
 	t2 := time.Unix(1060, 0).UTC()
 
@@ -81,5 +81,55 @@ func TestTracker_StableIdentityNoSpuriousDelete(t *testing.T) {
 	}
 	if got[0].Kind != EntityState || got[0].Entity.Attributes["host.name"] != "new-name" {
 		t.Errorf("got %+v, want host A state with updated name", got[0])
+	}
+}
+
+// TestTracker_SuppressesUnchangedHeartbeats pins the #272 P6 fix: an
+// unchanged state is re-published only after the refresh window; a
+// changed attribute republishes immediately; a deleted key republishes
+// when it reappears.
+func TestTracker_SuppressesUnchangedHeartbeats(t *testing.T) {
+	var got []Event
+	tr := NewTracker(func(ev Event) { got = append(got, ev) }, time.Minute)
+
+	state := func(attr string, ts time.Time) Event {
+		return Event{Kind: EntityState, Time: ts, Interval: 3 * time.Minute, Entity: &Entity{
+			Type: "db", ID: map[string]any{"db.instance.id": "pg1"},
+			Attributes: map[string]any{"state": attr},
+		}}
+	}
+
+	t0 := time.Unix(1000, 0).UTC()
+	tr.Reconcile([]Event{state("a", t0)}, t0)
+	if len(got) != 1 {
+		t.Fatalf("first state must publish, got %d", len(got))
+	}
+
+	// Same content 10s later: suppressed.
+	tr.Reconcile([]Event{state("a", t0.Add(10*time.Second))}, t0.Add(10*time.Second))
+	if len(got) != 1 {
+		t.Fatalf("unchanged state within refresh must be suppressed, got %d events", len(got))
+	}
+
+	// Changed content: published immediately.
+	tr.Reconcile([]Event{state("b", t0.Add(20*time.Second))}, t0.Add(20*time.Second))
+	if len(got) != 2 {
+		t.Fatalf("changed state must publish, got %d events", len(got))
+	}
+
+	// Unchanged but refresh elapsed: published (liveness heartbeat).
+	tr.Reconcile([]Event{state("b", t0.Add(2*time.Minute))}, t0.Add(2*time.Minute))
+	if len(got) != 3 {
+		t.Fatalf("unchanged state past refresh must republish, got %d events", len(got))
+	}
+
+	// Disappears: delete fires; reappearing publishes again at once.
+	tr.Reconcile(nil, t0.Add(3*time.Minute))
+	if countKind(got, EntityDelete) != 1 {
+		t.Fatalf("absence must delete, got %+v", got)
+	}
+	tr.Reconcile([]Event{state("b", t0.Add(4*time.Minute))}, t0.Add(4*time.Minute))
+	if countKind(got, EntityState) != 4 {
+		t.Fatalf("reappearance must publish immediately, got %+v", got)
 	}
 }

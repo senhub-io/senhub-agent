@@ -8,7 +8,7 @@ import (
 // sourceFunc adapts a function to the Source interface for tests.
 type sourceFunc func() Observation
 
-func (f sourceFunc) Observe() Observation { return f() }
+func (f sourceFunc) Observe() (Observation, bool) { return f(), true }
 
 // TestObservation_FoldRelationships verifies a relation is folded onto its
 // source entity (matched by the From endpoint) as a bare embedded
@@ -84,7 +84,7 @@ func TestSource_DetectorMergesAndTracksDeletes(t *testing.T) {
 		func() AgentIdentity { return AgentIdentity{InstanceID: "agent-1"} },
 		time.Minute,
 	)
-	tr := NewTracker(func(ev Event) { got = append(got, ev) })
+	tr := NewTracker(func(ev Event) { got = append(got, ev) }, 0)
 
 	// Cycle 1: foundation (host + service.instance) + db = 3 entity events.
 	// runs_on and monitors both fold onto the service.instance.
@@ -146,4 +146,112 @@ func hasRel(rels []Relationship, typ, targetType string) bool {
 		}
 	}
 	return false
+}
+
+// flakySource lets a test flip between a good observation and a failed one.
+type flakySource struct {
+	obs Observation
+	ok  bool
+}
+
+func (f *flakySource) Observe() (Observation, bool) { return f.obs, f.ok }
+
+func testDetector() *Detector {
+	return NewDetector(
+		func() (HostIdentity, error) { return HostIdentity{ID: "h-1", Name: "web", OSType: "linux"}, nil },
+		func() AgentIdentity { return AgentIdentity{InstanceID: "agent-1"} },
+		time.Minute,
+	)
+}
+
+func dbObservation(id string) Observation {
+	return Observation{Entities: []Entity{{
+		Type: "db", ID: map[string]any{"db.instance.id": id},
+		Attributes: map[string]any{"db.system.name": "postgresql"},
+	}}}
+}
+
+func countKind(events []Event, k Kind) int {
+	n := 0
+	for _, ev := range events {
+		if ev.Kind == k {
+			n++
+		}
+	}
+	return n
+}
+
+// TestSource_FailedObserveKeepsLastGood pins the #272 acceptance: a
+// transient source failure (ok=false) must NOT delete what the source
+// used to report — the detector serves the last good observation until
+// the staleness TTL, after which the deletes legitimately fire.
+func TestSource_FailedObserveKeepsLastGood(t *testing.T) {
+	resetSourcesForTest()
+	defer resetSourcesForTest()
+
+	src := &flakySource{obs: dbObservation("pg1"), ok: true}
+	unregister := RegisterSource(src)
+	defer unregister()
+
+	var got []Event
+	d := testDetector()
+	tr := NewTracker(func(ev Event) { got = append(got, ev) }, 0)
+
+	t0 := time.Unix(1000, 0).UTC()
+	d.reconcile(tr, t0)
+	if countKind(got, EntityDelete) != 0 {
+		t.Fatalf("cycle 1 must not delete: %+v", got)
+	}
+
+	// Cycle 2: the sweep fails. The db must STILL be present (no delete).
+	src.ok = false
+	got = nil
+	d.reconcile(tr, t0.Add(time.Minute))
+	if countKind(got, EntityDelete) != 0 {
+		t.Fatalf("transient failure must not delete the source's entities: %+v", got)
+	}
+
+	// Beyond the TTL the silence is real: the delete fires.
+	got = nil
+	d.reconcile(tr, t0.Add(time.Minute+lastGoodTTL))
+	if countKind(got, EntityDelete) != 1 {
+		t.Fatalf("beyond lastGoodTTL the entities must expire, got %+v", got)
+	}
+}
+
+// TestSource_UnregisterRetiresEntities pins the #272 acceptance: after
+// unregister, the source's entities are absence-deleted on the next
+// cycle and a stop/reload does not duplicate the source.
+func TestSource_UnregisterRetiresEntities(t *testing.T) {
+	resetSourcesForTest()
+	defer resetSourcesForTest()
+
+	src := &flakySource{obs: dbObservation("pg1"), ok: true}
+	unregister := RegisterSource(src)
+
+	var got []Event
+	d := testDetector()
+	tr := NewTracker(func(ev Event) { got = append(got, ev) }, 0)
+
+	t0 := time.Unix(1000, 0).UTC()
+	d.reconcile(tr, t0)
+
+	unregister()
+	unregister() // idempotent: double-call must not corrupt the registry
+
+	got = nil
+	d.reconcile(tr, t0.Add(time.Minute))
+	if countKind(got, EntityDelete) != 1 {
+		t.Fatalf("unregistered source's entities must be deleted, got %+v", got)
+	}
+	if len(registeredSources()) != 0 {
+		t.Fatalf("registry must be empty after unregister")
+	}
+
+	// Reload: re-registering starts a fresh id, no duplicates.
+	unregister2 := RegisterSource(src)
+	defer unregister2()
+	if n := len(registeredSources()); n != 1 {
+		t.Fatalf("re-register must yield exactly 1 source, got %d", n)
+	}
 }
