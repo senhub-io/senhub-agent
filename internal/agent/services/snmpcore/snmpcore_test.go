@@ -139,3 +139,17 @@ func TestCoercions(t *testing.T) {
 		t.Error("TrimLeadingDot whitespace handling broken (migrated from snmppoll client_test)")
 	}
 }
+
+func TestKnownProtocols(t *testing.T) {
+	for _, ok := range []string{"", "MD5", "SHA512"} {
+		if !KnownAuthProtocol(ok) {
+			t.Errorf("KnownAuthProtocol(%q) = false, want true", ok)
+		}
+	}
+	if KnownAuthProtocol("sha256") || KnownAuthProtocol("bogus") {
+		t.Error("KnownAuthProtocol must reject unknown/lowercase names")
+	}
+	if !KnownPrivProtocol("AES256") || KnownPrivProtocol("3DES") {
+		t.Error("KnownPrivProtocol table broken")
+	}
+}
