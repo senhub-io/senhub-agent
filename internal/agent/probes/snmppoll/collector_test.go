@@ -102,7 +102,7 @@ func TestCollect_ScalarsAndWalks(t *testing.T) {
 		},
 	}
 
-	points := collect(fc, cfg, "192.0.2.10:161", "", nil, time.Now(), testLogger(t))
+	points, _ := collect(fc, cfg, "192.0.2.10:161", "", nil, time.Now(), testLogger(t))
 
 	up, ok := find(points, "snmp.sys.uptime")
 	if !ok || up.Value != 12345 {
@@ -151,7 +151,7 @@ func TestCollect_DynamicCustomMappingCanonicalName(t *testing.T) {
 		},
 	}
 
-	points := collect(fc, cfg, "10.0.0.1:161", "", nil, time.Now(), testLogger(t))
+	points, _ := collect(fc, cfg, "10.0.0.1:161", "", nil, time.Now(), testLogger(t))
 
 	temp, ok := find(points, "senhub.snmp.vendor.temperature")
 	if !ok {
@@ -188,7 +188,7 @@ func TestCollect_BestEffortOnWalkError(t *testing.T) {
 	fc := &fakeClient{walkErr: errors.New("walk timeout")}
 
 	// Should not panic or return partial garbage; failed walks are skipped.
-	points := collect(fc, cfg, "192.0.2.10:161", "", nil, time.Now(), testLogger(t))
+	points, _ := collect(fc, cfg, "192.0.2.10:161", "", nil, time.Now(), testLogger(t))
 	if len(points) != 0 {
 		t.Errorf("expected no points when every walk fails, got %d", len(points))
 	}
@@ -202,7 +202,7 @@ func TestCollect_CorrelationTags(t *testing.T) {
 	fc := &fakeClient{walkResult: map[string][]snmpVarBind{
 		"1.3.6.1.2.1.2.2.1.10": {{OID: "1.3.6.1.2.1.2.2.1.10.5", Value: 12345, IsNumeric: true}}, // ifInOctets @ ifIndex 5
 	}}
-	points := collect(fc, cfg, "10.0.0.1:161", "serial:9:S1", map[string]string{"5": "Gi0/5"}, time.Now(), testLogger(t))
+	points, _ := collect(fc, cfg, "10.0.0.1:161", "serial:9:S1", map[string]string{"5": "Gi0/5"}, time.Now(), testLogger(t))
 
 	p, ok := find(points, "snmp.interface.in_octets")
 	if !ok {
@@ -226,7 +226,7 @@ func TestCollect_NoCorrelationTagsBeforeSweep(t *testing.T) {
 	fc := &fakeClient{walkResult: map[string][]snmpVarBind{
 		"1.3.6.1.2.1.2.2.1.10": {{OID: "1.3.6.1.2.1.2.2.1.10.5", Value: 1, IsNumeric: true}},
 	}}
-	points := collect(fc, cfg, "10.0.0.1:161", "", nil, time.Now(), testLogger(t))
+	points, _ := collect(fc, cfg, "10.0.0.1:161", "", nil, time.Now(), testLogger(t))
 
 	p, ok := find(points, "snmp.interface.in_octets")
 	if !ok {
@@ -237,5 +237,25 @@ func TestCollect_NoCorrelationTagsBeforeSweep(t *testing.T) {
 	}
 	if got := tagVal(p, "interface.name"); got != "" {
 		t.Errorf("interface.name = %q, want absent without ifNames", got)
+	}
+}
+
+// TestCollect_UpReflectsAnswers pins the reachability fix found during
+// the v3 runtime validation on sha901: UDP connect cannot fail for an
+// unreachable or auth-failing device, so up must be judged on actual
+// responses. With every request erroring, answered must be false.
+func TestCollect_UpReflectsAnswers(t *testing.T) {
+	cfg := &config{MIBs: []string{"mib-2", "if-mib"}}
+	fc := &fakeClient{getErr: errors.New("timeout"), walkErr: errors.New("timeout")}
+	_, answered := collect(fc, cfg, "192.0.2.10:161", "", nil, time.Now(), testLogger(t))
+	if answered {
+		t.Fatal("answered = true with every request failing; up would stay 1 through a real outage")
+	}
+
+	ok := &fakeClient{walkResult: map[string][]snmpVarBind{
+		"1.3.6.1.2.1.2.2.1.10": {{OID: "1.3.6.1.2.1.2.2.1.10.5", Value: 1, IsNumeric: true}},
+	}}
+	if _, answered := collect(ok, cfg, "192.0.2.10:161", "", nil, time.Now(), testLogger(t)); !answered {
+		t.Fatal("answered = false although a walk succeeded")
 	}
 }
