@@ -53,3 +53,27 @@ func MsgFlags(auth gosnmp.SnmpV3AuthProtocol, priv gosnmp.SnmpV3PrivProtocol) go
 		return gosnmp.NoAuthNoPriv
 	}
 }
+
+// KnownAuthProtocol reports whether name is a valid USM auth protocol
+// (empty means "no auth" and is valid). AuthProtocol maps unknown names
+// to NoAuth for robustness; config validation should reject them
+// instead of silently degrading security.
+func KnownAuthProtocol(name string) bool {
+	switch name {
+	case "", "MD5", "SHA", "SHA224", "SHA256", "SHA384", "SHA512":
+		return true
+	default:
+		return false
+	}
+}
+
+// KnownPrivProtocol reports whether name is a valid USM privacy
+// protocol (empty means "no privacy" and is valid).
+func KnownPrivProtocol(name string) bool {
+	switch name {
+	case "", "DES", "AES", "AES192", "AES256":
+		return true
+	default:
+		return false
+	}
+}
