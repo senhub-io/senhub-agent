@@ -16,7 +16,9 @@ package icmpcheck
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -95,16 +97,31 @@ func NewICMPCheckProbe(config map[string]interface{}, baseLogger *logger.Logger)
 	return probe, nil
 }
 
+// defaultPrivileged picks the ping socket mode when the config does not
+// say. Windows has no unprivileged ICMP datagram sockets. On Linux,
+// datagram ICMP is gated by net.ipv4.ping_group_range, which stock
+// Ubuntu/Debian servers ship DISABLED ("1 0") — even root gets
+// permission denied on SOCK_DGRAM ICMP (#357, found on sha901). Since
+// the agent currently requires root on Linux (#223), privileged raw
+// sockets are the mode that just works there; unprivileged stays the
+// default for non-root processes, ready for the least-privilege work.
+func defaultPrivileged(goos string, euid int) bool {
+	if goos == "windows" {
+		return true
+	}
+	if goos == "linux" && euid == 0 {
+		return true
+	}
+	return false
+}
+
 func parseConfig(config map[string]interface{}) (checkConfig, error) {
 	cfg := checkConfig{
 		Count:      defaultCount,
 		Timeout:    defaultTimeout,
 		Interval:   defaultInterval,
 		PacketSize: defaultPacketSize,
-		// Windows has no unprivileged ICMP datagram sockets; the agent
-		// service runs elevated there anyway. Elsewhere default to
-		// unprivileged so the probe works without capabilities.
-		Privileged: runtime.GOOS == "windows",
+		Privileged: defaultPrivileged(runtime.GOOS, os.Geteuid()),
 	}
 
 	raw, ok := config["targets"]
@@ -250,6 +267,12 @@ func (p *ICMPCheckProbe) pingOnce(target string) pingResult {
 	pinger.SetPrivileged(p.config.Privileged)
 
 	if err := pinger.Run(); err != nil {
+		if !p.config.Privileged && errors.Is(err, os.ErrPermission) {
+			// Datagram ICMP refused: net.ipv4.ping_group_range likely
+			// excludes this process (stock Ubuntu/Debian disable it).
+			// Actionable instead of a silent up=0 forever (#357).
+			err = fmt.Errorf("%w (unprivileged ICMP datagram sockets are gated by net.ipv4.ping_group_range, disabled by default on Ubuntu/Debian; set privileged: true or widen the sysctl)", err)
+		}
 		res.err = fmt.Errorf("pinging %s: %w", target, err)
 		res.lossRatio = 1
 		return res
