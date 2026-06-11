@@ -50,6 +50,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **filetail** - Generic flat-file log tailing (regex/JSON/logfmt parsing, rotation-aware), cross-platform — feeds VictoriaLogs alongside linux_logs/windows_eventlog
 - **otlp_receiver** - Embedded OTLP gRPC/HTTP receiver; the agent acts as an edge collector ingesting OTLP metric streams from other instrumented sources (universal collection wedge)
 - **prometheus_scrape** - Pull-side twin of otlp_receiver: scrapes Prometheus /metrics endpoints (exporters, appliances) into the same pipeline (universal collection wedge)
+- **exec** - Custom checks: runs operator-supplied Nagios plugins or JSON-emitting scripts on interval (custom-sensor long tail)
 - **snmp_trap** - SNMP v2c/v3 trap receiver (UDP, default :162) — push counterpart of snmp_poll, emits traps as OTel logs
 - **icmp_check** - Multi-target ICMP ping (RTT min/avg/max/stddev, packet loss, reachability) — free active check, the PRTG-migration wedge sensor
 - **http_check** - Multi-target HTTP(S) check: status, latency phases (DNS/connect/TLS/TTFB), response size, content match, TLS certificate expiry

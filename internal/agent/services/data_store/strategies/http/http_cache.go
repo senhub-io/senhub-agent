@@ -102,6 +102,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// otlp_receiver). The OTLP/Prometheus re-export path carries all
 	// labels through the mapper pass-through.
 	"prometheus_scrape": {"target", "metric_type"},
+	// exec: dynamic perfdata/JSON metric names carry identity in the
+	// metric name itself (senhub.exec.<label>); no per-series labels to
+	// discriminate beyond the probe instance.
+	"exec": {"metric_type"},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
