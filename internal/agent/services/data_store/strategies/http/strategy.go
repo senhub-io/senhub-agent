@@ -538,11 +538,6 @@ func (h *HTTPSyncStrategy) handleNagiosChecks(w http.ResponseWriter, r *http.Req
 
 // Nagios helper functions (delegated to NagiosManager)
 
-// handleZabbixMetricsGET handles GET requests for Zabbix format metrics (delegated to UtilsManager)
-func (h *HTTPSyncStrategy) handleZabbixMetricsGET(w http.ResponseWriter, r *http.Request) {
-	h.utilsManager.handleZabbixMetricsGET(w, r)
-}
-
 // handlePrometheusMetricsGET handles GET requests for Prometheus format metrics (delegated to UtilsManager)
 func (h *HTTPSyncStrategy) handlePrometheusMetricsGET(w http.ResponseWriter, r *http.Request) {
 	h.utilsManager.handlePrometheusMetricsGET(w, r)
