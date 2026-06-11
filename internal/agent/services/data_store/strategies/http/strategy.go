@@ -151,9 +151,6 @@ func NewHTTPSyncStrategy(
 	// Initialize health manager
 	strategy.healthManager = NewHealthManager(strategy, moduleLogger, strategy.startTime)
 
-	// Initialize metrics processor
-	strategy.metricsProcessor = NewMetricsProcessor(strategy.cache, strategy.formatConverter, strategy.lookupRegistry, moduleLogger)
-
 	// Initialize configuration manager
 	strategy.configManager = NewConfigurationManager(agentConfig, params, moduleLogger)
 
@@ -183,6 +180,12 @@ func NewHTTPSyncStrategy(
 		// Initialize lookups manager only if registry loaded successfully
 		strategy.lookupsManager = NewLookupsManager(strategy)
 	}
+
+	// Initialize the metrics processor AFTER the lookup registry: it
+	// captures the registry at construction, and the previous order
+	// handed it a nil — lookup-based status mapping silently never ran
+	// (audit A7 construction-order defect, #273).
+	strategy.metricsProcessor = NewMetricsProcessor(strategy.cache, strategy.formatConverter, strategy.lookupRegistry, moduleLogger)
 
 	// Initialize status service with centralized status calculations
 	strategy.statusService = status.NewStatusService(
