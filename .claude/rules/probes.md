@@ -115,5 +115,5 @@ The probe **type name** must be a deliberate, stable identifier — it's part of
 ## Tests
 
 - Unit tests use synthetic input maps (stub `SHOW GLOBAL STATUS` etc.) — no real connection required for the per-family build* helpers.
-- Integration tests live under `*_integration_test.go` with a `//go:build integration` tag (run via `make test-database`).
+- Integration tests live under `*_integration_test.go` with a `//go:build integration` tag (run via `make test-database` in senhub-agent-enterprise, where the database probes live).
 - Test assertions reference **OTel-canonical** metric names, not the legacy `db_*` form.
