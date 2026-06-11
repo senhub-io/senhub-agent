@@ -35,10 +35,20 @@ type Observation = ientity.Observation
 // reporting the systems it monitors. The detector calls Observe once per
 // cycle; it must return the COMPLETE current set (not a delta) and must not
 // block.
+//
+// The boolean reports whether the observation is trustworthy this cycle.
+// Return ok=false on a transient collection failure: the detector then
+// keeps serving your last good observation (bounded by a staleness TTL)
+// instead of treating everything you used to report as deleted. An EMPTY
+// observation with ok=true is the legitimate "everything I watched is
+// gone".
 type Source = ientity.Source
 
-// RegisterSource adds a Source the detector polls every cycle. Call it from
-// an init() in the probe's own package.
-func RegisterSource(s Source) {
-	ientity.RegisterSource(s)
+// RegisterSource adds a Source the detector polls every cycle and returns
+// the function that unregisters it. Call RegisterSource when the probe
+// starts and the returned function when it shuts down — a source that is
+// never unregistered keeps heartbeating its cached topology after the
+// probe stops, and a reloaded probe duplicates it.
+func RegisterSource(s Source) (unregister func()) {
+	return ientity.RegisterSource(s)
 }

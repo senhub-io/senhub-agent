@@ -40,7 +40,7 @@ func TestDetector_Reconcile_PublishesFoundation(t *testing.T) {
 		},
 		time.Minute,
 	)
-	d.reconcile(NewTracker(publish), time.Unix(1780272000, 0).UTC())
+	d.reconcile(NewTracker(publish, 0), time.Unix(1780272000, 0).UTC())
 
 	// Foundation is two entity events now (host + service.instance); runs_on
 	// rides embedded on the service.instance, not as its own event.
@@ -78,7 +78,7 @@ func TestDetector_Reconcile_SkipsOnMissingIdentity(t *testing.T) {
 		func() AgentIdentity { return AgentIdentity{InstanceID: "agent-7f3a"} },
 		time.Minute,
 	)
-	d.reconcile(NewTracker(publish), time.Unix(1780272000, 0).UTC())
+	d.reconcile(NewTracker(publish, 0), time.Unix(1780272000, 0).UTC())
 
 	// Empty agent instance id → also skip.
 	d2 := NewDetector(
@@ -86,7 +86,7 @@ func TestDetector_Reconcile_SkipsOnMissingIdentity(t *testing.T) {
 		func() AgentIdentity { return AgentIdentity{} },
 		time.Minute,
 	)
-	d2.reconcile(NewTracker(publish), time.Unix(1780272000, 0).UTC())
+	d2.reconcile(NewTracker(publish, 0), time.Unix(1780272000, 0).UTC())
 
 	if publishCount != 0 {
 		t.Fatalf("published %d events on missing identity, want 0", publishCount)
