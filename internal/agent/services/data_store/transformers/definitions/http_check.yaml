@@ -32,7 +32,7 @@ metrics:
     description: "HTTP status code of the last response"
     otel:
       name: senhub.httpcheck.status.code
-      unit: "1"
+      unit: "{code}"
       type: gauge
     tag_to_attribute:
       target: httpcheck.target
