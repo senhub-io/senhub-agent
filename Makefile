@@ -15,7 +15,12 @@ LINUX_ARM64=$(LINUX_ARM64_DIR)/$(EXECUTABLE)
 WINDOWS=$(WINDOWS_AMD64_DIR)/$(EXECUTABLE).exe
 DARWIN=$(DARWIN_AMD64_DIR)/$(EXECUTABLE)
 DARWIN_ARM64=$(DARWIN_ARM64_DIR)/$(EXECUTABLE)
-VERSION=$(shell git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+.*$$' | sort -V | tail -n1)
+# Version embedded in binaries: the nearest reachable tag from HEAD
+# (git describe), NOT the highest tag repo-wide — building an older
+# branch must not claim a newer version (poisons updater comparisons).
+# Falls back to 0.0.0-dev when no tag is reachable (fresh clones, CI
+# shallow checkouts without tags).
+VERSION=$(shell git describe --tags --abbrev=0 --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || echo 0.0.0-dev)
 COMMIT_HASH=$(shell git describe --tags --always --long --dirty)
 ENV ?= production
 PRODUCTION_URL="https://eu-west-1.intake.senhub.io"
@@ -61,40 +66,12 @@ check-version:
 			exit 1; \
 		fi
 
-# Manual version management (use for development and RC versions)
-bump-version:
-		@current_version=$$(echo "$(VERSION)" | sed 's/-rc//'); \
-		if [[ "$(VERSION)" == *"-rc"* ]]; then \
-			echo "Current version: $(VERSION) (Release Candidate)"; \
-			read -p "Do you want to create a release version? [Y/n] " make_release; \
-		if [[ "$$make_release" != "n" && "$$make_release" != "N" ]]; then \
-			new_version="$$current_version"; \
-		else \
-			read -p "Enter new RC version [$$current_version-rc]: " new_version; \
-				: "$${new_version:=$$current_version-rc}"; \
-			fi; \
-			else \
-				echo "Current version: $(VERSION)"; \
-				read -p "Is this a release candidate? [Y/n] " is_rc; \
-				if [[ "$$is_rc" != "n" && "$$is_rc" != "N" ]]; then \
-					read -p "Enter new version [$$current_version-rc]: " new_version; \
-					: "$${new_version:=$$current_version-rc}"; \
-				else \
-					read -p "Enter new version [$$current_version]: " new_version; \
-					: "$${new_version:=$$current_version}"; \
-				fi; \
-			fi; \
-			echo "Creating new version: v$$new_version"; \
-			git tag -a "v$$new_version" -m "Version $$new_version"; \
-			git push origin "v$$new_version"
-
-# Delete a version tag (useful for corrections)
-delete-version:
-	@echo "Current tags:"; \
-	git tag -l; \
-	read -p "Enter tag to delete: v" version_to_delete; \
-	git tag -d "v$$version_to_delete"; \
-	git push origin ":refs/tags/v$$version_to_delete"
+# Version tags are NOT managed from this repo. Release tags (X.Y.Z and
+# X.Y.Z-beta, no v prefix) live on senhub-agent-enterprise, whose
+# workflows build and publish the releases; see the release-manager
+# flow in that repo. The old bump-version/delete-version targets were
+# removed: they created v-prefixed tags (which no workflow matches)
+# and auto-pushed them (#283).
 
 # ========================================
 # BUILD TARGETS
