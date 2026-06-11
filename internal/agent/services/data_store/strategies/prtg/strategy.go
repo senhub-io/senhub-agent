@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -313,7 +314,7 @@ func (s *SyncStrategyPrtg) doSyncData(data []datapoint.DataPoint) error {
 		s.logger.Error().Err(err).Msg("error encoding data.")
 		return err
 	}
-	req, err := s.http.Post(
+	resp, err := s.http.Post(
 		s.config.ServerUrl,
 		"application/json",
 		bytes.NewBuffer(requestBody),
@@ -321,8 +322,15 @@ func (s *SyncStrategyPrtg) doSyncData(data []datapoint.DataPoint) error {
 	if err != nil {
 		return err
 	}
-	if req.StatusCode != 200 {
-		return fmt.Errorf("unexpected status code: %d\n%v", req.StatusCode, req.Body)
+	// Drain + close so the transport can reuse the connection; this
+	// push runs every sync and leaked one connection per cycle (#277).
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("unexpected status code: %d: %s", resp.StatusCode, body)
 	}
 
 	return nil
