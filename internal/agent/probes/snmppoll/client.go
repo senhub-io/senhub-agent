@@ -3,7 +3,7 @@ package snmppoll
 import (
 	"fmt"
 	"math/big"
-	"strings"
+	"senhub-agent.go/internal/agent/services/snmpcore"
 
 	"github.com/gosnmp/gosnmp"
 )
@@ -123,7 +123,7 @@ func (c *gosnmpClient) WalkRaw(baseOID string) ([]snmpRawBind, error) {
 	}
 	out := make([]snmpRawBind, 0, len(pdus))
 	for _, pdu := range pdus {
-		out = append(out, snmpRawBind{OID: trimLeadingDot(pdu.Name), Type: pdu.Type, Value: pdu.Value})
+		out = append(out, snmpRawBind{OID: snmpcore.TrimLeadingDot(pdu.Name), Type: pdu.Type, Value: pdu.Value})
 	}
 	return out, nil
 }
@@ -141,7 +141,7 @@ func (c *gosnmpClient) Close() error {
 // interfaces. NoSuchObject/Instance, EndOfMibView, null, strings and OIDs
 // come back with IsNumeric=false.
 func pduToVarBind(pdu gosnmp.SnmpPDU) snmpVarBind {
-	vb := snmpVarBind{OID: trimLeadingDot(pdu.Name)}
+	vb := snmpVarBind{OID: snmpcore.TrimLeadingDot(pdu.Name)}
 	switch pdu.Type {
 	case gosnmp.Counter32, gosnmp.Counter64, gosnmp.Gauge32, gosnmp.Integer, gosnmp.TimeTicks, gosnmp.Uinteger32:
 		vb.Value = bigIntToFloat(gosnmp.ToBigInt(pdu.Value))
@@ -158,8 +158,4 @@ func bigIntToFloat(bi *big.Int) float64 {
 	}
 	f, _ := new(big.Float).SetInt(bi).Float64()
 	return f
-}
-
-func trimLeadingDot(s string) string {
-	return strings.TrimPrefix(strings.TrimSpace(s), ".")
 }
