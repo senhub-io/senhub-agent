@@ -1178,6 +1178,22 @@ Mêmes principes que §4.20/4.21 (châssis actif, wire ms → `value_scale: 0.00
 | `senhub.tcpdial.up` / `.duration` | `1` / `s` | gauge | `tcpdial.target` |
 | `senhub.dns.up` / `.lookup.duration` / `.answers` | `1` / `s` / `{answer}` | gauge | `dns.question.name` (semconv DNS), `dns.resolver` (`system` = resolver OS) |
 
+### 4.23 prometheus_scrape (free, #304)
+
+Ingestion pull : chaque sample scrapé est un **pass-through typé** —
+nom et labels conservés tels quels, le tag `otel_type` porte la
+sémantique counter/gauge vers le mapper (même mécanisme que les OIDs
+dynamiques de snmp_poll, #207). Untyped → gauge. Histogram et summary
+droppés et comptés (contrat scalaires-seulement, identique à
+otlp_receiver). Pas d'énumération YAML possible — seules les
+self-metrics sont définies :
+
+| Métrique OTel | Unité | Type | Attributs |
+|---|---|---|---|
+| `senhub.promscrape.up` | `1` | gauge | `promscrape.target` |
+| `senhub.promscrape.scrape.duration` | `s` | gauge | wire ms, `value_scale: 0.001` |
+| `senhub.promscrape.samples` / `.dropped` | `{sample}` | gauge | `promscrape.target` |
+
 ## 6. Processus d'ajout d'une convention
 
 1. Lire les sources §1 pour le domaine concerné
