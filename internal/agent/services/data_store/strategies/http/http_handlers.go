@@ -95,11 +95,6 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/api/{agentkey}/nagios/checks", h.HandleNagiosChecks).Methods("GET", "POST")
 	}
 
-	if h.strategy.configManager.IsEndpointEnabled("zabbix") {
-		// Zabbix endpoints
-		router.HandleFunc("/api/{agentkey}/zabbix/metrics/{probe}", h.HandleZabbixMetricsGET).Methods("GET")
-	}
-
 	if h.strategy.configManager.IsEndpointEnabled("prometheus") {
 		// Prometheus endpoints — dual route:
 		//   1. SenHub pattern /api/{agentkey}/prometheus/metrics — URL-embedded key
@@ -215,12 +210,6 @@ func (h *HTTPHandlers) HandleNagiosMetrics(w http.ResponseWriter, r *http.Reques
 
 func (h *HTTPHandlers) HandleNagiosChecks(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleNagiosChecks(w, r)
-}
-
-// Zabbix handlers (delegating to strategy for now)
-
-func (h *HTTPHandlers) HandleZabbixMetricsGET(w http.ResponseWriter, r *http.Request) {
-	h.strategy.handleZabbixMetricsGET(w, r)
 }
 
 // Prometheus handlers (delegating to strategy for now)
