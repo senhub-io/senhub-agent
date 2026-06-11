@@ -1,0 +1,52 @@
+probe_name: "dns_latency"
+friendly_name: "DNS Latency"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["name", "resolver"]
+
+# Free active-check probe (#158): resolution latency per (name,
+# resolver) pair; resolver "system" = the OS resolver.
+
+metrics:
+  - name: "senhub.dns.up"
+    channel: "dns_up"
+    display_name: "DNS {name} via {resolver} Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the lookup returned at least one answer within the timeout"
+    otel:
+      name: senhub.dns.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      name: dns.question.name
+      resolver: dns.resolver
+
+  - name: "senhub.dns.lookup.duration"
+    channel: "dns_lookup_duration"
+    display_name: "DNS {name} via {resolver} Lookup Time"
+    unit: "ms"
+    category: "latency"
+    description: "Wall-clock resolution time"
+    otel:
+      name: senhub.dns.lookup.duration
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      name: dns.question.name
+      resolver: dns.resolver
+
+  - name: "senhub.dns.answers"
+    channel: "dns_answers"
+    display_name: "DNS {name} via {resolver} Answers"
+    unit: "#"
+    category: "availability"
+    description: "Number of addresses returned"
+    otel:
+      name: senhub.dns.answers
+      unit: "{answer}"
+      type: gauge
+    tag_to_attribute:
+      name: dns.question.name
+      resolver: dns.resolver

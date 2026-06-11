@@ -21,6 +21,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 	want := []string{
 		"cpu",
 		"event",
+		"dns_latency",
 		"filetail",
 		"http_check",
 		"icmp_check",
@@ -32,6 +33,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"snmp_poll",
 		"snmp_trap",
 		"syslog",
+		"tcp_dial",
 		"wifi_signal_strength",
 		"windows_eventlog",
 	}
