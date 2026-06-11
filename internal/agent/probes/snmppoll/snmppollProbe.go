@@ -28,6 +28,10 @@ type snmppollProbe struct {
 
 	// newClient is the SNMP client factory, overridable in tests.
 	newClient func(*config) snmpClient
+
+	// unregisterEntitySource detaches the entity source from the
+	// process-global registry on shutdown (set in OnStart).
+	unregisterEntitySource func()
 }
 
 // NewSnmpPollProbe builds an snmp_poll probe from its raw params block.
@@ -107,7 +111,7 @@ func (p *snmppollProbe) GetInterval() time.Duration {
 // here: SNMP over UDP cannot detect device reachability at bind time, so
 // reachability is reported per cycle via senhub.snmp.up instead.
 func (p *snmppollProbe) OnStart(_ chan struct{}) error {
-	entity.RegisterSource(p.entitySource)
+	p.unregisterEntitySource = entity.RegisterSource(p.entitySource)
 	p.moduleLogger.Info().
 		Str("target", p.cfg.Target).
 		Uint16("port", p.cfg.Port).
@@ -161,7 +165,13 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
+// OnShutdown unregisters the entity source so a stopped or reloaded probe
+// stops heartbeating its cached topology (audit D4: dead devices never
+// expired in the consumer; reloads duplicated sources).
 func (p *snmppollProbe) OnShutdown(_ context.Context) error {
+	if p.unregisterEntitySource != nil {
+		p.unregisterEntitySource()
+	}
 	return nil
 }
 
