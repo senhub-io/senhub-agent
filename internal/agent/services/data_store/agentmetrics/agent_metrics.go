@@ -115,6 +115,19 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       float64(snap.CollectErrorsTotal),
 			Description: "Lifetime count of probe collection errors since agent start.",
 		},
+		// Read directly from agentstate (like the OTLP counters below)
+		// rather than through the snapshot, so every exposition bridge
+		// picks it up without plumbing changes. Nonzero means a probe is
+		// shipping datapoints with no transformer YAML — no unit
+		// injection, no corrections.
+		{
+			Name:        "senhub.agent.transformer.fallback",
+			Unit:        "{datapoint}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetTransformerFallbacksTotal()),
+			Description: "Cumulative count of datapoints processed without a transformer YAML definition (legacy fallback: no unit injection, no unit corrections).",
+		},
 	}
 
 	// HTTP requests by endpoint — one otelmapper.OtelRecord per (route template) pair.
