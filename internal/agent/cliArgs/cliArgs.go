@@ -97,6 +97,8 @@ type StartSubcommandArgs struct {
 
 	ConfigPath string `arg:"--config-path" help:"Path to the agent configuration file"`
 
+	ServiceUser string `arg:"--user" help:"System user the installed Linux service runs as (default: senhub; use root to keep the legacy root unit)"`
+
 	// HTTPS options for the HTTP strategy
 	EnableHttps   bool   `arg:"--enable-https" help:"Enable HTTPS for HTTP strategy"`
 	HttpsPort     int    `arg:"--https-port" help:"HTTPS port (default: 8443)"`
@@ -129,6 +131,11 @@ type ParsedArgs struct {
 	DebugLogShipperBuffer int
 
 	ConfigPath string
+
+	// ServiceUser is the system user the installed Linux service runs
+	// as. Empty means the installer default (the dedicated senhub
+	// user); "root" restores the pre-0.2.3 root unit.
+	ServiceUser string
 
 	// HTTPS options
 	EnableHttps   bool
@@ -352,6 +359,8 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 		DebugLogShipperBuffer: args.DebugLogShipperBuffer,
 
 		ConfigPath: configPath,
+
+		ServiceUser: args.ServiceUser,
 
 		EnableHttps:   args.EnableHttps,
 		HttpsPort:     httpsPort,
