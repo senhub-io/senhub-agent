@@ -114,9 +114,9 @@ Préfixe `linux` indique explicitement la spécificité OS conformément à l'OT
 
 | Senhub metric | Unit | Type | Source probe | Équiv. windows_exporter |
 |---|---|---|---|---|
-| `senhub.system.cpu.dpcs_per_second` | `1/s` | Gauge | cpu_dpc_rate, dpc_rate | `windows_cpu_dpcs_total` (counter) — rate = `rate(...)` |
-| `senhub.system.cpu.dpcs_queued_per_second` | `1/s` | Gauge | cpu_dpc_queued, dpc_queued | *(aucun, Perfmon-specific)* |
-| `senhub.system.cpu.interrupts_per_second` | `1/s` | Gauge | cpu_interrupts, interrupt_sec | `windows_cpu_interrupts_total` (counter) — rate = `rate(...)` |
+| `senhub.system.cpu.dpcs` | `1/s` | Gauge | cpu_dpc_rate, dpc_rate | `windows_cpu_dpcs_total` (counter) — rate = `rate(...)` |
+| `senhub.system.cpu.dpcs_queued` | `1/s` | Gauge | cpu_dpc_queued, dpc_queued | *(aucun, Perfmon-specific)* |
+| `senhub.system.cpu.interrupts` | `1/s` | Gauge | cpu_interrupts, interrupt_sec | `windows_cpu_interrupts_total` (counter) — rate = `rate(...)` |
 | `senhub.system.cpu.queue_length` | `{thread}` | Gauge | cpu_queue_length, processor_queue_length | *(aucun)* |
 
 Attributs: `cpu.logical_number` (optionnel, présent si mesuré par core).
@@ -163,8 +163,8 @@ Valeurs : `used, free`. Le **swap Linux** (`swap_used`/`swap_free`) est le penda
 
 | Senhub metric | Unit | Type | Attributs |
 |---|---|---|---|
-| `senhub.system.paging.faults_per_second` | `1/s` | Gauge | – |
-| `senhub.system.paging.operations_per_second` | `1/s` | Gauge | `direction: in` ou `out` |
+| `senhub.system.paging.faults` | `1/s` | Gauge | – |
+| `senhub.system.paging.operations` | `1/s` | Gauge | `direction: in` ou `out` |
 | `senhub.system.paging.utilization_peak` | `1` | Gauge | – *(pas d'équivalent OTEP 0119)* |
 | `senhub.system.paging.limit` | `By` | UpDownCounter | – Total swap configuré (`swap_total`) ; *(pas d'équivalent OTEP 0119)* |
 
@@ -229,8 +229,8 @@ Valeurs officielles OTel : `free, reserved, used`
 
 | Senhub metric | Unit | Type | Attributs |
 |---|---|---|---|
-| `senhub.system.disk.operations_per_second` | `1/s` | Gauge | `disk.io.direction: read` ou `write` |
-| `senhub.system.disk.io_per_second` | `By/s` | Gauge | `disk.io.direction: read` ou `write` |
+| `senhub.system.disk.operations` | `1/s` | Gauge | `disk.io.direction: read` ou `write` |
+| `senhub.system.disk.io` | `By/s` | Gauge | `disk.io.direction: read` ou `write` |
 | `senhub.system.disk.queue_length` | `{operation}` | Gauge | – |
 
 #### 4.4.4 Attributs (tag → attribute mapping)
@@ -375,7 +375,7 @@ Extensions créées pour les concepts absents du namespace OTel hardware officie
 |---|---|---|
 | `senhub.hardware.physical_disk.has_active_operations` | Gauge bool | Pas d'OTel |
 | `senhub.hardware.physical_disk.operation.progress_ratio` | Gauge `1` | Pas d'OTel |
-| `senhub.hardware.physical_disk.link_speed_bits_per_second` | Gauge `bit/s` | Pas d'OTel (Redfish expose NegotiatedSpeed Gbps, mapper ×1e9) |
+| `senhub.hardware.physical_disk.link_speed` | Gauge `bit/s` | Pas d'OTel (Redfish expose NegotiatedSpeed Gbps, mapper ×1e9) |
 | `senhub.hardware.physical_disk.location_indicator_active` | Gauge bool | Pas d'OTel |
 | `senhub.hardware.physical_disk.block_size` | Gauge `By` | Pas d'OTel |
 | `senhub.hardware.logical_disk.encrypted` | Gauge bool | Pas d'OTel |
