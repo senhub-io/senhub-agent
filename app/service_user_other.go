@@ -7,4 +7,4 @@ package app
 
 func ensureServiceUser(_ string) error { return nil }
 
-func chownServiceTree(_, _ string) error { return nil }
+func chownServiceTree(_, _ string, _ bool) error { return nil }
