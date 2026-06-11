@@ -208,10 +208,12 @@ var freeTierProbes = map[string]bool{
 	"linux_logs":       true,
 	"windows_eventlog": true,
 	"filetail":         true,
+	"dns_latency":      true,
 	"http_check":       true,
 	"icmp_check":       true,
 	"snmp_poll":        true,
 	"snmp_trap":        true,
+	"tcp_dial":         true,
 	"otlp_receiver":    true,
 }
 
