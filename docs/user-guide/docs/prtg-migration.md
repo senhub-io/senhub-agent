@@ -145,13 +145,14 @@ Stated honestly, so you can plan around it:
   If you depend on flow analysis, keep that tooling.
 - **Maps.** No equivalent of PRTG Maps. Grafana dashboards cover
   the visualization need differently; auto-generated network
-  topology views are on the roadmap (topology discovery already
-  ships in `snmp_poll`).
+  topology views are on the roadmap (per-device topology — LLDP
+  neighbors, routes, bridge tables — already ships in `snmp_poll`).
 - **Reports.** No built-in PDF reporting. Grafana's reporting
   (Enterprise) or grafana-image-renderer fills this gap.
 - **Auto-discovery breadth.** PRTG's device auto-discovery
-  proposes sensors automatically. The agent's discovery is
-  narrower today: LLDP topology crawl in `snmp_poll`.
+  proposes sensors automatically. The agent has no equivalent
+  today; the seed-based network crawl is designed but not yet
+  active (#156).
 - **Remote-only polling.** WMI/SSH-style agentless host monitoring
   is intentionally out of scope: the agent runs on the host. For
   unreachable boxes (appliances, locked-down systems), SNMP and the
