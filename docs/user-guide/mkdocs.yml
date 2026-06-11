@@ -107,6 +107,8 @@ nav:
       - ICMP check: probes/icmp-check.md
 =======
       - HTTP check: probes/http-check.md
+      - TCP dial: probes/tcp-dial.md
+      - DNS latency: probes/dns-latency.md
 >>>>>>> Stashed changes
       - Citrix: probes/citrix.md
       - NetScaler: probes/netscaler.md
