@@ -1,5 +1,5 @@
 !!! warning
-    **License: Pro** - Requires a Pro or Enterprise license.
+    **License: Free** — part of the universal collection tier (moved from Pro in 0.2.2).
 
 # Syslog Probe
 
