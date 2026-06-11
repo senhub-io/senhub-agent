@@ -76,10 +76,19 @@ params:
 
 ### Discovery
 
-When a `discovery` block is present the probe crawls outward from
-seed devices using LLDP neighbor tables, bounded by CIDR ranges and
-depth/device caps, and reports discovered devices and links on the
-entity rail:
+!!! warning "Not active yet"
+    The `discovery` block is parsed and validated but **not wired to
+    the poll lifecycle yet** — configuring it does nothing today
+    beyond a startup warning. It is documented here because the
+    configuration shape is final. Per-device topology (LLDP
+    neighbors, routes, bridge tables of the polled `target`) is
+    active and independent of this block. Tracking:
+    [#156](https://github.com/senhub-io/senhub-agent/issues/156).
+
+When the crawl ships, a `discovery` block will make the probe crawl
+outward from seed devices using LLDP neighbor tables, bounded by
+CIDR ranges and depth/device caps, and report discovered devices and
+links on the entity rail:
 
 ```yaml
 params:
