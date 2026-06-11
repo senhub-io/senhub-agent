@@ -4,100 +4,88 @@ Living roadmap for SenHub Agent: what's active, what recently landed, and the
 prioritized backlog. Detail lives in the linked GitHub issues; this file is the
 map. Per-area contracts are in `.claude/rules/`.
 
-## Active
+## State of the line
 
-### Toise entity detection (#185) — Lot 1 landed, Lot 2 next
-The agent emits standard **OpenTelemetry entity events** (nodes) so any
-entity-aware backend (the SenHub Toise platform) can build a live infra graph.
-Vendor-neutral; relations use a neutral `entity.relation.*` extension while the
-OTel relationship spec is still Future Work. Design:
-`engineering/ENTITY-DETECTION.md`.
-- **Lot 1 (merged #194):** `host` + `service.instance` + `runs_on`, off by
-  default (`signals.entities.enabled`), with the `otel.entity.interval`
-  liveness backstop. Contract frozen with the Toise team over three rounds.
-- **Lot 2 (next):** `db` entity (stable `db.instance.id` = source id, not a
-  network address) + `monitors` relation + the full state/delete lifecycle
-  tracker. Cross-repo: db-identity extraction lives in the enterprise db probes.
-- **Lots 4-5:** host network tables → discovered devices; SNMP topology
-  (LLDP/FDB/routes), depends on #156.
+- **0.2.2 (stable, 2026-06-11)** — the PRTG-replacement funnel: four free
+  active checks (icmp/http/tcp/dns), `exec` (Nagios + JSON contracts),
+  `prometheus_scrape`, syslog moved to free (17 free probes), the PRTG
+  migration guide and the `packs/alerts/` starter packs. Runtime-validated
+  on two production agents (Linux + Windows) across VM / VL / Toise before
+  promotion. Release notes: `docs/releases/0.2.2.md`.
+- **0.2.1 (stable, 2026-06-10)** — entity rail (OTel entity-events, merged
+  spec), SNMP/host network topology, five free collectors (snmp_poll,
+  snmp_trap, windows_eventlog, filetail, otlp_receiver), native packages,
+  open-source flip (public repo, Apache-2.0).
 
-### SNMP — the wedge to replace PRTG
-Native SNMP collection brings legacy network infra into the VM/Toise/Grafana
-stack and lets customers decommission PRTG. Drives both the free-tier collector
-story and the topology plane of #185.
-- **#156** `snmp_poll` — production-grade: v2c/v3, MIB walker, **device
-  discovery + profiles** + UPS/printer/sensor coverage + topology MIBs (p1).
-- **#161** `snmp_trap` — passive trap receiver (p2).
-- **#188** Grafana network dashboard pack, companion to #156 (p2).
+## Active / next
 
-### Zabbix native export — paused after Phase 0 audit (#169)
+### SNMP production-grade (#156) — the remaining wedge epic
+v3 polling, MIB walker, device discovery + profiles, UPS/printer/sensor
+coverage. Audit-stated prerequisites first: shared SNMP core (#291),
+entity-side scale fixes (#272), per-cycle client/plan rebuild + jitter.
+The `discovery:` config block is merged but inert (loud startup warning
+since #353).
+
+### Wave 2 — 0.2.3 security & resilience (milestone 4, 21 issues)
+Audit-driven: listener hardening, signed auto-update, retry/backoff fixes,
+checkpoint zombie lifecycle (#308, confirmed again during the 0.2.2
+recette), icmp_check privileged fallback (#357).
+
+### Wave 3 — 0.3.0 foundation (milestone 5, 16 issues)
+Golden files (#296) FIRST, then the float32 bus and transformer-map
+synchronization work.
+
+### Zabbix native export (#169) — paused after Phase 0 audit
 Spec + audit done (`zabbix/AUDIT-Phase0.md`); ~5 days to implement. Resumes
-subject to priorities. Not advertised in the user guide yet.
+subject to priorities. Not advertised in the user guide.
 
 ## Tiering model (open-core + platform)
-Free = host self-observability (parity vs node_exporter/windows_exporter) +
-universal collection (OTLP receiver, SNMP, OTel events). Paid = deep vendor
-integrations + the `event` ingestion + active synthetic checks. Full rationale
-in the private `docs/audit/TIERING-STRATEGY.md`. Guides the tier of every new
-probe (see `.claude/rules/probes.md` license touch-points).
+Free = host self-observability + **active checks** + universal collection
+(OTLP receiver, Prometheus scraping, SNMP poll/trap, syslog, filetail,
+windows_eventlog, exec) — 17 probes. Paid = deep vendor integrations
+(IBM i, databases, Citrix, NetScaler, Veeam, Redfish) + `event` ingestion +
+the synthetic webapp suite. Full rationale in the private
+`docs/audit/TIERING-STRATEGY.md`; tier touch-points in
+`.claude/rules/probes.md`.
 
 ## Recently completed (2026 dev line)
-- **OSS / Enterprise split** — public core (free/host probes, OTel mapper,
-  config, http/otlp/senhub strategies, license validator, `app` + `probesdk`)
-  vs private enterprise (9 paid probes, ibmi, licence minter). Code landed
-  (#182 done, #184/#186 merged); remaining = the public visibility flip (#183,
-  gated on a GitHub Support GC).
-- **Entity detection Lot 1** (#194) — see Active.
-- **swap_* OTel mapping** (#190) — memory probe swap metrics mapped to
-  `system.paging.*` / `senhub.system.paging.limit`; closed #137.
-- **Multi-file config + value substitution** (0.1.93) — `agent.yaml` +
-  `probes.d/` + `strategies.d/`; `${env:}` / `${file:}`; `config show` CLI.
-- **IBM i probe** — JT400 bridge, 94/94 metrics OTel-mapped, smoke-tested.
-- **OTLP backpressure tier 1** — timeout 10s→60s, scheduler recover,
-  cardinality cap, store_size + export_duration + dropped self-metrics.
-- **Prometheus / OTel pipeline** — OTLP multi-signal, DB OTel-first, Grafana
-  catalog (21 dashboards), self-observability metrics.
+- **0.2.2 feature train** — see above; plus repo-hygiene CI (#343), full
+  3-OS matrix on every PR (#334), Prometheus annotation-unit fixes (#344),
+  reference-table backfill (#345).
+- **0.2.1 train** — entity rail + topology, five free collectors, OSS split
+  + public flip, .deb/.rpm + signed MSI, global_tags/custom_tags, JWT-only
+  licenses, OTLP endpoint failover, logs durable queue.
 
 ## Backlog by thread (open issues)
 
-**A — Detection / Toise:** #185 (Lots 2-5), #189 (guard test: every emitted
-metric has an OTel mapping).
+**A — SNMP / wedge:** #156 (epic, prerequisites #291/#272), #188 (Grafana
+network dashboard pack), #303 (paid vendor device packs), #306 (flows
+collector, paid).
 
-**B — SNMP / replace-PRTG:** #156 (p1), #161 (p2), #188 (p2).
+**B — Entity / Toise:** #212 (SNMP topology lots), #239 (edge attrs dropped
+by the bare-keys fallback), #240 (agent tenant field for the prod ingress).
 
-**C — Free-tier collector probes:** #154 windows_eventlog (p1, OS parity with
-linux_logs), #155 filetail (p1, feeds VictoriaLogs), #158 dns_latency,
-#159 tcp_dial, #160 wifi enrichment, #173 OTLP receiver mode (p3).
+**C — Naming / mapping debt:** #348 (doubled `per_second` suffixes on the
+OTLP chain), #207 (snmp_poll OTel resolution via snmpmib).
 
-**D — Distribution / `agent.senhub.io`:** #153 signed Windows MSI (p0,
-GPO/SCCM/Intune), #163 Linux .deb/.rpm (p2), #191 Docker image + K8s manifests,
-#193 docs fixes (Hint shortcode, broken admin-guide links).
+**D — Security / resilience (0.2.3 wave):** #308 (checkpoint zombies),
+#357 (icmp ping_group_range), #223 (run-as-non-root), listener hardening
+series — see milestone 4.
 
-**E — Framework / robustness:** #149 global_tags + universal custom_tags (p0),
-#165 OTLP backpressure tier 2 (memory limiter + cardinality budget + persistent
-queue, p1), #164 mTLS on senhub + http outputs (p2), #168 footprint benchmark
-suite (p3).
-
-**F — Outputs:** #169 finalize Zabbix HTTP output (p3), #172 direct
-VictoriaMetrics remote_write (p3).
-
-**G — Probes (other):** #170 VMware vCenter connector (p3).
-
-**Bugs / tech-debt:** #139 auto-update pre-0.2.0 transition, #140 + #141 race
-flakes under `-race`, #138 rename the `RemoteConfigurationData` family,
-#166 dead `OnDataPoints` cleanup on 5 probes.
+**E — Foundation (0.3.0 wave):** #296 (golden files first), float32 bus,
+transformer-map sync — see milestone 5.
 
 ## Priority lens (what's next)
-- **p0:** #153 (signed MSI), #149 (global_tags / custom_tags).
-- **p1:** #165 (backpressure tier 2), #156 (snmp_poll), #155 (filetail),
-  #154 (windows_eventlog); entity detection Lot 2 (#185).
+- **p0:** 0.2.3 wave kickoff — #291 (shared SNMP core, unblocks #156).
+- **p1:** #156 lots, #308, #348.
 
 ## Reference (stable subsystems)
-License system → `docs/LICENSE-SYSTEM.md`. OTel naming → canonical
-`engineering/../otel/senhub-semantic-conventions.md`. HTTP/PRTG/Nagios outputs,
-modular logging, JWT licensing, standalone deployment, Universal Configuration
-API — all production-ready; see the user/admin guides.
+License system → `docs/LICENSE-SYSTEM.md`. OTel naming →
+`otel/senhub-semantic-conventions.md` (canonical). Prometheus exposition
+names → user-guide metrics reference. HTTP/PRTG/Nagios outputs, modular
+logging, JWT licensing, multi-file config — production-ready; see the
+user/admin guides.
 
 ---
 
-Last updated: 2026-06-02
+Last updated: 2026-06-11
