@@ -80,7 +80,7 @@ and the metrics keep flowing during network partitions.
 | PRTG sensor | Agent probe | License |
 |---|---|---|
 | Windows Event Log (WMI) | [Windows Event Log](probes/windows-eventlog.md) | Free |
-| Syslog Receiver | [Syslog](probes/syslog.md) | Pro |
+| Syslog Receiver | [Syslog](probes/syslog.md) | Free |
 | File / Log (content) | [File tail](probes/filetail.md) | Free |
 | HTTP Push Data | [Event](probes/event.md) or [OTLP receiver](probes/otlp-receiver.md) | Pro / Free |
 
