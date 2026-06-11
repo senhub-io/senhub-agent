@@ -57,6 +57,15 @@ observability tool you already operate (PRTG, Nagios, Prometheus, OTLP).
 
     [:octicons-arrow-right-24: Web interface](web-interface.md)
 
+-   :material-swap-horizontal-circle: __Migrating from PRTG__
+
+    ---
+
+    Sensor-to-probe mapping, two migration paths, alerting equivalents —
+    and what the agent does not replace.
+
+    [:octicons-arrow-right-24: Migration guide](prtg-migration.md)
+
 -   :material-history: __What's new__
 
     ---
