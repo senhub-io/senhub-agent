@@ -174,13 +174,13 @@ func (cm *ConfigurationManager) ValidateConfigParams(params configuration.Storag
 		if endpointsList, ok := endpointsValue.([]interface{}); ok {
 			validEndpoints := map[string]bool{
 				"prtg": true, "nagios": true,
-				"zabbix": true, "prometheus": true, "web": true,
+				"prometheus": true, "web": true,
 			}
 
 			for _, endpoint := range endpointsList {
 				if endpointStr, ok := endpoint.(string); ok {
 					if !validEndpoints[endpointStr] {
-						return fmt.Errorf("invalid endpoint: %s. Valid endpoints: prtg, nagios, zabbix, prometheus, web", endpointStr)
+						return fmt.Errorf("invalid endpoint: %s. Valid endpoints: prtg, nagios, prometheus, web", endpointStr)
 					}
 				} else {
 					return fmt.Errorf("endpoint must be a string, got: %T", endpoint)
