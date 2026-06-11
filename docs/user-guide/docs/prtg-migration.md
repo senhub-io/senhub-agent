@@ -130,9 +130,12 @@ Metric names above are the Prometheus exposition names; the
 [metrics reference](prometheus/metrics-reference.md) maps every
 probe metric to its exported name.
 
-A ready-to-import rule pack covering the free probes is in
-progress; until it ships, the examples above plus the per-probe
-metric tables are the reference.
+A ready-to-import starter pack covering all free probes — host
+thresholds, the four active checks, SNMP health, agent self-health —
+ships in the repository under
+[`packs/alerts/`](https://github.com/senhub-io/senhub-agent/tree/dev/packs/alerts),
+with one-command vmalert provisioning and a Grafana contact-point
+example.
 
 ## What the agent does not replace
 

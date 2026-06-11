@@ -1,0 +1,87 @@
+# SenHub agent alerting starter pack — active checks (free tier):
+# icmp_check, http_check, tcp_dial, dns_latency.
+#
+# Every check probe reports failure as a measurement (up == 0), so the
+# absence of an alert means the target really answered.
+
+groups:
+  - name: senhub-active-checks
+    rules:
+      - alert: IcmpTargetDown
+        expr: senhub_icmp_up_ratio == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Ping target {{ $labels.target }} unreachable"
+          description: "ICMP echo to {{ $labels.target }} failing for 3 minutes."
+
+      - alert: IcmpPacketLoss
+        expr: senhub_icmp_packet_loss_ratio > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Packet loss to {{ $labels.target }}"
+          description: "More than 20% packet loss for 5 minutes."
+
+      - alert: HttpCheckDown
+        expr: senhub_httpcheck_up_ratio == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HTTP check {{ $labels.target }} failing"
+          description: "Unexpected status, failed content match or unreachable for 3 minutes."
+
+      - alert: HttpCheckSlow
+        expr: senhub_httpcheck_duration_seconds > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP check {{ $labels.target }} slow"
+          description: "Total request time above 2s for 10 minutes."
+
+      - alert: TlsCertExpiringSoon
+        expr: senhub_httpcheck_tls_expiry < 30
+        labels:
+          severity: warning
+        annotations:
+          summary: "TLS certificate of {{ $labels.target }} expires in {{ $value | printf \"%.0f\" }} days"
+          description: "Renew before it reaches zero; the value goes negative once expired."
+
+      - alert: TlsCertExpiryCritical
+        expr: senhub_httpcheck_tls_expiry < 7
+        labels:
+          severity: critical
+        annotations:
+          summary: "TLS certificate of {{ $labels.target }} expires within a week"
+          description: "Immediate renewal required."
+
+      - alert: TcpPortDown
+        expr: senhub_tcpdial_up_ratio == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "TCP port {{ $labels.target }} not accepting connections"
+          description: "Connect refused or timed out for 3 minutes."
+
+      - alert: DnsLookupFailing
+        expr: senhub_dns_up_ratio == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DNS resolution of {{ $labels.name }} via {{ $labels.resolver }} failing"
+          description: "Lookups failing for 3 minutes."
+
+      - alert: DnsLookupSlow
+        expr: senhub_dns_lookup_duration_seconds > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow DNS resolution of {{ $labels.name }} via {{ $labels.resolver }}"
+          description: "Lookup time above 500ms for 10 minutes."
