@@ -120,7 +120,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			} else {
 				fmt.Printf("✅ Configuration generated: %s\n", configPath)
 				if args.EnableHttps {
-					fmt.Printf("✅ HTTPS certificates generated in ./certs/\n")
+					fmt.Printf("✅ HTTPS certificates generated in %s\n", filepath.Join(filepath.Dir(configPath), "certs"))
 					fmt.Printf("\nAccess your agent at: https://localhost:%d/web/{agentkey}/dashboard\n", args.HttpsPort)
 				} else {
 					fmt.Printf("\nAccess your agent at: http://localhost:8080/web/{agentkey}/dashboard\n")
@@ -130,9 +130,9 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			// The installer runs as root but the daemon does not; the
 			// generated 0600 config (and certs/logs) must belong to
 			// the service user or the first start fails on a read.
-			if chownErr := chownServiceTree(serviceUser, configPath); chownErr != nil {
+			if chownErr := chownServiceTree(serviceUser, configPath, args.EnableHttps); chownErr != nil {
 				fmt.Printf("Warning: failed to hand install files to user %q: %v\n", serviceUser, chownErr)
-				fmt.Printf("Fix manually with: chown -R %s:%s %s\n", serviceUser, serviceUser, filepath.Dir(configPath))
+				fmt.Printf("Fix manually with: chown %s:%s %s (and the log/certs directories the install created)\n", serviceUser, serviceUser, configPath)
 			}
 
 			fmt.Printf("\nYou can now start the service with:\n    %s start\n", os.Args[0])
