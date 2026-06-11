@@ -30,6 +30,24 @@ func GetCollectErrorsTotal() uint64 {
 	return collectErrors.Load()
 }
 
+// transformerFallbacks counts datapoints that went through the
+// data_store unit-correction pass without a transformer YAML definition
+// (legacy fallback transformer: no unit injection, no corrections).
+// A nonzero, rising value means a probe is shipping unitless data.
+var transformerFallbacks atomic.Uint64
+
+// IncrementTransformerFallbacks records one datapoint processed via the
+// legacy fallback transformer. Called from
+// data_store.applyUnitCorrections.
+func IncrementTransformerFallbacks() {
+	transformerFallbacks.Add(1)
+}
+
+// GetTransformerFallbacksTotal returns the lifetime fallback count.
+func GetTransformerFallbacksTotal() uint64 {
+	return transformerFallbacks.Load()
+}
+
 // probeStateMu guards activeProbeIDs and probeHealth.
 var probeStateMu sync.RWMutex
 
