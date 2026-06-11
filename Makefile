@@ -213,21 +213,9 @@ test:
 	@echo "Testing..."
 	@go test ./... -v
 
-# Database probes integration tests — gated behind a build tag so
-# they're opt-in. Spins up MySQL + Postgres via the docker-compose
-# fixture under test/database/, waits for the engines to be ready,
-# runs the probes against them, then tears the fixture down.
-test-database: ## Integration tests against a real MySQL + Postgres
-	@echo "$(GREEN)🐳 Starting database fixture...$(NC)"
-	@docker compose -f test/database/docker-compose.yml up -d --wait
-	@echo "$(GREEN)🧪 Running database integration tests...$(NC)"
-	@MYSQL_TEST_DSN='root:test@tcp(127.0.0.1:3306)/' \
-		POSTGRES_TEST_DSN='host=127.0.0.1 port=5432 user=postgres password=test dbname=postgres sslmode=disable' \
-		go test -tags=database_integration -v \
-			./internal/agent/probes/mysql/... \
-			./internal/agent/probes/postgresql/...
-	@echo "$(GREEN)🧹 Tearing down database fixture...$(NC)"
-	@docker compose -f test/database/docker-compose.yml down -v
+# Database probes (mysql, postgresql) moved to senhub-agent-enterprise
+# with the OSS split; their integration tier runs there. See the
+# senhub-agent-enterprise Makefile (`make test-database`).
 
 # Boot smoke tests — build the agent binary, exec it against shipped
 # example configs to catch bring-up regressions (linker errors, config
@@ -360,4 +348,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race test-database benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist help
+.PHONY: all build build-windows build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist help
