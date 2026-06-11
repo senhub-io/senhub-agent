@@ -26,6 +26,7 @@ configured probes.
 | `senhub_agent_probes_total` | gauge | Configured probes currently running | – |
 | `senhub_agent_probes_healthy` | gauge | Probes reporting `IsHealthy() == true` | – |
 | `senhub_agent_collect_errors_total` | counter | Lifetime probe collection errors | – |
+| `senhub_agent_transformer_fallback_total` | counter | Datapoints processed without a transformer definition (no unit injection or corrections) | – |
 | `senhub_agent_http_requests_total` | counter | HTTP requests served per route template | `endpoint` |
 | `senhub_agent_build_info` | gauge (=1) | Agent build metadata | `version`, `commit` |
 
