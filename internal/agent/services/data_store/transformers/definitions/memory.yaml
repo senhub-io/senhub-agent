@@ -193,7 +193,7 @@ metrics:
     category: "paging"
     description: "Rate of page faults per second including both hard and soft faults"
     otel:
-      name: senhub.system.paging.faults_per_second
+      name: senhub.system.paging.faults
       unit: "1/s"
       type: gauge
 
@@ -204,7 +204,7 @@ metrics:
     category: "paging"
     description: "Rate of pages read from disk per second to resolve hard page faults"
     otel:
-      name: senhub.system.paging.operations_per_second
+      name: senhub.system.paging.operations
       unit: "1/s"
       type: gauge
       attributes:
@@ -217,7 +217,7 @@ metrics:
     category: "paging"
     description: "Rate of pages written to disk per second to free physical memory"
     otel:
-      name: senhub.system.paging.operations_per_second
+      name: senhub.system.paging.operations
       unit: "1/s"
       type: gauge
       attributes:
