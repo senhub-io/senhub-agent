@@ -2,6 +2,7 @@ package agentstate
 
 import (
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 )
@@ -69,16 +70,24 @@ func TestGetProcessSnapshot_CPUMonotonic(t *testing.T) {
 func TestGetProcessSnapshot_GoroutineGrowthDetectable(t *testing.T) {
 	before := GetProcessSnapshot().Goroutines
 
+	// runtime.NumGoroutine() is process-global: a background goroutine
+	// from the runtime or another test exiting between the two
+	// snapshots shrinks the count and flaked this test in CI ("at
+	// least 8, got 7"). Spawn enough goroutines that single-digit
+	// churn cannot flip the assertion, and gate on a ready barrier so
+	// all of them are actually started before the second snapshot.
+	const spawned = 50
+	var ready sync.WaitGroup
+	ready.Add(spawned)
 	done := make(chan struct{})
-	for i := 0; i < 5; i++ {
-		go func() { <-done }()
+	for i := 0; i < spawned; i++ {
+		go func() { ready.Done(); <-done }()
 	}
+	ready.Wait()
 	defer close(done)
 
-	// runtime.NumGoroutine() reflects the new goroutines immediately
-	// — no need to sleep before reading.
 	after := GetProcessSnapshot().Goroutines
-	if after < before+5 {
-		t.Errorf("expected at least %d goroutines, got %d", before+5, after)
+	if after < before+spawned-5 {
+		t.Errorf("expected at least %d goroutines, got %d", before+spawned-5, after)
 	}
 }
