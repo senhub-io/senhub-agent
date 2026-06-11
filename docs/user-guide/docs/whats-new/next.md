@@ -18,6 +18,7 @@
 <li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">topology</span> A transient sweep failure no longer deletes the device tree in the consumer; sources are unregistered on probe shutdown; unchanged entity heartbeats are suppressed between refreshes. (#272)</li>
 <li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">SNMP</span> <code>senhub.snmp.up</code> now reflects whether the device answered, not whether a UDP socket opened — a powered-off switch finally reports down. (#156)</li>
 <li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">security</span> SNMPv3 passphrases and community strings are masked in logs. (#156)</li>
+<li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">checks</span> <code>icmp_check</code> defaults to privileged raw sockets on Linux when running as root — unprivileged datagram ICMP is disabled by default on Ubuntu/Debian (<code>ping_group_range</code>) and silently reported every target down; the permission error now carries an actionable hint. (#357)</li>
 </ul>
 
 ## Changed
