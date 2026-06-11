@@ -13,6 +13,7 @@ import (
 
 	"github.com/ybbus/httpretry"
 	"senhub-agent.go/internal/agent/periodic_scheduler"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
@@ -38,15 +39,32 @@ type Buffer interface {
 
 // buffer implements Buffer interface
 type buffer struct {
-	data  *[]datapoint.DataPoint
-	mutex sync.Mutex
+	data      *[]datapoint.DataPoint
+	mutex     sync.Mutex
+	maxPoints int // 0 = unbounded
 }
 
 // NewBuffer creates a new buffer instance
 func NewBuffer() Buffer {
 	return &buffer{
-		data: &[]datapoint.DataPoint{},
+		data:      &[]datapoint.DataPoint{},
+		maxPoints: defaultMaxBufferPoints,
 	}
+}
+
+// defaultMaxBufferPoints mirrors the senhub cloud buffer cap (#267):
+// a PRTG endpoint outage must not grow this buffer until OOM. Oldest
+// points are dropped first.
+const defaultMaxBufferPoints = 100000
+
+// trimToCap drops the OLDEST points past the cap. Callers hold mutex.
+func (b *buffer) trimToCap() {
+	if b.maxPoints <= 0 || len(*b.data) <= b.maxPoints {
+		return
+	}
+	dropped := len(*b.data) - b.maxPoints
+	*b.data = (*b.data)[dropped:]
+	agentstate.IncrementPushBufferDropped("prtg", dropped)
 }
 
 // Append appends data to the buffer
@@ -54,6 +72,7 @@ func (b *buffer) Append(newData []datapoint.DataPoint) error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	*b.data = append(*b.data, newData...)
+	b.trimToCap()
 	return nil
 }
 
@@ -71,6 +90,7 @@ func (b *buffer) AbortSync(failedData []datapoint.DataPoint) error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	*b.data = append(failedData, *b.data...)
+	b.trimToCap()
 	return nil
 }
 

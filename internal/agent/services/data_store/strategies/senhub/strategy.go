@@ -9,6 +9,7 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/periodic_scheduler"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/server"
@@ -33,15 +34,41 @@ type Buffer interface {
 
 // buffer implements Buffer interface
 type buffer struct {
-	data  *[]datapoint.DataPoint
-	mutex sync.Mutex
+	data      *[]datapoint.DataPoint
+	mutex     sync.Mutex
+	maxPoints int // 0 = unbounded
 }
 
-// NewBuffer creates a new buffer instance
+// DefaultMaxBufferPoints bounds the cloud push buffer. Before the cap
+// an intake outage grew the buffer until OOM (#267, audit A3): every
+// failed sync re-prepended the whole backlog while collection kept
+// appending. 100k points is hours of typical agent volume; oldest
+// points are dropped first — the freshest data is the valuable part
+// of a monitoring stream when the backlog cannot be shipped anyway.
+const DefaultMaxBufferPoints = 100000
+
+// NewBuffer creates a buffer bounded at DefaultMaxBufferPoints.
 func NewBuffer() Buffer {
+	return NewBufferWithCap(DefaultMaxBufferPoints)
+}
+
+// NewBufferWithCap creates a buffer bounded at maxPoints (0 = unbounded).
+func NewBufferWithCap(maxPoints int) Buffer {
 	return &buffer{
-		data: &[]datapoint.DataPoint{},
+		data:      &[]datapoint.DataPoint{},
+		maxPoints: maxPoints,
 	}
+}
+
+// trimToCap drops the OLDEST points so the buffer holds at most
+// maxPoints, recording the drops. Callers hold the mutex.
+func (b *buffer) trimToCap() {
+	if b.maxPoints <= 0 || len(*b.data) <= b.maxPoints {
+		return
+	}
+	dropped := len(*b.data) - b.maxPoints
+	*b.data = (*b.data)[dropped:]
+	agentstate.IncrementPushBufferDropped("senhub", dropped)
 }
 
 // Append appends data to the buffer
@@ -49,6 +76,7 @@ func (b *buffer) Append(newData []datapoint.DataPoint) error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	*b.data = append(*b.data, newData...)
+	b.trimToCap()
 	return nil
 }
 
@@ -61,11 +89,13 @@ func (b *buffer) Sync() []datapoint.DataPoint {
 	return data
 }
 
-// AbortSync adds failed data back to the buffer
+// AbortSync re-prepends failed data (oldest first) so ordering
+// survives a retry; the cap then trims from the oldest end.
 func (b *buffer) AbortSync(failedData []datapoint.DataPoint) error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	*b.data = append(failedData, *b.data...)
+	b.trimToCap()
 	return nil
 }
 
@@ -77,9 +107,8 @@ type SenhubDataPoint struct {
 }
 
 type SyncStrategySenhubParams struct {
-	Interval        time.Duration
-	RetentionPeriod time.Duration
-	ServerUrl       string
+	Interval  time.Duration
+	ServerUrl string
 }
 
 // Synchronize metrics to senhub backend.
