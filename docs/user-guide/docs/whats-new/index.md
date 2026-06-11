@@ -26,7 +26,8 @@ Lines may also carry an **area** tag (the subsystem affected), e.g.
 
 | Version | Date | Headline |
 |---|---|---|
-| [**Next (unreleased)**](next.md) | in progress | SNMP + network topology, native packages, universal tags |
+| [**Next (unreleased)**](next.md) | in progress | Active checks, exec + Prometheus scrape, PRTG migration path |
+| [**0.2.1**](0.2.1.md) | 2026-06-10 | Topology-aware edge collector — five free collectors, open source |
 | [**0.2.0**](0.2.0.md) | 2026-05-19 | Offline-first, OS-canonical paths — a major housekeeping release |
 | 0.1.98 | 2026-05-17 | IBM i probe, multi-file config |
 | 0.1.93 | 2026-05-17 | Prometheus output, OTel-first databases |
