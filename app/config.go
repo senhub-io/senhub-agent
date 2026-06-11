@@ -390,10 +390,14 @@ func checkConfig(configPath string) {
 //	--raw                — references preserved as written, useful
 //	                       for reviewing the loaded layout before
 //	                       comparing against the resolved output.
-//	--redact             — resolved, but values that came from
-//	                       ${file:..} OR sit under a YAML key whose
+//	--redact             — the DEFAULT: resolved, but values that came
+//	                       from ${file:..} OR sit under a YAML key whose
 //	                       name matches (?i)(key|token|password|secret)
 //	                       are masked with "***". Safe for tickets.
+//	--resolved           — resolved WITHOUT redaction: secrets in
+//	                       cleartext. Requires the explicit flag —
+//	                       operators paste config show into tickets,
+//	                       so the safe behavior is the default (#279).
 //
 // Output: YAML, with map keys sorted alphabetically (yaml.v3 + a
 // post-pass over the marshaled node tree) so two runs produce
@@ -402,7 +406,7 @@ func checkConfig(configPath string) {
 // Errors abort with exit 1 and a single human-readable line on
 // stderr — the goal is "fits in a CI log".
 func showConfig(args []string) {
-	mode := configuration.ShowResolved
+	mode := configuration.ShowRedact
 	// Empty string means "use the OS-canonical default" — resolved
 	// below via GetAbsoluteConfigPath. An explicit positional path
 	// argument overrides it.
