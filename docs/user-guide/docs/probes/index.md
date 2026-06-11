@@ -51,6 +51,7 @@ firewalls, UPS, printers — over SNMP.
 
 - **[OTLP Receiver](otlp-receiver.md)** *(Free)* — The agent as edge OTLP collector: applications push OTLP metrics (gRPC or HTTP) and they flow to every configured output
 - **[Prometheus Scrape](prometheus-scrape.md)** *(Free)* — Pull-side twin: scrape /metrics endpoints (node_exporter, appliance exporters) into the same pipeline
+- **[Exec](exec.md)** *(Free)* — Custom checks: run any Nagios plugin or JSON-emitting script on interval, with hard timeout and overlap protection
 
 ## Synthetic Monitoring
 
@@ -117,7 +118,7 @@ Open-ended ingestion paths for log streams and custom event data.
 
 | Tier | Probes included |
 |---|---|
-| **Free** | CPU, Memory, Network, Logical Disk, Linux Logs, Windows Event Log, File Tail, ICMP Check, HTTP Check, TCP Dial, DNS Latency, SNMP Poll, SNMP Trap, OTLP Receiver, Prometheus Scrape |
+| **Free** | CPU, Memory, Network, Logical Disk, Linux Logs, Windows Event Log, File Tail, ICMP Check, HTTP Check, TCP Dial, DNS Latency, SNMP Poll, SNMP Trap, OTLP Receiver, Prometheus Scrape, Exec |
 | **Pro** | Free + Citrix, NetScaler, Redfish, Syslog, Event, Ping Gateway, Ping WebApp, Load WebApp, WiFi Signal, Veeam, MySQL, PostgreSQL |
 | **Enterprise** | All probes (wildcard) |
 
