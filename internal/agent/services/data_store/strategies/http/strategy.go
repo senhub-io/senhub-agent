@@ -157,6 +157,7 @@ func NewHTTPSyncStrategy(
 	// Update strategy fields from configuration manager
 	strategy.port = strategy.configManager.GetPort()
 	strategy.bindAddress = strategy.configManager.GetBindAddress()
+	strategy.cache.SetMaxSeries(strategy.configManager.GetMaxCacheSize())
 
 	// Initialize debug manager
 	strategy.debugManager = NewDebugManager(strategy, moduleLogger)
@@ -752,6 +753,13 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 			Int("retention_minutes", cacheConfig.RetentionMinutes).
 			Msg("✅ Cache configuration updated")
 	}
+
+	// Re-apply the cardinality cap: the config manager re-parses
+	// max_cache_size above, and without this the live cache keeps
+	// enforcing the old cap while GetMaxCacheSize reports the new one —
+	// an operator raising the cap to stop drops would keep dropping
+	// until restart (reviewer finding on #281).
+	h.cache.SetMaxSeries(h.configManager.GetMaxCacheSize())
 
 	h.logger.Info().Msg("✅ HTTP strategy configuration updated successfully")
 	return nil

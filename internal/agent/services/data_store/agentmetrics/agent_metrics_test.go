@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 )
 
@@ -30,7 +31,8 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	//   6 process      (cpu.time, memory.{resident,heap}, goroutines,
 	//                   gc.cycles, open_fds)
 	//
-	// Note: `senhub.agent.otlp.dropped{reason=...}` and
+	// Note: `senhub.agent.otlp.dropped{reason=...}`,
+	// `senhub.agent.cache.dropped{reason=...}` and
 	// `senhub.agent.otlp.checkpoint.errors{stage=...}` are emitted only
 	// when their counter has been touched, so they don't count here.
 	if len(recs) != 31 {
@@ -163,6 +165,42 @@ func TestBuildAgentRecords_HTTPRequestsPerEndpoint(t *testing.T) {
 		if r.Name == "senhub.agent.collect.errors" && r.Value != 17 {
 			t.Errorf("collect.errors: got %v, want 17", r.Value)
 		}
+	}
+}
+
+func TestBuildAgentRecords_CacheDroppedEmittedPerReason(t *testing.T) {
+	agentstate.ResetHTTPCacheDroppedForTest()
+	t.Cleanup(agentstate.ResetHTTPCacheDroppedForTest)
+
+	snap := AgentMetricsSnapshot{StartTime: time.Now()}
+	for _, r := range BuildAgentRecords(snap) {
+		if r.Name == "senhub.agent.cache.dropped" {
+			t.Fatalf("cache.dropped should not be emitted before any drop occurred")
+		}
+	}
+
+	agentstate.IncrementHTTPCacheDropped("http_cache_cap")
+	agentstate.IncrementHTTPCacheDropped("http_cache_cap")
+
+	var rec *otelmapper.OtelRecord
+	recs := BuildAgentRecords(snap)
+	for i := range recs {
+		if recs[i].Name == "senhub.agent.cache.dropped" {
+			rec = &recs[i]
+			break
+		}
+	}
+	if rec == nil {
+		t.Fatal("expected senhub.agent.cache.dropped record after drops")
+	}
+	if rec.Attributes["reason"] != "http_cache_cap" {
+		t.Errorf("reason: got %q, want http_cache_cap", rec.Attributes["reason"])
+	}
+	if rec.Value != 2 {
+		t.Errorf("value: got %v, want 2", rec.Value)
+	}
+	if rec.Type != "counter" {
+		t.Errorf("type: got %q, want counter", rec.Type)
 	}
 }
 
