@@ -328,3 +328,33 @@ func coerceToFloat64(v interface{}) (float64, bool) {
 	}
 	return 0, false
 }
+
+// evictStale removes every entry whose last datapoint is older than ttl
+// at instant now, returning how many were evicted. Without this, a
+// series restored from the checkpoint after its producer disappeared
+// (probe removed from config, license denied) re-exports forever with
+// fresh timestamps — indistinguishable from live data downstream — and
+// a large dead store burns CPU on every cycle (#308). ttl <= 0 disables
+// eviction.
+func (s *metricStore) evictStale(now time.Time, ttl time.Duration) int {
+	if ttl <= 0 {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	evicted := 0
+	for key, e := range s.entries {
+		if now.Sub(e.observedAt) <= ttl {
+			continue
+		}
+		delete(s.entries, key)
+		if s.probeCounts[e.probeName] > 0 {
+			s.probeCounts[e.probeName]--
+			if s.probeCounts[e.probeName] == 0 {
+				delete(s.probeCounts, e.probeName)
+			}
+		}
+		evicted++
+	}
+	return evicted
+}
