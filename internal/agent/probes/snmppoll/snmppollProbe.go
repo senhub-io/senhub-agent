@@ -43,6 +43,15 @@ func NewSnmpPollProbe(rawConfig map[string]interface{}, baseLogger *logger.Logge
 		Int("custom_mappings", len(cfg.Custom)).
 		Msg("Creating new SNMP poll probe")
 
+	if cfg.Discovery != nil {
+		// The crawl engine is merged but not yet wired to the poll
+		// lifecycle (#156); without this warning an operator gets a
+		// validated, silently inert block.
+		moduleLogger.Warn().
+			Str("target", cfg.Target).
+			Msg("snmp_poll discovery is configured but not active yet (#156): the block is validated and ignored; per-device topology (LLDP/routes/bridge) still runs")
+	}
+
 	probe := &snmppollProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,

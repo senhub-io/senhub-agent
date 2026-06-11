@@ -20,16 +20,22 @@ package app
 // adds them on top of this set.
 import (
 	_ "senhub-agent.go/internal/agent/probes/cpu"
+	_ "senhub-agent.go/internal/agent/probes/dnslatency"
 	_ "senhub-agent.go/internal/agent/probes/event"
+	_ "senhub-agent.go/internal/agent/probes/execprobe"
 	_ "senhub-agent.go/internal/agent/probes/filetail"
 	_ "senhub-agent.go/internal/agent/probes/host"
+	_ "senhub-agent.go/internal/agent/probes/httpcheck"
+	_ "senhub-agent.go/internal/agent/probes/icmpcheck"
 	_ "senhub-agent.go/internal/agent/probes/linuxlogs"
 	_ "senhub-agent.go/internal/agent/probes/logicaldisk"
 	_ "senhub-agent.go/internal/agent/probes/memory"
 	_ "senhub-agent.go/internal/agent/probes/network"
 	_ "senhub-agent.go/internal/agent/probes/otlpreceiver"
+	_ "senhub-agent.go/internal/agent/probes/promscrape"
 	_ "senhub-agent.go/internal/agent/probes/snmppoll"
 	_ "senhub-agent.go/internal/agent/probes/snmptrap"
 	_ "senhub-agent.go/internal/agent/probes/syslog"
+	_ "senhub-agent.go/internal/agent/probes/tcpdial"
 	_ "senhub-agent.go/internal/agent/probes/windowseventlog"
 )

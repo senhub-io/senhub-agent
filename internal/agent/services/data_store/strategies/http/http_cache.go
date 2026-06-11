@@ -91,7 +91,21 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// SNMP polling — one series per (target, interface row); metric_type
 	// separates interface / system / status families.
-	"snmp_poll": {"instance", "if_index", "metric_type"},
+	"dns_latency": {"name", "resolver", "metric_type"},
+	"http_check":  {"target", "metric_type"},
+	"icmp_check":  {"target", "metric_type"},
+	"tcp_dial":    {"target", "metric_type"},
+	"snmp_poll":   {"instance", "if_index", "metric_type"},
+	// prometheus_scrape: scraped label sets are arbitrary and cannot be
+	// enumerated here; per-target series stay distinct, finer label
+	// splits collapse on the cache-keyed sinks (same limitation as
+	// otlp_receiver). The OTLP/Prometheus re-export path carries all
+	// labels through the mapper pass-through.
+	"prometheus_scrape": {"target", "metric_type"},
+	// exec: dynamic perfdata/JSON metric names carry identity in the
+	// metric name itself (senhub.exec.<label>); no per-series labels to
+	// discriminate beyond the probe instance.
+	"exec": {"metric_type"},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/

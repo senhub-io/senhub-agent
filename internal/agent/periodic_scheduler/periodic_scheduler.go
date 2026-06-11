@@ -9,6 +9,12 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
+// maxBackoffTicks caps the failure backoff: at worst the scheduler
+// attempts once every (maxBackoffTicks+1) intervals. With the typical
+// 30-60s sync intervals that is a few minutes between attempts —
+// degraded, visible in logs and health, but never dead.
+const maxBackoffTicks = 8
+
 type PeriodicSchedulerCall func() error
 type PeriodicSchedulerOnStart func(quitChannel chan struct{}) error
 type PeriodicSchedulerOnShutdown func(ctx context.Context) error
@@ -22,7 +28,11 @@ type PeriodicSchedulerConfig struct {
 	FailOnStartError bool
 	// interval between calls
 	Interval time.Duration
-	// Number of retries on error
+	// MaxRetries is the consecutive-failure threshold after which the
+	// scheduler backs off (skipping ticks, exponentially up to
+	// maxBackoffTicks) while CONTINUING to retry. Zero or negative
+	// means no threshold: retry every tick forever. The scheduler
+	// never shuts itself down on Execute errors (#258).
 	MaxRetries int
 	// Execute to be made periodically
 	Execute PeriodicSchedulerCall
@@ -109,6 +119,8 @@ func (l *periodicScheduler) setupIntervalCall() error {
 
 	l.ticker = time.NewTicker(l.config.Interval)
 	errorCount := 0
+	backoffTicks := 0  // current backoff width in ticks (0 = none)
+	skipRemaining := 0 // ticks left to skip before the next attempt
 
 	go func(ticker *time.Ticker) {
 		// Recover from any panic in Execute so a buggy probe collector
@@ -136,6 +148,18 @@ func (l *periodicScheduler) setupIntervalCall() error {
 		for {
 			select {
 			case <-ticker.C:
+				// Backoff: after MaxRetries consecutive failures the
+				// scheduler skips ticks (exponentially, capped) instead
+				// of attempting every interval — and NEVER shuts itself
+				// down. A monitoring agent must not self-terminate its
+				// pipelines on transient failure: the historical
+				// self-Shutdown here permanently killed cloud/PRTG push
+				// on the first error (MaxRetries unset = 0) and probes
+				// after 3 failed collects, with no recovery path (#258).
+				if skipRemaining > 0 {
+					skipRemaining--
+					continue
+				}
 				tickStarted := time.Now()
 				l.logger.Info().
 					Int("error_count", errorCount).
@@ -143,23 +167,28 @@ func (l *periodicScheduler) setupIntervalCall() error {
 				err := l.doCall()
 				if err != nil {
 					errorCount++
-					if errorCount < l.config.MaxRetries {
+					if l.config.MaxRetries > 0 && errorCount >= l.config.MaxRetries {
+						if backoffTicks < maxBackoffTicks {
+							backoffTicks = backoffTicks*2 + 1
+							if backoffTicks > maxBackoffTicks {
+								backoffTicks = maxBackoffTicks
+							}
+						}
+						skipRemaining = backoffTicks
+						l.logger.Error().
+							Err(err).
+							Dur("duration", time.Since(tickStarted)).
+							Int("error_count", errorCount).
+							Int("max_retry", l.config.MaxRetries).
+							Int("backoff_ticks", backoffTicks).
+							Msg("Consecutive failures over threshold — backing off, will keep retrying")
+					} else {
 						l.logger.Warn().
 							Err(err).
 							Dur("duration", time.Since(tickStarted)).
 							Int("error_count", errorCount).
 							Int("max_retry", l.config.MaxRetries).
 							Msg("doCall returned error (will retry)")
-					} else {
-						l.logger.Error().
-							Err(err).
-							Dur("duration", time.Since(tickStarted)).
-							Int("error_count", errorCount).
-							Int("max_retry", l.config.MaxRetries).
-							Msg("Max retries reached, shutting down")
-						if err := l.Shutdown(context.Background()); err != nil {
-							l.logger.Error().Err(err).Msg("Failed to shutdown scheduler")
-						}
 					}
 				} else {
 					l.logger.Info().
@@ -171,6 +200,8 @@ func (l *periodicScheduler) setupIntervalCall() error {
 							Msg("Recovered")
 					}
 					errorCount = 0
+					backoffTicks = 0
+					skipRemaining = 0
 				}
 			case <-l.quitChannel:
 				l.logger.Info().Msg("Scheduler goroutine terminating on quit signal")

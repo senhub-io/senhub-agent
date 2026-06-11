@@ -103,6 +103,17 @@ nav:
       - Network: probes/network.md
       - Logical disk: probes/logicaldisk.md
       - Linux logs: probes/linux-logs.md
+      - Windows Event Log: probes/windows-eventlog.md
+      - File tail: probes/filetail.md
+      - ICMP check: probes/icmp-check.md
+      - HTTP check: probes/http-check.md
+      - TCP dial: probes/tcp-dial.md
+      - DNS latency: probes/dns-latency.md
+      - SNMP poll: probes/snmp-poll.md
+      - SNMP trap: probes/snmp-trap.md
+      - OTLP receiver: probes/otlp-receiver.md
+      - Prometheus scrape: probes/prometheus-scrape.md
+      - Exec: probes/exec.md
       - Citrix: probes/citrix.md
       - NetScaler: probes/netscaler.md
       - Redfish: probes/redfish.md
@@ -115,8 +126,11 @@ nav:
       - Veeam Backup & Replication: probes/veeam.md
       - MySQL / MariaDB: probes/mysql.md
       - PostgreSQL: probes/postgresql.md
+  - Migrating from PRTG: prtg-migration.md
   - Troubleshooting: troubleshooting.md
   - What's new:
       - Overview: whats-new/index.md
       - Next (unreleased): whats-new/next.md
+      - 0.2.2: whats-new/0.2.2.md
+      - 0.2.1: whats-new/0.2.1.md
       - 0.2.0: whats-new/0.2.0.md

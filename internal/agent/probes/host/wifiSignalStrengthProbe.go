@@ -124,15 +124,17 @@ func (m *wifiSignalStrengthProbe) Collect() ([]data_store.DataPoint, error) {
 		return nil, err
 	}
 
-	// Enrich datapoints with probe name and send to strategies
-	if m.OnDataPoints != nil {
-		enrichedMetrics := m.EnrichDataPointsWithProbeName(metrics, m.GetName())
-		if err := m.OnDataPoints(enrichedMetrics, m); err != nil {
-			return nil, fmt.Errorf("error handling data points: %v", err)
-		}
-	}
+	return m.finish(metrics), nil
+}
 
-	return metrics, nil
+// finish enriches collected datapoints unconditionally, like every
+// other host probe: the enrichment used to live inside the dead
+// OnDataPoints branch (SetOnDataPoints has zero callers), so wifi
+// datapoints reached the store without probe_name/probe_type —
+// skipping the transformer, defeating per-probe custom_tags and
+// mispartitioning OTLP series under the empty probe key (#264).
+func (m *wifiSignalStrengthProbe) finish(metrics []data_store.DataPoint) []data_store.DataPoint {
+	return m.BaseProbe.EnrichDataPointsWithProbeName(metrics, m.GetName())
 }
 
 func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, error) {
