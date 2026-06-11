@@ -12,10 +12,15 @@ or pushes them to the monitoring stack you already run.
 - **Host observability** (free): CPU, memory, network, disks/filesystems,
   OS logs (systemd journal, Windows Event Log), flat-file log tailing,
   Wi-Fi signal.
-- **Network monitoring** (free): SNMP v2c/v3 polling (MIB-II / IF-MIB),
-  SNMP trap receiver with operator-supplied MIB resolution.
-- **Universal collection** (free): embedded OTLP receiver — use the agent
-  as an edge collector for anything already instrumented.
+- **Active checks** (free): multi-target ping, HTTP(S) with TLS-expiry
+  tracking, TCP connect, DNS resolution — a failing target is a
+  measurement, never a probe failure.
+- **Network monitoring** (free): SNMP v2c polling (MIB-II / IF-MIB,
+  custom OIDs), SNMP v2c/v3 trap receiver with operator-supplied MIB
+  resolution.
+- **Universal collection** (free): embedded OTLP receiver, Prometheus
+  endpoint scraping, syslog receiver, and an exec probe that runs your
+  existing Nagios plugins unchanged.
 - **Topology & entities**: emits OpenTelemetry entity events (hosts,
   services, network devices/interfaces/routes) with embedded
   relationships — your metrics, logs and infrastructure graph share the
