@@ -21,6 +21,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 	want := []string{
 		"cpu",
 		"event",
+		"exec",
 		"dns_latency",
 		"filetail",
 		"http_check",
