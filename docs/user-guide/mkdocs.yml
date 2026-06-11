@@ -131,5 +131,6 @@ nav:
   - What's new:
       - Overview: whats-new/index.md
       - Next (unreleased): whats-new/next.md
+      - 0.2.2: whats-new/0.2.2.md
       - 0.2.1: whats-new/0.2.1.md
       - 0.2.0: whats-new/0.2.0.md
