@@ -1139,6 +1139,97 @@ Deux couches : (1) table compilée des 6 traps génériques SNMPv2-MIB ; (2) **M
 
 v3 USM best-effort (gosnmp listener = une identité USM, v3-trap flaggé unreliable upstream) ; v2c solide. Port 162 privilégié → root/CAP_NET_BIND_SERVICE (#223). Free tier.
 
+### 4.20 icmp_check (free, #299)
+
+Aucun receiver otelcol-contrib ne couvre l'ICMP actif → namespace `senhub.icmp.*`. Une série par cible (attributs `icmp.target` + `icmp.target.ip`).
+
+| Métrique OTel | Unité | Type | Source wire |
+|---|---|---|---|
+| `senhub.icmp.up` | `1` | gauge | reachability du cycle (≥1 réponse) |
+| `senhub.icmp.packet_loss` | `1` | gauge | wire en % → ratio côté mapper |
+| `senhub.icmp.packets.sent` / `.received` | `{packet}` | gauge | comptes du cycle |
+| `senhub.icmp.rtt.min/.avg/.max/.stddev` | `s` | gauge | wire en ms, `value_scale: 0.001` ; émis seulement si ≥1 réponse |
+
+Modes privilégié (raw ICMP) / non-privilégié (datagram, sysctl `ping_group_range` sous Linux) ; défaut privilégié sur Windows uniquement. Châssis multi-cibles réutilisable par tcp_dial (#159) / dns_latency (#158).
+
+
+### 4.21 http_check (free, #300)
+
+Aligné sur le receiver otelcol-contrib httpcheck quand la métrique existe (`httpcheck.duration`) ; extensions `senhub.httpcheck.*` sinon. Une série par cible (attribut `httpcheck.target`).
+
+| Métrique OTel | Unité | Type | Source wire |
+|---|---|---|---|
+| `senhub.httpcheck.up` | `1` | gauge | statut attendu (+ content_match) |
+| `senhub.httpcheck.status.code` | `{code}` | gauge | code HTTP (unité-annotation : pas de suffixe `_ratio` côté Prometheus) |
+| `httpcheck.duration` | `s` | gauge | total, wire ms `value_scale: 0.001` (nom contrib) |
+| `senhub.httpcheck.duration.{dns,connect,tls,ttfb}` | `s` | gauge | phases httptrace, wire ms |
+| `senhub.httpcheck.response.size` | `By` | gauge | corps lu (cap 1 MiB) |
+| `senhub.httpcheck.tls.expiry` | `d` | gauge | jours restants du certificat leaf (négatif si expiré) |
+| `senhub.httpcheck.content.match` | `1` | gauge | émis seulement si content_match configuré |
+
+Redirections rapportées non suivies ; keep-alive désactivé (chaque cycle mesure un handshake complet).
+
+### 4.22 tcp_dial + dns_latency (free, #159/#158)
+
+Mêmes principes que §4.20/4.21 (châssis actif, wire ms → `value_scale: 0.001`, échec = mesure up=0).
+
+| Métrique OTel | Unité | Type | Attributs |
+|---|---|---|---|
+| `senhub.tcpdial.up` / `.duration` | `1` / `s` | gauge | `tcpdial.target` |
+| `senhub.dns.up` / `.lookup.duration` / `.answers` | `1` / `s` / `{answer}` | gauge | `dns.question.name` (semconv DNS), `dns.resolver` (`system` = resolver OS) |
+
+### 4.23 prometheus_scrape (free, #304)
+
+Ingestion pull : chaque sample scrapé est un **pass-through typé** —
+nom et labels conservés tels quels, le tag `otel_type` porte la
+sémantique counter/gauge vers le mapper (même mécanisme que les OIDs
+dynamiques de snmp_poll, #207). Untyped → gauge. Histogram et summary
+droppés et comptés (contrat scalaires-seulement, identique à
+otlp_receiver). Pas d'énumération YAML possible — seules les
+self-metrics sont définies :
+
+| Métrique OTel | Unité | Type | Attributs |
+|---|---|---|---|
+| `senhub.promscrape.up` | `1` | gauge | `promscrape.target` |
+| `senhub.promscrape.scrape.duration` | `s` | gauge | wire ms, `value_scale: 0.001` |
+| `senhub.promscrape.samples` / `.dropped` | `{sample}` | gauge | `promscrape.target` |
+
+### 4.24 exec (free, #305)
+
+Probe de checks custom : code de sortie Nagios → `senhub.exec.status`
+(0 ok / 1 warning / 2 critical / 3 unknown), perfdata et contrat JSON
+en **pass-through typé** sous `senhub.exec.<label>` (tag `otel_type`,
+même mécanisme que prometheus_scrape §4.23). Normalisation perfdata :
+temps → secondes, octets → bytes, UOM `c` → counter. Self-metrics
+définies en YAML :
+
+| Métrique OTel | Unité | Type | Notes |
+|---|---|---|---|
+| `senhub.exec.status` | `{status}` | gauge | unité-annotation, pas de suffixe `_ratio` |
+| `senhub.exec.duration` | `s` | gauge | wire ms, `value_scale: 0.001` |
+| `senhub.exec.timeout` / `.skipped` | `1` | gauge | booléens |
+
+### 4.25 snmp_poll (free, #156) — backfill
+
+Section ajoutée a posteriori (#345) : la probe a livré ses lots 1a/1b
+sans table semconv, le YAML transformer était la seule source.
+
+Modules built-in (MIB-2, IF-MIB) — une série par device (`snmp.target`),
+les métriques d'interface ajoutent `network.interface.index` :
+
+| Métrique OTel | Unité | Type | Source MIB |
+|---|---|---|---|
+| `senhub.snmp.up` | `1` | gauge | joignabilité du cycle |
+| `senhub.snmp.poll.duration` | `s` | gauge | wall-clock du poll |
+| `snmp.sys.uptime` | `cs` | gauge | sysUpTime (centisecondes, unité SNMP native) |
+| `snmp.interface.in_octets` / `out_octets` | `By` | counter | ifInOctets / ifOutOctets |
+| `snmp.interface.in_errors` / `out_errors` | `{error}` | counter | ifInErrors / ifOutErrors |
+| `snmp.interface.in_discards` / `out_discards` | `{packet}` | counter | ifInDiscards / ifOutDiscards |
+| `snmp.interface.speed` | `bit/s` | gauge | ifSpeed |
+| `snmp.interface.admin_status` / `oper_status` | `{status}` | gauge | ifAdminStatus / ifOperStatus (enums IF-MIB 1..7 ; unité-annotation depuis #344, pas de suffixe `_ratio`) |
+
+Les `custom_mappings` et OIDs dynamiques passent par le pass-through
+typé (tag `otel_type`) — pas d'énumération ici par construction.
 
 ## 6. Processus d'ajout d'une convention
 

@@ -190,6 +190,12 @@ func (v *JWTValidator) IsInGracePeriod(license *License) bool {
 // snmp_trap follows snmp_poll: receiving generic SNMP traps is part of
 // the same free PRTG-replacement wedge (the push counterpart of polling).
 //
+// icmp_check is free for the same wedge reason: ping/uptime is PRTG's
+// most-deployed sensor class — the migration story needs it at zero cost.
+//
+// http_check follows: HTTP/TLS-cert checks are top-3 PRTG sensors and
+// the OTel Collector gives them away (httpcheck receiver).
+//
 // otlp_receiver is free as universal collection: the agent acting as an
 // edge collector ingesting OTLP streams from other instrumented sources
 // is the same open-core "bring everything in" wedge, not a paid vendor
@@ -202,9 +208,24 @@ var freeTierProbes = map[string]bool{
 	"linux_logs":       true,
 	"windows_eventlog": true,
 	"filetail":         true,
+	"dns_latency":      true,
+	"http_check":       true,
+	"icmp_check":       true,
 	"snmp_poll":        true,
 	"snmp_trap":        true,
+	"tcp_dial":         true,
 	"otlp_receiver":    true,
+	// prometheus_scrape: pull-side twin of otlp_receiver — scraping
+	// exporters and appliances is universal collection, not a vendor
+	// integration.
+	"prometheus_scrape": true,
+	// exec: the custom-sensor long tail every PRTG estate ends in;
+	// Telegraf (exec) and Nagios (plugins) both cover it for free.
+	"exec": true,
+	// syslog: completes the universal log-collection set alongside
+	// filetail and windows_eventlog (#298); receiving a standard
+	// protocol is collection, not a vendor integration.
+	"syslog": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
