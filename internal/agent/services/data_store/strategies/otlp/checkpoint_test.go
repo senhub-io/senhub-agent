@@ -207,3 +207,57 @@ func TestCheckpointer_StopIsIdempotent(t *testing.T) {
 		t.Fatal("second stop() deadlocked")
 	}
 }
+
+// TestCheckpointer_RestoredZombiesEvictedByStaleness is the #308
+// acceptance test: a checkpoint seeded with a series whose producer no
+// longer exists is restored, and the staleness eviction removes it
+// within one cycle, while a fresh series survives. Before the fix the
+// restored entry re-exported forever with fresh timestamps.
+func TestCheckpointer_RestoredZombiesEvictedByStaleness(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
+
+	// Seed and persist a store holding one dead series (last datapoint
+	// an hour ago — its probe was removed) and one fresh series.
+	seed := newMetricStore()
+	seed.upsert(datapoint.DataPoint{
+		Name: "senhub.ibmi.cpu", Value: 1, Timestamp: now.Add(-time.Hour),
+		Tags: []tags.Tag{{Key: "probe_name", Value: "removed-probe"}, {Key: "probe_type", Value: "ibmi"}},
+	})
+	seed.upsert(datapoint.DataPoint{
+		Name: "system.cpu.utilization", Value: 0.4, Timestamp: now.Add(-30 * time.Second),
+		Tags: []tags.Tag{{Key: "probe_name", Value: "cpu"}, {Key: "probe_type", Value: "cpu"}},
+	})
+	cw := newCheckpointer(checkpointConfig{Path: dir, Interval: time.Hour}, seed, nil)
+	if err := cw.save(); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// Restart: a fresh store restores the snapshot — both entries come
+	// back, original observation times preserved.
+	restored := newMetricStore()
+	cr := newCheckpointer(checkpointConfig{Path: dir, Interval: time.Hour}, restored, nil)
+	if n, err := cr.loadAndRestore(); err != nil || n != 2 {
+		t.Fatalf("loadAndRestore = %d, %v; want 2 entries", n, err)
+	}
+
+	// One push-cycle eviction pass: the zombie goes, the live one stays.
+	if n := restored.evictStale(now, 10*time.Minute); n != 1 {
+		t.Fatalf("evicted %d, want exactly the zombie", n)
+	}
+	metrics, _ := restored.snapshot()
+	if len(metrics) != 1 || metrics[0].MetricName != "system.cpu.utilization" {
+		t.Fatalf("post-restart survivors = %+v, want only the live series", metrics)
+	}
+
+	// The next checkpoint save persists the shrunken store: the zombie
+	// does not resurrect on the following restart.
+	if err := cr.save(); err != nil {
+		t.Fatalf("re-save: %v", err)
+	}
+	again := newMetricStore()
+	ca := newCheckpointer(checkpointConfig{Path: dir, Interval: time.Hour}, again, nil)
+	if n, _ := ca.loadAndRestore(); n != 1 {
+		t.Fatalf("second restore = %d entries, want 1 (zombie gone from disk)", n)
+	}
+}

@@ -394,6 +394,10 @@ otlp:
   endpoint: "otel-collector.internal:4317"
   max_active_series_per_probe: 20000   # default 10000
   max_store_size: 100000               # default 50000 (global cap)
+  staleness_ttl: "10m"                 # default 10m: a series with no new
+                                       # datapoint for this long is evicted
+                                       # instead of re-exporting forever
+                                       # (zombie series); "0s" disables
 ```
 
 Both knobs are gauges of last resort — they protect the agent's memory
