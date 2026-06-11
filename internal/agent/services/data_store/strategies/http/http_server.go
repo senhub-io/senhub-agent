@@ -4,6 +4,7 @@ package http
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
@@ -44,8 +45,15 @@ func (s *ServerManager) Start() error {
 	// Create HTTP server instance
 	s.server = s.createHTTPServer(router)
 
-	// Start server in goroutine
-	go s.startServerAsync()
+	// Bind SYNCHRONOUSLY so a taken port or denied bind aborts Start
+	// with an error instead of the agent running "healthy" with no
+	// HTTP surface — no Prometheus scrape, no Web UI, no PRTG pull
+	// (audit A7, #273). Serving then proceeds asynchronously.
+	ln, err := net.Listen("tcp", s.server.Addr)
+	if err != nil {
+		return fmt.Errorf("binding HTTP server on %s: %w", s.server.Addr, err)
+	}
+	go s.serveAsync(ln)
 
 	return nil
 }
@@ -78,19 +86,19 @@ func (s *ServerManager) createHTTPServer(router *mux.Router) *http.Server {
 	}
 }
 
-// startServerAsync starts the HTTP/HTTPS server in a goroutine
-func (s *ServerManager) startServerAsync() {
+// serveAsync serves on the already-bound listener (TLS or plain).
+func (s *ServerManager) serveAsync(ln net.Listener) {
 	address := s.server.Addr
 
 	if s.strategy.configManager.IsTLSEnabled() {
-		s.startHTTPSServer(address)
+		s.startHTTPSServer(ln, address)
 	} else {
-		s.startHTTPServer(address)
+		s.startHTTPServer(ln, address)
 	}
 }
 
-// startHTTPSServer starts the HTTPS server with TLS configuration
-func (s *ServerManager) startHTTPSServer(address string) {
+// startHTTPSServer serves HTTPS on the already-bound listener.
+func (s *ServerManager) startHTTPSServer(ln net.Listener, address string) {
 	// Get certificate paths from configuration (absolute paths generated during installation)
 	certFile := s.strategy.configManager.GetTLSCertFile()
 	keyFile := s.strategy.configManager.GetTLSKeyFile()
@@ -113,13 +121,13 @@ func (s *ServerManager) startHTTPSServer(address string) {
 		Str("min_tls_version", s.strategy.configManager.GetTLSMinVersion()).
 		Msg("HTTPS server listening")
 
-	if err := s.server.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
+	if err := s.server.ServeTLS(ln, certFile, keyFile); err != nil && err != http.ErrServerClosed {
 		s.logger.Error().Err(err).Msg("HTTPS server error")
 	}
 }
 
-// startHTTPServer starts the HTTP server without TLS
-func (s *ServerManager) startHTTPServer(address string) {
+// startHTTPServer serves plain HTTP on the already-bound listener.
+func (s *ServerManager) startHTTPServer(ln net.Listener, address string) {
 	s.logger.Info().
 		Str("address", address).
 		Int("port", s.strategy.port).
@@ -127,7 +135,7 @@ func (s *ServerManager) startHTTPServer(address string) {
 		Bool("tls_enabled", false).
 		Msg("HTTP server listening")
 
-	if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := s.server.Serve(ln); err != nil && err != http.ErrServerClosed {
 		s.logger.Error().Err(err).Msg("HTTP server error")
 	}
 }
