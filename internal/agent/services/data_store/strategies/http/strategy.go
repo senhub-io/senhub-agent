@@ -157,6 +157,7 @@ func NewHTTPSyncStrategy(
 	// Update strategy fields from configuration manager
 	strategy.port = strategy.configManager.GetPort()
 	strategy.bindAddress = strategy.configManager.GetBindAddress()
+	strategy.cache.SetMaxSeries(strategy.configManager.GetMaxCacheSize())
 
 	// Initialize debug manager
 	strategy.debugManager = NewDebugManager(strategy, moduleLogger)
