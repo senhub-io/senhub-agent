@@ -51,6 +51,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **otlp_receiver** - Embedded OTLP gRPC/HTTP receiver; the agent acts as an edge collector ingesting OTLP metric streams from other instrumented sources (universal collection wedge)
 - **prometheus_scrape** - Pull-side twin of otlp_receiver: scrapes Prometheus /metrics endpoints (exporters, appliances) into the same pipeline (universal collection wedge)
 - **exec** - Custom checks: runs operator-supplied Nagios plugins or JSON-emitting scripts on interval (custom-sensor long tail)
+- **syslog** - Syslog server (UDP/TCP) receiving RFC3164/RFC5424 messages as OTLP logs (moved from Pro in 0.2.2, #298 — completes the universal log-collection set)
 - **snmp_trap** - SNMP v2c/v3 trap receiver (UDP, default :162) — push counterpart of snmp_poll, emits traps as OTel logs
 - **icmp_check** - Multi-target ICMP ping (RTT min/avg/max/stddev, packet loss, reachability) — free active check, the PRTG-migration wedge sensor
 - **http_check** - Multi-target HTTP(S) check: status, latency phases (DNS/connect/TLS/TTFB), response size, content match, TLS certificate expiry
@@ -68,7 +69,6 @@ Specific probes authorized by entries in the customer JWT `authorized_probes` ar
 - **mysql** - MySQL server monitoring (OTel-first, mysql.* semconv)
 - **postgresql** - PostgreSQL server monitoring (OTel-first, postgresql.* semconv)
 - **ibmi** - IBM i / Power Systems monitoring (JT400 JDBC bridge, senhub.ibmi.* semconv) — **Linux-only** agent runtime
-- **syslog** - Syslog server (UDP/TCP relay + OTLP logs export)
 - **event** - Custom HTTP event ingestion
 - **ping_gateway** - Gateway connectivity monitoring
 - **ping_webapp** - Web application availability
@@ -711,7 +711,7 @@ A: Activate new Enterprise license - it replaces the existing one.
 **Q: What if private key is compromised?**
 A: Generate new key pair, update all agents with new public key, reissue all customer licenses.
 
-**Q: Can agents use syslog or citrix probes without a license?**
+**Q: Can agents use citrix or veeam probes without a license?**
 A: No. Premium probes require an explicit JWT license with the relevant probes authorized.
 
 ## Conclusion
