@@ -106,7 +106,7 @@ but the metrics it emits use the OTel `system.filesystem.*` convention
 | `senhub_system_filesystem_inode_usage` | updowncounter | – | `system_filesystem_state` ∈ {used, free} (Linux) |
 | `senhub_system_filesystem_inode_utilization_ratio` | gauge | 1 (0-1) | (Linux) |
 | `senhub_system_disk_operations_per_second` | gauge | 1/s | `disk_io_direction` ∈ {read, write} (Windows) |
-| `senhub_system_disk_io_per_second` | gauge | By/s | `disk_io_direction` (Windows) |
+| `senhub_system_disk_io_bytes_per_second` | gauge | By/s | `disk_io_direction` (Windows) |
 | `senhub_system_disk_queue_length` | gauge | {operation} | (Windows) |
 
 Notes:

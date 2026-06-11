@@ -26,6 +26,26 @@
 <li><span class="tag t-removed">Changed</span> <span class="tag t-area">outputs</span> The never-implemented Zabbix HTTP endpoint (always 501) is removed; <code>endpoints: [zabbix]</code> now fails fast at startup. The Zabbix integration is redesigned as a native active agent, deferred (#169).</li>
 </ul>
 
+## Changed (metric names)
+
+The OTel names of eight Windows/hardware rate metrics carried a
+`per_second` suffix in the NAME, which the Prometheus-compatibility
+layers then doubled with the unit-derived suffix
+(`senhub_system_disk_io_per_second_bytes_per_second` through an OTel
+collector). The unit now drives the suffix alone; the resulting
+Prometheus names are the ones the metrics reference always documented.
+
+| Before (OTel name) | After (OTel name) | Prometheus name (both ingestion paths) |
+|---|---|---|
+| `senhub.system.cpu.dpcs_per_second` | `senhub.system.cpu.dpcs` | `senhub_system_cpu_dpcs_per_second` |
+| `senhub.system.cpu.dpcs_queued_per_second` | `senhub.system.cpu.dpcs_queued` | `senhub_system_cpu_dpcs_queued_per_second` |
+| `senhub.system.cpu.interrupts_per_second` | `senhub.system.cpu.interrupts` | `senhub_system_cpu_interrupts_per_second` |
+| `senhub.system.paging.faults_per_second` | `senhub.system.paging.faults` | `senhub_system_paging_faults_per_second` |
+| `senhub.system.paging.operations_per_second` | `senhub.system.paging.operations` | `senhub_system_paging_operations_per_second` |
+| `senhub.system.disk.operations_per_second` | `senhub.system.disk.operations` | `senhub_system_disk_operations_per_second` |
+| `senhub.system.disk.io_per_second` | `senhub.system.disk.io` | `senhub_system_disk_io_bytes_per_second` |
+| `senhub.hardware.physical_disk.link_speed_bits_per_second` | `senhub.hardware.physical_disk.link_speed` | `senhub_hardware_physical_disk_link_speed_bits_per_second` |
+
 ## Internal
 
 <ul class="rn">
