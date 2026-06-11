@@ -251,6 +251,19 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		})
 	}
 
+	// Push-buffer drop counters (senhub cloud / PRTG push, #267) —
+	// same emitted-only-when-touched shape as the cache counter above.
+	for strategy, n := range agentstate.GetPushBufferDropped() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.push.buffer.dropped",
+			Unit:        "{datapoint}",
+			Type:        "counter",
+			Attributes:  map[string]string{"strategy": strategy},
+			Value:       float64(n),
+			Description: "Cumulative count of oldest datapoints dropped by a bounded push buffer at its cap, by strategy.",
+		})
+	}
+
 	// Checkpoint self-metrics. These are emitted regardless of whether
 	// persistence is enabled — the size+age gauges read 0 when disabled
 	// (distinguishable from "never saved" only by also checking the
