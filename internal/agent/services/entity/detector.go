@@ -12,6 +12,13 @@ import (
 // expires a live entity.
 const livenessSlackFactor = 3
 
+// lastGoodTTL bounds how long the detector keeps serving a source's last
+// good observation once Observe starts reporting failures (ok=false). A
+// transient sweep failure must not delete a device tree in the consumer
+// (audit D3); a source failing for longer than this is treated as truly
+// gone and its entities expire through the normal delete path.
+const lastGoodTTL = 15 * time.Minute
+
 // HostIdentityFunc resolves the current host identity. It may fail (e.g. the
 // OS host info is briefly unavailable); the detector skips that cycle.
 type HostIdentityFunc func() (HostIdentity, error)
@@ -37,6 +44,15 @@ type Detector struct {
 	publish  func(Event)
 	now      func() time.Time
 	onOrphan func([]Relation)
+	// lastGood caches, per registered-source id, the most recent
+	// observation reported with ok=true, so a transient failure serves
+	// stale-but-real topology instead of an empty set (audit D3).
+	lastGood map[uint64]cachedObservation
+}
+
+type cachedObservation struct {
+	obs Observation
+	at  time.Time
 }
 
 // NewDetector builds a Detector. interval is the heartbeat cadence and is
@@ -68,7 +84,9 @@ func (d *Detector) Run(ctx context.Context) {
 
 	// One Tracker for the detector's lifetime: it remembers the last-seen
 	// set so it can emit deletes when an item disappears between cycles.
-	tracker := NewTracker(publish)
+	// Suppress unchanged heartbeats for 2 ticks: still one full tick of
+	// slack before the consumer's 3x-cadence liveness expiry.
+	tracker := NewTracker(publish, 2*d.interval)
 	d.reconcile(tracker, now())
 
 	ticker := time.NewTicker(d.interval)
@@ -105,8 +123,36 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	// so a relation can resolve its source endpoint against any entity seen
 	// this cycle.
 	obs := DetectFoundation(h, a)
-	for _, src := range registeredSources() {
-		obs = obs.merge(src.Observe())
+	if d.lastGood == nil {
+		d.lastGood = map[uint64]cachedObservation{}
+	}
+	regs := registeredSources()
+	live := make(map[uint64]bool, len(regs))
+	for _, r := range regs {
+		live[r.id] = true
+		o, ok := r.src.Observe()
+		switch {
+		case ok:
+			d.lastGood[r.id] = cachedObservation{obs: o, at: ts}
+		default:
+			if cached, has := d.lastGood[r.id]; has && ts.Sub(cached.at) < lastGoodTTL {
+				// Transient failure: keep the consumer's view of this
+				// slice of the graph until the TTL says it is real.
+				o = cached.obs
+			} else {
+				// Failing beyond the TTL (or never succeeded): the
+				// empty set flows through and absence-deletes fire.
+				o = Observation{}
+			}
+		}
+		obs = obs.merge(o)
+	}
+	// Drop caches of unregistered sources so a stopped probe's topology
+	// expires instead of being served forever (audit D4).
+	for id := range d.lastGood {
+		if !live[id] {
+			delete(d.lastGood, id)
+		}
 	}
 	// Fold each relation onto its source entity (embedded entity.relationships)
 	// before the tracker, so the tracker reconciles entities only.

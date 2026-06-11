@@ -86,7 +86,10 @@ type OTLPSyncStrategy struct {
 	// entityDetectorWG waits for it.
 	entityPump           *entityPump
 	entityDetectorCancel context.CancelFunc
-	entityDetectorWG     sync.WaitGroup
+	// entitySourceUnregisters detach the strategy-owned entity sources
+	// (hostnet, hostsvc) from the global registry on stop.
+	entitySourceUnregisters []func()
+	entityDetectorWG        sync.WaitGroup
 
 	// traces holds the SDK BatchSpanProcessor + TracerProvider + Tracer
 	// when Traces.Enabled. nil otherwise. The provider also gets
@@ -537,8 +540,9 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 		}
 		return hi.ID
 	}
-	entity.RegisterSource(hostnet.New(hostIDFn))
-	entity.RegisterSource(hostsvc.New(hostIDFn))
+	s.entitySourceUnregisters = append(s.entitySourceUnregisters,
+		entity.RegisterSource(hostnet.New(hostIDFn)),
+		entity.RegisterSource(hostsvc.New(hostIDFn)))
 
 	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
 	det.OnOrphanRelations(func(orphans []entity.Relation) {
@@ -603,6 +607,12 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 		s.entityDetectorCancel()
 		s.entityDetectorWG.Wait()
 	}
+	// Unregister the strategy-owned sources so a strategy restart does not
+	// duplicate them and a stopped strategy stops heartbeating (audit D4).
+	for _, unreg := range s.entitySourceUnregisters {
+		unreg()
+	}
+	s.entitySourceUnregisters = nil
 	if s.entityPump != nil {
 		s.entityPump.stop(ctx)
 	}
