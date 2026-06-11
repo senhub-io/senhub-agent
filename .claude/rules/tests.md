@@ -16,7 +16,7 @@ paths:
 |---|---|
 | Default unit tests | `make test` |
 | With race detector | `make test-race` |
-| DB integration (testcontainers) | `make test-database` |
+| DB integration (mysql/postgresql) | `make test-database` in senhub-agent-enterprise — the database probes live there since the OSS split |
 | Single package, quick iteration | still via `make test` — never raw `go test` |
 
 The 4 flaky tests in `internal/agent/services/configuration` under `make test-race` are documented pre-existing flakes; they pass under plain `make test` and individually. Don't flag them as regressions unless they fail under non-race mode.
@@ -51,7 +51,7 @@ Production code must be race-clean. When `make test-race` flags new races caused
 
 - **No mocking framework** dependency. Hand-roll fakes for what you need; the codebase prefers concrete types.
 - For HTTP fakes, `httptest.NewServer` from stdlib is the convention.
-- For DB fakes, use the real DB via testcontainers (`make test-database`). The cost is worth it — mocked DBs hide migration / driver / wire-format bugs.
+- For DB fakes, use the real DB via testcontainers (`make test-database` in senhub-agent-enterprise, where the database probes live). The cost is worth it — mocked DBs hide migration / driver / wire-format bugs.
 
 ## Cache, registry, and other global state
 
