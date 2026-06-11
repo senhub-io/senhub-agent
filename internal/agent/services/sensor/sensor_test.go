@@ -2,6 +2,7 @@ package sensor
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -455,6 +456,67 @@ func TestSensor_DuplicateProbeNotStartedTwice(t *testing.T) {
 	ctx := context.Background()
 	for _, probe := range s.startedProbes {
 		_ = probe.Shutdown(ctx)
+	}
+}
+
+// TestSensor_SyncConfiguration_ConcurrentConfigEvents mimics the
+// EventNotifier contract (each config event dispatched on a fresh
+// goroutine) and fires two events back-to-back: SyncConfiguration must
+// serialize them — no data race, no duplicated probes, final probe set
+// consistent with the configuration.
+func TestSensor_SyncConfiguration_ConcurrentConfigEvents(t *testing.T) {
+	mockArgs := &cliArgs.ParsedArgs{}
+	baseLogger := logger.NewLogger(mockArgs)
+	mockProvider := &MockConfigProvider{
+		config: configuration.RemoteConfigurationData{
+			Probes: []configuration.ProbeConfig{},
+		},
+	}
+	addDataPoint := func(data []datapoint.DataPoint, router data_store.StrategyRouter) error {
+		return nil
+	}
+
+	s := NewSensor(addDataPoint, mockProvider, baseLogger).(*sensor)
+	if err := s.Start(make(chan struct{})); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	mockProvider.config.Probes = []configuration.ProbeConfig{
+		{
+			Name:   "test-cpu",
+			Type:   "cpu",
+			Params: map[string]interface{}{"interval": 30},
+		},
+		{
+			Name:   "test-memory",
+			Type:   "memory",
+			Params: map[string]interface{}{"interval": 30},
+		},
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			mockProvider.TriggerConfigChange("config changed")
+		}()
+	}
+	wg.Wait()
+
+	if len(s.startedProbes) != 2 {
+		t.Errorf("Expected 2 probes after concurrent syncs, got %d", len(s.startedProbes))
+	}
+	seen := make(map[string]bool)
+	for _, pp := range s.startedProbes {
+		if seen[pp.ProbeId] {
+			t.Errorf("Probe started twice: %s", pp.ProbeId)
+		}
+		seen[pp.ProbeId] = true
+	}
+
+	if err := s.Shutdown(context.Background()); err != nil {
+		t.Errorf("Shutdown failed: %v", err)
 	}
 }
 
