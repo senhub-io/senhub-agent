@@ -275,7 +275,6 @@ lint: ## Analyse de qualité du code (golangci-lint)
 lint-fix: ## Corrige automatiquement les problèmes de style
 	@echo "$(GREEN)🔧 Correction automatique des problèmes...$(NC)"
 	@go fmt ./...
-	@go mod tidy
 	@command -v golangci-lint >/dev/null 2>&1 && golangci-lint run --fix --timeout=5m || echo "$(YELLOW)⚠️ golangci-lint non disponible$(NC)"
 	@echo "$(GREEN)✅ Corrections appliquées$(NC)"
 
