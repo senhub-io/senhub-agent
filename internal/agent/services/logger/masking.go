@@ -11,6 +11,7 @@ var sensitivePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)"(token|api[-_]?key|secret|authentication[-_]?key)"\s*:\s*"([^"]+)"`),
 	regexp.MustCompile(`(?i)(password|passwd|pwd)["']?\s*[:=]\s*["']?([^"',\s]+)`),
 	regexp.MustCompile(`(?i)(token|api[-_]?key|secret|authentication[-_]?key)["']?\s*[:=]\s*["']?([^"',\s]+)`),
+	regexp.MustCompile(`(?i)([a-z_]*passphrase|community)["']?\s*[:=]\s*["']?([^"',\s]+)`),
 	regexp.MustCompile(`(?i)(Authorization|Auth):\s*(Bearer|Basic)\s+([a-zA-Z0-9+/=._-]+)`),
 }
 
