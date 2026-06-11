@@ -19,7 +19,7 @@ paths:
 | DB integration (mysql/postgresql) | `make test-database` in senhub-agent-enterprise — the database probes live there since the OSS split |
 | Single package, quick iteration | still via `make test` — never raw `go test` |
 
-The 4 flaky tests in `internal/agent/services/configuration` under `make test-race` are documented pre-existing flakes; they pass under plain `make test` and individually. Don't flag them as regressions unless they fail under non-race mode.
+The 4 historical race flakes in `internal/agent/services/configuration` were fixed in #268 (lock-free config reads moved to atomic snapshots; joinable watcher lifecycle) and the package is back in race CI — a -race failure there is a real regression now.
 
 ## Test layout conventions
 
