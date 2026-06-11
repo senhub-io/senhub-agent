@@ -47,6 +47,7 @@ func TestBuildAgentRecords_SerializesToValidPrometheus(t *testing.T) {
 		"senhub_agent_probes_total",
 		"senhub_agent_probes_healthy",
 		"senhub_agent_collect_errors_total",
+		"senhub_agent_transformer_fallback_total",
 		"senhub_agent_build_info",
 	} {
 		if _, ok := parsed[want]; !ok {
