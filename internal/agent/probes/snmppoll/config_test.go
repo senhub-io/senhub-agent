@@ -1,6 +1,8 @@
 package snmppoll
 
 import (
+	"github.com/gosnmp/gosnmp"
+
 	"net"
 	"strings"
 	"testing"
@@ -87,7 +89,7 @@ func TestParseConfig_Errors(t *testing.T) {
 		{"no mibs or custom", map[string]interface{}{"target": "192.0.2.10"}, "at least one entry"},
 		{"bad port", map[string]interface{}{"target": "192.0.2.10", "port": 99999, "mibs": []interface{}{"if-mib"}}, "port must be between"},
 		{"snmpv1 rejected", map[string]interface{}{"target": "192.0.2.10", "version": "v1", "mibs": []interface{}{"if-mib"}}, "SNMPv1 is not supported"},
-		{"snmpv3 rejected", map[string]interface{}{"target": "192.0.2.10", "version": "v3", "mibs": []interface{}{"if-mib"}}, "SNMPv3 is not supported"},
+		{"snmpv3 without credentials block", map[string]interface{}{"target": "192.0.2.10", "version": "v3", "mibs": []interface{}{"if-mib"}}, "requires a 'v3' block"},
 		{"unknown mib", map[string]interface{}{"target": "192.0.2.10", "mibs": []interface{}{"made-up"}}, "unknown built-in MIB"},
 		{"custom missing oid", map[string]interface{}{"target": "192.0.2.10", "custom_mappings": []interface{}{map[string]interface{}{"metric": "x"}}}, "requires 'oid'"},
 		{"custom missing metric", map[string]interface{}{"target": "192.0.2.10", "custom_mappings": []interface{}{map[string]interface{}{"oid": ".1.2.3"}}}, "requires 'metric'"},
@@ -168,7 +170,7 @@ func TestParseConfig_DiscoveryErrors(t *testing.T) {
 		{"bad seed ip", map[string]interface{}{"seeds": []interface{}{"not-an-ip"}, "profile": goodProfile, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "not a valid IP"},
 		{"no profile", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "discovery.profile is required"},
 		{"no community", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": map[string]interface{}{"version": "v2c"}, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "community is required"},
-		{"v3 rejected", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": map[string]interface{}{"version": "v3", "community": "ro"}, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "SNMPv3 is not supported"},
+		{"v3 crawl profile rejected", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": map[string]interface{}{"version": "v3", "community": "ro"}, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "v2c-only"},
 		{"no allowed_cidrs", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": goodProfile}, "allowed_cidrs is required"},
 		{"bad cidr", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": goodProfile, "allowed_cidrs": []interface{}{"10.0.0.0/99"}}, "not a valid CIDR"},
 		{"zero max_devices", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": goodProfile, "allowed_cidrs": []interface{}{"10.0.0.0/8"}, "max_devices": 0}, "max_devices must be positive"},
@@ -181,6 +183,67 @@ func TestParseConfig_DiscoveryErrors(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), c.wantSub) {
 				t.Errorf("error = %q, want substring %q", err.Error(), c.wantSub)
+			}
+		})
+	}
+}
+
+// TestParseConfig_V3 pins the SNMPv3 lot (#156): a valid authPriv
+// config resolves, and the invalid shapes fail with actionable errors
+// instead of silently downgrading security.
+func TestParseConfig_V3(t *testing.T) {
+	valid := map[string]interface{}{
+		"target":  "192.0.2.10",
+		"version": "v3",
+		"mibs":    []interface{}{"if-mib"},
+		"v3": map[string]interface{}{
+			"username":        "monitoring",
+			"auth_protocol":   "sha256",
+			"auth_passphrase": "auth-secret",
+			"priv_protocol":   "aes",
+			"priv_passphrase": "priv-secret",
+		},
+	}
+	cfg, err := parseConfig(valid)
+	if err != nil {
+		t.Fatalf("parseConfig(v3): %v", err)
+	}
+	if cfg.Version != gosnmp.Version3 || cfg.V3 == nil {
+		t.Fatalf("version/V3 not resolved: %+v", cfg)
+	}
+	if cfg.V3.AuthProtocol != "SHA256" || cfg.V3.PrivProtocol != "AES" {
+		t.Errorf("protocol names must be uppercased: %+v", cfg.V3)
+	}
+
+	errCases := []struct {
+		name string
+		mut  func(m map[string]interface{})
+		want string
+	}{
+		{"v3 block without v3 version", func(m map[string]interface{}) { m["version"] = "v2c" }, "version is not v3"},
+		{"missing username", func(m map[string]interface{}) {
+			m["v3"] = map[string]interface{}{"auth_protocol": "SHA"}
+		}, "'v3.username' is required"},
+		{"unknown auth protocol", func(m map[string]interface{}) {
+			m["v3"] = map[string]interface{}{"username": "u", "auth_protocol": "SHAKE", "auth_passphrase": "x"}
+		}, "is not supported"},
+		{"priv without auth", func(m map[string]interface{}) {
+			m["v3"] = map[string]interface{}{"username": "u", "priv_protocol": "AES", "priv_passphrase": "x"}
+		}, "requires an auth_protocol"},
+		{"auth without passphrase", func(m map[string]interface{}) {
+			m["v3"] = map[string]interface{}{"username": "u", "auth_protocol": "SHA"}
+		}, "'v3.auth_passphrase' is required"},
+	}
+	for _, tc := range errCases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := map[string]interface{}{
+				"target": "192.0.2.10", "version": "v3", "mibs": []interface{}{"if-mib"},
+				"v3": map[string]interface{}{"username": "u"},
+			}
+			tc.mut(raw)
+			_, err := parseConfig(raw)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want substring %q", err, tc.want)
 			}
 		})
 	}

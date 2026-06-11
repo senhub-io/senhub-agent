@@ -141,8 +141,15 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 		// id / interface names (correlation tags); between sweeps the cached
 		// values are reused.
 		p.entitySource.maybeSweep(client, start)
-		points = collect(client, p.cfg, p.instance,
+		var answered bool
+		points, answered = collect(client, p.cfg, p.instance,
 			p.entitySource.DeviceID(), p.entitySource.InterfaceNames(), start, p.moduleLogger)
+		if !answered {
+			// Connected (UDP always does) but zero responses: the device
+			// is unreachable, filtered, or rejecting our credentials.
+			up = 0
+			p.moduleLogger.Warn().Str("target", p.instance).Msg("SNMP device answered no request this cycle")
+		}
 	}
 
 	end := time.Now()
