@@ -30,7 +30,8 @@ func TestFreeTierProbes(t *testing.T) {
 		{"Citrix probe is NOT free tier", "citrix", false},
 		{"WebApp probe is NOT free tier", "ping_webapp", false},
 		{"Gateway probe is NOT free tier", "ping_gateway", false},
-		{"Syslog probe is NOT free tier", "syslog", false},
+		{"Syslog probe IS free tier (#298)", "syslog", true},
+		{"Event probe is NOT free tier", "event", false},
 	}
 
 	for _, tt := range tests {
@@ -47,8 +48,8 @@ func TestGetFreeTierProbes(t *testing.T) {
 	probes := GetFreeTierProbes()
 
 	// Check we have exactly 11 free tier probes
-	if len(probes) != 16 {
-		t.Errorf("GetFreeTierProbes() returned %d probes, want 16", len(probes))
+	if len(probes) != 17 {
+		t.Errorf("GetFreeTierProbes() returned %d probes, want 17", len(probes))
 	}
 
 	// Check all expected probes are present
@@ -69,6 +70,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"tcp_dial":          false,
 		"prometheus_scrape": false,
 		"exec":              false,
+		"syslog":            false,
 	}
 
 	for _, probe := range probes {
@@ -624,7 +626,8 @@ func TestJWTValidator_IsProbeAuthorized(t *testing.T) {
 		{"Authorized: citrix", "citrix", true},
 		{"Free tier: cpu", "cpu", true},
 		{"Free tier: memory", "memory", true},
-		{"Unauthorized: syslog", "syslog", false},
+		{"Free tier (#298): syslog", "syslog", true},
+		{"Unauthorized: event", "event", false},
 		{"Unauthorized: veeam", "veeam", false},
 	}
 

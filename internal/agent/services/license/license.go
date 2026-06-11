@@ -222,6 +222,10 @@ var freeTierProbes = map[string]bool{
 	// exec: the custom-sensor long tail every PRTG estate ends in;
 	// Telegraf (exec) and Nagios (plugins) both cover it for free.
 	"exec": true,
+	// syslog: completes the universal log-collection set alongside
+	// filetail and windows_eventlog (#298); receiving a standard
+	// protocol is collection, not a vendor integration.
+	"syslog": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
