@@ -3,6 +3,7 @@ package snmppoll
 import (
 	"fmt"
 	"net"
+	"senhub-agent.go/internal/agent/services/snmpcore"
 	"strings"
 	"time"
 
@@ -63,6 +64,11 @@ type config struct {
 	MIBs []string
 	// Custom holds operator OID mappings beyond the built-in modules.
 	Custom []customMapping
+	// MibPaths are local directories or files of operator-supplied MIB
+	// modules. When set, a custom_mappings entry may omit 'metric': the
+	// name is resolved from the MIBs at probe start (never fetched over
+	// the network — same posture as snmp_trap).
+	MibPaths []string
 
 	// Discovery, when set, enables the SNMP crawl: from the seeds the probe
 	// expands the poll set across the LLDP neighbour graph, bounded. nil when
@@ -160,7 +166,9 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 	}
 	cfg.MIBs = mibs
 
-	custom, err := parseCustomMappings(raw["custom_mappings"])
+	cfg.MibPaths = stringSliceOf(raw["mib_paths"])
+
+	custom, err := parseCustomMappings(raw["custom_mappings"], len(cfg.MibPaths) > 0)
 	if err != nil {
 		errs = append(errs, err.Error())
 	}
@@ -221,7 +229,7 @@ func parseMIBs(v interface{}) ([]string, error) {
 	return out, nil
 }
 
-func parseCustomMappings(v interface{}) ([]customMapping, error) {
+func parseCustomMappings(v interface{}, haveMIBs bool) ([]customMapping, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -235,13 +243,13 @@ func parseCustomMappings(v interface{}) ([]customMapping, error) {
 		if !ok {
 			return nil, fmt.Errorf("'custom_mappings'[%d] must be a mapping", i)
 		}
-		oid := trimLeadingDot(strOf(m["oid"]))
+		oid := snmpcore.TrimLeadingDot(strOf(m["oid"]))
 		if oid == "" {
 			return nil, fmt.Errorf("'custom_mappings'[%d] requires 'oid'", i)
 		}
 		metric := strings.TrimSpace(strOf(m["metric"]))
-		if metric == "" {
-			return nil, fmt.Errorf("'custom_mappings'[%d] requires 'metric'", i)
+		if metric == "" && !haveMIBs {
+			return nil, fmt.Errorf("'custom_mappings'[%d] requires 'metric' (or configure mib_paths so the name can be resolved from the MIBs)", i)
 		}
 		kind := kindGauge
 		if strings.ToLower(strings.TrimSpace(strOf(m["type"]))) == "counter" {
@@ -417,4 +425,20 @@ func toStringMap(v interface{}) (map[string]interface{}, bool) {
 func strOf(v interface{}) string {
 	s, _ := v.(string)
 	return s
+}
+
+// stringSliceOf coerces a YAML-decoded value into []string (the loader
+// hands lists over as []interface{}). Mirrors snmptrap's helper.
+func stringSliceOf(raw interface{}) []string {
+	list, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(list))
+	for _, item := range list {
+		if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+			out = append(out, strings.TrimSpace(s))
+		}
+	}
+	return out
 }
