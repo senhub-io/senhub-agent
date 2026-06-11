@@ -19,7 +19,9 @@ or pushes them to the monitoring stack you already run.
 - **Topology & entities**: emits OpenTelemetry entity events (hosts,
   services, network devices/interfaces/routes) with embedded
   relationships — your metrics, logs and infrastructure graph share the
-  same identity keys.
+  same identity keys. [Toise](https://github.com/toise-dev/toise) consumes
+  these events to build a temporal infrastructure graph, queryable as of
+  any point in time.
 - **Outputs**: PRTG and Nagios (pull, primary), Prometheus exposition,
   OTLP push (gRPC/HTTP — metrics, logs and entity events), plus a built-in
   web dashboard.
