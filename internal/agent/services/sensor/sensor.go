@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes"
@@ -34,6 +35,11 @@ type Sensor interface {
 }
 
 type sensor struct {
+	// mu serializes SyncConfiguration and Shutdown: config-change
+	// callbacks are dispatched by EventNotifier on fresh goroutines, so
+	// rapid config changes would otherwise mutate startedProbes and
+	// license concurrently.
+	mu               sync.Mutex
 	startedProbes    []*probes.ProbePoller
 	addDataPoint     data_store.AddCallback
 	configProvider   configuration.ConfigurationProvider
@@ -118,8 +124,13 @@ func (s *sensor) GetName() string {
 	return "Sensor"
 }
 
-// SyncConfiguration synchronizes probes with current configuration
+// SyncConfiguration synchronizes probes with current configuration.
+// Safe for concurrent use: invocations are serialized, so back-to-back
+// config events apply one after the other.
 func (s *sensor) SyncConfiguration() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.moduleLogger.Info().Msg("Starting configuration synchronization")
 
 	// Re-validate license from current configuration (may have been loaded after initial startup)
@@ -361,6 +372,9 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel c
 }
 
 func (s *sensor) Shutdown(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.moduleLogger.Info().Msg("Shutting down sensor")
 
 	for _, probePoller := range s.startedProbes {
