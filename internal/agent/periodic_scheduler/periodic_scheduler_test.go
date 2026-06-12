@@ -717,3 +717,87 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 		}
 	})
 }
+
+// TestPeriodicScheduler_OnStartReceivesStopChannel pins #270: callers
+// routinely pass a nil quitChannel (sensor config reloads, push
+// strategies), and any goroutine an OnStart hook parks on a nil
+// channel blocks forever. OnStart must receive the scheduler-owned
+// stop channel, which Shutdown closes, so hook goroutines always get
+// a termination signal.
+func TestPeriodicScheduler_OnStartReceivesStopChannel(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+
+	var hookChan chan struct{}
+	scheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		Interval: time.Hour,
+		Execute:  func() error { return nil },
+		OnStart: func(quit chan struct{}) error {
+			hookChan = quit
+			return nil
+		},
+	}, &logger)
+
+	if err := scheduler.Start(nil); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if hookChan == nil {
+		t.Fatal("OnStart received a nil channel — hook goroutines would block forever")
+	}
+
+	released := make(chan struct{})
+	go func() {
+		<-hookChan
+		close(released)
+	}()
+
+	if err := scheduler.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+
+	select {
+	case <-released:
+	case <-time.After(2 * time.Second):
+		t.Fatal("hook goroutine not released by Shutdown")
+	}
+}
+
+// TestPeriodicScheduler_OnStartChannelFreshAfterRestart verifies a
+// Shutdown → Start cycle hands OnStart a NEW stop channel, not the
+// already-closed one from the previous run (#270).
+func TestPeriodicScheduler_OnStartChannelFreshAfterRestart(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+
+	var hookChans []chan struct{}
+	scheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		Interval: time.Hour,
+		Execute:  func() error { return nil },
+		OnStart: func(quit chan struct{}) error {
+			hookChans = append(hookChans, quit)
+			return nil
+		},
+	}, &logger)
+
+	if err := scheduler.Start(nil); err != nil {
+		t.Fatalf("first Start: %v", err)
+	}
+	if err := scheduler.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	if err := scheduler.Start(nil); err != nil {
+		t.Fatalf("second Start: %v", err)
+	}
+	defer func() {
+		if err := scheduler.Shutdown(context.Background()); err != nil {
+			t.Errorf("final Shutdown: %v", err)
+		}
+	}()
+
+	if len(hookChans) != 2 {
+		t.Fatalf("OnStart calls: got %d, want 2", len(hookChans))
+	}
+	select {
+	case <-hookChans[1]:
+		t.Fatal("second Start handed OnStart an already-closed channel")
+	default:
+	}
+}
