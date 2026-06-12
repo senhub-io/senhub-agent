@@ -39,6 +39,12 @@ YELLOW=\033[0;33m
 RED=\033[0;31m
 NC=\033[0m # No Color
 
+# UPDATE_SIGNING_PUBKEY: minisign public key embedded in the binary for
+# self-update artifact verification (#266). Empty = the build refuses to
+# self-update (fail-closed). The release pipeline injects the production
+# key; local/dev builds normally leave it empty.
+UPDATE_SIGNING_PUBKEY ?=
+
 # Update ldflags to include this information
 LDFLAGS=-s -w \
     -X '${PACKAGE}.Version=$(VERSION)' \
@@ -47,7 +53,8 @@ LDFLAGS=-s -w \
     -X '${PACKAGE}.GoVersion=$(GO_VERSION)' \
     -X '${PACKAGE}.Env=${ENV}' \
     -X '${PACKAGE}.ProductionURL=${PRODUCTION_URL}' \
-    -X '${PACKAGE}.DevelopmentURL=${DEVELOPMENT_URL}'
+    -X '${PACKAGE}.DevelopmentURL=${DEVELOPMENT_URL}' \
+    -X 'senhub-agent.go/internal/agent/services/auto_update.signingPublicKey=$(UPDATE_SIGNING_PUBKEY)'
 
 # ========================================
 # VERSION MANAGEMENT
