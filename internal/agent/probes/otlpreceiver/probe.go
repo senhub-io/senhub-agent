@@ -14,6 +14,7 @@ package otlpreceiver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -37,6 +38,7 @@ type OTLPReceiverProbe struct {
 	*types.BaseProbe
 	rawConfig    map[string]interface{}
 	config       receiverConfig
+	guard        *ingressGuard
 	moduleLogger *logger.ModuleLogger
 
 	mu         sync.Mutex
@@ -64,6 +66,7 @@ func NewOTLPReceiverProbe(config map[string]interface{}, baseLogger *logger.Logg
 		BaseProbe:    &types.BaseProbe{},
 		rawConfig:    config,
 		config:       cfg,
+		guard:        newIngressGuard(cfg),
 		moduleLogger: moduleLogger,
 	}
 	probe.SetProbeType(probeType)
@@ -126,6 +129,17 @@ func (p *OTLPReceiverProbe) OnShutdown(ctx context.Context) error {
 		return httpServer.shutdown(ctx)
 	}
 	return nil
+}
+
+// logRejection traces a guard rejection. Auth and allow-list failures
+// are operator-actionable and logged at Warn; rate-limit rejections
+// can fire at line rate during a burst and stay at Debug.
+func (p *OTLPReceiverProbe) logRejection(remote string, err error) {
+	evt := p.moduleLogger.Warn()
+	if errors.Is(err, errRateLimited) {
+		evt = p.moduleLogger.Debug()
+	}
+	evt.Str("remote", remote).Err(err).Msg("OTLP ingest request rejected")
 }
 
 // ingest decodes a received metrics payload and forwards the resulting
