@@ -35,6 +35,13 @@ func fetchVersionMetadata(
 	}
 	defer response.Body.Close()
 
+	// A 404 error page must not decode into an empty-but-valid
+	// metadata struct (#266 adjacent).
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching version metadata from %s: HTTP %d %s",
+			metadataUrl, response.StatusCode, response.Status)
+	}
+
 	var versionMetadata VersionMetadata
 	if err := json.NewDecoder(response.Body).Decode(&versionMetadata); err != nil {
 		return nil, err
