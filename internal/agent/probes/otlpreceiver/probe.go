@@ -26,6 +26,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/utils/netbind"
 )
 
 const probeType = "otlp_receiver"
@@ -92,6 +93,12 @@ func (p *OTLPReceiverProbe) OnStart(quitChannel chan struct{}) error {
 		Str("protocol", p.config.Protocol).
 		Str("address", p.config.Address).
 		Msg("Starting OTLP receiver")
+
+	if netbind.IsWildcard(p.config.Address) {
+		p.moduleLogger.Warn().
+			Str("address", p.config.Address).
+			Msg("OTLP receiver bound to ALL interfaces without authentication — restrict `address` or firewall the port")
+	}
 
 	switch p.config.Protocol {
 	case protocolGRPC:

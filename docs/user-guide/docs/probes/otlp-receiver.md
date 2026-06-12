@@ -20,7 +20,8 @@ probes:
   - name: otlp-in
     type: otlp_receiver
     params:
-      protocol: grpc          # listens on 0.0.0.0:4317
+      protocol: grpc          # listens on 127.0.0.1:4317
+      # address: "0.0.0.0:4317"  # required to accept remote senders
 ```
 
 Point any OTel SDK or collector at the agent:
@@ -35,7 +36,7 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 | Parameter | Default | Description |
 |---|---|---|
 | `protocol` | `grpc` | `grpc` (OTLP/gRPC) or `http` (OTLP/HTTP protobuf) |
-| `address` | `0.0.0.0:4317` (grpc), `0.0.0.0:4318` (http) | Listen address |
+| `address` | `127.0.0.1:4317` (grpc), `127.0.0.1:4318` (http) | Listen address. Loopback by default — the receiver is unauthenticated, so accepting remote OTLP requires an explicit address (e.g. `"0.0.0.0:4317"`) and should be paired with a firewall rule |
 | `port` | from `address` | Convenience override: replaces only the port part of the address |
 | `http_path` | `/v1/metrics` | Route served by the HTTP receiver (ignored for gRPC) |
 
