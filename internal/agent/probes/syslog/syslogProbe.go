@@ -13,19 +13,26 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/internal/agent/utils/netbind"
 )
 
 const (
-	DefaultPort         = 514
-	DefaultProtocol     = "udp"
+	DefaultPort     = 514
+	DefaultProtocol = "udp"
+	// DefaultBindAddress is loopback-only (#278): the listener has no
+	// authentication, so receiving syslog from remote senders requires
+	// an explicit `bind_address` opt-in. The address was previously
+	// hardcoded to 0.0.0.0 with no way to restrict it.
+	DefaultBindAddress  = "127.0.0.1"
 	DefaultSyncInterval = 30 * time.Second
 	MinPort             = 1
 	MaxPort             = 65535
 )
 
 type SyslogProbeConfig struct {
-	Port     int
-	Protocol string
+	Port        int
+	Protocol    string
+	BindAddress string
 }
 
 type SyslogProbe struct {
@@ -66,6 +73,7 @@ func parseSyslogProbeConfig(config map[string]interface{}) (SyslogProbeConfig, e
 	errs := []error{}
 	var port int = DefaultPort
 	var protocol string = DefaultProtocol
+	var bindAddress string = DefaultBindAddress
 
 	if v, ok := types.IntParam(config, "port"); ok {
 		port = v
@@ -81,13 +89,18 @@ func parseSyslogProbeConfig(config map[string]interface{}) (SyslogProbeConfig, e
 		}
 	}
 
+	if v, ok := config["bind_address"].(string); ok && v != "" {
+		bindAddress = v
+	}
+
 	if len(errs) > 0 {
 		return SyslogProbeConfig{}, fmt.Errorf("error parsing config: %v", errs)
 	}
 
 	return SyslogProbeConfig{
-		Port:     port,
-		Protocol: protocol,
+		Port:        port,
+		Protocol:    protocol,
+		BindAddress: bindAddress,
 	}, nil
 }
 
@@ -114,8 +127,15 @@ func (p *SyslogProbe) Collect() ([]data_store.DataPoint, error) {
 func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("protocol", p.config.Protocol).
+		Str("bind_address", p.config.BindAddress).
 		Int("port", p.config.Port).
 		Msg("Starting syslog probe")
+
+	if netbind.IsWildcard(p.config.BindAddress) {
+		p.moduleLogger.Warn().
+			Str("bind_address", p.config.BindAddress).
+			Msg("Syslog listener bound to ALL interfaces without authentication — restrict `bind_address` or firewall the port")
+	}
 
 	channel := make(syslog.LogPartsChannel)
 	handler := syslog.NewChannelHandler(channel)
@@ -124,7 +144,7 @@ func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
 	server.SetFormat(syslog.Automatic)
 	server.SetHandler(handler)
 
-	address := fmt.Sprintf("0.0.0.0:%d", p.config.Port)
+	address := fmt.Sprintf("%s:%d", p.config.BindAddress, p.config.Port)
 	switch p.config.Protocol {
 	case "udp":
 		if err := server.ListenUDP(address); err != nil {
@@ -265,5 +285,5 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 }
 
 func (p *SyslogProbe) String() string {
-	return fmt.Sprintf("SyslogProbe{protocol=%s, port=%d}", p.config.Protocol, p.config.Port)
+	return fmt.Sprintf("SyslogProbe{protocol=%s, bind=%s, port=%d}", p.config.Protocol, p.config.BindAddress, p.config.Port)
 }

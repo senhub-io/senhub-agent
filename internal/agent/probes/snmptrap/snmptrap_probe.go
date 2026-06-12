@@ -39,6 +39,7 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/snmpcore"
 	"senhub-agent.go/internal/agent/services/snmpmib"
+	"senhub-agent.go/internal/agent/utils/netbind"
 )
 
 // SNMPTrapProbe is the trap receiver. Event-driven: Collect returns nil
@@ -132,6 +133,12 @@ func (p *SNMPTrapProbe) OnStart(quitChannel chan struct{}) error {
 		Str("version", p.config.Version).
 		Strs("mib_paths", p.config.MibPaths).
 		Msg("Starting snmp_trap probe")
+
+	if netbind.IsWildcard(p.config.BindAddress) {
+		p.moduleLogger.Warn().
+			Str("bind_address", p.config.BindAddress).
+			Msg("SNMP trap receiver bound to ALL interfaces — restrict `bind_address` or firewall the port")
+	}
 
 	// Load operator-supplied local MIBs (never fetched) so trap/varbind
 	// OIDs resolve to names. Safe with no paths (disabled resolver).

@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/utils/netbind"
 )
 
 // ServerManager handles HTTP server lifecycle and routing configuration
@@ -35,6 +37,12 @@ func (s *ServerManager) Start() error {
 		Int("port", s.strategy.port).
 		Str("bind_address", s.strategy.bindAddress).
 		Msg("Starting HTTP server")
+
+	if netbind.IsWildcard(s.strategy.bindAddress) && !s.strategy.configManager.IsTLSEnabled() {
+		s.logger.Warn().
+			Str("bind_address", s.strategy.bindAddress).
+			Msg("HTTP API bound to ALL interfaces without TLS — agent key travels in clear; enable TLS or restrict `bind_address`")
+	}
 
 	// Start cache cleanup goroutine
 	s.strategy.cache.StartCleanupRoutine()
