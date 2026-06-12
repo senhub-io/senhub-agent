@@ -49,7 +49,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 			name:                "Default configuration",
 			params:              map[string]interface{}{},
 			expectedPort:        8080,
-			expectedBindAddress: "0.0.0.0",
+			expectedBindAddress: "127.0.0.1",
 			expectedEndpoints:   map[string]bool{},
 		},
 		{
@@ -58,7 +58,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 				"port": float64(9090),
 			},
 			expectedPort:        9090,
-			expectedBindAddress: "0.0.0.0",
+			expectedBindAddress: "127.0.0.1",
 			expectedEndpoints:   map[string]bool{},
 		},
 		{
@@ -67,7 +67,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 				"port": 8443,
 			},
 			expectedPort:        8443,
-			expectedBindAddress: "0.0.0.0",
+			expectedBindAddress: "127.0.0.1",
 			expectedEndpoints:   map[string]bool{},
 		},
 		{
@@ -95,7 +95,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 				"endpoints": []interface{}{"prtg", "nagios"},
 			},
 			expectedPort:        8080, // default port
-			expectedBindAddress: "0.0.0.0",
+			expectedBindAddress: "127.0.0.1",
 			expectedEndpoints: map[string]bool{
 				"prtg":   true,
 				"nagios": true,
