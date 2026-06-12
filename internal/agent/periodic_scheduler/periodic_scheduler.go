@@ -54,7 +54,14 @@ type periodicScheduler struct {
 	config      PeriodicSchedulerConfig
 	ticker      *time.Ticker
 	quitChannel chan struct{}
-	mutex       sync.Mutex // Protects probe operations
+	stopChannel chan struct{}
+	// lifecycleMutex serializes Start/Shutdown and guards
+	// started/ticker/quitChannel/stopChannel. It is distinct from
+	// mutex (which only serializes Execute) so a Shutdown can wait
+	// for an in-flight tick without lock-order inversion: the tick
+	// goroutine only ever takes mutex, never lifecycleMutex.
+	lifecycleMutex sync.Mutex
+	mutex          sync.Mutex // Protects probe operations
 }
 
 func NewPeriodicScheduler(config PeriodicSchedulerConfig, logger *logger.Logger) PeriodicScheduler {
@@ -66,6 +73,9 @@ func NewPeriodicScheduler(config PeriodicSchedulerConfig, logger *logger.Logger)
 }
 
 func (l *periodicScheduler) Start(quitChannel chan struct{}) error {
+	l.lifecycleMutex.Lock()
+	defer l.lifecycleMutex.Unlock()
+
 	if l.started {
 		return nil
 	}
@@ -73,10 +83,19 @@ func (l *periodicScheduler) Start(quitChannel chan struct{}) error {
 	l.logger.Info().Msg("Starting")
 	l.started = true
 	l.quitChannel = quitChannel
+	l.stopChannel = make(chan struct{})
 
 	if l.config.OnStart != nil {
 		l.logger.Info().Msg("On start call")
-		if err := l.config.OnStart(quitChannel); err != nil {
+		// OnStart receives the scheduler-owned stop channel, not the
+		// caller's quitChannel: callers routinely pass nil (sensor
+		// config reloads, push strategies), and any goroutine an
+		// OnStart hook parks on a nil channel blocks forever — one
+		// leaked goroutine per probe stop / strategy recreation
+		// (#270). The stop channel is closed in Shutdown, before
+		// OnShutdown runs, so hook goroutines always get a
+		// termination signal.
+		if err := l.config.OnStart(l.stopChannel); err != nil {
 			return fmt.Errorf("OnStart failed: %v", err)
 		}
 	}
@@ -122,7 +141,14 @@ func (l *periodicScheduler) setupIntervalCall() error {
 	backoffTicks := 0  // current backoff width in ticks (0 = none)
 	skipRemaining := 0 // ticks left to skip before the next attempt
 
-	go func(ticker *time.Ticker) {
+	// quit and stop are captured here, not read from the struct inside
+	// the goroutine: a Shutdown/Start restart cycle replaces those
+	// fields, and a previous goroutine reading them would race.
+	quit := l.quitChannel
+	stop := l.stopChannel
+
+	go func(ticker *time.Ticker, quit, stop chan struct{}) {
+		stopped := false
 		// Recover from any panic in Execute so a buggy probe collector
 		// does not silently kill the scheduler goroutine — historically
 		// caused the IBM i probe to stop running cycles after a few
@@ -133,9 +159,10 @@ func (l *periodicScheduler) setupIntervalCall() error {
 				l.logger.Error().
 					Interface("panic", r).
 					Msgf("scheduler goroutine PANICKED — probe is now stalled forever (restart agent to recover): %v", r)
-			} else {
-				// Clean exit without quit signal is also abnormal —
-				// the for-select should only exit via quitChannel.
+			} else if !stopped {
+				// Clean exit without quit/stop signal is abnormal —
+				// the for-select should only exit via quitChannel or
+				// the Shutdown stop channel.
 				l.logger.Warn().Msg("scheduler goroutine exited without quit signal — probe is now stalled")
 			}
 		}()
@@ -203,17 +230,25 @@ func (l *periodicScheduler) setupIntervalCall() error {
 					backoffTicks = 0
 					skipRemaining = 0
 				}
-			case <-l.quitChannel:
+			case <-quit:
+				stopped = true
 				l.logger.Info().Msg("Scheduler goroutine terminating on quit signal")
+				return
+			case <-stop:
+				stopped = true
+				l.logger.Info().Msg("Scheduler goroutine terminating on shutdown")
 				return
 			}
 		}
-	}(l.ticker)
+	}(l.ticker, quit, stop)
 
 	return nil
 }
 
 func (l *periodicScheduler) Shutdown(ctx context.Context) error {
+	l.lifecycleMutex.Lock()
+	defer l.lifecycleMutex.Unlock()
+
 	if !l.started {
 		return nil
 	}
@@ -224,6 +259,11 @@ func (l *periodicScheduler) Shutdown(ctx context.Context) error {
 	if l.ticker != nil {
 		l.ticker.Stop()
 		l.ticker = nil
+	}
+
+	if l.stopChannel != nil {
+		close(l.stopChannel)
+		l.stopChannel = nil
 	}
 
 	if l.config.ExecuteOnShutdown {

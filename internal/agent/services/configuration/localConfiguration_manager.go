@@ -81,7 +81,7 @@ func (lc *LocalConfiguration) loadConfiguration() error {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	lc.data = config
+	lc.storeData(config)
 	lc.logger.Info().Msg("Configuration loaded successfully")
 	return nil
 }
@@ -141,7 +141,7 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 
 	// Populate the in-memory data so the rest of Start() works without
 	// re-reading the files we just wrote.
-	lc.data = LocalConfigurationData{
+	lc.storeData(LocalConfigurationData{
 		ConfigVersion: CurrentConfigVersion,
 		Agent: LocalAgentConfig{
 			Key:  agentKey,
@@ -151,7 +151,7 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 		Probes:     lc.createDefaultProbesConfig(),
 		AutoUpdate: lc.createDefaultAutoUpdateConfig(),
 		Cache:      lc.createDefaultCacheConfig(),
-	}
+	})
 	lc.logger.Info().
 		Str("agent_yaml", lc.configPath).
 		Str("probes_d", probesDir).
@@ -210,13 +210,12 @@ func (lc *LocalConfiguration) generateHTTPStrategyFragment() string {
 		port = lc.args.HttpsPort
 		bindAddress = "0.0.0.0"
 
-		// HTTPS certificates are written under the working directory
-		// by generateTLSCertificates; reference them as absolute paths
-		// here so the strategy keeps working when the agent is
-		// invoked from a different cwd.
-		cwd, _ := os.Getwd()
-		certPath := filepath.Join(cwd, "certs", "agent-cert.pem")
-		keyPath := filepath.Join(cwd, "certs", "agent-key.pem")
+		// HTTPS certificates are written next to the configuration by
+		// generateTLSCertificates; reference them as absolute paths so
+		// the strategy keeps working whatever the daemon's cwd is.
+		certsDir := filepath.Join(filepath.Dir(lc.configPath), "certs")
+		certPath := filepath.Join(certsDir, "agent-cert.pem")
+		keyPath := filepath.Join(certsDir, "agent-key.pem")
 		// Escape backslashes for Windows paths.
 		certPathYAML := strings.ReplaceAll(certPath, "\\", "\\\\")
 		keyPathYAML := strings.ReplaceAll(keyPath, "\\", "\\\\")
@@ -421,12 +420,13 @@ func (lc *LocalConfiguration) generateTLSCertificates() error {
 
 	lc.logger.Info().Msg("Generating TLS certificates (replace with your own if needed)")
 
-	// Create certs directory with absolute path
-	currentDir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get current working directory: %w", err)
-	}
-	certsDir := filepath.Join(currentDir, "certs")
+	// Certs live next to the config, not under the install-time cwd:
+	// a hardened (non-root) unit runs with ProtectHome=true, and certs
+	// generated under /root or a user home are unreadable by the
+	// service user — the HTTPS strategy then fails at start (#280
+	// review finding). The config directory is the one place the
+	// service user is guaranteed to read.
+	certsDir := filepath.Join(filepath.Dir(lc.configPath), "certs")
 	if err := os.MkdirAll(certsDir, 0750); err != nil {
 		return fmt.Errorf("failed to create certs directory: %w", err)
 	}

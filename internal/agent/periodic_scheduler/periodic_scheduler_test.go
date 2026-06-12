@@ -3,7 +3,9 @@ package periodic_scheduler
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -385,6 +387,131 @@ func TestPeriodicScheduler_Retry(t *testing.T) {
 	})
 }
 
+func TestPeriodicScheduler_Lifecycle_Race(t *testing.T) {
+	// Audit finding C6 (#269): Start and Shutdown used to read/write
+	// started/ticker/quitChannel without holding the mutex, so two
+	// concurrent Shutdowns (e.g. the auto_update config-change handler
+	// racing the agent stop path) could both pass the `ticker != nil`
+	// check, and with ExecuteOnShutdown the final call could run twice.
+	// These tests hammer the lifecycle under -race to pin the fix.
+
+	t.Run("concurrent Start/Shutdown with failing max-retries Execute is safe", func(t *testing.T) {
+		// io.Discard: 8 goroutines x 50 cycles would otherwise flood
+		// stderr with per-tick scheduler logs.
+		logger := zerolog.New(io.Discard)
+
+		scheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
+			Interval:   time.Millisecond,
+			MaxRetries: 2,
+			Execute: func() error {
+				return fmt.Errorf("persistent failure")
+			},
+		}, &logger)
+
+		var wg sync.WaitGroup
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for j := 0; j < 50; j++ {
+					if err := scheduler.Start(nil); err != nil {
+						t.Errorf("Start: %v", err)
+					}
+					time.Sleep(time.Millisecond)
+					if err := scheduler.Shutdown(context.Background()); err != nil {
+						t.Errorf("Shutdown: %v", err)
+					}
+				}
+			}()
+		}
+		wg.Wait()
+
+		if err := scheduler.Shutdown(context.Background()); err != nil {
+			t.Errorf("final Shutdown: %v", err)
+		}
+	})
+
+	t.Run("concurrent Shutdowns run the ExecuteOnShutdown final call exactly once", func(t *testing.T) {
+		logger := zerolog.New(io.Discard)
+		var finalCalls int64
+
+		scheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
+			// Interval long enough that no tick fires: every Execute
+			// observed here is the shutdown final call.
+			Interval:          time.Hour,
+			ExecuteOnShutdown: true,
+			Execute: func() error {
+				atomic.AddInt64(&finalCalls, 1)
+				return nil
+			},
+		}, &logger)
+
+		if err := scheduler.Start(nil); err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+
+		var wg sync.WaitGroup
+		release := make(chan struct{})
+		for i := 0; i < 16; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-release
+				if err := scheduler.Shutdown(context.Background()); err != nil {
+					t.Errorf("Shutdown: %v", err)
+				}
+			}()
+		}
+		close(release)
+		wg.Wait()
+
+		if got := atomic.LoadInt64(&finalCalls); got != 1 {
+			t.Errorf("ExecuteOnShutdown final call ran %d times, want exactly 1", got)
+		}
+	})
+
+	t.Run("Shutdown stops the tick goroutine even with a nil quit channel", func(t *testing.T) {
+		// The senhub and PRTG sync strategies call Start(nil): before
+		// the stop channel, only ticker.Stop() silenced the goroutine
+		// and it kept selecting on stale struct fields forever.
+		logger := zerolog.New(io.Discard)
+		var called int64
+
+		scheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
+			Interval: 5 * time.Millisecond,
+			Execute: func() error {
+				atomic.AddInt64(&called, 1)
+				return nil
+			},
+		}, &logger)
+
+		if err := scheduler.Start(nil); err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+
+		deadline := time.Now().Add(2 * time.Second)
+		for atomic.LoadInt64(&called) < 3 && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		if atomic.LoadInt64(&called) < 3 {
+			t.Fatal("Execute never reached 3 calls")
+		}
+
+		if err := scheduler.Shutdown(context.Background()); err != nil {
+			t.Fatalf("Shutdown: %v", err)
+		}
+
+		// A tick already in flight at Shutdown time may still land;
+		// after a settle delay the count must stay flat.
+		time.Sleep(20 * time.Millisecond)
+		before := atomic.LoadInt64(&called)
+		time.Sleep(50 * time.Millisecond)
+		if after := atomic.LoadInt64(&called); after != before {
+			t.Errorf("Execute still firing after Shutdown: %d -> %d", before, after)
+		}
+	})
+}
+
 func TestPeriodicScheduler_Shutdown(t *testing.T) {
 	logger := zerolog.New(os.Stderr)
 
@@ -589,4 +716,88 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 			t.Errorf("PeriodicScheduler.Shutdown() error = %v", err)
 		}
 	})
+}
+
+// TestPeriodicScheduler_OnStartReceivesStopChannel pins #270: callers
+// routinely pass a nil quitChannel (sensor config reloads, push
+// strategies), and any goroutine an OnStart hook parks on a nil
+// channel blocks forever. OnStart must receive the scheduler-owned
+// stop channel, which Shutdown closes, so hook goroutines always get
+// a termination signal.
+func TestPeriodicScheduler_OnStartReceivesStopChannel(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+
+	var hookChan chan struct{}
+	scheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		Interval: time.Hour,
+		Execute:  func() error { return nil },
+		OnStart: func(quit chan struct{}) error {
+			hookChan = quit
+			return nil
+		},
+	}, &logger)
+
+	if err := scheduler.Start(nil); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if hookChan == nil {
+		t.Fatal("OnStart received a nil channel — hook goroutines would block forever")
+	}
+
+	released := make(chan struct{})
+	go func() {
+		<-hookChan
+		close(released)
+	}()
+
+	if err := scheduler.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+
+	select {
+	case <-released:
+	case <-time.After(2 * time.Second):
+		t.Fatal("hook goroutine not released by Shutdown")
+	}
+}
+
+// TestPeriodicScheduler_OnStartChannelFreshAfterRestart verifies a
+// Shutdown → Start cycle hands OnStart a NEW stop channel, not the
+// already-closed one from the previous run (#270).
+func TestPeriodicScheduler_OnStartChannelFreshAfterRestart(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+
+	var hookChans []chan struct{}
+	scheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		Interval: time.Hour,
+		Execute:  func() error { return nil },
+		OnStart: func(quit chan struct{}) error {
+			hookChans = append(hookChans, quit)
+			return nil
+		},
+	}, &logger)
+
+	if err := scheduler.Start(nil); err != nil {
+		t.Fatalf("first Start: %v", err)
+	}
+	if err := scheduler.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	if err := scheduler.Start(nil); err != nil {
+		t.Fatalf("second Start: %v", err)
+	}
+	defer func() {
+		if err := scheduler.Shutdown(context.Background()); err != nil {
+			t.Errorf("final Shutdown: %v", err)
+		}
+	}()
+
+	if len(hookChans) != 2 {
+		t.Fatalf("OnStart calls: got %d, want 2", len(hookChans))
+	}
+	select {
+	case <-hookChans[1]:
+		t.Fatal("second Start handed OnStart an already-closed channel")
+	default:
+	}
 }

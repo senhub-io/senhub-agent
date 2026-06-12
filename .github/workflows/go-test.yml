@@ -19,7 +19,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -39,7 +39,7 @@ jobs:
   test-macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -52,29 +52,21 @@ jobs:
       - name: Test
         run: make test
 
-  # Race detector runs on linux only and EXCLUDES
-  # internal/agent/services/configuration — that package has 4
-  # documented pre-existing race flakes (tracked in CLAUDE.md) which
-  # pass under plain `make test` and individually but fire under -race
-  # parallel scheduling. Excluding the package keeps the CI signal
-  # tight: any new -race failure here is a fresh regression, not noise
-  # from the pre-existing four.
+  # Race detector runs on linux only. The configuration package was
+  # excluded here while it carried 4 documented race flakes; their
+  # root cause (lock-free reads of the live config state) was fixed
+  # in #268 — the package is back in and validated with 100
+  # consecutive clean -race runs.
   race:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
-      - name: Test with race detector (excluding known-flaky configuration package)
-        run: |
-          # xargs feeds each package as a separate argument so newlines
-          # in the package list don't end up concatenated into a single
-          # malformed import path on the `go test` command line.
-          go list ./... \
-            | grep -v '^senhub-agent\.go/internal/agent/services/configuration$' \
-            | xargs go test -race
+      - name: Test with race detector
+        run: go test -race ./...
 
   # Boot smoke: builds the agent binary, exec's `version` + parses
   # every shipped free-tier example config via `config check`. Catches
@@ -83,7 +75,7 @@ jobs:
   boot-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -98,7 +90,7 @@ jobs:
   vuln:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Go
         uses: actions/setup-go@v5
         with:

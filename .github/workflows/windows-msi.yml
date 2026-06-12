@@ -4,8 +4,10 @@ name: Windows MSI
 #
 # Triggers:
 #   - manually (workflow_dispatch), for ad-hoc / test builds
-#   - on a production tag (X.Y.Z), so a signed MSI is attached to the
-#     GitHub release alongside the ZIPs produced by master-release.yml
+#   - on a production tag (X.Y.Z, no suffix), so a signed MSI is
+#     attached to the GitHub release. The ZIP release itself is built
+#     by the ENTERPRISE repo's master-release workflow, which pushes
+#     the mirror tag here (#283) — this workflow only adds the MSI.
 #
 # Signing requires the Sensor Factory code-signing certificate. Until
 # that certificate is provisioned, the `sign` step is GUARDED behind the
@@ -27,7 +29,9 @@ on:
         default: ""
   push:
     tags:
-      - "*.*.*"          # production tags only; beta tags carry the -beta suffix
+      - "*.*.*"          # production tags only...
+      - "!*.*.*-*"       # ...the bare glob also matches 0.2.1-beta, so
+                         # suffixed tags are excluded explicitly (#283)
 
 permissions:
   contents: write
@@ -36,7 +40,7 @@ jobs:
   build-msi:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -141,14 +145,14 @@ jobs:
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload MSI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: senhub-agent-msi-${{ steps.ver.outputs.version }}
           path: dist/*.msi
 
       - name: Attach MSI to release (tag builds only)
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.version }}
           files: dist/*.msi

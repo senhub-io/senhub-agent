@@ -37,18 +37,48 @@ one series per interface (`if_index` tag).
 |---|---|---|
 | `target` | required | Device IP or hostname |
 | `port` | `161` | SNMP UDP port |
-| `version` | `2c` | SNMP version. Only `2c` is supported; v1 and v3 are rejected with a clear error |
-| `community` | `public` | Community string. Use `${env:...}` or `${file:...}` substitution rather than a literal |
+| `version` | `2c` | `2c` or `3`. SNMPv1 is rejected (table walks need GETBULK) |
+| `community` | `public` | Community string (v2c). Use `${env:...}` or `${file:...}` substitution rather than a literal |
+| `v3` | none | USM credentials, required with `version: 3` (see below) |
 | `timeout` | `5s` | Per-request timeout (duration string or seconds) |
 | `interval` | `60s` | Metric polling cadence |
 | `topology_interval` | `10m` | Entity/topology sweep cadence (slower rail, independent of metrics) |
 | `mibs` | `[]` | Built-in MIB modules to poll: `mib-2`, `if-mib` |
+| `mib_paths` | `[]` | Local directories or files of MIB modules used to name custom mappings (never fetched over the network) |
 | `custom_mappings` | `[]` | Operator-supplied OID-to-metric mappings (see below) |
 | `discovery` | none | Topology crawl from seed devices (see below) |
 
 At least one entry under `mibs` or `custom_mappings` is required.
 Configuration errors are accumulated and reported together at
 startup, not one at a time.
+
+### SNMPv3 (USM)
+
+```yaml
+params:
+  target: 192.168.1.10
+  version: "3"
+  mibs: [mib-2, if-mib]
+  v3:
+    username: monitoring
+    auth_protocol: SHA256
+    auth_passphrase: "${file:/etc/senhub-agent/snmp_auth}"
+    priv_protocol: AES256
+    priv_passphrase: "${file:/etc/senhub-agent/snmp_priv}"
+```
+
+| Field | Description |
+|---|---|
+| `username` | required |
+| `auth_protocol` | `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512`, or omitted for no authentication |
+| `auth_passphrase` | Required with `auth_protocol` |
+| `priv_protocol` | `DES`, `AES`, `AES192`, `AES256`; requires an `auth_protocol` |
+| `priv_passphrase` | Required with `priv_protocol` |
+
+The security level (noAuthNoPriv / authNoPriv / authPriv) is derived
+from which protocols are set — there is no separate field to
+contradict it. Unknown protocol names are startup errors, never a
+silent downgrade. The discovery crawl profile remains v2c-only.
 
 ### Custom mappings
 
@@ -70,7 +100,7 @@ params:
 | Field | Default | Description |
 |---|---|---|
 | `oid` | required | OID, leading dot optional |
-| `metric` | required | Metric name to emit |
+| `metric` | required unless `mib_paths` is set | Metric name to emit. When omitted and `mib_paths` is configured, the name is resolved from your MIB files at startup (e.g. `upsAdvBatteryCapacity`); an unresolvable OID is a startup error, never a silent gap |
 | `type` | `gauge` | `gauge` or `counter` |
 | `index_label` | none | When set, the OID is walked as a table and the row index becomes this tag |
 
@@ -134,9 +164,8 @@ a probe failure — the agent keeps polling.
 
 ## Operational notes
 
-- **SNMPv2c only.** v1 and v3 are rejected at startup. v3 polling is
-  on the roadmap; the [SNMP trap receiver](snmp-trap.md) already
-  supports v3.
+- **v2c and v3.** SNMPv1 is rejected at startup (no GETBULK). The
+  [SNMP trap receiver](snmp-trap.md) accepts v2c and v3 as well.
 - **No network MIB fetching.** The probe never downloads MIB files
   at runtime. Built-in modules cover MIB-2 and IF-MIB; everything
   else goes through `custom_mappings`.

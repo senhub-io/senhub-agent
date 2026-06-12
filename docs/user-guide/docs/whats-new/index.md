@@ -27,6 +27,7 @@ Lines may also carry an **area** tag (the subsystem affected), e.g.
 | Version | Date | Headline |
 |---|---|---|
 | [**Next (unreleased)**](next.md) | in progress | — |
+| [**0.2.3**](0.2.3.md) | 2026-06-12 | Security wave: signed updates, loopback defaults, OTLP ingress guard, SNMPv3 |
 | [**0.2.2**](0.2.2.md) | 2026-06-11 | Active checks, exec + Prometheus scrape, PRTG migration path |
 | [**0.2.1**](0.2.1.md) | 2026-06-10 | Topology-aware edge collector — five free collectors, open source |
 | [**0.2.0**](0.2.0.md) | 2026-05-19 | Offline-first, OS-canonical paths — a major housekeeping release |

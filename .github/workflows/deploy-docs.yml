@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout docs source (senhub-agent)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: src
           fetch-depth: 0
@@ -25,7 +25,7 @@ jobs:
       # mike, which operates on a checkout of that repo. DOCS_DEPLOY_TOKEN must
       # have Contents:write on senhub-io/agent.senhub.io.
       - name: Checkout deploy target (agent.senhub.io)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: senhub-io/agent.senhub.io
           token: ${{ secrets.DOCS_DEPLOY_TOKEN }}

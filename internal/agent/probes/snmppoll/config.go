@@ -1,8 +1,11 @@
 package snmppoll
 
 import (
+	"github.com/gosnmp/gosnmp"
+
 	"fmt"
 	"net"
+	"senhub-agent.go/internal/agent/services/snmpcore"
 	"strings"
 	"time"
 
@@ -46,14 +49,30 @@ type customMapping struct {
 	IndexLabel string
 }
 
+// v3Config holds the USM credentials for SNMPv3 polling. The security
+// level (noAuthNoPriv / authNoPriv / authPriv) is derived from which
+// protocols are set, like snmp_trap — one source of truth, no separate
+// security_level field to contradict it.
+type v3Config struct {
+	Username     string
+	AuthProtocol string // "", "MD5", "SHA", "SHA224", "SHA256", "SHA384", "SHA512"
+	AuthPassword string
+	PrivProtocol string // "", "DES", "AES", "AES192", "AES256"
+	PrivPassword string
+}
+
 // config is the resolved, validated snmp_poll probe configuration.
 type config struct {
 	Target    string
 	Port      uint16
 	Community string
-	Timeout   time.Duration
-	Retries   int
-	Interval  time.Duration
+	// Version is the resolved SNMP protocol version (v2c default).
+	Version gosnmp.SnmpVersion
+	// V3 carries the USM credentials; non-nil iff Version is Version3.
+	V3       *v3Config
+	Timeout  time.Duration
+	Retries  int
+	Interval time.Duration
 	// TopologyInterval is the (slow) cadence for the entity-rail topology
 	// sweep, independent of the metric Interval. Zero → defaultTopologyInterval.
 	TopologyInterval time.Duration
@@ -63,6 +82,11 @@ type config struct {
 	MIBs []string
 	// Custom holds operator OID mappings beyond the built-in modules.
 	Custom []customMapping
+	// MibPaths are local directories or files of operator-supplied MIB
+	// modules. When set, a custom_mappings entry may omit 'metric': the
+	// name is resolved from the MIBs at probe start (never fetched over
+	// the network — same posture as snmp_trap).
+	MibPaths []string
 
 	// Discovery, when set, enables the SNMP crawl: from the seeds the probe
 	// expands the poll set across the LLDP neighbour graph, bounded. nil when
@@ -110,11 +134,21 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 		errs = append(errs, "target is required")
 	}
 
+	cfg.Version = gosnmp.Version2c
 	if vs, ok := raw["version"].(string); ok && strings.TrimSpace(vs) != "" {
-		if err := checkVersion(vs); err != nil {
+		v, err := resolveVersion(vs)
+		if err != nil {
 			errs = append(errs, err.Error())
+		} else {
+			cfg.Version = v
 		}
 	}
+
+	v3, err3 := parseV3(raw["v3"], cfg.Version == gosnmp.Version3)
+	if err3 != nil {
+		errs = append(errs, err3.Error())
+	}
+	cfg.V3 = v3
 
 	if v, ok := types.IntParam(raw, "port"); ok {
 		if v < minPort || v > maxPort {
@@ -160,7 +194,9 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 	}
 	cfg.MIBs = mibs
 
-	custom, err := parseCustomMappings(raw["custom_mappings"])
+	cfg.MibPaths = stringSliceOf(raw["mib_paths"])
+
+	custom, err := parseCustomMappings(raw["custom_mappings"], len(cfg.MibPaths) > 0)
 	if err != nil {
 		errs = append(errs, err.Error())
 	}
@@ -182,17 +218,62 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 	return cfg, nil
 }
 
-func checkVersion(s string) error {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "2", "2c", "v2c":
-		return nil
-	case "1", "v1":
-		return fmt.Errorf("SNMPv1 is not supported (table walks need GETBULK; use v2c)")
-	case "3", "v3":
-		return fmt.Errorf("SNMPv3 is not supported yet (planned for a later lot)")
-	default:
-		return fmt.Errorf("unsupported version %q (use \"v2c\")", s)
+func resolveVersion(s string) (gosnmp.SnmpVersion, error) {
+	v, err := snmpcore.ParseVersion(s)
+	if err != nil {
+		return 0, fmt.Errorf("%v (use \"v2c\" or \"v3\")", err)
 	}
+	if v == gosnmp.Version1 {
+		return 0, fmt.Errorf("SNMPv1 is not supported (table walks need GETBULK; use v2c)")
+	}
+	return v, nil
+}
+
+// parseV3 validates the optional "v3:" block. Required when the version
+// is v3; rejected otherwise (a silently ignored credentials block would
+// hide a misconfiguration). Unknown protocol names are errors, not a
+// silent downgrade to noAuth/noPriv.
+func parseV3(raw interface{}, wantV3 bool) (*v3Config, error) {
+	if raw == nil {
+		if wantV3 {
+			return nil, fmt.Errorf("version v3 requires a 'v3' block with at least 'username'")
+		}
+		return nil, nil
+	}
+	if !wantV3 {
+		return nil, fmt.Errorf("'v3' block is set but version is not v3")
+	}
+	m, ok := toStringMap(raw)
+	if !ok {
+		return nil, fmt.Errorf("'v3' must be a mapping")
+	}
+
+	v3 := &v3Config{
+		Username:     strings.TrimSpace(strOf(m["username"])),
+		AuthProtocol: strings.ToUpper(strings.TrimSpace(strOf(m["auth_protocol"]))),
+		AuthPassword: strOf(m["auth_passphrase"]),
+		PrivProtocol: strings.ToUpper(strings.TrimSpace(strOf(m["priv_protocol"]))),
+		PrivPassword: strOf(m["priv_passphrase"]),
+	}
+	if v3.Username == "" {
+		return nil, fmt.Errorf("'v3.username' is required")
+	}
+	if !snmpcore.KnownAuthProtocol(v3.AuthProtocol) {
+		return nil, fmt.Errorf("'v3.auth_protocol' %q is not supported (MD5, SHA, SHA224, SHA256, SHA384, SHA512)", v3.AuthProtocol)
+	}
+	if !snmpcore.KnownPrivProtocol(v3.PrivProtocol) {
+		return nil, fmt.Errorf("'v3.priv_protocol' %q is not supported (DES, AES, AES192, AES256)", v3.PrivProtocol)
+	}
+	if v3.AuthProtocol != "" && v3.AuthPassword == "" {
+		return nil, fmt.Errorf("'v3.auth_passphrase' is required with auth_protocol")
+	}
+	if v3.PrivProtocol != "" && v3.AuthProtocol == "" {
+		return nil, fmt.Errorf("'v3.priv_protocol' requires an auth_protocol (USM authPriv builds on auth)")
+	}
+	if v3.PrivProtocol != "" && v3.PrivPassword == "" {
+		return nil, fmt.Errorf("'v3.priv_passphrase' is required with priv_protocol")
+	}
+	return v3, nil
 }
 
 func parseMIBs(v interface{}) ([]string, error) {
@@ -221,7 +302,7 @@ func parseMIBs(v interface{}) ([]string, error) {
 	return out, nil
 }
 
-func parseCustomMappings(v interface{}) ([]customMapping, error) {
+func parseCustomMappings(v interface{}, haveMIBs bool) ([]customMapping, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -235,13 +316,13 @@ func parseCustomMappings(v interface{}) ([]customMapping, error) {
 		if !ok {
 			return nil, fmt.Errorf("'custom_mappings'[%d] must be a mapping", i)
 		}
-		oid := trimLeadingDot(strOf(m["oid"]))
+		oid := snmpcore.TrimLeadingDot(strOf(m["oid"]))
 		if oid == "" {
 			return nil, fmt.Errorf("'custom_mappings'[%d] requires 'oid'", i)
 		}
 		metric := strings.TrimSpace(strOf(m["metric"]))
-		if metric == "" {
-			return nil, fmt.Errorf("'custom_mappings'[%d] requires 'metric'", i)
+		if metric == "" && !haveMIBs {
+			return nil, fmt.Errorf("'custom_mappings'[%d] requires 'metric' (or configure mib_paths so the name can be resolved from the MIBs)", i)
 		}
 		kind := kindGauge
 		if strings.ToLower(strings.TrimSpace(strOf(m["type"]))) == "counter" {
@@ -286,8 +367,12 @@ func parseDiscovery(v interface{}) (*discoveryConfig, error) {
 		return nil, fmt.Errorf("discovery.profile is required (a mapping with version + community)")
 	}
 	if vs := strings.TrimSpace(strOf(prof["version"])); vs != "" {
-		if err := checkVersion(vs); err != nil {
+		v, err := resolveVersion(vs)
+		if err != nil {
 			return nil, fmt.Errorf("discovery.profile.version: %w", err)
+		}
+		if v != gosnmp.Version2c {
+			return nil, fmt.Errorf("discovery.profile.version: the crawl profile is v2c-only for now (per-device v3 polling is supported on 'version'/'v3')")
 		}
 	}
 	d.Profile.Version = "v2c"
@@ -417,4 +502,20 @@ func toStringMap(v interface{}) (map[string]interface{}, bool) {
 func strOf(v interface{}) string {
 	s, _ := v.(string)
 	return s
+}
+
+// stringSliceOf coerces a YAML-decoded value into []string (the loader
+// hands lists over as []interface{}). Mirrors snmptrap's helper.
+func stringSliceOf(raw interface{}) []string {
+	list, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(list))
+	for _, item := range list {
+		if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+			out = append(out, strings.TrimSpace(s))
+		}
+	}
+	return out
 }

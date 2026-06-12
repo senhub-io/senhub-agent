@@ -115,6 +115,19 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       float64(snap.CollectErrorsTotal),
 			Description: "Lifetime count of probe collection errors since agent start.",
 		},
+		// Read directly from agentstate (like the OTLP counters below)
+		// rather than through the snapshot, so every exposition bridge
+		// picks it up without plumbing changes. Nonzero means a probe is
+		// shipping datapoints with no transformer YAML — no unit
+		// injection, no corrections.
+		{
+			Name:        "senhub.agent.transformer.fallback",
+			Unit:        "{datapoint}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetTransformerFallbacksTotal()),
+			Description: "Cumulative count of datapoints processed without a transformer YAML definition (legacy fallback: no unit injection, no unit corrections).",
+		},
 	}
 
 	// HTTP requests by endpoint — one otelmapper.OtelRecord per (route template) pair.
@@ -221,6 +234,48 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Attributes:  map[string]string{"reason": reason},
 			Value:       float64(n),
 			Description: "Cumulative count of OTLP records dropped before export, by reason (store_cap, queue_full, …).",
+		})
+	}
+
+	// Self-update rejections — artifact verification refused an update
+	// (signature_unavailable, signature_invalid). A nonzero value is a
+	// mis-published release or an attempted supply-chain tamper (#266);
+	// operators should alert on this rising.
+	for reason, n := range agentstate.GetUpdateRejectedByReason() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.update.rejected",
+			Unit:        "{attempt}",
+			Type:        "counter",
+			Attributes:  map[string]string{"reason": reason},
+			Value:       float64(n),
+			Description: "Cumulative count of self-update attempts refused by artifact verification, by reason.",
+		})
+	}
+
+	// HTTP MetricCache drop counters — same emitted-only-when-touched
+	// shape as senhub.agent.otlp.dropped above. Today the only reason
+	// is `http_cache_cap` (cardinality cap on the shared cache, #281).
+	for reason, n := range agentstate.GetHTTPCacheDroppedByReason() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.cache.dropped",
+			Unit:        "{datapoint}",
+			Type:        "counter",
+			Attributes:  map[string]string{"reason": reason},
+			Value:       float64(n),
+			Description: "Cumulative count of datapoints refused by the shared HTTP metric cache, by reason (http_cache_cap, …).",
+		})
+	}
+
+	// Push-buffer drop counters (senhub cloud / PRTG push, #267) —
+	// same emitted-only-when-touched shape as the cache counter above.
+	for strategy, n := range agentstate.GetPushBufferDropped() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.push.buffer.dropped",
+			Unit:        "{datapoint}",
+			Type:        "counter",
+			Attributes:  map[string]string{"strategy": strategy},
+			Value:       float64(n),
+			Description: "Cumulative count of oldest datapoints dropped by a bounded push buffer at its cap, by strategy.",
 		})
 	}
 

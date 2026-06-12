@@ -25,24 +25,53 @@ type Tracker struct {
 	// seen maps an item's identity key to the delete event that would
 	// retire it, captured from the last state we emitted for that key.
 	seen map[string]Event
+	// refresh is the change-suppression window: an UNCHANGED state is
+	// re-published only when this long has passed since its last emit
+	// (audit P6 — full-snapshot heartbeats with no suppression are
+	// ~12k records/min at 200 devices). Must stay well under the
+	// liveness Interval carried on events (cadence x slack factor) so
+	// suppression can never expire a live entity. Zero disables
+	// suppression (every state publishes every cycle).
+	refresh time.Duration
+	// pub maps an identity key to the content hash and emit time of the
+	// last published state for that key.
+	pub map[string]published
 }
 
-// NewTracker builds a Tracker that emits via publish.
-func NewTracker(publish func(Event)) *Tracker {
-	return &Tracker{publish: publish, seen: map[string]Event{}}
+type published struct {
+	hash string
+	at   time.Time
+}
+
+// NewTracker builds a Tracker that emits via publish. refresh is the
+// change-suppression window (see Tracker.refresh); zero disables it.
+func NewTracker(publish func(Event), refresh time.Duration) *Tracker {
+	return &Tracker{
+		publish: publish,
+		seen:    map[string]Event{},
+		refresh: refresh,
+		pub:     map[string]published{},
+	}
 }
 
 // Reconcile publishes a state event for every entity in current (the full set
-// observed this cycle, all state-kind), then a delete for every previously
-// seen entity absent from current. Deletes are stamped with now. current is
-// expected to carry only EntityState events.
+// observed this cycle, all state-kind) whose content changed or whose refresh
+// window elapsed, then a delete for every previously seen entity absent from
+// current. Deletes are stamped with now. current is expected to carry only
+// EntityState events.
 func (t *Tracker) Reconcile(current []Event, now time.Time) {
 	cur := make(map[string]bool, len(current))
 	for _, ev := range current {
 		k := eventKey(ev)
 		cur[k] = true
-		t.publish(ev)
 		t.seen[k] = deleteFor(ev)
+
+		h := stateHash(ev)
+		if p, ok := t.pub[k]; ok && t.refresh > 0 && p.hash == h && now.Sub(p.at) < t.refresh {
+			continue // unchanged and fresh: suppressed heartbeat
+		}
+		t.publish(ev)
+		t.pub[k] = published{hash: h, at: now}
 	}
 	for k, del := range t.seen {
 		if cur[k] {
@@ -51,7 +80,29 @@ func (t *Tracker) Reconcile(current []Event, now time.Time) {
 		del.Time = now
 		t.publish(del)
 		delete(t.seen, k)
+		delete(t.pub, k)
 	}
+}
+
+// stateHash renders the mutable content of a state event (attributes +
+// relationships + liveness interval) into a stable string, so unchanged
+// heartbeats are recognizable. Identity is excluded — it is the map key.
+func stateHash(ev Event) string {
+	if ev.Entity == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(canonicalID(ev.Entity.Attributes))
+	b.WriteByte('\x01')
+	rels := make([]string, 0, len(ev.Entity.Relationships))
+	for _, r := range ev.Entity.Relationships {
+		rels = append(rels, r.Type+"\x02"+r.TargetType+"\x02"+canonicalID(r.TargetID))
+	}
+	sort.Strings(rels)
+	b.WriteString(strings.Join(rels, "\x01"))
+	b.WriteByte('\x01')
+	b.WriteString(ev.Interval.String())
+	return b.String()
 }
 
 // eventKey is the stable identity key of an entity event. It is built from the

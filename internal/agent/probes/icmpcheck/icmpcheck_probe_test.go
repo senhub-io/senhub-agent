@@ -187,3 +187,44 @@ func TestCollect_RealLocalhost(t *testing.T) {
 	}
 	t.Skip("unprivileged ICMP unavailable in this environment — covered by the seam tests")
 }
+
+// TestDefaultPrivileged pins the #357 decision matrix: Windows always
+// privileged; Linux privileged iff euid 0 (root cannot use datagram
+// ICMP on stock Ubuntu — ping_group_range "1 0"); everything else
+// unprivileged, ready for the least-privilege work (#223).
+func TestDefaultPrivileged(t *testing.T) {
+	cases := []struct {
+		goos string
+		euid int
+		want bool
+	}{
+		{"windows", 1000, true},
+		{"linux", 0, true},
+		{"linux", 1000, false},
+		{"darwin", 0, false},
+		{"darwin", 501, false},
+	}
+	for _, tc := range cases {
+		if got := defaultPrivileged(tc.goos, tc.euid); got != tc.want {
+			t.Errorf("defaultPrivileged(%s, %d) = %v, want %v", tc.goos, tc.euid, got, tc.want)
+		}
+	}
+}
+
+func TestParseConfig_PrivilegedOverride(t *testing.T) {
+	raw := map[string]interface{}{
+		"targets":    []interface{}{"127.0.0.1"},
+		"privileged": true,
+	}
+	cfg, err := parseConfig(raw)
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+	if !cfg.Privileged {
+		t.Error("explicit privileged: true must override the default")
+	}
+	raw["privileged"] = false
+	if cfg, _ := parseConfig(raw); cfg.Privileged {
+		t.Error("explicit privileged: false must override the default")
+	}
+}

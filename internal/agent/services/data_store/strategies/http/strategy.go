@@ -151,15 +151,13 @@ func NewHTTPSyncStrategy(
 	// Initialize health manager
 	strategy.healthManager = NewHealthManager(strategy, moduleLogger, strategy.startTime)
 
-	// Initialize metrics processor
-	strategy.metricsProcessor = NewMetricsProcessor(strategy.cache, strategy.formatConverter, strategy.lookupRegistry, moduleLogger)
-
 	// Initialize configuration manager
 	strategy.configManager = NewConfigurationManager(agentConfig, params, moduleLogger)
 
 	// Update strategy fields from configuration manager
 	strategy.port = strategy.configManager.GetPort()
 	strategy.bindAddress = strategy.configManager.GetBindAddress()
+	strategy.cache.SetMaxSeries(strategy.configManager.GetMaxCacheSize())
 
 	// Initialize debug manager
 	strategy.debugManager = NewDebugManager(strategy, moduleLogger)
@@ -183,6 +181,12 @@ func NewHTTPSyncStrategy(
 		// Initialize lookups manager only if registry loaded successfully
 		strategy.lookupsManager = NewLookupsManager(strategy)
 	}
+
+	// Initialize the metrics processor AFTER the lookup registry: it
+	// captures the registry at construction, and the previous order
+	// handed it a nil — lookup-based status mapping silently never ran
+	// (audit A7 construction-order defect, #273).
+	strategy.metricsProcessor = NewMetricsProcessor(strategy.cache, strategy.formatConverter, strategy.lookupRegistry, moduleLogger)
 
 	// Initialize status service with centralized status calculations
 	strategy.statusService = status.NewStatusService(
@@ -538,11 +542,6 @@ func (h *HTTPSyncStrategy) handleNagiosChecks(w http.ResponseWriter, r *http.Req
 
 // Nagios helper functions (delegated to NagiosManager)
 
-// handleZabbixMetricsGET handles GET requests for Zabbix format metrics (delegated to UtilsManager)
-func (h *HTTPSyncStrategy) handleZabbixMetricsGET(w http.ResponseWriter, r *http.Request) {
-	h.utilsManager.handleZabbixMetricsGET(w, r)
-}
-
 // handlePrometheusMetricsGET handles GET requests for Prometheus format metrics (delegated to UtilsManager)
 func (h *HTTPSyncStrategy) handlePrometheusMetricsGET(w http.ResponseWriter, r *http.Request) {
 	h.utilsManager.handlePrometheusMetricsGET(w, r)
@@ -754,6 +753,13 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 			Int("retention_minutes", cacheConfig.RetentionMinutes).
 			Msg("✅ Cache configuration updated")
 	}
+
+	// Re-apply the cardinality cap: the config manager re-parses
+	// max_cache_size above, and without this the live cache keeps
+	// enforcing the old cap while GetMaxCacheSize reports the new one —
+	// an operator raising the cap to stop drops would keep dropping
+	// until restart (reviewer finding on #281).
+	h.cache.SetMaxSeries(h.configManager.GetMaxCacheSize())
 
 	h.logger.Info().Msg("✅ HTTP strategy configuration updated successfully")
 	return nil
