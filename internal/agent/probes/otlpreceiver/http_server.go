@@ -2,6 +2,7 @@ package otlpreceiver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -72,6 +73,21 @@ func (p *OTLPReceiverProbe) startHTTP(quitChannel chan struct{}) error {
 // ExportMetricsServiceResponse. Only the protobuf content type is
 // accepted — JSON ingestion is intentionally out of scope for this slice.
 func (p *OTLPReceiverProbe) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if err := p.guard.allow(r.RemoteAddr, r.Header.Get("Authorization")); err != nil {
+		p.logRejection(r.RemoteAddr, err)
+		code := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, errUnauthorized):
+			code = http.StatusUnauthorized
+		case errors.Is(err, errForbidden):
+			code = http.StatusForbidden
+		case errors.Is(err, errRateLimited):
+			code = http.StatusTooManyRequests
+		}
+		http.Error(w, err.Error(), code)
+		return
+	}
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
