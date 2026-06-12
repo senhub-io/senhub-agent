@@ -36,9 +36,27 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 | Parameter | Default | Description |
 |---|---|---|
 | `protocol` | `grpc` | `grpc` (OTLP/gRPC) or `http` (OTLP/HTTP protobuf) |
-| `address` | `127.0.0.1:4317` (grpc), `127.0.0.1:4318` (http) | Listen address. Loopback by default — the receiver is unauthenticated, so accepting remote OTLP requires an explicit address (e.g. `"0.0.0.0:4317"`) and should be paired with a firewall rule |
+| `address` | `127.0.0.1:4317` (grpc), `127.0.0.1:4318` (http) | Listen address. Loopback by default — accepting remote OTLP requires an explicit address (e.g. `"0.0.0.0:4317"`); pair it with the protections below |
 | `port` | from `address` | Convenience override: replaces only the port part of the address |
 | `http_path` | `/v1/metrics` | Route served by the HTTP receiver (ignored for gRPC) |
+| `bearer_token` | none | When set, senders must present `Authorization: Bearer <token>` (HTTP header or gRPC metadata). Use `${env:VAR}` or `${file:/path}` substitution, never a literal token |
+| `allowed_cidrs` | none | Source IP allow-list (CIDR notation, IPv4/IPv6). Checked against the transport peer address — proxy headers are not trusted |
+| `rate_limit_rps` | `0` (off) | Accepted requests per second (token bucket). Excess requests get HTTP 429 / gRPC `ResourceExhausted` |
+| `rate_limit_burst` | `2 × rps` | Bucket burst capacity |
+
+Opening the receiver to the network with all protections:
+
+```yaml
+probes:
+  - name: otlp-in
+    type: otlp_receiver
+    params:
+      protocol: grpc
+      address: "0.0.0.0:4317"
+      bearer_token: "${env:OTLP_INGEST_TOKEN}"
+      allowed_cidrs: ["10.0.0.0/8"]
+      rate_limit_rps: 100
+```
 
 Run two instances to serve both protocols at once:
 
