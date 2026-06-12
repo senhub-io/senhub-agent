@@ -1,8 +1,10 @@
 package event
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -136,4 +138,53 @@ func runSync(s *EventSyncStrategy) chan error {
 	done := make(chan error, 1)
 	go func() { done <- s.doSync() }()
 	return done
+}
+
+// TestStartShutdown_TickerGoroutineExits pins #270: ticker.Stop()
+// does not close ticker.C, so the previous bare `for range ticker.C`
+// sync loop never exited after Shutdown — the goroutine (and the
+// strategy it captures) leaked on every strategy recreation. The loop
+// must select on a stop channel that Shutdown closes.
+func TestStartShutdown_TickerGoroutineExits(t *testing.T) {
+	strategy, err := NewEventSyncStrategy(stubAgentConfig{},
+		configuration.StorageConfigParams{
+			"server_url":    "http://127.0.0.1:9",
+			"sync_interval": "1h",
+		}, testBaseLogger())
+	if err != nil {
+		t.Fatalf("constructor: %v", err)
+	}
+
+	if err := strategy.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	// Relative count, not an absolute baseline: the test logger owns
+	// background goroutines of its own. With a 1h interval, nothing
+	// but the sync goroutine exits between here and the assertion.
+	afterStart := runtime.NumGoroutine()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := strategy.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+
+	select {
+	case <-strategy.tickerStop:
+	default:
+		t.Fatal("Shutdown did not close tickerStop — sync goroutine leaks")
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for runtime.NumGoroutine() >= afterStart && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := runtime.NumGoroutine(); got >= afterStart {
+		t.Errorf("goroutines after Shutdown: got %d, want < %d (sync goroutine leaked)", got, afterStart)
+	}
+
+	// Second Shutdown must not panic (close of closed channel).
+	if err := strategy.Shutdown(ctx); err != nil {
+		t.Fatalf("second Shutdown: %v", err)
+	}
 }

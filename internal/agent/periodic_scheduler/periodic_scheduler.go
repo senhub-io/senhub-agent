@@ -87,7 +87,15 @@ func (l *periodicScheduler) Start(quitChannel chan struct{}) error {
 
 	if l.config.OnStart != nil {
 		l.logger.Info().Msg("On start call")
-		if err := l.config.OnStart(quitChannel); err != nil {
+		// OnStart receives the scheduler-owned stop channel, not the
+		// caller's quitChannel: callers routinely pass nil (sensor
+		// config reloads, push strategies), and any goroutine an
+		// OnStart hook parks on a nil channel blocks forever — one
+		// leaked goroutine per probe stop / strategy recreation
+		// (#270). The stop channel is closed in Shutdown, before
+		// OnShutdown runs, so hook goroutines always get a
+		// termination signal.
+		if err := l.config.OnStart(l.stopChannel); err != nil {
 			return fmt.Errorf("OnStart failed: %v", err)
 		}
 	}
