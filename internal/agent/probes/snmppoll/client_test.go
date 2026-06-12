@@ -7,20 +7,6 @@ import (
 	"github.com/gosnmp/gosnmp"
 )
 
-func TestTrimLeadingDot(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{".1.3.6.1", "1.3.6.1"},
-		{"1.3.6.1", "1.3.6.1"},
-		{"  .1.3.6  ", "1.3.6"},
-		{"", ""},
-	}
-	for _, c := range cases {
-		if got := trimLeadingDot(c.in); got != c.want {
-			t.Errorf("trimLeadingDot(%q) = %q, want %q", c.in, got, c.want)
-		}
-	}
-}
-
 func TestPduToVarBind(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -61,5 +47,43 @@ func TestBigIntToFloat(t *testing.T) {
 	}
 	if got := bigIntToFloat(big.NewInt(1024)); got != 1024 {
 		t.Errorf("bigIntToFloat(1024) = %v, want 1024", got)
+	}
+}
+
+// TestNewGosnmpClient_V3USM pins the USM wiring: the handle carries the
+// user security model with the derived authPriv level, and no community.
+func TestNewGosnmpClient_V3USM(t *testing.T) {
+	c := newGosnmpClient(&config{
+		Target:  "192.0.2.10",
+		Port:    161,
+		Version: gosnmp.Version3,
+		V3: &v3Config{
+			Username:     "monitoring",
+			AuthProtocol: "SHA256",
+			AuthPassword: "auth-secret",
+			PrivProtocol: "AES256",
+			PrivPassword: "priv-secret",
+		},
+	})
+	h := c.handle
+	if h.Version != gosnmp.Version3 || h.SecurityModel != gosnmp.UserSecurityModel {
+		t.Fatalf("version/security model not set: %v / %v", h.Version, h.SecurityModel)
+	}
+	if h.MsgFlags != gosnmp.AuthPriv {
+		t.Errorf("MsgFlags = %v, want AuthPriv", h.MsgFlags)
+	}
+	if h.Community != "" {
+		t.Errorf("community must not be set under v3, got %q", h.Community)
+	}
+	usm, ok := h.SecurityParameters.(*gosnmp.UsmSecurityParameters)
+	if !ok || usm.UserName != "monitoring" || usm.AuthenticationProtocol != gosnmp.SHA256 || usm.PrivacyProtocol != gosnmp.AES256 {
+		t.Errorf("USM parameters wrong: %+v", usm)
+	}
+}
+
+func TestNewGosnmpClient_V2cKeepsCommunity(t *testing.T) {
+	c := newGosnmpClient(&config{Target: "192.0.2.10", Port: 161, Version: gosnmp.Version2c, Community: "ro"})
+	if c.handle.Community != "ro" || c.handle.Version != gosnmp.Version2c {
+		t.Errorf("v2c handle wrong: community=%q version=%v", c.handle.Community, c.handle.Version)
 	}
 }

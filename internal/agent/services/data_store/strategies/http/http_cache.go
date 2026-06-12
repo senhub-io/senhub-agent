@@ -6,10 +6,26 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
+
+// DefaultMaxCacheSeries caps the MetricCache cardinality, mirroring the
+// OTLP strategy's DefaultMaxStoreSize. The cache is fed by every probe
+// including otlp_receiver and prometheus_scrape, whose series sets are
+// controlled by EXTERNAL senders — without a cap a remote producer can
+// inflate the cache without bound (memory ceiling asymmetry with the
+// capped OTLP store, audit finding P2 / #281). Operators expecting more
+// distinct series raise `max_cache_size` on the http strategy params;
+// 0 means unbounded.
+const DefaultMaxCacheSeries = 50000
+
+// dropReasonCacheCap labels datapoints refused because the cache holds
+// maxSeries distinct series. Surfaces as the `reason` attribute on the
+// `senhub.agent.cache.dropped` counter.
+const dropReasonCacheCap = "http_cache_cap"
 
 // DiscriminantTagsRegistry defines which tags are discriminant (identify unique instances)
 // vs contextual (provide metadata) for each probe type.
@@ -182,8 +198,15 @@ type MetricCache struct {
 	// Index by probe for fast probe-specific queries
 	probeIndex map[string]map[string]bool // probe_name -> set of ts_keys
 	ttl        time.Duration
-	stopChan   chan struct{}
-	logger     *logger.ModuleLogger
+	// maxSeries caps the number of distinct time series. Once reached,
+	// NEW series are dropped (counted under reason "http_cache_cap")
+	// while existing series keep updating — continuity of known series
+	// is preferred over admitting unbounded new cardinality. TTL
+	// eviction frees slots, so a dropped-then-expired series can be
+	// re-admitted later. 0 = unbounded.
+	maxSeries int
+	stopChan  chan struct{}
+	logger    *logger.ModuleLogger
 }
 
 // CachedMetric represents a stored metric with metadata
@@ -196,15 +219,25 @@ type CachedMetric struct {
 	Tags       map[string]string
 }
 
-// NewMetricCache creates a new metric cache with the specified TTL
+// NewMetricCache creates a new metric cache with the specified TTL and
+// the default cardinality cap (override via SetMaxSeries).
 func NewMetricCache(ttl time.Duration, logger *logger.ModuleLogger) *MetricCache {
 	return &MetricCache{
 		timeSeries: make(map[string]CachedMetric),
 		probeIndex: make(map[string]map[string]bool),
 		ttl:        ttl,
-		stopChan:   make(chan struct{}),
+		maxSeries:  DefaultMaxCacheSeries,
 		logger:     logger,
 	}
+}
+
+// SetMaxSeries overrides the cardinality cap. 0 disables it. Existing
+// entries above a lowered cap are not evicted — the cap only governs
+// admission of new series.
+func (c *MetricCache) SetMaxSeries(n int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.maxSeries = n
 }
 
 // generateTimeSeriesKey creates a unique key for a time series based on probe, metric name,
@@ -353,6 +386,18 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 				Time("new_timestamp", cachedMetric.Timestamp).
 				Msg("🔄 Replacing existing metric in time series")
 		} else {
+			// Cardinality cap: refuse NEW series past maxSeries while
+			// existing series keep updating. TTL cleanup frees slots.
+			if c.maxSeries > 0 && len(c.timeSeries) >= c.maxSeries {
+				agentstate.IncrementHTTPCacheDropped(dropReasonCacheCap)
+				c.logger.Debug().
+					Str("ts_key", tsKey).
+					Str("metric_name", dp.Name).
+					Str("probe_name", probeName).
+					Int("max_series", c.maxSeries).
+					Msg("Cache at cardinality cap - dropping new time series")
+				continue
+			}
 			c.logger.Debug().
 				Str("ts_key", tsKey).
 				Str("metric_name", dp.Name).
@@ -561,26 +606,47 @@ func (c *MetricCache) GetDebugInfo() DebugCacheResponse {
 	}
 }
 
-// StartCleanupRoutine starts the background cleanup goroutine
+// StartCleanupRoutine starts the background cleanup goroutine. The
+// stop channel is re-made on every call: the HTTP strategy restarts
+// the server (Shutdown → Start) on a port or bind-address change, and
+// a single construction-time channel left the cleanup goroutine dead
+// after the first restart (unbounded cache growth) and panicked
+// (close of closed channel) on the second (#270). Idempotent: a call
+// while the routine is already running is a no-op.
 func (c *MetricCache) StartCleanupRoutine() {
+	c.mu.Lock()
+	if c.stopChan != nil {
+		c.mu.Unlock()
+		return
+	}
+	c.stopChan = make(chan struct{})
+	stop := c.stopChan
+	interval := c.ttl / 2 // Cleanup every half TTL
+	c.mu.Unlock()
+
 	go func() {
-		ticker := time.NewTicker(c.ttl / 2) // Cleanup every half TTL
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case <-ticker.C:
 				c.cleanup()
-			case <-c.stopChan:
+			case <-stop:
 				return
 			}
 		}
 	}()
 }
 
-// Stop stops the cache cleanup routine
+// Stop stops the cache cleanup routine. Idempotent.
 func (c *MetricCache) Stop() {
-	close(c.stopChan)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.stopChan != nil {
+		close(c.stopChan)
+		c.stopChan = nil
+	}
 }
 
 // UpdateTTL updates the cache TTL dynamically

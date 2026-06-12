@@ -82,9 +82,7 @@ func checkPrivileges(command string) error {
 		return nil
 	}
 	if runtime.GOOS == "windows" {
-		// Check for administrator privileges on Windows
-		_, err := os.Open("\\\\.\\PHYSICALDRIVE0")
-		if err != nil {
+		if !isElevated() {
 			return fmt.Errorf("this program must be run with administrator privileges. Please right-click and select 'Run as administrator'")
 		}
 		return nil
@@ -363,7 +361,11 @@ func showHelp() {
 	fmt.Printf(`Usage: %s [command] [options]
 
 Service Commands:
-    install              Install as system service (auto-generates a UUID agent key)
+    install              Install as system service (auto-generates a UUID agent key).
+                         On Linux the service runs as the dedicated 'senhub' user
+                         under a hardened systemd unit.
+    install --user USER  Service user for the Linux unit (default: senhub;
+                         use 'root' to keep the legacy root unit)
     uninstall            Remove the system service
     start                Start the service
     stop                 Stop the service
@@ -385,9 +387,9 @@ Other Commands:
     config check [path]   Validate configuration (covers fragments under
                           probes.d/ and strategies.d/ if present)
     config show [opts]    Print merged + resolved configuration as YAML
-                            --resolved (default)  env/file references substituted
+                            --resolved            env/file references substituted, secrets in cleartext
                             --raw                 references preserved as written
-                            --redact              substituted but secrets masked
+                            --redact              substituted but secrets masked (default)
                             [path]                config file path
     config migrate [path] Convert a legacy monolithic agent-config.yaml
                           into the 0.2.x multi-file layout

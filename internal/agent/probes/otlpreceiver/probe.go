@@ -14,6 +14,7 @@ package otlpreceiver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -26,6 +27,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/utils/netbind"
 )
 
 const probeType = "otlp_receiver"
@@ -36,6 +38,7 @@ type OTLPReceiverProbe struct {
 	*types.BaseProbe
 	rawConfig    map[string]interface{}
 	config       receiverConfig
+	guard        *ingressGuard
 	moduleLogger *logger.ModuleLogger
 
 	mu         sync.Mutex
@@ -63,6 +66,7 @@ func NewOTLPReceiverProbe(config map[string]interface{}, baseLogger *logger.Logg
 		BaseProbe:    &types.BaseProbe{},
 		rawConfig:    config,
 		config:       cfg,
+		guard:        newIngressGuard(cfg),
 		moduleLogger: moduleLogger,
 	}
 	probe.SetProbeType(probeType)
@@ -93,6 +97,12 @@ func (p *OTLPReceiverProbe) OnStart(quitChannel chan struct{}) error {
 		Str("address", p.config.Address).
 		Msg("Starting OTLP receiver")
 
+	if netbind.IsWildcard(p.config.Address) {
+		p.moduleLogger.Warn().
+			Str("address", p.config.Address).
+			Msg("OTLP receiver bound to ALL interfaces without authentication — restrict `address` or firewall the port")
+	}
+
 	switch p.config.Protocol {
 	case protocolGRPC:
 		return p.startGRPC(quitChannel)
@@ -119,6 +129,17 @@ func (p *OTLPReceiverProbe) OnShutdown(ctx context.Context) error {
 		return httpServer.shutdown(ctx)
 	}
 	return nil
+}
+
+// logRejection traces a guard rejection. Auth and allow-list failures
+// are operator-actionable and logged at Warn; rate-limit rejections
+// can fire at line rate during a burst and stay at Debug.
+func (p *OTLPReceiverProbe) logRejection(remote string, err error) {
+	evt := p.moduleLogger.Warn()
+	if errors.Is(err, errRateLimited) {
+		evt = p.moduleLogger.Debug()
+	}
+	evt.Str("remote", remote).Err(err).Msg("OTLP ingest request rejected")
 }
 
 // ingest decodes a received metrics payload and forwards the resulting

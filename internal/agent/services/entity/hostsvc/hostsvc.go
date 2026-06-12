@@ -53,7 +53,7 @@ type listener struct {
 // Source implements entity.Source for host listening services.
 type Source struct {
 	hostID    func() string
-	enumerate func() []listener
+	enumerate func() ([]listener, error)
 	refresh   time.Duration
 
 	mu    sync.Mutex
@@ -70,24 +70,31 @@ func New(hostID func() string) *Source {
 
 // Observe returns the host's listeners. Non-blocking between refreshes: it
 // re-enumerates at most every refresh interval and serves the cached snapshot
-// otherwise.
-func (s *Source) Observe() entity.Observation {
+// otherwise. A failed enumeration keeps the previous cache and reports
+// ok=false instead of replacing the listeners with an empty set — a
+// transient sockets-read error must not delete every service.listener in
+// the consumer (audit D3).
+func (s *Source) Observe() (entity.Observation, bool) {
 	s.mu.Lock()
 	stale := s.last.IsZero() || time.Since(s.last) >= s.refresh
 	if !stale {
 		obs := s.cache
 		s.mu.Unlock()
-		return obs
+		return obs, true
 	}
 	s.mu.Unlock()
 
-	obs := buildObservation(s.hostID(), s.enumerate())
+	ls, err := s.enumerate()
+	if err != nil {
+		return entity.Observation{}, false
+	}
+	obs := buildObservation(s.hostID(), ls)
 
 	s.mu.Lock()
 	s.cache = obs
 	s.last = time.Now()
 	s.mu.Unlock()
-	return obs
+	return obs, true
 }
 
 // buildObservation maps listening sockets → service.listener entities the host
@@ -128,10 +135,10 @@ func buildObservation(hostID string, ls []listener) entity.Observation {
 // enumerateListeners returns the host's listening TCP sockets, one per port
 // (collapsing the IPv4/IPv6 wildcard pair), with the owning process name. The
 // real implementation; injected in tests.
-func enumerateListeners() []listener {
+func enumerateListeners() ([]listener, error) {
 	conns, err := gnet.Connections("tcp")
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	out := make([]listener, 0, len(conns))
 	seen := map[uint32]bool{}
@@ -151,5 +158,5 @@ func enumerateListeners() []listener {
 			Address: c.Laddr.IP, Port: c.Laddr.Port, Transport: "tcp",
 		})
 	}
-	return out
+	return out, nil
 }

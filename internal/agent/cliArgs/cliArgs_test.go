@@ -76,3 +76,16 @@ func TestPrintVersion_DoesNotPanic(t *testing.T) {
 		PrintVersion()
 	}
 }
+
+// TestParseStartArgs_ServiceUser pins the --user flag the installer
+// uses to pick the systemd service account (#280): absent means "use
+// the installer default" (empty here, resolved to senhub by the
+// service handler), and an explicit value flows through verbatim.
+func TestParseStartArgs_ServiceUser(t *testing.T) {
+	if got := ParseStartArgs([]string{}).ServiceUser; got != "" {
+		t.Errorf("ServiceUser without --user = %q, want empty", got)
+	}
+	if got := ParseStartArgs([]string{"--user", "root"}).ServiceUser; got != "root" {
+		t.Errorf("ServiceUser with --user root = %q, want root", got)
+	}
+}

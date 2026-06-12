@@ -30,7 +30,7 @@ probes:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `bind_address` | `0.0.0.0:162` | UDP listen address. Port 162 is privileged: run as root or grant `CAP_NET_BIND_SERVICE`, or move to a port above 1024 |
+| `bind_address` | `127.0.0.1:162` | UDP listen address. Loopback by default — receiving traps from network devices requires an explicit address (e.g. `"0.0.0.0:162"`). Port 162 is privileged: run as root or grant `CAP_NET_BIND_SERVICE`, or move to a port above 1024 |
 | `version` | `v2c` | `v2c` or `v3` |
 | `community` | empty | v2c community check. Empty accepts any community — always set it on production receivers |
 | `mib_paths` | `[]` | Local directories or files of MIB modules for OID-to-name resolution |

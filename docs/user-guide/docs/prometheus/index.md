@@ -155,7 +155,7 @@ This matches the OTel spec for `hw.status` and lets you alert on
 
 ## Agent self-observability
 
-Eight metrics describe the agent's own state — always emitted when the
+Nine metrics describe the agent's own state — always emitted when the
 endpoint is enabled:
 
 | Metric | Type | Description |
@@ -166,6 +166,7 @@ endpoint is enabled:
 | `senhub_agent_probes_total` | gauge | Configured probes currently running |
 | `senhub_agent_probes_healthy` | gauge | Probes reporting `IsHealthy() == true` |
 | `senhub_agent_collect_errors_total` | counter | Lifetime probe collection errors |
+| `senhub_agent_transformer_fallback_total` | counter | Datapoints processed without a transformer definition (no unit injection or corrections) |
 | `senhub_agent_http_requests_total` | counter | HTTP requests served, with `endpoint` label (route template) |
 | `senhub_agent_build_info` | gauge (=1) | `version` and `commit` labels |
 

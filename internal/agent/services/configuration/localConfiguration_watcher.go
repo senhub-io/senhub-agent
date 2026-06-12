@@ -23,10 +23,15 @@ import (
 // `mv 00-host.yaml 00-host.yaml.disabled` triggers exactly one
 // useful reload rather than two noisy ones.
 func (lc *LocalConfiguration) watchConfigFile() {
+	defer lc.watcherWG.Done()
 	lc.logger.Debug().Msg("Started configuration file watching goroutine")
 
 	for {
 		select {
+		case <-lc.stopCh:
+			lc.logger.Debug().Msg("Configuration file watching stopped (shutdown)")
+			return
+
 		case <-lc.quitChannel:
 			lc.logger.Debug().Msg("Configuration file watching stopped")
 			return
@@ -87,6 +92,7 @@ func (lc *LocalConfiguration) watchConfigFile() {
 					lc.logger.Warn().
 						Str("event_type", event.Op.String()).
 						Msg("Configuration file was removed or renamed, attempting to re-watch...")
+					lc.watcherWG.Add(1)
 					go lc.attemptRewatch()
 				} else {
 					// Fragment file removed or renamed. The directory
@@ -147,20 +153,21 @@ func shouldIgnoreEvent(event fsnotify.Event) bool {
 // reloadConfiguration reloads the configuration and notifies observers
 func (lc *LocalConfiguration) reloadConfiguration() error {
 	// Store previous configuration for comparison
-	previousData := lc.data
+	previousData := *lc.snapshot()
 
 	// Load new configuration
 	if err := lc.loadConfiguration(); err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
+	currentData := *lc.snapshot()
 
 	// Check if configuration actually changed
-	if lc.hasConfigurationChanged(previousData, lc.data) {
+	if lc.hasConfigurationChanged(previousData, currentData) {
 		lc.logger.Info().
 			Any("old_storage", previousData.Storage).
-			Any("new_storage", lc.data.Storage).
+			Any("new_storage", currentData.Storage).
 			Any("old_probes", previousData.Probes).
-			Any("new_probes", lc.data.Probes).
+			Any("new_probes", currentData.Probes).
 			Msg("Configuration changes detected, notifying observers")
 
 		// Notify all observers about the configuration change
@@ -206,12 +213,18 @@ func (lc *LocalConfiguration) hasConfigurationChanged(old, new LocalConfiguratio
 // attemptRewatch tries to re-add the configuration file to the watcher
 // This handles editors that delete and recreate files during save operations
 func (lc *LocalConfiguration) attemptRewatch() {
+	defer lc.watcherWG.Done()
 	maxRetries := 5
 	retryDelay := 500 * time.Millisecond
 
 	for i := 0; i < maxRetries; i++ {
-		// Wait a bit for the file to be recreated
-		time.Sleep(retryDelay)
+		// Wait for the file to be recreated — abortable so Shutdown
+		// never waits half a rewatch cycle (joinable lifecycle, #268).
+		select {
+		case <-lc.stopCh:
+			return
+		case <-time.After(retryDelay):
+		}
 
 		// Check if file exists
 		if _, err := os.Stat(lc.configPath); err == nil {

@@ -103,6 +103,10 @@ func isSensitiveFieldName(fieldName string) bool {
 		"secret", "credential",
 		"authentication_key", "authkey",
 		"authorization", "auth",
+		// passphrase covers SNMPv3 priv_passphrase, which carries no
+		// other keyword (auth_passphrase only matched by luck on
+		// "auth"); community is the SNMP v2c shared secret.
+		"passphrase", "community",
 	}
 
 	fieldNameLower := strings.ToLower(fieldName)

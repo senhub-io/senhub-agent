@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/ybbus/httpretry"
 	"senhub-agent.go/internal/agent/periodic_scheduler"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
@@ -37,15 +39,32 @@ type Buffer interface {
 
 // buffer implements Buffer interface
 type buffer struct {
-	data  *[]datapoint.DataPoint
-	mutex sync.Mutex
+	data      *[]datapoint.DataPoint
+	mutex     sync.Mutex
+	maxPoints int // 0 = unbounded
 }
 
 // NewBuffer creates a new buffer instance
 func NewBuffer() Buffer {
 	return &buffer{
-		data: &[]datapoint.DataPoint{},
+		data:      &[]datapoint.DataPoint{},
+		maxPoints: defaultMaxBufferPoints,
 	}
+}
+
+// defaultMaxBufferPoints mirrors the senhub cloud buffer cap (#267):
+// a PRTG endpoint outage must not grow this buffer until OOM. Oldest
+// points are dropped first.
+const defaultMaxBufferPoints = 100000
+
+// trimToCap drops the OLDEST points past the cap. Callers hold mutex.
+func (b *buffer) trimToCap() {
+	if b.maxPoints <= 0 || len(*b.data) <= b.maxPoints {
+		return
+	}
+	dropped := len(*b.data) - b.maxPoints
+	*b.data = (*b.data)[dropped:]
+	agentstate.IncrementPushBufferDropped("prtg", dropped)
 }
 
 // Append appends data to the buffer
@@ -53,6 +72,7 @@ func (b *buffer) Append(newData []datapoint.DataPoint) error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	*b.data = append(*b.data, newData...)
+	b.trimToCap()
 	return nil
 }
 
@@ -70,6 +90,7 @@ func (b *buffer) AbortSync(failedData []datapoint.DataPoint) error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	*b.data = append(failedData, *b.data...)
+	b.trimToCap()
 	return nil
 }
 
@@ -313,7 +334,7 @@ func (s *SyncStrategyPrtg) doSyncData(data []datapoint.DataPoint) error {
 		s.logger.Error().Err(err).Msg("error encoding data.")
 		return err
 	}
-	req, err := s.http.Post(
+	resp, err := s.http.Post(
 		s.config.ServerUrl,
 		"application/json",
 		bytes.NewBuffer(requestBody),
@@ -321,8 +342,15 @@ func (s *SyncStrategyPrtg) doSyncData(data []datapoint.DataPoint) error {
 	if err != nil {
 		return err
 	}
-	if req.StatusCode != 200 {
-		return fmt.Errorf("unexpected status code: %d\n%v", req.StatusCode, req.Body)
+	// Drain + close so the transport can reuse the connection; this
+	// push runs every sync and leaked one connection per cycle (#277).
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("unexpected status code: %d: %s", resp.StatusCode, body)
 	}
 
 	return nil
