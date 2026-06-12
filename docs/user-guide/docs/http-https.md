@@ -26,7 +26,7 @@ storage:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `port` | `8080` | TCP port for the HTTP API |
-| `bind_address` | `0.0.0.0` | Network interface to bind to (use `127.0.0.1` for local access only) |
+| `bind_address` | `127.0.0.1` | Network interface to bind to. Loopback by default — remote pollers (PRTG, Prometheus) require an explicit `"0.0.0.0"` or interface IP |
 | `endpoints` | `["prtg", "web"]` | Enabled endpoint types (prtg, web, nagios) |
 
 To change the port or other parameters, edit the `storage` section in `agent-config.yaml`. The change is applied automatically without restarting the service.

@@ -11,7 +11,13 @@ const (
 	// breaking change.
 	ProbeType = "snmp_trap"
 
-	defaultBindAddress = "0.0.0.0:162"
+	// The listen default is loopback-only (#278): receiving traps
+	// from network devices requires an explicit `bind_address`
+	// opt-in, which is also the only configuration in which the
+	// probe is useful — a silent bind-all default mostly exposed an
+	// unauthenticated UDP listener on hosts that never configured a
+	// sender.
+	defaultBindAddress = "127.0.0.1:162"
 	defaultVersion     = "v2c"
 )
 
