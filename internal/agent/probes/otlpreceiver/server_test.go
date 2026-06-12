@@ -11,7 +11,10 @@ import (
 
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
@@ -194,4 +197,123 @@ func TestHTTPReceiver_RejectsBadContentType(t *testing.T) {
 	if resp.StatusCode != http.StatusUnsupportedMediaType {
 		t.Errorf("status = %d, want 415", resp.StatusCode)
 	}
+}
+
+// ---- ingress guard integration (#278 lot 2) ----
+
+func grpcExport(t *testing.T, addr string, md map[string]string) error {
+	t.Helper()
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("grpc.NewClient: %v", err)
+	}
+	defer conn.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for k, v := range md {
+		ctx = metadata.AppendToOutgoingContext(ctx, k, v)
+	}
+	_, err = collectormetricspb.NewMetricsServiceClient(conn).Export(ctx, sampleRequest())
+	return err
+}
+
+func TestGRPCReceiver_GuardBearerToken(t *testing.T) {
+	cb := &captureCallback{}
+	probe, _ := newTestProbe(t, map[string]interface{}{
+		"protocol": "grpc", "address": "127.0.0.1:0", "bearer_token": "s3cret",
+	}, cb)
+	addr := probe.listener.Addr().String()
+
+	if err := grpcExport(t, addr, nil); status.Code(err) != codes.Unauthenticated {
+		t.Errorf("no token: code = %v, want Unauthenticated", status.Code(err))
+	}
+	if err := grpcExport(t, addr, map[string]string{"authorization": "Bearer wrong"}); status.Code(err) != codes.Unauthenticated {
+		t.Errorf("wrong token: code = %v, want Unauthenticated", status.Code(err))
+	}
+	if err := grpcExport(t, addr, map[string]string{"authorization": "Bearer s3cret"}); err != nil {
+		t.Errorf("valid token: %v", err)
+	}
+	waitForPoints(t, cb, 2)
+}
+
+func TestGRPCReceiver_GuardCIDR(t *testing.T) {
+	cb := &captureCallback{}
+	// Loopback client against a 192.0.2.0/24-only allow-list: denied.
+	probe, _ := newTestProbe(t, map[string]interface{}{
+		"protocol": "grpc", "address": "127.0.0.1:0",
+		"allowed_cidrs": []interface{}{"192.0.2.0/24"},
+	}, cb)
+	addr := probe.listener.Addr().String()
+
+	if err := grpcExport(t, addr, nil); status.Code(err) != codes.PermissionDenied {
+		t.Errorf("code = %v, want PermissionDenied", status.Code(err))
+	}
+	if got := cb.count(); got != 0 {
+		t.Errorf("points ingested despite CIDR denial: %d", got)
+	}
+}
+
+func TestGRPCReceiver_GuardRateLimit(t *testing.T) {
+	cb := &captureCallback{}
+	probe, _ := newTestProbe(t, map[string]interface{}{
+		"protocol": "grpc", "address": "127.0.0.1:0",
+		"rate_limit_rps": 0.001, "rate_limit_burst": 2,
+	}, cb)
+	addr := probe.listener.Addr().String()
+
+	for i := 0; i < 2; i++ {
+		if err := grpcExport(t, addr, nil); err != nil {
+			t.Fatalf("request %d within burst: %v", i, err)
+		}
+	}
+	if err := grpcExport(t, addr, nil); status.Code(err) != codes.ResourceExhausted {
+		t.Errorf("code = %v, want ResourceExhausted", status.Code(err))
+	}
+}
+
+func TestHTTPReceiver_GuardStatusCodes(t *testing.T) {
+	cb := &captureCallback{}
+	probe, _ := newTestProbe(t, map[string]interface{}{
+		"protocol": "http", "address": "127.0.0.1:0",
+		"bearer_token":   "s3cret",
+		"rate_limit_rps": 0.001, "rate_limit_burst": 1,
+	}, cb)
+	addr := probe.listener.Addr().String()
+
+	body, err := proto.Marshal(sampleRequest())
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	post := func(token string) int {
+		req, err := http.NewRequest(http.MethodPost, "http://"+addr+defaultHTTPPath, bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/x-protobuf")
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("Do: %v", err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	if code := post(""); code != http.StatusUnauthorized {
+		t.Errorf("no token: status = %d, want 401", code)
+	}
+	if code := post("wrong"); code != http.StatusUnauthorized {
+		t.Errorf("wrong token: status = %d, want 401", code)
+	}
+	if code := post("s3cret"); code != http.StatusOK {
+		t.Errorf("valid token: status = %d, want 200", code)
+	}
+	// Burst of 1 is spent; the next authenticated request is throttled.
+	if code := post("s3cret"); code != http.StatusTooManyRequests {
+		t.Errorf("over rate: status = %d, want 429", code)
+	}
+	waitForPoints(t, cb, 2)
 }

@@ -7,6 +7,7 @@
 ## New
 
 <ul class="rn">
+<li><span class="tag t-new">New</span> <span class="tag t-area">security</span> The OTLP receiver gains optional ingress protections: <code>bearer_token</code> auth (HTTP header or gRPC metadata), <code>allowed_cidrs</code> source allow-list and a <code>rate_limit_rps</code> token-bucket limiter — recommended whenever the receiver is opened beyond loopback. (#278)</li>
 <li><span class="tag t-new">New</span> <span class="tag t-area">SNMP</span> <code>snmp_poll</code> supports <strong>SNMPv3</strong> (USM auth + privacy, security level derived from the configured protocols). (#156)</li>
 <li><span class="tag t-new">New</span> <span class="tag t-area">SNMP</span> <code>snmp_poll</code> gains <code>mib_paths</code>: a custom mapping may omit <code>metric</code> and have its name resolved from operator-supplied MIB files at startup. (#291)</li>
 </ul>
