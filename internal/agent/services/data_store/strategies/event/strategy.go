@@ -59,6 +59,8 @@ type EventSyncStrategy struct {
 	logger      *logger.ModuleLogger
 	ticker      *time.Ticker
 	tickerOnce  sync.Once
+	tickerStop  chan struct{}
+	stopOnce    sync.Once
 	agentConfig configuration.AgentConfiguration
 	formatter   *eventFormatter.Formatter
 }
@@ -360,16 +362,25 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
 func (s *EventSyncStrategy) Start() error {
 	s.tickerOnce.Do(func() {
 		s.ticker = time.NewTicker(s.config.SyncInterval)
+		s.tickerStop = make(chan struct{})
 		s.logger.Info().
 			Dur("interval", s.config.SyncInterval).
 			Int("queue_size", s.config.QueueSize).
 			Msg("Starting event sync strategy")
 
-		go func() {
-			for range s.ticker.C {
-				s.triggerSync()
+		// ticker.Stop() does not close ticker.C, so a bare
+		// `for range ticker.C` never exits after Shutdown — the
+		// goroutine (and the strategy it captures) leaks (#270).
+		go func(ticker *time.Ticker, stop chan struct{}) {
+			for {
+				select {
+				case <-ticker.C:
+					s.triggerSync()
+				case <-stop:
+					return
+				}
 			}
-		}()
+		}(s.ticker, s.tickerStop)
 	})
 	return nil
 }
@@ -379,6 +390,9 @@ func (s *EventSyncStrategy) Shutdown(ctx context.Context) error {
 	s.logger.Info().Msg("Initiating graceful shutdown")
 	if s.ticker != nil {
 		s.ticker.Stop()
+	}
+	if s.tickerStop != nil {
+		s.stopOnce.Do(func() { close(s.tickerStop) })
 	}
 
 	// Wait for ongoing sync to complete
