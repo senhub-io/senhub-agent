@@ -2,15 +2,13 @@ package snmptrap
 
 import (
 	"fmt"
-	"math/big"
-	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/gosnmp/gosnmp"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/snmpcore"
 	"senhub-agent.go/internal/agent/services/snmpmib"
 )
 
@@ -70,7 +68,7 @@ func packetToLogRecord(s *gosnmp.SnmpPacket, sourceIP, probeName string, mibs *s
 	trapOID := ""
 	varbindCount := 0
 	if s != nil {
-		attrs["snmp_version"] = snmpVersionString(s.Version)
+		attrs["snmp_version"] = snmpcore.VersionString(s.Version)
 		for _, vb := range s.Variables {
 			oid := normalizeOID(vb.Name)
 			if oid == oidSnmpTrapOID {
@@ -80,7 +78,7 @@ func packetToLogRecord(s *gosnmp.SnmpPacket, sourceIP, probeName string, mibs *s
 				continue
 			}
 			if oid == oidSysUpTime {
-				attrs["sysuptime"] = formatVarbindValue(vb)
+				attrs["sysuptime"] = snmpcore.FormatPDUValue(vb)
 				continue
 			}
 			// Key the varbind by its operator-MIB name when one resolves
@@ -89,7 +87,7 @@ func packetToLogRecord(s *gosnmp.SnmpPacket, sourceIP, probeName string, mibs *s
 			if label, ok := mibs.Resolve(oid); ok {
 				key = "varbind." + label
 			}
-			attrs[key] = formatVarbindValue(vb)
+			attrs[key] = snmpcore.FormatPDUValue(vb)
 			varbindCount++
 		}
 	}
@@ -228,78 +226,4 @@ func buildInformAck(raw []byte) ([]byte, bool) {
 	copy(ack, raw)
 	ack[pos] = pduGetResponse
 	return ack, true
-}
-
-func snmpVersionString(v gosnmp.SnmpVersion) string {
-	switch v {
-	case gosnmp.Version1:
-		return "v1"
-	case gosnmp.Version2c:
-		return "v2c"
-	case gosnmp.Version3:
-		return "v3"
-	default:
-		return "unknown"
-	}
-}
-
-// formatVarbindValue renders a gosnmp varbind value to a string. gosnmp
-// decodes natively: []byte for OCTET STRING, int/uint variants for the
-// numeric SYNTAXes, string for OBJECT IDENTIFIER, *big.Int for Counter64.
-// OCTET STRINGs that are not valid printable UTF-8 are hex-encoded so a
-// binary value never corrupts the log line.
-func formatVarbindValue(vb gosnmp.SnmpPDU) string {
-	switch v := vb.Value.(type) {
-	case nil:
-		return ""
-	case string:
-		return v
-	case []byte:
-		if utf8.Valid(v) && isPrintable(v) {
-			return string(v)
-		}
-		return "0x" + hexEncode(v)
-	case int:
-		return strconv.Itoa(v)
-	case int64:
-		return strconv.FormatInt(v, 10)
-	case uint:
-		return strconv.FormatUint(uint64(v), 10)
-	case uint8:
-		return strconv.FormatUint(uint64(v), 10)
-	case uint16:
-		return strconv.FormatUint(uint64(v), 10)
-	case uint32:
-		return strconv.FormatUint(uint64(v), 10)
-	case uint64:
-		return strconv.FormatUint(v, 10)
-	case *big.Int:
-		if v == nil {
-			return ""
-		}
-		return v.String()
-	case bool:
-		return strconv.FormatBool(v)
-	default:
-		return fmt.Sprintf("%v", v)
-	}
-}
-
-func isPrintable(b []byte) bool {
-	for _, c := range b {
-		if c < 0x20 && c != '\t' && c != '\n' && c != '\r' {
-			return false
-		}
-	}
-	return true
-}
-
-func hexEncode(b []byte) string {
-	const hexdigits = "0123456789abcdef"
-	out := make([]byte, len(b)*2)
-	for i, c := range b {
-		out[i*2] = hexdigits[c>>4]
-		out[i*2+1] = hexdigits[c&0x0f]
-	}
-	return string(out)
 }

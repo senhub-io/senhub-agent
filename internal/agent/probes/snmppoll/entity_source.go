@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"senhub-agent.go/internal/agent/services/snmpcore"
 	"strings"
 	"sync"
 	"time"
@@ -65,6 +66,9 @@ type snmpEntitySource struct {
 	mu        sync.Mutex
 	cache     entity.Observation
 	lastSweep time.Time
+	// swept marks that at least one sweep succeeded; before that the
+	// empty cache is reported with ok=false.
+	swept bool
 	// deviceID + ifNames are the resolved identity of the polled device and its
 	// ifIndex→ifName map, cached from the last sweep so the METRIC collector can
 	// tag SNMP metrics with network.device.id / interface.name — the same
@@ -85,10 +89,14 @@ func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
 
 // Observe returns the last cached topology snapshot. Non-blocking; safe to
 // call from the detector goroutine.
-func (s *snmpEntitySource) Observe() entity.Observation {
+// Observe serves the cached snapshot. ok=false before the first
+// successful sweep (nothing to report yet is not "everything deleted")
+// — afterwards the cache always holds the last good sweep, because
+// maybeSweep refuses to replace it with a failed one (audit D3).
+func (s *snmpEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.cache
+	return s.cache, s.swept
 }
 
 // DeviceID returns the resolved network.device.id of the polled device from the
@@ -120,13 +128,23 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 		return
 	}
 
-	obs, deviceID, ifNames := s.sweep(client)
+	obs, deviceID, ifNames, ok := s.sweep(client)
+	if !ok {
+		// Identity unresolved (device unreachable or rejecting us):
+		// keep the last good snapshot and do NOT stamp lastSweep, so
+		// the next Collect retries instead of waiting a full topology
+		// interval while the consumer's view decays (audit D3).
+		s.moduleLogger.Warn().Str("target", s.cfg.Target).
+			Msg("topology sweep failed; keeping previous snapshot and retrying next cycle")
+		return
+	}
 
 	s.mu.Lock()
 	s.cache = obs
 	s.deviceID = deviceID
 	s.ifNames = ifNames
 	s.lastSweep = now
+	s.swept = true
 	s.mu.Unlock()
 }
 
@@ -134,7 +152,7 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 // failed LLDP walk still yields the polled device itself (identity from
 // serial/engine/sysName, no neighbours). It also returns the resolved device id
 // and the ifIndex→ifName map for the metric collector's correlation tags.
-func (s *snmpEntitySource) sweep(client snmpClient) (entity.Observation, string, map[string]string) {
+func (s *snmpEntitySource) sweep(client snmpClient) (entity.Observation, string, map[string]string, bool) {
 	topo, err := collectLLDP(client)
 	if err != nil {
 		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
@@ -171,7 +189,10 @@ func (s *snmpEntitySource) sweep(client snmpClient) (entity.Observation, string,
 			}
 		}
 	}
-	return buildObservation(self, topo, routes, ifaces, addrs), deviceID, ifNames
+	obs := buildObservation(self, topo, routes, ifaces, addrs)
+	// An empty observation here means the device identity could not be
+	// resolved — a failed sweep, not an empty network.
+	return obs, deviceID, ifNames, len(obs.Entities) > 0
 }
 
 // readSelfIdentity reads the polled device's identifiers in the Toise-frozen
@@ -198,14 +219,14 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 	if binds, err := client.WalkRaw(oidSnmpEngineIDBase); err == nil {
 		for _, b := range binds {
 			if b.OID == oidSnmpEngineID {
-				di.EngineID = asBytes(b.Value)
+				di.EngineID = snmpcore.AsBytes(b.Value)
 			}
 		}
 	}
 	if binds, err := client.WalkRaw(oidSysServicesBase); err == nil {
 		for _, b := range binds {
 			if b.OID == oidSysServices {
-				if v, ok := asIntVal(b.Value); ok {
+				if v, ok := snmpcore.AsInt(b.Value); ok {
 					di.Services = v
 				}
 			}
@@ -214,7 +235,7 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 	if binds, err := client.WalkRaw(oidSysNameBase); err == nil {
 		for _, b := range binds {
 			if b.OID == oidSysName {
-				di.SysName = octetText(asBytes(b.Value))
+				di.SysName = snmpcore.OctetText(snmpcore.AsBytes(b.Value))
 			}
 		}
 	}
@@ -236,7 +257,7 @@ func chassisSerial(client snmpClient) string {
 	if binds, err := client.WalkRaw(oidEntPhysicalClass); err == nil {
 		for _, b := range binds {
 			if idx, ok := strings.CutPrefix(b.OID, oidEntPhysicalClass+"."); ok {
-				if v, ok := asIntVal(b.Value); ok {
+				if v, ok := snmpcore.AsInt(b.Value); ok {
 					class[idx] = v
 				}
 			}
@@ -246,7 +267,7 @@ func chassisSerial(client snmpClient) string {
 	if binds, err := client.WalkRaw(oidEntPhysicalSerialNum); err == nil {
 		for _, b := range binds {
 			if idx, ok := strings.CutPrefix(b.OID, oidEntPhysicalSerialNum+"."); ok {
-				if sn := strings.TrimSpace(octetText(asBytes(b.Value))); sn != "" {
+				if sn := strings.TrimSpace(snmpcore.OctetText(snmpcore.AsBytes(b.Value))); sn != "" {
 					serial[idx] = sn
 				}
 			}

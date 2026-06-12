@@ -3,6 +3,8 @@ package snmppoll
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -94,4 +96,71 @@ func TestOnShutdown_NoError(t *testing.T) {
 	if err := probe.OnShutdown(context.Background()); err != nil {
 		t.Fatalf("OnShutdown: %v", err)
 	}
+}
+
+// A self-contained MIB (same pattern as snmpmib's tests) under a private
+// enterprise arc so it cannot collide with the process-global gosmi store.
+const testProbeMIB = `TEST-SENHUBPOLL-MIB DEFINITIONS ::= BEGIN
+pollRoot   OBJECT IDENTIFIER ::= { 1 3 6 1 4 1 99992 }
+pollScalar OBJECT IDENTIFIER ::= { pollRoot 7 }
+END
+`
+
+// TestNewProbe_MIBResolvesCustomMappingName pins the #291 acceptance:
+// snmppoll resolves OIDs via snmpmib — a custom mapping may omit
+// 'metric' when mib_paths are configured, and the resolved name feeds
+// the canonical senhub.snmp.* dynamic naming.
+func TestNewProbe_MIBResolvesCustomMappingName(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "TEST-SENHUBPOLL-MIB"), []byte(testProbeMIB), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	raw := map[string]interface{}{
+		"target":    "192.0.2.10",
+		"mib_paths": []interface{}{dir},
+		"custom_mappings": []interface{}{
+			map[string]interface{}{"oid": "1.3.6.1.4.1.99992.7"},
+		},
+	}
+	probe, err := NewSnmpPollProbe(raw, logger.NewLogger(&cliArgs.ParsedArgs{}))
+	if err != nil {
+		t.Fatalf("NewSnmpPollProbe: %v", err)
+	}
+	p := probe.(*snmppollProbe)
+	if got := p.cfg.Custom[0].Metric; got != "pollScalar" {
+		t.Errorf("resolved metric = %q, want pollScalar", got)
+	}
+}
+
+func TestNewProbe_MIBResolutionFailsFast(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "TEST-SENHUBPOLL-MIB"), []byte(testProbeMIB), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("unresolvable OID with mib_paths", func(t *testing.T) {
+		raw := map[string]interface{}{
+			"target":    "192.0.2.10",
+			"mib_paths": []interface{}{dir},
+			"custom_mappings": []interface{}{
+				map[string]interface{}{"oid": "1.3.6.1.4.1.424242.1"},
+			},
+		}
+		if _, err := NewSnmpPollProbe(raw, logger.NewLogger(&cliArgs.ParsedArgs{})); err == nil {
+			t.Fatal("expected an unresolvable-OID error")
+		}
+	})
+
+	t.Run("no metric and no mib_paths stays an error", func(t *testing.T) {
+		raw := map[string]interface{}{
+			"target": "192.0.2.10",
+			"custom_mappings": []interface{}{
+				map[string]interface{}{"oid": "1.3.6.1.4.1.99992.7"},
+			},
+		}
+		if _, err := NewSnmpPollProbe(raw, logger.NewLogger(&cliArgs.ParsedArgs{})); err == nil {
+			t.Fatal("expected a missing-metric config error")
+		}
+	})
 }

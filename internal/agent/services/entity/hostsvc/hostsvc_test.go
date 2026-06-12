@@ -70,12 +70,18 @@ func TestBuildObservation_ProcAndPidOmittedWhenAbsent(t *testing.T) {
 func TestObserve_CachesBetweenRefreshes(t *testing.T) {
 	calls := 0
 	s := &Source{
-		hostID:    func() string { return "h-1" },
-		enumerate: func() []listener { calls++; return []listener{{Pid: 1, Proc: "x", Port: 80, Transport: "tcp"}} },
-		refresh:   time.Hour,
+		hostID: func() string { return "h-1" },
+		enumerate: func() ([]listener, error) {
+			calls++
+			return []listener{{Pid: 1, Proc: "x", Port: 80, Transport: "tcp"}}, nil
+		},
+		refresh: time.Hour,
 	}
-	o1 := s.Observe()
-	o2 := s.Observe() // within the refresh window → served from cache, no re-enumeration
+	o1, ok1 := s.Observe()
+	o2, ok2 := s.Observe() // within the refresh window → served from cache, no re-enumeration
+	if !ok1 || !ok2 {
+		t.Fatal("successful enumerations must report ok")
+	}
 	if calls != 1 {
 		t.Errorf("enumerate called %d times, want 1 (cached within refresh)", calls)
 	}

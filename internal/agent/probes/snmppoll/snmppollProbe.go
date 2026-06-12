@@ -2,6 +2,7 @@ package snmppoll
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/services/snmpmib"
 	"senhub-agent.go/internal/agent/tags"
 )
 
@@ -26,6 +28,10 @@ type snmppollProbe struct {
 
 	// newClient is the SNMP client factory, overridable in tests.
 	newClient func(*config) snmpClient
+
+	// unregisterEntitySource detaches the entity source from the
+	// process-global registry on shutdown (set in OnStart).
+	unregisterEntitySource func()
 }
 
 // NewSnmpPollProbe builds an snmp_poll probe from its raw params block.
@@ -42,6 +48,34 @@ func NewSnmpPollProbe(rawConfig map[string]interface{}, baseLogger *logger.Logge
 		Int("mibs", len(cfg.MIBs)).
 		Int("custom_mappings", len(cfg.Custom)).
 		Msg("Creating new SNMP poll probe")
+
+	// Operator MIBs resolve custom-mapping names left empty in config
+	// (#291: snmppoll adopts snmpmib like snmptrap — local files only,
+	// never fetched over the network). Fail fast on an unresolvable OID:
+	// a mapping with no name would emit an unidentifiable metric.
+	if len(cfg.MibPaths) > 0 {
+		resolver := snmpmib.Load(cfg.MibPaths, moduleLogger)
+		for i := range cfg.Custom {
+			if cfg.Custom[i].Metric != "" {
+				continue
+			}
+			label, ok := resolver.Resolve(cfg.Custom[i].OID)
+			if !ok {
+				return nil, fmt.Errorf("snmp_poll custom_mappings[%d]: no 'metric' and OID %s not found in the configured MIBs", i, cfg.Custom[i].OID)
+			}
+			cfg.Custom[i].Metric = label
+			moduleLogger.Debug().
+				Str("oid", cfg.Custom[i].OID).
+				Str("metric", label).
+				Msg("custom mapping name resolved from operator MIBs")
+		}
+	} else {
+		for i := range cfg.Custom {
+			if cfg.Custom[i].Metric == "" {
+				return nil, fmt.Errorf("snmp_poll custom_mappings[%d]: 'metric' is required without mib_paths", i)
+			}
+		}
+	}
 
 	if cfg.Discovery != nil {
 		// The crawl engine is merged but not yet wired to the poll
@@ -77,7 +111,7 @@ func (p *snmppollProbe) GetInterval() time.Duration {
 // here: SNMP over UDP cannot detect device reachability at bind time, so
 // reachability is reported per cycle via senhub.snmp.up instead.
 func (p *snmppollProbe) OnStart(_ chan struct{}) error {
-	entity.RegisterSource(p.entitySource)
+	p.unregisterEntitySource = entity.RegisterSource(p.entitySource)
 	p.moduleLogger.Info().
 		Str("target", p.cfg.Target).
 		Uint16("port", p.cfg.Port).
@@ -111,8 +145,15 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 		// id / interface names (correlation tags); between sweeps the cached
 		// values are reused.
 		p.entitySource.maybeSweep(client, start)
-		points = collect(client, p.cfg, p.instance,
+		var answered bool
+		points, answered = collect(client, p.cfg, p.instance,
 			p.entitySource.DeviceID(), p.entitySource.InterfaceNames(), start, p.moduleLogger)
+		if !answered {
+			// Connected (UDP always does) but zero responses: the device
+			// is unreachable, filtered, or rejecting our credentials.
+			up = 0
+			p.moduleLogger.Warn().Str("target", p.instance).Msg("SNMP device answered no request this cycle")
+		}
 	}
 
 	end := time.Now()
@@ -124,7 +165,13 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
+// OnShutdown unregisters the entity source so a stopped or reloaded probe
+// stops heartbeating its cached topology (audit D4: dead devices never
+// expired in the consumer; reloads duplicated sources).
 func (p *snmppollProbe) OnShutdown(_ context.Context) error {
+	if p.unregisterEntitySource != nil {
+		p.unregisterEntitySource()
+	}
 	return nil
 }
 

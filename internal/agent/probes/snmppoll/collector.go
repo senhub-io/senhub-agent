@@ -62,9 +62,15 @@ func buildPlan(cfg *config) (scalars, walks []oidMapping) {
 // metrics with the SAME identity as the topology entities so a backend joins
 // device/interface metrics to their entities. Both may be empty before the
 // first topology sweep — the tags are simply omitted until then.
-func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames map[string]string, now time.Time, log *logger.ModuleLogger) []data_store.DataPoint {
+// The boolean result reports whether the device ANSWERED at least one
+// request this cycle: UDP "connect" cannot fail for an unreachable or
+// auth-failing device, so reachability must be judged on responses —
+// otherwise senhub.snmp.up stays 1 through a real outage and the
+// SnmpDeviceDown alert never fires.
+func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames map[string]string, now time.Time, log *logger.ModuleLogger) ([]data_store.DataPoint, bool) {
 	scalars, walks := buildPlan(cfg)
 	points := make([]data_store.DataPoint, 0, len(scalars)+len(walks)*8)
+	answered := false
 
 	// Scalars: a single (chunked) Get of all <OID>.0 instances.
 	if len(scalars) > 0 {
@@ -79,6 +85,7 @@ func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames 
 		if err != nil {
 			log.Warn().Err(err).Str("target", instance).Msg("SNMP scalar get failed, skipped")
 		} else {
+			answered = true
 			for _, vb := range binds {
 				if !vb.IsNumeric {
 					continue
@@ -97,6 +104,7 @@ func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames 
 			log.Warn().Err(err).Str("target", instance).Str("oid", m.OID).Str("metric", m.Metric).Msg("SNMP walk failed, skipped")
 			continue
 		}
+		answered = true
 		prefix := m.OID + "."
 		for _, vb := range binds {
 			if !vb.IsNumeric {
@@ -121,7 +129,7 @@ func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames 
 		}
 	}
 
-	return points
+	return points, answered
 }
 
 func newPoint(m oidMapping, value float64, now time.Time, instance, deviceID string, extra []tags.Tag) data_store.DataPoint {
