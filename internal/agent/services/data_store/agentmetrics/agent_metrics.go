@@ -237,6 +237,21 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		})
 	}
 
+	// Self-update rejections — artifact verification refused an update
+	// (signature_unavailable, signature_invalid). A nonzero value is a
+	// mis-published release or an attempted supply-chain tamper (#266);
+	// operators should alert on this rising.
+	for reason, n := range agentstate.GetUpdateRejectedByReason() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.update.rejected",
+			Unit:        "{attempt}",
+			Type:        "counter",
+			Attributes:  map[string]string{"reason": reason},
+			Value:       float64(n),
+			Description: "Cumulative count of self-update attempts refused by artifact verification, by reason.",
+		})
+	}
+
 	// HTTP MetricCache drop counters — same emitted-only-when-touched
 	// shape as senhub.agent.otlp.dropped above. Today the only reason
 	// is `http_cache_cap` (cardinality cap on the shared cache, #281).
