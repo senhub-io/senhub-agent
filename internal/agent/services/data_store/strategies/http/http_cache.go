@@ -227,7 +227,6 @@ func NewMetricCache(ttl time.Duration, logger *logger.ModuleLogger) *MetricCache
 		probeIndex: make(map[string]map[string]bool),
 		ttl:        ttl,
 		maxSeries:  DefaultMaxCacheSeries,
-		stopChan:   make(chan struct{}),
 		logger:     logger,
 	}
 }
@@ -607,26 +606,47 @@ func (c *MetricCache) GetDebugInfo() DebugCacheResponse {
 	}
 }
 
-// StartCleanupRoutine starts the background cleanup goroutine
+// StartCleanupRoutine starts the background cleanup goroutine. The
+// stop channel is re-made on every call: the HTTP strategy restarts
+// the server (Shutdown → Start) on a port or bind-address change, and
+// a single construction-time channel left the cleanup goroutine dead
+// after the first restart (unbounded cache growth) and panicked
+// (close of closed channel) on the second (#270). Idempotent: a call
+// while the routine is already running is a no-op.
 func (c *MetricCache) StartCleanupRoutine() {
+	c.mu.Lock()
+	if c.stopChan != nil {
+		c.mu.Unlock()
+		return
+	}
+	c.stopChan = make(chan struct{})
+	stop := c.stopChan
+	interval := c.ttl / 2 // Cleanup every half TTL
+	c.mu.Unlock()
+
 	go func() {
-		ticker := time.NewTicker(c.ttl / 2) // Cleanup every half TTL
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case <-ticker.C:
 				c.cleanup()
-			case <-c.stopChan:
+			case <-stop:
 				return
 			}
 		}
 	}()
 }
 
-// Stop stops the cache cleanup routine
+// Stop stops the cache cleanup routine. Idempotent.
 func (c *MetricCache) Stop() {
-	close(c.stopChan)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.stopChan != nil {
+		close(c.stopChan)
+		c.stopChan = nil
+	}
 }
 
 // UpdateTTL updates the cache TTL dynamically
