@@ -67,11 +67,14 @@ func TestParseSyslogProbeConfig(t *testing.T) {
 		wantErr bool
 	}{
 		{
+			// #278: default bind is loopback — remote senders require
+			// an explicit bind_address opt-in (was hardcoded 0.0.0.0).
 			name:   "default values",
 			config: map[string]interface{}{},
 			want: SyslogProbeConfig{
-				Port:     DefaultPort,
-				Protocol: DefaultProtocol,
+				Port:        DefaultPort,
+				Protocol:    DefaultProtocol,
+				BindAddress: DefaultBindAddress,
 			},
 			wantErr: false,
 		},
@@ -82,8 +85,21 @@ func TestParseSyslogProbeConfig(t *testing.T) {
 				"protocol": "tcp",
 			},
 			want: SyslogProbeConfig{
-				Port:     5140,
-				Protocol: "tcp",
+				Port:        5140,
+				Protocol:    "tcp",
+				BindAddress: DefaultBindAddress,
+			},
+			wantErr: false,
+		},
+		{
+			name: "explicit bind_address opt-in",
+			config: map[string]interface{}{
+				"bind_address": "0.0.0.0",
+			},
+			want: SyslogProbeConfig{
+				Port:        DefaultPort,
+				Protocol:    DefaultProtocol,
+				BindAddress: "0.0.0.0",
 			},
 			wantErr: false,
 		},
@@ -97,8 +113,9 @@ func TestParseSyslogProbeConfig(t *testing.T) {
 				"port": 5140,
 			},
 			want: SyslogProbeConfig{
-				Port:     5140,
-				Protocol: DefaultProtocol,
+				Port:        5140,
+				Protocol:    DefaultProtocol,
+				BindAddress: DefaultBindAddress,
 			},
 			wantErr: false,
 		},
@@ -131,6 +148,9 @@ func TestParseSyslogProbeConfig(t *testing.T) {
 				}
 				if got.Protocol != tt.want.Protocol {
 					t.Errorf("parseSyslogProbeConfig() Protocol = %v, want %v", got.Protocol, tt.want.Protocol)
+				}
+				if got.BindAddress != tt.want.BindAddress {
+					t.Errorf("parseSyslogProbeConfig() BindAddress = %v, want %v", got.BindAddress, tt.want.BindAddress)
 				}
 			}
 		})

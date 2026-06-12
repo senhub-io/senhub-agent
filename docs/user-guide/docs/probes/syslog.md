@@ -14,8 +14,9 @@ probes:
   - name: syslog
     type: syslog
     params:
-      port: 514          # Syslog port (default: 514)
-      protocol: udp      # Protocol: udp or tcp (default: udp)
+      port: 514               # Syslog port (default: 514)
+      protocol: udp           # Protocol: udp or tcp (default: udp)
+      bind_address: "0.0.0.0" # Required to receive from remote senders (default: 127.0.0.1)
 ```
 
 ### Minimal Configuration
@@ -36,7 +37,7 @@ The Syslog probe requires no mandatory parameters and works out-of-the-box with 
 - **macOS**: macOS 10.13+
 - **BSD**: FreeBSD, OpenBSD, NetBSD
 
-The Syslog probe is platform-independent and listens on all network interfaces (0.0.0.0).
+The Syslog probe is platform-independent. It listens on the loopback interface by default; receiving from remote senders requires setting `bind_address` explicitly (e.g. `"0.0.0.0"` or a specific interface IP).
 
 ## Key Features Summary
 
@@ -69,6 +70,7 @@ The Syslog probe is platform-independent and listens on all network interfaces (
 |-----------|------|---------|--------------|-------------|
 | `port` | integer | `514` | `1-65535` | UDP/TCP port to listen on |
 | `protocol` | string | `udp` | `udp`, `tcp` | Transport protocol |
+| `bind_address` | string | `127.0.0.1` | IP address | Listen interface. Loopback by default; set `"0.0.0.0"` (or an interface IP) to accept remote senders |
 
 ### Example Configurations
 
