@@ -33,8 +33,23 @@ func TestParseReceiverConfig_PortOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.Address != "0.0.0.0:14317" {
-		t.Errorf("Address = %q, want 0.0.0.0:14317", cfg.Address)
+	if cfg.Address != "127.0.0.1:14317" {
+		t.Errorf("Address = %q, want 127.0.0.1:14317", cfg.Address)
+	}
+}
+
+// TestParseReceiverConfig_DefaultsAreLoopback pins #278: the receiver
+// has no authentication, so the listen defaults must not expose it on
+// all interfaces — remote ingest is an explicit `address` opt-in.
+func TestParseReceiverConfig_DefaultsAreLoopback(t *testing.T) {
+	for _, proto := range []string{"grpc", "http"} {
+		cfg, err := parseReceiverConfig(map[string]interface{}{"protocol": proto})
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", proto, err)
+		}
+		if got := cfg.Address[:len("127.0.0.1:")]; got != "127.0.0.1:" {
+			t.Errorf("%s default Address = %q, want loopback", proto, cfg.Address)
+		}
 	}
 }
 

@@ -43,10 +43,15 @@ func NewConfigurationManager(agentConfig configuration.AgentConfiguration, param
 		agentConfig:      agentConfig,
 		params:           params,
 		enabledEndpoints: make(map[string]bool),
-		port:             8080,      // Default port
-		bindAddress:      "0.0.0.0", // Default to all interfaces
-		tlsMinVersion:    "1.2",     // Default TLS version
-		maxCacheSize:     DefaultMaxCacheSeries,
+		port:             8080, // Default port
+		// Loopback by default (#278): exposing the API to remote
+		// pollers (PRTG, Prometheus) is an explicit `bind_address`
+		// opt-in. Generated configs have always written bind_address
+		// explicitly, so this only affects hand-written configs that
+		// omitted it.
+		bindAddress:   "127.0.0.1",
+		tlsMinVersion: "1.2", // Default TLS version
+		maxCacheSize:  DefaultMaxCacheSeries,
 
 		// Prometheus defaults (overridden by params["prometheus"] if present)
 		prometheusIncludeProbeTags:  true,

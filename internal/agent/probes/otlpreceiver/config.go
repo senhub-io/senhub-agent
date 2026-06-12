@@ -7,9 +7,13 @@ import (
 )
 
 const (
-	defaultProtocol  = "grpc"
-	defaultGRPCAddr  = "0.0.0.0:4317"
-	defaultHTTPAddr  = "0.0.0.0:4318"
+	defaultProtocol = "grpc"
+	// Listen defaults are loopback-only: the receiver has no
+	// authentication, so accepting remote OTLP requires an explicit
+	// `address` opt-in (#278). Matches the upstream OTel collector,
+	// which made the same default flip in v0.104.
+	defaultGRPCAddr  = "127.0.0.1:4317"
+	defaultHTTPAddr  = "127.0.0.1:4318"
 	defaultHTTPPath  = "/v1/metrics"
 	minPort          = 1
 	maxPort          = 65535

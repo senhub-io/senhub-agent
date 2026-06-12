@@ -7,8 +7,10 @@ func TestParseConfig_Defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.BindAddress != defaultBindAddress {
-		t.Errorf("BindAddress = %q, want %q", cfg.BindAddress, defaultBindAddress)
+	// #278: the default must stay loopback — receiving traps from the
+	// network is an explicit bind_address opt-in.
+	if cfg.BindAddress != "127.0.0.1:162" {
+		t.Errorf("BindAddress = %q, want 127.0.0.1:162", cfg.BindAddress)
 	}
 	if cfg.Version != "v2c" {
 		t.Errorf("Version = %q, want v2c", cfg.Version)
