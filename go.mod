@@ -49,7 +49,7 @@ require (
 )
 
 require (
-	aead.dev/minisign v0.2.0 // indirect
+	aead.dev/minisign v0.2.0
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/alecthomas/participle v0.4.1 // indirect
 	github.com/alexflint/go-scalar v1.2.0 // indirect
