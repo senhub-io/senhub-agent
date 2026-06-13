@@ -114,7 +114,8 @@ func assertMetric(t *testing.T, byName map[string]float32, name string, want flo
 }
 
 // makeRunningStats returns a populated containerStats for a running container.
-// Uses cgroupsv1 memory keys (rss/cache/swap).
+// Uses cgroupsv1 memory keys (rss/cache/swap) plus the full set of deep memory
+// stats exposed by the OTel docker stats receiver contrib.
 func makeRunningStats() *containerStats {
 	s := &containerStats{}
 	s.CPUStats.CPUUsage.TotalUsage = 1_000_000_000
@@ -123,14 +124,27 @@ func makeRunningStats() *containerStats {
 	s.CPUStats.CPUUsage.PercpuUsage = []uint64{500_000_000, 500_000_000}
 	s.CPUStats.SystemCPUUsage = 10_000_000_000
 	s.CPUStats.OnlineCPUs = 2
+	s.CPUStats.ThrottlingData.ThrottledPeriods = 3
+	s.CPUStats.ThrottlingData.ThrottlingPeriods = 100
+	s.CPUStats.ThrottlingData.ThrottledTime = 5_000_000
 	s.PreCPUStats.CPUUsage.TotalUsage = 900_000_000
 	s.PreCPUStats.SystemCPUUsage = 9_000_000_000
 	s.MemoryStats.Usage = 256 * 1024 * 1024
 	s.MemoryStats.Limit = 1024 * 1024 * 1024
 	s.MemoryStats.Stats = map[string]uint64{
-		"rss":   200 * 1024 * 1024,
-		"cache": 56 * 1024 * 1024,
-		"swap":  0,
+		"rss":                        200 * 1024 * 1024,
+		"cache":                      56 * 1024 * 1024,
+		"swap":                       0,
+		"mapped_file":                8 * 1024 * 1024,
+		"pgfault":                    1234,
+		"pgmajfault":                 5,
+		"unevictable":                0,
+		"writeback":                  512 * 1024,
+		"hierarchical_memory_limit":  1024 * 1024 * 1024,
+		"active_anon":                150 * 1024 * 1024,
+		"inactive_anon":              50 * 1024 * 1024,
+		"active_file":                30 * 1024 * 1024,
+		"inactive_file":              26 * 1024 * 1024,
 	}
 	s.Networks = map[string]struct {
 		TxBytes   uint64 `json:"tx_bytes"`
@@ -144,13 +158,20 @@ func makeRunningStats() *containerStats {
 	}{
 		"eth0": {TxBytes: 1000, RxBytes: 2000, TxPackets: 10, RxPackets: 20, TxErrors: 1, RxErrors: 2, TxDropped: 3, RxDropped: 4},
 	}
-	s.BlkioStats.IOServiceBytesRecursive = []struct {
-		Op    string `json:"op"`
-		Value uint64 `json:"value"`
-	}{
+	s.BlkioStats.IOServiceBytesRecursive = []blkioEntry{
 		{Op: "Read", Value: 4096},
 		{Op: "Write", Value: 8192},
 		{Op: "Total", Value: 12288},
+	}
+	s.BlkioStats.IOServiceTimeRecursive = []blkioEntry{
+		{Op: "Read", Value: 1000000},
+		{Op: "Write", Value: 2000000},
+		{Op: "Total", Value: 3000000},
+	}
+	s.BlkioStats.IOSectorsRecursive = []blkioEntry{
+		{Op: "Read", Value: 8},
+		{Op: "Write", Value: 16},
+		{Op: "Total", Value: 24},
 	}
 	s.PidsStats.Current = 5
 	s.PidsStats.Limit = 100
@@ -198,7 +219,7 @@ func TestCollect_OneRunningContainer(t *testing.T) {
 	assertMetric(t, byName, "senhub.docker.up", 1)
 	assertMetric(t, byName, "container.restarts", 2)
 
-	// CPU
+	// CPU base metrics
 	assertMetric(t, byName, "container.cpu.usage.total", 1_000_000_000)
 	assertMetric(t, byName, "container.cpu.usage.kernelmode", 200_000_000)
 	assertMetric(t, byName, "container.cpu.usage.usermode", 800_000_000)
@@ -207,13 +228,60 @@ func TestCollect_OneRunningContainer(t *testing.T) {
 	// cpu.percent: cpuDelta=100M, systemDelta=1B, 2 CPUs → (100M/1B)*2*100 = 20.0
 	assertMetric(t, byName, "senhub.docker.cpu.percent", 20.0)
 
-	// Memory (cgroupsv1)
+	// CPU throttling
+	assertMetric(t, byName, "container.cpu.throttling_data.throttled_periods", 3)
+	assertMetric(t, byName, "container.cpu.throttling_data.periods", 100)
+	assertMetric(t, byName, "container.cpu.throttling_data.throttled_time", 5_000_000)
+
+	// Per-core CPU: indexByName keeps the last value per name — verify the metric exists
+	// by checking any occurrence in the full points slice.
+	foundCore0, foundCore1 := false, false
+	for _, pt := range points {
+		if pt.Name != "container.cpu.usage.percpu" {
+			continue
+		}
+		for _, tag := range pt.Tags {
+			if tag.Key == "core" && tag.Value == "0" {
+				foundCore0 = true
+				if pt.Value != 500_000_000 {
+					t.Errorf("container.cpu.usage.percpu core=0: want 500000000, got %v", pt.Value)
+				}
+			}
+			if tag.Key == "core" && tag.Value == "1" {
+				foundCore1 = true
+				if pt.Value != 500_000_000 {
+					t.Errorf("container.cpu.usage.percpu core=1: want 500000000, got %v", pt.Value)
+				}
+			}
+		}
+	}
+	if !foundCore0 {
+		t.Error("expected container.cpu.usage.percpu for core=0")
+	}
+	if !foundCore1 {
+		t.Error("expected container.cpu.usage.percpu for core=1")
+	}
+
+	// Memory (cgroupsv1 base)
 	assertMetric(t, byName, "container.memory.usage", float32(256*1024*1024))
 	assertMetric(t, byName, "senhub.docker.memory.limit", float32(1024*1024*1024))
 	assertMetric(t, byName, "container.memory.rss", float32(200*1024*1024))
 	assertMetric(t, byName, "container.memory.cache", float32(56*1024*1024))
 	assertMetric(t, byName, "container.memory.swap", 0)
 	assertMetric(t, byName, "senhub.docker.memory.working_set", float32(200*1024*1024)) // 256-56
+
+	// Deep memory stats (cgroupsv1 fields present in makeRunningStats)
+	assertMetric(t, byName, "container.memory.anon", float32(200*1024*1024)) // fallback to rss on v1
+	assertMetric(t, byName, "container.memory.mapped_file", float32(8*1024*1024))
+	assertMetric(t, byName, "container.memory.pgfault", 1234)
+	assertMetric(t, byName, "container.memory.pgmajfault", 5)
+	assertMetric(t, byName, "container.memory.unevictable", 0)
+	assertMetric(t, byName, "container.memory.writeback", float32(512*1024))
+	assertMetric(t, byName, "container.memory.hierarchical_memory_limit", float32(1024*1024*1024))
+	assertMetric(t, byName, "container.memory.active_anon", float32(150*1024*1024))
+	assertMetric(t, byName, "container.memory.inactive_anon", float32(50*1024*1024))
+	assertMetric(t, byName, "container.memory.active_file", float32(30*1024*1024))
+	assertMetric(t, byName, "container.memory.inactive_file", float32(26*1024*1024))
 
 	// PIDs
 	assertMetric(t, byName, "container.pids.count", 5)
@@ -229,10 +297,14 @@ func TestCollect_OneRunningContainer(t *testing.T) {
 	assertMetric(t, byName, "senhub.docker.network.tx_dropped", 3)
 	assertMetric(t, byName, "senhub.docker.network.rx_dropped", 4)
 
-	// Block I/O
+	// Block I/O bytes
 	assertMetric(t, byName, "container.blockio.usage.total", 12288)
 	assertMetric(t, byName, "container.blockio.io_service_bytes_recursive.read", 4096)
 	assertMetric(t, byName, "container.blockio.io_service_bytes_recursive.write", 8192)
+
+	// Block I/O service time and sectors (cgroupsv1; present in makeRunningStats)
+	assertMetric(t, byName, "senhub.docker.blkio.service_time.total", 3000000)
+	assertMetric(t, byName, "senhub.docker.blkio.sectors.total", 24)
 }
 
 // TestCollect_StoppedContainer verifies that a stopped container (stats endpoint
@@ -481,16 +553,12 @@ func TestEntitySource_NameStrip(t *testing.T) {
 // TestBlkioSplit_TotalPresent verifies that the "Total" entry is preferred
 // when present, and that read/write are reported separately.
 func TestBlkioSplit_TotalPresent(t *testing.T) {
-	s := &containerStats{}
-	s.BlkioStats.IOServiceBytesRecursive = []struct {
-		Op    string `json:"op"`
-		Value uint64 `json:"value"`
-	}{
+	entries := []blkioEntry{
 		{Op: "Read", Value: 1000},
 		{Op: "Write", Value: 2000},
 		{Op: "Total", Value: 5000},
 	}
-	total, read, write := blkioSplit(s)
+	total, read, write := blkioSplit(entries)
 	if total != 5000 {
 		t.Errorf("blkioSplit total: want 5000, got %d", total)
 	}
@@ -505,15 +573,11 @@ func TestBlkioSplit_TotalPresent(t *testing.T) {
 // TestBlkioSplit_FallbackReadWrite verifies that total=Read+Write when
 // "Total" is absent (cgroupsv2 kernel).
 func TestBlkioSplit_FallbackReadWrite(t *testing.T) {
-	s := &containerStats{}
-	s.BlkioStats.IOServiceBytesRecursive = []struct {
-		Op    string `json:"op"`
-		Value uint64 `json:"value"`
-	}{
+	entries := []blkioEntry{
 		{Op: "Read", Value: 4096},
 		{Op: "Write", Value: 8192},
 	}
-	total, read, write := blkioSplit(s)
+	total, read, write := blkioSplit(entries)
 	if total != 12288 {
 		t.Errorf("blkioSplit total: want 12288, got %d", total)
 	}
@@ -640,5 +704,180 @@ func TestApplyFilter_Exclude(t *testing.T) {
 	}
 	if primaryName(got[0]) != "web" {
 		t.Errorf("expected web, got %q", primaryName(got[0]))
+	}
+}
+
+// TestCollect_CPUThrottling verifies that CPU throttling metrics are emitted
+// and that zero values are still emitted (not gated on presence).
+func TestCollect_CPUThrottling(t *testing.T) {
+	c := containerListItem{
+		ID:    "throttle000001234567",
+		Names: []string{"/throttled"},
+		State: "running",
+	}
+	s := &containerStats{}
+	s.CPUStats.CPUUsage.TotalUsage = 1_000_000
+	s.CPUStats.OnlineCPUs = 1
+	s.CPUStats.ThrottlingData.ThrottledPeriods = 10
+	s.CPUStats.ThrottlingData.ThrottlingPeriods = 200
+	s.CPUStats.ThrottlingData.ThrottledTime = 50_000_000
+
+	srv := makeTestServer(t, []containerListItem{c}, map[string]*containerStats{c.ID: s})
+	defer srv.Close()
+
+	p := buildTestProbe(t, srv)
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: unexpected error: %v", err)
+	}
+
+	byName := indexByName(points)
+	assertMetric(t, byName, "container.cpu.throttling_data.throttled_periods", 10)
+	assertMetric(t, byName, "container.cpu.throttling_data.periods", 200)
+	assertMetric(t, byName, "container.cpu.throttling_data.throttled_time", 50_000_000)
+}
+
+// TestCollect_PercpuUsage verifies that per-core datapoints are emitted with
+// the correct "core" tag and value.
+func TestCollect_PercpuUsage(t *testing.T) {
+	c := containerListItem{
+		ID:    "percpu00000001234567",
+		Names: []string{"/percputest"},
+		State: "running",
+	}
+	s := &containerStats{}
+	s.CPUStats.CPUUsage.TotalUsage = 900_000
+	s.CPUStats.CPUUsage.PercpuUsage = []uint64{300_000, 400_000, 200_000}
+	s.CPUStats.OnlineCPUs = 3
+
+	srv := makeTestServer(t, []containerListItem{c}, map[string]*containerStats{c.ID: s})
+	defer srv.Close()
+
+	p := buildTestProbe(t, srv)
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: unexpected error: %v", err)
+	}
+
+	type coreVal struct {
+		core  string
+		value float32
+	}
+	var found []coreVal
+	for _, pt := range points {
+		if pt.Name != "container.cpu.usage.percpu" {
+			continue
+		}
+		for _, tag := range pt.Tags {
+			if tag.Key == "core" {
+				found = append(found, coreVal{core: tag.Value, value: pt.Value})
+			}
+		}
+	}
+	if len(found) != 3 {
+		t.Fatalf("expected 3 per-core datapoints, got %d", len(found))
+	}
+	// Order is deterministic (slice iteration).
+	want := []coreVal{{"0", 300_000}, {"1", 400_000}, {"2", 200_000}}
+	for i, w := range want {
+		if found[i].core != w.core || found[i].value != w.value {
+			t.Errorf("percpu[%d]: want core=%s val=%v, got core=%s val=%v", i, w.core, w.value, found[i].core, found[i].value)
+		}
+	}
+}
+
+// TestCollect_BlkioServiceTimeSectors verifies that io_service_time and
+// io_sectors produce datapoints when non-empty, and are absent when empty
+// (cgroupsv2 behaviour).
+func TestCollect_BlkioServiceTimeSectors(t *testing.T) {
+	t.Run("present", func(t *testing.T) {
+		c := containerListItem{ID: "blktime0000001234567", Names: []string{"/blktime"}, State: "running"}
+		s := &containerStats{}
+		s.CPUStats.CPUUsage.TotalUsage = 1
+		s.BlkioStats.IOServiceBytesRecursive = []blkioEntry{{Op: "Total", Value: 1024}}
+		s.BlkioStats.IOServiceTimeRecursive = []blkioEntry{{Op: "Total", Value: 9_000_000}}
+		s.BlkioStats.IOSectorsRecursive = []blkioEntry{{Op: "Total", Value: 32}}
+
+		srv := makeTestServer(t, []containerListItem{c}, map[string]*containerStats{c.ID: s})
+		defer srv.Close()
+
+		p := buildTestProbe(t, srv)
+		points, _ := p.Collect()
+		byName := indexByName(points)
+		assertMetric(t, byName, "senhub.docker.blkio.service_time.total", 9_000_000)
+		assertMetric(t, byName, "senhub.docker.blkio.sectors.total", 32)
+	})
+
+	t.Run("absent_on_cgroupsv2", func(t *testing.T) {
+		c := containerListItem{ID: "blkv200000001234567", Names: []string{"/blkv2"}, State: "running"}
+		s := &containerStats{}
+		s.CPUStats.CPUUsage.TotalUsage = 1
+		// IOServiceTimeRecursive and IOSectorsRecursive are nil (cgroupsv2).
+
+		srv := makeTestServer(t, []containerListItem{c}, map[string]*containerStats{c.ID: s})
+		defer srv.Close()
+
+		p := buildTestProbe(t, srv)
+		points, _ := p.Collect()
+		byName := indexByName(points)
+		if _, ok := byName["senhub.docker.blkio.service_time.total"]; ok {
+			t.Error("expected senhub.docker.blkio.service_time.total to be absent on cgroupsv2")
+		}
+		if _, ok := byName["senhub.docker.blkio.sectors.total"]; ok {
+			t.Error("expected senhub.docker.blkio.sectors.total to be absent on cgroupsv2")
+		}
+	})
+}
+
+// TestCollect_DeepMemoryStats_CgroupsV2 verifies that deep memory fields are
+// emitted from cgroupsv2 stats when present, and that container.memory.anon
+// uses the "anon" key directly (not the "rss" fallback).
+func TestCollect_DeepMemoryStats_CgroupsV2(t *testing.T) {
+	c := containerListItem{
+		ID:    "deepmemv2000001234567",
+		Names: []string{"/deepmemv2"},
+		State: "running",
+	}
+	s := &containerStats{}
+	s.CPUStats.CPUUsage.TotalUsage = 100
+	s.CPUStats.OnlineCPUs = 1
+	s.MemoryStats.Usage = 200 * 1024 * 1024
+	s.MemoryStats.Stats = map[string]uint64{
+		"anon":          80 * 1024 * 1024,
+		"file":          60 * 1024 * 1024,
+		"inactive_file": 40 * 1024 * 1024,
+		"swap":          0,
+		"pgfault":       500,
+		"pgmajfault":    2,
+		"unevictable":   0,
+		"writeback":     0,
+		"active_anon":   70 * 1024 * 1024,
+		"inactive_anon": 10 * 1024 * 1024,
+		"active_file":   20 * 1024 * 1024,
+	}
+
+	srv := makeTestServer(t, []containerListItem{c}, map[string]*containerStats{c.ID: s})
+	defer srv.Close()
+
+	p := buildTestProbe(t, srv)
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: unexpected error: %v", err)
+	}
+
+	byName := indexByName(points)
+	// anon key present → used directly.
+	assertMetric(t, byName, "container.memory.anon", float32(80*1024*1024))
+	assertMetric(t, byName, "container.memory.pgfault", 500)
+	assertMetric(t, byName, "container.memory.pgmajfault", 2)
+	assertMetric(t, byName, "container.memory.unevictable", 0)
+	assertMetric(t, byName, "container.memory.writeback", 0)
+	assertMetric(t, byName, "container.memory.active_anon", float32(70*1024*1024))
+	assertMetric(t, byName, "container.memory.inactive_anon", float32(10*1024*1024))
+	assertMetric(t, byName, "container.memory.active_file", float32(20*1024*1024))
+	assertMetric(t, byName, "container.memory.inactive_file", float32(40*1024*1024))
+	// hierarchical_memory_limit absent from stats → metric must not be emitted.
+	if _, ok := byName["container.memory.hierarchical_memory_limit"]; ok {
+		t.Error("container.memory.hierarchical_memory_limit should be absent when not in stats map")
 	}
 }

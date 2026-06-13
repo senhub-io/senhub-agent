@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -69,6 +70,12 @@ type containerListItem struct {
 	RestartCount int      `json:"RestartCount"`
 }
 
+// blkioEntry is a single entry in Docker's blkio recursive arrays.
+type blkioEntry struct {
+	Op    string `json:"op"`
+	Value uint64 `json:"value"`
+}
+
 // containerStats is the shape of GET /containers/{id}/stats?stream=false.
 type containerStats struct {
 	CPUStats struct {
@@ -80,6 +87,11 @@ type containerStats struct {
 		} `json:"cpu_usage"`
 		SystemCPUUsage uint64 `json:"system_cpu_usage"`
 		OnlineCPUs     int    `json:"online_cpus"`
+		ThrottlingData struct {
+			ThrottledPeriods  uint64 `json:"throttled_periods"`
+			ThrottlingPeriods uint64 `json:"throttling_periods"`
+			ThrottledTime     uint64 `json:"throttled_time"`
+		} `json:"throttling_data"`
 	} `json:"cpu_stats"`
 	// PreCPUStats is the previous snapshot included in the same response payload.
 	// It is used to derive cpu.percent without a second API call.
@@ -105,10 +117,11 @@ type containerStats struct {
 		RxDropped uint64 `json:"rx_dropped"`
 	} `json:"networks"`
 	BlkioStats struct {
-		IOServiceBytesRecursive []struct {
-			Op    string `json:"op"`
-			Value uint64 `json:"value"`
-		} `json:"io_service_bytes_recursive"`
+		IOServiceBytesRecursive []blkioEntry `json:"io_service_bytes_recursive"`
+		// io_service_time_recursive and io_sectors_recursive are present on
+		// cgroupsv1 kernels; absent on cgroupsv2. Parse defensively.
+		IOServiceTimeRecursive []blkioEntry `json:"io_service_time_recursive"`
+		IOSectorsRecursive     []blkioEntry `json:"io_sectors_recursive"`
 	} `json:"blkio_stats"`
 	PidsStats struct {
 		Current uint64 `json:"current"`
@@ -421,6 +434,24 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 		)
 	}
 
+	// Per-core CPU usage — one datapoint per core with tag core=N.
+	for i, coreUsage := range s.CPUStats.CPUUsage.PercpuUsage {
+		coreTags := append(append([]tags.Tag{}, baseTags...),
+			tags.Tag{Key: "metric_type", Value: "cpu"},
+			tags.Tag{Key: "core", Value: strconv.Itoa(i)},
+		)
+		points = append(points,
+			data_store.DataPoint{Name: "container.cpu.usage.percpu", Value: float32(coreUsage), Timestamp: ts, Tags: coreTags},
+		)
+	}
+
+	// CPU throttling metrics (cgroupsv1 + cgroupsv2, always present in the response).
+	points = append(points,
+		data_store.DataPoint{Name: "container.cpu.throttling_data.throttled_periods", Value: float32(s.CPUStats.ThrottlingData.ThrottledPeriods), Timestamp: ts, Tags: cpuTags},
+		data_store.DataPoint{Name: "container.cpu.throttling_data.periods", Value: float32(s.CPUStats.ThrottlingData.ThrottlingPeriods), Timestamp: ts, Tags: cpuTags},
+		data_store.DataPoint{Name: "container.cpu.throttling_data.throttled_time", Value: float32(s.CPUStats.ThrottlingData.ThrottledTime), Timestamp: ts, Tags: cpuTags},
+	)
+
 	// Memory metrics — cgroups v1/v2 detection via presence of "rss" key.
 	memTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "memory"})
 	points = append(points,
@@ -462,6 +493,37 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 		)
 	}
 
+	// Deep cgroup memory stats — emitted only when the kernel exposes the field
+	// (presence varies by kernel version and cgroup v1/v2). Mirrors the OTel
+	// docker stats receiver contrib coverage.
+	//
+	// container.memory.anon: for v1 kernels the "anon" key may be absent; fall
+	// back to "rss" which is the same concept on v1.
+	if anon, ok := s.MemoryStats.Stats["anon"]; ok {
+		points = append(points, data_store.DataPoint{Name: "container.memory.anon", Value: float32(anon), Timestamp: ts, Tags: memTags})
+	} else if rss, ok := s.MemoryStats.Stats["rss"]; ok {
+		points = append(points, data_store.DataPoint{Name: "container.memory.anon", Value: float32(rss), Timestamp: ts, Tags: memTags})
+	}
+	for _, kv := range []struct {
+		metricName string
+		statsKey   string
+	}{
+		{"container.memory.mapped_file", "mapped_file"},
+		{"container.memory.pgfault", "pgfault"},
+		{"container.memory.pgmajfault", "pgmajfault"},
+		{"container.memory.unevictable", "unevictable"},
+		{"container.memory.writeback", "writeback"},
+		{"container.memory.hierarchical_memory_limit", "hierarchical_memory_limit"},
+		{"container.memory.active_anon", "active_anon"},
+		{"container.memory.inactive_anon", "inactive_anon"},
+		{"container.memory.active_file", "active_file"},
+		{"container.memory.inactive_file", "inactive_file"},
+	} {
+		if val, ok := s.MemoryStats.Stats[kv.statsKey]; ok {
+			points = append(points, data_store.DataPoint{Name: kv.metricName, Value: float32(val), Timestamp: ts, Tags: memTags})
+		}
+	}
+
 	// PIDs metrics.
 	pidsTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "pids"})
 	points = append(points,
@@ -497,7 +559,7 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 
 	// Block I/O metrics — op="Total" is the canonical sum on cgroupsv1; fall
 	// back to summing Read+Write when Total is absent (cgroupsv2 path).
-	blkTotal, blkRead, blkWrite := blkioSplit(s)
+	blkTotal, blkRead, blkWrite := blkioSplit(s.BlkioStats.IOServiceBytesRecursive)
 	blkioTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "blkio"})
 	points = append(points,
 		data_store.DataPoint{Name: "container.blockio.usage.total", Value: float32(blkTotal), Timestamp: ts, Tags: blkioTags},
@@ -505,16 +567,33 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 		data_store.DataPoint{Name: "container.blockio.io_service_bytes_recursive.write", Value: float32(blkWrite), Timestamp: ts, Tags: blkioTags},
 	)
 
+	// io_service_time_recursive and io_sectors_recursive are present on
+	// cgroupsv1; absent on cgroupsv2. Emit only when data is non-empty.
+	if len(s.BlkioStats.IOServiceTimeRecursive) > 0 {
+		svcTotal, _, _ := blkioSplit(s.BlkioStats.IOServiceTimeRecursive)
+		points = append(points,
+			data_store.DataPoint{Name: "senhub.docker.blkio.service_time.total", Value: float32(svcTotal), Timestamp: ts, Tags: blkioTags},
+		)
+	}
+	if len(s.BlkioStats.IOSectorsRecursive) > 0 {
+		secTotal, _, _ := blkioSplit(s.BlkioStats.IOSectorsRecursive)
+		points = append(points,
+			data_store.DataPoint{Name: "senhub.docker.blkio.sectors.total", Value: float32(secTotal), Timestamp: ts, Tags: blkioTags},
+		)
+	}
+
 	return points
 }
 
-// blkioSplit returns (total, read, write) bytes from the block I/O stats.
+// blkioSplit returns (total, read, write) from a blkio recursive entry array.
 // The "Total" entry (cgroupsv1 convenience sum) is preferred for total; when
-// absent (cgroupsv2), total is derived as read+write.
-func blkioSplit(s *containerStats) (total, read, write uint64) {
+// absent (cgroupsv2), total is derived as read+write. Works for
+// io_service_bytes_recursive, io_service_time_recursive, and
+// io_sectors_recursive which all share the same {op, value} shape.
+func blkioSplit(entries []blkioEntry) (total, read, write uint64) {
 	var blkTotal uint64
 	var hasTotal bool
-	for _, e := range s.BlkioStats.IOServiceBytesRecursive {
+	for _, e := range entries {
 		switch strings.ToLower(e.Op) {
 		case "total":
 			blkTotal += e.Value
