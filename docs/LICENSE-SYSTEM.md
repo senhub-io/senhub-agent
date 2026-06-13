@@ -58,6 +58,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **tcp_dial** - Raw TCP connect latency to host:port targets (VIPs, brokers, AD, fileservers)
 - **dns_latency** - DNS resolution latency per name, optionally per explicit resolver
 - **snmp_poll** - Generic SNMP polling. The deliberate exception to "remote = paid": it is the open-core wedge to replace PRTG's free SNMP polling. Deep vendor-specific SNMP (device profiles, discovery, vendor MIBs) remains paid.
+- **memcached** - Memcached server stats via the TCP text protocol (connections, items, memory, hit/miss ratio, commands, evictions, CPU)
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:

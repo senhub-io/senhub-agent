@@ -28,6 +28,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"icmp_check",
 		"linux_logs",
 		"logicaldisk",
+		"memcached",
 		"memory",
 		"network",
 		"otlp_receiver",
