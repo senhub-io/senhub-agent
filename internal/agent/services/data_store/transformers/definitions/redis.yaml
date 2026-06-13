@@ -455,3 +455,168 @@ metrics:
       type: counter
     tag_to_attribute:
       cmd: redis.command
+
+  - name: "redis.cluster.state"
+    channel: "redis_cluster_state"
+    display_name: "Cluster State"
+    unit: "#"
+    category: "cluster"
+    description: "Cluster health: 1=ok, 0=fail (cluster_state from INFO cluster; emitted only when cluster_enabled=1)"
+    otel:
+      name: redis.cluster.state
+      unit: "1"
+      type: gauge
+
+  - name: "redis.cluster.slots.assigned"
+    channel: "redis_cluster_slots_assigned"
+    display_name: "Cluster Slots Assigned"
+    unit: "#"
+    category: "cluster"
+    description: "Number of slots assigned to cluster nodes (cluster_slots_assigned)"
+    otel:
+      name: redis.cluster.slots.assigned
+      unit: "{slot}"
+      type: gauge
+
+  - name: "redis.cluster.slots.ok"
+    channel: "redis_cluster_slots_ok"
+    display_name: "Cluster Slots OK"
+    unit: "#"
+    category: "cluster"
+    description: "Number of slots not in FAIL or PFAIL state (cluster_slots_ok)"
+    otel:
+      name: redis.cluster.slots.ok
+      unit: "{slot}"
+      type: gauge
+
+  - name: "redis.cluster.slots.pfail"
+    channel: "redis_cluster_slots_pfail"
+    display_name: "Cluster Slots PFAIL"
+    unit: "#"
+    category: "cluster"
+    description: "Number of slots in PFAIL state (cluster_slots_pfail)"
+    otel:
+      name: redis.cluster.slots.pfail
+      unit: "{slot}"
+      type: gauge
+
+  - name: "redis.cluster.slots.fail"
+    channel: "redis_cluster_slots_fail"
+    display_name: "Cluster Slots FAIL"
+    unit: "#"
+    category: "cluster"
+    description: "Number of slots in FAIL state — serving requests is blocked until fixed (cluster_slots_fail)"
+    otel:
+      name: redis.cluster.slots.fail
+      unit: "{slot}"
+      type: gauge
+
+  - name: "redis.cluster.links.created"
+    channel: "redis_cluster_links_created"
+    display_name: "Cluster Messages Sent"
+    unit: "#"
+    category: "cluster"
+    description: "Cumulative cluster bus messages sent (cluster_stats_messages_sent)"
+    otel:
+      name: redis.cluster.links.created
+      unit: "{message}"
+      type: counter
+
+  - name: "redis.cluster.links.disconnected"
+    channel: "redis_cluster_links_disconnected"
+    display_name: "Cluster Messages Received"
+    unit: "#"
+    category: "cluster"
+    description: "Cumulative cluster bus messages received (cluster_stats_messages_received)"
+    otel:
+      name: redis.cluster.links.disconnected
+      unit: "{message}"
+      type: counter
+
+  - name: "redis.sentinel.masters"
+    channel: "redis_sentinel_masters"
+    display_name: "Sentinel Masters"
+    unit: "#"
+    category: "sentinel"
+    description: "Number of Redis masters monitored by this Sentinel (sentinel_masters; emitted only in sentinel mode)"
+    otel:
+      name: redis.sentinel.masters
+      unit: "{master}"
+      type: gauge
+
+  - name: "redis.sentinel.slaves"
+    channel: "redis_sentinel_slaves"
+    display_name: "Sentinel Slaves (total)"
+    unit: "#"
+    category: "sentinel"
+    description: "Total number of replicas across all monitored masters (aggregated from per-master lines)"
+    otel:
+      name: redis.sentinel.slaves
+      unit: "{replica}"
+      type: gauge
+
+  - name: "redis.sentinel.ok_slaves"
+    channel: "redis_sentinel_ok_slaves"
+    display_name: "Sentinel Slaves OK"
+    unit: "#"
+    category: "sentinel"
+    description: "Replicas belonging to masters whose status=ok (aggregated from per-master lines)"
+    otel:
+      name: redis.sentinel.ok_slaves
+      unit: "{replica}"
+      type: gauge
+
+  - name: "redis.sentinel.sentinels"
+    channel: "redis_sentinel_sentinels"
+    display_name: "Sentinel Sentinels (total)"
+    unit: "#"
+    category: "sentinel"
+    description: "Total number of Sentinel peers across all monitored masters (aggregated from per-master lines)"
+    otel:
+      name: redis.sentinel.sentinels
+      unit: "{sentinel}"
+      type: gauge
+
+  - name: "redis.sentinel.ok_sentinels"
+    channel: "redis_sentinel_ok_sentinels"
+    display_name: "Sentinel Sentinels OK"
+    unit: "#"
+    category: "sentinel"
+    description: "Sentinel peers belonging to masters whose status=ok (aggregated from per-master lines)"
+    otel:
+      name: redis.sentinel.ok_sentinels
+      unit: "{sentinel}"
+      type: gauge
+
+  - name: "redis.sentinel.scripts_queue_length"
+    channel: "redis_sentinel_scripts_queue_length"
+    display_name: "Sentinel Scripts Queue"
+    unit: "#"
+    category: "sentinel"
+    description: "Number of scripts in the Sentinel notification-scripts queue (sentinel_running_scripts)"
+    otel:
+      name: redis.sentinel.scripts_queue_length
+      unit: "{script}"
+      type: gauge
+
+  - name: "redis.tracking.clients"
+    channel: "redis_tracking_clients"
+    display_name: "Tracking Clients"
+    unit: "#"
+    category: "tracking"
+    description: "Number of clients using RESP3 client-side caching tracking (tracking_clients; 0 when absent)"
+    otel:
+      name: redis.tracking.clients
+      unit: "{client}"
+      type: gauge
+
+  - name: "redis.tracking.keys"
+    channel: "redis_tracking_keys"
+    display_name: "Tracking Keys"
+    unit: "#"
+    category: "tracking"
+    description: "Number of keys in the client-side tracking invalidation table (tracking_table_used_keys; 0 when absent)"
+    otel:
+      name: redis.tracking.keys
+      unit: "{key}"
+      type: gauge

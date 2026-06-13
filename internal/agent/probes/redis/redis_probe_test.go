@@ -541,6 +541,227 @@ func TestBuildDatapoints_CommandStats(t *testing.T) {
 	}
 }
 
+// TestBuildDatapoints_ClusterMetrics verifies that cluster metrics are emitted
+// when clusterInfo is provided and that cluster_state is correctly mapped.
+func TestBuildDatapoints_ClusterMetrics(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+
+	clusterInfo := map[string]string{
+		"cluster_state":                   "ok",
+		"cluster_slots_assigned":          "16384",
+		"cluster_slots_ok":                "16384",
+		"cluster_slots_pfail":             "0",
+		"cluster_slots_fail":              "0",
+		"cluster_stats_messages_sent":     "1000",
+		"cluster_stats_messages_received": "900",
+	}
+
+	pts := p.buildDatapoints(map[string]string{"role": "master"}, nil, clusterInfo, nil, now, 1)
+	idx := indexDatapoints(pts)
+
+	if v := idx["redis.cluster.state"]; len(v) != 1 || v[0].Value != 1 {
+		t.Errorf("redis.cluster.state: want 1 (ok), got %v", v)
+	}
+	if v := idx["redis.cluster.slots.assigned"]; len(v) != 1 || v[0].Value != 16384 {
+		t.Errorf("redis.cluster.slots.assigned: want 16384, got %v", v)
+	}
+	if v := idx["redis.cluster.slots.ok"]; len(v) != 1 || v[0].Value != 16384 {
+		t.Errorf("redis.cluster.slots.ok: want 16384, got %v", v)
+	}
+	if v := idx["redis.cluster.slots.pfail"]; len(v) != 1 || v[0].Value != 0 {
+		t.Errorf("redis.cluster.slots.pfail: want 0, got %v", v)
+	}
+	if v := idx["redis.cluster.slots.fail"]; len(v) != 1 || v[0].Value != 0 {
+		t.Errorf("redis.cluster.slots.fail: want 0, got %v", v)
+	}
+	if v := idx["redis.cluster.links.created"]; len(v) != 1 || v[0].Value != 1000 {
+		t.Errorf("redis.cluster.links.created: want 1000, got %v", v)
+	}
+	if v := idx["redis.cluster.links.disconnected"]; len(v) != 1 || v[0].Value != 900 {
+		t.Errorf("redis.cluster.links.disconnected: want 900, got %v", v)
+	}
+}
+
+// TestBuildDatapoints_ClusterStateFail verifies that cluster_state=fail → 0.
+func TestBuildDatapoints_ClusterStateFail(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+
+	clusterInfo := map[string]string{
+		"cluster_state":          "fail",
+		"cluster_slots_assigned": "16384",
+		"cluster_slots_ok":       "16000",
+		"cluster_slots_pfail":    "100",
+		"cluster_slots_fail":     "284",
+	}
+
+	pts := p.buildDatapoints(map[string]string{"role": "master"}, nil, clusterInfo, nil, now, 1)
+	idx := indexDatapoints(pts)
+
+	if v := idx["redis.cluster.state"]; len(v) != 1 || v[0].Value != 0 {
+		t.Errorf("redis.cluster.state: want 0 (fail), got %v", v)
+	}
+	if v := idx["redis.cluster.slots.pfail"]; len(v) != 1 || v[0].Value != 100 {
+		t.Errorf("redis.cluster.slots.pfail: want 100, got %v", v)
+	}
+	if v := idx["redis.cluster.slots.fail"]; len(v) != 1 || v[0].Value != 284 {
+		t.Errorf("redis.cluster.slots.fail: want 284, got %v", v)
+	}
+}
+
+// TestBuildDatapoints_ClusterNil verifies that no cluster metrics are emitted
+// when clusterInfo is nil (cluster_enabled=0 or standalone mode).
+func TestBuildDatapoints_ClusterNil(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+	pts := p.buildDatapoints(map[string]string{"role": "master"}, nil, nil, nil, now, 1)
+	idx := indexDatapoints(pts)
+	if _, ok := idx["redis.cluster.state"]; ok {
+		t.Error("redis.cluster.state should not be emitted when clusterInfo is nil")
+	}
+}
+
+// TestBuildDatapoints_SentinelMetrics verifies sentinel metrics are emitted
+// from a multi-master INFO sentinel map.
+func TestBuildDatapoints_SentinelMetrics(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+
+	// Two masters: master0 status=ok (2 slaves, 3 sentinels),
+	// master1 status=ok (1 slave, 3 sentinels).
+	sentinelInfo := map[string]string{
+		"sentinel_masters":          "2",
+		"sentinel_running_scripts":  "0",
+		"master0":                   "name=mymaster,status=ok,address=127.0.0.1:6379,slaves=2,sentinels=3",
+		"master1":                   "name=other,status=ok,address=127.0.0.1:6380,slaves=1,sentinels=3",
+	}
+
+	pts := p.buildDatapoints(map[string]string{"role": "master"}, nil, nil, sentinelInfo, now, 1)
+	idx := indexDatapoints(pts)
+
+	if v := idx["redis.sentinel.masters"]; len(v) != 1 || v[0].Value != 2 {
+		t.Errorf("redis.sentinel.masters: want 2, got %v", v)
+	}
+	if v := idx["redis.sentinel.scripts_queue_length"]; len(v) != 1 || v[0].Value != 0 {
+		t.Errorf("redis.sentinel.scripts_queue_length: want 0, got %v", v)
+	}
+	if v := idx["redis.sentinel.slaves"]; len(v) != 1 || v[0].Value != 3 {
+		t.Errorf("redis.sentinel.slaves: want 3 total (2+1), got %v", v)
+	}
+	if v := idx["redis.sentinel.ok_slaves"]; len(v) != 1 || v[0].Value != 3 {
+		t.Errorf("redis.sentinel.ok_slaves: want 3 (both ok), got %v", v)
+	}
+	if v := idx["redis.sentinel.sentinels"]; len(v) != 1 || v[0].Value != 6 {
+		t.Errorf("redis.sentinel.sentinels: want 6 total (3+3), got %v", v)
+	}
+	if v := idx["redis.sentinel.ok_sentinels"]; len(v) != 1 || v[0].Value != 6 {
+		t.Errorf("redis.sentinel.ok_sentinels: want 6, got %v", v)
+	}
+}
+
+// TestBuildDatapoints_SentinelPartialDown verifies ok_slaves/ok_sentinels
+// exclude masters whose status is not "ok".
+func TestBuildDatapoints_SentinelPartialDown(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+
+	sentinelInfo := map[string]string{
+		"sentinel_masters": "2",
+		// master0 is ok: contributes its slaves/sentinels to ok counts.
+		"master0": "name=mymaster,status=ok,address=127.0.0.1:6379,slaves=2,sentinels=3",
+		// master1 is down: slaves/sentinels not counted as ok.
+		"master1": "name=other,status=down,address=127.0.0.1:6380,slaves=1,sentinels=3",
+	}
+
+	pts := p.buildDatapoints(map[string]string{"role": "master"}, nil, nil, sentinelInfo, now, 1)
+	idx := indexDatapoints(pts)
+
+	if v := idx["redis.sentinel.slaves"]; len(v) != 1 || v[0].Value != 3 {
+		t.Errorf("redis.sentinel.slaves: want 3 total, got %v", v)
+	}
+	if v := idx["redis.sentinel.ok_slaves"]; len(v) != 1 || v[0].Value != 2 {
+		t.Errorf("redis.sentinel.ok_slaves: want 2 (only master0 ok), got %v", v)
+	}
+	if v := idx["redis.sentinel.sentinels"]; len(v) != 1 || v[0].Value != 6 {
+		t.Errorf("redis.sentinel.sentinels: want 6 total, got %v", v)
+	}
+	if v := idx["redis.sentinel.ok_sentinels"]; len(v) != 1 || v[0].Value != 3 {
+		t.Errorf("redis.sentinel.ok_sentinels: want 3 (only master0 ok), got %v", v)
+	}
+}
+
+// TestBuildDatapoints_SentinelNil verifies no sentinel metrics are emitted
+// when sentinelInfo is nil (standalone / cluster mode).
+func TestBuildDatapoints_SentinelNil(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+	pts := p.buildDatapoints(map[string]string{"role": "master"}, nil, nil, nil, now, 1)
+	idx := indexDatapoints(pts)
+	if _, ok := idx["redis.sentinel.masters"]; ok {
+		t.Error("redis.sentinel.masters should not be emitted when sentinelInfo is nil")
+	}
+}
+
+// TestBuildDatapoints_TrackingMetrics verifies that tracking_clients and
+// tracking_table_used_keys are emitted when present in the INFO map.
+func TestBuildDatapoints_TrackingMetrics(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+	info := map[string]string{
+		"role":                     "master",
+		"tracking_clients":         "5",
+		"tracking_table_used_keys": "1200",
+	}
+	pts := p.buildDatapoints(info, nil, nil, nil, now, 1)
+	idx := indexDatapoints(pts)
+
+	if v := idx["redis.tracking.clients"]; len(v) != 1 || v[0].Value != 5 {
+		t.Errorf("redis.tracking.clients: want 5, got %v", v)
+	}
+	if v := idx["redis.tracking.keys"]; len(v) != 1 || v[0].Value != 1200 {
+		t.Errorf("redis.tracking.keys: want 1200, got %v", v)
+	}
+}
+
+// TestBuildDatapoints_TrackingAbsent verifies that no tracking metrics are
+// emitted when tracking fields are absent from INFO (RESP2 / no tracking active).
+func TestBuildDatapoints_TrackingAbsent(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+	info := map[string]string{"role": "master"}
+	pts := p.buildDatapoints(info, nil, nil, nil, now, 1)
+	idx := indexDatapoints(pts)
+	if _, ok := idx["redis.tracking.clients"]; ok {
+		t.Error("redis.tracking.clients should not be emitted when field absent")
+	}
+	if _, ok := idx["redis.tracking.keys"]; ok {
+		t.Error("redis.tracking.keys should not be emitted when field absent")
+	}
+}
+
+// TestParseSentinelMasterStats verifies the aggregate parser for sentinel masters.
+func TestParseSentinelMasterStats(t *testing.T) {
+	m := map[string]string{
+		"sentinel_masters": "2",
+		"master0":          "name=m0,status=ok,address=127.0.0.1:6379,slaves=2,sentinels=3",
+		"master1":          "name=m1,status=down,address=127.0.0.1:6380,slaves=1,sentinels=2",
+	}
+	totalSlaves, okSlaves, totalSentinels, okSentinels := parseSentinelMasterStats(m)
+	if totalSlaves != 3 {
+		t.Errorf("totalSlaves = %d, want 3", totalSlaves)
+	}
+	if okSlaves != 2 {
+		t.Errorf("okSlaves = %d, want 2 (only master0)", okSlaves)
+	}
+	if totalSentinels != 5 {
+		t.Errorf("totalSentinels = %d, want 5", totalSentinels)
+	}
+	if okSentinels != 3 {
+		t.Errorf("okSentinels = %d, want 3 (only master0)", okSentinels)
+	}
+}
+
 // TestParseCommandStats verifies the commandstats parser.
 func TestParseCommandStats(t *testing.T) {
 	blob := "# Commandstats\r\n" +
