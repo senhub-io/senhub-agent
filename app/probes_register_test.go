@@ -20,6 +20,7 @@ import (
 func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 	want := []string{
 		"cpu",
+		"elasticsearch",
 		"event",
 		"exec",
 		"dns_latency",
