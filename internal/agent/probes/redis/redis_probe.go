@@ -83,9 +83,9 @@ func (p *redisProbe) OnShutdown(_ context.Context) error {
 }
 
 // Collect dials the Redis server, authenticates if configured, issues
-// INFO all, parses the result and emits OTel-canonical datapoints.
-// A connection or auth failure is a measurement (senhub.db.up=0), not
-// a collection error.
+// INFO all, INFO commandstats, and conditionally INFO cluster / INFO sentinel,
+// parses the results and emits OTel-canonical datapoints. A connection or
+// auth failure is a measurement (senhub.db.up=0), not a collection error.
 func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 
@@ -137,7 +137,48 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	info := parseInfoBlob(blob)
-	points := p.buildDatapoints(info, now, 1)
+
+	// Second command on the same connection: INFO commandstats.
+	var cmdStats map[string]cmdStat
+	if err := sendCommand(conn, p.cfg.Timeout, "INFO", "commandstats"); err == nil {
+		if csBlob, err := readInfo(conn, p.cfg.Timeout); err == nil {
+			cmdStats = parseCommandStats(csBlob)
+		} else {
+			p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO commandstats read failed")
+		}
+	} else {
+		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO commandstats send failed")
+	}
+
+	// INFO cluster — only when cluster_enabled=1 in INFO server section.
+	var clusterInfo map[string]string
+	if info["cluster_enabled"] == "1" {
+		if err := sendCommand(conn, p.cfg.Timeout, "INFO", "cluster"); err == nil {
+			if cBlob, err := readInfo(conn, p.cfg.Timeout); err == nil {
+				clusterInfo = parseInfoBlob(cBlob)
+			} else {
+				p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO cluster read failed")
+			}
+		} else {
+			p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO cluster send failed")
+		}
+	}
+
+	// INFO sentinel — only when redis_mode=sentinel in INFO server section.
+	var sentinelInfo map[string]string
+	if info["redis_mode"] == "sentinel" {
+		if err := sendCommand(conn, p.cfg.Timeout, "INFO", "sentinel"); err == nil {
+			if sBlob, err := readInfo(conn, p.cfg.Timeout); err == nil {
+				sentinelInfo = parseInfoBlob(sBlob)
+			} else {
+				p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO sentinel read failed")
+			}
+		} else {
+			p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO sentinel send failed")
+		}
+	}
+
+	points := p.buildDatapoints(info, cmdStats, clusterInfo, sentinelInfo, now, 1)
 	p.entityObs.update(p.cfg, p.instance, info)
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
@@ -164,8 +205,58 @@ func (p *redisProbe) addCounter(out *[]data_store.DataPoint, name string, value 
 	p.addGauge(out, name, value, ts, metricType, extra...)
 }
 
+// cmdStat holds the per-command statistics from INFO commandstats.
+type cmdStat struct {
+	calls int64
+	usec  int64
+}
+
+// parseCommandStats parses the INFO commandstats blob into a per-command map.
+// Each line has the form:
+//
+//	cmdstat_get:calls=1000,usec=5000,usec_per_call=5.00,rejected_calls=0,failed_calls=0
+func parseCommandStats(blob string) map[string]cmdStat {
+	out := make(map[string]cmdStat)
+	for _, line := range strings.Split(blob, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		cmdName, fields, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		cmdName = strings.TrimPrefix(cmdName, "cmdstat_")
+		if cmdName == "" {
+			continue
+		}
+		var cs cmdStat
+		for _, field := range strings.Split(fields, ",") {
+			k, v, ok2 := strings.Cut(field, "=")
+			if !ok2 {
+				continue
+			}
+			n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+			if err != nil {
+				// usec_per_call is a float — skip it gracefully.
+				continue
+			}
+			switch strings.TrimSpace(k) {
+			case "calls":
+				cs.calls = n
+			case "usec":
+				cs.usec = n
+			}
+		}
+		out[cmdName] = cs
+	}
+	return out
+}
+
 // buildDatapoints converts the parsed INFO map to OTel-canonical datapoints.
-func (p *redisProbe) buildDatapoints(info map[string]string, ts time.Time, up float32) []data_store.DataPoint {
+// clusterInfo is the parsed INFO cluster blob (nil when cluster_enabled!=1).
+// sentinelInfo is the parsed INFO sentinel blob (nil when not in sentinel mode).
+func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string]cmdStat, clusterInfo map[string]string, sentinelInfo map[string]string, ts time.Time, up float32) []data_store.DataPoint {
 	var pts []data_store.DataPoint
 
 	p.addGauge(&pts, "senhub.db.up", up, ts, "overview")
@@ -245,13 +336,14 @@ func (p *redisProbe) buildDatapoints(info map[string]string, ts time.Time, up fl
 		if !strings.HasPrefix(key, "db") {
 			continue
 		}
-		dbIdx, keys, expires, ok := parseKeyspaceLine(key + ":" + val)
+		dbIdx, keys, expires, avgTTL, ok := parseKeyspaceLine(key + ":" + val)
 		if !ok {
 			continue
 		}
 		dbTag := tags.Tag{Key: "db", Value: dbIdx}
 		p.addGauge(&pts, "redis.db.keys", float32(keys), ts, "keyspace", dbTag)
 		p.addGauge(&pts, "redis.db.expires", float32(expires), ts, "keyspace", dbTag)
+		p.addGauge(&pts, "redis.db.avg_ttl", float32(avgTTL), ts, "keyspace", dbTag)
 	}
 
 	// replication
@@ -299,21 +391,200 @@ func (p *redisProbe) buildDatapoints(info map[string]string, ts time.Time, up fl
 	if v, ok := parseFloat(info["aof_enabled"]); ok {
 		p.addGauge(&pts, "redis.aof.enabled", v, ts, "persistence")
 	}
+	if v, ok := parseFloat(info["rdb_last_bgsave_time_sec"]); ok {
+		p.addGauge(&pts, "redis.rdb.last_bgsave.duration", v, ts, "persistence")
+	}
+	if lastSaveStr := info["rdb_last_save_time"]; lastSaveStr != "" {
+		if lastSaveEpoch, err := strconv.ParseInt(strings.TrimSpace(lastSaveStr), 10, 64); err == nil && lastSaveEpoch > 0 {
+			age := ts.Unix() - lastSaveEpoch
+			if age < 0 {
+				age = 0
+			}
+			p.addGauge(&pts, "redis.rdb.last_save.age", float32(age), ts, "persistence")
+		}
+	}
+
+	// cpu
+	for _, state := range []struct{ field, label string }{
+		{"used_cpu_sys", "sys"},
+		{"used_cpu_user", "user"},
+		{"used_cpu_sys_children", "sys_children"},
+		{"used_cpu_user_children", "user_children"},
+	} {
+		if v, ok := parseFloat(info[state.field]); ok {
+			p.addCounter(&pts, "redis.cpu.time", v, ts, "cpu",
+				tags.Tag{Key: "state", Value: state.label})
+		}
+	}
+
+	// memory — additional fields
+	if v, ok := parseFloat(info["used_memory_lua"]); ok {
+		p.addGauge(&pts, "redis.memory.lua", v, ts, "memory")
+	}
+
+	// client buffers
+	if v, ok := parseFloat(info["client_recent_max_input_buffer"]); ok {
+		p.addGauge(&pts, "redis.clients.max_input_buffer", v, ts, "connections")
+	}
+	if v, ok := parseFloat(info["client_recent_max_output_buffer"]); ok {
+		p.addGauge(&pts, "redis.clients.max_output_buffer", v, ts, "connections")
+	}
+
+	// fork duration
+	if v, ok := parseFloat(info["latest_fork_usec"]); ok {
+		p.addGauge(&pts, "redis.latest.fork", v, ts, "persistence")
+	}
+
+	// replication backlog
+	if v, ok := parseFloat(info["repl_backlog_first_byte_offset"]); ok {
+		p.addGauge(&pts, "redis.replication.backlog_first_byte_offset", v, ts, "replication")
+	}
+
+	// evicted and expired keys
+	if v, ok := parseFloat(info["evicted_keys"]); ok {
+		p.addCounter(&pts, "redis.evicted_keys", v, ts, "cache")
+	}
+	if v, ok := parseFloat(info["expired_keys"]); ok {
+		p.addCounter(&pts, "redis.expired_keys", v, ts, "cache")
+	}
+
+	// per-command stats
+	for cmd, cs := range cmdStats {
+		cmdTag := tags.Tag{Key: "cmd", Value: cmd}
+		p.addCounter(&pts, "redis.cmd.calls", float32(cs.calls), ts, "commands", cmdTag)
+		p.addCounter(&pts, "redis.cmd.usec", float32(cs.usec), ts, "commands", cmdTag)
+	}
+
+	// cluster metrics (INFO cluster — only populated when cluster_enabled=1)
+	if clusterInfo != nil {
+		// cluster_state: "ok" → 1, anything else → 0.
+		stateVal := float32(0)
+		if clusterInfo["cluster_state"] == "ok" {
+			stateVal = 1
+		}
+		p.addGauge(&pts, "redis.cluster.state", stateVal, ts, "cluster")
+
+		if v, ok := parseFloat(clusterInfo["cluster_slots_assigned"]); ok {
+			p.addGauge(&pts, "redis.cluster.slots.assigned", v, ts, "cluster")
+		}
+		if v, ok := parseFloat(clusterInfo["cluster_slots_ok"]); ok {
+			p.addGauge(&pts, "redis.cluster.slots.ok", v, ts, "cluster")
+		}
+		if v, ok := parseFloat(clusterInfo["cluster_slots_pfail"]); ok {
+			p.addGauge(&pts, "redis.cluster.slots.pfail", v, ts, "cluster")
+		}
+		if v, ok := parseFloat(clusterInfo["cluster_slots_fail"]); ok {
+			p.addGauge(&pts, "redis.cluster.slots.fail", v, ts, "cluster")
+		}
+		if v, ok := parseFloat(clusterInfo["cluster_stats_messages_sent"]); ok {
+			p.addCounter(&pts, "redis.cluster.links.created", v, ts, "cluster")
+		}
+		if v, ok := parseFloat(clusterInfo["cluster_stats_messages_received"]); ok {
+			p.addCounter(&pts, "redis.cluster.links.disconnected", v, ts, "cluster")
+		}
+	}
+
+	// sentinel metrics (INFO sentinel — only populated in sentinel mode)
+	if sentinelInfo != nil {
+		if v, ok := parseFloat(sentinelInfo["sentinel_masters"]); ok {
+			p.addGauge(&pts, "redis.sentinel.masters", v, ts, "sentinel")
+		}
+		if v, ok := parseFloat(sentinelInfo["sentinel_running_scripts"]); ok {
+			p.addGauge(&pts, "redis.sentinel.scripts_queue_length", v, ts, "sentinel")
+		}
+		// Aggregate ok/total slaves and sentinels across all monitored masters.
+		// Each master is reported as: sentinel_mastersN:name=...,status=...,slaves=N,sentinels=M
+		// Parallel fields sentinel_slavesN_... and sentinel_sentinelsN_... provide per-master detail.
+		totalSlaves, okSlaves, totalSentinels, okSentinels := parseSentinelMasterStats(sentinelInfo)
+		p.addGauge(&pts, "redis.sentinel.slaves", float32(totalSlaves), ts, "sentinel")
+		p.addGauge(&pts, "redis.sentinel.ok_slaves", float32(okSlaves), ts, "sentinel")
+		p.addGauge(&pts, "redis.sentinel.sentinels", float32(totalSentinels), ts, "sentinel")
+		p.addGauge(&pts, "redis.sentinel.ok_sentinels", float32(okSentinels), ts, "sentinel")
+	}
+
+	// tracking metrics (RESP3 client-side tracking, present in INFO clients
+	// only when at least one client uses TRACKING; parse defensively).
+	if v, ok := parseFloat(info["tracking_clients"]); ok {
+		p.addGauge(&pts, "redis.tracking.clients", v, ts, "tracking")
+	}
+	if v, ok := parseFloat(info["tracking_table_used_keys"]); ok {
+		p.addGauge(&pts, "redis.tracking.keys", v, ts, "tracking")
+	}
 
 	return pts
 }
 
+// parseSentinelMasterStats sums slaves and sentinels across all monitored
+// masters from the flat INFO sentinel map. Redis reports per-master lines:
+//
+//	master0:name=mymaster,status=ok,address=127.0.0.1:6379,slaves=1,sentinels=2
+//
+// Returns (totalSlaves, okSlaves, totalSentinels, okSentinels).
+func parseSentinelMasterStats(m map[string]string) (totalSlaves, okSlaves, totalSentinels, okSentinels int) {
+	for k, v := range m {
+		if !strings.HasPrefix(k, "master") {
+			continue
+		}
+		// k is e.g. "master0", "master1".
+		// Check it looks like a numeric master index by verifying the suffix is numeric.
+		suffix := strings.TrimPrefix(k, "master")
+		if suffix == "" {
+			continue
+		}
+		allDigits := true
+		for _, c := range suffix {
+			if c < '0' || c > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if !allDigits {
+			continue
+		}
+
+		// v = "name=mymaster,status=ok,address=127.0.0.1:6379,slaves=1,sentinels=2"
+		isOK := false
+		slaves := 0
+		sentinels := 0
+		for _, field := range strings.Split(v, ",") {
+			fk, fv, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			switch strings.TrimSpace(fk) {
+			case "status":
+				isOK = strings.TrimSpace(fv) == "ok"
+			case "slaves":
+				if n, err := strconv.Atoi(strings.TrimSpace(fv)); err == nil {
+					slaves = n
+				}
+			case "sentinels":
+				if n, err := strconv.Atoi(strings.TrimSpace(fv)); err == nil {
+					sentinels = n
+				}
+			}
+		}
+		totalSlaves += slaves
+		totalSentinels += sentinels
+		if isOK {
+			okSlaves += slaves
+			okSentinels += sentinels
+		}
+	}
+	return
+}
+
 // parseKeyspaceLine parses a keyspace entry. The INFO map stores the
 // value without the key prefix, so the caller must pass "db0:keys=N,...".
-// Returns (dbIndex, keys, expires, ok).
-func parseKeyspaceLine(line string) (dbIdx string, keys int64, expires int64, ok bool) {
+// Returns (dbIndex, keys, expires, avgTTL, ok).
+func parseKeyspaceLine(line string) (dbIdx string, keys int64, expires int64, avgTTL int64, ok bool) {
 	// line = "db0:keys=100,expires=5,avg_ttl=3000"
 	dbPart, rest, cut := strings.Cut(line, ":")
 	if !cut {
-		return "", 0, 0, false
+		return "", 0, 0, 0, false
 	}
 	if !strings.HasPrefix(dbPart, "db") {
-		return "", 0, 0, false
+		return "", 0, 0, 0, false
 	}
 	dbIdx = strings.TrimPrefix(dbPart, "db")
 
@@ -331,9 +602,11 @@ func parseKeyspaceLine(line string) (dbIdx string, keys int64, expires int64, ok
 			keys = n
 		case "expires":
 			expires = n
+		case "avg_ttl":
+			avgTTL = n
 		}
 	}
-	return dbIdx, keys, expires, true
+	return dbIdx, keys, expires, avgTTL, true
 }
 
 // parseInfoBlob parses the raw multi-section INFO blob into a flat

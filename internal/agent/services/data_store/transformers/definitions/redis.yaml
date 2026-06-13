@@ -300,3 +300,158 @@ metrics:
       name: redis.aof.enabled
       unit: "1"
       type: gauge
+
+  - name: "redis.rdb.last_bgsave.duration"
+    channel: "redis_rdb_last_bgsave_duration"
+    display_name: "RDB Last BGSave Duration"
+    unit: "s"
+    category: "persistence"
+    description: "Duration of the last RDB background save in seconds (rdb_last_bgsave_time_sec)"
+    otel:
+      name: redis.rdb.last_bgsave.duration
+      unit: "s"
+      type: gauge
+
+  - name: "redis.rdb.last_save.age"
+    channel: "redis_rdb_last_save_age"
+    display_name: "RDB Last Save Age"
+    unit: "s"
+    category: "persistence"
+    description: "Seconds elapsed since the last successful RDB save (now − rdb_last_save_time)"
+    otel:
+      name: redis.rdb.last_save.age
+      unit: "s"
+      type: gauge
+
+  - name: "redis.latest.fork"
+    channel: "redis_latest_fork"
+    display_name: "Latest Fork Duration"
+    unit: "μs"
+    category: "persistence"
+    description: "Duration of the latest fork operation in microseconds (latest_fork_usec)"
+    otel:
+      name: redis.latest.fork
+      unit: "us"
+      type: gauge
+
+  - name: "redis.cpu.time"
+    channel: "redis_cpu_time_{state}"
+    display_name: "CPU Time ({state})"
+    unit: "s"
+    multi_instance_labels: ["state"]
+    category: "cpu"
+    description: "Cumulative CPU time consumed by the Redis server in the given state (used_cpu_sys / used_cpu_user / used_cpu_sys_children / used_cpu_user_children)"
+    otel:
+      name: redis.cpu.time
+      unit: "s"
+      type: counter
+    tag_to_attribute:
+      state: redis.cpu.state
+
+  - name: "redis.memory.lua"
+    channel: "redis_memory_lua"
+    display_name: "Memory Lua"
+    unit: "B"
+    category: "memory"
+    description: "Memory used by the Lua scripting engine (used_memory_lua)"
+    otel:
+      name: redis.memory.lua
+      unit: "By"
+      type: gauge
+
+  - name: "redis.clients.max_input_buffer"
+    channel: "redis_clients_max_input_buffer"
+    display_name: "Client Max Input Buffer"
+    unit: "B"
+    category: "connections"
+    description: "Largest input buffer across all current client connections (client_recent_max_input_buffer)"
+    otel:
+      name: redis.clients.max_input_buffer
+      unit: "By"
+      type: gauge
+
+  - name: "redis.clients.max_output_buffer"
+    channel: "redis_clients_max_output_buffer"
+    display_name: "Client Max Output Buffer"
+    unit: "B"
+    category: "connections"
+    description: "Largest output buffer across all current client connections (client_recent_max_output_buffer)"
+    otel:
+      name: redis.clients.max_output_buffer
+      unit: "By"
+      type: gauge
+
+  - name: "redis.db.avg_ttl"
+    channel: "redis_db_{db}_avg_ttl"
+    display_name: "DB {db} Average TTL"
+    unit: "ms"
+    multi_instance_labels: ["db"]
+    category: "keyspace"
+    description: "Average TTL in milliseconds of keys with an expiry in logical database (keyspace section: dbN:avg_ttl=T)"
+    otel:
+      name: redis.db.avg_ttl
+      unit: "ms"
+      type: gauge
+    tag_to_attribute:
+      db: db.redis.database_index
+
+  - name: "redis.replication.backlog_first_byte_offset"
+    channel: "redis_replication_backlog_first_byte_offset"
+    display_name: "Replication Backlog First Byte Offset"
+    unit: "B"
+    category: "replication"
+    description: "Replication backlog first byte offset (repl_backlog_first_byte_offset)"
+    otel:
+      name: redis.replication.backlog_first_byte_offset
+      unit: "By"
+      type: gauge
+
+  - name: "redis.evicted_keys"
+    channel: "redis_evicted_keys"
+    display_name: "Evicted Keys"
+    unit: "#"
+    category: "cache"
+    description: "Cumulative keys evicted due to maxmemory policy (evicted_keys)"
+    otel:
+      name: redis.evicted_keys
+      unit: "{key}"
+      type: counter
+
+  - name: "redis.expired_keys"
+    channel: "redis_expired_keys"
+    display_name: "Expired Keys"
+    unit: "#"
+    category: "cache"
+    description: "Cumulative keys expired by the TTL mechanism (expired_keys)"
+    otel:
+      name: redis.expired_keys
+      unit: "{key}"
+      type: counter
+
+  - name: "redis.cmd.calls"
+    channel: "redis_cmd_{cmd}_calls"
+    display_name: "Cmd {cmd} Calls"
+    unit: "#"
+    multi_instance_labels: ["cmd"]
+    category: "commands"
+    description: "Cumulative call count for the given Redis command (INFO commandstats: cmdstat_X:calls=N)"
+    otel:
+      name: redis.cmd.calls
+      unit: "{call}"
+      type: counter
+    tag_to_attribute:
+      cmd: redis.command
+
+  - name: "redis.cmd.usec"
+    channel: "redis_cmd_{cmd}_usec"
+    display_name: "Cmd {cmd} Usec"
+    unit: "μs"
+    multi_instance_labels: ["cmd"]
+    category: "commands"
+    description: "Cumulative microseconds spent executing the given Redis command (INFO commandstats: cmdstat_X:usec=N)"
+    otel:
+      name: redis.cmd.usec
+      unit: "us"
+      type: counter
+    tag_to_attribute:
+      cmd: redis.command
