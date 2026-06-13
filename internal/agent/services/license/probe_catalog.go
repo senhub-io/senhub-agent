@@ -21,6 +21,7 @@ package license
 
 var paidProbes = map[string]bool{
 	"cpu":                  true,
+	"docker":               true,
 	"memory":               true,
 	"logicaldisk":          true,
 	"network":              true,

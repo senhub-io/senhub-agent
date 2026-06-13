@@ -1,0 +1,181 @@
+probe_name: "docker"
+friendly_name: "Docker"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["container_name"]
+
+# Pro-tier probe (#392). Connects to the Docker Engine API over the Unix
+# socket (no external SDK). One instance per container, discriminated by
+# container_name in channel names and by container_id in the cache key.
+# container.cpu.usage.total and the network/blkio counters are monotonic
+# (type: counter); the mapper handles them as OTel monotonic sums.
+
+metrics:
+  - name: "senhub.docker.up"
+    channel: "docker_{container_name}_up"
+    display_name: "Docker {container_name} Up"
+    unit: "#"
+    category: "status"
+    description: "1 when the container is running, 0 otherwise"
+    otel:
+      name: senhub.docker.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+      image: container.image.name
+
+  - name: "container.restarts"
+    channel: "docker_{container_name}_restarts"
+    display_name: "Docker {container_name} Restart Count"
+    unit: "#"
+    category: "status"
+    description: "Number of times the container has been restarted"
+    otel:
+      name: container.restarts
+      unit: "{restart}"
+      type: gauge
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.cpu.usage.total"
+    channel: "docker_{container_name}_cpu_total"
+    display_name: "Docker {container_name} CPU Usage"
+    unit: "ns"
+    category: "cpu"
+    description: "Cumulative CPU time consumed by the container"
+    otel:
+      name: container.cpu.usage.total
+      unit: "ns"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "senhub.docker.cpu.system"
+    channel: "docker_{container_name}_cpu_system"
+    display_name: "Docker {container_name} CPU System Time"
+    unit: "ns"
+    category: "cpu"
+    description: "System CPU time since the container started (used to compute CPU %)"
+    otel:
+      name: senhub.docker.cpu.system
+      unit: "ns"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "senhub.docker.cpu.online"
+    channel: "docker_{container_name}_cpu_online"
+    display_name: "Docker {container_name} CPU Online"
+    unit: "#"
+    category: "cpu"
+    description: "Number of online CPUs available to the container"
+    otel:
+      name: senhub.docker.cpu.online
+      unit: "{cpu}"
+      type: gauge
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.memory.usage"
+    channel: "docker_{container_name}_memory"
+    display_name: "Docker {container_name} Memory Usage"
+    unit: "B"
+    category: "memory"
+    description: "Current memory usage of the container"
+    otel:
+      name: container.memory.usage
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "senhub.docker.memory.limit"
+    channel: "docker_{container_name}_memory_limit"
+    display_name: "Docker {container_name} Memory Limit"
+    unit: "B"
+    category: "memory"
+    description: "Memory limit configured for the container (0 = unlimited)"
+    otel:
+      name: senhub.docker.memory.limit
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.network.io.usage.tx_bytes"
+    channel: "docker_{container_name}_net_tx"
+    display_name: "Docker {container_name} Network TX"
+    unit: "B"
+    category: "network"
+    description: "Cumulative bytes transmitted across all network interfaces"
+    otel:
+      name: container.network.io.usage.tx_bytes
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.network.io.usage.rx_bytes"
+    channel: "docker_{container_name}_net_rx"
+    display_name: "Docker {container_name} Network RX"
+    unit: "B"
+    category: "network"
+    description: "Cumulative bytes received across all network interfaces"
+    otel:
+      name: container.network.io.usage.rx_bytes
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "senhub.docker.network.tx_packets"
+    channel: "docker_{container_name}_net_tx_packets"
+    display_name: "Docker {container_name} Network TX Packets"
+    unit: "#"
+    category: "network"
+    description: "Cumulative packets transmitted across all network interfaces"
+    otel:
+      name: senhub.docker.network.tx_packets
+      unit: "{packet}"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "senhub.docker.network.rx_packets"
+    channel: "docker_{container_name}_net_rx_packets"
+    display_name: "Docker {container_name} Network RX Packets"
+    unit: "#"
+    category: "network"
+    description: "Cumulative packets received across all network interfaces"
+    otel:
+      name: senhub.docker.network.rx_packets
+      unit: "{packet}"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.blockio.usage.total"
+    channel: "docker_{container_name}_blkio"
+    display_name: "Docker {container_name} Block I/O"
+    unit: "B"
+    category: "blkio"
+    description: "Cumulative block I/O bytes (read + write, or Total entry when present)"
+    otel:
+      name: container.blockio.usage.total
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
