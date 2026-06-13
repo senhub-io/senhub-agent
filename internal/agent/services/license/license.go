@@ -226,6 +226,12 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// phpfpm: PHP-FPM pool monitoring via the status-page JSON endpoint.
+	// The agent reads a local or proxied HTTP endpoint on the same host —
+	// the same "host-local observability" rationale as cpu/memory/linux_logs.
+	// A free equivalent exists in otelcol-contrib (phpfpmreceiver), so
+	// paywalling it would add no differentiation.
+	"phpfpm": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

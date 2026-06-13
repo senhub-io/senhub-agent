@@ -1,0 +1,139 @@
+probe_name: "phpfpm"
+friendly_name: "PHP-FPM"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["pool"]
+
+# Free probe: PHP-FPM pool monitoring via the status-page JSON endpoint.
+# One probe instance = one pool. Multi-pool installs use multiple instances.
+
+metrics:
+  - name: "senhub.phpfpm.up"
+    channel: "phpfpm_up"
+    display_name: "PHP-FPM {pool} Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the PHP-FPM status endpoint is reachable, 0 otherwise"
+    otel:
+      name: senhub.phpfpm.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      pool: phpfpm.pool
+
+  - name: "phpfpm.uptime"
+    channel: "phpfpm_uptime"
+    display_name: "PHP-FPM {pool} Uptime"
+    unit: "s"
+    category: "availability"
+    description: "Number of seconds since the PHP-FPM pool started"
+    otel:
+      name: phpfpm.uptime
+      unit: "s"
+      type: counter
+    tag_to_attribute:
+      pool: phpfpm.pool
+
+  - name: "phpfpm.accepted_connections"
+    channel: "phpfpm_accepted_connections"
+    display_name: "PHP-FPM {pool} Accepted Connections"
+    unit: "#"
+    category: "connections"
+    description: "Total number of accepted connections since pool start"
+    otel:
+      name: phpfpm.accepted_connections
+      unit: "{connection}"
+      type: counter
+    tag_to_attribute:
+      pool: phpfpm.pool
+
+  - name: "phpfpm.slow_requests"
+    channel: "phpfpm_slow_requests"
+    display_name: "PHP-FPM {pool} Slow Requests"
+    unit: "#"
+    category: "connections"
+    description: "Total number of requests exceeding the slow request threshold"
+    otel:
+      name: phpfpm.slow_requests
+      unit: "{request}"
+      type: counter
+    tag_to_attribute:
+      pool: phpfpm.pool
+
+  - name: "phpfpm.listen_queue.current"
+    channel: "phpfpm_listen_queue_current"
+    display_name: "PHP-FPM {pool} Listen Queue"
+    unit: "#"
+    category: "connections"
+    description: "Current number of requests waiting in the listen queue"
+    otel:
+      name: phpfpm.listen_queue.current
+      unit: "{request}"
+      type: gauge
+    tag_to_attribute:
+      pool: phpfpm.pool
+
+  - name: "phpfpm.listen_queue.max"
+    channel: "phpfpm_listen_queue_max"
+    display_name: "PHP-FPM {pool} Listen Queue Max"
+    unit: "#"
+    category: "connections"
+    description: "Maximum number of requests observed in the listen queue since pool start"
+    otel:
+      name: phpfpm.listen_queue.max
+      unit: "{request}"
+      type: gauge
+    tag_to_attribute:
+      pool: phpfpm.pool
+
+  - name: "phpfpm.processes.active"
+    channel: "phpfpm_processes_active"
+    display_name: "PHP-FPM {pool} Active Processes"
+    unit: "#"
+    category: "processes"
+    description: "Number of active (currently serving requests) processes"
+    otel:
+      name: phpfpm.processes.active
+      unit: "{process}"
+      type: gauge
+    tag_to_attribute:
+      pool: phpfpm.pool
+
+  - name: "phpfpm.processes.idle"
+    channel: "phpfpm_processes_idle"
+    display_name: "PHP-FPM {pool} Idle Processes"
+    unit: "#"
+    category: "processes"
+    description: "Number of idle processes waiting for requests"
+    otel:
+      name: phpfpm.processes.idle
+      unit: "{process}"
+      type: gauge
+    tag_to_attribute:
+      pool: phpfpm.pool
+
+  - name: "phpfpm.processes.total"
+    channel: "phpfpm_processes_total"
+    display_name: "PHP-FPM {pool} Total Processes"
+    unit: "#"
+    category: "processes"
+    description: "Total number of processes (active + idle)"
+    otel:
+      name: phpfpm.processes.total
+      unit: "{process}"
+      type: gauge
+    tag_to_attribute:
+      pool: phpfpm.pool
+
+  - name: "phpfpm.max_children_reached"
+    channel: "phpfpm_max_children_reached"
+    display_name: "PHP-FPM {pool} Max Children Reached"
+    unit: "#"
+    category: "connections"
+    description: "Total number of times the max_children limit was reached since pool start"
+    otel:
+      name: phpfpm.max_children_reached
+      unit: "{event}"
+      type: counter
+    tag_to_attribute:
+      pool: phpfpm.pool
