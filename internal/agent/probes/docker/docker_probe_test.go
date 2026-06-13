@@ -114,20 +114,35 @@ func assertMetric(t *testing.T, byName map[string]float32, name string, want flo
 }
 
 // makeRunningStats returns a populated containerStats for a running container.
+// Uses cgroupsv1 memory keys (rss/cache/swap).
 func makeRunningStats() *containerStats {
 	s := &containerStats{}
 	s.CPUStats.CPUUsage.TotalUsage = 1_000_000_000
+	s.CPUStats.CPUUsage.UsageInKernelmode = 200_000_000
+	s.CPUStats.CPUUsage.UsageInUsermode = 800_000_000
 	s.CPUStats.CPUUsage.PercpuUsage = []uint64{500_000_000, 500_000_000}
 	s.CPUStats.SystemCPUUsage = 10_000_000_000
+	s.CPUStats.OnlineCPUs = 2
+	s.PreCPUStats.CPUUsage.TotalUsage = 900_000_000
+	s.PreCPUStats.SystemCPUUsage = 9_000_000_000
 	s.MemoryStats.Usage = 256 * 1024 * 1024
 	s.MemoryStats.Limit = 1024 * 1024 * 1024
+	s.MemoryStats.Stats = map[string]uint64{
+		"rss":   200 * 1024 * 1024,
+		"cache": 56 * 1024 * 1024,
+		"swap":  0,
+	}
 	s.Networks = map[string]struct {
 		TxBytes   uint64 `json:"tx_bytes"`
 		RxBytes   uint64 `json:"rx_bytes"`
 		TxPackets uint64 `json:"tx_packets"`
 		RxPackets uint64 `json:"rx_packets"`
+		TxErrors  uint64 `json:"tx_errors"`
+		RxErrors  uint64 `json:"rx_errors"`
+		TxDropped uint64 `json:"tx_dropped"`
+		RxDropped uint64 `json:"rx_dropped"`
 	}{
-		"eth0": {TxBytes: 1000, RxBytes: 2000, TxPackets: 10, RxPackets: 20},
+		"eth0": {TxBytes: 1000, RxBytes: 2000, TxPackets: 10, RxPackets: 20, TxErrors: 1, RxErrors: 2, TxDropped: 3, RxDropped: 4},
 	}
 	s.BlkioStats.IOServiceBytesRecursive = []struct {
 		Op    string `json:"op"`
@@ -137,6 +152,8 @@ func makeRunningStats() *containerStats {
 		{Op: "Write", Value: 8192},
 		{Op: "Total", Value: 12288},
 	}
+	s.PidsStats.Current = 5
+	s.PidsStats.Limit = 100
 	return s
 }
 
@@ -180,16 +197,42 @@ func TestCollect_OneRunningContainer(t *testing.T) {
 	byName := indexByName(points)
 	assertMetric(t, byName, "senhub.docker.up", 1)
 	assertMetric(t, byName, "container.restarts", 2)
+
+	// CPU
 	assertMetric(t, byName, "container.cpu.usage.total", 1_000_000_000)
+	assertMetric(t, byName, "container.cpu.usage.kernelmode", 200_000_000)
+	assertMetric(t, byName, "container.cpu.usage.usermode", 800_000_000)
 	assertMetric(t, byName, "senhub.docker.cpu.system", 10_000_000_000)
 	assertMetric(t, byName, "senhub.docker.cpu.online", 2)
+	// cpu.percent: cpuDelta=100M, systemDelta=1B, 2 CPUs → (100M/1B)*2*100 = 20.0
+	assertMetric(t, byName, "senhub.docker.cpu.percent", 20.0)
+
+	// Memory (cgroupsv1)
 	assertMetric(t, byName, "container.memory.usage", float32(256*1024*1024))
 	assertMetric(t, byName, "senhub.docker.memory.limit", float32(1024*1024*1024))
+	assertMetric(t, byName, "container.memory.rss", float32(200*1024*1024))
+	assertMetric(t, byName, "container.memory.cache", float32(56*1024*1024))
+	assertMetric(t, byName, "container.memory.swap", 0)
+	assertMetric(t, byName, "senhub.docker.memory.working_set", float32(200*1024*1024)) // 256-56
+
+	// PIDs
+	assertMetric(t, byName, "container.pids.count", 5)
+	assertMetric(t, byName, "senhub.docker.pids.limit", 100)
+
+	// Network
 	assertMetric(t, byName, "container.network.io.usage.tx_bytes", 1000)
 	assertMetric(t, byName, "container.network.io.usage.rx_bytes", 2000)
 	assertMetric(t, byName, "senhub.docker.network.tx_packets", 10)
 	assertMetric(t, byName, "senhub.docker.network.rx_packets", 20)
+	assertMetric(t, byName, "container.network.io.usage.tx_errors", 1)
+	assertMetric(t, byName, "container.network.io.usage.rx_errors", 2)
+	assertMetric(t, byName, "senhub.docker.network.tx_dropped", 3)
+	assertMetric(t, byName, "senhub.docker.network.rx_dropped", 4)
+
+	// Block I/O
 	assertMetric(t, byName, "container.blockio.usage.total", 12288)
+	assertMetric(t, byName, "container.blockio.io_service_bytes_recursive.read", 4096)
+	assertMetric(t, byName, "container.blockio.io_service_bytes_recursive.write", 8192)
 }
 
 // TestCollect_StoppedContainer verifies that a stopped container (stats endpoint
@@ -435,9 +478,9 @@ func TestEntitySource_NameStrip(t *testing.T) {
 	}
 }
 
-// TestBlkioTotal_TotalPresent verifies that the "Total" entry is preferred
-// when present.
-func TestBlkioTotal_TotalPresent(t *testing.T) {
+// TestBlkioSplit_TotalPresent verifies that the "Total" entry is preferred
+// when present, and that read/write are reported separately.
+func TestBlkioSplit_TotalPresent(t *testing.T) {
 	s := &containerStats{}
 	s.BlkioStats.IOServiceBytesRecursive = []struct {
 		Op    string `json:"op"`
@@ -447,14 +490,21 @@ func TestBlkioTotal_TotalPresent(t *testing.T) {
 		{Op: "Write", Value: 2000},
 		{Op: "Total", Value: 5000},
 	}
-	if got := blkioTotal(s); got != 5000 {
-		t.Errorf("blkioTotal: want 5000, got %d", got)
+	total, read, write := blkioSplit(s)
+	if total != 5000 {
+		t.Errorf("blkioSplit total: want 5000, got %d", total)
+	}
+	if read != 1000 {
+		t.Errorf("blkioSplit read: want 1000, got %d", read)
+	}
+	if write != 2000 {
+		t.Errorf("blkioSplit write: want 2000, got %d", write)
 	}
 }
 
-// TestBlkioTotal_FallbackReadWrite verifies that Read+Write are summed when
+// TestBlkioSplit_FallbackReadWrite verifies that total=Read+Write when
 // "Total" is absent (cgroupsv2 kernel).
-func TestBlkioTotal_FallbackReadWrite(t *testing.T) {
+func TestBlkioSplit_FallbackReadWrite(t *testing.T) {
 	s := &containerStats{}
 	s.BlkioStats.IOServiceBytesRecursive = []struct {
 		Op    string `json:"op"`
@@ -463,8 +513,15 @@ func TestBlkioTotal_FallbackReadWrite(t *testing.T) {
 		{Op: "Read", Value: 4096},
 		{Op: "Write", Value: 8192},
 	}
-	if got := blkioTotal(s); got != 12288 {
-		t.Errorf("blkioTotal: want 12288, got %d", got)
+	total, read, write := blkioSplit(s)
+	if total != 12288 {
+		t.Errorf("blkioSplit total: want 12288, got %d", total)
+	}
+	if read != 4096 {
+		t.Errorf("blkioSplit read: want 4096, got %d", read)
+	}
+	if write != 8192 {
+		t.Errorf("blkioSplit write: want 8192, got %d", write)
 	}
 }
 
@@ -498,6 +555,75 @@ func TestApplyFilter_Include(t *testing.T) {
 	got := p.applyFilter(containers)
 	if len(got) != 2 {
 		t.Errorf("expected 2 containers after include filter, got %d", len(got))
+	}
+}
+
+// TestCollect_CgroupsV2Memory verifies that cgroupsv2 memory keys (anon/file/inactive_file)
+// are used when the "rss" key is absent from memory_stats.stats.
+func TestCollect_CgroupsV2Memory(t *testing.T) {
+	c := containerListItem{
+		ID:    "cgv2000000001234567",
+		Names: []string{"/cgv2test"},
+		Image: "alpine:latest",
+		State: "running",
+	}
+	s := &containerStats{}
+	s.CPUStats.CPUUsage.TotalUsage = 100
+	s.CPUStats.OnlineCPUs = 1
+	s.MemoryStats.Usage = 100 * 1024 * 1024
+	s.MemoryStats.Stats = map[string]uint64{
+		"anon":          60 * 1024 * 1024,
+		"file":          30 * 1024 * 1024,
+		"inactive_file": 20 * 1024 * 1024,
+		"swap":          4 * 1024 * 1024,
+	}
+
+	srv := makeTestServer(t, []containerListItem{c}, map[string]*containerStats{c.ID: s})
+	defer srv.Close()
+
+	p := buildTestProbe(t, srv)
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: unexpected error: %v", err)
+	}
+
+	byName := indexByName(points)
+	assertMetric(t, byName, "container.memory.rss", float32(60*1024*1024))   // anon
+	assertMetric(t, byName, "container.memory.cache", float32(30*1024*1024)) // file
+	assertMetric(t, byName, "container.memory.swap", float32(4*1024*1024))
+	// working_set = usage - inactive_file = 100M - 20M = 80M
+	assertMetric(t, byName, "senhub.docker.memory.working_set", float32(80*1024*1024))
+}
+
+// TestCollect_CPUPercentZeroSystemDelta verifies that senhub.docker.cpu.percent
+// is absent (not emitted) when the system delta is zero — guards against division
+// by zero on the first collection or identical snapshots.
+func TestCollect_CPUPercentZeroSystemDelta(t *testing.T) {
+	c := containerListItem{
+		ID:    "cpuzero0000001234567",
+		Names: []string{"/cpuzero"},
+		State: "running",
+	}
+	s := &containerStats{}
+	s.CPUStats.CPUUsage.TotalUsage = 500_000_000
+	s.CPUStats.SystemCPUUsage = 1_000_000_000
+	s.CPUStats.OnlineCPUs = 2
+	// PreCPUStats identical → systemDelta = 0
+	s.PreCPUStats.CPUUsage.TotalUsage = 500_000_000
+	s.PreCPUStats.SystemCPUUsage = 1_000_000_000
+
+	srv := makeTestServer(t, []containerListItem{c}, map[string]*containerStats{c.ID: s})
+	defer srv.Close()
+
+	p := buildTestProbe(t, srv)
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: unexpected error: %v", err)
+	}
+
+	byName := indexByName(points)
+	if _, ok := byName["senhub.docker.cpu.percent"]; ok {
+		t.Error("expected senhub.docker.cpu.percent to be absent when systemDelta=0")
 	}
 }
 

@@ -73,20 +73,36 @@ type containerListItem struct {
 type containerStats struct {
 	CPUStats struct {
 		CPUUsage struct {
-			TotalUsage  uint64   `json:"total_usage"`
-			PercpuUsage []uint64 `json:"percpu_usage"`
+			TotalUsage        uint64   `json:"total_usage"`
+			UsageInKernelmode uint64   `json:"usage_in_kernelmode"`
+			UsageInUsermode   uint64   `json:"usage_in_usermode"`
+			PercpuUsage       []uint64 `json:"percpu_usage"`
 		} `json:"cpu_usage"`
 		SystemCPUUsage uint64 `json:"system_cpu_usage"`
+		OnlineCPUs     int    `json:"online_cpus"`
 	} `json:"cpu_stats"`
+	// PreCPUStats is the previous snapshot included in the same response payload.
+	// It is used to derive cpu.percent without a second API call.
+	PreCPUStats struct {
+		CPUUsage struct {
+			TotalUsage uint64 `json:"total_usage"`
+		} `json:"cpu_usage"`
+		SystemCPUUsage uint64 `json:"system_cpu_usage"`
+	} `json:"precpu_stats"`
 	MemoryStats struct {
-		Usage uint64 `json:"usage"`
-		Limit uint64 `json:"limit"`
+		Usage uint64            `json:"usage"`
+		Limit uint64            `json:"limit"`
+		Stats map[string]uint64 `json:"stats"` // cgroupsv1: rss/cache/swap; cgroupsv2: anon/file/inactive_file
 	} `json:"memory_stats"`
 	Networks map[string]struct {
 		TxBytes   uint64 `json:"tx_bytes"`
 		RxBytes   uint64 `json:"rx_bytes"`
 		TxPackets uint64 `json:"tx_packets"`
 		RxPackets uint64 `json:"rx_packets"`
+		TxErrors  uint64 `json:"tx_errors"`
+		RxErrors  uint64 `json:"rx_errors"`
+		TxDropped uint64 `json:"tx_dropped"`
+		RxDropped uint64 `json:"rx_dropped"`
 	} `json:"networks"`
 	BlkioStats struct {
 		IOServiceBytesRecursive []struct {
@@ -94,6 +110,10 @@ type containerStats struct {
 			Value uint64 `json:"value"`
 		} `json:"io_service_bytes_recursive"`
 	} `json:"blkio_stats"`
+	PidsStats struct {
+		Current uint64 `json:"current"`
+		Limit   uint64 `json:"limit"`
+	} `json:"pids_stats"`
 }
 
 // statsResult pairs a container with its collected stats or an error.
@@ -379,28 +399,88 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 
 	// CPU metrics.
 	cpuTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "cpu"})
-	cpuOnline := len(s.CPUStats.CPUUsage.PercpuUsage)
+	cpuOnline := s.CPUStats.OnlineCPUs
+	if cpuOnline == 0 {
+		cpuOnline = len(s.CPUStats.CPUUsage.PercpuUsage)
+	}
 	points = append(points,
 		data_store.DataPoint{Name: "container.cpu.usage.total", Value: float32(s.CPUStats.CPUUsage.TotalUsage), Timestamp: ts, Tags: cpuTags},
+		data_store.DataPoint{Name: "container.cpu.usage.kernelmode", Value: float32(s.CPUStats.CPUUsage.UsageInKernelmode), Timestamp: ts, Tags: cpuTags},
+		data_store.DataPoint{Name: "container.cpu.usage.usermode", Value: float32(s.CPUStats.CPUUsage.UsageInUsermode), Timestamp: ts, Tags: cpuTags},
 		data_store.DataPoint{Name: "senhub.docker.cpu.system", Value: float32(s.CPUStats.SystemCPUUsage), Timestamp: ts, Tags: cpuTags},
 		data_store.DataPoint{Name: "senhub.docker.cpu.online", Value: float32(cpuOnline), Timestamp: ts, Tags: cpuTags},
 	)
 
-	// Memory metrics.
+	// Derived cpu.percent — same formula used by `docker stats`.
+	cpuDelta := float64(s.CPUStats.CPUUsage.TotalUsage) - float64(s.PreCPUStats.CPUUsage.TotalUsage)
+	systemDelta := float64(s.CPUStats.SystemCPUUsage) - float64(s.PreCPUStats.SystemCPUUsage)
+	if systemDelta > 0 && cpuDelta >= 0 {
+		cpuPercent := (cpuDelta / systemDelta) * float64(cpuOnline) * 100.0
+		points = append(points,
+			data_store.DataPoint{Name: "senhub.docker.cpu.percent", Value: float32(cpuPercent), Timestamp: ts, Tags: cpuTags},
+		)
+	}
+
+	// Memory metrics — cgroups v1/v2 detection via presence of "rss" key.
 	memTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "memory"})
 	points = append(points,
 		data_store.DataPoint{Name: "container.memory.usage", Value: float32(s.MemoryStats.Usage), Timestamp: ts, Tags: memTags},
 		data_store.DataPoint{Name: "senhub.docker.memory.limit", Value: float32(s.MemoryStats.Limit), Timestamp: ts, Tags: memTags},
 	)
 
+	_, isCgroupV1 := s.MemoryStats.Stats["rss"]
+	if isCgroupV1 {
+		// cgroups v1 keys.
+		rss := s.MemoryStats.Stats["rss"]
+		cache := s.MemoryStats.Stats["cache"]
+		swap := s.MemoryStats.Stats["swap"]
+		var workingSet uint64
+		if s.MemoryStats.Usage > cache {
+			workingSet = s.MemoryStats.Usage - cache
+		}
+		points = append(points,
+			data_store.DataPoint{Name: "container.memory.rss", Value: float32(rss), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "container.memory.cache", Value: float32(cache), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "container.memory.swap", Value: float32(swap), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "senhub.docker.memory.working_set", Value: float32(workingSet), Timestamp: ts, Tags: memTags},
+		)
+	} else {
+		// cgroups v2 keys.
+		anon := s.MemoryStats.Stats["anon"]
+		file := s.MemoryStats.Stats["file"]
+		inactiveFile := s.MemoryStats.Stats["inactive_file"]
+		swap := s.MemoryStats.Stats["swap"]
+		var workingSet uint64
+		if s.MemoryStats.Usage > inactiveFile {
+			workingSet = s.MemoryStats.Usage - inactiveFile
+		}
+		points = append(points,
+			data_store.DataPoint{Name: "container.memory.rss", Value: float32(anon), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "container.memory.cache", Value: float32(file), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "container.memory.swap", Value: float32(swap), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "senhub.docker.memory.working_set", Value: float32(workingSet), Timestamp: ts, Tags: memTags},
+		)
+	}
+
+	// PIDs metrics.
+	pidsTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "pids"})
+	points = append(points,
+		data_store.DataPoint{Name: "container.pids.count", Value: float32(s.PidsStats.Current), Timestamp: ts, Tags: pidsTags},
+		data_store.DataPoint{Name: "senhub.docker.pids.limit", Value: float32(s.PidsStats.Limit), Timestamp: ts, Tags: pidsTags},
+	)
+
 	// Network metrics — absent for --network=host containers (nil map).
 	if len(s.Networks) > 0 {
-		var txBytes, rxBytes, txPkts, rxPkts uint64
+		var txBytes, rxBytes, txPkts, rxPkts, txErrors, rxErrors, txDropped, rxDropped uint64
 		for _, iface := range s.Networks {
 			txBytes += iface.TxBytes
 			rxBytes += iface.RxBytes
 			txPkts += iface.TxPackets
 			rxPkts += iface.RxPackets
+			txErrors += iface.TxErrors
+			rxErrors += iface.RxErrors
+			txDropped += iface.TxDropped
+			rxDropped += iface.RxDropped
 		}
 		netTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "network"})
 		points = append(points,
@@ -408,30 +488,36 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 			data_store.DataPoint{Name: "container.network.io.usage.rx_bytes", Value: float32(rxBytes), Timestamp: ts, Tags: netTags},
 			data_store.DataPoint{Name: "senhub.docker.network.tx_packets", Value: float32(txPkts), Timestamp: ts, Tags: netTags},
 			data_store.DataPoint{Name: "senhub.docker.network.rx_packets", Value: float32(rxPkts), Timestamp: ts, Tags: netTags},
+			data_store.DataPoint{Name: "container.network.io.usage.tx_errors", Value: float32(txErrors), Timestamp: ts, Tags: netTags},
+			data_store.DataPoint{Name: "container.network.io.usage.rx_errors", Value: float32(rxErrors), Timestamp: ts, Tags: netTags},
+			data_store.DataPoint{Name: "senhub.docker.network.tx_dropped", Value: float32(txDropped), Timestamp: ts, Tags: netTags},
+			data_store.DataPoint{Name: "senhub.docker.network.rx_dropped", Value: float32(rxDropped), Timestamp: ts, Tags: netTags},
 		)
 	}
 
 	// Block I/O metrics — op="Total" is the canonical sum on cgroupsv1; fall
 	// back to summing Read+Write when Total is absent (cgroupsv2 path).
-	blkTotal := blkioTotal(s)
+	blkTotal, blkRead, blkWrite := blkioSplit(s)
 	blkioTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "blkio"})
 	points = append(points,
 		data_store.DataPoint{Name: "container.blockio.usage.total", Value: float32(blkTotal), Timestamp: ts, Tags: blkioTags},
+		data_store.DataPoint{Name: "container.blockio.io_service_bytes_recursive.read", Value: float32(blkRead), Timestamp: ts, Tags: blkioTags},
+		data_store.DataPoint{Name: "container.blockio.io_service_bytes_recursive.write", Value: float32(blkWrite), Timestamp: ts, Tags: blkioTags},
 	)
 
 	return points
 }
 
-// blkioTotal sums block I/O bytes across all operations. It prefers the
-// "Total" entry (cgroupsv1 convenience sum). When absent it sums "Read" and
-// "Write" entries (cgroupsv2 emits those without a "Total" row).
-func blkioTotal(s *containerStats) uint64 {
-	var total, read, write uint64
+// blkioSplit returns (total, read, write) bytes from the block I/O stats.
+// The "Total" entry (cgroupsv1 convenience sum) is preferred for total; when
+// absent (cgroupsv2), total is derived as read+write.
+func blkioSplit(s *containerStats) (total, read, write uint64) {
+	var blkTotal uint64
 	var hasTotal bool
 	for _, e := range s.BlkioStats.IOServiceBytesRecursive {
 		switch strings.ToLower(e.Op) {
 		case "total":
-			total += e.Value
+			blkTotal += e.Value
 			hasTotal = true
 		case "read":
 			read += e.Value
@@ -440,9 +526,11 @@ func blkioTotal(s *containerStats) uint64 {
 		}
 	}
 	if hasTotal {
-		return total
+		total = blkTotal
+	} else {
+		total = read + write
 	}
-	return read + write
+	return total, read, write
 }
 
 // primaryName returns the container's primary name with the leading '/'
