@@ -226,6 +226,9 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// varnish: host-local Varnish Cache observability — runs varnishstat
+	// on the local machine. Same free rationale as cpu/memory/logicaldisk.
+	"varnish": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
