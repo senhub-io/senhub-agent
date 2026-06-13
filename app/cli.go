@@ -44,8 +44,12 @@ func (p *program) Stop(s service.Service) error {
 
 func (p *program) run() {
 	if err := p.agent.Start(); err != nil {
+		// handleStartError already calls os.Exit(1) before Start returns
+		// an error on misconfiguration. This path is a defence-in-depth
+		// fallback for callers that override exitFn (tests) or for future
+		// code that makes handleStartError non-fatal.
 		log.Printf("agent error: %s", err)
-		return
+		os.Exit(1)
 	}
 }
 
