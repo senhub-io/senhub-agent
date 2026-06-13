@@ -1,0 +1,98 @@
+probe_name: "nginx"
+friendly_name: "Nginx"
+version: "1.0.0"
+host_level: false
+
+# Free probe: Nginx stub_status scraping. Requires ngx_http_stub_status_module
+# enabled and a location block exposing /nginx_status on the monitored host.
+# Counters (accepted, handled, requests) are monotonically increasing since
+# nginx start; gauges reflect the instant connection state.
+
+metrics:
+  - name: "senhub.nginx.up"
+    channel: "nginx_up"
+    display_name: "Nginx Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the stub_status page is reachable and parseable, 0 otherwise"
+    otel:
+      name: senhub.nginx.up
+      unit: "1"
+      type: gauge
+
+  - name: "nginx.connections.current"
+    channel: "nginx_connections_current"
+    display_name: "Nginx Active Connections"
+    unit: "#"
+    category: "connections"
+    description: "Number of client connections currently being handled (accepted + in-flight)"
+    otel:
+      name: nginx.connections.current
+      unit: "{connection}"
+      type: gauge
+
+  - name: "nginx.connections.accepted"
+    channel: "nginx_connections_accepted"
+    display_name: "Nginx Accepted Connections"
+    unit: "#"
+    category: "connections"
+    description: "Total connections accepted since nginx start (monotonically increasing counter)"
+    otel:
+      name: nginx.connections.accepted
+      unit: "{connection}"
+      type: counter
+
+  - name: "nginx.connections.handled"
+    channel: "nginx_connections_handled"
+    display_name: "Nginx Handled Connections"
+    unit: "#"
+    category: "connections"
+    description: "Total connections handled since nginx start; equals accepted when no resource limit is hit"
+    otel:
+      name: nginx.connections.handled
+      unit: "{connection}"
+      type: counter
+
+  - name: "nginx.requests"
+    channel: "nginx_requests"
+    display_name: "Nginx Total Requests"
+    unit: "#"
+    category: "throughput"
+    description: "Total HTTP requests processed since nginx start"
+    otel:
+      name: nginx.requests
+      unit: "{request}"
+      type: counter
+
+  - name: "nginx.connections.reading"
+    channel: "nginx_connections_reading"
+    display_name: "Nginx Reading Connections"
+    unit: "#"
+    category: "connections"
+    description: "Connections where nginx is reading the request header"
+    otel:
+      name: nginx.connections.reading
+      unit: "{connection}"
+      type: gauge
+
+  - name: "nginx.connections.writing"
+    channel: "nginx_connections_writing"
+    display_name: "Nginx Writing Connections"
+    unit: "#"
+    category: "connections"
+    description: "Connections where nginx is writing the response to the client"
+    otel:
+      name: nginx.connections.writing
+      unit: "{connection}"
+      type: gauge
+
+  - name: "nginx.connections.waiting"
+    channel: "nginx_connections_waiting"
+    display_name: "Nginx Waiting Connections"
+    unit: "#"
+    category: "connections"
+    description: "Idle keep-alive connections waiting for a request"
+    otel:
+      name: nginx.connections.waiting
+      unit: "{connection}"
+      type: gauge
