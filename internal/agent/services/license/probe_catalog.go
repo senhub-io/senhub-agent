@@ -39,7 +39,7 @@ var paidProbes = map[string]bool{
 	"linux_logs":           true,
 	"filetail":             true,
 	"ibmi":                 true,
-	"redis":                true,
+	// redis is FREE (open-source target — see freeTierProbes in license.go).
 }
 
 // KnownPaidProbes returns the names of every probe registered as

@@ -1,5 +1,6 @@
-// Package redis implements the paid (Pro) redis probe: Redis / Valkey
+// Package redis implements the FREE-tier redis probe: Redis / Valkey
 // monitoring via the native RESP protocol with no external dependency.
+// Redis is an open-source component — observing it belongs in the OSS core.
 // The only transport is raw TCP (optionally TLS); the probe sends AUTH
 // + INFO all and parses the returned key-value sections.
 //
@@ -96,11 +97,13 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 			[]data_store.DataPoint{{Name: "senhub.db.up", Value: 0, Timestamp: now, Tags: p.baseTags("overview")}},
 			p.GetName()), nil
 	}
-	defer conn.Close()
-
+	// Upgrade to TLS before deferring Close: defer captures the current
+	// value of conn at call time, so the Close must target the tls.Conn
+	// wrapper (which sends close_notify) not the raw TCP conn beneath it.
 	if p.cfg.TLS {
 		conn = tls.Client(conn, &tls.Config{ServerName: p.cfg.Host, MinVersion: tls.VersionTLS12})
 	}
+	defer conn.Close()
 
 	if p.cfg.Password != "" {
 		if err := sendCommand(conn, p.cfg.Timeout, "AUTH", p.cfg.Password); err != nil {

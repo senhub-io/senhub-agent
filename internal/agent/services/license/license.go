@@ -226,6 +226,9 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// redis: open-source target → FREE. Observing Redis/Valkey belongs
+	// in the OSS core; commercial products (Citrix, Veeam…) stay Pro.
+	"redis": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

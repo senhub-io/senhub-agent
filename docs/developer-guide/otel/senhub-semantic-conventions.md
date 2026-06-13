@@ -1253,7 +1253,7 @@ invariante — toute PR ajoutant un import tiers sur ce package est rejetée.
 
 **TLS** : `tls: true` dans la config enveloppe le `net.Conn` avec
 `crypto/tls.Client` après le dial ; aucune configuration de certificat client
-n'est exposée pour l'instant (suivi #394).
+n'est exposée pour l'instant (suivi #405).
 
 **Métriques émises** (séries par instance `host:port`) :
 
