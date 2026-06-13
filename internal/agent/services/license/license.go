@@ -226,6 +226,11 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// haproxy: HTTP-stats endpoint polling; same open-core wedge as
+	// snmp_poll and prometheus_scrape — collecting from a standard
+	// protocol endpoint on a local or accessible host is universal
+	// collection, not a paid vendor integration.
+	"haproxy": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
