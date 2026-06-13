@@ -226,6 +226,10 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// rabbitmq: message-broker observability via the built-in HTTP
+	// Management API; the same open-core rationale as snmp_poll/http_check —
+	// basic queue depth and broker health should not require a licence.
+	"rabbitmq": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
