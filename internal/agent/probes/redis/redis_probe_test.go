@@ -127,16 +127,17 @@ func TestParseKeyspaceLine(t *testing.T) {
 		db      string
 		keys    int64
 		expires int64
+		avgTTL  int64
 		ok      bool
 	}{
-		{"db0:keys=100,expires=5,avg_ttl=3000", "0", 100, 5, true},
-		{"db1:keys=0,expires=0,avg_ttl=0", "1", 0, 0, true},
-		{"db12:keys=999,expires=10,avg_ttl=500", "12", 999, 10, true},
-		{"notadb:keys=1,expires=0", "", 0, 0, false},
-		{"nocoron", "", 0, 0, false},
+		{"db0:keys=100,expires=5,avg_ttl=3000", "0", 100, 5, 3000, true},
+		{"db1:keys=0,expires=0,avg_ttl=0", "1", 0, 0, 0, true},
+		{"db12:keys=999,expires=10,avg_ttl=500", "12", 999, 10, 500, true},
+		{"notadb:keys=1,expires=0", "", 0, 0, 0, false},
+		{"nocoron", "", 0, 0, 0, false},
 	}
 	for _, tc := range cases {
-		db, keys, expires, ok := parseKeyspaceLine(tc.line)
+		db, keys, expires, avgTTL, ok := parseKeyspaceLine(tc.line)
 		if ok != tc.ok {
 			t.Errorf("parseKeyspaceLine(%q): ok=%v, want %v", tc.line, ok, tc.ok)
 			continue
@@ -153,36 +154,60 @@ func TestParseKeyspaceLine(t *testing.T) {
 		if expires != tc.expires {
 			t.Errorf("parseKeyspaceLine(%q): expires=%d, want %d", tc.line, expires, tc.expires)
 		}
+		if avgTTL != tc.avgTTL {
+			t.Errorf("parseKeyspaceLine(%q): avgTTL=%d, want %d", tc.line, avgTTL, tc.avgTTL)
+		}
 	}
 }
 
-// infoMap returns a complete synthetic INFO map suitable for
+// fullInfoMap returns a complete synthetic INFO map suitable for
 // TestBuildDatapoints_Full.
 func fullInfoMap() map[string]string {
 	return map[string]string{
-		"redis_version":               "7.0.1",
-		"uptime_in_seconds":           "12345",
-		"connected_clients":           "10",
-		"blocked_clients":             "2",
-		"total_connections_received":  "5000",
-		"rejected_connections":        "3",
-		"used_memory":                 "1048576",
-		"used_memory_rss":             "2097152",
-		"used_memory_peak":            "3145728",
-		"mem_fragmentation_ratio":     "1.5",
-		"total_commands_processed":    "100000",
-		"total_net_input_bytes":       "204800",
-		"total_net_output_bytes":      "409600",
-		"instantaneous_ops_per_sec":   "500",
-		"keyspace_hits":               "900",
-		"keyspace_misses":             "100",
-		"db0":                         "keys=100,expires=5,avg_ttl=3000",
-		"db1":                         "keys=200,expires=10,avg_ttl=1000",
-		"role":                        "master",
-		"master_repl_offset":          "99999",
-		"connected_slaves":            "1",
-		"rdb_changes_since_last_save": "7",
-		"aof_enabled":                 "0",
+		"redis_version":                    "7.0.1",
+		"uptime_in_seconds":                "12345",
+		"connected_clients":                "10",
+		"blocked_clients":                  "2",
+		"total_connections_received":       "5000",
+		"rejected_connections":             "3",
+		"used_memory":                      "1048576",
+		"used_memory_rss":                  "2097152",
+		"used_memory_peak":                 "3145728",
+		"mem_fragmentation_ratio":          "1.5",
+		"used_memory_lua":                  "37888",
+		"total_commands_processed":         "100000",
+		"total_net_input_bytes":            "204800",
+		"total_net_output_bytes":           "409600",
+		"instantaneous_ops_per_sec":        "500",
+		"keyspace_hits":                    "900",
+		"keyspace_misses":                  "100",
+		"evicted_keys":                     "42",
+		"expired_keys":                     "17",
+		"db0":                              "keys=100,expires=5,avg_ttl=3000",
+		"db1":                              "keys=200,expires=10,avg_ttl=1000",
+		"role":                             "master",
+		"master_repl_offset":               "99999",
+		"connected_slaves":                 "1",
+		"repl_backlog_first_byte_offset":   "99999",
+		"rdb_changes_since_last_save":      "7",
+		"aof_enabled":                      "0",
+		"rdb_last_bgsave_time_sec":         "2",
+		"rdb_last_save_time":               "1700000000",
+		"used_cpu_sys":                     "1.5",
+		"used_cpu_user":                    "0.8",
+		"used_cpu_sys_children":            "0.1",
+		"used_cpu_user_children":           "0.05",
+		"client_recent_max_input_buffer":   "32768",
+		"client_recent_max_output_buffer":  "65536",
+		"latest_fork_usec":                 "350",
+	}
+}
+
+// fullCmdStats returns a synthetic commandstats map.
+func fullCmdStats() map[string]cmdStat {
+	return map[string]cmdStat{
+		"get": {calls: 1000, usec: 5000},
+		"set": {calls: 200, usec: 1200},
 	}
 }
 
@@ -209,7 +234,7 @@ func TestBuildDatapoints_Full(t *testing.T) {
 	p := newTestProbe(t)
 	now := time.Now()
 	info := fullInfoMap()
-	pts := p.buildDatapoints(info, now, 1)
+	pts := p.buildDatapoints(info, fullCmdStats(), nil, nil, now, 1)
 	idx := indexDatapoints(pts)
 
 	// up=1 present
@@ -274,7 +299,7 @@ func TestBuildDatapoints_Full(t *testing.T) {
 func TestBuildDatapoints_Down(t *testing.T) {
 	p := newTestProbe(t)
 	now := time.Now()
-	pts := p.buildDatapoints(map[string]string{}, now, 0)
+	pts := p.buildDatapoints(map[string]string{}, nil, nil, nil, now, 0)
 	if len(pts) != 1 {
 		t.Fatalf("down: want 1 datapoint, got %d", len(pts))
 	}
@@ -293,7 +318,7 @@ func TestBuildDatapoints_NoKeyspace(t *testing.T) {
 		"connected_clients": "1",
 		"role":              "master",
 	}
-	pts := p.buildDatapoints(info, now, 1)
+	pts := p.buildDatapoints(info, nil, nil, nil, now, 1)
 	idx := indexDatapoints(pts)
 	if _, ok := idx["redis.db.keys"]; ok {
 		t.Error("redis.db.keys should not be emitted without keyspace section")
@@ -310,7 +335,7 @@ func TestBuildDatapoints_HitRatioZeroDivision(t *testing.T) {
 		"keyspace_misses": "0",
 		"role":            "master",
 	}
-	pts := p.buildDatapoints(info, now, 1)
+	pts := p.buildDatapoints(info, nil, nil, nil, now, 1)
 	idx := indexDatapoints(pts)
 	hr := idx["redis.keyspace.hit.ratio"]
 	if len(hr) != 1 {
@@ -318,6 +343,226 @@ func TestBuildDatapoints_HitRatioZeroDivision(t *testing.T) {
 	}
 	if hr[0].Value != 0 {
 		t.Errorf("hit.ratio with 0/0 = %v, want 0", hr[0].Value)
+	}
+}
+
+// TestBuildDatapoints_CpuTime verifies all four cpu.time state variants.
+func TestBuildDatapoints_CpuTime(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+	info := map[string]string{
+		"used_cpu_sys":          "1.5",
+		"used_cpu_user":         "0.8",
+		"used_cpu_sys_children": "0.1",
+		"used_cpu_user_children": "0.05",
+		"role":                  "master",
+	}
+	pts := p.buildDatapoints(info, nil, nil, nil, now, 1)
+	idx := indexDatapoints(pts)
+
+	cpuPts := idx["redis.cpu.time"]
+	if len(cpuPts) != 4 {
+		t.Fatalf("redis.cpu.time: want 4 datapoints (one per state), got %d", len(cpuPts))
+	}
+	wantStates := map[string]float32{
+		"sys":           1.5,
+		"user":          0.8,
+		"sys_children":  0.1,
+		"user_children": 0.05,
+	}
+	for state, wantVal := range wantStates {
+		found := false
+		for _, dp := range cpuPts {
+			if hasTag(dp, "state", state) {
+				found = true
+				if dp.Value < wantVal-0.001 || dp.Value > wantVal+0.001 {
+					t.Errorf("redis.cpu.time{state=%s} = %v, want %v", state, dp.Value, wantVal)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("redis.cpu.time: missing state=%s", state)
+		}
+	}
+}
+
+// TestBuildDatapoints_DbAvgTTL verifies that avg_ttl is emitted per-db.
+func TestBuildDatapoints_DbAvgTTL(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+	info := map[string]string{
+		"db0":  "keys=100,expires=5,avg_ttl=3000",
+		"db1":  "keys=200,expires=0,avg_ttl=0",
+		"role": "master",
+	}
+	pts := p.buildDatapoints(info, nil, nil, nil, now, 1)
+	idx := indexDatapoints(pts)
+
+	ttlPts := idx["redis.db.avg_ttl"]
+	if len(ttlPts) != 2 {
+		t.Fatalf("redis.db.avg_ttl: want 2 entries (db0+db1), got %d", len(ttlPts))
+	}
+	for _, dp := range ttlPts {
+		if hasTag(dp, "db", "0") && dp.Value != 3000 {
+			t.Errorf("redis.db.avg_ttl{db=0} = %v, want 3000", dp.Value)
+		}
+		if hasTag(dp, "db", "1") && dp.Value != 0 {
+			t.Errorf("redis.db.avg_ttl{db=1} = %v, want 0", dp.Value)
+		}
+	}
+}
+
+// TestBuildDatapoints_MemoryLua verifies redis.memory.lua is emitted.
+func TestBuildDatapoints_MemoryLua(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+	info := map[string]string{"used_memory_lua": "37888", "role": "master"}
+	pts := p.buildDatapoints(info, nil, nil, nil, now, 1)
+	idx := indexDatapoints(pts)
+	if lua := idx["redis.memory.lua"]; len(lua) != 1 || lua[0].Value != 37888 {
+		t.Errorf("redis.memory.lua: want 37888, got %v", idx["redis.memory.lua"])
+	}
+}
+
+// TestBuildDatapoints_ClientBuffers verifies max input/output buffer metrics.
+func TestBuildDatapoints_ClientBuffers(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+	info := map[string]string{
+		"client_recent_max_input_buffer":  "32768",
+		"client_recent_max_output_buffer": "65536",
+		"role":                            "master",
+	}
+	pts := p.buildDatapoints(info, nil, nil, nil, now, 1)
+	idx := indexDatapoints(pts)
+	if v := idx["redis.clients.max_input_buffer"]; len(v) != 1 || v[0].Value != 32768 {
+		t.Errorf("redis.clients.max_input_buffer: want 32768, got %v", v)
+	}
+	if v := idx["redis.clients.max_output_buffer"]; len(v) != 1 || v[0].Value != 65536 {
+		t.Errorf("redis.clients.max_output_buffer: want 65536, got %v", v)
+	}
+}
+
+// TestBuildDatapoints_ForkDuration verifies redis.latest.fork.
+func TestBuildDatapoints_ForkDuration(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+	info := map[string]string{"latest_fork_usec": "350", "role": "master"}
+	pts := p.buildDatapoints(info, nil, nil, nil, now, 1)
+	idx := indexDatapoints(pts)
+	if v := idx["redis.latest.fork"]; len(v) != 1 || v[0].Value != 350 {
+		t.Errorf("redis.latest.fork: want 350, got %v", v)
+	}
+}
+
+// TestBuildDatapoints_ReplicationBacklog verifies replication backlog metric.
+func TestBuildDatapoints_ReplicationBacklog(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+	info := map[string]string{
+		"repl_backlog_first_byte_offset": "99999",
+		"role":                           "master",
+	}
+	pts := p.buildDatapoints(info, nil, nil, nil, now, 1)
+	idx := indexDatapoints(pts)
+	if v := idx["redis.replication.backlog_first_byte_offset"]; len(v) != 1 || v[0].Value != 99999 {
+		t.Errorf("redis.replication.backlog_first_byte_offset: want 99999, got %v", v)
+	}
+}
+
+// TestBuildDatapoints_EvictedExpiredKeys verifies evicted_keys and expired_keys.
+func TestBuildDatapoints_EvictedExpiredKeys(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+	info := map[string]string{
+		"evicted_keys": "42",
+		"expired_keys": "17",
+		"role":         "master",
+	}
+	pts := p.buildDatapoints(info, nil, nil, nil, now, 1)
+	idx := indexDatapoints(pts)
+	if v := idx["redis.evicted_keys"]; len(v) != 1 || v[0].Value != 42 {
+		t.Errorf("redis.evicted_keys: want 42, got %v", v)
+	}
+	if v := idx["redis.expired_keys"]; len(v) != 1 || v[0].Value != 17 {
+		t.Errorf("redis.expired_keys: want 17, got %v", v)
+	}
+}
+
+// TestBuildDatapoints_RdbLastSaveAge verifies that rdb.last_save.age is
+// computed as now − rdb_last_save_time.
+func TestBuildDatapoints_RdbLastSaveAge(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Unix(1700001000, 0)
+	info := map[string]string{
+		"rdb_last_save_time":       "1700000000", // 1000s before now
+		"rdb_last_bgsave_time_sec": "2",
+		"role":                     "master",
+	}
+	pts := p.buildDatapoints(info, nil, nil, nil, now, 1)
+	idx := indexDatapoints(pts)
+	if v := idx["redis.rdb.last_save.age"]; len(v) != 1 {
+		t.Fatal("redis.rdb.last_save.age missing")
+	} else if v[0].Value < 999 || v[0].Value > 1001 {
+		t.Errorf("redis.rdb.last_save.age = %v, want ~1000", v[0].Value)
+	}
+	if v := idx["redis.rdb.last_bgsave.duration"]; len(v) != 1 || v[0].Value != 2 {
+		t.Errorf("redis.rdb.last_bgsave.duration: want 2, got %v", v)
+	}
+}
+
+// TestBuildDatapoints_CommandStats verifies per-command metrics.
+func TestBuildDatapoints_CommandStats(t *testing.T) {
+	p := newTestProbe(t)
+	now := time.Now()
+	cmdStats := map[string]cmdStat{
+		"get": {calls: 1000, usec: 5000},
+		"set": {calls: 200, usec: 1200},
+	}
+	pts := p.buildDatapoints(map[string]string{"role": "master"}, cmdStats, nil, nil, now, 1)
+	idx := indexDatapoints(pts)
+
+	callsPts := idx["redis.cmd.calls"]
+	if len(callsPts) != 2 {
+		t.Fatalf("redis.cmd.calls: want 2 entries (get+set), got %d", len(callsPts))
+	}
+	usecPts := idx["redis.cmd.usec"]
+	if len(usecPts) != 2 {
+		t.Fatalf("redis.cmd.usec: want 2 entries (get+set), got %d", len(usecPts))
+	}
+
+	for _, dp := range callsPts {
+		switch {
+		case hasTag(dp, "cmd", "get") && dp.Value != 1000:
+			t.Errorf("redis.cmd.calls{cmd=get} = %v, want 1000", dp.Value)
+		case hasTag(dp, "cmd", "set") && dp.Value != 200:
+			t.Errorf("redis.cmd.calls{cmd=set} = %v, want 200", dp.Value)
+		}
+	}
+}
+
+// TestParseCommandStats verifies the commandstats parser.
+func TestParseCommandStats(t *testing.T) {
+	blob := "# Commandstats\r\n" +
+		"cmdstat_get:calls=1000,usec=5000,usec_per_call=5.00,rejected_calls=0,failed_calls=0\r\n" +
+		"cmdstat_set:calls=200,usec=1200,usec_per_call=6.00,rejected_calls=0,failed_calls=0\r\n" +
+		"cmdstat_info:calls=5,usec=100,usec_per_call=20.00,rejected_calls=0,failed_calls=0\r\n"
+
+	stats := parseCommandStats(blob)
+	if len(stats) != 3 {
+		t.Fatalf("parseCommandStats: want 3 entries, got %d: %v", len(stats), stats)
+	}
+	if stats["get"].calls != 1000 {
+		t.Errorf("get.calls = %d, want 1000", stats["get"].calls)
+	}
+	if stats["get"].usec != 5000 {
+		t.Errorf("get.usec = %d, want 5000", stats["get"].usec)
+	}
+	if stats["set"].calls != 200 {
+		t.Errorf("set.calls = %d, want 200", stats["set"].calls)
+	}
+	if stats["info"].usec != 100 {
+		t.Errorf("info.usec = %d, want 100", stats["info"].usec)
 	}
 }
 
@@ -370,9 +615,12 @@ func TestSeam_ConnectAndParse(t *testing.T) {
 		"# Replication\r\nrole:master\r\nmaster_repl_offset:500\r\nconnected_slaves:0\r\n\r\n" +
 		"# Persistence\r\nrdb_changes_since_last_save:3\r\naof_enabled:1\r\n"
 
+	cmdStatsBody := "# Commandstats\r\n" +
+		"cmdstat_get:calls=100,usec=500,usec_per_call=5.00,rejected_calls=0,failed_calls=0\r\n"
+
 	p := newTestProbe(t)
 	p.dialFn = func(network, address string, timeout time.Duration) (net.Conn, error) {
-		return fakeServer(t, respBulkString(infoBody)), nil
+		return fakeServer(t, respBulkString(infoBody), respBulkString(cmdStatsBody)), nil
 	}
 
 	pts, err := p.Collect()
@@ -389,6 +637,14 @@ func TestSeam_ConnectAndParse(t *testing.T) {
 	}
 	if _, ok := idx["redis.db.keys"]; !ok {
 		t.Error("redis.db.keys missing from output")
+	}
+	// avg_ttl from keyspace
+	if ttl := idx["redis.db.avg_ttl"]; len(ttl) == 0 {
+		t.Error("redis.db.avg_ttl missing from output")
+	}
+	// per-command metrics from INFO commandstats
+	if calls := idx["redis.cmd.calls"]; len(calls) == 0 {
+		t.Error("redis.cmd.calls missing from output")
 	}
 }
 
