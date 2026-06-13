@@ -55,7 +55,7 @@ func TestCollect_PairFanout(t *testing.T) {
 	}
 
 	type key struct{ name, resolver, metric string }
-	got := map[key]float32{}
+	got := map[key]float64{}
 	for _, dp := range points {
 		var name, resolver string
 		for _, tg := range dp.Tags {

@@ -1,6 +1,6 @@
 // Package sanitize provides small, well-defined helpers that probes use to
 // turn raw external values (Veeam API JSON, perfmon counters, gopsutil
-// uint64s, …) into the float32 metric values the cache stores.
+// uint64s, …) into the float64 metric values the cache stores.
 //
 // The agent has been bitten more than once by garbage flowing all the way
 // to PRTG / Prometheus because a probe was casting a uint64 directly to
@@ -26,11 +26,11 @@ import (
 	"time"
 )
 
-// MaxInt32 mirrors math.MaxInt32 as a float32 sentinel — the largest
+// MaxInt32 mirrors math.MaxInt32 as a float64 sentinel — the largest
 // integer value PRTG / Nagios 32-bit consumers can render without overflow.
 // Stored here as a constant so probe code can clamp without depending on
 // math directly.
-const MaxInt32 float32 = 2147483647
+const MaxInt32 float64 = 2147483647
 
 // Duration returns the wall-clock seconds between `t` and `now`, treating
 // nil pointers and the Go zero time as "no data". Future timestamps —
@@ -40,7 +40,7 @@ const MaxInt32 float32 = 2147483647
 // Returns (seconds, true) when the input is usable, (0, false) otherwise.
 // The caller decides whether to emit a sentinel (e.g. -1 for "never run")
 // or drop the metric entirely.
-func Duration(t *time.Time, now time.Time) (float32, bool) {
+func Duration(t *time.Time, now time.Time) (float64, bool) {
 	if t == nil || t.IsZero() {
 		return 0, false
 	}
@@ -50,56 +50,42 @@ func Duration(t *time.Time, now time.Time) (float32, bool) {
 		// negative age which downstream dashboards cannot represent.
 		return 0, true
 	}
-	if d > float64(math.MaxFloat32) {
-		// Pathological — but be defensive in case a 0001-01-01
-		// snuck past the IsZero check (e.g. the API parsed a
-		// 1970-epoch as 0001-something).
-		return 0, false
-	}
-	return float32(d), true
+	return d, true
 }
 
 // CountInt32 converts an int64 count (number of objects, packets, …) into
 // a PRTG-safe float32. Negative inputs and values that exceed MaxInt32
 // are reported as not-ok so the caller can skip or warn — silently
 // clamping would hide upstream API bugs.
-func CountInt32(v int64) (float32, bool) {
+func CountInt32(v int64) (float64, bool) {
 	if v < 0 {
 		return 0, false
 	}
 	if v > math.MaxInt32 {
 		return MaxInt32, false
 	}
-	return float32(v), true
+	return float64(v), true
 }
 
-// Bytes converts a non-negative int64 byte count into a float32 metric
+// Bytes converts a non-negative int64 byte count into a float64 metric
 // value. Distinct from CountInt32 because byte counters (IO bytes,
 // database sizes, transferred bytes, …) routinely exceed 2 GB on busy
 // systems — capping at MaxInt32 like CountInt32 does would saturate
 // the metric within the first few minutes of monitoring and report a
 // stuck value for hours.
 //
-// The returned float32 trades precision for range:
-//   - values up to 2^24 (16 MiB) are exact
-//   - at 1 GB:  precision is ~64 bytes
-//   - at 1 TB:  precision is ~256 KiB
-//   - at 1 PB:  precision is ~256 MiB
-//   - at 1 EB:  precision is ~256 GiB
-//
-// For monitoring purposes this is fine — sub-MB precision on a 1 TB
-// counter is meaningless. PRTG/Nagios consumers receive the value as
-// float and serialize it that way (not as int32). OTLP transmits the
-// value as float64 over the wire so the precision loss is local to
-// the agent's in-memory representation.
+// float64 has a 53-bit mantissa: values up to 2^53 (~8 PiB) are exact.
+// This covers every practical byte counter without precision loss.
+// PRTG/Nagios consumers receive the value as a JSON number; OTLP
+// transmits it as float64 over the wire.
 //
 // Returns (value, true) for any non-negative input. Negative inputs
 // return (0, false) — bytes can't be negative.
-func Bytes(v int64) (float32, bool) {
+func Bytes(v int64) (float64, bool) {
 	if v < 0 {
 		return 0, false
 	}
-	return float32(v), true
+	return float64(v), true
 }
 
 // EnumValue looks `name` up in `mapping`. The mapping should be a small,
@@ -111,7 +97,7 @@ func Bytes(v int64) (float32, bool) {
 // The lookup is case-insensitive on the key side to absorb API
 // inconsistencies (Veeam used to return "source" lowercase on some
 // endpoints and "Source" on others between v11 and v12).
-func EnumValue(name string, mapping map[string]float32) (float32, bool) {
+func EnumValue(name string, mapping map[string]float64) (float64, bool) {
 	if name == "" {
 		return 0, false
 	}
@@ -131,9 +117,8 @@ func EnumValue(name string, mapping map[string]float32) (float32, bool) {
 // IsFinite reports whether v is a real number (not NaN, not +/-Inf). A
 // false return means the caller should drop the value rather than push
 // it into the cache.
-func IsFinite(v float32) bool {
-	f := float64(v)
-	return !math.IsNaN(f) && !math.IsInf(f, 0)
+func IsFinite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
 }
 
 // equalFoldShort is a tiny ASCII case-insensitive compare. We deliberately

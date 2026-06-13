@@ -84,12 +84,12 @@ func countNonNumberPoints(m *metricpb.Metric) int {
 }
 
 func numberPointToDataPoint(name string, dp *metricpb.NumberDataPoint, resourceTags []tags.Tag) data_store.DataPoint {
-	var value float32
+	var value float64
 	switch v := dp.GetValue().(type) {
 	case *metricpb.NumberDataPoint_AsDouble:
-		value = float32(v.AsDouble)
+		value = v.AsDouble
 	case *metricpb.NumberDataPoint_AsInt:
-		value = float32(v.AsInt)
+		value = float64(v.AsInt)
 	}
 
 	ts := time.Unix(0, int64(dp.GetTimeUnixNano()))

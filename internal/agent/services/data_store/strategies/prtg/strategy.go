@@ -307,7 +307,7 @@ func (s *SyncStrategyPrtg) DoSync() error {
 
 type PrtgResult struct {
 	Channel string  `json:"channel"`
-	Value   float32 `json:"value"`
+	Value   float64 `json:"value"`
 	Float   int     `json:"float"`
 }
 

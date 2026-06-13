@@ -437,7 +437,7 @@ func TestMultiInstanceMetricsCardinality(t *testing.T) {
 				for m := 0; m < scenario.metricsPerInstance; m++ {
 					dp := datapoint.DataPoint{
 						Name:  generateMetricName(scenario.probe, m),
-						Value: float32(i*10 + m),
+						Value: float64(i*10 + m),
 						Tags:  generateInstanceTags(scenario.probe, i),
 					}
 					dataPoints = append(dataPoints, dp)

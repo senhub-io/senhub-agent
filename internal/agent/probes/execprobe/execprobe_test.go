@@ -49,13 +49,13 @@ func newTestProbe(t *testing.T, config map[string]interface{}) *ExecProbe {
 	return p
 }
 
-func collectByName(t *testing.T, p *ExecProbe) map[string]float32 {
+func collectByName(t *testing.T, p *ExecProbe) map[string]float64 {
 	t.Helper()
 	points, err := p.Collect()
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	got := map[string]float32{}
+	got := map[string]float64{}
 	for _, dp := range points {
 		got[dp.Name] = dp.Value
 	}
@@ -265,7 +265,7 @@ func TestCollect_SeamStatusMapping(t *testing.T) {
 	script := writeScript(t, "exit 0\n", "@exit /b 0\r\n")
 	p := newTestProbe(t, map[string]interface{}{"command": script})
 
-	cases := map[int]float32{0: 0, 1: 1, 2: 2, 5: 3}
+	cases := map[int]float64{0: 0, 1: 1, 2: 2, 5: 3}
 	for exit, want := range cases {
 		p.run = func() execResult { return execResult{exitCode: exit} }
 		got := collectByName(t, p)

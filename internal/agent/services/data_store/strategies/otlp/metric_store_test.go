@@ -161,7 +161,7 @@ func TestMetricStore_CardinalityCap_ZeroMeansUnbounded(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		store.upsert(datapoint.DataPoint{
 			Name:  "m",
-			Value: float32(i),
+			Value: float64(i),
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "p"},
 				{Key: "probe_type", Value: "t"},
