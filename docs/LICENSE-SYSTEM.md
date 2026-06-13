@@ -41,6 +41,7 @@ Only JWT licences are supported. The previous compact-licence format (a short HM
 ### Free Tier (No License Required)
 Host-local observability — probes that watch the machine the agent runs on, not a remote system:
 
+- **apache** - Apache HTTP Server monitoring via mod_status (requests, workers, connections, traffic, uptime)
 - **cpu** - CPU utilization monitoring
 - **memory** - Memory usage monitoring
 - **logicaldisk** - Disk space and I/O monitoring

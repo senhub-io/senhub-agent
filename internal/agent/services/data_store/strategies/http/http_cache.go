@@ -51,6 +51,9 @@ const dropReasonCacheCap = "http_cache_cap"
 // - Step-by-step guide for adding new probe types
 // - Troubleshooting cache key issues
 var DiscriminantTagsRegistry = map[string][]string{
+	// Application server probes
+	"apache": {"state", "metric_type"}, // apache.workers{state=busy|idle}
+
 	// System probes - multi-instance metrics
 	"cpu":         {"core"},                           // Different CPU cores have independent values
 	"memory":      {},                                 // System-level only, no instances

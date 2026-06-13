@@ -47,13 +47,14 @@ func TestFreeTierProbes(t *testing.T) {
 func TestGetFreeTierProbes(t *testing.T) {
 	probes := GetFreeTierProbes()
 
-	// Check we have exactly 11 free tier probes
-	if len(probes) != 17 {
-		t.Errorf("GetFreeTierProbes() returned %d probes, want 17", len(probes))
+	// Check we have exactly 18 free tier probes
+	if len(probes) != 18 {
+		t.Errorf("GetFreeTierProbes() returned %d probes, want 18", len(probes))
 	}
 
 	// Check all expected probes are present
 	expectedProbes := map[string]bool{
+		"apache":            false,
 		"cpu":               false,
 		"memory":            false,
 		"logicaldisk":       false,
