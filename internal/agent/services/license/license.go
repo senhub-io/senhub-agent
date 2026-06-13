@@ -226,6 +226,11 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// elasticsearch: Elasticsearch / OpenSearch cluster and node metrics
+	// via the REST JSON API — universal observability for a database that
+	// ships with its own free distribution (same open-core wedge reasoning
+	// as snmp_poll and prometheus_scrape).
+	"elasticsearch": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
