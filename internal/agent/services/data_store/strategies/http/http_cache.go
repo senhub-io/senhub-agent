@@ -126,6 +126,11 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
 	// senhub-semantic-conventions.md §4.13 for the full collapse list).
+	"redis": {
+		"instance",    // one probe per Redis server (host:port)
+		"db",          // redis.db.keys{db=0|1|...} — per-logical-db
+		"metric_type", // separates overview / connections / memory / throughput / cache / keyspace / replication / persistence families
+	},
 	"mysql": {
 		"kind",         // mysql.threads{kind=running|connected}
 		"command",      // mysql.commands{command=select|insert|...}

@@ -1231,6 +1231,79 @@ les métriques d'interface ajoutent `network.interface.index` :
 Les `custom_mappings` et OIDs dynamiques passent par le pass-through
 typé (tag `otel_type`) — pas d'énumération ici par construction.
 
+### 4.26 Probe redis (Redis / Valkey)
+
+Probe payante (Pro). Connexion TCP brute (optionnellement TLS) au port RESP
+(défaut 6379) — aucune dépendance Go externe. Séquence : `AUTH` si mot de
+passe configuré, puis `INFO all`. La réponse bulk string RESP est parsée
+section par section en une map plate `key→value`.
+
+**Source de référence** : OTel Collector contrib
+[`redisreceiver`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/redisreceiver).
+Quand le receiver contrib expose la métrique, on suit son nom et ses attributs
+(interopérabilité directe avec les dashboards Grafana, alertes standard OTel).
+Extensions sous `senhub.db.*` quand aucun équivalent contrib n'existe.
+
+**Compatibilité Redis 7** : `slave_repl_offset` a été renommé en
+`replica_repl_offset` en Redis 7. Le probe lit les deux champs avec fallback.
+
+**Pas de dépendance externe** : le RESP de `INFO all` est parsé en stdlib
+pur (`bufio`, `net`, `crypto/tls`). Pas de client redis Go. La règle est
+invariante — toute PR ajoutant un import tiers sur ce package est rejetée.
+
+**TLS** : `tls: true` dans la config enveloppe le `net.Conn` avec
+`crypto/tls.Client` après le dial ; aucune configuration de certificat client
+n'est exposée pour l'instant (suivi #394).
+
+**Métriques émises** (séries par instance `host:port`) :
+
+| Métrique OTel | Unité | Type | Source INFO |
+|---|---|---|---|
+| `senhub.db.up` | `1` | gauge | joignabilité du cycle |
+| `redis.uptime` | `s` | counter | `uptime_in_seconds` |
+| `senhub.db.version.info` | `1` | gauge | `redis_version` (attr `db.system.version`) |
+| `redis.clients.connected` | `{client}` | gauge | `connected_clients` |
+| `redis.clients.blocked` | `{client}` | gauge | `blocked_clients` |
+| `redis.connections.received` | `{connection}` | counter | `total_connections_received` |
+| `redis.connections.rejected` | `{connection}` | counter | `rejected_connections` |
+| `redis.memory.used` | `By` | gauge | `used_memory` |
+| `redis.memory.used.rss` | `By` | gauge | `used_memory_rss` |
+| `redis.memory.peak` | `By` | gauge | `used_memory_peak` |
+| `redis.memory.fragmentation.ratio` | `1` | gauge | `mem_fragmentation_ratio` |
+| `redis.commands.processed` | `{command}` | counter | `total_commands_processed` |
+| `redis.net.input` | `By` | counter | `total_net_input_bytes` |
+| `redis.net.output` | `By` | counter | `total_net_output_bytes` |
+| `redis.ops.per_sec` | `{op}/s` | gauge | `instantaneous_ops_per_sec` |
+| `redis.keyspace.hits` | `{hit}` | counter | `keyspace_hits` |
+| `redis.keyspace.misses` | `{miss}` | counter | `keyspace_misses` |
+| `redis.keyspace.hit.ratio` | `1` | gauge | dérivé : hits/(hits+misses), 0 si aucun trafic |
+| `redis.db.keys` | `{key}` | gauge | keyspace `dbN:keys=K` — tag `db`=N, attr `db.redis.database_index` |
+| `redis.db.expires` | `{key}` | gauge | keyspace `dbN:expires=M` — tag `db`=N |
+| `redis.replication.role` | `1` | gauge | `role` — master=1, slave/replica=0, sentinel=-1 |
+| `redis.replication.offset` | `By` | counter | `master_repl_offset` (master) / `slave_repl_offset` ou `replica_repl_offset` (replica) |
+| `redis.replication.slaves.connected` | `{replica}` | gauge | `connected_slaves` (master uniquement) |
+| `redis.replication.lag` | `s` | gauge | `master_last_io_seconds_ago` (replica uniquement) |
+| `redis.rdb.changes` | `{change}` | gauge | `rdb_changes_since_last_save` |
+| `redis.aof.enabled` | `1` | gauge | `aof_enabled` |
+
+**Entité émise** (`entity rail`, source enregistrée au démarrage) :
+
+```
+type: db
+id:   {db.instance.id: "host:port"}
+attrs: {db.system.name: "redis", server.address: host, server.port: port,
+        db.version: redis_version}
+```
+
+Correspondance avec le `redisreceiver` OTel contrib : les noms `redis.*`
+correspondent aux noms contrib 1:1. Les métriques `senhub.db.*` (up, version)
+sont des extensions qui n'ont pas d'équivalent contrib.
+
+**Précision float32 sur les grands compteurs** : `used_memory`,
+`total_net_input_bytes` etc. peuvent dépasser 16 MiB sur un serveur chargé,
+au-delà duquel la mantisse float32 perd de la précision. Défaut partagé avec
+les autres probes DB (#258). La valeur est émise telle quelle.
+
 ## 6. Processus d'ajout d'une convention
 
 1. Lire les sources §1 pour le domaine concerné
