@@ -2,7 +2,7 @@ probe_name: "docker"
 friendly_name: "Docker"
 version: "1.0.0"
 host_level: false
-multi_instance_labels: ["container_name"]
+multi_instance_labels: ["container_name", "core"]
 
 # Pro-tier probe (#392). Connects to the Docker Engine API over the Unix
 # socket (no external SDK). One instance per container, discriminated by
@@ -124,6 +124,63 @@ metrics:
       container_id: container.id
       container_name: container.name
 
+  - name: "container.cpu.usage.percpu"
+    channel: "docker_{container_name}_cpu_core{core}"
+    display_name: "Docker {container_name} CPU Core {core}"
+    unit: "ns"
+    category: "cpu"
+    description: "Cumulative CPU time consumed by the container on a specific core (percpu_usage)"
+    otel:
+      name: container.cpu.usage.percpu
+      unit: "ns"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+      core: cpu.core
+
+  - name: "container.cpu.throttling_data.throttled_periods"
+    channel: "docker_{container_name}_cpu_throttled_periods"
+    display_name: "Docker {container_name} CPU Throttled Periods"
+    unit: "#"
+    category: "cpu"
+    description: "Number of periods where the container was throttled (from throttling_data)"
+    otel:
+      name: container.cpu.throttling_data.throttled_periods
+      unit: "{period}"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.cpu.throttling_data.periods"
+    channel: "docker_{container_name}_cpu_throttling_periods"
+    display_name: "Docker {container_name} CPU Throttling Periods"
+    unit: "#"
+    category: "cpu"
+    description: "Total number of CPU periods (from throttling_data.throttling_periods)"
+    otel:
+      name: container.cpu.throttling_data.periods
+      unit: "{period}"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.cpu.throttling_data.throttled_time"
+    channel: "docker_{container_name}_cpu_throttled_time"
+    display_name: "Docker {container_name} CPU Throttled Time"
+    unit: "ns"
+    category: "cpu"
+    description: "Cumulative nanoseconds the container was throttled (from throttling_data)"
+    otel:
+      name: container.cpu.throttling_data.throttled_time
+      unit: "ns"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
   - name: "container.memory.usage"
     channel: "docker_{container_name}_memory"
     display_name: "Docker {container_name} Memory Usage"
@@ -202,6 +259,163 @@ metrics:
     description: "Working set memory (usage minus page cache) — what docker stats reports as MEM USAGE"
     otel:
       name: senhub.docker.memory.working_set
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  # Deep cgroup memory stats — mirrors OTel docker stats receiver contrib coverage.
+  # Emitted only when the kernel exposes the field (presence varies by cgroup v1/v2).
+
+  - name: "container.memory.anon"
+    channel: "docker_{container_name}_memory_anon"
+    display_name: "Docker {container_name} Memory Anonymous"
+    unit: "B"
+    category: "memory"
+    description: "Anonymous (non-file-backed) memory; uses rss key on cgroupsv1, anon on cgroupsv2"
+    otel:
+      name: container.memory.anon
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.memory.mapped_file"
+    channel: "docker_{container_name}_memory_mapped_file"
+    display_name: "Docker {container_name} Memory Mapped File"
+    unit: "B"
+    category: "memory"
+    description: "Memory mapped to files (cgroupsv1 mapped_file; absent on cgroupsv2)"
+    otel:
+      name: container.memory.mapped_file
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.memory.pgfault"
+    channel: "docker_{container_name}_memory_pgfault"
+    display_name: "Docker {container_name} Memory Page Faults"
+    unit: "#"
+    category: "memory"
+    description: "Cumulative minor page faults (pgfault from memory_stats.stats)"
+    otel:
+      name: container.memory.pgfault
+      unit: "{fault}"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.memory.pgmajfault"
+    channel: "docker_{container_name}_memory_pgmajfault"
+    display_name: "Docker {container_name} Memory Major Page Faults"
+    unit: "#"
+    category: "memory"
+    description: "Cumulative major page faults requiring disk I/O (pgmajfault from memory_stats.stats)"
+    otel:
+      name: container.memory.pgmajfault
+      unit: "{fault}"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.memory.unevictable"
+    channel: "docker_{container_name}_memory_unevictable"
+    display_name: "Docker {container_name} Memory Unevictable"
+    unit: "B"
+    category: "memory"
+    description: "Memory that cannot be reclaimed (locked pages, mlocked regions)"
+    otel:
+      name: container.memory.unevictable
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.memory.writeback"
+    channel: "docker_{container_name}_memory_writeback"
+    display_name: "Docker {container_name} Memory Writeback"
+    unit: "B"
+    category: "memory"
+    description: "Memory queued for write-back to disk"
+    otel:
+      name: container.memory.writeback
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.memory.hierarchical_memory_limit"
+    channel: "docker_{container_name}_memory_hierarchical_limit"
+    display_name: "Docker {container_name} Memory Hierarchical Limit"
+    unit: "B"
+    category: "memory"
+    description: "Memory limit of the container's cgroup hierarchy (cgroupsv1 only)"
+    otel:
+      name: container.memory.hierarchical_memory_limit
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.memory.active_anon"
+    channel: "docker_{container_name}_memory_active_anon"
+    display_name: "Docker {container_name} Memory Active Anon"
+    unit: "B"
+    category: "memory"
+    description: "Recently-accessed anonymous memory in the active LRU list"
+    otel:
+      name: container.memory.active_anon
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.memory.inactive_anon"
+    channel: "docker_{container_name}_memory_inactive_anon"
+    display_name: "Docker {container_name} Memory Inactive Anon"
+    unit: "B"
+    category: "memory"
+    description: "Less-recently-accessed anonymous memory in the inactive LRU list"
+    otel:
+      name: container.memory.inactive_anon
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.memory.active_file"
+    channel: "docker_{container_name}_memory_active_file"
+    display_name: "Docker {container_name} Memory Active File"
+    unit: "B"
+    category: "memory"
+    description: "Recently-accessed file-backed memory in the active LRU list"
+    otel:
+      name: container.memory.active_file
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "container.memory.inactive_file"
+    channel: "docker_{container_name}_memory_inactive_file"
+    display_name: "Docker {container_name} Memory Inactive File"
+    unit: "B"
+    category: "memory"
+    description: "Less-recently-accessed file-backed memory in the inactive LRU list (used for working-set on cgroupsv2)"
+    otel:
+      name: container.memory.inactive_file
       unit: "By"
       type: gauge
     tag_to_attribute:
@@ -385,6 +599,40 @@ metrics:
     otel:
       name: container.blockio.io_service_bytes_recursive.write
       unit: "By"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  # io_service_time_recursive and io_sectors_recursive are cgroupsv1-only fields.
+  # They are absent on cgroupsv2 kernels — the probe emits these metrics only when
+  # the Docker API returns non-empty arrays for these fields.
+  # container.uptime is not implemented: it would require an extra per-container
+  # GET /containers/{id}/json call (State.StartedAt), which is too costly at scale.
+
+  - name: "senhub.docker.blkio.service_time.total"
+    channel: "docker_{container_name}_blkio_svc_time"
+    display_name: "Docker {container_name} Block I/O Service Time"
+    unit: "ns"
+    category: "blkio"
+    description: "Cumulative block I/O service time in nanoseconds (io_service_time_recursive Total; cgroupsv1 only)"
+    otel:
+      name: senhub.docker.blkio.service_time.total
+      unit: "ns"
+      type: counter
+    tag_to_attribute:
+      container_id: container.id
+      container_name: container.name
+
+  - name: "senhub.docker.blkio.sectors.total"
+    channel: "docker_{container_name}_blkio_sectors"
+    display_name: "Docker {container_name} Block I/O Sectors"
+    unit: "#"
+    category: "blkio"
+    description: "Cumulative block I/O sectors transferred (io_sectors_recursive Total; cgroupsv1 only)"
+    otel:
+      name: senhub.docker.blkio.sectors.total
+      unit: "{sector}"
       type: counter
     tag_to_attribute:
       container_id: container.id
