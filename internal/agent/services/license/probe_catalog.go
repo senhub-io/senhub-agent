@@ -39,6 +39,7 @@ var paidProbes = map[string]bool{
 	"linux_logs":           true,
 	"filetail":             true,
 	"ibmi":                 true,
+	"redis":                true,
 }
 
 // KnownPaidProbes returns the names of every probe registered as
