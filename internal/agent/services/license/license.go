@@ -226,6 +226,10 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// chrony: host-local NTP synchronisation health via chronyc; a
+	// fundamentally local probe (reads the clock daemon on the host,
+	// not a remote system).
+	"chrony": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
