@@ -122,6 +122,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// metric name itself (senhub.exec.<label>); no per-series labels to
 	// discriminate beyond the probe instance.
 	"exec": {"metric_type"},
+	// varnish: cache.operations collapsed via result tag; thread.operations
+	// via operation tag; all other metrics are single-instance per probe.
+	"varnish": {"result", "operation", "metric_type"},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
