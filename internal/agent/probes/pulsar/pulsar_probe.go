@@ -33,6 +33,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -80,6 +81,8 @@ type PulsarProbe struct {
 	config       probeConfig
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
+	entitySrc    *pulsarEntitySource
+	unregister   func()
 }
 
 // NewPulsarProbe constructs the probe. Config errors surface here.
@@ -109,6 +112,7 @@ func NewPulsarProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		client: &http.Client{
 			Timeout: cfg.Timeout,
 		},
+		entitySrc: newPulsarEntitySource(cfg.Endpoint),
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
@@ -125,10 +129,14 @@ func (p *PulsarProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.config.Endpoint).
 		Msg("Starting pulsar probe")
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *PulsarProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
 	p.client.CloseIdleConnections()
 	return nil
 }
@@ -145,6 +153,7 @@ func (p *PulsarProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	up := p.checkReady()
+	p.entitySrc.setReachable(up)
 	upVal := float32(0)
 	if up {
 		upVal = 1
