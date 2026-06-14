@@ -1,0 +1,184 @@
+probe_name: "cassandra"
+friendly_name: "Apache Cassandra"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["operation", "collector"]
+
+# FREE tier — Apache Cassandra monitoring via Jolokia HTTP REST.
+# Metrics aligned with the otelcol-contrib cassandraReceiver where names exist;
+# JVM metrics follow OTel semconv jvm.* namespace.
+# Cassandra reports latency in microseconds; probe converts to milliseconds.
+# GC metrics use per-collector discriminant tag "collector".
+
+metrics:
+  - name: "senhub.cassandra.up"
+    channel: "cassandra_up"
+    display_name: "Cassandra Up"
+    unit: "#"
+    category: "status"
+    description: "1 when the Cassandra Jolokia endpoint is reachable, 0 otherwise"
+    otel:
+      name: senhub.cassandra.up
+      unit: "1"
+      type: gauge
+
+  - name: "cassandra.client.connections"
+    channel: "cassandra_connections"
+    display_name: "Cassandra Native Client Connections"
+    unit: "#"
+    category: "connections"
+    description: "Number of clients connected to the native CQL transport"
+    otel:
+      name: cassandra.client.connections
+      unit: "{connection}"
+      type: gauge
+
+  - name: "cassandra.client.requests.count"
+    channel: "cassandra_requests_{operation}"
+    display_name: "Cassandra {operation} Requests"
+    unit: "#"
+    category: "requests"
+    description: "Total number of client requests (Read or Write)"
+    otel:
+      name: cassandra.client.requests.count
+      unit: "{request}"
+      type: counter
+    tag_to_attribute:
+      operation: cassandra.request.operation
+
+  - name: "cassandra.client.requests.latency"
+    channel: "cassandra_latency_mean_{operation}"
+    display_name: "Cassandra {operation} Latency Mean"
+    unit: "ms"
+    category: "requests"
+    description: "Mean client request latency in milliseconds (Read or Write)"
+    otel:
+      name: cassandra.client.requests.latency
+      unit: "ms"
+      type: gauge
+    tag_to_attribute:
+      operation: cassandra.request.operation
+
+  - name: "cassandra.client.requests.latency.p99"
+    channel: "cassandra_latency_p99_{operation}"
+    display_name: "Cassandra {operation} Latency p99"
+    unit: "ms"
+    category: "requests"
+    description: "99th percentile client request latency in milliseconds (Read or Write)"
+    otel:
+      name: cassandra.client.requests.latency.p99
+      unit: "ms"
+      type: gauge
+    tag_to_attribute:
+      operation: cassandra.request.operation
+
+  - name: "cassandra.client.requests.errors"
+    channel: "cassandra_errors_{operation}"
+    display_name: "Cassandra {operation} Errors"
+    unit: "#"
+    category: "requests"
+    description: "Total number of client request errors (Read or Write)"
+    otel:
+      name: cassandra.client.requests.errors
+      unit: "{error}"
+      type: counter
+    tag_to_attribute:
+      operation: cassandra.request.operation
+
+  - name: "cassandra.compaction.tasks.completed"
+    channel: "cassandra_compaction_completed"
+    display_name: "Cassandra Compaction Tasks Completed"
+    unit: "#"
+    category: "compaction"
+    description: "Total number of completed compaction tasks"
+    otel:
+      name: cassandra.compaction.tasks.completed
+      unit: "{task}"
+      type: counter
+
+  - name: "cassandra.compaction.tasks.pending"
+    channel: "cassandra_compaction_pending"
+    display_name: "Cassandra Compaction Tasks Pending"
+    unit: "#"
+    category: "compaction"
+    description: "Number of pending compaction tasks"
+    otel:
+      name: cassandra.compaction.tasks.pending
+      unit: "{task}"
+      type: gauge
+
+  - name: "cassandra.storage.load"
+    channel: "cassandra_storage_load"
+    display_name: "Cassandra Storage Load"
+    unit: "B"
+    category: "storage"
+    description: "Total size of all SSTables on disk in bytes"
+    otel:
+      name: cassandra.storage.load
+      unit: "By"
+      type: gauge
+
+  - name: "cassandra.storage.total_hints"
+    channel: "cassandra_storage_hints"
+    display_name: "Cassandra Total Hints"
+    unit: "#"
+    category: "storage"
+    description: "Total number of hints stored since last restart"
+    otel:
+      name: cassandra.storage.total_hints
+      unit: "{hint}"
+      type: counter
+
+  - name: "jvm.memory.heap.used"
+    channel: "cassandra_jvm_heap_used"
+    display_name: "Cassandra JVM Heap Used"
+    unit: "B"
+    category: "memory"
+    description: "JVM heap memory currently in use by the Cassandra process"
+    otel:
+      name: jvm.memory.heap.used
+      unit: "By"
+      type: gauge
+
+  - name: "jvm.gc.collections.count"
+    channel: "cassandra_gc_count_{collector}"
+    display_name: "Cassandra GC {collector} Collections"
+    unit: "#"
+    category: "gc"
+    description: "Total number of garbage collections performed by the named GC collector"
+    otel:
+      name: jvm.gc.collections.count
+      unit: "{collection}"
+      type: counter
+    tag_to_attribute:
+      collector: jvm.gc.name
+
+  - name: "jvm.gc.collections.elapsed"
+    channel: "cassandra_gc_time_{collector}"
+    display_name: "Cassandra GC {collector} Elapsed"
+    unit: "ms"
+    category: "gc"
+    description: "Total elapsed time in milliseconds spent in garbage collection by the named GC collector"
+    otel:
+      name: jvm.gc.collections.elapsed
+      unit: "ms"
+      type: counter
+    tag_to_attribute:
+      collector: jvm.gc.name
+
+tag_metadata:
+  operation:
+    type: resource
+    label: "Operation"
+  collector:
+    type: resource
+    label: "GC Collector"
+  metric_type:
+    type: category
+    label: "Metric Type"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"
