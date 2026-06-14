@@ -18,6 +18,7 @@ import (
 	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/license"
 
+	_ "senhub-agent.go/internal/agent/probes/activemq"
 	_ "senhub-agent.go/internal/agent/probes/cpu"
 	_ "senhub-agent.go/internal/agent/probes/event"
 	_ "senhub-agent.go/internal/agent/probes/filetail"

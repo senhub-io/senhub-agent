@@ -146,6 +146,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"database",  // per-database opt-in metrics
 	},
 
+	// ActiveMQ — per-destination metrics use destination + destination_type
+	// to distinguish queues from topics and individual destination instances.
+	"activemq": {"destination", "destination_type", "metric_type"},
+
 	// IBM i / Power Systems — collectors emit multiple rows per metric
 	// name, one per resource instance. These tags identify the instance.
 	"ibmi": {
