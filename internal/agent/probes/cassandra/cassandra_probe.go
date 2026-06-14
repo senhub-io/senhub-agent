@@ -12,10 +12,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -35,6 +37,14 @@ type cassandraProbe struct {
 	cfg          probeConfig
 	moduleLogger *logger.ModuleLogger
 	client       *jolokiaClient
+
+	entityObs              entityObserver
+	unregisterEntitySource func()
+
+	// jolokiaHost and jolokiaPort are the immutable identity fields
+	// extracted from cfg.JolokiaURL at construction time.
+	jolokiaHost string
+	jolokiaPort string
 }
 
 type probeConfig struct {
@@ -62,10 +72,17 @@ func NewcassandraProbe(config map[string]interface{}, baseLogger *logger.Logger)
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 
+	// Extract host and port from the Jolokia URL for entity identity.
+	// Fallback to the raw URL host segment when parsing fails so the
+	// probe still starts (entity reporting degrades, metrics still flow).
+	jolokiaHost, jolokiaPort := parseJolokiaHostPort(cfg.JolokiaURL)
+
 	p := &cassandraProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		moduleLogger: moduleLogger,
+		jolokiaHost:  jolokiaHost,
+		jolokiaPort:  jolokiaPort,
 		client: &jolokiaClient{
 			baseURL: cfg.JolokiaURL,
 			http: &http.Client{
@@ -77,6 +94,24 @@ func NewcassandraProbe(config map[string]interface{}, baseLogger *logger.Logger)
 	return p, nil
 }
 
+// parseJolokiaHostPort extracts the host and port from a Jolokia URL.
+// Returns ("localhost", "8778") as defaults when parsing fails.
+func parseJolokiaHostPort(rawURL string) (host, port string) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "localhost", "8778"
+	}
+	h := u.Hostname()
+	p := u.Port()
+	if h == "" {
+		h = "localhost"
+	}
+	if p == "" {
+		p = "8778"
+	}
+	return h, p
+}
+
 func (p *cassandraProbe) GetTargetStrategies() []string {
 	return []string{"senhub", "prtg", "http", "otlp"}
 }
@@ -85,6 +120,7 @@ func (p *cassandraProbe) ShouldStart() bool          { return true }
 func (p *cassandraProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
 func (p *cassandraProbe) OnStart(_ chan struct{}) error {
+	p.unregisterEntitySource = entity.RegisterSource(&p.entityObs)
 	p.moduleLogger.Info().
 		Str("jolokia_url", p.cfg.JolokiaURL).
 		Msg("Starting cassandra probe")
@@ -92,6 +128,9 @@ func (p *cassandraProbe) OnStart(_ chan struct{}) error {
 }
 
 func (p *cassandraProbe) OnShutdown(_ context.Context) error {
+	if p.unregisterEntitySource != nil {
+		p.unregisterEntitySource()
+	}
 	p.client.http.CloseIdleConnections()
 	return nil
 }
@@ -107,13 +146,17 @@ func (p *cassandraProbe) Collect() ([]data_store.DataPoint, error) {
 
 	up := float32(1)
 	var points []data_store.DataPoint
+	var cassandraVersion string
 
-	collected, err := p.collect(ctx, now)
+	collected, version, err := p.collect(ctx, now)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("cassandra collect failed")
 		up = 0
+		p.entityObs.setUp(p.jolokiaHost, p.jolokiaPort, false, "")
 	} else {
+		cassandraVersion = version
 		points = append(points, collected...)
+		p.entityObs.setUp(p.jolokiaHost, p.jolokiaPort, true, cassandraVersion)
 	}
 
 	upPoint := data_store.DataPoint{
@@ -130,14 +173,24 @@ func (p *cassandraProbe) Collect() ([]data_store.DataPoint, error) {
 }
 
 // collect performs all MBean reads and builds the datapoints slice.
-func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_store.DataPoint, error) {
+// The second return value is the Cassandra release version (empty string when
+// unavailable — the entity observer handles both cases gracefully).
+func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_store.DataPoint, string, error) {
 	var points []data_store.DataPoint
+
+	// Attempt to read the Cassandra release version from StorageService.
+	// This is best-effort: failure does not abort collection.
+	var cassandraVersion string
+	if ver, err := p.client.readString(ctx,
+		"org.apache.cassandra.db:type=StorageService", "ReleaseVersion"); err == nil {
+		cassandraVersion = ver
+	}
 
 	// cassandra.client.connections — connectedNativeClients
 	connections, err := p.client.readInt64(ctx,
 		"org.apache.cassandra.metrics:type=Client,name=connectedNativeClients", "Value")
 	if err != nil {
-		return nil, fmt.Errorf("connectedNativeClients: %w", err)
+		return nil, "", fmt.Errorf("connectedNativeClients: %w", err)
 	}
 	points = append(points, data_store.DataPoint{
 		Name:      "cassandra.client.connections",
@@ -160,7 +213,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 		// request count (Latency.Count)
 		count, err := p.client.readInt64(ctx, mbeanLatency, "Count")
 		if err != nil {
-			return nil, fmt.Errorf("Latency.Count(%s): %w", op, err)
+			return nil, "", fmt.Errorf("Latency.Count(%s): %w", op, err)
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      "cassandra.client.requests.count",
@@ -172,7 +225,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 		// latency mean (ms)
 		mean, err := p.client.readFloat64(ctx, mbeanLatency, "Mean")
 		if err != nil {
-			return nil, fmt.Errorf("Latency.Mean(%s): %w", op, err)
+			return nil, "", fmt.Errorf("Latency.Mean(%s): %w", op, err)
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      "cassandra.client.requests.latency",
@@ -184,7 +237,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 		// latency p99 (ms)
 		p99, err := p.client.readFloat64(ctx, mbeanLatency, "99thPercentile")
 		if err != nil {
-			return nil, fmt.Errorf("Latency.99thPercentile(%s): %w", op, err)
+			return nil, "", fmt.Errorf("Latency.99thPercentile(%s): %w", op, err)
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      "cassandra.client.requests.latency.p99",
@@ -196,7 +249,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 		// errors count (Errors.Count)
 		errCount, err := p.client.readInt64(ctx, mbeanErrors, "Count")
 		if err != nil {
-			return nil, fmt.Errorf("Errors.Count(%s): %w", op, err)
+			return nil, "", fmt.Errorf("Errors.Count(%s): %w", op, err)
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      "cassandra.client.requests.errors",
@@ -213,7 +266,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	completed, err := p.client.readInt64(ctx,
 		"org.apache.cassandra.metrics:type=Compaction,name=CompletedTasks", "Value")
 	if err != nil {
-		return nil, fmt.Errorf("CompletedTasks: %w", err)
+		return nil, "", fmt.Errorf("CompletedTasks: %w", err)
 	}
 	points = append(points, data_store.DataPoint{
 		Name:      "cassandra.compaction.tasks.completed",
@@ -226,7 +279,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	pending, err := p.client.readInt64(ctx,
 		"org.apache.cassandra.metrics:type=Compaction,name=PendingTasks", "Value")
 	if err != nil {
-		return nil, fmt.Errorf("PendingTasks: %w", err)
+		return nil, "", fmt.Errorf("PendingTasks: %w", err)
 	}
 	points = append(points, data_store.DataPoint{
 		Name:      "cassandra.compaction.tasks.pending",
@@ -239,7 +292,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	load, err := p.client.readInt64(ctx,
 		"org.apache.cassandra.metrics:type=Storage,name=Load", "Count")
 	if err != nil {
-		return nil, fmt.Errorf("Storage.Load: %w", err)
+		return nil, "", fmt.Errorf("Storage.Load: %w", err)
 	}
 	points = append(points, data_store.DataPoint{
 		Name:      "cassandra.storage.load",
@@ -252,7 +305,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	hints, err := p.client.readInt64(ctx,
 		"org.apache.cassandra.metrics:type=Storage,name=TotalHints", "Count")
 	if err != nil {
-		return nil, fmt.Errorf("Storage.TotalHints: %w", err)
+		return nil, "", fmt.Errorf("Storage.TotalHints: %w", err)
 	}
 	points = append(points, data_store.DataPoint{
 		Name:      "cassandra.storage.total_hints",
@@ -264,11 +317,11 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	// jvm.memory.heap.used — from java.lang:type=Memory HeapMemoryUsage
 	heapMap, err := p.client.readMap(ctx, "java.lang:type=Memory", "HeapMemoryUsage")
 	if err != nil {
-		return nil, fmt.Errorf("HeapMemoryUsage: %w", err)
+		return nil, "", fmt.Errorf("HeapMemoryUsage: %w", err)
 	}
 	heapUsed, err := extractInt64FromMap(heapMap, "used")
 	if err != nil {
-		return nil, fmt.Errorf("HeapMemoryUsage.used: %w", err)
+		return nil, "", fmt.Errorf("HeapMemoryUsage.used: %w", err)
 	}
 	points = append(points, data_store.DataPoint{
 		Name:      "jvm.memory.heap.used",
@@ -280,11 +333,11 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	// jvm.gc.collections.* — iterate over all GC collectors
 	gcPoints, err := p.collectGCMetrics(ctx, now)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	points = append(points, gcPoints...)
 
-	return points, nil
+	return points, cassandraVersion, nil
 }
 
 // collectGCMetrics reads GarbageCollector MBeans. Cassandra typically exposes
