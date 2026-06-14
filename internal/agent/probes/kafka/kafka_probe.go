@@ -160,9 +160,6 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 	))
 
 	// Topic + partition metrics
-	var collectedTopics []string
-	var collectedGroups []string
-
 	topicMeta, err := admin.ListTopics()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("kafka: ListTopics failed")
@@ -170,19 +167,11 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 		topicPoints, topicPartitions := p.collectTopicMetrics(client, topicMeta, now)
 		points = append(points, topicPoints...)
 
-		// Collect topic names for the entity snapshot.
-		for topic := range topicPartitions {
-			collectedTopics = append(collectedTopics, topic)
-		}
 
 		// Consumer group metrics (requires the partition map)
-		groupPoints, groupNames := p.collectGroupMetricsWithNames(admin, client, topicPartitions, now)
+		groupPoints := p.collectGroupMetricsWithNames(admin, client, topicPartitions, now)
 		points = append(points, groupPoints...)
-		collectedGroups = groupNames
 	}
-
-	// Update entity snapshot with discovered topology.
-	p.entitySrc.updateSnapshot(collectedTopics, collectedGroups)
 
 	enriched := p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName())
 	return enriched, nil
@@ -263,30 +252,25 @@ func (p *kafkaProbe) collectTopicMetrics(
 }
 
 // collectGroupMetricsWithNames returns per-group, per-group/topic, and
-// per-group/topic/partition datapoints, plus the list of discovered group names
-// for the entity snapshot.
+// per-group/topic/partition datapoints.
 func (p *kafkaProbe) collectGroupMetricsWithNames(
 	admin sarama.ClusterAdmin,
 	client sarama.Client,
 	topicPartitions map[string][]int32,
 	now time.Time,
-) ([]data_store.DataPoint, []string) {
+) []data_store.DataPoint {
 	var points []data_store.DataPoint
-	var groupNames []string
 
 	groups, err := admin.ListConsumerGroups()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("kafka: ListConsumerGroups failed")
-		return points, groupNames
+		return points
 	}
 
 	for group := range groups {
 		if !p.matchesGroup(group) {
 			continue
 		}
-
-		// Track the group name for the entity snapshot.
-		groupNames = append(groupNames, group)
 
 		// Group membership
 		groupDesc, err := admin.DescribeConsumerGroups([]string{group})
@@ -373,7 +357,7 @@ func (p *kafkaProbe) collectGroupMetricsWithNames(
 		}
 	}
 
-	return points, groupNames
+	return points
 }
 
 // buildSaramaConfig assembles a sarama.Config from the probe configuration.
