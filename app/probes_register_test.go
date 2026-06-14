@@ -30,6 +30,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"logicaldisk",
 		"memory",
 		"network",
+		"opensearch",
 		"otlp_receiver",
 		"prometheus_scrape",
 		"snmp_poll",
