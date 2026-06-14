@@ -226,6 +226,18 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// mongodb: free open-core database monitoring via the official Go
+	// driver (serverStatus + per-database dbStats). Monitoring the most
+	// popular document database is an adoption magnet; deep auth,
+	// replica-set topology and Atlas-specific metrics remain a future
+	// paid tier extension.
+	"mongodb": true,
+	// kafka: Kafka broker/topic/consumer-group monitoring via Admin API.
+	// Generic message-bus observability (brokers, partition offsets, lag)
+	// mirrors what the OTel Collector's kafkametricsreceiver gives away
+	// for free; positioning the agent as a drop-in for PRTG users who
+	// monitor Kafka today.
+	"kafka": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

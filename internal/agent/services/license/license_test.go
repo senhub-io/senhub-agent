@@ -31,6 +31,8 @@ func TestFreeTierProbes(t *testing.T) {
 		{"WebApp probe is NOT free tier", "ping_webapp", false},
 		{"Gateway probe is NOT free tier", "ping_gateway", false},
 		{"Syslog probe IS free tier (#298)", "syslog", true},
+		{"MongoDB probe is free tier", "mongodb", true},
+		{"Kafka probe is free tier", "kafka", true},
 		{"Event probe is NOT free tier", "event", false},
 	}
 
@@ -47,9 +49,9 @@ func TestFreeTierProbes(t *testing.T) {
 func TestGetFreeTierProbes(t *testing.T) {
 	probes := GetFreeTierProbes()
 
-	// Check we have exactly 11 free tier probes
-	if len(probes) != 17 {
-		t.Errorf("GetFreeTierProbes() returned %d probes, want 17", len(probes))
+	// Check we have exactly 19 free tier probes
+	if len(probes) != 19 {
+		t.Errorf("GetFreeTierProbes() returned %d probes, want 19", len(probes))
 	}
 
 	// Check all expected probes are present
@@ -71,6 +73,8 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"prometheus_scrape": false,
 		"exec":              false,
 		"syslog":            false,
+		"mongodb":           false,
+		"kafka":             false,
 	}
 
 	for _, probe := range probes {
