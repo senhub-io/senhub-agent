@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -61,6 +63,9 @@ type EnvoyProbe struct {
 
 	// collectFunc is the production fetch; overridable in tests.
 	collectFunc func() ([]data_store.DataPoint, error)
+
+	entitySrc  *envoyEntitySource
+	unregister func()
 }
 
 // NewEnvoyProbe is the probe constructor registered in init().
@@ -93,7 +98,29 @@ func NewEnvoyProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 	}
 	p.SetProbeType(ProbeType)
 	p.collectFunc = p.fetchAndParse
+
+	// Wire the entity source. Parse addr+port from the endpoint URL so the
+	// entity identity is stable across scrapes regardless of trailing slashes
+	// or query strings the caller might append later.
+	addr, port := endpointHostPort(cfg.Endpoint)
+	p.entitySrc = newEnvoyEntitySource(addr, port)
+
 	return p, nil
+}
+
+// endpointHostPort extracts the host and port from an Envoy admin endpoint URL.
+// Falls back to the raw endpoint when parsing fails.
+func endpointHostPort(endpoint string) (host, port string) {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return endpoint, ""
+	}
+	h := u.Hostname()
+	p := u.Port()
+	if h == "" {
+		h = endpoint
+	}
+	return h, p
 }
 
 func (p *EnvoyProbe) GetTargetStrategies() []string {
@@ -107,10 +134,14 @@ func (p *EnvoyProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.config.Endpoint).
 		Msg("Starting envoy probe")
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *EnvoyProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
 	p.client.CloseIdleConnections()
 	return nil
 }
@@ -126,6 +157,7 @@ func (p *EnvoyProbe) Collect() ([]data_store.DataPoint, error) {
 			Err(err).
 			Str("endpoint", p.config.Endpoint).
 			Msg("envoy admin unreachable")
+		p.entitySrc.setReachable(false, "")
 		now := time.Now()
 		upPoint := data_store.DataPoint{
 			Name:      "senhub.envoy.up",
@@ -138,6 +170,7 @@ func (p *EnvoyProbe) Collect() ([]data_store.DataPoint, error) {
 		enriched := p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{upPoint}, p.GetName())
 		return enriched, nil
 	}
+	p.entitySrc.setReachable(true, "")
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
