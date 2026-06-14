@@ -159,9 +159,7 @@ func (p *rabbitProbe) Collect() ([]data_store.DataPoint, error) {
 	if reachable {
 		p.entitySrc.setReachable(true, "")
 		points = append(points, p.collectNodes(now)...)
-		queues, queuePoints := p.collectQueuesWithSnapshot(now)
-		points = append(points, queuePoints...)
-		p.entitySrc.updateSnapshot(queues)
+		points = append(points, p.collectQueues(now)...)
 	} else {
 		p.entitySrc.setReachable(false, "")
 	}
@@ -303,18 +301,15 @@ type queueResponse struct {
 	Consumers              *int64 `json:"consumers"`
 }
 
-func (p *rabbitProbe) collectQueuesWithSnapshot(now time.Time) ([]queueSnapshot, []data_store.DataPoint) {
+func (p *rabbitProbe) collectQueues(now time.Time) []data_store.DataPoint {
 	var queues []queueResponse
 	if err := p.fetchJSON("/api/queues", &queues); err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("rabbitmq queues fetch failed")
-		return nil, nil
+		return nil
 	}
 
-	snapshot := make([]queueSnapshot, 0, len(queues))
 	var pts []data_store.DataPoint
 	for _, q := range queues {
-		snapshot = append(snapshot, queueSnapshot{name: q.Name, vhost: q.Vhost})
-
 		qTags := []tags.Tag{
 			{Key: "vhost", Value: q.Vhost},
 			{Key: "queue", Value: q.Name},
@@ -331,7 +326,7 @@ func (p *rabbitProbe) collectQueuesWithSnapshot(now time.Time) ([]queueSnapshot,
 			pts = append(pts, dp("rabbitmq.queue.consumers", float32(*v), now, qTags))
 		}
 	}
-	return snapshot, pts
+	return pts
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
