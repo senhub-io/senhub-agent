@@ -226,6 +226,11 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// influxdb: open-core database observability wedge — monitors
+	// the InfluxDB instance the agent runs alongside; scrapes the
+	// standard /health and /metrics endpoints, no vendor-specific
+	// paid API required.
+	"influxdb": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
