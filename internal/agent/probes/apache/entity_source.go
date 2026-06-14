@@ -1,18 +1,10 @@
 package apache
 
 import (
+	"strconv"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/entity"
-)
-
-const (
-	entityTypeWebServer  = "web.server"
-	idKeyServerAddress   = "server.address"
-	idKeyServerPort      = "server.port"
-	idKeyWebServerType   = "web.server.type"
-	attrWebServerVersion = "version"
-	webServerTypeApache  = "apache"
 )
 
 // apacheEntitySource feeds the entity rail. Observe() never blocks: it returns
@@ -20,21 +12,21 @@ const (
 // mod_status fetch in Collect(). ok=false before the first successful fetch so
 // the detector does not treat an empty initial cache as "server deleted".
 type apacheEntitySource struct {
-	id    map[string]any
-	mu    sync.Mutex
-	cache entity.Observation
-	ready bool
+	instanceID string
+	host       string
+	port       int64
+	mu         sync.Mutex
+	cache      entity.Observation
+	ready      bool
 }
 
 // newApacheEntitySource constructs the source from the resolved host and port
 // extracted from the probe endpoint URL.
 func newApacheEntitySource(addr string, port int) *apacheEntitySource {
 	return &apacheEntitySource{
-		id: map[string]any{
-			idKeyServerAddress: addr,
-			idKeyServerPort:    port,
-			idKeyWebServerType: webServerTypeApache,
-		},
+		instanceID: "apache://" + addr + ":" + strconv.FormatInt(int64(port), 10),
+		host:       addr,
+		port:       int64(port),
 	}
 }
 
@@ -50,14 +42,18 @@ func (s *apacheEntitySource) setReachable(up bool, version string) {
 		s.ready = true
 		return
 	}
-	attrs := map[string]any{}
+	attrs := map[string]any{
+		"service.name":   "apache",
+		"server.address": s.host,
+		"server.port":    s.port,
+	}
 	if version != "" {
-		attrs[attrWebServerVersion] = version
+		attrs["service.version"] = version
 	}
 	s.cache = entity.Observation{
 		Entities: []entity.Entity{{
-			Type:       entityTypeWebServer,
-			ID:         s.id,
+			Type:       "service.instance",
+			ID:         map[string]any{"service.instance.id": s.instanceID},
 			Attributes: attrs,
 		}},
 	}
