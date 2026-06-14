@@ -226,6 +226,11 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// clickhouse: a ClickHouse server is widely self-hosted and its
+	// /metrics Prometheus endpoint is an open standard; monitoring
+	// it follows the universal-collection posture of promscrape rather
+	// than a proprietary vendor integration.
+	"clickhouse": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
