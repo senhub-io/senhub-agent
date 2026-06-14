@@ -1,0 +1,165 @@
+probe_name: "kafka"
+friendly_name: "Kafka"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["topic", "partition", "group"]
+
+# Format v3 — OTel-first, parity with otelcol-contrib kafkametricsreceiver.
+# Metrics cover broker count, topic/partition metadata (offsets, replicas,
+# ISR) and consumer-group lag. Internal Kafka topics (prefix "__") are
+# excluded by default; topic_filter / group_filter globs narrow further.
+
+metrics:
+  # Broker-level
+  - name: "senhub.kafka.up"
+    channel: "kafka_up"
+    display_name: "Kafka Reachability"
+    unit: "#"
+    category: "status"
+    description: "1 when the last collection cycle reached the Kafka cluster, 0 otherwise"
+    otel:
+      name: senhub.kafka.up
+      unit: "1"
+      type: gauge
+
+  - name: "kafka.brokers"
+    channel: "kafka_brokers"
+    display_name: "Kafka Brokers"
+    unit: "{broker}"
+    category: "broker"
+    description: "Number of brokers in the Kafka cluster"
+    otel:
+      name: kafka.brokers
+      unit: "{broker}"
+      type: gauge
+
+  # Topic-level (discriminated by topic tag)
+  - name: "kafka.topic.partitions"
+    channel: "kafka_topic_partitions_{topic}"
+    display_name: "Kafka {topic} Partitions"
+    unit: "{partition}"
+    category: "topic"
+    description: "Number of partitions of a Kafka topic"
+    otel:
+      name: kafka.topic.partitions
+      unit: "{partition}"
+      type: gauge
+    tag_to_attribute:
+      topic: messaging.kafka.topic
+
+  # Partition-level (discriminated by topic + partition tags)
+  - name: "kafka.partition.current_offset"
+    channel: "kafka_partition_current_offset_{topic}_{partition}"
+    display_name: "Kafka {topic}/{partition} Current Offset"
+    unit: "{item}"
+    category: "partition"
+    description: "Current offset of a partition of a Kafka topic"
+    otel:
+      name: kafka.partition.current_offset
+      unit: "{item}"
+      type: gauge
+    tag_to_attribute:
+      topic: messaging.kafka.topic
+      partition: messaging.kafka.partition
+
+  - name: "kafka.partition.oldest_offset"
+    channel: "kafka_partition_oldest_offset_{topic}_{partition}"
+    display_name: "Kafka {topic}/{partition} Oldest Offset"
+    unit: "{item}"
+    category: "partition"
+    description: "Oldest offset (log start) of a partition of a Kafka topic"
+    otel:
+      name: kafka.partition.oldest_offset
+      unit: "{item}"
+      type: gauge
+    tag_to_attribute:
+      topic: messaging.kafka.topic
+      partition: messaging.kafka.partition
+
+  - name: "kafka.partition.replicas"
+    channel: "kafka_partition_replicas_{topic}_{partition}"
+    display_name: "Kafka {topic}/{partition} Replicas"
+    unit: "{replica}"
+    category: "partition"
+    description: "Number of replicas for a partition of a Kafka topic"
+    otel:
+      name: kafka.partition.replicas
+      unit: "{replica}"
+      type: gauge
+    tag_to_attribute:
+      topic: messaging.kafka.topic
+      partition: messaging.kafka.partition
+
+  - name: "kafka.partition.replicas_in_sync"
+    channel: "kafka_partition_replicas_in_sync_{topic}_{partition}"
+    display_name: "Kafka {topic}/{partition} ISR"
+    unit: "{replica}"
+    category: "partition"
+    description: "Number of in-sync replicas (ISR) for a partition of a Kafka topic"
+    otel:
+      name: kafka.partition.replicas_in_sync
+      unit: "{replica}"
+      type: gauge
+    tag_to_attribute:
+      topic: messaging.kafka.topic
+      partition: messaging.kafka.partition
+
+  # Consumer-group-level (discriminated by group tag)
+  - name: "kafka.consumer_group.members"
+    channel: "kafka_consumer_group_members_{group}"
+    display_name: "Kafka {group} Members"
+    unit: "{member}"
+    category: "consumer_group"
+    description: "Count of members in the consumer group"
+    otel:
+      name: kafka.consumer_group.members
+      unit: "{member}"
+      type: gauge
+    tag_to_attribute:
+      group: messaging.kafka.consumer.group
+
+  # Per-group/topic/partition (discriminated by group + topic + partition)
+  - name: "kafka.consumer_group.offset"
+    channel: "kafka_consumer_group_offset_{group}_{topic}_{partition}"
+    display_name: "Kafka {group}/{topic}/{partition} Offset"
+    unit: "{item}"
+    category: "consumer_group"
+    description: "Current offset of the consumer group at partition of a Kafka topic"
+    otel:
+      name: kafka.consumer_group.offset
+      unit: "{item}"
+      type: gauge
+    tag_to_attribute:
+      group: messaging.kafka.consumer.group
+      topic: messaging.kafka.topic
+      partition: messaging.kafka.partition
+
+  - name: "kafka.consumer_group.lag"
+    channel: "kafka_consumer_group_lag_{group}_{topic}_{partition}"
+    display_name: "Kafka {group}/{topic}/{partition} Lag"
+    unit: "{item}"
+    category: "consumer_group"
+    description: "Current approximate lag of consumer group at partition of a Kafka topic"
+    otel:
+      name: kafka.consumer_group.lag
+      unit: "{item}"
+      type: gauge
+    tag_to_attribute:
+      group: messaging.kafka.consumer.group
+      topic: messaging.kafka.topic
+      partition: messaging.kafka.partition
+
+  # Per-group/topic lag sum
+  - name: "kafka.consumer_group.lag_sum"
+    channel: "kafka_consumer_group_lag_sum_{group}_{topic}"
+    display_name: "Kafka {group}/{topic} Lag Sum"
+    unit: "{item}"
+    category: "consumer_group"
+    description: "Current approximate sum of consumer group lag across all partitions of a Kafka topic"
+    otel:
+      name: kafka.consumer_group.lag_sum
+      unit: "{item}"
+      type: gauge
+    tag_to_attribute:
+      group: messaging.kafka.consumer.group
+      topic: messaging.kafka.topic
