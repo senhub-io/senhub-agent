@@ -32,6 +32,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -45,6 +46,10 @@ type kafkaProbe struct {
 	*types.BaseProbe
 	cfg          probeConfig
 	moduleLogger *logger.ModuleLogger
+
+	// entity rail (Toise topology)
+	entitySrc  *kafkaEntitySource
+	unregister func()
 
 	// seams for unit testing
 	newAdmin  adminFactory
@@ -73,6 +78,14 @@ func NewKafkaProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 		newClient:    sarama.NewClient,
 	}
 	p.SetProbeType(ProbeType)
+
+	// Entity rail: use the first configured broker as the primary address.
+	primaryBroker := "localhost:9092"
+	if len(cfg.Brokers) > 0 {
+		primaryBroker = cfg.Brokers[0]
+	}
+	p.entitySrc = newKafkaEntitySource(primaryBroker)
+
 	return p, nil
 }
 
@@ -80,11 +93,19 @@ func (p *kafkaProbe) ShouldStart() bool { return true }
 
 func (p *kafkaProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
-// OnStart is a no-op: connections are created fresh on every Collect cycle.
-func (p *kafkaProbe) OnStart(_ chan struct{}) error { return nil }
+// OnStart registers the entity source with the global detector.
+func (p *kafkaProbe) OnStart(_ chan struct{}) error {
+	p.unregister = entity.RegisterSource(p.entitySrc)
+	return nil
+}
 
-// OnShutdown is a no-op: connections are closed within each Collect call.
-func (p *kafkaProbe) OnShutdown(_ context.Context) error { return nil }
+// OnShutdown unregisters the entity source and closes any open connections.
+func (p *kafkaProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
+	return nil
+}
 
 // Collect runs one collection cycle against the Kafka cluster.
 // On connection failure it emits senhub.kafka.up=0 and returns nil.
@@ -94,12 +115,14 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 	sarCfg, err := p.buildSaramaConfig()
 	if err != nil {
 		p.moduleLogger.Error().Err(err).Msg("kafka: failed to build sarama config")
+		p.entitySrc.setReachable(false, "")
 		return p.upPoint(0, now), nil
 	}
 
 	admin, err := p.newAdmin(p.cfg.Brokers, sarCfg)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Strs("brokers", p.cfg.Brokers).Msg("kafka: cannot connect (admin)")
+		p.entitySrc.setReachable(false, "")
 		return p.upPoint(0, now), nil
 	}
 	defer func() {
@@ -111,6 +134,7 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 	client, err := p.newClient(p.cfg.Brokers, sarCfg)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Strs("brokers", p.cfg.Brokers).Msg("kafka: cannot connect (client)")
+		p.entitySrc.setReachable(false, "")
 		return p.upPoint(0, now), nil
 	}
 	defer func() {
@@ -118,6 +142,9 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 			p.moduleLogger.Warn().Err(cerr).Msg("kafka: error closing client")
 		}
 	}()
+
+	// Broker is reachable; mark the entity source up.
+	p.entitySrc.setReachable(true, "")
 
 	var points []data_store.DataPoint
 
@@ -133,6 +160,9 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 	))
 
 	// Topic + partition metrics
+	var collectedTopics []string
+	var collectedGroups []string
+
 	topicMeta, err := admin.ListTopics()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("kafka: ListTopics failed")
@@ -140,10 +170,19 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 		topicPoints, topicPartitions := p.collectTopicMetrics(client, topicMeta, now)
 		points = append(points, topicPoints...)
 
+		// Collect topic names for the entity snapshot.
+		for topic := range topicPartitions {
+			collectedTopics = append(collectedTopics, topic)
+		}
+
 		// Consumer group metrics (requires the partition map)
-		groupPoints := p.collectGroupMetrics(admin, client, topicPartitions, now)
+		groupPoints, groupNames := p.collectGroupMetricsWithNames(admin, client, topicPartitions, now)
 		points = append(points, groupPoints...)
+		collectedGroups = groupNames
 	}
+
+	// Update entity snapshot with discovered topology.
+	p.entitySrc.updateSnapshot(collectedTopics, collectedGroups)
 
 	enriched := p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName())
 	return enriched, nil
@@ -223,26 +262,31 @@ func (p *kafkaProbe) collectTopicMetrics(
 	return points, topicPartitions
 }
 
-// collectGroupMetrics returns per-group, per-group/topic, and
-// per-group/topic/partition datapoints.
-func (p *kafkaProbe) collectGroupMetrics(
+// collectGroupMetricsWithNames returns per-group, per-group/topic, and
+// per-group/topic/partition datapoints, plus the list of discovered group names
+// for the entity snapshot.
+func (p *kafkaProbe) collectGroupMetricsWithNames(
 	admin sarama.ClusterAdmin,
 	client sarama.Client,
 	topicPartitions map[string][]int32,
 	now time.Time,
-) []data_store.DataPoint {
+) ([]data_store.DataPoint, []string) {
 	var points []data_store.DataPoint
+	var groupNames []string
 
 	groups, err := admin.ListConsumerGroups()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("kafka: ListConsumerGroups failed")
-		return points
+		return points, groupNames
 	}
 
 	for group := range groups {
 		if !p.matchesGroup(group) {
 			continue
 		}
+
+		// Track the group name for the entity snapshot.
+		groupNames = append(groupNames, group)
 
 		// Group membership
 		groupDesc, err := admin.DescribeConsumerGroups([]string{group})
@@ -329,7 +373,7 @@ func (p *kafkaProbe) collectGroupMetrics(
 		}
 	}
 
-	return points
+	return points, groupNames
 }
 
 // buildSaramaConfig assembles a sarama.Config from the probe configuration.
