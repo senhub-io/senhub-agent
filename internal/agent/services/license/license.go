@@ -226,6 +226,10 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// tomcat: application-server monitoring via Jolokia REST. Free tier
+	// on the same open-core wedge as snmp_poll / otlp_receiver — every
+	// PRTG estate has a Tomcat sensor; this replaces it at zero cost.
+	"tomcat": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
