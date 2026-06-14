@@ -13,6 +13,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -32,6 +33,8 @@ type MemcachedProbe struct {
 	*types.BaseProbe
 	cfg          memcachedConfig
 	moduleLogger *logger.ModuleLogger
+	entitySrc    *memcachedEntitySource
+	unregister   func()
 }
 
 type memcachedConfig struct {
@@ -69,6 +72,7 @@ func NewMemcachedProbe(config map[string]interface{}, baseLogger *logger.Logger)
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		moduleLogger: moduleLogger,
+		entitySrc:    newMemcachedEntitySource(cfg.Host, cfg.Port),
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
@@ -86,10 +90,16 @@ func (p *MemcachedProbe) OnStart(_ chan struct{}) error {
 		Str("host", p.cfg.Host).
 		Int("port", p.cfg.Port).
 		Msg("Starting memcached probe")
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
-func (p *MemcachedProbe) OnShutdown(_ context.Context) error { return nil }
+func (p *MemcachedProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
+	return nil
+}
 
 // Collect connects to Memcached, sends "stats\r\n", parses the response
 // and emits datapoints. senhub.memcached.up is always emitted.
@@ -103,6 +113,9 @@ func (p *MemcachedProbe) Collect() ([]data_store.DataPoint, error) {
 	if err != nil {
 		upValue = 0
 		p.moduleLogger.Warn().Err(err).Str("addr", addr).Msg("memcached stats fetch failed")
+		p.entitySrc.setReachable(false, "")
+	} else {
+		p.entitySrc.setReachable(true, statsMap["version"])
 	}
 
 	commonTags := []tags.Tag{
