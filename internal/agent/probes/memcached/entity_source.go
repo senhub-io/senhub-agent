@@ -1,15 +1,10 @@
 package memcached
 
 import (
+	"strconv"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/entity"
-)
-
-const (
-	entityTypeMemcached = "db.memcached"
-	idKeyServerAddress  = "server.address"
-	idKeyServerPort     = "server.port"
 )
 
 // memcachedEntitySource feeds the entity rail with the monitored Memcached
@@ -17,20 +12,22 @@ const (
 // before the first successful collection cycle so the detector does not treat
 // an initial empty cache as "server deleted".
 type memcachedEntitySource struct {
-	id map[string]any
+	instanceID string
 
-	mu    sync.Mutex
+	mu    sync.RWMutex
 	up    bool
 	attrs map[string]any
 	ready bool
+
+	host string
+	port int64
 }
 
 func newMemcachedEntitySource(host string, port int) *memcachedEntitySource {
 	return &memcachedEntitySource{
-		id: map[string]any{
-			idKeyServerAddress: host,
-			idKeyServerPort:    int64(port),
-		},
+		instanceID: "memcached://" + host + ":" + strconv.FormatInt(int64(port), 10),
+		host:       host,
+		port:       int64(port),
 	}
 }
 
@@ -41,9 +38,14 @@ func (s *memcachedEntitySource) setReachable(up bool, version string) {
 	defer s.mu.Unlock()
 	s.up = up
 	s.ready = true
-	if up && version != "" {
-		s.attrs = map[string]any{"version": version}
-	} else if !up {
+	if up {
+		s.attrs = map[string]any{
+			"db.system.name":    "memcached",
+			"server.address":    s.host,
+			"server.port":       s.port,
+			"db.system.version": version,
+		}
+	} else {
 		s.attrs = nil
 	}
 }
@@ -52,22 +54,19 @@ func (s *memcachedEntitySource) setReachable(up bool, version string) {
 // the detector goroutine. Returns ok=false until the first Collect cycle
 // completes (to distinguish "not yet observed" from "server gone").
 func (s *memcachedEntitySource) Observe() (entity.Observation, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if !s.ready {
 		return entity.Observation{}, false
 	}
 	if !s.up {
 		return entity.Observation{}, true
 	}
-	obs := entity.Observation{
-		Entities: []entity.Entity{
-			{
-				Type:       entityTypeMemcached,
-				ID:         s.id,
-				Attributes: s.attrs,
-			},
-		},
-	}
-	return obs, true
+	return entity.Observation{
+		Entities: []entity.Entity{{
+			Type:       "db",
+			ID:         map[string]any{"db.instance.id": s.instanceID},
+			Attributes: s.attrs,
+		}},
+	}, true
 }
