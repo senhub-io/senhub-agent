@@ -1,13 +1,14 @@
 package zookeeper
 
 import (
+	"strconv"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // entityObserver implements entity.Source for the zookeeper probe.
-// It reports the monitored ZooKeeper node as a coordination.service entity
+// It reports the monitored ZooKeeper node as a service.instance entity
 // and updates liveness and version after each Collect cycle.
 type entityObserver struct {
 	mu  sync.Mutex
@@ -36,22 +37,22 @@ func (e *entityObserver) setUp(addr string, port int, up bool, version string) {
 		return
 	}
 
-	id := map[string]any{
-		"server.address":       addr,
-		"server.port":          port,
-		"coordination.system":  "zookeeper",
-	}
+	instanceID := "zookeeper://" + addr + ":" + strconv.Itoa(port)
 
-	attrs := map[string]any{}
+	attrs := map[string]any{
+		"service.name":   "zookeeper",
+		"server.address": addr,
+		"server.port":    port,
+	}
 	if version != "" {
-		attrs["version"] = version
+		attrs["service.version"] = version
 	}
 
 	obs := entity.Observation{
 		Entities: []entity.Entity{
 			{
-				Type:       "coordination.service",
-				ID:         id,
+				Type:       "service.instance",
+				ID:         map[string]any{"service.instance.id": instanceID},
 				Attributes: attrs,
 			},
 		},
