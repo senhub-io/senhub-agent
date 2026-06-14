@@ -20,6 +20,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -70,6 +71,8 @@ type WildflyProbe struct {
 	cfg          probeConfig
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
+	entitySrc    *wildflyEntitySource
+	unregister   func()
 }
 
 // NewWildflyProbe is the probe constructor.
@@ -88,6 +91,7 @@ func NewWildflyProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		client: &http.Client{
 			Timeout: cfg.Timeout,
 		},
+		entitySrc: newWildflyEntitySource(cfg.Endpoint),
 	}
 	p.SetProbeType(ProbeType)
 	return p, nil
@@ -130,10 +134,14 @@ func (p *WildflyProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("Starting wildfly probe")
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *WildflyProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
 	p.client.CloseIdleConnections()
 	return nil
 }
@@ -154,8 +162,10 @@ func (p *WildflyProbe) Collect() ([]data_store.DataPoint, error) {
 			Err(err).
 			Str("endpoint", p.cfg.Endpoint).
 			Msg("wildfly collect failed")
+		p.entitySrc.setReachable(false, "")
 	} else {
 		up = 1
+		p.entitySrc.setReachable(true, "")
 	}
 
 	upPoint := data_store.DataPoint{
