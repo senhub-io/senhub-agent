@@ -201,6 +201,7 @@ func (v *JWTValidator) IsInGracePeriod(license *License) bool {
 // is the same open-core "bring everything in" wedge, not a paid vendor
 // integration.
 var freeTierProbes = map[string]bool{
+	"activemq":         true,
 	"cpu":              true,
 	"memory":           true,
 	"logicaldisk":      true,
