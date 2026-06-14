@@ -8,26 +8,28 @@ import (
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
-// mongodbEntitySource feeds the entity rail with the db.mongodb instance this
+// mongodbEntitySource feeds the entity rail with the MongoDB instance this
 // probe monitors. Observe is non-blocking; setReachable is called from Collect.
 type mongodbEntitySource struct {
-	id  map[string]any
-	mu  sync.RWMutex
-	up  bool
-	// attrs holds mutable descriptive attributes (e.g. server version).
+	instanceID string
+	mu         sync.RWMutex
+	up         bool
+	// attrs holds descriptive attributes; updated on each successful collection.
 	attrs map[string]any
 }
 
 // newMongodbEntitySource builds the entity source from the probe URI. The
-// identity (server.address, server.port, db.system.name) is extracted once at
-// construction and never changes for the lifetime of the source.
+// instance identity is extracted once at construction and never changes for
+// the lifetime of the source.
 func newMongodbEntitySource(uri string) *mongodbEntitySource {
 	addr, port := hostPortFromURI(uri)
+	instanceID := "mongodb://" + addr + ":" + strconv.FormatInt(port, 10)
 	return &mongodbEntitySource{
-		id: map[string]any{
-			"server.address":  addr,
-			"server.port":     port,
-			"db.system.name":  "mongodb",
+		instanceID: instanceID,
+		attrs: map[string]any{
+			"db.system.name": "mongodb",
+			"server.address": addr,
+			"server.port":    port,
 		},
 	}
 }
@@ -40,7 +42,7 @@ func (s *mongodbEntitySource) setReachable(up bool, version string) {
 	s.mu.Lock()
 	s.up = up
 	if up && version != "" {
-		s.attrs = map[string]any{"version": version}
+		s.attrs["db.system.version"] = version
 	}
 	s.mu.Unlock()
 }
@@ -54,14 +56,13 @@ func (s *mongodbEntitySource) Observe() (entity.Observation, bool) {
 	if !s.up {
 		return entity.Observation{}, false
 	}
-	obs := entity.Observation{
+	return entity.Observation{
 		Entities: []entity.Entity{{
-			Type:       "db.mongodb",
-			ID:         s.id,
+			Type:       "db",
+			ID:         map[string]any{"db.instance.id": s.instanceID},
 			Attributes: s.attrs,
 		}},
-	}
-	return obs, true
+	}, true
 }
 
 // hostPortFromURI extracts the host and port from a MongoDB URI such as
