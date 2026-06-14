@@ -13,11 +13,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -46,6 +49,8 @@ type phpFPMProbe struct {
 	cfg          probeConfig
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
+	entitySrc    *phpfpmEntitySource
+	unregister   func()
 }
 
 type probeConfig struct {
@@ -81,6 +86,10 @@ func NewPHPFPMProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		},
 	}
 	probe.SetProbeType(ProbeType)
+
+	addr, port := endpointHostPort(cfg.Endpoint)
+	probe.entitySrc = newPhpfpmEntitySource(addr, port)
+
 	return probe, nil
 }
 
@@ -114,10 +123,14 @@ func (p *phpFPMProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("Starting phpfpm probe")
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *phpFPMProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
 	p.client.CloseIdleConnections()
 	return nil
 }
@@ -134,11 +147,13 @@ func (p *phpFPMProbe) collect(now time.Time) ([]data_store.DataPoint, error) {
 	status, err := p.fetchStatus()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).Msg("phpfpm status fetch failed")
+		p.entitySrc.setReachable(false, "")
 		upTags := []tags.Tag{{Key: "metric_type", Value: "availability"}}
 		return []data_store.DataPoint{
 			{Name: "senhub.phpfpm.up", Value: 0, Timestamp: now, Tags: upTags},
 		}, err
 	}
+	p.entitySrc.setReachable(true, "")
 
 	poolTag := status.Pool
 	if poolTag == "" {
@@ -171,6 +186,27 @@ func (p *phpFPMProbe) collect(now time.Time) ([]data_store.DataPoint, error) {
 		{Name: "phpfpm.max_children_reached", Value: float32(status.MaxChildrenReached), Timestamp: now, Tags: connTags},
 	}
 	return points, nil
+}
+
+// endpointHostPort extracts host and port from an HTTP endpoint URL.
+// Port defaults to 80 (http) or 443 (https) when absent.
+func endpointHostPort(endpoint string) (string, int) {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Hostname() == "" {
+		return "localhost", 80
+	}
+	host := u.Hostname()
+	if p := u.Port(); p != "" {
+		if n, err := strconv.Atoi(p); err == nil {
+			return host, n
+		}
+	}
+	switch u.Scheme {
+	case "https":
+		return host, 443
+	default:
+		return host, 80
+	}
 }
 
 // fetchStatus performs the HTTP GET to the status endpoint and
