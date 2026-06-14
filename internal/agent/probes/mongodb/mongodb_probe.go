@@ -23,6 +23,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -53,6 +54,10 @@ type mongoDBProbe struct {
 	// connectClient is the factory used to create a mongo.Client. Overridable
 	// in tests so no real MongoDB is required.
 	connectClient func(ctx context.Context, uri string, direct bool, timeout time.Duration) (*mongodrv.Client, error)
+
+	// entitySrc feeds the Toise topology inventory (db.mongodb entity).
+	entitySrc  *mongodbEntitySource
+	unregister func()
 }
 
 // NewMongoDBProbe builds a mongodb probe from its raw params block.
@@ -84,6 +89,7 @@ func NewMongoDBProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger
 		},
 	}
 	probe.SetProbeType(probeType)
+	probe.entitySrc = newMongodbEntitySource(cfg.URI)
 	return probe, nil
 }
 
@@ -104,12 +110,16 @@ func (p *mongoDBProbe) OnStart(_ chan struct{}) error {
 		return fmt.Errorf("mongodb: connecting to %s: %w", p.cfg.URI, err)
 	}
 	p.client = client
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	p.moduleLogger.Info().Str("uri", p.cfg.URI).Msg("MongoDB probe started")
 	return nil
 }
 
 // OnShutdown closes the MongoDB client cleanly.
 func (p *mongoDBProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
 	if p.client == nil {
 		return nil
 	}
@@ -132,8 +142,11 @@ func (p *mongoDBProbe) Collect() ([]data_store.DataPoint, error) {
 	status, err := p.runServerStatus()
 	if err != nil {
 		up = 0
+		p.entitySrc.setReachable(false, "")
 		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("MongoDB serverStatus failed")
 	} else {
+		version, _ := status["version"].(string)
+		p.entitySrc.setReachable(true, version)
 		points = append(points, p.buildServerStatusPoints(status, now)...)
 
 		dbPoints, dbErr := p.collectDatabaseStats(now)
