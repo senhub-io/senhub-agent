@@ -86,15 +86,17 @@ func NewSnmpPollProbe(rawConfig map[string]interface{}, baseLogger *logger.Logge
 			Msg("snmp_poll discovery is configured but not active yet (#156): the block is validated and ignored; per-device topology (LLDP/routes/bridge) still runs")
 	}
 
+	entitySrc := newEntitySource(cfg, moduleLogger)
 	probe := &snmppollProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		instance:     cfg.Target + ":" + strconv.Itoa(int(cfg.Port)),
 		moduleLogger: moduleLogger,
-		entitySource: newEntitySource(cfg, moduleLogger),
+		entitySource: entitySrc,
 		newClient:    func(c *config) snmpClient { return newGosnmpClient(c) },
 	}
 	probe.SetProbeType(probeType)
+	probe.SetEntitySource(entitySrc)
 	return probe, nil
 }
 

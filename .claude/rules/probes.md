@@ -17,6 +17,7 @@ type Probe interface {
     OnStart(quitChannel chan struct{}) error
     Collect() ([]datapoint.DataPoint, error)
     OnShutdown(ctx context.Context) error
+    EntitySource() entity.Source
 }
 ```
 
@@ -49,6 +50,8 @@ type Probe interface {
    This adds `probe_name` and `probe_type` to every datapoint. Every other probe (Veeam, NetScaler, Citrix, Redfish) does this — new probes follow the same contract.
 
 4. **Register in `internal/agent/probes/registry.go`** with the canonical type name. The registry name MUST match the YAML transformer file name (`mysql.yaml`, `postgresql.yaml`).
+
+5. **Entity source** — call `SetEntitySource()` in the constructor for remote-target probes (see §Mandatory wiring — five touch-points below). Host-level probes and log conduits inherit `NoOpEntitySource` from `BaseProbe` automatically.
 
 ## commonTags shape
 
@@ -97,9 +100,9 @@ Each `tag_to_attribute` in the YAML maps probe tags to OTel attributes. Add the 
 - `Collect`: one cycle. Ping/validate the connection before issuing queries (server restarts, idle timeouts). Emit datapoints even on partial failure (always emit `senhub.db.up` for DB probes).
 - `OnShutdown`: close connections cleanly; cancel any in-flight context.
 
-## License touch-points — every new probe MUST update all four
+## Mandatory wiring — five touch-points, every new probe, same PR
 
-When adding a probe, register it in the **four** places below in the **same PR**. The structural invariant test `TestEveryRegisteredProbeIsAuthorizable` in `internal/agent/probes/registry_invariant_test.go` makes the license half non-skippable — CI fails if you wire the probe in `registry.go` without claiming a license seat. The other places are not test-enforced today but matter just as much.
+When adding a probe, register it in the **five** places below in the **same PR**. The structural invariant tests in `internal/agent/probes/registry_invariant_test.go` make the license and entity source halves non-skippable — CI fails if either is missing. The other places are not test-enforced today but matter just as much.
 
 1. **`internal/agent/probes/registry.go`** — add the entry to `probeConstructors`. The registry name MUST match the YAML transformer file name (`mysql.yaml`, `ibmi.yaml`).
 2. **License authorization** — pick one:
@@ -107,6 +110,64 @@ When adding a probe, register it in the **four** places below in the **same PR**
    - **Paid (Pro/Enterprise)** → add the probe name to `paidProbes` in `internal/agent/services/license/probe_catalog.go` so a JWT licence is allowed to grant it via the `authorized_probes` claim. The structural test fails if a probe is wired in the registry without an entry here.
 3. **`docs/LICENSE-SYSTEM.md`** — add the probe to the correct tier section (Free or Pro). The doc has drifted multiple times in the past; the structural test catches code drift, not doc drift.
 4. **YAML transformer** at `internal/agent/services/data_store/transformers/definitions/<probe>.yaml` (unless the probe is a pure log conduit like `linux_logs` — in that case document the absence in `senhub-semantic-conventions.md`). Every metric in the YAML needs an `otel:` block (see `feedback_otel_first.md`); the prometheus mapper warns once per unmapped metric and silently drops, so a missing block ships as a silent feature gap.
+5. **Entity source** in the probe's constructor — non-negotiable, enforced by
+   `TestEveryRegisteredProbeHasEntitySource` in `registry_invariant_test.go`.
+
+   **Remote-target probes** (anything monitoring a distinct external system — a DB instance, a message broker, an HTTP endpoint): call `SetEntitySource()` with a `SimpleEntitySource` in the constructor. The invariant test catches a nil return; `SimpleEntitySource` satisfies it:
+
+   ```go
+   // In the probe's constructor:
+   entitySrc := types.NewSimpleEntitySource("db.redis", map[string]any{
+       "server.address": cfg.Host,
+       "server.port":    int64(cfg.Port),
+   })
+   p.SetEntitySource(entitySrc)
+
+   // In OnStart():
+   p.unregister = entity.RegisterSource(p.EntitySource())
+
+   // In Collect(), after success:
+   entitySrc.SetUp(true, map[string]any{"db.system.version": version})
+   // On failure:
+   entitySrc.SetUp(false, nil)
+
+   // In OnShutdown():
+   if p.unregister != nil { p.unregister() }
+   ```
+
+   **Host-level probes and log conduits** (cpu, memory, network, logicaldisk, linux_logs, syslog, filetail, windowseventlog, event): do NOT call `SetEntitySource()`. They inherit the `NoOpEntitySource` fallback from `BaseProbe`, which satisfies the invariant without emitting extra entity events — the host entity is already reported by the entity detector.
+
+   Entity type taxonomy (immutable — changing a type is a breaking change for Toise):
+
+   | Technology | Entity type | Immutable ID keys |
+   |---|---|---|
+   | Redis/Valkey | `db.redis` | `server.address`, `server.port` |
+   | MongoDB | `db.mongodb` | `server.address`, `server.port` |
+   | Cassandra | `db.cassandra` | `server.address`, `server.port` |
+   | CouchDB | `db.couchdb` | `server.address`, `server.port` |
+   | InfluxDB | `db.influxdb` | `server.address`, `server.port` |
+   | ClickHouse | `db.clickhouse` | `server.address`, `server.port` |
+   | Memcached | `db.memcached` | `server.address`, `server.port` |
+   | Elasticsearch | `search.engine` | `server.address`, `server.port`, `search.engine.type=elasticsearch` |
+   | OpenSearch | `search.engine` | `server.address`, `server.port`, `search.engine.type=opensearch` |
+   | Solr | `search.engine` | `server.address`, `server.port`, `search.engine.type=solr` |
+   | Nginx | `web.server` | `server.address`, `server.port`, `web.server.type=nginx` |
+   | Apache | `web.server` | `server.address`, `server.port`, `web.server.type=apache` |
+   | HAProxy | `load_balancer` | `server.address`, `server.port` |
+   | Envoy | `proxy` | `server.address`, `server.port` |
+   | Varnish | `cache.server` | `server.address`, `server.port` |
+   | RabbitMQ | `messaging.broker` | `server.address`, `server.port`, `messaging.system=rabbitmq` |
+   | Kafka | `messaging.broker` | `server.address`, `server.port`, `messaging.system=kafka` |
+   | ActiveMQ | `messaging.broker` | `server.address`, `server.port`, `messaging.system=activemq` |
+   | Pulsar | `messaging.broker` | `server.address`, `server.port`, `messaging.system=pulsar` |
+   | Tomcat | `app.server` | `server.address`, `server.port`, `app.server.type=tomcat` |
+   | WildFly | `app.server` | `server.address`, `server.port`, `app.server.type=wildfly` |
+   | Zookeeper | `coordination.service` | `server.address`, `server.port` |
+   | Consul | `service_mesh.node` | `server.address`, `server.port` |
+   | PHP-FPM | `runtime.php_fpm` | `server.address`, `server.port` |
+   | Docker container | `container` | `container.id` |
+   | SNMP device | `network.device` | (managed by snmppoll — already implemented) |
+   | Host | `host` | (managed by entity detector — already implemented) |
 
 For probes that emit collapsed metrics (one OTel name + discriminator attribute), also add the discriminator tag key to `DiscriminantTagsRegistry["<probe>"]` in `internal/agent/services/data_store/strategies/http/http_cache.go`. Without this, the cache key collapses all variants onto one slot.
 
