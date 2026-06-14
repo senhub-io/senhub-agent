@@ -14,6 +14,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -43,6 +44,8 @@ type VarnishProbe struct {
 	*types.BaseProbe
 	cfg          varnishConfig
 	moduleLogger *logger.ModuleLogger
+	entitySrc    *varnishEntitySource
+	unregister   func()
 }
 
 // NewVarnishProbe constructs the probe. Config errors surface here.
@@ -68,6 +71,7 @@ func NewVarnishProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		moduleLogger: moduleLogger,
+		entitySrc:    newVarnishEntitySource(cfg.InstanceName),
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
@@ -85,10 +89,16 @@ func (p *VarnishProbe) OnStart(_ chan struct{}) error {
 		Str("varnishstat_path", p.cfg.VarnishstatPath).
 		Str("instance_name", p.cfg.InstanceName).
 		Msg("starting varnish probe")
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
-func (p *VarnishProbe) OnShutdown(_ context.Context) error { return nil }
+func (p *VarnishProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
+	return nil
+}
 
 // Collect runs varnishstat and emits datapoints. If varnishstat is not found
 // or returns an error, senhub.varnish.up=0 is emitted and no error is
@@ -101,12 +111,14 @@ func (p *VarnishProbe) Collect() ([]data_store.DataPoint, error) {
 	stats, err := p.runVarnishstat()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("varnishstat failed; reporting varnish down")
+		p.entitySrc.setReachable(false)
 		points := []data_store.DataPoint{
 			{Name: "senhub.varnish.up", Value: float32(0), Timestamp: now, Tags: []tags.Tag{statusTag}},
 		}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
+	p.entitySrc.setReachable(true)
 	points := p.buildDataPoints(stats, now)
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
