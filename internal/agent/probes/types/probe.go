@@ -3,8 +3,10 @@ package types
 
 import (
 	"context"
-	"senhub-agent.go/internal/agent/types/datapoint"
 	"time"
+
+	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // Probe defines the interface that all probes must implement.
@@ -28,6 +30,14 @@ type Probe interface {
 
 	// OnShutdown handles cleanup when probe is stopped
 	OnShutdown(ctx context.Context) error
+
+	// EntitySource returns the entity.Source this probe registers with the detector.
+	// Every probe MUST return a non-nil Source — the invariant test enforces this.
+	// The Source describes what this probe monitors (a db.redis instance, a web.server,
+	// etc.) so the entity detector can emit it into Toise topology. Host-level probes
+	// and log conduits inherit the default NoOpEntitySource from BaseProbe, which
+	// satisfies the invariant without polluting the entity graph.
+	EntitySource() entity.Source
 }
 
 // ProbeWithCallback extends Probe for event-driven collection
