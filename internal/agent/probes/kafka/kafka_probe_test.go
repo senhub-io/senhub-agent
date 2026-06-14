@@ -282,6 +282,7 @@ func TestCollect_UpZeroOnAdminError(t *testing.T) {
 		BaseProbe:    newBase(t),
 		cfg:          probeConfig{Brokers: []string{"dead:9092"}, ProtocolVersion: "2.0.0"},
 		moduleLogger: logger.NewModuleLogger(makeLogger(t), "probe.kafka"),
+		entitySrc:    newKafkaEntitySource("dead:9092"),
 		newAdmin: func(_ []string, _ *sarama.Config) (sarama.ClusterAdmin, error) {
 			kerr := sarama.ErrUnknown
 			return nil, kerr
@@ -546,10 +547,15 @@ func newBase(t *testing.T) *probeTypes.BaseProbe {
 
 func newTestProbe(t *testing.T, adm *fakeAdmin, cli *fakeClient, cfg probeConfig) *kafkaProbe {
 	t.Helper()
+	primaryBroker := "localhost:9092"
+	if len(cfg.Brokers) > 0 {
+		primaryBroker = cfg.Brokers[0]
+	}
 	p := &kafkaProbe{
 		BaseProbe:    newBase(t),
 		cfg:          cfg,
 		moduleLogger: logger.NewModuleLogger(makeLogger(t), "probe.kafka"),
+		entitySrc:    newKafkaEntitySource(primaryBroker),
 		newAdmin: func(_ []string, _ *sarama.Config) (sarama.ClusterAdmin, error) {
 			return adm, nil
 		},
