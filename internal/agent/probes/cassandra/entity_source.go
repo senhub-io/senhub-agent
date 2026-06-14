@@ -7,8 +7,9 @@ import (
 )
 
 // entityObserver implements entity.Source for the cassandra probe.
-// It reports the monitored Cassandra node as a db.cassandra entity
-// and updates liveness and version after each Collect cycle.
+// It reports the monitored Cassandra node as a db entity following the
+// Toise v0.5.0 strict contract and updates liveness and version after
+// each Collect cycle.
 type entityObserver struct {
 	mu  sync.Mutex
 	obs entity.Observation
@@ -37,22 +38,22 @@ func (e *entityObserver) setUp(addr string, port string, up bool, version string
 		return
 	}
 
-	id := map[string]any{
+	instanceID := "cassandra://" + addr + ":" + port
+
+	attrs := map[string]any{
+		"db.system.name": "cassandra",
 		"server.address": addr,
 		"server.port":    port,
-		"db.system.name": "cassandra",
 	}
-
-	attrs := map[string]any{}
 	if version != "" {
-		attrs["db.version"] = version
+		attrs["db.system.version"] = version
 	}
 
 	obs := entity.Observation{
 		Entities: []entity.Entity{
 			{
-				Type:       "db.cassandra",
-				ID:         id,
+				Type:       "db",
+				ID:         map[string]any{"db.instance.id": instanceID},
 				Attributes: attrs,
 			},
 		},
