@@ -226,6 +226,11 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// envoy: scrapes the Envoy admin /stats?format=prometheus endpoint.
+	// Envoy is a widely deployed open-source proxy; exposing its admin
+	// interface locally is the same posture as prometheus_scrape — it is
+	// universal collection, not a paid vendor integration.
+	"envoy": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
