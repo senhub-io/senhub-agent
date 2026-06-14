@@ -19,6 +19,7 @@ import (
 	"senhub-agent.go/internal/agent/services/license"
 
 	_ "senhub-agent.go/internal/agent/probes/cpu"
+	_ "senhub-agent.go/internal/agent/probes/envoy"
 	_ "senhub-agent.go/internal/agent/probes/event"
 	_ "senhub-agent.go/internal/agent/probes/filetail"
 	_ "senhub-agent.go/internal/agent/probes/host"
