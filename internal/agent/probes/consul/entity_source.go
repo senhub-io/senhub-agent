@@ -1,121 +1,72 @@
 package consul
 
 import (
+	"strconv"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
-// consulEntitySource feeds the entity rail for a Consul probe. Observe()
-// never blocks: it returns the last cached snapshot set during Collect.
-//
-// Entity model:
-//   - service_mesh.node  — the Consul agent being monitored
-//                          ID = {server.address, server.port, service_mesh.system}
-//   - service.instance   — one per healthy registered service
-//                          ID = {server.address, service_mesh.system, service.name}
-//
-// Relations:
-//   - service_mesh.node  registers  service.instance
+// consulEntitySource feeds the entity rail with the Consul agent instance.
+// Observe() never blocks: it returns the last cached snapshot. The cache is
+// refreshed on each successful Collect() cycle. ok=false before the first
+// successful fetch so the detector does not treat an empty initial cache as
+// "server deleted".
 type consulEntitySource struct {
-	// immutable identity fields set at construction time
-	nodeID map[string]any
+	instanceID string
+	host       string
+	port       int64
 
-	mu       sync.RWMutex
-	up       bool
-	version  string
-	services []string
+	mu    sync.Mutex
+	cache entity.Observation
+	ready bool
 }
 
-// newConsulEntitySource builds the entity source. addr and port are extracted
-// from the configured endpoint URL before construction.
-func newConsulEntitySource(addr, port string) *consulEntitySource {
+// newConsulEntitySource constructs the source from the resolved host and port
+// extracted from the probe endpoint URL.
+func newConsulEntitySource(host string, port int) *consulEntitySource {
 	return &consulEntitySource{
-		nodeID: map[string]any{
-			"server.address":      addr,
-			"server.port":         port,
-			"service_mesh.system": "consul",
-		},
+		instanceID: "consul://" + host + ":" + strconv.FormatInt(int64(port), 10),
+		host:       host,
+		port:       int64(port),
 	}
 }
 
-// setReachable updates the liveness flag and optional version string.
-// Called from Collect on success or failure.
+// setReachable updates the cached entity observation. up=true replaces the
+// cache with a live entity; up=false clears it (empty observation with
+// ok=true signals "server gone" — the detector emits a delete event).
+// version is included in the attributes when non-empty.
 func (s *consulEntitySource) setReachable(up bool, version string) {
 	s.mu.Lock()
-	s.up = up
-	if version != "" {
-		s.version = version
-	}
-	s.mu.Unlock()
-}
-
-// updateSnapshot replaces the list of healthy service names discovered during
-// a Collect cycle. Called after a successful health-state fetch so Observe
-// can build registers relations.
-func (s *consulEntitySource) updateSnapshot(services []string) {
-	s.mu.Lock()
-	s.services = services
-	s.mu.Unlock()
-}
-
-// Observe returns the full current observation. Returns ok=false when the
-// agent was unreachable on the last Collect so the detector keeps the
-// previous snapshot rather than emitting deletes on a transient failure.
-func (s *consulEntitySource) Observe() (entity.Observation, bool) {
-	s.mu.RLock()
-	up := s.up
-	version := s.version
-	services := s.services
-	nodeID := s.nodeID
-	s.mu.RUnlock()
-
+	defer s.mu.Unlock()
 	if !up {
-		return entity.Observation{}, false
+		s.cache = entity.Observation{}
+		s.ready = true
+		return
 	}
-
-	addr, _ := nodeID["server.address"].(string)
-	meshSystem, _ := nodeID["service_mesh.system"].(string)
-
-	nodeAttrs := map[string]any{}
+	attrs := map[string]any{
+		"service.name":   "consul",
+		"server.address": s.host,
+		"server.port":    s.port,
+	}
 	if version != "" {
-		nodeAttrs["version"] = version
+		attrs["service.version"] = version
 	}
-
-	obs := entity.Observation{
-		Entities: []entity.Entity{
-			{
-				Type:       "service_mesh.node",
-				ID:         nodeID,
-				Attributes: nodeAttrs,
-			},
-		},
+	s.cache = entity.Observation{
+		Entities: []entity.Entity{{
+			Type:       "service.instance",
+			ID:         map[string]any{"service.instance.id": s.instanceID},
+			Attributes: attrs,
+		}},
 	}
+	s.ready = true
+}
 
-	// Emit service.instance entities and node→service registers relations.
-	seen := make(map[string]bool, len(services))
-	for _, svc := range services {
-		if svc == "" || seen[svc] {
-			continue
-		}
-		seen[svc] = true
-		svcID := map[string]any{
-			"server.address":      addr,
-			"service_mesh.system": meshSystem,
-			"service.name":        svc,
-		}
-		obs.Entities = append(obs.Entities, entity.Entity{
-			Type: "service.instance",
-			ID:   svcID,
-		})
-		obs.Relations = append(obs.Relations, entity.Relation{
-			Type:     "registers",
-			FromType: "service_mesh.node",
-			FromID:   nodeID,
-			ToType:   "service.instance",
-			ToID:     svcID,
-		})
-	}
-
-	return obs, true
+// Observe returns the latest cached entity snapshot. Non-blocking; safe to
+// call from the detector goroutine. Returns ok=false until the first Collect()
+// cycle completes (success or failure).
+func (s *consulEntitySource) Observe() (entity.Observation, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cache, s.ready
 }
