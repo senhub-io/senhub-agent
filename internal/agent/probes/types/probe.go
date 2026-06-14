@@ -3,8 +3,10 @@ package types
 
 import (
 	"context"
-	"senhub-agent.go/internal/agent/types/datapoint"
 	"time"
+
+	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // Probe defines the interface that all probes must implement.
@@ -28,6 +30,11 @@ type Probe interface {
 
 	// OnShutdown handles cleanup when probe is stopped
 	OnShutdown(ctx context.Context) error
+
+	// EntitySource returns the entity.Source this probe registers with the detector.
+	// Remote-target probes return a configured SimpleEntitySource; host-level probes
+	// and log conduits inherit the NoOpEntitySource from BaseProbe.
+	EntitySource() entity.Source
 }
 
 // ProbeWithCallback extends Probe for event-driven collection

@@ -3,6 +3,7 @@ package types
 
 import (
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/tags"
 )
 
@@ -13,6 +14,7 @@ type BaseProbe struct {
 	OnDataPoints data_store.AddCallback // Callback for collected datapoints
 	name         string                 // Unique probe name from configuration
 	probeType    string                 // Probe type (technical identifier: cpu, redfish, citrix, etc.)
+	entitySrc    entity.Source          // Set by SetEntitySource in the constructor
 }
 
 // GetTargetStrategies returns the default storage strategies
@@ -48,6 +50,22 @@ func (p *BaseProbe) SetProbeType(probeType string) {
 // GetProbeType returns the technical type of this probe
 func (p *BaseProbe) GetProbeType() string {
 	return p.probeType
+}
+
+// SetEntitySource stores the entity source. Remote-target probes MUST call
+// this in their constructor. Host-level probes and log conduits may omit it —
+// they inherit the NoOpEntitySource fallback, which satisfies the invariant
+// test without emitting unnecessary entity events.
+func (p *BaseProbe) SetEntitySource(src entity.Source) { p.entitySrc = src }
+
+// EntitySource returns the configured entity source, or a NoOpEntitySource
+// when SetEntitySource was never called (host-level probes and log conduits
+// that don't monitor a distinct remote entity).
+func (p *BaseProbe) EntitySource() entity.Source {
+	if p.entitySrc == nil {
+		return NoOpEntitySource{}
+	}
+	return p.entitySrc
 }
 
 // EnrichDataPointsWithProbeName adds the probe name and probe type tags to all datapoints
