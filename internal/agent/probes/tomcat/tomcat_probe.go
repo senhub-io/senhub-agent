@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -113,12 +114,16 @@ func NewTomcatProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	}
 	probe.SetProbeType(ProbeType)
 
-	// Entity source — extract server.address and server.port from the Jolokia URL.
+	// Entity source — Toise strict contract: service.instance with a single string ID.
 	addr, port := jolokiaHostPort(cfg.JolokiaURL)
-	entitySrc := types.NewSimpleEntitySource("app.server", map[string]any{
-		"server.address":   addr,
-		"server.port":      port,
-		"app.server.type":  "tomcat",
+	instanceID := "tomcat://" + addr + ":" + strconv.FormatInt(port, 10)
+	entitySrc := types.NewSimpleEntitySource("service.instance", map[string]any{
+		"service.instance.id": instanceID,
+	})
+	entitySrc.SetUp(false, map[string]any{
+		"service.name":   "tomcat",
+		"server.address": addr,
+		"server.port":    port,
 	})
 	probe.entitySrc = entitySrc
 	probe.SetEntitySource(entitySrc)
