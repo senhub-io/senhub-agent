@@ -226,6 +226,11 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// pulsar: broker-level health monitoring via the Pulsar Admin REST
+	// API. Generic message-bus observability belongs in the free open-core
+	// tier alongside SNMP and Prometheus scrape: it is universal collection,
+	// not a vendor-specific paid integration.
+	"pulsar": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
