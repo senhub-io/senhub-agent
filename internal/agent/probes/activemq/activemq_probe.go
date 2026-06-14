@@ -17,11 +17,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -51,6 +54,8 @@ type activemqProbe struct {
 	cfg          probeConfig
 	moduleLogger *logger.ModuleLogger
 	client       *jolokiaClient
+	entitySrc    *activemqEntitySource
+	unregister   func()
 }
 
 // NewActivemqProbe constructs the probe. Configuration errors surface here.
@@ -108,6 +113,9 @@ func NewActivemqProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		}
 	}
 
+	// Parse host + port from the Jolokia URL for the entity identity.
+	addr, port := parseJolokiaTarget(cfg.JolokiaURL)
+
 	probe := &activemqProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
@@ -116,9 +124,35 @@ func NewActivemqProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 			baseURL: cfg.JolokiaURL,
 			http:    httpClient,
 		},
+		entitySrc: newActivemqEntitySource(addr, port),
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
+}
+
+// parseJolokiaTarget extracts the host and port from a Jolokia URL
+// (e.g. "http://localhost:8161/api/jolokia" → "localhost", 8161).
+// Falls back to the raw host string and port 8161 on parse failure.
+func parseJolokiaTarget(rawURL string) (host string, port int) {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return rawURL, 8161
+	}
+	h := u.Hostname()
+	p := u.Port()
+	if p == "" {
+		switch u.Scheme {
+		case "https":
+			return h, 443
+		default:
+			return h, 8161
+		}
+	}
+	n, err := strconv.Atoi(p)
+	if err != nil {
+		return h, 8161
+	}
+	return h, n
 }
 
 // basicAuthTransport wraps an http.RoundTripper to inject HTTP Basic Auth.
@@ -142,10 +176,14 @@ func (p *activemqProbe) OnStart(_ chan struct{}) error {
 		Str("jolokia_url", p.cfg.JolokiaURL).
 		Str("broker", p.cfg.BrokerName).
 		Msg("Starting activemq probe")
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *activemqProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
 	p.client.http.CloseIdleConnections()
 	return nil
 }
@@ -163,6 +201,7 @@ func (p *activemqProbe) Collect() ([]data_store.DataPoint, error) {
 	brokerPoints, err := p.collectBroker(ctx, now)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("activemq broker query failed")
+		p.entitySrc.setReachable(false, "")
 		points = append(points, data_store.DataPoint{
 			Name:      "senhub.activemq.up",
 			Value:     0,
@@ -173,19 +212,33 @@ func (p *activemqProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 	points = append(points, brokerPoints...)
 
-	queuePoints, err := p.collectDestinations(ctx, now, "Queue")
-	if err != nil {
-		p.moduleLogger.Warn().Err(err).Str("type", "Queue").Msg("activemq destination query failed")
+	// Collect destinations and build the entity snapshot.
+	var dests []destinationSnapshot
+
+	queueNames, queueErr := p.listDestinationNames(ctx, "Queue")
+	if queueErr != nil {
+		p.moduleLogger.Warn().Err(queueErr).Str("type", "Queue").Msg("activemq destination query failed")
 	} else {
+		queuePoints, _ := p.collectDestinationsFromNames(ctx, now, "Queue", queueNames)
 		points = append(points, queuePoints...)
+		for _, n := range queueNames {
+			dests = append(dests, destinationSnapshot{name: n, destType: "queue"})
+		}
 	}
 
-	topicPoints, err := p.collectDestinations(ctx, now, "Topic")
-	if err != nil {
-		p.moduleLogger.Warn().Err(err).Str("type", "Topic").Msg("activemq destination query failed")
+	topicNames, topicErr := p.listDestinationNames(ctx, "Topic")
+	if topicErr != nil {
+		p.moduleLogger.Warn().Err(topicErr).Str("type", "Topic").Msg("activemq destination query failed")
 	} else {
+		topicPoints, _ := p.collectDestinationsFromNames(ctx, now, "Topic", topicNames)
 		points = append(points, topicPoints...)
+		for _, n := range topicNames {
+			dests = append(dests, destinationSnapshot{name: n, destType: "topic"})
+		}
 	}
+
+	p.entitySrc.setReachable(true, "")
+	p.entitySrc.updateSnapshot(dests)
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
@@ -361,7 +414,14 @@ func (p *activemqProbe) collectDestinations(ctx context.Context, now time.Time, 
 	if err != nil {
 		return nil, fmt.Errorf("listing %s destinations: %w", destType, err)
 	}
+	pts, _ := p.collectDestinationsFromNames(ctx, now, destType, names)
+	return pts, nil
+}
 
+// collectDestinationsFromNames collects metrics for a pre-fetched list of
+// destination names (avoids a duplicate listDestinationNames call when Collect
+// already fetched the names to build the entity snapshot).
+func (p *activemqProbe) collectDestinationsFromNames(ctx context.Context, now time.Time, destType string, names []string) ([]data_store.DataPoint, error) {
 	destTypeTag := "queue"
 	if destType == "Topic" {
 		destTypeTag = "topic"
