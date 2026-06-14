@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -153,8 +152,7 @@ func NewCouchDBProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 	}
 	p.SetProbeType(ProbeType)
 
-	addr, port := endpointAddrPort(cfg.Endpoint)
-	p.entitySrc = newCouchdbEntitySource(addr, port)
+	p.entitySrc = newCouchDBEntitySource(cfg.Endpoint)
 
 	return p, nil
 }
@@ -194,14 +192,14 @@ func (p *CouchDBProbe) Collect() ([]data_store.DataPoint, error) {
 	stats, err := p.fetchStats()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).Msg("CouchDB unreachable")
-		p.entitySrc.setReachable(false, "")
+		p.entitySrc.setReachable(false)
 		points := []data_store.DataPoint{
 			{Name: "senhub.couchdb.up", Value: 0, Timestamp: now, Tags: baseTags},
 		}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
-	p.entitySrc.setReachable(true, "")
+	p.entitySrc.setReachable(true)
 	points := p.buildDatapoints(stats, now)
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
@@ -238,27 +236,6 @@ func (p *CouchDBProbe) fetchStats() (*statsResponse, error) {
 		return nil, fmt.Errorf("parsing stats from %s: %w", url, err)
 	}
 	return &stats, nil
-}
-
-// endpointAddrPort splits a CouchDB endpoint URL into its host and port.
-// Falls back to the raw host when the URL cannot be parsed, so a misconfigured
-// endpoint still yields a non-empty entity identity.
-func endpointAddrPort(endpoint string) (addr, port string) {
-	u, err := url.Parse(endpoint)
-	if err != nil || u.Host == "" {
-		return endpoint, ""
-	}
-	h := u.Hostname()
-	p := u.Port()
-	if p == "" {
-		switch u.Scheme {
-		case "https":
-			p = "443"
-		default:
-			p = "5984"
-		}
-	}
-	return h, p
 }
 
 // buildDatapoints converts the parsed stats into OTel-first datapoints.
