@@ -6,9 +6,9 @@ import (
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
-// chronyEntitySource feeds the entity rail with a single ntp.server entity
-// for the local chrony daemon. Identity (server.address=localhost) is fixed at
-// construction time — chrony is always local; there is no configurable host.
+// chronyEntitySource feeds the entity rail with a single service.instance entity
+// for the local chrony daemon. Identity is fixed at construction time — chrony
+// is always local; there is no configurable host or port.
 // Reachability is updated by the collect cycle: setReachable(true) after a
 // successful chronyc tracking run, setReachable(false) on any subprocess error.
 type chronyEntitySource struct {
@@ -21,7 +21,7 @@ type chronyEntitySource struct {
 func newChronyEntitySource() *chronyEntitySource {
 	return &chronyEntitySource{
 		id: map[string]any{
-			"server.address": "localhost",
+			"service.instance.id": "chrony://localhost",
 		},
 	}
 }
@@ -31,8 +31,15 @@ func newChronyEntitySource() *chronyEntitySource {
 func (s *chronyEntitySource) setReachable(up bool, version string) {
 	s.mu.Lock()
 	s.up = up
-	if up && version != "" {
-		s.attrs = map[string]any{"version": version}
+	if up {
+		attrs := map[string]any{
+			"service.name":   "chrony",
+			"server.address": "localhost",
+		}
+		if version != "" {
+			attrs["service.version"] = version
+		}
+		s.attrs = attrs
 	}
 	s.mu.Unlock()
 }
@@ -46,12 +53,11 @@ func (s *chronyEntitySource) Observe() (entity.Observation, bool) {
 	if !s.up {
 		return entity.Observation{}, false
 	}
-	obs := entity.Observation{
+	return entity.Observation{
 		Entities: []entity.Entity{{
-			Type:       "ntp.server",
+			Type:       "service.instance",
 			ID:         s.id,
 			Attributes: s.attrs,
 		}},
-	}
-	return obs, true
+	}, true
 }
