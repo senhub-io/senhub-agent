@@ -26,6 +26,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"filetail",
 		"http_check",
 		"icmp_check",
+		"influxdb",
 		"linux_logs",
 		"logicaldisk",
 		"memory",
