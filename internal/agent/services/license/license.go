@@ -226,6 +226,11 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// consul: service-mesh health and cluster metrics. Service discovery
+	// is universal infrastructure (like SNMP), not a vendor-specific
+	// deep integration — the free tier covers agent health, catalog
+	// service count, raft, RPC/DNS counters and health-check states.
+	"consul": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
