@@ -226,6 +226,10 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// solr: Apache Solr is widely self-hosted alongside applications;
+	// exposing its health, request and cache metrics is the same
+	// open-core "bring your stack in" wedge as otlp_receiver / exec.
+	"solr": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
