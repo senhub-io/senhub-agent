@@ -7,34 +7,34 @@ import (
 )
 
 // varnishEntitySource implements entity.Source for the Varnish Cache probe.
-// It exposes the monitored Varnish instance as a cache.server entity so Toise
-// can inventory it automatically. The entity is emitted only when varnishstat
-// succeeds (up=true); a failing instance is not reported (ok=false keeps the
-// previous good snapshot alive in the detector rather than deleting the entity
-// on each transient error).
+// It exposes the monitored Varnish instance as a service.instance entity
+// (Toise v0.5.0 strict contract) so Toise can inventory it automatically.
+// The entity is emitted only when varnishstat succeeds (up=true); a failing
+// instance returns ok=false so the detector keeps the previous good snapshot
+// alive rather than deleting the entity on each transient error.
 type varnishEntitySource struct {
-	id   map[string]any
-	mu   sync.RWMutex
-	up   bool
-	// attrs carries mutable, observer-independent descriptive attributes
-	// (instance name when configured). The id map is immutable after
-	// construction so it needs no lock.
-	attrs map[string]any
+	instanceID string
+	mu         sync.RWMutex
+	up         bool
+	attrs      map[string]any
 }
 
 // newVarnishEntitySource builds the entity source from the probe config.
-// The instance name, when set, disambiguates several Varnish instances on the
-// same host (varnishstat -n); it becomes a descriptive attribute, not part of
-// the identity (the identity is the local address + type pair).
+// Varnish has no configurable network address or port — it is always local —
+// so the instance ID is the fixed URI "varnish://localhost". When an instance
+// name is configured (varnishstat -n), it is stored as a descriptive attribute
+// to disambiguate multiple Varnish instances on the same host; it is not part
+// of the identity.
 func newVarnishEntitySource(instanceName string) *varnishEntitySource {
 	s := &varnishEntitySource{
-		id: map[string]any{
+		instanceID: "varnish://localhost",
+		attrs: map[string]any{
+			"service.name":   "varnish",
 			"server.address": "localhost",
-			"server.type":    "varnish",
 		},
 	}
 	if instanceName != "" {
-		s.attrs = map[string]any{"instance.name": instanceName}
+		s.attrs["varnish.instance.name"] = instanceName
 	}
 	return s
 }
@@ -51,19 +51,17 @@ func (s *varnishEntitySource) setReachable(up bool) {
 // detector goroutine.
 func (s *varnishEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.RLock()
-	up := s.up
-	attrs := s.attrs
-	s.mu.RUnlock()
+	defer s.mu.RUnlock()
 
-	if !up {
+	if !s.up {
 		return entity.Observation{}, false
 	}
 
 	return entity.Observation{
 		Entities: []entity.Entity{{
-			Type:       "cache.server",
-			ID:         s.id,
-			Attributes: attrs,
+			Type:       "service.instance",
+			ID:         map[string]any{"service.instance.id": s.instanceID},
+			Attributes: s.attrs,
 		}},
 	}, true
 }
