@@ -58,6 +58,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **tcp_dial** - Raw TCP connect latency to host:port targets (VIPs, brokers, AD, fileservers)
 - **dns_latency** - DNS resolution latency per name, optionally per explicit resolver
 - **snmp_poll** - Generic SNMP polling. The deliberate exception to "remote = paid": it is the open-core wedge to replace PRTG's free SNMP polling. Deep vendor-specific SNMP (device profiles, discovery, vendor MIBs) remains paid.
+- **clickhouse** - ClickHouse server monitoring via the standard /metrics Prometheus endpoint (ClickHouse 20.1+). Follows the universal-collection posture of prometheus_scrape: the /metrics protocol is an open standard, not a proprietary vendor integration.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
