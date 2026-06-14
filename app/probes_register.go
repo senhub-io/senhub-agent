@@ -19,6 +19,7 @@ package app
 // prevents a duplicate-registration panic when the enterprise entrypoint
 // adds them on top of this set.
 import (
+	_ "senhub-agent.go/internal/agent/probes/consul"
 	_ "senhub-agent.go/internal/agent/probes/cpu"
 	_ "senhub-agent.go/internal/agent/probes/dnslatency"
 	_ "senhub-agent.go/internal/agent/probes/event"
