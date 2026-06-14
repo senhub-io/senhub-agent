@@ -123,6 +123,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// discriminate beyond the probe instance.
 	"exec": {"metric_type"},
 
+	// Cassandra — operation (read|write) discriminates request metrics;
+	// collector discriminates GC metrics. metric_type separates families.
+	"cassandra": {"operation", "collector", "metric_type"},
+
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
 	// senhub-semantic-conventions.md §4.13 for the full collapse list).

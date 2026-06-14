@@ -226,6 +226,11 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// cassandra: Apache Cassandra monitoring via Jolokia HTTP REST.
+	// Free tier alongside the universal collection wedge (snmp_poll,
+	// otlp_receiver, prometheus_scrape): operators self-host Cassandra
+	// and should not need a paid licence to observe their own cluster.
+	"cassandra": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
