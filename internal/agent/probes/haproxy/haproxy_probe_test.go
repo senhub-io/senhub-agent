@@ -192,6 +192,7 @@ func TestParseInt(t *testing.T) {
 func makeTestProbe(endpoint string) *haproxyProbe {
 	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"})
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.haproxy.test")
+	addr, port := endpointHostPort(endpoint)
 	p := &haproxyProbe{
 		BaseProbe: &types.BaseProbe{},
 		cfg: haproxyConfig{
@@ -201,6 +202,7 @@ func makeTestProbe(endpoint string) *haproxyProbe {
 		},
 		moduleLogger: moduleLogger,
 		client:       &http.Client{Timeout: 2 * time.Second},
+		entitySrc:    newHAProxyEntitySource(addr, port),
 	}
 	p.SetProbeType(ProbeType)
 	return p
