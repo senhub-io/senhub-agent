@@ -226,6 +226,10 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// zookeeper: Apache ZooKeeper health monitoring via the mntr
+	// four-letter command. Generic coordination-service observability,
+	// part of the open-core universal collection wedge.
+	"zookeeper": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
