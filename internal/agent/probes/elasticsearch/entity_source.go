@@ -8,28 +8,28 @@ import (
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
-// elasticsearchEntitySource feeds the entity rail with the search.engine instance
-// this probe monitors, plus a relation to its cluster when the cluster name is known.
+// elasticsearchEntitySource feeds the entity rail with the "db" entity
+// for the Elasticsearch instance this probe monitors (Toise v0.5.0 strict contract).
 // Observe is non-blocking; setReachable and updateSnapshot are called from Collect.
 type elasticsearchEntitySource struct {
-	id  map[string]any
-	mu  sync.RWMutex
-	up  bool
-	// attrs holds mutable descriptive attributes (e.g. version).
-	attrs       map[string]any
-	clusterName string
+	instanceID string
+	mu         sync.RWMutex
+	up         bool
+	// attrs holds descriptive attributes; initialised at construction, version added on first successful collect.
+	attrs map[string]any
 }
 
 // newElasticsearchEntitySource builds the entity source from the probe endpoint URL.
-// The identity (server.address, server.port, search.engine.type) is extracted once
-// at construction and never changes for the lifetime of the source.
+// The instance identity is built once at construction and never changes.
 func newElasticsearchEntitySource(endpoint string) *elasticsearchEntitySource {
 	addr, port := hostPortFromEndpoint(endpoint)
+	instanceID := "elasticsearch://" + addr + ":" + strconv.FormatInt(port, 10)
 	return &elasticsearchEntitySource{
-		id: map[string]any{
-			"server.address":     addr,
-			"server.port":        port,
-			"search.engine.type": "elasticsearch",
+		instanceID: instanceID,
+		attrs: map[string]any{
+			"db.system.name": "elasticsearch",
+			"server.address": addr,
+			"server.port":    port,
 		},
 	}
 }
@@ -43,51 +43,38 @@ func (s *elasticsearchEntitySource) setReachable(up bool) {
 	s.mu.Unlock()
 }
 
-// updateSnapshot stores the mutable state gathered during a successful collection
-// cycle: cluster name (for the topology relation) and node version.
-func (s *elasticsearchEntitySource) updateSnapshot(clusterName, version string) {
+// updateSnapshot stores mutable state gathered during a successful collection
+// cycle. The clusterName parameter is accepted but ignored — the cluster
+// relation requires a registered Toise relation type that is not yet available.
+func (s *elasticsearchEntitySource) updateSnapshot(_ string, version string) {
 	s.mu.Lock()
-	s.clusterName = clusterName
 	if version != "" {
-		s.attrs = map[string]any{"version": version}
+		attrs := make(map[string]any, len(s.attrs)+1)
+		for k, v := range s.attrs {
+			attrs[k] = v
+		}
+		attrs["db.system.version"] = version
+		s.attrs = attrs
 	}
 	s.mu.Unlock()
 }
 
 // Observe implements entity.Source. Returns ok=false when the Elasticsearch
 // instance is currently unreachable so the detector preserves the last good
-// snapshot rather than emitting a delete (transient outage != gone, audit D3).
+// snapshot rather than emitting a delete (transient outage != gone).
 func (s *elasticsearchEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if !s.up {
 		return entity.Observation{}, false
 	}
-	obs := entity.Observation{
+	return entity.Observation{
 		Entities: []entity.Entity{{
-			Type:       "search.engine",
-			ID:         s.id,
+			Type:       "db",
+			ID:         map[string]any{"db.instance.id": s.instanceID},
 			Attributes: s.attrs,
 		}},
-	}
-	if s.clusterName != "" {
-		clusterID := map[string]any{
-			"search.cluster.name": s.clusterName,
-			"search.engine.type":  "elasticsearch",
-		}
-		obs.Entities = append(obs.Entities, entity.Entity{
-			Type: "search.cluster",
-			ID:   clusterID,
-		})
-		obs.Relations = append(obs.Relations, entity.Relation{
-			Type:     "has_node",
-			FromType: "search.cluster",
-			FromID:   clusterID,
-			ToType:   "search.engine",
-			ToID:     s.id,
-		})
-	}
-	return obs, true
+	}, true
 }
 
 // hostPortFromEndpoint extracts the host and port from an HTTP endpoint URL such
