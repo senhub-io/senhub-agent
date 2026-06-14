@@ -36,6 +36,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"snmp_trap",
 		"syslog",
 		"tcp_dial",
+		"tomcat",
 		"wifi_signal_strength",
 		"windows_eventlog",
 	}
