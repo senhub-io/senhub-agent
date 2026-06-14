@@ -185,6 +185,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 		// Probe self-observability (per-collector health metrics).
 		"collector",
 	},
+
+	// CouchDB — method and status collapse one OTel name onto N series.
+	"couchdb": {"method", "status"},
 }
 
 // MetricCache stores the latest metrics in memory with TTL, organized like a TSDB

@@ -226,6 +226,10 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// couchdb: database observability at the host level (same stance as
+	// snmp_poll for network devices). CouchDB monitoring is the open-core
+	// wedge for document-database observability.
+	"couchdb": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
