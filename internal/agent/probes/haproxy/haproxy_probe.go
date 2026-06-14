@@ -17,12 +17,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -60,6 +62,8 @@ type haproxyProbe struct {
 	cfg          haproxyConfig
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
+	entitySrc    *haproxyEntitySource
+	unregister   func()
 }
 
 type haproxyConfig struct {
@@ -112,6 +116,10 @@ func NewHAProxyProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		},
 	}
 	probe.SetProbeType(ProbeType)
+
+	addr, port := endpointHostPort(cfg.Endpoint)
+	probe.entitySrc = newHAProxyEntitySource(addr, port)
+
 	return probe, nil
 }
 
@@ -123,6 +131,7 @@ func (p *haproxyProbe) ShouldStart() bool          { return true }
 func (p *haproxyProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
 func (p *haproxyProbe) OnStart(_ chan struct{}) error {
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("Starting haproxy probe")
@@ -130,6 +139,9 @@ func (p *haproxyProbe) OnStart(_ chan struct{}) error {
 }
 
 func (p *haproxyProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
 	p.client.CloseIdleConnections()
 	return nil
 }
@@ -147,6 +159,7 @@ func (p *haproxyProbe) Collect() ([]data_store.DataPoint, error) {
 	rows, err := p.fetchCSV()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("haproxy stats fetch failed")
+		p.entitySrc.setReachable(false)
 		up = 0
 		points := []data_store.DataPoint{
 			{Name: "senhub.haproxy.up", Value: up, Timestamp: now, Tags: upTags},
@@ -154,6 +167,7 @@ func (p *haproxyProbe) Collect() ([]data_store.DataPoint, error) {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
+	p.entitySrc.setReachable(true)
 	points := []data_store.DataPoint{
 		{Name: "senhub.haproxy.up", Value: up, Timestamp: now, Tags: upTags},
 	}
@@ -347,4 +361,28 @@ func parseFloat(s string) float64 {
 	}
 	v, _ := strconv.ParseFloat(s, 64)
 	return v
+}
+
+// endpointHostPort extracts the hostname and port from the stats endpoint URL.
+// Falls back to "localhost" / 8080 on any parse error, matching the probe default.
+func endpointHostPort(endpoint string) (host string, port int) {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Hostname() == "" {
+		return "localhost", 8080
+	}
+	host = u.Hostname()
+	portStr := u.Port()
+	if portStr == "" {
+		switch u.Scheme {
+		case "https":
+			return host, 443
+		default:
+			return host, 80
+		}
+	}
+	p, err := strconv.Atoi(portStr)
+	if err != nil || p <= 0 {
+		return host, 8080
+	}
+	return host, p
 }
