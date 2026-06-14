@@ -1,30 +1,31 @@
 package activemq
 
 import (
+	"strconv"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // activemqEntitySource implements entity.Source for the ActiveMQ probe.
-// It reports the broker as a messaging.broker entity and, after each
-// successful Collect, emits the known destinations (queues and topics) as
-// messaging.destination entities with contains relations from the broker.
+// Reports the broker as a service.instance entity (Toise strict v0.5.0).
 //
-// The entity type and ID keys are frozen with the Toise team:
+// Toise contract:
 //
-//	type:                messaging.broker
-//	id keys:             server.address, server.port, messaging.system
-//	destination type:    messaging.destination
-//	destination id keys: messaging.system, messaging.destination.name
-//	relation type:       contains
+//	type:   service.instance
+//	id key: service.instance.id = "activemq://<host>:<port>"
 type activemqEntitySource struct {
-	// Immutable broker identity, set once in the constructor.
-	brokerID map[string]any
+	// Immutable identity built once in the constructor.
+	instanceID string
 
-	mu           sync.RWMutex
-	up           bool
-	attrs        map[string]any
+	mu    sync.RWMutex
+	up    bool
+	attrs map[string]any
+
+	// destinations is kept for probe compatibility (updateSnapshot is called
+	// by the probe after every successful Collect) but is not emitted as
+	// entities — non-standard relation types (contains) are not registered
+	// in Toise v0.5.0.
 	destinations []destinationSnapshot
 }
 
@@ -35,30 +36,33 @@ type destinationSnapshot struct {
 
 func newActivemqEntitySource(addr string, port int) *activemqEntitySource {
 	return &activemqEntitySource{
-		brokerID: map[string]any{
-			"server.address":   addr,
-			"server.port":      int64(port),
-			"messaging.system": "activemq",
-		},
+		instanceID: "activemq://" + addr + ":" + strconv.FormatInt(int64(port), 10),
 	}
 }
 
-// setReachable updates the broker liveness and optional descriptive attrs.
+// setReachable updates liveness and base attributes.
 // Call after every Collect: setReachable(true, version) on success,
-// setReachable(false, "") on fatal error (audit D3 — Toise keeps last-good
-// view during transient outages instead of deleting the whole broker tree).
+// setReachable(false, "") on fatal error.
 func (s *activemqEntitySource) setReachable(up bool, version string) {
 	s.mu.Lock()
 	s.up = up
-	if version != "" {
-		s.attrs = map[string]any{"messaging.activemq.version": version}
+	if up {
+		host, port := splitInstanceID(s.instanceID)
+		attrs := map[string]any{
+			"service.name":   "activemq",
+			"server.address": host,
+			"server.port":    port,
+		}
+		if version != "" {
+			attrs["service.version"] = version
+		}
+		s.attrs = attrs
 	}
 	s.mu.Unlock()
 }
 
-// updateSnapshot replaces the destination list after a successful Collect.
-// Destinations are per-broker children (queues and topics) reported as
-// messaging.destination entities with contains relations from the broker.
+// updateSnapshot stores the destination list (retained for probe compat;
+// destinations are not exposed as entities in the current Toise contract).
 func (s *activemqEntitySource) updateSnapshot(dests []destinationSnapshot) {
 	s.mu.Lock()
 	s.destinations = dests
@@ -66,47 +70,42 @@ func (s *activemqEntitySource) updateSnapshot(dests []destinationSnapshot) {
 }
 
 // Observe implements entity.Source. Non-blocking; returns the last cached
-// snapshot. Returns ok=false when the broker is unreachable so the detector
-// reuses the previous observation rather than deleting the entity tree.
+// snapshot. Returns ok=false when the broker is unreachable.
 func (s *activemqEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.RLock()
-	up, attrs, dests := s.up, s.attrs, s.destinations
+	up, attrs := s.up, s.attrs
 	s.mu.RUnlock()
 
 	if !up {
 		return entity.Observation{}, false
 	}
 
-	broker := entity.Entity{
-		Type:       "messaging.broker",
-		ID:         s.brokerID,
-		Attributes: attrs,
-	}
-	obs := entity.Observation{
-		Entities: []entity.Entity{broker},
-	}
+	return entity.Observation{
+		Entities: []entity.Entity{{
+			Type:       "service.instance",
+			ID:         map[string]any{"service.instance.id": s.instanceID},
+			Attributes: attrs,
+		}},
+	}, true
+}
 
-	for _, d := range dests {
-		destID := map[string]any{
-			"messaging.system":           "activemq",
-			"messaging.destination.name": d.name,
-		}
-		destAttrs := map[string]any{
-			"messaging.destination.kind": d.destType,
-		}
-		obs.Entities = append(obs.Entities, entity.Entity{
-			Type:       "messaging.destination",
-			ID:         destID,
-			Attributes: destAttrs,
-		})
-		obs.Relations = append(obs.Relations, entity.Relation{
-			Type:     "contains",
-			FromType: "messaging.broker",
-			FromID:   s.brokerID,
-			ToType:   "messaging.destination",
-			ToID:     destID,
-		})
+// splitInstanceID extracts host and port from "activemq://host:port".
+// Returns the raw instanceID and int64(0) if parsing fails.
+func splitInstanceID(id string) (host string, port int64) {
+	// Format: "activemq://host:port"
+	const prefix = "activemq://"
+	if len(id) <= len(prefix) {
+		return id, 0
 	}
-
-	return obs, true
+	hostPort := id[len(prefix):]
+	for i := len(hostPort) - 1; i >= 0; i-- {
+		if hostPort[i] == ':' {
+			p, err := strconv.ParseInt(hostPort[i+1:], 10, 64)
+			if err != nil {
+				return hostPort, 0
+			}
+			return hostPort[:i], p
+		}
+	}
+	return hostPort, 0
 }
