@@ -19,6 +19,7 @@ import (
 // enterprise entrypoint adds it), or it lost a public one.
 func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 	want := []string{
+		"couchdb",
 		"cpu",
 		"event",
 		"exec",
