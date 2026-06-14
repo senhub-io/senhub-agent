@@ -12,11 +12,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -53,6 +55,8 @@ type TomcatProbe struct {
 	cfg          probeConfig
 	moduleLogger *logger.ModuleLogger
 	client       *jolokiaClient
+	entitySrc    *types.SimpleEntitySource
+	unregister   func()
 }
 
 // NewTomcatProbe constructs the probe. Config errors surface here.
@@ -108,7 +112,50 @@ func NewTomcatProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		},
 	}
 	probe.SetProbeType(ProbeType)
+
+	// Entity source — extract server.address and server.port from the Jolokia URL.
+	addr, port := jolokiaHostPort(cfg.JolokiaURL)
+	entitySrc := types.NewSimpleEntitySource("app.server", map[string]any{
+		"server.address":   addr,
+		"server.port":      port,
+		"app.server.type":  "tomcat",
+	})
+	probe.entitySrc = entitySrc
+	probe.SetEntitySource(entitySrc)
+
 	return probe, nil
+}
+
+// jolokiaHostPort parses a Jolokia URL and returns the host and port as
+// int64 (the entity ID contract requires int64 for numeric fields).
+// Defaults to "localhost" / 8080 when the URL cannot be parsed or the
+// port is absent.
+func jolokiaHostPort(rawURL string) (string, int64) {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return "localhost", 8080
+	}
+	host := u.Hostname()
+	if host == "" {
+		host = "localhost"
+	}
+	portStr := u.Port()
+	if portStr == "" {
+		switch u.Scheme {
+		case "https":
+			return host, 443
+		default:
+			return host, 80
+		}
+	}
+	var port int64
+	for _, c := range portStr {
+		if c < '0' || c > '9' {
+			return host, 8080
+		}
+		port = port*10 + int64(c-'0')
+	}
+	return host, port
 }
 
 // basicAuthTransport injects a Basic Authorization header on every request.
@@ -133,10 +180,14 @@ func (p *TomcatProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("jolokia_url", p.cfg.JolokiaURL).
 		Msg("Starting tomcat probe")
+	p.unregister = entity.RegisterSource(p.EntitySource())
 	return nil
 }
 
 func (p *TomcatProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
 	p.client.http.CloseIdleConnections()
 	return nil
 }
@@ -157,6 +208,7 @@ func (p *TomcatProbe) Collect() ([]data_store.DataPoint, error) {
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("url", p.cfg.JolokiaURL).Msg("tomcat probe: Jolokia unreachable")
 		up = 0
+		p.entitySrc.SetUp(false, nil)
 		points = append(points, data_store.DataPoint{
 			Name:      "senhub.tomcat.up",
 			Value:     up,
@@ -166,6 +218,7 @@ func (p *TomcatProbe) Collect() ([]data_store.DataPoint, error) {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
+	p.entitySrc.SetUp(true, nil)
 	points = append(points, data_store.DataPoint{
 		Name:      "senhub.tomcat.up",
 		Value:     up,
