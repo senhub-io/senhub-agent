@@ -12,13 +12,16 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -37,6 +40,8 @@ type apacheProbe struct {
 	cfg          apacheConfig
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
+	entitySrc    *apacheEntitySource
+	unregister   func()
 }
 
 type apacheConfig struct {
@@ -73,6 +78,8 @@ func NewApacheProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
 
+	addr, port := hostPortFromEndpoint(cfg.Endpoint)
+
 	probe := &apacheProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
@@ -83,9 +90,35 @@ func NewApacheProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 				DisableKeepAlives: true,
 			},
 		},
+		entitySrc: newApacheEntitySource(addr, port),
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
+}
+
+// hostPortFromEndpoint parses a URL and returns the host and port as separate
+// values. The port defaults to 80 for http and 443 for https when absent.
+func hostPortFromEndpoint(endpoint string) (string, int) {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return "localhost", 80
+	}
+	host, portStr, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		// No explicit port in the URL.
+		host = u.Host
+		switch u.Scheme {
+		case "https":
+			return host, 443
+		default:
+			return host, 80
+		}
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return host, 80
+	}
+	return host, port
 }
 
 func (p *apacheProbe) GetTargetStrategies() []string {
@@ -99,10 +132,14 @@ func (p *apacheProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("Starting apache probe")
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *apacheProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
 	p.client.CloseIdleConnections()
 	return nil
 }
@@ -118,12 +155,12 @@ func (p *apacheProbe) Collect() ([]data_store.DataPoint, error) {
 
 // modStatusFields holds the parsed fields from mod_status ?auto output.
 type modStatusFields struct {
-	uptime       *int64
-	busyWorkers  *int64
-	idleWorkers  *int64
-	connsTotal   *int64
-	totalAccess  *int64
-	totalKBytes  *int64
+	uptime      *int64
+	busyWorkers *int64
+	idleWorkers *int64
+	connsTotal  *int64
+	totalAccess *int64
+	totalKBytes *int64
 }
 
 func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
@@ -137,10 +174,13 @@ func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
 			Err(err).
 			Str("endpoint", p.cfg.Endpoint).
 			Msg("apache mod_status fetch failed")
+		p.entitySrc.setReachable(false, "")
 		return []data_store.DataPoint{
 			{Name: "senhub.apache.up", Value: 0, Timestamp: now, Tags: commonTags},
 		}
 	}
+
+	p.entitySrc.setReachable(true, "")
 
 	points := []data_store.DataPoint{
 		{Name: "senhub.apache.up", Value: 1, Timestamp: now, Tags: commonTags},
