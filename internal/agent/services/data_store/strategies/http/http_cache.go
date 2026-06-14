@@ -122,6 +122,13 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// metric name itself (senhub.exec.<label>); no per-series labels to
 	// discriminate beyond the probe instance.
 	"exec": {"metric_type"},
+	// opensearch: GC collectors, indexing/search operations, and thread
+	// pools are the three axes that produce distinct per-series values.
+	"opensearch": {
+		"collector",    // opensearch.jvm.gc.collections.* — young|old
+		"operation",    // opensearch.indexing/search.operations.* — index|query|fetch
+		"thread_pool",  // opensearch.thread_pool.tasks.* — per thread pool name
+	},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
