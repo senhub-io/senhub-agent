@@ -8,40 +8,49 @@ import (
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
-// clickhouseEntitySource feeds the entity rail with the db.clickhouse instance
+// clickhouseEntitySource feeds the entity rail with the ClickHouse instance
 // this probe monitors. Observe is non-blocking; setReachable is called from
 // Collect.
 type clickhouseEntitySource struct {
-	id  map[string]any
-	mu  sync.RWMutex
-	up  bool
-	// attrs holds mutable descriptive attributes (e.g. server version).
+	instanceID string
+	host       string
+	port       int64
+	mu         sync.RWMutex
+	up         bool
+	// attrs holds mutable descriptive attributes updated on each successful collection.
 	attrs map[string]any
 }
 
 // newClickhouseEntitySource builds the entity source from the probe endpoint.
-// The identity (server.address, server.port, db.system.name) is extracted once
-// at construction and never changes for the lifetime of the source.
+// The instance ID (Toise v0.5.0 contract: db.instance.id = clickhouse://host:port)
+// is derived once at construction and never changes.
 func newClickhouseEntitySource(endpoint string) *clickhouseEntitySource {
 	addr, port := hostPortFromEndpoint(endpoint)
+	instanceID := "clickhouse://" + addr + ":" + strconv.FormatInt(port, 10)
 	return &clickhouseEntitySource{
-		id: map[string]any{
-			"server.address": addr,
-			"server.port":    port,
-			"db.system.name": "clickhouse",
-		},
+		instanceID: instanceID,
+		host:       addr,
+		port:       port,
 	}
 }
 
 // setReachable is called by Collect to report the current connectivity state.
-// When up is true, version (if non-empty) is stored as a descriptive attribute.
+// When up is true, descriptive attributes are refreshed (version when non-empty).
 // When up is false the entity is suppressed from Observe until the next
 // successful collection.
 func (s *clickhouseEntitySource) setReachable(up bool, version string) {
 	s.mu.Lock()
 	s.up = up
-	if up && version != "" {
-		s.attrs = map[string]any{"version": version}
+	if up {
+		attrs := map[string]any{
+			"db.system.name": "clickhouse",
+			"server.address": s.host,
+			"server.port":    s.port,
+		}
+		if version != "" {
+			attrs["db.system.version"] = version
+		}
+		s.attrs = attrs
 	}
 	s.mu.Unlock()
 }
@@ -55,14 +64,13 @@ func (s *clickhouseEntitySource) Observe() (entity.Observation, bool) {
 	if !s.up {
 		return entity.Observation{}, false
 	}
-	obs := entity.Observation{
+	return entity.Observation{
 		Entities: []entity.Entity{{
-			Type:       "db.clickhouse",
-			ID:         s.id,
+			Type:       "db",
+			ID:         map[string]any{"db.instance.id": s.instanceID},
 			Attributes: s.attrs,
 		}},
-	}
-	return obs, true
+	}, true
 }
 
 // hostPortFromEndpoint extracts the host and port from an HTTP endpoint such
