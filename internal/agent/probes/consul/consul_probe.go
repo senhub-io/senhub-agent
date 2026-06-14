@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -59,6 +61,9 @@ type consulConfig struct {
 
 // agentSelf is the subset of /v1/agent/self we consume.
 type agentSelf struct {
+	Config struct {
+		Version string `json:"Version"`
+	} `json:"Config"`
 	Stats struct {
 		Consul struct {
 			Leader string `json:"leader"`
@@ -72,6 +77,9 @@ type ConsulProbe struct {
 	cfg          consulConfig
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
+	// entity rail (Toise topology)
+	entitySrc  *consulEntitySource
+	unregister func()
 }
 
 // NewConsulProbe is the constructor registered in the probe catalogue.
@@ -94,7 +102,30 @@ func NewConsulProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		},
 	}
 	p.SetProbeType(ProbeType)
+
+	// Entity rail: extract host and port from the endpoint URL.
+	addr, port := endpointHostPort(cfg.Endpoint)
+	p.entitySrc = newConsulEntitySource(addr, port)
+
 	return p, nil
+}
+
+// endpointHostPort splits an HTTP endpoint URL into host and port strings.
+// If no port is present in the URL, defaults to "8500" (Consul default).
+func endpointHostPort(endpoint string) (host, port string) {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return endpoint, "8500"
+	}
+	h := u.Hostname()
+	p := u.Port()
+	if h == "" {
+		h = "localhost"
+	}
+	if p == "" {
+		p = "8500"
+	}
+	return h, p
 }
 
 func parseConfig(config map[string]interface{}) (consulConfig, error) {
@@ -130,10 +161,14 @@ func (p *ConsulProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("Starting consul probe")
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *ConsulProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
 	p.client.CloseIdleConnections()
 	return nil
 }
@@ -151,6 +186,7 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 	up := float32(1)
 
 	var points []data_store.DataPoint
+	var version string
 
 	// 1. Prometheus metrics from /v1/agent/metrics?format=prometheus
 	promPoints, err := p.collectPrometheusMetrics(now, baseTags)
@@ -162,24 +198,34 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 		points = append(points, promPoints...)
 	}
 
-	// 2. Leader status from /v1/agent/self
-	selfPoints, err := p.collectAgentSelf(now, baseTags)
+	// 2. Leader status and version from /v1/agent/self
+	selfPoints, ver, err := p.collectAgentSelf(now, baseTags)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).
 			Msg("consul: failed to fetch agent/self")
 		up = 0
 	} else {
+		version = ver
 		points = append(points, selfPoints...)
 	}
 
-	// 3. Health check counts per state
-	healthPoints, err := p.collectHealthChecks(now)
+	// 3. Health check counts per state; also collect healthy service names for
+	// the entity topology snapshot.
+	healthPoints, services, err := p.collectHealthChecks(now)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).
 			Msg("consul: failed to fetch health states")
 		up = 0
 	} else {
 		points = append(points, healthPoints...)
+	}
+
+	// Update the entity rail.
+	if up == 1 {
+		p.entitySrc.setReachable(true, version)
+		p.entitySrc.updateSnapshot(services)
+	} else {
+		p.entitySrc.setReachable(false, "")
 	}
 
 	// Prepend the up metric so it is always first.
@@ -312,16 +358,17 @@ func (p *ConsulProbe) collectPrometheusMetrics(now time.Time, base []tags.Tag) (
 }
 
 // collectAgentSelf parses /v1/agent/self and emits consul.leader.
-func (p *ConsulProbe) collectAgentSelf(now time.Time, base []tags.Tag) ([]data_store.DataPoint, error) {
-	url := p.cfg.Endpoint + "/v1/agent/self"
-	body, err := p.get(url)
+// It also returns the Consul version string for the entity snapshot.
+func (p *ConsulProbe) collectAgentSelf(now time.Time, base []tags.Tag) ([]data_store.DataPoint, string, error) {
+	u := p.cfg.Endpoint + "/v1/agent/self"
+	body, err := p.get(u)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	var self agentSelf
 	if err := json.Unmarshal(body, &self); err != nil {
-		return nil, fmt.Errorf("parsing /v1/agent/self: %w", err)
+		return nil, "", fmt.Errorf("parsing /v1/agent/self: %w", err)
 	}
 
 	leader := float32(0)
@@ -334,25 +381,34 @@ func (p *ConsulProbe) collectAgentSelf(now time.Time, base []tags.Tag) ([]data_s
 		Value:     leader,
 		Timestamp: now,
 		Tags:      base,
-	}}, nil
+	}}, self.Config.Version, nil
+}
+
+// healthCheck is the minimal shape of a Consul health-check JSON object.
+// Only ServiceName is needed for the entity topology snapshot.
+type healthCheck struct {
+	ServiceName string `json:"ServiceName"`
 }
 
 // collectHealthChecks calls /v1/health/state/{state} for each of
 // critical, warning, passing and emits consul.health.checks with a
-// state tag.
-func (p *ConsulProbe) collectHealthChecks(now time.Time) ([]data_store.DataPoint, error) {
+// state tag. It also returns the deduplicated list of passing service names
+// for the entity topology snapshot.
+func (p *ConsulProbe) collectHealthChecks(now time.Time) ([]data_store.DataPoint, []string, error) {
 	var points []data_store.DataPoint
+	seen := map[string]bool{}
+	var services []string
 
 	for _, state := range healthStates {
-		url := p.cfg.Endpoint + "/v1/health/state/" + state
-		body, err := p.get(url)
+		u := p.cfg.Endpoint + "/v1/health/state/" + state
+		body, err := p.get(u)
 		if err != nil {
-			return nil, fmt.Errorf("health state %s: %w", state, err)
+			return nil, nil, fmt.Errorf("health state %s: %w", state, err)
 		}
 
-		var checks []json.RawMessage
+		var checks []healthCheck
 		if err := json.Unmarshal(body, &checks); err != nil {
-			return nil, fmt.Errorf("parsing health state %s: %w", state, err)
+			return nil, nil, fmt.Errorf("parsing health state %s: %w", state, err)
 		}
 
 		points = append(points, data_store.DataPoint{
@@ -364,7 +420,18 @@ func (p *ConsulProbe) collectHealthChecks(now time.Time) ([]data_store.DataPoint
 				{Key: "state", Value: state},
 			},
 		})
+
+		// Collect passing service names for topology; skip the node-level
+		// check (empty ServiceName means it is a node check, not a service).
+		if state == "passing" {
+			for _, c := range checks {
+				if c.ServiceName != "" && !seen[c.ServiceName] {
+					seen[c.ServiceName] = true
+					services = append(services, c.ServiceName)
+				}
+			}
+		}
 	}
 
-	return points, nil
+	return points, services, nil
 }
