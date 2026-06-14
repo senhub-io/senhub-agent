@@ -1,25 +1,30 @@
 package phpfpm
 
 import (
+	"strconv"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
-// phpfpmEntitySource feeds the entity rail with a single runtime.php_fpm
-// entity for each configured pool endpoint. Identity (server.address +
-// server.port) is derived from the Endpoint URL at construction time and
-// never changes. Reachability is updated by the collect cycle.
+// phpfpmEntitySource feeds the entity rail with a single service.instance
+// entity for each configured pool endpoint. The instance ID
+// ("php-fpm://<host>:<port>") is derived from the Endpoint URL at
+// construction time and never changes. Reachability is updated by the
+// collect cycle.
 type phpfpmEntitySource struct {
-	id   map[string]any
-	mu   sync.RWMutex
-	up   bool
-	attrs map[string]any
+	instanceID string
+	mu         sync.RWMutex
+	up         bool
+	attrs      map[string]any
 }
 
 func newPhpfpmEntitySource(addr string, port int) *phpfpmEntitySource {
+	instanceID := "php-fpm://" + addr + ":" + strconv.Itoa(port)
 	return &phpfpmEntitySource{
-		id: map[string]any{
+		instanceID: instanceID,
+		attrs: map[string]any{
+			"service.name":   "php-fpm",
 			"server.address": addr,
 			"server.port":    int64(port),
 		},
@@ -31,8 +36,16 @@ func newPhpfpmEntitySource(addr string, port int) *phpfpmEntitySource {
 func (s *phpfpmEntitySource) setReachable(up bool, version string) {
 	s.mu.Lock()
 	s.up = up
-	if up && version != "" {
-		s.attrs = map[string]any{"version": version}
+	if up {
+		attrs := map[string]any{
+			"service.name":   s.attrs["service.name"],
+			"server.address": s.attrs["server.address"],
+			"server.port":    s.attrs["server.port"],
+		}
+		if version != "" {
+			attrs["service.version"] = version
+		}
+		s.attrs = attrs
 	}
 	s.mu.Unlock()
 }
@@ -46,12 +59,11 @@ func (s *phpfpmEntitySource) Observe() (entity.Observation, bool) {
 	if !s.up {
 		return entity.Observation{}, false
 	}
-	obs := entity.Observation{
+	return entity.Observation{
 		Entities: []entity.Entity{{
-			Type:       "runtime.php_fpm",
-			ID:         s.id,
+			Type:       "service.instance",
+			ID:         map[string]any{"service.instance.id": s.instanceID},
 			Attributes: s.attrs,
 		}},
-	}
-	return obs, true
+	}, true
 }
