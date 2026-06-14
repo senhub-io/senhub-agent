@@ -77,3 +77,15 @@ func (c *jolokiaClient) readMap(ctx context.Context, mbean, attribute string) (m
 	var m map[string]interface{}
 	return m, json.Unmarshal(raw, &m)
 }
+
+func (c *jolokiaClient) readString(ctx context.Context, mbean, attribute string) (string, error) {
+	raw, err := c.read(ctx, mbean, attribute)
+	if err != nil {
+		return "", err
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return "", err
+	}
+	return s, nil
+}
