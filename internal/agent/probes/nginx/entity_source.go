@@ -2,21 +2,22 @@ package nginx
 
 import (
 	"net/url"
+	"strconv"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
-// nginxEntitySource feeds the entity rail with the nginx web server this probe
-// monitors. It reports a single web.server entity with the endpoint host and
-// port as identity. The entity is emitted only while the stub_status page is
-// reachable (up=true); a transient fetch failure returns ok=false so the
+// nginxEntitySource feeds the entity rail with the nginx instance this probe
+// monitors. It reports a single service.instance entity with the endpoint host
+// and port as identity. The entity is emitted only while the stub_status page
+// is reachable (up=true); a transient fetch failure returns ok=false so the
 // tracker reuses the last good snapshot rather than emitting a delete.
 type nginxEntitySource struct {
-	id   map[string]any
-	mu   sync.RWMutex
-	up   bool
-	port any // int64 or string
+	instanceID string
+	attrs      map[string]any
+	mu         sync.RWMutex
+	up         bool
 }
 
 // newNginxEntitySource derives the entity identity from the probe's endpoint
@@ -24,11 +25,13 @@ type nginxEntitySource struct {
 // explicit port, matching standard nginx conventions.
 func newNginxEntitySource(endpoint string) *nginxEntitySource {
 	host, port := hostPortFromEndpoint(endpoint)
+	instanceID := "nginx://" + host + ":" + strconv.FormatInt(port, 10)
 	return &nginxEntitySource{
-		id: map[string]any{
-			"server.address":  host,
-			"server.port":     port,
-			"web.server.type": "nginx",
+		instanceID: instanceID,
+		attrs: map[string]any{
+			"service.name":   "nginx",
+			"server.address": host,
+			"server.port":    port,
 		},
 	}
 }
@@ -66,9 +69,9 @@ func (s *nginxEntitySource) setReachable(up bool) {
 	s.mu.Unlock()
 }
 
-// Observe implements entity.Source. It returns the nginx web.server entity
-// when the endpoint is reachable, or (_, false) on a transient failure so
-// the detector keeps the last good snapshot alive.
+// Observe implements entity.Source. It returns the nginx service.instance
+// entity when the endpoint is reachable, or (_, false) on a transient failure
+// so the detector keeps the last good snapshot alive.
 func (s *nginxEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.RLock()
 	up := s.up
@@ -79,8 +82,9 @@ func (s *nginxEntitySource) Observe() (entity.Observation, bool) {
 	}
 	return entity.Observation{
 		Entities: []entity.Entity{{
-			Type: "web.server",
-			ID:   s.id,
+			Type:       "service.instance",
+			ID:         map[string]any{"service.instance.id": s.instanceID},
+			Attributes: s.attrs,
 		}},
 	}, true
 }
