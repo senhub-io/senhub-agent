@@ -14,6 +14,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -32,6 +33,9 @@ type elasticsearchProbe struct {
 	cfg          esConfig
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
+	// entitySrc feeds the Toise topology inventory (search.engine entity).
+	entitySrc  *elasticsearchEntitySource
+	unregister func()
 }
 
 type esConfig struct {
@@ -75,6 +79,7 @@ func NewElasticsearchProbe(config map[string]interface{}, baseLogger *logger.Log
 		client:       &http.Client{Timeout: cfg.Timeout},
 	}
 	probe.SetProbeType(ProbeType)
+	probe.entitySrc = newElasticsearchEntitySource(cfg.Endpoint)
 	return probe, nil
 }
 
@@ -89,10 +94,14 @@ func (p *elasticsearchProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("Starting elasticsearch probe")
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *elasticsearchProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
 	p.client.CloseIdleConnections()
 	return nil
 }
@@ -108,11 +117,15 @@ func (p *elasticsearchProbe) Collect() ([]data_store.DataPoint, error) {
 	health, err := p.fetchClusterHealth()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("elasticsearch cluster health fetch failed")
+		p.entitySrc.setReachable(false)
 		points = append(points,
 			data_store.DataPoint{Name: "senhub.elasticsearch.up", Value: 0, Timestamp: now, Tags: upTags},
 		)
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
+
+	p.entitySrc.setReachable(true)
+	p.entitySrc.updateSnapshot(health.ClusterName, "")
 
 	points = append(points,
 		data_store.DataPoint{Name: "senhub.elasticsearch.up", Value: 1, Timestamp: now, Tags: upTags},
