@@ -16,6 +16,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -45,6 +46,9 @@ type ZookeeperProbe struct {
 	moduleLogger *logger.ModuleLogger
 	// dial is injectable for tests; matches net.DialTimeout signature.
 	dial func(network, address string, timeout time.Duration) (net.Conn, error)
+
+	entityObs              entityObserver
+	unregisterEntitySource func()
 }
 
 // NewZookeeperProbe constructs the probe from the free-form YAML params block.
@@ -89,6 +93,7 @@ func (p *ZookeeperProbe) ShouldStart() bool          { return true }
 func (p *ZookeeperProbe) GetInterval() time.Duration  { return p.cfg.Interval }
 
 func (p *ZookeeperProbe) OnStart(_ chan struct{}) error {
+	p.unregisterEntitySource = entity.RegisterSource(&p.entityObs)
 	p.moduleLogger.Info().
 		Str("host", p.cfg.Host).
 		Int("port", p.cfg.Port).
@@ -96,7 +101,12 @@ func (p *ZookeeperProbe) OnStart(_ chan struct{}) error {
 	return nil
 }
 
-func (p *ZookeeperProbe) OnShutdown(_ context.Context) error { return nil }
+func (p *ZookeeperProbe) OnShutdown(_ context.Context) error {
+	if p.unregisterEntitySource != nil {
+		p.unregisterEntitySource()
+	}
+	return nil
+}
 
 // Collect sends "mntr" to the ZooKeeper node and parses the response.
 // A connection failure emits senhub.zookeeper.up=0 and returns nil —
@@ -109,10 +119,13 @@ func (p *ZookeeperProbe) Collect() ([]data_store.DataPoint, error) {
 	kv, err := p.fetchMntr(address)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("address", address).Msg("zookeeper mntr failed")
+		p.entityObs.setUp(p.cfg.Host, p.cfg.Port, false, "")
 		pts := []data_store.DataPoint{p.upPoint(0, now)}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(pts, p.GetName()), nil
 	}
 
+	version := kv["zk_version"]
+	p.entityObs.setUp(p.cfg.Host, p.cfg.Port, true, version)
 	pts := p.buildDataPoints(kv, now)
 	return p.BaseProbe.EnrichDataPointsWithProbeName(pts, p.GetName()), nil
 }
