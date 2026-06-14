@@ -23,6 +23,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -73,6 +74,8 @@ type ChronyProbe struct {
 	cfg          chronyConfig
 	moduleLogger *logger.ModuleLogger
 	run          runFunc
+	entitySrc    *chronyEntitySource
+	unregister   func()
 }
 
 // NewChronyProbe constructs the probe. All config defaults are applied
@@ -98,6 +101,7 @@ func NewChronyProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	}
 	p.SetProbeType(ProbeType)
 	p.run = p.runOnce
+	p.entitySrc = newChronyEntitySource()
 	return p, nil
 }
 
@@ -112,10 +116,16 @@ func (p *ChronyProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("chronyc_path", p.cfg.ChronyPath).
 		Msg("Starting chrony probe")
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
-func (p *ChronyProbe) OnShutdown(_ context.Context) error { return nil }
+func (p *ChronyProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
+	return nil
+}
 
 // Collect runs chronyc tracking once and emits the NTP metrics.
 // On subprocess failure senhub.chrony.up=0 is the only point emitted.
@@ -129,6 +139,7 @@ func (p *ChronyProbe) Collect() ([]data_store.DataPoint, error) {
 	if res.err != nil {
 		upValue = 0
 		p.moduleLogger.Warn().Err(res.err).Msg("chronyc tracking failed")
+		p.entitySrc.setReachable(false, "")
 	}
 
 	points := []data_store.DataPoint{
@@ -138,6 +149,7 @@ func (p *ChronyProbe) Collect() ([]data_store.DataPoint, error) {
 	if res.err != nil {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
+	p.entitySrc.setReachable(true, "")
 
 	points = append(points,
 		data_store.DataPoint{
