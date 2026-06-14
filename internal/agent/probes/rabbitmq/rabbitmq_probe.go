@@ -12,10 +12,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -29,6 +32,8 @@ type rabbitProbe struct {
 	cfg          rabbitConfig
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
+	entitySrc    *rabbitmqEntitySource
+	unregister   func()
 }
 
 type rabbitConfig struct {
@@ -82,7 +87,40 @@ func NewRabbitMQProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		client:       &http.Client{Timeout: cfg.Timeout},
 	}
 	probe.SetProbeType(ProbeType)
+
+	probe.entitySrc = newRabbitmqEntitySource(endpointHost(cfg.Endpoint), endpointPort(cfg.Endpoint))
+
 	return probe, nil
+}
+
+// endpointHost extracts the hostname from the management API endpoint URL.
+// Falls back to the raw endpoint string when parsing fails.
+func endpointHost(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Hostname() == "" {
+		return endpoint
+	}
+	return u.Hostname()
+}
+
+// endpointPort extracts the port from the management API endpoint URL as an
+// int64. When the URL carries no explicit port the scheme default is used
+// (15672 for http, 15671 for https). Unknown schemes return 0.
+func endpointPort(endpoint string) int64 {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return 0
+	}
+	if p := u.Port(); p != "" {
+		v, _ := strconv.ParseInt(p, 10, 64)
+		return v
+	}
+	switch u.Scheme {
+	case "https":
+		return 15671
+	default:
+		return 15672
+	}
 }
 
 func (p *rabbitProbe) GetTargetStrategies() []string {
@@ -96,10 +134,14 @@ func (p *rabbitProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("Starting rabbitmq probe")
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *rabbitProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
 	p.client.CloseIdleConnections()
 	return nil
 }
@@ -115,8 +157,13 @@ func (p *rabbitProbe) Collect() ([]data_store.DataPoint, error) {
 	points = append(points, overviewPoints...)
 
 	if reachable {
+		p.entitySrc.setReachable(true, "")
 		points = append(points, p.collectNodes(now)...)
-		points = append(points, p.collectQueues(now)...)
+		queues, queuePoints := p.collectQueuesWithSnapshot(now)
+		points = append(points, queuePoints...)
+		p.entitySrc.updateSnapshot(queues)
+	} else {
+		p.entitySrc.setReachable(false, "")
 	}
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
@@ -256,15 +303,18 @@ type queueResponse struct {
 	Consumers              *int64 `json:"consumers"`
 }
 
-func (p *rabbitProbe) collectQueues(now time.Time) []data_store.DataPoint {
+func (p *rabbitProbe) collectQueuesWithSnapshot(now time.Time) ([]queueSnapshot, []data_store.DataPoint) {
 	var queues []queueResponse
 	if err := p.fetchJSON("/api/queues", &queues); err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("rabbitmq queues fetch failed")
-		return nil
+		return nil, nil
 	}
 
+	snapshot := make([]queueSnapshot, 0, len(queues))
 	var pts []data_store.DataPoint
 	for _, q := range queues {
+		snapshot = append(snapshot, queueSnapshot{name: q.Name, vhost: q.Vhost})
+
 		qTags := []tags.Tag{
 			{Key: "vhost", Value: q.Vhost},
 			{Key: "queue", Value: q.Name},
@@ -281,7 +331,7 @@ func (p *rabbitProbe) collectQueues(now time.Time) []data_store.DataPoint {
 			pts = append(pts, dp("rabbitmq.queue.consumers", float32(*v), now, qTags))
 		}
 	}
-	return pts
+	return snapshot, pts
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
