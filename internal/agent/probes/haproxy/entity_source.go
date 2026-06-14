@@ -1,20 +1,21 @@
 package haproxy
 
 import (
+	"strconv"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // haproxyEntitySource exposes the monitored HAProxy instance as a
-// load_balancer entity on the OTel entity rail. The identity is the
-// (server.address, server.port) pair — stable and immutable for the
-// lifetime of the probe instance. Reachability is updated by Collect
-// on every cycle: ok=false before the first successful fetch keeps the
-// detector from publishing a stale entity; ok=true after first success
-// keeps the entity alive across transient fetch failures (audit D3).
+// service.instance entity on the OTel entity rail. The identity is
+// "haproxy://<host>:<port>" — stable and immutable for the lifetime of
+// the probe instance. Reachability is updated by Collect on every
+// cycle: ok=false before the first successful fetch keeps the detector
+// from publishing a stale entity; ok=true after first success keeps
+// the entity alive across transient fetch failures (audit D3).
 type haproxyEntitySource struct {
-	id map[string]any
+	instanceID string
 
 	mu      sync.RWMutex
 	reached bool
@@ -22,15 +23,18 @@ type haproxyEntitySource struct {
 }
 
 func newHAProxyEntitySource(addr string, port int) *haproxyEntitySource {
+	instanceID := "haproxy://" + addr + ":" + strconv.Itoa(port)
 	return &haproxyEntitySource{
-		id: map[string]any{
+		instanceID: instanceID,
+		attrs: map[string]any{
+			"service.name":   "haproxy",
 			"server.address": addr,
 			"server.port":    int64(port),
 		},
 	}
 }
 
-// setReachable updates the liveness flag and optional descriptive attributes.
+// setReachable updates the liveness flag.
 // Called from Collect; safe to call concurrently with Observe.
 func (s *haproxyEntitySource) setReachable(up bool) {
 	s.mu.Lock()
@@ -38,21 +42,20 @@ func (s *haproxyEntitySource) setReachable(up bool) {
 	s.mu.Unlock()
 }
 
-// Observe implements entity.Source. Returns the load_balancer entity when the
-// endpoint has been reached at least once. ok=false before the first successful
-// fetch (nothing to publish yet is not "entity gone").
+// Observe implements entity.Source. Returns the service.instance entity
+// when the endpoint has been reached at least once. ok=false before the
+// first successful fetch (nothing to publish yet is not "entity gone").
 func (s *haproxyEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if !s.reached {
 		return entity.Observation{}, false
 	}
-	obs := entity.Observation{
+	return entity.Observation{
 		Entities: []entity.Entity{{
-			Type:       "load_balancer",
-			ID:         s.id,
+			Type:       "service.instance",
+			ID:         map[string]any{"service.instance.id": s.instanceID},
 			Attributes: s.attrs,
 		}},
-	}
-	return obs, true
+	}, true
 }
