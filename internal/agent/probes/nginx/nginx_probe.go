@@ -23,6 +23,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -36,6 +37,8 @@ type NginxProbe struct {
 	cfg          nginxConfig
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
+	entitySrc    *nginxEntitySource
+	unregister   func()
 }
 
 type nginxConfig struct {
@@ -80,6 +83,7 @@ func NewNginxProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 				DisableKeepAlives: true,
 			},
 		},
+		entitySrc: newNginxEntitySource(cfg.Endpoint),
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
@@ -96,10 +100,14 @@ func (p *NginxProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("Starting nginx probe")
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *NginxProbe) OnShutdown(_ context.Context) error {
+	if p.unregister != nil {
+		p.unregister()
+	}
 	p.client.CloseIdleConnections()
 	return nil
 }
@@ -119,6 +127,7 @@ func (p *NginxProbe) Collect() ([]data_store.DataPoint, error) {
 	body, err := p.fetchStatus()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).Msg("nginx stub_status unreachable")
+		p.entitySrc.setReachable(false)
 		points := []data_store.DataPoint{
 			{Name: "senhub.nginx.up", Value: 0, Timestamp: now, Tags: upTags},
 		}
@@ -128,11 +137,14 @@ func (p *NginxProbe) Collect() ([]data_store.DataPoint, error) {
 	stats, err := parseStubStatus(body)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("nginx stub_status parse error")
+		p.entitySrc.setReachable(false)
 		points := []data_store.DataPoint{
 			{Name: "senhub.nginx.up", Value: 0, Timestamp: now, Tags: upTags},
 		}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
+
+	p.entitySrc.setReachable(true)
 
 	points := []data_store.DataPoint{
 		{Name: "senhub.nginx.up", Value: 1, Timestamp: now, Tags: upTags},
