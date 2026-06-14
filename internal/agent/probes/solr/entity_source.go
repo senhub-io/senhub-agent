@@ -2,20 +2,23 @@ package solr
 
 import (
 	"net/url"
+	"strconv"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // solrEntitySource feeds the entity rail with the Solr instance the probe
-// monitors. It exposes the instance as a search.engine entity so Toise can
-// inventory it automatically.
+// monitors. It exposes the instance as a "db" entity (Toise v0.5.0 strict
+// contract) so Toise can inventory it automatically.
 //
 // The entity is only reported when the instance is reachable (up=true). An
 // unreachable Solr is not reported as a tombstone — the detector's staleness
 // TTL handles expiry when the cached state becomes too old.
 type solrEntitySource struct {
-	id map[string]any
+	instanceID string
+	host       string
+	port       int64
 
 	mu    sync.RWMutex
 	up    bool
@@ -23,16 +26,14 @@ type solrEntitySource struct {
 }
 
 // newSolrEntitySource builds the entity source from the probe's resolved
-// endpoint URL. The entity ID is computed once and never changes for the
+// endpoint URL. The instance ID is computed once and never changes for the
 // lifetime of the probe instance.
 func newSolrEntitySource(endpoint string) *solrEntitySource {
 	addr, port := hostPort(endpoint)
 	return &solrEntitySource{
-		id: map[string]any{
-			"server.address":     addr,
-			"server.port":        port,
-			"search.engine.type": "solr",
-		},
+		instanceID: "solr://" + addr + ":" + strconv.FormatInt(port, 10),
+		host:       addr,
+		port:       port,
 	}
 }
 
@@ -41,9 +42,17 @@ func newSolrEntitySource(endpoint string) *solrEntitySource {
 func (s *solrEntitySource) setReachable(up bool, version string) {
 	s.mu.Lock()
 	s.up = up
-	if up && version != "" {
-		s.attrs = map[string]any{"version": version}
-	} else if !up {
+	if up {
+		attrs := map[string]any{
+			"db.system.name": "solr",
+			"server.address": s.host,
+			"server.port":    s.port,
+		}
+		if version != "" {
+			attrs["db.system.version"] = version
+		}
+		s.attrs = attrs
+	} else {
 		s.attrs = nil
 	}
 	s.mu.Unlock()
@@ -61,8 +70,8 @@ func (s *solrEntitySource) Observe() (entity.Observation, bool) {
 	}
 	return entity.Observation{
 		Entities: []entity.Entity{{
-			Type:       "search.engine",
-			ID:         s.id,
+			Type:       "db",
+			ID:         map[string]any{"db.instance.id": s.instanceID},
 			Attributes: s.attrs,
 		}},
 	}, true
