@@ -10,10 +10,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -32,6 +35,10 @@ type opensearchProbe struct {
 	cfg          osConfig
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
+	entitySrc    *opensearchEntitySource
+	// unregister detaches the entity source from the process-global registry on
+	// shutdown so the detector stops heartbeating a stopped probe's entities.
+	unregister func()
 }
 
 type osConfig struct {
@@ -75,6 +82,26 @@ func NewOpenSearchProbe(config map[string]interface{}, baseLogger *logger.Logger
 		client:       &http.Client{Timeout: cfg.Timeout},
 	}
 	probe.SetProbeType(ProbeType)
+
+	// Parse the endpoint URL to extract the stable host/port identity for the
+	// entity source. Fall back gracefully: if the URL cannot be parsed the
+	// entity source is omitted (entity rail is optional, not a hard dependency).
+	if u, err := url.Parse(cfg.Endpoint); err == nil {
+		host := u.Hostname()
+		portStr := u.Port()
+		if portStr == "" {
+			if u.Scheme == "https" {
+				portStr = "443"
+			} else {
+				portStr = "9200"
+			}
+		}
+		port, err := strconv.Atoi(portStr)
+		if err == nil && host != "" {
+			probe.entitySrc = newOpensearchEntitySource(host, port)
+		}
+	}
+
 	return probe, nil
 }
 
@@ -89,11 +116,15 @@ func (p *opensearchProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("Starting opensearch probe")
+	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *opensearchProbe) OnShutdown(_ context.Context) error {
 	p.client.CloseIdleConnections()
+	if p.unregister != nil {
+		p.unregister()
+	}
 	return nil
 }
 
@@ -108,6 +139,9 @@ func (p *opensearchProbe) Collect() ([]data_store.DataPoint, error) {
 	health, err := p.fetchClusterHealth()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("opensearch cluster health fetch failed")
+		if p.entitySrc != nil {
+			p.entitySrc.setReachable(false, "")
+		}
 		points = append(points,
 			data_store.DataPoint{Name: "senhub.opensearch.up", Value: 0, Timestamp: now, Tags: upTags},
 		)
@@ -122,9 +156,25 @@ func (p *opensearchProbe) Collect() ([]data_store.DataPoint, error) {
 	nodeStats, err := p.fetchNodeStats()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("opensearch node stats fetch failed")
+		// Cluster is reachable even though node stats failed; mark up without version.
+		if p.entitySrc != nil {
+			p.entitySrc.setReachable(true, "")
+		}
 		// Return what we have (cluster health is available).
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
+
+	// Extract the version from the first node in the response (all nodes in a
+	// single-node or /_nodes/_local/stats response share the same version).
+	var nodeVersion string
+	for _, n := range nodeStats.Nodes {
+		nodeVersion = n.Version
+		break
+	}
+	if p.entitySrc != nil {
+		p.entitySrc.setReachable(true, nodeVersion)
+	}
+
 	points = append(points, p.buildNodeStatsPoints(nodeStats, now)...)
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
@@ -188,6 +238,7 @@ type nodeStatsResponse struct {
 
 type nodeStats struct {
 	Name       string                     `json:"name"`
+	Version    string                     `json:"version"`
 	JVM        jvmStats                   `json:"jvm"`
 	Process    processStats               `json:"process"`
 	OS         osStats                    `json:"os"`
