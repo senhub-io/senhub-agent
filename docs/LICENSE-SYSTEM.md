@@ -108,13 +108,10 @@ Host-local observability — probes that watch the machine the agent runs on, no
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
 
-- **docker** - Docker container monitoring (per-container CPU, memory, network I/O, block I/O, restart count, entity detection via Docker Engine API Unix socket)
 - **redfish** - BMC/iDRAC/iLO hardware monitoring
 - **citrix** - Citrix Virtual Apps and Desktops monitoring
 - **netscaler** - Citrix NetScaler ADC monitoring (load balancers, SSL, HA)
 - **veeam** - Veeam Backup & Replication monitoring
-- **postgresql** - PostgreSQL server monitoring (OTel-first, postgresql.* semconv)
-- **mysql** - MySQL server monitoring (OTel-first, mysql.* semconv)
 - **ibmi** - IBM i / Power Systems monitoring (JT400 JDBC bridge, senhub.ibmi.* semconv) — **Linux-only** agent runtime
 - **event** - Custom HTTP event ingestion
 - **ping_gateway** - Gateway connectivity monitoring
