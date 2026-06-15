@@ -70,9 +70,10 @@ var pulsarMetricNames = map[string]string{
 }
 
 type probeConfig struct {
-	Endpoint string
-	Timeout  time.Duration
-	Interval time.Duration
+	Endpoint     string
+	Timeout      time.Duration
+	Interval     time.Duration
+	InstanceName string // optional operator override for service.instance.id
 }
 
 // PulsarProbe collects broker metrics from Apache Pulsar.
@@ -104,15 +105,22 @@ func NewPulsarProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	if v, ok := config["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = strings.TrimSpace(v)
+	}
+
+	httpClient := &http.Client{Timeout: cfg.Timeout}
 
 	probe := &PulsarProbe{
 		BaseProbe:    &types.BaseProbe{},
 		config:       cfg,
 		moduleLogger: moduleLogger,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-		},
-		entitySrc: newPulsarEntitySource(cfg.Endpoint),
+		client:       httpClient,
+		entitySrc: newPulsarEntitySource(entitySourceConfig{
+			instanceName: cfg.InstanceName,
+			endpoint:     cfg.Endpoint,
+			httpClient:   httpClient,
+		}),
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
