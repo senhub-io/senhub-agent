@@ -218,6 +218,7 @@ func TestProbeRegistry(t *testing.T) {
 		"apache",
 		"activemq",
 		"ceph",
+		"cassandra",
 		"wifi_signal_strength",
 		"memory",
 		"cpu",

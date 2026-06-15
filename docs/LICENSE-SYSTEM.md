@@ -76,6 +76,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **jenkins** - Jenkins CI controller health over its open HTTP REST API (stdlib, no vendor SDK): job status counts, per-job last-build duration/number, node/executor counts and build-queue depth — universal collection over a standard API, same wedge as the other free active checks
 - **mysql** - MySQL / MariaDB server monitoring (OTel-first, mysql.* semconv, metric parity with otelcol-contrib mysqlreceiver). The standard open-core database wedge: PRTG/Nagios estates that already monitor MySQL get a drop-in replacement at zero cost.
 - **postgresql** - PostgreSQL server monitoring (OTel-first, postgresql.* semconv aligned with otelcol-contrib postgresqlreceiver). FREE open-core database probe — the universal RDBMS wedge alongside snmp_poll.
+- **cassandra** - Apache Cassandra monitoring via Jolokia HTTP REST. Operators self-host Cassandra and should not need a paid licence to observe their own cluster: connections, request latency/errors (read/write), compaction, storage load, JVM heap, GC.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
