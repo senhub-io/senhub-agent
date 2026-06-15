@@ -54,15 +54,17 @@ var healthStates = []string{"critical", "warning", "passing"}
 
 // consulConfig holds validated configuration for a consul probe instance.
 type consulConfig struct {
-	Endpoint string
-	Token    string
-	Timeout  time.Duration
-	Interval time.Duration
+	Endpoint     string
+	Token        string
+	Timeout      time.Duration
+	Interval     time.Duration
+	InstanceName string // optional: operator-supplied stable service.instance.id
 }
 
 // agentSelf is the subset of /v1/agent/self we consume.
 type agentSelf struct {
 	Config struct {
+		NodeID  string `json:"NodeID"`
 		Version string `json:"Version"`
 	} `json:"Config"`
 	Stats struct {
@@ -104,9 +106,10 @@ func NewConsulProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	}
 	p.SetProbeType(ProbeType)
 
-	// Entity rail: extract host and port from the endpoint URL.
+	// Entity rail: extract host and port from the endpoint URL (descriptive
+	// attributes only; identity comes from the Consul node id or instance_name).
 	addr, port := endpointHostPort(cfg.Endpoint)
-	p.entitySrc = newConsulEntitySource(addr, port)
+	p.entitySrc = newConsulEntitySource(cfg.InstanceName, addr, port)
 
 	return p, nil
 }
@@ -149,6 +152,9 @@ func parseConfig(config map[string]interface{}) (consulConfig, error) {
 	if v, ok := config["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
 	return cfg, nil
 }
 
@@ -189,6 +195,7 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 
 	var points []data_store.DataPoint
 	var version string
+	var nodeID string
 
 	// 1. Prometheus metrics from /v1/agent/metrics?format=prometheus
 	promPoints, err := p.collectPrometheusMetrics(now, baseTags)
@@ -200,14 +207,17 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 		points = append(points, promPoints...)
 	}
 
-	// 2. Leader status and version from /v1/agent/self
-	selfPoints, ver, err := p.collectAgentSelf(now, baseTags)
+	// 2. Leader status, version, and stable node id from /v1/agent/self.
+	// nodeID (Config.NodeID) is the tech-reported persistent UUID used as
+	// the service.instance.id in the entity rail.
+	selfPoints, ver, nid, err := p.collectAgentSelf(now, baseTags)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).
 			Msg("consul: failed to fetch agent/self")
 		up = 0
 	} else {
 		version = ver
+		nodeID = nid
 		points = append(points, selfPoints...)
 	}
 
@@ -223,9 +233,9 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 
 	// Update the entity rail.
 	if up == 1 {
-		p.entitySrc.setReachable(true, version)
+		p.entitySrc.setReachable(true, nodeID, version)
 	} else {
-		p.entitySrc.setReachable(false, "")
+		p.entitySrc.setReachable(false, "", "")
 	}
 
 	// Prepend the up metric so it is always first.
@@ -358,17 +368,18 @@ func (p *ConsulProbe) collectPrometheusMetrics(now time.Time, base []tags.Tag) (
 }
 
 // collectAgentSelf parses /v1/agent/self and emits consul.leader.
-// It also returns the Consul version string for the entity snapshot.
-func (p *ConsulProbe) collectAgentSelf(now time.Time, base []tags.Tag) ([]data_store.DataPoint, string, error) {
+// It returns the Consul version and the stable node UUID (Config.NodeID)
+// for the entity snapshot. nodeID may be empty if the field is absent.
+func (p *ConsulProbe) collectAgentSelf(now time.Time, base []tags.Tag) ([]data_store.DataPoint, string, string, error) {
 	u := p.cfg.Endpoint + "/v1/agent/self"
 	body, err := p.get(u)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	var self agentSelf
 	if err := json.Unmarshal(body, &self); err != nil {
-		return nil, "", fmt.Errorf("parsing /v1/agent/self: %w", err)
+		return nil, "", "", fmt.Errorf("parsing /v1/agent/self: %w", err)
 	}
 
 	leader := float32(0)
@@ -381,7 +392,7 @@ func (p *ConsulProbe) collectAgentSelf(now time.Time, base []tags.Tag) ([]data_s
 		Value:     leader,
 		Timestamp: now,
 		Tags:      base,
-	}}, self.Config.Version, nil
+	}}, self.Config.Version, self.Config.NodeID, nil
 }
 
 // collectHealthChecks calls /v1/health/state/{state} for each of
@@ -403,8 +414,8 @@ func (p *ConsulProbe) collectHealthChecks(now time.Time) ([]data_store.DataPoint
 		}
 
 		points = append(points, data_store.DataPoint{
-			Name:  "consul.health.checks",
-			Value: float32(len(checks)),
+			Name:      "consul.health.checks",
+			Value:     float32(len(checks)),
 			Timestamp: now,
 			Tags: []tags.Tag{
 				{Key: "metric_type", Value: "health"},
