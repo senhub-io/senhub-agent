@@ -123,6 +123,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// discriminate beyond the probe instance.
 	"exec": {"metric_type"},
 
+	// Application monitoring probes
+	"solr": {"core"}, // per-core metrics (solr.document.count, solr.index.size)
+
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
 	// senhub-semantic-conventions.md §4.13 for the full collapse list).
