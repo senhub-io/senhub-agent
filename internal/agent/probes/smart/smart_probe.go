@@ -31,6 +31,8 @@ import (
 	"senhub-agent.go/internal/agent/tags"
 )
 
+const defaultExecTimeout = 10 * time.Second
+
 // ProbeType is the stable technical identifier (license claims,
 // transformer file name, discriminant registry key).
 const ProbeType = "smart"
@@ -40,12 +42,12 @@ const (
 	defaultSmartctlBin = "smartctl"
 
 	// SMART attribute IDs for SATA/SAS drives.
-	attrRawReadErrorRate      = 1
-	attrReallocatedSectorCt   = 5
-	attrPowerOnHours          = 9
-	attrTemperatureCelsius    = 194
-	attrCurrentPendingSector  = 197
-	attrOfflineUncorrectable  = 198
+	attrRawReadErrorRate     = 1
+	attrReallocatedSectorCt  = 5
+	attrPowerOnHours         = 9
+	attrTemperatureCelsius   = 194
+	attrCurrentPendingSector = 197
+	attrOfflineUncorrectable = 198
 )
 
 // smartConfig holds the validated probe configuration.
@@ -55,6 +57,7 @@ type smartConfig struct {
 	SmartctlPath   string
 	UseSudo        bool
 	Interval       time.Duration
+	ExecTimeout    time.Duration
 }
 
 // scanDevice is one entry returned by "smartctl --scan --json".
@@ -84,20 +87,20 @@ type smartctlOutput struct {
 	} `json:"temperature"`
 	AtaSmartAttributes struct {
 		Table []struct {
-			ID  int    `json:"id"`
+			ID  int `json:"id"`
 			Raw struct {
 				Value int64 `json:"value"`
 			} `json:"raw"`
 		} `json:"table"`
 	} `json:"ata_smart_attributes"`
 	NvmeSmartHealthInformationLog struct {
-		AvailableSpare      float64 `json:"available_spare"`
+		AvailableSpare          float64 `json:"available_spare"`
 		AvailableSpareThreshold float64 `json:"available_spare_threshold"`
-		PercentageUsed      float64 `json:"percentage_used"`
-		DataUnitsRead       int64   `json:"data_units_read"`
-		DataUnitsWritten    int64   `json:"data_units_written"`
-		MediaErrors         int64   `json:"media_errors"`
-		Temperature         int64   `json:"temperature"`
+		PercentageUsed          float64 `json:"percentage_used"`
+		DataUnitsRead           int64   `json:"data_units_read"`
+		DataUnitsWritten        int64   `json:"data_units_written"`
+		MediaErrors             int64   `json:"media_errors"`
+		Temperature             int64   `json:"temperature"`
 	} `json:"nvme_smart_health_information_log"`
 }
 
@@ -108,8 +111,8 @@ type smartProbe struct {
 	moduleLogger *logger.ModuleLogger
 
 	// execScan / execDevice are the injection points for unit tests.
-	execScan   func(path string, useSudo bool) ([]byte, error)
-	execDevice func(path string, useSudo bool, device string) ([]byte, error)
+	execScan   func(ctx context.Context, path string, useSudo bool) ([]byte, error)
+	execDevice func(ctx context.Context, path string, useSudo bool, device string) ([]byte, error)
 }
 
 // NewSmartProbe constructs the S.M.A.R.T. probe.  Config errors surface here.
@@ -134,8 +137,9 @@ func NewSmartProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 
 func parseConfig(config map[string]interface{}) (smartConfig, error) {
 	cfg := smartConfig{
-		SmartctlPath: defaultSmartctlBin,
-		Interval:     defaultInterval,
+		SmartctlPath:   defaultSmartctlBin,
+		Interval:       defaultInterval,
+		ExecTimeout:    defaultExecTimeout,
 		ExcludeDevices: map[string]bool{},
 	}
 
@@ -147,6 +151,9 @@ func parseConfig(config map[string]interface{}) (smartConfig, error) {
 	}
 	if v, ok := config["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
+	}
+	if v, ok := config["exec_timeout"].(int); ok && v > 0 {
+		cfg.ExecTimeout = time.Duration(v) * time.Second
 	}
 
 	switch raw := config["devices"].(type) {
@@ -211,6 +218,8 @@ func (p *smartProbe) Collect() ([]data_store.DataPoint, error) {
 		return nil, fmt.Errorf("smart: getting host tags: %w", err)
 	}
 
+	// Each smartctl invocation gets its own bounded context so that a
+	// hung or unresponsive disk cannot stall the scheduler indefinitely.
 	devices, err := p.listDevices()
 	if err != nil {
 		return nil, fmt.Errorf("smart: listing devices: %w", err)
@@ -231,12 +240,20 @@ func (p *smartProbe) Collect() ([]data_store.DataPoint, error) {
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
+// newExecContext returns a context with the configured per-invocation
+// deadline.  The caller is responsible for calling cancel.
+func (p *smartProbe) newExecContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), p.cfg.ExecTimeout)
+}
+
 // listDevices returns the configured device list or the auto-scan result.
 func (p *smartProbe) listDevices() ([]string, error) {
 	if len(p.cfg.Devices) > 0 {
 		return p.cfg.Devices, nil
 	}
-	out, err := p.execScan(p.cfg.SmartctlPath, p.cfg.UseSudo)
+	ctx, cancel := p.newExecContext()
+	defer cancel()
+	out, err := p.execScan(ctx, p.cfg.SmartctlPath, p.cfg.UseSudo)
 	if err != nil {
 		return nil, fmt.Errorf("smartctl --scan: %w", err)
 	}
@@ -255,7 +272,9 @@ func (p *smartProbe) listDevices() ([]string, error) {
 
 // collectDevice queries one disk and returns its metric datapoints.
 func (p *smartProbe) collectDevice(device string, hostTags []tags.Tag, ts time.Time) ([]data_store.DataPoint, error) {
-	out, err := p.execDevice(p.cfg.SmartctlPath, p.cfg.UseSudo, device)
+	ctx, cancel := p.newExecContext()
+	defer cancel()
+	out, err := p.execDevice(ctx, p.cfg.SmartctlPath, p.cfg.UseSudo, device)
 	if err != nil {
 		return nil, fmt.Errorf("smartctl -A -H %s: %w", device, err)
 	}
@@ -372,16 +391,16 @@ func (p *smartProbe) buildNVMePoints(device string, r smartctlOutput, hostTags [
 
 // runScan executes "smartctl --json --scan" and returns its raw output.
 // This is the production execScan implementation.
-func runScan(path string, useSudo bool) ([]byte, error) {
+func runScan(ctx context.Context, path string, useSudo bool) ([]byte, error) {
 	args := []string{"--json", "--scan"}
-	return runSmartctl(path, useSudo, args)
+	return runSmartctl(ctx, path, useSudo, args)
 }
 
 // runDevice executes "smartctl --json -A -H <device>" and returns raw output.
 // This is the production execDevice implementation.
-func runDevice(path string, useSudo bool, device string) ([]byte, error) {
+func runDevice(ctx context.Context, path string, useSudo bool, device string) ([]byte, error) {
 	args := []string{"--json", "-A", "-H", device}
-	return runSmartctl(path, useSudo, args)
+	return runSmartctl(ctx, path, useSudo, args)
 }
 
 // runSmartctl is the shared exec helper. smartctl exits with a bitmask
@@ -389,7 +408,10 @@ func runDevice(path string, useSudo bool, device string) ([]byte, error) {
 // error, bits 2–7 = S.M.A.R.T. condition flags). Bits 2–7 are informational
 // about disk health, not exec failures — we accept exit codes where the
 // only set bits are 2–7 (i.e. exit code & 3 == 0).
-func runSmartctl(path string, useSudo bool, args []string) ([]byte, error) {
+//
+// ctx carries the per-invocation deadline set by the probe; a hung disk
+// causes the child process to be killed when the deadline expires.
+func runSmartctl(ctx context.Context, path string, useSudo bool, args []string) ([]byte, error) {
 	var name string
 	var fullArgs []string
 	if useSudo {
@@ -400,7 +422,7 @@ func runSmartctl(path string, useSudo bool, args []string) ([]byte, error) {
 		fullArgs = args
 	}
 
-	cmd := exec.Command(name, fullArgs...) //nolint:gosec
+	cmd := exec.CommandContext(ctx, name, fullArgs...) //nolint:gosec
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
