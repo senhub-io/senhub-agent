@@ -32,6 +32,7 @@ const ProbeType = "ipmi"
 
 const (
 	defaultInterval      = 60 * time.Second
+	defaultExecTimeout   = 10 * time.Second
 	defaultIpmitoolPath  = "ipmitool"
 	defaultIface         = "lanplus"
 	metricTypeHardware   = "hardware"
@@ -49,6 +50,7 @@ type ipmiConfig struct {
 	ExcludeNames   []*regexp.Regexp
 	IpmitoolPath   string
 	Interval       time.Duration
+	ExecTimeout    time.Duration // maximum wall time for a single ipmitool invocation
 }
 
 // sensorRow represents one parsed ipmitool sdr line.
@@ -98,6 +100,7 @@ func parseConfig(config map[string]interface{}) (ipmiConfig, error) {
 		RemoteIface:  defaultIface,
 		IpmitoolPath: defaultIpmitoolPath,
 		Interval:     defaultInterval,
+		ExecTimeout:  defaultExecTimeout,
 	}
 
 	if v, ok := config["mode"].(string); ok && v != "" {
@@ -155,6 +158,10 @@ func parseConfig(config map[string]interface{}) (ipmiConfig, error) {
 
 	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
+	}
+
+	if v, ok := types.IntParam(config, "exec_timeout"); ok && v > 0 {
+		cfg.ExecTimeout = time.Duration(v) * time.Second
 	}
 
 	return cfg, nil

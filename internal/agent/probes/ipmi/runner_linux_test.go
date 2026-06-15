@@ -3,10 +3,13 @@
 package ipmi
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestRunIpmitool_RemoteArgv_PasswordNotExposed verifies two invariants for
@@ -29,6 +32,7 @@ func TestRunIpmitool_RemoteArgv_PasswordNotExposed(t *testing.T) {
 		RemotePassword: secret,
 		RemoteIface:    "lanplus",
 		IpmitoolPath:   "ipmitool", // irrelevant — we inspect args directly
+		ExecTimeout:    defaultExecTimeout,
 	}
 
 	var args []string
@@ -100,6 +104,7 @@ func TestRunIpmitool_RemoteEnv_PasswordInjected(t *testing.T) {
 		RemotePassword: secret,
 		RemoteIface:    "lanplus",
 		IpmitoolPath:   scriptPath,
+		ExecTimeout:    defaultExecTimeout,
 	}
 
 	out, err := runIpmitool(cfg)
@@ -110,5 +115,46 @@ func TestRunIpmitool_RemoteEnv_PasswordInjected(t *testing.T) {
 	got := strings.TrimSpace(out)
 	if got != secret {
 		t.Errorf("IPMITOOL_PASSWORD not received by child: got %q, want %q", got, secret)
+	}
+}
+
+// TestRunIpmitool_ExecTimeout verifies that runIpmitool returns an error
+// when the subprocess does not exit within ExecTimeout. A fake binary that
+// sleeps indefinitely is used to guarantee the timeout fires before the test
+// itself times out.
+func TestRunIpmitool_ExecTimeout(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not found; skipping timeout test")
+	}
+
+	dir := t.TempDir()
+	scriptPath := dir + "/hang.sh"
+	script := "#!/bin/sh\nsleep 30\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o700); err != nil {
+		t.Fatalf("write hang script: %v", err)
+	}
+
+	cfg := ipmiConfig{
+		Mode:         "local",
+		IpmitoolPath: scriptPath,
+		ExecTimeout:  100 * time.Millisecond,
+	}
+
+	start := time.Now()
+	_, err := runIpmitool(cfg)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected an error due to timeout, got nil")
+	}
+	// The context deadline exceeded error propagates wrapped inside an ExitError.
+	if !errors.Is(err, context.DeadlineExceeded) {
+		// exec.CommandContext kills the process and returns a non-nil error
+		// that may wrap DeadlineExceeded or be an *exec.ExitError with a
+		// -1 exit code. Either way the subprocess must not have run for 30s.
+		t.Logf("error kind (expected timeout-related): %v", err)
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("runIpmitool took %v; timeout should have fired well before 5s", elapsed)
 	}
 }
