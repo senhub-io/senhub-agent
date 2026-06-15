@@ -34,9 +34,10 @@ const (
 
 // solrConfig holds the parsed probe configuration.
 type solrConfig struct {
-	Endpoint string
-	Timeout  time.Duration
-	Interval time.Duration
+	Endpoint     string
+	InstanceName string
+	Timeout      time.Duration
+	Interval     time.Duration
 }
 
 // SolrProbe collects metrics from a local or remote Solr instance.
@@ -79,15 +80,19 @@ func NewSolrProbe(config map[string]interface{}, baseLogger *logger.Logger) (typ
 	if v, ok := config["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
 
+	httpClient := &http.Client{
+		Timeout: cfg.Timeout,
+	}
 	probe := &SolrProbe{
 		BaseProbe:    &types.BaseProbe{},
 		config:       cfg,
 		moduleLogger: moduleLogger,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-		},
-		entitySrc: newSolrEntitySource(cfg.Endpoint),
+		client:       httpClient,
+		entitySrc:    newSolrEntitySource(cfg.Endpoint, cfg.InstanceName, httpClient),
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
@@ -151,6 +156,7 @@ func (p *SolrProbe) collect(now time.Time) []data_store.DataPoint {
 		}
 	}
 	p.entitySrc.setReachable(true, "")
+	p.entitySrc.tryPinClusterIDOrHostPort(ctx)
 
 	var points []data_store.DataPoint
 	points = append(points, data_store.DataPoint{
