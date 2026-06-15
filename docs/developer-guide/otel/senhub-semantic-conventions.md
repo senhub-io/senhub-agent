@@ -1231,6 +1231,39 @@ les métriques d'interface ajoutent `network.interface.index` :
 Les `custom_mappings` et OIDs dynamiques passent par le pass-through
 typé (tag `otel_type`) — pas d'énumération ici par construction.
 
+### 4.26 Probe `unifi` (free, #465)
+
+Probe Ubiquiti UniFi Controller — REST API stdlib HTTP, auth cookie. Une
+instance = un contrôleur. Métriques : disponibilité, inventaire par type,
+clients, débit WAN, CPU/RAM/satisfaction par AP.
+
+#### 4.26.1 Métriques
+
+| Métrique OTel | Unité | Type | Attributs / Notes |
+|---|---|---|---|
+| `senhub.unifi.up` | `1` | gauge | `unifi.endpoint`, `unifi.site` |
+| `unifi.devices.total` | `{device}` | gauge | `unifi.device.type` (`uap`/`usw`/`ugw`) |
+| `unifi.devices.adopted` | `{device}` | gauge | `unifi.device.type` |
+| `unifi.devices.disconnected` | `{device}` | gauge | `unifi.device.type` |
+| `unifi.clients.total` | `{client}` | gauge | `unifi.site` |
+| `unifi.clients.wifi` | `{client}` | gauge | `unifi.site` |
+| `unifi.network.io` | `By` | counter | `network.io.direction` ∈ {`transmit`, `receive`} ; `unifi.site` |
+| `unifi.device.cpu` | `1` | gauge | `unifi.device.name`, `unifi.device.type`, `unifi.site` |
+| `unifi.device.memory` | `1` | gauge | `unifi.device.name`, `unifi.device.type`, `unifi.site` |
+| `unifi.ap.clients` | `{client}` | gauge | `unifi.device.name`, `unifi.site` |
+| `unifi.ap.satisfaction` | `1` | gauge | ratio 0..1 ; `unifi.device.name`, `unifi.site` |
+
+#### 4.26.2 Collapse `unifi.network.io` (#465)
+
+`unifi.network.tx_bytes` et `unifi.network.rx_bytes` (deux noms) ont été
+fusionnés en **`unifi.network.io`** discriminé par
+`network.io.direction` (`transmit` / `receive`), aligné sur la convention
+OTel `system.network.io` (§4.3) et `senhub.db.mysql.io{io.direction}`.
+Valeur = débit octet-rate rapporté par le contrôleur (champ `tx_bytes-r`
+/ `rx_bytes-r` du endpoint `stat/health`). La tag probe `direction` est
+mappée vers l'attribut OTel `network.io.direction` dans le YAML
+transformer (`tag_to_attribute`).
+
 ## 6. Processus d'ajout d'une convention
 
 1. Lire les sources §1 pour le domaine concerné

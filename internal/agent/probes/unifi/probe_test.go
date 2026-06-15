@@ -204,13 +204,32 @@ func TestCollect_NetworkThroughput(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProbe(t, srv)
-	byName := collectByName(t, p)
-
-	if v := byName["unifi.network.tx_bytes"]; v != 1000000 {
-		t.Errorf("unifi.network.tx_bytes = %v; want 1000000", v)
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
 	}
-	if v := byName["unifi.network.rx_bytes"]; v != 2000000 {
-		t.Errorf("unifi.network.rx_bytes = %v; want 2000000", v)
+
+	// unifi.network.io is emitted twice (transmit + receive) under the same
+	// metric name; key by name+direction to distinguish them.
+	byDir := map[string]float32{}
+	for _, dp := range points {
+		if dp.Name != "unifi.network.io" {
+			continue
+		}
+		dir := ""
+		for _, tg := range dp.Tags {
+			if tg.Key == "direction" {
+				dir = tg.Value
+			}
+		}
+		byDir[dir] = dp.Value
+	}
+
+	if v := byDir["transmit"]; v != 1000000 {
+		t.Errorf("unifi.network.io{direction=transmit} = %v; want 1000000", v)
+	}
+	if v := byDir["receive"]; v != 2000000 {
+		t.Errorf("unifi.network.io{direction=receive} = %v; want 2000000", v)
 	}
 }
 
