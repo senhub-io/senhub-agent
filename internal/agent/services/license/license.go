@@ -226,6 +226,12 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// proxmox: Proxmox VE is open-source hypervisor infrastructure.
+	// Basic node / VM / storage monitoring is equivalent to the host
+	// observability role (cpu, memory, logicaldisk) and belongs in the
+	// open-core collection wedge.  Deep cluster management (HA, backups,
+	// replication) would be a paid feature but is out of scope here.
+	"proxmox": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
