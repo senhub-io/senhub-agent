@@ -45,6 +45,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"mysql",
 		"network",
 		"nginx",
+		"opensearch",
 		"otlp_receiver",
 		"phpfpm",
 		"postgresql",

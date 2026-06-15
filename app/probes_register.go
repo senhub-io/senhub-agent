@@ -48,6 +48,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/mysql"
 	_ "senhub-agent.go/internal/agent/probes/network"
 	_ "senhub-agent.go/internal/agent/probes/nginx"
+	_ "senhub-agent.go/internal/agent/probes/opensearch"
 	_ "senhub-agent.go/internal/agent/probes/otlpreceiver"
 	_ "senhub-agent.go/internal/agent/probes/phpfpm"
 	_ "senhub-agent.go/internal/agent/probes/postgresql"
