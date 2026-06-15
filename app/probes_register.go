@@ -33,6 +33,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/network"
 	_ "senhub-agent.go/internal/agent/probes/otlpreceiver"
 	_ "senhub-agent.go/internal/agent/probes/promscrape"
+	_ "senhub-agent.go/internal/agent/probes/proxmox"
 	_ "senhub-agent.go/internal/agent/probes/snmppoll"
 	_ "senhub-agent.go/internal/agent/probes/snmptrap"
 	_ "senhub-agent.go/internal/agent/probes/syslog"

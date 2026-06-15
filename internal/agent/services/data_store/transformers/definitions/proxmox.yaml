@@ -1,0 +1,225 @@
+probe_name: "proxmox"
+friendly_name: "Proxmox VE"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["proxmox.node", "proxmox.vmid", "proxmox.vm.name", "proxmox.storage"]
+
+# Proxmox VE cluster monitoring via the REST API (FREE tier).
+# Covers nodes, QEMU virtual machines, LXC containers, and storage pools.
+# Authentication: PVE API token (user@realm!tokenname = UUID).
+
+metrics:
+
+  # ── Node metrics ─────────────────────────────────────────────────────────────
+
+  - name: "proxmox.node.cpu.utilization"
+    channel: "node_{proxmox.node}_cpu"
+    display_name: "Proxmox Node {proxmox.node} CPU"
+    unit: "%"
+    category: "cpu"
+    description: "CPU utilization ratio of the Proxmox node (0–1)"
+    otel:
+      name: proxmox.node.cpu.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+
+  - name: "proxmox.node.memory.used"
+    channel: "node_{proxmox.node}_mem_used"
+    display_name: "Proxmox Node {proxmox.node} Memory Used"
+    unit: "B"
+    category: "memory"
+    description: "Bytes of memory currently used on the Proxmox node"
+    otel:
+      name: proxmox.node.memory.used
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+
+  - name: "proxmox.node.memory.total"
+    channel: "node_{proxmox.node}_mem_total"
+    display_name: "Proxmox Node {proxmox.node} Memory Total"
+    unit: "B"
+    category: "memory"
+    description: "Total installed memory on the Proxmox node"
+    otel:
+      name: proxmox.node.memory.total
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+
+  - name: "proxmox.node.status"
+    channel: "node_{proxmox.node}_status"
+    display_name: "Proxmox Node {proxmox.node} Status"
+    unit: "#"
+    category: "status"
+    description: "1 when the node is online, 0 otherwise"
+    otel:
+      name: proxmox.node.status
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+
+  # ── VM / LXC metrics ─────────────────────────────────────────────────────────
+
+  - name: "proxmox.vm.cpu.utilization"
+    channel: "vm_{proxmox.vmid}_cpu"
+    display_name: "Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) CPU"
+    unit: "%"
+    category: "cpu"
+    description: "CPU utilization ratio of the VM or LXC container (0–1)"
+    otel:
+      name: proxmox.vm.cpu.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      proxmox.vmid: proxmox.vmid
+      proxmox.vm.name: proxmox.vm.name
+      proxmox.vm.type: proxmox.vm.type
+      proxmox.node: proxmox.node
+
+  - name: "proxmox.vm.memory.used"
+    channel: "vm_{proxmox.vmid}_mem_used"
+    display_name: "Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Memory Used"
+    unit: "B"
+    category: "memory"
+    description: "Bytes of memory currently used by the VM or container"
+    otel:
+      name: proxmox.vm.memory.used
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      proxmox.vmid: proxmox.vmid
+      proxmox.vm.name: proxmox.vm.name
+      proxmox.vm.type: proxmox.vm.type
+      proxmox.node: proxmox.node
+
+  - name: "proxmox.vm.memory.total"
+    channel: "vm_{proxmox.vmid}_mem_total"
+    display_name: "Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Memory Total"
+    unit: "B"
+    category: "memory"
+    description: "Total memory allocated to the VM or container"
+    otel:
+      name: proxmox.vm.memory.total
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      proxmox.vmid: proxmox.vmid
+      proxmox.vm.name: proxmox.vm.name
+      proxmox.vm.type: proxmox.vm.type
+      proxmox.node: proxmox.node
+
+  - name: "proxmox.vm.disk.read"
+    channel: "vm_{proxmox.vmid}_disk_read"
+    display_name: "Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Disk Read"
+    unit: "B"
+    category: "io"
+    description: "Cumulative bytes read from disk by the VM or container since last boot"
+    otel:
+      name: proxmox.vm.disk.read
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      proxmox.vmid: proxmox.vmid
+      proxmox.vm.name: proxmox.vm.name
+      proxmox.vm.type: proxmox.vm.type
+      proxmox.node: proxmox.node
+
+  - name: "proxmox.vm.disk.write"
+    channel: "vm_{proxmox.vmid}_disk_write"
+    display_name: "Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Disk Write"
+    unit: "B"
+    category: "io"
+    description: "Cumulative bytes written to disk by the VM or container since last boot"
+    otel:
+      name: proxmox.vm.disk.write
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      proxmox.vmid: proxmox.vmid
+      proxmox.vm.name: proxmox.vm.name
+      proxmox.vm.type: proxmox.vm.type
+      proxmox.node: proxmox.node
+
+  - name: "proxmox.vm.network.in"
+    channel: "vm_{proxmox.vmid}_net_in"
+    display_name: "Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Network In"
+    unit: "B"
+    category: "network"
+    description: "Cumulative bytes received on all virtual NICs of the VM or container since last boot"
+    otel:
+      name: proxmox.vm.network.in
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      proxmox.vmid: proxmox.vmid
+      proxmox.vm.name: proxmox.vm.name
+      proxmox.vm.type: proxmox.vm.type
+      proxmox.node: proxmox.node
+
+  - name: "proxmox.vm.network.out"
+    channel: "vm_{proxmox.vmid}_net_out"
+    display_name: "Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Network Out"
+    unit: "B"
+    category: "network"
+    description: "Cumulative bytes transmitted on all virtual NICs of the VM or container since last boot"
+    otel:
+      name: proxmox.vm.network.out
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      proxmox.vmid: proxmox.vmid
+      proxmox.vm.name: proxmox.vm.name
+      proxmox.vm.type: proxmox.vm.type
+      proxmox.node: proxmox.node
+
+  - name: "proxmox.vm.status"
+    channel: "vm_{proxmox.vmid}_status"
+    display_name: "Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Status"
+    unit: "#"
+    category: "status"
+    description: "1 when the VM or container is running, 0 otherwise"
+    otel:
+      name: proxmox.vm.status
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      proxmox.vmid: proxmox.vmid
+      proxmox.vm.name: proxmox.vm.name
+      proxmox.vm.type: proxmox.vm.type
+      proxmox.node: proxmox.node
+
+  # ── Storage metrics ───────────────────────────────────────────────────────────
+
+  - name: "proxmox.storage.used"
+    channel: "storage_{proxmox.storage}_used"
+    display_name: "Proxmox Storage {proxmox.storage} Used"
+    unit: "B"
+    category: "storage"
+    description: "Bytes used on the Proxmox storage pool"
+    otel:
+      name: proxmox.storage.used
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      proxmox.storage: proxmox.storage
+      proxmox.node: proxmox.node
+
+  - name: "proxmox.storage.total"
+    channel: "storage_{proxmox.storage}_total"
+    display_name: "Proxmox Storage {proxmox.storage} Total"
+    unit: "B"
+    category: "storage"
+    description: "Total capacity of the Proxmox storage pool"
+    otel:
+      name: proxmox.storage.total
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      proxmox.storage: proxmox.storage
+      proxmox.node: proxmox.node
