@@ -196,6 +196,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// throughput (direction=transmit|receive via network.io.direction) —
 	// all distinct time series that can coexist in a single cycle.
 	"unifi": {"device_type", "device_name", "direction"},
+	// winservices: per-service metrics (windows.service.state /
+	// windows.service.status) are discriminated by service name; without
+	// this tag in the key all services collapse to one cache slot.
+	"winservices": {"windows.service.name", "metric_type"},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/

@@ -384,6 +384,10 @@ var freeTierProbes = map[string]bool{
 	// PRTG's UniFi sensors are widely deployed and this probe covers the
 	// same signal at zero cost for OSS users.
 	"unifi": true,
+	// winservices: host-local Windows Service Control Manager enumeration;
+	// monitors services on the machine the agent runs on, the SCM
+	// counterpart of the linux_logs / windows_eventlog host-local tier.
+	"winservices": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

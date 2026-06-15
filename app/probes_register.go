@@ -73,4 +73,5 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/wildfly"
 	_ "senhub-agent.go/internal/agent/probes/unifi"
 	_ "senhub-agent.go/internal/agent/probes/windowseventlog"
+	_ "senhub-agent.go/internal/agent/probes/winservices"
 )
