@@ -15,7 +15,9 @@
 //   - hyperv.vm.state            gauge{1}    — 1=running, 0=other
 //   - hyperv.vm.count            gauge{1}    — VM count by state
 //
-// Entity source: one service.instance entity for the local Hyper-V host.
+// Hyper-V is a host hardware facet: metrics join the host entity emitted by
+// the foundation detector (same doctrine as cpu/memory/logicaldisk). No
+// separate entity is emitted here.
 package hyperv
 
 import (
@@ -27,7 +29,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -75,8 +76,6 @@ type HypervProbe struct {
 	config       probeConfig
 	moduleLogger *logger.ModuleLogger
 	queryFn      wmiQueryFn
-	entitySrc    *hypervEntitySource
-	unregister   func()
 }
 
 type probeConfig struct {
@@ -94,13 +93,11 @@ func NewHypervProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 
-	src := newHypervEntitySource()
 	probe := &HypervProbe{
 		BaseProbe:    &types.BaseProbe{},
 		config:       cfg,
 		moduleLogger: moduleLogger,
 		queryFn:      wmi.QueryNamespace,
-		entitySrc:    src,
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
@@ -115,14 +112,10 @@ func (p *HypervProbe) GetInterval() time.Duration { return p.config.Interval }
 
 func (p *HypervProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().Msg("Starting hyperv probe")
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *HypervProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	return nil
 }
 
@@ -150,8 +143,6 @@ func (p *HypervProbe) Collect() ([]data_store.DataPoint, error) {
 	if err == nil {
 		points = append(points, p.buildVMPoints(vms, sumByName, now)...)
 	}
-
-	p.entitySrc.update(err == nil)
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
