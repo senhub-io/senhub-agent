@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -33,10 +34,11 @@ const (
 )
 
 type probeConfig struct {
-	Host     string
-	Port     int
-	Timeout  time.Duration
-	Interval time.Duration
+	Host         string
+	Port         int
+	Timeout      time.Duration
+	Interval     time.Duration
+	InstanceName string
 }
 
 // ZookeeperProbe monitors a single ZooKeeper node.
@@ -49,6 +51,44 @@ type ZookeeperProbe struct {
 
 	entityObs              entityObserver
 	unregisterEntitySource func()
+}
+
+// fetchConf sends the "conf" four-letter-word to ZooKeeper and returns the
+// parsed key=value map. ZooKeeper 3.5+ requires the conf command to be
+// explicitly listed in zookeeper.4lw.commands.whitelist (or *). Parsing is
+// lenient: only "key=value" lines are retained; anything else is skipped.
+func (p *ZookeeperProbe) fetchConf(address string) (map[string]string, error) {
+	conn, err := p.dial("tcp", address, p.cfg.Timeout)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to %s: %w", address, err)
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(p.cfg.Timeout)); err != nil {
+		return nil, fmt.Errorf("setting deadline: %w", err)
+	}
+
+	if _, err := fmt.Fprintf(conn, "conf\n"); err != nil {
+		return nil, fmt.Errorf("sending conf: %w", err)
+	}
+
+	kv := make(map[string]string)
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			break
+		}
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		kv[strings.TrimSpace(key)] = strings.TrimSpace(val)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("reading conf response: %w", err)
+	}
+	return kv, nil
 }
 
 // NewZookeeperProbe constructs the probe from the free-form YAML params block.
@@ -74,6 +114,9 @@ func NewZookeeperProbe(config map[string]interface{}, baseLogger *logger.Logger)
 	if v, ok := config["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
 
 	p := &ZookeeperProbe{
 		BaseProbe:    &types.BaseProbe{},
@@ -82,7 +125,36 @@ func NewZookeeperProbe(config map[string]interface{}, baseLogger *logger.Logger)
 		dial:         net.DialTimeout,
 	}
 	p.SetProbeType(ProbeType)
+
+	// Initialise the entity observer. If instance_name is provided it is
+	// pinned immediately (precedence 1); otherwise id resolution is deferred
+	// to the first successful Collect.
+	p.entityObs.addr = cfg.Host
+	p.entityObs.port = cfg.Port
+	p.entityObs.hostIDFunc = hostID
+	if cfg.InstanceName != "" {
+		p.entityObs.pin(cfg.InstanceName)
+	}
+
 	return p, nil
+}
+
+// getHostIdentity is a thin wrapper around common.GetHostIdentity that
+// returns the host's stable machine id as a string. It is a package-level var
+// so tests can replace it without touching gopsutil.
+var getHostIdentity = func() string {
+	hi, err := common.GetHostIdentity()
+	if err != nil {
+		return ""
+	}
+	return hi.ID
+}
+
+// hostID is the default hostIDFunc injected into entityObserver. It calls
+// getHostIdentity so tests can override getHostIdentity and thereby control
+// the fallback without reaching directly into the entityObserver struct.
+func hostID() string {
+	return getHostIdentity()
 }
 
 func (p *ZookeeperProbe) GetTargetStrategies() []string {
@@ -90,7 +162,7 @@ func (p *ZookeeperProbe) GetTargetStrategies() []string {
 }
 
 func (p *ZookeeperProbe) ShouldStart() bool          { return true }
-func (p *ZookeeperProbe) GetInterval() time.Duration  { return p.cfg.Interval }
+func (p *ZookeeperProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
 func (p *ZookeeperProbe) OnStart(_ chan struct{}) error {
 	p.unregisterEntitySource = entity.RegisterSource(&p.entityObs)
@@ -119,15 +191,44 @@ func (p *ZookeeperProbe) Collect() ([]data_store.DataPoint, error) {
 	kv, err := p.fetchMntr(address)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("address", address).Msg("zookeeper mntr failed")
-		p.entityObs.setUp(p.cfg.Host, p.cfg.Port, false, "")
+		p.entityObs.setUp("", false, "")
 		pts := []data_store.DataPoint{p.upPoint(0, now)}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(pts, p.GetName()), nil
 	}
 
 	version := kv["zk_version"]
-	p.entityObs.setUp(p.cfg.Host, p.cfg.Port, true, version)
+
+	// Resolve the tech-reported server id (precedence 2) from the ZooKeeper
+	// "conf" 4lw command. We attempt this only when the id has not been pinned
+	// yet (instance_name already covers precedence 1). A failure is non-fatal:
+	// setUp falls back to the host-derived id when serverID is empty.
+	serverID := ""
+	if p.entityObs.needsPin() {
+		serverID = p.resolveServerID(address)
+	}
+
+	p.entityObs.setUp(serverID, true, version)
 	pts := p.buildDataPoints(kv, now)
 	return p.BaseProbe.EnrichDataPointsWithProbeName(pts, p.GetName()), nil
+}
+
+// resolveServerID fetches the ZooKeeper "conf" output and extracts the
+// "serverId" field. Returns "zookeeper:<n>" on success, "" on any failure.
+func (p *ZookeeperProbe) resolveServerID(address string) string {
+	conf, err := p.fetchConf(address)
+	if err != nil {
+		p.moduleLogger.Debug().Err(err).Str("address", address).Msg("zookeeper conf unavailable; using fallback id")
+		return ""
+	}
+	raw, ok := conf["serverId"]
+	if !ok || strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	// Validate: serverId must be a positive integer.
+	if _, err := strconv.Atoi(strings.TrimSpace(raw)); err != nil {
+		return ""
+	}
+	return "zookeeper:" + strings.TrimSpace(raw)
 }
 
 // fetchMntr dials the ZooKeeper node, sends "mntr\n", and returns the
