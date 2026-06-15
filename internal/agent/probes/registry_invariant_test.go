@@ -21,6 +21,7 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 
 	_ "senhub-agent.go/internal/agent/probes/apache"
+	_ "senhub-agent.go/internal/agent/probes/activemq"
 	_ "senhub-agent.go/internal/agent/probes/cpu"
 	_ "senhub-agent.go/internal/agent/probes/event"
 	_ "senhub-agent.go/internal/agent/probes/filetail"

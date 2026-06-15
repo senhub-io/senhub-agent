@@ -216,6 +216,7 @@ func TestProbeRegistry(t *testing.T) {
 	// registered in the senhub-agent-enterprise module's own tests.
 	expectedProbes := []string{
 		"apache",
+		"activemq",
 		"wifi_signal_strength",
 		"memory",
 		"cpu",

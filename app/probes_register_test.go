@@ -20,6 +20,7 @@ import (
 func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 	want := []string{
 		"apache",
+		"activemq",
 		"cpu",
 		"event",
 		"exec",
