@@ -11,7 +11,7 @@ package app
 //   - Add a line here when you create a new public probe package.
 //   - Remove a line here to ship a build without a given probe.
 //
-// The paid probes (citrix, veeam, netscaler, redfish, ibmi, mysql,
+// The paid probes (citrix, veeam, netscaler, redfish, ibmi,
 // postgresql, webapp, gateway) are NOT imported here — they live in the
 // senhub-agent-enterprise module and are blank-imported by that repo's
 // own cmd/agent entrypoint, which reuses app.Main(). Keeping them out of
@@ -39,6 +39,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/logicaldisk"
 	_ "senhub-agent.go/internal/agent/probes/memory"
 	_ "senhub-agent.go/internal/agent/probes/nats"
+	_ "senhub-agent.go/internal/agent/probes/mysql"
 	_ "senhub-agent.go/internal/agent/probes/network"
 	_ "senhub-agent.go/internal/agent/probes/nginx"
 	_ "senhub-agent.go/internal/agent/probes/otlpreceiver"

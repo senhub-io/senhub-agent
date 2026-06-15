@@ -292,6 +292,11 @@ var freeTierProbes = map[string]bool{
 	// snmp_poll; monitoring a standard endpoint is collection, not a
 	// vendor integration.
 	"jenkins": true,
+	// mysql: FREE open-core database probe — the standard wedge for
+	// PRTG/Nagios migrations that already monitor MySQL/MariaDB.
+	// Metric parity with otelcol-contrib mysqlreceiver; paid tier adds
+	// deep query analytics and SLA alerting.
+	"mysql": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
