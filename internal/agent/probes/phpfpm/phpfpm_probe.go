@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -32,16 +33,16 @@ const ProbeType = "phpfpm"
 // fpmStatus mirrors the JSON body returned by ?json on the PHP-FPM
 // status endpoint.
 type fpmStatus struct {
-	Pool              string `json:"pool"`
-	StartSince        int64  `json:"start since"`
-	AcceptedConn      int64  `json:"accepted conn"`
-	ListenQueue       int64  `json:"listen queue"`
-	MaxListenQueue    int64  `json:"max listen queue"`
-	IdleProcesses     int64  `json:"idle processes"`
-	ActiveProcesses   int64  `json:"active processes"`
-	TotalProcesses    int64  `json:"total processes"`
-	MaxChildrenReached int64 `json:"max children reached"`
-	SlowRequests      int64  `json:"slow requests"`
+	Pool               string `json:"pool"`
+	StartSince         int64  `json:"start since"`
+	AcceptedConn       int64  `json:"accepted conn"`
+	ListenQueue        int64  `json:"listen queue"`
+	MaxListenQueue     int64  `json:"max listen queue"`
+	IdleProcesses      int64  `json:"idle processes"`
+	ActiveProcesses    int64  `json:"active processes"`
+	TotalProcesses     int64  `json:"total processes"`
+	MaxChildrenReached int64  `json:"max children reached"`
+	SlowRequests       int64  `json:"slow requests"`
 }
 
 type phpFPMProbe struct {
@@ -54,9 +55,10 @@ type phpFPMProbe struct {
 }
 
 type probeConfig struct {
-	Endpoint string
-	Interval time.Duration
-	Timeout  time.Duration
+	Endpoint     string
+	Interval     time.Duration
+	Timeout      time.Duration
+	InstanceName string
 }
 
 const (
@@ -87,8 +89,12 @@ func NewPHPFPMProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	}
 	probe.SetProbeType(ProbeType)
 
+	hostID := ""
+	if identity, err := common.GetHostIdentity(); err == nil {
+		hostID = identity.ID
+	}
 	addr, port := endpointHostPort(cfg.Endpoint)
-	probe.entitySrc = newPhpfpmEntitySource(addr, port)
+	probe.entitySrc = newPhpfpmEntitySource(cfg.InstanceName, hostID, addr, port)
 
 	return probe, nil
 }
@@ -108,6 +114,9 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	}
 	if v, ok := config["timeout"].(int); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
+	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
 	}
 	return cfg, nil
 }
