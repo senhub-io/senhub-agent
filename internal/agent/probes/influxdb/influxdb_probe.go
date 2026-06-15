@@ -31,11 +31,12 @@ const ProbeType = "influxdb"
 
 // probeConfig holds the validated configuration for one probe instance.
 type probeConfig struct {
-	Endpoint string
-	Token    string
-	Org      string
-	Timeout  time.Duration
-	Interval time.Duration
+	Endpoint     string
+	Token        string
+	Org          string
+	InstanceName string
+	Timeout      time.Duration
+	Interval     time.Duration
 }
 
 // InfluxDBProbe monitors a single InfluxDB 2.x instance.
@@ -92,6 +93,9 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	}
 	if v, ok := config["org"].(string); ok {
 		cfg.Org = v
+	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
 	}
 	if v, ok := config["timeout"].(int); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
@@ -162,17 +166,17 @@ func (p *InfluxDBProbe) Collect() ([]data_store.DataPoint, error) {
 		outName string
 		tags    []tags.Tag
 	}{
-		"storage_reads_total":  {outName: "influxdb.storage.reads", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "io"})},
-		"boltdb_reads_total":   {outName: "influxdb.storage.reads", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "io"})},
-		"storage_writes_total": {outName: "influxdb.storage.writes", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "io"})},
-		"boltdb_writes_total":  {outName: "influxdb.storage.writes", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "io"})},
-		"http_query_request_bytes_total":        {outName: "influxdb.query.requests", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "query"})},
-		"query_requests_total":                  {outName: "influxdb.query.requests", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "query"})},
+		"storage_reads_total":                    {outName: "influxdb.storage.reads", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "io"})},
+		"boltdb_reads_total":                     {outName: "influxdb.storage.reads", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "io"})},
+		"storage_writes_total":                   {outName: "influxdb.storage.writes", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "io"})},
+		"boltdb_writes_total":                    {outName: "influxdb.storage.writes", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "io"})},
+		"http_query_request_bytes_total":         {outName: "influxdb.query.requests", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "query"})},
+		"query_requests_total":                   {outName: "influxdb.query.requests", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "query"})},
 		"task_scheduler_currently_running_tasks": {outName: "influxdb.tasks.runs.active", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "tasks"})},
-		"task_scheduler_total_runs_complete":    {outName: "influxdb.tasks.runs.complete", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "tasks"})},
-		"task_scheduler_total_runs_failed":      {outName: "influxdb.tasks.runs.failed", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "tasks"})},
-		"go_goroutines":                         {outName: "go.goroutines", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "runtime"})},
-		"go_memstats_heap_inuse_bytes":          {outName: "go.memory.heap.used", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "runtime"})},
+		"task_scheduler_total_runs_complete":     {outName: "influxdb.tasks.runs.complete", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "tasks"})},
+		"task_scheduler_total_runs_failed":       {outName: "influxdb.tasks.runs.failed", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "tasks"})},
+		"go_goroutines":                          {outName: "go.goroutines", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "runtime"})},
+		"go_memstats_heap_inuse_bytes":           {outName: "go.memory.heap.used", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "runtime"})},
 	}
 
 	// Track which output names have already been emitted to avoid
