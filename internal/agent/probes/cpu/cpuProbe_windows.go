@@ -358,7 +358,7 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 		dataPoint := data_store.DataPoint{
 			Name:      normalizedName,
 			Timestamp: timestamp,
-			Value:     float32(normalizedValue),
+			Value:     normalizedValue,
 			Tags:      metricTags,
 		}
 		dataPoints = append(dataPoints, dataPoint)
@@ -380,7 +380,7 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 		dataPoints = append(dataPoints, data_store.DataPoint{
 			Name:      "cpu_processes_total",
 			Timestamp: timestamp,
-			Value:     float32(len(pids)),
+			Value:     float64(len(pids)),
 			Tags:      coreTotalTags,
 		})
 	} else {
