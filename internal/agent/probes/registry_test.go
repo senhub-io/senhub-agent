@@ -257,6 +257,7 @@ func TestProbeRegistry(t *testing.T) {
 		"hyperv",
 		"proxmox",
 		"smart",
+		"ipmi",
 	}
 
 	for _, probeName := range expectedProbes {
