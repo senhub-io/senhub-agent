@@ -249,6 +249,7 @@ func TestProbeRegistry(t *testing.T) {
 		"postgresql",
 		"clickhouse",
 		"elasticsearch",
+		"opensearch",
 	}
 
 	for _, probeName := range expectedProbes {
