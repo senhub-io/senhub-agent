@@ -454,9 +454,9 @@ func TestEntitySource_Refresh_StandaloneNoAgent(t *testing.T) {
 	if id == "" {
 		t.Error("service.instance.id must not be empty")
 	}
-	// When agentstate.GetAgentInstanceID() returns "" the id falls back to
-	// the "proxmox@unknown" sentinel, which at least is non-empty and
-	// consistent within a cycle.
+	// With no cluster name the id falls back to "proxmox@<host.id>" (the
+	// agent's machine-id), or the "proxmox@unknown" sentinel when even the
+	// host id is unavailable — either way non-empty and stable within a cycle.
 }
 
 func TestGetInterval(t *testing.T) {

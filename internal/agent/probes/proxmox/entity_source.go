@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -33,6 +34,7 @@ import (
 type proxmoxEntitySource struct {
 	cfg          probeConfig
 	moduleLogger *logger.ModuleLogger
+	hostID       string // agent's own machine-id, resolved once at construction
 
 	mu      sync.Mutex
 	current entity.Observation
@@ -40,7 +42,11 @@ type proxmoxEntitySource struct {
 }
 
 func newProxmoxEntitySource(cfg probeConfig, log *logger.ModuleLogger) *proxmoxEntitySource {
-	return &proxmoxEntitySource{cfg: cfg, moduleLogger: log}
+	var hostID string
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+	}
+	return &proxmoxEntitySource{cfg: cfg, moduleLogger: log, hostID: hostID}
 }
 
 // Observe returns the last entity snapshot. Non-blocking; returns ok=false
@@ -106,12 +112,13 @@ func (s *proxmoxEntitySource) resolveInstanceID(clusterName string) string {
 	if clusterName != "" {
 		return "proxmox:" + clusterName
 	}
-	// Fallback: use the agent's own host.id so the proxmox surface is
-	// tied to the machine running the probe (standalone installs, or when
-	// the cluster/status call is unavailable). Never use the endpoint —
-	// endpoint is descriptive (network-routable address), not identity.
-	if agentID := agentstate.GetAgentInstanceID(); agentID != "" {
-		return "proxmox@" + agentID
+	// Fallback: use the agent's own host.id (machine-id) so the proxmox
+	// surface is tied to the machine running the probe (standalone installs,
+	// or when the cluster/status call is unavailable) — the precedence-2
+	// <service.name>@<host.id> convention. Never use the endpoint — endpoint
+	// is descriptive (network-routable address), not identity.
+	if s.hostID != "" {
+		return "proxmox@" + s.hostID
 	}
 	// Last resort: a static sentinel that signals "not yet resolved".
 	// The ready flag stays false until a valid cycle sets the cluster
