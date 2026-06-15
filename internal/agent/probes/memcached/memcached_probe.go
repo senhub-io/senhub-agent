@@ -127,7 +127,7 @@ func (p *MemcachedProbe) Collect() ([]data_store.DataPoint, error) {
 			Name:      "senhub.memcached.up",
 			Value:     upValue,
 			Timestamp: now,
-			Tags: append(commonTags, tags.Tag{Key: "metric_type", Value: "status"}),
+			Tags:      append(commonTags, tags.Tag{Key: "metric_type", Value: "status"}),
 		},
 	}
 
@@ -267,9 +267,11 @@ func (p *MemcachedProbe) buildDataPoints(stats map[string]string, now time.Time,
 	addGauge("memcached.bytes", "bytes", "memory")
 	addGauge("memcached.limit_maxbytes", "limit_maxbytes", "memory")
 
-	// Network
-	addCounter("memcached.network.bytes.sent", "bytes_written", "throughput")
-	addCounter("memcached.network.bytes.received", "bytes_read", "throughput")
+	// Network — single metric collapsed by direction (matches otelcol-contrib
+	// memcachedreceiver memcached.network{direction=transmit|receive}).
+	// Tag key "direction" maps to OTel attribute "network.io.direction" via tag_to_attribute.
+	addTagged("memcached.network", "bytes_written", "throughput", "direction", "transmit")
+	addTagged("memcached.network", "bytes_read", "throughput", "direction", "receive")
 
 	// Operations (get_hits / get_misses) — discriminated by "result"
 	addTagged("memcached.operations", "get_hits", "cache", "result", "hit")
