@@ -179,6 +179,13 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
 	// senhub-semantic-conventions.md §4.13 for the full collapse list).
 	"clickhouse": {"instance"}, // multi-instance: one series per scraped endpoint
+	"redis": {
+		"instance",    // one probe per Redis server (host:port)
+		"db",          // redis.db.keys{db=0|1|...} / redis.db.expires / redis.db.avg_ttl — per-logical-db
+		"state",       // redis.cpu.time{state=sys|user|sys_children|user_children}
+		"cmd",         // redis.cmd.calls{cmd=get|set|...} / redis.cmd.usec — per-command
+		"metric_type", // separates overview / connections / memory / throughput / cache / keyspace / replication / persistence / cpu / commands families
+	},
 	"mysql": {
 		"kind",         // mysql.threads{kind=running|connected}
 		"command",      // mysql.commands{command=select|insert|...}
