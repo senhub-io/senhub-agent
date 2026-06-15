@@ -351,6 +351,10 @@ var freeTierProbes = map[string]bool{
 	// open-core collection wedge.  Deep cluster management (HA, backups,
 	// replication) would be a paid feature but is out of scope here.
 	"proxmox": true,
+	// chrony: host-local NTP synchronisation health via chronyc; a
+	// fundamentally local probe (reads the clock daemon on the host,
+	// not a remote system).
+	"chrony": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

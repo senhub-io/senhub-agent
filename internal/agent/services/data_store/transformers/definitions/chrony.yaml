@@ -1,0 +1,100 @@
+probe_name: "chrony"
+friendly_name: "Chrony (NTP)"
+version: "1.0.0"
+host_level: true
+
+# Free host-local probe: NTP synchronisation health via chronyc tracking.
+# All time values are emitted in milliseconds on the wire; the OTel
+# value_scale converts to seconds. Frequency and skew are in ppm.
+
+metrics:
+  - name: "senhub.chrony.up"
+    channel: "chrony_up"
+    display_name: "Chrony NTP Up"
+    unit: "#"
+    category: "time_sync"
+    description: "1 when chronyc returned a valid tracking response, 0 when chronyc failed or is not installed"
+    otel:
+      name: senhub.chrony.up
+      unit: "1"
+      type: gauge
+
+  - name: "ntp.time.offset"
+    channel: "ntp_time_offset"
+    display_name: "NTP Time Offset"
+    unit: "ms"
+    category: "time_sync"
+    description: "Estimated error of the system clock relative to the NTP reference (positive = fast, negative = slow)"
+    otel:
+      name: ntp.time.offset
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+
+  - name: "ntp.frequency.offset"
+    channel: "ntp_frequency_offset"
+    display_name: "NTP Frequency Offset"
+    unit: "ppm"
+    category: "time_sync"
+    description: "Rate at which the system clock gains or loses time relative to the reference (parts per million)"
+    otel:
+      name: ntp.frequency.offset
+      unit: "{ppm}"
+      type: gauge
+
+  - name: "ntp.skew"
+    channel: "ntp_skew"
+    display_name: "NTP Skew"
+    unit: "ppm"
+    category: "time_sync"
+    description: "Estimated error bound on the frequency error (ppm); a high skew means the clock rate is uncertain"
+    otel:
+      name: ntp.skew
+      unit: "{ppm}"
+      type: gauge
+
+  - name: "ntp.root.delay"
+    channel: "ntp_root_delay"
+    display_name: "NTP Root Delay"
+    unit: "ms"
+    category: "time_sync"
+    description: "Total round-trip delay to the stratum-1 reference clock"
+    otel:
+      name: ntp.root.delay
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+
+  - name: "ntp.root.dispersion"
+    channel: "ntp_root_dispersion"
+    display_name: "NTP Root Dispersion"
+    unit: "ms"
+    category: "time_sync"
+    description: "Maximum clock error due to dispersion between the host and the stratum-1 source"
+    otel:
+      name: ntp.root.dispersion
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+
+  - name: "ntp.stratum"
+    channel: "ntp_stratum"
+    display_name: "NTP Stratum"
+    unit: "#"
+    category: "time_sync"
+    description: "Stratum level of the NTP hierarchy (1 = directly connected to reference, 16 = unsynchronised)"
+    otel:
+      name: ntp.stratum
+      unit: "{stratum}"
+      type: gauge
+
+  - name: "ntp.leap_status"
+    channel: "ntp_leap_status"
+    display_name: "NTP Leap Status"
+    unit: "#"
+    category: "time_sync"
+    description: "Leap-second status reported by chrony: 0=Normal, 1=Insert second, 2=Delete second, 3=Not synchronised"
+    otel:
+      name: ntp.leap_status
+      unit: "1"
+      type: gauge
