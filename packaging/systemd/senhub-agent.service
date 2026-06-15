@@ -11,6 +11,8 @@ Group=senhub
 ExecStart=/usr/bin/senhub-agent run --config-path /etc/senhub-agent/agent.yaml
 Restart=on-failure
 RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 # State and runtime directories (created/managed by systemd, 0750).
 StateDirectory=senhub-agent
