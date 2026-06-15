@@ -287,6 +287,11 @@ var freeTierProbes = map[string]bool{
 	// REST API is the same universal-collection wedge as snmp_poll or
 	// prometheus_scrape — not a paid vendor integration.
 	"ceph": true,
+	// jenkins: CI health over the controller's open HTTP REST API
+	// (stdlib, no vendor SDK) — same open-API wedge as http_check /
+	// snmp_poll; monitoring a standard endpoint is collection, not a
+	// vendor integration.
+	"jenkins": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

@@ -35,6 +35,7 @@ func TestFreeTierProbes(t *testing.T) {
 		{"WildFly probe IS free tier", "wildfly", true},
 		{"Kafka probe is free tier", "kafka", true},
 		{"Ceph probe IS free tier", "ceph", true},
+		{"Jenkins probe IS free tier", "jenkins", true},
 		{"Event probe is NOT free tier", "event", false},
 		{"NATS probe is free tier", "nats", true},
 		{"ZooKeeper probe is free tier", "zookeeper", true},
@@ -95,6 +96,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"consul":            false,
 		"zookeeper":         false,
 		"envoy":             false,
+		"jenkins":           false,
 	}
 
 	for _, probe := range probes {
