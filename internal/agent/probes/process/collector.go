@@ -30,18 +30,20 @@ type processSnapshot struct {
 	createTime int64 // Unix ms
 }
 
-// collect enumerates processes, applies filters, and builds datapoints.
-func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.DataPoint, error) {
+// collect enumerates processes, applies filters, and builds datapoints. It
+// also returns the filtered snapshot set so the caller can feed the entity
+// rail from the same enumeration (no second pass over the process table).
+func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.DataPoint, []processSnapshot, error) {
 	baseTags, err := common.GetHostTags()
 	if err != nil {
-		return nil, fmt.Errorf("host tags: %w", err)
+		return nil, nil, fmt.Errorf("host tags: %w", err)
 	}
 
 	hostname, _ := os.Hostname()
 
 	procs, err := gops.Processes()
 	if err != nil {
-		return nil, fmt.Errorf("listing processes: %w", err)
+		return nil, nil, fmt.Errorf("listing processes: %w", err)
 	}
 
 	snaps := make([]processSnapshot, 0, len(procs))
@@ -88,7 +90,7 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 		}
 	}
 
-	return points, nil
+	return points, snaps, nil
 }
 
 // snapshotProcess reads one process and returns (snap, skip).
