@@ -1282,6 +1282,38 @@ séries.
 | `kafka.consumer_group.lag_sum` | `{item}` | gauge | group + topic | somme lag toutes partitions |
 
 `kafka.partition.replicas_in_sync` est émis par `client.InSyncReplicas(topic, partition)` (sarama). Une erreur par partition est loguée en `Warn` et la métrique est omise pour ce cycle ; `kafka.partition.replicas` reste toujours émis. Condition d'alerte typique : `replicas_in_sync < replicas`.
+### 4.26 Probe `clickhouse` (free, #465)
+
+Scrapes the ClickHouse `/metrics` Prometheus-text endpoint (available since ClickHouse 20.1)
+and maps three ClickHouse metric families:
+
+- `ClickHouseMetrics_*` — instantaneous gauges
+- `ClickHouseAsyncMetrics_*` — background/async gauges
+- `ClickHouseProfileEvents_*` — cumulative counters
+
+No upstream OTel semantic convention exists for ClickHouse at the time of writing.
+Names follow the same pattern as first-party OTel receiver names
+(e.g. `clickhouse.queries.active` mirrors `mysql.queries`).
+Unit embedded in the name is forbidden per the OTel-first rule; the unit lives in `otel.unit`.
+
+| OTel name | Unit | Type | Source ClickHouse metric |
+|---|---|---|---|
+| `senhub.clickhouse.up` | `1` | gauge | probe health signal |
+| `clickhouse.queries.active` | `{query}` | gauge | `ClickHouseMetrics_Query` |
+| `clickhouse.connections` | `{connection}` | gauge | `ClickHouseMetrics_Connection` |
+| `clickhouse.memory.used` | `By` | gauge | `ClickHouseMetrics_MemoryTracking` |
+| `clickhouse.parts.active` | `{part}` | gauge | `ClickHouseMetrics_Parts` |
+| `clickhouse.merges.active` | `{merge}` | gauge | `ClickHouseMetrics_Merge` |
+| `clickhouse.uptime` | `s` | counter | `ClickHouseAsyncMetrics_Uptime` |
+| `clickhouse.queries.total` | `{query}` | counter | `ClickHouseProfileEvents_Query` |
+| `clickhouse.queries.select` | `{query}` | counter | `ClickHouseProfileEvents_SelectQuery` |
+| `clickhouse.queries.insert` | `{query}` | counter | `ClickHouseProfileEvents_InsertQuery` |
+| `clickhouse.inserted.rows` | `{row}` | counter | `ClickHouseProfileEvents_InsertedRows` |
+| `clickhouse.inserted.data` | `By` | counter | `ClickHouseProfileEvents_InsertedBytes` |
+| `clickhouse.read.data` | `By` | counter | `ClickHouseProfileEvents_ReadCompressedBytes` |
+| `clickhouse.written.data` | `By` | counter | `ClickHouseProfileEvents_WriteCompressedBytes` |
+
+**Discriminant tag:** `instance` (= `server.address`) — registered in `DiscriminantTagsRegistry["clickhouse"]` (#459).
 
 ## 6. Processus d'ajout d'une convention
 

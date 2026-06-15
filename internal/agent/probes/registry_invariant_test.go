@@ -26,6 +26,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/ceph"
 	_ "senhub-agent.go/internal/agent/probes/cassandra"
 	_ "senhub-agent.go/internal/agent/probes/couchdb"
+	_ "senhub-agent.go/internal/agent/probes/clickhouse"
 	_ "senhub-agent.go/internal/agent/probes/cpu"
 	_ "senhub-agent.go/internal/agent/probes/envoy"
 	_ "senhub-agent.go/internal/agent/probes/event"
