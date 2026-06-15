@@ -96,7 +96,7 @@ func TestCollect_CurrentHost(t *testing.T) {
 		t.Fatalf("parseConfig: %v", err)
 	}
 
-	points, err := collect(time.Now(), cfg, testLogger())
+	points, _, err := collect(time.Now(), cfg, testLogger())
 	if err != nil {
 		t.Fatalf("collect: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestCollect_Aggregate(t *testing.T) {
 		t.Fatalf("parseConfig: %v", err)
 	}
 
-	points, err := collect(time.Now(), cfg, testLogger())
+	points, _, err := collect(time.Now(), cfg, testLogger())
 	if err != nil {
 		t.Fatalf("collect: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestCollect_AggregateDisabled(t *testing.T) {
 		t.Fatalf("parseConfig: %v", err)
 	}
 
-	points, err := collect(time.Now(), cfg, testLogger())
+	points, _, err := collect(time.Now(), cfg, testLogger())
 	if err != nil {
 		t.Fatalf("collect: %v", err)
 	}
