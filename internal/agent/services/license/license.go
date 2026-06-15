@@ -283,6 +283,10 @@ var freeTierProbes = map[string]bool{
 	// interface locally is the same posture as prometheus_scrape — it is
 	// universal collection, not a paid vendor integration.
 	"envoy": true,
+	// ceph: open-source storage cluster; monitoring it via the public
+	// REST API is the same universal-collection wedge as snmp_poll or
+	// prometheus_scrape — not a paid vendor integration.
+	"ceph": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
