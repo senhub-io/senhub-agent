@@ -156,40 +156,40 @@ metrics:
     tag_to_attribute:
       instance: server.address
 
-  - name: "clickhouse.inserted.bytes"
-    channel: "clickhouse_inserted_bytes"
+  - name: "clickhouse.inserted.data"
+    channel: "clickhouse_inserted_data"
     display_name: "ClickHouse {instance} Inserted Bytes"
     unit: "B"
     category: "throughput"
     description: "Cumulative bytes inserted (ClickHouseProfileEvents_InsertedBytes)"
     otel:
-      name: clickhouse.inserted.bytes
+      name: clickhouse.inserted.data
       unit: "By"
       type: counter
     tag_to_attribute:
       instance: server.address
 
-  - name: "clickhouse.read.bytes"
-    channel: "clickhouse_read_bytes"
+  - name: "clickhouse.read.data"
+    channel: "clickhouse_read_data"
     display_name: "ClickHouse {instance} Read Compressed Bytes"
     unit: "B"
     category: "throughput"
     description: "Cumulative compressed bytes read from storage (ClickHouseProfileEvents_ReadCompressedBytes)"
     otel:
-      name: clickhouse.read.bytes
+      name: clickhouse.read.data
       unit: "By"
       type: counter
     tag_to_attribute:
       instance: server.address
 
-  - name: "clickhouse.written.bytes"
-    channel: "clickhouse_written_bytes"
+  - name: "clickhouse.written.data"
+    channel: "clickhouse_written_data"
     display_name: "ClickHouse {instance} Written Compressed Bytes"
     unit: "B"
     category: "throughput"
     description: "Cumulative compressed bytes written to storage (ClickHouseProfileEvents_WriteCompressedBytes)"
     otel:
-      name: clickhouse.written.bytes
+      name: clickhouse.written.data
       unit: "By"
       type: counter
     tag_to_attribute:
