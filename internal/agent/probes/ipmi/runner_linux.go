@@ -3,6 +3,7 @@
 package ipmi
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,9 +18,15 @@ import (
 // credential never appears on the process argv (which is world-readable
 // through /proc/<pid>/cmdline and ps aux).
 //
+// The subprocess is bounded by cfg.ExecTimeout so that an unreachable
+// BMC over LAN cannot stall the poll loop indefinitely.
+//
 // If the binary is not found or exits non-zero, the error is returned
 // and the caller emits senhub.ipmi.up=0.
 func runIpmitool(cfg ipmiConfig) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.ExecTimeout)
+	defer cancel()
+
 	var args []string
 	if cfg.Mode == "remote" {
 		args = append(args,
@@ -31,7 +38,7 @@ func runIpmitool(cfg ipmiConfig) (string, error) {
 	}
 	args = append(args, "sdr", "elist", "full")
 
-	cmd := exec.Command(cfg.IpmitoolPath, args...) // #nosec G204 -- path from operator config
+	cmd := exec.CommandContext(ctx, cfg.IpmitoolPath, args...) // #nosec G204 -- path from operator config
 	if cfg.Mode == "remote" {
 		cmd.Env = append(os.Environ(), "IPMITOOL_PASSWORD="+cfg.RemotePassword)
 	}
