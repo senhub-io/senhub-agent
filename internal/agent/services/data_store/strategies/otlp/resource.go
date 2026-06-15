@@ -27,7 +27,7 @@ const (
 //
 // Defaults:
 //   - service.name     = "senhub-agent" unless operator overrode it
-//   - service.instance.id = first 8 chars of agent key (set by
+//   - service.instance.id = the full agent key (set by
 //     NewOTLPSyncStrategy when the operator did not supply one)
 //   - service.version  = build version, when known via cliArgs.Version
 //   - hostAttrs (host.* / os.* from gopsutil) so the agent's own metrics and
