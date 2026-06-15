@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -40,13 +41,14 @@ const (
 )
 
 type probeConfig struct {
-	JolokiaURL  string
-	Username    string
-	Password    string
-	Timeout     time.Duration
-	Interval    time.Duration
-	QueueFilter []string
-	BrokerName  string
+	JolokiaURL   string
+	Username     string
+	Password     string
+	Timeout      time.Duration
+	Interval     time.Duration
+	QueueFilter  []string
+	BrokerName   string
+	InstanceName string // optional: operator-supplied stable id (overrides tech id)
 }
 
 type activemqProbe struct {
@@ -83,6 +85,9 @@ func NewActivemqProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 	if v, ok := config["broker_name"].(string); ok && v != "" {
 		cfg.BrokerName = v
 	}
+	if v, ok := config["instance_name"].(string); ok && v != "" {
+		cfg.InstanceName = v
+	}
 	if v, ok := config["timeout"].(int); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
@@ -113,8 +118,19 @@ func NewActivemqProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		}
 	}
 
-	// Parse host + port from the Jolokia URL for the entity identity.
+	// Parse host + port from the Jolokia URL for descriptive attributes.
 	addr, port := parseJolokiaTarget(cfg.JolokiaURL)
+
+	// hostID returns the OS machine-id for the precedence-2 fallback id.
+	// Called at most once (when pinning the fallback); errors are silently
+	// ignored and produce "" (which degrades to the "activemq" last resort).
+	hostID := func() string {
+		hi, err := common.GetHostIdentity()
+		if err != nil {
+			return ""
+		}
+		return hi.ID
+	}
 
 	probe := &activemqProbe{
 		BaseProbe:    &types.BaseProbe{},
@@ -124,7 +140,7 @@ func NewActivemqProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 			baseURL: cfg.JolokiaURL,
 			http:    httpClient,
 		},
-		entitySrc: newActivemqEntitySource(addr, port),
+		entitySrc: newActivemqEntitySource(cfg.InstanceName, addr, port, hostID),
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
@@ -198,10 +214,14 @@ func (p *activemqProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	var points []data_store.DataPoint
 
-	brokerPoints, err := p.collectBroker(ctx, now)
+	brokerPoints, brokerID, err := p.collectBroker(ctx, now)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("activemq broker query failed")
 		p.entitySrc.setReachable(false, "")
+		// Degrade the entity id to the fallback now — the tech id is unavailable.
+		// pinFallback is a no-op once the id has already been resolved (either via
+		// instance_name, a prior successful collect, or a prior failure).
+		p.entitySrc.pinFallback()
 		points = append(points, data_store.DataPoint{
 			Name:      "senhub.activemq.up",
 			Value:     0,
@@ -211,6 +231,10 @@ func (p *activemqProbe) Collect() ([]data_store.DataPoint, error) {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 	points = append(points, brokerPoints...)
+
+	// Pin the tech-reported BrokerId on the first successful collect.
+	// pinTechID is a no-op once the id is already resolved.
+	p.entitySrc.pinTechID(brokerID)
 
 	// Collect destinations and build the entity snapshot.
 	var dests []destinationSnapshot
@@ -258,14 +282,13 @@ func (p *activemqProbe) brokerMBean() string {
 	)
 }
 
-func (p *activemqProbe) collectBroker(ctx context.Context, now time.Time) ([]data_store.DataPoint, error) {
+// collectBroker queries the broker MBean and returns the datapoints plus the
+// broker's stable BrokerId (a UUID string). The BrokerId is used to pin the
+// entity id on the first successful collect. It returns "" when the BrokerId
+// attribute is unavailable (best-effort; a missing id degrades the entity id
+// to the fallback path on the next failure, not immediately).
+func (p *activemqProbe) collectBroker(ctx context.Context, now time.Time) ([]data_store.DataPoint, string, error) {
 	mbean := p.brokerMBean()
-
-	type brokerAttr struct {
-		name      string
-		attribute string
-		isFloat   bool
-	}
 
 	intAttrs := []struct {
 		metric    string
@@ -285,8 +308,6 @@ func (p *activemqProbe) collectBroker(ctx context.Context, now time.Time) ([]dat
 		{"activemq.temp.usage", "TempPercentUsage", 0.01},
 	}
 
-	_ = brokerAttr{}
-
 	statusTags := p.baseTags("status")
 	brokerTags := p.baseTags("overview")
 
@@ -295,7 +316,15 @@ func (p *activemqProbe) collectBroker(ctx context.Context, now time.Time) ([]dat
 	// Validate broker is reachable by reading one attribute first.
 	producerCount, err := p.client.readInt64(ctx, mbean, "TotalProducerCount")
 	if err != nil {
-		return nil, fmt.Errorf("reading TotalProducerCount: %w", err)
+		return nil, "", fmt.Errorf("reading TotalProducerCount: %w", err)
+	}
+
+	// Fetch the stable BrokerId (UUID) for entity identity. Best-effort:
+	// a Jolokia error here is non-fatal — the entity id falls back on failure.
+	brokerID, err := p.client.readString(ctx, mbean, "BrokerId")
+	if err != nil {
+		p.moduleLogger.Debug().Err(err).Msg("BrokerId attribute unavailable; entity id will use fallback")
+		brokerID = ""
 	}
 
 	points = append(points, data_store.DataPoint{
@@ -340,7 +369,7 @@ func (p *activemqProbe) collectBroker(ctx context.Context, now time.Time) ([]dat
 		})
 	}
 
-	return points, nil
+	return points, brokerID, nil
 }
 
 // listDestinationNames queries the Jolokia list endpoint for all known
