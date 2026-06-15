@@ -39,11 +39,12 @@ type elasticsearchProbe struct {
 }
 
 type esConfig struct {
-	Endpoint string
-	Username string
-	Password string
-	Interval time.Duration
-	Timeout  time.Duration
+	Endpoint     string
+	Username     string
+	Password     string
+	InstanceName string
+	Interval     time.Duration
+	Timeout      time.Duration
 }
 
 // NewElasticsearchProbe constructs the probe from the agent YAML params.
@@ -71,7 +72,11 @@ func NewElasticsearchProbe(config map[string]interface{}, baseLogger *logger.Log
 	if v, ok := config["timeout"].(int); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
 
+	host, port := hostPortFromEndpoint(cfg.Endpoint)
 	probe := &elasticsearchProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
@@ -79,7 +84,7 @@ func NewElasticsearchProbe(config map[string]interface{}, baseLogger *logger.Log
 		client:       &http.Client{Timeout: cfg.Timeout},
 	}
 	probe.SetProbeType(ProbeType)
-	probe.entitySrc = newElasticsearchEntitySource(cfg.Endpoint)
+	probe.entitySrc = newElasticsearchEntitySource(cfg.InstanceName, host, port)
 	return probe, nil
 }
 
@@ -108,6 +113,8 @@ func (p *elasticsearchProbe) OnShutdown(_ context.Context) error {
 
 // Collect fetches cluster health + local node stats and emits datapoints.
 // senhub.elasticsearch.up is always emitted, even on error (up=0).
+// On the first successful collect it also calls GET / to pin the cluster_uuid
+// used as the stable db.instance.id in the entity rail.
 func (p *elasticsearchProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	var points []data_store.DataPoint
@@ -124,8 +131,11 @@ func (p *elasticsearchProbe) Collect() ([]data_store.DataPoint, error) {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
+	// Pin the stable cluster id on first successful reach.  The entity source
+	// suppresses the db entity until this is called at least once.
+	p.maybePin()
+
 	p.entitySrc.setReachable(true)
-	p.entitySrc.updateSnapshot(health.ClusterName, "")
 
 	points = append(points,
 		data_store.DataPoint{Name: "senhub.elasticsearch.up", Value: 1, Timestamp: now, Tags: upTags},
@@ -143,17 +153,49 @@ func (p *elasticsearchProbe) Collect() ([]data_store.DataPoint, error) {
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
+// ----- root info (cluster_uuid + version) ------------------------------------
+
+// rootInfo is the response shape for GET /.
+type rootInfo struct {
+	ClusterUUID string `json:"cluster_uuid"`
+	Version     struct {
+		Number string `json:"number"`
+	} `json:"version"`
+}
+
+// maybePin fetches GET / to pin the cluster_uuid used as the stable
+// db.instance.id.  It is a no-op once the entity source has been pinned
+// (either by instance_name at construction or by a prior call here).
+// Errors are logged at debug level and silently ignored: the entity is simply
+// not emitted until a successful fetch pins the id.
+func (p *elasticsearchProbe) maybePin() {
+	p.entitySrc.mu.RLock()
+	already := p.entitySrc.pinned
+	p.entitySrc.mu.RUnlock()
+	if already {
+		return
+	}
+
+	var info rootInfo
+	if err := p.getJSON("/", &info); err != nil {
+		p.moduleLogger.Debug().Err(err).Msg("elasticsearch root fetch failed; cluster_uuid pending")
+		return
+	}
+	p.entitySrc.pinClusterUUID(info.ClusterUUID)
+	p.entitySrc.updateVersion(info.Version.Number)
+}
+
 // ----- cluster health ---------------------------------------------------------
 
 type clusterHealth struct {
-	ClusterName            string `json:"cluster_name"`
-	Status                 string `json:"status"`
-	NumberOfNodes          int    `json:"number_of_nodes"`
-	NumberOfDataNodes      int    `json:"number_of_data_nodes"`
-	ActiveShards           int    `json:"active_shards"`
-	UnassignedShards       int    `json:"unassigned_shards"`
-	RelocatingShards       int    `json:"relocating_shards"`
-	NumberOfPendingTasks   int    `json:"number_of_pending_tasks"`
+	ClusterName          string `json:"cluster_name"`
+	Status               string `json:"status"`
+	NumberOfNodes        int    `json:"number_of_nodes"`
+	NumberOfDataNodes    int    `json:"number_of_data_nodes"`
+	ActiveShards         int    `json:"active_shards"`
+	UnassignedShards     int    `json:"unassigned_shards"`
+	RelocatingShards     int    `json:"relocating_shards"`
+	NumberOfPendingTasks int    `json:"number_of_pending_tasks"`
 }
 
 func (p *elasticsearchProbe) fetchClusterHealth() (*clusterHealth, error) {
@@ -200,11 +242,11 @@ type nodeStatsResponse struct {
 }
 
 type nodeStats struct {
-	Name    string      `json:"name"`
-	JVM     jvmStats    `json:"jvm"`
-	Process processStats `json:"process"`
-	OS      osStats     `json:"os"`
-	Indices indexStats  `json:"indices"`
+	Name       string                     `json:"name"`
+	JVM        jvmStats                   `json:"jvm"`
+	Process    processStats               `json:"process"`
+	OS         osStats                    `json:"os"`
+	Indices    indexStats                 `json:"indices"`
 	ThreadPool map[string]threadPoolStats `json:"thread_pool"`
 }
 
@@ -219,7 +261,7 @@ type jvmStats struct {
 }
 
 type gcCollector struct {
-	CollectionCount       int64 `json:"collection_count"`
+	CollectionCount        int64 `json:"collection_count"`
 	CollectionTimeInMillis int64 `json:"collection_time_in_millis"`
 }
 
@@ -237,13 +279,13 @@ type osStats struct {
 
 type indexStats struct {
 	Indexing struct {
-		IndexTotal   int64 `json:"index_total"`
+		IndexTotal        int64 `json:"index_total"`
 		IndexTimeInMillis int64 `json:"index_time_in_millis"`
 	} `json:"indexing"`
 	Search struct {
-		QueryTotal      int64 `json:"query_total"`
+		QueryTotal        int64 `json:"query_total"`
 		QueryTimeInMillis int64 `json:"query_time_in_millis"`
-		FetchTotal      int64 `json:"fetch_total"`
+		FetchTotal        int64 `json:"fetch_total"`
 		FetchTimeInMillis int64 `json:"fetch_time_in_millis"`
 	} `json:"search"`
 }
@@ -269,16 +311,16 @@ func (p *elasticsearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.
 		jvmTags := []tags.Tag{{Key: "metric_type", Value: "jvm"}}
 		points = append(points,
 			data_store.DataPoint{
-				Name: "elasticsearch.jvm.memory.heap.used",
-				Value: float32(node.JVM.Mem.HeapUsedInBytes),
+				Name:      "elasticsearch.jvm.memory.heap.used",
+				Value:     float32(node.JVM.Mem.HeapUsedInBytes),
 				Timestamp: ts,
-				Tags: jvmTags,
+				Tags:      jvmTags,
 			},
 			data_store.DataPoint{
-				Name: "elasticsearch.jvm.memory.heap.max",
-				Value: float32(node.JVM.Mem.HeapMaxInBytes),
+				Name:      "elasticsearch.jvm.memory.heap.max",
+				Value:     float32(node.JVM.Mem.HeapMaxInBytes),
 				Timestamp: ts,
-				Tags: jvmTags,
+				Tags:      jvmTags,
 			},
 		)
 
