@@ -4,7 +4,7 @@
 //
 // Metric names follow OTel semantic conventions where defined:
 // apache.uptime, apache.current_connections, apache.workers,
-// apache.requests, apache.traffic.bytes align with the otelcol-contrib
+// apache.requests, apache.traffic align with the otelcol-contrib
 // Apache receiver. senhub.apache.up is a senhub extension.
 package apache
 
@@ -235,7 +235,7 @@ func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
 
 	if fields.totalKBytes != nil {
 		points = append(points, data_store.DataPoint{
-			Name:      "apache.traffic.bytes",
+			Name:      "apache.traffic",
 			Value:     float32(*fields.totalKBytes * 1024),
 			Timestamp: now,
 			Tags:      withType(commonTags, "throughput"),
