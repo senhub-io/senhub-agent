@@ -10,6 +10,19 @@ multi_instance_labels: ["proxmox.node", "proxmox.vmid", "proxmox.vm.name", "prox
 
 metrics:
 
+  # ── Availability ─────────────────────────────────────────────────────────────
+
+  - name: "senhub.proxmox.up"
+    channel: "proxmox_up"
+    display_name: "Proxmox API Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the Proxmox REST API answered successfully, 0 on any connection or authentication failure"
+    otel:
+      name: senhub.proxmox.up
+      unit: "1"
+      type: gauge
+
   # ── Node metrics ─────────────────────────────────────────────────────────────
 
   - name: "proxmox.node.cpu.utilization"
