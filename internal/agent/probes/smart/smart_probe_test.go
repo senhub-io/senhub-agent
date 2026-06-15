@@ -133,7 +133,7 @@ func TestBuildATAPoints_MetricValues(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	ts := time.Now()
-	points := p.buildATAPoints("/dev/sda", result, ts)
+	points := p.buildATAPoints("/dev/sda", result, nil, ts)
 
 	names := make(map[string]float32, len(points))
 	for _, dp := range points {
@@ -172,7 +172,7 @@ func TestBuildNVMePoints_MetricValues(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	ts := time.Now()
-	points := p.buildNVMePoints("/dev/nvme0", result, ts)
+	points := p.buildNVMePoints("/dev/nvme0", result, nil, ts)
 
 	names := make(map[string]float32, len(points))
 	for _, dp := range points {
@@ -317,7 +317,7 @@ func TestHealthGauge_Failed(t *testing.T) {
 	if err := json.Unmarshal([]byte(failedDevice), &result); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	points := p.buildATAPoints("/dev/sdb", result, time.Now())
+	points := p.buildATAPoints("/dev/sdb", result, nil, time.Now())
 	for _, dp := range points {
 		if dp.Name == "smart.disk.health" {
 			if dp.Value != 0 {
@@ -329,20 +329,3 @@ func TestHealthGauge_Failed(t *testing.T) {
 	t.Error("smart.disk.health metric not found")
 }
 
-func TestEntitySource_Observe(t *testing.T) {
-	s := &smartEntitySource{}
-	obs, ok := s.Observe()
-	if !ok {
-		t.Error("Observe() ok = false, want true")
-	}
-	if len(obs.Entities) != 1 {
-		t.Fatalf("expected 1 entity, got %d", len(obs.Entities))
-	}
-	e := obs.Entities[0]
-	if e.Type != "service.instance" {
-		t.Errorf("entity type = %q, want service.instance", e.Type)
-	}
-	if e.ID["service.instance.id"] != "smart://localhost" {
-		t.Errorf("entity id = %v", e.ID)
-	}
-}
