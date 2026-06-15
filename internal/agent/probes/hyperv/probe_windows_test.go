@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -39,7 +40,7 @@ func makeWMIFake(vms []msvmComputerSystem, sums []msvmSummaryInformation, failVM
 
 func newTestProbe(t *testing.T, fn wmiQueryFn) *HypervProbe {
 	t.Helper()
-	baseLogger := logger.NewLogger(nil)
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.hyperv")
 	p := &HypervProbe{
 		BaseProbe:    &types.BaseProbe{},
@@ -88,7 +89,7 @@ func TestCollect_WMIFailure(t *testing.T) {
 }
 
 func TestBuildVMPoints_CPUNormalisation(t *testing.T) {
-	baseLogger := logger.NewLogger(nil)
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
 	p := &HypervProbe{
 		BaseProbe:    &types.BaseProbe{},
 		moduleLogger: logger.NewModuleLogger(baseLogger, "probe.hyperv"),
@@ -119,7 +120,7 @@ func TestBuildVMPoints_CPUNormalisation(t *testing.T) {
 // datapoint so the telemetry joins the hypervisor host entity (Hyper-V is a
 // host facet, #456). Without it the VM metrics would float uncorrelated.
 func TestBuildVMPoints_CarriesHostTags(t *testing.T) {
-	baseLogger := logger.NewLogger(nil)
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
 	p := &HypervProbe{
 		BaseProbe:    &types.BaseProbe{},
 		moduleLogger: logger.NewModuleLogger(baseLogger, "probe.hyperv"),
@@ -147,7 +148,7 @@ func TestBuildVMPoints_CarriesHostTags(t *testing.T) {
 }
 
 func TestBuildVMPoints_MemoryBytes(t *testing.T) {
-	baseLogger := logger.NewLogger(nil)
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
 	p := &HypervProbe{
 		BaseProbe:    &types.BaseProbe{},
 		moduleLogger: logger.NewModuleLogger(baseLogger, "probe.hyperv"),
@@ -169,7 +170,7 @@ func TestBuildVMPoints_MemoryBytes(t *testing.T) {
 }
 
 func TestBuildVMPoints_StateRunning(t *testing.T) {
-	baseLogger := logger.NewLogger(nil)
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
 	p := &HypervProbe{
 		BaseProbe:    &types.BaseProbe{},
 		moduleLogger: logger.NewModuleLogger(baseLogger, "probe.hyperv"),
@@ -187,7 +188,7 @@ func TestBuildVMPoints_StateRunning(t *testing.T) {
 }
 
 func TestBuildVMPoints_CountBuckets(t *testing.T) {
-	baseLogger := logger.NewLogger(nil)
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
 	p := &HypervProbe{
 		BaseProbe:    &types.BaseProbe{},
 		moduleLogger: logger.NewModuleLogger(baseLogger, "probe.hyperv"),
