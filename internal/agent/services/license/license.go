@@ -419,6 +419,15 @@ var freeTierProbes = map[string]bool{
 	// on the same open-core wedge as snmp_poll / otlp_receiver — every
 	// PRTG estate has a Tomcat sensor; this replaces it at zero cost.
 	"tomcat": true,
+	// docker: container monitoring with a free equivalent (cadvisor /
+	// telegraf docker input) — basic collection is commoditized, so free.
+	"docker": true,
+	// redis: Redis/Valkey health/throughput, parity with redis_exporter —
+	// free as the OTel/exporter baseline; deep Redis depth stays paid.
+	"redis": true,
+	// wifi_signal_strength: host-local, niche — same footing as the other
+	// host self-observability probes (#476 tiering).
+	"wifi_signal_strength": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
