@@ -23,7 +23,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -179,7 +181,27 @@ func (p *PromScrapeProbe) OnStart(quitChannel chan struct{}) error {
 	p.moduleLogger.Info().
 		Strs("targets", p.config.Targets).
 		Msg("Starting prometheus_scrape probe")
+	for _, t := range p.config.Targets {
+		if looksLikeOwnEndpoint(t) {
+			p.moduleLogger.Warn().
+				Str("target", t).
+				Msg("prometheus_scrape target looks like the agent's own Prometheus endpoint; scraping it re-ingests already-namespaced series and is almost never intended")
+		}
+	}
 	return nil
+}
+
+// looksLikeOwnEndpoint flags a target whose path matches the agent's own
+// Prometheus exposition routes (/api/<key>/prometheus/metrics or the bare
+// /metrics alias). A heuristic warning only — third-party exporters also use
+// /metrics, so this never refuses the scrape; it just surfaces the footgun.
+func looksLikeOwnEndpoint(target string) bool {
+	u, err := url.Parse(target)
+	if err != nil {
+		return false
+	}
+	path := strings.TrimRight(u.Path, "/")
+	return strings.HasSuffix(path, "/prometheus/metrics") || path == "/metrics"
 }
 
 func (p *PromScrapeProbe) OnShutdown(ctx context.Context) error {
