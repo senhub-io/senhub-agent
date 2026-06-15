@@ -379,6 +379,11 @@ var freeTierProbes = map[string]bool{
 	// a remote system. A standard PRTG "Top Processes" sensor
 	// equivalent that should require zero license.
 	"process": true,
+	// unifi: Ubiquiti UniFi Controller monitoring via stdlib REST (cookie
+	// session auth). Free as the PRTG-migration wedge for UniFi estates —
+	// PRTG's UniFi sensors are widely deployed and this probe covers the
+	// same signal at zero cost for OSS users.
+	"unifi": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
