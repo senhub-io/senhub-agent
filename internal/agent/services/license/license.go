@@ -368,6 +368,12 @@ var freeTierProbes = map[string]bool{
 	// of the host like cpu/memory/logicaldisk, not a remote monitored
 	// system. Free so GPU-equipped hosts have first-class monitoring.
 	"nvidia": true,
+	// oracle: pure-Go (go-ora, no OCI) Oracle monitoring at parity with
+	// the community oracledb_exporter — the open-source baseline that
+	// makes the agent a drop-in for that exporter. Deep Oracle (RAC,
+	// Data Guard, ASM, per-SQL) stays paid; the generic instance
+	// health/capacity surface is free collection.
+	"oracle": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
