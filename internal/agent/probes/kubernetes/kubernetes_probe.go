@@ -1,6 +1,9 @@
 // Package kubernetes implements the free kubernetes probe: supervision of
-// Kubernetes nodes, pods, containers, and deployments via the Kubernetes
-// API server and the metrics-server API.
+// Kubernetes nodes, pods, containers, and deployments via the core/apps
+// Kubernetes API server only (Nodes, Pods, Deployments, Namespaces). It
+// reports readiness/phase/restart/replica counts and senhub.kubernetes.up;
+// it does not query the metrics-server API and emits no CPU/memory usage
+// metrics.
 //
 // Authentication is via in-cluster ServiceAccount (when kubeconfig is empty)
 // or an explicit kubeconfig file for out-of-cluster operation. Namespace
