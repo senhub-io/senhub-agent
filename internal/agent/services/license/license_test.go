@@ -40,6 +40,7 @@ func TestFreeTierProbes(t *testing.T) {
 		{"ClickHouse probe is free tier", "clickhouse", true},
 		{"HyperV probe is free tier", "hyperv", true},
 		{"IPMI probe is free tier", "ipmi", true},
+		{"NVIDIA probe is free tier", "nvidia", true},
 		{"Event probe is NOT free tier", "event", false},
 		{"NATS probe is free tier", "nats", true},
 		{"ZooKeeper probe is free tier", "zookeeper", true},
@@ -119,6 +120,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"chrony":            false,
 		"smart":             false,
 		"ipmi":              false,
+		"nvidia":            false,
 	}
 
 	for _, probe := range probes {
