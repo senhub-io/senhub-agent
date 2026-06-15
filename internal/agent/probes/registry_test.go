@@ -264,6 +264,7 @@ func TestProbeRegistry(t *testing.T) {
 		"unifi",
 		"winservices",
 		"systemd",
+		"kubernetes",
 	}
 
 	for _, probeName := range expectedProbes {

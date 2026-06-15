@@ -391,6 +391,12 @@ var freeTierProbes = map[string]bool{
 	// systemd: host-local unit supervision — watches the init system of
 	// the machine the agent runs on, not a remote service.
 	"systemd": true,
+	// kubernetes: container infrastructure supervision is the cloud-native
+	// equivalent of host self-observation (cpu/memory/network); the agent
+	// running inside a cluster watches the cluster it runs in, not a
+	// remote paid system. Free makes it a viable alternative to
+	// kube-state-metrics / node-exporter for OTel-first stacks.
+	"kubernetes": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

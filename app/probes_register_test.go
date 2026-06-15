@@ -42,6 +42,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"jenkins",
 		"influxdb",
 		"ipmi",
+		"kubernetes",
 		"linux_logs",
 		"logicaldisk",
 		"memcached",

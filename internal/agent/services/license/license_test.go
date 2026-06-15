@@ -51,6 +51,7 @@ func TestFreeTierProbes(t *testing.T) {
 		{"MySQL probe IS free tier", "mysql", true},
 		{"Solr probe is free tier", "solr", true},
 		{"Chrony probe IS free tier", "chrony", true},
+		{"Kubernetes probe is free tier", "kubernetes", true},
 	}
 
 	for _, tt := range tests {
@@ -132,6 +133,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"unifi":             false,
 		"winservices":       false,
 		"systemd":           false,
+		"kubernetes":        false,
 	}
 
 	for _, probe := range probes {
