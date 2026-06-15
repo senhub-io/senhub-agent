@@ -229,6 +229,7 @@ func TestProbeRegistry(t *testing.T) {
 		"otlp_receiver",
 		"snmp_trap",
 		"nginx",
+		"haproxy",
 	}
 
 	for _, probeName := range expectedProbes {

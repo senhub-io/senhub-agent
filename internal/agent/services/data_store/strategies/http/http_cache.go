@@ -115,6 +115,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"icmp_check":  {"target", "metric_type"},
 	"tcp_dial":    {"target", "metric_type"},
 	"snmp_poll":   {"instance", "if_index", "metric_type"},
+	// haproxy: one series per (proxy, component) pair; metric_type
+	// separates sessions / throughput / error / request families.
+	"haproxy": {"proxy", "component", "metric_type"},
 	// prometheus_scrape: scraped label sets are arbitrary and cannot be
 	// enumerated here; per-target series stay distinct, finer label
 	// splits collapse on the cache-keyed sinks (same limitation as

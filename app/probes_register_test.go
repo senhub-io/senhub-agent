@@ -25,6 +25,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"exec",
 		"dns_latency",
 		"filetail",
+		"haproxy",
 		"http_check",
 		"icmp_check",
 		"linux_logs",
