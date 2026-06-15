@@ -145,16 +145,16 @@ func TestCollect_Up(t *testing.T) {
 	}
 
 	checks := map[string]float32{
-		"senhub.solr.up":     1,
+		"senhub.solr.up":       1,
 		"jvm.memory.heap.used": 123456789,
-		"jvm.threads.count":  42,
-		"solr.requests.count": 100,
-		"solr.requests.time":  500, // 100 * 5ms
-		"solr.errors.count":   3,
-		"solr.cache.hits":     50,
-		"solr.cache.inserts":  25,
-		"solr.index.size":     8192,
-		"solr.document.count": 1000,
+		"jvm.threads.count":    42,
+		"solr.requests.count":  100,
+		"solr.requests.time":   500, // 100 * 5ms
+		"solr.errors.count":    3,
+		"solr.cache.hits":      50,
+		"solr.cache.inserts":   25,
+		"solr.index.size":      8192,
+		"solr.document.count":  1000,
 	}
 
 	for name, want := range checks {
