@@ -218,6 +218,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"state",       // redis.cpu.time{state=sys|user|sys_children|user_children}
 		"cmd",         // redis.cmd.calls{cmd=get|set|...} / redis.cmd.usec — per-command
 		"metric_type", // separates overview / connections / memory / throughput / cache / keyspace / replication / persistence / cpu / commands families
+	"mssql": {
+		"database",  // sqlserver.database.io{database=…} + sqlserver.database.status{database=…}
+		"direction", // sqlserver.database.io{direction=read|write}
 	},
 	"mysql": {
 		"kind",         // mysql.threads{kind=running|connected}
