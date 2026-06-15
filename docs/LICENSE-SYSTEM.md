@@ -58,6 +58,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **tcp_dial** - Raw TCP connect latency to host:port targets (VIPs, brokers, AD, fileservers)
 - **dns_latency** - DNS resolution latency per name, optionally per explicit resolver
 - **snmp_poll** - Generic SNMP polling. The deliberate exception to "remote = paid": it is the open-core wedge to replace PRTG's free SNMP polling. Deep vendor-specific SNMP (device profiles, discovery, vendor MIBs) remains paid.
+- **ipmi** - IPMI / BMC hardware sensors (temperatures, fans, voltages, power supply status) via ipmitool. Host-local: the agent reads the machine's own baseboard management controller, not a remote system. Linux only (requires the OpenIPMI kernel driver).
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
