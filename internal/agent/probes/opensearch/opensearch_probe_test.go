@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -247,5 +248,198 @@ func TestCollect_BasicAuth(t *testing.T) {
 	}
 	if !authOK {
 		t.Error("basic auth credentials were not used by the probe")
+	}
+}
+
+// ----- entity source tests ----------------------------------------------------
+
+// testServer builds an httptest server that serves minimal OpenSearch JSON
+// responses for the paths the probe fetches. clusterUUID is served at GET /;
+// pass "" to omit cluster_uuid from the root response (simulates a node whose
+// UUID is not yet assigned).
+func testServer(t *testing.T, clusterUUID string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"cluster_uuid": clusterUUID,
+			})
+		case "/_cluster/health":
+			_ = json.NewEncoder(w).Encode(clusterHealth{Status: "green", NumberOfNodes: 1})
+		case "/_nodes/_local/stats":
+			_ = json.NewEncoder(w).Encode(nodeStatsResponse{Nodes: map[string]nodeStats{
+				"n1": {Name: "n1", Version: "2.13.0"},
+			}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+}
+
+// TestEntitySource_InstanceNameOverride verifies that an operator-supplied
+// instance_name is used verbatim as db.instance.id and is pinned at
+// construction — Collect need not fetch GET /.
+func TestEntitySource_InstanceNameOverride(t *testing.T) {
+	srv := testServer(t, "uuid-should-be-ignored")
+	defer srv.Close()
+
+	p, err := NewOpenSearchProbe(map[string]interface{}{
+		"endpoint":      srv.URL,
+		"instance_name": "my-prod-cluster",
+	}, testLogger())
+	if err != nil {
+		t.Fatalf("NewOpenSearchProbe: %v", err)
+	}
+	op := p.(*opensearchProbe)
+	op.client = srv.Client()
+
+	// id must be pinned immediately at construction.
+	if !op.entitySrc.isPinned() {
+		t.Fatal("entity id should be pinned at construction when instance_name is set")
+	}
+	if got := op.entitySrc.pinnedID; got != "my-prod-cluster" {
+		t.Errorf("pinnedID = %q, want %q", got, "my-prod-cluster")
+	}
+
+	// After a collect cycle, Observe must emit the instance_name as db.instance.id.
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	op.entitySrc.setReachable(true, "")
+	obs, ok := op.entitySrc.Observe()
+	if !ok {
+		t.Fatal("Observe returned ok=false, want true after successful collect")
+	}
+	if len(obs.Entities) != 1 {
+		t.Fatalf("Observe returned %d entities, want 1", len(obs.Entities))
+	}
+	got, _ := obs.Entities[0].ID["db.instance.id"].(string)
+	if got != "my-prod-cluster" {
+		t.Errorf("db.instance.id = %q, want %q", got, "my-prod-cluster")
+	}
+}
+
+// TestEntitySource_TechIDPinned verifies that when no instance_name is set,
+// the entity source pins "opensearch:<cluster_uuid>" on the first successful
+// collect cycle.
+func TestEntitySource_TechIDPinned(t *testing.T) {
+	const uuid = "aabbccdd-0011-2233-4455-ffeeddccbbaa"
+	srv := testServer(t, uuid)
+	defer srv.Close()
+
+	p, err := NewOpenSearchProbe(map[string]interface{}{
+		"endpoint": srv.URL,
+	}, testLogger())
+	if err != nil {
+		t.Fatalf("NewOpenSearchProbe: %v", err)
+	}
+	op := p.(*opensearchProbe)
+	op.client = srv.Client()
+
+	// Before any collect, id must not be pinned.
+	if op.entitySrc.isPinned() {
+		t.Fatal("entity id must not be pinned before the first successful collect")
+	}
+
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	if !op.entitySrc.isPinned() {
+		t.Fatal("entity id must be pinned after the first successful collect")
+	}
+	want := "opensearch:" + uuid
+	if got := op.entitySrc.pinnedID; got != want {
+		t.Errorf("pinnedID = %q, want %q", got, want)
+	}
+}
+
+// TestEntitySource_NotEmittedBeforePinned verifies that Observe returns ok=false
+// before the cluster_uuid has been fetched and pinned.
+func TestEntitySource_NotEmittedBeforePinned(t *testing.T) {
+	src := newOpensearchEntitySource("opensearch.example.com", 9200, "")
+	src.setReachable(true, "2.13.0")
+
+	_, ok := src.Observe()
+	if ok {
+		t.Error("Observe must return ok=false before the id is pinned")
+	}
+}
+
+// TestEntitySource_MonitorsEdge_Present verifies that when agentID is set,
+// Observe includes a monitors relation from service.instance to db.
+func TestEntitySource_MonitorsEdge_Present(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-test-id-001")
+
+	src := newOpensearchEntitySource("opensearch.example.com", 9200, "")
+	src.setPinnedID("cluster-abc123")
+	src.setReachable(true, "2.13.0")
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("Observe returned ok=false")
+	}
+	if len(obs.Relations) != 1 {
+		t.Fatalf("expected 1 relation (monitors), got %d", len(obs.Relations))
+	}
+	rel := obs.Relations[0]
+	if rel.Type != "monitors" {
+		t.Errorf("relation type = %q, want %q", rel.Type, "monitors")
+	}
+	if rel.FromType != "service.instance" {
+		t.Errorf("FromType = %q, want %q", rel.FromType, "service.instance")
+	}
+	if got, _ := rel.FromID["service.instance.id"].(string); got != "agent-test-id-001" {
+		t.Errorf("FromID[service.instance.id] = %q, want %q", got, "agent-test-id-001")
+	}
+	if rel.ToType != "db" {
+		t.Errorf("ToType = %q, want %q", rel.ToType, "db")
+	}
+	if got, _ := rel.ToID["db.instance.id"].(string); got != "opensearch:cluster-abc123" {
+		t.Errorf("ToID[db.instance.id] = %q, want %q", got, "opensearch:cluster-abc123")
+	}
+}
+
+// TestEntitySource_MonitorsEdge_Absent verifies that when agentID is empty,
+// Observe does not emit a monitors relation.
+func TestEntitySource_MonitorsEdge_Absent(t *testing.T) {
+	// Reset agentstate so no agent id is present for this test.
+	agentstate.SetAgentInstanceID("")
+
+	src := newOpensearchEntitySource("opensearch.example.com", 9200, "")
+	src.setPinnedID("cluster-xyz789")
+	src.setReachable(true, "2.13.0")
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("Observe returned ok=false")
+	}
+	if len(obs.Relations) != 0 {
+		t.Errorf("expected 0 relations when agentID is empty, got %d", len(obs.Relations))
+	}
+}
+
+// TestEntitySource_HostPortFallback_ConstructionTime verifies the host:port
+// fallback path: when the cluster genuinely has no stable tech id and
+// instance_name is also empty, the source can be used with a host:port pinned
+// at construction (tested via the hostPort helper + direct pin for coverage).
+func TestEntitySource_HostPortFallback_ConstructionTime(t *testing.T) {
+	src := newOpensearchEntitySource("db.example.com", 9200, "")
+	// Simulate "no stable tech id available" by pinning host:port directly.
+	hp := src.hostPort()
+	src.setPinnedID(hp) // externally: the probe would do this when it learns there is no UUID
+	src.setReachable(true, "")
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("Observe returned ok=false after host:port pin")
+	}
+	got, _ := obs.Entities[0].ID["db.instance.id"].(string)
+	// The pinned value is "opensearch:" + hostPort (as setPinnedID prefixes).
+	want := "opensearch:db.example.com:9200"
+	if got != want {
+		t.Errorf("db.instance.id = %q, want %q", got, want)
 	}
 }
