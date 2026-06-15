@@ -226,6 +226,11 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// postgresql: FREE open-core database probe — the canonical
+	// database/sql monitor for PostgreSQL. Aligned with otelcol-contrib
+	// postgresqlreceiver. Remote system but treated as the free PRTG-
+	// replacement wedge for the most-deployed open-source RDBMS.
+	"postgresql": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
