@@ -330,6 +330,11 @@ var freeTierProbes = map[string]bool{
 	// exposing its health, request and cache metrics is the same
 	// open-core "bring your stack in" wedge as otlp_receiver / exec.
 	"solr": true,
+	// influxdb: open-core database observability wedge — monitors
+	// the InfluxDB instance the agent runs alongside; scrapes the
+	// standard /health and /metrics endpoints, no vendor-specific
+	// paid API required.
+	"influxdb": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

@@ -39,6 +39,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/haproxy"
 	_ "senhub-agent.go/internal/agent/probes/host"
 	_ "senhub-agent.go/internal/agent/probes/httpcheck"
+	_ "senhub-agent.go/internal/agent/probes/influxdb"
 	_ "senhub-agent.go/internal/agent/probes/icmpcheck"
 	_ "senhub-agent.go/internal/agent/probes/jenkins"
 	_ "senhub-agent.go/internal/agent/probes/linuxlogs"
