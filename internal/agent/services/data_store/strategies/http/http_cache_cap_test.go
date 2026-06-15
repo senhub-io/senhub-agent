@@ -14,7 +14,7 @@ import (
 // networkSeriesDataPoint builds a datapoint whose cache key is
 // discriminated by the interface tag — each distinct interface value
 // creates a distinct time series (DiscriminantTagsRegistry["network"]).
-func networkSeriesDataPoint(iface string, value float64) datapoint.DataPoint {
+func networkSeriesDataPoint(iface string, value float32) datapoint.DataPoint {
 	return datapoint.DataPoint{
 		Name:  "bytes_sent",
 		Value: value,
@@ -89,7 +89,7 @@ func TestMetricCacheCap_ExistingSeriesKeepUpdating(t *testing.T) {
 			t.Errorf("eth3 should have been dropped at cap")
 		}
 	}
-	if eth0Value != float64(42) {
+	if eth0Value != float32(42) {
 		t.Errorf("existing series eth0 not updated: got %v, want 42", eth0Value)
 	}
 	if got := httpCacheCapDrops(); got != 1 {

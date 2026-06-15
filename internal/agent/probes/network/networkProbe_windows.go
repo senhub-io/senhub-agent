@@ -423,7 +423,7 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 		dataPoints = append(dataPoints, data_store.DataPoint{
 			Name:      strings.Split(name, "|")[0],
 			Timestamp: timestamp,
-			Value:     value,
+			Value:     float32(value),
 			Tags:      metricTags,
 		})
 	}

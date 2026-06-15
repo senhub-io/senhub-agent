@@ -49,7 +49,7 @@ func TestCountInt32_Bounds(t *testing.T) {
 	cases := []struct {
 		in      int64
 		wantOk  bool
-		wantVal float64
+		wantVal float32
 	}{
 		{0, true, 0},
 		{42, true, 42},
@@ -95,19 +95,19 @@ func TestBytes_BeyondInt32(t *testing.T) {
 		}
 	}
 
-	// Spot-check: 2 GB round-trips through float64 exactly (2^31 fits
-	// within the 53-bit float64 mantissa, so the conversion is lossless).
+	// Spot-check: 2 GB round-trips through float32 within ~1 KB
+	// precision (more than enough for monitoring).
 	twoGB := int64(2) * 1024 * 1024 * 1024
 	v, _ := Bytes(twoGB)
 	round := int64(v)
 	delta := round - twoGB
-	if delta != 0 {
-		t.Errorf("Bytes(2 GiB) round-trip delta = %d bytes, want 0 (exact)", delta)
+	if delta < -1024 || delta > 1024 {
+		t.Errorf("Bytes(2 GiB) round-trip delta = %d bytes, want |Δ| ≤ 1024", delta)
 	}
 }
 
 func TestEnumValue_HitMiss(t *testing.T) {
-	mapping := map[string]float64{
+	mapping := map[string]float32{
 		"None":   0,
 		"Source": 1,
 		"Target": 4,
@@ -138,10 +138,10 @@ func TestIsFinite(t *testing.T) {
 	if !IsFinite(0) || !IsFinite(42) || !IsFinite(-1.5) {
 		t.Errorf("finite values should pass")
 	}
-	if IsFinite(math.NaN()) {
+	if IsFinite(float32(math.NaN())) {
 		t.Errorf("NaN should fail")
 	}
-	if IsFinite(math.Inf(1)) || IsFinite(math.Inf(-1)) {
+	if IsFinite(float32(math.Inf(1))) || IsFinite(float32(math.Inf(-1))) {
 		t.Errorf("Inf should fail")
 	}
 }

@@ -116,8 +116,8 @@ func (p *SNMPTrapProbe) GetInterval() time.Duration { return 5 * time.Minute }
 func (p *SNMPTrapProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	points := []data_store.DataPoint{
-		{Name: "senhub.snmp_trap.rejected_community", Value: float64(p.rejectedCommunity.Load()), Timestamp: now},
-		{Name: "senhub.snmp_trap.decode_panics", Value: float64(p.decodePanics.Load()), Timestamp: now},
+		{Name: "senhub.snmp_trap.rejected_community", Value: float32(p.rejectedCommunity.Load()), Timestamp: now},
+		{Name: "senhub.snmp_trap.decode_panics", Value: float32(p.decodePanics.Load()), Timestamp: now},
 	}
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }

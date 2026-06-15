@@ -13,7 +13,7 @@ type DataPoint struct {
 	// Timestamp when measurement was taken
 	Timestamp time.Time `json:"timestamp"`
 	// Value of the measurement
-	Value float64 `json:"value"`
+	Value float32 `json:"value"`
 	// Optional metadata tags
 	Tags []tags.Tag `json:"tags,omitempty"`
 }

@@ -45,7 +45,7 @@ type ValidationTestResult struct {
 // PreviewMetric represents a sample metric for preview purposes
 type PreviewMetric struct {
 	Name      string            `json:"name"`      // Metric name
-	Value     float64           `json:"value"`     // Metric value
+	Value     float32           `json:"value"`     // Metric value
 	Tags      map[string]string `json:"tags"`      // Metric tags
 	Timestamp int64             `json:"timestamp"` // Collection timestamp
 }

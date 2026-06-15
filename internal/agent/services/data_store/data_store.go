@@ -543,9 +543,10 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 		if defTransformer, ok := transformer.(interface {
 			ApplyUnitCorrection(string, float64, map[string]string) (float64, bool)
 		}); ok {
-			originalFloat64 := dp.Value
+			// Convert value to float64 for correction calculation
+			originalFloat64 := float64(dp.Value)
 			if newValue, applied := defTransformer.ApplyUnitCorrection(dp.Name, originalFloat64, tagMap); applied {
-				correctedValue = newValue
+				correctedValue = float32(newValue)
 				correctionCount++
 
 				d.logger.Info().

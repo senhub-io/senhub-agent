@@ -66,7 +66,7 @@ func TestCollect_RealListener(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	byTarget := map[string]map[string]float64{}
+	byTarget := map[string]map[string]float32{}
 	for _, dp := range points {
 		var target string
 		for _, tg := range dp.Tags {
@@ -75,7 +75,7 @@ func TestCollect_RealListener(t *testing.T) {
 			}
 		}
 		if byTarget[target] == nil {
-			byTarget[target] = map[string]float64{}
+			byTarget[target] = map[string]float32{}
 		}
 		byTarget[target][dp.Name] = dp.Value
 	}

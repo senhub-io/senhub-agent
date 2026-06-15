@@ -195,7 +195,7 @@ func (p *ExecProbe) Collect() ([]data_store.DataPoint, error) {
 	res := p.run()
 
 	points := []data_store.DataPoint{
-		{Name: "senhub.exec.duration", Value: res.duration.Seconds() * 1000, Timestamp: now, Tags: baseTags},
+		{Name: "senhub.exec.duration", Value: float32(res.duration.Seconds() * 1000), Timestamp: now, Tags: baseTags},
 	}
 
 	if res.err != nil {
@@ -207,7 +207,7 @@ func (p *ExecProbe) Collect() ([]data_store.DataPoint, error) {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
-	timedOut := float64(0)
+	timedOut := float32(0)
 	if res.timedOut {
 		timedOut = 1
 	}
@@ -223,13 +223,13 @@ func (p *ExecProbe) Collect() ([]data_store.DataPoint, error) {
 			status = 3
 		}
 		points = append(points,
-			data_store.DataPoint{Name: "senhub.exec.status", Value: float64(status), Timestamp: now, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.exec.status", Value: float32(status), Timestamp: now, Tags: baseTags},
 		)
 		points = append(points, metricsToDatapoints(metrics, now)...)
 	default: // nagios
 		status := nagiosStatus(res.exitCode, res.timedOut)
 		points = append(points,
-			data_store.DataPoint{Name: "senhub.exec.status", Value: float64(status), Timestamp: now, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.exec.status", Value: float32(status), Timestamp: now, Tags: baseTags},
 		)
 		perfdata := parseNagiosPerfdata(res.stdout)
 		points = append(points, metricsToDatapoints(perfdata, now)...)
@@ -267,7 +267,7 @@ func metricsToDatapoints(metrics []checkMetric, ts time.Time) []data_store.DataP
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      m.name,
-			Value:     m.value,
+			Value:     float32(m.value),
 			Timestamp: ts,
 			Tags:      t,
 		})
