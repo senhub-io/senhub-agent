@@ -128,6 +128,14 @@ func fakeServer(t *testing.T) (*httptest.Server, *CephProbe) {
 		})
 	})
 
+	// GET /api/cluster → cluster fsid used to pin the entity id.
+	mux.HandleFunc("/api/cluster", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"fsid": "aabbccdd-1234-5678-abcd-ef0123456789",
+		})
+	})
+
 	// GET /api/pool
 	mux.HandleFunc("/api/pool", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
