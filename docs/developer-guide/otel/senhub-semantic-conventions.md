@@ -1231,6 +1231,33 @@ les métriques d'interface ajoutent `network.interface.index` :
 Les `custom_mappings` et OIDs dynamiques passent par le pass-through
 typé (tag `otel_type`) — pas d'énumération ici par construction.
 
+### 4.26 Probe `mssql` (Microsoft SQL Server)
+
+Source canonique : [OTel Collector contrib `sqlserverreceiver`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/sqlserverreceiver).
+Quand le receiver contrib expose la métrique, l'agent adopte son nom et ses attributs pour une interopérabilité directe. `senhub.db.up` est l'exception cross-engine partagée avec mysql/postgresql.
+
+| Métrique OTel | Unité | Type | Source SQL |
+|---|---|---|---|
+| `senhub.db.up` | `1` | gauge | heartbeat de connectivité |
+| `sqlserver.batch_request.rate` | `{request}/s` | gauge | `Batch Requests/sec` (dm_os_performance_counters) |
+| `sqlserver.transaction_rate` | `{transaction}/s` | gauge | `Transactions/sec` (dm_os_performance_counters) |
+| `sqlserver.page_buffer_cache.hit_ratio` | `1` | gauge | `Buffer cache hit ratio` / 100 — ratio 0-1, **pas un pourcentage** |
+| `sqlserver.page_life_expectancy` | `s` | gauge | `Page life expectancy` (dm_os_performance_counters) |
+| `sqlserver.lock_wait_rate` | `{wait}/s` | gauge | `Lock Waits/sec` (dm_os_performance_counters) |
+| `sqlserver.processes.blocked` | `{process}` | gauge | `Processes blocked` (dm_os_performance_counters) |
+| `sqlserver.user.connection.count` | `{connection}` | gauge | `User Connections` (dm_os_performance_counters) |
+| `sqlserver.database.io` | `By` | counter | bytes read/write par database (dm_io_virtual_file_stats) |
+| `sqlserver.database.status` | `1` | gauge | état de la base (sys.databases.state — 0=ONLINE) |
+
+**Note unité** : le compteur natif `Buffer cache hit ratio` est émis par SQL Server en entier 0-100.
+L'`otel.unit: "1"` dans le transformer YAML déclenche la division ÷100 dans `convertValue`
+(même pattern que `oracle.buffer.cache.hit_ratio`). L'unité opérateur (`unit: "%"`) reste inchangée
+pour l'affichage PRTG.
+
+**Attributs multi-instance** :
+- `sqlserver.database.io` : `db.namespace` (nom de la base), `direction` (`read`/`write`).
+- `sqlserver.database.status` : `db.namespace`.
+
 ## 6. Processus d'ajout d'une convention
 
 1. Lire les sources §1 pour le domaine concerné
