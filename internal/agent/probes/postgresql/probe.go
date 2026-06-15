@@ -167,9 +167,34 @@ func (p *pgProbe) Collect() ([]data_store.DataPoint, error) {
 	p.collectReplication(ctx, now, instance, &points)
 
 	// ── Entity update ───────────────────────────────────────────────────────
-	p.entitySrc.update(instance)
+	// Pin the stable tech id on the first successful collect.  instance_name
+	// takes precedence (already pinned in newPgEntitySource); if not set, try
+	// the cluster-scoped system_identifier from pg_control_system(). The entity
+	// is not emitted until the id is pinned, so we never re-key Toise.
+	if p.entitySrc.pinnedID() == "" {
+		sysID := p.fetchSystemIdentifier(ctx)
+		p.entitySrc.pinTechID(sysID)
+	}
+	// pass "" so update() uses the already-pinned instanceID; a non-empty
+	// fallback is only passed when we deliberately fall back to host:port.
+	p.entitySrc.update("")
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
+
+// fetchSystemIdentifier queries the PostgreSQL cluster-scoped system identifier
+// (a 64-bit integer stable across restarts, replicas, and promotions) from
+// pg_control_system(). Returns the decimal string representation, or "" when
+// the query fails (older PG versions, restricted permissions).
+func (p *pgProbe) fetchSystemIdentifier(ctx context.Context) string {
+	var sysID string
+	err := p.db.QueryRowContext(ctx,
+		`SELECT system_identifier::text FROM pg_control_system()`).Scan(&sysID)
+	if err != nil {
+		p.moduleLogger.Debug().Err(err).Msg("postgresql: pg_control_system unavailable; db.instance.id pending")
+		return ""
+	}
+	return sysID
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────

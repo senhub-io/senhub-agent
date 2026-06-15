@@ -7,13 +7,14 @@ import (
 
 // config holds the validated probe configuration.
 type config struct {
-	Host      string
-	Port      int
-	Username  string
-	Password  string
-	Databases []string // empty = monitor server-wide stats only
-	Interval  time.Duration
-	TLSConfig *pgTLSConfig // nil = no TLS
+	Host         string
+	Port         int
+	Username     string
+	Password     string
+	Databases    []string // empty = monitor server-wide stats only
+	Interval     time.Duration
+	TLSConfig    *pgTLSConfig // nil = no TLS
+	InstanceName string       // optional stable override for db.instance.id (Toise identity)
 }
 
 // parseConfig converts the free-form params map from the probe YAML
@@ -62,6 +63,10 @@ func parseConfig(params map[string]interface{}) (config, error) {
 
 	if v, ok := params["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
+	}
+
+	if v, ok := params["instance_name"].(string); ok {
+		cfg.InstanceName = v
 	}
 
 	if raw, ok := params["tls"].(map[string]interface{}); ok {
