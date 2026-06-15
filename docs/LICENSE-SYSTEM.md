@@ -101,6 +101,9 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **tomcat** - Apache Tomcat monitoring via Jolokia REST (requests, sessions, JVM heap, GC, thread pool). Same open-core wedge as snmp_poll: replaces the PRTG Tomcat sensor at zero cost.
 - **mongodb** — MongoDB server monitoring via serverStatus + per-database dbStats. The most-deployed document database; free tier covers standalone, replica set and Atlas targets via URI. Deep auth topologies, replica-set health and Atlas-specific metrics are future paid extensions.
 - **kafka** — Kafka broker/topic/consumer-group monitoring via Admin API (12 metrics: broker count, topic/partition metadata, current/oldest offsets, ISR replicas, consumer group lag per partition and lag_sum per topic). Mirrors the OTel Collector kafkametricsreceiver metric set.
+- **redis** - Redis / Valkey health and throughput via the INFO command (memory, connections, throughput, cache hit/miss, keyspace, replication, persistence). Parity with redis_exporter — the open-source baseline is free; deep Redis depth stays paid.
+- **docker** - Docker container monitoring (per-container CPU, memory, network, block I/O, state). Basic container collection is commoditized (cadvisor / telegraf docker input), so it is free.
+- **wifi_signal_strength** - Host-local Wi-Fi signal strength of the machine the agent runs on. Niche host self-observability, same footing as cpu/memory/network.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
