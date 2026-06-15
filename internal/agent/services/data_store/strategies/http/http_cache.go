@@ -116,6 +116,8 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// SNMP polling — one series per (target, interface row); metric_type
 	// separates interface / system / status families.
+	// consul: health.checks emits one series per state (critical/warning/passing).
+	"consul":      {"metric_type", "state"},
 	"dns_latency": {"name", "resolver", "metric_type"},
 	"http_check":  {"target", "metric_type"},
 	"icmp_check":  {"target", "metric_type"},
