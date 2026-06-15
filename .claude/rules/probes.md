@@ -137,37 +137,34 @@ When adding a probe, register it in the **five** places below in the **same PR**
 
    **Host-level probes and log conduits** (cpu, memory, network, logicaldisk, linux_logs, syslog, filetail, windowseventlog, event): do NOT call `SetEntitySource()`. They inherit the `NoOpEntitySource` fallback from `BaseProbe`, which satisfies the invariant without emitting extra entity events — the host entity is already reported by the entity detector.
 
-   Entity type taxonomy (immutable — changing a type is a breaking change for Toise):
+   Entity type — **registered Toise vocabulary ONLY**. `entity.type` MUST be one
+   of the types registered in `toise-dev/toise` `internal/model/registry.go`
+   (`IsKnownEntityType` is strict by default — an unregistered type is rejected
+   at the boundary and the entity is silently dropped). The technology is a
+   **descriptive attribute** (`db.system.name` / `service.name`), NEVER part of
+   `entity.type`. Identity is exact + immutable and **never purely network-
+   derived** (`server.address`/`server.port` are mutable — DHCP/failover/VIP —
+   and stay descriptive). Frozen with the Toise owner (decisions D1/D2, 2026-06):
 
-   | Technology | Entity type | Immutable ID keys |
-   |---|---|---|
-   | Redis/Valkey | `db.redis` | `server.address`, `server.port` |
-   | MongoDB | `db.mongodb` | `server.address`, `server.port` |
-   | Cassandra | `db.cassandra` | `server.address`, `server.port` |
-   | CouchDB | `db.couchdb` | `server.address`, `server.port` |
-   | InfluxDB | `db.influxdb` | `server.address`, `server.port` |
-   | ClickHouse | `db.clickhouse` | `server.address`, `server.port` |
-   | Memcached | `db.memcached` | `server.address`, `server.port` |
-   | Elasticsearch | `search.engine` | `server.address`, `server.port`, `search.engine.type=elasticsearch` |
-   | OpenSearch | `search.engine` | `server.address`, `server.port`, `search.engine.type=opensearch` |
-   | Solr | `search.engine` | `server.address`, `server.port`, `search.engine.type=solr` |
-   | Nginx | `web.server` | `server.address`, `server.port`, `web.server.type=nginx` |
-   | Apache | `web.server` | `server.address`, `server.port`, `web.server.type=apache` |
-   | HAProxy | `load_balancer` | `server.address`, `server.port` |
-   | Envoy | `proxy` | `server.address`, `server.port` |
-   | Varnish | `cache.server` | `server.address`, `server.port` |
-   | RabbitMQ | `messaging.broker` | `server.address`, `server.port`, `messaging.system=rabbitmq` |
-   | Kafka | `messaging.broker` | `server.address`, `server.port`, `messaging.system=kafka` |
-   | ActiveMQ | `messaging.broker` | `server.address`, `server.port`, `messaging.system=activemq` |
-   | Pulsar | `messaging.broker` | `server.address`, `server.port`, `messaging.system=pulsar` |
-   | Tomcat | `app.server` | `server.address`, `server.port`, `app.server.type=tomcat` |
-   | WildFly | `app.server` | `server.address`, `server.port`, `app.server.type=wildfly` |
-   | Zookeeper | `coordination.service` | `server.address`, `server.port` |
-   | Consul | `service_mesh.node` | `server.address`, `server.port` |
-   | PHP-FPM | `runtime.php_fpm` | `server.address`, `server.port` |
-   | Docker container | `container` | `container.id` |
-   | SNMP device | `network.device` | (managed by snmppoll — already implemented) |
-   | Host | `host` | (managed by entity detector — already implemented) |
+   | Probe family | `entity.type` | Subtype (descriptive attr) | Identity `{...}` |
+   |---|---|---|---|
+   | Databases — Redis/Valkey, MongoDB, Cassandra, CouchDB, InfluxDB, ClickHouse, Memcached, MySQL, PostgreSQL | `db` | `db.system.name` (`redis`/`mongodb`/…) | `{db.instance.id}` — stable source id (MySQL `server_uuid`, PG `system_identifier`, else operator logical name, else `host:port` documented fallback) |
+   | Application services — Kafka, RabbitMQ, NATS, Pulsar, ActiveMQ, Nginx, Apache, HAProxy, Envoy, Varnish, Tomcat, WildFly, Solr, Elasticsearch, OpenSearch, Jenkins, Consul, Zookeeper, PHP-FPM, Ceph, … | `service.instance` | `service.name` (`kafka`/`nginx`/…), `service.namespace` if relevant | `{service.instance.id}` — stable **by precedence**: (1) tech-reported persistent id (ES node UUID, Consul node-id, Kafka `cluster.id`+`broker.id`, RabbitMQ nodename, NATS `server_name`, Pulsar `cluster`+`brokerId`, Ceph `fsid`+daemon, Jenkins instance id); (2) else `<service.name>@<host.id>`. **Never** `scheme://host:port`, URL+port, or IP. |
+   | Docker container | `service.instance` | `service.name` (image/name) | `{service.instance.id}` from `container.id` (stable, not network-derived) |
+   | The agent itself | `service.instance` | `service.name=senhub-agent` | `{service.instance.id}` = agent key — emitted by the entity foundation; it is the `From` of every `monitors` edge |
+   | Virtual machine — hyperv, proxmox | `host` | `host.type=vm` | `{host.id}` — a VM is a host. Optional later: `runs_on` VM→hypervisor |
+   | Host hardware — disk (smart), GPU (nvidia), sensor/PSU (ipmi) | — **NOT an entity** | — | host-tagged metrics (`host.id` + device label), no distinct entity. Re-examine if a relation emerges (e.g. `db --stored_on--> disk`, #456) |
+   | SNMP-discovered device | `network.device` | — | `{network.device.id}` (managed by snmppoll — already implemented) |
+   | Host (the agent's own machine) | `host` | — | `{host.id}` (managed by entity detector — already implemented) |
+
+   Every monitored target also emits a `monitors` edge from the agent's own
+   `service.instance` to the target:
+   `Relation{Type:"monitors", FromType:"service.instance", FromID:{"service.instance.id": agentstate.GetAgentInstanceID()}, ToType: <db|service.instance|host|network.device>, ToID: <target id>}`.
+   Skip the edge when `GetAgentInstanceID()` is `""` (entity emission off — the
+   consumer would buffer an unresolvable `From` then drop it).
+
+   Full rationale + the Toise decisions: `docs/audit/ENTITY-CONTRACT-DISCUSSION-TOISE.md`,
+   issues #470 (umbrella), #472 (db id), #433 (monitors), #456 (hardware/VM).
 
 For probes that emit collapsed metrics (one OTel name + discriminator attribute), also add the discriminator tag key to `DiscriminantTagsRegistry["<probe>"]` in `internal/agent/services/data_store/strategies/http/http_cache.go`. Without this, the cache key collapses all variants onto one slot.
 
