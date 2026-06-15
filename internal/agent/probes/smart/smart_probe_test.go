@@ -1,6 +1,7 @@
 package smart
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -16,14 +17,17 @@ func testBaseLogger() *logger.Logger {
 
 func newTestSmartProbe(cfg smartConfig, scanOut []byte, deviceMap map[string][]byte) *smartProbe {
 	log := testBaseLogger()
+	if cfg.ExecTimeout == 0 {
+		cfg.ExecTimeout = defaultExecTimeout
+	}
 	p := &smartProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		moduleLogger: logger.NewModuleLogger(log, "probe.smart"),
-		execScan: func(path string, sudo bool) ([]byte, error) {
+		execScan: func(_ context.Context, path string, sudo bool) ([]byte, error) {
 			return scanOut, nil
 		},
-		execDevice: func(path string, sudo bool, device string) ([]byte, error) {
+		execDevice: func(_ context.Context, path string, sudo bool, device string) ([]byte, error) {
 			if out, ok := deviceMap[device]; ok {
 				return out, nil
 			}
@@ -86,11 +90,26 @@ func TestParseConfig_Defaults(t *testing.T) {
 	if cfg.Interval != defaultInterval {
 		t.Errorf("Interval = %v, want %v", cfg.Interval, defaultInterval)
 	}
+	if cfg.ExecTimeout != defaultExecTimeout {
+		t.Errorf("ExecTimeout = %v, want %v", cfg.ExecTimeout, defaultExecTimeout)
+	}
 	if cfg.UseSudo {
 		t.Error("UseSudo should default to false")
 	}
 	if len(cfg.Devices) != 0 {
 		t.Errorf("Devices should be empty by default, got %v", cfg.Devices)
+	}
+}
+
+func TestParseConfig_ExecTimeout(t *testing.T) {
+	cfg, err := parseConfig(map[string]interface{}{
+		"exec_timeout": 30,
+	})
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+	if cfg.ExecTimeout != 30*time.Second {
+		t.Errorf("ExecTimeout = %v, want 30s", cfg.ExecTimeout)
 	}
 }
 
@@ -328,4 +347,3 @@ func TestHealthGauge_Failed(t *testing.T) {
 	}
 	t.Error("smart.disk.health metric not found")
 }
-
