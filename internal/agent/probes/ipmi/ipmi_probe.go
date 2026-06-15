@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -189,14 +190,21 @@ func (p *ipmiProbe) OnShutdown(_ context.Context) error { return nil }
 func (p *ipmiProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 
+	hostTags, err := common.GetHostTags()
+	if err != nil {
+		p.moduleLogger.Warn().Err(err).Msg("could not resolve host tags; host.id will be absent")
+		hostTags = nil
+	}
+
 	out, err := p.runner(p.cfg)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("ipmitool failed; emitting ipmi.up=0")
+		upTags := append(append([]tags.Tag{}, hostTags...), tags.Tag{Key: "metric_type", Value: metricTypeAvailabity})
 		up := data_store.DataPoint{
 			Name:      "senhub.ipmi.up",
 			Value:     0,
 			Timestamp: now,
-			Tags:      []tags.Tag{{Key: "metric_type", Value: metricTypeAvailabity}},
+			Tags:      upTags,
 		}
 		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{up}, p.GetName()), nil
 	}
@@ -204,14 +212,15 @@ func (p *ipmiProbe) Collect() ([]data_store.DataPoint, error) {
 	rows := parseSdrOutput(out)
 	var points []data_store.DataPoint
 	for _, row := range rows {
-		pts := p.rowToDataPoints(row, now)
+		pts := p.rowToDataPoints(row, now, hostTags)
 		points = append(points, pts...)
 	}
+	upTags := append(append([]tags.Tag{}, hostTags...), tags.Tag{Key: "metric_type", Value: metricTypeAvailabity})
 	points = append(points, data_store.DataPoint{
 		Name:      "senhub.ipmi.up",
 		Value:     1,
 		Timestamp: now,
-		Tags:      []tags.Tag{{Key: "metric_type", Value: metricTypeAvailabity}},
+		Tags:      upTags,
 	})
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
@@ -220,14 +229,17 @@ func (p *ipmiProbe) Collect() ([]data_store.DataPoint, error) {
 // rowToDataPoints converts a parsed sensor row to zero or more datapoints.
 // Sensors that are filtered out (include_types / exclude_names) produce
 // no datapoints. A sensor with an unrecognised unit produces only the
-// status datapoint.
-func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time) []data_store.DataPoint {
+// status datapoint. hostTags carries host.id and other resource attributes
+// so telemetry joins the host entity emitted by the foundation detector.
+func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time, hostTags []tags.Tag) []data_store.DataPoint {
 	if !p.shouldInclude(row) {
 		return nil
 	}
 
-	componentTag := tags.Tag{Key: "hardware.component", Value: row.name}
-	metricTag := tags.Tag{Key: "metric_type", Value: metricTypeHardware}
+	baseTags := append(append([]tags.Tag{}, hostTags...),
+		tags.Tag{Key: "hardware.component", Value: row.name},
+		tags.Tag{Key: "metric_type", Value: metricTypeHardware},
+	)
 
 	statusOk := isStatusOk(row.status)
 	var points []data_store.DataPoint
@@ -241,7 +253,7 @@ func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time) []data_store.D
 		Name:      "hardware.sensor.status",
 		Value:     sensorStatus,
 		Timestamp: now,
-		Tags:      []tags.Tag{componentTag, metricTag},
+		Tags:      baseTags,
 	})
 
 	// Type-specific metrics.
@@ -253,7 +265,7 @@ func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time) []data_store.D
 				Name:      "hardware.temperature",
 				Value:     float32(*val),
 				Timestamp: now,
-				Tags:      []tags.Tag{componentTag, metricTag},
+				Tags:      baseTags,
 			})
 		}
 
@@ -263,7 +275,7 @@ func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time) []data_store.D
 				Name:      "hardware.fan.speed",
 				Value:     float32(*val),
 				Timestamp: now,
-				Tags:      []tags.Tag{componentTag, metricTag},
+				Tags:      baseTags,
 			})
 		}
 
@@ -273,7 +285,7 @@ func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time) []data_store.D
 				Name:      "hardware.voltage",
 				Value:     float32(*val),
 				Timestamp: now,
-				Tags:      []tags.Tag{componentTag, metricTag},
+				Tags:      baseTags,
 			})
 		}
 
@@ -286,7 +298,7 @@ func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time) []data_store.D
 			Name:      "hardware.power_supply.status",
 			Value:     psStatus,
 			Timestamp: now,
-			Tags:      []tags.Tag{componentTag, metricTag},
+			Tags:      baseTags,
 		})
 	}
 

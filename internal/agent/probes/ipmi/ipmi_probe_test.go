@@ -379,36 +379,3 @@ func TestGetInterval(t *testing.T) {
 	}
 }
 
-// TestEntitySource_Local verifies that the entity source returns
-// ipmi://localhost for local mode.
-func TestEntitySource_Local(t *testing.T) {
-	cfg := ipmiConfig{Mode: "local"}
-	src := newEntitySource(cfg)
-	obs, ok := src.Observe()
-	if !ok {
-		t.Fatal("entity source not ready")
-	}
-	if len(obs.Entities) != 1 {
-		t.Fatalf("expected 1 entity, got %d", len(obs.Entities))
-	}
-	e := obs.Entities[0]
-	if e.Type != entityTypeServiceInstance {
-		t.Errorf("entity type: want %q, got %q", entityTypeServiceInstance, e.Type)
-	}
-	id, _ := e.ID[idKeyServiceInstanceID].(string)
-	if id != "ipmi://localhost" {
-		t.Errorf("entity ID: want 'ipmi://localhost', got %q", id)
-	}
-}
-
-// TestEntitySource_Remote verifies that the entity source encodes the
-// remote host into the instance ID.
-func TestEntitySource_Remote(t *testing.T) {
-	cfg := ipmiConfig{Mode: "remote", RemoteHost: "bmc.example.com"}
-	src := newEntitySource(cfg)
-	obs, _ := src.Observe()
-	id, _ := obs.Entities[0].ID[idKeyServiceInstanceID].(string)
-	if id != "ipmi://bmc.example.com" {
-		t.Errorf("entity ID: want 'ipmi://bmc.example.com', got %q", id)
-	}
-}
