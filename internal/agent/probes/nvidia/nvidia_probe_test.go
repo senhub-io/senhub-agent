@@ -155,7 +155,7 @@ func TestBuildDatapoints_RTX4090(t *testing.T) {
 		fanSpeed: 35, utilizationEncoder: 10, utilizationDecoder: 5,
 	}
 	now := time.Now()
-	pts := buildDatapoints(gpu, now)
+	pts := buildDatapoints(gpu, nil, now)
 
 	find := func(name string) (float32, bool) {
 		for _, p := range pts {
@@ -205,7 +205,7 @@ func TestBuildDatapoints_PowerNA(t *testing.T) {
 		index: "0", name: "Tesla T4", uuid: "GPU-xyz",
 		powerDraw: -1, powerLimit: -1,
 	}
-	pts := buildDatapoints(gpu, time.Now())
+	pts := buildDatapoints(gpu, nil, time.Now())
 	for _, p := range pts {
 		if p.Name == "gpu.power.usage" || p.Name == "gpu.power.limit" {
 			t.Errorf("power metric %q should not be emitted when N/A", p.Name)
@@ -266,38 +266,3 @@ func TestCollect_TwoGPUs(t *testing.T) {
 	}
 }
 
-func TestEntitySource_ObserveBeforeUpdate(t *testing.T) {
-	es := newEntitySource()
-	_, ok := es.Observe()
-	if ok {
-		t.Error("expected ok=false before first update")
-	}
-}
-
-func TestEntitySource_AfterUpdate(t *testing.T) {
-	es := newEntitySource()
-	gpus := []nvidiaGPU{
-		{index: "0", name: "RTX 4090", uuid: "GPU-abc"},
-		{index: "1", name: "RTX 4090", uuid: "GPU-def"},
-	}
-	es.update(gpus)
-	obs, ok := es.Observe()
-	if !ok {
-		t.Error("expected ok=true after update")
-	}
-	if len(obs.Entities) != 2 {
-		t.Errorf("expected 2 entities, got %d", len(obs.Entities))
-	}
-}
-
-func TestEntitySource_EmptyUpdate(t *testing.T) {
-	es := newEntitySource()
-	es.update(nil)
-	obs, ok := es.Observe()
-	if !ok {
-		t.Error("expected ok=true after update with nil (nvidia-smi failed)")
-	}
-	if len(obs.Entities) != 0 {
-		t.Errorf("expected 0 entities, got %d", len(obs.Entities))
-	}
-}
