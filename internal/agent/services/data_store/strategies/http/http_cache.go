@@ -146,6 +146,11 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"database",  // per-database opt-in metrics
 	},
 
+	// Ceph — cluster-level metrics are single-instance on "instance"
+	// (the REST API endpoint); pool metrics add "pool" to disambiguate
+	// per-pool series (ceph.pool.*).
+	"ceph": {"instance", "pool"},
+
 	// IBM i / Power Systems — collectors emit multiple rows per metric
 	// name, one per resource instance. These tags identify the instance.
 	"ibmi": {
