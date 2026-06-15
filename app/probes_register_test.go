@@ -32,6 +32,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"network",
 		"otlp_receiver",
 		"prometheus_scrape",
+		"proxmox",
 		"snmp_poll",
 		"snmp_trap",
 		"syslog",
