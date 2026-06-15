@@ -44,6 +44,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/jenkins"
 	_ "senhub-agent.go/internal/agent/probes/linuxlogs"
 	_ "senhub-agent.go/internal/agent/probes/logicaldisk"
+	_ "senhub-agent.go/internal/agent/probes/memcached"
 	_ "senhub-agent.go/internal/agent/probes/memory"
 	_ "senhub-agent.go/internal/agent/probes/nats"
 	_ "senhub-agent.go/internal/agent/probes/mysql"

@@ -174,6 +174,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// Application monitoring probes
 	"solr": {"core"}, // per-core metrics (solr.document.count, solr.index.size)
+	// memcached: network by direction (transmit/receive), operations by result
+	// (hit/miss), commands by command (get/set/flush), cpu.usage by state (user/system).
+	"memcached": {"result", "command", "state", "direction", "metric_type"},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/

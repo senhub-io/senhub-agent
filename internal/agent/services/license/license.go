@@ -335,6 +335,11 @@ var freeTierProbes = map[string]bool{
 	// standard /health and /metrics endpoints, no vendor-specific
 	// paid API required.
 	"influxdb": true,
+	// memcached: lightweight in-memory cache health monitoring. Collecting
+	// stats from a local or remote Memcached instance over the TCP text
+	// protocol is universal infrastructure observability, not a paid vendor
+	// integration — same wedge reasoning as http_check or tcp_dial.
+	"memcached": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

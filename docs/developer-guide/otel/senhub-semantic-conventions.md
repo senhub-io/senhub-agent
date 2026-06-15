@@ -1386,6 +1386,47 @@ sont des extensions qui n'ont pas d'équivalent contrib.
 `total_net_input_bytes` etc. peuvent dépasser 16 MiB sur un serveur chargé,
 au-delà duquel la mantisse float32 perd de la précision. Défaut partagé avec
 les autres probes DB (#258). La valeur est émise telle quelle.
+### 4.26 Probe `memcached` (Memcached cache server)
+
+**Sources principales :**
+- [otelcol-contrib `memcachedreceiver`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/memcachedreceiver) — référence canonique pour les noms et attributs
+- Protocole texte Memcached `stats\r\n` (RFC informelle — [Memcached protocol.txt](https://github.com/memcached/memcached/blob/master/doc/protocol.txt))
+
+**Stratégie :** aligner les noms sur `memcachedreceiver` quand le metric existe dans contrib (`memcached.network`, `memcached.operations`, `memcached.commands`, `memcached.cpu.usage`, `memcached.uptime`, `memcached.evictions`) ; extensions `memcached.*` locales pour les métriques sans équivalent contrib (`memcached.current.connections`, `memcached.connections.total`, `memcached.current.items`, `memcached.items.total`, `memcached.bytes`, `memcached.limit_maxbytes`). Pas de suffixe d'unité dans le nom. Unité canonique OTel dans `otel.unit`.
+
+#### 4.26.1 Métriques
+
+| Métrique OTel | Unité | Type | Attributs | Source stats |
+|---|---|---|---|---|
+| `senhub.memcached.up` | `1` | gauge | `server.address` | (synthétique) |
+| `memcached.uptime` | `s` | counter | `server.address` | `uptime` |
+| `memcached.current.connections` | `{connection}` | gauge | `server.address` | `curr_connections` |
+| `memcached.connections.total` | `{connection}` | counter | `server.address` | `total_connections` |
+| `memcached.current.items` | `{item}` | gauge | `server.address` | `curr_items` |
+| `memcached.items.total` | `{item}` | counter | `server.address` | `total_items` |
+| `memcached.bytes` | `By` | gauge | `server.address` | `bytes` |
+| `memcached.limit_maxbytes` | `By` | gauge | `server.address` | `limit_maxbytes` |
+| `memcached.network` | `By` | counter | `server.address`, `network.io.direction` | `bytes_written` / `bytes_read` |
+| `memcached.operations` | `{operation}` | counter | `server.address`, `memcached.operation.result` | `get_hits` / `get_misses` |
+| `memcached.commands` | `{command}` | counter | `server.address`, `memcached.command` | `cmd_get` / `cmd_set` / `cmd_flush` |
+| `memcached.evictions` | `{eviction}` | counter | `server.address` | `evictions` |
+| `memcached.cpu.usage` | `s` | counter | `server.address`, `process.cpu.state` | `rusage_user` / `rusage_system` |
+
+#### 4.26.2 Collapses
+
+| Métrique OTel | Valeurs de l'attribut discriminant |
+|---|---|
+| `memcached.network` | `network.io.direction` = `transmit` (bytes_written) / `receive` (bytes_read) |
+| `memcached.operations` | `memcached.operation.result` = `hit` / `miss` |
+| `memcached.commands` | `memcached.command` = `get` / `set` / `flush` |
+| `memcached.cpu.usage` | `process.cpu.state` = `user` / `system` |
+
+`network.io.direction` suit la convention OTel (`transmit`/`receive`) — identique aux valeurs que `memcachedreceiver` contrib produit sur `memcached.network{direction}`.
+
+#### 4.26.3 DiscriminantTagsRegistry
+
+Tags discriminants déclarés dans `http_cache.go` : `result`, `command`, `state`, `direction`, `metric_type`.
+Le tag probe `direction` est renommé vers l'attribut OTel `network.io.direction` via `tag_to_attribute` — la discrimination dans le cache utilise le nom de tag d'origine (`direction`).
 
 ## 6. Processus d'ajout d'une convention
 
