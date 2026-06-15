@@ -126,6 +126,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
 	// senhub-semantic-conventions.md §4.13 for the full collapse list).
+	"clickhouse": {"instance"}, // multi-instance: one series per scraped endpoint
 	"mysql": {
 		"kind",         // mysql.threads{kind=running|connected}
 		"command",      // mysql.commands{command=select|insert|...}
