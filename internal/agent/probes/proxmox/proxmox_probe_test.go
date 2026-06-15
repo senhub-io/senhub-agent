@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 func testLogger() *logger.Logger {
@@ -30,6 +30,17 @@ func pveEnvelope(t *testing.T, v interface{}) []byte {
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api2/json/cluster/status", func(w http.ResponseWriter, r *http.Request) {
+		// Return a clustered install with cluster name "test-cluster".
+		items := []map[string]interface{}{
+			{"type": "cluster", "name": "test-cluster"},
+			{"type": "node", "name": "pve1"},
+			{"type": "node", "name": "pve2"},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(pveEnvelope(t, items))
+	})
 
 	mux.HandleFunc("/api2/json/nodes", func(w http.ResponseWriter, r *http.Request) {
 		nodes := []map[string]interface{}{
@@ -357,7 +368,7 @@ func TestCollect_VMStatus_Running(t *testing.T) {
 	}
 }
 
-func TestEntitySource_Refresh(t *testing.T) {
+func TestEntitySource_Refresh_SingleEntity(t *testing.T) {
 	cfg := probeConfig{
 		Endpoint: "https://pve:8006",
 	}
@@ -369,27 +380,83 @@ func TestEntitySource_Refresh(t *testing.T) {
 		t.Error("should not be ready before first refresh")
 	}
 
-	nodes := []pveNode{
-		{Node: "pve1", Status: "online"},
-		{Node: "pve2", Status: "online"},
-	}
-	src.refresh(nodes)
+	// Clustered install: cluster name is available.
+	src.refresh("test-cluster")
 
 	obs, ok := src.Observe()
 	if !ok {
 		t.Fatal("should be ready after refresh")
 	}
-	if len(obs.Entities) != 2 {
-		t.Errorf("expected 2 entities, got %d", len(obs.Entities))
+	// ONE entity for the PVE management surface (not one per node).
+	if len(obs.Entities) != 1 {
+		t.Fatalf("expected 1 entity (PVE surface), got %d", len(obs.Entities))
 	}
-	for _, e := range obs.Entities {
-		if e.Type != "service.instance" {
-			t.Errorf("entity type: got %q, want service.instance", e.Type)
-		}
-		if _, ok := e.ID["service.instance.id"]; !ok {
-			t.Error("entity ID missing service.instance.id key")
-		}
+	e := obs.Entities[0]
+	if e.Type != "service.instance" {
+		t.Errorf("entity type: got %q, want service.instance", e.Type)
 	}
+	id, ok := e.ID["service.instance.id"]
+	if !ok {
+		t.Fatal("entity ID missing service.instance.id key")
+	}
+	if id != "proxmox:test-cluster" {
+		t.Errorf("service.instance.id = %q, want \"proxmox:test-cluster\"", id)
+	}
+	if e.Attributes["service.name"] != "proxmox" {
+		t.Errorf("service.name attribute = %q, want \"proxmox\"", e.Attributes["service.name"])
+	}
+	if e.Attributes["server.address"] != "https://pve:8006" {
+		t.Errorf("server.address attribute = %q, want \"https://pve:8006\"", e.Attributes["server.address"])
+	}
+}
+
+func TestEntitySource_Refresh_InstanceNameOverride(t *testing.T) {
+	cfg := probeConfig{
+		Endpoint:     "https://pve:8006",
+		InstanceName: "my-pve",
+	}
+	log := logger.NewModuleLogger(testLogger(), "test")
+	src := newProxmoxEntitySource(cfg, log)
+
+	src.refresh("some-cluster")
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("should be ready after refresh")
+	}
+	if len(obs.Entities) != 1 {
+		t.Fatalf("expected 1 entity, got %d", len(obs.Entities))
+	}
+	id := obs.Entities[0].ID["service.instance.id"]
+	if id != "my-pve" {
+		t.Errorf("service.instance.id = %q, want \"my-pve\" (instance_name takes precedence)", id)
+	}
+}
+
+func TestEntitySource_Refresh_StandaloneNoAgent(t *testing.T) {
+	cfg := probeConfig{
+		Endpoint: "https://pve:8006",
+	}
+	log := logger.NewModuleLogger(testLogger(), "test")
+	src := newProxmoxEntitySource(cfg, log)
+
+	// Standalone install: no cluster name, no agent ID set.
+	src.refresh("")
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("should be ready after refresh")
+	}
+	if len(obs.Entities) != 1 {
+		t.Fatalf("expected 1 entity, got %d", len(obs.Entities))
+	}
+	id, _ := obs.Entities[0].ID["service.instance.id"].(string)
+	if id == "" {
+		t.Error("service.instance.id must not be empty")
+	}
+	// When agentstate.GetAgentInstanceID() returns "" the id falls back to
+	// the "proxmox@unknown" sentinel, which at least is non-empty and
+	// consistent within a cycle.
 }
 
 func TestGetInterval(t *testing.T) {
