@@ -38,4 +38,5 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/syslog"
 	_ "senhub-agent.go/internal/agent/probes/tcpdial"
 	_ "senhub-agent.go/internal/agent/probes/windowseventlog"
+	_ "senhub-agent.go/internal/agent/probes/winservices"
 )

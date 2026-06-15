@@ -30,6 +30,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/snmppoll"
 	_ "senhub-agent.go/internal/agent/probes/snmptrap"
 	_ "senhub-agent.go/internal/agent/probes/syslog"
+	_ "senhub-agent.go/internal/agent/probes/winservices"
 )
 
 // TestEveryRegisteredProbeIsAuthorizable enforces a structural
