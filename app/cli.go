@@ -60,7 +60,7 @@ func (p *program) run() {
 // (packaging/systemd/senhub-agent.service, User=senhub).
 func linuxCommandNeedsRoot(command string) bool {
 	switch command {
-	case "install", "uninstall", "start", "stop", "restart":
+	case "install", "uninstall", "start", "stop", "restart", "refresh-unit":
 		return true
 	default:
 		return false
@@ -163,6 +163,7 @@ var knownTopLevelArgs = map[string]struct{}{
 	"install":            {}, "uninstall": {},
 	"start": {}, "stop": {}, "restart": {},
 	"status": {}, "run": {},
+	"refresh-unit": {},
 }
 
 func Main() {
@@ -290,6 +291,9 @@ func Main() {
 		}
 		agent.UpdateAgent(args)
 		return
+	case "refresh-unit":
+		runRefreshUnit()
+		return
 	case "install", "uninstall", "start", "stop", "restart", "status", "run":
 		// Commands that take no positional args: dispatched directly.
 		// `status` carries the optional --otlp view flag.
@@ -373,6 +377,8 @@ Service Commands:
     status               Show service and probe status
     status --otlp        Also show OTLP pipeline self-metrics
     run                  Run interactively in console mode
+    refresh-unit         Refresh the installed systemd unit to the version
+                         embedded in this binary (Linux only; requires root)
 
 License Commands:
     license show         Show current license information

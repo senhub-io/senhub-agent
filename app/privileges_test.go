@@ -7,7 +7,7 @@ import (
 )
 
 func TestLinuxCommandNeedsRoot(t *testing.T) {
-	rootCommands := []string{"install", "uninstall", "start", "stop", "restart"}
+	rootCommands := []string{"install", "uninstall", "start", "stop", "restart", "refresh-unit"}
 	for _, cmd := range rootCommands {
 		if !linuxCommandNeedsRoot(cmd) {
 			t.Errorf("linuxCommandNeedsRoot(%q) = false, want true (service lifecycle)", cmd)
