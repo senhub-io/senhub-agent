@@ -355,6 +355,11 @@ var freeTierProbes = map[string]bool{
 	// fundamentally local probe (reads the clock daemon on the host,
 	// not a remote system).
 	"chrony": true,
+	// smart: S.M.A.R.T. disk health reads the local machine's drives via
+	// smartctl — host-local observability on the same footing as
+	// cpu/memory/logicaldisk. smartmontools is a prerequisite the operator
+	// installs; the probe itself only calls the existing local tool.
+	"smart": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

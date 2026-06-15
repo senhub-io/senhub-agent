@@ -87,6 +87,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **hyperv** - Hyper-V VM monitoring via WMI (Windows Server only). Reports per-VM CPU, memory and state for virtual machines co-hosted with the agent. Host-local virtualization observability, same tier rationale as cpu/memory/network.
 - **proxmox** - Proxmox VE cluster monitoring via REST API: nodes (CPU, memory, status), virtual machines (QEMU) and LXC containers (CPU, memory, I/O, network, status), and storage pools. Proxmox VE is open-source hypervisor infrastructure; basic observability is equivalent to the host-monitoring role and belongs in the open-core wedge.
 - **chrony** - NTP synchronisation health via chronyc: time offset, frequency offset, skew, root delay/dispersion, stratum, leap status (host-local, Linux/macOS)
+- **smart** - S.M.A.R.T. Disk Health monitoring via smartctl (smartmontools, operator-installed prerequisite). Reads SATA/SAS and NVMe drive health from the local machine — host-local observability on the same footing as cpu/memory/logicaldisk.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:

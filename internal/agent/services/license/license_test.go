@@ -116,6 +116,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"hyperv":            false,
 		"proxmox":           false,
 		"chrony":            false,
+		"smart":             false,
 	}
 
 	for _, probe := range probes {
