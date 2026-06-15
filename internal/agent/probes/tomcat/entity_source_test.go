@@ -1,0 +1,188 @@
+package tomcat
+
+import (
+	"testing"
+
+	"senhub-agent.go/internal/agent/services/agentstate"
+)
+
+// TestResolveInstanceID verifies the stable-id precedence rule.
+func TestResolveInstanceID_InstanceNameOverrides(t *testing.T) {
+	got := resolveInstanceID("my-tomcat", "host-uuid-123")
+	if got != "my-tomcat" {
+		t.Errorf("resolveInstanceID with instance_name = %q, want \"my-tomcat\"", got)
+	}
+}
+
+func TestResolveInstanceID_HostIDFallback(t *testing.T) {
+	got := resolveInstanceID("", "host-uuid-abc")
+	want := "tomcat@host-uuid-abc"
+	if got != want {
+		t.Errorf("resolveInstanceID without instance_name = %q, want %q", got, want)
+	}
+}
+
+func TestResolveInstanceID_LastResort(t *testing.T) {
+	got := resolveInstanceID("", "")
+	if got != "tomcat" {
+		t.Errorf("resolveInstanceID with no host id = %q, want \"tomcat\"", got)
+	}
+}
+
+// TestTomcatEntitySource_InstanceName checks that instance_name is used verbatim
+// as service.instance.id when provided.
+func TestTomcatEntitySource_InstanceName(t *testing.T) {
+	src := newTomcatEntitySource("prod-tomcat-1", "some-host-id", "localhost", 8080)
+	src.SetUp(true, nil)
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("Observe: want ok=true when up")
+	}
+	if len(obs.Entities) != 1 {
+		t.Fatalf("Observe: want 1 entity, got %d", len(obs.Entities))
+	}
+	e := obs.Entities[0]
+	if e.Type != "service.instance" {
+		t.Errorf("entity type = %q, want \"service.instance\"", e.Type)
+	}
+	id, _ := e.ID["service.instance.id"].(string)
+	if id != "prod-tomcat-1" {
+		t.Errorf("service.instance.id = %q, want \"prod-tomcat-1\"", id)
+	}
+}
+
+// TestTomcatEntitySource_HostIDFallback checks that "tomcat@<hostid>" is used
+// when no instance_name is configured (hermetic: injected stub host id).
+func TestTomcatEntitySource_HostIDFallback(t *testing.T) {
+	src := newTomcatEntitySource("", "stub-machine-id-42", "192.168.1.10", 8080)
+	src.SetUp(true, nil)
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("Observe: want ok=true when up")
+	}
+	if len(obs.Entities) != 1 {
+		t.Fatalf("Observe: want 1 entity, got %d", len(obs.Entities))
+	}
+	id, _ := obs.Entities[0].ID["service.instance.id"].(string)
+	want := "tomcat@stub-machine-id-42"
+	if id != want {
+		t.Errorf("service.instance.id = %q, want %q", id, want)
+	}
+}
+
+// TestTomcatEntitySource_DescriptiveAttrs checks that server.address and
+// server.port are present as descriptive attributes (not identity) and that
+// service.name is "tomcat".
+func TestTomcatEntitySource_DescriptiveAttrs(t *testing.T) {
+	src := newTomcatEntitySource("", "hid", "myhost.example.com", 9090)
+	src.SetUp(true, nil)
+
+	obs, _ := src.Observe()
+	if len(obs.Entities) != 1 {
+		t.Fatalf("Observe: want 1 entity, got %d", len(obs.Entities))
+	}
+	attrs := obs.Entities[0].Attributes
+	if attrs["service.name"] != "tomcat" {
+		t.Errorf("service.name = %q, want \"tomcat\"", attrs["service.name"])
+	}
+	if attrs["server.address"] != "myhost.example.com" {
+		t.Errorf("server.address = %q, want \"myhost.example.com\"", attrs["server.address"])
+	}
+	if attrs["server.port"] != int64(9090) {
+		t.Errorf("server.port = %v, want 9090", attrs["server.port"])
+	}
+}
+
+// TestTomcatEntitySource_IDDoesNotContainNetwork checks that the stable id
+// never contains a URL, port, or IP-derived component when using the host-id path.
+func TestTomcatEntitySource_IDDoesNotContainNetwork(t *testing.T) {
+	src := newTomcatEntitySource("", "machine-uuid", "10.0.0.1", 8080)
+	src.SetUp(true, nil)
+	obs, _ := src.Observe()
+	id, _ := obs.Entities[0].ID["service.instance.id"].(string)
+	for _, bad := range []string{"://", "10.0.0.1", "8080", "http"} {
+		if contains(id, bad) {
+			t.Errorf("service.instance.id %q must not contain network-derived %q", id, bad)
+		}
+	}
+}
+
+func contains(s, sub string) bool {
+	return len(sub) > 0 && len(s) >= len(sub) && indexOf(s, sub) >= 0
+}
+
+func indexOf(s, sub string) int {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return i
+		}
+	}
+	return -1
+}
+
+// TestTomcatEntitySource_MonitorsEdge_Present checks that when the agent id is
+// set, Observe includes a monitors relation from the agent to the target.
+func TestTomcatEntitySource_MonitorsEdge_Present(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-instance-xyz")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	src := newTomcatEntitySource("my-app", "", "localhost", 8080)
+	src.SetUp(true, nil)
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("Observe: want ok=true")
+	}
+	if len(obs.Relations) != 1 {
+		t.Fatalf("Observe: want 1 relation (monitors), got %d", len(obs.Relations))
+	}
+	rel := obs.Relations[0]
+	if rel.Type != "monitors" {
+		t.Errorf("relation type = %q, want \"monitors\"", rel.Type)
+	}
+	if rel.FromType != "service.instance" {
+		t.Errorf("FromType = %q, want \"service.instance\"", rel.FromType)
+	}
+	fromID, _ := rel.FromID["service.instance.id"].(string)
+	if fromID != "agent-instance-xyz" {
+		t.Errorf("From service.instance.id = %q, want \"agent-instance-xyz\"", fromID)
+	}
+	if rel.ToType != "service.instance" {
+		t.Errorf("ToType = %q, want \"service.instance\"", rel.ToType)
+	}
+	toID, _ := rel.ToID["service.instance.id"].(string)
+	if toID != "my-app" {
+		t.Errorf("To service.instance.id = %q, want \"my-app\"", toID)
+	}
+}
+
+// TestTomcatEntitySource_MonitorsEdge_Absent checks that when the agent id is
+// empty (entity emission off), no monitors relation is emitted.
+func TestTomcatEntitySource_MonitorsEdge_Absent(t *testing.T) {
+	agentstate.SetAgentInstanceID("")
+
+	src := newTomcatEntitySource("my-app", "", "localhost", 8080)
+	src.SetUp(true, nil)
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("Observe: want ok=true")
+	}
+	if len(obs.Relations) != 0 {
+		t.Errorf("Observe: want 0 relations when agent id is empty, got %d", len(obs.Relations))
+	}
+}
+
+// TestTomcatEntitySource_Down checks that Observe returns ok=false when the
+// target is unreachable (D3: keep consumer's last-known state).
+func TestTomcatEntitySource_Down(t *testing.T) {
+	src := newTomcatEntitySource("my-app", "hid", "localhost", 8080)
+	src.SetUp(false, nil)
+
+	_, ok := src.Observe()
+	if ok {
+		t.Error("Observe: want ok=false when target is down")
+	}
+}

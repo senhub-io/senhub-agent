@@ -72,6 +72,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/unifi"
 	_ "senhub-agent.go/internal/agent/probes/winservices"
 	_ "senhub-agent.go/internal/agent/probes/systemd"
+	_ "senhub-agent.go/internal/agent/probes/tomcat"
 )
 
 // TestEveryRegisteredProbeIsAuthorizable enforces a structural

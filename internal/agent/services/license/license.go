@@ -409,6 +409,10 @@ var freeTierProbes = map[string]bool{
 	// engine observability the OTel Collector already gives away; deep
 	// vendor-specific SQL Server depth stays paid.
 	"mssql": true,
+	// tomcat: application-server monitoring via Jolokia REST. Free tier
+	// on the same open-core wedge as snmp_poll / otlp_receiver — every
+	// PRTG estate has a Tomcat sensor; this replaces it at zero cost.
+	"tomcat": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
