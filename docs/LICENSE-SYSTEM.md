@@ -99,6 +99,8 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **modbus** - Modbus TCP register polling for IT/OT convergence (PLCs, industrial sensors, smart-building controllers). Open standard protocol; collecting Modbus devices is universal collection, not a vendor integration.
 - **mssql** - SQL Server health and throughput monitoring (OTel-first, sqlserver.* semconv parity with otelcol-contrib sqlserverreceiver). Free as a PRTG-replacement wedge — basic engine observability the OTel Collector already gives away.
 - **tomcat** - Apache Tomcat monitoring via Jolokia REST (requests, sessions, JVM heap, GC, thread pool). Same open-core wedge as snmp_poll: replaces the PRTG Tomcat sensor at zero cost.
+- **mongodb** — MongoDB server monitoring via serverStatus + per-database dbStats. The most-deployed document database; free tier covers standalone, replica set and Atlas targets via URI. Deep auth topologies, replica-set health and Atlas-specific metrics are future paid extensions.
+- **kafka** — Kafka broker/topic/consumer-group monitoring via Admin API (12 metrics: broker count, topic/partition metadata, current/oldest offsets, ISR replicas, consumer group lag per partition and lag_sum per topic). Mirrors the OTel Collector kafkametricsreceiver metric set.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:

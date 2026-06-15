@@ -35,6 +35,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/envoy"
 	_ "senhub-agent.go/internal/agent/probes/elasticsearch"
 	_ "senhub-agent.go/internal/agent/probes/hyperv"
+	_ "senhub-agent.go/internal/agent/probes/mongodb"
 	_ "senhub-agent.go/internal/agent/probes/event"
 	_ "senhub-agent.go/internal/agent/probes/execprobe"
 	_ "senhub-agent.go/internal/agent/probes/filetail"
