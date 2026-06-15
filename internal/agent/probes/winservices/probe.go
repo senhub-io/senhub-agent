@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -146,9 +147,17 @@ func (p *WinServicesProbe) OnShutdown(_ context.Context) error {
 // Collect queries the SCM for the selected services. A SCM failure is not a
 // collection error: the probe emits senhub.winservices.up=0 so the outage is
 // observable, mirroring the always-emit-up contract of the other probes.
+// Host identity is resolved once per cycle so the entity source can attach
+// the runs_on → host relation as soon as the ID is available.
 func (p *WinServicesProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	up := float32(1)
+
+	hostID := ""
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+	}
+	p.entitySource.setHostID(hostID)
 
 	states, err := p.collect(p.config.Services)
 	if err != nil {
