@@ -32,9 +32,9 @@ import (
 const ProbeType = "proxmox"
 
 const (
-	defaultInterval   = 60 * time.Second
-	defaultTimeout    = 15 * time.Second
-	apiBase           = "/api2/json"
+	defaultInterval = 60 * time.Second
+	defaultTimeout  = 15 * time.Second
+	apiBase         = "/api2/json"
 )
 
 // ProxmoxProbe collects Proxmox VE metrics for nodes, VMs, containers,
@@ -156,15 +156,29 @@ func (p *ProxmoxProbe) OnShutdown(_ context.Context) error {
 // datapoints for all nodes (and their VMs/containers/storage) that match
 // the optional node filter. A failure on one node logs a warning and
 // continues so a single unreachable node does not blank all metrics.
+//
+// senhub.proxmox.up is always emitted: 0 before the first successful API
+// call, 1 after a successful node list. If the list fails the probe logs a
+// warning and returns the up=0 point non-fatally so the series stays visible
+// and distinguishable from an empty-but-healthy cluster.
 func (p *ProxmoxProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 
+	upTags := []tags.Tag{
+		{Key: "metric_type", Value: "availability"},
+	}
+	upPoint := data_store.DataPoint{Name: "senhub.proxmox.up", Value: 0, Timestamp: now, Tags: upTags}
+
 	nodes, err := p.fetchNodes()
 	if err != nil {
-		return nil, fmt.Errorf("proxmox: listing nodes: %w", err)
+		p.moduleLogger.Warn().Err(err).Msg("proxmox: listing nodes failed")
+		points := []data_store.DataPoint{upPoint}
+		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
-	var points []data_store.DataPoint
+	upPoint.Value = 1
+	points := []data_store.DataPoint{upPoint}
+
 	for _, n := range nodes {
 		if p.cfg.Node != "" && n.Node != p.cfg.Node {
 			continue
@@ -325,16 +339,16 @@ type pveNodeStatusResp struct {
 }
 
 type pveVMListItem struct {
-	VMID   int    `json:"vmid"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
-	CPU    float64 `json:"cpu"`
-	Mem    int64  `json:"mem"`
-	MaxMem int64  `json:"maxmem"`
-	DiskRead  int64 `json:"diskread"`
-	DiskWrite int64 `json:"diskwrite"`
-	NetIn     int64 `json:"netin"`
-	NetOut    int64 `json:"netout"`
+	VMID      int     `json:"vmid"`
+	Name      string  `json:"name"`
+	Status    string  `json:"status"`
+	CPU       float64 `json:"cpu"`
+	Mem       int64   `json:"mem"`
+	MaxMem    int64   `json:"maxmem"`
+	DiskRead  int64   `json:"diskread"`
+	DiskWrite int64   `json:"diskwrite"`
+	NetIn     int64   `json:"netin"`
+	NetOut    int64   `json:"netout"`
 }
 
 // pveVMStatus is used for both QEMU VMs and LXC containers (same shape).
