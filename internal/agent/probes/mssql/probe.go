@@ -14,6 +14,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -99,8 +101,11 @@ func NewMSSQLProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger) 
 
 func parseConfig(raw map[string]interface{}) (config, error) {
 	cfg := config{
-		Port:            defaultPort,
-		Encrypt:         "false",
+		Port: defaultPort,
+		// Encrypt defaults to "true": TLS on the wire is the safe default,
+		// and an operator must opt out explicitly for a legacy server that
+		// cannot negotiate it. go-mssqldb accepts true/false/disable/strict.
+		Encrypt:         "true",
 		TrustServerCert: false,
 		Interval:        defaultInterval,
 	}
@@ -121,7 +126,12 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 		cfg.Password = v
 	}
 	if v, ok := raw["encrypt"].(string); ok && v != "" {
-		cfg.Encrypt = v
+		switch v {
+		case "true", "false", "disable", "strict":
+			cfg.Encrypt = v
+		default:
+			return cfg, fmt.Errorf("mssql encrypt must be one of true/false/disable/strict, got %q", v)
+		}
 	}
 	if v, ok := raw["trust_server_cert"].(bool); ok {
 		cfg.TrustServerCert = v
@@ -134,16 +144,28 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 }
 
 // buildDSN assembles the sqlserver:// URL the go-mssqldb driver expects.
+// The URL builder percent-escapes every component, so a ';' or '&' in a
+// username or password can no longer smuggle extra DSN parameters (the
+// ';'-joined form did — a password of "x;encrypt=disable" would have
+// silently downgraded the connection).
 func buildDSN(cfg config) string {
-	q := fmt.Sprintf("server=%s;port=%d;encrypt=%s;TrustServerCertificate=%t",
-		cfg.Host, cfg.Port, cfg.Encrypt, cfg.TrustServerCert)
+	q := url.Values{}
+	q.Set("encrypt", cfg.Encrypt)
+	q.Set("TrustServerCertificate", strconv.FormatBool(cfg.TrustServerCert))
+
+	u := url.URL{
+		Scheme:   "sqlserver",
+		Host:     net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+		RawQuery: q.Encode(),
+	}
 	if cfg.Username != "" {
-		q += ";user id=" + cfg.Username
+		if cfg.Password != "" {
+			u.User = url.UserPassword(cfg.Username, cfg.Password)
+		} else {
+			u.User = url.User(cfg.Username)
+		}
 	}
-	if cfg.Password != "" {
-		q += ";password=" + cfg.Password
-	}
-	return q
+	return u.String()
 }
 
 func (p *MSSQLProbe) GetTargetStrategies() []string {
