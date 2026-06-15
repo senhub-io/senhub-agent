@@ -252,7 +252,7 @@ func (p *NATSProbe) Collect() ([]data_store.DataPoint, error) {
 				data_store.DataPoint{Name: "nats.jetstream.streams", Value: float64(jsz.Streams), Timestamp: now, Tags: jsTags},
 				data_store.DataPoint{Name: "nats.jetstream.consumers", Value: float64(jsz.Consumers), Timestamp: now, Tags: jsTags},
 				data_store.DataPoint{Name: "nats.jetstream.messages", Value: float64(jsz.Messages), Timestamp: now, Tags: jsTags},
-				data_store.DataPoint{Name: "nats.jetstream.bytes", Value: float64(jsz.Bytes), Timestamp: now, Tags: jsTags},
+				data_store.DataPoint{Name: "nats.jetstream.storage", Value: float64(jsz.Bytes), Timestamp: now, Tags: jsTags},
 			)
 		} else {
 			p.moduleLogger.Debug().Err(err).Msg("NATS /jsz JSON decode failed; skipping JetStream metrics")

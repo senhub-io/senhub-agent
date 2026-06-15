@@ -119,6 +119,8 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// systemd: one series per supervised unit; systemd.unit is the sole
 	// discriminant declared in multi_instance_labels.
 	"systemd": {"systemd.unit"},
+	// wifi_signal_strength: one series per associated network (ssid+bssid).
+	"wifi_signal_strength": {"ssid", "bssid"},
 
 	// Application / middleware probes
 	"wildfly": {"datasource"}, // Per-datasource JDBC pool metrics (wildfly.datasource.connections.*)
