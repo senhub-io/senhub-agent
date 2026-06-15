@@ -75,6 +75,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **ceph** - Ceph cluster monitoring via the REST Management API v1 (health, OSD counts, monitor quorum, per-pool stats). Open-source storage; same universal-collection rationale as snmp_poll and prometheus_scrape.
 - **jenkins** - Jenkins CI controller health over its open HTTP REST API (stdlib, no vendor SDK): job status counts, per-job last-build duration/number, node/executor counts and build-queue depth — universal collection over a standard API, same wedge as the other free active checks
 - **mysql** - MySQL / MariaDB server monitoring (OTel-first, mysql.* semconv, metric parity with otelcol-contrib mysqlreceiver). The standard open-core database wedge: PRTG/Nagios estates that already monitor MySQL get a drop-in replacement at zero cost.
+- **postgresql** - PostgreSQL server monitoring (OTel-first, postgresql.* semconv aligned with otelcol-contrib postgresqlreceiver). FREE open-core database probe — the universal RDBMS wedge alongside snmp_poll.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
@@ -84,6 +85,7 @@ Specific probes authorized by entries in the customer JWT `authorized_probes` ar
 - **netscaler** - Citrix NetScaler ADC monitoring (load balancers, SSL, HA)
 - **veeam** - Veeam Backup & Replication monitoring
 - **postgresql** - PostgreSQL server monitoring (OTel-first, postgresql.* semconv)
+- **mysql** - MySQL server monitoring (OTel-first, mysql.* semconv)
 - **ibmi** - IBM i / Power Systems monitoring (JT400 JDBC bridge, senhub.ibmi.* semconv) — **Linux-only** agent runtime
 - **event** - Custom HTTP event ingestion
 - **ping_gateway** - Gateway connectivity monitoring
@@ -229,7 +231,7 @@ The agent runs standalone (offline-only). There is no SenHub platform connection
 - No internet required after deployment
 
 **Behavior:**
-- No license → **Free tier** (cpu, memory, logicaldisk, network only)
+- No license → **Free tier** (host-local probes + snmp_poll/snmp_trap/icmp_check/http_check/tcp_dial/dns_latency/otlp_receiver/prometheus_scrape/exec/syslog/postgresql and log shippers)
 - Valid license → Tier specified in JWT (Free, Pro, Enterprise)
 
 **Configuration:**

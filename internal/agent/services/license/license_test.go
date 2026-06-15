@@ -99,6 +99,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"envoy":             false,
 		"jenkins":           false,
 		"mysql":             false,
+		"postgresql":        false,
 	}
 
 	for _, probe := range probes {

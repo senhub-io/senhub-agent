@@ -244,6 +244,7 @@ func TestProbeRegistry(t *testing.T) {
 		"envoy",
 		"jenkins",
 		"mysql",
+		"postgresql",
 	}
 
 	for _, probeName := range expectedProbes {
