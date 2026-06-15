@@ -34,6 +34,7 @@ func TestFreeTierProbes(t *testing.T) {
 		{"Syslog probe IS free tier (#298)", "syslog", true},
 		{"WildFly probe IS free tier", "wildfly", true},
 		{"Kafka probe is free tier", "kafka", true},
+		{"Ceph probe IS free tier", "ceph", true},
 		{"Event probe is NOT free tier", "event", false},
 		{"NATS probe is free tier", "nats", true},
 		{"ZooKeeper probe is free tier", "zookeeper", true},
@@ -64,6 +65,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 	expectedProbes := map[string]bool{
 		"apache":            false,
 		"activemq":          false,
+		"ceph":              false,
 		"cpu":               false,
 		"memory":            false,
 		"logicaldisk":       false,

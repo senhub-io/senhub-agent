@@ -72,6 +72,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **consul** - Consul agent health and cluster metrics (catalog services, serf members, raft commit time, RPC/DNS counters, health-check states, leader status). Service-mesh health monitoring is universal infrastructure on the same footing as SNMP polling.
 - **zookeeper** - Apache ZooKeeper health monitoring via the mntr four-letter command (latency, connections, znodes, file descriptors, ensemble state). Generic coordination-service observability, part of the open-core universal collection wedge.
 - **envoy** - Envoy proxy monitoring: scrapes the local admin interface (/stats?format=prometheus) for server health, listener connections, and per-cluster upstream metrics. Same posture as prometheus_scrape — universal collection of an open-source standard, not a paid vendor integration.
+- **ceph** - Ceph cluster monitoring via the REST Management API v1 (health, OSD counts, monitor quorum, per-pool stats). Open-source storage; same universal-collection rationale as snmp_poll and prometheus_scrape.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
