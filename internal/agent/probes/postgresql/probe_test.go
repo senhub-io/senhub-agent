@@ -1,6 +1,7 @@
 package postgresql
 
 import (
+	"net/url"
 	"testing"
 	"time"
 )
@@ -111,7 +112,8 @@ func TestParseConfig_MissingPassword(t *testing.T) {
 	}
 }
 
-// TestBuildDSN_NoTLS verifies the DSN when TLS is not configured.
+// TestBuildDSN_NoTLS verifies the URL DSN and the opportunistic default
+// when TLS is not explicitly configured (sslmode=prefer, not disable).
 func TestBuildDSN_NoTLS(t *testing.T) {
 	p := &pgProbe{
 		cfg: config{
@@ -123,14 +125,14 @@ func TestBuildDSN_NoTLS(t *testing.T) {
 	}
 
 	dsn := p.buildDSN()
-	want := "host=pg.local port=5432 user=mon password=pw sslmode=disable dbname=postgres"
+	want := "postgres://mon:pw@pg.local:5432/postgres?sslmode=prefer"
 	if dsn != want {
 		t.Errorf("DSN mismatch:\n got  %q\n want %q", dsn, want)
 	}
 }
 
 // TestBuildDSN_WithDatabase verifies that the first configured database
-// is used in the DSN.
+// is used in the DSN path.
 func TestBuildDSN_WithDatabase(t *testing.T) {
 	p := &pgProbe{
 		cfg: config{
@@ -143,7 +145,7 @@ func TestBuildDSN_WithDatabase(t *testing.T) {
 	}
 
 	dsn := p.buildDSN()
-	want := "host=pg.local port=5432 user=mon password=pw sslmode=disable dbname=mydb"
+	want := "postgres://mon:pw@pg.local:5432/mydb?sslmode=prefer"
 	if dsn != want {
 		t.Errorf("DSN mismatch:\n got  %q\n want %q", dsn, want)
 	}
@@ -162,9 +164,40 @@ func TestBuildDSN_TLSInsecure(t *testing.T) {
 	}
 
 	dsn := p.buildDSN()
-	want := "host=pg.local port=5432 user=mon password=pw sslmode=require dbname=postgres"
+	want := "postgres://mon:pw@pg.local:5432/postgres?sslmode=require"
 	if dsn != want {
 		t.Errorf("DSN mismatch:\n got  %q\n want %q", dsn, want)
+	}
+}
+
+// TestBuildDSN_NoParameterSmuggling is the regression test for the keyword/
+// value injection the space-joined form allowed: a password carrying
+// " host=evil.com sslmode=disable" must stay inside the password component
+// and never redirect the connection or downgrade TLS.
+func TestBuildDSN_NoParameterSmuggling(t *testing.T) {
+	p := &pgProbe{
+		cfg: config{
+			Host:     "pg.local",
+			Port:     5432,
+			Username: "mon",
+			Password: "pw host=evil.com sslmode=disable",
+		},
+	}
+
+	dsn := p.buildDSN()
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("buildDSN produced an unparseable URL %q: %v", dsn, err)
+	}
+	if u.Hostname() != "pg.local" {
+		t.Errorf("host redirected to %q via the password, want pg.local", u.Hostname())
+	}
+	if got := u.Query().Get("sslmode"); got != "prefer" {
+		t.Errorf("sslmode smuggled to %q, want prefer", got)
+	}
+	pw, _ := u.User.Password()
+	if pw != p.cfg.Password {
+		t.Errorf("password round-trip = %q, want %q", pw, p.cfg.Password)
 	}
 }
 
