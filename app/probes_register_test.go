@@ -20,9 +20,9 @@ import (
 func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 	want := []string{
 		"cpu",
+		"dns_latency",
 		"event",
 		"exec",
-		"dns_latency",
 		"filetail",
 		"http_check",
 		"icmp_check",
@@ -30,6 +30,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"logicaldisk",
 		"memory",
 		"network",
+		"oracle",
 		"otlp_receiver",
 		"prometheus_scrape",
 		"snmp_poll",

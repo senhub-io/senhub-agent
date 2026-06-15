@@ -1,0 +1,180 @@
+probe_name: "oracle"
+friendly_name: "Oracle Database"
+version: "1.0.0"
+host_level: false
+
+# Free-tier Oracle probe (#xxx): metrics read from the v$ dynamic
+# performance views via go-ora (pure Go, no OCI). Metric set targets
+# parity with the community oracledb_exporter. Internal probe names follow
+# the OTel-first convention; multi-valued metrics (sessions, tablespace,
+# wait class) dispatch by a discriminator attribute via tag_to_attribute.
+
+metrics:
+  # ═════════════════════════════════════════════════════════════════════
+  # OVERVIEW — heartbeat
+  # ═════════════════════════════════════════════════════════════════════
+  - name: "senhub.db.up"
+    channel: "db_up"
+    display_name: "Database Up"
+    unit: "#"
+    category: "overview"
+    description: "1 if the agent's most recent ping reached the instance, 0 otherwise"
+    lookup: "senhub.db.up"
+    otel:
+      name: senhub.db.up
+      unit: "1"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════
+  # CONNECTIONS — sessions per status, session limit
+  # ═════════════════════════════════════════════════════════════════════
+  - name: "oracle.sessions.count"
+    channel: "oracle_sessions_{status}"
+    display_name: "Sessions {status}"
+    unit: "#"
+    category: "connections"
+    multi_instance_labels: ["status"]
+    description: "Open sessions by status (v$session GROUP BY status)"
+    otel:
+      name: oracle.sessions.count
+      unit: "{session}"
+      type: gauge
+    tag_to_attribute:
+      status: oracle.session.status
+
+  - name: "oracle.sessions.limit"
+    channel: "oracle_sessions_limit"
+    display_name: "Sessions Limit"
+    unit: "#"
+    category: "connections"
+    description: "Configured maximum sessions (v$resource_limit, resource_name='sessions')"
+    otel:
+      name: oracle.sessions.limit
+      unit: "{session}"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════
+  # IO — physical reads / writes
+  # ═════════════════════════════════════════════════════════════════════
+  - name: "oracle.physical.reads"
+    channel: "oracle_physical_reads"
+    display_name: "Physical Reads"
+    unit: "#"
+    category: "io"
+    description: "Cumulative physical reads (v$sysstat 'physical reads')"
+    otel:
+      name: oracle.physical.reads
+      unit: "{block}"
+      type: counter
+
+  - name: "oracle.physical.writes"
+    channel: "oracle_physical_writes"
+    display_name: "Physical Writes"
+    unit: "#"
+    category: "io"
+    description: "Cumulative physical writes (v$sysstat 'physical writes')"
+    otel:
+      name: oracle.physical.writes
+      unit: "{block}"
+      type: counter
+
+  # ═════════════════════════════════════════════════════════════════════
+  # CACHE — buffer cache hit ratio
+  # ═════════════════════════════════════════════════════════════════════
+  - name: "oracle.buffer.cache.hit_ratio"
+    channel: "oracle_buffer_cache_hit_ratio"
+    display_name: "Buffer Cache Hit Ratio"
+    unit: "%"
+    category: "cache"
+    description: "1 - physical reads / (consistent gets + db block gets), derived from v$sysstat"
+    otel:
+      name: oracle.buffer.cache.hit_ratio
+      unit: "1"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════
+  # MEMORY — total SGA / PGA
+  # ═════════════════════════════════════════════════════════════════════
+  - name: "oracle.sga.total"
+    channel: "oracle_sga_total"
+    display_name: "SGA Total"
+    unit: "B"
+    category: "memory"
+    description: "Total SGA allocated in bytes (SUM(bytes) over v$sgastat)"
+    otel:
+      name: oracle.sga.total
+      unit: "By"
+      type: gauge
+
+  - name: "oracle.pga.total"
+    channel: "oracle_pga_total"
+    display_name: "PGA Total"
+    unit: "B"
+    category: "memory"
+    description: "Total PGA allocated in bytes (v$pgastat 'total PGA allocated')"
+    otel:
+      name: oracle.pga.total
+      unit: "By"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════
+  # STORAGE — tablespace used / total per tablespace
+  # ═════════════════════════════════════════════════════════════════════
+  - name: "oracle.tablespace.used"
+    channel: "oracle_tablespace_used_{tablespace}"
+    display_name: "Tablespace {tablespace} Used"
+    unit: "B"
+    category: "storage"
+    multi_instance_labels: ["tablespace"]
+    description: "Used space per tablespace in bytes (dba_tablespace_usage_metrics)"
+    otel:
+      name: oracle.tablespace.used
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      tablespace: oracle.tablespace.name
+
+  - name: "oracle.tablespace.total"
+    channel: "oracle_tablespace_total_{tablespace}"
+    display_name: "Tablespace {tablespace} Total"
+    unit: "B"
+    category: "storage"
+    multi_instance_labels: ["tablespace"]
+    description: "Maximum size per tablespace in bytes (dba_tablespace_usage_metrics)"
+    otel:
+      name: oracle.tablespace.total
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      tablespace: oracle.tablespace.name
+
+  # ═════════════════════════════════════════════════════════════════════
+  # WAIT — cumulative time per wait class
+  # ═════════════════════════════════════════════════════════════════════
+  - name: "oracle.wait_class.total"
+    channel: "oracle_wait_class_{wait_class}"
+    display_name: "Wait Class {wait_class}"
+    unit: "#"
+    category: "wait"
+    multi_instance_labels: ["wait_class"]
+    description: "Cumulative time waited per wait class in centiseconds (v$system_wait_class)"
+    otel:
+      name: oracle.wait_class.total
+      unit: "cs"
+      type: counter
+    tag_to_attribute:
+      wait_class: oracle.wait_class.name
+
+  # ═════════════════════════════════════════════════════════════════════
+  # LOCKS — enqueue deadlocks
+  # ═════════════════════════════════════════════════════════════════════
+  - name: "oracle.enqueue_deadlocks"
+    channel: "oracle_enqueue_deadlocks"
+    display_name: "Enqueue Deadlocks"
+    unit: "#"
+    category: "locks"
+    description: "Cumulative enqueue deadlocks detected (v$sysstat 'enqueue deadlocks')"
+    otel:
+      name: oracle.enqueue_deadlocks
+      unit: "{deadlock}"
+      type: counter
