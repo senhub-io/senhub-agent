@@ -105,6 +105,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	"syslog":    {"event_id", "source"}, // Syslog events
 
+	// Observability / messaging probes — one series per broker endpoint
+	"pulsar": {"endpoint"}, // Apache Pulsar: one broker per endpoint URL
+
 	// SNMP polling — one series per (target, interface row); metric_type
 	// separates interface / system / status families.
 	"dns_latency": {"name", "resolver", "metric_type"},
