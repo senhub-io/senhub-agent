@@ -267,6 +267,7 @@ func TestProbeRegistry(t *testing.T) {
 		"kubernetes",
 		"modbus",
 		"mssql",
+		"tomcat",
 	}
 
 	for _, probeName := range expectedProbes {

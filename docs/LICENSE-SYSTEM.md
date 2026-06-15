@@ -98,6 +98,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **kubernetes** - Kubernetes cluster supervision (nodes, pods, containers, deployments) via the API server. Container infrastructure is the cloud-native equivalent of host self-observation; the agent running inside a cluster watches the cluster it runs on.
 - **modbus** - Modbus TCP register polling for IT/OT convergence (PLCs, industrial sensors, smart-building controllers). Open standard protocol; collecting Modbus devices is universal collection, not a vendor integration.
 - **mssql** - SQL Server health and throughput monitoring (OTel-first, sqlserver.* semconv parity with otelcol-contrib sqlserverreceiver). Free as a PRTG-replacement wedge — basic engine observability the OTel Collector already gives away.
+- **tomcat** - Apache Tomcat monitoring via Jolokia REST (requests, sessions, JVM heap, GC, thread pool). Same open-core wedge as snmp_poll: replaces the PRTG Tomcat sensor at zero cost.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:

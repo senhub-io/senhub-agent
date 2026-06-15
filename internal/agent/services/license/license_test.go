@@ -138,6 +138,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"kubernetes":        false,
 		"modbus":            false,
 		"mssql":             false,
+		"tomcat":            false,
 	}
 
 	for _, probe := range probes {
