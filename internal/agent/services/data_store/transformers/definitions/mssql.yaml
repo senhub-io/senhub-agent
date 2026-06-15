@@ -65,7 +65,7 @@ metrics:
     description: "Percentage of page requests served from the buffer pool without a physical read"
     otel:
       name: sqlserver.page_buffer_cache.hit_ratio
-      unit: "%"
+      unit: "1"
       type: gauge
 
   - name: "sqlserver.page_life_expectancy"
