@@ -59,6 +59,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/otlpreceiver"
 	_ "senhub-agent.go/internal/agent/probes/phpfpm"
 	_ "senhub-agent.go/internal/agent/probes/postgresql"
+	_ "senhub-agent.go/internal/agent/probes/process"
 	_ "senhub-agent.go/internal/agent/probes/promscrape"
 	_ "senhub-agent.go/internal/agent/probes/rabbitmq"
 	_ "senhub-agent.go/internal/agent/probes/pulsar"
