@@ -73,6 +73,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **zookeeper** - Apache ZooKeeper health monitoring via the mntr four-letter command (latency, connections, znodes, file descriptors, ensemble state). Generic coordination-service observability, part of the open-core universal collection wedge.
 - **envoy** - Envoy proxy monitoring: scrapes the local admin interface (/stats?format=prometheus) for server health, listener connections, and per-cluster upstream metrics. Same posture as prometheus_scrape — universal collection of an open-source standard, not a paid vendor integration.
 - **ceph** - Ceph cluster monitoring via the REST Management API v1 (health, OSD counts, monitor quorum, per-pool stats). Open-source storage; same universal-collection rationale as snmp_poll and prometheus_scrape.
+- **jenkins** - Jenkins CI controller health over its open HTTP REST API (stdlib, no vendor SDK): job status counts, per-job last-build duration/number, node/executor counts and build-queue depth — universal collection over a standard API, same wedge as the other free active checks
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:

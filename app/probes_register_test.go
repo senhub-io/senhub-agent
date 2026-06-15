@@ -33,6 +33,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"http_check",
 		"icmp_check",
 		"kafka",
+		"jenkins",
 		"linux_logs",
 		"logicaldisk",
 		"memory",

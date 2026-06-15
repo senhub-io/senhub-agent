@@ -148,6 +148,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"group",        // per-consumer-group metrics (members, offset, lag, lag_sum)
 		"metric_type",  // separates broker / topic / partition / consumer_group families
 	},
+	// jenkins: job/node/executor counts collapse onto one metric name per
+	// family, discriminated by status (success/failure/…), state (busy/free)
+	// or job name; metric_type separates the jobs/nodes/queue families.
+	"jenkins": {"job", "status", "state", "metric_type"},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
