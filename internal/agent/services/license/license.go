@@ -302,6 +302,11 @@ var freeTierProbes = map[string]bool{
 	// postgresqlreceiver. Remote system but treated as the free PRTG-
 	// replacement wedge for the most-deployed open-source RDBMS.
 	"postgresql": true,
+	// cassandra: Apache Cassandra monitoring via Jolokia HTTP REST.
+	// Free tier alongside the universal collection wedge (snmp_poll,
+	// otlp_receiver, prometheus_scrape): operators self-host Cassandra
+	// and should not need a paid licence to observe their own cluster.
+	"cassandra": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
