@@ -345,6 +345,12 @@ var freeTierProbes = map[string]bool{
 	// physical host as the agent, analogous to how cpu/memory/network
 	// report host-local resources.
 	"hyperv": true,
+	// proxmox: Proxmox VE is open-source hypervisor infrastructure.
+	// Basic node / VM / storage monitoring is equivalent to the host
+	// observability role (cpu, memory, logicaldisk) and belongs in the
+	// open-core collection wedge.  Deep cluster management (HA, backups,
+	// replication) would be a paid feature but is out of scope here.
+	"proxmox": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
