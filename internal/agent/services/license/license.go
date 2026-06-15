@@ -297,6 +297,11 @@ var freeTierProbes = map[string]bool{
 	// Metric parity with otelcol-contrib mysqlreceiver; paid tier adds
 	// deep query analytics and SLA alerting.
 	"mysql": true,
+	// postgresql: FREE open-core database probe — the canonical
+	// database/sql monitor for PostgreSQL. Aligned with otelcol-contrib
+	// postgresqlreceiver. Remote system but treated as the free PRTG-
+	// replacement wedge for the most-deployed open-source RDBMS.
+	"postgresql": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
