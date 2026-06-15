@@ -126,6 +126,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
 	// senhub-semantic-conventions.md §4.13 for the full collapse list).
+	"mssql": {
+		"database",  // sqlserver.database.io{database=…} + sqlserver.database.status{database=…}
+		"direction", // sqlserver.database.io{direction=read|write}
+	},
 	"mysql": {
 		"kind",         // mysql.threads{kind=running|connected}
 		"command",      // mysql.commands{command=select|insert|...}
