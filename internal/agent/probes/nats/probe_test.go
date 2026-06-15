@@ -127,7 +127,7 @@ func TestCollect_ServerUp(t *testing.T) {
 		"nats.jetstream.streams":   2,
 		"nats.jetstream.consumers": 4,
 		"nats.jetstream.messages":  5000,
-		"nats.jetstream.bytes":     1024000,
+		"nats.jetstream.storage":   1024000,
 	}
 
 	for name, want := range expect {

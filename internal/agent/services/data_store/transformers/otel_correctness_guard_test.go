@@ -28,24 +28,25 @@ func TestYAMLDefinitions_OtelTypeUnitNamingGuard(t *testing.T) {
 	// otel.unit MUST be "1" for the mapper to divide a 0-100 source by 100 — #466.
 	ratioNameMarkers := []string{"ratio", "utilization", "hit_ratio"}
 
-	// Documented baseline: metric names that violate the unit-suffix rule
-	// today. The guard enforces the rule for everything NOT listed here.
+	// Documented, permanent exceptions to the unit-suffix rule. The guard
+	// enforces the rule for everything NOT listed here.
 	//   - enterprise / pre-OTel-first legacy probes (live in senhub-agent-
 	//     enterprise or predate the rule): citrix, netscaler, veeam, the
 	//     ping_*/load_webapp synthetic probes;
-	//   - in-wave gaps the #465 remediation missed, tracked in #480: docker
-	//     container.network.io.usage.{tx,rx}_bytes, memcached.bytes,
-	//     nats.jetstream.bytes — remove from here when #480 lands.
+	//   - INTENTIONAL contrib-aligned names: the OTel-first rule is "match the
+	//     otelcol-contrib receiver name"; docker (dockerstatsreceiver) and
+	//     memcached.bytes (memcachedreceiver) end in a unit word UPSTREAM, so
+	//     renaming them would diverge from the standard we align to. Kept by
+	//     design, not a gap.
 	knownUnitSuffixGaps := map[string]bool{
 		"senhub.citrix.machines.multi_session_fault_total": true,
 		"senhub.probe.http.duration_seconds":               true,
 		"senhub.netscaler.compression.bytes":               true,
 		"senhub.probe.icmp.duration_seconds":               true,
 		"senhub.veeam.job.last_run.bytes":                  true,
-		"container.network.io.usage.tx_bytes":              true, // #480
-		"container.network.io.usage.rx_bytes":              true, // #480
-		"memcached.bytes":                                  true, // #480
-		"nats.jetstream.bytes":                             true, // #480
+		"container.network.io.usage.tx_bytes":              true, // dockerstatsreceiver
+		"container.network.io.usage.rx_bytes":              true, // dockerstatsreceiver
+		"memcached.bytes":                                  true, // memcachedreceiver
 	}
 
 	entries, err := definitionFiles.ReadDir("definitions")
