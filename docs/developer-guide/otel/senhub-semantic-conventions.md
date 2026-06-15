@@ -1231,6 +1231,29 @@ les métriques d'interface ajoutent `network.interface.index` :
 Les `custom_mappings` et OIDs dynamiques passent par le pass-through
 typé (tag `otel_type`) — pas d'énumération ici par construction.
 
+### 4.26 kubernetes (free, #469)
+
+Aligné sur les noms OTel Kubernetes semconv (k8s.* namespace, semconv 1.30+).
+Une série d'availability par cluster (`k8s.cluster.name`), puis des séries
+par nœud, pod, conteneur ou déploiement selon la configuration.
+
+| Métrique OTel | Unité | Type | Attributs | Notes |
+|---|---|---|---|---|
+| `senhub.kubernetes.up` | `1` | gauge | `k8s.cluster.name` | 0 si l'API server est injoignable ; émis même en cas d'erreur totale (#469) |
+| `k8s.node.ready` | `1` | gauge | `k8s.node.name`, `k8s.cluster.name` | condition NodeReady |
+| `k8s.node.cpu.allocatable` | `{core}` | gauge | `k8s.node.name`, `k8s.cluster.name` | cœurs CPU allouables |
+| `k8s.node.memory.allocatable` | `By` | gauge | `k8s.node.name`, `k8s.cluster.name` | mémoire allouable en octets |
+| `k8s.node.pods.capacity` | `{pod}` | gauge | `k8s.node.name`, `k8s.cluster.name` | capacité max en pods |
+| `k8s.node.pods.allocated` | `{pod}` | gauge | `k8s.node.name`, `k8s.cluster.name` | pods allouables restants |
+| `k8s.pod.phase` | `1` | gauge | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | 1 si phase=Running |
+| `k8s.pod.ready` | `1` | gauge | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | condition PodReady |
+| `k8s.pod.restarts` | `{restart}` | counter | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | total redémarrages conteneurs |
+| `k8s.container.ready` | `1` | gauge | `k8s.container.name`, `k8s.pod.name`, `k8s.namespace.name` | état ready du conteneur |
+| `k8s.container.restarts` | `{restart}` | counter | `k8s.container.name`, `k8s.pod.name`, `k8s.namespace.name` | redémarrages conteneur |
+| `k8s.deployment.available` | `{pod}` | gauge | `k8s.deployment.name`, `k8s.namespace.name` | réplicas disponibles |
+| `k8s.deployment.desired` | `{pod}` | gauge | `k8s.deployment.name`, `k8s.namespace.name` | réplicas désirés (spec.replicas) |
+| `k8s.deployment.ready` | `1` | gauge | `k8s.deployment.name`, `k8s.namespace.name` | 1 si available ≥ desired |
+
 ## 6. Processus d'ajout d'une convention
 
 1. Lire les sources §1 pour le domaine concerné

@@ -31,18 +31,21 @@ const ProbeType = "kubernetes"
 
 const (
 	defaultInterval = 30 * time.Second
+
+	// metricUp is 1 when the last collection reached the API server, 0 otherwise.
+	metricUp = "senhub.kubernetes.up"
 )
 
 // probeConfig holds the parsed kubernetes probe configuration.
 type probeConfig struct {
-	Kubeconfig  string
+	Kubeconfig         string
 	CollectNodes       bool
 	CollectPods        bool
 	CollectContainers  bool
 	CollectDeployments bool
 	IncludeNamespaces  []string
 	ExcludeNamespaces  map[string]bool
-	Interval    time.Duration
+	Interval           time.Duration
 }
 
 // KubernetesProbe collects metrics from a Kubernetes cluster.
@@ -52,8 +55,8 @@ type KubernetesProbe struct {
 	moduleLogger *logger.ModuleLogger
 	clientset    kubernetes.Interface
 	// clusterEndpoint identifies this cluster in entity IDs.
-	clusterEndpoint string
-	entitySrc       *k8sEntitySource
+	clusterEndpoint  string
+	entitySrc        *k8sEntitySource
 	unregisterEntity func()
 }
 
@@ -175,17 +178,29 @@ func (p *KubernetesProbe) OnShutdown(_ context.Context) error {
 // Collect gathers metrics from the Kubernetes API. A partial failure
 // (e.g. one resource type unavailable) is logged but does not abort
 // the rest of the collection.
+//
+// senhub.kubernetes.up is emitted on every cycle: 0 before a successful
+// API call, 1 after at least one list succeeds. This ensures that an
+// unreachable API server or expired credentials produce an observable
+// up=0 series rather than vanishing from all sinks.
 func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Interval/2)
 	defer cancel()
 
 	now := time.Now()
+	up := float32(0)
 	var points []data_store.DataPoint
+	upTags := []tags.Tag{
+		{Key: "k8s.cluster.name", Value: p.clusterEndpoint},
+		{Key: "metric_type", Value: "availability"},
+	}
 
 	if p.cfg.CollectNodes {
 		pts, err := p.collectNodes(ctx, now)
 		if err != nil {
 			p.moduleLogger.Warn().Err(err).Msg("kubernetes: node collection failed")
+		} else {
+			up = 1
 		}
 		points = append(points, pts...)
 	}
@@ -194,6 +209,8 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 		pts, err := p.collectPods(ctx, now)
 		if err != nil {
 			p.moduleLogger.Warn().Err(err).Msg("kubernetes: pod collection failed")
+		} else {
+			up = 1
 		}
 		points = append(points, pts...)
 	}
@@ -202,9 +219,15 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 		pts, err := p.collectDeployments(ctx, now)
 		if err != nil {
 			p.moduleLogger.Warn().Err(err).Msg("kubernetes: deployment collection failed")
+		} else {
+			up = 1
 		}
 		points = append(points, pts...)
 	}
+
+	points = append(points, data_store.DataPoint{
+		Name: metricUp, Value: up, Timestamp: now, Tags: upTags,
+	})
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }

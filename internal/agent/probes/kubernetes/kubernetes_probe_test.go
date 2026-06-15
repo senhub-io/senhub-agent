@@ -1,8 +1,20 @@
 package kubernetes
 
 import (
+	"errors"
 	"testing"
 	"time"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	kubefake "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
+
+	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 func TestParseConfig_Defaults(t *testing.T) {
@@ -97,5 +109,101 @@ func TestClusterEndpointFromHost(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("clusterEndpointFromHost(%q) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+// noopRegisterEntitySource is a test replacement for registerEntitySource
+// that avoids touching the global entity registry.
+func noopRegisterEntitySource(_ entity.Source) func() { return func() {} }
+
+// buildTestProbe constructs a KubernetesProbe backed by the given fake
+// clientset, with entity registration replaced by a no-op.
+func buildTestProbe(t *testing.T, cs *kubefake.Clientset, collectNodes, collectPods, collectDeployments bool) *KubernetesProbe {
+	t.Helper()
+	orig := registerEntitySource
+	registerEntitySource = noopRegisterEntitySource
+	t.Cleanup(func() { registerEntitySource = orig })
+
+	p := &KubernetesProbe{
+		BaseProbe: &types.BaseProbe{},
+		cfg: probeConfig{
+			CollectNodes:       collectNodes,
+			CollectPods:        collectPods,
+			CollectContainers:  collectPods,
+			CollectDeployments: collectDeployments,
+			ExcludeNamespaces:  map[string]bool{},
+			IncludeNamespaces:  []string{"default"},
+			Interval:           defaultInterval,
+		},
+		moduleLogger:    logger.NewModuleLogger(logger.NewLogger(&cliArgs.ParsedArgs{}), "probe.kubernetes.test"),
+		clientset:       cs,
+		clusterEndpoint: "test-cluster:6443",
+	}
+	p.SetProbeType(ProbeType)
+	return p
+}
+
+// TestCollect_UpMetric_Healthy verifies that senhub.kubernetes.up=1 is emitted
+// when the API server is reachable and node list succeeds.
+func TestCollect_UpMetric_Healthy(t *testing.T) {
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-1"},
+		Status: corev1.NodeStatus{
+			Conditions: []corev1.NodeCondition{
+				{Type: corev1.NodeReady, Status: corev1.ConditionTrue},
+			},
+		},
+	}
+	cs := kubefake.NewSimpleClientset(node)
+	p := buildTestProbe(t, cs, true, false, false)
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect() returned unexpected error: %v", err)
+	}
+
+	var upFound bool
+	for _, dp := range points {
+		if dp.Name == metricUp {
+			upFound = true
+			if dp.Value != 1 {
+				t.Errorf("senhub.kubernetes.up: got %v, want 1", dp.Value)
+			}
+		}
+	}
+	if !upFound {
+		t.Error("senhub.kubernetes.up was not emitted on healthy cluster")
+	}
+}
+
+// TestCollect_UpMetric_APIError verifies that senhub.kubernetes.up=0 is emitted
+// (not suppressed) when the API server is unreachable (#469).
+// Collect must return nil error so the up=0 datapoint reaches all sinks.
+func TestCollect_UpMetric_APIError(t *testing.T) {
+	cs := kubefake.NewSimpleClientset()
+	cs.PrependReactor("list", "nodes", func(_ k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("connection refused")
+	})
+	p := buildTestProbe(t, cs, true, false, false)
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect() must not return an error on API failure (got: %v); up=0 must flow to sinks", err)
+	}
+	if len(points) == 0 {
+		t.Fatal("Collect() returned no datapoints; senhub.kubernetes.up must still be emitted on API error")
+	}
+
+	var upFound bool
+	for _, dp := range points {
+		if dp.Name == metricUp {
+			upFound = true
+			if dp.Value != 0 {
+				t.Errorf("senhub.kubernetes.up: got %v, want 0 on API error", dp.Value)
+			}
+		}
+	}
+	if !upFound {
+		t.Error("senhub.kubernetes.up was not emitted on API error")
 	}
 }
