@@ -73,6 +73,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"exec":              false,
 		"syslog":            false,
 		"nginx":             false,
+		"haproxy":           false,
 	}
 
 	for _, probe := range probes {

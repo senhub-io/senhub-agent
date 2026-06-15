@@ -231,6 +231,11 @@ var freeTierProbes = map[string]bool{
 	// Collector nginx receiver — web-server health is host-local
 	// observability on the same machine the agent monitors.
 	"nginx": true,
+	// haproxy: HTTP-stats endpoint polling; same open-core wedge as
+	// snmp_poll and prometheus_scrape — collecting from a standard
+	// protocol endpoint on a local or accessible host is universal
+	// collection, not a paid vendor integration.
+	"haproxy": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

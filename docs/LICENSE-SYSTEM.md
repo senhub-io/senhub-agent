@@ -60,6 +60,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **dns_latency** - DNS resolution latency per name, optionally per explicit resolver
 - **snmp_poll** - Generic SNMP polling. The deliberate exception to "remote = paid": it is the open-core wedge to replace PRTG's free SNMP polling. Deep vendor-specific SNMP (device profiles, discovery, vendor MIBs) remains paid.
 - **nginx** - Nginx stub_status scraping: active connections, request throughput, and connection state (reading/writing/waiting); web-server health on the monitored host.
+- **haproxy** - HAProxy monitoring via the stats CSV HTTP endpoint: sessions, throughput, and error counters per frontend/backend/server component
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
