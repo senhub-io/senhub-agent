@@ -88,7 +88,7 @@ func NewUnifiProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger) 
 			Jar:     jar,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: !cfg.VerifyTLS, // #nosec G402 - controllers ship a self-signed cert by default; verify_tls opts in
+					InsecureSkipVerify: !cfg.VerifyTLS, // #nosec G402 - verify_tls defaults to true; operator must set verify_tls: false to skip verification
 				},
 			},
 		},
@@ -100,10 +100,11 @@ func NewUnifiProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger) 
 
 func parseConfig(raw map[string]interface{}) (unifiConfig, error) {
 	cfg := unifiConfig{
-		Endpoint: defaultEndpoint,
-		Site:     defaultSite,
-		Interval: defaultInterval,
-		Timeout:  defaultTimeout,
+		Endpoint:  defaultEndpoint,
+		Site:      defaultSite,
+		Interval:  defaultInterval,
+		Timeout:   defaultTimeout,
+		VerifyTLS: true, // secure by default; set verify_tls: false to accept self-signed certs in a lab
 	}
 
 	if v, ok := raw["endpoint"].(string); ok && v != "" {

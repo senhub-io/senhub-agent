@@ -275,6 +275,37 @@ func TestParseConfig_Defaults(t *testing.T) {
 	}
 }
 
+// TestParseConfig_DefaultVerifyTLS is a security regression test: when verify_tls
+// is absent from the config, TLS verification must be ON (true), not the Go
+// zero-value false. A false default would allow MITM on the credential-bearing
+// POST /api/login. (#461)
+func TestParseConfig_DefaultVerifyTLS(t *testing.T) {
+	cfg, err := parseConfig(map[string]interface{}{
+		"username": "admin",
+		"password": "secret",
+	})
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+	if !cfg.VerifyTLS {
+		t.Error("default VerifyTLS = false; want true (TLS must be verified unless operator opts out with verify_tls: false)")
+	}
+}
+
+func TestParseConfig_VerifyTLSOptOut(t *testing.T) {
+	cfg, err := parseConfig(map[string]interface{}{
+		"username":   "admin",
+		"password":   "secret",
+		"verify_tls": false,
+	})
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+	if cfg.VerifyTLS {
+		t.Error("VerifyTLS = true when verify_tls: false; want false")
+	}
+}
+
 func TestEntitySource_BeforeFirstCycle(t *testing.T) {
 	src := newEntitySource("https://192.0.2.1:8443")
 	_, ok := src.Observe()
