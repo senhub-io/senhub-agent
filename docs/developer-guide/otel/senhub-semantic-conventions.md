@@ -1268,6 +1268,29 @@ Les métriques cumulatives (`haproxy.sessions.total`, `haproxy.bytes.*`,
 produit le suffixe `_total` côté Prometheus et le bon comportement
 monotone en OTLP. Utiliser `rate()` / `increase()` directement sur ces
 séries.
+### 4.26 Probe `kafka` (broker / topic / consumer-group monitoring)
+
+**Sources principales :**
+- [OTel Collector contrib — `kafkametricsreceiver`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/kafkametricsreceiver) — référence canonique pour les noms et unités.
+- [Apache Kafka documentation — Replication](https://kafka.apache.org/documentation/#replication) — ISR semantics.
+
+**Stratégie :** les noms adoptés sont ceux du `kafkametricsreceiver` (`kafka.brokers`, `kafka.topic.partitions`, `kafka.partition.*`, `kafka.consumer_group.*`). Seule l'exception `senhub.kafka.up` (indicateur de joignabilité du cycle) est sous namespace propriétaire.
+
+| Métrique OTel | Unité | Type | Attributs | Notes |
+|---|---|---|---|---|
+| `senhub.kafka.up` | `1` | gauge | — | 1 = cluster joignable ce cycle |
+| `kafka.brokers` | `{broker}` | gauge | — | |
+| `kafka.topic.partitions` | `{partition}` | gauge | `messaging.kafka.topic` | |
+| `kafka.partition.current_offset` | `{item}` | gauge | `messaging.kafka.topic`, `messaging.kafka.partition` | |
+| `kafka.partition.oldest_offset` | `{item}` | gauge | id. | |
+| `kafka.partition.replicas` | `{replica}` | gauge | id. | Répliques assignées |
+| `kafka.partition.replicas_in_sync` | `{replica}` | gauge | id. | ISR — sous-réplication si ISR < replicas (#468) |
+| `kafka.consumer_group.members` | `{member}` | gauge | `messaging.kafka.consumer.group` | |
+| `kafka.consumer_group.offset` | `{item}` | gauge | group + topic + partition | |
+| `kafka.consumer_group.lag` | `{item}` | gauge | id. | plancher à 0 (never negative) |
+| `kafka.consumer_group.lag_sum` | `{item}` | gauge | group + topic | somme lag toutes partitions |
+
+`kafka.partition.replicas_in_sync` est émis par `client.InSyncReplicas(topic, partition)` (sarama). Une erreur par partition est loguée en `Warn` et la métrique est omise pour ce cycle ; `kafka.partition.replicas` reste toujours émis. Condition d'alerte typique : `replicas_in_sync < replicas`.
 
 ## 6. Processus d'ajout d'une convention
 

@@ -64,6 +64,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **varnish** - Varnish Cache observability via varnishstat (cache hit/miss, backend connections, thread lifecycle, session counts, memory allocation); runs on the local machine.
 - **phpfpm** - PHP-FPM pool monitoring via the status-page JSON endpoint (pool stats, process counts, queue depth, uptime, slow requests)
 - **wildfly** - WildFly / JBoss monitoring via the HTTP Management API (JVM heap, Undertow web-container counters, JTA transactions, JDBC datasource pool metrics)
+- **kafka** — Kafka broker/topic/consumer-group monitoring via Admin API (12 metrics: broker count, topic/partition metadata, current/oldest offsets, ISR replicas, consumer group lag per partition and lag_sum per topic). Mirrors the OTel Collector kafkametricsreceiver metric set.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:

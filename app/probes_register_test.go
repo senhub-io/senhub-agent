@@ -28,6 +28,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"haproxy",
 		"http_check",
 		"icmp_check",
+		"kafka",
 		"linux_logs",
 		"logicaldisk",
 		"memory",

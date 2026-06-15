@@ -25,6 +25,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/event"
 	_ "senhub-agent.go/internal/agent/probes/filetail"
 	_ "senhub-agent.go/internal/agent/probes/haproxy"
+	_ "senhub-agent.go/internal/agent/probes/kafka"
 	_ "senhub-agent.go/internal/agent/probes/host"
 	_ "senhub-agent.go/internal/agent/probes/linuxlogs"
 	_ "senhub-agent.go/internal/agent/probes/logicaldisk"

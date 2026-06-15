@@ -22,6 +22,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/apache"
 	_ "senhub-agent.go/internal/agent/probes/cpu"
 	_ "senhub-agent.go/internal/agent/probes/dnslatency"
+	_ "senhub-agent.go/internal/agent/probes/kafka"
 	_ "senhub-agent.go/internal/agent/probes/event"
 	_ "senhub-agent.go/internal/agent/probes/execprobe"
 	_ "senhub-agent.go/internal/agent/probes/filetail"
