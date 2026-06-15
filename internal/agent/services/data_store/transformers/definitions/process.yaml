@@ -1,0 +1,181 @@
+probe_name: "process"
+friendly_name: "Process Monitor"
+version: "3.0.0"
+host_level: true
+multi_instance_labels: ["process.pid", "process.name"]
+
+# Format v3 — OTel-first source of truth.
+# Metric names follow OTel semantic conventions for process metrics
+# (process.*) as defined in the OTel spec. process.open_file_descriptors
+# is Linux-only; the probe silently omits it on Windows.
+# process.count is an aggregate gauge (one per distinct name, emitted
+# by the probe when aggregate.enabled=true).
+
+metrics:
+  # ─────────────────────────────────────────────────────────────────────────
+  # CPU utilization per process (ratio 0-1)
+  # OTel: process.cpu.utilization (gauge, 1)
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "process.cpu.utilization"
+    channel: "process_cpu_{process.name}_{process.pid}"
+    display_name: "Process {process.name} ({process.pid}) CPU"
+    unit: "%"
+    category: "cpu"
+    multi_instance_labels: ["process.name", "process.pid"]
+    description: "CPU utilization ratio (0-1) for the process averaged over the last collection interval"
+    otel:
+      name: process.cpu.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      process.pid: process.pid
+      process.name: process.executable.name
+      process.owner: process.owner
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Memory — RSS (resident set size)
+  # OTel: process.memory.usage (gauge, By)
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "process.memory.usage"
+    channel: "process_mem_rss_{process.name}_{process.pid}"
+    display_name: "Process {process.name} ({process.pid}) RSS"
+    unit: "bytes"
+    category: "memory"
+    multi_instance_labels: ["process.name", "process.pid"]
+    description: "Resident set size (RSS) of the process in bytes"
+    otel:
+      name: process.memory.usage
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      process.pid: process.pid
+      process.name: process.executable.name
+      process.owner: process.owner
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Memory — virtual memory size
+  # OTel: process.memory.virtual_memory_usage (gauge, By)
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "process.memory.virtual_memory_usage"
+    channel: "process_mem_vms_{process.name}_{process.pid}"
+    display_name: "Process {process.name} ({process.pid}) VMS"
+    unit: "bytes"
+    category: "memory"
+    multi_instance_labels: ["process.name", "process.pid"]
+    description: "Virtual memory size (VMS) of the process in bytes"
+    otel:
+      name: process.memory.virtual_memory_usage
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      process.pid: process.pid
+      process.name: process.executable.name
+      process.owner: process.owner
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Thread count
+  # OTel: process.threads (gauge, {thread})
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "process.threads"
+    channel: "process_threads_{process.name}_{process.pid}"
+    display_name: "Process {process.name} ({process.pid}) Threads"
+    unit: "#"
+    category: "threads"
+    multi_instance_labels: ["process.name", "process.pid"]
+    description: "Number of threads used by the process"
+    otel:
+      name: process.threads
+      unit: "{thread}"
+      type: gauge
+    tag_to_attribute:
+      process.pid: process.pid
+      process.name: process.executable.name
+      process.owner: process.owner
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Open file descriptors — Linux only
+  # OTel: process.open_file_descriptors (gauge, {file})
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "process.open_file_descriptors"
+    channel: "process_fds_{process.name}_{process.pid}"
+    display_name: "Process {process.name} ({process.pid}) FDs"
+    unit: "#"
+    category: "resources"
+    multi_instance_labels: ["process.name", "process.pid"]
+    description: "Number of open file descriptors (Linux only)"
+    otel:
+      name: process.open_file_descriptors
+      unit: "{file}"
+      type: gauge
+    tag_to_attribute:
+      process.pid: process.pid
+      process.name: process.executable.name
+      process.owner: process.owner
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Process uptime — seconds since process creation
+  # OTel: process.uptime (counter, s)
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "process.uptime"
+    channel: "process_uptime_{process.name}_{process.pid}"
+    display_name: "Process {process.name} ({process.pid}) Uptime"
+    unit: "s"
+    category: "status"
+    multi_instance_labels: ["process.name", "process.pid"]
+    description: "Seconds elapsed since the process was created"
+    otel:
+      name: process.uptime
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      process.pid: process.pid
+      process.name: process.executable.name
+      process.owner: process.owner
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Aggregate count per distinct process name
+  # OTel: process.count (gauge, {process}) — emitted when aggregate.enabled=true
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "process.count"
+    channel: "process_count_{process.name}"
+    display_name: "Process {process.name} Count"
+    unit: "#"
+    category: "aggregate"
+    multi_instance_labels: ["process.name"]
+    description: "Number of running instances of this process name"
+    otel:
+      name: process.count
+      unit: "{process}"
+      type: gauge
+    tag_to_attribute:
+      process.name: process.executable.name
+
+tag_metadata:
+  process.pid:
+    type: resource
+    label: "Process PID"
+  process.name:
+    type: resource
+    label: "Process Name"
+  process.owner:
+    type: resource
+    label: "Process Owner"
+  service.instance.id:
+    type: resource
+    label: "Service Instance ID"
+  # System tags (injected by framework)
+  host:
+    type: resource
+    label: "Host"
+  os:
+    type: resource
+    label: "Operating System"
+  platform:
+    type: resource
+    label: "Platform"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"
