@@ -37,6 +37,7 @@ func TestFreeTierProbes(t *testing.T) {
 		{"Ceph probe IS free tier", "ceph", true},
 		{"Jenkins probe IS free tier", "jenkins", true},
 		{"CouchDB probe is free tier", "couchdb", true},
+		{"ClickHouse probe is free tier", "clickhouse", true},
 		{"Event probe is NOT free tier", "event", false},
 		{"NATS probe is free tier", "nats", true},
 		{"ZooKeeper probe is free tier", "zookeeper", true},
@@ -103,6 +104,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"postgresql":        false,
 		"cassandra":         false,
 		"couchdb":           false,
+		"clickhouse":        false,
 	}
 
 	for _, probe := range probes {
