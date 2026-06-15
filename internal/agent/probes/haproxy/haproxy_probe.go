@@ -132,6 +132,7 @@ func NewHAProxyProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 	addr, port := endpointHostPort(cfg.Endpoint)
 	probe.entitySrc = newHAProxyEntitySource(addr, port, cfg.InstanceName, hostID)
 
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 

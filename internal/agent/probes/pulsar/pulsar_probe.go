@@ -123,6 +123,7 @@ func NewPulsarProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		}),
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 

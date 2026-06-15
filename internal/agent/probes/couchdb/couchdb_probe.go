@@ -166,6 +166,7 @@ func NewCouchDBProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 
 	p.entitySrc = newCouchDBEntitySource(cfg.Endpoint, cfg.InstanceName)
 
+	p.SetEntitySource(p.entitySrc)
 	return p, nil
 }
 

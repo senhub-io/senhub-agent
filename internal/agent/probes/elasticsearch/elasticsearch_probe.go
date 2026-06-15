@@ -85,6 +85,7 @@ func NewElasticsearchProbe(config map[string]interface{}, baseLogger *logger.Log
 	}
 	probe.SetProbeType(ProbeType)
 	probe.entitySrc = newElasticsearchEntitySource(cfg.InstanceName, host, port)
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 

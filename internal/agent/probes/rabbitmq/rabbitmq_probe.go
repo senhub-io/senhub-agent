@@ -100,6 +100,7 @@ func NewRabbitMQProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		defaultHostIDFn,
 	)
 
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 
