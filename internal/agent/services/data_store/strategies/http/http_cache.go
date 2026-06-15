@@ -263,6 +263,16 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"proxmox.storage", // Storage pool name
 	},
 
+	// Kubernetes — one series per resource instance; the discriminant
+	// tag identifies the node, pod, container, or deployment.
+	"kubernetes": {
+		"k8s.node.name",       // per-node metrics (k8s.node.*)
+		"k8s.pod.name",        // per-pod metrics (k8s.pod.*)
+		"k8s.namespace.name",  // namespace scopes pods, containers, deployments
+		"k8s.container.name",  // per-container metrics (k8s.container.*)
+		"k8s.deployment.name", // per-deployment metrics (k8s.deployment.*)
+	},
+
 	// IBM i / Power Systems — collectors emit multiple rows per metric
 	// name, one per resource instance. These tags identify the instance.
 	"ibmi": {
