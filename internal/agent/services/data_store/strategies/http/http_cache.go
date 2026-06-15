@@ -122,6 +122,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// metric name itself (senhub.exec.<label>); no per-series labels to
 	// discriminate beyond the probe instance.
 	"exec": {"metric_type"},
+	// jenkins: job/node/executor counts collapse onto one metric name per
+	// family, discriminated by status (success/failure/…), state (busy/free)
+	// or job name; metric_type separates the jobs/nodes/queue families.
+	"jenkins": {"job", "status", "state", "metric_type"},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
