@@ -185,6 +185,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// memcached: network by direction (transmit/receive), operations by result
 	// (hit/miss), commands by command (get/set/flush), cpu.usage by state (user/system).
 	"memcached": {"result", "command", "state", "direction", "metric_type"},
+	// nvidia: one series per GPU card; gpu.index + gpu.name uniquely
+	// identify a card within the host, gpu.uuid is added for stable joins.
+	"nvidia": {"gpu.index", "gpu.name", "gpu.uuid", "metric_type"},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/

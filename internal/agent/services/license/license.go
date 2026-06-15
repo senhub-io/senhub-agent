@@ -364,6 +364,10 @@ var freeTierProbes = map[string]bool{
 	// reads the machine's own BMC, not a remote system. Free for the same
 	// reason cpu/memory/logicaldisk are free — host self-observability.
 	"ipmi": true,
+	// nvidia: host-local GPU observability via nvidia-smi; the GPU is part
+	// of the host like cpu/memory/logicaldisk, not a remote monitored
+	// system. Free so GPU-equipped hosts have first-class monitoring.
+	"nvidia": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
