@@ -317,17 +317,21 @@ func (p *unifiProbe) fetchClients() (clientEnvelope, error) {
 	return env, err
 }
 
-// buildNetworkPoints emits the WAN throughput counters from the wan
-// subsystem of stat/health.
+// buildNetworkPoints emits WAN throughput counters from the wan subsystem
+// of stat/health. Both directions are emitted as a single metric name
+// (unifi.network.io) discriminated by the OTel attribute
+// network.io.direction (values: "transmit" / "receive").
 func (p *unifiProbe) buildNetworkPoints(health healthEnvelope, baseTags []tags.Tag, ts time.Time) []data_store.DataPoint {
 	var points []data_store.DataPoint
 	for _, h := range health.Data {
 		if h.Subsystem != "wan" {
 			continue
 		}
+		txTags := append(append([]tags.Tag(nil), baseTags...), tags.Tag{Key: "direction", Value: "transmit"})
+		rxTags := append(append([]tags.Tag(nil), baseTags...), tags.Tag{Key: "direction", Value: "receive"})
 		points = append(points,
-			data_store.DataPoint{Name: "unifi.network.tx_bytes", Value: float32(h.TxBytesR), Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "unifi.network.rx_bytes", Value: float32(h.RxBytesR), Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "unifi.network.io", Value: float32(h.TxBytesR), Timestamp: ts, Tags: txTags},
+			data_store.DataPoint{Name: "unifi.network.io", Value: float32(h.RxBytesR), Timestamp: ts, Tags: rxTags},
 		)
 	}
 	return points

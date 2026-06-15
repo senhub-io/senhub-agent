@@ -123,9 +123,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// discriminate beyond the probe instance.
 	"exec": {"metric_type"},
 	// unifi: per-type inventory (device_type), per-device health
-	// (device_name+device_type), per-AP stats (device_name) — all
-	// distinct time series that can coexist in a single cycle.
-	"unifi": {"device_type", "device_name"},
+	// (device_name+device_type), per-AP stats (device_name), WAN
+	// throughput (direction=transmit|receive via network.io.direction) —
+	// all distinct time series that can coexist in a single cycle.
+	"unifi": {"device_type", "device_name", "direction"},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
