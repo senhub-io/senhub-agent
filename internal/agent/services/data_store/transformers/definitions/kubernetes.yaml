@@ -1,0 +1,206 @@
+probe_name: "kubernetes"
+friendly_name: "Kubernetes"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["k8s.node.name", "k8s.pod.name", "k8s.namespace.name", "k8s.container.name", "k8s.deployment.name"]
+
+# FREE probe — Kubernetes cluster supervision via the API server.
+# Covers nodes, pods, containers, and deployments.
+# OTel metric names follow the k8s.* namespace aligned with the
+# OpenTelemetry Kubernetes semantic conventions (semconv 1.30+).
+
+metrics:
+  # --- Node metrics (tags: k8s.node.name, k8s.cluster.name) ---
+
+  - name: "k8s.node.ready"
+    channel: "k8s_node_{k8s.node.name}_ready"
+    display_name: "Node {k8s.node.name} Ready"
+    unit: "#"
+    category: "node"
+    description: "1 when the node reports Ready condition True, 0 otherwise"
+    otel:
+      name: k8s.node.ready
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+      k8s.cluster.name: k8s.cluster.name
+
+  - name: "k8s.node.cpu.allocatable"
+    channel: "k8s_node_{k8s.node.name}_cpu_allocatable"
+    display_name: "Node {k8s.node.name} Allocatable CPUs"
+    unit: "#"
+    category: "node"
+    description: "Number of allocatable CPU cores on the node"
+    otel:
+      name: k8s.node.cpu.allocatable
+      unit: "{core}"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+      k8s.cluster.name: k8s.cluster.name
+
+  - name: "k8s.node.memory.allocatable"
+    channel: "k8s_node_{k8s.node.name}_memory_allocatable"
+    display_name: "Node {k8s.node.name} Allocatable Memory"
+    unit: "B"
+    category: "node"
+    description: "Allocatable memory on the node in bytes"
+    otel:
+      name: k8s.node.memory.allocatable
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+      k8s.cluster.name: k8s.cluster.name
+
+  - name: "k8s.node.pods.capacity"
+    channel: "k8s_node_{k8s.node.name}_pods_capacity"
+    display_name: "Node {k8s.node.name} Pod Capacity"
+    unit: "#"
+    category: "node"
+    description: "Maximum number of pods the node can host"
+    otel:
+      name: k8s.node.pods.capacity
+      unit: "{pod}"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+      k8s.cluster.name: k8s.cluster.name
+
+  - name: "k8s.node.pods.allocated"
+    channel: "k8s_node_{k8s.node.name}_pods_allocated"
+    display_name: "Node {k8s.node.name} Pods Allocatable"
+    unit: "#"
+    category: "node"
+    description: "Number of pods that can still be scheduled on the node"
+    otel:
+      name: k8s.node.pods.allocated
+      unit: "{pod}"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+      k8s.cluster.name: k8s.cluster.name
+
+  # --- Pod metrics (tags: k8s.pod.name, k8s.namespace.name, k8s.node.name) ---
+
+  - name: "k8s.pod.phase"
+    channel: "k8s_pod_{k8s.namespace.name}_{k8s.pod.name}_phase"
+    display_name: "Pod {k8s.namespace.name}/{k8s.pod.name} Running"
+    unit: "#"
+    category: "pod"
+    description: "1 when the pod phase is Running, 0 otherwise"
+    otel:
+      name: k8s.pod.phase
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.pod.name: k8s.pod.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.node.name: k8s.node.name
+
+  - name: "k8s.pod.ready"
+    channel: "k8s_pod_{k8s.namespace.name}_{k8s.pod.name}_ready"
+    display_name: "Pod {k8s.namespace.name}/{k8s.pod.name} Ready"
+    unit: "#"
+    category: "pod"
+    description: "1 when the pod Ready condition is True"
+    otel:
+      name: k8s.pod.ready
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.pod.name: k8s.pod.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.node.name: k8s.node.name
+
+  - name: "k8s.pod.restarts"
+    channel: "k8s_pod_{k8s.namespace.name}_{k8s.pod.name}_restarts"
+    display_name: "Pod {k8s.namespace.name}/{k8s.pod.name} Restarts"
+    unit: "#"
+    category: "pod"
+    description: "Total container restart count for the pod"
+    otel:
+      name: k8s.pod.restarts
+      unit: "{restart}"
+      type: counter
+    tag_to_attribute:
+      k8s.pod.name: k8s.pod.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.node.name: k8s.node.name
+
+  # --- Container metrics (tags: k8s.container.name, k8s.pod.name, k8s.namespace.name) ---
+
+  - name: "k8s.container.ready"
+    channel: "k8s_container_{k8s.namespace.name}_{k8s.pod.name}_{k8s.container.name}_ready"
+    display_name: "Container {k8s.namespace.name}/{k8s.pod.name}/{k8s.container.name} Ready"
+    unit: "#"
+    category: "container"
+    description: "1 when the container is in a ready state"
+    otel:
+      name: k8s.container.ready
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.container.name: k8s.container.name
+      k8s.pod.name: k8s.pod.name
+      k8s.namespace.name: k8s.namespace.name
+
+  - name: "k8s.container.restarts"
+    channel: "k8s_container_{k8s.namespace.name}_{k8s.pod.name}_{k8s.container.name}_restarts"
+    display_name: "Container {k8s.namespace.name}/{k8s.pod.name}/{k8s.container.name} Restarts"
+    unit: "#"
+    category: "container"
+    description: "Number of times the container has been restarted"
+    otel:
+      name: k8s.container.restarts
+      unit: "{restart}"
+      type: counter
+    tag_to_attribute:
+      k8s.container.name: k8s.container.name
+      k8s.pod.name: k8s.pod.name
+      k8s.namespace.name: k8s.namespace.name
+
+  # --- Deployment metrics (tags: k8s.deployment.name, k8s.namespace.name) ---
+
+  - name: "k8s.deployment.available"
+    channel: "k8s_deployment_{k8s.namespace.name}_{k8s.deployment.name}_available"
+    display_name: "Deployment {k8s.namespace.name}/{k8s.deployment.name} Available"
+    unit: "#"
+    category: "deployment"
+    description: "Number of available (ready) replicas for the deployment"
+    otel:
+      name: k8s.deployment.available
+      unit: "{pod}"
+      type: gauge
+    tag_to_attribute:
+      k8s.deployment.name: k8s.deployment.name
+      k8s.namespace.name: k8s.namespace.name
+
+  - name: "k8s.deployment.desired"
+    channel: "k8s_deployment_{k8s.namespace.name}_{k8s.deployment.name}_desired"
+    display_name: "Deployment {k8s.namespace.name}/{k8s.deployment.name} Desired"
+    unit: "#"
+    category: "deployment"
+    description: "Desired replica count for the deployment (spec.replicas)"
+    otel:
+      name: k8s.deployment.desired
+      unit: "{pod}"
+      type: gauge
+    tag_to_attribute:
+      k8s.deployment.name: k8s.deployment.name
+      k8s.namespace.name: k8s.namespace.name
+
+  - name: "k8s.deployment.ready"
+    channel: "k8s_deployment_{k8s.namespace.name}_{k8s.deployment.name}_ready"
+    display_name: "Deployment {k8s.namespace.name}/{k8s.deployment.name} Ready"
+    unit: "#"
+    category: "deployment"
+    description: "1 when available replicas >= desired replicas, 0 otherwise"
+    otel:
+      name: k8s.deployment.ready
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.deployment.name: k8s.deployment.name
+      k8s.namespace.name: k8s.namespace.name
