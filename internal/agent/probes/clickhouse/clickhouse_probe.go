@@ -17,6 +17,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	dto "github.com/prometheus/client_model/go"
@@ -81,12 +83,13 @@ func init() {
 }
 
 type probeConfig struct {
-	Endpoint string
-	Username string
-	Password string
-	Database string
-	Timeout  time.Duration
-	Interval time.Duration
+	Endpoint     string
+	Username     string
+	Password     string
+	Database     string
+	InstanceName string
+	Timeout      time.Duration
+	Interval     time.Duration
 }
 
 // ClickHouseProbe monitors a single ClickHouse server via its /metrics endpoint.
@@ -119,7 +122,7 @@ func NewClickHouseProbe(config map[string]interface{}, baseLogger *logger.Logger
 		},
 	}
 	probe.SetProbeType(ProbeType)
-	probe.entitySrc = newClickhouseEntitySource(cfg.Endpoint)
+	probe.entitySrc = newClickhouseEntitySource(cfg.InstanceName, cfg.Endpoint)
 	return probe, nil
 }
 
@@ -149,6 +152,9 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	}
 	if v, ok := config["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
+	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
 	}
 
 	return cfg, nil
@@ -181,6 +187,12 @@ func (p *ClickHouseProbe) OnShutdown(_ context.Context) error {
 // Collect scrapes the /metrics endpoint and maps the known ClickHouse series
 // to OTel-canonical names. A failing scrape is recorded as up=0; Collect
 // always returns nil so the framework does not mark the probe unhealthy.
+//
+// On the first successful scrape, Collect also fetches the server UUID via
+// SELECT serverUUID() and pins the db entity id ("clickhouse:<uuid>"). Once
+// pinned the id is immutable. When the server does not expose a UUID (pre-
+// 21.x or the query fails) the entity source falls back to host:port on the
+// next Observe call, which is the documented db degraded fallback.
 func (p *ClickHouseProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	baseTags := []tags.Tag{
@@ -195,6 +207,17 @@ func (p *ClickHouseProbe) Collect() ([]data_store.DataPoint, error) {
 		p.entitySrc.setReachable(false, "")
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.config.Endpoint).Msg("clickhouse scrape failed")
 	} else {
+		// Try to pin the instance id on the first successful collect.
+		// isPinned() is a no-op check when instance_name was already set.
+		if !p.entitySrc.isPinned() {
+			uuid, uuidErr := p.fetchServerUUID()
+			if uuidErr != nil {
+				p.moduleLogger.Debug().Err(uuidErr).Msg("clickhouse serverUUID unavailable; falling back to host:port")
+			}
+			// pinTechID accepts an empty uuid and falls back to host:port — the
+			// documented db degraded fallback when no stable tech id is available.
+			p.entitySrc.pinTechID(uuid)
+		}
 		p.entitySrc.setReachable(true, "")
 	}
 
@@ -253,6 +276,45 @@ func (p *ClickHouseProbe) fetchMetrics() (map[string]*dto.MetricFamily, error) {
 		return nil, fmt.Errorf("parsing /metrics from %s: %w", p.config.Endpoint, err)
 	}
 	return families, nil
+}
+
+// fetchServerUUID queries SELECT serverUUID() through the ClickHouse HTTP
+// interface and returns the raw UUID string (e.g.
+// "a1b2c3d4-e5f6-7890-abcd-ef1234567890"). Returns "" + non-nil error when
+// the server is unreachable or does not support serverUUID() (pre-21.x).
+// The caller pins the result via entitySrc.pinTechID.
+func (p *ClickHouseProbe) fetchServerUUID() (string, error) {
+	queryURL := p.config.Endpoint + "/"
+	req, err := http.NewRequest(http.MethodGet, queryURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("building serverUUID request: %w", err)
+	}
+	q := url.Values{}
+	q.Set("query", "SELECT serverUUID()")
+	req.URL.RawQuery = q.Encode()
+	if p.config.Username != "" || p.config.Password != "" {
+		req.SetBasicAuth(p.config.Username, p.config.Password)
+	}
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("serverUUID GET: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("serverUUID: unexpected status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 256))
+	if err != nil {
+		return "", fmt.Errorf("serverUUID read body: %w", err)
+	}
+	uuid := strings.TrimSpace(string(body))
+	if uuid == "" {
+		return "", fmt.Errorf("serverUUID returned empty response")
+	}
+	return uuid, nil
 }
 
 // extractScalar returns the single numeric value from a MetricFamily that
