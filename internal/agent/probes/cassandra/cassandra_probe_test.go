@@ -62,6 +62,9 @@ func (f *jolokiaFixture) handler() http.HandlerFunc {
 func defaultFixture() *jolokiaFixture {
 	return &jolokiaFixture{
 		responses: map[string]interface{}{
+			// Node identity — stable UUID from StorageService
+			"org.apache.cassandra.db:type=StorageService/LocalHostId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+
 			// Client connections
 			"org.apache.cassandra.metrics:type=Client,name=connectedNativeClients/Value": 42,
 
