@@ -55,11 +55,11 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"apache": {"state", "metric_type"}, // apache.workers{state=busy|idle}
 
 	// System probes - multi-instance metrics
-	"cpu":         {"core"},                           // Different CPU cores have independent values
-	"memory":      {},                                 // System-level only, no instances
+	"cpu":    {"core"}, // Different CPU cores have independent values
+	"memory": {},       // System-level only, no instances
 	// process: one series per running process identified by pid+name;
 	// aggregate (process.count) is discriminated by name only.
-	"process": {"process.pid", "process.name"},
+	"process":     {"process.pid", "process.name"},
 	"network":     {"interface", "adapter"},           // Different network interfaces
 	"logicaldisk": {"drive", "mount_point", "device"}, // Different drives/volumes
 
@@ -144,9 +144,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// pools each emit multiple datapoints under the same metric name.
 	"elasticsearch": {
 		"metric_type",
-		"collector",    // elasticsearch.jvm.gc.collections.* — young|old
-		"operation",    // elasticsearch.indexing/search.operations.* — index|query|fetch
-		"thread_pool",  // elasticsearch.thread_pool.tasks.* — per thread pool name
+		"collector",   // elasticsearch.jvm.gc.collections.* — young|old
+		"operation",   // elasticsearch.indexing/search.operations.* — index|query|fetch
+		"thread_pool", // elasticsearch.thread_pool.tasks.* — per thread pool name
 	},
 	// hyperv: per-VM series are discriminated by vm name; vm.count by state bucket.
 	"hyperv": {"hyperv.vm.name", "state", "metric_type"},
@@ -169,10 +169,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// Messaging probes
 	"kafka": {
-		"topic",        // per-topic metrics (kafka.topic.partitions, lag_sum, …)
-		"partition",    // per-partition metrics (offsets, replicas, consumer offsets/lag)
-		"group",        // per-consumer-group metrics (members, offset, lag, lag_sum)
-		"metric_type",  // separates broker / topic / partition / consumer_group families
+		"topic",       // per-topic metrics (kafka.topic.partitions, lag_sum, …)
+		"partition",   // per-partition metrics (offsets, replicas, consumer offsets/lag)
+		"group",       // per-consumer-group metrics (members, offset, lag, lag_sum)
+		"metric_type", // separates broker / topic / partition / consumer_group families
 	},
 	// jenkins: job/node/executor counts collapse onto one metric name per
 	// family, discriminated by status (success/failure/…), state (busy/free)
@@ -185,9 +185,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// opensearch: GC collectors, indexing/search operations, and thread
 	// pools are the three axes that produce distinct per-series values.
 	"opensearch": {
-		"collector",    // opensearch.jvm.gc.collections.* — young|old
-		"operation",    // opensearch.indexing/search.operations.* — index|query|fetch
-		"thread_pool",  // opensearch.thread_pool.tasks.* — per thread pool name
+		"collector",   // opensearch.jvm.gc.collections.* — young|old
+		"operation",   // opensearch.indexing/search.operations.* — index|query|fetch
+		"thread_pool", // opensearch.thread_pool.tasks.* — per thread pool name
 	},
 
 	// Application monitoring probes
@@ -226,6 +226,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"state",       // redis.cpu.time{state=sys|user|sys_children|user_children}
 		"cmd",         // redis.cmd.calls{cmd=get|set|...} / redis.cmd.usec — per-command
 		"metric_type", // separates overview / connections / memory / throughput / cache / keyspace / replication / persistence / cpu / commands families
+	},
 	"mssql": {
 		"database",  // sqlserver.database.io{database=…} + sqlserver.database.status{database=…}
 		"direction", // sqlserver.database.io{direction=read|write}
