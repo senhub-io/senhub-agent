@@ -12,6 +12,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -455,20 +457,38 @@ func (p *pgProbe) collectReplication(ctx context.Context, now time.Time, instanc
 
 // ── buildDSN ───────────────────────────────────────────────────────────────
 
+// buildDSN builds a postgres:// URL DSN. url.URL percent-escapes every
+// component, so a space or '=' in the password can no longer smuggle a
+// second key into the space-separated keyword/value form the pgx parser
+// reads left-to-right — there, a password of "x host=evil" would have
+// redirected the connection (last host= wins) with the real credentials.
 func (p *pgProbe) buildDSN() string {
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=%s",
-		p.cfg.Host, p.cfg.Port, p.cfg.Username, p.cfg.Password, p.tlsMode())
+	db := "postgres"
 	if len(p.cfg.Databases) > 0 {
-		dsn += " dbname=" + p.cfg.Databases[0]
-	} else {
-		dsn += " dbname=postgres"
+		db = p.cfg.Databases[0]
 	}
-	return dsn
+	q := url.Values{}
+	q.Set("sslmode", p.tlsMode())
+
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(p.cfg.Username, p.cfg.Password),
+		Host:     net.JoinHostPort(p.cfg.Host, strconv.Itoa(p.cfg.Port)),
+		Path:     "/" + db,
+		RawQuery: q.Encode(),
+	}
+	return u.String()
 }
 
+// tlsMode maps the operator TLS config to a libpq sslmode. With no explicit
+// config we use "prefer": TLS is negotiated opportunistically when the
+// server supports it and falls back to plaintext otherwise — strictly safer
+// than "disable" without breaking the many self-hosted servers that have no
+// certificate. An operator who sets tls gets verification ("verify-full"),
+// or "require" when they opt into skipping verification.
 func (p *pgProbe) tlsMode() string {
 	if p.cfg.TLSConfig == nil {
-		return "disable"
+		return "prefer"
 	}
 	if p.cfg.TLSConfig.InsecureSkipVerify {
 		return "require"
