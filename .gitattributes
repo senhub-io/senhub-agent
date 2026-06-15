@@ -22,3 +22,5 @@ docs/developer-guide/otel/senhub-semantic-conventions.md merge=union
 # never apply EOL conversion (Windows checkouts turned LF goldens into
 # CRLF and every golden comparison failed on windows runners).
 *.golden -text
+go.mod merge=union
+go.sum merge=union
