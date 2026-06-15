@@ -245,6 +245,22 @@ func (p *kafkaProbe) collectTopicMetrics(
 					tags.Tag{Key: "partition", Value: partStr},
 				),
 			)
+
+			// In-sync replicas (ISR) — under-replicated partitions have ISR < replicas.
+			isr, err := client.InSyncReplicas(topic, partition)
+			if err != nil {
+				p.moduleLogger.Warn().Err(err).
+					Str("topic", topic).Int32("partition", partition).
+					Msg("kafka: InSyncReplicas failed")
+			} else {
+				points = append(points,
+					dp("kafka.partition.replicas_in_sync", float32(len(isr)), now,
+						tags.Tag{Key: "metric_type", Value: "partition"},
+						tags.Tag{Key: "topic", Value: topic},
+						tags.Tag{Key: "partition", Value: partStr},
+					),
+				)
+			}
 		}
 	}
 
