@@ -35,6 +35,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"filetail",
 		"haproxy",
 		"http_check",
+		"hyperv",
 		"icmp_check",
 		"kafka",
 		"jenkins",

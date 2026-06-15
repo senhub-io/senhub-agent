@@ -84,6 +84,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **solr** - Apache Solr monitoring via the native metrics API: JVM heap/threads, node-level request/error/cache counters, and per-core document count and index size
 - **influxdb** - InfluxDB 2.x availability and performance monitoring via the standard /health, /metrics (Prometheus text), and /api/v2/buckets endpoints. No vendor API key required beyond an optional read token.
 - **memcached** - Memcached server stats via the TCP text protocol (connections, items, memory, hit/miss ratio, commands, evictions, CPU)
+- **hyperv** - Hyper-V VM monitoring via WMI (Windows Server only). Reports per-VM CPU, memory and state for virtual machines co-hosted with the agent. Host-local virtualization observability, same tier rationale as cpu/memory/network.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
