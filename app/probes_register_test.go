@@ -24,6 +24,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"consul",
 		"ceph",
 		"cassandra",
+		"couchdb",
 		"cpu",
 		"dns_latency",
 		"envoy",

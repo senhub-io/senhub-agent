@@ -26,6 +26,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/consul"
 	_ "senhub-agent.go/internal/agent/probes/ceph"
 	_ "senhub-agent.go/internal/agent/probes/cassandra"
+	_ "senhub-agent.go/internal/agent/probes/couchdb"
 	_ "senhub-agent.go/internal/agent/probes/cpu"
 	_ "senhub-agent.go/internal/agent/probes/dnslatency"
 	_ "senhub-agent.go/internal/agent/probes/kafka"

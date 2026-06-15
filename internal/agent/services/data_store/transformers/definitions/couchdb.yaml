@@ -1,0 +1,152 @@
+probe_name: "couchdb"
+friendly_name: "CouchDB"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["method", "status"]
+
+# FREE-tier CouchDB monitoring probe.
+# Sources: GET /_node/_local/_stats (BasicAuth, JSON).
+# OTel-first: metric names follow otelcol-contrib couchdb receiver where
+# they exist. Collapsed series use discriminant tags (method, status)
+# registered in DiscriminantTagsRegistry.
+
+metrics:
+  # Availability
+  - name: "senhub.couchdb.up"
+    channel: "couchdb_up"
+    display_name: "CouchDB Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the CouchDB node answered the stats endpoint, 0 otherwise"
+    otel:
+      name: senhub.couchdb.up
+      unit: "1"
+      type: gauge
+
+  # Total HTTP requests
+  - name: "couchdb.httpd.requests"
+    channel: "couchdb_httpd_requests"
+    display_name: "CouchDB HTTP Requests"
+    unit: "#"
+    category: "httpd"
+    description: "Total number of HTTP requests processed by CouchDB"
+    otel:
+      name: couchdb.httpd.requests
+      unit: "{request}"
+      type: counter
+
+  # HTTP method breakdown — collapsed via "method" tag
+  - name: "couchdb.httpd.method.requests"
+    channel: "couchdb_httpd_method_{method}"
+    display_name: "CouchDB HTTP {method} Requests"
+    unit: "#"
+    multi_instance_labels: ["method"]
+    category: "httpd"
+    description: "HTTP requests broken down by method (GET, POST, PUT, DELETE)"
+    otel:
+      name: couchdb.httpd.method.requests
+      unit: "{request}"
+      type: counter
+    tag_to_attribute:
+      method: http.request.method
+
+  # HTTP status code breakdown — collapsed via "status" tag
+  - name: "couchdb.httpd.status.responses"
+    channel: "couchdb_httpd_status_{status}"
+    display_name: "CouchDB HTTP {status} Responses"
+    unit: "#"
+    multi_instance_labels: ["status"]
+    category: "httpd"
+    description: "HTTP responses broken down by status code (200, 201, 400, 401, 404, 500)"
+    otel:
+      name: couchdb.httpd.status.responses
+      unit: "{response}"
+      type: counter
+    tag_to_attribute:
+      status: http.response.status_code
+
+  # Database-level gauges
+  - name: "couchdb.open.databases"
+    channel: "couchdb_open_databases"
+    display_name: "CouchDB Open Databases"
+    unit: "#"
+    category: "overview"
+    description: "Number of databases currently open"
+    otel:
+      name: couchdb.open.databases
+      unit: "{database}"
+      type: gauge
+
+  - name: "couchdb.open.files"
+    channel: "couchdb_open_files"
+    display_name: "CouchDB Open OS Files"
+    unit: "#"
+    category: "overview"
+    description: "Number of file descriptors currently open by CouchDB"
+    otel:
+      name: couchdb.open.files
+      unit: "{file}"
+      type: gauge
+
+  # Database operation counters
+  - name: "couchdb.database.reads"
+    channel: "couchdb_database_reads"
+    display_name: "CouchDB Database Reads"
+    unit: "#"
+    category: "io"
+    description: "Total number of database read operations"
+    otel:
+      name: couchdb.database.reads
+      unit: "{read}"
+      type: counter
+
+  - name: "couchdb.database.writes"
+    channel: "couchdb_database_writes"
+    display_name: "CouchDB Database Writes"
+    unit: "#"
+    category: "io"
+    description: "Total number of database write operations"
+    otel:
+      name: couchdb.database.writes
+      unit: "{write}"
+      type: counter
+
+  # I/O bytes
+  - name: "couchdb.io.bytes.read"
+    channel: "couchdb_io_bytes_read"
+    display_name: "CouchDB IO Bytes Read"
+    unit: "B"
+    category: "io"
+    description: "Total bytes read from disk by CouchDB (io_input)"
+    otel:
+      name: couchdb.io.bytes.read
+      unit: By
+      type: counter
+
+  - name: "couchdb.io.bytes.written"
+    channel: "couchdb_io_bytes_written"
+    display_name: "CouchDB IO Bytes Written"
+    unit: "B"
+    category: "io"
+    description: "Total bytes written to disk by CouchDB (io_output)"
+    otel:
+      name: couchdb.io.bytes.written
+      unit: By
+      type: counter
+
+tag_metadata:
+  method:
+    type: resource
+    label: "HTTP Method"
+  status:
+    type: resource
+    label: "HTTP Status Code"
+  metric_type:
+    type: category
+    label: "Metric Type"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"
