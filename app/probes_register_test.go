@@ -55,6 +55,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"prometheus_scrape",
 		"rabbitmq",
 		"pulsar",
+		"proxmox",
 		"snmp_poll",
 		"snmp_trap",
 		"solr",
