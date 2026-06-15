@@ -2,7 +2,7 @@ probe_name: "memcached"
 friendly_name: "Memcached"
 version: "1.0.0"
 host_level: false
-multi_instance_labels: ["instance", "result", "command", "state"]
+multi_instance_labels: ["instance", "result", "command", "state", "direction"]
 
 # Free probe: Memcached stats via the TCP text protocol (stats\r\n).
 # Metric names follow the otelcol-contrib memcachedreceiver convention
@@ -114,31 +114,19 @@ metrics:
     tag_to_attribute:
       instance: server.address
 
-  - name: "memcached.network.bytes.sent"
-    channel: "memcached_bytes_sent"
-    display_name: "Memcached Bytes Sent"
+  - name: "memcached.network"
+    channel: "memcached_network_{direction}"
+    display_name: "Memcached Network {direction}"
     unit: "B"
     category: "throughput"
-    description: "Total bytes sent to clients since server start"
+    description: "Total bytes transferred since server start, by direction (transmit=sent to clients, receive=received from clients)"
     otel:
-      name: memcached.network.bytes.sent
+      name: memcached.network
       unit: "By"
       type: counter
     tag_to_attribute:
       instance: server.address
-
-  - name: "memcached.network.bytes.received"
-    channel: "memcached_bytes_received"
-    display_name: "Memcached Bytes Received"
-    unit: "B"
-    category: "throughput"
-    description: "Total bytes received from clients since server start"
-    otel:
-      name: memcached.network.bytes.received
-      unit: "By"
-      type: counter
-    tag_to_attribute:
-      instance: server.address
+      direction: network.io.direction
 
   - name: "memcached.operations"
     channel: "memcached_operations_{result}"
