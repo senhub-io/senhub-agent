@@ -212,6 +212,98 @@ func TestShouldStart(t *testing.T) {
 	}
 }
 
+// TestCollect_PinsClusterUUID verifies that a successful Collect call fetches
+// GET / and pins the returned cluster_uuid as the stable db.instance.id.
+func TestCollect_PinsClusterUUID(t *testing.T) {
+	const wantUUID = "test-cluster-uuid-abc"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"cluster_uuid": wantUUID,
+				"version":      map[string]interface{}{"number": "8.0.0"},
+			})
+		case "/_cluster/health":
+			_ = json.NewEncoder(w).Encode(clusterHealth{Status: "green"})
+		case "/_nodes/_local/stats":
+			_ = json.NewEncoder(w).Encode(nodeStatsResponse{Nodes: map[string]nodeStats{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	p, _ := NewElasticsearchProbe(map[string]interface{}{"endpoint": srv.URL}, testLogger())
+	ep := p.(*elasticsearchProbe)
+	ep.client = srv.Client()
+
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect() error: %v", err)
+	}
+
+	ep.entitySrc.mu.RLock()
+	gotID := ep.entitySrc.instanceID
+	pinned := ep.entitySrc.pinned
+	ep.entitySrc.mu.RUnlock()
+
+	if !pinned {
+		t.Error("entity source not pinned after successful Collect")
+	}
+	if want := "elasticsearch:" + wantUUID; gotID != want {
+		t.Errorf("instanceID = %q, want %q", gotID, want)
+	}
+}
+
+// TestCollect_InstanceNameOverride verifies that instance_name from config is
+// used verbatim as the db.instance.id and that no GET / fetch changes it.
+func TestCollect_InstanceNameOverride(t *testing.T) {
+	const configName = "my-custom-es"
+	fetchedRoot := false
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/":
+			fetchedRoot = true
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"cluster_uuid": "should-not-be-used",
+				"version":      map[string]interface{}{"number": "8.0.0"},
+			})
+		case "/_cluster/health":
+			_ = json.NewEncoder(w).Encode(clusterHealth{Status: "green"})
+		case "/_nodes/_local/stats":
+			_ = json.NewEncoder(w).Encode(nodeStatsResponse{Nodes: map[string]nodeStats{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	p, _ := NewElasticsearchProbe(map[string]interface{}{
+		"endpoint":      srv.URL,
+		"instance_name": configName,
+	}, testLogger())
+	ep := p.(*elasticsearchProbe)
+	ep.client = srv.Client()
+
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect() error: %v", err)
+	}
+
+	ep.entitySrc.mu.RLock()
+	gotID := ep.entitySrc.instanceID
+	ep.entitySrc.mu.RUnlock()
+
+	if gotID != configName {
+		t.Errorf("instanceID = %q, want %q", gotID, configName)
+	}
+	// GET / may still be called (maybePin is a no-op when already pinned, but
+	// fetchedRoot is acceptable either way; the key invariant is the id is correct).
+	_ = fetchedRoot
+}
+
 func TestCollect_BasicAuth(t *testing.T) {
 	authOK := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
