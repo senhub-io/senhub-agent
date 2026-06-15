@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -39,9 +40,9 @@ const (
 
 // mgmtRequest is the WildFly Management API JSON request body.
 type mgmtRequest struct {
-	Operation string            `json:"operation"`
+	Operation string              `json:"operation"`
 	Address   []map[string]string `json:"address"`
-	Name      string            `json:"name,omitempty"`
+	Name      string              `json:"name,omitempty"`
 	// include-runtime and recursive-only apply to read-resource.
 	IncludeRuntime bool `json:"include-runtime,omitempty"`
 	Recursive      bool `json:"recursive,omitempty"`
@@ -57,11 +58,12 @@ type mgmtResponse struct {
 
 // probeConfig holds validated configuration.
 type probeConfig struct {
-	Endpoint string
-	Username string
-	Password string
-	Timeout  time.Duration
-	Interval time.Duration
+	Endpoint     string
+	Username     string
+	Password     string
+	Timeout      time.Duration
+	Interval     time.Duration
+	InstanceName string // optional stable override for service.instance.id
 }
 
 // WildflyProbe collects metrics from a WildFly / JBoss instance via
@@ -84,6 +86,14 @@ func NewWildflyProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		return nil, err
 	}
 
+	resolveHostID := func() string {
+		id, err := common.GetHostIdentity()
+		if err != nil {
+			return ""
+		}
+		return id.ID
+	}
+
 	p := &WildflyProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
@@ -91,7 +101,7 @@ func NewWildflyProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		client: &http.Client{
 			Timeout: cfg.Timeout,
 		},
-		entitySrc: newWildflyEntitySource(cfg.Endpoint),
+		entitySrc: newWildflyEntitySource(cfg.Endpoint, cfg.InstanceName, resolveHostID),
 	}
 	p.SetProbeType(ProbeType)
 	return p, nil
@@ -119,6 +129,9 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	}
 	if v, ok := config["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
+	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
 	}
 	return cfg, nil
 }
@@ -293,10 +306,10 @@ func (p *WildflyProbe) collectUndertow(ctx context.Context, now time.Time, point
 	}
 
 	var result struct {
-		RequestCount    int64 `json:"request-count"`
-		ErrorCount      int64 `json:"error-count"`
-		BytesSent       int64 `json:"bytes-sent"`
-		BytesReceived   int64 `json:"bytes-received"`
+		RequestCount  int64 `json:"request-count"`
+		ErrorCount    int64 `json:"error-count"`
+		BytesSent     int64 `json:"bytes-sent"`
+		BytesReceived int64 `json:"bytes-received"`
 	}
 	if err := p.mgmtCall(ctx, req, &result); err != nil {
 		return err
