@@ -42,9 +42,9 @@ func NewHypervProbe(config map[string]interface{}, _ *logger.Logger) (types.Prob
 	return probe, nil
 }
 
-func (p *HypervProbe) GetTargetStrategies() []string         { return []string{} }
-func (p *HypervProbe) ShouldStart() bool                     { return true }
-func (p *HypervProbe) GetInterval() time.Duration            { return p.interval }
+func (p *HypervProbe) GetTargetStrategies() []string            { return []string{} }
+func (p *HypervProbe) ShouldStart() bool                        { return true }
+func (p *HypervProbe) GetInterval() time.Duration               { return p.interval }
 func (p *HypervProbe) Collect() ([]data_store.DataPoint, error) { return nil, nil }
 
 func (p *HypervProbe) OnStart(_ chan struct{}) error {

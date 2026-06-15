@@ -7,6 +7,7 @@
 // The probe queries root\virtualization\v2:
 //   - Msvm_ComputerSystem (EnabledState, NumberOfProcessors)
 //   - Msvm_SummaryInformation (CPUUsage, MemoryUsage, UpTime)
+//   - Msvm_KvpExchangeComponentSettingData (guest machine-id via KVP)
 //
 // Metrics emitted (OTel-first):
 //   - senhub.hyperv.up           gauge{1}    — probe health (WMI reachable)
@@ -15,9 +16,10 @@
 //   - hyperv.vm.state            gauge{1}    — 1=running, 0=other
 //   - hyperv.vm.count            gauge{1}    — VM count by state
 //
-// Hyper-V is a host hardware facet: metrics join the host entity emitted by
-// the foundation detector (same doctrine as cpu/memory/logicaldisk). No
-// separate entity is emitted here.
+// Entities emitted (ADR 0018 — host.id is always a machine-id):
+//   - compute.vm per VM (id={host.id:<hypervisor machine-id>, vmid:<GUID>})
+//   - host per VM when the guest machine-id is available via KVP
+//   - runs_on(compute.vm → host) and monitors(agent → compute.vm) edges
 package hyperv
 
 import (
@@ -30,6 +32,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -43,7 +46,7 @@ const hypervNamespace = `root\virtualization\v2`
 const (
 	enabledStateRunning  = 2
 	enabledStateStopped  = 3
-	enabledStateEnabled  = 6  // alias seen in some Hyper-V versions for paused
+	enabledStateEnabled  = 6 // alias seen in some Hyper-V versions for paused
 	enabledStateStarting = 9
 	enabledStateReset    = 10
 	enabledStateSaving   = 11
@@ -77,6 +80,9 @@ type HypervProbe struct {
 	config       probeConfig
 	moduleLogger *logger.ModuleLogger
 	queryFn      wmiQueryFn
+
+	entitySource           *hypervEntitySource
+	unregisterEntitySource func()
 }
 
 type probeConfig struct {
@@ -94,11 +100,22 @@ func NewHypervProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 
+	// Resolve the hypervisor's own machine-id for the entity source. A failure
+	// here is non-fatal: the entity source will return ok=false until the host
+	// identity is resolvable (degraded entity correlation, metrics still flow).
+	var hostID string
+	if ident, err := common.GetHostIdentity(); err != nil {
+		moduleLogger.Warn().Err(err).Msg("could not resolve hypervisor host.id; entity source disabled")
+	} else {
+		hostID = ident.ID
+	}
+
 	probe := &HypervProbe{
 		BaseProbe:    &types.BaseProbe{},
 		config:       cfg,
 		moduleLogger: moduleLogger,
 		queryFn:      wmi.QueryNamespace,
+		entitySource: newHypervEntitySource(hostID, moduleLogger),
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
@@ -112,11 +129,15 @@ func (p *HypervProbe) ShouldStart() bool          { return true }
 func (p *HypervProbe) GetInterval() time.Duration { return p.config.Interval }
 
 func (p *HypervProbe) OnStart(_ chan struct{}) error {
+	p.unregisterEntitySource = entity.RegisterSource(p.entitySource)
 	p.moduleLogger.Info().Msg("Starting hyperv probe")
 	return nil
 }
 
 func (p *HypervProbe) OnShutdown(_ context.Context) error {
+	if p.unregisterEntitySource != nil {
+		p.unregisterEntitySource()
+	}
 	return nil
 }
 
@@ -153,6 +174,8 @@ func (p *HypervProbe) Collect() ([]data_store.DataPoint, error) {
 
 	if err == nil {
 		points = append(points, p.buildVMPoints(vms, sumByName, now, hostTags)...)
+		// Entity rail: update the cached snapshot for the detector goroutine.
+		p.entitySource.update(toVMInfos(vms, sumByName))
 	}
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
@@ -190,6 +213,47 @@ func (p *HypervProbe) queryWMI() ([]msvmComputerSystem, map[string]msvmSummaryIn
 		sumByName[key] = s
 	}
 	return vms, sumByName, nil
+}
+
+// toVMInfos converts the WMI query results to the platform-neutral vmInfo
+// slice consumed by the entity source. ElementName from SummaryInformation is
+// the human-readable VM name; the GUID (Msvm_ComputerSystem.Name) is the
+// immutable VM identity.
+func toVMInfos(vms []msvmComputerSystem, sumByName map[string]msvmSummaryInformation) []vmInfo {
+	infos := make([]vmInfo, 0, len(vms))
+	for _, vm := range vms {
+		name := ""
+		if si, ok := sumByName[vm.Name]; ok && si.ElementName != "" {
+			name = si.ElementName
+		}
+		infos = append(infos, vmInfo{
+			GUID:   vm.Name,
+			VMName: name,
+			State:  vmStateName(vm.EnabledState),
+		})
+	}
+	return infos
+}
+
+// vmStateName converts a Hyper-V EnabledState to the OTel-normalised string
+// used as the vm.state attribute on the compute.vm entity.
+func vmStateName(state uint16) string {
+	switch state {
+	case enabledStateRunning:
+		return "running"
+	case enabledStateStopped:
+		return "stopped"
+	case enabledStatePaused, enabledStatePausing:
+		return "paused"
+	case enabledStateSaving:
+		return "saving"
+	case enabledStateStarting, enabledStateResuming:
+		return "starting"
+	case enabledStateReset:
+		return "resetting"
+	default:
+		return "unknown"
+	}
 }
 
 // buildVMPoints builds per-VM and per-state-count datapoints.
