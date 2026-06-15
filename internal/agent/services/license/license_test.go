@@ -92,6 +92,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"pulsar":            false,
 		"consul":            false,
 		"zookeeper":         false,
+		"envoy":             false,
 	}
 
 	for _, probe := range probes {

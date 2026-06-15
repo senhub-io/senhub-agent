@@ -24,6 +24,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/activemq"
 	_ "senhub-agent.go/internal/agent/probes/consul"
 	_ "senhub-agent.go/internal/agent/probes/cpu"
+	_ "senhub-agent.go/internal/agent/probes/envoy"
 	_ "senhub-agent.go/internal/agent/probes/event"
 	_ "senhub-agent.go/internal/agent/probes/filetail"
 	_ "senhub-agent.go/internal/agent/probes/haproxy"
