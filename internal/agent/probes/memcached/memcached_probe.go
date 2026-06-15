@@ -38,10 +38,11 @@ type MemcachedProbe struct {
 }
 
 type memcachedConfig struct {
-	Host     string
-	Port     int
-	Interval time.Duration
-	Timeout  time.Duration
+	Host         string
+	Port         int
+	Interval     time.Duration
+	Timeout      time.Duration
+	InstanceName string
 }
 
 // NewMemcachedProbe constructs the probe from the YAML params block.
@@ -67,12 +68,15 @@ func NewMemcachedProbe(config map[string]interface{}, baseLogger *logger.Logger)
 	if v, ok := config["timeout"].(int); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
 
 	probe := &MemcachedProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		moduleLogger: moduleLogger,
-		entitySrc:    newMemcachedEntitySource(cfg.Host, cfg.Port),
+		entitySrc:    newMemcachedEntitySource(cfg.Host, cfg.Port, cfg.InstanceName),
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
