@@ -1,0 +1,155 @@
+probe_name: "mssql"
+friendly_name: "Microsoft SQL Server"
+version: "1.0.0"
+
+# OTel-first transformer (format v3 — databases).
+#
+# Source canonique : OTel Collector contrib sqlserverreceiver
+# (https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/sqlserverreceiver).
+# Quand le receiver contrib expose la métrique, on suit son nom et ses attributs
+# tel quel (drop-in interop Grafana / New Relic). senhub.db.up est l'exception
+# cross-engine partagée avec mysql/postgresql.
+#
+# Sources SQL : sys.dm_os_performance_counters (compteurs perf scalaires),
+# sys.databases (per-database status), sys.dm_io_virtual_file_stats (per-database I/O).
+
+metrics:
+  # ═════════════════════════════════════════════════════════════════════════
+  # OVERVIEW — heartbeat
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "senhub.db.up"
+    channel: "db_up"
+    display_name: "Database Up"
+    unit: "#"
+    category: "overview"
+    description: "1 if the agent's most recent ping reached the server, 0 otherwise"
+    lookup: "senhub.db.up"
+    otel:
+      name: senhub.db.up
+      unit: "1"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # THROUGHPUT — batch requests, transactions
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "sqlserver.batch_request.rate"
+    channel: "mssql_batch_request_rate"
+    display_name: "Batch Requests/sec"
+    unit: "#"
+    category: "throughput"
+    description: "T-SQL batch requests received per second (Batch Requests/sec)"
+    otel:
+      name: sqlserver.batch_request.rate
+      unit: "{request}/s"
+      type: gauge
+
+  - name: "sqlserver.transaction_rate"
+    channel: "mssql_transaction_rate"
+    display_name: "Transactions/sec"
+    unit: "#"
+    category: "throughput"
+    description: "Transactions started per second across all databases (Transactions/sec)"
+    otel:
+      name: sqlserver.transaction_rate
+      unit: "{transaction}/s"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # CACHE — buffer pool
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "sqlserver.page_buffer_cache.hit_ratio"
+    channel: "mssql_page_buffer_cache_hit_ratio"
+    display_name: "Buffer Cache Hit Ratio"
+    unit: "%"
+    category: "cache"
+    description: "Percentage of page requests served from the buffer pool without a physical read"
+    otel:
+      name: sqlserver.page_buffer_cache.hit_ratio
+      unit: "%"
+      type: gauge
+
+  - name: "sqlserver.page_life_expectancy"
+    channel: "mssql_page_life_expectancy"
+    display_name: "Page Life Expectancy"
+    unit: "s"
+    category: "cache"
+    description: "Seconds a page is expected to stay in the buffer pool (Page life expectancy)"
+    otel:
+      name: sqlserver.page_life_expectancy
+      unit: "s"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # LOCKS — contention
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "sqlserver.lock_wait_rate"
+    channel: "mssql_lock_wait_rate"
+    display_name: "Lock Waits/sec"
+    unit: "#"
+    category: "locks"
+    description: "Lock requests per second that required the caller to wait (Lock Waits/sec)"
+    otel:
+      name: sqlserver.lock_wait_rate
+      unit: "{wait}/s"
+      type: gauge
+
+  - name: "sqlserver.processes.blocked"
+    channel: "mssql_processes_blocked"
+    display_name: "Processes Blocked"
+    unit: "#"
+    category: "locks"
+    description: "Number of currently blocked processes (Processes blocked)"
+    otel:
+      name: sqlserver.processes.blocked
+      unit: "{process}"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # CONNECTIONS
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "sqlserver.user.connection.count"
+    channel: "mssql_user_connection_count"
+    display_name: "User Connections"
+    unit: "#"
+    category: "connections"
+    description: "Number of user connections to the instance (User Connections)"
+    otel:
+      name: sqlserver.user.connection.count
+      unit: "{connection}"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # IO — per-database read/write bytes (multi_instance: database × direction)
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "sqlserver.database.io"
+    channel: "mssql_database_io_{database}_{direction}"
+    display_name: "DB {database} I/O {direction}"
+    unit: "B"
+    multi_instance_labels: ["database", "direction"]
+    category: "io"
+    description: "Total bytes read/written per database since startup (sys.dm_io_virtual_file_stats)"
+    otel:
+      name: sqlserver.database.io
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      database: db.namespace
+      direction: direction
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # STORAGE — per-database state (multi_instance: database)
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "sqlserver.database.status"
+    channel: "mssql_database_status_{database}"
+    display_name: "DB {database} Status"
+    unit: "#"
+    multi_instance_labels: ["database"]
+    category: "storage"
+    description: "Database state code (sys.databases.state — 0=ONLINE, 6=OFFLINE, …)"
+    lookup: "mssql.database.status"
+    otel:
+      name: sqlserver.database.status
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      database: db.namespace
