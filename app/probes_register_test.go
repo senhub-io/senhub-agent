@@ -29,6 +29,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"cpu",
 		"dns_latency",
 		"envoy",
+		"elasticsearch",
 		"event",
 		"exec",
 		"filetail",

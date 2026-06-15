@@ -316,6 +316,11 @@ var freeTierProbes = map[string]bool{
 	// it follows the universal-collection posture of promscrape rather
 	// than a proprietary vendor integration.
 	"clickhouse": true,
+	// elasticsearch: Elasticsearch / OpenSearch cluster and node metrics
+	// via the REST JSON API — universal observability for a database that
+	// ships with its own free distribution (same open-core wedge reasoning
+	// as snmp_poll and prometheus_scrape).
+	"elasticsearch": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

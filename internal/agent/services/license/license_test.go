@@ -105,6 +105,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"cassandra":         false,
 		"couchdb":           false,
 		"clickhouse":        false,
+		"elasticsearch":     false,
 	}
 
 	for _, probe := range probes {
