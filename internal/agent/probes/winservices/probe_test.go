@@ -193,4 +193,38 @@ func TestEntitySource_EmitsServiceInstance(t *testing.T) {
 	if e.ID[idKeyServiceInstanceID] != serviceInstanceID {
 		t.Errorf("id = %v, want %q", e.ID[idKeyServiceInstanceID], serviceInstanceID)
 	}
+	// No host ID yet — relation must be absent.
+	if len(obs.Relations) != 0 {
+		t.Errorf("Relations = %d, want 0 when hostID is empty", len(obs.Relations))
+	}
+}
+
+func TestEntitySource_RunsOnRelation(t *testing.T) {
+	s := newEntitySource()
+	s.setHostID("test-host-uuid")
+
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("Observe ok = false, want true")
+	}
+	if len(obs.Relations) != 1 {
+		t.Fatalf("Relations = %d, want 1", len(obs.Relations))
+	}
+	r := obs.Relations[0]
+	if r.Type != relRunsOn {
+		t.Errorf("Relation.Type = %q, want %q", r.Type, relRunsOn)
+	}
+	if r.FromType != entityTypeServiceInstance {
+		t.Errorf("FromType = %q, want %q", r.FromType, entityTypeServiceInstance)
+	}
+	if r.ToType != entityTypeHost {
+		t.Errorf("ToType = %q, want %q", r.ToType, entityTypeHost)
+	}
+	if r.ToID[idKeyHost] != "test-host-uuid" {
+		t.Errorf("ToID[host.id] = %v, want %q", r.ToID[idKeyHost], "test-host-uuid")
+	}
+	// FromID must match the service.instance entity's ID exactly.
+	if r.FromID[idKeyServiceInstanceID] != serviceInstanceID {
+		t.Errorf("FromID[service.instance.id] = %v, want %q", r.FromID[idKeyServiceInstanceID], serviceInstanceID)
+	}
 }
