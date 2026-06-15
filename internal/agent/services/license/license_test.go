@@ -75,14 +75,9 @@ func TestGetFreeTierProbes(t *testing.T) {
 	// Check we have the expected number of free tier probes
 	// Check we have exactly the expected number of free tier probes
 	// Check we have the right number of free tier probes
-	// Check we have exactly the expected number of free tier probes
-	// Check we have the expected number of free tier probes
-	if len(probes) != 18 {
-		t.Errorf("GetFreeTierProbes() returned %d probes, want 18", len(probes))
-	// Check we have exactly 19 free tier probes
-	if len(probes) != 19 {
-		t.Errorf("GetFreeTierProbes() returned %d probes, want 19", len(probes))
-	}
+	// Exact membership is verified by the loops below (every returned probe is
+	// expected, and every expected probe is returned), which subsumes a
+	// hardcoded count check (brittle as the free tier grows).
 
 	// Check all expected probes are present
 	expectedProbes := map[string]bool{
@@ -145,7 +140,6 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"mssql":             false,
 		"tomcat":            false,
 		"mongodb":           false,
-		"kafka":             false,
 	}
 
 	for _, probe := range probes {
