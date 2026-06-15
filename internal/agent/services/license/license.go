@@ -226,6 +226,10 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// ipmi: host-local hardware sensor collection via ipmitool; the agent
+	// reads the machine's own BMC, not a remote system. Free for the same
+	// reason cpu/memory/logicaldisk are free — host self-observability.
+	"ipmi": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

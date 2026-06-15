@@ -1,0 +1,146 @@
+probe_name: "ipmi"
+friendly_name: "IPMI / BMC Sensors"
+version: "1.0.0"
+host_level: true
+multi_instance_labels: ["hardware.component"]
+
+# Format v3 — OTel-first source of truth.
+# IPMI hardware sensor data via ipmitool(8). Linux only; on non-Linux hosts
+# the probe emits only senhub.ipmi.up=0.
+#
+# OTel mapping follows the hardware semantic conventions (experimental):
+#   hardware.temperature   — hw.temperature (HW_EXP)
+#   hardware.fan.speed     — hw.fan.speed   (HW_EXP)
+#   hardware.voltage       — hw.voltage     (HW_EXP)
+#
+# hardware.component (tag → hw.id attribute) identifies the sensor name
+# as reported by ipmitool (e.g. "CPU Temp", "FAN1", "12V").
+
+metrics:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Temperature (degrees Celsius)
+  # OTel: hw.temperature (Gauge, Cel) with hw.id = sensor name
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "hardware.temperature"
+    channel: "hardware_temperature_{hardware.component}"
+    display_name: "Temp {hardware.component}"
+    unit: "Degrees Celsius"
+    multi_instance_labels: ["hardware.component"]
+    category: "hardware"
+    description: "Temperature reported by the BMC sensor (degrees Celsius)"
+    otel:
+      name: hw.temperature
+      unit: Cel
+      type: gauge
+    tag_to_attribute:
+      hardware.component: hw.id
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Fan speed (rotations per minute)
+  # OTel: hw.fan.speed (Gauge, {rotation}/min) with hw.id = sensor name
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "hardware.fan.speed"
+    channel: "hardware_fan_speed_{hardware.component}"
+    display_name: "Fan Speed {hardware.component}"
+    unit: "RPM"
+    multi_instance_labels: ["hardware.component"]
+    category: "hardware"
+    description: "Fan speed in rotations per minute as reported by the BMC"
+    otel:
+      name: hw.fan.speed
+      unit: "{rotation}/min"
+      type: gauge
+    tag_to_attribute:
+      hardware.component: hw.id
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Voltage
+  # OTel: hw.voltage (Gauge, V) with hw.id = sensor name
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "hardware.voltage"
+    channel: "hardware_voltage_{hardware.component}"
+    display_name: "Voltage {hardware.component}"
+    unit: "Volts"
+    multi_instance_labels: ["hardware.component"]
+    category: "hardware"
+    description: "Voltage reported by the BMC sensor (volts)"
+    otel:
+      name: hw.voltage
+      unit: V
+      type: gauge
+    tag_to_attribute:
+      hardware.component: hw.id
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Power supply status (discrete ok/fault)
+  # OTel: hw.status (Gauge, 1) with hw.id = sensor name, hw.type = "power_supply"
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "hardware.power_supply.status"
+    channel: "hardware_psu_status_{hardware.component}"
+    display_name: "PSU Status {hardware.component}"
+    unit: "#"
+    multi_instance_labels: ["hardware.component"]
+    category: "hardware"
+    description: "Power supply status: 1 = ok, 0 = fault or not available"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: gauge
+      attributes:
+        hw.type: power_supply
+    tag_to_attribute:
+      hardware.component: hw.id
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Generic sensor status (ok / critical / non-recoverable)
+  # OTel: hw.status (Gauge, 1) with hw.id = sensor name
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "hardware.sensor.status"
+    channel: "hardware_sensor_status_{hardware.component}"
+    display_name: "Sensor {hardware.component}"
+    unit: "#"
+    multi_instance_labels: ["hardware.component"]
+    category: "hardware"
+    description: "Generic BMC sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      hardware.component: hw.id
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Probe availability
+  # OTel: senhub.ipmi.up (Gauge, 1)
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "senhub.ipmi.up"
+    channel: "ipmi_up"
+    display_name: "IPMI Reachable"
+    unit: "#"
+    category: "availability"
+    description: "1 when ipmitool ran successfully and the BMC responded, 0 otherwise"
+    otel:
+      name: senhub.ipmi.up
+      unit: "1"
+      type: gauge
+
+tag_metadata:
+  hardware.component:
+    type: resource
+    label: "Hardware Component"
+  # System tags (injected by framework)
+  host:
+    type: resource
+    label: "Host"
+  os:
+    type: resource
+    label: "Operating System"
+  platform:
+    type: resource
+    label: "Platform"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"
