@@ -311,6 +311,11 @@ var freeTierProbes = map[string]bool{
 	// snmp_poll for network devices). CouchDB monitoring is the open-core
 	// wedge for document-database observability.
 	"couchdb": true,
+	// clickhouse: a ClickHouse server is widely self-hosted and its
+	// /metrics Prometheus endpoint is an open standard; monitoring
+	// it follows the universal-collection posture of promscrape rather
+	// than a proprietary vendor integration.
+	"clickhouse": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

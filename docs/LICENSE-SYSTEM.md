@@ -78,6 +78,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **postgresql** - PostgreSQL server monitoring (OTel-first, postgresql.* semconv aligned with otelcol-contrib postgresqlreceiver). FREE open-core database probe — the universal RDBMS wedge alongside snmp_poll.
 - **cassandra** - Apache Cassandra monitoring via Jolokia HTTP REST. Operators self-host Cassandra and should not need a paid licence to observe their own cluster: connections, request latency/errors (read/write), compaction, storage load, JVM heap, GC.
 - **couchdb** - CouchDB node monitoring (HTTP stats, method/status breakdowns, database reads/writes, I/O bytes). Open-core database observability wedge.
+- **clickhouse** - ClickHouse server monitoring via the standard /metrics Prometheus endpoint (ClickHouse 20.1+). Follows the universal-collection posture of prometheus_scrape: the /metrics protocol is an open standard, not a proprietary vendor integration.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
