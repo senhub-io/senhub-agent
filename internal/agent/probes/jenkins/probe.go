@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -52,11 +53,12 @@ const (
 )
 
 type jenkinsConfig struct {
-	Endpoint string
-	Username string
-	APIToken string
-	Interval time.Duration
-	Timeout  time.Duration
+	Endpoint     string
+	Username     string
+	APIToken     string
+	Interval     time.Duration
+	Timeout      time.Duration
+	InstanceName string // optional operator-supplied stable id (precedence 1)
 }
 
 // jenkinsProbe monitors a single Jenkins controller.
@@ -91,15 +93,33 @@ func NewJenkinsProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger
 		Bool("authenticated", cfg.Username != "").
 		Msg("Creating new Jenkins probe")
 
+	httpClient := &http.Client{Timeout: cfg.Timeout}
 	probe := &jenkinsProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		instance:     instance,
 		moduleLogger: moduleLogger,
-		client:       &http.Client{Timeout: cfg.Timeout},
-		entitySource: newEntitySource(instance),
+		client:       httpClient,
 	}
 	probe.SetProbeType(ProbeType)
+
+	// Build the entity source. fetchIdentity is a closure over the probe's
+	// HTTP client so it reuses existing auth and timeout config.
+	// hostIDFn uses the OS machine-id as the precedence-2 fallback.
+	hostIDFn := func() string {
+		id, err := common.GetHostIdentity()
+		if err != nil {
+			return ""
+		}
+		return id.ID
+	}
+	probe.entitySource = newEntitySource(
+		cfg.InstanceName,
+		host,
+		port,
+		func() (string, error) { return fetchInstanceIdentity(probe.getJSON) },
+		hostIDFn,
+	)
 	return probe, nil
 }
 
@@ -120,6 +140,9 @@ func parseConfig(config map[string]interface{}) (jenkinsConfig, error) {
 	}
 	if v, ok := config["api_token"].(string); ok {
 		cfg.APIToken = v
+	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
 	}
 	if v, ok := config["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
