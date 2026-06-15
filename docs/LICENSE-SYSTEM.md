@@ -66,6 +66,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **wildfly** - WildFly / JBoss monitoring via the HTTP Management API (JVM heap, Undertow web-container counters, JTA transactions, JDBC datasource pool metrics)
 - **kafka** — Kafka broker/topic/consumer-group monitoring via Admin API (12 metrics: broker count, topic/partition metadata, current/oldest offsets, ISR replicas, consumer group lag per partition and lag_sum per topic). Mirrors the OTel Collector kafkametricsreceiver metric set.
 - **rabbitmq** - RabbitMQ broker health and queue depth via the built-in HTTP Management API (queue depth, message counters, per-node resource metrics)
+- **nats** - NATS Server monitoring via the HTTP management API (/varz connections/subscriptions/messages/bytes/slow-consumers, /routez cluster routes, /jsz JetStream streams/consumers/messages/bytes). No external dependencies.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:

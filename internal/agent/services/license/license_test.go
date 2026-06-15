@@ -34,6 +34,7 @@ func TestFreeTierProbes(t *testing.T) {
 		{"WildFly probe IS free tier", "wildfly", true},
 		{"Kafka probe is free tier", "kafka", true},
 		{"Event probe is NOT free tier", "event", false},
+		{"NATS probe is free tier", "nats", true},
 	}
 
 	for _, tt := range tests {
@@ -51,6 +52,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 
 	// Check we have exactly 18 free tier probes
 	// Check we have exactly 11 free tier probes
+	// Check we have the expected number of free tier probes
 	if len(probes) != 18 {
 		t.Errorf("GetFreeTierProbes() returned %d probes, want 18", len(probes))
 	}
@@ -82,6 +84,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"wildfly":           false,
 		"kafka":             false,
 		"rabbitmq":          false,
+		"nats":              false,
 	}
 
 	for _, probe := range probes {

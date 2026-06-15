@@ -32,6 +32,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"linux_logs",
 		"logicaldisk",
 		"memory",
+		"nats",
 		"network",
 		"nginx",
 		"otlp_receiver",

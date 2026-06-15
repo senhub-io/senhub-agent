@@ -235,6 +235,7 @@ func TestProbeRegistry(t *testing.T) {
 		"wildfly",
 		"kafka",
 		"rabbitmq",
+		"nats",
 	}
 
 	for _, probeName := range expectedProbes {
