@@ -239,6 +239,12 @@ var freeTierProbes = map[string]bool{
 	// varnish: host-local Varnish Cache observability — runs varnishstat
 	// on the local machine. Same free rationale as cpu/memory/logicaldisk.
 	"varnish": true,
+	// phpfpm: PHP-FPM pool monitoring via the status-page JSON endpoint.
+	// The agent reads a local or proxied HTTP endpoint on the same host —
+	// the same "host-local observability" rationale as cpu/memory/linux_logs.
+	// A free equivalent exists in otelcol-contrib (phpfpmreceiver), so
+	// paywalling it would add no differentiation.
+	"phpfpm": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
