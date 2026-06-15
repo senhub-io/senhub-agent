@@ -255,6 +255,10 @@ var freeTierProbes = map[string]bool{
 	// for free; positioning the agent as a drop-in for PRTG users who
 	// monitor Kafka today.
 	"kafka": true,
+	// rabbitmq: message-broker observability via the built-in HTTP
+	// Management API; the same open-core rationale as snmp_poll/http_check —
+	// basic queue depth and broker health should not require a licence.
+	"rabbitmq": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

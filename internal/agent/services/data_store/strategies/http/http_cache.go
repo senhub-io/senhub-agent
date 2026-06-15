@@ -167,6 +167,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"database",  // per-database opt-in metrics
 	},
 
+	// Message broker probes
+	"rabbitmq": {"node", "vhost", "queue"}, // per-node (node) and per-queue (vhost+queue) metrics
+
 	// IBM i / Power Systems — collectors emit multiple rows per metric
 	// name, one per resource instance. These tags identify the instance.
 	"ibmi": {

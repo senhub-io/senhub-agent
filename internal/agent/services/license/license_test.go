@@ -81,6 +81,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"phpfpm":            false,
 		"wildfly":           false,
 		"kafka":             false,
+		"rabbitmq":          false,
 	}
 
 	for _, probe := range probes {

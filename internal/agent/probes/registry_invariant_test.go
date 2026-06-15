@@ -39,6 +39,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/syslog"
 	_ "senhub-agent.go/internal/agent/probes/varnish"
 	_ "senhub-agent.go/internal/agent/probes/wildfly"
+	_ "senhub-agent.go/internal/agent/probes/rabbitmq"
 )
 
 // TestEveryRegisteredProbeIsAuthorizable enforces a structural
