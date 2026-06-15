@@ -278,6 +278,11 @@ var freeTierProbes = map[string]bool{
 	// four-letter command. Generic coordination-service observability,
 	// part of the open-core universal collection wedge.
 	"zookeeper": true,
+	// envoy: scrapes the Envoy admin /stats?format=prometheus endpoint.
+	// Envoy is a widely deployed open-source proxy; exposing its admin
+	// interface locally is the same posture as prometheus_scrape — it is
+	// universal collection, not a paid vendor integration.
+	"envoy": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
