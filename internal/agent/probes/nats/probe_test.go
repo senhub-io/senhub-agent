@@ -114,20 +114,20 @@ func TestCollect_ServerUp(t *testing.T) {
 	got := pointMap(t, p)
 
 	expect := map[string]float32{
-		"senhub.nats.up":            1,
-		"nats.connections.count":    5,
-		"nats.connections.total":    42,
+		"senhub.nats.up":           1,
+		"nats.connections.count":   5,
+		"nats.connections.total":   42,
 		"nats.subscriptions.count": 20,
-		"nats.messages.in":          1000,
-		"nats.messages.out":         900,
-		"nats.bytes.in":             512000,
-		"nats.bytes.out":            480000,
-		"nats.slow_consumers":       1,
-		"nats.routes.count":         3,
-		"nats.jetstream.streams":    2,
-		"nats.jetstream.consumers":  4,
-		"nats.jetstream.messages":   5000,
-		"nats.jetstream.bytes":      1024000,
+		"nats.messages.in":         1000,
+		"nats.messages.out":        900,
+		"nats.bytes.in":            512000,
+		"nats.bytes.out":           480000,
+		"nats.slow_consumers":      1,
+		"nats.routes.count":        3,
+		"nats.jetstream.streams":   2,
+		"nats.jetstream.consumers": 4,
+		"nats.jetstream.messages":  5000,
+		"nats.jetstream.bytes":     1024000,
 	}
 
 	for name, want := range expect {
