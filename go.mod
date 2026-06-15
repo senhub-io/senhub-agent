@@ -48,6 +48,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+require github.com/sijms/go-ora/v2 v2.9.0 // indirect
+
 require (
 	aead.dev/minisign v0.2.0
 	filippo.io/edwards25519 v1.2.0 // indirect

@@ -145,6 +145,13 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"table",     // bloat per-table + size per-table
 		"database",  // per-database opt-in metrics
 	},
+	"oracle": {
+		"instance",   // one series per monitored db (oracle://host:port/service)
+		"status",     // oracle.sessions.count{status=active|inactive}
+		"tablespace", // oracle.tablespace.used/total{tablespace=...}
+		"wait_class", // oracle.wait_class.total{wait_class=...}
+		"metric_type",
+	},
 
 	// IBM i / Power Systems — collectors emit multiple rows per metric
 	// name, one per resource instance. These tags identify the instance.
