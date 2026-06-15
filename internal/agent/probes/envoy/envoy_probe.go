@@ -273,7 +273,7 @@ func (p *EnvoyProbe) buildDatapoints(families map[string]*dto.MetricFamily, ts t
 	addScalar := func(pts []data_store.DataPoint, metricName string, famName string, t []tags.Tag) []data_store.DataPoint {
 		if v, ok := scalar(famName); ok {
 			pts = append(pts, data_store.DataPoint{
-				Name: metricName, Value: float32(v), Timestamp: ts, Tags: t,
+				Name: metricName, Value: float64(v), Timestamp: ts, Tags: t,
 			})
 		}
 		return pts
@@ -282,7 +282,7 @@ func (p *EnvoyProbe) buildDatapoints(families map[string]*dto.MetricFamily, ts t
 	addSum := func(pts []data_store.DataPoint, metricName string, famName string, t []tags.Tag) []data_store.DataPoint {
 		if v, ok := sumAll(famName); ok {
 			pts = append(pts, data_store.DataPoint{
-				Name: metricName, Value: float32(v), Timestamp: ts, Tags: t,
+				Name: metricName, Value: float64(v), Timestamp: ts, Tags: t,
 			})
 		}
 		return pts
@@ -343,7 +343,7 @@ func (p *EnvoyProbe) buildDatapoints(families map[string]*dto.MetricFamily, ts t
 
 			points = append(points, data_store.DataPoint{
 				Name:      metricName,
-				Value:     float32(val),
+				Value:     float64(val),
 				Timestamp: ts,
 				Tags:      clusterTags(clusterName),
 			})

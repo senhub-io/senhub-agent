@@ -15,7 +15,7 @@ import (
 
 // TestUnixCollector_CPUTimes_PercentageMath drives collectCPUTimes through
 // two synthetic snapshots and verifies it emits per-mode percentages that
-// sum to ~100 (modulo rounding from float32 casts). The previous version
+// sum to ~100 (modulo rounding from float64 casts). The previous version
 // emitted cumulative seconds — this test pins the new contract so a
 // regression to counter-style emission would fail immediately.
 func TestUnixCollector_CPUTimes_PercentageMath(t *testing.T) {

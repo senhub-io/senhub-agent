@@ -99,7 +99,7 @@ func TestNewTomcatProbe_CustomConfig(t *testing.T) {
 
 func TestCollect_TomcatUp_WhenJolokiaHealthy(t *testing.T) {
 	srv := newTestServer(map[string]interface{}{
-		"java.lang:type=Threading/ThreadCount":    float64(42),
+		"java.lang:type=Threading/ThreadCount":       float64(42),
 		"java.lang:type=Threading/DaemonThreadCount": float64(10),
 		"java.lang:type=Memory/HeapMemoryUsage": map[string]interface{}{
 			"used":      float64(100 * 1024 * 1024),
@@ -118,7 +118,7 @@ func TestCollect_TomcatUp_WhenJolokiaHealthy(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	byName := map[string]float32{}
+	byName := map[string]float64{}
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}
@@ -131,8 +131,8 @@ func TestCollect_TomcatUp_WhenJolokiaHealthy(t *testing.T) {
 		t.Errorf("jvm.threads.count = %v, want 42", byName["jvm.threads.count"])
 	}
 
-	if byName["jvm.memory.heap.used"] != float32(100*1024*1024) {
-		t.Errorf("jvm.memory.heap.used = %v, want %v", byName["jvm.memory.heap.used"], float32(100*1024*1024))
+	if byName["jvm.memory.heap.used"] != float64(100*1024*1024) {
+		t.Errorf("jvm.memory.heap.used = %v, want %v", byName["jvm.memory.heap.used"], float64(100*1024*1024))
 	}
 }
 
@@ -153,7 +153,7 @@ func TestCollect_TomcatUp_WhenJolokiaDown(t *testing.T) {
 		t.Fatal("Collect should return at least senhub.tomcat.up=0")
 	}
 
-	byName := map[string]float32{}
+	byName := map[string]float64{}
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}

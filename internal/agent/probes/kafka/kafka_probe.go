@@ -186,7 +186,7 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 
 	// kafka.brokers
 	brokers := client.Brokers()
-	points = append(points, dp("kafka.brokers", float32(len(brokers)), now,
+	points = append(points, dp("kafka.brokers", float64(len(brokers)), now,
 		tags.Tag{Key: "metric_type", Value: "broker"},
 	))
 
@@ -226,7 +226,7 @@ func (p *kafkaProbe) collectTopicMetrics(
 		}
 
 		numPartitions := detail.NumPartitions
-		points = append(points, dp("kafka.topic.partitions", float32(numPartitions), now,
+		points = append(points, dp("kafka.topic.partitions", float64(numPartitions), now,
 			tags.Tag{Key: "metric_type", Value: "topic"},
 			tags.Tag{Key: "topic", Value: topic},
 		))
@@ -246,7 +246,7 @@ func (p *kafkaProbe) collectTopicMetrics(
 					Str("topic", topic).Int32("partition", partition).
 					Msg("kafka: GetOffset(newest) failed")
 			} else {
-				points = append(points, dp("kafka.partition.current_offset", float32(newestOffset), now,
+				points = append(points, dp("kafka.partition.current_offset", float64(newestOffset), now,
 					tags.Tag{Key: "metric_type", Value: "partition"},
 					tags.Tag{Key: "topic", Value: topic},
 					tags.Tag{Key: "partition", Value: partStr},
@@ -259,7 +259,7 @@ func (p *kafkaProbe) collectTopicMetrics(
 					Str("topic", topic).Int32("partition", partition).
 					Msg("kafka: GetOffset(oldest) failed")
 			} else {
-				points = append(points, dp("kafka.partition.oldest_offset", float32(oldestOffset), now,
+				points = append(points, dp("kafka.partition.oldest_offset", float64(oldestOffset), now,
 					tags.Tag{Key: "metric_type", Value: "partition"},
 					tags.Tag{Key: "topic", Value: topic},
 					tags.Tag{Key: "partition", Value: partStr},
@@ -269,7 +269,7 @@ func (p *kafkaProbe) collectTopicMetrics(
 			// Replicas from topic detail
 			replicas := detail.ReplicaAssignment[partition]
 			points = append(points,
-				dp("kafka.partition.replicas", float32(len(replicas)), now,
+				dp("kafka.partition.replicas", float64(len(replicas)), now,
 					tags.Tag{Key: "metric_type", Value: "partition"},
 					tags.Tag{Key: "topic", Value: topic},
 					tags.Tag{Key: "partition", Value: partStr},
@@ -284,7 +284,7 @@ func (p *kafkaProbe) collectTopicMetrics(
 					Msg("kafka: InSyncReplicas failed")
 			} else {
 				points = append(points,
-					dp("kafka.partition.replicas_in_sync", float32(len(isr)), now,
+					dp("kafka.partition.replicas_in_sync", float64(len(isr)), now,
 						tags.Tag{Key: "metric_type", Value: "partition"},
 						tags.Tag{Key: "topic", Value: topic},
 						tags.Tag{Key: "partition", Value: partStr},
@@ -324,7 +324,7 @@ func (p *kafkaProbe) collectGroupMetricsWithNames(
 			p.moduleLogger.Warn().Err(err).Str("group", group).Msg("kafka: DescribeConsumerGroups failed")
 		} else if len(groupDesc) > 0 {
 			members := len(groupDesc[0].Members)
-			points = append(points, dp("kafka.consumer_group.members", float32(members), now,
+			points = append(points, dp("kafka.consumer_group.members", float64(members), now,
 				tags.Tag{Key: "metric_type", Value: "consumer_group"},
 				tags.Tag{Key: "group", Value: group},
 			))
@@ -342,7 +342,7 @@ func (p *kafkaProbe) collectGroupMetricsWithNames(
 		}
 
 		// lag_sum accumulator: topic → sum
-		lagSum := make(map[string]float32)
+		lagSum := make(map[string]float64)
 
 		for topic, partOffsets := range groupOffsets.Blocks {
 			if isInternalTopic(topic) {
@@ -361,7 +361,7 @@ func (p *kafkaProbe) collectGroupMetricsWithNames(
 				}
 
 				partStr := strconv.Itoa(int(partition))
-				groupOffset := float32(block.Offset)
+				groupOffset := float64(block.Offset)
 
 				points = append(points, dp("kafka.consumer_group.offset", groupOffset, now,
 					tags.Tag{Key: "metric_type", Value: "consumer_group"},
@@ -379,7 +379,7 @@ func (p *kafkaProbe) collectGroupMetricsWithNames(
 					continue
 				}
 
-				lag := float32(newestOffset) - groupOffset
+				lag := float64(newestOffset) - groupOffset
 				if lag < 0 {
 					lag = 0
 				}
@@ -448,7 +448,7 @@ func (p *kafkaProbe) buildSaramaConfig() (*sarama.Config, error) {
 }
 
 // upPoint returns the minimal point set emitted when the cluster is unreachable.
-func (p *kafkaProbe) upPoint(val float32, now time.Time) []data_store.DataPoint {
+func (p *kafkaProbe) upPoint(val float64, now time.Time) []data_store.DataPoint {
 	pts := []data_store.DataPoint{
 		dp("senhub.kafka.up", val, now, tags.Tag{Key: "metric_type", Value: "broker"}),
 	}
@@ -487,7 +487,7 @@ func (p *kafkaProbe) matchesGroup(group string) bool {
 }
 
 // dp is a convenience constructor for a DataPoint.
-func dp(name string, value float32, ts time.Time, extraTags ...tags.Tag) data_store.DataPoint {
+func dp(name string, value float64, ts time.Time, extraTags ...tags.Tag) data_store.DataPoint {
 	return data_store.DataPoint{
 		Name:      name,
 		Value:     value,

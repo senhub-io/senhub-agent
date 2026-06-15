@@ -207,7 +207,7 @@ func (p *jenkinsProbe) Collect() ([]data_store.DataPoint, error) {
 	nodes, nodesErr := p.fetchNodes()
 	queue, queueErr := p.fetchQueue()
 
-	up := float32(1)
+	up := float64(1)
 	if jobsErr != nil {
 		up = 0
 		p.moduleLogger.Warn().Err(jobsErr).Str("instance", p.instance).Msg("jenkins jobs query failed")
@@ -309,14 +309,14 @@ func (p *jenkinsProbe) buildJobPoints(jobs []job, ts time.Time) []data_store.Dat
 			{Key: "metric_type", Value: "jobs"},
 		}
 		points = append(points,
-			data_store.DataPoint{Name: metricJobDuration, Value: float32(j.LastBuild.Duration), Timestamp: ts, Tags: jobTags},
-			data_store.DataPoint{Name: metricJobLastBuildNum, Value: float32(j.LastBuild.Number), Timestamp: ts, Tags: jobTags},
+			data_store.DataPoint{Name: metricJobDuration, Value: float64(j.LastBuild.Duration), Timestamp: ts, Tags: jobTags},
+			data_store.DataPoint{Name: metricJobLastBuildNum, Value: float64(j.LastBuild.Number), Timestamp: ts, Tags: jobTags},
 		)
 	}
 
 	for status, count := range statusCounts {
 		points = append(points, data_store.DataPoint{
-			Name: metricJobCount, Value: float32(count), Timestamp: ts,
+			Name: metricJobCount, Value: float64(count), Timestamp: ts,
 			Tags: []tags.Tag{
 				{Key: "status", Value: status},
 				{Key: "metric_type", Value: "jobs"},
@@ -357,10 +357,10 @@ func (p *jenkinsProbe) buildNodePoints(nodes []computer, ts time.Time) []data_st
 	}
 
 	return []data_store.DataPoint{
-		{Name: metricNodeCount, Value: float32(online), Timestamp: ts, Tags: statusTag("online")},
-		{Name: metricNodeCount, Value: float32(offline), Timestamp: ts, Tags: statusTag("offline")},
-		{Name: metricNodeExecutor, Value: float32(busy), Timestamp: ts, Tags: stateTag("busy")},
-		{Name: metricNodeExecutor, Value: float32(free), Timestamp: ts, Tags: stateTag("free")},
+		{Name: metricNodeCount, Value: float64(online), Timestamp: ts, Tags: statusTag("online")},
+		{Name: metricNodeCount, Value: float64(offline), Timestamp: ts, Tags: statusTag("offline")},
+		{Name: metricNodeExecutor, Value: float64(busy), Timestamp: ts, Tags: stateTag("busy")},
+		{Name: metricNodeExecutor, Value: float64(free), Timestamp: ts, Tags: stateTag("free")},
 	}
 }
 
@@ -374,8 +374,8 @@ func (p *jenkinsProbe) buildQueuePoints(q queueResponse, ts time.Time) []data_st
 	}
 	mt := []tags.Tag{{Key: "metric_type", Value: "queue"}}
 	return []data_store.DataPoint{
-		{Name: metricQueueSize, Value: float32(len(q.Items)), Timestamp: ts, Tags: mt},
-		{Name: metricQueueBlocked, Value: float32(blocked), Timestamp: ts, Tags: mt},
+		{Name: metricQueueSize, Value: float64(len(q.Items)), Timestamp: ts, Tags: mt},
+		{Name: metricQueueBlocked, Value: float64(blocked), Timestamp: ts, Tags: mt},
 	}
 }
 

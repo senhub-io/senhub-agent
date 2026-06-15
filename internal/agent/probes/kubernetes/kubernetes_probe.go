@@ -188,7 +188,7 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 	defer cancel()
 
 	now := time.Now()
-	up := float32(0)
+	up := float64(0)
 	var points []data_store.DataPoint
 	upTags := []tags.Tag{
 		{Key: "k8s.cluster.name", Value: p.clusterEndpoint},
@@ -249,7 +249,7 @@ func (p *KubernetesProbe) collectNodes(ctx context.Context, now time.Time) ([]da
 			{Key: "metric_type", Value: "node"},
 		}
 
-		ready := float32(0)
+		ready := float64(0)
 		for _, cond := range n.Status.Conditions {
 			if cond.Type == corev1.NodeReady && cond.Status == corev1.ConditionTrue {
 				ready = 1
@@ -263,7 +263,7 @@ func (p *KubernetesProbe) collectNodes(ctx context.Context, now time.Time) ([]da
 		if cpu := n.Status.Allocatable.Cpu(); cpu != nil {
 			points = append(points, data_store.DataPoint{
 				Name:      "k8s.node.cpu.allocatable",
-				Value:     float32(cpu.AsApproximateFloat64()),
+				Value:     float64(cpu.AsApproximateFloat64()),
 				Timestamp: now,
 				Tags:      baseTags,
 			})
@@ -271,7 +271,7 @@ func (p *KubernetesProbe) collectNodes(ctx context.Context, now time.Time) ([]da
 		if mem := n.Status.Allocatable.Memory(); mem != nil {
 			points = append(points, data_store.DataPoint{
 				Name:      "k8s.node.memory.allocatable",
-				Value:     float32(mem.Value()),
+				Value:     float64(mem.Value()),
 				Timestamp: now,
 				Tags:      baseTags,
 			})
@@ -279,13 +279,13 @@ func (p *KubernetesProbe) collectNodes(ctx context.Context, now time.Time) ([]da
 		if pods := n.Status.Capacity.Pods(); pods != nil {
 			cap, _ := pods.AsInt64()
 			points = append(points, data_store.DataPoint{
-				Name: "k8s.node.pods.capacity", Value: float32(cap), Timestamp: now, Tags: baseTags,
+				Name: "k8s.node.pods.capacity", Value: float64(cap), Timestamp: now, Tags: baseTags,
 			})
 		}
 		if pods := n.Status.Allocatable.Pods(); pods != nil {
 			alloc, _ := pods.AsInt64()
 			points = append(points, data_store.DataPoint{
-				Name: "k8s.node.pods.allocated", Value: float32(alloc), Timestamp: now, Tags: baseTags,
+				Name: "k8s.node.pods.allocated", Value: float64(alloc), Timestamp: now, Tags: baseTags,
 			})
 		}
 	}
@@ -328,12 +328,12 @@ func (p *KubernetesProbe) buildPodPoints(pod *corev1.Pod, now time.Time) []data_
 		{Key: "metric_type", Value: "pod"},
 	}
 
-	running := float32(0)
+	running := float64(0)
 	if pod.Status.Phase == corev1.PodRunning {
 		running = 1
 	}
 
-	ready := float32(0)
+	ready := float64(0)
 	for _, cond := range pod.Status.Conditions {
 		if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
 			ready = 1
@@ -349,7 +349,7 @@ func (p *KubernetesProbe) buildPodPoints(pod *corev1.Pod, now time.Time) []data_
 	return []data_store.DataPoint{
 		{Name: "k8s.pod.phase", Value: running, Timestamp: now, Tags: baseTags},
 		{Name: "k8s.pod.ready", Value: ready, Timestamp: now, Tags: baseTags},
-		{Name: "k8s.pod.restarts", Value: float32(totalRestarts), Timestamp: now, Tags: baseTags},
+		{Name: "k8s.pod.restarts", Value: float64(totalRestarts), Timestamp: now, Tags: baseTags},
 	}
 }
 
@@ -363,14 +363,14 @@ func (p *KubernetesProbe) buildContainerPoints(pod *corev1.Pod, now time.Time) [
 			{Key: "metric_type", Value: "container"},
 		}
 
-		ready := float32(0)
+		ready := float64(0)
 		if cs.Ready {
 			ready = 1
 		}
 
 		points = append(points,
 			data_store.DataPoint{Name: "k8s.container.ready", Value: ready, Timestamp: now, Tags: baseTags},
-			data_store.DataPoint{Name: "k8s.container.restarts", Value: float32(cs.RestartCount), Timestamp: now, Tags: baseTags},
+			data_store.DataPoint{Name: "k8s.container.restarts", Value: float64(cs.RestartCount), Timestamp: now, Tags: baseTags},
 		)
 	}
 	return points
@@ -405,14 +405,14 @@ func (p *KubernetesProbe) collectDeployments(ctx context.Context, now time.Time)
 			}
 			available := dep.Status.AvailableReplicas
 
-			depReady := float32(0)
+			depReady := float64(0)
 			if available >= desiredCount {
 				depReady = 1
 			}
 
 			points = append(points,
-				data_store.DataPoint{Name: "k8s.deployment.available", Value: float32(available), Timestamp: now, Tags: baseTags},
-				data_store.DataPoint{Name: "k8s.deployment.desired", Value: float32(desiredCount), Timestamp: now, Tags: baseTags},
+				data_store.DataPoint{Name: "k8s.deployment.available", Value: float64(available), Timestamp: now, Tags: baseTags},
+				data_store.DataPoint{Name: "k8s.deployment.desired", Value: float64(desiredCount), Timestamp: now, Tags: baseTags},
 				data_store.DataPoint{Name: "k8s.deployment.ready", Value: depReady, Timestamp: now, Tags: baseTags},
 			)
 		}

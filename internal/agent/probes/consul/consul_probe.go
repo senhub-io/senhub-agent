@@ -191,7 +191,7 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	// Always emit the up metric.
-	up := float32(1)
+	up := float64(1)
 
 	var points []data_store.DataPoint
 	var version string
@@ -305,7 +305,7 @@ func (p *ConsulProbe) collectPrometheusMetrics(now time.Time, base []tags.Tag) (
 		for _, m := range fam.GetMetric() {
 			points = append(points, data_store.DataPoint{
 				Name:      "consul.catalog.services",
-				Value:     float32(m.GetGauge().GetValue()),
+				Value:     float64(m.GetGauge().GetValue()),
 				Timestamp: now,
 				Tags:      base,
 			})
@@ -317,7 +317,7 @@ func (p *ConsulProbe) collectPrometheusMetrics(now time.Time, base []tags.Tag) (
 		for _, m := range fam.GetMetric() {
 			points = append(points, data_store.DataPoint{
 				Name:      "consul.serf.members",
-				Value:     float32(m.GetGauge().GetValue()),
+				Value:     float64(m.GetGauge().GetValue()),
 				Timestamp: now,
 				Tags:      base,
 			})
@@ -333,7 +333,7 @@ func (p *ConsulProbe) collectPrometheusMetrics(now time.Time, base []tags.Tag) (
 		if cnt > 0 {
 			points = append(points, data_store.DataPoint{
 				Name:      "consul.raft.commit.time",
-				Value:     float32(sum / cnt),
+				Value:     float64(sum / cnt),
 				Timestamp: now,
 				Tags:      base,
 			})
@@ -345,7 +345,7 @@ func (p *ConsulProbe) collectPrometheusMetrics(now time.Time, base []tags.Tag) (
 		for _, m := range fam.GetMetric() {
 			points = append(points, data_store.DataPoint{
 				Name:      "consul.rpc.requests",
-				Value:     float32(m.GetCounter().GetValue()),
+				Value:     float64(m.GetCounter().GetValue()),
 				Timestamp: now,
 				Tags:      base,
 			})
@@ -357,7 +357,7 @@ func (p *ConsulProbe) collectPrometheusMetrics(now time.Time, base []tags.Tag) (
 		for _, m := range fam.GetMetric() {
 			points = append(points, data_store.DataPoint{
 				Name:      "consul.dns.queries",
-				Value:     float32(m.GetCounter().GetValue()),
+				Value:     float64(m.GetCounter().GetValue()),
 				Timestamp: now,
 				Tags:      base,
 			})
@@ -382,7 +382,7 @@ func (p *ConsulProbe) collectAgentSelf(now time.Time, base []tags.Tag) ([]data_s
 		return nil, "", "", fmt.Errorf("parsing /v1/agent/self: %w", err)
 	}
 
-	leader := float32(0)
+	leader := float64(0)
 	if self.Stats.Consul.Leader == "true" {
 		leader = 1
 	}
@@ -415,7 +415,7 @@ func (p *ConsulProbe) collectHealthChecks(now time.Time) ([]data_store.DataPoint
 
 		points = append(points, data_store.DataPoint{
 			Name:      "consul.health.checks",
-			Value:     float32(len(checks)),
+			Value:     float64(len(checks)),
 			Timestamp: now,
 			Tags: []tags.Tag{
 				{Key: "metric_type", Value: "health"},

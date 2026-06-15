@@ -113,7 +113,7 @@ func (p *MemcachedProbe) Collect() ([]data_store.DataPoint, error) {
 
 	statsMap, err := p.fetchStats(addr)
 
-	upValue := float32(1)
+	upValue := float64(1)
 	if err != nil {
 		upValue = 0
 		p.moduleLogger.Warn().Err(err).Str("addr", addr).Msg("memcached stats fetch failed")
@@ -190,7 +190,7 @@ func (p *MemcachedProbe) buildDataPoints(stats map[string]string, now time.Time,
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      name,
-			Value:     float32(val),
+			Value:     float64(val),
 			Timestamp: now,
 			Tags:      append(commonTags, tags.Tag{Key: "metric_type", Value: metricType}),
 		})
@@ -203,7 +203,7 @@ func (p *MemcachedProbe) buildDataPoints(stats map[string]string, now time.Time,
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      name,
-			Value:     float32(val),
+			Value:     float64(val),
 			Timestamp: now,
 			Tags:      append(commonTags, tags.Tag{Key: "metric_type", Value: metricType}),
 		})
@@ -216,7 +216,7 @@ func (p *MemcachedProbe) buildDataPoints(stats map[string]string, now time.Time,
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      name,
-			Value:     float32(val),
+			Value:     float64(val),
 			Timestamp: now,
 			Tags:      append(commonTags, tags.Tag{Key: "metric_type", Value: metricType}),
 		})
@@ -233,7 +233,7 @@ func (p *MemcachedProbe) buildDataPoints(stats map[string]string, now time.Time,
 		)
 		points = append(points, data_store.DataPoint{
 			Name:      name,
-			Value:     float32(val),
+			Value:     float64(val),
 			Timestamp: now,
 			Tags:      t,
 		})
@@ -250,7 +250,7 @@ func (p *MemcachedProbe) buildDataPoints(stats map[string]string, now time.Time,
 		)
 		points = append(points, data_store.DataPoint{
 			Name:      name,
-			Value:     float32(val),
+			Value:     float64(val),
 			Timestamp: now,
 			Tags:      t,
 		})

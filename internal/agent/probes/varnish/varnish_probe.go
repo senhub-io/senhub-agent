@@ -121,7 +121,7 @@ func (p *VarnishProbe) Collect() ([]data_store.DataPoint, error) {
 		p.moduleLogger.Warn().Err(err).Msg("varnishstat failed; reporting varnish down")
 		p.entitySrc.setReachable(false)
 		points := []data_store.DataPoint{
-			{Name: "senhub.varnish.up", Value: float32(0), Timestamp: now, Tags: []tags.Tag{statusTag}},
+			{Name: "senhub.varnish.up", Value: float64(0), Timestamp: now, Tags: []tags.Tag{statusTag}},
 		}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
@@ -190,7 +190,7 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 	// Probe up
 	points = append(points, data_store.DataPoint{
 		Name:      "senhub.varnish.up",
-		Value:     float32(1),
+		Value:     float64(1),
 		Timestamp: ts,
 		Tags:      []tags.Tag{statusTag},
 	})
@@ -206,7 +206,7 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 	} {
 		points = append(points, data_store.DataPoint{
 			Name:      "varnish.cache.operations",
-			Value:     float32(get(stats, entry.key)),
+			Value:     float64(get(stats, entry.key)),
 			Timestamp: ts,
 			Tags:      []tags.Tag{cacheTag, {Key: "result", Value: entry.result}},
 		})
@@ -215,7 +215,7 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 	// varnish.client.requests.received
 	points = append(points, data_store.DataPoint{
 		Name:      "varnish.client.requests.received",
-		Value:     float32(get(stats, "MAIN.client_req")),
+		Value:     float64(get(stats, "MAIN.client_req")),
 		Timestamp: ts,
 		Tags:      []tags.Tag{requestTag},
 	})
@@ -231,7 +231,7 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 	} {
 		points = append(points, data_store.DataPoint{
 			Name:      entry.metric,
-			Value:     float32(get(stats, entry.key)),
+			Value:     float64(get(stats, entry.key)),
 			Timestamp: ts,
 			Tags:      []tags.Tag{connectionTag},
 		})
@@ -248,7 +248,7 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 	} {
 		points = append(points, data_store.DataPoint{
 			Name:      "varnish.thread.operations",
-			Value:     float32(get(stats, entry.key)),
+			Value:     float64(get(stats, entry.key)),
 			Timestamp: ts,
 			Tags:      []tags.Tag{threadTag, {Key: "operation", Value: entry.operation}},
 		})
@@ -257,13 +257,13 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 	// varnish.session.connections / varnish.session.dropped
 	points = append(points, data_store.DataPoint{
 		Name:      "varnish.session.connections",
-		Value:     float32(get(stats, "MAIN.sess_conn")),
+		Value:     float64(get(stats, "MAIN.sess_conn")),
 		Timestamp: ts,
 		Tags:      []tags.Tag{sessionTag},
 	})
 	points = append(points, data_store.DataPoint{
 		Name:      "varnish.session.dropped",
-		Value:     float32(get(stats, "MAIN.sess_drop")),
+		Value:     float64(get(stats, "MAIN.sess_drop")),
 		Timestamp: ts,
 		Tags:      []tags.Tag{sessionTag},
 	})
@@ -271,7 +271,7 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 	// varnish.objects.stored (gauge)
 	points = append(points, data_store.DataPoint{
 		Name:      "varnish.objects.stored",
-		Value:     float32(get(stats, "MAIN.n_object")),
+		Value:     float64(get(stats, "MAIN.n_object")),
 		Timestamp: ts,
 		Tags:      []tags.Tag{objectTag},
 	})
@@ -285,7 +285,7 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 	}
 	points = append(points, data_store.DataPoint{
 		Name:      "varnish.memory.allocated",
-		Value:     float32(totalMemory),
+		Value:     float64(totalMemory),
 		Timestamp: ts,
 		Tags:      []tags.Tag{memoryTag},
 	})

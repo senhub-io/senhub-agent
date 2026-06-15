@@ -114,7 +114,7 @@ func TestCollect_Up(t *testing.T) {
 		t.Fatal("Collect returned no datapoints")
 	}
 
-	byName := make(map[string]float32, len(points))
+	byName := make(map[string]float64, len(points))
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}
@@ -153,7 +153,7 @@ func TestCollect_Down(t *testing.T) {
 		t.Fatalf("Collect must not return an error on scrape failure: %v", err)
 	}
 
-	byName := make(map[string]float32)
+	byName := make(map[string]float64)
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}

@@ -305,7 +305,7 @@ func (p *smartProbe) buildATAPoints(device string, r smartctlOutput, hostTags []
 		{Key: "metric_type", Value: "health"},
 	}, hostTags...)
 
-	health := float32(0)
+	health := float64(0)
 	if r.SmartStatus.Passed {
 		health = 1
 	}
@@ -318,7 +318,7 @@ func (p *smartProbe) buildATAPoints(device string, r smartctlOutput, hostTags []
 	if r.Temperature.Current > 0 {
 		points = append(points, data_store.DataPoint{
 			Name:      "smart.disk.temperature",
-			Value:     float32(r.Temperature.Current),
+			Value:     float64(r.Temperature.Current),
 			Timestamp: ts, Tags: base,
 		})
 	}
@@ -331,34 +331,34 @@ func (p *smartProbe) buildATAPoints(device string, r smartctlOutput, hostTags []
 
 	if v, ok := attrVals[attrRawReadErrorRate]; ok {
 		points = append(points, data_store.DataPoint{
-			Name: "smart.disk.read_error_rate", Value: float32(v), Timestamp: ts, Tags: base,
+			Name: "smart.disk.read_error_rate", Value: float64(v), Timestamp: ts, Tags: base,
 		})
 	}
 	if v, ok := attrVals[attrReallocatedSectorCt]; ok {
 		points = append(points, data_store.DataPoint{
-			Name: "smart.disk.reallocated_sectors", Value: float32(v), Timestamp: ts, Tags: base,
+			Name: "smart.disk.reallocated_sectors", Value: float64(v), Timestamp: ts, Tags: base,
 		})
 	}
 	if v, ok := attrVals[attrPowerOnHours]; ok {
 		points = append(points, data_store.DataPoint{
-			Name: "smart.disk.power_on_hours", Value: float32(v), Timestamp: ts, Tags: base,
+			Name: "smart.disk.power_on_hours", Value: float64(v), Timestamp: ts, Tags: base,
 		})
 	}
 	if r.Temperature.Current == 0 {
 		if v, ok := attrVals[attrTemperatureCelsius]; ok {
 			points = append(points, data_store.DataPoint{
-				Name: "smart.disk.temperature", Value: float32(v), Timestamp: ts, Tags: base,
+				Name: "smart.disk.temperature", Value: float64(v), Timestamp: ts, Tags: base,
 			})
 		}
 	}
 	if v, ok := attrVals[attrCurrentPendingSector]; ok {
 		points = append(points, data_store.DataPoint{
-			Name: "smart.disk.pending_sectors", Value: float32(v), Timestamp: ts, Tags: base,
+			Name: "smart.disk.pending_sectors", Value: float64(v), Timestamp: ts, Tags: base,
 		})
 	}
 	if v, ok := attrVals[attrOfflineUncorrectable]; ok {
 		points = append(points, data_store.DataPoint{
-			Name: "smart.disk.uncorrectable_errors", Value: float32(v), Timestamp: ts, Tags: base,
+			Name: "smart.disk.uncorrectable_errors", Value: float64(v), Timestamp: ts, Tags: base,
 		})
 	}
 	return points
@@ -372,7 +372,7 @@ func (p *smartProbe) buildNVMePoints(device string, r smartctlOutput, hostTags [
 		{Key: "metric_type", Value: "health"},
 	}, hostTags...)
 
-	health := float32(0)
+	health := float64(0)
 	if r.SmartStatus.Passed {
 		health = 1
 	}
@@ -380,12 +380,12 @@ func (p *smartProbe) buildNVMePoints(device string, r smartctlOutput, hostTags [
 	nvme := r.NvmeSmartHealthInformationLog
 	return []data_store.DataPoint{
 		{Name: "smart.disk.health", Value: health, Timestamp: ts, Tags: base},
-		{Name: "smart.nvme.available_spare", Value: float32(nvme.AvailableSpare / 100), Timestamp: ts, Tags: base},
-		{Name: "smart.nvme.percentage_used", Value: float32(nvme.PercentageUsed / 100), Timestamp: ts, Tags: base},
-		{Name: "smart.nvme.data_units_read", Value: float32(nvme.DataUnitsRead), Timestamp: ts, Tags: base},
-		{Name: "smart.nvme.data_units_written", Value: float32(nvme.DataUnitsWritten), Timestamp: ts, Tags: base},
-		{Name: "smart.nvme.media_errors", Value: float32(nvme.MediaErrors), Timestamp: ts, Tags: base},
-		{Name: "smart.nvme.temperature", Value: float32(nvme.Temperature), Timestamp: ts, Tags: base},
+		{Name: "smart.nvme.available_spare", Value: float64(nvme.AvailableSpare / 100), Timestamp: ts, Tags: base},
+		{Name: "smart.nvme.percentage_used", Value: float64(nvme.PercentageUsed / 100), Timestamp: ts, Tags: base},
+		{Name: "smart.nvme.data_units_read", Value: float64(nvme.DataUnitsRead), Timestamp: ts, Tags: base},
+		{Name: "smart.nvme.data_units_written", Value: float64(nvme.DataUnitsWritten), Timestamp: ts, Tags: base},
+		{Name: "smart.nvme.media_errors", Value: float64(nvme.MediaErrors), Timestamp: ts, Tags: base},
+		{Name: "smart.nvme.temperature", Value: float64(nvme.Temperature), Timestamp: ts, Tags: base},
 	}
 }
 

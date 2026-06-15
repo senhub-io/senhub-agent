@@ -108,7 +108,7 @@ func TestCollect_Up(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	var up float32 = -1
+	var up float64 = -1
 	for _, dp := range points {
 		if dp.Name == metricUp {
 			up = dp.Value
@@ -125,13 +125,13 @@ func TestCollect_JobCountsByStatus(t *testing.T) {
 	p := newTestProbe(t, srv.URL)
 
 	points, _ := p.Collect()
-	counts := map[string]float32{}
+	counts := map[string]float64{}
 	for _, dp := range points {
 		if dp.Name == metricJobCount {
 			counts[tagVal(dp, "status")] = dp.Value
 		}
 	}
-	want := map[string]float32{"success": 1, "failure": 1, "unstable": 1, "aborted": 0}
+	want := map[string]float64{"success": 1, "failure": 1, "unstable": 1, "aborted": 0}
 	for status, w := range want {
 		if counts[status] != w {
 			t.Errorf("job.count[%s] = %v, want %v", status, counts[status], w)
@@ -145,8 +145,8 @@ func TestCollect_PerJobMetrics(t *testing.T) {
 	p := newTestProbe(t, srv.URL)
 
 	points, _ := p.Collect()
-	durations := map[string]float32{}
-	buildNums := map[string]float32{}
+	durations := map[string]float64{}
+	buildNums := map[string]float64{}
 	for _, dp := range points {
 		switch dp.Name {
 		case metricJobDuration:
@@ -173,8 +173,8 @@ func TestCollect_NodesAndExecutors(t *testing.T) {
 	p := newTestProbe(t, srv.URL)
 
 	points, _ := p.Collect()
-	nodes := map[string]float32{}
-	execs := map[string]float32{}
+	nodes := map[string]float64{}
+	execs := map[string]float64{}
 	for _, dp := range points {
 		switch dp.Name {
 		case metricNodeCount:
@@ -198,7 +198,7 @@ func TestCollect_Queue(t *testing.T) {
 	p := newTestProbe(t, srv.URL)
 
 	points, _ := p.Collect()
-	var size, blocked float32 = -1, -1
+	var size, blocked float64 = -1, -1
 	for _, dp := range points {
 		switch dp.Name {
 		case metricQueueSize:
@@ -224,7 +224,7 @@ func TestCollect_DownEmitsUpZero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect should not error on a down controller: %v", err)
 	}
-	var up float32 = -1
+	var up float64 = -1
 	for _, dp := range points {
 		if dp.Name == metricUp {
 			up = dp.Value

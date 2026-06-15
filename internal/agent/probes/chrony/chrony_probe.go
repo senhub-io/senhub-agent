@@ -33,9 +33,9 @@ import (
 const ProbeType = "chrony"
 
 const (
-	defaultInterval    = 30 * time.Second
-	defaultChronyc     = "chronyc"
-	maxOutputBytes     = 4 * 1024
+	defaultInterval = 30 * time.Second
+	defaultChronyc  = "chronyc"
+	maxOutputBytes  = 4 * 1024
 )
 
 // leapStatus values returned by chronyc -c tracking (field 12).
@@ -56,7 +56,7 @@ type trackingResult struct {
 	// raw CSV line — used in tests.
 	raw []string
 
-	stratum         float32
+	stratum         float64
 	systemTimeS     float64 // seconds (converted to ms for the metric)
 	freqPPM         float64
 	skewPPM         float64
@@ -141,7 +141,7 @@ func (p *ChronyProbe) Collect() ([]data_store.DataPoint, error) {
 
 	res := p.run()
 
-	upValue := float32(1)
+	upValue := float64(1)
 	if res.err != nil {
 		upValue = 0
 		p.moduleLogger.Warn().Err(res.err).Msg("chronyc tracking failed")
@@ -160,31 +160,31 @@ func (p *ChronyProbe) Collect() ([]data_store.DataPoint, error) {
 	points = append(points,
 		data_store.DataPoint{
 			Name:      "ntp.time.offset",
-			Value:     float32(res.systemTimeS * 1000),
+			Value:     float64(res.systemTimeS * 1000),
 			Timestamp: now,
 			Tags:      baseTags,
 		},
 		data_store.DataPoint{
 			Name:      "ntp.frequency.offset",
-			Value:     float32(res.freqPPM),
+			Value:     float64(res.freqPPM),
 			Timestamp: now,
 			Tags:      baseTags,
 		},
 		data_store.DataPoint{
 			Name:      "ntp.skew",
-			Value:     float32(res.skewPPM),
+			Value:     float64(res.skewPPM),
 			Timestamp: now,
 			Tags:      baseTags,
 		},
 		data_store.DataPoint{
 			Name:      "ntp.root.delay",
-			Value:     float32(res.rootDelayS * 1000),
+			Value:     float64(res.rootDelayS * 1000),
 			Timestamp: now,
 			Tags:      baseTags,
 		},
 		data_store.DataPoint{
 			Name:      "ntp.root.dispersion",
-			Value:     float32(res.rootDispersionS * 1000),
+			Value:     float64(res.rootDispersionS * 1000),
 			Timestamp: now,
 			Tags:      baseTags,
 		},
@@ -211,7 +211,7 @@ func (p *ChronyProbe) Collect() ([]data_store.DataPoint, error) {
 //   - Insert second → 1
 //   - Delete second → 2
 //   - Not synchronised → 3
-func leapToFloat(status string) float32 {
+func leapToFloat(status string) float64 {
 	switch status {
 	case leapNormal:
 		return 0
@@ -293,7 +293,7 @@ func parseTracking(line string) trackingResult {
 
 	return trackingResult{
 		raw:             fields,
-		stratum:         float32(stratum),
+		stratum:         float64(stratum),
 		systemTimeS:     systemTime,
 		freqPPM:         freqPPM,
 		skewPPM:         skew,

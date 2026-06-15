@@ -74,7 +74,7 @@ func TestParseConfig_Overrides(t *testing.T) {
 func TestAsFloat(t *testing.T) {
 	cases := []struct {
 		in   string
-		want float32
+		want float64
 	}{
 		{"0", 0},
 		{"42", 42},
@@ -96,8 +96,8 @@ func TestAsFloat(t *testing.T) {
 // ─── buildConnectionPoints — idle clamp ──────────────────────────────────────
 
 func TestIdleClamp_NeverNegative(t *testing.T) {
-	connected := float32(5)
-	running := float32(7) // pathological case
+	connected := float64(5)
+	running := float64(7) // pathological case
 	idle := connected - running
 	if idle < 0 {
 		idle = 0
@@ -112,7 +112,7 @@ func TestIdleClamp_NeverNegative(t *testing.T) {
 func TestReplicaHealth(t *testing.T) {
 	for _, tc := range []struct {
 		io, sql string
-		health  float32
+		health  float64
 	}{
 		{"Yes", "Yes", 1},
 		{"No", "Yes", 0},
@@ -120,15 +120,15 @@ func TestReplicaHealth(t *testing.T) {
 		{"No", "No", 0},
 		{"Connecting", "Yes", 0},
 	} {
-		ioOK := float32(0)
+		ioOK := float64(0)
 		if tc.io == "Yes" {
 			ioOK = 1
 		}
-		sqlOK := float32(0)
+		sqlOK := float64(0)
 		if tc.sql == "Yes" {
 			sqlOK = 1
 		}
-		health := float32(1)
+		health := float64(1)
 		if ioOK == 0 || sqlOK == 0 {
 			health = 0
 		}

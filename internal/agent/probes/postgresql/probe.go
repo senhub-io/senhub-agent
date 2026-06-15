@@ -199,11 +199,11 @@ func (p *pgProbe) fetchSystemIdentifier(ctx context.Context) string {
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-func (p *pgProbe) dp(name string, value float32, ts time.Time, baseTags []tags.Tag) data_store.DataPoint {
+func (p *pgProbe) dp(name string, value float64, ts time.Time, baseTags []tags.Tag) data_store.DataPoint {
 	return data_store.DataPoint{Name: name, Value: value, Timestamp: ts, Tags: baseTags}
 }
 
-func (p *pgProbe) dpWithTags(name string, value float32, ts time.Time, base []tags.Tag, extra ...tags.Tag) data_store.DataPoint {
+func (p *pgProbe) dpWithTags(name string, value float64, ts time.Time, base []tags.Tag, extra ...tags.Tag) data_store.DataPoint {
 	t := make([]tags.Tag, len(base)+len(extra))
 	copy(t, base)
 	copy(t[len(base):], extra)
@@ -231,7 +231,7 @@ func (p *pgProbe) collectOverview(ctx context.Context, now time.Time, baseTags [
 	if err := p.db.QueryRowContext(ctx,
 		`SELECT EXTRACT(EPOCH FROM (now() - pg_postmaster_start_time()))`,
 	).Scan(&uptimeSec); err == nil {
-		*points = append(*points, p.dp("senhub.db.postgresql.uptime", float32(uptimeSec), now, ot))
+		*points = append(*points, p.dp("senhub.db.postgresql.uptime", float64(uptimeSec), now, ot))
 	} else {
 		p.moduleLogger.Warn().Err(err).Str("query", "uptime").Msg("postgresql: query failed")
 	}
@@ -270,10 +270,10 @@ func (p *pgProbe) collectBackends(ctx context.Context, now time.Time, instance s
 	}
 	defer rows.Close()
 
-	counts := map[string]float32{}
+	counts := map[string]float64{}
 	for rows.Next() {
 		var state sql.NullString
-		var cnt float32
+		var cnt float64
 		if err := rows.Scan(&state, &cnt); err == nil {
 			key := "unknown"
 			if state.Valid && state.String != "" {
@@ -296,7 +296,7 @@ func (p *pgProbe) collectBackends(ctx context.Context, now time.Time, instance s
 	}
 
 	// max_connections
-	var maxConn float32
+	var maxConn float64
 	if err := p.db.QueryRowContext(ctx, `SHOW max_connections`).Scan(&maxConn); err == nil {
 		*points = append(*points, p.dp("postgresql.connection.max", maxConn, now, connTags))
 
@@ -327,22 +327,22 @@ func (p *pgProbe) collectThroughput(ctx context.Context, now time.Time, instance
 	}
 
 	*points = append(*points,
-		p.dp("postgresql.commits", float32(commits), now, tpt),
-		p.dp("postgresql.rollbacks", float32(rollbacks), now, tpt),
+		p.dp("postgresql.commits", float64(commits), now, tpt),
+		p.dp("postgresql.rollbacks", float64(rollbacks), now, tpt),
 	)
 
 	// Buffer hit ratio (cache family)
 	cacheTags := p.tagsFor(dbcommon.MetricTypeCache, instance)
 	total := blksHit + blksRead
 	if total > 0 {
-		*points = append(*points, p.dp("senhub.db.postgresql.buffer.hit_ratio", float32(blksHit/total), now, cacheTags))
+		*points = append(*points, p.dp("senhub.db.postgresql.buffer.hit_ratio", float64(blksHit/total), now, cacheTags))
 	}
 
 	// Deadlocks (locks family)
 	locksTags := p.tagsFor(dbcommon.MetricTypeLocks, instance)
 	var deadlocks float64
 	if err2 := p.db.QueryRowContext(ctx, `SELECT SUM(deadlocks) FROM pg_stat_database`).Scan(&deadlocks); err2 == nil {
-		*points = append(*points, p.dp("postgresql.deadlocks", float32(deadlocks), now, locksTags))
+		*points = append(*points, p.dp("postgresql.deadlocks", float64(deadlocks), now, locksTags))
 	}
 }
 
@@ -357,7 +357,7 @@ func (p *pgProbe) collectStorage(ctx context.Context, now time.Time, instance st
 		SELECT COALESCE(SUM(pg_database_size(datname)), 0)
 		FROM pg_database
 		WHERE NOT datistemplate`).Scan(&dbSize); err == nil {
-		*points = append(*points, p.dp("postgresql.db_size", float32(dbSize), now, stTags))
+		*points = append(*points, p.dp("postgresql.db_size", float64(dbSize), now, stTags))
 	} else {
 		p.moduleLogger.Warn().Err(err).Str("query", "db_size").Msg("postgresql: query failed")
 	}
@@ -366,7 +366,7 @@ func (p *pgProbe) collectStorage(ctx context.Context, now time.Time, instance st
 	var tableCount float64
 	if err := p.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM pg_class WHERE relkind = 'r'`).Scan(&tableCount); err == nil {
-		*points = append(*points, p.dp("postgresql.table.count", float32(tableCount), now, stTags))
+		*points = append(*points, p.dp("postgresql.table.count", float64(tableCount), now, stTags))
 	}
 }
 
@@ -378,7 +378,7 @@ func (p *pgProbe) collectLocks(ctx context.Context, now time.Time, instance stri
 	// Locks waiting (not granted)
 	var waiting float64
 	if err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pg_locks WHERE NOT granted`).Scan(&waiting); err == nil {
-		*points = append(*points, p.dp("senhub.db.postgresql.lock.waiting", float32(waiting), now, locksTags))
+		*points = append(*points, p.dp("senhub.db.postgresql.lock.waiting", float64(waiting), now, locksTags))
 	}
 
 	// Oldest active transaction age
@@ -388,7 +388,7 @@ func (p *pgProbe) collectLocks(ctx context.Context, now time.Time, instance stri
 		FROM pg_stat_activity
 		WHERE state IN ('active', 'idle in transaction')
 		  AND xact_start IS NOT NULL`).Scan(&longestXact); err == nil && longestXact.Valid {
-		*points = append(*points, p.dp("senhub.db.postgresql.long_running_xact", float32(longestXact.Float64), now, locksTags))
+		*points = append(*points, p.dp("senhub.db.postgresql.long_running_xact", float64(longestXact.Float64), now, locksTags))
 	}
 }
 
@@ -414,9 +414,9 @@ func (p *pgProbe) collectWAL(ctx context.Context, now time.Time, instance string
 			END
 		FROM pg_stat_archiver`).Scan(&failedCount, &lastArchivedAge)
 	if err == nil {
-		*points = append(*points, p.dp("senhub.db.postgresql.archiver.failed", float32(failedCount), now, archTags))
+		*points = append(*points, p.dp("senhub.db.postgresql.archiver.failed", float64(failedCount), now, archTags))
 		if archiveMode != "off" && archiveMode != "" && lastArchivedAge.Valid {
-			*points = append(*points, p.dp("senhub.db.postgresql.archiver.last_archived.age", float32(lastArchivedAge.Float64), now, archTags))
+			*points = append(*points, p.dp("senhub.db.postgresql.archiver.last_archived.age", float64(lastArchivedAge.Float64), now, archTags))
 		}
 	}
 }
@@ -431,7 +431,7 @@ func (p *pgProbe) collectReplication(ctx context.Context, now time.Time, instanc
 	_ = p.db.QueryRowContext(ctx, `SELECT pg_is_in_recovery()`).Scan(&isReplica)
 
 	var role dbcommon.Role
-	var replHealth float32 = 1
+	var replHealth float64 = 1
 
 	if isReplica {
 		role = dbcommon.RoleReplica
@@ -442,7 +442,7 @@ func (p *pgProbe) collectReplication(ctx context.Context, now time.Time, instanc
 			SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))`).Scan(&replayLag)
 		if err == nil && replayLag.Valid {
 			lagTags := append(append([]tags.Tag{}, replTags...), tags.Tag{Key: "operation", Value: "replay"})
-			*points = append(*points, p.dp("postgresql.wal.lag", float32(replayLag.Float64), now, lagTags))
+			*points = append(*points, p.dp("postgresql.wal.lag", float64(replayLag.Float64), now, lagTags))
 			if replayLag.Float64 > 300 { // >5 min lag → degraded
 				replHealth = 0
 			}
@@ -451,7 +451,7 @@ func (p *pgProbe) collectReplication(ctx context.Context, now time.Time, instanc
 		// WAL receiver status
 		var walRecvStatus sql.NullString
 		_ = p.db.QueryRowContext(ctx, `SELECT status FROM pg_stat_wal_receiver LIMIT 1`).Scan(&walRecvStatus)
-		ioRunning := float32(0)
+		ioRunning := float64(0)
 		if walRecvStatus.Valid && walRecvStatus.String == "streaming" {
 			ioRunning = 1
 		} else {
@@ -466,7 +466,7 @@ func (p *pgProbe) collectReplication(ctx context.Context, now time.Time, instanc
 			if replicaCount > 0 {
 				role = dbcommon.RolePrimary
 			}
-			*points = append(*points, p.dp("senhub.db.replication.replicas.connected", float32(replicaCount), now, replTags))
+			*points = append(*points, p.dp("senhub.db.replication.replicas.connected", float64(replicaCount), now, replTags))
 		}
 	}
 

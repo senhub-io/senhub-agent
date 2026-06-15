@@ -84,7 +84,7 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 			points = append(points, data_store.DataPoint{
 				Name:      "process.count",
 				Timestamp: ts,
-				Value:     float32(cnt),
+				Value:     float64(cnt),
 				Tags:      aggTags,
 			})
 		}
@@ -180,7 +180,7 @@ func appendProcessPoints(
 	points = append(points, data_store.DataPoint{
 		Name:      "process.cpu.utilization",
 		Timestamp: ts,
-		Value:     float32(snap.cpuPct / 100.0),
+		Value:     float64(snap.cpuPct / 100.0),
 		Tags:      pt,
 	})
 
@@ -188,7 +188,7 @@ func appendProcessPoints(
 	points = append(points, data_store.DataPoint{
 		Name:      "process.memory.usage",
 		Timestamp: ts,
-		Value:     float32(snap.rss),
+		Value:     float64(snap.rss),
 		Tags:      pt,
 	})
 
@@ -196,7 +196,7 @@ func appendProcessPoints(
 	points = append(points, data_store.DataPoint{
 		Name:      "process.memory.virtual_memory_usage",
 		Timestamp: ts,
-		Value:     float32(snap.vms),
+		Value:     float64(snap.vms),
 		Tags:      pt,
 	})
 
@@ -204,7 +204,7 @@ func appendProcessPoints(
 	points = append(points, data_store.DataPoint{
 		Name:      "process.threads",
 		Timestamp: ts,
-		Value:     float32(snap.threads),
+		Value:     float64(snap.threads),
 		Tags:      pt,
 	})
 
@@ -213,7 +213,7 @@ func appendProcessPoints(
 		points = append(points, data_store.DataPoint{
 			Name:      "process.open_file_descriptors",
 			Timestamp: ts,
-			Value:     float32(snap.fds),
+			Value:     float64(snap.fds),
 			Tags:      pt,
 		})
 	}
@@ -227,7 +227,7 @@ func appendProcessPoints(
 		points = append(points, data_store.DataPoint{
 			Name:      "process.uptime",
 			Timestamp: ts,
-			Value:     float32(uptimeS) / 1000.0,
+			Value:     float64(uptimeS) / 1000.0,
 			Tags:      pt,
 		})
 	}

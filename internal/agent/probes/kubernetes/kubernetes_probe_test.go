@@ -214,9 +214,9 @@ func TestBuildPodPoints_Running(t *testing.T) {
 		phase         corev1.PodPhase
 		readyCond     corev1.ConditionStatus
 		restartCounts []int32
-		wantPhase     float32
-		wantReady     float32
-		wantRestarts  float32
+		wantPhase     float64
+		wantReady     float64
+		wantRestarts  float64
 	}{
 		{
 			name:         "running and ready, no restarts",
@@ -354,7 +354,7 @@ func TestBuildContainerPoints(t *testing.T) {
 		name           string
 		containerReady bool
 		restarts       int32
-		wantReady      float32
+		wantReady      float64
 	}{
 		{"ready container", true, 0, 1},
 		{"not-ready container", false, 2, 0},
@@ -400,7 +400,7 @@ func TestBuildContainerPoints(t *testing.T) {
 			if !ok {
 				t.Fatal("k8s.container.restarts not emitted")
 			}
-			if dpRestarts.Value != float32(tt.restarts) {
+			if dpRestarts.Value != float64(tt.restarts) {
 				t.Errorf("k8s.container.restarts = %v, want %v", dpRestarts.Value, tt.restarts)
 			}
 		})

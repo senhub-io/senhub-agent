@@ -115,12 +115,12 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	var points []data_store.DataPoint
 	for _, u := range selected {
-		var nRestarts *float32
+		var nRestarts *float64
 		if unitTypeSuffix(u.Name) == "service" {
 			prop, err := conn.GetUnitTypeProperty(u.Name, "Service", "NRestarts")
 			if err == nil {
 				if v, ok := prop.Value.Value().(uint32); ok {
-					r := float32(v)
+					r := float64(v)
 					nRestarts = &r
 				}
 			}

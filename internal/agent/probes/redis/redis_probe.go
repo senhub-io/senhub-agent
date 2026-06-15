@@ -195,13 +195,13 @@ func (p *redisProbe) baseTags(metricType string) []tags.Tag {
 	}
 }
 
-func (p *redisProbe) addGauge(out *[]data_store.DataPoint, name string, value float32, ts time.Time, metricType string, extra ...tags.Tag) {
+func (p *redisProbe) addGauge(out *[]data_store.DataPoint, name string, value float64, ts time.Time, metricType string, extra ...tags.Tag) {
 	t := p.baseTags(metricType)
 	t = append(t, extra...)
 	*out = append(*out, data_store.DataPoint{Name: name, Value: value, Timestamp: ts, Tags: t})
 }
 
-func (p *redisProbe) addCounter(out *[]data_store.DataPoint, name string, value float32, ts time.Time, metricType string, extra ...tags.Tag) {
+func (p *redisProbe) addCounter(out *[]data_store.DataPoint, name string, value float64, ts time.Time, metricType string, extra ...tags.Tag) {
 	p.addGauge(out, name, value, ts, metricType, extra...)
 }
 
@@ -256,7 +256,7 @@ func parseCommandStats(blob string) map[string]cmdStat {
 // buildDatapoints converts the parsed INFO map to OTel-canonical datapoints.
 // clusterInfo is the parsed INFO cluster blob (nil when cluster_enabled!=1).
 // sentinelInfo is the parsed INFO sentinel blob (nil when not in sentinel mode).
-func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string]cmdStat, clusterInfo map[string]string, sentinelInfo map[string]string, ts time.Time, up float32) []data_store.DataPoint {
+func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string]cmdStat, clusterInfo map[string]string, sentinelInfo map[string]string, ts time.Time, up float64) []data_store.DataPoint {
 	var pts []data_store.DataPoint
 
 	p.addGauge(&pts, "senhub.db.up", up, ts, "overview")
@@ -325,7 +325,7 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 		p.addCounter(&pts, "redis.keyspace.misses", misses, ts, "cache")
 	}
 	sum := hits + misses
-	ratio := float32(0)
+	ratio := float64(0)
 	if sum > 0 {
 		ratio = hits / sum
 	}
@@ -341,14 +341,14 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 			continue
 		}
 		dbTag := tags.Tag{Key: "db", Value: dbIdx}
-		p.addGauge(&pts, "redis.db.keys", float32(keys), ts, "keyspace", dbTag)
-		p.addGauge(&pts, "redis.db.expires", float32(expires), ts, "keyspace", dbTag)
-		p.addGauge(&pts, "redis.db.avg_ttl", float32(avgTTL), ts, "keyspace", dbTag)
+		p.addGauge(&pts, "redis.db.keys", float64(keys), ts, "keyspace", dbTag)
+		p.addGauge(&pts, "redis.db.expires", float64(expires), ts, "keyspace", dbTag)
+		p.addGauge(&pts, "redis.db.avg_ttl", float64(avgTTL), ts, "keyspace", dbTag)
 	}
 
 	// replication
 	role := info["role"]
-	roleVal := float32(-1)
+	roleVal := float64(-1)
 	switch role {
 	case "master":
 		roleVal = 1
@@ -400,7 +400,7 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 			if age < 0 {
 				age = 0
 			}
-			p.addGauge(&pts, "redis.rdb.last_save.age", float32(age), ts, "persistence")
+			p.addGauge(&pts, "redis.rdb.last_save.age", float64(age), ts, "persistence")
 		}
 	}
 
@@ -451,14 +451,14 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 	// per-command stats
 	for cmd, cs := range cmdStats {
 		cmdTag := tags.Tag{Key: "cmd", Value: cmd}
-		p.addCounter(&pts, "redis.cmd.calls", float32(cs.calls), ts, "commands", cmdTag)
-		p.addCounter(&pts, "redis.cmd.usec", float32(cs.usec), ts, "commands", cmdTag)
+		p.addCounter(&pts, "redis.cmd.calls", float64(cs.calls), ts, "commands", cmdTag)
+		p.addCounter(&pts, "redis.cmd.usec", float64(cs.usec), ts, "commands", cmdTag)
 	}
 
 	// cluster metrics (INFO cluster — only populated when cluster_enabled=1)
 	if clusterInfo != nil {
 		// cluster_state: "ok" → 1, anything else → 0.
-		stateVal := float32(0)
+		stateVal := float64(0)
 		if clusterInfo["cluster_state"] == "ok" {
 			stateVal = 1
 		}
@@ -496,10 +496,10 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 		// Each master is reported as: sentinel_mastersN:name=...,status=...,slaves=N,sentinels=M
 		// Parallel fields sentinel_slavesN_... and sentinel_sentinelsN_... provide per-master detail.
 		totalSlaves, okSlaves, totalSentinels, okSentinels := parseSentinelMasterStats(sentinelInfo)
-		p.addGauge(&pts, "redis.sentinel.slaves", float32(totalSlaves), ts, "sentinel")
-		p.addGauge(&pts, "redis.sentinel.ok_slaves", float32(okSlaves), ts, "sentinel")
-		p.addGauge(&pts, "redis.sentinel.sentinels", float32(totalSentinels), ts, "sentinel")
-		p.addGauge(&pts, "redis.sentinel.ok_sentinels", float32(okSentinels), ts, "sentinel")
+		p.addGauge(&pts, "redis.sentinel.slaves", float64(totalSlaves), ts, "sentinel")
+		p.addGauge(&pts, "redis.sentinel.ok_slaves", float64(okSlaves), ts, "sentinel")
+		p.addGauge(&pts, "redis.sentinel.sentinels", float64(totalSentinels), ts, "sentinel")
+		p.addGauge(&pts, "redis.sentinel.ok_sentinels", float64(okSentinels), ts, "sentinel")
 	}
 
 	// tracking metrics (RESP3 client-side tracking, present in INFO clients
@@ -706,9 +706,9 @@ func readFull(r *bufio.Reader, buf []byte) (int, error) {
 	return total, nil
 }
 
-// parseFloat parses a string as float32; ok=false for empty strings or
+// parseFloat parses a string as float64; ok=false for empty strings or
 // non-numeric values.
-func parseFloat(s string) (float32, bool) {
+func parseFloat(s string) (float64, bool) {
 	if s == "" {
 		return 0, false
 	}
@@ -716,5 +716,5 @@ func parseFloat(s string) (float32, bool) {
 	if err != nil {
 		return 0, false
 	}
-	return float32(v), true
+	return float64(v), true
 }

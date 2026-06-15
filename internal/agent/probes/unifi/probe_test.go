@@ -53,13 +53,13 @@ func stubController(t *testing.T, health, devices, clients interface{}) *httptes
 	return httptest.NewServer(mux)
 }
 
-func collectByName(t *testing.T, p *unifiProbe) map[string]float32 {
+func collectByName(t *testing.T, p *unifiProbe) map[string]float64 {
 	t.Helper()
 	points, err := p.Collect()
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	got := make(map[string]float32, len(points))
+	got := make(map[string]float64, len(points))
 	for _, dp := range points {
 		got[dp.Name] = dp.Value
 	}
@@ -117,7 +117,7 @@ func TestCollect_DeviceInventory(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	byNameType := map[string]float32{}
+	byNameType := map[string]float64{}
 	for _, dp := range points {
 		typeVal := ""
 		nameVal := ""
@@ -170,7 +170,7 @@ func TestCollect_APMetrics(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	byName := map[string]float32{}
+	byName := map[string]float64{}
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}
@@ -211,7 +211,7 @@ func TestCollect_NetworkThroughput(t *testing.T) {
 
 	// unifi.network.io is emitted twice (transmit + receive) under the same
 	// metric name; key by name+direction to distinguish them.
-	byDir := map[string]float32{}
+	byDir := map[string]float64{}
 	for _, dp := range points {
 		if dp.Name != "unifi.network.io" {
 			continue

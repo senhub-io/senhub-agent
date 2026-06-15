@@ -229,7 +229,7 @@ func TestBuildServerStatusPoints_MemoryConversion(t *testing.T) {
 		},
 	}, now)
 
-	byType := map[string]float32{}
+	byType := map[string]float64{}
 	for _, dp := range pts {
 		if dp.Name == "mongodb.memory.usage" {
 			for _, tg := range dp.Tags {
@@ -240,11 +240,11 @@ func TestBuildServerStatusPoints_MemoryConversion(t *testing.T) {
 		}
 	}
 
-	wantResident := float32(256 * 1024 * 1024)
+	wantResident := float64(256 * 1024 * 1024)
 	if byType["resident"] != wantResident {
 		t.Errorf("resident memory = %v, want %v", byType["resident"], wantResident)
 	}
-	wantVirtual := float32(512 * 1024 * 1024)
+	wantVirtual := float64(512 * 1024 * 1024)
 	if byType["virtual"] != wantVirtual {
 		t.Errorf("virtual memory = %v, want %v", byType["virtual"], wantVirtual)
 	}
@@ -265,7 +265,7 @@ func TestBuildServerStatusPoints_OpcountersOperationTag(t *testing.T) {
 		},
 	}, now)
 
-	seen := map[string]float32{}
+	seen := map[string]float64{}
 	for _, dp := range pts {
 		if dp.Name == "mongodb.operations.count" {
 			for _, tg := range dp.Tags {
@@ -275,7 +275,7 @@ func TestBuildServerStatusPoints_OpcountersOperationTag(t *testing.T) {
 			}
 		}
 	}
-	wantOps := map[string]float32{
+	wantOps := map[string]float64{
 		"insert": 100, "query": 400, "update": 50,
 		"delete": 10, "getmore": 5, "command": 1000,
 	}
@@ -361,7 +361,7 @@ func TestCollect_EmitsUpZeroWhenUnreachable(t *testing.T) {
 		t.Fatalf("Collect must not return error on unreachable MongoDB, got: %v", err)
 	}
 
-	var upValue float32 = -1
+	var upValue float64 = -1
 	for _, dp := range pts {
 		if dp.Name == "senhub.mongodb.up" {
 			upValue = dp.Value

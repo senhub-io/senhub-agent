@@ -70,7 +70,7 @@ func NewModbusProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger)
 }
 
 func (p *ModbusProbe) ShouldStart() bool          { return true }
-func (p *ModbusProbe) GetInterval() time.Duration  { return p.cfg.Interval }
+func (p *ModbusProbe) GetInterval() time.Duration { return p.cfg.Interval }
 func (p *ModbusProbe) GetTargetStrategies() []string {
 	return []string{"senhub", "prtg", "http", "otlp"}
 }
@@ -150,7 +150,7 @@ func (p *ModbusProbe) Collect() ([]data_store.DataPoint, error) {
 		})
 	}
 
-	up := float32(1)
+	up := float64(1)
 	if !allOK {
 		up = 0
 	}
@@ -169,7 +169,7 @@ func (p *ModbusProbe) Collect() ([]data_store.DataPoint, error) {
 //
 // Modbus holding-register addresses in config are 1-based Modicon notation
 // (40001 → holding register 0). We convert to 0-based before the read.
-func readRegister(client modbusClient, reg registerConfig) (float32, error) {
+func readRegister(client modbusClient, reg registerConfig) (float64, error) {
 	addr := zeroBasedAddress(reg.Address)
 
 	var raw []byte
@@ -192,7 +192,7 @@ func readRegister(client modbusClient, reg registerConfig) (float32, error) {
 		return 0, err
 	}
 
-	return float32(decoded * float64(reg.Scale)), nil
+	return decoded * float64(reg.Scale), nil
 }
 
 // zeroBasedAddress converts a Modicon 1-based Holding Register address

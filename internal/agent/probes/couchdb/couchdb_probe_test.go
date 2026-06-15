@@ -116,7 +116,7 @@ func TestCollect_Success(t *testing.T) {
 	}
 
 	// Map by name for assertions.
-	byName := map[string][]float32{}
+	byName := map[string][]float64{}
 	for _, dp := range points {
 		byName[dp.Name] = append(byName[dp.Name], dp.Value)
 	}

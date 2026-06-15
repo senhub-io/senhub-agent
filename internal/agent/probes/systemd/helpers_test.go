@@ -171,7 +171,7 @@ func TestBuildDatapoints_ActiveRunningLoaded(t *testing.T) {
 		t.Fatalf("buildDatapoints: got %d points; want 3", len(pts))
 	}
 
-	byName := make(map[string]float32, len(pts))
+	byName := make(map[string]float64, len(pts))
 	for _, p := range pts {
 		byName[p.Name] = p.Value
 	}
@@ -191,7 +191,7 @@ func TestBuildDatapoints_InactiveDeadNotFound(t *testing.T) {
 	u := makeUnit("failed.service", "inactive", "dead", "not-found")
 	pts := buildDatapoints(u, time.Now(), nil)
 
-	byName := make(map[string]float32, len(pts))
+	byName := make(map[string]float64, len(pts))
 	for _, p := range pts {
 		byName[p.Name] = p.Value
 	}
@@ -209,14 +209,14 @@ func TestBuildDatapoints_InactiveDeadNotFound(t *testing.T) {
 
 func TestBuildDatapoints_WithNRestarts(t *testing.T) {
 	u := makeUnit("crashed.service", "active", "running", "loaded")
-	restarts := float32(3)
+	restarts := float64(3)
 	pts := buildDatapoints(u, time.Now(), &restarts)
 
 	// Expect 4 datapoints (3 states + restarts).
 	if len(pts) != 4 {
 		t.Fatalf("buildDatapoints with restarts: got %d points; want 4", len(pts))
 	}
-	byName := make(map[string]float32, len(pts))
+	byName := make(map[string]float64, len(pts))
 	for _, p := range pts {
 		byName[p.Name] = p.Value
 	}
@@ -229,7 +229,7 @@ func TestBuildDatapoints_TimerNoRestarts(t *testing.T) {
 	// Timer units must never emit a restarts datapoint, even when a
 	// non-nil nRestarts is supplied (the helper guards on unit type).
 	u := makeUnit("logrotate.timer", "active", "waiting", "loaded")
-	restarts := float32(0)
+	restarts := float64(0)
 	pts := buildDatapoints(u, time.Now(), &restarts)
 
 	for _, p := range pts {
@@ -288,7 +288,7 @@ func TestBuildDatapoints_UnitTypeTags(t *testing.T) {
 func TestBuildDatapoints_ListeningSubState(t *testing.T) {
 	u := makeUnit("dbus.socket", "active", "listening", "loaded")
 	pts := buildDatapoints(u, time.Now(), nil)
-	byName := make(map[string]float32, len(pts))
+	byName := make(map[string]float64, len(pts))
 	for _, p := range pts {
 		byName[p.Name] = p.Value
 	}

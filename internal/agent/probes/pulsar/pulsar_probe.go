@@ -162,7 +162,7 @@ func (p *PulsarProbe) Collect() ([]data_store.DataPoint, error) {
 
 	up := p.checkReady()
 	p.entitySrc.setReachable(up)
-	upVal := float32(0)
+	upVal := float64(0)
 	if up {
 		upVal = 1
 	}
@@ -288,7 +288,7 @@ func parsePrometheusText(r io.Reader, ts time.Time, baseTags []tags.Tag) ([]data
 
 		points = append(points, data_store.DataPoint{
 			Name:      otelName,
-			Value:     float32(val),
+			Value:     float64(val),
 			Timestamp: ts,
 			Tags:      dpTags,
 		})

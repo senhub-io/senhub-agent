@@ -143,7 +143,7 @@ func (p *InfluxDBProbe) Collect() ([]data_store.DataPoint, error) {
 	// --- /health ---
 	up, version := p.checkHealth()
 	p.entitySrc.setReachable(up, version)
-	upVal := float32(0)
+	upVal := float64(0)
 	if up {
 		upVal = 1
 	}
@@ -189,7 +189,7 @@ func (p *InfluxDBProbe) Collect() ([]data_store.DataPoint, error) {
 		if val, ok := promMetrics[promName]; ok {
 			points = append(points, data_store.DataPoint{
 				Name:      out.outName,
-				Value:     float32(val),
+				Value:     float64(val),
 				Timestamp: now,
 				Tags:      out.tags,
 			})
@@ -205,7 +205,7 @@ func (p *InfluxDBProbe) Collect() ([]data_store.DataPoint, error) {
 		} else {
 			points = append(points, data_store.DataPoint{
 				Name:      "influxdb.buckets",
-				Value:     float32(bucketCount),
+				Value:     float64(bucketCount),
 				Timestamp: now,
 				Tags:      []tags.Tag{{Key: "metric_type", Value: "storage"}},
 			})

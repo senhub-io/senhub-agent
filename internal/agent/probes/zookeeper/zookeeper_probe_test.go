@@ -132,7 +132,7 @@ func TestCollect_Up_Leader(t *testing.T) {
 		t.Fatalf("Collect returned error: %v", err)
 	}
 
-	byName := make(map[string]float32)
+	byName := make(map[string]float64)
 	byNameTag := make(map[string]string) // name -> state tag value
 	for _, pt := range pts {
 		byName[pt.Name] = pt.Value
@@ -227,7 +227,7 @@ func TestCollect_Follower_NoLeaderMetrics(t *testing.T) {
 		t.Fatalf("Collect returned error: %v", err)
 	}
 
-	byName := make(map[string]float32)
+	byName := make(map[string]float64)
 	byNameTag := make(map[string]string)
 	for _, pt := range pts {
 		byName[pt.Name] = pt.Value
@@ -296,7 +296,7 @@ func TestCollect_EnrichesWithProbeName(t *testing.T) {
 func TestParseFloat(t *testing.T) {
 	cases := []struct {
 		input string
-		want  float32
+		want  float64
 		ok    bool
 	}{
 		{"42", 42, true},
@@ -319,7 +319,7 @@ func TestParseFloat(t *testing.T) {
 	}
 }
 
-func floatNear(a, b float32) bool {
+func floatNear(a, b float64) bool {
 	diff := a - b
 	if diff < 0 {
 		diff = -diff

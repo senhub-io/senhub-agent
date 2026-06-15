@@ -137,7 +137,7 @@ func TestCollect_Up(t *testing.T) {
 		t.Fatal("Collect() returned no datapoints")
 	}
 
-	byName := map[string]float32{}
+	byName := map[string]float64{}
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}
@@ -151,8 +151,8 @@ func TestCollect_Up(t *testing.T) {
 	if byName["opensearch.cluster.nodes"] != 3 {
 		t.Errorf("opensearch.cluster.nodes = %v, want 3", byName["opensearch.cluster.nodes"])
 	}
-	if byName["opensearch.jvm.memory.heap.used"] != float32(512*1024*1024) {
-		t.Errorf("opensearch.jvm.memory.heap.used = %v, want %v", byName["opensearch.jvm.memory.heap.used"], float32(512*1024*1024))
+	if byName["opensearch.jvm.memory.heap.used"] != float64(512*1024*1024) {
+		t.Errorf("opensearch.jvm.memory.heap.used = %v, want %v", byName["opensearch.jvm.memory.heap.used"], float64(512*1024*1024))
 	}
 	if byName["opensearch.process.cpu.usage"] != 0.42 {
 		t.Errorf("opensearch.process.cpu.usage = %v, want 0.42", byName["opensearch.process.cpu.usage"])
@@ -184,7 +184,7 @@ func TestCollect_Down(t *testing.T) {
 func TestStatusToFloat(t *testing.T) {
 	cases := []struct {
 		status string
-		want   float32
+		want   float64
 	}{
 		{"green", 2},
 		{"yellow", 1},

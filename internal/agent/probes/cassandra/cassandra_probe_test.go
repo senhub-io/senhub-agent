@@ -165,7 +165,7 @@ func TestCollect_HappyPath(t *testing.T) {
 		t.Fatal("Collect() returned no datapoints")
 	}
 
-	byName := map[string]float32{}
+	byName := map[string]float64{}
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}
@@ -181,7 +181,7 @@ func TestCollect_HappyPath(t *testing.T) {
 	}
 
 	// storage load (5 GiB)
-	if byName["cassandra.storage.load"] != float32(5368709120) {
+	if byName["cassandra.storage.load"] != float64(5368709120) {
 		t.Errorf("storage.load = %v, want 5368709120", byName["cassandra.storage.load"])
 	}
 
@@ -191,7 +191,7 @@ func TestCollect_HappyPath(t *testing.T) {
 	}
 
 	// heap used (2 GiB)
-	if byName["jvm.memory.heap.used"] != float32(2147483648) {
+	if byName["jvm.memory.heap.used"] != float64(2147483648) {
 		t.Errorf("heap.used = %v, want 2147483648", byName["jvm.memory.heap.used"])
 	}
 

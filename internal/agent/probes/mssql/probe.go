@@ -205,7 +205,7 @@ func (p *MSSQLProbe) Collect() ([]data_store.DataPoint, error) {
 	defer cancel()
 
 	var points []data_store.DataPoint
-	up := float32(1)
+	up := float64(1)
 
 	if p.db == nil {
 		up = 0
