@@ -3,20 +3,33 @@ package proxmox
 import (
 	"sync"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-// proxmoxEntitySource feeds the entity rail with service.instance entities
-// for each Proxmox node observed in the last metrics cycle.
+// proxmoxEntitySource feeds the entity rail with ONE service.instance entity
+// for the Proxmox VE management surface this probe monitors.
 //
-// Entity schema (frozen with Toise contract):
+// Entity schema (ADR 0018 / Toise Q2 contract):
 //
 //	type: "service.instance"
-//	id:   {"service.instance.id": "proxmox://<endpoint>/<node>"}
+//	id:   {"service.instance.id": <stable id>}
 //
-// The entity carries descriptive attributes (node name, status) that are
-// safe to repeat across agents without last-writer-wins flap risk.
+// Stable ID precedence:
+//  1. config "instance_name" — verbatim, operator-assigned;
+//  2. PVE cluster name — "proxmox:<cluster-name>" (clustered installs);
+//  3. agent machine-id fallback — "proxmox@<agent host.id>" (standalone).
+//
+// Per-node host entities and per-VM compute.vm entities are intentionally NOT
+// emitted from this remote probe: they require the node's machine-id, which is
+// only available to an on-node agent. (Toise Q2 — add an agent on each PVE
+// node to get host + compute.vm entities; this surface covers only the PVE
+// management plane.) See #470 / #433.
+//
+// Outgoing relation: monitors (agent service.instance → proxmox service.instance).
+// The agent's identity is read from agentstate; if it is not yet set (entity
+// emission not started) the relation is omitted this cycle without error.
 type proxmoxEntitySource struct {
 	cfg          probeConfig
 	moduleLogger *logger.ModuleLogger
@@ -30,40 +43,49 @@ func newProxmoxEntitySource(cfg probeConfig, log *logger.ModuleLogger) *proxmoxE
 	return &proxmoxEntitySource{cfg: cfg, moduleLogger: log}
 }
 
-// Observe returns the last entity snapshot built from the metrics cycle.
-// Non-blocking and safe to call from the detector goroutine. Returns
-// ok=false until the first successful metrics cycle.
+// Observe returns the last entity snapshot. Non-blocking; returns ok=false
+// until the first successful metrics cycle sets the stable ID.
 func (s *proxmoxEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.current, s.ready
 }
 
-// refresh rebuilds the entity snapshot from the nodes discovered in the
-// last Collect cycle. Called from Collect (probe goroutine) before it
-// returns so entities stay in sync with metrics.
-func (s *proxmoxEntitySource) refresh(nodes []pveNode) {
-	if len(nodes) == 0 {
-		return
+// refresh rebuilds the entity snapshot using the resolved stable ID for the
+// PVE management surface. clusterName is the PVE cluster name (empty when
+// standalone or when the cluster/status call failed). Called from Collect
+// (probe goroutine) after a successful node list.
+func (s *proxmoxEntitySource) refresh(clusterName string) {
+	instanceID := s.resolveInstanceID(clusterName)
+
+	proxmoxID := map[string]any{"service.instance.id": instanceID}
+
+	attrs := map[string]any{
+		"service.name":   "proxmox",
+		"server.address": s.cfg.Endpoint,
 	}
 
-	obs := entity.Observation{}
-	for _, n := range nodes {
-		if s.cfg.Node != "" && n.Node != s.cfg.Node {
-			continue
-		}
-		id := map[string]any{
-			"service.instance.id": "proxmox://" + s.cfg.Endpoint + "/" + n.Node,
-		}
-		attrs := map[string]any{
-			"proxmox.node":   n.Node,
-			"proxmox.status": n.Status,
-			"proxmox.endpoint": s.cfg.Endpoint,
-		}
-		obs.Entities = append(obs.Entities, entity.Entity{
-			Type:       "service.instance",
-			ID:         id,
-			Attributes: attrs,
+	pve := entity.Entity{
+		Type:       "service.instance",
+		ID:         proxmoxID,
+		Attributes: attrs,
+	}
+
+	obs := entity.Observation{
+		Entities: []entity.Entity{pve},
+	}
+
+	// Emit a monitors edge from the agent's own service.instance to the
+	// proxmox surface, so Toise can associate this probe's telemetry with
+	// the management plane it covers. Skip the edge when the agent identity
+	// is not yet available (entity emission not started).
+	if agentID := agentstate.GetAgentInstanceID(); agentID != "" {
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     "monitors",
+			FromType: "service.instance",
+			FromID:   map[string]any{"service.instance.id": agentID},
+			ToType:   "service.instance",
+			ToID:     proxmoxID,
 		})
 	}
 
@@ -71,4 +93,29 @@ func (s *proxmoxEntitySource) refresh(nodes []pveNode) {
 	s.current = obs
 	s.ready = true
 	s.mu.Unlock()
+}
+
+// resolveInstanceID applies the stable-ID precedence rules:
+//  1. operator-supplied instance_name (verbatim);
+//  2. PVE cluster name → "proxmox:<cluster-name>";
+//  3. agent machine-id fallback → "proxmox@<host.id>".
+func (s *proxmoxEntitySource) resolveInstanceID(clusterName string) string {
+	if s.cfg.InstanceName != "" {
+		return s.cfg.InstanceName
+	}
+	if clusterName != "" {
+		return "proxmox:" + clusterName
+	}
+	// Fallback: use the agent's own host.id so the proxmox surface is
+	// tied to the machine running the probe (standalone installs, or when
+	// the cluster/status call is unavailable). Never use the endpoint —
+	// endpoint is descriptive (network-routable address), not identity.
+	if agentID := agentstate.GetAgentInstanceID(); agentID != "" {
+		return "proxmox@" + agentID
+	}
+	// Last resort: a static sentinel that signals "not yet resolved".
+	// The ready flag stays false until a valid cycle sets the cluster
+	// name or the agent ID becomes available, so this branch should be
+	// transient at most.
+	return "proxmox@unknown"
 }

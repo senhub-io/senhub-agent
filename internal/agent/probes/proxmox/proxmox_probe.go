@@ -49,13 +49,14 @@ type ProxmoxProbe struct {
 }
 
 type probeConfig struct {
-	Endpoint    string
-	TokenID     string
-	TokenSecret string
-	VerifyTLS   bool
-	Node        string // empty = all nodes
-	Interval    time.Duration
-	Timeout     time.Duration
+	Endpoint     string
+	TokenID      string
+	TokenSecret  string
+	VerifyTLS    bool
+	Node         string // empty = all nodes
+	InstanceName string // optional operator-assigned stable id for the PVE surface entity
+	Interval     time.Duration
+	Timeout      time.Duration
 }
 
 // NewProxmoxProbe constructs the probe. Config errors are returned immediately
@@ -122,6 +123,9 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	if v, ok := config["node"].(string); ok {
 		cfg.Node = v
 	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
 	if v, ok := config["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
@@ -187,7 +191,12 @@ func (p *ProxmoxProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	// Refresh entity snapshot so the topology rail stays current.
-	p.entitySrc.refresh(nodes)
+	// fetchClusterName is best-effort: a standalone install or a failing
+	// cluster/status call returns "" and the entity falls back to the
+	// agent machine-id. The cluster name is stable once set so a one-off
+	// failure here does not flip the identity.
+	clusterName, _ := p.fetchClusterName()
+	p.entitySrc.refresh(clusterName)
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
@@ -318,7 +327,28 @@ func (p *ProxmoxProbe) apiGet(path string, out interface{}) error {
 	return json.Unmarshal(envelope.Data, out)
 }
 
+// fetchClusterName queries GET /cluster/status and returns the cluster name
+// from the entry whose type is "cluster". Returns ("", nil) on a standalone
+// install (no cluster entry) and ("", err) when the call itself fails.
+func (p *ProxmoxProbe) fetchClusterName() (string, error) {
+	var items []pveClusterStatusItem
+	if err := p.apiGet("/cluster/status", &items); err != nil {
+		return "", err
+	}
+	for _, item := range items {
+		if item.Type == "cluster" {
+			return item.Name, nil
+		}
+	}
+	return "", nil
+}
+
 // --- API response types ---
+
+type pveClusterStatusItem struct {
+	Type string `json:"type"`
+	Name string `json:"name"`
+}
 
 type pveNodeListItem struct {
 	Node   string `json:"node"`
