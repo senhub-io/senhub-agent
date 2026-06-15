@@ -38,6 +38,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/otlpreceiver"
 	_ "senhub-agent.go/internal/agent/probes/phpfpm"
 	_ "senhub-agent.go/internal/agent/probes/promscrape"
+	_ "senhub-agent.go/internal/agent/probes/rabbitmq"
 	_ "senhub-agent.go/internal/agent/probes/snmppoll"
 	_ "senhub-agent.go/internal/agent/probes/snmptrap"
 	_ "senhub-agent.go/internal/agent/probes/syslog"

@@ -37,6 +37,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"otlp_receiver",
 		"phpfpm",
 		"prometheus_scrape",
+		"rabbitmq",
 		"snmp_poll",
 		"snmp_trap",
 		"syslog",
