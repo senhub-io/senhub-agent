@@ -43,6 +43,9 @@ type httpResult struct {
 	totalTime     time.Duration
 	responseBytes int64
 	tlsDaysLeft   float64 // negative when expired; NaN-free: -1e9 marks "no TLS"
+	tlsCertValid  float64 // 1 = valid, 0 = expired; -1e9 marks "no TLS"
+	tlsIssuer     string
+	tlsSubject    string
 	hasTLS        bool
 	contentMatch  *bool // nil when no matcher configured
 	err           error
@@ -255,9 +258,18 @@ func (p *HTTPCheckProbe) buildDatapoints(res httpResult, ts time.Time) []data_st
 		}
 	}
 	if res.hasTLS && res.tlsDaysLeft > noTLSSentinel {
-		points = append(points,
-			data_store.DataPoint{Name: "senhub.httpcheck.tls.expiry", Value: float32(res.tlsDaysLeft), Timestamp: ts, Tags: baseTags},
+		tlsTags := append(baseTags,
+			tags.Tag{Key: "tls.issuer", Value: res.tlsIssuer},
+			tags.Tag{Key: "tls.subject", Value: res.tlsSubject},
 		)
+		points = append(points,
+			data_store.DataPoint{Name: "senhub.httpcheck.tls.expiry", Value: float32(res.tlsDaysLeft), Timestamp: ts, Tags: tlsTags},
+		)
+		if res.tlsCertValid > noTLSSentinel {
+			points = append(points,
+				data_store.DataPoint{Name: "senhub.httpcheck.tls.valid", Value: float32(res.tlsCertValid), Timestamp: ts, Tags: tlsTags},
+			)
+		}
 	}
 	if res.contentMatch != nil {
 		match := float32(0)
@@ -273,7 +285,7 @@ func (p *HTTPCheckProbe) buildDatapoints(res httpResult, ts time.Time) []data_st
 
 // checkOnce is the production checkFunc: one traced HTTP request.
 func (p *HTTPCheckProbe) checkOnce(target string) httpResult {
-	res := httpResult{target: target, tlsDaysLeft: noTLSSentinel}
+	res := httpResult{target: target, tlsDaysLeft: noTLSSentinel, tlsCertValid: noTLSSentinel}
 
 	var dnsStart, connectStart, tlsStart, reqStart time.Time
 	trace := &httptrace.ClientTrace{
@@ -287,7 +299,15 @@ func (p *HTTPCheckProbe) checkOnce(target string) httpResult {
 			if err == nil {
 				res.hasTLS = true
 				if len(state.PeerCertificates) > 0 {
-					res.tlsDaysLeft = time.Until(state.PeerCertificates[0].NotAfter).Hours() / 24
+					cert := state.PeerCertificates[0]
+					res.tlsDaysLeft = time.Until(cert.NotAfter).Hours() / 24
+					if time.Now().After(cert.NotAfter) {
+						res.tlsCertValid = 0
+					} else {
+						res.tlsCertValid = 1
+					}
+					res.tlsIssuer = cert.Issuer.CommonName
+					res.tlsSubject = cert.Subject.CommonName
 				}
 			}
 		},
