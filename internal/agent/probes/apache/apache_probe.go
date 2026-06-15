@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -45,11 +46,12 @@ type apacheProbe struct {
 }
 
 type apacheConfig struct {
-	Endpoint string
-	Username string
-	Password string
-	Interval time.Duration
-	Timeout  time.Duration
+	Endpoint     string
+	Username     string
+	Password     string
+	InstanceName string
+	Interval     time.Duration
+	Timeout      time.Duration
 }
 
 // NewApacheProbe constructs the probe. Config errors surface here.
@@ -77,8 +79,16 @@ func NewApacheProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	if v, ok := config["timeout"].(int); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
 
 	addr, port := hostPortFromEndpoint(cfg.Endpoint)
+
+	hostID := ""
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+	}
 
 	probe := &apacheProbe{
 		BaseProbe:    &types.BaseProbe{},
@@ -90,7 +100,7 @@ func NewApacheProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 				DisableKeepAlives: true,
 			},
 		},
-		entitySrc: newApacheEntitySource(addr, port),
+		entitySrc: newApacheEntitySource(cfg.InstanceName, hostID, addr, port),
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
