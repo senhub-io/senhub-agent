@@ -5,14 +5,15 @@ import (
 	"strconv"
 	"sync"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // wildflyEntitySource feeds the entity rail with the WildFly instance this
-// probe monitors. It reports a single service.instance entity identified by
-// the management endpoint host and port. The entity is emitted only while the
-// management API is reachable (up=true); a transient failure returns ok=false
-// so the tracker reuses the last good snapshot rather than emitting a delete.
+// probe monitors. It reports a single service.instance entity with a stable,
+// non-network-derived id. The entity is emitted only while the management API
+// is reachable (up=true); a transient failure returns ok=false so the tracker
+// reuses the last good snapshot rather than emitting a delete.
 type wildflyEntitySource struct {
 	instanceID string
 	baseAttrs  map[string]any
@@ -21,12 +22,14 @@ type wildflyEntitySource struct {
 	version    string
 }
 
-// newWildflyEntitySource derives the entity identity from the probe's endpoint
-// URL. The port defaults to 9990 (WildFly HTTP management default) when the
-// URL has no explicit port.
-func newWildflyEntitySource(endpoint string) *wildflyEntitySource {
+// newWildflyEntitySource builds the entity source. The instance id follows the
+// D1 precedence rule: operator-supplied instance_name if set, else
+// "wildfly@<hostID>" where hostID comes from the injected resolveHostID func,
+// else "wildfly" as a last resort. Descriptive server.address / server.port
+// attributes are kept but never used for identity.
+func newWildflyEntitySource(endpoint, instanceName string, resolveHostID func() string) *wildflyEntitySource {
+	instanceID := resolveInstanceID(instanceName, resolveHostID)
 	host, port := hostPortFromEndpoint(endpoint)
-	instanceID := "wildfly://" + host + ":" + strconv.FormatInt(port, 10)
 	return &wildflyEntitySource{
 		instanceID: instanceID,
 		baseAttrs: map[string]any{
@@ -35,6 +38,22 @@ func newWildflyEntitySource(endpoint string) *wildflyEntitySource {
 			"server.port":    port,
 		},
 	}
+}
+
+// resolveInstanceID applies the D1 precedence rule for service.instance.id:
+//  1. operator-supplied instance_name → verbatim
+//  2. "wildfly@<hostID>" from resolveHostID
+//  3. "wildfly" as last resort
+func resolveInstanceID(instanceName string, resolveHostID func() string) string {
+	if instanceName != "" {
+		return instanceName
+	}
+	if resolveHostID != nil {
+		if id := resolveHostID(); id != "" {
+			return "wildfly@" + id
+		}
+	}
+	return "wildfly"
 }
 
 // hostPortFromEndpoint extracts host and port (as int64) from an HTTP(S) URL.
@@ -69,8 +88,9 @@ func (s *wildflyEntitySource) setReachable(up bool, version string) {
 }
 
 // Observe implements entity.Source. It returns the wildfly service.instance
-// entity when the endpoint is reachable, or (_, false) on a transient failure
-// so the detector keeps the last good snapshot alive.
+// entity when the endpoint is reachable, along with a monitors relation from
+// this agent to the target. On a transient failure it returns (_, false) so
+// the detector keeps the last good snapshot alive.
 func (s *wildflyEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.RLock()
 	up := s.up
@@ -89,11 +109,24 @@ func (s *wildflyEntitySource) Observe() (entity.Observation, bool) {
 		attrs["service.version"] = version
 	}
 
-	return entity.Observation{
+	targetID := map[string]any{"service.instance.id": s.instanceID}
+	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "service.instance",
-			ID:         map[string]any{"service.instance.id": s.instanceID},
+			ID:         targetID,
 			Attributes: attrs,
 		}},
-	}, true
+	}
+
+	if agentID := agentstate.GetAgentInstanceID(); agentID != "" {
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     "monitors",
+			FromType: "service.instance",
+			FromID:   map[string]any{"service.instance.id": agentID},
+			ToType:   "service.instance",
+			ToID:     targetID,
+		})
+	}
+
+	return obs, true
 }

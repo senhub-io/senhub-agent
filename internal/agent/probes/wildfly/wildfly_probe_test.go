@@ -340,9 +340,9 @@ func TestMetricTypeTags(t *testing.T) {
 	}
 
 	cases := map[string]string{
-		"senhub.wildfly.up":                       "availability",
-		"jvm.memory.heap.used":                    "memory",
-		"wildfly.request.count":                   "requests",
+		"senhub.wildfly.up":                        "availability",
+		"jvm.memory.heap.used":                     "memory",
+		"wildfly.request.count":                    "requests",
 		"wildfly.transaction.committed":            "operations",
 		"wildfly.datasource.connections.active":    "connections",
 		"wildfly.datasource.connections.available": "connections",
