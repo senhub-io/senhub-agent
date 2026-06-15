@@ -236,6 +236,9 @@ var freeTierProbes = map[string]bool{
 	// protocol endpoint on a local or accessible host is universal
 	// collection, not a paid vendor integration.
 	"haproxy": true,
+	// varnish: host-local Varnish Cache observability — runs varnishstat
+	// on the local machine. Same free rationale as cpu/memory/logicaldisk.
+	"varnish": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
