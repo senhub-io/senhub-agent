@@ -42,11 +42,12 @@ type opensearchProbe struct {
 }
 
 type osConfig struct {
-	Endpoint string
-	Username string
-	Password string
-	Interval time.Duration
-	Timeout  time.Duration
+	Endpoint     string
+	Username     string
+	Password     string
+	InstanceName string
+	Interval     time.Duration
+	Timeout      time.Duration
 }
 
 // NewOpenSearchProbe constructs the probe from the agent YAML params.
@@ -67,6 +68,9 @@ func NewOpenSearchProbe(config map[string]interface{}, baseLogger *logger.Logger
 	}
 	if v, ok := config["password"].(string); ok {
 		cfg.Password = v
+	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
 	}
 	if v, ok := config["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
@@ -98,7 +102,7 @@ func NewOpenSearchProbe(config map[string]interface{}, baseLogger *logger.Logger
 		}
 		port, err := strconv.Atoi(portStr)
 		if err == nil && host != "" {
-			probe.entitySrc = newOpensearchEntitySource(host, port)
+			probe.entitySrc = newOpensearchEntitySource(host, port, cfg.InstanceName)
 		}
 	}
 
@@ -130,6 +134,10 @@ func (p *opensearchProbe) OnShutdown(_ context.Context) error {
 
 // Collect fetches cluster health + local node stats and emits datapoints.
 // senhub.opensearch.up is always emitted, even on error (up=0).
+//
+// On the first successful cycle it also fetches GET / to pin the stable
+// cluster_uuid as the db.instance.id. The entity rail stays silent until the
+// id is pinned so Toise never sees a host:port placeholder that re-keys later.
 func (p *opensearchProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	var points []data_store.DataPoint
@@ -146,6 +154,17 @@ func (p *opensearchProbe) Collect() ([]data_store.DataPoint, error) {
 			data_store.DataPoint{Name: "senhub.opensearch.up", Value: 0, Timestamp: now, Tags: upTags},
 		)
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+	}
+
+	// Cluster is reachable. Lazily pin the cluster_uuid on the first successful
+	// cycle (no-op on subsequent cycles once pinned). The id is not in the
+	// /_cluster/health response, so a separate GET / is needed.
+	if p.entitySrc != nil && !p.entitySrc.isPinned() {
+		if info, err := p.fetchRootInfo(); err == nil {
+			p.entitySrc.setPinnedID(info.ClusterUUID)
+		} else {
+			p.moduleLogger.Debug().Err(err).Msg("opensearch root info fetch failed; entity id not yet pinned")
+		}
 	}
 
 	points = append(points,
@@ -199,6 +218,21 @@ func (p *opensearchProbe) fetchClusterHealth() (*clusterHealth, error) {
 		return nil, err
 	}
 	return &h, nil
+}
+
+// rootInfo is the minimal subset of the GET / response used for identity.
+// OpenSearch returns a stable cluster_uuid that is set when the cluster first
+// forms and never changes (same shape as Elasticsearch's /).
+type rootInfo struct {
+	ClusterUUID string `json:"cluster_uuid"`
+}
+
+func (p *opensearchProbe) fetchRootInfo() (*rootInfo, error) {
+	var r rootInfo
+	if err := p.getJSON("/", &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
 }
 
 func statusToFloat(status string) float32 {
