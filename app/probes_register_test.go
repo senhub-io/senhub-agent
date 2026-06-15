@@ -41,6 +41,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"influxdb",
 		"linux_logs",
 		"logicaldisk",
+		"memcached",
 		"memory",
 		"nats",
 		"mysql",
