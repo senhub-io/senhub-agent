@@ -228,7 +228,7 @@ func (p *HTTPCheckProbe) buildDatapoints(res httpResult, ts time.Time) []data_st
 		{Key: "metric_type", Value: "availability"},
 	}
 
-	up := float32(0)
+	up := float64(0)
 	if res.up {
 		up = 1
 	}
@@ -244,16 +244,16 @@ func (p *HTTPCheckProbe) buildDatapoints(res httpResult, ts time.Time) []data_st
 	}
 	if res.statusCode > 0 {
 		points = append(points,
-			data_store.DataPoint{Name: "senhub.httpcheck.status.code", Value: float32(res.statusCode), Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "httpcheck.duration", Value: float32(res.totalTime.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "senhub.httpcheck.duration.dns", Value: float32(res.dnsTime.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "senhub.httpcheck.duration.connect", Value: float32(res.connectTime.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "senhub.httpcheck.duration.ttfb", Value: float32(res.ttfb.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "senhub.httpcheck.response.size", Value: float32(res.responseBytes), Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.httpcheck.status.code", Value: float64(res.statusCode), Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "httpcheck.duration", Value: res.totalTime.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.httpcheck.duration.dns", Value: res.dnsTime.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.httpcheck.duration.connect", Value: res.connectTime.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.httpcheck.duration.ttfb", Value: res.ttfb.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.httpcheck.response.size", Value: float64(res.responseBytes), Timestamp: ts, Tags: baseTags},
 		)
 		if res.hasTLS {
 			points = append(points,
-				data_store.DataPoint{Name: "senhub.httpcheck.duration.tls", Value: float32(res.tlsTime.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
+				data_store.DataPoint{Name: "senhub.httpcheck.duration.tls", Value: res.tlsTime.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
 			)
 		}
 	}
@@ -263,16 +263,16 @@ func (p *HTTPCheckProbe) buildDatapoints(res httpResult, ts time.Time) []data_st
 			tags.Tag{Key: "tls.subject", Value: res.tlsSubject},
 		)
 		points = append(points,
-			data_store.DataPoint{Name: "senhub.httpcheck.tls.expiry", Value: float32(res.tlsDaysLeft), Timestamp: ts, Tags: tlsTags},
+			data_store.DataPoint{Name: "senhub.httpcheck.tls.expiry", Value: float64(res.tlsDaysLeft), Timestamp: ts, Tags: tlsTags},
 		)
 		if res.tlsCertValid > noTLSSentinel {
 			points = append(points,
-				data_store.DataPoint{Name: "senhub.httpcheck.tls.valid", Value: float32(res.tlsCertValid), Timestamp: ts, Tags: tlsTags},
+				data_store.DataPoint{Name: "senhub.httpcheck.tls.valid", Value: float64(res.tlsCertValid), Timestamp: ts, Tags: tlsTags},
 			)
 		}
 	}
 	if res.contentMatch != nil {
-		match := float32(0)
+		match := float64(0)
 		if *res.contentMatch {
 			match = 1
 		}

@@ -31,7 +31,7 @@ func createBenchmarkMetrics(numMetrics int) []datapoint.DataPoint {
 
 		metric := datapoint.DataPoint{
 			Name:      metricName,
-			Value:     float32(50.0 + float64(i%50)), // Realistic values 50-100
+			Value:     float64(50.0 + float64(i%50)), // Realistic values 50-100
 			Timestamp: time.Now().Add(-time.Duration(i) * time.Second),
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: probe},
