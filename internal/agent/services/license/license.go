@@ -226,6 +226,10 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// nats: NATS Server monitoring via the HTTP management API (/varz,
+	// /routez, /jsz). No external deps. Part of the open-core collection
+	// wedge alongside prometheus_scrape and otlp_receiver.
+	"nats": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
