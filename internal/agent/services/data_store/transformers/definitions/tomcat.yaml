@@ -1,0 +1,209 @@
+probe_name: "tomcat"
+friendly_name: "Apache Tomcat"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["connector", "collector", "context"]
+
+# Free-tier Apache Tomcat monitoring probe via Jolokia HTTP REST.
+# JVM metrics (jvm.memory.*, jvm.gc.*, jvm.threads.*) follow OTel semantic
+# conventions. Tomcat-specific metrics (requests, sessions, threads) are
+# named under tomcat.* where no OTel standard exists.
+
+metrics:
+  - name: "senhub.tomcat.up"
+    channel: "tomcat_up"
+    display_name: "Tomcat Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when Jolokia is reachable, 0 otherwise"
+    otel:
+      name: senhub.tomcat.up
+      unit: "1"
+      type: gauge
+
+  - name: "tomcat.sessions.active"
+    channel: "tomcat_sessions_{context}"
+    display_name: "Tomcat Sessions {context}"
+    unit: "#"
+    category: "sessions"
+    description: "Number of active HTTP sessions for the web application context"
+    otel:
+      name: tomcat.sessions.active
+      unit: "{session}"
+      type: gauge
+    tag_to_attribute:
+      context: tomcat.context
+
+  - name: "tomcat.requests.total"
+    channel: "tomcat_requests_{connector}"
+    display_name: "Tomcat Requests {connector}"
+    unit: "#"
+    category: "requests"
+    description: "Total number of HTTP requests processed by the connector"
+    otel:
+      name: tomcat.requests.total
+      unit: "{request}"
+      type: counter
+    tag_to_attribute:
+      connector: tomcat.connector
+
+  - name: "tomcat.bytes.received"
+    channel: "tomcat_bytes_received_{connector}"
+    display_name: "Tomcat Bytes Received {connector}"
+    unit: "B"
+    category: "requests"
+    description: "Total bytes received by the connector"
+    otel:
+      name: tomcat.bytes.received
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      connector: tomcat.connector
+
+  - name: "tomcat.bytes.sent"
+    channel: "tomcat_bytes_sent_{connector}"
+    display_name: "Tomcat Bytes Sent {connector}"
+    unit: "B"
+    category: "requests"
+    description: "Total bytes sent by the connector"
+    otel:
+      name: tomcat.bytes.sent
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      connector: tomcat.connector
+
+  - name: "tomcat.processing_time"
+    channel: "tomcat_processing_time_{connector}"
+    display_name: "Tomcat Processing Time {connector}"
+    unit: "ms"
+    category: "requests"
+    description: "Cumulative request processing time in milliseconds"
+    otel:
+      name: tomcat.processing_time
+      unit: "ms"
+      type: counter
+    tag_to_attribute:
+      connector: tomcat.connector
+
+  - name: "tomcat.errors.total"
+    channel: "tomcat_errors_{connector}"
+    display_name: "Tomcat Errors {connector}"
+    unit: "#"
+    category: "requests"
+    description: "Total number of HTTP errors produced by the connector"
+    otel:
+      name: tomcat.errors.total
+      unit: "{error}"
+      type: counter
+    tag_to_attribute:
+      connector: tomcat.connector
+
+  - name: "tomcat.threads.current"
+    channel: "tomcat_threads_current_{connector}"
+    display_name: "Tomcat Threads Current {connector}"
+    unit: "#"
+    category: "threads"
+    description: "Current number of threads in the connector thread pool"
+    otel:
+      name: tomcat.threads.current
+      unit: "{thread}"
+      type: gauge
+    tag_to_attribute:
+      connector: tomcat.connector
+
+  - name: "tomcat.threads.busy"
+    channel: "tomcat_threads_busy_{connector}"
+    display_name: "Tomcat Threads Busy {connector}"
+    unit: "#"
+    category: "threads"
+    description: "Number of threads currently processing requests"
+    otel:
+      name: tomcat.threads.busy
+      unit: "{thread}"
+      type: gauge
+    tag_to_attribute:
+      connector: tomcat.connector
+
+  - name: "tomcat.threads.max"
+    channel: "tomcat_threads_max_{connector}"
+    display_name: "Tomcat Threads Max {connector}"
+    unit: "#"
+    category: "threads"
+    description: "Maximum number of threads allowed in the connector thread pool"
+    otel:
+      name: tomcat.threads.max
+      unit: "{thread}"
+      type: gauge
+    tag_to_attribute:
+      connector: tomcat.connector
+
+  - name: "jvm.memory.heap.used"
+    channel: "jvm_heap_used"
+    display_name: "JVM Heap Used"
+    unit: "B"
+    category: "memory"
+    description: "Amount of heap memory currently used by the JVM"
+    otel:
+      name: jvm.memory.heap.used
+      unit: "By"
+      type: gauge
+
+  - name: "jvm.memory.heap.committed"
+    channel: "jvm_heap_committed"
+    display_name: "JVM Heap Committed"
+    unit: "B"
+    category: "memory"
+    description: "Amount of heap memory committed (guaranteed available) to the JVM"
+    otel:
+      name: jvm.memory.heap.committed
+      unit: "By"
+      type: gauge
+
+  - name: "jvm.memory.heap.max"
+    channel: "jvm_heap_max"
+    display_name: "JVM Heap Max"
+    unit: "B"
+    category: "memory"
+    description: "Maximum heap memory that can be used by the JVM"
+    otel:
+      name: jvm.memory.heap.max
+      unit: "By"
+      type: gauge
+
+  - name: "jvm.gc.collections.count"
+    channel: "jvm_gc_count_{collector}"
+    display_name: "JVM GC Count {collector}"
+    unit: "#"
+    category: "gc"
+    description: "Number of garbage collection cycles performed by the collector"
+    otel:
+      name: jvm.gc.collections.count
+      unit: "{collection}"
+      type: counter
+    tag_to_attribute:
+      collector: jvm.gc.name
+
+  - name: "jvm.gc.collections.elapsed"
+    channel: "jvm_gc_elapsed_{collector}"
+    display_name: "JVM GC Elapsed {collector}"
+    unit: "ms"
+    category: "gc"
+    description: "Total time spent in garbage collection by the collector"
+    otel:
+      name: jvm.gc.collections.elapsed
+      unit: "ms"
+      type: counter
+    tag_to_attribute:
+      collector: jvm.gc.name
+
+  - name: "jvm.threads.count"
+    channel: "jvm_threads_count"
+    display_name: "JVM Thread Count"
+    unit: "#"
+    category: "threads"
+    description: "Current number of live threads in the JVM"
+    otel:
+      name: jvm.threads.count
+      unit: "{thread}"
+      type: gauge

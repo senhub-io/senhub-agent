@@ -279,6 +279,13 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"k8s.deployment.name", // per-deployment metrics (k8s.deployment.*)
 	},
 
+	// Application server probes
+	"tomcat": {
+		"connector", // HTTP/AJP connector (requests, bytes, threads, errors, processing_time)
+		"collector", // JVM GC collector (gc count + elapsed)
+		"context",   // Servlet context (sessions)
+	},
+
 	// IBM i / Power Systems — collectors emit multiple rows per metric
 	// name, one per resource instance. These tags identify the instance.
 	"ibmi": {
