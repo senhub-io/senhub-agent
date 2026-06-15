@@ -1,13 +1,3 @@
-internal/agent/services/license/license.go merge=union
-internal/agent/services/license/license_test.go merge=union
-docs/LICENSE-SYSTEM.md merge=union
-internal/agent/probes/registry.go merge=union
-internal/agent/probes/registry_test.go merge=union
-internal/agent/probes/registry_invariant_test.go merge=union
-internal/agent/services/data_store/strategies/http/http_cache.go merge=union
-app/probes_register.go merge=union
-app/probes_register_test.go merge=union
-docs/developer-guide/otel/senhub-semantic-conventions.md merge=union
 # Auto detect text files and perform LF normalization
 * text=auto
 *.go text eol=lf
@@ -22,5 +12,3 @@ docs/developer-guide/otel/senhub-semantic-conventions.md merge=union
 # never apply EOL conversion (Windows checkouts turned LF goldens into
 # CRLF and every golden comparison failed on windows runners).
 *.golden -text
-go.mod merge=union
-go.sum merge=union
