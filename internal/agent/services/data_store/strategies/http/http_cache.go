@@ -82,6 +82,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"ha_node_ip",  // HA node IP address (for ShowTags=false support)
 	},
 
+	// Hardware sensor probes — one series per sensor instance (hardware.component
+	// carries the sensor name: "CPU Temp", "FAN1", "12V", …).
+	"ipmi": {"hardware.component"},
+
 	// Infrastructure probes
 	"redfish": {
 		// Storage components
