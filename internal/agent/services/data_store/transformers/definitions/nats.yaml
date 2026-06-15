@@ -151,13 +151,13 @@ metrics:
       unit: "{message}"
       type: updowncounter
 
-  - name: "nats.jetstream.bytes"
-    channel: "nats_jetstream_bytes"
-    display_name: "NATS JetStream Bytes"
+  - name: "nats.jetstream.storage"
+    channel: "nats_jetstream_storage"
+    display_name: "NATS JetStream Storage"
     unit: "B"
     category: "jetstream"
     description: "Total bytes stored in JetStream across all streams"
     otel:
-      name: nats.jetstream.bytes
+      name: nats.jetstream.storage
       unit: "By"
       type: updowncounter

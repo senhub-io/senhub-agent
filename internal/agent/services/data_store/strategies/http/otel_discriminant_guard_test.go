@@ -20,14 +20,12 @@ func TestEveryMultiInstanceProbeHasDiscriminantTags(t *testing.T) {
 		t.Fatalf("load transformer definitions: %v", err)
 	}
 
-	// Documented baseline: probes with multi_instance_labels but no registry
-	// entry today. The guard enforces the rule for everything NOT listed here.
-	//   - load_webapp / ping_webapp: enterprise/synthetic legacy probes;
-	//   - wifi_signal_strength: in-tree gap the #459 sweep missed, tracked in #481.
+	// Documented baseline: enterprise/synthetic legacy probes with
+	// multi_instance_labels but no registry entry. The guard enforces the rule
+	// for everything NOT listed here.
 	knownDiscriminantGaps := map[string]bool{
-		"load_webapp":          true,
-		"ping_webapp":          true,
-		"wifi_signal_strength": true, // #481
+		"load_webapp": true,
+		"ping_webapp": true,
 	}
 
 	for name, def := range defs {
