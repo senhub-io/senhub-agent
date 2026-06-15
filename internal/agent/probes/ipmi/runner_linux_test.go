@@ -129,6 +129,10 @@ func TestRunIpmitool_ExecTimeout(t *testing.T) {
 
 	dir := t.TempDir()
 	scriptPath := dir + "/hang.sh"
+	// A forking shell: the killed sh leaves the sleep child holding the stdout
+	// pipe, so without cmd.WaitDelay cmd.Output() would block until sleep exits
+	// (30s) even though the context already fired. This exercises the WaitDelay
+	// safety net that bounds the worst case.
 	script := "#!/bin/sh\nsleep 30\n"
 	if err := os.WriteFile(scriptPath, []byte(script), 0o700); err != nil {
 		t.Fatalf("write hang script: %v", err)

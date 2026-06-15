@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 )
 
 // runIpmitool shells out to the ipmitool binary and returns the raw
@@ -39,6 +40,10 @@ func runIpmitool(cfg ipmiConfig) (string, error) {
 	args = append(args, "sdr", "elist", "full")
 
 	cmd := exec.CommandContext(ctx, cfg.IpmitoolPath, args...) // #nosec G204 -- path from operator config
+	// Guarantee the poll loop is freed even if the killed process leaves a
+	// child holding the stdout pipe: once the context fires, force the pipes
+	// closed (and Wait to return) WaitDelay later rather than blocking on read.
+	cmd.WaitDelay = 2 * time.Second
 	if cfg.Mode == "remote" {
 		cmd.Env = append(os.Environ(), "IPMITOOL_PASSWORD="+cfg.RemotePassword)
 	}
