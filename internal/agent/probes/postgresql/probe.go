@@ -1,0 +1,483 @@
+// Package postgresql implements the FREE-tier postgresql probe.
+// It monitors a PostgreSQL server via database/sql (pgx v5 stdlib adapter)
+// and emits OTel-first metrics aligned with the otelcol-contrib
+// postgresqlreceiver (https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/postgresqlreceiver).
+//
+// Metric names follow the otelcol-contrib canon where available;
+// extensions live under senhub.db.postgresql.* (engine-specific) or
+// senhub.db.* (cross-engine).  See docs/developer-guide/otel/senhub-semantic-conventions.md §4.13.
+package postgresql
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"strconv"
+	"time"
+
+	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
+)
+
+// ProbeType is the stable technical identifier that matches the YAML
+// transformer file name (postgresql.yaml) and the license catalogue.
+const ProbeType = "postgresql"
+
+// defaultInterval is used when the operator omits interval.
+const defaultInterval = 60 * time.Second
+
+// pgProbe is the runtime state of one postgresql probe instance.
+type pgProbe struct {
+	*types.BaseProbe
+
+	cfg          config
+	db           *sql.DB
+	moduleLogger *logger.ModuleLogger
+	entitySrc    *pgEntitySource
+
+	unregisterEntity func()
+}
+
+// NewPostgreSQLProbe is the ProbeConstructor registered in init().
+// It validates configuration but does NOT open a database connection —
+// that is deferred to OnStart so the agent can load-validate config
+// without network access.
+func NewPostgreSQLProbe(params map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.postgresql")
+
+	cfg, err := parseConfig(params)
+	if err != nil {
+		return nil, err
+	}
+
+	p := &pgProbe{
+		BaseProbe:    &types.BaseProbe{},
+		cfg:          cfg,
+		moduleLogger: moduleLogger,
+	}
+	p.SetProbeType(ProbeType)
+	p.entitySrc = newPgEntitySource(cfg, moduleLogger)
+	return p, nil
+}
+
+func (p *pgProbe) ShouldStart() bool          { return true }
+func (p *pgProbe) GetInterval() time.Duration { return p.cfg.Interval }
+
+// OnStart opens the database connection. A failure here marks the probe
+// unhealthy and the framework will not call Collect until OnStart
+// succeeds on a subsequent retry.
+func (p *pgProbe) OnStart(_ chan struct{}) error {
+	dsn := p.buildDSN()
+
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return fmt.Errorf("postgresql: open: %w", err)
+	}
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return fmt.Errorf("postgresql: ping %s:%d: %w", p.cfg.Host, p.cfg.Port, err)
+	}
+
+	p.db = db
+	p.unregisterEntity = entity.RegisterSource(p.entitySrc)
+
+	p.moduleLogger.Info().
+		Str("host", p.cfg.Host).
+		Int("port", p.cfg.Port).
+		Msg("postgresql probe started")
+	return nil
+}
+
+// OnShutdown closes the connection cleanly.
+func (p *pgProbe) OnShutdown(_ context.Context) error {
+	if p.unregisterEntity != nil {
+		p.unregisterEntity()
+	}
+	if p.db != nil {
+		if err := p.db.Close(); err != nil {
+			p.moduleLogger.Warn().Err(err).Msg("postgresql: close connection")
+		}
+		p.db = nil
+	}
+	return nil
+}
+
+// Collect runs one monitoring cycle. senhub.db.up is always emitted (0
+// when the connection is broken); other families are emitted on a
+// best-effort basis (partial failure keeps the up gauge and skips the
+// rest, logged at Warn).
+func (p *pgProbe) Collect() ([]data_store.DataPoint, error) {
+	now := time.Now()
+	instance := p.cfg.Host + ":" + strconv.Itoa(p.cfg.Port)
+
+	baseTags := []tags.Tag{
+		{Key: "metric_type", Value: string(dbcommon.MetricTypeOverview)},
+		{Key: "instance", Value: instance},
+		{Key: "db.system.name", Value: "postgresql"},
+		{Key: "server.address", Value: p.cfg.Host},
+		{Key: "server.port", Value: strconv.Itoa(p.cfg.Port)},
+	}
+
+	// Ping first — if the server is unreachable emit up=0 and return.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := p.db.PingContext(ctx); err != nil {
+		p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("postgresql: ping failed")
+		up := p.dp("senhub.db.up", 0, now, baseTags)
+		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{up}, p.GetName()), nil
+	}
+
+	var points []data_store.DataPoint
+	points = append(points, p.dp("senhub.db.up", 1, now, baseTags))
+
+	// ── Overview ────────────────────────────────────────────────────────────
+	p.collectOverview(ctx, now, baseTags, instance, &points)
+
+	// ── Connections / Backends ───────────────────────────────────────────────
+	p.collectBackends(ctx, now, instance, &points)
+
+	// ── Throughput (commits / rollbacks) ────────────────────────────────────
+	p.collectThroughput(ctx, now, instance, &points)
+
+	// ── Storage (db_size, table count) ──────────────────────────────────────
+	p.collectStorage(ctx, now, instance, &points)
+
+	// ── Locks ───────────────────────────────────────────────────────────────
+	p.collectLocks(ctx, now, instance, &points)
+
+	// ── WAL / Archiver ──────────────────────────────────────────────────────
+	p.collectWAL(ctx, now, instance, &points)
+
+	// ── Replication ─────────────────────────────────────────────────────────
+	p.collectReplication(ctx, now, instance, &points)
+
+	// ── Entity update ───────────────────────────────────────────────────────
+	p.entitySrc.update(instance)
+
+	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
+
+// ── helpers ────────────────────────────────────────────────────────────────
+
+func (p *pgProbe) dp(name string, value float32, ts time.Time, baseTags []tags.Tag) data_store.DataPoint {
+	return data_store.DataPoint{Name: name, Value: value, Timestamp: ts, Tags: baseTags}
+}
+
+func (p *pgProbe) dpWithTags(name string, value float32, ts time.Time, base []tags.Tag, extra ...tags.Tag) data_store.DataPoint {
+	t := make([]tags.Tag, len(base)+len(extra))
+	copy(t, base)
+	copy(t[len(base):], extra)
+	return data_store.DataPoint{Name: name, Value: value, Timestamp: ts, Tags: t}
+}
+
+// tagsFor copies baseTags and overrides metric_type.
+func (p *pgProbe) tagsFor(mt dbcommon.MetricType, instance string) []tags.Tag {
+	return []tags.Tag{
+		{Key: "metric_type", Value: string(mt)},
+		{Key: "instance", Value: instance},
+		{Key: "db.system.name", Value: "postgresql"},
+		{Key: "server.address", Value: p.cfg.Host},
+		{Key: "server.port", Value: strconv.Itoa(p.cfg.Port)},
+	}
+}
+
+// ── collectOverview ────────────────────────────────────────────────────────
+
+func (p *pgProbe) collectOverview(ctx context.Context, now time.Time, baseTags []tags.Tag, instance string, points *[]data_store.DataPoint) {
+	ot := p.tagsFor(dbcommon.MetricTypeOverview, instance)
+
+	// Uptime: now() - pg_postmaster_start_time()
+	var uptimeSec float64
+	if err := p.db.QueryRowContext(ctx,
+		`SELECT EXTRACT(EPOCH FROM (now() - pg_postmaster_start_time()))`,
+	).Scan(&uptimeSec); err == nil {
+		*points = append(*points, p.dp("senhub.db.postgresql.uptime", float32(uptimeSec), now, ot))
+	} else {
+		p.moduleLogger.Warn().Err(err).Str("query", "uptime").Msg("postgresql: query failed")
+	}
+
+	// Version string
+	var version string
+	if err := p.db.QueryRowContext(ctx, `SELECT version()`).Scan(&version); err == nil {
+		versionTags := make([]tags.Tag, len(ot)+1)
+		copy(versionTags, ot)
+		versionTags[len(ot)] = tags.Tag{Key: "version", Value: version}
+		*points = append(*points, p.dp("senhub.db.version.info", 1, now, versionTags))
+		// Detect managed environment from version string
+		env := dbcommon.DetectEnvironment(version)
+		envTags := make([]tags.Tag, len(baseTags)+1)
+		copy(envTags, baseTags)
+		envTags[len(baseTags)] = tags.Tag{Key: "environment", Value: string(env)}
+		p.entitySrc.setEnvironment(env)
+	} else {
+		p.moduleLogger.Warn().Err(err).Str("query", "version").Msg("postgresql: query failed")
+	}
+}
+
+// ── collectBackends ────────────────────────────────────────────────────────
+
+func (p *pgProbe) collectBackends(ctx context.Context, now time.Time, instance string, points *[]data_store.DataPoint) {
+	connTags := p.tagsFor(dbcommon.MetricTypeConnections, instance)
+
+	// Backends per state from pg_stat_activity
+	rows, err := p.db.QueryContext(ctx, `
+		SELECT state, COUNT(*) FROM pg_stat_activity
+		WHERE backend_type = 'client backend'
+		GROUP BY state`)
+	if err != nil {
+		p.moduleLogger.Warn().Err(err).Str("query", "backends").Msg("postgresql: query failed")
+		return
+	}
+	defer rows.Close()
+
+	counts := map[string]float32{}
+	for rows.Next() {
+		var state sql.NullString
+		var cnt float32
+		if err := rows.Scan(&state, &cnt); err == nil {
+			key := "unknown"
+			if state.Valid && state.String != "" {
+				key = state.String
+			}
+			counts[key] += cnt
+		}
+	}
+	_ = rows.Close()
+
+	for _, state := range []string{"active", "idle", "idle in transaction"} {
+		val := counts[state]
+		tagKey := state
+		// Normalise "idle in transaction" → "idle_in_transaction" for tag value.
+		if state == "idle in transaction" {
+			tagKey = "idle_in_transaction"
+		}
+		t := append(append([]tags.Tag{}, connTags...), tags.Tag{Key: "state", Value: tagKey})
+		*points = append(*points, p.dp("postgresql.backends", val, now, t))
+	}
+
+	// max_connections
+	var maxConn float32
+	if err := p.db.QueryRowContext(ctx, `SHOW max_connections`).Scan(&maxConn); err == nil {
+		*points = append(*points, p.dp("postgresql.connection.max", maxConn, now, connTags))
+
+		// Connection utilization ratio
+		total := counts["active"] + counts["idle"] + counts["idle in transaction"]
+		if maxConn > 0 {
+			*points = append(*points, p.dp("senhub.db.connection.utilization", total/maxConn, now, connTags))
+		}
+	}
+}
+
+// ── collectThroughput ──────────────────────────────────────────────────────
+
+func (p *pgProbe) collectThroughput(ctx context.Context, now time.Time, instance string, points *[]data_store.DataPoint) {
+	tpt := p.tagsFor(dbcommon.MetricTypeThroughput, instance)
+
+	var commits, rollbacks, blksHit, blksRead float64
+	err := p.db.QueryRowContext(ctx, `
+		SELECT
+			SUM(xact_commit),
+			SUM(xact_rollback),
+			SUM(blks_hit),
+			SUM(blks_read)
+		FROM pg_stat_database`).Scan(&commits, &rollbacks, &blksHit, &blksRead)
+	if err != nil {
+		p.moduleLogger.Warn().Err(err).Str("query", "throughput").Msg("postgresql: query failed")
+		return
+	}
+
+	*points = append(*points,
+		p.dp("postgresql.commits", float32(commits), now, tpt),
+		p.dp("postgresql.rollbacks", float32(rollbacks), now, tpt),
+	)
+
+	// Buffer hit ratio (cache family)
+	cacheTags := p.tagsFor(dbcommon.MetricTypeCache, instance)
+	total := blksHit + blksRead
+	if total > 0 {
+		*points = append(*points, p.dp("senhub.db.postgresql.buffer.hit_ratio", float32(blksHit/total), now, cacheTags))
+	}
+
+	// Deadlocks (locks family)
+	locksTags := p.tagsFor(dbcommon.MetricTypeLocks, instance)
+	var deadlocks float64
+	if err2 := p.db.QueryRowContext(ctx, `SELECT SUM(deadlocks) FROM pg_stat_database`).Scan(&deadlocks); err2 == nil {
+		*points = append(*points, p.dp("postgresql.deadlocks", float32(deadlocks), now, locksTags))
+	}
+}
+
+// ── collectStorage ─────────────────────────────────────────────────────────
+
+func (p *pgProbe) collectStorage(ctx context.Context, now time.Time, instance string, points *[]data_store.DataPoint) {
+	stTags := p.tagsFor(dbcommon.MetricTypeStorage, instance)
+
+	// Total size of all non-template databases
+	var dbSize float64
+	if err := p.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(pg_database_size(datname)), 0)
+		FROM pg_database
+		WHERE NOT datistemplate`).Scan(&dbSize); err == nil {
+		*points = append(*points, p.dp("postgresql.db_size", float32(dbSize), now, stTags))
+	} else {
+		p.moduleLogger.Warn().Err(err).Str("query", "db_size").Msg("postgresql: query failed")
+	}
+
+	// Table count (user tables in pg_class)
+	var tableCount float64
+	if err := p.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM pg_class WHERE relkind = 'r'`).Scan(&tableCount); err == nil {
+		*points = append(*points, p.dp("postgresql.table.count", float32(tableCount), now, stTags))
+	}
+}
+
+// ── collectLocks ───────────────────────────────────────────────────────────
+
+func (p *pgProbe) collectLocks(ctx context.Context, now time.Time, instance string, points *[]data_store.DataPoint) {
+	locksTags := p.tagsFor(dbcommon.MetricTypeLocks, instance)
+
+	// Locks waiting (not granted)
+	var waiting float64
+	if err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pg_locks WHERE NOT granted`).Scan(&waiting); err == nil {
+		*points = append(*points, p.dp("senhub.db.postgresql.lock.waiting", float32(waiting), now, locksTags))
+	}
+
+	// Oldest active transaction age
+	var longestXact sql.NullFloat64
+	if err := p.db.QueryRowContext(ctx, `
+		SELECT MAX(EXTRACT(EPOCH FROM (now() - xact_start)))
+		FROM pg_stat_activity
+		WHERE state IN ('active', 'idle in transaction')
+		  AND xact_start IS NOT NULL`).Scan(&longestXact); err == nil && longestXact.Valid {
+		*points = append(*points, p.dp("senhub.db.postgresql.long_running_xact", float32(longestXact.Float64), now, locksTags))
+	}
+}
+
+// ── collectWAL ─────────────────────────────────────────────────────────────
+
+func (p *pgProbe) collectWAL(ctx context.Context, now time.Time, instance string, points *[]data_store.DataPoint) {
+	archTags := p.tagsFor(dbcommon.MetricTypeArchiver, instance)
+
+	// Archiver stats (only meaningful when archive_mode is on)
+	var archiveMode string
+	_ = p.db.QueryRowContext(ctx, `SHOW archive_mode`).Scan(&archiveMode)
+
+	var failedCount float64
+	var lastArchivedAge sql.NullFloat64
+
+	err := p.db.QueryRowContext(ctx, `
+		SELECT
+			failed_count,
+			CASE
+				WHEN last_archived_time IS NOT NULL
+					THEN EXTRACT(EPOCH FROM (now() - last_archived_time))
+				ELSE NULL
+			END
+		FROM pg_stat_archiver`).Scan(&failedCount, &lastArchivedAge)
+	if err == nil {
+		*points = append(*points, p.dp("senhub.db.postgresql.archiver.failed", float32(failedCount), now, archTags))
+		if archiveMode != "off" && archiveMode != "" && lastArchivedAge.Valid {
+			*points = append(*points, p.dp("senhub.db.postgresql.archiver.last_archived.age", float32(lastArchivedAge.Float64), now, archTags))
+		}
+	}
+}
+
+// ── collectReplication ─────────────────────────────────────────────────────
+
+func (p *pgProbe) collectReplication(ctx context.Context, now time.Time, instance string, points *[]data_store.DataPoint) {
+	replTags := p.tagsFor(dbcommon.MetricTypeReplication, instance)
+
+	// Detect role: pg_is_in_recovery() → replica; connected replicas → primary
+	var isReplica bool
+	_ = p.db.QueryRowContext(ctx, `SELECT pg_is_in_recovery()`).Scan(&isReplica)
+
+	var role dbcommon.Role
+	var replHealth float32 = 1
+
+	if isReplica {
+		role = dbcommon.RoleReplica
+
+		// Replica WAL lag (replay)
+		var replayLag sql.NullFloat64
+		err := p.db.QueryRowContext(ctx, `
+			SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))`).Scan(&replayLag)
+		if err == nil && replayLag.Valid {
+			lagTags := append(append([]tags.Tag{}, replTags...), tags.Tag{Key: "operation", Value: "replay"})
+			*points = append(*points, p.dp("postgresql.wal.lag", float32(replayLag.Float64), now, lagTags))
+			if replayLag.Float64 > 300 { // >5 min lag → degraded
+				replHealth = 0
+			}
+		}
+
+		// WAL receiver status
+		var walRecvStatus sql.NullString
+		_ = p.db.QueryRowContext(ctx, `SELECT status FROM pg_stat_wal_receiver LIMIT 1`).Scan(&walRecvStatus)
+		ioRunning := float32(0)
+		if walRecvStatus.Valid && walRecvStatus.String == "streaming" {
+			ioRunning = 1
+		} else {
+			replHealth = 0
+		}
+		*points = append(*points, p.dp("senhub.db.postgresql.replica.io.running", ioRunning, now, replTags))
+
+	} else {
+		// Count connected replicas
+		var replicaCount float64
+		if err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pg_stat_replication`).Scan(&replicaCount); err == nil {
+			if replicaCount > 0 {
+				role = dbcommon.RolePrimary
+			}
+			*points = append(*points, p.dp("senhub.db.replication.replicas.connected", float32(replicaCount), now, replTags))
+		}
+	}
+
+	// Role metric (numeric + tag for PRTG lookup)
+	roleTags := append(append([]tags.Tag{}, replTags...), tags.Tag{Key: "role", Value: role.String()})
+	*points = append(*points,
+		p.dp("senhub.db.replication.role", role.RoleValue(), now, roleTags),
+		p.dp("senhub.db.replication.health", replHealth, now, roleTags),
+	)
+
+	p.entitySrc.setRole(role)
+}
+
+// ── buildDSN ───────────────────────────────────────────────────────────────
+
+func (p *pgProbe) buildDSN() string {
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=%s",
+		p.cfg.Host, p.cfg.Port, p.cfg.Username, p.cfg.Password, p.tlsMode())
+	if len(p.cfg.Databases) > 0 {
+		dsn += " dbname=" + p.cfg.Databases[0]
+	} else {
+		dsn += " dbname=postgres"
+	}
+	return dsn
+}
+
+func (p *pgProbe) tlsMode() string {
+	if p.cfg.TLSConfig == nil {
+		return "disable"
+	}
+	if p.cfg.TLSConfig.InsecureSkipVerify {
+		return "require"
+	}
+	return "verify-full"
+}
+
+// pgTLSConfig holds operator TLS overrides; nil means "no TLS".
+type pgTLSConfig struct {
+	InsecureSkipVerify bool
+	CACert             string
+}

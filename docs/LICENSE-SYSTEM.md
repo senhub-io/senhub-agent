@@ -58,6 +58,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **tcp_dial** - Raw TCP connect latency to host:port targets (VIPs, brokers, AD, fileservers)
 - **dns_latency** - DNS resolution latency per name, optionally per explicit resolver
 - **snmp_poll** - Generic SNMP polling. The deliberate exception to "remote = paid": it is the open-core wedge to replace PRTG's free SNMP polling. Deep vendor-specific SNMP (device profiles, discovery, vendor MIBs) remains paid.
+- **postgresql** - PostgreSQL server monitoring (OTel-first, postgresql.* semconv aligned with otelcol-contrib postgresqlreceiver). FREE open-core database probe — the universal RDBMS wedge alongside snmp_poll.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
@@ -67,7 +68,6 @@ Specific probes authorized by entries in the customer JWT `authorized_probes` ar
 - **netscaler** - Citrix NetScaler ADC monitoring (load balancers, SSL, HA)
 - **veeam** - Veeam Backup & Replication monitoring
 - **mysql** - MySQL server monitoring (OTel-first, mysql.* semconv)
-- **postgresql** - PostgreSQL server monitoring (OTel-first, postgresql.* semconv)
 - **ibmi** - IBM i / Power Systems monitoring (JT400 JDBC bridge, senhub.ibmi.* semconv) — **Linux-only** agent runtime
 - **event** - Custom HTTP event ingestion
 - **ping_gateway** - Gateway connectivity monitoring
@@ -213,7 +213,7 @@ The agent runs standalone (offline-only). There is no SenHub platform connection
 - No internet required after deployment
 
 **Behavior:**
-- No license → **Free tier** (cpu, memory, logicaldisk, network only)
+- No license → **Free tier** (host-local probes + snmp_poll/snmp_trap/icmp_check/http_check/tcp_dial/dns_latency/otlp_receiver/prometheus_scrape/exec/syslog/postgresql and log shippers)
 - Valid license → Tier specified in JWT (Free, Pro, Enterprise)
 
 **Configuration:**
