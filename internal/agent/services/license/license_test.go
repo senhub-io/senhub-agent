@@ -89,6 +89,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"rabbitmq":          false,
 		"nats":              false,
 		"pulsar":            false,
+		"consul":            false,
 	}
 
 	for _, probe := range probes {

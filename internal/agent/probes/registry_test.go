@@ -238,6 +238,7 @@ func TestProbeRegistry(t *testing.T) {
 		"rabbitmq",
 		"nats",
 		"pulsar",
+		"consul",
 	}
 
 	for _, probeName := range expectedProbes {

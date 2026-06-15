@@ -269,6 +269,11 @@ var freeTierProbes = map[string]bool{
 	// tier alongside SNMP and Prometheus scrape: it is universal collection,
 	// not a vendor-specific paid integration.
 	"pulsar": true,
+	// consul: service-mesh health and cluster metrics. Service discovery
+	// is universal infrastructure (like SNMP), not a vendor-specific
+	// deep integration — the free tier covers agent health, catalog
+	// service count, raft, RPC/DNS counters and health-check states.
+	"consul": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
