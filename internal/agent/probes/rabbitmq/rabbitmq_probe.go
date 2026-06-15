@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -37,11 +38,12 @@ type rabbitProbe struct {
 }
 
 type rabbitConfig struct {
-	Endpoint string
-	Username string
-	Password string
-	Interval time.Duration
-	Timeout  time.Duration
+	Endpoint     string
+	Username     string
+	Password     string
+	InstanceName string
+	Interval     time.Duration
+	Timeout      time.Duration
 }
 
 const (
@@ -79,6 +81,9 @@ func NewRabbitMQProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 	if v, ok := config["timeout"].(int); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
 
 	probe := &rabbitProbe{
 		BaseProbe:    &types.BaseProbe{},
@@ -88,9 +93,23 @@ func NewRabbitMQProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 	}
 	probe.SetProbeType(ProbeType)
 
-	probe.entitySrc = newRabbitmqEntitySource(endpointHost(cfg.Endpoint), endpointPort(cfg.Endpoint))
+	probe.entitySrc = newRabbitmqEntitySource(
+		cfg.InstanceName,
+		endpointHost(cfg.Endpoint),
+		endpointPort(cfg.Endpoint),
+		defaultHostIDFn,
+	)
 
 	return probe, nil
+}
+
+// defaultHostIDFn is the production host-id provider for the fallback id.
+func defaultHostIDFn() string {
+	hi, err := common.GetHostIdentity()
+	if err != nil {
+		return ""
+	}
+	return hi.ID
 }
 
 // endpointHost extracts the hostname from the management API endpoint URL.
@@ -149,14 +168,20 @@ func (p *rabbitProbe) OnShutdown(_ context.Context) error {
 // Collect fetches /api/overview, /api/nodes, and /api/queues.
 // On any HTTP or parse error the probe emits up=0 and returns nil
 // (a reachability failure is a measurement, not a collection error).
+//
+// Entity identity: on first successful contact the broker's Erlang node name
+// (from /api/overview "node" field) is pinned as the service.instance.id.
+// Before the id is pinned the entity rail returns ok=false (no entity emitted).
 func (p *rabbitProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	var points []data_store.DataPoint
 
-	overviewPoints, reachable := p.collectOverview(now)
+	overviewPoints, nodeName, reachable := p.collectOverview(now)
 	points = append(points, overviewPoints...)
 
 	if reachable {
+		// Pin the tech id on first successful collect.
+		p.entitySrc.tryPinTechID(nodeName)
 		p.entitySrc.setReachable(true, "")
 		points = append(points, p.collectNodes(now)...)
 		points = append(points, p.collectQueues(now)...)
@@ -171,6 +196,9 @@ func (p *rabbitProbe) Collect() ([]data_store.DataPoint, error) {
 
 // overviewResponse is a partial mapping of GET /api/overview.
 type overviewResponse struct {
+	// Node is the Erlang node name of the RabbitMQ broker (e.g. "rabbit@myhost").
+	// It is the stable, persistent identity source for this probe (D1 option A).
+	Node         string `json:"node"`
 	MessageStats struct {
 		Publish    *int64 `json:"publish"`
 		DeliverGet *int64 `json:"deliver_get"`
@@ -188,7 +216,9 @@ type overviewResponse struct {
 	} `json:"object_totals"`
 }
 
-func (p *rabbitProbe) collectOverview(now time.Time) ([]data_store.DataPoint, bool) {
+// collectOverview fetches /api/overview and returns the datapoints, the
+// broker node name (for entity identity), and whether the broker was reachable.
+func (p *rabbitProbe) collectOverview(now time.Time) ([]data_store.DataPoint, string, bool) {
 	baseTags := []tags.Tag{
 		{Key: "metric_type", Value: "overview"},
 	}
@@ -199,7 +229,7 @@ func (p *rabbitProbe) collectOverview(now time.Time) ([]data_store.DataPoint, bo
 		p.moduleLogger.Warn().Err(err).Msg("rabbitmq overview fetch failed")
 		return []data_store.DataPoint{
 			{Name: "senhub.rabbitmq.up", Value: 0, Timestamp: now, Tags: baseTags},
-		}, false
+		}, "", false
 	}
 
 	pts := []data_store.DataPoint{
@@ -234,7 +264,7 @@ func (p *rabbitProbe) collectOverview(now time.Time) ([]data_store.DataPoint, bo
 		pts = append(pts, dp("rabbitmq.channels.total", float32(*v), now, baseTags))
 	}
 
-	return pts, true
+	return pts, overview.Node, true
 }
 
 // ── Nodes ───────────────────────────────────────────────────────────────────
