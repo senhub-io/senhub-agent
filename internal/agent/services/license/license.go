@@ -263,6 +263,11 @@ var freeTierProbes = map[string]bool{
 	// /routez, /jsz). No external deps. Part of the open-core collection
 	// wedge alongside prometheus_scrape and otlp_receiver.
 	"nats": true,
+	// pulsar: broker-level health monitoring via the Pulsar Admin REST
+	// API. Generic message-bus observability belongs in the free open-core
+	// tier alongside SNMP and Prometheus scrape: it is universal collection,
+	// not a vendor-specific paid integration.
+	"pulsar": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
