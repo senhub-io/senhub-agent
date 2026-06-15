@@ -146,6 +146,18 @@ When adding a probe, register it in the **five** places below in the **same PR**
    derived** (`server.address`/`server.port` are mutable — DHCP/failover/VIP —
    and stay descriptive). Frozen with the Toise owner (decisions D1/D2, 2026-06):
 
+   **`db` vs `service.instance` boundary rule** (so you never have to re-ask per
+   technology): if OTel semconv assigns it a `db.system.name` — it is a
+   database/datastore you query as such (Elasticsearch, OpenSearch, Solr, Redis,
+   MongoDB, Cassandra, CouchDB, InfluxDB, ClickHouse, Memcached, MySQL,
+   PostgreSQL) — then `entity.type = db`. Otherwise it is a `service.instance`
+   (messaging brokers carry `messaging.system`, not `db.system` → Kafka, RabbitMQ,
+   NATS, Pulsar, ActiveMQ are service.instance; so are proxies/app servers/
+   coordination/CI: Nginx, Apache, HAProxy, Envoy, Tomcat, WildFly, Jenkins,
+   Consul, ZooKeeper, Ceph, …). A search engine is a `db` even though its stable
+   id is a node UUID — the id source (auto-reported persistent id) is the same in
+   both worlds; only the type differs.
+
    | Probe family | `entity.type` | Subtype (descriptive attr) | Identity `{...}` |
    |---|---|---|---|
    | Databases — Redis/Valkey, MongoDB, Cassandra, CouchDB, InfluxDB, ClickHouse, Memcached, MySQL, PostgreSQL | `db` | `db.system.name` (`redis`/`mongodb`/…) | `{db.instance.id}` — stable source id (MySQL `server_uuid`, PG `system_identifier`, else operator logical name, else `host:port` documented fallback) |
