@@ -77,21 +77,21 @@ func TestBuildDataPoints_Up(t *testing.T) {
 	vp := probe.(*VarnishProbe)
 
 	stats := map[string]varnishStat{
-		"MAIN.cache_hit":       {Value: 100},
-		"MAIN.cache_miss":      {Value: 20},
-		"MAIN.cache_hitpass":   {Value: 5},
-		"MAIN.client_req":      {Value: 125},
-		"MAIN.backend_conn":    {Value: 50},
-		"MAIN.backend_fail":    {Value: 2},
-		"MAIN.backend_reuse":   {Value: 48},
-		"MAIN.threads_created": {Value: 10},
+		"MAIN.cache_hit":         {Value: 100},
+		"MAIN.cache_miss":        {Value: 20},
+		"MAIN.cache_hitpass":     {Value: 5},
+		"MAIN.client_req":        {Value: 125},
+		"MAIN.backend_conn":      {Value: 50},
+		"MAIN.backend_fail":      {Value: 2},
+		"MAIN.backend_reuse":     {Value: 48},
+		"MAIN.threads_created":   {Value: 10},
 		"MAIN.threads_destroyed": {Value: 3},
-		"MAIN.threads_failed":  {Value: 0},
-		"MAIN.sess_conn":       {Value: 200},
-		"MAIN.sess_drop":       {Value: 1},
-		"MAIN.n_object":        {Value: 42},
-		"SMA.s0.g_bytes":       {Value: 1048576},
-		"SMA.transient.g_bytes": {Value: 524288},
+		"MAIN.threads_failed":    {Value: 0},
+		"MAIN.sess_conn":         {Value: 200},
+		"MAIN.sess_drop":         {Value: 1},
+		"MAIN.n_object":          {Value: 42},
+		"SMA.s0.g_bytes":         {Value: 1048576},
+		"SMA.transient.g_bytes":  {Value: 524288},
 	}
 
 	points := vp.buildDataPoints(stats, time.Now())
@@ -106,12 +106,12 @@ func TestBuildDataPoints_Up(t *testing.T) {
 		wantCount int
 	}{
 		{"senhub.varnish.up", 1},
-		{"varnish.cache.operations", 3},        // hit / miss / hitpass
+		{"varnish.cache.operations", 3}, // hit / miss / hitpass
 		{"varnish.client.requests.received", 1},
 		{"varnish.backend.connections.success", 1},
 		{"varnish.backend.connections.fail", 1},
 		{"varnish.backend.connections.reused", 1},
-		{"varnish.thread.operations", 3},        // created / destroyed / failed
+		{"varnish.thread.operations", 3}, // created / destroyed / failed
 		{"varnish.session.connections", 1},
 		{"varnish.session.dropped", 1},
 		{"varnish.objects.stored", 1},
