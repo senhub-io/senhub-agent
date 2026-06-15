@@ -65,6 +65,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"snmp_trap",
 		"solr",
 		"syslog",
+		"systemd",
 		"tcp_dial",
 		"varnish",
 		"unifi",

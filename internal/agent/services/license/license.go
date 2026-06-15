@@ -388,6 +388,9 @@ var freeTierProbes = map[string]bool{
 	// monitors services on the machine the agent runs on, the SCM
 	// counterpart of the linux_logs / windows_eventlog host-local tier.
 	"winservices": true,
+	// systemd: host-local unit supervision — watches the init system of
+	// the machine the agent runs on, not a remote service.
+	"systemd": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

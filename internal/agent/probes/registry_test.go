@@ -263,6 +263,7 @@ func TestProbeRegistry(t *testing.T) {
 		"process",
 		"unifi",
 		"winservices",
+		"systemd",
 	}
 
 	for _, probeName := range expectedProbes {
