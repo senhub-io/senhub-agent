@@ -123,6 +123,7 @@ func NewClickHouseProbe(config map[string]interface{}, baseLogger *logger.Logger
 	}
 	probe.SetProbeType(ProbeType)
 	probe.entitySrc = newClickhouseEntitySource(cfg.InstanceName, cfg.Endpoint)
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 

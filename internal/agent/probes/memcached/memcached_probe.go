@@ -79,6 +79,7 @@ func NewMemcachedProbe(config map[string]interface{}, baseLogger *logger.Logger)
 		entitySrc:    newMemcachedEntitySource(cfg.Host, cfg.Port, cfg.InstanceName),
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 

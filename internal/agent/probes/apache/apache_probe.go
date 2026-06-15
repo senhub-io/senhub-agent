@@ -103,6 +103,7 @@ func NewApacheProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		entitySrc: newApacheEntitySource(cfg.InstanceName, hostID, addr, port),
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 

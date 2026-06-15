@@ -109,6 +109,7 @@ func NewEnvoyProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 	portInt, _ := strconv.ParseInt(portStr, 10, 64)
 	p.entitySrc = newEnvoyEntitySource(cfg.InstanceName, cfg.Endpoint, addr, portInt, client, nil)
 
+	p.SetEntitySource(p.entitySrc)
 	return p, nil
 }
 

@@ -135,6 +135,7 @@ func NewZookeeperProbe(config map[string]interface{}, baseLogger *logger.Logger)
 	if cfg.InstanceName != "" {
 		p.entityObs.pin(cfg.InstanceName)
 	}
+	p.SetEntitySource(&p.entityObs)
 
 	return p, nil
 }

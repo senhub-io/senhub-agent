@@ -118,6 +118,7 @@ func NewHypervProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		entitySource: newHypervEntitySource(hostID, moduleLogger),
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySource)
 	return probe, nil
 }
 

@@ -106,6 +106,7 @@ func NewOpenSearchProbe(config map[string]interface{}, baseLogger *logger.Logger
 		}
 	}
 
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 

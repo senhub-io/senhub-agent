@@ -117,6 +117,7 @@ func NewKafkaProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 
 	p.entitySrc = newKafkaEntitySource(primaryBroker, cfg.InstanceName, fetcher, nil)
 
+	p.SetEntitySource(p.entitySrc)
 	return p, nil
 }
 

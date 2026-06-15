@@ -96,6 +96,7 @@ func NewcassandraProbe(config map[string]interface{}, baseLogger *logger.Logger)
 		},
 	}
 	p.SetProbeType(ProbeType)
+	p.SetEntitySource(p.entitySrc)
 	return p, nil
 }
 

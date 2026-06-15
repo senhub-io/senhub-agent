@@ -95,6 +95,7 @@ func NewSolrProbe(config map[string]interface{}, baseLogger *logger.Logger) (typ
 		entitySrc:    newSolrEntitySource(cfg.Endpoint, cfg.InstanceName, httpClient),
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 

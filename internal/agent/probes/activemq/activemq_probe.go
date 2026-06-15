@@ -143,6 +143,7 @@ func NewActivemqProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		entitySrc: newActivemqEntitySource(cfg.InstanceName, addr, port, hostID),
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 
