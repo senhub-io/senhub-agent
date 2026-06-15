@@ -236,6 +236,7 @@ func TestProbeRegistry(t *testing.T) {
 		"kafka",
 		"rabbitmq",
 		"nats",
+		"pulsar",
 	}
 
 	for _, probeName := range expectedProbes {
@@ -255,7 +256,8 @@ func TestProbeRegistry(t *testing.T) {
 		t.Error("Probe registry should not be empty")
 	}
 
-	// Verify expected count
+	// Verify expected count — keep in sync with the blank imports in
+	// registry_invariant_test.go and app/probes_register.go.
 	expectedCount := len(expectedProbes)
 	actualCount := len(probeConstructors)
 	if actualCount != expectedCount {

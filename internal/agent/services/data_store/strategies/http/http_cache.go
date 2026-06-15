@@ -111,6 +111,8 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// Application / middleware probes
 	"wildfly": {"datasource"}, // Per-datasource JDBC pool metrics (wildfly.datasource.connections.*)
+	// Observability / messaging probes — one series per broker endpoint
+	"pulsar": {"endpoint"}, // Apache Pulsar: one broker per endpoint URL
 
 	// SNMP polling — one series per (target, interface row); metric_type
 	// separates interface / system / status families.
