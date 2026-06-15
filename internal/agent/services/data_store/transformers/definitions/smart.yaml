@@ -1,0 +1,200 @@
+probe_name: "smart"
+friendly_name: "S.M.A.R.T. Disk Health"
+version: "1.0.0"
+host_level: true
+multi_instance_labels: ["smart.device"]
+
+# Free S.M.A.R.T. probe: host-local disk health via smartctl (smartmontools).
+# smartctl is an external prerequisite; the probe calls it with --json output.
+# Covers SATA/SAS drives (ata_smart_attributes) and NVMe drives
+# (nvme_smart_health_information_log). Each drive emits its own series via the
+# smart.device tag. smart.type distinguishes sata from nvme.
+
+metrics:
+  # ── Shared (SATA/SAS + NVMe) ──────────────────────────────────────────────
+
+  - name: "smart.disk.health"
+    channel: "health_{smart.device}"
+    display_name: "S.M.A.R.T. Health {smart.device}"
+    unit: "#"
+    category: "health"
+    description: "1 when the S.M.A.R.T. overall assessment PASSED, 0 when FAILED"
+    otel:
+      name: smart.disk.health
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      smart.device: smart.disk.device
+      smart.type: smart.disk.type
+
+  # ── SATA/SAS ──────────────────────────────────────────────────────────────
+
+  - name: "smart.disk.reallocated_sectors"
+    channel: "reallocated_sectors_{smart.device}"
+    display_name: "Reallocated Sectors {smart.device}"
+    unit: "#"
+    category: "health"
+    description: "Count of sectors remapped to spare area (attribute 5); >0 signals media degradation"
+    otel:
+      name: smart.disk.reallocated_sectors
+      unit: "{sector}"
+      type: gauge
+    tag_to_attribute:
+      smart.device: smart.disk.device
+      smart.type: smart.disk.type
+
+  - name: "smart.disk.pending_sectors"
+    channel: "pending_sectors_{smart.device}"
+    display_name: "Pending Sectors {smart.device}"
+    unit: "#"
+    category: "health"
+    description: "Sectors waiting to be remapped (attribute 197); >0 indicates unstable sectors"
+    otel:
+      name: smart.disk.pending_sectors
+      unit: "{sector}"
+      type: gauge
+    tag_to_attribute:
+      smart.device: smart.disk.device
+      smart.type: smart.disk.type
+
+  - name: "smart.disk.uncorrectable_errors"
+    channel: "uncorrectable_errors_{smart.device}"
+    display_name: "Uncorrectable Errors {smart.device}"
+    unit: "#"
+    category: "health"
+    description: "Offline uncorrectable sectors (attribute 198); persistent read failures"
+    otel:
+      name: smart.disk.uncorrectable_errors
+      unit: "{error}"
+      type: gauge
+    tag_to_attribute:
+      smart.device: smart.disk.device
+      smart.type: smart.disk.type
+
+  - name: "smart.disk.power_on_hours"
+    channel: "power_on_hours_{smart.device}"
+    display_name: "Power-On Hours {smart.device}"
+    unit: "h"
+    category: "usage"
+    description: "Total drive power-on time (attribute 9)"
+    otel:
+      name: smart.disk.power_on_hours
+      unit: "h"
+      type: counter
+    tag_to_attribute:
+      smart.device: smart.disk.device
+      smart.type: smart.disk.type
+
+  - name: "smart.disk.temperature"
+    channel: "temperature_{smart.device}"
+    display_name: "Temperature {smart.device}"
+    unit: "°C"
+    category: "health"
+    description: "Drive temperature in degrees Celsius (attribute 194 or NVMe temperature log)"
+    otel:
+      name: smart.disk.temperature
+      unit: "Cel"
+      type: gauge
+    tag_to_attribute:
+      smart.device: smart.disk.device
+      smart.type: smart.disk.type
+
+  - name: "smart.disk.read_error_rate"
+    channel: "read_error_rate_{smart.device}"
+    display_name: "Read Error Rate {smart.device}"
+    unit: "#"
+    category: "health"
+    description: "Raw read error rate (attribute 1); high values indicate head or platter issues"
+    otel:
+      name: smart.disk.read_error_rate
+      unit: "{error}"
+      type: gauge
+    tag_to_attribute:
+      smart.device: smart.disk.device
+      smart.type: smart.disk.type
+
+  # ── NVMe ──────────────────────────────────────────────────────────────────
+
+  - name: "smart.nvme.available_spare"
+    channel: "nvme_available_spare_{smart.device}"
+    display_name: "NVMe Available Spare {smart.device}"
+    unit: "%"
+    category: "health"
+    description: "Percentage of spare capacity remaining (ratio 0-1 on the wire; <threshold triggers warning)"
+    otel:
+      name: smart.nvme.available_spare
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      smart.device: smart.disk.device
+      smart.type: smart.disk.type
+
+  - name: "smart.nvme.percentage_used"
+    channel: "nvme_percentage_used_{smart.device}"
+    display_name: "NVMe Wear Level {smart.device}"
+    unit: "%"
+    category: "health"
+    description: "Wear indicator: fraction of rated lifetime consumed (ratio 0-1 on the wire)"
+    otel:
+      name: smart.nvme.percentage_used
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      smart.device: smart.disk.device
+      smart.type: smart.disk.type
+
+  - name: "smart.nvme.data_units_read"
+    channel: "nvme_data_units_read_{smart.device}"
+    display_name: "NVMe Data Units Read {smart.device}"
+    unit: "#"
+    category: "throughput"
+    description: "Total number of 512-byte data units read (one unit = 1000 × 512 B on most controllers)"
+    otel:
+      name: smart.nvme.data_units_read
+      unit: "{unit}"
+      type: counter
+    tag_to_attribute:
+      smart.device: smart.disk.device
+      smart.type: smart.disk.type
+
+  - name: "smart.nvme.data_units_written"
+    channel: "nvme_data_units_written_{smart.device}"
+    display_name: "NVMe Data Units Written {smart.device}"
+    unit: "#"
+    category: "throughput"
+    description: "Total number of 512-byte data units written"
+    otel:
+      name: smart.nvme.data_units_written
+      unit: "{unit}"
+      type: counter
+    tag_to_attribute:
+      smart.device: smart.disk.device
+      smart.type: smart.disk.type
+
+  - name: "smart.nvme.media_errors"
+    channel: "nvme_media_errors_{smart.device}"
+    display_name: "NVMe Media Errors {smart.device}"
+    unit: "#"
+    category: "health"
+    description: "Cumulative media and data integrity errors"
+    otel:
+      name: smart.nvme.media_errors
+      unit: "{error}"
+      type: counter
+    tag_to_attribute:
+      smart.device: smart.disk.device
+      smart.type: smart.disk.type
+
+  - name: "smart.nvme.temperature"
+    channel: "nvme_temperature_{smart.device}"
+    display_name: "NVMe Temperature {smart.device}"
+    unit: "°C"
+    category: "health"
+    description: "NVMe controller/composite temperature in degrees Celsius"
+    otel:
+      name: smart.nvme.temperature
+      unit: "Cel"
+      type: gauge
+    tag_to_attribute:
+      smart.device: smart.disk.device
+      smart.type: smart.disk.type
