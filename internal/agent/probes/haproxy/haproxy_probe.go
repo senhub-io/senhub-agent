@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -67,11 +68,12 @@ type haproxyProbe struct {
 }
 
 type haproxyConfig struct {
-	Endpoint string
-	Username string
-	Password string
-	Interval time.Duration
-	Timeout  time.Duration
+	Endpoint     string
+	Username     string
+	Password     string
+	InstanceName string
+	Interval     time.Duration
+	Timeout      time.Duration
 }
 
 const (
@@ -106,6 +108,16 @@ func NewHAProxyProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 	if v, ok := config["timeout"].(int); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
+
+	// Resolve the stable host id once at construction. On error we pass ""
+	// and the entity source falls back to the bare "haproxy" last-resort id.
+	hostID := ""
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+	}
 
 	probe := &haproxyProbe{
 		BaseProbe:    &types.BaseProbe{},
@@ -118,7 +130,7 @@ func NewHAProxyProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 	probe.SetProbeType(ProbeType)
 
 	addr, port := endpointHostPort(cfg.Endpoint)
-	probe.entitySrc = newHAProxyEntitySource(addr, port)
+	probe.entitySrc = newHAProxyEntitySource(addr, port, cfg.InstanceName, hostID)
 
 	return probe, nil
 }

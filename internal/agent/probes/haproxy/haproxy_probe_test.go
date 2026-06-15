@@ -202,7 +202,7 @@ func makeTestProbe(endpoint string) *haproxyProbe {
 		},
 		moduleLogger: moduleLogger,
 		client:       &http.Client{Timeout: 2 * time.Second},
-		entitySrc:    newHAProxyEntitySource(addr, port),
+		entitySrc:    newHAProxyEntitySource(addr, port, "", "test-host-id"),
 	}
 	p.SetProbeType(ProbeType)
 	return p
