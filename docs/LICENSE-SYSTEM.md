@@ -74,6 +74,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **envoy** - Envoy proxy monitoring: scrapes the local admin interface (/stats?format=prometheus) for server health, listener connections, and per-cluster upstream metrics. Same posture as prometheus_scrape — universal collection of an open-source standard, not a paid vendor integration.
 - **ceph** - Ceph cluster monitoring via the REST Management API v1 (health, OSD counts, monitor quorum, per-pool stats). Open-source storage; same universal-collection rationale as snmp_poll and prometheus_scrape.
 - **jenkins** - Jenkins CI controller health over its open HTTP REST API (stdlib, no vendor SDK): job status counts, per-job last-build duration/number, node/executor counts and build-queue depth — universal collection over a standard API, same wedge as the other free active checks
+- **mysql** - MySQL / MariaDB server monitoring (OTel-first, mysql.* semconv, metric parity with otelcol-contrib mysqlreceiver). The standard open-core database wedge: PRTG/Nagios estates that already monitor MySQL get a drop-in replacement at zero cost.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
@@ -82,7 +83,6 @@ Specific probes authorized by entries in the customer JWT `authorized_probes` ar
 - **citrix** - Citrix Virtual Apps and Desktops monitoring
 - **netscaler** - Citrix NetScaler ADC monitoring (load balancers, SSL, HA)
 - **veeam** - Veeam Backup & Replication monitoring
-- **mysql** - MySQL server monitoring (OTel-first, mysql.* semconv)
 - **postgresql** - PostgreSQL server monitoring (OTel-first, postgresql.* semconv)
 - **ibmi** - IBM i / Power Systems monitoring (JT400 JDBC bridge, senhub.ibmi.* semconv) — **Linux-only** agent runtime
 - **event** - Custom HTTP event ingestion

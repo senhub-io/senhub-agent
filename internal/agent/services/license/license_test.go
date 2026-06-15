@@ -39,6 +39,7 @@ func TestFreeTierProbes(t *testing.T) {
 		{"Event probe is NOT free tier", "event", false},
 		{"NATS probe is free tier", "nats", true},
 		{"ZooKeeper probe is free tier", "zookeeper", true},
+		{"MySQL probe IS free tier", "mysql", true},
 	}
 
 	for _, tt := range tests {
@@ -97,6 +98,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"zookeeper":         false,
 		"envoy":             false,
 		"jenkins":           false,
+		"mysql":             false,
 	}
 
 	for _, probe := range probes {
