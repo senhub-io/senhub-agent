@@ -38,6 +38,7 @@ func TestFreeTierProbes(t *testing.T) {
 		{"Jenkins probe IS free tier", "jenkins", true},
 		{"CouchDB probe is free tier", "couchdb", true},
 		{"ClickHouse probe is free tier", "clickhouse", true},
+		{"HyperV probe is free tier", "hyperv", true},
 		{"Event probe is NOT free tier", "event", false},
 		{"NATS probe is free tier", "nats", true},
 		{"ZooKeeper probe is free tier", "zookeeper", true},
@@ -111,6 +112,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"solr":              false,
 		"influxdb":          false,
 		"memcached":         false,
+		"hyperv":            false,
 	}
 
 	for _, probe := range probes {

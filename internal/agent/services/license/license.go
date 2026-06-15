@@ -340,6 +340,11 @@ var freeTierProbes = map[string]bool{
 	// protocol is universal infrastructure observability, not a paid vendor
 	// integration — same wedge reasoning as http_check or tcp_dial.
 	"memcached": true,
+	// hyperv: host-local virtualization observability on Windows Server;
+	// the Hyper-V WMI namespace reports the VMs that share the same
+	// physical host as the agent, analogous to how cpu/memory/network
+	// report host-local resources.
+	"hyperv": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
