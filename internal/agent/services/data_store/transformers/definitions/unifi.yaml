@@ -2,7 +2,7 @@ probe_name: "unifi"
 friendly_name: "UniFi Controller"
 version: "1.0.0"
 host_level: false
-multi_instance_labels: ["device_type", "device_name"]
+multi_instance_labels: ["device_type", "device_name", "direction"]
 
 # Free probe — Ubiquiti UniFi Controller via its REST API (stdlib HTTP,
 # cookie session auth). One controller per probe instance; device-level
@@ -97,30 +97,19 @@ metrics:
     tag_to_attribute:
       site: unifi.site
 
-  - name: "unifi.network.tx_bytes"
-    channel: "unifi_network_tx_bytes"
-    display_name: "UniFi WAN Tx Bytes"
+  - name: "unifi.network.io"
+    channel: "unifi_network_io_{direction}"
+    display_name: "UniFi WAN IO {direction}"
     unit: "bytes"
+    multi_instance_labels: ["direction"]
     category: "network"
-    description: "WAN transmit byte rate reported by the controller (cumulative)"
+    description: "WAN byte rate reported by the controller, discriminated by direction (transmit/receive)"
     otel:
-      name: unifi.network.tx_bytes
+      name: unifi.network.io
       unit: By
       type: counter
     tag_to_attribute:
-      site: unifi.site
-
-  - name: "unifi.network.rx_bytes"
-    channel: "unifi_network_rx_bytes"
-    display_name: "UniFi WAN Rx Bytes"
-    unit: "bytes"
-    category: "network"
-    description: "WAN receive byte rate reported by the controller (cumulative)"
-    otel:
-      name: unifi.network.rx_bytes
-      unit: By
-      type: counter
-    tag_to_attribute:
+      direction: network.io.direction
       site: unifi.site
 
   - name: "unifi.device.cpu"
