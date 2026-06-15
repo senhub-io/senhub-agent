@@ -17,6 +17,7 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes"
+	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/agent/services/logger"
 
@@ -158,6 +159,41 @@ func TestEveryRegisteredProbeHasEntitySource(t *testing.T) {
 
 	log := logger.NewLogger(&cliArgs.ParsedArgs{})
 
+	// Probes that legitimately return the NoOpEntitySource: they describe no
+	// distinct REMOTE entity, so the host the agent runs on (emitted by the
+	// entity foundation) already covers them. Anything NOT here is a remote-
+	// target probe and, when it is constructable on a bare config, MUST expose
+	// a real (non-NoOp) source — a NoOp there is the #471 "false confidence"
+	// failure mode (a probe that monitors a Kafka/DB/device but registers no
+	// node). Keep this list in sync with the host-local/conduit/hardware
+	// classification in .claude/rules/probes.md.
+	hostLocalOrConduit := map[string]bool{
+		// host self-observability
+		"cpu": true, "memory": true, "network": true, "logicaldisk": true,
+		"wifi_signal_strength": true,
+		// log conduits
+		"linux_logs": true, "syslog": true, "filetail": true,
+		"windows_eventlog": true, "event": true,
+		// host hardware = host facet, not an entity (D2 / #456)
+		"smart": true, "ipmi": true, "nvidia": true,
+		// command/receiver/synthetic-check probes — no owned remote entity
+		"exec": true, "otlp_receiver": true, "snmp_trap": true,
+		"prometheus_scrape": true,
+		"http_check":        true, "icmp_check": true, "tcp_dial": true, "dns_latency": true,
+		// host-scoped inventory probes: they describe the local host's units/
+		// services/processes/clock, not a distinct remote entity (process emits
+		// process entities only in opt-in inventory mode, NoOp on a bare config).
+		"chrony": true, "process": true, "systemd": true, "winservices": true,
+		// kubernetes monitors a remote cluster but does not yet emit a
+		// service.instance for it — allowlisted until it does (tracked in #482).
+		"kubernetes": true,
+		// hyperv is //go:build windows; on the non-windows test host its
+		// constructor is the no-op stub (NoOpEntitySource). Its real
+		// compute.vm source lives in probe_windows.go and is exercised on the
+		// Windows CI runner, not here.
+		"hyperv": true,
+	}
+
 	for name := range registered {
 		name := name
 		t.Run(name, func(t *testing.T) {
@@ -167,16 +203,26 @@ func TestEveryRegisteredProbeHasEntitySource(t *testing.T) {
 			}
 			probe, err := ctor(map[string]interface{}{"interval": 30}, log)
 			if err != nil {
-				// Construction error is acceptable (missing required config like host/url).
-				// The entity source check is best-effort for probes requiring real config.
+				// LIMITATION: most remote-target probes require real config
+				// (host/endpoint/credentials) to construct, so we cannot inspect
+				// their EntitySource() here. Per-probe valid-config fixtures that
+				// would lift this skip are tracked in #482.
 				t.Skipf("probe %q requires real config to construct: %v", name, err)
 				return
 			}
-			if probe.EntitySource() == nil {
-				t.Errorf("probe %q: EntitySource() returned nil — "+
-					"every probe MUST call SetEntitySource() in its constructor, or "+
-					"embed *types.BaseProbe (which returns NoOpEntitySource by default). "+
-					"See .claude/rules/probes.md §Entity source (mandatory wiring step 5).", name)
+			src := probe.EntitySource()
+			if src == nil {
+				t.Errorf("probe %q: EntitySource() returned nil — must embed "+
+					"*types.BaseProbe or implement EntitySource().", name)
+				return
+			}
+			_, isNoOp := src.(types.NoOpEntitySource)
+			if isNoOp && !hostLocalOrConduit[name] {
+				t.Errorf("probe %q is a remote-target probe but EntitySource() is the "+
+					"NoOpEntitySource — it monitors a distinct entity yet registers no node "+
+					"in Toise topology. Call SetEntitySource() in the constructor with the "+
+					"probe's real Source, or add the probe to the host-local/conduit allowlist "+
+					"if it genuinely describes no remote entity (#471).", name)
 			}
 		})
 	}

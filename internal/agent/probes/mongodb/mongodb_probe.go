@@ -106,6 +106,7 @@ func NewMongoDBProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger
 	// fetchReplSetID is wired after construction so it can close over probe.client
 	// (which is nil until OnStart). The probe pointer is stable.
 	probe.fetchReplSetID = probe.defaultFetchReplSetID
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 

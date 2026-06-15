@@ -104,6 +104,7 @@ func NewWildflyProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		entitySrc: newWildflyEntitySource(cfg.Endpoint, cfg.InstanceName, resolveHostID),
 	}
 	p.SetProbeType(ProbeType)
+	p.SetEntitySource(p.entitySrc)
 	return p, nil
 }
 

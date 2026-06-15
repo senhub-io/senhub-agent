@@ -111,6 +111,7 @@ func NewConsulProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	addr, port := endpointHostPort(cfg.Endpoint)
 	p.entitySrc = newConsulEntitySource(cfg.InstanceName, addr, port)
 
+	p.SetEntitySource(p.entitySrc)
 	return p, nil
 }
 

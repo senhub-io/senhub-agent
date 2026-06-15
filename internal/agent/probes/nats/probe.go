@@ -114,6 +114,7 @@ func NewNATSProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger) (
 	}
 	p.SetProbeType(ProbeType)
 	p.fetch = p.httpGet
+	p.SetEntitySource(p.entitySrc)
 	return p, nil
 }
 

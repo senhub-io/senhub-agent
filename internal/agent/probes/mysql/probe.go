@@ -129,6 +129,7 @@ func NewMysqlProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 	}
 	p.SetProbeType(ProbeType)
 	p.entitySrc = newMysqlEntitySource(cfg, moduleLogger)
+	p.SetEntitySource(p.entitySrc)
 	return p, nil
 }
 

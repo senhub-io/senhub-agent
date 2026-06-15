@@ -96,6 +96,7 @@ func NewNginxProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 		entitySrc: newNginxEntitySource(cfg.Endpoint, cfg.InstanceName, hostID),
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 

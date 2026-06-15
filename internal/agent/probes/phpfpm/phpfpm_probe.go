@@ -96,6 +96,7 @@ func NewPHPFPMProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	addr, port := endpointHostPort(cfg.Endpoint)
 	probe.entitySrc = newPhpfpmEntitySource(cfg.InstanceName, hostID, addr, port)
 
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 

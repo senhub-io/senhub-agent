@@ -75,6 +75,7 @@ func NewInfluxDBProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		entitySrc: newInfluxdbEntitySource(cfg),
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 

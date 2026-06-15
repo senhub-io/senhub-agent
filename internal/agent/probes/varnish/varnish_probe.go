@@ -82,6 +82,7 @@ func NewVarnishProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		entitySrc:    newVarnishEntitySource(cfg.InstanceName, hostID),
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 
