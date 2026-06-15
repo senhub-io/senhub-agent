@@ -21,6 +21,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -44,21 +45,23 @@ var healthStatus = map[string]float32{
 }
 
 type probeConfig struct {
-	Endpoint  string
-	Username  string
-	Password  string
-	VerifyTLS bool
-	Interval  time.Duration
+	Endpoint     string
+	Username     string
+	Password     string
+	VerifyTLS    bool
+	Interval     time.Duration
+	InstanceName string // optional operator-supplied stable id override
 }
 
 // CephProbe monitors a Ceph cluster through the REST management API.
 type CephProbe struct {
 	*types.BaseProbe
-	cfg          probeConfig
-	moduleLogger *logger.ModuleLogger
-	client       *http.Client
-	token        string
-	entitySrc    *cephEntitySource
+	cfg                 probeConfig
+	moduleLogger        *logger.ModuleLogger
+	client              *http.Client
+	token               string
+	entitySrc           *cephEntitySource
+	unregisterEntitySrc func()
 }
 
 // NewCephProbe constructs the probe from the raw params block.
@@ -86,7 +89,12 @@ func NewCephProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger) (
 		moduleLogger: moduleLogger,
 		client:       client,
 	}
-	p.entitySrc = newCephEntitySource(cfg.Endpoint)
+	p.entitySrc = newCephEntitySource(
+		cfg.InstanceName,
+		cfg.Endpoint,
+		defaultFetchFsid(p),
+		defaultGetHostID(),
+	)
 	p.SetProbeType(ProbeType)
 	return p, nil
 }
@@ -113,6 +121,9 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 	if v, ok := raw["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
+	if v, ok := raw["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
 
 	if cfg.Username == "" {
 		return cfg, fmt.Errorf("ceph: username is required")
@@ -124,12 +135,13 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 }
 
 func (p *CephProbe) ShouldStart() bool          { return true }
-func (p *CephProbe) GetInterval() time.Duration  { return p.cfg.Interval }
+func (p *CephProbe) GetInterval() time.Duration { return p.cfg.Interval }
 func (p *CephProbe) GetTargetStrategies() []string {
 	return []string{"senhub", "prtg", "http", "otlp"}
 }
 
 func (p *CephProbe) OnStart(_ chan struct{}) error {
+	p.unregisterEntitySrc = entity.RegisterSource(p.entitySrc)
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("ceph probe started")
@@ -137,6 +149,9 @@ func (p *CephProbe) OnStart(_ chan struct{}) error {
 }
 
 func (p *CephProbe) OnShutdown(_ context.Context) error {
+	if p.unregisterEntitySrc != nil {
+		p.unregisterEntitySrc()
+	}
 	p.client.CloseIdleConnections()
 	return nil
 }
@@ -166,6 +181,11 @@ func (p *CephProbe) Collect() ([]data_store.DataPoint, error) {
 		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{up}, p.GetName()), nil
 	}
 	p.token = token
+
+	// Pin the entity id on the first successful collect (requires a live token
+	// so that GET /api/cluster can resolve the cluster fsid). Subsequent calls
+	// are no-ops once the id is pinned.
+	p.entitySrc.pinID()
 
 	var points []data_store.DataPoint
 	points = append(points, data_store.DataPoint{
@@ -270,12 +290,12 @@ type healthFullResponse struct {
 		Status string `json:"status"`
 	} `json:"health"`
 	ClientPerf struct {
-		ReadBytesSec float64 `json:"read_bytes_sec"`
+		ReadBytesSec  float64 `json:"read_bytes_sec"`
 		WriteBytesSec float64 `json:"write_bytes_sec"`
 	} `json:"client_perf"`
 	Df struct {
 		Stats struct {
-			TotalBytes    float64 `json:"total_bytes"`
+			TotalBytes     float64 `json:"total_bytes"`
 			TotalUsedBytes float64 `json:"total_used_bytes"`
 		} `json:"stats"`
 	} `json:"df"`
