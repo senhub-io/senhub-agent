@@ -105,6 +105,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	"syslog":    {"event_id", "source"}, // Syslog events
 
+	// Storage probes — one series per physical device.
+	"smart": {"smart.device"}, // S.M.A.R.T.: one series per disk (sata/nvme)
+
 	// SNMP polling — one series per (target, interface row); metric_type
 	// separates interface / system / status families.
 	"dns_latency": {"name", "resolver", "metric_type"},
