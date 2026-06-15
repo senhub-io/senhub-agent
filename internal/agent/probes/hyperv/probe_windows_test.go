@@ -44,7 +44,6 @@ func newTestProbe(t *testing.T, fn wmiQueryFn) *HypervProbe {
 		config:       probeConfig{Interval: defaultInterval},
 		moduleLogger: logger.NewModuleLogger(baseLogger, "probe.hyperv"),
 		queryFn:      fn,
-		entitySrc:    newHypervEntitySource(),
 	}
 	p.SetProbeType(ProbeType)
 	p.SetName("hyperv-test")
