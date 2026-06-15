@@ -251,6 +251,7 @@ func TestProbeRegistry(t *testing.T) {
 		"elasticsearch",
 		"opensearch",
 		"solr",
+		"influxdb",
 	}
 
 	for _, probeName := range expectedProbes {
