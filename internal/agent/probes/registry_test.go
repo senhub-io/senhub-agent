@@ -256,6 +256,7 @@ func TestProbeRegistry(t *testing.T) {
 		"memcached",
 		"hyperv",
 		"proxmox",
+		"smart",
 	}
 
 	for _, probeName := range expectedProbes {
