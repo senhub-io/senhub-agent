@@ -378,4 +378,3 @@ func TestGetInterval(t *testing.T) {
 		t.Errorf("GetInterval() = %v, want 120s", p.GetInterval())
 	}
 }
-
