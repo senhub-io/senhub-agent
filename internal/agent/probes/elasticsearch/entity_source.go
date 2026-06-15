@@ -5,81 +5,146 @@ import (
 	"strconv"
 	"sync"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
-// elasticsearchEntitySource feeds the entity rail with the "db" entity
-// for the Elasticsearch instance this probe monitors (Toise v0.5.0 strict contract).
-// Observe is non-blocking; setReachable and updateSnapshot are called from Collect.
+// elasticsearchEntitySource feeds the entity rail with the "db" entity for
+// the Elasticsearch cluster this probe monitors (Toise db identity contract).
+//
+// Identity precedence (immutable once pinned):
+//  1. operator config key "instance_name" → verbatim, pinned at construction.
+//  2. cluster_uuid from GET / → "elasticsearch:<uuid>", pinned on the first
+//     successful collect (entity suppressed until then).
+//  3. host:port fallback (never used for ES because cluster_uuid is always
+//     available, but kept as the documented db degraded fallback).
+//
+// The monitors edge (service.instance → db) is appended whenever the
+// agentstate package reports a non-empty agent instance id.
 type elasticsearchEntitySource struct {
+	// descriptive attributes: server.address, server.port, db.system.name.
+	// Initialised at construction; version appended on first successful collect.
+	staticAttrs map[string]any
+
+	mu sync.RWMutex
+	// instanceID holds the pinned db.instance.id.  Empty until pinned.
 	instanceID string
-	mu         sync.RWMutex
-	up         bool
-	// attrs holds descriptive attributes; initialised at construction, version added on first successful collect.
+	// pinned is true once instanceID will never change.
+	pinned bool
+	// up reflects the last connectivity state reported by Collect.
+	up bool
+	// attrs is a copy of staticAttrs extended with db.system.version once
+	// a version banner is observed.
 	attrs map[string]any
 }
 
-// newElasticsearchEntitySource builds the entity source from the probe endpoint URL.
-// The instance identity is built once at construction and never changes.
-func newElasticsearchEntitySource(endpoint string) *elasticsearchEntitySource {
-	addr, port := hostPortFromEndpoint(endpoint)
-	instanceID := "elasticsearch://" + addr + ":" + strconv.FormatInt(port, 10)
-	return &elasticsearchEntitySource{
-		instanceID: instanceID,
-		attrs: map[string]any{
-			"db.system.name": "elasticsearch",
-			"server.address": addr,
-			"server.port":    port,
-		},
+// newElasticsearchEntitySource builds the entity source.
+//
+// instanceName is the operator's override (config key "instance_name"); when
+// non-empty it is pinned immediately and the entity is ready to emit from the
+// first successful collect.  When empty, the source waits for pinClusterUUID
+// to be called before emitting anything.
+//
+// host and port are the network coordinates extracted from the configured
+// endpoint; they are kept as descriptive attributes regardless of which id
+// rung wins.
+func newElasticsearchEntitySource(instanceName, host string, port int64) *elasticsearchEntitySource {
+	staticAttrs := map[string]any{
+		"db.system.name": "elasticsearch",
+		"server.address": host,
+		"server.port":    port,
 	}
+
+	s := &elasticsearchEntitySource{
+		staticAttrs: staticAttrs,
+		attrs:       staticAttrs,
+	}
+	if instanceName != "" {
+		s.instanceID = instanceName
+		s.pinned = true
+	}
+	return s
+}
+
+// pinClusterUUID records the cluster_uuid returned by GET / and builds the
+// canonical db.instance.id "elasticsearch:<uuid>".  It is a no-op after the
+// first call (immutability guarantee).
+func (s *elasticsearchEntitySource) pinClusterUUID(uuid string) {
+	if uuid == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pinned {
+		return
+	}
+	s.instanceID = "elasticsearch:" + uuid
+	s.pinned = true
 }
 
 // setReachable is called by Collect to report the current connectivity state.
-// When up is false the entity is suppressed from Observe until the next
-// successful collection (transient outage != gone).
+// When up is false the entity is suppressed from Observe (transient outage ≠
+// gone — the detector holds the last good snapshot).
 func (s *elasticsearchEntitySource) setReachable(up bool) {
 	s.mu.Lock()
 	s.up = up
 	s.mu.Unlock()
 }
 
-// updateSnapshot stores mutable state gathered during a successful collection
-// cycle. The clusterName parameter is accepted but ignored — the cluster
-// relation requires a registered Toise relation type that is not yet available.
-func (s *elasticsearchEntitySource) updateSnapshot(_ string, version string) {
-	s.mu.Lock()
-	if version != "" {
-		attrs := make(map[string]any, len(s.attrs)+1)
-		for k, v := range s.attrs {
-			attrs[k] = v
-		}
-		attrs["db.system.version"] = version
-		s.attrs = attrs
+// updateVersion stores the ES version banner in the descriptive attrs set
+// (copy-on-write so Observe never races against a write).
+func (s *elasticsearchEntitySource) updateVersion(version string) {
+	if version == "" {
+		return
 	}
-	s.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a := make(map[string]any, len(s.staticAttrs)+1)
+	for k, v := range s.staticAttrs {
+		a[k] = v
+	}
+	a["db.system.version"] = version
+	s.attrs = a
 }
 
-// Observe implements entity.Source. Returns ok=false when the Elasticsearch
-// instance is currently unreachable so the detector preserves the last good
-// snapshot rather than emitting a delete (transient outage != gone).
+// Observe implements entity.Source.  Returns ok=false when:
+//   - the cluster id has not yet been pinned (cluster_uuid not yet fetched), or
+//   - the instance is currently unreachable.
+//
+// Both conditions cause the detector to keep the last good snapshot rather than
+// emitting a delete (transient outage / pending first collect ≠ gone).
 func (s *elasticsearchEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if !s.up {
+
+	if !s.pinned || !s.up {
 		return entity.Observation{}, false
 	}
-	return entity.Observation{
+
+	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "db",
 			ID:         map[string]any{"db.instance.id": s.instanceID},
 			Attributes: s.attrs,
 		}},
-	}, true
+	}
+
+	if agentID := agentstate.GetAgentInstanceID(); agentID != "" {
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     "monitors",
+			FromType: "service.instance",
+			FromID:   map[string]any{"service.instance.id": agentID},
+			ToType:   "db",
+			ToID:     map[string]any{"db.instance.id": s.instanceID},
+		})
+	}
+
+	return obs, true
 }
 
-// hostPortFromEndpoint extracts the host and port from an HTTP endpoint URL such
-// as "http://localhost:9200". Falls back to "localhost" / 9200 when the URL
-// cannot be parsed or has no explicit port.
+// hostPortFromEndpoint extracts the host and port from an HTTP endpoint URL
+// such as "http://localhost:9200".  Falls back to "localhost" / 9200 when the
+// URL cannot be parsed or has no explicit port.
 func hostPortFromEndpoint(endpoint string) (host string, port int64) {
 	host = "localhost"
 	port = 9200
