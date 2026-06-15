@@ -110,6 +110,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"opensearch":        false,
 		"solr":              false,
 		"influxdb":          false,
+		"memcached":         false,
 	}
 
 	for _, probe := range probes {
