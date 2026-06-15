@@ -155,8 +155,11 @@ type fakeClient struct {
 	brokers []string
 	// offsets[topic][partition][time] = value
 	offsets map[string]map[int32]map[int64]int64
+	// isr[topic][partition] = list of in-sync replica IDs
+	isr map[string]map[int32][]int32
 
-	getOffsetErr error
+	getOffsetErr  error
+	inSyncRepErr  error
 }
 
 func (f *fakeClient) Brokers() []*sarama.Broker {
@@ -197,8 +200,20 @@ func (f *fakeClient) Leader(_ string, _ int32) (*sarama.Broker, error)          
 func (f *fakeClient) LeaderAndEpoch(_ string, _ int32) (*sarama.Broker, int32, error) {
 	return nil, 0, nil
 }
-func (f *fakeClient) Replicas(_ string, _ int32) ([]int32, error)        { return nil, nil }
-func (f *fakeClient) InSyncReplicas(_ string, _ int32) ([]int32, error)  { return nil, nil }
+func (f *fakeClient) Replicas(_ string, _ int32) ([]int32, error) { return nil, nil }
+func (f *fakeClient) InSyncReplicas(topic string, partition int32) ([]int32, error) {
+	if f.inSyncRepErr != nil {
+		return nil, f.inSyncRepErr
+	}
+	if f.isr != nil {
+		if partMap, ok := f.isr[topic]; ok {
+			if ids, ok := partMap[partition]; ok {
+				return ids, nil
+			}
+		}
+	}
+	return nil, nil
+}
 func (f *fakeClient) OfflineReplicas(_ string, _ int32) ([]int32, error) { return nil, nil }
 func (f *fakeClient) RefreshBrokers(_ []string) error                     { return nil }
 func (f *fakeClient) RefreshMetadata(_ ...string) error                   { return nil }
@@ -380,6 +395,94 @@ func TestCollect_TopicAndPartitionMetrics(t *testing.T) {
 		if rp.Value != 2 {
 			t.Errorf("kafka.partition.replicas = %v, want 2", rp.Value)
 		}
+	}
+}
+
+func TestCollect_ReplicasInSync(t *testing.T) {
+	// One topic, two partitions: partition 0 fully in-sync (2/2), partition 1
+	// under-replicated (1/2). Verifies ISR values are emitted correctly.
+	adm := &fakeAdmin{
+		topics: map[string]sarama.TopicDetail{
+			"t": {
+				NumPartitions: 2,
+				ReplicaAssignment: map[int32][]int32{
+					0: {1, 2},
+					1: {1, 2},
+				},
+			},
+		},
+		groups: map[string]string{},
+	}
+	cli := &fakeClient{
+		brokers: []string{"b1:9092"},
+		isr: map[string]map[int32][]int32{
+			"t": {
+				0: {1, 2}, // fully in-sync
+				1: {1},    // under-replicated
+			},
+		},
+	}
+
+	p := newTestProbe(t, adm, cli, probeConfig{
+		Brokers:         []string{"localhost:9092"},
+		ProtocolVersion: "2.0.0",
+		Interval:        60 * time.Second,
+		Timeout:         10 * time.Second,
+	})
+
+	pts, err := p.Collect()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	isrPts := pointsBy(pts, "kafka.partition.replicas_in_sync")
+	if len(isrPts) != 2 {
+		t.Fatalf("expected 2 kafka.partition.replicas_in_sync, got %d", len(isrPts))
+	}
+
+	isrByPartition := make(map[string]float32)
+	for _, pt := range isrPts {
+		isrByPartition[tagVal(pt, "partition")] = pt.Value
+	}
+	if got := isrByPartition["0"]; got != 2 {
+		t.Errorf("partition 0: replicas_in_sync = %v, want 2", got)
+	}
+	if got := isrByPartition["1"]; got != 1 {
+		t.Errorf("partition 1: replicas_in_sync = %v, want 1 (under-replicated)", got)
+	}
+}
+
+func TestCollect_ReplicasInSync_ErrorSkipped(t *testing.T) {
+	// When InSyncReplicas returns an error, the metric is omitted (not a fatal).
+	adm := &fakeAdmin{
+		topics: map[string]sarama.TopicDetail{
+			"t": {NumPartitions: 1, ReplicaAssignment: map[int32][]int32{0: {1}}},
+		},
+		groups: map[string]string{},
+	}
+	cli := &fakeClient{
+		brokers:      []string{"b1:9092"},
+		inSyncRepErr: sarama.ErrUnknown,
+	}
+
+	p := newTestProbe(t, adm, cli, probeConfig{
+		Brokers:         []string{"localhost:9092"},
+		ProtocolVersion: "2.0.0",
+		Interval:        60 * time.Second,
+		Timeout:         10 * time.Second,
+	})
+
+	pts, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect() returned unexpected error: %v", err)
+	}
+
+	if isrPts := pointsBy(pts, "kafka.partition.replicas_in_sync"); len(isrPts) != 0 {
+		t.Errorf("expected no replicas_in_sync on error, got %d point(s)", len(isrPts))
+	}
+	// replicas must still be emitted
+	if rPts := pointsBy(pts, "kafka.partition.replicas"); len(rPts) == 0 {
+		t.Error("kafka.partition.replicas should still be emitted when ISR fails")
 	}
 }
 
