@@ -45,6 +45,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/icmpcheck"
 	_ "senhub-agent.go/internal/agent/probes/jenkins"
 	_ "senhub-agent.go/internal/agent/probes/ipmi"
+	_ "senhub-agent.go/internal/agent/probes/kubernetes"
 	_ "senhub-agent.go/internal/agent/probes/linuxlogs"
 	_ "senhub-agent.go/internal/agent/probes/logicaldisk"
 	_ "senhub-agent.go/internal/agent/probes/memcached"
