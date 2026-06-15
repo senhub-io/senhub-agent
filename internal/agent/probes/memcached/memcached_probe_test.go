@@ -156,13 +156,17 @@ func TestCollect_ReachableServer(t *testing.T) {
 		"memcached.items.total",
 		"memcached.bytes",
 		"memcached.limit_maxbytes",
-		"memcached.network.bytes.sent",
-		"memcached.network.bytes.received",
+		"memcached.network",
 		"memcached.evictions",
 	} {
 		if _, found := byName[name]; !found {
 			t.Errorf("missing metric %q", name)
 		}
+	}
+
+	// memcached.network must appear twice: one transmit, one receive
+	if len(byName["memcached.network"]) != 2 {
+		t.Errorf("memcached.network: got %d points, want 2 (transmit+receive)", len(byName["memcached.network"]))
 	}
 
 	// Multi-instance metrics should appear twice
@@ -214,15 +218,15 @@ func TestCollect_UnreachableServer_EmitsUpZero(t *testing.T) {
 
 func TestParseInt(t *testing.T) {
 	stats := map[string]string{
-		"good":    "42",
-		"zero":    "0",
-		"bad":     "notanumber",
-		"float":   "1.5",
-		"neg":     "-1",
+		"good":  "42",
+		"zero":  "0",
+		"bad":   "notanumber",
+		"float": "1.5",
+		"neg":   "-1",
 	}
 	tests := []struct {
-		key   string
-		want  int64
+		key    string
+		want   int64
 		wantOK bool
 	}{
 		{"good", 42, true},
@@ -247,10 +251,10 @@ func TestParseInt(t *testing.T) {
 
 func TestParseFloat(t *testing.T) {
 	stats := map[string]string{
-		"good":  "1.234",
-		"zero":  "0",
-		"bad":   "notanumber",
-		"int":   "42",
+		"good": "1.234",
+		"zero": "0",
+		"bad":  "notanumber",
+		"int":  "42",
 	}
 	tests := []struct {
 		key    string
