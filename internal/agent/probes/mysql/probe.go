@@ -54,6 +54,11 @@ const (
 	defaultInterval = 60 * time.Second
 	defaultTimeout  = 10 * time.Second
 
+	// serverUUIDQuery fetches the MySQL server's persistent unique id.
+	// @@server_uuid is set once at server initialisation and survives
+	// restarts, making it a stable identity source for the db entity.
+	serverUUIDQuery = "SELECT @@server_uuid"
+
 	// statusQuery pulls every variable from GLOBAL STATUS in one round-trip.
 	statusQuery = "SHOW GLOBAL STATUS"
 
@@ -64,14 +69,14 @@ const (
 	// replicaStatusQuery checks replica / slave status. We try the modern
 	// form first (SHOW REPLICA STATUS) and fall back to SHOW SLAVE STATUS
 	// for MySQL < 8.0.22 / MariaDB.
-	replicaStatusQuery     = "SHOW REPLICA STATUS"
-	replicaStatusFallback  = "SHOW SLAVE STATUS"
-	replicaCountQuery      = "SHOW REPLICAS"
-	replicaCountFallback   = "SHOW SLAVE HOSTS"
-	totalSizeQuery         = "SELECT COALESCE(SUM(data_length+index_length),0) FROM information_schema.TABLES WHERE table_schema NOT IN ('information_schema','performance_schema','mysql','sys')"
-	tableCountQuery        = "SELECT COUNT(*) FROM information_schema.TABLES WHERE table_schema NOT IN ('information_schema','performance_schema','mysql','sys')"
-	perDatabaseSizeQuery   = "SELECT table_schema, COALESCE(SUM(data_length+index_length),0) FROM information_schema.TABLES WHERE table_schema NOT IN ('information_schema','performance_schema','mysql','sys') GROUP BY table_schema"
-	perTableSizeQuery      = "SELECT table_schema, table_name, COALESCE(data_length+index_length,0) FROM information_schema.TABLES WHERE table_schema NOT IN ('information_schema','performance_schema','mysql','sys')"
+	replicaStatusQuery    = "SHOW REPLICA STATUS"
+	replicaStatusFallback = "SHOW SLAVE STATUS"
+	replicaCountQuery     = "SHOW REPLICAS"
+	replicaCountFallback  = "SHOW SLAVE HOSTS"
+	totalSizeQuery        = "SELECT COALESCE(SUM(data_length+index_length),0) FROM information_schema.TABLES WHERE table_schema NOT IN ('information_schema','performance_schema','mysql','sys')"
+	tableCountQuery       = "SELECT COUNT(*) FROM information_schema.TABLES WHERE table_schema NOT IN ('information_schema','performance_schema','mysql','sys')"
+	perDatabaseSizeQuery  = "SELECT table_schema, COALESCE(SUM(data_length+index_length),0) FROM information_schema.TABLES WHERE table_schema NOT IN ('information_schema','performance_schema','mysql','sys') GROUP BY table_schema"
+	perTableSizeQuery     = "SELECT table_schema, table_name, COALESCE(data_length+index_length,0) FROM information_schema.TABLES WHERE table_schema NOT IN ('information_schema','performance_schema','mysql','sys')"
 )
 
 // config holds the parsed probe configuration.
@@ -85,6 +90,12 @@ type config struct {
 	PerDatabase bool
 	PerTable    bool
 	TopNTables  int
+	// InstanceName is an optional operator-supplied stable identifier for the
+	// db entity (db.instance.id). When set it takes precedence over the
+	// MySQL-reported @@server_uuid so that operators can assign a meaningful,
+	// human-readable name to the node in Toise. Leave empty to use the
+	// tech-reported stable id (MySQL persists @@server_uuid across restarts).
+	InstanceName string
 }
 
 // mysqlProbe implements types.Probe for MySQL / MariaDB monitoring.
@@ -97,6 +108,9 @@ type mysqlProbe struct {
 	unregister   func()
 	// version string captured on first connect (used for env detection)
 	versionStr string
+	// uuidFetched guards the one-time @@server_uuid fetch; once pinned
+	// the entity source holds the id and this flag prevents re-querying.
+	uuidFetched bool
 }
 
 // NewMysqlProbe constructs the probe. Configuration errors surface here.
@@ -153,6 +167,9 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 	}
 	if v, ok := raw["top_n_tables"].(int); ok && v > 0 {
 		cfg.TopNTables = v
+	}
+	if v, ok := raw["instance_name"].(string); ok {
+		cfg.InstanceName = v
 	}
 	return cfg, nil
 }
@@ -233,6 +250,16 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 	up = 1
+
+	// Lazy one-time fetch of the server UUID for the db entity identity.
+	// Skipped when the operator has set instance_name (already pinned) or
+	// when the uuid has been fetched before. On failure, pinServerUUID("")
+	// falls through to the host:port degraded fallback.
+	if !p.uuidFetched && !p.entitySrc.isIDPinned() {
+		uuid := p.queryServerUUID(ctx)
+		p.entitySrc.pinServerUUID(uuid)
+		p.uuidFetched = true
+	}
 
 	// SHOW GLOBAL STATUS
 	status, err := p.collectStatus(ctx)
@@ -657,6 +684,14 @@ func (p *mysqlProbe) topNTables(ts []tableSize) []tableSize {
 func (p *mysqlProbe) queryVersionComment(ctx context.Context) string {
 	var v string
 	_ = p.db.QueryRowContext(ctx, "SELECT @@version_comment").Scan(&v)
+	return v
+}
+
+// queryServerUUID fetches @@server_uuid, the MySQL-persisted stable server
+// identity. Returns "" on error (caller falls back to host:port).
+func (p *mysqlProbe) queryServerUUID(ctx context.Context) string {
+	var v string
+	_ = p.db.QueryRowContext(ctx, serverUUIDQuery).Scan(&v)
 	return v
 }
 
