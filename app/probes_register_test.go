@@ -29,6 +29,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"chrony",
 		"cpu",
 		"dns_latency",
+		"docker",
 		"envoy",
 		"elasticsearch",
 		"event",
@@ -65,6 +66,8 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"rabbitmq",
 		"pulsar",
 		"proxmox",
+		"redis",
+		"smart",
 		"snmp_poll",
 		"snmp_trap",
 		"solr",
@@ -78,6 +81,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"wildfly",
 		"windows_eventlog",
 		"winservices",
+		"zookeeper",
 	}
 	sort.Strings(want)
 
