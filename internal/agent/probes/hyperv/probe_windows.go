@@ -175,7 +175,11 @@ func (p *HypervProbe) Collect() ([]data_store.DataPoint, error) {
 	if err == nil {
 		points = append(points, p.buildVMPoints(vms, sumByName, now, hostTags)...)
 		// Entity rail: update the cached snapshot for the detector goroutine.
-		p.entitySource.update(toVMInfos(vms, sumByName))
+		// nil only when the probe was built outside NewHypervProbe (tests that
+		// bypass the constructor); guard so Collect never panics.
+		if p.entitySource != nil {
+			p.entitySource.update(toVMInfos(vms, sumByName))
+		}
 	}
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
