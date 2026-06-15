@@ -116,8 +116,8 @@ func TestCollect_Success(t *testing.T) {
 	}
 	// traffic = 5678 * 1024 bytes
 	want := float32(5678 * 1024)
-	if v := byName["apache.traffic.bytes"]; len(v) == 0 || v[0] != want {
-		t.Errorf("apache.traffic.bytes = %v, want [%v]", v, want)
+	if v := byName["apache.traffic"]; len(v) == 0 || v[0] != want {
+		t.Errorf("apache.traffic = %v, want [%v]", v, want)
 	}
 }
 
