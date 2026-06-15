@@ -13,14 +13,15 @@ package mongodb
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
-	mongooptions "go.mongodb.org/mongo-driver/mongo/options"
-
 	mongodrv "go.mongodb.org/mongo-driver/mongo"
+	mongooptions "go.mongodb.org/mongo-driver/mongo/options"
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -56,7 +57,13 @@ type mongoDBProbe struct {
 	// in tests so no real MongoDB is required.
 	connectClient func(ctx context.Context, uri string, direct bool, timeout time.Duration) (*mongodrv.Client, error)
 
-	// entitySrc feeds the Toise topology inventory (db.mongodb entity).
+	// fetchReplSetID is the function used to probe replSetGetStatus. Overridable
+	// in tests. Returns ("mongodb:<setName>/<selfMember>", nil) on a replica set,
+	// ("", nil) when the command is unavailable (standalone), or ("", err) on
+	// transport failure. A ("", nil) result triggers the host:port fallback.
+	fetchReplSetID func(ctx context.Context) (string, error)
+
+	// entitySrc feeds the Toise topology inventory (db entity).
 	entitySrc  *mongodbEntitySource
 	unregister func()
 }
@@ -95,7 +102,10 @@ func NewMongoDBProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger
 		},
 	}
 	probe.SetProbeType(probeType)
-	probe.entitySrc = newMongodbEntitySource(cfg.URI)
+	probe.entitySrc = newMongodbEntitySource(instHost, instPort, cfg.InstanceName)
+	// fetchReplSetID is wired after construction so it can close over probe.client
+	// (which is nil until OnStart). The probe pointer is stable.
+	probe.fetchReplSetID = probe.defaultFetchReplSetID
 	return probe, nil
 }
 
@@ -152,6 +162,11 @@ func (p *mongoDBProbe) Collect() ([]data_store.DataPoint, error) {
 		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("MongoDB serverStatus failed")
 	} else {
 		version, _ := status["version"].(string)
+		// Resolve the db entity identity on the first successful collect:
+		//  - if already pinned (instance_name or prior replSetGetStatus), skip.
+		//  - try replSetGetStatus to get a stable tech id.
+		//  - fall back to host:port when replSetGetStatus is unavailable (standalone).
+		p.maybeResolveEntityID()
 		p.entitySrc.setReachable(true, version)
 		points = append(points, p.buildServerStatusPoints(status, now)...)
 
@@ -171,6 +186,91 @@ func (p *mongoDBProbe) Collect() ([]data_store.DataPoint, error) {
 	})
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
+
+// maybeResolveEntityID pins the db.instance.id on the first call after a
+// successful serverStatus. Skips the replSetGetStatus round-trip when the id
+// is already pinned (instance_name set at construction, or prior successful
+// call). Subsequent calls after pinning are no-ops.
+func (p *mongoDBProbe) maybeResolveEntityID() {
+	if p.entitySrc.isPinned() {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
+	defer cancel()
+
+	techID, err := p.fetchReplSetID(ctx)
+	if err != nil {
+		// Transport failure: don't pin yet; retry next cycle.
+		p.moduleLogger.Debug().Err(err).Msg("replSetGetStatus transport error; will retry next cycle")
+		return
+	}
+	if techID != "" {
+		// Replica set identity resolved.
+		p.entitySrc.pinTechID(techID)
+		return
+	}
+	// techID=="" with err==nil: standalone MongoDB (no replSet).
+	// host:port is the only available id; pin it immediately.
+	p.entitySrc.pinHostPort()
+}
+
+// defaultFetchReplSetID issues replSetGetStatus against the live client.
+// Returns ("mongodb:<setName>/<selfMember>", nil) on a replica set,
+// ("", nil) when the command is not applicable (standalone, no-auth error
+// with code NotYetInitialized or errTypeBadValue), or ("", err) on transport
+// failure.
+func (p *mongoDBProbe) defaultFetchReplSetID(ctx context.Context) (string, error) {
+	result := bson.M{}
+	err := p.client.Database("admin").RunCommand(ctx, bson.D{{Key: "replSetGetStatus", Value: 1}}).Decode(&result)
+	if err != nil {
+		// MongoDB returns a command error (code 76 NoReplicationEnabled or
+		// code 94 NotYetInitialized) when the server is a standalone.
+		// These are expected "not a replica set" responses, not transport errors.
+		// The MongoDB Go driver wraps command errors as mongo.CommandError.
+		if isNotReplicaSetError(err) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	setName, _ := result["set"].(string)
+	if setName == "" {
+		return "", nil
+	}
+
+	// Find the member marked self:true to get its canonical name.
+	selfMember := ""
+	if members, ok := result["members"].(bson.A); ok {
+		for _, m := range members {
+			mem, ok := m.(bson.M)
+			if !ok {
+				continue
+			}
+			if isSelf, _ := mem["self"].(bool); isSelf {
+				selfMember, _ = mem["name"].(string)
+				break
+			}
+		}
+	}
+
+	if selfMember != "" {
+		return "mongodb:" + setName + "/" + selfMember, nil
+	}
+	return "mongodb:" + setName, nil
+}
+
+// isNotReplicaSetError reports whether err is a MongoDB command error
+// indicating that the server is not part of a replica set (standalone).
+// These are expected responses, not transport failures.
+// Code 76 = NoReplicationEnabled (standalone), Code 94 = NotYetInitialized.
+func isNotReplicaSetError(err error) bool {
+	var ce mongodrv.CommandError
+	if errors.As(err, &ce) {
+		return ce.Code == 76 || ce.Code == 94
+	}
+	return false
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -297,9 +397,9 @@ func (p *mongoDBProbe) buildServerStatusPoints(status bson.M, now time.Time) []d
 	if wt, ok := status["wiredTiger"].(bson.M); ok {
 		if cache, ok := wt["cache"].(bson.M); ok {
 			for _, entry := range []struct {
-				key     string
-				opType  string
-				metric  string
+				key    string
+				opType string
+				metric string
 			}{
 				{"pages read into cache", "read", "mongodb.cache.operations"},
 				{"pages written from cache", "write", "mongodb.cache.operations"},
@@ -421,6 +521,28 @@ func (p *mongoDBProbe) baseTags(metricType string) []tags.Tag {
 		{Key: "instance", Value: p.instance},
 		{Key: "metric_type", Value: metricType},
 	}
+}
+
+// hostPortFromURI extracts the host and port from a MongoDB URI such as
+// "mongodb://user:pass@host:27017/dbname". Falls back to "localhost" / 27017
+// when the URI cannot be parsed or has no explicit port.
+func hostPortFromURI(uri string) (host string, port int64) {
+	host = "localhost"
+	port = 27017
+
+	u, err := url.Parse(uri)
+	if err != nil || u.Host == "" {
+		return
+	}
+	if h := u.Hostname(); h != "" {
+		host = h
+	}
+	if p := u.Port(); p != "" {
+		if n, err := strconv.ParseInt(p, 10, 64); err == nil {
+			port = n
+		}
+	}
+	return
 }
 
 // floatFrom extracts a numeric value from a bson.M field as float64. bson.M
