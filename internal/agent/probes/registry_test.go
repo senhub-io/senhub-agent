@@ -215,6 +215,7 @@ func TestProbeRegistry(t *testing.T) {
 	// whose source lives in this repository. The paid probes are
 	// registered in the senhub-agent-enterprise module's own tests.
 	expectedProbes := []string{
+		"ceph",
 		"wifi_signal_strength",
 		"memory",
 		"cpu",
