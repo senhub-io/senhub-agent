@@ -1,0 +1,41 @@
+probe_name: "modbus"
+friendly_name: "Modbus TCP"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["register.name"]
+
+# Free IT/OT convergence probe. Polls Modbus TCP Holding Registers on
+# PLCs, sensors, and smart-building controllers. One metric per
+# configured register; the register.name tag is the discriminant.
+# The unit varies per register (operator-configured): the transformer
+# carries the default ("1"); dashboards use the probe-configured unit.
+
+metrics:
+  - name: "modbus.register.value"
+    channel: "modbus_register_value"
+    display_name: "Register {register.name}"
+    unit: "1"
+    category: "sensor"
+    description: "Decoded value of the Modbus Holding Register"
+    otel:
+      name: modbus.register.value
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      register.name: register.name
+      register.address: register.address
+      modbus.unit_id: modbus.unit_id
+
+  - name: "modbus.up"
+    channel: "modbus_up"
+    display_name: "Modbus Device Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the Modbus TCP device answered all register reads in the last cycle"
+    otel:
+      name: modbus.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      host: modbus.host
+      modbus.unit_id: modbus.unit_id
