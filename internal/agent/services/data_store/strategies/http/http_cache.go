@@ -109,6 +109,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	"syslog":    {"event_id", "source"}, // Syslog events
 
+	// Application / middleware probes
+	"wildfly": {"datasource"}, // Per-datasource JDBC pool metrics (wildfly.datasource.connections.*)
+
 	// SNMP polling — one series per (target, interface row); metric_type
 	// separates interface / system / status families.
 	"dns_latency": {"name", "resolver", "metric_type"},
