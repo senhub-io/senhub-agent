@@ -58,6 +58,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"logicaldisk": {"drive", "mount_point", "device"}, // Different drives/volumes
 
 	// Application probes
+	"phpfpm":  {"pool"},                            // One series per PHP-FPM pool
 	"citrix":  {"metric_type", "failure_category"}, // Citrix aggregation types
 	"webapp":  {"url", "endpoint"},                 // Different web endpoints
 	"gateway": {"destination", "target"},           // Different gateway targets
