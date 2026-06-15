@@ -47,6 +47,7 @@ func jolokiaServer(t *testing.T) *httptest.Server {
 		"MemoryPercentUsage": json.Number("20"),
 		"StorePercentUsage":  json.Number("35"),
 		"TempPercentUsage":   json.Number("5"),
+		"BrokerId":           "test-broker-uuid-1234",
 	}
 
 	// Queue attributes (per-destination)
