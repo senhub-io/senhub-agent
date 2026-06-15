@@ -159,7 +159,7 @@ func (u *unixCollector) collectCPUTimes(dataPoints *[]data_store.DataPoint, time
 		*dataPoints = append(*dataPoints, data_store.DataPoint{
 			Name:      metric.name,
 			Timestamp: timestamp,
-			Value:     metric.value,
+			Value:     float32(metric.value),
 			Tags:      baseTags,
 		})
 	}
@@ -177,7 +177,7 @@ func (u *unixCollector) collectCPUUsage(dataPoints *[]data_store.DataPoint, time
 		*dataPoints = append(*dataPoints, data_store.DataPoint{
 			Name:      "cpu_usage_total",
 			Timestamp: timestamp,
-			Value:     cpuPercent[0],
+			Value:     float32(cpuPercent[0]),
 			Tags:      baseTags,
 		})
 	}
@@ -204,7 +204,7 @@ func (u *unixCollector) collectLoadAverage(dataPoints *[]data_store.DataPoint, t
 		*dataPoints = append(*dataPoints, data_store.DataPoint{
 			Name:      metric.name,
 			Timestamp: timestamp,
-			Value:     metric.value,
+			Value:     float32(metric.value),
 			Tags:      baseTags,
 		})
 	}
@@ -228,7 +228,7 @@ func (u *unixCollector) collectPerCoreMetrics(dataPoints *[]data_store.DataPoint
 		*dataPoints = append(*dataPoints, data_store.DataPoint{
 			Name:      "cpu_core_usage",
 			Timestamp: timestamp,
-			Value:     cpuPercent,
+			Value:     float32(cpuPercent),
 			Tags:      coreTags,
 		})
 	}
@@ -252,7 +252,7 @@ func (u *unixCollector) collectProcessesCount(dataPoints *[]data_store.DataPoint
 	*dataPoints = append(*dataPoints, data_store.DataPoint{
 		Name:      "cpu_processes_total",
 		Timestamp: timestamp,
-		Value:     float64(misc.ProcsTotal),
+		Value:     float32(misc.ProcsTotal),
 		Tags:      baseTags,
 	})
 	return nil

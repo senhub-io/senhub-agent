@@ -138,7 +138,7 @@ func newPoint(m oidMapping, value float64, now time.Time, instance, deviceID str
 	return data_store.DataPoint{
 		Name:      metricName(m),
 		Timestamp: now,
-		Value:     value,
+		Value:     float32(value),
 		Tags:      t,
 	}
 }

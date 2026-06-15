@@ -207,7 +207,7 @@ func (w *windowsMemoryCollector) Collect(timestamp time.Time) ([]data_store.Data
 		dataPoints = append(dataPoints, data_store.DataPoint{
 			Name:      name,
 			Timestamp: timestamp,
-			Value:     value,
+			Value:     float32(value),
 			Tags:      metricTags,
 		})
 
@@ -221,7 +221,7 @@ func (w *windowsMemoryCollector) Collect(timestamp time.Time) ([]data_store.Data
 			dataPoints = append(dataPoints, data_store.DataPoint{
 				Name:      "memory_used_percent",
 				Timestamp: timestamp,
-				Value:     usedPercent,
+				Value:     float32(usedPercent),
 				Tags:      baseTags,
 			})
 		}

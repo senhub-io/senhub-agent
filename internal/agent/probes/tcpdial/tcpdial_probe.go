@@ -152,7 +152,7 @@ func (p *TCPDialProbe) buildDatapoints(res dialResult, ts time.Time) []data_stor
 		{Key: "target", Value: res.target},
 		{Key: "metric_type", Value: "availability"},
 	}
-	up := float64(0)
+	up := float32(0)
 	if res.up {
 		up = 1
 	}
@@ -167,7 +167,7 @@ func (p *TCPDialProbe) buildDatapoints(res dialResult, ts time.Time) []data_stor
 	}
 	if res.up {
 		points = append(points,
-			data_store.DataPoint{Name: "senhub.tcpdial.duration", Value: res.duration.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.tcpdial.duration", Value: float32(res.duration.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
 		)
 	}
 	return points

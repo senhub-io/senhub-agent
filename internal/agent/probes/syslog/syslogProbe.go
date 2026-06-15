@@ -246,7 +246,7 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 	dataPoint := data_store.DataPoint{
 		Name:      "syslog_event",
 		Timestamp: timestamp,
-		Value:     float64(severity),
+		Value:     float32(severity),
 		Tags:      eventTags,
 	}
 

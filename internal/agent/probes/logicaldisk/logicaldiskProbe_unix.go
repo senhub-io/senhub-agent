@@ -129,9 +129,9 @@ func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.Da
 		usedBytes := totalBytes - freeBytes
 
 		// Calculate usage percentage
-		var usedPercent float64
+		var usedPercent float32
 		if totalBytes > 0 {
-			usedPercent = float64(usedBytes) / float64(totalBytes) * 100
+			usedPercent = float32(usedBytes) / float32(totalBytes) * 100
 		}
 
 		// Calculate inode metrics
@@ -140,9 +140,9 @@ func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.Da
 		usedInodes := totalInodes - freeInodes
 
 		// Calculate inode usage percentage
-		var inodesUsedPercent float64
+		var inodesUsedPercent float32
 		if totalInodes > 0 {
-			inodesUsedPercent = float64(usedInodes) / float64(totalInodes) * 100
+			inodesUsedPercent = float32(usedInodes) / float32(totalInodes) * 100
 		}
 
 		// Create mount-specific tags
@@ -156,16 +156,16 @@ func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.Da
 		// Define metrics to collect
 		metrics := []struct {
 			name  string
-			value float64
+			value float32
 		}{
-			{"fs_total_bytes", float64(totalBytes)},
-			{"fs_free_bytes", float64(freeBytes)},
-			{"fs_used_bytes", float64(usedBytes)},
-			{"fs_available_bytes", float64(availBytes)},
+			{"fs_total_bytes", float32(totalBytes)},
+			{"fs_free_bytes", float32(freeBytes)},
+			{"fs_used_bytes", float32(usedBytes)},
+			{"fs_available_bytes", float32(availBytes)},
 			{"fs_used_percent", usedPercent},
-			{"fs_inodes_total", float64(totalInodes)},
-			{"fs_inodes_free", float64(freeInodes)},
-			{"fs_inodes_used", float64(usedInodes)},
+			{"fs_inodes_total", float32(totalInodes)},
+			{"fs_inodes_free", float32(freeInodes)},
+			{"fs_inodes_used", float32(usedInodes)},
 			{"fs_inodes_used_percent", inodesUsedPercent},
 		}
 

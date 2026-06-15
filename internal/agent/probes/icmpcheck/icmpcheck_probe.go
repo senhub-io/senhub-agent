@@ -224,7 +224,7 @@ func (p *ICMPCheckProbe) buildDatapoints(res pingResult, ts time.Time) []data_st
 		baseTags = append(baseTags, tags.Tag{Key: "ip", Value: res.resolvedIP})
 	}
 
-	up := float64(0)
+	up := float32(0)
 	if res.err == nil && res.received > 0 {
 		up = 1
 	}
@@ -237,17 +237,17 @@ func (p *ICMPCheckProbe) buildDatapoints(res pingResult, ts time.Time) []data_st
 
 	points := []data_store.DataPoint{
 		{Name: "senhub.icmp.up", Value: up, Timestamp: ts, Tags: baseTags},
-		{Name: "senhub.icmp.packet_loss", Value: res.lossRatio * 100, Timestamp: ts, Tags: baseTags},
-		{Name: "senhub.icmp.packets.sent", Value: float64(res.sent), Timestamp: ts, Tags: baseTags},
-		{Name: "senhub.icmp.packets.received", Value: float64(res.received), Timestamp: ts, Tags: baseTags},
+		{Name: "senhub.icmp.packet_loss", Value: float32(res.lossRatio * 100), Timestamp: ts, Tags: baseTags},
+		{Name: "senhub.icmp.packets.sent", Value: float32(res.sent), Timestamp: ts, Tags: baseTags},
+		{Name: "senhub.icmp.packets.received", Value: float32(res.received), Timestamp: ts, Tags: baseTags},
 	}
 	// RTT statistics only make sense when at least one reply came back.
 	if res.received > 0 {
 		points = append(points,
-			data_store.DataPoint{Name: "senhub.icmp.rtt.min", Value: res.minRTT.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "senhub.icmp.rtt.avg", Value: res.avgRTT.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "senhub.icmp.rtt.max", Value: res.maxRTT.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "senhub.icmp.rtt.stddev", Value: res.stddevRTT.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.icmp.rtt.min", Value: float32(res.minRTT.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.icmp.rtt.avg", Value: float32(res.avgRTT.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.icmp.rtt.max", Value: float32(res.maxRTT.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.icmp.rtt.stddev", Value: float32(res.stddevRTT.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
 		)
 	}
 	return points

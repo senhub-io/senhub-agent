@@ -178,7 +178,7 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 					dataPoints = append(dataPoints, data_store.DataPoint{
 						Name:      metric.name,
 						Timestamp: timestamp,
-						Value:     metric.value,
+						Value:     float32(metric.value),
 						Tags:      interfaceTags,
 					})
 				}

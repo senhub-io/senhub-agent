@@ -196,7 +196,7 @@ func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, erro
 		{
 			Name:      "wifi_signal_strength",
 			Timestamp: time.Now(),
-			Value:     float64(signalStrength),
+			Value:     float32(signalStrength),
 			Tags:      wifiTags,
 		},
 	}, nil
@@ -242,7 +242,7 @@ func (m *wifiSignalStrengthProbe) collectLinux() ([]data_store.DataPoint, error)
 				dataPoints = append(dataPoints, data_store.DataPoint{
 					Name:      "wifi_signal_strength",
 					Timestamp: timestamp,
-					Value:     float64(signalStrength),
+					Value:     float32(signalStrength),
 					Tags:      wifiTags,
 				})
 			}
@@ -254,7 +254,7 @@ func (m *wifiSignalStrengthProbe) collectLinux() ([]data_store.DataPoint, error)
 					quality, err := strconv.Atoi(qualityParts[0])
 					maxQuality, err2 := strconv.Atoi(qualityParts[1])
 					if err == nil && err2 == nil && maxQuality > 0 {
-						qualityPercent := float64(quality) / float64(maxQuality) * 100
+						qualityPercent := float32(quality) / float32(maxQuality) * 100
 						dataPoints = append(dataPoints, data_store.DataPoint{
 							Name:      "wifi_quality",
 							Timestamp: timestamp,

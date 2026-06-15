@@ -29,13 +29,13 @@ func newTestProbe(t *testing.T, config map[string]interface{}) *HTTPCheckProbe {
 	return p
 }
 
-func collectByName(t *testing.T, p *HTTPCheckProbe) map[string]float64 {
+func collectByName(t *testing.T, p *HTTPCheckProbe) map[string]float32 {
 	t.Helper()
 	points, err := p.Collect()
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	got := map[string]float64{}
+	got := map[string]float32{}
 	for _, dp := range points {
 		got[dp.Name] = dp.Value
 		hasTarget := false

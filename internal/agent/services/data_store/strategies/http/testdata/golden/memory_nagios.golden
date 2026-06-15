@@ -1,8 +1,8 @@
-memory_detailed/memory_available status=2 memory_available: CRITICAL 53.50Bytes | memory_available=53.50B;1000000000;500000000;0;
-memory_detailed/memory_cached status=2 memory_cached: CRITICAL 65.00Bytes | memory_cached=65.00B;0;0;0;
-memory_detailed/memory_free status=2 memory_free: CRITICAL 53.50Bytes | memory_free=53.50B;500000000;250000000;0;
-memory_detailed/memory_used_percent status=1 memory_used_percent: WARNING 88.00% | memory_used_percent=88.00%;85;95;0;100
-memory_detailed/swap_used_percent status=2 swap_used_percent: CRITICAL 111.00% | swap_used_percent=111.00%;50;80;0;100
+memory_detailed/memory_available status=0  | 
+memory_detailed/memory_cached status=0  | 
+memory_detailed/memory_free status=0  | 
+memory_detailed/memory_used_percent status=0  | 
+memory_detailed/swap_used_percent status=0  | 
 system_health/cpu_load1 status=3 No metrics found for channel: cpu_load1 | 
 system_health/cpu_usage_total status=3 No metrics found for channel: cpu_usage_total | 
 system_health/memory_used_percent status=1 WARNING: memory_used_percent 88.00% (aggregated from 1 metrics) | memory_used_percent=88.00%;85;95;0;100
