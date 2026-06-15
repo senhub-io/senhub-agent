@@ -44,7 +44,7 @@ metrics:
     otel:
       name: haproxy.sessions.total
       unit: "{session}"
-      type: sum
+      type: counter
     tag_to_attribute:
       proxy: haproxy.proxy.name
       component: haproxy.component
@@ -58,7 +58,7 @@ metrics:
     otel:
       name: haproxy.bytes.input
       unit: "By"
-      type: sum
+      type: counter
     tag_to_attribute:
       proxy: haproxy.proxy.name
       component: haproxy.component
@@ -72,7 +72,7 @@ metrics:
     otel:
       name: haproxy.bytes.output
       unit: "By"
-      type: sum
+      type: counter
     tag_to_attribute:
       proxy: haproxy.proxy.name
       component: haproxy.component
@@ -86,7 +86,7 @@ metrics:
     otel:
       name: haproxy.connections.errors
       unit: "{error}"
-      type: sum
+      type: counter
     tag_to_attribute:
       proxy: haproxy.proxy.name
       component: haproxy.component
@@ -100,7 +100,7 @@ metrics:
     otel:
       name: haproxy.requests.errors
       unit: "{error}"
-      type: sum
+      type: counter
     tag_to_attribute:
       proxy: haproxy.proxy.name
       component: haproxy.component
@@ -114,7 +114,7 @@ metrics:
     otel:
       name: haproxy.responses.errors
       unit: "{error}"
-      type: sum
+      type: counter
     tag_to_attribute:
       proxy: haproxy.proxy.name
       component: haproxy.component
