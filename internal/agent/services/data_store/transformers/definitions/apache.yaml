@@ -68,13 +68,13 @@ metrics:
       unit: "{request}"
       type: counter
 
-  - name: "apache.traffic.bytes"
-    channel: "apache_traffic_bytes"
+  - name: "apache.traffic"
+    channel: "apache_traffic"
     display_name: "Apache Traffic"
     unit: "B"
     category: "throughput"
     description: "Cumulative bytes transferred since Apache started (Total kBytes * 1024)"
     otel:
-      name: apache.traffic.bytes
+      name: apache.traffic
       unit: "By"
       type: counter

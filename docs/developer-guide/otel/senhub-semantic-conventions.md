@@ -1231,6 +1231,21 @@ les métriques d'interface ajoutent `network.interface.index` :
 Les `custom_mappings` et OIDs dynamiques passent par le pass-through
 typé (tag `otel_type`) — pas d'énumération ici par construction.
 
+### 4.26 apache (free, #465)
+
+Aligné sur le receiver otelcol-contrib `apachereceiver`. `senhub.apache.up` est une extension SenHub (aucun équivalent dans le receiver contrib). Source : mod_status endpoint `?auto`. Attributs communs : `instance` (host:port), `server.address`, `server.port`.
+
+| Métrique OTel | Unité | Type | Source mod_status |
+|---|---|---|---|
+| `senhub.apache.up` | `1` | gauge | joignabilité du cycle (1 = succès, 0 = échec) |
+| `apache.uptime` | `s` | counter | Uptime |
+| `apache.current_connections` | `{connection}` | gauge | ConnsTotal |
+| `apache.workers` | `{worker}` | gauge | BusyWorkers / IdleWorkers ; attribut `apache.workers.state` (busy/idle) |
+| `apache.requests` | `{request}` | counter | Total Accesses |
+| `apache.traffic` | `By` | counter | Total kBytes × 1024 |
+
+Référence receiver contrib : [opentelemetry-collector-contrib/receiver/apachereceiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/apachereceiver).
+
 ## 6. Processus d'ajout d'une convention
 
 1. Lire les sources §1 pour le domaine concerné
