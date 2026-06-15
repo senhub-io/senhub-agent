@@ -6,14 +6,26 @@ import (
 	"strconv"
 	"sync"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // influxdbEntitySource feeds the entity rail with the monitored InfluxDB
-// instance as a "db" entity (Toise contract v0.5.0). Observe is non-blocking;
+// instance as a "db" entity (Toise contract). Observe is non-blocking;
 // the probe updates reachability and version on each Collect cycle.
+//
+// Identity rule — InfluxDB exposes no stable server UUID over the API this
+// probe uses, so the id degrades gracefully:
+//
+//  1. operator-supplied "instance_name" config key (verbatim, pinned at construction);
+//  2. host:port derived from the configured endpoint (the documented db
+//     degraded fallback when no stable tech id exists).
+//
+// Both paths pin the id at construction time and never change it, which
+// satisfies Toise's immutability contract (a changing id re-keys the db in
+// the consumer).
 type influxdbEntitySource struct {
-	instanceID string
+	instanceID string // pinned at construction, never changes
 	host       string
 	port       int64
 
@@ -23,12 +35,19 @@ type influxdbEntitySource struct {
 }
 
 // newInfluxdbEntitySource builds the entity source from the probe's config.
-// The instance ID is immutable and follows the db.instance.id convention:
-// "influxdb://<host>:<port>".
+// The instance ID is chosen once and is immutable for the process lifetime:
+// instance_name (if set) takes precedence; otherwise host:port is used as
+// the documented db fallback.
 func newInfluxdbEntitySource(cfg probeConfig) *influxdbEntitySource {
 	addr, portStr := endpointParts(cfg.Endpoint)
 	port, _ := strconv.ParseInt(portStr, 10, 64)
-	instanceID := "influxdb://" + addr + ":" + strconv.FormatInt(port, 10)
+
+	var instanceID string
+	if cfg.InstanceName != "" {
+		instanceID = cfg.InstanceName
+	} else {
+		instanceID = addr + ":" + strconv.FormatInt(port, 10)
+	}
 
 	return &influxdbEntitySource{
 		instanceID: instanceID,
@@ -44,10 +63,12 @@ func (s *influxdbEntitySource) setReachable(up bool, version string) {
 	s.up = up
 	if up {
 		s.attrs = map[string]any{
-			"db.system.name":    "influxdb",
-			"server.address":    s.host,
-			"server.port":       s.port,
-			"db.system.version": version,
+			"db.system.name": "influxdb",
+			"server.address": s.host,
+			"server.port":    s.port,
+		}
+		if version != "" {
+			s.attrs["db.system.version"] = version
 		}
 	} else {
 		s.attrs = nil
@@ -55,22 +76,36 @@ func (s *influxdbEntitySource) setReachable(up bool, version string) {
 	s.mu.Unlock()
 }
 
-// Observe implements entity.Source. Returns the db entity when the instance is
-// reachable. Returning ok=false when down preserves the consumer's last good
-// snapshot instead of treating the instance as deleted on a transient failure.
+// Observe implements entity.Source. Returns the db entity plus a monitors
+// edge from the agent when the instance is reachable. Returning ok=false when
+// down preserves the consumer's last good snapshot instead of treating the
+// instance as deleted on a transient failure.
 func (s *influxdbEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if !s.up {
 		return entity.Observation{}, false
 	}
-	return entity.Observation{
+
+	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "db",
 			ID:         map[string]any{"db.instance.id": s.instanceID},
 			Attributes: s.attrs,
 		}},
-	}, true
+	}
+
+	if agentID := agentstate.GetAgentInstanceID(); agentID != "" {
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     "monitors",
+			FromType: "service.instance",
+			FromID:   map[string]any{"service.instance.id": agentID},
+			ToType:   "db",
+			ToID:     map[string]any{"db.instance.id": s.instanceID},
+		})
+	}
+
+	return obs, true
 }
 
 // endpointParts extracts the host and port from an InfluxDB endpoint URL.
