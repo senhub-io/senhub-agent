@@ -26,7 +26,7 @@ func TestParseTracking_Normal(t *testing.T) {
 	if res.err != nil {
 		t.Fatalf("parseTracking error: %v", res.err)
 	}
-	if got, want := res.stratum, float32(2); got != want {
+	if got, want := res.stratum, float64(2); got != want {
 		t.Errorf("stratum: got %v, want %v", got, want)
 	}
 	if got := res.systemTimeS; got < 0.000012 || got > 0.000013 {
@@ -71,7 +71,7 @@ func TestParseTracking_BadFloat(t *testing.T) {
 func TestLeapToFloat(t *testing.T) {
 	cases := []struct {
 		status string
-		want   float32
+		want   float64
 	}{
 		{leapNormal, 0},
 		{leapInsert, 1},
@@ -91,7 +91,7 @@ func TestParseTracking_LeapStatuses(t *testing.T) {
 	base := "C0A80101,2,1686825600.000,0.000012,0.000001,0.000002,1.234,-0.001,0.012,0.001,0.002,64.0,"
 	cases := []struct {
 		status string
-		want   float32
+		want   float64
 	}{
 		{leapNormal, 0},
 		{leapInsert, 1},

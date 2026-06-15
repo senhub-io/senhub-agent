@@ -184,15 +184,15 @@ func (p *phpFPMProbe) collect(now time.Time) ([]data_store.DataPoint, error) {
 
 	points := []data_store.DataPoint{
 		{Name: "senhub.phpfpm.up", Value: 1, Timestamp: now, Tags: baseTags},
-		{Name: "phpfpm.uptime", Value: float32(status.StartSince), Timestamp: now, Tags: baseTags},
-		{Name: "phpfpm.accepted_connections", Value: float32(status.AcceptedConn), Timestamp: now, Tags: connTags},
-		{Name: "phpfpm.slow_requests", Value: float32(status.SlowRequests), Timestamp: now, Tags: connTags},
-		{Name: "phpfpm.listen_queue.current", Value: float32(status.ListenQueue), Timestamp: now, Tags: connTags},
-		{Name: "phpfpm.listen_queue.max", Value: float32(status.MaxListenQueue), Timestamp: now, Tags: connTags},
-		{Name: "phpfpm.processes.active", Value: float32(status.ActiveProcesses), Timestamp: now, Tags: processTags},
-		{Name: "phpfpm.processes.idle", Value: float32(status.IdleProcesses), Timestamp: now, Tags: processTags},
-		{Name: "phpfpm.processes.total", Value: float32(status.TotalProcesses), Timestamp: now, Tags: processTags},
-		{Name: "phpfpm.max_children_reached", Value: float32(status.MaxChildrenReached), Timestamp: now, Tags: connTags},
+		{Name: "phpfpm.uptime", Value: float64(status.StartSince), Timestamp: now, Tags: baseTags},
+		{Name: "phpfpm.accepted_connections", Value: float64(status.AcceptedConn), Timestamp: now, Tags: connTags},
+		{Name: "phpfpm.slow_requests", Value: float64(status.SlowRequests), Timestamp: now, Tags: connTags},
+		{Name: "phpfpm.listen_queue.current", Value: float64(status.ListenQueue), Timestamp: now, Tags: connTags},
+		{Name: "phpfpm.listen_queue.max", Value: float64(status.MaxListenQueue), Timestamp: now, Tags: connTags},
+		{Name: "phpfpm.processes.active", Value: float64(status.ActiveProcesses), Timestamp: now, Tags: processTags},
+		{Name: "phpfpm.processes.idle", Value: float64(status.IdleProcesses), Timestamp: now, Tags: processTags},
+		{Name: "phpfpm.processes.total", Value: float64(status.TotalProcesses), Timestamp: now, Tags: processTags},
+		{Name: "phpfpm.max_children_reached", Value: float64(status.MaxChildrenReached), Timestamp: now, Tags: connTags},
 	}
 	return points, nil
 }

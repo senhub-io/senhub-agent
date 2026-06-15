@@ -32,26 +32,26 @@ import (
 const ProbeType = "nvidia"
 
 const (
-	defaultInterval    = 30 * time.Second
+	defaultInterval      = 30 * time.Second
 	defaultNvidiaSmiPath = "nvidia-smi"
-	smiTimeout         = 15 * time.Second
+	smiTimeout           = 15 * time.Second
 )
 
 // nvidiaGPU holds parsed fields from one nvidia-smi CSV row.
 type nvidiaGPU struct {
-	index               string
-	name                string
-	uuid                string
-	utilizationGPU      float64 // percent 0-100
-	utilizationMemory   float64 // percent 0-100
-	memoryUsedMiB       float64 // MiB
-	memoryTotalMiB      float64 // MiB
-	temperatureGPU      float64 // Celsius
-	powerDraw           float64 // W
-	powerLimit          float64 // W
-	fanSpeed            float64 // percent 0-100
-	utilizationEncoder  float64 // percent 0-100
-	utilizationDecoder  float64 // percent 0-100
+	index              string
+	name               string
+	uuid               string
+	utilizationGPU     float64 // percent 0-100
+	utilizationMemory  float64 // percent 0-100
+	memoryUsedMiB      float64 // MiB
+	memoryTotalMiB     float64 // MiB
+	temperatureGPU     float64 // Celsius
+	powerDraw          float64 // W
+	powerLimit         float64 // W
+	fanSpeed           float64 // percent 0-100
+	utilizationEncoder float64 // percent 0-100
+	utilizationDecoder float64 // percent 0-100
 }
 
 // runSmiFunc is the injectable command runner (production = runSmi, tests
@@ -191,22 +191,22 @@ func buildDatapoints(gpu nvidiaGPU, hostTags []tags.Tag, ts time.Time) []data_st
 
 	pts := []data_store.DataPoint{
 		{Name: "senhub.nvidia.up", Value: 1, Timestamp: ts, Tags: tag()},
-		{Name: "gpu.utilization", Value: float32(gpu.utilizationGPU / 100), Timestamp: ts, Tags: tag()},
-		{Name: "gpu.memory.used", Value: float32(gpu.memoryUsedMiB * 1024 * 1024), Timestamp: ts, Tags: tag()},
-		{Name: "gpu.memory.total", Value: float32(gpu.memoryTotalMiB * 1024 * 1024), Timestamp: ts, Tags: tag()},
-		{Name: "gpu.memory.utilization", Value: float32(gpu.utilizationMemory / 100), Timestamp: ts, Tags: tag()},
-		{Name: "gpu.temperature", Value: float32(gpu.temperatureGPU), Timestamp: ts, Tags: tag()},
-		{Name: "gpu.encoder.utilization", Value: float32(gpu.utilizationEncoder / 100), Timestamp: ts, Tags: tag()},
-		{Name: "gpu.decoder.utilization", Value: float32(gpu.utilizationDecoder / 100), Timestamp: ts, Tags: tag()},
-		{Name: "gpu.fan.speed", Value: float32(gpu.fanSpeed / 100), Timestamp: ts, Tags: tag()},
+		{Name: "gpu.utilization", Value: float64(gpu.utilizationGPU / 100), Timestamp: ts, Tags: tag()},
+		{Name: "gpu.memory.used", Value: float64(gpu.memoryUsedMiB * 1024 * 1024), Timestamp: ts, Tags: tag()},
+		{Name: "gpu.memory.total", Value: float64(gpu.memoryTotalMiB * 1024 * 1024), Timestamp: ts, Tags: tag()},
+		{Name: "gpu.memory.utilization", Value: float64(gpu.utilizationMemory / 100), Timestamp: ts, Tags: tag()},
+		{Name: "gpu.temperature", Value: float64(gpu.temperatureGPU), Timestamp: ts, Tags: tag()},
+		{Name: "gpu.encoder.utilization", Value: float64(gpu.utilizationEncoder / 100), Timestamp: ts, Tags: tag()},
+		{Name: "gpu.decoder.utilization", Value: float64(gpu.utilizationDecoder / 100), Timestamp: ts, Tags: tag()},
+		{Name: "gpu.fan.speed", Value: float64(gpu.fanSpeed / 100), Timestamp: ts, Tags: tag()},
 	}
 	// Power metrics are optional: nvidia-smi reports "N/A" for cards that
 	// don't expose the power management interface (some laptop GPUs).
 	if gpu.powerDraw >= 0 {
-		pts = append(pts, data_store.DataPoint{Name: "gpu.power.usage", Value: float32(gpu.powerDraw), Timestamp: ts, Tags: tag()})
+		pts = append(pts, data_store.DataPoint{Name: "gpu.power.usage", Value: float64(gpu.powerDraw), Timestamp: ts, Tags: tag()})
 	}
 	if gpu.powerLimit >= 0 {
-		pts = append(pts, data_store.DataPoint{Name: "gpu.power.limit", Value: float32(gpu.powerLimit), Timestamp: ts, Tags: tag()})
+		pts = append(pts, data_store.DataPoint{Name: "gpu.power.limit", Value: float64(gpu.powerLimit), Timestamp: ts, Tags: tag()})
 	}
 	return pts
 }

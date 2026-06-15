@@ -210,7 +210,7 @@ func (p *TomcatProbe) Collect() ([]data_store.DataPoint, error) {
 
 	now := time.Now()
 	var points []data_store.DataPoint
-	up := float32(1)
+	up := float64(1)
 
 	// Probe reachability: attempt a simple read. If Jolokia is down, mark
 	// up=0 and return — there is nothing useful to collect.
@@ -277,11 +277,11 @@ func (p *TomcatProbe) collectRequestProcessor(ctx context.Context, now time.Time
 
 		reqTags := []tags.Tag{connTag, {Key: "metric_type", Value: "requests"}}
 		points = append(points,
-			data_store.DataPoint{Name: "tomcat.requests.total", Value: float32(reqCount), Timestamp: now, Tags: reqTags},
-			data_store.DataPoint{Name: "tomcat.bytes.received", Value: float32(bytesReceived), Timestamp: now, Tags: reqTags},
-			data_store.DataPoint{Name: "tomcat.bytes.sent", Value: float32(bytesSent), Timestamp: now, Tags: reqTags},
-			data_store.DataPoint{Name: "tomcat.processing_time", Value: float32(processingTime), Timestamp: now, Tags: reqTags},
-			data_store.DataPoint{Name: "tomcat.errors.total", Value: float32(errorCount), Timestamp: now, Tags: reqTags},
+			data_store.DataPoint{Name: "tomcat.requests.total", Value: float64(reqCount), Timestamp: now, Tags: reqTags},
+			data_store.DataPoint{Name: "tomcat.bytes.received", Value: float64(bytesReceived), Timestamp: now, Tags: reqTags},
+			data_store.DataPoint{Name: "tomcat.bytes.sent", Value: float64(bytesSent), Timestamp: now, Tags: reqTags},
+			data_store.DataPoint{Name: "tomcat.processing_time", Value: float64(processingTime), Timestamp: now, Tags: reqTags},
+			data_store.DataPoint{Name: "tomcat.errors.total", Value: float64(errorCount), Timestamp: now, Tags: reqTags},
 		)
 	}
 	return points
@@ -303,9 +303,9 @@ func (p *TomcatProbe) collectThreadPool(ctx context.Context, now time.Time) []da
 
 		threadTags := []tags.Tag{connTag, {Key: "metric_type", Value: "threads"}}
 		points = append(points,
-			data_store.DataPoint{Name: "tomcat.threads.current", Value: float32(current), Timestamp: now, Tags: threadTags},
-			data_store.DataPoint{Name: "tomcat.threads.busy", Value: float32(busy), Timestamp: now, Tags: threadTags},
-			data_store.DataPoint{Name: "tomcat.threads.max", Value: float32(max), Timestamp: now, Tags: threadTags},
+			data_store.DataPoint{Name: "tomcat.threads.current", Value: float64(current), Timestamp: now, Tags: threadTags},
+			data_store.DataPoint{Name: "tomcat.threads.busy", Value: float64(busy), Timestamp: now, Tags: threadTags},
+			data_store.DataPoint{Name: "tomcat.threads.max", Value: float64(max), Timestamp: now, Tags: threadTags},
 		)
 	}
 	return points
@@ -328,11 +328,9 @@ func (p *TomcatProbe) collectSessions(ctx context.Context, now time.Time) []data
 	// The value is: { "<MBeanName>": <activeSessions_int> }
 	for mbeanKey, val := range raw {
 		context := extractContextFromManagerMBean(mbeanKey)
-		var sessions float32
+		var sessions float64
 		switch v := val.(type) {
 		case float64:
-			sessions = float32(v)
-		case float32:
 			sessions = v
 		default:
 			continue
@@ -391,11 +389,9 @@ func (p *TomcatProbe) collectHeapMemory(ctx context.Context, now time.Time) []da
 		if !ok {
 			continue
 		}
-		var fv float32
+		var fv float64
 		switch num := v.(type) {
 		case float64:
-			fv = float32(num)
-		case float32:
 			fv = num
 		default:
 			continue
@@ -425,8 +421,8 @@ func (p *TomcatProbe) collectGC(ctx context.Context, now time.Time) []data_store
 
 		gcTags := []tags.Tag{collTag, {Key: "metric_type", Value: "gc"}}
 		points = append(points,
-			data_store.DataPoint{Name: "jvm.gc.collections.count", Value: float32(count), Timestamp: now, Tags: gcTags},
-			data_store.DataPoint{Name: "jvm.gc.collections.elapsed", Value: float32(elapsed), Timestamp: now, Tags: gcTags},
+			data_store.DataPoint{Name: "jvm.gc.collections.count", Value: float64(count), Timestamp: now, Tags: gcTags},
+			data_store.DataPoint{Name: "jvm.gc.collections.elapsed", Value: float64(elapsed), Timestamp: now, Tags: gcTags},
 		)
 	}
 	return points
@@ -441,6 +437,6 @@ func (p *TomcatProbe) collectThreading(ctx context.Context, now time.Time) []dat
 
 	threadTags := []tags.Tag{{Key: "metric_type", Value: "threads"}}
 	return []data_store.DataPoint{
-		{Name: "jvm.threads.count", Value: float32(threadCount), Timestamp: now, Tags: threadTags},
+		{Name: "jvm.threads.count", Value: float64(threadCount), Timestamp: now, Tags: threadTags},
 	}
 }

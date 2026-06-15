@@ -30,13 +30,13 @@ func newTestProbe(t *testing.T, srv *httptest.Server) *NATSProbe {
 }
 
 // pointMap indexes collected datapoints by name for easy assertion.
-func pointMap(t *testing.T, p *NATSProbe) map[string]float32 {
+func pointMap(t *testing.T, p *NATSProbe) map[string]float64 {
 	t.Helper()
 	pts, err := p.Collect()
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	m := make(map[string]float32, len(pts))
+	m := make(map[string]float64, len(pts))
 	for _, dp := range pts {
 		m[dp.Name] = dp.Value
 	}
@@ -113,7 +113,7 @@ func TestCollect_ServerUp(t *testing.T) {
 	p := newTestProbe(t, srv)
 	got := pointMap(t, p)
 
-	expect := map[string]float32{
+	expect := map[string]float64{
 		"senhub.nats.up":           1,
 		"nats.connections.count":   5,
 		"nats.connections.total":   42,

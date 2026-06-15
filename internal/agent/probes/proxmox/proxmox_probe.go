@@ -212,7 +212,7 @@ func (p *ProxmoxProbe) collectNode(n pveNode, now time.Time) []data_store.DataPo
 	}
 
 	// Node status.
-	online := float32(0)
+	online := float64(0)
 	if n.Status == "online" {
 		online = 1
 	}
@@ -222,11 +222,11 @@ func (p *ProxmoxProbe) collectNode(n pveNode, now time.Time) []data_store.DataPo
 
 	// Detailed node metrics (CPU/memory) via /nodes/{node}/status.
 	if ns, err := p.fetchNodeStatus(n.Node); err == nil {
-		cpu := float32(ns.CPU)
+		cpu := float64(ns.CPU)
 		points = append(points,
 			data_store.DataPoint{Name: "proxmox.node.cpu.utilization", Value: cpu, Timestamp: now, Tags: nodeTags},
-			data_store.DataPoint{Name: "proxmox.node.memory.used", Value: float32(ns.Memory.Used), Timestamp: now, Tags: nodeTags},
-			data_store.DataPoint{Name: "proxmox.node.memory.total", Value: float32(ns.Memory.Total), Timestamp: now, Tags: nodeTags},
+			data_store.DataPoint{Name: "proxmox.node.memory.used", Value: float64(ns.Memory.Used), Timestamp: now, Tags: nodeTags},
+			data_store.DataPoint{Name: "proxmox.node.memory.total", Value: float64(ns.Memory.Total), Timestamp: now, Tags: nodeTags},
 		)
 	} else {
 		p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to fetch node status")
@@ -262,8 +262,8 @@ func (p *ProxmoxProbe) collectNode(n pveNode, now time.Time) []data_store.DataPo
 			{Key: "metric_type", Value: "storage"},
 		}
 		points = append(points,
-			data_store.DataPoint{Name: "proxmox.storage.used", Value: float32(st.Used), Timestamp: now, Tags: stTags},
-			data_store.DataPoint{Name: "proxmox.storage.total", Value: float32(st.Total), Timestamp: now, Tags: stTags},
+			data_store.DataPoint{Name: "proxmox.storage.used", Value: float64(st.Used), Timestamp: now, Tags: stTags},
+			data_store.DataPoint{Name: "proxmox.storage.total", Value: float64(st.Total), Timestamp: now, Tags: stTags},
 		)
 	}
 
@@ -281,19 +281,19 @@ func (p *ProxmoxProbe) collectVMStatus(node string, vm pveVMStatus, vmType strin
 		{Key: "metric_type", Value: "vm"},
 	}
 
-	running := float32(0)
+	running := float64(0)
 	if vm.Status == "running" {
 		running = 1
 	}
 
 	return []data_store.DataPoint{
-		{Name: "proxmox.vm.cpu.utilization", Value: float32(vm.CPU), Timestamp: now, Tags: vmTags},
-		{Name: "proxmox.vm.memory.used", Value: float32(vm.Mem), Timestamp: now, Tags: vmTags},
-		{Name: "proxmox.vm.memory.total", Value: float32(vm.MaxMem), Timestamp: now, Tags: vmTags},
-		{Name: "proxmox.vm.disk.read", Value: float32(vm.DiskRead), Timestamp: now, Tags: vmTags},
-		{Name: "proxmox.vm.disk.write", Value: float32(vm.DiskWrite), Timestamp: now, Tags: vmTags},
-		{Name: "proxmox.vm.network.in", Value: float32(vm.NetIn), Timestamp: now, Tags: vmTags},
-		{Name: "proxmox.vm.network.out", Value: float32(vm.NetOut), Timestamp: now, Tags: vmTags},
+		{Name: "proxmox.vm.cpu.utilization", Value: float64(vm.CPU), Timestamp: now, Tags: vmTags},
+		{Name: "proxmox.vm.memory.used", Value: float64(vm.Mem), Timestamp: now, Tags: vmTags},
+		{Name: "proxmox.vm.memory.total", Value: float64(vm.MaxMem), Timestamp: now, Tags: vmTags},
+		{Name: "proxmox.vm.disk.read", Value: float64(vm.DiskRead), Timestamp: now, Tags: vmTags},
+		{Name: "proxmox.vm.disk.write", Value: float64(vm.DiskWrite), Timestamp: now, Tags: vmTags},
+		{Name: "proxmox.vm.network.in", Value: float64(vm.NetIn), Timestamp: now, Tags: vmTags},
+		{Name: "proxmox.vm.network.out", Value: float64(vm.NetOut), Timestamp: now, Tags: vmTags},
 		{Name: "proxmox.vm.status", Value: running, Timestamp: now, Tags: vmTags},
 	}
 }

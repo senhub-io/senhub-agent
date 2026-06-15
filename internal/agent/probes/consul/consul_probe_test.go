@@ -199,7 +199,7 @@ func TestConsulProbe_Collect_MetricValues(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	byName := make(map[string]float32)
+	byName := make(map[string]float64)
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}
@@ -251,7 +251,7 @@ func TestConsulProbe_Collect_HealthChecks(t *testing.T) {
 	p, _ := NewConsulProbe(map[string]interface{}{"endpoint": srv.URL}, newTestLogger())
 	points, _ := p.Collect()
 
-	stateValues := make(map[string]float32)
+	stateValues := make(map[string]float64)
 	for _, dp := range points {
 		if dp.Name == "consul.health.checks" {
 			for _, tag := range dp.Tags {
@@ -262,7 +262,7 @@ func TestConsulProbe_Collect_HealthChecks(t *testing.T) {
 		}
 	}
 
-	cases := map[string]float32{
+	cases := map[string]float64{
 		"critical": 3,
 		"warning":  1,
 		"passing":  20,

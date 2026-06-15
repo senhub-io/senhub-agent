@@ -62,7 +62,7 @@ func (p *MSSQLProbe) collectPerformanceCounters(ctx context.Context, now time.Ti
 	var points []data_store.DataPoint
 	emit := func(name string, value float64, metricType string) {
 		points = append(points, data_store.DataPoint{
-			Name: name, Value: float32(value), Timestamp: now, Tags: p.baseTags(metricType),
+			Name: name, Value: float64(value), Timestamp: now, Tags: p.baseTags(metricType),
 		})
 	}
 
@@ -140,13 +140,13 @@ func (p *MSSQLProbe) collectDatabaseIO(ctx context.Context, now time.Time) []dat
 
 		points = append(points,
 			data_store.DataPoint{
-				Name: "sqlserver.database.io", Value: float32(r.read), Timestamp: now,
+				Name: "sqlserver.database.io", Value: float64(r.read), Timestamp: now,
 				Tags: p.taggedWith(metricTypeIO,
 					tags.Tag{Key: "database", Value: r.database},
 					tags.Tag{Key: "direction", Value: "read"}),
 			},
 			data_store.DataPoint{
-				Name: "sqlserver.database.io", Value: float32(r.write), Timestamp: now,
+				Name: "sqlserver.database.io", Value: float64(r.write), Timestamp: now,
 				Tags: p.taggedWith(metricTypeIO,
 					tags.Tag{Key: "database", Value: r.database},
 					tags.Tag{Key: "direction", Value: "write"}),
@@ -187,7 +187,7 @@ func (p *MSSQLProbe) collectDatabaseStatus(ctx context.Context, now time.Time) [
 			continue
 		}
 		points = append(points, data_store.DataPoint{
-			Name: "sqlserver.database.status", Value: float32(state), Timestamp: now,
+			Name: "sqlserver.database.status", Value: float64(state), Timestamp: now,
 			Tags: p.taggedWith(metricTypeStorage, tags.Tag{Key: "database", Value: name}),
 		})
 	}

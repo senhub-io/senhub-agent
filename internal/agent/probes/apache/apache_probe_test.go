@@ -89,7 +89,7 @@ func TestCollect_Success(t *testing.T) {
 		t.Fatal("Collect returned no datapoints")
 	}
 
-	byName := map[string][]float32{}
+	byName := map[string][]float64{}
 	for _, dp := range points {
 		byName[dp.Name] = append(byName[dp.Name], dp.Value)
 	}
@@ -115,7 +115,7 @@ func TestCollect_Success(t *testing.T) {
 		t.Errorf("apache.requests = %v, want [1234]", v)
 	}
 	// traffic = 5678 * 1024 bytes
-	want := float32(5678 * 1024)
+	want := float64(5678 * 1024)
 	if v := byName["apache.traffic"]; len(v) == 0 || v[0] != want {
 		t.Errorf("apache.traffic = %v, want [%v]", v, want)
 	}
@@ -141,7 +141,7 @@ func TestCollect_Up0OnError(t *testing.T) {
 		t.Fatalf("Collect must not return an error: %v", err)
 	}
 
-	byName := map[string]float32{}
+	byName := map[string]float64{}
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}
@@ -198,7 +198,7 @@ func TestCollect_UnreachableServer(t *testing.T) {
 		t.Fatalf("Collect must not return an error on connection failure: %v", err)
 	}
 
-	byName := map[string]float32{}
+	byName := map[string]float64{}
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}
@@ -227,7 +227,7 @@ func TestWorkerStateTags(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	stateValues := map[string]float32{}
+	stateValues := map[string]float64{}
 	for _, dp := range points {
 		if dp.Name != "apache.workers" {
 			continue

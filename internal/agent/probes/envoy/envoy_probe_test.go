@@ -28,13 +28,13 @@ func newTestProbe(t *testing.T, config map[string]interface{}) *EnvoyProbe {
 }
 
 // collectByName returns a map of metric name → value from a single Collect cycle.
-func collectByName(t *testing.T, p *EnvoyProbe) map[string]float32 {
+func collectByName(t *testing.T, p *EnvoyProbe) map[string]float64 {
 	t.Helper()
 	points, err := p.Collect()
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	got := map[string]float32{}
+	got := map[string]float64{}
 	for _, dp := range points {
 		got[dp.Name] = dp.Value
 	}
@@ -202,7 +202,7 @@ func TestCollect_PerClusterMetrics(t *testing.T) {
 	}
 
 	// Collect per-cluster connection totals.
-	clusterCxTotal := map[string]float32{}
+	clusterCxTotal := map[string]float64{}
 	for _, dp := range pts {
 		if dp.Name != "envoy.cluster.upstream.connections.total" {
 			continue

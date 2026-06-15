@@ -304,41 +304,41 @@ func (p *CouchDBProbe) buildDatapoints(s *statsResponse, ts time.Time) []data_st
 		{Name: "senhub.couchdb.up", Value: 1, Timestamp: ts, Tags: overviewTags},
 
 		// Total HTTP requests
-		{Name: "couchdb.httpd.requests", Value: float32(s.HTTPD.Requests.Value), Timestamp: ts, Tags: httpdTags},
+		{Name: "couchdb.httpd.requests", Value: float64(s.HTTPD.Requests.Value), Timestamp: ts, Tags: httpdTags},
 
 		// HTTP methods — collapsed via "method" tag
-		{Name: "couchdb.httpd.method.requests", Value: float32(s.HTTPDRequestMethods.GET.Value), Timestamp: ts,
+		{Name: "couchdb.httpd.method.requests", Value: float64(s.HTTPDRequestMethods.GET.Value), Timestamp: ts,
 			Tags: append(append([]tags.Tag{}, httpdTags...), tags.Tag{Key: "method", Value: "GET"})},
-		{Name: "couchdb.httpd.method.requests", Value: float32(s.HTTPDRequestMethods.POST.Value), Timestamp: ts,
+		{Name: "couchdb.httpd.method.requests", Value: float64(s.HTTPDRequestMethods.POST.Value), Timestamp: ts,
 			Tags: append(append([]tags.Tag{}, httpdTags...), tags.Tag{Key: "method", Value: "POST"})},
-		{Name: "couchdb.httpd.method.requests", Value: float32(s.HTTPDRequestMethods.PUT.Value), Timestamp: ts,
+		{Name: "couchdb.httpd.method.requests", Value: float64(s.HTTPDRequestMethods.PUT.Value), Timestamp: ts,
 			Tags: append(append([]tags.Tag{}, httpdTags...), tags.Tag{Key: "method", Value: "PUT"})},
-		{Name: "couchdb.httpd.method.requests", Value: float32(s.HTTPDRequestMethods.DELETE.Value), Timestamp: ts,
+		{Name: "couchdb.httpd.method.requests", Value: float64(s.HTTPDRequestMethods.DELETE.Value), Timestamp: ts,
 			Tags: append(append([]tags.Tag{}, httpdTags...), tags.Tag{Key: "method", Value: "DELETE"})},
 
 		// HTTP status codes — collapsed via "status" tag
-		{Name: "couchdb.httpd.status.responses", Value: float32(s.HTTPDStatusCodes.S200.Value), Timestamp: ts,
+		{Name: "couchdb.httpd.status.responses", Value: float64(s.HTTPDStatusCodes.S200.Value), Timestamp: ts,
 			Tags: append(append([]tags.Tag{}, httpdTags...), tags.Tag{Key: "status", Value: "200"})},
-		{Name: "couchdb.httpd.status.responses", Value: float32(s.HTTPDStatusCodes.S201.Value), Timestamp: ts,
+		{Name: "couchdb.httpd.status.responses", Value: float64(s.HTTPDStatusCodes.S201.Value), Timestamp: ts,
 			Tags: append(append([]tags.Tag{}, httpdTags...), tags.Tag{Key: "status", Value: "201"})},
-		{Name: "couchdb.httpd.status.responses", Value: float32(s.HTTPDStatusCodes.S400.Value), Timestamp: ts,
+		{Name: "couchdb.httpd.status.responses", Value: float64(s.HTTPDStatusCodes.S400.Value), Timestamp: ts,
 			Tags: append(append([]tags.Tag{}, httpdTags...), tags.Tag{Key: "status", Value: "400"})},
-		{Name: "couchdb.httpd.status.responses", Value: float32(s.HTTPDStatusCodes.S401.Value), Timestamp: ts,
+		{Name: "couchdb.httpd.status.responses", Value: float64(s.HTTPDStatusCodes.S401.Value), Timestamp: ts,
 			Tags: append(append([]tags.Tag{}, httpdTags...), tags.Tag{Key: "status", Value: "401"})},
-		{Name: "couchdb.httpd.status.responses", Value: float32(s.HTTPDStatusCodes.S404.Value), Timestamp: ts,
+		{Name: "couchdb.httpd.status.responses", Value: float64(s.HTTPDStatusCodes.S404.Value), Timestamp: ts,
 			Tags: append(append([]tags.Tag{}, httpdTags...), tags.Tag{Key: "status", Value: "404"})},
-		{Name: "couchdb.httpd.status.responses", Value: float32(s.HTTPDStatusCodes.S500.Value), Timestamp: ts,
+		{Name: "couchdb.httpd.status.responses", Value: float64(s.HTTPDStatusCodes.S500.Value), Timestamp: ts,
 			Tags: append(append([]tags.Tag{}, httpdTags...), tags.Tag{Key: "status", Value: "500"})},
 
 		// Database-level gauges and counters
-		{Name: "couchdb.open.databases", Value: float32(s.OpenDatabases.Value), Timestamp: ts, Tags: overviewTags},
-		{Name: "couchdb.open.files", Value: float32(s.OpenOSFiles.Value), Timestamp: ts, Tags: overviewTags},
-		{Name: "couchdb.database.reads", Value: float32(s.DatabaseReads.Value), Timestamp: ts, Tags: ioTags},
-		{Name: "couchdb.database.writes", Value: float32(s.DatabaseWrites.Value), Timestamp: ts, Tags: ioTags},
+		{Name: "couchdb.open.databases", Value: float64(s.OpenDatabases.Value), Timestamp: ts, Tags: overviewTags},
+		{Name: "couchdb.open.files", Value: float64(s.OpenOSFiles.Value), Timestamp: ts, Tags: overviewTags},
+		{Name: "couchdb.database.reads", Value: float64(s.DatabaseReads.Value), Timestamp: ts, Tags: ioTags},
+		{Name: "couchdb.database.writes", Value: float64(s.DatabaseWrites.Value), Timestamp: ts, Tags: ioTags},
 
 		// I/O bytes
-		{Name: "couchdb.io.bytes.read", Value: float32(s.IOInput.Value), Timestamp: ts, Tags: ioTags},
-		{Name: "couchdb.io.bytes.written", Value: float32(s.IOOutput.Value), Timestamp: ts, Tags: ioTags},
+		{Name: "couchdb.io.bytes.read", Value: float64(s.IOInput.Value), Timestamp: ts, Tags: ioTags},
+		{Name: "couchdb.io.bytes.written", Value: float64(s.IOOutput.Value), Timestamp: ts, Tags: ioTags},
 	}
 	return points
 }

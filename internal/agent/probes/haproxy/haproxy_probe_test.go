@@ -208,7 +208,7 @@ func makeTestProbe(endpoint string) *haproxyProbe {
 	return p
 }
 
-func findMetricValue(points []data_store.DataPoint, name string) *float32 {
+func findMetricValue(points []data_store.DataPoint, name string) *float64 {
 	for _, p := range points {
 		if p.Name == name {
 			v := p.Value

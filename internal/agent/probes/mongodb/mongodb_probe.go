@@ -153,7 +153,7 @@ func (p *mongoDBProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 
 	var points []data_store.DataPoint
-	up := float32(1)
+	up := float64(1)
 
 	status, err := p.runServerStatus()
 	if err != nil {
@@ -295,7 +295,7 @@ func (p *mongoDBProbe) buildServerStatusPoints(status bson.M, now time.Time) []d
 	if ms, ok := floatFrom(status, "uptimeMillis"); ok {
 		pts = append(pts, data_store.DataPoint{
 			Name:      "mongodb.uptime",
-			Value:     float32(ms / 1000),
+			Value:     float64(ms / 1000),
 			Timestamp: now,
 			Tags:      p.baseTags(metricTypeStatus),
 		})
@@ -314,7 +314,7 @@ func (p *mongoDBProbe) buildServerStatusPoints(status bson.M, now time.Time) []d
 			if v, ok := floatFrom(conns, entry.key); ok {
 				pts = append(pts, data_store.DataPoint{
 					Name:      entry.metric,
-					Value:     float32(v),
+					Value:     float64(v),
 					Timestamp: now,
 					Tags:      p.baseTags(metricTypeConns),
 				})
@@ -335,7 +335,7 @@ func (p *mongoDBProbe) buildServerStatusPoints(status bson.M, now time.Time) []d
 			if v, ok := floatFrom(net, entry.key); ok {
 				pts = append(pts, data_store.DataPoint{
 					Name:      entry.metric,
-					Value:     float32(v),
+					Value:     float64(v),
 					Timestamp: now,
 					Tags:      p.baseTags(metricTypeNetwork),
 				})
@@ -349,7 +349,7 @@ func (p *mongoDBProbe) buildServerStatusPoints(status bson.M, now time.Time) []d
 			if v, ok := floatFrom(ops, op); ok {
 				pts = append(pts, data_store.DataPoint{
 					Name:      "mongodb.operations.count",
-					Value:     float32(v),
+					Value:     float64(v),
 					Timestamp: now,
 					Tags:      append(p.baseTags(metricTypeOps), tags.Tag{Key: "operation", Value: op}),
 				})
@@ -369,7 +369,7 @@ func (p *mongoDBProbe) buildServerStatusPoints(status bson.M, now time.Time) []d
 			if v, ok := floatFrom(mem, entry.key); ok {
 				pts = append(pts, data_store.DataPoint{
 					Name:      "mongodb.memory.usage",
-					Value:     float32(v * 1024 * 1024),
+					Value:     float64(v * 1024 * 1024),
 					Timestamp: now,
 					Tags:      append(p.baseTags(metricTypeMemory), tags.Tag{Key: "type", Value: entry.memTyp}),
 				})
@@ -384,7 +384,7 @@ func (p *mongoDBProbe) buildServerStatusPoints(status bson.M, now time.Time) []d
 				if v, ok := floatFrom(docOps, op); ok {
 					pts = append(pts, data_store.DataPoint{
 						Name:      "mongodb.document.operations",
-						Value:     float32(v),
+						Value:     float64(v),
 						Timestamp: now,
 						Tags:      append(p.baseTags(metricTypeDocs), tags.Tag{Key: "operation", Value: op}),
 					})
@@ -407,7 +407,7 @@ func (p *mongoDBProbe) buildServerStatusPoints(status bson.M, now time.Time) []d
 				if v, ok := floatFrom(cache, entry.key); ok {
 					pts = append(pts, data_store.DataPoint{
 						Name:      entry.metric,
-						Value:     float32(v),
+						Value:     float64(v),
 						Timestamp: now,
 						Tags:      append(p.baseTags(metricTypeCache), tags.Tag{Key: "type", Value: entry.opType}),
 					})
@@ -422,7 +422,7 @@ func (p *mongoDBProbe) buildServerStatusPoints(status bson.M, now time.Time) []d
 			if v, ok := floatFrom(cq, "readers"); ok {
 				pts = append(pts, data_store.DataPoint{
 					Name:      "mongodb.active.reads",
-					Value:     float32(v),
+					Value:     float64(v),
 					Timestamp: now,
 					Tags:      p.baseTags(metricTypeLocks),
 				})
@@ -430,7 +430,7 @@ func (p *mongoDBProbe) buildServerStatusPoints(status bson.M, now time.Time) []d
 			if v, ok := floatFrom(cq, "writers"); ok {
 				pts = append(pts, data_store.DataPoint{
 					Name:      "mongodb.active.writes",
-					Value:     float32(v),
+					Value:     float64(v),
 					Timestamp: now,
 					Tags:      p.baseTags(metricTypeLocks),
 				})
@@ -502,7 +502,7 @@ func (p *mongoDBProbe) runDBStats(dbName string, now time.Time) ([]data_store.Da
 		if v, ok := floatFrom(result, entry.key); ok {
 			pts = append(pts, data_store.DataPoint{
 				Name:      entry.metric,
-				Value:     float32(v),
+				Value:     float64(v),
 				Timestamp: now,
 				Tags:      append(p.baseTags(metricTypeDatabase), dbTag),
 			})

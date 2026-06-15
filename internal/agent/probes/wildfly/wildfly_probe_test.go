@@ -132,13 +132,13 @@ func newTestProbe(t *testing.T, srv *httptest.Server) *WildflyProbe {
 }
 
 // collectByName runs Collect and returns a map of metric name → value.
-func collectByName(t *testing.T, p *WildflyProbe) map[string]float32 {
+func collectByName(t *testing.T, p *WildflyProbe) map[string]float64 {
 	t.Helper()
 	points, err := p.Collect()
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	out := make(map[string]float32, len(points))
+	out := make(map[string]float64, len(points))
 	for _, dp := range points {
 		out[dp.Name] = dp.Value
 	}
@@ -245,7 +245,7 @@ func TestCollect_MetricValues(t *testing.T) {
 	got := collectByName(t, p)
 
 	// JVM heap: 512 MiB = 536870912 bytes
-	const expectedHeapUsed = float32(512 * 1024 * 1024)
+	const expectedHeapUsed = float64(512 * 1024 * 1024)
 	if got["jvm.memory.heap.used"] != expectedHeapUsed {
 		t.Errorf("jvm.memory.heap.used = %v, want %v", got["jvm.memory.heap.used"], expectedHeapUsed)
 	}

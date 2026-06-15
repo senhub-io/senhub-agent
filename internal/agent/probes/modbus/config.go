@@ -7,10 +7,10 @@ import (
 
 // Register type identifiers accepted in YAML config.
 const (
-	typeUint16     = "uint16"
-	typeInt16      = "int16"
-	typeUint32     = "uint32"
-	typeInt32      = "int32"
+	typeUint16      = "uint16"
+	typeInt16       = "int16"
+	typeUint32      = "uint32"
+	typeInt32       = "int32"
 	typeFloat32ABCD = "float32_abcd"
 	typeFloat32CDAB = "float32_cdab"
 )

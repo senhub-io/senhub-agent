@@ -174,7 +174,7 @@ func (p *unifiProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	var points []data_store.DataPoint
-	emitUp := func(up float32) []data_store.DataPoint {
+	emitUp := func(up float64) []data_store.DataPoint {
 		points = append([]data_store.DataPoint{
 			{Name: "senhub.unifi.up", Value: up, Timestamp: now, Tags: baseTags},
 		}, points...)
@@ -330,8 +330,8 @@ func (p *unifiProbe) buildNetworkPoints(health healthEnvelope, baseTags []tags.T
 		txTags := append(append([]tags.Tag(nil), baseTags...), tags.Tag{Key: "direction", Value: "transmit"})
 		rxTags := append(append([]tags.Tag(nil), baseTags...), tags.Tag{Key: "direction", Value: "receive"})
 		points = append(points,
-			data_store.DataPoint{Name: "unifi.network.io", Value: float32(h.TxBytesR), Timestamp: ts, Tags: txTags},
-			data_store.DataPoint{Name: "unifi.network.io", Value: float32(h.RxBytesR), Timestamp: ts, Tags: rxTags},
+			data_store.DataPoint{Name: "unifi.network.io", Value: float64(h.TxBytesR), Timestamp: ts, Tags: txTags},
+			data_store.DataPoint{Name: "unifi.network.io", Value: float64(h.RxBytesR), Timestamp: ts, Tags: rxTags},
 		)
 	}
 	return points
@@ -367,10 +367,10 @@ func (p *unifiProbe) buildDevicePoints(devices deviceEnvelope, ts time.Time) []d
 			{Key: "metric_type", Value: "device"},
 		}
 		if cpu, ok := parseFloat(d.SysStats.CPU); ok {
-			points = append(points, data_store.DataPoint{Name: "unifi.device.cpu", Value: float32(cpu), Timestamp: ts, Tags: devTags})
+			points = append(points, data_store.DataPoint{Name: "unifi.device.cpu", Value: float64(cpu), Timestamp: ts, Tags: devTags})
 		}
 		if mem, ok := parseFloat(d.SysStats.Mem); ok {
-			points = append(points, data_store.DataPoint{Name: "unifi.device.memory", Value: float32(mem), Timestamp: ts, Tags: devTags})
+			points = append(points, data_store.DataPoint{Name: "unifi.device.memory", Value: float64(mem), Timestamp: ts, Tags: devTags})
 		}
 		if dt == "uap" {
 			apTags := []tags.Tag{
@@ -380,8 +380,8 @@ func (p *unifiProbe) buildDevicePoints(devices deviceEnvelope, ts time.Time) []d
 				{Key: "metric_type", Value: "access_point"},
 			}
 			points = append(points,
-				data_store.DataPoint{Name: "unifi.ap.clients", Value: float32(d.NumSta), Timestamp: ts, Tags: apTags},
-				data_store.DataPoint{Name: "unifi.ap.satisfaction", Value: float32(d.Score / 100), Timestamp: ts, Tags: apTags},
+				data_store.DataPoint{Name: "unifi.ap.clients", Value: float64(d.NumSta), Timestamp: ts, Tags: apTags},
+				data_store.DataPoint{Name: "unifi.ap.satisfaction", Value: float64(d.Score / 100), Timestamp: ts, Tags: apTags},
 			)
 		}
 	}
@@ -394,9 +394,9 @@ func (p *unifiProbe) buildDevicePoints(devices deviceEnvelope, ts time.Time) []d
 			{Key: "metric_type", Value: "inventory"},
 		}
 		points = append(points,
-			data_store.DataPoint{Name: "unifi.devices.total", Value: float32(c.total), Timestamp: ts, Tags: typeTags},
-			data_store.DataPoint{Name: "unifi.devices.adopted", Value: float32(c.adopted), Timestamp: ts, Tags: typeTags},
-			data_store.DataPoint{Name: "unifi.devices.disconnected", Value: float32(c.disconnected), Timestamp: ts, Tags: typeTags},
+			data_store.DataPoint{Name: "unifi.devices.total", Value: float64(c.total), Timestamp: ts, Tags: typeTags},
+			data_store.DataPoint{Name: "unifi.devices.adopted", Value: float64(c.adopted), Timestamp: ts, Tags: typeTags},
+			data_store.DataPoint{Name: "unifi.devices.disconnected", Value: float64(c.disconnected), Timestamp: ts, Tags: typeTags},
 		)
 	}
 	return points
@@ -412,8 +412,8 @@ func (p *unifiProbe) buildClientPoints(clients clientEnvelope, baseTags []tags.T
 		}
 	}
 	return []data_store.DataPoint{
-		{Name: "unifi.clients.total", Value: float32(total), Timestamp: ts, Tags: baseTags},
-		{Name: "unifi.clients.wifi", Value: float32(wifi), Timestamp: ts, Tags: baseTags},
+		{Name: "unifi.clients.total", Value: float64(total), Timestamp: ts, Tags: baseTags},
+		{Name: "unifi.clients.wifi", Value: float64(wifi), Timestamp: ts, Tags: baseTags},
 	}
 }
 

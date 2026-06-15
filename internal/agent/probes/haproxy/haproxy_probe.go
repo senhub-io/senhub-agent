@@ -166,7 +166,7 @@ func (p *haproxyProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 
 	upTags := []tags.Tag{{Key: "metric_type", Value: "status"}}
-	up := float32(1)
+	up := float64(1)
 
 	rows, err := p.fetchCSV()
 	if err != nil {
@@ -257,13 +257,13 @@ func (p *haproxyProbe) buildDatapoints(rows [][]string, ts time.Time) []data_sto
 			points = append(points,
 				data_store.DataPoint{
 					Name:      "haproxy.sessions.count",
-					Value:     float32(parseInt(row[colScur])),
+					Value:     float64(parseInt(row[colScur])),
 					Timestamp: ts,
 					Tags:      sessionTags,
 				},
 				data_store.DataPoint{
 					Name:      "haproxy.sessions.total",
-					Value:     float32(parseInt(row[colStot])),
+					Value:     float64(parseInt(row[colStot])),
 					Timestamp: ts,
 					Tags:      sessionTags,
 				},
@@ -275,13 +275,13 @@ func (p *haproxyProbe) buildDatapoints(rows [][]string, ts time.Time) []data_sto
 		points = append(points,
 			data_store.DataPoint{
 				Name:      "haproxy.bytes.input",
-				Value:     float32(parseInt(row[colBin])),
+				Value:     float64(parseInt(row[colBin])),
 				Timestamp: ts,
 				Tags:      throughputTags,
 			},
 			data_store.DataPoint{
 				Name:      "haproxy.bytes.output",
-				Value:     float32(parseInt(row[colBout])),
+				Value:     float64(parseInt(row[colBout])),
 				Timestamp: ts,
 				Tags:      throughputTags,
 			},
@@ -292,13 +292,13 @@ func (p *haproxyProbe) buildDatapoints(rows [][]string, ts time.Time) []data_sto
 		points = append(points,
 			data_store.DataPoint{
 				Name:      "haproxy.connections.errors",
-				Value:     float32(parseInt(row[colEcon])),
+				Value:     float64(parseInt(row[colEcon])),
 				Timestamp: ts,
 				Tags:      errorTags,
 			},
 			data_store.DataPoint{
 				Name:      "haproxy.responses.errors",
-				Value:     float32(parseInt(row[colEresp])),
+				Value:     float64(parseInt(row[colEresp])),
 				Timestamp: ts,
 				Tags:      errorTags,
 			},
@@ -309,7 +309,7 @@ func (p *haproxyProbe) buildDatapoints(rows [][]string, ts time.Time) []data_sto
 			points = append(points,
 				data_store.DataPoint{
 					Name:      "haproxy.requests.errors",
-					Value:     float32(parseInt(row[colEreq])),
+					Value:     float64(parseInt(row[colEreq])),
 					Timestamp: ts,
 					Tags:      errorTags,
 				},
@@ -322,7 +322,7 @@ func (p *haproxyProbe) buildDatapoints(rows [][]string, ts time.Time) []data_sto
 			points = append(points,
 				data_store.DataPoint{
 					Name:      "haproxy.requests.rate",
-					Value:     float32(parseFloat(row[colReqRate])),
+					Value:     float64(parseFloat(row[colReqRate])),
 					Timestamp: ts,
 					Tags:      requestTags,
 				},

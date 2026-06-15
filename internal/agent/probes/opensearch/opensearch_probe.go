@@ -235,7 +235,7 @@ func (p *opensearchProbe) fetchRootInfo() (*rootInfo, error) {
 	return &r, nil
 }
 
-func statusToFloat(status string) float32 {
+func statusToFloat(status string) float64 {
 	switch status {
 	case "green":
 		return 2
@@ -254,12 +254,12 @@ func (p *opensearchProbe) buildClusterHealthPoints(h *clusterHealth, ts time.Tim
 
 	return []data_store.DataPoint{
 		{Name: "opensearch.cluster.health", Value: statusToFloat(h.Status), Timestamp: ts, Tags: []tags.Tag{clusterTag}},
-		{Name: "opensearch.cluster.nodes", Value: float32(h.NumberOfNodes), Timestamp: ts, Tags: []tags.Tag{nodeTag}},
-		{Name: "opensearch.cluster.data_nodes", Value: float32(h.NumberOfDataNodes), Timestamp: ts, Tags: []tags.Tag{nodeTag}},
-		{Name: "opensearch.cluster.shards.active", Value: float32(h.ActiveShards), Timestamp: ts, Tags: []tags.Tag{shardTag}},
-		{Name: "opensearch.cluster.shards.unassigned", Value: float32(h.UnassignedShards), Timestamp: ts, Tags: []tags.Tag{shardTag}},
-		{Name: "opensearch.cluster.shards.relocating", Value: float32(h.RelocatingShards), Timestamp: ts, Tags: []tags.Tag{shardTag}},
-		{Name: "opensearch.cluster.pending_tasks", Value: float32(h.NumberOfPendingTasks), Timestamp: ts, Tags: []tags.Tag{taskTag}},
+		{Name: "opensearch.cluster.nodes", Value: float64(h.NumberOfNodes), Timestamp: ts, Tags: []tags.Tag{nodeTag}},
+		{Name: "opensearch.cluster.data_nodes", Value: float64(h.NumberOfDataNodes), Timestamp: ts, Tags: []tags.Tag{nodeTag}},
+		{Name: "opensearch.cluster.shards.active", Value: float64(h.ActiveShards), Timestamp: ts, Tags: []tags.Tag{shardTag}},
+		{Name: "opensearch.cluster.shards.unassigned", Value: float64(h.UnassignedShards), Timestamp: ts, Tags: []tags.Tag{shardTag}},
+		{Name: "opensearch.cluster.shards.relocating", Value: float64(h.RelocatingShards), Timestamp: ts, Tags: []tags.Tag{shardTag}},
+		{Name: "opensearch.cluster.pending_tasks", Value: float64(h.NumberOfPendingTasks), Timestamp: ts, Tags: []tags.Tag{taskTag}},
 	}
 }
 
@@ -342,13 +342,13 @@ func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Tim
 		points = append(points,
 			data_store.DataPoint{
 				Name:      "opensearch.jvm.memory.heap.used",
-				Value:     float32(node.JVM.Mem.HeapUsedInBytes),
+				Value:     float64(node.JVM.Mem.HeapUsedInBytes),
 				Timestamp: ts,
 				Tags:      jvmTags,
 			},
 			data_store.DataPoint{
 				Name:      "opensearch.jvm.memory.heap.max",
-				Value:     float32(node.JVM.Mem.HeapMaxInBytes),
+				Value:     float64(node.JVM.Mem.HeapMaxInBytes),
 				Timestamp: ts,
 				Tags:      jvmTags,
 			},
@@ -362,13 +362,13 @@ func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Tim
 			points = append(points,
 				data_store.DataPoint{
 					Name:      "opensearch.jvm.gc.collections.count",
-					Value:     float32(gc.CollectionCount),
+					Value:     float64(gc.CollectionCount),
 					Timestamp: ts,
 					Tags:      gcTags,
 				},
 				data_store.DataPoint{
 					Name:      "opensearch.jvm.gc.collections.elapsed",
-					Value:     float32(gc.CollectionTimeInMillis),
+					Value:     float64(gc.CollectionTimeInMillis),
 					Timestamp: ts,
 					Tags:      gcTags,
 				},
@@ -391,37 +391,37 @@ func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Tim
 		points = append(points,
 			data_store.DataPoint{
 				Name:      "opensearch.indexing.operations.completed",
-				Value:     float32(node.Indices.Indexing.IndexTotal),
+				Value:     float64(node.Indices.Indexing.IndexTotal),
 				Timestamp: ts,
 				Tags:      indexingTags,
 			},
 			data_store.DataPoint{
 				Name:      "opensearch.indexing.operations.time",
-				Value:     float32(node.Indices.Indexing.IndexTimeInMillis),
+				Value:     float64(node.Indices.Indexing.IndexTimeInMillis),
 				Timestamp: ts,
 				Tags:      indexingTags,
 			},
 			data_store.DataPoint{
 				Name:      "opensearch.search.operations.completed",
-				Value:     float32(node.Indices.Search.QueryTotal),
+				Value:     float64(node.Indices.Search.QueryTotal),
 				Timestamp: ts,
 				Tags:      searchQueryTags,
 			},
 			data_store.DataPoint{
 				Name:      "opensearch.search.operations.time",
-				Value:     float32(node.Indices.Search.QueryTimeInMillis),
+				Value:     float64(node.Indices.Search.QueryTimeInMillis),
 				Timestamp: ts,
 				Tags:      searchQueryTags,
 			},
 			data_store.DataPoint{
 				Name:      "opensearch.search.operations.completed",
-				Value:     float32(node.Indices.Search.FetchTotal),
+				Value:     float64(node.Indices.Search.FetchTotal),
 				Timestamp: ts,
 				Tags:      searchFetchTags,
 			},
 			data_store.DataPoint{
 				Name:      "opensearch.search.operations.time",
-				Value:     float32(node.Indices.Search.FetchTimeInMillis),
+				Value:     float64(node.Indices.Search.FetchTimeInMillis),
 				Timestamp: ts,
 				Tags:      searchFetchTags,
 			},
@@ -431,7 +431,7 @@ func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Tim
 		points = append(points,
 			data_store.DataPoint{
 				Name:      "opensearch.process.cpu.usage",
-				Value:     float32(node.Process.CPU.Percent) / 100,
+				Value:     float64(node.Process.CPU.Percent) / 100,
 				Timestamp: ts,
 				Tags:      processTags,
 			},
@@ -441,7 +441,7 @@ func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Tim
 		points = append(points,
 			data_store.DataPoint{
 				Name:      "opensearch.os.memory.used",
-				Value:     float32(node.OS.Mem.UsedInBytes),
+				Value:     float64(node.OS.Mem.UsedInBytes),
 				Timestamp: ts,
 				Tags:      osTags,
 			},
@@ -455,19 +455,19 @@ func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Tim
 			points = append(points,
 				data_store.DataPoint{
 					Name:      "opensearch.thread_pool.tasks.queued",
-					Value:     float32(pool.Queue),
+					Value:     float64(pool.Queue),
 					Timestamp: ts,
 					Tags:      tpTags,
 				},
 				data_store.DataPoint{
 					Name:      "opensearch.thread_pool.tasks.completed",
-					Value:     float32(pool.Completed),
+					Value:     float64(pool.Completed),
 					Timestamp: ts,
 					Tags:      tpTags,
 				},
 				data_store.DataPoint{
 					Name:      "opensearch.thread_pool.tasks.rejected",
-					Value:     float32(pool.Rejected),
+					Value:     float64(pool.Rejected),
 					Timestamp: ts,
 					Tags:      tpTags,
 				},

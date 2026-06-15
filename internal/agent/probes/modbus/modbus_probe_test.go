@@ -118,7 +118,7 @@ func TestCollect_ConnectError(t *testing.T) {
 		t.Fatalf("Collect returned error: %v", err)
 	}
 
-	var upVal *float32
+	var upVal *float64
 	for _, dp := range points {
 		if dp.Name == "modbus.up" {
 			v := dp.Value
@@ -164,7 +164,7 @@ func TestCollect_Success_Uint16(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	var got *float32
+	var got *float64
 	for _, dp := range points {
 		if dp.Name == "modbus.register.value" {
 			v := dp.Value
@@ -211,7 +211,7 @@ func TestCollect_Success_Float32ABCD(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	var got *float32
+	var got *float64
 	for _, dp := range points {
 		if dp.Name == "modbus.register.value" {
 			v := dp.Value
@@ -221,8 +221,8 @@ func TestCollect_Success_Float32ABCD(t *testing.T) {
 	if got == nil {
 		t.Fatal("modbus.register.value not found")
 	}
-	const want = float32(23.5)
-	const eps = float32(0.001)
+	const want = float64(23.5)
+	const eps = float64(0.001)
 	if *got < want-eps || *got > want+eps {
 		t.Errorf("float32_abcd value = %v, want ~23.5", *got)
 	}
@@ -258,7 +258,7 @@ func TestCollect_Success_Scale(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	var got *float32
+	var got *float64
 	for _, dp := range points {
 		if dp.Name == "modbus.register.value" {
 			v := dp.Value
@@ -268,8 +268,8 @@ func TestCollect_Success_Scale(t *testing.T) {
 	if got == nil {
 		t.Fatal("modbus.register.value not found")
 	}
-	const want = float32(23.5)
-	const eps = float32(0.001)
+	const want = float64(23.5)
+	const eps = float64(0.001)
 	if *got < want-eps || *got > want+eps {
 		t.Errorf("scaled value = %v, want ~23.5", *got)
 	}
@@ -315,7 +315,7 @@ func TestZeroBasedAddress(t *testing.T) {
 		{40001, 0},
 		{40010, 9},
 		{40100, 99},
-		{0, 0},    // already 0-based
+		{0, 0},       // already 0-based
 		{1000, 1000}, // also already 0-based
 	}
 	for _, tc := range cases {

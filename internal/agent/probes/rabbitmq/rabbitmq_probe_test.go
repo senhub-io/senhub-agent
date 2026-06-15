@@ -145,14 +145,14 @@ func TestCollect_HappyPath(t *testing.T) {
 	}
 
 	// Index by metric name for assertion.
-	byName := make(map[string]float32)
+	byName := make(map[string]float64)
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}
 
 	cases := []struct {
 		name string
-		want float32
+		want float64
 	}{
 		{"senhub.rabbitmq.up", 1},
 		{"rabbitmq.messages.published", 1000},
@@ -270,7 +270,7 @@ func TestCollect_MissingFields(t *testing.T) {
 		t.Fatalf("Collect() error: %v", err)
 	}
 
-	byName := make(map[string]float32)
+	byName := make(map[string]float64)
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}

@@ -173,7 +173,7 @@ func TestCollect_UpAndMetrics(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	byName := map[string]float32{}
+	byName := map[string]float64{}
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}

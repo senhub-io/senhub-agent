@@ -96,7 +96,7 @@ func TestBuildDataPoints_Up(t *testing.T) {
 
 	points := vp.buildDataPoints(stats, time.Now())
 
-	byName := make(map[string][]float32)
+	byName := make(map[string][]float64)
 	for _, p := range points {
 		byName[p.Name] = append(byName[p.Name], p.Value)
 	}
@@ -132,8 +132,8 @@ func TestBuildDataPoints_Up(t *testing.T) {
 
 	// Verify memory sum
 	memVals := byName["varnish.memory.allocated"]
-	if len(memVals) != 1 || memVals[0] != float32(1048576+524288) {
-		t.Errorf("varnish.memory.allocated = %v, want %v", memVals, float32(1048576+524288))
+	if len(memVals) != 1 || memVals[0] != float64(1048576+524288) {
+		t.Errorf("varnish.memory.allocated = %v, want %v", memVals, float64(1048576+524288))
 	}
 
 	// Verify up=1

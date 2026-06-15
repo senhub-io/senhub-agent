@@ -151,7 +151,7 @@ func (p *WinServicesProbe) OnShutdown(_ context.Context) error {
 // the runs_on → host relation as soon as the ID is available.
 func (p *WinServicesProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
-	up := float32(1)
+	up := float64(1)
 
 	hostID := ""
 	if hi, err := common.GetHostIdentity(); err == nil {
@@ -180,13 +180,13 @@ func (p *WinServicesProbe) buildServiceDatapoints(s serviceState, ts time.Time) 
 		{Key: "windows.service.name", Value: s.name},
 		{Key: "metric_type", Value: "service"},
 	}
-	running := float32(0)
+	running := float64(0)
 	if s.state == stateRunning {
 		running = 1
 	}
 	return []data_store.DataPoint{
 		{Name: "windows.service.state", Value: running, Timestamp: ts, Tags: serviceTags},
-		{Name: "windows.service.status", Value: float32(s.state), Timestamp: ts, Tags: serviceTags},
+		{Name: "windows.service.status", Value: float64(s.state), Timestamp: ts, Tags: serviceTags},
 	}
 }
 

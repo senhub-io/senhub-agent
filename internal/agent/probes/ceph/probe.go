@@ -38,7 +38,7 @@ const (
 
 // healthStatus maps the Ceph health status string to a numeric value.
 // 0 = HEALTH_ERR, 1 = HEALTH_WARN, 2 = HEALTH_OK.
-var healthStatus = map[string]float32{
+var healthStatus = map[string]float64{
 	"HEALTH_ERR":  0,
 	"HEALTH_WARN": 1,
 	"HEALTH_OK":   2,
@@ -324,8 +324,8 @@ func (p *CephProbe) collectHealth(now time.Time, instance string) ([]data_store.
 
 	return []data_store.DataPoint{
 		{Name: "ceph.health.status", Value: statusVal, Timestamp: now, Tags: base},
-		{Name: "ceph.cluster.capacity", Value: float32(h.Df.Stats.TotalBytes), Timestamp: now, Tags: base},
-		{Name: "ceph.cluster.used", Value: float32(h.Df.Stats.TotalUsedBytes), Timestamp: now, Tags: base},
+		{Name: "ceph.cluster.capacity", Value: float64(h.Df.Stats.TotalBytes), Timestamp: now, Tags: base},
+		{Name: "ceph.cluster.used", Value: float64(h.Df.Stats.TotalUsedBytes), Timestamp: now, Tags: base},
 	}, nil
 }
 
@@ -371,9 +371,9 @@ func (p *CephProbe) collectOSDs(now time.Time, instance string) ([]data_store.Da
 		{Key: "metric_type", Value: "osd"},
 	}
 	return []data_store.DataPoint{
-		{Name: "ceph.osd.total", Value: float32(total), Timestamp: now, Tags: base},
-		{Name: "ceph.osd.in", Value: float32(inCount), Timestamp: now, Tags: base},
-		{Name: "ceph.osd.up", Value: float32(upCount), Timestamp: now, Tags: base},
+		{Name: "ceph.osd.total", Value: float64(total), Timestamp: now, Tags: base},
+		{Name: "ceph.osd.in", Value: float64(inCount), Timestamp: now, Tags: base},
+		{Name: "ceph.osd.up", Value: float64(upCount), Timestamp: now, Tags: base},
 	}, nil
 }
 
@@ -400,8 +400,8 @@ func (p *CephProbe) collectMonitors(now time.Time, instance string) ([]data_stor
 		{Key: "metric_type", Value: "monitor"},
 	}
 	return []data_store.DataPoint{
-		{Name: "ceph.monitor.count", Value: float32(len(mon.Mons)), Timestamp: now, Tags: base},
-		{Name: "ceph.monitor.quorum_count", Value: float32(len(mon.InQuorum)), Timestamp: now, Tags: base},
+		{Name: "ceph.monitor.count", Value: float64(len(mon.Mons)), Timestamp: now, Tags: base},
+		{Name: "ceph.monitor.quorum_count", Value: float64(len(mon.InQuorum)), Timestamp: now, Tags: base},
 	}, nil
 }
 
@@ -444,10 +444,10 @@ func (p *CephProbe) collectPools(now time.Time, instance string) ([]data_store.D
 			{Key: "metric_type", Value: "pool"},
 		}
 		points = append(points,
-			data_store.DataPoint{Name: "ceph.pool.objects", Value: float32(pool.Stats.Objects.Latest), Timestamp: now, Tags: base},
-			data_store.DataPoint{Name: "ceph.pool.used", Value: float32(pool.Stats.Used.Latest), Timestamp: now, Tags: base},
-			data_store.DataPoint{Name: "ceph.pool.rd_ops", Value: float32(pool.Stats.ReadOps.Latest), Timestamp: now, Tags: base},
-			data_store.DataPoint{Name: "ceph.pool.wr_ops", Value: float32(pool.Stats.WriteOps.Latest), Timestamp: now, Tags: base},
+			data_store.DataPoint{Name: "ceph.pool.objects", Value: float64(pool.Stats.Objects.Latest), Timestamp: now, Tags: base},
+			data_store.DataPoint{Name: "ceph.pool.used", Value: float64(pool.Stats.Used.Latest), Timestamp: now, Tags: base},
+			data_store.DataPoint{Name: "ceph.pool.rd_ops", Value: float64(pool.Stats.ReadOps.Latest), Timestamp: now, Tags: base},
+			data_store.DataPoint{Name: "ceph.pool.wr_ops", Value: float64(pool.Stats.WriteOps.Latest), Timestamp: now, Tags: base},
 		)
 	}
 	return points, nil

@@ -200,7 +200,7 @@ func (p *ClickHouseProbe) Collect() ([]data_store.DataPoint, error) {
 		{Key: "metric_type", Value: "overview"},
 	}
 
-	up := float32(1)
+	up := float64(1)
 	families, err := p.fetchMetrics()
 	if err != nil {
 		up = 0
@@ -237,7 +237,7 @@ func (p *ClickHouseProbe) Collect() ([]data_store.DataPoint, error) {
 			}
 			points = append(points, data_store.DataPoint{
 				Name:      mapping.internalName,
-				Value:     float32(value),
+				Value:     float64(value),
 				Timestamp: now,
 				Tags:      baseTags,
 			})
