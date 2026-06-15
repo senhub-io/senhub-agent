@@ -48,6 +48,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+require github.com/sijms/go-ora/v2 v2.9.0 // indirect
+
 require (
 	github.com/IBM/sarama v1.50.2 // indirect
 	github.com/eapache/go-resiliency v1.7.0 // indirect
