@@ -82,6 +82,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **elasticsearch** - Elasticsearch / OpenSearch cluster and node monitoring via the REST JSON API (cluster health, JVM, indexing, search, thread pools)
 - **opensearch** - OpenSearch cluster and node metrics via the REST JSON API (same surface as Elasticsearch). Universal observability for a database that ships with its own free distribution.
 - **solr** - Apache Solr monitoring via the native metrics API: JVM heap/threads, node-level request/error/cache counters, and per-core document count and index size
+- **influxdb** - InfluxDB 2.x availability and performance monitoring via the standard /health, /metrics (Prometheus text), and /api/v2/buckets endpoints. No vendor API key required beyond an optional read token.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
