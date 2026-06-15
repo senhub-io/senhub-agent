@@ -58,6 +58,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **tcp_dial** - Raw TCP connect latency to host:port targets (VIPs, brokers, AD, fileservers)
 - **dns_latency** - DNS resolution latency per name, optionally per explicit resolver
 - **snmp_poll** - Generic SNMP polling. The deliberate exception to "remote = paid": it is the open-core wedge to replace PRTG's free SNMP polling. Deep vendor-specific SNMP (device profiles, discovery, vendor MIBs) remains paid.
+- **mysql** - MySQL / MariaDB server monitoring (OTel-first, mysql.* semconv, metric parity with otelcol-contrib mysqlreceiver). The standard open-core database wedge: PRTG/Nagios estates that already monitor MySQL get a drop-in replacement at zero cost.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
@@ -66,7 +67,6 @@ Specific probes authorized by entries in the customer JWT `authorized_probes` ar
 - **citrix** - Citrix Virtual Apps and Desktops monitoring
 - **netscaler** - Citrix NetScaler ADC monitoring (load balancers, SSL, HA)
 - **veeam** - Veeam Backup & Replication monitoring
-- **mysql** - MySQL server monitoring (OTel-first, mysql.* semconv)
 - **postgresql** - PostgreSQL server monitoring (OTel-first, postgresql.* semconv)
 - **ibmi** - IBM i / Power Systems monitoring (JT400 JDBC bridge, senhub.ibmi.* semconv) — **Linux-only** agent runtime
 - **event** - Custom HTTP event ingestion
