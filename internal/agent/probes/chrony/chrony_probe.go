@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -133,13 +134,18 @@ func (p *ChronyProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	baseTags := []tags.Tag{{Key: "metric_type", Value: "time_sync"}}
 
+	hostID := ""
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+	}
+
 	res := p.run()
 
 	upValue := float32(1)
 	if res.err != nil {
 		upValue = 0
 		p.moduleLogger.Warn().Err(res.err).Msg("chronyc tracking failed")
-		p.entitySrc.setReachable(false, "")
+		p.entitySrc.setReachable(false, "", hostID)
 	}
 
 	points := []data_store.DataPoint{
@@ -149,7 +155,7 @@ func (p *ChronyProbe) Collect() ([]data_store.DataPoint, error) {
 	if res.err != nil {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
-	p.entitySrc.setReachable(true, "")
+	p.entitySrc.setReachable(true, "", hostID)
 
 	points = append(points,
 		data_store.DataPoint{

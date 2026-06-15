@@ -12,10 +12,11 @@ import (
 // Reachability is updated by the collect cycle: setReachable(true) after a
 // successful chronyc tracking run, setReachable(false) on any subprocess error.
 type chronyEntitySource struct {
-	id    map[string]any
-	mu    sync.RWMutex
-	up    bool
-	attrs map[string]any
+	id     map[string]any
+	mu     sync.RWMutex
+	up     bool
+	attrs  map[string]any
+	hostID string
 }
 
 func newChronyEntitySource() *chronyEntitySource {
@@ -28,9 +29,11 @@ func newChronyEntitySource() *chronyEntitySource {
 
 // setReachable is called by the collect cycle: true when chronyc returned
 // valid output, false on any subprocess error. version may be empty.
-func (s *chronyEntitySource) setReachable(up bool, version string) {
+// hostID is the stable machine identifier (host.id); may be empty if unavailable.
+func (s *chronyEntitySource) setReachable(up bool, version string, hostID string) {
 	s.mu.Lock()
 	s.up = up
+	s.hostID = hostID
 	if up {
 		attrs := map[string]any{
 			"service.name":   "chrony",
@@ -53,11 +56,21 @@ func (s *chronyEntitySource) Observe() (entity.Observation, bool) {
 	if !s.up {
 		return entity.Observation{}, false
 	}
-	return entity.Observation{
+	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "service.instance",
 			ID:         s.id,
 			Attributes: s.attrs,
 		}},
-	}, true
+	}
+	if s.hostID != "" {
+		obs.Relations = []entity.Relation{{
+			Type:     "runs_on",
+			FromType: "service.instance",
+			FromID:   s.id,
+			ToType:   "host",
+			ToID:     map[string]any{"host.id": s.hostID},
+		}}
+	}
+	return obs, true
 }
