@@ -54,6 +54,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 
 	// Check all expected probes are present
 	expectedProbes := map[string]bool{
+		"apache":            false,
 		"cpu":               false,
 		"memory":            false,
 		"logicaldisk":       false,
