@@ -105,6 +105,11 @@ require (
 )
 
 require (
+	github.com/goburrow/modbus v0.1.0 // indirect
+	github.com/goburrow/serial v0.1.0 // indirect
+)
+
+require (
 	aead.dev/minisign v0.2.0
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/alecthomas/participle v0.4.1 // indirect

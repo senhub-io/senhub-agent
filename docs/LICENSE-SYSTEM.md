@@ -96,6 +96,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **winservices** - Windows Service Control Manager enumeration: running/stopped state and SCM status code per service. Host-local (queries the machine the agent runs on); the Windows counterpart of linux_logs / windows_eventlog in the free host-observability tier.
 - **systemd** - Systemd unit supervision (Linux only): active/sub/load state gauges + restart counter per unit. Watches the machine the agent runs on via D-Bus.
 - **kubernetes** - Kubernetes cluster supervision (nodes, pods, containers, deployments) via the API server. Container infrastructure is the cloud-native equivalent of host self-observation; the agent running inside a cluster watches the cluster it runs on.
+- **modbus** - Modbus TCP register polling for IT/OT convergence (PLCs, industrial sensors, smart-building controllers). Open standard protocol; collecting Modbus devices is universal collection, not a vendor integration.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
