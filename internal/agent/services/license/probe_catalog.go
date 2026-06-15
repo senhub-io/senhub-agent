@@ -35,7 +35,6 @@ var paidProbes = map[string]bool{
 	"netscaler":            true,
 	"veeam":                true,
 	"mysql":                true,
-	"postgresql":           true,
 	"linux_logs":           true,
 	"filetail":             true,
 	"ibmi":                 true,
