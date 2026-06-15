@@ -100,8 +100,6 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"netscaler",
 		"redfish",
 		"ibmi",
-		"postgresql",
-		"mysql",
 		"ping_gateway",
 		"ping_webapp",
 		"load_webapp",
