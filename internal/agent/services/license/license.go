@@ -226,6 +226,11 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// hyperv: host-local virtualization observability on Windows Server;
+	// the Hyper-V WMI namespace reports the VMs that share the same
+	// physical host as the agent, analogous to how cpu/memory/network
+	// report host-local resources.
+	"hyperv": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
