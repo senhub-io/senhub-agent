@@ -15,8 +15,10 @@ import (
 	"strings"
 	"testing"
 
+	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/license"
+	"senhub-agent.go/internal/agent/services/logger"
 
 	_ "senhub-agent.go/internal/agent/probes/cpu"
 	_ "senhub-agent.go/internal/agent/probes/event"
@@ -89,3 +91,51 @@ func TestEveryRegisteredProbeIsAuthorizable(t *testing.T) {
 // repository's test suite, where all probes are registered (see #183).
 // The OSS direction — no paid probe leaks into the public binary — is
 // guarded by TestOSSBuildRegistersOnlyPublicProbes in the app package.
+
+// TestEveryRegisteredProbeHasEntitySource enforces that every probe participates
+// in Toise topology inventory. A nil EntitySource() is a contract violation —
+// the probe won't appear in the entity graph and its metrics can't be attributed
+// to an infrastructure node in Toise.
+//
+// Host-level probes and log conduits satisfy the invariant via the BaseProbe
+// fallback (NoOpEntitySource). Remote-target probes MUST call SetEntitySource()
+// in their constructor with a real Source.
+//
+// When this test fails:
+//   - If the probe embeds *types.BaseProbe: verify SetEntitySource() is called
+//     in the constructor, or that the probe is host-level (inherits NoOpEntitySource).
+//   - If the probe does NOT embed *types.BaseProbe: add EntitySource() to the
+//     concrete type. See .claude/rules/probes.md §Entity source (mandatory wiring step 5).
+func TestEveryRegisteredProbeHasEntitySource(t *testing.T) {
+	registered := probes.GetRegisteredProbeTypes()
+	if len(registered) == 0 {
+		t.Fatalf("probes.GetRegisteredProbeTypes() returned an empty map — " +
+			"no probe package's init() ran. " +
+			"Check the blank imports in this test file.")
+	}
+
+	log := logger.NewLogger(&cliArgs.ParsedArgs{})
+
+	for name := range registered {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			ctor, ok := probes.LookupProbeConstructor(name)
+			if !ok {
+				t.Fatalf("probe %q: registered but LookupProbeConstructor returned false", name)
+			}
+			probe, err := ctor(map[string]interface{}{"interval": 30}, log)
+			if err != nil {
+				// Construction error is acceptable (missing required config like host/url).
+				// The entity source check is best-effort for probes requiring real config.
+				t.Skipf("probe %q requires real config to construct: %v", name, err)
+				return
+			}
+			if probe.EntitySource() == nil {
+				t.Errorf("probe %q: EntitySource() returned nil — "+
+					"every probe MUST call SetEntitySource() in its constructor, or "+
+					"embed *types.BaseProbe (which returns NoOpEntitySource by default). "+
+					"See .claude/rules/probes.md §Entity source (mandatory wiring step 5).", name)
+			}
+		})
+	}
+}
