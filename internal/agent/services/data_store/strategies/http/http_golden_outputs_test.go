@@ -142,7 +142,7 @@ func newGoldenHarness(t *testing.T, probe string) (*FormatConverter, *MetricCach
 		points = append(points, datapoint.DataPoint{
 			Name:      m.Name,
 			Timestamp: time.Now(),
-			Value:     float64(i%7)*11.5 + 42, // fixed, varied, deterministic
+			Value:     float32(i%7)*11.5 + 42, // fixed, varied, deterministic
 			Tags:      dpTags,
 		})
 	}

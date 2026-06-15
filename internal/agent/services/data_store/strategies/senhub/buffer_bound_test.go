@@ -10,7 +10,7 @@ import (
 func mkPoints(n int, name string) []datapoint.DataPoint {
 	out := make([]datapoint.DataPoint, n)
 	for i := range out {
-		out[i] = datapoint.DataPoint{Name: name, Value: float64(i)}
+		out[i] = datapoint.DataPoint{Name: name, Value: float32(i)}
 	}
 	return out
 }

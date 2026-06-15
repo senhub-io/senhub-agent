@@ -102,7 +102,7 @@ func (b *buffer) AbortSync(failedData []datapoint.DataPoint) error {
 type SenhubDataPoint struct {
 	Name      string     `json:"name"`
 	Timestamp time.Time  `json:"timestamp"`
-	Value     float64    `json:"value"`
+	Value     float32    `json:"value"`
 	Tags      []tags.Tag `json:"tags,omitempty"`
 }
 

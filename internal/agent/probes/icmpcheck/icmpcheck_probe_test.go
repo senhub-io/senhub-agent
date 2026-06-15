@@ -119,7 +119,7 @@ func TestCollect_BuildsExpectedMetricSet(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	byTarget := map[string]map[string]float64{}
+	byTarget := map[string]map[string]float32{}
 	for _, dp := range points {
 		var target string
 		hasProbeTags := false
@@ -135,7 +135,7 @@ func TestCollect_BuildsExpectedMetricSet(t *testing.T) {
 			t.Fatalf("datapoint %s missing probe_type enrichment", dp.Name)
 		}
 		if byTarget[target] == nil {
-			byTarget[target] = map[string]float64{}
+			byTarget[target] = map[string]float32{}
 		}
 		byTarget[target][dp.Name] = dp.Value
 	}

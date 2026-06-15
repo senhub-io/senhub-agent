@@ -166,7 +166,7 @@ func (s *metricStore) upsert(dp datapoint.DataPoint) {
 		probeName:  probeName,
 		probeType:  probeType,
 		metricName: dp.Name,
-		value:      dp.Value,
+		value:      float64(dp.Value),
 		unit:       tagMap["unit"],
 		tags:       tagsCopy,
 		observedAt: when,

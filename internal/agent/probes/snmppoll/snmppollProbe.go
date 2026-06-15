@@ -128,7 +128,7 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 	start := time.Now()
 
 	client := p.newClient(p.cfg)
-	up := float64(1)
+	up := float32(1)
 	var points []data_store.DataPoint
 
 	if err := client.Connect(); err != nil {
@@ -161,7 +161,7 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 	end := time.Now()
 	points = append(points,
 		data_store.DataPoint{Name: metricUp, Timestamp: end, Value: up, Tags: statusTags(p.instance)},
-		data_store.DataPoint{Name: metricPollDuration, Timestamp: end, Value: end.Sub(start).Seconds(), Tags: statusTags(p.instance)},
+		data_store.DataPoint{Name: metricPollDuration, Timestamp: end, Value: float32(end.Sub(start).Seconds()), Tags: statusTags(p.instance)},
 	)
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
