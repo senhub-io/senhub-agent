@@ -437,3 +437,42 @@ senhub.db.replication.health:
       severity: "ok"
       description: "Replication is keeping up, or this is a primary/standalone"
   desired_value: 1
+
+mssql.database.status:
+  description: "SQL Server Database State (sys.databases.state)"
+  type: status
+  source: "SQL Server — sys.databases.state code"
+  mappings:
+    0:
+      text: "ONLINE"
+      severity: "ok"
+      description: "Database is online and available"
+    1:
+      text: "RESTORING"
+      severity: "warning"
+      description: "Database is being restored"
+    2:
+      text: "RECOVERING"
+      severity: "warning"
+      description: "Database is recovering and not yet ready"
+    3:
+      text: "RECOVERY_PENDING"
+      severity: "error"
+      description: "Recovery is paused — a resource problem is blocking it"
+    4:
+      text: "SUSPECT"
+      severity: "error"
+      description: "Primary filegroup is suspect or may be damaged"
+    5:
+      text: "EMERGENCY"
+      severity: "error"
+      description: "Administrator has set the database to emergency read-only state"
+    6:
+      text: "OFFLINE"
+      severity: "warning"
+      description: "Database has been taken offline"
+    7:
+      text: "COPYING"
+      severity: "warning"
+      description: "Database is being copied (Azure SQL)"
+  desired_value: 0
