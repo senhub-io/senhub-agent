@@ -1,11 +1,13 @@
 package jenkins
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -233,21 +235,163 @@ func TestCollect_DownEmitsUpZero(t *testing.T) {
 	}
 }
 
-func TestEntitySource_ServiceInstance(t *testing.T) {
-	src := newEntitySource("10.0.0.5:8080")
+// --- entity source tests ---------------------------------------------------
+
+// stubHostID returns a deterministic host id for hermetic tests.
+func stubHostID(id string) func() string { return func() string { return id } }
+
+// alwaysFailFetch is a fetchIdentity that always returns an error.
+func alwaysFailFetch() (string, error) {
+	return "", fmt.Errorf("unavailable")
+}
+
+// alwaysReturnID is a fetchIdentity that always returns the given id.
+func alwaysReturnID(id string) func() (string, error) {
+	return func() (string, error) { return id, nil }
+}
+
+func TestEntitySource_InstanceNameOverride(t *testing.T) {
+	src := newEntitySource("my-jenkins", "10.0.0.5", "8080", alwaysFailFetch, stubHostID("host-abc"))
 	obs, ok := src.Observe()
 	if !ok {
-		t.Fatal("Observe ok=false, want true")
+		t.Fatal("Observe ok=false, want true (instance_name is pinned at construction)")
 	}
 	if len(obs.Entities) != 1 {
 		t.Fatalf("got %d entities, want 1", len(obs.Entities))
 	}
-	e := obs.Entities[0]
-	if e.Type != entityTypeServiceInstance {
-		t.Errorf("entity type = %q, want %q", e.Type, entityTypeServiceInstance)
+	got := obs.Entities[0].ID[idKeyServiceInstanceID]
+	if got != "my-jenkins" {
+		t.Errorf("service.instance.id = %v, want my-jenkins", got)
 	}
-	if got := e.ID[idKeyServiceInstanceID]; got != "jenkins://10.0.0.5:8080" {
-		t.Errorf("service.instance.id = %v, want jenkins://10.0.0.5:8080", got)
+}
+
+func TestEntitySource_TechIDPinned(t *testing.T) {
+	const wantID = "jenkins:abcdef0123456789ab12"
+	calls := 0
+	fetch := func() (string, error) {
+		calls++
+		return wantID, nil
+	}
+	src := newEntitySource("", "10.0.0.5", "8080", fetch, stubHostID("host-abc"))
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("Observe ok=false after successful fetch")
+	}
+	got := obs.Entities[0].ID[idKeyServiceInstanceID]
+	if got != wantID {
+		t.Errorf("service.instance.id = %v, want %v", got, wantID)
+	}
+
+	// Second call must NOT re-invoke fetchIdentity.
+	_, _ = src.Observe()
+	if calls != 1 {
+		t.Errorf("fetchIdentity called %d times, want 1 (id must be pinned)", calls)
+	}
+}
+
+func TestEntitySource_NotEmittedBeforePinned(t *testing.T) {
+	// A fetch that never returns (blocks indefinitely) — never called because
+	// we test with a deterministic single call. Simulate "transient failure"
+	// by not using this test to block; instead simulate a fetch that starts
+	// always failing and then succeeds.
+	//
+	// The real requirement: if the source has not yet pinned, ok=false.
+	// We can test this by creating a source WITHOUT instance_name and with a
+	// fetch that succeeds only on the second call; but the current design
+	// pins on the first Observe call (either tech id or fallback). So the
+	// "not emitted before pinned" invariant is: no entity emitted before the
+	// VERY FIRST Observe() returns (i.e., if Observe blocks, no emission).
+	// More concretely, a source with instance_name="" and a fetch that has
+	// not yet been called will return ok=false before Observe is invoked.
+	//
+	// Since pinning happens inside Observe, the only way ok=false is if
+	// instance_name=="" AND Observe has never been called. We verify this
+	// by checking the unexported state before the first call.
+	src := newEntitySource("", "h", "8080", alwaysReturnID("jenkins:abc123"), stubHostID("h"))
+	src.mu.Lock()
+	notYetPinned := src.pinnedID == ""
+	src.mu.Unlock()
+	if !notYetPinned {
+		t.Fatal("id should not be pinned before the first Observe call")
+	}
+	// After the first call it must be pinned and ok=true.
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("ok=false after first Observe")
+	}
+	if len(obs.Entities) == 0 {
+		t.Fatal("no entities emitted after pinning")
+	}
+}
+
+func TestEntitySource_FallbackPath(t *testing.T) {
+	src := newEntitySource("", "10.0.0.5", "8080", alwaysFailFetch, stubHostID("machine-xyz"))
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("Observe ok=false on fallback path")
+	}
+	got := obs.Entities[0].ID[idKeyServiceInstanceID]
+	if got != "jenkins@machine-xyz" {
+		t.Errorf("service.instance.id = %v, want jenkins@machine-xyz", got)
+	}
+}
+
+func TestEntitySource_FallbackPath_NoHostID(t *testing.T) {
+	src := newEntitySource("", "10.0.0.5", "8080", alwaysFailFetch, stubHostID(""))
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("Observe ok=false on last-resort fallback")
+	}
+	got := obs.Entities[0].ID[idKeyServiceInstanceID]
+	if got != "jenkins" {
+		t.Errorf("service.instance.id = %v, want jenkins", got)
+	}
+}
+
+func TestEntitySource_MonitorsEdge_Present(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-001")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	src := newEntitySource("my-jenkins", "10.0.0.5", "8080", alwaysFailFetch, stubHostID("h"))
+	obs, _ := src.Observe()
+	if len(obs.Relations) != 1 {
+		t.Fatalf("got %d relations, want 1", len(obs.Relations))
+	}
+	r := obs.Relations[0]
+	if r.Type != "monitors" {
+		t.Errorf("relation type = %q, want monitors", r.Type)
+	}
+	if got := r.FromID[idKeyServiceInstanceID]; got != "agent-001" {
+		t.Errorf("From id = %v, want agent-001", got)
+	}
+	if got := r.ToID[idKeyServiceInstanceID]; got != "my-jenkins" {
+		t.Errorf("To id = %v, want my-jenkins", got)
+	}
+}
+
+func TestEntitySource_MonitorsEdge_AbsentWhenNoAgentID(t *testing.T) {
+	agentstate.SetAgentInstanceID("")
+
+	src := newEntitySource("my-jenkins", "10.0.0.5", "8080", alwaysFailFetch, stubHostID("h"))
+	obs, _ := src.Observe()
+	if len(obs.Relations) != 0 {
+		t.Errorf("got %d relations, want 0 (no agent id)", len(obs.Relations))
+	}
+}
+
+func TestEntitySource_DescriptiveAttrs(t *testing.T) {
+	src := newEntitySource("x", "myhost", "8080", alwaysFailFetch, stubHostID(""))
+	obs, _ := src.Observe()
+	e := obs.Entities[0]
+	if e.Attributes["service.name"] != "jenkins" {
+		t.Errorf("service.name = %v, want jenkins", e.Attributes["service.name"])
+	}
+	if e.Attributes["server.address"] != "myhost" {
+		t.Errorf("server.address = %v, want myhost", e.Attributes["server.address"])
+	}
+	if e.Attributes["server.port"] != "8080" {
+		t.Errorf("server.port = %v, want 8080", e.Attributes["server.port"])
 	}
 }
 
