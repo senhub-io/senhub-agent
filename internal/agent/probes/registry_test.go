@@ -231,6 +231,7 @@ func TestProbeRegistry(t *testing.T) {
 		"nginx",
 		"haproxy",
 		"varnish",
+		"phpfpm",
 	}
 
 	for _, probeName := range expectedProbes {

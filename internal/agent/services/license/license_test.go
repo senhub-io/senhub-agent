@@ -76,6 +76,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"nginx":             false,
 		"haproxy":           false,
 		"varnish":           false,
+		"phpfpm":            false,
 	}
 
 	for _, probe := range probes {

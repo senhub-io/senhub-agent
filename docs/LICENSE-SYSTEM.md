@@ -62,6 +62,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **nginx** - Nginx stub_status scraping: active connections, request throughput, and connection state (reading/writing/waiting); web-server health on the monitored host.
 - **haproxy** - HAProxy monitoring via the stats CSV HTTP endpoint: sessions, throughput, and error counters per frontend/backend/server component
 - **varnish** - Varnish Cache observability via varnishstat (cache hit/miss, backend connections, thread lifecycle, session counts, memory allocation); runs on the local machine.
+- **phpfpm** - PHP-FPM pool monitoring via the status-page JSON endpoint (pool stats, process counts, queue depth, uptime, slow requests)
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
