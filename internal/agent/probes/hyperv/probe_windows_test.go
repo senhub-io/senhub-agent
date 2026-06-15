@@ -40,11 +40,13 @@ func makeWMIFake(vms []msvmComputerSystem, sums []msvmSummaryInformation, failVM
 func newTestProbe(t *testing.T, fn wmiQueryFn) *HypervProbe {
 	t.Helper()
 	baseLogger := logger.NewLogger(nil)
+	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.hyperv")
 	p := &HypervProbe{
 		BaseProbe:    &types.BaseProbe{},
 		config:       probeConfig{Interval: defaultInterval},
-		moduleLogger: logger.NewModuleLogger(baseLogger, "probe.hyperv"),
+		moduleLogger: moduleLogger,
 		queryFn:      fn,
+		entitySource: newHypervEntitySource("test-host-id", moduleLogger),
 	}
 	p.SetProbeType(ProbeType)
 	p.SetName("hyperv-test")
