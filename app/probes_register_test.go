@@ -42,6 +42,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"tcp_dial",
 		"varnish",
 		"wifi_signal_strength",
+		"wildfly",
 		"windows_eventlog",
 	}
 	sort.Strings(want)

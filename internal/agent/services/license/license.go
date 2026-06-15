@@ -245,6 +245,10 @@ var freeTierProbes = map[string]bool{
 	// A free equivalent exists in otelcol-contrib (phpfpmreceiver), so
 	// paywalling it would add no differentiation.
 	"phpfpm": true,
+	// wildfly: WildFly / JBoss monitoring via the HTTP Management API.
+	// The management API is a standard feature of the open-source
+	// WildFly distribution; no license is required to access it.
+	"wildfly": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
