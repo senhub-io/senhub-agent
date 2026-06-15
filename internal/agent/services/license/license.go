@@ -226,6 +226,10 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// winservices: host-local Windows Service Control Manager enumeration;
+	// monitors services on the machine the agent runs on, the SCM
+	// counterpart of the linux_logs / windows_eventlog host-local tier.
+	"winservices": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

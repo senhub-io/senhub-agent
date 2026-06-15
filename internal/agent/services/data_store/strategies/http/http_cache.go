@@ -122,6 +122,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// metric name itself (senhub.exec.<label>); no per-series labels to
 	// discriminate beyond the probe instance.
 	"exec": {"metric_type"},
+	// winservices: per-service metrics (windows.service.state /
+	// windows.service.status) are discriminated by service name; without
+	// this tag in the key all services collapse to one cache slot.
+	"winservices": {"windows.service.name", "metric_type"},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
