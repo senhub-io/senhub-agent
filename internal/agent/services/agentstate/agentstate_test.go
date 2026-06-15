@@ -2,6 +2,27 @@ package agentstate
 
 import "testing"
 
+func TestAgentInstanceID_SetThenGet(t *testing.T) {
+	SetAgentInstanceID("abc12345")
+	if got := GetAgentInstanceID(); got != "abc12345" {
+		t.Errorf("expected abc12345, got %q", got)
+	}
+	// A later set overwrites (reconfigure / restart of entity emission).
+	SetAgentInstanceID("def67890")
+	if got := GetAgentInstanceID(); got != "def67890" {
+		t.Errorf("expected def67890 after overwrite, got %q", got)
+	}
+}
+
+func TestAgentInstanceID_EmptyIsEmpty(t *testing.T) {
+	// An empty set must read back as "" so a probe source skips the monitors
+	// edge rather than emitting an unresolvable From endpoint.
+	SetAgentInstanceID("")
+	if got := GetAgentInstanceID(); got != "" {
+		t.Errorf("expected empty string, got %q", got)
+	}
+}
+
 func TestCollectErrorsCounter(t *testing.T) {
 	before := GetCollectErrorsTotal()
 	IncrementCollectErrors()
