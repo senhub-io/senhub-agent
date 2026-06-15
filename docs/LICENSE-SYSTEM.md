@@ -94,6 +94,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **process** - Local process table monitoring (CPU, memory, threads, file descriptors, uptime per process). Host-local: the probe reads from the local OS, not a remote system. Equivalent of PRTG's "Top Processes" sensor at zero cost.
 - **unifi** - Ubiquiti UniFi Controller monitoring (stdlib REST, cookie session auth): device inventory, per-device CPU/memory, AP client counts and satisfaction scores, WAN throughput, connected-client counts
 - **winservices** - Windows Service Control Manager enumeration: running/stopped state and SCM status code per service. Host-local (queries the machine the agent runs on); the Windows counterpart of linux_logs / windows_eventlog in the free host-observability tier.
+- **systemd** - Systemd unit supervision (Linux only): active/sub/load state gauges + restart counter per unit. Watches the machine the agent runs on via D-Bus.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
