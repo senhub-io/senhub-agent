@@ -81,6 +81,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **clickhouse** - ClickHouse server monitoring via the standard /metrics Prometheus endpoint (ClickHouse 20.1+). Follows the universal-collection posture of prometheus_scrape: the /metrics protocol is an open standard, not a proprietary vendor integration.
 - **elasticsearch** - Elasticsearch / OpenSearch cluster and node monitoring via the REST JSON API (cluster health, JVM, indexing, search, thread pools)
 - **opensearch** - OpenSearch cluster and node metrics via the REST JSON API (same surface as Elasticsearch). Universal observability for a database that ships with its own free distribution.
+- **solr** - Apache Solr monitoring via the native metrics API: JVM heap/threads, node-level request/error/cache counters, and per-core document count and index size
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:

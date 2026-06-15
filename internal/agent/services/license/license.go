@@ -326,6 +326,10 @@ var freeTierProbes = map[string]bool{
 	// a database that ships with its own free distribution (same
 	// open-core wedge reasoning as snmp_poll and prometheus_scrape).
 	"opensearch": true,
+	// solr: Apache Solr is widely self-hosted alongside applications;
+	// exposing its health, request and cache metrics is the same
+	// open-core "bring your stack in" wedge as otlp_receiver / exec.
+	"solr": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
