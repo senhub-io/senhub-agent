@@ -217,6 +217,7 @@ func TestProbeRegistry(t *testing.T) {
 	expectedProbes := []string{
 		"apache",
 		"activemq",
+		"ceph",
 		"wifi_signal_strength",
 		"memory",
 		"cpu",

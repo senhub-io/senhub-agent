@@ -177,6 +177,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// ActiveMQ — per-destination metrics use destination + destination_type
 	// to distinguish queues from topics and individual destination instances.
 	"activemq": {"destination", "destination_type", "metric_type"},
+	// Ceph — cluster-level metrics are single-instance on "instance"
+	// (the REST API endpoint); pool metrics add "pool" to disambiguate
+	// per-pool series (ceph.pool.*).
+	"ceph": {"instance", "pool"},
 
 	// IBM i / Power Systems — collectors emit multiple rows per metric
 	// name, one per resource instance. These tags identify the instance.
