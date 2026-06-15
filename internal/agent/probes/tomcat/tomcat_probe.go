@@ -13,11 +13,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -43,11 +43,12 @@ var knownConnectors = []string{"http-nio-8080", "http-nio-8443"}
 var knownGCCollectors = []string{"G1 Young Generation", "G1 Old Generation", "G1 Survivor Space"}
 
 type probeConfig struct {
-	JolokiaURL string
-	Username   string
-	Password   string
-	Timeout    time.Duration
-	Interval   time.Duration
+	JolokiaURL   string
+	Username     string
+	Password     string
+	Timeout      time.Duration
+	Interval     time.Duration
+	InstanceName string // optional stable id override; see entity_source.go
 }
 
 // TomcatProbe collects Apache Tomcat metrics via Jolokia HTTP REST.
@@ -56,7 +57,7 @@ type TomcatProbe struct {
 	cfg          probeConfig
 	moduleLogger *logger.ModuleLogger
 	client       *jolokiaClient
-	entitySrc    *types.SimpleEntitySource
+	entitySrc    *tomcatEntitySource
 	unregister   func()
 }
 
@@ -84,6 +85,9 @@ func NewTomcatProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	}
 	if v, ok := config["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
+	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
 	}
 
 	transport := &http.Transport{}
@@ -114,17 +118,18 @@ func NewTomcatProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	}
 	probe.SetProbeType(ProbeType)
 
-	// Entity source — Toise strict contract: service.instance with a single string ID.
+	// Resolve the descriptive network location (not used for identity).
 	addr, port := jolokiaHostPort(cfg.JolokiaURL)
-	instanceID := "tomcat://" + addr + ":" + strconv.FormatInt(port, 10)
-	entitySrc := types.NewSimpleEntitySource("service.instance", map[string]any{
-		"service.instance.id": instanceID,
-	})
-	entitySrc.SetUp(false, map[string]any{
-		"service.name":   "tomcat",
-		"server.address": addr,
-		"server.port":    port,
-	})
+
+	// Resolve the stable host id once at construction — GetHostIdentity calls
+	// gopsutil which reads /etc/machine-id (Linux) or the platform equivalent.
+	// Failures are silenced here; resolveInstanceID degrades gracefully.
+	var hostID string
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+	}
+
+	entitySrc := newTomcatEntitySource(cfg.InstanceName, hostID, addr, port)
 	probe.entitySrc = entitySrc
 	probe.SetEntitySource(entitySrc)
 
@@ -179,7 +184,7 @@ func (t *basicAuthTransport) RoundTrip(req *http.Request) (*http.Response, error
 }
 
 func (p *TomcatProbe) ShouldStart() bool          { return true }
-func (p *TomcatProbe) GetInterval() time.Duration  { return p.cfg.Interval }
+func (p *TomcatProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
 func (p *TomcatProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
