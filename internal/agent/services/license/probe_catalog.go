@@ -20,26 +20,18 @@ package license
 // scheme that replaced it.
 
 var paidProbes = map[string]bool{
-	"cpu":                  true,
-	"docker":               true,
-	"memory":               true,
-	"logicaldisk":          true,
-	"network":              true,
-	"ping_gateway":         true,
-	"ping_webapp":          true,
-	"load_webapp":          true,
-	"wifi_signal_strength": true,
-	"syslog":               true,
-	"event":                true,
-	"redfish":              true,
-	"citrix":               true,
-	"netscaler":            true,
-	"veeam":                true,
-	"mysql":                true,
-	"linux_logs":           true,
-	"filetail":             true,
-	"ibmi":                 true,
-	"redis":                true,
+	// Deep vendor infra integrations with no credible free exporter.
+	"citrix":    true,
+	"netscaler": true,
+	"veeam":     true,
+	"redfish":   true,
+	"ibmi":      true,
+	// Bespoke commercial collector: third-party apps push events over HTTP.
+	"event": true,
+	// Active / synthetic checks.
+	"ping_gateway": true,
+	"ping_webapp":  true,
+	"load_webapp":  true,
 }
 
 // KnownPaidProbes returns the names of every probe registered as
