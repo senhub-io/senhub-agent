@@ -85,11 +85,20 @@ func TestNewCouchDBProbe_CustomConfig(t *testing.T) {
 func TestCollect_Success(t *testing.T) {
 	stats := minimalStats()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/_node/_local/_stats" {
-			t.Errorf("unexpected path %q", r.URL.Path)
-		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(stats)
+		switch r.URL.Path {
+		case "/_node/_local/_stats":
+			_ = json.NewEncoder(w).Encode(stats)
+		case "/":
+			// Serve the CouchDB root response with a stable server UUID.
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"uuid":    "abc123def456",
+				"version": "3.3.2",
+			})
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
 	}))
 	defer srv.Close()
 
@@ -171,7 +180,13 @@ func TestCollect_BasicAuth(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(minimalStats())
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/":
+			_ = json.NewEncoder(w).Encode(map[string]string{"uuid": "auth-uuid-01", "version": "3.3.2"})
+		default:
+			_ = json.NewEncoder(w).Encode(minimalStats())
+		}
 	}))
 	defer srv.Close()
 
