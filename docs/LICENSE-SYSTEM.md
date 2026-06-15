@@ -77,6 +77,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **mysql** - MySQL / MariaDB server monitoring (OTel-first, mysql.* semconv, metric parity with otelcol-contrib mysqlreceiver). The standard open-core database wedge: PRTG/Nagios estates that already monitor MySQL get a drop-in replacement at zero cost.
 - **postgresql** - PostgreSQL server monitoring (OTel-first, postgresql.* semconv aligned with otelcol-contrib postgresqlreceiver). FREE open-core database probe — the universal RDBMS wedge alongside snmp_poll.
 - **cassandra** - Apache Cassandra monitoring via Jolokia HTTP REST. Operators self-host Cassandra and should not need a paid licence to observe their own cluster: connections, request latency/errors (read/write), compaction, storage load, JVM heap, GC.
+- **couchdb** - CouchDB node monitoring (HTTP stats, method/status breakdowns, database reads/writes, I/O bytes). Open-core database observability wedge.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:

@@ -307,6 +307,10 @@ var freeTierProbes = map[string]bool{
 	// otlp_receiver, prometheus_scrape): operators self-host Cassandra
 	// and should not need a paid licence to observe their own cluster.
 	"cassandra": true,
+	// couchdb: database observability at the host level (same stance as
+	// snmp_poll for network devices). CouchDB monitoring is the open-core
+	// wedge for document-database observability.
+	"couchdb": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
