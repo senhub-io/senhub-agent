@@ -4,9 +4,10 @@
 // senhub.nvidia.up=0 and returns nil — silent degradation on hosts without a
 // GPU keeps the probe safe to enable broadly.
 //
-// One entity of type "service.instance" is emitted per detected GPU, with
-// service.instance.id="nvidia-gpu://<uuid>", so each card is observable and
-// joinable in Toise.
+// GPUs are host hardware: they are facets of the host entity, not distinct
+// service instances. Metrics carry host.id (via common.GetHostTags) and join
+// the host entity emitted by the foundation detector — same doctrine as
+// cpu/memory/logicaldisk.
 package nvidia
 
 import (
@@ -20,8 +21,8 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -63,9 +64,6 @@ type NvidiaProbe struct {
 	config       probeConfig
 	moduleLogger *logger.ModuleLogger
 	runSmi       runSmiFunc
-	entitySource *nvidiaEntitySource
-
-	unregisterEntitySource func()
 }
 
 type probeConfig struct {
@@ -79,13 +77,11 @@ func NewNvidiaProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger)
 	cfg := parseConfig(rawConfig)
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.nvidia")
 
-	es := newEntitySource()
 	probe := &NvidiaProbe{
 		BaseProbe:    &types.BaseProbe{},
 		config:       cfg,
 		moduleLogger: moduleLogger,
 		runSmi:       defaultRunSmi,
-		entitySource: es,
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
@@ -123,7 +119,6 @@ func (p *NvidiaProbe) ShouldStart() bool          { return true }
 func (p *NvidiaProbe) GetInterval() time.Duration { return p.config.Interval }
 
 func (p *NvidiaProbe) OnStart(_ chan struct{}) error {
-	p.unregisterEntitySource = entity.RegisterSource(p.entitySource)
 	p.moduleLogger.Info().
 		Str("nvidia_smi_path", p.config.NvidiaSmiPath).
 		Msg("Starting nvidia probe")
@@ -131,9 +126,6 @@ func (p *NvidiaProbe) OnStart(_ chan struct{}) error {
 }
 
 func (p *NvidiaProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntitySource != nil {
-		p.unregisterEntitySource()
-	}
 	return nil
 }
 
@@ -144,45 +136,51 @@ func (p *NvidiaProbe) OnShutdown(_ context.Context) error {
 func (p *NvidiaProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 
-	output, err := p.runSmi(p.config.NvidiaSmiPath)
+	hostTags, err := common.GetHostTags()
 	if err != nil {
-		p.moduleLogger.Warn().Err(err).Str("path", p.config.NvidiaSmiPath).
+		p.moduleLogger.Warn().Err(err).Msg("failed to get host tags")
+		hostTags = nil
+	}
+
+	output, smiErr := p.runSmi(p.config.NvidiaSmiPath)
+	if smiErr != nil {
+		p.moduleLogger.Warn().Err(smiErr).Str("path", p.config.NvidiaSmiPath).
 			Msg("nvidia-smi failed; emitting up=0")
-		p.entitySource.update(nil)
-		upTags := []tags.Tag{{Key: "metric_type", Value: "availability"}}
+		upTags := append(hostTags, tags.Tag{Key: "metric_type", Value: "availability"})
 		point := data_store.DataPoint{Name: "senhub.nvidia.up", Value: 0, Timestamp: now, Tags: upTags}
 		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{point}, p.GetName()), nil
 	}
 
-	gpus, err := parseSmiOutput(output)
-	if err != nil {
-		p.moduleLogger.Warn().Err(err).Msg("nvidia-smi output parse failed; emitting up=0")
-		p.entitySource.update(nil)
-		upTags := []tags.Tag{{Key: "metric_type", Value: "availability"}}
+	gpus, parseErr := parseSmiOutput(output)
+	if parseErr != nil {
+		p.moduleLogger.Warn().Err(parseErr).Msg("nvidia-smi output parse failed; emitting up=0")
+		upTags := append(hostTags, tags.Tag{Key: "metric_type", Value: "availability"})
 		point := data_store.DataPoint{Name: "senhub.nvidia.up", Value: 0, Timestamp: now, Tags: upTags}
 		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{point}, p.GetName()), nil
 	}
 
 	gpus = filterGPUs(gpus, p.config.GPUs)
 
-	p.entitySource.update(gpus)
-
 	var points []data_store.DataPoint
 	for _, gpu := range gpus {
-		points = append(points, buildDatapoints(gpu, now)...)
+		points = append(points, buildDatapoints(gpu, hostTags, now)...)
 	}
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
 // buildDatapoints converts one parsed GPU row into the full metric set.
-func buildDatapoints(gpu nvidiaGPU, ts time.Time) []data_store.DataPoint {
-	base := []tags.Tag{
-		{Key: "gpu.index", Value: gpu.index},
-		{Key: "gpu.name", Value: gpu.name},
-		{Key: "gpu.uuid", Value: gpu.uuid},
-		{Key: "metric_type", Value: "gpu"},
-	}
+// hostTags carries host.id and related resource attributes so the metrics
+// join the host entity in Toise (same convention as cpu/memory/logicaldisk).
+func buildDatapoints(gpu nvidiaGPU, hostTags []tags.Tag, ts time.Time) []data_store.DataPoint {
+	base := make([]tags.Tag, 0, len(hostTags)+4)
+	base = append(base, hostTags...)
+	base = append(base,
+		tags.Tag{Key: "gpu.index", Value: gpu.index},
+		tags.Tag{Key: "gpu.name", Value: gpu.name},
+		tags.Tag{Key: "gpu.uuid", Value: gpu.uuid},
+		tags.Tag{Key: "metric_type", Value: "gpu"},
+	)
 
 	tag := func(extra ...tags.Tag) []tags.Tag {
 		out := make([]tags.Tag, len(base)+len(extra))
