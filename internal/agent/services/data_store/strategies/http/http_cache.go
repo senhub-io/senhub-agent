@@ -127,6 +127,14 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// haproxy: one series per (proxy, component) pair; metric_type
 	// separates sessions / throughput / error / request families.
 	"haproxy": {"proxy", "component", "metric_type"},
+	// elasticsearch: GC collectors, indexing/search operations, and thread
+	// pools each emit multiple datapoints under the same metric name.
+	"elasticsearch": {
+		"metric_type",
+		"collector",    // elasticsearch.jvm.gc.collections.* — young|old
+		"operation",    // elasticsearch.indexing/search.operations.* — index|query|fetch
+		"thread_pool",  // elasticsearch.thread_pool.tasks.* — per thread pool name
+	},
 	// prometheus_scrape: scraped label sets are arbitrary and cannot be
 	// enumerated here; per-target series stay distinct, finer label
 	// splits collapse on the cache-keyed sinks (same limitation as
