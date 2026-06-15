@@ -1236,7 +1236,7 @@ Aligné sur le receiver otelcol-contrib `apachereceiver`. `senhub.apache.up` est
 | `apache.traffic` | `By` | counter | Total kBytes × 1024 |
 
 Référence receiver contrib : [opentelemetry-collector-contrib/receiver/apachereceiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/apachereceiver).
-### 4.26 haproxy (free, #464)
+### 4.27 haproxy (free, #464)
 
 Aligné sur le receiver otelcol-contrib haproxy quand le nom existe ; une
 série par paire `(proxy, component)` (attributs `haproxy.proxy.name` +
@@ -1259,7 +1259,7 @@ Les métriques cumulatives (`haproxy.sessions.total`, `haproxy.bytes.*`,
 produit le suffixe `_total` côté Prometheus et le bon comportement
 monotone en OTLP. Utiliser `rate()` / `increase()` directement sur ces
 séries.
-### 4.26 Probe `kafka` (broker / topic / consumer-group monitoring)
+### 4.28 Probe `kafka` (broker / topic / consumer-group monitoring)
 
 **Sources principales :**
 - [OTel Collector contrib — `kafkametricsreceiver`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/kafkametricsreceiver) — référence canonique pour les noms et unités.
@@ -1282,7 +1282,7 @@ séries.
 | `kafka.consumer_group.lag_sum` | `{item}` | gauge | group + topic | somme lag toutes partitions |
 
 `kafka.partition.replicas_in_sync` est émis par `client.InSyncReplicas(topic, partition)` (sarama). Une erreur par partition est loguée en `Warn` et la métrique est omise pour ce cycle ; `kafka.partition.replicas` reste toujours émis. Condition d'alerte typique : `replicas_in_sync < replicas`.
-### 4.26 Probe `clickhouse` (free, #465)
+### 4.29 Probe `clickhouse` (free, #465)
 
 Scrapes the ClickHouse `/metrics` Prometheus-text endpoint (available since ClickHouse 20.1)
 and maps three ClickHouse metric families:
@@ -1314,7 +1314,7 @@ Unit embedded in the name is forbidden per the OTel-first rule; the unit lives i
 | `clickhouse.written.data` | `By` | counter | `ClickHouseProfileEvents_WriteCompressedBytes` |
 
 **Discriminant tag:** `instance` (= `server.address`) — registered in `DiscriminantTagsRegistry["clickhouse"]` (#459).
-### 4.26 Probe redis (Redis / Valkey)
+### 4.30 Probe redis (Redis / Valkey)
 
 Probe payante (Pro). Connexion TCP brute (optionnellement TLS) au port RESP
 (défaut 6379) — aucune dépendance Go externe. Séquence : `AUTH` si mot de
@@ -1386,7 +1386,7 @@ sont des extensions qui n'ont pas d'équivalent contrib.
 `total_net_input_bytes` etc. peuvent dépasser 16 MiB sur un serveur chargé,
 au-delà duquel la mantisse float32 perd de la précision. Défaut partagé avec
 les autres probes DB (#258). La valeur est émise telle quelle.
-### 4.26 Probe `memcached` (Memcached cache server)
+### 4.31 Probe `memcached` (Memcached cache server)
 
 **Sources principales :**
 - [otelcol-contrib `memcachedreceiver`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/memcachedreceiver) — référence canonique pour les noms et attributs
@@ -1427,7 +1427,7 @@ les autres probes DB (#258). La valeur est émise telle quelle.
 
 Tags discriminants déclarés dans `http_cache.go` : `result`, `command`, `state`, `direction`, `metric_type`.
 Le tag probe `direction` est renommé vers l'attribut OTel `network.io.direction` via `tag_to_attribute` — la discrimination dans le cache utilise le nom de tag d'origine (`direction`).
-### 4.26 proxmox (free)
+### 4.32 proxmox (free)
 
 Probe REST API Proxmox VE : nodes, VMs QEMU, conteneurs LXC, pools de
 stockage. Authentification via PVE API token (header `Authorization:
@@ -1454,7 +1454,7 @@ PVEAPIToken`). Espace de noms `proxmox.*` (vendor-specific) +
 
 Attributs discriminants (via `tag_to_attribute`) : `proxmox.node`,
 `proxmox.vmid`, `proxmox.vm.name`, `proxmox.vm.type`, `proxmox.storage`.
-### 4.26 Probe `unifi` (free, #465)
+### 4.33 Probe `unifi` (free, #465)
 
 Probe Ubiquiti UniFi Controller — REST API stdlib HTTP, auth cookie. Une
 instance = un contrôleur. Métriques : disponibilité, inventaire par type,
@@ -1486,7 +1486,7 @@ Valeur = débit octet-rate rapporté par le contrôleur (champ `tx_bytes-r`
 / `rx_bytes-r` du endpoint `stat/health`). La tag probe `direction` est
 mappée vers l'attribut OTel `network.io.direction` dans le YAML
 transformer (`tag_to_attribute`).
-### 4.26 kubernetes (free, #469)
+### 4.34 kubernetes (free, #469)
 
 Aligné sur les noms OTel Kubernetes semconv (k8s.* namespace, semconv 1.30+).
 Une série d'availability par cluster (`k8s.cluster.name`), puis des séries
@@ -1508,7 +1508,7 @@ par nœud, pod, conteneur ou déploiement selon la configuration.
 | `k8s.deployment.available` | `{pod}` | gauge | `k8s.deployment.name`, `k8s.namespace.name` | réplicas disponibles |
 | `k8s.deployment.desired` | `{pod}` | gauge | `k8s.deployment.name`, `k8s.namespace.name` | réplicas désirés (spec.replicas) |
 | `k8s.deployment.ready` | `1` | gauge | `k8s.deployment.name`, `k8s.namespace.name` | 1 si available ≥ desired |
-### 4.26 Probe `mssql` (Microsoft SQL Server)
+### 4.35 Probe `mssql` (Microsoft SQL Server)
 
 Source canonique : [OTel Collector contrib `sqlserverreceiver`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/sqlserverreceiver).
 Quand le receiver contrib expose la métrique, l'agent adopte son nom et ses attributs pour une interopérabilité directe. `senhub.db.up` est l'exception cross-engine partagée avec mysql/postgresql.
