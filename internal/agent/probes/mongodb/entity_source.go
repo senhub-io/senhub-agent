@@ -1,43 +1,115 @@
 package mongodb
 
 import (
-	"net/url"
-	"strconv"
 	"sync"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
-// mongodbEntitySource feeds the entity rail with the MongoDB instance this
-// probe monitors. Observe is non-blocking; setReachable is called from Collect.
+// mongodbEntitySource feeds the entity rail with the MongoDB db entity this
+// probe monitors, following the Toise db identity contract (#472, #470, #433).
+//
+// Identity resolution (db.instance.id), by precedence:
+//  1. operator config key "instance_name" → pinned at construction, emit immediately.
+//  2. tech-reported stable id "mongodb:<setName>/<selfMember>" from replSetGetStatus
+//     → fetched lazily on the first successful collect, pinned once resolved;
+//     the entity is NOT emitted before the id is pinned (ok=false until then).
+//  3. host:port fallback — for standalone MongoDB where replSetGetStatus is
+//     unavailable; pinned at construction, emit immediately (nothing better to wait for).
+//
+// The pinned id never changes for the process lifetime. "server.address" and
+// "server.port" remain as descriptive attributes (no longer the identity).
 type mongodbEntitySource struct {
-	instanceID string
-	mu         sync.RWMutex
-	up         bool
-	// attrs holds descriptive attributes; updated on each successful collection.
+	// hostPort is the credential-free host:port derived from the URI.
+	// Used as descriptive attrs and as the fallback id when no stable tech id
+	// is available.
+	hostPort string
+	// addr and port are the parsed components of hostPort, kept as typed values
+	// for the descriptive attrs.
+	addr string
+	port int64
+
+	mu sync.RWMutex
+	// pinnedID is the resolved db.instance.id. Set once; never changed.
+	// Empty string means "not yet resolved".
+	pinnedID string
+	// pinned marks that pinnedID has been set (distinguishes "" from "not ready").
+	pinned bool
+
+	// up tracks whether the last collect succeeded; entities are suppressed
+	// when the target is unreachable (transient outage, not a delete).
+	up bool
+
+	// attrs holds descriptive attributes; version is added on first success.
 	attrs map[string]any
 }
 
-// newMongodbEntitySource builds the entity source from the probe URI. The
-// instance identity is extracted once at construction and never changes for
-// the lifetime of the source.
-func newMongodbEntitySource(uri string) *mongodbEntitySource {
-	addr, port := hostPortFromURI(uri)
-	instanceID := "mongodb://" + addr + ":" + strconv.FormatInt(port, 10)
-	return &mongodbEntitySource{
-		instanceID: instanceID,
+// newMongodbEntitySource builds the entity source.
+//
+// When instanceName is non-empty it is used as db.instance.id immediately (precedence 1).
+// When instanceName is empty and hostPort is provided as fallback, it is pinned
+// only when the caller has determined that no stable tech id is available
+// (precedence 3). Precedence 2 (replset id) is handled via pinTechID.
+func newMongodbEntitySource(addr string, port int64, instanceName string) *mongodbEntitySource {
+	hp := hostPort(addr, port)
+	s := &mongodbEntitySource{
+		hostPort: hp,
+		addr:     addr,
+		port:     port,
 		attrs: map[string]any{
 			"db.system.name": "mongodb",
 			"server.address": addr,
 			"server.port":    port,
 		},
 	}
+	if instanceName != "" {
+		s.pinnedID = instanceName
+		s.pinned = true
+	}
+	return s
+}
+
+// isPinned reports whether db.instance.id has been resolved. Used by
+// maybeResolveEntityID to skip the replSetGetStatus round-trip after the first
+// successful resolution (instance_name, tech id, or host:port fallback).
+func (s *mongodbEntitySource) isPinned() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.pinned
+}
+
+// pinHostPort pins host:port as the fallback db.instance.id. Called when the
+// probe has confirmed that no stable tech id (replSetGetStatus) is available.
+// No-op when an id is already pinned.
+func (s *mongodbEntitySource) pinHostPort() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.pinned {
+		s.pinnedID = s.hostPort
+		s.pinned = true
+	}
+}
+
+// pinTechID pins the MongoDB replica-set identity as db.instance.id. Called
+// by Collect on the first successful replSetGetStatus response. No-op when an
+// id is already pinned (instance_name or prior call).
+func (s *mongodbEntitySource) pinTechID(id string) {
+	if id == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.pinned {
+		s.pinnedID = id
+		s.pinned = true
+	}
 }
 
 // setReachable is called by Collect to report the current connectivity state.
-// When up is true, version (if non-empty) is stored as a descriptive attribute.
+// When up is true and version is non-empty, it is stored as a descriptive attr.
 // When up is false the entity is suppressed from Observe until the next
-// successful collection.
+// successful collection (transient outage ≠ delete, audit D3).
 func (s *mongodbEntitySource) setReachable(up bool, version string) {
 	s.mu.Lock()
 	s.up = up
@@ -47,42 +119,71 @@ func (s *mongodbEntitySource) setReachable(up bool, version string) {
 	s.mu.Unlock()
 }
 
-// Observe implements entity.Source. Returns ok=false when the MongoDB instance
-// is currently unreachable so the detector preserves the last good snapshot
-// rather than emitting a delete (transient outage ≠ gone, audit D3).
+// Observe implements entity.Source. Returns ok=false when:
+//   - the id is not yet pinned (waiting for the first replSetGetStatus), or
+//   - the MongoDB instance is currently unreachable.
+//
+// When ok=false the detector preserves the last good snapshot rather than
+// emitting a delete (transient outage or startup before first collect).
 func (s *mongodbEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if !s.up {
+	if !s.pinned || !s.up {
 		return entity.Observation{}, false
 	}
-	return entity.Observation{
+
+	dbID := map[string]any{"db.instance.id": s.pinnedID}
+
+	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "db",
-			ID:         map[string]any{"db.instance.id": s.instanceID},
+			ID:         dbID,
 			Attributes: s.attrs,
 		}},
-	}, true
+	}
+
+	agentID := agentstate.GetAgentInstanceID()
+	if agentID != "" {
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     "monitors",
+			FromType: "service.instance",
+			FromID:   map[string]any{"service.instance.id": agentID},
+			ToType:   "db",
+			ToID:     dbID,
+		})
+	}
+
+	return obs, true
 }
 
-// hostPortFromURI extracts the host and port from a MongoDB URI such as
-// "mongodb://user:pass@host:27017/dbname". Falls back to "localhost" / 27017
-// when the URI cannot be parsed or has no explicit port.
-func hostPortFromURI(uri string) (host string, port int64) {
-	host = "localhost"
-	port = 27017
+// hostPort formats addr and port as "addr:port".
+func hostPort(addr string, port int64) string {
+	if port == 0 {
+		return addr
+	}
+	return addr + ":" + itoa(port)
+}
 
-	u, err := url.Parse(uri)
-	if err != nil || u.Host == "" {
-		return
+// itoa converts an int64 to its decimal string representation without
+// importing strconv (which is already used in mongodb_probe.go for baseTags).
+func itoa(n int64) string {
+	if n == 0 {
+		return "0"
 	}
-	if h := u.Hostname(); h != "" {
-		host = h
+	neg := n < 0
+	if neg {
+		n = -n
 	}
-	if p := u.Port(); p != "" {
-		if n, err := strconv.ParseInt(p, 10, 64); err == nil {
-			port = n
-		}
+	buf := [20]byte{}
+	pos := len(buf)
+	for n > 0 {
+		pos--
+		buf[pos] = byte('0' + n%10)
+		n /= 10
 	}
-	return
+	if neg {
+		pos--
+		buf[pos] = '-'
+	}
+	return string(buf[pos:])
 }
