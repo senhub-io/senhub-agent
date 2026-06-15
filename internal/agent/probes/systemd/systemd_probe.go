@@ -24,6 +24,7 @@ import (
 	dbus "github.com/coreos/go-systemd/v22/dbus"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -147,12 +148,20 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 
 	selected := p.filterUnits(all)
 
+	// Resolve host identity for the runs_on relation. Best-effort: an
+	// empty hostID silently omits the relation rather than failing the
+	// collect cycle.
+	hostID := ""
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+	}
+
 	// Feed entity rail with unit names from this cycle.
 	names := make([]string, 0, len(selected))
 	for _, u := range selected {
 		names = append(names, u.Name)
 	}
-	p.entitySource.setUnits(names)
+	p.entitySource.setUnits(names, hostID)
 
 	now := time.Now()
 	var points []data_store.DataPoint
