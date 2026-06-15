@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -205,6 +206,11 @@ func (p *smartProbe) OnShutdown(_ context.Context) error { return nil }
 func (p *smartProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 
+	hostTags, err := common.GetHostTags()
+	if err != nil {
+		return nil, fmt.Errorf("smart: getting host tags: %w", err)
+	}
+
 	devices, err := p.listDevices()
 	if err != nil {
 		return nil, fmt.Errorf("smart: listing devices: %w", err)
@@ -215,7 +221,7 @@ func (p *smartProbe) Collect() ([]data_store.DataPoint, error) {
 		if p.cfg.ExcludeDevices[dev] {
 			continue
 		}
-		dp, err := p.collectDevice(dev, now)
+		dp, err := p.collectDevice(dev, hostTags, now)
 		if err != nil {
 			p.moduleLogger.Warn().Err(err).Str("device", dev).Msg("smart: device query failed; skipping")
 			continue
@@ -248,7 +254,7 @@ func (p *smartProbe) listDevices() ([]string, error) {
 }
 
 // collectDevice queries one disk and returns its metric datapoints.
-func (p *smartProbe) collectDevice(device string, ts time.Time) ([]data_store.DataPoint, error) {
+func (p *smartProbe) collectDevice(device string, hostTags []tags.Tag, ts time.Time) ([]data_store.DataPoint, error) {
 	out, err := p.execDevice(p.cfg.SmartctlPath, p.cfg.UseSudo, device)
 	if err != nil {
 		return nil, fmt.Errorf("smartctl -A -H %s: %w", device, err)
@@ -266,19 +272,19 @@ func (p *smartProbe) collectDevice(device string, ts time.Time) ([]data_store.Da
 
 	switch proto {
 	case "NVMe":
-		return p.buildNVMePoints(device, result, ts), nil
+		return p.buildNVMePoints(device, result, hostTags, ts), nil
 	default:
-		return p.buildATAPoints(device, result, ts), nil
+		return p.buildATAPoints(device, result, hostTags, ts), nil
 	}
 }
 
 // buildATAPoints converts SATA/SAS smartctl output into datapoints.
-func (p *smartProbe) buildATAPoints(device string, r smartctlOutput, ts time.Time) []data_store.DataPoint {
-	base := []tags.Tag{
+func (p *smartProbe) buildATAPoints(device string, r smartctlOutput, hostTags []tags.Tag, ts time.Time) []data_store.DataPoint {
+	base := append([]tags.Tag{
 		{Key: "smart.device", Value: device},
 		{Key: "smart.type", Value: "sata"},
 		{Key: "metric_type", Value: "health"},
-	}
+	}, hostTags...)
 
 	health := float32(0)
 	if r.SmartStatus.Passed {
@@ -340,12 +346,12 @@ func (p *smartProbe) buildATAPoints(device string, r smartctlOutput, ts time.Tim
 }
 
 // buildNVMePoints converts NVMe smartctl output into datapoints.
-func (p *smartProbe) buildNVMePoints(device string, r smartctlOutput, ts time.Time) []data_store.DataPoint {
-	base := []tags.Tag{
+func (p *smartProbe) buildNVMePoints(device string, r smartctlOutput, hostTags []tags.Tag, ts time.Time) []data_store.DataPoint {
+	base := append([]tags.Tag{
 		{Key: "smart.device", Value: device},
 		{Key: "smart.type", Value: "nvme"},
 		{Key: "metric_type", Value: "health"},
-	}
+	}, hostTags...)
 
 	health := float32(0)
 	if r.SmartStatus.Passed {
