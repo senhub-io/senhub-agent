@@ -10,6 +10,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
 )
 
 // makeWMIFake returns a wmiQueryFn that serves synthetic data for tests.
@@ -96,7 +97,7 @@ func TestBuildVMPoints_CPUNormalisation(t *testing.T) {
 	sums := map[string]msvmSummaryInformation{
 		"guid-1": {Name: "guid-1", ElementName: "TestVM", CPUUsage: 100, MemoryUsage: 1024},
 	}
-	points := p.buildVMPoints(vms, sums, time.Now())
+	points := p.buildVMPoints(vms, sums, time.Now(), nil)
 
 	found := false
 	for _, pt := range points {
@@ -112,6 +113,37 @@ func TestBuildVMPoints_CPUNormalisation(t *testing.T) {
 	}
 }
 
+// TestBuildVMPoints_CarriesHostTags pins that host.id flows onto every VM
+// datapoint so the telemetry joins the hypervisor host entity (Hyper-V is a
+// host facet, #456). Without it the VM metrics would float uncorrelated.
+func TestBuildVMPoints_CarriesHostTags(t *testing.T) {
+	baseLogger := logger.NewLogger(nil)
+	p := &HypervProbe{
+		BaseProbe:    &types.BaseProbe{},
+		moduleLogger: logger.NewModuleLogger(baseLogger, "probe.hyperv"),
+	}
+	p.SetProbeType(ProbeType)
+
+	hostTags := []tags.Tag{{Key: "host.id", Value: "host-uuid-9"}}
+	vms := []msvmComputerSystem{{Name: "g1", EnabledState: enabledStateRunning}}
+	points := p.buildVMPoints(vms, nil, time.Now(), hostTags)
+
+	if len(points) == 0 {
+		t.Fatal("no datapoints emitted")
+	}
+	for _, pt := range points {
+		var hasHost bool
+		for _, tg := range pt.Tags {
+			if tg.Key == "host.id" && tg.Value == "host-uuid-9" {
+				hasHost = true
+			}
+		}
+		if !hasHost {
+			t.Errorf("datapoint %q missing host.id tag — VM telemetry will not join the host", pt.Name)
+		}
+	}
+}
+
 func TestBuildVMPoints_MemoryBytes(t *testing.T) {
 	baseLogger := logger.NewLogger(nil)
 	p := &HypervProbe{
@@ -124,7 +156,7 @@ func TestBuildVMPoints_MemoryBytes(t *testing.T) {
 	sums := map[string]msvmSummaryInformation{
 		"g1": {Name: "g1", CPUUsage: 0, MemoryUsage: 2048},
 	}
-	points := p.buildVMPoints(vms, sums, time.Now())
+	points := p.buildVMPoints(vms, sums, time.Now(), nil)
 
 	want := float32(2048 * 1024 * 1024)
 	for _, pt := range points {
@@ -143,7 +175,7 @@ func TestBuildVMPoints_StateRunning(t *testing.T) {
 	p.SetProbeType(ProbeType)
 
 	vms := []msvmComputerSystem{{Name: "vm1", EnabledState: enabledStateRunning}}
-	points := p.buildVMPoints(vms, nil, time.Now())
+	points := p.buildVMPoints(vms, nil, time.Now(), nil)
 
 	for _, pt := range points {
 		if pt.Name == "hyperv.vm.state" && pt.Value != 1 {
@@ -165,7 +197,7 @@ func TestBuildVMPoints_CountBuckets(t *testing.T) {
 		{Name: "v2", EnabledState: enabledStateStopped},
 		{Name: "v3", EnabledState: enabledStatePaused},
 	}
-	points := p.buildVMPoints(vms, nil, time.Now())
+	points := p.buildVMPoints(vms, nil, time.Now(), nil)
 
 	counts := map[string]float32{}
 	for _, pt := range points {
