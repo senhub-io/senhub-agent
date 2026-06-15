@@ -5,33 +5,58 @@ import (
 	"strconv"
 	"sync"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
-// couchdbEntitySource feeds the entity rail with the "db" entity
-// for the CouchDB instance this probe monitors (Toise v0.5.0 strict contract).
-// Observe is non-blocking; setReachable and updateVersion are called from Collect.
+// couchdbEntitySource feeds the entity rail with the "db" entity for the
+// CouchDB instance this probe monitors (Toise db identity contract).
+//
+// Identity resolution, by precedence:
+//  1. operator config "instance_name" → verbatim, pinned at construction.
+//  2. CouchDB server UUID fetched from GET / on first successful collect →
+//     "couchdb:<uuid>", pinned lazily; entity NOT emitted until pinned.
+//  3. host:port degraded fallback (never reached for CouchDB, which always
+//     exposes a UUID, but kept for contract completeness).
+//
+// Once pinned, the id never changes for the process lifetime.
 type couchdbEntitySource struct {
-	instanceID string
-	mu         sync.RWMutex
-	up         bool
-	// attrs holds descriptive attributes; version added on first successful collect.
+	// pinnedID is the resolved db.instance.id. Empty until resolved.
+	// Written once (under mu), then read-only.
+	pinnedID string
+	// hostPort is the fallback "host:port" string, computed at construction.
+	hostPort string
+
+	mu sync.RWMutex
+	up bool
+	// attrs carries descriptive attributes; db.system.version added on first
+	// successful collect via updateVersion.
 	attrs map[string]any
 }
 
-// newCouchDBEntitySource builds the entity source from the probe endpoint URL.
-// The instance identity is built once at construction and never changes.
-func newCouchDBEntitySource(endpoint string) *couchdbEntitySource {
+// newCouchDBEntitySource builds the entity source.
+//
+// instanceName is the optional operator-provided stable id (config key
+// "instance_name"). When non-empty it is used verbatim and pinned immediately
+// so the entity is emitted on the very first cycle.
+func newCouchDBEntitySource(endpoint, instanceName string) *couchdbEntitySource {
 	addr, port := couchdbHostPortFromEndpoint(endpoint)
-	instanceID := "couchdb://" + addr + ":" + strconv.FormatInt(port, 10)
-	return &couchdbEntitySource{
-		instanceID: instanceID,
+	hp := addr + ":" + strconv.FormatInt(port, 10)
+
+	s := &couchdbEntitySource{
+		hostPort: hp,
 		attrs: map[string]any{
 			"db.system.name": "couchdb",
 			"server.address": addr,
 			"server.port":    port,
 		},
 	}
+
+	if instanceName != "" {
+		// Operator-supplied: pin immediately, emit from the first cycle.
+		s.pinnedID = instanceName
+	}
+	return s
 }
 
 // setReachable is called by Collect to report the current connectivity state.
@@ -41,6 +66,20 @@ func (s *couchdbEntitySource) setReachable(up bool) {
 	s.mu.Lock()
 	s.up = up
 	s.mu.Unlock()
+}
+
+// pinServerUUID pins the db.instance.id from the CouchDB server UUID (GET /).
+// It is a no-op after the first successful call — the id is immutable once set.
+// Called from the probe's Collect path on every successful fetch until pinned.
+func (s *couchdbEntitySource) pinServerUUID(uuid string) {
+	if uuid == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pinnedID == "" {
+		s.pinnedID = "couchdb:" + uuid
+	}
 }
 
 // updateVersion stores the CouchDB server version gathered during a successful
@@ -57,24 +96,6 @@ func (s *couchdbEntitySource) updateVersion(version string) {
 	attrs["db.system.version"] = version
 	s.attrs = attrs
 	s.mu.Unlock()
-}
-
-// Observe implements entity.Source. Returns ok=false when the CouchDB instance
-// is currently unreachable so the detector preserves the last good snapshot
-// rather than emitting a delete (transient outage != gone).
-func (s *couchdbEntitySource) Observe() (entity.Observation, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if !s.up {
-		return entity.Observation{}, false
-	}
-	return entity.Observation{
-		Entities: []entity.Entity{{
-			Type:       "db",
-			ID:         map[string]any{"db.instance.id": s.instanceID},
-			Attributes: s.attrs,
-		}},
-	}, true
 }
 
 // couchdbHostPortFromEndpoint extracts the host and port from an HTTP endpoint
@@ -104,4 +125,39 @@ func couchdbHostPortFromEndpoint(endpoint string) (host string, port int64) {
 		}
 	}
 	return
+}
+
+// Observe implements entity.Source. Returns ok=false when:
+//   - the CouchDB instance is currently unreachable (transient outage ≠ gone), or
+//   - the stable id has not been pinned yet (tech UUID not fetched yet).
+func (s *couchdbEntitySource) Observe() (entity.Observation, bool) {
+	s.mu.RLock()
+	up := s.up
+	pinnedID := s.pinnedID
+	attrs := s.attrs
+	s.mu.RUnlock()
+
+	if !up || pinnedID == "" {
+		return entity.Observation{}, false
+	}
+
+	obs := entity.Observation{
+		Entities: []entity.Entity{{
+			Type:       "db",
+			ID:         map[string]any{"db.instance.id": pinnedID},
+			Attributes: attrs,
+		}},
+	}
+
+	if agentID := agentstate.GetAgentInstanceID(); agentID != "" {
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     "monitors",
+			FromType: "service.instance",
+			FromID:   map[string]any{"service.instance.id": agentID},
+			ToType:   "db",
+			ToID:     map[string]any{"db.instance.id": pinnedID},
+		})
+	}
+
+	return obs, true
 }

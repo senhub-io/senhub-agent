@@ -29,11 +29,12 @@ const (
 
 // couchdbConfig holds the validated probe configuration.
 type couchdbConfig struct {
-	Endpoint string
-	Username string
-	Password string
-	Timeout  time.Duration
-	Interval time.Duration
+	Endpoint     string
+	Username     string
+	Password     string
+	Timeout      time.Duration
+	Interval     time.Duration
+	InstanceName string // optional stable id override (db.instance.id)
 }
 
 // CouchDBProbe polls a CouchDB node stats endpoint.
@@ -116,6 +117,14 @@ type statsResponse struct {
 	} `json:"io_output"`
 }
 
+// rootResponse maps the fields returned by GET / on a CouchDB node.
+// The uuid field is a permanent, server-assigned identifier that never
+// changes across restarts — used as the stable db.instance.id.
+type rootResponse struct {
+	UUID    string `json:"uuid"`
+	Version string `json:"version"`
+}
+
 // NewCouchDBProbe constructs the probe from the YAML params block.
 func NewCouchDBProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.couchdb")
@@ -141,6 +150,9 @@ func NewCouchDBProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 	if v, ok := config["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
 
 	p := &CouchDBProbe{
 		BaseProbe:    &types.BaseProbe{},
@@ -152,7 +164,7 @@ func NewCouchDBProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 	}
 	p.SetProbeType(ProbeType)
 
-	p.entitySrc = newCouchDBEntitySource(cfg.Endpoint)
+	p.entitySrc = newCouchDBEntitySource(cfg.Endpoint, cfg.InstanceName)
 
 	return p, nil
 }
@@ -180,7 +192,8 @@ func (p *CouchDBProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect queries /_node/_local/_stats and emits metrics.
+// Collect queries /_node/_local/_stats (and GET / for the server UUID on
+// first successful contact) and emits metrics.
 // If the endpoint is unreachable, senhub.couchdb.up=0 is emitted and
 // nil is returned — a failing remote is a measurement, not a collection error.
 func (p *CouchDBProbe) Collect() ([]data_store.DataPoint, error) {
@@ -197,6 +210,13 @@ func (p *CouchDBProbe) Collect() ([]data_store.DataPoint, error) {
 			{Name: "senhub.couchdb.up", Value: 0, Timestamp: now, Tags: baseTags},
 		}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+	}
+
+	// Fetch server UUID + version from GET / and pin the stable id on the
+	// first successful contact. pinServerUUID is a no-op once pinned.
+	if root, err := p.fetchRoot(); err == nil {
+		p.entitySrc.pinServerUUID(root.UUID)
+		p.entitySrc.updateVersion(root.Version)
 	}
 
 	p.entitySrc.setReachable(true)
@@ -236,6 +256,41 @@ func (p *CouchDBProbe) fetchStats() (*statsResponse, error) {
 		return nil, fmt.Errorf("parsing stats from %s: %w", url, err)
 	}
 	return &stats, nil
+}
+
+// fetchRoot performs GET / to retrieve the server UUID and version.
+// The UUID is a permanent per-node identifier assigned at first startup and
+// never changes across restarts — the canonical stable db.instance.id source.
+func (p *CouchDBProbe) fetchRoot() (*rootResponse, error) {
+	req, err := http.NewRequest(http.MethodGet, p.cfg.Endpoint+"/", nil)
+	if err != nil {
+		return nil, fmt.Errorf("building root request for %s: %w", p.cfg.Endpoint, err)
+	}
+	if p.cfg.Username != "" {
+		req.SetBasicAuth(p.cfg.Username, p.cfg.Password)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GET %s/: %w", p.cfg.Endpoint, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GET %s/: unexpected status %d", p.cfg.Endpoint, resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading root response from %s: %w", p.cfg.Endpoint, err)
+	}
+
+	var root rootResponse
+	if err := json.Unmarshal(body, &root); err != nil {
+		return nil, fmt.Errorf("parsing root response from %s: %w", p.cfg.Endpoint, err)
+	}
+	return &root, nil
 }
 
 // buildDatapoints converts the parsed stats into OTel-first datapoints.
