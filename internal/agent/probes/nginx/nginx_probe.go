@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -42,9 +43,10 @@ type NginxProbe struct {
 }
 
 type nginxConfig struct {
-	Endpoint string
-	Interval time.Duration
-	Timeout  time.Duration
+	Endpoint     string
+	Interval     time.Duration
+	Timeout      time.Duration
+	InstanceName string
 }
 
 const (
@@ -72,6 +74,14 @@ func NewNginxProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 	if v, ok := config["timeout"].(int); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
+
+	var hostID string
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+	}
 
 	probe := &NginxProbe{
 		BaseProbe:    &types.BaseProbe{},
@@ -83,7 +93,7 @@ func NewNginxProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 				DisableKeepAlives: true,
 			},
 		},
-		entitySrc: newNginxEntitySource(cfg.Endpoint),
+		entitySrc: newNginxEntitySource(cfg.Endpoint, cfg.InstanceName, hostID),
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil

@@ -2,17 +2,18 @@ package nginx
 
 import (
 	"net/url"
-	"strconv"
 	"sync"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // nginxEntitySource feeds the entity rail with the nginx instance this probe
-// monitors. It reports a single service.instance entity with the endpoint host
-// and port as identity. The entity is emitted only while the stub_status page
-// is reachable (up=true); a transient fetch failure returns ok=false so the
-// tracker reuses the last good snapshot rather than emitting a delete.
+// monitors. It reports a single service.instance entity with a stable,
+// non-network-derived identity. The entity is emitted only while the
+// stub_status page is reachable (up=true); a transient fetch failure returns
+// ok=false so the tracker reuses the last good snapshot rather than emitting a
+// delete.
 type nginxEntitySource struct {
 	instanceID string
 	attrs      map[string]any
@@ -20,14 +21,25 @@ type nginxEntitySource struct {
 	up         bool
 }
 
-// newNginxEntitySource derives the entity identity from the probe's endpoint
-// URL. The port defaults to 80 (HTTP) or 443 (HTTPS) when the URL has no
-// explicit port, matching standard nginx conventions.
-func newNginxEntitySource(endpoint string) *nginxEntitySource {
+// newNginxEntitySource constructs the entity source. instanceName is the
+// operator-configured "instance_name" override; hostID is the agent's stable
+// host identity (common.GetHostIdentity().ID). The endpoint URL is parsed only
+// for descriptive server.address / server.port attributes — it never
+// participates in the identity.
+func newNginxEntitySource(endpoint, instanceName, hostID string) *nginxEntitySource {
+	var id string
+	switch {
+	case instanceName != "":
+		id = instanceName
+	case hostID != "":
+		id = "nginx@" + hostID
+	default:
+		id = "nginx"
+	}
+
 	host, port := hostPortFromEndpoint(endpoint)
-	instanceID := "nginx://" + host + ":" + strconv.FormatInt(port, 10)
 	return &nginxEntitySource{
-		instanceID: instanceID,
+		instanceID: id,
 		attrs: map[string]any{
 			"service.name":   "nginx",
 			"server.address": host,
@@ -70,8 +82,9 @@ func (s *nginxEntitySource) setReachable(up bool) {
 }
 
 // Observe implements entity.Source. It returns the nginx service.instance
-// entity when the endpoint is reachable, or (_, false) on a transient failure
-// so the detector keeps the last good snapshot alive.
+// entity plus a monitors relation from the agent when the endpoint is
+// reachable, or (_, false) on a transient failure so the detector keeps the
+// last good snapshot alive.
 func (s *nginxEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.RLock()
 	up := s.up
@@ -80,11 +93,24 @@ func (s *nginxEntitySource) Observe() (entity.Observation, bool) {
 	if !up {
 		return entity.Observation{}, false
 	}
-	return entity.Observation{
+
+	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "service.instance",
 			ID:         map[string]any{"service.instance.id": s.instanceID},
 			Attributes: s.attrs,
 		}},
-	}, true
+	}
+
+	if agentID := agentstate.GetAgentInstanceID(); agentID != "" {
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     "monitors",
+			FromType: "service.instance",
+			FromID:   map[string]any{"service.instance.id": agentID},
+			ToType:   "service.instance",
+			ToID:     map[string]any{"service.instance.id": s.instanceID},
+		})
+	}
+
+	return obs, true
 }
