@@ -1,0 +1,188 @@
+probe_name: "ceph"
+friendly_name: "Ceph"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["instance", "pool"]
+
+# FREE-tier probe. Monitors a Ceph cluster via the REST Management API v1.
+# Metrics: cluster health, capacity, OSD counts, monitor quorum, per-pool I/O.
+# Pool metrics carry the "pool" multi-instance label for per-channel display.
+
+metrics:
+  # --- probe status ---
+  - name: "senhub.ceph.up"
+    channel: "ceph_up"
+    display_name: "Ceph {instance} Reachability"
+    unit: "#"
+    category: "status"
+    description: "1 when the Ceph REST API is reachable and authentication succeeds"
+    otel:
+      name: senhub.ceph.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  # --- health ---
+  - name: "ceph.health.status"
+    channel: "ceph_health_status"
+    display_name: "Ceph {instance} Health Status"
+    unit: "#"
+    category: "overview"
+    description: "Cluster health: 2=HEALTH_OK, 1=HEALTH_WARN, 0=HEALTH_ERR"
+    otel:
+      name: ceph.health.status
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "ceph.cluster.capacity"
+    channel: "ceph_cluster_capacity"
+    display_name: "Ceph {instance} Raw Capacity"
+    unit: "B"
+    category: "capacity"
+    description: "Total raw cluster capacity in bytes"
+    otel:
+      name: ceph.cluster.capacity
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "ceph.cluster.used"
+    channel: "ceph_cluster_used"
+    display_name: "Ceph {instance} Used Capacity"
+    unit: "B"
+    category: "capacity"
+    description: "Total bytes currently used across the cluster"
+    otel:
+      name: ceph.cluster.used
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  # --- OSDs ---
+  - name: "ceph.osd.total"
+    channel: "ceph_osd_total"
+    display_name: "Ceph {instance} OSD Total"
+    unit: "#"
+    category: "osd"
+    description: "Total number of OSDs configured in the cluster"
+    otel:
+      name: ceph.osd.total
+      unit: "{osd}"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "ceph.osd.in"
+    channel: "ceph_osd_in"
+    display_name: "Ceph {instance} OSD In"
+    unit: "#"
+    category: "osd"
+    description: "Number of OSDs that are in (participating in the cluster)"
+    otel:
+      name: ceph.osd.in
+      unit: "{osd}"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "ceph.osd.up"
+    channel: "ceph_osd_up"
+    display_name: "Ceph {instance} OSD Up"
+    unit: "#"
+    category: "osd"
+    description: "Number of OSDs that are up (running)"
+    otel:
+      name: ceph.osd.up
+      unit: "{osd}"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  # --- monitors ---
+  - name: "ceph.monitor.count"
+    channel: "ceph_monitor_count"
+    display_name: "Ceph {instance} Monitor Count"
+    unit: "#"
+    category: "monitor"
+    description: "Total number of monitor daemons"
+    otel:
+      name: ceph.monitor.count
+      unit: "{monitor}"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "ceph.monitor.quorum_count"
+    channel: "ceph_monitor_quorum_count"
+    display_name: "Ceph {instance} Monitor Quorum"
+    unit: "#"
+    category: "monitor"
+    description: "Number of monitors currently in quorum"
+    otel:
+      name: ceph.monitor.quorum_count
+      unit: "{monitor}"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  # --- per-pool metrics (multi-instance on "pool") ---
+  - name: "ceph.pool.objects"
+    channel: "ceph_pool_{pool}_objects"
+    display_name: "Ceph {instance} Pool {pool} Objects"
+    unit: "#"
+    category: "pool"
+    description: "Number of objects stored in the pool"
+    otel:
+      name: ceph.pool.objects
+      unit: "{object}"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+      pool: ceph.pool.name
+
+  - name: "ceph.pool.used"
+    channel: "ceph_pool_{pool}_used"
+    display_name: "Ceph {instance} Pool {pool} Used"
+    unit: "B"
+    category: "pool"
+    description: "Bytes stored in the pool"
+    otel:
+      name: ceph.pool.used
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+      pool: ceph.pool.name
+
+  - name: "ceph.pool.rd_ops"
+    channel: "ceph_pool_{pool}_rd_ops"
+    display_name: "Ceph {instance} Pool {pool} Read Ops"
+    unit: "#"
+    category: "pool"
+    description: "Cumulative read operations on the pool"
+    otel:
+      name: ceph.pool.rd_ops
+      unit: "{operation}"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+      pool: ceph.pool.name
+
+  - name: "ceph.pool.wr_ops"
+    channel: "ceph_pool_{pool}_wr_ops"
+    display_name: "Ceph {instance} Pool {pool} Write Ops"
+    unit: "#"
+    category: "pool"
+    description: "Cumulative write operations on the pool"
+    otel:
+      name: ceph.pool.wr_ops
+      unit: "{operation}"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+      pool: ceph.pool.name

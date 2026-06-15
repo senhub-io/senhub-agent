@@ -31,6 +31,7 @@ func TestFreeTierProbes(t *testing.T) {
 		{"WebApp probe is NOT free tier", "ping_webapp", false},
 		{"Gateway probe is NOT free tier", "ping_gateway", false},
 		{"Syslog probe IS free tier (#298)", "syslog", true},
+		{"Ceph probe IS free tier", "ceph", true},
 		{"Event probe is NOT free tier", "event", false},
 	}
 
@@ -47,13 +48,14 @@ func TestFreeTierProbes(t *testing.T) {
 func TestGetFreeTierProbes(t *testing.T) {
 	probes := GetFreeTierProbes()
 
-	// Check we have exactly 11 free tier probes
-	if len(probes) != 17 {
-		t.Errorf("GetFreeTierProbes() returned %d probes, want 17", len(probes))
+	// Check we have exactly 18 free tier probes
+	if len(probes) != 18 {
+		t.Errorf("GetFreeTierProbes() returned %d probes, want 18", len(probes))
 	}
 
 	// Check all expected probes are present
 	expectedProbes := map[string]bool{
+		"ceph":              false,
 		"cpu":               false,
 		"memory":            false,
 		"logicaldisk":       false,
