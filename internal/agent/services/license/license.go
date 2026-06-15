@@ -226,6 +226,10 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// ceph: open-source storage cluster; monitoring it via the public
+	// REST API is the same universal-collection wedge as snmp_poll or
+	// prometheus_scrape — not a paid vendor integration.
+	"ceph": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
