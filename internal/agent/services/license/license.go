@@ -274,6 +274,10 @@ var freeTierProbes = map[string]bool{
 	// deep integration — the free tier covers agent health, catalog
 	// service count, raft, RPC/DNS counters and health-check states.
 	"consul": true,
+	// zookeeper: Apache ZooKeeper health monitoring via the mntr
+	// four-letter command. Generic coordination-service observability,
+	// part of the open-core universal collection wedge.
+	"zookeeper": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
