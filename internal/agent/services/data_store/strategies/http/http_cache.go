@@ -136,6 +136,14 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// via operation tag; all other metrics are single-instance per probe.
 	"varnish": {"result", "operation", "metric_type"},
 
+	// Messaging probes
+	"kafka": {
+		"topic",        // per-topic metrics (kafka.topic.partitions, lag_sum, …)
+		"partition",    // per-partition metrics (offsets, replicas, consumer offsets/lag)
+		"group",        // per-consumer-group metrics (members, offset, lag, lag_sum)
+		"metric_type",  // separates broker / topic / partition / consumer_group families
+	},
+
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
 	// senhub-semantic-conventions.md §4.13 for the full collapse list).
