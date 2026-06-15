@@ -208,6 +208,14 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// this tag in the key all services collapse to one cache slot.
 	"winservices": {"windows.service.name", "metric_type"},
 
+	// mongodb: per-operation (insert/query/…), per-type (resident/virtual,
+	// read/write cache), per-database series discriminated by tag.
+	"mongodb": {
+		"operation", // opcounters and document ops: insert/query/update/delete/getmore/command
+		"type",      // memory type: resident/virtual; cache type: read/write
+		"database",  // per-database dbStats metrics
+	},
+
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
 	// senhub-semantic-conventions.md §4.13 for the full collapse list).

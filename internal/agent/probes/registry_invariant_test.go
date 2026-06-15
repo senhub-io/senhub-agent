@@ -48,6 +48,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/mysql"
 	_ "senhub-agent.go/internal/agent/probes/modbus"
 	_ "senhub-agent.go/internal/agent/probes/mssql"
+	_ "senhub-agent.go/internal/agent/probes/mongodb"
 	_ "senhub-agent.go/internal/agent/probes/network"
 	_ "senhub-agent.go/internal/agent/probes/nginx"
 	_ "senhub-agent.go/internal/agent/probes/opensearch"

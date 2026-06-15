@@ -46,6 +46,8 @@ func TestFreeTierProbes(t *testing.T) {
 		{"UniFi probe IS free tier", "unifi", true},
 		{"Systemd probe is free tier", "systemd", true},
 		{"MSSQL probe is free tier", "mssql", true},
+		{"MongoDB probe is free tier", "mongodb", true},
+		{"Kafka probe is free tier", "kafka", true},
 		{"Event probe is NOT free tier", "event", false},
 		{"NATS probe is free tier", "nats", true},
 		{"ZooKeeper probe is free tier", "zookeeper", true},
@@ -77,6 +79,9 @@ func TestGetFreeTierProbes(t *testing.T) {
 	// Check we have the expected number of free tier probes
 	if len(probes) != 18 {
 		t.Errorf("GetFreeTierProbes() returned %d probes, want 18", len(probes))
+	// Check we have exactly 19 free tier probes
+	if len(probes) != 19 {
+		t.Errorf("GetFreeTierProbes() returned %d probes, want 19", len(probes))
 	}
 
 	// Check all expected probes are present
@@ -139,6 +144,8 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"modbus":            false,
 		"mssql":             false,
 		"tomcat":            false,
+		"mongodb":           false,
+		"kafka":             false,
 	}
 
 	for _, probe := range probes {

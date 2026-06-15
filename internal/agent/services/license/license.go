@@ -250,6 +250,12 @@ var freeTierProbes = map[string]bool{
 	// The management API is a standard feature of the open-source
 	// WildFly distribution; no license is required to access it.
 	"wildfly": true,
+	// mongodb: free open-core database monitoring via the official Go
+	// driver (serverStatus + per-database dbStats). Monitoring the most
+	// popular document database is an adoption magnet; deep auth,
+	// replica-set topology and Atlas-specific metrics remain a future
+	// paid tier extension.
+	"mongodb": true,
 	// kafka: Kafka broker/topic/consumer-group monitoring via Admin API.
 	// Generic message-bus observability (brokers, partition offsets, lag)
 	// mirrors what the OTel Collector's kafkametricsreceiver gives away
