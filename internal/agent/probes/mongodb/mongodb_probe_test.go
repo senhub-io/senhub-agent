@@ -346,7 +346,7 @@ func TestCollect_EmitsUpZeroWhenUnreachable(t *testing.T) {
 	p.cfg.URI = "mongodb://127.0.0.1:1" // port 1: always refused
 	p.cfg.DirectConnection = true
 	p.cfg.Timeout = 1 * time.Second
-	p.instance = p.cfg.URI
+	p.instance = "mongodb://127.0.0.1:1" // credential-free form
 
 	// OnStart — lazy connect, won't fail here.
 	if err := p.OnStart(nil); err != nil {
@@ -410,4 +410,68 @@ func TestShouldStart(t *testing.T) {
 	if !p.ShouldStart() {
 		t.Error("ShouldStart should return true")
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Security regression — credentials must never appear in tags or logs (#460)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestInstanceTag_NoCredentials verifies that when the probe URI contains
+// embedded credentials (user:password@host), the 'instance' tag emitted on
+// every datapoint does not expose the password or the '@' separator.
+func TestInstanceTag_NoCredentials(t *testing.T) {
+	params := map[string]interface{}{
+		"uri":      "mongodb://admin:s3cr3tP@ss@mongo.example.com:27017",
+		"timeout":  5,
+		"interval": 30,
+	}
+	p, err := NewMongoDBProbe(params, newTestLogger())
+	if err != nil {
+		t.Fatalf("NewMongoDBProbe: %v", err)
+	}
+	mp := p.(*mongoDBProbe)
+	mp.SetName("mongo-creds-test")
+
+	// The instance field must not contain credentials.
+	if contains(mp.instance, "@") {
+		t.Errorf("instance %q contains '@': credentials leaked", mp.instance)
+	}
+	if contains(mp.instance, "s3cr3tP@ss") {
+		t.Errorf("instance %q contains the password: credentials leaked", mp.instance)
+	}
+	if contains(mp.instance, "admin") {
+		t.Errorf("instance %q contains the username: credentials leaked", mp.instance)
+	}
+
+	// The instance tag on datapoints must also be clean.
+	tags := mp.baseTags("status")
+	for _, tg := range tags {
+		if tg.Key == "instance" {
+			if contains(tg.Value, "@") {
+				t.Errorf("instance tag %q contains '@': credentials leaked", tg.Value)
+			}
+			if contains(tg.Value, "s3cr3tP@ss") {
+				t.Errorf("instance tag %q contains the password: credentials leaked", tg.Value)
+			}
+		}
+	}
+
+	// The safe form should contain the host and port only.
+	const wantInstance = "mongodb://mongo.example.com:27017"
+	if mp.instance != wantInstance {
+		t.Errorf("instance = %q, want %q", mp.instance, wantInstance)
+	}
+}
+
+// contains is a simple substring check to avoid importing strings in tests.
+func contains(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
+		func() bool {
+			for i := 0; i <= len(s)-len(sub); i++ {
+				if s[i:i+len(sub)] == sub {
+					return true
+				}
+			}
+			return false
+		}())
 }

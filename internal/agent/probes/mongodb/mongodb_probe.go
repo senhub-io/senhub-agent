@@ -14,6 +14,7 @@ package mongodb
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -67,9 +68,14 @@ func NewMongoDBProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger
 		return nil, fmt.Errorf("mongodb: %w", err)
 	}
 
+	// Derive a credential-free instance string once at construction.
+	// cfg.URI may contain user:password — never store or emit it.
+	instHost, instPort := hostPortFromURI(cfg.URI)
+	instance := "mongodb://" + instHost + ":" + strconv.FormatInt(instPort, 10)
+
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.mongodb")
 	moduleLogger.Debug().
-		Str("uri", cfg.URI).
+		Str("instance", instance).
 		Bool("direct_connection", cfg.DirectConnection).
 		Dur("timeout", cfg.Timeout).
 		Msg("Creating new MongoDB probe")
@@ -77,7 +83,7 @@ func NewMongoDBProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger
 	probe := &mongoDBProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
-		instance:     cfg.URI,
+		instance:     instance,
 		moduleLogger: moduleLogger,
 		connectClient: func(ctx context.Context, uri string, direct bool, timeout time.Duration) (*mongodrv.Client, error) {
 			opts := mongooptions.Client().
@@ -107,11 +113,11 @@ func (p *mongoDBProbe) OnStart(_ chan struct{}) error {
 
 	client, err := p.connectClient(ctx, p.cfg.URI, p.cfg.DirectConnection, p.cfg.Timeout)
 	if err != nil {
-		return fmt.Errorf("mongodb: connecting to %s: %w", p.cfg.URI, err)
+		return fmt.Errorf("mongodb: connecting to %s: %w", p.instance, err)
 	}
 	p.client = client
 	p.unregister = entity.RegisterSource(p.entitySrc)
-	p.moduleLogger.Info().Str("uri", p.cfg.URI).Msg("MongoDB probe started")
+	p.moduleLogger.Info().Str("instance", p.instance).Msg("MongoDB probe started")
 	return nil
 }
 
