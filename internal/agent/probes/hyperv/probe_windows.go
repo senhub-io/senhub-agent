@@ -28,6 +28,7 @@ import (
 	"github.com/yusufpapurcu/wmi"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -123,6 +124,16 @@ func (p *HypervProbe) OnShutdown(_ context.Context) error {
 func (p *HypervProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 
+	// host.id (and host.*) on every metric so the VM telemetry joins the
+	// hypervisor host entity emitted by the foundation detector — Hyper-V is
+	// a host facet, not a separate entity (see #456). Best-effort: a host-tag
+	// failure degrades correlation but never blocks collection.
+	hostTags, hErr := common.GetHostTags()
+	if hErr != nil {
+		p.moduleLogger.Warn().Err(hErr).Msg("host tags unavailable; hyperv metrics omit host.id")
+		hostTags = nil
+	}
+
 	vms, sumByName, err := p.queryWMI()
 
 	up := float32(1)
@@ -136,15 +147,24 @@ func (p *HypervProbe) Collect() ([]data_store.DataPoint, error) {
 			Name:      "senhub.hyperv.up",
 			Value:     up,
 			Timestamp: now,
-			Tags:      []tags.Tag{{Key: "metric_type", Value: "status"}},
+			Tags:      withHost(hostTags, tags.Tag{Key: "metric_type", Value: "status"}),
 		},
 	}
 
 	if err == nil {
-		points = append(points, p.buildVMPoints(vms, sumByName, now)...)
+		points = append(points, p.buildVMPoints(vms, sumByName, now, hostTags)...)
 	}
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
+
+// withHost returns a fresh tag slice = host tags followed by the extras, so
+// every datapoint carries host.id without callers mutating a shared slice.
+func withHost(hostTags []tags.Tag, extra ...tags.Tag) []tags.Tag {
+	out := make([]tags.Tag, 0, len(hostTags)+len(extra))
+	out = append(out, hostTags...)
+	out = append(out, extra...)
+	return out
 }
 
 // queryWMI runs both WMI queries.
@@ -173,7 +193,7 @@ func (p *HypervProbe) queryWMI() ([]msvmComputerSystem, map[string]msvmSummaryIn
 }
 
 // buildVMPoints builds per-VM and per-state-count datapoints.
-func (p *HypervProbe) buildVMPoints(vms []msvmComputerSystem, sumByName map[string]msvmSummaryInformation, ts time.Time) []data_store.DataPoint {
+func (p *HypervProbe) buildVMPoints(vms []msvmComputerSystem, sumByName map[string]msvmSummaryInformation, ts time.Time, hostTags []tags.Tag) []data_store.DataPoint {
 	var points []data_store.DataPoint
 
 	running, stopped, paused := 0, 0, 0
@@ -185,10 +205,10 @@ func (p *HypervProbe) buildVMPoints(vms []msvmComputerSystem, sumByName map[stri
 			name = si.ElementName
 		}
 
-		vmTags := []tags.Tag{
-			{Key: "hyperv.vm.name", Value: name},
-			{Key: "metric_type", Value: "vm"},
-		}
+		vmTags := withHost(hostTags,
+			tags.Tag{Key: "hyperv.vm.name", Value: name},
+			tags.Tag{Key: "metric_type", Value: "vm"},
+		)
 
 		// hyperv.vm.state — 1 when the VM is running, 0 otherwise.
 		stateVal := float32(0)
@@ -239,10 +259,10 @@ func (p *HypervProbe) buildVMPoints(vms []msvmComputerSystem, sumByName map[stri
 		points = append(points, data_store.DataPoint{
 			Name:  "hyperv.vm.count",
 			Value: float32(cm.count),
-			Tags: []tags.Tag{
-				{Key: "state", Value: cm.state},
-				{Key: "metric_type", Value: "vm_count"},
-			},
+			Tags: withHost(hostTags,
+				tags.Tag{Key: "state", Value: cm.state},
+				tags.Tag{Key: "metric_type", Value: "vm_count"},
+			),
 			Timestamp: ts,
 		})
 	}
