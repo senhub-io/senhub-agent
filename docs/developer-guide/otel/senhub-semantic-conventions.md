@@ -669,13 +669,13 @@ Le tag agent `probe_type=mysql\|postgresql` reste émis comme metric attribute (
 | Composite health | `senhub.db.replication.health` | `1` | gauge | (none) |
 | Replicas connected | `senhub.db.replication.replicas.connected` | `{replica}` | gauge | (none) |
 
-#### 4.13.3 PostgreSQL — métriques (30)
+#### 4.13.3 PostgreSQL — métriques (21)
 
 **Contrib postgresql receiver utilisé tel quel (8) :**
 
 | Notre métrique | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
-| Backends actifs/idle/idle in tx | `postgresql.backends` | `{backend}` | gauge | `state=active\|idle\|idle_in_transaction` |
+| Backends par état de connexion | `postgresql.backends` | `{backend}` | gauge | `db.client.connection.state=active\|idle\|idle_in_transaction` |
 | Max connections | `postgresql.connection.max` | `{connection}` | gauge | (none) |
 | Commits cumulatif | `postgresql.commits` | `{transaction}` | counter | (none) |
 | Rollbacks cumulatif | `postgresql.rollbacks` | `{transaction}` | counter | (none) |
@@ -684,9 +684,9 @@ Le tag agent `probe_type=mysql\|postgresql` reste émis comme metric attribute (
 | Tables count | `postgresql.table.count` | `{table}` | gauge | (none) |
 | WAL replication lag (replay) | `postgresql.wal.lag` | `s` | gauge | `operation=replay` |
 
-**Extensions `senhub.db.*` (5, cross-engine partagées) :** `senhub.db.up`, `senhub.db.version.info`, `senhub.db.connection.utilization`, `senhub.db.replication.role` + `.health` + `.replicas.connected` (idem mysql ci-dessus).
+**Extensions `senhub.db.*` (6, cross-engine partagées) :** `senhub.db.up`, `senhub.db.version.info`, `senhub.db.connection.utilization`, `senhub.db.replication.role` + `.health` + `.replicas.connected` (idem mysql ci-dessus).
 
-**Extensions `senhub.db.postgresql.*` (9) :**
+**Extensions `senhub.db.postgresql.*` (7) :**
 
 | Métrique | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
@@ -697,15 +697,6 @@ Le tag agent `probe_type=mysql\|postgresql` reste émis comme metric attribute (
 | Archiver failures cumulatif | `senhub.db.postgresql.archiver.failed` | `{failure}` | counter | (none) |
 | Archive freshness (age last_archived_wal) | `senhub.db.postgresql.archiver.last_archived.age` | `s` | gauge | (none) |
 | Replica IO running (composite) | `senhub.db.postgresql.replica.io.running` | `1` | gauge | (none) |
-| Bloat ratio (per table, opt-in) | `senhub.db.postgresql.bloat.ratio` | `1` | gauge | `db.table.name` |
-| Bloat bytes (per table, opt-in) | `senhub.db.postgresql.bloat.size` | `By` | gauge | `db.table.name` |
-
-**Extensions `senhub.db.postgresql.statement.*` (2, pg_stat_statements opt-in) :**
-
-| Métrique | OTel name | Unit | Type | Attributes |
-|---|---|---|---|---|
-| Total query calls | `senhub.db.postgresql.statement.calls` | `{call}` | counter | (none) |
-| Mean exec time | `senhub.db.postgresql.statement.exec_time.mean` | `s` | gauge | (none) — **conversion ms→s** |
 
 #### 4.13.4 Collapses majeurs
 
@@ -733,7 +724,7 @@ Les requêtes cross-engine se font via le resource attribute `db.system.name` ou
 #### 4.13.6 Récap
 
 - **MySQL** : 27 métriques actives (sans deadlocks sur MariaDB), réparties en 10 contrib + 5 senhub-cross-db + 12 senhub-mysql.
-- **PostgreSQL** : 30 métriques (21 sur primary standalone, +bloat/stat_statements/per-db en opt-in), réparties en 8 contrib + 5 senhub-cross-db + 9+2 senhub-pg.
+- **PostgreSQL** : 21 métriques actives, réparties en 8 contrib + 6 senhub-cross-db + 7 senhub-pg. `postgresql.backends` émet 3 séries discriminées par `db.client.connection.state`.
 - **3 métriques** utilisent `otel.expand` (`senhub.db.replication.role`).
 - **Aucune métrique avec suffixe d'unité dans le nom** (ms/seconds/bytes/count) — règle OTel respectée stricte.
 
