@@ -100,6 +100,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"jenkins":           false,
 		"mysql":             false,
 		"postgresql":        false,
+		"cassandra":         false,
 	}
 
 	for _, probe := range probes {
