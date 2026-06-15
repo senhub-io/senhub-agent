@@ -226,6 +226,10 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// nginx: stub_status scraping is the equivalent of a free OTel
+	// Collector nginx receiver — web-server health is host-local
+	// observability on the same machine the agent monitors.
+	"nginx": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
