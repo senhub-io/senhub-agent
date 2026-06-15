@@ -403,6 +403,12 @@ var freeTierProbes = map[string]bool{
 	// standard-protocol devices is universal collection, not a vendor
 	// integration.
 	"modbus": true,
+	// mssql: generic SQL Server health/throughput over the standard
+	// database/sql driver, parity with the otelcol-contrib
+	// sqlserverreceiver. Free as a PRTG-replacement wedge sensor — basic
+	// engine observability the OTel Collector already gives away; deep
+	// vendor-specific SQL Server depth stays paid.
+	"mssql": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

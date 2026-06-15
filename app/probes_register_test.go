@@ -50,6 +50,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"nats",
 		"mysql",
 		"modbus",
+		"mssql",
 		"network",
 		"nginx",
 		"opensearch",
