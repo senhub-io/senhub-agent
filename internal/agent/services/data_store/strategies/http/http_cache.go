@@ -116,6 +116,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	"syslog":    {"event_id", "source"}, // Syslog events
+	// systemd: one series per supervised unit; systemd.unit is the sole
+	// discriminant declared in multi_instance_labels.
+	"systemd": {"systemd.unit"},
 
 	// Application / middleware probes
 	"wildfly": {"datasource"}, // Per-datasource JDBC pool metrics (wildfly.datasource.connections.*)
