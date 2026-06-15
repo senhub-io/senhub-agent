@@ -6,6 +6,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
 )
 
@@ -190,6 +191,21 @@ func TestDpHelper_AddsMetricTypeTag(t *testing.T) {
 
 // ─── entity source ────────────────────────────────────────────────────────────
 
+// TestEntitySource_NotOKBeforeIDPinned: without an operator instance_name,
+// the entity must NOT be emitted before pinServerUUID is called, even if
+// updateRole has been called (we must never emit with a temporary host:port id
+// that would then change to the real uuid on the next cycle).
+func TestEntitySource_NotOKBeforeIDPinned(t *testing.T) {
+	src := newMysqlEntitySource(config{Host: "h", Port: 3306}, nil)
+	src.updateRole(dbcommon.RoleStandalone)
+	_, ok := src.Observe()
+	if ok {
+		t.Error("Observe() should return ok=false before the server uuid is pinned")
+	}
+}
+
+// TestEntitySource_NotOKBeforeFirstCollect: without an operator instance_name
+// and without any pinServerUUID call, the entity must not be emitted.
 func TestEntitySource_NotOKBeforeFirstCollect(t *testing.T) {
 	src := newMysqlEntitySource(config{Host: "h", Port: 3306}, nil)
 	_, ok := src.Observe()
@@ -198,13 +214,16 @@ func TestEntitySource_NotOKBeforeFirstCollect(t *testing.T) {
 	}
 }
 
-func TestEntitySource_OKAfterUpdateRole(t *testing.T) {
+// TestEntitySource_OKAfterPinAndRole: entity is emitted once both the server
+// uuid is pinned and the first successful collect cycle has run.
+func TestEntitySource_OKAfterPinAndRole(t *testing.T) {
 	src := newMysqlEntitySource(config{Host: "h", Port: 3306}, nil)
+	src.pinServerUUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 	src.updateRole(dbcommon.RoleStandalone)
 
 	obs, ok := src.Observe()
 	if !ok {
-		t.Fatal("Observe() should return ok=true after updateRole")
+		t.Fatal("Observe() should return ok=true after pin + updateRole")
 	}
 	if len(obs.Entities) != 1 {
 		t.Fatalf("Observe() should return 1 entity, got %d", len(obs.Entities))
@@ -213,22 +232,168 @@ func TestEntitySource_OKAfterUpdateRole(t *testing.T) {
 	if e.Type != "db" {
 		t.Errorf("entity.Type = %q, want db", e.Type)
 	}
-	if e.ID["db.system.name"] != "mysql" {
-		t.Errorf("entity.ID[db.system.name] = %v, want mysql", e.ID["db.system.name"])
+	// db.system.name is now a descriptive attribute, not part of the identity.
+	if _, hasSystemName := e.ID["db.system.name"]; hasSystemName {
+		t.Error("db.system.name must not be in the entity ID — it is a descriptive attribute")
+	}
+	if e.Attributes["db.system.name"] != "mysql" {
+		t.Errorf("entity.Attributes[db.system.name] = %v, want mysql", e.Attributes["db.system.name"])
 	}
 }
 
-func TestEntitySource_InstanceID(t *testing.T) {
+// TestEntitySource_TechID: when pinServerUUID is given a uuid, the entity id
+// must be "mysql:<uuid>".
+func TestEntitySource_TechID(t *testing.T) {
 	src := newMysqlEntitySource(config{Host: "10.0.0.1", Port: 3307}, nil)
+	src.pinServerUUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 	src.updateRole(dbcommon.RolePrimary)
 
-	obs, _ := src.Observe()
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("expected ok=true after pin + updateRole")
+	}
 	if len(obs.Entities) == 0 {
 		t.Fatal("expected at least one entity")
 	}
-	wantID := "mysql://10.0.0.1:3307"
+	wantID := "mysql:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 	if obs.Entities[0].ID["db.instance.id"] != wantID {
 		t.Errorf("db.instance.id = %v, want %q", obs.Entities[0].ID["db.instance.id"], wantID)
+	}
+}
+
+// TestEntitySource_InstanceNameOverride: when instance_name is set, it is used
+// verbatim as db.instance.id and the entity is emitted as soon as updateRole
+// is called (the id is pinned at construction; no uuid fetch needed).
+func TestEntitySource_InstanceNameOverride(t *testing.T) {
+	src := newMysqlEntitySource(config{Host: "10.0.0.1", Port: 3307, InstanceName: "prod-mysql-primary"}, nil)
+	// No pinServerUUID call — the operator name must already be pinned.
+	src.updateRole(dbcommon.RoleStandalone)
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("Observe() should return ok=true when instance_name is set and role is known")
+	}
+	if len(obs.Entities) == 0 {
+		t.Fatal("expected at least one entity")
+	}
+	if obs.Entities[0].ID["db.instance.id"] != "prod-mysql-primary" {
+		t.Errorf("db.instance.id = %v, want prod-mysql-primary", obs.Entities[0].ID["db.instance.id"])
+	}
+}
+
+// TestEntitySource_InstanceNameNotOverwrittenByUUID: once the operator
+// instance_name is pinned, a subsequent pinServerUUID call must have no effect.
+func TestEntitySource_InstanceNameNotOverwrittenByUUID(t *testing.T) {
+	src := newMysqlEntitySource(config{Host: "h", Port: 3306, InstanceName: "my-db"}, nil)
+	src.pinServerUUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee") // must be ignored
+	src.updateRole(dbcommon.RoleStandalone)
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if obs.Entities[0].ID["db.instance.id"] != "my-db" {
+		t.Errorf("db.instance.id = %v, want my-db", obs.Entities[0].ID["db.instance.id"])
+	}
+}
+
+// TestEntitySource_HostPortFallback: when pinServerUUID("") is called (uuid
+// fetch failed), the degraded host:port fallback is used and the entity IS
+// emitted (there is nothing better to wait for).
+func TestEntitySource_HostPortFallback(t *testing.T) {
+	src := newMysqlEntitySource(config{Host: "10.0.0.1", Port: 3307}, nil)
+	src.pinServerUUID("") // empty → host:port fallback
+	src.updateRole(dbcommon.RoleStandalone)
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("expected ok=true after fallback pin + updateRole")
+	}
+	if len(obs.Entities) == 0 {
+		t.Fatal("expected at least one entity")
+	}
+	wantID := "10.0.0.1:3307"
+	if obs.Entities[0].ID["db.instance.id"] != wantID {
+		t.Errorf("db.instance.id = %v, want %q", obs.Entities[0].ID["db.instance.id"], wantID)
+	}
+}
+
+// TestEntitySource_MonitorsEdgePresent: when agentstate has an agent id set,
+// the Observation must include a monitors relation from the agent to the db.
+func TestEntitySource_MonitorsEdgePresent(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-test-id")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	src := newMysqlEntitySource(config{Host: "h", Port: 3306}, nil)
+	src.pinServerUUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+	src.updateRole(dbcommon.RoleStandalone)
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if len(obs.Relations) != 1 {
+		t.Fatalf("expected 1 relation, got %d", len(obs.Relations))
+	}
+	r := obs.Relations[0]
+	if r.Type != "monitors" {
+		t.Errorf("relation.Type = %q, want monitors", r.Type)
+	}
+	if r.FromType != "service.instance" {
+		t.Errorf("relation.FromType = %q, want service.instance", r.FromType)
+	}
+	if r.FromID["service.instance.id"] != "agent-test-id" {
+		t.Errorf("relation.FromID[service.instance.id] = %v, want agent-test-id", r.FromID["service.instance.id"])
+	}
+	if r.ToType != "db" {
+		t.Errorf("relation.ToType = %q, want db", r.ToType)
+	}
+	wantDbID := "mysql:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	if r.ToID["db.instance.id"] != wantDbID {
+		t.Errorf("relation.ToID[db.instance.id] = %v, want %q", r.ToID["db.instance.id"], wantDbID)
+	}
+}
+
+// TestEntitySource_MonitorsEdgeAbsentWhenNoAgentID: when agentstate has no
+// agent id (entity emission disabled or not started), no monitors relation
+// must be emitted.
+func TestEntitySource_MonitorsEdgeAbsentWhenNoAgentID(t *testing.T) {
+	agentstate.SetAgentInstanceID("") // ensure empty
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	src := newMysqlEntitySource(config{Host: "h", Port: 3306}, nil)
+	src.pinServerUUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+	src.updateRole(dbcommon.RoleStandalone)
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if len(obs.Relations) != 0 {
+		t.Errorf("expected no relations when agent id is empty, got %d", len(obs.Relations))
+	}
+}
+
+// TestEntitySource_DescriptiveAttrs: server.address, server.port, and
+// db.system.name are descriptive attributes (not identity keys).
+func TestEntitySource_DescriptiveAttrs(t *testing.T) {
+	src := newMysqlEntitySource(config{Host: "10.0.0.1", Port: 3307}, nil)
+	src.pinServerUUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+	src.updateRole(dbcommon.RoleStandalone)
+
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	e := obs.Entities[0]
+	if e.Attributes["server.address"] != "10.0.0.1" {
+		t.Errorf("server.address = %v, want 10.0.0.1", e.Attributes["server.address"])
+	}
+	if e.Attributes["server.port"] != int64(3307) {
+		t.Errorf("server.port = %v, want 3307", e.Attributes["server.port"])
+	}
+	if e.Attributes["db.system.name"] != "mysql" {
+		t.Errorf("db.system.name = %v, want mysql", e.Attributes["db.system.name"])
 	}
 }
 
