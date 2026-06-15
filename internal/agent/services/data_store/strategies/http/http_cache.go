@@ -61,6 +61,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"citrix":  {"metric_type", "failure_category"}, // Citrix aggregation types
 	"webapp":  {"url", "endpoint"},                 // Different web endpoints
 	"gateway": {"destination", "target"},           // Different gateway targets
+	"envoy":   {"cluster"},                         // Per-cluster upstream metrics (envoy.cluster.*)
 	"netscaler": {
 		"vserver", "service", "servicegroup", // Load Balancing
 		"interface",   // Network interfaces
