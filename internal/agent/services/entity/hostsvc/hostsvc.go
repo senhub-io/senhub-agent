@@ -52,9 +52,10 @@ type listener struct {
 
 // Source implements entity.Source for host listening services.
 type Source struct {
-	hostID    func() string
-	enumerate func() ([]listener, error)
-	refresh   time.Duration
+	hostID      func() string
+	enumerate   func() ([]listener, error)
+	connections func(string) ([]gnet.ConnectionStat, error) // nil → gnet.Connections
+	refresh     time.Duration
 
 	mu    sync.Mutex
 	cache entity.Observation
@@ -65,7 +66,9 @@ type Source struct {
 // (gopsutil HostID) — the same id the host entity uses, so the listeners hang
 // off the same node.
 func New(hostID func() string) *Source {
-	return &Source{hostID: hostID, enumerate: enumerateListeners, refresh: defaultRefresh}
+	s := &Source{hostID: hostID, refresh: defaultRefresh}
+	s.enumerate = s.enumerateListeners
+	return s
 }
 
 // Observe returns the host's listeners. Non-blocking between refreshes: it
@@ -133,24 +136,34 @@ func buildObservation(hostID string, ls []listener) entity.Observation {
 }
 
 // enumerateListeners returns the host's listening TCP sockets, one per port
-// (collapsing the IPv4/IPv6 wildcard pair), with the owning process name. The
-// real implementation; injected in tests.
-func enumerateListeners() ([]listener, error) {
-	conns, err := gnet.Connections("tcp")
+// (collapsing the IPv4/IPv6 wildcard pair), with the owning process name.
+// PID resolution is best-effort: on Linux non-root the kernel withholds
+// /proc/<pid>/fd for foreign processes, so gopsutil returns Pid=0 for those
+// sockets. Filtering on Pid>0 would silently drop every listener when the
+// agent runs as an unprivileged user (#394). Process facts are enriched when
+// available and omitted otherwise — the socket itself is always emitted.
+func (s *Source) enumerateListeners() ([]listener, error) {
+	connFn := s.connections
+	if connFn == nil {
+		connFn = gnet.Connections
+	}
+	conns, err := connFn("tcp")
 	if err != nil {
 		return nil, err
 	}
 	out := make([]listener, 0, len(conns))
 	seen := map[uint32]bool{}
 	for _, c := range conns {
-		if c.Status != "LISTEN" || c.Pid <= 0 || seen[c.Laddr.Port] {
+		if c.Status != "LISTEN" || seen[c.Laddr.Port] {
 			continue
 		}
 		seen[c.Laddr.Port] = true
 		proc := ""
-		if p, err := process.NewProcess(c.Pid); err == nil {
-			if name, err := p.Name(); err == nil {
-				proc = name
+		if c.Pid > 0 {
+			if p, err := process.NewProcess(c.Pid); err == nil {
+				if name, err := p.Name(); err == nil {
+					proc = name
+				}
 			}
 		}
 		out = append(out, listener{
