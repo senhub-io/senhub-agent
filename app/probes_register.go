@@ -13,6 +13,8 @@ package app
 //
 // The paid probes (citrix, veeam, netscaler, redfish, ibmi,
 // postgresql, webapp, gateway) are NOT imported here — they live in the
+// The paid probes (citrix, veeam, netscaler, redfish, ibmi, mysql,
+// webapp, gateway) are NOT imported here — they live in the
 // senhub-agent-enterprise module and are blank-imported by that repo's
 // own cmd/agent entrypoint, which reuses app.Main(). Keeping them out of
 // this file is what makes the default build the OSS edition; it also
@@ -44,6 +46,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/nginx"
 	_ "senhub-agent.go/internal/agent/probes/otlpreceiver"
 	_ "senhub-agent.go/internal/agent/probes/phpfpm"
+	_ "senhub-agent.go/internal/agent/probes/postgresql"
 	_ "senhub-agent.go/internal/agent/probes/promscrape"
 	_ "senhub-agent.go/internal/agent/probes/rabbitmq"
 	_ "senhub-agent.go/internal/agent/probes/pulsar"
