@@ -36,6 +36,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/kafka"
 	_ "senhub-agent.go/internal/agent/probes/host"
 	_ "senhub-agent.go/internal/agent/probes/jenkins"
+	_ "senhub-agent.go/internal/agent/probes/hyperv"
 	_ "senhub-agent.go/internal/agent/probes/linuxlogs"
 	_ "senhub-agent.go/internal/agent/probes/logicaldisk"
 	_ "senhub-agent.go/internal/agent/probes/memcached"

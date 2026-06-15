@@ -135,6 +135,8 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"operation",    // elasticsearch.indexing/search.operations.* — index|query|fetch
 		"thread_pool",  // elasticsearch.thread_pool.tasks.* — per thread pool name
 	},
+	// hyperv: per-VM series are discriminated by vm name; vm.count by state bucket.
+	"hyperv": {"hyperv.vm.name", "state", "metric_type"},
 	// prometheus_scrape: scraped label sets are arbitrary and cannot be
 	// enumerated here; per-target series stay distinct, finer label
 	// splits collapse on the cache-keyed sinks (same limitation as
