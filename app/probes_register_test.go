@@ -26,6 +26,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"filetail",
 		"http_check",
 		"icmp_check",
+		"kubernetes",
 		"linux_logs",
 		"logicaldisk",
 		"memory",

@@ -58,6 +58,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **tcp_dial** - Raw TCP connect latency to host:port targets (VIPs, brokers, AD, fileservers)
 - **dns_latency** - DNS resolution latency per name, optionally per explicit resolver
 - **snmp_poll** - Generic SNMP polling. The deliberate exception to "remote = paid": it is the open-core wedge to replace PRTG's free SNMP polling. Deep vendor-specific SNMP (device profiles, discovery, vendor MIBs) remains paid.
+- **kubernetes** - Kubernetes cluster supervision (nodes, pods, containers, deployments) via the API server. Container infrastructure is the cloud-native equivalent of host self-observation; the agent running inside a cluster watches the cluster it runs on.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
