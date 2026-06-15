@@ -1,0 +1,113 @@
+probe_name: "jenkins"
+friendly_name: "Jenkins CI"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["job", "status", "state"]
+
+# Free probe: a Jenkins controller over its HTTP REST API (stdlib only).
+# There is no otelcol-contrib Jenkins receiver to align names to, so the
+# metrics live under senhub.jenkins.*. Job/node counts collapse onto one
+# OTel name discriminated by a status/state attribute (one cache datapoint
+# per discriminant — the discriminant tags are in DiscriminantTagsRegistry);
+# per-job duration / last-build-number split by job name. Durations are
+# milliseconds on the wire (OTel seconds via value_scale).
+
+metrics:
+  - name: "senhub.jenkins.up"
+    channel: "jenkins_up"
+    display_name: "Jenkins Up"
+    unit: "#"
+    category: "status"
+    description: "1 when the last cycle reached the Jenkins controller, 0 otherwise"
+    otel:
+      name: senhub.jenkins.up
+      unit: "1"
+      type: gauge
+
+  - name: "senhub.jenkins.job.count"
+    channel: "jenkins_job_count_{status}"
+    display_name: "Jenkins Jobs {status}"
+    unit: "#"
+    category: "jobs"
+    description: "Number of jobs whose last build ended in this status (success/failure/unstable/aborted)"
+    otel:
+      name: senhub.jenkins.job.count
+      unit: "{job}"
+      type: gauge
+    tag_to_attribute:
+      status: jenkins.job.status
+
+  - name: "senhub.jenkins.job.duration"
+    channel: "jenkins_job_duration_{job}"
+    display_name: "Jenkins {job} Last Build Duration"
+    unit: "ms"
+    category: "jobs"
+    description: "Duration of the job's last build"
+    otel:
+      name: senhub.jenkins.job.duration
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      job: jenkins.job.name
+
+  - name: "senhub.jenkins.job.last_build_number"
+    channel: "jenkins_job_last_build_{job}"
+    display_name: "Jenkins {job} Last Build Number"
+    unit: "#"
+    category: "jobs"
+    description: "Build number of the job's last build"
+    otel:
+      name: senhub.jenkins.job.last_build_number
+      unit: "{build}"
+      type: gauge
+    tag_to_attribute:
+      job: jenkins.job.name
+
+  - name: "senhub.jenkins.node.count"
+    channel: "jenkins_node_count_{status}"
+    display_name: "Jenkins Nodes {status}"
+    unit: "#"
+    category: "nodes"
+    description: "Number of build nodes/agents by status (online/offline)"
+    otel:
+      name: senhub.jenkins.node.count
+      unit: "{node}"
+      type: gauge
+    tag_to_attribute:
+      status: jenkins.node.status
+
+  - name: "senhub.jenkins.node.executor.count"
+    channel: "jenkins_executor_count_{state}"
+    display_name: "Jenkins Executors {state}"
+    unit: "#"
+    category: "nodes"
+    description: "Number of executors across online nodes by state (busy/free)"
+    otel:
+      name: senhub.jenkins.node.executor.count
+      unit: "{executor}"
+      type: gauge
+    tag_to_attribute:
+      state: jenkins.executor.state
+
+  - name: "senhub.jenkins.queue.size"
+    channel: "jenkins_queue_size"
+    display_name: "Jenkins Queue Size"
+    unit: "#"
+    category: "queue"
+    description: "Number of items in the build queue"
+    otel:
+      name: senhub.jenkins.queue.size
+      unit: "{item}"
+      type: gauge
+
+  - name: "senhub.jenkins.queue.blocked"
+    channel: "jenkins_queue_blocked"
+    display_name: "Jenkins Queue Blocked"
+    unit: "#"
+    category: "queue"
+    description: "Number of blocked items in the build queue"
+    otel:
+      name: senhub.jenkins.queue.blocked
+      unit: "{item}"
+      type: gauge

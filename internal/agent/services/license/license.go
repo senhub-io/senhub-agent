@@ -226,6 +226,11 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// jenkins: CI health over the controller's open HTTP REST API
+	// (stdlib, no vendor SDK) — same open-API wedge as http_check /
+	// snmp_poll; monitoring a standard endpoint is collection, not a
+	// vendor integration.
+	"jenkins": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
