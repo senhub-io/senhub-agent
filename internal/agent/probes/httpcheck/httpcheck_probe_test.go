@@ -133,6 +133,79 @@ func TestCheck_TLSExpiry(t *testing.T) {
 	if _, ok := got["senhub.httpcheck.duration.tls"]; !ok {
 		t.Error("missing TLS handshake phase duration")
 	}
+	if got["senhub.httpcheck.tls.valid"] != 1 {
+		t.Errorf("tls.valid = %v, want 1 for a non-expired cert", got["senhub.httpcheck.tls.valid"])
+	}
+}
+
+// TestCheck_TLSCertAttributes verifies that issuer and subject tags are
+// present on TLS metrics so they flow through as OTel attributes.
+func TestCheck_TLSCertAttributes(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	p := newTestProbe(t, map[string]interface{}{
+		"targets":              []interface{}{srv.URL},
+		"insecure_skip_verify": true,
+	})
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	// Find the tls.expiry and tls.valid datapoints and check they carry
+	// tls.issuer / tls.subject tags (values may be empty for test certs).
+	tlsMetrics := map[string]bool{
+		"senhub.httpcheck.tls.expiry": false,
+		"senhub.httpcheck.tls.valid":  false,
+	}
+	for _, dp := range points {
+		if _, want := tlsMetrics[dp.Name]; !want {
+			continue
+		}
+		hasIssuer, hasSubject := false, false
+		for _, tg := range dp.Tags {
+			if tg.Key == "tls.issuer" {
+				hasIssuer = true
+			}
+			if tg.Key == "tls.subject" {
+				hasSubject = true
+			}
+		}
+		if !hasIssuer {
+			t.Errorf("%s: missing tls.issuer tag", dp.Name)
+		}
+		if !hasSubject {
+			t.Errorf("%s: missing tls.subject tag", dp.Name)
+		}
+		tlsMetrics[dp.Name] = true
+	}
+	for name, found := range tlsMetrics {
+		if !found {
+			t.Errorf("metric %s not emitted for HTTPS target", name)
+		}
+	}
+}
+
+// TestCheck_PlainHTTPNoTLSMetrics ensures plain HTTP targets do not emit
+// any TLS-specific metrics (tls.expiry, tls.valid).
+func TestCheck_PlainHTTPNoTLSMetrics(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	p := newTestProbe(t, map[string]interface{}{"targets": []interface{}{srv.URL}})
+	got := collectByName(t, p)
+
+	if _, ok := got["senhub.httpcheck.tls.expiry"]; ok {
+		t.Error("plain HTTP must not emit tls.expiry")
+	}
+	if _, ok := got["senhub.httpcheck.tls.valid"]; ok {
+		t.Error("plain HTTP must not emit tls.valid")
+	}
 }
 
 // TestCheck_FailureModes pins the measurement semantics: wrong expected
