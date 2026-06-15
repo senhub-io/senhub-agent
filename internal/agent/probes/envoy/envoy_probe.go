@@ -19,6 +19,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,9 +50,10 @@ const (
 
 // envoyConfig holds the parsed probe configuration.
 type envoyConfig struct {
-	Endpoint string
-	Timeout  time.Duration
-	Interval time.Duration
+	Endpoint     string
+	Timeout      time.Duration
+	Interval     time.Duration
+	InstanceName string
 }
 
 // EnvoyProbe implements the envoy probe.
@@ -87,23 +89,25 @@ func NewEnvoyProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 	if v, ok := config["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
+	if v, ok := config["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
+
+	client := &http.Client{Timeout: cfg.Timeout}
 
 	p := &EnvoyProbe{
 		BaseProbe:    &types.BaseProbe{},
 		config:       cfg,
 		moduleLogger: moduleLogger,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-		},
+		client:       client,
 	}
 	p.SetProbeType(ProbeType)
 	p.collectFunc = p.fetchAndParse
 
-	// Wire the entity source. Parse addr+port from the endpoint URL so the
-	// entity identity is stable across scrapes regardless of trailing slashes
-	// or query strings the caller might append later.
-	addr, port := endpointHostPort(cfg.Endpoint)
-	p.entitySrc = newEnvoyEntitySource(addr, port)
+	// Parse addr+port from the endpoint URL for descriptive attributes.
+	addr, portStr := endpointHostPort(cfg.Endpoint)
+	portInt, _ := strconv.ParseInt(portStr, 10, 64)
+	p.entitySrc = newEnvoyEntitySource(cfg.InstanceName, cfg.Endpoint, addr, portInt, client, nil)
 
 	return p, nil
 }
@@ -157,7 +161,7 @@ func (p *EnvoyProbe) Collect() ([]data_store.DataPoint, error) {
 			Err(err).
 			Str("endpoint", p.config.Endpoint).
 			Msg("envoy admin unreachable")
-		p.entitySrc.setReachable(false, "")
+		p.entitySrc.setReachable(false)
 		now := time.Now()
 		upPoint := data_store.DataPoint{
 			Name:      "senhub.envoy.up",
@@ -170,7 +174,7 @@ func (p *EnvoyProbe) Collect() ([]data_store.DataPoint, error) {
 		enriched := p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{upPoint}, p.GetName())
 		return enriched, nil
 	}
-	p.entitySrc.setReachable(true, "")
+	p.entitySrc.setReachable(true)
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
