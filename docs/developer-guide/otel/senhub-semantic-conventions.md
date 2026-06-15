@@ -1427,6 +1427,33 @@ les autres probes DB (#258). La valeur est émise telle quelle.
 
 Tags discriminants déclarés dans `http_cache.go` : `result`, `command`, `state`, `direction`, `metric_type`.
 Le tag probe `direction` est renommé vers l'attribut OTel `network.io.direction` via `tag_to_attribute` — la discrimination dans le cache utilise le nom de tag d'origine (`direction`).
+### 4.26 proxmox (free)
+
+Probe REST API Proxmox VE : nodes, VMs QEMU, conteneurs LXC, pools de
+stockage. Authentification via PVE API token (header `Authorization:
+PVEAPIToken`). Espace de noms `proxmox.*` (vendor-specific) +
+`senhub.proxmox.*` pour les extensions SenHub.
+
+| Métrique OTel | Unité | Type | Notes |
+|---|---|---|---|
+| `senhub.proxmox.up` | `1` | gauge | 1 = API répond ; 0 = toute erreur de connexion ou d'authentification. Toujours émis, y compris en cas d'échec. |
+| `proxmox.node.cpu.utilization` | `1` | gauge | ratio CPU du nœud (0–1) |
+| `proxmox.node.memory.used` | `By` | gauge | mémoire utilisée sur le nœud |
+| `proxmox.node.memory.total` | `By` | gauge | mémoire totale installée sur le nœud |
+| `proxmox.node.status` | `1` | gauge | 1 = online, 0 = offline |
+| `proxmox.vm.cpu.utilization` | `1` | gauge | ratio CPU VM/LXC (0–1) |
+| `proxmox.vm.memory.used` | `By` | gauge | mémoire utilisée par la VM/conteneur |
+| `proxmox.vm.memory.total` | `By` | gauge | mémoire allouée à la VM/conteneur |
+| `proxmox.vm.disk.read` | `By` | counter | octets lus depuis le démarrage |
+| `proxmox.vm.disk.write` | `By` | counter | octets écrits depuis le démarrage |
+| `proxmox.vm.network.in` | `By` | counter | octets reçus sur tous les vNICs |
+| `proxmox.vm.network.out` | `By` | counter | octets émis sur tous les vNICs |
+| `proxmox.vm.status` | `1` | gauge | 1 = running, 0 = arrêtée |
+| `proxmox.storage.used` | `By` | gauge | octets utilisés sur le pool |
+| `proxmox.storage.total` | `By` | gauge | capacité totale du pool |
+
+Attributs discriminants (via `tag_to_attribute`) : `proxmox.node`,
+`proxmox.vmid`, `proxmox.vm.name`, `proxmox.vm.type`, `proxmox.storage`.
 
 ## 6. Processus d'ajout d'une convention
 

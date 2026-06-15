@@ -113,6 +113,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"influxdb":          false,
 		"memcached":         false,
 		"hyperv":            false,
+		"proxmox":           false,
 	}
 
 	for _, probe := range probes {

@@ -51,6 +51,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/pulsar"
 	_ "senhub-agent.go/internal/agent/probes/postgresql"
 	_ "senhub-agent.go/internal/agent/probes/influxdb"
+	_ "senhub-agent.go/internal/agent/probes/proxmox"
 	_ "senhub-agent.go/internal/agent/probes/snmppoll"
 	_ "senhub-agent.go/internal/agent/probes/snmptrap"
 	_ "senhub-agent.go/internal/agent/probes/solr"
