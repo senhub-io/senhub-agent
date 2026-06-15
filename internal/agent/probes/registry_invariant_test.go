@@ -66,6 +66,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/wildfly"
 	_ "senhub-agent.go/internal/agent/probes/rabbitmq"
 	_ "senhub-agent.go/internal/agent/probes/zookeeper"
+	_ "senhub-agent.go/internal/agent/probes/unifi"
 )
 
 // TestEveryRegisteredProbeIsAuthorizable enforces a structural
