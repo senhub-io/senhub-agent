@@ -65,9 +65,9 @@ var knownMetrics = []metricMapping{
 	{clickhouseName: "ClickHouseProfileEvents_SelectQuery", internalName: "clickhouse.queries.select", metricType: "counter"},
 	{clickhouseName: "ClickHouseProfileEvents_InsertQuery", internalName: "clickhouse.queries.insert", metricType: "counter"},
 	{clickhouseName: "ClickHouseProfileEvents_InsertedRows", internalName: "clickhouse.inserted.rows", metricType: "counter"},
-	{clickhouseName: "ClickHouseProfileEvents_InsertedBytes", internalName: "clickhouse.inserted.bytes", metricType: "counter"},
-	{clickhouseName: "ClickHouseProfileEvents_ReadCompressedBytes", internalName: "clickhouse.read.bytes", metricType: "counter"},
-	{clickhouseName: "ClickHouseProfileEvents_WriteCompressedBytes", internalName: "clickhouse.written.bytes", metricType: "counter"},
+	{clickhouseName: "ClickHouseProfileEvents_InsertedBytes", internalName: "clickhouse.inserted.data", metricType: "counter"},
+	{clickhouseName: "ClickHouseProfileEvents_ReadCompressedBytes", internalName: "clickhouse.read.data", metricType: "counter"},
+	{clickhouseName: "ClickHouseProfileEvents_WriteCompressedBytes", internalName: "clickhouse.written.data", metricType: "counter"},
 }
 
 // knownIndex maps the ClickHouse Prometheus name to its mapping for O(1) lookup.
