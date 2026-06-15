@@ -177,7 +177,7 @@ func (p *NATSProbe) Collect() ([]data_store.DataPoint, error) {
 
 	// --- /varz (required) --------------------------------------------------
 	varzBody, status, varzErr := p.fetch("/varz")
-	up := float32(0)
+	up := float64(0)
 	if varzErr == nil && status == http.StatusOK {
 		up = 1
 	}
@@ -200,26 +200,26 @@ func (p *NATSProbe) Collect() ([]data_store.DataPoint, error) {
 
 	connTags := tagsWithType(baseTags, "connections")
 	points = append(points,
-		data_store.DataPoint{Name: "nats.connections.count", Value: float32(varz.Connections), Timestamp: now, Tags: connTags},
-		data_store.DataPoint{Name: "nats.connections.total", Value: float32(varz.TotalConnections), Timestamp: now, Tags: connTags},
+		data_store.DataPoint{Name: "nats.connections.count", Value: float64(varz.Connections), Timestamp: now, Tags: connTags},
+		data_store.DataPoint{Name: "nats.connections.total", Value: float64(varz.TotalConnections), Timestamp: now, Tags: connTags},
 	)
 
 	subTags := tagsWithType(baseTags, "subscriptions")
 	points = append(points,
-		data_store.DataPoint{Name: "nats.subscriptions.count", Value: float32(varz.Subscriptions), Timestamp: now, Tags: subTags},
+		data_store.DataPoint{Name: "nats.subscriptions.count", Value: float64(varz.Subscriptions), Timestamp: now, Tags: subTags},
 	)
 
 	msgTags := tagsWithType(baseTags, "throughput")
 	points = append(points,
-		data_store.DataPoint{Name: "nats.messages.in", Value: float32(varz.InMsgs), Timestamp: now, Tags: msgTags},
-		data_store.DataPoint{Name: "nats.messages.out", Value: float32(varz.OutMsgs), Timestamp: now, Tags: msgTags},
-		data_store.DataPoint{Name: "nats.bytes.in", Value: float32(varz.InBytes), Timestamp: now, Tags: msgTags},
-		data_store.DataPoint{Name: "nats.bytes.out", Value: float32(varz.OutBytes), Timestamp: now, Tags: msgTags},
+		data_store.DataPoint{Name: "nats.messages.in", Value: float64(varz.InMsgs), Timestamp: now, Tags: msgTags},
+		data_store.DataPoint{Name: "nats.messages.out", Value: float64(varz.OutMsgs), Timestamp: now, Tags: msgTags},
+		data_store.DataPoint{Name: "nats.bytes.in", Value: float64(varz.InBytes), Timestamp: now, Tags: msgTags},
+		data_store.DataPoint{Name: "nats.bytes.out", Value: float64(varz.OutBytes), Timestamp: now, Tags: msgTags},
 	)
 
 	slowTags := tagsWithType(baseTags, "errors")
 	points = append(points,
-		data_store.DataPoint{Name: "nats.slow_consumers", Value: float32(varz.SlowConsumers), Timestamp: now, Tags: slowTags},
+		data_store.DataPoint{Name: "nats.slow_consumers", Value: float64(varz.SlowConsumers), Timestamp: now, Tags: slowTags},
 	)
 
 	// Pin the entity identity on the first successful /varz (nop if already pinned).
@@ -232,7 +232,7 @@ func (p *NATSProbe) Collect() ([]data_store.DataPoint, error) {
 		if err := json.Unmarshal(routezBody, &routez); err == nil {
 			routeTags := tagsWithType(baseTags, "cluster")
 			points = append(points,
-				data_store.DataPoint{Name: "nats.routes.count", Value: float32(routez.NumRoutes), Timestamp: now, Tags: routeTags},
+				data_store.DataPoint{Name: "nats.routes.count", Value: float64(routez.NumRoutes), Timestamp: now, Tags: routeTags},
 			)
 		} else {
 			p.moduleLogger.Debug().Err(err).Msg("NATS /routez JSON decode failed; skipping routes metric")
@@ -248,10 +248,10 @@ func (p *NATSProbe) Collect() ([]data_store.DataPoint, error) {
 		if err := json.Unmarshal(jszBody, &jsz); err == nil {
 			jsTags := tagsWithType(baseTags, "jetstream")
 			points = append(points,
-				data_store.DataPoint{Name: "nats.jetstream.streams", Value: float32(jsz.Streams), Timestamp: now, Tags: jsTags},
-				data_store.DataPoint{Name: "nats.jetstream.consumers", Value: float32(jsz.Consumers), Timestamp: now, Tags: jsTags},
-				data_store.DataPoint{Name: "nats.jetstream.messages", Value: float32(jsz.Messages), Timestamp: now, Tags: jsTags},
-				data_store.DataPoint{Name: "nats.jetstream.bytes", Value: float32(jsz.Bytes), Timestamp: now, Tags: jsTags},
+				data_store.DataPoint{Name: "nats.jetstream.streams", Value: float64(jsz.Streams), Timestamp: now, Tags: jsTags},
+				data_store.DataPoint{Name: "nats.jetstream.consumers", Value: float64(jsz.Consumers), Timestamp: now, Tags: jsTags},
+				data_store.DataPoint{Name: "nats.jetstream.messages", Value: float64(jsz.Messages), Timestamp: now, Tags: jsTags},
+				data_store.DataPoint{Name: "nats.jetstream.bytes", Value: float64(jsz.Bytes), Timestamp: now, Tags: jsTags},
 			)
 		} else {
 			p.moduleLogger.Debug().Err(err).Msg("NATS /jsz JSON decode failed; skipping JetStream metrics")

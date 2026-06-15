@@ -149,7 +149,7 @@ func (p *cassandraProbe) Collect() ([]data_store.DataPoint, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
 	defer cancel()
 
-	up := float32(1)
+	up := float64(1)
 	var points []data_store.DataPoint
 
 	collected, version, hostID, err := p.collect(ctx, now)
@@ -212,7 +212,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	}
 	points = append(points, data_store.DataPoint{
 		Name:      "cassandra.client.connections",
-		Value:     float32(connections),
+		Value:     float64(connections),
 		Timestamp: now,
 		Tags:      []tags.Tag{{Key: "metric_type", Value: "connections"}},
 	})
@@ -235,7 +235,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      "cassandra.client.requests.count",
-			Value:     float32(count),
+			Value:     float64(count),
 			Timestamp: now,
 			Tags:      opTags,
 		})
@@ -247,7 +247,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      "cassandra.client.requests.latency",
-			Value:     float32(mean / 1000), // Cassandra reports in microseconds, convert to ms
+			Value:     float64(mean / 1000), // Cassandra reports in microseconds, convert to ms
 			Timestamp: now,
 			Tags:      opTags,
 		})
@@ -259,7 +259,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      "cassandra.client.requests.latency.p99",
-			Value:     float32(p99 / 1000),
+			Value:     float64(p99 / 1000),
 			Timestamp: now,
 			Tags:      opTags,
 		})
@@ -271,7 +271,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      "cassandra.client.requests.errors",
-			Value:     float32(errCount),
+			Value:     float64(errCount),
 			Timestamp: now,
 			Tags: []tags.Tag{
 				{Key: "metric_type", Value: "requests"},
@@ -288,7 +288,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	}
 	points = append(points, data_store.DataPoint{
 		Name:      "cassandra.compaction.tasks.completed",
-		Value:     float32(completed),
+		Value:     float64(completed),
 		Timestamp: now,
 		Tags:      []tags.Tag{{Key: "metric_type", Value: "compaction"}},
 	})
@@ -301,7 +301,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	}
 	points = append(points, data_store.DataPoint{
 		Name:      "cassandra.compaction.tasks.pending",
-		Value:     float32(pending),
+		Value:     float64(pending),
 		Timestamp: now,
 		Tags:      []tags.Tag{{Key: "metric_type", Value: "compaction"}},
 	})
@@ -314,7 +314,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	}
 	points = append(points, data_store.DataPoint{
 		Name:      "cassandra.storage.load",
-		Value:     float32(load),
+		Value:     float64(load),
 		Timestamp: now,
 		Tags:      []tags.Tag{{Key: "metric_type", Value: "storage"}},
 	})
@@ -327,7 +327,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	}
 	points = append(points, data_store.DataPoint{
 		Name:      "cassandra.storage.total_hints",
-		Value:     float32(hints),
+		Value:     float64(hints),
 		Timestamp: now,
 		Tags:      []tags.Tag{{Key: "metric_type", Value: "storage"}},
 	})
@@ -343,7 +343,7 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	}
 	points = append(points, data_store.DataPoint{
 		Name:      "jvm.memory.heap.used",
-		Value:     float32(heapUsed),
+		Value:     float64(heapUsed),
 		Timestamp: now,
 		Tags:      []tags.Tag{{Key: "metric_type", Value: "memory"}},
 	})
@@ -390,7 +390,7 @@ func (p *cassandraProbe) collectGCMetrics(ctx context.Context, now time.Time) ([
 			if err == nil {
 				points = append(points, data_store.DataPoint{
 					Name:      "jvm.gc.collections.count",
-					Value:     float32(count),
+					Value:     float64(count),
 					Timestamp: now,
 					Tags:      gcTags,
 				})
@@ -402,7 +402,7 @@ func (p *cassandraProbe) collectGCMetrics(ctx context.Context, now time.Time) ([
 			if err == nil {
 				points = append(points, data_store.DataPoint{
 					Name:      "jvm.gc.collections.elapsed",
-					Value:     float32(collTime),
+					Value:     float64(collTime),
 					Timestamp: now,
 					Tags:      gcTags,
 				})

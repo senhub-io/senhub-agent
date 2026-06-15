@@ -199,7 +199,7 @@ func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
 	if fields.uptime != nil {
 		points = append(points, data_store.DataPoint{
 			Name:      "apache.uptime",
-			Value:     float32(*fields.uptime),
+			Value:     float64(*fields.uptime),
 			Timestamp: now,
 			Tags:      withType(commonTags, "status"),
 		})
@@ -208,7 +208,7 @@ func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
 	if fields.connsTotal != nil {
 		points = append(points, data_store.DataPoint{
 			Name:      "apache.current_connections",
-			Value:     float32(*fields.connsTotal),
+			Value:     float64(*fields.connsTotal),
 			Timestamp: now,
 			Tags:      withType(commonTags, "connections"),
 		})
@@ -218,7 +218,7 @@ func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
 		workerTags := append(tagsClone(withType(commonTags, "workers")), tags.Tag{Key: "state", Value: "busy"})
 		points = append(points, data_store.DataPoint{
 			Name:      "apache.workers",
-			Value:     float32(*fields.busyWorkers),
+			Value:     float64(*fields.busyWorkers),
 			Timestamp: now,
 			Tags:      workerTags,
 		})
@@ -228,7 +228,7 @@ func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
 		workerTags := append(tagsClone(withType(commonTags, "workers")), tags.Tag{Key: "state", Value: "idle"})
 		points = append(points, data_store.DataPoint{
 			Name:      "apache.workers",
-			Value:     float32(*fields.idleWorkers),
+			Value:     float64(*fields.idleWorkers),
 			Timestamp: now,
 			Tags:      workerTags,
 		})
@@ -237,7 +237,7 @@ func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
 	if fields.totalAccess != nil {
 		points = append(points, data_store.DataPoint{
 			Name:      "apache.requests",
-			Value:     float32(*fields.totalAccess),
+			Value:     float64(*fields.totalAccess),
 			Timestamp: now,
 			Tags:      withType(commonTags, "throughput"),
 		})
@@ -246,7 +246,7 @@ func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
 	if fields.totalKBytes != nil {
 		points = append(points, data_store.DataPoint{
 			Name:      "apache.traffic",
-			Value:     float32(*fields.totalKBytes * 1024),
+			Value:     float64(*fields.totalKBytes * 1024),
 			Timestamp: now,
 			Tags:      withType(commonTags, "throughput"),
 		})

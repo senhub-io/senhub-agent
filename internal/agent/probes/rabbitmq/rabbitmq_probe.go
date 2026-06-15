@@ -237,31 +237,31 @@ func (p *rabbitProbe) collectOverview(now time.Time) ([]data_store.DataPoint, st
 	}
 
 	if v := overview.MessageStats.Publish; v != nil {
-		pts = append(pts, dp("rabbitmq.messages.published", float32(*v), now, baseTags))
+		pts = append(pts, dp("rabbitmq.messages.published", float64(*v), now, baseTags))
 	}
 	if v := overview.MessageStats.DeliverGet; v != nil {
-		pts = append(pts, dp("rabbitmq.messages.delivered", float32(*v), now, baseTags))
+		pts = append(pts, dp("rabbitmq.messages.delivered", float64(*v), now, baseTags))
 	}
 	if v := overview.MessageStats.Ack; v != nil {
-		pts = append(pts, dp("rabbitmq.messages.acknowledged", float32(*v), now, baseTags))
+		pts = append(pts, dp("rabbitmq.messages.acknowledged", float64(*v), now, baseTags))
 	}
 	if v := overview.QueueTotals.MessagesUnacknowledged; v != nil {
-		pts = append(pts, dp("rabbitmq.messages.unacknowledged", float32(*v), now, baseTags))
+		pts = append(pts, dp("rabbitmq.messages.unacknowledged", float64(*v), now, baseTags))
 	}
 	if v := overview.QueueTotals.MessagesReady; v != nil {
-		pts = append(pts, dp("rabbitmq.messages.ready", float32(*v), now, baseTags))
+		pts = append(pts, dp("rabbitmq.messages.ready", float64(*v), now, baseTags))
 	}
 	if v := overview.ObjectTotals.Consumers; v != nil {
-		pts = append(pts, dp("rabbitmq.consumers.total", float32(*v), now, baseTags))
+		pts = append(pts, dp("rabbitmq.consumers.total", float64(*v), now, baseTags))
 	}
 	if v := overview.ObjectTotals.Queues; v != nil {
-		pts = append(pts, dp("rabbitmq.queues.total", float32(*v), now, baseTags))
+		pts = append(pts, dp("rabbitmq.queues.total", float64(*v), now, baseTags))
 	}
 	if v := overview.ObjectTotals.Connections; v != nil {
-		pts = append(pts, dp("rabbitmq.connections.total", float32(*v), now, baseTags))
+		pts = append(pts, dp("rabbitmq.connections.total", float64(*v), now, baseTags))
 	}
 	if v := overview.ObjectTotals.Channels; v != nil {
-		pts = append(pts, dp("rabbitmq.channels.total", float32(*v), now, baseTags))
+		pts = append(pts, dp("rabbitmq.channels.total", float64(*v), now, baseTags))
 	}
 
 	return pts, overview.Node, true
@@ -295,26 +295,26 @@ func (p *rabbitProbe) collectNodes(now time.Time) []data_store.DataPoint {
 		}
 
 		if v := node.MemUsed; v != nil {
-			pts = append(pts, dp("rabbitmq.node.memory.used", float32(*v), now, nodeTags))
+			pts = append(pts, dp("rabbitmq.node.memory.used", float64(*v), now, nodeTags))
 		}
 		if v := node.DiskFree; v != nil {
-			pts = append(pts, dp("rabbitmq.node.disk.free", float32(*v), now, nodeTags))
+			pts = append(pts, dp("rabbitmq.node.disk.free", float64(*v), now, nodeTags))
 		}
 		if v := node.FdUsed; v != nil {
-			pts = append(pts, dp("rabbitmq.node.fd.used", float32(*v), now, nodeTags))
+			pts = append(pts, dp("rabbitmq.node.fd.used", float64(*v), now, nodeTags))
 		}
 		if v := node.SocketsUsed; v != nil {
-			pts = append(pts, dp("rabbitmq.node.sockets.used", float32(*v), now, nodeTags))
+			pts = append(pts, dp("rabbitmq.node.sockets.used", float64(*v), now, nodeTags))
 		}
 
-		running := float32(0)
+		running := float64(0)
 		if node.Running {
 			running = 1
 		}
 		pts = append(pts, dp("rabbitmq.node.running", running, now, nodeTags))
 
 		if v := node.Uptime; v != nil {
-			pts = append(pts, dp("rabbitmq.node.uptime", float32(*v), now, nodeTags))
+			pts = append(pts, dp("rabbitmq.node.uptime", float64(*v), now, nodeTags))
 		}
 	}
 	return pts
@@ -347,13 +347,13 @@ func (p *rabbitProbe) collectQueues(now time.Time) []data_store.DataPoint {
 		}
 
 		if v := q.MessagesReady; v != nil {
-			pts = append(pts, dp("rabbitmq.queue.messages.ready", float32(*v), now, qTags))
+			pts = append(pts, dp("rabbitmq.queue.messages.ready", float64(*v), now, qTags))
 		}
 		if v := q.MessagesUnacknowledged; v != nil {
-			pts = append(pts, dp("rabbitmq.queue.messages.unacknowledged", float32(*v), now, qTags))
+			pts = append(pts, dp("rabbitmq.queue.messages.unacknowledged", float64(*v), now, qTags))
 		}
 		if v := q.Consumers; v != nil {
-			pts = append(pts, dp("rabbitmq.queue.consumers", float32(*v), now, qTags))
+			pts = append(pts, dp("rabbitmq.queue.consumers", float64(*v), now, qTags))
 		}
 	}
 	return pts
@@ -363,7 +363,7 @@ func (p *rabbitProbe) collectQueues(now time.Time) []data_store.DataPoint {
 
 // dp builds a DataPoint from a name, value, timestamp, and tag slice.
 // It copies the tags so callers can reuse their slice safely.
-func dp(name string, value float32, ts time.Time, baseTags []tags.Tag) data_store.DataPoint {
+func dp(name string, value float64, ts time.Time, baseTags []tags.Tag) data_store.DataPoint {
 	t := make([]tags.Tag, len(baseTags))
 	copy(t, baseTags)
 	return data_store.DataPoint{Name: name, Value: value, Timestamp: ts, Tags: t}

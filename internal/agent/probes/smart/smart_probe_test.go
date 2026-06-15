@@ -154,14 +154,14 @@ func TestBuildATAPoints_MetricValues(t *testing.T) {
 	ts := time.Now()
 	points := p.buildATAPoints("/dev/sda", result, nil, ts)
 
-	names := make(map[string]float32, len(points))
+	names := make(map[string]float64, len(points))
 	for _, dp := range points {
 		names[dp.Name] = dp.Value
 	}
 
 	cases := []struct {
 		metric string
-		want   float32
+		want   float64
 	}{
 		{"smart.disk.health", 1},
 		{"smart.disk.temperature", 42},
@@ -193,14 +193,14 @@ func TestBuildNVMePoints_MetricValues(t *testing.T) {
 	ts := time.Now()
 	points := p.buildNVMePoints("/dev/nvme0", result, nil, ts)
 
-	names := make(map[string]float32, len(points))
+	names := make(map[string]float64, len(points))
 	for _, dp := range points {
 		names[dp.Name] = dp.Value
 	}
 
 	cases := []struct {
 		metric string
-		want   float32
+		want   float64
 	}{
 		{"smart.disk.health", 1},
 		{"smart.nvme.available_spare", 0.9},  // 90% → ratio

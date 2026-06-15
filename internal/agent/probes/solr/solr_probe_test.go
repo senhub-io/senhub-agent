@@ -139,12 +139,12 @@ func TestCollect_Up(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	byName := map[string]float32{}
+	byName := map[string]float64{}
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}
 
-	checks := map[string]float32{
+	checks := map[string]float64{
 		"senhub.solr.up":       1,
 		"jvm.memory.heap.used": 123456789,
 		"jvm.threads.count":    42,
@@ -186,7 +186,7 @@ func TestCollect_Down(t *testing.T) {
 		t.Fatalf("Collect returned error, want nil: %v", err)
 	}
 
-	var upVal *float32
+	var upVal *float64
 	for _, dp := range points {
 		if dp.Name == "senhub.solr.up" {
 			v := dp.Value

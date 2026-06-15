@@ -271,7 +271,7 @@ func (p *ZookeeperProbe) fetchMntr(address string) (map[string]string, error) {
 func (p *ZookeeperProbe) buildDataPoints(kv map[string]string, ts time.Time) []data_store.DataPoint {
 	pts := []data_store.DataPoint{p.upPoint(1, ts)}
 
-	add := func(name string, metricType string, v float32) {
+	add := func(name string, metricType string, v float64) {
 		pts = append(pts, data_store.DataPoint{
 			Name:      name,
 			Value:     v,
@@ -334,7 +334,7 @@ func (p *ZookeeperProbe) buildDataPoints(kv map[string]string, ts time.Time) []d
 	return pts
 }
 
-func (p *ZookeeperProbe) upPoint(v float32, ts time.Time) data_store.DataPoint {
+func (p *ZookeeperProbe) upPoint(v float64, ts time.Time) data_store.DataPoint {
 	return data_store.DataPoint{
 		Name:      "senhub.zookeeper.up",
 		Value:     v,
@@ -345,10 +345,10 @@ func (p *ZookeeperProbe) upPoint(v float32, ts time.Time) data_store.DataPoint {
 	}
 }
 
-func parseFloat(s string) (float32, error) {
+func parseFloat(s string) (float64, error) {
 	v, err := strconv.ParseFloat(strings.TrimSpace(s), 32)
 	if err != nil {
 		return 0, err
 	}
-	return float32(v), nil
+	return float64(v), nil
 }

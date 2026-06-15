@@ -103,7 +103,7 @@ func filterUnits(cfg probeConfig, all []dbus.UnitStatus) []dbus.UnitStatus {
 // property was successfully retrieved from dbus (linux only). Callers
 // on non-linux platforms or in tests that don't have a live dbus
 // connection pass nil to omit the restart counter datapoint.
-func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float32) []data_store.DataPoint {
+func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float64) []data_store.DataPoint {
 	unitType := unitTypeSuffix(u.Name)
 	baseTags := []tags.Tag{
 		{Key: "systemd.unit", Value: u.Name},
@@ -112,7 +112,7 @@ func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float32) []data
 	}
 
 	// systemd.unit.active_state: 1=active, 0=otherwise
-	var activeVal float32
+	var activeVal float64
 	if u.ActiveState == "active" {
 		activeVal = 1
 	}
@@ -123,7 +123,7 @@ func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float32) []data
 	// systemd.unit.sub_state: 1=running|listening, 0=dead|exited
 	// Carry sub_state as a tag so the operator can filter.
 	subTags := append(append([]tags.Tag(nil), baseTags...), tags.Tag{Key: "sub_state", Value: u.SubState})
-	var subVal float32
+	var subVal float64
 	switch u.SubState {
 	case "running", "listening":
 		subVal = 1
@@ -131,7 +131,7 @@ func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float32) []data
 	points = append(points, data_store.DataPoint{Name: "systemd.unit.sub_state", Value: subVal, Timestamp: ts, Tags: subTags})
 
 	// systemd.unit.load_state: 1=loaded, 0=not-found|error
-	var loadVal float32
+	var loadVal float64
 	if u.LoadState == "loaded" {
 		loadVal = 1
 	}

@@ -386,7 +386,7 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 		{Key: "image", Value: res.container.Image},
 	}
 
-	up := float32(0)
+	up := float64(0)
 	if res.container.State == "running" && res.stats != nil {
 		up = 1
 	}
@@ -400,7 +400,7 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 	statusTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "status"})
 	points := []data_store.DataPoint{
 		{Name: "senhub.docker.up", Value: up, Timestamp: ts, Tags: statusTags},
-		{Name: "container.restarts", Value: float32(res.container.RestartCount), Timestamp: ts, Tags: statusTags},
+		{Name: "container.restarts", Value: float64(res.container.RestartCount), Timestamp: ts, Tags: statusTags},
 	}
 
 	if res.stats == nil {
@@ -417,11 +417,11 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 		cpuOnline = len(s.CPUStats.CPUUsage.PercpuUsage)
 	}
 	points = append(points,
-		data_store.DataPoint{Name: "container.cpu.usage.total", Value: float32(s.CPUStats.CPUUsage.TotalUsage), Timestamp: ts, Tags: cpuTags},
-		data_store.DataPoint{Name: "container.cpu.usage.kernelmode", Value: float32(s.CPUStats.CPUUsage.UsageInKernelmode), Timestamp: ts, Tags: cpuTags},
-		data_store.DataPoint{Name: "container.cpu.usage.usermode", Value: float32(s.CPUStats.CPUUsage.UsageInUsermode), Timestamp: ts, Tags: cpuTags},
-		data_store.DataPoint{Name: "senhub.docker.cpu.system", Value: float32(s.CPUStats.SystemCPUUsage), Timestamp: ts, Tags: cpuTags},
-		data_store.DataPoint{Name: "senhub.docker.cpu.online", Value: float32(cpuOnline), Timestamp: ts, Tags: cpuTags},
+		data_store.DataPoint{Name: "container.cpu.usage.total", Value: float64(s.CPUStats.CPUUsage.TotalUsage), Timestamp: ts, Tags: cpuTags},
+		data_store.DataPoint{Name: "container.cpu.usage.kernelmode", Value: float64(s.CPUStats.CPUUsage.UsageInKernelmode), Timestamp: ts, Tags: cpuTags},
+		data_store.DataPoint{Name: "container.cpu.usage.usermode", Value: float64(s.CPUStats.CPUUsage.UsageInUsermode), Timestamp: ts, Tags: cpuTags},
+		data_store.DataPoint{Name: "senhub.docker.cpu.system", Value: float64(s.CPUStats.SystemCPUUsage), Timestamp: ts, Tags: cpuTags},
+		data_store.DataPoint{Name: "senhub.docker.cpu.online", Value: float64(cpuOnline), Timestamp: ts, Tags: cpuTags},
 	)
 
 	// Derived cpu.percent — same formula used by `docker stats`.
@@ -430,7 +430,7 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 	if systemDelta > 0 && cpuDelta >= 0 {
 		cpuPercent := (cpuDelta / systemDelta) * float64(cpuOnline) * 100.0
 		points = append(points,
-			data_store.DataPoint{Name: "senhub.docker.cpu.percent", Value: float32(cpuPercent), Timestamp: ts, Tags: cpuTags},
+			data_store.DataPoint{Name: "senhub.docker.cpu.percent", Value: float64(cpuPercent), Timestamp: ts, Tags: cpuTags},
 		)
 	}
 
@@ -441,22 +441,22 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 			tags.Tag{Key: "core", Value: strconv.Itoa(i)},
 		)
 		points = append(points,
-			data_store.DataPoint{Name: "container.cpu.usage.percpu", Value: float32(coreUsage), Timestamp: ts, Tags: coreTags},
+			data_store.DataPoint{Name: "container.cpu.usage.percpu", Value: float64(coreUsage), Timestamp: ts, Tags: coreTags},
 		)
 	}
 
 	// CPU throttling metrics (cgroupsv1 + cgroupsv2, always present in the response).
 	points = append(points,
-		data_store.DataPoint{Name: "container.cpu.throttling_data.throttled_periods", Value: float32(s.CPUStats.ThrottlingData.ThrottledPeriods), Timestamp: ts, Tags: cpuTags},
-		data_store.DataPoint{Name: "container.cpu.throttling_data.periods", Value: float32(s.CPUStats.ThrottlingData.ThrottlingPeriods), Timestamp: ts, Tags: cpuTags},
-		data_store.DataPoint{Name: "container.cpu.throttling_data.throttled_time", Value: float32(s.CPUStats.ThrottlingData.ThrottledTime), Timestamp: ts, Tags: cpuTags},
+		data_store.DataPoint{Name: "container.cpu.throttling_data.throttled_periods", Value: float64(s.CPUStats.ThrottlingData.ThrottledPeriods), Timestamp: ts, Tags: cpuTags},
+		data_store.DataPoint{Name: "container.cpu.throttling_data.periods", Value: float64(s.CPUStats.ThrottlingData.ThrottlingPeriods), Timestamp: ts, Tags: cpuTags},
+		data_store.DataPoint{Name: "container.cpu.throttling_data.throttled_time", Value: float64(s.CPUStats.ThrottlingData.ThrottledTime), Timestamp: ts, Tags: cpuTags},
 	)
 
 	// Memory metrics — cgroups v1/v2 detection via presence of "rss" key.
 	memTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "memory"})
 	points = append(points,
-		data_store.DataPoint{Name: "container.memory.usage", Value: float32(s.MemoryStats.Usage), Timestamp: ts, Tags: memTags},
-		data_store.DataPoint{Name: "senhub.docker.memory.limit", Value: float32(s.MemoryStats.Limit), Timestamp: ts, Tags: memTags},
+		data_store.DataPoint{Name: "container.memory.usage", Value: float64(s.MemoryStats.Usage), Timestamp: ts, Tags: memTags},
+		data_store.DataPoint{Name: "senhub.docker.memory.limit", Value: float64(s.MemoryStats.Limit), Timestamp: ts, Tags: memTags},
 	)
 
 	_, isCgroupV1 := s.MemoryStats.Stats["rss"]
@@ -470,10 +470,10 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 			workingSet = s.MemoryStats.Usage - cache
 		}
 		points = append(points,
-			data_store.DataPoint{Name: "container.memory.rss", Value: float32(rss), Timestamp: ts, Tags: memTags},
-			data_store.DataPoint{Name: "container.memory.cache", Value: float32(cache), Timestamp: ts, Tags: memTags},
-			data_store.DataPoint{Name: "container.memory.swap", Value: float32(swap), Timestamp: ts, Tags: memTags},
-			data_store.DataPoint{Name: "senhub.docker.memory.working_set", Value: float32(workingSet), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "container.memory.rss", Value: float64(rss), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "container.memory.cache", Value: float64(cache), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "container.memory.swap", Value: float64(swap), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "senhub.docker.memory.working_set", Value: float64(workingSet), Timestamp: ts, Tags: memTags},
 		)
 	} else {
 		// cgroups v2 keys.
@@ -486,10 +486,10 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 			workingSet = s.MemoryStats.Usage - inactiveFile
 		}
 		points = append(points,
-			data_store.DataPoint{Name: "container.memory.rss", Value: float32(anon), Timestamp: ts, Tags: memTags},
-			data_store.DataPoint{Name: "container.memory.cache", Value: float32(file), Timestamp: ts, Tags: memTags},
-			data_store.DataPoint{Name: "container.memory.swap", Value: float32(swap), Timestamp: ts, Tags: memTags},
-			data_store.DataPoint{Name: "senhub.docker.memory.working_set", Value: float32(workingSet), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "container.memory.rss", Value: float64(anon), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "container.memory.cache", Value: float64(file), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "container.memory.swap", Value: float64(swap), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "senhub.docker.memory.working_set", Value: float64(workingSet), Timestamp: ts, Tags: memTags},
 		)
 	}
 
@@ -500,9 +500,9 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 	// container.memory.anon: for v1 kernels the "anon" key may be absent; fall
 	// back to "rss" which is the same concept on v1.
 	if anon, ok := s.MemoryStats.Stats["anon"]; ok {
-		points = append(points, data_store.DataPoint{Name: "container.memory.anon", Value: float32(anon), Timestamp: ts, Tags: memTags})
+		points = append(points, data_store.DataPoint{Name: "container.memory.anon", Value: float64(anon), Timestamp: ts, Tags: memTags})
 	} else if rss, ok := s.MemoryStats.Stats["rss"]; ok {
-		points = append(points, data_store.DataPoint{Name: "container.memory.anon", Value: float32(rss), Timestamp: ts, Tags: memTags})
+		points = append(points, data_store.DataPoint{Name: "container.memory.anon", Value: float64(rss), Timestamp: ts, Tags: memTags})
 	}
 	for _, kv := range []struct {
 		metricName string
@@ -520,15 +520,15 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 		{"container.memory.inactive_file", "inactive_file"},
 	} {
 		if val, ok := s.MemoryStats.Stats[kv.statsKey]; ok {
-			points = append(points, data_store.DataPoint{Name: kv.metricName, Value: float32(val), Timestamp: ts, Tags: memTags})
+			points = append(points, data_store.DataPoint{Name: kv.metricName, Value: float64(val), Timestamp: ts, Tags: memTags})
 		}
 	}
 
 	// PIDs metrics.
 	pidsTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "pids"})
 	points = append(points,
-		data_store.DataPoint{Name: "container.pids.count", Value: float32(s.PidsStats.Current), Timestamp: ts, Tags: pidsTags},
-		data_store.DataPoint{Name: "senhub.docker.pids.limit", Value: float32(s.PidsStats.Limit), Timestamp: ts, Tags: pidsTags},
+		data_store.DataPoint{Name: "container.pids.count", Value: float64(s.PidsStats.Current), Timestamp: ts, Tags: pidsTags},
+		data_store.DataPoint{Name: "senhub.docker.pids.limit", Value: float64(s.PidsStats.Limit), Timestamp: ts, Tags: pidsTags},
 	)
 
 	// Network metrics — absent for --network=host containers (nil map).
@@ -546,14 +546,14 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 		}
 		netTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "network"})
 		points = append(points,
-			data_store.DataPoint{Name: "container.network.io.usage.tx_bytes", Value: float32(txBytes), Timestamp: ts, Tags: netTags},
-			data_store.DataPoint{Name: "container.network.io.usage.rx_bytes", Value: float32(rxBytes), Timestamp: ts, Tags: netTags},
-			data_store.DataPoint{Name: "senhub.docker.network.tx_packets", Value: float32(txPkts), Timestamp: ts, Tags: netTags},
-			data_store.DataPoint{Name: "senhub.docker.network.rx_packets", Value: float32(rxPkts), Timestamp: ts, Tags: netTags},
-			data_store.DataPoint{Name: "container.network.io.usage.tx_errors", Value: float32(txErrors), Timestamp: ts, Tags: netTags},
-			data_store.DataPoint{Name: "container.network.io.usage.rx_errors", Value: float32(rxErrors), Timestamp: ts, Tags: netTags},
-			data_store.DataPoint{Name: "senhub.docker.network.tx_dropped", Value: float32(txDropped), Timestamp: ts, Tags: netTags},
-			data_store.DataPoint{Name: "senhub.docker.network.rx_dropped", Value: float32(rxDropped), Timestamp: ts, Tags: netTags},
+			data_store.DataPoint{Name: "container.network.io.usage.tx_bytes", Value: float64(txBytes), Timestamp: ts, Tags: netTags},
+			data_store.DataPoint{Name: "container.network.io.usage.rx_bytes", Value: float64(rxBytes), Timestamp: ts, Tags: netTags},
+			data_store.DataPoint{Name: "senhub.docker.network.tx_packets", Value: float64(txPkts), Timestamp: ts, Tags: netTags},
+			data_store.DataPoint{Name: "senhub.docker.network.rx_packets", Value: float64(rxPkts), Timestamp: ts, Tags: netTags},
+			data_store.DataPoint{Name: "container.network.io.usage.tx_errors", Value: float64(txErrors), Timestamp: ts, Tags: netTags},
+			data_store.DataPoint{Name: "container.network.io.usage.rx_errors", Value: float64(rxErrors), Timestamp: ts, Tags: netTags},
+			data_store.DataPoint{Name: "senhub.docker.network.tx_dropped", Value: float64(txDropped), Timestamp: ts, Tags: netTags},
+			data_store.DataPoint{Name: "senhub.docker.network.rx_dropped", Value: float64(rxDropped), Timestamp: ts, Tags: netTags},
 		)
 	}
 
@@ -562,9 +562,9 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 	blkTotal, blkRead, blkWrite := blkioSplit(s.BlkioStats.IOServiceBytesRecursive)
 	blkioTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "blkio"})
 	points = append(points,
-		data_store.DataPoint{Name: "container.blockio.usage.total", Value: float32(blkTotal), Timestamp: ts, Tags: blkioTags},
-		data_store.DataPoint{Name: "container.blockio.io_service_bytes_recursive.read", Value: float32(blkRead), Timestamp: ts, Tags: blkioTags},
-		data_store.DataPoint{Name: "container.blockio.io_service_bytes_recursive.write", Value: float32(blkWrite), Timestamp: ts, Tags: blkioTags},
+		data_store.DataPoint{Name: "container.blockio.usage.total", Value: float64(blkTotal), Timestamp: ts, Tags: blkioTags},
+		data_store.DataPoint{Name: "container.blockio.io_service_bytes_recursive.read", Value: float64(blkRead), Timestamp: ts, Tags: blkioTags},
+		data_store.DataPoint{Name: "container.blockio.io_service_bytes_recursive.write", Value: float64(blkWrite), Timestamp: ts, Tags: blkioTags},
 	)
 
 	// io_service_time_recursive and io_sectors_recursive are present on
@@ -572,13 +572,13 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 	if len(s.BlkioStats.IOServiceTimeRecursive) > 0 {
 		svcTotal, _, _ := blkioSplit(s.BlkioStats.IOServiceTimeRecursive)
 		points = append(points,
-			data_store.DataPoint{Name: "senhub.docker.blkio.service_time.total", Value: float32(svcTotal), Timestamp: ts, Tags: blkioTags},
+			data_store.DataPoint{Name: "senhub.docker.blkio.service_time.total", Value: float64(svcTotal), Timestamp: ts, Tags: blkioTags},
 		)
 	}
 	if len(s.BlkioStats.IOSectorsRecursive) > 0 {
 		secTotal, _, _ := blkioSplit(s.BlkioStats.IOSectorsRecursive)
 		points = append(points,
-			data_store.DataPoint{Name: "senhub.docker.blkio.sectors.total", Value: float32(secTotal), Timestamp: ts, Tags: blkioTags},
+			data_store.DataPoint{Name: "senhub.docker.blkio.sectors.total", Value: float64(secTotal), Timestamp: ts, Tags: blkioTags},
 		)
 	}
 

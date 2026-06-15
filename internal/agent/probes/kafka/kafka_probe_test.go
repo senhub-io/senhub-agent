@@ -440,7 +440,7 @@ func TestCollect_ReplicasInSync(t *testing.T) {
 		t.Fatalf("expected 2 kafka.partition.replicas_in_sync, got %d", len(isrPts))
 	}
 
-	isrByPartition := make(map[string]float32)
+	isrByPartition := make(map[string]float64)
 	for _, pt := range isrPts {
 		isrByPartition[tagVal(pt, "partition")] = pt.Value
 	}

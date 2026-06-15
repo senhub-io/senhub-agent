@@ -116,7 +116,7 @@ func TestCollect_EmitsUpAndPerServiceMetrics(t *testing.T) {
 	if !ok {
 		t.Fatal("missing windows.service.status for Spooler")
 	}
-	if status.Value != float32(stateRunning) {
+	if status.Value != float64(stateRunning) {
 		t.Errorf("Spooler status = %v, want %d", status.Value, stateRunning)
 	}
 
@@ -125,7 +125,7 @@ func TestCollect_EmitsUpAndPerServiceMetrics(t *testing.T) {
 		t.Errorf("wuauserv state = %v, want 0 (not running)", stoppedState.Value)
 	}
 	stoppedStatus, _ := findPoint(points, "windows.service.status", "wuauserv")
-	if stoppedStatus.Value != float32(stateStopped) {
+	if stoppedStatus.Value != float64(stateStopped) {
 		t.Errorf("wuauserv status = %v, want %d", stoppedStatus.Value, stateStopped)
 	}
 }

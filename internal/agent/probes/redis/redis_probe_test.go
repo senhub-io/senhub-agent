@@ -365,7 +365,7 @@ func TestBuildDatapoints_CpuTime(t *testing.T) {
 	if len(cpuPts) != 4 {
 		t.Fatalf("redis.cpu.time: want 4 datapoints (one per state), got %d", len(cpuPts))
 	}
-	wantStates := map[string]float32{
+	wantStates := map[string]float64{
 		"sys":           1.5,
 		"user":          0.8,
 		"sys_children":  0.1,

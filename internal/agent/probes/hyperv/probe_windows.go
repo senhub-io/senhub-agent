@@ -157,7 +157,7 @@ func (p *HypervProbe) Collect() ([]data_store.DataPoint, error) {
 
 	vms, sumByName, err := p.queryWMI()
 
-	up := float32(1)
+	up := float64(1)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("Hyper-V WMI query failed")
 		up = 0
@@ -279,7 +279,7 @@ func (p *HypervProbe) buildVMPoints(vms []msvmComputerSystem, sumByName map[stri
 		)
 
 		// hyperv.vm.state — 1 when the VM is running, 0 otherwise.
-		stateVal := float32(0)
+		stateVal := float64(0)
 		if vm.EnabledState == enabledStateRunning {
 			stateVal = 1
 		}
@@ -300,14 +300,14 @@ func (p *HypervProbe) buildVMPoints(vms []msvmComputerSystem, sumByName map[stri
 			// hyperv.vm.cpu.usage — CPUUsage is a percentage (0–100), normalise to 0–1.
 			points = append(points, data_store.DataPoint{
 				Name:      "hyperv.vm.cpu.usage",
-				Value:     float32(si.CPUUsage) / 100.0,
+				Value:     float64(si.CPUUsage) / 100.0,
 				Timestamp: ts,
 				Tags:      vmTags,
 			})
 			// hyperv.vm.memory.usage — MemoryUsage is in MB, convert to bytes.
 			points = append(points, data_store.DataPoint{
 				Name:      "hyperv.vm.memory.usage",
-				Value:     float32(si.MemoryUsage) * 1024 * 1024,
+				Value:     float64(si.MemoryUsage) * 1024 * 1024,
 				Timestamp: ts,
 				Tags:      vmTags,
 			})
@@ -326,7 +326,7 @@ func (p *HypervProbe) buildVMPoints(vms []msvmComputerSystem, sumByName map[stri
 	for _, cm := range countMetrics {
 		points = append(points, data_store.DataPoint{
 			Name:  "hyperv.vm.count",
-			Value: float32(cm.count),
+			Value: float64(cm.count),
 			Tags: withHost(hostTags,
 				tags.Tag{Key: "state", Value: cm.state},
 				tags.Tag{Key: "metric_type", Value: "vm_count"},

@@ -252,7 +252,7 @@ func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time, hostTags []tag
 	var points []data_store.DataPoint
 
 	// hardware.sensor.status — generic ok/fault for every sensor.
-	sensorStatus := float32(0)
+	sensorStatus := float64(0)
 	if statusOk {
 		sensorStatus = 1
 	}
@@ -270,7 +270,7 @@ func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time, hostTags []tag
 		if val != nil {
 			points = append(points, data_store.DataPoint{
 				Name:      "hardware.temperature",
-				Value:     float32(*val),
+				Value:     float64(*val),
 				Timestamp: now,
 				Tags:      baseTags,
 			})
@@ -280,7 +280,7 @@ func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time, hostTags []tag
 		if val != nil {
 			points = append(points, data_store.DataPoint{
 				Name:      "hardware.fan.speed",
-				Value:     float32(*val),
+				Value:     float64(*val),
 				Timestamp: now,
 				Tags:      baseTags,
 			})
@@ -290,14 +290,14 @@ func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time, hostTags []tag
 		if val != nil {
 			points = append(points, data_store.DataPoint{
 				Name:      "hardware.voltage",
-				Value:     float32(*val),
+				Value:     float64(*val),
 				Timestamp: now,
 				Tags:      baseTags,
 			})
 		}
 
 	case "power_supply":
-		psStatus := float32(0)
+		psStatus := float64(0)
 		if statusOk {
 			psStatus = 1
 		}

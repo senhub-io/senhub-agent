@@ -128,7 +128,7 @@ func (p *oracleProbe) Collect() ([]data_store.DataPoint, error) {
 
 	var points []data_store.DataPoint
 
-	up := float32(1)
+	up := float64(1)
 	if p.db == nil || p.db.PingContext(ctx) != nil {
 		up = 0
 	}
@@ -163,7 +163,7 @@ func (p *oracleProbe) collectSessions(ctx context.Context, now time.Time) []data
 				p.moduleLogger.Warn().Err(err).Msg("scan v$session row failed")
 				continue
 			}
-			points = append(points, p.point("oracle.sessions.count", float32(count), now, metricTypeConnections,
+			points = append(points, p.point("oracle.sessions.count", float64(count), now, metricTypeConnections,
 				map[string]string{"status": normalizeStatus(status)}))
 		}
 	}
@@ -174,7 +174,7 @@ func (p *oracleProbe) collectSessions(ctx context.Context, now time.Time) []data
 	if err := row.Scan(&limit); err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("query v$resource_limit (sessions) failed")
 	} else if limit.Valid {
-		points = append(points, p.point("oracle.sessions.limit", float32(limit.Float64), now, metricTypeConnections, nil))
+		points = append(points, p.point("oracle.sessions.limit", float64(limit.Float64), now, metricTypeConnections, nil))
 	}
 
 	return points
@@ -194,8 +194,8 @@ func (p *oracleProbe) collectSysstat(ctx context.Context, now time.Time) []data_
 	var points []data_store.DataPoint
 	physReads := stats["physical reads"]
 	points = append(points,
-		p.point("oracle.physical.reads", float32(physReads), now, metricTypeIO, nil),
-		p.point("oracle.physical.writes", float32(stats["physical writes"]), now, metricTypeIO, nil),
+		p.point("oracle.physical.reads", float64(physReads), now, metricTypeIO, nil),
+		p.point("oracle.physical.writes", float64(stats["physical writes"]), now, metricTypeIO, nil),
 	)
 
 	// Buffer cache hit ratio = 1 - physical reads / (consistent gets +
@@ -212,11 +212,11 @@ func (p *oracleProbe) collectSysstat(ctx context.Context, now time.Time) []data_
 			hit = 1
 		}
 	}
-	points = append(points, p.point("oracle.buffer.cache.hit_ratio", float32(hit), now, metricTypeCache, nil))
+	points = append(points, p.point("oracle.buffer.cache.hit_ratio", float64(hit), now, metricTypeCache, nil))
 
 	deadlocks, ok := stats["enqueue deadlocks"]
 	if ok {
-		points = append(points, p.point("oracle.enqueue_deadlocks", float32(deadlocks), now, metricTypeLocks, nil))
+		points = append(points, p.point("oracle.enqueue_deadlocks", float64(deadlocks), now, metricTypeLocks, nil))
 	}
 
 	return points
@@ -250,7 +250,7 @@ func (p *oracleProbe) collectMemory(ctx context.Context, now time.Time) []data_s
 	if err := p.db.QueryRowContext(ctx, "SELECT SUM(bytes) FROM v$sgastat").Scan(&sga); err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("query v$sgastat failed")
 	} else if sga.Valid {
-		points = append(points, p.point("oracle.sga.total", float32(sga.Float64), now, metricTypeMemory, nil))
+		points = append(points, p.point("oracle.sga.total", float64(sga.Float64), now, metricTypeMemory, nil))
 	}
 
 	var pga sql.NullFloat64
@@ -258,7 +258,7 @@ func (p *oracleProbe) collectMemory(ctx context.Context, now time.Time) []data_s
 		"SELECT value FROM v$pgastat WHERE name = 'total PGA allocated'").Scan(&pga); err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("query v$pgastat failed")
 	} else if pga.Valid {
-		points = append(points, p.point("oracle.pga.total", float32(pga.Float64), now, metricTypeMemory, nil))
+		points = append(points, p.point("oracle.pga.total", float64(pga.Float64), now, metricTypeMemory, nil))
 	}
 
 	return points
@@ -290,8 +290,8 @@ func (p *oracleProbe) collectTablespaces(ctx context.Context, now time.Time) []d
 		}
 		ts := map[string]string{"tablespace": name}
 		points = append(points,
-			p.point("oracle.tablespace.used", float32(used), now, metricTypeStorage, ts),
-			p.point("oracle.tablespace.total", float32(total), now, metricTypeStorage, ts),
+			p.point("oracle.tablespace.used", float64(used), now, metricTypeStorage, ts),
+			p.point("oracle.tablespace.total", float64(total), now, metricTypeStorage, ts),
 		)
 	}
 	return points
@@ -316,7 +316,7 @@ func (p *oracleProbe) collectWaitClasses(ctx context.Context, now time.Time) []d
 			p.moduleLogger.Warn().Err(err).Msg("scan wait class row failed")
 			continue
 		}
-		points = append(points, p.point("oracle.wait_class.total", float32(timeWaited), now, metricTypeWait,
+		points = append(points, p.point("oracle.wait_class.total", float64(timeWaited), now, metricTypeWait,
 			map[string]string{"wait_class": class}))
 	}
 	return points
@@ -325,7 +325,7 @@ func (p *oracleProbe) collectWaitClasses(ctx context.Context, now time.Time) []d
 // point builds a datapoint with the standard DB tag set plus optional
 // per-instance discriminator tags. server.address / server.port /
 // db.system.name flow to OTLP / Prom via IncludeProbeTags.
-func (p *oracleProbe) point(name string, value float32, ts time.Time, metricType string, extra map[string]string) data_store.DataPoint {
+func (p *oracleProbe) point(name string, value float64, ts time.Time, metricType string, extra map[string]string) data_store.DataPoint {
 	dpTags := []tags.Tag{
 		{Key: "metric_type", Value: metricType},
 		{Key: "instance", Value: p.instance},

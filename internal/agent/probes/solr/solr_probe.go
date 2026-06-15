@@ -256,7 +256,7 @@ func (p *SolrProbe) buildJVMPoints(mr *solrMetricsResponse, now time.Time) []dat
 	if heapUsed := extractNestedFloat(jvm, "memory.heap.used"); heapUsed >= 0 {
 		points = append(points, data_store.DataPoint{
 			Name:      "jvm.memory.heap.used",
-			Value:     float32(heapUsed),
+			Value:     float64(heapUsed),
 			Timestamp: now,
 			Tags:      memTags,
 		})
@@ -265,7 +265,7 @@ func (p *SolrProbe) buildJVMPoints(mr *solrMetricsResponse, now time.Time) []dat
 	if threadCount := extractNestedFloat(jvm, "threads.count"); threadCount >= 0 {
 		points = append(points, data_store.DataPoint{
 			Name:      "jvm.threads.count",
-			Value:     float32(threadCount),
+			Value:     float64(threadCount),
 			Timestamp: now,
 			Tags:      threadTags,
 		})
@@ -326,9 +326,9 @@ func (p *SolrProbe) buildNodePoints(mr *solrMetricsResponse, now time.Time) []da
 
 	if totalRequests >= 0 {
 		points = append(points,
-			data_store.DataPoint{Name: "solr.requests.count", Value: float32(totalRequests), Timestamp: now, Tags: reqTags},
-			data_store.DataPoint{Name: "solr.requests.time", Value: float32(totalTimeMs), Timestamp: now, Tags: reqTags},
-			data_store.DataPoint{Name: "solr.errors.count", Value: float32(totalErrors), Timestamp: now, Tags: reqTags},
+			data_store.DataPoint{Name: "solr.requests.count", Value: float64(totalRequests), Timestamp: now, Tags: reqTags},
+			data_store.DataPoint{Name: "solr.requests.time", Value: float64(totalTimeMs), Timestamp: now, Tags: reqTags},
+			data_store.DataPoint{Name: "solr.errors.count", Value: float64(totalErrors), Timestamp: now, Tags: reqTags},
 		)
 	}
 
@@ -338,12 +338,12 @@ func (p *SolrProbe) buildNodePoints(mr *solrMetricsResponse, now time.Time) []da
 		if cacheMap, ok := cache.(map[string]interface{}); ok {
 			if hits := extractFloat(cacheMap, "hits"); hits >= 0 {
 				points = append(points, data_store.DataPoint{
-					Name: "solr.cache.hits", Value: float32(hits), Timestamp: now, Tags: cacheTags,
+					Name: "solr.cache.hits", Value: float64(hits), Timestamp: now, Tags: cacheTags,
 				})
 			}
 			if inserts := extractFloat(cacheMap, "inserts"); inserts >= 0 {
 				points = append(points, data_store.DataPoint{
-					Name: "solr.cache.inserts", Value: float32(inserts), Timestamp: now, Tags: cacheTags,
+					Name: "solr.cache.inserts", Value: float64(inserts), Timestamp: now, Tags: cacheTags,
 				})
 			}
 		}
@@ -376,7 +376,7 @@ func (p *SolrProbe) buildCorePoints(mr *solrMetricsResponse, cr *solrCoresRespon
 
 		if indexSize := extractNestedFloat(coreMetrics, "INDEX.sizeInBytes"); indexSize >= 0 {
 			points = append(points, data_store.DataPoint{
-				Name: "solr.index.size", Value: float32(indexSize), Timestamp: now, Tags: coreTags,
+				Name: "solr.index.size", Value: float64(indexSize), Timestamp: now, Tags: coreTags,
 			})
 		}
 
@@ -387,7 +387,7 @@ func (p *SolrProbe) buildCorePoints(mr *solrMetricsResponse, cr *solrCoresRespon
 				if err := json.Unmarshal(coreStatus, &statusMap); err == nil {
 					if numDocs := extractNestedFloat(statusMap, "index.numDocs"); numDocs >= 0 {
 						points = append(points, data_store.DataPoint{
-							Name: "solr.document.count", Value: float32(numDocs), Timestamp: now, Tags: coreTags,
+							Name: "solr.document.count", Value: float64(numDocs), Timestamp: now, Tags: coreTags,
 						})
 					}
 				}

@@ -89,12 +89,12 @@ func TestCollect_Success(t *testing.T) {
 	}
 
 	// Build a map for easy lookup.
-	byName := make(map[string]float32, len(points))
+	byName := make(map[string]float64, len(points))
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}
 
-	checks := map[string]float32{
+	checks := map[string]float64{
 		"senhub.phpfpm.up":            1,
 		"phpfpm.uptime":               3600,
 		"phpfpm.accepted_connections": 100,

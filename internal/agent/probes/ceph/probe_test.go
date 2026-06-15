@@ -180,7 +180,7 @@ func TestCollect_Up(t *testing.T) {
 		t.Fatal("Collect returned no datapoints")
 	}
 
-	byName := make(map[string]float32)
+	byName := make(map[string]float64)
 	for _, p := range points {
 		byName[p.Name] = p.Value
 	}
@@ -217,7 +217,7 @@ func TestCollect_PoolMetrics(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	poolMetrics := map[string]float32{}
+	poolMetrics := map[string]float64{}
 	for _, dp := range points {
 		for _, tag := range dp.Tags {
 			if tag.Key == "pool" && tag.Value == "rbd" {
@@ -226,7 +226,7 @@ func TestCollect_PoolMetrics(t *testing.T) {
 		}
 	}
 
-	wantPool := map[string]float32{
+	wantPool := map[string]float64{
 		"ceph.pool.objects": 100,
 		"ceph.pool.used":    1024,
 		"ceph.pool.rd_ops":  50,
@@ -259,7 +259,7 @@ func TestCollect_AuthFailure(t *testing.T) {
 		t.Fatalf("Collect should not return an error on auth failure; got: %v", err)
 	}
 
-	var up float32 = -1
+	var up float64 = -1
 	for _, dp := range points {
 		if dp.Name == "senhub.ceph.up" {
 			up = dp.Value
@@ -275,7 +275,7 @@ func TestCollect_AuthFailure(t *testing.T) {
 func TestHealthStatus_Mapping(t *testing.T) {
 	cases := []struct {
 		status string
-		want   float32
+		want   float64
 	}{
 		{"HEALTH_OK", 2},
 		{"HEALTH_WARN", 1},

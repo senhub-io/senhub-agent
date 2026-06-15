@@ -134,7 +134,7 @@ func TestCollect_ReachableServer(t *testing.T) {
 		t.Fatal("Collect() returned no datapoints")
 	}
 
-	byName := make(map[string][]float32)
+	byName := make(map[string][]float64)
 	for _, dp := range points {
 		byName[dp.Name] = append(byName[dp.Name], dp.Value)
 	}

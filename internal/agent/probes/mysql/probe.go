@@ -237,7 +237,7 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	// Always emit up=0 first; overwritten to 1 if queries succeed.
-	up := float32(0)
+	up := float64(0)
 	var points []data_store.DataPoint
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
@@ -289,7 +289,7 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	)
 
 	points = append(points,
-		p.dp("senhub.db.up", float32(up), now, string(dbcommon.MetricTypeOverview), allCommonTags),
+		p.dp("senhub.db.up", float64(up), now, string(dbcommon.MetricTypeOverview), allCommonTags),
 	)
 	if versionVal != "" {
 		versionTags := append([]tags.Tag{}, allCommonTags...)
@@ -373,7 +373,7 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	poolReads := asFloat(status["Innodb_buffer_pool_reads"])
 	poolReadReqs := asFloat(status["Innodb_buffer_pool_read_requests"])
 	if poolReadReqs > 0 {
-		hitRatio := float32(1) - poolReads/poolReadReqs
+		hitRatio := float64(1) - poolReads/poolReadReqs
 		points = append(points, p.dp("senhub.db.mysql.buffer_pool.hit_ratio", hitRatio, now, string(dbcommon.MetricTypeCache), allCommonTags))
 	}
 	poolPagesTotal := asFloat(status["Innodb_buffer_pool_pages_total"])
@@ -448,9 +448,9 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 		p.dp("senhub.db.replication.role", role.RoleValue(), now, string(dbcommon.MetricTypeReplication), roleTags),
 	)
 
-	health := float32(1) // standalone = always healthy
+	health := float64(1) // standalone = always healthy
 	if role == dbcommon.RolePrimary {
-		points = append(points, p.dp("senhub.db.replication.replicas.connected", float32(replicaRows), now, string(dbcommon.MetricTypeReplication), allCommonTags))
+		points = append(points, p.dp("senhub.db.replication.replicas.connected", float64(replicaRows), now, string(dbcommon.MetricTypeReplication), allCommonTags))
 		if replicaRows == 0 {
 			health = 0
 		}
@@ -459,11 +459,11 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 		sqlRunning := replicaStatus["Slave_SQL_Running"]
 		lag := asFloat(replicaStatus["Seconds_Behind_Master"])
 
-		ioOK := float32(0)
+		ioOK := float64(0)
 		if strings.EqualFold(ioRunning, "yes") {
 			ioOK = 1
 		}
-		sqlOK := float32(0)
+		sqlOK := float64(0)
 		if strings.EqualFold(sqlRunning, "yes") {
 			sqlOK = 1
 		}
@@ -485,7 +485,7 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 
 // dp creates a DataPoint with the given metric name, value, and tags,
 // plus a metric_type tag so the PRTG sensor builder can chip it.
-func (p *mysqlProbe) dp(name string, value float32, ts time.Time, metricType string, baseTags []tags.Tag) data_store.DataPoint {
+func (p *mysqlProbe) dp(name string, value float64, ts time.Time, metricType string, baseTags []tags.Tag) data_store.DataPoint {
 	t := make([]tags.Tag, 0, len(baseTags)+1)
 	t = append(t, tags.Tag{Key: "metric_type", Value: metricType})
 	t = append(t, baseTags...)
@@ -524,12 +524,12 @@ func (p *mysqlProbe) queryKeyValue(ctx context.Context, query string) (map[strin
 
 // querySingleFloat executes a query that returns a single float64 in the
 // first column of the first row.
-func (p *mysqlProbe) querySingleFloat(ctx context.Context, query string) (float32, error) {
+func (p *mysqlProbe) querySingleFloat(ctx context.Context, query string) (float64, error) {
 	var v float64
 	if err := p.db.QueryRowContext(ctx, query).Scan(&v); err != nil {
 		return 0, fmt.Errorf("%s: %w", query, err)
 	}
-	return float32(v), nil
+	return float64(v), nil
 }
 
 // collectReplication returns the detected replication role, the number of
@@ -620,25 +620,25 @@ func (p *mysqlProbe) countReplicas(ctx context.Context) int {
 type tableSize struct {
 	db    string
 	table string
-	size  float32
+	size  float64
 }
 
 // queryPerDatabaseSizes returns a map of database name → total bytes.
-func (p *mysqlProbe) queryPerDatabaseSizes(ctx context.Context) (map[string]float32, error) {
+func (p *mysqlProbe) queryPerDatabaseSizes(ctx context.Context) (map[string]float64, error) {
 	rows, err := p.db.QueryContext(ctx, perDatabaseSizeQuery)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	m := make(map[string]float32)
+	m := make(map[string]float64)
 	for rows.Next() {
 		var dbName string
 		var sz float64
 		if err := rows.Scan(&dbName, &sz); err != nil {
 			return nil, err
 		}
-		m[dbName] = float32(sz)
+		m[dbName] = float64(sz)
 	}
 	return m, rows.Err()
 }
@@ -658,7 +658,7 @@ func (p *mysqlProbe) queryPerTableSizes(ctx context.Context) ([]tableSize, error
 		if err := rows.Scan(&dbName, &tableName, &sz); err != nil {
 			return nil, err
 		}
-		out = append(out, tableSize{db: dbName, table: tableName, size: float32(sz)})
+		out = append(out, tableSize{db: dbName, table: tableName, size: float64(sz)})
 	}
 	return out, rows.Err()
 }
@@ -716,9 +716,9 @@ func (p *mysqlProbe) buildDSN() (string, error) {
 	return mc.FormatDSN(), nil
 }
 
-// asFloat parses a string value from SHOW GLOBAL STATUS into a float32.
+// asFloat parses a string value from SHOW GLOBAL STATUS into a float64.
 // Returns 0 for empty / non-numeric strings.
-func asFloat(s string) float32 {
+func asFloat(s string) float64 {
 	if s == "" {
 		return 0
 	}
@@ -726,5 +726,5 @@ func asFloat(s string) float32 {
 	if err != nil {
 		return 0
 	}
-	return float32(v)
+	return float64(v)
 }

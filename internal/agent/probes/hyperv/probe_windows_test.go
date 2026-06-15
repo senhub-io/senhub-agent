@@ -161,7 +161,7 @@ func TestBuildVMPoints_MemoryBytes(t *testing.T) {
 	}
 	points := p.buildVMPoints(vms, sums, time.Now(), nil)
 
-	want := float32(2048 * 1024 * 1024)
+	want := float64(2048 * 1024 * 1024)
 	for _, pt := range points {
 		if pt.Name == "hyperv.vm.memory.usage" && pt.Value != want {
 			t.Errorf("expected memory %v bytes, got %v", want, pt.Value)
@@ -202,7 +202,7 @@ func TestBuildVMPoints_CountBuckets(t *testing.T) {
 	}
 	points := p.buildVMPoints(vms, nil, time.Now(), nil)
 
-	counts := map[string]float32{}
+	counts := map[string]float64{}
 	for _, pt := range points {
 		if pt.Name == "hyperv.vm.count" {
 			for _, tg := range pt.Tags {
@@ -212,7 +212,7 @@ func TestBuildVMPoints_CountBuckets(t *testing.T) {
 			}
 		}
 	}
-	cases := map[string]float32{"running": 1, "stopped": 1, "paused": 1}
+	cases := map[string]float64{"running": 1, "stopped": 1, "paused": 1}
 	for state, want := range cases {
 		if got := counts[state]; got != want {
 			t.Errorf("count[%s]: expected %v, got %v", state, want, got)

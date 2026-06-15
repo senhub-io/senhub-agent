@@ -120,7 +120,7 @@ func TestCollect_BrokerUp(t *testing.T) {
 	}
 
 	// Index broker-level datapoints by metric name (those without a destination tag).
-	brokerByName := map[string]float32{}
+	brokerByName := map[string]float64{}
 	for _, dp := range points {
 		isDestLevel := false
 		for _, tg := range dp.Tags {
@@ -169,7 +169,7 @@ func TestCollect_BrokerDown_EmitsUpZero(t *testing.T) {
 		t.Fatal("expected at least one datapoint even when broker is down")
 	}
 
-	byName := map[string]float32{}
+	byName := map[string]float64{}
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}

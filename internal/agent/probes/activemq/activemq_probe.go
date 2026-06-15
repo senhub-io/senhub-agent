@@ -336,7 +336,7 @@ func (p *activemqProbe) collectBroker(ctx context.Context, now time.Time) ([]dat
 
 	points = append(points, data_store.DataPoint{
 		Name:      "activemq.producer.count",
-		Value:     float32(producerCount),
+		Value:     float64(producerCount),
 		Timestamp: now,
 		Tags:      brokerTags,
 	})
@@ -349,7 +349,7 @@ func (p *activemqProbe) collectBroker(ctx context.Context, now time.Time) ([]dat
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      a.metric,
-			Value:     float32(v),
+			Value:     float64(v),
 			Timestamp: now,
 			Tags:      brokerTags,
 		})
@@ -363,7 +363,7 @@ func (p *activemqProbe) collectBroker(ctx context.Context, now time.Time) ([]dat
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      a.metric,
-			Value:     float32(v * a.scale),
+			Value:     float64(v * a.scale),
 			Timestamp: now,
 			Tags:      brokerTags,
 		})
@@ -505,7 +505,7 @@ func (p *activemqProbe) collectOneDestination(
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      a.metric,
-			Value:     float32(v),
+			Value:     float64(v),
 			Timestamp: now,
 			Tags:      destTags,
 		})

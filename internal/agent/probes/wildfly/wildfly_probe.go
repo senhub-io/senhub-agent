@@ -169,7 +169,7 @@ func (p *WildflyProbe) Collect() ([]data_store.DataPoint, error) {
 
 	var points []data_store.DataPoint
 
-	up := float32(0)
+	up := float64(0)
 	if err := p.collectAll(ctx, now, &points); err != nil {
 		p.moduleLogger.Warn().
 			Err(err).
@@ -288,9 +288,9 @@ func (p *WildflyProbe) collectJVM(ctx context.Context, now time.Time, points *[]
 
 	mt := []tags.Tag{{Key: "metric_type", Value: "memory"}}
 	*points = append(*points,
-		data_store.DataPoint{Name: "jvm.memory.heap.used", Value: float32(result.HeapMemoryUsage.Used), Timestamp: now, Tags: mt},
-		data_store.DataPoint{Name: "jvm.memory.heap.committed", Value: float32(result.HeapMemoryUsage.Committed), Timestamp: now, Tags: mt},
-		data_store.DataPoint{Name: "jvm.memory.heap.max", Value: float32(result.HeapMemoryUsage.Max), Timestamp: now, Tags: mt},
+		data_store.DataPoint{Name: "jvm.memory.heap.used", Value: float64(result.HeapMemoryUsage.Used), Timestamp: now, Tags: mt},
+		data_store.DataPoint{Name: "jvm.memory.heap.committed", Value: float64(result.HeapMemoryUsage.Committed), Timestamp: now, Tags: mt},
+		data_store.DataPoint{Name: "jvm.memory.heap.max", Value: float64(result.HeapMemoryUsage.Max), Timestamp: now, Tags: mt},
 	)
 	return nil
 }
@@ -317,10 +317,10 @@ func (p *WildflyProbe) collectUndertow(ctx context.Context, now time.Time, point
 
 	mt := []tags.Tag{{Key: "metric_type", Value: "requests"}}
 	*points = append(*points,
-		data_store.DataPoint{Name: "wildfly.request.count", Value: float32(result.RequestCount), Timestamp: now, Tags: mt},
-		data_store.DataPoint{Name: "wildfly.error.count", Value: float32(result.ErrorCount), Timestamp: now, Tags: mt},
-		data_store.DataPoint{Name: "wildfly.bytes.sent", Value: float32(result.BytesSent), Timestamp: now, Tags: mt},
-		data_store.DataPoint{Name: "wildfly.bytes.received", Value: float32(result.BytesReceived), Timestamp: now, Tags: mt},
+		data_store.DataPoint{Name: "wildfly.request.count", Value: float64(result.RequestCount), Timestamp: now, Tags: mt},
+		data_store.DataPoint{Name: "wildfly.error.count", Value: float64(result.ErrorCount), Timestamp: now, Tags: mt},
+		data_store.DataPoint{Name: "wildfly.bytes.sent", Value: float64(result.BytesSent), Timestamp: now, Tags: mt},
+		data_store.DataPoint{Name: "wildfly.bytes.received", Value: float64(result.BytesReceived), Timestamp: now, Tags: mt},
 	)
 	return nil
 }
@@ -345,8 +345,8 @@ func (p *WildflyProbe) collectTransactions(ctx context.Context, now time.Time, p
 
 	mt := []tags.Tag{{Key: "metric_type", Value: "operations"}}
 	*points = append(*points,
-		data_store.DataPoint{Name: "wildfly.transaction.committed", Value: float32(result.NumberOfTransactions), Timestamp: now, Tags: mt},
-		data_store.DataPoint{Name: "wildfly.transaction.rolledback", Value: float32(result.NumberOfAbortedTransactions), Timestamp: now, Tags: mt},
+		data_store.DataPoint{Name: "wildfly.transaction.committed", Value: float64(result.NumberOfTransactions), Timestamp: now, Tags: mt},
+		data_store.DataPoint{Name: "wildfly.transaction.rolledback", Value: float64(result.NumberOfAbortedTransactions), Timestamp: now, Tags: mt},
 	)
 	return nil
 }
@@ -406,8 +406,8 @@ func (p *WildflyProbe) collectOneDatasource(ctx context.Context, now time.Time, 
 		{Key: "datasource", Value: dsName},
 	}
 	*points = append(*points,
-		data_store.DataPoint{Name: "wildfly.datasource.connections.active", Value: float32(result.Statistics.Pool.ActiveCount), Timestamp: now, Tags: mt},
-		data_store.DataPoint{Name: "wildfly.datasource.connections.available", Value: float32(result.Statistics.Pool.AvailableCount), Timestamp: now, Tags: mt},
+		data_store.DataPoint{Name: "wildfly.datasource.connections.active", Value: float64(result.Statistics.Pool.ActiveCount), Timestamp: now, Tags: mt},
+		data_store.DataPoint{Name: "wildfly.datasource.connections.available", Value: float64(result.Statistics.Pool.AvailableCount), Timestamp: now, Tags: mt},
 	)
 	return nil
 }

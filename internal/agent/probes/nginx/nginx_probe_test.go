@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 const sampleStubStatus = `Active connections: 291
@@ -86,7 +86,7 @@ func TestCollect_Up(t *testing.T) {
 		t.Fatal("expected datapoints, got none")
 	}
 
-	byName := make(map[string]float32)
+	byName := make(map[string]float64)
 	for _, p := range points {
 		byName[p.Name] = p.Value
 	}
@@ -126,7 +126,7 @@ func TestCollect_Down(t *testing.T) {
 		t.Fatalf("Collect must not return an error for a down target, got: %v", err)
 	}
 
-	byName := make(map[string]float32)
+	byName := make(map[string]float64)
 	for _, p := range points {
 		byName[p.Name] = p.Value
 	}

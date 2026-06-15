@@ -158,13 +158,13 @@ func (p *NginxProbe) Collect() ([]data_store.DataPoint, error) {
 
 	points := []data_store.DataPoint{
 		{Name: "senhub.nginx.up", Value: 1, Timestamp: now, Tags: upTags},
-		{Name: "nginx.connections.current", Value: float32(stats.activeConnections), Timestamp: now, Tags: commonTags},
-		{Name: "nginx.connections.accepted", Value: float32(stats.accepted), Timestamp: now, Tags: commonTags},
-		{Name: "nginx.connections.handled", Value: float32(stats.handled), Timestamp: now, Tags: commonTags},
-		{Name: "nginx.requests", Value: float32(stats.requests), Timestamp: now, Tags: []tags.Tag{{Key: "metric_type", Value: "throughput"}}},
-		{Name: "nginx.connections.reading", Value: float32(stats.reading), Timestamp: now, Tags: commonTags},
-		{Name: "nginx.connections.writing", Value: float32(stats.writing), Timestamp: now, Tags: commonTags},
-		{Name: "nginx.connections.waiting", Value: float32(stats.waiting), Timestamp: now, Tags: commonTags},
+		{Name: "nginx.connections.current", Value: float64(stats.activeConnections), Timestamp: now, Tags: commonTags},
+		{Name: "nginx.connections.accepted", Value: float64(stats.accepted), Timestamp: now, Tags: commonTags},
+		{Name: "nginx.connections.handled", Value: float64(stats.handled), Timestamp: now, Tags: commonTags},
+		{Name: "nginx.requests", Value: float64(stats.requests), Timestamp: now, Tags: []tags.Tag{{Key: "metric_type", Value: "throughput"}}},
+		{Name: "nginx.connections.reading", Value: float64(stats.reading), Timestamp: now, Tags: commonTags},
+		{Name: "nginx.connections.writing", Value: float64(stats.writing), Timestamp: now, Tags: commonTags},
+		{Name: "nginx.connections.waiting", Value: float64(stats.waiting), Timestamp: now, Tags: commonTags},
 	}
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }

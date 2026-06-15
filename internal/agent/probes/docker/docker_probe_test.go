@@ -91,8 +91,8 @@ func buildTestProbe(t *testing.T, srv *httptest.Server) *dockerProbe {
 
 // indexByName returns a map from metric name → last DataPoint value for that
 // name among the collected points.
-func indexByName(points []data_store.DataPoint) map[string]float32 {
-	m := make(map[string]float32)
+func indexByName(points []data_store.DataPoint) map[string]float64 {
+	m := make(map[string]float64)
 	for _, pt := range points {
 		m[pt.Name] = pt.Value
 	}
@@ -101,7 +101,7 @@ func indexByName(points []data_store.DataPoint) map[string]float32 {
 
 // assertMetric fails the test when the named metric is absent or has an
 // unexpected value.
-func assertMetric(t *testing.T, byName map[string]float32, name string, want float32) {
+func assertMetric(t *testing.T, byName map[string]float64, name string, want float64) {
 	t.Helper()
 	got, ok := byName[name]
 	if !ok {
@@ -132,19 +132,19 @@ func makeRunningStats() *containerStats {
 	s.MemoryStats.Usage = 256 * 1024 * 1024
 	s.MemoryStats.Limit = 1024 * 1024 * 1024
 	s.MemoryStats.Stats = map[string]uint64{
-		"rss":                        200 * 1024 * 1024,
-		"cache":                      56 * 1024 * 1024,
-		"swap":                       0,
-		"mapped_file":                8 * 1024 * 1024,
-		"pgfault":                    1234,
-		"pgmajfault":                 5,
-		"unevictable":                0,
-		"writeback":                  512 * 1024,
-		"hierarchical_memory_limit":  1024 * 1024 * 1024,
-		"active_anon":                150 * 1024 * 1024,
-		"inactive_anon":              50 * 1024 * 1024,
-		"active_file":                30 * 1024 * 1024,
-		"inactive_file":              26 * 1024 * 1024,
+		"rss":                       200 * 1024 * 1024,
+		"cache":                     56 * 1024 * 1024,
+		"swap":                      0,
+		"mapped_file":               8 * 1024 * 1024,
+		"pgfault":                   1234,
+		"pgmajfault":                5,
+		"unevictable":               0,
+		"writeback":                 512 * 1024,
+		"hierarchical_memory_limit": 1024 * 1024 * 1024,
+		"active_anon":               150 * 1024 * 1024,
+		"inactive_anon":             50 * 1024 * 1024,
+		"active_file":               30 * 1024 * 1024,
+		"inactive_file":             26 * 1024 * 1024,
 	}
 	s.Networks = map[string]struct {
 		TxBytes   uint64 `json:"tx_bytes"`
@@ -263,25 +263,25 @@ func TestCollect_OneRunningContainer(t *testing.T) {
 	}
 
 	// Memory (cgroupsv1 base)
-	assertMetric(t, byName, "container.memory.usage", float32(256*1024*1024))
-	assertMetric(t, byName, "senhub.docker.memory.limit", float32(1024*1024*1024))
-	assertMetric(t, byName, "container.memory.rss", float32(200*1024*1024))
-	assertMetric(t, byName, "container.memory.cache", float32(56*1024*1024))
+	assertMetric(t, byName, "container.memory.usage", float64(256*1024*1024))
+	assertMetric(t, byName, "senhub.docker.memory.limit", float64(1024*1024*1024))
+	assertMetric(t, byName, "container.memory.rss", float64(200*1024*1024))
+	assertMetric(t, byName, "container.memory.cache", float64(56*1024*1024))
 	assertMetric(t, byName, "container.memory.swap", 0)
-	assertMetric(t, byName, "senhub.docker.memory.working_set", float32(200*1024*1024)) // 256-56
+	assertMetric(t, byName, "senhub.docker.memory.working_set", float64(200*1024*1024)) // 256-56
 
 	// Deep memory stats (cgroupsv1 fields present in makeRunningStats)
-	assertMetric(t, byName, "container.memory.anon", float32(200*1024*1024)) // fallback to rss on v1
-	assertMetric(t, byName, "container.memory.mapped_file", float32(8*1024*1024))
+	assertMetric(t, byName, "container.memory.anon", float64(200*1024*1024)) // fallback to rss on v1
+	assertMetric(t, byName, "container.memory.mapped_file", float64(8*1024*1024))
 	assertMetric(t, byName, "container.memory.pgfault", 1234)
 	assertMetric(t, byName, "container.memory.pgmajfault", 5)
 	assertMetric(t, byName, "container.memory.unevictable", 0)
-	assertMetric(t, byName, "container.memory.writeback", float32(512*1024))
-	assertMetric(t, byName, "container.memory.hierarchical_memory_limit", float32(1024*1024*1024))
-	assertMetric(t, byName, "container.memory.active_anon", float32(150*1024*1024))
-	assertMetric(t, byName, "container.memory.inactive_anon", float32(50*1024*1024))
-	assertMetric(t, byName, "container.memory.active_file", float32(30*1024*1024))
-	assertMetric(t, byName, "container.memory.inactive_file", float32(26*1024*1024))
+	assertMetric(t, byName, "container.memory.writeback", float64(512*1024))
+	assertMetric(t, byName, "container.memory.hierarchical_memory_limit", float64(1024*1024*1024))
+	assertMetric(t, byName, "container.memory.active_anon", float64(150*1024*1024))
+	assertMetric(t, byName, "container.memory.inactive_anon", float64(50*1024*1024))
+	assertMetric(t, byName, "container.memory.active_file", float64(30*1024*1024))
+	assertMetric(t, byName, "container.memory.inactive_file", float64(26*1024*1024))
 
 	// PIDs
 	assertMetric(t, byName, "container.pids.count", 5)
@@ -652,11 +652,11 @@ func TestCollect_CgroupsV2Memory(t *testing.T) {
 	}
 
 	byName := indexByName(points)
-	assertMetric(t, byName, "container.memory.rss", float32(60*1024*1024))   // anon
-	assertMetric(t, byName, "container.memory.cache", float32(30*1024*1024)) // file
-	assertMetric(t, byName, "container.memory.swap", float32(4*1024*1024))
+	assertMetric(t, byName, "container.memory.rss", float64(60*1024*1024))   // anon
+	assertMetric(t, byName, "container.memory.cache", float64(30*1024*1024)) // file
+	assertMetric(t, byName, "container.memory.swap", float64(4*1024*1024))
 	// working_set = usage - inactive_file = 100M - 20M = 80M
-	assertMetric(t, byName, "senhub.docker.memory.working_set", float32(80*1024*1024))
+	assertMetric(t, byName, "senhub.docker.memory.working_set", float64(80*1024*1024))
 }
 
 // TestCollect_CPUPercentZeroSystemDelta verifies that senhub.docker.cpu.percent
@@ -761,7 +761,7 @@ func TestCollect_PercpuUsage(t *testing.T) {
 
 	type coreVal struct {
 		core  string
-		value float32
+		value float64
 	}
 	var found []coreVal
 	for _, pt := range points {
@@ -867,15 +867,15 @@ func TestCollect_DeepMemoryStats_CgroupsV2(t *testing.T) {
 
 	byName := indexByName(points)
 	// anon key present → used directly.
-	assertMetric(t, byName, "container.memory.anon", float32(80*1024*1024))
+	assertMetric(t, byName, "container.memory.anon", float64(80*1024*1024))
 	assertMetric(t, byName, "container.memory.pgfault", 500)
 	assertMetric(t, byName, "container.memory.pgmajfault", 2)
 	assertMetric(t, byName, "container.memory.unevictable", 0)
 	assertMetric(t, byName, "container.memory.writeback", 0)
-	assertMetric(t, byName, "container.memory.active_anon", float32(70*1024*1024))
-	assertMetric(t, byName, "container.memory.inactive_anon", float32(10*1024*1024))
-	assertMetric(t, byName, "container.memory.active_file", float32(20*1024*1024))
-	assertMetric(t, byName, "container.memory.inactive_file", float32(40*1024*1024))
+	assertMetric(t, byName, "container.memory.active_anon", float64(70*1024*1024))
+	assertMetric(t, byName, "container.memory.inactive_anon", float64(10*1024*1024))
+	assertMetric(t, byName, "container.memory.active_file", float64(20*1024*1024))
+	assertMetric(t, byName, "container.memory.inactive_file", float64(40*1024*1024))
 	// hierarchical_memory_limit absent from stats → metric must not be emitted.
 	if _, ok := byName["container.memory.hierarchical_memory_limit"]; ok {
 		t.Error("container.memory.hierarchical_memory_limit should be absent when not in stats map")

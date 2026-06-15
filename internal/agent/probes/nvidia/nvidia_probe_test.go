@@ -157,7 +157,7 @@ func TestBuildDatapoints_RTX4090(t *testing.T) {
 	now := time.Now()
 	pts := buildDatapoints(gpu, nil, now)
 
-	find := func(name string) (float32, bool) {
+	find := func(name string) (float64, bool) {
 		for _, p := range pts {
 			if p.Name == name {
 				return p.Value, true
@@ -169,33 +169,33 @@ func TestBuildDatapoints_RTX4090(t *testing.T) {
 	if v, ok := find("senhub.nvidia.up"); !ok || v != 1 {
 		t.Errorf("senhub.nvidia.up: got %v ok=%v", v, ok)
 	}
-	if v, ok := find("gpu.utilization"); !ok || v != float32(0.45) {
+	if v, ok := find("gpu.utilization"); !ok || v != float64(0.45) {
 		t.Errorf("gpu.utilization: got %v ok=%v, want 0.45", v, ok)
 	}
 	// memory: 8192 MiB → 8192 * 1024 * 1024 bytes
-	wantMemUsed := float32(8192 * 1024 * 1024)
+	wantMemUsed := float64(8192 * 1024 * 1024)
 	if v, ok := find("gpu.memory.used"); !ok || v != wantMemUsed {
 		t.Errorf("gpu.memory.used: got %v ok=%v, want %v", v, ok, wantMemUsed)
 	}
-	if v, ok := find("gpu.memory.utilization"); !ok || v != float32(0.6) {
+	if v, ok := find("gpu.memory.utilization"); !ok || v != float64(0.6) {
 		t.Errorf("gpu.memory.utilization: got %v ok=%v, want 0.6", v, ok)
 	}
 	if v, ok := find("gpu.temperature"); !ok || v != 72 {
 		t.Errorf("gpu.temperature: got %v ok=%v", v, ok)
 	}
-	if v, ok := find("gpu.power.usage"); !ok || v != float32(350.5) {
+	if v, ok := find("gpu.power.usage"); !ok || v != float64(350.5) {
 		t.Errorf("gpu.power.usage: got %v ok=%v", v, ok)
 	}
-	if v, ok := find("gpu.power.limit"); !ok || v != float32(450) {
+	if v, ok := find("gpu.power.limit"); !ok || v != float64(450) {
 		t.Errorf("gpu.power.limit: got %v ok=%v", v, ok)
 	}
-	if v, ok := find("gpu.fan.speed"); !ok || v != float32(0.35) {
+	if v, ok := find("gpu.fan.speed"); !ok || v != float64(0.35) {
 		t.Errorf("gpu.fan.speed: got %v ok=%v, want 0.35", v, ok)
 	}
-	if v, ok := find("gpu.encoder.utilization"); !ok || v != float32(0.10) {
+	if v, ok := find("gpu.encoder.utilization"); !ok || v != float64(0.10) {
 		t.Errorf("gpu.encoder.utilization: got %v ok=%v, want 0.10", v, ok)
 	}
-	if v, ok := find("gpu.decoder.utilization"); !ok || v != float32(0.05) {
+	if v, ok := find("gpu.decoder.utilization"); !ok || v != float64(0.05) {
 		t.Errorf("gpu.decoder.utilization: got %v ok=%v, want 0.05", v, ok)
 	}
 }
@@ -265,4 +265,3 @@ func TestCollect_TwoGPUs(t *testing.T) {
 		t.Errorf("expected 2 senhub.nvidia.up=1 points (one per GPU), got %d", upCount)
 	}
 }
-
