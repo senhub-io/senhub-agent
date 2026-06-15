@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -67,11 +68,18 @@ func NewVarnishProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 
+	// Resolve the stable host id once at construction; errors are non-fatal
+	// (the entity source degrades gracefully to "varnish" as a last resort).
+	var hostID string
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+	}
+
 	probe := &VarnishProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		moduleLogger: moduleLogger,
-		entitySrc:    newVarnishEntitySource(cfg.InstanceName),
+		entitySrc:    newVarnishEntitySource(cfg.InstanceName, hostID),
 	}
 	probe.SetProbeType(ProbeType)
 	return probe, nil
