@@ -122,6 +122,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// metric name itself (senhub.exec.<label>); no per-series labels to
 	// discriminate beyond the probe instance.
 	"exec": {"metric_type"},
+	// unifi: per-type inventory (device_type), per-device health
+	// (device_name+device_type), per-AP stats (device_name) — all
+	// distinct time series that can coexist in a single cycle.
+	"unifi": {"device_type", "device_name"},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
