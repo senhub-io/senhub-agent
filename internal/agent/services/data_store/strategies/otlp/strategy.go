@@ -542,6 +542,11 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 			ServiceVersion: cliArgs.Version,
 		}
 	}
+	// Expose the agent's own service.instance.id to probe entity sources so
+	// they can stamp the From endpoint of their `monitors` edge to this same
+	// node. Same value the foundation puts on the agent entity (above), set
+	// before the detector starts polling sources.
+	agentstate.SetAgentInstanceID(s.cfg.Resource.ServiceInstance)
 
 	// Host-side entity sources (only active while entity emission runs):
 	// hostnet emits the host's routes as network.route + the gateway
