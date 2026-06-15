@@ -57,6 +57,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// System probes - multi-instance metrics
 	"cpu":         {"core"},                           // Different CPU cores have independent values
 	"memory":      {},                                 // System-level only, no instances
+	// process: one series per running process identified by pid+name;
+	// aggregate (process.count) is discriminated by name only.
+	"process": {"process.pid", "process.name"},
 	"network":     {"interface", "adapter"},           // Different network interfaces
 	"logicaldisk": {"drive", "mount_point", "device"}, // Different drives/volumes
 

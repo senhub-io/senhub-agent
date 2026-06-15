@@ -374,6 +374,11 @@ var freeTierProbes = map[string]bool{
 	// Data Guard, ASM, per-SQL) stays paid; the generic instance
 	// health/capacity surface is free collection.
 	"oracle": true,
+	// process: host-local process monitoring on the same footing as
+	// cpu/memory/network — the agent reads the local process table, not
+	// a remote system. A standard PRTG "Top Processes" sensor
+	// equivalent that should require zero license.
+	"process": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
