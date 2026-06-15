@@ -226,6 +226,11 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// mysql: FREE open-core database probe — the standard wedge for
+	// PRTG/Nagios migrations that already monitor MySQL/MariaDB.
+	// Metric parity with otelcol-contrib mysqlreceiver; paid tier adds
+	// deep query analytics and SLA alerting.
+	"mysql": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
