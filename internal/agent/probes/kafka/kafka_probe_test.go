@@ -110,7 +110,7 @@ func (f *fakeAdmin) ListAcls(_ sarama.AclFilter) ([]sarama.ResourceAcls, error) 
 func (f *fakeAdmin) DeleteACL(_ sarama.AclFilter, _ bool) ([]sarama.MatchingAcl, error) {
 	return nil, nil
 }
-func (f *fakeAdmin) DeleteGroups(_ []string) (map[string]error, error)   { return nil, nil }
+func (f *fakeAdmin) DeleteGroups(_ []string) (map[string]error, error) { return nil, nil }
 func (f *fakeAdmin) DescribeLogDirs(_ []int32) (map[int32][]sarama.DescribeLogDirsResponseDirMetadata, error) {
 	return nil, nil
 }
@@ -146,7 +146,7 @@ func (f *fakeAdmin) AlterConsumerGroupOffsets(_ string, _ map[string]map[int32]s
 	return nil, nil
 }
 func (f *fakeAdmin) DeleteConsumerGroupOffset(_ string, _ string, _ int32) error { return nil }
-func (f *fakeAdmin) DeleteConsumerGroup(_ string) error                           { return nil }
+func (f *fakeAdmin) DeleteConsumerGroup(_ string) error                          { return nil }
 func (f *fakeAdmin) DescribeCluster() ([]*sarama.Broker, int32, error)           { return nil, 0, nil }
 func (f *fakeAdmin) Coordinator(_ string) (*sarama.Broker, error)                { return nil, nil }
 
@@ -158,8 +158,8 @@ type fakeClient struct {
 	// isr[topic][partition] = list of in-sync replica IDs
 	isr map[string]map[int32][]int32
 
-	getOffsetErr  error
-	inSyncRepErr  error
+	getOffsetErr error
+	inSyncRepErr error
 }
 
 func (f *fakeClient) Brokers() []*sarama.Broker {
@@ -185,18 +185,18 @@ func (f *fakeClient) GetOffset(topic string, partitionID int32, time int64) (int
 	return 0, nil
 }
 
-func (f *fakeClient) Close() error  { return nil }
-func (f *fakeClient) Closed() bool  { return false }
+func (f *fakeClient) Close() error { return nil }
+func (f *fakeClient) Closed() bool { return false }
 
 // Stubs for unused Client methods.
-func (f *fakeClient) Config() *sarama.Config                                      { return sarama.NewConfig() }
-func (f *fakeClient) Controller() (*sarama.Broker, error)                         { return nil, nil }
-func (f *fakeClient) RefreshController() (*sarama.Broker, error)                  { return nil, nil }
-func (f *fakeClient) Broker(_ int32) (*sarama.Broker, error)                      { return nil, nil }
-func (f *fakeClient) Topics() ([]string, error)                                    { return nil, nil }
-func (f *fakeClient) Partitions(_ string) ([]int32, error)                        { return nil, nil }
-func (f *fakeClient) WritablePartitions(_ string) ([]int32, error)                { return nil, nil }
-func (f *fakeClient) Leader(_ string, _ int32) (*sarama.Broker, error)            { return nil, nil }
+func (f *fakeClient) Config() *sarama.Config                           { return sarama.NewConfig() }
+func (f *fakeClient) Controller() (*sarama.Broker, error)              { return nil, nil }
+func (f *fakeClient) RefreshController() (*sarama.Broker, error)       { return nil, nil }
+func (f *fakeClient) Broker(_ int32) (*sarama.Broker, error)           { return nil, nil }
+func (f *fakeClient) Topics() ([]string, error)                        { return nil, nil }
+func (f *fakeClient) Partitions(_ string) ([]int32, error)             { return nil, nil }
+func (f *fakeClient) WritablePartitions(_ string) ([]int32, error)     { return nil, nil }
+func (f *fakeClient) Leader(_ string, _ int32) (*sarama.Broker, error) { return nil, nil }
 func (f *fakeClient) LeaderAndEpoch(_ string, _ int32) (*sarama.Broker, int32, error) {
 	return nil, 0, nil
 }
@@ -214,17 +214,17 @@ func (f *fakeClient) InSyncReplicas(topic string, partition int32) ([]int32, err
 	}
 	return nil, nil
 }
-func (f *fakeClient) OfflineReplicas(_ string, _ int32) ([]int32, error) { return nil, nil }
-func (f *fakeClient) RefreshBrokers(_ []string) error                     { return nil }
-func (f *fakeClient) RefreshMetadata(_ ...string) error                   { return nil }
-func (f *fakeClient) Coordinator(_ string) (*sarama.Broker, error)       { return nil, nil }
-func (f *fakeClient) RefreshCoordinator(_ string) error                  { return nil }
+func (f *fakeClient) OfflineReplicas(_ string, _ int32) ([]int32, error)      { return nil, nil }
+func (f *fakeClient) RefreshBrokers(_ []string) error                         { return nil }
+func (f *fakeClient) RefreshMetadata(_ ...string) error                       { return nil }
+func (f *fakeClient) Coordinator(_ string) (*sarama.Broker, error)            { return nil, nil }
+func (f *fakeClient) RefreshCoordinator(_ string) error                       { return nil }
 func (f *fakeClient) TransactionCoordinator(_ string) (*sarama.Broker, error) { return nil, nil }
-func (f *fakeClient) RefreshTransactionCoordinator(_ string) error       { return nil }
+func (f *fakeClient) RefreshTransactionCoordinator(_ string) error            { return nil }
 func (f *fakeClient) InitProducerID() (*sarama.InitProducerIDResponse, error) {
 	return nil, nil
 }
-func (f *fakeClient) LeastLoadedBroker() *sarama.Broker      { return nil }
+func (f *fakeClient) LeastLoadedBroker() *sarama.Broker           { return nil }
 func (f *fakeClient) PartitionNotReadable(_ string, _ int32) bool { return false }
 
 // ---- helpers -------------------------------------------------------------
@@ -297,7 +297,7 @@ func TestCollect_UpZeroOnAdminError(t *testing.T) {
 		BaseProbe:    newBase(t),
 		cfg:          probeConfig{Brokers: []string{"dead:9092"}, ProtocolVersion: "2.0.0"},
 		moduleLogger: logger.NewModuleLogger(makeLogger(t), "probe.kafka"),
-		entitySrc:    newKafkaEntitySource("dead:9092"),
+		entitySrc:    newKafkaEntitySource("dead:9092", "", nil, func() string { return "test-host-id" }),
 		newAdmin: func(_ []string, _ *sarama.Config) (sarama.ClusterAdmin, error) {
 			kerr := sarama.ErrUnknown
 			return nil, kerr
@@ -650,6 +650,11 @@ func newBase(t *testing.T) *probeTypes.BaseProbe {
 
 func newTestProbe(t *testing.T, adm *fakeAdmin, cli *fakeClient, cfg probeConfig) *kafkaProbe {
 	t.Helper()
+	return newTestProbeWithFetcher(t, adm, cli, cfg, func() (string, error) { return "test-cluster-id", nil })
+}
+
+func newTestProbeWithFetcher(t *testing.T, adm *fakeAdmin, cli *fakeClient, cfg probeConfig, fetch techIDFetcher) *kafkaProbe {
+	t.Helper()
 	primaryBroker := "localhost:9092"
 	if len(cfg.Brokers) > 0 {
 		primaryBroker = cfg.Brokers[0]
@@ -658,7 +663,7 @@ func newTestProbe(t *testing.T, adm *fakeAdmin, cli *fakeClient, cfg probeConfig
 		BaseProbe:    newBase(t),
 		cfg:          cfg,
 		moduleLogger: logger.NewModuleLogger(makeLogger(t), "probe.kafka"),
-		entitySrc:    newKafkaEntitySource(primaryBroker),
+		entitySrc:    newKafkaEntitySource(primaryBroker, cfg.InstanceName, fetch, func() string { return "test-host-id" }),
 		newAdmin: func(_ []string, _ *sarama.Config) (sarama.ClusterAdmin, error) {
 			return adm, nil
 		},

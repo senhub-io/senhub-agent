@@ -84,7 +84,38 @@ func NewKafkaProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 	if len(cfg.Brokers) > 0 {
 		primaryBroker = cfg.Brokers[0]
 	}
-	p.entitySrc = newKafkaEntitySource(primaryBroker)
+
+	// Tech-id fetcher: calls the controller broker for metadata which carries
+	// the cluster id. This closure is called at most once (pinned on success).
+	brokers := cfg.Brokers
+	protocolVersion := cfg.ProtocolVersion
+	fetcher := func() (string, error) {
+		sarCfg := sarama.NewConfig()
+		ver, err := sarama.ParseKafkaVersion(protocolVersion)
+		if err != nil {
+			return "", err
+		}
+		sarCfg.Version = ver
+		client, err := sarama.NewClient(brokers, sarCfg)
+		if err != nil {
+			return "", err
+		}
+		defer client.Close() //nolint:errcheck
+		controller, err := client.Controller()
+		if err != nil {
+			return "", err
+		}
+		resp, err := controller.GetMetadata(&sarama.MetadataRequest{})
+		if err != nil {
+			return "", err
+		}
+		if resp.ClusterID != nil {
+			return *resp.ClusterID, nil
+		}
+		return "", nil
+	}
+
+	p.entitySrc = newKafkaEntitySource(primaryBroker, cfg.InstanceName, fetcher, nil)
 
 	return p, nil
 }
@@ -115,14 +146,14 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 	sarCfg, err := p.buildSaramaConfig()
 	if err != nil {
 		p.moduleLogger.Error().Err(err).Msg("kafka: failed to build sarama config")
-		p.entitySrc.setReachable(false, "")
+		p.entitySrc.notifyFailure()
 		return p.upPoint(0, now), nil
 	}
 
 	admin, err := p.newAdmin(p.cfg.Brokers, sarCfg)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Strs("brokers", p.cfg.Brokers).Msg("kafka: cannot connect (admin)")
-		p.entitySrc.setReachable(false, "")
+		p.entitySrc.notifyFailure()
 		return p.upPoint(0, now), nil
 	}
 	defer func() {
@@ -134,7 +165,7 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 	client, err := p.newClient(p.cfg.Brokers, sarCfg)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Strs("brokers", p.cfg.Brokers).Msg("kafka: cannot connect (client)")
-		p.entitySrc.setReachable(false, "")
+		p.entitySrc.notifyFailure()
 		return p.upPoint(0, now), nil
 	}
 	defer func() {
@@ -143,8 +174,8 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 		}
 	}()
 
-	// Broker is reachable; mark the entity source up.
-	p.entitySrc.setReachable(true, "")
+	// Broker is reachable; notify the entity source so it can pin the tech id.
+	p.entitySrc.notifySuccess("")
 
 	var points []data_store.DataPoint
 
@@ -166,7 +197,6 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 	} else {
 		topicPoints, topicPartitions := p.collectTopicMetrics(client, topicMeta, now)
 		points = append(points, topicPoints...)
-
 
 		// Consumer group metrics (requires the partition map)
 		groupPoints := p.collectGroupMetricsWithNames(admin, client, topicPartitions, now)
