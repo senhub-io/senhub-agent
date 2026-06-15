@@ -226,6 +226,12 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// modbus: Modbus TCP register polling for IT/OT convergence —
+	// PLCs, industrial sensors, smart-building controllers. The
+	// protocol is open and the OTel Collector covers it; collecting
+	// standard-protocol devices is universal collection, not a vendor
+	// integration.
+	"modbus": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

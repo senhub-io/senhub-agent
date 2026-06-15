@@ -112,6 +112,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"icmp_check":  {"target", "metric_type"},
 	"tcp_dial":    {"target", "metric_type"},
 	"snmp_poll":   {"instance", "if_index", "metric_type"},
+	// modbus: register.name and register.address identify the register;
+	// host and modbus.unit_id distinguish probe instances.
+	"modbus": {"register.name", "register.address", "host", "modbus.unit_id", "metric_type"},
 	// prometheus_scrape: scraped label sets are arbitrary and cannot be
 	// enumerated here; per-target series stay distinct, finer label
 	// splits collapse on the cache-keyed sinks (same limitation as
