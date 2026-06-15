@@ -1,0 +1,154 @@
+probe_name: "wildfly"
+friendly_name: "WildFly / JBoss"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["datasource"]
+
+# FREE-tier probe collecting metrics from the WildFly / JBoss HTTP
+# Management API. Covers JVM heap, Undertow web-container counters,
+# JTA transaction counters, and per-datasource JDBC pool metrics.
+
+metrics:
+  - name: "senhub.wildfly.up"
+    channel: "wildfly_up"
+    display_name: "WildFly Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the WildFly Management API responded successfully; 0 otherwise"
+    otel:
+      name: senhub.wildfly.up
+      unit: "1"
+      type: gauge
+
+  # JVM memory (OTel semconv: jvm.memory.*)
+
+  - name: "jvm.memory.heap.used"
+    channel: "wildfly_jvm_heap_used"
+    display_name: "WildFly JVM Heap Used"
+    unit: "B"
+    category: "memory"
+    description: "JVM heap memory currently used"
+    otel:
+      name: jvm.memory.heap.used
+      unit: "By"
+      type: gauge
+
+  - name: "jvm.memory.heap.committed"
+    channel: "wildfly_jvm_heap_committed"
+    display_name: "WildFly JVM Heap Committed"
+    unit: "B"
+    category: "memory"
+    description: "JVM heap memory committed to the JVM process"
+    otel:
+      name: jvm.memory.heap.committed
+      unit: "By"
+      type: gauge
+
+  - name: "jvm.memory.heap.max"
+    channel: "wildfly_jvm_heap_max"
+    display_name: "WildFly JVM Heap Max"
+    unit: "B"
+    category: "memory"
+    description: "Maximum JVM heap memory available"
+    otel:
+      name: jvm.memory.heap.max
+      unit: "By"
+      type: gauge
+
+  # Undertow web container counters
+
+  - name: "wildfly.request.count"
+    channel: "wildfly_request_count"
+    display_name: "WildFly Requests"
+    unit: "#"
+    category: "requests"
+    description: "Total number of requests processed by Undertow"
+    otel:
+      name: wildfly.request.count
+      unit: "{request}"
+      type: counter
+
+  - name: "wildfly.error.count"
+    channel: "wildfly_error_count"
+    display_name: "WildFly Errors"
+    unit: "#"
+    category: "requests"
+    description: "Total number of error responses from Undertow"
+    otel:
+      name: wildfly.error.count
+      unit: "{error}"
+      type: counter
+
+  - name: "wildfly.bytes.sent"
+    channel: "wildfly_bytes_sent"
+    display_name: "WildFly Bytes Sent"
+    unit: "B"
+    category: "requests"
+    description: "Total bytes sent by Undertow"
+    otel:
+      name: wildfly.bytes.sent
+      unit: "By"
+      type: counter
+
+  - name: "wildfly.bytes.received"
+    channel: "wildfly_bytes_received"
+    display_name: "WildFly Bytes Received"
+    unit: "B"
+    category: "requests"
+    description: "Total bytes received by Undertow"
+    otel:
+      name: wildfly.bytes.received
+      unit: "By"
+      type: counter
+
+  # JTA transaction counters
+
+  - name: "wildfly.transaction.committed"
+    channel: "wildfly_transaction_committed"
+    display_name: "WildFly Transactions Committed"
+    unit: "#"
+    category: "operations"
+    description: "Total number of committed JTA transactions"
+    otel:
+      name: wildfly.transaction.committed
+      unit: "{transaction}"
+      type: counter
+
+  - name: "wildfly.transaction.rolledback"
+    channel: "wildfly_transaction_rolledback"
+    display_name: "WildFly Transactions Rolled Back"
+    unit: "#"
+    category: "operations"
+    description: "Total number of aborted (rolled back) JTA transactions"
+    otel:
+      name: wildfly.transaction.rolledback
+      unit: "{transaction}"
+      type: counter
+
+  # Per-datasource JDBC pool metrics (multi-instance via datasource label)
+
+  - name: "wildfly.datasource.connections.active"
+    channel: "wildfly_ds_{datasource}_active"
+    display_name: "WildFly DS {datasource} Active Connections"
+    unit: "#"
+    category: "connections"
+    description: "Number of active (in-use) connections in the JDBC datasource pool"
+    otel:
+      name: wildfly.datasource.connections.active
+      unit: "{connection}"
+      type: gauge
+    tag_to_attribute:
+      datasource: wildfly.datasource.name
+
+  - name: "wildfly.datasource.connections.available"
+    channel: "wildfly_ds_{datasource}_available"
+    display_name: "WildFly DS {datasource} Available Connections"
+    unit: "#"
+    category: "connections"
+    description: "Number of available (idle) connections in the JDBC datasource pool"
+    otel:
+      name: wildfly.datasource.connections.available
+      unit: "{connection}"
+      type: gauge
+    tag_to_attribute:
+      datasource: wildfly.datasource.name
