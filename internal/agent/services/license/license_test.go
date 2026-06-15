@@ -32,6 +32,7 @@ func TestFreeTierProbes(t *testing.T) {
 		{"Gateway probe is NOT free tier", "ping_gateway", false},
 		{"Syslog probe IS free tier (#298)", "syslog", true},
 		{"WildFly probe IS free tier", "wildfly", true},
+		{"Kafka probe is free tier", "kafka", true},
 		{"Event probe is NOT free tier", "event", false},
 	}
 
@@ -79,6 +80,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"varnish":           false,
 		"phpfpm":            false,
 		"wildfly":           false,
+		"kafka":             false,
 	}
 
 	for _, probe := range probes {

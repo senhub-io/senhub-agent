@@ -249,6 +249,12 @@ var freeTierProbes = map[string]bool{
 	// The management API is a standard feature of the open-source
 	// WildFly distribution; no license is required to access it.
 	"wildfly": true,
+	// kafka: Kafka broker/topic/consumer-group monitoring via Admin API.
+	// Generic message-bus observability (brokers, partition offsets, lag)
+	// mirrors what the OTel Collector's kafkametricsreceiver gives away
+	// for free; positioning the agent as a drop-in for PRTG users who
+	// monitor Kafka today.
+	"kafka": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
