@@ -27,6 +27,11 @@ type probeConfig struct {
 	Timeout         time.Duration
 	TopicFilter     []string // globs; empty = all non-internal topics
 	GroupFilter     []string // globs; empty = all groups
+	// InstanceName, when non-empty, overrides the tech-reported cluster id as
+	// the service.instance.id for this probe's entity. Useful when multiple
+	// probes monitor the same cluster from different vantage points and the
+	// operator wants an explicit, stable name.
+	InstanceName string
 }
 
 func parseConfig(raw map[string]interface{}) (probeConfig, error) {
@@ -69,6 +74,9 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 	}
 	cfg.TopicFilter = stringSlice(raw["topic_filter"])
 	cfg.GroupFilter = stringSlice(raw["group_filter"])
+	if v, ok := raw["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
 
 	if cfg.SASLMechanism != "" && (cfg.SASLUsername == "" || cfg.SASLPassword == "") {
 		return cfg, fmt.Errorf("kafka: sasl_mechanism %q requires sasl_username and sasl_password", cfg.SASLMechanism)
