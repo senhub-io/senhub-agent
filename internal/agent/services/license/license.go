@@ -226,6 +226,9 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// systemd: host-local unit supervision — watches the init system of
+	// the machine the agent runs on, not a remote service.
+	"systemd": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

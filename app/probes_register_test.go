@@ -35,6 +35,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"snmp_poll",
 		"snmp_trap",
 		"syslog",
+		"systemd",
 		"tcp_dial",
 		"wifi_signal_strength",
 		"windows_eventlog",
