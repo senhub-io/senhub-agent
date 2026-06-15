@@ -1,9 +1,9 @@
 package apache
 
 import (
-	"strconv"
 	"sync"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
@@ -12,7 +12,7 @@ import (
 // mod_status fetch in Collect(). ok=false before the first successful fetch so
 // the detector does not treat an empty initial cache as "server deleted".
 type apacheEntitySource struct {
-	instanceID string
+	instanceID string // stable service.instance.id, computed once at construction
 	host       string
 	port       int64
 	mu         sync.Mutex
@@ -20,20 +20,37 @@ type apacheEntitySource struct {
 	ready      bool
 }
 
-// newApacheEntitySource constructs the source from the resolved host and port
-// extracted from the probe endpoint URL.
-func newApacheEntitySource(addr string, port int) *apacheEntitySource {
+// newApacheEntitySource constructs the source. instanceName comes from the
+// optional "instance_name" config key; when empty the stable host id is used
+// instead. hostID is the resolved agent host identity string (GetHostIdentity().ID
+// called once by the constructor); the empty string is the last-resort fallback.
+func newApacheEntitySource(instanceName, hostID string, host string, port int) *apacheEntitySource {
+	id := resolveInstanceID(instanceName, hostID)
 	return &apacheEntitySource{
-		instanceID: "apache://" + addr + ":" + strconv.FormatInt(int64(port), 10),
-		host:       addr,
+		instanceID: id,
+		host:       host,
 		port:       int64(port),
 	}
 }
 
+// resolveInstanceID builds the stable service.instance.id. Precedence:
+//  1. operator-supplied instance_name (verbatim, unique across instances)
+//  2. "apache@" + stable host id
+//  3. "apache" (last resort when host id is unavailable)
+func resolveInstanceID(instanceName, hostID string) string {
+	if instanceName != "" {
+		return instanceName
+	}
+	if hostID != "" {
+		return "apache@" + hostID
+	}
+	return "apache"
+}
+
 // setReachable updates the cached entity observation. up=true replaces the
-// cache with a live entity; up=false clears it (empty observation with ok=true
-// signals "server gone" — detector emits a delete). version is included in
-// the attributes when non-empty.
+// cache with a live entity plus the monitors relation from the agent; up=false
+// clears it (empty observation with ok=true signals "server gone" — detector
+// emits a delete).
 func (s *apacheEntitySource) setReachable(up bool, version string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -50,13 +67,25 @@ func (s *apacheEntitySource) setReachable(up bool, version string) {
 	if version != "" {
 		attrs["service.version"] = version
 	}
-	s.cache = entity.Observation{
+	targetID := map[string]any{"service.instance.id": s.instanceID}
+	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "service.instance",
-			ID:         map[string]any{"service.instance.id": s.instanceID},
+			ID:         targetID,
 			Attributes: attrs,
 		}},
 	}
+	agentID := agentstate.GetAgentInstanceID()
+	if agentID != "" {
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     "monitors",
+			FromType: "service.instance",
+			FromID:   map[string]any{"service.instance.id": agentID},
+			ToType:   "service.instance",
+			ToID:     targetID,
+		})
+	}
+	s.cache = obs
 	s.ready = true
 }
 
