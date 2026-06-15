@@ -150,6 +150,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	},
 	// hyperv: per-VM series are discriminated by vm name; vm.count by state bucket.
 	"hyperv": {"hyperv.vm.name", "state", "metric_type"},
+	// modbus: register.name and register.address identify the register;
+	// host and modbus.unit_id distinguish probe instances.
+	"modbus": {"register.name", "register.address", "host", "modbus.unit_id", "metric_type"},
 	// prometheus_scrape: scraped label sets are arbitrary and cannot be
 	// enumerated here; per-target series stay distinct, finer label
 	// splits collapse on the cache-keyed sinks (same limitation as

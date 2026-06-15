@@ -134,6 +134,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"winservices":       false,
 		"systemd":           false,
 		"kubernetes":        false,
+		"modbus":            false,
 	}
 
 	for _, probe := range probes {
