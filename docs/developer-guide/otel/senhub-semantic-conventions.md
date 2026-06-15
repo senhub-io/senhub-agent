@@ -1245,6 +1245,29 @@ Aligné sur le receiver otelcol-contrib `apachereceiver`. `senhub.apache.up` est
 | `apache.traffic` | `By` | counter | Total kBytes × 1024 |
 
 Référence receiver contrib : [opentelemetry-collector-contrib/receiver/apachereceiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/apachereceiver).
+### 4.26 haproxy (free, #464)
+
+Aligné sur le receiver otelcol-contrib haproxy quand le nom existe ; une
+série par paire `(proxy, component)` (attributs `haproxy.proxy.name` +
+`haproxy.component`).
+
+| Métrique OTel | Unité | Type | Source CSV |
+|---|---|---|---|
+| `senhub.haproxy.up` | `1` | gauge | joignabilité de l'endpoint stats |
+| `haproxy.sessions.count` | `{session}` | gauge | scur — sessions actives courantes |
+| `haproxy.sessions.total` | `{session}` | counter | stot — total cumulatif depuis reset |
+| `haproxy.bytes.input` | `By` | counter | bin — octets reçus cumulatifs |
+| `haproxy.bytes.output` | `By` | counter | bout — octets envoyés cumulatifs |
+| `haproxy.connections.errors` | `{error}` | counter | econ — erreurs de connexion cumulatives |
+| `haproxy.requests.errors` | `{error}` | counter | ereq — erreurs de requête cumulatives (frontends) |
+| `haproxy.responses.errors` | `{error}` | counter | eresp — erreurs de réponse cumulatives |
+| `haproxy.requests.rate` | `{request}/s` | gauge | req_rate — taux courant (frontends) |
+
+Les métriques cumulatives (`haproxy.sessions.total`, `haproxy.bytes.*`,
+`haproxy.*.errors`) sont de type `counter` (monotone croissant) — ce qui
+produit le suffixe `_total` côté Prometheus et le bon comportement
+monotone en OTLP. Utiliser `rate()` / `increase()` directement sur ces
+séries.
 
 ## 6. Processus d'ajout d'une convention
 
