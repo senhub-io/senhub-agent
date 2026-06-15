@@ -226,6 +226,10 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// nvidia: host-local GPU observability via nvidia-smi; the GPU is part
+	// of the host like cpu/memory/logicaldisk, not a remote monitored
+	// system. Free so GPU-equipped hosts have first-class monitoring.
+	"nvidia": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

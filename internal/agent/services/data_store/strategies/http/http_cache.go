@@ -122,6 +122,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// metric name itself (senhub.exec.<label>); no per-series labels to
 	// discriminate beyond the probe instance.
 	"exec": {"metric_type"},
+	// nvidia: one series per GPU card; gpu.index + gpu.name uniquely
+	// identify a card within the host, gpu.uuid is added for stable joins.
+	"nvidia": {"gpu.index", "gpu.name", "gpu.uuid", "metric_type"},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
