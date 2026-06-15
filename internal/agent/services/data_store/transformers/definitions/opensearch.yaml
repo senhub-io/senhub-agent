@@ -1,0 +1,268 @@
+probe_name: "opensearch"
+friendly_name: "OpenSearch"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["collector", "operation", "thread_pool"]
+
+# FREE-tier OpenSearch monitoring probe. Metrics from
+# /_cluster/health and /_nodes/_local/stats REST endpoints.
+# OpenSearch exposes the same REST API as Elasticsearch; metric names
+# use the opensearch.* namespace to match the target engine.
+
+metrics:
+  - name: "senhub.opensearch.up"
+    channel: "opensearch_up"
+    display_name: "OpenSearch Up"
+    unit: "#"
+    category: "status"
+    description: "1 when the cluster health endpoint is reachable, 0 otherwise"
+    otel:
+      name: senhub.opensearch.up
+      unit: "1"
+      type: gauge
+
+  - name: "opensearch.cluster.health"
+    channel: "opensearch_cluster_health"
+    display_name: "OpenSearch Cluster Health"
+    unit: "#"
+    category: "status"
+    description: "Cluster health status encoded as integer: green=2, yellow=1, red=0"
+    otel:
+      name: opensearch.cluster.health
+      unit: "1"
+      type: gauge
+
+  - name: "opensearch.cluster.nodes"
+    channel: "opensearch_cluster_nodes"
+    display_name: "OpenSearch Cluster Nodes"
+    unit: "#"
+    category: "nodes"
+    description: "Total number of nodes in the cluster"
+    otel:
+      name: opensearch.cluster.nodes
+      unit: "{node}"
+      type: gauge
+
+  - name: "opensearch.cluster.data_nodes"
+    channel: "opensearch_cluster_data_nodes"
+    display_name: "OpenSearch Cluster Data Nodes"
+    unit: "#"
+    category: "nodes"
+    description: "Number of data nodes in the cluster"
+    otel:
+      name: opensearch.cluster.data_nodes
+      unit: "{node}"
+      type: gauge
+
+  - name: "opensearch.cluster.shards.active"
+    channel: "opensearch_shards_active"
+    display_name: "OpenSearch Active Shards"
+    unit: "#"
+    category: "shards"
+    description: "Number of active primary and replica shards"
+    otel:
+      name: opensearch.cluster.shards.active
+      unit: "{shard}"
+      type: gauge
+
+  - name: "opensearch.cluster.shards.unassigned"
+    channel: "opensearch_shards_unassigned"
+    display_name: "OpenSearch Unassigned Shards"
+    unit: "#"
+    category: "shards"
+    description: "Number of shards not assigned to any node"
+    otel:
+      name: opensearch.cluster.shards.unassigned
+      unit: "{shard}"
+      type: gauge
+
+  - name: "opensearch.cluster.shards.relocating"
+    channel: "opensearch_shards_relocating"
+    display_name: "OpenSearch Relocating Shards"
+    unit: "#"
+    category: "shards"
+    description: "Number of shards being relocated between nodes"
+    otel:
+      name: opensearch.cluster.shards.relocating
+      unit: "{shard}"
+      type: gauge
+
+  - name: "opensearch.cluster.pending_tasks"
+    channel: "opensearch_pending_tasks"
+    display_name: "OpenSearch Pending Tasks"
+    unit: "#"
+    category: "tasks"
+    description: "Number of cluster-level changes not yet executed"
+    otel:
+      name: opensearch.cluster.pending_tasks
+      unit: "{task}"
+      type: gauge
+
+  # JVM metrics
+
+  - name: "opensearch.jvm.memory.heap.used"
+    channel: "opensearch_jvm_heap_used"
+    display_name: "OpenSearch JVM Heap Used"
+    unit: "B"
+    category: "jvm"
+    description: "JVM heap memory currently used by the node"
+    otel:
+      name: opensearch.jvm.memory.heap.used
+      unit: "By"
+      type: gauge
+
+  - name: "opensearch.jvm.memory.heap.max"
+    channel: "opensearch_jvm_heap_max"
+    display_name: "OpenSearch JVM Heap Max"
+    unit: "B"
+    category: "jvm"
+    description: "Maximum JVM heap memory available to the node"
+    otel:
+      name: opensearch.jvm.memory.heap.max
+      unit: "By"
+      type: gauge
+
+  - name: "opensearch.jvm.gc.collections.count"
+    channel: "opensearch_gc_{collector}_count"
+    display_name: "OpenSearch GC {collector} Collections"
+    unit: "#"
+    category: "jvm"
+    description: "Number of GC collections for the given collector (young|old)"
+    otel:
+      name: opensearch.jvm.gc.collections.count
+      unit: "{collection}"
+      type: counter
+    tag_to_attribute:
+      collector: jvm.gc.name
+
+  - name: "opensearch.jvm.gc.collections.elapsed"
+    channel: "opensearch_gc_{collector}_time"
+    display_name: "OpenSearch GC {collector} Time"
+    unit: "ms"
+    category: "jvm"
+    description: "Cumulative wall-clock time spent in GC for the given collector"
+    otel:
+      name: opensearch.jvm.gc.collections.elapsed
+      unit: "ms"
+      type: counter
+    tag_to_attribute:
+      collector: jvm.gc.name
+
+  # Indexing / search
+
+  - name: "opensearch.indexing.operations.completed"
+    channel: "opensearch_indexing_{operation}_completed"
+    display_name: "OpenSearch Indexing {operation} Completed"
+    unit: "#"
+    category: "indexing"
+    description: "Cumulative number of indexing operations completed (operation=index)"
+    otel:
+      name: opensearch.indexing.operations.completed
+      unit: "{operation}"
+      type: counter
+    tag_to_attribute:
+      operation: opensearch.indexing.operation
+
+  - name: "opensearch.indexing.operations.time"
+    channel: "opensearch_indexing_{operation}_time"
+    display_name: "OpenSearch Indexing {operation} Time"
+    unit: "ms"
+    category: "indexing"
+    description: "Cumulative time spent in indexing operations"
+    otel:
+      name: opensearch.indexing.operations.time
+      unit: "ms"
+      type: counter
+    tag_to_attribute:
+      operation: opensearch.indexing.operation
+
+  - name: "opensearch.search.operations.completed"
+    channel: "opensearch_search_{operation}_completed"
+    display_name: "OpenSearch Search {operation} Completed"
+    unit: "#"
+    category: "search"
+    description: "Cumulative search operations (operation=query|fetch)"
+    otel:
+      name: opensearch.search.operations.completed
+      unit: "{operation}"
+      type: counter
+    tag_to_attribute:
+      operation: opensearch.search.operation
+
+  - name: "opensearch.search.operations.time"
+    channel: "opensearch_search_{operation}_time"
+    display_name: "OpenSearch Search {operation} Time"
+    unit: "ms"
+    category: "search"
+    description: "Cumulative time spent in search operations"
+    otel:
+      name: opensearch.search.operations.time
+      unit: "ms"
+      type: counter
+    tag_to_attribute:
+      operation: opensearch.search.operation
+
+  # Process / OS
+
+  - name: "opensearch.process.cpu.usage"
+    channel: "opensearch_process_cpu"
+    display_name: "OpenSearch Process CPU Usage"
+    unit: "%"
+    category: "process"
+    description: "CPU utilisation of the OpenSearch process as a ratio [0,1]"
+    otel:
+      name: opensearch.process.cpu.usage
+      unit: "1"
+      type: gauge
+
+  - name: "opensearch.os.memory.used"
+    channel: "opensearch_os_memory_used"
+    display_name: "OpenSearch OS Memory Used"
+    unit: "B"
+    category: "os"
+    description: "Physical memory used by the OS on the node"
+    otel:
+      name: opensearch.os.memory.used
+      unit: "By"
+      type: gauge
+
+  # Thread pools
+
+  - name: "opensearch.thread_pool.tasks.queued"
+    channel: "opensearch_tp_{thread_pool}_queued"
+    display_name: "OpenSearch Thread Pool {thread_pool} Queued"
+    unit: "#"
+    category: "thread_pool"
+    description: "Number of tasks currently queued in the thread pool"
+    otel:
+      name: opensearch.thread_pool.tasks.queued
+      unit: "{task}"
+      type: gauge
+    tag_to_attribute:
+      thread_pool: opensearch.thread_pool.name
+
+  - name: "opensearch.thread_pool.tasks.completed"
+    channel: "opensearch_tp_{thread_pool}_completed"
+    display_name: "OpenSearch Thread Pool {thread_pool} Completed"
+    unit: "#"
+    category: "thread_pool"
+    description: "Cumulative tasks completed by the thread pool"
+    otel:
+      name: opensearch.thread_pool.tasks.completed
+      unit: "{task}"
+      type: counter
+    tag_to_attribute:
+      thread_pool: opensearch.thread_pool.name
+
+  - name: "opensearch.thread_pool.tasks.rejected"
+    channel: "opensearch_tp_{thread_pool}_rejected"
+    display_name: "OpenSearch Thread Pool {thread_pool} Rejected"
+    unit: "#"
+    category: "thread_pool"
+    description: "Cumulative tasks rejected by the thread pool (queue full)"
+    otel:
+      name: opensearch.thread_pool.tasks.rejected
+      unit: "{task}"
+      type: counter
+    tag_to_attribute:
+      thread_pool: opensearch.thread_pool.name

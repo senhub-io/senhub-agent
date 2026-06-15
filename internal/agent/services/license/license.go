@@ -321,6 +321,11 @@ var freeTierProbes = map[string]bool{
 	// ships with its own free distribution (same open-core wedge reasoning
 	// as snmp_poll and prometheus_scrape).
 	"elasticsearch": true,
+	// opensearch: OpenSearch cluster and node metrics via the REST JSON
+	// API (same surface as Elasticsearch) — universal observability for
+	// a database that ships with its own free distribution (same
+	// open-core wedge reasoning as snmp_poll and prometheus_scrape).
+	"opensearch": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
