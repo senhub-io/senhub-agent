@@ -258,6 +258,7 @@ func TestProbeRegistry(t *testing.T) {
 		"proxmox",
 		"smart",
 		"ipmi",
+		"nvidia",
 	}
 
 	for _, probeName := range expectedProbes {

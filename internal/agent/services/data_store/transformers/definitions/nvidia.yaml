@@ -1,0 +1,178 @@
+probe_name: "nvidia"
+friendly_name: "NVIDIA GPU"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["gpu.index", "gpu.name"]
+
+# Free host-local probe: NVIDIA GPU observability via nvidia-smi. One set
+# of metrics per detected GPU, discriminated by gpu.index + gpu.name.
+# When nvidia-smi is absent or fails, only senhub.nvidia.up=0 is emitted.
+# OTel metric names follow the draft GPU semantic conventions; no
+# otelcol-contrib receiver covers NVIDIA GPUs, so senhub.nvidia.* is used
+# for the probe health metric.
+
+metrics:
+  - name: "senhub.nvidia.up"
+    channel: "nvidia_up_{gpu.index}"
+    display_name: "GPU {gpu.index} ({gpu.name}) Availability"
+    unit: "#"
+    category: "availability"
+    description: "1 when nvidia-smi returned data for this GPU, 0 when nvidia-smi is absent or failed"
+    otel:
+      name: senhub.nvidia.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      gpu.index: gpu.index
+      gpu.name: gpu.name
+      gpu.uuid: gpu.uuid
+
+  - name: "gpu.utilization"
+    channel: "gpu_utilization_{gpu.index}"
+    display_name: "GPU {gpu.index} ({gpu.name}) Utilization"
+    unit: "%"
+    category: "utilization"
+    description: "GPU core utilization ratio (0–1); ratio of time the GPU was busy over the last sample period"
+    otel:
+      name: gpu.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      gpu.index: gpu.index
+      gpu.name: gpu.name
+      gpu.uuid: gpu.uuid
+
+  - name: "gpu.memory.used"
+    channel: "gpu_memory_used_{gpu.index}"
+    display_name: "GPU {gpu.index} ({gpu.name}) Memory Used"
+    unit: "B"
+    category: "memory"
+    description: "GPU framebuffer memory currently in use, in bytes"
+    otel:
+      name: gpu.memory.used
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      gpu.index: gpu.index
+      gpu.name: gpu.name
+      gpu.uuid: gpu.uuid
+
+  - name: "gpu.memory.total"
+    channel: "gpu_memory_total_{gpu.index}"
+    display_name: "GPU {gpu.index} ({gpu.name}) Memory Total"
+    unit: "B"
+    category: "memory"
+    description: "Total GPU framebuffer memory capacity, in bytes"
+    otel:
+      name: gpu.memory.total
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      gpu.index: gpu.index
+      gpu.name: gpu.name
+      gpu.uuid: gpu.uuid
+
+  - name: "gpu.memory.utilization"
+    channel: "gpu_memory_utilization_{gpu.index}"
+    display_name: "GPU {gpu.index} ({gpu.name}) Memory Utilization"
+    unit: "%"
+    category: "memory"
+    description: "GPU framebuffer memory utilization ratio (0–1); fraction of total framebuffer in use"
+    otel:
+      name: gpu.memory.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      gpu.index: gpu.index
+      gpu.name: gpu.name
+      gpu.uuid: gpu.uuid
+
+  - name: "gpu.temperature"
+    channel: "gpu_temperature_{gpu.index}"
+    display_name: "GPU {gpu.index} ({gpu.name}) Temperature"
+    unit: "°C"
+    category: "temperature"
+    description: "GPU die temperature in degrees Celsius"
+    otel:
+      name: gpu.temperature
+      unit: "Cel"
+      type: gauge
+    tag_to_attribute:
+      gpu.index: gpu.index
+      gpu.name: gpu.name
+      gpu.uuid: gpu.uuid
+
+  - name: "gpu.power.usage"
+    channel: "gpu_power_usage_{gpu.index}"
+    display_name: "GPU {gpu.index} ({gpu.name}) Power Draw"
+    unit: "W"
+    category: "power"
+    description: "Current GPU power draw in watts (not emitted when nvidia-smi reports N/A)"
+    otel:
+      name: gpu.power.usage
+      unit: "W"
+      type: gauge
+    tag_to_attribute:
+      gpu.index: gpu.index
+      gpu.name: gpu.name
+      gpu.uuid: gpu.uuid
+
+  - name: "gpu.power.limit"
+    channel: "gpu_power_limit_{gpu.index}"
+    display_name: "GPU {gpu.index} ({gpu.name}) Power Limit"
+    unit: "W"
+    category: "power"
+    description: "GPU enforced power limit in watts (not emitted when nvidia-smi reports N/A)"
+    otel:
+      name: gpu.power.limit
+      unit: "W"
+      type: gauge
+    tag_to_attribute:
+      gpu.index: gpu.index
+      gpu.name: gpu.name
+      gpu.uuid: gpu.uuid
+
+  - name: "gpu.encoder.utilization"
+    channel: "gpu_encoder_utilization_{gpu.index}"
+    display_name: "GPU {gpu.index} ({gpu.name}) Encoder Utilization"
+    unit: "%"
+    category: "utilization"
+    description: "GPU hardware video encoder utilization ratio (0–1)"
+    otel:
+      name: gpu.encoder.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      gpu.index: gpu.index
+      gpu.name: gpu.name
+      gpu.uuid: gpu.uuid
+
+  - name: "gpu.decoder.utilization"
+    channel: "gpu_decoder_utilization_{gpu.index}"
+    display_name: "GPU {gpu.index} ({gpu.name}) Decoder Utilization"
+    unit: "%"
+    category: "utilization"
+    description: "GPU hardware video decoder utilization ratio (0–1)"
+    otel:
+      name: gpu.decoder.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      gpu.index: gpu.index
+      gpu.name: gpu.name
+      gpu.uuid: gpu.uuid
+
+  - name: "gpu.fan.speed"
+    channel: "gpu_fan_speed_{gpu.index}"
+    display_name: "GPU {gpu.index} ({gpu.name}) Fan Speed"
+    unit: "%"
+    category: "cooling"
+    description: "GPU fan speed ratio (0–1); 0 when fan speed is not available"
+    otel:
+      name: gpu.fan.speed
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      gpu.index: gpu.index
+      gpu.name: gpu.name
+      gpu.uuid: gpu.uuid
