@@ -202,6 +202,7 @@ func (v *JWTValidator) IsInGracePeriod(license *License) bool {
 // integration.
 var freeTierProbes = map[string]bool{
 	"apache":           true,
+	"activemq":         true,
 	"cpu":              true,
 	"memory":           true,
 	"logicaldisk":      true,

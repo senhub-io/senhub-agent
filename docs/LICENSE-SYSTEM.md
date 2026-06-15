@@ -68,6 +68,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **rabbitmq** - RabbitMQ broker health and queue depth via the built-in HTTP Management API (queue depth, message counters, per-node resource metrics)
 - **nats** - NATS Server monitoring via the HTTP management API (/varz connections/subscriptions/messages/bytes/slow-consumers, /routez cluster routes, /jsz JetStream streams/consumers/messages/bytes). No external dependencies.
 - **pulsar** - Apache Pulsar broker monitoring via Admin REST API and the Prometheus /metrics endpoint (broker-level health, throughput, storage, backlog — generic message-bus observability, not a paid vendor integration)
+- **activemq** - Apache ActiveMQ broker monitoring via Jolokia HTTP REST: broker-level resource usage (memory, store, temp) and per-destination (queue/topic) message throughput counters.
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:

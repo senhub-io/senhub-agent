@@ -17,6 +17,7 @@ func TestFreeTierProbes(t *testing.T) {
 		probeName string
 		expected  bool
 	}{
+		{"ActiveMQ probe is free tier", "activemq", true},
 		{"CPU probe is free tier", "cpu", true},
 		{"Memory probe is free tier", "memory", true},
 		{"LogicalDisk probe is free tier", "logicaldisk", true},
@@ -61,6 +62,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 	// Check all expected probes are present
 	expectedProbes := map[string]bool{
 		"apache":            false,
+		"activemq":          false,
 		"cpu":               false,
 		"memory":            false,
 		"logicaldisk":       false,
