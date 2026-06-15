@@ -38,8 +38,12 @@ consul_rpc_request 42
 consul_dns_domain_query_count 100
 `
 
-// agentSelfFixture represents a Consul leader node.
+// agentSelfFixture represents a Consul leader node with a stable NodeID.
 const agentSelfFixture = `{
+  "Config": {
+    "NodeID": "aaaabbbb-cccc-dddd-eeee-ffffffffffff",
+    "Version": "1.17.0"
+  },
   "Stats": {
     "consul": {
       "leader": "true"
@@ -47,8 +51,12 @@ const agentSelfFixture = `{
   }
 }`
 
-// agentSelfNonLeaderFixture represents a non-leader node.
+// agentSelfNonLeaderFixture represents a non-leader node with a stable NodeID.
 const agentSelfNonLeaderFixture = `{
+  "Config": {
+    "NodeID": "11112222-3333-4444-5555-666677778888",
+    "Version": "1.17.0"
+  },
   "Stats": {
     "consul": {
       "leader": "false"
