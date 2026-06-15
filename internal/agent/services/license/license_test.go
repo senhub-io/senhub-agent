@@ -48,6 +48,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 	probes := GetFreeTierProbes()
 
 	// Check we have exactly 18 free tier probes
+	// Check we have exactly 11 free tier probes
 	if len(probes) != 18 {
 		t.Errorf("GetFreeTierProbes() returned %d probes, want 18", len(probes))
 	}
@@ -74,6 +75,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"syslog":            false,
 		"nginx":             false,
 		"haproxy":           false,
+		"varnish":           false,
 	}
 
 	for _, probe := range probes {
