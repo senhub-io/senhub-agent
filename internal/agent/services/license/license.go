@@ -226,6 +226,11 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// unifi: Ubiquiti UniFi Controller monitoring via stdlib REST (cookie
+	// session auth). Free as the PRTG-migration wedge for UniFi estates —
+	// PRTG's UniFi sensors are widely deployed and this probe covers the
+	// same signal at zero cost for OSS users.
+	"unifi": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
