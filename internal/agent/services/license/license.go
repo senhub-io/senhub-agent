@@ -259,6 +259,10 @@ var freeTierProbes = map[string]bool{
 	// Management API; the same open-core rationale as snmp_poll/http_check —
 	// basic queue depth and broker health should not require a licence.
 	"rabbitmq": true,
+	// nats: NATS Server monitoring via the HTTP management API (/varz,
+	// /routez, /jsz). No external deps. Part of the open-core collection
+	// wedge alongside prometheus_scrape and otlp_receiver.
+	"nats": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier
