@@ -272,7 +272,7 @@ func TestHTTPSyncStrategy_AddDataPoints(t *testing.T) {
 	if cpuMetric == nil {
 		t.Error("Expected cpu.usage_percent metric from host probe to be cached")
 	} else {
-		if cpuMetric.Value != float32(75.5) {
+		if cpuMetric.Value != float64(75.5) {
 			t.Errorf("Expected cached value 75.5, got %v", cpuMetric.Value)
 		}
 		if cpuMetric.ProbeName != "host" {
@@ -484,7 +484,7 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 			name: "Valid float32 value",
 			key:  "memory_used_percent",
 			metric: CachedMetric{
-				Value:      float32(30.0),
+				Value:      float64(30.0),
 				Unit:       "%",
 				MetricName: "memory_used_percent",
 				ProbeName:  "memory",
@@ -700,7 +700,7 @@ func TestHTTPSyncStrategy_PRTGMetricsGET(t *testing.T) {
 		{
 			Name:      "cpu_usage_total",
 			Timestamp: time.Now(),
-			Value:     float32(75.5),
+			Value:     float64(75.5),
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "cpu"},
 			},
@@ -708,7 +708,7 @@ func TestHTTPSyncStrategy_PRTGMetricsGET(t *testing.T) {
 		{
 			Name:      "memory_used_percent",
 			Timestamp: time.Now(),
-			Value:     float32(82.3),
+			Value:     float64(82.3),
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "memory"},
 			},

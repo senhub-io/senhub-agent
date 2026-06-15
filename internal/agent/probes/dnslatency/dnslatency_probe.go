@@ -191,7 +191,7 @@ func (p *DNSLatencyProbe) buildDatapoints(res lookupResult, ts time.Time) []data
 		{Key: "resolver", Value: res.resolver},
 		{Key: "metric_type", Value: "availability"},
 	}
-	up := float32(0)
+	up := float64(0)
 	if res.up {
 		up = 1
 	}
@@ -207,8 +207,8 @@ func (p *DNSLatencyProbe) buildDatapoints(res lookupResult, ts time.Time) []data
 	}
 	if res.up {
 		points = append(points,
-			data_store.DataPoint{Name: "senhub.dns.lookup.duration", Value: float32(res.duration.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "senhub.dns.answers", Value: float32(res.answers), Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.dns.lookup.duration", Value: res.duration.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.dns.answers", Value: float64(res.answers), Timestamp: ts, Tags: baseTags},
 		)
 	}
 	return points
