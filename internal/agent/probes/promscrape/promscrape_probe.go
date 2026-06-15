@@ -221,7 +221,7 @@ func (p *PromScrapeProbe) buildDatapoints(res scrapeResult, ts time.Time) []data
 		{Key: "metric_type", Value: "scrape"},
 	}
 
-	up := float32(1)
+	up := float64(1)
 	if res.err != nil {
 		up = 0
 		p.moduleLogger.Warn().
@@ -235,9 +235,9 @@ func (p *PromScrapeProbe) buildDatapoints(res scrapeResult, ts time.Time) []data
 	}
 	if res.err == nil {
 		points = append(points,
-			data_store.DataPoint{Name: "senhub.promscrape.scrape.duration", Value: float32(res.duration.Seconds() * 1000), Timestamp: ts, Tags: selfTags},
-			data_store.DataPoint{Name: "senhub.promscrape.samples", Value: float32(len(res.samples)), Timestamp: ts, Tags: selfTags},
-			data_store.DataPoint{Name: "senhub.promscrape.dropped", Value: float32(res.dropped), Timestamp: ts, Tags: selfTags},
+			data_store.DataPoint{Name: "senhub.promscrape.scrape.duration", Value: res.duration.Seconds() * 1000, Timestamp: ts, Tags: selfTags},
+			data_store.DataPoint{Name: "senhub.promscrape.samples", Value: float64(len(res.samples)), Timestamp: ts, Tags: selfTags},
+			data_store.DataPoint{Name: "senhub.promscrape.dropped", Value: float64(res.dropped), Timestamp: ts, Tags: selfTags},
 		)
 	}
 
@@ -256,7 +256,7 @@ func (p *PromScrapeProbe) buildDatapoints(res scrapeResult, ts time.Time) []data
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      s.name,
-			Value:     float32(s.value),
+			Value:     s.value,
 			Timestamp: ts,
 			Tags:      t,
 		})
