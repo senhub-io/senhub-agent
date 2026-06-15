@@ -67,6 +67,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"syslog",
 		"tcp_dial",
 		"varnish",
+		"unifi",
 		"wifi_signal_strength",
 		"wildfly",
 		"windows_eventlog",

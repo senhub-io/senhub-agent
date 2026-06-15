@@ -261,6 +261,7 @@ func TestProbeRegistry(t *testing.T) {
 		"nvidia",
 		"oracle",
 		"process",
+		"unifi",
 	}
 
 	for _, probeName := range expectedProbes {

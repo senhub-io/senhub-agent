@@ -92,6 +92,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **nvidia** - NVIDIA GPU monitoring via nvidia-smi (utilization, memory, temperature, power, encoder/decoder, fan speed). Host-local: the GPU is part of the machine, like cpu/memory/logicaldisk.
 - **oracle** - Oracle Database monitoring via go-ora (pure Go, no OCI client). Parity with the community oracledb_exporter: up, sessions, SGA/PGA, buffer cache hit ratio, tablespace usage, wait classes, enqueue deadlocks. The generic instance health/capacity surface is free collection; deep Oracle (RAC, Data Guard, ASM, per-SQL) stays paid.
 - **process** - Local process table monitoring (CPU, memory, threads, file descriptors, uptime per process). Host-local: the probe reads from the local OS, not a remote system. Equivalent of PRTG's "Top Processes" sensor at zero cost.
+- **unifi** - Ubiquiti UniFi Controller monitoring (stdlib REST, cookie session auth): device inventory, per-device CPU/memory, AP client counts and satisfaction scores, WAN throughput, connected-client counts
 
 ### Pro Tier (License Required)
 Specific probes authorized by entries in the customer JWT `authorized_probes` array:
