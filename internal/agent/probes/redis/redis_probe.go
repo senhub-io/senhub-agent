@@ -15,7 +15,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -37,7 +36,7 @@ type redisProbe struct {
 	cfg          probeConfig
 	instance     string
 	moduleLogger *logger.ModuleLogger
-	entityObs    entityObserver
+	entityObs    *entityObserver
 
 	unregisterEntitySource func()
 
@@ -60,6 +59,7 @@ func NewRedisProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 		cfg:          cfg,
 		instance:     instance,
 		moduleLogger: moduleLogger,
+		entityObs:    newEntityObserver(cfg, instance),
 		dialFn:       net.DialTimeout,
 	}
 	probe.SetProbeType(ProbeType)
@@ -70,7 +70,7 @@ func (p *redisProbe) ShouldStart() bool          { return true }
 func (p *redisProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
 func (p *redisProbe) OnStart(_ chan struct{}) error {
-	p.unregisterEntitySource = entity.RegisterSource(&p.entityObs)
+	p.unregisterEntitySource = entity.RegisterSource(p.entityObs)
 	p.moduleLogger.Info().Str("instance", p.instance).Msg("Redis probe started")
 	return nil
 }
@@ -179,7 +179,7 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	points := p.buildDatapoints(info, cmdStats, clusterInfo, sentinelInfo, now, 1)
-	p.entityObs.update(p.cfg, p.instance, info)
+	p.entityObs.update(p.cfg, info)
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
@@ -717,45 +717,4 @@ func parseFloat(s string) (float32, bool) {
 		return 0, false
 	}
 	return float32(v), true
-}
-
-// entityObserver implements entity.Source for the redis probe. It
-// holds the last known db entity and updates it after each successful
-// collection cycle.
-type entityObserver struct {
-	mu  sync.Mutex
-	obs entity.Observation
-	ok  bool
-}
-
-func (e *entityObserver) Observe() (entity.Observation, bool) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.obs, e.ok
-}
-
-func (e *entityObserver) update(cfg probeConfig, instance string, info map[string]string) {
-	attrs := map[string]any{
-		"db.system.name": "redis",
-		"server.address": cfg.Host,
-		"server.port":    int64(cfg.Port),
-	}
-	if ver := info["redis_version"]; ver != "" {
-		attrs["db.version"] = ver
-	}
-
-	obs := entity.Observation{
-		Entities: []entity.Entity{
-			{
-				Type:       "db",
-				ID:         map[string]any{"db.instance.id": instance},
-				Attributes: attrs,
-			},
-		},
-	}
-
-	e.mu.Lock()
-	e.obs = obs
-	e.ok = true
-	e.mu.Unlock()
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -164,42 +165,42 @@ func TestParseKeyspaceLine(t *testing.T) {
 // TestBuildDatapoints_Full.
 func fullInfoMap() map[string]string {
 	return map[string]string{
-		"redis_version":                    "7.0.1",
-		"uptime_in_seconds":                "12345",
-		"connected_clients":                "10",
-		"blocked_clients":                  "2",
-		"total_connections_received":       "5000",
-		"rejected_connections":             "3",
-		"used_memory":                      "1048576",
-		"used_memory_rss":                  "2097152",
-		"used_memory_peak":                 "3145728",
-		"mem_fragmentation_ratio":          "1.5",
-		"used_memory_lua":                  "37888",
-		"total_commands_processed":         "100000",
-		"total_net_input_bytes":            "204800",
-		"total_net_output_bytes":           "409600",
-		"instantaneous_ops_per_sec":        "500",
-		"keyspace_hits":                    "900",
-		"keyspace_misses":                  "100",
-		"evicted_keys":                     "42",
-		"expired_keys":                     "17",
-		"db0":                              "keys=100,expires=5,avg_ttl=3000",
-		"db1":                              "keys=200,expires=10,avg_ttl=1000",
-		"role":                             "master",
-		"master_repl_offset":               "99999",
-		"connected_slaves":                 "1",
-		"repl_backlog_first_byte_offset":   "99999",
-		"rdb_changes_since_last_save":      "7",
-		"aof_enabled":                      "0",
-		"rdb_last_bgsave_time_sec":         "2",
-		"rdb_last_save_time":               "1700000000",
-		"used_cpu_sys":                     "1.5",
-		"used_cpu_user":                    "0.8",
-		"used_cpu_sys_children":            "0.1",
-		"used_cpu_user_children":           "0.05",
-		"client_recent_max_input_buffer":   "32768",
-		"client_recent_max_output_buffer":  "65536",
-		"latest_fork_usec":                 "350",
+		"redis_version":                   "7.0.1",
+		"uptime_in_seconds":               "12345",
+		"connected_clients":               "10",
+		"blocked_clients":                 "2",
+		"total_connections_received":      "5000",
+		"rejected_connections":            "3",
+		"used_memory":                     "1048576",
+		"used_memory_rss":                 "2097152",
+		"used_memory_peak":                "3145728",
+		"mem_fragmentation_ratio":         "1.5",
+		"used_memory_lua":                 "37888",
+		"total_commands_processed":        "100000",
+		"total_net_input_bytes":           "204800",
+		"total_net_output_bytes":          "409600",
+		"instantaneous_ops_per_sec":       "500",
+		"keyspace_hits":                   "900",
+		"keyspace_misses":                 "100",
+		"evicted_keys":                    "42",
+		"expired_keys":                    "17",
+		"db0":                             "keys=100,expires=5,avg_ttl=3000",
+		"db1":                             "keys=200,expires=10,avg_ttl=1000",
+		"role":                            "master",
+		"master_repl_offset":              "99999",
+		"connected_slaves":                "1",
+		"repl_backlog_first_byte_offset":  "99999",
+		"rdb_changes_since_last_save":     "7",
+		"aof_enabled":                     "0",
+		"rdb_last_bgsave_time_sec":        "2",
+		"rdb_last_save_time":              "1700000000",
+		"used_cpu_sys":                    "1.5",
+		"used_cpu_user":                   "0.8",
+		"used_cpu_sys_children":           "0.1",
+		"used_cpu_user_children":          "0.05",
+		"client_recent_max_input_buffer":  "32768",
+		"client_recent_max_output_buffer": "65536",
+		"latest_fork_usec":                "350",
 	}
 }
 
@@ -351,11 +352,11 @@ func TestBuildDatapoints_CpuTime(t *testing.T) {
 	p := newTestProbe(t)
 	now := time.Now()
 	info := map[string]string{
-		"used_cpu_sys":          "1.5",
-		"used_cpu_user":         "0.8",
-		"used_cpu_sys_children": "0.1",
+		"used_cpu_sys":           "1.5",
+		"used_cpu_user":          "0.8",
+		"used_cpu_sys_children":  "0.1",
 		"used_cpu_user_children": "0.05",
-		"role":                  "master",
+		"role":                   "master",
 	}
 	pts := p.buildDatapoints(info, nil, nil, nil, now, 1)
 	idx := indexDatapoints(pts)
@@ -631,10 +632,10 @@ func TestBuildDatapoints_SentinelMetrics(t *testing.T) {
 	// Two masters: master0 status=ok (2 slaves, 3 sentinels),
 	// master1 status=ok (1 slave, 3 sentinels).
 	sentinelInfo := map[string]string{
-		"sentinel_masters":          "2",
-		"sentinel_running_scripts":  "0",
-		"master0":                   "name=mymaster,status=ok,address=127.0.0.1:6379,slaves=2,sentinels=3",
-		"master1":                   "name=other,status=ok,address=127.0.0.1:6380,slaves=1,sentinels=3",
+		"sentinel_masters":         "2",
+		"sentinel_running_scripts": "0",
+		"master0":                  "name=mymaster,status=ok,address=127.0.0.1:6379,slaves=2,sentinels=3",
+		"master1":                  "name=other,status=ok,address=127.0.0.1:6380,slaves=1,sentinels=3",
 	}
 
 	pts := p.buildDatapoints(map[string]string{"role": "master"}, nil, nil, sentinelInfo, now, 1)
@@ -909,15 +910,21 @@ func TestSeam_ConnectError(t *testing.T) {
 	}
 }
 
-// TestEntityObserver_Update verifies the entityObserver builds the
-// correct entity shape after a successful collection.
-func TestEntityObserver_Update(t *testing.T) {
+// TestEntityObserver_HostPortFallback verifies that when no instance_name is
+// set, db.instance.id is pinned to host:port at construction and the entity
+// is emitted immediately after the first update (ok=true).
+func TestEntityObserver_HostPortFallback(t *testing.T) {
 	cfg := probeConfig{Host: "10.0.0.1", Port: 6379}
-	instance := "10.0.0.1:6379"
-	info := map[string]string{"redis_version": "7.2.0"}
+	hostPort := "10.0.0.1:6379"
+	obs := newEntityObserver(cfg, hostPort)
 
-	var obs entityObserver
-	obs.update(cfg, instance, info)
+	// Before first update: ok=false.
+	if _, ok := obs.Observe(); ok {
+		t.Fatal("Observe ok=true before first update, want false")
+	}
+
+	info := map[string]string{"redis_version": "7.2.0"}
+	obs.update(cfg, info)
 
 	got, ok := obs.Observe()
 	if !ok {
@@ -930,13 +937,121 @@ func TestEntityObserver_Update(t *testing.T) {
 	if e.Type != "db" {
 		t.Errorf("entity type = %q, want db", e.Type)
 	}
-	if e.ID["db.instance.id"] != instance {
-		t.Errorf("db.instance.id = %v, want %s", e.ID["db.instance.id"], instance)
+	if e.ID["db.instance.id"] != hostPort {
+		t.Errorf("db.instance.id = %v, want %s", e.ID["db.instance.id"], hostPort)
 	}
 	if e.Attributes["db.system.name"] != "redis" {
 		t.Errorf("db.system.name = %v, want redis", e.Attributes["db.system.name"])
 	}
+	if e.Attributes["server.address"] != cfg.Host {
+		t.Errorf("server.address = %v, want %s", e.Attributes["server.address"], cfg.Host)
+	}
 	if e.Attributes["db.version"] != "7.2.0" {
 		t.Errorf("db.version = %v, want 7.2.0", e.Attributes["db.version"])
+	}
+}
+
+// TestEntityObserver_InstanceNameOverride verifies that when instance_name is
+// set in config, it is used verbatim as db.instance.id instead of host:port.
+func TestEntityObserver_InstanceNameOverride(t *testing.T) {
+	cfg := probeConfig{Host: "10.0.0.1", Port: 6379, InstanceName: "prod-redis-primary"}
+	hostPort := "10.0.0.1:6379"
+	obs := newEntityObserver(cfg, hostPort)
+	obs.update(cfg, map[string]string{})
+
+	got, ok := obs.Observe()
+	if !ok {
+		t.Fatal("Observe ok=false after update")
+	}
+	if len(got.Entities) != 1 {
+		t.Fatalf("expected 1 entity, got %d", len(got.Entities))
+	}
+	e := got.Entities[0]
+	if e.ID["db.instance.id"] != "prod-redis-primary" {
+		t.Errorf("db.instance.id = %v, want prod-redis-primary", e.ID["db.instance.id"])
+	}
+	// server.address must still be present as a descriptive attribute.
+	if e.Attributes["server.address"] != cfg.Host {
+		t.Errorf("server.address = %v, want %s", e.Attributes["server.address"], cfg.Host)
+	}
+}
+
+// TestEntityObserver_IDImmutable verifies that calling update multiple times
+// does NOT change the pinned db.instance.id.
+func TestEntityObserver_IDImmutable(t *testing.T) {
+	cfg := probeConfig{Host: "10.0.0.1", Port: 6379}
+	hostPort := "10.0.0.1:6379"
+	obs := newEntityObserver(cfg, hostPort)
+
+	obs.update(cfg, map[string]string{"redis_version": "7.0.0"})
+	first, _ := obs.Observe()
+	idFirst := first.Entities[0].ID["db.instance.id"]
+
+	obs.update(cfg, map[string]string{"redis_version": "7.2.0"})
+	second, _ := obs.Observe()
+	idSecond := second.Entities[0].ID["db.instance.id"]
+
+	if idFirst != idSecond {
+		t.Errorf("db.instance.id changed between updates: %v → %v", idFirst, idSecond)
+	}
+}
+
+// TestEntityObserver_NotOKBeforeFirstUpdate verifies that Observe returns
+// ok=false before any update call (the db entity must not be emitted until
+// the probe has successfully collected at least once).
+func TestEntityObserver_NotOKBeforeFirstUpdate(t *testing.T) {
+	cfg := probeConfig{Host: "127.0.0.1", Port: 6379}
+	obs := newEntityObserver(cfg, "127.0.0.1:6379")
+	if _, ok := obs.Observe(); ok {
+		t.Error("Observe should return ok=false before the first update")
+	}
+}
+
+// TestEntityObserver_MonitorsEdgePresent verifies that when agentstate carries
+// a non-empty agent instance id, the Observation contains a "monitors" relation
+// from the service.instance to the db entity.
+func TestEntityObserver_MonitorsEdgePresent(t *testing.T) {
+	agentstate.SetAgentInstanceID("test-agent-id")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	cfg := probeConfig{Host: "10.0.0.1", Port: 6379}
+	hostPort := "10.0.0.1:6379"
+	obs := newEntityObserver(cfg, hostPort)
+	obs.update(cfg, map[string]string{})
+
+	got, _ := obs.Observe()
+	if len(got.Relations) != 1 {
+		t.Fatalf("expected 1 relation, got %d", len(got.Relations))
+	}
+	rel := got.Relations[0]
+	if rel.Type != "monitors" {
+		t.Errorf("relation type = %q, want monitors", rel.Type)
+	}
+	if rel.FromType != "service.instance" {
+		t.Errorf("FromType = %q, want service.instance", rel.FromType)
+	}
+	if rel.FromID["service.instance.id"] != "test-agent-id" {
+		t.Errorf("FromID.service.instance.id = %v, want test-agent-id", rel.FromID["service.instance.id"])
+	}
+	if rel.ToType != "db" {
+		t.Errorf("ToType = %q, want db", rel.ToType)
+	}
+	if rel.ToID["db.instance.id"] != hostPort {
+		t.Errorf("ToID.db.instance.id = %v, want %s", rel.ToID["db.instance.id"], hostPort)
+	}
+}
+
+// TestEntityObserver_MonitorsEdgeAbsentWhenNoAgentID verifies that when
+// agentstate returns an empty agent id, no "monitors" relation is emitted.
+func TestEntityObserver_MonitorsEdgeAbsentWhenNoAgentID(t *testing.T) {
+	agentstate.SetAgentInstanceID("")
+
+	cfg := probeConfig{Host: "10.0.0.1", Port: 6379}
+	obs := newEntityObserver(cfg, "10.0.0.1:6379")
+	obs.update(cfg, map[string]string{})
+
+	got, _ := obs.Observe()
+	if len(got.Relations) != 0 {
+		t.Errorf("expected no relations when agentID empty, got %d", len(got.Relations))
 	}
 }

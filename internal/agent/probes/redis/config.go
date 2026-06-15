@@ -6,12 +6,13 @@ import (
 )
 
 type probeConfig struct {
-	Host     string
-	Port     int
-	Password string
-	TLS      bool
-	Timeout  time.Duration
-	Interval time.Duration
+	Host         string
+	Port         int
+	Password     string
+	TLS          bool
+	Timeout      time.Duration
+	Interval     time.Duration
+	InstanceName string
 }
 
 func parseConfig(raw map[string]interface{}) (probeConfig, error) {
@@ -42,6 +43,9 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 	}
 	if v, ok := raw["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
+	}
+	if v, ok := raw["instance_name"].(string); ok {
+		cfg.InstanceName = v
 	}
 	return cfg, nil
 }
