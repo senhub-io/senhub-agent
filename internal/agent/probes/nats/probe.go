@@ -4,7 +4,7 @@
 //
 // Monitored endpoints:
 //   - /varz  — connections, subscriptions, messages and bytes in/out,
-//              slow consumers
+//     slow consumers
 //   - /routez — cluster route count
 //   - /jsz   — JetStream streams, consumers, messages and bytes (when enabled)
 //
@@ -41,21 +41,24 @@ const (
 
 // probeConfig holds validated configuration.
 type probeConfig struct {
-	Endpoint string
-	Interval time.Duration
+	Endpoint     string
+	Interval     time.Duration
+	InstanceName string // optional operator-supplied override for service.instance.id
 }
 
 // varzResponse is a partial mapping of the /varz JSON object. Only the fields
 // this probe exposes are decoded; the rest are ignored.
 type varzResponse struct {
-	Connections    int64 `json:"connections"`
-	TotalConnections int64 `json:"total_connections"`
-	Subscriptions  int64 `json:"subscriptions"`
-	InMsgs         int64 `json:"in_msgs"`
-	OutMsgs        int64 `json:"out_msgs"`
-	InBytes        int64 `json:"in_bytes"`
-	OutBytes       int64 `json:"out_bytes"`
-	SlowConsumers  int64 `json:"slow_consumers"`
+	ServerName       string `json:"server_name"`
+	ServerID         string `json:"server_id"`
+	Connections      int64  `json:"connections"`
+	TotalConnections int64  `json:"total_connections"`
+	Subscriptions    int64  `json:"subscriptions"`
+	InMsgs           int64  `json:"in_msgs"`
+	OutMsgs          int64  `json:"out_msgs"`
+	InBytes          int64  `json:"in_bytes"`
+	OutBytes         int64  `json:"out_bytes"`
+	SlowConsumers    int64  `json:"slow_consumers"`
 }
 
 // routezResponse is a partial mapping of /routez.
@@ -107,7 +110,7 @@ func NewNATSProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger) (
 		cfg:          cfg,
 		moduleLogger: moduleLogger,
 		client:       client,
-		entitySrc:    newNATSEntitySource(cfg.Endpoint),
+		entitySrc:    newNATSEntitySource(cfg.Endpoint, cfg.InstanceName),
 	}
 	p.SetProbeType(ProbeType)
 	p.fetch = p.httpGet
@@ -129,6 +132,9 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 	}
 	if v, ok := raw["interval"].(int); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
+	}
+	if v, ok := raw["instance_name"].(string); ok {
+		cfg.InstanceName = v
 	}
 	return cfg, nil
 }
@@ -216,8 +222,8 @@ func (p *NATSProbe) Collect() ([]data_store.DataPoint, error) {
 		data_store.DataPoint{Name: "nats.slow_consumers", Value: float32(varz.SlowConsumers), Timestamp: now, Tags: slowTags},
 	)
 
-	// Mark entity alive after a successful /varz.
-	p.entitySrc.markAlive()
+	// Pin the entity identity on the first successful /varz (nop if already pinned).
+	p.entitySrc.pinFromVarz(varz.ServerName, varz.ServerID)
 
 	// --- /routez (optional) ------------------------------------------------
 	routezBody, routeStatus, routeErr := p.fetch("/routez")
