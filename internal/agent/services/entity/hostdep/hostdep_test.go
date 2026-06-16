@@ -100,6 +100,34 @@ func TestDebounce_EmitsOnlyAfterThreshold(t *testing.T) {
 	}
 }
 
+func TestDependentAnchoredToHostWithRunsOn(t *testing.T) {
+	// A minted dependent must hang off the host it runs on, not float with only
+	// its depends_on edge: service.instance --runs_on--> host, host taken from
+	// the foundation in the same cycle.
+	rows := []gnet.ConnectionStat{
+		conn(statusEstablished, "10.0.0.5", 51000, "10.0.0.9", 5432, 100),
+	}
+	s := newTestSource(rows)
+	var obs entity.Observation
+	for i := 0; i < 3; i++ {
+		obs, _ = s.Observe()
+	}
+	if got := relCount(obs, relRunsOn); got != 1 {
+		t.Fatalf("want 1 runs_on anchoring the dependent, got %d: %+v", got, obs.Relations)
+	}
+	for _, r := range obs.Relations {
+		if r.Type != relRunsOn {
+			continue
+		}
+		if r.FromType != entityTypeServiceInstance || r.FromID[idKeyServiceInstanceID] != "nginx@h-1" {
+			t.Errorf("runs_on must originate from the minted service.instance: %+v", r)
+		}
+		if r.ToType != entityTypeHost || r.ToID[idKeyHost] != "h-1" {
+			t.Errorf("runs_on must target the host: %+v", r)
+		}
+	}
+}
+
 func TestVanishedConnectionResetsStreak(t *testing.T) {
 	live := []gnet.ConnectionStat{conn(statusEstablished, "10.0.0.5", 51000, "10.0.0.9", 5432, 100)}
 	s := newTestSource(live)
