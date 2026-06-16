@@ -1,0 +1,48 @@
+probe_name: "winservices"
+friendly_name: "Windows Services"
+version: "1.0.0"
+host_level: true
+multi_instance_labels: ["windows.service.name"]
+
+# Free host-local probe: Windows service state via the SCM API.
+# One instance per service name (windows.service.name tag).
+# windows.service.state is a binary running/not-running gauge (1/0).
+# windows.service.status carries the raw SCM numeric state (1-7).
+
+metrics:
+  - name: "senhub.winservices.up"
+    channel: "winservices_up"
+    display_name: "Windows Services SCM Up"
+    unit: "#"
+    category: "status"
+    description: "1 when the Service Control Manager is reachable and the probe completed its cycle"
+    otel:
+      name: senhub.winservices.up
+      unit: "1"
+      type: gauge
+
+  - name: "windows.service.state"
+    channel: "windows_service_{windows.service.name}_state"
+    display_name: "Service {windows.service.name} Running"
+    unit: "#"
+    category: "service"
+    description: "1 when the service is in the Running state, 0 otherwise"
+    otel:
+      name: windows.service.state
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      windows.service.name: windows.service.name
+
+  - name: "windows.service.status"
+    channel: "windows_service_{windows.service.name}_status"
+    display_name: "Service {windows.service.name} Status"
+    unit: "#"
+    category: "service"
+    description: "Numeric SCM state of the service: 1=stopped 2=start_pending 3=stop_pending 4=running 5=continue_pending 6=pause_pending 7=paused"
+    otel:
+      name: windows.service.status
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      windows.service.name: windows.service.name

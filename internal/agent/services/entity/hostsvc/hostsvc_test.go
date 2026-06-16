@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	gnet "github.com/shirou/gopsutil/v3/net"
+
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
@@ -87,6 +89,52 @@ func TestObserve_CachesBetweenRefreshes(t *testing.T) {
 	}
 	if len(o1.Entities) != 1 || len(o2.Entities) != 1 {
 		t.Errorf("obs1=%d obs2=%d entities", len(o1.Entities), len(o2.Entities))
+	}
+}
+
+// TestEnumerateListeners_Pid0NotFiltered is the regression test for #394.
+// On Linux non-root, gopsutil cannot read /proc/<pid>/fd of foreign processes
+// and returns Pid=0 for those sockets. Before the fix, the filter
+// `c.Pid <= 0` silently discarded every listener, producing an empty entity
+// observation. After the fix, Pid=0 sockets are accepted and emitted with
+// process facts omitted (best-effort enrichment).
+func TestEnumerateListeners_Pid0NotFiltered(t *testing.T) {
+	fakeStat := []gnet.ConnectionStat{
+		{Status: "LISTEN", Pid: 0, Laddr: gnet.Addr{IP: "0.0.0.0", Port: 8080}},
+		// Non-LISTEN must still be excluded regardless of Pid.
+		{Status: "ESTABLISHED", Pid: 0, Laddr: gnet.Addr{IP: "0.0.0.0", Port: 9090}},
+		// Duplicate port (IPv4+IPv6 wildcard pair): only first should appear.
+		{Status: "LISTEN", Pid: 0, Laddr: gnet.Addr{IP: "::", Port: 8080}},
+	}
+
+	s := &Source{
+		hostID:  func() string { return "h-1" },
+		refresh: time.Hour,
+		connections: func(_ string) ([]gnet.ConnectionStat, error) {
+			return fakeStat, nil
+		},
+	}
+	s.enumerate = s.enumerateListeners
+
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("Observe() returned ok=false; expected successful enumeration")
+	}
+	if len(obs.Entities) != 1 {
+		t.Fatalf("got %d entities, want 1 (port 8080); obs=%+v", len(obs.Entities), obs)
+	}
+	e := obs.Entities[0]
+	if e.ID[idKeyServiceEndpoint] != "h-1:8080/tcp" {
+		t.Errorf("entity ID = %v, want h-1:8080/tcp", e.ID[idKeyServiceEndpoint])
+	}
+	if _, ok := e.Attributes[attrProcessPID]; ok {
+		t.Error("process.pid must be absent when Pid=0")
+	}
+	if _, ok := e.Attributes[attrProcessName]; ok {
+		t.Error("process.executable.name must be absent when Pid=0")
+	}
+	if e.Attributes[attrTransport] != "tcp" {
+		t.Errorf("network.transport = %v, want tcp", e.Attributes[attrTransport])
 	}
 }
 

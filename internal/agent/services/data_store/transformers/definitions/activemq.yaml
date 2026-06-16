@@ -1,0 +1,161 @@
+probe_name: "activemq"
+friendly_name: "Apache ActiveMQ"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["destination", "destination_type"]
+
+# FREE-tier probe. Queries the broker via Jolokia HTTP REST (default
+# http://localhost:8161/api/jolokia). Broker-level metrics have no
+# destination tag; per-destination metrics discriminate on the
+# destination + destination_type pair.
+
+metrics:
+  - name: "senhub.activemq.up"
+    channel: "activemq_up"
+    display_name: "ActiveMQ Broker Up"
+    unit: "#"
+    category: "status"
+    description: "1 when the Jolokia endpoint responded successfully, 0 otherwise"
+    otel:
+      name: senhub.activemq.up
+      unit: "1"
+      type: gauge
+
+  - name: "activemq.producer.count"
+    channel: "activemq_producer_count"
+    display_name: "ActiveMQ Producers"
+    unit: "#"
+    category: "overview"
+    description: "Total number of message producers connected to the broker"
+    otel:
+      name: activemq.producer.count
+      unit: "{producer}"
+      type: gauge
+
+  - name: "activemq.consumer.count"
+    channel: "activemq_consumer_count"
+    display_name: "ActiveMQ Consumers"
+    unit: "#"
+    category: "overview"
+    description: "Total number of message consumers connected to the broker"
+    otel:
+      name: activemq.consumer.count
+      unit: "{consumer}"
+      type: gauge
+
+  - name: "activemq.message.current"
+    channel: "activemq_message_current"
+    display_name: "ActiveMQ Messages In Flight"
+    unit: "#"
+    category: "overview"
+    description: "Total number of messages currently held in all destinations"
+    otel:
+      name: activemq.message.current
+      unit: "{message}"
+      type: gauge
+
+  - name: "activemq.memory.usage"
+    channel: "activemq_memory_usage"
+    display_name: "ActiveMQ Memory Usage"
+    unit: "%"
+    category: "resource"
+    description: "Broker JVM memory usage as a ratio of the configured memory limit (0–1)"
+    otel:
+      name: activemq.memory.usage
+      unit: "1"
+      type: gauge
+
+  - name: "activemq.store.usage"
+    channel: "activemq_store_usage"
+    display_name: "ActiveMQ Store Usage"
+    unit: "%"
+    category: "resource"
+    description: "Persistent message store usage as a ratio of the configured store limit (0–1)"
+    otel:
+      name: activemq.store.usage
+      unit: "1"
+      type: gauge
+
+  - name: "activemq.temp.usage"
+    channel: "activemq_temp_usage"
+    display_name: "ActiveMQ Temp Usage"
+    unit: "%"
+    category: "resource"
+    description: "Temporary storage usage as a ratio of the configured temp limit (0–1)"
+    otel:
+      name: activemq.temp.usage
+      unit: "1"
+      type: gauge
+
+  # Per-destination metrics (queue and topic). The destination and
+  # destination_type tags discriminate between instances.
+
+  - name: "activemq.message.enqueued"
+    channel: "activemq_{destination_type}_{destination}_enqueued"
+    display_name: "ActiveMQ {destination_type} {destination} Enqueued"
+    unit: "#"
+    category: "messaging"
+    description: "Cumulative number of messages enqueued since broker start"
+    otel:
+      name: activemq.message.enqueued
+      unit: "{message}"
+      type: counter
+    tag_to_attribute:
+      destination: messaging.destination.name
+      destination_type: messaging.destination_kind
+
+  - name: "activemq.message.dequeued"
+    channel: "activemq_{destination_type}_{destination}_dequeued"
+    display_name: "ActiveMQ {destination_type} {destination} Dequeued"
+    unit: "#"
+    category: "messaging"
+    description: "Cumulative number of messages dequeued (consumed) since broker start"
+    otel:
+      name: activemq.message.dequeued
+      unit: "{message}"
+      type: counter
+    tag_to_attribute:
+      destination: messaging.destination.name
+      destination_type: messaging.destination_kind
+
+  - name: "activemq.message.queue_size"
+    channel: "activemq_{destination_type}_{destination}_queue_size"
+    display_name: "ActiveMQ {destination_type} {destination} Queue Size"
+    unit: "#"
+    category: "messaging"
+    description: "Number of messages currently waiting in the destination"
+    otel:
+      name: activemq.message.queue_size
+      unit: "{message}"
+      type: gauge
+    tag_to_attribute:
+      destination: messaging.destination.name
+      destination_type: messaging.destination_kind
+
+  - name: "activemq.consumer.count"
+    channel: "activemq_{destination_type}_{destination}_consumers"
+    display_name: "ActiveMQ {destination_type} {destination} Consumers"
+    unit: "#"
+    category: "messaging"
+    description: "Number of consumers currently subscribed to the destination"
+    otel:
+      name: activemq.consumer.count
+      unit: "{consumer}"
+      type: gauge
+    tag_to_attribute:
+      destination: messaging.destination.name
+      destination_type: messaging.destination_kind
+
+  - name: "activemq.producer.count"
+    channel: "activemq_{destination_type}_{destination}_producers"
+    display_name: "ActiveMQ {destination_type} {destination} Producers"
+    unit: "#"
+    category: "messaging"
+    description: "Number of producers currently attached to the destination"
+    otel:
+      name: activemq.producer.count
+      unit: "{producer}"
+      type: gauge
+    tag_to_attribute:
+      destination: messaging.destination.name
+      destination_type: messaging.destination_kind

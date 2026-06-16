@@ -132,6 +132,23 @@ metrics:
       type: gauge
     tag_to_attribute:
       target: httpcheck.target
+      tls.issuer: tls.certificate.issuer
+      tls.subject: tls.certificate.subject
+
+  - name: "senhub.httpcheck.tls.valid"
+    channel: "httpcheck_tls_valid"
+    display_name: "HTTP {target} Certificate Valid"
+    unit: "#"
+    category: "tls"
+    description: "1 when the leaf TLS certificate is currently valid (not expired), 0 otherwise"
+    otel:
+      name: senhub.httpcheck.tls.valid
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      target: httpcheck.target
+      tls.issuer: tls.certificate.issuer
+      tls.subject: tls.certificate.subject
 
   - name: "senhub.httpcheck.content.match"
     channel: "httpcheck_content_match"

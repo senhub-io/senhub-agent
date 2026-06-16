@@ -215,6 +215,12 @@ func TestProbeRegistry(t *testing.T) {
 	// whose source lives in this repository. The paid probes are
 	// registered in the senhub-agent-enterprise module's own tests.
 	expectedProbes := []string{
+		"apache",
+		"activemq",
+		"ceph",
+		"cassandra",
+		"couchdb",
+		"chrony",
 		"wifi_signal_strength",
 		"memory",
 		"cpu",
@@ -227,6 +233,42 @@ func TestProbeRegistry(t *testing.T) {
 		"filetail",
 		"otlp_receiver",
 		"snmp_trap",
+		"nginx",
+		"haproxy",
+		"varnish",
+		"phpfpm",
+		"wildfly",
+		"kafka",
+		"rabbitmq",
+		"nats",
+		"pulsar",
+		"consul",
+		"zookeeper",
+		"envoy",
+		"jenkins",
+		"mysql",
+		"postgresql",
+		"clickhouse",
+		"elasticsearch",
+		"opensearch",
+		"solr",
+		"influxdb",
+		"memcached",
+		"hyperv",
+		"proxmox",
+		"smart",
+		"ipmi",
+		"nvidia",
+		"oracle",
+		"process",
+		"unifi",
+		"winservices",
+		"systemd",
+		"kubernetes",
+		"modbus",
+		"mssql",
+		"tomcat",
+		"mongodb",
 	}
 
 	for _, probeName := range expectedProbes {
@@ -246,7 +288,8 @@ func TestProbeRegistry(t *testing.T) {
 		t.Error("Probe registry should not be empty")
 	}
 
-	// Verify expected count
+	// Verify expected count — keep in sync with the blank imports in
+	// registry_invariant_test.go and app/probes_register.go.
 	expectedCount := len(expectedProbes)
 	actualCount := len(probeConstructors)
 	if actualCount != expectedCount {

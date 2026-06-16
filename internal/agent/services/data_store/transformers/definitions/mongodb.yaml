@@ -1,0 +1,305 @@
+probe_name: "mongodb"
+friendly_name: "MongoDB"
+version: "1.0.0"
+
+# OTel-first transformer (format v3).
+#
+# Source canonique : OTel Collector contrib mongodbreceiver
+# (https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/mongodbreceiver).
+# Quand le receiver contrib expose la métrique, on suit son nom et ses attributs
+# tel quel (drop-in interop avec Grafana dashboards, etc.). Quand il ne l'expose
+# pas, extension sous `senhub.mongodb.*`.
+#
+# Metrics discriminated by attribute tags (operation, type, database) are
+# declared with multi_instance_labels so {tag} placeholders expand into
+# per-instance PRTG channels.
+
+metrics:
+  # ═══════════════════════════════════════════════════════════════════════
+  # STATUS — heartbeat
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: "senhub.mongodb.up"
+    channel: "mongodb_up"
+    display_name: "MongoDB Up"
+    unit: "#"
+    category: "status"
+    description: "1 if the agent reached the MongoDB server this cycle, 0 otherwise"
+    lookup: "senhub.db.up"
+    otel:
+      name: senhub.mongodb.up
+      unit: "1"
+      type: gauge
+
+  - name: "mongodb.uptime"
+    channel: "mongodb_uptime"
+    display_name: "Uptime"
+    unit: "s"
+    category: "status"
+    description: "Seconds since the mongod process started (uptimeMillis / 1000)"
+    otel:
+      name: mongodb.uptime
+      unit: "s"
+      type: counter
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # CONNECTIONS
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: "mongodb.connections.active"
+    channel: "mongodb_connections_active"
+    display_name: "Connections Active"
+    unit: "#"
+    category: "connections"
+    description: "Number of active (in-use) client connections (connections.active)"
+    otel:
+      name: mongodb.connections
+      unit: "{connection}"
+      type: gauge
+      attributes:
+        state: active
+
+  - name: "mongodb.connections.available"
+    channel: "mongodb_connections_available"
+    display_name: "Connections Available"
+    unit: "#"
+    category: "connections"
+    description: "Number of connections available for new clients (connections.available)"
+    otel:
+      name: mongodb.connections
+      unit: "{connection}"
+      type: gauge
+      attributes:
+        state: available
+
+  - name: "mongodb.connections.current"
+    channel: "mongodb_connections_current"
+    display_name: "Connections Current"
+    unit: "#"
+    category: "connections"
+    description: "Total number of current open connections (connections.current)"
+    otel:
+      name: mongodb.connections
+      unit: "{connection}"
+      type: gauge
+      attributes:
+        state: current
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # NETWORK
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: "mongodb.network.bytes.in"
+    channel: "mongodb_network_bytes_in"
+    display_name: "Network Bytes In"
+    unit: "BytesFile"
+    category: "network"
+    description: "Total bytes received over the network (network.bytesIn)"
+    otel:
+      name: mongodb.network.io
+      unit: "By"
+      type: counter
+      attributes:
+        direction: receive
+
+  - name: "mongodb.network.bytes.out"
+    channel: "mongodb_network_bytes_out"
+    display_name: "Network Bytes Out"
+    unit: "BytesFile"
+    category: "network"
+    description: "Total bytes sent over the network (network.bytesOut)"
+    otel:
+      name: mongodb.network.io
+      unit: "By"
+      type: counter
+      attributes:
+        direction: transmit
+
+  - name: "mongodb.network.requests"
+    channel: "mongodb_network_requests"
+    display_name: "Network Requests"
+    unit: "#"
+    category: "network"
+    description: "Total distinct client requests received (network.numRequests)"
+    otel:
+      name: mongodb.network.request.count
+      unit: "{request}"
+      type: counter
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # OPERATIONS — per-command (discriminated by operation tag)
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: "mongodb.operations.count"
+    channel: "mongodb_operations_{operation}"
+    display_name: "Operations {operation}"
+    unit: "#"
+    category: "operations"
+    description: "Total operations executed by type (opcounters.*) — insert/query/update/delete/getmore/command"
+    multi_instance_labels:
+      - "operation"
+    otel:
+      name: mongodb.operation.count
+      unit: "{operation}"
+      type: counter
+    tag_to_attribute:
+      operation: operation
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # MEMORY — resident + virtual (discriminated by type tag)
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: "mongodb.memory.usage"
+    channel: "mongodb_memory_{type}"
+    display_name: "Memory {type}"
+    unit: "BytesMemory"
+    category: "memory"
+    description: "Memory usage in bytes (mem.resident / mem.virtual — converted from MB)"
+    multi_instance_labels:
+      - "type"
+    otel:
+      name: mongodb.memory.usage
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      type: memory.type
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # DOCUMENT OPERATIONS — per-operation (discriminated by operation tag)
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: "mongodb.document.operations"
+    channel: "mongodb_documents_{operation}"
+    display_name: "Documents {operation}"
+    unit: "#"
+    category: "documents"
+    description: "Document operations since startup (metrics.document.*) — deleted/inserted/returned/updated"
+    multi_instance_labels:
+      - "operation"
+    otel:
+      name: mongodb.document.operation.count
+      unit: "{document}"
+      type: counter
+    tag_to_attribute:
+      operation: operation
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # WIREDTIGER CACHE — per-type (discriminated by type tag)
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: "mongodb.cache.operations"
+    channel: "mongodb_cache_{type}"
+    display_name: "Cache {type}"
+    unit: "#"
+    category: "cache"
+    description: "WiredTiger cache page operations — read: pages read into cache; write: pages written from cache"
+    multi_instance_labels:
+      - "type"
+    otel:
+      name: mongodb.cache.operations
+      unit: "{operation}"
+      type: counter
+    tag_to_attribute:
+      type: type
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # LOCKS — global read/write queue depth
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: "mongodb.active.reads"
+    channel: "mongodb_active_reads"
+    display_name: "Active Reads Queued"
+    unit: "#"
+    category: "locks"
+    description: "Clients queued waiting for a read lock (globalLock.currentQueue.readers)"
+    otel:
+      name: mongodb.lock.acquire.wait_count
+      unit: "{operation}"
+      type: gauge
+      attributes:
+        lock.type: Global
+        lock.mode: Shared
+
+  - name: "mongodb.active.writes"
+    channel: "mongodb_active_writes"
+    display_name: "Active Writes Queued"
+    unit: "#"
+    category: "locks"
+    description: "Clients queued waiting for a write lock (globalLock.currentQueue.writers)"
+    otel:
+      name: mongodb.lock.acquire.wait_count
+      unit: "{operation}"
+      type: gauge
+      attributes:
+        lock.type: Global
+        lock.mode: Exclusive
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # PER-DATABASE (discriminated by database tag)
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: "mongodb.collection.count"
+    channel: "mongodb_collections_{database}"
+    display_name: "Collections {database}"
+    unit: "#"
+    category: "database"
+    description: "Number of collections in the database (dbStats.collections)"
+    multi_instance_labels:
+      - "database"
+    otel:
+      name: mongodb.collection.count
+      unit: "{collection}"
+      type: gauge
+    tag_to_attribute:
+      database: database
+
+  - name: "mongodb.data.size"
+    channel: "mongodb_data_size_{database}"
+    display_name: "Data Size {database}"
+    unit: "BytesFile"
+    category: "database"
+    description: "Uncompressed in-memory size of all documents (dbStats.dataSize)"
+    multi_instance_labels:
+      - "database"
+    otel:
+      name: mongodb.data.size
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      database: database
+
+  - name: "mongodb.index.count"
+    channel: "mongodb_indexes_{database}"
+    display_name: "Indexes {database}"
+    unit: "#"
+    category: "database"
+    description: "Number of indexes across all collections (dbStats.indexes)"
+    multi_instance_labels:
+      - "database"
+    otel:
+      name: mongodb.index.count
+      unit: "{index}"
+      type: gauge
+    tag_to_attribute:
+      database: database
+
+  - name: "mongodb.index.size"
+    channel: "mongodb_index_size_{database}"
+    display_name: "Index Size {database}"
+    unit: "BytesFile"
+    category: "database"
+    description: "Total size of all indexes on disk (dbStats.indexSize)"
+    multi_instance_labels:
+      - "database"
+    otel:
+      name: mongodb.index.size
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      database: database
+
+  - name: "mongodb.storage.size"
+    channel: "mongodb_storage_size_{database}"
+    display_name: "Storage Size {database}"
+    unit: "BytesFile"
+    category: "database"
+    description: "Total amount of disk space allocated to all collections (dbStats.storageSize)"
+    multi_instance_labels:
+      - "database"
+    otel:
+      name: mongodb.storage.size
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      database: database

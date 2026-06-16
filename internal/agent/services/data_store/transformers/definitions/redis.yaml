@@ -1,0 +1,622 @@
+probe_name: "redis"
+friendly_name: "Redis / Valkey"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["instance"]
+
+metrics:
+  - name: "senhub.db.up"
+    channel: "db_up"
+    display_name: "Redis Up"
+    unit: "#"
+    category: "overview"
+    description: "1 if the agent reached the Redis server, 0 otherwise"
+    lookup: "senhub.db.up"
+    otel:
+      name: senhub.db.up
+      unit: "1"
+      type: gauge
+
+  - name: "redis.uptime"
+    channel: "redis_uptime"
+    display_name: "Uptime"
+    unit: "s"
+    category: "overview"
+    description: "Seconds since the Redis server started (uptime_in_seconds)"
+    otel:
+      name: redis.uptime
+      unit: "s"
+      type: counter
+
+  - name: "senhub.db.version.info"
+    channel: "db_version"
+    display_name: "Version"
+    unit: "#"
+    category: "overview"
+    description: "Redis version banner — value=1, version string carried in attribute db.system.version"
+    otel:
+      name: senhub.db.version.info
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      version: db.system.version
+
+  - name: "redis.clients.connected"
+    channel: "redis_clients_connected"
+    display_name: "Clients Connected"
+    unit: "#"
+    category: "connections"
+    description: "Number of client connections (connected_clients)"
+    otel:
+      name: redis.clients.connected
+      unit: "{client}"
+      type: gauge
+
+  - name: "redis.clients.blocked"
+    channel: "redis_clients_blocked"
+    display_name: "Clients Blocked"
+    unit: "#"
+    category: "connections"
+    description: "Clients blocked waiting on a blocking call (blocked_clients)"
+    otel:
+      name: redis.clients.blocked
+      unit: "{client}"
+      type: gauge
+
+  - name: "redis.connections.received"
+    channel: "redis_connections_received"
+    display_name: "Connections Received"
+    unit: "#"
+    category: "connections"
+    description: "Cumulative accepted connections (total_connections_received)"
+    otel:
+      name: redis.connections.received
+      unit: "{connection}"
+      type: counter
+
+  - name: "redis.connections.rejected"
+    channel: "redis_connections_rejected"
+    display_name: "Connections Rejected"
+    unit: "#"
+    category: "connections"
+    description: "Cumulative rejected connections — maxclients cap (rejected_connections)"
+    otel:
+      name: redis.connections.rejected
+      unit: "{connection}"
+      type: counter
+
+  - name: "redis.memory.used"
+    channel: "redis_memory_used"
+    display_name: "Memory Used"
+    unit: "B"
+    category: "memory"
+    description: "Allocator-reported used memory (used_memory)"
+    otel:
+      name: redis.memory.used
+      unit: "By"
+      type: gauge
+
+  - name: "redis.memory.used.rss"
+    channel: "redis_memory_used_rss"
+    display_name: "Memory RSS"
+    unit: "B"
+    category: "memory"
+    description: "OS-reported RSS (used_memory_rss) — includes fragmentation overhead"
+    otel:
+      name: redis.memory.used.rss
+      unit: "By"
+      type: gauge
+
+  - name: "redis.memory.peak"
+    channel: "redis_memory_peak"
+    display_name: "Memory Peak"
+    unit: "B"
+    category: "memory"
+    description: "Peak allocator-reported memory (used_memory_peak)"
+    otel:
+      name: redis.memory.peak
+      unit: "By"
+      type: gauge
+
+  - name: "redis.memory.fragmentation.ratio"
+    channel: "redis_memory_fragmentation_ratio"
+    display_name: "Memory Fragmentation Ratio"
+    unit: "#"
+    category: "memory"
+    description: "used_memory_rss / used_memory — greater than 1.5 indicates high fragmentation"
+    otel:
+      name: redis.memory.fragmentation.ratio
+      unit: "1"
+      type: gauge
+
+  - name: "redis.commands.processed"
+    channel: "redis_commands_processed"
+    display_name: "Commands Processed"
+    unit: "#"
+    category: "throughput"
+    description: "Cumulative commands processed (total_commands_processed)"
+    otel:
+      name: redis.commands.processed
+      unit: "{command}"
+      type: counter
+
+  - name: "redis.net.input"
+    channel: "redis_net_input"
+    display_name: "Network Input"
+    unit: "B"
+    category: "throughput"
+    description: "Cumulative bytes received from clients (total_net_input_bytes)"
+    otel:
+      name: redis.net.input
+      unit: "By"
+      type: counter
+
+  - name: "redis.net.output"
+    channel: "redis_net_output"
+    display_name: "Network Output"
+    unit: "B"
+    category: "throughput"
+    description: "Cumulative bytes sent to clients (total_net_output_bytes)"
+    otel:
+      name: redis.net.output
+      unit: "By"
+      type: counter
+
+  - name: "redis.ops.per_sec"
+    channel: "redis_ops_per_sec"
+    display_name: "Ops/s"
+    unit: "#"
+    category: "throughput"
+    description: "Instantaneous commands per second (instantaneous_ops_per_sec)"
+    otel:
+      name: redis.ops.per_sec
+      unit: "{op}/s"
+      type: gauge
+
+  - name: "redis.keyspace.hits"
+    channel: "redis_keyspace_hits"
+    display_name: "Keyspace Hits"
+    unit: "#"
+    category: "cache"
+    description: "Cumulative successful key lookups (keyspace_hits)"
+    otel:
+      name: redis.keyspace.hits
+      unit: "{hit}"
+      type: counter
+
+  - name: "redis.keyspace.misses"
+    channel: "redis_keyspace_misses"
+    display_name: "Keyspace Misses"
+    unit: "#"
+    category: "cache"
+    description: "Cumulative failed key lookups (keyspace_misses)"
+    otel:
+      name: redis.keyspace.misses
+      unit: "{miss}"
+      type: counter
+
+  - name: "redis.keyspace.hit.ratio"
+    channel: "redis_keyspace_hit_ratio"
+    display_name: "Hit Ratio"
+    unit: "%"
+    category: "cache"
+    description: "keyspace_hits / (keyspace_hits + keyspace_misses) — derived gauge, 0 when no traffic"
+    otel:
+      name: redis.keyspace.hit.ratio
+      unit: "1"
+      type: gauge
+
+  - name: "redis.db.keys"
+    channel: "redis_db_{db}_keys"
+    display_name: "DB {db} Keys"
+    unit: "#"
+    multi_instance_labels: ["db"]
+    category: "keyspace"
+    description: "Total keys in logical database (keyspace section: dbN:keys=K)"
+    otel:
+      name: redis.db.keys
+      unit: "{key}"
+      type: gauge
+    tag_to_attribute:
+      db: db.redis.database_index
+
+  - name: "redis.db.expires"
+    channel: "redis_db_{db}_expires"
+    display_name: "DB {db} Expiring Keys"
+    unit: "#"
+    multi_instance_labels: ["db"]
+    category: "keyspace"
+    description: "Keys with a TTL in logical database (keyspace section: dbN:expires=M)"
+    otel:
+      name: redis.db.expires
+      unit: "{key}"
+      type: gauge
+    tag_to_attribute:
+      db: db.redis.database_index
+
+  - name: "redis.replication.role"
+    channel: "redis_replication_role"
+    display_name: "Replication Role"
+    unit: "#"
+    category: "replication"
+    description: "Instance role: master=1, slave/replica=0, sentinel=-1"
+    lookup: "redis.replication.role"
+    otel:
+      name: redis.replication.role
+      unit: "1"
+      type: gauge
+
+  - name: "redis.replication.offset"
+    channel: "redis_replication_offset"
+    display_name: "Replication Offset"
+    unit: "B"
+    category: "replication"
+    description: "Replication offset in bytes (master_repl_offset on master, slave_repl_offset / replica_repl_offset on replica)"
+    otel:
+      name: redis.replication.offset
+      unit: "By"
+      type: counter
+
+  - name: "redis.replication.slaves.connected"
+    channel: "redis_replication_slaves_connected"
+    display_name: "Replicas Connected"
+    unit: "#"
+    category: "replication"
+    description: "Number of replicas currently connected (connected_slaves, master only)"
+    otel:
+      name: redis.replication.slaves.connected
+      unit: "{replica}"
+      type: gauge
+
+  - name: "redis.replication.lag"
+    channel: "redis_replication_lag"
+    display_name: "Replication Lag"
+    unit: "s"
+    category: "replication"
+    description: "Seconds since last master communication (master_last_io_seconds_ago, replica only)"
+    otel:
+      name: redis.replication.lag
+      unit: "s"
+      type: gauge
+
+  - name: "redis.rdb.changes"
+    channel: "redis_rdb_changes"
+    display_name: "RDB Changes Since Save"
+    unit: "#"
+    category: "persistence"
+    description: "Writes since last RDB save (rdb_changes_since_last_save)"
+    otel:
+      name: redis.rdb.changes
+      unit: "{change}"
+      type: gauge
+
+  - name: "redis.aof.enabled"
+    channel: "redis_aof_enabled"
+    display_name: "AOF Enabled"
+    unit: "#"
+    category: "persistence"
+    description: "1 when AOF persistence is enabled (aof_enabled)"
+    otel:
+      name: redis.aof.enabled
+      unit: "1"
+      type: gauge
+
+  - name: "redis.rdb.last_bgsave.duration"
+    channel: "redis_rdb_last_bgsave_duration"
+    display_name: "RDB Last BGSave Duration"
+    unit: "s"
+    category: "persistence"
+    description: "Duration of the last RDB background save in seconds (rdb_last_bgsave_time_sec)"
+    otel:
+      name: redis.rdb.last_bgsave.duration
+      unit: "s"
+      type: gauge
+
+  - name: "redis.rdb.last_save.age"
+    channel: "redis_rdb_last_save_age"
+    display_name: "RDB Last Save Age"
+    unit: "s"
+    category: "persistence"
+    description: "Seconds elapsed since the last successful RDB save (now − rdb_last_save_time)"
+    otel:
+      name: redis.rdb.last_save.age
+      unit: "s"
+      type: gauge
+
+  - name: "redis.latest.fork"
+    channel: "redis_latest_fork"
+    display_name: "Latest Fork Duration"
+    unit: "μs"
+    category: "persistence"
+    description: "Duration of the latest fork operation in microseconds (latest_fork_usec)"
+    otel:
+      name: redis.latest.fork
+      unit: "us"
+      type: gauge
+
+  - name: "redis.cpu.time"
+    channel: "redis_cpu_time_{state}"
+    display_name: "CPU Time ({state})"
+    unit: "s"
+    multi_instance_labels: ["state"]
+    category: "cpu"
+    description: "Cumulative CPU time consumed by the Redis server in the given state (used_cpu_sys / used_cpu_user / used_cpu_sys_children / used_cpu_user_children)"
+    otel:
+      name: redis.cpu.time
+      unit: "s"
+      type: counter
+    tag_to_attribute:
+      state: redis.cpu.state
+
+  - name: "redis.memory.lua"
+    channel: "redis_memory_lua"
+    display_name: "Memory Lua"
+    unit: "B"
+    category: "memory"
+    description: "Memory used by the Lua scripting engine (used_memory_lua)"
+    otel:
+      name: redis.memory.lua
+      unit: "By"
+      type: gauge
+
+  - name: "redis.clients.max_input_buffer"
+    channel: "redis_clients_max_input_buffer"
+    display_name: "Client Max Input Buffer"
+    unit: "B"
+    category: "connections"
+    description: "Largest input buffer across all current client connections (client_recent_max_input_buffer)"
+    otel:
+      name: redis.clients.max_input_buffer
+      unit: "By"
+      type: gauge
+
+  - name: "redis.clients.max_output_buffer"
+    channel: "redis_clients_max_output_buffer"
+    display_name: "Client Max Output Buffer"
+    unit: "B"
+    category: "connections"
+    description: "Largest output buffer across all current client connections (client_recent_max_output_buffer)"
+    otel:
+      name: redis.clients.max_output_buffer
+      unit: "By"
+      type: gauge
+
+  - name: "redis.db.avg_ttl"
+    channel: "redis_db_{db}_avg_ttl"
+    display_name: "DB {db} Average TTL"
+    unit: "ms"
+    multi_instance_labels: ["db"]
+    category: "keyspace"
+    description: "Average TTL in milliseconds of keys with an expiry in logical database (keyspace section: dbN:avg_ttl=T)"
+    otel:
+      name: redis.db.avg_ttl
+      unit: "ms"
+      type: gauge
+    tag_to_attribute:
+      db: db.redis.database_index
+
+  - name: "redis.replication.backlog_first_byte_offset"
+    channel: "redis_replication_backlog_first_byte_offset"
+    display_name: "Replication Backlog First Byte Offset"
+    unit: "B"
+    category: "replication"
+    description: "Replication backlog first byte offset (repl_backlog_first_byte_offset)"
+    otel:
+      name: redis.replication.backlog_first_byte_offset
+      unit: "By"
+      type: gauge
+
+  - name: "redis.evicted_keys"
+    channel: "redis_evicted_keys"
+    display_name: "Evicted Keys"
+    unit: "#"
+    category: "cache"
+    description: "Cumulative keys evicted due to maxmemory policy (evicted_keys)"
+    otel:
+      name: redis.evicted_keys
+      unit: "{key}"
+      type: counter
+
+  - name: "redis.expired_keys"
+    channel: "redis_expired_keys"
+    display_name: "Expired Keys"
+    unit: "#"
+    category: "cache"
+    description: "Cumulative keys expired by the TTL mechanism (expired_keys)"
+    otel:
+      name: redis.expired_keys
+      unit: "{key}"
+      type: counter
+
+  - name: "redis.cmd.calls"
+    channel: "redis_cmd_{cmd}_calls"
+    display_name: "Cmd {cmd} Calls"
+    unit: "#"
+    multi_instance_labels: ["cmd"]
+    category: "commands"
+    description: "Cumulative call count for the given Redis command (INFO commandstats: cmdstat_X:calls=N)"
+    otel:
+      name: redis.cmd.calls
+      unit: "{call}"
+      type: counter
+    tag_to_attribute:
+      cmd: redis.command
+
+  - name: "redis.cmd.usec"
+    channel: "redis_cmd_{cmd}_usec"
+    display_name: "Cmd {cmd} Usec"
+    unit: "μs"
+    multi_instance_labels: ["cmd"]
+    category: "commands"
+    description: "Cumulative microseconds spent executing the given Redis command (INFO commandstats: cmdstat_X:usec=N)"
+    otel:
+      name: redis.cmd.usec
+      unit: "us"
+      type: counter
+    tag_to_attribute:
+      cmd: redis.command
+
+  - name: "redis.cluster.state"
+    channel: "redis_cluster_state"
+    display_name: "Cluster State"
+    unit: "#"
+    category: "cluster"
+    description: "Cluster health: 1=ok, 0=fail (cluster_state from INFO cluster; emitted only when cluster_enabled=1)"
+    otel:
+      name: redis.cluster.state
+      unit: "1"
+      type: gauge
+
+  - name: "redis.cluster.slots.assigned"
+    channel: "redis_cluster_slots_assigned"
+    display_name: "Cluster Slots Assigned"
+    unit: "#"
+    category: "cluster"
+    description: "Number of slots assigned to cluster nodes (cluster_slots_assigned)"
+    otel:
+      name: redis.cluster.slots.assigned
+      unit: "{slot}"
+      type: gauge
+
+  - name: "redis.cluster.slots.ok"
+    channel: "redis_cluster_slots_ok"
+    display_name: "Cluster Slots OK"
+    unit: "#"
+    category: "cluster"
+    description: "Number of slots not in FAIL or PFAIL state (cluster_slots_ok)"
+    otel:
+      name: redis.cluster.slots.ok
+      unit: "{slot}"
+      type: gauge
+
+  - name: "redis.cluster.slots.pfail"
+    channel: "redis_cluster_slots_pfail"
+    display_name: "Cluster Slots PFAIL"
+    unit: "#"
+    category: "cluster"
+    description: "Number of slots in PFAIL state (cluster_slots_pfail)"
+    otel:
+      name: redis.cluster.slots.pfail
+      unit: "{slot}"
+      type: gauge
+
+  - name: "redis.cluster.slots.fail"
+    channel: "redis_cluster_slots_fail"
+    display_name: "Cluster Slots FAIL"
+    unit: "#"
+    category: "cluster"
+    description: "Number of slots in FAIL state — serving requests is blocked until fixed (cluster_slots_fail)"
+    otel:
+      name: redis.cluster.slots.fail
+      unit: "{slot}"
+      type: gauge
+
+  - name: "redis.cluster.links.created"
+    channel: "redis_cluster_links_created"
+    display_name: "Cluster Messages Sent"
+    unit: "#"
+    category: "cluster"
+    description: "Cumulative cluster bus messages sent (cluster_stats_messages_sent)"
+    otel:
+      name: redis.cluster.links.created
+      unit: "{message}"
+      type: counter
+
+  - name: "redis.cluster.links.disconnected"
+    channel: "redis_cluster_links_disconnected"
+    display_name: "Cluster Messages Received"
+    unit: "#"
+    category: "cluster"
+    description: "Cumulative cluster bus messages received (cluster_stats_messages_received)"
+    otel:
+      name: redis.cluster.links.disconnected
+      unit: "{message}"
+      type: counter
+
+  - name: "redis.sentinel.masters"
+    channel: "redis_sentinel_masters"
+    display_name: "Sentinel Masters"
+    unit: "#"
+    category: "sentinel"
+    description: "Number of Redis masters monitored by this Sentinel (sentinel_masters; emitted only in sentinel mode)"
+    otel:
+      name: redis.sentinel.masters
+      unit: "{master}"
+      type: gauge
+
+  - name: "redis.sentinel.slaves"
+    channel: "redis_sentinel_slaves"
+    display_name: "Sentinel Slaves (total)"
+    unit: "#"
+    category: "sentinel"
+    description: "Total number of replicas across all monitored masters (aggregated from per-master lines)"
+    otel:
+      name: redis.sentinel.slaves
+      unit: "{replica}"
+      type: gauge
+
+  - name: "redis.sentinel.ok_slaves"
+    channel: "redis_sentinel_ok_slaves"
+    display_name: "Sentinel Slaves OK"
+    unit: "#"
+    category: "sentinel"
+    description: "Replicas belonging to masters whose status=ok (aggregated from per-master lines)"
+    otel:
+      name: redis.sentinel.ok_slaves
+      unit: "{replica}"
+      type: gauge
+
+  - name: "redis.sentinel.sentinels"
+    channel: "redis_sentinel_sentinels"
+    display_name: "Sentinel Sentinels (total)"
+    unit: "#"
+    category: "sentinel"
+    description: "Total number of Sentinel peers across all monitored masters (aggregated from per-master lines)"
+    otel:
+      name: redis.sentinel.sentinels
+      unit: "{sentinel}"
+      type: gauge
+
+  - name: "redis.sentinel.ok_sentinels"
+    channel: "redis_sentinel_ok_sentinels"
+    display_name: "Sentinel Sentinels OK"
+    unit: "#"
+    category: "sentinel"
+    description: "Sentinel peers belonging to masters whose status=ok (aggregated from per-master lines)"
+    otel:
+      name: redis.sentinel.ok_sentinels
+      unit: "{sentinel}"
+      type: gauge
+
+  - name: "redis.sentinel.scripts_queue_length"
+    channel: "redis_sentinel_scripts_queue_length"
+    display_name: "Sentinel Scripts Queue"
+    unit: "#"
+    category: "sentinel"
+    description: "Number of scripts in the Sentinel notification-scripts queue (sentinel_running_scripts)"
+    otel:
+      name: redis.sentinel.scripts_queue_length
+      unit: "{script}"
+      type: gauge
+
+  - name: "redis.tracking.clients"
+    channel: "redis_tracking_clients"
+    display_name: "Tracking Clients"
+    unit: "#"
+    category: "tracking"
+    description: "Number of clients using RESP3 client-side caching tracking (tracking_clients; 0 when absent)"
+    otel:
+      name: redis.tracking.clients
+      unit: "{client}"
+      type: gauge
+
+  - name: "redis.tracking.keys"
+    channel: "redis_tracking_keys"
+    display_name: "Tracking Keys"
+    unit: "#"
+    category: "tracking"
+    description: "Number of keys in the client-side tracking invalidation table (tracking_table_used_keys; 0 when absent)"
+    otel:
+      name: redis.tracking.keys
+      unit: "{key}"
+      type: gauge

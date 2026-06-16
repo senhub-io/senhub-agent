@@ -1,0 +1,119 @@
+probe_name: "influxdb"
+friendly_name: "InfluxDB"
+version: "1.0.0"
+host_level: false
+
+# Free-tier probe for InfluxDB 2.x monitoring. Scrapes the standard
+# /health, /metrics (Prometheus text), and /api/v2/buckets endpoints.
+# No vendor-specific paid API is required.
+
+metrics:
+  - name: "senhub.influxdb.up"
+    channel: "influxdb_up"
+    display_name: "InfluxDB Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when GET /health returns status=pass, 0 otherwise"
+    otel:
+      name: senhub.influxdb.up
+      unit: "1"
+      type: gauge
+
+  - name: "influxdb.storage.reads"
+    channel: "influxdb_storage_reads"
+    display_name: "InfluxDB Storage Reads"
+    unit: "#"
+    category: "io"
+    description: "Cumulative storage read operations (storage_reads_total or boltdb_reads_total)"
+    otel:
+      name: influxdb.storage.reads
+      unit: "{read}"
+      type: counter
+
+  - name: "influxdb.storage.writes"
+    channel: "influxdb_storage_writes"
+    display_name: "InfluxDB Storage Writes"
+    unit: "#"
+    category: "io"
+    description: "Cumulative storage write operations (storage_writes_total or boltdb_writes_total)"
+    otel:
+      name: influxdb.storage.writes
+      unit: "{write}"
+      type: counter
+
+  - name: "influxdb.query.requests"
+    channel: "influxdb_query_requests"
+    display_name: "InfluxDB Query Requests"
+    unit: "#"
+    category: "query"
+    description: "Cumulative HTTP query requests (http_query_request_bytes_total or query_requests_total)"
+    otel:
+      name: influxdb.query.requests
+      unit: "{request}"
+      type: counter
+
+  - name: "influxdb.tasks.runs.active"
+    channel: "influxdb_tasks_runs_active"
+    display_name: "InfluxDB Active Task Runs"
+    unit: "#"
+    category: "tasks"
+    description: "Number of task scheduler runs currently executing (task_scheduler_currently_running_tasks)"
+    otel:
+      name: influxdb.tasks.runs.active
+      unit: "{run}"
+      type: gauge
+
+  - name: "influxdb.tasks.runs.complete"
+    channel: "influxdb_tasks_runs_complete"
+    display_name: "InfluxDB Completed Task Runs"
+    unit: "#"
+    category: "tasks"
+    description: "Cumulative completed task scheduler runs (task_scheduler_total_runs_complete)"
+    otel:
+      name: influxdb.tasks.runs.complete
+      unit: "{run}"
+      type: counter
+
+  - name: "influxdb.tasks.runs.failed"
+    channel: "influxdb_tasks_runs_failed"
+    display_name: "InfluxDB Failed Task Runs"
+    unit: "#"
+    category: "tasks"
+    description: "Cumulative failed task scheduler runs (task_scheduler_total_runs_failed)"
+    otel:
+      name: influxdb.tasks.runs.failed
+      unit: "{run}"
+      type: counter
+
+  - name: "go.goroutines"
+    channel: "influxdb_goroutines"
+    display_name: "InfluxDB Goroutines"
+    unit: "#"
+    category: "runtime"
+    description: "Number of goroutines currently running in the InfluxDB process (go_goroutines)"
+    otel:
+      name: go.goroutines
+      unit: "{goroutine}"
+      type: gauge
+
+  - name: "go.memory.heap.used"
+    channel: "influxdb_heap_inuse"
+    display_name: "InfluxDB Heap In Use"
+    unit: "B"
+    category: "runtime"
+    description: "Bytes of heap memory in use by the InfluxDB process (go_memstats_heap_inuse_bytes)"
+    otel:
+      name: go.memory.heap.used
+      unit: "By"
+      type: gauge
+
+  - name: "influxdb.buckets"
+    channel: "influxdb_buckets"
+    display_name: "InfluxDB Buckets"
+    unit: "#"
+    category: "storage"
+    description: "Total number of buckets in the InfluxDB organisation (requires token)"
+    otel:
+      name: influxdb.buckets
+      unit: "{bucket}"
+      type: gauge

@@ -67,7 +67,7 @@ func TestFlatten_GaugeAndSum(t *testing.T) {
 		t.Fatalf("got %d points, want 2", len(points))
 	}
 
-	byName := map[string]float32{}
+	byName := map[string]float64{}
 	for _, p := range points {
 		byName[p.Name] = p.Value
 	}
