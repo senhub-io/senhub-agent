@@ -147,16 +147,12 @@ func NewOTLPSyncStrategy(
 	}
 
 	// Default service.instance.id from the agent key if the operator
-	// didn't override it. Avoids leaking the full key — first 8 chars
-	// give enough disambiguation for fleet views without exposing the
-	// authentication secret to observability backends.
+	// didn't override it. The full key is used so distinct agents whose
+	// keys share an 8-char prefix (e.g. "recette-030-zabbix" vs
+	// "recette-030-vps") map to distinct service.instance.id / instance
+	// labels instead of colliding on a truncated prefix.
 	if cfg.Resource.ServiceInstance == "" {
-		key := agentConfig.GetAuthenticationKey()
-		if len(key) > 8 {
-			cfg.Resource.ServiceInstance = key[:8]
-		} else {
-			cfg.Resource.ServiceInstance = key
-		}
+		cfg.Resource.ServiceInstance = agentConfig.GetAuthenticationKey()
 	}
 
 	// Build optional memory limiter from config. Pass it to the store
