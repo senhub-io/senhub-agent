@@ -1,0 +1,175 @@
+probe_name: "unifi"
+friendly_name: "UniFi Controller"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["device_type", "device_name", "direction"]
+
+# Free probe — Ubiquiti UniFi Controller via its REST API (stdlib HTTP,
+# cookie session auth). One controller per probe instance; device-level
+# metrics fan out per device via the device_type / device_name labels.
+# Inventory rollups are per device type (uap/usw/ugw); WAN throughput maps
+# to OTel byte counters; per-device cpu/memory are percentages (gauge 1),
+# AP satisfaction is a 0..1 ratio.
+
+metrics:
+  - name: "senhub.unifi.up"
+    channel: "unifi_up"
+    display_name: "UniFi Controller Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the controller answered login and the stat endpoints this cycle, 0 otherwise"
+    otel:
+      name: senhub.unifi.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      endpoint: unifi.endpoint
+      site: unifi.site
+
+  - name: "unifi.devices.total"
+    channel: "unifi_devices_total_{device_type}"
+    display_name: "UniFi {device_type} Devices"
+    unit: "#"
+    multi_instance_labels: ["device_type"]
+    category: "inventory"
+    description: "Number of devices of this type known to the controller"
+    otel:
+      name: unifi.devices.total
+      unit: "{device}"
+      type: gauge
+    tag_to_attribute:
+      device_type: unifi.device.type
+      site: unifi.site
+
+  - name: "unifi.devices.adopted"
+    channel: "unifi_devices_adopted_{device_type}"
+    display_name: "UniFi {device_type} Adopted"
+    unit: "#"
+    multi_instance_labels: ["device_type"]
+    category: "inventory"
+    description: "Number of adopted devices of this type"
+    otel:
+      name: unifi.devices.adopted
+      unit: "{device}"
+      type: gauge
+    tag_to_attribute:
+      device_type: unifi.device.type
+      site: unifi.site
+
+  - name: "unifi.devices.disconnected"
+    channel: "unifi_devices_disconnected_{device_type}"
+    display_name: "UniFi {device_type} Disconnected"
+    unit: "#"
+    multi_instance_labels: ["device_type"]
+    category: "inventory"
+    description: "Number of devices of this type not in the connected state"
+    otel:
+      name: unifi.devices.disconnected
+      unit: "{device}"
+      type: gauge
+    tag_to_attribute:
+      device_type: unifi.device.type
+      site: unifi.site
+
+  - name: "unifi.clients.total"
+    channel: "unifi_clients_total"
+    display_name: "UniFi Clients"
+    unit: "#"
+    category: "clients"
+    description: "Total connected clients (wired + wireless)"
+    otel:
+      name: unifi.clients.total
+      unit: "{client}"
+      type: gauge
+    tag_to_attribute:
+      site: unifi.site
+
+  - name: "unifi.clients.wifi"
+    channel: "unifi_clients_wifi"
+    display_name: "UniFi WiFi Clients"
+    unit: "#"
+    category: "clients"
+    description: "Connected wireless clients"
+    otel:
+      name: unifi.clients.wifi
+      unit: "{client}"
+      type: gauge
+    tag_to_attribute:
+      site: unifi.site
+
+  - name: "unifi.network.io"
+    channel: "unifi_network_io_{direction}"
+    display_name: "UniFi WAN IO {direction}"
+    unit: "bytes"
+    multi_instance_labels: ["direction"]
+    category: "network"
+    description: "WAN byte rate reported by the controller, discriminated by direction (transmit/receive)"
+    otel:
+      name: unifi.network.io
+      unit: By
+      type: counter
+    tag_to_attribute:
+      direction: network.io.direction
+      site: unifi.site
+
+  - name: "unifi.device.cpu"
+    channel: "unifi_device_cpu_{device_name}"
+    display_name: "UniFi {device_name} CPU"
+    unit: "%"
+    multi_instance_labels: ["device_type", "device_name"]
+    category: "device"
+    description: "Per-device CPU utilization percentage"
+    otel:
+      name: unifi.device.cpu
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      device_name: unifi.device.name
+      device_type: unifi.device.type
+      site: unifi.site
+
+  - name: "unifi.device.memory"
+    channel: "unifi_device_memory_{device_name}"
+    display_name: "UniFi {device_name} Memory"
+    unit: "%"
+    multi_instance_labels: ["device_type", "device_name"]
+    category: "device"
+    description: "Per-device memory utilization percentage"
+    otel:
+      name: unifi.device.memory
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      device_name: unifi.device.name
+      device_type: unifi.device.type
+      site: unifi.site
+
+  - name: "unifi.ap.clients"
+    channel: "unifi_ap_clients_{device_name}"
+    display_name: "UniFi AP {device_name} Clients"
+    unit: "#"
+    multi_instance_labels: ["device_name"]
+    category: "access_point"
+    description: "Clients associated to this access point"
+    otel:
+      name: unifi.ap.clients
+      unit: "{client}"
+      type: gauge
+    tag_to_attribute:
+      device_name: unifi.device.name
+      site: unifi.site
+
+  - name: "unifi.ap.satisfaction"
+    channel: "unifi_ap_satisfaction_{device_name}"
+    display_name: "UniFi AP {device_name} Satisfaction"
+    unit: "#"
+    multi_instance_labels: ["device_name"]
+    category: "access_point"
+    description: "Access point experience score as a 0..1 ratio"
+    otel:
+      name: unifi.ap.satisfaction
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      device_name: unifi.device.name
+      site: unifi.site

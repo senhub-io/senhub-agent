@@ -282,12 +282,17 @@ func humanizeRateUnit(otelUnit string) string {
 
 // prtgByteContext picks the PRTG byte unit matching what the bytes
 // measure: memory, disk/storage, network bandwidth, or files.
+// Memory is checked before the generic "file" heuristic so that
+// metrics like container.memory.active_file stay in BytesMemory.
 func (f *FormatConverter) prtgByteContext(otel *transformers.OtelMapping, metric CachedMetric) string {
 	if f.isDiskContext(otel, metric) {
 		return "BytesDisk"
 	}
 	if f.isNetworkContext(otel, metric) {
 		return "BytesBandwidth"
+	}
+	if otelNameContains(otel, "memory", "swap") {
+		return "BytesMemory"
 	}
 	if otelNameContains(otel, "file") {
 		return "BytesFile"

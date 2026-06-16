@@ -1,0 +1,259 @@
+probe_name: "rabbitmq"
+friendly_name: "RabbitMQ"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["node", "vhost", "queue"]
+
+# Free probe: RabbitMQ broker health and queue depth via HTTP Management API.
+# Naming follows the otelcol-contrib rabbitmq receiver where equivalents exist;
+# extensions under rabbitmq.* for what contrib covers plus senhub.rabbitmq.up.
+
+metrics:
+  # ── Probe status ──────────────────────────────────────────────────────────
+
+  - name: "senhub.rabbitmq.up"
+    channel: "rabbitmq_up"
+    display_name: "RabbitMQ Up"
+    unit: "#"
+    category: "status"
+    description: "1 when the Management API answered successfully, 0 otherwise"
+    otel:
+      name: senhub.rabbitmq.up
+      unit: "1"
+      type: gauge
+
+  # ── Overview: message counters ─────────────────────────────────────────────
+
+  - name: "rabbitmq.messages.published"
+    channel: "rabbitmq_messages_published"
+    display_name: "RabbitMQ Messages Published"
+    unit: "#"
+    category: "throughput"
+    description: "Total messages published to the broker (message_stats.publish)"
+    otel:
+      name: rabbitmq.messages.published
+      unit: "{message}"
+      type: counter
+
+  - name: "rabbitmq.messages.delivered"
+    channel: "rabbitmq_messages_delivered"
+    display_name: "RabbitMQ Messages Delivered"
+    unit: "#"
+    category: "throughput"
+    description: "Total messages delivered to consumers (message_stats.deliver_get)"
+    otel:
+      name: rabbitmq.messages.delivered
+      unit: "{message}"
+      type: counter
+
+  - name: "rabbitmq.messages.acknowledged"
+    channel: "rabbitmq_messages_acknowledged"
+    display_name: "RabbitMQ Messages Acknowledged"
+    unit: "#"
+    category: "throughput"
+    description: "Total messages acknowledged by consumers (message_stats.ack)"
+    otel:
+      name: rabbitmq.messages.acknowledged
+      unit: "{message}"
+      type: counter
+
+  - name: "rabbitmq.messages.unacknowledged"
+    channel: "rabbitmq_messages_unacknowledged"
+    display_name: "RabbitMQ Messages Unacknowledged"
+    unit: "#"
+    category: "throughput"
+    description: "Current number of messages delivered but not yet acknowledged (queue_totals.messages_unacknowledged)"
+    otel:
+      name: rabbitmq.messages.unacknowledged
+      unit: "{message}"
+      type: gauge
+
+  - name: "rabbitmq.messages.ready"
+    channel: "rabbitmq_messages_ready"
+    display_name: "RabbitMQ Messages Ready"
+    unit: "#"
+    category: "throughput"
+    description: "Current number of messages ready for delivery (queue_totals.messages_ready)"
+    otel:
+      name: rabbitmq.messages.ready
+      unit: "{message}"
+      type: gauge
+
+  # ── Overview: object totals ────────────────────────────────────────────────
+
+  - name: "rabbitmq.consumers.total"
+    channel: "rabbitmq_consumers_total"
+    display_name: "RabbitMQ Consumers"
+    unit: "#"
+    category: "connections"
+    description: "Total number of consumers across all queues (object_totals.consumers)"
+    otel:
+      name: rabbitmq.consumers.total
+      unit: "{consumer}"
+      type: gauge
+
+  - name: "rabbitmq.queues.total"
+    channel: "rabbitmq_queues_total"
+    display_name: "RabbitMQ Queues"
+    unit: "#"
+    category: "overview"
+    description: "Total number of queues (object_totals.queues)"
+    otel:
+      name: rabbitmq.queues.total
+      unit: "{queue}"
+      type: gauge
+
+  - name: "rabbitmq.connections.total"
+    channel: "rabbitmq_connections_total"
+    display_name: "RabbitMQ Connections"
+    unit: "#"
+    category: "connections"
+    description: "Total number of open connections (object_totals.connections)"
+    otel:
+      name: rabbitmq.connections.total
+      unit: "{connection}"
+      type: gauge
+
+  - name: "rabbitmq.channels.total"
+    channel: "rabbitmq_channels_total"
+    display_name: "RabbitMQ Channels"
+    unit: "#"
+    category: "connections"
+    description: "Total number of open channels (object_totals.channels)"
+    otel:
+      name: rabbitmq.channels.total
+      unit: "{channel}"
+      type: gauge
+
+  # ── Per-node metrics ───────────────────────────────────────────────────────
+
+  - name: "rabbitmq.node.memory.used"
+    channel: "rabbitmq_node_memory_used"
+    display_name: "RabbitMQ {node} Memory Used"
+    unit: "bytes"
+    category: "node"
+    description: "Bytes of RAM used by the Erlang VM on this node (mem_used)"
+    multi_instance_labels: ["node"]
+    otel:
+      name: rabbitmq.node.memory.used
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      node: rabbitmq.node.name
+
+  - name: "rabbitmq.node.disk.free"
+    channel: "rabbitmq_node_disk_free"
+    display_name: "RabbitMQ {node} Disk Free"
+    unit: "bytes"
+    category: "node"
+    description: "Bytes of free disk space on the node's data partition (disk_free)"
+    multi_instance_labels: ["node"]
+    otel:
+      name: rabbitmq.node.disk.free
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      node: rabbitmq.node.name
+
+  - name: "rabbitmq.node.fd.used"
+    channel: "rabbitmq_node_fd_used"
+    display_name: "RabbitMQ {node} File Descriptors Used"
+    unit: "#"
+    category: "node"
+    description: "Number of file descriptors in use by the node (fd_used)"
+    multi_instance_labels: ["node"]
+    otel:
+      name: rabbitmq.node.fd.used
+      unit: "{fd}"
+      type: gauge
+    tag_to_attribute:
+      node: rabbitmq.node.name
+
+  - name: "rabbitmq.node.sockets.used"
+    channel: "rabbitmq_node_sockets_used"
+    display_name: "RabbitMQ {node} Sockets Used"
+    unit: "#"
+    category: "node"
+    description: "Number of sockets in use by the node (sockets_used)"
+    multi_instance_labels: ["node"]
+    otel:
+      name: rabbitmq.node.sockets.used
+      unit: "{socket}"
+      type: gauge
+    tag_to_attribute:
+      node: rabbitmq.node.name
+
+  - name: "rabbitmq.node.running"
+    channel: "rabbitmq_node_running"
+    display_name: "RabbitMQ {node} Running"
+    unit: "#"
+    category: "node"
+    description: "1 when the node reports running=true, 0 otherwise"
+    multi_instance_labels: ["node"]
+    otel:
+      name: rabbitmq.node.running
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      node: rabbitmq.node.name
+
+  - name: "rabbitmq.node.uptime"
+    channel: "rabbitmq_node_uptime"
+    display_name: "RabbitMQ {node} Uptime"
+    unit: "ms"
+    category: "node"
+    description: "Time in milliseconds since the Erlang VM on this node started (uptime)"
+    multi_instance_labels: ["node"]
+    otel:
+      name: rabbitmq.node.uptime
+      unit: "ms"
+      type: counter
+    tag_to_attribute:
+      node: rabbitmq.node.name
+
+  # ── Per-queue metrics ──────────────────────────────────────────────────────
+
+  - name: "rabbitmq.queue.messages.ready"
+    channel: "rabbitmq_queue_messages_ready"
+    display_name: "RabbitMQ {vhost}/{queue} Messages Ready"
+    unit: "#"
+    category: "queue"
+    description: "Messages ready for delivery in this queue (messages_ready)"
+    multi_instance_labels: ["vhost", "queue"]
+    otel:
+      name: rabbitmq.queue.messages.ready
+      unit: "{message}"
+      type: gauge
+    tag_to_attribute:
+      vhost: rabbitmq.vhost
+      queue: rabbitmq.queue.name
+
+  - name: "rabbitmq.queue.messages.unacknowledged"
+    channel: "rabbitmq_queue_messages_unacknowledged"
+    display_name: "RabbitMQ {vhost}/{queue} Messages Unacknowledged"
+    unit: "#"
+    category: "queue"
+    description: "Messages delivered to consumers but not yet acknowledged in this queue (messages_unacknowledged)"
+    multi_instance_labels: ["vhost", "queue"]
+    otel:
+      name: rabbitmq.queue.messages.unacknowledged
+      unit: "{message}"
+      type: gauge
+    tag_to_attribute:
+      vhost: rabbitmq.vhost
+      queue: rabbitmq.queue.name
+
+  - name: "rabbitmq.queue.consumers"
+    channel: "rabbitmq_queue_consumers"
+    display_name: "RabbitMQ {vhost}/{queue} Consumers"
+    unit: "#"
+    category: "queue"
+    description: "Number of consumers subscribed to this queue (consumers)"
+    multi_instance_labels: ["vhost", "queue"]
+    otel:
+      name: rabbitmq.queue.consumers
+      unit: "{consumer}"
+      type: gauge
+    tag_to_attribute:
+      vhost: rabbitmq.vhost
+      queue: rabbitmq.queue.name

@@ -86,15 +86,17 @@ func NewSnmpPollProbe(rawConfig map[string]interface{}, baseLogger *logger.Logge
 			Msg("snmp_poll discovery is configured but not active yet (#156): the block is validated and ignored; per-device topology (LLDP/routes/bridge) still runs")
 	}
 
+	entitySrc := newEntitySource(cfg, moduleLogger)
 	probe := &snmppollProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		instance:     cfg.Target + ":" + strconv.Itoa(int(cfg.Port)),
 		moduleLogger: moduleLogger,
-		entitySource: newEntitySource(cfg, moduleLogger),
+		entitySource: entitySrc,
 		newClient:    func(c *config) snmpClient { return newGosnmpClient(c) },
 	}
 	probe.SetProbeType(probeType)
+	probe.SetEntitySource(entitySrc)
 	return probe, nil
 }
 
@@ -126,7 +128,7 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 	start := time.Now()
 
 	client := p.newClient(p.cfg)
-	up := float32(1)
+	up := float64(1)
 	var points []data_store.DataPoint
 
 	if err := client.Connect(); err != nil {
@@ -159,7 +161,7 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 	end := time.Now()
 	points = append(points,
 		data_store.DataPoint{Name: metricUp, Timestamp: end, Value: up, Tags: statusTags(p.instance)},
-		data_store.DataPoint{Name: metricPollDuration, Timestamp: end, Value: float32(end.Sub(start).Seconds()), Tags: statusTags(p.instance)},
+		data_store.DataPoint{Name: metricPollDuration, Timestamp: end, Value: end.Sub(start).Seconds(), Tags: statusTags(p.instance)},
 	)
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil

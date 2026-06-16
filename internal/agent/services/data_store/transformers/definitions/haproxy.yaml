@@ -1,0 +1,134 @@
+probe_name: "haproxy"
+friendly_name: "HAProxy"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["proxy", "component"]
+
+# Free HAProxy monitoring probe. Polls the HAProxy stats CSV endpoint
+# (HTTP GET, default port 8080). Metric names follow the otelcol-contrib
+# haproxy receiver where available. Per-proxy/component metrics use the
+# proxy and component tags as instance discriminants.
+
+metrics:
+  - name: "senhub.haproxy.up"
+    channel: "haproxy_up"
+    display_name: "HAProxy Up"
+    unit: "#"
+    category: "status"
+    description: "1 when the HAProxy stats endpoint is reachable and returns valid CSV"
+    otel:
+      name: senhub.haproxy.up
+      unit: "1"
+      type: gauge
+
+  - name: "haproxy.sessions.count"
+    channel: "haproxy_sessions_{proxy}_{component}"
+    display_name: "HAProxy {proxy} {component} Current Sessions"
+    unit: "#"
+    category: "sessions"
+    description: "Current number of active sessions (scur)"
+    otel:
+      name: haproxy.sessions.count
+      unit: "{session}"
+      type: gauge
+    tag_to_attribute:
+      proxy: haproxy.proxy.name
+      component: haproxy.component
+
+  - name: "haproxy.sessions.total"
+    channel: "haproxy_sessions_total_{proxy}_{component}"
+    display_name: "HAProxy {proxy} {component} Total Sessions"
+    unit: "#"
+    category: "sessions"
+    description: "Total number of sessions since last reset (stot)"
+    otel:
+      name: haproxy.sessions.total
+      unit: "{session}"
+      type: counter
+    tag_to_attribute:
+      proxy: haproxy.proxy.name
+      component: haproxy.component
+
+  - name: "haproxy.bytes.input"
+    channel: "haproxy_bytes_in_{proxy}_{component}"
+    display_name: "HAProxy {proxy} {component} Bytes In"
+    unit: "B"
+    category: "throughput"
+    description: "Total bytes received (bin)"
+    otel:
+      name: haproxy.bytes.input
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      proxy: haproxy.proxy.name
+      component: haproxy.component
+
+  - name: "haproxy.bytes.output"
+    channel: "haproxy_bytes_out_{proxy}_{component}"
+    display_name: "HAProxy {proxy} {component} Bytes Out"
+    unit: "B"
+    category: "throughput"
+    description: "Total bytes sent (bout)"
+    otel:
+      name: haproxy.bytes.output
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      proxy: haproxy.proxy.name
+      component: haproxy.component
+
+  - name: "haproxy.connections.errors"
+    channel: "haproxy_econ_{proxy}_{component}"
+    display_name: "HAProxy {proxy} {component} Connection Errors"
+    unit: "#"
+    category: "errors"
+    description: "Total connection errors (econ)"
+    otel:
+      name: haproxy.connections.errors
+      unit: "{error}"
+      type: counter
+    tag_to_attribute:
+      proxy: haproxy.proxy.name
+      component: haproxy.component
+
+  - name: "haproxy.requests.errors"
+    channel: "haproxy_ereq_{proxy}_{component}"
+    display_name: "HAProxy {proxy} {component} Request Errors"
+    unit: "#"
+    category: "errors"
+    description: "Total request errors (ereq) — frontends only"
+    otel:
+      name: haproxy.requests.errors
+      unit: "{error}"
+      type: counter
+    tag_to_attribute:
+      proxy: haproxy.proxy.name
+      component: haproxy.component
+
+  - name: "haproxy.responses.errors"
+    channel: "haproxy_eresp_{proxy}_{component}"
+    display_name: "HAProxy {proxy} {component} Response Errors"
+    unit: "#"
+    category: "errors"
+    description: "Total response errors (eresp)"
+    otel:
+      name: haproxy.responses.errors
+      unit: "{error}"
+      type: counter
+    tag_to_attribute:
+      proxy: haproxy.proxy.name
+      component: haproxy.component
+
+  - name: "haproxy.requests.rate"
+    channel: "haproxy_req_rate_{proxy}_{component}"
+    display_name: "HAProxy {proxy} {component} Request Rate"
+    unit: "#/s"
+    category: "requests"
+    description: "Current request rate in requests per second (req_rate) — frontends only"
+    otel:
+      name: haproxy.requests.rate
+      unit: "{request}/s"
+      type: gauge
+    tag_to_attribute:
+      proxy: haproxy.proxy.name
+      component: haproxy.component

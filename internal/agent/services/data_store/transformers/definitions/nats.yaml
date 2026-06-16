@@ -1,0 +1,163 @@
+probe_name: "nats"
+friendly_name: "NATS Server"
+version: "1.0.0"
+host_level: false
+
+# FREE-tier NATS probe. Monitors a NATS Server via its HTTP management API
+# (/varz, /routez, /jsz). No external dependencies — stdlib only.
+# All metrics are tagged with instance={endpoint}.
+
+metrics:
+  - name: "senhub.nats.up"
+    channel: "nats_up"
+    display_name: "NATS Server Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the NATS management API (/varz) responds with HTTP 200"
+    otel:
+      name: senhub.nats.up
+      unit: "1"
+      type: gauge
+
+  - name: "nats.connections.count"
+    channel: "nats_connections_count"
+    display_name: "NATS Current Connections"
+    unit: "#"
+    category: "connections"
+    description: "Number of currently active client connections"
+    otel:
+      name: nats.connections.count
+      unit: "{connection}"
+      type: updowncounter
+
+  - name: "nats.connections.total"
+    channel: "nats_connections_total"
+    display_name: "NATS Total Connections"
+    unit: "#"
+    category: "connections"
+    description: "Total number of client connections since server start (monotonic counter)"
+    otel:
+      name: nats.connections.total
+      unit: "{connection}"
+      type: counter
+
+  - name: "nats.subscriptions.count"
+    channel: "nats_subscriptions_count"
+    display_name: "NATS Active Subscriptions"
+    unit: "#"
+    category: "subscriptions"
+    description: "Number of active subscriptions across all clients"
+    otel:
+      name: nats.subscriptions.count
+      unit: "{subscription}"
+      type: updowncounter
+
+  - name: "nats.messages.in"
+    channel: "nats_messages_in"
+    display_name: "NATS Messages In"
+    unit: "#"
+    category: "throughput"
+    description: "Total number of messages received by the server since start"
+    otel:
+      name: nats.messages.in
+      unit: "{message}"
+      type: counter
+
+  - name: "nats.messages.out"
+    channel: "nats_messages_out"
+    display_name: "NATS Messages Out"
+    unit: "#"
+    category: "throughput"
+    description: "Total number of messages sent by the server since start"
+    otel:
+      name: nats.messages.out
+      unit: "{message}"
+      type: counter
+
+  - name: "nats.bytes.in"
+    channel: "nats_bytes_in"
+    display_name: "NATS Bytes In"
+    unit: "B"
+    category: "throughput"
+    description: "Total bytes received by the server since start"
+    otel:
+      name: nats.bytes.in
+      unit: "By"
+      type: counter
+
+  - name: "nats.bytes.out"
+    channel: "nats_bytes_out"
+    display_name: "NATS Bytes Out"
+    unit: "B"
+    category: "throughput"
+    description: "Total bytes sent by the server since start"
+    otel:
+      name: nats.bytes.out
+      unit: "By"
+      type: counter
+
+  - name: "nats.slow_consumers"
+    channel: "nats_slow_consumers"
+    display_name: "NATS Slow Consumers"
+    unit: "#"
+    category: "errors"
+    description: "Number of slow consumer events detected since server start"
+    otel:
+      name: nats.slow_consumers
+      unit: "{consumer}"
+      type: counter
+
+  - name: "nats.routes.count"
+    channel: "nats_routes_count"
+    display_name: "NATS Cluster Routes"
+    unit: "#"
+    category: "cluster"
+    description: "Number of active cluster routes (server-to-server connections)"
+    otel:
+      name: nats.routes.count
+      unit: "{route}"
+      type: updowncounter
+
+  - name: "nats.jetstream.streams"
+    channel: "nats_jetstream_streams"
+    display_name: "NATS JetStream Streams"
+    unit: "#"
+    category: "jetstream"
+    description: "Number of JetStream streams (present only when JetStream is enabled)"
+    otel:
+      name: nats.jetstream.streams
+      unit: "{stream}"
+      type: updowncounter
+
+  - name: "nats.jetstream.consumers"
+    channel: "nats_jetstream_consumers"
+    display_name: "NATS JetStream Consumers"
+    unit: "#"
+    category: "jetstream"
+    description: "Number of JetStream consumers across all streams"
+    otel:
+      name: nats.jetstream.consumers
+      unit: "{consumer}"
+      type: updowncounter
+
+  - name: "nats.jetstream.messages"
+    channel: "nats_jetstream_messages"
+    display_name: "NATS JetStream Messages"
+    unit: "#"
+    category: "jetstream"
+    description: "Total number of messages stored in JetStream across all streams"
+    otel:
+      name: nats.jetstream.messages
+      unit: "{message}"
+      type: updowncounter
+
+  - name: "nats.jetstream.storage"
+    channel: "nats_jetstream_storage"
+    display_name: "NATS JetStream Storage"
+    unit: "B"
+    category: "jetstream"
+    description: "Total bytes stored in JetStream across all streams"
+    otel:
+      name: nats.jetstream.storage
+      unit: "By"
+      type: updowncounter

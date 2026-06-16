@@ -40,8 +40,8 @@ const (
 // RoleValue is the numeric form emitted as the
 // `senhub.db.replication.role` metric (matches the PRTG lookup
 // senhub.db.replication.role.ovl).
-func (r Role) RoleValue() float32 {
-	return float32(r)
+func (r Role) RoleValue() float64 {
+	return float64(r)
 }
 
 // String returns the human-readable form used as a tag value

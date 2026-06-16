@@ -1,11 +1,11 @@
-cpu_cores/cpu_core_usage status=0  | 
-cpu_detailed/cpu_iowait status=0  | 
-cpu_detailed/cpu_load1 status=0  | 
-cpu_detailed/cpu_load15 status=0  | 
-cpu_detailed/cpu_load5 status=0  | 
-cpu_detailed/cpu_system status=0  | 
-cpu_detailed/cpu_usage_total status=0  | 
-cpu_detailed/cpu_user status=0  | 
-system_health/cpu_load1 status=0  | 
+cpu_cores/cpu_core_usage status=0 cpu_core_usage[tcore]: OK 65.00% | cpu_core_usage_tcore=65.00%;80;90;0;100
+cpu_detailed/cpu_iowait status=2 cpu_iowait: CRITICAL 88.00% | cpu_iowait=88.00%;20;40;0;100
+cpu_detailed/cpu_load1 status=2 cpu_load1: CRITICAL 88.00c | cpu_load1=88.00c;4;8;;
+cpu_detailed/cpu_load15 status=2 cpu_load15: CRITICAL 111.00c | cpu_load15=111.00c;2;4;;
+cpu_detailed/cpu_load5 status=2 cpu_load5: CRITICAL 99.50c | cpu_load5=99.50c;3;6;;
+cpu_detailed/cpu_system status=2 cpu_system: CRITICAL 53.50% | cpu_system=53.50%;30;50;0;100
+cpu_detailed/cpu_usage_total status=0 cpu_usage_total: OK 53.50% | cpu_usage_total=53.50%;80;90;0;100
+cpu_detailed/cpu_user status=0 cpu_user: OK 42.00% | cpu_user=42.00%;70;85;0;100
+system_health/cpu_load1 status=2 cpu_load1: CRITICAL 88.00c | cpu_load1=88.00c;4;8;;
 system_health/cpu_usage_total status=0 OK: cpu_usage_total 53.50% (aggregated from 1 metrics) | cpu_usage_total=53.50%;80;90;0;100
 system_health/memory_used_percent status=3 No metrics found for channel: memory_used_percent | 

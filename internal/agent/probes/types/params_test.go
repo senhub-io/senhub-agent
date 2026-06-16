@@ -14,7 +14,7 @@ func TestIntParam(t *testing.T) {
 		{"json float64 integer", map[string]interface{}{"port": float64(514)}, "port", 514, true},
 		{"int32", map[string]interface{}{"port": int32(514)}, "port", 514, true},
 		{"int64", map[string]interface{}{"port": int64(514)}, "port", 514, true},
-		{"float32 integer", map[string]interface{}{"port": float32(514)}, "port", 514, true},
+		{"float64 integer", map[string]interface{}{"port": float64(514)}, "port", 514, true},
 		{"string numeric", map[string]interface{}{"port": "514"}, "port", 514, true},
 		{"missing key", map[string]interface{}{}, "port", 0, false},
 		{"float with fractional part rejected", map[string]interface{}{"port": float64(514.5)}, "port", 0, false},

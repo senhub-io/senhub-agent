@@ -1,0 +1,210 @@
+probe_name: "zookeeper"
+friendly_name: "Apache ZooKeeper"
+version: "1.0.0"
+host_level: false
+
+# Free probe: monitors a ZooKeeper node via the mntr four-letter command
+# over raw TCP. Covers latency, packets, connections, znodes, watches,
+# file descriptors, and ensemble state (leader-only metrics emitted only
+# when the node is the leader).
+
+metrics:
+  - name: "senhub.zookeeper.up"
+    channel: "zookeeper_up"
+    display_name: "ZooKeeper Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the ZooKeeper node answered the mntr command, 0 otherwise"
+    otel:
+      name: senhub.zookeeper.up
+      unit: "1"
+      type: gauge
+
+  - name: "zookeeper.latency.avg"
+    channel: "zookeeper_latency_avg"
+    display_name: "ZooKeeper Avg Request Latency"
+    unit: "ms"
+    category: "latency"
+    description: "Average request processing latency in milliseconds (zk_avg_latency)"
+    otel:
+      name: zookeeper.latency.avg
+      unit: "ms"
+      type: gauge
+
+  - name: "zookeeper.latency.max"
+    channel: "zookeeper_latency_max"
+    display_name: "ZooKeeper Max Request Latency"
+    unit: "ms"
+    category: "latency"
+    description: "Maximum request processing latency in milliseconds (zk_max_latency)"
+    otel:
+      name: zookeeper.latency.max
+      unit: "ms"
+      type: gauge
+
+  - name: "zookeeper.latency.min"
+    channel: "zookeeper_latency_min"
+    display_name: "ZooKeeper Min Request Latency"
+    unit: "ms"
+    category: "latency"
+    description: "Minimum request processing latency in milliseconds (zk_min_latency)"
+    otel:
+      name: zookeeper.latency.min
+      unit: "ms"
+      type: gauge
+
+  - name: "zookeeper.packets.received"
+    channel: "zookeeper_packets_received"
+    display_name: "ZooKeeper Packets Received"
+    unit: "#"
+    category: "operations"
+    description: "Total packets received (zk_packets_received)"
+    otel:
+      name: zookeeper.packets.received
+      unit: "{packet}"
+      type: counter
+
+  - name: "zookeeper.packets.sent"
+    channel: "zookeeper_packets_sent"
+    display_name: "ZooKeeper Packets Sent"
+    unit: "#"
+    category: "operations"
+    description: "Total packets sent (zk_packets_sent)"
+    otel:
+      name: zookeeper.packets.sent
+      unit: "{packet}"
+      type: counter
+
+  - name: "zookeeper.connections"
+    channel: "zookeeper_connections"
+    display_name: "ZooKeeper Alive Connections"
+    unit: "#"
+    category: "connections"
+    description: "Number of active client connections (zk_num_alive_connections)"
+    otel:
+      name: zookeeper.connections
+      unit: "{connection}"
+      type: gauge
+
+  - name: "zookeeper.outstanding_requests"
+    channel: "zookeeper_outstanding_requests"
+    display_name: "ZooKeeper Outstanding Requests"
+    unit: "#"
+    category: "requests"
+    description: "Number of queued requests waiting to be processed (zk_outstanding_requests)"
+    otel:
+      name: zookeeper.outstanding_requests
+      unit: "{request}"
+      type: gauge
+
+  - name: "zookeeper.znodes"
+    channel: "zookeeper_znodes"
+    display_name: "ZooKeeper ZNode Count"
+    unit: "#"
+    category: "data"
+    description: "Total number of znodes in the data tree (zk_znode_count)"
+    otel:
+      name: zookeeper.znodes
+      unit: "{znode}"
+      type: gauge
+
+  - name: "zookeeper.watches"
+    channel: "zookeeper_watches"
+    display_name: "ZooKeeper Watch Count"
+    unit: "#"
+    category: "data"
+    description: "Total number of active watches (zk_watch_count)"
+    otel:
+      name: zookeeper.watches
+      unit: "{watch}"
+      type: gauge
+
+  - name: "zookeeper.ephemerals"
+    channel: "zookeeper_ephemerals"
+    display_name: "ZooKeeper Ephemeral Nodes"
+    unit: "#"
+    category: "data"
+    description: "Number of ephemeral znodes (zk_ephemerals_count)"
+    otel:
+      name: zookeeper.ephemerals
+      unit: "{node}"
+      type: gauge
+
+  - name: "zookeeper.data_size"
+    channel: "zookeeper_data_size"
+    display_name: "ZooKeeper Data Size"
+    unit: "B"
+    category: "data"
+    description: "Approximate size of all znode data in bytes (zk_approximate_data_size)"
+    otel:
+      name: zookeeper.data_size
+      unit: "By"
+      type: gauge
+
+  - name: "zookeeper.file_descriptors.open"
+    channel: "zookeeper_fd_open"
+    display_name: "ZooKeeper Open File Descriptors"
+    unit: "#"
+    category: "resources"
+    description: "Number of open file descriptors (zk_open_file_descriptor_count)"
+    otel:
+      name: zookeeper.file_descriptors.open
+      unit: "{fd}"
+      type: gauge
+
+  - name: "zookeeper.file_descriptors.max"
+    channel: "zookeeper_fd_max"
+    display_name: "ZooKeeper Max File Descriptors"
+    unit: "#"
+    category: "resources"
+    description: "Maximum allowed file descriptors (zk_max_file_descriptor_count)"
+    otel:
+      name: zookeeper.file_descriptors.max
+      unit: "{fd}"
+      type: gauge
+
+  - name: "zookeeper.followers"
+    channel: "zookeeper_followers"
+    display_name: "ZooKeeper Followers"
+    unit: "#"
+    category: "ensemble"
+    description: "Number of followers in the ensemble — leader only (zk_followers)"
+    otel:
+      name: zookeeper.followers
+      unit: "{follower}"
+      type: gauge
+
+  - name: "zookeeper.synced_followers"
+    channel: "zookeeper_synced_followers"
+    display_name: "ZooKeeper Synced Followers"
+    unit: "#"
+    category: "ensemble"
+    description: "Number of followers in sync with the leader — leader only (zk_synced_followers)"
+    otel:
+      name: zookeeper.synced_followers
+      unit: "{follower}"
+      type: gauge
+
+  - name: "zookeeper.pending_syncs"
+    channel: "zookeeper_pending_syncs"
+    display_name: "ZooKeeper Pending Syncs"
+    unit: "#"
+    category: "ensemble"
+    description: "Number of pending sync operations — leader only (zk_pending_syncs)"
+    otel:
+      name: zookeeper.pending_syncs
+      unit: "{sync}"
+      type: gauge
+
+  - name: "zookeeper.server_state"
+    channel: "zookeeper_server_state"
+    display_name: "ZooKeeper Server Role"
+    unit: "#"
+    category: "ensemble"
+    description: "Always 1; the 'state' attribute carries the role: leader, follower, or standalone"
+    otel:
+      name: zookeeper.server_state
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      state: zookeeper.server_state
