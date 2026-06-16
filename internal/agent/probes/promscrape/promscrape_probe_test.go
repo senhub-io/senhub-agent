@@ -229,3 +229,20 @@ func TestParseConfig_Errors(t *testing.T) {
 		})
 	}
 }
+
+// TestLooksLikeOwnEndpoint pins the prometheus_scrape self-scrape heuristic
+// used to warn when a target is the agent's own Prometheus endpoint.
+func TestLooksLikeOwnEndpoint(t *testing.T) {
+	cases := map[string]bool{
+		"http://127.0.0.1:9100/api/AGENTKEY/prometheus/metrics": true,
+		"http://127.0.0.1:9100/metrics":                         true,
+		"http://node-exporter:9100/metrics/":                    true,
+		"http://snmp-target:9116/snmp":                          false,
+		"http://app:8080/internal/metrics/cpu":                  false,
+	}
+	for target, want := range cases {
+		if got := looksLikeOwnEndpoint(target); got != want {
+			t.Errorf("looksLikeOwnEndpoint(%q) = %v, want %v", target, got, want)
+		}
+	}
+}

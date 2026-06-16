@@ -106,8 +106,6 @@ type mysqlProbe struct {
 	moduleLogger *logger.ModuleLogger
 	entitySrc    *mysqlEntitySource
 	unregister   func()
-	// version string captured on first connect (used for env detection)
-	versionStr string
 	// uuidFetched guards the one-time @@server_uuid fetch; once pinned
 	// the entity source holds the id and this flag prevents re-querying.
 	uuidFetched bool
@@ -178,7 +176,12 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 func (p *mysqlProbe) ShouldStart() bool          { return true }
 func (p *mysqlProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
-// OnStart opens the database connection and validates credentials.
+// OnStart opens the connection pool but does NOT verify reachability:
+// sql.Open is lazy (no network I/O) and only fails on a malformed DSN, so
+// a target that is down at start does not abort the probe. The first real
+// connection is made in Collect, which emits senhub.db.up=0 while the
+// server is unreachable and reconnects automatically once it returns —
+// the pool re-dials on demand. This mirrors the oracle/mssql probes (#485).
 func (p *mysqlProbe) OnStart(_ chan struct{}) error {
 	dsn, err := p.buildDSN()
 	if err != nil {
@@ -192,17 +195,7 @@ func (p *mysqlProbe) OnStart(_ chan struct{}) error {
 	db.SetMaxOpenConns(3)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(5 * time.Minute)
-
-	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
-	defer cancel()
-	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
-		return fmt.Errorf("mysql probe %s: ping failed — check host/credentials: %w", p.GetName(), err)
-	}
 	p.db = db
-
-	// Capture version string for environment detection (best-effort).
-	p.versionStr = p.queryVersionComment(ctx)
 
 	p.unregister = entity.RegisterSource(p.entitySrc)
 	p.moduleLogger.Info().
@@ -244,7 +237,14 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
-	// Ping the server.
+	// Ping the server. The connection is established here (not in OnStart)
+	// so a down-at-start target is a recoverable outage, not a fatal probe
+	// failure; the pool reconnects on demand once the server returns (#485).
+	if p.db == nil {
+		p.moduleLogger.Warn().Str("instance", instance).Msg("mysql: no connection pool")
+		points = append(points, p.dp("senhub.db.up", 0, now, string(dbcommon.MetricTypeOverview), commonTags))
+		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+	}
 	if err := p.db.PingContext(ctx); err != nil {
 		p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("mysql ping failed")
 		points = append(points, p.dp("senhub.db.up", 0, now, string(dbcommon.MetricTypeOverview), commonTags))

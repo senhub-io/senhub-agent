@@ -50,8 +50,14 @@ func OTelNameToPromName(otelName, unit, metricType string) string {
 	// OTel names under `senhub.*` already carry the namespace — don't double-prefix.
 	// Other namespaces (system.*, hw.*, etc.) get the senhub_ prefix prepended
 	// so every series exposed by this agent is namespaced to senhub.
+	//
+	// A scraped/ingested series can already carry the *sanitized* prefix
+	// `senhub_` (underscore) — e.g. prometheus_scrape pointed at this agent's
+	// own /metrics endpoint re-ingests names this same function produced. Treat
+	// that form as already-prefixed too, otherwise every cycle prepends another
+	// `senhub_` and the name grows unbounded (senhub_senhub_...).
 	var name string
-	if strings.HasPrefix(otelName, MetricPrefix+".") {
+	if strings.HasPrefix(otelName, MetricPrefix+".") || strings.HasPrefix(otelName, MetricPrefix+"_") {
 		name = otelName
 	} else {
 		name = MetricPrefix + "." + otelName
