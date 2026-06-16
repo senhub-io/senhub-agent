@@ -20,6 +20,8 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/entity/hostdep"
+	"senhub-agent.go/internal/agent/services/entity/hostiface"
 	"senhub-agent.go/internal/agent/services/entity/hostnet"
 	"senhub-agent.go/internal/agent/services/entity/hostsvc"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -547,8 +549,11 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 	// Host-side entity sources (only active while entity emission runs):
 	// hostnet emits the host's routes as network.route + the gateway
 	// network.address; hostsvc emits the host's listening services as
-	// service.listener entities. Both key off the host's stable id so they hang
-	// off the same host node as the foundation host entity.
+	// service.listener entities; hostiface emits the host's own interfaces and
+	// IP addresses so a connection peer resolves back to this host; hostdep
+	// emits the host's durable outbound dependencies (service.instance
+	// depends_on network.endpoint). All key off the host's stable id so they
+	// hang off the same host node as the foundation host entity.
 	hostIDFn := func() string {
 		hi, err := common.GetHostIdentity()
 		if err != nil {
@@ -558,7 +563,9 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 	}
 	s.entitySourceUnregisters = append(s.entitySourceUnregisters,
 		entity.RegisterSource(hostnet.New(hostIDFn)),
-		entity.RegisterSource(hostsvc.New(hostIDFn)))
+		entity.RegisterSource(hostsvc.New(hostIDFn)),
+		entity.RegisterSource(hostiface.New(hostIDFn)),
+		entity.RegisterSource(hostdep.New(hostIDFn)))
 
 	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
 	det.OnOrphanRelations(func(orphans []entity.Relation) {
