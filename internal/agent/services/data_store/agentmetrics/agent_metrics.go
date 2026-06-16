@@ -252,6 +252,24 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		})
 	}
 
+	// License rejection state — a configured licence the validator refused,
+	// labelled by reason (validation_failed, binding_mismatch,
+	// expired_no_grace). 1 means the agent is silently degraded to free tier
+	// despite a licence being configured; 0 after a licence validates. Always
+	// emitted so dashboards can alert on `senhub.agent.license.invalid > 0`
+	// instead of the rejection hiding in a single log line (#486). A host with
+	// no licence configured never sets this, so the gauge stays absent there.
+	for reason, n := range agentstate.GetLicenseInvalidByReason() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.license.invalid",
+			Unit:        "1",
+			Type:        "gauge",
+			Attributes:  map[string]string{"reason": reason},
+			Value:       float64(n),
+			Description: "1 when a configured license was rejected and the agent degraded to free tier (by reason: validation_failed, binding_mismatch, expired_no_grace); 0 once a license validates. Absent when no license is configured.",
+		})
+	}
+
 	// HTTP MetricCache drop counters — same emitted-only-when-touched
 	// shape as senhub.agent.otlp.dropped above. Today the only reason
 	// is `http_cache_cap` (cardinality cap on the shared cache, #281).

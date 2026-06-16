@@ -71,9 +71,12 @@ func NewPostgreSQLProbe(params map[string]interface{}, baseLogger *logger.Logger
 func (p *pgProbe) ShouldStart() bool          { return true }
 func (p *pgProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
-// OnStart opens the database connection. A failure here marks the probe
-// unhealthy and the framework will not call Collect until OnStart
-// succeeds on a subsequent retry.
+// OnStart opens the connection pool but does NOT verify reachability:
+// sql.Open is lazy (no network I/O) and only fails on a malformed DSN, so
+// a target that is down at start does not abort the probe. The first real
+// connection is made in Collect, which emits senhub.db.up=0 while the
+// server is unreachable and reconnects automatically once it returns —
+// the pool re-dials on demand. This mirrors the oracle/mssql probes (#485).
 func (p *pgProbe) OnStart(_ chan struct{}) error {
 	dsn := p.buildDSN()
 
@@ -84,13 +87,6 @@ func (p *pgProbe) OnStart(_ chan struct{}) error {
 	db.SetMaxOpenConns(2)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(5 * time.Minute)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
-		return fmt.Errorf("postgresql: ping %s:%d: %w", p.cfg.Host, p.cfg.Port, err)
-	}
 
 	p.db = db
 	p.unregisterEntity = entity.RegisterSource(p.entitySrc)
@@ -132,10 +128,18 @@ func (p *pgProbe) Collect() ([]data_store.DataPoint, error) {
 		{Key: "server.port", Value: strconv.Itoa(p.cfg.Port)},
 	}
 
-	// Ping first — if the server is unreachable emit up=0 and return.
+	// Ping first — the connection is established here (not in OnStart) so a
+	// down-at-start target is a recoverable outage, not a fatal probe
+	// failure; emit up=0 and return while unreachable, the pool re-dials on
+	// demand once the server returns (#485).
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	if p.db == nil {
+		p.moduleLogger.Warn().Str("instance", instance).Msg("postgresql: no connection pool")
+		up := p.dp("senhub.db.up", 0, now, baseTags)
+		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{up}, p.GetName()), nil
+	}
 	if err := p.db.PingContext(ctx); err != nil {
 		p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("postgresql: ping failed")
 		up := p.dp("senhub.db.up", 0, now, baseTags)
