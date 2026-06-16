@@ -1,0 +1,68 @@
+probe_name: "systemd"
+friendly_name: "Systemd Units"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["systemd.unit"]
+
+# Free host-local probe: per-unit active/sub/load state + restart counter.
+# OTel names follow the systemd.unit.* namespace (no contrib receiver covers
+# systemd unit supervision). One instance per unit via the systemd.unit tag.
+# Linux-only — the stub returns ErrNotSupported on other platforms.
+
+metrics:
+  - name: "systemd.unit.active_state"
+    channel: "systemd_{systemd.unit}_active"
+    display_name: "Systemd {systemd.unit} Active State"
+    unit: "#"
+    category: "status"
+    description: "1 when the unit active state is 'active', 0 otherwise"
+    otel:
+      name: systemd.unit.active_state
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      systemd.unit: systemd.unit
+      systemd.unit.type: systemd.unit.type
+
+  - name: "systemd.unit.sub_state"
+    channel: "systemd_{systemd.unit}_sub"
+    display_name: "Systemd {systemd.unit} Sub State"
+    unit: "#"
+    category: "status"
+    description: "1 when the unit sub state is 'running' or 'listening', 0 otherwise. The sub_state tag carries the raw sub state value."
+    otel:
+      name: systemd.unit.sub_state
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      systemd.unit: systemd.unit
+      systemd.unit.type: systemd.unit.type
+      sub_state: systemd.unit.sub_state
+
+  - name: "systemd.unit.load_state"
+    channel: "systemd_{systemd.unit}_load"
+    display_name: "Systemd {systemd.unit} Load State"
+    unit: "#"
+    category: "status"
+    description: "1 when the unit load state is 'loaded', 0 otherwise (not-found, error, masked)"
+    otel:
+      name: systemd.unit.load_state
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      systemd.unit: systemd.unit
+      systemd.unit.type: systemd.unit.type
+
+  - name: "systemd.unit.restarts"
+    channel: "systemd_{systemd.unit}_restarts"
+    display_name: "Systemd {systemd.unit} Restarts"
+    unit: "#"
+    category: "reliability"
+    description: "Cumulative restart count for service units (NRestarts D-Bus property). Only emitted for units of type 'service'."
+    otel:
+      name: systemd.unit.restarts
+      unit: "{restart}"
+      type: counter
+    tag_to_attribute:
+      systemd.unit: systemd.unit
+      systemd.unit.type: systemd.unit.type

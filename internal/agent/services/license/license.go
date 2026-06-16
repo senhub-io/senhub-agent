@@ -201,6 +201,8 @@ func (v *JWTValidator) IsInGracePeriod(license *License) bool {
 // is the same open-core "bring everything in" wedge, not a paid vendor
 // integration.
 var freeTierProbes = map[string]bool{
+	"apache":           true,
+	"activemq":         true,
 	"cpu":              true,
 	"memory":           true,
 	"logicaldisk":      true,
@@ -226,6 +228,206 @@ var freeTierProbes = map[string]bool{
 	// filetail and windows_eventlog (#298); receiving a standard
 	// protocol is collection, not a vendor integration.
 	"syslog": true,
+	// nginx: stub_status scraping is the equivalent of a free OTel
+	// Collector nginx receiver — web-server health is host-local
+	// observability on the same machine the agent monitors.
+	"nginx": true,
+	// haproxy: HTTP-stats endpoint polling; same open-core wedge as
+	// snmp_poll and prometheus_scrape — collecting from a standard
+	// protocol endpoint on a local or accessible host is universal
+	// collection, not a paid vendor integration.
+	"haproxy": true,
+	// varnish: host-local Varnish Cache observability — runs varnishstat
+	// on the local machine. Same free rationale as cpu/memory/logicaldisk.
+	"varnish": true,
+	// phpfpm: PHP-FPM pool monitoring via the status-page JSON endpoint.
+	// The agent reads a local or proxied HTTP endpoint on the same host —
+	// the same "host-local observability" rationale as cpu/memory/linux_logs.
+	// A free equivalent exists in otelcol-contrib (phpfpmreceiver), so
+	// paywalling it would add no differentiation.
+	"phpfpm": true,
+	// wildfly: WildFly / JBoss monitoring via the HTTP Management API.
+	// The management API is a standard feature of the open-source
+	// WildFly distribution; no license is required to access it.
+	"wildfly": true,
+	// mongodb: free open-core database monitoring via the official Go
+	// driver (serverStatus + per-database dbStats). Monitoring the most
+	// popular document database is an adoption magnet; deep auth,
+	// replica-set topology and Atlas-specific metrics remain a future
+	// paid tier extension.
+	"mongodb": true,
+	// kafka: Kafka broker/topic/consumer-group monitoring via Admin API.
+	// Generic message-bus observability (brokers, partition offsets, lag)
+	// mirrors what the OTel Collector's kafkametricsreceiver gives away
+	// for free; positioning the agent as a drop-in for PRTG users who
+	// monitor Kafka today.
+	"kafka": true,
+	// rabbitmq: message-broker observability via the built-in HTTP
+	// Management API; the same open-core rationale as snmp_poll/http_check —
+	// basic queue depth and broker health should not require a licence.
+	"rabbitmq": true,
+	// nats: NATS Server monitoring via the HTTP management API (/varz,
+	// /routez, /jsz). No external deps. Part of the open-core collection
+	// wedge alongside prometheus_scrape and otlp_receiver.
+	"nats": true,
+	// pulsar: broker-level health monitoring via the Pulsar Admin REST
+	// API. Generic message-bus observability belongs in the free open-core
+	// tier alongside SNMP and Prometheus scrape: it is universal collection,
+	// not a vendor-specific paid integration.
+	"pulsar": true,
+	// consul: service-mesh health and cluster metrics. Service discovery
+	// is universal infrastructure (like SNMP), not a vendor-specific
+	// deep integration — the free tier covers agent health, catalog
+	// service count, raft, RPC/DNS counters and health-check states.
+	"consul": true,
+	// zookeeper: Apache ZooKeeper health monitoring via the mntr
+	// four-letter command. Generic coordination-service observability,
+	// part of the open-core universal collection wedge.
+	"zookeeper": true,
+	// envoy: scrapes the Envoy admin /stats?format=prometheus endpoint.
+	// Envoy is a widely deployed open-source proxy; exposing its admin
+	// interface locally is the same posture as prometheus_scrape — it is
+	// universal collection, not a paid vendor integration.
+	"envoy": true,
+	// ceph: open-source storage cluster; monitoring it via the public
+	// REST API is the same universal-collection wedge as snmp_poll or
+	// prometheus_scrape — not a paid vendor integration.
+	"ceph": true,
+	// jenkins: CI health over the controller's open HTTP REST API
+	// (stdlib, no vendor SDK) — same open-API wedge as http_check /
+	// snmp_poll; monitoring a standard endpoint is collection, not a
+	// vendor integration.
+	"jenkins": true,
+	// mysql: FREE open-core database probe — the standard wedge for
+	// PRTG/Nagios migrations that already monitor MySQL/MariaDB.
+	// Metric parity with otelcol-contrib mysqlreceiver; paid tier adds
+	// deep query analytics and SLA alerting.
+	"mysql": true,
+	// postgresql: FREE open-core database probe — the canonical
+	// database/sql monitor for PostgreSQL. Aligned with otelcol-contrib
+	// postgresqlreceiver. Remote system but treated as the free PRTG-
+	// replacement wedge for the most-deployed open-source RDBMS.
+	"postgresql": true,
+	// cassandra: Apache Cassandra monitoring via Jolokia HTTP REST.
+	// Free tier alongside the universal collection wedge (snmp_poll,
+	// otlp_receiver, prometheus_scrape): operators self-host Cassandra
+	// and should not need a paid licence to observe their own cluster.
+	"cassandra": true,
+	// couchdb: database observability at the host level (same stance as
+	// snmp_poll for network devices). CouchDB monitoring is the open-core
+	// wedge for document-database observability.
+	"couchdb": true,
+	// clickhouse: a ClickHouse server is widely self-hosted and its
+	// /metrics Prometheus endpoint is an open standard; monitoring
+	// it follows the universal-collection posture of promscrape rather
+	// than a proprietary vendor integration.
+	"clickhouse": true,
+	// elasticsearch: Elasticsearch / OpenSearch cluster and node metrics
+	// via the REST JSON API — universal observability for a database that
+	// ships with its own free distribution (same open-core wedge reasoning
+	// as snmp_poll and prometheus_scrape).
+	"elasticsearch": true,
+	// opensearch: OpenSearch cluster and node metrics via the REST JSON
+	// API (same surface as Elasticsearch) — universal observability for
+	// a database that ships with its own free distribution (same
+	// open-core wedge reasoning as snmp_poll and prometheus_scrape).
+	"opensearch": true,
+	// solr: Apache Solr is widely self-hosted alongside applications;
+	// exposing its health, request and cache metrics is the same
+	// open-core "bring your stack in" wedge as otlp_receiver / exec.
+	"solr": true,
+	// influxdb: open-core database observability wedge — monitors
+	// the InfluxDB instance the agent runs alongside; scrapes the
+	// standard /health and /metrics endpoints, no vendor-specific
+	// paid API required.
+	"influxdb": true,
+	// memcached: lightweight in-memory cache health monitoring. Collecting
+	// stats from a local or remote Memcached instance over the TCP text
+	// protocol is universal infrastructure observability, not a paid vendor
+	// integration — same wedge reasoning as http_check or tcp_dial.
+	"memcached": true,
+	// hyperv: host-local virtualization observability on Windows Server;
+	// the Hyper-V WMI namespace reports the VMs that share the same
+	// physical host as the agent, analogous to how cpu/memory/network
+	// report host-local resources.
+	"hyperv": true,
+	// proxmox: Proxmox VE is open-source hypervisor infrastructure.
+	// Basic node / VM / storage monitoring is equivalent to the host
+	// observability role (cpu, memory, logicaldisk) and belongs in the
+	// open-core collection wedge.  Deep cluster management (HA, backups,
+	// replication) would be a paid feature but is out of scope here.
+	"proxmox": true,
+	// chrony: host-local NTP synchronisation health via chronyc; a
+	// fundamentally local probe (reads the clock daemon on the host,
+	// not a remote system).
+	"chrony": true,
+	// smart: S.M.A.R.T. disk health reads the local machine's drives via
+	// smartctl — host-local observability on the same footing as
+	// cpu/memory/logicaldisk. smartmontools is a prerequisite the operator
+	// installs; the probe itself only calls the existing local tool.
+	"smart": true,
+	// ipmi: host-local hardware sensor collection via ipmitool; the agent
+	// reads the machine's own BMC, not a remote system. Free for the same
+	// reason cpu/memory/logicaldisk are free — host self-observability.
+	"ipmi": true,
+	// nvidia: host-local GPU observability via nvidia-smi; the GPU is part
+	// of the host like cpu/memory/logicaldisk, not a remote monitored
+	// system. Free so GPU-equipped hosts have first-class monitoring.
+	"nvidia": true,
+	// oracle: pure-Go (go-ora, no OCI) Oracle monitoring at parity with
+	// the community oracledb_exporter — the open-source baseline that
+	// makes the agent a drop-in for that exporter. Deep Oracle (RAC,
+	// Data Guard, ASM, per-SQL) stays paid; the generic instance
+	// health/capacity surface is free collection.
+	"oracle": true,
+	// process: host-local process monitoring on the same footing as
+	// cpu/memory/network — the agent reads the local process table, not
+	// a remote system. A standard PRTG "Top Processes" sensor
+	// equivalent that should require zero license.
+	"process": true,
+	// unifi: Ubiquiti UniFi Controller monitoring via stdlib REST (cookie
+	// session auth). Free as the PRTG-migration wedge for UniFi estates —
+	// PRTG's UniFi sensors are widely deployed and this probe covers the
+	// same signal at zero cost for OSS users.
+	"unifi": true,
+	// winservices: host-local Windows Service Control Manager enumeration;
+	// monitors services on the machine the agent runs on, the SCM
+	// counterpart of the linux_logs / windows_eventlog host-local tier.
+	"winservices": true,
+	// systemd: host-local unit supervision — watches the init system of
+	// the machine the agent runs on, not a remote service.
+	"systemd": true,
+	// kubernetes: container infrastructure supervision is the cloud-native
+	// equivalent of host self-observation (cpu/memory/network); the agent
+	// running inside a cluster watches the cluster it runs in, not a
+	// remote paid system. Free makes it a viable alternative to
+	// kube-state-metrics / node-exporter for OTel-first stacks.
+	"kubernetes": true,
+	// modbus: Modbus TCP register polling for IT/OT convergence —
+	// PLCs, industrial sensors, smart-building controllers. The
+	// protocol is open and the OTel Collector covers it; collecting
+	// standard-protocol devices is universal collection, not a vendor
+	// integration.
+	"modbus": true,
+	// mssql: generic SQL Server health/throughput over the standard
+	// database/sql driver, parity with the otelcol-contrib
+	// sqlserverreceiver. Free as a PRTG-replacement wedge sensor — basic
+	// engine observability the OTel Collector already gives away; deep
+	// vendor-specific SQL Server depth stays paid.
+	"mssql": true,
+	// tomcat: application-server monitoring via Jolokia REST. Free tier
+	// on the same open-core wedge as snmp_poll / otlp_receiver — every
+	// PRTG estate has a Tomcat sensor; this replaces it at zero cost.
+	"tomcat": true,
+	// docker: container monitoring with a free equivalent (cadvisor /
+	// telegraf docker input) — basic collection is commoditized, so free.
+	"docker": true,
+	// redis: Redis/Valkey health/throughput, parity with redis_exporter —
+	// free as the OTel/exporter baseline; deep Redis depth stays paid.
+	"redis": true,
+	// wifi_signal_strength: host-local, niche — same footing as the other
+	// host self-observability probes (#476 tiering).
+	"wifi_signal_strength": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

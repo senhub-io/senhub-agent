@@ -43,6 +43,9 @@ type httpResult struct {
 	totalTime     time.Duration
 	responseBytes int64
 	tlsDaysLeft   float64 // negative when expired; NaN-free: -1e9 marks "no TLS"
+	tlsCertValid  float64 // 1 = valid, 0 = expired; -1e9 marks "no TLS"
+	tlsIssuer     string
+	tlsSubject    string
 	hasTLS        bool
 	contentMatch  *bool // nil when no matcher configured
 	err           error
@@ -225,7 +228,7 @@ func (p *HTTPCheckProbe) buildDatapoints(res httpResult, ts time.Time) []data_st
 		{Key: "metric_type", Value: "availability"},
 	}
 
-	up := float32(0)
+	up := float64(0)
 	if res.up {
 		up = 1
 	}
@@ -241,26 +244,35 @@ func (p *HTTPCheckProbe) buildDatapoints(res httpResult, ts time.Time) []data_st
 	}
 	if res.statusCode > 0 {
 		points = append(points,
-			data_store.DataPoint{Name: "senhub.httpcheck.status.code", Value: float32(res.statusCode), Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "httpcheck.duration", Value: float32(res.totalTime.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "senhub.httpcheck.duration.dns", Value: float32(res.dnsTime.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "senhub.httpcheck.duration.connect", Value: float32(res.connectTime.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "senhub.httpcheck.duration.ttfb", Value: float32(res.ttfb.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "senhub.httpcheck.response.size", Value: float32(res.responseBytes), Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.httpcheck.status.code", Value: float64(res.statusCode), Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "httpcheck.duration", Value: res.totalTime.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.httpcheck.duration.dns", Value: res.dnsTime.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.httpcheck.duration.connect", Value: res.connectTime.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.httpcheck.duration.ttfb", Value: res.ttfb.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.httpcheck.response.size", Value: float64(res.responseBytes), Timestamp: ts, Tags: baseTags},
 		)
 		if res.hasTLS {
 			points = append(points,
-				data_store.DataPoint{Name: "senhub.httpcheck.duration.tls", Value: float32(res.tlsTime.Seconds() * 1000), Timestamp: ts, Tags: baseTags},
+				data_store.DataPoint{Name: "senhub.httpcheck.duration.tls", Value: res.tlsTime.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
 			)
 		}
 	}
 	if res.hasTLS && res.tlsDaysLeft > noTLSSentinel {
-		points = append(points,
-			data_store.DataPoint{Name: "senhub.httpcheck.tls.expiry", Value: float32(res.tlsDaysLeft), Timestamp: ts, Tags: baseTags},
+		tlsTags := append(baseTags,
+			tags.Tag{Key: "tls.issuer", Value: res.tlsIssuer},
+			tags.Tag{Key: "tls.subject", Value: res.tlsSubject},
 		)
+		points = append(points,
+			data_store.DataPoint{Name: "senhub.httpcheck.tls.expiry", Value: float64(res.tlsDaysLeft), Timestamp: ts, Tags: tlsTags},
+		)
+		if res.tlsCertValid > noTLSSentinel {
+			points = append(points,
+				data_store.DataPoint{Name: "senhub.httpcheck.tls.valid", Value: float64(res.tlsCertValid), Timestamp: ts, Tags: tlsTags},
+			)
+		}
 	}
 	if res.contentMatch != nil {
-		match := float32(0)
+		match := float64(0)
 		if *res.contentMatch {
 			match = 1
 		}
@@ -273,7 +285,7 @@ func (p *HTTPCheckProbe) buildDatapoints(res httpResult, ts time.Time) []data_st
 
 // checkOnce is the production checkFunc: one traced HTTP request.
 func (p *HTTPCheckProbe) checkOnce(target string) httpResult {
-	res := httpResult{target: target, tlsDaysLeft: noTLSSentinel}
+	res := httpResult{target: target, tlsDaysLeft: noTLSSentinel, tlsCertValid: noTLSSentinel}
 
 	var dnsStart, connectStart, tlsStart, reqStart time.Time
 	trace := &httptrace.ClientTrace{
@@ -287,7 +299,15 @@ func (p *HTTPCheckProbe) checkOnce(target string) httpResult {
 			if err == nil {
 				res.hasTLS = true
 				if len(state.PeerCertificates) > 0 {
-					res.tlsDaysLeft = time.Until(state.PeerCertificates[0].NotAfter).Hours() / 24
+					cert := state.PeerCertificates[0]
+					res.tlsDaysLeft = time.Until(cert.NotAfter).Hours() / 24
+					if time.Now().After(cert.NotAfter) {
+						res.tlsCertValid = 0
+					} else {
+						res.tlsCertValid = 1
+					}
+					res.tlsIssuer = cert.Issuer.CommonName
+					res.tlsSubject = cert.Subject.CommonName
 				}
 			}
 		},

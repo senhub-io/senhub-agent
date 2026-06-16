@@ -17,6 +17,7 @@ func TestFreeTierProbes(t *testing.T) {
 		probeName string
 		expected  bool
 	}{
+		{"ActiveMQ probe is free tier", "activemq", true},
 		{"CPU probe is free tier", "cpu", true},
 		{"Memory probe is free tier", "memory", true},
 		{"LogicalDisk probe is free tier", "logicaldisk", true},
@@ -31,7 +32,29 @@ func TestFreeTierProbes(t *testing.T) {
 		{"WebApp probe is NOT free tier", "ping_webapp", false},
 		{"Gateway probe is NOT free tier", "ping_gateway", false},
 		{"Syslog probe IS free tier (#298)", "syslog", true},
+		{"WildFly probe IS free tier", "wildfly", true},
+		{"Kafka probe is free tier", "kafka", true},
+		{"Ceph probe IS free tier", "ceph", true},
+		{"Jenkins probe IS free tier", "jenkins", true},
+		{"CouchDB probe is free tier", "couchdb", true},
+		{"ClickHouse probe is free tier", "clickhouse", true},
+		{"HyperV probe is free tier", "hyperv", true},
+		{"IPMI probe is free tier", "ipmi", true},
+		{"NVIDIA probe is free tier", "nvidia", true},
+		{"Oracle probe is free tier", "oracle", true},
+		{"Process probe is free tier", "process", true},
+		{"UniFi probe IS free tier", "unifi", true},
+		{"Systemd probe is free tier", "systemd", true},
+		{"MSSQL probe is free tier", "mssql", true},
+		{"MongoDB probe is free tier", "mongodb", true},
+		{"Kafka probe is free tier", "kafka", true},
 		{"Event probe is NOT free tier", "event", false},
+		{"NATS probe is free tier", "nats", true},
+		{"ZooKeeper probe is free tier", "zookeeper", true},
+		{"MySQL probe IS free tier", "mysql", true},
+		{"Solr probe is free tier", "solr", true},
+		{"Chrony probe IS free tier", "chrony", true},
+		{"Kubernetes probe is free tier", "kubernetes", true},
 	}
 
 	for _, tt := range tests {
@@ -47,30 +70,79 @@ func TestFreeTierProbes(t *testing.T) {
 func TestGetFreeTierProbes(t *testing.T) {
 	probes := GetFreeTierProbes()
 
+	// Check we have exactly 18 free tier probes
 	// Check we have exactly 11 free tier probes
-	if len(probes) != 17 {
-		t.Errorf("GetFreeTierProbes() returned %d probes, want 17", len(probes))
-	}
+	// Check we have the expected number of free tier probes
+	// Check we have exactly the expected number of free tier probes
+	// Check we have the right number of free tier probes
+	// Exact membership is verified by the loops below (every returned probe is
+	// expected, and every expected probe is returned), which subsumes a
+	// hardcoded count check (brittle as the free tier grows).
 
 	// Check all expected probes are present
 	expectedProbes := map[string]bool{
-		"cpu":               false,
-		"memory":            false,
-		"logicaldisk":       false,
-		"network":           false,
-		"linux_logs":        false,
-		"windows_eventlog":  false,
-		"filetail":          false,
-		"snmp_poll":         false,
-		"otlp_receiver":     false,
-		"snmp_trap":         false,
-		"icmp_check":        false,
-		"http_check":        false,
-		"dns_latency":       false,
-		"tcp_dial":          false,
-		"prometheus_scrape": false,
-		"exec":              false,
-		"syslog":            false,
+		"apache":               false,
+		"activemq":             false,
+		"ceph":                 false,
+		"cpu":                  false,
+		"memory":               false,
+		"logicaldisk":          false,
+		"network":              false,
+		"linux_logs":           false,
+		"windows_eventlog":     false,
+		"filetail":             false,
+		"snmp_poll":            false,
+		"otlp_receiver":        false,
+		"snmp_trap":            false,
+		"icmp_check":           false,
+		"http_check":           false,
+		"dns_latency":          false,
+		"tcp_dial":             false,
+		"prometheus_scrape":    false,
+		"exec":                 false,
+		"syslog":               false,
+		"nginx":                false,
+		"haproxy":              false,
+		"varnish":              false,
+		"phpfpm":               false,
+		"wildfly":              false,
+		"kafka":                false,
+		"rabbitmq":             false,
+		"nats":                 false,
+		"pulsar":               false,
+		"consul":               false,
+		"zookeeper":            false,
+		"envoy":                false,
+		"jenkins":              false,
+		"mysql":                false,
+		"postgresql":           false,
+		"cassandra":            false,
+		"couchdb":              false,
+		"clickhouse":           false,
+		"elasticsearch":        false,
+		"opensearch":           false,
+		"solr":                 false,
+		"influxdb":             false,
+		"memcached":            false,
+		"hyperv":               false,
+		"proxmox":              false,
+		"chrony":               false,
+		"smart":                false,
+		"ipmi":                 false,
+		"nvidia":               false,
+		"oracle":               false,
+		"process":              false,
+		"unifi":                false,
+		"winservices":          false,
+		"systemd":              false,
+		"kubernetes":           false,
+		"modbus":               false,
+		"mssql":                false,
+		"tomcat":               false,
+		"mongodb":              false,
+		"docker":               false,
+		"redis":                false,
+		"wifi_signal_strength": false,
 	}
 
 	for _, probe := range probes {

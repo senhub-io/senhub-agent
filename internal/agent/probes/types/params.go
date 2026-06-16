@@ -21,7 +21,7 @@ package types
 import "strconv"
 
 // IntParam reads an integer parameter from a probe config map. It
-// accepts int / int32 / int64 / float32 / float64 / numeric string —
+// accepts int / int32 / int64 / float64 / float64 / numeric string —
 // all the shapes that legitimately appear after a YAML or JSON
 // decode of an integer literal. Returns ok=false only when the key
 // is absent OR holds a value that cannot be interpreted as an
@@ -45,11 +45,6 @@ func IntParam(m map[string]interface{}, key string) (int, bool) {
 	case uint32:
 		return int(v), true
 	case uint64:
-		return int(v), true
-	case float32:
-		if float32(int(v)) != v {
-			return 0, false
-		}
 		return int(v), true
 	case float64:
 		if float64(int(v)) != v {
@@ -80,8 +75,6 @@ func FloatParam(m map[string]interface{}, key string) (float64, bool) {
 	switch v := raw.(type) {
 	case float64:
 		return v, true
-	case float32:
-		return float64(v), true
 	case int:
 		return float64(v), true
 	case int32:
