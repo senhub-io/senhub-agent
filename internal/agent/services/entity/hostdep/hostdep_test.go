@@ -25,7 +25,7 @@ func conn(status, laddr string, lport uint32, raddr string, rport uint32, pid in
 }
 
 func newTestSource(rows []gnet.ConnectionStat) *Source {
-	s := New(func() string { return "h-1" })
+	s := New(func() string { return "h-1" }, defaultThreshold)
 	s.connections = fakeConns(rows)
 	s.procName = func(pid int32) string {
 		switch pid {
@@ -97,6 +97,31 @@ func TestDebounce_EmitsOnlyAfterThreshold(t *testing.T) {
 	}
 	if !foundSvc {
 		t.Errorf("dependent service.instance nginx@h-1 not emitted: %+v", obs.Entities)
+	}
+}
+
+func TestNew_ConfigurableThreshold(t *testing.T) {
+	rows := []gnet.ConnectionStat{
+		conn(statusEstablished, "10.0.0.5", 51000, "10.0.0.9", 5432, 100),
+	}
+	// threshold = 1 → durable on the first scrape (no debounce wait).
+	s := New(func() string { return "h-1" }, 1)
+	s.connections = fakeConns(rows)
+	s.procName = func(int32) string { return "nginx" }
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("first scrape ok=false")
+	}
+	if relCount(obs, relDependsOn) != 1 {
+		t.Errorf("threshold=1 must emit on the first scrape, got %+v", obs.Relations)
+	}
+
+	// non-positive → falls back to defaultThreshold.
+	if got := New(func() string { return "h" }, 0).threshold; got != defaultThreshold {
+		t.Errorf("threshold 0 → %d, want fallback %d", got, defaultThreshold)
+	}
+	if got := New(func() string { return "h" }, -5).threshold; got != defaultThreshold {
+		t.Errorf("negative threshold → %d, want fallback %d", got, defaultThreshold)
 	}
 }
 
