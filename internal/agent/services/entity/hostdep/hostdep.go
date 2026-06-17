@@ -45,12 +45,15 @@ import (
 const (
 	entityTypeServiceInstance = "service.instance"
 	entityTypeNetworkEndpoint = "network.endpoint"
+	entityTypeHost            = "host"
 	idKeyServiceInstanceID    = "service.instance.id"
+	idKeyHost                 = "host.id"
 	idKeyServerAddress        = "server.address"
 	idKeyServerPort           = "server.port"
 	idKeyNetworkTransport     = "network.transport"
 	attrServiceName           = "service.name"
 	relDependsOn              = "depends_on"
+	relRunsOn                 = "runs_on"
 	transportTCP              = "tcp"
 
 	statusListen      = "LISTEN"
@@ -131,7 +134,7 @@ func (s *Source) Observe() (entity.Observation, bool) {
 	}
 	s.streak = next
 
-	return buildObservation(seen, next, s.threshold), true
+	return buildObservation(seen, next, s.threshold, hostID), true
 }
 
 // scrape classifies one socket-table read into candidate outbound dependants.
@@ -177,9 +180,14 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string) []dependant 
 // buildObservation emits, for every peer endpoint that has reached the
 // durability threshold, the dependent service.instance, the observable
 // network.endpoint, and the depends_on edge between them. Each service.instance
-// and each endpoint is emitted once.
-func buildObservation(seen map[peerKey]dependant, streak map[peerKey]int, threshold int) entity.Observation {
+// is also anchored to the host it runs on with a runs_on edge (the host comes
+// from the foundation entity merged into the same cycle, so it is referenced,
+// not re-emitted — mirroring hostsvc's listener runs_on); without it the minted
+// dependents would float, unattached to the host they run on. Each
+// service.instance and each endpoint is emitted once.
+func buildObservation(seen map[peerKey]dependant, streak map[peerKey]int, threshold int, hostID string) entity.Observation {
 	obs := entity.Observation{}
+	hostKey := map[string]any{idKeyHost: hostID}
 	svcDone := map[string]bool{}
 	epDone := map[string]bool{}
 	for k, d := range seen {
@@ -192,6 +200,11 @@ func buildObservation(seen map[peerKey]dependant, streak map[peerKey]int, thresh
 			obs.Entities = append(obs.Entities, entity.Entity{
 				Type: entityTypeServiceInstance, ID: svcKey,
 				Attributes: map[string]any{attrServiceName: d.svcName},
+			})
+			obs.Relations = append(obs.Relations, entity.Relation{
+				Type:     relRunsOn,
+				FromType: entityTypeServiceInstance, FromID: svcKey,
+				ToType: entityTypeHost, ToID: hostKey,
 			})
 		}
 		epID := map[string]any{
