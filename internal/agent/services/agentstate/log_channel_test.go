@@ -78,19 +78,27 @@ func TestSubscribeLogs_DefaultsBuffer(t *testing.T) {
 	}
 }
 
-func TestUnsubscribeLogs_ClosesChannel(t *testing.T) {
+func TestUnsubscribeLogs_StopsDelivery(t *testing.T) {
+	// Contract changed by #262: Unsubscribe no longer closes the
+	// channel (a consumer-side close raced PublishLog into a
+	// send-on-closed-channel panic). It removes the subscription —
+	// records published afterwards are not delivered; consumers exit
+	// via their own context, and the channel is garbage-collected.
 	resetLogChannelForTest()
 	ch := SubscribeLogs(2)
 	UnsubscribeLogs(ch)
 
-	// After unsubscribe the channel must be closed (range exits).
+	PublishLog(LogRecord{Body: "after-unsubscribe"})
+
 	select {
-	case _, ok := <-ch:
+	case rec, ok := <-ch:
 		if ok {
-			t.Errorf("channel still open after Unsubscribe")
+			t.Errorf("received %q on an unsubscribed channel", rec.Body)
+		} else {
+			t.Error("channel was closed — #262 regression (consumer-side close reintroduced)")
 		}
-	case <-time.After(time.Second):
-		t.Fatal("channel did not close")
+	default:
+		// Nothing delivered, channel open: the new contract.
 	}
 }
 

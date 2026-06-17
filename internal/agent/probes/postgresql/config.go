@@ -2,105 +2,82 @@ package postgresql
 
 import (
 	"fmt"
+	"time"
 )
 
-// probeConfig holds the validated configuration for one PostgreSQL
-// probe instance. Mirrors the user-facing YAML keys 1:1 (see
-// DESIGN §3).
-type probeConfig struct {
-	Host                   string
-	Port                   int
-	Username               string
-	Password               string
-	Database               string // libpq DB name; defaults to "postgres"
-	Interval               int
-	Timeout                int
-	SSLMode                string // libpq sslmode: disable, allow, prefer, require, verify-ca, verify-full
-	SSLRootCert            string
-	ExposePerDatabase      bool
-	IncludeSystemDatabases bool
-	ExposeTopTables        int
-	BloatTopN              int
-
-	MaxReplicationLagSeconds int
-	MaxHeartbeatAgeSeconds   int
+// config holds the validated probe configuration.
+type config struct {
+	Host         string
+	Port         int
+	Username     string
+	Password     string
+	Databases    []string // empty = monitor server-wide stats only
+	Interval     time.Duration
+	TLSConfig    *pgTLSConfig // nil = no TLS
+	InstanceName string       // optional stable override for db.instance.id (Toise identity)
 }
 
-func parseConfig(config map[string]interface{}) (*probeConfig, error) {
-	host, ok := config["host"].(string)
-	if !ok || host == "" {
-		return nil, fmt.Errorf("postgresql probe requires 'host' configuration")
-	}
-	username, ok := config["username"].(string)
-	if !ok || username == "" {
-		return nil, fmt.Errorf("postgresql probe requires 'username' configuration")
-	}
-
-	password, _ := config["password"].(string)
-
-	port := 5432
-	if v, ok := config["port"].(int); ok {
-		port = v
-	}
-	interval := 60
-	if v, ok := config["interval"].(int); ok && v > 0 {
-		interval = v
-	}
-	timeout := 10
-	if v, ok := config["timeout"].(int); ok && v > 0 {
-		timeout = v
-	}
-	database := "postgres"
-	if v, ok := config["database"].(string); ok && v != "" {
-		database = v
-	}
-	// libpq sslmode values: disable | allow | prefer | require |
-	// verify-ca | verify-full. Default 'prefer' matches what most
-	// clients do today and works against managed DBs without
-	// requiring a CA bundle.
-	sslmode := "prefer"
-	if v, ok := config["sslmode"].(string); ok && v != "" {
-		sslmode = v
-	}
-	sslRootCert, _ := config["sslrootcert"].(string)
-
-	cfg := &probeConfig{
-		Host:                     host,
-		Port:                     port,
-		Username:                 username,
-		Password:                 password,
-		Database:                 database,
-		Interval:                 interval,
-		Timeout:                  timeout,
-		SSLMode:                  sslmode,
-		SSLRootCert:              sslRootCert,
-		BloatTopN:                10,
-		MaxReplicationLagSeconds: 60,
-		MaxHeartbeatAgeSeconds:   300,
+// parseConfig converts the free-form params map from the probe YAML
+// into a typed config. Required: host, username, password. Defaults:
+// port=5432, interval=60s.
+func parseConfig(params map[string]interface{}) (config, error) {
+	cfg := config{
+		Port:     5432,
+		Interval: defaultInterval,
 	}
 
-	if v, ok := config["expose_per_database"].(bool); ok {
-		cfg.ExposePerDatabase = v
+	host, _ := params["host"].(string)
+	if host == "" {
+		return cfg, fmt.Errorf("postgresql: host is required")
 	}
-	if v, ok := config["include_system_databases"].(bool); ok {
-		cfg.IncludeSystemDatabases = v
+	cfg.Host = host
+
+	if v, ok := params["port"].(int); ok && v > 0 {
+		cfg.Port = v
 	}
-	if v, ok := config["expose_top_tables"].(int); ok && v > 0 {
-		cfg.ExposeTopTables = v
+
+	user, _ := params["username"].(string)
+	if user == "" {
+		return cfg, fmt.Errorf("postgresql: username is required")
 	}
-	if v, ok := config["bloat_top_n"].(int); ok && v > 0 {
-		// Hard cap at 50 — pgstattuple_approx is non-trivial and a
-		// runaway N would dominate the per-cycle budget.
-		if v > 50 {
-			v = 50
+	cfg.Username = user
+
+	pwd, _ := params["password"].(string)
+	if pwd == "" {
+		return cfg, fmt.Errorf("postgresql: password is required")
+	}
+	cfg.Password = pwd
+
+	if raw, ok := params["databases"]; ok {
+		switch v := raw.(type) {
+		case []interface{}:
+			for _, item := range v {
+				if s, ok := item.(string); ok && s != "" {
+					cfg.Databases = append(cfg.Databases, s)
+				}
+			}
+		case []string:
+			cfg.Databases = v
 		}
-		cfg.BloatTopN = v
 	}
-	if v, ok := config["max_replication_lag_seconds"].(int); ok && v > 0 {
-		cfg.MaxReplicationLagSeconds = v
+
+	if v, ok := params["interval"].(int); ok && v > 0 {
+		cfg.Interval = time.Duration(v) * time.Second
 	}
-	if v, ok := config["max_heartbeat_age_seconds"].(int); ok && v > 0 {
-		cfg.MaxHeartbeatAgeSeconds = v
+
+	if v, ok := params["instance_name"].(string); ok {
+		cfg.InstanceName = v
+	}
+
+	if raw, ok := params["tls"].(map[string]interface{}); ok {
+		tlsCfg := &pgTLSConfig{}
+		if v, ok := raw["insecure_skip_verify"].(bool); ok {
+			tlsCfg.InsecureSkipVerify = v
+		}
+		if v, ok := raw["ca_cert"].(string); ok {
+			tlsCfg.CACert = v
+		}
+		cfg.TLSConfig = tlsCfg
 	}
 
 	return cfg, nil

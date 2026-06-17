@@ -1,0 +1,196 @@
+probe_name: "clickhouse"
+friendly_name: "ClickHouse"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["instance"]
+
+# FREE-tier probe. Scrapes ClickHouse /metrics (Prometheus text, available
+# since ClickHouse 20.1) and maps the known metric families:
+#   ClickHouseMetrics_*        → instantaneous gauges
+#   ClickHouseAsyncMetrics_*   → background/async gauges
+#   ClickHouseProfileEvents_*  → cumulative counters
+#
+# OTel units: By = bytes, s = seconds, {query}/{connection}/{row}/{part}/{merge} = counts.
+
+metrics:
+  - name: "senhub.clickhouse.up"
+    channel: "clickhouse_up"
+    display_name: "ClickHouse {instance} Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the ClickHouse /metrics endpoint answered successfully, 0 otherwise"
+    otel:
+      name: senhub.clickhouse.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "clickhouse.queries.active"
+    channel: "clickhouse_queries_active"
+    display_name: "ClickHouse {instance} Active Queries"
+    unit: "#"
+    category: "queries"
+    description: "Number of queries currently being processed (ClickHouseMetrics_Query)"
+    otel:
+      name: clickhouse.queries.active
+      unit: "{query}"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "clickhouse.connections"
+    channel: "clickhouse_connections"
+    display_name: "ClickHouse {instance} Connections"
+    unit: "#"
+    category: "connections"
+    description: "Number of open client connections (ClickHouseMetrics_Connection)"
+    otel:
+      name: clickhouse.connections
+      unit: "{connection}"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "clickhouse.memory.used"
+    channel: "clickhouse_memory_used"
+    display_name: "ClickHouse {instance} Memory Used"
+    unit: "B"
+    category: "memory"
+    description: "Memory tracked by the query tracker (ClickHouseMetrics_MemoryTracking)"
+    otel:
+      name: clickhouse.memory.used
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "clickhouse.parts.active"
+    channel: "clickhouse_parts_active"
+    display_name: "ClickHouse {instance} Active Parts"
+    unit: "#"
+    category: "storage"
+    description: "Active data parts in MergeTree tables (ClickHouseMetrics_Parts)"
+    otel:
+      name: clickhouse.parts.active
+      unit: "{part}"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "clickhouse.merges.active"
+    channel: "clickhouse_merges_active"
+    display_name: "ClickHouse {instance} Active Merges"
+    unit: "#"
+    category: "storage"
+    description: "MergeTree background merges currently running (ClickHouseMetrics_Merge)"
+    otel:
+      name: clickhouse.merges.active
+      unit: "{merge}"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "clickhouse.uptime"
+    channel: "clickhouse_uptime"
+    display_name: "ClickHouse {instance} Uptime"
+    unit: "s"
+    category: "availability"
+    description: "Server uptime in seconds (ClickHouseAsyncMetrics_Uptime)"
+    otel:
+      name: clickhouse.uptime
+      unit: "s"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "clickhouse.queries.total"
+    channel: "clickhouse_queries_total"
+    display_name: "ClickHouse {instance} Total Queries"
+    unit: "#"
+    category: "queries"
+    description: "Cumulative number of queries executed (ClickHouseProfileEvents_Query)"
+    otel:
+      name: clickhouse.queries.total
+      unit: "{query}"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "clickhouse.queries.select"
+    channel: "clickhouse_queries_select"
+    display_name: "ClickHouse {instance} SELECT Queries"
+    unit: "#"
+    category: "queries"
+    description: "Cumulative SELECT queries executed (ClickHouseProfileEvents_SelectQuery)"
+    otel:
+      name: clickhouse.queries.select
+      unit: "{query}"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "clickhouse.queries.insert"
+    channel: "clickhouse_queries_insert"
+    display_name: "ClickHouse {instance} INSERT Queries"
+    unit: "#"
+    category: "queries"
+    description: "Cumulative INSERT queries executed (ClickHouseProfileEvents_InsertQuery)"
+    otel:
+      name: clickhouse.queries.insert
+      unit: "{query}"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "clickhouse.inserted.rows"
+    channel: "clickhouse_inserted_rows"
+    display_name: "ClickHouse {instance} Inserted Rows"
+    unit: "#"
+    category: "throughput"
+    description: "Cumulative rows inserted (ClickHouseProfileEvents_InsertedRows)"
+    otel:
+      name: clickhouse.inserted.rows
+      unit: "{row}"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "clickhouse.inserted.data"
+    channel: "clickhouse_inserted_data"
+    display_name: "ClickHouse {instance} Inserted Bytes"
+    unit: "B"
+    category: "throughput"
+    description: "Cumulative bytes inserted (ClickHouseProfileEvents_InsertedBytes)"
+    otel:
+      name: clickhouse.inserted.data
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "clickhouse.read.data"
+    channel: "clickhouse_read_data"
+    display_name: "ClickHouse {instance} Read Compressed Bytes"
+    unit: "B"
+    category: "throughput"
+    description: "Cumulative compressed bytes read from storage (ClickHouseProfileEvents_ReadCompressedBytes)"
+    otel:
+      name: clickhouse.read.data
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "clickhouse.written.data"
+    channel: "clickhouse_written_data"
+    display_name: "ClickHouse {instance} Written Compressed Bytes"
+    unit: "B"
+    category: "throughput"
+    description: "Cumulative compressed bytes written to storage (ClickHouseProfileEvents_WriteCompressedBytes)"
+    otel:
+      name: clickhouse.written.data
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      instance: server.address

@@ -25,6 +25,11 @@ type ConfigurationManager struct {
 	port             int
 	bindAddress      string
 
+	// maxCacheSize bounds the MetricCache cardinality (distinct time
+	// series). 0 = unbounded. Default DefaultMaxCacheSeries, same as
+	// the OTLP store cap.
+	maxCacheSize int
+
 	// Prometheus endpoint options (parsed from params["prometheus"]).
 	// Defaults: include_probe_tags=true, expose_host_metrics=true.
 	prometheusIncludeProbeTags  bool
@@ -38,9 +43,15 @@ func NewConfigurationManager(agentConfig configuration.AgentConfiguration, param
 		agentConfig:      agentConfig,
 		params:           params,
 		enabledEndpoints: make(map[string]bool),
-		port:             8080,      // Default port
-		bindAddress:      "0.0.0.0", // Default to all interfaces
-		tlsMinVersion:    "1.2",     // Default TLS version
+		port:             8080, // Default port
+		// Loopback by default (#278): exposing the API to remote
+		// pollers (PRTG, Prometheus) is an explicit `bind_address`
+		// opt-in. Generated configs have always written bind_address
+		// explicitly, so this only affects hand-written configs that
+		// omitted it.
+		bindAddress:   "127.0.0.1",
+		tlsMinVersion: "1.2", // Default TLS version
+		maxCacheSize:  DefaultMaxCacheSeries,
 
 		// Prometheus defaults (overridden by params["prometheus"] if present)
 		prometheusIncludeProbeTags:  true,
@@ -73,6 +84,27 @@ func (cm *ConfigurationManager) loadConfiguration() {
 	if bindValue, exists := cm.params["bind_address"]; exists {
 		if bindAddr, ok := bindValue.(string); ok {
 			cm.bindAddress = bindAddr
+		}
+	}
+
+	// Override cache cardinality cap if specified in params
+	if capValue, exists := cm.params["max_cache_size"]; exists {
+		size := -1
+		switch v := capValue.(type) {
+		case float64:
+			size = int(v)
+		case int:
+			size = v
+		case int64:
+			size = int(v)
+		}
+		if size >= 0 {
+			cm.maxCacheSize = size
+		} else {
+			cm.logger.Warn().
+				Interface("max_cache_size", capValue).
+				Int("default", DefaultMaxCacheSeries).
+				Msg("Invalid max_cache_size - keeping default")
 		}
 	}
 
@@ -169,18 +201,39 @@ func (cm *ConfigurationManager) ValidateConfigParams(params configuration.Storag
 		}
 	}
 
+	// Validate max_cache_size if provided
+	if capValue, exists := params["max_cache_size"]; exists {
+		var size int
+		switch v := capValue.(type) {
+		case int:
+			size = v
+		case int64:
+			size = int(v)
+		case float64:
+			if v != float64(int(v)) {
+				return fmt.Errorf("max_cache_size must be an integer, got: %v", v)
+			}
+			size = int(v)
+		default:
+			return fmt.Errorf("max_cache_size must be an integer, got: %T", v)
+		}
+		if size < 0 {
+			return fmt.Errorf("max_cache_size must be >= 0 (0 = unbounded), got: %d", size)
+		}
+	}
+
 	// Validate endpoints if provided
 	if endpointsValue, exists := params["endpoints"]; exists {
 		if endpointsList, ok := endpointsValue.([]interface{}); ok {
 			validEndpoints := map[string]bool{
 				"prtg": true, "nagios": true,
-				"zabbix": true, "prometheus": true, "web": true,
+				"prometheus": true, "web": true,
 			}
 
 			for _, endpoint := range endpointsList {
 				if endpointStr, ok := endpoint.(string); ok {
 					if !validEndpoints[endpointStr] {
-						return fmt.Errorf("invalid endpoint: %s. Valid endpoints: prtg, nagios, zabbix, prometheus, web", endpointStr)
+						return fmt.Errorf("invalid endpoint: %s. Valid endpoints: prtg, nagios, prometheus, web", endpointStr)
 					}
 				} else {
 					return fmt.Errorf("endpoint must be a string, got: %T", endpoint)
@@ -204,6 +257,11 @@ func (cm *ConfigurationManager) GetPort() int {
 // GetBindAddress returns the configured bind address
 func (cm *ConfigurationManager) GetBindAddress() string {
 	return cm.bindAddress
+}
+
+// GetMaxCacheSize returns the MetricCache cardinality cap (0 = unbounded)
+func (cm *ConfigurationManager) GetMaxCacheSize() int {
+	return cm.maxCacheSize
 }
 
 // GetEnabledEndpoints returns the map of enabled endpoints

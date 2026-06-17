@@ -1,0 +1,64 @@
+probe_name: "prometheus_scrape"
+friendly_name: "Prometheus Scrape"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["target"]
+
+# Free pull-side ingestion probe (#304). Only the probe's self-metrics
+# are defined here: every scraped series is a typed pass-through (the
+# otel_type tag carries counter/gauge semantics to the mapper) and
+# cannot be pre-enumerated.
+
+metrics:
+  - name: "senhub.promscrape.up"
+    channel: "promscrape_up"
+    display_name: "Scrape {target} Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the target answered with a parseable exposition"
+    otel:
+      name: senhub.promscrape.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      target: promscrape.target
+
+  - name: "senhub.promscrape.scrape.duration"
+    channel: "promscrape_duration"
+    display_name: "Scrape {target} Duration"
+    unit: "ms"
+    category: "latency"
+    description: "Wall-clock time of the scrape including parsing"
+    otel:
+      name: senhub.promscrape.scrape.duration
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      target: promscrape.target
+
+  - name: "senhub.promscrape.samples"
+    channel: "promscrape_samples"
+    display_name: "Scrape {target} Samples"
+    unit: "#"
+    category: "throughput"
+    description: "Scalar series ingested from the last scrape"
+    otel:
+      name: senhub.promscrape.samples
+      unit: "{sample}"
+      type: gauge
+    tag_to_attribute:
+      target: promscrape.target
+
+  - name: "senhub.promscrape.dropped"
+    channel: "promscrape_dropped"
+    display_name: "Scrape {target} Dropped Series"
+    unit: "#"
+    category: "throughput"
+    description: "Series in unsupported families (histogram/summary) dropped by the last scrape"
+    otel:
+      name: senhub.promscrape.dropped
+      unit: "{sample}"
+      type: gauge
+    tag_to_attribute:
+      target: promscrape.target

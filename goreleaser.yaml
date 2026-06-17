@@ -1,3 +1,4 @@
+version: 2
 before:
   hooks:
     - go mod tidy
@@ -31,8 +32,107 @@ builds:
       - -X senhub-agent.go/internal/agent/cliArgs.DevelopmentURL=https://eu-west-1.intake-dev.senhub.io
     no_unique_dist_dir: true
 
-# Suppression complète de la section archives
-# archives:
+  # Dedicated Linux build for the .deb / .rpm packages (issue #163).
+  # Identical flags to the zipped build, but the binary is named
+  # senhub-agent (no os/arch suffix) so nFPM installs it at the
+  # canonical /usr/bin/senhub-agent that the systemd unit expects.
+  - id: "senhub-agent-pkg"
+    main: ./cmd/agent
+    binary: "senhub-agent"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X senhub-agent.go/internal/agent/cliArgs.Version={{.Version}}
+      - -X senhub-agent.go/internal/agent/cliArgs.CommitHash={{.Commit}}
+      - -X senhub-agent.go/internal/agent/cliArgs.BuildTime={{.Date}}
+      - -X senhub-agent.go/internal/agent/cliArgs.GoVersion={{.Env.GOVERSION}}
+      - -X senhub-agent.go/internal/agent/cliArgs.Env=production
+      - -X senhub-agent.go/internal/agent/cliArgs.ProductionURL=https://eu-west-1.intake.senhub.io
+      - -X senhub-agent.go/internal/agent/cliArgs.DevelopmentURL=https://eu-west-1.intake-dev.senhub.io
+
+# Archives are produced only from the original suffixed build; the
+# senhub-agent-pkg build feeds nFPM exclusively. Scoping the archive to
+# a single build id avoids goreleaser's "different count of binaries
+# per platform" error now that two builds exist.
+archives:
+  - id: senhub-agent
+    ids:
+      - senhub-agent
+    formats:
+      - zip
+    name_template: "senhub-agent-{{ .Os }}-{{ .Arch }}"
+
+# Linux native packages (.deb / .rpm) built via nFPM. The release
+# workflow still ships the zipped raw binaries for every platform;
+# these packages are an additional Linux-only deliverable for fleet
+# deployments and enterprise package-management policies (issue #163).
+nfpms:
+  - id: senhub-agent
+    package_name: senhub-agent
+    ids:
+      - senhub-agent-pkg
+    vendor: Sensor Factory
+    homepage: https://github.com/senhub-io/senhub-agent
+    maintainer: Sensor Factory <support@senhub.io>
+    description: |
+      SenHub Agent — infrastructure monitoring agent.
+      Single static binary that ships metrics to PRTG, Nagios,
+      Prometheus, OTLP and the SenHub cloud.
+    license: proprietary
+    section: net
+    priority: optional
+    # Only Linux amd64/arm64 are packaged; windows/darwin are excluded.
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    contents:
+      - src: packaging/systemd/senhub-agent.service
+        dst: /lib/systemd/system/senhub-agent.service
+        file_info:
+          mode: 0644
+      - src: packaging/config/agent.yaml.example
+        dst: /etc/senhub-agent/agent.yaml.example
+        type: config
+        file_info:
+          mode: 0644
+      - dst: /var/lib/senhub-agent
+        type: dir
+        file_info:
+          mode: 0750
+          owner: senhub
+          group: senhub
+      - dst: /var/log/senhub-agent
+        type: dir
+        file_info:
+          mode: 0750
+          owner: senhub
+          group: senhub
+    overrides:
+      deb:
+        scripts:
+          postinstall: packaging/scripts/postinstall.sh
+          preremove: packaging/scripts/preremove.sh
+          postremove: packaging/scripts/postremove.sh
+      rpm:
+        scripts:
+          postinstall: packaging/scripts/postinstall.sh
+          preremove: packaging/scripts/preremove.sh
+          postremove: packaging/scripts/postremove.sh
+    rpm:
+      group: Applications/System
+    deb:
+      fields:
+        Bugs: https://github.com/senhub-io/senhub-agent/issues
 
 release:
   draft: false

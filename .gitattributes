@@ -7,3 +7,8 @@
 # Windows files
 *.{cmd,[cC][mM][dD]} text eol=crlf
 *.{bat,[bB][aA][tT]} text eol=crlf
+
+# Golden output files are compared byte-for-byte by the test harness:
+# never apply EOL conversion (Windows checkouts turned LF goldens into
+# CRLF and every golden comparison failed on windows runners).
+*.golden -text

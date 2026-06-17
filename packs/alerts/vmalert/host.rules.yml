@@ -1,0 +1,57 @@
+# SenHub agent alerting starter pack — host metrics (free tier).
+#
+# Metric names are the Prometheus exposition names produced both by the
+# agent's /probes/prometheus endpoint and by the OTLP -> collector ->
+# VictoriaMetrics chain. See the metrics reference in the user guide.
+#
+# Thresholds are conservative starting points; tune per environment.
+
+groups:
+  - name: senhub-host
+    rules:
+      - alert: HostHighCpu
+        expr: (1 - avg without (cpu_logical_number) (senhub_system_cpu_utilization_ratio{cpu_mode="idle"})) > 0.90
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.host_name }}{{ $labels.instance }}"
+          description: "CPU usage above 90% for 15 minutes."
+
+      - alert: HostMemoryPressure
+        expr: senhub_system_memory_utilization_ratio > 0.90
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory pressure on {{ $labels.host_name }}{{ $labels.instance }}"
+          description: "Physical memory usage above 90% for 15 minutes."
+
+      - alert: DiskAlmostFull
+        expr: senhub_system_filesystem_utilization_ratio{system_filesystem_state="used"} > 0.90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Filesystem {{ $labels.system_filesystem_mountpoint }} above 90%"
+          description: "Used space above 90% on {{ $labels.system_filesystem_mountpoint }} ({{ $labels.host_name }}{{ $labels.instance }})."
+
+      - alert: DiskWillFillIn24h
+        expr: |
+          predict_linear(senhub_system_filesystem_usage_bytes{system_filesystem_state="available"}[6h], 24*3600) < 0
+          and senhub_system_filesystem_utilization_ratio{system_filesystem_state="used"} > 0.70
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Filesystem {{ $labels.system_filesystem_mountpoint }} filling up"
+          description: "At the current 6h growth rate, no space left within 24 hours."
+
+      - alert: NetworkInterfaceErrors
+        expr: senhub_system_network_errors_per_second > 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Interface {{ $labels.network_interface_name }} reporting errors"
+          description: "More than 10 errors/s ({{ $labels.network_io_direction }}) for 10 minutes."

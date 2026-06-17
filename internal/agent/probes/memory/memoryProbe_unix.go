@@ -78,7 +78,7 @@ func (u *unixMemoryCollector) collectVirtualMemory(dataPoints *[]data_store.Data
 		*dataPoints = append(*dataPoints, data_store.DataPoint{
 			Name:      metric.name,
 			Timestamp: timestamp,
-			Value:     float32(metric.value),
+			Value:     float64(metric.value),
 			Tags:      baseTags,
 		})
 	}
@@ -87,7 +87,7 @@ func (u *unixMemoryCollector) collectVirtualMemory(dataPoints *[]data_store.Data
 	*dataPoints = append(*dataPoints, data_store.DataPoint{
 		Name:      "memory_used_percent",
 		Timestamp: timestamp,
-		Value:     float32(vmem.UsedPercent),
+		Value:     vmem.UsedPercent,
 		Tags:      baseTags,
 	})
 
@@ -113,7 +113,7 @@ func (u *unixMemoryCollector) collectSwapMemory(dataPoints *[]data_store.DataPoi
 		*dataPoints = append(*dataPoints, data_store.DataPoint{
 			Name:      metric.name,
 			Timestamp: timestamp,
-			Value:     float32(metric.value),
+			Value:     float64(metric.value),
 			Tags:      baseTags,
 		})
 	}
@@ -122,7 +122,7 @@ func (u *unixMemoryCollector) collectSwapMemory(dataPoints *[]data_store.DataPoi
 	*dataPoints = append(*dataPoints, data_store.DataPoint{
 		Name:      "swap_used_percent",
 		Timestamp: timestamp,
-		Value:     float32(swap.UsedPercent),
+		Value:     swap.UsedPercent,
 		Tags:      baseTags,
 	})
 

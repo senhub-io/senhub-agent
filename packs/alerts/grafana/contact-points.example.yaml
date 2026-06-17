@@ -1,0 +1,37 @@
+# Grafana alerting provisioning example — contact points + notification
+# policy for the SenHub starter rules.
+#
+# Drop this file in /etc/grafana/provisioning/alerting/ (adjust the
+# receivers to your channels) and restart Grafana, or apply it through
+# the provisioning API. Grafana 10+.
+#
+# The vmalert rule files in ../vmalert/ also load directly into Grafana-
+# managed alerting via "Import datasource-managed rules" when your
+# datasource is Prometheus or VictoriaMetrics.
+
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: senhub-oncall
+    receivers:
+      - uid: senhub-email
+        type: email
+        settings:
+          addresses: oncall@example.com
+      # - uid: senhub-slack
+      #   type: slack
+      #   settings:
+      #     url: https://hooks.slack.com/services/T000/B000/XXXX
+      #     title: '{{ template "default.title" . }}'
+
+policies:
+  - orgId: 1
+    receiver: senhub-oncall
+    group_by: ["alertname", "host_name"]
+    routes:
+      - receiver: senhub-oncall
+        object_matchers:
+          - ["severity", "=", "critical"]
+        group_wait: 30s
+        repeat_interval: 4h

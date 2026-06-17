@@ -1,12 +1,10 @@
 name: Go-test-windows
 on:
-  push:
-    branches: [dev, master]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.keys/**'
   pull_request:
+    # Runs on every PR again: the repository is public, so Actions minutes
+    # are free — the 2x-billing master-only restriction (#251) no longer
+    # applies. Windows-specific code is additionally runtime-validated on a
+    # real host (bbcloud) before releases.
     branches: [dev, master]
     paths-ignore:
       - 'docs/**'
@@ -14,13 +12,17 @@ on:
 env:
   SENHUB_KEY: "test-key"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-and-build:
     runs-on: windows-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Go
         uses: actions/setup-go@v5

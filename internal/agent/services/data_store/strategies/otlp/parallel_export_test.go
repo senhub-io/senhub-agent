@@ -27,7 +27,7 @@ func TestPartitionRecordsByProbe(t *testing.T) {
 		{Name: "b", Attributes: map[string]string{"probe_name": "p1"}},
 		{Name: "c", Attributes: map[string]string{"probe_name": "p2"}},
 		{Name: "d", Attributes: map[string]string{}}, // agent self-metric
-		{Name: "e"},                                  // nil attrs → __agent__ too
+		{Name: "e"}, // nil attrs → __agent__ too
 	}
 	parts := partitionRecordsByProbe(recs)
 	if got := len(parts["p1"]); got != 2 {
@@ -55,7 +55,7 @@ func TestPushMetrics_SmallBatchUsesSingleBatchPath(t *testing.T) {
 	}
 	count, err := pushMetrics(context.Background(), store, fakeNullDefs{},
 		resource.NewSchemaless(), "1.0.0", time.Now(), time.Now(),
-		otelmapper.DefaultResolveOptions(), extra, export, nil, 4)
+		otelmapper.DefaultResolveOptions(), nil, extra, export, nil, 4)
 	if err != nil {
 		t.Fatalf("pushMetrics: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestPushMetrics_LargeBatchFansOutByProbe(t *testing.T) {
 
 	count, err := pushMetrics(context.Background(), store, fakeNullDefs{},
 		resource.NewSchemaless(), "1.0.0", time.Now(), time.Now(),
-		otelmapper.DefaultResolveOptions(), extra, export, nil, 4)
+		otelmapper.DefaultResolveOptions(), nil, extra, export, nil, 4)
 	if err != nil {
 		t.Fatalf("pushMetrics: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestPushMetrics_LargeBatch_MaxConcurrent1_StaysSingleBatch(t *testing.T) {
 	}
 	_, err := pushMetrics(context.Background(), store, fakeNullDefs{},
 		resource.NewSchemaless(), "1.0.0", time.Now(), time.Now(),
-		otelmapper.DefaultResolveOptions(), extra, export, nil, 1)
+		otelmapper.DefaultResolveOptions(), nil, extra, export, nil, 1)
 	if err != nil {
 		t.Fatalf("pushMetrics: %v", err)
 	}

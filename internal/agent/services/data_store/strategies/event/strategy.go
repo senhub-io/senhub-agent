@@ -59,22 +59,32 @@ type EventSyncStrategy struct {
 	logger      *logger.ModuleLogger
 	ticker      *time.Ticker
 	tickerOnce  sync.Once
+	tickerStop  chan struct{}
+	stopOnce    sync.Once
 	agentConfig configuration.AgentConfiguration
 	formatter   *eventFormatter.Formatter
 }
 
-// NewEventSyncStrategy creates a new instance of EventSyncStrategy
+// NewEventSyncStrategy creates a new instance of EventSyncStrategy.
+// A missing or non-string server_url is a configuration error, not a
+// panic: the unchecked type assertion here used to crash the agent at
+// config load, before ValidateConfigParams ever ran (#261).
 func NewEventSyncStrategy(
 	agentConfig configuration.AgentConfiguration,
 	storageConfig configuration.StorageConfigParams,
 	baseLogger *logger.Logger,
-) interface{} {
+) (*EventSyncStrategy, error) {
 	// Create module-specific logger for event strategy
 	moduleLogger := logger.NewModuleLogger(baseLogger, "strategy.event")
 
+	serverURL, ok := storageConfig["server_url"].(string)
+	if !ok || serverURL == "" {
+		return nil, fmt.Errorf("event strategy requires a string server_url parameter (got %T)", storageConfig["server_url"])
+	}
+
 	srv := server.NewServer(
 		agentConfig.GetAuthenticationKey(),
-		storageConfig["server_url"].(string),
+		serverURL,
 		baseLogger,
 	)
 
@@ -84,11 +94,8 @@ func NewEventSyncStrategy(
 		SyncInterval: DefaultSyncInterval,
 	}
 
-	// Apply provided configuration
-	if url, ok := storageConfig["server_url"].(string); ok {
-		config.ServerURL = url
-		config.ServerURLFull = url + "/event/insert"
-	}
+	config.ServerURL = serverURL
+	config.ServerURLFull = serverURL + "/event/insert"
 	if size, ok := storageConfig["queue_size"].(int); ok {
 		config.QueueSize = size
 	}
@@ -113,7 +120,7 @@ func NewEventSyncStrategy(
 	strategy.currentSize.Store(0)
 	strategy.syncInProgress.Store(false)
 
-	return strategy
+	return strategy, nil
 }
 
 // GetStrategyName returns the name of the strategy
@@ -240,7 +247,12 @@ func (s *EventSyncStrategy) doSync() error {
 	}
 	s.mutex.Unlock()
 
-	// Collect events up to chunk limits
+	// Collect events up to chunk limits. The breaks must exit the
+	// LOOP, not just the select: an unlabeled break here caused an
+	// infinite busy-spin once a batch exceeded the size limit — the
+	// same event was re-received and put back forever, with
+	// syncInProgress stuck true and the event pipeline dead (#261).
+collect:
 	for len(events) < s.syncTriggerSize && len(s.buffer) > 0 {
 		select {
 		case evt := <-s.buffer:
@@ -250,18 +262,24 @@ func (s *EventSyncStrategy) doSync() error {
 				continue
 			}
 
-			currentBatchSize += int64(len(eventJson))
-			if currentBatchSize > s.syncTriggerBytes {
+			if currentBatchSize+int64(len(eventJson)) > s.syncTriggerBytes {
 				// Put the event back if it would exceed size limit
 				s.buffer <- evt
-				break
+				break collect
 			}
 
+			currentBatchSize += int64(len(eventJson))
 			events = append(events, evt)
 		default:
-			break
+			break collect
 		}
 	}
+
+	// currentSize tracks bytes RESIDENT in the buffer: subtract what
+	// this collection drained, regardless of the send outcome —
+	// failed events move to failedEvents (outside the buffer) and
+	// must not keep inflating the size-based sync trigger.
+	s.currentSize.Add(-currentBatchSize)
 
 	if len(events) == 0 {
 		return nil
@@ -291,8 +309,6 @@ func (s *EventSyncStrategy) doSync() error {
 		return fmt.Errorf("failed to sync events after %d attempts: %w", DefaultRetryAttempts, err)
 	}
 
-	// Update metrics after successful send
-	s.currentSize.Add(-currentBatchSize)
 	s.logger.Info().
 		Int("events_sent", len(events)).
 		Int64("batch_size_bytes", currentBatchSize).
@@ -346,16 +362,25 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
 func (s *EventSyncStrategy) Start() error {
 	s.tickerOnce.Do(func() {
 		s.ticker = time.NewTicker(s.config.SyncInterval)
+		s.tickerStop = make(chan struct{})
 		s.logger.Info().
 			Dur("interval", s.config.SyncInterval).
 			Int("queue_size", s.config.QueueSize).
 			Msg("Starting event sync strategy")
 
-		go func() {
-			for range s.ticker.C {
-				s.triggerSync()
+		// ticker.Stop() does not close ticker.C, so a bare
+		// `for range ticker.C` never exits after Shutdown — the
+		// goroutine (and the strategy it captures) leaks (#270).
+		go func(ticker *time.Ticker, stop chan struct{}) {
+			for {
+				select {
+				case <-ticker.C:
+					s.triggerSync()
+				case <-stop:
+					return
+				}
 			}
-		}()
+		}(s.ticker, s.tickerStop)
 	})
 	return nil
 }
@@ -365,6 +390,9 @@ func (s *EventSyncStrategy) Shutdown(ctx context.Context) error {
 	s.logger.Info().Msg("Initiating graceful shutdown")
 	if s.ticker != nil {
 		s.ticker.Stop()
+	}
+	if s.tickerStop != nil {
+		s.stopOnce.Do(func() { close(s.tickerStop) })
 	}
 
 	// Wait for ongoing sync to complete

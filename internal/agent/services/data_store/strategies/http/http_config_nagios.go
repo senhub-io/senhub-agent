@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v2"
+
+	"senhub-agent.go/internal/agent/services/data_store/transformers"
 )
 
 // Nagios Configuration Management
@@ -30,7 +32,7 @@ func (cm *ConfigurationManager) LoadNagiosConfig() *NagiosConfig {
 		return cm.nagiosConfig
 	}
 
-	// Try to load from file first
+	// Operator-provided file takes precedence
 	configPath := "config/nagios.yaml"
 	if config, err := cm.loadNagiosConfigFromFile(configPath); err == nil {
 		cm.logger.Info().Str("path", configPath).Msg("Loaded Nagios configuration from file")
@@ -38,10 +40,40 @@ func (cm *ConfigurationManager) LoadNagiosConfig() *NagiosConfig {
 		return config
 	}
 
-	// Fall back to default configuration
-	cm.logger.Info().Msg("Using fallback Nagios configuration")
+	// Default: the curated configuration shipped with the agent
+	// (transformers/definitions/nagios.yaml, embedded). Its checks
+	// reference channels the probes actually emit; the hardcoded
+	// fallback below only covers an unparseable embedded file.
+	if config, err := cm.loadEmbeddedNagiosConfig(); err == nil {
+		cm.logger.Info().Str("version", config.Version).Msg("Loaded embedded default Nagios configuration")
+		cm.nagiosConfig = config
+		return config
+	} else {
+		cm.logger.Warn().Err(err).Msg("Embedded Nagios configuration unusable, using minimal fallback")
+	}
+
 	cm.nagiosConfig = cm.createFallbackNagiosConfig()
 	return cm.nagiosConfig
+}
+
+// loadEmbeddedNagiosConfig parses and validates the curated Nagios
+// configuration embedded in the transformers package.
+func (cm *ConfigurationManager) loadEmbeddedNagiosConfig() (*NagiosConfig, error) {
+	data, err := transformers.DefaultNagiosConfigYAML()
+	if err != nil {
+		return nil, fmt.Errorf("reading embedded Nagios configuration: %w", err)
+	}
+
+	var config NagiosConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse embedded Nagios YAML: %w", err)
+	}
+
+	if err := cm.validateNagiosConfig(&config); err != nil {
+		return nil, fmt.Errorf("invalid embedded Nagios configuration: %w", err)
+	}
+
+	return &config, nil
 }
 
 // loadNagiosConfigFromFile loads Nagios configuration from a YAML file
@@ -90,19 +122,22 @@ func (cm *ConfigurationManager) validateNagiosConfig(config *NagiosConfig) error
 			if metric.Warning == "" {
 				return fmt.Errorf("check %s, metric %s: warning threshold is required", check.Name, metric.Channel)
 			}
-			if metric.Critical == "" {
-				return fmt.Errorf("check %s, metric %s: critical threshold is required", check.Name, metric.Channel)
-			}
+			// Critical is optional: an empty value declares a
+			// warn-only check (evaluateThreshold never escalates
+			// past WARNING without a critical threshold).
 		}
 	}
 
 	return nil
 }
 
-// createFallbackNagiosConfig creates a basic fallback configuration
+// createFallbackNagiosConfig creates a basic fallback configuration.
+// Channel names must exist in the transformer definitions (cpu.yaml,
+// memory.yaml) — the historical fallback referenced channels no probe
+// emits, turning the out-of-the-box checks into permanent UNKNOWN.
 func (cm *ConfigurationManager) createFallbackNagiosConfig() *NagiosConfig {
 	return &NagiosConfig{
-		Version:     "1.0.0",
+		Version:     "1.0.1",
 		Description: "Fallback Nagios configuration",
 		Checks: []NagiosCheck{
 			{
@@ -110,7 +145,7 @@ func (cm *ConfigurationManager) createFallbackNagiosConfig() *NagiosConfig {
 				Description: "Basic system health check",
 				Metrics: []NagiosMetric{
 					{
-						Channel:     "cpu_usage_percent",
+						Channel:     "cpu_usage_total",
 						Aggregation: "average",
 						Warning:     "80",
 						Critical:    "90",
@@ -122,19 +157,6 @@ func (cm *ConfigurationManager) createFallbackNagiosConfig() *NagiosConfig {
 						Warning:     "85",
 						Critical:    "95",
 						Unit:        "%",
-					},
-				},
-			},
-			{
-				Name:        "network_health",
-				Description: "Network interface health check",
-				Metrics: []NagiosMetric{
-					{
-						Channel:     "network_bytes_total",
-						Aggregation: "sum",
-						Warning:     "1000000000",  // 1GB
-						Critical:    "10000000000", // 10GB
-						Unit:        "bytes",
 					},
 				},
 			},

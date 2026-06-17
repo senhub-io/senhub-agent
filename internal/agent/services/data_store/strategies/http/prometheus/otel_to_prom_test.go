@@ -167,3 +167,35 @@ func TestLabelValueString_Escaping(t *testing.T) {
 		}
 	}
 }
+
+// TestOTelNameToPromName_NoDoubleSenhubPrefix pins the self-scrape footgun
+// (#486 companion / prometheus_scrape guard): a name that already carries the
+// sanitized senhub_ prefix (e.g. prometheus_scrape pointed at this agent's own
+// /metrics endpoint, or an OTLP-ingested senhub_ series) must not gain a second
+// prefix. Without the guard each cycle prepended another senhub_, growing the
+// name unbounded (senhub_senhub_...).
+func TestOTelNameToPromName_NoDoubleSenhubPrefix(t *testing.T) {
+	cases := []struct {
+		name       string
+		otelName   string
+		metricType string
+		want       string
+	}{
+		{"already underscore-prefixed gauge", "senhub_node_load1", "gauge", "senhub_node_load1"},
+		{"already underscore-prefixed counter", "senhub_node_cpu_seconds_total", "counter", "senhub_node_cpu_seconds_total"},
+		{"dotted internal form unchanged", "senhub.promscrape.up", "gauge", "senhub_promscrape_up"},
+		{"unprefixed still gets prefix", "node_load1", "gauge", "senhub_node_load1"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := OTelNameToPromName(tt.otelName, "", tt.metricType); got != tt.want {
+				t.Errorf("OTelNameToPromName(%q) = %q, want %q", tt.otelName, got, tt.want)
+			}
+			// Idempotency: re-feeding the output is a fixed point (the loop).
+			reapplied := OTelNameToPromName(OTelNameToPromName(tt.otelName, "", tt.metricType), "", tt.metricType)
+			if reapplied != tt.want {
+				t.Errorf("non-idempotent: re-applied = %q, want %q", reapplied, tt.want)
+			}
+		})
+	}
+}

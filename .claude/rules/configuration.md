@@ -8,11 +8,11 @@ paths:
 
 The configuration system supports two layouts; detection is automatic.
 
-### Legacy monolithic (still supported)
+### Legacy monolithic (still LOADED — no longer WRITTEN by install)
 
-A single `agent-config.yaml` with top-level `probes:` and/or `storage:`. The original format. No operator action needed for existing installs.
+A single `agent-config.yaml` with top-level `probes:` and/or `storage:`. The original format. **From 0.2.x onward `agent install` writes the multi-file layout, not the monolithic one** — existing monolithic installs keep working transparently. To migrate an existing install: `agent config migrate [path]`.
 
-### Multi-file (Sprint A, introduced 0.1.93)
+### Multi-file (default install layout from 0.2.x)
 
 ```
 /etc/senhub/                       # Windows: %PROGRAMDATA%\SenHub
@@ -67,15 +67,22 @@ Non-breaking additions (new optional fields, new probe types, new strategy param
 
 ## Watcher
 
-`localConfiguration_watcher.go` uses fsnotify on `agent-config.yaml` only. **The `.d/` directories are NOT watched** — operator must restart the agent (or trigger a config reload event) after editing fragments. Extending the watcher to `.d/` is a future sprint.
+`localConfiguration_watcher.go` uses fsnotify on:
+
+- the top-level config file (`configPath` — `agent.yaml` by default), AND
+- the sibling `probes.d/` and `strategies.d/` directories when they exist.
+
+Adding, modifying, removing or renaming a fragment file in either `.d/` triggers a reload. Dotfiles and `*.disabled` files are filtered out so editor swap files don't cause spurious reloads.
+
+For a legacy monolithic install (no `.d/` directories on disk), only the top-level file is watched.
 
 ## CLI
 
 The agent exposes three config CLI verbs:
 
-- `config check [path]` — validates the configuration (errors + warnings count).
+- `config check [path]` — validates the configuration (errors + warnings count). Uses `LoadFromDisk` so fragments under `probes.d/` / `strategies.d/` are covered too.
 - `config show [--raw|--resolved|--redact] [path]` — prints merged config as sorted YAML.
-- (planned) `config migrate` — explicit migration trigger.
+- `config migrate [path]` — converts a legacy monolithic config into the multi-file layout (timestamped backup before any write, post-write equality check, restores backup on mismatch).
 
 When you add a config field, also update `checkConfig` (`cmd/agent/config.go`) so `config check` validates it.
 

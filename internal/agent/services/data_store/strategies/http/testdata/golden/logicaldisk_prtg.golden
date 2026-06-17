@@ -1,0 +1,111 @@
+[
+  {
+    "channel": "Available Bytes",
+    "value": 88,
+    "float": 1,
+    "unit": "BytesDisk"
+  },
+  {
+    "channel": "Disk Free Mb",
+    "value": 42,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "MBytes"
+  },
+  {
+    "channel": "Disk Free Percent",
+    "value": 53.5,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "Disk Queue Length",
+    "value": 42,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "Disk Read Bytes Sec",
+    "value": 99.5,
+    "float": 1,
+    "unit": "SpeedDisk",
+    "speedsize": "Byte",
+    "speedtime": "Second"
+  },
+  {
+    "channel": "Disk Reads Sec",
+    "value": 76.5,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "/s"
+  },
+  {
+    "channel": "Disk Used Percent",
+    "value": 65,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "Disk Write Bytes Sec",
+    "value": 111,
+    "float": 1,
+    "unit": "SpeedDisk",
+    "speedsize": "Byte",
+    "speedtime": "Second"
+  },
+  {
+    "channel": "Disk Writes Sec",
+    "value": 88,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "/s"
+  },
+  {
+    "channel": "Free Bytes",
+    "value": 65,
+    "float": 1,
+    "unit": "BytesDisk"
+  },
+  {
+    "channel": "Inodes Free",
+    "value": 42,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "Inodes Total",
+    "value": 111,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "Inodes Used",
+    "value": 53.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "Inodes Used Percent",
+    "value": 65,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "Total Bytes",
+    "value": 53.5,
+    "float": 1,
+    "unit": "BytesDisk"
+  },
+  {
+    "channel": "Used Bytes",
+    "value": 76.5,
+    "float": 1,
+    "unit": "BytesDisk"
+  },
+  {
+    "channel": "Used Percent",
+    "value": 99.5,
+    "float": 1,
+    "unit": "Percent"
+  }
+]

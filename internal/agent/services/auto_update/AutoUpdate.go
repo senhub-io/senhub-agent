@@ -19,6 +19,7 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/configParser"
 	"senhub-agent.go/internal/agent/periodic_scheduler"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/validators"
@@ -287,6 +288,22 @@ func (a *autoUpdate) doUpdate(downloadURL string) error {
 		return fmt.Errorf("update archive too small: %d bytes (expected at least 1MB)", len(body))
 	}
 
+	// Verify the detached minisign signature of the archive BEFORE
+	// parsing it as a ZIP: integrity must not rest on TLS to a
+	// config-settable registry URL (#266). A missing or invalid
+	// signature is either a mis-published release or a tampered
+	// artifact — refuse loudly either way.
+	signature, err := a.fetchSignature(downloadURL + ".minisig")
+	if err != nil {
+		agentstate.IncrementUpdateRejected("signature_unavailable")
+		return fmt.Errorf("update REJECTED — signature unavailable: %w", err)
+	}
+	if err := verifyArchiveSignature(body, signature); err != nil {
+		agentstate.IncrementUpdateRejected("signature_invalid")
+		return fmt.Errorf("update REJECTED — %w", err)
+	}
+	a.logger.Info().Msg("Update archive signature verified")
+
 	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
 		return fmt.Errorf("opening update archive as zip: %w", err)
@@ -329,6 +346,28 @@ func (a *autoUpdate) doUpdate(downloadURL string) error {
 
 	a.logger.Info().Msg("Update applied successfully")
 	return nil
+}
+
+// fetchSignature downloads the detached minisign signature published
+// next to the release archive (<archive-url>.minisig).
+func (a *autoUpdate) fetchSignature(signatureURL string) ([]byte, error) {
+	resp, err := a.httpClient.Get(signatureURL) // #nosec G107 - derived from the HTTPS-validated archive URL
+	if err != nil {
+		return nil, fmt.Errorf("downloading signature: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("downloading signature: HTTP %d %s from %s",
+			resp.StatusCode, resp.Status, signatureURL)
+	}
+
+	const maxSignatureSize = 64 * 1024
+	sig, err := io.ReadAll(io.LimitReader(resp.Body, maxSignatureSize))
+	if err != nil {
+		return nil, fmt.Errorf("reading signature body: %w", err)
+	}
+	return sig, nil
 }
 
 func (a *autoUpdate) PeriodicalCheckForUpdate() error {

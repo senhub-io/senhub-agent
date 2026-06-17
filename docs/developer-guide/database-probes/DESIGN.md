@@ -354,7 +354,9 @@ All other metrics work identically.
 CI: the Docker-based integration tests run as a separate job
 because they take longer than the existing `go test` set. Gated
 behind a `make test-database` target so the standard `make test`
-stays fast.
+stays fast. Since the OSS split, the database probes and their
+`make test-database` target live in senhub-agent-enterprise; see
+its Makefile.
 
 ## 9 — Implementation order
 

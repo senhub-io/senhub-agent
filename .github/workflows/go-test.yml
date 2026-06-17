@@ -1,33 +1,25 @@
 name: Go-test
 on:
-  push:
-    branches: [dev, master]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.keys/**'
   pull_request:
     branches: [dev, master]
     paths-ignore:
       - 'docs/**'
       - '*.md'
 
-jobs:
-  # Multi-OS test matrix. Linux is the primary CI gate (race detector +
-  # govulncheck run there); macOS runs the default test suite to catch
-  # darwin-specific drift (build-tag-gated platform stubs, syscall
-  # signatures, file path expectations). Windows lives in its own
-  # workflow because the Windows service smoke step needs an
-  # interactive shell.
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+# Cancel an in-progress run when the same PR is pushed again — no point paying
+# for a run that a newer commit has already superseded.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
+jobs:
+  # Linux is the primary CI gate and runs on every PR (race detector +
+  # govulncheck + boot smoke below also run here). It is the cheapest runner
+  # (1x billing).
+  test:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -40,29 +32,41 @@ jobs:
       - name: Test
         run: make test
 
-  # Race detector runs on linux only and EXCLUDES
-  # internal/agent/services/configuration — that package has 4
-  # documented pre-existing race flakes (tracked in CLAUDE.md) which
-  # pass under plain `make test` and individually but fire under -race
-  # parallel scheduling. Excluding the package keeps the CI signal
-  # tight: any new -race failure here is a fresh regression, not noise
-  # from the pre-existing four.
-  race:
-    runs-on: ubuntu-latest
+  # macOS catches darwin-specific drift (build-tag-gated platform stubs,
+  # syscall signatures, file path expectations). It runs on every PR again:
+  # the repository is public, so Actions minutes are free — the 10x-billing
+  # master-only restriction (#251) no longer applies.
+  test-macos:
+    runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
-      - name: Test with race detector (excluding known-flaky configuration package)
-        run: |
-          # xargs feeds each package as a separate argument so newlines
-          # in the package list don't end up concatenated into a single
-          # malformed import path on the `go test` command line.
-          go list ./... \
-            | grep -v '^senhub-agent\.go/internal/agent/services/configuration$' \
-            | xargs go test -race
+
+      - name: Build
+        run: make build
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: make test
+
+  # Race detector runs on linux only. The configuration package was
+  # excluded here while it carried 4 documented race flakes; their
+  # root cause (lock-free reads of the live config state) was fixed
+  # in #268 — the package is back in and validated with 100
+  # consecutive clean -race runs.
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: Test with race detector
+        run: go test -race ./...
 
   # Boot smoke: builds the agent binary, exec's `version` + parses
   # every shipped free-tier example config via `config check`. Catches
@@ -71,7 +75,7 @@ jobs:
   boot-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -86,7 +90,7 @@ jobs:
   vuln:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Go
         uses: actions/setup-go@v5
         with:

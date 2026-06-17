@@ -39,8 +39,8 @@ type checkpointConfig struct {
 // readers can route by format. The Saved field is purely informational
 // (operator-friendly debugging — "when did this checkpoint happen?").
 type checkpoint struct {
-	Version int            `json:"version"`
-	SavedAt time.Time      `json:"saved_at"`
+	Version int             `json:"version"`
+	SavedAt time.Time       `json:"saved_at"`
 	Entries []entrySnapshot `json:"entries"`
 }
 

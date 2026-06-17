@@ -241,7 +241,7 @@ metrics:
     category: "system_counters"
     description: "Deferred Procedure Calls per second"
     otel:
-      name: senhub.system.cpu.dpcs_per_second
+      name: senhub.system.cpu.dpcs
       unit: "1/s"
       type: gauge
 
@@ -252,7 +252,7 @@ metrics:
     category: "system_counters"
     description: "DPCs queued per second"
     otel:
-      name: senhub.system.cpu.dpcs_queued_per_second
+      name: senhub.system.cpu.dpcs_queued
       unit: "1/s"
       type: gauge
 
@@ -263,7 +263,7 @@ metrics:
     category: "system_counters"
     description: "CPU interrupts per second"
     otel:
-      name: senhub.system.cpu.interrupts_per_second
+      name: senhub.system.cpu.interrupts
       unit: "1/s"
       type: gauge
 

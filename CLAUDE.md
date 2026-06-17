@@ -13,13 +13,13 @@ Infrastructure monitoring agent (Go, ~72k LOC). Single binary, ships to PRTG / N
 
 ## ⚠️ Temporary dependency fork
 
-`github.com/citrix/adc-nitro-go` is replaced by `github.com/senhub-io/adc-nitro-go` (singleton stats panic fix, upstream PR #36 pending). See `docs/.internal/TEMPORARY-FORK-citrix-adc-nitro-go.md`. Quarterly review; revert when upstream merges.
+`github.com/citrix/adc-nitro-go` is replaced by `github.com/senhub-io/adc-nitro-go` (singleton stats panic fix, upstream PR #36 pending). Detailed rationale lives in the private companion repo `senhub-io/senhub-internal-docs` (`TEMPORARY-FORK-citrix-adc-nitro-go.md`). Quarterly review; revert when upstream merges.
 
 ## Project-specific build conventions
 
 - **Beta tag format**: `X.Y.Z-beta` — **no `v` prefix** (matches the `dev-beta-release.yml` workflow trigger `*.*.*-beta`).
 - **Production tag format**: `X.Y.Z`.
-- `make bump-version` adds a `v` prefix that breaks the workflow trigger; prefer manual tag creation through the `release-manager` agent flow.
+- Release tags live on the ENTERPRISE repo (senhub-agent-enterprise); its workflows build and publish. Tagging in THIS repo does not release anything (the OSS mirror tags are pushed by the enterprise workflow). The old `make bump-version` target was removed (#283).
 - Distributed binaries matrix: 5 platforms — darwin amd64 / darwin arm64 / linux amd64 / linux arm64 / windows amd64 (plus zipped variants).
 
 ## Release workflow

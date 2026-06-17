@@ -17,6 +17,7 @@ type Probe interface {
     OnStart(quitChannel chan struct{}) error
     Collect() ([]datapoint.DataPoint, error)
     OnShutdown(ctx context.Context) error
+    EntitySource() entity.Source
 }
 ```
 
@@ -49,6 +50,8 @@ type Probe interface {
    This adds `probe_name` and `probe_type` to every datapoint. Every other probe (Veeam, NetScaler, Citrix, Redfish) does this — new probes follow the same contract.
 
 4. **Register in `internal/agent/probes/registry.go`** with the canonical type name. The registry name MUST match the YAML transformer file name (`mysql.yaml`, `postgresql.yaml`).
+
+5. **Entity source** — call `SetEntitySource()` in the constructor for remote-target probes (see §Mandatory wiring — five touch-points below). Host-level probes and log conduits inherit `NoOpEntitySource` from `BaseProbe` automatically.
 
 ## commonTags shape
 
@@ -97,16 +100,85 @@ Each `tag_to_attribute` in the YAML maps probe tags to OTel attributes. Add the 
 - `Collect`: one cycle. Ping/validate the connection before issuing queries (server restarts, idle timeouts). Emit datapoints even on partial failure (always emit `senhub.db.up` for DB probes).
 - `OnShutdown`: close connections cleanly; cancel any in-flight context.
 
-## License touch-points — every new probe MUST update all four
+## Mandatory wiring — five touch-points, every new probe, same PR
 
-When adding a probe, register it in the **four** places below in the **same PR**. The structural invariant test `TestEveryRegisteredProbeIsAuthorizable` in `internal/agent/probes/registry_invariant_test.go` makes the license half non-skippable — CI fails if you wire the probe in `registry.go` without claiming a license seat. The other places are not test-enforced today but matter just as much.
+When adding a probe, register it in the **five** places below in the **same PR**. The structural invariant tests in `internal/agent/probes/registry_invariant_test.go` make the license and entity source halves non-skippable — CI fails if either is missing. The other places are not test-enforced today but matter just as much.
 
 1. **`internal/agent/probes/registry.go`** — add the entry to `probeConstructors`. The registry name MUST match the YAML transformer file name (`mysql.yaml`, `ibmi.yaml`).
 2. **License authorization** — pick one:
    - **Free tier** → add to `freeTierProbes` in `internal/agent/services/license/license.go`. Only for **host-local** observability (cpu/memory/network/logicaldisk/linux_logs). Anything that monitors a remote system is paid.
-   - **Paid (Pro/Enterprise)** → claim the next free slot in `probeBitmap` in `internal/agent/services/license/compact.go` so the compact-license format can authorize it. 13 slots free at the time of writing; reserved slots leave a comment in place. JWT-based licenses also need this entry so `authorized_probes` array entries match the canonical names.
+   - **Paid (Pro/Enterprise)** → add the probe name to `paidProbes` in `internal/agent/services/license/probe_catalog.go` so a JWT licence is allowed to grant it via the `authorized_probes` claim. The structural test fails if a probe is wired in the registry without an entry here.
 3. **`docs/LICENSE-SYSTEM.md`** — add the probe to the correct tier section (Free or Pro). The doc has drifted multiple times in the past; the structural test catches code drift, not doc drift.
 4. **YAML transformer** at `internal/agent/services/data_store/transformers/definitions/<probe>.yaml` (unless the probe is a pure log conduit like `linux_logs` — in that case document the absence in `senhub-semantic-conventions.md`). Every metric in the YAML needs an `otel:` block (see `feedback_otel_first.md`); the prometheus mapper warns once per unmapped metric and silently drops, so a missing block ships as a silent feature gap.
+5. **Entity source** in the probe's constructor — non-negotiable, enforced by
+   `TestEveryRegisteredProbeHasEntitySource` in `registry_invariant_test.go`.
+
+   **Remote-target probes** (anything monitoring a distinct external system — a DB instance, a message broker, an HTTP endpoint): call `SetEntitySource()` with a `SimpleEntitySource` in the constructor. The invariant test catches a nil return; `SimpleEntitySource` satisfies it:
+
+   ```go
+   // In the probe's constructor:
+   entitySrc := types.NewSimpleEntitySource("db.redis", map[string]any{
+       "server.address": cfg.Host,
+       "server.port":    int64(cfg.Port),
+   })
+   p.SetEntitySource(entitySrc)
+
+   // In OnStart():
+   p.unregister = entity.RegisterSource(p.EntitySource())
+
+   // In Collect(), after success:
+   entitySrc.SetUp(true, map[string]any{"db.system.version": version})
+   // On failure:
+   entitySrc.SetUp(false, nil)
+
+   // In OnShutdown():
+   if p.unregister != nil { p.unregister() }
+   ```
+
+   **Host-level probes and log conduits** (cpu, memory, network, logicaldisk, linux_logs, syslog, filetail, windowseventlog, event): do NOT call `SetEntitySource()`. They inherit the `NoOpEntitySource` fallback from `BaseProbe`, which satisfies the invariant without emitting extra entity events — the host entity is already reported by the entity detector.
+
+   Entity type — **registered Toise vocabulary ONLY**. `entity.type` MUST be one
+   of the types registered in `toise-dev/toise` `internal/model/registry.go`
+   (`IsKnownEntityType` is strict by default — an unregistered type is rejected
+   at the boundary and the entity is silently dropped). The technology is a
+   **descriptive attribute** (`db.system.name` / `service.name`), NEVER part of
+   `entity.type`. Identity is exact + immutable and **never purely network-
+   derived** (`server.address`/`server.port` are mutable — DHCP/failover/VIP —
+   and stay descriptive). Frozen with the Toise owner (decisions D1/D2, 2026-06):
+
+   **`db` vs `service.instance` boundary rule** (so you never have to re-ask per
+   technology): if OTel semconv assigns it a `db.system.name` — it is a
+   database/datastore you query as such (Elasticsearch, OpenSearch, Solr, Redis,
+   MongoDB, Cassandra, CouchDB, InfluxDB, ClickHouse, Memcached, MySQL,
+   PostgreSQL) — then `entity.type = db`. Otherwise it is a `service.instance`
+   (messaging brokers carry `messaging.system`, not `db.system` → Kafka, RabbitMQ,
+   NATS, Pulsar, ActiveMQ are service.instance; so are proxies/app servers/
+   coordination/CI: Nginx, Apache, HAProxy, Envoy, Tomcat, WildFly, Jenkins,
+   Consul, ZooKeeper, Ceph, …). A search engine is a `db` even though its stable
+   id is a node UUID — the id source (auto-reported persistent id) is the same in
+   both worlds; only the type differs.
+
+   | Probe family | `entity.type` | Subtype (descriptive attr) | Identity `{...}` |
+   |---|---|---|---|
+   | Databases — Redis/Valkey, MongoDB, Cassandra, CouchDB, InfluxDB, ClickHouse, Memcached, MySQL, PostgreSQL | `db` | `db.system.name` (`redis`/`mongodb`/…) | `{db.instance.id}` — stable source id (MySQL `server_uuid`, PG `system_identifier`, else operator logical name, else `host:port` documented fallback) |
+   | Application services — Kafka, RabbitMQ, NATS, Pulsar, ActiveMQ, Nginx, Apache, HAProxy, Envoy, Varnish, Tomcat, WildFly, Solr, Elasticsearch, OpenSearch, Jenkins, Consul, Zookeeper, PHP-FPM, Ceph, … | `service.instance` | `service.name` (`kafka`/`nginx`/…), `service.namespace` if relevant | `{service.instance.id}` — stable **by precedence**: (1) tech-reported persistent id (ES node UUID, Consul node-id, Kafka `cluster.id`+`broker.id`, RabbitMQ nodename, NATS `server_name`, Pulsar `cluster`+`brokerId`, Ceph `fsid`+daemon, Jenkins instance id); (2) else `<service.name>@<host.id>`. **Never** `scheme://host:port`, URL+port, or IP. |
+   | Docker container | `container` | `image`/`name`/`state` (descriptive) | `{container.id}` (stable, not network-derived). A container is a compute resource (it RUNS a service), not a service.instance — Toise registered `container` as its own type; emit `runs_on` container→host. Type registered by Toise (see compute.vm note). |
+   | The agent itself | `service.instance` | `service.name=senhub-agent` | `{service.instance.id}` = agent key — emitted by the entity foundation; it is the `From` of every `monitors` edge |
+   | VM observed from INSIDE the guest (agent in the VM) | `host` | `host.type=vm` | `{host.id}` = the guest machine-id — a running VM with its own OS is a host |
+   | VM observed ONLY from the hypervisor (hyperv/proxmox, no guest machine-id) | `compute.vm` | — | `{host.id: <hypervisor machine-id>, vmid}` — composite hypervisor-side slot identity. **NEVER put a vmid in `host.id`** (ADR 0018: that is a false, permanent identity). The hypervisor emits `runs_on` compute.vm→host (the node) between its own entities; reconciling compute.vm with the in-guest host is a `same_as` overlay job, not an identity merge |
+   | Hypervisor node (PVE) | `host` | — | `{host.id}` = node machine-id (PVE runs on Debian). A remote probe without FS access to the node CANNOT supply machine-id → do NOT fabricate a host; emit the PVE surface as a `service.instance` (service.name=proxmox) instead — the real fix for node/VM entities is an on-node agent |
+   | Host hardware — disk (smart), GPU (nvidia), sensor/PSU (ipmi) | — **NOT an entity** | — | host-tagged metrics (`host.id` + device label), no distinct entity. Re-examine if a relation emerges (e.g. `db --stored_on--> disk`, #456) |
+   | SNMP-discovered device | `network.device` | — | `{network.device.id}` (managed by snmppoll — already implemented) |
+   | Host (the agent's own machine) | `host` | — | `{host.id}` (managed by entity detector — already implemented) |
+
+   Every monitored target also emits a `monitors` edge from the agent's own
+   `service.instance` to the target:
+   `Relation{Type:"monitors", FromType:"service.instance", FromID:{"service.instance.id": agentstate.GetAgentInstanceID()}, ToType: <db|service.instance|host|network.device>, ToID: <target id>}`.
+   Skip the edge when `GetAgentInstanceID()` is `""` (entity emission off — the
+   consumer would buffer an unresolvable `From` then drop it).
+
+   Full rationale + the Toise decisions: `docs/audit/ENTITY-CONTRACT-DISCUSSION-TOISE.md`,
+   issues #470 (umbrella), #472 (db id), #433 (monitors), #456 (hardware/VM).
 
 For probes that emit collapsed metrics (one OTel name + discriminator attribute), also add the discriminator tag key to `DiscriminantTagsRegistry["<probe>"]` in `internal/agent/services/data_store/strategies/http/http_cache.go`. Without this, the cache key collapses all variants onto one slot.
 
@@ -115,5 +187,5 @@ The probe **type name** must be a deliberate, stable identifier — it's part of
 ## Tests
 
 - Unit tests use synthetic input maps (stub `SHOW GLOBAL STATUS` etc.) — no real connection required for the per-family build* helpers.
-- Integration tests live under `*_integration_test.go` with a `//go:build integration` tag (run via `make test-database`).
+- Integration tests live under `*_integration_test.go` with a `//go:build integration` tag (run via `make test-database` in senhub-agent-enterprise, where the database probes live).
 - Test assertions reference **OTel-canonical** metric names, not the legacy `db_*` form.

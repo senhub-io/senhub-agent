@@ -15,7 +15,12 @@ LINUX_ARM64=$(LINUX_ARM64_DIR)/$(EXECUTABLE)
 WINDOWS=$(WINDOWS_AMD64_DIR)/$(EXECUTABLE).exe
 DARWIN=$(DARWIN_AMD64_DIR)/$(EXECUTABLE)
 DARWIN_ARM64=$(DARWIN_ARM64_DIR)/$(EXECUTABLE)
-VERSION=$(shell git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+.*$$' | sort -V | tail -n1)
+# Version embedded in binaries: the nearest reachable tag from HEAD
+# (git describe), NOT the highest tag repo-wide — building an older
+# branch must not claim a newer version (poisons updater comparisons).
+# Falls back to 0.0.0-dev when no tag is reachable (fresh clones, CI
+# shallow checkouts without tags).
+VERSION=$(shell git describe --tags --abbrev=0 --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || echo 0.0.0-dev)
 COMMIT_HASH=$(shell git describe --tags --always --long --dirty)
 ENV ?= production
 PRODUCTION_URL="https://eu-west-1.intake.senhub.io"
@@ -34,6 +39,12 @@ YELLOW=\033[0;33m
 RED=\033[0;31m
 NC=\033[0m # No Color
 
+# UPDATE_SIGNING_PUBKEY: minisign public key embedded in the binary for
+# self-update artifact verification (#266). Empty = the build refuses to
+# self-update (fail-closed). The release pipeline injects the production
+# key; local/dev builds normally leave it empty.
+UPDATE_SIGNING_PUBKEY ?=
+
 # Update ldflags to include this information
 LDFLAGS=-s -w \
     -X '${PACKAGE}.Version=$(VERSION)' \
@@ -42,7 +53,8 @@ LDFLAGS=-s -w \
     -X '${PACKAGE}.GoVersion=$(GO_VERSION)' \
     -X '${PACKAGE}.Env=${ENV}' \
     -X '${PACKAGE}.ProductionURL=${PRODUCTION_URL}' \
-    -X '${PACKAGE}.DevelopmentURL=${DEVELOPMENT_URL}'
+    -X '${PACKAGE}.DevelopmentURL=${DEVELOPMENT_URL}' \
+    -X 'senhub-agent.go/internal/agent/services/auto_update.signingPublicKey=$(UPDATE_SIGNING_PUBKEY)'
 
 # ========================================
 # VERSION MANAGEMENT
@@ -61,40 +73,12 @@ check-version:
 			exit 1; \
 		fi
 
-# Manual version management (use for development and RC versions)
-bump-version:
-		@current_version=$$(echo "$(VERSION)" | sed 's/-rc//'); \
-		if [[ "$(VERSION)" == *"-rc"* ]]; then \
-			echo "Current version: $(VERSION) (Release Candidate)"; \
-			read -p "Do you want to create a release version? [Y/n] " make_release; \
-		if [[ "$$make_release" != "n" && "$$make_release" != "N" ]]; then \
-			new_version="$$current_version"; \
-		else \
-			read -p "Enter new RC version [$$current_version-rc]: " new_version; \
-				: "$${new_version:=$$current_version-rc}"; \
-			fi; \
-			else \
-				echo "Current version: $(VERSION)"; \
-				read -p "Is this a release candidate? [Y/n] " is_rc; \
-				if [[ "$$is_rc" != "n" && "$$is_rc" != "N" ]]; then \
-					read -p "Enter new version [$$current_version-rc]: " new_version; \
-					: "$${new_version:=$$current_version-rc}"; \
-				else \
-					read -p "Enter new version [$$current_version]: " new_version; \
-					: "$${new_version:=$$current_version}"; \
-				fi; \
-			fi; \
-			echo "Creating new version: v$$new_version"; \
-			git tag -a "v$$new_version" -m "Version $$new_version"; \
-			git push origin "v$$new_version"
-
-# Delete a version tag (useful for corrections)
-delete-version:
-	@echo "Current tags:"; \
-	git tag -l; \
-	read -p "Enter tag to delete: v" version_to_delete; \
-	git tag -d "v$$version_to_delete"; \
-	git push origin ":refs/tags/v$$version_to_delete"
+# Version tags are NOT managed from this repo. Release tags (X.Y.Z and
+# X.Y.Z-beta, no v prefix) live on senhub-agent-enterprise, whose
+# workflows build and publish the releases; see the release-manager
+# flow in that repo. The old bump-version/delete-version targets were
+# removed: they created v-prefixed tags (which no workflow matches)
+# and auto-pushed them (#283).
 
 # ========================================
 # BUILD TARGETS
@@ -148,6 +132,22 @@ package-windows: build-windows ## Create ZIP package for Windows
 	@cd $(WINDOWS_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-windows-amd64.zip $(EXECUTABLE).exe
 	@echo "$(GREEN)✅ Windows ZIP package created: $(DIST_DIR)/$(EXECUTABLE)-windows-amd64.zip$(NC)"
 
+# Build a Windows MSI from the staged Windows binary using WiX v4.
+# Requires the `wix` dotnet tool + the WixToolset.Util.wixext extension
+# (see docs/deployment/windows-msi.md). CI builds the canonical signed
+# MSI via .github/workflows/windows-msi.yml; this target is for local
+# unsigned test builds.
+package-windows-msi: build-windows ## Build Windows MSI (requires WiX v4 `wix` tool)
+	@command -v wix >/dev/null 2>&1 || { echo "$(RED)wix tool not found. Install: dotnet tool install --global wix --version '4.*'$(NC)"; exit 1; }
+	@echo "$(GREEN)📦 Building Windows MSI (version $(VERSION))...$(NC)"
+	@wix build packaging/windows/senhub-agent.wxs \
+		-d Version="$(VERSION)" \
+		-d BinDir="$(WINDOWS_AMD64_DIR)" \
+		-arch x64 \
+		-ext WixToolset.Util.wixext \
+		-out "$(DIST_DIR)/$(EXECUTABLE)-$(VERSION)-amd64.msi"
+	@echo "$(GREEN)✅ Windows MSI created: $(DIST_DIR)/$(EXECUTABLE)-$(VERSION)-amd64.msi$(NC)"
+
 package-linux: build-linux ## Create ZIP packages for Linux
 	@echo "$(GREEN)📦 Creating Linux ZIP packages...$(NC)"
 	@cd $(LINUX_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-linux-amd64.zip $(EXECUTABLE)
@@ -197,31 +197,9 @@ test:
 	@echo "Testing..."
 	@go test ./... -v
 
-# Database probes integration tests — gated behind a build tag so
-# they're opt-in. Spins up MySQL + Postgres via the docker-compose
-# fixture under test/database/, waits for the engines to be ready,
-# runs the probes against them, then tears the fixture down.
-test-database: ## Integration tests against a real MySQL + Postgres
-	@echo "$(GREEN)🐳 Starting database fixture...$(NC)"
-	@docker compose -f test/database/docker-compose.yml up -d --wait
-	@echo "$(GREEN)🧪 Running database integration tests...$(NC)"
-	@MYSQL_TEST_DSN='root:test@tcp(127.0.0.1:3306)/' \
-		POSTGRES_TEST_DSN='host=127.0.0.1 port=5432 user=postgres password=test dbname=postgres sslmode=disable' \
-		go test -tags=database_integration -v \
-			./internal/agent/probes/mysql/... \
-			./internal/agent/probes/postgresql/...
-	@echo "$(GREEN)🧹 Tearing down database fixture...$(NC)"
-	@docker compose -f test/database/docker-compose.yml down -v
-
-# Prod smoke tests — hit the live agents on sha901 + bbcloud via SSH,
-# verify post-deploy invariants (no bearer leak, no probe-params leak,
-# no silent downgrade). Gated by the `prod_smoke` build tag so they
-# never run in regular CI. Requires the senhub secret store to be
-# resolvable (~/.senhub/read-secret.sh).
-prod-smoke: ## Prod smoke tests against sha901 + bbcloud (read-only)
-	@echo "$(GREEN)🔬 Running prod smoke tests...$(NC)"
-	@go test -tags=prod_smoke -v ./tools/prod_smoke/...
-	@echo "$(GREEN)✅ Database integration tests done$(NC)"
+# Database probes (mysql, postgresql) moved to senhub-agent-enterprise
+# with the OSS split; their integration tier runs there. See the
+# senhub-agent-enterprise Makefile (`make test-database`).
 
 # Boot smoke tests — build the agent binary, exec it against shipped
 # example configs to catch bring-up regressions (linker errors, config
@@ -269,7 +247,6 @@ lint: ## Analyse de qualité du code (golangci-lint)
 lint-fix: ## Corrige automatiquement les problèmes de style
 	@echo "$(GREEN)🔧 Correction automatique des problèmes...$(NC)"
 	@go fmt ./...
-	@go mod tidy
 	@command -v golangci-lint >/dev/null 2>&1 && golangci-lint run --fix --timeout=5m || echo "$(YELLOW)⚠️ golangci-lint non disponible$(NC)"
 	@echo "$(GREEN)✅ Corrections appliquées$(NC)"
 
@@ -355,4 +332,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows build-linux build-darwin package package-windows package-linux package-darwin run test test-race test-database prod-smoke benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist help
+.PHONY: all build build-windows build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist help

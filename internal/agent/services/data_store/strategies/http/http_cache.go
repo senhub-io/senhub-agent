@@ -6,10 +6,26 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
+
+// DefaultMaxCacheSeries caps the MetricCache cardinality, mirroring the
+// OTLP strategy's DefaultMaxStoreSize. The cache is fed by every probe
+// including otlp_receiver and prometheus_scrape, whose series sets are
+// controlled by EXTERNAL senders — without a cap a remote producer can
+// inflate the cache without bound (memory ceiling asymmetry with the
+// capped OTLP store, audit finding P2 / #281). Operators expecting more
+// distinct series raise `max_cache_size` on the http strategy params;
+// 0 means unbounded.
+const DefaultMaxCacheSeries = 50000
+
+// dropReasonCacheCap labels datapoints refused because the cache holds
+// maxSeries distinct series. Surfaces as the `reason` attribute on the
+// `senhub.agent.cache.dropped` counter.
+const dropReasonCacheCap = "http_cache_cap"
 
 // DiscriminantTagsRegistry defines which tags are discriminant (identify unique instances)
 // vs contextual (provide metadata) for each probe type.
@@ -35,16 +51,24 @@ import (
 // - Step-by-step guide for adding new probe types
 // - Troubleshooting cache key issues
 var DiscriminantTagsRegistry = map[string][]string{
+	// Application server probes
+	"apache": {"state", "metric_type"}, // apache.workers{state=busy|idle}
+
 	// System probes - multi-instance metrics
-	"cpu":         {"core"},                           // Different CPU cores have independent values
-	"memory":      {},                                 // System-level only, no instances
+	"cpu":    {"core"}, // Different CPU cores have independent values
+	"memory": {},       // System-level only, no instances
+	// process: one series per running process identified by pid+name;
+	// aggregate (process.count) is discriminated by name only.
+	"process":     {"process.pid", "process.name"},
 	"network":     {"interface", "adapter"},           // Different network interfaces
 	"logicaldisk": {"drive", "mount_point", "device"}, // Different drives/volumes
 
 	// Application probes
+	"phpfpm":  {"pool"},                            // One series per PHP-FPM pool
 	"citrix":  {"metric_type", "failure_category"}, // Citrix aggregation types
 	"webapp":  {"url", "endpoint"},                 // Different web endpoints
 	"gateway": {"destination", "target"},           // Different gateway targets
+	"envoy":   {"cluster"},                         // Per-cluster upstream metrics (envoy.cluster.*)
 	"netscaler": {
 		"vserver", "service", "servicegroup", // Load Balancing
 		"interface",   // Network interfaces
@@ -60,6 +84,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"ha_node_id",  // High Availability nodes (ID and IP both discriminant)
 		"ha_node_ip",  // HA node IP address (for ShowTags=false support)
 	},
+
+	// Hardware sensor probes — one series per sensor instance (hardware.component
+	// carries the sensor name: "CPU Temp", "FAN1", "12V", …).
+	"ipmi": {"hardware.component"},
 
 	// Infrastructure probes
 	"redfish": {
@@ -88,10 +116,123 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	"syslog":    {"event_id", "source"}, // Syslog events
+	// systemd: one series per supervised unit; systemd.unit is the sole
+	// discriminant declared in multi_instance_labels.
+	"systemd": {"systemd.unit"},
+	// wifi_signal_strength: one series per associated network (ssid+bssid).
+	"wifi_signal_strength": {"ssid", "bssid"},
+
+	// Application / middleware probes
+	"wildfly": {"datasource"}, // Per-datasource JDBC pool metrics (wildfly.datasource.connections.*)
+	// Observability / messaging probes — one series per broker endpoint
+	"pulsar": {"endpoint"}, // Apache Pulsar: one broker per endpoint URL
+	// Storage probes — one series per physical device.
+	"smart": {"smart.device"}, // S.M.A.R.T.: one series per disk (sata/nvme)
+
+	// SNMP polling — one series per (target, interface row); metric_type
+	// separates interface / system / status families.
+	// consul: health.checks emits one series per state (critical/warning/passing).
+	"consul":      {"metric_type", "state"},
+	"dns_latency": {"name", "resolver", "metric_type"},
+	"docker":      {"container_id", "container_name", "metric_type", "core"},
+	"http_check":  {"target", "metric_type"},
+	"icmp_check":  {"target", "metric_type"},
+	"tcp_dial":    {"target", "metric_type"},
+	"snmp_poll":   {"instance", "if_index", "metric_type"},
+	// haproxy: one series per (proxy, component) pair; metric_type
+	// separates sessions / throughput / error / request families.
+	"haproxy": {"proxy", "component", "metric_type"},
+	// elasticsearch: GC collectors, indexing/search operations, and thread
+	// pools each emit multiple datapoints under the same metric name.
+	"elasticsearch": {
+		"metric_type",
+		"collector",   // elasticsearch.jvm.gc.collections.* — young|old
+		"operation",   // elasticsearch.indexing/search.operations.* — index|query|fetch
+		"thread_pool", // elasticsearch.thread_pool.tasks.* — per thread pool name
+	},
+	// hyperv: per-VM series are discriminated by vm name; vm.count by state bucket.
+	"hyperv": {"hyperv.vm.name", "state", "metric_type"},
+	// modbus: register.name and register.address identify the register;
+	// host and modbus.unit_id distinguish probe instances.
+	"modbus": {"register.name", "register.address", "host", "modbus.unit_id", "metric_type"},
+	// prometheus_scrape: scraped label sets are arbitrary and cannot be
+	// enumerated here; per-target series stay distinct, finer label
+	// splits collapse on the cache-keyed sinks (same limitation as
+	// otlp_receiver). The OTLP/Prometheus re-export path carries all
+	// labels through the mapper pass-through.
+	"prometheus_scrape": {"target", "metric_type"},
+	// exec: dynamic perfdata/JSON metric names carry identity in the
+	// metric name itself (senhub.exec.<label>); no per-series labels to
+	// discriminate beyond the probe instance.
+	"exec": {"metric_type"},
+	// varnish: cache.operations collapsed via result tag; thread.operations
+	// via operation tag; all other metrics are single-instance per probe.
+	"varnish": {"result", "operation", "metric_type"},
+
+	// Messaging probes
+	"kafka": {
+		"topic",       // per-topic metrics (kafka.topic.partitions, lag_sum, …)
+		"partition",   // per-partition metrics (offsets, replicas, consumer offsets/lag)
+		"group",       // per-consumer-group metrics (members, offset, lag, lag_sum)
+		"metric_type", // separates broker / topic / partition / consumer_group families
+	},
+	// jenkins: job/node/executor counts collapse onto one metric name per
+	// family, discriminated by status (success/failure/…), state (busy/free)
+	// or job name; metric_type separates the jobs/nodes/queue families.
+	"jenkins": {"job", "status", "state", "metric_type"},
+
+	// Cassandra — operation (read|write) discriminates request metrics;
+	// collector discriminates GC metrics. metric_type separates families.
+	"cassandra": {"operation", "collector", "metric_type"},
+	// opensearch: GC collectors, indexing/search operations, and thread
+	// pools are the three axes that produce distinct per-series values.
+	"opensearch": {
+		"collector",   // opensearch.jvm.gc.collections.* — young|old
+		"operation",   // opensearch.indexing/search.operations.* — index|query|fetch
+		"thread_pool", // opensearch.thread_pool.tasks.* — per thread pool name
+	},
+
+	// Application monitoring probes
+	"solr": {"core"}, // per-core metrics (solr.document.count, solr.index.size)
+	// memcached: network by direction (transmit/receive), operations by result
+	// (hit/miss), commands by command (get/set/flush), cpu.usage by state (user/system).
+	"memcached": {"result", "command", "state", "direction", "metric_type"},
+	// nvidia: one series per GPU card; gpu.index + gpu.name uniquely
+	// identify a card within the host, gpu.uuid is added for stable joins.
+	"nvidia": {"gpu.index", "gpu.name", "gpu.uuid", "metric_type"},
+	// unifi: per-type inventory (device_type), per-device health
+	// (device_name+device_type), per-AP stats (device_name), WAN
+	// throughput (direction=transmit|receive via network.io.direction) —
+	// all distinct time series that can coexist in a single cycle.
+	"unifi": {"device_type", "device_name", "direction"},
+	// winservices: per-service metrics (windows.service.state /
+	// windows.service.status) are discriminated by service name; without
+	// this tag in the key all services collapse to one cache slot.
+	"winservices": {"windows.service.name", "metric_type"},
+
+	// mongodb: per-operation (insert/query/…), per-type (resident/virtual,
+	// read/write cache), per-database series discriminated by tag.
+	"mongodb": {
+		"operation", // opcounters and document ops: insert/query/update/delete/getmore/command
+		"type",      // memory type: resident/virtual; cache type: read/write
+		"database",  // per-database dbStats metrics
+	},
 
 	// Database probes — the probes emit multiple datapoints per OTel metric
 	// name discriminated by attribute tags (see docs/developer-guide/otel/
 	// senhub-semantic-conventions.md §4.13 for the full collapse list).
+	"clickhouse": {"instance"}, // multi-instance: one series per scraped endpoint
+	"redis": {
+		"instance",    // one probe per Redis server (host:port)
+		"db",          // redis.db.keys{db=0|1|...} / redis.db.expires / redis.db.avg_ttl — per-logical-db
+		"state",       // redis.cpu.time{state=sys|user|sys_children|user_children}
+		"cmd",         // redis.cmd.calls{cmd=get|set|...} / redis.cmd.usec — per-command
+		"metric_type", // separates overview / connections / memory / throughput / cache / keyspace / replication / persistence / cpu / commands families
+	},
+	"mssql": {
+		"database",  // sqlserver.database.io{database=…} + sqlserver.database.status{database=…}
+		"direction", // sqlserver.database.io{direction=read|write}
+	},
 	"mysql": {
 		"kind",         // mysql.threads{kind=running|connected}
 		"command",      // mysql.commands{command=select|insert|...}
@@ -110,6 +251,50 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"schema",    // bloat per-table
 		"table",     // bloat per-table + size per-table
 		"database",  // per-database opt-in metrics
+	},
+	"oracle": {
+		"instance",   // one series per monitored db (oracle://host:port/service)
+		"status",     // oracle.sessions.count{status=active|inactive}
+		"tablespace", // oracle.tablespace.used/total{tablespace=...}
+		"wait_class", // oracle.wait_class.total{wait_class=...}
+		"metric_type",
+	},
+
+	// Message broker probes
+	"rabbitmq": {"node", "vhost", "queue"}, // per-node (node) and per-queue (vhost+queue) metrics
+	// ActiveMQ — per-destination metrics use destination + destination_type
+	// to distinguish queues from topics and individual destination instances.
+	"activemq": {"destination", "destination_type", "metric_type"},
+	// Ceph — cluster-level metrics are single-instance on "instance"
+	// (the REST API endpoint); pool metrics add "pool" to disambiguate
+	// per-pool series (ceph.pool.*).
+	"ceph": {"instance", "pool"},
+	// Proxmox VE — one series per node, per VM/container (vmid), and per
+	// storage pool. proxmox.vm.type (qemu/lxc) is contextual: two VMs with
+	// the same vmid but different types cannot coexist, so it does not add
+	// discriminating power and is intentionally omitted.
+	"proxmox": {
+		"proxmox.node",    // Proxmox cluster node name
+		"proxmox.vmid",    // VM/LXC numeric ID (unique per cluster)
+		"proxmox.vm.name", // VM/LXC display name (redundant with vmid but declared in multi_instance_labels)
+		"proxmox.storage", // Storage pool name
+	},
+
+	// Kubernetes — one series per resource instance; the discriminant
+	// tag identifies the node, pod, container, or deployment.
+	"kubernetes": {
+		"k8s.node.name",       // per-node metrics (k8s.node.*)
+		"k8s.pod.name",        // per-pod metrics (k8s.pod.*)
+		"k8s.namespace.name",  // namespace scopes pods, containers, deployments
+		"k8s.container.name",  // per-container metrics (k8s.container.*)
+		"k8s.deployment.name", // per-deployment metrics (k8s.deployment.*)
+	},
+
+	// Application server probes
+	"tomcat": {
+		"connector", // HTTP/AJP connector (requests, bytes, threads, errors, processing_time)
+		"collector", // JVM GC collector (gc count + elapsed)
+		"context",   // Servlet context (sessions)
 	},
 
 	// IBM i / Power Systems — collectors emit multiple rows per metric
@@ -151,6 +336,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 		// Probe self-observability (per-collector health metrics).
 		"collector",
 	},
+
+	// CouchDB — method and status collapse one OTel name onto N series.
+	"couchdb": {"method", "status"},
 }
 
 // MetricCache stores the latest metrics in memory with TTL, organized like a TSDB
@@ -164,8 +352,15 @@ type MetricCache struct {
 	// Index by probe for fast probe-specific queries
 	probeIndex map[string]map[string]bool // probe_name -> set of ts_keys
 	ttl        time.Duration
-	stopChan   chan struct{}
-	logger     *logger.ModuleLogger
+	// maxSeries caps the number of distinct time series. Once reached,
+	// NEW series are dropped (counted under reason "http_cache_cap")
+	// while existing series keep updating — continuity of known series
+	// is preferred over admitting unbounded new cardinality. TTL
+	// eviction frees slots, so a dropped-then-expired series can be
+	// re-admitted later. 0 = unbounded.
+	maxSeries int
+	stopChan  chan struct{}
+	logger    *logger.ModuleLogger
 }
 
 // CachedMetric represents a stored metric with metadata
@@ -178,15 +373,25 @@ type CachedMetric struct {
 	Tags       map[string]string
 }
 
-// NewMetricCache creates a new metric cache with the specified TTL
+// NewMetricCache creates a new metric cache with the specified TTL and
+// the default cardinality cap (override via SetMaxSeries).
 func NewMetricCache(ttl time.Duration, logger *logger.ModuleLogger) *MetricCache {
 	return &MetricCache{
 		timeSeries: make(map[string]CachedMetric),
 		probeIndex: make(map[string]map[string]bool),
 		ttl:        ttl,
-		stopChan:   make(chan struct{}),
+		maxSeries:  DefaultMaxCacheSeries,
 		logger:     logger,
 	}
+}
+
+// SetMaxSeries overrides the cardinality cap. 0 disables it. Existing
+// entries above a lowered cap are not evicted — the cap only governs
+// admission of new series.
+func (c *MetricCache) SetMaxSeries(n int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.maxSeries = n
 }
 
 // generateTimeSeriesKey creates a unique key for a time series based on probe, metric name,
@@ -335,6 +540,18 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 				Time("new_timestamp", cachedMetric.Timestamp).
 				Msg("🔄 Replacing existing metric in time series")
 		} else {
+			// Cardinality cap: refuse NEW series past maxSeries while
+			// existing series keep updating. TTL cleanup frees slots.
+			if c.maxSeries > 0 && len(c.timeSeries) >= c.maxSeries {
+				agentstate.IncrementHTTPCacheDropped(dropReasonCacheCap)
+				c.logger.Debug().
+					Str("ts_key", tsKey).
+					Str("metric_name", dp.Name).
+					Str("probe_name", probeName).
+					Int("max_series", c.maxSeries).
+					Msg("Cache at cardinality cap - dropping new time series")
+				continue
+			}
 			c.logger.Debug().
 				Str("ts_key", tsKey).
 				Str("metric_name", dp.Name).
@@ -543,26 +760,47 @@ func (c *MetricCache) GetDebugInfo() DebugCacheResponse {
 	}
 }
 
-// StartCleanupRoutine starts the background cleanup goroutine
+// StartCleanupRoutine starts the background cleanup goroutine. The
+// stop channel is re-made on every call: the HTTP strategy restarts
+// the server (Shutdown → Start) on a port or bind-address change, and
+// a single construction-time channel left the cleanup goroutine dead
+// after the first restart (unbounded cache growth) and panicked
+// (close of closed channel) on the second (#270). Idempotent: a call
+// while the routine is already running is a no-op.
 func (c *MetricCache) StartCleanupRoutine() {
+	c.mu.Lock()
+	if c.stopChan != nil {
+		c.mu.Unlock()
+		return
+	}
+	c.stopChan = make(chan struct{})
+	stop := c.stopChan
+	interval := c.ttl / 2 // Cleanup every half TTL
+	c.mu.Unlock()
+
 	go func() {
-		ticker := time.NewTicker(c.ttl / 2) // Cleanup every half TTL
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case <-ticker.C:
 				c.cleanup()
-			case <-c.stopChan:
+			case <-stop:
 				return
 			}
 		}
 	}()
 }
 
-// Stop stops the cache cleanup routine
+// Stop stops the cache cleanup routine. Idempotent.
 func (c *MetricCache) Stop() {
-	close(c.stopChan)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.stopChan != nil {
+		close(c.stopChan)
+		c.stopChan = nil
+	}
 }
 
 // UpdateTTL updates the cache TTL dynamically

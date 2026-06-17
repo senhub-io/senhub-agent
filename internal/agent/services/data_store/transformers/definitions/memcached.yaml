@@ -1,0 +1,184 @@
+probe_name: "memcached"
+friendly_name: "Memcached"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["instance", "result", "command", "state", "direction"]
+
+# Free probe: Memcached stats via the TCP text protocol (stats\r\n).
+# Metric names follow the otelcol-contrib memcachedreceiver convention
+# (memcached.*) where available. OTel unit strings: By=bytes, s=seconds,
+# {connection}/{item}/{operation}/{command}/{eviction}=count.
+
+metrics:
+  - name: "senhub.memcached.up"
+    channel: "memcached_up"
+    display_name: "Memcached Reachability"
+    unit: "#"
+    category: "status"
+    description: "1 when the Memcached server is reachable and responding to stats, 0 otherwise"
+    otel:
+      name: senhub.memcached.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "memcached.uptime"
+    channel: "memcached_uptime"
+    display_name: "Memcached Uptime"
+    unit: "s"
+    category: "status"
+    description: "Time since the Memcached server started"
+    otel:
+      name: memcached.uptime
+      unit: "s"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "memcached.current.connections"
+    channel: "memcached_current_connections"
+    display_name: "Memcached Current Connections"
+    unit: "#"
+    category: "connections"
+    description: "Number of currently open connections to the Memcached server"
+    otel:
+      name: memcached.current.connections
+      unit: "{connection}"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "memcached.connections.total"
+    channel: "memcached_connections_total"
+    display_name: "Memcached Total Connections"
+    unit: "#"
+    category: "connections"
+    description: "Total connections opened since server start"
+    otel:
+      name: memcached.connections.total
+      unit: "{connection}"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "memcached.current.items"
+    channel: "memcached_current_items"
+    display_name: "Memcached Current Items"
+    unit: "#"
+    category: "cache"
+    description: "Number of items currently stored in the cache"
+    otel:
+      name: memcached.current.items
+      unit: "{item}"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "memcached.items.total"
+    channel: "memcached_items_total"
+    display_name: "Memcached Total Items"
+    unit: "#"
+    category: "cache"
+    description: "Total items stored since server start"
+    otel:
+      name: memcached.items.total
+      unit: "{item}"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "memcached.bytes"
+    channel: "memcached_bytes"
+    display_name: "Memcached Memory Used"
+    unit: "B"
+    category: "memory"
+    description: "Current number of bytes used to store items"
+    otel:
+      name: memcached.bytes
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "memcached.limit_maxbytes"
+    channel: "memcached_limit_maxbytes"
+    display_name: "Memcached Memory Limit"
+    unit: "B"
+    category: "memory"
+    description: "Maximum number of bytes the server is allowed to use for storage"
+    otel:
+      name: memcached.limit_maxbytes
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "memcached.network"
+    channel: "memcached_network_{direction}"
+    display_name: "Memcached Network {direction}"
+    unit: "B"
+    category: "throughput"
+    description: "Total bytes transferred since server start, by direction (transmit=sent to clients, receive=received from clients)"
+    otel:
+      name: memcached.network
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+      direction: network.io.direction
+
+  - name: "memcached.operations"
+    channel: "memcached_operations_{result}"
+    display_name: "Memcached Operations {result}"
+    unit: "#"
+    category: "cache"
+    description: "Number of cache get operations by result (hit or miss)"
+    otel:
+      name: memcached.operations
+      unit: "{operation}"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+      result: memcached.operation.result
+
+  - name: "memcached.commands"
+    channel: "memcached_commands_{command}"
+    display_name: "Memcached Commands {command}"
+    unit: "#"
+    category: "cache"
+    description: "Number of commands executed, by command type (get/set/flush)"
+    otel:
+      name: memcached.commands
+      unit: "{command}"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+      command: memcached.command
+
+  - name: "memcached.evictions"
+    channel: "memcached_evictions"
+    display_name: "Memcached Evictions"
+    unit: "#"
+    category: "cache"
+    description: "Number of items evicted from the cache due to memory pressure"
+    otel:
+      name: memcached.evictions
+      unit: "{eviction}"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+
+  - name: "memcached.cpu.usage"
+    channel: "memcached_cpu_{state}"
+    display_name: "Memcached CPU {state}"
+    unit: "s"
+    category: "cpu"
+    description: "CPU time consumed by the Memcached process, by state (user or system)"
+    otel:
+      name: memcached.cpu.usage
+      unit: "s"
+      type: counter
+    tag_to_attribute:
+      instance: server.address
+      state: process.cpu.state

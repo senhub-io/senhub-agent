@@ -39,6 +39,7 @@ func pushMetrics(
 	startTime time.Time,
 	now time.Time,
 	resolveOpts otelmapper.ResolveOptions,
+	globalTagKeys map[string]bool,
 	extraRecords []otelmapper.OtelRecord,
 	export func(context.Context, *metricdata.ResourceMetrics) error,
 	missingMappingHandler func(otelmapper.CacheMetric, error),
@@ -56,13 +57,9 @@ func pushMetrics(
 	records := make([]otelmapper.OtelRecord, 0, len(extraRecords)+len(cms))
 	records = append(records, extraRecords...)
 	for _, cm := range cms {
+		// def may be nil — Resolve handles that (an error for probe metrics
+		// with no definition, a pass-through for OTLP-ingested metrics).
 		def := defs.GetProbeDefinition(cm.ProbeType)
-		if def == nil {
-			if missingMappingHandler != nil {
-				missingMappingHandler(cm, fmt.Errorf("no probe definition for probe_type=%q", cm.ProbeType))
-			}
-			continue
-		}
 		recs, err := otelmapper.Resolve(def, cm, resolveOpts)
 		if err != nil {
 			if missingMappingHandler != nil {
@@ -75,6 +72,17 @@ func pushMetrics(
 
 	if len(records) == 0 {
 		return 0, nil
+	}
+
+	// global_tags ride on the Resource (see buildResource), so strip them
+	// from per-metric attributes here to avoid duplicating them on every
+	// series and inflating cardinality (issue #202).
+	if len(globalTagKeys) > 0 {
+		for i := range records {
+			for k := range globalTagKeys {
+				delete(records[i].Attributes, k)
+			}
+		}
 	}
 
 	// Decide between single-batch and parallel-by-probe paths. Below

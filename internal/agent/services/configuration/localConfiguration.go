@@ -9,6 +9,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
 
 	"github.com/fsnotify/fsnotify"
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -30,6 +33,10 @@ type LocalAgentConfig struct {
 	Key     string `yaml:"key"`
 	Mode    string `yaml:"mode"`
 	License string `yaml:"license,omitempty"` // JWT license token or JSON for testing
+	// GlobalTags are applied to every datapoint of every probe (multi-site /
+	// multi-tenant labelling). A probe's own custom_tags override a global_tag
+	// with the same key. Keep small (< ~10 keys) to bound backend cardinality.
+	GlobalTags map[string]string `yaml:"global_tags,omitempty"`
 }
 
 // TLSConfig represents TLS/HTTPS configuration
@@ -53,13 +60,38 @@ type CacheConfig struct {
 
 // LocalConfiguration manages offline configuration
 type LocalConfiguration struct {
-	data          LocalConfigurationData
+	// dataPo holds the current configuration as an immutable snapshot
+	// swapped atomically: the watcher and rewatch goroutines write it
+	// while GetConfiguration (every datapoint batch) plus the sensor,
+	// auto_update and HTTP readers read it lock-free — the previous
+	// bare field was the root cause of the #140 race flakes (audit
+	// C3, #268). Writers always build a FRESH LocalConfigurationData
+	// and Store it; nobody mutates a stored snapshot.
+	dataPo        atomic.Pointer[LocalConfigurationData]
 	logger        *logger.ModuleLogger
 	configPath    string
 	args          *cliArgs.ParsedArgs
 	eventNotifier *EventNotifier
 	watcher       *fsnotify.Watcher
 	quitChannel   chan struct{}
+	// stopCh + watcherWG make the watcher goroutines joinable:
+	// Shutdown closes stopCh and waits, so no goroutine outlives the
+	// instance (tests saw rewatch goroutines outlive t.TempDir()).
+	// quitChannel stays external (owned by the caller, may be nil).
+	stopCh    chan struct{}
+	stopOnce  sync.Once
+	watcherWG sync.WaitGroup
+}
+
+// snapshot returns the current immutable configuration snapshot
+// (never nil after construction). Callers must not mutate it.
+func (lc *LocalConfiguration) snapshot() *LocalConfigurationData {
+	return lc.dataPo.Load()
+}
+
+// storeData publishes d as the new current snapshot.
+func (lc *LocalConfiguration) storeData(d LocalConfigurationData) {
+	lc.dataPo.Store(&d)
 }
 
 // NewLocalConfiguration creates a new LocalConfiguration instance
@@ -92,9 +124,9 @@ func NewLocalConfiguration(
 		logger:        moduleLogger,
 		configPath:    configPath,
 		args:          args,
-		data:          LocalConfigurationData{},
 		eventNotifier: NewEventNotifier(moduleLogger.Logger),
 	}
+	lc.storeData(LocalConfigurationData{})
 
 	// Try to load existing configuration immediately
 	if _, err := os.Stat(lc.configPath); err == nil {
@@ -117,12 +149,18 @@ func (lc *LocalConfiguration) GetName() string {
 
 // GetAgentKey returns the agent key from the local configuration
 func (lc *LocalConfiguration) GetAgentKey() string {
-	return lc.data.Agent.Key
+	return lc.snapshot().Agent.Key
 }
 
 // GetAuthenticationKey implements AgentConfiguration interface
 func (lc *LocalConfiguration) GetAuthenticationKey() string {
-	return lc.data.Agent.Key
+	return lc.snapshot().Agent.Key
+}
+
+// GetGlobalTags implements AgentConfiguration interface — the
+// agent-level global_tags emitted as OTLP Resource attributes (#202).
+func (lc *LocalConfiguration) GetGlobalTags() map[string]string {
+	return lc.snapshot().Agent.GlobalTags
 }
 
 // GetServerUrl implements AgentConfiguration interface
@@ -133,19 +171,19 @@ func (lc *LocalConfiguration) GetServerUrl() string {
 
 // GetAutoUpdateConfig returns the auto-update configuration
 func (lc *LocalConfiguration) GetAutoUpdateConfig() *AutoUpdateConfig {
-	if lc.data.AutoUpdate == nil {
+	if lc.snapshot().AutoUpdate == nil {
 		// Return default configuration
 		return &AutoUpdateConfig{
 			Enabled: false,
 			URL:     "https://eu-west-1.intake.senhub.io/releases",
 		}
 	}
-	return lc.data.AutoUpdate
+	return lc.snapshot().AutoUpdate
 }
 
 // GetCacheConfig returns the cache configuration
 func (lc *LocalConfiguration) GetCacheConfig() *CacheConfig {
-	if lc.data.Cache == nil {
+	if lc.snapshot().Cache == nil {
 		lc.logger.Warn().Msg("Cache configuration is nil in YAML, using default (5 minutes)")
 		// Return default configuration
 		return &CacheConfig{
@@ -153,9 +191,9 @@ func (lc *LocalConfiguration) GetCacheConfig() *CacheConfig {
 		}
 	}
 	lc.logger.Info().
-		Int("retention_minutes", lc.data.Cache.RetentionMinutes).
+		Int("retention_minutes", lc.snapshot().Cache.RetentionMinutes).
 		Msg("Cache configuration loaded from YAML")
-	return lc.data.Cache
+	return lc.snapshot().Cache
 }
 
 // GetConfiguration returns the configuration data in RemoteConfigurationData format
@@ -173,14 +211,15 @@ func (lc *LocalConfiguration) GetConfiguration() RemoteConfigurationData {
 
 	// Convert local config format to remote config format
 	return RemoteConfigurationData{
-		StorageConfig: lc.data.Storage,
-		Probes:        lc.data.Probes,
+		StorageConfig: lc.snapshot().Storage,
+		Probes:        lc.snapshot().Probes,
 		Agent: AgentConfig{
 			RegistryUrl:         autoUpdate.URL,
 			Version:             "",
 			UpdateCheckInterval: updateInterval,
-			License:             lc.data.Agent.License,
-			AuthenticationKey:   lc.data.Agent.Key,
+			License:             lc.snapshot().Agent.License,
+			AuthenticationKey:   lc.snapshot().Agent.Key,
+			GlobalTags:          lc.snapshot().Agent.GlobalTags,
 		},
 	}
 }
@@ -207,23 +246,54 @@ func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Initialize file watcher
+	// Initialize file watcher. We watch:
+	//   - the top-level config file (configPath / agent.yaml) — for
+	//     monolithic configs this is the whole story; for multi-file
+	//     it carries the global blocks.
+	//   - the probes.d/ and strategies.d/ sibling directories when
+	//     they exist. fsnotify on a directory emits events for every
+	//     entry inside, so add/remove/edit of a fragment file
+	//     triggers a reload without an agent restart. Pre-0.2.x
+	//     these directories were silently unwatched — operators had
+	//     to restart to pick up new fragments.
 	var err error
 	lc.watcher, err = fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("failed to create file watcher: %w", err)
 	}
 
-	// Add config file to watcher
-	err = lc.watcher.Add(lc.configPath)
-	if err != nil {
+	if err := lc.watcher.Add(lc.configPath); err != nil {
 		_ = lc.watcher.Close()
 		return fmt.Errorf("failed to watch config file %s: %w", lc.configPath, err)
 	}
-
 	lc.logger.Info().Str("config_path", lc.configPath).Msg("Started watching configuration file")
 
-	// Start watching goroutine
+	baseDir := filepath.Dir(lc.configPath)
+	for _, sub := range []string{"probes.d", "strategies.d"} {
+		dir := filepath.Join(baseDir, sub)
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			// Directory absent (typical for a legacy monolithic
+			// install) — skip silently. A later `agent config
+			// migrate` will create it and we'll be watching once
+			// the operator restarts the agent. The trade-off here
+			// is deliberate: hot-detecting a new directory means
+			// watching the PARENT for create events, which then
+			// triggers reloads on every unrelated file in
+			// /etc/senhub-agent/ — too noisy.
+			lc.logger.Debug().Str("dir", dir).Msg("fragment directory not watched (absent)")
+			continue
+		}
+		if err := lc.watcher.Add(dir); err != nil {
+			_ = lc.watcher.Close()
+			return fmt.Errorf("failed to watch fragment directory %s: %w", dir, err)
+		}
+		lc.logger.Info().Str("dir", dir).Msg("Started watching fragment directory")
+	}
+
+	// Start watching goroutine (joinable: Shutdown closes stopCh and
+	// waits on watcherWG).
+	lc.stopCh = make(chan struct{})
+	lc.watcherWG.Add(1)
 	go lc.watchConfigFile()
 
 	return nil
@@ -233,11 +303,17 @@ func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
 func (lc *LocalConfiguration) Shutdown(ctx context.Context) error {
 	lc.logger.Info().Msg("Shutting down LocalConfiguration")
 
+	if lc.stopCh != nil {
+		lc.stopOnce.Do(func() { close(lc.stopCh) })
+	}
 	if lc.watcher != nil {
 		if err := lc.watcher.Close(); err != nil {
 			lc.logger.Warn().Err(err).Msg("Error closing file watcher")
 		}
 	}
+	// Join the watcher + rewatch goroutines: nothing may outlive the
+	// instance (audit C3 — unjoinable watcher).
+	lc.watcherWG.Wait()
 
 	return nil
 }

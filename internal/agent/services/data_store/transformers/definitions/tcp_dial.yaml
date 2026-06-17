@@ -1,0 +1,35 @@
+probe_name: "tcp_dial"
+friendly_name: "TCP Dial"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["target"]
+
+# Free active-check probe (#159): measured TCP connect per host:port.
+
+metrics:
+  - name: "senhub.tcpdial.up"
+    channel: "tcpdial_up"
+    display_name: "TCP {target} Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the TCP connect completed within the timeout"
+    otel:
+      name: senhub.tcpdial.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      target: tcpdial.target
+
+  - name: "senhub.tcpdial.duration"
+    channel: "tcpdial_duration"
+    display_name: "TCP {target} Connect Time"
+    unit: "ms"
+    category: "latency"
+    description: "Time for the TCP three-way handshake to complete"
+    otel:
+      name: senhub.tcpdial.duration
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      target: tcpdial.target

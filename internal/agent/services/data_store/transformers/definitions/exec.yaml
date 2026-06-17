@@ -1,0 +1,56 @@
+probe_name: "exec"
+friendly_name: "Exec Check"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: []
+
+# Free custom-check probe (#305). Only the probe's self-metrics are
+# defined here: perfdata / JSON metrics are typed pass-throughs
+# (senhub.exec.<label> with the otel_type tag) and cannot be
+# pre-enumerated.
+
+metrics:
+  - name: "senhub.exec.status"
+    channel: "exec_status"
+    display_name: "Check Status"
+    unit: "#"
+    category: "availability"
+    description: "Nagios plugin status: 0 ok, 1 warning, 2 critical, 3 unknown"
+    otel:
+      name: senhub.exec.status
+      unit: "{status}"
+      type: gauge
+
+  - name: "senhub.exec.duration"
+    channel: "exec_duration"
+    display_name: "Check Duration"
+    unit: "ms"
+    category: "latency"
+    description: "Wall-clock run time of the check"
+    otel:
+      name: senhub.exec.duration
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+
+  - name: "senhub.exec.timeout"
+    channel: "exec_timeout"
+    display_name: "Check Timed Out"
+    unit: "#"
+    category: "availability"
+    description: "1 when the run was killed on the hard timeout"
+    otel:
+      name: senhub.exec.timeout
+      unit: "1"
+      type: gauge
+
+  - name: "senhub.exec.skipped"
+    channel: "exec_skipped"
+    display_name: "Cycle Skipped"
+    unit: "#"
+    category: "availability"
+    description: "1 when a cycle was skipped because the previous run was still going"
+    otel:
+      name: senhub.exec.skipped
+      unit: "1"
+      type: gauge

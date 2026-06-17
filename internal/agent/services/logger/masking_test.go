@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -87,5 +88,30 @@ func TestMaskValue(t *testing.T) {
 				t.Errorf("maskValue() = %v, want %v", result, tt.expected)
 			}
 		})
+	}
+}
+
+// TestMaskSensitiveData_SNMPSecrets is the regression for the leak
+// caught during the snmp_poll v3 runtime validation: priv_passphrase
+// carried no recognized keyword and landed in the startup log in
+// clear; SNMP community strings were never masked at all.
+func TestMaskSensitiveData_SNMPSecrets(t *testing.T) {
+	in := `{"priv_passphrase":"super-priv-secret-value","community":"internal-ro-string","auth_passphrase":"super-auth-secret-value"}`
+	got := MaskSensitiveData(in)
+	for _, leaked := range []string{"super-priv-secret-value", "internal-ro-string", "super-auth-secret-value"} {
+		if strings.Contains(got, leaked) {
+			t.Errorf("secret %q survived masking: %s", leaked, got)
+		}
+	}
+}
+
+func TestIsSensitiveFieldName_SNMP(t *testing.T) {
+	for _, name := range []string{"priv_passphrase", "auth_passphrase", "community", "Community"} {
+		if !isSensitiveFieldName(name) {
+			t.Errorf("isSensitiveFieldName(%q) = false, want true", name)
+		}
+	}
+	if isSensitiveFieldName("interval") {
+		t.Error("interval must not be sensitive")
 	}
 }

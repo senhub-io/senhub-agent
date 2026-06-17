@@ -162,7 +162,7 @@ metrics:
     description: "Drive negotiated speed in Gbps"
     category: "drives"
     otel:
-      name: senhub.hardware.physical_disk.link_speed_bits_per_second
+      name: senhub.hardware.physical_disk.link_speed
       unit: "bit/s"
       type: gauge
       # Mapper converts Gbps → bit/s (×1e9)

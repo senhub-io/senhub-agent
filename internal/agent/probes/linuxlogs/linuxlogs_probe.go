@@ -119,8 +119,7 @@ func parseConfig(config map[string]interface{}) (LinuxLogsProbeConfig, error) {
 			}
 		}
 	}
-	if v, ok := config["priority"].(float64); ok {
-		pri := int(v)
+	if pri, ok := types.IntParam(config, "priority"); ok {
 		if pri < 0 || pri > 7 {
 			return parsed, fmt.Errorf("priority must be 0..7, got %d", pri)
 		}

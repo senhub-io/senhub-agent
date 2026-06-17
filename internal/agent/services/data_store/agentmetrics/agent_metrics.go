@@ -115,6 +115,19 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       float64(snap.CollectErrorsTotal),
 			Description: "Lifetime count of probe collection errors since agent start.",
 		},
+		// Read directly from agentstate (like the OTLP counters below)
+		// rather than through the snapshot, so every exposition bridge
+		// picks it up without plumbing changes. Nonzero means a probe is
+		// shipping datapoints with no transformer YAML — no unit
+		// injection, no corrections.
+		{
+			Name:        "senhub.agent.transformer.fallback",
+			Unit:        "{datapoint}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetTransformerFallbacksTotal()),
+			Description: "Cumulative count of datapoints processed without a transformer YAML definition (legacy fallback: no unit injection, no unit corrections).",
+		},
 	}
 
 	// HTTP requests by endpoint — one otelmapper.OtelRecord per (route template) pair.
@@ -224,6 +237,66 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		})
 	}
 
+	// Self-update rejections — artifact verification refused an update
+	// (signature_unavailable, signature_invalid). A nonzero value is a
+	// mis-published release or an attempted supply-chain tamper (#266);
+	// operators should alert on this rising.
+	for reason, n := range agentstate.GetUpdateRejectedByReason() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.update.rejected",
+			Unit:        "{attempt}",
+			Type:        "counter",
+			Attributes:  map[string]string{"reason": reason},
+			Value:       float64(n),
+			Description: "Cumulative count of self-update attempts refused by artifact verification, by reason.",
+		})
+	}
+
+	// License rejection state — a configured licence the validator refused,
+	// labelled by reason (validation_failed, binding_mismatch,
+	// expired_no_grace). 1 means the agent is silently degraded to free tier
+	// despite a licence being configured; 0 after a licence validates. Always
+	// emitted so dashboards can alert on `senhub.agent.license.invalid > 0`
+	// instead of the rejection hiding in a single log line (#486). A host with
+	// no licence configured never sets this, so the gauge stays absent there.
+	for reason, n := range agentstate.GetLicenseInvalidByReason() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.license.invalid",
+			Unit:        "1",
+			Type:        "gauge",
+			Attributes:  map[string]string{"reason": reason},
+			Value:       float64(n),
+			Description: "1 when a configured license was rejected and the agent degraded to free tier (by reason: validation_failed, binding_mismatch, expired_no_grace); 0 once a license validates. Absent when no license is configured.",
+		})
+	}
+
+	// HTTP MetricCache drop counters — same emitted-only-when-touched
+	// shape as senhub.agent.otlp.dropped above. Today the only reason
+	// is `http_cache_cap` (cardinality cap on the shared cache, #281).
+	for reason, n := range agentstate.GetHTTPCacheDroppedByReason() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.cache.dropped",
+			Unit:        "{datapoint}",
+			Type:        "counter",
+			Attributes:  map[string]string{"reason": reason},
+			Value:       float64(n),
+			Description: "Cumulative count of datapoints refused by the shared HTTP metric cache, by reason (http_cache_cap, …).",
+		})
+	}
+
+	// Push-buffer drop counters (senhub cloud / PRTG push, #267) —
+	// same emitted-only-when-touched shape as the cache counter above.
+	for strategy, n := range agentstate.GetPushBufferDropped() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.push.buffer.dropped",
+			Unit:        "{datapoint}",
+			Type:        "counter",
+			Attributes:  map[string]string{"strategy": strategy},
+			Value:       float64(n),
+			Description: "Cumulative count of oldest datapoints dropped by a bounded push buffer at its cap, by strategy.",
+		})
+	}
+
 	// Checkpoint self-metrics. These are emitted regardless of whether
 	// persistence is enabled — the size+age gauges read 0 when disabled
 	// (distinguishable from "never saved" only by also checking the
@@ -262,6 +335,54 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Attributes:  map[string]string{},
 			Value:       float64(agentstate.GetOTLPSubBatchCount()),
 			Description: "Number of sub-batches the most recent OTLP push fanned out across. 1 means the single-batch path (max_concurrent_exports=1 or cycle below threshold); >1 means per-probe parallel export fired.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.logs.queue.records",
+			Unit:        "{record}",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPLogsQueueRecords()),
+			Description: "Event-log records currently held in the on-disk dead-letter queue (awaiting replay). 0 when the backend is healthy or persistence is disabled.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.logs.queue.bytes",
+			Unit:        "By",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPLogsQueueBytes()),
+			Description: "Bytes currently held by the on-disk logs dead-letter queue.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.logs.queued",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPLogsQueuedTotal()),
+			Description: "Cumulative event-log records written to the dead-letter queue after a failed export.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.logs.replayed",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPLogsReplayedTotal()),
+			Description: "Cumulative event-log records re-emitted from the dead-letter queue at boot or on backend recovery.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.active_endpoint_index",
+			Unit:        "1",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPActiveEndpointIndex()),
+			Description: "Index of the OTLP endpoint currently serving exports: 0 = primary, >0 = a configured fallback (endpoint failover, #217). Always 0 when no fallback_endpoints are configured.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.endpoint_switches",
+			Unit:        "{switch}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPEndpointSwitchesTotal()),
+			Description: "Cumulative endpoint failover switches (the active OTLP endpoint changed). Rising means the primary is flapping.",
 		},
 	)
 	for stage, n := range agentstate.GetOTLPCheckpointErrorsByStage() {

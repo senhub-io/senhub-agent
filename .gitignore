@@ -97,6 +97,17 @@ coverage.out
 # Claude Code - Personal documentation and scripts
 scripts/Claude/
 
+# Internal docs — migrated to private repo senhub-io/senhub-internal-docs.
+# Kept gitignored so accidental re-commits don't reintroduce
+# customer-specific content into the public mirror.
+docs/.internal/
+
+# Local audit / migration notes (POC audits, OSS migration runbook,
+# issues triage). Drafted in-tree for convenience but must never reach
+# a public mirror — they reference customers, infra, and commercial
+# decisions.
+docs/audit/
+
 # E2E Testing Infrastructure (Playwright)
 node_modules/
 package.json
@@ -136,3 +147,4 @@ internal/agent/probes/ibmi/bridge/jt400runner
 
 # Claude Code scheduled wake-up lock (runtime artifact)
 .claude/scheduled_tasks.lock
+docs/user-guide/site/

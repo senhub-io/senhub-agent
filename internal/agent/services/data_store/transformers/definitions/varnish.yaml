@@ -1,0 +1,164 @@
+probe_name: "varnish"
+friendly_name: "Varnish Cache"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["result", "operation"]
+
+# FREE-tier Varnish Cache monitoring probe.
+# Runs varnishstat -j -1 (optionally with -n <instance>) and exposes
+# the key operational counters tracked by the Varnish otelcol-contrib
+# receiver: cache hit/miss, client requests, backend connections,
+# thread lifecycle, session counts, object counts, and memory allocation.
+
+metrics:
+  # Probe reachability
+  - name: "senhub.varnish.up"
+    channel: "varnish_up"
+    display_name: "Varnish Up"
+    unit: "#"
+    category: "status"
+    description: "1 when varnishstat completed successfully, 0 otherwise"
+    otel:
+      name: senhub.varnish.up
+      unit: "1"
+      type: gauge
+
+  # Cache operations — collapsed via result tag (hit / miss / hitpass)
+  - name: "varnish.cache.operations"
+    channel: "varnish_cache_{result}"
+    display_name: "Varnish Cache {result}"
+    unit: "#"
+    category: "cache"
+    description: "Number of cache lookup results by type (hit, miss, hitpass)"
+    multi_instance_labels: ["result"]
+    otel:
+      name: varnish.cache.operations
+      unit: "{operation}"
+      type: counter
+    tag_to_attribute:
+      result: varnish.cache.result
+
+  # Client requests
+  - name: "varnish.client.requests.received"
+    channel: "varnish_client_requests"
+    display_name: "Varnish Client Requests"
+    unit: "#"
+    category: "requests"
+    description: "Total client requests received"
+    otel:
+      name: varnish.client.requests.received
+      unit: "{request}"
+      type: counter
+
+  # Backend connections
+  - name: "varnish.backend.connections.success"
+    channel: "varnish_backend_conn_success"
+    display_name: "Varnish Backend Connections Success"
+    unit: "#"
+    category: "connections"
+    description: "Backend connections successfully established"
+    otel:
+      name: varnish.backend.connections.success
+      unit: "{connection}"
+      type: counter
+
+  - name: "varnish.backend.connections.fail"
+    channel: "varnish_backend_conn_fail"
+    display_name: "Varnish Backend Connections Failed"
+    unit: "#"
+    category: "connections"
+    description: "Backend connection attempts that failed"
+    otel:
+      name: varnish.backend.connections.fail
+      unit: "{connection}"
+      type: counter
+
+  - name: "varnish.backend.connections.reused"
+    channel: "varnish_backend_conn_reused"
+    display_name: "Varnish Backend Connections Reused"
+    unit: "#"
+    category: "connections"
+    description: "Backend connections reused from keep-alive pool"
+    otel:
+      name: varnish.backend.connections.reused
+      unit: "{connection}"
+      type: counter
+
+  # Thread lifecycle — collapsed via operation tag (created / destroyed / failed)
+  - name: "varnish.thread.operations"
+    channel: "varnish_thread_{operation}"
+    display_name: "Varnish Threads {operation}"
+    unit: "#"
+    category: "threads"
+    description: "Thread lifecycle events by operation (created, destroyed, failed)"
+    multi_instance_labels: ["operation"]
+    otel:
+      name: varnish.thread.operations
+      unit: "{operation}"
+      type: counter
+    tag_to_attribute:
+      operation: varnish.thread.operation
+
+  # Session counts
+  - name: "varnish.session.connections"
+    channel: "varnish_sess_conn"
+    display_name: "Varnish Session Connections"
+    unit: "#"
+    category: "sessions"
+    description: "Accepted client sessions"
+    otel:
+      name: varnish.session.connections
+      unit: "{connection}"
+      type: counter
+
+  - name: "varnish.session.dropped"
+    channel: "varnish_sess_dropped"
+    display_name: "Varnish Session Dropped"
+    unit: "#"
+    category: "sessions"
+    description: "Client sessions dropped because the session queue was full"
+    otel:
+      name: varnish.session.dropped
+      unit: "{connection}"
+      type: counter
+
+  # Object count (gauge)
+  - name: "varnish.objects.stored"
+    channel: "varnish_objects_stored"
+    display_name: "Varnish Objects Stored"
+    unit: "#"
+    category: "objects"
+    description: "Number of HTTP objects currently stored in the cache"
+    otel:
+      name: varnish.objects.stored
+      unit: "{object}"
+      type: gauge
+
+  # Memory allocation — sum of all SMA/SMF g_bytes entries (gauge, bytes)
+  - name: "varnish.memory.allocated"
+    channel: "varnish_memory_allocated"
+    display_name: "Varnish Memory Allocated"
+    unit: "bytes"
+    category: "memory"
+    description: "Total bytes currently allocated across all storage allocators (SMA/SMF)"
+    otel:
+      name: varnish.memory.allocated
+      unit: "By"
+      type: gauge
+
+tag_metadata:
+  result:
+    type: dimension
+    label: "Cache Result"
+  operation:
+    type: dimension
+    label: "Thread Operation"
+  metric_type:
+    type: category
+    label: "Metric Type"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"

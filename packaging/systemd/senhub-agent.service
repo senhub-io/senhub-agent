@@ -1,0 +1,55 @@
+[Unit]
+Description=SenHub Agent — infrastructure monitoring agent
+Documentation=https://github.com/senhub-io/senhub-agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=senhub
+Group=senhub
+ExecStart=/usr/bin/senhub-agent run --config-path /etc/senhub-agent/agent.yaml
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# State and runtime directories (created/managed by systemd, 0750).
+StateDirectory=senhub-agent
+LogsDirectory=senhub-agent
+ConfigurationDirectory=senhub-agent
+
+# Hardening — the agent reads host metrics, so it needs broad read
+# access but should not be able to write outside its own directories.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/senhub-agent /var/log/senhub-agent
+
+# Drop every Linux capability by default. The free-tier probes
+# (cpu/memory/logicaldisk/network) read from /proc and /sys and need
+# none. Re-grant only what an enabled probe requires (see below).
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# linux_logs reads the systemd journal; the journal is group-readable
+# by systemd-journal, so the agent joins that group instead of running
+# as root. Harmless if linux_logs is not enabled.
+SupplementaryGroups=systemd-journal
+
+# Per-probe elevation — uncomment ONLY the line(s) for a probe you run
+# against a privileged resource. Prefer a high (>1024) port to avoid
+# capabilities entirely (e.g. snmp_trap on 0.0.0.0:16200; otlp_receiver
+# on 4317/4318 needs none).
+#
+#   snmp_trap binding the default UDP/162 (privileged port):
+# CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+# AmbientCapabilities=CAP_NET_BIND_SERVICE
+#
+#   ICMP/ping active checks (raw sockets):
+# CapabilityBoundingSet=CAP_NET_RAW
+# AmbientCapabilities=CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target

@@ -18,7 +18,6 @@ package agent
 import (
 	"context"
 	"os"
-	"syscall"
 
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/auto_update"
@@ -50,6 +49,9 @@ type agent struct {
 	store              data_store.DataStore
 	sensors            sensor.Sensor
 	updater            auto_update.AutoUpdate
+	// exitFn is called by handleStartError with exit code 1. It defaults to
+	// os.Exit; tests inject a no-op to capture the call without aborting.
+	exitFn func(int)
 }
 
 // NewAgent initializes a new agent using CLI arguments parsed from os.Args.
@@ -125,6 +127,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		store:              store,
 		sensors:            sensors,
 		updater:            updater,
+		exitFn:             os.Exit,
 	}
 }
 
@@ -214,8 +217,13 @@ func (a agent) doVersionCheck(updater auto_update.AutoUpdate) {
 func (a agent) Shutdown(ctx context.Context) error {
 	close(a.messageChannel)
 
+	// Tear down in reverse start order: sensors (producers) before the
+	// data store (consumer), so that the final collection cycle drains
+	// cleanly before the store closes its strategies.
+	services := *a.startedServices
 	var errors []error
-	for _, service := range *a.startedServices {
+	for i := len(services) - 1; i >= 0; i-- {
+		service := services[i]
 		a.logger.Debug().
 			Str("service", service.GetName()).
 			Msg("Shutting down service")
@@ -240,16 +248,14 @@ func (a agent) Shutdown(ctx context.Context) error {
 }
 
 func (a agent) handleStartError() {
-	pid := os.Getpid()
-	p, err := os.FindProcess(pid)
-	if err != nil {
-		a.logger.Error().Err(err).Msg("Error finding process")
-		os.Exit(1)
-	}
-	// On Windows, SIGTERM is not supported — use SIGINT or exit directly.
-	if err := p.Signal(syscall.SIGINT); err != nil {
-		a.logger.Error().Err(err).Msg("Error sending shutdown signal")
+	// Exit non-zero so the service manager (systemd, SCM) knows the
+	// start failed and does not re-fork indefinitely on a permanent
+	// config error. Sending SIGINT to self exits 0 on Linux, which
+	// defeats Restart=always and StartLimitBurst protection.
+	a.logger.Error().Msg("One or more services failed to start; exiting with error")
+	if a.exitFn != nil {
+		a.exitFn(1)
+	} else {
 		os.Exit(1)
 	}
 }
-

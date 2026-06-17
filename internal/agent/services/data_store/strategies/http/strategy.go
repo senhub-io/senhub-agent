@@ -88,6 +88,8 @@ type PRTGChannel struct {
 	Float           *int    `json:"float,omitempty"` // Pointer to make optional for lookup metrics
 	Unit            string  `json:"unit,omitempty"`
 	CustomUnit      string  `json:"customunit,omitempty"`
+	SpeedSize       string  `json:"speedsize,omitempty"` // Input scale for Speed* units (Byte, Bit, MegaBit, ...)
+	SpeedTime       string  `json:"speedtime,omitempty"` // Input period for Speed* units (Second, Minute, ...)
 	LimitMode       int     `json:"limitmode,omitempty"`
 	LimitMaxWarning float64 `json:"limitmaxwarning,omitempty"`
 	LimitMaxError   float64 `json:"limitmaxerror,omitempty"`
@@ -149,15 +151,13 @@ func NewHTTPSyncStrategy(
 	// Initialize health manager
 	strategy.healthManager = NewHealthManager(strategy, moduleLogger, strategy.startTime)
 
-	// Initialize metrics processor
-	strategy.metricsProcessor = NewMetricsProcessor(strategy.cache, strategy.formatConverter, strategy.lookupRegistry, moduleLogger)
-
 	// Initialize configuration manager
 	strategy.configManager = NewConfigurationManager(agentConfig, params, moduleLogger)
 
 	// Update strategy fields from configuration manager
 	strategy.port = strategy.configManager.GetPort()
 	strategy.bindAddress = strategy.configManager.GetBindAddress()
+	strategy.cache.SetMaxSeries(strategy.configManager.GetMaxCacheSize())
 
 	// Initialize debug manager
 	strategy.debugManager = NewDebugManager(strategy, moduleLogger)
@@ -181,6 +181,12 @@ func NewHTTPSyncStrategy(
 		// Initialize lookups manager only if registry loaded successfully
 		strategy.lookupsManager = NewLookupsManager(strategy)
 	}
+
+	// Initialize the metrics processor AFTER the lookup registry: it
+	// captures the registry at construction, and the previous order
+	// handed it a nil — lookup-based status mapping silently never ran
+	// (audit A7 construction-order defect, #273).
+	strategy.metricsProcessor = NewMetricsProcessor(strategy.cache, strategy.formatConverter, strategy.lookupRegistry, moduleLogger)
 
 	// Initialize status service with centralized status calculations
 	strategy.statusService = status.NewStatusService(
@@ -360,7 +366,26 @@ type OTLPInfoResponse struct {
 	Store          OTLPStoreInfo          `json:"store"`
 	ExportDuration OTLPExportDurationInfo `json:"export_duration"`
 	Checkpoint     OTLPCheckpointInfo     `json:"checkpoint"`
+	LogsQueue      OTLPLogsQueueInfo      `json:"logs_queue"`
+	Failover       OTLPFailoverInfo       `json:"failover"`
 	Parallel       OTLPParallelInfo       `json:"parallel"`
+}
+
+// OTLPFailoverInfo reports endpoint failover state (#217): the index of
+// the endpoint currently serving (0 = primary) and the cumulative number
+// of switches. Both 0 when no fallback_endpoints are configured.
+type OTLPFailoverInfo struct {
+	ActiveEndpointIndex int64  `json:"active_endpoint_index"`
+	SwitchesTotal       uint64 `json:"switches_total"`
+}
+
+// OTLPLogsQueueInfo reports the on-disk dead-letter queue for the logs
+// signal (#217): live depth plus cumulative persisted/replayed counts.
+type OTLPLogsQueueInfo struct {
+	Records       int64  `json:"records"`
+	Bytes         int64  `json:"bytes"`
+	QueuedTotal   uint64 `json:"queued_total"`
+	ReplayedTotal uint64 `json:"replayed_total"`
 }
 
 type OTLPPipelineInfo struct {
@@ -516,11 +541,6 @@ func (h *HTTPSyncStrategy) handleNagiosChecks(w http.ResponseWriter, r *http.Req
 }
 
 // Nagios helper functions (delegated to NagiosManager)
-
-// handleZabbixMetricsGET handles GET requests for Zabbix format metrics (delegated to UtilsManager)
-func (h *HTTPSyncStrategy) handleZabbixMetricsGET(w http.ResponseWriter, r *http.Request) {
-	h.utilsManager.handleZabbixMetricsGET(w, r)
-}
 
 // handlePrometheusMetricsGET handles GET requests for Prometheus format metrics (delegated to UtilsManager)
 func (h *HTTPSyncStrategy) handlePrometheusMetricsGET(w http.ResponseWriter, r *http.Request) {
@@ -733,6 +753,13 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 			Int("retention_minutes", cacheConfig.RetentionMinutes).
 			Msg("✅ Cache configuration updated")
 	}
+
+	// Re-apply the cardinality cap: the config manager re-parses
+	// max_cache_size above, and without this the live cache keeps
+	// enforcing the old cap while GetMaxCacheSize reports the new one —
+	// an operator raising the cap to stop drops would keep dropping
+	// until restart (reviewer finding on #281).
+	h.cache.SetMaxSeries(h.configManager.GetMaxCacheSize())
 
 	h.logger.Info().Msg("✅ HTTP strategy configuration updated successfully")
 	return nil

@@ -333,3 +333,38 @@ func TestServer_PathJoining(t *testing.T) {
 		})
 	}
 }
+
+// TestPost_BodyReadableAndConnectionReusable pins the #277 contract:
+// the network body is drained and closed inside Post (the transport
+// can reuse the connection) while callers still read the payload from
+// the returned response.
+func TestPost_BodyReadableAndConnectionReusable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte(`{"ack":true}`)); err != nil {
+			t.Errorf("write: %v", err)
+		}
+	}))
+	defer srv.Close()
+
+	s := NewServer("test-key", srv.URL, logger.NewLogger(&cliArgs.ParsedArgs{}))
+	res, err := s.Post("/metrics", map[string]string{"a": "b"})
+	if err != nil {
+		t.Fatalf("Post: %v", err)
+	}
+	b, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("reading returned body: %v (the old code closed it before returning)", err)
+	}
+	if string(b) != `{"ack":true}` {
+		t.Errorf("body = %q", b)
+	}
+
+	res2, err := s.PostStream("/event/insert", "{}")
+	if err != nil {
+		t.Fatalf("PostStream: %v", err)
+	}
+	if _, err := io.ReadAll(res2.Body); err != nil {
+		t.Fatalf("PostStream body unreadable: %v", err)
+	}
+}

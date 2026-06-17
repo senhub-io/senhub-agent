@@ -185,29 +185,177 @@ func (f *FormatConverter) transformToPRTGChannelWithFilter(key string, metric Ca
 		floatValue := 1
 		channel.Float = &floatValue // PRTG expects Float=1 for decimal values
 
-		// Format units for PRTG: map to native units or use custom
-		if unit != "" {
-			switch unit {
-			case "#":
-				channel.Unit = "Count"
-			case "%":
-				channel.Unit = "Percent"
-			case "Bytes":
-				channel.Unit = "BytesMemory"
-			case "°C":
-				channel.Unit = "Temperature"
-			case "ms":
-				channel.Unit = "TimeResponse"
-			case "s":
-				channel.Unit = "TimeSeconds"
-			default:
-				channel.Unit = "Custom"
-				channel.CustomUnit = unit
-			}
-		}
+		// Derive the PRTG unit from the OTel mapping when available
+		// (rate vs absolute, byte context), falling back to the
+		// legacy display-unit switch.
+		f.applyPRTGUnit(channel, unit, metric)
 	}
 
 	return channel
+}
+
+// applyPRTGUnit sets Unit/CustomUnit/SpeedSize/SpeedTime on a PRTG
+// channel. The OTel mapping is the semantic source of truth: a metric
+// whose otel.unit ends in "/s" is a rate and must render as a speed,
+// never as an absolute volume/count; byte metrics take a
+// context-appropriate PRTG byte unit instead of a blanket BytesMemory.
+func (f *FormatConverter) applyPRTGUnit(channel *PRTGChannel, displayUnit string, metric CachedMetric) {
+	otel := f.otelMappingFor(metric)
+
+	if otel != nil && strings.HasSuffix(otel.Unit, "/s") {
+		f.applyPRTGRateUnit(channel, otel.Unit, metric)
+		return
+	}
+
+	if displayUnit == "" {
+		return
+	}
+
+	switch displayUnit {
+	case "#":
+		channel.Unit = "Count"
+	case "%":
+		channel.Unit = "Percent"
+	case "Bytes", "bytes", "By", "B":
+		channel.Unit = f.prtgByteContext(otel, metric)
+	case "°C":
+		channel.Unit = "Temperature"
+	case "ms":
+		channel.Unit = "TimeResponse"
+	case "s":
+		channel.Unit = "TimeSeconds"
+	default:
+		channel.Unit = "Custom"
+		channel.CustomUnit = displayUnit
+	}
+}
+
+// applyPRTGRateUnit renders a per-second metric as a PRTG speed.
+// Byte/bit rates use the native Speed* units with the input scale
+// declared (the raw value stays per-second in the declared size);
+// other rates use a Custom unit carrying the "/s" suffix.
+func (f *FormatConverter) applyPRTGRateUnit(channel *PRTGChannel, otelUnit string, metric CachedMetric) {
+	switch strings.ToLower(otelUnit) {
+	case "by/s", "byte/s", "bytes/s":
+		if f.isDiskContext(f.otelMappingFor(metric), metric) {
+			channel.Unit = "SpeedDisk"
+		} else {
+			channel.Unit = "SpeedNet"
+		}
+		channel.SpeedSize = "Byte"
+		channel.SpeedTime = "Second"
+	case "bit/s", "bits/s":
+		channel.Unit = "SpeedNet"
+		channel.SpeedSize = "Bit"
+		channel.SpeedTime = "Second"
+	case "mbit/s", "mbits/s":
+		channel.Unit = "SpeedNet"
+		channel.SpeedSize = "MegaBit"
+		channel.SpeedTime = "Second"
+	default:
+		channel.Unit = "Custom"
+		channel.CustomUnit = humanizeRateUnit(otelUnit)
+	}
+}
+
+// humanizeRateUnit turns a UCUM-ish rate unit into a display suffix:
+// "{packet}/s" → "pkt/s", "{error}/s" → "err/s", "1/s" → "/s".
+func humanizeRateUnit(otelUnit string) string {
+	base := strings.TrimSuffix(otelUnit, "/s")
+	base = strings.TrimPrefix(base, "{")
+	base = strings.TrimSuffix(base, "}")
+	switch base {
+	case "1", "":
+		return "/s"
+	case "packet":
+		return "pkt/s"
+	case "error":
+		return "err/s"
+	case "operation":
+		return "ops/s"
+	case "request":
+		return "req/s"
+	default:
+		return base + "/s"
+	}
+}
+
+// prtgByteContext picks the PRTG byte unit matching what the bytes
+// measure: memory, disk/storage, network bandwidth, or files.
+// Memory is checked before the generic "file" heuristic so that
+// metrics like container.memory.active_file stay in BytesMemory.
+func (f *FormatConverter) prtgByteContext(otel *transformers.OtelMapping, metric CachedMetric) string {
+	if f.isDiskContext(otel, metric) {
+		return "BytesDisk"
+	}
+	if f.isNetworkContext(otel, metric) {
+		return "BytesBandwidth"
+	}
+	if otelNameContains(otel, "memory", "swap") {
+		return "BytesMemory"
+	}
+	if otelNameContains(otel, "file") {
+		return "BytesFile"
+	}
+	return "BytesMemory"
+}
+
+func (f *FormatConverter) isDiskContext(otel *transformers.OtelMapping, metric CachedMetric) bool {
+	if otelNameContains(otel, "disk", "filesystem", "storage", "volume", "asp") {
+		return true
+	}
+	switch probeTypeOf(metric) {
+	case "logicaldisk", "veeam":
+		return true
+	}
+	return false
+}
+
+func (f *FormatConverter) isNetworkContext(otel *transformers.OtelMapping, metric CachedMetric) bool {
+	if otelNameContains(otel, "network", "interface", "bandwidth", "traffic") {
+		return true
+	}
+	switch probeTypeOf(metric) {
+	case "network", "snmp_poll", "netscaler", "wifi_signal_strength":
+		return true
+	}
+	return false
+}
+
+func otelNameContains(otel *transformers.OtelMapping, keywords ...string) bool {
+	if otel == nil || otel.Name == "" {
+		return false
+	}
+	name := strings.ToLower(otel.Name)
+	for _, kw := range keywords {
+		if strings.Contains(name, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func probeTypeOf(metric CachedMetric) string {
+	if pt := metric.Tags["probe_type"]; pt != "" {
+		return pt
+	}
+	return metric.ProbeName
+}
+
+// otelMappingFor resolves the OTel mapping declared for a metric in
+// its probe's transformer definition, or nil when unavailable (legacy
+// transformer, unknown probe, unmapped metric). LoadTransformer caches
+// per probe, so repeated resolution is a map hit.
+func (f *FormatConverter) otelMappingFor(metric CachedMetric) *transformers.OtelMapping {
+	transformer, err := f.transformerRegistry.LoadTransformer(probeTypeOf(metric), "friendly")
+	if err != nil || transformer == nil {
+		return nil
+	}
+	otelAware, ok := transformer.(transformers.OtelAware)
+	if !ok {
+		return nil
+	}
+	return otelAware.GetOtelMapping(metric.MetricName)
 }
 
 // transformToPRTGChannel converts a cached metric to PRTG channel format (legacy - no filter)
@@ -218,7 +366,7 @@ func (f *FormatConverter) transformToPRTGChannel(key string, metric CachedMetric
 
 // removeDiscriminantTagsFromChannelName removes discriminant tag prefixes/suffixes from channel names
 // Example: "Interface LO/1 - State" -> "State" when filtering on interface:LO/1
-// Example: "SSL Certificate Status (Wildcard_LNA-SANTE_2025)" -> "SSL Certificate Status"
+// Example: "SSL Certificate Status (Wildcard_ACME-CORP_2025)" -> "SSL Certificate Status"
 func (f *FormatConverter) removeDiscriminantTagsFromChannelName(channelName string, metric CachedMetric, probeType string) string {
 	// Get discriminant tags for this probe type
 	discriminantTags, exists := DiscriminantTagsRegistry[probeType]

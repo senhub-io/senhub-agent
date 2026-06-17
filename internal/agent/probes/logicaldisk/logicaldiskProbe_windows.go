@@ -260,7 +260,7 @@ func (w *windowsLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store
 		dataPoints = append(dataPoints, data_store.DataPoint{
 			Name:      metricName,
 			Timestamp: timestamp,
-			Value:     float32(value),
+			Value:     value,
 			Tags:      metricTags,
 		})
 
@@ -280,7 +280,7 @@ func (w *windowsLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store
 			dataPoints = append(dataPoints, data_store.DataPoint{
 				Name:      "disk_used_percent",
 				Timestamp: timestamp,
-				Value:     float32(usedPercent),
+				Value:     usedPercent,
 				Tags:      metricTags,
 			})
 		}

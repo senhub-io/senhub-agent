@@ -49,7 +49,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 			name:                "Default configuration",
 			params:              map[string]interface{}{},
 			expectedPort:        8080,
-			expectedBindAddress: "0.0.0.0",
+			expectedBindAddress: "127.0.0.1",
 			expectedEndpoints:   map[string]bool{},
 		},
 		{
@@ -58,7 +58,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 				"port": float64(9090),
 			},
 			expectedPort:        9090,
-			expectedBindAddress: "0.0.0.0",
+			expectedBindAddress: "127.0.0.1",
 			expectedEndpoints:   map[string]bool{},
 		},
 		{
@@ -67,7 +67,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 				"port": 8443,
 			},
 			expectedPort:        8443,
-			expectedBindAddress: "0.0.0.0",
+			expectedBindAddress: "127.0.0.1",
 			expectedEndpoints:   map[string]bool{},
 		},
 		{
@@ -95,7 +95,7 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 				"endpoints": []interface{}{"prtg", "nagios"},
 			},
 			expectedPort:        8080, // default port
-			expectedBindAddress: "0.0.0.0",
+			expectedBindAddress: "127.0.0.1",
 			expectedEndpoints: map[string]bool{
 				"prtg":   true,
 				"nagios": true,
@@ -272,7 +272,7 @@ func TestHTTPSyncStrategy_AddDataPoints(t *testing.T) {
 	if cpuMetric == nil {
 		t.Error("Expected cpu.usage_percent metric from host probe to be cached")
 	} else {
-		if cpuMetric.Value != float32(75.5) {
+		if cpuMetric.Value != float64(75.5) {
 			t.Errorf("Expected cached value 75.5, got %v", cpuMetric.Value)
 		}
 		if cpuMetric.ProbeName != "host" {
@@ -459,10 +459,13 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
 
 	tests := []struct {
-		name    string
-		key     string
-		metric  CachedMetric
-		wantNil bool
+		name           string
+		key            string
+		metric         CachedMetric
+		wantNil        bool
+		wantUnit       string
+		wantCustomUnit string
+		wantSpeedSize  string
 	}{
 		{
 			name: "Valid float64 value",
@@ -474,21 +477,27 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 				ProbeName:  "cpu",
 				Tags:       map[string]string{"instance": "0"},
 			},
-			wantNil: false,
+			wantNil:  false,
+			wantUnit: "Percent",
 		},
 		{
 			name: "Valid float32 value",
 			key:  "memory_used_percent",
 			metric: CachedMetric{
-				Value:      float32(30.0),
+				Value:      float64(30.0),
 				Unit:       "%",
 				MetricName: "memory_used_percent",
 				ProbeName:  "memory",
 				Tags:       map[string]string{},
 			},
-			wantNil: false,
+			wantNil:  false,
+			wantUnit: "Percent",
 		},
 		{
+			// bytes_received carries otel.unit By/s in network.yaml:
+			// a rate renders as a PRTG speed with its input scale
+			// declared, never as an absolute volume or a Custom
+			// passthrough of the raw display unit (#314).
 			name: "Valid int value",
 			key:  "bytes_received",
 			metric: CachedMetric{
@@ -498,7 +507,9 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 				ProbeName:  "network",
 				Tags:       map[string]string{"interface": "eth0"},
 			},
-			wantNil: false,
+			wantNil:       false,
+			wantUnit:      "SpeedNet",
+			wantSpeedSize: "Byte",
 		},
 		{
 			name: "Invalid string value",
@@ -526,24 +537,14 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 			}
 
 			if channel != nil {
-				// For PRTG, native units map directly; others use Custom + CustomUnit
-				if tt.metric.Unit != "" {
-					nativeUnits := map[string]string{
-						"#": "Count", "%": "Percent", "Bytes": "BytesMemory",
-						"°C": "Temperature", "ms": "TimeResponse", "s": "TimeSeconds",
-					}
-					if expected, isNative := nativeUnits[tt.metric.Unit]; isNative {
-						if channel.Unit != expected {
-							t.Errorf("Expected native unit '%s', got %s", expected, channel.Unit)
-						}
-					} else {
-						if channel.Unit != "Custom" {
-							t.Errorf("Expected unit 'Custom', got %s", channel.Unit)
-						}
-						if channel.CustomUnit != tt.metric.Unit {
-							t.Errorf("Expected custom unit %s, got %s", tt.metric.Unit, channel.CustomUnit)
-						}
-					}
+				if tt.wantUnit != "" && channel.Unit != tt.wantUnit {
+					t.Errorf("Expected unit %q, got %q", tt.wantUnit, channel.Unit)
+				}
+				if tt.wantCustomUnit != "" && channel.CustomUnit != tt.wantCustomUnit {
+					t.Errorf("Expected custom unit %q, got %q", tt.wantCustomUnit, channel.CustomUnit)
+				}
+				if tt.wantSpeedSize != "" && channel.SpeedSize != tt.wantSpeedSize {
+					t.Errorf("Expected speed size %q, got %q", tt.wantSpeedSize, channel.SpeedSize)
 				}
 				// Check Float field based on lookup presence
 				if channel.ValueLookup == "" {
@@ -699,7 +700,7 @@ func TestHTTPSyncStrategy_PRTGMetricsGET(t *testing.T) {
 		{
 			Name:      "cpu_usage_total",
 			Timestamp: time.Now(),
-			Value:     float32(75.5),
+			Value:     float64(75.5),
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "cpu"},
 			},
@@ -707,7 +708,7 @@ func TestHTTPSyncStrategy_PRTGMetricsGET(t *testing.T) {
 		{
 			Name:      "memory_used_percent",
 			Timestamp: time.Now(),
-			Value:     float32(82.3),
+			Value:     float64(82.3),
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "memory"},
 			},
