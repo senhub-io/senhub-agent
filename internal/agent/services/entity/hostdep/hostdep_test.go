@@ -125,6 +125,58 @@ func TestNew_ConfigurableThreshold(t *testing.T) {
 	}
 }
 
+func TestAgentSelfDependencyUsesFoundationIdentity(t *testing.T) {
+	const agentKey = "a5f503ab-key"
+	rows := []gnet.ConnectionStat{
+		conn(statusEstablished, "10.0.0.5", 40000, "10.0.0.9", 443, 4242), // agent's own pid
+		conn(statusEstablished, "10.0.0.5", 41000, "10.0.0.8", 6379, 100), // nginx
+	}
+	s := newTestSource(rows)
+	s.selfPID = func() int32 { return 4242 }
+	s.agentID = func() string { return agentKey }
+	var obs entity.Observation
+	for i := 0; i < 3; i++ {
+		obs, _ = s.Observe()
+	}
+
+	// Agent's own dependency attaches to the foundation service.instance (the
+	// agent key): a depends_on with that From, but NO duplicate node and NO
+	// runs_on (the foundation owns those) — #494.
+	var agentDepends bool
+	for _, r := range obs.Relations {
+		if r.Type == relDependsOn && r.FromID[idKeyServiceInstanceID] == agentKey {
+			agentDepends = true
+		}
+		if r.Type == relRunsOn && r.FromID[idKeyServiceInstanceID] == agentKey {
+			t.Errorf("must not emit runs_on for the foundation-owned agent identity: %+v", r)
+		}
+	}
+	if !agentDepends {
+		t.Errorf("agent's own depends_on must use the foundation key %q: %+v", agentKey, obs.Relations)
+	}
+	for _, e := range obs.Entities {
+		if e.Type == entityTypeServiceInstance && e.ID[idKeyServiceInstanceID] == agentKey {
+			t.Errorf("must not emit a duplicate service.instance entity for the foundation key: %+v", e)
+		}
+	}
+
+	// A non-agent process still mints <exe>@host with its own node + runs_on.
+	var nginxNode, nginxRunsOn bool
+	for _, e := range obs.Entities {
+		if e.Type == entityTypeServiceInstance && e.ID[idKeyServiceInstanceID] == "nginx@h-1" {
+			nginxNode = true
+		}
+	}
+	for _, r := range obs.Relations {
+		if r.Type == relRunsOn && r.FromID[idKeyServiceInstanceID] == "nginx@h-1" {
+			nginxRunsOn = true
+		}
+	}
+	if !nginxNode || !nginxRunsOn {
+		t.Errorf("non-agent process must still mint <exe>@host with entity+runs_on (node=%v runs_on=%v)", nginxNode, nginxRunsOn)
+	}
+}
+
 func TestDependentAnchoredToHostWithRunsOn(t *testing.T) {
 	// A minted dependent must hang off the host it runs on, not float with only
 	// its depends_on edge: service.instance --runs_on--> host, host taken from
