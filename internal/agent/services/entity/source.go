@@ -80,6 +80,17 @@ func RegisterSource(s Source) (unregister func()) {
 	}
 }
 
+// RegisteredSourceCount reports how many entity sources are currently
+// registered with the process-global detector registry. It exists so a
+// cross-package reload test can assert there is exactly one strategy's worth
+// of sources after a config-reload recreate — no overlap (the old instance
+// left its sources behind) and no leak (#495).
+func RegisteredSourceCount() int {
+	sourcesMu.RLock()
+	defer sourcesMu.RUnlock()
+	return len(sources)
+}
+
 // registeredSources returns a snapshot copy of the registered sources, safe
 // to range over without holding the lock.
 func registeredSources() []registered {
@@ -151,4 +162,12 @@ func resetSourcesForTest() {
 	sourcesMu.Lock()
 	sources = nil
 	sourcesMu.Unlock()
+}
+
+// ResetForTest clears the process-global entity state (registered sources and
+// event-channel subscribers). Exported so cross-package reload tests can start
+// from a clean registry; not for production use.
+func ResetForTest() {
+	resetSourcesForTest()
+	resetEventChannelForTest()
 }
