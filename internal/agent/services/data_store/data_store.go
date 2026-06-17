@@ -394,6 +394,15 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 
 	searchStrategyId := d.GenerateStrategyId(strategyConfig.Name, strategyConfig.Params)
 
+	// replaced holds the same-named strategy this refresh is about to recreate
+	// (it could not be live-updated). It MUST be shut down before its
+	// replacement starts: strategies that own process-global state — the OTLP
+	// strategy registers its entity sources and runs the single entity detector
+	// through the package-global registry/channel — would otherwise overlap a
+	// stale producer with the fresh one, duplicating heartbeats and leaving the
+	// old detector polling sources the new instance already owns (#495).
+	var replaced SyncStrategy
+
 	// Search for existing strategy with the same name
 	for _, strategy := range d.activeStrategies() {
 		if strategy.GetStrategyName() == strategyConfig.Name {
@@ -416,6 +425,7 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 							Err(err).
 							Msg("Failed to update strategy configuration, will recreate")
 						// If update fails, continue to create a new strategy
+						replaced = strategy
 						break
 					} else {
 						d.logger.Info().Msg("✅ Strategy configuration updated successfully")
@@ -424,10 +434,29 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 				} else {
 					d.logger.Debug().Msg("Strategy does not support live updates, will recreate")
 					// Strategy does not support live updates, continue to recreate
+					replaced = strategy
 					break
 				}
 			}
 		}
+	}
+
+	// Tear the old instance down before the replacement starts so a strategy
+	// owning process-global state hands it off cleanly rather than overlapping
+	// (#495). Shutdown is idempotent, so the post-refresh cleanup in
+	// OnConfigRefreshed re-calling it is a no-op.
+	if replaced != nil {
+		d.logger.Info().
+			Str("strategy", replaced.GetStrategyName()).
+			Msg("Shutting down replaced strategy before starting its replacement")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := replaced.Shutdown(ctx); err != nil {
+			d.logger.Error().
+				Err(err).
+				Str("strategy", replaced.GetStrategyName()).
+				Msg("Failed to shut down replaced strategy")
+		}
+		cancel()
 	}
 
 	// Create a new strategy
