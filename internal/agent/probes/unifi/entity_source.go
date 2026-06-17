@@ -3,6 +3,7 @@ package unifi
 import (
 	"sync"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
@@ -54,13 +55,27 @@ func (s *unifiEntitySource) Observe() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 
-	return entity.Observation{
+	svcID := map[string]any{idKeyServiceInstanceID: s.id}
+	obs := entity.Observation{
 		Entities: []entity.Entity{
 			{
 				Type:       entityTypeServiceInstance,
-				ID:         map[string]any{idKeyServiceInstanceID: s.id},
+				ID:         svcID,
 				Attributes: map[string]any{"unifi.reachable": reachable},
 			},
 		},
-	}, true
+	}
+	// monitors edge: agent → controller, anchoring the entity to the agent's
+	// monitoring subgraph (else it floats — #506). Emitted only when the agent
+	// id is available; a non-materialised From would be buffered then dropped.
+	if agentID := agentstate.GetAgentInstanceID(); agentID != "" {
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     "monitors",
+			FromType: entityTypeServiceInstance,
+			FromID:   map[string]any{idKeyServiceInstanceID: agentID},
+			ToType:   entityTypeServiceInstance,
+			ToID:     svcID,
+		})
+	}
+	return obs, true
 }
