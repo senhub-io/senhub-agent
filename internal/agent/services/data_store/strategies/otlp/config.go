@@ -56,6 +56,7 @@ const (
 	DefaultLogsBufferSize     = 10000
 	DefaultEntitiesInterval   = 60 * time.Second
 	DefaultEntitiesBufferSize = 256
+	DefaultDependsOnDebounce  = 3
 	// DefaultMaxStoreSize caps the OTLP strategy's metric-store
 	// cardinality. 50 000 distinct series is comfortable for typical
 	// SenHub agent profiles (host + 1-3 vendor probes ≈ 1-5 k series);
@@ -197,6 +198,12 @@ type EntitiesSignal struct {
 	// each event as the consumer's liveness backstop.
 	Interval   time.Duration
 	BufferSize int
+	// DependsOnDebounce is how many consecutive scrapes a peer endpoint must
+	// persist before its outbound depends_on edge is emitted — the line between
+	// a durable dependency and ephemeral flow. The effective latency to surface
+	// a dependency is DependsOnDebounce x Interval, so lowering it trades
+	// durability for responsiveness. Must be >= 1.
+	DependsOnDebounce int
 }
 
 // TracesSignal holds traces-specific knobs. Disabled by default — the
@@ -381,9 +388,10 @@ func defaultConfig() Config {
 			BufferSize:   DefaultLogsBufferSize,
 		},
 		Entities: EntitiesSignal{
-			Enabled:    false,
-			Interval:   DefaultEntitiesInterval,
-			BufferSize: DefaultEntitiesBufferSize,
+			Enabled:           false,
+			Interval:          DefaultEntitiesInterval,
+			BufferSize:        DefaultEntitiesBufferSize,
+			DependsOnDebounce: DefaultDependsOnDebounce,
 		},
 		Traces: TracesSignal{
 			// Disabled by default — opt-in plumbing. Operators
@@ -756,6 +764,12 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 		}
 		if v, ok := readInt(em["buffer_size"]); ok {
 			entities.BufferSize = v
+		}
+		if v, ok := readInt(em["depends_on_debounce"]); ok {
+			if v < 1 {
+				return fmt.Errorf("entities.depends_on_debounce must be >= 1, got %d", v)
+			}
+			entities.DependsOnDebounce = v
 		}
 	}
 

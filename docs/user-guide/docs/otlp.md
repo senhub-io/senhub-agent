@@ -126,6 +126,29 @@ OTel v1.0). Cumulative means counter values are reported as absolute
 totals since the agent start; consumers that prefer deltas (some
 Datadog setups, vmagent ingest) can set `temporality: delta`.
 
+### `signals.entities`
+
+Entity events (the infrastructure graph: hosts, interfaces, services and
+their relationships) ride the OTLP **log** signal, so this signal has no
+endpoint or batch knobs of its own — it reuses the log transport.
+
+```yaml
+    entities:
+      enabled: true            # opt-in (default false)
+      interval: 60s            # heartbeat cadence; also the liveness backstop
+      buffer_size: 256         # bounded queue; drop-oldest beyond
+      depends_on_debounce: 3   # consecutive scrapes before an outbound
+                               # dependency edge is emitted (>= 1, default 3)
+```
+
+`depends_on_debounce` controls how durable an outbound connection must be
+before it appears as a `depends_on` edge: a peer endpoint must be seen on
+this many consecutive emission scrapes before its edge is emitted, which
+keeps ephemeral connections out of the graph. The latency to surface a
+dependency is `depends_on_debounce x interval` (so the default `3 x 60s` is
+about three minutes); lower it for a more responsive graph, raise it to
+filter out shorter-lived connections.
+
 ### `resource`
 
 Resource attributes are attached **once per batch** by the SDK
