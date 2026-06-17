@@ -1,7 +1,6 @@
 package prometheus
 
 import (
-	"fmt"
 	"io"
 
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
@@ -39,13 +38,9 @@ func WriteExposition(
 	allRecords = append(allRecords, agentRecords...)
 
 	for _, m := range metrics {
+		// def may be nil — Resolve handles that (an error for probe metrics
+		// with no definition, a pass-through for OTLP-ingested metrics).
 		def := defs.GetProbeDefinition(m.ProbeType)
-		if def == nil {
-			if errorHandler != nil {
-				errorHandler(m, fmt.Errorf("no probe definition for probe_type=%q", m.ProbeType))
-			}
-			continue
-		}
 		recs, err := otelmapper.Resolve(def, m, opts)
 		if err != nil {
 			if errorHandler != nil {

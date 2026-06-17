@@ -1,0 +1,19 @@
+# SenHub Agent — example multi-file layout (globals).
+#
+# This is the globals-only top-level file. Probes live in probes.d/,
+# storage strategies in strategies.d/. See the sibling fragments.
+
+config_version: 2
+
+agent:
+  key: "example-multi-file-agent-key"
+  mode: offline
+  # license: ""    # Pro / Enterprise tier — uncomment when you have a token
+
+auto_update:
+  enabled: false
+  include_beta: false
+  url: "https://eu-west-1.intake.senhub.io/releases"
+
+cache:
+  retention_minutes: 5

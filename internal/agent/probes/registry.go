@@ -1,79 +1,87 @@
-// Package probes provides probe registration and instantiation capabilities
+// Package probes provides probe registration and instantiation.
+//
+// Probes register themselves via an init() function in their own
+// package (see e.g. internal/agent/probes/cpu/register.go). Code that
+// needs the registry populated must blank-import every probe package
+// it wants available — that's what cmd/agent does. This package
+// deliberately does NOT import any probe package, so the registry is
+// pluggable and a build can drop probes by simply not importing them.
+//
+// The pattern is the standard Go self-registration / "registry of
+// pluggables" used by database/sql, image, expvar, etc.
 package probes
 
 import (
-	"senhub-agent.go/internal/agent/probes/citrix" // Import the citrix probe package
-	"senhub-agent.go/internal/agent/probes/cpu"
-	"senhub-agent.go/internal/agent/probes/event" // Import the new event probe package
-	"senhub-agent.go/internal/agent/probes/gateway"
-	"senhub-agent.go/internal/agent/probes/host"
-	"senhub-agent.go/internal/agent/probes/ibmi"
-	"senhub-agent.go/internal/agent/probes/linuxlogs"
-	"senhub-agent.go/internal/agent/probes/logicaldisk"
-	"senhub-agent.go/internal/agent/probes/memory"
-	"senhub-agent.go/internal/agent/probes/mysql"     // Import the mysql probe package
-	"senhub-agent.go/internal/agent/probes/netscaler" // Import the netscaler probe package
-	"senhub-agent.go/internal/agent/probes/network"
-	"senhub-agent.go/internal/agent/probes/postgresql" // Import the postgresql probe package
-	"senhub-agent.go/internal/agent/probes/redfish"    // Import the redfish probe package
-	"senhub-agent.go/internal/agent/probes/syslog"
+	"fmt"
+	"sort"
+
 	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/probes/veeam" // Import the veeam probe package
-	"senhub-agent.go/internal/agent/probes/webapp"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-// ProbeConstructor defines the function signature for creating new probe instances.
-// It takes configuration parameters and a base logger, returns a probe instance and potential error.
-// Probes are expected to create their own ModuleLogger from the base logger.
+// ProbeConstructor is the function signature every probe package
+// exposes from its New<Name>Probe(). Configuration is the free-form
+// `params` block from the probe YAML entry; the base logger is used
+// to derive a module logger inside the probe.
 type ProbeConstructor func(map[string]interface{}, *logger.Logger) (types.Probe, error)
 
-// probeConstructors maps probe names to their constructor functions.
-// This registry allows dynamic probe creation based on configuration.
+// probeConstructors is the runtime catalogue of probe types known to
+// this binary. Populated lazily by init() callbacks from each probe
+// package (see RegisterProbe). NEVER hardcode entries here — that
+// reintroduces the tight coupling this refactor removed.
+var probeConstructors = map[string]ProbeConstructor{}
+
+// RegisterProbe wires a probe constructor under the canonical type
+// name used in the probe YAML (`type: <name>`). Intended to be called
+// from an init() function in the probe's own package:
 //
-// Supported probes:
-// - load_webapp: Measures webapp loading metrics
-// - ping_webapp: Tests webapp availability
-// - ping_gateway: Monitors gateway connectivity
-// - wifi_signal_strength: Measures WiFi signal quality
-// - memory: Tracks memory usage
-// - cpu: Monitors CPU utilization
-// - network: Collects network interface metrics
-// - logicaldisk: Monitors disk space and IO
-// - syslog: Collects system logs (over UDP/TCP, this agent is the syslog server)
-// - linux_logs: Reads the local Linux systemd journal (Linux-only)
-// - event: Collects custom events via HTTP
-// - redfish: Monitors hardware via Redfish API
-// - citrix: Monitors Citrix Virtual Apps and Desktops via OData API
-// - netscaler: Monitors Citrix Netscaler (ADC) via NITRO API
-// - veeam: Monitors Veeam Backup & Replication via REST API
-// - ibmi: Monitors IBM i / Power Systems via remote JDBC (JT400 bridge)
-var probeConstructors = map[string]ProbeConstructor{
-	"load_webapp":          webapp.NewLoadWebAppProbe,
-	"ping_webapp":          webapp.NewPingWebAppProbe,
-	"ping_gateway":         gateway.NewPingGatewayProbe,
-	"wifi_signal_strength": host.NewWifiSignalStrengthProbe,
-	"memory":               memory.NewMemoryProbe,
-	"cpu":                  cpu.NewCpuProbe,
-	"network":              network.NewNetworkProbe,
-	"logicaldisk":          logicaldisk.NewLogicalDiskProbe,
-	"syslog":               syslog.NewSyslogProbe,
-	"linux_logs":           linuxlogs.NewLinuxLogsProbe,
-	"event":                event.NewEventProbe,
-	"redfish":              redfish.NewRedfishProbe,
-	"citrix":               citrix.NewCitrixProbe,
-	"netscaler":            netscaler.NewNetscalerProbe,
-	"veeam":                veeam.NewVeeamProbe,
-	"mysql":                mysql.NewMySQLProbe,
-	"postgresql":           postgresql.NewPostgreSQLProbe,
-	"ibmi":                 ibmi.NewIBMiProbe,
+//	func init() {
+//	    probes.RegisterProbe("cpu", NewCpuProbe)
+//	}
+//
+// Panics on duplicate registration — that condition reflects a
+// programmer error (two packages claiming the same name) and there
+// is no recoverable behaviour. Detection at init time is the point:
+// the binary refuses to start with an ambiguous catalogue.
+func RegisterProbe(name string, ctor ProbeConstructor) {
+	if name == "" {
+		panic("probes.RegisterProbe: empty name")
+	}
+	if ctor == nil {
+		panic(fmt.Sprintf("probes.RegisterProbe(%q): nil constructor", name))
+	}
+	if _, exists := probeConstructors[name]; exists {
+		panic(fmt.Sprintf("probes.RegisterProbe(%q): duplicate registration", name))
+	}
+	probeConstructors[name] = ctor
 }
 
-// GetRegisteredProbeTypes returns a set of all registered probe type names
+// LookupProbeConstructor returns the constructor registered under
+// the given probe type name, or false if no probe has been
+// registered with that name in this build.
+func LookupProbeConstructor(name string) (ProbeConstructor, bool) {
+	ctor, ok := probeConstructors[name]
+	return ctor, ok
+}
+
+// GetRegisteredProbeTypes returns a set of all registered probe type
+// names. Reflects the current binary's catalogue, not a static list.
 func GetRegisteredProbeTypes() map[string]bool {
 	result := make(map[string]bool, len(probeConstructors))
 	for name := range probeConstructors {
 		result[name] = true
 	}
 	return result
+}
+
+// RegisteredProbeNames returns the registered probe names sorted
+// alphabetically. Useful for deterministic listings (help screens,
+// logs, structural tests).
+func RegisteredProbeNames() []string {
+	names := make([]string, 0, len(probeConstructors))
+	for name := range probeConstructors {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

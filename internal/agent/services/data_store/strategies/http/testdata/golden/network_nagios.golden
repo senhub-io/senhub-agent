@@ -1,0 +1,13 @@
+network_detailed/bytes_received status=0 OK: bytes_received 53.50B/s (aggregated from 1 metrics) | bytes_received=53.50B/s;100000000;500000000;;
+network_detailed/bytes_sent status=0 OK: bytes_sent 42.00B/s (aggregated from 1 metrics) | bytes_sent=42.00B/s;100000000;500000000;;
+network_detailed/errors_received status=0 OK: errors_received 99.50err/s (aggregated from 1 metrics) | errors_received=99.50err/s;100;1000;;
+network_detailed/errors_sent status=0 OK: errors_sent 88.00err/s (aggregated from 1 metrics) | errors_sent=88.00err/s;100;1000;;
+network_detailed/packets_received status=0 OK: packets_received 76.50pkt/s (aggregated from 1 metrics) | packets_received=76.50pkt/s;1000000;5000000;;
+network_detailed/packets_sent status=0 OK: packets_sent 65.00pkt/s (aggregated from 1 metrics) | packets_sent=65.00pkt/s;1000000;5000000;;
+network_health/bytes_received status=0 OK: bytes_received 53.50B/s (aggregated from 1 metrics) | bytes_received=53.50B/s;1000000000;2000000000;;
+network_health/bytes_sent status=0 OK: bytes_sent 42.00B/s (aggregated from 1 metrics) | bytes_sent=42.00B/s;1000000000;2000000000;;
+network_health/errors_received status=1 WARNING: errors_received 99.50err/s (aggregated from 1 metrics) | errors_received=99.50err/s;10;100;;
+network_health/errors_sent status=1 WARNING: errors_sent 88.00err/s (aggregated from 1 metrics) | errors_sent=88.00err/s;10;100;;
+system_health/cpu_load1 status=3 No metrics found for channel: cpu_load1 | 
+system_health/cpu_usage_total status=3 No metrics found for channel: cpu_usage_total | 
+system_health/memory_used_percent status=3 No metrics found for channel: memory_used_percent | 

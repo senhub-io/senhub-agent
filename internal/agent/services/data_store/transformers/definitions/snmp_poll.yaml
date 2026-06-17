@@ -1,0 +1,214 @@
+probe_name: "snmp_poll"
+friendly_name: "SNMP Poll"
+version: "3.0.0"
+host_level: false
+multi_instance_labels: ["instance", "if_index"]
+
+# Format v3 — OTel-first source of truth.
+# Lot 1b (issue #156): probe status self-metrics + MIB-II system uptime +
+# IF-MIB interface counters and status. SNMP cumulative counters
+# (Counter32/64) map to OTel sums (counter); Gauge32 / status INTEGERs map
+# to gauges. These snmp.* names are fixed and OTel-exported now; promoting
+# the standard IF-MIB objects to system.network.* semconv via the curated
+# dictionary is a later refinement (see SNMP-OTEL-MAPPING.md, Layer 2).
+# Operator custom_mappings have no row here (their names cannot be
+# pre-enumerated): the probe emits them under a canonical senhub.snmp.*
+# name carrying their OTel type in the otel_type tag, and the mapper passes
+# them through deterministically (typed pass-through, #207). Hardware
+# (ENTITY-SENSOR/HOST-RESOURCES) and topology (entity rail) are later lots.
+
+metrics:
+  # Probe status self-metrics (always emitted, one per target).
+  - name: "senhub.snmp.up"
+    channel: "snmp_up"
+    display_name: "SNMP {instance} Reachability"
+    unit: "#"
+    category: "status"
+    description: "1 when the last poll reached the SNMP target, 0 otherwise"
+    otel:
+      name: senhub.snmp.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      instance: snmp.target
+
+  - name: "senhub.snmp.poll.duration"
+    channel: "snmp_poll_duration"
+    display_name: "SNMP {instance} Poll Duration"
+    unit: "s"
+    category: "status"
+    description: "Wall-clock time taken by the last poll cycle"
+    otel:
+      name: senhub.snmp.poll.duration
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      instance: snmp.target
+
+  # System group (MIB-II 1.3.6.1.2.1.1)
+  - name: "snmp.sys.uptime"
+    channel: "snmp_sys_uptime"
+    display_name: "SNMP {instance} Uptime"
+    unit: "centiseconds"
+    category: "system"
+    description: "sysUpTime — time since the network management portion of the system was last re-initialized (hundredths of a second)"
+    otel:
+      name: snmp.sys.uptime
+      unit: cs
+      type: gauge
+    tag_to_attribute:
+      instance: snmp.target
+
+  # Interface counters (IF-MIB / ifTable 1.3.6.1.2.1.2.2.1) → OTel counters.
+  - name: "snmp.interface.in_octets"
+    channel: "snmp_if_in_octets"
+    display_name: "SNMP {instance} IF{if_index} In Octets"
+    unit: "bytes"
+    multi_instance_labels: ["instance", "if_index"]
+    category: "interface"
+    description: "ifInOctets — total octets received on the interface"
+    otel:
+      name: snmp.interface.in_octets
+      unit: By
+      type: counter
+    tag_to_attribute:
+      instance: snmp.target
+      if_index: network.interface.index
+
+  - name: "snmp.interface.out_octets"
+    channel: "snmp_if_out_octets"
+    display_name: "SNMP {instance} IF{if_index} Out Octets"
+    unit: "bytes"
+    multi_instance_labels: ["instance", "if_index"]
+    category: "interface"
+    description: "ifOutOctets — total octets transmitted on the interface"
+    otel:
+      name: snmp.interface.out_octets
+      unit: By
+      type: counter
+    tag_to_attribute:
+      instance: snmp.target
+      if_index: network.interface.index
+
+  - name: "snmp.interface.in_errors"
+    channel: "snmp_if_in_errors"
+    display_name: "SNMP {instance} IF{if_index} In Errors"
+    unit: "#"
+    multi_instance_labels: ["instance", "if_index"]
+    category: "interface"
+    description: "ifInErrors — inbound packets containing errors"
+    otel:
+      name: snmp.interface.in_errors
+      unit: "{error}"
+      type: counter
+    tag_to_attribute:
+      instance: snmp.target
+      if_index: network.interface.index
+
+  - name: "snmp.interface.out_errors"
+    channel: "snmp_if_out_errors"
+    display_name: "SNMP {instance} IF{if_index} Out Errors"
+    unit: "#"
+    multi_instance_labels: ["instance", "if_index"]
+    category: "interface"
+    description: "ifOutErrors — outbound packets that could not be transmitted due to errors"
+    otel:
+      name: snmp.interface.out_errors
+      unit: "{error}"
+      type: counter
+    tag_to_attribute:
+      instance: snmp.target
+      if_index: network.interface.index
+
+  - name: "snmp.interface.in_discards"
+    channel: "snmp_if_in_discards"
+    display_name: "SNMP {instance} IF{if_index} In Discards"
+    unit: "#"
+    multi_instance_labels: ["instance", "if_index"]
+    category: "interface"
+    description: "ifInDiscards — inbound packets discarded though no error was detected"
+    otel:
+      name: snmp.interface.in_discards
+      unit: "{packet}"
+      type: counter
+    tag_to_attribute:
+      instance: snmp.target
+      if_index: network.interface.index
+
+  - name: "snmp.interface.out_discards"
+    channel: "snmp_if_out_discards"
+    display_name: "SNMP {instance} IF{if_index} Out Discards"
+    unit: "#"
+    multi_instance_labels: ["instance", "if_index"]
+    category: "interface"
+    description: "ifOutDiscards — outbound packets discarded though no error was detected"
+    otel:
+      name: snmp.interface.out_discards
+      unit: "{packet}"
+      type: counter
+    tag_to_attribute:
+      instance: snmp.target
+      if_index: network.interface.index
+
+  # Interface gauges / status (IF-MIB) → OTel gauges.
+  - name: "snmp.interface.speed"
+    channel: "snmp_if_speed"
+    display_name: "SNMP {instance} IF{if_index} Speed"
+    unit: "bits/s"
+    multi_instance_labels: ["instance", "if_index"]
+    category: "interface"
+    description: "ifSpeed — nominal bandwidth of the interface in bits per second"
+    otel:
+      name: snmp.interface.speed
+      unit: "bit/s"
+      type: gauge
+    tag_to_attribute:
+      instance: snmp.target
+      if_index: network.interface.index
+
+  - name: "snmp.interface.admin_status"
+    channel: "snmp_if_admin_status"
+    display_name: "SNMP {instance} IF{if_index} Admin Status"
+    unit: "#"
+    multi_instance_labels: ["instance", "if_index"]
+    category: "interface"
+    description: "ifAdminStatus — desired interface state (1=up, 2=down, 3=testing)"
+    otel:
+      name: snmp.interface.admin_status
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      instance: snmp.target
+      if_index: network.interface.index
+
+  - name: "snmp.interface.oper_status"
+    channel: "snmp_if_oper_status"
+    display_name: "SNMP {instance} IF{if_index} Oper Status"
+    unit: "#"
+    multi_instance_labels: ["instance", "if_index"]
+    category: "interface"
+    description: "ifOperStatus — current operational interface state (1=up, 2=down, 3=testing, ...)"
+    otel:
+      name: snmp.interface.oper_status
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      instance: snmp.target
+      if_index: network.interface.index
+
+tag_metadata:
+  instance:
+    type: resource
+    label: "SNMP Target"
+  if_index:
+    type: resource
+    label: "Interface Index"
+  metric_type:
+    type: category
+    label: "Metric Type"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"

@@ -345,7 +345,7 @@ Lots de revue (ordre recommandé, revue user probe par probe) :
 ### Phase 5 — Documentation + revue de code + CHANGELOG *(bloquant avant merge)*
 - **Doc utilisateur complète** : `docs/user-guide/content/docs/prometheus/_index.md` (guide intégration), `metrics-reference.md` (table complète des 15 probes avec nom, type, group, labels, description), scrape config examples
 - **Revue de code exhaustive** du package `prometheus/` (agent `pr-review-toolkit:code-reviewer` + revue user)
-- **Non-régression** : PRTG/Nagios inchangés (test auto + validation manuelle sur Noble Age/SIEP-BCK)
+- **Non-régression** : PRTG/Nagios inchangés (test auto + validation manuelle sur déploiements production)
 - CHANGELOG + release notes 0.1.88 (feat majeur)
 
 ## 11. Critères de done

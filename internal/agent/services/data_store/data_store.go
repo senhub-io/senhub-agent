@@ -13,8 +13,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/event"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/http"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
@@ -61,11 +66,30 @@ type DataStore interface {
 }
 
 type dataStore struct {
-	strategies          []SyncStrategy
+	// strategies holds an immutable snapshot of the active strategy
+	// set. Probe goroutines Load() it on every datapoint callback;
+	// the config watcher builds a NEW slice and Store()s it — readers
+	// never observe a partially rebuilt list (#260).
+	strategies atomic.Pointer[[]SyncStrategy]
+	// refreshMu serializes configuration refreshes (single writer).
+	refreshMu           sync.Mutex
 	logger              *logger.ModuleLogger
 	configProvider      configuration.ConfigurationProvider
 	agentConfig         configuration.AgentConfiguration
 	transformerRegistry *transformers.TransformerRegistry
+	// transformerFallbackWarned memoizes probe types already warned
+	// about a missing transformer YAML, so the warning fires once per
+	// probe type instead of once per datapoint per cycle. Same
+	// warn-once pattern as prometheusWarnedMetrics in the http strategy.
+	transformerFallbackWarned sync.Map
+}
+
+// activeStrategies returns the current immutable strategy snapshot.
+func (d *dataStore) activeStrategies() []SyncStrategy {
+	if p := d.strategies.Load(); p != nil {
+		return *p
+	}
+	return nil
 }
 
 func NewDataStore(
@@ -81,9 +105,10 @@ func NewDataStore(
 		logger:              moduleLogger,
 		configProvider:      configProvider,
 		agentConfig:         agentConfig,
-		strategies:          make([]SyncStrategy, 0),
 		transformerRegistry: transformers.NewTransformerRegistry(baseLogger),
 	}
+	empty := make([]SyncStrategy, 0)
+	ds.strategies.Store(&empty)
 	moduleLogger.Debug().Msg("DataStore instance created successfully")
 	return ds
 }
@@ -120,12 +145,48 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
+// enrichWithConfiguredTags overlays the agent-level global_tags and each
+// probe instance's custom_tags onto every datapoint, in one place for all
+// sinks. Priority on a key conflict is custom_tags > global_tags > built-in
+// (the tags the probe already emitted). Per-probe custom_tags are matched to
+// a datapoint by its probe_name tag. No-op (and no allocation) when neither
+// is configured.
+func (d *dataStore) enrichWithConfiguredTags(data []datapoint.DataPoint) []datapoint.DataPoint {
+	cfg := d.configProvider.GetConfiguration()
+	global := tags.MapToTags(cfg.Agent.GlobalTags)
+
+	var customByProbe map[string][]tags.Tag
+	for _, p := range cfg.Probes {
+		if len(p.CustomTags) == 0 {
+			continue
+		}
+		if customByProbe == nil {
+			customByProbe = make(map[string][]tags.Tag)
+		}
+		customByProbe[p.Name] = tags.MapToTags(p.CustomTags)
+	}
+
+	if len(global) == 0 && customByProbe == nil {
+		return data
+	}
+
+	for i := range data {
+		custom := customByProbe[getTagValue(data[i].Tags, "probe_name")]
+		if len(global) == 0 && len(custom) == 0 {
+			continue
+		}
+		data[i].Tags = tags.MergeTags(data[i].Tags, global, custom)
+	}
+	return data
+}
+
 func (d *dataStore) GetCallback() AddCallback {
 	d.logger.Debug().Msg("GetCallback called")
 	return func(data []datapoint.DataPoint, probe StrategyRouter) error {
 		d.logger.Debug().Int("datapoints_count", len(data)).Msg("Callback called")
 
-		if len(d.strategies) == 0 {
+		strategies := d.activeStrategies()
+		if len(strategies) == 0 {
 			d.logger.Warn().Msg("No strategies configured in datastore")
 			return nil
 		}
@@ -139,7 +200,12 @@ func (d *dataStore) GetCallback() AddCallback {
 				Msg("Unit corrections applied to datapoints")
 		}
 
-		for _, strategy := range d.strategies {
+		// Apply configured tags uniformly before routing to any sink:
+		// agent global_tags + per-probe custom_tags, priority
+		// custom_tags > global_tags > built-in probe tags.
+		correctedData = d.enrichWithConfiguredTags(correctedData)
+
+		for _, strategy := range strategies {
 			targetStrategies := probe.GetTargetStrategies()
 			d.logger.Debug().
 				Strs("target_strategies", targetStrategies).
@@ -203,7 +269,7 @@ func (d *dataStore) Start(quitChannel chan struct{}) error {
 
 func (d *dataStore) Shutdown(ctx context.Context) error {
 	errs := []error{}
-	for _, strategy := range d.strategies {
+	for _, strategy := range d.activeStrategies() {
 		err := strategy.Shutdown(ctx)
 		if err != nil {
 			errs = append(errs, err)
@@ -276,6 +342,10 @@ func (d *dataStore) convertMapTypes(input interface{}) interface{} {
 func (d *dataStore) OnConfigRefreshed(reason string) {
 	d.logger.Debug().Str("reason", reason).Msg("OnConfigRefreshed called")
 
+	d.refreshMu.Lock()
+	defer d.refreshMu.Unlock()
+
+	previous := d.activeStrategies()
 	newStrategies := make(map[string]SyncStrategy)
 
 	for _, storageConfig := range d.configProvider.GetConfiguration().StorageConfig {
@@ -288,9 +358,32 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 		}
 	}
 
-	d.strategies = make([]SyncStrategy, 0, len(newStrategies))
+	next := make([]SyncStrategy, 0, len(newStrategies))
+	kept := make(map[SyncStrategy]bool, len(newStrategies))
 	for _, strategy := range newStrategies {
-		d.strategies = append(d.strategies, strategy)
+		next = append(next, strategy)
+		kept[strategy] = true
+	}
+	d.strategies.Store(&next)
+
+	// Shut down strategies dropped or replaced by this refresh —
+	// otherwise their listener ports, gRPC connections and scheduler
+	// goroutines leak (and a recreated HTTP strategy fails to bind).
+	for _, old := range previous {
+		if kept[old] {
+			continue
+		}
+		d.logger.Info().
+			Str("strategy", old.GetStrategyName()).
+			Msg("Shutting down strategy removed by config refresh")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := old.Shutdown(ctx); err != nil {
+			d.logger.Error().
+				Err(err).
+				Str("strategy", old.GetStrategyName()).
+				Msg("Failed to shut down removed strategy")
+		}
+		cancel()
 	}
 }
 
@@ -301,8 +394,17 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 
 	searchStrategyId := d.GenerateStrategyId(strategyConfig.Name, strategyConfig.Params)
 
+	// replaced holds the same-named strategy this refresh is about to recreate
+	// (it could not be live-updated). It MUST be shut down before its
+	// replacement starts: strategies that own process-global state — the OTLP
+	// strategy registers its entity sources and runs the single entity detector
+	// through the package-global registry/channel — would otherwise overlap a
+	// stale producer with the fresh one, duplicating heartbeats and leaving the
+	// old detector polling sources the new instance already owns (#495).
+	var replaced SyncStrategy
+
 	// Search for existing strategy with the same name
-	for _, strategy := range d.strategies {
+	for _, strategy := range d.activeStrategies() {
 		if strategy.GetStrategyName() == strategyConfig.Name {
 			// Strategy of same type found, check if parameters have changed
 			strategyId := d.GenerateStrategyId(strategy.GetStrategyName(), strategy.GetStrategyParams())
@@ -323,6 +425,7 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 							Err(err).
 							Msg("Failed to update strategy configuration, will recreate")
 						// If update fails, continue to create a new strategy
+						replaced = strategy
 						break
 					} else {
 						d.logger.Info().Msg("✅ Strategy configuration updated successfully")
@@ -331,10 +434,29 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 				} else {
 					d.logger.Debug().Msg("Strategy does not support live updates, will recreate")
 					// Strategy does not support live updates, continue to recreate
+					replaced = strategy
 					break
 				}
 			}
 		}
+	}
+
+	// Tear the old instance down before the replacement starts so a strategy
+	// owning process-global state hands it off cleanly rather than overlapping
+	// (#495). Shutdown is idempotent, so the post-refresh cleanup in
+	// OnConfigRefreshed re-calling it is a no-op.
+	if replaced != nil {
+		d.logger.Info().
+			Str("strategy", replaced.GetStrategyName()).
+			Msg("Shutting down replaced strategy before starting its replacement")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := replaced.Shutdown(ctx); err != nil {
+			d.logger.Error().
+				Err(err).
+				Str("strategy", replaced.GetStrategyName()).
+				Msg("Failed to shut down replaced strategy")
+		}
+		cancel()
 	}
 
 	// Create a new strategy
@@ -352,7 +474,14 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		strategy = prtg.NewSyncStrategyPrtg(d.agentConfig, strategyConfig.Params, d.logger.Logger)
 	case "event":
 		d.logger.Debug().Msg("Initializing event strategy")
-		strategy = event.NewEventSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
+		eventStrategy, err := event.NewEventSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger)
+		if err != nil {
+			d.logger.Error().
+				Err(err).
+				Msg("Invalid event strategy configuration, strategy skipped")
+			return nil
+		}
+		strategy = eventStrategy
 	case "http":
 		d.logger.Debug().Msg("Initializing HTTP strategy")
 		strategy = http.NewHTTPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
@@ -389,7 +518,6 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		return nil
 	}
 
-	d.strategies = append(d.strategies, strategy)
 	d.logger.Debug().Msg("Strategy created successfully")
 	return strategy
 }
@@ -434,6 +562,7 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 				Str("probe_name", probeName).
 				Str("probe_type", probeType).
 				Msg("No transformer available for unit correction")
+			d.noteTransformerFallback(probeName, probeType, tagMap)
 			correctedDatapoints[i] = dp
 			continue
 		}
@@ -443,10 +572,9 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 		if defTransformer, ok := transformer.(interface {
 			ApplyUnitCorrection(string, float64, map[string]string) (float64, bool)
 		}); ok {
-			// Convert value to float64 for correction calculation
-			originalFloat64 := float64(dp.Value)
+			originalFloat64 := dp.Value
 			if newValue, applied := defTransformer.ApplyUnitCorrection(dp.Name, originalFloat64, tagMap); applied {
-				correctedValue = float32(newValue)
+				correctedValue = newValue
 				correctionCount++
 
 				d.logger.Info().
@@ -457,6 +585,12 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 					Float64("correction_factor", newValue/originalFloat64).
 					Msg("🔧 Unit correction applied to datapoint - ensuring consistent units across all strategies")
 			}
+		} else {
+			// Only the legacy fallback transformer (created when a probe
+			// has no YAML definition) lacks ApplyUnitCorrection: the
+			// datapoint ships with no unit injection and no corrections.
+			// Make that visible instead of silently degrading.
+			d.noteTransformerFallback(probeName, probeType, tagMap)
 		}
 
 		// Inject the unit tag from the YAML definition when the probe
@@ -498,4 +632,27 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 	}
 
 	return correctedDatapoints
+}
+
+// noteTransformerFallback surfaces a probe shipping datapoints without a
+// transformer YAML definition: it bumps the lifetime
+// senhub.agent.transformer.fallback counter on every affected datapoint
+// and logs a Warn once per probe type — symmetric with the OTel path,
+// which warns once per metric when no OTel mapping exists.
+//
+// Datapoints that carry no definition by design are exempt: OTLP-ingested
+// metrics (metric_type=otlp_ingest) and typed pass-through metrics
+// (otel_type tag) are already OTel-shaped and never had a YAML row.
+func (d *dataStore) noteTransformerFallback(probeName, probeType string, tagMap map[string]string) {
+	if tagMap["metric_type"] == otelmapper.MetricTypeOTLPIngest || tagMap["otel_type"] != "" {
+		return
+	}
+	agentstate.IncrementTransformerFallbacks()
+	if _, seen := d.transformerFallbackWarned.LoadOrStore(probeType, struct{}{}); seen {
+		return
+	}
+	d.logger.Warn().
+		Str("probe_name", probeName).
+		Str("probe_type", probeType).
+		Msg("Probe has no transformer definition - datapoints ship without unit injection or corrections. Add a YAML under transformers/definitions to fix.")
 }

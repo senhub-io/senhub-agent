@@ -465,15 +465,21 @@ func (m *MetricsProcessor) aggregateValues(values []float64, aggregation string)
 
 // evaluateThreshold evaluates a value against warning and critical thresholds
 func (m *MetricsProcessor) evaluateThreshold(value float64, warning, critical string, invert bool) int {
-	// Parse thresholds
+	// Parse thresholds. An empty critical means a warn-only check
+	// (standard Nagios practice — e.g. veeam_jobs_warning): the
+	// metric can reach WARNING but never escalates to CRITICAL.
 	warnThreshold, err := strconv.ParseFloat(warning, 64)
 	if err != nil {
 		return 3 // UNKNOWN
 	}
 
-	critThreshold, err := strconv.ParseFloat(critical, 64)
-	if err != nil {
-		return 3 // UNKNOWN
+	hasCritical := strings.TrimSpace(critical) != ""
+	var critThreshold float64
+	if hasCritical {
+		critThreshold, err = strconv.ParseFloat(critical, 64)
+		if err != nil {
+			return 3 // UNKNOWN
+		}
 	}
 
 	// Evaluate status
@@ -481,14 +487,14 @@ func (m *MetricsProcessor) evaluateThreshold(value float64, warning, critical st
 
 	if !invert {
 		// Normal evaluation: higher values are worse
-		if value >= critThreshold {
+		if hasCritical && value >= critThreshold {
 			status = 2 // CRITICAL
 		} else if value >= warnThreshold {
 			status = 1 // WARNING
 		}
 	} else {
 		// Inverted evaluation: lower values are worse
-		if value <= critThreshold {
+		if hasCritical && value <= critThreshold {
 			status = 2 // CRITICAL
 		} else if value <= warnThreshold {
 			status = 1 // WARNING
@@ -609,6 +615,15 @@ func (m *MetricsProcessor) GenerateSimpleNagiosResponse(probeName string, metric
 	var perfDataItems []string
 	metricCount := 0
 
+	// Track reachability via the canonical OTel availability gauge: every
+	// probe's up/reachability metric is named "<...>.up" (e.g.
+	// senhub.clickhouse.up, modbus.up). The target is considered
+	// unreachable only when ALL up-metrics report 0, so a single down
+	// component gauge (ceph.osd.up, envoy.cluster.up, ...) does not flag
+	// the whole probe CRITICAL.
+	upMetricsSeen := 0
+	upMetricsZero := 0
+
 	for _, metric := range metrics {
 		// Transform metric name using the same logic as PRTG
 		transformedName, _ := m.TransformMetricNameForPRTG("", metric)
@@ -618,16 +633,32 @@ func (m *MetricsProcessor) GenerateSimpleNagiosResponse(probeName string, metric
 		if val, ok := m.convertToFloat64(metric.Value); ok {
 			perfDataItems = append(perfDataItems, fmt.Sprintf("%s=%.2f", cleanName, val))
 			metricCount++
+
+			if strings.HasSuffix(metric.MetricName, ".up") {
+				upMetricsSeen++
+				if val == 0 {
+					upMetricsZero++
+				}
+			}
 		}
 	}
 
-	message := fmt.Sprintf("Probe %s healthy - %d metrics collected", probeName, metricCount)
 	perfData := strings.Join(perfDataItems, " ")
+
+	// Target unreachable: an up-metric exists and every up-signal is 0.
+	if upMetricsSeen > 0 && upMetricsZero == upMetricsSeen {
+		return NagiosResponse{
+			Status:     2, // CRITICAL
+			StatusText: "CRITICAL",
+			Message:    fmt.Sprintf("Probe %s target unreachable (up=0)", probeName),
+			PerfData:   perfData,
+		}
+	}
 
 	return NagiosResponse{
 		Status:     0, // OK
 		StatusText: "OK",
-		Message:    message,
+		Message:    fmt.Sprintf("Probe %s healthy - %d metrics collected", probeName, metricCount),
 		PerfData:   perfData,
 	}
 }

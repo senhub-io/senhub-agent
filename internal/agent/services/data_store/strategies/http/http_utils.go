@@ -147,23 +147,6 @@ func formatCommitHash(commit string) string {
 
 // Monitoring Format Handlers (Future Expansion)
 
-// handleZabbixMetricsGET handles GET requests for Zabbix format metrics (placeholder)
-func (u *UtilsManager) handleZabbixMetricsGET(w http.ResponseWriter, r *http.Request) {
-	_, authenticated := u.strategy.authManager.AuthenticateAndExtract(w, r)
-	if !authenticated {
-		return
-	}
-
-	u.logger.Info().Msg("🔄 Zabbix endpoint - Request received")
-
-	// TODO: Implement Zabbix format conversion
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	if _, err := w.Write([]byte(`{"error": "Zabbix format endpoint not yet implemented"}`)); err != nil {
-		u.logger.Error().Err(err).Msg("Failed to write Zabbix error response")
-	}
-}
-
 // handlePrometheusMetricsGET serves the SenHub-patterned scrape route
 // /api/{agentkey}/prometheus/metrics. Authentication is the standard agent
 // key extracted from the URL path.

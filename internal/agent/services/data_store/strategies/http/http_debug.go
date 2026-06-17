@@ -289,7 +289,7 @@ func (d *DebugManager) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Re
 		// Pool metrics with manufacturer/model tags for Dell corrections
 		{
 			Name:      "storage.pool.capacity.total",
-			Value:     float32(10995116277760), // 10TB in bytes - should become ~10.0 TB
+			Value:     float64(10995116277760), // 10TB in bytes - should become ~10.0 TB
 			Timestamp: now,
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "redfish"},
@@ -303,7 +303,7 @@ func (d *DebugManager) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Re
 		},
 		{
 			Name:      "storage.pool.capacity.available",
-			Value:     float32(8796093022208), // 8TB available in bytes - should become ~8.0 TB
+			Value:     float64(8796093022208), // 8TB available in bytes - should become ~8.0 TB
 			Timestamp: now,
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "redfish"},
@@ -318,7 +318,7 @@ func (d *DebugManager) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Re
 		// Volume metrics
 		{
 			Name:      "storage.volume.capacity.total",
-			Value:     float32(5497558138880), // 5TB volume in bytes
+			Value:     float64(5497558138880), // 5TB volume in bytes
 			Timestamp: now,
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "redfish"},
@@ -336,7 +336,7 @@ func (d *DebugManager) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Re
 		// Drive metrics - with drive_id that should be HIDDEN
 		{
 			Name:      "storage.drive.capacity.total",
-			Value:     float32(2000398934016), // 2TB drive in bytes
+			Value:     float64(2000398934016), // 2TB drive in bytes
 			Timestamp: now,
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "redfish"},
@@ -352,7 +352,7 @@ func (d *DebugManager) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Re
 		// Multiple pools to test filtering
 		{
 			Name:      "storage.pool.capacity.total",
-			Value:     float32(5497558138880), // 5TB pool
+			Value:     float64(5497558138880), // 5TB pool
 			Timestamp: now,
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "redfish"},
@@ -441,23 +441,23 @@ func (d *DebugManager) HandleInjectRealMetrics(w http.ResponseWriter, r *http.Re
 			tagSlice = append(tagSlice, tags.Tag{Key: key, Value: value})
 		}
 
-		// Convert value to float32 (required by DataPoint)
-		var value float32
+		// Convert value to float64 (DataPoint.Value type)
+		var value float64
 		switch v := metric.Value.(type) {
 		case float64:
-			value = float32(v)
-		case float32:
 			value = v
+		case float32:
+			value = float64(v)
 		case int:
-			value = float32(v)
+			value = float64(v)
 		case int64:
-			value = float32(v)
+			value = float64(v)
 		case int32:
-			value = float32(v)
+			value = float64(v)
 		default:
-			// Try to convert via string if possible
+			// Try to convert via float64 if possible
 			if f, ok := v.(float64); ok {
-				value = float32(f)
+				value = f
 			} else {
 				value = 0 // Default fallback
 			}

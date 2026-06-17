@@ -52,12 +52,11 @@ until a customer pilot lights up the corresponding probe. Schema is
 validated, queries are cross-checked against
 `internal/agent/services/data_store/transformers/definitions/<probe>.yaml`
 canonical OTel names, but no production data has yet flowed through
-them on sha901. The annotation drops on the first customer go-live.
+them on the operations Grafana host. The annotation drops on the first customer go-live.
 
 ## Standard layout grammar
 
-Every dashboard follows the same shape (see
-`research/REFERENCE-DASHBOARDS.md` §3 for the rationale):
+Every dashboard follows the same shape:
 
 - Top row: 4 stat tiles with the headline KPIs of the audience.
 - Second row: 2 chunky timeseries for the same KPIs over time.
@@ -69,7 +68,7 @@ Time range default `now-1h`, refresh `30s`, tags
 
 ## Datasources expected
 
-Provisioned on sha901 today (must exist on the target Grafana):
+Provisioned on the operations Grafana host today (must exist on the target Grafana):
 
 - **VictoriaMetrics** — Prometheus-compatible, UID `victoriametrics`,
   URL `http://localhost:8427` (via vmauth)
@@ -115,13 +114,10 @@ updates the dashboard in place.
 
 ## Research artefacts
 
-See `research/`:
-
-- `REFERENCE-DASHBOARDS.md` — survey of canonical dashboards (Grafana
-  Cloud Linux/Windows integrations, Node Exporter Full, Grafana
-  Alloy mixin, Citrix/NetScaler/Veeam/Redfish references) and the
-  layout grammar adopted.
-- `CATALOG-PROPOSAL.md` — dashboard-by-dashboard target structure.
-- `IMPLEMENTATION-PLAN.md` — 3-phase execution plan (this catalog
-  ships Phase 2; Phase 3 adds the vendor pack: Citrix, NetScaler,
-  Veeam, Redfish).
+The Grafana catalog derives from a multi-source survey of canonical
+dashboards (Grafana Cloud Linux/Windows integrations, Node Exporter
+Full, Grafana Alloy mixin, Citrix/NetScaler/Veeam/Redfish vendor
+references). The full survey, the dashboard-by-dashboard catalog
+proposal and the phased execution plan live in the SenHub internal
+documentation companion repo and are not redistributed alongside
+the OSS agent.

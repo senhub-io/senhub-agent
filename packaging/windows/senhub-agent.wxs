@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SenHub Agent — Windows MSI source (WiX Toolset v4+).
+
+  Build (cross-platform, requires the WiX dotnet tool + the Windows
+  binary staged at $(BinDir)\senhub-agent.exe):
+
+      wix build packaging/windows/senhub-agent.wxs ^
+        -d Version=0.2.0 ^
+        -d BinDir=dist\windows-amd64 ^
+        -arch x64 ^
+        -ext WixToolset.Util.wixext ^
+        -out dist\senhub-agent-0.2.0-amd64.msi
+
+  The MSI installs senhub-agent.exe into %ProgramFiles%\SenHub Agent\,
+  registers the "senhub-agent" Windows service (matching the kardianos
+  service.Config Name in cmd/agent/service.go), and supports silent
+  install with parametric configuration:
+
+      msiexec /i senhub-agent.msi /qn ^
+        BACKEND_URL=https://eu-west-1.intake.senhub.io ^
+        AGENT_TOKEN=xxxxxxxx
+
+  See docs/deployment/windows-msi.md for GPO / SCCM / Intune deployment.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <!--
+    The UpgradeCode MUST remain stable across all versions so that
+    major upgrades (clean replace of an older MSI) are detected.
+    NEVER regenerate this GUID once shipped.
+  -->
+  <?define UpgradeCode = "8E0E0B5C-2C8F-4C4B-9E2A-1B0D7F9A6C31" ?>
+  <?define ServiceName = "senhub-agent" ?>
+  <?define ServiceDisplayName = "SenHub Agent" ?>
+  <?define ServiceDescription = "SenHub Agent Service for monitoring and management" ?>
+
+  <Package
+      Name="SenHub Agent"
+      Manufacturer="Sensor Factory"
+      Version="$(Version)"
+      UpgradeCode="$(UpgradeCode)"
+      Scope="perMachine"
+      Compressed="yes"
+      InstallerVersion="500">
+
+    <!-- Embed the cabinet inside the MSI so a single file ships. -->
+    <MediaTemplate EmbedCab="yes" />
+
+    <!--
+      Clean major-upgrade story: a newer MSI removes the older product
+      first, then installs. Config under %ProgramData%\SenHub is NOT
+      owned by the MSI (see comment on the config component), so it
+      survives the upgrade automatically.
+    -->
+    <MajorUpgrade
+        DowngradeErrorMessage="A newer version of [ProductName] is already installed."
+        Schedule="afterInstallInitialize" />
+
+    <!-- ============================================================ -->
+    <!-- Parametric configuration via public MSI properties.          -->
+    <!-- Public (uppercase) properties can be set on the msiexec       -->
+    <!-- command line for silent / GPO / SCCM / Intune deployment.     -->
+    <!-- ============================================================ -->
+    <Property Id="BACKEND_URL" Value="https://eu-west-1.intake.senhub.io" />
+    <Property Id="AGENT_TOKEN" Value="" Secure="yes" />
+
+    <!--
+      Seed %ProgramData%\SenHub\agent.yaml from the BACKEND_URL /
+      AGENT_TOKEN properties at install time, but ONLY when the file
+      does not already exist — so an upgrade or reinstall preserves
+      operator configuration (acceptance: "préserver config existante").
+
+      We invoke the installed binary's config-generation path rather
+      than templating YAML inside the MSI, so the schema stays owned by
+      the agent. The exact subcommand is validated on a real Windows
+      host (see docs/deployment/windows-msi.md, "Config seeding"); the
+      placeholder below is `config generate` and MUST be confirmed
+      against cmd/agent before first signed release — tracked as a
+      deferred item in the PR body.
+    -->
+    <SetProperty Id="SeedConfig"
+                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config generate --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --backend-url &quot;[BACKEND_URL]&quot; --token &quot;[AGENT_TOKEN]&quot;"
+                 Before="SeedConfig"
+                 Sequence="execute"
+                 Condition="NOT Installed" />
+
+    <CustomAction Id="SeedConfig"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <InstallExecuteSequence>
+      <!-- After files are laid down, before the service starts. -->
+      <Custom Action="SeedConfig" After="InstallFiles" Condition="NOT Installed" />
+    </InstallExecuteSequence>
+
+    <Feature Id="Main" Title="SenHub Agent" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+
+    <!-- ============================================================ -->
+    <!-- Install layout.                                              -->
+    <!--   %ProgramFiles%\SenHub Agent\senhub-agent.exe  (binary)    -->
+    <!--   %ProgramData%\SenHub\                          (config)    -->
+    <!-- ============================================================ -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="SenHub Agent" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DATAFOLDER" Name="SenHub" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="ProductComponents">
+
+      <!-- The agent binary + the Windows service registration. -->
+      <Component Id="AgentExe" Directory="INSTALLFOLDER" Guid="*">
+        <File Id="SenHubAgentExe"
+              Name="senhub-agent.exe"
+              Source="$(BinDir)\senhub-agent.exe"
+              KeyPath="yes" />
+
+        <!--
+          Register the Windows service. Name + DisplayName + Description
+          mirror cmd/agent/service.go svcConfig so an MSI-installed
+          service is indistinguishable from one created by
+          `senhub-agent install`. ExecStart args match the offline-only
+          model (0.2.0+): run --config-path <canonical config>.
+        -->
+        <ServiceInstall
+            Id="SenHubAgentService"
+            Name="$(ServiceName)"
+            DisplayName="$(ServiceDisplayName)"
+            Description="$(ServiceDescription)"
+            Type="ownProcess"
+            Start="auto"
+            ErrorControl="normal"
+            Account="LocalSystem"
+            Arguments="run --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot;"
+            Vital="yes">
+          <!-- Mirror the kardianos recovery policy: restart on failure. -->
+          <util:ServiceConfig
+              FirstFailureActionType="restart"
+              SecondFailureActionType="restart"
+              ThirdFailureActionType="restart"
+              RestartServiceDelayInSeconds="10"
+              ResetPeriodInDays="1" />
+        </ServiceInstall>
+
+        <!-- Start on install, stop+remove on uninstall. -->
+        <ServiceControl
+            Id="SenHubAgentServiceControl"
+            Name="$(ServiceName)"
+            Start="install"
+            Stop="both"
+            Remove="uninstall"
+            Wait="yes" />
+      </Component>
+
+      <!--
+        Config directory ownership.
+
+        The config file itself is intentionally NOT installed as an MSI
+        File: if the MSI owned it, an uninstall would delete operator
+        configuration and a repair would overwrite it. Instead the agent
+        generates %ProgramData%\SenHub\agent.yaml on first service start
+        (generateOfflineConfiguration in cmd/agent/service.go) seeded from
+        the BACKEND_URL / AGENT_TOKEN properties via the WriteConfig custom
+        action below. This keeps "clean uninstall" and "preserve config on
+        upgrade" both true: the MSI removes only what it created.
+
+        We register the directory as a component (with an empty keypath
+        registry value) so the install is well-formed, but we do NOT mark
+        the directory for removal — leftover operator config is preferred
+        over data loss on uninstall (acceptance criterion: no orphan files
+        OUTSIDE user preference; config is user preference).
+      -->
+      <Component Id="DataFolderMarker" Directory="DATAFOLDER" Guid="*">
+        <RegistryValue Root="HKLM"
+                       Key="SOFTWARE\Sensor Factory\SenHub Agent"
+                       Name="InstallFolder"
+                       Type="string"
+                       Value="[INSTALLFOLDER]"
+                       KeyPath="yes" />
+        <RegistryValue Root="HKLM"
+                       Key="SOFTWARE\Sensor Factory\SenHub Agent"
+                       Name="Version"
+                       Type="string"
+                       Value="$(Version)" />
+      </Component>
+
+    </ComponentGroup>
+  </Package>
+</Wix>

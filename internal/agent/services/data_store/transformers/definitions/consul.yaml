@@ -1,0 +1,100 @@
+probe_name: "consul"
+friendly_name: "Consul"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["state"]
+
+# Free probe: Consul agent health and cluster metrics via the HTTP API.
+# Metrics from /v1/agent/metrics?format=prometheus (Consul 1.1+),
+# /v1/agent/self (leader status) and /v1/health/state/* (check counts).
+
+metrics:
+  - name: "senhub.consul.up"
+    channel: "consul_up"
+    display_name: "Consul Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the Consul agent HTTP API is reachable and responding"
+    otel:
+      name: senhub.consul.up
+      unit: "1"
+      type: gauge
+
+  - name: "consul.catalog.services"
+    channel: "consul_catalog_services"
+    display_name: "Consul Registered Services"
+    unit: "#"
+    category: "overview"
+    description: "Number of services registered in the Consul catalog"
+    otel:
+      name: consul.catalog.services
+      unit: "{service}"
+      type: gauge
+
+  - name: "consul.serf.members"
+    channel: "consul_serf_members"
+    display_name: "Consul LAN Members"
+    unit: "#"
+    category: "overview"
+    description: "Number of LAN Serf cluster members"
+    otel:
+      name: consul.serf.members
+      unit: "{member}"
+      type: gauge
+
+  - name: "consul.raft.commit.time"
+    channel: "consul_raft_commit_time"
+    display_name: "Consul Raft Commit Time"
+    unit: "ms"
+    category: "performance"
+    description: "Mean Raft commit time over the last interval (milliseconds)"
+    otel:
+      name: consul.raft.commit.time
+      unit: "ms"
+      type: gauge
+
+  - name: "consul.rpc.requests"
+    channel: "consul_rpc_requests"
+    display_name: "Consul RPC Requests"
+    unit: "#"
+    category: "throughput"
+    description: "Total RPC requests handled by this Consul agent"
+    otel:
+      name: consul.rpc.requests
+      unit: "{request}"
+      type: counter
+
+  - name: "consul.dns.queries"
+    channel: "consul_dns_queries"
+    display_name: "Consul DNS Queries"
+    unit: "#"
+    category: "throughput"
+    description: "Total DNS domain queries handled by this Consul agent"
+    otel:
+      name: consul.dns.queries
+      unit: "{query}"
+      type: counter
+
+  - name: "consul.health.checks"
+    channel: "consul_health_checks_{state}"
+    display_name: "Consul Health Checks ({state})"
+    unit: "#"
+    category: "health"
+    description: "Number of Consul health checks in this state (critical, warning, passing)"
+    otel:
+      name: consul.health.checks
+      unit: "{check}"
+      type: gauge
+    tag_to_attribute:
+      state: consul.check.state
+
+  - name: "consul.leader"
+    channel: "consul_leader"
+    display_name: "Consul Leader"
+    unit: "#"
+    category: "overview"
+    description: "1 when this Consul agent is the current Raft leader"
+    otel:
+      name: consul.leader
+      unit: "1"
+      type: gauge

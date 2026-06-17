@@ -558,9 +558,6 @@ func (a *APIManager) HandleListEndpoints(w http.ResponseWriter, r *http.Request)
 		{"/api/{agentkey}/nagios/metrics", []string{"GET", "POST"}, "Get aggregated metrics in Nagios format", "nagios"},
 		{"/api/{agentkey}/nagios/checks", []string{"GET"}, "List available Nagios checks", "nagios"},
 
-		// Zabbix Format (if enabled)
-		{"/api/{agentkey}/zabbix/metrics/{probe}", []string{"GET"}, "Get metrics in Zabbix format", "zabbix"},
-
 		// Prometheus Format (if enabled)
 		{"/api/{agentkey}/prometheus/metrics", []string{"GET"}, "Get metrics in Prometheus format", "prometheus"},
 	}
@@ -782,6 +779,16 @@ func (a *APIManager) HandleInfoOTLP(w http.ResponseWriter, r *http.Request) {
 			RestoredEntries:    agentstate.GetOTLPCheckpointRestoredCount(),
 			ErrorsTotal:        errorsTotal,
 			ErrorsByStage:      errorsByStage,
+		},
+		LogsQueue: OTLPLogsQueueInfo{
+			Records:       agentstate.GetOTLPLogsQueueRecords(),
+			Bytes:         agentstate.GetOTLPLogsQueueBytes(),
+			QueuedTotal:   agentstate.GetOTLPLogsQueuedTotal(),
+			ReplayedTotal: agentstate.GetOTLPLogsReplayedTotal(),
+		},
+		Failover: OTLPFailoverInfo{
+			ActiveEndpointIndex: agentstate.GetOTLPActiveEndpointIndex(),
+			SwitchesTotal:       agentstate.GetOTLPEndpointSwitchesTotal(),
 		},
 		Parallel: OTLPParallelInfo{
 			SubBatches: agentstate.GetOTLPSubBatchCount(),

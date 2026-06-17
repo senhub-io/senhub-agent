@@ -85,6 +85,41 @@ func TestBootSmoke_Version(t *testing.T) {
 	}
 }
 
+// TestBootSmoke_VersionFlag pins the post-#134 contract:
+// `senhub-agent --version` prints the version and exits 0 instead of
+// spawning a full agent. Pre-fix it fell through to `run`, racing
+// the systemd-managed service for the listener port.
+func TestBootSmoke_VersionFlag(t *testing.T) {
+	bin := buildAgent(t)
+	out, err := execAgent(t, bin, "--version")
+	if err != nil {
+		t.Fatalf("`senhub-agent --version` returned error: %v\noutput:\n%s", err, out)
+	}
+	if !strings.Contains(out, "Version") {
+		t.Errorf("`senhub-agent --version` output missing 'Version':\n%s", out)
+	}
+	if strings.Contains(out, "Starting") || strings.Contains(out, "Initializing agent") {
+		t.Errorf("`senhub-agent --version` should NOT start the agent:\n%s", out)
+	}
+}
+
+// TestBootSmoke_UnknownArgRejected pins the closed-set rejection of
+// unknown top-level args. Pre-fix the parser silently routed
+// anything unknown to `run`, allowing a typo to spawn an agent.
+func TestBootSmoke_UnknownArgRejected(t *testing.T) {
+	bin := buildAgent(t)
+	out, err := execAgent(t, bin, "--definitely-not-a-flag")
+	if err == nil {
+		t.Fatalf("`senhub-agent --definitely-not-a-flag` should exit non-zero — got success.\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "unknown command or flag") {
+		t.Errorf("error output should mention 'unknown command or flag':\n%s", out)
+	}
+	if strings.Contains(out, "Starting") || strings.Contains(out, "Initializing agent") {
+		t.Errorf("unknown flag should NOT start the agent:\n%s", out)
+	}
+}
+
 // TestBootSmoke_ConfigCheckFreeTier exercises `agent config check` on
 // the free-tier example. Free-tier is the only example we can assert
 // is fully error-free out of the box: the Pro / Enterprise / grace

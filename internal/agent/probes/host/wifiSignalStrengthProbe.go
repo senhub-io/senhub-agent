@@ -124,15 +124,17 @@ func (m *wifiSignalStrengthProbe) Collect() ([]data_store.DataPoint, error) {
 		return nil, err
 	}
 
-	// Enrich datapoints with probe name and send to strategies
-	if m.OnDataPoints != nil {
-		enrichedMetrics := m.EnrichDataPointsWithProbeName(metrics, m.GetName())
-		if err := m.OnDataPoints(enrichedMetrics, m); err != nil {
-			return nil, fmt.Errorf("error handling data points: %v", err)
-		}
-	}
+	return m.finish(metrics), nil
+}
 
-	return metrics, nil
+// finish enriches collected datapoints unconditionally, like every
+// other host probe: the enrichment used to live inside the dead
+// OnDataPoints branch (SetOnDataPoints has zero callers), so wifi
+// datapoints reached the store without probe_name/probe_type —
+// skipping the transformer, defeating per-probe custom_tags and
+// mispartitioning OTLP series under the empty probe key (#264).
+func (m *wifiSignalStrengthProbe) finish(metrics []data_store.DataPoint) []data_store.DataPoint {
+	return m.BaseProbe.EnrichDataPointsWithProbeName(metrics, m.GetName())
 }
 
 func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, error) {
@@ -194,7 +196,7 @@ func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, erro
 		{
 			Name:      "wifi_signal_strength",
 			Timestamp: time.Now(),
-			Value:     float32(signalStrength),
+			Value:     float64(signalStrength),
 			Tags:      wifiTags,
 		},
 	}, nil
@@ -240,7 +242,7 @@ func (m *wifiSignalStrengthProbe) collectLinux() ([]data_store.DataPoint, error)
 				dataPoints = append(dataPoints, data_store.DataPoint{
 					Name:      "wifi_signal_strength",
 					Timestamp: timestamp,
-					Value:     float32(signalStrength),
+					Value:     float64(signalStrength),
 					Tags:      wifiTags,
 				})
 			}
@@ -252,7 +254,7 @@ func (m *wifiSignalStrengthProbe) collectLinux() ([]data_store.DataPoint, error)
 					quality, err := strconv.Atoi(qualityParts[0])
 					maxQuality, err2 := strconv.Atoi(qualityParts[1])
 					if err == nil && err2 == nil && maxQuality > 0 {
-						qualityPercent := float32(quality) / float32(maxQuality) * 100
+						qualityPercent := float64(quality) / float64(maxQuality) * 100
 						dataPoints = append(dataPoints, data_store.DataPoint{
 							Name:      "wifi_quality",
 							Timestamp: timestamp,

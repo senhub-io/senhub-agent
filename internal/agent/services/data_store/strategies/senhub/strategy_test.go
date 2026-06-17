@@ -20,8 +20,9 @@ type mockAgentConfig struct {
 	serverURL string
 }
 
-func (m *mockAgentConfig) GetAuthenticationKey() string { return m.authKey }
-func (m *mockAgentConfig) GetServerUrl() string         { return m.serverURL }
+func (m *mockAgentConfig) GetAuthenticationKey() string     { return m.authKey }
+func (m *mockAgentConfig) GetServerUrl() string             { return m.serverURL }
+func (m *mockAgentConfig) GetGlobalTags() map[string]string { return nil }
 
 // Mock Server
 type mockServer struct {
@@ -136,7 +137,7 @@ func TestBuffer_ConcurrentAccess(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(n int) {
 			data := []datapoint.DataPoint{
-				{Name: "concurrent.metric", Value: float32(n), Timestamp: time.Now()},
+				{Name: "concurrent.metric", Value: float64(n), Timestamp: time.Now()},
 			}
 			_ = buffer.Append(data)
 			done <- true

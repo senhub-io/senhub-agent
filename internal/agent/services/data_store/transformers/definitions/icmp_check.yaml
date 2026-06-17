@@ -1,0 +1,127 @@
+probe_name: "icmp_check"
+friendly_name: "ICMP Check"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["target"]
+
+# Free active-check probe (#299): multi-target ping. One instance per
+# target via the target tag (discriminant). RTTs are emitted in
+# milliseconds on the wire; the OTel mapping converts to seconds.
+# No otelcol-contrib receiver covers ICMP checks, hence senhub.icmp.*.
+
+metrics:
+  - name: "senhub.icmp.up"
+    channel: "icmp_up"
+    display_name: "Ping {target} Reachability"
+    unit: "#"
+    category: "availability"
+    description: "1 when the target answered at least one echo request in the last cycle, 0 otherwise"
+    otel:
+      name: senhub.icmp.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      target: icmp.target
+      ip: icmp.target.ip
+
+  - name: "senhub.icmp.packet_loss"
+    channel: "icmp_packet_loss"
+    display_name: "Ping {target} Packet Loss"
+    unit: "%"
+    category: "availability"
+    description: "Percentage of echo requests without a reply in the last cycle"
+    otel:
+      name: senhub.icmp.packet_loss
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      target: icmp.target
+      ip: icmp.target.ip
+
+  - name: "senhub.icmp.packets.sent"
+    channel: "icmp_packets_sent"
+    display_name: "Ping {target} Packets Sent"
+    unit: "#"
+    category: "availability"
+    description: "Echo requests sent in the last cycle"
+    otel:
+      name: senhub.icmp.packets.sent
+      unit: "{packet}"
+      type: gauge
+    tag_to_attribute:
+      target: icmp.target
+      ip: icmp.target.ip
+
+  - name: "senhub.icmp.packets.received"
+    channel: "icmp_packets_received"
+    display_name: "Ping {target} Packets Received"
+    unit: "#"
+    category: "availability"
+    description: "Echo replies received in the last cycle"
+    otel:
+      name: senhub.icmp.packets.received
+      unit: "{packet}"
+      type: gauge
+    tag_to_attribute:
+      target: icmp.target
+      ip: icmp.target.ip
+
+  - name: "senhub.icmp.rtt.min"
+    channel: "icmp_rtt_min"
+    display_name: "Ping {target} RTT Min"
+    unit: "ms"
+    category: "latency"
+    description: "Minimum round-trip time over the last cycle"
+    otel:
+      name: senhub.icmp.rtt.min
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      target: icmp.target
+      ip: icmp.target.ip
+
+  - name: "senhub.icmp.rtt.avg"
+    channel: "icmp_rtt_avg"
+    display_name: "Ping {target} RTT Avg"
+    unit: "ms"
+    category: "latency"
+    description: "Average round-trip time over the last cycle"
+    otel:
+      name: senhub.icmp.rtt.avg
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      target: icmp.target
+      ip: icmp.target.ip
+
+  - name: "senhub.icmp.rtt.max"
+    channel: "icmp_rtt_max"
+    display_name: "Ping {target} RTT Max"
+    unit: "ms"
+    category: "latency"
+    description: "Maximum round-trip time over the last cycle"
+    otel:
+      name: senhub.icmp.rtt.max
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      target: icmp.target
+      ip: icmp.target.ip
+
+  - name: "senhub.icmp.rtt.stddev"
+    channel: "icmp_rtt_stddev"
+    display_name: "Ping {target} RTT StdDev"
+    unit: "ms"
+    category: "latency"
+    description: "Round-trip time standard deviation (jitter proxy) over the last cycle"
+    otel:
+      name: senhub.icmp.rtt.stddev
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      target: icmp.target
+      ip: icmp.target.ip

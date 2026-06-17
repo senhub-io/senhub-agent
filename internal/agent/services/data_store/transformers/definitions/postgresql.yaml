@@ -61,44 +61,19 @@ metrics:
   # ═════════════════════════════════════════════════════════════════════════
   # CONNECTIONS — backends per state, max, utilization
   # ═════════════════════════════════════════════════════════════════════════
-  - name: "postgresql.backends.active"
-    channel: "pg_backends_active"
-    display_name: "Backends Active"
+  - name: "postgresql.backends"
+    channel: "pg_backends_{state}"
+    display_name: "Backends ({state})"
     unit: "#"
+    multi_instance_labels: ["state"]
     category: "connections"
-    description: "Backends with state='active' (currently executing a query)"
+    description: "Client backends grouped by connection state (active / idle / idle_in_transaction). One datapoint per state value; discriminated by the 'state' tag."
     otel:
       name: postgresql.backends
       unit: "{backend}"
       type: gauge
-      attributes:
-        state: active
-
-  - name: "postgresql.backends.idle"
-    channel: "pg_backends_idle"
-    display_name: "Backends Idle"
-    unit: "#"
-    category: "connections"
-    description: "Backends with state='idle' (waiting for next command)"
-    otel:
-      name: postgresql.backends
-      unit: "{backend}"
-      type: gauge
-      attributes:
-        state: idle
-
-  - name: "postgresql.backends.idle_in_transaction"
-    channel: "pg_backends_idle_in_transaction"
-    display_name: "Idle in Transaction"
-    unit: "#"
-    category: "connections"
-    description: "Backends with state='idle in transaction' — long-running ones leak locks; alert if growing"
-    otel:
-      name: postgresql.backends
-      unit: "{backend}"
-      type: gauge
-      attributes:
-        state: idle_in_transaction
+    tag_to_attribute:
+      state: db.client.connection.state
 
   - name: "postgresql.connection.max"
     channel: "pg_connection_max"
@@ -317,95 +292,3 @@ metrics:
       unit: "1"
       type: gauge
 
-  # ═════════════════════════════════════════════════════════════════════════
-  # DIFFERENTIATORS — bloat (per-table, opt-in)
-  # ═════════════════════════════════════════════════════════════════════════
-  - name: "senhub.db.postgresql.bloat.ratio"
-    channel: "pg_bloat_ratio_{schema}_{table}"
-    display_name: "Table Bloat Ratio ({schema}.{table})"
-    unit: "%"
-    multi_instance_labels: ["schema", "table"]
-    category: "bloat"
-    description: "Estimated bloat ratio per table (heuristic from pg_class stats). Schema is part of the channel key so public.orders and staging.orders never collide."
-    otel:
-      name: senhub.db.postgresql.bloat.ratio
-      unit: "1"
-      type: gauge
-    tag_to_attribute:
-      schema: db.schema.name
-      table: db.table.name
-
-  - name: "senhub.db.postgresql.bloat.size"
-    channel: "pg_bloat_size_{schema}_{table}"
-    display_name: "Table Bloat Size ({schema}.{table})"
-    unit: "B"
-    multi_instance_labels: ["schema", "table"]
-    category: "bloat"
-    description: "Estimated bloat in bytes per table."
-    otel:
-      name: senhub.db.postgresql.bloat.size
-      unit: "By"
-      type: gauge
-    tag_to_attribute:
-      schema: db.schema.name
-      table: db.table.name
-
-  # ═════════════════════════════════════════════════════════════════════════
-  # DIFFERENTIATORS — pg_stat_statements (opt-in, requires extension)
-  # ═════════════════════════════════════════════════════════════════════════
-  - name: "senhub.db.postgresql.statement.calls"
-    channel: "pg_statement_calls"
-    display_name: "Statement Calls"
-    unit: "#"
-    category: "stat_statements"
-    description: "Total number of statements executed across all entries in pg_stat_statements"
-    otel:
-      name: senhub.db.postgresql.statement.calls
-      unit: "{call}"
-      type: counter
-
-  - name: "senhub.db.postgresql.statement.exec_time.mean"
-    channel: "pg_statement_exec_time_mean"
-    display_name: "Statement Exec Time Mean"
-    unit: "ms"
-    category: "stat_statements"
-    description: "Mean execution time across pg_stat_statements entries. Source in ms — converted to seconds for OTel (mapper ÷ 1000)."
-    otel:
-      name: senhub.db.postgresql.statement.exec_time.mean
-      unit: "s"
-      type: gauge
-
-  # ═════════════════════════════════════════════════════════════════════════
-  # PER-DATABASE (opt-in, cardinality-bounded)
-  # ═════════════════════════════════════════════════════════════════════════
-  - name: "postgresql.db_size.per_database"
-    channel: "pg_db_size_per_database_{database}"
-    display_name: "Database Size ({database})"
-    unit: "B"
-    multi_instance_labels: ["database"]
-    category: "storage"
-    description: "Size of an individual database (opt-in via per_database flag)"
-    otel:
-      name: postgresql.db_size
-      unit: "By"
-      type: gauge
-    tag_to_attribute:
-      database: db.namespace
-
-  # ═════════════════════════════════════════════════════════════════════════
-  # PER-TABLE (opt-in, cardinality-bounded)
-  # ═════════════════════════════════════════════════════════════════════════
-  - name: "postgresql.table.size"
-    channel: "pg_table_size_{database}_{table}"
-    display_name: "Table Size ({database}.{table})"
-    unit: "B"
-    multi_instance_labels: ["database", "table"]
-    category: "storage"
-    description: "Size of an individual table (opt-in via per_table flag, contrib canon)"
-    otel:
-      name: postgresql.table.size
-      unit: "By"
-      type: gauge
-    tag_to_attribute:
-      database: db.namespace
-      table: db.table.name

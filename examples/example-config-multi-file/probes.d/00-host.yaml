@@ -1,0 +1,24 @@
+# Host-local observability — free-tier probes. Add more by creating
+# another file (e.g. 10-mysql.yaml). Files load alphabetically; each
+# is a YAML array of probe configs. Disable a fragment by renaming
+# it to *.disabled (no deletion required).
+
+- name: cpu
+  type: cpu
+  params:
+    interval: 30
+
+- name: memory
+  type: memory
+  params:
+    interval: 30
+
+- name: network
+  type: network
+  params:
+    interval: 60
+
+- name: logicaldisk
+  type: logicaldisk
+  params:
+    interval: 30

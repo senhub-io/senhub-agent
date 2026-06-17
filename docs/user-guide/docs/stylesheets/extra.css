@@ -1,0 +1,168 @@
+/* ===== SenHub brand palette on Material ===== */
+:root {
+  --sh-amber: #fcbe36;
+  --sh-cyan: #00caf6;
+}
+
+/* Light header in light mode (matches the agent.senhub.io landing) */
+[data-md-color-scheme="default"][data-md-color-primary="custom"] {
+  --md-primary-fg-color: #ffffff;        /* header background = white */
+  --md-primary-fg-color--light: #ffffff;
+  --md-primary-fg-color--dark: #f2f3f5;
+  --md-primary-bg-color: #212529;        /* dark text/icons on the bar */
+  --md-primary-bg-color--light: #5b6472;
+}
+/* Dark header in dark mode */
+[data-md-color-scheme="slate"][data-md-color-primary="custom"] {
+  --md-primary-fg-color: #1f2229;
+  --md-primary-fg-color--light: #2a2d35;
+  --md-primary-fg-color--dark: #15171c;
+  --md-primary-bg-color: #e6e9ef;
+  --md-primary-bg-color--light: #aab2bf;
+}
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: #00a5cc;
+}
+/* clean hairline under the white header instead of a heavy shadow */
+[data-md-color-scheme="default"] .md-header {
+  border-bottom: 1px solid #e7e9ef;
+  box-shadow: none;
+}
+/* keep the search field legible on the white header */
+[data-md-color-scheme="default"] .md-search__input { background-color: #f1f2f5; }
+[data-md-color-scheme="default"] .md-search__input::placeholder { color: #8a929e; }
+
+/* links — SenHub cyan, both schemes */
+[data-md-color-scheme="default"] { --md-typeset-a-color: #0091bd; }
+[data-md-color-scheme="slate"]   { --md-typeset-a-color: #29c7f0; }
+
+/* amber active marker in the left nav + active TOC */
+.md-nav__link--active,
+.md-nav__item .md-nav__link--active {
+  color: #0091bd;
+}
+.md-typeset .md-typeset__scrollwrap { scrollbar-color: var(--sh-cyan) transparent; }
+
+/* header logo a touch bigger */
+.md-header__button.md-logo img { height: 1.6rem; }
+
+/* primary "amber" call-to-action buttons (.md-button.amber) */
+.md-typeset .md-button.amber {
+  background: var(--sh-amber);
+  border-color: var(--sh-amber);
+  color: #212529;
+}
+.md-typeset .md-button.amber:hover {
+  background: #f0ad17;
+  border-color: #f0ad17;
+}
+
+/* ===== Release-note tags ===== */
+.tag {
+  display: inline-block;
+  font-size: .62rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  vertical-align: middle;
+  margin-right: 5px;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+.t-new      { background: rgba(0, 202, 246, .16); color: #0277a0; }
+.t-improved { background: rgba(33, 150, 243, .14); color: #1565c0; }
+.t-fixed    { background: rgba(76, 175, 80, .18); color: #2e7d32; }
+.t-perf     { background: rgba(156, 39, 176, .14); color: #7b1fa2; }
+.t-security { background: rgba(244, 67, 54, .14); color: #c62828; }
+.t-breaking { background: rgba(252, 190, 54, .30); color: #8a5d00; }
+.t-deprecated,
+.t-removed,
+.t-internal { background: rgba(120, 128, 140, .16); color: #56606e; }
+.t-area {
+  background: #eceff3;
+  color: #41474f;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+[data-md-color-scheme="slate"] .t-area { background: #2b313b; color: #c5ccd6; }
+
+/* release entries: tidy list with hanging tags */
+.rn li { margin: .35rem 0; }
+
+/* ===== Interactive tag filter (release notes) ===== */
+.rn-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin: 1.1rem 0 1.6rem;
+}
+.rn-filter .rn-filter-label {
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--md-default-fg-color--light);
+  margin-right: 2px;
+}
+.rn-fbtn {
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-family: inherit;
+  opacity: .85;
+  transition: opacity .12s ease, box-shadow .12s ease;
+}
+.rn-fbtn:hover { opacity: 1; }
+.rn-fbtn.active {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--md-default-fg-color);
+}
+.rn-fbtn.rn-all { background: #eceff3; color: #41474f; }
+[data-md-color-scheme="slate"] .rn-fbtn.rn-all { background: #2b313b; color: #c5ccd6; }
+
+/* "Highlights" callout reuses admonition look but amber-tinted */
+.md-typeset .admonition.highlight,
+.md-typeset details.highlight {
+  border-color: var(--sh-amber);
+}
+.md-typeset .highlight > .admonition-title {
+  background: rgba(252, 190, 54, .14);
+}
+.md-typeset .highlight > .admonition-title::before {
+  background-color: #8a5d00;
+  -webkit-mask-image: var(--md-admonition-icon--note);
+          mask-image: var(--md-admonition-icon--note);
+}
+
+/* version selector a bit more prominent */
+.md-version__current { font-weight: 700; }
+
+/* ===== "dev / unreleased" banner ===== */
+.md-banner.dev-banner {
+  background: var(--sh-amber);
+  color: #212529;
+}
+.md-banner.dev-banner .md-banner__inner {
+  font-size: .72rem;
+  font-weight: 600;
+  margin: .55rem auto;
+}
+.md-banner.dev-banner a {
+  color: #5a3d00;
+  font-weight: 800;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+/* Left nav: indent items nested under a section, with a hairline guide, so
+   sections read as distinct groups rather than a flat list. */
+.md-nav--primary .md-nav__list .md-nav__list {
+  margin-left: .55rem;
+  padding-left: .55rem;
+  border-left: 1px solid var(--md-default-fg-color--lightest);
+}
+/* a touch more air above each section label */
+.md-nav--primary .md-nav__item--section { margin-top: .6rem; }

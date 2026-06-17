@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v2"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -18,6 +19,15 @@ type MetricTransformer interface {
 	TransformMetricName(key string, tags map[string]string) string
 	GetUnit(key string) string
 	GetLookup(key string) string
+}
+
+// OtelAware is the optional capability of transformers backed by a v3
+// probe definition: exposing the per-metric OTel mapping so sink
+// converters can derive semantically correct display units (rate vs
+// absolute, byte context). Legacy pattern-based transformers don't
+// implement it; callers type-assert.
+type OtelAware interface {
+	GetOtelMapping(metricName string) *OtelMapping
 }
 
 // TransformConfig represents the structure of a transformation YAML file (legacy)
@@ -121,6 +131,13 @@ type ProbeDefinition struct {
 	Metrics      []MetricDefinition     `yaml:"metrics"`
 	TagMetadata  map[string]TagMetadata `yaml:"tag_metadata,omitempty" json:"tag_metadata"`
 
+	// MultiInstanceLabels at the definition level are a default applied
+	// to every metric, merged with each metric's own list. Definitions
+	// like snmp_poll template {instance} into most display names; the
+	// definition-level list used to be silently ignored, leaving the
+	// literal placeholder in rendered channels (#317).
+	MultiInstanceLabels []string `yaml:"multi_instance_labels,omitempty"`
+
 	// HostLevel marks probes that observe the local host (CPU, memory,
 	// network interfaces, filesystem of the agent's machine). When the
 	// Prometheus endpoint is configured with expose_host_metrics: false,
@@ -168,48 +185,83 @@ type DefinitionBasedTransformer struct {
 	moduleLogger      *logger.ModuleLogger
 }
 
-// TransformerRegistry manages all transformers
+// TransformerRegistry manages all transformers.
+//
+// Concurrency contract (#259): the registry is read from probe
+// scheduler goroutines (unit corrections), HTTP scrape handlers
+// (Prometheus exposition) and the OTLP export loop, while first-loads
+// write the cache. All map access goes through tr.mu; the probe
+// definitions are eager-loaded once at construction so steady-state
+// lookups are lock-protected map hits — never a YAML parse.
 type TransformerRegistry struct {
+	mu           sync.RWMutex
 	transformers map[string]MetricTransformer // key: "probe_name:style"
+	definitions  map[string]*ProbeDefinition  // eager; nil value = known-absent
 	moduleLogger *logger.ModuleLogger
 }
 
-// NewTransformerRegistry creates a new transformer registry
+// NewTransformerRegistry creates a new transformer registry with every
+// embedded probe definition parsed once, up front.
 func NewTransformerRegistry(baseLogger *logger.Logger) *TransformerRegistry {
 	// Create module-specific logger for transformer registry
 	moduleLogger := logger.NewModuleLogger(baseLogger, "transformer")
+
+	definitions := make(map[string]*ProbeDefinition)
+	if defs, err := Definitions(); err != nil {
+		moduleLogger.Error().Err(err).Msg("eager-loading embedded probe definitions failed; falling back to lazy lookups")
+	} else {
+		for name := range defs {
+			def := defs[name]
+			definitions[name] = &def
+		}
+	}
+
 	return &TransformerRegistry{
 		transformers: make(map[string]MetricTransformer),
+		definitions:  definitions,
 		moduleLogger: moduleLogger,
 	}
 }
 
 // GetProbeDefinition returns the parsed ProbeDefinition for a probe, or nil if not found.
-// Used by the web UI to access tag_metadata, categories, and descriptions.
+// Used by the web UI, the Prometheus exposition and the OTLP exporter.
+// Served from the eager-loaded index; negative lookups are memoized so
+// unknown probe names never re-read the embedded FS.
 func (tr *TransformerRegistry) GetProbeDefinition(probeName string) *ProbeDefinition {
-	// Check if we already have a definition-based transformer loaded
-	for _, t := range tr.transformers {
-		if dbt, ok := t.(*DefinitionBasedTransformer); ok {
-			if dbt.probeName == probeName && dbt.definition != nil {
-				return dbt.definition
-			}
-		}
+	tr.mu.RLock()
+	def, known := tr.definitions[probeName]
+	tr.mu.RUnlock()
+	if known {
+		return def // may be nil: memoized negative
 	}
 
-	// Try to load it from embedded files
-	filePath := fmt.Sprintf("definitions/%s.yaml", probeName)
-	def, err := tr.loadProbeDefinitionFromEmbed(filePath)
+	// Unknown name (custom probe type, eager load failed): one lazy
+	// attempt, then memoize the outcome — including the negative.
+	loaded, err := tr.loadProbeDefinitionFromEmbed(fmt.Sprintf("definitions/%s.yaml", probeName))
 	if err != nil {
-		return nil
+		loaded = nil
 	}
-	return def
+	tr.mu.Lock()
+	tr.definitions[probeName] = loaded
+	tr.mu.Unlock()
+	return loaded
 }
 
 // LoadTransformer loads or creates a transformer for a specific probe and style
 func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricTransformer, error) {
 	key := fmt.Sprintf("%s:%s", probeName, style)
 
-	// Return cached transformer if already loaded
+	// Fast path: cached transformer under read lock.
+	tr.mu.RLock()
+	transformer, exists := tr.transformers[key]
+	tr.mu.RUnlock()
+	if exists {
+		return transformer, nil
+	}
+
+	// Slow path: build under the write lock, double-checked.
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
 	if transformer, exists := tr.transformers[key]; exists {
 		return transformer, nil
 	}
@@ -402,23 +454,27 @@ func (pt *ProbeTransformer) makeReadable(key string) string {
 	return strings.Join(words, " ")
 }
 
-// loadDefinitionBasedTransformer loads a new definition-based transformer
+// loadDefinitionBasedTransformer loads a new definition-based transformer.
+// Called with tr.mu already held for writing (from LoadTransformer's
+// slow path): it reads tr.definitions directly and must NOT take the
+// lock again.
 func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) (MetricTransformer, error) {
-	// Load probe definition from embedded files
-	probeFilePath := fmt.Sprintf("definitions/%s.yaml", probeName)
-	tr.moduleLogger.Debug().
-		Str("probe", probeName).
-		Str("file_path", probeFilePath).
-		Msg("🔍 Loading probe definition from embedded files")
-
-	definition, err := tr.loadProbeDefinitionFromEmbed(probeFilePath)
-	if err != nil {
-		tr.moduleLogger.Error().
-			Err(err).
-			Str("probe", probeName).
-			Str("file_path", probeFilePath).
-			Msg("❌ Failed to load embedded probe definition")
-		return nil, fmt.Errorf("failed to load probe definition: %w", err)
+	definition := tr.definitions[probeName]
+	if definition == nil {
+		// Not in the eager index (custom probe type or eager load
+		// failure): one lazy attempt against the embedded FS.
+		probeFilePath := fmt.Sprintf("definitions/%s.yaml", probeName)
+		loaded, err := tr.loadProbeDefinitionFromEmbed(probeFilePath)
+		if err != nil {
+			tr.moduleLogger.Error().
+				Err(err).
+				Str("probe", probeName).
+				Str("file_path", probeFilePath).
+				Msg("❌ Failed to load embedded probe definition")
+			return nil, fmt.Errorf("failed to load probe definition: %w", err)
+		}
+		definition = loaded
+		tr.definitions[probeName] = definition
 	}
 
 	tr.moduleLogger.Debug().

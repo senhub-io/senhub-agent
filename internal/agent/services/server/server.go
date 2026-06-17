@@ -111,9 +111,7 @@ func (s *server) Post(urlPath string, data any) (*http.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("POST request failed: %v", err)
 	}
-
-	defer res.Body.Close()
-	return res, nil
+	return bufferAndClose(res)
 }
 
 // PostStream sends streaming data via HTTP POST
@@ -133,6 +131,26 @@ func (s *server) PostStream(urlPath string, streamBody string) (*http.Response, 
 	res, err := s.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("stream request failed: %v", err)
+	}
+	return bufferAndClose(res)
+}
+
+// bufferAndClose drains and closes the network body, handing the caller
+// a response whose Body is an in-memory replacement. Post used to close
+// the body BEFORE returning it (callers read a closed body) and
+// PostStream never closed it at all — leaking the connection on every
+// push (#277). Reading to EOF + Close also lets the transport reuse the
+// connection. Responses here are small JSON acks; large streaming
+// downloads go through Get, which stays untouched.
+func bufferAndClose(res *http.Response) (*http.Response, error) {
+	b, readErr := io.ReadAll(res.Body)
+	closeErr := res.Body.Close()
+	res.Body = io.NopCloser(bytes.NewReader(b))
+	if readErr != nil {
+		return res, fmt.Errorf("reading response body: %w", readErr)
+	}
+	if closeErr != nil {
+		return res, fmt.Errorf("closing response body: %w", closeErr)
 	}
 	return res, nil
 }

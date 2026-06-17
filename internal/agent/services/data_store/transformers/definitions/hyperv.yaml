@@ -1,0 +1,94 @@
+probe_name: "hyperv"
+friendly_name: "Hyper-V"
+version: "1.0.0"
+host_level: true
+multi_instance_labels: ["hyperv.vm.name", "state"]
+
+# FREE tier — Hyper-V VM monitoring via WMI root\virtualization\v2 (Windows only).
+# Metrics are OTel-first: the probe emits CPU as a fraction (0–1),
+# memory as bytes. PRTG display_name uses {hyperv.vm.name} for per-VM channels.
+
+metrics:
+  - name: "senhub.hyperv.up"
+    channel: "hyperv_up"
+    display_name: "Hyper-V Reachability"
+    unit: "#"
+    category: "status"
+    description: "1 when the Hyper-V WMI namespace is reachable, 0 otherwise"
+    otel:
+      name: senhub.hyperv.up
+      unit: "1"
+      type: gauge
+
+  - name: "hyperv.vm.cpu.usage"
+    channel: "hyperv_vm_cpu_{hyperv.vm.name}"
+    display_name: "VM {hyperv.vm.name} CPU Usage"
+    unit: "%"
+    multi_instance_labels: ["hyperv.vm.name"]
+    category: "cpu"
+    description: "CPU utilisation of the virtual machine (0–1 fraction)"
+    otel:
+      name: hyperv.vm.cpu.usage
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      hyperv.vm.name: hyperv.vm.name
+
+  - name: "hyperv.vm.memory.usage"
+    channel: "hyperv_vm_mem_{hyperv.vm.name}"
+    display_name: "VM {hyperv.vm.name} Memory Usage"
+    unit: "Bytes Memory"
+    multi_instance_labels: ["hyperv.vm.name"]
+    category: "memory"
+    description: "Memory consumed by the virtual machine in bytes"
+    otel:
+      name: hyperv.vm.memory.usage
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      hyperv.vm.name: hyperv.vm.name
+
+  - name: "hyperv.vm.state"
+    channel: "hyperv_vm_state_{hyperv.vm.name}"
+    display_name: "VM {hyperv.vm.name} State"
+    unit: "#"
+    multi_instance_labels: ["hyperv.vm.name"]
+    category: "status"
+    description: "1 when the VM is in running state, 0 otherwise"
+    otel:
+      name: hyperv.vm.state
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      hyperv.vm.name: hyperv.vm.name
+
+  - name: "hyperv.vm.count"
+    channel: "hyperv_vm_count_{state}"
+    display_name: "VM Count ({state})"
+    unit: "#"
+    multi_instance_labels: ["state"]
+    category: "status"
+    description: "Number of virtual machines in the given state (running / stopped / paused)"
+    otel:
+      name: hyperv.vm.count
+      unit: "{vm}"
+      type: gauge
+    tag_to_attribute:
+      state: hyperv.vm.state
+
+tag_metadata:
+  hyperv.vm.name:
+    type: resource
+    label: "VM Name"
+  state:
+    type: resource
+    label: "VM State"
+  metric_type:
+    type: category
+    label: "Metric Type"
+  probe_name:
+    type: resource
+    label: "Probe Name"
+  probe_type:
+    type: resource
+    label: "Probe Type"

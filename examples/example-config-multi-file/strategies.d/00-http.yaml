@@ -1,0 +1,9 @@
+# HTTP strategy — exposes PRTG / Nagios / Web UI endpoints. Each
+# file in strategies.d/ MUST have exactly ONE top-level key (the
+# strategy name). Add other strategies (otlp, prtg, ...) by creating
+# new files. Disable a strategy by renaming the file to *.disabled.
+
+http:
+  port: 8080
+  bind_address: "127.0.0.1"
+  endpoints: ["prtg", "web", "nagios"]
