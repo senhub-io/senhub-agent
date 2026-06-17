@@ -18,10 +18,12 @@ import (
 // focused on the strategy itself.
 type fakeAgentConfig struct {
 	configuration.AgentConfiguration
-	key string
+	key        string
+	globalTags map[string]string
 }
 
-func (f *fakeAgentConfig) GetAuthenticationKey() string { return f.key }
+func (f *fakeAgentConfig) GetAuthenticationKey() string     { return f.key }
+func (f *fakeAgentConfig) GetGlobalTags() map[string]string { return f.globalTags }
 
 func newTestStrategy(t *testing.T, params map[string]interface{}) *OTLPSyncStrategy {
 	t.Helper()
@@ -184,11 +186,11 @@ func TestStrategy_AddDataPointsStoresInLWWStore(t *testing.T) {
 }
 
 func TestStrategy_DefaultsServiceInstance(t *testing.T) {
-	// service.instance.id should default to first 8 chars of agent key
-	// when not overridden.
+	// service.instance.id should default to the FULL agent key when not
+	// overridden, so agents sharing a key prefix don't collide.
 	s := newTestStrategy(t, nil)
-	if got := s.cfg.Resource.ServiceInstance; got != "test-key" {
-		t.Errorf("ServiceInstance=%q, want %q", got, "test-key")
+	if got := s.cfg.Resource.ServiceInstance; got != "test-key-12345678-abcdef" {
+		t.Errorf("ServiceInstance=%q, want %q", got, "test-key-12345678-abcdef")
 	}
 }
 

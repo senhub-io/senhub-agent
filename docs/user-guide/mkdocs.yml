@@ -1,0 +1,137 @@
+site_name: SenHub Agent
+site_url: https://agent.senhub.io/docs/
+site_description: >-
+  The OpenTelemetry-native infrastructure agent — documentation: installation,
+  configuration, probes, outputs (PRTG, Nagios, Prometheus, OTLP) and release notes.
+copyright: © 2026 SenHub Agent contributors · Apache 2.0 · Built by Sensor Factory
+repo_url: https://github.com/senhub-io/senhub-agent
+repo_name: senhub-io/senhub-agent
+edit_uri: edit/dev/docs/user-guide/docs/
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+extra:
+  version:
+    provider: mike
+    default: latest
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/senhub-io/senhub-agent
+    - icon: material/web
+      link: https://senhub.io
+  homepage: https://agent.senhub.io/
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/rn-filter.js
+  - javascripts/dev-banner.js
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - def_list
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - Presentation: presentation.md
+  - Installation: installation.md
+  - Configuration: configuration.md
+  - HTTP / HTTPS: http-https.md
+  - Web interface: web-interface.md
+  - Prometheus / VictoriaMetrics:
+      - Overview: prometheus/index.md
+      - Metrics reference: prometheus/metrics-reference.md
+  - CLI reference: cli.md
+  - OTLP / OpenTelemetry: otlp.md
+  - Probes:
+      - Overview: probes/index.md
+      - CPU: probes/cpu.md
+      - Memory: probes/memory.md
+      - Network: probes/network.md
+      - Logical disk: probes/logicaldisk.md
+      - Linux logs: probes/linux-logs.md
+      - Windows Event Log: probes/windows-eventlog.md
+      - File tail: probes/filetail.md
+      - ICMP check: probes/icmp-check.md
+      - HTTP check: probes/http-check.md
+      - TCP dial: probes/tcp-dial.md
+      - DNS latency: probes/dns-latency.md
+      - SNMP poll: probes/snmp-poll.md
+      - SNMP trap: probes/snmp-trap.md
+      - OTLP receiver: probes/otlp-receiver.md
+      - Prometheus scrape: probes/prometheus-scrape.md
+      - Exec: probes/exec.md
+      - Citrix: probes/citrix.md
+      - NetScaler: probes/netscaler.md
+      - Redfish: probes/redfish.md
+      - Syslog: probes/syslog.md
+      - Event: probes/event.md
+      - Ping WebApp: probes/ping-webapp.md
+      - Load WebApp: probes/load-webapp.md
+      - Ping gateway: probes/ping-gateway.md
+      - WiFi signal: probes/wifi-signal-strength.md
+      - Veeam Backup & Replication: probes/veeam.md
+      - MySQL / MariaDB: probes/mysql.md
+      - PostgreSQL: probes/postgresql.md
+  - Migrating from PRTG: prtg-migration.md
+  - Troubleshooting: troubleshooting.md
+  - What's new:
+      - Overview: whats-new/index.md
+      - Next (unreleased): whats-new/next.md
+      - 0.2.3: whats-new/0.2.3.md
+      - 0.2.2: whats-new/0.2.2.md
+      - 0.2.1: whats-new/0.2.1.md
+      - 0.2.0: whats-new/0.2.0.md

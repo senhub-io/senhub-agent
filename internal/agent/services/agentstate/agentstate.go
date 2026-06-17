@@ -30,6 +30,54 @@ func GetCollectErrorsTotal() uint64 {
 	return collectErrors.Load()
 }
 
+// transformerFallbacks counts datapoints that went through the
+// data_store unit-correction pass without a transformer YAML definition
+// (legacy fallback transformer: no unit injection, no corrections).
+// A nonzero, rising value means a probe is shipping unitless data.
+var transformerFallbacks atomic.Uint64
+
+// IncrementTransformerFallbacks records one datapoint processed via the
+// legacy fallback transformer. Called from
+// data_store.applyUnitCorrections.
+func IncrementTransformerFallbacks() {
+	transformerFallbacks.Add(1)
+}
+
+// GetTransformerFallbacksTotal returns the lifetime fallback count.
+func GetTransformerFallbacksTotal() uint64 {
+	return transformerFallbacks.Load()
+}
+
+// agentInstanceID holds the agent's own service.instance.id — the resolved
+// OTLP Resource service.instance.id (defaulted from the agent key), which is
+// also the identity of the agent's own service.instance entity emitted by the
+// entity foundation. It is set once when entity emission starts and read by
+// probe entity sources to stamp the From endpoint of their `monitors` edge,
+// so a probe source reaches the agent identity without importing the OTLP
+// strategy (which would create an import cycle). Lock-free: a single scalar
+// written once at startup, read every detector cycle.
+var agentInstanceID atomic.Pointer[string]
+
+// SetAgentInstanceID records the agent's own service.instance.id. Called once
+// by the entity-emission startup with the SAME value the foundation stamps on
+// the agent's service.instance entity, so a probe's `monitors` From endpoint
+// resolves exactly that node in the consumer.
+func SetAgentInstanceID(id string) {
+	agentInstanceID.Store(&id)
+}
+
+// GetAgentInstanceID returns the agent's own service.instance.id, or "" when
+// entity emission is disabled or has not started yet. A reader MUST treat ""
+// as "no agent identity available — skip the monitors edge" rather than emit
+// a relation whose From endpoint cannot resolve (the consumer would buffer
+// then drop it).
+func GetAgentInstanceID() string {
+	if p := agentInstanceID.Load(); p != nil {
+		return *p
+	}
+	return ""
+}
+
 // probeStateMu guards activeProbeIDs and probeHealth.
 var probeStateMu sync.RWMutex
 

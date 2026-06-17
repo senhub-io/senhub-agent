@@ -1,0 +1,164 @@
+probe_name: "http_check"
+friendly_name: "HTTP Check"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["target"]
+
+# Free active-check probe (#300). One instance per target URL via the
+# target tag. Durations are milliseconds on the wire (OTel seconds via
+# value_scale); TLS expiry is days remaining (negative once expired).
+# httpcheck.duration matches the otelcol-contrib httpcheck receiver;
+# the senhub.httpcheck.* extensions cover what contrib lacks.
+
+metrics:
+  - name: "senhub.httpcheck.up"
+    channel: "httpcheck_up"
+    display_name: "HTTP {target} Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the target answered with the expected status (and content, if configured)"
+    otel:
+      name: senhub.httpcheck.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      target: httpcheck.target
+
+  - name: "senhub.httpcheck.status.code"
+    channel: "httpcheck_status_code"
+    display_name: "HTTP {target} Status Code"
+    unit: "#"
+    category: "availability"
+    description: "HTTP status code of the last response"
+    otel:
+      name: senhub.httpcheck.status.code
+      unit: "{code}"
+      type: gauge
+    tag_to_attribute:
+      target: httpcheck.target
+
+  - name: "httpcheck.duration"
+    channel: "httpcheck_duration"
+    display_name: "HTTP {target} Total Time"
+    unit: "ms"
+    category: "latency"
+    description: "Wall-clock time of the whole request"
+    otel:
+      name: httpcheck.duration
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      target: httpcheck.target
+
+  - name: "senhub.httpcheck.duration.dns"
+    channel: "httpcheck_dns_time"
+    display_name: "HTTP {target} DNS Time"
+    unit: "ms"
+    category: "latency"
+    description: "DNS resolution phase"
+    otel:
+      name: senhub.httpcheck.duration.dns
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      target: httpcheck.target
+
+  - name: "senhub.httpcheck.duration.connect"
+    channel: "httpcheck_connect_time"
+    display_name: "HTTP {target} Connect Time"
+    unit: "ms"
+    category: "latency"
+    description: "TCP connect phase"
+    otel:
+      name: senhub.httpcheck.duration.connect
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      target: httpcheck.target
+
+  - name: "senhub.httpcheck.duration.tls"
+    channel: "httpcheck_tls_time"
+    display_name: "HTTP {target} TLS Handshake Time"
+    unit: "ms"
+    category: "latency"
+    description: "TLS handshake phase (HTTPS targets only)"
+    otel:
+      name: senhub.httpcheck.duration.tls
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      target: httpcheck.target
+
+  - name: "senhub.httpcheck.duration.ttfb"
+    channel: "httpcheck_ttfb"
+    display_name: "HTTP {target} Time To First Byte"
+    unit: "ms"
+    category: "latency"
+    description: "Time from request start to the first response byte"
+    otel:
+      name: senhub.httpcheck.duration.ttfb
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      target: httpcheck.target
+
+  - name: "senhub.httpcheck.response.size"
+    channel: "httpcheck_response_size"
+    display_name: "HTTP {target} Response Size"
+    unit: "B"
+    category: "availability"
+    description: "Response body size (capped at 1 MiB read)"
+    otel:
+      name: senhub.httpcheck.response.size
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      target: httpcheck.target
+
+  - name: "senhub.httpcheck.tls.expiry"
+    channel: "httpcheck_tls_expiry"
+    display_name: "HTTP {target} Certificate Days Left"
+    unit: "#"
+    category: "tls"
+    description: "Days until the leaf certificate expires (negative once expired)"
+    otel:
+      name: senhub.httpcheck.tls.expiry
+      unit: "d"
+      type: gauge
+    tag_to_attribute:
+      target: httpcheck.target
+      tls.issuer: tls.certificate.issuer
+      tls.subject: tls.certificate.subject
+
+  - name: "senhub.httpcheck.tls.valid"
+    channel: "httpcheck_tls_valid"
+    display_name: "HTTP {target} Certificate Valid"
+    unit: "#"
+    category: "tls"
+    description: "1 when the leaf TLS certificate is currently valid (not expired), 0 otherwise"
+    otel:
+      name: senhub.httpcheck.tls.valid
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      target: httpcheck.target
+      tls.issuer: tls.certificate.issuer
+      tls.subject: tls.certificate.subject
+
+  - name: "senhub.httpcheck.content.match"
+    channel: "httpcheck_content_match"
+    display_name: "HTTP {target} Content Match"
+    unit: "#"
+    category: "availability"
+    description: "1 when the configured content_match regexp matched the response body"
+    otel:
+      name: senhub.httpcheck.content.match
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      target: httpcheck.target

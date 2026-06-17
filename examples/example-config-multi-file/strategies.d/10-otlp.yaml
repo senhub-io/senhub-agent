@@ -1,0 +1,22 @@
+# OTLP strategy — pushes metrics/logs/traces via OpenTelemetry
+# Protocol. `protocol: grpc` (default) targets an otelcol-style
+# receiver; `protocol: http` targets a backend that accepts OTLP/HTTP
+# directly. See the OTLP docs for the full schema.
+
+otlp:
+  protocol: grpc
+  endpoint: "127.0.0.1:4317"
+  tls:
+    enabled: false
+  compression: gzip
+  signals:
+    metrics:
+      enabled: true
+      interval: 30s
+    logs:
+      enabled: false
+    traces:
+      enabled: false
+  resource:
+    service.name: "senhub-agent-example"
+    deployment.environment: "dev"

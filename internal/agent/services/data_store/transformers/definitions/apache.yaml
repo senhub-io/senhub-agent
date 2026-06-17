@@ -1,0 +1,80 @@
+probe_name: "apache"
+friendly_name: "Apache"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["state"]
+
+# Free probe: Apache HTTP Server mod_status metrics via GET ?auto.
+# Metric names align with the otelcol-contrib Apache receiver where
+# available; senhub.apache.up is a senhub extension.
+#
+# apache.workers is multi-instance via the "state" tag (busy/idle).
+
+metrics:
+  - name: "senhub.apache.up"
+    channel: "apache_up"
+    display_name: "Apache Up"
+    unit: "#"
+    category: "status"
+    description: "1 when mod_status responded successfully, 0 otherwise"
+    otel:
+      name: senhub.apache.up
+      unit: "1"
+      type: gauge
+
+  - name: "apache.uptime"
+    channel: "apache_uptime"
+    display_name: "Apache Uptime"
+    unit: "s"
+    category: "status"
+    description: "Time in seconds since the Apache server was started"
+    otel:
+      name: apache.uptime
+      unit: "s"
+      type: counter
+
+  - name: "apache.current_connections"
+    channel: "apache_current_connections"
+    display_name: "Apache Current Connections"
+    unit: "#"
+    category: "connections"
+    description: "Total number of connections currently served by Apache (ConnsTotal)"
+    otel:
+      name: apache.current_connections
+      unit: "{connection}"
+      type: gauge
+
+  - name: "apache.workers"
+    channel: "apache_workers_{state}"
+    display_name: "Apache Workers {state}"
+    unit: "#"
+    category: "workers"
+    description: "Number of Apache workers in each state: busy (serving requests) or idle (waiting)"
+    otel:
+      name: apache.workers
+      unit: "{worker}"
+      type: gauge
+    tag_to_attribute:
+      state: apache.workers.state
+
+  - name: "apache.requests"
+    channel: "apache_requests"
+    display_name: "Apache Requests"
+    unit: "#"
+    category: "throughput"
+    description: "Cumulative number of HTTP requests served since Apache started (Total Accesses)"
+    otel:
+      name: apache.requests
+      unit: "{request}"
+      type: counter
+
+  - name: "apache.traffic"
+    channel: "apache_traffic"
+    display_name: "Apache Traffic"
+    unit: "B"
+    category: "throughput"
+    description: "Cumulative bytes transferred since Apache started (Total kBytes * 1024)"
+    otel:
+      name: apache.traffic
+      unit: "By"
+      type: counter

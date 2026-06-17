@@ -161,7 +161,7 @@ func TestMetricStore_CardinalityCap_ZeroMeansUnbounded(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		store.upsert(datapoint.DataPoint{
 			Name:  "m",
-			Value: float32(i),
+			Value: float64(i),
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "p"},
 				{Key: "probe_type", Value: "t"},
@@ -250,5 +250,52 @@ func TestMetricStore_ProbeBudget_StacksWithGlobalCap(t *testing.T) {
 	store.upsert(mk("p2", "b")) // global cap hit at this point (4 > 3)
 	if got := store.size(); got != 3 {
 		t.Errorf("global cap should win: size=%d, want 3", got)
+	}
+}
+
+// TestMetricStore_EvictStale pins the #308 fix: entries whose last
+// datapoint is older than the TTL are evicted (probe budget slots
+// released), fresh entries survive, ttl=0 disables eviction.
+func TestMetricStore_EvictStale(t *testing.T) {
+	store := newMetricStore()
+	now := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
+	mk := func(probe, metric string, ts time.Time) datapoint.DataPoint {
+		return datapoint.DataPoint{
+			Name: metric, Value: 1, Timestamp: ts,
+			Tags: []tags.Tag{
+				{Key: "probe_name", Value: probe},
+				{Key: "probe_type", Value: "t"},
+			},
+		}
+	}
+
+	store.upsert(mk("dead-probe", "senhub.ibmi.cpu", now.Add(-time.Hour)))
+	store.upsert(mk("live-probe", "system.cpu.utilization", now.Add(-time.Minute)))
+
+	if n := store.evictStale(now, 0); n != 0 {
+		t.Fatalf("ttl=0 must disable eviction, evicted %d", n)
+	}
+	if n := store.evictStale(now, 10*time.Minute); n != 1 {
+		t.Fatalf("evicted %d entries, want 1 (the hour-old one)", n)
+	}
+	if store.size() != 1 {
+		t.Fatalf("store size = %d, want 1", store.size())
+	}
+	metrics, _ := store.snapshot()
+	if len(metrics) != 1 || metrics[0].MetricName != "system.cpu.utilization" {
+		t.Fatalf("survivor = %+v, want the live series", metrics)
+	}
+
+	// The dead probe's budget slot is released: with a budget of 1, a
+	// new series for that probe is admitted after eviction.
+	s2 := newMetricStoreWithCap(0).withProbeBudget(1)
+	s2.upsert(mk("p", "a", now.Add(-time.Hour)))
+	s2.evictStale(now, 10*time.Minute)
+	s2.upsert(mk("p", "b", now))
+	if got := s2.probeSeriesCount("p"); got != 1 {
+		t.Fatalf("budget slot not released after eviction: count=%d", got)
+	}
+	if m2, _ := s2.snapshot(); len(m2) != 1 || m2[0].MetricName != "b" {
+		t.Fatalf("post-eviction admit failed: %+v", m2)
 	}
 }

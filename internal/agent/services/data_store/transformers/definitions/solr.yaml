@@ -1,0 +1,125 @@
+probe_name: "solr"
+friendly_name: "Apache Solr"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["core"]
+
+# Free tier Apache Solr monitoring probe. Uses the Solr native metrics API
+# (GET /admin/metrics?wt=json&group=all) plus /admin/cores?action=STATUS
+# for per-core document counts. JVM metrics follow the jvm.* OTel semconv;
+# Solr-specific metrics use the solr.* namespace.
+
+metrics:
+  - name: "senhub.solr.up"
+    channel: "solr_up"
+    display_name: "Solr Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the Solr admin metrics endpoint responded successfully, 0 otherwise"
+    otel:
+      name: senhub.solr.up
+      unit: "1"
+      type: gauge
+
+  - name: "jvm.memory.heap.used"
+    channel: "jvm_heap_used"
+    display_name: "JVM Heap Used"
+    unit: "B"
+    category: "memory"
+    description: "JVM heap memory currently used by the Solr process"
+    otel:
+      name: jvm.memory.heap.used
+      unit: "By"
+      type: gauge
+
+  - name: "jvm.threads.count"
+    channel: "jvm_thread_count"
+    display_name: "JVM Thread Count"
+    unit: "#"
+    category: "threads"
+    description: "Number of live threads in the Solr JVM"
+    otel:
+      name: jvm.threads.count
+      unit: "{thread}"
+      type: gauge
+
+  - name: "solr.requests.count"
+    channel: "solr_requests_count"
+    display_name: "Solr Requests"
+    unit: "#"
+    category: "requests"
+    description: "Cumulative number of requests handled by QUERY handlers"
+    otel:
+      name: solr.requests.count
+      unit: "{request}"
+      type: counter
+
+  - name: "solr.requests.time"
+    channel: "solr_requests_time"
+    display_name: "Solr Request Time"
+    unit: "ms"
+    category: "requests"
+    description: "Cumulative time spent handling QUERY requests (meanMs * count, ms)"
+    otel:
+      name: solr.requests.time
+      unit: "ms"
+      type: counter
+
+  - name: "solr.errors.count"
+    channel: "solr_errors_count"
+    display_name: "Solr Errors"
+    unit: "#"
+    category: "requests"
+    description: "Cumulative number of errors across all QUERY handlers"
+    otel:
+      name: solr.errors.count
+      unit: "{error}"
+      type: counter
+
+  - name: "solr.cache.hits"
+    channel: "solr_cache_hits"
+    display_name: "Solr Cache Hits"
+    unit: "#"
+    category: "cache"
+    description: "Cumulative query result cache hits"
+    otel:
+      name: solr.cache.hits
+      unit: "{hit}"
+      type: counter
+
+  - name: "solr.cache.inserts"
+    channel: "solr_cache_inserts"
+    display_name: "Solr Cache Inserts"
+    unit: "#"
+    category: "cache"
+    description: "Cumulative query result cache inserts"
+    otel:
+      name: solr.cache.inserts
+      unit: "{insert}"
+      type: counter
+
+  - name: "solr.document.count"
+    channel: "solr_doc_count_{core}"
+    display_name: "Solr {core} Document Count"
+    unit: "#"
+    category: "storage"
+    description: "Number of indexed documents in the core"
+    otel:
+      name: solr.document.count
+      unit: "{document}"
+      type: gauge
+    tag_to_attribute:
+      core: solr.core
+
+  - name: "solr.index.size"
+    channel: "solr_index_size_{core}"
+    display_name: "Solr {core} Index Size"
+    unit: "B"
+    category: "storage"
+    description: "On-disk index size in bytes for the core"
+    otel:
+      name: solr.index.size
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      core: solr.core

@@ -1,10 +1,14 @@
-// Package otlp implements the OTLP/gRPC export strategy for SenHub Agent.
+// Package otlp implements the OTLP export strategy for SenHub Agent.
 //
 // The strategy ships metrics (sourced from the same MetricCache as the
 // Prometheus exposition, resolved through the neutral otelmapper package)
 // and logs (sourced from a pub/sub log channel populated by syslog and
-// event probes) over OTLP/gRPC to an OTel collector or a compatible
-// backend (vmagent, victoria-metrics, otelcol-contrib, …).
+// event probes) over OTLP to any conformant OTLP receiver — an OTel
+// collector or an OTLP-native backend.
+//
+// The transport is selectable via `protocol: grpc | http`, mirroring
+// the two transports defined by the OpenTelemetry protocol spec. gRPC
+// is the default. See client.go for the exporter wiring.
 //
 // Phase 1 (this commit) only wires up configuration parsing, the gRPC
 // exporter clients, and the strategy lifecycle. Metrics export lands in
@@ -13,6 +17,7 @@ package otlp
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -27,6 +32,13 @@ const (
 	// localhost when an operator forgets to set `endpoint:` is a much
 	// worse failure mode than refusing to start. Always require it.
 	DefaultCompression = "gzip"
+	// DefaultProtocol is the OTLP transport. The OTel spec defines two:
+	// "grpc" (OTLP/gRPC) and "http" (OTLP/HTTP protobuf). "grpc" is the
+	// historical — and pre-0.2.x only — behaviour, kept as the default
+	// so existing deployments are unchanged. "http" is used to push to
+	// any OTLP/HTTP receiver directly (e.g. a backend that ingests
+	// OTLP/HTTP on its native /opentelemetry endpoints).
+	DefaultProtocol = "grpc"
 	// DefaultTimeout bounds a single OTLP export call. The OTel SDK uses
 	// it as the gRPC context deadline. 60 s is generous enough to absorb
 	// batches of 1000+ datapoints from the larger probes (IBM i with
@@ -42,6 +54,8 @@ const (
 	DefaultLogsBatchSize      = 1000
 	DefaultLogsBatchTimeout   = 5 * time.Second
 	DefaultLogsBufferSize     = 10000
+	DefaultEntitiesInterval   = 60 * time.Second
+	DefaultEntitiesBufferSize = 256
 	// DefaultMaxStoreSize caps the OTLP strategy's metric-store
 	// cardinality. 50 000 distinct series is comfortable for typical
 	// SenHub agent profiles (host + 1-3 vendor probes ≈ 1-5 k series);
@@ -58,6 +72,16 @@ const (
 	// ≈ 5k, headroom for spikes). 0 disables the per-probe budget
 	// and falls back to MaxStoreSize alone.
 	DefaultMaxActiveSeriesPerProbe = 10000
+
+	// DefaultStalenessTTL is how long a stored series may go without a
+	// new datapoint before the store evicts it instead of re-exporting
+	// it with fresh timestamps forever (#308 zombie series: a probe
+	// removed from config or denied by license left its checkpoint-
+	// restored series exporting indefinitely, indistinguishable from
+	// live data downstream). 10 minutes covers the slowest shipping
+	// probe cadences (ibmi 120s, snmp topology sweeps) with margin.
+	// 0 disables staleness eviction.
+	DefaultStalenessTTL = 10 * time.Minute
 
 	// Memory-limiter defaults. Soft and hard limits are measured
 	// against runtime.MemStats.HeapAlloc (Go heap currently allocated,
@@ -93,7 +117,7 @@ const (
 	// dozen series in a single batch is faster than spinning up 4
 	// goroutines + 4 protobuf encoders. Above the threshold, the
 	// per-probe split pays for itself.
-	SplitBatchThreshold = 100
+	SplitBatchThreshold       = 100
 	DefaultTracesBatchSize    = 512
 	DefaultTracesBatchTimeout = 5 * time.Second
 	DefaultTracesBufferSize   = 2048
@@ -160,6 +184,21 @@ type LogsSignal struct {
 	BufferSize   int // bounded queue; drop-oldest beyond this
 }
 
+// EntitiesSignal holds entity-event emission knobs. Entity events are
+// carried on the OTLP log signal (they are log records), so this signal
+// reuses the log exporter/transport — it has no endpoint/batch knobs of its
+// own. Disabled by default: emitting entity events is a deliberate opt-in
+// for an entity-aware backend, not something to switch on for every logs
+// consumer.
+type EntitiesSignal struct {
+	Enabled bool
+	// Interval is the heartbeat cadence: every entity/relation is re-emitted
+	// each interval (at-least-once, idempotent) and the interval travels on
+	// each event as the consumer's liveness backstop.
+	Interval   time.Duration
+	BufferSize int
+}
+
 // TracesSignal holds traces-specific knobs. Disabled by default — the
 // agent does not auto-instrument itself yet; this block is plumbing
 // for explicit span emission by future code or third-party libraries
@@ -190,7 +229,20 @@ type ResourceConfig struct {
 // Config is the fully-parsed, validated configuration for the OTLP strategy.
 // Populated by ParseConfig; consumed by the strategy and exporter wiring.
 type Config struct {
-	Endpoint    string
+	Endpoint string
+	// FallbackEndpoints are standby OTLP ingresses tried in order when the
+	// primary Endpoint is failing (#217 resilience layer 2). Empty = no
+	// failover (single endpoint). The agent prefers the primary and falls
+	// back on a failed export, returning to the primary automatically once
+	// it recovers (a per-endpoint cooldown avoids re-probing a dead one
+	// every cycle).
+	FallbackEndpoints []string
+	// Protocol selects the OTLP transport: "grpc" (default) or "http",
+	// the two transports defined by the OTel protocol spec. It applies
+	// to all three signals — a per-signal override is not supported
+	// because mixing transports against one endpoint is a
+	// configuration mistake far more often than an intent.
+	Protocol    string
 	Headers     map[string]string
 	TLS         TLSConfig
 	Compression string
@@ -198,6 +250,7 @@ type Config struct {
 	Retry       RetryConfig
 	Metrics     MetricsSignal
 	Logs        LogsSignal
+	Entities    EntitiesSignal
 	Traces      TracesSignal
 	Resource    ResourceConfig
 	// MaxStoreSize bounds the OTLP strategy's in-memory metric store
@@ -218,6 +271,9 @@ type Config struct {
 	// admission is then governed only by MaxStoreSize. Stacks on top
 	// of MaxStoreSize — first whichever fires wins.
 	MaxActiveSeriesPerProbe int
+	// StalenessTTL evicts series that received no datapoint for this
+	// long (see DefaultStalenessTTL). 0 disables eviction.
+	StalenessTTL time.Duration
 	// MemoryLimit defines the circuit-breaker thresholds for the OTLP
 	// strategy's metric store. A background poller reads Go heap
 	// pressure every CheckInterval; when soft is hit, new series are
@@ -251,6 +307,10 @@ type Config struct {
 type PersistenceConfig struct {
 	Path     string        // empty = disabled (no checkpoint)
 	Interval time.Duration // save cadence; falls back to default if 0
+	// LogsQueueMaxBytes caps the on-disk dead-letter queue for the logs
+	// signal (#217). 0 = built-in default (128 MiB). Beyond it the oldest
+	// batches are evicted (reason="logs_queue_full").
+	LogsQueueMaxBytes int64
 }
 
 // MemoryLimitConfig configures the OTLP strategy's heap pressure
@@ -300,6 +360,7 @@ func defaultConfig() Config {
 		TLS: TLSConfig{
 			Enabled: true,
 		},
+		Protocol:    DefaultProtocol,
 		Compression: DefaultCompression,
 		Timeout:     DefaultTimeout,
 		Retry: RetryConfig{
@@ -319,6 +380,11 @@ func defaultConfig() Config {
 			BatchTimeout: DefaultLogsBatchTimeout,
 			BufferSize:   DefaultLogsBufferSize,
 		},
+		Entities: EntitiesSignal{
+			Enabled:    false,
+			Interval:   DefaultEntitiesInterval,
+			BufferSize: DefaultEntitiesBufferSize,
+		},
 		Traces: TracesSignal{
 			// Disabled by default — opt-in plumbing. Operators
 			// enable explicitly when they want span export.
@@ -334,6 +400,7 @@ func defaultConfig() Config {
 		},
 		MaxStoreSize:            DefaultMaxStoreSize,
 		MaxActiveSeriesPerProbe: DefaultMaxActiveSeriesPerProbe,
+		StalenessTTL:            DefaultStalenessTTL,
 		MemoryLimit: MemoryLimitConfig{
 			SoftMiB:       DefaultMemoryLimitSoftMiB,
 			HardMiB:       DefaultMemoryLimitHardMiB,
@@ -356,6 +423,34 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 
 	if v, ok := params["endpoint"].(string); ok && v != "" {
 		cfg.Endpoint = expandEnv(v)
+	}
+
+	if raw, ok := params["fallback_endpoints"].([]interface{}); ok {
+		for _, item := range raw {
+			s, ok := item.(string)
+			if !ok {
+				return cfg, fmt.Errorf("fallback_endpoints entries must be strings")
+			}
+			if s = expandEnv(strings.TrimSpace(s)); s != "" {
+				cfg.FallbackEndpoints = append(cfg.FallbackEndpoints, s)
+			}
+		}
+	}
+
+	if v, ok := params["protocol"].(string); ok && v != "" {
+		cfg.Protocol = v
+	}
+	// `http/protobuf` is the value the OTel spec env var
+	// (OTEL_EXPORTER_OTLP_PROTOCOL) uses; accept it as an alias and
+	// normalize to the file-config-ergonomic `http`. `http/json` is
+	// not supported — the SDK exporters we wire emit protobuf.
+	if cfg.Protocol == "http/protobuf" {
+		cfg.Protocol = "http"
+	}
+	switch cfg.Protocol {
+	case "grpc", "http":
+	default:
+		return cfg, fmt.Errorf("protocol must be 'grpc' or 'http' (alias 'http/protobuf'), got %q", cfg.Protocol)
 	}
 
 	if v, ok := params["compression"].(string); ok && v != "" {
@@ -387,6 +482,21 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 			return cfg, fmt.Errorf("max_active_series_per_probe must be >= 0 (0 = unbounded), got %d", v)
 		}
 		cfg.MaxActiveSeriesPerProbe = v
+	}
+
+	if raw, ok := params["staleness_ttl"]; ok {
+		str, isStr := raw.(string)
+		if !isStr {
+			return cfg, fmt.Errorf("staleness_ttl must be a duration string (e.g. \"10m\"), got %T", raw)
+		}
+		d, err := time.ParseDuration(str)
+		if err != nil {
+			return cfg, fmt.Errorf("staleness_ttl: %w", err)
+		}
+		if d < 0 {
+			return cfg, fmt.Errorf("staleness_ttl must be >= 0 (0 disables eviction), got %s", d)
+		}
+		cfg.StalenessTTL = d
 	}
 
 	if err := parseMemoryLimit(params["memory_limit"], &cfg.MemoryLimit); err != nil {
@@ -421,7 +531,7 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 	if err := parseRetry(params["retry"], &cfg.Retry); err != nil {
 		return cfg, fmt.Errorf("retry: %w", err)
 	}
-	if err := parseSignals(params["signals"], &cfg.Metrics, &cfg.Logs, &cfg.Traces); err != nil {
+	if err := parseSignals(params["signals"], &cfg.Metrics, &cfg.Logs, &cfg.Traces, &cfg.Entities); err != nil {
 		return cfg, fmt.Errorf("signals: %w", err)
 	}
 	if err := parseResource(params["resource"], &cfg.Resource); err != nil {
@@ -539,6 +649,12 @@ func parsePersistence(raw interface{}, out *PersistenceConfig) error {
 		}
 		out.Interval = d
 	}
+	if v, ok := readInt(m["logs_queue_max_bytes"]); ok {
+		if v < 0 {
+			return fmt.Errorf("logs_queue_max_bytes must be >= 0, got %d", v)
+		}
+		out.LogsQueueMaxBytes = int64(v)
+	}
 	return nil
 }
 
@@ -575,7 +691,7 @@ func parseMemoryLimit(raw interface{}, out *MemoryLimitConfig) error {
 	return nil
 }
 
-func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, traces *TracesSignal) error {
+func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, traces *TracesSignal, entities *EntitiesSignal) error {
 	m := readStringKeyedMap(raw)
 	if m == nil {
 		return nil
@@ -624,6 +740,22 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 		}
 		if err := parseSignalTransport("logs", lm, &logs.SignalTransport); err != nil {
 			return err
+		}
+	}
+
+	if em := readStringKeyedMap(m["entities"]); em != nil {
+		if v, ok := em["enabled"].(bool); ok {
+			entities.Enabled = v
+		}
+		if v, ok := em["interval"].(string); ok && v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil {
+				return fmt.Errorf("entities.interval: %w", err)
+			}
+			entities.Interval = d
+		}
+		if v, ok := readInt(em["buffer_size"]); ok {
+			entities.BufferSize = v
 		}
 	}
 

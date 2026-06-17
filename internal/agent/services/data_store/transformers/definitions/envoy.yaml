@@ -1,0 +1,131 @@
+probe_name: "envoy"
+friendly_name: "Envoy"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["cluster"]
+
+# Free-tier Envoy proxy monitoring probe. Scrapes /stats?format=prometheus
+# on the Envoy admin interface (default :9901) and surfaces the most
+# operationally critical signals: server health, listener downstream
+# connections/requests, and per-cluster upstream connections/requests.
+#
+# Cluster-scoped metrics carry a cluster tag derived from the
+# envoy_cluster_name Prometheus label; multi_instance_labels enables
+# per-cluster PRTG channel naming.
+
+metrics:
+  - name: "senhub.envoy.up"
+    channel: "envoy_up"
+    display_name: "Envoy Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the Envoy admin interface answered /stats?format=prometheus successfully"
+    otel:
+      name: senhub.envoy.up
+      unit: "1"
+      type: gauge
+
+  - name: "envoy.server.uptime"
+    channel: "envoy_server_uptime"
+    display_name: "Envoy Server Uptime"
+    unit: "s"
+    category: "overview"
+    description: "Time since the Envoy process started (seconds)"
+    otel:
+      name: envoy.server.uptime
+      unit: "s"
+      type: counter
+
+  - name: "envoy.server.memory.allocated"
+    channel: "envoy_server_memory_allocated"
+    display_name: "Envoy Memory Allocated"
+    unit: "B"
+    category: "overview"
+    description: "Current memory allocated by the Envoy process"
+    otel:
+      name: envoy.server.memory.allocated
+      unit: "By"
+      type: gauge
+
+  - name: "envoy.server.memory.heap_size"
+    channel: "envoy_server_memory_heap_size"
+    display_name: "Envoy Memory Heap Size"
+    unit: "B"
+    category: "overview"
+    description: "Current heap size reported by the Envoy process"
+    otel:
+      name: envoy.server.memory.heap_size
+      unit: "By"
+      type: gauge
+
+  - name: "envoy.listener.downstream.connections.total"
+    channel: "envoy_listener_downstream_cx_total"
+    display_name: "Envoy Downstream Connections Total"
+    unit: "#"
+    category: "connections"
+    description: "Total downstream connections accepted across all listeners (cumulative)"
+    otel:
+      name: envoy.listener.downstream.connections.total
+      unit: "{connection}"
+      type: counter
+
+  - name: "envoy.listener.downstream.connections.active"
+    channel: "envoy_listener_downstream_cx_active"
+    display_name: "Envoy Downstream Connections Active"
+    unit: "#"
+    category: "connections"
+    description: "Currently active downstream connections across all listeners"
+    otel:
+      name: envoy.listener.downstream.connections.active
+      unit: "{connection}"
+      type: gauge
+
+  - name: "envoy.http.downstream.requests.total"
+    channel: "envoy_http_downstream_rq_total"
+    display_name: "Envoy HTTP Requests Total"
+    unit: "#"
+    category: "requests"
+    description: "Total HTTP downstream requests received across all HTTP connection managers (cumulative)"
+    otel:
+      name: envoy.http.downstream.requests.total
+      unit: "{request}"
+      type: counter
+
+  - name: "envoy.cluster.upstream.connections.total"
+    channel: "envoy_cluster_{cluster}_upstream_cx_total"
+    display_name: "Envoy Cluster {cluster} Upstream Connections Total"
+    unit: "#"
+    category: "cluster"
+    description: "Total upstream connections opened to cluster members (cumulative)"
+    otel:
+      name: envoy.cluster.upstream.connections.total
+      unit: "{connection}"
+      type: counter
+    tag_to_attribute:
+      cluster: envoy.cluster_name
+
+  - name: "envoy.cluster.upstream.requests.total"
+    channel: "envoy_cluster_{cluster}_upstream_rq_total"
+    display_name: "Envoy Cluster {cluster} Upstream Requests Total"
+    unit: "#"
+    category: "cluster"
+    description: "Total upstream requests dispatched to cluster members (cumulative)"
+    otel:
+      name: envoy.cluster.upstream.requests.total
+      unit: "{request}"
+      type: counter
+    tag_to_attribute:
+      cluster: envoy.cluster_name
+
+  - name: "envoy.cluster.upstream.requests.time"
+    channel: "envoy_cluster_{cluster}_upstream_rq_time_sum"
+    display_name: "Envoy Cluster {cluster} Upstream Request Time"
+    unit: "ms"
+    category: "cluster"
+    description: "Cumulative upstream request latency across all requests to cluster members"
+    otel:
+      name: envoy.cluster.upstream.requests.time
+      unit: "ms"
+      type: counter
+    tag_to_attribute:
+      cluster: envoy.cluster_name

@@ -3,6 +3,7 @@ package data_store
 import (
 	"context"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -33,11 +34,18 @@ type MockAgentConfig struct {
 	serverURL string
 }
 
-func (m *MockAgentConfig) GetAuthenticationKey() string { return m.authKey }
-func (m *MockAgentConfig) GetServerUrl() string         { return m.serverURL }
+func (m *MockAgentConfig) GetAuthenticationKey() string     { return m.authKey }
+func (m *MockAgentConfig) GetServerUrl() string             { return m.serverURL }
+func (m *MockAgentConfig) GetGlobalTags() map[string]string { return nil }
 
 // MockStrategy implements SyncStrategy for testing
+// MockStrategy records lifecycle and datapoint calls. It is mutex-
+// protected: production strategies synchronize internally, and tests
+// like the hot-reload regression hammer the same instance from several
+// callback goroutines — an unsynchronized mock made the race job
+// flaky on a race that only existed in the test double.
 type MockStrategy struct {
+	mu            sync.Mutex
 	name          string
 	params        map[string]interface{}
 	dataPoints    [][]datapoint.DataPoint
@@ -54,16 +62,28 @@ func (m *MockStrategy) ValidateConfigParams(configuration.StorageConfigParams) e
 	return m.validateError
 }
 func (m *MockStrategy) Start() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.started = true
 	return m.startError
 }
 func (m *MockStrategy) AddDataPoints(data []datapoint.DataPoint) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.dataPoints = append(m.dataPoints, data)
 	return m.addError
 }
 func (m *MockStrategy) Shutdown(context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.shutdown = true
 	return nil
+}
+
+func (m *MockStrategy) wasShutdown() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.shutdown
 }
 
 // MockStrategyRouter implements StrategyRouter for testing
@@ -237,7 +257,7 @@ func TestGetCallback(t *testing.T) {
 		name:   "test-strategy",
 		params: map[string]interface{}{},
 	}
-	ds.strategies = []SyncStrategy{mockStrategy}
+	func() { v := []SyncStrategy{mockStrategy}; ds.strategies.Store(&v) }()
 
 	callback := ds.GetCallback()
 	if callback == nil {
@@ -267,6 +287,56 @@ func TestGetCallback(t *testing.T) {
 
 	if len(mockStrategy.dataPoints[0]) != 1 {
 		t.Errorf("Expected 1 datapoint, got %d", len(mockStrategy.dataPoints[0]))
+	}
+}
+
+func TestGetCallback_AppliesConfiguredTags(t *testing.T) {
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
+	mockProvider := &MockConfigProvider{config: configuration.RemoteConfigurationData{
+		Agent: configuration.AgentConfig{GlobalTags: map[string]string{"site": "global-x", "region": "west"}},
+		Probes: []configuration.ProbeConfig{
+			{Name: "p1", CustomTags: map[string]string{"site": "custom-x", "tier": "gold"}},
+		},
+	}}
+	ds := NewDataStore(&MockAgentConfig{}, mockProvider, baseLogger).(*dataStore)
+	mockStrategy := &MockStrategy{name: "s", params: map[string]interface{}{}}
+	func() { v := []SyncStrategy{mockStrategy}; ds.strategies.Store(&v) }()
+
+	in := []datapoint.DataPoint{
+		{Name: "m", Tags: []tags.Tag{{Key: "probe_name", Value: "p1"}, {Key: "site", Value: "builtin"}}},
+		{Name: "m", Tags: []tags.Tag{{Key: "probe_name", Value: "p2"}}},
+	}
+	if err := ds.GetCallback()(in, &MockStrategyRouter{targets: []string{"s"}}); err != nil {
+		t.Fatalf("callback error: %v", err)
+	}
+	if len(mockStrategy.dataPoints) != 1 {
+		t.Fatalf("want 1 AddDataPoints call, got %d", len(mockStrategy.dataPoints))
+	}
+	got := mockStrategy.dataPoints[0]
+	val := func(tt []tags.Tag, k string) string {
+		for _, x := range tt {
+			if x.Key == k {
+				return x.Value
+			}
+		}
+		return ""
+	}
+	// p1: custom_tags > global_tags > built-in
+	if v := val(got[0].Tags, "site"); v != "custom-x" {
+		t.Errorf("p1 site = %q, want custom-x (custom wins)", v)
+	}
+	if v := val(got[0].Tags, "region"); v != "west" {
+		t.Errorf("p1 region = %q, want west (global)", v)
+	}
+	if v := val(got[0].Tags, "tier"); v != "gold" {
+		t.Errorf("p1 tier = %q, want gold (custom)", v)
+	}
+	// p2: no custom_tags → global wins over built-in (none here), applied to all probes
+	if v := val(got[1].Tags, "site"); v != "global-x" {
+		t.Errorf("p2 site = %q, want global-x (global applies to every probe)", v)
+	}
+	if v := val(got[1].Tags, "tier"); v != "" {
+		t.Errorf("p2 tier = %q, want empty (custom_tags are per-probe)", v)
 	}
 }
 
@@ -302,7 +372,7 @@ func TestGetCallback_StrategyFiltering(t *testing.T) {
 	// Add multiple strategies
 	strategy1 := &MockStrategy{name: "strategy1"}
 	strategy2 := &MockStrategy{name: "strategy2"}
-	ds.strategies = []SyncStrategy{strategy1, strategy2}
+	func() { v := []SyncStrategy{strategy1, strategy2}; ds.strategies.Store(&v) }()
 
 	callback := ds.GetCallback()
 
@@ -362,7 +432,7 @@ func TestShutdown_WithStrategies(t *testing.T) {
 	// Add mock strategies
 	strategy1 := &MockStrategy{name: "strategy1"}
 	strategy2 := &MockStrategy{name: "strategy2"}
-	ds.strategies = []SyncStrategy{strategy1, strategy2}
+	func() { v := []SyncStrategy{strategy1, strategy2}; ds.strategies.Store(&v) }()
 
 	ctx := context.Background()
 	err := ds.Shutdown(ctx)
@@ -371,10 +441,10 @@ func TestShutdown_WithStrategies(t *testing.T) {
 	}
 
 	// Verify both strategies were shutdown
-	if !strategy1.shutdown {
+	if !strategy1.wasShutdown() {
 		t.Error("Strategy1 was not shutdown")
 	}
-	if !strategy2.shutdown {
+	if !strategy2.wasShutdown() {
 		t.Error("Strategy2 was not shutdown")
 	}
 }
@@ -438,8 +508,8 @@ func TestOnConfigRefreshed(t *testing.T) {
 	ds.OnConfigRefreshed("test-reason")
 
 	// Strategies should be empty with empty config
-	if len(ds.strategies) != 0 {
-		t.Errorf("Expected 0 strategies with empty config, got %d", len(ds.strategies))
+	if len(ds.activeStrategies()) != 0 {
+		t.Errorf("Expected 0 strategies with empty config, got %d", len(ds.activeStrategies()))
 	}
 }
 

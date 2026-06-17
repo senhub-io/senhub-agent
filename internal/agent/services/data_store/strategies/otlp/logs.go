@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -17,6 +18,14 @@ import (
 // "dev" if unknown).
 const logsScopeName = "senhub-agent/otlp-logs"
 
+// entitiesScopeName identifies the Logger that emits entity/relation events.
+// Its instrumentation scope carries otel.entity.entity_event=true — the
+// fast-path filter convention for entity-aware consumers (collector-contrib).
+// Toise ignores the flag, but setting it preserves interop.
+const entitiesScopeName = "senhub-agent/otlp-entities"
+
+const scopeAttrEntityEvent = "otel.entity.entity_event"
+
 // logsPipeline bundles the SDK objects that drive log export. The
 // LoggerProvider owns the BatchProcessor that owns the OTLP exporter
 // — graceful shutdown happens by calling provider.Shutdown(ctx) which
@@ -26,6 +35,11 @@ const logsScopeName = "senhub-agent/otlp-logs"
 type logsPipeline struct {
 	provider *sdklog.LoggerProvider
 	logger   log.Logger
+	// entityLogger emits entity/relation events. Separate Logger (distinct
+	// instrumentation scope + the otel.entity.entity_event scope attribute)
+	// off the same provider/exporter, so entity events ride the log signal
+	// without mixing scopes with ordinary logs.
+	entityLogger log.Logger
 }
 
 // buildLogsPipeline wires the SDK BatchProcessor onto the provided
@@ -69,7 +83,24 @@ func buildLogsPipeline(
 	return &logsPipeline{
 		provider: provider,
 		logger:   provider.Logger(logsScopeName, log.WithInstrumentationVersion(scopeVersion)),
+		entityLogger: provider.Logger(
+			entitiesScopeName,
+			log.WithInstrumentationVersion(scopeVersion),
+			log.WithInstrumentationAttributes(attribute.Bool(scopeAttrEntityEvent, true)),
+		),
 	}
+}
+
+// emitEntityRecord hands a pre-encoded entity/relation Record to the entity
+// Logger. The record is built by the entity pump via buildEntityRecord; this
+// just attaches scope + resource and queues it on the same BatchProcessor as
+// logs.
+func (p *logsPipeline) emitEntityRecord(ctx context.Context, rec log.Record) {
+	if p == nil || p.entityLogger == nil {
+		return
+	}
+	p.entityLogger.Emit(ctx, rec)
+	agentstate.IncrementOTLPLogsPushed()
 }
 
 // emit converts an agent-internal LogRecord into the OTel API Record
@@ -107,6 +138,37 @@ func (p *logsPipeline) emit(ctx context.Context, rec agentstate.LogRecord) {
 		apiRec.AddAttributes(attrs...)
 	}
 
+	p.logger.Emit(ctx, apiRec)
+	agentstate.IncrementOTLPLogsPushed()
+}
+
+// replayEventLog rebuilds an API log.Record from a persisted event log
+// and re-emits it through the ordinary-logs Logger (logsScopeName), which
+// re-attaches scope + resource — neither is settable on a raw record, so
+// replay must go through the pipeline rather than the exporter (#217).
+func (p *logsPipeline) replayEventLog(ctx context.Context, pr persistedLogRecord) {
+	if p == nil || p.logger == nil {
+		return
+	}
+	var apiRec log.Record
+	apiRec.SetTimestamp(time.Unix(0, pr.TimestampUnixNano))
+	if pr.ObservedTimestampUnixNano != 0 {
+		apiRec.SetObservedTimestamp(time.Unix(0, pr.ObservedTimestampUnixNano))
+	} else {
+		apiRec.SetObservedTimestamp(time.Unix(0, pr.TimestampUnixNano))
+	}
+	apiRec.SetSeverity(log.Severity(pr.SeverityNumber))
+	if pr.SeverityText != "" {
+		apiRec.SetSeverityText(pr.SeverityText)
+	}
+	apiRec.SetBody(log.StringValue(pr.Body))
+	if len(pr.Attributes) > 0 {
+		attrs := make([]log.KeyValue, 0, len(pr.Attributes))
+		for k, v := range pr.Attributes {
+			attrs = append(attrs, log.String(k, v))
+		}
+		apiRec.AddAttributes(attrs...)
+	}
 	p.logger.Emit(ctx, apiRec)
 	agentstate.IncrementOTLPLogsPushed()
 }

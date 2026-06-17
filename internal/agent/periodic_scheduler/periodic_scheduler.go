@@ -9,6 +9,12 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
+// maxBackoffTicks caps the failure backoff: at worst the scheduler
+// attempts once every (maxBackoffTicks+1) intervals. With the typical
+// 30-60s sync intervals that is a few minutes between attempts —
+// degraded, visible in logs and health, but never dead.
+const maxBackoffTicks = 8
+
 type PeriodicSchedulerCall func() error
 type PeriodicSchedulerOnStart func(quitChannel chan struct{}) error
 type PeriodicSchedulerOnShutdown func(ctx context.Context) error
@@ -22,7 +28,11 @@ type PeriodicSchedulerConfig struct {
 	FailOnStartError bool
 	// interval between calls
 	Interval time.Duration
-	// Number of retries on error
+	// MaxRetries is the consecutive-failure threshold after which the
+	// scheduler backs off (skipping ticks, exponentially up to
+	// maxBackoffTicks) while CONTINUING to retry. Zero or negative
+	// means no threshold: retry every tick forever. The scheduler
+	// never shuts itself down on Execute errors (#258).
 	MaxRetries int
 	// Execute to be made periodically
 	Execute PeriodicSchedulerCall
@@ -44,7 +54,14 @@ type periodicScheduler struct {
 	config      PeriodicSchedulerConfig
 	ticker      *time.Ticker
 	quitChannel chan struct{}
-	mutex       sync.Mutex // Protects probe operations
+	stopChannel chan struct{}
+	// lifecycleMutex serializes Start/Shutdown and guards
+	// started/ticker/quitChannel/stopChannel. It is distinct from
+	// mutex (which only serializes Execute) so a Shutdown can wait
+	// for an in-flight tick without lock-order inversion: the tick
+	// goroutine only ever takes mutex, never lifecycleMutex.
+	lifecycleMutex sync.Mutex
+	mutex          sync.Mutex // Protects probe operations
 }
 
 func NewPeriodicScheduler(config PeriodicSchedulerConfig, logger *logger.Logger) PeriodicScheduler {
@@ -56,6 +73,9 @@ func NewPeriodicScheduler(config PeriodicSchedulerConfig, logger *logger.Logger)
 }
 
 func (l *periodicScheduler) Start(quitChannel chan struct{}) error {
+	l.lifecycleMutex.Lock()
+	defer l.lifecycleMutex.Unlock()
+
 	if l.started {
 		return nil
 	}
@@ -63,10 +83,19 @@ func (l *periodicScheduler) Start(quitChannel chan struct{}) error {
 	l.logger.Info().Msg("Starting")
 	l.started = true
 	l.quitChannel = quitChannel
+	l.stopChannel = make(chan struct{})
 
 	if l.config.OnStart != nil {
 		l.logger.Info().Msg("On start call")
-		if err := l.config.OnStart(quitChannel); err != nil {
+		// OnStart receives the scheduler-owned stop channel, not the
+		// caller's quitChannel: callers routinely pass nil (sensor
+		// config reloads, push strategies), and any goroutine an
+		// OnStart hook parks on a nil channel blocks forever — one
+		// leaked goroutine per probe stop / strategy recreation
+		// (#270). The stop channel is closed in Shutdown, before
+		// OnShutdown runs, so hook goroutines always get a
+		// termination signal.
+		if err := l.config.OnStart(l.stopChannel); err != nil {
 			return fmt.Errorf("OnStart failed: %v", err)
 		}
 	}
@@ -109,8 +138,17 @@ func (l *periodicScheduler) setupIntervalCall() error {
 
 	l.ticker = time.NewTicker(l.config.Interval)
 	errorCount := 0
+	backoffTicks := 0  // current backoff width in ticks (0 = none)
+	skipRemaining := 0 // ticks left to skip before the next attempt
 
-	go func(ticker *time.Ticker) {
+	// quit and stop are captured here, not read from the struct inside
+	// the goroutine: a Shutdown/Start restart cycle replaces those
+	// fields, and a previous goroutine reading them would race.
+	quit := l.quitChannel
+	stop := l.stopChannel
+
+	go func(ticker *time.Ticker, quit, stop chan struct{}) {
+		stopped := false
 		// Recover from any panic in Execute so a buggy probe collector
 		// does not silently kill the scheduler goroutine — historically
 		// caused the IBM i probe to stop running cycles after a few
@@ -121,9 +159,10 @@ func (l *periodicScheduler) setupIntervalCall() error {
 				l.logger.Error().
 					Interface("panic", r).
 					Msgf("scheduler goroutine PANICKED — probe is now stalled forever (restart agent to recover): %v", r)
-			} else {
-				// Clean exit without quit signal is also abnormal —
-				// the for-select should only exit via quitChannel.
+			} else if !stopped {
+				// Clean exit without quit/stop signal is abnormal —
+				// the for-select should only exit via quitChannel or
+				// the Shutdown stop channel.
 				l.logger.Warn().Msg("scheduler goroutine exited without quit signal — probe is now stalled")
 			}
 		}()
@@ -136,6 +175,18 @@ func (l *periodicScheduler) setupIntervalCall() error {
 		for {
 			select {
 			case <-ticker.C:
+				// Backoff: after MaxRetries consecutive failures the
+				// scheduler skips ticks (exponentially, capped) instead
+				// of attempting every interval — and NEVER shuts itself
+				// down. A monitoring agent must not self-terminate its
+				// pipelines on transient failure: the historical
+				// self-Shutdown here permanently killed cloud/PRTG push
+				// on the first error (MaxRetries unset = 0) and probes
+				// after 3 failed collects, with no recovery path (#258).
+				if skipRemaining > 0 {
+					skipRemaining--
+					continue
+				}
 				tickStarted := time.Now()
 				l.logger.Info().
 					Int("error_count", errorCount).
@@ -143,23 +194,28 @@ func (l *periodicScheduler) setupIntervalCall() error {
 				err := l.doCall()
 				if err != nil {
 					errorCount++
-					if errorCount < l.config.MaxRetries {
+					if l.config.MaxRetries > 0 && errorCount >= l.config.MaxRetries {
+						if backoffTicks < maxBackoffTicks {
+							backoffTicks = backoffTicks*2 + 1
+							if backoffTicks > maxBackoffTicks {
+								backoffTicks = maxBackoffTicks
+							}
+						}
+						skipRemaining = backoffTicks
+						l.logger.Error().
+							Err(err).
+							Dur("duration", time.Since(tickStarted)).
+							Int("error_count", errorCount).
+							Int("max_retry", l.config.MaxRetries).
+							Int("backoff_ticks", backoffTicks).
+							Msg("Consecutive failures over threshold — backing off, will keep retrying")
+					} else {
 						l.logger.Warn().
 							Err(err).
 							Dur("duration", time.Since(tickStarted)).
 							Int("error_count", errorCount).
 							Int("max_retry", l.config.MaxRetries).
 							Msg("doCall returned error (will retry)")
-					} else {
-						l.logger.Error().
-							Err(err).
-							Dur("duration", time.Since(tickStarted)).
-							Int("error_count", errorCount).
-							Int("max_retry", l.config.MaxRetries).
-							Msg("Max retries reached, shutting down")
-						if err := l.Shutdown(context.Background()); err != nil {
-							l.logger.Error().Err(err).Msg("Failed to shutdown scheduler")
-						}
 					}
 				} else {
 					l.logger.Info().
@@ -171,18 +227,28 @@ func (l *periodicScheduler) setupIntervalCall() error {
 							Msg("Recovered")
 					}
 					errorCount = 0
+					backoffTicks = 0
+					skipRemaining = 0
 				}
-			case <-l.quitChannel:
+			case <-quit:
+				stopped = true
 				l.logger.Info().Msg("Scheduler goroutine terminating on quit signal")
+				return
+			case <-stop:
+				stopped = true
+				l.logger.Info().Msg("Scheduler goroutine terminating on shutdown")
 				return
 			}
 		}
-	}(l.ticker)
+	}(l.ticker, quit, stop)
 
 	return nil
 }
 
 func (l *periodicScheduler) Shutdown(ctx context.Context) error {
+	l.lifecycleMutex.Lock()
+	defer l.lifecycleMutex.Unlock()
+
 	if !l.started {
 		return nil
 	}
@@ -193,6 +259,11 @@ func (l *periodicScheduler) Shutdown(ctx context.Context) error {
 	if l.ticker != nil {
 		l.ticker.Stop()
 		l.ticker = nil
+	}
+
+	if l.stopChannel != nil {
+		close(l.stopChannel)
+		l.stopChannel = nil
 	}
 
 	if l.config.ExecuteOnShutdown {

@@ -6,18 +6,18 @@ import (
 
 func TestSanitizeParamsForLog_MasksSecretKeys(t *testing.T) {
 	in := map[string]interface{}{
-		"host":     "example.test",
-		"port":     22,
-		"user":     "admin",
-		"password": "hunter2",
-		"api_token":         "tok-abc",
-		"client_secret":     "shhh",
-		"db_password":       "p4ss",
-		"auth_login":        "svc-acct",
-		"contact_email":     "ops@example.test",
-		"trusted_user_ids":  []int{1, 2},
-		"interval":          30,
-		"runner_dir":        "/opt/runner",
+		"host":             "example.test",
+		"port":             22,
+		"user":             "admin",
+		"password":         "hunter2",
+		"api_token":        "tok-abc",
+		"client_secret":    "shhh",
+		"db_password":      "p4ss",
+		"auth_login":       "svc-acct",
+		"contact_email":    "ops@example.test",
+		"trusted_user_ids": []int{1, 2},
+		"interval":         30,
+		"runner_dir":       "/opt/runner",
 	}
 	out := SanitizeParamsForLog(in)
 	for _, k := range []string{"user", "password", "api_token", "client_secret", "db_password", "auth_login", "contact_email", "trusted_user_ids"} {
@@ -54,10 +54,10 @@ func TestSanitizeParamsForLog_DoesNotMutateInput(t *testing.T) {
 
 func TestSanitizeParamsForLog_CaseInsensitiveMatch(t *testing.T) {
 	in := map[string]interface{}{
-		"USER":         "ALICE",
-		"Password":     "shh",
-		"AuthLogin":    "svc",
-		"X-API-TOKEN":  "tok-abc",
+		"USER":        "ALICE",
+		"Password":    "shh",
+		"AuthLogin":   "svc",
+		"X-API-TOKEN": "tok-abc",
 	}
 	out := SanitizeParamsForLog(in)
 	for k := range in {

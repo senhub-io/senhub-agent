@@ -1,0 +1,166 @@
+probe_name: "pulsar"
+friendly_name: "Apache Pulsar"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["endpoint"]
+
+# Free-tier Pulsar broker monitoring probe. Availability is checked via
+# GET /admin/v2/brokers/ready; metrics are extracted from the Pulsar
+# Prometheus exposition at GET /metrics (broker-level aggregates only).
+
+metrics:
+  - name: "senhub.pulsar.up"
+    channel: "pulsar_up"
+    display_name: "Pulsar {endpoint} Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when the broker answered /admin/v2/brokers/ready with HTTP 200"
+    otel:
+      name: senhub.pulsar.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      endpoint: pulsar.endpoint
+
+  - name: "pulsar.topics.count"
+    channel: "pulsar_topics_count"
+    display_name: "Pulsar Topics"
+    unit: "#"
+    category: "broker"
+    description: "Number of topics on the broker"
+    otel:
+      name: pulsar.topics.count
+      unit: "{topic}"
+      type: gauge
+    tag_to_attribute:
+      endpoint: pulsar.endpoint
+
+  - name: "pulsar.producers.count"
+    channel: "pulsar_producers_count"
+    display_name: "Pulsar Producers"
+    unit: "#"
+    category: "broker"
+    description: "Number of producers connected to the broker"
+    otel:
+      name: pulsar.producers.count
+      unit: "{producer}"
+      type: gauge
+    tag_to_attribute:
+      endpoint: pulsar.endpoint
+
+  - name: "pulsar.consumers.count"
+    channel: "pulsar_consumers_count"
+    display_name: "Pulsar Consumers"
+    unit: "#"
+    category: "broker"
+    description: "Number of consumers connected to the broker"
+    otel:
+      name: pulsar.consumers.count
+      unit: "{consumer}"
+      type: gauge
+    tag_to_attribute:
+      endpoint: pulsar.endpoint
+
+  - name: "pulsar.rate.messages.in"
+    channel: "pulsar_rate_in"
+    display_name: "Pulsar Publish Rate"
+    unit: "msgs/s"
+    category: "throughput"
+    description: "Messages published per second to the broker"
+    otel:
+      name: pulsar.rate.messages.in
+      unit: "{message}/s"
+      type: gauge
+    tag_to_attribute:
+      endpoint: pulsar.endpoint
+
+  - name: "pulsar.rate.messages.out"
+    channel: "pulsar_rate_out"
+    display_name: "Pulsar Dispatch Rate"
+    unit: "msgs/s"
+    category: "throughput"
+    description: "Messages dispatched per second from the broker"
+    otel:
+      name: pulsar.rate.messages.out
+      unit: "{message}/s"
+      type: gauge
+    tag_to_attribute:
+      endpoint: pulsar.endpoint
+
+  - name: "pulsar.throughput.in"
+    channel: "pulsar_throughput_in"
+    display_name: "Pulsar Publish Throughput"
+    unit: "Bytes/s"
+    category: "throughput"
+    description: "Bytes published per second to the broker"
+    otel:
+      name: pulsar.throughput.in
+      unit: "By/s"
+      type: gauge
+    tag_to_attribute:
+      endpoint: pulsar.endpoint
+
+  - name: "pulsar.throughput.out"
+    channel: "pulsar_throughput_out"
+    display_name: "Pulsar Dispatch Throughput"
+    unit: "Bytes/s"
+    category: "throughput"
+    description: "Bytes dispatched per second from the broker"
+    otel:
+      name: pulsar.throughput.out
+      unit: "By/s"
+      type: gauge
+    tag_to_attribute:
+      endpoint: pulsar.endpoint
+
+  - name: "pulsar.storage.size"
+    channel: "pulsar_storage_size"
+    display_name: "Pulsar Storage Size"
+    unit: "B"
+    category: "storage"
+    description: "Total storage used by the broker for message data"
+    otel:
+      name: pulsar.storage.size
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      endpoint: pulsar.endpoint
+
+  - name: "pulsar.message.backlog"
+    channel: "pulsar_msg_backlog"
+    display_name: "Pulsar Message Backlog"
+    unit: "#"
+    category: "broker"
+    description: "Number of messages in the backlog (not yet consumed)"
+    otel:
+      name: pulsar.message.backlog
+      unit: "{message}"
+      type: gauge
+    tag_to_attribute:
+      endpoint: pulsar.endpoint
+
+  - name: "pulsar.storage.read.rate"
+    channel: "pulsar_storage_read_rate"
+    display_name: "Pulsar Storage Read Rate"
+    unit: "entries/s"
+    category: "storage"
+    description: "Storage ledger entries read per second"
+    otel:
+      name: pulsar.storage.read.rate
+      unit: "{entry}/s"
+      type: gauge
+    tag_to_attribute:
+      endpoint: pulsar.endpoint
+
+  - name: "pulsar.storage.write.rate"
+    channel: "pulsar_storage_write_rate"
+    display_name: "Pulsar Storage Write Rate"
+    unit: "entries/s"
+    category: "storage"
+    description: "Storage ledger entries written per second"
+    otel:
+      name: pulsar.storage.write.rate
+      unit: "{entry}/s"
+      type: gauge
+    tag_to_attribute:
+      endpoint: pulsar.endpoint

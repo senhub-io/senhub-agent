@@ -14,10 +14,16 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/agentmetrics"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/entity/hostdep"
+	"senhub-agent.go/internal/agent/services/entity/hostiface"
+	"senhub-agent.go/internal/agent/services/entity/hostnet"
+	"senhub-agent.go/internal/agent/services/entity/hostsvc"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
@@ -49,9 +55,15 @@ type OTLPSyncStrategy struct {
 	registry *transformers.TransformerRegistry
 
 	// resource is the OTel Resource (service.name, service.instance.id,
-	// service.version, deployment.environment, plus operator extras)
-	// attached to every emitted batch.
+	// service.version, deployment.environment, operator extras, plus the
+	// agent-level global_tags) attached to every emitted batch.
 	resource *resource.Resource
+
+	// globalTagKeys is the set of agent-level global_tag keys. They are
+	// carried on the Resource, so they are stripped from per-metric
+	// attributes before export to avoid duplicating them on every series
+	// (issue #202).
+	globalTagKeys map[string]bool
 
 	// startTime is the OTel `start_time_unix_nano` for cumulative
 	// counters. Pinned at strategy.Start so all counters share the same
@@ -65,6 +77,21 @@ type OTLPSyncStrategy struct {
 	// when Logs.Enabled. nil otherwise.
 	logs     *logsPipeline
 	logsPump *logsPump
+
+	// logsQueue is the on-disk dead-letter queue for the logs signal,
+	// set when persistence is enabled and logs are emitted (#217).
+	logsQueue *logsQueue
+
+	// entityPump emits entity/relation events on the OTLP log signal; the
+	// entity Detector goroutine produces them. Both nil/zero unless
+	// Entities.Enabled. entityDetectorCancel stops the detector,
+	// entityDetectorWG waits for it.
+	entityPump           *entityPump
+	entityDetectorCancel context.CancelFunc
+	// entitySourceUnregisters detach the strategy-owned entity sources
+	// (hostnet, hostsvc) from the global registry on stop.
+	entitySourceUnregisters []func()
+	entityDetectorWG        sync.WaitGroup
 
 	// traces holds the SDK BatchSpanProcessor + TracerProvider + Tracer
 	// when Traces.Enabled. nil otherwise. The provider also gets
@@ -122,16 +149,12 @@ func NewOTLPSyncStrategy(
 	}
 
 	// Default service.instance.id from the agent key if the operator
-	// didn't override it. Avoids leaking the full key — first 8 chars
-	// give enough disambiguation for fleet views without exposing the
-	// authentication secret to observability backends.
+	// didn't override it. The full key is used so distinct agents whose
+	// keys share an 8-char prefix (e.g. "recette-030-zabbix" vs
+	// "recette-030-vps") map to distinct service.instance.id / instance
+	// labels instead of colliding on a truncated prefix.
 	if cfg.Resource.ServiceInstance == "" {
-		key := agentConfig.GetAuthenticationKey()
-		if len(key) > 8 {
-			cfg.Resource.ServiceInstance = key[:8]
-		} else {
-			cfg.Resource.ServiceInstance = key
-		}
+		cfg.Resource.ServiceInstance = agentConfig.GetAuthenticationKey()
 	}
 
 	// Build optional memory limiter from config. Pass it to the store
@@ -152,15 +175,31 @@ func NewOTLPSyncStrategy(
 		store = store.withMemoryLimiter(ml)
 	}
 
+	globalTags := agentConfig.GetGlobalTags()
+	globalTagKeys := make(map[string]bool, len(globalTags))
+	for k := range globalTags {
+		globalTagKeys[k] = true
+	}
+
+	// host.*/os.* on the resource so the agent's own metrics and logs carry the
+	// same host.id as the host entity (entity↔telemetry correlation). Best-effort:
+	// degrade to no host attrs rather than fail strategy construction.
+	hostAttrs, hostErr := common.GetHostResourceAttributes()
+	if hostErr != nil {
+		moduleLogger.Warn().Err(hostErr).Msg("host resource attributes unavailable; OTLP resource omits host.id (entity↔telemetry correlation degraded)")
+		hostAttrs = nil
+	}
+
 	s := &OTLPSyncStrategy{
-		agentConfig: agentConfig,
-		rawParams:   params,
-		cfg:         cfg,
-		logger:      moduleLogger,
-		store:       store,
-		registry:    transformers.NewTransformerRegistry(baseLogger),
-		resource:    buildResource(cfg.Resource, cliArgs.Version),
-		memLimiter:  ml,
+		agentConfig:   agentConfig,
+		rawParams:     params,
+		cfg:           cfg,
+		logger:        moduleLogger,
+		store:         store,
+		registry:      transformers.NewTransformerRegistry(baseLogger),
+		resource:      buildResource(cfg.Resource, cliArgs.Version, hostAttrs, globalTags),
+		globalTagKeys: globalTagKeys,
+		memLimiter:    ml,
 	}
 
 	if cfg.Persistence.Path != "" {
@@ -213,7 +252,7 @@ func (s *OTLPSyncStrategy) Start() error {
 	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.Timeout)
 	defer cancel()
 
-	exp, err := buildExporters(ctx, s.cfg)
+	exp, err := buildExporters(ctx, s.cfg, s.logger)
 	if err != nil {
 		return fmt.Errorf("build exporters: %w", err)
 	}
@@ -243,10 +282,38 @@ func (s *OTLPSyncStrategy) Start() error {
 		s.startMetricsPusher()
 	}
 
-	if s.cfg.Logs.Enabled && s.exporters.log != nil {
+	// Durable dead-letter queue for the logs signal (#217): wrap the log
+	// exporter so a failed export persists event-log records to disk for
+	// replay at boot and on backend recovery. Only when persistence is on
+	// and raw logs are emitted; entity events are a re-emitted state
+	// stream and are not queued.
+	var logExp *persistentLogExporter
+	if s.cfg.Persistence.Path != "" && s.cfg.Logs.Enabled && s.exporters.log != nil {
+		s.logsQueue = newLogsQueue(s.cfg.Persistence.Path, s.cfg.Persistence.LogsQueueMaxBytes, s.logger)
+		logExp = newPersistentLogExporter(s.exporters.log, s.logsQueue, s.logger)
+		s.exporters.log = logExp
+	}
+
+	// Entity events ride the log signal, so the pipeline (provider + both
+	// loggers) is built when either logs or entities are enabled.
+	if (s.cfg.Logs.Enabled || s.cfg.Entities.Enabled) && s.exporters.log != nil {
 		s.logs = buildLogsPipeline(s.exporters.log, s.resource, s.cfg.Logs, cliArgs.Version)
+	}
+
+	// Wire queue replay to the pipeline: drain at boot and whenever the
+	// backend recovers from a failed export.
+	if logExp != nil && s.logs != nil {
+		rp := newLogsReplayer(s.logsQueue, s.logs, s.logger)
+		logExp.setOnRecovered(rp.replay)
+		go rp.replay()
+	}
+
+	if s.cfg.Logs.Enabled && s.logs != nil {
 		s.logsPump = newLogsPump(s.logs, s.cfg.Logs.BufferSize)
 		s.logsPump.start()
+	}
+	if s.cfg.Entities.Enabled && s.logs != nil {
+		s.startEntityEmission()
 	}
 
 	if s.cfg.Traces.Enabled && s.exporters.trace != nil {
@@ -262,6 +329,7 @@ func (s *OTLPSyncStrategy) Start() error {
 		Str("persistence_path", s.cfg.Persistence.Path).
 		Dur("persistence_interval", s.cfg.Persistence.Interval).
 		Str("endpoint", s.cfg.Endpoint).
+		Str("protocol", s.cfg.Protocol).
 		Bool("tls_enabled", s.cfg.TLS.Enabled).
 		Bool("metrics_enabled", s.cfg.Metrics.Enabled).
 		Str("metrics_endpoint", s.cfg.Metrics.ResolveEndpoint(s.cfg.Endpoint)).
@@ -344,7 +412,7 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 	}
 
 	tracer := otel.Tracer(tracesScopeName)
-	parent, span := tracer.Start(parent, "otlp.push.metrics")// Endpoint as attribute so split-backend configs (per-signal
+	parent, span := tracer.Start(parent, "otlp.push.metrics") // Endpoint as attribute so split-backend configs (per-signal
 	// override) show the actual target the span pushed to.
 	// Set at start so it's present even if the push panics.
 
@@ -358,6 +426,21 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 
 	now := time.Now()
 	resolveOpts := otelmapper.ResolveOptions{IncludeProbeTags: true}
+
+	// Evict series that stopped receiving datapoints before they get
+	// re-exported with fresh timestamps as zombies (#308). Runs every
+	// push cycle, so a removed or license-denied probe's series vanish
+	// within one staleness window — checkpoint-restored entries
+	// included (the next checkpoint save persists the shrunken store).
+	if evicted := s.store.evictStale(now, s.cfg.StalenessTTL); evicted > 0 {
+		for i := 0; i < evicted; i++ {
+			agentstate.IncrementOTLPDropped("staleness")
+		}
+		s.logger.Info().
+			Int("evicted", evicted).
+			Dur("staleness_ttl", s.cfg.StalenessTTL).
+			Msg("evicted stale series from the OTLP store (no datapoints within the staleness window)")
+	}
 
 	// Snapshot store cardinality before the push so the gauge reflects
 	// the size that drove this batch — useful when correlating export
@@ -374,6 +457,7 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 		s.startTime,
 		now,
 		resolveOpts,
+		s.globalTagKeys,
 		extraRecords,
 		func(ctx context.Context, rm *metricdata.ResourceMetrics) error {
 			return s.exporters.metric.Export(ctx, rm)
@@ -427,6 +511,81 @@ func (s *OTLPSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
 	return nil
 }
 
+// startEntityEmission wires the entity pump (consumer of the neutral
+// entity-event channel) and the Detector (producer of the Lot 1 foundation
+// events: host + service.instance + runs_on). Called from Start only when
+// Entities.Enabled and the log pipeline exists.
+//
+// The entity's service.instance.id is the resource's service.instance.id so
+// the entity identity and the OTLP resource agree on who the agent is.
+func (s *OTLPSyncStrategy) startEntityEmission() {
+	s.entityPump = newEntityPump(s.logs, s.cfg.Entities.BufferSize, s.logger)
+	s.entityPump.start()
+
+	serviceName := s.cfg.Resource.ServiceName
+	if serviceName == "" {
+		serviceName = "senhub-agent"
+	}
+	hostFn := func() (entity.HostIdentity, error) {
+		hi, err := common.GetHostIdentity()
+		if err != nil {
+			return entity.HostIdentity{}, err
+		}
+		return entity.HostIdentity{ID: hi.ID, Name: hi.Name, OSType: hi.OSType}, nil
+	}
+	agentFn := func() entity.AgentIdentity {
+		return entity.AgentIdentity{
+			InstanceID:     s.cfg.Resource.ServiceInstance,
+			ServiceName:    serviceName,
+			ServiceVersion: cliArgs.Version,
+		}
+	}
+	// Expose the agent's own service.instance.id to probe entity sources so
+	// they can stamp the From endpoint of their `monitors` edge to this same
+	// node. Same value the foundation puts on the agent entity (above), set
+	// before the detector starts polling sources.
+	agentstate.SetAgentInstanceID(s.cfg.Resource.ServiceInstance)
+
+	// Host-side entity sources (only active while entity emission runs):
+	// hostnet emits the host's routes as network.route + the gateway
+	// network.address; hostsvc emits the host's listening services as
+	// service.listener entities; hostiface emits the host's own interfaces and
+	// IP addresses so a connection peer resolves back to this host; hostdep
+	// emits the host's durable outbound dependencies (service.instance
+	// depends_on network.endpoint). All key off the host's stable id so they
+	// hang off the same host node as the foundation host entity.
+	hostIDFn := func() string {
+		hi, err := common.GetHostIdentity()
+		if err != nil {
+			return ""
+		}
+		return hi.ID
+	}
+	s.entitySourceUnregisters = append(s.entitySourceUnregisters,
+		entity.RegisterSource(hostnet.New(hostIDFn)),
+		entity.RegisterSource(hostsvc.New(hostIDFn)),
+		entity.RegisterSource(hostiface.New(hostIDFn)),
+		entity.RegisterSource(hostdep.New(hostIDFn)))
+
+	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
+	det.OnOrphanRelations(func(orphans []entity.Relation) {
+		for _, r := range orphans {
+			s.logger.Warn().
+				Str("relation", r.Type).
+				Str("from_type", r.FromType).
+				Str("to_type", r.ToType).
+				Msg("entity relation has no source entity this cycle; dropped from the wire")
+		}
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	s.entityDetectorCancel = cancel
+	s.entityDetectorWG.Add(1)
+	go func() {
+		defer s.entityDetectorWG.Done()
+		det.Run(ctx)
+	}()
+}
+
 // Shutdown stops the strategy: signals the push goroutine, waits for it
 // to drain, performs a final push (so the last interval's data isn't
 // lost), then closes the gRPC exporters. Idempotent: once shut down,
@@ -462,6 +621,23 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// pattern as memLimiter.
 	if s.chkpt != nil {
 		s.chkpt.stop()
+	}
+
+	// Stop entity emission: cancel the Detector (producer) and wait, then
+	// stop the pump (consumer). Producer-before-consumer so no event is
+	// published after the channel subscription is gone.
+	if s.entityDetectorCancel != nil {
+		s.entityDetectorCancel()
+		s.entityDetectorWG.Wait()
+	}
+	// Unregister the strategy-owned sources so a strategy restart does not
+	// duplicate them and a stopped strategy stops heartbeating (audit D4).
+	for _, unreg := range s.entitySourceUnregisters {
+		unreg()
+	}
+	s.entitySourceUnregisters = nil
+	if s.entityPump != nil {
+		s.entityPump.stop(ctx)
 	}
 
 	// Stop the logs pump and unsubscribe from agentstate. The

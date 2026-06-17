@@ -59,7 +59,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	// Runtime profiling — Go's net/http/pprof handlers mounted under
 	// /api/{agentkey}/debug/pprof/. Same agentkey auth as the other
 	// debug endpoints; needed for goroutine-dump-based investigation
-	// of stalls (the bbcloud "agent silent after JT400 respawn" is
+	// of stalls (the Windows "agent silent after JT400 respawn" incident is
 	// the motivating case).
 	registerPprofRoutes(router, h)
 
@@ -93,11 +93,6 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/api/{agentkey}/nagios/metrics", h.HandleNagiosMetrics).Methods("GET", "POST")
 		// Removed: /nagios/check/{probe} endpoint not needed
 		router.HandleFunc("/api/{agentkey}/nagios/checks", h.HandleNagiosChecks).Methods("GET", "POST")
-	}
-
-	if h.strategy.configManager.IsEndpointEnabled("zabbix") {
-		// Zabbix endpoints
-		router.HandleFunc("/api/{agentkey}/zabbix/metrics/{probe}", h.HandleZabbixMetricsGET).Methods("GET")
 	}
 
 	if h.strategy.configManager.IsEndpointEnabled("prometheus") {
@@ -215,12 +210,6 @@ func (h *HTTPHandlers) HandleNagiosMetrics(w http.ResponseWriter, r *http.Reques
 
 func (h *HTTPHandlers) HandleNagiosChecks(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleNagiosChecks(w, r)
-}
-
-// Zabbix handlers (delegating to strategy for now)
-
-func (h *HTTPHandlers) HandleZabbixMetricsGET(w http.ResponseWriter, r *http.Request) {
-	h.strategy.handleZabbixMetricsGET(w, r)
 }
 
 // Prometheus handlers (delegating to strategy for now)

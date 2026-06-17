@@ -1,0 +1,77 @@
+[
+  {
+    "channel": "SNMP tinstance IFtif_index Admin Status",
+    "value": 76.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index In Discards",
+    "value": 42,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index In Errors",
+    "value": 99.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index In Octets",
+    "value": 76.5,
+    "float": 1,
+    "unit": "BytesBandwidth"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index Oper Status",
+    "value": 88,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index Out Discards",
+    "value": 53.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index Out Errors",
+    "value": 111,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index Out Octets",
+    "value": 88,
+    "float": 1,
+    "unit": "BytesBandwidth"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index Speed",
+    "value": 65,
+    "float": 1,
+    "unit": "SpeedNet",
+    "speedsize": "Bit",
+    "speedtime": "Second"
+  },
+  {
+    "channel": "SNMP tinstance Poll Duration",
+    "value": 53.5,
+    "float": 1,
+    "unit": "TimeSeconds"
+  },
+  {
+    "channel": "SNMP tinstance Reachability",
+    "value": 42,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "SNMP tinstance Uptime",
+    "value": 65,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "centiseconds"
+  }
+]

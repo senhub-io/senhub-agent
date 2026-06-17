@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/kardianos/service"
 	"github.com/rs/zerolog"
@@ -161,9 +163,11 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 		logger = buildProductionLogger(args, config)
 	}
 
-	// Initialize selective debug mode variables
-	selectiveDebugMode = false
-	activeDebugModules = make(map[string]bool)
+	// Reset the selective-debug state for this logger construction.
+	mutateLevelState(func(st *levelState) {
+		st.selective = false
+		st.debugModules = map[string]bool{}
+	})
 
 	// Configure debug logging based on CLI flags
 	if args.Verbose {
@@ -171,17 +175,18 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 			// Selective debug mode: --verbose with --debug-modules
 			// Only specified modules will output debug logs
 			// All modules continue to output Info/Warn/Error
-			selectiveDebugMode = true
-			activeDebugModules = make(map[string]bool)
 
 			// Keep global level at INFO for non-module logs
 			zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 			// Enable debug only for specified modules
-			for _, module := range args.DebugModules {
-				SetModuleLogLevel(module, zerolog.DebugLevel)
-				activeDebugModules[module] = true
-			}
+			mutateLevelState(func(st *levelState) {
+				st.selective = true
+				for _, module := range args.DebugModules {
+					st.levels[module] = zerolog.DebugLevel
+					st.debugModules[module] = true
+				}
+			})
 
 			logger.Info().
 				Str("modules", strings.Join(args.DebugModules, ",")).
@@ -190,16 +195,18 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 		} else {
 			// Full verbose mode: --verbose without --debug-modules
 			// All modules output debug logs (no filtering)
-			selectiveDebugMode = false
-			activeDebugModules = make(map[string]bool)
 
 			// Enable debug level globally
 			zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
 			// Enable debug for all key modules
-			for module := range moduleLogLevels {
-				SetModuleLogLevel(module, zerolog.DebugLevel)
-			}
+			mutateLevelState(func(st *levelState) {
+				st.selective = false
+				st.debugModules = map[string]bool{}
+				for module := range st.levels {
+					st.levels[module] = zerolog.DebugLevel
+				}
+			})
 
 			logger.Info().Msg("Full verbose mode enabled - debug logging for all modules")
 		}
@@ -291,43 +298,96 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 	return &logger
 }
 
-// Global module levels configuration
-var moduleLogLevels = map[string]zerolog.Level{
-	"strategy.http":   zerolog.InfoLevel, // HTTP strategy logs
-	"strategy.prtg":   zerolog.InfoLevel, // PRTG strategy logs
-	"strategy.senhub": zerolog.InfoLevel, // SenHub strategy logs
-	"probe.redfish":   zerolog.InfoLevel, // Redfish probe logs
-	"probe.host":      zerolog.InfoLevel, // Host probes (CPU, memory, etc.)
-	"probe.network":   zerolog.InfoLevel, // Network probes
-	"probe.webapp":    zerolog.InfoLevel, // WebApp probes
-	"probe.otel":      zerolog.InfoLevel, // OpenTelemetry probe
-	"probe.gateway":   zerolog.InfoLevel, // Gateway probe
-	"probe.veeam":     zerolog.InfoLevel, // Veeam Backup probe
-	"probe.syslog":    zerolog.InfoLevel, // Syslog probe
-	"cache":           zerolog.InfoLevel, // Cache operations
-	"transformer":     zerolog.InfoLevel, // Metric transformers
-	"scheduler":       zerolog.InfoLevel, // Probe scheduler
-	"configuration":   zerolog.InfoLevel, // Configuration loading
+// levelState is the immutable snapshot of the module-level
+// configuration. Readers load it atomically on every Debug() call
+// (allocation-free); writers copy-on-write under levelStateMu and swap
+// the pointer. The previous package-level maps were mutated by the
+// runtime HTTP log-level endpoint while every Debug() read them — a
+// concurrent map read/write panic waiting to happen (audit C7, #274).
+type levelState struct {
+	levels       map[string]zerolog.Level
+	selective    bool
+	debugModules map[string]bool
 }
 
-// Selective debug mode tracking
-var selectiveDebugMode bool
-var activeDebugModules map[string]bool
+var (
+	// levelStateMu serializes WRITERS only; readers go through the
+	// atomic pointer without taking it.
+	levelStateMu sync.Mutex
+	levelStatePo atomic.Pointer[levelState]
+)
+
+func init() {
+	levelStatePo.Store(&levelState{
+		levels:       defaultModuleLogLevels(),
+		debugModules: map[string]bool{},
+	})
+}
+
+func defaultModuleLogLevels() map[string]zerolog.Level {
+	return map[string]zerolog.Level{
+		"strategy.http":   zerolog.InfoLevel, // HTTP strategy logs
+		"strategy.prtg":   zerolog.InfoLevel, // PRTG strategy logs
+		"strategy.senhub": zerolog.InfoLevel, // SenHub strategy logs
+		"probe.redfish":   zerolog.InfoLevel, // Redfish probe logs
+		"probe.host":      zerolog.InfoLevel, // Host probes (CPU, memory, etc.)
+		"probe.network":   zerolog.InfoLevel, // Network probes
+		"probe.webapp":    zerolog.InfoLevel, // WebApp probes
+		"probe.otel":      zerolog.InfoLevel, // OpenTelemetry probe
+		"probe.gateway":   zerolog.InfoLevel, // Gateway probe
+		"probe.veeam":     zerolog.InfoLevel, // Veeam Backup probe
+		"probe.syslog":    zerolog.InfoLevel, // Syslog probe
+		"cache":           zerolog.InfoLevel, // Cache operations
+		"transformer":     zerolog.InfoLevel, // Metric transformers
+		"scheduler":       zerolog.InfoLevel, // Probe scheduler
+		"configuration":   zerolog.InfoLevel, // Configuration loading
+	}
+}
+
+// mutateLevelState clones the current state, applies fn to the clone
+// and swaps it in. Writers are rare (startup + the runtime log-level
+// endpoint); readers never block.
+func mutateLevelState(fn func(*levelState)) {
+	levelStateMu.Lock()
+	defer levelStateMu.Unlock()
+	cur := levelStatePo.Load()
+	next := &levelState{
+		levels:       make(map[string]zerolog.Level, len(cur.levels)),
+		selective:    cur.selective,
+		debugModules: make(map[string]bool, len(cur.debugModules)),
+	}
+	for k, v := range cur.levels {
+		next.levels[k] = v
+	}
+	for k, v := range cur.debugModules {
+		next.debugModules[k] = v
+	}
+	fn(next)
+	levelStatePo.Store(next)
+}
 
 // SetModuleLogLevel sets the log level for a specific module
 func SetModuleLogLevel(module string, level zerolog.Level) {
-	moduleLogLevels[module] = level
+	mutateLevelState(func(st *levelState) {
+		st.levels[module] = level
+	})
 }
 
 // SetModuleLogLevels sets multiple module log levels from configuration
 func SetModuleLogLevels(configs []ModuleLogConfig) error {
+	parsed := make(map[string]zerolog.Level, len(configs))
 	for _, config := range configs {
 		level, err := parseLogLevel(config.Level)
 		if err != nil {
 			return err
 		}
-		moduleLogLevels[config.Module] = level
+		parsed[config.Module] = level
 	}
+	mutateLevelState(func(st *levelState) {
+		for module, level := range parsed {
+			st.levels[module] = level
+		}
+	})
 	return nil
 }
 
@@ -356,7 +416,8 @@ func parseLogLevel(levelStr string) (zerolog.Level, error) {
 // NewModuleLogger creates a logger for a specific module with appropriate filtering
 // GetModuleLogLevel returns the current log level for a module
 func GetModuleLogLevel(module string) zerolog.Level {
-	moduleLevel, exists := moduleLogLevels[module]
+	st := levelStatePo.Load()
+	moduleLevel, exists := st.levels[module]
 	if !exists {
 		return zerolog.InfoLevel // Default level
 	}
@@ -371,6 +432,14 @@ type ModuleLogger struct {
 }
 
 func NewModuleLogger(baseLogger *Logger, module string) *ModuleLogger {
+	// Nil-safe: callers (notably probe constructors driven by tests or
+	// embedding code) may pass a nil base logger. Fall back to a no-op
+	// logger instead of panicking before any work happens.
+	if baseLogger == nil {
+		nop := zerolog.Nop()
+		baseLogger = &nop
+	}
+
 	logger := baseLogger.With().
 		Str("module", module).
 		Logger()
@@ -383,11 +452,11 @@ func NewModuleLogger(baseLogger *Logger, module string) *ModuleLogger {
 
 // isModuleEnabled checks if a module should output debug logs.
 // Supports prefix matching: "probe" matches "probe.veeam", "probe.citrix", etc.
-func isModuleEnabled(module string) bool {
-	if activeDebugModules[module] {
+func isModuleEnabled(st *levelState, module string) bool {
+	if st.debugModules[module] {
 		return true
 	}
-	for prefix := range activeDebugModules {
+	for prefix := range st.debugModules {
 		if strings.HasPrefix(module, prefix+".") {
 			return true
 		}
@@ -397,16 +466,22 @@ func isModuleEnabled(module string) bool {
 
 // Debug logs a debug message if the module's current level allows it
 func (m *ModuleLogger) Debug() *zerolog.Event {
+	st := levelStatePo.Load()
 	// In selective debug mode, only allow debug logs for enabled modules (with prefix matching)
-	if selectiveDebugMode {
-		if !isModuleEnabled(m.module) {
+	if st.selective {
+		if !isModuleEnabled(st, m.module) {
 			disabledLogger := m.Logger.Level(zerolog.Disabled)
 			return disabledLogger.Debug()
 		}
 	}
 
-	// Check module log level
-	if GetModuleLogLevel(m.module) <= zerolog.DebugLevel {
+	// Check module log level (unknown modules default to Info, which
+	// keeps Debug disabled — same contract as GetModuleLogLevel).
+	level, ok := st.levels[m.module]
+	if !ok {
+		level = zerolog.InfoLevel
+	}
+	if level <= zerolog.DebugLevel {
 		return m.Logger.Debug()
 	}
 
@@ -434,8 +509,9 @@ func (m *ModuleLogger) Error() *zerolog.Event {
 
 // GetModuleLogLevels returns current module log level configuration
 func GetModuleLogLevels() map[string]zerolog.Level {
-	result := make(map[string]zerolog.Level)
-	for k, v := range moduleLogLevels {
+	st := levelStatePo.Load()
+	result := make(map[string]zerolog.Level, len(st.levels))
+	for k, v := range st.levels {
 		result[k] = v
 	}
 	return result

@@ -17,16 +17,44 @@ func TestFreeTierProbes(t *testing.T) {
 		probeName string
 		expected  bool
 	}{
+		{"ActiveMQ probe is free tier", "activemq", true},
 		{"CPU probe is free tier", "cpu", true},
 		{"Memory probe is free tier", "memory", true},
 		{"LogicalDisk probe is free tier", "logicaldisk", true},
 		{"Network probe is free tier", "network", true},
 		{"LinuxLogs probe is free tier", "linux_logs", true},
+		{"WindowsEventLog probe is free tier", "windows_eventlog", true},
+		{"FileTail probe is free tier", "filetail", true},
+		{"OTLPReceiver probe is free tier", "otlp_receiver", true},
+		{"SNMPTrap probe is free tier", "snmp_trap", true},
 		{"Redfish probe is NOT free tier", "redfish", false},
 		{"Citrix probe is NOT free tier", "citrix", false},
 		{"WebApp probe is NOT free tier", "ping_webapp", false},
 		{"Gateway probe is NOT free tier", "ping_gateway", false},
-		{"Syslog probe is NOT free tier", "syslog", false},
+		{"Syslog probe IS free tier (#298)", "syslog", true},
+		{"WildFly probe IS free tier", "wildfly", true},
+		{"Kafka probe is free tier", "kafka", true},
+		{"Ceph probe IS free tier", "ceph", true},
+		{"Jenkins probe IS free tier", "jenkins", true},
+		{"CouchDB probe is free tier", "couchdb", true},
+		{"ClickHouse probe is free tier", "clickhouse", true},
+		{"HyperV probe is free tier", "hyperv", true},
+		{"IPMI probe is free tier", "ipmi", true},
+		{"NVIDIA probe is free tier", "nvidia", true},
+		{"Oracle probe is free tier", "oracle", true},
+		{"Process probe is free tier", "process", true},
+		{"UniFi probe IS free tier", "unifi", true},
+		{"Systemd probe is free tier", "systemd", true},
+		{"MSSQL probe is free tier", "mssql", true},
+		{"MongoDB probe is free tier", "mongodb", true},
+		{"Kafka probe is free tier", "kafka", true},
+		{"Event probe is NOT free tier", "event", false},
+		{"NATS probe is free tier", "nats", true},
+		{"ZooKeeper probe is free tier", "zookeeper", true},
+		{"MySQL probe IS free tier", "mysql", true},
+		{"Solr probe is free tier", "solr", true},
+		{"Chrony probe IS free tier", "chrony", true},
+		{"Kubernetes probe is free tier", "kubernetes", true},
 	}
 
 	for _, tt := range tests {
@@ -42,18 +70,79 @@ func TestFreeTierProbes(t *testing.T) {
 func TestGetFreeTierProbes(t *testing.T) {
 	probes := GetFreeTierProbes()
 
-	// Check we have exactly 5 free tier probes
-	if len(probes) != 5 {
-		t.Errorf("GetFreeTierProbes() returned %d probes, want 5", len(probes))
-	}
+	// Check we have exactly 18 free tier probes
+	// Check we have exactly 11 free tier probes
+	// Check we have the expected number of free tier probes
+	// Check we have exactly the expected number of free tier probes
+	// Check we have the right number of free tier probes
+	// Exact membership is verified by the loops below (every returned probe is
+	// expected, and every expected probe is returned), which subsumes a
+	// hardcoded count check (brittle as the free tier grows).
 
 	// Check all expected probes are present
 	expectedProbes := map[string]bool{
-		"cpu":         false,
-		"memory":      false,
-		"logicaldisk": false,
-		"network":     false,
-		"linux_logs":  false,
+		"apache":               false,
+		"activemq":             false,
+		"ceph":                 false,
+		"cpu":                  false,
+		"memory":               false,
+		"logicaldisk":          false,
+		"network":              false,
+		"linux_logs":           false,
+		"windows_eventlog":     false,
+		"filetail":             false,
+		"snmp_poll":            false,
+		"otlp_receiver":        false,
+		"snmp_trap":            false,
+		"icmp_check":           false,
+		"http_check":           false,
+		"dns_latency":          false,
+		"tcp_dial":             false,
+		"prometheus_scrape":    false,
+		"exec":                 false,
+		"syslog":               false,
+		"nginx":                false,
+		"haproxy":              false,
+		"varnish":              false,
+		"phpfpm":               false,
+		"wildfly":              false,
+		"kafka":                false,
+		"rabbitmq":             false,
+		"nats":                 false,
+		"pulsar":               false,
+		"consul":               false,
+		"zookeeper":            false,
+		"envoy":                false,
+		"jenkins":              false,
+		"mysql":                false,
+		"postgresql":           false,
+		"cassandra":            false,
+		"couchdb":              false,
+		"clickhouse":           false,
+		"elasticsearch":        false,
+		"opensearch":           false,
+		"solr":                 false,
+		"influxdb":             false,
+		"memcached":            false,
+		"hyperv":               false,
+		"proxmox":              false,
+		"chrony":               false,
+		"smart":                false,
+		"ipmi":                 false,
+		"nvidia":               false,
+		"oracle":               false,
+		"process":              false,
+		"unifi":                false,
+		"winservices":          false,
+		"systemd":              false,
+		"kubernetes":           false,
+		"modbus":               false,
+		"mssql":                false,
+		"tomcat":               false,
+		"mongodb":              false,
+		"docker":               false,
+		"redis":                false,
+		"wifi_signal_strength": false,
 	}
 
 	for _, probe := range probes {
@@ -609,7 +698,8 @@ func TestJWTValidator_IsProbeAuthorized(t *testing.T) {
 		{"Authorized: citrix", "citrix", true},
 		{"Free tier: cpu", "cpu", true},
 		{"Free tier: memory", "memory", true},
-		{"Unauthorized: syslog", "syslog", false},
+		{"Free tier (#298): syslog", "syslog", true},
+		{"Unauthorized: event", "event", false},
 		{"Unauthorized: veeam", "veeam", false},
 	}
 
@@ -723,130 +813,8 @@ func TestGetDefaultValidator(t *testing.T) {
 	}
 }
 
-// --- Compact License Tests ---
-
-func TestCompactLicense_RoundTrip(t *testing.T) {
-	expiry := time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)
-	probes := []string{"veeam", "citrix", "netscaler"}
-
-	key, err := GenerateCompactLicense(TierPro, expiry, probes, "test-agent-001")
-	if err != nil {
-		t.Fatalf("GenerateCompactLicense failed: %v", err)
-	}
-
-	if !IsCompactLicense(key) {
-		t.Fatalf("IsCompactLicense returned false for %q", key)
-	}
-
-	t.Logf("Compact key: %s (len=%d)", key, len(key))
-
-	lic, err := ValidateCompactLicense(key)
-	if err != nil {
-		t.Fatalf("ValidateCompactLicense failed: %v", err)
-	}
-
-	if lic.Tier != TierPro {
-		t.Errorf("tier = %v, want Pro", lic.Tier)
-	}
-	if len(lic.AuthorizedProbes) != 3 {
-		t.Errorf("probes count = %d, want 3", len(lic.AuthorizedProbes))
-	}
-	if lic.IsExpired {
-		t.Error("should not be expired")
-	}
-}
-
-func TestCompactLicense_Enterprise(t *testing.T) {
-	expiry := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
-
-	key, err := GenerateCompactLicense(TierEnterprise, expiry, []string{"*"}, "ent-agent")
-	if err != nil {
-		t.Fatalf("GenerateCompactLicense failed: %v", err)
-	}
-
-	lic, err := ValidateCompactLicense(key)
-	if err != nil {
-		t.Fatalf("ValidateCompactLicense failed: %v", err)
-	}
-
-	if lic.Tier != TierEnterprise {
-		t.Errorf("tier = %v, want Enterprise", lic.Tier)
-	}
-	if len(lic.AuthorizedProbes) != 1 || lic.AuthorizedProbes[0] != "*" {
-		t.Errorf("probes = %v, want [*]", lic.AuthorizedProbes)
-	}
-}
-
-func TestCompactLicense_Expired(t *testing.T) {
-	expiry := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
-
-	key, err := GenerateCompactLicense(TierPro, expiry, []string{"veeam"}, "expired-agent")
-	if err != nil {
-		t.Fatalf("GenerateCompactLicense failed: %v", err)
-	}
-
-	lic, err := ValidateCompactLicense(key)
-	if err != nil {
-		t.Fatalf("ValidateCompactLicense failed: %v", err)
-	}
-
-	if !lic.IsExpired {
-		t.Error("should be expired")
-	}
-}
-
-func TestCompactLicense_TamperedSignature(t *testing.T) {
-	expiry := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
-
-	key, err := GenerateCompactLicense(TierPro, expiry, []string{"veeam"}, "test-agent")
-	if err != nil {
-		t.Fatalf("GenerateCompactLicense failed: %v", err)
-	}
-
-	// Tamper with a character
-	runes := []rune(key)
-	lastDash := len(runes) - 3
-	if runes[lastDash] == 'A' {
-		runes[lastDash] = 'B'
-	} else {
-		runes[lastDash] = 'A'
-	}
-	tampered := string(runes)
-
-	_, err = ValidateCompactLicense(tampered)
-	if err == nil {
-		t.Error("should reject tampered license")
-	}
-}
-
-func TestCompactLicense_JWTValidatorAutoDetect(t *testing.T) {
-	// Generate a compact license
-	expiry := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
-	key, err := GenerateCompactLicense(TierPro, expiry, []string{"veeam"}, "test-agent")
-	if err != nil {
-		t.Fatalf("GenerateCompactLicense failed: %v", err)
-	}
-
-	// Create a JWTValidator with a generated RSA key (needed for constructor)
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("GenerateKey failed: %v", err)
-	}
-	pubKeyBytes, _ := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
-	pubKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubKeyBytes})
-
-	validator, err := NewJWTValidator(string(pubKeyPEM), 7)
-	if err != nil {
-		t.Fatalf("NewJWTValidator failed: %v", err)
-	}
-
-	// Validate compact license through JWTValidator (auto-detect)
-	lic, err := validator.ValidateLicense(key)
-	if err != nil {
-		t.Fatalf("ValidateLicense with compact key failed: %v", err)
-	}
-
-	if lic.Tier != TierPro {
-		t.Errorf("tier = %v, want Pro", lic.Tier)
-	}
-}
+// Compact-licence tests were removed alongside the compact format
+// itself when the agent went open-source. The HMAC secret that
+// authenticated compact tokens could not survive a public source
+// tree (see docs/LICENSE-SYSTEM.md for the JWT-only design that
+// replaced it).
