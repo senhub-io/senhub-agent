@@ -565,7 +565,7 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 		entity.RegisterSource(hostnet.New(hostIDFn)),
 		entity.RegisterSource(hostsvc.New(hostIDFn)),
 		entity.RegisterSource(hostiface.New(hostIDFn)),
-		entity.RegisterSource(hostdep.New(hostIDFn)))
+		entity.RegisterSource(hostdep.New(hostIDFn, s.cfg.Entities.DependsOnDebounce)))
 
 	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
 	det.OnOrphanRelations(func(orphans []entity.Relation) {

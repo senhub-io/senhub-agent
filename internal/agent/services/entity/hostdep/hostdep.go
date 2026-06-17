@@ -61,7 +61,8 @@ const (
 
 	// A peer endpoint must be seen this many consecutive scrapes before its edge
 	// is emitted — the line between a durable dependency and ephemeral flow.
-	// TODO(#491): make this an entities-config knob (default stays 3).
+	// The configured value comes from entities.depends_on_debounce; this is the
+	// fallback when the caller passes a non-positive threshold.
 	defaultThreshold = 3
 )
 
@@ -90,9 +91,14 @@ type Source struct {
 
 // New builds the host-dependency source. hostID returns the host's stable id,
 // used to mint the dependent service.instance.id (so an outbound dependency
-// hangs off a service tied to this host).
-func New(hostID func() string) *Source {
-	return &Source{hostID: hostID, threshold: defaultThreshold, streak: map[peerKey]int{}}
+// hangs off a service tied to this host). threshold is the debounce length (the
+// number of consecutive scrapes a peer must persist before its edge is emitted);
+// a non-positive value falls back to defaultThreshold.
+func New(hostID func() string, threshold int) *Source {
+	if threshold < 1 {
+		threshold = defaultThreshold
+	}
+	return &Source{hostID: hostID, threshold: threshold, streak: map[peerKey]int{}}
 }
 
 // Observe reads the socket table once (one scrape), advances the debounce
