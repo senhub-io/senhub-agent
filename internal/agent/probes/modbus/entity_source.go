@@ -3,6 +3,7 @@ package modbus
 import (
 	"sync"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
@@ -44,13 +45,26 @@ func (s *modbusEntitySource) Observe() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 
+	svcID := map[string]any{"service.instance.id": s.instanceID}
 	obs := entity.Observation{
 		Entities: []entity.Entity{
 			{
 				Type: "service.instance",
-				ID:   map[string]any{"service.instance.id": s.instanceID},
+				ID:   svcID,
 			},
 		},
+	}
+	// monitors edge: agent → target, anchoring the entity to the agent's
+	// monitoring subgraph (else it floats — #506). Emitted only when the agent
+	// id is available; a non-materialised From would be buffered then dropped.
+	if agentID := agentstate.GetAgentInstanceID(); agentID != "" {
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     "monitors",
+			FromType: "service.instance",
+			FromID:   map[string]any{"service.instance.id": agentID},
+			ToType:   "service.instance",
+			ToID:     svcID,
+		})
 	}
 	return obs, true
 }

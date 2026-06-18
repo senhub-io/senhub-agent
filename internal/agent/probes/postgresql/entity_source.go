@@ -126,10 +126,10 @@ func (s *pgEntitySource) update(fallbackHostPort string) bool {
 
 	dbID := map[string]any{
 		"db.instance.id": s.instanceID,
-		"db.system.name": "postgresql",
 	}
 
 	attrs := map[string]any{
+		"db.system.name": "postgresql",
 		"server.address": s.cfg.Host,
 		"server.port":    int64(s.cfg.Port),
 		"environment":    string(s.environment),
