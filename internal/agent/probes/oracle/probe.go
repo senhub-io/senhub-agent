@@ -135,6 +135,7 @@ func (p *oracleProbe) Collect() ([]data_store.DataPoint, error) {
 	points = append(points, p.point("senhub.db.up", up, now, metricTypeOverview, nil))
 
 	if up == 1 {
+		p.entitySource.setVersion(p.queryVersion(ctx))
 		points = append(points, p.collectSessions(ctx, now)...)
 		points = append(points, p.collectSysstat(ctx, now)...)
 		points = append(points, p.collectMemory(ctx, now)...)
@@ -143,6 +144,17 @@ func (p *oracleProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
+
+// queryVersion reads the Oracle release from v$instance ("19.0.0.0.0"),
+// best-effort: "" when the query fails (restricted view) so the entity simply
+// omits db.system.version rather than carrying a wrong value.
+func (p *oracleProbe) queryVersion(ctx context.Context) string {
+	var v string
+	if err := p.db.QueryRowContext(ctx, "SELECT version FROM v$instance").Scan(&v); err != nil {
+		return ""
+	}
+	return v
 }
 
 // collectSessions reads v$session (per-status counts) and v$resource_limit
