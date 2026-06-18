@@ -46,6 +46,49 @@ func TestBuildObservation_Listeners(t *testing.T) {
 	}
 }
 
+// TestBuildObservation_BoundToNetworkAddress: a non-wildcard bind is modeled as
+// service.listener --bound_to--> network.address (the IP becomes a shared hub,
+// enterprise#37), with no listen.address attribute; wildcard and loopback binds
+// stay attribute-only.
+func TestBuildObservation_BoundToNetworkAddress(t *testing.T) {
+	ls := []listener{
+		{Pid: 10, Proc: "pg", Address: "10.0.0.5", Port: 5432, Transport: "tcp"},     // specific → bound_to
+		{Pid: 20, Proc: "nginx", Address: "0.0.0.0", Port: 80, Transport: "tcp"},     // wildcard → attribute
+		{Pid: 30, Proc: "redis", Address: "127.0.0.1", Port: 6379, Transport: "tcp"}, // loopback → attribute
+	}
+	obs := buildObservation("h-1", ls)
+
+	pg, _ := entityByProc(obs, "pg")
+	if _, has := pg.Attributes[attrListenAddress]; has {
+		t.Error("specific-IP bind must NOT carry listen.address (replaced by bound_to)")
+	}
+	boundCount := 0
+	for _, r := range obs.Relations {
+		if r.Type != relBoundTo {
+			continue
+		}
+		boundCount++
+		if r.FromType != entityTypeServiceListener || r.FromID[idKeyServiceEndpoint] != "h-1:5432/tcp" {
+			t.Errorf("bound_to From wrong: %+v", r)
+		}
+		if r.ToType != entityTypeNetworkAddress || r.ToID[idKeyNetworkAddress] != "10.0.0.5" {
+			t.Errorf("bound_to To must be network.address{10.0.0.5}: %+v", r)
+		}
+	}
+	if boundCount != 1 {
+		t.Errorf("want exactly 1 bound_to (only the specific-IP bind), got %d", boundCount)
+	}
+
+	nginx, _ := entityByProc(obs, "nginx")
+	if nginx.Attributes[attrListenAddress] != "0.0.0.0" {
+		t.Errorf("wildcard bind must keep listen.address: %+v", nginx.Attributes)
+	}
+	redis, _ := entityByProc(obs, "redis")
+	if redis.Attributes[attrListenAddress] != "127.0.0.1" {
+		t.Errorf("loopback bind must keep listen.address: %+v", redis.Attributes)
+	}
+}
+
 func TestBuildObservation_EmptyGuards(t *testing.T) {
 	if o := buildObservation("", []listener{{Port: 80, Transport: "tcp"}}); len(o.Entities) != 0 {
 		t.Error("no hostID → empty")
