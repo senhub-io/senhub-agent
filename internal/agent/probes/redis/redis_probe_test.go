@@ -946,8 +946,11 @@ func TestEntityObserver_HostPortFallback(t *testing.T) {
 	if e.Attributes["server.address"] != cfg.Host {
 		t.Errorf("server.address = %v, want %s", e.Attributes["server.address"], cfg.Host)
 	}
-	if e.Attributes["db.version"] != "7.2.0" {
-		t.Errorf("db.version = %v, want 7.2.0", e.Attributes["db.version"])
+	if e.Attributes["db.system.version"] != "7.2.0" {
+		t.Errorf("db.system.version = %v, want 7.2.0", e.Attributes["db.system.version"])
+	}
+	if _, stale := e.Attributes["db.version"]; stale {
+		t.Error("legacy db.version key must no longer be emitted (toise#216 AT1)")
 	}
 }
 
