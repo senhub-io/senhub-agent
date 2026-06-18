@@ -170,6 +170,17 @@ func (p *NginxProbe) Collect() ([]data_store.DataPoint, error) {
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
+// nginxVersionFromServerHeader extracts the version from an nginx Server header
+// ("nginx/1.27.0" → "1.27.0"). Returns "" when the header is absent or carries
+// no version (server_tokens off → bare "nginx").
+func nginxVersionFromServerHeader(h string) string {
+	const prefix = "nginx/"
+	if !strings.HasPrefix(h, prefix) {
+		return ""
+	}
+	return strings.TrimPrefix(h, prefix)
+}
+
 func (p *NginxProbe) fetchStatus() (string, error) {
 	resp, err := p.client.Get(p.cfg.Endpoint) // #nosec G107 - endpoint is operator-configured
 	if err != nil {
@@ -179,6 +190,8 @@ func (p *NginxProbe) fetchStatus() (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("GET %s: unexpected status %d", p.cfg.Endpoint, resp.StatusCode)
 	}
+	// service.version rides the entity from the Server header ("nginx/1.27.0").
+	p.entitySrc.setVersion(nginxVersionFromServerHeader(resp.Header.Get("Server")))
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
 		return "", fmt.Errorf("reading body from %s: %w", p.cfg.Endpoint, err)

@@ -52,6 +52,26 @@ type entitySource struct {
 	mu       sync.Mutex
 	pinnedID string // empty = not yet pinned
 	degraded bool   // true = gave up on tech id, using fallback
+	version  string // service.version from the X-Jenkins header, "" until seen
+}
+
+// setVersion records the controller version from the X-Jenkins response header
+// so it rides the entity as the descriptive service.version attribute
+// (toise#216 AT1). Empty values are ignored.
+func (s *entitySource) setVersion(v string) {
+	if v == "" {
+		return
+	}
+	s.mu.Lock()
+	s.version = v
+	s.mu.Unlock()
+}
+
+// currentVersion returns the last seen controller version (may be "").
+func (s *entitySource) currentVersion() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.version
 }
 
 // newEntitySource builds the source. If instanceName is non-empty it is used
@@ -80,16 +100,20 @@ func (s *entitySource) Observe() (entity.Observation, bool) {
 	}
 
 	targetEntityID := map[string]any{idKeyServiceInstanceID: id}
+	attrs := map[string]any{
+		"service.name":   "jenkins",
+		"server.address": s.serverAddress,
+		"server.port":    s.serverPort,
+	}
+	if v := s.currentVersion(); v != "" {
+		attrs["service.version"] = v
+	}
 	obs := entity.Observation{
 		Entities: []entity.Entity{
 			{
-				Type: entityTypeServiceInstance,
-				ID:   targetEntityID,
-				Attributes: map[string]any{
-					"service.name":   "jenkins",
-					"server.address": s.serverAddress,
-					"server.port":    s.serverPort,
-				},
+				Type:       entityTypeServiceInstance,
+				ID:         targetEntityID,
+				Attributes: attrs,
 			},
 		},
 	}
