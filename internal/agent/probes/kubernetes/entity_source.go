@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"sync"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
@@ -29,17 +30,30 @@ func (s *k8sEntitySource) Observe() (entity.Observation, bool) {
 	}
 
 	clusterID := "kubernetes://" + s.clusterEndpoint
+	svcID := map[string]any{"service.instance.id": clusterID}
 	obs := entity.Observation{
 		Entities: []entity.Entity{
 			{
 				Type: "service.instance",
-				ID:   map[string]any{"service.instance.id": clusterID},
+				ID:   svcID,
 				Attributes: map[string]any{
 					"service.name":    "kubernetes",
 					"cluster.address": s.clusterEndpoint,
 				},
 			},
 		},
+	}
+	// monitors edge: agent → cluster, anchoring the entity to the agent's
+	// monitoring subgraph (else it floats — #506). Emitted only when the agent
+	// id is available; a non-materialised From would be buffered then dropped.
+	if agentID := agentstate.GetAgentInstanceID(); agentID != "" {
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     "monitors",
+			FromType: "service.instance",
+			FromID:   map[string]any{"service.instance.id": agentID},
+			ToType:   "service.instance",
+			ToID:     svcID,
+		})
 	}
 	return obs, true
 }

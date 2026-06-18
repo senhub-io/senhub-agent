@@ -258,8 +258,15 @@ func TestEntitySource_TechIDPinned(t *testing.T) {
 	if got := e.ID["db.instance.id"]; got != wantID {
 		t.Errorf("db.instance.id: got %v, want %s", got, wantID)
 	}
-	if got := e.ID["db.system.name"]; got != "postgresql" {
-		t.Errorf("db.system.name: got %v, want postgresql", got)
+	// Identity is single-key {db.instance.id}: db.system.name is a descriptive
+	// attribute, NOT an identity key. A second identity key would make the
+	// monitors ToID (which carries only db.instance.id) unresolvable, orphaning
+	// the db in the consumer graph (#504).
+	if len(e.ID) != 1 {
+		t.Errorf("identity must be single-key {db.instance.id}, got %v", e.ID)
+	}
+	if got := e.Attributes["db.system.name"]; got != "postgresql" {
+		t.Errorf("db.system.name must be a descriptive attribute: got %v, want postgresql", got)
 	}
 	// server.address/port must be descriptive attrs, not part of the id.
 	if _, inID := e.ID["server.address"]; inID {
@@ -270,6 +277,27 @@ func TestEntitySource_TechIDPinned(t *testing.T) {
 	}
 	if got := e.Attributes["server.port"]; got != int64(5432) {
 		t.Errorf("server.port attr: got %v, want 5432", got)
+	}
+	// The monitors edge ToID must match the entity identity exactly, else Toise
+	// drops the edge and the db floats (#504). The edge is built at update()
+	// time, so refresh the cache after the agent id becomes available (the probe
+	// calls update() every Collect cycle).
+	agentstate.SetAgentInstanceID("agent-key")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+	src.update("")
+	obs2, _ := src.Observe()
+	var found bool
+	for _, r := range obs2.Relations {
+		if r.Type != "monitors" {
+			continue
+		}
+		found = true
+		if r.ToID["db.instance.id"] != wantID || len(r.ToID) != 1 {
+			t.Errorf("monitors ToID must equal the single-key identity %q, got %v", wantID, r.ToID)
+		}
+	}
+	if !found {
+		t.Errorf("expected a monitors edge once the agent id is set, got %+v", obs2.Relations)
 	}
 }
 
