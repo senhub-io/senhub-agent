@@ -10,27 +10,34 @@ import (
 
 // HostIdentity is the stable identity plus descriptive facts of the machine
 // the agent runs on. ID is the machine-id / UUID (stable across rename and
-// reboot) — the identifying attribute for the host entity. Name and OSType
-// are descriptive.
+// reboot) — the identifying attribute for the host entity. The rest are
+// descriptive and mirror the OTel host.* / os.* resource keys.
 type HostIdentity struct {
-	ID     string
-	Name   string
-	OSType string
+	ID            string
+	Name          string
+	OSType        string
+	Arch          string // host.arch — KernelArch
+	OSVersion     string // os.version — PlatformVersion
+	OSDescription string // os.description — Platform + PlatformVersion
 }
 
-// GetHostIdentity returns the host's stable identity for entity detection.
-// ID comes from gopsutil's HostID (the OS machine-id), which — unlike the
-// hostname — does not change on rename, so it is safe to use as immutable
-// entity identity.
+// GetHostIdentity returns the host's stable identity plus descriptive facts for
+// entity detection. ID comes from gopsutil's HostID (the OS machine-id), which —
+// unlike the hostname — does not change on rename, so it is safe to use as
+// immutable entity identity. The descriptive fields mirror
+// GetHostResourceAttributes so the host entity and the OTLP resource agree.
 func GetHostIdentity() (HostIdentity, error) {
 	hostInfo, err := host.Info()
 	if err != nil {
 		return HostIdentity{}, fmt.Errorf("error getting host info: %v", err)
 	}
 	return HostIdentity{
-		ID:     hostInfo.HostID,
-		Name:   hostInfo.Hostname,
-		OSType: hostInfo.OS,
+		ID:            hostInfo.HostID,
+		Name:          hostInfo.Hostname,
+		OSType:        hostInfo.OS,
+		Arch:          hostInfo.KernelArch,
+		OSVersion:     hostInfo.PlatformVersion,
+		OSDescription: strings.TrimSpace(hostInfo.Platform + " " + hostInfo.PlatformVersion),
 	}, nil
 }
 
