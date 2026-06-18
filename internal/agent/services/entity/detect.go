@@ -4,9 +4,12 @@ package entity
 // runs on. ID is the stable machine identifier (machine-id / UUID), not the
 // hostname — the hostname is descriptive and may change.
 type HostIdentity struct {
-	ID     string // host.id — stable across rename/reboot
-	Name   string // host.name — descriptive
-	OSType string // os.type — descriptive
+	ID            string // host.id — stable across rename/reboot
+	Name          string // host.name — descriptive
+	OSType        string // os.type — descriptive
+	Arch          string // host.arch — descriptive
+	OSVersion     string // os.version — descriptive
+	OSDescription string // os.description — descriptive
 }
 
 // AgentIdentity is the identity + descriptive facts of the agent process.
@@ -35,6 +38,15 @@ func DetectFoundation(h HostIdentity, a AgentIdentity) Observation {
 	}
 	if h.OSType != "" {
 		host.Attributes["os.type"] = h.OSType
+	}
+	if h.Arch != "" {
+		host.Attributes["host.arch"] = h.Arch
+	}
+	if h.OSVersion != "" {
+		host.Attributes["os.version"] = h.OSVersion
+	}
+	if h.OSDescription != "" {
+		host.Attributes["os.description"] = h.OSDescription
 	}
 
 	svc := Entity{
