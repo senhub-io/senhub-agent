@@ -29,6 +29,7 @@ import (
 type mysqlEntitySource struct {
 	cfg          config
 	moduleLogger *logger.ModuleLogger
+	hostID       func() string // nil → dbcommon.HostID; resolves the agent host for a local-db runs_on
 
 	mu          sync.Mutex
 	role        dbcommon.Role
@@ -40,7 +41,7 @@ type mysqlEntitySource struct {
 }
 
 func newMysqlEntitySource(cfg config, log *logger.ModuleLogger) *mysqlEntitySource {
-	s := &mysqlEntitySource{cfg: cfg, moduleLogger: log}
+	s := &mysqlEntitySource{cfg: cfg, moduleLogger: log, hostID: dbcommon.HostID}
 
 	// Precedence 1: operator config overrides everything; pin immediately.
 	if cfg.InstanceName != "" {
@@ -161,6 +162,12 @@ func (s *mysqlEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   "db",
 			ToID:     map[string]any{"db.instance.id": pinnedID},
 		})
+	}
+
+	// runs_on edge: db → host when the db is local (loopback) — anchors a local
+	// db to the host it runs on (enterprise#36).
+	if rel, ok := dbcommon.LocalHostRunsOn(id, s.cfg.Host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true
