@@ -61,6 +61,49 @@ func TestDockerEntitySource_NoHostIDSkipsRunsOn(t *testing.T) {
 	}
 }
 
+func TestContainerStatus_Mapping(t *testing.T) {
+	cases := map[string]string{
+		"running":    "running",
+		"Running":    "running",
+		"paused":     "paused",
+		"restarting": "restarting",
+		"exited":     "stopped",
+		"created":    "stopped",
+		"dead":       "stopped",
+		"removing":   "stopped",
+		"":           "",
+	}
+	for state, want := range cases {
+		if got := containerStatus(state); got != want {
+			t.Errorf("containerStatus(%q) = %q, want %q", state, got, want)
+		}
+	}
+}
+
+func TestDockerEntitySource_StatusAttribute(t *testing.T) {
+	s := &dockerEntitySource{hostID: func() string { return "h" }}
+	s.update([]containerListItem{
+		{ID: "a", Names: []string{"/web"}, Image: "nginx", State: "running"},
+		{ID: "b", Names: []string{"/job"}, Image: "busybox", State: "exited"},
+		{ID: "c", Names: []string{"/x"}, Image: "img"}, // no State → status omitted
+	})
+	obs, _ := s.Observe()
+
+	byID := map[string]map[string]any{}
+	for _, e := range obs.Entities {
+		byID[e.ID[idKeyContainerID].(string)] = e.Attributes
+	}
+	if byID["a"][attrContainerStatus] != "running" {
+		t.Errorf("container a status = %v, want running", byID["a"][attrContainerStatus])
+	}
+	if byID["b"][attrContainerStatus] != "stopped" {
+		t.Errorf("container b status = %v, want stopped", byID["b"][attrContainerStatus])
+	}
+	if _, has := byID["c"][attrContainerStatus]; has {
+		t.Errorf("container c must omit status when State is empty, got %v", byID["c"][attrContainerStatus])
+	}
+}
+
 func TestDockerEntitySource_NotReadyBeforeFirstUpdate(t *testing.T) {
 	s := &dockerEntitySource{hostID: func() string { return "h" }}
 	if _, ok := s.Observe(); ok {
