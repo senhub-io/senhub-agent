@@ -261,6 +261,26 @@ func TestEntitySource_Version(t *testing.T) {
 	}
 }
 
+// TestEntitySource_DeploymentPlatform: the detected hosting platform rides the
+// entity under db.deployment.platform (toise#216 AT3), for db-probe parity with
+// postgres. Absent until reported.
+func TestEntitySource_DeploymentPlatform(t *testing.T) {
+	src := newMysqlEntitySource(config{Host: "h", Port: 3306}, nil)
+	src.pinServerUUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+	src.updateRole(dbcommon.RoleStandalone)
+
+	obs, _ := src.Observe()
+	if _, has := obs.Entities[0].Attributes["db.deployment.platform"]; has {
+		t.Error("db.deployment.platform must be absent before the platform is reported")
+	}
+
+	src.setEnvironment("rds")
+	obs, _ = src.Observe()
+	if got := obs.Entities[0].Attributes["db.deployment.platform"]; got != "rds" {
+		t.Errorf("db.deployment.platform = %v, want rds", got)
+	}
+}
+
 // TestEntitySource_TechID: when pinServerUUID is given a uuid, the entity id
 // must be "mysql:<uuid>".
 func TestEntitySource_TechID(t *testing.T) {
