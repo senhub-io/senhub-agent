@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"strings"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/common"
@@ -15,8 +16,29 @@ const (
 	attrContainerName    = "container.name"
 	attrContainerImage   = "container.image.name"
 	attrContainerRuntime = "container.runtime"
+	attrContainerStatus  = "status"
 	relRunsOn            = "runs_on"
 )
+
+// containerStatus normalizes the Docker container State to the canonical
+// `status` stateKey value (toise#216 AT5): a change here classifies as an
+// entity.state_changed in the consumer (crash, redeploy). running/paused keep
+// their name; restarting stays distinct (crash-loop signal); every terminal
+// state (exited/created/dead/removing) collapses to stopped. "" → "" (omit).
+func containerStatus(state string) string {
+	switch strings.ToLower(state) {
+	case "":
+		return ""
+	case "running":
+		return "running"
+	case "paused":
+		return "paused"
+	case "restarting":
+		return "restarting"
+	default:
+		return "stopped"
+	}
+}
 
 // dockerEntitySource feeds the entity rail. Observe() never blocks: it returns
 // the last cached snapshot. The cache is refreshed from the container list
@@ -56,14 +78,20 @@ func (s *dockerEntitySource) update(containers []containerListItem) {
 	for _, c := range containers {
 		name := primaryName(c)
 		cID := map[string]any{idKeyContainerID: c.ID}
+		attrs := map[string]any{
+			attrContainerName:    name,
+			attrContainerImage:   c.Image,
+			attrContainerRuntime: "docker",
+		}
+		// status: the container lifecycle state as a stateKey, so running→stopped
+		// is a state change in the consumer, not a silent update (#514, AT5).
+		if st := containerStatus(c.State); st != "" {
+			attrs[attrContainerStatus] = st
+		}
 		obs.Entities = append(obs.Entities, entity.Entity{
-			Type: entityTypeContainer,
-			ID:   cID,
-			Attributes: map[string]any{
-				attrContainerName:    name,
-				attrContainerImage:   c.Image,
-				attrContainerRuntime: "docker",
-			},
+			Type:       entityTypeContainer,
+			ID:         cID,
+			Attributes: attrs,
 		})
 		// runs_on container→host: a container is a compute resource that runs on
 		// this host. The host node is emitted by the entity foundation, so we
