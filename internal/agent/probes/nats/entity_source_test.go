@@ -31,7 +31,7 @@ func TestEntitySource_NotEmittedBeforePinned(t *testing.T) {
 // over "server_id" when both are present.
 func TestEntitySource_TechID_ServerName(t *testing.T) {
 	s := newTestEntitySource("http://localhost:8222", "", "host-abc")
-	s.pinFromVarz("my-nats-server", "NUID1234")
+	s.pinFromVarz("my-nats-server", "NUID1234", "")
 
 	obs, ok := s.Observe()
 	if !ok {
@@ -46,11 +46,29 @@ func TestEntitySource_TechID_ServerName(t *testing.T) {
 	}
 }
 
+// TestEntitySource_ServiceVersion verifies the /varz version rides the entity as
+// service.version (toise#216 AT1), absent until reported.
+func TestEntitySource_ServiceVersion(t *testing.T) {
+	s := newTestEntitySource("http://localhost:8222", "", "host-abc")
+
+	s.pinFromVarz("my-nats", "NUID1", "")
+	obs, _ := s.Observe()
+	if _, has := obs.Entities[0].Attributes["service.version"]; has {
+		t.Error("service.version must be absent until reported")
+	}
+
+	s.pinFromVarz("my-nats", "NUID1", "2.10.7")
+	obs, _ = s.Observe()
+	if got := obs.Entities[0].Attributes["service.version"]; got != "2.10.7" {
+		t.Errorf("service.version = %v, want 2.10.7", got)
+	}
+}
+
 // TestEntitySource_TechID_ServerID verifies that "server_id" is used when
 // "server_name" is empty.
 func TestEntitySource_TechID_ServerID(t *testing.T) {
 	s := newTestEntitySource("http://localhost:8222", "", "host-abc")
-	s.pinFromVarz("", "NUID5678")
+	s.pinFromVarz("", "NUID5678", "")
 
 	obs, ok := s.Observe()
 	if !ok {
@@ -67,7 +85,7 @@ func TestEntitySource_TechID_ServerID(t *testing.T) {
 func TestEntitySource_InstanceNameOverride(t *testing.T) {
 	s := newTestEntitySource("http://localhost:8222", "my-override", "host-abc")
 	// Even if varz returns a real server identity, instance_name wins.
-	s.pinFromVarz("actual-server-name", "NUID9999")
+	s.pinFromVarz("actual-server-name", "NUID9999", "")
 
 	obs, ok := s.Observe()
 	if !ok {
@@ -115,8 +133,8 @@ func TestEntitySource_FallbackNoHostID(t *testing.T) {
 // not change the already-pinned id.
 func TestEntitySource_IDImmutable(t *testing.T) {
 	s := newTestEntitySource("http://localhost:8222", "", "host-abc")
-	s.pinFromVarz("first-name", "NUID-A")
-	s.pinFromVarz("second-name", "NUID-B") // must be ignored
+	s.pinFromVarz("first-name", "NUID-A", "")
+	s.pinFromVarz("second-name", "NUID-B", "") // must be ignored
 
 	obs, _ := s.Observe()
 	gotID := obs.Entities[0].ID["service.instance.id"]
@@ -132,7 +150,7 @@ func TestEntitySource_MonitorsEdge_AgentIDSet(t *testing.T) {
 	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
 
 	s := newTestEntitySource("http://localhost:8222", "", "host-abc")
-	s.pinFromVarz("my-nats", "NUID-X")
+	s.pinFromVarz("my-nats", "NUID-X", "")
 
 	obs, ok := s.Observe()
 	if !ok {
@@ -166,7 +184,7 @@ func TestEntitySource_MonitorsEdge_AgentIDEmpty(t *testing.T) {
 	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
 
 	s := newTestEntitySource("http://localhost:8222", "", "host-abc")
-	s.pinFromVarz("my-nats", "NUID-X")
+	s.pinFromVarz("my-nats", "NUID-X", "")
 
 	obs, ok := s.Observe()
 	if !ok {
@@ -181,7 +199,7 @@ func TestEntitySource_MonitorsEdge_AgentIDEmpty(t *testing.T) {
 // carried as a descriptive attribute on the emitted entity.
 func TestEntitySource_ServiceNameAttr(t *testing.T) {
 	s := newTestEntitySource("http://localhost:8222", "", "host-abc")
-	s.pinFromVarz("my-nats", "NUID-X")
+	s.pinFromVarz("my-nats", "NUID-X", "")
 
 	obs, _ := s.Observe()
 	if len(obs.Entities) == 0 {
