@@ -5,7 +5,10 @@ import (
 )
 
 func TestDetectFoundation(t *testing.T) {
-	h := HostIdentity{ID: "h-001", Name: "web-server-1", OSType: "linux"}
+	h := HostIdentity{
+		ID: "h-001", Name: "web-server-1", OSType: "linux",
+		Arch: "amd64", OSVersion: "22.04", OSDescription: "ubuntu 22.04",
+	}
 	a := AgentIdentity{InstanceID: "agent-7f3a", ServiceName: "senhub-agent", ServiceVersion: "1.0.0"}
 
 	obs := DetectFoundation(h, a)
@@ -22,6 +25,10 @@ func TestDetectFoundation(t *testing.T) {
 	}
 	if host.Attributes["host.name"] != "web-server-1" || host.Attributes["os.type"] != "linux" {
 		t.Errorf("host attributes = %v", host.Attributes)
+	}
+	if host.Attributes["host.arch"] != "amd64" || host.Attributes["os.version"] != "22.04" ||
+		host.Attributes["os.description"] != "ubuntu 22.04" {
+		t.Errorf("host descriptive attributes missing/wrong: %v", host.Attributes)
 	}
 
 	svc := obs.Entities[1]
