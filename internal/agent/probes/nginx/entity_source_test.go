@@ -27,6 +27,39 @@ func TestEntitySource_IDFromHostID(t *testing.T) {
 	}
 }
 
+// TestNginxVersionFromServerHeader covers the Server-header parser.
+func TestNginxVersionFromServerHeader(t *testing.T) {
+	cases := map[string]string{
+		"nginx/1.27.0": "1.27.0",
+		"nginx":        "", // server_tokens off
+		"":             "",
+		"Apache/2.4":   "",
+	}
+	for header, want := range cases {
+		if got := nginxVersionFromServerHeader(header); got != want {
+			t.Errorf("nginxVersionFromServerHeader(%q) = %q, want %q", header, got, want)
+		}
+	}
+}
+
+// TestEntitySource_ServiceVersion verifies setVersion surfaces service.version
+// on the entity (toise#216 AT1), absent until set.
+func TestEntitySource_ServiceVersion(t *testing.T) {
+	src := newNginxEntitySource("http://localhost/nginx_status", "", "h")
+	src.setReachable(true)
+
+	obs, _ := src.Observe()
+	if _, has := obs.Entities[0].Attributes["service.version"]; has {
+		t.Error("service.version must be absent before it is set")
+	}
+
+	src.setVersion("1.27.0")
+	obs, _ = src.Observe()
+	if got := obs.Entities[0].Attributes["service.version"]; got != "1.27.0" {
+		t.Errorf("service.version = %v, want 1.27.0", got)
+	}
+}
+
 // TestEntitySource_IDFromInstanceName verifies that a configured instance_name
 // overrides the host-id-derived default.
 func TestEntitySource_IDFromInstanceName(t *testing.T) {
