@@ -531,7 +531,14 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 		if err != nil {
 			return entity.HostIdentity{}, err
 		}
-		return entity.HostIdentity{ID: hi.ID, Name: hi.Name, OSType: hi.OSType}, nil
+		return entity.HostIdentity{
+			ID:            hi.ID,
+			Name:          hi.Name,
+			OSType:        hi.OSType,
+			Arch:          hi.Arch,
+			OSVersion:     hi.OSVersion,
+			OSDescription: hi.OSDescription,
+		}, nil
 	}
 	agentFn := func() entity.AgentIdentity {
 		return entity.AgentIdentity{
