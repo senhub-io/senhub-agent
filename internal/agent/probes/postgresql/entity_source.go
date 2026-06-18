@@ -139,11 +139,11 @@ func (s *pgEntitySource) update(fallbackHostPort string) bool {
 	}
 
 	attrs := map[string]any{
-		"db.system.name": "postgresql",
-		"server.address": s.cfg.Host,
-		"server.port":    int64(s.cfg.Port),
-		"environment":    string(s.environment),
-		"role":           s.role.String(),
+		"db.system.name":   "postgresql",
+		"server.address":   s.cfg.Host,
+		"server.port":      int64(s.cfg.Port),
+		"environment":      string(s.environment),
+		"replication.role": s.role.String(),
 	}
 	if s.version != "" {
 		attrs["db.system.version"] = s.version
