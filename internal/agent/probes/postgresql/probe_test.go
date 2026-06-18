@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 )
 
@@ -317,6 +318,24 @@ func TestEntitySource_Version(t *testing.T) {
 	obs, _ = src.Observe()
 	if got := obs.Entities[0].Attributes["db.system.version"]; got != "16.1" {
 		t.Errorf("db.system.version = %v, want 16.1", got)
+	}
+}
+
+// TestEntitySource_ReplicationRoleKey verifies the replication role rides under
+// the canonical replication.role key (matching mysql), not the legacy bare role
+// (toise#216 AT2).
+func TestEntitySource_ReplicationRoleKey(t *testing.T) {
+	src := newPgEntitySource(config{Host: "pg.local", Port: 5432, InstanceName: "p"}, nil)
+	src.setRole(dbcommon.RoleReplica)
+	src.update("")
+
+	obs, _ := src.Observe()
+	e := obs.Entities[0]
+	if got := e.Attributes["replication.role"]; got != "replica" {
+		t.Errorf("replication.role = %v, want replica", got)
+	}
+	if _, stale := e.Attributes["role"]; stale {
+		t.Error("legacy bare role key must no longer be emitted (toise#216 AT2)")
 	}
 }
 
