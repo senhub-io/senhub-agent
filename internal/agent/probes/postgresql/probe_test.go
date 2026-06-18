@@ -301,6 +301,25 @@ func TestEntitySource_TechIDPinned(t *testing.T) {
 	}
 }
 
+// TestEntitySource_Version verifies setVersion surfaces the parsed short
+// version on the entity as db.system.version (toise#216 AT1), absent until set.
+func TestEntitySource_Version(t *testing.T) {
+	src := newPgEntitySource(config{Host: "pg.local", Port: 5432, InstanceName: "p"}, nil)
+
+	src.update("")
+	obs, _ := src.Observe()
+	if _, has := obs.Entities[0].Attributes["db.system.version"]; has {
+		t.Error("db.system.version must be absent before a version is reported")
+	}
+
+	src.setVersion("16.1")
+	src.update("")
+	obs, _ = src.Observe()
+	if got := obs.Entities[0].Attributes["db.system.version"]; got != "16.1" {
+		t.Errorf("db.system.version = %v, want 16.1", got)
+	}
+}
+
 // TestEntitySource_InstanceNameOverride verifies that an operator-supplied
 // instance_name is used verbatim as db.instance.id and is ready after the
 // first update (no waiting for tech id fetch).

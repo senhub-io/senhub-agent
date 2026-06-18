@@ -241,6 +241,26 @@ func TestEntitySource_OKAfterPinAndRole(t *testing.T) {
 	}
 }
 
+// TestEntitySource_Version: setVersion surfaces the server version on the
+// entity as the descriptive db.system.version attribute (toise#216 AT1), and
+// the attribute is absent until a version has been reported.
+func TestEntitySource_Version(t *testing.T) {
+	src := newMysqlEntitySource(config{Host: "h", Port: 3306}, nil)
+	src.pinServerUUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+	src.updateRole(dbcommon.RoleStandalone)
+
+	obs, _ := src.Observe()
+	if _, has := obs.Entities[0].Attributes["db.system.version"]; has {
+		t.Error("db.system.version must be absent before a version is reported")
+	}
+
+	src.setVersion("8.0.36")
+	obs, _ = src.Observe()
+	if got := obs.Entities[0].Attributes["db.system.version"]; got != "8.0.36" {
+		t.Errorf("db.system.version = %v, want 8.0.36", got)
+	}
+}
+
 // TestEntitySource_TechID: when pinServerUUID is given a uuid, the entity id
 // must be "mysql:<uuid>".
 func TestEntitySource_TechID(t *testing.T) {
