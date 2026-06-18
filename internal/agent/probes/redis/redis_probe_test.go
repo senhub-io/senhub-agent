@@ -15,6 +15,29 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
+// TestEntityObserver_LocalDBRunsOnHost: a loopback-reachable redis is anchored to
+// the host with runs_on (enterprise#36); a remote one is not.
+func TestEntityObserver_LocalDBRunsOnHost(t *testing.T) {
+	runsOn := func(host string) bool {
+		o := newEntityObserver(probeConfig{Host: host, Port: 6379}, host+":6379")
+		o.hostID = func() string { return "h-1" }
+		o.update(probeConfig{Host: host, Port: 6379}, map[string]string{})
+		got, _ := o.Observe()
+		for _, r := range got.Relations {
+			if r.Type == "runs_on" && r.FromType == "db" && r.ToID["host.id"] == "h-1" {
+				return true
+			}
+		}
+		return false
+	}
+	if !runsOn("127.0.0.1") {
+		t.Error("loopback db must emit runs_on→host")
+	}
+	if runsOn("10.0.0.5") {
+		t.Error("remote db must NOT emit runs_on→host")
+	}
+}
+
 func newTestProbe(t *testing.T) *redisProbe {
 	t.Helper()
 	p, err := NewRedisProbe(map[string]interface{}{}, logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"}))
