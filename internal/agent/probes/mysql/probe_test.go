@@ -8,6 +8,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // ─── config parsing ──────────────────────────────────────────────────────────
@@ -279,6 +280,35 @@ func TestEntitySource_DeploymentPlatform(t *testing.T) {
 	if got := obs.Entities[0].Attributes["db.deployment.platform"]; got != "rds" {
 		t.Errorf("db.deployment.platform = %v, want rds", got)
 	}
+}
+
+// TestEntitySource_LocalDBRunsOnHost: a loopback-reachable db is anchored to the
+// host with runs_on (enterprise#36); a remote db is not.
+func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
+	mk := func(host string) entity.Observation {
+		src := newMysqlEntitySource(config{Host: host, Port: 3306}, nil)
+		src.hostID = func() string { return "h-1" }
+		src.pinServerUUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+		src.updateRole(dbcommon.RoleStandalone)
+		obs, _ := src.Observe()
+		return obs
+	}
+
+	if !hasRunsOnHost(mk("127.0.0.1"), "h-1") {
+		t.Error("loopback db must emit runs_on→host")
+	}
+	if hasRunsOnHost(mk("10.0.0.5"), "h-1") {
+		t.Error("remote db must NOT emit runs_on→host")
+	}
+}
+
+func hasRunsOnHost(obs entity.Observation, hostID string) bool {
+	for _, r := range obs.Relations {
+		if r.Type == "runs_on" && r.FromType == "db" && r.ToType == "host" && r.ToID["host.id"] == hostID {
+			return true
+		}
+	}
+	return false
 }
 
 // TestEntitySource_TechID: when pinServerUUID is given a uuid, the entity id

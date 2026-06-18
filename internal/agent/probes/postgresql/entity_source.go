@@ -25,6 +25,7 @@ import (
 type pgEntitySource struct {
 	cfg          config
 	moduleLogger *logger.ModuleLogger
+	hostID       func() string // nil → dbcommon.HostID; resolves the agent host for a local-db runs_on
 
 	mu          sync.Mutex
 	instanceID  string // db.instance.id — set once, never changed
@@ -42,6 +43,7 @@ func newPgEntitySource(cfg config, log *logger.ModuleLogger) *pgEntitySource {
 	s := &pgEntitySource{
 		cfg:          cfg,
 		moduleLogger: log,
+		hostID:       dbcommon.HostID,
 		environment:  dbcommon.EnvironmentUnknown,
 		role:         dbcommon.RoleStandalone,
 	}
@@ -170,6 +172,12 @@ func (s *pgEntitySource) update(fallbackHostPort string) bool {
 			ToType:   "db",
 			ToID:     map[string]any{"db.instance.id": s.instanceID},
 		})
+	}
+
+	// runs_on edge: db → host when the db is local (loopback) — anchors a local
+	// db to the host it runs on (enterprise#36).
+	if rel, ok := dbcommon.LocalHostRunsOn(dbID, s.cfg.Host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	s.obs = obs
