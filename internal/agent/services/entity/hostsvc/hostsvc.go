@@ -6,15 +6,17 @@
 // and is attached to the host.
 //
 // Attachment shape: the listener is tied to the host with the frozen runs_on
-// relation (a listener runs on the host). The richer listens_on → the specific
-// network.interface the socket binds (per the Toise reference producer) is
-// deferred: it needs the host's interfaces as entities and a decision for
-// wildcard binds (0.0.0.0/::), and the exact listener attachment is not pinned
-// in the conformance fixture — flagged for Toise alignment (#252).
+// relation (a listener runs on the host). A non-wildcard bind is additionally
+// tied to the network.address it binds with a bound_to relation (enterprise#37),
+// so the IP is a shared hub (network.address --bound_to--> network.interface is
+// emitted by hostiface) instead of an opaque string repeated per listener;
+// wildcard/loopback binds (0.0.0.0/::, 127.0.0.0/8) have no address entity to
+// point at and stay attribute-only (listen.address).
 package hostsvc
 
 import (
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -27,13 +29,16 @@ import (
 const (
 	entityTypeServiceListener = "service.listener"
 	entityTypeHost            = "host"
+	entityTypeNetworkAddress  = "network.address"
 	idKeyServiceEndpoint      = "service.endpoint"
 	idKeyHost                 = "host.id"
+	idKeyNetworkAddress       = "network.address"
 	attrProcessName           = "process.executable.name"
 	attrProcessPID            = "process.pid"
 	attrTransport             = "network.transport"
 	attrListenAddress         = "listen.address"
 	relRunsOn                 = "runs_on"
+	relBoundTo                = "bound_to"
 
 	// Listeners change rarely; re-enumerate on a slow cadence (walking sockets
 	// + per-pid process lookups is not free on a busy host) and serve the cache
@@ -120,7 +125,13 @@ func buildObservation(hostID string, ls []listener) entity.Observation {
 		if l.Pid > 0 {
 			attrs[attrProcessPID] = int64(l.Pid)
 		}
-		if l.Address != "" {
+		// A non-wildcard bind to a real unicast IP is modeled as a relation to
+		// the network.address entity (emitted by hostiface), so the IP becomes a
+		// shared hub instead of an opaque string repeated on every listener
+		// (enterprise#37). Wildcard/loopback/unspecified binds have no address
+		// entity to point at and stay attribute-only.
+		boundIP := bindableIP(l.Address)
+		if boundIP == "" && l.Address != "" {
 			attrs[attrListenAddress] = l.Address
 		}
 		obs.Entities = append(obs.Entities, entity.Entity{
@@ -131,8 +142,31 @@ func buildObservation(hostID string, ls []listener) entity.Observation {
 			FromType: entityTypeServiceListener, FromID: listenerID,
 			ToType: entityTypeHost, ToID: hostKey,
 		})
+		if boundIP != "" {
+			obs.Relations = append(obs.Relations, entity.Relation{
+				Type:     relBoundTo,
+				FromType: entityTypeServiceListener, FromID: listenerID,
+				ToType: entityTypeNetworkAddress, ToID: map[string]any{idKeyNetworkAddress: boundIP},
+			})
+		}
 	}
 	return obs
+}
+
+// bindableIP returns the bare IP a listener binds to when it is a real unicast
+// address that hostiface also emits as a network.address (so the bound_to edge
+// resolves). Wildcard (0.0.0.0/::), loopback, link-local, unspecified and
+// multicast binds return "" — they have no shared address entity to point at.
+func bindableIP(addr string) string {
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return ""
+	}
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() || ip.IsMulticast() {
+		return ""
+	}
+	return ip.String()
 }
 
 // enumerateListeners returns the host's listening TCP sockets, one per port
