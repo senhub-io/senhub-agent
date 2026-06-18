@@ -283,6 +283,7 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 	env := dbcommon.DetectEnvironment(versionComment)
 	versionVal := vars["version"]
+	p.entitySrc.setVersion(versionVal)
 
 	allCommonTags := append([]tags.Tag{}, commonTags...)
 	allCommonTags = append(allCommonTags,

@@ -32,6 +32,7 @@ type mysqlEntitySource struct {
 
 	mu         sync.Mutex
 	role       dbcommon.Role
+	version    string // server version banner, "" until the first cycle reports it
 	pinnedID   string // "" until pinned
 	idPinned   bool
 	rolePinned bool // true once the first successful collect cycle has run
@@ -88,12 +89,21 @@ func (s *mysqlEntitySource) updateRole(role dbcommon.Role) {
 	s.mu.Unlock()
 }
 
+// setVersion records the server version banner (@@version) so it rides the
+// entity as the descriptive db.system.version attribute (toise#216 AT1).
+func (s *mysqlEntitySource) setVersion(v string) {
+	s.mu.Lock()
+	s.version = v
+	s.mu.Unlock()
+}
+
 // Observe returns the MySQL instance entity. ok=false until both the id has
 // been pinned and the first successful collect cycle has run (rolePinned), so
 // we never emit an entity whose id could change on the next cycle.
 func (s *mysqlEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.Lock()
 	role := s.role
+	version := s.version
 	idPinned := s.idPinned
 	rolePinned := s.rolePinned
 	pinnedID := s.pinnedID
@@ -114,6 +124,9 @@ func (s *mysqlEntitySource) Observe() (entity.Observation, bool) {
 		"server.address":   s.cfg.Host,
 		"server.port":      int64(s.cfg.Port),
 		"replication.role": role.String(),
+	}
+	if version != "" {
+		attrs["db.system.version"] = version
 	}
 
 	obs := entity.Observation{

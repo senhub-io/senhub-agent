@@ -1,6 +1,8 @@
 package oracle
 
 import (
+	"sync"
+
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -27,10 +29,21 @@ const (
 // graph.
 type oracleEntitySource struct {
 	instance string
+
+	mu      sync.Mutex
+	version string // v$instance.version, "" until the first cycle reports it
 }
 
 func newEntitySource(instance string) *oracleEntitySource {
 	return &oracleEntitySource{instance: instance}
+}
+
+// setVersion records the server version (v$instance.version) so it rides the
+// entity as the descriptive db.system.version attribute (toise#216 AT1).
+func (s *oracleEntitySource) setVersion(v string) {
+	s.mu.Lock()
+	s.version = v
+	s.mu.Unlock()
 }
 
 // Observe returns the instance observation plus a monitors edge from the agent
@@ -39,12 +52,20 @@ func newEntitySource(instance string) *oracleEntitySource {
 // (entity emission on); a non-materialised From would be buffered then dropped
 // by the consumer. Non-blocking; safe to call from the detector goroutine.
 func (s *oracleEntitySource) Observe() (entity.Observation, bool) {
+	s.mu.Lock()
+	version := s.version
+	s.mu.Unlock()
+
 	dbID := map[string]any{idKeyDBInstance: s.instance}
+	attrs := map[string]any{attrDBSystem: "oracle"}
+	if version != "" {
+		attrs["db.system.version"] = version
+	}
 	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       entityTypeDB,
 			ID:         dbID,
-			Attributes: map[string]any{attrDBSystem: "oracle"},
+			Attributes: attrs,
 		}},
 	}
 	if agentID := agentstate.GetAgentInstanceID(); agentID != "" {

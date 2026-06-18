@@ -30,6 +30,7 @@ type pgEntitySource struct {
 	instanceID  string // db.instance.id — set once, never changed
 	environment dbcommon.Environment
 	role        dbcommon.Role
+	version     string // server version (e.g. "16.1"), "" until first reported
 	obs         entity.Observation
 	// ready is true once the entity has been emitted at least once. It remains
 	// false until instanceID is pinned from the tech source (or immediately when
@@ -65,6 +66,15 @@ func (s *pgEntitySource) setEnvironment(env dbcommon.Environment) {
 func (s *pgEntitySource) setRole(role dbcommon.Role) {
 	s.mu.Lock()
 	s.role = role
+	s.mu.Unlock()
+}
+
+// setVersion records the server version so it rides the entity as the
+// descriptive db.system.version attribute (toise#216 AT1). Called by
+// collectOverview with the parsed short version (e.g. "16.1").
+func (s *pgEntitySource) setVersion(v string) {
+	s.mu.Lock()
+	s.version = v
 	s.mu.Unlock()
 }
 
@@ -134,6 +144,9 @@ func (s *pgEntitySource) update(fallbackHostPort string) bool {
 		"server.port":    int64(s.cfg.Port),
 		"environment":    string(s.environment),
 		"role":           s.role.String(),
+	}
+	if s.version != "" {
+		attrs["db.system.version"] = s.version
 	}
 
 	obs := entity.Observation{

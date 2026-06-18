@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
@@ -253,6 +254,11 @@ func (p *pgProbe) collectOverview(ctx context.Context, now time.Time, baseTags [
 		copy(envTags, baseTags)
 		envTags[len(baseTags)] = tags.Tag{Key: "environment", Value: string(env)}
 		p.entitySrc.setEnvironment(env)
+		// db.system.version on the entity: the short release from the version()
+		// banner ("PostgreSQL 16.1 on …" → "16.1"), toise#216 AT1.
+		if f := strings.Fields(version); len(f) >= 2 && f[0] == "PostgreSQL" {
+			p.entitySrc.setVersion(f[1])
+		}
 	} else {
 		p.moduleLogger.Warn().Err(err).Str("query", "version").Msg("postgresql: query failed")
 	}
