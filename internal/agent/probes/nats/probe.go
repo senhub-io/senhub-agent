@@ -51,6 +51,7 @@ type probeConfig struct {
 type varzResponse struct {
 	ServerName       string `json:"server_name"`
 	ServerID         string `json:"server_id"`
+	Version          string `json:"version"`
 	Connections      int64  `json:"connections"`
 	TotalConnections int64  `json:"total_connections"`
 	Subscriptions    int64  `json:"subscriptions"`
@@ -224,7 +225,7 @@ func (p *NATSProbe) Collect() ([]data_store.DataPoint, error) {
 	)
 
 	// Pin the entity identity on the first successful /varz (nop if already pinned).
-	p.entitySrc.pinFromVarz(varz.ServerName, varz.ServerID)
+	p.entitySrc.pinFromVarz(varz.ServerName, varz.ServerID, varz.Version)
 
 	// --- /routez (optional) ------------------------------------------------
 	routezBody, routeStatus, routeErr := p.fetch("/routez")
