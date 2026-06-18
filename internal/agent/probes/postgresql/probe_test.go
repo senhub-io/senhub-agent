@@ -7,6 +7,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // TestParseConfig_Defaults exercises the config parser with the minimum
@@ -354,6 +355,32 @@ func TestEntitySource_DeploymentPlatform(t *testing.T) {
 	}
 	if _, stale := e.Attributes["environment"]; stale {
 		t.Error("legacy environment key must no longer be emitted (toise#216 AT3)")
+	}
+}
+
+// TestEntitySource_LocalDBRunsOnHost: a loopback-reachable db is anchored to the
+// host with runs_on (enterprise#36); a remote db is not.
+func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
+	mk := func(host string) entity.Observation {
+		src := newPgEntitySource(config{Host: host, Port: 5432, InstanceName: "p"}, nil)
+		src.hostID = func() string { return "h-1" }
+		src.update("")
+		obs, _ := src.Observe()
+		return obs
+	}
+	runsOn := func(obs entity.Observation) bool {
+		for _, r := range obs.Relations {
+			if r.Type == "runs_on" && r.FromType == "db" && r.ToID["host.id"] == "h-1" {
+				return true
+			}
+		}
+		return false
+	}
+	if !runsOn(mk("127.0.0.1")) {
+		t.Error("loopback db must emit runs_on→host")
+	}
+	if runsOn(mk("db.example.com")) {
+		t.Error("remote db must NOT emit runs_on→host")
 	}
 }
 
