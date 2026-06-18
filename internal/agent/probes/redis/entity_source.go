@@ -65,7 +65,7 @@ func (e *entityObserver) update(cfg probeConfig, info map[string]string) {
 		"server.port":    int64(cfg.Port),
 	}
 	if ver := info["redis_version"]; ver != "" {
-		attrs["db.version"] = ver
+		attrs["db.system.version"] = ver
 	}
 
 	dbID := map[string]any{"db.instance.id": e.pinnedID}
