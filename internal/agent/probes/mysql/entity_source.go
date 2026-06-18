@@ -30,12 +30,13 @@ type mysqlEntitySource struct {
 	cfg          config
 	moduleLogger *logger.ModuleLogger
 
-	mu         sync.Mutex
-	role       dbcommon.Role
-	version    string // server version banner, "" until the first cycle reports it
-	pinnedID   string // "" until pinned
-	idPinned   bool
-	rolePinned bool // true once the first successful collect cycle has run
+	mu          sync.Mutex
+	role        dbcommon.Role
+	version     string // server version banner, "" until the first cycle reports it
+	environment string // hosting platform (self_hosted/rds/aurora/…), "" until reported
+	pinnedID    string // "" until pinned
+	idPinned    bool
+	rolePinned  bool // true once the first successful collect cycle has run
 }
 
 func newMysqlEntitySource(cfg config, log *logger.ModuleLogger) *mysqlEntitySource {
@@ -97,6 +98,14 @@ func (s *mysqlEntitySource) setVersion(v string) {
 	s.mu.Unlock()
 }
 
+// setEnvironment records the detected hosting platform (self_hosted/rds/aurora/…)
+// so it rides the entity as db.deployment.platform (toise#216 AT3).
+func (s *mysqlEntitySource) setEnvironment(env string) {
+	s.mu.Lock()
+	s.environment = env
+	s.mu.Unlock()
+}
+
 // Observe returns the MySQL instance entity. ok=false until both the id has
 // been pinned and the first successful collect cycle has run (rolePinned), so
 // we never emit an entity whose id could change on the next cycle.
@@ -104,6 +113,7 @@ func (s *mysqlEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.Lock()
 	role := s.role
 	version := s.version
+	environment := s.environment
 	idPinned := s.idPinned
 	rolePinned := s.rolePinned
 	pinnedID := s.pinnedID
@@ -127,6 +137,9 @@ func (s *mysqlEntitySource) Observe() (entity.Observation, bool) {
 	}
 	if version != "" {
 		attrs["db.system.version"] = version
+	}
+	if environment != "" {
+		attrs["db.deployment.platform"] = environment
 	}
 
 	obs := entity.Observation{

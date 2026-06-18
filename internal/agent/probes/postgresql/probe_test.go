@@ -339,6 +339,24 @@ func TestEntitySource_ReplicationRoleKey(t *testing.T) {
 	}
 }
 
+// TestEntitySource_DeploymentPlatform verifies the hosting platform rides under
+// the canonical db.deployment.platform key, not the legacy `environment` (which
+// conflated platform with deployment tier — toise#216 AT3).
+func TestEntitySource_DeploymentPlatform(t *testing.T) {
+	src := newPgEntitySource(config{Host: "pg.local", Port: 5432, InstanceName: "p"}, nil)
+	src.setEnvironment(dbcommon.EnvironmentSelfHosted)
+	src.update("")
+
+	obs, _ := src.Observe()
+	e := obs.Entities[0]
+	if got := e.Attributes["db.deployment.platform"]; got != "self_hosted" {
+		t.Errorf("db.deployment.platform = %v, want self_hosted", got)
+	}
+	if _, stale := e.Attributes["environment"]; stale {
+		t.Error("legacy environment key must no longer be emitted (toise#216 AT3)")
+	}
+}
+
 // TestEntitySource_InstanceNameOverride verifies that an operator-supplied
 // instance_name is used verbatim as db.instance.id and is ready after the
 // first update (no waiting for tech id fetch).
