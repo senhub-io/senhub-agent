@@ -41,6 +41,23 @@ func TestEntitySource_Observe(t *testing.T) {
 	}
 }
 
+// TestEntitySource_Version verifies setVersion surfaces the server version on
+// the entity as db.system.version (toise#216 AT1), absent until reported.
+func TestEntitySource_Version(t *testing.T) {
+	src := newEntitySource("oracle://db.example.com:1521/ORCL")
+
+	obs, _ := src.Observe()
+	if _, has := obs.Entities[0].Attributes["db.system.version"]; has {
+		t.Error("db.system.version must be absent before a version is reported")
+	}
+
+	src.setVersion("19.0.0.0.0")
+	obs, _ = src.Observe()
+	if got := obs.Entities[0].Attributes["db.system.version"]; got != "19.0.0.0.0" {
+		t.Errorf("db.system.version = %v, want 19.0.0.0.0", got)
+	}
+}
+
 // TestEntitySource_MonitorsEdge verifies the db is anchored to the agent via a
 // monitors edge whose ToID exactly matches the entity identity, and that the
 // edge is skipped when the agent id is unset.
