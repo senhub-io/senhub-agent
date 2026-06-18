@@ -30,10 +30,11 @@ type natsEntitySource struct {
 
 	getHostID func() string // injectable for tests
 
-	mu     sync.Mutex
-	pinned bool
-	id     string
-	attrs  map[string]any // descriptive: server.address / server.port
+	mu      sync.Mutex
+	pinned  bool
+	id      string
+	version string         // service.version from /varz, "" until reported
+	attrs   map[string]any // descriptive: server.address / server.port
 }
 
 func newNATSEntitySource(endpoint, instanceName string) *natsEntitySource {
@@ -59,9 +60,12 @@ func defaultGetHostID() string {
 // id is immutable for the process lifetime). serverName is "" when the NATS
 // server has not been given an explicit name; serverID is the always-present
 // NUID.
-func (s *natsEntitySource) pinFromVarz(serverName, serverID string) {
+func (s *natsEntitySource) pinFromVarz(serverName, serverID, version string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if version != "" {
+		s.version = version // descriptive — refresh even after the id is pinned
+	}
 	if s.pinned {
 		return
 	}
@@ -115,18 +119,21 @@ func (s *natsEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.Lock()
 	pinned := s.pinned
 	id := s.id
+	version := s.version
 	s.mu.Unlock()
 
 	if !pinned {
 		return entity.Observation{}, false
 	}
 
+	attrs := map[string]any{"service.name": "nats"}
+	if version != "" {
+		attrs["service.version"] = version
+	}
 	e := entity.Entity{
-		Type: "service.instance",
-		ID:   map[string]any{"service.instance.id": id},
-		Attributes: map[string]any{
-			"service.name": "nats",
-		},
+		Type:       "service.instance",
+		ID:         map[string]any{"service.instance.id": id},
+		Attributes: attrs,
 	}
 
 	obs := entity.Observation{Entities: []entity.Entity{e}}

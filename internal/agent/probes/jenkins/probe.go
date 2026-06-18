@@ -466,6 +466,12 @@ func (p *jenkinsProbe) getJSON(path string, out interface{}) error {
 		return fmt.Errorf("jenkins %s returned HTTP %s: %s", path, strconv.Itoa(resp.StatusCode), string(body))
 	}
 
+	// service.version rides the entity from the X-Jenkins header (present on
+	// every Jenkins response).
+	if p.entitySource != nil {
+		p.entitySource.setVersion(resp.Header.Get("X-Jenkins"))
+	}
+
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return fmt.Errorf("decoding %s response: %w", path, err)
 	}

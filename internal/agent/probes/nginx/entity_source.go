@@ -19,6 +19,7 @@ type nginxEntitySource struct {
 	attrs      map[string]any
 	mu         sync.RWMutex
 	up         bool
+	version    string // service.version from the Server header, "" until parsed
 }
 
 // newNginxEntitySource constructs the entity source. instanceName is the
@@ -81,6 +82,19 @@ func (s *nginxEntitySource) setReachable(up bool) {
 	s.mu.Unlock()
 }
 
+// setVersion records the server version parsed from the stub_status response's
+// Server header ("nginx/1.27.0" → "1.27.0"), so it rides the entity as the
+// descriptive service.version attribute (toise#216 AT1). Empty values are
+// ignored (server_tokens off hides the version).
+func (s *nginxEntitySource) setVersion(v string) {
+	if v == "" {
+		return
+	}
+	s.mu.Lock()
+	s.version = v
+	s.mu.Unlock()
+}
+
 // Observe implements entity.Source. It returns the nginx service.instance
 // entity plus a monitors relation from the agent when the endpoint is
 // reachable, or (_, false) on a transient failure so the detector keeps the
@@ -88,17 +102,27 @@ func (s *nginxEntitySource) setReachable(up bool) {
 func (s *nginxEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.RLock()
 	up := s.up
+	version := s.version
 	s.mu.RUnlock()
 
 	if !up {
 		return entity.Observation{}, false
 	}
 
+	attrs := s.attrs
+	if version != "" {
+		// Merge into a fresh map so the shared attrs is never mutated.
+		attrs = make(map[string]any, len(s.attrs)+1)
+		for k, v := range s.attrs {
+			attrs[k] = v
+		}
+		attrs["service.version"] = version
+	}
 	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "service.instance",
 			ID:         map[string]any{"service.instance.id": s.instanceID},
-			Attributes: s.attrs,
+			Attributes: attrs,
 		}},
 	}
 

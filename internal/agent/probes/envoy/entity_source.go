@@ -38,10 +38,10 @@ type envoyEntitySource struct {
 	// server.port). Set once at construction, never modified.
 	descAttr map[string]any
 
-	// fetchNodeID fetches the Envoy /server_info endpoint and returns the
-	// node.id field. Returns "" when the field is empty or the call fails.
-	// Injected at construction; overridable in tests.
-	fetchNodeID func() string
+	// fetchInfo fetches the Envoy /server_info endpoint and returns the node.id
+	// and version fields. Either is "" when absent or the call fails. Injected at
+	// construction; overridable in tests.
+	fetchInfo func() (nodeID, version string)
 
 	// hostID returns the host machine id for the precedence-3 fallback.
 	// Injected at construction; overridable in tests.
@@ -50,7 +50,8 @@ type envoyEntitySource struct {
 	// idOnce ensures the pinned id is written exactly once.
 	idOnce   sync.Once
 	pinnedID string
-	idPinned bool // true once idOnce has fired and pinnedID is set
+	version  string // service.version from /server_info, set with the id under idOnce
+	idPinned bool   // true once idOnce has fired and pinnedID is set
 
 	// up is the reachability state updated by the probe after each scrape.
 	mu sync.RWMutex
@@ -61,7 +62,8 @@ type envoyEntitySource struct {
 // response we need for id resolution. The full schema has many more fields;
 // we decode only what we need.
 type serverInfoResponse struct {
-	Node struct {
+	Version string `json:"version"`
+	Node    struct {
 		ID string `json:"id"`
 	} `json:"node"`
 }
@@ -94,8 +96,8 @@ func newEnvoyEntitySource(
 	s := &envoyEntitySource{
 		descAttr: descAttr,
 		hostID:   hostIDFunc,
-		fetchNodeID: func() string {
-			return fetchEnvoyNodeID(client, endpoint)
+		fetchInfo: func() (string, string) {
+			return fetchEnvoyServerInfo(client, endpoint)
 		},
 	}
 
@@ -138,7 +140,8 @@ func (s *envoyEntitySource) tryPin() bool {
 	}
 
 	s.idOnce.Do(func() {
-		nodeID := s.fetchNodeID()
+		nodeID, version := s.fetchInfo()
+		s.version = version
 		if nodeID != "" {
 			s.pinnedID = fmt.Sprintf("envoy:%s", nodeID)
 		} else {
@@ -185,11 +188,20 @@ func (s *envoyEntitySource) Observe() (entity.Observation, bool) {
 	}
 
 	targetID := map[string]any{"service.instance.id": s.pinnedID}
+	attrs := s.descAttr
+	if s.version != "" {
+		// Merge into a fresh map so the shared descAttr is never mutated.
+		attrs = make(map[string]any, len(s.descAttr)+1)
+		for k, v := range s.descAttr {
+			attrs[k] = v
+		}
+		attrs["service.version"] = s.version
+	}
 	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "service.instance",
 			ID:         targetID,
-			Attributes: s.descAttr,
+			Attributes: attrs,
 		}},
 	}
 
@@ -207,35 +219,35 @@ func (s *envoyEntitySource) Observe() (entity.Observation, bool) {
 	return obs, true
 }
 
-// fetchEnvoyNodeID calls GET /server_info on the Envoy admin endpoint and
-// extracts the node.id field from the JSON response. Returns "" on any
-// error or when node.id is absent / empty.
-func fetchEnvoyNodeID(client *http.Client, endpoint string) string {
+// fetchEnvoyServerInfo calls GET /server_info on the Envoy admin endpoint and
+// extracts the node.id and version fields from the JSON response. Either is ""
+// on any error or when the field is absent / empty.
+func fetchEnvoyServerInfo(client *http.Client, endpoint string) (nodeID, version string) {
 	url := endpoint + "/server_info"
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return ""
+		return "", ""
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return ""
+		return "", ""
 	}
 
 	var info serverInfoResponse
 	if err := json.Unmarshal(body, &info); err != nil {
-		return ""
+		return "", ""
 	}
-	return info.Node.ID
+	return info.Node.ID, info.Version
 }

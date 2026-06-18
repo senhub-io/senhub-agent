@@ -265,6 +265,23 @@ func TestEntitySource_InstanceNameOverride(t *testing.T) {
 	}
 }
 
+// TestEntitySource_ServiceVersion verifies the X-Jenkins version (via setVersion)
+// rides the entity as service.version (toise#216 AT1), absent until seen.
+func TestEntitySource_ServiceVersion(t *testing.T) {
+	src := newEntitySource("my-jenkins", "10.0.0.5", "8080", alwaysFailFetch, stubHostID("h"))
+
+	obs, _ := src.Observe()
+	if _, has := obs.Entities[0].Attributes["service.version"]; has {
+		t.Error("service.version must be absent before the X-Jenkins header is seen")
+	}
+
+	src.setVersion("2.426.1")
+	obs, _ = src.Observe()
+	if got := obs.Entities[0].Attributes["service.version"]; got != "2.426.1" {
+		t.Errorf("service.version = %v, want 2.426.1", got)
+	}
+}
+
 func TestEntitySource_TechIDPinned(t *testing.T) {
 	const wantID = "jenkins:abcdef0123456789ab12"
 	calls := 0
