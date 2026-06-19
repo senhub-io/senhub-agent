@@ -8,8 +8,15 @@ type HostIdentity struct {
 	Name          string // host.name — descriptive
 	OSType        string // os.type — descriptive
 	Arch          string // host.arch — descriptive
+	OSName        string // os.name — descriptive
 	OSVersion     string // os.version — descriptive
+	OSBuildID     string // os.build_id — kernel/build, descriptive
 	OSDescription string // os.description — descriptive
+	CPUModel      string // host.cpu.model.name — nameplate
+	CPUVendor     string // host.cpu.vendor.id — nameplate
+	HWVendor      string // hw.vendor — DMI nameplate
+	HWModel       string // hw.model — DMI nameplate
+	HWSerial      string // hw.serial_number — DMI nameplate, same_as glue to a BMC facet
 }
 
 // AgentIdentity is the identity + descriptive facts of the agent process.
@@ -42,11 +49,32 @@ func DetectFoundation(h HostIdentity, a AgentIdentity) Observation {
 	if h.Arch != "" {
 		host.Attributes["host.arch"] = h.Arch
 	}
+	if h.OSName != "" {
+		host.Attributes["os.name"] = h.OSName
+	}
 	if h.OSVersion != "" {
 		host.Attributes["os.version"] = h.OSVersion
 	}
+	if h.OSBuildID != "" {
+		host.Attributes["os.build_id"] = h.OSBuildID
+	}
 	if h.OSDescription != "" {
 		host.Attributes["os.description"] = h.OSDescription
+	}
+	if h.CPUModel != "" {
+		host.Attributes["host.cpu.model.name"] = h.CPUModel
+	}
+	if h.CPUVendor != "" {
+		host.Attributes["host.cpu.vendor.id"] = h.CPUVendor
+	}
+	if h.HWVendor != "" {
+		host.Attributes["hw.vendor"] = h.HWVendor
+	}
+	if h.HWModel != "" {
+		host.Attributes["hw.model"] = h.HWModel
+	}
+	if h.HWSerial != "" {
+		host.Attributes["hw.serial_number"] = h.HWSerial
 	}
 
 	svc := Entity{
