@@ -159,10 +159,10 @@
 
 /* ===== Probe page header logo ===== */
 .probe-page-logo {
-  height: 3rem;
+  height: 2rem;
   width: auto;
   float: right;
-  margin: 0 0 1.5rem 2rem;
+  margin: 0 0 1rem 1.5rem;
   object-fit: contain;
 }
 [data-md-color-scheme="slate"] .probe-page-logo-si,
