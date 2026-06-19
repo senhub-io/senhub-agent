@@ -4,8 +4,23 @@ package common
 
 import (
 	"os"
+	"strconv"
 	"strings"
 )
+
+// readChassisType reads the raw SMBIOS chassis-type code from sysfs (0 when
+// unreadable). The caller normalizes it to the host.chassis.type enum.
+func readChassisType() int {
+	b, err := os.ReadFile("/sys/class/dmi/id/chassis_type")
+	if err != nil {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		return 0
+	}
+	return n
+}
 
 // readHardwareNameplate reads the host's DMI system identity from sysfs.
 // product_serial requires root (the agent's run path has it); any field that is
