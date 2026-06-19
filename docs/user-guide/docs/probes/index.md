@@ -614,6 +614,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   height: 2rem;
   object-fit: contain;
   flex-shrink: 0;
+  align-self: center;
 }
 [data-md-color-scheme="slate"] .probe-logo-si,
 [data-md-color-scheme="slate"] .probe-logo-wm {
