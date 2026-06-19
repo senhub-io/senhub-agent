@@ -1,3 +1,5 @@
+<img src="https://api.iconify.design/vscode-icons/file-type-systemd.svg" alt="" class="probe-page-logo probe-page-logo-si">
+
 !!! info
     **License: Free** — part of the universal collection tier.
 

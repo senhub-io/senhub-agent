@@ -1,3 +1,5 @@
+<img src="https://cdn.jsdelivr.net/gh/cncf/artwork@main/projects/envoy/icon/color/envoy-icon-color.svg" alt="" class="probe-page-logo probe-page-logo-wm">
+
 !!! info
     **License: Free** — part of the universal collection tier.
 
