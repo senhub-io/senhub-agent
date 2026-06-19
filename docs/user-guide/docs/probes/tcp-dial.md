@@ -1,3 +1,5 @@
+<img src="https://api.iconify.design/mdi/connection.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+
 # tcp_dial — TCP connect latency
 
 Free tier. Measures the time for a raw TCP `connect()` to complete
