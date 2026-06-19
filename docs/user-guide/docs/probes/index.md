@@ -322,14 +322,14 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="envoy.md" class="probe-card" data-family="web-servers" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/envoy" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-wm" src="https://cdn.jsdelivr.net/gh/cncf/artwork@main/projects/envoy/icon/color/envoy-icon-color.svg" alt="" loading="lazy">
     <span class="probe-name">Envoy Proxy</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Server health, listener connections, cluster upstream</span>
   </a>
 
   <a href="varnish.md" class="probe-card" data-family="web-servers" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/varnishcache" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-wm" src="https://cdn2.hubspot.net/hubfs/209523/Logos/Varnish%20Cache%20logos/Varnish-Cache_2.0_POS_Small.png" alt="" loading="lazy">
     <span class="probe-name">Varnish Cache</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Hit/miss, backend connections, threads, memory</span>
@@ -378,7 +378,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="nats.md" class="probe-card" data-family="messaging" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/natsdotio" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/9/9c/NATS-logo.png" alt="" loading="lazy">
     <span class="probe-name">NATS</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Server health, connections, message rates, JetStream</span>
