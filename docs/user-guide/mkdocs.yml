@@ -168,7 +168,6 @@ nav:
       - Apache ZooKeeper: probes/zookeeper.md
       - Jenkins CI: probes/jenkins.md
       - UniFi Controller: probes/unifi.md
-  - Migrating from PRTG: prtg-migration.md
   - Troubleshooting: troubleshooting.md
   - What's new:
       - Overview: whats-new/index.md
