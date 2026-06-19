@@ -41,21 +41,29 @@ const (
 	relBoundTo                 = "bound_to"
 	relHasInterface            = "has_interface"
 
+	// attrKeyOperState is the interface operational state. It is one of Toise's
+	// stateKeys (ADR 0006: oper_state/admin_state/status), so a link flip on a
+	// host interface classifies as entity.state_changed, not a silent update.
+	attrKeyOperState = "oper_state"
+
 	// Interfaces and their addresses change rarely; re-enumerate on a slow
 	// cadence and serve the cache in between, like hostsvc.
 	defaultRefresh = 60 * time.Second
 )
 
-// ifaceAddrs is one interface with its retained unicast IPs.
+// ifaceAddrs is one interface with its retained unicast IPs and operational
+// state.
 type ifaceAddrs struct {
-	Name string
-	IPs  []string
+	Name      string
+	IPs       []string
+	OperState string // up/down; "" → attribute omitted
 }
 
 // Source implements entity.Source for the host's own interfaces/addresses.
 type Source struct {
 	hostID     func() string
-	interfaces func() (gnet.InterfaceStatList, error) // nil → gnet.Interfaces
+	interfaces func() (gnet.InterfaceStatList, error)   // nil → gnet.Interfaces
+	operState  func(name string, flags []string) string // nil → interfaceOperState
 	refresh    time.Duration
 
 	mu    sync.Mutex
@@ -114,9 +122,11 @@ func buildObservation(hostID string, ias []ifaceAddrs) entity.Observation {
 			continue
 		}
 		ifaceKey := map[string]any{idKeyHost: hostID, idKeyInterfaceName: ia.Name}
-		obs.Entities = append(obs.Entities, entity.Entity{
-			Type: entityTypeNetworkInterface, ID: ifaceKey,
-		})
+		ifaceEntity := entity.Entity{Type: entityTypeNetworkInterface, ID: ifaceKey}
+		if ia.OperState != "" {
+			ifaceEntity.Attributes = map[string]any{attrKeyOperState: ia.OperState}
+		}
+		obs.Entities = append(obs.Entities, ifaceEntity)
 		obs.Relations = append(obs.Relations, entity.Relation{
 			Type:     relHasInterface,
 			FromType: entityTypeHost, FromID: hostKey,
@@ -152,6 +162,10 @@ func (s *Source) enumerate() ([]ifaceAddrs, error) {
 	if err != nil {
 		return nil, err
 	}
+	osFn := s.operState
+	if osFn == nil {
+		osFn = interfaceOperState
+	}
 	out := make([]ifaceAddrs, 0, len(ifaces))
 	for _, ifc := range ifaces {
 		if isLoopbackIface(ifc.Flags) {
@@ -164,10 +178,33 @@ func (s *Source) enumerate() ([]ifaceAddrs, error) {
 			}
 		}
 		if len(ips) > 0 {
-			out = append(out, ifaceAddrs{Name: ifc.Name, IPs: ips})
+			out = append(out, ifaceAddrs{Name: ifc.Name, IPs: ips, OperState: osFn(ifc.Name, ifc.Flags)})
 		}
 	}
 	return out, nil
+}
+
+// interfaceOperState resolves the interface operational state as the Toise
+// state-key value (up/down). On Linux it reads the carrier/link state from
+// sysfs; when that is unavailable (non-Linux, or "unknown") it falls back to
+// the administrative IFF_UP flag.
+func interfaceOperState(name string, flags []string) string {
+	if st := sysOperState(name); st != "" {
+		return st
+	}
+	return operStateFromFlags(flags)
+}
+
+// operStateFromFlags derives up/down from the gopsutil flag set (IFF_UP). This
+// is the administrative state — a coarser signal than the carrier state, used
+// only when the precise sysfs operstate is unavailable.
+func operStateFromFlags(flags []string) string {
+	for _, f := range flags {
+		if f == "up" {
+			return "up"
+		}
+	}
+	return "down"
 }
 
 // isLoopbackIface reports whether the gopsutil flag set marks a loopback

@@ -150,6 +150,49 @@ func TestEnumerate_SkipsLoopbackInterfaceAndKeepsUsableIPs(t *testing.T) {
 	}
 }
 
+func TestOperStateFromFlags(t *testing.T) {
+	if got := operStateFromFlags([]string{"up", "broadcast"}); got != "up" {
+		t.Errorf("flags with up = %q, want up", got)
+	}
+	if got := operStateFromFlags([]string{"broadcast", "multicast"}); got != "down" {
+		t.Errorf("flags without up = %q, want down", got)
+	}
+}
+
+func TestBuildObservation_OperStateAttribute(t *testing.T) {
+	ias := []ifaceAddrs{
+		{Name: "eth0", IPs: []string{"10.0.0.5"}, OperState: "up"},
+		{Name: "eth1", IPs: []string{"10.0.0.6"}}, // no oper state → omitted
+	}
+	obs := buildObservation("h-1", ias)
+
+	eth0, _ := entityByID(obs, entityTypeNetworkInterface, idKeyInterfaceName, "eth0")
+	if eth0.Attributes[attrKeyOperState] != "up" {
+		t.Errorf("eth0 oper_state = %v, want up", eth0.Attributes[attrKeyOperState])
+	}
+	eth1, _ := entityByID(obs, entityTypeNetworkInterface, idKeyInterfaceName, "eth1")
+	if _, present := eth1.Attributes[attrKeyOperState]; present {
+		t.Errorf("eth1 must omit oper_state when unknown: %+v", eth1.Attributes)
+	}
+}
+
+func TestEnumerate_AttachesOperState(t *testing.T) {
+	s := New(func() string { return "h-1" })
+	s.operState = func(name string, flags []string) string { return "down" } // injected, deterministic
+	s.interfaces = func() (gnet.InterfaceStatList, error) {
+		return gnet.InterfaceStatList{
+			{Name: "eth0", Flags: []string{"up"}, Addrs: gnet.InterfaceAddrList{{Addr: "10.0.0.5/24"}}},
+		}, nil
+	}
+	ias, err := s.enumerate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ias) != 1 || ias[0].OperState != "down" {
+		t.Errorf("oper state must come from the injected resolver: %+v", ias)
+	}
+}
+
 func TestObserve_TransientFailureKeepsCache(t *testing.T) {
 	calls := 0
 	s := New(func() string { return "h-1" })
