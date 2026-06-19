@@ -105,6 +105,14 @@ nav:
       - Linux logs: probes/linux-logs.md
       - Windows Event Log: probes/windows-eventlog.md
       - File tail: probes/filetail.md
+      - Process Monitor: probes/process.md
+      - Systemd Units: probes/systemd.md
+      - Windows Services: probes/windows-services.md
+      - Chrony (NTP): probes/chrony.md
+      - S.M.A.R.T. Disk Health: probes/smart.md
+      - IPMI / BMC Sensors: probes/ipmi.md
+      - NVIDIA GPU: probes/nvidia.md
+      - Modbus TCP: probes/modbus.md
       - ICMP check: probes/icmp-check.md
       - HTTP check: probes/http-check.md
       - TCP dial: probes/tcp-dial.md
@@ -126,6 +134,40 @@ nav:
       - Veeam Backup & Replication: probes/veeam.md
       - MySQL / MariaDB: probes/mysql.md
       - PostgreSQL: probes/postgresql.md
+      - Microsoft SQL Server: probes/mssql.md
+      - MongoDB: probes/mongodb.md
+      - Oracle Database: probes/oracle.md
+      - Redis / Valkey: probes/redis.md
+      - Apache Cassandra: probes/cassandra.md
+      - CouchDB: probes/couchdb.md
+      - ClickHouse: probes/clickhouse.md
+      - Elasticsearch: probes/elasticsearch.md
+      - OpenSearch: probes/opensearch.md
+      - Apache Solr: probes/solr.md
+      - InfluxDB: probes/influxdb.md
+      - Memcached: probes/memcached.md
+      - Apache HTTP Server: probes/apache.md
+      - Nginx: probes/nginx.md
+      - HAProxy: probes/haproxy.md
+      - Envoy Proxy: probes/envoy.md
+      - PHP-FPM: probes/php-fpm.md
+      - Varnish Cache: probes/varnish.md
+      - Apache Tomcat: probes/tomcat.md
+      - WildFly / JBoss: probes/wildfly.md
+      - Apache Kafka: probes/kafka.md
+      - RabbitMQ: probes/rabbitmq.md
+      - Apache ActiveMQ: probes/activemq.md
+      - NATS Server: probes/nats.md
+      - Apache Pulsar: probes/pulsar.md
+      - Docker: probes/docker.md
+      - Kubernetes: probes/kubernetes.md
+      - Proxmox VE: probes/proxmox.md
+      - Hyper-V: probes/hyperv.md
+      - Ceph: probes/ceph.md
+      - Consul: probes/consul.md
+      - Apache ZooKeeper: probes/zookeeper.md
+      - Jenkins CI: probes/jenkins.md
+      - UniFi Controller: probes/unifi.md
   - Migrating from PRTG: prtg-migration.md
   - Troubleshooting: troubleshooting.md
   - What's new:
