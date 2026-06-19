@@ -6,7 +6,7 @@ throughput, replication, buffer pool, locks, IO and storage from
 `SHOW GLOBAL STATUS`, `SHOW GLOBAL VARIABLES`, `SHOW REPLICA
 STATUS` and `information_schema`.
 
-**License**: Pro
+**License**: Free
 
 ## Prerequisites
 

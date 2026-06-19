@@ -63,7 +63,7 @@ their own metrics.
 - **[Ping Gateway](ping-gateway.md)** *(Pro)* — Default gateway reachability and round-trip time
 - **[Ping WebApp](ping-webapp.md)** *(Pro)* — Web application availability via ICMP
 - **[Load WebApp](load-webapp.md)** *(Pro)* — Web page load time measurement (HTTP GET + timing breakdown)
-- **[WiFi Signal Strength](wifi-signal-strength.md)** *(Pro)* — Wireless signal quality (Windows + Linux)
+- **[WiFi Signal Strength](wifi-signal-strength.md)** *(Free)* — Wireless signal quality (Windows + Linux)
 
 ## Application Delivery Controllers
 
@@ -104,8 +104,8 @@ Relational database engines — connection state, throughput,
 replication health, buffer cache, locks, storage, and engine
 internals via vendor-specific views.
 
-- **[MySQL / MariaDB](mysql.md)** *(Pro)* — MySQL 5.7+ and MariaDB 10.3+, self-hosted and managed (RDS, Aurora, Cloud SQL, Azure Flexible, Supabase). Connections, replication threads, InnoDB buffer pool, deadlocks, slow queries.
-- **[PostgreSQL](postgresql.md)** *(Pro)* — PostgreSQL 12+ self-hosted and managed. Includes the SenHub differentiators: composite replication health, table bloat estimate, backup freshness via `pg_stat_archiver`, idle-in-transaction and long-running-transaction first-class channels, version-aware `pg_stat_statements`.
+- **[MySQL / MariaDB](mysql.md)** *(Free)* — MySQL 5.7+ and MariaDB 10.3+, self-hosted and managed (RDS, Aurora, Cloud SQL, Azure Flexible, Supabase). Connections, replication threads, InnoDB buffer pool, deadlocks, slow queries.
+- **[PostgreSQL](postgresql.md)** *(Free)* — PostgreSQL 12+ self-hosted and managed. Includes the SenHub differentiators: composite replication health, table bloat estimate, backup freshness via `pg_stat_archiver`, idle-in-transaction and long-running-transaction first-class channels, version-aware `pg_stat_statements`.
 
 ## Logs & Events
 
@@ -118,8 +118,8 @@ Open-ended ingestion paths for log streams and custom event data.
 
 | Tier | Probes included |
 |---|---|
-| **Free** | CPU, Memory, Network, Logical Disk, Linux Logs, Windows Event Log, File Tail, ICMP Check, HTTP Check, TCP Dial, DNS Latency, SNMP Poll, SNMP Trap, OTLP Receiver, Prometheus Scrape, Exec, Syslog |
-| **Pro** | Free + Citrix, NetScaler, Redfish, Event, Ping Gateway, Ping WebApp, Load WebApp, WiFi Signal, Veeam, MySQL, PostgreSQL |
+| **Free** | CPU, Memory, Network, Logical Disk, Linux Logs, Windows Event Log, File Tail, ICMP Check, HTTP Check, TCP Dial, DNS Latency, SNMP Poll, SNMP Trap, OTLP Receiver, Prometheus Scrape, Exec, Syslog, WiFi Signal, MySQL, PostgreSQL |
+| **Pro** | Free + Citrix, NetScaler, Redfish, Event, Ping Gateway, Ping WebApp, Load WebApp, Veeam |
 | **Enterprise** | All probes (wildcard) |
 
 See [Configuration → Licensing](../configuration.md)
