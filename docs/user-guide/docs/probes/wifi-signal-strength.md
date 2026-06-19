@@ -1,3 +1,5 @@
+<img src="https://api.iconify.design/mdi/wifi.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+
 **License**: Free
 
 # WiFi Signal Strength Probe
