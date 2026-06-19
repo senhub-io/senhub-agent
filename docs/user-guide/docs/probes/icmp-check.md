@@ -1,3 +1,5 @@
+<img src="https://api.iconify.design/mdi/check-network.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+
 # icmp_check — multi-target ping
 
 Free tier. Pings a list of targets every cycle and reports reachability,

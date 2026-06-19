@@ -1,3 +1,5 @@
+<img src="https://api.iconify.design/mdi/lan.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+
 !!! info
     **License: Free** — part of the universal collection tier. SNMP
     polling is the backbone of network monitoring and the agent ships
