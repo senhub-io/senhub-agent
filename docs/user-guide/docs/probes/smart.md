@@ -1,3 +1,5 @@
+<img src="https://api.iconify.design/mdi/pulse.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+
 !!! info
     **License: Free** — part of the universal collection tier.
 
