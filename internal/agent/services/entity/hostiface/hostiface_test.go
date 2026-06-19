@@ -176,20 +176,54 @@ func TestBuildObservation_OperStateAttribute(t *testing.T) {
 	}
 }
 
-func TestEnumerate_AttachesOperState(t *testing.T) {
+func TestEnumerate_AttachesMetadataAndEmitsIPLess(t *testing.T) {
 	s := New(func() string { return "h-1" })
-	s.operState = func(name string, flags []string) string { return "down" } // injected, deterministic
+	s.link = func(name string, flags []string) linkMeta {
+		return linkMeta{OperState: "down", Type: "physical", Duplex: "full", Speed: 1_000_000_000}
+	}
 	s.interfaces = func() (gnet.InterfaceStatList, error) {
 		return gnet.InterfaceStatList{
-			{Name: "eth0", Flags: []string{"up"}, Addrs: gnet.InterfaceAddrList{{Addr: "10.0.0.5/24"}}},
+			{Name: "eth0", MTU: 1500, HardwareAddr: "aa:bb:cc:dd:ee:ff", Flags: []string{"up"},
+				Addrs: gnet.InterfaceAddrList{{Addr: "10.0.0.5/24"}}},
+			{Name: "eth9", MTU: 9000, HardwareAddr: "11:22:33:44:55:66", Flags: []string{}}, // no IP
 		}, nil
 	}
 	ias, err := s.enumerate()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ias) != 1 || ias[0].OperState != "down" {
-		t.Errorf("oper state must come from the injected resolver: %+v", ias)
+	if len(ias) != 2 {
+		t.Fatalf("both NICs must be emitted incl. the IP-less one: %+v", ias)
+	}
+	if ias[0].MAC != "aa:bb:cc:dd:ee:ff" || ias[0].MTU != 1500 || ias[0].OperState != "down" ||
+		ias[0].Type != "physical" || ias[0].Duplex != "full" || ias[0].Speed != 1_000_000_000 {
+		t.Errorf("eth0 metadata wrong: %+v", ias[0])
+	}
+	if ias[1].Name != "eth9" || len(ias[1].IPs) != 0 {
+		t.Errorf("eth9 (IP-less) must still be present: %+v", ias[1])
+	}
+}
+
+func TestBuildObservation_AT13AttributesAndIPLess(t *testing.T) {
+	ias := []ifaceAddrs{
+		{Name: "eth0", IPs: []string{"10.0.0.5"}, MAC: "aa:bb:cc:dd:ee:ff", MTU: 1500,
+			OperState: "up", Type: "physical", Duplex: "full", Speed: 1_000_000_000},
+		{Name: "eth9", OperState: "down", Type: "virtual"}, // no IP
+	}
+	obs := buildObservation("h-1", ias)
+
+	if got := relCount(obs, relHasInterface); got != 2 {
+		t.Errorf("has_interface = %d, want 2 (incl. IP-less)", got)
+	}
+	if got := relCount(obs, relBoundTo); got != 1 {
+		t.Errorf("bound_to = %d, want 1 (only eth0 has an IP)", got)
+	}
+	eth0, _ := entityByID(obs, entityTypeNetworkInterface, idKeyInterfaceName, "eth0")
+	a := eth0.Attributes
+	if a[attrKeyMAC] != "aa:bb:cc:dd:ee:ff" || a[attrKeyMTU] != int64(1500) ||
+		a[attrKeyOperState] != "up" || a[attrKeyType] != "physical" ||
+		a[attrKeyDuplex] != "full" || a[attrKeySpeed] != int64(1_000_000_000) {
+		t.Errorf("eth0 AT13 attributes wrong: %v", a)
 	}
 }
 
