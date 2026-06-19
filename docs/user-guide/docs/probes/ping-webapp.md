@@ -1,3 +1,5 @@
+<img src="https://api.iconify.design/mdi/earth.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
 
