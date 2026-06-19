@@ -245,7 +245,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="cassandra.md" class="probe-card" data-family="databases" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/apachecassandra" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Cassandra_logo.svg" alt="" loading="lazy">
     <span class="probe-name">Cassandra</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Node health, request metrics, compaction, GC</span>
@@ -280,7 +280,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="solr.md" class="probe-card" data-family="databases" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/apachesolr" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/d/d5/Apache_Solr_logo.svg" alt="" loading="lazy">
     <span class="probe-name">Apache Solr</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">JVM, request/error counters, core document count</span>
@@ -343,21 +343,21 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="tomcat.md" class="probe-card" data-family="web-servers" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/apachetomcat" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/f/fe/Apache_Tomcat_logo.svg" alt="" loading="lazy">
     <span class="probe-name">Apache Tomcat</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Threads, requests, sessions, JVM heap via Manager</span>
   </a>
 
   <a href="wildfly.md" class="probe-card" data-family="web-servers" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/redhat" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/a/a8/JBoss_logo.svg" alt="" loading="lazy">
     <span class="probe-name">WildFly / JBoss</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">JVM, Undertow, JTA transactions, JDBC pool</span>
   </a>
 
   <a href="kafka.md" class="probe-card" data-family="messaging" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/apachekafka" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/0/05/Apache_Kafka_logo.svg" alt="" loading="lazy">
     <span class="probe-name">Apache Kafka</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Brokers, topics, partitions, consumer group lag</span>
@@ -371,7 +371,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="activemq.md" class="probe-card" data-family="messaging" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/activemq" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/a/a7/Apache_ActiveMQ_Logo.svg" alt="" loading="lazy">
     <span class="probe-name">ActiveMQ</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Broker resources, queue/topic throughput via Jolokia</span>
@@ -385,7 +385,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="pulsar.md" class="probe-card" data-family="messaging" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/apachepulsar" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/f/fd/Apache-pulsar-logo.svg" alt="" loading="lazy">
     <span class="probe-name">Apache Pulsar</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Broker health, throughput, storage, backlog</span>
@@ -483,7 +483,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="zookeeper.md" class="probe-card" data-family="devops" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/apachezookeeper" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/7/77/Apache_ZooKeeper_logo.svg" alt="" loading="lazy">
     <span class="probe-name">ZooKeeper</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Latency, connections, znodes via mntr four-letter command</span>
@@ -615,7 +615,8 @@ Each probe targets one class of system and turns its state into typed metrics an
   object-fit: contain;
   flex-shrink: 0;
 }
-[data-md-color-scheme="slate"] .probe-logo-si {
+[data-md-color-scheme="slate"] .probe-logo-si,
+[data-md-color-scheme="slate"] .probe-logo-wm {
   filter: brightness(1.4);
 }
 [data-md-color-scheme="slate"] .probe-logo-mdi {
