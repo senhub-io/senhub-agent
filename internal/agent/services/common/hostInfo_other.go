@@ -8,3 +8,7 @@ package common
 func readHardwareNameplate() hardwareNameplate {
 	return hardwareNameplate{}
 }
+
+// readChassisType has no portable non-Linux source; 0 → the caller derives
+// "vm" (when virtualized) or "other".
+func readChassisType() int { return 0 }

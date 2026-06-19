@@ -17,6 +17,14 @@ type HostIdentity struct {
 	HWVendor      string // hw.vendor — DMI nameplate
 	HWModel       string // hw.model — DMI nameplate
 	HWSerial      string // hw.serial_number — DMI nameplate, same_as glue to a BMC facet
+
+	CPULogicalCount  int64  // host.cpu.logical.count (AT10)
+	CPUPhysicalCount int64  // host.cpu.physical.count (AT10)
+	CPUFreqHz        int64  // host.cpu.frequency.nominal — Hz (AT10)
+	MemTotal         int64  // host.memory.total — bytes (AT10)
+	DiskTotal        int64  // host.disk.total — bytes (AT10)
+	Virtualization   string // host.virtualization (AT11)
+	ChassisType      string // host.chassis.type (AT12)
 }
 
 // AgentIdentity is the identity + descriptive facts of the agent process.
@@ -75,6 +83,27 @@ func DetectFoundation(h HostIdentity, a AgentIdentity) Observation {
 	}
 	if h.HWSerial != "" {
 		host.Attributes["hw.serial_number"] = h.HWSerial
+	}
+	if h.CPULogicalCount > 0 {
+		host.Attributes["host.cpu.logical.count"] = h.CPULogicalCount
+	}
+	if h.CPUPhysicalCount > 0 {
+		host.Attributes["host.cpu.physical.count"] = h.CPUPhysicalCount
+	}
+	if h.CPUFreqHz > 0 {
+		host.Attributes["host.cpu.frequency.nominal"] = h.CPUFreqHz
+	}
+	if h.MemTotal > 0 {
+		host.Attributes["host.memory.total"] = h.MemTotal
+	}
+	if h.DiskTotal > 0 {
+		host.Attributes["host.disk.total"] = h.DiskTotal
+	}
+	if h.Virtualization != "" {
+		host.Attributes["host.virtualization"] = h.Virtualization
+	}
+	if h.ChassisType != "" {
+		host.Attributes["host.chassis.type"] = h.ChassisType
 	}
 
 	svc := Entity{
