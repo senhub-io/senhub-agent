@@ -1,183 +1,713 @@
+---
+hide:
+  - toc
+---
+
 # Probes
 
-Probes are the building blocks of the agent: each one knows how to
-talk to **one class of system** and turns its state into typed
-metrics, status enums and (where relevant) log streams. You enable
-the probes you need in the `probes` block of `agent-config.yaml`
-and they share the same naming and tagging conventions regardless
-of the output sink — PRTG, Nagios, Prometheus or OTLP.
+Each probe targets one class of system and turns its state into typed metrics and log streams. Enable the probes you need — they share the same naming and tagging conventions across every output sink.
 
-The catalog is organised by **vendor family** rather than by
-license tier so each section reads like a focused datasheet. The
-free/Pro/Enterprise badge on each probe tells you which license
-unlocks it.
+<div class="probe-catalog">
 
-## Systems & OS
+<div class="catalog-controls">
+  <input type="search" id="probe-search" placeholder="Search probes…" autocomplete="off">
+  <div class="catalog-families" id="catalog-families">
+    <button class="family-btn active" data-family="all">All</button>
+    <button class="family-btn" data-family="os-host">OS &amp; Host</button>
+    <button class="family-btn" data-family="network">Network</button>
+    <button class="family-btn" data-family="databases">Databases</button>
+    <button class="family-btn" data-family="web-servers">Web Servers</button>
+    <button class="family-btn" data-family="messaging">Messaging</button>
+    <button class="family-btn" data-family="containers">Containers &amp; VMs</button>
+    <button class="family-btn" data-family="collection">Collection</button>
+    <button class="family-btn" data-family="devops">DevOps</button>
+    <button class="family-btn" data-family="storage">Storage</button>
+    <button class="family-btn" data-family="hardware">Hardware</button>
+    <button class="family-btn" data-family="adc">ADC</button>
+  </div>
+  <div class="catalog-tiers">
+    <button class="tier-toggle active" data-tier="all">All tiers</button>
+    <button class="tier-toggle" data-tier="free">Free</button>
+    <button class="tier-toggle" data-tier="pro">Pro</button>
+  </div>
+</div>
 
-Host-level metrics and logs from the operating system itself — CPU
-usage, memory pressure, network throughput, filesystem capacity,
-and the local log streams. All in the **free tier**, the baseline
-for every install.
+<div class="probe-grid" id="probe-grid">
 
-- **[CPU](cpu.md)** *(Free)* — Per-mode utilization (user / system / idle / iowait / interrupt / softirq / nice / steal), per-core breakdown, Unix load average, process count
-- **[Memory](memory.md)** *(Free)* — Physical memory by state (used / free / cached / buffers), swap, Windows paging rates
-- **[Network](network.md)** *(Free)* — Per-interface throughput, packet, error and discard rates (gauge, bytes per second)
-- **[Logical Disk](logicaldisk.md)** *(Free)* — Filesystem capacity (total / used / free / available), inode usage; APFS firmlinks filtered on macOS
-- **[Linux Logs](linux-logs.md)** *(Free, Linux only)* — Local systemd journal subscription, OTLP log push
-- **[Windows Event Log](windows-eventlog.md)** *(Free, Windows only)* — Event Log channel subscription with level/EventID/provider filtering, OTLP log push
-- **[File Tail](filetail.md)** *(Free)* — Flat-file log tailing: globs, rotation-safe, multiline folding, regex/JSON/logfmt parsing
-- **[Process Monitor](process.md)** *(Free)* — Per-process CPU, memory, threads, file descriptors and uptime; optional name/user filtering and top-N mode
-- **[Systemd Units](systemd.md)** *(Free, Linux only)* — Active/sub/load state and restart counter per systemd unit via D-Bus
-- **[Windows Services](windows-services.md)** *(Free, Windows only)* — Service running/stopped state and SCM status code via the Service Control Manager
-- **[Chrony (NTP)](chrony.md)** *(Free)* — NTP synchronisation health (time offset, frequency, skew, stratum) via chronyc
-- **[S.M.A.R.T. Disk Health](smart.md)** *(Free)* — SATA/SAS and NVMe drive health via smartctl (smartmontools)
-- **[IPMI / BMC Sensors](ipmi.md)** *(Free, Linux only)* — Hardware temperatures, fan speeds and voltages from the BMC via ipmitool
-- **[NVIDIA GPU](nvidia.md)** *(Free)* — GPU utilization, memory, temperature and power via nvidia-smi
-- **[Modbus TCP](modbus.md)** *(Free)* — IT/OT convergence: poll Modbus TCP Holding Registers on PLCs, sensors and smart-building controllers
+  <a href="cpu.md" class="probe-card" data-family="os-host" data-tier="free">
+    <span class="probe-icon">🖥️</span>
+    <span class="probe-name">CPU</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Per-mode utilization, per-core breakdown, load average</span>
+  </a>
 
-## Active Checks
+  <a href="memory.md" class="probe-card" data-family="os-host" data-tier="free">
+    <span class="probe-icon">🧠</span>
+    <span class="probe-name">Memory</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Physical memory, swap, Windows paging rates</span>
+  </a>
 
-Free synthetic checks issued from the agent host — the building
-blocks for availability monitoring. Each probe checks a list of
-targets in parallel; a failing target is a measurement (`up = 0`),
-never a probe failure.
+  <a href="network.md" class="probe-card" data-family="os-host" data-tier="free">
+    <span class="probe-icon">🌐</span>
+    <span class="probe-name">Network</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Per-interface throughput, packet and error rates</span>
+  </a>
 
-- **[ICMP Check](icmp-check.md)** *(Free)* — Multi-target ping: reachability, packet loss, RTT statistics
-- **[HTTP Check](http-check.md)** *(Free)* — HTTP(S) status, latency phases, content match, TLS certificate expiry
-- **[TCP Dial](tcp-dial.md)** *(Free)* — Raw TCP connect latency to host:port
-- **[DNS Latency](dns-latency.md)** *(Free)* — Resolution latency per name, per resolver
+  <a href="logicaldisk.md" class="probe-card" data-family="os-host" data-tier="free">
+    <span class="probe-icon">💽</span>
+    <span class="probe-name">Logical Disk</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Filesystem capacity, inode usage</span>
+  </a>
 
-## Network (SNMP)
+  <a href="linux-logs.md" class="probe-card" data-family="os-host" data-tier="free">
+    <span class="probe-icon">🐧</span>
+    <span class="probe-name">Linux Logs</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Systemd journal subscription → OTLP logs</span>
+  </a>
 
-Poll and receive from network devices — switches, routers,
-firewalls, UPS, printers — over SNMP.
+  <a href="windows-eventlog.md" class="probe-card" data-family="os-host" data-tier="free">
+    <span class="probe-icon">🪟</span>
+    <span class="probe-name">Windows Event Log</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Event Log channels with level/EventID filtering</span>
+  </a>
 
-- **[SNMP Poll](snmp-poll.md)** *(Free)* — SNMPv2c polling: MIB-2 / IF-MIB modules, custom OID mappings, LLDP topology discovery
-- **[SNMP Trap](snmp-trap.md)** *(Free)* — Trap/inform receiver (v2c + v3), operator-supplied MIB resolution, OTLP log records
+  <a href="process.md" class="probe-card" data-family="os-host" data-tier="free">
+    <span class="probe-icon">⚙️</span>
+    <span class="probe-name">Process Monitor</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Per-process CPU, memory, threads, file descriptors</span>
+  </a>
 
-## Universal Ingestion
+  <a href="systemd.md" class="probe-card" data-family="os-host" data-tier="free">
+    <span class="probe-icon">🔧</span>
+    <span class="probe-name">Systemd Units</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Active/sub/load state and restart counter per unit</span>
+  </a>
 
-- **[OTLP Receiver](otlp-receiver.md)** *(Free)* — The agent as edge OTLP collector: applications push OTLP metrics (gRPC or HTTP) and they flow to every configured output
-- **[Prometheus Scrape](prometheus-scrape.md)** *(Free)* — Pull-side twin: scrape /metrics endpoints (node_exporter, appliance exporters) into the same pipeline
-- **[Exec](exec.md)** *(Free)* — Custom checks: run any Nagios plugin or JSON-emitting script on interval, with hard timeout and overlap protection
+  <a href="windows-services.md" class="probe-card" data-family="os-host" data-tier="free">
+    <span class="probe-icon">🔧</span>
+    <span class="probe-name">Windows Services</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Service running/stopped state via SCM</span>
+  </a>
 
-## Synthetic Monitoring
+  <a href="chrony.md" class="probe-card" data-family="os-host" data-tier="free">
+    <span class="probe-icon">🕐</span>
+    <span class="probe-name">Chrony (NTP)</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">NTP sync health: offset, frequency, skew, stratum</span>
+  </a>
 
-Active probes that issue traffic from the agent host to validate
-network paths and web endpoints. Use them to monitor reachability,
-latency and end-to-end response time of services that don't expose
-their own metrics.
+  <a href="smart.md" class="probe-card" data-family="os-host" data-tier="free">
+    <span class="probe-icon">💾</span>
+    <span class="probe-name">S.M.A.R.T. Disk Health</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">SATA/SAS and NVMe drive health via smartctl</span>
+  </a>
 
-- **[Ping Gateway](ping-gateway.md)** *(Pro)* — Default gateway reachability and round-trip time
-- **[Ping WebApp](ping-webapp.md)** *(Pro)* — Web application availability via ICMP
-- **[Load WebApp](load-webapp.md)** *(Pro)* — Web page load time measurement (HTTP GET + timing breakdown)
-- **[WiFi Signal Strength](wifi-signal-strength.md)** *(Free)* — Wireless signal quality (Windows + Linux)
+  <a href="ipmi.md" class="probe-card" data-family="os-host" data-tier="free">
+    <span class="probe-icon">🌡️</span>
+    <span class="probe-name">IPMI / BMC Sensors</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Temperatures, fan speeds, voltages from BMC</span>
+  </a>
 
-## Application Delivery Controllers
+  <a href="nvidia.md" class="probe-card" data-family="os-host" data-tier="free">
+    <span class="probe-icon">🎮</span>
+    <span class="probe-name">NVIDIA GPU</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">GPU utilization, memory, temperature, power</span>
+  </a>
 
-Network appliances that route, load-balance and accelerate
-application traffic. Read configuration and live operational state
-via the vendor's REST API.
+  <a href="wifi-signal-strength.md" class="probe-card" data-family="os-host" data-tier="free">
+    <span class="probe-icon">📶</span>
+    <span class="probe-name">WiFi Signal</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Wireless signal quality on Windows + Linux</span>
+  </a>
 
-- **[NetScaler](netscaler.md)** *(Pro)* — Citrix ADC / NetScaler load balancing virtual servers, services, service groups, GSLB, content switching, SSL certificates, interfaces, HA state
+  <a href="snmp-poll.md" class="probe-card" data-family="network" data-tier="free">
+    <span class="probe-icon">📡</span>
+    <span class="probe-name">SNMP Poll</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">SNMPv2c polling: MIB-2, IF-MIB, LLDP topology</span>
+  </a>
 
-## Virtualization & VDI
+  <a href="snmp-trap.md" class="probe-card" data-family="network" data-tier="free">
+    <span class="probe-icon">📨</span>
+    <span class="probe-name">SNMP Trap</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Trap/inform receiver (v2c + v3) → OTLP logs</span>
+  </a>
 
-Stacks that deliver virtual desktops, applications or shared
-sessions. The probe collects user-session, machine, application
-and license metrics from the platform's monitoring API.
+  <a href="icmp-check.md" class="probe-card" data-family="network" data-tier="free">
+    <span class="probe-icon">🏓</span>
+    <span class="probe-name">ICMP Check</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Multi-target ping: reachability, RTT, packet loss</span>
+  </a>
 
-- **[Citrix](citrix.md)** *(Pro)* — Citrix Virtual Apps and Desktops — sessions, machines per delivery group, app launches, logon duration, license usage
+  <a href="http-check.md" class="probe-card" data-family="network" data-tier="free">
+    <span class="probe-icon">🔍</span>
+    <span class="probe-name">HTTP Check</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">HTTP(S) status, latency phases, TLS cert expiry</span>
+  </a>
 
-## Server Hardware
+  <a href="tcp-dial.md" class="probe-card" data-family="network" data-tier="free">
+    <span class="probe-icon">🔌</span>
+    <span class="probe-name">TCP Dial</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Raw TCP connect latency to host:port</span>
+  </a>
 
-Out-of-band hardware monitoring through the server's BMC (Dell
-iDRAC, HPE iLO, Cisco CIMC, Lenovo XCC, generic Redfish-compatible
-controllers). Reports physical health independent of the operating
-system.
+  <a href="dns-latency.md" class="probe-card" data-family="network" data-tier="free">
+    <span class="probe-icon">🔎</span>
+    <span class="probe-name">DNS Latency</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Resolution latency per name, per resolver</span>
+  </a>
 
-- **[Redfish](redfish.md)** *(Pro)* — Power, thermal, fan, voltage, temperature, CPU/memory health, physical disks, logical disks, storage controllers, storage pools, network adapters
+  <a href="modbus.md" class="probe-card" data-family="network" data-tier="free">
+    <span class="probe-icon">🏭</span>
+    <span class="probe-name">Modbus TCP</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Poll Modbus TCP Holding Registers on PLCs/sensors</span>
+  </a>
 
-## Data Protection
+  <a href="unifi.md" class="probe-card" data-family="network" data-tier="free">
+    <span class="probe-icon">📶</span>
+    <span class="probe-name">UniFi</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Ubiquiti controller: devices, APs, client counts, WAN</span>
+  </a>
 
-Backup and replication platforms — verify that backup jobs run,
-that the repository has free space, that the license is valid, that
-the proxies and managed servers are reachable.
+  <a href="ping-gateway.md" class="probe-card" data-family="network" data-tier="pro">
+    <span class="probe-icon">🏓</span>
+    <span class="probe-name">Ping Gateway</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Default gateway reachability and RTT</span>
+  </a>
 
-- **[Veeam](veeam.md)** *(Pro)* — Veeam Backup & Replication v12+ jobs, repositories, proxies, managed servers, license status, session bottleneck (informational)
+  <a href="ping-webapp.md" class="probe-card" data-family="network" data-tier="pro">
+    <span class="probe-icon">🏓</span>
+    <span class="probe-name">Ping WebApp</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Web application availability via ICMP</span>
+  </a>
 
-## Databases
+  <a href="mysql.md" class="probe-card" data-family="databases" data-tier="free">
+    <span class="probe-icon">🐬</span>
+    <span class="probe-name">MySQL / MariaDB</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Connections, InnoDB, replication, slow queries</span>
+  </a>
 
-Relational database engines — connection state, throughput,
-replication health, buffer cache, locks, storage, and engine
-internals via vendor-specific views.
+  <a href="postgresql.md" class="probe-card" data-family="databases" data-tier="free">
+    <span class="probe-icon">🐘</span>
+    <span class="probe-name">PostgreSQL</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Connections, replication, bloat, archiver, pg_stat_statements</span>
+  </a>
 
-- **[MySQL / MariaDB](mysql.md)** *(Free)* — MySQL 5.7+ and MariaDB 10.3+, self-hosted and managed (RDS, Aurora, Cloud SQL, Azure Flexible, Supabase). Connections, replication threads, InnoDB buffer pool, deadlocks, slow queries.
-- **[PostgreSQL](postgresql.md)** *(Free)* — PostgreSQL 12+ self-hosted and managed. Includes the SenHub differentiators: composite replication health, table bloat estimate, backup freshness via `pg_stat_archiver`, idle-in-transaction and long-running-transaction first-class channels, version-aware `pg_stat_statements`.
-- **[Microsoft SQL Server](mssql.md)** *(Free)* — SQL Server health and throughput via DMVs. OTel-first, aligned with otelcol-contrib sqlserverreceiver.
-- **[MongoDB](mongodb.md)** *(Free)* — MongoDB server and replica set monitoring via serverStatus + dbStats. Supports standalone, replica set and Atlas targets.
-- **[Oracle Database](oracle.md)** *(Free)* — Oracle DB health, sessions, SGA/PGA, buffer cache, tablespace usage and wait classes via go-ora (no OCI client).
-- **[Redis / Valkey](redis.md)** *(Free)* — Redis health and throughput via the INFO command: memory, connections, throughput, cache hit/miss, keyspace, replication, persistence.
-- **[Apache Cassandra](cassandra.md)** *(Free)* — Cassandra monitoring via Jolokia: connections, latency, compaction, storage, JVM heap and GC.
-- **[CouchDB](couchdb.md)** *(Free)* — CouchDB HTTP stats, method/status breakdowns, database reads/writes and I/O bytes.
-- **[ClickHouse](clickhouse.md)** *(Free)* — ClickHouse server monitoring via the Prometheus /metrics endpoint.
-- **[Elasticsearch](elasticsearch.md)** *(Free)* — Elasticsearch cluster health, JVM, indexing, search and thread pools via the REST API.
-- **[OpenSearch](opensearch.md)** *(Free)* — OpenSearch cluster and node metrics via the REST API (same surface as Elasticsearch).
-- **[Apache Solr](solr.md)** *(Free)* — Solr JVM, request/cache counters and per-core index metrics via the native metrics API.
-- **[InfluxDB](influxdb.md)** *(Free)* — InfluxDB 2.x availability and performance via /health, /metrics and /api/v2/buckets.
-- **[Memcached](memcached.md)** *(Free)* — Memcached stats via the TCP text protocol: connections, items, memory, hit/miss, commands, evictions.
+  <a href="mssql.md" class="probe-card" data-family="databases" data-tier="free">
+    <span class="probe-icon">🪟</span>
+    <span class="probe-name">SQL Server</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Health and throughput via DMVs, OTel-aligned</span>
+  </a>
 
-## Web & Application Servers
+  <a href="mongodb.md" class="probe-card" data-family="databases" data-tier="free">
+    <span class="probe-icon">🍃</span>
+    <span class="probe-name">MongoDB</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">serverStatus, dbStats, replica set monitoring</span>
+  </a>
 
-- **[Apache HTTP Server](apache.md)** *(Free)* — mod_status scraping: requests, workers, connections, traffic, uptime
-- **[Nginx](nginx.md)** *(Free)* — Nginx stub_status: active connections, request throughput, connection state
-- **[HAProxy](haproxy.md)** *(Free)* — HAProxy sessions, throughput and error counters per frontend/backend/server via the stats CSV endpoint
-- **[Envoy Proxy](envoy.md)** *(Free)* — Envoy server health, listener connections and per-cluster upstream metrics via the admin interface
-- **[PHP-FPM](php-fpm.md)** *(Free)* — PHP-FPM pool monitoring via the status-page JSON endpoint
-- **[Varnish Cache](varnish.md)** *(Free)* — Varnish hit/miss, backend connections, threads, sessions and memory via varnishstat
-- **[Apache Tomcat](tomcat.md)** *(Free)* — Tomcat requests, sessions, JVM heap, GC and thread pool via Jolokia
-- **[WildFly / JBoss](wildfly.md)** *(Free)* — WildFly JVM, Undertow, JTA transactions and JDBC pool metrics via the HTTP Management API
+  <a href="oracle.md" class="probe-card" data-family="databases" data-tier="free">
+    <span class="probe-icon">🏛️</span>
+    <span class="probe-name">Oracle Database</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Sessions, SGA/PGA, buffer cache, tablespace, wait classes</span>
+  </a>
 
-## Message Queues & Streaming
+  <a href="redis.md" class="probe-card" data-family="databases" data-tier="free">
+    <span class="probe-icon">🔴</span>
+    <span class="probe-name">Redis</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Keyspace, memory, persistence, replication, commands</span>
+  </a>
 
-- **[Apache Kafka](kafka.md)** *(Free)* — Kafka broker, topic, partition and consumer-group monitoring via the Admin API
-- **[RabbitMQ](rabbitmq.md)** *(Free)* — RabbitMQ broker health, queue depth and node metrics via the HTTP Management API
-- **[Apache ActiveMQ](activemq.md)** *(Free)* — ActiveMQ broker resource usage and per-destination message throughput via Jolokia
-- **[NATS Server](nats.md)** *(Free)* — NATS connections, subscriptions, message throughput, cluster routes and JetStream via the HTTP management API
-- **[Apache Pulsar](pulsar.md)** *(Free)* — Pulsar broker health, throughput, storage and backlog via the Admin REST API and /metrics
+  <a href="cassandra.md" class="probe-card" data-family="databases" data-tier="free">
+    <span class="probe-icon">🌿</span>
+    <span class="probe-name">Cassandra</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Node health, request metrics, compaction, GC</span>
+  </a>
 
-## Container & Virtualization
+  <a href="couchdb.md" class="probe-card" data-family="databases" data-tier="free">
+    <span class="probe-icon">🛋️</span>
+    <span class="probe-name">CouchDB</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Request rate, open databases, replication state</span>
+  </a>
 
-- **[Docker](docker.md)** *(Free)* — Per-container CPU, memory, network I/O, block I/O and running state via the Docker Engine API
-- **[Kubernetes](kubernetes.md)** *(Free)* — Kubernetes nodes, pods, containers and deployments via the API server
-- **[Proxmox VE](proxmox.md)** *(Free)* — Proxmox VE cluster: nodes, QEMU VMs, LXC containers and storage pools via the REST API
-- **[Hyper-V](hyperv.md)** *(Free, Windows only)* — Hyper-V VM CPU, memory and state via WMI on the local Windows Server host
+  <a href="clickhouse.md" class="probe-card" data-family="databases" data-tier="free">
+    <span class="probe-icon">🖱️</span>
+    <span class="probe-name">ClickHouse</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Via /metrics Prometheus endpoint</span>
+  </a>
 
-## Storage
+  <a href="elasticsearch.md" class="probe-card" data-family="databases" data-tier="free">
+    <span class="probe-icon">🔍</span>
+    <span class="probe-name">Elasticsearch</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Cluster health, JVM, indexing, search, thread pools</span>
+  </a>
 
-- **[Ceph](ceph.md)** *(Free)* — Ceph cluster health, OSD counts, monitor quorum and per-pool stats via the REST Management API
-- **[S.M.A.R.T. Disk Health](smart.md)** *(Free)* — See Systems & OS above
+  <a href="opensearch.md" class="probe-card" data-family="databases" data-tier="free">
+    <span class="probe-icon">🔍</span>
+    <span class="probe-name">OpenSearch</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Cluster and node metrics via REST API</span>
+  </a>
 
-## Service Discovery & CI
+  <a href="solr.md" class="probe-card" data-family="databases" data-tier="free">
+    <span class="probe-icon">☀️</span>
+    <span class="probe-name">Apache Solr</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">JVM, request/error counters, core document count</span>
+  </a>
 
-- **[Consul](consul.md)** *(Free)* — Consul agent health, catalog services, Serf members, Raft latency and health-check state distribution
-- **[Apache ZooKeeper](zookeeper.md)** *(Free)* — ZooKeeper latency, connections, znodes, watches and file descriptors via the mntr four-letter command
-- **[Jenkins CI](jenkins.md)** *(Free)* — Jenkins job status counts, per-job build duration, node counts and queue depth via the HTTP REST API
+  <a href="influxdb.md" class="probe-card" data-family="databases" data-tier="free">
+    <span class="probe-icon">📊</span>
+    <span class="probe-name">InfluxDB</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Health, /metrics endpoint and bucket API</span>
+  </a>
 
-## Logs & Events
+  <a href="memcached.md" class="probe-card" data-family="databases" data-tier="free">
+    <span class="probe-icon">⚡</span>
+    <span class="probe-name">Memcached</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Connections, items, memory, hit/miss, evictions</span>
+  </a>
 
-Open-ended ingestion paths for log streams and custom event data.
+  <a href="apache.md" class="probe-card" data-family="web-servers" data-tier="free">
+    <span class="probe-icon">🌐</span>
+    <span class="probe-name">Apache HTTP</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">mod_status: workers, connections, requests, traffic</span>
+  </a>
 
-- **[Syslog](syslog.md)** *(Free)* — Syslog server (UDP/TCP) — receives RFC3164 / RFC5424 messages and forwards them as OTLP log records
-- **[Event](event.md)** *(Pro)* — HTTP receiver — accepts custom JSON events from any source script and republishes them as structured log records
+  <a href="nginx.md" class="probe-card" data-family="web-servers" data-tier="free">
+    <span class="probe-icon">🌿</span>
+    <span class="probe-name">Nginx</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Connections, requests via stub_status module</span>
+  </a>
 
-## License tiers
+  <a href="haproxy.md" class="probe-card" data-family="web-servers" data-tier="free">
+    <span class="probe-icon">⚖️</span>
+    <span class="probe-name">HAProxy</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Sessions, throughput, error rates per frontend/backend</span>
+  </a>
 
-| Tier | Probes included |
-|---|---|
-| **Free** | CPU, Memory, Network, Logical Disk, Linux Logs, Windows Event Log, File Tail, Process Monitor, Systemd Units, Windows Services, Chrony, S.M.A.R.T., IPMI, NVIDIA GPU, Modbus TCP, ICMP Check, HTTP Check, TCP Dial, DNS Latency, SNMP Poll, SNMP Trap, OTLP Receiver, Prometheus Scrape, Exec, Syslog, WiFi Signal, MySQL, PostgreSQL, MSSQL, MongoDB, Oracle, Redis, Cassandra, CouchDB, ClickHouse, Elasticsearch, OpenSearch, Solr, InfluxDB, Memcached, Apache HTTP Server, Nginx, HAProxy, Envoy, PHP-FPM, Varnish, Tomcat, WildFly, Kafka, RabbitMQ, ActiveMQ, NATS, Pulsar, Docker, Kubernetes, Proxmox VE, Hyper-V, Ceph, Consul, ZooKeeper, Jenkins CI |
-| **Pro** | Free + Citrix, NetScaler, Redfish, Event, Ping Gateway, Ping WebApp, Load WebApp, Veeam |
-| **Enterprise** | All probes (wildcard) |
+  <a href="envoy.md" class="probe-card" data-family="web-servers" data-tier="free">
+    <span class="probe-icon">🛡️</span>
+    <span class="probe-name">Envoy Proxy</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Server health, listener connections, cluster upstream</span>
+  </a>
 
-See [Configuration → Licensing](../configuration.md)
-for activation details.
+  <a href="varnish.md" class="probe-card" data-family="web-servers" data-tier="free">
+    <span class="probe-icon">⚡</span>
+    <span class="probe-name">Varnish Cache</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Hit/miss, backend connections, threads, memory</span>
+  </a>
+
+  <a href="php-fpm.md" class="probe-card" data-family="web-servers" data-tier="free">
+    <span class="probe-icon">🐘</span>
+    <span class="probe-name">PHP-FPM</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Pool stats, process counts, queue depth, slow requests</span>
+  </a>
+
+  <a href="tomcat.md" class="probe-card" data-family="web-servers" data-tier="free">
+    <span class="probe-icon">🐱</span>
+    <span class="probe-name">Apache Tomcat</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Threads, requests, sessions, JVM heap via Manager</span>
+  </a>
+
+  <a href="wildfly.md" class="probe-card" data-family="web-servers" data-tier="free">
+    <span class="probe-icon">🦁</span>
+    <span class="probe-name">WildFly / JBoss</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">JVM, Undertow, JTA transactions, JDBC pool</span>
+  </a>
+
+  <a href="kafka.md" class="probe-card" data-family="messaging" data-tier="free">
+    <span class="probe-icon">📨</span>
+    <span class="probe-name">Apache Kafka</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Brokers, topics, partitions, consumer group lag</span>
+  </a>
+
+  <a href="rabbitmq.md" class="probe-card" data-family="messaging" data-tier="free">
+    <span class="probe-icon">🐰</span>
+    <span class="probe-name">RabbitMQ</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Queue depth, message counters, per-node resources</span>
+  </a>
+
+  <a href="activemq.md" class="probe-card" data-family="messaging" data-tier="free">
+    <span class="probe-icon">⚡</span>
+    <span class="probe-name">ActiveMQ</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Broker resources, queue/topic throughput via Jolokia</span>
+  </a>
+
+  <a href="nats.md" class="probe-card" data-family="messaging" data-tier="free">
+    <span class="probe-icon">🚀</span>
+    <span class="probe-name">NATS</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Server health, connections, message rates, JetStream</span>
+  </a>
+
+  <a href="pulsar.md" class="probe-card" data-family="messaging" data-tier="free">
+    <span class="probe-icon">💫</span>
+    <span class="probe-name">Apache Pulsar</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Broker health, throughput, storage, backlog</span>
+  </a>
+
+  <a href="docker.md" class="probe-card" data-family="containers" data-tier="free">
+    <span class="probe-icon">🐳</span>
+    <span class="probe-name">Docker</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Per-container CPU, memory, network I/O, block I/O</span>
+  </a>
+
+  <a href="kubernetes.md" class="probe-card" data-family="containers" data-tier="free">
+    <span class="probe-icon">☸️</span>
+    <span class="probe-name">Kubernetes</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Node, pod, deployment, PVC metrics via API server</span>
+  </a>
+
+  <a href="hyperv.md" class="probe-card" data-family="containers" data-tier="free">
+    <span class="probe-icon">🪟</span>
+    <span class="probe-name">Hyper-V</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Per-VM CPU, memory and state via WMI (Windows only)</span>
+  </a>
+
+  <a href="proxmox.md" class="probe-card" data-family="containers" data-tier="free">
+    <span class="probe-icon">🖥️</span>
+    <span class="probe-name">Proxmox VE</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Nodes, VMs, LXC containers, storage via REST API</span>
+  </a>
+
+  <a href="citrix.md" class="probe-card" data-family="containers" data-tier="pro">
+    <span class="probe-icon">🏢</span>
+    <span class="probe-name">Citrix VDI</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Sessions, machines, app launches, logon time, licenses</span>
+  </a>
+
+  <a href="otlp-receiver.md" class="probe-card" data-family="collection" data-tier="free">
+    <span class="probe-icon">📥</span>
+    <span class="probe-name">OTLP Receiver</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Agent as edge OTLP collector (gRPC + HTTP in)</span>
+  </a>
+
+  <a href="prometheus-scrape.md" class="probe-card" data-family="collection" data-tier="free">
+    <span class="probe-icon">📊</span>
+    <span class="probe-name">Prometheus Scrape</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Scrape /metrics endpoints into the pipeline</span>
+  </a>
+
+  <a href="exec.md" class="probe-card" data-family="collection" data-tier="free">
+    <span class="probe-icon">▶️</span>
+    <span class="probe-name">Exec</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Run Nagios plugins or JSON scripts on interval</span>
+  </a>
+
+  <a href="syslog.md" class="probe-card" data-family="collection" data-tier="free">
+    <span class="probe-icon">📋</span>
+    <span class="probe-name">Syslog</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">RFC3164/RFC5424 UDP/TCP receiver → OTLP logs</span>
+  </a>
+
+  <a href="filetail.md" class="probe-card" data-family="collection" data-tier="free">
+    <span class="probe-icon">📄</span>
+    <span class="probe-name">File Tail</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Glob-based log tailing with rotation + structured parsing</span>
+  </a>
+
+  <a href="event.md" class="probe-card" data-family="collection" data-tier="pro">
+    <span class="probe-icon">📬</span>
+    <span class="probe-name">Event</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">HTTP receiver for custom JSON events → OTLP logs</span>
+  </a>
+
+  <a href="load-webapp.md" class="probe-card" data-family="collection" data-tier="pro">
+    <span class="probe-icon">⏱️</span>
+    <span class="probe-name">Load WebApp</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Web page load time measurement (HTTP GET + timing)</span>
+  </a>
+
+  <a href="consul.md" class="probe-card" data-family="devops" data-tier="free">
+    <span class="probe-icon">🔷</span>
+    <span class="probe-name">Consul</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Agent health, catalog, serf members, raft, health-check states</span>
+  </a>
+
+  <a href="zookeeper.md" class="probe-card" data-family="devops" data-tier="free">
+    <span class="probe-icon">🦓</span>
+    <span class="probe-name">ZooKeeper</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Latency, connections, znodes via mntr four-letter command</span>
+  </a>
+
+  <a href="jenkins.md" class="probe-card" data-family="devops" data-tier="free">
+    <span class="probe-icon">👷</span>
+    <span class="probe-name">Jenkins</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Job counts, build durations, queue depth, node status</span>
+  </a>
+
+  <a href="ceph.md" class="probe-card" data-family="storage" data-tier="free">
+    <span class="probe-icon">🏊</span>
+    <span class="probe-name">Ceph</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Cluster health, OSD counts, monitor quorum, pool stats</span>
+  </a>
+
+  <a href="veeam.md" class="probe-card" data-family="storage" data-tier="pro">
+    <span class="probe-icon">🛡️</span>
+    <span class="probe-name">Veeam</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Backup jobs, repositories, proxies, license status</span>
+  </a>
+
+  <a href="redfish.md" class="probe-card" data-family="hardware" data-tier="pro">
+    <span class="probe-icon">🖥️</span>
+    <span class="probe-name">Redfish</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Power, thermal, fans, disks, network adapters via BMC</span>
+  </a>
+
+  <a href="netscaler.md" class="probe-card" data-family="adc" data-tier="pro">
+    <span class="probe-icon">⚖️</span>
+    <span class="probe-name">NetScaler</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Virtual servers, SSL certs, GSLB, HA state via REST API</span>
+  </a>
+
+</div>
+
+<p class="catalog-empty" id="catalog-empty" style="display:none">No probes match your search.</p>
+
+</div>
+
+<style>
+.probe-catalog { margin-top: 1rem; }
+
+/* Controls */
+.catalog-controls { margin: 1.5rem 0; }
+#probe-search {
+  width: 100%;
+  padding: .55rem .9rem;
+  font-size: .95rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 6px;
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+  margin-bottom: 1rem;
+  box-sizing: border-box;
+}
+#probe-search:focus {
+  outline: none;
+  border-color: #00a5cc;
+  box-shadow: 0 0 0 2px rgba(0,165,204,.15);
+}
+.catalog-families,
+.catalog-tiers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: .7rem;
+}
+.family-btn,
+.tier-toggle {
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color--light);
+  font-size: .78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .12s ease;
+  font-family: inherit;
+  line-height: 1.6;
+}
+.family-btn:hover,
+.tier-toggle:hover {
+  border-color: #00a5cc;
+  color: #00a5cc;
+}
+.family-btn.active,
+.tier-toggle.active {
+  background: #00a5cc;
+  border-color: #00a5cc;
+  color: #fff;
+}
+
+/* Grid */
+.probe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+.probe-card {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 8px;
+  background: var(--md-default-bg-color);
+  text-decoration: none !important;
+  color: inherit !important;
+  transition: border-color .15s ease, box-shadow .15s ease;
+  gap: .35rem;
+}
+.probe-card:hover {
+  border-color: #00a5cc;
+  box-shadow: 0 2px 8px rgba(0,165,204,.15);
+}
+.probe-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+.probe-name {
+  font-weight: 700;
+  font-size: .95rem;
+  margin-top: .2rem;
+}
+.probe-tier-badge {
+  display: inline-block;
+  font-size: .62rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  width: fit-content;
+}
+.probe-tier-badge.free {
+  background: rgba(76,175,80,.16);
+  color: #2e7d32;
+}
+.probe-tier-badge.pro {
+  background: rgba(252,190,54,.25);
+  color: #8a5d00;
+}
+.probe-desc {
+  font-size: .78rem;
+  color: var(--md-default-fg-color--light);
+  line-height: 1.4;
+}
+
+/* Dark mode overrides */
+[data-md-color-scheme="slate"] .probe-card {
+  background: var(--md-code-bg-color);
+}
+[data-md-color-scheme="slate"] .probe-tier-badge.free {
+  color: #66bb6a;
+}
+[data-md-color-scheme="slate"] .probe-tier-badge.pro {
+  color: #ffd54f;
+}
+
+.catalog-empty {
+  color: var(--md-default-fg-color--light);
+  font-style: italic;
+  margin-top: 2rem;
+}
+.probe-card.hidden {
+  display: none;
+}
+</style>
+
+<script>
+(function() {
+  var search = document.getElementById('probe-search');
+  var empty = document.getElementById('catalog-empty');
+  var familyBtns = document.querySelectorAll('.family-btn');
+  var tierBtns = document.querySelectorAll('.tier-toggle');
+
+  var activeFam = 'all';
+  var activeTier = 'all';
+
+  function filter() {
+    var q = search.value.toLowerCase().trim();
+    var visible = 0;
+    document.querySelectorAll('.probe-card').forEach(function(card) {
+      var fam  = card.dataset.family;
+      var tier = card.dataset.tier;
+      var name = card.querySelector('.probe-name').textContent;
+      var desc = card.querySelector('.probe-desc').textContent;
+      var text = (name + ' ' + desc).toLowerCase();
+      var matchFam  = activeFam  === 'all' || fam  === activeFam;
+      var matchTier = activeTier === 'all' || tier === activeTier;
+      var matchText = !q || text.includes(q);
+      var show = matchFam && matchTier && matchText;
+      card.classList.toggle('hidden', !show);
+      if (show) visible++;
+    });
+    empty.style.display = visible === 0 ? '' : 'none';
+  }
+
+  search.addEventListener('input', filter);
+
+  familyBtns.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      familyBtns.forEach(function(b) { b.classList.remove('active'); });
+      this.classList.add('active');
+      activeFam = this.dataset.family;
+      filter();
+    });
+  });
+
+  tierBtns.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      tierBtns.forEach(function(b) { b.classList.remove('active'); });
+      this.classList.add('active');
+      activeTier = this.dataset.tier;
+      filter();
+    });
+  });
+})();
+</script>
