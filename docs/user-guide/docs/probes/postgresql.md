@@ -7,7 +7,7 @@ transaction tracking), storage with **bloat estimate**, **backup
 freshness** via the WAL archiver, and aggregate `pg_stat_statements`
 when the extension is installed.
 
-**License**: Pro
+**License**: Free
 
 ## Prerequisites
 
