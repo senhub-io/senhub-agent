@@ -70,7 +70,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="windows-eventlog.md" class="probe-card" data-family="os-host" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/windows" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/text-box-search-outline.svg?color=%23666" alt="" loading="lazy">
     <span class="probe-name">Windows Event Log</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Event Log channels with level/EventID filtering</span>
@@ -91,7 +91,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="windows-services.md" class="probe-card" data-family="os-host" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/windows" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/cog-play-outline.svg?color=%23666" alt="" loading="lazy">
     <span class="probe-name">Windows Services</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Service running/stopped state via SCM</span>
@@ -406,7 +406,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="hyperv.md" class="probe-card" data-family="containers" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/windows" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-si" src="https://api.iconify.design/devicon/hyperv.svg" alt="" loading="lazy">
     <span class="probe-name">Hyper-V</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Per-VM CPU, memory and state via WMI (Windows only)</span>
