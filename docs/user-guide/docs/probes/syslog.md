@@ -1,3 +1,5 @@
+<img src="https://api.iconify.design/mdi/text-box-outline.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+
 !!! warning
     **License: Free** — part of the universal collection tier (moved from Pro in 0.2.2).
 

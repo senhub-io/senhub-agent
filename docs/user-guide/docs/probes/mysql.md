@@ -1,3 +1,5 @@
+<img src="https://cdn.simpleicons.org/mysql" alt="" class="probe-page-logo probe-page-logo-si">
+
 # MySQL / MariaDB
 
 Monitors MySQL and MariaDB instances — self-hosted, AWS RDS, Aurora,

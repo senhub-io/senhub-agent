@@ -157,6 +157,18 @@
   white-space: nowrap;
 }
 
+/* ===== Probe page header logo ===== */
+.probe-page-logo {
+  height: 3rem;
+  width: auto;
+  float: right;
+  margin: 0 0 1.5rem 2rem;
+  object-fit: contain;
+}
+[data-md-color-scheme="slate"] .probe-page-logo-si,
+[data-md-color-scheme="slate"] .probe-page-logo-wm { filter: brightness(1.4); }
+[data-md-color-scheme="slate"] .probe-page-logo-mdi { filter: brightness(0) invert(0.8); }
+
 /* Left nav: indent items nested under a section, with a hairline guide, so
    sections read as distinct groups rather than a flat list. */
 .md-nav--primary .md-nav__list .md-nav__list {

@@ -1,3 +1,5 @@
+<img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Cassandra_logo.svg" alt="" class="probe-page-logo probe-page-logo-wm">
+
 !!! info
     **License: Free** — part of the universal collection tier.
 

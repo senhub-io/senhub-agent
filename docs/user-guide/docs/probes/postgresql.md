@@ -1,3 +1,5 @@
+<img src="https://cdn.simpleicons.org/postgresql" alt="" class="probe-page-logo probe-page-logo-si">
+
 # PostgreSQL
 
 Monitors PostgreSQL instances — self-hosted, AWS RDS / Aurora,
