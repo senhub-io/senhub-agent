@@ -1,3 +1,5 @@
+<img src="https://cdn.simpleicons.org/veeam" alt="" class="probe-page-logo probe-page-logo-si">
+
 # Veeam Backup & Replication
 
 Monitors Veeam Backup & Replication v13 via the REST API. Collects job status, repository capacity, license usage, proxy health, protected objects, and infrastructure server availability.

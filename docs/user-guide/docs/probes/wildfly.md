@@ -1,3 +1,5 @@
+<img src="https://design.jboss.org/wildfly/logo/final/wildfly_icon.svg" alt="" class="probe-page-logo probe-page-logo-si">
+
 !!! info
     **License: Free** — part of the universal collection tier.
 

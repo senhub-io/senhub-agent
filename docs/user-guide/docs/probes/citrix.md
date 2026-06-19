@@ -1,3 +1,5 @@
+<img src="https://cdn.simpleicons.org/citrix" alt="" class="probe-page-logo probe-page-logo-si">
+
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
 
