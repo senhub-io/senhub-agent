@@ -1,3 +1,5 @@
+<img src="https://api.iconify.design/mdi/cpu-64-bit.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+
 !!! info
     **License: Free** - No license required. Available in all tiers.
 
