@@ -85,6 +85,38 @@ func TestDetectFoundation_Nameplate(t *testing.T) {
 	}
 }
 
+// TestDetectFoundation_CapacityVirtChassis pins the AT10-AT12 host attributes:
+// numeric capacity rides as int64, virtualization/chassis as strings, all
+// omitted when zero/empty.
+func TestDetectFoundation_CapacityVirtChassis(t *testing.T) {
+	h := HostIdentity{
+		ID: "h-9", CPULogicalCount: 48, CPUPhysicalCount: 24, CPUFreqHz: 2100000000,
+		MemTotal: 137438953472, DiskTotal: 1920383410176,
+		Virtualization: "kvm", ChassisType: "vm",
+	}
+	host := DetectFoundation(h, AgentIdentity{InstanceID: "a"}).Entities[0]
+
+	if host.Attributes["host.cpu.logical.count"] != int64(48) ||
+		host.Attributes["host.cpu.physical.count"] != int64(24) ||
+		host.Attributes["host.cpu.frequency.nominal"] != int64(2100000000) {
+		t.Errorf("cpu capacity wrong: %v", host.Attributes)
+	}
+	if host.Attributes["host.memory.total"] != int64(137438953472) ||
+		host.Attributes["host.disk.total"] != int64(1920383410176) {
+		t.Errorf("mem/disk total wrong: %v", host.Attributes)
+	}
+	if host.Attributes["host.virtualization"] != "kvm" || host.Attributes["host.chassis.type"] != "vm" {
+		t.Errorf("virt/chassis wrong: %v", host.Attributes)
+	}
+
+	bare := DetectFoundation(HostIdentity{ID: "h-0"}, AgentIdentity{InstanceID: "a"}).Entities[0]
+	for _, k := range []string{"host.cpu.logical.count", "host.memory.total", "host.virtualization", "host.chassis.type"} {
+		if _, present := bare.Attributes[k]; present {
+			t.Errorf("attribute %q must be omitted when zero/empty", k)
+		}
+	}
+}
+
 // TestDetectFoundation_FoldEmbedsRunsOn pins that folding the foundation
 // observation embeds runs_on on the service.instance entity (and nothing on
 // the host), matching the Toise conformance fixture.
