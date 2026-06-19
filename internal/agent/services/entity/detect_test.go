@@ -50,6 +50,41 @@ func TestDetectFoundation(t *testing.T) {
 	}
 }
 
+// TestDetectFoundation_Nameplate pins that the host nameplate attributes ride
+// the host entity when present and are omitted when empty.
+func TestDetectFoundation_Nameplate(t *testing.T) {
+	h := HostIdentity{
+		ID: "h-002", OSType: "linux", Arch: "amd64",
+		OSName: "Ubuntu", OSVersion: "22.04", OSBuildID: "5.15.0-105",
+		CPUModel: "Intel(R) Xeon(R) Silver 4310", CPUVendor: "GenuineIntel",
+		HWVendor: "Dell Inc.", HWModel: "PowerEdge R750", HWSerial: "CZ12345",
+	}
+	a := AgentIdentity{InstanceID: "agent-1"}
+
+	host := DetectFoundation(h, a).Entities[0]
+	want := map[string]string{
+		"os.name": "Ubuntu", "os.build_id": "5.15.0-105",
+		"host.cpu.model.name": "Intel(R) Xeon(R) Silver 4310",
+		"host.cpu.vendor.id":  "GenuineIntel",
+		"hw.vendor":           "Dell Inc.",
+		"hw.model":            "PowerEdge R750",
+		"hw.serial_number":    "CZ12345",
+	}
+	for k, v := range want {
+		if got := host.Attributes[k]; got != v {
+			t.Errorf("host.Attributes[%q] = %v, want %v", k, got, v)
+		}
+	}
+
+	// Empty nameplate fields must not appear as empty-string attributes.
+	bare := DetectFoundation(HostIdentity{ID: "h-003"}, a).Entities[0]
+	for _, k := range []string{"os.name", "host.cpu.model.name", "hw.vendor", "hw.serial_number"} {
+		if _, present := bare.Attributes[k]; present {
+			t.Errorf("attribute %q must be omitted when empty", k)
+		}
+	}
+}
+
 // TestDetectFoundation_FoldEmbedsRunsOn pins that folding the foundation
 // observation embeds runs_on on the service.instance entity (and nothing on
 // the host), matching the Toise conformance fixture.
