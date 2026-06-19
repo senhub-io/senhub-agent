@@ -26,6 +26,14 @@ for every install.
 - **[Linux Logs](linux-logs.md)** *(Free, Linux only)* — Local systemd journal subscription, OTLP log push
 - **[Windows Event Log](windows-eventlog.md)** *(Free, Windows only)* — Event Log channel subscription with level/EventID/provider filtering, OTLP log push
 - **[File Tail](filetail.md)** *(Free)* — Flat-file log tailing: globs, rotation-safe, multiline folding, regex/JSON/logfmt parsing
+- **[Process Monitor](process.md)** *(Free)* — Per-process CPU, memory, threads, file descriptors and uptime; optional name/user filtering and top-N mode
+- **[Systemd Units](systemd.md)** *(Free, Linux only)* — Active/sub/load state and restart counter per systemd unit via D-Bus
+- **[Windows Services](windows-services.md)** *(Free, Windows only)* — Service running/stopped state and SCM status code via the Service Control Manager
+- **[Chrony (NTP)](chrony.md)** *(Free)* — NTP synchronisation health (time offset, frequency, skew, stratum) via chronyc
+- **[S.M.A.R.T. Disk Health](smart.md)** *(Free)* — SATA/SAS and NVMe drive health via smartctl (smartmontools)
+- **[IPMI / BMC Sensors](ipmi.md)** *(Free, Linux only)* — Hardware temperatures, fan speeds and voltages from the BMC via ipmitool
+- **[NVIDIA GPU](nvidia.md)** *(Free)* — GPU utilization, memory, temperature and power via nvidia-smi
+- **[Modbus TCP](modbus.md)** *(Free)* — IT/OT convergence: poll Modbus TCP Holding Registers on PLCs, sensors and smart-building controllers
 
 ## Active Checks
 
@@ -106,6 +114,55 @@ internals via vendor-specific views.
 
 - **[MySQL / MariaDB](mysql.md)** *(Free)* — MySQL 5.7+ and MariaDB 10.3+, self-hosted and managed (RDS, Aurora, Cloud SQL, Azure Flexible, Supabase). Connections, replication threads, InnoDB buffer pool, deadlocks, slow queries.
 - **[PostgreSQL](postgresql.md)** *(Free)* — PostgreSQL 12+ self-hosted and managed. Includes the SenHub differentiators: composite replication health, table bloat estimate, backup freshness via `pg_stat_archiver`, idle-in-transaction and long-running-transaction first-class channels, version-aware `pg_stat_statements`.
+- **[Microsoft SQL Server](mssql.md)** *(Free)* — SQL Server health and throughput via DMVs. OTel-first, aligned with otelcol-contrib sqlserverreceiver.
+- **[MongoDB](mongodb.md)** *(Free)* — MongoDB server and replica set monitoring via serverStatus + dbStats. Supports standalone, replica set and Atlas targets.
+- **[Oracle Database](oracle.md)** *(Free)* — Oracle DB health, sessions, SGA/PGA, buffer cache, tablespace usage and wait classes via go-ora (no OCI client).
+- **[Redis / Valkey](redis.md)** *(Free)* — Redis health and throughput via the INFO command: memory, connections, throughput, cache hit/miss, keyspace, replication, persistence.
+- **[Apache Cassandra](cassandra.md)** *(Free)* — Cassandra monitoring via Jolokia: connections, latency, compaction, storage, JVM heap and GC.
+- **[CouchDB](couchdb.md)** *(Free)* — CouchDB HTTP stats, method/status breakdowns, database reads/writes and I/O bytes.
+- **[ClickHouse](clickhouse.md)** *(Free)* — ClickHouse server monitoring via the Prometheus /metrics endpoint.
+- **[Elasticsearch](elasticsearch.md)** *(Free)* — Elasticsearch cluster health, JVM, indexing, search and thread pools via the REST API.
+- **[OpenSearch](opensearch.md)** *(Free)* — OpenSearch cluster and node metrics via the REST API (same surface as Elasticsearch).
+- **[Apache Solr](solr.md)** *(Free)* — Solr JVM, request/cache counters and per-core index metrics via the native metrics API.
+- **[InfluxDB](influxdb.md)** *(Free)* — InfluxDB 2.x availability and performance via /health, /metrics and /api/v2/buckets.
+- **[Memcached](memcached.md)** *(Free)* — Memcached stats via the TCP text protocol: connections, items, memory, hit/miss, commands, evictions.
+
+## Web & Application Servers
+
+- **[Apache HTTP Server](apache.md)** *(Free)* — mod_status scraping: requests, workers, connections, traffic, uptime
+- **[Nginx](nginx.md)** *(Free)* — Nginx stub_status: active connections, request throughput, connection state
+- **[HAProxy](haproxy.md)** *(Free)* — HAProxy sessions, throughput and error counters per frontend/backend/server via the stats CSV endpoint
+- **[Envoy Proxy](envoy.md)** *(Free)* — Envoy server health, listener connections and per-cluster upstream metrics via the admin interface
+- **[PHP-FPM](php-fpm.md)** *(Free)* — PHP-FPM pool monitoring via the status-page JSON endpoint
+- **[Varnish Cache](varnish.md)** *(Free)* — Varnish hit/miss, backend connections, threads, sessions and memory via varnishstat
+- **[Apache Tomcat](tomcat.md)** *(Free)* — Tomcat requests, sessions, JVM heap, GC and thread pool via Jolokia
+- **[WildFly / JBoss](wildfly.md)** *(Free)* — WildFly JVM, Undertow, JTA transactions and JDBC pool metrics via the HTTP Management API
+
+## Message Queues & Streaming
+
+- **[Apache Kafka](kafka.md)** *(Free)* — Kafka broker, topic, partition and consumer-group monitoring via the Admin API
+- **[RabbitMQ](rabbitmq.md)** *(Free)* — RabbitMQ broker health, queue depth and node metrics via the HTTP Management API
+- **[Apache ActiveMQ](activemq.md)** *(Free)* — ActiveMQ broker resource usage and per-destination message throughput via Jolokia
+- **[NATS Server](nats.md)** *(Free)* — NATS connections, subscriptions, message throughput, cluster routes and JetStream via the HTTP management API
+- **[Apache Pulsar](pulsar.md)** *(Free)* — Pulsar broker health, throughput, storage and backlog via the Admin REST API and /metrics
+
+## Container & Virtualization
+
+- **[Docker](docker.md)** *(Free)* — Per-container CPU, memory, network I/O, block I/O and running state via the Docker Engine API
+- **[Kubernetes](kubernetes.md)** *(Free)* — Kubernetes nodes, pods, containers and deployments via the API server
+- **[Proxmox VE](proxmox.md)** *(Free)* — Proxmox VE cluster: nodes, QEMU VMs, LXC containers and storage pools via the REST API
+- **[Hyper-V](hyperv.md)** *(Free, Windows only)* — Hyper-V VM CPU, memory and state via WMI on the local Windows Server host
+
+## Storage
+
+- **[Ceph](ceph.md)** *(Free)* — Ceph cluster health, OSD counts, monitor quorum and per-pool stats via the REST Management API
+- **[S.M.A.R.T. Disk Health](smart.md)** *(Free)* — See Systems & OS above
+
+## Service Discovery & CI
+
+- **[Consul](consul.md)** *(Free)* — Consul agent health, catalog services, Serf members, Raft latency and health-check state distribution
+- **[Apache ZooKeeper](zookeeper.md)** *(Free)* — ZooKeeper latency, connections, znodes, watches and file descriptors via the mntr four-letter command
+- **[Jenkins CI](jenkins.md)** *(Free)* — Jenkins job status counts, per-job build duration, node counts and queue depth via the HTTP REST API
 
 ## Logs & Events
 
@@ -118,7 +175,7 @@ Open-ended ingestion paths for log streams and custom event data.
 
 | Tier | Probes included |
 |---|---|
-| **Free** | CPU, Memory, Network, Logical Disk, Linux Logs, Windows Event Log, File Tail, ICMP Check, HTTP Check, TCP Dial, DNS Latency, SNMP Poll, SNMP Trap, OTLP Receiver, Prometheus Scrape, Exec, Syslog, WiFi Signal, MySQL, PostgreSQL |
+| **Free** | CPU, Memory, Network, Logical Disk, Linux Logs, Windows Event Log, File Tail, Process Monitor, Systemd Units, Windows Services, Chrony, S.M.A.R.T., IPMI, NVIDIA GPU, Modbus TCP, ICMP Check, HTTP Check, TCP Dial, DNS Latency, SNMP Poll, SNMP Trap, OTLP Receiver, Prometheus Scrape, Exec, Syslog, WiFi Signal, MySQL, PostgreSQL, MSSQL, MongoDB, Oracle, Redis, Cassandra, CouchDB, ClickHouse, Elasticsearch, OpenSearch, Solr, InfluxDB, Memcached, Apache HTTP Server, Nginx, HAProxy, Envoy, PHP-FPM, Varnish, Tomcat, WildFly, Kafka, RabbitMQ, ActiveMQ, NATS, Pulsar, Docker, Kubernetes, Proxmox VE, Hyper-V, Ceph, Consul, ZooKeeper, Jenkins CI |
 | **Pro** | Free + Citrix, NetScaler, Redfish, Event, Ping Gateway, Ping WebApp, Load WebApp, Veeam |
 | **Enterprise** | All probes (wildcard) |
 
