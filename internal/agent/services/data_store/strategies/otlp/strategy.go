@@ -536,8 +536,15 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 			Name:          hi.Name,
 			OSType:        hi.OSType,
 			Arch:          hi.Arch,
+			OSName:        hi.OSName,
 			OSVersion:     hi.OSVersion,
+			OSBuildID:     hi.OSBuildID,
 			OSDescription: hi.OSDescription,
+			CPUModel:      hi.CPUModel,
+			CPUVendor:     hi.CPUVendor,
+			HWVendor:      hi.HWVendor,
+			HWModel:       hi.HWModel,
+			HWSerial:      hi.HWSerial,
 		}, nil
 	}
 	agentFn := func() entity.AgentIdentity {
