@@ -1,3 +1,5 @@
+<img src="https://cdn.simpleicons.org/ubiquiti" alt="" class="probe-page-logo probe-page-logo-si">
+
 !!! info
     **License: Free** — part of the universal collection tier.
 

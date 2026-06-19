@@ -1,3 +1,5 @@
+<img src="https://cdn.simpleicons.org/linux" alt="" class="probe-page-logo probe-page-logo-si">
+
 !!! info
     **License: Free** — included in the free tier alongside CPU, memory,
     network, and logical disk. Same posture as the other host probes:
