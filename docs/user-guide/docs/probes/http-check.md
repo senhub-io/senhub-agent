@@ -1,3 +1,5 @@
+<img src="https://api.iconify.design/mdi/web.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+
 # http_check — HTTP(S) checks with TLS expiry
 
 Free tier. Checks a list of URLs every cycle: status validation, latency

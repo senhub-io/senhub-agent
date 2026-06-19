@@ -70,7 +70,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="windows-eventlog.md" class="probe-card" data-family="os-host" data-tier="free">
-    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/text-box-search-outline.svg?color=%23666" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/windows" alt="" loading="lazy">
     <span class="probe-name">Windows Event Log</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Event Log channels with level/EventID filtering</span>
@@ -84,14 +84,14 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="systemd.md" class="probe-card" data-family="os-host" data-tier="free">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/linux" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-si" src="https://api.iconify.design/vscode-icons/file-type-systemd.svg" alt="" loading="lazy">
     <span class="probe-name">Systemd Units</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Active/sub/load state and restart counter per unit</span>
   </a>
 
   <a href="windows-services.md" class="probe-card" data-family="os-host" data-tier="free">
-    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/cog-play-outline.svg?color=%23666" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/windows" alt="" loading="lazy">
     <span class="probe-name">Windows Services</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Service running/stopped state via SCM</span>
@@ -105,7 +105,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="smart.md" class="probe-card" data-family="os-host" data-tier="free">
-    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/harddisk.svg?color=%23666" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/pulse.svg?color=%23666" alt="" loading="lazy">
     <span class="probe-name">S.M.A.R.T. Disk Health</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">SATA/SAS and NVMe drive health via smartctl</span>
@@ -196,7 +196,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="ping-webapp.md" class="probe-card" data-family="network" data-tier="pro">
-    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/web.svg?color=%23666" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/earth.svg?color=%23666" alt="" loading="lazy">
     <span class="probe-name">Ping WebApp</span>
     <span class="probe-tier-badge pro">Pro</span>
     <span class="probe-desc">Web application availability via ICMP</span>
@@ -280,7 +280,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="solr.md" class="probe-card" data-family="databases" data-tier="free">
-    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/d/d5/Apache_Solr_logo.svg" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/apachesolr" alt="" loading="lazy">
     <span class="probe-name">Apache Solr</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">JVM, request/error counters, core document count</span>
@@ -329,7 +329,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="varnish.md" class="probe-card" data-family="web-servers" data-tier="free">
-    <img class="probe-logo probe-logo-wm" src="https://cdn2.hubspot.net/hubfs/209523/Logos/Varnish%20Cache%20logos/Varnish-Cache_2.0_POS_Small.png" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/cached.svg?color=%23666" alt="" loading="lazy">
     <span class="probe-name">Varnish Cache</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Hit/miss, backend connections, threads, memory</span>
@@ -350,14 +350,14 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="wildfly.md" class="probe-card" data-family="web-servers" data-tier="free">
-    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/a/a8/JBoss_logo.svg" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-si" src="https://design.jboss.org/wildfly/logo/final/wildfly_icon.svg" alt="" loading="lazy">
     <span class="probe-name">WildFly / JBoss</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">JVM, Undertow, JTA transactions, JDBC pool</span>
   </a>
 
   <a href="kafka.md" class="probe-card" data-family="messaging" data-tier="free">
-    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/0/05/Apache_Kafka_logo.svg" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/apachekafka" alt="" loading="lazy">
     <span class="probe-name">Apache Kafka</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Brokers, topics, partitions, consumer group lag</span>
@@ -371,21 +371,21 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="activemq.md" class="probe-card" data-family="messaging" data-tier="free">
-    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/a/a7/Apache_ActiveMQ_Logo.svg" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/message-processing.svg?color=%23666" alt="" loading="lazy">
     <span class="probe-name">ActiveMQ</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Broker resources, queue/topic throughput via Jolokia</span>
   </a>
 
   <a href="nats.md" class="probe-card" data-family="messaging" data-tier="free">
-    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/9/9c/NATS-logo.png" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-si" src="https://api.iconify.design/logos/nats-icon.svg" alt="" loading="lazy">
     <span class="probe-name">NATS</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Server health, connections, message rates, JetStream</span>
   </a>
 
   <a href="pulsar.md" class="probe-card" data-family="messaging" data-tier="free">
-    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/f/fd/Apache-pulsar-logo.svg" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-si" src="https://api.iconify.design/devicon/pulsar.svg" alt="" loading="lazy">
     <span class="probe-name">Apache Pulsar</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Broker health, throughput, storage, backlog</span>
@@ -483,7 +483,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="zookeeper.md" class="probe-card" data-family="devops" data-tier="free">
-    <img class="probe-logo probe-logo-wm" src="https://upload.wikimedia.org/wikipedia/commons/7/77/Apache_ZooKeeper_logo.svg" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/sitemap.svg?color=%23666" alt="" loading="lazy">
     <span class="probe-name">ZooKeeper</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Latency, connections, znodes via mntr four-letter command</span>
@@ -518,7 +518,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="netscaler.md" class="probe-card" data-family="adc" data-tier="pro">
-    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/citrix" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/scale-balance.svg?color=%23666" alt="" loading="lazy">
     <span class="probe-name">NetScaler</span>
     <span class="probe-tier-badge pro">Pro</span>
     <span class="probe-desc">Virtual servers, SSL certs, GSLB, HA state via REST API</span>
@@ -628,7 +628,9 @@ Each probe targets one class of system and turns its state into typed metrics an
   font-weight: 700;
   font-size: .95rem;
   margin-top: .2rem;
+  text-align: center;
 }
+
 .probe-tier-badge {
   display: inline-block;
   font-size: .62rem;
@@ -638,6 +640,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   padding: 1px 7px;
   border-radius: 999px;
   width: fit-content;
+  align-self: center;
 }
 .probe-tier-badge.free {
   background: rgba(76,175,80,.16);

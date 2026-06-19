@@ -1,3 +1,5 @@
+<img src="https://api.iconify.design/mdi/dns.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+
 # dns_latency — DNS resolution latency
 
 Free tier. Measures resolution latency for a set of names — through the
