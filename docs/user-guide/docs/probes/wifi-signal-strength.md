@@ -1,5 +1,4 @@
-!!! warning
-    **License: Pro** - Requires a Pro or Enterprise license.
+**License**: Free
 
 # WiFi Signal Strength Probe
 
