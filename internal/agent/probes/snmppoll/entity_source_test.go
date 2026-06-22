@@ -270,13 +270,15 @@ func TestBuildObservation_NetworkAddress(t *testing.T) {
 	ifaces := []ifaceRow{
 		{Index: "1", Name: "Gi0/1", OperStatus: ifOperUp},
 		{Index: "2", Name: "docker0", OperStatus: ifOperUp},
+		{Index: "3", Name: "br-dc4ddc994709", OperStatus: ifOperUp},
 	}
 	addrs := []ipAddr{
 		{IP: "10.0.0.1", IfIndex: "1"},    // bound to Gi0/1 (also a host's gateway → the join)
 		{IP: "10.0.0.1", IfIndex: "1"},    // dup IP → skip
 		{IP: "192.168.9.9", IfIndex: "9"}, // ifIndex 9 not among ifaces → can't bind, skip
-		{IP: "172.17.0.1", IfIndex: "2"},  // Docker bridge gateway (host-local) → skip
+		{IP: "172.17.0.1", IfIndex: "2"},  // Docker default bridge (host-local IP) → skip
 		{IP: "127.0.0.1", IfIndex: "2"},   // loopback (host-local) → skip
+		{IP: "172.18.0.1", IfIndex: "3"},  // Docker user bridge on br-<hex> → skip by iface name
 	}
 	obs := buildObservation(self, lldpTopology{}, nil, ifaces, addrs, resolveDeviceID)
 

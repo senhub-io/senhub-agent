@@ -33,3 +33,27 @@ func TestIsHostLocalAddressStr(t *testing.T) {
 		}
 	}
 }
+
+func TestIsContainerBridgeIface(t *testing.T) {
+	cases := map[string]bool{
+		"docker0":         true,
+		"br-dc4ddc994709": true, // Docker user-defined bridge (carries 172.18+)
+		"virbr0":          true, // libvirt
+		"cni0":            true,
+		"flannel.1":       true,
+		"lxcbr0":          true,
+		// Real, routed interfaces must NOT match.
+		"eth0":    false,
+		"ens3":    false,
+		"bond0":   false,
+		"br0":     false, // a plain router bridge (no dash) keeps its address
+		"bridge0": false,
+		"vlan100": false,
+		"":        false,
+	}
+	for in, want := range cases {
+		if got := IsContainerBridgeIface(in); got != want {
+			t.Errorf("IsContainerBridgeIface(%q) = %v, want %v", in, got, want)
+		}
+	}
+}

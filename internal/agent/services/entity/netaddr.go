@@ -1,6 +1,9 @@
 package entity
 
-import "net"
+import (
+	"net"
+	"strings"
+)
 
 // dockerDefaultBridge is Docker's default bridge subnet (docker0). Its gateway
 // 172.17.0.1 is identical on every Docker host, so it is not a globally-unique
@@ -27,6 +30,34 @@ func IsHostLocalAddress(ip net.IP) bool {
 	return ip.IsUnspecified() || ip.IsLoopback() ||
 		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() ||
 		dockerDefaultBridge.Contains(ip)
+}
+
+// containerBridgePrefixes name host-local virtualization bridges (Docker,
+// libvirt, CNI, LXC, …). Their gateway address (172.17.0.1 on docker0, but also
+// user-defined bridges on br-<hex> using 172.18+/custom ranges) is reused
+// identically on every such host, so it is not a globally-unique identity. The
+// IP-range filter catches only Docker's default 172.17/16; a user-defined bridge
+// is not distinguishable by IP, but its OWNING INTERFACE is — context the
+// producer has and a by-IP consumer does not. "br-" is Docker's user-bridge
+// naming (br-<12 hex>); plain "br0"/"bridge0" are NOT matched so a real router's
+// routed bridge keeps its address.
+var containerBridgePrefixes = []string{
+	"docker", "br-", "virbr", "cni", "cbr", "flannel", "lxcbr", "kube", "cali", "antrea", "weave", "ovs-system",
+}
+
+// IsContainerBridgeIface reports whether an interface name is a host-local
+// container/virtualization bridge, so an address bound to it must not be emitted
+// as a shared network.address. Complements IsHostLocalAddress: that filter is by
+// IP (works without interface context), this one by interface name (catches
+// user-defined bridges the IP filter cannot). Apply both where the owning
+// interface is known.
+func IsContainerBridgeIface(name string) bool {
+	for _, p := range containerBridgePrefixes {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // IsHostLocalAddressStr is the string convenience over IsHostLocalAddress: it
