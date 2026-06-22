@@ -88,7 +88,7 @@ func Parse(v any) (Governance, error) {
 	if v == nil {
 		return g, nil
 	}
-	m, ok := v.(map[string]any)
+	m, ok := subMap(v)
 	if !ok {
 		return g, fmt.Errorf("governance must be a mapping")
 	}
@@ -118,9 +118,23 @@ func Parse(v any) (Governance, error) {
 	return g, nil
 }
 
+// subMap accepts both map shapes a YAML loader may produce (yaml.v3's
+// map[string]any and the legacy map[any]any), so the package is robust across
+// the agent's config loaders.
 func subMap(v any) (map[string]any, bool) {
-	m, ok := v.(map[string]any)
-	return m, ok
+	switch m := v.(type) {
+	case map[string]any:
+		return m, true
+	case map[any]any:
+		out := make(map[string]any, len(m))
+		for k, val := range m {
+			if ks, ok := k.(string); ok {
+				out[ks] = val
+			}
+		}
+		return out, true
+	}
+	return nil, false
 }
 
 func str(v any) string {
