@@ -36,6 +36,9 @@ type vmInfo struct {
 	VMName string
 	// State is the OTel-normalised state string ("running", "stopped", "paused", …).
 	State string
+	// VCPU is the configured logical CPU count (Msvm_ComputerSystem
+	// NumberOfProcessors); 0 → omitted.
+	VCPU int64
 }
 
 // hypervEntitySource feeds the entity rail for the hyperv probe. It holds the
@@ -154,9 +157,16 @@ func buildHypervObservation(
 			"host.id": hypervHostID,
 			"vmid":    vm.GUID,
 		}
-		vmEntityAttrs := map[string]any{}
+		vmEntityAttrs := map[string]any{
+			// The VM's hypervisor platform — reuse the AT11 host.virtualization
+			// vocabulary (Toise Q2): a Hyper-V guest is "hyperv".
+			"host.virtualization": "hyperv",
+		}
 		if vm.VMName != "" {
-			vmEntityAttrs["vm.name"] = vm.VMName
+			vmEntityAttrs["host.name"] = vm.VMName // VM display name → host.name (Toise Q2)
+		}
+		if vm.VCPU > 0 {
+			vmEntityAttrs["host.cpu.logical.count"] = vm.VCPU // configured vCPUs (AT10 key)
 		}
 		if st := vmPowerStatus(vm.State); st != "" {
 			vmEntityAttrs["status"] = st
