@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // TestParseConfig_Defaults exercises the config parser with the minimum
@@ -258,8 +260,15 @@ func TestEntitySource_TechIDPinned(t *testing.T) {
 	if got := e.ID["db.instance.id"]; got != wantID {
 		t.Errorf("db.instance.id: got %v, want %s", got, wantID)
 	}
-	if got := e.ID["db.system.name"]; got != "postgresql" {
-		t.Errorf("db.system.name: got %v, want postgresql", got)
+	// Identity is single-key {db.instance.id}: db.system.name is a descriptive
+	// attribute, NOT an identity key. A second identity key would make the
+	// monitors ToID (which carries only db.instance.id) unresolvable, orphaning
+	// the db in the consumer graph (#504).
+	if len(e.ID) != 1 {
+		t.Errorf("identity must be single-key {db.instance.id}, got %v", e.ID)
+	}
+	if got := e.Attributes["db.system.name"]; got != "postgresql" {
+		t.Errorf("db.system.name must be a descriptive attribute: got %v, want postgresql", got)
 	}
 	// server.address/port must be descriptive attrs, not part of the id.
 	if _, inID := e.ID["server.address"]; inID {
@@ -270,6 +279,108 @@ func TestEntitySource_TechIDPinned(t *testing.T) {
 	}
 	if got := e.Attributes["server.port"]; got != int64(5432) {
 		t.Errorf("server.port attr: got %v, want 5432", got)
+	}
+	// The monitors edge ToID must match the entity identity exactly, else Toise
+	// drops the edge and the db floats (#504). The edge is built at update()
+	// time, so refresh the cache after the agent id becomes available (the probe
+	// calls update() every Collect cycle).
+	agentstate.SetAgentInstanceID("agent-key")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+	src.update("")
+	obs2, _ := src.Observe()
+	var found bool
+	for _, r := range obs2.Relations {
+		if r.Type != "monitors" {
+			continue
+		}
+		found = true
+		if r.ToID["db.instance.id"] != wantID || len(r.ToID) != 1 {
+			t.Errorf("monitors ToID must equal the single-key identity %q, got %v", wantID, r.ToID)
+		}
+	}
+	if !found {
+		t.Errorf("expected a monitors edge once the agent id is set, got %+v", obs2.Relations)
+	}
+}
+
+// TestEntitySource_Version verifies setVersion surfaces the parsed short
+// version on the entity as db.system.version (toise#216 AT1), absent until set.
+func TestEntitySource_Version(t *testing.T) {
+	src := newPgEntitySource(config{Host: "pg.local", Port: 5432, InstanceName: "p"}, nil)
+
+	src.update("")
+	obs, _ := src.Observe()
+	if _, has := obs.Entities[0].Attributes["db.system.version"]; has {
+		t.Error("db.system.version must be absent before a version is reported")
+	}
+
+	src.setVersion("16.1")
+	src.update("")
+	obs, _ = src.Observe()
+	if got := obs.Entities[0].Attributes["db.system.version"]; got != "16.1" {
+		t.Errorf("db.system.version = %v, want 16.1", got)
+	}
+}
+
+// TestEntitySource_ReplicationRoleKey verifies the replication role rides under
+// the canonical replication.role key (matching mysql), not the legacy bare role
+// (toise#216 AT2).
+func TestEntitySource_ReplicationRoleKey(t *testing.T) {
+	src := newPgEntitySource(config{Host: "pg.local", Port: 5432, InstanceName: "p"}, nil)
+	src.setRole(dbcommon.RoleReplica)
+	src.update("")
+
+	obs, _ := src.Observe()
+	e := obs.Entities[0]
+	if got := e.Attributes["replication.role"]; got != "replica" {
+		t.Errorf("replication.role = %v, want replica", got)
+	}
+	if _, stale := e.Attributes["role"]; stale {
+		t.Error("legacy bare role key must no longer be emitted (toise#216 AT2)")
+	}
+}
+
+// TestEntitySource_DeploymentPlatform verifies the hosting platform rides under
+// the canonical db.deployment.platform key, not the legacy `environment` (which
+// conflated platform with deployment tier — toise#216 AT3).
+func TestEntitySource_DeploymentPlatform(t *testing.T) {
+	src := newPgEntitySource(config{Host: "pg.local", Port: 5432, InstanceName: "p"}, nil)
+	src.setEnvironment(dbcommon.EnvironmentSelfHosted)
+	src.update("")
+
+	obs, _ := src.Observe()
+	e := obs.Entities[0]
+	if got := e.Attributes["db.deployment.platform"]; got != "self_hosted" {
+		t.Errorf("db.deployment.platform = %v, want self_hosted", got)
+	}
+	if _, stale := e.Attributes["environment"]; stale {
+		t.Error("legacy environment key must no longer be emitted (toise#216 AT3)")
+	}
+}
+
+// TestEntitySource_LocalDBRunsOnHost: a loopback-reachable db is anchored to the
+// host with runs_on (enterprise#36); a remote db is not.
+func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
+	mk := func(host string) entity.Observation {
+		src := newPgEntitySource(config{Host: host, Port: 5432, InstanceName: "p"}, nil)
+		src.hostID = func() string { return "h-1" }
+		src.update("")
+		obs, _ := src.Observe()
+		return obs
+	}
+	runsOn := func(obs entity.Observation) bool {
+		for _, r := range obs.Relations {
+			if r.Type == "runs_on" && r.FromType == "db" && r.ToID["host.id"] == "h-1" {
+				return true
+			}
+		}
+		return false
+	}
+	if !runsOn(mk("127.0.0.1")) {
+		t.Error("loopback db must emit runs_on→host")
+	}
+	if runsOn(mk("db.example.com")) {
+		t.Error("remote db must NOT emit runs_on→host")
 	}
 }
 

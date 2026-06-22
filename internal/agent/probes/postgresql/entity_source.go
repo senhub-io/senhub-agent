@@ -25,11 +25,13 @@ import (
 type pgEntitySource struct {
 	cfg          config
 	moduleLogger *logger.ModuleLogger
+	hostID       func() string // nil → dbcommon.HostID; resolves the agent host for a local-db runs_on
 
 	mu          sync.Mutex
 	instanceID  string // db.instance.id — set once, never changed
 	environment dbcommon.Environment
 	role        dbcommon.Role
+	version     string // server version (e.g. "16.1"), "" until first reported
 	obs         entity.Observation
 	// ready is true once the entity has been emitted at least once. It remains
 	// false until instanceID is pinned from the tech source (or immediately when
@@ -41,6 +43,7 @@ func newPgEntitySource(cfg config, log *logger.ModuleLogger) *pgEntitySource {
 	s := &pgEntitySource{
 		cfg:          cfg,
 		moduleLogger: log,
+		hostID:       dbcommon.HostID,
 		environment:  dbcommon.EnvironmentUnknown,
 		role:         dbcommon.RoleStandalone,
 	}
@@ -65,6 +68,15 @@ func (s *pgEntitySource) setEnvironment(env dbcommon.Environment) {
 func (s *pgEntitySource) setRole(role dbcommon.Role) {
 	s.mu.Lock()
 	s.role = role
+	s.mu.Unlock()
+}
+
+// setVersion records the server version so it rides the entity as the
+// descriptive db.system.version attribute (toise#216 AT1). Called by
+// collectOverview with the parsed short version (e.g. "16.1").
+func (s *pgEntitySource) setVersion(v string) {
+	s.mu.Lock()
+	s.version = v
 	s.mu.Unlock()
 }
 
@@ -126,14 +138,17 @@ func (s *pgEntitySource) update(fallbackHostPort string) bool {
 
 	dbID := map[string]any{
 		"db.instance.id": s.instanceID,
-		"db.system.name": "postgresql",
 	}
 
 	attrs := map[string]any{
-		"server.address": s.cfg.Host,
-		"server.port":    int64(s.cfg.Port),
-		"environment":    string(s.environment),
-		"role":           s.role.String(),
+		"db.system.name":         "postgresql",
+		"server.address":         s.cfg.Host,
+		"server.port":            int64(s.cfg.Port),
+		"db.deployment.platform": string(s.environment),
+		"replication.role":       s.role.String(),
+	}
+	if s.version != "" {
+		attrs["db.system.version"] = s.version
 	}
 
 	obs := entity.Observation{
@@ -157,6 +172,12 @@ func (s *pgEntitySource) update(fallbackHostPort string) bool {
 			ToType:   "db",
 			ToID:     map[string]any{"db.instance.id": s.instanceID},
 		})
+	}
+
+	// runs_on edge: db → host when the db is local (loopback) — anchors a local
+	// db to the host it runs on (enterprise#36).
+	if rel, ok := dbcommon.LocalHostRunsOn(dbID, s.cfg.Host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	s.obs = obs

@@ -2,6 +2,8 @@ package oracle
 
 import (
 	"testing"
+
+	"senhub-agent.go/internal/agent/services/agentstate"
 )
 
 func TestEntitySource_Observe(t *testing.T) {
@@ -29,29 +31,68 @@ func TestEntitySource_Observe(t *testing.T) {
 		t.Errorf("entity.ID[%q] = %q, want %q", idKeyDBInstance, id, instance)
 	}
 
-	sys, ok := e.ID[idKeyDBSystem]
-	if !ok {
-		t.Fatalf("entity.ID missing %q key", idKeyDBSystem)
+	// Identity is single-key: db.system.name is a descriptive attribute, NOT an
+	// identity key (else the monitors ToID would not resolve — #505).
+	if len(e.ID) != 1 {
+		t.Errorf("entity.ID must be single-key {db.instance.id}, got %v", e.ID)
 	}
-	if sys != "oracle" {
-		t.Errorf("entity.ID[%q] = %q, want oracle", idKeyDBSystem, sys)
-	}
-
-	// Relations are empty — static single entity, no topology.
-	if len(obs.Relations) != 0 {
-		t.Errorf("Observe() returned %d relations, want 0", len(obs.Relations))
+	if sys := e.Attributes[attrDBSystem]; sys != "oracle" {
+		t.Errorf("attribute %q = %v, want oracle", attrDBSystem, sys)
 	}
 }
 
-// TestEntitySource_Idempotent verifies that successive Observe calls return
-// the same stable snapshot (no mutation between calls).
-func TestEntitySource_Idempotent(t *testing.T) {
+// TestEntitySource_Version verifies setVersion surfaces the server version on
+// the entity as db.system.version (toise#216 AT1), absent until reported.
+func TestEntitySource_Version(t *testing.T) {
 	src := newEntitySource("oracle://db.example.com:1521/ORCL")
 
-	obs1, _ := src.Observe()
-	obs2, _ := src.Observe()
-
-	if len(obs1.Entities) != len(obs2.Entities) {
-		t.Errorf("entity count changed between calls: %d vs %d", len(obs1.Entities), len(obs2.Entities))
+	obs, _ := src.Observe()
+	if _, has := obs.Entities[0].Attributes["db.system.version"]; has {
+		t.Error("db.system.version must be absent before a version is reported")
 	}
+
+	src.setVersion("19.0.0.0.0")
+	obs, _ = src.Observe()
+	if got := obs.Entities[0].Attributes["db.system.version"]; got != "19.0.0.0.0" {
+		t.Errorf("db.system.version = %v, want 19.0.0.0.0", got)
+	}
+}
+
+// TestEntitySource_MonitorsEdge verifies the db is anchored to the agent via a
+// monitors edge whose ToID exactly matches the entity identity, and that the
+// edge is skipped when the agent id is unset.
+func TestEntitySource_MonitorsEdge(t *testing.T) {
+	instance := "oracle://db.example.com:1521/ORCL"
+	src := newEntitySource(instance)
+
+	t.Run("emitted with agent id", func(t *testing.T) {
+		agentstate.SetAgentInstanceID("agent-key-1")
+		t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+		obs, _ := src.Observe()
+		var found bool
+		for _, r := range obs.Relations {
+			if r.Type != "monitors" {
+				continue
+			}
+			found = true
+			if r.FromID["service.instance.id"] != "agent-key-1" {
+				t.Errorf("monitors From = %v, want agent-key-1", r.FromID)
+			}
+			if r.ToType != entityTypeDB || r.ToID[idKeyDBInstance] != instance {
+				t.Errorf("monitors ToID must match the db identity, got %v", r.ToID)
+			}
+		}
+		if !found {
+			t.Errorf("no monitors edge emitted: %+v", obs.Relations)
+		}
+	})
+
+	t.Run("skipped without agent id", func(t *testing.T) {
+		agentstate.SetAgentInstanceID("")
+		obs, _ := src.Observe()
+		if len(obs.Relations) != 0 {
+			t.Errorf("no edge expected when agent id is unset, got %+v", obs.Relations)
+		}
+	})
 }

@@ -29,16 +29,19 @@ import (
 type mysqlEntitySource struct {
 	cfg          config
 	moduleLogger *logger.ModuleLogger
+	hostID       func() string // nil → dbcommon.HostID; resolves the agent host for a local-db runs_on
 
-	mu         sync.Mutex
-	role       dbcommon.Role
-	pinnedID   string // "" until pinned
-	idPinned   bool
-	rolePinned bool // true once the first successful collect cycle has run
+	mu          sync.Mutex
+	role        dbcommon.Role
+	version     string // server version banner, "" until the first cycle reports it
+	environment string // hosting platform (self_hosted/rds/aurora/…), "" until reported
+	pinnedID    string // "" until pinned
+	idPinned    bool
+	rolePinned  bool // true once the first successful collect cycle has run
 }
 
 func newMysqlEntitySource(cfg config, log *logger.ModuleLogger) *mysqlEntitySource {
-	s := &mysqlEntitySource{cfg: cfg, moduleLogger: log}
+	s := &mysqlEntitySource{cfg: cfg, moduleLogger: log, hostID: dbcommon.HostID}
 
 	// Precedence 1: operator config overrides everything; pin immediately.
 	if cfg.InstanceName != "" {
@@ -88,12 +91,30 @@ func (s *mysqlEntitySource) updateRole(role dbcommon.Role) {
 	s.mu.Unlock()
 }
 
+// setVersion records the server version banner (@@version) so it rides the
+// entity as the descriptive db.system.version attribute (toise#216 AT1).
+func (s *mysqlEntitySource) setVersion(v string) {
+	s.mu.Lock()
+	s.version = v
+	s.mu.Unlock()
+}
+
+// setEnvironment records the detected hosting platform (self_hosted/rds/aurora/…)
+// so it rides the entity as db.deployment.platform (toise#216 AT3).
+func (s *mysqlEntitySource) setEnvironment(env string) {
+	s.mu.Lock()
+	s.environment = env
+	s.mu.Unlock()
+}
+
 // Observe returns the MySQL instance entity. ok=false until both the id has
 // been pinned and the first successful collect cycle has run (rolePinned), so
 // we never emit an entity whose id could change on the next cycle.
 func (s *mysqlEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.Lock()
 	role := s.role
+	version := s.version
+	environment := s.environment
 	idPinned := s.idPinned
 	rolePinned := s.rolePinned
 	pinnedID := s.pinnedID
@@ -115,6 +136,12 @@ func (s *mysqlEntitySource) Observe() (entity.Observation, bool) {
 		"server.port":      int64(s.cfg.Port),
 		"replication.role": role.String(),
 	}
+	if version != "" {
+		attrs["db.system.version"] = version
+	}
+	if environment != "" {
+		attrs["db.deployment.platform"] = environment
+	}
 
 	obs := entity.Observation{
 		Entities: []entity.Entity{
@@ -135,6 +162,12 @@ func (s *mysqlEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   "db",
 			ToID:     map[string]any{"db.instance.id": pinnedID},
 		})
+	}
+
+	// runs_on edge: db → host when the db is local (loopback) — anchors a local
+	// db to the host it runs on (enterprise#36).
+	if rel, ok := dbcommon.LocalHostRunsOn(id, s.cfg.Host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

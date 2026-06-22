@@ -108,7 +108,14 @@ func buildObservation(hostID string, routes []hostRoute) entity.Observation {
 			ToType: entityTypeNetworkRoute, ToID: routeID,
 		})
 
-		// The gateway IP as a shared network.address node + next_hop_via edge.
+		// The gateway IP as a shared network.address node + next_hop_via edge —
+		// but only when the gateway is globally unique. A host-local gateway
+		// (e.g. a Docker bridge) is the same value on every host, so a shared
+		// node would falsely join unrelated hosts (Toise otel-mapping contract);
+		// the next hop still rides as the host-scoped next_hop.ip attribute above.
+		if entity.IsHostLocalAddressStr(r.NextHop) {
+			continue
+		}
 		addrID := map[string]any{idKeyNetworkAddress: r.NextHop}
 		if !addrSeen[r.NextHop] {
 			addrSeen[r.NextHop] = true

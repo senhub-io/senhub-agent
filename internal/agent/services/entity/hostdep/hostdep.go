@@ -33,12 +33,14 @@ package hostdep
 import (
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"sync"
 
 	gnet "github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
@@ -61,7 +63,8 @@ const (
 
 	// A peer endpoint must be seen this many consecutive scrapes before its edge
 	// is emitted — the line between a durable dependency and ephemeral flow.
-	// TODO(#491): make this an entities-config knob (default stays 3).
+	// The configured value comes from entities.depends_on_debounce; this is the
+	// fallback when the caller passes a non-positive threshold.
 	defaultThreshold = 3
 )
 
@@ -71,10 +74,15 @@ type peerKey struct {
 	svcID, addr, port string
 }
 
-// dependant is the minted dependent plus the peer it depends on.
+// dependant is the minted dependent plus the peer it depends on. foundation is
+// set when the dependent is the agent's own process: its identity is the
+// foundation service.instance (the agent key), which the foundation detector
+// already emits with its runs_on — so hostdep emits only the depends_on edge
+// for it, not a duplicate node (#494).
 type dependant struct {
 	svcID, svcName string
 	addr, port     string
+	foundation     bool
 }
 
 // Source implements entity.Source for host outbound dependency edges.
@@ -82,7 +90,10 @@ type Source struct {
 	hostID      func() string
 	connections func(string) ([]gnet.ConnectionStat, error) // nil → gnet.Connections
 	procName    func(int32) string                          // nil → gopsutil process name
+	agentID     func() string                               // nil → agentstate.GetAgentInstanceID
+	selfPID     func() int32                                // nil → os.Getpid
 	threshold   int
+	exclude     []*net.IPNet // peer endpoints in these ranges are dropped (privacy)
 
 	mu     sync.Mutex
 	streak map[peerKey]int // consecutive scrapes a peer endpoint has been seen
@@ -90,9 +101,32 @@ type Source struct {
 
 // New builds the host-dependency source. hostID returns the host's stable id,
 // used to mint the dependent service.instance.id (so an outbound dependency
-// hangs off a service tied to this host).
-func New(hostID func() string) *Source {
-	return &Source{hostID: hostID, threshold: defaultThreshold, streak: map[peerKey]int{}}
+// hangs off a service tied to this host). threshold is the debounce length (the
+// number of consecutive scrapes a peer must persist before its edge is emitted);
+// a non-positive value falls back to defaultThreshold. exclude lists peer IP
+// ranges whose flows are dropped (operator privacy filter); nil disables it.
+func New(hostID func() string, threshold int, exclude []*net.IPNet) *Source {
+	if threshold < 1 {
+		threshold = defaultThreshold
+	}
+	return &Source{hostID: hostID, threshold: threshold, exclude: exclude, streak: map[peerKey]int{}}
+}
+
+// excluded reports whether a peer IP falls in any operator-excluded range.
+func (s *Source) excluded(ip string) bool {
+	if len(s.exclude) == 0 {
+		return false
+	}
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	for _, n := range s.exclude {
+		if n.Contains(parsed) {
+			return true
+		}
+	}
+	return false
 }
 
 // Observe reads the socket table once (one scrape), advances the debounce
@@ -149,6 +183,16 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string) []dependant 
 	if nameFn == nil {
 		nameFn = processName
 	}
+	agentIDFn := s.agentID
+	if agentIDFn == nil {
+		agentIDFn = agentstate.GetAgentInstanceID
+	}
+	selfPIDFn := s.selfPID
+	if selfPIDFn == nil {
+		selfPIDFn = func() int32 { return int32(os.Getpid()) }
+	}
+	self := selfPIDFn()
+	agentID := agentIDFn()
 	nameCache := map[int32]string{}
 
 	var out []dependant
@@ -156,7 +200,7 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string) []dependant 
 		if c.Status != statusEstablished || listenPorts[c.Laddr.Port] {
 			continue // not established, or inbound (local port is one of ours)
 		}
-		if !resolvablePeer(c.Raddr.IP) || c.Raddr.Port == 0 {
+		if !resolvablePeer(c.Raddr.IP) || c.Raddr.Port == 0 || s.excluded(c.Raddr.IP) {
 			continue
 		}
 		name, ok := nameCache[c.Pid]
@@ -164,15 +208,26 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string) []dependant 
 			name = nameFn(c.Pid)
 			nameCache[c.Pid] = name
 		}
-		if name == "" {
+		d := dependant{
+			addr: c.Raddr.IP,
+			port: strconv.FormatUint(uint64(c.Raddr.Port), 10),
+		}
+		switch {
+		case c.Pid == self && agentID != "":
+			// The agent's own outbound dependency: attach it to the foundation
+			// service.instance (the agent key) instead of minting a parallel
+			// <exe>@host node (#494). No name needed — the foundation owns the
+			// node and its runs_on.
+			d.svcID = agentID
+			d.svcName = name
+			d.foundation = true
+		case name != "":
+			d.svcID = name + "@" + hostID
+			d.svcName = name
+		default:
 			continue // cannot name the dependent → do not fabricate a service.instance
 		}
-		out = append(out, dependant{
-			svcID:   name + "@" + hostID,
-			svcName: name,
-			addr:    c.Raddr.IP,
-			port:    strconv.FormatUint(uint64(c.Raddr.Port), 10),
-		})
+		out = append(out, d)
 	}
 	return out
 }
@@ -197,15 +252,22 @@ func buildObservation(seen map[peerKey]dependant, streak map[peerKey]int, thresh
 		svcKey := map[string]any{idKeyServiceInstanceID: d.svcID}
 		if !svcDone[d.svcID] {
 			svcDone[d.svcID] = true
-			obs.Entities = append(obs.Entities, entity.Entity{
-				Type: entityTypeServiceInstance, ID: svcKey,
-				Attributes: map[string]any{attrServiceName: d.svcName},
-			})
-			obs.Relations = append(obs.Relations, entity.Relation{
-				Type:     relRunsOn,
-				FromType: entityTypeServiceInstance, FromID: svcKey,
-				ToType: entityTypeHost, ToID: hostKey,
-			})
+			// The agent's own dependent is the foundation service.instance; the
+			// foundation detector already emits that node and its runs_on, so
+			// emitting them here would duplicate the node (#494). The depends_on
+			// edge below still folds onto the foundation node (same identity,
+			// merged in the same cycle).
+			if !d.foundation {
+				obs.Entities = append(obs.Entities, entity.Entity{
+					Type: entityTypeServiceInstance, ID: svcKey,
+					Attributes: map[string]any{attrServiceName: d.svcName},
+				})
+				obs.Relations = append(obs.Relations, entity.Relation{
+					Type:     relRunsOn,
+					FromType: entityTypeServiceInstance, FromID: svcKey,
+					ToType: entityTypeHost, ToID: hostKey,
+				})
+			}
 		}
 		epID := map[string]any{
 			idKeyServerAddress:    d.addr,

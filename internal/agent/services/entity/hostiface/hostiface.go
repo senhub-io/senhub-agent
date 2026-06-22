@@ -41,21 +41,52 @@ const (
 	relBoundTo                 = "bound_to"
 	relHasInterface            = "has_interface"
 
+	// attrKeyOperState is the interface operational state. It is one of Toise's
+	// stateKeys (ADR 0006: oper_state/admin_state/status), so a link flip on a
+	// host interface classifies as entity.state_changed, not a silent update.
+	attrKeyOperState = "oper_state"
+
+	// Descriptive attributes (AT13). Dotted-lowercase casing per the contract.
+	attrKeyMAC    = "mac"
+	attrKeyMTU    = "mtu"
+	attrKeyType   = "interface.type"
+	attrKeyDuplex = "duplex"
+	attrKeySpeed  = "speed" // bit/s, negotiated
+
 	// Interfaces and their addresses change rarely; re-enumerate on a slow
 	// cadence and serve the cache in between, like hostsvc.
 	defaultRefresh = 60 * time.Second
 )
 
-// ifaceAddrs is one interface with its retained unicast IPs.
+// linkMeta is the per-interface descriptive metadata the /sys layer resolves
+// (oper_state plus the AT13 type/duplex/speed). MAC and MTU come straight from
+// gopsutil and are not part of this struct.
+type linkMeta struct {
+	OperState string // up/down
+	Type      string // physical/virtual/wireless
+	Duplex    string // full/half/unknown
+	Speed     int64  // bit/s, 0 = unknown
+}
+
+// ifaceAddrs is one interface with its retained unicast IPs and descriptive
+// metadata. An interface is emitted even with no IPs (AT13: a down/IP-less NIC
+// is still a real entity, so a link going down is a clean state_changed).
 type ifaceAddrs struct {
-	Name string
-	IPs  []string
+	Name      string
+	IPs       []string
+	MAC       string
+	MTU       int64
+	OperState string
+	Type      string
+	Duplex    string
+	Speed     int64
 }
 
 // Source implements entity.Source for the host's own interfaces/addresses.
 type Source struct {
 	hostID     func() string
-	interfaces func() (gnet.InterfaceStatList, error) // nil → gnet.Interfaces
+	interfaces func() (gnet.InterfaceStatList, error)     // nil → gnet.Interfaces
+	link       func(name string, flags []string) linkMeta // nil → resolveLinkMeta
 	refresh    time.Duration
 
 	mu    sync.Mutex
@@ -110,19 +141,28 @@ func buildObservation(hostID string, ias []ifaceAddrs) entity.Observation {
 	obs := entity.Observation{}
 	seenAddr := map[string]bool{}
 	for _, ia := range ias {
-		if ia.Name == "" || len(ia.IPs) == 0 {
+		if ia.Name == "" {
 			continue
 		}
 		ifaceKey := map[string]any{idKeyHost: hostID, idKeyInterfaceName: ia.Name}
-		obs.Entities = append(obs.Entities, entity.Entity{
-			Type: entityTypeNetworkInterface, ID: ifaceKey,
-		})
+		ifaceEntity := entity.Entity{Type: entityTypeNetworkInterface, ID: ifaceKey, Attributes: ifaceAttributes(ia)}
+		obs.Entities = append(obs.Entities, ifaceEntity)
 		obs.Relations = append(obs.Relations, entity.Relation{
 			Type:     relHasInterface,
 			FromType: entityTypeHost, FromID: hostKey,
 			ToType: entityTypeNetworkInterface, ToID: ifaceKey,
 		})
 		for _, ip := range ia.IPs {
+			// The interface is kept (above), but a host-local IP — most visibly
+			// the Docker bridge gateway 172.17.0.1, identical on every host — must
+			// not become a shared network.address node or it falsely links
+			// unrelated hosts (Toise otel-mapping contract). It stays a
+			// descriptive concern of the interface, not a shared identity. The IP
+			// filter catches Docker's default bridge; the interface-name filter
+			// also catches user-defined bridges (br-<hex> on 172.18+/custom).
+			if entity.IsHostLocalAddressStr(ip) || entity.IsContainerBridgeIface(ia.Name) {
+				continue
+			}
 			addrKey := map[string]any{idKeyNetworkAddress: ip}
 			if !seenAddr[ip] {
 				seenAddr[ip] = true
@@ -140,9 +180,43 @@ func buildObservation(hostID string, ias []ifaceAddrs) entity.Observation {
 	return obs
 }
 
-// enumerate returns the host's interfaces with their resolvable unicast IPs,
-// dropping loopback interfaces and loopback/link-local/unspecified/multicast
-// addresses.
+// ifaceAttributes builds the descriptive attribute map for an interface,
+// omitting every empty/zero field. Returns nil when nothing is known.
+func ifaceAttributes(ia ifaceAddrs) map[string]any {
+	attrs := map[string]any{}
+	if ia.OperState != "" {
+		attrs[attrKeyOperState] = ia.OperState
+	}
+	if ia.MAC != "" {
+		attrs[attrKeyMAC] = ia.MAC
+	}
+	if ia.MTU > 0 {
+		attrs[attrKeyMTU] = ia.MTU
+	}
+	if ia.Type != "" {
+		attrs[attrKeyType] = ia.Type
+	}
+	if ia.Duplex != "" {
+		attrs[attrKeyDuplex] = ia.Duplex
+	}
+	if ia.Speed > 0 {
+		attrs[attrKeySpeed] = ia.Speed
+	}
+	if len(attrs) == 0 {
+		return nil
+	}
+	return attrs
+}
+
+// enumerate returns the host's relevant non-loopback interfaces with their
+// descriptive metadata and any resolvable unicast IPs (loopback/link-local/
+// unspecified/multicast addresses dropped).
+//
+// AT13 inventory rule (toise#231/#239): keep every interface with an IP
+// (including named virtual ones — bridges/bonds/vlans) plus IP-less
+// physical/wireless NICs (so a link going down is a clean state_changed); drop
+// IP-less virtual interfaces, which on container/k8s hosts are the ephemeral
+// veth/cali/cni plumbing — pure cardinality/churn with no standalone meaning.
 func (s *Source) enumerate() ([]ifaceAddrs, error) {
 	ifFn := s.interfaces
 	if ifFn == nil {
@@ -151,6 +225,10 @@ func (s *Source) enumerate() ([]ifaceAddrs, error) {
 	ifaces, err := ifFn()
 	if err != nil {
 		return nil, err
+	}
+	lmFn := s.link
+	if lmFn == nil {
+		lmFn = resolveLinkMeta
 	}
 	out := make([]ifaceAddrs, 0, len(ifaces))
 	for _, ifc := range ifaces {
@@ -163,11 +241,44 @@ func (s *Source) enumerate() ([]ifaceAddrs, error) {
 				ips = append(ips, ip)
 			}
 		}
-		if len(ips) > 0 {
-			out = append(out, ifaceAddrs{Name: ifc.Name, IPs: ips})
+		lm := lmFn(ifc.Name, ifc.Flags)
+		// Drop IP-less virtual interfaces (ephemeral container plumbing). Type
+		// is only known on Linux; an unknown type ("" on other OSes) is kept,
+		// since the veth churn it targets is a Linux-container concern.
+		if len(ips) == 0 && lm.Type == "virtual" {
+			continue
 		}
+		out = append(out, ifaceAddrs{
+			Name: ifc.Name, IPs: ips,
+			MAC: ifc.HardwareAddr, MTU: int64(ifc.MTU),
+			OperState: lm.OperState, Type: lm.Type, Duplex: lm.Duplex, Speed: lm.Speed,
+		})
 	}
 	return out, nil
+}
+
+// resolveLinkMeta returns the interface descriptive metadata: the sysfs-derived
+// fields on Linux (type/duplex/speed and the carrier oper_state), with the
+// administrative IFF_UP flag as the oper_state fallback when sysfs is
+// unavailable (non-Linux, or operstate "unknown").
+func resolveLinkMeta(name string, flags []string) linkMeta {
+	lm := readSysLink(name)
+	if lm.OperState == "" {
+		lm.OperState = operStateFromFlags(flags)
+	}
+	return lm
+}
+
+// operStateFromFlags derives up/down from the gopsutil flag set (IFF_UP). This
+// is the administrative state — a coarser signal than the carrier state, used
+// only when the precise sysfs operstate is unavailable.
+func operStateFromFlags(flags []string) string {
+	for _, f := range flags {
+		if f == "up" {
+			return "up"
+		}
+	}
+	return "down"
 }
 
 // isLoopbackIface reports whether the gopsutil flag set marks a loopback
@@ -184,6 +295,12 @@ func isLoopbackIface(flags []string) bool {
 // resolvableIP returns the bare IP of a gopsutil interface address ("ip/prefix"
 // or a bare ip), or "" if it is not an address a remote peer could be resolved
 // against (loopback, link-local, unspecified, multicast, or unparseable).
+//
+// This gates whether an interface is KEPT (an interface with any IP is kept,
+// even a virtual bridge), which is a separate question from whether that IP may
+// be emitted as a shared network.address — a Docker bridge gateway (172.17.0.1)
+// is a usable local address that keeps its bridge interface, but is host-local
+// so buildObservation does not emit it as a shared node.
 func resolvableIP(addr string) string {
 	host := addr
 	if ip, _, err := net.ParseCIDR(addr); err == nil {
