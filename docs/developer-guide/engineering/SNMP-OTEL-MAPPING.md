@@ -192,6 +192,16 @@ same device derive byte-identical ids.
   be named by exact identity — an unanchored local port, an unresolvable
   neighbour, or a **MAC-only remote port** (no phantom port, point 7). Supersedes
   `adjacent_to` + `local_port`/`remote_port` attributes. **DONE (#156).**
+  - **Producer-side identity reconciliation (#564).** A device polled directly
+    resolves to its strong id (`serial:`/`engine:`), but the *same* device seen
+    only through a neighbour's LLDP view carries a weak `mac:` (chassis-id) —
+    two nodes for one device, which no consumer feature can repair (the producer
+    must emit one id; exact identity holds in every Toise version). A
+    process-wide registry records each polled device's **chassis MAC → canonical
+    id**; a neighbour known by that MAC reconciles to the canonical id instead of
+    a `mac:` shadow (TTL-bounded, MAC-keyed only — sysName collides on defaults).
+    Residual `mgmt:`/sysName-only cases are the genuinely-hard remainder a future
+    weighted-evidence overlay would address (ADR 0020 Lot B, consumer-gated).
 - **`forwards_to` (bridge FDB) — RETIRED** (#156). The legacy device-to-device
   edge is no longer emitted, and the FDB walk is removed. The FDB gives the
   local learned port and the remote *MAC*, but **not the remote port**, so it

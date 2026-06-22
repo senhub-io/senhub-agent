@@ -13,7 +13,7 @@ import (
 func TestApplyGovernance_StampsSelfDevice(t *testing.T) {
 	self := deviceIdentity{Serial: "SN1", VendorPEN: "9", MgmtIP: "10.0.12.5", SysName: "sw-par-01"}
 	selfID := resolveDeviceID(self)
-	obs := buildObservation(self, lldpTopology{}, nil, nil, nil)
+	obs := buildObservation(self, lldpTopology{}, nil, nil, nil, resolveDeviceID)
 
 	rules, err := governance.ParseRules([]any{
 		map[string]any{
@@ -69,7 +69,7 @@ func TestBuildObservation_ConnectedTo(t *testing.T) {
 			SysName:          "neigh",
 		}},
 	}
-	obs := buildObservation(self, topo, nil, nil, nil)
+	obs := buildObservation(self, topo, nil, nil, nil, resolveDeviceID)
 
 	// self device + neighbour device (the remote port entity is referenced by
 	// the edge, not emitted here — the neighbour's own poll emits it).
@@ -115,7 +115,7 @@ func TestBuildObservation_ConnectedTo_Gating(t *testing.T) {
 			PortIdSubtype: portSubtypeIfName, PortId: []byte("Gi0/2"), SysName: "n2",
 		},
 	}}
-	obs := buildObservation(self, topo, nil, ifaces, nil)
+	obs := buildObservation(self, topo, nil, ifaces, nil, resolveDeviceID)
 
 	for _, r := range obs.Relations {
 		if r.Type == relConnectedTo {
@@ -135,14 +135,14 @@ func TestBuildObservation_ConnectedTo_Gating(t *testing.T) {
 }
 
 func TestBuildObservation_NoNeighbors(t *testing.T) {
-	obs := buildObservation(deviceIdentity{Serial: "X", VendorPEN: "9"}, lldpTopology{}, nil, nil, nil)
+	obs := buildObservation(deviceIdentity{Serial: "X", VendorPEN: "9"}, lldpTopology{}, nil, nil, nil, resolveDeviceID)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-only expected, got %+v", obs)
 	}
 }
 
 func TestBuildObservation_NoIdentity(t *testing.T) {
-	obs := buildObservation(deviceIdentity{}, lldpTopology{}, nil, nil, nil)
+	obs := buildObservation(deviceIdentity{}, lldpTopology{}, nil, nil, nil, resolveDeviceID)
 	if len(obs.Entities) != 0 || len(obs.Relations) != 0 {
 		t.Errorf("expected nothing when device unidentifiable, got %+v", obs)
 	}
@@ -153,7 +153,7 @@ func TestBuildObservation_SkipsSelfLoop(t *testing.T) {
 	topo := lldpTopology{Neighbors: []lldpNeighbor{
 		{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0x01, 0x02}},
 	}}
-	obs := buildObservation(self, topo, nil, nil, nil)
+	obs := buildObservation(self, topo, nil, nil, nil, resolveDeviceID)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-loop should be skipped, got %+v", obs)
 	}
@@ -170,7 +170,7 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 		{Destination: "10.50.0.0/16", NextHop: "10.0.0.9", Type: 3},               // not remote → skip
 		{Destination: "", NextHop: "10.0.0.7", Type: routeTypeRemote},             // unparseable index → skip
 	}
-	obs := buildObservation(self, lldpTopology{}, routes, nil, nil)
+	obs := buildObservation(self, lldpTopology{}, routes, nil, nil, resolveDeviceID)
 
 	// self device + 2 distinct route destinations (10.20.0.0/16, 0.0.0.0/0)
 	if len(obs.Entities) != 3 {
@@ -218,7 +218,7 @@ func TestBuildObservation_NetworkInterface(t *testing.T) {
 		{Index: "4", Name: "", OperStatus: ifOperUp},            // unnamed → skip
 		{Index: "5", Name: "Lo0", OperStatus: ifOperNotPresent}, // notPresent → skip
 	}
-	obs := buildObservation(self, lldpTopology{}, nil, ifaces, nil)
+	obs := buildObservation(self, lldpTopology{}, nil, ifaces, nil, resolveDeviceID)
 
 	// self device + 2 named present interfaces (Gi0/1, Gi0/2)
 	if len(obs.Entities) != 3 {
@@ -278,7 +278,7 @@ func TestBuildObservation_NetworkAddress(t *testing.T) {
 		{IP: "172.17.0.1", IfIndex: "2"},  // Docker bridge gateway (host-local) → skip
 		{IP: "127.0.0.1", IfIndex: "2"},   // loopback (host-local) → skip
 	}
-	obs := buildObservation(self, lldpTopology{}, nil, ifaces, addrs)
+	obs := buildObservation(self, lldpTopology{}, nil, ifaces, addrs, resolveDeviceID)
 
 	var addrEnts, boundTo int
 	for _, e := range obs.Entities {
