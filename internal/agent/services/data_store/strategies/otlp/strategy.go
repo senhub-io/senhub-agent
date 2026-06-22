@@ -586,8 +586,14 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 	s.entitySourceUnregisters = append(s.entitySourceUnregisters,
 		entity.RegisterSource(hostnet.New(hostIDFn)),
 		entity.RegisterSource(hostsvc.New(hostIDFn)),
-		entity.RegisterSource(hostiface.New(hostIDFn)),
-		entity.RegisterSource(hostdep.New(hostIDFn, s.cfg.Entities.DependsOnDebounce)))
+		entity.RegisterSource(hostiface.New(hostIDFn)))
+	// hostdep (outbound dependency flows) is opt-in and off by default —
+	// mapping a host's connections can be privacy-sensitive (#213). When
+	// enabled, an operator CIDR deny-list filters out sensitive peers.
+	if s.cfg.Entities.DependsOnEnabled {
+		s.entitySourceUnregisters = append(s.entitySourceUnregisters,
+			entity.RegisterSource(hostdep.New(hostIDFn, s.cfg.Entities.DependsOnDebounce, s.cfg.Entities.DependsOnExcludeCIDRs)))
+	}
 
 	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
 	det.OnOrphanRelations(func(orphans []entity.Relation) {

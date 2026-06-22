@@ -93,6 +93,7 @@ type Source struct {
 	agentID     func() string                               // nil → agentstate.GetAgentInstanceID
 	selfPID     func() int32                                // nil → os.Getpid
 	threshold   int
+	exclude     []*net.IPNet // peer endpoints in these ranges are dropped (privacy)
 
 	mu     sync.Mutex
 	streak map[peerKey]int // consecutive scrapes a peer endpoint has been seen
@@ -102,12 +103,30 @@ type Source struct {
 // used to mint the dependent service.instance.id (so an outbound dependency
 // hangs off a service tied to this host). threshold is the debounce length (the
 // number of consecutive scrapes a peer must persist before its edge is emitted);
-// a non-positive value falls back to defaultThreshold.
-func New(hostID func() string, threshold int) *Source {
+// a non-positive value falls back to defaultThreshold. exclude lists peer IP
+// ranges whose flows are dropped (operator privacy filter); nil disables it.
+func New(hostID func() string, threshold int, exclude []*net.IPNet) *Source {
 	if threshold < 1 {
 		threshold = defaultThreshold
 	}
-	return &Source{hostID: hostID, threshold: threshold, streak: map[peerKey]int{}}
+	return &Source{hostID: hostID, threshold: threshold, exclude: exclude, streak: map[peerKey]int{}}
+}
+
+// excluded reports whether a peer IP falls in any operator-excluded range.
+func (s *Source) excluded(ip string) bool {
+	if len(s.exclude) == 0 {
+		return false
+	}
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	for _, n := range s.exclude {
+		if n.Contains(parsed) {
+			return true
+		}
+	}
+	return false
 }
 
 // Observe reads the socket table once (one scrape), advances the debounce
@@ -181,7 +200,7 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string) []dependant 
 		if c.Status != statusEstablished || listenPorts[c.Laddr.Port] {
 			continue // not established, or inbound (local port is one of ours)
 		}
-		if !resolvablePeer(c.Raddr.IP) || c.Raddr.Port == 0 {
+		if !resolvablePeer(c.Raddr.IP) || c.Raddr.Port == 0 || s.excluded(c.Raddr.IP) {
 			continue
 		}
 		name, ok := nameCache[c.Pid]

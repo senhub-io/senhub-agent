@@ -17,6 +17,7 @@ package otlp
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -205,6 +206,13 @@ type EntitiesSignal struct {
 	// a dependency is DependsOnDebounce x Interval, so lowering it trades
 	// durability for responsiveness. Must be >= 1.
 	DependsOnDebounce int
+	// DependsOnEnabled gates the outbound dependency source (hostdep). Off by
+	// default — mapping a host's outbound connections can be privacy-sensitive,
+	// so it is opt-in (#213).
+	DependsOnEnabled bool
+	// DependsOnExcludeCIDRs drops dependency flows whose peer address falls in
+	// any of these ranges (operator privacy filter).
+	DependsOnExcludeCIDRs []*net.IPNet
 	// Governance is the operator metadata stamped on this host's entity
 	// (owner/criticality/location/lifecycle/labels). Empty by default.
 	Governance governance.Governance
@@ -775,6 +783,16 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 			}
 			entities.DependsOnDebounce = v
 		}
+		if v, ok := em["depends_on_enabled"].(bool); ok {
+			entities.DependsOnEnabled = v
+		}
+		if raw, ok := em["depends_on_exclude_cidrs"]; ok {
+			cidrs, err := parseCIDRStrings(raw)
+			if err != nil {
+				return fmt.Errorf("entities.depends_on_exclude_cidrs: %w", err)
+			}
+			entities.DependsOnExcludeCIDRs = cidrs
+		}
 		if gov, err := governance.Parse(em["governance"]); err != nil {
 			return fmt.Errorf("entities.governance: %w", err)
 		} else {
@@ -922,4 +940,26 @@ func readInt(raw interface{}) (int, bool) {
 		return int(v), true
 	}
 	return 0, false
+}
+
+// parseCIDRStrings parses a YAML list of CIDR strings into IPNets, rejecting a
+// non-list or a malformed entry.
+func parseCIDRStrings(raw interface{}) ([]*net.IPNet, error) {
+	list, ok := raw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("must be a list of CIDR strings")
+	}
+	out := make([]*net.IPNet, 0, len(list))
+	for i, item := range list {
+		s, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("entry %d is not a string", i)
+		}
+		_, n, err := net.ParseCIDR(strings.TrimSpace(s))
+		if err != nil {
+			return nil, fmt.Errorf("entry %d %q: %w", i, s, err)
+		}
+		out = append(out, n)
+	}
+	return out, nil
 }
