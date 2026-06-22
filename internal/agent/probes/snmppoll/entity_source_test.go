@@ -13,7 +13,7 @@ import (
 func TestApplyGovernance_StampsSelfDevice(t *testing.T) {
 	self := deviceIdentity{Serial: "SN1", VendorPEN: "9", MgmtIP: "10.0.12.5", SysName: "sw-par-01"}
 	selfID := resolveDeviceID(self)
-	obs := buildObservation(self, lldpTopology{}, nil, nil, nil)
+	obs := buildObservation(self, lldpTopology{}, nil, nil, nil, resolveDeviceID)
 
 	rules, err := governance.ParseRules([]any{
 		map[string]any{
@@ -69,7 +69,7 @@ func TestBuildObservation_ConnectedTo(t *testing.T) {
 			SysName:          "neigh",
 		}},
 	}
-	obs := buildObservation(self, topo, nil, nil, nil)
+	obs := buildObservation(self, topo, nil, nil, nil, resolveDeviceID)
 
 	// self device + neighbour device (the remote port entity is referenced by
 	// the edge, not emitted here — the neighbour's own poll emits it).
@@ -115,7 +115,7 @@ func TestBuildObservation_ConnectedTo_Gating(t *testing.T) {
 			PortIdSubtype: portSubtypeIfName, PortId: []byte("Gi0/2"), SysName: "n2",
 		},
 	}}
-	obs := buildObservation(self, topo, nil, ifaces, nil)
+	obs := buildObservation(self, topo, nil, ifaces, nil, resolveDeviceID)
 
 	for _, r := range obs.Relations {
 		if r.Type == relConnectedTo {
@@ -135,14 +135,14 @@ func TestBuildObservation_ConnectedTo_Gating(t *testing.T) {
 }
 
 func TestBuildObservation_NoNeighbors(t *testing.T) {
-	obs := buildObservation(deviceIdentity{Serial: "X", VendorPEN: "9"}, lldpTopology{}, nil, nil, nil)
+	obs := buildObservation(deviceIdentity{Serial: "X", VendorPEN: "9"}, lldpTopology{}, nil, nil, nil, resolveDeviceID)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-only expected, got %+v", obs)
 	}
 }
 
 func TestBuildObservation_NoIdentity(t *testing.T) {
-	obs := buildObservation(deviceIdentity{}, lldpTopology{}, nil, nil, nil)
+	obs := buildObservation(deviceIdentity{}, lldpTopology{}, nil, nil, nil, resolveDeviceID)
 	if len(obs.Entities) != 0 || len(obs.Relations) != 0 {
 		t.Errorf("expected nothing when device unidentifiable, got %+v", obs)
 	}
@@ -153,7 +153,7 @@ func TestBuildObservation_SkipsSelfLoop(t *testing.T) {
 	topo := lldpTopology{Neighbors: []lldpNeighbor{
 		{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0x01, 0x02}},
 	}}
-	obs := buildObservation(self, topo, nil, nil, nil)
+	obs := buildObservation(self, topo, nil, nil, nil, resolveDeviceID)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {
 		t.Errorf("self-loop should be skipped, got %+v", obs)
 	}
@@ -170,7 +170,7 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 		{Destination: "10.50.0.0/16", NextHop: "10.0.0.9", Type: 3},               // not remote → skip
 		{Destination: "", NextHop: "10.0.0.7", Type: routeTypeRemote},             // unparseable index → skip
 	}
-	obs := buildObservation(self, lldpTopology{}, routes, nil, nil)
+	obs := buildObservation(self, lldpTopology{}, routes, nil, nil, resolveDeviceID)
 
 	// self device + 2 distinct route destinations (10.20.0.0/16, 0.0.0.0/0)
 	if len(obs.Entities) != 3 {
@@ -218,7 +218,7 @@ func TestBuildObservation_NetworkInterface(t *testing.T) {
 		{Index: "4", Name: "", OperStatus: ifOperUp},            // unnamed → skip
 		{Index: "5", Name: "Lo0", OperStatus: ifOperNotPresent}, // notPresent → skip
 	}
-	obs := buildObservation(self, lldpTopology{}, nil, ifaces, nil)
+	obs := buildObservation(self, lldpTopology{}, nil, ifaces, nil, resolveDeviceID)
 
 	// self device + 2 named present interfaces (Gi0/1, Gi0/2)
 	if len(obs.Entities) != 3 {
@@ -267,13 +267,20 @@ func TestBuildObservation_NetworkInterface(t *testing.T) {
 
 func TestBuildObservation_NetworkAddress(t *testing.T) {
 	self := deviceIdentity{Serial: "S1", VendorPEN: "9"}
-	ifaces := []ifaceRow{{Index: "1", Name: "Gi0/1", OperStatus: ifOperUp}}
+	ifaces := []ifaceRow{
+		{Index: "1", Name: "Gi0/1", OperStatus: ifOperUp},
+		{Index: "2", Name: "docker0", OperStatus: ifOperUp},
+		{Index: "3", Name: "br-dc4ddc994709", OperStatus: ifOperUp},
+	}
 	addrs := []ipAddr{
 		{IP: "10.0.0.1", IfIndex: "1"},    // bound to Gi0/1 (also a host's gateway → the join)
 		{IP: "10.0.0.1", IfIndex: "1"},    // dup IP → skip
 		{IP: "192.168.9.9", IfIndex: "9"}, // ifIndex 9 not among ifaces → can't bind, skip
+		{IP: "172.17.0.1", IfIndex: "2"},  // Docker default bridge (host-local IP) → skip
+		{IP: "127.0.0.1", IfIndex: "2"},   // loopback (host-local) → skip
+		{IP: "172.18.0.1", IfIndex: "3"},  // Docker user bridge on br-<hex> → skip by iface name
 	}
-	obs := buildObservation(self, lldpTopology{}, nil, ifaces, addrs)
+	obs := buildObservation(self, lldpTopology{}, nil, ifaces, addrs, resolveDeviceID)
 
 	var addrEnts, boundTo int
 	for _, e := range obs.Entities {
@@ -301,7 +308,7 @@ func TestBuildObservation_NetworkAddress(t *testing.T) {
 		}
 	}
 	if addrEnts != 1 || boundTo != 1 {
-		t.Fatalf("addrEnts=%d boundTo=%d, want 1/1 (dup + unbindable skipped)", addrEnts, boundTo)
+		t.Fatalf("addrEnts=%d boundTo=%d, want 1/1 (dup + unbindable + host-local skipped)", addrEnts, boundTo)
 	}
 }
 
@@ -402,7 +409,11 @@ func TestMaybeSweep_PopulatesAndRateLimits(t *testing.T) {
 func TestSelfAttrs_Readable(t *testing.T) {
 	// Descriptive attributes use the frozen dotted casing so a backend shows a
 	// readable device, not just the cryptic id.
-	self := deviceIdentity{SysName: "core-sw-01", MgmtIP: "10.0.0.1", VendorPEN: "9", Services: 0x06}
+	self := deviceIdentity{
+		SysName: "core-sw-01", MgmtIP: "10.0.0.1", VendorPEN: "9", Services: 0x06,
+		SysDescr: "Cisco IOS Software, C2960", HwVendor: "Cisco", HwModel: "WS-C2960-24TT-L",
+		HwFirmware: "15.0(2)SE",
+	}
 	a := selfAttrs(self)
 	if a["sys.name"] != "core-sw-01" {
 		t.Errorf("sys.name = %v, want core-sw-01 (dotted key, not sys_name)", a["sys.name"])
@@ -415,6 +426,12 @@ func TestSelfAttrs_Readable(t *testing.T) {
 	}
 	if a["vendor"] != "cisco" {
 		t.Errorf("vendor = %v, want cisco (PEN 9)", a["vendor"])
+	}
+	if a[attrSysDescr] != "Cisco IOS Software, C2960" {
+		t.Errorf("sys.descr = %v", a[attrSysDescr])
+	}
+	if a[attrHwVendor] != "Cisco" || a[attrHwModel] != "WS-C2960-24TT-L" || a[attrHwFirmwareVer] != "15.0(2)SE" {
+		t.Errorf("hw.* nameplate = vendor:%v model:%v fw:%v", a[attrHwVendor], a[attrHwModel], a[attrHwFirmwareVer])
 	}
 	if _, ok := a["sys_name"]; ok {
 		t.Error("legacy sys_name (underscore) must not be emitted")
