@@ -552,6 +552,7 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 			DiskTotal:        hi.DiskTotal,
 			Virtualization:   hi.Virtualization,
 			ChassisType:      hi.ChassisType,
+			Governance:       s.cfg.Entities.Governance.Attributes(),
 		}, nil
 	}
 	agentFn := func() entity.AgentIdentity {

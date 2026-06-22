@@ -59,7 +59,7 @@ func TestBuildHypervObservation_NoVMs(t *testing.T) {
 // machine-id → compute.vm entity with {host.id, vmid} identity.
 func TestBuildHypervObservation_ComputeVM(t *testing.T) {
 	hostID := "hyperv-host-machine-id"
-	vm := vmInfo{GUID: "vm-guid-abc", VMName: "TestVM", State: "running"}
+	vm := vmInfo{GUID: "vm-guid-abc", VMName: "TestVM", State: "running", VCPU: 4}
 	obs := buildHypervObservation([]vmInfo{vm}, hostID, noGuestID, "")
 
 	if len(obs.Entities) != 1 {
@@ -75,8 +75,18 @@ func TestBuildHypervObservation_ComputeVM(t *testing.T) {
 	if e.ID["vmid"] != "vm-guid-abc" {
 		t.Errorf("entity id vmid: want %q, got %q", "vm-guid-abc", e.ID["vmid"])
 	}
-	if e.Attributes["vm.name"] != "TestVM" {
-		t.Errorf("vm.name attribute: want TestVM, got %v", e.Attributes["vm.name"])
+	// The VM display name rides host.name (Toise Q2), not a vm.name attribute.
+	if e.Attributes["host.name"] != "TestVM" {
+		t.Errorf("host.name attribute: want TestVM, got %v", e.Attributes["host.name"])
+	}
+	if _, leaked := e.Attributes["vm.name"]; leaked {
+		t.Errorf("vm.name must be replaced by host.name: %v", e.Attributes)
+	}
+	if e.Attributes["host.virtualization"] != "hyperv" {
+		t.Errorf("host.virtualization: want hyperv, got %v", e.Attributes["host.virtualization"])
+	}
+	if e.Attributes["host.cpu.logical.count"] != int64(4) {
+		t.Errorf("host.cpu.logical.count: want 4, got %v", e.Attributes["host.cpu.logical.count"])
 	}
 	// Power state rides the "status" stateKey (not a plain vm.state attribute),
 	// so a VM powering off classifies as entity.state_changed.

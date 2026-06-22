@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/governance"
 )
 
 // Default values mirror the OTel SDK defaults wherever one exists, so an
@@ -212,6 +213,9 @@ type EntitiesSignal struct {
 	// DependsOnExcludeCIDRs drops dependency flows whose peer address falls in
 	// any of these ranges (operator privacy filter).
 	DependsOnExcludeCIDRs []*net.IPNet
+	// Governance is the operator metadata stamped on this host's entity
+	// (owner/criticality/location/lifecycle/labels). Empty by default.
+	Governance governance.Governance
 }
 
 // TracesSignal holds traces-specific knobs. Disabled by default — the
@@ -788,6 +792,11 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 				return fmt.Errorf("entities.depends_on_exclude_cidrs: %w", err)
 			}
 			entities.DependsOnExcludeCIDRs = cidrs
+		}
+		if gov, err := governance.Parse(em["governance"]); err != nil {
+			return fmt.Errorf("entities.governance: %w", err)
+		} else {
+			entities.Governance = gov
 		}
 	}
 
