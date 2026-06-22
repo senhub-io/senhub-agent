@@ -252,6 +252,13 @@ type deviceIdentity struct {
 	SysName    string // sysName / lldpRemSysName
 	MgmtIP     string // the polled target address (mutable — last resort)
 	Services   int    // sysServices bitmask — descriptive device.role (router/switch)
+
+	// Descriptive-only (never identity): hardware nameplate of the single
+	// chassis (ENTITY-MIB) and the device's sysDescr line.
+	SysDescr   string // sysDescr.0 — free-form vendor/model/OS string
+	HwVendor   string // entPhysicalMfgName of the chassis
+	HwModel    string // entPhysicalModelName of the chassis
+	HwFirmware string // entPhysicalFirmwareRev of the chassis
 }
 
 // resolveDeviceID produces the single network.device.id with the Toise-frozen
