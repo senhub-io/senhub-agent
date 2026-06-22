@@ -21,8 +21,8 @@ func testEntitySource(
 			"server.address": "127.0.0.1",
 			"server.port":    int64(9901),
 		},
-		fetchNodeID: nodeIDFunc,
-		hostID:      hostIDFunc,
+		fetchInfo: func() (string, string) { return nodeIDFunc(), "" },
+		hostID:    hostIDFunc,
 	}
 	if instanceName != "" {
 		s.idOnce.Do(func() {
@@ -260,9 +260,12 @@ func TestFetchEnvoyNodeID_Integration(t *testing.T) {
 	defer srv.Close()
 
 	client := &http.Client{}
-	got := fetchEnvoyNodeID(client, srv.URL)
+	got, version := fetchEnvoyServerInfo(client, srv.URL)
 	if got != "edge-proxy-eu-west-1" {
-		t.Errorf("fetchEnvoyNodeID = %q, want %q", got, "edge-proxy-eu-west-1")
+		t.Errorf("fetchEnvoyServerInfo node id = %q, want %q", got, "edge-proxy-eu-west-1")
+	}
+	if version != "1.30.0" {
+		t.Errorf("fetchEnvoyServerInfo version = %q, want 1.30.0", version)
 	}
 }
 
@@ -277,9 +280,28 @@ func TestFetchEnvoyNodeID_EmptyNodeID(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got := fetchEnvoyNodeID(&http.Client{}, srv.URL)
+	got, _ := fetchEnvoyServerInfo(&http.Client{}, srv.URL)
 	if got != "" {
-		t.Errorf("fetchEnvoyNodeID = %q, want empty string", got)
+		t.Errorf("fetchEnvoyServerInfo node id = %q, want empty string", got)
+	}
+}
+
+// TestEntitySource_ServiceVersion verifies the /server_info version rides the
+// entity as service.version (toise#216 AT1).
+func TestEntitySource_ServiceVersion(t *testing.T) {
+	s := &envoyEntitySource{
+		descAttr:  map[string]any{"service.name": "envoy"},
+		fetchInfo: func() (string, string) { return "node-1", "1.30.0" },
+		hostID:    func() string { return "h" },
+	}
+	s.setReachable(true)
+
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("Observe ok=false")
+	}
+	if got := obs.Entities[0].Attributes["service.version"]; got != "1.30.0" {
+		t.Errorf("service.version = %v, want 1.30.0", got)
 	}
 }
 

@@ -149,6 +149,9 @@ func TestParseConfig_EntitiesSignalDefault(t *testing.T) {
 	if cfg.Entities.BufferSize != DefaultEntitiesBufferSize {
 		t.Errorf("Entities.BufferSize=%d, want %d", cfg.Entities.BufferSize, DefaultEntitiesBufferSize)
 	}
+	if cfg.Entities.DependsOnDebounce != DefaultDependsOnDebounce {
+		t.Errorf("Entities.DependsOnDebounce=%d, want %d", cfg.Entities.DependsOnDebounce, DefaultDependsOnDebounce)
+	}
 }
 
 func TestParseConfig_EntitiesSignalOverride(t *testing.T) {
@@ -156,9 +159,10 @@ func TestParseConfig_EntitiesSignalOverride(t *testing.T) {
 		"endpoint": "x:4317",
 		"signals": map[string]interface{}{
 			"entities": map[string]interface{}{
-				"enabled":     true,
-				"interval":    "120s",
-				"buffer_size": 512,
+				"enabled":             true,
+				"interval":            "120s",
+				"buffer_size":         512,
+				"depends_on_debounce": 5,
 			},
 		},
 	})
@@ -173,6 +177,21 @@ func TestParseConfig_EntitiesSignalOverride(t *testing.T) {
 	}
 	if cfg.Entities.BufferSize != 512 {
 		t.Errorf("Entities.BufferSize=%d, want 512", cfg.Entities.BufferSize)
+	}
+	if cfg.Entities.DependsOnDebounce != 5 {
+		t.Errorf("Entities.DependsOnDebounce=%d, want 5", cfg.Entities.DependsOnDebounce)
+	}
+}
+
+func TestParseConfig_EntitiesDependsOnDebounceRejectsBelowOne(t *testing.T) {
+	_, err := ParseConfig(map[string]interface{}{
+		"endpoint": "x:4317",
+		"signals": map[string]interface{}{
+			"entities": map[string]interface{}{"depends_on_debounce": 0},
+		},
+	})
+	if err == nil {
+		t.Fatal("depends_on_debounce=0 must be rejected (must be >= 1)")
 	}
 }
 

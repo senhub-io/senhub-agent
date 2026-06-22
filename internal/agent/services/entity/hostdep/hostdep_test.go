@@ -2,12 +2,39 @@ package hostdep
 
 import (
 	"errors"
+	"net"
 	"testing"
 
 	gnet "github.com/shirou/gopsutil/v3/net"
 
 	"senhub-agent.go/internal/agent/services/entity"
 )
+
+// TestExcludeCIDR_DropsExcludedPeer pins the #213 privacy filter: a dependency
+// flow whose peer falls in an excluded CIDR is dropped; others pass.
+func TestExcludeCIDR_DropsExcludedPeer(t *testing.T) {
+	_, ipnet, err := net.ParseCIDR("10.0.0.0/8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(func() string { return "h-1" }, 1, []*net.IPNet{ipnet})
+	s.procName = func(int32) string { return "curl" }
+	s.connections = fakeConns([]gnet.ConnectionStat{
+		conn(statusEstablished, "192.0.2.1", 40000, "10.1.2.3", 443, 5),    // peer in 10/8 → excluded
+		conn(statusEstablished, "192.0.2.1", 40001, "203.0.113.9", 443, 5), // peer outside → kept
+	})
+
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("Observe ok=false")
+	}
+	if hasEndpoint(obs, "10.1.2.3", "443") {
+		t.Errorf("excluded peer 10.1.2.3 must be dropped: %+v", obs.Entities)
+	}
+	if !hasEndpoint(obs, "203.0.113.9", "443") {
+		t.Errorf("non-excluded peer 203.0.113.9 must be emitted: %+v", obs.Entities)
+	}
+}
 
 // fakeConns returns a connections function serving fixed rows, ignoring the
 // kind argument.
@@ -25,7 +52,7 @@ func conn(status, laddr string, lport uint32, raddr string, rport uint32, pid in
 }
 
 func newTestSource(rows []gnet.ConnectionStat) *Source {
-	s := New(func() string { return "h-1" })
+	s := New(func() string { return "h-1" }, defaultThreshold, nil)
 	s.connections = fakeConns(rows)
 	s.procName = func(pid int32) string {
 		switch pid {
@@ -97,6 +124,83 @@ func TestDebounce_EmitsOnlyAfterThreshold(t *testing.T) {
 	}
 	if !foundSvc {
 		t.Errorf("dependent service.instance nginx@h-1 not emitted: %+v", obs.Entities)
+	}
+}
+
+func TestNew_ConfigurableThreshold(t *testing.T) {
+	rows := []gnet.ConnectionStat{
+		conn(statusEstablished, "10.0.0.5", 51000, "10.0.0.9", 5432, 100),
+	}
+	// threshold = 1 → durable on the first scrape (no debounce wait).
+	s := New(func() string { return "h-1" }, 1, nil)
+	s.connections = fakeConns(rows)
+	s.procName = func(int32) string { return "nginx" }
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("first scrape ok=false")
+	}
+	if relCount(obs, relDependsOn) != 1 {
+		t.Errorf("threshold=1 must emit on the first scrape, got %+v", obs.Relations)
+	}
+
+	// non-positive → falls back to defaultThreshold.
+	if got := New(func() string { return "h" }, 0, nil).threshold; got != defaultThreshold {
+		t.Errorf("threshold 0 → %d, want fallback %d", got, defaultThreshold)
+	}
+	if got := New(func() string { return "h" }, -5, nil).threshold; got != defaultThreshold {
+		t.Errorf("negative threshold → %d, want fallback %d", got, defaultThreshold)
+	}
+}
+
+func TestAgentSelfDependencyUsesFoundationIdentity(t *testing.T) {
+	const agentKey = "a5f503ab-key"
+	rows := []gnet.ConnectionStat{
+		conn(statusEstablished, "10.0.0.5", 40000, "10.0.0.9", 443, 4242), // agent's own pid
+		conn(statusEstablished, "10.0.0.5", 41000, "10.0.0.8", 6379, 100), // nginx
+	}
+	s := newTestSource(rows)
+	s.selfPID = func() int32 { return 4242 }
+	s.agentID = func() string { return agentKey }
+	var obs entity.Observation
+	for i := 0; i < 3; i++ {
+		obs, _ = s.Observe()
+	}
+
+	// Agent's own dependency attaches to the foundation service.instance (the
+	// agent key): a depends_on with that From, but NO duplicate node and NO
+	// runs_on (the foundation owns those) — #494.
+	var agentDepends bool
+	for _, r := range obs.Relations {
+		if r.Type == relDependsOn && r.FromID[idKeyServiceInstanceID] == agentKey {
+			agentDepends = true
+		}
+		if r.Type == relRunsOn && r.FromID[idKeyServiceInstanceID] == agentKey {
+			t.Errorf("must not emit runs_on for the foundation-owned agent identity: %+v", r)
+		}
+	}
+	if !agentDepends {
+		t.Errorf("agent's own depends_on must use the foundation key %q: %+v", agentKey, obs.Relations)
+	}
+	for _, e := range obs.Entities {
+		if e.Type == entityTypeServiceInstance && e.ID[idKeyServiceInstanceID] == agentKey {
+			t.Errorf("must not emit a duplicate service.instance entity for the foundation key: %+v", e)
+		}
+	}
+
+	// A non-agent process still mints <exe>@host with its own node + runs_on.
+	var nginxNode, nginxRunsOn bool
+	for _, e := range obs.Entities {
+		if e.Type == entityTypeServiceInstance && e.ID[idKeyServiceInstanceID] == "nginx@h-1" {
+			nginxNode = true
+		}
+	}
+	for _, r := range obs.Relations {
+		if r.Type == relRunsOn && r.FromID[idKeyServiceInstanceID] == "nginx@h-1" {
+			nginxRunsOn = true
+		}
+	}
+	if !nginxNode || !nginxRunsOn {
+		t.Errorf("non-agent process must still mint <exe>@host with entity+runs_on (node=%v runs_on=%v)", nginxNode, nginxRunsOn)
 	}
 }
 

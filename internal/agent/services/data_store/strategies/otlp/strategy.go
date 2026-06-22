@@ -531,7 +531,29 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 		if err != nil {
 			return entity.HostIdentity{}, err
 		}
-		return entity.HostIdentity{ID: hi.ID, Name: hi.Name, OSType: hi.OSType}, nil
+		return entity.HostIdentity{
+			ID:               hi.ID,
+			Name:             hi.Name,
+			OSType:           hi.OSType,
+			Arch:             hi.Arch,
+			OSName:           hi.OSName,
+			OSVersion:        hi.OSVersion,
+			OSBuildID:        hi.OSBuildID,
+			OSDescription:    hi.OSDescription,
+			CPUModel:         hi.CPUModel,
+			CPUVendor:        hi.CPUVendor,
+			HWVendor:         hi.HWVendor,
+			HWModel:          hi.HWModel,
+			HWSerial:         hi.HWSerial,
+			CPULogicalCount:  hi.CPULogicalCount,
+			CPUPhysicalCount: hi.CPUPhysicalCount,
+			CPUFreqHz:        hi.CPUFreqHz,
+			MemTotal:         hi.MemTotal,
+			DiskTotal:        hi.DiskTotal,
+			Virtualization:   hi.Virtualization,
+			ChassisType:      hi.ChassisType,
+			Governance:       s.cfg.Entities.Governance.Attributes(),
+		}, nil
 	}
 	agentFn := func() entity.AgentIdentity {
 		return entity.AgentIdentity{
@@ -564,8 +586,14 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 	s.entitySourceUnregisters = append(s.entitySourceUnregisters,
 		entity.RegisterSource(hostnet.New(hostIDFn)),
 		entity.RegisterSource(hostsvc.New(hostIDFn)),
-		entity.RegisterSource(hostiface.New(hostIDFn)),
-		entity.RegisterSource(hostdep.New(hostIDFn)))
+		entity.RegisterSource(hostiface.New(hostIDFn)))
+	// hostdep (outbound dependency flows) is opt-in and off by default —
+	// mapping a host's connections can be privacy-sensitive (#213). When
+	// enabled, an operator CIDR deny-list filters out sensitive peers.
+	if s.cfg.Entities.DependsOnEnabled {
+		s.entitySourceUnregisters = append(s.entitySourceUnregisters,
+			entity.RegisterSource(hostdep.New(hostIDFn, s.cfg.Entities.DependsOnDebounce, s.cfg.Entities.DependsOnExcludeCIDRs)))
+	}
 
 	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
 	det.OnOrphanRelations(func(orphans []entity.Relation) {

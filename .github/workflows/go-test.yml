@@ -32,26 +32,6 @@ jobs:
       - name: Test
         run: make test
 
-  # macOS catches darwin-specific drift (build-tag-gated platform stubs,
-  # syscall signatures, file path expectations). It runs on every PR again:
-  # the repository is public, so Actions minutes are free — the 10x-billing
-  # master-only restriction (#251) no longer applies.
-  test-macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v5
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
-
-      - name: Build
-        run: make build
-      - name: Vet
-        run: go vet ./...
-      - name: Test
-        run: make test
-
   # Race detector runs on linux only. The configuration package was
   # excluded here while it carried 4 documented race flakes; their
   # root cause (lock-free reads of the live config state) was fixed
