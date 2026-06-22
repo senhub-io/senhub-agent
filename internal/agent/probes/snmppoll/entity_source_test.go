@@ -3,7 +3,47 @@ package snmppoll
 import (
 	"testing"
 	"time"
+
+	"senhub-agent.go/internal/agent/services/governance"
 )
+
+// TestApplyGovernance_StampsSelfDevice verifies the governance wiring: the
+// single-target governance block and a matching discovery rule both land on the
+// polled network.device entity.
+func TestApplyGovernance_StampsSelfDevice(t *testing.T) {
+	self := deviceIdentity{Serial: "SN1", VendorPEN: "9", MgmtIP: "10.0.12.5", SysName: "sw-par-01"}
+	selfID := resolveDeviceID(self)
+	obs := buildObservation(self, lldpTopology{}, nil, nil, nil)
+
+	rules, err := governance.ParseRules([]any{
+		map[string]any{
+			"match":      map[string]any{"cidr": "10.0.12.0/24"},
+			"governance": map[string]any{"location": map[string]any{"rack": "R12"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config{
+		Governance: governance.Governance{OwnerTeam: "net-ops", Criticality: "high"},
+		Discovery:  &discoveryConfig{GovernanceRules: rules},
+	}
+	applyGovernance(obs, cfg, self, selfID)
+
+	var attrs map[string]any
+	for i := range obs.Entities {
+		if obs.Entities[i].Type == entityTypeNetworkDevice && obs.Entities[i].ID[idKeyNetworkDevice] == selfID {
+			attrs = obs.Entities[i].Attributes
+		}
+	}
+	if attrs == nil {
+		t.Fatalf("self device %q not found in %+v", selfID, obs.Entities)
+	}
+	if attrs["entity.owner.team"] != "net-ops" || attrs["service.criticality"] != "high" ||
+		attrs["entity.location.rack"] != "R12" {
+		t.Errorf("governance not stamped on the self device: %v", attrs)
+	}
+}
 
 func TestObserve_EmptyBeforeSweep(t *testing.T) {
 	s := newEntitySource(&config{Target: "192.0.2.10"}, testLogger(t))
