@@ -32,25 +32,43 @@ const (
 	idKeyNetworkAddress        = "network.address"
 	attrNextHopIP              = "next_hop.ip"
 	attrRouteMetric            = "metric"
-	attrOperState              = "oper.state"
-	attrSpeed                  = "speed"
-	relConnectedTo             = "connected_to"
-	relHasRoute                = "has_route"
-	relHasInterface            = "has_interface"
-	relBoundTo                 = "bound_to"
+	// oper_state is a Toise state-key (closed set, underscore spelling): a change
+	// fires entity.state_changed. The old dotted "oper.state" was silently
+	// demoted to an ordinary attribute — see Toise #87 / the SNMP lot fix.
+	attrOperState   = "oper_state"
+	attrSpeed       = "speed"
+	attrMac         = "mac"
+	attrMtu         = "mtu"
+	attrIfType      = "interface.type"
+	attrDuplex      = "duplex"
+	relConnectedTo  = "connected_to"
+	relHasRoute     = "has_route"
+	relHasInterface = "has_interface"
+	relBoundTo      = "bound_to"
+
+	// Polled-device descriptive attribute keys (network.device nameplate).
+	attrSysDescr      = "sys.descr"
+	attrHwVendor      = "hw.vendor"
+	attrHwModel       = "hw.model"
+	attrHwFirmwareVer = "hw.firmware_version"
 
 	// Polled-device identity OIDs (dotted, no leading dot).
-	oidEntPhysicalSerialNum = "1.3.6.1.2.1.47.1.1.1.1.11" // ENTITY-MIB (per physical entity)
-	oidEntPhysicalClass     = "1.3.6.1.2.1.47.1.1.1.1.5"  // entPhysicalClass (3 = chassis)
-	entPhysicalClassChassis = 3
-	oidSnmpEngineIDBase     = "1.3.6.1.6.3.10.2.1.1"
-	oidSnmpEngineID         = "1.3.6.1.6.3.10.2.1.1.0" // SNMP-FRAMEWORK-MIB
-	oidSysNameBase          = "1.3.6.1.2.1.1.5"
-	oidSysName              = "1.3.6.1.2.1.1.5.0"
-	oidSysObjectIDBase      = "1.3.6.1.2.1.1.2"
-	oidSysObjectID          = "1.3.6.1.2.1.1.2.0" // → vendor PEN
-	oidSysServicesBase      = "1.3.6.1.2.1.1.7"
-	oidSysServices          = "1.3.6.1.2.1.1.7.0" // OSI-layer bitmask → device.role
+	oidEntPhysicalSerialNum   = "1.3.6.1.2.1.47.1.1.1.1.11" // ENTITY-MIB (per physical entity)
+	oidEntPhysicalClass       = "1.3.6.1.2.1.47.1.1.1.1.5"  // entPhysicalClass (3 = chassis)
+	oidEntPhysicalMfgName     = "1.3.6.1.2.1.47.1.1.1.1.12" // entPhysicalMfgName
+	oidEntPhysicalModelName   = "1.3.6.1.2.1.47.1.1.1.1.13" // entPhysicalModelName
+	oidEntPhysicalFirmwareRev = "1.3.6.1.2.1.47.1.1.1.1.9"  // entPhysicalFirmwareRev
+	entPhysicalClassChassis   = 3
+	oidSnmpEngineIDBase       = "1.3.6.1.6.3.10.2.1.1"
+	oidSnmpEngineID           = "1.3.6.1.6.3.10.2.1.1.0" // SNMP-FRAMEWORK-MIB
+	oidSysNameBase            = "1.3.6.1.2.1.1.5"
+	oidSysName                = "1.3.6.1.2.1.1.5.0"
+	oidSysDescrBase           = "1.3.6.1.2.1.1.1"
+	oidSysDescr               = "1.3.6.1.2.1.1.1.0" // free-form vendor/model/OS line
+	oidSysObjectIDBase        = "1.3.6.1.2.1.1.2"
+	oidSysObjectID            = "1.3.6.1.2.1.1.2.0" // → vendor PEN
+	oidSysServicesBase        = "1.3.6.1.2.1.1.7"
+	oidSysServices            = "1.3.6.1.2.1.1.7.0" // OSI-layer bitmask → device.role
 )
 
 // snmpEntitySource feeds the entity rail. Observe() never blocks: it returns
@@ -278,6 +296,14 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 			}
 		}
 	}
+	if binds, err := client.WalkRaw(oidSysDescrBase); err == nil {
+		for _, b := range binds {
+			if b.OID == oidSysDescr {
+				di.SysDescr = strings.TrimSpace(snmpcore.OctetText(snmpcore.AsBytes(b.Value)))
+			}
+		}
+	}
+	di.HwVendor, di.HwModel, di.HwFirmware = chassisHardware(client)
 	if di.SysName == "" {
 		di.SysName = loc.SysName
 	}
@@ -285,6 +311,49 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 		di.ChassisMAC = loc.ChassisId
 	}
 	return di
+}
+
+// chassisHardware reads the manufacturer / model / firmware nameplate of the
+// device's single chassis (ENTITY-MIB entPhysical). Like chassisSerial it
+// requires exactly one chassis row; a stack (>1 chassis) yields empty strings
+// rather than latching onto an arbitrary member's nameplate. These are
+// descriptive attributes only — never identity.
+func chassisHardware(client snmpClient) (vendor, model, firmware string) {
+	idx := singleChassisIndex(client)
+	if idx == "" {
+		return "", "", ""
+	}
+	read := func(base string) string {
+		if binds, err := client.WalkRaw(base); err == nil {
+			for _, b := range binds {
+				if bIdx, ok := strings.CutPrefix(b.OID, base+"."); ok && bIdx == idx {
+					return strings.TrimSpace(snmpcore.OctetText(snmpcore.AsBytes(b.Value)))
+				}
+			}
+		}
+		return ""
+	}
+	return read(oidEntPhysicalMfgName), read(oidEntPhysicalModelName), read(oidEntPhysicalFirmwareRev)
+}
+
+// singleChassisIndex returns the entPhysical index of the device's chassis when
+// there is exactly one, or "" (no chassis, or a stack with several). Mirrors the
+// chassis-selection rule chassisSerial uses for the device identity.
+func singleChassisIndex(client snmpClient) string {
+	var chassis []string
+	if binds, err := client.WalkRaw(oidEntPhysicalClass); err == nil {
+		for _, b := range binds {
+			if idx, ok := strings.CutPrefix(b.OID, oidEntPhysicalClass+"."); ok {
+				if v, ok := snmpcore.AsInt(b.Value); ok && v == entPhysicalClassChassis {
+					chassis = append(chassis, idx)
+				}
+			}
+		}
+	}
+	if len(chassis) == 1 {
+		return chassis[0]
+	}
+	return ""
 }
 
 // chassisSerial returns the serial of the device's single chassis, or "" when
@@ -335,8 +404,8 @@ func asString(v any) string {
 // buildObservation maps the polled device, its interfaces, LLDP neighbours,
 // routing table and bridge FDB to the frozen wire shapes:
 //   - network.interface — one entity per named IF-MIB port the device owns
-//     (has_interface), oper.state / speed descriptive; the port inventory that
-//     anchors connected_to;
+//     (has_interface), oper_state state-key + speed/mac/mtu/interface.type/
+//     duplex descriptive; the port inventory that anchors connected_to;
 //   - network.route — one entity per distinct destination CIDR the device owns
 //     (has_route), next hop a scalar next_hop.ip;
 //   - connected_to — bare port-to-port link adjacency from LLDP (supersedes the
@@ -373,6 +442,18 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		attrs := map[string]any{attrOperState: operStateName(ifc.OperStatus)}
 		if ifc.SpeedMbps > 0 {
 			attrs[attrSpeed] = ifc.SpeedMbps * 1_000_000 // Mbit/s → bit/s
+		}
+		if ifc.Mac != "" {
+			attrs[attrMac] = ifc.Mac
+		}
+		if ifc.Mtu > 0 {
+			attrs[attrMtu] = ifc.Mtu
+		}
+		if t := ifTypeName(ifc.IfType); t != "" {
+			attrs[attrIfType] = t
+		}
+		if d := duplexName(ifc.Duplex); d != "" {
+			attrs[attrDuplex] = d
 		}
 		obs.Entities = append(obs.Entities, entity.Entity{
 			Type: entityTypeNetworkInterface, ID: portID, Attributes: attrs,
@@ -505,9 +586,13 @@ func selfAttrs(self deviceIdentity) map[string]any {
 		}
 	}
 	add("sys.name", self.SysName)
+	add(attrSysDescr, self.SysDescr)
 	add("mgmt.ip", canonIP(self.MgmtIP))
 	add("device.role", deviceRole(self.Services))
 	add("vendor", vendorName(self.VendorPEN))
+	add(attrHwVendor, self.HwVendor)
+	add(attrHwModel, self.HwModel)
+	add(attrHwFirmwareVer, self.HwFirmware)
 	return attrs
 }
 

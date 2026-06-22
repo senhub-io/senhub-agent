@@ -402,7 +402,11 @@ func TestMaybeSweep_PopulatesAndRateLimits(t *testing.T) {
 func TestSelfAttrs_Readable(t *testing.T) {
 	// Descriptive attributes use the frozen dotted casing so a backend shows a
 	// readable device, not just the cryptic id.
-	self := deviceIdentity{SysName: "core-sw-01", MgmtIP: "10.0.0.1", VendorPEN: "9", Services: 0x06}
+	self := deviceIdentity{
+		SysName: "core-sw-01", MgmtIP: "10.0.0.1", VendorPEN: "9", Services: 0x06,
+		SysDescr: "Cisco IOS Software, C2960", HwVendor: "Cisco", HwModel: "WS-C2960-24TT-L",
+		HwFirmware: "15.0(2)SE",
+	}
 	a := selfAttrs(self)
 	if a["sys.name"] != "core-sw-01" {
 		t.Errorf("sys.name = %v, want core-sw-01 (dotted key, not sys_name)", a["sys.name"])
@@ -415,6 +419,12 @@ func TestSelfAttrs_Readable(t *testing.T) {
 	}
 	if a["vendor"] != "cisco" {
 		t.Errorf("vendor = %v, want cisco (PEN 9)", a["vendor"])
+	}
+	if a[attrSysDescr] != "Cisco IOS Software, C2960" {
+		t.Errorf("sys.descr = %v", a[attrSysDescr])
+	}
+	if a[attrHwVendor] != "Cisco" || a[attrHwModel] != "WS-C2960-24TT-L" || a[attrHwFirmwareVer] != "15.0(2)SE" {
+		t.Errorf("hw.* nameplate = vendor:%v model:%v fw:%v", a[attrHwVendor], a[attrHwModel], a[attrHwFirmwareVer])
 	}
 	if _, ok := a["sys_name"]; ok {
 		t.Error("legacy sys_name (underscore) must not be emitted")
