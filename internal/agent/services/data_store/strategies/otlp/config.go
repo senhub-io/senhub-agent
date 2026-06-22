@@ -17,10 +17,12 @@ package otlp
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/governance"
 )
 
 // Default values mirror the OTel SDK defaults wherever one exists, so an
@@ -56,6 +58,7 @@ const (
 	DefaultLogsBufferSize     = 10000
 	DefaultEntitiesInterval   = 60 * time.Second
 	DefaultEntitiesBufferSize = 256
+	DefaultDependsOnDebounce  = 3
 	// DefaultMaxStoreSize caps the OTLP strategy's metric-store
 	// cardinality. 50 000 distinct series is comfortable for typical
 	// SenHub agent profiles (host + 1-3 vendor probes ≈ 1-5 k series);
@@ -197,6 +200,22 @@ type EntitiesSignal struct {
 	// each event as the consumer's liveness backstop.
 	Interval   time.Duration
 	BufferSize int
+	// DependsOnDebounce is how many consecutive scrapes a peer endpoint must
+	// persist before its outbound depends_on edge is emitted — the line between
+	// a durable dependency and ephemeral flow. The effective latency to surface
+	// a dependency is DependsOnDebounce x Interval, so lowering it trades
+	// durability for responsiveness. Must be >= 1.
+	DependsOnDebounce int
+	// DependsOnEnabled gates the outbound dependency source (hostdep). Off by
+	// default — mapping a host's outbound connections can be privacy-sensitive,
+	// so it is opt-in (#213).
+	DependsOnEnabled bool
+	// DependsOnExcludeCIDRs drops dependency flows whose peer address falls in
+	// any of these ranges (operator privacy filter).
+	DependsOnExcludeCIDRs []*net.IPNet
+	// Governance is the operator metadata stamped on this host's entity
+	// (owner/criticality/location/lifecycle/labels). Empty by default.
+	Governance governance.Governance
 }
 
 // TracesSignal holds traces-specific knobs. Disabled by default — the
@@ -381,9 +400,10 @@ func defaultConfig() Config {
 			BufferSize:   DefaultLogsBufferSize,
 		},
 		Entities: EntitiesSignal{
-			Enabled:    false,
-			Interval:   DefaultEntitiesInterval,
-			BufferSize: DefaultEntitiesBufferSize,
+			Enabled:           false,
+			Interval:          DefaultEntitiesInterval,
+			BufferSize:        DefaultEntitiesBufferSize,
+			DependsOnDebounce: DefaultDependsOnDebounce,
 		},
 		Traces: TracesSignal{
 			// Disabled by default — opt-in plumbing. Operators
@@ -757,6 +777,27 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 		if v, ok := readInt(em["buffer_size"]); ok {
 			entities.BufferSize = v
 		}
+		if v, ok := readInt(em["depends_on_debounce"]); ok {
+			if v < 1 {
+				return fmt.Errorf("entities.depends_on_debounce must be >= 1, got %d", v)
+			}
+			entities.DependsOnDebounce = v
+		}
+		if v, ok := em["depends_on_enabled"].(bool); ok {
+			entities.DependsOnEnabled = v
+		}
+		if raw, ok := em["depends_on_exclude_cidrs"]; ok {
+			cidrs, err := parseCIDRStrings(raw)
+			if err != nil {
+				return fmt.Errorf("entities.depends_on_exclude_cidrs: %w", err)
+			}
+			entities.DependsOnExcludeCIDRs = cidrs
+		}
+		if gov, err := governance.Parse(em["governance"]); err != nil {
+			return fmt.Errorf("entities.governance: %w", err)
+		} else {
+			entities.Governance = gov
+		}
 	}
 
 	if tm := readStringKeyedMap(m["traces"]); tm != nil {
@@ -899,4 +940,26 @@ func readInt(raw interface{}) (int, bool) {
 		return int(v), true
 	}
 	return 0, false
+}
+
+// parseCIDRStrings parses a YAML list of CIDR strings into IPNets, rejecting a
+// non-list or a malformed entry.
+func parseCIDRStrings(raw interface{}) ([]*net.IPNet, error) {
+	list, ok := raw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("must be a list of CIDR strings")
+	}
+	out := make([]*net.IPNet, 0, len(list))
+	for i, item := range list {
+		s, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("entry %d is not a string", i)
+		}
+		_, n, err := net.ParseCIDR(strings.TrimSpace(s))
+		if err != nil {
+			return nil, fmt.Errorf("entry %d %q: %w", i, s, err)
+		}
+		out = append(out, n)
+	}
+	return out, nil
 }

@@ -8,6 +8,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // ─── config parsing ──────────────────────────────────────────────────────────
@@ -239,6 +240,75 @@ func TestEntitySource_OKAfterPinAndRole(t *testing.T) {
 	if e.Attributes["db.system.name"] != "mysql" {
 		t.Errorf("entity.Attributes[db.system.name] = %v, want mysql", e.Attributes["db.system.name"])
 	}
+}
+
+// TestEntitySource_Version: setVersion surfaces the server version on the
+// entity as the descriptive db.system.version attribute (toise#216 AT1), and
+// the attribute is absent until a version has been reported.
+func TestEntitySource_Version(t *testing.T) {
+	src := newMysqlEntitySource(config{Host: "h", Port: 3306}, nil)
+	src.pinServerUUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+	src.updateRole(dbcommon.RoleStandalone)
+
+	obs, _ := src.Observe()
+	if _, has := obs.Entities[0].Attributes["db.system.version"]; has {
+		t.Error("db.system.version must be absent before a version is reported")
+	}
+
+	src.setVersion("8.0.36")
+	obs, _ = src.Observe()
+	if got := obs.Entities[0].Attributes["db.system.version"]; got != "8.0.36" {
+		t.Errorf("db.system.version = %v, want 8.0.36", got)
+	}
+}
+
+// TestEntitySource_DeploymentPlatform: the detected hosting platform rides the
+// entity under db.deployment.platform (toise#216 AT3), for db-probe parity with
+// postgres. Absent until reported.
+func TestEntitySource_DeploymentPlatform(t *testing.T) {
+	src := newMysqlEntitySource(config{Host: "h", Port: 3306}, nil)
+	src.pinServerUUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+	src.updateRole(dbcommon.RoleStandalone)
+
+	obs, _ := src.Observe()
+	if _, has := obs.Entities[0].Attributes["db.deployment.platform"]; has {
+		t.Error("db.deployment.platform must be absent before the platform is reported")
+	}
+
+	src.setEnvironment("rds")
+	obs, _ = src.Observe()
+	if got := obs.Entities[0].Attributes["db.deployment.platform"]; got != "rds" {
+		t.Errorf("db.deployment.platform = %v, want rds", got)
+	}
+}
+
+// TestEntitySource_LocalDBRunsOnHost: a loopback-reachable db is anchored to the
+// host with runs_on (enterprise#36); a remote db is not.
+func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
+	mk := func(host string) entity.Observation {
+		src := newMysqlEntitySource(config{Host: host, Port: 3306}, nil)
+		src.hostID = func() string { return "h-1" }
+		src.pinServerUUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+		src.updateRole(dbcommon.RoleStandalone)
+		obs, _ := src.Observe()
+		return obs
+	}
+
+	if !hasRunsOnHost(mk("127.0.0.1"), "h-1") {
+		t.Error("loopback db must emit runs_on→host")
+	}
+	if hasRunsOnHost(mk("10.0.0.5"), "h-1") {
+		t.Error("remote db must NOT emit runs_on→host")
+	}
+}
+
+func hasRunsOnHost(obs entity.Observation, hostID string) bool {
+	for _, r := range obs.Relations {
+		if r.Type == "runs_on" && r.FromType == "db" && r.ToType == "host" && r.ToID["host.id"] == hostID {
+			return true
+		}
+	}
+	return false
 }
 
 // TestEntitySource_TechID: when pinServerUUID is given a uuid, the entity id

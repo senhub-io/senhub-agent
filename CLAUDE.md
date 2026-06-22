@@ -20,7 +20,7 @@ Infrastructure monitoring agent (Go, ~72k LOC). Single binary, ships to PRTG / N
 - **Beta tag format**: `X.Y.Z-beta` — **no `v` prefix** (matches the `dev-beta-release.yml` workflow trigger `*.*.*-beta`).
 - **Production tag format**: `X.Y.Z`.
 - Release tags live on the ENTERPRISE repo (senhub-agent-enterprise); its workflows build and publish. Tagging in THIS repo does not release anything (the OSS mirror tags are pushed by the enterprise workflow). The old `make bump-version` target was removed (#283).
-- Distributed binaries matrix: 5 platforms — darwin amd64 / darwin arm64 / linux amd64 / linux arm64 / windows amd64 (plus zipped variants).
+- Distributed binaries matrix: 3 platforms — linux amd64 / linux arm64 / windows amd64 (plus zipped variants). macOS/darwin is a **local-only** dev/test target, never built or published by CI (no customer runs the agent on darwin; the macos runner was a 10x-billing cost sink).
 
 ## Release workflow
 

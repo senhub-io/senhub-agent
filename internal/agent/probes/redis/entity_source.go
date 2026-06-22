@@ -3,6 +3,7 @@ package redis
 import (
 	"sync"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -31,6 +32,8 @@ type entityObserver struct {
 	// pinnedID is the db.instance.id, set once at construction and never
 	// changed afterwards. No mutex is needed for pinnedID itself.
 	pinnedID string
+	// hostID resolves the agent host for a local-db runs_on; nil → dbcommon.HostID.
+	hostID func() string
 
 	mu  sync.Mutex
 	obs entity.Observation
@@ -44,7 +47,7 @@ func newEntityObserver(cfg probeConfig, hostPort string) *entityObserver {
 	if cfg.InstanceName != "" {
 		id = cfg.InstanceName
 	}
-	return &entityObserver{pinnedID: id}
+	return &entityObserver{pinnedID: id, hostID: dbcommon.HostID}
 }
 
 // Observe returns the last cached entity observation. ok is false before the
@@ -65,7 +68,7 @@ func (e *entityObserver) update(cfg probeConfig, info map[string]string) {
 		"server.port":    int64(cfg.Port),
 	}
 	if ver := info["redis_version"]; ver != "" {
-		attrs["db.version"] = ver
+		attrs["db.system.version"] = ver
 	}
 
 	dbID := map[string]any{"db.instance.id": e.pinnedID}
@@ -89,6 +92,12 @@ func (e *entityObserver) update(cfg probeConfig, info map[string]string) {
 			ToType:   "db",
 			ToID:     dbID,
 		})
+	}
+
+	// runs_on edge: db → host when the db is local (loopback) — anchors a local
+	// db to the host it runs on (enterprise#36).
+	if rel, ok := dbcommon.LocalHostRunsOn(dbID, cfg.Host, e.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	e.mu.Lock()

@@ -15,6 +15,29 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
+// TestEntityObserver_LocalDBRunsOnHost: a loopback-reachable redis is anchored to
+// the host with runs_on (enterprise#36); a remote one is not.
+func TestEntityObserver_LocalDBRunsOnHost(t *testing.T) {
+	runsOn := func(host string) bool {
+		o := newEntityObserver(probeConfig{Host: host, Port: 6379}, host+":6379")
+		o.hostID = func() string { return "h-1" }
+		o.update(probeConfig{Host: host, Port: 6379}, map[string]string{})
+		got, _ := o.Observe()
+		for _, r := range got.Relations {
+			if r.Type == "runs_on" && r.FromType == "db" && r.ToID["host.id"] == "h-1" {
+				return true
+			}
+		}
+		return false
+	}
+	if !runsOn("127.0.0.1") {
+		t.Error("loopback db must emit runs_on→host")
+	}
+	if runsOn("10.0.0.5") {
+		t.Error("remote db must NOT emit runs_on→host")
+	}
+}
+
 func newTestProbe(t *testing.T) *redisProbe {
 	t.Helper()
 	p, err := NewRedisProbe(map[string]interface{}{}, logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"}))
@@ -946,8 +969,11 @@ func TestEntityObserver_HostPortFallback(t *testing.T) {
 	if e.Attributes["server.address"] != cfg.Host {
 		t.Errorf("server.address = %v, want %s", e.Attributes["server.address"], cfg.Host)
 	}
-	if e.Attributes["db.version"] != "7.2.0" {
-		t.Errorf("db.version = %v, want 7.2.0", e.Attributes["db.version"])
+	if e.Attributes["db.system.version"] != "7.2.0" {
+		t.Errorf("db.system.version = %v, want 7.2.0", e.Attributes["db.system.version"])
+	}
+	if _, stale := e.Attributes["db.version"]; stale {
+		t.Error("legacy db.version key must no longer be emitted (toise#216 AT1)")
 	}
 }
 
