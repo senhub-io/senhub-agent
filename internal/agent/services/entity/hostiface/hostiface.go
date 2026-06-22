@@ -157,8 +157,10 @@ func buildObservation(hostID string, ias []ifaceAddrs) entity.Observation {
 			// the Docker bridge gateway 172.17.0.1, identical on every host — must
 			// not become a shared network.address node or it falsely links
 			// unrelated hosts (Toise otel-mapping contract). It stays a
-			// descriptive concern of the interface, not a shared identity.
-			if entity.IsHostLocalAddressStr(ip) {
+			// descriptive concern of the interface, not a shared identity. The IP
+			// filter catches Docker's default bridge; the interface-name filter
+			// also catches user-defined bridges (br-<hex> on 172.18+/custom).
+			if entity.IsHostLocalAddressStr(ip) || entity.IsContainerBridgeIface(ia.Name) {
 				continue
 			}
 			addrKey := map[string]any{idKeyNetworkAddress: ip}
