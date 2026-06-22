@@ -7,13 +7,13 @@
 // <hypervisor vm GUID>}. Toise registers the compute.vm + runs_on edge on
 // its side from the state events this source emits.
 //
-// Per VM (in priority order):
-//   - BEST-EFFORT host: if a guest machine-id is available via Hyper-V KVP
-//     data exchange, emit a real host entity (reconciles with an agent
-//     running inside the VM) + a runs_on edge.
-//   - ELSE (common case) emit a compute.vm entity keyed by
-//     {host.id: <hypervisor machine-id>, vmid: <VM GUID>} + runs_on.
-//   - monitors: agent service.instance → the VM entity.
+// Per VM: emit a compute.vm entity keyed {host.id: <hypervisor machine-id>,
+// vmid: <VM GUID>}, runs_on the hypervisor host, with a monitors edge from the
+// agent and the power state on the `status` stateKey. When Hyper-V KVP surfaces
+// the guest's machine-id, carry it as the descriptive `guest.host.id` evidence
+// (the join key the future ADR 0020 same_as overlay consumes). The hypervisor
+// NEVER mints the in-guest host facet — the two are reconciled by same_as, never
+// merged.
 //
 // The pure topology logic (buildHypervObservation) is cross-platform and
 // fully testable without WMI by injecting synthetic vmInfo rows.
@@ -86,6 +86,24 @@ func (s *hypervEntitySource) update(vms []vmInfo) {
 	s.mu.Unlock()
 }
 
+// vmPowerStatus maps the probe's normalized VM state to the Toise compute.vm
+// power-state vocabulary (running / stopped / suspended). It is emitted under
+// the "status" key — one of the recognized stateKeys (ADR 0006) — so a VM
+// powering off classifies as entity.state_changed in the causal timeline, not a
+// silent attribute update. Hyper-V "paused" / "saved" both map to "suspended".
+func vmPowerStatus(state string) string {
+	switch state {
+	case "":
+		return ""
+	case "running":
+		return "running"
+	case "stopped":
+		return "stopped"
+	default: // paused, saved, suspended, unknown → suspended
+		return "suspended"
+	}
+}
+
 // buildHypervObservation is the pure, cross-platform topology builder. It is
 // separated from the struct so it can be tested without any WMI dependency by
 // injecting synthetic vmInfo slices, a stub hostID and a stub guest-id
@@ -121,38 +139,30 @@ func buildHypervObservation(
 			continue
 		}
 
-		guestMachineID := resolveGuest(vm.GUID)
-
-		var vmEntityType string
-		var vmEntityID map[string]any
-		var vmEntityAttrs map[string]any
-
-		if guestMachineID != "" {
-			// Case 1: guest machine-id known — emit a real host entity that
-			// reconciles with an agent running inside the VM.
-			vmEntityType = "host"
-			vmEntityID = map[string]any{"host.id": guestMachineID}
-			vmEntityAttrs = map[string]any{
-				"host.type": "vm",
-			}
-			if vm.VMName != "" {
-				vmEntityAttrs["host.name"] = vm.VMName
-			}
-		} else {
-			// Case 2 (common): no guest machine-id — emit a compute.vm entity
-			// whose identity is {hypervisor host.id, hypervisor vmid}.
-			vmEntityType = "compute.vm"
-			vmEntityID = map[string]any{
-				"host.id": hypervHostID,
-				"vmid":    vm.GUID,
-			}
-			vmEntityAttrs = map[string]any{}
-			if vm.VMName != "" {
-				vmEntityAttrs["vm.name"] = vm.VMName
-			}
-			if vm.State != "" {
-				vmEntityAttrs["vm.state"] = vm.State
-			}
+		// A VM seen from the hypervisor is ALWAYS a compute.vm (identity
+		// {hypervisor host.id, vmid}); the hypervisor never mints the in-guest
+		// host facet (ADR 0020: never merge). When Hyper-V KVP surfaces the
+		// guest's machine-id, carry it as the descriptive `guest.host.id`
+		// evidence — the join key the future same_as overlay will consume to
+		// reconcile this compute.vm with the in-guest host{machine-id}, exactly
+		// as redfish/ibmi carry hw.serial_number on both facets. Producer-
+		// asserted same_as is the ratified target, but its relation type is not
+		// registered yet (ADR 0020 grafts on later), so we emit the evidence
+		// attribute, not the edge.
+		vmEntityType := "compute.vm"
+		vmEntityID := map[string]any{
+			"host.id": hypervHostID,
+			"vmid":    vm.GUID,
+		}
+		vmEntityAttrs := map[string]any{}
+		if vm.VMName != "" {
+			vmEntityAttrs["vm.name"] = vm.VMName
+		}
+		if st := vmPowerStatus(vm.State); st != "" {
+			vmEntityAttrs["status"] = st
+		}
+		if guestMachineID := resolveGuest(vm.GUID); guestMachineID != "" {
+			vmEntityAttrs["guest.host.id"] = guestMachineID
 		}
 
 		obs.Entities = append(obs.Entities, entity.Entity{
