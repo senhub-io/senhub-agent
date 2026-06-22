@@ -271,6 +271,33 @@ func TestBuildObservation_AT13AttributesAndIPLess(t *testing.T) {
 	}
 }
 
+func TestBuildObservation_HostLocalAddressNotShared(t *testing.T) {
+	// br0 carries the Docker bridge gateway (host-local): the interface entity is
+	// kept, but 172.17.0.1 must NOT become a shared network.address (it is the
+	// same value on every host). eth0's routable IP is still emitted.
+	ias := []ifaceAddrs{
+		{Name: "eth0", IPs: []string{"10.0.0.5"}, Type: "physical"},
+		{Name: "br0", IPs: []string{"172.17.0.1"}, Type: "virtual"},
+	}
+	obs := buildObservation("h-1", ias)
+
+	if got := relCount(obs, relHasInterface); got != 2 {
+		t.Errorf("has_interface = %d, want 2 (br0 interface kept)", got)
+	}
+	if _, ok := entityByID(obs, entityTypeNetworkInterface, idKeyInterfaceName, "br0"); !ok {
+		t.Error("br0 interface entity must be kept")
+	}
+	if got := relCount(obs, relBoundTo); got != 1 {
+		t.Errorf("bound_to = %d, want 1 (only eth0's routable IP shared)", got)
+	}
+	if _, ok := entityByID(obs, entityTypeNetworkAddress, idKeyNetworkAddress, "172.17.0.1"); ok {
+		t.Error("172.17.0.1 must NOT be emitted as a shared network.address")
+	}
+	if _, ok := entityByID(obs, entityTypeNetworkAddress, idKeyNetworkAddress, "10.0.0.5"); !ok {
+		t.Error("10.0.0.5 (routable) must be emitted as a network.address")
+	}
+}
+
 func TestObserve_TransientFailureKeepsCache(t *testing.T) {
 	calls := 0
 	s := New(func() string { return "h-1" })
