@@ -198,9 +198,15 @@ func ifaceAttributes(ia ifaceAddrs) map[string]any {
 	return attrs
 }
 
-// enumerate returns every non-loopback interface (AT13: emit all NICs, not only
-// those with a resolvable IP) with its descriptive metadata and any resolvable
-// unicast IPs (loopback/link-local/unspecified/multicast addresses dropped).
+// enumerate returns the host's relevant non-loopback interfaces with their
+// descriptive metadata and any resolvable unicast IPs (loopback/link-local/
+// unspecified/multicast addresses dropped).
+//
+// AT13 inventory rule (toise#231/#239): keep every interface with an IP
+// (including named virtual ones — bridges/bonds/vlans) plus IP-less
+// physical/wireless NICs (so a link going down is a clean state_changed); drop
+// IP-less virtual interfaces, which on container/k8s hosts are the ephemeral
+// veth/cali/cni plumbing — pure cardinality/churn with no standalone meaning.
 func (s *Source) enumerate() ([]ifaceAddrs, error) {
 	ifFn := s.interfaces
 	if ifFn == nil {
@@ -226,6 +232,12 @@ func (s *Source) enumerate() ([]ifaceAddrs, error) {
 			}
 		}
 		lm := lmFn(ifc.Name, ifc.Flags)
+		// Drop IP-less virtual interfaces (ephemeral container plumbing). Type
+		// is only known on Linux; an unknown type ("" on other OSes) is kept,
+		// since the veth churn it targets is a Linux-container concern.
+		if len(ips) == 0 && lm.Type == "virtual" {
+			continue
+		}
 		out = append(out, ifaceAddrs{
 			Name: ifc.Name, IPs: ips,
 			MAC: ifc.HardwareAddr, MTU: int64(ifc.MTU),
