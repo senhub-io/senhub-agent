@@ -204,6 +204,50 @@ func TestEnumerate_AttachesMetadataAndEmitsIPLess(t *testing.T) {
 	}
 }
 
+// TestEnumerate_DropsIPLessVirtual pins the AT13 inventory rule (toise#231/#239):
+// IP-less virtual interfaces (ephemeral veth/cni plumbing) are dropped, while
+// IP-less physical NICs and IP-bearing virtual interfaces (bridges) are kept.
+func TestEnumerate_DropsIPLessVirtual(t *testing.T) {
+	s := New(func() string { return "h-1" })
+	s.link = func(name string, flags []string) linkMeta {
+		switch name {
+		case "eth0":
+			return linkMeta{Type: "physical"}
+		case "eth1":
+			return linkMeta{Type: "physical"} // IP-less physical → keep (link-down signal)
+		case "veth7a3":
+			return linkMeta{Type: "virtual"} // IP-less virtual → drop
+		case "br0":
+			return linkMeta{Type: "virtual"} // virtual WITH an IP → keep
+		}
+		return linkMeta{}
+	}
+	s.interfaces = func() (gnet.InterfaceStatList, error) {
+		return gnet.InterfaceStatList{
+			{Name: "eth0", Flags: []string{"up"}, Addrs: gnet.InterfaceAddrList{{Addr: "10.0.0.5/24"}}},
+			{Name: "eth1", Flags: []string{}},
+			{Name: "veth7a3", Flags: []string{}},
+			{Name: "br0", Flags: []string{"up"}, Addrs: gnet.InterfaceAddrList{{Addr: "172.17.0.1/16"}}},
+		}, nil
+	}
+	ias, err := s.enumerate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, ia := range ias {
+		got[ia.Name] = true
+	}
+	if got["veth7a3"] {
+		t.Errorf("IP-less virtual veth7a3 must be dropped: %+v", ias)
+	}
+	for _, want := range []string{"eth0", "eth1", "br0"} {
+		if !got[want] {
+			t.Errorf("%s must be kept: %+v", want, ias)
+		}
+	}
+}
+
 func TestBuildObservation_AT13AttributesAndIPLess(t *testing.T) {
 	ias := []ifaceAddrs{
 		{Name: "eth0", IPs: []string{"10.0.0.5"}, MAC: "aa:bb:cc:dd:ee:ff", MTU: 1500,
