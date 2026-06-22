@@ -5,13 +5,16 @@
 // model). Each listener carries its process facts (executable, pid, transport)
 // and is attached to the host.
 //
-// Attachment shape: the listener is tied to the host with the frozen runs_on
-// relation (a listener runs on the host). A non-wildcard bind is additionally
-// tied to the network.address it binds with a bound_to relation (enterprise#37),
-// so the IP is a shared hub (network.address --bound_to--> network.interface is
-// emitted by hostiface) instead of an opaque string repeated per listener;
-// wildcard/loopback binds (0.0.0.0/::, 127.0.0.0/8) have no address entity to
-// point at and stay attribute-only (listen.address).
+// Attachment shape (canonical, #252): a non-wildcard listener binds a specific
+// host IP, which belongs to one of the host's interfaces — so it is tied to that
+// interface with listens_on (service.listener --listens_on--> network.interface,
+// the interface emitted by hostiface). The edge is bare: the port is a fact of
+// the listener and rides its entity (the service.endpoint identity
+// <host>:<port>/<proto> plus an explicit port attribute), never the edge (ADR
+// 0022 / no edge attributes). A wildcard/loopback bind (0.0.0.0/::, 127.0.0.0/8)
+// or one whose IP resolves to no local interface has no single interface to point
+// at and falls back to runs_on --> host (interim), keeping listen.address as an
+// attribute.
 package hostsvc
 
 import (
@@ -27,18 +30,19 @@ import (
 )
 
 const (
-	entityTypeServiceListener = "service.listener"
-	entityTypeHost            = "host"
-	entityTypeNetworkAddress  = "network.address"
-	idKeyServiceEndpoint      = "service.endpoint"
-	idKeyHost                 = "host.id"
-	idKeyNetworkAddress       = "network.address"
-	attrProcessName           = "process.executable.name"
-	attrProcessPID            = "process.pid"
-	attrTransport             = "network.transport"
-	attrListenAddress         = "listen.address"
-	relRunsOn                 = "runs_on"
-	relBoundTo                = "bound_to"
+	entityTypeServiceListener  = "service.listener"
+	entityTypeHost             = "host"
+	entityTypeNetworkInterface = "network.interface"
+	idKeyServiceEndpoint       = "service.endpoint"
+	idKeyHost                  = "host.id"
+	idKeyInterfaceName         = "interface.name"
+	attrProcessName            = "process.executable.name"
+	attrProcessPID             = "process.pid"
+	attrTransport              = "network.transport"
+	attrListenAddress          = "listen.address"
+	attrPort                   = "port"
+	relRunsOn                  = "runs_on"
+	relListensOn               = "listens_on"
 
 	// Listeners change rarely; re-enumerate on a slow cadence (walking sockets
 	// + per-pid process lookups is not free on a busy host) and serve the cache
@@ -60,6 +64,7 @@ type Source struct {
 	hostID      func() string
 	enumerate   func() ([]listener, error)
 	connections func(string) ([]gnet.ConnectionStat, error) // nil → gnet.Connections
+	interfaces  func() (gnet.InterfaceStatList, error)      // nil → gnet.Interfaces; resolves bind IP → interface
 	refresh     time.Duration
 
 	mu    sync.Mutex
@@ -96,7 +101,7 @@ func (s *Source) Observe() (entity.Observation, bool) {
 	if err != nil {
 		return entity.Observation{}, false
 	}
-	obs := buildObservation(s.hostID(), ls)
+	obs := buildObservation(s.hostID(), ls, s.ipToIface())
 
 	s.mu.Lock()
 	s.cache = obs
@@ -105,9 +110,11 @@ func (s *Source) Observe() (entity.Observation, bool) {
 	return obs, true
 }
 
-// buildObservation maps listening sockets → service.listener entities the host
-// runs (runs_on). One entity per listener; the host endpoint is referenced.
-func buildObservation(hostID string, ls []listener) entity.Observation {
+// buildObservation maps listening sockets → service.listener entities, each
+// attached either to the host interface it binds (listens_on, non-wildcard) or
+// to the host (runs_on, wildcard/interim). ipToIface resolves a bind IP to its
+// interface name.
+func buildObservation(hostID string, ls []listener, ipToIface map[string]string) entity.Observation {
 	if hostID == "" || len(ls) == 0 {
 		return entity.Observation{}
 	}
@@ -119,44 +126,94 @@ func buildObservation(hostID string, ls []listener) entity.Observation {
 		listenerID := map[string]any{idKeyServiceEndpoint: endpoint}
 
 		attrs := map[string]any{attrTransport: l.Transport}
+		if l.Port > 0 {
+			attrs[attrPort] = int64(l.Port)
+		}
 		if l.Proc != "" {
 			attrs[attrProcessName] = l.Proc
 		}
 		if l.Pid > 0 {
 			attrs[attrProcessPID] = int64(l.Pid)
 		}
-		// A non-wildcard bind to a real unicast IP is modeled as a relation to
-		// the network.address entity (emitted by hostiface), so the IP becomes a
-		// shared hub instead of an opaque string repeated on every listener
-		// (enterprise#37). Wildcard/loopback/unspecified binds have no address
-		// entity to point at and stay attribute-only.
-		boundIP := bindableIP(l.Address)
-		if boundIP == "" && l.Address != "" {
+
+		// Resolve a non-wildcard bind to the host interface that owns the IP.
+		ifname := ""
+		if boundIP := bindableIP(l.Address); boundIP != "" {
+			ifname = ipToIface[boundIP]
+		}
+		if ifname == "" && l.Address != "" {
+			// Wildcard/loopback bind, or an IP on no local interface: keep the
+			// address as a descriptive attribute (the runs_on fallback applies).
 			attrs[attrListenAddress] = l.Address
 		}
+
 		obs.Entities = append(obs.Entities, entity.Entity{
 			Type: entityTypeServiceListener, ID: listenerID, Attributes: attrs,
 		})
-		obs.Relations = append(obs.Relations, entity.Relation{
-			Type:     relRunsOn,
-			FromType: entityTypeServiceListener, FromID: listenerID,
-			ToType: entityTypeHost, ToID: hostKey,
-		})
-		if boundIP != "" {
+
+		if ifname != "" {
+			// Canonical: the listener listens on the interface that owns its bind
+			// IP. The edge is bare — the port is a fact of the listener (its
+			// identity + the port attribute), never the edge.
 			obs.Relations = append(obs.Relations, entity.Relation{
-				Type:     relBoundTo,
+				Type:     relListensOn,
 				FromType: entityTypeServiceListener, FromID: listenerID,
-				ToType: entityTypeNetworkAddress, ToID: map[string]any{idKeyNetworkAddress: boundIP},
+				ToType: entityTypeNetworkInterface,
+				ToID:   map[string]any{idKeyHost: hostID, idKeyInterfaceName: ifname},
+			})
+		} else {
+			// Interim: no single interface to point at → attach to the host.
+			obs.Relations = append(obs.Relations, entity.Relation{
+				Type:     relRunsOn,
+				FromType: entityTypeServiceListener, FromID: listenerID,
+				ToType: entityTypeHost, ToID: hostKey,
 			})
 		}
 	}
 	return obs
 }
 
+// ipToIface maps each of the host's unicast IPs to the interface that owns it,
+// so a non-wildcard listener bind can resolve to its network.interface.
+// Best-effort: on a read error the map is empty and every listener falls back to
+// runs_on --> host.
+func (s *Source) ipToIface() map[string]string {
+	ifFn := s.interfaces
+	if ifFn == nil {
+		ifFn = gnet.Interfaces
+	}
+	ifaces, err := ifFn()
+	if err != nil {
+		return nil
+	}
+	m := make(map[string]string, len(ifaces))
+	for _, ifc := range ifaces {
+		for _, a := range ifc.Addrs {
+			if ip := bareIP(a.Addr); ip != "" {
+				m[ip] = ifc.Name
+			}
+		}
+	}
+	return m
+}
+
+// bareIP normalizes a gopsutil address ("ip/prefix" or a bare ip) to the bare IP
+// string, or "" if unparseable.
+func bareIP(addr string) string {
+	if ip, _, err := net.ParseCIDR(addr); err == nil {
+		return ip.String()
+	}
+	if ip := net.ParseIP(addr); ip != nil {
+		return ip.String()
+	}
+	return ""
+}
+
 // bindableIP returns the bare IP a listener binds to when it is a real unicast
-// address that hostiface also emits as a network.address (so the bound_to edge
-// resolves). Wildcard (0.0.0.0/::), loopback, link-local, unspecified and
-// multicast binds return "" — they have no shared address entity to point at.
+// address that can resolve to one of the host's interfaces (the listens_on
+// target). Wildcard (0.0.0.0/::), loopback, link-local, unspecified and
+// multicast binds return "" — they have no single interface to point at and
+// fall back to runs_on --> host.
 func bindableIP(addr string) string {
 	ip := net.ParseIP(addr)
 	if ip == nil {
