@@ -14,7 +14,7 @@ func TestBuildObservation_Listeners(t *testing.T) {
 		{Pid: 1001, Proc: "nginx", Address: "0.0.0.0", Port: 80, Transport: "tcp"},
 		{Pid: 22, Proc: "sshd", Address: "0.0.0.0", Port: 22, Transport: "tcp"},
 	}
-	obs := buildObservation("h-1", ls)
+	obs := buildObservation("h-1", ls, nil) // wildcard binds → no interface to resolve
 
 	if len(obs.Entities) != 2 || len(obs.Relations) != 2 {
 		t.Fatalf("obs = %+v", obs)
@@ -32,10 +32,12 @@ func TestBuildObservation_Listeners(t *testing.T) {
 	}
 	if nginx.Attributes[attrProcessPID] != int64(1001) ||
 		nginx.Attributes[attrTransport] != "tcp" ||
+		nginx.Attributes[attrPort] != int64(80) ||
 		nginx.Attributes[attrListenAddress] != "0.0.0.0" {
 		t.Errorf("attrs = %+v", nginx.Attributes)
 	}
 
+	// Wildcard binds attach to the host (interim runs_on).
 	for _, r := range obs.Relations {
 		if r.Type != relRunsOn {
 			t.Errorf("relation type = %q, want runs_on", r.Type)
@@ -46,60 +48,77 @@ func TestBuildObservation_Listeners(t *testing.T) {
 	}
 }
 
-// TestBuildObservation_BoundToNetworkAddress: a non-wildcard bind is modeled as
-// service.listener --bound_to--> network.address (the IP becomes a shared hub,
-// enterprise#37), with no listen.address attribute; wildcard and loopback binds
-// stay attribute-only.
-func TestBuildObservation_BoundToNetworkAddress(t *testing.T) {
+// TestBuildObservation_ListensOnInterface (#252): a non-wildcard bind resolves
+// to the host interface that owns the IP and is tied with listens_on (bare edge,
+// port on the entity), with no listen.address attribute; wildcard, loopback and
+// unresolved binds fall back to runs_on --> host and keep listen.address.
+func TestBuildObservation_ListensOnInterface(t *testing.T) {
 	ls := []listener{
-		{Pid: 10, Proc: "pg", Address: "10.0.0.5", Port: 5432, Transport: "tcp"},     // specific → bound_to
-		{Pid: 20, Proc: "nginx", Address: "0.0.0.0", Port: 80, Transport: "tcp"},     // wildcard → attribute
-		{Pid: 30, Proc: "redis", Address: "127.0.0.1", Port: 6379, Transport: "tcp"}, // loopback → attribute
+		{Pid: 10, Proc: "pg", Address: "10.0.0.5", Port: 5432, Transport: "tcp"},     // specific, on eth0 → listens_on
+		{Pid: 20, Proc: "nginx", Address: "0.0.0.0", Port: 80, Transport: "tcp"},     // wildcard → runs_on
+		{Pid: 30, Proc: "redis", Address: "127.0.0.1", Port: 6379, Transport: "tcp"}, // loopback → runs_on
+		{Pid: 40, Proc: "app", Address: "192.0.2.9", Port: 9000, Transport: "tcp"},   // specific, no local iface → runs_on
 	}
-	obs := buildObservation("h-1", ls)
+	ipToIface := map[string]string{"10.0.0.5": "eth0"}
+	obs := buildObservation("h-1", ls, ipToIface)
 
+	// pg: listens_on → network.interface{h-1, eth0}, no listen.address, port on entity.
 	pg, _ := entityByProc(obs, "pg")
 	if _, has := pg.Attributes[attrListenAddress]; has {
-		t.Error("specific-IP bind must NOT carry listen.address (replaced by bound_to)")
+		t.Error("resolved bind must NOT carry listen.address (replaced by listens_on)")
 	}
-	boundCount := 0
+	if pg.Attributes[attrPort] != int64(5432) {
+		t.Errorf("port must ride the listener entity: %+v", pg.Attributes)
+	}
+	listensOn := 0
 	for _, r := range obs.Relations {
-		if r.Type != relBoundTo {
+		if r.Type != relListensOn {
 			continue
 		}
-		boundCount++
-		if r.FromType != entityTypeServiceListener || r.FromID[idKeyServiceEndpoint] != "h-1:5432/tcp" {
-			t.Errorf("bound_to From wrong: %+v", r)
+		listensOn++
+		if r.FromID[idKeyServiceEndpoint] != "h-1:5432/tcp" {
+			t.Errorf("listens_on From wrong: %+v", r)
 		}
-		if r.ToType != entityTypeNetworkAddress || r.ToID[idKeyNetworkAddress] != "10.0.0.5" {
-			t.Errorf("bound_to To must be network.address{10.0.0.5}: %+v", r)
+		if r.ToType != entityTypeNetworkInterface || r.ToID[idKeyHost] != "h-1" || r.ToID[idKeyInterfaceName] != "eth0" {
+			t.Errorf("listens_on To must be network.interface{h-1, eth0}: %+v", r)
+		}
+		if len(r.Attributes) != 0 {
+			t.Errorf("listens_on edge must be bare (no attributes): %+v", r.Attributes)
 		}
 	}
-	if boundCount != 1 {
-		t.Errorf("want exactly 1 bound_to (only the specific-IP bind), got %d", boundCount)
+	if listensOn != 1 {
+		t.Errorf("want exactly 1 listens_on (only the resolved bind), got %d", listensOn)
 	}
 
-	nginx, _ := entityByProc(obs, "nginx")
-	if nginx.Attributes[attrListenAddress] != "0.0.0.0" {
-		t.Errorf("wildcard bind must keep listen.address: %+v", nginx.Attributes)
+	// The other three fall back to runs_on --> host and keep listen.address.
+	for _, proc := range []string{"nginx", "redis", "app"} {
+		e, _ := entityByProc(obs, proc)
+		if e.Attributes[attrListenAddress] == nil {
+			t.Errorf("%s must keep listen.address (runs_on fallback): %+v", proc, e.Attributes)
+		}
 	}
-	redis, _ := entityByProc(obs, "redis")
-	if redis.Attributes[attrListenAddress] != "127.0.0.1" {
-		t.Errorf("loopback bind must keep listen.address: %+v", redis.Attributes)
+	runsOn := 0
+	for _, r := range obs.Relations {
+		if r.Type == relRunsOn {
+			runsOn++
+		}
+	}
+	if runsOn != 3 {
+		t.Errorf("want 3 runs_on (wildcard/loopback/unresolved), got %d", runsOn)
 	}
 }
 
 func TestBuildObservation_EmptyGuards(t *testing.T) {
-	if o := buildObservation("", []listener{{Port: 80, Transport: "tcp"}}); len(o.Entities) != 0 {
+	if o := buildObservation("", []listener{{Port: 80, Transport: "tcp"}}, nil); len(o.Entities) != 0 {
 		t.Error("no hostID → empty")
 	}
-	if o := buildObservation("h", nil); len(o.Entities) != 0 {
+	if o := buildObservation("h", nil, nil); len(o.Entities) != 0 {
 		t.Error("no listeners → empty")
 	}
 }
 
 func TestBuildObservation_ProcAndPidOmittedWhenAbsent(t *testing.T) {
-	obs := buildObservation("h-1", []listener{{Port: 443, Transport: "tcp"}}) // no Proc, Pid 0, no Address
+	obs := buildObservation("h-1", []listener{{Port: 443, Transport: "tcp"}}, nil) // no Proc, Pid 0, no Address
 	a := obs.Entities[0].Attributes
 	if _, ok := a[attrProcessName]; ok {
 		t.Error("process.executable.name should be omitted when unknown")
@@ -120,7 +139,8 @@ func TestObserve_CachesBetweenRefreshes(t *testing.T) {
 			calls++
 			return []listener{{Pid: 1, Proc: "x", Port: 80, Transport: "tcp"}}, nil
 		},
-		refresh: time.Hour,
+		interfaces: func() (gnet.InterfaceStatList, error) { return nil, nil },
+		refresh:    time.Hour,
 	}
 	o1, ok1 := s.Observe()
 	o2, ok2 := s.Observe() // within the refresh window → served from cache, no re-enumeration
@@ -156,6 +176,7 @@ func TestEnumerateListeners_Pid0NotFiltered(t *testing.T) {
 		connections: func(_ string) ([]gnet.ConnectionStat, error) {
 			return fakeStat, nil
 		},
+		interfaces: func() (gnet.InterfaceStatList, error) { return nil, nil },
 	}
 	s.enumerate = s.enumerateListeners
 
