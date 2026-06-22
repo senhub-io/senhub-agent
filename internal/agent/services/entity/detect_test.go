@@ -85,6 +85,28 @@ func TestDetectFoundation_Nameplate(t *testing.T) {
 	}
 }
 
+// TestDetectFoundation_Governance pins that operator governance attributes ride
+// the host entity when provided.
+func TestDetectFoundation_Governance(t *testing.T) {
+	h := HostIdentity{ID: "h-1", Governance: map[string]any{
+		"entity.owner.team":    "ops",
+		"service.criticality":  "high",
+		"entity.location.rack": "R12",
+	}}
+	host := DetectFoundation(h, AgentIdentity{InstanceID: "a"}).Entities[0]
+	if host.Attributes["entity.owner.team"] != "ops" ||
+		host.Attributes["service.criticality"] != "high" ||
+		host.Attributes["entity.location.rack"] != "R12" {
+		t.Errorf("governance not stamped on the host entity: %v", host.Attributes)
+	}
+
+	// Nil governance must not break the host emission.
+	bare := DetectFoundation(HostIdentity{ID: "h-2"}, AgentIdentity{InstanceID: "a"}).Entities[0]
+	if _, present := bare.Attributes["entity.owner.team"]; present {
+		t.Error("no governance configured → no governance attributes")
+	}
+}
+
 // TestDetectFoundation_CapacityVirtChassis pins the AT10-AT12 host attributes:
 // numeric capacity rides as int64, virtualization/chassis as strings, all
 // omitted when zero/empty.
