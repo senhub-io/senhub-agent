@@ -153,6 +153,14 @@ func buildObservation(hostID string, ias []ifaceAddrs) entity.Observation {
 			ToType: entityTypeNetworkInterface, ToID: ifaceKey,
 		})
 		for _, ip := range ia.IPs {
+			// The interface is kept (above), but a host-local IP — most visibly
+			// the Docker bridge gateway 172.17.0.1, identical on every host — must
+			// not become a shared network.address node or it falsely links
+			// unrelated hosts (Toise otel-mapping contract). It stays a
+			// descriptive concern of the interface, not a shared identity.
+			if entity.IsHostLocalAddressStr(ip) {
+				continue
+			}
 			addrKey := map[string]any{idKeyNetworkAddress: ip}
 			if !seenAddr[ip] {
 				seenAddr[ip] = true
@@ -285,6 +293,12 @@ func isLoopbackIface(flags []string) bool {
 // resolvableIP returns the bare IP of a gopsutil interface address ("ip/prefix"
 // or a bare ip), or "" if it is not an address a remote peer could be resolved
 // against (loopback, link-local, unspecified, multicast, or unparseable).
+//
+// This gates whether an interface is KEPT (an interface with any IP is kept,
+// even a virtual bridge), which is a separate question from whether that IP may
+// be emitted as a shared network.address — a Docker bridge gateway (172.17.0.1)
+// is a usable local address that keeps its bridge interface, but is host-local
+// so buildObservation does not emit it as a shared node.
 func resolvableIP(addr string) string {
 	host := addr
 	if ip, _, err := net.ParseCIDR(addr); err == nil {

@@ -505,13 +505,16 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	// network.address — the device's interface IPs as entities, bound to their
 	// interface. The SAME network.address {ip} node is referenced by a host's
 	// next_hop_via when this device is that host's gateway, so the shared
-	// address joins the host and device topology graphs. Keyed by IP alone
-	// (a flat address space, the frozen contract's choice). Skipped when the
-	// interface cannot be named.
+	// address joins the host and device topology graphs. Keyed by IP alone, so
+	// the IP MUST be globally unique: host-local / non-routable addresses
+	// (loopback, link-local, wildcard, the Docker default-bridge gateway
+	// 172.17.0.1 that exists on every host) are skipped — a shared node for them
+	// would falsely link unrelated devices (network-derived-identity anti-pattern,
+	// Toise otel-mapping contract). Skipped too when the interface cannot be named.
 	addrSeen := map[string]bool{}
 	for _, a := range addrs {
 		ifName := ifIndexName[a.IfIndex]
-		if ifName == "" || addrSeen[a.IP] {
+		if ifName == "" || addrSeen[a.IP] || entity.IsHostLocalAddressStr(a.IP) {
 			continue
 		}
 		addrSeen[a.IP] = true

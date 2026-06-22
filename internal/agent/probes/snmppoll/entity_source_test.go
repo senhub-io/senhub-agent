@@ -267,11 +267,16 @@ func TestBuildObservation_NetworkInterface(t *testing.T) {
 
 func TestBuildObservation_NetworkAddress(t *testing.T) {
 	self := deviceIdentity{Serial: "S1", VendorPEN: "9"}
-	ifaces := []ifaceRow{{Index: "1", Name: "Gi0/1", OperStatus: ifOperUp}}
+	ifaces := []ifaceRow{
+		{Index: "1", Name: "Gi0/1", OperStatus: ifOperUp},
+		{Index: "2", Name: "docker0", OperStatus: ifOperUp},
+	}
 	addrs := []ipAddr{
 		{IP: "10.0.0.1", IfIndex: "1"},    // bound to Gi0/1 (also a host's gateway → the join)
 		{IP: "10.0.0.1", IfIndex: "1"},    // dup IP → skip
 		{IP: "192.168.9.9", IfIndex: "9"}, // ifIndex 9 not among ifaces → can't bind, skip
+		{IP: "172.17.0.1", IfIndex: "2"},  // Docker bridge gateway (host-local) → skip
+		{IP: "127.0.0.1", IfIndex: "2"},   // loopback (host-local) → skip
 	}
 	obs := buildObservation(self, lldpTopology{}, nil, ifaces, addrs)
 
@@ -301,7 +306,7 @@ func TestBuildObservation_NetworkAddress(t *testing.T) {
 		}
 	}
 	if addrEnts != 1 || boundTo != 1 {
-		t.Fatalf("addrEnts=%d boundTo=%d, want 1/1 (dup + unbindable skipped)", addrEnts, boundTo)
+		t.Fatalf("addrEnts=%d boundTo=%d, want 1/1 (dup + unbindable + host-local skipped)", addrEnts, boundTo)
 	}
 }
 
