@@ -121,9 +121,10 @@ func TestBuildHypervObservation_ComputeVM_HostIDIsHypervisorMachineID(t *testing
 	}
 }
 
-// TestBuildHypervObservation_GuestMachineID verifies the best-effort path:
-// when a guest machine-id is available via KVP, a real host entity is emitted
-// (reconcilable with an agent running inside the VM) instead of compute.vm.
+// TestBuildHypervObservation_GuestMachineID verifies that when KVP surfaces the
+// guest machine-id, the entity is STILL a compute.vm (the hypervisor never mints
+// the in-guest host facet — ADR 0020 never-merge); the guest machine-id rides as
+// the descriptive guest.host.id evidence (the future same_as join key).
 func TestBuildHypervObservation_GuestMachineID(t *testing.T) {
 	hostID := "hyperv-host-id"
 	guestID := "guest-machine-id-123"
@@ -136,17 +137,18 @@ func TestBuildHypervObservation_GuestMachineID(t *testing.T) {
 		t.Fatalf("expected 1 entity, got %d: %+v", len(obs.Entities), obs.Entities)
 	}
 	e := obs.Entities[0]
-	if e.Type != "host" {
-		t.Errorf("entity type: want host (guest machine-id available), got %q", e.Type)
+	if e.Type != "compute.vm" {
+		t.Errorf("entity type: want compute.vm (never a host facet), got %q", e.Type)
 	}
-	if e.ID["host.id"] != guestID {
-		t.Errorf("entity id host.id: want guest machine-id %q, got %q", guestID, e.ID["host.id"])
+	// Identity stays {hypervisor host.id, vmid} — the guest id is NOT the identity.
+	if e.ID["host.id"] != hostID || e.ID["vmid"] != "vm-guid-1" {
+		t.Errorf("identity must stay {hypervisor host.id, vmid}: %+v", e.ID)
 	}
-	if e.Attributes["host.type"] != "vm" {
-		t.Errorf("host.type attribute: want vm, got %v", e.Attributes["host.type"])
+	if e.Attributes["guest.host.id"] != guestID {
+		t.Errorf("guest.host.id evidence: want %q, got %v", guestID, e.Attributes["guest.host.id"])
 	}
-	if e.Attributes["host.name"] != "GuestVM" {
-		t.Errorf("host.name attribute: want GuestVM, got %v", e.Attributes["host.name"])
+	if e.ID["host.id"] == guestID {
+		t.Errorf("the guest machine-id must never become the identity host.id: %+v", e.ID)
 	}
 }
 
@@ -175,7 +177,7 @@ func TestBuildHypervObservation_RunsOnEdge(t *testing.T) {
 		}
 	})
 
-	t.Run("host (guest machine-id known)", func(t *testing.T) {
+	t.Run("compute.vm with guest machine-id known", func(t *testing.T) {
 		guestID := "guest-id-99"
 		vm := vmInfo{GUID: "guid-2", VMName: "GuestVM"}
 		resolver := stubGuestID(map[string]string{"guid-2": guestID})
@@ -186,11 +188,12 @@ func TestBuildHypervObservation_RunsOnEdge(t *testing.T) {
 			t.Fatalf("expected 1 runs_on relation, got %d", len(runsOn))
 		}
 		r := runsOn[0]
-		if r.FromType != "host" {
-			t.Errorf("FromType: want host, got %q", r.FromType)
+		// Still compute.vm --runs_on--> hypervisor host (no host facet minted).
+		if r.FromType != "compute.vm" {
+			t.Errorf("FromType: want compute.vm, got %q", r.FromType)
 		}
-		if r.FromID["host.id"] != guestID {
-			t.Errorf("FromID host.id: want guest id %q, got %q", guestID, r.FromID["host.id"])
+		if r.FromID["vmid"] != "guid-2" || r.FromID["host.id"] != hostID {
+			t.Errorf("FromID must be the compute.vm identity {hypervisor host.id, vmid}: %+v", r.FromID)
 		}
 		if r.ToID["host.id"] != hostID {
 			t.Errorf("ToID host.id: want hypervisor id %q, got %q", hostID, r.ToID["host.id"])
