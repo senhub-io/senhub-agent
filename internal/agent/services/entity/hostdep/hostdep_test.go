@@ -2,12 +2,39 @@ package hostdep
 
 import (
 	"errors"
+	"net"
 	"testing"
 
 	gnet "github.com/shirou/gopsutil/v3/net"
 
 	"senhub-agent.go/internal/agent/services/entity"
 )
+
+// TestExcludeCIDR_DropsExcludedPeer pins the #213 privacy filter: a dependency
+// flow whose peer falls in an excluded CIDR is dropped; others pass.
+func TestExcludeCIDR_DropsExcludedPeer(t *testing.T) {
+	_, ipnet, err := net.ParseCIDR("10.0.0.0/8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(func() string { return "h-1" }, 1, []*net.IPNet{ipnet})
+	s.procName = func(int32) string { return "curl" }
+	s.connections = fakeConns([]gnet.ConnectionStat{
+		conn(statusEstablished, "192.0.2.1", 40000, "10.1.2.3", 443, 5),    // peer in 10/8 → excluded
+		conn(statusEstablished, "192.0.2.1", 40001, "203.0.113.9", 443, 5), // peer outside → kept
+	})
+
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("Observe ok=false")
+	}
+	if hasEndpoint(obs, "10.1.2.3", "443") {
+		t.Errorf("excluded peer 10.1.2.3 must be dropped: %+v", obs.Entities)
+	}
+	if !hasEndpoint(obs, "203.0.113.9", "443") {
+		t.Errorf("non-excluded peer 203.0.113.9 must be emitted: %+v", obs.Entities)
+	}
+}
 
 // fakeConns returns a connections function serving fixed rows, ignoring the
 // kind argument.
@@ -25,7 +52,7 @@ func conn(status, laddr string, lport uint32, raddr string, rport uint32, pid in
 }
 
 func newTestSource(rows []gnet.ConnectionStat) *Source {
-	s := New(func() string { return "h-1" }, defaultThreshold)
+	s := New(func() string { return "h-1" }, defaultThreshold, nil)
 	s.connections = fakeConns(rows)
 	s.procName = func(pid int32) string {
 		switch pid {
@@ -105,7 +132,7 @@ func TestNew_ConfigurableThreshold(t *testing.T) {
 		conn(statusEstablished, "10.0.0.5", 51000, "10.0.0.9", 5432, 100),
 	}
 	// threshold = 1 → durable on the first scrape (no debounce wait).
-	s := New(func() string { return "h-1" }, 1)
+	s := New(func() string { return "h-1" }, 1, nil)
 	s.connections = fakeConns(rows)
 	s.procName = func(int32) string { return "nginx" }
 	obs, ok := s.Observe()
@@ -117,10 +144,10 @@ func TestNew_ConfigurableThreshold(t *testing.T) {
 	}
 
 	// non-positive → falls back to defaultThreshold.
-	if got := New(func() string { return "h" }, 0).threshold; got != defaultThreshold {
+	if got := New(func() string { return "h" }, 0, nil).threshold; got != defaultThreshold {
 		t.Errorf("threshold 0 → %d, want fallback %d", got, defaultThreshold)
 	}
-	if got := New(func() string { return "h" }, -5).threshold; got != defaultThreshold {
+	if got := New(func() string { return "h" }, -5, nil).threshold; got != defaultThreshold {
 		t.Errorf("negative threshold → %d, want fallback %d", got, defaultThreshold)
 	}
 }

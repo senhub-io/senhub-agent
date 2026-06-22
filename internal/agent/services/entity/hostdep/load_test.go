@@ -107,7 +107,7 @@ func BenchmarkObserveUnderLoad(b *testing.B) {
 	for _, n := range []int{0, 100, 1000, 5000, 10000} {
 		cleanup := establishN(b, n)
 		b.Run(fmt.Sprintf("conns=%d", n), func(b *testing.B) {
-			s := New(func() string { return "load-host" }, defaultThreshold)
+			s := New(func() string { return "load-host" }, defaultThreshold, nil)
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				if _, ok := s.Observe(); !ok {
