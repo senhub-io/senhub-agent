@@ -96,6 +96,11 @@ type snmpEntitySource struct {
 	// place), so a reader holding the returned map sees a stable snapshot.
 	deviceID string
 	ifNames  map[string]string
+
+	// registry reconciles a neighbour seen via LLDP with the canonical id of the
+	// same device when another probe instance polls it directly. Shared across
+	// instances in production; overridable in tests.
+	registry *polledRegistry
 }
 
 func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
@@ -103,7 +108,7 @@ func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
 	if iv <= 0 {
 		iv = defaultTopologyInterval
 	}
-	return &snmpEntitySource{cfg: cfg, interval: iv, moduleLogger: log}
+	return &snmpEntitySource{cfg: cfg, interval: iv, moduleLogger: log, registry: sharedPolledRegistry}
 }
 
 // Observe returns the last cached topology snapshot. Non-blocking; safe to
@@ -147,7 +152,7 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 		return
 	}
 
-	obs, deviceID, ifNames, ok := s.sweep(client)
+	obs, deviceID, ifNames, ok := s.sweep(client, now)
 	if !ok {
 		// Identity unresolved (device unreachable or rejecting us):
 		// keep the last good snapshot and do NOT stamp lastSweep, so
@@ -171,7 +176,7 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 // failed LLDP walk still yields the polled device itself (identity from
 // serial/engine/sysName, no neighbours). It also returns the resolved device id
 // and the ifIndex→ifName map for the metric collector's correlation tags.
-func (s *snmpEntitySource) sweep(client snmpClient) (entity.Observation, string, map[string]string, bool) {
+func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (entity.Observation, string, map[string]string, bool) {
 	topo, err := collectLLDP(client)
 	if err != nil {
 		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
@@ -208,7 +213,23 @@ func (s *snmpEntitySource) sweep(client snmpClient) (entity.Observation, string,
 			}
 		}
 	}
-	obs := buildObservation(self, topo, routes, ifaces, addrs)
+
+	// Register this directly-polled device's chassis MAC under its canonical id,
+	// then resolve neighbours against the shared registry: a neighbour known by
+	// the same MAC reconciles to the canonical id another probe instance assigned
+	// it, instead of minting a mac: shadow (one node per device, not several).
+	if s.registry != nil {
+		s.registry.recordPolled(self, deviceID, now)
+	}
+	resolveNeighbor := func(n deviceIdentity) string {
+		if s.registry != nil {
+			if canon, ok := s.registry.canonicalFor(n, now); ok {
+				return canon
+			}
+		}
+		return resolveDeviceID(n)
+	}
+	obs := buildObservation(self, topo, routes, ifaces, addrs, resolveNeighbor)
 	applyGovernance(obs, s.cfg, self, deviceID)
 	// An empty observation here means the device identity could not be
 	// resolved — a failed sweep, not an empty network.
@@ -411,8 +432,13 @@ func asString(v any) string {
 //   - connected_to — bare port-to-port link adjacency from LLDP (supersedes the
 //     legacy adjacent_to / forwards_to device-to-device edges, now retired).
 //
+// resolveNeighbor maps a discovered neighbour's identity to a network.device id.
+// In production it consults the shared polled-device registry first (so a
+// neighbour reconciles to the canonical id of the same device polled elsewhere)
+// and falls back to resolveDeviceID; tests pass resolveDeviceID directly.
+//
 // Returns empty when the device cannot be identified (no usable id rung).
-func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, ifaces []ifaceRow, addrs []ipAddr) entity.Observation {
+func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, ifaces []ifaceRow, addrs []ipAddr, resolveNeighbor func(deviceIdentity) string) entity.Observation {
 	selfID := resolveDeviceID(self)
 	if selfID == "" {
 		return entity.Observation{}
@@ -481,7 +507,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	// phantom port — point 7): an unnamed local port, an unresolvable neighbour,
 	// or a MAC-only remote port.
 	for _, n := range topo.Neighbors {
-		nID := resolveDeviceID(neighborIdentity(n))
+		nID := resolveNeighbor(neighborIdentity(n))
 		if nID == "" || nID == selfID {
 			continue
 		}
