@@ -540,7 +540,8 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	addrSeen := map[string]bool{}
 	for _, a := range addrs {
 		ifName := ifIndexName[a.IfIndex]
-		if ifName == "" || addrSeen[a.IP] || entity.IsHostLocalAddressStr(a.IP) {
+		if ifName == "" || addrSeen[a.IP] ||
+			entity.IsHostLocalAddressStr(a.IP) || entity.IsContainerBridgeIface(ifName) {
 			continue
 		}
 		addrSeen[a.IP] = true
