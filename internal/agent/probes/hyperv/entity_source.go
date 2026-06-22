@@ -86,6 +86,24 @@ func (s *hypervEntitySource) update(vms []vmInfo) {
 	s.mu.Unlock()
 }
 
+// vmPowerStatus maps the probe's normalized VM state to the Toise compute.vm
+// power-state vocabulary (running / stopped / suspended). It is emitted under
+// the "status" key — one of the recognized stateKeys (ADR 0006) — so a VM
+// powering off classifies as entity.state_changed in the causal timeline, not a
+// silent attribute update. Hyper-V "paused" / "saved" both map to "suspended".
+func vmPowerStatus(state string) string {
+	switch state {
+	case "":
+		return ""
+	case "running":
+		return "running"
+	case "stopped":
+		return "stopped"
+	default: // paused, saved, suspended, unknown → suspended
+		return "suspended"
+	}
+}
+
 // buildHypervObservation is the pure, cross-platform topology builder. It is
 // separated from the struct so it can be tested without any WMI dependency by
 // injecting synthetic vmInfo slices, a stub hostID and a stub guest-id
@@ -150,8 +168,8 @@ func buildHypervObservation(
 			if vm.VMName != "" {
 				vmEntityAttrs["vm.name"] = vm.VMName
 			}
-			if vm.State != "" {
-				vmEntityAttrs["vm.state"] = vm.State
+			if st := vmPowerStatus(vm.State); st != "" {
+				vmEntityAttrs["status"] = st
 			}
 		}
 
