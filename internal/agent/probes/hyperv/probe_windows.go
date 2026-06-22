@@ -235,6 +235,7 @@ func toVMInfos(vms []msvmComputerSystem, sumByName map[string]msvmSummaryInforma
 			GUID:   vm.Name,
 			VMName: name,
 			State:  vmStateName(vm.EnabledState),
+			VCPU:   int64(vm.NumberOfProcessors),
 		})
 	}
 	return infos
