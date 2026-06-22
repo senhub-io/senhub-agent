@@ -25,6 +25,11 @@ type HostIdentity struct {
 	DiskTotal        int64  // host.disk.total — bytes (AT10)
 	Virtualization   string // host.virtualization (AT11)
 	ChassisType      string // host.chassis.type (AT12)
+
+	// Governance is the operator-supplied governance attribute map
+	// (entity.owner.*, service.criticality, entity.location.*, …) stamped on the
+	// host entity. nil/empty by default.
+	Governance map[string]any
 }
 
 // AgentIdentity is the identity + descriptive facts of the agent process.
@@ -104,6 +109,9 @@ func DetectFoundation(h HostIdentity, a AgentIdentity) Observation {
 	}
 	if h.ChassisType != "" {
 		host.Attributes["host.chassis.type"] = h.ChassisType
+	}
+	for k, v := range h.Governance {
+		host.Attributes[k] = v
 	}
 
 	svc := Entity{
