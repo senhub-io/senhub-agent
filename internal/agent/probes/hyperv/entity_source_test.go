@@ -78,8 +78,25 @@ func TestBuildHypervObservation_ComputeVM(t *testing.T) {
 	if e.Attributes["vm.name"] != "TestVM" {
 		t.Errorf("vm.name attribute: want TestVM, got %v", e.Attributes["vm.name"])
 	}
-	if e.Attributes["vm.state"] != "running" {
-		t.Errorf("vm.state attribute: want running, got %v", e.Attributes["vm.state"])
+	// Power state rides the "status" stateKey (not a plain vm.state attribute),
+	// so a VM powering off classifies as entity.state_changed.
+	if e.Attributes["status"] != "running" {
+		t.Errorf("status stateKey: want running, got %v", e.Attributes["status"])
+	}
+	if _, leaked := e.Attributes["vm.state"]; leaked {
+		t.Errorf("vm.state must be replaced by the status stateKey: %v", e.Attributes)
+	}
+}
+
+func TestVMPowerStatus(t *testing.T) {
+	cases := map[string]string{
+		"running": "running", "stopped": "stopped",
+		"paused": "suspended", "saved": "suspended", "weird": "suspended", "": "",
+	}
+	for in, want := range cases {
+		if got := vmPowerStatus(in); got != want {
+			t.Errorf("vmPowerStatus(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
