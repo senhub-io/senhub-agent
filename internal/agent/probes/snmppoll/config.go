@@ -5,6 +5,7 @@ import (
 
 	"fmt"
 	"net"
+	"senhub-agent.go/internal/agent/services/governance"
 	"senhub-agent.go/internal/agent/services/snmpcore"
 	"strings"
 	"time"
@@ -93,6 +94,10 @@ type config struct {
 	// the "discovery:" block is absent (single-target mode). The multi-target
 	// poll lifecycle that consumes it is a later lot.
 	Discovery *discoveryConfig
+
+	// Governance is the operator metadata stamped on the polled device's
+	// network.device entity (single-target mode). Empty by default.
+	Governance governance.Governance
 }
 
 // discoveryConfig is the validated "discovery:" block.
@@ -103,6 +108,10 @@ type discoveryConfig struct {
 	MaxHops      int              // BFS depth bound
 	AllowedCIDRs []*net.IPNet     // neighbours are crawled only within these
 	Interval     time.Duration    // crawl cadence; 0 → topology interval
+
+	// GovernanceRules assign operator metadata to discovered devices by matching
+	// their facts (CIDR / vendor / sysName). Empty when no rules are configured.
+	GovernanceRules governance.Rules
 }
 
 // discoveryProfile is the single SNMP credential applied to every discovered
@@ -207,6 +216,12 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 		errs = append(errs, err.Error())
 	}
 	cfg.Discovery = disc
+
+	gov, err := governance.Parse(raw["governance"])
+	if err != nil {
+		errs = append(errs, fmt.Sprintf("governance: %v", err))
+	}
+	cfg.Governance = gov
 
 	if len(cfg.MIBs) == 0 && len(cfg.Custom) == 0 {
 		errs = append(errs, "at least one entry under 'mibs' or 'custom_mappings' is required")
@@ -407,6 +422,12 @@ func parseDiscovery(v interface{}) (*discoveryConfig, error) {
 	} else if ok {
 		d.Interval = iv
 	}
+
+	rules, err := governance.ParseRules(m["governance_rules"])
+	if err != nil {
+		return nil, fmt.Errorf("discovery.%w", err)
+	}
+	d.GovernanceRules = rules
 
 	return d, nil
 }

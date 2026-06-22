@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/governance"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -190,9 +191,47 @@ func (s *snmpEntitySource) sweep(client snmpClient) (entity.Observation, string,
 		}
 	}
 	obs := buildObservation(self, topo, routes, ifaces, addrs)
+	applyGovernance(obs, s.cfg, self, deviceID)
 	// An empty observation here means the device identity could not be
 	// resolved — a failed sweep, not an empty network.
 	return obs, deviceID, ifNames, len(obs.Entities) > 0
+}
+
+// applyGovernance stamps the operator governance attributes onto the polled
+// (self) network.device entity: the single-target governance block plus any
+// discovery rule that matches the device's facts (its poll IP, vendor and
+// sysName), rules layered last. A no-op when nothing is configured or the device
+// was not identified.
+func applyGovernance(obs entity.Observation, cfg *config, self deviceIdentity, selfID string) {
+	if selfID == "" {
+		return
+	}
+	gov := map[string]any{}
+	cfg.Governance.MergeInto(gov)
+	if cfg.Discovery != nil && len(cfg.Discovery.GovernanceRules) > 0 {
+		facts := governance.DeviceFacts{
+			IP:      canonIP(self.MgmtIP),
+			Vendor:  vendorName(self.VendorPEN),
+			SysName: self.SysName,
+		}
+		for k, v := range cfg.Discovery.GovernanceRules.Apply(facts) {
+			gov[k] = v
+		}
+	}
+	if len(gov) == 0 {
+		return
+	}
+	for i := range obs.Entities {
+		if obs.Entities[i].Type == entityTypeNetworkDevice && obs.Entities[i].ID[idKeyNetworkDevice] == selfID {
+			if obs.Entities[i].Attributes == nil {
+				obs.Entities[i].Attributes = map[string]any{}
+			}
+			for k, v := range gov {
+				obs.Entities[i].Attributes[k] = v
+			}
+			return
+		}
+	}
 }
 
 // readSelfIdentity reads the polled device's identifiers in the Toise-frozen
