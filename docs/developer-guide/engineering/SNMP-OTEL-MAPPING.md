@@ -142,10 +142,12 @@ same device derive byte-identical ids.
   SNMP management entity, failover-stable; a master-member serial would flap),
   and this also avoids latching onto a swappable module/PSU serial. Everything
   not chosen as the id goes in **descriptive attributes** (dotted lowercase,
-  frozen casing — `sys.name`, `mgmt.ip`, `device.role` from the sysServices
-  bitmask, `vendor` from the PEN), never as a second identity key. These make
-  the device readable in a backend instead of just its cryptic id; neighbours
-  carry `sys.name`.
+  frozen casing — `sys.name`, `sys.descr` (sysDescr.0), `mgmt.ip`,
+  `device.role` from the sysServices bitmask, `vendor` from the PEN, plus the
+  chassis nameplate `hw.vendor`/`hw.model`/`hw.firmware_version` from
+  ENTITY-MIB `entPhysicalMfgName`/`ModelName`/`FirmwareRev` of the **single**
+  chassis row), never as a second identity key. These make the device readable
+  in a backend instead of just its cryptic id; neighbours carry `sys.name`.
   Canonicalization (producer side): `mac` = lowercase hex `:`-separated;
   `engine`/`PEN` = lowercase hex / decimal; `serial`/`name` = trimmed (case
   preserved); `mgmt` = `net.IP` canonical form. All in one function:
@@ -154,10 +156,16 @@ same device derive byte-identical ids.
 - **Interfaces → `network.interface` entities** (topology-as-entities, ADR
   0022, pinned with Toise #87): IF-MIB ifXTable `ifName` → one
   `network.interface` entity `{network.device.id, interface.name}` the device
-  **owns** via `has_interface`, with `oper.state` (ifOperStatus) and `speed`
-  (ifHighSpeed Mbit/s → bit/s) descriptive. The port inventory that anchors
-  `connected_to`; `notPresent` and unnamed rows are skipped. Bounded by the
-  device's port count. **DONE (#156).**
+  **owns** via `has_interface`. `oper_state` (ifOperStatus) is a Toise
+  **state-key** (underscore spelling — a change fires `entity.state_changed`;
+  the earlier dotted `oper.state` was silently demoted to a plain attribute);
+  `speed` (ifHighSpeed Mbit/s → bit/s), `mac` (ifPhysAddress, all-zero
+  dropped), `mtu` (ifMtu), `interface.type` (IANAifType →
+  physical/virtual/wireless/loopback) and `duplex` (EtherLike-MIB
+  dot3StatsDuplexStatus → full/half/unknown) are descriptive — the same
+  vocabulary the host interface path (hostiface) emits. The port inventory that
+  anchors `connected_to`; `notPresent` and unnamed rows are skipped. Bounded by
+  the device's port count. **DONE (#156).**
 - **Interface IPs → `network.address` entities** (topology-as-entities, ADR
   0022): IP-MIB `ipAdEntIfIndex` (ipAddrTable) → one `network.address` entity
   `{network.address}` per non-loopback interface IP, `bound_to` the
