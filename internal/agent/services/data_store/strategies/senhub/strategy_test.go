@@ -21,7 +21,6 @@ type mockAgentConfig struct {
 }
 
 func (m *mockAgentConfig) GetAuthenticationKey() string     { return m.authKey }
-func (m *mockAgentConfig) GetServerUrl() string             { return m.serverURL }
 func (m *mockAgentConfig) GetGlobalTags() map[string]string { return nil }
 
 // Mock Server

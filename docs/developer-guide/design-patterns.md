@@ -117,15 +117,14 @@ Support multiple configuration sources through common interface:
 ```go
 type ConfigurationProvider interface {
     GetName() string
-    GetConfiguration() RemoteConfigurationData
+    GetConfiguration() ConfigurationData
     OnConfigChanged(callback func(string))
     Start(chan struct{}) error
     Shutdown(context.Context) error
 }
 
 // Implementations:
-// - LocalConfiguration (offline mode)
-// - RemoteConfiguration (online mode)
+// - LocalConfiguration (YAML files)
 ```
 
 **Benefits:**
@@ -163,7 +162,7 @@ Use interface assertion to access wrapped configuration data:
 // Pattern: Type assert to access extended interface
 func getLicenseToken(config AgentConfiguration) string {
     if configProvider, ok := config.(interface {
-        GetConfiguration() configuration.RemoteConfigurationData
+        GetConfiguration() configuration.ConfigurationData
     }); ok {
         cfg := configProvider.GetConfiguration()
         return cfg.Agent.License
@@ -175,14 +174,11 @@ func getLicenseToken(config AgentConfiguration) string {
 **Implementation in agentConfiguration:**
 ```go
 // GetConfiguration exposes configuration data from wrapped providers
-func (l *agentConfiguration) GetConfiguration() RemoteConfigurationData {
+func (l *agentConfiguration) GetConfiguration() ConfigurationData {
     if l.localConfiguration != nil {
         return l.localConfiguration.GetConfiguration()
     }
-    if l.remoteConfiguration != nil {
-        return l.remoteConfiguration.GetConfiguration()
-    }
-    return RemoteConfigurationData{} // Empty if no provider
+    return ConfigurationData{} // Empty if no provider
 }
 ```
 
