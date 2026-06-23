@@ -1,8 +1,8 @@
-// LocalConfiguration handles offline configuration from YAML files
+// LocalConfiguration handles configuration from YAML files
 // Responsibilities:
 // - Local YAML configuration loading
-// - Agent key generation for offline mode
-// - TLS certificate management for offline mode
+// - Agent key generation
+// - TLS certificate management
 package configuration
 
 import (
@@ -31,7 +31,6 @@ type LocalConfigurationData struct {
 // LocalAgentConfig represents agent-specific configuration
 type LocalAgentConfig struct {
 	Key     string `yaml:"key"`
-	Mode    string `yaml:"mode"`
 	License string `yaml:"license,omitempty"` // JWT license token or JSON for testing
 	// GlobalTags are applied to every datapoint of every probe (multi-site /
 	// multi-tenant labelling). A probe's own custom_tags override a global_tag
@@ -51,6 +50,11 @@ type AutoUpdateConfig struct {
 	Enabled     bool   `yaml:"enabled"`
 	IncludeBeta bool   `yaml:"include_beta"`
 	URL         string `yaml:"url"`
+	// Version is the target the active updater tracks: "latest" (the default
+	// when omitted) resolves the newest stable from the registry; an explicit
+	// version pins to it. Empty here used to leave the active updater comparing
+	// against an empty string and concluding "no update required" forever (#567).
+	Version string `yaml:"version"`
 }
 
 // CacheConfig represents cache configuration
@@ -58,7 +62,7 @@ type CacheConfig struct {
 	RetentionMinutes int `yaml:"retention_minutes"`
 }
 
-// LocalConfiguration manages offline configuration
+// LocalConfiguration manages configuration
 type LocalConfiguration struct {
 	// dataPo holds the current configuration as an immutable snapshot
 	// swapped atomically: the watcher and rewatch goroutines write it
@@ -163,12 +167,6 @@ func (lc *LocalConfiguration) GetGlobalTags() map[string]string {
 	return lc.snapshot().Agent.GlobalTags
 }
 
-// GetServerUrl implements AgentConfiguration interface
-func (lc *LocalConfiguration) GetServerUrl() string {
-	// In offline mode, we don't have a server URL
-	return ""
-}
-
 // GetAutoUpdateConfig returns the auto-update configuration
 func (lc *LocalConfiguration) GetAutoUpdateConfig() *AutoUpdateConfig {
 	if lc.snapshot().AutoUpdate == nil {
@@ -196,8 +194,8 @@ func (lc *LocalConfiguration) GetCacheConfig() *CacheConfig {
 	return lc.snapshot().Cache
 }
 
-// GetConfiguration returns the configuration data in RemoteConfigurationData format
-func (lc *LocalConfiguration) GetConfiguration() RemoteConfigurationData {
+// GetConfiguration returns the configuration data in ConfigurationData format
+func (lc *LocalConfiguration) GetConfiguration() ConfigurationData {
 	// Get auto-update configuration
 	autoUpdate := lc.GetAutoUpdateConfig()
 
@@ -209,13 +207,21 @@ func (lc *LocalConfiguration) GetConfiguration() RemoteConfigurationData {
 		updateInterval = 0 // Disabled
 	}
 
+	// The active updater compares against this target; an empty string makes it
+	// conclude "no update required" forever (#567), so an enabled agent with no
+	// explicit pin tracks the newest stable ("latest").
+	updateVersion := autoUpdate.Version
+	if updateVersion == "" {
+		updateVersion = "latest"
+	}
+
 	// Convert local config format to remote config format
-	return RemoteConfigurationData{
+	return ConfigurationData{
 		StorageConfig: lc.snapshot().Storage,
 		Probes:        lc.snapshot().Probes,
 		Agent: AgentConfig{
 			RegistryUrl:         autoUpdate.URL,
-			Version:             "",
+			Version:             updateVersion,
 			UpdateCheckInterval: updateInterval,
 			License:             lc.snapshot().Agent.License,
 			AuthenticationKey:   lc.snapshot().Agent.Key,

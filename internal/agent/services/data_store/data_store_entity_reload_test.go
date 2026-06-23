@@ -19,11 +19,11 @@ import (
 // OnConfigRefreshed reads, so we can drive a real OTLP-strategy recreate
 // (endpoint change) the same way a config edit + hot-reload does.
 type entityReloadConfigProvider struct {
-	cfg atomic.Pointer[configuration.RemoteConfigurationData]
+	cfg atomic.Pointer[configuration.ConfigurationData]
 }
 
-func (p *entityReloadConfigProvider) set(c configuration.RemoteConfigurationData) { p.cfg.Store(&c) }
-func (p *entityReloadConfigProvider) GetConfiguration() configuration.RemoteConfigurationData {
+func (p *entityReloadConfigProvider) set(c configuration.ConfigurationData) { p.cfg.Store(&c) }
+func (p *entityReloadConfigProvider) GetConfiguration() configuration.ConfigurationData {
 	return *p.cfg.Load()
 }
 func (p *entityReloadConfigProvider) OnConfigChanged(func(string)) {}
@@ -89,7 +89,7 @@ func TestOnConfigRefreshed_OTLPEntityEmissionSurvivesReload(t *testing.T) {
 
 	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
 	provider := &entityReloadConfigProvider{}
-	provider.set(configuration.RemoteConfigurationData{
+	provider.set(configuration.ConfigurationData{
 		StorageConfig: []configuration.StorageConfig{otlpEntityStorageConfig(epA)},
 	})
 	mockConfig := &MockAgentConfig{authKey: "test-key", serverURL: "https://example.com"}
@@ -117,7 +117,7 @@ func TestOnConfigRefreshed_OTLPEntityEmissionSurvivesReload(t *testing.T) {
 	// must never exceed one instance's worth. Without the fix the new
 	// instance starts while the old is still registered, so the count
 	// momentarily doubles and two detectors publish overlapping heartbeats.
-	provider.set(configuration.RemoteConfigurationData{
+	provider.set(configuration.ConfigurationData{
 		StorageConfig: []configuration.StorageConfig{otlpEntityStorageConfig(epB)},
 	})
 

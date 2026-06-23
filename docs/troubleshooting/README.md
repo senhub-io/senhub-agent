@@ -5,7 +5,7 @@ This section contains troubleshooting guides and solutions for common issues whe
 ## 📋 Contents
 
 ### Mode-Specific Issues
-- **[Offline Mode Issues](./TROUBLESHOOTING-OFFLINE.md)** - Common problems and solutions for offline mode
+- **[Troubleshooting](./TROUBLESHOOTING.md)**
 
 ## 🎯 Who This Is For
 
