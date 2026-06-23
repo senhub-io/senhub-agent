@@ -135,7 +135,6 @@ func (h *HealthManager) BuildSystemHealth() SystemHealth {
 			"http_server": "running",
 			"cache":       "running",
 			"metrics":     fmt.Sprintf("%d metrics cached", systemStatus.Performance.CacheEntries),
-			"mode":        systemStatus.Connection.Mode,
 		},
 	}
 
@@ -164,7 +163,6 @@ func (h *HealthManager) GetServiceStatus() map[string]string {
 		"cache":       "running",
 		"metrics":     fmt.Sprintf("%d metrics cached", systemStatus.Performance.CacheEntries),
 		"strategy":    "http",
-		"mode":        systemStatus.Connection.Mode,
 		"uptime":      systemStatus.Performance.Uptime,
 		"health":      systemStatus.Health.Status,
 	}
@@ -214,7 +212,6 @@ func (h *HealthManager) GetHealthMetrics() map[string]interface{} {
 		"cache_ttl_seconds": h.strategy.cache.ttl.Seconds(),
 		"http_port":         h.strategy.port,
 		"status":            systemStatus.Health.Status,
-		"agent_mode":        systemStatus.Connection.Mode,
 		"health_timestamp":  systemStatus.Health.Timestamp.Unix(),
 	}
 }

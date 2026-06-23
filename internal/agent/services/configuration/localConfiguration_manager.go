@@ -100,9 +100,9 @@ func (lc *LocalConfiguration) loadConfiguration() error {
 //
 // The agent key is always freshly generated (UUID v4). Pre-0.2.0
 // the caller could seed it via --authentication-key; that flag was
-// removed alongside online mode.
+// removed with the legacy remote-config loader.
 func (lc *LocalConfiguration) createDefaultConfiguration() error {
-	agentKey, err := lc.generateOfflineAgentKey()
+	agentKey, err := lc.generateAgentKey()
 	if err != nil {
 		return fmt.Errorf("failed to generate agent key: %w", err)
 	}
@@ -144,8 +144,7 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 	lc.storeData(LocalConfigurationData{
 		ConfigVersion: CurrentConfigVersion,
 		Agent: LocalAgentConfig{
-			Key:  agentKey,
-			Mode: "offline",
+			Key: agentKey,
 		},
 		Storage:    lc.createDefaultStorageConfig(),
 		Probes:     lc.createDefaultProbesConfig(),
@@ -231,8 +230,8 @@ func (lc *LocalConfiguration) generateHTTPStrategyFragment() string {
 	return fmt.Sprintf(HTTPStrategyFragmentTemplate, port, bindAddress, endpointsCSV, tlsSection)
 }
 
-// generateOfflineAgentKey creates a unique agent key for offline mode
-func (lc *LocalConfiguration) generateOfflineAgentKey() (string, error) {
+// generateAgentKey creates a unique agent key
+func (lc *LocalConfiguration) generateAgentKey() (string, error) {
 	// Generate a UUID v4
 	uuid := make([]byte, 16)
 	if _, err := rand.Read(uuid); err != nil {
@@ -247,7 +246,7 @@ func (lc *LocalConfiguration) generateOfflineAgentKey() (string, error) {
 	key := fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
 		uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:16])
 
-	lc.logger.Info().Msg("Generated offline agent key (UUID)")
+	lc.logger.Info().Msg("Generated agent key (UUID)")
 	return key, nil
 }
 

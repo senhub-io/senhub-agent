@@ -68,9 +68,9 @@ func (v *MockValidator) IsProbeAuthorized(license *License, probeName string) bo
 		return true
 	}
 
-	// ONLINE MODE BYPASS: If license is nil, authorize all probes (Enterprise behavior)
-	// This allows online mode agents to work without JWT license tokens
-	// while offline mode agents require explicit licenses
+	// LICENSE BYPASS: If license is nil, authorize all probes (Enterprise behavior)
+	// A nil license authorizes all probes (used by the enterprise build)
+	// while licensed agents require explicit tokens
 	if license == nil {
 		return true // ⬅️ CHANGED: nil license = Enterprise (all probes authorized)
 	}

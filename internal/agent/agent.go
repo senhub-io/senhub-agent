@@ -1,18 +1,9 @@
 // Package agent manages the core agent lifecycle and services orchestration.
 //
-// Mode model (0.2.0+): the agent runs **offline only**. Configuration
-// is read from a local YAML file (or the `agent.yaml` + `probes.d/` +
-// `strategies.d/` multi-file layout). The agent never reaches out to a
-// SenHub SaaS for its configuration. Data-push strategies (senhub,
-// otlp, http, prtg, …) remain available and can still send metrics to
+// Configuration is read from local YAML files (the `agent.yaml` +
+// `probes.d/` + `strategies.d/` multi-file layout, or a single file).
+// Data-push strategies (senhub, otlp, http, prtg, …) send metrics to
 // whichever back-end the operator wires up in `strategies.d/`.
-//
-// Pre-0.2.0 the agent supported an "online" mode where configuration
-// was fetched from `intake.senhub.io`. That code path has been
-// removed; the `--offline`, `--authentication-key` and `--server-url`
-// CLI flags have been removed alongside it. Existing service units
-// that still pass those flags MUST be updated before upgrading to
-// 0.2.0 — Go's arg parser fails fast on unknown flags.
 package agent
 
 import (
@@ -69,7 +60,7 @@ func NewAgent() Agent {
 func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 	logger := logger.NewLogger(args)
 	logger.Debug().Any("args", args).Msg("Agent configuration")
-	logger.Info().Msg("Initializing agent (offline mode is the only supported mode)")
+	logger.Info().Msg("Initializing agent")
 
 	localConfiguration := configuration.NewLocalConfiguration(args, logger)
 
@@ -80,7 +71,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		// `agent install` (so the configuration file does not yet
 		// exist on disk). Downstream code expects a non-empty value
 		// so we substitute a clearly recognisable placeholder.
-		agentKey = "offline-pending"
+		agentKey = "pending"
 	}
 
 	agentConfiguration := configuration.NewAgentConfigurationWithLocal(

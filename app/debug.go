@@ -84,7 +84,7 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 
 	// Try to get detailed status from running agent first (via HTTP).
 	// The authentication key always comes from the configuration file
-	// in 0.2.0+ — the CLI flag was removed alongside online mode.
+	// in 0.2.0+ — the CLI flag was removed with the legacy remote-config loader.
 	agentKey := ""
 	if args != nil {
 		// Read agent key from config file
@@ -195,9 +195,6 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 
 	// Create status service
 	statusService := status.NewStatusService(logger, version, commit)
-
-	// Offline is the only supported mode in 0.2.0+.
-	statusService.SetAgentMode("offline")
 
 	// Note: Without actual probe/cache data, we'll get basic system info
 	// In a real deployment, this would connect to the running agent's internal state
