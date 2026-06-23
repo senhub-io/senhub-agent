@@ -1,6 +1,6 @@
 // Package configuration manages agent configuration loaded from local
 // YAML files. The pre-0.2.0 remote-configuration variant has been
-// removed alongside online mode; this file now exposes a single
+// removed with the legacy remote-config loader; this file now exposes a single
 // LocalConfiguration-backed implementation.
 package configuration
 
@@ -33,7 +33,7 @@ type AgentConfiguration interface {
 // variant that fetched from intake.senhub.io.
 type ConfigurationProvider interface {
 	GetName() string
-	GetConfiguration() RemoteConfigurationData
+	GetConfiguration() ConfigurationData
 	OnConfigChanged(callback func(string))
 	Start(chan struct{}) error
 	Shutdown(context.Context) error
@@ -69,9 +69,7 @@ func NewAgentConfiguration(
 }
 
 // NewAgentConfigurationWithLocal binds the agent's identity key to a
-// LocalConfiguration source. Pre-0.2.0 there was also a
-// NewAgentConfigurationWithRemote variant; that one was deleted with
-// online mode.
+// LocalConfiguration source.
 func NewAgentConfigurationWithLocal(
 	authenticationKey string,
 	localConfig *LocalConfiguration,
@@ -101,11 +99,11 @@ func (l *agentConfiguration) GetGlobalTags() map[string]string {
 // AgentConfiguration via the legacy constructor signature and need
 // access to the merged probes/storage state without holding a direct
 // LocalConfiguration reference.
-func (l *agentConfiguration) GetConfiguration() RemoteConfigurationData {
+func (l *agentConfiguration) GetConfiguration() ConfigurationData {
 	if l.localConfiguration != nil {
 		return l.localConfiguration.GetConfiguration()
 	}
-	return RemoteConfigurationData{}
+	return ConfigurationData{}
 }
 
 // GetCacheConfig returns the cache block from the bound configuration,

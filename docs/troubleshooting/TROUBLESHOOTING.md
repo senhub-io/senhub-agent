@@ -1,4 +1,4 @@
-# SenHub Agent - Offline Mode Troubleshooting Guide
+# SenHub Agent — Troubleshooting Guide
 
 ## Common Issues and Solutions
 
@@ -369,7 +369,7 @@ ERR Failed to parse YAML config error="yaml: line 15: did not find expected key"
 # Validate YAML syntax
 python -c "import yaml; yaml.safe_load(open('./agent-config.yaml'))"
 
-# Or use online YAML validator
+# Or use an online YAML validator
 # Check indentation (use spaces, not tabs)
 # Check quotes and special characters
 
@@ -640,7 +640,7 @@ When contacting support, include:
 #### Community Resources
 
 - **GitHub Issues**: [SenHub Agent Repository](https://github.com/senhub/agent/issues)
-- **Documentation**: `OFFLINE-MODE.md`, `HTTPS-CONFIGURATION.md`
+- **Documentation**: `configuration.md`, `HTTPS-CONFIGURATION.md`
 - **Examples**: Check `examples/` directory in repository
 - **Stack Overflow**: Tag questions with `senhub-agent`
 

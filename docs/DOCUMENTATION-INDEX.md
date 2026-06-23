@@ -11,13 +11,11 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 ## 🚀 Getting Started
 
 ### For New Users
-1. **[Quick Start Guide (5 min)](user-guide/QUICK-START-OFFLINE.md)** - Get your agent running in 5 minutes
-2. **[Standalone Deployment Guide](user-guide/OFFLINE-MODE.md)** - Complete standalone deployment documentation
 3. **[Probe Configuration](user-guide/PROBE-CONFIGURATION.md)** - Configure monitoring probes
 
 ### For Production Deployment
 1. **[HTTPS Configuration](admin-guide/HTTPS-CONFIGURATION.md)** - TLS/SSL setup and security
-2. **[Troubleshooting Guide](troubleshooting/TROUBLESHOOTING-OFFLINE.md)** - Common issues and solutions
+2. **[Troubleshooting Guide](troubleshooting/TROUBLESHOOTING.md)** - Common issues and solutions
 3. **[Universal Configuration API](admin-guide/UNIVERSAL-CONFIGURATION.md)** - Configuration validation
 
 ## 📚 User Documentation
@@ -25,10 +23,8 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 ### Core Guides
 | Document | Description | Audience | Time to Read |
 |----------|-------------|----------|--------------|
-| **[QUICK-START-OFFLINE.md](user-guide/QUICK-START-OFFLINE.md)** | 5-minute setup guide | All users | 5 min |
-| **[OFFLINE-MODE.md](user-guide/OFFLINE-MODE.md)** | Complete standalone deployment documentation | Users, Admins | 30 min |
 | **[HTTPS-CONFIGURATION.md](admin-guide/HTTPS-CONFIGURATION.md)** | TLS/SSL configuration guide | Admins, DevOps | 20 min |
-| **[TROUBLESHOOTING-OFFLINE.md](troubleshooting/TROUBLESHOOTING-OFFLINE.md)** | Troubleshooting and debugging | All users | 15 min |
+| **[TROUBLESHOOTING.md](troubleshooting/TROUBLESHOOTING.md)** | Troubleshooting and debugging | All users | 15 min |
 
 ### Configuration References
 | Document | Description | Use Case |
@@ -96,21 +92,18 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 ## 🎯 Quick Navigation by Use Case
 
 ### "I want to get started quickly"
-1. **[QUICK-START-OFFLINE.md](user-guide/QUICK-START-OFFLINE.md)** (5 minutes)
 2. **[PROBE-CONFIGURATION.md](user-guide/PROBE-CONFIGURATION.md)** (probe setup)
 
 ### "I need to deploy in production"
-1. **[OFFLINE-MODE.md](user-guide/OFFLINE-MODE.md)** (comprehensive guide)
 2. **[HTTPS-CONFIGURATION.md](admin-guide/HTTPS-CONFIGURATION.md)** (security setup)
 3. **[LOGGING.md](admin-guide/LOGGING.md)** (logging configuration)
 
 ### "I have an issue to resolve"
-1. **[TROUBLESHOOTING-OFFLINE.md](troubleshooting/TROUBLESHOOTING-OFFLINE.md)** (troubleshooting guide)
+1. **[TROUBLESHOOTING.md](troubleshooting/TROUBLESHOOTING.md)** (troubleshooting guide)
 2. **[LOGGING.md](admin-guide/LOGGING.md)** (debugging information)
 3. **[Developer Guide](developer-guide/README.md)** (development context)
 
 ### "I want to integrate with monitoring tools"
-1. **[OFFLINE-MODE.md#api-endpoints](user-guide/OFFLINE-MODE.md#api-endpoints)** (API reference)
 2. **[HTTP-STRATEGY.md](admin-guide/HTTP-STRATEGY.md)** (HTTP strategy details)
 3. **[UNIVERSAL-CONFIGURATION.md](admin-guide/UNIVERSAL-CONFIGURATION.md)** (configuration validation)
 
@@ -150,8 +143,6 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 ## 🔍 Documentation by Topic
 
 ### Installation & Setup
-- **[Quick Start](user-guide/QUICK-START-OFFLINE.md)** - 5-minute setup
-- **[Complete Guide](user-guide/OFFLINE-MODE.md)** - Full installation documentation
 - **[Probe Configuration](user-guide/PROBE-CONFIGURATION.md)** - Configure monitoring probes
 
 ### Security & HTTPS
@@ -179,13 +170,12 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 - **[All Probes](user-guide/PROBE-CONFIGURATION.md)** - Complete probe configuration guide
 
 ### Integration & APIs
-- **[API Reference](user-guide/OFFLINE-MODE.md#api-endpoints)** - REST API documentation
 - **[Universal Configuration](admin-guide/UNIVERSAL-CONFIGURATION.md)** - Probe configuration validation API
 - **[HTTP Strategy](admin-guide/HTTP-STRATEGY.md)** - HTTP strategy configuration
 - **[HTTP Bind Address](admin-guide/HTTP-BIND-ADDRESS.md)** - Network binding configuration
 
 ### Troubleshooting & Debugging
-- **[Troubleshooting Guide](troubleshooting/TROUBLESHOOTING-OFFLINE.md)** - Common issues and solutions
+- **[Troubleshooting Guide](troubleshooting/TROUBLESHOOTING.md)** - Common issues and solutions
 - **[Logging System](admin-guide/LOGGING.md)** - Advanced logging and debugging
 - **[Debug Mode](developer-guide/build-system.md#troubleshooting)** - Development debugging
 
@@ -238,7 +228,7 @@ curl http://localhost:8080/health
 ## 🆕 Recent Updates
 
 ### Version 0.2.0+
-- ✅ Standalone (offline-only) mode — online mode removed
+- ✅ Standalone, locally-configured agent (no external config server)
 - ✅ HTTPS/TLS support with auto-generated certificates
 - ✅ Local web interface and API endpoints
 - ✅ Comprehensive documentation suite
@@ -274,7 +264,7 @@ If you can't find what you're looking for:
 1. **Check this index** for the most relevant documentation
 2. **Search the documentation** using your browser (Ctrl/Cmd+F)
 3. **Review examples** in the `examples/` directory
-4. **Check troubleshooting** in `TROUBLESHOOTING-OFFLINE.md`
+4. **Check troubleshooting** in `TROUBLESHOOTING.md`
 5. **Open an issue** on GitHub for missing or unclear documentation
 
 ---

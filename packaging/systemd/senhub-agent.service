@@ -9,7 +9,10 @@ Type=simple
 User=senhub
 Group=senhub
 ExecStart=/usr/bin/senhub-agent run --config-path /etc/senhub-agent/agent.yaml
-Restart=on-failure
+# always (not on-failure): a self-update exits 0 to hand off to the new
+# binary, so systemd must restart on a clean exit too (#567). An explicit
+# `systemctl stop` is still honoured (no restart).
+Restart=always
 RestartSec=5
 StartLimitIntervalSec=300
 StartLimitBurst=5

@@ -1,15 +1,8 @@
 // Package cliArgs parses the senhub-agent command line.
 //
-// Mode model (0.2.0+): the agent runs offline only. The following CLI
-// flags were removed in 0.2.0 and now produce a parse error if passed:
-//
-//	--offline           (was: enable offline mode; offline is now the only mode)
-//	--authentication-key  (was: agent identity key — now read from the
-//	                       config file only, generated at install time)
-//	--server-url          (was: SaaS configuration server URL — no longer
-//	                       reached; the cloud intake URL used by the
-//	                       senhub data-push strategy is build-time
-//	                       injected via ldflags)
+//	reached; the cloud intake URL used by the
+//	senhub data-push strategy is build-time
+//	injected via ldflags)
 //
 // Operators who still pass any of these flags from a systemd unit or
 // Windows service ExecStart MUST update those before upgrading to
@@ -39,7 +32,7 @@ var (
 
 // CloudIntakeURL returns the cloud intake URL appropriate for the
 // build environment. The senhub data-push strategy uses this when an
-// operator wires it up in strategies.d/; offline-only mode means the
+// operator wires it up in strategies.d/; the agent always loads from local config, so the
 // URL is fixed at build time, not selectable at runtime.
 func CloudIntakeURL() string {
 	if Env == "development" {

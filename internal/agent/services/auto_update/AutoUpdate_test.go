@@ -29,7 +29,7 @@ func createTestModuleLogger() *logger.ModuleLogger {
 func TestAutoUpdate_GetName(t *testing.T) {
 	baseLogger := createTestLogger()
 
-	remoteConfig := configuration.NewMockRemoteConfiguration("http://localhost:8080", "")
+	remoteConfig := configuration.NewMockConfiguration("http://localhost:8080", "")
 
 	au := NewAutoUpdate(AutoUpdateConfig{
 		remoteConfig,
@@ -142,7 +142,7 @@ func TestAutoUpdate_ShouldUpdate(t *testing.T) {
 					}
 				}`
 			}
-			remoteConfig := configuration.NewMockRemoteConfiguration(
+			remoteConfig := configuration.NewMockConfiguration(
 				"http://localhost:8000", configString)
 
 			httpClient := httpretry.NewDefaultClient()
@@ -206,7 +206,7 @@ func TestAutoUpdate_getExpectedVersion_WithFailingServer(t *testing.T) {
 					"registry_url": "` + versionServer.URL + `"
 				}
 			}`
-			remoteConfig := configuration.NewMockRemoteConfiguration(
+			remoteConfig := configuration.NewMockConfiguration(
 				"http://localhost:8000", configString)
 
 			httpClient := httpretry.NewDefaultClient()
@@ -306,7 +306,7 @@ func TestAutoUpdate_GetBinaryUrl(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			remoteConfig := configuration.NewMockRemoteConfiguration(
+			remoteConfig := configuration.NewMockConfiguration(
 				"http://localhost:8000", "")
 
 			httpClient := httpretry.NewDefaultClient()
@@ -362,7 +362,7 @@ func TestAutoUpdate_GetBinaryName(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			remoteConfig := configuration.NewMockRemoteConfiguration(
+			remoteConfig := configuration.NewMockConfiguration(
 				"http://localhost:8000", "")
 
 			httpClient := httpretry.NewDefaultClient()
@@ -412,7 +412,7 @@ func TestAutoUpdate_GetUpdateCheckInterval(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			configInterval, _ := json.Marshal(tc.interval)
-			remoteConfig := configuration.NewMockRemoteConfiguration(
+			remoteConfig := configuration.NewMockConfiguration(
 				"http://localhost:8000", `
 				{
 					"agent": {

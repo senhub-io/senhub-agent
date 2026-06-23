@@ -692,7 +692,7 @@ func (a *APIManager) getLicenseToken() string {
 	// All AgentConfiguration implementations should have GetConfiguration()
 	// Try the interface method that all configurations support
 	if configProvider, ok := a.strategy.agentConfig.(interface {
-		GetConfiguration() configuration.RemoteConfigurationData
+		GetConfiguration() configuration.ConfigurationData
 	}); ok {
 		a.logger.Debug().Msg("Configuration supports GetConfiguration interface")
 		config := configProvider.GetConfiguration()

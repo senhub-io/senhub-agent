@@ -6,8 +6,6 @@ Welcome to the SenHub Agent documentation. This documentation is organized into 
 
 ### 👤 [User Guide](./user-guide/)
 Documentation for end users and basic configuration:
-- [Quick Start (Offline Mode)](./user-guide/QUICK-START-OFFLINE.md) - Get started quickly with offline mode
-- [Offline Mode](./user-guide/OFFLINE-MODE.md) - Complete offline mode configuration
 - [Probe Configuration](./user-guide/PROBE-CONFIGURATION.md) - Configure monitoring probes
 
 ### ⚙️ [Admin Guide](./admin-guide/)
@@ -98,7 +96,7 @@ Technical presentations and demos:
 
 ### 🚨 [Troubleshooting](./troubleshooting/)
 Troubleshooting guides and common issues:
-- [Offline Mode Issues](./troubleshooting/TROUBLESHOOTING-OFFLINE.md) - Solve offline mode problems
+- [Troubleshooting](./troubleshooting/TROUBLESHOOTING.md)
 
 ### 📁 [Archive](./archive/)
 Historical documentation and development notes (for reference only)
@@ -114,7 +112,6 @@ Historical documentation and development notes (for reference only)
 
 | I want to... | Go to... |
 |--------------|----------|
-| Get started quickly | [Quick Start Guide](./user-guide/QUICK-START-OFFLINE.md) |
 | Configure probes | [Probe Configuration](./user-guide/PROBE-CONFIGURATION.md) |
 | Monitor system resources (CPU, RAM, Network, Disk) | [System Probes](./probes/system/) |
 | Monitor network connectivity (Gateway, WiFi) | [Network Probes](./probes/network/) |
@@ -125,7 +122,7 @@ Historical documentation and development notes (for reference only)
 | Monitor hardware (servers) | [Redfish Documentation](./probes/redfish/) |
 | Setup HTTPS | [HTTPS Configuration](./admin-guide/HTTPS-CONFIGURATION.md) |
 | Manage licenses | [License System](./LICENSE-SYSTEM.md) |
-| Fix offline issues | [Offline Troubleshooting](./troubleshooting/TROUBLESHOOTING-OFFLINE.md) |
+| Fix issues | [Troubleshooting](./troubleshooting/TROUBLESHOOTING.md) |
 | Validate configurations | [Universal Configuration API](./admin-guide/UNIVERSAL-CONFIGURATION.md) |
 | Contribute to development | [Developer Guide](./developer-guide/) |
 | Check release notes | [Releases](./releases/) |
