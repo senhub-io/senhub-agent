@@ -84,6 +84,21 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	}
 	if runtime.GOOS == "linux" && serviceUser != rootServiceUser {
 		svcConfig.Option["SystemdScript"] = hardenedSystemdScript(serviceUser)
+
+		// Stage the binary where the unprivileged daemon can replace it in
+		// place during auto-update (#571): a service-user-owned dir under the
+		// StateDirectory, writable + outside ProtectSystem=full. The unit's
+		// ExecStart then points there.
+		if command == "install" {
+			managed, err := installManagedBinary(executablePath, serviceUser)
+			if err != nil {
+				fmt.Printf("Warning: could not stage the managed binary (%v).\n"+
+					"Auto-update will not be able to replace the binary until this is fixed.\n", err)
+			} else {
+				svcConfig.Executable = managed
+				svcConfig.WorkingDirectory = managedBinaryDir
+			}
+		}
 	}
 
 	prg := &program{

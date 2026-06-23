@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=simple
 User=senhub
 Group=senhub
-ExecStart=/usr/bin/senhub-agent run --config-path /etc/senhub-agent/agent.yaml
+ExecStart=/var/lib/senhub-agent/bin/senhub-agent run --config-path /etc/senhub-agent/agent.yaml
 # always (not on-failure): a self-update exits 0 to hand off to the new
 # binary, so systemd must restart on a clean exit too (#567). An explicit
 # `systemctl stop` is still honoured (no restart).
