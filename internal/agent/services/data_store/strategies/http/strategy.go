@@ -199,31 +199,10 @@ func NewHTTPSyncStrategy(
 	cacheAdapter := NewHTTPCacheAdapter(strategy.cache, moduleLogger.Logger)
 	strategy.statusService.SetCacheProvider(cacheAdapter)
 
-	// Determine agent mode (online/offline) from configuration
-	agentMode := strategy.determineAgentMode()
-	strategy.statusService.SetAgentMode(agentMode)
-
 	// Initialize server manager (must be last, needs access to all other modules)
 	strategy.serverManager = NewServerManager(strategy, moduleLogger)
 
 	return strategy
-}
-
-// determineAgentMode determines if the agent is running in online or offline mode
-func (h *HTTPSyncStrategy) determineAgentMode() string {
-	// Simple heuristic: if agent key looks like offline generated key, assume offline mode
-	if h.agentKey == "" {
-		return "unknown"
-	}
-
-	// Offline keys typically contain "offline" or are generated with machine fingerprint
-	if len(h.agentKey) > 20 && (h.agentKey[:7] == "offline" || h.agentKey[:4] == "test") {
-		return "offline"
-	}
-
-	// For now, assume online mode for other keys
-	// This could be enhanced with proper mode detection
-	return "online"
 }
 
 // GetStrategyName returns the strategy identifier
