@@ -51,6 +51,11 @@ type AutoUpdateConfig struct {
 	Enabled     bool   `yaml:"enabled"`
 	IncludeBeta bool   `yaml:"include_beta"`
 	URL         string `yaml:"url"`
+	// Version is the target the active updater tracks: "latest" (the default
+	// when omitted) resolves the newest stable from the registry; an explicit
+	// version pins to it. Empty here used to leave the active updater comparing
+	// against an empty string and concluding "no update required" forever (#567).
+	Version string `yaml:"version"`
 }
 
 // CacheConfig represents cache configuration
@@ -209,13 +214,21 @@ func (lc *LocalConfiguration) GetConfiguration() RemoteConfigurationData {
 		updateInterval = 0 // Disabled
 	}
 
+	// The active updater compares against this target; an empty string makes it
+	// conclude "no update required" forever (#567), so an enabled agent with no
+	// explicit pin tracks the newest stable ("latest").
+	updateVersion := autoUpdate.Version
+	if updateVersion == "" {
+		updateVersion = "latest"
+	}
+
 	// Convert local config format to remote config format
 	return RemoteConfigurationData{
 		StorageConfig: lc.snapshot().Storage,
 		Probes:        lc.snapshot().Probes,
 		Agent: AgentConfig{
 			RegistryUrl:         autoUpdate.URL,
-			Version:             "",
+			Version:             updateVersion,
 			UpdateCheckInterval: updateInterval,
 			License:             lc.snapshot().Agent.License,
 			AuthenticationKey:   lc.snapshot().Agent.Key,
