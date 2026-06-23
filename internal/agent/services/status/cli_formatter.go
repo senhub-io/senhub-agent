@@ -139,13 +139,6 @@ func (f *CLIFormatter) formatConnectionInfo(conn ConnectionInfo) string {
 		output.WriteString("🌐 Connection\n")
 	}
 	output.WriteString(strings.Repeat("-", 30) + "\n")
-
-	modeIcon := f.getConnectionIcon(conn.Mode)
-	if modeIcon != "" {
-		output.WriteString(fmt.Sprintf("Mode:       %s %s\n", modeIcon, f.titleCaser.String(conn.Mode)))
-	} else {
-		output.WriteString(fmt.Sprintf("Mode:       %s\n", f.titleCaser.String(conn.Mode)))
-	}
 	output.WriteString(fmt.Sprintf("Source:     %s\n", f.formatSource(conn.Source)))
 	output.WriteString(fmt.Sprintf("Status:     %s\n", f.formatConnectionStatus(conn.Status)))
 
@@ -375,22 +368,6 @@ func (f *CLIFormatter) getHealthIcon(status string) string {
 		return "⚠️"
 	case "unhealthy":
 		return "❌"
-	default:
-		return "❓"
-	}
-}
-
-func (f *CLIFormatter) getConnectionIcon(mode string) string {
-	// No icons on Windows due to compatibility issues
-	if runtime.GOOS == "windows" {
-		return ""
-	}
-
-	switch mode {
-	case "online":
-		return "🌐"
-	case "offline":
-		return "📱"
 	default:
 		return "❓"
 	}

@@ -2,12 +2,9 @@
 
 ## Getting Started
 - [Home](./Home.md)
-- [Quick Start (Online)](./user-guide/GETTING-STARTED.md)
-- [Quick Start (Offline)](./user-guide/QUICK-START-OFFLINE.md)
 
 ## User Guide
 - [Installation](./user-guide/INSTALLATION.md)
-- [Offline Mode](./user-guide/OFFLINE-MODE.md)
 - [Configuration](./user-guide/CONFIGURATION.md)
 
 ## Admin Guide

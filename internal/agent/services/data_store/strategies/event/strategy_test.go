@@ -24,7 +24,6 @@ import (
 type stubAgentConfig struct{}
 
 func (stubAgentConfig) GetAuthenticationKey() string     { return "test-key" }
-func (stubAgentConfig) GetServerUrl() string             { return "http://unused" }
 func (stubAgentConfig) GetGlobalTags() map[string]string { return nil }
 
 func testBaseLogger() *logger.Logger {

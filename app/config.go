@@ -1,4 +1,4 @@
-// Configuration management - offline config generation and validation
+// Configuration management - config generation and validation
 package app
 
 import (
@@ -16,13 +16,13 @@ import (
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
 
-// generateOfflineConfiguration runs at install time. In addition to
+// generateConfiguration runs at install time. In addition to
 // triggering the LocalConfiguration loader (which creates the
 // config-file parent directory and writes a default config), it
 // eagerly creates the multi-file layout directories (probes.d,
 // strategies.d) and the log directory so the first `agent run` finds
 // a fully-formed install layout.
-func generateOfflineConfiguration(args *cliArgs.ParsedArgs) error {
+func generateConfiguration(args *cliArgs.ParsedArgs) error {
 	appLogger := agentLogger.NewLogger(args)
 
 	// Resolve absolute config path so we know where to create the
@@ -269,21 +269,6 @@ func checkConfig(configPath string) {
 		fmt.Printf("  [OK]   agent.key: %s\n", config.Agent.Key)
 	} else {
 		fmt.Println("  [ERROR] agent.key is missing")
-		errors++
-	}
-
-	// Agent mode. In 0.2.0+ offline is the only supported mode;
-	// "online" is accepted with a deprecation warning so that operators
-	// upgrading from a pre-0.2.0 install with `mode: online` still
-	// pass the config-check (the agent ignores the field anyway).
-	switch config.Agent.Mode {
-	case "offline", "":
-		fmt.Printf("  [OK]   agent.mode: offline\n")
-	case "online":
-		fmt.Println("  [WARN] agent.mode: online (no longer supported in 0.2.0+ — agent ignores this value and runs offline). Update the config to mode: offline.")
-		warnings++
-	default:
-		fmt.Printf("  [ERROR] agent.mode: invalid value %q (must be omitted or set to offline)\n", config.Agent.Mode)
 		errors++
 	}
 

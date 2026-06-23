@@ -18,8 +18,7 @@ import (
 )
 
 func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
-	// Build the ExecStart arguments for the installed service.
-	// Offline is the only supported mode (0.2.0+); we always pass
+	// Build the ExecStart arguments for the installed service: pass
 	// --config-path with the resolved absolute path so the service
 	// finds the file regardless of working directory.
 	executablePath, err := os.Executable()
@@ -114,8 +113,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			fmt.Println("Service installed successfully")
 
 			// Always generate the local configuration at install time
-			// (offline is the only mode in 0.2.0+).
-			if err := generateOfflineConfiguration(args); err != nil {
+			if err := generateConfiguration(args); err != nil {
 				fmt.Printf("Warning: Failed to generate configuration: %v\n", err)
 			} else {
 				fmt.Printf("✅ Configuration generated: %s\n", configPath)
@@ -231,8 +229,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	case "status":
 		showEnhancedStatus(s, args)
 	case "run":
-		// Offline is the only supported mode (0.2.0+). The agent
-		// expects to find its YAML configuration on disk; the
+		// The agent expects to find its YAML configuration on disk; the
 		// install path generates a default one if missing, so a
 		// missing file here means run was invoked before install.
 		//

@@ -38,7 +38,7 @@ var (
 // This allows auto-update to work with both local and remote configurations
 type ConfigSource interface {
 	// GetConfiguration returns the agent configuration data
-	GetConfiguration() configuration.RemoteConfigurationData
+	GetConfiguration() configuration.ConfigurationData
 	// OnConfigChanged registers a callback for configuration changes
 	OnConfigChanged(callback func(string))
 }

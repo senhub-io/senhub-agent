@@ -16,10 +16,10 @@ import (
 
 // MockConfigProvider implements configuration.ConfigurationProvider for testing
 type MockConfigProvider struct {
-	config configuration.RemoteConfigurationData
+	config configuration.ConfigurationData
 }
 
-func (m *MockConfigProvider) GetConfiguration() configuration.RemoteConfigurationData {
+func (m *MockConfigProvider) GetConfiguration() configuration.ConfigurationData {
 	return m.config
 }
 
@@ -35,7 +35,6 @@ type MockAgentConfig struct {
 }
 
 func (m *MockAgentConfig) GetAuthenticationKey() string     { return m.authKey }
-func (m *MockAgentConfig) GetServerUrl() string             { return m.serverURL }
 func (m *MockAgentConfig) GetGlobalTags() map[string]string { return nil }
 
 // MockStrategy implements SyncStrategy for testing
@@ -292,7 +291,7 @@ func TestGetCallback(t *testing.T) {
 
 func TestGetCallback_AppliesConfiguredTags(t *testing.T) {
 	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
-	mockProvider := &MockConfigProvider{config: configuration.RemoteConfigurationData{
+	mockProvider := &MockConfigProvider{config: configuration.ConfigurationData{
 		Agent: configuration.AgentConfig{GlobalTags: map[string]string{"site": "global-x", "region": "west"}},
 		Probes: []configuration.ProbeConfig{
 			{Name: "p1", CustomTags: map[string]string{"site": "custom-x", "tier": "gold"}},
@@ -401,7 +400,7 @@ func TestStartAndShutdown(t *testing.T) {
 	baseLogger := logger.NewLogger(mockArgs)
 	mockConfig := &MockAgentConfig{}
 	mockProvider := &MockConfigProvider{
-		config: configuration.RemoteConfigurationData{
+		config: configuration.ConfigurationData{
 			StorageConfig: []configuration.StorageConfig{},
 		},
 	}
@@ -497,7 +496,7 @@ func TestOnConfigRefreshed(t *testing.T) {
 	baseLogger := logger.NewLogger(mockArgs)
 	mockConfig := &MockAgentConfig{authKey: "test-key"}
 	mockProvider := &MockConfigProvider{
-		config: configuration.RemoteConfigurationData{
+		config: configuration.ConfigurationData{
 			StorageConfig: []configuration.StorageConfig{},
 		},
 	}
