@@ -4,7 +4,6 @@ Welcome to the SenHub Agent documentation wiki. This guide provides comprehensiv
 
 ## Quick Links
 
-- **[Getting Started](./user-guide/GETTING-STARTED.md)** - Installation and first steps
 - **[User Guide](./user-guide/)** - End-user documentation
 - **[Admin Guide](./admin-guide/)** - Configuration and administration
 - **[Developer Guide](./developer-guide/)** - Contributing and development
@@ -26,9 +25,7 @@ SenHub Agent is a cross-platform monitoring agent that collects metrics and even
 ## Documentation Structure
 
 ### For Users
-- **[Getting Started](./user-guide/GETTING-STARTED.md)** - Quick start guide
 - **[Installation](./user-guide/INSTALLATION.md)** - Detailed installation instructions
-- **[Standalone Deployment](./user-guide/OFFLINE-MODE.md)** - Standalone deployment guide
 - **[Configuration](./user-guide/CONFIGURATION.md)** - Configuration overview
 
 ### For Administrators

@@ -48,8 +48,8 @@ type mockConfigWithLicense struct {
 	licenseToken string
 }
 
-func (m *mockConfigWithLicense) GetConfiguration() configuration.RemoteConfigurationData {
-	return configuration.RemoteConfigurationData{
+func (m *mockConfigWithLicense) GetConfiguration() configuration.ConfigurationData {
+	return configuration.ConfigurationData{
 		Agent: configuration.AgentConfig{
 			License: m.licenseToken,
 		},

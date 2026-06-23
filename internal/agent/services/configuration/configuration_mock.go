@@ -8,42 +8,34 @@ import (
 
 // MockConfiguration is a lightweight in-memory ConfigurationProvider
 // suitable for tests. Pre-0.2.0 the configuration package shipped a
-// `NewMockRemoteConfiguration` helper backed by the real
-// RemoteConfiguration struct; that was deleted alongside online mode.
+// `NewMockConfiguration` helper backed by the real
+// RemoteConfiguration struct; that was deleted with the legacy remote-config loader.
 // This replacement satisfies the same interfaces (ConfigurationProvider,
 // auto_update's ConfigSource) without dragging in the SaaS-loader
 // machinery.
 type MockConfiguration struct {
 	mu        sync.Mutex
-	data      RemoteConfigurationData
+	data      ConfigurationData
 	callbacks []func(string)
 }
 
 // NewMockConfiguration parses the provided JSON snippet (or `{}` when
-// empty) into a RemoteConfigurationData and returns a mock provider.
-// Mirrors the constructor signature pre-0.2.0 code used so tests can
-// migrate by swapping the function name.
-func NewMockConfiguration(_ /*url*/, config string) *MockConfiguration {
+// empty) into a ConfigurationData and returns a mock provider. The first
+// argument is ignored (a vestige of the removed remote-config loader).
+func NewMockConfiguration(_, config string) *MockConfiguration {
 	if config == "" {
 		config = `{"storage":[],"probes":[],"agent":{}}`
 	}
-	var parsed RemoteConfigurationData
+	var parsed ConfigurationData
 	_ = json.Unmarshal([]byte(config), &parsed)
 	return &MockConfiguration{data: parsed}
-}
-
-// NewMockRemoteConfiguration is a name-compatibility shim kept so tests
-// that imported the pre-0.2.0 helper keep compiling. New tests should
-// call NewMockConfiguration directly.
-func NewMockRemoteConfiguration(url string, config string) *MockConfiguration {
-	return NewMockConfiguration(url, config)
 }
 
 // GetName satisfies ConfigurationProvider.
 func (m *MockConfiguration) GetName() string { return "MockConfiguration" }
 
 // GetConfiguration returns the in-memory snapshot.
-func (m *MockConfiguration) GetConfiguration() RemoteConfigurationData {
+func (m *MockConfiguration) GetConfiguration() ConfigurationData {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.data
@@ -70,7 +62,7 @@ func (m *MockConfiguration) NotifyChange(source string) {
 
 // SetConfiguration overwrites the snapshot. Lets tests stage state
 // without going through the constructor twice.
-func (m *MockConfiguration) SetConfiguration(data RemoteConfigurationData) {
+func (m *MockConfiguration) SetConfiguration(data ConfigurationData) {
 	m.mu.Lock()
 	m.data = data
 	m.mu.Unlock()

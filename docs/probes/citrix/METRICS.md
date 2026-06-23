@@ -1077,7 +1077,7 @@ Correlate with other metrics:
 
 ---
 
-**Issue: Windows Service Not Starting (Offline Mode)**
+**Issue: Windows Service Not Starting**
 
 **Symptoms:**
 - Port doesn't bind when running as Windows service

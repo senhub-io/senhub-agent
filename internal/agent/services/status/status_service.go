@@ -19,7 +19,6 @@ type StatusService struct {
 	logger        *logger.ModuleLogger
 	startTime     time.Time
 	cacheProvider CacheStatisticsProvider // For accessing cache statistics
-	agentMode     string                  // "online", "offline", or "unknown"
 	version       string
 	commit        string
 }
@@ -42,7 +41,6 @@ type HealthInfo struct {
 
 // ConnectionInfo represents connection and configuration mode
 type ConnectionInfo struct {
-	Mode         string `json:"mode"`                    // "online", "offline"
 	Source       string `json:"source"`                  // "remote_server", "local_config"
 	Status       string `json:"status"`                  // "connected", "disconnected", "local"
 	DashboardURL string `json:"dashboard_url,omitempty"` // URL to the agent dashboard
@@ -83,7 +81,6 @@ func NewStatusService(baseLogger *logger.Logger, version, commit string) *Status
 	return &StatusService{
 		logger:    moduleLogger,
 		startTime: time.Now(),
-		agentMode: "unknown",
 		version:   version,
 		commit:    commit,
 	}
@@ -93,12 +90,6 @@ func NewStatusService(baseLogger *logger.Logger, version, commit string) *Status
 func (s *StatusService) SetCacheProvider(provider CacheStatisticsProvider) {
 	s.cacheProvider = provider
 	s.logger.Debug().Msg("Cache provider configured for status service")
-}
-
-// SetAgentMode sets the current agent mode (online/offline)
-func (s *StatusService) SetAgentMode(mode string) {
-	s.agentMode = mode
-	s.logger.Debug().Str("mode", mode).Msg("Agent mode set")
 }
 
 // GetSystemStatus returns complete system status
@@ -171,31 +162,12 @@ func (s *StatusService) calculateHealthInfo() HealthInfo {
 	}
 }
 
-// calculateConnectionInfo determines connection mode and status
+// calculateConnectionInfo reports how the agent is configured. The agent
+// loads from local YAML files, so this is always a local source.
 func (s *StatusService) calculateConnectionInfo() ConnectionInfo {
-	mode := s.agentMode
-	if mode == "unknown" {
-		mode = "offline" // Default assumption
-	}
-
-	var source, status string
-
-	switch mode {
-	case "online":
-		source = "remote_server"
-		status = "connected" // Could be enhanced with actual connectivity check
-	case "offline":
-		source = "local_config"
-		status = "local"
-	default:
-		source = "unknown"
-		status = "unknown"
-	}
-
 	return ConnectionInfo{
-		Mode:   mode,
-		Source: source,
-		Status: status,
+		Source: "local_config",
+		Status: "local",
 	}
 }
 

@@ -23,8 +23,8 @@ SenHub Agent is a cross-platform monitoring agent built in Go that collects metr
 │                                                         │
 │  ┌──────────────────────────────────────┐             │
 │  │     Configuration Provider           │             │
-│  │  - RemoteConfiguration (online)      │             │
-│  │  - LocalConfiguration (offline)      │             │
+│  │  - LocalConfiguration (YAML files)   │             │
+│  │    agent.yaml + probes.d + .d/        │             │
 │  └──────────────────────────────────────┘             │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
@@ -102,7 +102,7 @@ Unified interface for configuration management:
 ```go
 type ConfigurationProvider interface {
     GetName() string
-    GetConfiguration() RemoteConfigurationData
+    GetConfiguration() ConfigurationData
     OnConfigChanged(callback func(string))
     Start(chan struct{}) error
     Shutdown(context.Context) error
@@ -110,8 +110,7 @@ type ConfigurationProvider interface {
 ```
 
 #### Implementations
-- **RemoteConfiguration**: Fetch config from SenHub platform (online mode)
-- **LocalConfiguration**: YAML-based local config (offline mode)
+- **LocalConfiguration**: YAML-based local config (agent.yaml + probes.d/ + strategies.d/)
 
 ### 4. HTTP Strategy (Modular Architecture)
 
@@ -203,15 +202,15 @@ Strategy.SendDataPoints()
 Storage/Export
 ```
 
-### Configuration Update Flow (Online Mode)
+### Configuration Update Flow
 ```
-Server sends config
+Local config file changes (fsnotify watcher)
     ↓
-RemoteConfiguration.OnConfigChanged()
+LocalConfiguration reloads + atomically swaps the snapshot
     ↓
-Trigger callback
+Registered callbacks fire
     ↓
-Agent reloads configuration
+Agent applies the new configuration
     ↓
 Restart probes with new config
 ```

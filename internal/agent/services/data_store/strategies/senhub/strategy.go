@@ -131,10 +131,8 @@ func NewSyncStrategySenhub(
 	moduleLogger := logger.NewModuleLogger(baseLogger, "strategy.senhub")
 
 	// The cloud intake URL is injected at build time (see Makefile
-	// ldflags); pre-0.2.0 it was also overridable via --server-url,
-	// but that CLI flag was removed alongside online mode. Operators
-	// who need a non-default intake (staging / dev) get the alternate
-	// URL from the build env.
+	// ldflags). Operators who need a non-default intake (staging / dev)
+	// get the alternate URL from the build env.
 	srv := server.NewServer(
 		agentConfig.GetAuthenticationKey(),
 		cliArgs.ProductionURL,

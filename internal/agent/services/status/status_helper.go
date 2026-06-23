@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/kardianos/service"
@@ -133,28 +132,14 @@ type HTTPSystemInfoResponse struct {
 
 // convertHTTPResponseToSystemStatus converts HTTP strategy response to our format
 func (h *StatusHelper) convertHTTPResponseToSystemStatus(httpResp HTTPSystemInfoResponse) SystemStatus {
-	// Determine connection mode from health services (which includes mode)
-	var mode string
-	if modeStr, ok := httpResp.Health.Services["mode"]; ok {
-		mode = modeStr
-	} else {
-		// Fallback: try to detect from version string
-		if strings.Contains(httpResp.Health.Version, "offline") {
-			mode = "offline"
-		} else {
-			mode = "online"
-		}
-	}
-
 	return SystemStatus{
 		Health: HealthInfo{
 			Status:    httpResp.Health.Status,
 			Timestamp: time.Unix(httpResp.Health.Timestamp, 0),
 		},
 		Connection: ConnectionInfo{
-			Mode:   mode,
-			Source: h.determineSource(mode),
-			Status: h.determineConnectionStatus(mode),
+			Source: "local_config",
+			Status: "local",
 		},
 		Probes: nil, // Will be populated by caller via GetDetailedProbeStatusFromHTTP
 		Performance: PerformanceInfo{
@@ -171,30 +156,6 @@ func (h *StatusHelper) convertHTTPResponseToSystemStatus(httpResp HTTPSystemInfo
 			OS:        httpResp.OS,
 			Arch:      httpResp.Arch,
 		},
-	}
-}
-
-// determineSource determines configuration source based on mode
-func (h *StatusHelper) determineSource(mode string) string {
-	switch mode {
-	case "online":
-		return "remote_server"
-	case "offline":
-		return "local_config"
-	default:
-		return "unknown"
-	}
-}
-
-// determineConnectionStatus determines connection status based on mode
-func (h *StatusHelper) determineConnectionStatus(mode string) string {
-	switch mode {
-	case "online":
-		return "connected"
-	case "offline":
-		return "local"
-	default:
-		return "unknown"
 	}
 }
 

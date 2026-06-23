@@ -15,11 +15,11 @@ import (
 
 // MockConfigProvider implements configuration.ConfigurationProvider for testing
 type MockConfigProvider struct {
-	config          configuration.RemoteConfigurationData
+	config          configuration.ConfigurationData
 	changeCallbacks []func(string)
 }
 
-func (m *MockConfigProvider) GetConfiguration() configuration.RemoteConfigurationData {
+func (m *MockConfigProvider) GetConfiguration() configuration.ConfigurationData {
 	return m.config
 }
 
@@ -60,7 +60,7 @@ func TestSensor_Start_NoProbes(t *testing.T) {
 	mockArgs := &cliArgs.ParsedArgs{}
 	baseLogger := logger.NewLogger(mockArgs)
 	mockProvider := &MockConfigProvider{
-		config: configuration.RemoteConfigurationData{
+		config: configuration.ConfigurationData{
 			Probes: []configuration.ProbeConfig{},
 		},
 	}
@@ -81,7 +81,7 @@ func TestSensor_Start_WithValidProbe(t *testing.T) {
 	mockArgs := &cliArgs.ParsedArgs{}
 	baseLogger := logger.NewLogger(mockArgs)
 	mockProvider := &MockConfigProvider{
-		config: configuration.RemoteConfigurationData{
+		config: configuration.ConfigurationData{
 			Probes: []configuration.ProbeConfig{
 				{
 					Name: "test-cpu",
@@ -114,7 +114,7 @@ func TestSensor_Start_WithInvalidProbe(t *testing.T) {
 	mockArgs := &cliArgs.ParsedArgs{}
 	baseLogger := logger.NewLogger(mockArgs)
 	mockProvider := &MockConfigProvider{
-		config: configuration.RemoteConfigurationData{
+		config: configuration.ConfigurationData{
 			Probes: []configuration.ProbeConfig{
 				{
 					Name: "invalid-probe",
@@ -144,7 +144,7 @@ func TestSensor_SyncConfiguration(t *testing.T) {
 	mockArgs := &cliArgs.ParsedArgs{}
 	baseLogger := logger.NewLogger(mockArgs)
 	mockProvider := &MockConfigProvider{
-		config: configuration.RemoteConfigurationData{
+		config: configuration.ConfigurationData{
 			Probes: []configuration.ProbeConfig{},
 		},
 	}
@@ -191,7 +191,7 @@ func TestSensor_OnConfigChanged(t *testing.T) {
 	mockArgs := &cliArgs.ParsedArgs{}
 	baseLogger := logger.NewLogger(mockArgs)
 	mockProvider := &MockConfigProvider{
-		config: configuration.RemoteConfigurationData{
+		config: configuration.ConfigurationData{
 			Probes: []configuration.ProbeConfig{},
 		},
 	}
@@ -232,7 +232,7 @@ func TestSensor_Shutdown_WithProbes(t *testing.T) {
 	mockArgs := &cliArgs.ParsedArgs{}
 	baseLogger := logger.NewLogger(mockArgs)
 	mockProvider := &MockConfigProvider{
-		config: configuration.RemoteConfigurationData{
+		config: configuration.ConfigurationData{
 			Probes: []configuration.ProbeConfig{
 				{
 					Name: "test-cpu",
@@ -276,7 +276,7 @@ func TestSensor_Shutdown_NoProbes(t *testing.T) {
 	mockArgs := &cliArgs.ParsedArgs{}
 	baseLogger := logger.NewLogger(mockArgs)
 	mockProvider := &MockConfigProvider{
-		config: configuration.RemoteConfigurationData{
+		config: configuration.ConfigurationData{
 			Probes: []configuration.ProbeConfig{},
 		},
 	}
@@ -298,7 +298,7 @@ func TestSensor_MultipleProbes_DifferentTypes(t *testing.T) {
 	mockArgs := &cliArgs.ParsedArgs{}
 	baseLogger := logger.NewLogger(mockArgs)
 	mockProvider := &MockConfigProvider{
-		config: configuration.RemoteConfigurationData{
+		config: configuration.ConfigurationData{
 			Probes: []configuration.ProbeConfig{
 				{
 					Name: "cpu-monitor",
@@ -345,7 +345,7 @@ func TestSensor_AddRemoveProbes(t *testing.T) {
 	mockArgs := &cliArgs.ParsedArgs{}
 	baseLogger := logger.NewLogger(mockArgs)
 	mockProvider := &MockConfigProvider{
-		config: configuration.RemoteConfigurationData{
+		config: configuration.ConfigurationData{
 			Probes: []configuration.ProbeConfig{
 				{
 					Name: "test-cpu",
@@ -416,7 +416,7 @@ func TestSensor_DuplicateProbeNotStartedTwice(t *testing.T) {
 	mockArgs := &cliArgs.ParsedArgs{}
 	baseLogger := logger.NewLogger(mockArgs)
 	mockProvider := &MockConfigProvider{
-		config: configuration.RemoteConfigurationData{
+		config: configuration.ConfigurationData{
 			Probes: []configuration.ProbeConfig{
 				{
 					Name: "test-cpu",
@@ -468,7 +468,7 @@ func TestSensor_SyncConfiguration_ConcurrentConfigEvents(t *testing.T) {
 	mockArgs := &cliArgs.ParsedArgs{}
 	baseLogger := logger.NewLogger(mockArgs)
 	mockProvider := &MockConfigProvider{
-		config: configuration.RemoteConfigurationData{
+		config: configuration.ConfigurationData{
 			Probes: []configuration.ProbeConfig{},
 		},
 	}

@@ -1,7 +1,7 @@
 package configuration
 
 // LicenseDocumentationTemplate contains license configuration documentation.
-// This template is shared between offline and online configuration generation.
+// Generated into every agent configuration file.
 const LicenseDocumentationTemplate = `
   # license: ""  # Optional: License token for paid probes (leave empty for free tier)
   #
@@ -9,7 +9,6 @@ const LicenseDocumentationTemplate = `
   # FREE TIER (no license required):
   #   - cpu, memory, logicaldisk, network
   #   - http/https endpoints (prtg, nagios, web)
-  #   - offline mode
   #
   # PAID PROBES (license required):
   #   - redfish, citrix, syslog
@@ -76,7 +75,6 @@ config_version: %d
 
 agent:
   key: "%s"
-  mode: offline
   # license: ""  # Uncomment and add your license token here
 %s
 
@@ -146,11 +144,11 @@ http:
 %s`
 
 // ProbeExamplesTemplate contains commented configuration examples for all available probes.
-// This template is shared between offline (LocalConfiguration) and online (RemoteConfiguration)
-// modes to ensure consistency and avoid duplication.
+// Generated into every agent configuration file to keep probe examples
+// consistent and avoid duplication.
 //
 // When adding a new probe type, add its configuration example here and it will automatically
-// appear in both offline and online generated configuration files.
+// appear in generated configuration files.
 const ProbeExamplesTemplate = `
 # ===== CONFIGURATION EXAMPLES (COMMENTED) =====
 # Uncomment and configure the probes you need below.

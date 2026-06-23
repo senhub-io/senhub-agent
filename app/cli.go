@@ -314,8 +314,7 @@ func Main() {
 		// --enable-https, …). In 0.2.0+ they also work with no args
 		// — install auto-generates a UUID agent key, run uses the
 		// OS-canonical default config path. Pre-0.2.0 the install
-		// path forced the user to choose between --offline and
-		// --authentication-key; that gate is gone.
+		// path also works with no flags now.
 		//
 		// We parse the remaining args via `start`-subcommand parsing
 		// rather than calling MustParse() directly, because the
@@ -433,9 +432,8 @@ Examples:
     %s status                                       # Show running status
     %s update latest                                # Update to latest version
 
-Note: the pre-0.2.0 flags --offline, --authentication-key and --server-url
-were removed. Offline is the only mode; the agent key is generated at
-install time and persisted in the config file.
+Note: the agent key is generated at install time and persisted in the
+config file.
 
 `, exe, exe, exe, exe, exe, exe, exe)
 }
