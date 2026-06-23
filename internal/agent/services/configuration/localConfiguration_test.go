@@ -157,7 +157,7 @@ func TestLocalConfiguration_AgentKeyGeneration(t *testing.T) {
 	localConfig := NewLocalConfiguration(args, logger)
 
 	// Generate agent key
-	agentKey, err := localConfig.generateOfflineAgentKey()
+	agentKey, err := localConfig.generateAgentKey()
 	if err != nil {
 		t.Fatalf("Failed to generate agent key: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestLocalConfiguration_AgentKeyGeneration(t *testing.T) {
 	}
 
 	// Generate another key and ensure they're different
-	agentKey2, err := localConfig.generateOfflineAgentKey()
+	agentKey2, err := localConfig.generateAgentKey()
 	if err != nil {
 		t.Fatalf("Failed to generate second agent key: %v", err)
 	}
@@ -262,7 +262,7 @@ probes:
 // updater's target to "latest", not "" — an empty target made the active
 // updater conclude "no update required" on every tick and never self-update.
 func TestLocalConfiguration_AutoUpdateVersionResolution(t *testing.T) {
-	write := func(t *testing.T, body string) RemoteConfigurationData {
+	write := func(t *testing.T, body string) ConfigurationData {
 		t.Helper()
 		configPath := filepath.Join(t.TempDir(), "au.yaml")
 		if err := os.WriteFile(configPath, []byte(body), 0644); err != nil {

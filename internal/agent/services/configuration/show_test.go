@@ -100,10 +100,6 @@ storage:
 	if data.Agent.Key != "***" {
 		t.Errorf("agent.key should be masked; got %q", data.Agent.Key)
 	}
-	// agent.mode — not a secret name → unchanged
-	if data.Agent.Mode != "offline" {
-		t.Errorf("agent.mode should be preserved; got %q", data.Agent.Mode)
-	}
 
 	// probe.params.password — name matches AND was file-backed →
 	// masked.
@@ -166,14 +162,15 @@ func TestShowConfig_RedactPreservesEnvRefValues(t *testing.T) {
 	writeFile(t, configPath, `
 config_version: 2
 agent:
-  mode: "${env:SENHUB_SHOW_ENV_VAL}"
+  global_tags:
+    site: "${env:SENHUB_SHOW_ENV_VAL}"
 `)
 	data, err := LoadForShow(configPath, ShowRedact, loaderTestLogger(t))
 	if err != nil {
 		t.Fatalf("LoadForShow: %v", err)
 	}
-	if data.Agent.Mode != "visible" {
-		t.Errorf("env-resolved non-secret field should NOT be masked; got %q", data.Agent.Mode)
+	if data.Agent.GlobalTags["site"] != "visible" {
+		t.Errorf("env-resolved non-secret field should NOT be masked; got %q", data.Agent.GlobalTags["site"])
 	}
 }
 

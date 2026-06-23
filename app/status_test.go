@@ -31,9 +31,6 @@ func TestGetSystemStatusDirect(t *testing.T) {
 			if err != nil {
 				t.Fatalf("getSystemStatusDirect() returned unexpected error: %v", err)
 			}
-			if status.Connection.Mode != "offline" {
-				t.Errorf("Connection mode = %q; want \"offline\"", status.Connection.Mode)
-			}
 			if status.Agent.Version == "" {
 				t.Error("Agent version should not be empty")
 			}

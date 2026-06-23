@@ -32,7 +32,6 @@ config_version: 2
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
-  mode: offline
 
 storage:
   - name: http
@@ -200,7 +199,6 @@ config_version: 2
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
-  mode: offline
 
 probes:
   - name: "CPU"
@@ -223,7 +221,6 @@ config_version: 2
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
-  mode: offline
 
 storage:
   - name: http
@@ -265,7 +262,6 @@ config_version: 2
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
-  mode: offline
   license: "SH-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XX"
 
 storage:
@@ -346,7 +342,6 @@ config_version: 2
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
-  mode: offline
   license: "SH-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XX"
 
 probes:
@@ -503,7 +498,6 @@ Checking configuration: C:\SenHub\agent-config.yaml
 
   [OK]   config_version: 2
   [OK]   agent.key: 17b3cf0a-91b1-486d-8209-90ffe00ece5e
-  [OK]   agent.mode: offline
   [OK]   agent.license: tier=pro, expires=2031-04-14
   [OK]   License binding verified
   [OK]   1 probe(s) configured
@@ -556,7 +550,6 @@ Override any of these by passing `--config-path` to the agent — the directorie
 config_version: 2
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
-  mode: offline
   license: "${file:/etc/senhub/license.jwt}"
 cache:
   retention_minutes: 5
