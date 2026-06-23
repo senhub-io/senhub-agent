@@ -258,6 +258,59 @@ probes:
 	}
 }
 
+// #567: an enabled auto-update with no explicit version must resolve the active
+// updater's target to "latest", not "" — an empty target made the active
+// updater conclude "no update required" on every tick and never self-update.
+func TestLocalConfiguration_AutoUpdateVersionResolution(t *testing.T) {
+	write := func(t *testing.T, body string) RemoteConfigurationData {
+		t.Helper()
+		configPath := filepath.Join(t.TempDir(), "au.yaml")
+		if err := os.WriteFile(configPath, []byte(body), 0644); err != nil {
+			t.Fatalf("write config: %v", err)
+		}
+		lc := NewLocalConfiguration(&cliArgs.ParsedArgs{ConfigPath: configPath}, createTestLocalLogger())
+		quit := make(chan struct{})
+		defer close(quit)
+		if err := lc.Start(quit); err != nil {
+			t.Fatalf("start: %v", err)
+		}
+		return lc.GetConfiguration()
+	}
+
+	base := `agent:
+  key: "k-12345"
+  mode: offline
+
+storage:
+  - name: http
+    params:
+      port: 9090
+      endpoints: ["prtg"]
+
+probes:
+  - name: cpu
+    params:
+      interval: 60
+`
+
+	t.Run("enabled without version defaults to latest", func(t *testing.T) {
+		rc := write(t, base+"\nauto_update:\n  enabled: true\n")
+		if rc.Agent.Version != "latest" {
+			t.Errorf("Agent.Version = %q, want \"latest\" (empty target makes the updater a no-op, #567)", rc.Agent.Version)
+		}
+		if rc.Agent.UpdateCheckInterval != 3600 {
+			t.Errorf("UpdateCheckInterval = %v, want 3600 (1h) when enabled", rc.Agent.UpdateCheckInterval)
+		}
+	})
+
+	t.Run("explicit version is honoured (pin)", func(t *testing.T) {
+		rc := write(t, base+"\nauto_update:\n  enabled: true\n  version: \"0.4.2\"\n")
+		if rc.Agent.Version != "0.4.2" {
+			t.Errorf("Agent.Version = %q, want \"0.4.2\" (explicit pin)", rc.Agent.Version)
+		}
+	})
+}
+
 func TestLocalConfiguration_ReloadConfiguration(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "reload-config.yaml")
