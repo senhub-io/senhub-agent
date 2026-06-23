@@ -66,6 +66,13 @@ func copyExecutable(src, dst string) error {
 		_ = os.Remove(tmp)
 		return err
 	}
+	// OpenFile's mode is masked by umask, which can strip the exec bits (the CI
+	// runner did). chmod is umask-independent, so set 0755 explicitly — the
+	// staged binary MUST be executable for systemd to run it.
+	if err := os.Chmod(tmp, 0o755); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
 	return os.Rename(tmp, dst)
 }
 
