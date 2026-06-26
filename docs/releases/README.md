@@ -44,8 +44,8 @@ Examples:
 
 ### GitHub Releases
 All releases are available on GitHub:
-- Beta: https://github.com/sen-hub/senhub-agent/releases?q=beta
-- Production: https://github.com/sen-hub/senhub-agent/releases
+- Beta: https://github.com/senhub-io/senhub-agent/releases?q=beta
+- Production: https://github.com/senhub-io/senhub-agent/releases
 
 ### Download Binaries
 Each release includes binaries for:
@@ -56,7 +56,7 @@ Each release includes binaries for:
 ### Installation
 ```bash
 # Download latest beta
-wget https://github.com/sen-hub/senhub-agent/releases/download/0.1.70-beta/senhub-agent_darwin_amd64
+wget https://github.com/senhub-io/senhub-agent/releases/download/0.1.70-beta/senhub-agent_darwin_amd64
 
 # Make executable
 chmod +x senhub-agent_darwin_amd64
