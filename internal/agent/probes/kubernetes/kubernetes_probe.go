@@ -78,7 +78,30 @@ func NewKubernetesProbe(config map[string]interface{}, baseLogger *logger.Logger
 		moduleLogger: moduleLogger,
 	}
 	probe.SetProbeType(ProbeType)
+
+	// Entity rail: expose the cluster as a service.instance at construction so
+	// EntitySource() is non-NoOp even without a live cluster (#482). The
+	// endpoint is best-effort here — derived from the kubeconfig host when one
+	// is configured, else a stable placeholder — and narrowed to the real API
+	// server address in OnStart once the client config resolves.
+	probe.clusterEndpoint = bestEffortClusterEndpoint(cfg.Kubeconfig)
+	probe.entitySrc = newK8sEntitySource(probe.clusterEndpoint)
+	probe.SetEntitySource(probe.entitySrc)
+
 	return probe, nil
+}
+
+// bestEffortClusterEndpoint resolves a cluster identity without a live
+// connection: the API server host from an explicit kubeconfig file when it can
+// be parsed, otherwise a stable placeholder. OnStart replaces it with the
+// authoritative endpoint.
+func bestEffortClusterEndpoint(kubeconfig string) string {
+	if kubeconfig != "" {
+		if cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig); err == nil {
+			return clusterEndpointFromHost(cfg.Host)
+		}
+	}
+	return "in-cluster"
 }
 
 func parseConfig(config map[string]interface{}) (probeConfig, error) {
@@ -158,7 +181,7 @@ func (p *KubernetesProbe) OnStart(_ chan struct{}) error {
 	}
 	p.clientset = cs
 
-	p.entitySrc = newK8sEntitySource(p.clusterEndpoint)
+	p.entitySrc.setClusterEndpoint(p.clusterEndpoint)
 	p.unregisterEntity = registerEntitySource(p.entitySrc)
 
 	p.moduleLogger.Info().
