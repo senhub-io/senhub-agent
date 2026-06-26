@@ -135,6 +135,34 @@ func TestEveryRegisteredProbeIsAuthorizable(t *testing.T) {
 // The OSS direction — no paid probe leaks into the public binary — is
 // guarded by TestOSSBuildRegistersOnlyPublicProbes in the app package.
 
+// probeConfigFixtures supplies the minimal valid config each config-requiring
+// probe needs to construct, so TestEveryRegisteredProbeHasEntitySource can
+// build it and inspect EntitySource() instead of skipping it (#482). The
+// values describe an unreachable target (RFC 5737 / RFC 6598 documentation
+// addresses): the constructor only parses and validates the config, it does
+// NOT dial the target — that happens in OnStart/Collect, which the invariant
+// never calls. A probe absent from this table constructs on a bare
+// {"interval": 30} config.
+//
+// When a new config-requiring probe is added and this test fails with
+// "failed to construct with its fixture", add the minimal config here.
+var probeConfigFixtures = map[string]map[string]interface{}{
+	"ceph":     {"username": "admin", "password": "secret"},
+	"filetail": {"paths": []interface{}{"/var/log/app.log"}},
+	"jenkins":  {"endpoint": "https://jenkins.example.com"},
+	"modbus": {"host": "192.0.2.10", "registers": []interface{}{
+		map[string]interface{}{"name": "reg0", "address": 0, "type": "uint16"},
+	}},
+	"mssql":      {"host": "192.0.2.10"},
+	"oracle":     {"host": "192.0.2.10", "service_name": "ORCL", "username": "system"},
+	"postgresql": {"host": "192.0.2.10", "username": "postgres", "password": "secret"},
+	"proxmox":    {"endpoint": "https://192.0.2.10:8006", "token_id": "user@pam!mon", "token_secret": "secret"},
+	"snmp_poll": {"target": "192.0.2.10", "custom_mappings": []interface{}{
+		map[string]interface{}{"oid": "1.3.6.1.2.1.1.3.0", "metric": "sysuptime"},
+	}},
+	"unifi": {"username": "admin", "password": "secret"},
+}
+
 // TestEveryRegisteredProbeHasEntitySource enforces that every probe participates
 // in Toise topology inventory. A nil EntitySource() is a contract violation —
 // the probe won't appear in the entity graph and its metrics can't be attributed
@@ -144,7 +172,15 @@ func TestEveryRegisteredProbeIsAuthorizable(t *testing.T) {
 // fallback (NoOpEntitySource). Remote-target probes MUST call SetEntitySource()
 // in their constructor with a real Source.
 //
+// Probes that require config (host/endpoint/credentials) to construct are
+// driven through probeConfigFixtures: a minimal valid config per probe so the
+// invariant can build them and inspect EntitySource() rather than skipping. The
+// constructor only parses config; it does not dial the target, so the fixtures
+// point at unreachable documentation addresses.
+//
 // When this test fails:
+//   - "failed to construct with its fixture": add a minimal valid-config entry
+//     for the probe to probeConfigFixtures.
 //   - If the probe embeds *types.BaseProbe: verify SetEntitySource() is called
 //     in the constructor, or that the probe is host-level (inherits NoOpEntitySource).
 //   - If the probe does NOT embed *types.BaseProbe: add EntitySource() to the
@@ -184,9 +220,6 @@ func TestEveryRegisteredProbeHasEntitySource(t *testing.T) {
 		// services/processes/clock, not a distinct remote entity (process emits
 		// process entities only in opt-in inventory mode, NoOp on a bare config).
 		"chrony": true, "process": true, "systemd": true, "winservices": true,
-		// kubernetes monitors a remote cluster but does not yet emit a
-		// service.instance for it — allowlisted until it does (tracked in #482).
-		"kubernetes": true,
 		// hyperv is //go:build windows; on the non-windows test host its
 		// constructor is the no-op stub (NoOpEntitySource). Its real
 		// compute.vm source lives in probe_windows.go and is exercised on the
@@ -201,13 +234,20 @@ func TestEveryRegisteredProbeHasEntitySource(t *testing.T) {
 			if !ok {
 				t.Fatalf("probe %q: registered but LookupProbeConstructor returned false", name)
 			}
-			probe, err := ctor(map[string]interface{}{"interval": 30}, log)
+			cfg := map[string]interface{}{"interval": 30}
+			for k, v := range probeConfigFixtures[name] {
+				cfg[k] = v
+			}
+			probe, err := ctor(cfg, log)
 			if err != nil {
-				// LIMITATION: most remote-target probes require real config
-				// (host/endpoint/credentials) to construct, so we cannot inspect
-				// their EntitySource() here. Per-probe valid-config fixtures that
-				// would lift this skip are tracked in #482.
-				t.Skipf("probe %q requires real config to construct: %v", name, err)
+				// A config-requiring probe that the fixture table does not
+				// cover: the invariant cannot inspect its EntitySource(). Add a
+				// minimal valid-config fixture in probeConfigFixtures rather than
+				// skipping — a skip is exactly the #482 blind spot (a probe could
+				// ship with a nil/NoOp source and never be exercised here).
+				t.Fatalf("probe %q failed to construct with its fixture: %v\n\n"+
+					"add a minimal valid-config entry for %q to probeConfigFixtures "+
+					"so the EntitySource invariant covers it (#482).", name, err, name)
 				return
 			}
 			src := probe.EntitySource()

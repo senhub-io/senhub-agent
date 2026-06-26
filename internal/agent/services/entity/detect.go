@@ -26,6 +26,11 @@ type HostIdentity struct {
 	Virtualization   string // host.virtualization (AT11)
 	ChassisType      string // host.chassis.type (AT12)
 
+	CloudProvider    string // cloud.provider — IMDS, best-effort (#536)
+	CloudRegion      string // cloud.region — IMDS, best-effort (#536)
+	ContainerRuntime string // container.runtime — /proc heuristics (#536)
+	K8sNodeName      string // k8s.node.name — downward-API NODE_NAME (#536)
+
 	// Governance is the operator-supplied governance attribute map
 	// (entity.owner.*, service.criticality, entity.location.*, …) stamped on the
 	// host entity. nil/empty by default.
@@ -109,6 +114,18 @@ func DetectFoundation(h HostIdentity, a AgentIdentity) Observation {
 	}
 	if h.ChassisType != "" {
 		host.Attributes["host.chassis.type"] = h.ChassisType
+	}
+	if h.CloudProvider != "" {
+		host.Attributes["cloud.provider"] = h.CloudProvider
+	}
+	if h.CloudRegion != "" {
+		host.Attributes["cloud.region"] = h.CloudRegion
+	}
+	if h.ContainerRuntime != "" {
+		host.Attributes["container.runtime"] = h.ContainerRuntime
+	}
+	if h.K8sNodeName != "" {
+		host.Attributes["k8s.node.name"] = h.K8sNodeName
 	}
 	for k, v := range h.Governance {
 		host.Attributes[k] = v
