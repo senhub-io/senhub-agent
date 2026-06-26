@@ -101,7 +101,7 @@ func (s *Source) Observe() (entity.Observation, bool) {
 	if err != nil {
 		return entity.Observation{}, false
 	}
-	obs := buildObservation(s.hostID(), ls, s.ipToIface())
+	obs := buildObservation(s.hostID(), ls, s.ipToIface()).WithScope(entity.ScopeHostSvc)
 
 	s.mu.Lock()
 	s.cache = obs

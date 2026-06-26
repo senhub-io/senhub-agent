@@ -18,10 +18,13 @@ import (
 // "dev" if unknown).
 const logsScopeName = "senhub-agent/otlp-logs"
 
-// entitiesScopeName identifies the Logger that emits entity/relation events.
-// Its instrumentation scope carries otel.entity.entity_event=true — the
-// fast-path filter convention for entity-aware consumers (collector-contrib).
-// Toise ignores the flag, but setting it preserves interop.
+// entitiesScopeName identifies the default Logger that emits entity/relation
+// events whose producer declared no discovery-method scope (the foundation
+// host + service.instance). Its instrumentation scope carries
+// otel.entity.entity_event=true — the fast-path filter convention for
+// entity-aware consumers (collector-contrib). Toise ignores the flag, but
+// setting it preserves interop. Method-scoped entities (entity.Scope*) ride
+// their own Logger of the same shape, keyed by the scope name (#253).
 const entitiesScopeName = "senhub-agent/otlp-entities"
 
 const scopeAttrEntityEvent = "otel.entity.entity_event"
@@ -35,11 +38,23 @@ const scopeAttrEntityEvent = "otel.entity.entity_event"
 type logsPipeline struct {
 	provider *sdklog.LoggerProvider
 	logger   log.Logger
-	// entityLogger emits entity/relation events. Separate Logger (distinct
-	// instrumentation scope + the otel.entity.entity_event scope attribute)
-	// off the same provider/exporter, so entity events ride the log signal
-	// without mixing scopes with ordinary logs.
+	// scopeVersion is the build version every Logger's instrumentation scope
+	// carries; kept so per-method entity Loggers are minted lazily with the
+	// same version (#253).
+	scopeVersion string
+	// entityLogger emits entity events with no declared discovery method
+	// (the foundation). Separate Logger (distinct instrumentation scope + the
+	// otel.entity.entity_event scope attribute) off the same provider/exporter,
+	// so entity events ride the log signal without mixing scopes with ordinary
+	// logs.
 	entityLogger log.Logger
+	// entityLoggersByScope memoizes one Logger per entity discovery method
+	// (entity.Scope*), so each method emits its own ScopeLogs per batch and a
+	// backend can attribute a fact to how it was discovered (#253). All share
+	// the entity-event scope attribute. The provider dedups identical
+	// scope+version, so this map is purely to avoid re-resolving per record.
+	mu                   sync.Mutex
+	entityLoggersByScope map[string]log.Logger
 }
 
 // buildLogsPipeline wires the SDK BatchProcessor onto the provided
@@ -81,25 +96,52 @@ func buildLogsPipeline(
 	)
 
 	return &logsPipeline{
-		provider: provider,
-		logger:   provider.Logger(logsScopeName, log.WithInstrumentationVersion(scopeVersion)),
+		provider:     provider,
+		logger:       provider.Logger(logsScopeName, log.WithInstrumentationVersion(scopeVersion)),
+		scopeVersion: scopeVersion,
 		entityLogger: provider.Logger(
 			entitiesScopeName,
 			log.WithInstrumentationVersion(scopeVersion),
 			log.WithInstrumentationAttributes(attribute.Bool(scopeAttrEntityEvent, true)),
 		),
+		entityLoggersByScope: map[string]log.Logger{},
 	}
 }
 
+// entityScopeLogger returns the Logger for a given entity discovery-method
+// scope (entity.Scope*), minting it on first use. An empty scope (the
+// foundation, which declares no method) uses the default entityLogger. Each
+// method-scoped Logger carries the same otel.entity.entity_event=true scope
+// attribute, so an entity-aware consumer still fast-path-filters it while a
+// provenance-aware backend reads the method off scope.name (#253).
+func (p *logsPipeline) entityScopeLogger(scope string) log.Logger {
+	if scope == "" {
+		return p.entityLogger
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if lg, ok := p.entityLoggersByScope[scope]; ok {
+		return lg
+	}
+	lg := p.provider.Logger(
+		scope,
+		log.WithInstrumentationVersion(p.scopeVersion),
+		log.WithInstrumentationAttributes(attribute.Bool(scopeAttrEntityEvent, true)),
+	)
+	p.entityLoggersByScope[scope] = lg
+	return lg
+}
+
 // emitEntityRecord hands a pre-encoded entity/relation Record to the entity
-// Logger. The record is built by the entity pump via buildEntityRecord; this
-// just attaches scope + resource and queues it on the same BatchProcessor as
-// logs.
-func (p *logsPipeline) emitEntityRecord(ctx context.Context, rec log.Record) {
+// Logger for its discovery-method scope. The record + scope are built by the
+// entity pump via buildEntityRecord; this picks the per-method Logger (so each
+// method emits one ScopeLogs per batch) and queues it on the same
+// BatchProcessor as logs, scope + resource attached by the Logger (#253).
+func (p *logsPipeline) emitEntityRecord(ctx context.Context, scope string, rec log.Record) {
 	if p == nil || p.entityLogger == nil {
 		return
 	}
-	p.entityLogger.Emit(ctx, rec)
+	p.entityScopeLogger(scope).Emit(ctx, rec)
 	agentstate.IncrementOTLPLogsPushed()
 }
 

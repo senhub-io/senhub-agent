@@ -446,14 +446,17 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 
 	obs := entity.Observation{}
 	emitted := map[string]bool{}
-	addEntity := func(id string, attrs map[string]any) {
+	// scope carries the discovery method (#253): the polled device's own
+	// identity + IF-MIB inventory ride snmp-ifmib; a neighbour exists only
+	// because LLDP advertised it, so it rides snmp-lldp.
+	addEntity := func(id string, attrs map[string]any, scope string) {
 		if id == "" || emitted[id] {
 			return
 		}
 		emitted[id] = true
-		obs.Entities = append(obs.Entities, deviceEntity(id, attrs))
+		obs.Entities = append(obs.Entities, deviceEntity(id, attrs, scope))
 	}
-	addEntity(selfID, selfAttrs(self))
+	addEntity(selfID, selfAttrs(self), entity.ScopeSNMPIFMIB)
 
 	// network.interface — the device's ports as entities it owns. Bounded by
 	// the device's port count; notPresent and unnamed rows are skipped, and a
@@ -482,7 +485,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 			attrs[attrDuplex] = d
 		}
 		obs.Entities = append(obs.Entities, entity.Entity{
-			Type: entityTypeNetworkInterface, ID: portID, Attributes: attrs,
+			Type: entityTypeNetworkInterface, ID: portID, Attributes: attrs, Scope: entity.ScopeSNMPIFMIB,
 		})
 		obs.Relations = append(obs.Relations, entity.Relation{
 			Type:     relHasInterface,
@@ -511,7 +514,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		if nID == "" || nID == selfID {
 			continue
 		}
-		addEntity(nID, neighborAttrs(n))
+		addEntity(nID, neighborAttrs(n), entity.ScopeSNMPLLDP)
 
 		localIf := ifIndexName[n.LocalPortNum]
 		if localIf == "" {
@@ -546,7 +549,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		}
 		addrSeen[a.IP] = true
 		addrID := map[string]any{idKeyNetworkAddress: a.IP}
-		obs.Entities = append(obs.Entities, entity.Entity{Type: entityTypeNetworkAddress, ID: addrID})
+		obs.Entities = append(obs.Entities, entity.Entity{Type: entityTypeNetworkAddress, ID: addrID, Scope: entity.ScopeSNMPIFMIB})
 		obs.Relations = append(obs.Relations, entity.Relation{
 			Type:     relBoundTo,
 			FromType: entityTypeNetworkAddress, FromID: addrID,
@@ -579,7 +582,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 			attrs[attrRouteMetric] = int64(r.Metric)
 		}
 		obs.Entities = append(obs.Entities, entity.Entity{
-			Type: entityTypeNetworkRoute, ID: routeID, Attributes: attrs,
+			Type: entityTypeNetworkRoute, ID: routeID, Attributes: attrs, Scope: entity.ScopeSNMPRoute,
 		})
 		obs.Relations = append(obs.Relations, entity.Relation{
 			Type:     relHasRoute,
@@ -591,8 +594,8 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	return obs
 }
 
-func deviceEntity(id string, attrs map[string]any) entity.Entity {
-	return entity.Entity{Type: entityTypeNetworkDevice, ID: deviceKey(id), Attributes: attrs}
+func deviceEntity(id string, attrs map[string]any, scope string) entity.Entity {
+	return entity.Entity{Type: entityTypeNetworkDevice, ID: deviceKey(id), Attributes: attrs, Scope: scope}
 }
 
 func deviceKey(id string) map[string]any {
