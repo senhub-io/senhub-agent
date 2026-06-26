@@ -22,9 +22,19 @@ func readChassisType() int {
 	return n
 }
 
-// readVirtualizationFallback has no extra Linux source beyond gopsutil
-// (which reads sysfs/DMI hypervisor signatures); gopsutil's detection stands.
-func readVirtualizationFallback() string { return "" }
+// readVirtualizationFallback classifies the hypervisor from the sysfs DMI
+// strings when gopsutil reports "none". gopsutil already reads the hypervisor
+// signatures so this rarely fires, but it catches KVM/cloud guests gopsutil
+// misses — the same classifier the Windows reader uses, for parity.
+func readVirtualizationFallback() string {
+	sig := strings.ToLower(strings.Join([]string{
+		readDMI("/sys/class/dmi/id/sys_vendor"),
+		readDMI("/sys/class/dmi/id/product_name"),
+		readDMI("/sys/class/dmi/id/product_family"),
+		readDMI("/sys/class/dmi/id/bios_vendor"),
+	}, " "))
+	return classifyVirtFromDMI(sig)
+}
 
 // readHardwareNameplate reads the host's DMI system identity from sysfs.
 // product_serial requires root (the agent's run path has it); any field that is
