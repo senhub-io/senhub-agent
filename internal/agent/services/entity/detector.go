@@ -7,10 +7,19 @@ import (
 
 // livenessSlackFactor multiplies the heartbeat cadence to produce the
 // Interval carried on each event. The consumer expires an entity at
-// last_seen + Interval, so the emitted window must tolerate a few missed or
-// late heartbeats — 3× the cadence means a single delayed heartbeat never
-// expires a live entity.
-const livenessSlackFactor = 3
+// last_seen + Interval, so the emitted window must outlast the re-emission
+// cadence by enough to survive a missed re-emission.
+//
+// The Tracker suppresses unchanged heartbeats for 2 ticks, so steady-state
+// re-emission happens every 2×cadence (120s at the 60s default), not every
+// tick. With the old 3× the deadline was 180s — only 60s past the 120s
+// re-emit cadence, less than one cycle — so a single missed re-emission
+// (next at ~240s) crossed the deadline and the consumer flapped the whole
+// entity stack (#454). 5× → 300s deadline, which clears a fully missed
+// re-emission cycle (240s) with margin. Trade-off: a genuinely-gone entity
+// expires after 300s instead of 180s — acceptable; resurrection is
+// identity-stable on the consumer side.
+const livenessSlackFactor = 5
 
 // lastGoodTTL bounds how long the detector keeps serving a source's last
 // good observation once Observe starts reporting failures (ok=false). A
