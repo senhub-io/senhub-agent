@@ -217,7 +217,7 @@ func normalizeVirtualization(system, role string) string {
 
 // isDMIPlaceholder rejects the firmware default strings OEMs ship, so the
 // nameplate never carries "To Be Filled By O.E.M." as a vendor/model/serial.
-// Shared by the Linux sysfs reader and the Windows WMI reader.
+// Shared by the Linux sysfs reader and the Windows SMBIOS reader.
 func isDMIPlaceholder(v string) bool {
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "", "to be filled by o.e.m.", "to be filled by o.e.m",

@@ -7,6 +7,7 @@ require (
 	github.com/alexflint/go-arg v1.6.1
 	github.com/avast/retry-go/v4 v4.7.0
 	github.com/citrix/adc-nitro-go v0.0.0-20250915211247-deb279797e53
+	github.com/digitalocean/go-smbios v0.0.0-20180907143718-390a4f403a8e
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/go-test/deep v1.1.1
