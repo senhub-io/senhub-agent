@@ -15,7 +15,7 @@ SenHub Agent is a monitoring collector that runs on your infrastructure and coll
 
 ## Obtaining the Agent
 
-Contact SenHub support (support@senhub.io) or download from the [GitHub releases page](https://github.com/sen-hub/senhub-agent/releases). You will receive:
+Contact SenHub support (support@senhub.io) or download from the [GitHub releases page](https://github.com/senhub-io/senhub-agent/releases). You will receive:
 
 - The agent ZIP for your platform (see naming convention below)
 - A license token (required for premium probes: Citrix, NetScaler, Redfish, etc.)
