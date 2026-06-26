@@ -1,0 +1,102 @@
+{
+  "uid": "senhub-ibmi-storage",
+  "title": "SenHub IBM i — Storage (awaiting live data)",
+  "tags": ["senhub", "agents", "ibmi"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "IBM i system",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(senhub_ibmi_asp_system_utilization_ratio, service_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "Headline", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "type": "stat", "id": 10, "title": "System ASP used",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "max(senhub_ibmi_asp_system_utilization_ratio{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.8 }, { "color": "red", "value": 0.9 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat", "id": 11, "title": "Max disk busy",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "max(senhub_ibmi_disk_utilization_ratio{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.9 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat", "id": 12, "title": "Spool files total",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_ibmi_spooled_file_count{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background_solid" }
+    },
+    {
+      "type": "stat", "id": 13, "title": "Users over 80% quota",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_ibmi_user_storage_over_threshold{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    { "type": "row", "id": 2, "title": "Per-ASP capacity", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "panels": [] },
+    {
+      "type": "table", "id": 20, "title": "ASPs — capacity, usage, threshold",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "senhub_ibmi_asp_capacity_bytes{service_name=~\"$service\"}", "legendFormat": "{{ibmi_asp_number}}", "format": "table", "instant": true },
+        { "refId": "B", "expr": "senhub_ibmi_asp_utilization_ratio{service_name=~\"$service\"}", "legendFormat": "{{ibmi_asp_number}}", "format": "table", "instant": true },
+        { "refId": "C", "expr": "senhub_ibmi_asp_threshold_ratio{service_name=~\"$service\"}", "legendFormat": "{{ibmi_asp_number}}", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "ibmi_asp_number", "mode": "outer" } }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Value #A" }, "properties": [{ "id": "unit", "value": "bytes" }, { "id": "displayName", "value": "Total capacity" }] },
+          { "matcher": { "id": "byName", "options": "Value #B" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 1 }, { "id": "displayName", "value": "Used %" }] },
+          { "matcher": { "id": "byName", "options": "Value #C" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 1 }, { "id": "displayName", "value": "Storage threshold" }] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "Used %", "desc": true }] }
+    },
+    { "type": "row", "id": 3, "title": "Trends", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 30, "title": "Disk busy per unit",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_ibmi_disk_utilization_ratio{service_name=~\"$service\"}", "legendFormat": "unit {{ibmi_disk_unit}}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    {
+      "type": "timeseries", "id": 31, "title": "Output queue files",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "sum(senhub_ibmi_output_queue_spooled_files{service_name=~\"$service\"})", "legendFormat": "Total spooled" },
+        { "refId": "B", "expr": "topk(5, senhub_ibmi_output_queue_files{service_name=~\"$service\"})", "legendFormat": "{{ibmi_queue_library}}/{{ibmi_queue_name}}" }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 0, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    }
+  ],
+  "schemaVersion": 39, "version": 1
+}
