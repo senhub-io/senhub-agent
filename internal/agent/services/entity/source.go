@@ -101,6 +101,22 @@ func registeredSources() []registered {
 	return cp
 }
 
+// WithScope stamps the given discovery-method scope (a Scope* constant) on
+// every entity in the observation that does not already carry one, and returns
+// the observation. A source that discovers everything by a single method calls
+// this once at its Observe boundary; a source mixing methods (snmp_poll: LLDP /
+// routing / IF-MIB) sets Entity.Scope per entity instead, and those keep their
+// value. Provenance rides the entity, not the relation — edges are bare (#253,
+// #87).
+func (o Observation) WithScope(scope string) Observation {
+	for i := range o.Entities {
+		if o.Entities[i].Scope == "" {
+			o.Entities[i].Scope = scope
+		}
+	}
+	return o
+}
+
 // merge folds another observation into this one. The detector merges the
 // foundation and every source into a single per-cycle observation so a
 // relation can resolve its source endpoint against any entity seen this cycle,
