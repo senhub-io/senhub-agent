@@ -88,6 +88,7 @@ func NewProxmoxProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 	p.SetProbeType(ProbeType)
 
 	p.entitySrc = newProxmoxEntitySource(cfg, moduleLogger)
+	p.SetEntitySource(p.entitySrc)
 
 	return p, nil
 }

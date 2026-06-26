@@ -136,6 +136,18 @@ func NewTomcatProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	return probe, nil
 }
 
+// parseTomcatVersion extracts the version token from a Catalina serverInfo
+// string. serverInfo is reported as "Apache Tomcat/<version>" (e.g.
+// "Apache Tomcat/9.0.71"); the part after the last "/" is the version. When no
+// slash is present the trimmed input is returned as-is.
+func parseTomcatVersion(serverInfo string) string {
+	s := strings.TrimSpace(serverInfo)
+	if i := strings.LastIndex(s, "/"); i >= 0 {
+		return strings.TrimSpace(s[i+1:])
+	}
+	return s
+}
+
 // jolokiaHostPort parses a Jolokia URL and returns the host and port as
 // int64 (the entity ID contract requires int64 for numeric fields).
 // Defaults to "localhost" / 8080 when the URL cannot be parsed or the
@@ -228,7 +240,16 @@ func (p *TomcatProbe) Collect() ([]data_store.DataPoint, error) {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
-	p.entitySrc.SetUp(true, nil)
+	// service.version is descriptive; read it best-effort. Catalina:type=Server
+	// serverInfo reports e.g. "Apache Tomcat/9.0.71" — keep only the version
+	// token after the slash. A read failure leaves the attribute unset.
+	var entityAttrs map[string]any
+	if info, verr := p.client.readString(ctx, "Catalina:type=Server", "serverInfo"); verr == nil {
+		if v := parseTomcatVersion(info); v != "" {
+			entityAttrs = map[string]any{"service.version": v}
+		}
+	}
+	p.entitySrc.SetUp(true, entityAttrs)
 	points = append(points, data_store.DataPoint{
 		Name:      "senhub.tomcat.up",
 		Value:     up,

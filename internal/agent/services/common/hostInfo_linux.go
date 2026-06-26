@@ -22,6 +22,10 @@ func readChassisType() int {
 	return n
 }
 
+// readVirtualizationFallback has no extra Linux source beyond gopsutil
+// (which reads sysfs/DMI hypervisor signatures); gopsutil's detection stands.
+func readVirtualizationFallback() string { return "" }
+
 // readHardwareNameplate reads the host's DMI system identity from sysfs.
 // product_serial requires root (the agent's run path has it); any field that is
 // unreadable or carries a well-known firmware placeholder is dropped.
@@ -43,17 +47,4 @@ func readDMI(path string) string {
 		return ""
 	}
 	return v
-}
-
-// isDMIPlaceholder rejects the firmware default strings OEMs ship, so the
-// nameplate never carries "To Be Filled By O.E.M." as a vendor/model/serial.
-func isDMIPlaceholder(v string) bool {
-	switch strings.ToLower(v) {
-	case "", "to be filled by o.e.m.", "to be filled by o.e.m",
-		"system manufacturer", "system product name", "system serial number",
-		"default string", "not specified", "not applicable",
-		"none", "unknown", "n/a", "o.e.m.", "oem":
-		return true
-	}
-	return false
 }
