@@ -144,13 +144,15 @@ func canonicalID(id map[string]any) string {
 
 // deleteFor builds the delete event that retires the entity described by a
 // state event, carrying only its type + identity (no descriptive attributes,
-// no relationships).
+// no relationships). Scope rides along so the delete is emitted under the same
+// instrumentation scope (discovery method) as the state it retires (#253).
 func deleteFor(ev Event) Event {
 	return Event{
 		Kind: EntityDelete,
 		Entity: &Entity{
-			Type: ev.Entity.Type,
-			ID:   ev.Entity.ID,
+			Type:  ev.Entity.Type,
+			ID:    ev.Entity.ID,
+			Scope: ev.Entity.Scope,
 		},
 	}
 }

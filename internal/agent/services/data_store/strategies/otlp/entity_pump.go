@@ -58,14 +58,14 @@ func (p *entityPump) drain(ctx context.Context, ch <-chan entity.Event) {
 			if !ok {
 				return
 			}
-			rec, err := buildEntityRecord(ev)
+			scope, rec, err := buildEntityRecord(ev)
 			if err != nil {
 				// Surface, never silently drop — a malformed event is a
 				// producer bug worth seeing.
 				p.log.Warn().Err(err).Msg("dropping malformed entity event")
 				continue
 			}
-			p.pipeline.emitEntityRecord(ctx, rec)
+			p.pipeline.emitEntityRecord(ctx, scope, rec)
 		}
 	}
 }

@@ -168,7 +168,7 @@ func (s *Source) Observe() (entity.Observation, bool) {
 	}
 	s.streak = next
 
-	return buildObservation(seen, next, s.threshold, hostID), true
+	return buildObservation(seen, next, s.threshold, hostID).WithScope(entity.ScopeHostDep), true
 }
 
 // scrape classifies one socket-table read into candidate outbound dependants.

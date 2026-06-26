@@ -135,6 +135,30 @@ payload attribute; node attributes use **bare keys** (no `otel.entity.*`):
   filter convention; Toise ignores it). Its removal is tracked separately
   from the record encoding.
 
+**Instrumentation scope carries provenance (#253).** Provenance — *how* a
+fact was discovered — rides the OTel **instrumentation scope**, not an edge
+attribute (the bare embed drops edge attributes anyway). Each entity declares
+its discovery method via `entity.Entity.Scope` (an `entity.Scope*` constant);
+the detector preserves it through the relationship fold and the synthesized
+absence-delete, and the OTLP pump emits each method under its own `Logger`, so
+a batch produces one `ScopeLogs` per method. Every method-scoped Logger keeps
+the `otel.entity.entity_event=true` scope attribute, so the contrib fast-path
+filter still matches. Frozen scope names (aligned with Toise):
+
+| Scope name | Discovery method |
+|---|---|
+| `senhub-agent/snmp-ifmib` | polled device identity + IF-MIB ports/addresses |
+| `senhub-agent/snmp-lldp`  | LLDP-discovered neighbours + `connected_to` adjacency |
+| `senhub-agent/snmp-route` | device routing table (`network.route`) |
+| `senhub-agent/host-route` | host kernel routing table |
+| `senhub-agent/host-iface` | host interface/address inventory |
+| `senhub-agent/host-svc`   | host listening-service inventory |
+| `senhub-agent/host-dep`   | host outbound dependency flows |
+
+The foundation (host + service.instance) declares no method and rides the
+generic `senhub-agent/otlp-entities` scope. Toise currently ignores the entity
+scope, so this is a provenance refinement, not a functional dependency.
+
 **Relationships are embedded, not separate records** (#222, lot 0b). The
 source entity's `entity.state` carries its outgoing edges in
 `entity.relationships`, each a bare kvlist naming **only the target** (the
