@@ -200,10 +200,19 @@ func testDetector() *Detector {
 }
 
 func dbObservation(id string) Observation {
-	return Observation{Entities: []Entity{{
-		Type: "db", ID: map[string]any{"db.instance.id": id},
-		Attributes: map[string]any{"db.system.name": "postgresql"},
-	}}}
+	return Observation{
+		Entities: []Entity{{
+			Type: "db", ID: map[string]any{"db.instance.id": id},
+			Attributes: map[string]any{"db.system.name": "postgresql"},
+		}},
+		// Anchor the db with the agent's monitors edge so it survives the
+		// anti-orphan guard (a real monitored db always carries this).
+		Relations: []Relation{{
+			Type:     "monitors",
+			FromType: "service.instance", FromID: map[string]any{"service.instance.id": "agent-1"},
+			ToType: "db", ToID: map[string]any{"db.instance.id": id},
+		}},
+	}
 }
 
 func countKind(events []Event, k Kind) int {
