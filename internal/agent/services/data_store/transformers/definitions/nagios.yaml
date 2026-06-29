@@ -2,7 +2,9 @@ version: "2.0.0"
 description: "Optimized Nagios checks configuration - utilizes all available metrics"
 
 checks:
-  # System Health - Overall system monitoring with key metrics
+  # System Health - Overall system monitoring with key metrics.
+  # Only cross-platform channels are shipped: cpu_load* is Unix-only
+  # (no load average on Windows), so it is left to operator config.
   - name: "system_health"
     description: "Overall system health check"
     metrics:
@@ -18,13 +20,10 @@ checks:
         critical: "95"
         unit: "%"
         description: "Memory usage percentage"
-      - channel: "cpu_load1"
-        warning: "4"
-        critical: "8"
-        unit: "c"
-        description: "1-minute load average"
 
-  # CPU Detailed Monitoring - All CPU metrics
+  # CPU Detailed Monitoring - cross-platform CPU channels only.
+  # cpu_iowait and cpu_load* are Unix-only; operators add them in their
+  # own config/nagios.yaml on Linux hosts.
   - name: "cpu_detailed"
     description: "Comprehensive CPU monitoring"
     probe_filter: "cpu"
@@ -43,32 +42,12 @@ checks:
         critical: "85"
         unit: "%"
         description: "CPU time spent in user mode"
-      - channel: "cpu_iowait"
-        warning: "20"
-        critical: "40"
-        unit: "%"
-        description: "CPU time waiting for I/O"
-      - channel: "cpu_load1"
-        warning: "4"
-        critical: "8"
-        unit: "c"
-      - channel: "cpu_load5"
-        warning: "3"
-        critical: "6"
-        unit: "c"
-      - channel: "cpu_load15"
-        warning: "2"
-        critical: "4"
-        unit: "c"
 
-  # CPU Cores Individual - All 8 cores on this Mac
+  # CPU Cores Individual - matches every core the probe reports
+  # (core count is host-derived; no fixed core list is shipped).
   - name: "cpu_cores"
     description: "Monitor each CPU core individually"
     probe_filter: "cpu"
-    tag_filters:
-      - key: "core"
-        values: ["0", "1", "2", "3", "4", "5", "6", "7"]
-        operator: "in"
     metrics:
       - channel: "cpu_core_usage"
         aggregation: "none"
@@ -76,12 +55,16 @@ checks:
         critical: "90"
         unit: "%"
         tag_context: "core"
-        tag_specific_thresholds:
-          - tags: {"core": "0"}
-            warning: "70"
-            critical: "85"
 
   # Memory Comprehensive
+  # Ships only cross-platform channels so the default yields no
+  # UNKNOWN-by-construction on a clean host. memory_used_percent is the
+  # one memory channel emitted on every OS. memory_available is
+  # Windows-only; memory_free / swap_used_percent / memory_cached are
+  # Unix-only (memory_available is intentionally not emitted on Unix —
+  # see internal/agent/probes/memory/memoryProbe_unix.go). Operators who
+  # want OS-specific detail add those channels to their own
+  # config/nagios.yaml.
   - name: "memory_detailed"
     description: "Detailed memory usage monitoring"
     probe_filter: "memory"
@@ -90,34 +73,13 @@ checks:
         warning: "85"
         critical: "95"
         unit: "%"
-      - channel: "memory_available"
-        warning: "1000000000"
-        critical: "500000000"
-        unit: "Bytes"
-        invert: true
-      - channel: "memory_free"
-        warning: "500000000"
-        critical: "250000000"
-        unit: "Bytes"
-        invert: true
-      - channel: "swap_used_percent"
-        warning: "50"
-        critical: "80"
-        unit: "%"
-      - channel: "memory_cached"
-        warning: "0"
-        critical: "0"
-        unit: "Bytes"
-        description: "Cached memory"
 
-  # Network Interfaces - Real macOS interfaces
+  # Network Interfaces - matches every interface the probe reports
+  # (no interface list is shipped pinned; operators narrow it in their
+  # own config/nagios.yaml if they want a specific subset).
   - name: "network_detailed"
-    description: "Network interfaces monitoring with real interface names"
+    description: "Per-interface network monitoring (all interfaces)"
     probe_filter: "network"
-    tag_filters:
-      - key: "interface"
-        values: ["utun4", "en3"]
-        operator: "in"
     metrics:
       - channel: "bytes_sent"
         aggregation: "sum"

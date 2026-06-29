@@ -8,6 +8,14 @@ on:
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
+# Serialize doc deploys: the dev and master runs both `mike deploy --push` to
+# the same agent.senhub.io `main` branch, so two near-simultaneous merges raced
+# and the second push was rejected ('fetch first', #581). One shared group with
+# cancel-in-progress:false queues runs instead of racing — both publish, in turn.
+concurrency:
+  group: deploy-docs
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
