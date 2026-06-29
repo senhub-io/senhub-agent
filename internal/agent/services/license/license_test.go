@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"testing"
 	"time"
 
@@ -621,6 +622,58 @@ func TestJWTValidator_ValidateLicense_MalformedJWT(t *testing.T) {
 				t.Errorf("ValidateLicense() should fail for malformed JWT: %q", tt.token)
 			}
 		})
+	}
+}
+
+func TestJWTValidator_ValidateLicense_LegacyCompact(t *testing.T) {
+	_, publicKey := generateTestRSAKeys(t)
+	publicKeyPEM := publicKeyToPEM(publicKey)
+
+	validator, err := NewJWTValidator(publicKeyPEM, 7)
+	if err != nil {
+		t.Fatalf("Failed to create JWT validator: %v", err)
+	}
+
+	tests := []struct {
+		name  string
+		token string
+	}{
+		{"Compact licence", "SH-040GMS"},
+		{"Compact licence with whitespace", "  SH-040GMS  "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lic, err := validator.ValidateLicense(tt.token)
+			if err == nil {
+				t.Fatalf("ValidateLicense(%q) should reject a legacy compact licence", tt.token)
+			}
+			if lic != nil {
+				t.Errorf("ValidateLicense(%q) returned a non-nil licence on rejection", tt.token)
+			}
+			if !errors.Is(err, ErrLegacyCompactLicense) {
+				t.Errorf("ValidateLicense(%q) error = %v, want wrapping ErrLegacyCompactLicense", tt.token, err)
+			}
+		})
+	}
+}
+
+func TestJWTValidator_ValidateLicense_NotLegacyForJWT(t *testing.T) {
+	_, publicKey := generateTestRSAKeys(t)
+	publicKeyPEM := publicKeyToPEM(publicKey)
+
+	validator, err := NewJWTValidator(publicKeyPEM, 7)
+	if err != nil {
+		t.Fatalf("Failed to create JWT validator: %v", err)
+	}
+
+	// A malformed JWT must NOT be misreported as a legacy compact licence.
+	_, err = validator.ValidateLicense("not.a.jwt.token")
+	if err == nil {
+		t.Fatal("ValidateLicense() should fail for a malformed JWT")
+	}
+	if errors.Is(err, ErrLegacyCompactLicense) {
+		t.Errorf("malformed JWT misclassified as legacy compact licence: %v", err)
 	}
 }
 
