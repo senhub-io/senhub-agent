@@ -1,0 +1,114 @@
+{
+  "uid": "senhub-ibmi-jobs",
+  "title": "SenHub IBM i — Jobs (awaiting live data)",
+  "tags": ["senhub", "agents", "ibmi"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "IBM i system",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(senhub_ibmi_jobs_total, service_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "subsystem",
+        "label": "Subsystem",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(senhub_ibmi_jobs_by_subsystem{service_name=~\"$service\"}, ibmi_subsystem)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "Headline", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "type": "stat", "id": 10, "title": "Total active jobs",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_ibmi_jobs_active{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background_solid" }
+    },
+    {
+      "type": "stat", "id": 11, "title": "Active in selected subsystem(s)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_ibmi_jobs_by_subsystem{service_name=~\"$service\",ibmi_subsystem=~\"$subsystem\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat", "id": 12, "title": "Non-empty job queues",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_ibmi_job_queue_nonempty{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 20 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat", "id": 13, "title": "Scheduled jobs",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_ibmi_scheduled_job_count{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background_solid" }
+    },
+    { "type": "row", "id": 2, "title": "Top jobs detail", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "panels": [] },
+    {
+      "type": "table", "id": 20, "title": "Top jobs (filtered by subsystem)",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "topk(15, senhub_ibmi_job_cpu_utilization_ratio{service_name=~\"$service\",ibmi_subsystem=~\"$subsystem\"})", "legendFormat": "{{ibmi_job_name}}", "format": "table", "instant": true },
+        { "refId": "B", "expr": "senhub_ibmi_job_threads{service_name=~\"$service\"}", "legendFormat": "{{ibmi_job_name}}", "format": "table", "instant": true },
+        { "refId": "C", "expr": "senhub_ibmi_job_temp_storage_bytes{service_name=~\"$service\"}", "legendFormat": "{{ibmi_job_name}}", "format": "table", "instant": true },
+        { "refId": "D", "expr": "senhub_ibmi_job_cpu_cumulative_time_seconds_total{service_name=~\"$service\"}", "legendFormat": "{{ibmi_job_name}}", "format": "table", "instant": true },
+        { "refId": "E", "expr": "senhub_ibmi_job_page_faults{service_name=~\"$service\"}", "legendFormat": "{{ibmi_job_name}}", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "ibmi_job_name", "mode": "outer" } }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Value #A" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }, { "id": "displayName", "value": "CPU %" }] },
+          { "matcher": { "id": "byName", "options": "Value #B" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "displayName", "value": "Threads" }] },
+          { "matcher": { "id": "byName", "options": "Value #C" }, "properties": [{ "id": "unit", "value": "bytes" }, { "id": "displayName", "value": "Temp storage" }] },
+          { "matcher": { "id": "byName", "options": "Value #D" }, "properties": [{ "id": "unit", "value": "s" }, { "id": "displayName", "value": "Cumulative CPU" }] },
+          { "matcher": { "id": "byName", "options": "Value #E" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "displayName", "value": "Page faults" }] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "CPU %", "desc": true }] }
+    },
+    { "type": "row", "id": 3, "title": "Trends", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 30, "title": "Jobs by status over time",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum by(ibmi_job_status) (senhub_ibmi_jobs_by_status{service_name=~\"$service\"})", "legendFormat": "{{ibmi_job_status}}" }],
+      "fieldConfig": { "defaults": { "decimals": 0, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 15, "stacking": { "mode": "normal", "group": "A" } } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last"] } }
+    },
+    {
+      "type": "timeseries", "id": 31, "title": "Job queue depths",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "topk(10, senhub_ibmi_job_queue_depth{service_name=~\"$service\"})", "legendFormat": "{{ibmi_queue_library}}/{{ibmi_queue_name}}" }],
+      "fieldConfig": { "defaults": { "decimals": 0, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    }
+  ],
+  "schemaVersion": 39, "version": 1
+}

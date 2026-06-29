@@ -1,0 +1,102 @@
+{
+  "uid": "senhub-ibmi-database",
+  "title": "SenHub IBM i — Database (awaiting live data)",
+  "tags": ["senhub", "agents", "ibmi"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "IBM i system",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+        "query": "label_values(senhub_ibmi_index_advisor_advised_indexes, service_name)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "Headline", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "type": "stat", "id": 10, "title": "Advised indexes",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_ibmi_index_advisor_advised_indexes{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 200 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat", "id": 11, "title": "Index advisories (1h)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_ibmi_index_advisor_recent_advisories{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "type": "stat", "id": 12, "title": "Attached journal receivers",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_ibmi_journal_receiver_attached{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background_solid" }
+    },
+    {
+      "type": "stat", "id": 13, "title": "Active journals",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "sum(senhub_ibmi_journal_active{service_name=~\"$service\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background_solid" }
+    },
+    { "type": "row", "id": 2, "title": "Top tables", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "panels": [] },
+    {
+      "type": "table", "id": 20, "title": "Largest / busiest tables",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [
+        { "refId": "A", "expr": "topk(20, senhub_ibmi_table_rows{service_name=~\"$service\"})", "legendFormat": "{{ibmi_table_schema}}.{{ibmi_table_name}}", "format": "table", "instant": true },
+        { "refId": "B", "expr": "senhub_ibmi_table_logical_reads_total{service_name=~\"$service\"}", "legendFormat": "{{ibmi_table_schema}}.{{ibmi_table_name}}", "format": "table", "instant": true },
+        { "refId": "C", "expr": "senhub_ibmi_table_updates_total{service_name=~\"$service\"}", "legendFormat": "{{ibmi_table_schema}}.{{ibmi_table_name}}", "format": "table", "instant": true },
+        { "refId": "D", "expr": "senhub_ibmi_table_deleted_rows{service_name=~\"$service\"}", "legendFormat": "{{ibmi_table_schema}}.{{ibmi_table_name}}", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "merge" },
+        { "id": "joinByField", "options": { "byField": "ibmi_table_name", "mode": "outer" } }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Value #A" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "displayName", "value": "Rows" }] },
+          { "matcher": { "id": "byName", "options": "Value #B" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "displayName", "value": "Logical reads" }] },
+          { "matcher": { "id": "byName", "options": "Value #C" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "displayName", "value": "Updates" }] },
+          { "matcher": { "id": "byName", "options": "Value #D" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "displayName", "value": "Deleted rows" }] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "Rows", "desc": true }] }
+    },
+    { "type": "row", "id": 3, "title": "Index advisor & journal lag", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 }, "panels": [] },
+    {
+      "type": "timeseries", "id": 30, "title": "Index advisor — times advised (top 10)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "topk(10, rate(senhub_ibmi_index_advisor_times_advised_total{service_name=~\"$service\"}[5m]))", "legendFormat": "{{ibmi_table_schema}}.{{ibmi_table_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 2, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    },
+    {
+      "type": "timeseries", "id": 31, "title": "Journal remote lag (estimated)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "senhub_ibmi_journal_remote_lag_seconds{service_name=~\"$service\"}", "legendFormat": "{{ibmi_journal_library}}/{{ibmi_journal_name}}" }],
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 1, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } }
+    }
+  ],
+  "schemaVersion": 39, "version": 1
+}
