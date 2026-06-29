@@ -3,6 +3,12 @@ Description=SenHub Agent — infrastructure monitoring agent
 Documentation=https://github.com/senhub-io/senhub-agent
 After=network-online.target
 Wants=network-online.target
+# Start-rate limiting lives in [Unit]: systemd parses StartLimitIntervalSec/
+# StartLimitBurst here, ignoring them in [Service] (#577). The window pairs
+# with Restart=always so a crash-looping binary is throttled, not respun
+# forever.
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -14,8 +20,6 @@ ExecStart=/var/lib/senhub-agent/bin/senhub-agent run --config-path /etc/senhub-a
 # `systemctl stop` is still honoured (no restart).
 Restart=always
 RestartSec=5
-StartLimitIntervalSec=300
-StartLimitBurst=5
 
 # State and runtime directories (created/managed by systemd, 0750).
 StateDirectory=senhub-agent
