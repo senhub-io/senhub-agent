@@ -1,3 +1,2 @@
-system_health/cpu_load1 status=3 No metrics found for channel: cpu_load1 | 
 system_health/cpu_usage_total status=3 No metrics found for channel: cpu_usage_total | 
 system_health/memory_used_percent status=3 No metrics found for channel: memory_used_percent | 
