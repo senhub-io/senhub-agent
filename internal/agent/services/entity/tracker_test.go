@@ -64,6 +64,38 @@ func TestTracker_DeletesDisappearedItems(t *testing.T) {
 	}
 }
 
+// TestTracker_ScopeRidesStateAndDelete pins #253: an entity's discovery-method
+// scope rides its heartbeat state, and the absence-delete the tracker synthesizes
+// carries the SAME scope — so the delete is emitted under the same instrumentation
+// scope as the state it retires, not the generic entities scope.
+func TestTracker_ScopeRidesStateAndDelete(t *testing.T) {
+	var got []Event
+	tr := NewTracker(func(ev Event) { got = append(got, ev) }, 0)
+	t1 := time.Unix(1000, 0).UTC()
+	t2 := time.Unix(1060, 0).UTC()
+
+	route := Event{Kind: EntityState, Time: t1, Entity: &Entity{
+		Type:  "network.route",
+		ID:    map[string]any{"network.device.id": "serial:9:a", "route.destination": "0.0.0.0/0"},
+		Scope: ScopeSNMPRoute,
+	}}
+
+	tr.Reconcile([]Event{route}, t1)
+	if len(got) != 1 || got[0].Entity.Scope != ScopeSNMPRoute {
+		t.Fatalf("state must carry scope %q, got %+v", ScopeSNMPRoute, got)
+	}
+
+	// Cycle 2: the route disappears → absence-delete must keep the scope.
+	got = nil
+	tr.Reconcile(nil, t2)
+	if len(got) != 1 || got[0].Kind != EntityDelete {
+		t.Fatalf("got %d events, want 1 delete", len(got))
+	}
+	if got[0].Entity.Scope != ScopeSNMPRoute {
+		t.Errorf("delete scope = %q, want %q (delete must ride the state's scope)", got[0].Entity.Scope, ScopeSNMPRoute)
+	}
+}
+
 func TestTracker_StableIdentityNoSpuriousDelete(t *testing.T) {
 	var got []Event
 	tr := NewTracker(func(ev Event) { got = append(got, ev) }, 0)

@@ -51,6 +51,41 @@ func TestObservation_FoldRelationships(t *testing.T) {
 	}
 }
 
+// TestObservation_WithScope pins #253: WithScope stamps the discovery-method
+// scope on every entity that has none, leaves an entity's pre-set scope intact
+// (a mixed-method source sets per-entity scopes itself), and the scope survives
+// the relationship fold onto the source entity.
+func TestObservation_WithScope(t *testing.T) {
+	obs := Observation{
+		Entities: []Entity{
+			{Type: "network.route", ID: map[string]any{"route.destination": "0.0.0.0/0"}},
+			{Type: "network.device", ID: map[string]any{"network.device.id": "d1"}, Scope: ScopeSNMPLLDP},
+		},
+		Relations: []Relation{{
+			Type:     "has_route",
+			FromType: "network.route", FromID: map[string]any{"route.destination": "0.0.0.0/0"},
+			ToType: "network.device", ToID: map[string]any{"network.device.id": "d1"},
+		}},
+	}
+
+	scoped := obs.WithScope(ScopeHostRoute)
+	if got := scoped.Entities[0].Scope; got != ScopeHostRoute {
+		t.Errorf("unscoped entity = %q, want %q", got, ScopeHostRoute)
+	}
+	if got := scoped.Entities[1].Scope; got != ScopeSNMPLLDP {
+		t.Errorf("pre-scoped entity overwritten = %q, want %q (kept)", got, ScopeSNMPLLDP)
+	}
+
+	folded, _ := scoped.foldRelationships()
+	byType := map[string]string{}
+	for _, e := range folded {
+		byType[e.Type] = e.Scope
+	}
+	if byType["network.route"] != ScopeHostRoute {
+		t.Errorf("scope lost through fold: %q, want %q", byType["network.route"], ScopeHostRoute)
+	}
+}
+
 // TestSource_DetectorMergesAndTracksDeletes verifies the detector folds a
 // source's observation into the snapshot — the monitors edge rides embedded on
 // the service.instance entity — and that when the source stops observing the

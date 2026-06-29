@@ -43,12 +43,39 @@ const (
 // dropped from one heartbeat to the next is retired by absence, so there is no
 // separate edge delete. The detector folds the relations a Source reports onto
 // their source entity here; producers themselves return flat Relations.
+//
+// Scope carries the provenance of the entity — the discovery METHOD that
+// produced it (LLDP vs routing vs IF-MIB vs the host routing table vs the host
+// listener inventory). Per the frozen contract (#87) provenance rides the OTel
+// instrumentation scope, not an edge attribute, so the sink emits one ScopeLogs
+// per method per batch (#253). The detector preserves Scope through the
+// relationship fold and the delete (so a delete rides the same scope as its
+// state); an empty Scope falls back to the generic entities scope. Values are
+// the Scope* constants below, frozen with Toise.
 type Entity struct {
 	Type          string
 	ID            map[string]any
 	Attributes    map[string]any
 	Relationships []Relationship
+	Scope         string
 }
+
+// Scope* are the frozen instrumentation-scope names that carry an entity's
+// discovery provenance on the wire (#253, contract #87). Each names the METHOD
+// a fact was discovered by, not the probe: snmp_poll alone produces three
+// (LLDP adjacency, the routing table, the IF-MIB inventory). A sink maps each
+// to one OTel instrumentation scope (provider.Logger(name)), so a backend can
+// attribute a fact to its method. Names are aligned with the Toise team; an
+// entity that leaves Scope empty rides the generic entities scope.
+const (
+	ScopeSNMPLLDP  = "senhub-agent/snmp-lldp"  // LLDP adjacency (connected_to + discovered neighbours)
+	ScopeSNMPRoute = "senhub-agent/snmp-route" // device routing table (network.route)
+	ScopeSNMPIFMIB = "senhub-agent/snmp-ifmib" // device + IF-MIB ports/addresses
+	ScopeHostRoute = "senhub-agent/host-route" // host kernel routing table
+	ScopeHostSvc   = "senhub-agent/host-svc"   // host listening-service inventory
+	ScopeHostIface = "senhub-agent/host-iface" // host interface/address inventory
+	ScopeHostDep   = "senhub-agent/host-dep"   // host outbound dependency flows
+)
 
 // Relationship is one embedded outgoing edge: its type plus the exact identity
 // of the target entity. The source is implicit — the Entity that carries it.
