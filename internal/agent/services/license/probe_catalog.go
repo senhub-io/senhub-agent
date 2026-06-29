@@ -26,6 +26,14 @@ var paidProbes = map[string]bool{
 	"veeam":     true,
 	"redfish":   true,
 	"ibmi":      true,
+	// Pro-tier HA / cloud probes (enterprise build): deep database, hypervisor
+	// and Microsoft-cloud integrations.
+	"mssql_ha":          true,
+	"oracle_enterprise": true,
+	"hyperv_ha":         true,
+	"vsphere_ha":        true,
+	"ad_hybrid":         true,
+	"exchange_online":   true,
 	// Bespoke commercial collector: third-party apps push events over HTTP.
 	"event": true,
 	// Active / synthetic checks.
