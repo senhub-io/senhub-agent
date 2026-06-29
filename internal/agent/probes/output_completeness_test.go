@@ -1,6 +1,7 @@
 package probes_test
 
 import (
+	"strings"
 	"time"
 
 	"testing"
@@ -58,17 +59,22 @@ func TestHostProbeOutput_EveryMetricHasDefinition(t *testing.T) {
 				t.Skipf("constructing %s probe not possible in this environment: %v", probeName, err)
 			}
 			points, err := probe.Collect()
-			if err != nil {
-				t.Fatalf("%s Collect: %v", probeName, err)
-			}
-			if len(points) == 0 {
+			if err == nil && len(points) == 0 {
 				// Rate-computing probes (network) emit nothing on the
 				// first call: it only establishes the counter baseline.
 				time.Sleep(200 * time.Millisecond)
 				points, err = probe.Collect()
-				if err != nil {
-					t.Fatalf("%s second Collect: %v", probeName, err)
+			}
+			if err != nil {
+				if strings.Contains(err.Error(), "PDH_NO_DATA") {
+					// No performance-counter sample available on this
+					// environment (headless Windows runner with no network
+					// activity) — the same environment limitation as a
+					// construct failure, not a name drift. Real-hardware
+					// coverage comes from runtime validation on bbcloud.
+					t.Skipf("%s Collect has no PDH sample in this environment: %v", probeName, err)
 				}
+				t.Fatalf("%s Collect: %v", probeName, err)
 			}
 			if len(points) == 0 {
 				t.Fatalf("%s Collect returned no datapoints", probeName)

@@ -96,6 +96,7 @@ func NewMSSQLProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger) 
 		entitySource: newEntitySource(cfg.Host, cfg.Port),
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySource)
 	return probe, nil
 }
 

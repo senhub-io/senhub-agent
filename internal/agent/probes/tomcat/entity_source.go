@@ -58,13 +58,25 @@ func resolveInstanceID(instanceName, hostID string) string {
 	return "tomcat"
 }
 
-// SetUp updates the liveness flag. Call SetUp(true, nil) on Collect success
-// and SetUp(false, nil) on Collect failure.  attrs is accepted but ignored
-// here — the descriptive set is fixed at construction (server.address and
-// server.port don't change across cycles).
-func (s *tomcatEntitySource) SetUp(up bool, _ map[string]any) {
+// SetUp updates the liveness flag. Call SetUp(true, attrs) on Collect success
+// and SetUp(false, nil) on Collect failure. attrs carries refreshable
+// descriptive attributes discovered at collect time (currently
+// service.version); server.address / server.port are fixed at construction.
+// Keys present in attrs are merged onto the descriptive set; absent keys are
+// left untouched so a transient read miss does not drop a known version.
+func (s *tomcatEntitySource) SetUp(up bool, attrs map[string]any) {
 	s.mu.Lock()
 	s.up = up
+	if up && len(attrs) > 0 {
+		merged := make(map[string]any, len(s.attrs)+len(attrs))
+		for k, v := range s.attrs {
+			merged[k] = v
+		}
+		for k, v := range attrs {
+			merged[k] = v
+		}
+		s.attrs = merged
+	}
 	s.mu.Unlock()
 }
 

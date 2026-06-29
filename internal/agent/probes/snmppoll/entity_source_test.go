@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/governance"
 )
 
@@ -403,6 +404,64 @@ func TestMaybeSweep_PopulatesAndRateLimits(t *testing.T) {
 	s.maybeSweep(mk("third"), t0.Add(11*time.Minute))
 	if o, _ := s.Observe(); o.Entities[0].Attributes["sys.name"] != "third" {
 		t.Errorf("should re-sweep after interval")
+	}
+}
+
+// TestAppendLocalRunsOn verifies the local-target anchor (#310): a device polled
+// over loopback/localhost/empty hangs off the agent host with a runs_on edge,
+// while a remote target or an unknown host id emits no such edge.
+func TestAppendLocalRunsOn(t *testing.T) {
+	const selfID = "serial:9:S1"
+	cases := []struct {
+		name, target, hostID string
+		wantRel              bool
+	}{
+		{"loopback ipv4", "127.0.0.1", "h-1", true},
+		{"loopback ipv6", "::1", "h-1", true},
+		{"localhost", "localhost", "h-1", true},
+		{"empty target", "", "h-1", true},
+		{"remote ip", "10.0.0.5", "h-1", false},
+		{"remote host", "snmp.example.com", "h-1", false},
+		{"loopback but no host id", "127.0.0.1", "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newEntitySource(&config{Target: c.target}, testLogger(t))
+			s.hostID = func() string { return c.hostID }
+
+			obs := entity.Observation{}
+			s.appendLocalRunsOn(&obs, selfID)
+
+			var got *entity.Relation
+			for i := range obs.Relations {
+				if obs.Relations[i].Type == relRunsOn {
+					got = &obs.Relations[i]
+				}
+			}
+			if c.wantRel != (got != nil) {
+				t.Fatalf("runs_on present = %v, want %v (relations %+v)", got != nil, c.wantRel, obs.Relations)
+			}
+			if got == nil {
+				return
+			}
+			if got.FromType != entityTypeNetworkDevice || got.FromID[idKeyNetworkDevice] != selfID {
+				t.Errorf("runs_on From = %v, want network.device %s", got.FromID, selfID)
+			}
+			if got.ToType != entityTypeHost || got.ToID[idKeyHost] != c.hostID {
+				t.Errorf("runs_on To = %v, want host %s", got.ToID, c.hostID)
+			}
+		})
+	}
+}
+
+// TestAppendLocalRunsOn_UnresolvedDevice: no device id → no edge even on loopback.
+func TestAppendLocalRunsOn_UnresolvedDevice(t *testing.T) {
+	s := newEntitySource(&config{Target: "127.0.0.1"}, testLogger(t))
+	s.hostID = func() string { return "h-1" }
+	obs := entity.Observation{}
+	s.appendLocalRunsOn(&obs, "")
+	if len(obs.Relations) != 0 {
+		t.Errorf("no runs_on expected when device unidentified, got %+v", obs.Relations)
 	}
 }
 

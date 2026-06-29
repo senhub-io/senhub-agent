@@ -69,6 +69,18 @@ func (c *jolokiaClient) readFloat64(ctx context.Context, mbean, attribute string
 	return v.Float64()
 }
 
+func (c *jolokiaClient) readString(ctx context.Context, mbean, attribute string) (string, error) {
+	raw, err := c.read(ctx, mbean, attribute)
+	if err != nil {
+		return "", err
+	}
+	var v string
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return "", err
+	}
+	return v, nil
+}
+
 func (c *jolokiaClient) readMap(ctx context.Context, mbean, attribute string) (map[string]interface{}, error) {
 	raw, err := c.read(ctx, mbean, attribute)
 	if err != nil {
