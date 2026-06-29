@@ -4,6 +4,7 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -357,7 +358,11 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 	defer w.mu.Unlock()
 
 	if !w.initialized {
-		if err := w.query.Collect(); err != nil {
+		// The first sample only primes the rate counters; PDH reports
+		// PDH_NO_DATA until a second sample exists, so a NO_DATA here is
+		// expected, not a failure (#590). Any other error is real. After the
+		// one-second wait the next Collect below has a delta to read.
+		if err := w.query.Collect(); err != nil && !errors.Is(err, pdh.ErrNoData) {
 			return nil, fmt.Errorf("failed initial sample collection: %v", err)
 		}
 		time.Sleep(1 * time.Second)
