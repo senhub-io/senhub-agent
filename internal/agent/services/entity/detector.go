@@ -38,12 +38,13 @@ type AgentIdentityFunc func() AgentIdentity
 // state/delete lifecycle tracker arrives with Lot 2 (probe targets that come
 // and go).
 type Detector struct {
-	host     HostIdentityFunc
-	agent    AgentIdentityFunc
-	interval time.Duration
-	publish  func(Event)
-	now      func() time.Time
-	onOrphan func([]Relation)
+	host           HostIdentityFunc
+	agent          AgentIdentityFunc
+	interval       time.Duration
+	publish        func(Event)
+	now            func() time.Time
+	onOrphan       func([]Relation)
+	onOrphanEntity func([]Entity)
 	// lastGood caches, per registered-source id, the most recent
 	// observation reported with ok=true, so a transient failure serves
 	// stale-but-real topology instead of an empty set (audit D3).
@@ -68,6 +69,14 @@ func NewDetector(host HostIdentityFunc, agent AgentIdentityFunc, interval time.D
 // producer bug via its logger.
 func (d *Detector) OnOrphanRelations(fn func([]Relation)) {
 	d.onOrphan = fn
+}
+
+// OnOrphanEntities registers a hook called with any entity dropped before
+// emission for carrying no relation at all (the anti-orphan guard; host is never
+// dropped). Nil-safe; used by the wiring layer to surface the producer bug via
+// its logger.
+func (d *Detector) OnOrphanEntities(fn func([]Entity)) {
+	d.onOrphanEntity = fn
 }
 
 // Run emits the foundation once immediately, then on every interval tick,
@@ -160,5 +169,8 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	if len(orphans) > 0 && d.onOrphan != nil {
 		d.onOrphan(orphans)
 	}
+	// Invariant: never publish an unanchored node. Drop any entity with no
+	// relation (host excepted) before it reaches the wire.
+	entities = dropOrphanEntities(entities, d.onOrphanEntity)
 	t.Reconcile(stateEvents(entities, ts, interval), ts)
 }
