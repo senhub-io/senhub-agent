@@ -139,6 +139,34 @@ func TestDetectFoundation_CapacityVirtChassis(t *testing.T) {
 	}
 }
 
+// TestDetectFoundation_CloudContainerK8s pins the #536 nameplate attributes:
+// cloud.provider/cloud.region, container.runtime, k8s.node.name ride the host
+// entity when resolved and are omitted when empty.
+func TestDetectFoundation_CloudContainerK8s(t *testing.T) {
+	h := HostIdentity{
+		ID: "h-c1", CloudProvider: "aws", CloudRegion: "eu-west-1",
+		ContainerRuntime: "containerd", K8sNodeName: "node-7",
+	}
+	host := DetectFoundation(h, AgentIdentity{InstanceID: "a"}).Entities[0]
+
+	if host.Attributes["cloud.provider"] != "aws" || host.Attributes["cloud.region"] != "eu-west-1" {
+		t.Errorf("cloud attrs wrong: %v", host.Attributes)
+	}
+	if host.Attributes["container.runtime"] != "containerd" {
+		t.Errorf("container.runtime wrong: %v", host.Attributes)
+	}
+	if host.Attributes["k8s.node.name"] != "node-7" {
+		t.Errorf("k8s.node.name wrong: %v", host.Attributes)
+	}
+
+	bare := DetectFoundation(HostIdentity{ID: "h-c0"}, AgentIdentity{InstanceID: "a"}).Entities[0]
+	for _, k := range []string{"cloud.provider", "cloud.region", "container.runtime", "k8s.node.name"} {
+		if _, present := bare.Attributes[k]; present {
+			t.Errorf("attribute %q must be omitted when empty", k)
+		}
+	}
+}
+
 // TestDetectFoundation_FoldEmbedsRunsOn pins that folding the foundation
 // observation embeds runs_on on the service.instance entity (and nothing on
 // the host), matching the Toise conformance fixture.

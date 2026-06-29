@@ -29,7 +29,7 @@ func HostID() string {
 // be a local interface address is also local, but proving that needs the host's
 // interface list — deferred.
 func LocalHostRunsOn(dbID map[string]any, serverAddress, hostID string) (entity.Relation, bool) {
-	if hostID == "" || !isLoopbackHost(serverAddress) {
+	if hostID == "" || !IsLoopbackHost(serverAddress) {
 		return entity.Relation{}, false
 	}
 	return entity.Relation{
@@ -39,9 +39,10 @@ func LocalHostRunsOn(dbID map[string]any, serverAddress, hostID string) (entity.
 	}, true
 }
 
-// isLoopbackHost reports whether serverAddress denotes the local host with
-// certainty: empty, "localhost", or a loopback IP (127.0.0.0/8, ::1).
-func isLoopbackHost(addr string) bool {
+// IsLoopbackHost reports whether serverAddress denotes the local host with
+// certainty: empty, "localhost", or a loopback IP (127.0.0.0/8, ::1). Shared
+// with non-db sources (snmppoll) that emit a local-target runs_on edge.
+func IsLoopbackHost(addr string) bool {
 	switch addr {
 	case "", "localhost":
 		return true
