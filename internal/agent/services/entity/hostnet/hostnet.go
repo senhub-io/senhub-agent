@@ -74,7 +74,7 @@ func (s *Source) Observe() (entity.Observation, bool) {
 	if err != nil {
 		return entity.Observation{}, false
 	}
-	return buildObservation(s.hostID(), parseProcRoute(b)), true
+	return buildObservation(s.hostID(), parseProcRoute(b)).WithScope(entity.ScopeHostRoute), true
 }
 
 // buildObservation maps next-hop routes → network.route entities owned by the

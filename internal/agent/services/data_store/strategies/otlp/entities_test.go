@@ -106,7 +106,7 @@ func TestBuildEntityRecord_Foundation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := tc.entity
 			ev := entity.Event{Kind: entity.EntityState, Entity: &e, Time: now, Interval: time.Minute}
-			rec, err := buildEntityRecord(ev)
+			_, rec, err := buildEntityRecord(ev)
 			if err != nil {
 				t.Fatalf("buildEntityRecord: %v", err)
 			}
@@ -142,7 +142,7 @@ func TestBuildEntityRecord_EmbeddedRelationships(t *testing.T) {
 			},
 		},
 	}
-	rec, err := buildEntityRecord(ev)
+	_, rec, err := buildEntityRecord(ev)
 	if err != nil {
 		t.Fatalf("buildEntityRecord: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestBuildEntityRecord_DeleteCarriesTypeAndID(t *testing.T) {
 			Attributes: map[string]any{"should": "be ignored on delete"},
 		},
 	}
-	rec, err := buildEntityRecord(ev)
+	_, rec, err := buildEntityRecord(ev)
 	if err != nil {
 		t.Fatalf("buildEntityRecord: %v", err)
 	}
@@ -211,13 +211,52 @@ func TestBuildEntityRecord_TypedScalars(t *testing.T) {
 			},
 		},
 	}
-	rec, err := buildEntityRecord(ev)
+	_, rec, err := buildEntityRecord(ev)
 	if err != nil {
 		t.Fatalf("buildEntityRecord: %v", err)
 	}
 	attrs := recordAttrs(rec)["entity.description"].(map[string]any)
 	if got, ok := attrs["server.port"].(int64); !ok || got != 5432 {
 		t.Errorf("server.port = %#v, want int64(5432)", attrs["server.port"])
+	}
+}
+
+// TestBuildEntityRecord_ReturnsScope asserts the entity's discovery-method
+// scope (entity.Scope*) is returned so the pipeline can route the record to the
+// matching per-method instrumentation scope; a foundation entity with no method
+// returns the empty scope (the generic entities Logger) (#253).
+func TestBuildEntityRecord_ReturnsScope(t *testing.T) {
+	now := time.Unix(1780272000, 0).UTC()
+	cases := []struct {
+		name  string
+		scope string
+	}{
+		{"snmp-ifmib", entity.ScopeSNMPIFMIB},
+		{"snmp-lldp", entity.ScopeSNMPLLDP},
+		{"snmp-route", entity.ScopeSNMPRoute},
+		{"host-route", entity.ScopeHostRoute},
+		{"host-svc", entity.ScopeHostSvc},
+		{"foundation/empty", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ev := entity.Event{
+				Kind: entity.EntityState,
+				Time: now,
+				Entity: &entity.Entity{
+					Type:  "network.device",
+					ID:    map[string]any{"network.device.id": "serial:9:abc"},
+					Scope: tc.scope,
+				},
+			}
+			gotScope, _, err := buildEntityRecord(ev)
+			if err != nil {
+				t.Fatalf("buildEntityRecord: %v", err)
+			}
+			if gotScope != tc.scope {
+				t.Errorf("scope = %q, want %q", gotScope, tc.scope)
+			}
+		})
 	}
 }
 
@@ -233,7 +272,7 @@ func TestBuildEntityRecord_RejectsNonScalar(t *testing.T) {
 			Attributes: map[string]any{"addresses": []string{"10.0.0.1", "10.0.0.2"}},
 		},
 	}
-	if _, err := buildEntityRecord(ev); err == nil {
+	if _, _, err := buildEntityRecord(ev); err == nil {
 		t.Fatal("expected error for non-scalar attribute value, got nil")
 	}
 }
