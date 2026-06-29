@@ -4,11 +4,38 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
+
+// legacyCompactPrefix is the marker of the retired compact-licence
+// format (e.g. "SH-040GMS"). Compact tokens were HMAC-signed with a
+// shared secret that could not survive open-sourcing the agent and the
+// format was removed in 0.3.0 (see docs/LICENSE-SYSTEM.md). Detecting
+// the prefix lets the validator return an actionable error instead of
+// the JWT parser's opaque "invalid number of segments" — an agent
+// upgraded from 0.2.x while still carrying a compact token must be told
+// to re-issue a JWT licence, not left guessing why its paid probes
+// dropped to free tier (#486).
+const legacyCompactPrefix = "SH-"
+
+// ErrLegacyCompactLicense is returned by ValidateLicense when the
+// configured token is a retired compact (SH-XXXX) licence rather than a
+// JWT. Callers can match it with errors.Is to distinguish "operator
+// still on the legacy format, needs a JWT re-issue" from a generic
+// malformed token.
+var ErrLegacyCompactLicense = errors.New("legacy compact (SH-XXXX) licence is no longer supported; re-issue a JWT licence (see docs/LICENSE-SYSTEM.md)")
+
+// looksLikeLegacyCompactLicense reports whether the token is a retired
+// compact licence. A real JWT is three base64url segments separated by
+// dots and never carries the "SH-" prefix, so the check is unambiguous.
+func looksLikeLegacyCompactLicense(token string) bool {
+	return strings.HasPrefix(strings.TrimSpace(token), legacyCompactPrefix)
+}
 
 // LicenseTier represents the subscription tier
 type LicenseTier string
@@ -93,6 +120,15 @@ func NewJWTValidator(publicKeyPEM string, gracePeriodDays int) (*JWTValidator, e
 // survive a public source tree. JWT is now the only supported
 // format.
 func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
+	// Reject the retired compact format explicitly: a configured SH-XXXX
+	// token would otherwise fail deep in the JWT parser with an opaque
+	// "invalid number of segments" message, leaving the operator with no
+	// hint that they are carrying a legacy licence that must be re-issued
+	// as a JWT (#486).
+	if looksLikeLegacyCompactLicense(tokenString) {
+		return nil, ErrLegacyCompactLicense
+	}
+
 	// Parse and validate JWT token.
 	// WithoutClaimsValidation: expiry is managed manually to support grace periods.
 	token, err := jwt.ParseWithClaims(tokenString, &LicenseClaims{}, func(token *jwt.Token) (interface{}, error) {
