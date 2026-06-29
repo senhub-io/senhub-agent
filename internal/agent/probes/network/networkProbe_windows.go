@@ -312,11 +312,14 @@ func newNetworkCollector(config map[string]interface{}, baseLogger *logger.Logge
 		return nil, err
 	}
 
-	if err := query.Collect(); err != nil {
-		query.Close()
-		return nil, fmt.Errorf("failed initial collection: %v", err)
-	}
-
+	// Priming is deferred to the first Collect, which primes the query and
+	// waits one sample interval via the `initialized` guard before reading
+	// values. PDH rate counters return PDH_NO_DATA until a second sample
+	// exists, so collecting here — and treating it as fatal — broke
+	// construction on a freshly-booted host or a cold CI runner where no
+	// sample has been taken yet (#590). initializeCounters already validated
+	// the counter paths above; the first real sample surfaces any genuine
+	// collection error.
 	return collector, nil
 }
 
