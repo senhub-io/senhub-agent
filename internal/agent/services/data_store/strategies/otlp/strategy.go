@@ -552,6 +552,10 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 			DiskTotal:        hi.DiskTotal,
 			Virtualization:   hi.Virtualization,
 			ChassisType:      hi.ChassisType,
+			CloudProvider:    hi.CloudProvider,
+			CloudRegion:      hi.CloudRegion,
+			ContainerRuntime: hi.ContainerRuntime,
+			K8sNodeName:      hi.K8sNodeName,
 			Governance:       s.cfg.Entities.Governance.Attributes(),
 		}, nil
 	}

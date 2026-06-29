@@ -120,6 +120,7 @@ func NewJenkinsProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger
 		func() (string, error) { return fetchInstanceIdentity(probe.getJSON) },
 		hostIDFn,
 	)
+	probe.SetEntitySource(probe.entitySource)
 	return probe, nil
 }
 
