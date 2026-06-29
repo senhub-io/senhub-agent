@@ -53,6 +53,21 @@ func NewAutoUpdateVersionMetadataRoute(
 func NewAutoUpdateVersionListRoute(
 	versions [][2]string,
 ) testUtils.TestHTTPServerURLConf {
+	return newVersionListRouteAtPath(VERSION_METADATA_LIST_PATH, versions)
+}
+
+// NewAutoUpdateVersionListBetaRoute serves the beta channel list at
+// VERSION_METADATA_LIST_BETA_PATH so include_beta resolution can be tested.
+func NewAutoUpdateVersionListBetaRoute(
+	versions [][2]string,
+) testUtils.TestHTTPServerURLConf {
+	return newVersionListRouteAtPath(VERSION_METADATA_LIST_BETA_PATH, versions)
+}
+
+func newVersionListRouteAtPath(
+	path string,
+	versions [][2]string,
+) testUtils.TestHTTPServerURLConf {
 	body := "["
 	for i, version := range versions {
 		alias := version[0]
@@ -66,7 +81,7 @@ func NewAutoUpdateVersionListRoute(
 	body += "]"
 
 	return testUtils.TestHTTPServerURLConf{
-		URLPath:    VERSION_METADATA_LIST_PATH,
+		URLPath:    path,
 		Method:     "GET",
 		StatusCode: 200,
 		Body:       body,

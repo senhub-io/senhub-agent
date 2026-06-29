@@ -440,9 +440,34 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 		return currentVersionStr
 	}
 
-	// Handle "latest" alias: fetch the highest version from the registry
+	// Handle "latest" alias: fetch the highest version from the registry.
+	// When include_beta is set, the beta channel is considered too, so a
+	// newer beta (e.g. 0.4.2-beta) wins over the latest stable; otherwise
+	// only stable releases are resolved (#591).
 	if expectedVersionStr == "latest" {
-		a.logger.Info().Msg("Version alias 'latest' requested, fetching from registry")
+		includeBeta := a.configSource.GetConfiguration().Agent.IncludeBeta
+		a.logger.Info().
+			Bool("include_beta", includeBeta).
+			Msg("Version alias 'latest' requested, fetching from registry")
+
+		if includeBeta {
+			versions, err := FetchAllVersions(a.httpClient, registryUrl, true)
+			if err != nil {
+				a.logger.Warn().Err(err).Msg("Failed to fetch latest version from registry, skipping update")
+				return currentVersionStr
+			}
+			latest := GetLatestVersion(versions)
+			if latest == nil {
+				a.logger.Warn().Msg("No versions found in registry")
+				return currentVersionStr
+			}
+			a.logger.Info().
+				Str("latest_version", latest.Version).
+				Bool("include_beta", true).
+				Msg("Resolved 'latest' to version")
+			return latest.Version
+		}
+
 		bestMatch, err := FetchBestMatchingVersion(
 			a.httpClient,
 			registryUrl,
@@ -456,7 +481,10 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 			a.logger.Warn().Msg("No versions found in registry")
 			return currentVersionStr
 		}
-		a.logger.Info().Str("latest_version", bestMatch.Version).Msg("Resolved 'latest' to version")
+		a.logger.Info().
+			Str("latest_version", bestMatch.Version).
+			Bool("include_beta", false).
+			Msg("Resolved 'latest' to version")
 		return bestMatch.Version
 	}
 
