@@ -162,6 +162,39 @@ func (o Observation) foldRelationships() (entities []Entity, orphans []Relation)
 	return entities, orphans
 }
 
+// dropOrphanEntities enforces the graph invariant that every entity carries at
+// least one relation: a node with neither an outgoing relationship of its own
+// nor an incoming one (it is some other entity's relationship target) is
+// unanchored and useless to a consumer, so it is removed before emission rather
+// than published as a floating node.
+//
+// The host entity is the single exception: it is the infrastructure root, so it
+// is legitimately standalone on a host-only agent and is otherwise referenced by
+// its children (process/db/... runs_on host). Dropped entities are reported to
+// onOrphan (when set) so the drop is observable, never silent.
+func dropOrphanEntities(entities []Entity, onOrphan func([]Entity)) []Entity {
+	referenced := make(map[string]bool, len(entities))
+	for i := range entities {
+		for _, rel := range entities[i].Relationships {
+			referenced[entityKey(rel.TargetType, rel.TargetID)] = true
+		}
+	}
+	kept := make([]Entity, 0, len(entities))
+	var dropped []Entity
+	for i := range entities {
+		e := entities[i]
+		if e.Type == "host" || len(e.Relationships) > 0 || referenced[entityKey(e.Type, e.ID)] {
+			kept = append(kept, e)
+			continue
+		}
+		dropped = append(dropped, e)
+	}
+	if len(dropped) > 0 && onOrphan != nil {
+		onOrphan(dropped)
+	}
+	return kept
+}
+
 // stateEvents stamps entities into state events at instant ts with the given
 // liveness interval.
 func stateEvents(entities []Entity, ts time.Time, interval time.Duration) []Event {
