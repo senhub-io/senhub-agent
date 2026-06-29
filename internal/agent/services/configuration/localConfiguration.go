@@ -173,7 +173,7 @@ func (lc *LocalConfiguration) GetAutoUpdateConfig() *AutoUpdateConfig {
 		// Return default configuration
 		return &AutoUpdateConfig{
 			Enabled: false,
-			URL:     "https://eu-west-1.intake.senhub.io/releases",
+			URL:     "https://eu-west-1.intake.senhub.io",
 		}
 	}
 	return lc.snapshot().AutoUpdate
