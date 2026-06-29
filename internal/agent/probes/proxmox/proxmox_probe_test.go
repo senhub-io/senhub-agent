@@ -235,6 +235,84 @@ func TestCollect_AllNodes(t *testing.T) {
 	}
 }
 
+// TestCollect_UpMetric_Healthy verifies that senhub.proxmox.up=1 is emitted
+// when the Proxmox API answers the node list successfully (#469).
+func TestCollect_UpMetric_Healthy(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	probe, err := NewProxmoxProbe(map[string]interface{}{
+		"endpoint":     srv.URL,
+		"token_id":     "root@pam!mon",
+		"token_secret": "secret",
+		"verify_tls":   false,
+	}, testLogger())
+	if err != nil {
+		t.Fatalf("NewProxmoxProbe: %v", err)
+	}
+
+	points, err := probe.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	var found bool
+	for _, dp := range points {
+		if dp.Name == "senhub.proxmox.up" {
+			found = true
+			if dp.Value != 1 {
+				t.Errorf("senhub.proxmox.up: got %v, want 1", dp.Value)
+			}
+		}
+	}
+	if !found {
+		t.Error("senhub.proxmox.up was not emitted on healthy cluster")
+	}
+}
+
+// TestCollect_UpMetric_APIError verifies that senhub.proxmox.up=0 is emitted
+// (not suppressed) when the API server is unreachable (#469). Collect must
+// return nil error so the up=0 datapoint reaches all sinks, making an
+// unreachable API distinguishable from a healthy but empty cluster.
+func TestCollect_UpMetric_APIError(t *testing.T) {
+	// Closed server: every request fails at the transport layer.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	url := srv.URL
+	srv.Close()
+
+	probe, err := NewProxmoxProbe(map[string]interface{}{
+		"endpoint":     url,
+		"token_id":     "root@pam!mon",
+		"token_secret": "secret",
+		"verify_tls":   false,
+		"timeout":      1,
+	}, testLogger())
+	if err != nil {
+		t.Fatalf("NewProxmoxProbe: %v", err)
+	}
+
+	points, err := probe.Collect()
+	if err != nil {
+		t.Fatalf("Collect() must not return an error on API failure (got: %v); up=0 must flow to sinks", err)
+	}
+	if len(points) == 0 {
+		t.Fatal("Collect() returned no datapoints; senhub.proxmox.up must still be emitted on API error")
+	}
+
+	var found bool
+	for _, dp := range points {
+		if dp.Name == "senhub.proxmox.up" {
+			found = true
+			if dp.Value != 0 {
+				t.Errorf("senhub.proxmox.up: got %v, want 0 on API error", dp.Value)
+			}
+		}
+	}
+	if !found {
+		t.Error("senhub.proxmox.up was not emitted on API error")
+	}
+}
+
 func TestCollect_NodeFilter(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()
