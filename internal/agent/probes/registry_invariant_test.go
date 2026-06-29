@@ -240,11 +240,24 @@ func TestEveryRegisteredProbeHasEntitySource(t *testing.T) {
 			}
 			probe, err := ctor(cfg, log)
 			if err != nil {
-				// A config-requiring probe that the fixture table does not
-				// cover: the invariant cannot inspect its EntitySource(). Add a
-				// minimal valid-config fixture in probeConfigFixtures rather than
-				// skipping — a skip is exactly the #482 blind spot (a probe could
-				// ship with a nil/NoOp source and never be exercised here).
+				// An allowlisted host-local/conduit probe is exempt from
+				// exposing a real source regardless of whether it constructs:
+				// some of them (e.g. network/logicaldisk on Windows) run an
+				// initial OS performance-counter collection in their constructor
+				// that has no data on a bare CI runner (PDH_NO_DATA). Their
+				// exemption does not depend on construction, so skip rather than
+				// fail — this does not reopen the #482 blind spot, which is about
+				// REMOTE-target probes being silently skipped.
+				if hostLocalOrConduit[name] {
+					t.Skipf("probe %q (host-local/conduit, exempt from the source "+
+						"invariant) did not construct on this runner: %v", name, err)
+					return
+				}
+				// A config-requiring remote-target probe that the fixture table
+				// does not cover: the invariant cannot inspect its EntitySource().
+				// Add a minimal valid-config fixture in probeConfigFixtures rather
+				// than skipping — a skip is exactly the #482 blind spot (a probe
+				// could ship with a nil/NoOp source and never be exercised here).
 				t.Fatalf("probe %q failed to construct with its fixture: %v\n\n"+
 					"add a minimal valid-config entry for %q to probeConfigFixtures "+
 					"so the EntitySource invariant covers it (#482).", name, err, name)
