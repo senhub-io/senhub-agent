@@ -605,6 +605,14 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 				Msg("entity relation has no source entity this cycle; dropped from the wire")
 		}
 	})
+	det.OnOrphanEntities(func(orphans []entity.Entity) {
+		for _, e := range orphans {
+			s.logger.Warn().
+				Str("entity_type", e.Type).
+				Interface("entity_id", e.ID).
+				Msg("entity has no relation; dropped from the wire (anti-orphan guard)")
+		}
+	})
 	ctx, cancel := context.WithCancel(context.Background())
 	s.entityDetectorCancel = cancel
 	s.entityDetectorWG.Add(1)
