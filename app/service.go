@@ -90,14 +90,29 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		// StateDirectory, writable + outside ProtectSystem=full. The unit's
 		// ExecStart then points there.
 		if command == "install" {
+			// The dedicated user must exist before installManagedBinary
+			// chowns the staged binary to it, and before systemd
+			// validates the unit's User= (#575).
+			if userErr := ensureServiceUser(serviceUser); userErr != nil {
+				fmt.Printf("Error: %v\n", userErr)
+				fmt.Println("Re-run with '--user root' to install the legacy root service if a dedicated user cannot be created.")
+				os.Exit(1)
+			}
+
+			// ExecStart MUST point at the staged /var/lib binary, never
+			// at the installer's invocation path (which may be /tmp and
+			// vanish, leaving systemd with 203/EXEC — #576). A staging
+			// failure is fatal: a unit written with the temp path would
+			// crash-loop, which is worse than aborting the install.
 			managed, err := installManagedBinary(executablePath, serviceUser)
 			if err != nil {
-				fmt.Printf("Warning: could not stage the managed binary (%v).\n"+
-					"Auto-update will not be able to replace the binary until this is fixed.\n", err)
-			} else {
-				svcConfig.Executable = managed
-				svcConfig.WorkingDirectory = managedBinaryDir
+				fmt.Printf("Error: could not stage the managed binary to %s: %v\n", managedBinaryDir, err)
+				fmt.Println("The service was NOT installed (a unit pointing at the installer's temp path would fail to start).")
+				fmt.Println("Re-run with '--user root' to install the legacy root service if the binary cannot be staged.")
+				os.Exit(1)
 			}
+			svcConfig.Executable = managed
+			svcConfig.WorkingDirectory = managedBinaryDir
 		}
 	}
 
