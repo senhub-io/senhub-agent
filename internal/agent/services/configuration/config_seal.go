@@ -68,6 +68,19 @@ func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 		total += n
 	}
 
+	// The agent's own auth key lives in the main config file's agent block (not
+	// in a probe), so seal it separately. The license is left in clear — it is a
+	// JWT bound to the agent key, not a portable access secret.
+	n, backupPath, err := sealAgentKeyInFile(configPath, &prov)
+	if backupPath != "" {
+		backups = append(backups, backup{configPath, backupPath})
+	}
+	if err != nil {
+		restore()
+		return fmt.Errorf("sealing agent.key: %w", err)
+	}
+	total += n
+
 	if total == 0 {
 		return nil
 	}
@@ -154,7 +167,7 @@ func sealOneFile(path string, prov *secret.Provider) (int, string, error) {
 		return sealed, "", fmt.Errorf("writing backup: %w", err)
 	}
 
-	out, err := yaml.Marshal(&doc)
+	out, err := marshalNode(&doc)
 	if err != nil {
 		return sealed, backupPath, fmt.Errorf("marshalling sealed YAML: %w", err)
 	}
@@ -321,6 +334,69 @@ func isPlaintextScalar(v string) bool {
 	return t != "" && !strings.HasPrefix(t, "${")
 }
 
+// marshalNode renders an edited yaml.v3 node tree with a 2-space indent (the
+// common style for the agent's configs), so the seal rewrite does not reflow the
+// operator's indentation. Comments and key order are preserved by the node tree.
+func marshalNode(doc *yaml.Node) ([]byte, error) {
+	var buf strings.Builder
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(doc); err != nil {
+		_ = enc.Close()
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	return []byte(buf.String()), nil
+}
+
+// sealAgentKeyInFile seals the agent.key (when it is an inline plaintext value)
+// in the main config file, keyed as "agent.key", and rewrites it to
+// ${secret:agent.key}. The agent.license field is deliberately left untouched.
+// Returns the count (0 or 1) and the backup path.
+func sealAgentKeyInFile(path string, prov *secret.Provider) (int, string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, "", err
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return 0, "", fmt.Errorf("parsing YAML: %w", err)
+	}
+	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return 0, "", nil
+	}
+	agent := mapValue(doc.Content[0], "agent")
+	if agent == nil || agent.Kind != yaml.MappingNode {
+		return 0, "", nil
+	}
+	keyNode := mapValue(agent, "key")
+	if keyNode == nil || keyNode.Kind != yaml.ScalarNode || !isPlaintextScalar(keyNode.Value) {
+		return 0, "", nil
+	}
+	p, err := ensureSealProvider(prov)
+	if err != nil {
+		return 0, "", err
+	}
+	if err := p.Set("agent.key", secret.New(keyNode.Value)); err != nil {
+		return 0, "", fmt.Errorf("storing agent.key: %w", err)
+	}
+	backupPath := fmt.Sprintf("%s.backup.%s", path, time.Now().Format("20060102-150405"))
+	if err := os.WriteFile(backupPath, data, 0o600); err != nil {
+		return 1, "", fmt.Errorf("writing backup: %w", err)
+	}
+	keyNode.SetString("${secret:agent.key}")
+	out, err := marshalNode(&doc)
+	if err != nil {
+		return 1, backupPath, fmt.Errorf("marshalling: %w", err)
+	}
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		return 1, backupPath, fmt.Errorf("writing file: %w", err)
+	}
+	return 1, backupPath, nil
+}
+
 // setRootConfigVersion sets (or adds) the top-level config_version scalar in the
 // main config file to v, preserving the rest of the file (yaml.v3 node edit).
 func setRootConfigVersion(path string, v int) error {
@@ -347,7 +423,7 @@ func setRootConfigVersion(path string, v int) error {
 			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(v)},
 		)
 	}
-	out, err := yaml.Marshal(&doc)
+	out, err := marshalNode(&doc)
 	if err != nil {
 		return err
 	}
