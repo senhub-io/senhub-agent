@@ -117,6 +117,12 @@ func TestSealInlineSecrets_MultiFile(t *testing.T) {
 	}
 }
 
+// TestSealInlineSecrets_Monolithic feeds a legacy monolithic config and asserts
+// the combined harmonise+seal behaviour: the file is split into the multi-file
+// layout (agent.yaml globals + probes.d/ + strategies.d/), every plaintext
+// secret across the resulting fragments is moved to the store, the agent key is
+// sealed while the license stays clear, and a reload resolves everything back to
+// the originals.
 func TestSealInlineSecrets_Monolithic(t *testing.T) {
 	mp := secret.NewMemoryProvider()
 	secret.SetProvider(mp)
@@ -149,6 +155,21 @@ storage:
 		t.Fatalf("SealInlineSecrets monolithic: %v", err)
 	}
 
+	// Harmonisation happened: the monolithic file was split. The original path
+	// is now globals-only and a pre-multi-file backup exists.
+	cfgRaw, _ := os.ReadFile(cfg)
+	if strings.Contains(string(cfgRaw), "\nprobes:") || strings.Contains(string(cfgRaw), "\nstorage:") {
+		t.Errorf("config not harmonised — probes/storage still inline:\n%s", cfgRaw)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "probes.d")); err != nil {
+		t.Errorf("probes.d not created by harmonisation: %v", err)
+	}
+	backups, _ := filepath.Glob(cfg + ".pre-multi-file.*")
+	if len(backups) == 0 {
+		t.Error("no pre-multi-file backup written by harmonisation")
+	}
+
+	// Every secret — flat, nested, storage, agent.key — landed in the store.
 	names, _ := mp.List()
 	have := map[string]bool{}
 	for _, n := range names {
@@ -162,15 +183,30 @@ storage:
 		}
 	}
 
-	raw, _ := os.ReadFile(cfg)
-	for _, plaintext := range []string{"pg-pw", "nested-pw", "bearer-pw", "aaaa-bbbb-cccc"} {
-		if strings.Contains(string(raw), plaintext) {
-			t.Errorf("plaintext %q survived:\n%s", plaintext, raw)
+	// No plaintext secret survives in ANY resulting file (globals + fragments),
+	// excluding the intentional backup of the pre-seal source.
+	var leaks []string
+	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
 		}
+		if strings.Contains(path, ".pre-multi-file.") || strings.Contains(path, ".backup.") {
+			return nil // backups legitimately hold the pre-seal plaintext
+		}
+		body, _ := os.ReadFile(path)
+		for _, plaintext := range []string{"pg-pw", "nested-pw", "bearer-pw", "aaaa-bbbb-cccc"} {
+			if strings.Contains(string(body), plaintext) {
+				leaks = append(leaks, plaintext+" in "+filepath.Base(path))
+			}
+		}
+		return nil
+	})
+	if len(leaks) > 0 {
+		t.Errorf("plaintext survived in live config files: %v", leaks)
 	}
-	// license stays in clear; config_version stamped to 3.
-	if !strings.Contains(string(raw), "license: my-jwt") {
-		t.Errorf("license should stay clear:\n%s", raw)
+	// license stays in clear in the globals file.
+	if !strings.Contains(string(cfgRaw), "license: my-jwt") {
+		t.Errorf("license should stay clear:\n%s", cfgRaw)
 	}
 
 	after, err := LoadFromDisk(cfg, nil)
@@ -186,10 +222,17 @@ storage:
 	if after.Agent.License != "my-jwt" {
 		t.Errorf("license = %q, want my-jwt", after.Agent.License)
 	}
+	var sawPG bool
 	for _, p := range after.Probes {
-		if p.Name == "pg-prod" && p.Params["password"] != "pg-pw" {
-			t.Errorf("pg password resolved to %v", p.Params["password"])
+		if p.Name == "pg-prod" {
+			sawPG = true
+			if p.Params["password"] != "pg-pw" {
+				t.Errorf("pg password resolved to %v", p.Params["password"])
+			}
 		}
+	}
+	if !sawPG {
+		t.Error("pg-prod probe missing after harmonise+seal+reload")
 	}
 }
 

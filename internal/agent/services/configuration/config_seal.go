@@ -18,9 +18,15 @@ import (
 // SealInlineSecrets implements the default "seal" policy: it finds plaintext
 // secrets in the config, moves each into the OS-native store, and rewrites the
 // field in place to a ${secret:<key>} reference. It is idempotent and a no-op
-// when the config has no inline secret (no backup, no rewrite). It is
-// layout-aware: it seals a monolithic file's probes, or every fragment under
-// probes.d/ and strategies.d/.
+// when the config has no inline secret (no backup, no rewrite).
+//
+// It first HARMONISES the layout: a legacy monolithic config is split into the
+// multi-file shape (agent.yaml + probes.d/ + strategies.d/) before sealing, so
+// the whole fleet converges on one layout and inline secrets only ever live in
+// fragments (plus the agent block in agent.yaml). The split carries its own
+// backup + data-equality verification and is a no-op once the config is already
+// multi-file. After it, every fragment under probes.d/ and strategies.d/ is
+// sealed.
 //
 // Safety net: each edited file is backed up 0600 BEFORE any change; edits are
 // yaml.v3 node-level value replacements that preserve comments and order; after
@@ -31,6 +37,21 @@ import (
 func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 	baseDir := filepath.Dir(configPath)
 	secret.SetConfigDir(baseDir)
+
+	// Harmonise first: convert a legacy monolithic config to the multi-file
+	// layout so secrets are sealed into fragments, not a single file. The split
+	// engine carries its own backup + data-equality verification; it is a no-op
+	// once the config is already multi-file.
+	if raw, rerr := os.ReadFile(configPath); rerr == nil && HasMonolithicMarkers(raw) {
+		res, merr := MigrateToMultiFile(configPath, log)
+		if merr != nil {
+			return fmt.Errorf("harmonising config to multi-file before seal: %w", merr)
+		}
+		if !res.AlreadyMultiFile && log != nil {
+			log.Info().Str("backup", res.BackupPath).Int("strategies", res.StrategyCount).
+				Msg("Harmonised monolithic config to multi-file layout before sealing")
+		}
+	}
 
 	// Pre-seal snapshot (plaintext, no ${secret:} yet).
 	before, err := LoadFromDisk(configPath, nil)

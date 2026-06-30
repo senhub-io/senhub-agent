@@ -1,4 +1,4 @@
-package app
+package configuration
 
 import (
 	"os"
@@ -6,14 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fsnotify/fsnotify"
 	"gopkg.in/yaml.v2"
 )
 
 // writeMonolithicFixture stages a minimal-but-realistic monolithic
-// config on disk and returns its path. Used by the migrate-engine
-// tests to exercise the full split path against the same shapes
-// production configs use.
+// config on disk and returns its path. Used by the split-engine tests
+// to exercise the full path against the same shapes production
+// configs use.
 func writeMonolithicFixture(t *testing.T, dir string) string {
 	t.Helper()
 	body := []byte(`config_version: 2
@@ -58,17 +57,17 @@ probes:
 	return path
 }
 
-// TestRunMigrate_HappyPath drives the full migrate engine on a
+// TestMigrateToMultiFile_HappyPath drives the full engine on a
 // realistic monolithic file and asserts the resulting multi-file
 // layout: agent.yaml without probes/storage, probes.d/00-host.yaml
 // with the original probes, and one strategies.d file per strategy.
-func TestRunMigrate_HappyPath(t *testing.T) {
+func TestMigrateToMultiFile_HappyPath(t *testing.T) {
 	dir := t.TempDir()
 	configPath := writeMonolithicFixture(t, dir)
 
-	result, err := runMigrate(configPath)
+	result, err := MigrateToMultiFile(configPath, nil)
 	if err != nil {
-		t.Fatalf("runMigrate: %v", err)
+		t.Fatalf("MigrateToMultiFile: %v", err)
 	}
 	if result.AlreadyMultiFile {
 		t.Fatal("AlreadyMultiFile should be false — fixture is monolithic")
@@ -154,31 +153,31 @@ func TestRunMigrate_HappyPath(t *testing.T) {
 	}
 }
 
-// TestRunMigrate_Idempotent confirms re-running migrate on an
+// TestMigrateToMultiFile_Idempotent confirms re-running migrate on an
 // already-multi-file layout is a no-op and reports AlreadyMultiFile.
-func TestRunMigrate_Idempotent(t *testing.T) {
+func TestMigrateToMultiFile_Idempotent(t *testing.T) {
 	dir := t.TempDir()
 	configPath := writeMonolithicFixture(t, dir)
 
-	if _, err := runMigrate(configPath); err != nil {
-		t.Fatalf("first runMigrate: %v", err)
+	if _, err := MigrateToMultiFile(configPath, nil); err != nil {
+		t.Fatalf("first MigrateToMultiFile: %v", err)
 	}
-	result2, err := runMigrate(configPath)
+	result2, err := MigrateToMultiFile(configPath, nil)
 	if err != nil {
-		t.Fatalf("second runMigrate: %v", err)
+		t.Fatalf("second MigrateToMultiFile: %v", err)
 	}
 	if !result2.AlreadyMultiFile {
-		t.Error("second runMigrate should report AlreadyMultiFile=true")
+		t.Error("second MigrateToMultiFile should report AlreadyMultiFile=true")
 	}
 	if result2.BackupPath != "" {
 		t.Error("idempotent run should not write a new backup")
 	}
 }
 
-// TestRunMigrate_MissingFile surfaces a clear error rather than
-// half-creating things.
-func TestRunMigrate_MissingFile(t *testing.T) {
-	_, err := runMigrate("/nonexistent/path/to/agent.yaml")
+// TestMigrateToMultiFile_MissingFile surfaces a clear error rather
+// than half-creating things.
+func TestMigrateToMultiFile_MissingFile(t *testing.T) {
+	_, err := MigrateToMultiFile("/nonexistent/path/to/agent.yaml", nil)
 	if err == nil {
 		t.Fatal("expected error for missing config file")
 	}
@@ -223,17 +222,17 @@ func TestHasMonolithicMarkers(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := hasMonolithicMarkers([]byte(tc.yaml))
+			got := HasMonolithicMarkers([]byte(tc.yaml))
 			if got != tc.want {
-				t.Errorf("hasMonolithicMarkers(%q) = %v, want %v", tc.name, got, tc.want)
+				t.Errorf("HasMonolithicMarkers(%q) = %v, want %v", tc.name, got, tc.want)
 			}
 		})
 	}
 }
 
 // TestSafeFilenameComponent pins the strategy-name → filename
-// sanitiser. The loader matches strategies by top-level YAML key,
-// not filename, but the filename still needs to be portable.
+// sanitiser. The loader matches strategies by top-level YAML key, not
+// filename, but the filename still needs to be portable.
 func TestSafeFilenameComponent(t *testing.T) {
 	cases := map[string]string{
 		"http":        "http",
@@ -252,10 +251,3 @@ func TestSafeFilenameComponent(t *testing.T) {
 		}
 	}
 }
-
-// unused but kept to demonstrate the shouldIgnoreEvent contract is
-// stable enough that cmd/agent test wiring can synthesize fsnotify
-// events without a real watcher. Left for symmetry with the
-// configuration-package test of the same name; we don't import it
-// to avoid a circular dependency.
-var _ = fsnotify.Event{}
