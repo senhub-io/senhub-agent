@@ -66,6 +66,20 @@ func ensureInit() error {
 	return initErr
 }
 
+// Backend ensures the OS-native provider is initialised and returns it. Used by
+// the CLI and the seal migration, which need to WRITE to the store (Resolve only
+// reads). Returns an error when no backend is available on this host.
+func Backend() (Provider, error) {
+	if err := ensureInit(); err != nil {
+		return nil, err
+	}
+	p := ActiveProvider()
+	if p == nil {
+		return nil, fmt.Errorf("no secret backend available")
+	}
+	return p, nil
+}
+
 // Resolve returns the plaintext for a ${secret:<name>} reference.
 //
 // A name the backend cannot resolve uses dflt when one was supplied; otherwise
