@@ -65,7 +65,21 @@ func FormatVersionForUrl(versionStr string) string {
 	return versionStr
 }
 
-// Fetch the list of versions available in the registry
+// getVersionList issues a GET that asks intermediaries to revalidate instead of
+// serving a cached body. A freshly published release must be seen immediately:
+// a stale, edge-cached version list made an include_beta agent resolve a
+// same-core beta over the new stable during the post-release propagation window
+// (#599).
+func getVersionList(httpClient *http.Client, listUrl string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, listUrl, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Pragma", "no-cache")
+	return httpClient.Do(req)
+}
+
 func fetchVersionList(
 	httpClient *http.Client,
 	registryUrl string,
@@ -74,7 +88,7 @@ func fetchVersionList(
 	if err != nil {
 		return nil, err
 	}
-	listResponse, err := httpClient.Get(listUrl)
+	listResponse, err := getVersionList(httpClient, listUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +162,7 @@ func fetchVersionListBeta(httpClient *http.Client, registryUrl string) ([]Versio
 	if err != nil {
 		return nil, err
 	}
-	listResponse, err := httpClient.Get(listUrl)
+	listResponse, err := getVersionList(httpClient, listUrl)
 	if err != nil {
 		return nil, err
 	}
