@@ -217,8 +217,11 @@ func (cm *ConfigMigrator) generateMigratedYAML(config map[string]interface{}) ([
 		agentVersion = "unknown"
 	}
 
-	// Add config_version field
-	config["config_version"] = CurrentConfigVersion
+	// Add config_version field. This is specifically the v1→v2 migration, so it
+	// stamps 2 — NOT CurrentConfigVersion (which is now 3; the v2→v3 secret-seal
+	// is a separate pass that stamps 3 only when it actually seals a secret).
+	const migratedToVersion = 2
+	config["config_version"] = migratedToVersion
 
 	// Create migration header
 	header := fmt.Sprintf(`# Configuration automatically migrated to version %d format on %s
@@ -236,7 +239,7 @@ func (cm *ConfigMigrator) generateMigratedYAML(config map[string]interface{}) ([
 #     params:
 #       base_url: "https://director.example.com"
 
-`, CurrentConfigVersion, time.Now().Format("2006-01-02 15:04:05 MST"), agentVersion)
+`, migratedToVersion, time.Now().Format("2006-01-02 15:04:05 MST"), agentVersion)
 
 	// Marshal config to YAML using v3 to get proper node structure
 	var rootNode yaml.Node
