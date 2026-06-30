@@ -192,8 +192,16 @@ func sealDocument(doc *yaml.Node, prov *secret.Provider) (int, error) {
 			if err != nil {
 				return n, err
 			}
-			if storage := mapValue(root, "storage"); storage != nil && storage.Kind == yaml.MappingNode {
-				m, err := sealStrategyMap(storage, prov)
+			// Monolithic storage is a SEQUENCE of {name, params} (like probes),
+			// not the per-file {strategyName: params} map of strategies.d.
+			if storage := mapValue(root, "storage"); storage != nil {
+				var m int
+				switch storage.Kind {
+				case yaml.SequenceNode:
+					m, err = sealProbeSeq(storage, prov)
+				case yaml.MappingNode:
+					m, err = sealStrategyMap(storage, prov)
+				}
 				n += m
 				if err != nil {
 					return n, err
