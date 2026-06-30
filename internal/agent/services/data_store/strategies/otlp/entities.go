@@ -39,10 +39,18 @@ const (
 // attributes are self-contained record attributes (NOT resource-referenced)
 // so the consumer reads otel.entity.id straight off the record.
 //
+// The returned scope is the entity's discovery-method provenance
+// (entity.Scope*), used by the pipeline to pick the per-method instrumentation
+// scope (#253); empty means the generic entities scope. Scope is carried by the
+// Logger, not the record, so it is returned alongside rather than set on rec.
+//
 // Attribute maps are flat with scalar leaves only; a non-scalar leaf is an
 // error, never a silent drop. Keys are sorted for deterministic output.
-func buildEntityRecord(ev entity.Event) (log.Record, error) {
+func buildEntityRecord(ev entity.Event) (scope string, _ log.Record, _ error) {
 	var rec log.Record
+	if ev.Entity != nil {
+		scope = ev.Entity.Scope
+	}
 	rec.SetTimestamp(ev.Time)
 	rec.SetObservedTimestamp(ev.Time)
 
@@ -51,7 +59,7 @@ func buildEntityRecord(ev entity.Event) (log.Record, error) {
 	case entity.EntityState, entity.EntityDelete:
 		e := ev.Entity
 		if e == nil {
-			return rec, fmt.Errorf("entity event kind %d has nil Entity", ev.Kind)
+			return scope, rec, fmt.Errorf("entity event kind %d has nil Entity", ev.Kind)
 		}
 		// The event kind is the LogRecord EventName, not a payload attribute.
 		if ev.Kind == entity.EntityDelete {
@@ -61,7 +69,7 @@ func buildEntityRecord(ev entity.Event) (log.Record, error) {
 		}
 		id, err := scalarMap(attrEntityID, e.ID)
 		if err != nil {
-			return rec, err
+			return scope, rec, err
 		}
 		// type AND id are required on both state and delete.
 		attrs = []log.KeyValue{
@@ -71,7 +79,7 @@ func buildEntityRecord(ev entity.Event) (log.Record, error) {
 		if ev.Kind == entity.EntityState && len(e.Attributes) > 0 {
 			a, err := scalarMap(attrEntityDescription, e.Attributes)
 			if err != nil {
-				return rec, err
+				return scope, rec, err
 			}
 			attrs = append(attrs, a)
 		}
@@ -89,17 +97,17 @@ func buildEntityRecord(ev entity.Event) (log.Record, error) {
 		if ev.Kind == entity.EntityState && len(e.Relationships) > 0 {
 			rels, err := relationshipsValue(e.Relationships)
 			if err != nil {
-				return rec, err
+				return scope, rec, err
 			}
 			attrs = append(attrs, rels)
 		}
 
 	default:
-		return rec, fmt.Errorf("unknown entity event kind %d", ev.Kind)
+		return scope, rec, fmt.Errorf("unknown entity event kind %d", ev.Kind)
 	}
 
 	rec.AddAttributes(attrs...)
-	return rec, nil
+	return scope, rec, nil
 }
 
 // relationshipsValue encodes the embedded entity.relationships array: one bare

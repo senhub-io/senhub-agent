@@ -80,6 +80,16 @@ func fetchVersionList(
 	}
 	defer listResponse.Body.Close()
 
+	// A non-200 (e.g. a 404 page from a mis-built registry URL) must not be
+	// decoded as JSON: the "404 page not found" body's leading token parses as
+	// a number and surfaces a cryptic "cannot unmarshal number into
+	// []VersionMetadata" instead of the real HTTP error. fetchVersionMetadata
+	// and fetchVersionListBeta already guard this; the stable list did not.
+	if listResponse.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching releases list from %s: HTTP %d %s",
+			listUrl, listResponse.StatusCode, listResponse.Status)
+	}
+
 	var versionList []VersionMetadata
 	if err = json.NewDecoder(listResponse.Body).Decode(&versionList); err != nil {
 		return nil, err

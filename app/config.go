@@ -354,6 +354,18 @@ func checkConfig(configPath string) {
 		}
 	}
 
+	// Auto-update: warn when enabled but the running binary can't be
+	// replaced in place (root-owned binary under the hardened non-root
+	// unit would fail every update cycle — #377).
+	if config.AutoUpdate != nil && config.AutoUpdate.Enabled {
+		if warn := checkAutoUpdateWritability(); warn != "" {
+			fmt.Printf("  [WARN] %s\n", warn)
+			warnings++
+		} else {
+			fmt.Println("  [OK]   auto_update.enabled: binary is replaceable in place")
+		}
+	}
+
 	// Summary
 	fmt.Println()
 	if errors == 0 && warnings == 0 {

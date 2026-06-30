@@ -95,6 +95,53 @@ func TestTomcatEntitySource_DescriptiveAttrs(t *testing.T) {
 	}
 }
 
+// TestTomcatEntitySource_ServiceVersion verifies that a version passed via
+// SetUp is merged onto the descriptive attribute set and surfaces in Observe.
+func TestTomcatEntitySource_ServiceVersion(t *testing.T) {
+	src := newTomcatEntitySource("", "hid", "myhost.example.com", 9090)
+	src.SetUp(true, map[string]any{"service.version": "9.0.71"})
+
+	obs, _ := src.Observe()
+	if len(obs.Entities) != 1 {
+		t.Fatalf("Observe: want 1 entity, got %d", len(obs.Entities))
+	}
+	attrs := obs.Entities[0].Attributes
+	if attrs["service.version"] != "9.0.71" {
+		t.Errorf("service.version = %v, want \"9.0.71\"", attrs["service.version"])
+	}
+	// Descriptive attrs must remain intact alongside the version.
+	if attrs["service.name"] != "tomcat" {
+		t.Errorf("service.name = %q, want \"tomcat\"", attrs["service.name"])
+	}
+}
+
+// TestTomcatEntitySource_NoVersionWhenAbsent verifies that service.version is
+// omitted when SetUp is called without it (read failed or attribute empty).
+func TestTomcatEntitySource_NoVersionWhenAbsent(t *testing.T) {
+	src := newTomcatEntitySource("", "hid", "myhost.example.com", 9090)
+	src.SetUp(true, nil)
+
+	obs, _ := src.Observe()
+	if _, ok := obs.Entities[0].Attributes["service.version"]; ok {
+		t.Error("service.version present, want omitted")
+	}
+}
+
+func TestParseTomcatVersion(t *testing.T) {
+	cases := map[string]string{
+		"Apache Tomcat/9.0.71":  "9.0.71",
+		"Apache Tomcat/10.1.7":  "10.1.7",
+		"  Apache Tomcat/8.5  ": "8.5",
+		"11.0.0":                "11.0.0",
+		"":                      "",
+	}
+	for in, want := range cases {
+		if got := parseTomcatVersion(in); got != want {
+			t.Errorf("parseTomcatVersion(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // TestTomcatEntitySource_IDDoesNotContainNetwork checks that the stable id
 // never contains a URL, port, or IP-derived component when using the host-id path.
 func TestTomcatEntitySource_IDDoesNotContainNetwork(t *testing.T) {

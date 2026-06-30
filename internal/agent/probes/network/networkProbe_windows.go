@@ -4,6 +4,7 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -312,11 +313,14 @@ func newNetworkCollector(config map[string]interface{}, baseLogger *logger.Logge
 		return nil, err
 	}
 
-	if err := query.Collect(); err != nil {
-		query.Close()
-		return nil, fmt.Errorf("failed initial collection: %v", err)
-	}
-
+	// Priming is deferred to the first Collect, which primes the query and
+	// waits one sample interval via the `initialized` guard before reading
+	// values. PDH rate counters return PDH_NO_DATA until a second sample
+	// exists, so collecting here — and treating it as fatal — broke
+	// construction on a freshly-booted host or a cold CI runner where no
+	// sample has been taken yet (#590). initializeCounters already validated
+	// the counter paths above; the first real sample surfaces any genuine
+	// collection error.
 	return collector, nil
 }
 
@@ -354,7 +358,11 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 	defer w.mu.Unlock()
 
 	if !w.initialized {
-		if err := w.query.Collect(); err != nil {
+		// The first sample only primes the rate counters; PDH reports
+		// PDH_NO_DATA until a second sample exists, so a NO_DATA here is
+		// expected, not a failure (#590). Any other error is real. After the
+		// one-second wait the next Collect below has a delta to read.
+		if err := w.query.Collect(); err != nil && !errors.Is(err, pdh.ErrNoData) {
 			return nil, fmt.Errorf("failed initial sample collection: %v", err)
 		}
 		time.Sleep(1 * time.Second)

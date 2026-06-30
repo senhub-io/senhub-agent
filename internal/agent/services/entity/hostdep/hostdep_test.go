@@ -304,3 +304,74 @@ func TestTransientFailureKeepsStreak(t *testing.T) {
 		t.Errorf("streak should have survived the transient failure: %+v", obs)
 	}
 }
+
+// TestNameLRU_CachesStableProcessAcrossScrapes pins #492: a stable owning
+// process (same pid, same start time) is named once, then served from the
+// cross-scrape cache on later scrapes — the optimization that keeps a
+// high-socket host from re-resolving the same pids every cycle.
+func TestNameLRU_CachesStableProcessAcrossScrapes(t *testing.T) {
+	rows := []gnet.ConnectionStat{
+		conn(statusEstablished, "10.0.0.5", 51000, "10.0.0.9", 5432, 100),
+		conn(statusEstablished, "10.0.0.5", 51001, "10.0.0.9", 5433, 100), // same pid, 2nd peer
+	}
+	var nameCalls int
+	s := New(func() string { return "h-1" }, defaultThreshold, nil)
+	s.connections = fakeConns(rows)
+	s.procName = func(int32) string { nameCalls++; return "nginx" }
+	s.procCreated = func(int32) (int64, bool) { return 1717000000000, true } // stable start time
+
+	for i := 0; i < 3; i++ {
+		s.Observe()
+	}
+	// pid 100 is resolved exactly once total: once on the first scrape, then
+	// served from the LRU on scrapes 2 and 3 (within a scrape the inner
+	// nameCache already dedups the two sockets).
+	if nameCalls != 1 {
+		t.Errorf("stable pid should be named once across 3 scrapes, got %d resolutions", nameCalls)
+	}
+}
+
+// TestNameLRU_RecycledPidIsReResolved pins the correctness guard: a pid reused
+// by a new process (different start time) must not serve the old name — the
+// (pid, createTime) key forces a fresh resolution.
+func TestNameLRU_RecycledPidIsReResolved(t *testing.T) {
+	rows := []gnet.ConnectionStat{
+		conn(statusEstablished, "10.0.0.5", 51000, "10.0.0.9", 5432, 100),
+	}
+	names := []string{"old-proc", "new-proc"}
+	var idx int
+	var created int64 = 1000
+	s := New(func() string { return "h-1" }, 1, nil) // threshold 1 → emits each scrape
+	s.connections = fakeConns(rows)
+	s.procName = func(int32) string {
+		n := names[idx]
+		if idx < len(names)-1 {
+			idx++
+		}
+		return n
+	}
+	s.procCreated = func(int32) (int64, bool) { return created, true }
+
+	obs, _ := s.Observe()
+	if !hasService(obs, "old-proc@h-1") {
+		t.Fatalf("first scrape should name the original process: %+v", obs.Entities)
+	}
+	// pid 100 recycled: same number, new start time → cache must miss.
+	created = 2000
+	obs, _ = s.Observe()
+	if !hasService(obs, "new-proc@h-1") {
+		t.Errorf("recycled pid must be re-resolved, not served the stale name: %+v", obs.Entities)
+	}
+	if hasService(obs, "old-proc@h-1") {
+		t.Errorf("stale name must not survive a pid recycle: %+v", obs.Entities)
+	}
+}
+
+func hasService(obs entity.Observation, id string) bool {
+	for _, e := range obs.Entities {
+		if e.Type == entityTypeServiceInstance && e.ID[idKeyServiceInstanceID] == id {
+			return true
+		}
+	}
+	return false
+}

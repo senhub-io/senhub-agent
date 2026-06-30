@@ -85,11 +85,20 @@ type dependant struct {
 	foundation     bool
 }
 
+// nameEntry caches a pid's resolved executable name across scrapes, guarded by
+// the process start time: a recycled pid (same number, new process) has a
+// different createTime, so a stale entry misses and is re-resolved (#492).
+type nameEntry struct {
+	createTime int64
+	name       string
+}
+
 // Source implements entity.Source for host outbound dependency edges.
 type Source struct {
 	hostID      func() string
 	connections func(string) ([]gnet.ConnectionStat, error) // nil → gnet.Connections
 	procName    func(int32) string                          // nil → gopsutil process name
+	procCreated func(int32) (int64, bool)                   // nil → gopsutil CreateTime
 	agentID     func() string                               // nil → agentstate.GetAgentInstanceID
 	selfPID     func() int32                                // nil → os.Getpid
 	threshold   int
@@ -97,6 +106,12 @@ type Source struct {
 
 	mu     sync.Mutex
 	streak map[peerKey]int // consecutive scrapes a peer endpoint has been seen
+
+	// nameLRU caches pid→name across scrapes so a busy host's stable owning
+	// processes (a handful of servers owning thousands of sockets) are named
+	// once, not on every cycle. Keyed by (pid, createTime); pruned each scrape
+	// to the pids still present, so it cannot outgrow the live socket table.
+	nameLRU map[int32]nameEntry
 }
 
 // New builds the host-dependency source. hostID returns the host's stable id,
@@ -109,7 +124,13 @@ func New(hostID func() string, threshold int, exclude []*net.IPNet) *Source {
 	if threshold < 1 {
 		threshold = defaultThreshold
 	}
-	return &Source{hostID: hostID, threshold: threshold, exclude: exclude, streak: map[peerKey]int{}}
+	return &Source{
+		hostID:    hostID,
+		threshold: threshold,
+		exclude:   exclude,
+		streak:    map[peerKey]int{},
+		nameLRU:   map[int32]nameEntry{},
+	}
 }
 
 // excluded reports whether a peer IP falls in any operator-excluded range.
@@ -148,10 +169,14 @@ func (s *Source) Observe() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 
-	deps := s.scrape(conns, hostID)
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	deps, nextLRU := s.scrape(conns, hostID, s.nameLRU)
+	// Replace the LRU with only the pids named this scrape: a vanished pid drops
+	// out, keeping the cache bounded by the live socket table.
+	s.nameLRU = nextLRU
+
 	// Advance streaks: increment what we saw this scrape, drop what we did not
 	// (a vanished connection resets to zero so its edge leaves the snapshot).
 	seen := make(map[peerKey]dependant, len(deps))
@@ -168,11 +193,14 @@ func (s *Source) Observe() (entity.Observation, bool) {
 	}
 	s.streak = next
 
-	return buildObservation(seen, next, s.threshold, hostID), true
+	return buildObservation(seen, next, s.threshold, hostID).WithScope(entity.ScopeHostDep), true
 }
 
 // scrape classifies one socket-table read into candidate outbound dependants.
-func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string) []dependant {
+// priorLRU is the previous scrape's pid→name cache; scrape returns the cache to
+// keep (only the pids it named this scrape), which the caller swaps in under the
+// lock.
+func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string, priorLRU map[int32]nameEntry) ([]dependant, map[int32]nameEntry) {
 	listenPorts := map[uint32]bool{}
 	for _, c := range conns {
 		if c.Status == statusListen {
@@ -191,9 +219,14 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string) []dependant 
 	if selfPIDFn == nil {
 		selfPIDFn = func() int32 { return int32(os.Getpid()) }
 	}
+	createdFn := s.procCreated
+	if createdFn == nil {
+		createdFn = processCreateTime
+	}
 	self := selfPIDFn()
 	agentID := agentIDFn()
 	nameCache := map[int32]string{}
+	nextLRU := make(map[int32]nameEntry)
 
 	var out []dependant
 	for _, c := range conns {
@@ -205,7 +238,7 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string) []dependant 
 		}
 		name, ok := nameCache[c.Pid]
 		if !ok {
-			name = nameFn(c.Pid)
+			name = cachedName(c.Pid, nameFn, createdFn, priorLRU, nextLRU)
 			nameCache[c.Pid] = name
 		}
 		d := dependant{
@@ -229,7 +262,29 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string) []dependant 
 		}
 		out = append(out, d)
 	}
-	return out
+	return out, nextLRU
+}
+
+// cachedName resolves a pid's name through the cross-scrape LRU. A hit requires
+// the process start time to match the cached one (a recycled pid is re-resolved);
+// when the start time cannot be read, it resolves without caching so a stale
+// name can never be served. Empty names (kernel withholds the owner from an
+// unprivileged agent) are cached too — re-asking every scrape would not help.
+func cachedName(pid int32, nameFn func(int32) string, createdFn func(int32) (int64, bool), priorLRU, nextLRU map[int32]nameEntry) string {
+	if e, ok := nextLRU[pid]; ok {
+		return e.name // already resolved for a different socket in this scrape
+	}
+	created, ok := createdFn(pid)
+	if !ok {
+		return nameFn(pid) // cannot guard against pid reuse → do not cache
+	}
+	if e, ok := priorLRU[pid]; ok && e.createTime == created {
+		nextLRU[pid] = e
+		return e.name
+	}
+	name := nameFn(pid)
+	nextLRU[pid] = nameEntry{createTime: created, name: name}
+	return name
 }
 
 // buildObservation emits, for every peer endpoint that has reached the
@@ -305,6 +360,24 @@ func processName(pid int32) string {
 		return ""
 	}
 	return name
+}
+
+// processCreateTime reads a pid's start time (epoch ms), the LRU key that
+// distinguishes a recycled pid from the original. ok=false when it cannot be
+// read, signalling the caller to resolve the name without caching it.
+func processCreateTime(pid int32) (int64, bool) {
+	if pid <= 0 {
+		return 0, false
+	}
+	p, err := process.NewProcess(pid)
+	if err != nil {
+		return 0, false
+	}
+	ct, err := p.CreateTime()
+	if err != nil {
+		return 0, false
+	}
+	return ct, true
 }
 
 // resolvablePeer reports whether a peer IP is worth a dependency edge: a real

@@ -4,6 +4,7 @@
 package pdh
 
 import (
+	"errors"
 	"fmt"
 	"golang.org/x/sys/windows"
 	"strings"
@@ -17,6 +18,12 @@ var (
 	// moduleLogger for PDH operations - initialized with basic logger
 	moduleLogger *logger.ModuleLogger
 )
+
+// ErrNoData reports a PDH_NO_DATA condition. It is expected on the first
+// sample of a rate counter — PDH has no delta until a second sample exists —
+// so callers that prime then re-collect should tolerate it via errors.Is
+// rather than treating it as a hard failure.
+var ErrNoData = errors.New("no PDH sample available yet")
 
 // InitializePDHLogger initializes the PDH module logger
 func InitializePDHLogger(baseLogger *logger.Logger) {
@@ -487,6 +494,10 @@ func (q *Query) Collect() error {
 
 	ret, _, _ := pdhCollectQueryData.Call(uintptr(q.handle))
 	if ret != 0 {
+		if uint32(ret) == PDH_NO_DATA {
+			return fmt.Errorf("PdhCollectQueryData error: %s (0x%X): %w",
+				GetPdhErrorText(uint32(ret)), ret, ErrNoData)
+		}
 		return fmt.Errorf("PdhCollectQueryData error: %s (0x%X)",
 			GetPdhErrorText(uint32(ret)), ret)
 	}
