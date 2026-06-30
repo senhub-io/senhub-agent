@@ -226,6 +226,68 @@ func TestAutoUpdate_getExpectedVersion_WithFailingServer(t *testing.T) {
 	}
 }
 
+// TestAutoUpdate_getExpectedVersion_LatestIncludeBeta proves that the
+// "latest" alias resolution honours include_beta: with it off, the newest
+// stable wins (0.4.1); with it on, the newest beta wins (0.4.2-beta). This
+// is the #591 regression: the tick path previously fetched only the stable
+// channel and never saw the beta even when include_beta was set.
+func TestAutoUpdate_getExpectedVersion_LatestIncludeBeta(t *testing.T) {
+	versionServer := testUtils.GetTestHTTPServerWithURLPath([]testUtils.TestHTTPServerURLConf{
+		NewAutoUpdateVersionMetadataRoute("0.4.1"),
+		NewAutoUpdateVersionMetadataRoute("0.4.2-beta"),
+		NewAutoUpdateVersionListRoute([][2]string{{"0.4.1"}}),
+		NewAutoUpdateVersionListBetaRoute([][2]string{{"0.4.1"}, {"0.4.2-beta"}}),
+	})
+	defer versionServer.Server.Close()
+
+	testCases := []struct {
+		name           string
+		includeBeta    bool
+		expectedResult string
+	}{
+		{
+			name:           "include_beta off resolves latest stable",
+			includeBeta:    false,
+			expectedResult: "0.4.1",
+		},
+		{
+			name:           "include_beta on resolves latest beta",
+			includeBeta:    true,
+			expectedResult: "0.4.2-beta",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			configString := fmt.Sprintf(`{
+				"agent": {
+					"version": "latest",
+					"registry_url": "%s",
+					"include_beta": %t
+				}
+			}`, versionServer.URL, tc.includeBeta)
+			remoteConfig := configuration.NewMockConfiguration(
+				"http://localhost:8000", configString)
+
+			httpClient := httpretry.NewDefaultClient()
+			au := &autoUpdate{
+				configSource: remoteConfig,
+				logger:       createTestModuleLogger(),
+				httpClient:   httpClient,
+			}
+
+			// Pin current to a low version so resolution, not the downgrade
+			// guard, is what's under test here.
+			cliArgs.Version = "0.1.0"
+
+			resolved := au.getExpectedVersionFromConfig()
+			if resolved != tc.expectedResult {
+				t.Errorf("Expected %s, got %s", tc.expectedResult, resolved)
+			}
+		})
+	}
+}
+
 func TestIsBetaVersion(t *testing.T) {
 	testCases := []struct {
 		name     string

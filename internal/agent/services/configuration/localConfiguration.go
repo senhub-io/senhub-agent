@@ -223,6 +223,7 @@ func (lc *LocalConfiguration) GetConfiguration() ConfigurationData {
 			RegistryUrl:         autoUpdate.URL,
 			Version:             updateVersion,
 			UpdateCheckInterval: updateInterval,
+			IncludeBeta:         autoUpdate.IncludeBeta,
 			License:             lc.snapshot().Agent.License,
 			AuthenticationKey:   lc.snapshot().Agent.Key,
 			GlobalTags:          lc.snapshot().Agent.GlobalTags,
