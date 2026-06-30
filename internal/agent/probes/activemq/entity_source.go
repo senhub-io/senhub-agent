@@ -33,6 +33,10 @@ type activemqEntitySource struct {
 	// the fallback id) and its result is never stored; the pinned id holds it.
 	hostIDFn func() string
 
+	// hostID is the agent host id, resolved once at construction; it is the
+	// target of the local-target runs_on edge.
+	hostID string
+
 	mu sync.Mutex
 
 	// pinnedID is the id once resolved; "" means not yet resolved.
@@ -67,6 +71,9 @@ func newActivemqEntitySource(instanceName, addr string, port int, hostIDFn func(
 		serverAddr: addr,
 		serverPort: port,
 		hostIDFn:   hostIDFn,
+	}
+	if hostIDFn != nil {
+		s.hostID = hostIDFn()
 	}
 	if instanceName != "" {
 		s.pinnedID = instanceName
@@ -169,6 +176,13 @@ func (s *activemqEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   "service.instance",
 			ToID:     instanceID,
 		})
+	}
+
+	// runs_on edge: activemq → host when the monitored broker is local (loopback),
+	// so a locally-monitored broker hangs off the host it runs on instead of
+	// floating with only its monitors anchor. A remote target yields no edge.
+	if rel, ok := entity.LocalRunsOn("service.instance", instanceID, s.serverAddr, s.hostID); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

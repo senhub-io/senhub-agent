@@ -3,6 +3,7 @@ package modbus
 import (
 	"sync"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -17,13 +18,15 @@ import (
 //	id:   {"service.instance.id": "modbus://<host>:<port>"}
 type modbusEntitySource struct {
 	instanceID string
+	host       string        // monitored gateway host; a runs_on→host is emitted only when it is loopback
+	hostID     func() string // resolves the agent host id (default dbcommon.HostID)
 
 	mu   sync.Mutex
 	live bool
 }
 
-func newModbusEntitySource(instanceID string) *modbusEntitySource {
-	return &modbusEntitySource{instanceID: instanceID}
+func newModbusEntitySource(instanceID, host string) *modbusEntitySource {
+	return &modbusEntitySource{instanceID: instanceID, host: host, hostID: dbcommon.HostID}
 }
 
 // markLive signals that the Modbus target was reached this cycle.
@@ -65,6 +68,13 @@ func (s *modbusEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   "service.instance",
 			ToID:     svcID,
 		})
+	}
+
+	// runs_on edge: target → host when the Modbus gateway is local (loopback) —
+	// anchors a locally-monitored device to the host it runs on instead of
+	// leaving it floating. A remote gateway yields no edge.
+	if rel, ok := entity.LocalRunsOn("service.instance", svcID, s.host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 	return obs, true
 }

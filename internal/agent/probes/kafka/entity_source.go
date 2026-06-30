@@ -42,6 +42,10 @@ type kafkaEntitySource struct {
 	host string
 	port int64
 
+	// hostID is the agent host id, resolved once at construction; it is the
+	// target of the local-target runs_on edge.
+	hostID string
+
 	// techFetch fetches the cluster id from the live Kafka cluster. Set to
 	// nil once the id is pinned.
 	techFetch  techIDFetcher
@@ -84,6 +88,11 @@ func newKafkaEntitySource(addr, instanceName string, fetch techIDFetcher, hostID
 		port:       port,
 		techFetch:  fetch,
 		hostIDFunc: hostID,
+	}
+	if hostID != nil {
+		s.hostID = hostID()
+	} else if hi, err := common.GetHostIdentity(); err == nil {
+		s.hostID = hi.ID
 	}
 	// Precedence 1: operator config overrides everything.
 	if instanceName != "" {
@@ -169,6 +178,7 @@ func (s *kafkaEntitySource) Observe() (entity.Observation, bool) {
 	version := s.version
 	host := s.host
 	port := s.port
+	hostID := s.hostID
 	s.mu.RUnlock()
 
 	if pinnedID == "" {
@@ -211,6 +221,13 @@ func (s *kafkaEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   "service.instance",
 			ToID:     targetID,
 		})
+	}
+
+	// runs_on edge: kafka → host when the monitored broker is local (loopback),
+	// so a locally-monitored broker hangs off the host it runs on instead of
+	// floating with only its monitors anchor. A remote broker yields no edge.
+	if rel, ok := entity.LocalRunsOn("service.instance", targetID, host, hostID); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

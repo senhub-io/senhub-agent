@@ -15,11 +15,16 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-// TestEntityObserver_LocalDBRunsOnHost: a loopback-reachable redis is anchored to
-// the host with runs_on (enterprise#36); a remote one is not.
+// TestEntityObserver_LocalDBRunsOnHost: a loopback-reachable redis with a
+// host-unique identity (operator instance_name) is anchored to the host with
+// runs_on (enterprise#36). A host:port identity embeds the loopback literal —
+// it is identical on every host — so the collapse guard refuses the runs_on (it
+// would false-join hosts, the Docker default-bridge family). A remote db is
+// never anchored. Redis has no tech id, so without instance_name a local redis
+// stays floating until its identity is host-scoped (Toise db-identity follow-up).
 func TestEntityObserver_LocalDBRunsOnHost(t *testing.T) {
-	runsOn := func(host string) bool {
-		o := newEntityObserver(probeConfig{Host: host, Port: 6379}, host+":6379")
+	runsOn := func(host, id string) bool {
+		o := newEntityObserver(probeConfig{Host: host, Port: 6379}, id)
 		o.hostID = func() string { return "h-1" }
 		o.update(probeConfig{Host: host, Port: 6379}, map[string]string{})
 		got, _ := o.Observe()
@@ -30,10 +35,13 @@ func TestEntityObserver_LocalDBRunsOnHost(t *testing.T) {
 		}
 		return false
 	}
-	if !runsOn("127.0.0.1") {
-		t.Error("loopback db must emit runs_on→host")
+	if !runsOn("127.0.0.1", "prod-cache") {
+		t.Error("loopback db with a host-unique id must emit runs_on→host")
 	}
-	if runsOn("10.0.0.5") {
+	if runsOn("127.0.0.1", "127.0.0.1:6379") {
+		t.Error("host:port identity must NOT emit runs_on on loopback (collapse guard)")
+	}
+	if runsOn("10.0.0.5", "10.0.0.5:6379") {
 		t.Error("remote db must NOT emit runs_on→host")
 	}
 }

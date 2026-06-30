@@ -3,6 +3,7 @@ package mongodb
 import (
 	"sync"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -29,6 +30,9 @@ type mongodbEntitySource struct {
 	// for the descriptive attrs.
 	addr string
 	port int64
+	// hostID resolves the agent host id for a local-db runs_on edge.
+	// nil → dbcommon.HostID.
+	hostID func() string
 
 	mu sync.RWMutex
 	// pinnedID is the resolved db.instance.id. Set once; never changed.
@@ -57,6 +61,7 @@ func newMongodbEntitySource(addr string, port int64, instanceName string) *mongo
 		hostPort: hp,
 		addr:     addr,
 		port:     port,
+		hostID:   dbcommon.HostID,
 		attrs: map[string]any{
 			"db.system.name": "mongodb",
 			"server.address": addr,
@@ -151,6 +156,12 @@ func (s *mongodbEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   "db",
 			ToID:     dbID,
 		})
+	}
+
+	// runs_on edge: db → host when the db is on the agent's own host (loopback).
+	// The collapse guard suppresses it for a host:port-derived id.
+	if rel, ok := dbcommon.LocalHostRunsOn(dbID, s.addr, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

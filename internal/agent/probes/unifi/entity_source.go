@@ -1,9 +1,11 @@
 package unifi
 
 import (
+	"net/url"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
@@ -24,13 +26,43 @@ const (
 type unifiEntitySource struct {
 	id string
 
+	// serverAddr is the host parsed from the endpoint; runs_on→host is emitted
+	// only when it is loopback. The id is endpoint-derived (it embeds this host),
+	// so the collapse guard suppresses the runs_on even on loopback — wired for
+	// correctness, the gate alone decides.
+	serverAddr string
+	hostID     func() string // agent host id resolver, overridable in tests
+
 	mu        sync.Mutex
 	observed  bool
 	reachable bool
 }
 
 func newEntitySource(endpoint string) *unifiEntitySource {
-	return &unifiEntitySource{id: "unifi://" + endpoint}
+	return &unifiEntitySource{
+		id:         "unifi://" + endpoint,
+		serverAddr: hostFromEndpoint(endpoint),
+		hostID:     unifiHostID,
+	}
+}
+
+// hostFromEndpoint extracts the host from an endpoint URL (e.g.
+// "https://localhost:8443" → "localhost"), returning the raw endpoint when it
+// is not a parseable URL.
+func hostFromEndpoint(endpoint string) string {
+	if u, err := url.Parse(endpoint); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return endpoint
+}
+
+// unifiHostID resolves the agent host's stable machine-id, or "" when unreadable.
+func unifiHostID() string {
+	hi, err := common.GetHostIdentity()
+	if err != nil {
+		return ""
+	}
+	return hi.ID
 }
 
 // markReachable records the outcome of a Collect cycle. The entity is
@@ -76,6 +108,13 @@ func (s *unifiEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   entityTypeServiceInstance,
 			ToID:     svcID,
 		})
+	}
+
+	// runs_on edge: controller → host when the endpoint is local (loopback). The
+	// id is endpoint-derived, so the collapse guard refuses it on loopback (the
+	// id is identical on every host); wired anyway so the gate decides.
+	if rel, ok := entity.LocalRunsOn(entityTypeServiceInstance, svcID, s.serverAddr, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 	return obs, true
 }

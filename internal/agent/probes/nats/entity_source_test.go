@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // newTestEntitySource builds an entity source with an injectable host-id getter
@@ -156,12 +157,9 @@ func TestEntitySource_MonitorsEdge_AgentIDSet(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe must return ok=true after pin")
 	}
-	if len(obs.Relations) != 1 {
-		t.Fatalf("expected 1 relation, got %d", len(obs.Relations))
-	}
-	rel := obs.Relations[0]
-	if rel.Type != "monitors" {
-		t.Errorf("relation type: want %q got %q", "monitors", rel.Type)
+	rel := natsRelByType(obs, "monitors")
+	if rel == nil {
+		t.Fatalf("expected a monitors relation, got %v", natsRelTypes(obs))
 	}
 	if rel.FromType != "service.instance" {
 		t.Errorf("from type: want %q got %q", "service.instance", rel.FromType)
@@ -190,8 +188,10 @@ func TestEntitySource_MonitorsEdge_AgentIDEmpty(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe must return ok=true after pin")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("expected no relations when agent id is empty, got %d", len(obs.Relations))
+	// A runs_on edge may still be present (localhost endpoint is loopback) — that
+	// is independent of the agent id, so assert specifically on the monitors type.
+	if natsRelByType(obs, "monitors") != nil {
+		t.Errorf("expected no monitors relation when agent id is empty, got %v", natsRelTypes(obs))
 	}
 }
 
@@ -208,4 +208,49 @@ func TestEntitySource_ServiceNameAttr(t *testing.T) {
 	if obs.Entities[0].Attributes["service.name"] != "nats" {
 		t.Errorf("service.name attr: want %q got %v", "nats", obs.Entities[0].Attributes["service.name"])
 	}
+}
+
+// TestEntitySource_LocalRunsOn verifies a loopback-monitored NATS server emits a
+// runs_on→host edge, while a remote one does not.
+func TestEntitySource_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-1")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	local := newTestEntitySource("http://127.0.0.1:8222", "", "H")
+	local.pinFromVarz("my-nats", "NUID-X", "")
+	obs, _ := local.Observe()
+	runsOn := natsRelByType(obs, "runs_on")
+	if runsOn == nil {
+		t.Fatalf("loopback nats: expected a runs_on edge, got %v", natsRelTypes(obs))
+	}
+	if runsOn.ToType != "host" || runsOn.ToID["host.id"] != "H" {
+		t.Errorf("runs_on target = %s/%v, want host/H", runsOn.ToType, runsOn.ToID)
+	}
+	if runsOn.FromID["service.instance.id"] != "nats:my-nats" {
+		t.Errorf("runs_on source = %v, want nats:my-nats", runsOn.FromID)
+	}
+
+	remote := newTestEntitySource("http://10.0.0.5:8222", "", "H")
+	remote.pinFromVarz("my-nats", "NUID-X", "")
+	robs, _ := remote.Observe()
+	if natsRelByType(robs, "runs_on") != nil {
+		t.Errorf("remote nats must NOT emit runs_on; relations=%v", natsRelTypes(robs))
+	}
+}
+
+func natsRelByType(obs entity.Observation, ty string) *entity.Relation {
+	for i := range obs.Relations {
+		if obs.Relations[i].Type == ty {
+			return &obs.Relations[i]
+		}
+	}
+	return nil
+}
+
+func natsRelTypes(obs entity.Observation) []string {
+	var ts []string
+	for _, r := range obs.Relations {
+		ts = append(ts, r.Type)
+	}
+	return ts
 }

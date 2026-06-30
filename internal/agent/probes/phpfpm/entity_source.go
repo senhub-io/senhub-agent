@@ -15,6 +15,8 @@ import (
 // they are NOT part of the identity.
 type phpfpmEntitySource struct {
 	instanceID string
+	serverAddr string // host from the endpoint; a runs_on→host is emitted only when it is loopback
+	hostID     string // agent host id, target of the local-target runs_on edge
 	mu         sync.RWMutex
 	up         bool
 	attrs      map[string]any
@@ -30,6 +32,8 @@ func newPhpfpmEntitySource(instanceName, hostID string, addr string, port int) *
 	instanceID := resolveInstanceID(instanceName, hostID)
 	return &phpfpmEntitySource{
 		instanceID: instanceID,
+		serverAddr: addr,
+		hostID:     hostID,
 		attrs: map[string]any{
 			"service.name":   "phpfpm",
 			"server.address": addr,
@@ -83,10 +87,11 @@ func (s *phpfpmEntitySource) Observe() (entity.Observation, bool) {
 	if !s.up {
 		return entity.Observation{}, false
 	}
+	svcID := map[string]any{"service.instance.id": s.instanceID}
 	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "service.instance",
-			ID:         map[string]any{"service.instance.id": s.instanceID},
+			ID:         svcID,
 			Attributes: s.attrs,
 		}},
 	}
@@ -96,8 +101,15 @@ func (s *phpfpmEntitySource) Observe() (entity.Observation, bool) {
 			FromType: "service.instance",
 			FromID:   map[string]any{"service.instance.id": agentID},
 			ToType:   "service.instance",
-			ToID:     map[string]any{"service.instance.id": s.instanceID},
+			ToID:     svcID,
 		})
+	}
+
+	// runs_on edge: phpfpm → host when the monitored endpoint is local (loopback),
+	// so a locally-monitored pool hangs off the host it runs on instead of
+	// floating with only its monitors anchor. A remote endpoint yields no edge.
+	if rel, ok := entity.LocalRunsOn("service.instance", svcID, s.serverAddr, s.hostID); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 	return obs, true
 }
