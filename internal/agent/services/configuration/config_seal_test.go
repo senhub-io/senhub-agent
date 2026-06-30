@@ -117,6 +117,82 @@ func TestSealInlineSecrets_MultiFile(t *testing.T) {
 	}
 }
 
+func TestSealInlineSecrets_Monolithic(t *testing.T) {
+	mp := secret.NewMemoryProvider()
+	secret.SetProvider(mp)
+	t.Cleanup(func() { secret.SetProvider(nil) })
+
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "agent-config.yaml")
+	writeSealFile(t, cfg, `config_version: 2
+agent:
+  key: aaaa-bbbb-cccc
+  license: my-jwt
+probes:
+  - name: pg-prod
+    type: postgresql
+    params:
+      host: 10.0.0.5
+      username: svc
+      password: pg-pw
+      director:
+        auth:
+          password: nested-pw
+storage:
+  - name: cloud
+    params:
+      bind_address: ":9100"
+      bearer_token: bearer-pw
+`)
+
+	if err := SealInlineSecrets(cfg, nil); err != nil {
+		t.Fatalf("SealInlineSecrets monolithic: %v", err)
+	}
+
+	names, _ := mp.List()
+	have := map[string]bool{}
+	for _, n := range names {
+		have[n] = true
+	}
+	for _, want := range []string{
+		"agent.key", "pg-prod.password", "pg-prod.director.auth.password", "cloud.bearer_token",
+	} {
+		if !have[want] {
+			t.Errorf("store missing %q (have %v)", want, names)
+		}
+	}
+
+	raw, _ := os.ReadFile(cfg)
+	for _, plaintext := range []string{"pg-pw", "nested-pw", "bearer-pw", "aaaa-bbbb-cccc"} {
+		if strings.Contains(string(raw), plaintext) {
+			t.Errorf("plaintext %q survived:\n%s", plaintext, raw)
+		}
+	}
+	// license stays in clear; config_version stamped to 3.
+	if !strings.Contains(string(raw), "license: my-jwt") {
+		t.Errorf("license should stay clear:\n%s", raw)
+	}
+
+	after, err := LoadFromDisk(cfg, nil)
+	if err != nil {
+		t.Fatalf("reload monolithic: %v", err)
+	}
+	if after.ConfigVersion != 3 {
+		t.Errorf("config_version = %d, want 3", after.ConfigVersion)
+	}
+	if after.Agent.Key != "aaaa-bbbb-cccc" {
+		t.Errorf("agent key resolved to %q", after.Agent.Key)
+	}
+	if after.Agent.License != "my-jwt" {
+		t.Errorf("license = %q, want my-jwt", after.Agent.License)
+	}
+	for _, p := range after.Probes {
+		if p.Name == "pg-prod" && p.Params["password"] != "pg-pw" {
+			t.Errorf("pg password resolved to %v", p.Params["password"])
+		}
+	}
+}
+
 func TestSealInlineSecrets_NoSecrets_NoOp(t *testing.T) {
 	mp := secret.NewMemoryProvider()
 	secret.SetProvider(mp)
