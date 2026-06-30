@@ -42,11 +42,13 @@ func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 	// layout so secrets are sealed into fragments, not a single file. The split
 	// engine carries its own backup + data-equality verification; it is a no-op
 	// once the config is already multi-file.
+	harmoniseBackup := ""
 	if raw, rerr := os.ReadFile(configPath); rerr == nil && HasMonolithicMarkers(raw) {
 		res, merr := MigrateToMultiFile(configPath, log)
 		if merr != nil {
 			return fmt.Errorf("harmonising config to multi-file before seal: %w", merr)
 		}
+		harmoniseBackup = res.BackupPath
 		if !res.AlreadyMultiFile && log != nil {
 			log.Info().Str("backup", res.BackupPath).Int("strategies", res.StrategyCount).
 				Msg("Harmonised monolithic config to multi-file layout before sealing")
@@ -103,6 +105,9 @@ func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 	total += n
 
 	if total == 0 {
+		// Harmonisation may still have rewritten files as root; align ownership
+		// with the config dir so a non-root service user can read them.
+		reownAfterSeal(baseDir, log)
 		return nil
 	}
 
@@ -123,6 +128,28 @@ func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 	if err := setRootConfigVersion(configPath, CurrentConfigVersion); err != nil && log != nil {
 		log.Warn().Err(err).Msg("Sealed secrets but failed to stamp config_version")
 	}
+
+	// Success: the pre-change backups are no longer a safety net but a plaintext
+	// residue (they hold the secrets we just sealed). Scrub them so no password
+	// survives in the config directory — the whole point of sealing. Only done
+	// AFTER the verify passed, never before. The standalone `config migrate` CLI
+	// keeps its own backup; here we own the harmonise backup because the seal
+	// flow guarantees no-plaintext.
+	for _, b := range backups {
+		if err := os.Remove(b.backupPath); err != nil && !os.IsNotExist(err) && log != nil {
+			log.Warn().Err(err).Str("file", b.backupPath).Msg("Could not remove seal backup (plaintext may linger)")
+		}
+	}
+	if harmoniseBackup != "" {
+		if err := os.Remove(harmoniseBackup); err != nil && !os.IsNotExist(err) && log != nil {
+			log.Warn().Err(err).Str("file", harmoniseBackup).Msg("Could not remove harmonise backup (plaintext may linger)")
+		}
+	}
+
+	// Align ownership: a privileged seal writes the store, the key and the
+	// rewritten config files as root; chown them to match the config dir so the
+	// non-root service daemon can read them at runtime.
+	reownAfterSeal(baseDir, log)
 
 	if log != nil {
 		name := "unknown"
