@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -29,8 +30,13 @@ func TestAgeKeyfileGeneratesKeyOnFirstUse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("key file not created: %v", err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Fatalf("key file perm = %o, want 600", perm)
+	// POSIX file modes are not enforced the same way on Windows (where the
+	// DPAPI provider, not this one, is the backend), so the 0600 assertion only
+	// applies off-Windows.
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Fatalf("key file perm = %o, want 600", perm)
+		}
 	}
 	data, err := os.ReadFile(keyPath)
 	if err != nil {
