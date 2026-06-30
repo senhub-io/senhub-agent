@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // TestEntitySource_IDFromHostID verifies that when no instance_name is set
@@ -128,10 +129,10 @@ func TestEntitySource_MonitorsEdge_WithAgentID(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() returned ok=false")
 	}
-	if len(obs.Relations) != 1 {
-		t.Fatalf("Observe() returned %d relations, want 1", len(obs.Relations))
+	rel, found := findRelation(obs, "monitors")
+	if !found {
+		t.Fatalf("no monitors relation; got %v", relTypes(obs))
 	}
-	rel := obs.Relations[0]
 	if rel.Type != "monitors" {
 		t.Errorf("relation type = %q, want %q", rel.Type, "monitors")
 	}
@@ -163,7 +164,59 @@ func TestEntitySource_MonitorsEdge_NoAgentID(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() returned ok=false")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("Observe() returned %d relations, want 0 when agentID is empty", len(obs.Relations))
+	// No monitors edge when the agent id is empty. A runs_on edge may still be
+	// present (the localhost endpoint is loopback) — assert on the monitors type,
+	// not the relation count.
+	if _, found := findRelation(obs, "monitors"); found {
+		t.Errorf("monitors relation must be absent when agentID is empty; got %v", relTypes(obs))
+	}
+}
+
+// relTypes lists the relation types in an observation.
+func relTypes(obs entity.Observation) []string {
+	var ts []string
+	for _, r := range obs.Relations {
+		ts = append(ts, r.Type)
+	}
+	return ts
+}
+
+// findRelation returns the first relation of the given type.
+func findRelation(obs entity.Observation, relType string) (entity.Relation, bool) {
+	for _, r := range obs.Relations {
+		if r.Type == relType {
+			return r, true
+		}
+	}
+	return entity.Relation{}, false
+}
+
+// TestEntitySource_LocalRunsOn verifies a loopback-monitored haproxy emits a
+// runs_on→host edge (so it does not float), and a remote-monitored one does not.
+func TestEntitySource_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-1")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	// Loopback endpoint → runs_on present, targeting the agent host.
+	local := newHAProxyEntitySource("127.0.0.1", 8404, "", "H")
+	local.setReachable(true)
+	obs, _ := local.Observe()
+	runsOn, found := findRelation(obs, "runs_on")
+	if !found {
+		t.Fatalf("loopback haproxy: expected a runs_on edge, got relations %v", relTypes(obs))
+	}
+	if runsOn.ToType != "host" || runsOn.ToID["host.id"] != "H" {
+		t.Errorf("runs_on target = %s/%v, want host/H", runsOn.ToType, runsOn.ToID)
+	}
+	if runsOn.FromID["service.instance.id"] != "haproxy@H" {
+		t.Errorf("runs_on source = %v, want haproxy@H", runsOn.FromID)
+	}
+
+	// Remote endpoint → no runs_on.
+	remote := newHAProxyEntitySource("10.0.0.5", 8404, "", "H")
+	remote.setReachable(true)
+	robs, _ := remote.Observe()
+	if _, found := findRelation(robs, "runs_on"); found {
+		t.Errorf("remote haproxy must NOT emit runs_on; relations=%v", relTypes(robs))
 	}
 }

@@ -425,6 +425,41 @@ func TestEntitySource_MonitorsEdge_Absent(t *testing.T) {
 // fallback path: when the cluster genuinely has no stable tech id and
 // instance_name is also empty, the source can be used with a host:port pinned
 // at construction (tested via the hostPort helper + direct pin for coverage).
+// TestEntitySource_LocalDBRunsOnHost: a loopback-reachable opensearch with a
+// globally-unique cluster-uuid id is anchored to the host with runs_on
+// (enterprise#36). A host:port-derived id embeds the loopback literal — it is
+// identical on every host — so the collapse guard refuses the runs_on. A remote
+// db is never anchored.
+func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
+	agentstate.SetAgentInstanceID("")
+	runsOn := func(addr, clusterUUID string) bool {
+		src := newOpensearchEntitySource(addr, 9200, "")
+		src.hostID = func() string { return "h-1" }
+		if clusterUUID != "" {
+			src.setPinnedID(clusterUUID)
+		} else {
+			src.setPinnedID(src.hostPort()) // host:port fallback → "opensearch:<host:port>"
+		}
+		src.setReachable(true, "")
+		obs, _ := src.Observe()
+		for _, r := range obs.Relations {
+			if r.Type == "runs_on" && r.FromType == "db" && r.ToID["host.id"] == "h-1" {
+				return true
+			}
+		}
+		return false
+	}
+	if !runsOn("127.0.0.1", "cluster-001") {
+		t.Error("loopback db with a tech id must emit runs_on→host")
+	}
+	if runsOn("127.0.0.1", "") {
+		t.Error("host:port-derived id must NOT emit runs_on on loopback (collapse guard)")
+	}
+	if runsOn("10.0.0.5", "cluster-001") {
+		t.Error("remote db must NOT emit runs_on→host")
+	}
+}
+
 func TestEntitySource_HostPortFallback_ConstructionTime(t *testing.T) {
 	src := newOpensearchEntitySource("db.example.com", 9200, "")
 	// Simulate "no stable tech id available" by pinning host:port directly.

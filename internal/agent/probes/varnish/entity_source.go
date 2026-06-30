@@ -16,6 +16,7 @@ import (
 // alive rather than deleting the entity on each transient error.
 type varnishEntitySource struct {
 	instanceID string
+	hostID     string // agent host id; target of the local-target runs_on edge
 	mu         sync.RWMutex
 	up         bool
 	attrs      map[string]any
@@ -38,6 +39,7 @@ func newVarnishEntitySource(instanceName, hostID string) *varnishEntitySource {
 	id := resolveInstanceID(instanceName, hostID)
 	return &varnishEntitySource{
 		instanceID: id,
+		hostID:     hostID,
 		attrs: map[string]any{
 			"service.name":   "varnish",
 			"server.address": "localhost",
@@ -81,10 +83,11 @@ func (s *varnishEntitySource) Observe() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 
+	svcID := map[string]any{"service.instance.id": s.instanceID}
 	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "service.instance",
-			ID:         map[string]any{"service.instance.id": s.instanceID},
+			ID:         svcID,
 			Attributes: s.attrs,
 		}},
 	}
@@ -95,8 +98,16 @@ func (s *varnishEntitySource) Observe() (entity.Observation, bool) {
 			FromType: "service.instance",
 			FromID:   map[string]any{"service.instance.id": agentID},
 			ToType:   "service.instance",
-			ToID:     map[string]any{"service.instance.id": s.instanceID},
+			ToID:     svcID,
 		})
+	}
+
+	// runs_on edge: varnishstat is always read on this very host, so the target
+	// is loopback — anchor the instance to the agent host so it does not float
+	// with only its monitors edge. The helper's collapse guard suppresses the
+	// edge for a loopback-derived identity (not the case for "varnish@<host>").
+	if rel, ok := entity.LocalRunsOn("service.instance", svcID, "localhost", s.hostID); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

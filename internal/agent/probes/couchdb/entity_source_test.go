@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // resetAgentID clears the agent instance id set via agentstate between tests.
@@ -139,10 +140,10 @@ func TestEntitySource_MonitorsEdgePresent(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() returned ok=false")
 	}
-	if len(obs.Relations) != 1 {
-		t.Fatalf("got %d relations, want 1", len(obs.Relations))
+	r, found := findRelation(obs, "monitors")
+	if !found {
+		t.Fatalf("monitors edge missing; got %d relations", len(obs.Relations))
 	}
-	r := obs.Relations[0]
 	if r.Type != "monitors" {
 		t.Errorf("relation type = %q, want monitors", r.Type)
 	}
@@ -176,8 +177,44 @@ func TestEntitySource_MonitorsEdgeAbsentWhenNoAgentID(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() returned ok=false")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("got %d relations, want 0 when agent id is empty", len(obs.Relations))
+	if _, has := findRelation(obs, "monitors"); has {
+		t.Error("monitors edge present when agent id is empty; want absent")
+	}
+}
+
+// findRelation returns the first relation of the given type.
+func findRelation(obs entity.Observation, relType string) (entity.Relation, bool) {
+	for _, r := range obs.Relations {
+		if r.Type == relType {
+			return r, true
+		}
+	}
+	return entity.Relation{}, false
+}
+
+// TestEntitySource_LocalDBRunsOnHost: a loopback-reachable couchdb with a
+// globally-unique tech id is anchored to the host with runs_on (enterprise#36);
+// a remote db is not.
+func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
+	resetAgentID(t)
+	runsOn := func(endpoint string) bool {
+		src := newCouchDBEntitySource(endpoint, "")
+		src.hostID = func() string { return "h-1" }
+		src.pinServerUUID("a1b2c3d4-uuid")
+		src.setReachable(true)
+		obs, _ := src.Observe()
+		for _, r := range obs.Relations {
+			if r.Type == "runs_on" && r.FromType == "db" && r.ToID["host.id"] == "h-1" {
+				return true
+			}
+		}
+		return false
+	}
+	if !runsOn("http://127.0.0.1:5984") {
+		t.Error("loopback db with a tech id must emit runs_on→host")
+	}
+	if runsOn("http://10.0.0.5:5984") {
+		t.Error("remote db must NOT emit runs_on→host")
 	}
 }
 

@@ -195,6 +195,58 @@ func TestEntitySource_MonitorsEdgeAbsent(t *testing.T) {
 	}
 }
 
+// relByType returns a pointer to the first relation of the given type, or nil.
+func relByType(obs entity.Observation, ty string) *entity.Relation {
+	for i := range obs.Relations {
+		if obs.Relations[i].Type == ty {
+			return &obs.Relations[i]
+		}
+	}
+	return nil
+}
+
+// relTypes lists the relation types in an observation.
+func relTypes(obs entity.Observation) []string {
+	var ts []string
+	for _, r := range obs.Relations {
+		ts = append(ts, r.Type)
+	}
+	return ts
+}
+
+// TestEntitySource_LocalRunsOn verifies a loopback-monitored rabbitmq emits a
+// runs_on→host edge (its tech id "rabbitmq:..." carries no loopback literal),
+// and a remote-monitored one does not.
+func TestEntitySource_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-1")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	// Loopback endpoint → runs_on present, targeting the agent host.
+	local := newTestEntitySource("", "127.0.0.1", 15672, fixedHostID("H"))
+	local.tryPinTechID("rabbit@prod")
+	local.setReachable(true, "")
+	obs, _ := local.Observe()
+	runsOn := relByType(obs, "runs_on")
+	if runsOn == nil {
+		t.Fatalf("loopback rabbitmq: expected a runs_on edge, got relations %v", relTypes(obs))
+	}
+	if runsOn.ToType != "host" || runsOn.ToID["host.id"] != "H" {
+		t.Errorf("runs_on target = %s/%v, want host/H", runsOn.ToType, runsOn.ToID)
+	}
+	if runsOn.FromID["service.instance.id"] != "rabbitmq:rabbit@prod" {
+		t.Errorf("runs_on source = %v, want rabbitmq:rabbit@prod", runsOn.FromID)
+	}
+
+	// Remote endpoint → no runs_on (must not claim to run on the agent host).
+	remote := newTestEntitySource("", "10.0.0.5", 15672, fixedHostID("H"))
+	remote.tryPinTechID("rabbit@prod")
+	remote.setReachable(true, "")
+	robs, _ := remote.Observe()
+	if relByType(robs, "runs_on") != nil {
+		t.Errorf("remote rabbitmq must NOT emit runs_on; relations=%v", relTypes(robs))
+	}
+}
+
 // TestEntitySource_DescriptiveAttrs verifies that server.address, server.port,
 // and service.name appear as entity attributes (not in the ID map).
 func TestEntitySource_DescriptiveAttrs(t *testing.T) {

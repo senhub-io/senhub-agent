@@ -69,7 +69,7 @@ func NewOracleProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger)
 		cfg:          cfg,
 		instance:     instance,
 		moduleLogger: moduleLogger,
-		entitySource: newEntitySource(instance),
+		entitySource: newEntitySource(instance, cfg.Host),
 	}
 	probe.SetProbeType(ProbeType)
 	probe.SetEntitySource(probe.entitySource)
