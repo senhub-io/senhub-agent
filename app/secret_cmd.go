@@ -32,6 +32,7 @@ func secretUsage() {
   list              list secret names (never values)
   rm <name>         delete a secret
   migrate           move inline plaintext secrets from the config into the store
+  wire-unit         (Linux/systemd-creds) regenerate the unit credential drop-in
   status            show the active backend and store location
 
 The value of a secret is never read from the command line.
@@ -121,6 +122,12 @@ func runSecretCommand() {
 			os.Exit(1)
 		}
 		fmt.Println("sealed inline secrets into the store and rewrote them to ${secret:} references")
+
+	case "wire-unit":
+		if err := wireSystemdUnit(configDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 
 	default:
 		secretUsage()
