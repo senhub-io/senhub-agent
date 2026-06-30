@@ -66,6 +66,7 @@ func NewModbusProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger)
 		newClient:    newGoburrowClient,
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySource)
 	return probe, nil
 }
 

@@ -21,6 +21,16 @@ func newK8sEntitySource(clusterEndpoint string) *k8sEntitySource {
 	return &k8sEntitySource{clusterEndpoint: clusterEndpoint, ready: true}
 }
 
+// setClusterEndpoint refines the cluster identity once the live client config
+// resolves the API server host in OnStart. The endpoint is created with a
+// best-effort value at construction so EntitySource() is non-NoOp without a
+// live cluster (#482); OnStart narrows it to the real API server address.
+func (s *k8sEntitySource) setClusterEndpoint(clusterEndpoint string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.clusterEndpoint = clusterEndpoint
+}
+
 // Observe returns the cluster entity. Always ok=true once initialised.
 func (s *k8sEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.Lock()

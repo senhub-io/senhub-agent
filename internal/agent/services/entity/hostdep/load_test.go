@@ -8,6 +8,11 @@
 // non-loopback host IP, so the full classify+name path is exercised) and times
 // both gnet.Connections alone and a full Observe.
 //
+// The per-pid name resolution is bounded by a cross-scrape (pid, createTime)
+// LRU (#492): after the first scrape a stable owning process is served from the
+// cache, so BenchmarkObserveUnderLoad past the first iteration reflects the
+// steady-state cost (socket read + classify), not repeated process.Name calls.
+//
 // Excluded from normal builds/CI (build tag `loadtest`). Run on a real Linux
 // host:
 //
