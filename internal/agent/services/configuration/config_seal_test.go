@@ -71,16 +71,14 @@ func TestSealInlineSecrets_MultiFile(t *testing.T) {
 		t.Errorf("non-secret field altered:\n%s", raw)
 	}
 
-	// A timestamped backup exists.
+	// On success the pre-change backup is SCRUBBED — it held the plaintext we
+	// just sealed, so leaving it would defeat the purpose. No *.backup.* file
+	// must survive a successful seal.
 	entries, _ := os.ReadDir(filepath.Join(dir, "probes.d"))
-	foundBackup := false
 	for _, e := range entries {
-		if strings.Contains(e.Name(), "10-veeam.yaml.backup.") {
-			foundBackup = true
+		if strings.Contains(e.Name(), ".backup.") {
+			t.Errorf("seal backup not scrubbed after success: %s", e.Name())
 		}
-	}
-	if !foundBackup {
-		t.Error("no backup created")
 	}
 
 	// Re-loading resolves the references back to the original values.
@@ -101,19 +99,15 @@ func TestSealInlineSecrets_MultiFile(t *testing.T) {
 		t.Error("veeam-prod probe missing after reload")
 	}
 
-	// Idempotent: a second pass seals nothing and creates no new backup.
+	// Idempotent: a second pass seals nothing, writes no backup, leaves none.
 	if err := SealInlineSecrets(cfg, nil); err != nil {
 		t.Fatalf("second SealInlineSecrets: %v", err)
 	}
 	entries2, _ := os.ReadDir(filepath.Join(dir, "probes.d"))
-	backups := 0
 	for _, e := range entries2 {
 		if strings.Contains(e.Name(), ".backup.") {
-			backups++
+			t.Errorf("idempotency: unexpected backup after no-op seal: %s", e.Name())
 		}
-	}
-	if backups != 1 {
-		t.Errorf("idempotency: expected exactly 1 backup, got %d", backups)
 	}
 }
 
@@ -164,9 +158,10 @@ storage:
 	if _, err := os.Stat(filepath.Join(dir, "probes.d")); err != nil {
 		t.Errorf("probes.d not created by harmonisation: %v", err)
 	}
-	backups, _ := filepath.Glob(cfg + ".pre-multi-file.*")
-	if len(backups) == 0 {
-		t.Error("no pre-multi-file backup written by harmonisation")
+	// The harmonise backup held plaintext (the pre-split monolithic source); a
+	// successful seal scrubs it so no password survives in the config dir.
+	if backups, _ := filepath.Glob(cfg + ".pre-multi-file.*"); len(backups) != 0 {
+		t.Errorf("pre-multi-file backup not scrubbed after seal: %v", backups)
 	}
 
 	// Every secret — flat, nested, storage, agent.key — landed in the store.
