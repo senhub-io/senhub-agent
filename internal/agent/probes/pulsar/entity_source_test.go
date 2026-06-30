@@ -18,7 +18,8 @@ func makeEntitySource(t *testing.T, instanceName string, clusters []string, clus
 		fetchClusters: func() ([]string, error) {
 			return clusters, clusterErr
 		},
-		hostID: func() string { return hostIDVal },
+		hostID:       func() string { return hostIDVal },
+		runsOnHostID: "H",
 	}
 	if instanceName != "" {
 		s.id = instanceName
@@ -42,6 +43,58 @@ func relationType(obs entity.Observation) string {
 		return ""
 	}
 	return obs.Relations[0].Type
+}
+
+// relByType returns a pointer to the first relation of the given type, or nil.
+func relByType(obs entity.Observation, ty string) *entity.Relation {
+	for i := range obs.Relations {
+		if obs.Relations[i].Type == ty {
+			return &obs.Relations[i]
+		}
+	}
+	return nil
+}
+
+// relTypes lists the relation types in an observation.
+func relTypes(obs entity.Observation) []string {
+	var ts []string
+	for _, r := range obs.Relations {
+		ts = append(ts, r.Type)
+	}
+	return ts
+}
+
+// TestEntitySource_LocalRunsOn verifies a loopback-monitored pulsar emits a
+// runs_on→host edge (host-scoped/tech id, no loopback literal), and a
+// remote-monitored one does not.
+func TestEntitySource_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-1")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	// Loopback endpoint → runs_on present, targeting the agent host.
+	local := makeEntitySource(t, "", []string{"my-cluster"}, nil, "pulsar@H")
+	local.host = "127.0.0.1"
+	local.setReachable(true)
+	obs, _ := local.Observe()
+	runsOn := relByType(obs, "runs_on")
+	if runsOn == nil {
+		t.Fatalf("loopback pulsar: expected a runs_on edge, got relations %v", relTypes(obs))
+	}
+	if runsOn.ToType != "host" || runsOn.ToID["host.id"] != "H" {
+		t.Errorf("runs_on target = %s/%v, want host/H", runsOn.ToType, runsOn.ToID)
+	}
+	if runsOn.FromID["service.instance.id"] != "pulsar:my-cluster" {
+		t.Errorf("runs_on source = %v, want pulsar:my-cluster", runsOn.FromID)
+	}
+
+	// Remote endpoint → no runs_on (must not claim to run on the agent host).
+	remote := makeEntitySource(t, "", []string{"my-cluster"}, nil, "pulsar@H")
+	remote.host = "10.0.0.5"
+	remote.setReachable(true)
+	robs, _ := remote.Observe()
+	if relByType(robs, "runs_on") != nil {
+		t.Errorf("remote pulsar must NOT emit runs_on; relations=%v", relTypes(robs))
+	}
 }
 
 func TestEntitySource_InstanceNameOverride_PinnedImmediately(t *testing.T) {
@@ -228,12 +281,10 @@ func TestEntitySource_MonitorsEdge_PresentWhenAgentIDSet(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe returned ok=false")
 	}
-	if len(obs.Relations) != 1 {
-		t.Fatalf("len(Relations) = %d, want 1", len(obs.Relations))
-	}
-	rel := obs.Relations[0]
-	if rel.Type != "monitors" {
-		t.Errorf("relation type = %q, want monitors", rel.Type)
+	// localhost endpoint also yields a runs_on edge; assert by type, not count.
+	rel := relByType(obs, "monitors")
+	if rel == nil {
+		t.Fatalf("no monitors relation; got %v", relTypes(obs))
 	}
 	if rel.FromType != "service.instance" {
 		t.Errorf("FromType = %q, want service.instance", rel.FromType)
@@ -261,8 +312,10 @@ func TestEntitySource_MonitorsEdge_AbsentWhenAgentIDEmpty(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe returned ok=false")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("Relations must be empty when agent id is unset, got %d", len(obs.Relations))
+	// A runs_on edge may still be present (localhost endpoint is loopback); only
+	// the monitors edge must be absent when the agent id is unset.
+	if relByType(obs, "monitors") != nil {
+		t.Errorf("monitors relation must be absent when agent id is unset; got %v", relTypes(obs))
 	}
 }
 

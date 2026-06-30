@@ -155,6 +155,37 @@ func TestEntitySource_MonitorsEdgeAbsentWhenNoAgentID(t *testing.T) {
 	}
 }
 
+// TestEntitySource_LocalDBRunsOnHost: a loopback-reachable memcached with a
+// host-unique identity (operator instance_name) is anchored to the host with
+// runs_on (enterprise#36). A host:port identity embeds the loopback literal —
+// identical on every host — so the collapse guard refuses the runs_on. A remote
+// db is never anchored. Memcached has no tech id, so without instance_name a
+// local memcached stays floating until its identity is host-scoped.
+func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
+	agentstate.SetAgentInstanceID("")
+	runsOn := func(host, instanceName string) bool {
+		src := newMemcachedEntitySource(host, 11211, instanceName)
+		src.hostID = func() string { return "h-1" }
+		src.setReachable(true, "1.6.22")
+		obs, _ := src.Observe()
+		for _, r := range obs.Relations {
+			if r.Type == "runs_on" && r.FromType == "db" && r.ToID["host.id"] == "h-1" {
+				return true
+			}
+		}
+		return false
+	}
+	if !runsOn("127.0.0.1", "prod-cache") {
+		t.Error("loopback db with a host-unique id must emit runs_on→host")
+	}
+	if runsOn("127.0.0.1", "") {
+		t.Error("host:port identity must NOT emit runs_on on loopback (collapse guard)")
+	}
+	if runsOn("10.0.0.5", "") {
+		t.Error("remote db must NOT emit runs_on→host")
+	}
+}
+
 // TestEntitySource_IDImmutableAfterPinned verifies that calling setReachable
 // multiple times does not change instanceID (immutability contract).
 func TestEntitySource_IDImmutableAfterPinned(t *testing.T) {

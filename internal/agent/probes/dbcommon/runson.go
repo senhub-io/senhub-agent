@@ -1,8 +1,6 @@
 package dbcommon
 
 import (
-	"net"
-
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -29,24 +27,12 @@ func HostID() string {
 // be a local interface address is also local, but proving that needs the host's
 // interface list — deferred.
 func LocalHostRunsOn(dbID map[string]any, serverAddress, hostID string) (entity.Relation, bool) {
-	if hostID == "" || !IsLoopbackHost(serverAddress) {
-		return entity.Relation{}, false
-	}
-	return entity.Relation{
-		Type:     "runs_on",
-		FromType: "db", FromID: dbID,
-		ToType: "host", ToID: map[string]any{"host.id": hostID},
-	}, true
+	return entity.LocalRunsOn("db", dbID, serverAddress, hostID)
 }
 
 // IsLoopbackHost reports whether serverAddress denotes the local host with
 // certainty: empty, "localhost", or a loopback IP (127.0.0.0/8, ::1). Shared
 // with non-db sources (snmppoll) that emit a local-target runs_on edge.
 func IsLoopbackHost(addr string) bool {
-	switch addr {
-	case "", "localhost":
-		return true
-	}
-	ip := net.ParseIP(addr)
-	return ip != nil && ip.IsLoopback()
+	return entity.IsLoopbackHost(addr)
 }

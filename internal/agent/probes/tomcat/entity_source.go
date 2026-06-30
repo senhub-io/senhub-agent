@@ -25,6 +25,7 @@ type tomcatEntitySource struct {
 	instanceID string // computed once at construction; immutable
 	addr       string // descriptive, not identity
 	port       int64  // descriptive, not identity
+	hostID     string // agent host id; target of the local-target runs_on edge
 
 	mu    sync.RWMutex
 	up    bool
@@ -37,6 +38,7 @@ func newTomcatEntitySource(instanceName, hostID, addr string, port int64) *tomca
 		instanceID: id,
 		addr:       addr,
 		port:       port,
+		hostID:     hostID,
 	}
 	// Pre-populate descriptive attrs (server.address / server.port never change).
 	src.attrs = map[string]any{
@@ -87,7 +89,7 @@ func (s *tomcatEntitySource) SetUp(up bool, attrs map[string]any) {
 // from the agent's own identity (skipped when the agent id is unknown).
 func (s *tomcatEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.RLock()
-	up, attrs, instanceID, addr, port := s.up, s.attrs, s.instanceID, s.addr, s.port
+	up, attrs, instanceID, addr, port, hostID := s.up, s.attrs, s.instanceID, s.addr, s.port, s.hostID
 	s.mu.RUnlock()
 
 	if !up {
@@ -122,6 +124,13 @@ func (s *tomcatEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   "service.instance",
 			ToID:     targetID,
 		})
+	}
+
+	// runs_on edge: anchor a locally-monitored Tomcat to the agent host so it
+	// does not float with only its monitors edge. The helper's collapse guard
+	// suppresses the edge for a remote target or a loopback-derived identity.
+	if rel, ok := entity.LocalRunsOn("service.instance", targetID, addr, hostID); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

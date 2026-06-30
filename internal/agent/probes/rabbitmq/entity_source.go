@@ -162,5 +162,12 @@ func (s *rabbitmqEntitySource) Observe() (entity.Observation, bool) {
 		})
 	}
 
+	// runs_on edge: anchor a locally-monitored broker to the agent host so it
+	// does not float with only its monitors edge. The helper's collapse guard
+	// suppresses the edge for a remote target or a loopback-derived identity.
+	if rel, ok := entity.LocalRunsOn("service.instance", targetID, s.serverAddr, s.hostIDFn()); ok {
+		obs.Relations = append(obs.Relations, rel)
+	}
+
 	return obs, true
 }

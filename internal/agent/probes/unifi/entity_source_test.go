@@ -40,8 +40,40 @@ func TestUnifiEntitySource_MonitorsEdge(t *testing.T) {
 	t.Run("skipped without agent id", func(t *testing.T) {
 		agentstate.SetAgentInstanceID("")
 		obs, _ := src.Observe()
-		if len(obs.Relations) != 0 {
-			t.Errorf("no edge expected without agent id, got %+v", obs.Relations)
+		// Endpoint is remote here, so neither a monitors nor a runs_on edge is
+		// present without an agent id.
+		for _, r := range obs.Relations {
+			t.Errorf("no edge expected without agent id, got %s", r.Type)
 		}
 	})
+}
+
+// TestUnifiEntitySource_LocalRunsOn: the service.instance.id is endpoint-derived
+// ("unifi://<endpoint>"), so it embeds the host and is identical on every host.
+// The collapse guard therefore refuses the runs_on even on a loopback endpoint
+// (anchoring it would false-join hosts). A remote endpoint never anchors either.
+// So no runs_on edge is ever emitted — wired for correctness, gate suppresses it.
+func TestUnifiEntitySource_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("")
+	hasRunsOn := func(endpoint string) bool {
+		src := newEntitySource(endpoint)
+		src.hostID = func() string { return "h-1" }
+		src.markReachable(true)
+		obs, _ := src.Observe()
+		for _, r := range obs.Relations {
+			if r.Type == "runs_on" {
+				return true
+			}
+		}
+		return false
+	}
+	if hasRunsOn("https://localhost:8443") {
+		t.Error("endpoint-derived id must NOT emit runs_on on loopback (collapse guard)")
+	}
+	if hasRunsOn("https://127.0.0.1:8443") {
+		t.Error("endpoint-derived id must NOT emit runs_on on loopback IP (collapse guard)")
+	}
+	if hasRunsOn("https://10.0.0.5:8443") {
+		t.Error("remote controller must NOT emit runs_on→host")
+	}
 }
