@@ -83,6 +83,13 @@ func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 		return fmt.Errorf("seal verification: resolved config differs from the original (backups restored)")
 	}
 
+	// Stamp the config as v3 now that secrets are referenced, so an older agent
+	// refuses it rather than passing an unresolved ${secret:} literal to a probe.
+	// Done AFTER the value-preserving verify so it cannot perturb that compare.
+	if err := setRootConfigVersion(configPath, CurrentConfigVersion); err != nil && log != nil {
+		log.Warn().Err(err).Msg("Sealed secrets but failed to stamp config_version")
+	}
+
 	if log != nil {
 		name := "unknown"
 		if prov != nil {
@@ -312,4 +319,37 @@ func scalarValue(n *yaml.Node) string {
 func isPlaintextScalar(v string) bool {
 	t := strings.TrimSpace(v)
 	return t != "" && !strings.HasPrefix(t, "${")
+}
+
+// setRootConfigVersion sets (or adds) the top-level config_version scalar in the
+// main config file to v, preserving the rest of the file (yaml.v3 node edit).
+func setRootConfigVersion(path string, v int) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return err
+	}
+	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil // not a mapping root: nothing to stamp
+	}
+	root := doc.Content[0]
+	if cv := mapValue(root, "config_version"); cv != nil {
+		cv.Kind = yaml.ScalarNode
+		cv.Tag = "!!int"
+		cv.Style = 0
+		cv.Value = strconv.Itoa(v)
+	} else {
+		root.Content = append(root.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "config_version"},
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(v)},
+		)
+	}
+	out, err := yaml.Marshal(&doc)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o600)
 }

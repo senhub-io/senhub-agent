@@ -248,6 +248,14 @@ func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
 		lc.logger.Warn().Err(err).Msg("Configuration migration failed, continuing with current format")
 	}
 
+	// Seal any inline plaintext secrets into the OS-native store (default
+	// policy). Non-fatal by design: SealInlineSecrets restores its own backups
+	// on any error, and we continue with the existing config rather than
+	// refusing to start — a sealing fault must never brick the agent.
+	if err := SealInlineSecrets(lc.configPath, lc.logger); err != nil {
+		lc.logger.Warn().Err(err).Msg("Sealing inline secrets failed; continuing with the existing config")
+	}
+
 	// Load or create configuration
 	if err := lc.loadOrCreateConfiguration(); err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
