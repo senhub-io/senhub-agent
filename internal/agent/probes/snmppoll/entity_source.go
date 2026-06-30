@@ -1,14 +1,15 @@
 package snmppoll
 
 import (
-	"senhub-agent.go/internal/agent/services/snmpcore"
 	"strings"
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/governance"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/services/snmpcore"
 )
 
 // Entity rail (#185, #156) — the polled device as a network.device entity, its
@@ -26,7 +27,9 @@ const (
 	entityTypeNetworkRoute     = "network.route"
 	entityTypeNetworkInterface = "network.interface"
 	entityTypeNetworkAddress   = "network.address"
+	entityTypeHost             = "host"
 	idKeyNetworkDevice         = "network.device.id"
+	idKeyHost                  = "host.id"
 	idKeyRouteDestination      = "route.destination"
 	idKeyInterfaceName         = "interface.name"
 	idKeyNetworkAddress        = "network.address"
@@ -45,6 +48,7 @@ const (
 	relHasRoute     = "has_route"
 	relHasInterface = "has_interface"
 	relBoundTo      = "bound_to"
+	relRunsOn       = "runs_on"
 
 	// Polled-device descriptive attribute keys (network.device nameplate).
 	attrSysDescr      = "sys.descr"
@@ -101,6 +105,11 @@ type snmpEntitySource struct {
 	// same device when another probe instance polls it directly. Shared across
 	// instances in production; overridable in tests.
 	registry *polledRegistry
+
+	// hostID resolves the agent host's stable machine-id; nil → dbcommon.HostID.
+	// When the SNMP target is the local host (loopback/localhost/empty) it anchors
+	// the polled network.device to this host with a runs_on edge (#310).
+	hostID func() string
 }
 
 func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
@@ -108,7 +117,13 @@ func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
 	if iv <= 0 {
 		iv = defaultTopologyInterval
 	}
-	return &snmpEntitySource{cfg: cfg, interval: iv, moduleLogger: log, registry: sharedPolledRegistry}
+	return &snmpEntitySource{
+		cfg:          cfg,
+		interval:     iv,
+		moduleLogger: log,
+		registry:     sharedPolledRegistry,
+		hostID:       dbcommon.HostID,
+	}
 }
 
 // Observe returns the last cached topology snapshot. Non-blocking; safe to
@@ -231,9 +246,31 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (entity.Obser
 	}
 	obs := buildObservation(self, topo, routes, ifaces, addrs, resolveNeighbor)
 	applyGovernance(obs, s.cfg, self, deviceID)
+	s.appendLocalRunsOn(&obs, deviceID)
 	// An empty observation here means the device identity could not be
 	// resolved — a failed sweep, not an empty network.
 	return obs, deviceID, ifNames, len(obs.Entities) > 0
+}
+
+// appendLocalRunsOn anchors the polled device to the agent's own host with a
+// `network.device --runs_on--> host` edge when the SNMP target is the local host
+// with certainty (loopback / "localhost" / empty) — so an agent polling its own
+// SNMP daemon hangs the device off the host node instead of floating (#310). A
+// no-op for remote targets (a remote device must NOT claim to run on this host),
+// when the device identity is unresolved, or when the host id is unknown.
+func (s *snmpEntitySource) appendLocalRunsOn(obs *entity.Observation, deviceID string) {
+	if deviceID == "" || !dbcommon.IsLoopbackHost(s.cfg.Target) {
+		return
+	}
+	hostID := s.hostID()
+	if hostID == "" {
+		return
+	}
+	obs.Relations = append(obs.Relations, entity.Relation{
+		Type:     relRunsOn,
+		FromType: entityTypeNetworkDevice, FromID: deviceKey(deviceID),
+		ToType: entityTypeHost, ToID: map[string]any{idKeyHost: hostID},
+	})
 }
 
 // applyGovernance stamps the operator governance attributes onto the polled
@@ -446,14 +483,17 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 
 	obs := entity.Observation{}
 	emitted := map[string]bool{}
-	addEntity := func(id string, attrs map[string]any) {
+	// scope carries the discovery method (#253): the polled device's own
+	// identity + IF-MIB inventory ride snmp-ifmib; a neighbour exists only
+	// because LLDP advertised it, so it rides snmp-lldp.
+	addEntity := func(id string, attrs map[string]any, scope string) {
 		if id == "" || emitted[id] {
 			return
 		}
 		emitted[id] = true
-		obs.Entities = append(obs.Entities, deviceEntity(id, attrs))
+		obs.Entities = append(obs.Entities, deviceEntity(id, attrs, scope))
 	}
-	addEntity(selfID, selfAttrs(self))
+	addEntity(selfID, selfAttrs(self), entity.ScopeSNMPIFMIB)
 
 	// network.interface — the device's ports as entities it owns. Bounded by
 	// the device's port count; notPresent and unnamed rows are skipped, and a
@@ -482,7 +522,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 			attrs[attrDuplex] = d
 		}
 		obs.Entities = append(obs.Entities, entity.Entity{
-			Type: entityTypeNetworkInterface, ID: portID, Attributes: attrs,
+			Type: entityTypeNetworkInterface, ID: portID, Attributes: attrs, Scope: entity.ScopeSNMPIFMIB,
 		})
 		obs.Relations = append(obs.Relations, entity.Relation{
 			Type:     relHasInterface,
@@ -511,7 +551,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		if nID == "" || nID == selfID {
 			continue
 		}
-		addEntity(nID, neighborAttrs(n))
+		addEntity(nID, neighborAttrs(n), entity.ScopeSNMPLLDP)
 
 		localIf := ifIndexName[n.LocalPortNum]
 		if localIf == "" {
@@ -546,7 +586,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		}
 		addrSeen[a.IP] = true
 		addrID := map[string]any{idKeyNetworkAddress: a.IP}
-		obs.Entities = append(obs.Entities, entity.Entity{Type: entityTypeNetworkAddress, ID: addrID})
+		obs.Entities = append(obs.Entities, entity.Entity{Type: entityTypeNetworkAddress, ID: addrID, Scope: entity.ScopeSNMPIFMIB})
 		obs.Relations = append(obs.Relations, entity.Relation{
 			Type:     relBoundTo,
 			FromType: entityTypeNetworkAddress, FromID: addrID,
@@ -579,7 +619,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 			attrs[attrRouteMetric] = int64(r.Metric)
 		}
 		obs.Entities = append(obs.Entities, entity.Entity{
-			Type: entityTypeNetworkRoute, ID: routeID, Attributes: attrs,
+			Type: entityTypeNetworkRoute, ID: routeID, Attributes: attrs, Scope: entity.ScopeSNMPRoute,
 		})
 		obs.Relations = append(obs.Relations, entity.Relation{
 			Type:     relHasRoute,
@@ -591,8 +631,8 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	return obs
 }
 
-func deviceEntity(id string, attrs map[string]any) entity.Entity {
-	return entity.Entity{Type: entityTypeNetworkDevice, ID: deviceKey(id), Attributes: attrs}
+func deviceEntity(id string, attrs map[string]any, scope string) entity.Entity {
+	return entity.Entity{Type: entityTypeNetworkDevice, ID: deviceKey(id), Attributes: attrs, Scope: scope}
 }
 
 func deviceKey(id string) map[string]any {

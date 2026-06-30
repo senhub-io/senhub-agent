@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
@@ -35,14 +36,19 @@ type pulsarEntitySource struct {
 	// Injected at construction; tests stub it to avoid live network calls.
 	fetchClusters func() ([]string, error)
 
+	// fetchVersion fetches the broker version from the admin REST API. Returns
+	// "" on any error or empty body. Injected at construction; tests stub it.
+	fetchVersion func() string
+
 	// hostID returns the precedence-2 fallback id component ("pulsar@<host.id>"
 	// or "pulsar"). Injected at construction; tests stub it.
 	hostID func() string
 
-	mu     sync.RWMutex
-	up     bool   // last broker readiness result from Collect
-	pinned bool   // true once the id has been decided (tech id or fallback)
-	id     string // the pinned service.instance.id
+	mu      sync.RWMutex
+	up      bool   // last broker readiness result from Collect
+	pinned  bool   // true once the id has been decided (tech id or fallback)
+	id      string // the pinned service.instance.id
+	version string // service.version from the admin API, "" until reported
 }
 
 // entitySourceConfig carries the options the probe passes to the entity source.
@@ -69,6 +75,9 @@ func newPulsarEntitySource(cfg entitySourceConfig) *pulsarEntitySource {
 		port: port,
 		fetchClusters: func() ([]string, error) {
 			return fetchPulsarClusters(cfg.httpClient, cfg.endpoint)
+		},
+		fetchVersion: func() string {
+			return fetchPulsarVersion(cfg.httpClient, cfg.endpoint)
 		},
 		hostID: defaultHostID,
 	}
@@ -116,6 +125,28 @@ func fetchPulsarClusters(client *http.Client, endpoint string) ([]string, error)
 	return clusters, nil
 }
 
+// fetchPulsarVersion fetches GET <endpoint>/admin/v2/brokers/version and returns
+// the broker version as a plain-text string (e.g. "3.2.0"). The endpoint is
+// already part of the admin REST surface the probe reaches; the version is a
+// descriptive attribute so any error or empty body yields "" and the attribute
+// is simply omitted from the entity.
+func fetchPulsarVersion(client *http.Client, endpoint string) string {
+	apiURL := endpoint + "/admin/v2/brokers/version"
+	resp, err := client.Get(apiURL) // #nosec G107 — operator-configured endpoint
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(body))
+}
+
 // setReachable is called from Collect to report the broker readiness result
 // for this cycle. When up is true and the id has not yet been pinned, the
 // entity source attempts to fetch the cluster name and pin the tech id.
@@ -125,6 +156,14 @@ func (s *pulsarEntitySource) setReachable(up bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.up = up
+
+	// service.version is descriptive — refresh it on every reachable cycle,
+	// independent of id pinning, so an upgrade is reflected without a restart.
+	if up && s.fetchVersion != nil {
+		if v := s.fetchVersion(); v != "" {
+			s.version = v
+		}
+	}
 
 	if s.pinned {
 		return
@@ -165,21 +204,27 @@ func (s *pulsarEntitySource) Observe() (entity.Observation, bool) {
 	pinned := s.pinned
 	id := s.id
 	up := s.up
+	version := s.version
 	s.mu.RUnlock()
 
 	if !pinned || !up {
 		return entity.Observation{}, false
 	}
 
+	attrs := map[string]any{
+		"service.name":   "pulsar",
+		"server.address": s.host,
+		"server.port":    s.port,
+	}
+	if version != "" {
+		attrs["service.version"] = version
+	}
+
 	obs := entity.Observation{
 		Entities: []entity.Entity{{
-			Type: "service.instance",
-			ID:   map[string]any{"service.instance.id": id},
-			Attributes: map[string]any{
-				"service.name":   "pulsar",
-				"server.address": s.host,
-				"server.port":    s.port,
-			},
+			Type:       "service.instance",
+			ID:         map[string]any{"service.instance.id": id},
+			Attributes: attrs,
 		}},
 	}
 

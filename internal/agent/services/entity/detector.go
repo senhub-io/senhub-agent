@@ -7,10 +7,19 @@ import (
 
 // livenessSlackFactor multiplies the heartbeat cadence to produce the
 // Interval carried on each event. The consumer expires an entity at
-// last_seen + Interval, so the emitted window must tolerate a few missed or
-// late heartbeats — 3× the cadence means a single delayed heartbeat never
-// expires a live entity.
-const livenessSlackFactor = 3
+// last_seen + Interval, so the emitted window must outlast the re-emission
+// cadence by enough to survive a missed re-emission.
+//
+// The Tracker suppresses unchanged heartbeats for 2 ticks, so steady-state
+// re-emission happens every 2×cadence (120s at the 60s default), not every
+// tick. With the old 3× the deadline was 180s — only 60s past the 120s
+// re-emit cadence, less than one cycle — so a single missed re-emission
+// (next at ~240s) crossed the deadline and the consumer flapped the whole
+// entity stack (#454). 5× → 300s deadline, which clears a fully missed
+// re-emission cycle (240s) with margin. Trade-off: a genuinely-gone entity
+// expires after 300s instead of 180s — acceptable; resurrection is
+// identity-stable on the consumer side.
+const livenessSlackFactor = 5
 
 // lastGoodTTL bounds how long the detector keeps serving a source's last
 // good observation once Observe starts reporting failures (ok=false). A
@@ -38,12 +47,13 @@ type AgentIdentityFunc func() AgentIdentity
 // state/delete lifecycle tracker arrives with Lot 2 (probe targets that come
 // and go).
 type Detector struct {
-	host     HostIdentityFunc
-	agent    AgentIdentityFunc
-	interval time.Duration
-	publish  func(Event)
-	now      func() time.Time
-	onOrphan func([]Relation)
+	host           HostIdentityFunc
+	agent          AgentIdentityFunc
+	interval       time.Duration
+	publish        func(Event)
+	now            func() time.Time
+	onOrphan       func([]Relation)
+	onOrphanEntity func([]Entity)
 	// lastGood caches, per registered-source id, the most recent
 	// observation reported with ok=true, so a transient failure serves
 	// stale-but-real topology instead of an empty set (audit D3).
@@ -68,6 +78,14 @@ func NewDetector(host HostIdentityFunc, agent AgentIdentityFunc, interval time.D
 // producer bug via its logger.
 func (d *Detector) OnOrphanRelations(fn func([]Relation)) {
 	d.onOrphan = fn
+}
+
+// OnOrphanEntities registers a hook called with any entity dropped before
+// emission for carrying no relation at all (the anti-orphan guard; host is never
+// dropped). Nil-safe; used by the wiring layer to surface the producer bug via
+// its logger.
+func (d *Detector) OnOrphanEntities(fn func([]Entity)) {
+	d.onOrphanEntity = fn
 }
 
 // Run emits the foundation once immediately, then on every interval tick,
@@ -160,5 +178,8 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	if len(orphans) > 0 && d.onOrphan != nil {
 		d.onOrphan(orphans)
 	}
+	// Invariant: never publish an unanchored node. Drop any entity with no
+	// relation (host excepted) before it reaches the wire.
+	entities = dropOrphanEntities(entities, d.onOrphanEntity)
 	t.Reconcile(stateEvents(entities, ts, interval), ts)
 }

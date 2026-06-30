@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // recordingExporter captures everything the SDK BatchProcessor pushes,
@@ -132,6 +133,79 @@ func TestLogsPipeline_AttributesAndProducerIdentity(t *testing.T) {
 		if collected[expected.key] != expected.val {
 			t.Errorf("attr %q=%q, want %q", expected.key, collected[expected.key], expected.val)
 		}
+	}
+}
+
+// TestLogsPipeline_EntityRecordPerMethodScope asserts an entity record is
+// emitted under the instrumentation scope of its discovery method (#253): each
+// distinct scope produces its own ScopeLogs (scope.name = the method, the
+// otel.entity.entity_event=true scope attribute preserved), and an empty scope
+// falls back to the generic entities scope.
+func TestLogsPipeline_EntityRecordPerMethodScope(t *testing.T) {
+	pipe, exp := newTestLogsPipeline(t, 10, 1024, 10*time.Millisecond)
+	defer pipe.shutdown(context.Background())
+
+	ts := time.Unix(1700000000, 0)
+	build := func(typ, id, scope string) (string, log.Record) {
+		s, rec, err := buildEntityRecord(entityEvent(typ, id, scope, ts))
+		if err != nil {
+			t.Fatalf("buildEntityRecord: %v", err)
+		}
+		return s, rec
+	}
+	for _, e := range []struct{ typ, id, scope string }{
+		{"network.device", "serial:9:a", "senhub-agent/snmp-ifmib"},
+		{"network.route", "serial:9:a|0.0.0.0/0", "senhub-agent/snmp-route"},
+		{"host", "h-001", ""}, // foundation → generic entities scope
+	} {
+		scope, rec := build(e.typ, e.id, e.scope)
+		pipe.emitEntityRecord(context.Background(), scope, rec)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(exp.snapshot()) >= 3 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	got := exp.snapshot()
+	if len(got) != 3 {
+		t.Fatalf("got %d records, want 3", len(got))
+	}
+
+	byScope := map[string]int{}
+	for _, rec := range got {
+		sc := rec.InstrumentationScope()
+		byScope[sc.Name]++
+		// Every entity Logger — method-scoped or generic — carries the
+		// entity-event fast-path flag.
+		flagged := false
+		for _, kv := range sc.Attributes.ToSlice() {
+			if string(kv.Key) == scopeAttrEntityEvent && kv.Value.AsBool() {
+				flagged = true
+			}
+		}
+		if !flagged {
+			t.Errorf("scope %q missing %s=true", sc.Name, scopeAttrEntityEvent)
+		}
+	}
+	for _, want := range []string{"senhub-agent/snmp-ifmib", "senhub-agent/snmp-route", entitiesScopeName} {
+		if byScope[want] != 1 {
+			t.Errorf("scope %q: got %d records, want 1 (all scopes: %v)", want, byScope[want], byScope)
+		}
+	}
+}
+
+func entityEvent(typ, id, scope string, ts time.Time) entity.Event {
+	return entity.Event{
+		Kind: entity.EntityState,
+		Time: ts,
+		Entity: &entity.Entity{
+			Type:  typ,
+			ID:    map[string]any{"id": id},
+			Scope: scope,
+		},
 	}
 }
 

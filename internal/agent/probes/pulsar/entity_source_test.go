@@ -107,6 +107,44 @@ func TestEntitySource_TechID_PinnedOnFirstSuccessfulCollect(t *testing.T) {
 	}
 }
 
+func TestEntitySource_ServiceVersion_EmittedWhenResolvable(t *testing.T) {
+	s := &pulsarEntitySource{
+		host:          "localhost",
+		port:          8080,
+		fetchClusters: func() ([]string, error) { return []string{"pulsar-cluster"}, nil },
+		fetchVersion:  func() string { return "3.2.0" },
+		hostID:        func() string { return "pulsar@host-id" },
+	}
+
+	s.setReachable(true)
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("Observe returned ok=false, want true")
+	}
+	if got := obs.Entities[0].Attributes["service.version"]; got != "3.2.0" {
+		t.Errorf("service.version = %v, want \"3.2.0\"", got)
+	}
+}
+
+func TestEntitySource_ServiceVersion_OmittedWhenUnresolvable(t *testing.T) {
+	s := &pulsarEntitySource{
+		host:          "localhost",
+		port:          8080,
+		fetchClusters: func() ([]string, error) { return []string{"pulsar-cluster"}, nil },
+		fetchVersion:  func() string { return "" },
+		hostID:        func() string { return "pulsar@host-id" },
+	}
+
+	s.setReachable(true)
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("Observe returned ok=false, want true")
+	}
+	if _, present := obs.Entities[0].Attributes["service.version"]; present {
+		t.Error("service.version present, want omitted")
+	}
+}
+
 func TestEntitySource_EntityNotEmittedBeforeIDIsPinned(t *testing.T) {
 	// Cluster fetch always fails → id never gets pinned through the tech path.
 	// After up goes false the fallback path pins.

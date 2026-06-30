@@ -95,6 +95,7 @@ func NewCephProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger) (
 		defaultFetchFsid(p),
 		defaultGetHostID(),
 	)
+	p.SetEntitySource(p.entitySrc)
 	p.SetProbeType(ProbeType)
 	return p, nil
 }

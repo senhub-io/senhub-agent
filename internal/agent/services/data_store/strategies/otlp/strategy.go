@@ -552,6 +552,10 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 			DiskTotal:        hi.DiskTotal,
 			Virtualization:   hi.Virtualization,
 			ChassisType:      hi.ChassisType,
+			CloudProvider:    hi.CloudProvider,
+			CloudRegion:      hi.CloudRegion,
+			ContainerRuntime: hi.ContainerRuntime,
+			K8sNodeName:      hi.K8sNodeName,
 			Governance:       s.cfg.Entities.Governance.Attributes(),
 		}, nil
 	}
@@ -603,6 +607,14 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 				Str("from_type", r.FromType).
 				Str("to_type", r.ToType).
 				Msg("entity relation has no source entity this cycle; dropped from the wire")
+		}
+	})
+	det.OnOrphanEntities(func(orphans []entity.Entity) {
+		for _, e := range orphans {
+			s.logger.Warn().
+				Str("entity_type", e.Type).
+				Interface("entity_id", e.ID).
+				Msg("entity has no relation; dropped from the wire (anti-orphan guard)")
 		}
 	})
 	ctx, cancel := context.WithCancel(context.Background())

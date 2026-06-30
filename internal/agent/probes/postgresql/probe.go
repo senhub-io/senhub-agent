@@ -66,6 +66,7 @@ func NewPostgreSQLProbe(params map[string]interface{}, baseLogger *logger.Logger
 	}
 	p.SetProbeType(ProbeType)
 	p.entitySrc = newPgEntitySource(cfg, moduleLogger)
+	p.SetEntitySource(p.entitySrc)
 	return p, nil
 }
 

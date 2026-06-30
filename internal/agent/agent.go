@@ -100,6 +100,14 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 			Bool("enabled", autoUpdateConfig.Enabled).
 			Msg("Auto-update enabled")
 
+		// Fail loud, not silent: under the hardened non-root unit a
+		// root-owned binary can never be replaced in place, so every
+		// hourly cycle would fail at write time with a permission error
+		// (#377). Surface one clear diagnostic at startup instead.
+		if warn := auto_update.CheckBinaryReplaceable(); warn != "" {
+			logger.Warn().Msg(warn)
+		}
+
 		updater = auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
 			ConfigSource: localConfiguration,
 			Logger:       logger,

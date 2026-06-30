@@ -39,6 +39,14 @@ type HostIdentity struct {
 	DiskTotal        int64  // host.disk.total — bytes
 	Virtualization   string // host.virtualization — none/kvm/vmware/…
 	ChassisType      string // host.chassis.type — desktop/laptop/server/blade/vm/other
+
+	// Cloud / container / orchestrator nameplate (#536). Best-effort, resolved
+	// from cloud metadata (IMDS), /proc container heuristics, and the
+	// downward-API env var; "" → omitted. Cached with the rest of the nameplate.
+	CloudProvider    string // cloud.provider — aws/gcp/azure
+	CloudRegion      string // cloud.region
+	ContainerRuntime string // container.runtime — docker/containerd/lxc/podman
+	K8sNodeName      string // k8s.node.name — downward-API NODE_NAME
 }
 
 // GetHostIdentity returns the host's stable identity plus descriptive nameplate
@@ -52,8 +60,13 @@ func GetHostIdentity() (HostIdentity, error) {
 	if err != nil {
 		return HostIdentity{}, fmt.Errorf("error getting host info: %v", err)
 	}
-	np := getHostNameplate()
 	virt := normalizeVirtualization(hostInfo.VirtualizationSystem, hostInfo.VirtualizationRole)
+	if virt == "none" {
+		if fb := readVirtualizationFallback(); fb != "" {
+			virt = fb
+		}
+	}
+	np := getHostNameplate(virt)
 	return HostIdentity{
 		ID:               hostInfo.HostID,
 		Name:             hostInfo.Hostname,
@@ -75,6 +88,10 @@ func GetHostIdentity() (HostIdentity, error) {
 		DiskTotal:        np.diskTotal,
 		Virtualization:   virt,
 		ChassisType:      chassisName(np.chassisCode, virt),
+		CloudProvider:    np.cloudProvider,
+		CloudRegion:      np.cloudRegion,
+		ContainerRuntime: np.containerRuntime,
+		K8sNodeName:      np.k8sNodeName,
 	}, nil
 }
 
@@ -88,6 +105,10 @@ type hostNameplate struct {
 	cpuFreqHz                   int64
 	memTotal, diskTotal         int64
 	chassisCode                 int // raw SMBIOS chassis_type (Linux DMI), 0 = unknown
+
+	cloudProvider, cloudRegion string // cloud.provider / cloud.region (IMDS, #536)
+	containerRuntime           string // container.runtime (/proc heuristics, #536)
+	k8sNodeName                string // k8s.node.name (downward-API env, #536)
 }
 
 // hardwareNameplate is the DMI / system-board identity of the host, read by the
@@ -105,7 +126,7 @@ var (
 // once (sync.Once), since it is immutable for the process lifetime. Keeping it
 // off the per-heartbeat path avoids re-reading cpu.Info() and sysfs every
 // reconcile cycle.
-func getHostNameplate() hostNameplate {
+func getHostNameplate(virt string) hostNameplate {
 	nameplateOnce.Do(func() {
 		if infos, err := cpu.Info(); err == nil && len(infos) > 0 {
 			nameplate.cpuModel = strings.TrimSpace(infos[0].ModelName)
@@ -130,6 +151,14 @@ func getHostNameplate() hostNameplate {
 		nameplate.hwVendor = hw.vendor
 		nameplate.hwModel = hw.model
 		nameplate.hwSerial = hw.serial
+
+		nameplate.containerRuntime = detectContainerRuntime()
+		nameplate.k8sNodeName = detectK8sNodeName()
+		// IMDS is a network call; only worth attempting when the host is a guest
+		// (cloud VMs are virtualized). Bare metal skips it to avoid the timeout.
+		if virt != "" && virt != "none" {
+			nameplate.cloudProvider, nameplate.cloudRegion = detectCloud(defaultCloudTimeout)
+		}
 	})
 	return nameplate
 }
@@ -184,6 +213,20 @@ func normalizeVirtualization(system, role string) string {
 	default:
 		return "unknown"
 	}
+}
+
+// isDMIPlaceholder rejects the firmware default strings OEMs ship, so the
+// nameplate never carries "To Be Filled By O.E.M." as a vendor/model/serial.
+// Shared by the Linux sysfs reader and the Windows SMBIOS reader.
+func isDMIPlaceholder(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "to be filled by o.e.m.", "to be filled by o.e.m",
+		"system manufacturer", "system product name", "system serial number",
+		"default string", "not specified", "not applicable",
+		"none", "unknown", "n/a", "o.e.m.", "oem":
+		return true
+	}
+	return false
 }
 
 // chassisName maps a raw SMBIOS chassis-type code to the AT12
