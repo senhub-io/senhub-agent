@@ -11,6 +11,7 @@ import (
 	"golang.org/x/term"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/configuration/secret"
 )
 
@@ -30,6 +31,7 @@ func secretUsage() {
   get <name>        print a secret value to stdout (deliberate reveal)
   list              list secret names (never values)
   rm <name>         delete a secret
+  migrate           move inline plaintext secrets from the config into the store
   status            show the active backend and store location
 
 The value of a secret is never read from the command line.
@@ -108,6 +110,18 @@ func runSecretCommand() {
 		}
 		fmt.Printf("removed secret %q\n", name)
 
+	case "migrate":
+		cfgPath, err := secretConfigFile(args)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := configuration.SealInlineSecrets(cfgPath, nil); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("sealed inline secrets into the store and rewrote them to ${secret:} references")
+
 	default:
 		secretUsage()
 		os.Exit(2)
@@ -142,6 +156,22 @@ func secretConfigDir(args []string) (string, error) {
 		return "", fmt.Errorf("resolving config path: %w", err)
 	}
 	return filepath.Dir(path), nil
+}
+
+// secretConfigFile resolves the config FILE path (honouring --config-path),
+// used by `secret migrate`.
+func secretConfigFile(args []string) (string, error) {
+	cp := ""
+	for i, a := range args {
+		if a == "--config-path" && i+1 < len(args) {
+			cp = args[i+1]
+		}
+	}
+	path, err := cliArgs.GetAbsoluteConfigPath(cp)
+	if err != nil {
+		return "", fmt.Errorf("resolving config path: %w", err)
+	}
+	return path, nil
 }
 
 // readSecretValue obtains the secret value WITHOUT taking it from argv:
