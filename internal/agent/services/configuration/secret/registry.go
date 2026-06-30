@@ -48,6 +48,24 @@ func ActiveProvider() Provider {
 	return provider
 }
 
+var (
+	initOnce sync.Once
+	initErr  error
+)
+
+// ensureInit installs the OS-native provider (via the build-tagged InitRegistry)
+// on first use — and ONLY when no provider was set already. This makes backend
+// initialisation lazy: a config that contains no ${secret:} reference never
+// triggers it, so no key file or store is created on a host that uses no
+// secrets. An explicit SetProvider (tests, or a CLI command) takes precedence.
+func ensureInit() error {
+	if ActiveProvider() != nil {
+		return nil
+	}
+	initOnce.Do(func() { initErr = InitRegistry(ConfigDir()) })
+	return initErr
+}
+
 // Resolve returns the plaintext for a ${secret:<name>} reference.
 //
 // A name the backend cannot resolve uses dflt when one was supplied; otherwise
@@ -55,6 +73,12 @@ func ActiveProvider() Provider {
 // never silently become "". When no backend is configured at all, the same rule
 // applies (default, else error). The error carries only the NAME.
 func Resolve(name, dflt string, hasDefault bool) (string, error) {
+	if err := ensureInit(); err != nil && ActiveProvider() == nil {
+		if hasDefault {
+			return dflt, nil
+		}
+		return "", fmt.Errorf("initialising secret backend for ${secret:%s}: %w", name, err)
+	}
 	p := ActiveProvider()
 	if p == nil {
 		if hasDefault {
