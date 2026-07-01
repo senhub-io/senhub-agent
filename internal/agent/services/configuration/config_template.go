@@ -1,46 +1,9 @@
 package configuration
 
-// LicenseDocumentationTemplate contains license configuration documentation.
-// Generated into every agent configuration file.
-const LicenseDocumentationTemplate = `
-  # license: ""  # Optional: License token for paid probes (leave empty for free tier)
-  #
-  # ===== LICENSE TIERS =====
-  # FREE TIER (no license required):
-  #   - cpu, memory, logicaldisk, network
-  #   - http/https endpoints (prtg, nagios, web)
-  #
-  # PAID PROBES (license required):
-  #   - redfish, citrix, syslog
-  #   - ping_webapp, load_webapp, ping_gateway, wifi_signal_strength
-  #
-  # ===== LICENSE FORMAT =====
-  # License uses JSON format with the following fields:
-  #
-  # Pro License (specific probes):
-  # license: |
-  #   {
-  #     "tier": "pro",
-  #     "authorized_probes": ["redfish", "citrix"],
-  #     "expires_at": "2025-12-31T23:59:59Z",
-  #     "issued_at": "2025-01-01T00:00:00Z",
-  #     "subject": "customer-id"
-  #   }
-  #
-  # Enterprise License (all probes):
-  # license: |
-  #   {
-  #     "tier": "enterprise",
-  #     "authorized_probes": ["*"],
-  #     "expires_at": "2026-12-31T23:59:59Z",
-  #     "issued_at": "2025-01-01T00:00:00Z",
-  #     "subject": "customer-id"
-  #   }
-  #
-  # ===== GRACE PERIOD =====
-  # Expired licenses have a 7-day grace period before being disabled.
-  # During grace period, all authorized probes remain functional.
-`
+// LicenseDocumentationTemplate is the single license comment line written into
+// agent.yaml. Full tier/format documentation lives in the docs, not in every
+// generated config.
+const LicenseDocumentationTemplate = `  # license: ""   # paid-tier probes only; empty = free tier. See docs.senhub.io`
 
 // AgentYAMLTemplate is the globals-only top-level file written by a
 // fresh `agent install` (0.2.x+ default layout). Probes and storage
@@ -59,32 +22,22 @@ const LicenseDocumentationTemplate = `
 //  8. auto_update.include_beta     %t
 //  9. auto_update.url (str)        %s
 //  10. cache.retention_minutes     %d
-const AgentYAMLTemplate = `# SenHub Agent — global configuration (multi-file layout)
-# Configuration Version: %d (automatically managed)
-# Agent Version: %s
-# Generated: %s
-#
-# This file holds ONLY the global blocks (agent, auto_update, cache).
-# Probes live in probes.d/ — each fragment is a YAML array of probe
-# configs. Storage strategies live in strategies.d/ — one file per
-# strategy, with exactly one top-level key (the strategy name).
-#
-# DO NOT modify config_version manually — it is managed by the agent.
+const AgentYAMLTemplate = `# SenHub Agent — global config (v%d, agent %s, generated %s).
+# Globals only; probes in probes.d/, strategies in strategies.d/. config_version is agent-managed.
 
 config_version: %d
 
 agent:
   key: "%s"
-  # license: ""  # Uncomment and add your license token here
 %s
 
 auto_update:
-  enabled: %t           # Enable/disable automatic updates
-  include_beta: %t      # Include beta versions in update checks
-  url: "%s"             # Update server URL
+  enabled: %t
+  include_beta: %t
+  url: "%s"
 
 cache:
-  retention_minutes: %d  # Cache retention time in minutes
+  retention_minutes: %d
 `
 
 // HostProbesFragmentTemplate is the default probes.d/00-host.yaml
@@ -93,29 +46,26 @@ cache:
 // add more probes by creating new fragments (e.g. 10-mydb.yaml). The
 // loader picks up every *.yaml file in alphabetical order; rename to
 // *.disabled to opt out without deleting.
-const HostProbesFragmentTemplate = `# Default host monitoring probes (multi-file layout).
-# Add new probes by creating another file in this directory
-# (e.g. 10-mysql.yaml). Files load alphabetically; each is a YAML
-# array of probe configs. Disable a fragment by renaming it to
-# *.disabled — no deletion required.
+const HostProbesFragmentTemplate = `# Default host probes. Add more via new files here (e.g. 10-mysql.yaml);
+# they load alphabetically. Rename to *.disabled to turn one off.
 
-- name: cpu              # Display name (free choice)
-  type: cpu              # Probe type (technical identifier — must match registered probe)
+- name: cpu
+  type: cpu
   params:
     interval: 30
 
-- name: memory           # Display name
-  type: memory           # Probe type
+- name: memory
+  type: memory
   params:
     interval: 30
 
-- name: network          # Display name
-  type: network          # Probe type
+- name: network
+  type: network
   params:
     interval: 60
 
-- name: logicaldisk      # Display name
-  type: logicaldisk      # Probe type
+- name: logicaldisk
+  type: logicaldisk
   params:
     interval: 30
 `
