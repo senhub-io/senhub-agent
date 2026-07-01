@@ -154,7 +154,7 @@
           mirror cmd/agent/service.go svcConfig so an MSI-installed
           service is indistinguishable from one created by
           `senhub-agent install`. ExecStart args match the offline-only
-          model (0.2.0+): run --config-path <canonical config>.
+          model (0.2.0+): the run verb with the canonical config path.
         -->
         <ServiceInstall
             Id="SenHubAgentService"
