@@ -15,11 +15,14 @@
   The MSI installs senhub-agent.exe into %ProgramFiles%\SenHub Agent\,
   registers the "senhub-agent" Windows service (matching the kardianos
   service.Config Name in cmd/agent/service.go), and supports silent
-  install with parametric configuration:
+  install with parametric configuration. The agent is OFFLINE by default
+  (local scrape endpoints); the only provisionable fields are the license
+  token (paid probe tiers) and host tags — there is no cloud backend or
+  auth token to seed:
 
       msiexec /i senhub-agent.msi /qn ^
-        BACKEND_URL=https://eu-west-1.intake.senhub.io ^
-        AGENT_TOKEN=xxxxxxxx
+        LICENSE_KEY=eyJhbGci... ^
+        TAGS=site=paris,env=prod
 
   See docs/deployment/windows-msi.md for GPO / SCCM / Intune deployment.
 -->
@@ -63,25 +66,29 @@
     <!-- Public (uppercase) properties can be set on the msiexec       -->
     <!-- command line for silent / GPO / SCCM / Intune deployment.     -->
     <!-- ============================================================ -->
-    <Property Id="BACKEND_URL" Value="https://eu-west-1.intake.senhub.io" />
-    <Property Id="AGENT_TOKEN" Value="" Secure="yes" />
+    <!--
+      LICENSE_KEY unlocks paid probe tiers (Free needs none). TAGS is a
+      comma-separated k=v list applied as host global_tags. There is no
+      cloud backend/token: the agent is offline by default (see header).
+    -->
+    <Property Id="LICENSE_KEY" Value="" Secure="yes" />
+    <Property Id="TAGS" Value="" />
 
     <!--
-      Seed %ProgramData%\SenHub\agent.yaml from the BACKEND_URL /
-      AGENT_TOKEN properties at install time, but ONLY when the file
-      does not already exist — so an upgrade or reinstall preserves
-      operator configuration (acceptance: "préserver config existante").
+      Seed %ProgramData%\SenHub\agent.yaml at install time, but ONLY when
+      the file does not already exist — so an upgrade or reinstall
+      preserves operator configuration (acceptance: "préserver config
+      existante"). `config init` is itself idempotent (it no-ops on an
+      existing config), so this is belt-and-braces.
 
-      We invoke the installed binary's config-generation path rather
-      than templating YAML inside the MSI, so the schema stays owned by
-      the agent. The exact subcommand is validated on a real Windows
-      host (see docs/deployment/windows-msi.md, "Config seeding"); the
-      placeholder below is `config generate` and MUST be confirmed
-      against cmd/agent before first signed release — tracked as a
-      deferred item in the PR body.
+      We invoke the installed binary's `config init` path rather than
+      templating YAML inside the MSI, so the schema stays owned by the
+      agent: it writes the default offline multi-file layout, then applies
+      the license + tags. Validated on a real Windows host (see
+      docs/deployment/windows-msi.md, "Config seeding").
     -->
     <SetProperty Id="SeedConfig"
-                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config generate --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --backend-url &quot;[BACKEND_URL]&quot; --token &quot;[AGENT_TOKEN]&quot;"
+                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot;"
                  Before="SeedConfig"
                  Sequence="execute"
                  Condition="NOT Installed" />
