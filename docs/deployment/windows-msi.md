@@ -65,6 +65,34 @@ Silent uninstall:
 msiexec /x senhub-agent-<version>-amd64.msi /qn
 ```
 
+## Existing installations
+
+The MSI handles a machine that already has an agent:
+
+- **Installed by this MSI** — a newer MSI performs a clean major-upgrade
+  (config preserved); the same version opens the standard maintenance
+  experience (Change / Repair / Remove) interactively, or
+  `msiexec /f` (repair) / `/x` (remove) silently.
+- **Installed outside the MSI** (a `senhub-agent install`, ZIP or
+  auto-update deploy) — the installer **detects the foreign service** and,
+  by default, stops with a clear message rather than colliding on service
+  creation. To take it over, pass `ADOPT=1`:
+
+  ```bat
+  msiexec /i senhub-agent-<version>-amd64.msi /qn ADOPT=1 /l*v %TEMP%\senhub-adopt.log
+  ```
+
+  `ADOPT=1` stops and deletes the existing service, then installs the
+  MSI-managed one. Configuration under `%ProgramData%\SenHub\` is
+  preserved (`config init` is idempotent). Migrating a fleet from a
+  script/auto-update install to MSI management is therefore a single
+  `ADOPT=1` install.
+
+  > If the old service does not release immediately, Windows may report it
+  > as "marked for deletion" and the new service install completes after a
+  > reboot. Prefer stopping the old agent before an `ADOPT=1` migration on
+  > busy hosts.
+
 ## GPO (Active Directory) deployment
 
 1. Copy the MSI to a UNC share readable by the target computer accounts

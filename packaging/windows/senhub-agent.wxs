@@ -62,6 +62,17 @@
         DowngradeErrorMessage="A newer version of [ProductName] is already installed."
         Schedule="afterInstallInitialize" />
 
+    <!--
+      Block a colliding FOREIGN install with clear guidance. Proceed when:
+      this is maintenance/uninstall (Installed), our own prior MSI is
+      present (MSI_MARKER), the box is clean (no EXISTING_SERVICE), or the
+      operator opted into migration (ADOPT). Otherwise stop with a message
+      rather than fail obscurely on ServiceInstall.
+    -->
+    <Launch
+        Condition="Installed OR MSI_MARKER OR NOT EXISTING_SERVICE OR ADOPT"
+        Message="A SenHub Agent installed outside this installer was detected (the 'senhub-agent' Windows service already exists). Uninstall it first, or re-run this installer with ADOPT=1 to migrate it to MSI management — your configuration under %ProgramData%\SenHub is preserved." />
+
     <!-- ============================================================ -->
     <!-- Parametric configuration via public MSI properties.          -->
     <!-- Public (uppercase) properties can be set on the msiexec       -->
@@ -76,6 +87,29 @@
     <Property Id="TAGS" Secure="yes" />
     <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
     <Property Id="OTLP_ENDPOINT" Secure="yes" />
+
+    <!-- ============================================================ -->
+    <!-- Existing-install detection.                                  -->
+    <!-- EXISTING_SERVICE is set when the senhub-agent Windows service -->
+    <!-- is registered; MSI_MARKER is set when THIS installer ran      -->
+    <!-- before. A service present WITHOUT our marker is a FOREIGN     -->
+    <!-- install (kardianos / `agent install` / a ZIP deploy), which   -->
+    <!-- would collide with our ServiceInstall — so we either block    -->
+    <!-- with guidance or, with ADOPT=1, migrate it to MSI management. -->
+    <!-- ============================================================ -->
+    <Property Id="EXISTING_SERVICE">
+      <RegistrySearch Id="FindAgentService" Root="HKLM"
+                      Key="SYSTEM\CurrentControlSet\Services\senhub-agent"
+                      Name="ImagePath" Type="raw" />
+    </Property>
+    <Property Id="MSI_MARKER">
+      <RegistrySearch Id="FindMsiMarker" Root="HKLM"
+                      Key="SOFTWARE\Sensor Factory\SenHub Agent"
+                      Name="Version" Type="raw" />
+    </Property>
+    <!-- ADOPT=1 takes over a foreign install: stop + delete its service
+         before installing ours, preserving %ProgramData%\SenHub config. -->
+    <Property Id="ADOPT" Secure="yes" />
 
     <!--
       Seed %ProgramData%\SenHub\agent.yaml at install time, but ONLY when
@@ -103,7 +137,29 @@
                   Impersonate="no"
                   Return="ignore" />
 
+    <!--
+      ADOPT migration: stop and delete the foreign service before our
+      ServiceInstall creates ours, so the MSI takes over cleanly. Runs
+      only when ADOPT is set, a foreign service exists, and it is not our
+      own install. Config under %ProgramData%\SenHub is left intact.
+    -->
+    <SetProperty Id="AdoptExisting"
+                 Value="cmd.exe /c &quot;sc stop senhub-agent &amp; sc delete senhub-agent&quot;"
+                 Before="AdoptExisting"
+                 Sequence="execute"
+                 Condition="ADOPT AND EXISTING_SERVICE AND NOT MSI_MARKER AND NOT Installed" />
+
+    <CustomAction Id="AdoptExisting"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
     <InstallExecuteSequence>
+      <!-- Take over a foreign service before InstallServices creates ours. -->
+      <Custom Action="AdoptExisting" Before="InstallServices"
+              Condition="ADOPT AND EXISTING_SERVICE AND NOT MSI_MARKER AND NOT Installed" />
       <!-- After files are laid down, before the service starts. -->
       <Custom Action="SeedConfig" After="InstallFiles" Condition="NOT Installed" />
     </InstallExecuteSequence>
