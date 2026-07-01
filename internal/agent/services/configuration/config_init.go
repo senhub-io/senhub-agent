@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 
 	"gopkg.in/yaml.v3"
@@ -116,6 +117,35 @@ func setTagsField(m *yaml.Node, key string, tags map[string]string) {
 		return
 	}
 	appendPair(m, key, tagsNode)
+}
+
+// WriteOTLPStrategyFragment writes strategies.d/10-otlp.yaml pointing at the
+// given collector endpoint, so an unattended install can opt into OTLP push
+// (metrics/logs/entities) without hand-editing YAML. No-op for an empty
+// endpoint; it never overwrites an existing 10-otlp.yaml (config init only runs
+// on a fresh install, but this keeps it safe if reused). protocol defaults to
+// grpc — the operator can tune the rest of the strategy afterwards.
+func WriteOTLPStrategyFragment(configDir, endpoint string) error {
+	if endpoint == "" {
+		return nil
+	}
+	dir := filepath.Join(configDir, "strategies.d")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("creating %s: %w", dir, err)
+	}
+	path := filepath.Join(dir, "10-otlp.yaml")
+	if _, err := os.Stat(path); err == nil {
+		return nil // already present, leave operator's fragment untouched
+	}
+	body := "# SenHub Agent — OTLP export strategy (provisioned by 'config init').\n" +
+		"# Pushes metrics, logs and entities to an OpenTelemetry collector.\n" +
+		"otlp:\n" +
+		"  endpoint: " + endpoint + "\n" +
+		"  protocol: grpc\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	return nil
 }
 
 func marshalDocument(doc *yaml.Node) ([]byte, error) {

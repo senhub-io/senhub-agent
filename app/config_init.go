@@ -23,6 +23,7 @@ import (
 func initConfig(argv []string) {
 	configPath := ""
 	license := ""
+	otlpEndpoint := ""
 	tags := map[string]string{}
 
 	for i := 0; i < len(argv); i++ {
@@ -40,6 +41,11 @@ func initConfig(argv []string) {
 		case "--tags":
 			if i+1 < len(argv) {
 				tags = parseTagList(argv[i+1])
+				i++
+			}
+		case "--otlp-endpoint":
+			if i+1 < len(argv) {
+				otlpEndpoint = argv[i+1]
 				i++
 			}
 		}
@@ -71,12 +77,20 @@ func initConfig(argv []string) {
 		os.Exit(1)
 	}
 
+	if err := configuration.WriteOTLPStrategyFragment(filepath.Dir(configPath), otlpEndpoint); err != nil {
+		fmt.Fprintf(os.Stderr, "config init: writing OTLP strategy: %v\n", err)
+		os.Exit(1)
+	}
+
 	fmt.Printf("Configuration created at %s\n", configPath)
 	if license != "" {
 		fmt.Println("  license: set")
 	}
 	if len(tags) > 0 {
 		fmt.Printf("  global_tags: %d\n", len(tags))
+	}
+	if otlpEndpoint != "" {
+		fmt.Printf("  otlp endpoint: %s\n", otlpEndpoint)
 	}
 	fmt.Printf("  probes: %s\n", filepath.Join(filepath.Dir(configPath), "probes.d"))
 }
