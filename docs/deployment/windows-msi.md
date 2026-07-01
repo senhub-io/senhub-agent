@@ -133,6 +133,23 @@ For GPO (which cannot pass properties), generate an MST that sets
 `LICENSE_KEY` / `TAGS` (e.g. with Orca) and attach it to the GPO package
 under **Modifications**.
 
+## Updates
+
+An MSI-managed install does **not** self-replace its binary (that would drift
+from Windows Installer tracking — a repair could revert it, and ARP would show
+the wrong version). Auto-update stays automatic but **applies a new signed MSI**
+instead: when an update is available the agent downloads
+`senhub-agent-<version>-amd64.msi`, verifies its signature, and runs
+`msiexec /i /qn` (a clean MajorUpgrade that preserves `%ProgramData%\SenHub`).
+
+This is enabled automatically — the agent detects the MSI registry marker and
+switches update strategy. A non-MSI install (ZIP / script) keeps the binary
+self-replace flow unchanged. Alternatively, disable `auto_update` and push new
+MSIs through your management tool (Intune/SCCM/WSUS).
+
+> Requires the release channel to publish the MSI and its `.msi.minisig`
+> alongside the ZIP (see issue for the release-pipeline wiring).
+
 ## Build
 
 The MSI is built from the Windows binary by the
