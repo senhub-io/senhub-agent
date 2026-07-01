@@ -15,16 +15,20 @@
   The MSI installs senhub-agent.exe into %ProgramFiles%\SenHub Agent\,
   registers the "senhub-agent" Windows service (matching the kardianos
   service.Config Name in cmd/agent/service.go), and supports silent
-  install with parametric configuration:
+  install with parametric configuration. The agent is OFFLINE by default
+  (local scrape endpoints); the only provisionable fields are the license
+  token (paid probe tiers) and host tags — there is no cloud backend or
+  auth token to seed:
 
       msiexec /i senhub-agent.msi /qn ^
-        BACKEND_URL=https://eu-west-1.intake.senhub.io ^
-        AGENT_TOKEN=xxxxxxxx
+        LICENSE_KEY=eyJhbGci... ^
+        TAGS=site=paris,env=prod
 
   See docs/deployment/windows-msi.md for GPO / SCCM / Intune deployment.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
   <!--
     The UpgradeCode MUST remain stable across all versions so that
@@ -58,30 +62,70 @@
         DowngradeErrorMessage="A newer version of [ProductName] is already installed."
         Schedule="afterInstallInitialize" />
 
+    <!--
+      Block a colliding FOREIGN install with clear guidance. Proceed when:
+      this is maintenance/uninstall (Installed), our own prior MSI is
+      present (MSI_MARKER), the box is clean (no EXISTING_SERVICE), or the
+      operator opted into migration (ADOPT). Otherwise stop with a message
+      rather than fail obscurely on ServiceInstall.
+    -->
+    <Launch
+        Condition="Installed OR MSI_MARKER OR NOT EXISTING_SERVICE OR ADOPT"
+        Message="A SenHub Agent installed outside this installer was detected (the 'senhub-agent' Windows service already exists). Uninstall it first, or re-run this installer with ADOPT=1 to migrate it to MSI management — your configuration under %ProgramData%\SenHub is preserved." />
+
     <!-- ============================================================ -->
     <!-- Parametric configuration via public MSI properties.          -->
     <!-- Public (uppercase) properties can be set on the msiexec       -->
     <!-- command line for silent / GPO / SCCM / Intune deployment.     -->
     <!-- ============================================================ -->
-    <Property Id="BACKEND_URL" Value="https://eu-west-1.intake.senhub.io" />
-    <Property Id="AGENT_TOKEN" Value="" Secure="yes" />
+    <!--
+      LICENSE_KEY unlocks paid probe tiers (Free needs none). TAGS is a
+      comma-separated k=v list applied as host global_tags. There is no
+      cloud backend/token: the agent is offline by default (see header).
+    -->
+    <Property Id="LICENSE_KEY" Secure="yes" />
+    <Property Id="TAGS" Secure="yes" />
+    <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
+    <Property Id="OTLP_ENDPOINT" Secure="yes" />
+
+    <!-- ============================================================ -->
+    <!-- Existing-install detection.                                  -->
+    <!-- EXISTING_SERVICE is set when the senhub-agent Windows service -->
+    <!-- is registered; MSI_MARKER is set when THIS installer ran      -->
+    <!-- before. A service present WITHOUT our marker is a FOREIGN     -->
+    <!-- install (kardianos / `agent install` / a ZIP deploy), which   -->
+    <!-- would collide with our ServiceInstall — so we either block    -->
+    <!-- with guidance or, with ADOPT=1, migrate it to MSI management. -->
+    <!-- ============================================================ -->
+    <Property Id="EXISTING_SERVICE">
+      <RegistrySearch Id="FindAgentService" Root="HKLM"
+                      Key="SYSTEM\CurrentControlSet\Services\senhub-agent"
+                      Name="ImagePath" Type="raw" />
+    </Property>
+    <Property Id="MSI_MARKER">
+      <RegistrySearch Id="FindMsiMarker" Root="HKLM"
+                      Key="SOFTWARE\Sensor Factory\SenHub Agent"
+                      Name="Version" Type="raw" />
+    </Property>
+    <!-- ADOPT=1 takes over a foreign install: stop + delete its service
+         before installing ours, preserving %ProgramData%\SenHub config. -->
+    <Property Id="ADOPT" Secure="yes" />
 
     <!--
-      Seed %ProgramData%\SenHub\agent.yaml from the BACKEND_URL /
-      AGENT_TOKEN properties at install time, but ONLY when the file
-      does not already exist — so an upgrade or reinstall preserves
-      operator configuration (acceptance: "préserver config existante").
+      Seed %ProgramData%\SenHub\agent.yaml at install time, but ONLY when
+      the file does not already exist — so an upgrade or reinstall
+      preserves operator configuration (acceptance: "préserver config
+      existante"). `config init` is itself idempotent (it no-ops on an
+      existing config), so this is belt-and-braces.
 
-      We invoke the installed binary's config-generation path rather
-      than templating YAML inside the MSI, so the schema stays owned by
-      the agent. The exact subcommand is validated on a real Windows
-      host (see docs/deployment/windows-msi.md, "Config seeding"); the
-      placeholder below is `config generate` and MUST be confirmed
-      against cmd/agent before first signed release — tracked as a
-      deferred item in the PR body.
+      We invoke the installed binary's `config init` path rather than
+      templating YAML inside the MSI, so the schema stays owned by the
+      agent: it writes the default offline multi-file layout, then applies
+      the license + tags. Validated on a real Windows host (see
+      docs/deployment/windows-msi.md, "Config seeding").
     -->
     <SetProperty Id="SeedConfig"
-                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config generate --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --backend-url &quot;[BACKEND_URL]&quot; --token &quot;[AGENT_TOKEN]&quot;"
+                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot;"
                  Before="SeedConfig"
                  Sequence="execute"
                  Condition="NOT Installed" />
@@ -93,7 +137,29 @@
                   Impersonate="no"
                   Return="ignore" />
 
+    <!--
+      ADOPT migration: stop and delete the foreign service before our
+      ServiceInstall creates ours, so the MSI takes over cleanly. Runs
+      only when ADOPT is set, a foreign service exists, and it is not our
+      own install. Config under %ProgramData%\SenHub is left intact.
+    -->
+    <SetProperty Id="AdoptExisting"
+                 Value="cmd.exe /c &quot;sc stop senhub-agent &amp; sc delete senhub-agent&quot;"
+                 Before="AdoptExisting"
+                 Sequence="execute"
+                 Condition="ADOPT AND EXISTING_SERVICE AND NOT MSI_MARKER AND NOT Installed" />
+
+    <CustomAction Id="AdoptExisting"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
     <InstallExecuteSequence>
+      <!-- Take over a foreign service before InstallServices creates ours. -->
+      <Custom Action="AdoptExisting" Before="InstallServices"
+              Condition="ADOPT AND EXISTING_SERVICE AND NOT MSI_MARKER AND NOT Installed" />
       <!-- After files are laid down, before the service starts. -->
       <Custom Action="SeedConfig" After="InstallFiles" Condition="NOT Installed" />
     </InstallExecuteSequence>
@@ -101,6 +167,21 @@
     <Feature Id="Main" Title="SenHub Agent" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
     </Feature>
+
+    <!-- ============================================================ -->
+    <!-- Guided installer UI.                                          -->
+    <!-- WixUI_InstallDir gives the standard wizard flow: Welcome →    -->
+    <!-- EULA → install directory → ready → progress → finish. A       -->
+    <!-- silent install (/qn) skips the UI entirely and drives the     -->
+    <!-- same properties from the command line / transform.            -->
+    <!--                                                               -->
+    <!-- Entering LICENSE_KEY / TAGS / OTLP_ENDPOINT inside the wizard  -->
+    <!-- (a custom dialog) is a follow-up validated interactively on   -->
+    <!-- Windows; today those are set via properties (silent install), -->
+    <!-- and a guided install lands the offline default.               -->
+    <!-- ============================================================ -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="packaging/windows/license.rtf" />
 
     <!-- ============================================================ -->
     <!-- Install layout.                                              -->
@@ -129,7 +210,7 @@
           mirror cmd/agent/service.go svcConfig so an MSI-installed
           service is indistinguishable from one created by
           `senhub-agent install`. ExecStart args match the offline-only
-          model (0.2.0+): run --config-path <canonical config>.
+          model (0.2.0+): the run verb with the canonical config path.
         -->
         <ServiceInstall
             Id="SenHubAgentService"
