@@ -14,6 +14,7 @@ import (
 type apacheEntitySource struct {
 	instanceID string // stable service.instance.id, computed once at construction
 	host       string
+	hostID     string // agent host id, target of the local-target runs_on edge
 	port       int64
 	mu         sync.Mutex
 	cache      entity.Observation
@@ -29,6 +30,7 @@ func newApacheEntitySource(instanceName, hostID string, host string, port int) *
 	return &apacheEntitySource{
 		instanceID: id,
 		host:       host,
+		hostID:     hostID,
 		port:       int64(port),
 	}
 }
@@ -85,6 +87,14 @@ func (s *apacheEntitySource) setReachable(up bool, version string) {
 			ToID:     targetID,
 		})
 	}
+
+	// runs_on edge: apache → host when the monitored endpoint is local (loopback),
+	// so a locally-monitored apache hangs off the host it runs on instead of
+	// floating with only its monitors anchor. A remote endpoint yields no edge.
+	if rel, ok := entity.LocalRunsOn("service.instance", targetID, s.host, s.hostID); ok {
+		obs.Relations = append(obs.Relations, rel)
+	}
+
 	s.cache = obs
 	s.ready = true
 }

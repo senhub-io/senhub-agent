@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"sync"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -37,6 +38,9 @@ type solrEntitySource struct {
 	// attributes and form the host:port fallback id when no tech id is available.
 	host string
 	port int64
+	// hostID resolves the agent host id for a local-db runs_on edge.
+	// nil → dbcommon.HostID.
+	hostID func() string
 
 	// client and endpoint are used to fetch the SolrCloud cluster id on the
 	// first successful collect. client is the probe's shared HTTP client.
@@ -66,6 +70,7 @@ func newSolrEntitySource(endpoint, instanceName string, client *http.Client) *so
 	s := &solrEntitySource{
 		host:     addr,
 		port:     port,
+		hostID:   dbcommon.HostID,
 		client:   client,
 		endpoint: endpoint,
 	}
@@ -203,6 +208,12 @@ func (s *solrEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   "db",
 			ToID:     dbID,
 		})
+	}
+
+	// runs_on edge: db → host when the db is on the agent's own host (loopback).
+	// The collapse guard suppresses it for a host:port-derived id.
+	if rel, ok := dbcommon.LocalHostRunsOn(dbID, s.host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

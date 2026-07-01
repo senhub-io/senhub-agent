@@ -1,6 +1,7 @@
 package proxmox
 
 import (
+	"net/url"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
@@ -95,10 +96,27 @@ func (s *proxmoxEntitySource) refresh(clusterName string) {
 		})
 	}
 
+	// runs_on edge: proxmox → host when the PVE endpoint is local (loopback), so
+	// an on-host management surface hangs off the host it runs on instead of
+	// floating with only its monitors anchor. A remote endpoint yields no edge.
+	if rel, ok := entity.LocalRunsOn("service.instance", proxmoxID, hostFromEndpoint(s.cfg.Endpoint), s.hostID); ok {
+		obs.Relations = append(obs.Relations, rel)
+	}
+
 	s.mu.Lock()
 	s.current = obs
 	s.ready = true
 	s.mu.Unlock()
+}
+
+// hostFromEndpoint extracts the host (no port) from the PVE endpoint URL so the
+// runs_on gate can tell a loopback-monitored surface from a remote one. Returns
+// the raw value unchanged when it is not a parseable URL.
+func hostFromEndpoint(endpoint string) string {
+	if u, err := url.Parse(endpoint); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return endpoint
 }
 
 // resolveInstanceID applies the stable-ID precedence rules:

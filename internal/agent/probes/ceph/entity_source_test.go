@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // stubFetch returns a fetchFsidFunc that always returns (fsid, nil) when fsid
@@ -196,13 +197,16 @@ func TestCephEntitySource_MonitorsEdge_Present(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe returned ok=false")
 	}
-	if len(obs.Relations) != 1 {
-		t.Fatalf("len(Relations) = %d; want 1", len(obs.Relations))
+	// Remote endpoint → no runs_on; assert on the monitors edge by type, not the
+	// bare relation count.
+	var rel entity.Relation
+	for i := range obs.Relations {
+		if obs.Relations[i].Type == "monitors" {
+			rel = obs.Relations[i]
+		}
 	}
-
-	rel := obs.Relations[0]
 	if rel.Type != "monitors" {
-		t.Errorf("relation type = %q; want \"monitors\"", rel.Type)
+		t.Fatalf("no monitors relation; got %+v", obs.Relations)
 	}
 	if rel.FromType != entityTypeServiceInstance {
 		t.Errorf("FromType = %q; want %q", rel.FromType, entityTypeServiceInstance)
@@ -240,8 +244,51 @@ func TestCephEntitySource_MonitorsEdge_Absent(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe returned ok=false")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("len(Relations) = %d; want 0 when agent id is empty", len(obs.Relations))
+	// Remote endpoint and no agent id → no monitors and no runs_on edge.
+	for _, r := range obs.Relations {
+		t.Errorf("no relation expected (no agent id, remote endpoint); got %s", r.Type)
+	}
+}
+
+// TestCephEntitySource_LocalRunsOn: a loopback-monitored Ceph emits a runs_on→
+// host edge so it does not float. The id is tech ("ceph:<fsid>") or host-scoped
+// ("ceph@<hid>") — it never embeds the address — so loopback passes the collapse
+// guard. A remote endpoint emits no runs_on.
+func TestCephEntitySource_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("")
+
+	runsOn := func(endpoint, fsid string) *entity.Relation {
+		src := newCephEntitySource("", endpoint, stubFetch(fsid), stubHostID("H"))
+		src.pinID()
+		obs, _ := src.Observe()
+		for i := range obs.Relations {
+			if obs.Relations[i].Type == "runs_on" {
+				return &obs.Relations[i]
+			}
+		}
+		return nil
+	}
+
+	// Loopback endpoint, tech id → runs_on present, targeting the agent host.
+	r := runsOn("https://127.0.0.1:8443", "fsid-abc")
+	if r == nil {
+		t.Fatal("loopback Ceph: expected a runs_on→host edge")
+	}
+	if r.ToType != "host" || r.ToID["host.id"] != "H" {
+		t.Errorf("runs_on target = %s/%v, want host/H", r.ToType, r.ToID)
+	}
+	if r.FromID[idKeyServiceInstanceID] != "ceph:fsid-abc" {
+		t.Errorf("runs_on source = %v, want ceph:fsid-abc", r.FromID)
+	}
+
+	// Loopback endpoint, host-scoped fallback id → still emits runs_on.
+	if runsOn("https://localhost:8443", "") == nil {
+		t.Error("loopback Ceph (host-scoped id): expected a runs_on→host edge")
+	}
+
+	// Remote endpoint → no runs_on.
+	if runsOn("https://10.0.0.5:8443", "fsid-xyz") != nil {
+		t.Error("remote Ceph must NOT emit runs_on→host")
 	}
 }
 

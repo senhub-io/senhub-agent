@@ -248,6 +248,45 @@ func TestEntitySource_DescriptiveAttrs(t *testing.T) {
 	}
 }
 
+// relTypes lists the relation types in an observation.
+func relTypes(obs entity.Observation) []string {
+	var ts []string
+	for _, r := range obs.Relations {
+		ts = append(ts, r.Type)
+	}
+	return ts
+}
+
+// TestEntitySource_LocalRunsOn verifies a loopback-monitored kafka emits a
+// runs_on→host edge (so it does not float), and a remote-monitored one does not.
+func TestEntitySource_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-1")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	// Loopback broker → runs_on present, targeting the agent host.
+	local := newKafkaEntitySource("127.0.0.1:9092", "my-kafka", nil, func() string { return "H" })
+	local.notifySuccess("")
+	obs, _ := local.Observe()
+	runsOn, found := findRelation(obs, "runs_on")
+	if !found {
+		t.Fatalf("loopback kafka: expected a runs_on edge, got relations %v", relTypes(obs))
+	}
+	if runsOn.ToType != "host" || runsOn.ToID["host.id"] != "H" {
+		t.Errorf("runs_on target = %s/%v, want host/H", runsOn.ToType, runsOn.ToID)
+	}
+	if runsOn.FromID["service.instance.id"] != "my-kafka" {
+		t.Errorf("runs_on source = %v, want my-kafka", runsOn.FromID)
+	}
+
+	// Remote broker → no runs_on.
+	remote := newKafkaEntitySource("10.0.0.5:9092", "my-kafka", nil, func() string { return "H" })
+	remote.notifySuccess("")
+	robs, _ := remote.Observe()
+	if _, found := findRelation(robs, "runs_on"); found {
+		t.Errorf("remote kafka must NOT emit runs_on; relations=%v", relTypes(robs))
+	}
+}
+
 // TestEntitySource_IDIsImmutable verifies that repeated notifySuccess calls
 // with different cluster ids (should not happen in practice) do not change the
 // pinned id (immutability).

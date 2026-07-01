@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"sync"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -26,6 +27,9 @@ type opensearchEntitySource struct {
 	// addr / port are the target coordinates — descriptive only (never identity).
 	addr string
 	port int
+	// hostID resolves the agent host id for a local-db runs_on edge.
+	// nil → dbcommon.HostID.
+	hostID func() string
 
 	mu sync.RWMutex
 
@@ -46,8 +50,9 @@ type opensearchEntitySource struct {
 // cluster-uuid fetch pins it.
 func newOpensearchEntitySource(addr string, port int, instanceName string) *opensearchEntitySource {
 	s := &opensearchEntitySource{
-		addr: addr,
-		port: port,
+		addr:   addr,
+		port:   port,
+		hostID: dbcommon.HostID,
 	}
 	if instanceName != "" {
 		s.pinnedID = instanceName
@@ -132,6 +137,12 @@ func (s *opensearchEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   "db",
 			ToID:     dbID,
 		})
+	}
+
+	// runs_on edge: db → host when the db is on the agent's own host (loopback).
+	// The collapse guard suppresses it for a host:port-derived id.
+	if rel, ok := dbcommon.LocalHostRunsOn(dbID, s.addr, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

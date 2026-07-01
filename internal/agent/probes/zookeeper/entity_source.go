@@ -39,6 +39,11 @@ type entityObserver struct {
 	// hostIDFunc returns the host's stable machine id for the precedence-3
 	// fallback. Injected so tests never touch gopsutil.
 	hostIDFunc func() string
+
+	// runsOnHostID caches the agent host id (the runs_on edge target), resolved
+	// once from hostIDFunc on the first observation build.
+	runsOnHostID string
+	hostIDDone   bool
 }
 
 // pin records the stable id, builds the first observation, and marks the source
@@ -128,9 +133,10 @@ func (e *entityObserver) buildObservation(version string) entity.Observation {
 		attrs["service.version"] = version
 	}
 
+	svcID := map[string]any{"service.instance.id": instanceID}
 	ent := entity.Entity{
 		Type:       "service.instance",
-		ID:         map[string]any{"service.instance.id": instanceID},
+		ID:         svcID,
 		Attributes: attrs,
 	}
 
@@ -145,8 +151,21 @@ func (e *entityObserver) buildObservation(version string) entity.Observation {
 			FromType: "service.instance",
 			FromID:   map[string]any{"service.instance.id": agentID},
 			ToType:   "service.instance",
-			ToID:     map[string]any{"service.instance.id": instanceID},
+			ToID:     svcID,
 		})
+	}
+
+	// runs_on edge: anchor a locally-monitored node to the agent host so it does
+	// not float with only its monitors edge. The helper's collapse guard
+	// suppresses the edge for a remote target or a loopback-derived identity.
+	if !e.hostIDDone {
+		if e.hostIDFunc != nil {
+			e.runsOnHostID = e.hostIDFunc()
+		}
+		e.hostIDDone = true
+	}
+	if rel, ok := entity.LocalRunsOn("service.instance", svcID, e.addr, e.runsOnHostID); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs

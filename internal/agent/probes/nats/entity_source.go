@@ -1,6 +1,7 @@
 package nats
 
 import (
+	"net/url"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
@@ -43,6 +44,16 @@ func newNATSEntitySource(endpoint, instanceName string) *natsEntitySource {
 		instanceName: instanceName,
 		getHostID:    defaultGetHostID,
 	}
+}
+
+// hostFromEndpoint extracts the host (no port) from the NATS monitoring
+// endpoint URL so the runs_on gate can tell a loopback-monitored server from a
+// remote one. Returns the raw value unchanged when it is not a parseable URL.
+func hostFromEndpoint(endpoint string) string {
+	if u, err := url.Parse(endpoint); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return endpoint
 }
 
 // defaultGetHostID resolves the local host identity for the precedence-2
@@ -130,9 +141,10 @@ func (s *natsEntitySource) Observe() (entity.Observation, bool) {
 	if version != "" {
 		attrs["service.version"] = version
 	}
+	svcID := map[string]any{"service.instance.id": id}
 	e := entity.Entity{
 		Type:       "service.instance",
-		ID:         map[string]any{"service.instance.id": id},
+		ID:         svcID,
 		Attributes: attrs,
 	}
 
@@ -145,8 +157,15 @@ func (s *natsEntitySource) Observe() (entity.Observation, bool) {
 			FromType: "service.instance",
 			FromID:   map[string]any{"service.instance.id": agentID},
 			ToType:   "service.instance",
-			ToID:     map[string]any{"service.instance.id": id},
+			ToID:     svcID,
 		})
+	}
+
+	// runs_on edge: nats → host when the monitored endpoint is local (loopback),
+	// so a locally-monitored server hangs off the host it runs on instead of
+	// floating with only its monitors anchor. A remote endpoint yields no edge.
+	if rel, ok := entity.LocalRunsOn("service.instance", svcID, hostFromEndpoint(s.endpoint), s.getHostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

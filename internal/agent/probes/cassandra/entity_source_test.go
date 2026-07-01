@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // TestEntitySource_InstanceNameOverride verifies that when instance_name is
@@ -164,10 +165,10 @@ func TestEntitySource_MonitorsEdgePresent(t *testing.T) {
 		t.Fatal("Observe() ok=false; want true with instance_name override")
 	}
 
-	if len(obs.Relations) != 1 {
-		t.Fatalf("got %d relations, want 1 (monitors edge)", len(obs.Relations))
+	rel, ok2 := findRelation(obs, "monitors")
+	if !ok2 {
+		t.Fatalf("monitors edge missing; got %d relations", len(obs.Relations))
 	}
-	rel := obs.Relations[0]
 	if rel.Type != "monitors" {
 		t.Errorf("relation.Type = %q, want %q", rel.Type, "monitors")
 	}
@@ -197,8 +198,48 @@ func TestEntitySource_MonitorsEdgeAbsentWhenNoAgentID(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() ok=false; want true with instance_name override")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("got %d relations, want 0 when agent id is empty", len(obs.Relations))
+	if _, has := findRelation(obs, "monitors"); has {
+		t.Error("monitors edge present when agent id is empty; want absent")
+	}
+}
+
+// findRelation returns the first relation of the given type in the observation.
+func findRelation(obs entity.Observation, relType string) (entity.Relation, bool) {
+	for _, r := range obs.Relations {
+		if r.Type == relType {
+			return r, true
+		}
+	}
+	return entity.Relation{}, false
+}
+
+// hasRunsOnHost reports whether obs carries a db→host runs_on edge to hostID.
+func hasRunsOnHost(obs entity.Observation, hostID string) bool {
+	for _, r := range obs.Relations {
+		if r.Type == "runs_on" && r.FromType == "db" && r.ToType == "host" && r.ToID["host.id"] == hostID {
+			return true
+		}
+	}
+	return false
+}
+
+// TestEntitySource_LocalDBRunsOnHost: a loopback-reachable cassandra with a
+// globally-unique tech id is anchored to the host with runs_on (enterprise#36);
+// a remote db is not.
+func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
+	mk := func(addr string) entity.Observation {
+		s := newEntitySource("", addr, "9042")
+		s.hostID = func() string { return "h-1" }
+		s.update("cassandra:a1b2c3d4-uuid", addr, "9042", true, "4.0.0")
+		obs, _ := s.Observe()
+		return obs
+	}
+
+	if !hasRunsOnHost(mk("127.0.0.1"), "h-1") {
+		t.Error("loopback db must emit runs_on→host")
+	}
+	if hasRunsOnHost(mk("10.0.0.5"), "h-1") {
+		t.Error("remote db must NOT emit runs_on→host")
 	}
 }
 

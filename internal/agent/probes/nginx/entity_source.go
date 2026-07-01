@@ -17,6 +17,8 @@ import (
 type nginxEntitySource struct {
 	instanceID string
 	attrs      map[string]any
+	serverAddr string // host from the endpoint URL; a runs_on→host is emitted only when it is loopback
+	hostID     string // agent host id, target of the local-target runs_on edge
 	mu         sync.RWMutex
 	up         bool
 	version    string // service.version from the Server header, "" until parsed
@@ -41,6 +43,8 @@ func newNginxEntitySource(endpoint, instanceName, hostID string) *nginxEntitySou
 	host, port := hostPortFromEndpoint(endpoint)
 	return &nginxEntitySource{
 		instanceID: id,
+		serverAddr: host,
+		hostID:     hostID,
 		attrs: map[string]any{
 			"service.name":   "nginx",
 			"server.address": host,
@@ -118,10 +122,11 @@ func (s *nginxEntitySource) Observe() (entity.Observation, bool) {
 		}
 		attrs["service.version"] = version
 	}
+	svcID := map[string]any{"service.instance.id": s.instanceID}
 	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "service.instance",
-			ID:         map[string]any{"service.instance.id": s.instanceID},
+			ID:         svcID,
 			Attributes: attrs,
 		}},
 	}
@@ -132,8 +137,15 @@ func (s *nginxEntitySource) Observe() (entity.Observation, bool) {
 			FromType: "service.instance",
 			FromID:   map[string]any{"service.instance.id": agentID},
 			ToType:   "service.instance",
-			ToID:     map[string]any{"service.instance.id": s.instanceID},
+			ToID:     svcID,
 		})
+	}
+
+	// runs_on edge: nginx → host when the monitored endpoint is local (loopback),
+	// so a locally-monitored nginx hangs off the host it runs on instead of
+	// floating with only its monitors anchor. A remote endpoint yields no edge.
+	if rel, ok := entity.LocalRunsOn("service.instance", svcID, s.serverAddr, s.hostID); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

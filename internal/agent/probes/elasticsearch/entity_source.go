@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"sync"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -25,6 +26,11 @@ type elasticsearchEntitySource struct {
 	// descriptive attributes: server.address, server.port, db.system.name.
 	// Initialised at construction; version appended on first successful collect.
 	staticAttrs map[string]any
+	// host is the monitored db host, used to gate the local-db runs_on edge.
+	host string
+	// hostID resolves the agent host id for a local-db runs_on edge.
+	// nil → dbcommon.HostID.
+	hostID func() string
 
 	mu sync.RWMutex
 	// instanceID holds the pinned db.instance.id.  Empty until pinned.
@@ -58,6 +64,8 @@ func newElasticsearchEntitySource(instanceName, host string, port int64) *elasti
 	s := &elasticsearchEntitySource{
 		staticAttrs: staticAttrs,
 		attrs:       staticAttrs,
+		host:        host,
+		hostID:      dbcommon.HostID,
 	}
 	if instanceName != "" {
 		s.instanceID = instanceName
@@ -121,10 +129,11 @@ func (s *elasticsearchEntitySource) Observe() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 
+	dbID := map[string]any{"db.instance.id": s.instanceID}
 	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "db",
-			ID:         map[string]any{"db.instance.id": s.instanceID},
+			ID:         dbID,
 			Attributes: s.attrs,
 		}},
 	}
@@ -137,6 +146,12 @@ func (s *elasticsearchEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   "db",
 			ToID:     map[string]any{"db.instance.id": s.instanceID},
 		})
+	}
+
+	// runs_on edge: db → host when the db is on the agent's own host (loopback).
+	// The collapse guard suppresses it for a host:port-derived id.
+	if rel, ok := dbcommon.LocalHostRunsOn(dbID, s.host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true
