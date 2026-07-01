@@ -67,6 +67,10 @@ type autoUpdate struct {
 	httpClient   *http.Client
 	scheduler    *periodic_scheduler.PeriodicScheduler
 	dryRun       bool
+	// msiUpgradeLaunched is set when an MSI-managed update handed the upgrade
+	// to msiexec. msiexec stops+restarts the service itself, so the periodic
+	// checker must NOT self-exit (which would race the installer).
+	msiUpgradeLaunched bool
 }
 
 func NewAutoUpdate(config AutoUpdateConfig) AutoUpdate {
@@ -204,6 +208,25 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 		Str("expected_version", expectedVersion).
 		Msg("Update required")
 
+	// MSI-managed installs update by applying a new signed MSI rather than
+	// self-replacing the binary, so Windows Installer tracking (repair,
+	// upgrade, ARP version) stays coherent. Gated on isMsiManaged(), which is
+	// only true on an MSI install — a ZIP/script install keeps the binary path
+	// below unchanged.
+	if isMsiManaged() {
+		msiURL, err := a.GetMsiUrl(registry, expectedVersion)
+		if err != nil {
+			a.logger.Error().Err(err).Msg("Failed to generate MSI URL")
+			return false, err
+		}
+		a.logger.Info().Str("msi_url", msiURL).Msg("Applying MSI-managed update")
+		if err := a.applyMsiUpdate(msiURL); err != nil {
+			a.logger.Error().Err(err).Msg("Failed to apply MSI update")
+			return false, err
+		}
+		return true, nil
+	}
+
 	binaryUrl, err := a.GetBinaryUrl(registry, expectedVersion)
 	if err != nil {
 		a.logger.Error().
@@ -225,6 +248,17 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 	}
 
 	return true, nil
+}
+
+// GetMsiUrl builds the download URL of the per-version MSI installer, alongside
+// the ZIP path. The filename matches what the windows-msi workflow publishes
+// (senhub-agent-<version>-amd64.msi); a detached minisign signature is expected
+// next to it as <url>.minisig, verified exactly like the ZIP archive.
+func (a *autoUpdate) GetMsiUrl(registryUrl, version string) (string, error) {
+	registryUrl = a.GetRegistryUrl(registryUrl)
+	filename := fmt.Sprintf("senhub-agent-%s-amd64.msi", version)
+	downloadPath := fmt.Sprintf(VERSION_BINARY_PATH, FormatVersionForUrl(version), filename)
+	return url.JoinPath(registryUrl, downloadPath)
 }
 
 // doUpdate downloads the per-platform release ZIP, extracts the agent
@@ -386,8 +420,11 @@ func (a *autoUpdate) PeriodicalCheckForUpdate() error {
 		return err
 	}
 
-	if updateApplied {
-		// Now that the binary is updated, exit the process to restart the service.
+	if updateApplied && !a.msiUpgradeLaunched {
+		// Binary self-replace path: the new binary is already on disk, so exit
+		// to let the service manager restart into it. The MSI path is handled by
+		// msiexec (it stops and restarts the service), so we must NOT self-exit
+		// there — doing so would race the installer.
 		a.logger.Info().Msg("Exiting to apply update")
 		os.Exit(0)
 	}
