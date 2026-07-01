@@ -165,16 +165,22 @@ jobs:
             --name "SenHub Agent" --url "https://senhub.io" \
             dist/windows-amd64/senhub-agent.exe
 
-      - name: Install WiX Toolset (v4, dotnet tool)
+      - name: Install WiX Toolset (dotnet tool)
+        env:
+          WIX_VERSION: "4.0.6"
         run: |
-          dotnet tool install --global wix --version 4.*
+          dotnet tool install --global wix --version "$WIX_VERSION"
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Add WiX extensions (Util + UI)
+        env:
+          WIX_VERSION: "4.0.6"
         run: |
           export PATH="$HOME/.dotnet/tools:$PATH"
-          wix extension add -g WixToolset.Util.wixext
-          wix extension add -g WixToolset.UI.wixext
+          # Pin extensions to the SAME version as the tool — an unpinned
+          # `extension add` pulls the latest (7.x), which a 4.x wix cannot load.
+          wix extension add -g "WixToolset.Util.wixext/$WIX_VERSION"
+          wix extension add -g "WixToolset.UI.wixext/$WIX_VERSION"
 
       - name: Build MSI
         env:
