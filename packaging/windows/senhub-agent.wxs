@@ -72,10 +72,10 @@
       comma-separated k=v list applied as host global_tags. There is no
       cloud backend/token: the agent is offline by default (see header).
     -->
-    <Property Id="LICENSE_KEY" Value="" Secure="yes" />
-    <Property Id="TAGS" Value="" />
+    <Property Id="LICENSE_KEY" Secure="yes" />
+    <Property Id="TAGS" Secure="yes" />
     <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
-    <Property Id="OTLP_ENDPOINT" Value="" />
+    <Property Id="OTLP_ENDPOINT" Secure="yes" />
 
     <!--
       Seed %ProgramData%\SenHub\agent.yaml at install time, but ONLY when
