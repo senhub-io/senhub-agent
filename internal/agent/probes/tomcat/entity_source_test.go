@@ -4,7 +4,27 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
+
+// relByType returns a pointer to the first relation of the given type, or nil.
+func relByType(obs entity.Observation, ty string) *entity.Relation {
+	for i := range obs.Relations {
+		if obs.Relations[i].Type == ty {
+			return &obs.Relations[i]
+		}
+	}
+	return nil
+}
+
+// relTypes lists the relation types in an observation.
+func relTypes(obs entity.Observation) []string {
+	var ts []string
+	for _, r := range obs.Relations {
+		ts = append(ts, r.Type)
+	}
+	return ts
+}
 
 // TestResolveInstanceID verifies the stable-id precedence rule.
 func TestResolveInstanceID_InstanceNameOverrides(t *testing.T) {
@@ -182,12 +202,10 @@ func TestTomcatEntitySource_MonitorsEdge_Present(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe: want ok=true")
 	}
-	if len(obs.Relations) != 1 {
-		t.Fatalf("Observe: want 1 relation (monitors), got %d", len(obs.Relations))
-	}
-	rel := obs.Relations[0]
-	if rel.Type != "monitors" {
-		t.Errorf("relation type = %q, want \"monitors\"", rel.Type)
+	// A loopback target may also yield a runs_on edge; assert by type, not count.
+	rel := relByType(obs, "monitors")
+	if rel == nil {
+		t.Fatalf("no monitors relation; got %v", relTypes(obs))
 	}
 	if rel.FromType != "service.instance" {
 		t.Errorf("FromType = %q, want \"service.instance\"", rel.FromType)
@@ -217,8 +235,41 @@ func TestTomcatEntitySource_MonitorsEdge_Absent(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe: want ok=true")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("Observe: want 0 relations when agent id is empty, got %d", len(obs.Relations))
+	// A runs_on edge may still be present (loopback target); only the monitors
+	// edge must be absent when the agent id is empty.
+	if relByType(obs, "monitors") != nil {
+		t.Errorf("monitors relation must be absent when agent id is empty; got %v", relTypes(obs))
+	}
+}
+
+// TestTomcatEntitySource_LocalRunsOn verifies a loopback-monitored Tomcat emits
+// a runs_on→host edge (its host-scoped id carries no loopback literal), and a
+// remote-monitored one does not.
+func TestTomcatEntitySource_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-1")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	// Loopback endpoint → runs_on present, targeting the agent host.
+	local := newTomcatEntitySource("", "H", "127.0.0.1", 8080)
+	local.SetUp(true, nil)
+	obs, _ := local.Observe()
+	runsOn := relByType(obs, "runs_on")
+	if runsOn == nil {
+		t.Fatalf("loopback tomcat: expected a runs_on edge, got relations %v", relTypes(obs))
+	}
+	if runsOn.ToType != "host" || runsOn.ToID["host.id"] != "H" {
+		t.Errorf("runs_on target = %s/%v, want host/H", runsOn.ToType, runsOn.ToID)
+	}
+	if runsOn.FromID["service.instance.id"] != "tomcat@H" {
+		t.Errorf("runs_on source = %v, want tomcat@H", runsOn.FromID)
+	}
+
+	// Remote endpoint → no runs_on (must not claim to run on the agent host).
+	remote := newTomcatEntitySource("", "H", "10.0.0.5", 8080)
+	remote.SetUp(true, nil)
+	robs, _ := remote.Observe()
+	if relByType(robs, "runs_on") != nil {
+		t.Errorf("remote tomcat must NOT emit runs_on; relations=%v", relTypes(robs))
 	}
 }
 

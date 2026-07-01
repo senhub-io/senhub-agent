@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"sync"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -30,6 +31,9 @@ type clickhouseEntitySource struct {
 	fallbackID string
 	host       string
 	port       int64
+	// hostID resolves the agent host id for a local-db runs_on edge.
+	// nil → dbcommon.HostID.
+	hostID func() string
 
 	mu       sync.RWMutex
 	pinnedID string // empty until pinned
@@ -50,6 +54,7 @@ func newClickhouseEntitySource(instanceName, endpoint string) *clickhouseEntityS
 		fallbackID:   addr + ":" + strconv.FormatInt(port, 10),
 		host:         addr,
 		port:         port,
+		hostID:       dbcommon.HostID,
 	}
 	if instanceName != "" {
 		// Pin immediately — operator-supplied name is stable at construction.
@@ -147,6 +152,12 @@ func (s *clickhouseEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   "db",
 			ToID:     dbID,
 		})
+	}
+
+	// runs_on edge: db → host when the db is on the agent's own host (loopback).
+	// The collapse guard suppresses it for a host:port-derived id.
+	if rel, ok := dbcommon.LocalHostRunsOn(dbID, s.host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

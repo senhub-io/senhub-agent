@@ -7,7 +7,27 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
+
+// relByType returns a pointer to the first relation of the given type, or nil.
+func relByType(obs entity.Observation, ty string) *entity.Relation {
+	for i := range obs.Relations {
+		if obs.Relations[i].Type == ty {
+			return &obs.Relations[i]
+		}
+	}
+	return nil
+}
+
+// relTypes lists the relation types in an observation.
+func relTypes(obs entity.Observation) []string {
+	var ts []string
+	for _, r := range obs.Relations {
+		ts = append(ts, r.Type)
+	}
+	return ts
+}
 
 // newObserver builds an entityObserver with injected hostIDFunc and
 // pre-set addr/port so tests never call gopsutil.
@@ -151,12 +171,10 @@ func TestEntitySource_MonitorsEdge_Present(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe: want ok=true")
 	}
-	if len(got.Relations) != 1 {
-		t.Fatalf("relations: want 1, got %d", len(got.Relations))
-	}
-	r := got.Relations[0]
-	if r.Type != "monitors" {
-		t.Errorf("relation type: want %q, got %q", "monitors", r.Type)
+	// A loopback addr would also yield a runs_on edge; assert by type, not count.
+	r := relByType(got, "monitors")
+	if r == nil {
+		t.Fatalf("no monitors relation; got %v", relTypes(got))
 	}
 	if r.FromID["service.instance.id"] != "agent-001" {
 		t.Errorf("from id: want %q, got %v", "agent-001", r.FromID["service.instance.id"])
@@ -178,8 +196,41 @@ func TestEntitySource_MonitorsEdge_Absent(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe: want ok=true")
 	}
-	if len(got.Relations) != 0 {
-		t.Errorf("relations: want 0 when agent id is empty, got %d", len(got.Relations))
+	// A runs_on edge may still be present (loopback addr); only the monitors edge
+	// must be absent when the agent id is empty.
+	if relByType(got, "monitors") != nil {
+		t.Errorf("monitors relation must be absent when agent id is empty; got %v", relTypes(got))
+	}
+}
+
+// TestEntitySource_LocalRunsOn verifies a loopback-monitored zookeeper emits a
+// runs_on→host edge (its tech/host-scoped id carries no loopback literal), and a
+// remote-monitored one does not.
+func TestEntitySource_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-1")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	// Loopback addr → runs_on present, targeting the agent host.
+	local := &entityObserver{addr: "127.0.0.1", port: 2181, hostIDFunc: func() string { return "H" }}
+	local.setUp("zookeeper:1", true, "3.8.0")
+	got, _ := local.Observe()
+	runsOn := relByType(got, "runs_on")
+	if runsOn == nil {
+		t.Fatalf("loopback zookeeper: expected a runs_on edge, got relations %v", relTypes(got))
+	}
+	if runsOn.ToType != "host" || runsOn.ToID["host.id"] != "H" {
+		t.Errorf("runs_on target = %s/%v, want host/H", runsOn.ToType, runsOn.ToID)
+	}
+	if runsOn.FromID["service.instance.id"] != "zookeeper:1" {
+		t.Errorf("runs_on source = %v, want zookeeper:1", runsOn.FromID)
+	}
+
+	// Remote addr → no runs_on (must not claim to run on the agent host).
+	remote := &entityObserver{addr: "10.0.0.5", port: 2181, hostIDFunc: func() string { return "H" }}
+	remote.setUp("zookeeper:1", true, "3.8.0")
+	robs, _ := remote.Observe()
+	if relByType(robs, "runs_on") != nil {
+		t.Errorf("remote zookeeper must NOT emit runs_on; relations=%v", relTypes(robs))
 	}
 }
 

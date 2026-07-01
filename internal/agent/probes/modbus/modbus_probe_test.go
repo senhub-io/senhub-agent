@@ -327,7 +327,7 @@ func TestZeroBasedAddress(t *testing.T) {
 }
 
 func TestEntitySource_InitiallyNotLive(t *testing.T) {
-	src := newModbusEntitySource("modbus://192.168.1.100:502")
+	src := newModbusEntitySource("modbus://192.168.1.100:502", "192.168.1.100")
 	_, ok := src.Observe()
 	if ok {
 		t.Error("Observe should return ok=false before first successful connect")
@@ -335,7 +335,7 @@ func TestEntitySource_InitiallyNotLive(t *testing.T) {
 }
 
 func TestEntitySource_BecomesLiveAfterMarkLive(t *testing.T) {
-	src := newModbusEntitySource("modbus://192.168.1.100:502")
+	src := newModbusEntitySource("modbus://192.168.1.100:502", "192.168.1.100")
 	src.markLive()
 	obs, ok := src.Observe()
 	if !ok {

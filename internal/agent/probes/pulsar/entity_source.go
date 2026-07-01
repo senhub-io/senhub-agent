@@ -44,6 +44,10 @@ type pulsarEntitySource struct {
 	// or "pulsar"). Injected at construction; tests stub it.
 	hostID func() string
 
+	// runsOnHostID is the agent host's raw machine-id, target of the
+	// local-target runs_on edge. "" disables the edge.
+	runsOnHostID string
+
 	mu      sync.RWMutex
 	up      bool   // last broker readiness result from Collect
 	pinned  bool   // true once the id has been decided (tech id or fallback)
@@ -79,7 +83,8 @@ func newPulsarEntitySource(cfg entitySourceConfig) *pulsarEntitySource {
 		fetchVersion: func() string {
 			return fetchPulsarVersion(cfg.httpClient, cfg.endpoint)
 		},
-		hostID: defaultHostID,
+		hostID:       defaultHostID,
+		runsOnHostID: rawHostID(),
 	}
 
 	if cfg.instanceName != "" {
@@ -99,6 +104,16 @@ func defaultHostID() string {
 		return "pulsar"
 	}
 	return "pulsar@" + hi.ID
+}
+
+// rawHostID returns the agent host's stable machine-id ("" when unreadable),
+// used as the runs_on edge target for a locally-monitored broker.
+func rawHostID() string {
+	hi, err := common.GetHostIdentity()
+	if err != nil {
+		return ""
+	}
+	return hi.ID
 }
 
 // fetchPulsarClusters fetches GET <endpoint>/admin/v2/clusters and returns the
@@ -220,10 +235,11 @@ func (s *pulsarEntitySource) Observe() (entity.Observation, bool) {
 		attrs["service.version"] = version
 	}
 
+	svcID := map[string]any{"service.instance.id": id}
 	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "service.instance",
-			ID:         map[string]any{"service.instance.id": id},
+			ID:         svcID,
 			Attributes: attrs,
 		}},
 	}
@@ -237,8 +253,15 @@ func (s *pulsarEntitySource) Observe() (entity.Observation, bool) {
 			FromType: "service.instance",
 			FromID:   map[string]any{"service.instance.id": agentID},
 			ToType:   "service.instance",
-			ToID:     map[string]any{"service.instance.id": id},
+			ToID:     svcID,
 		})
+	}
+
+	// runs_on edge: anchor a locally-monitored broker to the agent host so it
+	// does not float with only its monitors edge. The helper's collapse guard
+	// suppresses the edge for a remote target or a loopback-derived identity.
+	if rel, ok := entity.LocalRunsOn("service.instance", svcID, s.host, s.runsOnHostID); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

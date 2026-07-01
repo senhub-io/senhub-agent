@@ -129,6 +129,14 @@ func (s *entitySource) Observe() (entity.Observation, bool) {
 		})
 	}
 
+	// runs_on edge: controller → host when the endpoint is local (loopback), so a
+	// locally-monitored Jenkins hangs off the host it runs on instead of floating.
+	// The id is host-scoped/tech (never embeds the address), so loopback passes
+	// the collapse guard; a remote endpoint yields no edge.
+	if rel, ok := entity.LocalRunsOn(entityTypeServiceInstance, targetEntityID, s.serverAddress, s.hostIDFn()); ok {
+		obs.Relations = append(obs.Relations, rel)
+	}
+
 	return obs, true
 }
 

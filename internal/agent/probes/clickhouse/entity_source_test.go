@@ -222,6 +222,31 @@ func TestEntitySource_RelationToIDMatchesEntityID(t *testing.T) {
 	}
 }
 
+// TestEntitySource_LocalDBRunsOnHost: a loopback-reachable clickhouse with a
+// globally-unique tech id is anchored to the host with runs_on (enterprise#36);
+// a remote db is not.
+func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
+	runsOn := func(endpoint string) bool {
+		s := newClickhouseEntitySource("", endpoint)
+		s.hostID = func() string { return "h-1" }
+		s.pinTechID("a1b2c3d4-uuid")
+		s.setReachable(true, "")
+		obs, _ := s.Observe()
+		for _, r := range obs.Relations {
+			if r.Type == "runs_on" && r.FromType == "db" && r.ToID["host.id"] == "h-1" {
+				return true
+			}
+		}
+		return false
+	}
+	if !runsOn("http://127.0.0.1:8123") {
+		t.Error("loopback db with a tech id must emit runs_on→host")
+	}
+	if runsOn("http://10.0.0.5:8123") {
+		t.Error("remote db must NOT emit runs_on→host")
+	}
+}
+
 func mapsEqual(a, b map[string]any) bool {
 	if len(a) != len(b) {
 		return false

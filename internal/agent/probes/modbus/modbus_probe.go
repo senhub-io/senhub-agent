@@ -62,7 +62,7 @@ func NewModbusProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger)
 		cfg:          cfg,
 		instance:     instance,
 		moduleLogger: moduleLogger,
-		entitySource: newModbusEntitySource(instance),
+		entitySource: newModbusEntitySource(instance, cfg.Host),
 		newClient:    newGoburrowClient,
 	}
 	probe.SetProbeType(ProbeType)

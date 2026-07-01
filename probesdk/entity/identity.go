@@ -3,6 +3,7 @@ package entity
 import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/common"
+	ientity "senhub-agent.go/internal/agent/services/entity"
 )
 
 // AgentInstanceID returns the agent's own service.instance.id — the From
@@ -36,4 +37,25 @@ func HostID() string {
 		return ""
 	}
 	return hi.ID
+}
+
+// LocalRunsOn returns a `<fromType> --runs_on--> host` relation when the
+// monitored target is on the agent's own host (serverAddress is loopback,
+// "localhost" or empty), so a locally-monitored service hangs off the host node
+// instead of floating with only its `monitors` anchor. ok=false for a remote or
+// unknown address, or when hostID is "". A probe that already mints its identity
+// as "<svc>@<host>" passes its service.instance.id as fromID:
+//
+//	if rel, ok := entity.LocalRunsOn("service.instance", svcID, serverAddr, hostID); ok {
+//		obs.Relations = append(obs.Relations, rel)
+//	}
+func LocalRunsOn(fromType string, fromID map[string]any, serverAddress, hostID string) (Relation, bool) {
+	return ientity.LocalRunsOn(fromType, fromID, serverAddress, hostID)
+}
+
+// IsLoopbackHost reports whether serverAddress denotes the agent's own host with
+// certainty (empty, "localhost", or a loopback IP). Exposed for probes that need
+// the predicate without building a relation.
+func IsLoopbackHost(serverAddress string) bool {
+	return ientity.IsLoopbackHost(serverAddress)
 }

@@ -3,6 +3,7 @@ package cassandra
 import (
 	"sync"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -27,6 +28,10 @@ import (
 type entitySource struct {
 	mu sync.Mutex
 
+	// hostID resolves the agent host id for a local-db runs_on edge.
+	// nil → dbcommon.HostID.
+	hostID func() string
+
 	// instanceID is the pinned db.instance.id; empty until pinned.
 	instanceID string
 	// pinned marks that instanceID has been committed for the process lifetime.
@@ -44,7 +49,7 @@ type entitySource struct {
 // first successful Collect updates it). addr and port are the Jolokia-derived
 // host:port used as descriptive server.address / server.port attributes.
 func newEntitySource(instanceName, addr, port string) *entitySource {
-	s := &entitySource{}
+	s := &entitySource{hostID: dbcommon.HostID}
 	if instanceName != "" {
 		s.instanceID = instanceName
 		s.pinned = true
@@ -111,11 +116,12 @@ func (s *entitySource) buildObservation(addr, port, version string) entity.Obser
 		attrs["db.system.version"] = version
 	}
 
+	dbID := map[string]any{"db.instance.id": s.instanceID}
 	obs := entity.Observation{
 		Entities: []entity.Entity{
 			{
 				Type:       "db",
-				ID:         map[string]any{"db.instance.id": s.instanceID},
+				ID:         dbID,
 				Attributes: attrs,
 			},
 		},
@@ -130,6 +136,12 @@ func (s *entitySource) buildObservation(addr, port, version string) entity.Obser
 			ToType:   "db",
 			ToID:     map[string]any{"db.instance.id": s.instanceID},
 		})
+	}
+
+	// runs_on edge: db → host when the db is on the agent's own host (loopback).
+	// The collapse guard suppresses it for a host:port-derived id.
+	if rel, ok := dbcommon.LocalHostRunsOn(dbID, addr, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs
