@@ -31,6 +31,7 @@ import (
 
 	"gopkg.in/yaml.v2"
 
+	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -72,6 +73,12 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 	baseDir := filepath.Dir(configPath)
 	probesDir := filepath.Join(baseDir, "probes.d")
 	strategiesDir := filepath.Join(baseDir, "strategies.d")
+
+	// Record the config directory so a ${secret:} reference can locate the
+	// OS-native secret backend. Recording the path carries no secret and does
+	// not initialise any backend — that happens lazily on the first ${secret:}
+	// resolution, so a secret-free config creates no key file or store.
+	secret.SetConfigDir(baseDir)
 
 	if legacy {
 		// Surface the situation once so operators can move at their

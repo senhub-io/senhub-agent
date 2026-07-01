@@ -14,14 +14,22 @@ import (
 //    - No explicit version field
 //    - Agent versions: 0.1.0 - 0.1.63
 //
-// 2: Name/Type separation (current)
+// 2: Name/Type separation
 //    - Probes have 'name' (display) and 'type' (technical ID)
 //    - Explicit config_version field
 //    - Automatic migration from version 1
 //    - Agent versions: 0.1.65+
+//
+// 3: Secret references (current)
+//    - Inline plaintext secrets are sealed into the OS-native store and
+//      replaced by ${secret:<instance>.<field>} references
+//    - The bump happens only on a config that actually had a secret sealed;
+//      a secret-free v2 config stays v2 and loads unchanged
+//    - An older agent (max v2) refuses a v3 config rather than passing an
+//      unresolved ${secret:} literal to a probe
 
 // Current configuration version that this agent expects
-const CurrentConfigVersion = 2
+const CurrentConfigVersion = 3
 
 // Minimum configuration version that this agent can work with
 // (older versions will trigger automatic migration)
@@ -52,8 +60,16 @@ func GetConfigVersionHistory() []ConfigVersionInfo {
 			Version:          2,
 			Name:             "Name/Type Separation",
 			MinAgentVersion:  "0.1.65",
-			MaxAgentVersion:  "", // Current version, no max
+			MaxAgentVersion:  "",
 			Description:      "Probes have separate 'name' (display) and 'type' (technical ID) fields",
+			MigrationFromPrv: true,
+		},
+		{
+			Version:          3,
+			Name:             "Secret References",
+			MinAgentVersion:  "0.5.0",
+			MaxAgentVersion:  "", // Current version, no max
+			Description:      "Inline secrets sealed into the OS-native store, referenced as ${secret:...}",
 			MigrationFromPrv: true,
 		},
 	}
