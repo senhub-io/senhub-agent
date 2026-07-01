@@ -115,9 +115,10 @@ Locally (requires the `wix` dotnet tool and a staged binary):
 
 ```bash
 make build-windows                                  # -> dist/windows-amd64/senhub-agent.exe
-dotnet tool install --global wix --version '4.*'
-wix extension add -g WixToolset.Util.wixext
-wix extension add -g WixToolset.UI.wixext
+dotnet tool install --global wix --version 4.0.6
+# Pin extensions to the SAME version as the tool (unpinned pulls 7.x).
+wix extension add -g WixToolset.Util.wixext/4.0.6
+wix extension add -g WixToolset.UI.wixext/4.0.6
 make package-windows-msi                            # -> dist/senhub-agent-<version>-amd64.msi
 ```
 
