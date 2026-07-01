@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"sync"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -29,6 +30,9 @@ type memcachedEntitySource struct {
 
 	host string
 	port int64
+	// hostID resolves the agent host id for a local-db runs_on edge.
+	// nil → dbcommon.HostID.
+	hostID func() string
 }
 
 // newMemcachedEntitySource constructs the entity source, pinning the
@@ -44,6 +48,7 @@ func newMemcachedEntitySource(host string, port int, instanceName string) *memca
 		instanceID: id,
 		host:       host,
 		port:       int64(port),
+		hostID:     dbcommon.HostID,
 	}
 }
 
@@ -81,10 +86,11 @@ func (s *memcachedEntitySource) Observe() (entity.Observation, bool) {
 		return entity.Observation{}, true
 	}
 
+	dbID := map[string]any{"db.instance.id": s.instanceID}
 	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "db",
-			ID:         map[string]any{"db.instance.id": s.instanceID},
+			ID:         dbID,
 			Attributes: s.attrs,
 		}},
 	}
@@ -97,6 +103,12 @@ func (s *memcachedEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   "db",
 			ToID:     map[string]any{"db.instance.id": s.instanceID},
 		})
+	}
+
+	// runs_on edge: db → host when the db is on the agent's own host (loopback).
+	// The collapse guard suppresses it for a host:port-derived id (no tech id).
+	if rel, ok := dbcommon.LocalHostRunsOn(dbID, s.host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

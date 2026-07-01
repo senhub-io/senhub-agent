@@ -117,6 +117,36 @@ func TestEntitySource_MonitorsEdgePresent(t *testing.T) {
 	}
 }
 
+// TestEntitySource_LocalDBRunsOnHost: a loopback-reachable influxdb with a
+// host-unique identity (operator instance_name) is anchored to the host with
+// runs_on (enterprise#36). A host:port identity embeds the loopback literal —
+// identical on every host — so the collapse guard refuses the runs_on. A remote
+// db is never anchored.
+func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
+	agentstate.SetAgentInstanceID("")
+	runsOn := func(endpoint, instanceName string) bool {
+		src := makeSource(endpoint, instanceName)
+		src.hostID = func() string { return "h-1" }
+		src.setReachable(true, "")
+		obs, _ := src.Observe()
+		for _, r := range obs.Relations {
+			if r.Type == "runs_on" && r.FromType == "db" && r.ToID["host.id"] == "h-1" {
+				return true
+			}
+		}
+		return false
+	}
+	if !runsOn("http://127.0.0.1:8086", "prod-influx") {
+		t.Error("loopback db with a host-unique id must emit runs_on→host")
+	}
+	if runsOn("http://127.0.0.1:8086", "") {
+		t.Error("host:port identity must NOT emit runs_on on loopback (collapse guard)")
+	}
+	if runsOn("http://10.0.0.5:8086", "") {
+		t.Error("remote db must NOT emit runs_on→host")
+	}
+}
+
 // TestEntitySource_MonitorsEdgeAbsentWhenNoAgentID verifies that when the
 // agent instance id is not set, no monitors relation is emitted (an
 // unresolvable From endpoint must never reach the consumer).

@@ -9,6 +9,7 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -370,14 +371,18 @@ func TestEntitySource_MonitorsEdge_Present(t *testing.T) {
 	agentstate.SetAgentInstanceID("agent-001")
 	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
 
+	// Remote endpoint (10.0.0.5) → no runs_on, so the monitors edge is the only
+	// relation; assert on the monitors edge by type, not the bare count.
 	src := newEntitySource("my-jenkins", "10.0.0.5", "8080", alwaysFailFetch, stubHostID("h"))
 	obs, _ := src.Observe()
-	if len(obs.Relations) != 1 {
-		t.Fatalf("got %d relations, want 1", len(obs.Relations))
+	var r *entity.Relation
+	for i := range obs.Relations {
+		if obs.Relations[i].Type == "monitors" {
+			r = &obs.Relations[i]
+		}
 	}
-	r := obs.Relations[0]
-	if r.Type != "monitors" {
-		t.Errorf("relation type = %q, want monitors", r.Type)
+	if r == nil {
+		t.Fatalf("no monitors relation; got %+v", obs.Relations)
 	}
 	if got := r.FromID[idKeyServiceInstanceID]; got != "agent-001" {
 		t.Errorf("From id = %v, want agent-001", got)
@@ -390,10 +395,47 @@ func TestEntitySource_MonitorsEdge_Present(t *testing.T) {
 func TestEntitySource_MonitorsEdge_AbsentWhenNoAgentID(t *testing.T) {
 	agentstate.SetAgentInstanceID("")
 
+	// Remote endpoint and no agent id → no monitors and no runs_on edge.
 	src := newEntitySource("my-jenkins", "10.0.0.5", "8080", alwaysFailFetch, stubHostID("h"))
 	obs, _ := src.Observe()
-	if len(obs.Relations) != 0 {
-		t.Errorf("got %d relations, want 0 (no agent id)", len(obs.Relations))
+	for _, r := range obs.Relations {
+		t.Errorf("no relation expected (no agent id, remote endpoint); got %s", r.Type)
+	}
+}
+
+// TestEntitySource_LocalRunsOn: a loopback-monitored Jenkins emits a runs_on→
+// host edge so it does not float. The id is host-scoped ("jenkins@<hid>") or a
+// tech fingerprint — it never embeds the address — so loopback passes the
+// collapse guard. A remote endpoint emits no runs_on.
+func TestEntitySource_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("")
+
+	runsOn := func(serverAddr string) *entity.Relation {
+		src := newEntitySource("", serverAddr, "8080", alwaysFailFetch, stubHostID("H"))
+		obs, _ := src.Observe()
+		for i := range obs.Relations {
+			if obs.Relations[i].Type == "runs_on" {
+				return &obs.Relations[i]
+			}
+		}
+		return nil
+	}
+
+	r := runsOn("localhost")
+	if r == nil {
+		t.Fatal("loopback Jenkins: expected a runs_on→host edge")
+	}
+	if r.ToType != "host" || r.ToID["host.id"] != "H" {
+		t.Errorf("runs_on target = %s/%v, want host/H", r.ToType, r.ToID)
+	}
+	if r.FromID[idKeyServiceInstanceID] != "jenkins@H" {
+		t.Errorf("runs_on source = %v, want jenkins@H", r.FromID)
+	}
+	if runsOn("127.0.0.1") == nil {
+		t.Error("loopback IP Jenkins: expected a runs_on→host edge")
+	}
+	if runsOn("10.0.0.5") != nil {
+		t.Error("remote Jenkins must NOT emit runs_on→host")
 	}
 }
 

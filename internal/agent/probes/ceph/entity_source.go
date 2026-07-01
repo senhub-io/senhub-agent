@@ -135,8 +135,10 @@ func (s *cephEntitySource) pin(id string) {
 	attrs := map[string]any{
 		"service.name": "ceph",
 	}
+	var serverAddr string
 	if s.endpoint != "" {
 		host, port := splitHostPort(s.endpoint)
+		serverAddr = host
 		if host != "" {
 			attrs["server.address"] = host
 		}
@@ -145,11 +147,12 @@ func (s *cephEntitySource) pin(id string) {
 		}
 	}
 
+	svcID := map[string]any{idKeyServiceInstanceID: id}
 	obs := entity.Observation{
 		Entities: []entity.Entity{
 			{
 				Type:       entityTypeServiceInstance,
-				ID:         map[string]any{idKeyServiceInstanceID: id},
+				ID:         svcID,
 				Attributes: attrs,
 			},
 		},
@@ -163,8 +166,17 @@ func (s *cephEntitySource) pin(id string) {
 			FromType: entityTypeServiceInstance,
 			FromID:   map[string]any{idKeyServiceInstanceID: agentID},
 			ToType:   entityTypeServiceInstance,
-			ToID:     map[string]any{idKeyServiceInstanceID: id},
+			ToID:     svcID,
 		})
+	}
+
+	// runs_on edge: cluster → host when the endpoint is local (loopback), so a
+	// locally-monitored Ceph hangs off the host it runs on instead of floating.
+	// The id is tech ("ceph:<fsid>") or host-scoped ("ceph@<hid>") — it never
+	// embeds the address — so loopback passes the collapse guard; a remote
+	// endpoint yields no edge.
+	if rel, ok := entity.LocalRunsOn(entityTypeServiceInstance, svcID, serverAddr, s.getHostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	s.obs = obs
