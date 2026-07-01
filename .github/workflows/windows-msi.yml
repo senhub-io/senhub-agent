@@ -167,14 +167,14 @@ jobs:
 
       - name: Install WiX Toolset (dotnet tool)
         env:
-          WIX_VERSION: "4.0.6"
+          WIX_VERSION: "5.0.2"
         run: |
           dotnet tool install --global wix --version "$WIX_VERSION"
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Add WiX extensions (Util + UI)
         env:
-          WIX_VERSION: "4.0.6"
+          WIX_VERSION: "5.0.2"
         run: |
           export PATH="$HOME/.dotnet/tools:$PATH"
           # Pin extensions to the SAME version as the tool — an unpinned
