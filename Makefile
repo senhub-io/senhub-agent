@@ -145,6 +145,7 @@ package-windows-msi: build-windows ## Build Windows MSI (requires WiX v4 `wix` t
 		-d BinDir="$(WINDOWS_AMD64_DIR)" \
 		-arch x64 \
 		-ext WixToolset.Util.wixext \
+		-ext WixToolset.UI.wixext \
 		-out "$(DIST_DIR)/$(EXECUTABLE)-$(VERSION)-amd64.msi"
 	@echo "$(GREEN)✅ Windows MSI created: $(DIST_DIR)/$(EXECUTABLE)-$(VERSION)-amd64.msi$(NC)"
 
