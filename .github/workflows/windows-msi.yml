@@ -170,10 +170,11 @@ jobs:
           dotnet tool install --global wix --version 4.*
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
-      - name: Add WiX Util extension
+      - name: Add WiX extensions (Util + UI)
         run: |
           export PATH="$HOME/.dotnet/tools:$PATH"
           wix extension add -g WixToolset.Util.wixext
+          wix extension add -g WixToolset.UI.wixext
 
       - name: Build MSI
         env:
@@ -186,6 +187,7 @@ jobs:
             -d BinDir="dist/windows-amd64" \
             -arch x64 \
             -ext WixToolset.Util.wixext \
+            -ext WixToolset.UI.wixext \
             -out "dist/senhub-agent-${VERSION}-amd64.msi"
           ls -la dist/*.msi
 

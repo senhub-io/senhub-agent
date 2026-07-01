@@ -27,7 +27,8 @@
   See docs/deployment/windows-msi.md for GPO / SCCM / Intune deployment.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
   <!--
     The UpgradeCode MUST remain stable across all versions so that
@@ -73,6 +74,8 @@
     -->
     <Property Id="LICENSE_KEY" Value="" Secure="yes" />
     <Property Id="TAGS" Value="" />
+    <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
+    <Property Id="OTLP_ENDPOINT" Value="" />
 
     <!--
       Seed %ProgramData%\SenHub\agent.yaml at install time, but ONLY when
@@ -88,7 +91,7 @@
       docs/deployment/windows-msi.md, "Config seeding").
     -->
     <SetProperty Id="SeedConfig"
-                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot;"
+                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot;"
                  Before="SeedConfig"
                  Sequence="execute"
                  Condition="NOT Installed" />
@@ -108,6 +111,21 @@
     <Feature Id="Main" Title="SenHub Agent" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
     </Feature>
+
+    <!-- ============================================================ -->
+    <!-- Guided installer UI.                                          -->
+    <!-- WixUI_InstallDir gives the standard wizard flow: Welcome →    -->
+    <!-- EULA → install directory → ready → progress → finish. A       -->
+    <!-- silent install (/qn) skips the UI entirely and drives the     -->
+    <!-- same properties from the command line / transform.            -->
+    <!--                                                               -->
+    <!-- Entering LICENSE_KEY / TAGS / OTLP_ENDPOINT inside the wizard  -->
+    <!-- (a custom dialog) is a follow-up validated interactively on   -->
+    <!-- Windows; today those are set via properties (silent install), -->
+    <!-- and a guided install lands the offline default.               -->
+    <!-- ============================================================ -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="packaging/windows/license.rtf" />
 
     <!-- ============================================================ -->
     <!-- Install layout.                                              -->
