@@ -13,27 +13,55 @@ import "regexp"
 // `client_secret`, `db_password`, `pub400_user`, `auth_login` …
 // The case-insensitivity is necessary because YAML keys are written
 // in mixed conventions (snake_case, camelCase) across the probe set.
-var logSensitiveKeyPattern = regexp.MustCompile(`(?i)(key|token|password|secret|user|login|email|credential)`)
+var logSensitiveKeyPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|user|login|email|credential|community)`)
 
-// SanitizeParamsForLog returns a shallow copy of params with any key
-// matching logSensitiveKeyPattern replaced by "***". The original map
-// is never mutated — the caller's runtime config stays intact, only
-// the log-bound view is masked.
+// SanitizeParamsForLog returns a deep copy of params with the value of any key
+// matching logSensitiveKeyPattern replaced by "***". The original map is never
+// mutated — the caller's runtime config stays intact, only the log-bound view
+// is masked.
 //
-// Nested maps are not recursed into today: probe params are flat by
-// convention in our schema. Add recursion only when a real probe
-// emerges that nests credentials.
+// It RECURSES into nested maps and slices, so credentials that live below the
+// top level — citrix `director.auth.password`, snmp `v3.users[].auth_password` —
+// are masked too. A sensitive key masks its entire value, even a nested object.
 func SanitizeParamsForLog(params map[string]interface{}) map[string]interface{} {
 	if params == nil {
 		return nil
 	}
 	out := make(map[string]interface{}, len(params))
 	for k, v := range params {
-		if logSensitiveKeyPattern.MatchString(k) {
-			out[k] = "***"
-		} else {
-			out[k] = v
-		}
+		out[k] = sanitizeValueForLog(k, v)
 	}
 	return out
+}
+
+// sanitizeValueForLog masks v when key is sensitive, otherwise recurses into
+// composite values. For slice elements the key is empty (an index carries no
+// meaning) so each element is judged by its own inner keys.
+func sanitizeValueForLog(key string, v interface{}) interface{} {
+	if key != "" && logSensitiveKeyPattern.MatchString(key) {
+		return "***"
+	}
+	switch t := v.(type) {
+	case map[string]interface{}:
+		m := make(map[string]interface{}, len(t))
+		for k, vv := range t {
+			m[k] = sanitizeValueForLog(k, vv)
+		}
+		return m
+	case map[interface{}]interface{}:
+		m := make(map[interface{}]interface{}, len(t))
+		for k, vv := range t {
+			ks, _ := k.(string)
+			m[k] = sanitizeValueForLog(ks, vv)
+		}
+		return m
+	case []interface{}:
+		s := make([]interface{}, len(t))
+		for i, vv := range t {
+			s[i] = sanitizeValueForLog("", vv)
+		}
+		return s
+	default:
+		return v
+	}
 }
