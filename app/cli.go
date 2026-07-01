@@ -271,6 +271,15 @@ func Main() {
 			migrateConfig(configPath)
 			return
 		}
+		if len(os.Args) > 2 && os.Args[2] == "init" {
+			// agent config init [--config-path <path>] [--license <jwt>]
+			//                    [--tags k=v,k2=v2]
+			// Create the default offline configuration for an unattended
+			// install (MSI silent install), then apply the provisionable
+			// fields. Idempotent: leaves an existing config untouched.
+			initConfig(os.Args[3:])
+			return
+		}
 		showHelp()
 		return
 	case "license":

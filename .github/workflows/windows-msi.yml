@@ -1,24 +1,32 @@
 name: Windows MSI
 
-# Builds a signed Windows MSI from the existing Windows binary.
+# Builds a signed Windows MSI from the Windows binary — dev/test only.
 #
-# Triggers:
-#   - manually (workflow_dispatch), for ad-hoc / test builds
-#   - on a production tag (X.Y.Z, no suffix), so a signed MSI is
-#     attached to the GitHub release. The ZIP release itself is built
-#     by the ENTERPRISE repo's master-release workflow, which pushes
-#     the mirror tag here (#283) — this workflow only adds the MSI.
+# Trigger: manual (workflow_dispatch) for ad-hoc / layout / install
+# testing. The RELEASE MSI is built, signed and published by the
+# ENTERPRISE repo's master-release workflow (build_msi job), which
+# packages the full edition and minisigns it for the update channel.
+# This workflow does NOT run on tags, so the two never attach a
+# conflicting MSI to the same release.
 #
-# Signing requires the Sensor Factory code-signing certificate. Until
-# that certificate is provisioned, the `sign` step is GUARDED behind the
-# presence of the WINDOWS_CODESIGN_PFX_BASE64 secret: without it the job
-# still produces an UNSIGNED MSI (useful for layout/install testing) and
-# logs a clear warning. A signed MSI is required for SmartScreen-clean
-# GPO/SCCM/Intune deployment (see issue #153 acceptance criteria).
+# Signing uses jsign (Apache-2.0, github.com/ebourg/jsign): it signs the
+# agent .exe BEFORE it is packaged, then the .msi, plus any shipped
+# .ps1, with one tool across every key store. Post-2023 the key must
+# live on an HSM, so the certificate is a European CA (Certum, eIDAS)
+# held on a cloud/HSM store and addressed through jsign's --storetype:
 #
-# Cross-platform signing note: we sign on a Linux runner with
-# osslsigncode so no Windows runner / signtool is needed. jsign is the
-# Java alternative if the cert lives in an HSM / Azure Key Vault.
+#   PKCS11        Certum SimplySign cloud — needs the Certum PKCS#11
+#                 module + an OPEN SimplySign session (2h TOTP window),
+#                 so it runs on a SELF-HOSTED runner, not ubuntu-latest.
+#   CRYPTOCERTUM  Certum CryptoCertum card on a self-hosted runner.
+#   AZUREKEYVAULT certificate mirrored to Azure Key Vault — fully
+#                 unattended, works on ubuntu-latest.
+#   PKCS12        legacy .pfx (pre-2023, being retired) — testing only.
+#
+# Until the Certum certificate is provisioned the CODESIGN_STORETYPE
+# secret is unset, so the job still produces UNSIGNED artifacts (useful
+# for layout/install testing) and logs a clear warning (issue #153).
+# A signed MSI is required for SmartScreen-clean GPO/SCCM/Intune deploy.
 
 on:
   workflow_dispatch:
@@ -27,18 +35,39 @@ on:
         description: "Version to stamp into the MSI (e.g. 0.2.0). Defaults to latest tag."
         required: false
         default: ""
-  push:
-    tags:
-      - "*.*.*"          # production tags only...
-      - "!*.*.*-*"       # ...the bare glob also matches 0.2.1-beta, so
-                         # suffixed tags are excluded explicitly (#283)
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-msi:
-    runs-on: ubuntu-latest
+    # WiX only supports Windows: on Linux it mis-validates Directory/@Name
+    # (wixtoolset/issues#7154) and warns "behavior undefined". Build on a
+    # Windows runner. jsign (Java) signs fine here too. This job only runs
+    # on production tags / manual dispatch, so the 2x runner cost is
+    # negligible. Bash steps run under git-bash via the job default below.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      # --- Code-signing configuration (all optional) -----------------
+      # Unset CODESIGN_STORETYPE => UNSIGNED artifacts + warning.
+      # These map 1:1 onto jsign's arguments and are storetype-agnostic:
+      #   PKCS11        KEYSTORE=<pkcs11 .cfg>  STOREPASS=<session PIN>  ALIAS=<cert label>
+      #   AZUREKEYVAULT KEYSTORE=<vault URL>     STOREPASS=<access token> ALIAS=<cert name>
+      #   PKCS12        KEYSTORE=<path .pfx>     STOREPASS=<pfx password>
+      CODESIGN_STORETYPE: ${{ secrets.CODESIGN_STORETYPE }}
+      CODESIGN_KEYSTORE:  ${{ secrets.CODESIGN_KEYSTORE }}
+      CODESIGN_STOREPASS: ${{ secrets.CODESIGN_STOREPASS }}
+      CODESIGN_ALIAS:     ${{ secrets.CODESIGN_ALIAS }}
+      CODESIGN_KEYPASS:   ${{ secrets.CODESIGN_KEYPASS }}
+      # Certum's RFC3161 timestamp authority (overridable via repo var).
+      CODESIGN_TSA:       ${{ vars.CODESIGN_TSA || 'http://time.certum.pl' }}
+      # Pinned jsign release (Maven Central coordinates are immutable);
+      # optionally hard-pinned by digest via the JSIGN_SHA256 repo var.
+      JSIGN_VERSION:      "7.4"
+      JSIGN_SHA256:       ${{ vars.JSIGN_SHA256 }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -89,15 +118,75 @@ jobs:
             go build -trimpath -ldflags="$LDFLAGS" \
             -o dist/windows-amd64/senhub-agent.exe ./cmd/agent
 
-      - name: Install WiX Toolset (v4, dotnet tool)
+      - name: Configure signing
+        id: sign
         run: |
-          dotnet tool install --global wix --version 4.*
+          if [ -z "$CODESIGN_STORETYPE" ]; then
+            echo "::warning::CODESIGN_STORETYPE not set — producing UNSIGNED artifacts."
+            echo "::warning::A signed MSI is required for SmartScreen-clean GPO/SCCM/Intune deployment (issue #153)."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Signing enabled via jsign storetype: $CODESIGN_STORETYPE"
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Java (jsign runtime)
+        if: steps.sign.outputs.enabled == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install jsign
+        if: steps.sign.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          # Download into the workspace root (a relative path all later
+          # steps share) so no absolute-path translation is needed under
+          # git-bash on the Windows runner.
+          JAR="jsign.jar"
+          URL="https://repo1.maven.org/maven2/net/jsign/jsign/${JSIGN_VERSION}/jsign-${JSIGN_VERSION}.jar"
+          curl -fsSL "$URL" -o "$JAR"
+          if [ -n "${JSIGN_SHA256:-}" ]; then
+            echo "${JSIGN_SHA256}  ${JAR}" | sha256sum -c -
+          else
+            echo "::warning::JSIGN_SHA256 repo var not set — jsign pinned by version only. Set it to hard-pin the digest."
+          fi
+          echo "JSIGN=java -jar jsign.jar" >> "$GITHUB_ENV"
+          java -jar "$JAR" --version || true
+
+      - name: Sign agent binary (jsign)
+        if: steps.sign.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          # Sign the .exe BEFORE WiX packages it, so the service binary
+          # itself is signed, not only the installer.
+          $JSIGN \
+            --storetype "$CODESIGN_STORETYPE" \
+            ${CODESIGN_KEYSTORE:+--keystore "$CODESIGN_KEYSTORE"} \
+            ${CODESIGN_STOREPASS:+--storepass "$CODESIGN_STOREPASS"} \
+            ${CODESIGN_ALIAS:+--alias "$CODESIGN_ALIAS"} \
+            ${CODESIGN_KEYPASS:+--keypass "$CODESIGN_KEYPASS"} \
+            --tsaurl "$CODESIGN_TSA" --tsmode rfc3161 \
+            --name "SenHub Agent" --url "https://senhub.io" \
+            dist/windows-amd64/senhub-agent.exe
+
+      - name: Install WiX Toolset (dotnet tool)
+        env:
+          WIX_VERSION: "5.0.2"
+        run: |
+          dotnet tool install --global wix --version "$WIX_VERSION"
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
-      - name: Add WiX Util extension
+      - name: Add WiX extensions (Util + UI)
+        env:
+          WIX_VERSION: "5.0.2"
         run: |
           export PATH="$HOME/.dotnet/tools:$PATH"
-          wix extension add -g WixToolset.Util.wixext
+          # Pin extensions to the SAME version as the tool — an unpinned
+          # `extension add` pulls the latest (7.x), which a 4.x wix cannot load.
+          wix extension add -g "WixToolset.Util.wixext/$WIX_VERSION"
+          wix extension add -g "WixToolset.UI.wixext/$WIX_VERSION"
 
       - name: Build MSI
         env:
@@ -110,49 +199,50 @@ jobs:
             -d BinDir="dist/windows-amd64" \
             -arch x64 \
             -ext WixToolset.Util.wixext \
+            -ext WixToolset.UI.wixext \
             -out "dist/senhub-agent-${VERSION}-amd64.msi"
           ls -la dist/*.msi
 
-      - name: Sign MSI (osslsigncode)
-        id: sign
+      - name: Sign MSI (jsign)
+        if: steps.sign.outputs.enabled == 'true'
         env:
-          PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
-          PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
+          set -euo pipefail
           MSI="dist/senhub-agent-${VERSION}-amd64.msi"
-          if [ -z "$PFX_BASE64" ]; then
-            echo "::warning::WINDOWS_CODESIGN_PFX_BASE64 not set — producing UNSIGNED MSI."
-            echo "::warning::A signed MSI is required for SmartScreen-clean GPO/SCCM/Intune deployment (issue #153)."
-            echo "signed=false" >> "$GITHUB_OUTPUT"
+          $JSIGN \
+            --storetype "$CODESIGN_STORETYPE" \
+            ${CODESIGN_KEYSTORE:+--keystore "$CODESIGN_KEYSTORE"} \
+            ${CODESIGN_STOREPASS:+--storepass "$CODESIGN_STOREPASS"} \
+            ${CODESIGN_ALIAS:+--alias "$CODESIGN_ALIAS"} \
+            ${CODESIGN_KEYPASS:+--keypass "$CODESIGN_KEYPASS"} \
+            --tsaurl "$CODESIGN_TSA" --tsmode rfc3161 \
+            --name "SenHub Agent ${VERSION}" --url "https://senhub.io" \
+            "$MSI"
+
+      - name: Sign PowerShell install scripts (jsign, if any)
+        if: steps.sign.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          scripts=(packaging/windows/*.ps1)
+          if [ ${#scripts[@]} -eq 0 ]; then
+            echo "No .ps1 install scripts to sign."
             exit 0
           fi
-          sudo apt-get update && sudo apt-get install -y osslsigncode
-          echo "$PFX_BASE64" | base64 -d > /tmp/codesign.pfx
-          # Dual SHA-1 + SHA-256 timestamp for broad Windows compatibility.
-          osslsigncode sign \
-            -pkcs12 /tmp/codesign.pfx \
-            -pass "$PFX_PASSWORD" \
-            -n "SenHub Agent" \
-            -i "https://senhub.io" \
-            -h sha256 \
-            -ts "http://timestamp.digicert.com" \
-            -in "$MSI" \
-            -out "${MSI}.signed"
-          mv "${MSI}.signed" "$MSI"
-          osslsigncode verify "$MSI" || true
-          rm -f /tmp/codesign.pfx
-          echo "signed=true" >> "$GITHUB_OUTPUT"
+          for ps1 in "${scripts[@]}"; do
+            $JSIGN \
+              --storetype "$CODESIGN_STORETYPE" \
+              ${CODESIGN_KEYSTORE:+--keystore "$CODESIGN_KEYSTORE"} \
+              ${CODESIGN_STOREPASS:+--storepass "$CODESIGN_STOREPASS"} \
+              ${CODESIGN_ALIAS:+--alias "$CODESIGN_ALIAS"} \
+              ${CODESIGN_KEYPASS:+--keypass "$CODESIGN_KEYPASS"} \
+              --tsaurl "$CODESIGN_TSA" --tsmode rfc3161 \
+              "$ps1"
+          done
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v5
         with:
           name: senhub-agent-msi-${{ steps.ver.outputs.version }}
           path: dist/*.msi
-
-      - name: Attach MSI to release (tag builds only)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.ver.outputs.version }}
-          files: dist/*.msi
