@@ -46,7 +46,15 @@ permissions:
 
 jobs:
   build-msi:
-    runs-on: ubuntu-latest
+    # WiX only supports Windows: on Linux it mis-validates Directory/@Name
+    # (wixtoolset/issues#7154) and warns "behavior undefined". Build on a
+    # Windows runner. jsign (Java) signs fine here too. This job only runs
+    # on production tags / manual dispatch, so the 2x runner cost is
+    # negligible. Bash steps run under git-bash via the job default below.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     env:
       # --- Code-signing configuration (all optional) -----------------
       # Unset CODESIGN_STORETYPE => UNSIGNED artifacts + warning.
@@ -138,15 +146,18 @@ jobs:
         if: steps.sign.outputs.enabled == 'true'
         run: |
           set -euo pipefail
-          JAR="/opt/jsign.jar"
+          # Download into the workspace root (a relative path all later
+          # steps share) so no absolute-path translation is needed under
+          # git-bash on the Windows runner.
+          JAR="jsign.jar"
           URL="https://repo1.maven.org/maven2/net/jsign/jsign/${JSIGN_VERSION}/jsign-${JSIGN_VERSION}.jar"
-          sudo curl -fsSL "$URL" -o "$JAR"
+          curl -fsSL "$URL" -o "$JAR"
           if [ -n "${JSIGN_SHA256:-}" ]; then
             echo "${JSIGN_SHA256}  ${JAR}" | sha256sum -c -
           else
             echo "::warning::JSIGN_SHA256 repo var not set — jsign pinned by version only. Set it to hard-pin the digest."
           fi
-          echo "JSIGN=java -jar $JAR" >> "$GITHUB_ENV"
+          echo "JSIGN=java -jar jsign.jar" >> "$GITHUB_ENV"
           java -jar "$JAR" --version || true
 
       - name: Sign agent binary (jsign)
