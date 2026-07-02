@@ -27,6 +27,10 @@ var (
 	DEFAULT_RETENTION_PERIOD = 2 * time.Minute
 )
 
+// defaultPushTimeout bounds every outbound PRTG push (all retries + body
+// read) so a hung endpoint cannot block the sync goroutine forever.
+const defaultPushTimeout = 30 * time.Second
+
 // Buffer interface for local use to avoid import cycles
 type Buffer interface {
 	// Append appends data to the buffer
@@ -123,6 +127,7 @@ func NewSyncStrategyPrtg(
 		// retry up to 3 times
 		httpretry.WithMaxRetryCount(3),
 	)
+	http.Timeout = defaultPushTimeout
 
 	strategy := SyncStrategyPrtg{
 		buffer:      NewBuffer(),

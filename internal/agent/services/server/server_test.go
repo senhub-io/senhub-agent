@@ -24,6 +24,23 @@ func TestNewServer(t *testing.T) {
 	// Type check is implicit: NewServer returns Server interface
 }
 
+// TestNewServer_ClientHasBoundedTimeout pins the outbound HTTP client to a
+// non-zero timeout. Without it a hung/slow intake stalls the push goroutine
+// forever, silently killing the senhub and event flows that share this client.
+func TestNewServer_ClientHasBoundedTimeout(t *testing.T) {
+	mockArgs := &cliArgs.ParsedArgs{}
+	baseLogger := logger.NewLogger(mockArgs)
+
+	srv := NewServer("test-key", "https://example.com", baseLogger).(*server)
+
+	if srv.http.Timeout <= 0 {
+		t.Fatalf("outbound HTTP client has no timeout (got %v); a hung remote would block indefinitely", srv.http.Timeout)
+	}
+	if srv.http.Timeout != defaultRequestTimeout {
+		t.Errorf("expected client timeout %v, got %v", defaultRequestTimeout, srv.http.Timeout)
+	}
+}
+
 func TestServer_NewRequest(t *testing.T) {
 	mockArgs := &cliArgs.ParsedArgs{}
 	baseLogger := logger.NewLogger(mockArgs)
