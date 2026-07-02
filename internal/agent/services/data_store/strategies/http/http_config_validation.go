@@ -3,11 +3,35 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 )
+
+// maxConfigRequestBytes bounds the request body the /config/{validate,preview,
+// test} handlers will read. A probe configuration is a few KB; 1 MiB is ample
+// headroom while capping the memory an oversized or malicious body can force
+// the JSON decoder to buffer.
+const maxConfigRequestBytes = 1 << 20
+
+// decodeConfigRequest reads and decodes a UniversalConfigRequest under a body
+// size limit. It writes the appropriate error response and returns false on
+// failure: 413 when the body exceeds the limit, 400 for malformed JSON.
+func decodeConfigRequest(w http.ResponseWriter, r *http.Request, req *UniversalConfigRequest) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxConfigRequestBytes)
+	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return false
+		}
+		http.Error(w, "Invalid JSON request body", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
 
 // Universal Configuration Validation Methods
 
@@ -500,14 +524,9 @@ func (cm *ConfigurationManager) generateMockPreviewMetrics(probeName string) []P
 func (cm *ConfigurationManager) HandleUniversalConfigValidation(w http.ResponseWriter, r *http.Request) {
 	cm.logger.Debug().Msg("Handling universal configuration validation request")
 
-	// Parse request body
+	// Parse request body under a size limit
 	var req UniversalConfigRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		cm.logger.Error().
-			Err(err).
-			Msg("Failed to parse universal config validation request")
-
-		http.Error(w, "Invalid JSON request body", http.StatusBadRequest)
+	if !decodeConfigRequest(w, r, &req) {
 		return
 	}
 
@@ -549,14 +568,9 @@ func (cm *ConfigurationManager) HandleUniversalConfigValidation(w http.ResponseW
 func (cm *ConfigurationManager) HandleUniversalConfigPreview(w http.ResponseWriter, r *http.Request) {
 	cm.logger.Debug().Msg("Handling universal configuration preview request")
 
-	// Parse request body
+	// Parse request body under a size limit
 	var req UniversalConfigRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		cm.logger.Error().
-			Err(err).
-			Msg("Failed to parse universal config preview request")
-
-		http.Error(w, "Invalid JSON request body", http.StatusBadRequest)
+	if !decodeConfigRequest(w, r, &req) {
 		return
 	}
 
@@ -606,14 +620,9 @@ func (cm *ConfigurationManager) HandleUniversalConfigPreview(w http.ResponseWrit
 func (cm *ConfigurationManager) HandleUniversalConfigTest(w http.ResponseWriter, r *http.Request) {
 	cm.logger.Debug().Msg("Handling universal configuration test request")
 
-	// Parse request body
+	// Parse request body under a size limit
 	var req UniversalConfigRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		cm.logger.Error().
-			Err(err).
-			Msg("Failed to parse universal config test request")
-
-		http.Error(w, "Invalid JSON request body", http.StatusBadRequest)
+	if !decodeConfigRequest(w, r, &req) {
 		return
 	}
 

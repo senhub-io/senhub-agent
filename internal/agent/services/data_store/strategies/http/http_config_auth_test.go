@@ -88,3 +88,31 @@ func TestUniversalConfigHandlers_RequireAuth(t *testing.T) {
 		})
 	}
 }
+
+// TestUniversalConfigHandlers_BodyTooLarge pins the DoS bound: an authenticated
+// request whose body exceeds maxConfigRequestBytes gets 413, not an unbounded
+// buffered decode. The pre-fix handlers decode without a limit and return 200.
+func TestUniversalConfigHandlers_BodyTooLarge(t *testing.T) {
+	const agentKey = "test-agent-key"
+	// Must exceed maxConfigRequestBytes (1 MiB). Kept as a literal so this
+	// regression test still compiles against the pre-fix handlers.
+	oversized := `{"probe":"` + strings.Repeat("a", (1<<20)+1024) + `"}`
+
+	for _, h := range universalConfigHandlers() {
+		h := h
+		t.Run(h.name, func(t *testing.T) {
+			strategy := newConfigAuthTestStrategy(agentKey)
+			req := httptest.NewRequest(http.MethodPost,
+				fmt.Sprintf("/api/%s/%s", agentKey, h.path),
+				strings.NewReader(oversized))
+			req = mux.SetURLVars(req, map[string]string{"agentkey": agentKey})
+			w := httptest.NewRecorder()
+
+			h.fn(strategy, w, req)
+
+			if w.Code != http.StatusRequestEntityTooLarge {
+				t.Errorf("%s oversized body: got status %d, want 413", h.name, w.Code)
+			}
+		})
+	}
+}
