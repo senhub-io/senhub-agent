@@ -89,28 +89,12 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 		}
 	}
 
-	// Load configuration file
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		log.Fatalf("Failed to read config file %s: %v", configPath, err)
-	}
-
-	var config configuration.LocalConfigurationData
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		log.Fatalf("Failed to parse config file: %v", err)
-	}
-
-	// Update license field
-	config.Agent.License = args.LicenseCode
-
-	// Write back to file
-	updatedData, err := yaml.Marshal(&config)
-	if err != nil {
-		log.Fatalf("Failed to marshal config: %v", err)
-	}
-
-	if err := os.WriteFile(configPath, updatedData, 0600); err != nil {
-		log.Fatalf("Failed to write config file: %v", err)
+	// Persist the license with a node-level edit that preserves the file's
+	// layout. A full unmarshal/marshal of LocalConfigurationData would re-emit
+	// empty probes:/storage: blocks and flip a multi-file install back to legacy
+	// monolithic, silently dropping probes.d/ + strategies.d/.
+	if err := configuration.SetLicenseField(configPath, args.LicenseCode); err != nil {
+		log.Fatalf("Failed to write license to config: %v", err)
 	}
 
 	fmt.Printf("\n✅ License activated and saved to: %s\n", configPath)
@@ -207,28 +191,10 @@ func handleLicenseRemove(args *cliArgs.LicenseRemoveArgs) {
 		}
 	}
 
-	// Load configuration file
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		log.Fatalf("Failed to read config file %s: %v", configPath, err)
-	}
-
-	var config configuration.LocalConfigurationData
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		log.Fatalf("Failed to parse config file: %v", err)
-	}
-
-	// Remove license
-	config.Agent.License = ""
-
-	// Write back to file
-	updatedData, err := yaml.Marshal(&config)
-	if err != nil {
-		log.Fatalf("Failed to marshal config: %v", err)
-	}
-
-	if err := os.WriteFile(configPath, updatedData, 0600); err != nil {
-		log.Fatalf("Failed to write config file: %v", err)
+	// Clear the license with the same node-level edit as activate, so removing a
+	// license on a multi-file install does not corrupt the layout.
+	if err := configuration.SetLicenseField(configPath, ""); err != nil {
+		log.Fatalf("Failed to write license to config: %v", err)
 	}
 
 	fmt.Printf("✅ License removed from: %s\n", configPath)
