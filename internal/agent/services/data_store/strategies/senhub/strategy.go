@@ -3,7 +3,9 @@ package senhub
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -243,6 +245,20 @@ func (s *SyncStrategySenhub) doSync() error {
 
 	s.logger.Debug().Any("data", transformedData).Msg("synchronizing data")
 	if err := s.doSyncData(transformedData); err != nil {
+		var permErr *permanentClientError
+		if errors.As(err, &permErr) {
+			// A permanent 4xx (e.g. 400 malformed, 422 unprocessable)
+			// will never be accepted no matter how often we resend it.
+			// Re-prepending it via AbortSync would pin the batch at the
+			// head of the buffer forever, so the buffer never drains and
+			// every scheduler tick wastes a round-trip. Drop it instead.
+			s.logger.Warn().
+				Int("status_code", permErr.statusCode).
+				Int("dropped_points", len(data)).
+				Msg("permanent client error from intake; discarding batch (no retry)")
+			agentstate.IncrementPushBufferDropped("senhub", len(data))
+			return nil
+		}
 		s.logger.Error().Err(err).Msg("error synchronizing data")
 		if abortErr := s.buffer.AbortSync(data); abortErr != nil {
 			s.logger.Error().Err(abortErr).Msg("failed to abort sync")
@@ -253,6 +269,33 @@ func (s *SyncStrategySenhub) doSync() error {
 	return nil
 }
 
+// permanentClientError marks an intake response that must not be retried:
+// the payload is rejected for a reason resending cannot fix.
+type permanentClientError struct {
+	statusCode int
+}
+
+func (e *permanentClientError) Error() string {
+	return fmt.Sprintf("permanent client error: status %d", e.statusCode)
+}
+
+// isPermanentClientStatus reports whether a 4xx status is a permanent
+// client error for a metrics push. Every 4xx is treated as permanent
+// except 408 (Request Timeout) and 429 (Too Many Requests), which are
+// transient and stay on the retry path. Non-4xx (network errors, 5xx)
+// are never classified here and keep their existing retry behavior.
+func isPermanentClientStatus(status int) bool {
+	if status < 400 || status >= 500 {
+		return false
+	}
+	switch status {
+	case http.StatusRequestTimeout, http.StatusTooManyRequests:
+		return false
+	default:
+		return true
+	}
+}
+
 func (s *SyncStrategySenhub) doSyncData(data []SenhubDataPoint) error {
 	response, err := s.server.Post("/metrics", data)
 	if err != nil {
@@ -260,6 +303,9 @@ func (s *SyncStrategySenhub) doSyncData(data []SenhubDataPoint) error {
 	}
 
 	if response.StatusCode != 200 {
+		if isPermanentClientStatus(response.StatusCode) {
+			return &permanentClientError{statusCode: response.StatusCode}
+		}
 		return fmt.Errorf("unexpected status code: %d\n%v", response.StatusCode, response.Body)
 	}
 
