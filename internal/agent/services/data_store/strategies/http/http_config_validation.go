@@ -386,9 +386,7 @@ func (cm *ConfigurationManager) testRedfishConnectivity(config map[string]interf
 	}
 
 	// Test basic HTTP connectivity to the Redfish service root
-	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
+	client := newConnectivityClient(time.Duration(timeout) * time.Second)
 
 	// Try to reach the Redfish service root
 	testURL := strings.TrimRight(endpointStr, "/") + "/redfish/v1/"
@@ -431,9 +429,7 @@ func (cm *ConfigurationManager) testWebAppConnectivity(config map[string]interfa
 	}
 
 	// Test HTTP connectivity
-	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
+	client := newConnectivityClient(time.Duration(timeout) * time.Second)
 
 	resp, err := client.Get(urlStr)
 	if err != nil {
