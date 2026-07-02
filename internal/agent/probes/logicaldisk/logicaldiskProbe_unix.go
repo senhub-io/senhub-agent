@@ -43,16 +43,28 @@ func (c *unixLogicalDiskCollector) shouldCollectMount(fsType string, mountPoint 
 		return false
 	}
 
-	// Skip special filesystem types that df doesn't show
+	// Blocklist model: collect every real on-disk filesystem and only skip the
+	// ones that carry no meaningful capacity for an operator. A whitelist would
+	// silently drop any filesystem it doesn't name (btrfs, zfs, f2fs, ntfs, …);
+	// the industry-standard collectors (node_exporter, telegraf) all blocklist
+	// pseudo filesystems and keep the rest, which is what this does.
 	excludedTypes := map[string]bool{
+		// Kernel / pseudo filesystems with no real capacity.
 		"sysfs":       true,
 		"proc":        true,
+		"procfs":      true,
 		"devpts":      true,
+		"devtmpfs":    true,
+		"devfs":       true,
 		"securityfs":  true,
+		"selinuxfs":   true,
+		"efivarfs":    true,
+		"cgroup":      true,
 		"cgroup2":     true,
 		"pstore":      true,
 		"bpf":         true,
 		"fusectl":     true,
+		"fuse.portal": true,
 		"debugfs":     true,
 		"tracefs":     true,
 		"configfs":    true,
@@ -62,8 +74,26 @@ func (c *unixLogicalDiskCollector) shouldCollectMount(fsType string, mountPoint 
 		"nsfs":        true,
 		"autofs":      true,
 		"binfmt_misc": true,
+		"rpc_pipefs":  true,
 		"squashfs":    true,
+		"iso9660":     true,
 		"overlay":     true,
+		// Network filesystems: excluded because statfs below is a synchronous
+		// call with no timeout, so a stale NFS/CIFS mount would hang the whole
+		// collection cycle. Supporting them safely needs a per-mount timeout
+		// (tracked as a follow-up), not a blanket include here.
+		"nfs":        true,
+		"nfs4":       true,
+		"cifs":       true,
+		"smb3":       true,
+		"smbfs":      true,
+		"sshfs":      true,
+		"fuse.sshfs": true,
+		"ceph":       true,
+		"glusterfs":  true,
+		"davfs":      true,
+		"afs":        true,
+		"ncpfs":      true,
 	}
 
 	if excludedTypes[fsType] {
@@ -82,18 +112,7 @@ func (c *unixLogicalDiskCollector) shouldCollectMount(fsType string, mountPoint 
 		return allowedTmpfsMounts[mountPoint]
 	}
 
-	// Include standard filesystem types
-	standardFS := map[string]bool{
-		"ext4": true,
-		"ext3": true,
-		"ext2": true,
-		"xfs":  true,
-		"vfat": true,
-		"fuse": true,
-		"apfs": true, // macOS APFS filesystem
-	}
-
-	return standardFS[fsType]
+	return true
 }
 
 func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, error) {
