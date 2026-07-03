@@ -69,7 +69,7 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 
 	validatedLicense, err := validator.ValidateLicense(args.LicenseCode)
 	if err != nil {
-		fmt.Printf("❌ Invalid license code: %v\n", err)
+		fmt.Fprintf(os.Stderr, "❌ Invalid license code: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -154,7 +154,7 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 
 	validatedLicense, err := validator.ValidateLicense(config.Agent.License)
 	if err != nil {
-		fmt.Printf("❌ Invalid license in config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "❌ Invalid license in config: %v\n", err)
 		os.Exit(1)
 	}
 

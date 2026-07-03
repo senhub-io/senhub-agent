@@ -23,14 +23,14 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	// finds the file regardless of working directory.
 	executablePath, err := os.Executable()
 	if err != nil {
-		fmt.Printf("Error getting executable path: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error getting executable path: %v\n", err)
 		os.Exit(1)
 	}
 	workingDir := filepath.Dir(executablePath)
 
 	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
 	if err != nil {
-		fmt.Printf("Error getting absolute config path: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error getting absolute config path: %v\n", err)
 		if args.ConfigPath == "" {
 			configPath = filepath.Join(workingDir, "agent-config.yaml")
 		} else if !filepath.IsAbs(args.ConfigPath) {
@@ -94,8 +94,8 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			// chowns the staged binary to it, and before systemd
 			// validates the unit's User= (#575).
 			if userErr := ensureServiceUser(serviceUser); userErr != nil {
-				fmt.Printf("Error: %v\n", userErr)
-				fmt.Println("Re-run with '--user root' to install the legacy root service if a dedicated user cannot be created.")
+				fmt.Fprintf(os.Stderr, "Error: %v\n", userErr)
+				fmt.Fprintln(os.Stderr, "Re-run with '--user root' to install the legacy root service if a dedicated user cannot be created.")
 				os.Exit(1)
 			}
 
@@ -106,9 +106,9 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			// crash-loop, which is worse than aborting the install.
 			managed, err := installManagedBinary(executablePath, serviceUser)
 			if err != nil {
-				fmt.Printf("Error: could not stage the managed binary to %s: %v\n", managedBinaryDir, err)
-				fmt.Println("The service was NOT installed (a unit pointing at the installer's temp path would fail to start).")
-				fmt.Println("Re-run with '--user root' to install the legacy root service if the binary cannot be staged.")
+				fmt.Fprintf(os.Stderr, "Error: could not stage the managed binary to %s: %v\n", managedBinaryDir, err)
+				fmt.Fprintln(os.Stderr, "The service was NOT installed (a unit pointing at the installer's temp path would fail to start).")
+				fmt.Fprintln(os.Stderr, "Re-run with '--user root' to install the legacy root service if the binary cannot be staged.")
 				os.Exit(1)
 			}
 			svcConfig.Executable = managed
@@ -123,7 +123,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -134,8 +134,8 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		// unit whose User= cannot be resolved produces a service that
 		// never starts, which is worse than a clear error here.
 		if userErr := ensureServiceUser(serviceUser); userErr != nil {
-			fmt.Printf("Error: %v\n", userErr)
-			fmt.Println("Re-run with '--user root' to install the legacy root service if a dedicated user cannot be created.")
+			fmt.Fprintf(os.Stderr, "Error: %v\n", userErr)
+			fmt.Fprintln(os.Stderr, "Re-run with '--user root' to install the legacy root service if a dedicated user cannot be created.")
 			os.Exit(1)
 		}
 		err = s.Install()
@@ -144,7 +144,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 
 			// Always generate the local configuration at install time
 			if err := generateConfiguration(args); err != nil {
-				fmt.Printf("Warning: Failed to generate configuration: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Warning: Failed to generate configuration: %v\n", err)
 			} else {
 				fmt.Printf("✅ Configuration generated: %s\n", configPath)
 				if args.EnableHttps {
@@ -159,7 +159,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			// generated 0600 config (and certs/logs) must belong to
 			// the service user or the first start fails on a read.
 			if chownErr := chownServiceTree(serviceUser, configPath, args.EnableHttps); chownErr != nil {
-				fmt.Printf("Warning: failed to hand install files to user %q: %v\n", serviceUser, chownErr)
+				fmt.Fprintf(os.Stderr, "Warning: failed to hand install files to user %q: %v\n", serviceUser, chownErr)
 				fmt.Printf("Fix manually with: chown %s:%s %s (and the log/certs directories the install created)\n", serviceUser, serviceUser, configPath)
 			}
 
@@ -172,7 +172,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			fmt.Println("Stopping service before uninstall...")
 			err = s.Stop()
 			if err != nil {
-				fmt.Printf("Error stopping service: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Error stopping service: %v\n", err)
 				os.Exit(1)
 			}
 			time.Sleep(2 * time.Second)
@@ -205,7 +205,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		// First check if service is running
 		status, statusErr := s.Status()
 		if statusErr != nil {
-			fmt.Printf("Error checking service status: %v\n", statusErr)
+			fmt.Fprintf(os.Stderr, "Error checking service status: %v\n", statusErr)
 			os.Exit(1)
 		}
 
@@ -216,7 +216,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			fmt.Println("Stopping service...")
 			err = s.Stop()
 			if err != nil {
-				fmt.Printf("Error stopping service: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Error stopping service: %v\n", err)
 				os.Exit(1)
 			}
 
@@ -269,7 +269,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		// ENOENT, which would reject a perfectly valid install at the
 		// OS-canonical location.
 		if _, err := os.Stat(configPath); os.IsNotExist(err) {
-			fmt.Printf("Error: Configuration file not found: %s\n", configPath)
+			fmt.Fprintf(os.Stderr, "Error: Configuration file not found: %s\n", configPath)
 			fmt.Printf("\nInstall the agent first to generate the configuration:\n")
 			fmt.Printf("    %s install\n", os.Args[0])
 			fmt.Printf("\nThen you can run the agent:\n")
@@ -286,7 +286,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	}
 
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
