@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/user"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/kardianos/service"
@@ -116,6 +117,29 @@ func checkPrivileges(command string) error {
 func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
 	os.Exit(1)
+}
+
+// readYesConfirmation reads a single interactive answer from stdin and
+// reports whether it is an affirmative ("y"/"Y"). An empty line — which
+// is what fmt.Scanln returns on EOF or a non-TTY stdin — resolves to
+// false, so a destructive command run non-interactively without a
+// bypass flag aborts (safe default) rather than proceeding.
+func readYesConfirmation() bool {
+	var answer string
+	// A scan error (EOF, empty input) leaves answer == "" and
+	// answerIsYes returns false: the caller aborts, which is the safe
+	// outcome for a destructive action.
+	_, _ = fmt.Scanln(&answer)
+	return answerIsYes(answer)
+}
+
+// answerIsYes is the pure decision behind readYesConfirmation: only an
+// explicit "y"/"Y" (ignoring surrounding whitespace) is affirmative.
+// Empty input — EOF or a non-TTY stdin — is NOT affirmative, so a
+// destructive command aborts by default.
+func answerIsYes(answer string) bool {
+	answer = strings.TrimSpace(answer)
+	return answer == "y" || answer == "Y"
 }
 
 // hasArg reports whether one of the os.Args (skipping argv[0]) is
@@ -373,6 +397,9 @@ func Main() {
 			if command == "status" {
 				args.ShowOTLP = hasArg("--otlp")
 			}
+			if command == "uninstall" {
+				args.Yes = hasArg("--yes")
+			}
 			handleServiceCommand(command, args)
 			return
 		}
@@ -440,7 +467,9 @@ Service Commands:
                          under a hardened systemd unit.
     install --user USER  Service user for the Linux unit (default: senhub;
                          use 'root' to keep the legacy root unit)
-    uninstall            Remove the system service
+    uninstall            Remove the system service (prompts before deleting
+                         config/certs/logs; pass --yes to skip the prompt)
+    uninstall --yes      Remove the system service without confirmation
     start                Start the service
     stop                 Stop the service
     restart              Restart the service

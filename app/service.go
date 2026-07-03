@@ -178,6 +178,19 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			time.Sleep(2 * time.Second)
 		}
 
+		// Confirm the destructive cleanup before removing operator data.
+		// A non-"y" answer (or a non-TTY stdin, which resolves to abort)
+		// leaves the config, certs and logs in place; --yes skips the
+		// prompt for unattended removal.
+		if !args.Yes {
+			fmt.Println("Uninstall will remove the agent configuration file, the certs/ directory, and log files/directories.")
+			fmt.Print("Proceed? [y/N] ")
+			if !readYesConfirmation() {
+				fmt.Println("Uninstall cancelled; nothing was removed.")
+				return
+			}
+		}
+
 		// Uninstall the service
 		err = s.Uninstall()
 		if err == nil {
