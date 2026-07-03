@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/user"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/kardianos/service"
@@ -108,6 +109,39 @@ func checkPrivileges(command string) error {
 	return nil
 }
 
+// fatalf prints a user-facing failure to stderr and exits non-zero. It
+// is the CLI's single fatal-error path: command handlers use it instead
+// of log.Fatalf so a failure reads as a plain "Error: ..." line on
+// stderr, consistent with the rest of the CLI, rather than a
+// timestamped log line (the default logger runs with LstdFlags).
+func fatalf(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
+	os.Exit(1)
+}
+
+// readYesConfirmation reads a single interactive answer from stdin and
+// reports whether it is an affirmative ("y"/"Y"). An empty line — which
+// is what fmt.Scanln returns on EOF or a non-TTY stdin — resolves to
+// false, so a destructive command run non-interactively without a
+// bypass flag aborts (safe default) rather than proceeding.
+func readYesConfirmation() bool {
+	var answer string
+	// A scan error (EOF, empty input) leaves answer == "" and
+	// answerIsYes returns false: the caller aborts, which is the safe
+	// outcome for a destructive action.
+	_, _ = fmt.Scanln(&answer)
+	return answerIsYes(answer)
+}
+
+// answerIsYes is the pure decision behind readYesConfirmation: only an
+// explicit "y"/"Y" (ignoring surrounding whitespace) is affirmative.
+// Empty input — EOF or a non-TTY stdin — is NOT affirmative, so a
+// destructive command aborts by default.
+func answerIsYes(answer string) bool {
+	answer = strings.TrimSpace(answer)
+	return answer == "y" || answer == "Y"
+}
+
 // hasArg reports whether one of the os.Args (skipping argv[0]) is
 // exactly `name`. Used for the small set of view-flags that the
 // simple-command code path (status, etc.) recognises before the
@@ -119,6 +153,39 @@ func hasArg(name string) bool {
 		}
 	}
 	return false
+}
+
+// parseUpdateArg interprets the single positional argument to the
+// `update` subcommand. `--help`/`-h`/`help` request usage (wantHelp
+// true, no version); `--list`/`-l` selects the version-listing mode;
+// anything else is taken as an explicit target version. Extracted as a
+// pure function so the dispatch — which used to treat `update --help`
+// as a version literal and try to install "--help" — is unit-testable.
+func parseUpdateArg(subArg string) (wantedVersion string, wantHelp bool) {
+	switch subArg {
+	case "--help", "-h", "help":
+		return "", true
+	case "--list", "-l":
+		return "list", false
+	default:
+		return subArg, false
+	}
+}
+
+// showUpdateHelp prints usage for the `update` subcommand.
+func showUpdateHelp() {
+	exe := os.Args[0]
+	fmt.Printf(`Usage: %s update [--list | <version>]
+
+Check for, list, or install agent updates.
+
+    %s update              Check for a newer version and install it
+    %s update --list       List all available versions (stable + beta)
+    %s update <version>    Install a specific version (e.g. %s update 0.4.1)
+
+Updating replaces the running binary and requires the same privileges
+as the service commands (root on Linux, administrator on Windows).
+`, exe, exe, exe, exe, exe)
 }
 
 // readOnlyCommand reports whether the invocation is a diagnostic /
@@ -143,6 +210,21 @@ func readOnlyCommand(args []string) bool {
 		if len(args) > 2 && (args[2] == "check" || args[2] == "show") {
 			return true
 		}
+	case "update":
+		// `update --help` is informational only — usage text, no binary
+		// replacement — so it must not hit the privilege gate.
+		if len(args) > 2 {
+			if _, wantHelp := parseUpdateArg(args[2]); wantHelp {
+				return true
+			}
+		}
+	case "db-monitoring":
+		// db-monitoring only generates SQL to stdout (its `init`
+		// subcommand) or prints help — it never touches the service, the
+		// filesystem or the database, so requiring administrator on
+		// Windows was an over-broad gate that blocked an operator drafting
+		// a monitoring grant.
+		return true
 	}
 	if c, ok := extraCommands[args[1]]; ok {
 		return c.ReadOnly
@@ -219,7 +301,7 @@ func Main() {
 	// (CI smoke checks, contributor onboarding).
 	if !readOnlyCommand(os.Args) {
 		if err := checkPrivileges(command); err != nil {
-			fmt.Printf("Error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	}
@@ -289,18 +371,18 @@ func Main() {
 		handleDbMonitoringCommand()
 		return
 	case "update":
-		// Parse update sub-arguments: update [--list | <version>]
+		// Parse update sub-arguments: update [--help | --list | <version>]
 		args := &cliArgs.ParsedArgs{
 			Version:    cliArgs.Version,
 			CommitHash: cliArgs.CommitHash,
 		}
 		if len(os.Args) > 2 {
-			subArg := os.Args[2]
-			if subArg == "--list" || subArg == "-l" {
-				args.WantedVersion = "list"
-			} else {
-				args.WantedVersion = subArg
+			wanted, wantHelp := parseUpdateArg(os.Args[2])
+			if wantHelp {
+				showUpdateHelp()
+				return
 			}
+			args.WantedVersion = wanted
 		}
 		agent.UpdateAgent(args)
 		return
@@ -314,6 +396,9 @@ func Main() {
 			args := &cliArgs.ParsedArgs{}
 			if command == "status" {
 				args.ShowOTLP = hasArg("--otlp")
+			}
+			if command == "uninstall" {
+				args.Yes = hasArg("--yes")
 			}
 			handleServiceCommand(command, args)
 			return
@@ -382,7 +467,9 @@ Service Commands:
                          under a hardened systemd unit.
     install --user USER  Service user for the Linux unit (default: senhub;
                          use 'root' to keep the legacy root unit)
-    uninstall            Remove the system service
+    uninstall            Remove the system service (prompts before deleting
+                         config/certs/logs; pass --yes to skip the prompt)
+    uninstall --yes      Remove the system service without confirmation
     start                Start the service
     stop                 Stop the service
     restart              Restart the service
@@ -402,6 +489,9 @@ Other Commands:
     update               Check for new versions
     update --list        List all available versions (stable + beta)
     update <version>     Install a specific version
+    config init [opts]    Create the default offline configuration if none
+                          exists (idempotent). Accepts --config-path,
+                          --license <jwt>, --tags k=v,..., --otlp-endpoint
     config check [path]   Validate configuration (covers fragments under
                           probes.d/ and strategies.d/ if present)
     config show [opts]    Print merged + resolved configuration as YAML
@@ -414,6 +504,20 @@ Other Commands:
                           (agent.yaml + probes.d/ + strategies.d/) with
                           a timestamped backup. Idempotent.
     debug-modules-list    List available debug log modules
+
+Secret Store Commands:
+    secret set <name>    Store/replace a secret (hidden prompt, stdin, or
+                         --from-file); referenced from config as ${secret:name}
+    secret get <name>    Print a secret value (deliberate reveal)
+    secret list          List secret names (never values)
+    secret rm <name>     Delete a secret
+    secret migrate       Move inline plaintext secrets from config into the store
+    secret status        Show the active backend and store location
+    key show             Print the configured agent key
+
+Database Helper Commands:
+    db-monitoring init   Generate least-privilege SQL to provision a
+                         monitoring user (--engine mysql|postgresql --user NAME)
 
 Agent Options:
     --config-path PATH                     Path to the agent configuration file.
