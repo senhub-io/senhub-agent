@@ -278,6 +278,52 @@ func TestResolve_OTLPIngestPassThrough(t *testing.T) {
 	}
 }
 
+func TestResolve_OTLPIngestPreservesInstrumentType(t *testing.T) {
+	// An ingested cumulative counter carries otel_type=counter (stamped by
+	// the decoder). Before the fix Resolve forced every ingested metric to
+	// gauge, so a re-exported counter lost its monotonic-sum semantics.
+	// The otel_type and unit control tags must drive the record and must
+	// not leak as attributes.
+	m := CacheMetric{
+		ProbeName:  "edge_in",
+		ProbeType:  "otlp_receiver",
+		MetricName: "http.server.requests",
+		Value:      42,
+		Unit:       "{request}",
+		Tags: map[string]string{
+			"metric_type": MetricTypeOTLPIngest,
+			"otel_type":   "counter",
+			"unit":        "{request}",
+			"probe_name":  "edge_in",
+			"probe_type":  "otlp_receiver",
+			"http.route":  "/v1/ingest",
+		},
+	}
+	recs, err := Resolve(nil, m, DefaultResolveOptions())
+	if err != nil {
+		t.Fatalf("pass-through must not error, got %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(recs))
+	}
+	r := recs[0]
+	if r.Type != "counter" {
+		t.Errorf("type=%q, want counter (instrument type preserved)", r.Type)
+	}
+	if r.Unit != "{request}" {
+		t.Errorf("unit=%q, want {request}", r.Unit)
+	}
+	if r.Attributes["http.route"] != "/v1/ingest" {
+		t.Errorf("ingested datapoint attr not propagated: %v", r.Attributes)
+	}
+	if _, leaked := r.Attributes["otel_type"]; leaked {
+		t.Errorf("otel_type control tag must not leak as an attribute: %v", r.Attributes)
+	}
+	if _, leaked := r.Attributes["unit"]; leaked {
+		t.Errorf("unit control tag must not leak as an attribute: %v", r.Attributes)
+	}
+}
+
 func TestResolve_TypedPassThrough(t *testing.T) {
 	// An snmp_poll dynamic metric: a canonical senhub.snmp.* name with no
 	// transformer row, carrying its OTel type in the otel_type tag. Resolve

@@ -517,6 +517,14 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 		if transformer != nil {
 			unit = transformer.GetUnit(dp.Name)
 		}
+		// Fallback to a producer-supplied unit tag when no transformer
+		// definition names the metric. Definition-less metrics (OTLP-
+		// ingested, typed pass-through) carry their unit on this tag;
+		// without the fallback the pull path (Prometheus/PRTG) would drop
+		// it even though the OTLP push path already reads the same tag.
+		if unit == "" {
+			unit = tags["unit"]
+		}
 
 		// Note: Unit corrections are now applied earlier in the data processing pipeline (data_store.go)
 		// before routing to strategies, so datapoints here already have corrected values
