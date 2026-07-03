@@ -10,17 +10,20 @@ import (
 )
 
 // TestSystemdCredsGetReadsRuntimeCredential covers the non-root daemon path:
-// the value systemd decrypted into $CREDENTIALS_DIRECTORY/<key> is returned with
-// trailing whitespace trimmed, and an absent name (in both the runtime mount and
-// the persistent store) yields ErrNotFound. No systemd-creds binary is needed.
+// the value systemd mounted into $CREDENTIALS_DIRECTORY/<key> is returned as
+// EXACT bytes (no trimming), matching the FileStore backends' round-trip
+// contract, and an absent name (in both the runtime mount and the persistent
+// store) yields ErrNotFound. No systemd-creds binary is needed.
 func TestSystemdCredsGetReadsRuntimeCredential(t *testing.T) {
 	runtimeDir := t.TempDir()
 	configDir := t.TempDir()
 	t.Setenv("CREDENTIALS_DIRECTORY", runtimeDir)
 
 	const name = "veeam-prod.password"
-	const plaintext = "decrypted-by-systemd"
-	if err := os.WriteFile(filepath.Join(runtimeDir, SanitizeKey(name)), []byte(plaintext+"\n"), 0o600); err != nil {
+	// A value with surrounding whitespace must round-trip byte-for-byte; the old
+	// behaviour trimmed it and corrupted such secrets (audit m1).
+	const plaintext = "  pw with spaces \n"
+	if err := os.WriteFile(filepath.Join(runtimeDir, SanitizeKey(name)), []byte(plaintext), 0o600); err != nil {
 		t.Fatalf("seeding credential: %v", err)
 	}
 
@@ -34,7 +37,7 @@ func TestSystemdCredsGetReadsRuntimeCredential(t *testing.T) {
 		t.Fatalf("Get: %v", err)
 	}
 	if got != plaintext {
-		t.Fatalf("Get = %q, want %q (trailing whitespace must be trimmed)", got, plaintext)
+		t.Fatalf("Get = %q, want exact %q (no trimming)", got, plaintext)
 	}
 
 	if _, err := p.Get("absent.password"); !errors.Is(err, ErrNotFound) {

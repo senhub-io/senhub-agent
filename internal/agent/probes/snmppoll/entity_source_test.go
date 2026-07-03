@@ -465,6 +465,34 @@ func TestAppendLocalRunsOn_UnresolvedDevice(t *testing.T) {
 	}
 }
 
+// TestAppendLocalRunsOn_LoopbackDerivedID: a device whose id fell to the
+// loopback-derived last-resort rungs ("mgmt:127.0.0.1", "name:localhost") is
+// byte-identical on every host polling a default local snmpd, so it must NOT be
+// anchored — anchoring would false-join distinct hosts (finding 1). This holds
+// regardless of the target literal (cross-form: id localhost, target 127.0.0.1).
+func TestAppendLocalRunsOn_LoopbackDerivedID(t *testing.T) {
+	cases := []struct {
+		name, target, deviceID string
+	}{
+		{"mgmt loopback, target 127.0.0.1", "127.0.0.1", "mgmt:127.0.0.1"},
+		{"mgmt loopback, target localhost", "localhost", "mgmt:127.0.0.1"},
+		{"name localhost, target 127.0.0.1", "127.0.0.1", "name:localhost"},
+		{"name localhost, target localhost", "localhost", "name:localhost"},
+		{"mgmt ipv6 loopback", "::1", "mgmt:::1"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newEntitySource(&config{Target: c.target}, testLogger(t))
+			s.hostID = func() string { return "h-1" }
+			obs := entity.Observation{}
+			s.appendLocalRunsOn(&obs, c.deviceID)
+			if len(obs.Relations) != 0 {
+				t.Errorf("loopback-derived id %q must NOT be anchored, got %+v", c.deviceID, obs.Relations)
+			}
+		})
+	}
+}
+
 func TestSelfAttrs_Readable(t *testing.T) {
 	// Descriptive attributes use the frozen dotted casing so a backend shows a
 	// readable device, not just the cryptic id.

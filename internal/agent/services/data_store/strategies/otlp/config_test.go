@@ -518,3 +518,22 @@ func TestParseConfig_AcceptsValidOrAbsentAuth(t *testing.T) {
 		t.Fatalf("unauthenticated export rejected: %v", err)
 	}
 }
+
+func TestParseConfig_RejectsUnresolvedFileSecretRef(t *testing.T) {
+	// A ${file:}/${secret:} lookup that fails with no default leaves the literal
+	// template in the header (expandEnv keeps it so the failure isn't silently
+	// turned into an empty token). That literal passes the scheme check but would
+	// 401 on every export, so parse must fail fast on the unresolved reference.
+	_, err := ParseConfig(map[string]interface{}{
+		"endpoint": "otlp.example.com:4317",
+		"headers": map[string]interface{}{
+			"Authorization": "Bearer ${file:/nonexistent/senhub-otlp-token-xyz}",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for an unresolved ${file:} Authorization reference")
+	}
+	if !strings.Contains(err.Error(), "unresolved") {
+		t.Errorf("error should mention the unresolved reference: %v", err)
+	}
+}

@@ -95,8 +95,8 @@ func TestIsPermanentClientStatus(t *testing.T) {
 		permanent bool
 	}{
 		{http.StatusBadRequest, true},           // 400
-		{http.StatusUnauthorized, true},         // 401
-		{http.StatusForbidden, true},            // 403
+		{http.StatusUnauthorized, false},        // 401 retryable (auth blip / key rotation)
+		{http.StatusForbidden, false},           // 403 retryable (auth blip / key rotation)
 		{http.StatusNotFound, true},             // 404
 		{http.StatusUnprocessableEntity, true},  // 422
 		{http.StatusRequestTimeout, false},      // 408 retryable

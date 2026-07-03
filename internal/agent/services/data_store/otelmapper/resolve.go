@@ -215,7 +215,7 @@ func resolveTypedPassthrough(m CacheMetric, otelType string, opts ResolveOptions
 	}
 	if opts.IncludeProbeTags {
 		for tagName, tagVal := range m.Tags {
-			if tagVal == "" || isSystemTag(tagName) || tagName == metricTypeTag || tagName == otelTypeTag {
+			if tagVal == "" || isSystemTag(tagName) || tagName == metricTypeTag || tagName == otelTypeTag || tagName == "unit" {
 				continue
 			}
 			attrs[tagName] = tagVal

@@ -52,23 +52,57 @@ func (s *FileStore) load() (map[string]string, error) {
 	return m, nil
 }
 
-// save writes the ciphertext map at 0600 via a temp file + rename so a crash
-// mid-write cannot truncate the store.
+// save writes the ciphertext map at 0600 via a uniquely named temp file that is
+// fsync'd before an atomic rename, so a crash mid-write cannot truncate the
+// store and two concurrent writers cannot clobber each other's temp file. The
+// directory is fsync'd after the rename so the new store survives a power loss.
 func (s *FileStore) save(m map[string]string) error {
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
 	}
-	if dir := filepath.Dir(s.path); dir != "" {
+	dir := filepath.Dir(s.path)
+	if dir != "" {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("creating secret store dir: %w", err)
 		}
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(s.path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("creating secret store temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	removeTmp := true
+	defer func() {
+		if removeTmp {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
 		return fmt.Errorf("writing secret store: %w", err)
 	}
-	return os.Rename(tmp, s.path)
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("syncing secret store: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("closing secret store temp file: %w", err)
+	}
+	if err := os.Chmod(tmpName, 0o600); err != nil {
+		return fmt.Errorf("setting secret store mode: %w", err)
+	}
+	if err := os.Rename(tmpName, s.path); err != nil {
+		return fmt.Errorf("renaming secret store: %w", err)
+	}
+	removeTmp = false
+	if dir != "" {
+		if d, derr := os.Open(dir); derr == nil {
+			_ = d.Sync()
+			_ = d.Close()
+		}
+	}
+	return nil
 }
 
 // Get decrypts and returns the value for name.
