@@ -52,14 +52,17 @@ func flattenMetric(m *metricpb.Metric, resourceTags []tags.Tag) (points []data_s
 		return nil, 0
 	}
 
+	unit := m.GetUnit()
+
 	switch data := m.GetData().(type) {
 	case *metricpb.Metric_Gauge:
 		for _, dp := range data.Gauge.GetDataPoints() {
-			points = append(points, numberPointToDataPoint(name, dp, resourceTags))
+			points = append(points, numberPointToDataPoint(name, unit, "gauge", dp, resourceTags))
 		}
 	case *metricpb.Metric_Sum:
+		otelType := sumInstrumentType(data.Sum)
 		for _, dp := range data.Sum.GetDataPoints() {
-			points = append(points, numberPointToDataPoint(name, dp, resourceTags))
+			points = append(points, numberPointToDataPoint(name, unit, otelType, dp, resourceTags))
 		}
 	default:
 		// Histogram / ExponentialHistogram / Summary / unset: no scalar
@@ -68,6 +71,24 @@ func flattenMetric(m *metricpb.Metric, resourceTags []tags.Tag) (points []data_s
 		dropped += countNonNumberPoints(m)
 	}
 	return points, dropped
+}
+
+// sumInstrumentType maps an inbound OTLP Sum onto the agent's internal
+// OTel instrument type. A cumulative monotonic sum is a counter; a
+// cumulative non-monotonic sum is an updowncounter. Delta-temporality
+// sums cannot be re-exported faithfully — the agent's exporters emit
+// only cumulative temporality — so they degrade to gauge, which
+// preserves the raw value without asserting false cumulative-counter
+// semantics. Full delta pass-through would need a temporality field on
+// OtelRecord threaded through both serializers (deferred follow-up).
+func sumInstrumentType(sum *metricpb.Sum) string {
+	if sum.GetAggregationTemporality() == metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA {
+		return "gauge"
+	}
+	if sum.GetIsMonotonic() {
+		return "counter"
+	}
+	return "updowncounter"
 }
 
 func countNonNumberPoints(m *metricpb.Metric) int {
@@ -83,7 +104,7 @@ func countNonNumberPoints(m *metricpb.Metric) int {
 	}
 }
 
-func numberPointToDataPoint(name string, dp *metricpb.NumberDataPoint, resourceTags []tags.Tag) data_store.DataPoint {
+func numberPointToDataPoint(name, unit, otelType string, dp *metricpb.NumberDataPoint, resourceTags []tags.Tag) data_store.DataPoint {
 	var value float64
 	switch v := dp.GetValue().(type) {
 	case *metricpb.NumberDataPoint_AsDouble:
@@ -99,6 +120,15 @@ func numberPointToDataPoint(name string, dp *metricpb.NumberDataPoint, resourceT
 
 	pointTags := mergeTags(resourceTags, attributesToTags(dp.GetAttributes()))
 	pointTags = append(pointTags, tags.Tag{Key: "metric_type", Value: otelmapper.MetricTypeOTLPIngest})
+	// Carry the inbound instrument type and unit so the mapper re-exports
+	// a counter as a counter (not a gauge) and keeps the unit, instead of
+	// flattening every ingested metric to a unitless gauge. "otel_type"
+	// and "unit" are the same control tags the mapper and the OTLP/HTTP
+	// sinks already read.
+	pointTags = append(pointTags, tags.Tag{Key: "otel_type", Value: otelType})
+	if unit != "" {
+		pointTags = append(pointTags, tags.Tag{Key: "unit", Value: unit})
+	}
 
 	return data_store.DataPoint{
 		Name:      name,

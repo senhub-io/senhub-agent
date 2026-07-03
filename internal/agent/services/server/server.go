@@ -9,10 +9,15 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/ybbus/httpretry"
 	"senhub-agent.go/internal/agent/services/logger"
 )
+
+// defaultRequestTimeout bounds every outbound request (all retries + body
+// read) so a hung or slow intake cannot block a push goroutine forever.
+const defaultRequestTimeout = 30 * time.Second
 
 // Server defines the interface for server communication with retry capabilities
 // and authentication handling
@@ -49,6 +54,7 @@ func NewServer(
 	http := httpretry.NewDefaultClient(
 		httpretry.WithMaxRetryCount(3),
 	)
+	http.Timeout = defaultRequestTimeout
 
 	return &server{
 		authenticationKey: authenticationKey,
