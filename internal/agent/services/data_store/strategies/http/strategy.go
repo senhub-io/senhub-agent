@@ -576,14 +576,23 @@ func (h *HTTPSyncStrategy) handleLicenseStatus(w http.ResponseWriter, r *http.Re
 // Universal Configuration handlers (delegated to ConfigurationManager)
 
 func (h *HTTPSyncStrategy) handleUniversalConfigValidation(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.authManager.AuthenticateAndExtract(w, r); !ok {
+		return
+	}
 	h.configManager.HandleUniversalConfigValidation(w, r)
 }
 
 func (h *HTTPSyncStrategy) handleUniversalConfigPreview(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.authManager.AuthenticateAndExtract(w, r); !ok {
+		return
+	}
 	h.configManager.HandleUniversalConfigPreview(w, r)
 }
 
 func (h *HTTPSyncStrategy) handleUniversalConfigTest(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.authManager.AuthenticateAndExtract(w, r); !ok {
+		return
+	}
 	h.configManager.HandleUniversalConfigTest(w, r)
 }
 
@@ -685,7 +694,7 @@ func (h *HTTPSyncStrategy) GetStartTime() time.Time {
 // UpdateConfiguration allows updating the HTTP strategy configuration at runtime
 func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{}) error {
 	h.logger.Info().
-		Any("new_params", newParams).
+		Any("new_params", configuration.SanitizeParamsForLog(newParams)).
 		Msg("Updating HTTP strategy configuration")
 
 	// Update the configuration manager
