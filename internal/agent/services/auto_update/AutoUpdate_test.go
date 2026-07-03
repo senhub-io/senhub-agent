@@ -288,6 +288,31 @@ func TestAutoUpdate_getExpectedVersion_LatestIncludeBeta(t *testing.T) {
 	}
 }
 
+// TestGetExpectedVersion_LatestNilConfigSource pins m10: the CLI 'update latest'
+// path builds the updater without a ConfigSource, so resolving 'latest' must not
+// dereference a nil configSource. It falls back to stable-only and, when the
+// registry is unreachable, returns the current version rather than panicking.
+func TestGetExpectedVersion_LatestNilConfigSource(t *testing.T) {
+	au := &autoUpdate{
+		configSource: nil,
+		logger:       createTestModuleLogger(),
+		httpClient:   httpretry.NewDefaultClient(httpretry.WithMaxRetryCount(0)),
+	}
+	cliArgs.Version = "1.2.3"
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("getExpectedVersion panicked with nil configSource: %v", r)
+		}
+	}()
+
+	// An unroutable registry makes 'latest' resolution fail closed to current.
+	got := au.getExpectedVersion("latest", "https://127.0.0.1:1/")
+	if got != "1.2.3" {
+		t.Errorf("getExpectedVersion(latest) = %q, want current 1.2.3", got)
+	}
+}
+
 func TestIsBetaVersion(t *testing.T) {
 	testCases := []struct {
 		name     string
