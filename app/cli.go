@@ -108,6 +108,16 @@ func checkPrivileges(command string) error {
 	return nil
 }
 
+// fatalf prints a user-facing failure to stderr and exits non-zero. It
+// is the CLI's single fatal-error path: command handlers use it instead
+// of log.Fatalf so a failure reads as a plain "Error: ..." line on
+// stderr, consistent with the rest of the CLI, rather than a
+// timestamped log line (the default logger runs with LstdFlags).
+func fatalf(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
+	os.Exit(1)
+}
+
 // hasArg reports whether one of the os.Args (skipping argv[0]) is
 // exactly `name`. Used for the small set of view-flags that the
 // simple-command code path (status, etc.) recognises before the
