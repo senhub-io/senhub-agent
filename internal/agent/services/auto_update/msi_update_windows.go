@@ -39,6 +39,17 @@ func isMsiManaged() bool {
 	return err == nil && v != ""
 }
 
+// updateStagingBaseDir returns %ProgramData%\SenHub\update — the application-
+// owned base under which MSI updates are staged, matching where config
+// (%ProgramData%\SenHub) and logs (%ProgramData%\SenHub\logs) already live.
+func updateStagingBaseDir() string {
+	programData := os.Getenv("ProgramData")
+	if programData == "" {
+		programData = `C:\ProgramData`
+	}
+	return filepath.Join(programData, "SenHub", "update")
+}
+
 // applyMsiUpdate downloads the MSI and its detached minisign signature, verifies
 // the signature (same key and check as the ZIP archive), stages the MSI in a
 // temp file and launches msiexec detached to run the MajorUpgrade. msiexec —
@@ -71,14 +82,22 @@ func (a *autoUpdate) applyMsiUpdate(msiURL string) error {
 		return fmt.Errorf("verifying MSI signature: %w", err)
 	}
 
-	tmp := filepath.Join(os.TempDir(), "senhub-agent-update.msi")
-	if err := os.WriteFile(tmp, body, 0o600); err != nil {
-		return fmt.Errorf("writing MSI to %s: %w", tmp, err)
+	// Stage under an application-owned directory with an unpredictable per-run
+	// name, never the shared temp dir: msiexec re-reads this file from disk while
+	// elevated, so a fixed path in a world-writable location is a TOCTOU handle a
+	// local attacker could use to swap in an unverified MSI after the check above.
+	stageDir, err := secureStageDir(updateStagingBaseDir())
+	if err != nil {
+		return fmt.Errorf("staging MSI update: %w", err)
+	}
+	tmp, err := writeStagedFile(stageDir, "senhub-agent-update.msi", body)
+	if err != nil {
+		return fmt.Errorf("staging MSI: %w", err)
 	}
 
 	// Detached so the installer survives this service stopping mid-upgrade.
 	// /qn silent; the MSI's MajorUpgrade + ServiceControl restart the service.
-	logPath := filepath.Join(os.TempDir(), "senhub-agent-update.log")
+	logPath := filepath.Join(stageDir, "senhub-agent-update.log")
 	cmd := exec.Command("msiexec", "/i", tmp, "/qn", "/l*v", logPath) // #nosec G204 - fixed args, staged path
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: detachedProcess | createNewProcessGroup}
 	if err := cmd.Start(); err != nil {
