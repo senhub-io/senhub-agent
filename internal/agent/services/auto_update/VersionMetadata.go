@@ -8,6 +8,8 @@ import (
 	"sort"
 
 	"github.com/hashicorp/go-version"
+
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 type VersionMetadata struct {
@@ -180,8 +182,12 @@ func fetchVersionListBeta(httpClient *http.Client, registryUrl string) ([]Versio
 	return versionList, nil
 }
 
-// FetchAllVersions returns all available versions (stable + beta if includeBeta)
-func FetchAllVersions(httpClient *http.Client, registryUrl string, includeBeta bool) ([]VersionMetadata, error) {
+// FetchAllVersions returns all available versions (stable + beta if includeBeta).
+// A beta-list fetch failure is non-fatal (we fall back to the stable channel) but
+// must never be swallowed: the release server answers an unknown/beta path with a
+// 200 HTML landing page, so a decode error here is how an include_beta agent
+// silently degrades to stable-only — log it at Warn so the drift is visible (m6).
+func FetchAllVersions(httpClient *http.Client, registryUrl string, includeBeta bool, log *logger.ModuleLogger) ([]VersionMetadata, error) {
 	stable, err := fetchVersionList(httpClient, registryUrl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch stable releases: %w", err)
@@ -193,7 +199,12 @@ func FetchAllVersions(httpClient *http.Client, registryUrl string, includeBeta b
 
 	beta, err := fetchVersionListBeta(httpClient, registryUrl)
 	if err != nil {
-		// Beta fetch failure is non-fatal
+		// Beta fetch failure is non-fatal: continue with the stable channel.
+		if log != nil {
+			log.Warn().
+				Err(err).
+				Msg("Failed to fetch beta releases list; continuing with stable channel only")
+		}
 		return stable, nil
 	}
 
