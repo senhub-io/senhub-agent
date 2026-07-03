@@ -49,6 +49,32 @@ probes:
       interval: 60
 ```
 
+## Config versions
+
+`config_version` is the top-level schema version of the configuration. The
+agent migrates an older configuration forward automatically when it loads it,
+and stamps the new version on disk.
+
+| Version | Introduced | Meaning |
+|---|---|---|
+| `1` | 0.1.x | Legacy baseline. |
+| `2` | — | Current baseline: multi-file layout and `${env:}` / `${file:}` substitution. |
+| `3` | 0.5.0 | Secret references: inline plaintext secrets are sealed into the [secret store](secret-store.md) and rewritten as `${secret:...}`. |
+
+On first boot under version 3, the agent seals any inline plaintext secret
+into the store, replaces it with a `${secret:...}` reference, and stamps the
+file `config_version: 3`. The bump to 3 happens **only when a secret is
+actually sealed** — a secret-free version 2 configuration stays at version 2
+and is left untouched.
+
+!!! warning "Do not downgrade under a sealed config"
+    An older agent only supports up to the `config_version` it shipped with
+    (0.4.x and earlier: version 2). Loading a configuration whose version is
+    newer than the agent supports is **refused** with
+    `configuration version N is too new for this agent`, rather than passing
+    an unresolved `${secret:}` literal to a probe. Upgrade every agent before
+    distributing a version 3 (sealed) configuration.
+
 ## Agent Section
 
 The `agent` section defines the agent identity.
@@ -519,8 +545,8 @@ The agent looks for the multi-file layout in the **same directory as `agent.yaml
 |---|---|---|---|
 | **Linux (systemd)** | `/etc/senhub-agent/agent.yaml` | `/etc/senhub-agent/probes.d/` | `/etc/senhub-agent/strategies.d/` |
 | **Linux (tarball)** | `/opt/senhub/bin/agent.yaml` | `/opt/senhub/bin/probes.d/` | `/opt/senhub/bin/strategies.d/` |
-| **Windows** | `C:\SenHub\agent.yaml` | `C:\SenHub\probes.d\` | `C:\SenHub\strategies.d\` |
-| **macOS** | `/usr/local/senhub/agent.yaml` | `/usr/local/senhub/probes.d/` | `/usr/local/senhub/strategies.d/` |
+| **Windows (MSI)** | `%ProgramData%\SenHub\agent.yaml` | `%ProgramData%\SenHub\probes.d\` | `%ProgramData%\SenHub\strategies.d\` |
+| **macOS** | `/usr/local/etc/senhub-agent/agent.yaml` | `/usr/local/etc/senhub-agent/probes.d/` | `/usr/local/etc/senhub-agent/strategies.d/` |
 
 Override any of these by passing `--config-path` to the agent — the directories `probes.d/` and `strategies.d/` are always resolved next to whichever `agent.yaml` is loaded.
 
