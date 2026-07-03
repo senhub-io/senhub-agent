@@ -52,3 +52,63 @@ agent:
 		t.Fatalf("no-op ApplyInstallOverrides: %v", err)
 	}
 }
+
+// TestSetLicenseField_PreservesMultiFileLayout is the regression test for C1:
+// activating/removing a license on a multi-file install must not re-emit empty
+// probes:/storage: blocks into agent.yaml — doing so flips isLegacyMonolithic
+// back to true and makes LoadFromDisk ignore probes.d/, leaving the agent with
+// zero probes. The pre-fix code (full unmarshal/marshal of
+// LocalConfigurationData) fails this test; SetLicenseField passes it.
+func TestSetLicenseField_PreservesMultiFileLayout(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "agent.yaml")
+	if err := os.WriteFile(cfg, []byte(`# SenHub Agent — global configuration
+config_version: 2
+agent:
+  key: 11111111-2222-3333-4444-555555555555
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	probesDir := filepath.Join(dir, "probes.d")
+	if err := os.MkdirAll(probesDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(probesDir, "10-cpu.yaml"), []byte(`- name: cpu-local
+  type: cpu
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	assertMultiFileIntact := func(t *testing.T, wantLicense string) {
+		t.Helper()
+		raw, _ := os.ReadFile(cfg)
+		if HasMonolithicMarkers(raw) {
+			t.Fatalf("agent.yaml flipped to monolithic (probes:/storage: re-emitted):\n%s", raw)
+		}
+		after, err := LoadFromDisk(cfg, nil)
+		if err != nil {
+			t.Fatalf("reload: %v", err)
+		}
+		if got := len(after.Probes); got != 1 || after.Probes[0].Name != "cpu-local" {
+			t.Fatalf("probes.d dropped: got %d probes %v, want the cpu-local probe", got, after.Probes)
+		}
+		if after.Agent.License != wantLicense {
+			t.Errorf("license = %q, want %q", after.Agent.License, wantLicense)
+		}
+		if after.Agent.Key != "11111111-2222-3333-4444-555555555555" {
+			t.Errorf("agent key changed to %q", after.Agent.Key)
+		}
+	}
+
+	// activate
+	if err := SetLicenseField(cfg, "eyJ-fake-jwt"); err != nil {
+		t.Fatalf("SetLicenseField activate: %v", err)
+	}
+	assertMultiFileIntact(t, "eyJ-fake-jwt")
+
+	// remove
+	if err := SetLicenseField(cfg, ""); err != nil {
+		t.Fatalf("SetLicenseField remove: %v", err)
+	}
+	assertMultiFileIntact(t, "")
+}
