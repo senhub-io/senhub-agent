@@ -141,6 +141,12 @@ type ParsedArgs struct {
 	// Status command flags. Only meaningful when command == "status";
 	// set by main.go before the service handler dispatches.
 	ShowOTLP bool
+
+	// Yes bypasses the interactive confirmation of destructive commands
+	// (currently `uninstall`, which deletes the config file, certs/ and
+	// logs). Set from the --yes flag; required for unattended removal so
+	// the prompt does not abort a silent uninstall.
+	Yes bool
 }
 
 func GetVersionInfo() map[string]string {

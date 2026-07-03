@@ -63,6 +63,57 @@ func ApplyInstallOverrides(configPath, license string, tags map[string]string) e
 	return nil
 }
 
+// SetLicenseField writes agent.license in configPath in place, at the node
+// level, preserving every other block and the template comments. Unlike a full
+// unmarshal / re-marshal of LocalConfigurationData, it never re-emits empty
+// top-level probes:/storage: sequences — which on a multi-file install flip
+// isLegacyMonolithic (loader.go) back to true and make LoadFromDisk silently
+// ignore probes.d/ + strategies.d/. An empty license clears the field (free
+// tier). This backs `license activate` and `license remove`.
+func SetLicenseField(configPath, license string) error {
+	raw, err := os.ReadFile(configPath) // #nosec G304 - operator-provided config path
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", configPath, err)
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return fmt.Errorf("parsing %s: %w", configPath, err)
+	}
+
+	var root *yaml.Node
+	switch {
+	case len(doc.Content) == 0:
+		// Empty or comment-only file: start a fresh mapping document.
+		root = &yaml.Node{Kind: yaml.MappingNode}
+		doc.Kind = yaml.DocumentNode
+		doc.Content = []*yaml.Node{root}
+	case doc.Content[0].Kind == yaml.MappingNode:
+		root = doc.Content[0]
+	default:
+		return fmt.Errorf("%s: unexpected top-level shape", configPath)
+	}
+
+	agent := mappingChild(root, "agent")
+	if agent == nil {
+		agent = &yaml.Node{Kind: yaml.MappingNode}
+		appendPair(root, "agent", agent)
+	}
+	if agent.Kind != yaml.MappingNode {
+		return fmt.Errorf("%s: agent block is not a mapping", configPath)
+	}
+
+	setScalarField(agent, "license", license)
+
+	out, err := marshalDocument(&doc)
+	if err != nil {
+		return fmt.Errorf("re-encoding %s: %w", configPath, err)
+	}
+	if err := os.WriteFile(configPath, out, 0o600); err != nil {
+		return fmt.Errorf("writing %s: %w", configPath, err)
+	}
+	return nil
+}
+
 // mappingChild returns the value node for key within a mapping node, or nil.
 func mappingChild(m *yaml.Node, key string) *yaml.Node {
 	if m == nil || m.Kind != yaml.MappingNode {

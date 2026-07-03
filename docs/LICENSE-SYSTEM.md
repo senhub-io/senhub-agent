@@ -34,7 +34,9 @@ Source of truth for the lists below:
 - Pro tier — `paidProbes` map in `internal/agent/services/license/probe_catalog.go` + the `authorized_probes` array in customer-specific JWTs
 - Enterprise tier — wildcard `"*"` in `authorized_probes`
 
-A structural test in `internal/agent/probes/registry_invariant_test.go` enforces that every probe registered for boot must be in one of these lists. CI fails if a future probe is added to the registry without claiming a free-tier seat or a paid-catalogue entry.
+A structural test — `TestEveryRegisteredProbeIsAuthorizable` in `internal/agent/probes/registry_invariant_test.go` — enforces one direction of this invariant: every probe registered for boot must be authorizable, i.e. present in `freeTierProbes` **or** `paidProbes`. CI fails if a future probe is added to the registry without claiming a free-tier seat or a paid-catalogue entry.
+
+The reverse direction (every `paidProbes` entry backed by a registered probe) is deliberately **not** enforced in the open-source build: the paid probe packages live in the `senhub-agent-enterprise` module and are not registered in the public binary, so the paid catalogue always has entries with no local probe here. That completeness check runs in the enterprise repository's test suite (see #183).
 
 Only JWT licences are supported. The previous compact-licence format (a short HMAC-signed token) was retired with the open-source flip because its shared HMAC secret could not survive a public source tree.
 
@@ -106,18 +108,25 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **wifi_signal_strength** - Host-local Wi-Fi signal strength of the machine the agent runs on. Niche host self-observability, same footing as cpu/memory/network.
 
 ### Pro Tier (License Required)
-Specific probes authorized by entries in the customer JWT `authorized_probes` array:
+Specific probes authorized by entries in the customer JWT `authorized_probes` array.
 
-- **redfish** - BMC/iDRAC/iLO hardware monitoring
+Source of truth: the `paidProbes` map in `internal/agent/services/license/probe_catalog.go`. The catalogue lives in the open-source core so the validator recognises the names a JWT may grant, but the paid probe *packages* ship only in the `senhub-agent-enterprise` module — they are not registered in the public binary.
+
 - **citrix** - Citrix Virtual Apps and Desktops monitoring
 - **netscaler** - Citrix NetScaler ADC monitoring (load balancers, SSL, HA)
 - **veeam** - Veeam Backup & Replication monitoring
+- **redfish** - BMC/iDRAC/iLO hardware monitoring
 - **ibmi** - IBM i / Power Systems monitoring (JT400 JDBC bridge, senhub.ibmi.* semconv) — **Linux-only** agent runtime
+- **mssql_ha** - Deep SQL Server monitoring (Always On availability groups, HA topology) beyond the free `mssql` engine probe
+- **oracle_enterprise** - Deep Oracle monitoring (RAC, Data Guard, ASM, per-SQL) beyond the free `oracle` instance probe
+- **hyperv_ha** - Hyper-V cluster / failover monitoring beyond the free host-local `hyperv` probe
+- **vsphere_ha** - VMware vSphere cluster / HA monitoring
+- **ad_hybrid** - Active Directory hybrid-identity monitoring
+- **exchange_online** - Microsoft Exchange Online / Microsoft 365 mail monitoring
 - **event** - Custom HTTP event ingestion
 - **ping_gateway** - Gateway connectivity monitoring
 - **ping_webapp** - Web application availability
 - **load_webapp** - Web application performance phase timing
-- **wifi_signal_strength** - WiFi signal quality
 
 ### Enterprise Tier (License Required)
 - **All probes** (wildcard `"*"` authorization in the JWT — also matches any probe added in future releases without requiring a JWT reissue)

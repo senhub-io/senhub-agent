@@ -88,6 +88,18 @@
     <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
     <Property Id="OTLP_ENDPOINT" Secure="yes" />
 
+    <!--
+      Keep the license token out of the MSI log. Secure="yes" only lets a
+      public property survive the transition to the deferred/system
+      context — it does NOT redact it. A verbose install (/l*v) otherwise
+      records the LICENSE_KEY property value AND the SeedConfig deferred
+      custom-action data (the config-init command line embeds the token,
+      see SetProperty below). MsiHiddenProperties is the only mechanism
+      that masks a property value in the log, so list both here: the raw
+      property and the CA-data property that carries the expanded command.
+    -->
+    <Property Id="MsiHiddenProperties" Value="LICENSE_KEY;SeedConfig" />
+
     <!-- ============================================================ -->
     <!-- Existing-install detection.                                  -->
     <!-- EXISTING_SERVICE is set when the senhub-agent Windows service -->

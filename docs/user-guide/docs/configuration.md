@@ -597,9 +597,13 @@ String values in any configuration file can reference environment variables or f
 | `${env:VAR:-fallback}` | Value of `$VAR`, or `fallback` if unset |
 | `${file:/path/to/file}` | File contents, **trimmed of whitespace**. Error if the file is missing. |
 | `${file:/path:-fallback}` | File contents, or `fallback` if the file is missing |
+| `${secret:NAME}` | Value from the OS-native [secret store](secret-store.md). Error if the name is unknown or no backend is available. |
+| `${secret:NAME:-fallback}` | Stored value, or `fallback` if the name is unknown |
 | `$$` | Literal `$` character (escape) |
 
 Substitution applies to **values** only — never to YAML keys. References inside `params:` blocks of probes and strategies are also resolved.
+
+For `${secret:}` — storing values, the per-OS backends, and sealing inline secrets — see the [Secret Store](secret-store.md) page.
 
 ### Examples
 

@@ -565,7 +565,69 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 		return cfg, err
 	}
 
+	if err := validateAuthHeaders(cfg); err != nil {
+		return cfg, err
+	}
+
 	return cfg, nil
+}
+
+// validateAuthHeaders fails fast when an operator EXPLICITLY sets an
+// Authorization header that resolves to a blank or scheme-only value.
+// A configured-but-empty bearer token is a silent-data-loss trap: the
+// operator intends an authenticated export, the credential resolves to
+// "" (e.g. an unset ${env:VAR} with no default), and the receiver
+// rejects every batch — indistinguishable from a healthy sink until
+// someone notices the data never arrived. Authentication stays OPTIONAL
+// for unauthenticated local OTLP: the check only fires when the header
+// is present, so omitting it entirely is still valid.
+//
+// Each enabled signal is checked against its RESOLVED headers (its own
+// override, else the inherited root) so a blank root header only errors
+// when a live signal actually relies on it.
+func validateAuthHeaders(cfg Config) error {
+	signals := []struct {
+		name    string
+		enabled bool
+		headers map[string]string
+	}{
+		{"signals.metrics", cfg.Metrics.Enabled, cfg.Metrics.ResolveHeaders(cfg.Headers)},
+		{"signals.logs", cfg.Logs.Enabled, cfg.Logs.ResolveHeaders(cfg.Headers)},
+		{"signals.traces", cfg.Traces.Enabled, cfg.Traces.ResolveHeaders(cfg.Headers)},
+	}
+	for _, s := range signals {
+		if !s.enabled {
+			continue
+		}
+		if err := checkAuthHeader(s.headers, s.name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkAuthHeader rejects a present-but-blank Authorization header. The
+// name is matched case-insensitively (HTTP header names are), and an
+// empty value or a bare auth scheme with no credential after it (e.g.
+// "Bearer" or "Bearer   ", which is what "Bearer ${env:UNSET}" resolves
+// to) is rejected. A real token — with or without a scheme — passes.
+func checkAuthHeader(headers map[string]string, where string) error {
+	for k, v := range headers {
+		if !strings.EqualFold(k, "authorization") {
+			continue
+		}
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			return fmt.Errorf("%s: Authorization header is set but empty — provide a token or remove the header for unauthenticated export", where)
+		}
+		if fields := strings.Fields(trimmed); len(fields) == 1 {
+			switch strings.ToLower(fields[0]) {
+			case "bearer", "basic":
+				return fmt.Errorf("%s: Authorization header has scheme %q but no credential — the token resolved to empty (check ${env:}/${secret:}/${file:} references)", where, fields[0])
+			}
+		}
+	}
+	return nil
 }
 
 // validateEndpoints ensures that every enabled signal has a reachable

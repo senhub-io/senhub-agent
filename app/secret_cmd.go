@@ -30,7 +30,7 @@ func secretUsage() {
   set <name>        store/replace a secret (hidden prompt, or stdin, or --from-file <path>)
   get <name>        print a secret value to stdout (deliberate reveal)
   list              list secret names (never values)
-  rm <name>         delete a secret
+  rm <name>         delete a secret (prompts to confirm; --yes to skip)
   migrate           move inline plaintext secrets from the config into the store
   wire-unit         (Linux/systemd-creds) regenerate the unit credential drop-in
   status            show the active backend and store location
@@ -105,6 +105,13 @@ func runSecretCommand() {
 
 	case "rm":
 		name := secretArgName(args)
+		if !secretHasFlag(args, "--yes") {
+			fmt.Printf("Remove secret %q? [y/N] ", name)
+			if !readYesConfirmation() {
+				fmt.Println("Cancelled.")
+				return
+			}
+		}
 		if err := p.Delete(name); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -146,6 +153,17 @@ func secretArgName(args []string) string {
 	fmt.Fprintln(os.Stderr, "Error: missing <name>")
 	os.Exit(2)
 	return ""
+}
+
+// secretHasFlag reports whether the given boolean flag is present anywhere in
+// the secret sub-command arguments.
+func secretHasFlag(args []string, name string) bool {
+	for _, a := range args {
+		if a == name {
+			return true
+		}
+	}
+	return false
 }
 
 // secretConfigDir returns the directory holding the agent config (and thus the
