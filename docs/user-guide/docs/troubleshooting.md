@@ -306,7 +306,7 @@ This runs the agent in the foreground (not as a service) and outputs detailed lo
 | Invalid YAML syntax | Check logs for "yaml" errors | Validate: `python3 -c "import yaml; yaml.safe_load(open('agent.yaml'))"` |
 | Port already in use | Check logs for "bind" or "address already in use" | Linux: `ss -tlnp \| grep 8080` / Windows: `netstat -an \| findstr 8080` |
 | Insufficient permissions | Check logs for "permission denied" | Run as Administrator (Windows) or root (Linux) |
-| Invalid config_version | Check logs for "config_version" errors | Ensure `config_version: 2` is at the top of the config file |
+| Invalid config_version | Check logs for "config_version" errors | The agent manages `config_version` automatically. Leave it as written or let migration set it; do not hand-edit to a version newer than your agent supports (an agent refuses a config version above the one it ships). Run `agent config check` to confirm. |
 
 ### Configuration Changes Not Applied
 
