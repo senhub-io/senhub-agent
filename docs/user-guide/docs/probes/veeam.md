@@ -62,6 +62,7 @@ Per-job metrics for each active backup job:
 |--------|------|-------------|
 | `veeam_job_status` | Lookup | Last run result (None/Success/Warning/Failed/Running) |
 | `veeam_job_seconds_since` | Seconds | Time since last run |
+| `veeam_job_running_seconds` | Seconds | Elapsed running time of a currently-running job (0 when not running). The supervisor sets the "too long" alert limit; the probe applies no threshold |
 | `veeam_job_objects_count` | Count | Number of objects processed |
 | `veeam_job_bottleneck` | Lookup | Bottleneck type (None/Source/Proxy/Network/Target) |
 | `veeam_job_processed_bytes` | Bytes | Total disk size processed |

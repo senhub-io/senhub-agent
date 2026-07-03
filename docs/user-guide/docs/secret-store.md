@@ -89,6 +89,17 @@ senhub-agent key show
 
 ## Sealing inline secrets into the store
 
+!!! note "Sealing also happens automatically on first boot"
+    From `config_version 3`, the agent seals inline plaintext secrets into
+    the store automatically the first time it starts: it moves each value
+    into the store, rewrites the field to a `${secret:...}` reference, and
+    stamps the file `config_version: 3`. The bump to version 3 happens only
+    when a secret is actually sealed — a secret-free configuration stays at
+    version 2 and is untouched. `agent secret migrate` is the explicit,
+    on-demand equivalent of that boot-time step (for example to seal a
+    configuration before distributing it). See
+    [Configuration → Config versions](configuration.md#config-versions).
+
 `agent secret migrate` scans the configuration for fields whose NAME denotes a secret (`password`, `passphrase`, `secret`, `token`, `api_key`, `community`, `credential`, `dsn`, `uri`, `private_key`) and whose value is still an inline plaintext (not already a `${...}` reference). It moves each value into the store and rewrites the field to a `${secret:}` reference. Identifier-style fields such as `user`, `login` and `email` are deliberately left alone.
 
 Before:
