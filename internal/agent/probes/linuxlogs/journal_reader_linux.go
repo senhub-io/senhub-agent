@@ -28,6 +28,7 @@ type journalReader struct {
 	stdout    io.ReadCloser
 	probeName string
 	log       *logger.ModuleLogger
+	tracker   *exitTracker
 
 	wg     sync.WaitGroup
 	stopMu sync.Mutex
@@ -69,6 +70,7 @@ func newJournalReader(cfg LinuxLogsProbeConfig, log *logger.ModuleLogger, probeN
 		stdout:    stdout,
 		probeName: probeName,
 		log:       log,
+		tracker:   newExitTracker(),
 	}
 
 	r.wg.Add(2)
@@ -79,6 +81,23 @@ func newJournalReader(cfg LinuxLogsProbeConfig, log *logger.ModuleLogger, probeN
 	go func() {
 		defer r.wg.Done()
 		drainStderr(bufio.NewReader(stderr), log)
+	}()
+
+	// Monitor goroutine: the sole owner of cmd.Wait(). It waits for the
+	// drain goroutines first — StdoutPipe/StderrPipe forbid Wait before
+	// all reads complete, and the pipes reach EOF exactly when the
+	// process exits — then reaps the subprocess and classifies the exit.
+	// A death that stop() did not request is flagged unexpected so
+	// Collect() can report the probe unhealthy; before this the drain
+	// goroutines just returned silently and journalctl death was
+	// invisible.
+	go func() {
+		r.wg.Wait()
+		err := r.cmd.Wait()
+		r.tracker.recordExit(err)
+		if r.tracker.exitedUnexpectedly() {
+			log.Error().Err(err).Msg("journalctl subprocess died unexpectedly; linux_logs probe is no longer collecting")
+		}
 	}()
 
 	log.Info().
@@ -121,6 +140,11 @@ func (r *journalReader) stop(ctx context.Context) error {
 		return nil
 	}
 
+	// Declare the exit expected before signalling, so the monitor
+	// goroutine classifies the resulting death as a requested stop and
+	// not an unexpected one.
+	r.tracker.markStopping()
+
 	// SIGTERM is the polite shutdown for journalctl --follow.
 	_ = r.cmd.Process.Signal(syscall.SIGTERM)
 
@@ -130,25 +154,32 @@ func (r *journalReader) stop(ctx context.Context) error {
 		deadline = time.Now().Add(5 * time.Second)
 	}
 
-	exited := make(chan error, 1)
-	go func() {
-		exited <- r.cmd.Wait()
-	}()
-
 	select {
-	case err := <-exited:
-		_ = r.stdout.Close()
-		r.wg.Wait()
+	case <-r.tracker.waitCh():
 		// journalctl returns non-zero on signal — that's expected, not
 		// a probe failure.
-		if err != nil {
+		if err := r.tracker.err(); err != nil {
 			r.log.Debug().Err(err).Msg("journalctl exited with non-zero status (expected on signal)")
 		}
 		return nil
 	case <-time.After(time.Until(deadline)):
 		_ = r.cmd.Process.Kill()
-		_ = r.stdout.Close()
-		r.wg.Wait()
+		// SIGKILL closes the pipes, the drains return and the monitor
+		// reaps the process; wait for that so we don't leak it.
+		<-r.tracker.waitCh()
 		return fmt.Errorf("journalctl did not exit before deadline; killed")
 	}
+}
+
+// healthErr reports the reader unhealthy when the journalctl subprocess
+// died without a stop() request. Collect() surfaces this so an operator
+// sees the probe go unhealthy instead of it silently shipping nothing.
+func (r *journalReader) healthErr() error {
+	if !r.tracker.exitedUnexpectedly() {
+		return nil
+	}
+	if err := r.tracker.err(); err != nil {
+		return fmt.Errorf("journalctl subprocess exited unexpectedly: %w", err)
+	}
+	return fmt.Errorf("journalctl subprocess exited unexpectedly")
 }
