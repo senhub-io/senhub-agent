@@ -36,7 +36,7 @@ agent installs in the offline Free-tier default.
 
 | Property | Purpose |
 |---|---|
-| `LICENSE_KEY` | JWT license token — unlocks Pro/Enterprise probes (secure property, not logged) |
+| `LICENSE_KEY` | JWT license token — unlocks Pro/Enterprise probes (see the note on log exposure below) |
 | `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
 | `INSTALLFOLDER` | Override the install directory (default `%ProgramFiles%\SenHub Agent\`) |
@@ -44,14 +44,33 @@ agent installs in the offline Free-tier default.
 Properties are consumed only on first install; they do not overwrite an
 existing `agent.yaml`.
 
+> **`LICENSE_KEY` and install logs.** The license token is a secret. A
+> verbose install log (`/l*v`) records public property values and custom
+> action command lines, so a `LICENSE_KEY` passed on the `msiexec` line
+> can appear in that log. When you provision a license silently:
+>
+> - Prefer a non-verbose log level, or omit `/l*v` entirely, for the
+>   install that carries `LICENSE_KEY`.
+> - If you must capture a verbose log (troubleshooting), treat it as
+>   sensitive and delete it once the install is confirmed — it may also
+>   contain the token on the command line passed to the provisioning
+>   custom action.
+> - The token equally appears in the shell history / job output of the
+>   deployment tool that invokes `msiexec`; scrub those the same way.
+
 ## Silent install
 
 ```bat
 msiexec /i senhub-agent-<version>-amd64.msi /qn ^
   LICENSE_KEY=eyJhbGciOi... ^
   TAGS=site=paris,env=prod ^
-  /l*v %TEMP%\senhub-agent-install.log
+  /l* %TEMP%\senhub-agent-install.log
 ```
+
+`/l*` logs everything except the verbose (`v`) level; the verbose level
+is what records property values, so it is deliberately omitted here while
+`LICENSE_KEY` is on the command line. Use `/l*v` only for an install that
+carries no secret, and delete the log afterwards (see the note above).
 
 Free tier, no provisioning:
 
