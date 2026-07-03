@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -25,7 +24,7 @@ func handleLicenseCommand() {
 	var cmd LicenseCmd
 	parser, err := arg.NewParser(arg.Config{Program: "agent license"}, &cmd)
 	if err != nil {
-		log.Fatalf("Failed to create parser: %v", err)
+		fatalf("failed to create parser: %v", err)
 	}
 
 	// Parse args starting from index 2 (skip "agent" and "license")
@@ -58,13 +57,13 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 	// Get absolute config path
 	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
 	if err != nil {
-		log.Fatalf("Failed to determine config path: %v", err)
+		fatalf("failed to determine config path: %v", err)
 	}
 
 	// Validate license code with RSA signature verification
 	validator, err := license.GetDefaultValidator(7)
 	if err != nil {
-		log.Fatalf("Failed to initialize license validator: %v", err)
+		fatalf("failed to initialize license validator: %v", err)
 	}
 
 	validatedLicense, err := validator.ValidateLicense(args.LicenseCode)
@@ -92,12 +91,12 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 	// Load configuration file
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		log.Fatalf("Failed to read config file %s: %v", configPath, err)
+		fatalf("failed to read config file %s: %v", configPath, err)
 	}
 
 	var config configuration.LocalConfigurationData
 	if err := yaml.Unmarshal(data, &config); err != nil {
-		log.Fatalf("Failed to parse config file: %v", err)
+		fatalf("failed to parse config file: %v", err)
 	}
 
 	// Update license field
@@ -106,11 +105,11 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 	// Write back to file
 	updatedData, err := yaml.Marshal(&config)
 	if err != nil {
-		log.Fatalf("Failed to marshal config: %v", err)
+		fatalf("failed to marshal config: %v", err)
 	}
 
 	if err := os.WriteFile(configPath, updatedData, 0600); err != nil {
-		log.Fatalf("Failed to write config file: %v", err)
+		fatalf("failed to write config file: %v", err)
 	}
 
 	fmt.Printf("\nLicense activated and saved to: %s\n", configPath)
@@ -122,18 +121,18 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 	// Get absolute config path
 	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
 	if err != nil {
-		log.Fatalf("Failed to determine config path: %v", err)
+		fatalf("failed to determine config path: %v", err)
 	}
 
 	// Load configuration file
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		log.Fatalf("Failed to read config file %s: %v", configPath, err)
+		fatalf("failed to read config file %s: %v", configPath, err)
 	}
 
 	var config configuration.LocalConfigurationData
 	if err := yaml.Unmarshal(data, &config); err != nil {
-		log.Fatalf("Failed to parse config file: %v", err)
+		fatalf("failed to parse config file: %v", err)
 	}
 
 	// Check if license exists
@@ -149,7 +148,7 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 	// Validate and show license with RSA signature verification
 	validator, err := license.GetDefaultValidator(7)
 	if err != nil {
-		log.Fatalf("Failed to initialize license validator: %v", err)
+		fatalf("failed to initialize license validator: %v", err)
 	}
 
 	validatedLicense, err := validator.ValidateLicense(config.Agent.License)
@@ -193,7 +192,7 @@ func handleLicenseRemove(args *cliArgs.LicenseRemoveArgs) {
 	// Get absolute config path
 	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
 	if err != nil {
-		log.Fatalf("Failed to determine config path: %v", err)
+		fatalf("failed to determine config path: %v", err)
 	}
 
 	// Confirm if not forced
@@ -210,12 +209,12 @@ func handleLicenseRemove(args *cliArgs.LicenseRemoveArgs) {
 	// Load configuration file
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		log.Fatalf("Failed to read config file %s: %v", configPath, err)
+		fatalf("failed to read config file %s: %v", configPath, err)
 	}
 
 	var config configuration.LocalConfigurationData
 	if err := yaml.Unmarshal(data, &config); err != nil {
-		log.Fatalf("Failed to parse config file: %v", err)
+		fatalf("failed to parse config file: %v", err)
 	}
 
 	// Remove license
@@ -224,11 +223,11 @@ func handleLicenseRemove(args *cliArgs.LicenseRemoveArgs) {
 	// Write back to file
 	updatedData, err := yaml.Marshal(&config)
 	if err != nil {
-		log.Fatalf("Failed to marshal config: %v", err)
+		fatalf("failed to marshal config: %v", err)
 	}
 
 	if err := os.WriteFile(configPath, updatedData, 0600); err != nil {
-		log.Fatalf("Failed to write config file: %v", err)
+		fatalf("failed to write config file: %v", err)
 	}
 
 	fmt.Printf("License removed from: %s\n", configPath)

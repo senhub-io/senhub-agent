@@ -314,7 +314,7 @@ func runAgent(args *cliArgs.ParsedArgs) {
 
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
-		log.Fatal(err)
+		fatalf("%v", err)
 	}
 
 	svcLogger, err := s.Logger(nil)
