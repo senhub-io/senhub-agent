@@ -576,14 +576,23 @@ func (h *HTTPSyncStrategy) handleLicenseStatus(w http.ResponseWriter, r *http.Re
 // Universal Configuration handlers (delegated to ConfigurationManager)
 
 func (h *HTTPSyncStrategy) handleUniversalConfigValidation(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.authManager.AuthenticateAndExtract(w, r); !ok {
+		return
+	}
 	h.configManager.HandleUniversalConfigValidation(w, r)
 }
 
 func (h *HTTPSyncStrategy) handleUniversalConfigPreview(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.authManager.AuthenticateAndExtract(w, r); !ok {
+		return
+	}
 	h.configManager.HandleUniversalConfigPreview(w, r)
 }
 
 func (h *HTTPSyncStrategy) handleUniversalConfigTest(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.authManager.AuthenticateAndExtract(w, r); !ok {
+		return
+	}
 	h.configManager.HandleUniversalConfigTest(w, r)
 }
 
