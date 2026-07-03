@@ -135,7 +135,7 @@ Available categories: `overview`, `jobs`, `repositories`, `license`, `proxies`, 
 
 Example for job details:
 ```
-http://192.168.1.100:8056/api/17b3cf0a-.../prtg/metrics/veeam-prod?tags=metric_type:jobs
+http://192.168.1.100:8056/api/550e8400-.../prtg/metrics/veeam-prod?tags=metric_type:jobs
 ```
 
 Download the PRTG lookup files from the web interface (button "PRTG Lookups" in the Sensor Builder).
