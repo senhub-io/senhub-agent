@@ -71,8 +71,8 @@ an existing agent, and MSI-managed auto-update.
 <li><span class="tag t-security">Security</span> <span class="tag t-area">packaging</span> The MSI <strong>masks <code>LICENSE_KEY</code></strong> in the install log and stages the update MSI in a private per-run directory instead of shared temp (TOCTOU hardening). (#607, #609)</li>
 <li><span class="tag t-security">Security</span> <span class="tag t-area">ci</span> GitHub Actions are pinned to commit SHA. (#609)</li>
 <li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">otlp_receiver</span> Re-exported metrics <strong>preserve their instrument type and unit</strong>, instead of being flattened on the way back out. (#609)</li>
-<li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">senhub</span> A permanent <code>4xx</code> response now <strong>drops the payload</strong> instead of retrying it forever. (#609)</li>
-<li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">linux_logs</span> Death of the <code>journalctl</code> subprocess is detected, so a dead reader no longer silently stops shipping logs. (#609)</li>
+<li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">senhub</span> A permanent <code>4xx</code> response now <strong>drops the payload</strong> instead of retrying it forever; transient auth failures (<code>401</code>/<code>403</code>) are retried rather than dropped, so an intake auth blip does not lose data. (#609, #613)</li>
+<li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">linux_logs</span> Death of the <code>journalctl</code> subprocess is detected and the reader is <strong>respawned</strong> with a bounded backoff, so log collection resumes without an agent restart. (#609, #613)</li>
 <li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">logicaldisk</span> All real filesystems are collected via a blocklist, instead of an allowlist that dropped legitimate mounts. (#609)</li>
 <li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">entity</span> Locally-monitored probe targets are anchored to their host with <code>runs_on</code>, so a local target no longer surfaces as an isolated entity. (#601)</li>
 <li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">CLI</span> <code>db-monitoring</code> no longer requires administrator on Windows. (#609)</li>
@@ -84,6 +84,8 @@ an existing agent, and MSI-managed auto-update.
 
 <ul class="rn">
 <li><span class="tag t-removed">Changed</span> <span class="tag t-area">CLI</span> Decorative emoji are removed from CLI output, fatal errors print a plain <code>Error</code> line, and diagnostic errors and warnings are routed to <strong>stderr</strong> — friendlier for scripts and log capture. (#609)</li>
+<li><span class="tag t-breaking">Breaking</span> <span class="tag t-area">Prometheus</span> OTLP-ingested cumulative counters are now exported as counters, so the Prometheus endpoint appends the OpenMetrics <code>_total</code> suffix (for example <code>http_server_requests</code> becomes <code>http_server_requests_total</code>). This is the correct OpenMetrics naming, but <strong>scrape-visible series names change on upgrade</strong> — update any dashboards or alerts that match the old names. (#613)</li>
+<li><span class="tag t-removed">Changed</span> <span class="tag t-area">secret</span> The secret store returns stored values <strong>exactly as written</strong> (no whitespace trimming), so a secret with meaningful leading or trailing bytes round-trips unchanged. (#613)</li>
 </ul>
 
 ## Internal
