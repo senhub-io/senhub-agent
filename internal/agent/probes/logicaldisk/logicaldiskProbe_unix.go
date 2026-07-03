@@ -19,11 +19,47 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type unixLogicalDiskCollector struct{}
+// statfsTimeout bounds a single syscall.Statfs call. A stale network/FUSE
+// mount that slips past the blocklist can wedge statfs indefinitely; capping it
+// keeps one bad mount from stalling the whole collection cycle. The mount is
+// skipped on timeout (the blocking goroutine is left to unwind if the kernel
+// ever returns — one leaked goroutine per genuinely-hung mount is the accepted
+// trade-off versus a stalled probe).
+const statfsTimeout = 5 * time.Second
+
+type unixLogicalDiskCollector struct {
+	logger *logger.ModuleLogger
+}
 
 // newLogicalDiskCollector creates a new collector instance
-func newLogicalDiskCollector(config map[string]interface{}, logger *logger.Logger) (logicaldiskCollector, error) {
-	return &unixLogicalDiskCollector{}, nil
+func newLogicalDiskCollector(config map[string]interface{}, baseLogger *logger.Logger) (logicaldiskCollector, error) {
+	return &unixLogicalDiskCollector{
+		logger: logger.NewModuleLogger(baseLogger, "probe.logicaldisk"),
+	}, nil
+}
+
+// statfsResult carries a statfs outcome back from the bounded goroutine.
+type statfsResult struct {
+	stat syscall.Statfs_t
+	err  error
+}
+
+// statfsWithTimeout runs syscall.Statfs under statfsTimeout so a hung mount
+// cannot block the collection cycle. The worker goroutine sends on a buffered
+// channel, so it never blocks on send even after we stopped waiting.
+func statfsWithTimeout(path string) (syscall.Statfs_t, error) {
+	ch := make(chan statfsResult, 1)
+	go func() {
+		var st syscall.Statfs_t
+		err := syscall.Statfs(path, &st)
+		ch <- statfsResult{stat: st, err: err}
+	}()
+	select {
+	case r := <-ch:
+		return r.stat, r.err
+	case <-time.After(statfsTimeout):
+		return syscall.Statfs_t{}, fmt.Errorf("statfs on %s timed out after %s (stale mount?)", path, statfsTimeout)
+	}
 }
 
 // shouldCollectMount determines if metrics should be collected for a given filesystem
@@ -78,10 +114,10 @@ func (c *unixLogicalDiskCollector) shouldCollectMount(fsType string, mountPoint 
 		"squashfs":    true,
 		"iso9660":     true,
 		"overlay":     true,
-		// Network filesystems: excluded because statfs below is a synchronous
-		// call with no timeout, so a stale NFS/CIFS mount would hang the whole
-		// collection cycle. Supporting them safely needs a per-mount timeout
-		// (tracked as a follow-up), not a blanket include here.
+		// Network filesystems: excluded because a stale NFS/CIFS mount makes
+		// statfs block. statfsWithTimeout now bounds each call, but a hung
+		// network mount would still burn statfsTimeout every cycle, so keep them
+		// out by type rather than paying that cost on every collection.
 		"nfs":        true,
 		"nfs4":       true,
 		"cifs":       true,
@@ -100,16 +136,29 @@ func (c *unixLogicalDiskCollector) shouldCollectMount(fsType string, mountPoint 
 		return false
 	}
 
+	// FUSE network/user filesystems surface as fuse.<backend> (fuse.rclone,
+	// fuse.s3fs, fuse.gcsfuse, fuse.davfs2, fuse.ceph, fuse.glusterfs, gvfs, …).
+	// A stale one wedges statfs exactly like NFS/CIFS, so exclude the whole
+	// fuse.* family by default. Plain "fuse" (local passthrough) stays included;
+	// fusectl/fuse.portal are already covered by excludedTypes above.
+	if strings.HasPrefix(fsType, "fuse.") {
+		return false
+	}
+
 	// Handle tmpfs specially - only include specific mount points
 	if fsType == "tmpfs" {
-		// Liste explicite des points de montage autorisés
+		// Explicit allowlist of persistent, fleet-consistent tmpfs mounts.
 		allowedTmpfsMounts := map[string]bool{
-			"/run":           true,
-			"/dev/shm":       true,
-			"/run/lock":      true,
-			"/run/user/1001": true,
+			"/run":      true,
+			"/dev/shm":  true,
+			"/run/lock": true,
 		}
-		return allowedTmpfsMounts[mountPoint]
+		if allowedTmpfsMounts[mountPoint] {
+			return true
+		}
+		// Per-user runtime dirs are /run/user/<uid> for whatever uids exist on
+		// the host; match by prefix instead of hardcoding one uid.
+		return strings.HasPrefix(mountPoint, "/run/user/")
 	}
 
 	return true
@@ -124,10 +173,9 @@ func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.Da
 	}
 
 	// Get statistics about mounted filesystems
-	var stat syscall.Statfs_t
 	mounts, err := c.getMountPoints()
 	if err != nil {
-		return nil, fmt.Errorf("error getting mount points: %v", err)
+		return nil, fmt.Errorf("error getting mount points: %w", err)
 	}
 
 	for _, mount := range mounts {
@@ -135,9 +183,13 @@ func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.Da
 			continue
 		}
 
-		err := syscall.Statfs(mount.mountpoint, &stat)
+		stat, err := statfsWithTimeout(mount.mountpoint)
 		if err != nil {
-			fmt.Printf("Cannot get stats for mount point %s: %v\n", mount.mountpoint, err)
+			c.logger.Warn().
+				Str("mount_point", mount.mountpoint).
+				Str("fs_type", mount.fstype).
+				Err(err).
+				Msg("cannot stat mount point; skipping")
 			continue
 		}
 
@@ -230,37 +282,49 @@ func (c *unixLogicalDiskCollector) getMountPointsLinux() ([]mountInfo, error) {
 	}
 	defer unix.Close(mountsFile)
 
+	appendLine := func(line string) {
+		if line == "" {
+			return
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			return
+		}
+		mounts = append(mounts, mountInfo{
+			device:     fields[0],
+			mountpoint: fields[1],
+			fstype:     fields[2],
+		})
+	}
+
 	buf := make([]byte, 4096)
 	var offset int64
+	// carry holds a partial trailing line whose newline lands in a later chunk.
+	// Without it, a mount line straddling a 4 KiB boundary (common on hosts with
+	// many cgroup/overlay mounts) is split in two and both halves are corrupted.
+	var carry string
 	for {
 		n, err := unix.Pread(mountsFile, buf, offset)
 		if err != nil {
-			return nil, fmt.Errorf("error reading /proc/mounts: %v", err)
+			return nil, fmt.Errorf("error reading /proc/mounts: %w", err)
 		}
 		if n == 0 {
 			break
 		}
 
-		data := string(buf[:n])
-		lines := strings.Split(data, "\n")
-		for _, line := range lines {
-			if line == "" {
-				continue
+		data := carry + string(buf[:n])
+		if idx := strings.LastIndexByte(data, '\n'); idx >= 0 {
+			for _, line := range strings.Split(data[:idx], "\n") {
+				appendLine(line)
 			}
-
-			fields := strings.Fields(line)
-			if len(fields) < 3 {
-				continue
-			}
-
-			mounts = append(mounts, mountInfo{
-				device:     fields[0],
-				mountpoint: fields[1],
-				fstype:     fields[2],
-			})
+			carry = data[idx+1:]
+		} else {
+			carry = data
 		}
 		offset += int64(n)
 	}
+	// A final line without a trailing newline (rare, but don't drop it).
+	appendLine(strings.TrimRight(carry, "\n"))
 
 	return mounts, nil
 }

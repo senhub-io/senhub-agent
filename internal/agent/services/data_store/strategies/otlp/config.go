@@ -620,6 +620,15 @@ func checkAuthHeader(headers map[string]string, where string) error {
 		if trimmed == "" {
 			return fmt.Errorf("%s: Authorization header is set but empty — provide a token or remove the header for unauthenticated export", where)
 		}
+		// A still-present ${...} means a ${file:}/${secret:} lookup failed with
+		// no default and expandEnv kept the literal template. That value passes
+		// checkAuthHeader's scheme check but every export then fails at runtime
+		// with a 401, so fail fast here just like the env-backend blank case.
+		// The literal is the config reference (not the resolved secret), so it
+		// is safe to surface.
+		if strings.Contains(trimmed, "${") {
+			return fmt.Errorf("%s: Authorization header contains an unresolved reference %q — a ${env:}/${file:}/${secret:} lookup failed with no default", where, trimmed)
+		}
 		if fields := strings.Fields(trimmed); len(fields) == 1 {
 			switch strings.ToLower(fields[0]) {
 			case "bearer", "basic":
