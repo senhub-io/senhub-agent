@@ -146,9 +146,9 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			if err := generateConfiguration(args); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to generate configuration: %v\n", err)
 			} else {
-				fmt.Printf("✅ Configuration generated: %s\n", configPath)
+				fmt.Printf("Configuration generated: %s\n", configPath)
 				if args.EnableHttps {
-					fmt.Printf("✅ HTTPS certificates generated in %s\n", filepath.Join(filepath.Dir(configPath), "certs"))
+					fmt.Printf("HTTPS certificates generated in %s\n", filepath.Join(filepath.Dir(configPath), "certs"))
 					fmt.Printf("\nAccess your agent at: https://localhost:%d/web/{agentkey}/dashboard\n", args.HttpsPort)
 				} else {
 					fmt.Printf("\nAccess your agent at: http://localhost:8080/web/{agentkey}/dashboard\n")

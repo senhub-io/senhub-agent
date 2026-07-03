@@ -69,23 +69,23 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 
 	validatedLicense, err := validator.ValidateLicense(args.LicenseCode)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Invalid license code: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Invalid license code: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Show license information
-	fmt.Println("✅ License validated successfully")
+	fmt.Println("License validated successfully")
 	fmt.Printf("   Tier: %s\n", validatedLicense.Tier)
 	fmt.Printf("   Authorized probes: %v\n", validatedLicense.AuthorizedProbes)
 	fmt.Printf("   Expires at: %s\n", validatedLicense.ExpiresAt.Format(time.RFC1123))
 
 	if validatedLicense.IsExpired {
-		fmt.Printf("   ⚠️  License is expired\n")
+		fmt.Printf("   License is expired\n")
 		if validator.IsInGracePeriod(validatedLicense) {
 			gracePeriodEnd := validatedLicense.ExpiresAt.Add(time.Duration(validatedLicense.GracePeriodDays) * 24 * time.Hour)
 			fmt.Printf("   Grace period active until: %s\n", gracePeriodEnd.Format(time.RFC1123))
 		} else {
-			fmt.Printf("   ❌ Grace period has ended - license is inactive\n")
+			fmt.Printf("   Grace period has ended - license is inactive\n")
 		}
 	}
 
@@ -113,7 +113,7 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 		log.Fatalf("Failed to write config file: %v", err)
 	}
 
-	fmt.Printf("\n✅ License activated and saved to: %s\n", configPath)
+	fmt.Printf("\nLicense activated and saved to: %s\n", configPath)
 	fmt.Println("   Restart the agent for changes to take effect.")
 }
 
@@ -154,11 +154,11 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 
 	validatedLicense, err := validator.ValidateLicense(config.Agent.License)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Invalid license in config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Invalid license in config: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("📜 Current License Information")
+	fmt.Println("Current License Information")
 	fmt.Println("================================")
 	fmt.Printf("Tier: %s\n", validatedLicense.Tier)
 	fmt.Printf("Subject: %s\n", validatedLicense.Subject)
@@ -166,7 +166,7 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 	fmt.Printf("Expires at: %s\n", validatedLicense.ExpiresAt.Format(time.RFC1123))
 
 	if validatedLicense.IsExpired {
-		fmt.Printf("\n⚠️  Status: EXPIRED\n")
+		fmt.Printf("\nStatus: EXPIRED\n")
 		if validator.IsInGracePeriod(validatedLicense) {
 			gracePeriodEnd := validatedLicense.ExpiresAt.Add(time.Duration(validatedLicense.GracePeriodDays) * 24 * time.Hour)
 			fmt.Printf("Grace period active until: %s\n", gracePeriodEnd.Format(time.RFC1123))
@@ -175,7 +175,7 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 		}
 	} else {
 		daysUntilExpiry := int(time.Until(validatedLicense.ExpiresAt).Hours() / 24)
-		fmt.Printf("\n✅ Status: ACTIVE (%d days remaining)\n", daysUntilExpiry)
+		fmt.Printf("\nStatus: ACTIVE (%d days remaining)\n", daysUntilExpiry)
 	}
 
 	fmt.Println("\nAuthorized probes:")
@@ -231,7 +231,7 @@ func handleLicenseRemove(args *cliArgs.LicenseRemoveArgs) {
 		log.Fatalf("Failed to write config file: %v", err)
 	}
 
-	fmt.Printf("✅ License removed from: %s\n", configPath)
+	fmt.Printf("License removed from: %s\n", configPath)
 	fmt.Println("   Agent will run in free tier mode.")
 	fmt.Println("   Restart the agent for changes to take effect.")
 }
