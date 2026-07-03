@@ -34,6 +34,43 @@ func SanitizeParamsForLog(params map[string]interface{}) map[string]interface{} 
 	return out
 }
 
+// SanitizeStorageForLog returns a log-safe view of a storage/strategies list:
+// each entry keeps its name but its Params map is passed through
+// SanitizeParamsForLog so resolved credentials (DSNs, bearer tokens, bind
+// secrets) never reach shared log infrastructure. The input slice and its maps
+// are never mutated.
+func SanitizeStorageForLog(list []StorageConfig) []map[string]interface{} {
+	if list == nil {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(list))
+	for _, s := range list {
+		out = append(out, map[string]interface{}{
+			"name":   s.Name,
+			"params": SanitizeParamsForLog(s.Params),
+		})
+	}
+	return out
+}
+
+// SanitizeProbesForLog returns a log-safe view of a probes list. Same contract
+// as SanitizeStorageForLog: the Params map of each probe is masked so probe
+// credentials (db passwords, SNMP communities, API keys) are not echoed.
+func SanitizeProbesForLog(list []ProbeConfig) []map[string]interface{} {
+	if list == nil {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(list))
+	for _, p := range list {
+		out = append(out, map[string]interface{}{
+			"name":   p.Name,
+			"type":   p.Type,
+			"params": SanitizeParamsForLog(p.Params),
+		})
+	}
+	return out
+}
+
 // sanitizeValueForLog masks v when key is sensitive, otherwise recurses into
 // composite values. For slice elements the key is empty (an index carries no
 // meaning) so each element is judged by its own inner keys.

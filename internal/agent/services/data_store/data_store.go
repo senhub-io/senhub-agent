@@ -291,7 +291,7 @@ func (d *dataStore) GenerateStrategyId(strategyName string, params configuration
 		d.logger.Error().
 			Err(err).
 			Str("strategy", strategyName).
-			Any("params", params).
+			Any("params", configuration.SanitizeParamsForLog(params)).
 			Msg("marshaling error: failed to marshal strategy parameters - using empty config")
 		paramsBytes = []byte("{}")
 	}
@@ -414,8 +414,8 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 			} else {
 				// Same name but different parameters - try to update
 				d.logger.Info().
-					Any("old_params", strategy.GetStrategyParams()).
-					Any("new_params", strategyConfig.Params).
+					Any("old_params", configuration.SanitizeParamsForLog(strategy.GetStrategyParams())).
+					Any("new_params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 					Msg("Strategy configuration changed, attempting update")
 
 				// Try to update the strategy if it supports live updates
@@ -461,7 +461,7 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 
 	// Create a new strategy
 	d.logger.Debug().
-		Any("params", strategyConfig.Params).
+		Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 		Msg("Creating new strategy")
 
 	var strategy SyncStrategy
@@ -491,21 +491,21 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		strategy = otlp.NewOTLPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
 	default:
 		d.logger.Error().
-			Any("params", strategyConfig.Params).
+			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 			Msg("Unknown strategy")
 		return nil
 	}
 
 	if strategy == nil {
 		d.logger.Error().
-			Any("params", strategyConfig.Params).
+			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 			Msg("Failed to create strategy")
 		return nil
 	}
 
 	if err := strategy.ValidateConfigParams(strategyConfig.Params); err != nil {
 		d.logger.Error().
-			Any("params", strategyConfig.Params).
+			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 			Err(err).
 			Msg("Invalid strategy configuration")
 		return nil

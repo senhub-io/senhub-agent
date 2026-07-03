@@ -694,7 +694,7 @@ func (h *HTTPSyncStrategy) GetStartTime() time.Time {
 // UpdateConfiguration allows updating the HTTP strategy configuration at runtime
 func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{}) error {
 	h.logger.Info().
-		Any("new_params", newParams).
+		Any("new_params", configuration.SanitizeParamsForLog(newParams)).
 		Msg("Updating HTTP strategy configuration")
 
 	// Update the configuration manager

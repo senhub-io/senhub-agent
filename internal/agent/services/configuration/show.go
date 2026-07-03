@@ -35,6 +35,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -172,10 +173,18 @@ func loadMerged(configPath string, log *logger.ModuleLogger) (LocalConfiguration
 	if err := yaml.Unmarshal(raw, &data); err != nil {
 		return LocalConfigurationData{}, fmt.Errorf("parsing %s: %w", configPath, err)
 	}
+
+	// Record the config directory so a ${secret:} reference the show path
+	// resolves can locate the OS-native secret backend — mirroring the boot
+	// loader (LoadFromDisk). Without it, `config show --resolved/--redact` on a
+	// SEALED install resolves secrets against an empty backend dir and crashes.
+	// Recording the path carries no secret and initialises no backend.
+	baseDir := filepath.Dir(configPath)
+	secret.SetConfigDir(baseDir)
+
 	if legacy {
 		return data, nil
 	}
-	baseDir := filepath.Dir(configPath)
 	probes, err := loadProbesD(filepath.Join(baseDir, "probes.d"))
 	if err != nil {
 		return LocalConfigurationData{}, err

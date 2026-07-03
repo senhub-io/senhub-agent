@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"senhub-agent.go/internal/agent/services/configuration"
 )
 
 // maxConfigRequestBytes bounds the request body the /config/{validate,preview,
@@ -135,7 +137,7 @@ func (cm *ConfigurationManager) validateProbeSchema(probeName string, config map
 
 	cm.logger.Debug().
 		Str("probe", probeName).
-		Any("config", config).
+		Any("config", configuration.SanitizeParamsForLog(config)).
 		Msg("Validating probe schema")
 
 	result := ValidationTestResult{
