@@ -337,6 +337,7 @@ func TestResolve_TypedPassThrough(t *testing.T) {
 			"otel_type":   "counter",
 			"metric_type": "snmp",
 			"instance":    "10.0.0.1:161",
+			"unit":        "Cel",
 		},
 	}
 	recs, err := Resolve(nil, m, DefaultResolveOptions())
@@ -367,6 +368,9 @@ func TestResolve_TypedPassThrough(t *testing.T) {
 	}
 	if _, leaked := r.Attributes["metric_type"]; leaked {
 		t.Errorf("metric_type marker must not leak as an attribute: %v", r.Attributes)
+	}
+	if _, leaked := r.Attributes["unit"]; leaked {
+		t.Errorf("unit control tag must not leak as an attribute: %v", r.Attributes)
 	}
 }
 
