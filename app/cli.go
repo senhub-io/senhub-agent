@@ -260,7 +260,7 @@ func Main() {
 	// (CI smoke checks, contributor onboarding).
 	if !readOnlyCommand(os.Args) {
 		if err := checkPrivileges(command); err != nil {
-			fmt.Printf("Error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	}

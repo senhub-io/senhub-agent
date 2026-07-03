@@ -67,7 +67,7 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 	// Get basic service status
 	serviceStatus, err := statusHelper.GetServiceStatus(svc)
 	if err != nil {
-		fmt.Printf("Error checking service status: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error checking service status: %v\n", err)
 		return
 	}
 
@@ -130,7 +130,7 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 					fmt.Print("\n")
 					fmt.Print(formatter.FormatOTLPInfo(info))
 				} else {
-					fmt.Printf("\nNote: could not fetch OTLP info (%v)\n", err)
+					fmt.Fprintf(os.Stderr, "\nNote: could not fetch OTLP info (%v)\n", err)
 				}
 			}
 			return
@@ -142,7 +142,7 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 	// Fallback: Get system status directly using StatusService (no HTTP dependency)
 	systemStatus, err := getSystemStatusDirect(args)
 	if err != nil {
-		fmt.Printf("Note: Could not get system status (%v), showing minimal status\n\n", err)
+		fmt.Fprintf(os.Stderr, "Note: Could not get system status (%v), showing minimal status\n\n", err)
 
 		// Minimal fallback status
 		basicHealth := status.HealthInfo{
