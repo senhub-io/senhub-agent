@@ -29,6 +29,7 @@ type journalReader struct {
 	probeName string
 	log       *logger.ModuleLogger
 	tracker   *exitTracker
+	startedAt time.Time
 
 	wg     sync.WaitGroup
 	stopMu sync.Mutex
@@ -71,6 +72,7 @@ func newJournalReader(cfg LinuxLogsProbeConfig, log *logger.ModuleLogger, probeN
 		probeName: probeName,
 		log:       log,
 		tracker:   newExitTracker(),
+		startedAt: time.Now(),
 	}
 
 	r.wg.Add(2)
@@ -170,6 +172,17 @@ func (r *journalReader) stop(ctx context.Context) error {
 		return fmt.Errorf("journalctl did not exit before deadline; killed")
 	}
 }
+
+// waitCh is closed when the subprocess exit has been recorded — the supervisor
+// selects on it to learn the reader died.
+func (r *journalReader) waitCh() <-chan struct{} { return r.tracker.waitCh() }
+
+// exitedUnexpectedly reports whether the subprocess died without a stop().
+func (r *journalReader) exitedUnexpectedly() bool { return r.tracker.exitedUnexpectedly() }
+
+// uptime is how long the subprocess has been (or was) running. The supervisor
+// uses it to distinguish an isolated death from a fast crash-loop.
+func (r *journalReader) uptime() time.Duration { return time.Since(r.startedAt) }
 
 // healthErr reports the reader unhealthy when the journalctl subprocess
 // died without a stop() request. Collect() surfaces this so an operator

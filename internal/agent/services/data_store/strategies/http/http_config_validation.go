@@ -18,6 +18,35 @@ import (
 // the JSON decoder to buffer.
 const maxConfigRequestBytes = 1 << 20
 
+// Connectivity-test timeout bounds (seconds). The caller supplies req.Timeout,
+// but it must stay strictly below the HTTP server's 10 s WriteTimeout
+// (http_server.go) — otherwise a black-holed target holds the handler past the
+// write deadline and the operator gets a connection reset instead of the JSON
+// failure result. The lower bound stops a 0/negative value from producing an
+// instant timeout; the upper bound also caps how long an authenticated caller
+// can pin a handler goroutine.
+const (
+	minConnectivityTimeoutSec     = 1
+	maxConnectivityTimeoutSec     = 8
+	defaultConnectivityTimeoutSec = 8
+)
+
+// clampConnectivityTimeout constrains an operator-supplied timeout (seconds) to
+// the [min,max] window that fits under the server WriteTimeout. A zero/negative
+// value falls back to the default.
+func clampConnectivityTimeout(sec int) int {
+	if sec <= 0 {
+		return defaultConnectivityTimeoutSec
+	}
+	if sec < minConnectivityTimeoutSec {
+		return minConnectivityTimeoutSec
+	}
+	if sec > maxConnectivityTimeoutSec {
+		return maxConnectivityTimeoutSec
+	}
+	return sec
+}
+
 // decodeConfigRequest reads and decodes a UniversalConfigRequest under a body
 // size limit. It writes the appropriate error response and returns false on
 // failure: 413 when the body exceeds the limit, 400 for malformed JSON.
@@ -63,10 +92,10 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 		response.ValidationLevel = ValidationSchemaOnly
 	}
 
-	// Set default timeout if not specified
-	if req.Timeout == 0 {
-		req.Timeout = 30 // 30 seconds default
-	}
+	// Clamp the connectivity-test timeout into the window that fits under the
+	// server WriteTimeout (a larger value is silently cut off by a write-deadline
+	// reset, and lets a caller pin handler goroutines).
+	req.Timeout = clampConnectivityTimeout(req.Timeout)
 
 	// Step 1: Schema Validation (always performed)
 	schemaResult := cm.validateProbeSchema(req.Probe, req.Config)
@@ -427,8 +456,11 @@ func (cm *ConfigurationManager) testRedfishConnectivity(config map[string]interf
 		}
 	}()
 
-	if resp.StatusCode == 200 || resp.StatusCode == 401 {
-		// 200 = accessible, 401 = accessible but auth required (expected)
+	if resp.StatusCode == 200 || resp.StatusCode == 401 || (resp.StatusCode >= 300 && resp.StatusCode < 400) {
+		// 200 = accessible, 401 = accessible but auth required (expected),
+		// 3xx = accessible but redirecting (BMCs commonly 301 /redfish/v1 →
+		// /redfish/v1/); the redirect is not followed but the target is
+		// reachable.
 		result.Passed = true
 		result.Details = fmt.Sprintf("Redfish service accessible (HTTP %d)", resp.StatusCode)
 	} else {

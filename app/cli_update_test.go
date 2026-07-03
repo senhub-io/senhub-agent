@@ -45,8 +45,10 @@ func TestParseUpdateArg_HelpIsNotAVersion(t *testing.T) {
 	}
 }
 
-// `update --help` is informational and must bypass the privilege gate,
-// like `--help` and `config check`; a real `update <version>` must not.
+// `update --help` and `update --list` are informational (usage text or a
+// registry read, no binary write) and must bypass the privilege gate, like
+// `--help` and `config check`; a real `update <version>` — and a bare
+// `update`, which installs the newest release — must not.
 func TestReadOnlyCommand_UpdateHelp(t *testing.T) {
 	cases := []struct {
 		name string
@@ -56,8 +58,9 @@ func TestReadOnlyCommand_UpdateHelp(t *testing.T) {
 		{"update --help", []string{"agent", "update", "--help"}, true},
 		{"update -h", []string{"agent", "update", "-h"}, true},
 		{"update help", []string{"agent", "update", "help"}, true},
+		{"update --list", []string{"agent", "update", "--list"}, true},
+		{"update -l", []string{"agent", "update", "-l"}, true},
 		{"update version", []string{"agent", "update", "0.4.1"}, false},
-		{"update list", []string{"agent", "update", "--list"}, false},
 		{"bare update", []string{"agent", "update"}, false},
 	}
 	for _, tc := range cases {
@@ -67,4 +70,72 @@ func TestReadOnlyCommand_UpdateHelp(t *testing.T) {
 			}
 		})
 	}
+}
+
+// parseUpdateCommand must honour the documented flags and reject malformed
+// invocations rather than treating a stray flag as a version literal.
+func TestParseUpdateCommand(t *testing.T) {
+	t.Run("bare update checks for newest", func(t *testing.T) {
+		got, wantHelp, err := parseUpdateCommand(nil)
+		if err != nil || wantHelp {
+			t.Fatalf("parseUpdateCommand(nil) = help=%v err=%v, want no help/err", wantHelp, err)
+		}
+		if got.WantedVersion != "" {
+			t.Errorf("WantedVersion = %q, want empty (check-newest)", got.WantedVersion)
+		}
+	})
+
+	t.Run("help forms", func(t *testing.T) {
+		for _, a := range []string{"--help", "-h", "help"} {
+			_, wantHelp, err := parseUpdateCommand([]string{a})
+			if err != nil || !wantHelp {
+				t.Errorf("parseUpdateCommand(%q) = help=%v err=%v, want help", a, wantHelp, err)
+			}
+		}
+	})
+
+	t.Run("list mode", func(t *testing.T) {
+		got, _, err := parseUpdateCommand([]string{"--list"})
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if got.WantedVersion != "list" {
+			t.Errorf("WantedVersion = %q, want \"list\"", got.WantedVersion)
+		}
+	})
+
+	t.Run("list rejects extra args", func(t *testing.T) {
+		if _, _, err := parseUpdateCommand([]string{"--list", "0.4.1"}); err == nil {
+			t.Error("update --list 0.4.1 should be rejected")
+		}
+	})
+
+	t.Run("version honours dry-run", func(t *testing.T) {
+		got, _, err := parseUpdateCommand([]string{"0.4.1", "--dry-run"})
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if got.WantedVersion != "0.4.1" {
+			t.Errorf("WantedVersion = %q, want 0.4.1", got.WantedVersion)
+		}
+		if !got.DryRun {
+			t.Error("DryRun = false, want true (--dry-run must be honoured)")
+		}
+	})
+
+	t.Run("version honours registry-url", func(t *testing.T) {
+		got, _, err := parseUpdateCommand([]string{"0.4.1", "--registry-url", "http://test"})
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if got.UpdateRegistryUrl != "http://test" {
+			t.Errorf("UpdateRegistryUrl = %q, want http://test", got.UpdateRegistryUrl)
+		}
+	})
+
+	t.Run("unknown flag rejected not taken as version", func(t *testing.T) {
+		if _, _, err := parseUpdateCommand([]string{"--bogus"}); err == nil {
+			t.Error("update --bogus should be rejected, not treated as a version")
+		}
+	})
 }

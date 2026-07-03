@@ -65,7 +65,14 @@ func runSecretCommand() {
 	switch sub {
 	case "status":
 		fmt.Printf("backend: %s\nstore:   %s\n", p.Name(), configDir)
-		names, _ := p.List()
+		names, err := p.List()
+		if err != nil {
+			// `status` is the command an operator runs to diagnose a
+			// broken store (corrupt file, permission denied); swallowing
+			// the error and printing "secrets: 0" would hide exactly that.
+			fmt.Fprintf(os.Stderr, "Error: reading secret store: %v\n", err)
+			os.Exit(1)
+		}
 		fmt.Printf("secrets: %d\n", len(names))
 
 	case "list":
@@ -79,7 +86,11 @@ func runSecretCommand() {
 		}
 
 	case "set":
-		name := secretArgName(args)
+		name, err := secretArgName(args)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(2)
+		}
 		val, err := readSecretValue(args)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -92,7 +103,11 @@ func runSecretCommand() {
 		fmt.Printf("stored secret %q in %s; reference it as ${secret:%s}\n", name, p.Name(), name)
 
 	case "get":
-		name := secretArgName(args)
+		name, err := secretArgName(args)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(2)
+		}
 		v, err := p.Get(name)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -104,7 +119,11 @@ func runSecretCommand() {
 		fmt.Println(v)
 
 	case "rm":
-		name := secretArgName(args)
+		name, err := secretArgName(args)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(2)
+		}
 		if !secretHasFlag(args, "--yes") {
 			fmt.Printf("Remove secret %q? [y/N] ", name)
 			if !readYesConfirmation() {
@@ -142,17 +161,41 @@ func runSecretCommand() {
 	}
 }
 
-// secretArgName extracts the <name> positional (the first arg after the
-// sub-verb that is not a flag).
-func secretArgName(args []string) string {
-	for _, a := range args[1:] {
-		if !strings.HasPrefix(a, "-") {
-			return a
+// secretValueFlags are the value-taking flags a secret sub-verb accepts.
+// Their VALUE (the token after them) must never be mistaken for the
+// <name> positional — e.g. in `secret set --config-path /etc/x db_pw`,
+// `/etc/x` is the flag value, `db_pw` is the name.
+var secretValueFlags = map[string]struct{}{
+	"--config-path": {},
+	"--from-file":   {},
+}
+
+// secretArgName extracts the <name> positional: the first bare token after
+// the sub-verb that is neither a flag nor the value of a value-taking flag.
+// A second positional is an error (a typo or a mis-quoted value), as is a
+// missing name. args[0] is the sub-verb.
+func secretArgName(args []string) (string, error) {
+	name := ""
+	found := false
+	for i := 1; i < len(args); i++ {
+		a := args[i]
+		if _, isValueFlag := secretValueFlags[a]; isValueFlag {
+			i++ // skip the flag's value — it is not the positional
+			continue
 		}
+		if strings.HasPrefix(a, "-") {
+			continue // a boolean flag (e.g. --yes)
+		}
+		if found {
+			return "", fmt.Errorf("unexpected extra argument %q (a single <name> is expected)", a)
+		}
+		name = a
+		found = true
 	}
-	fmt.Fprintln(os.Stderr, "Error: missing <name>")
-	os.Exit(2)
-	return ""
+	if !found {
+		return "", fmt.Errorf("missing <name>")
+	}
+	return name, nil
 }
 
 // secretHasFlag reports whether the given boolean flag is present anywhere in

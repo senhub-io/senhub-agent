@@ -57,7 +57,7 @@ func ApplyInstallOverrides(configPath, license string, tags map[string]string) e
 	if err != nil {
 		return fmt.Errorf("re-encoding %s: %w", configPath, err)
 	}
-	if err := os.WriteFile(configPath, out, 0o600); err != nil {
+	if err := atomicWriteFile(configPath, out, fileModeOr(configPath, 0o600)); err != nil {
 		return fmt.Errorf("writing %s: %w", configPath, err)
 	}
 	return nil
@@ -108,7 +108,7 @@ func SetLicenseField(configPath, license string) error {
 	if err != nil {
 		return fmt.Errorf("re-encoding %s: %w", configPath, err)
 	}
-	if err := os.WriteFile(configPath, out, 0o600); err != nil {
+	if err := atomicWriteFile(configPath, out, fileModeOr(configPath, 0o600)); err != nil {
 		return fmt.Errorf("writing %s: %w", configPath, err)
 	}
 	return nil
@@ -193,7 +193,7 @@ func WriteOTLPStrategyFragment(configDir, endpoint string) error {
 		"otlp:\n" +
 		"  endpoint: " + endpoint + "\n" +
 		"  protocol: grpc\n"
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+	if err := atomicWriteFile(path, []byte(body), 0o600); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	return nil

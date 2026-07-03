@@ -57,13 +57,35 @@ func LocalRunsOn(fromType string, fromID map[string]any, serverAddress, hostID s
 // (loopback) server address — i.e. the address appears inside the identity, the
 // signature of a network-derived id that is not unique across hosts. The empty
 // address embeds nothing.
+//
+// The loopback address has several interchangeable spellings ("localhost",
+// "127.0.0.1", "::1"); an id minted from any of them is equally non-unique
+// across hosts. So when serverAddress is itself loopback, the guard refuses an
+// id embedding ANY of those forms, not just the exact serverAddress literal —
+// otherwise a probe author minting an id from a normalized address (e.g.
+// "localhost") while passing the raw one ("127.0.0.1"), or vice versa, would
+// slip a shared node past the guard and false-join distinct hosts.
 func identityEmbeds(id map[string]any, serverAddress string) bool {
 	if serverAddress == "" {
 		return false
 	}
+	needles := []string{serverAddress}
+	if IsLoopbackHost(serverAddress) {
+		for _, form := range []string{"localhost", "127.0.0.1", "::1"} {
+			if form != serverAddress {
+				needles = append(needles, form)
+			}
+		}
+	}
 	for _, v := range id {
-		if s, ok := v.(string); ok && strings.Contains(s, serverAddress) {
-			return true
+		s, ok := v.(string)
+		if !ok {
+			continue
+		}
+		for _, n := range needles {
+			if strings.Contains(s, n) {
+				return true
+			}
 		}
 	}
 	return false
