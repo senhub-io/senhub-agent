@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // TestSecureStageDir_UnpredictableAndScoped pins the anti-TOCTOU staging: each
@@ -57,4 +58,43 @@ func TestWriteStagedFile_RefusesClobber(t *testing.T) {
 	if string(got) != "verified" {
 		t.Errorf("staged file was overwritten: got %q, want %q", got, "verified")
 	}
+}
+
+// TestSweepStagedUpdates_RemovesStaleKeepsFresh pins the disk-leak guard (M2): a
+// staging dir older than maxAge is purged, a fresh one and unrelated entries are
+// left untouched. Without the sweep a persistently failing install grows the
+// disk by a fresh MSI every cycle.
+func TestSweepStagedUpdates_RemovesStaleKeepsFresh(t *testing.T) {
+	base := t.TempDir()
+
+	stale := filepath.Join(base, "update-stale")
+	fresh := filepath.Join(base, "update-fresh")
+	other := filepath.Join(base, "keepme") // not an update-* dir
+	for _, d := range []string{stale, fresh, other} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	sweepStagedUpdates(base, 24*time.Hour, nil)
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale staging dir was not removed (err=%v)", err)
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Errorf("fresh staging dir was removed: %v", err)
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Errorf("unrelated entry was removed: %v", err)
+	}
+}
+
+// TestSweepStagedUpdates_MissingBaseIsNoop pins that a first run (no base yet)
+// does not error or panic.
+func TestSweepStagedUpdates_MissingBaseIsNoop(t *testing.T) {
+	sweepStagedUpdates(filepath.Join(t.TempDir(), "does-not-exist"), time.Hour, nil)
 }

@@ -115,11 +115,17 @@ func loadOrCreateEntropy(configDir string) ([]byte, error) {
 // Administrators only, so a non-admin local user cannot read the host-bound
 // ciphertext. DPAPI machine scope already lets any local process attempt
 // decryption, so this file ACL is the boundary that keeps the store admin-only.
+//
+// The principals are given as well-known SIDs (`*S-1-5-18` = SYSTEM,
+// `*S-1-5-32-544` = Administrators) rather than names: icacls resolves names via
+// the local account database, so `SYSTEM`/`Administrators` fail on a non-English
+// Windows (e.g. `Administrateurs`, `AUTORITE NT\Système` on French Server) and
+// the ACL would silently never be applied. SIDs are locale-independent.
 func restrictACL(path string) error {
 	cmd := exec.Command("icacls", path,
 		"/inheritance:r",
-		"/grant:r", "SYSTEM:F",
-		"/grant:r", "Administrators:F",
+		"/grant:r", "*S-1-5-18:F",
+		"/grant:r", "*S-1-5-32-544:F",
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

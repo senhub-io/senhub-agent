@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"golang.org/x/term"
+
 	"senhub-agent.go/internal/agent/services/configuration"
 )
 
@@ -35,6 +37,12 @@ func runKeyCommand() {
 	if cfg.Agent.Key == "" {
 		fmt.Fprintln(os.Stderr, "Error: no agent key configured")
 		os.Exit(1)
+	}
+	// The agent key is a bearer token (sealable as ${secret:agent.key});
+	// warn when it is being written somewhere other than a terminal, the
+	// same safeguard `secret get` applies to a revealed secret value.
+	if !term.IsTerminal(int(os.Stdout.Fd())) {
+		fmt.Fprintln(os.Stderr, "warning: writing the agent key to a non-terminal")
 	}
 	fmt.Println(cfg.Agent.Key)
 }

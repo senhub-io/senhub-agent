@@ -10,10 +10,19 @@ import "regexp"
 // echoed into shared log infrastructure either.
 //
 // Case-insensitive substring match: catches `api_key`, `auth_token`,
-// `client_secret`, `db_password`, `pub400_user`, `auth_login` …
+// `client_secret`, `db_password`, `pub400_user`, `auth_login`,
+// `Authorization` (the OTLP strategy's `headers.Authorization: Bearer <token>`)…
 // The case-insensitivity is necessary because YAML keys are written
 // in mixed conventions (snake_case, camelCase) across the probe set.
-var logSensitiveKeyPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|user|login|email|credential|community)`)
+//
+// `authorization`/`bearer` are included so a resolved bearer token carried under
+// an `Authorization` header key is masked before it reaches any log sink — the
+// token is otherwise logged in cleartext when a strategy fails to start, at
+// Error level, i.e. exactly during a misconfiguration incident. They are the
+// full words (not a bare `auth`) so a legitimate `auth:` container key — e.g.
+// citrix `director.auth.password` — still recurses and masks only the leaf
+// secret rather than collapsing the whole subtree.
+var logSensitiveKeyPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|user|login|email|credential|community|authorization|bearer)`)
 
 // SanitizeParamsForLog returns a deep copy of params with the value of any key
 // matching logSensitiveKeyPattern replaced by "***". The original map is never

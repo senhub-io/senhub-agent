@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexflint/go-arg"
 	"github.com/kardianos/service"
 	"senhub-agent.go/internal/agent"
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -66,6 +67,15 @@ func (p *program) run() {
 func linuxCommandNeedsRoot(command string) bool {
 	switch command {
 	case "install", "uninstall", "start", "stop", "restart", "refresh-unit":
+		return true
+	case "update":
+		// `update <version>` overwrites the on-disk binary, which the
+		// help text (showUpdateHelp) states needs the same privileges as
+		// the service commands. Gating it here makes that promise real:
+		// otherwise the update proceeds and fails mid-flight on the
+		// binary write with a raw permission error. The pure-read
+		// `update --list` / `--help` forms are exempted in
+		// readOnlyCommand and never reach this gate.
 		return true
 	default:
 		return false
@@ -188,6 +198,81 @@ as the service commands (root on Linux, administrator on Windows).
 `, exe, exe, exe, exe, exe)
 }
 
+// parseUpdateCommand interprets the arguments after the `update` verb
+// (os.Args[2:]). It resolves the three invocation shapes:
+//
+//   - `update` (no args)                 → check for and install the newest release
+//   - `update --list` / `-l`             → list available versions (no binary write)
+//   - `update <version> [--registry-url URL] [--dry-run] [--verbose]`
+//
+// `--help` / `-h` / `help` set wantHelp. Anything malformed — an unknown
+// flag, or flags without the required <version> positional — returns a
+// non-nil error so the dispatch rejects it instead of, as the old code
+// did, treating a stray flag as a version literal and pushing it to the
+// registry. Kept pure (no os.Exit) so it is unit-testable.
+func parseUpdateCommand(argv []string) (parsed *cliArgs.ParsedArgs, wantHelp bool, err error) {
+	base := &cliArgs.ParsedArgs{
+		Version:    cliArgs.Version,
+		CommitHash: cliArgs.CommitHash,
+	}
+	if len(argv) == 0 {
+		return base, false, nil
+	}
+
+	// Mode selectors that carry no <version> positional.
+	switch argv[0] {
+	case "--help", "-h", "help":
+		return nil, true, nil
+	case "--list", "-l":
+		if len(argv) > 1 {
+			return nil, false, fmt.Errorf("--list takes no further arguments")
+		}
+		base.WantedVersion = "list"
+		return base, false, nil
+	}
+
+	// Otherwise a concrete `<version> [flags]` install: parse with the
+	// canonical UpdateSubcommandArgs so --registry-url / --dry-run are
+	// honoured and unknown flags are rejected.
+	var ua cliArgs.UpdateSubcommandArgs
+	p, perr := arg.NewParser(arg.Config{Program: "agent update"}, &ua)
+	if perr != nil {
+		return nil, false, fmt.Errorf("building update parser: %w", perr)
+	}
+	if perr := p.Parse(argv); perr != nil {
+		if perr == arg.ErrHelp {
+			return nil, true, nil
+		}
+		return nil, false, perr
+	}
+	base.WantedVersion = ua.Version
+	base.UpdateRegistryUrl = ua.RegistryUrl
+	base.DryRun = ua.DryRun
+	if ua.Verbose {
+		base.Verbose = true
+	}
+	return base, false, nil
+}
+
+// stripFlags returns argv with every occurrence of the given (boolean,
+// value-less) flags removed. Used to hand a clean slice to the start-args
+// parser, which does not know the CLI's view/confirm flags (--otlp,
+// --yes) and would reject them as unknown.
+func stripFlags(argv []string, drop ...string) []string {
+	dropSet := make(map[string]struct{}, len(drop))
+	for _, d := range drop {
+		dropSet[d] = struct{}{}
+	}
+	out := make([]string, 0, len(argv))
+	for _, a := range argv {
+		if _, ok := dropSet[a]; ok {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
 // readOnlyCommand reports whether the invocation is a diagnostic /
 // inspection subcommand that should bypass the privilege check.
 //
@@ -211,10 +296,14 @@ func readOnlyCommand(args []string) bool {
 			return true
 		}
 	case "update":
-		// `update --help` is informational only — usage text, no binary
-		// replacement — so it must not hit the privilege gate.
+		// `update --help` and `update --list` are informational only —
+		// usage text or a registry read, no binary replacement — so they
+		// must not hit the privilege gate. A real `update <version>` (or a
+		// bare `update`, which installs the newest release) does replace
+		// the binary and stays gated.
 		if len(args) > 2 {
-			if _, wantHelp := parseUpdateArg(args[2]); wantHelp {
+			switch args[2] {
+			case "--help", "-h", "help", "--list", "-l":
 				return true
 			}
 		}
@@ -267,8 +356,11 @@ func Main() {
 	// Show help if no arguments or help is requested. Help is
 	// information-only so it runs even without root — placed before
 	// checkPrivileges so a fresh checkout / CI smoke test sees usage
-	// without hitting the gate.
-	if len(os.Args) <= 1 || os.Args[1] == "--help" || os.Args[1] == "-h" {
+	// without hitting the gate. The bare word `help` is handled here too:
+	// it is a known top-level arg but matches no dispatch case, so without
+	// this short-circuit it fell through to the tolerant start-args parse
+	// and silently spawned a second agent (issue #134's failure mode).
+	if len(os.Args) <= 1 || os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "help" {
 		showHelp()
 		return
 	}
@@ -362,6 +454,16 @@ func Main() {
 			initConfig(os.Args[3:])
 			return
 		}
+		// A typo'd subcommand (`config ini`) must not "succeed" with exit 0
+		// and generic help — a scripted provisioning step would read that as
+		// done without creating anything. Unknown top-level verbs already
+		// exit 2; the config subcommand does too. A bare `config` with no
+		// subcommand still prints help (exit 0).
+		if len(os.Args) > 2 {
+			fmt.Fprintf(os.Stderr, "Error: unknown config subcommand %q\n", os.Args[2])
+			fmt.Fprintln(os.Stderr, "Run with --help for usage information.")
+			os.Exit(2)
+		}
 		showHelp()
 		return
 	case "license":
@@ -371,29 +473,35 @@ func Main() {
 		handleDbMonitoringCommand()
 		return
 	case "update":
-		// Parse update sub-arguments: update [--help | --list | <version>]
-		args := &cliArgs.ParsedArgs{
-			Version:    cliArgs.Version,
-			CommitHash: cliArgs.CommitHash,
+		// Parse the full update invocation, not just os.Args[2]: the
+		// documented --registry-url / --dry-run flags must reach the
+		// updater, and an unknown flag must be rejected rather than taken
+		// as a version literal (the `--help` misfire family, #134).
+		parsed, wantHelp, err := parseUpdateCommand(os.Args[2:])
+		if wantHelp {
+			showUpdateHelp()
+			return
 		}
-		if len(os.Args) > 2 {
-			wanted, wantHelp := parseUpdateArg(os.Args[2])
-			if wantHelp {
-				showUpdateHelp()
-				return
-			}
-			args.WantedVersion = wanted
+		if err != nil {
+			fatalf("update: %v", err)
 		}
-		agent.UpdateAgent(args)
+		agent.UpdateAgent(parsed)
 		return
 	case "refresh-unit":
 		runRefreshUnit()
 		return
 	case "install", "uninstall", "start", "stop", "restart", "status", "run":
 		// Commands that take no positional args: dispatched directly.
-		// `status` carries the optional --otlp view flag.
+		// `status` carries the optional --otlp view flag; `uninstall` the
+		// --yes confirmation-bypass flag. Both must still honour
+		// --config-path so a custom-path install is stopped/uninstalled
+		// against the right file (otherwise cleanupFiles resolves the
+		// DEFAULT path and leaves the custom config/certs behind).
 		if command == "start" || command == "stop" || command == "restart" || command == "status" || command == "uninstall" {
-			args := &cliArgs.ParsedArgs{}
+			// --otlp / --yes are view/confirm flags the start parser does
+			// not know; strip them before parsing so it does not reject
+			// them, then set the corresponding fields explicitly.
+			args := cliArgs.ParseStartArgs(stripFlags(os.Args[2:], "--otlp", "--yes"))
 			if command == "status" {
 				args.ShowOTLP = hasArg("--otlp")
 			}
@@ -512,6 +620,7 @@ Secret Store Commands:
     secret list          List secret names (never values)
     secret rm <name>     Delete a secret
     secret migrate       Move inline plaintext secrets from config into the store
+    secret wire-unit     (Linux/systemd-creds) regenerate the unit credential drop-in
     secret status        Show the active backend and store location
     key show             Print the configured agent key
 

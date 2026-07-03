@@ -126,7 +126,7 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 	}
 
 	if updated {
-		fmt.Println("Update applied successfully. Restart the agent to use the new version.")
+		fmt.Println("Update installed. Restart the agent to use the new version (MSI-managed installs restart automatically).")
 	} else {
 		fmt.Println("Already up to date.")
 	}

@@ -39,6 +39,31 @@ func TestSanitizeParamsForLog_MasksSecretKeys(t *testing.T) {
 	}
 }
 
+// TestSanitizeParamsForLog_MasksAuthorizationHeader pins the audit fix: the OTLP
+// strategy carries its credential as headers.Authorization = "Bearer <token>";
+// the "Authorization" key matched nothing in the old pattern so the token was
+// logged in cleartext on strategy start/failure.
+func TestSanitizeParamsForLog_MasksAuthorizationHeader(t *testing.T) {
+	in := map[string]interface{}{
+		"endpoint": "collector:4317",
+		"headers": map[string]interface{}{
+			"Authorization": "Bearer sk-should-not-leak",
+			"X-Scope-OrgID": "tenant-a",
+		},
+	}
+	out := SanitizeParamsForLog(in)
+	h := out["headers"].(map[string]interface{})
+	if h["Authorization"] != "***" {
+		t.Errorf("Authorization header not masked: %v", h["Authorization"])
+	}
+	if h["X-Scope-OrgID"] != "tenant-a" {
+		t.Errorf("non-secret header should survive: %v", h["X-Scope-OrgID"])
+	}
+	if out["endpoint"] != "collector:4317" {
+		t.Errorf("endpoint should survive: %v", out["endpoint"])
+	}
+}
+
 func TestSanitizeParamsForLog_NilIsNil(t *testing.T) {
 	if got := SanitizeParamsForLog(nil); got != nil {
 		t.Errorf("nil input should return nil, got %v", got)
