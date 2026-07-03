@@ -194,6 +194,13 @@ func readOnlyCommand(args []string) bool {
 				return true
 			}
 		}
+	case "db-monitoring":
+		// db-monitoring only generates SQL to stdout (its `init`
+		// subcommand) or prints help — it never touches the service, the
+		// filesystem or the database, so requiring administrator on
+		// Windows was an over-broad gate that blocked an operator drafting
+		// a monitoring grant.
+		return true
 	}
 	if c, ok := extraCommands[args[1]]; ok {
 		return c.ReadOnly
