@@ -155,10 +155,18 @@ func (p *LinuxLogsProbe) GetInterval() time.Duration {
 	return 5 * time.Minute
 }
 
-// Collect is a no-op. The journalctl subprocess pushes records
-// directly to the agent log channel as they arrive, independent of
-// the poller's tick.
+// Collect ships no data points — the journalctl subprocess pushes
+// records directly to the agent log channel as they arrive, independent
+// of the poller's tick. It does, however, surface the reader's health:
+// if the subprocess died without a shutdown request, Collect returns an
+// error so the poller marks the probe unhealthy instead of it silently
+// shipping nothing.
 func (p *LinuxLogsProbe) Collect() ([]data_store.DataPoint, error) {
+	if p.reader != nil {
+		if err := p.reader.healthErr(); err != nil {
+			return nil, err
+		}
+	}
 	return nil, nil
 }
 

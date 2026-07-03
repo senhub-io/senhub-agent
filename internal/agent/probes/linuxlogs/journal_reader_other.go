@@ -21,3 +21,5 @@ func newJournalReader(_ LinuxLogsProbeConfig, _ *logger.ModuleLogger, _ string) 
 }
 
 func (*journalReader) stop(context.Context) error { return nil }
+
+func (*journalReader) healthErr() error { return nil }
