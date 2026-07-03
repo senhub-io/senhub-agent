@@ -150,6 +150,77 @@ func TestFlatten_DatapointAttributeWinsOverResource(t *testing.T) {
 	}
 }
 
+func sumMetricFull(name, unit string, monotonic bool, temporality metricpb.AggregationTemporality) *metricpb.Metric {
+	return &metricpb.Metric{
+		Name: name,
+		Unit: unit,
+		Data: &metricpb.Metric_Sum{Sum: &metricpb.Sum{
+			IsMonotonic:            monotonic,
+			AggregationTemporality: temporality,
+			DataPoints: []*metricpb.NumberDataPoint{
+				{
+					TimeUnixNano: 1_700_000_000_000_000_000,
+					Value:        &metricpb.NumberDataPoint_AsInt{AsInt: 5},
+				},
+			},
+		}},
+	}
+}
+
+// TestFlatten_PreservesInstrumentTypeAndUnit pins the OTLP re-export fix:
+// before it, every ingested metric was flattened to a unitless value with
+// no instrument type, so the mapper re-exported counters as gauges and
+// dropped the unit. The decoder now stamps otel_type and unit control
+// tags. A cumulative monotonic sum is a counter, cumulative non-monotonic
+// is an updowncounter, a gauge stays a gauge, and a delta sum degrades to
+// gauge (the agent's exporters emit only cumulative temporality).
+func TestFlatten_PreservesInstrumentTypeAndUnit(t *testing.T) {
+	cumulative := metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE
+	delta := metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA
+
+	cases := []struct {
+		name         string
+		metric       *metricpb.Metric
+		wantType     string
+		wantUnit     string
+		wantHaveUnit bool
+	}{
+		{"gauge", gaugeMetric("system.cpu.utilization", 0.42), "gauge", "", false},
+		{"cumulative monotonic sum → counter", sumMetricFull("http.server.requests", "{request}", true, cumulative), "counter", "{request}", true},
+		{"cumulative non-monotonic sum → updowncounter", sumMetricFull("queue.depth", "{item}", false, cumulative), "updowncounter", "{item}", true},
+		{"delta sum → gauge", sumMetricFull("http.server.duration", "s", true, delta), "gauge", "s", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			points, dropped := flattenResourceMetrics(wrap(nil, tc.metric))
+			if dropped != 0 {
+				t.Fatalf("dropped = %d, want 0", dropped)
+			}
+			if len(points) != 1 {
+				t.Fatalf("got %d points, want 1", len(points))
+			}
+			tagMap := map[string]string{}
+			haveUnit := false
+			for _, tg := range points[0].Tags {
+				tagMap[tg.Key] = tg.Value
+				if tg.Key == "unit" {
+					haveUnit = true
+				}
+			}
+			if tagMap["otel_type"] != tc.wantType {
+				t.Errorf("otel_type = %q, want %q", tagMap["otel_type"], tc.wantType)
+			}
+			if haveUnit != tc.wantHaveUnit {
+				t.Errorf("unit tag present = %v, want %v (tags=%v)", haveUnit, tc.wantHaveUnit, tagMap)
+			}
+			if tc.wantHaveUnit && tagMap["unit"] != tc.wantUnit {
+				t.Errorf("unit = %q, want %q", tagMap["unit"], tc.wantUnit)
+			}
+		})
+	}
+}
+
 func TestAnyValueToString(t *testing.T) {
 	cases := []struct {
 		name string
