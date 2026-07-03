@@ -7,10 +7,15 @@ import (
 	"strings"
 )
 
-// illegalKeyChars matches anything outside the systemd-credential name charset
-// ([A-Za-z0-9:_.-], per systemd.exec(5)). Other backends (age key-file map,
-// DPAPI map) are more permissive, so this is the lowest common denominator.
-var illegalKeyChars = regexp.MustCompile(`[^A-Za-z0-9:_.-]`)
+// illegalKeyChars matches anything outside the allowed backend-key charset
+// ([A-Za-z0-9_.-]). systemd credential names also permit `:` (systemd.exec(5)),
+// but the ${secret:NAME} reference grammar uses `:-` as its default-value
+// separator (substitute.go), so a key containing `:-` would misparse — e.g.
+// ${secret:smtp:-relay.password} reads as name "smtp" with default
+// "relay.password". Excluding `:` keeps every sanitized key expressible in the
+// reference grammar; a `:` in the input becomes `-` and, being lossy, gets a
+// hash suffix appended below so distinct inputs never collide.
+var illegalKeyChars = regexp.MustCompile(`[^A-Za-z0-9_.-]`)
 
 // maxKeyLen caps the backend key length well under the systemd limit (255) for
 // readability and filesystem comfort.

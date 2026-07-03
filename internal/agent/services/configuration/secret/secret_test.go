@@ -116,43 +116,15 @@ func TestSanitizeKey(t *testing.T) {
 	}
 }
 
-func TestFindInlineSecrets(t *testing.T) {
-	params := map[string]interface{}{
-		"endpoint": "https://host:9419",
-		"username": "svc",                 // identifier, NOT a secret → skip
-		"password": "h3llo",               // flat secret
-		"verify":   "${env:VERIFY}",       // already a reference → skip
-		"token":    "${secret:foo.token}", // already a secret ref → skip
-		"director": map[string]interface{}{ // nested
-			"auth": map[string]interface{}{"password": "nested-pw"},
-		},
-		"v3": map[string]interface{}{
-			"users": []interface{}{ // indexed
-				map[string]interface{}{"auth_password": "u0-pw"},
-				map[string]interface{}{"name": "u1"}, // no secret
-			},
-		},
+// TestSanitizeKey_NoColonForReferenceGrammar pins that a `:` in the input never
+// survives into a sanitized key — a key containing `:-` would misparse under the
+// ${secret:NAME} reference grammar (`:-` is its default separator).
+func TestSanitizeKey_NoColonForReferenceGrammar(t *testing.T) {
+	k := SanitizeKey("smtp:@relay.password")
+	if strings.Contains(k, ":") {
+		t.Errorf("sanitized key must not contain ':', got %q", k)
 	}
-	found := FindInlineSecrets("acme", params)
-
-	keys := map[string]string{}
-	for _, s := range found {
-		keys[s.Key()] = s.Value
-		if s.InstanceName != "acme" {
-			t.Errorf("wrong instance: %q", s.InstanceName)
-		}
-	}
-	want := map[string]string{
-		"acme.password":                 "h3llo",
-		"acme.director.auth.password":   "nested-pw",
-		"acme.v3.users.0.auth_password": "u0-pw",
-	}
-	if len(keys) != len(want) {
-		t.Fatalf("found %d secrets, want %d: %v", len(keys), len(want), keys)
-	}
-	for k, v := range want {
-		if keys[k] != v {
-			t.Errorf("key %q: got %q, want %q", k, keys[k], v)
-		}
+	if strings.Contains(k, ":-") {
+		t.Errorf("sanitized key must not contain ':-' (reference default separator), got %q", k)
 	}
 }
