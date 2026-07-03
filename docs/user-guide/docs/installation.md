@@ -17,7 +17,8 @@ SenHub Agent is a monitoring collector that runs on your infrastructure and coll
 
 Contact SenHub support (support@senhub.io) or download from the [GitHub releases page](https://github.com/senhub-io/senhub-agent/releases). You will receive:
 
-- The agent ZIP for your platform (see naming convention below)
+- On Windows, the signed MSI installer (`senhub-agent-<version>-amd64.msi`) or the agent ZIP
+- On Linux, the agent ZIP for your architecture (see naming convention below)
 - A license token (required for premium probes: Citrix, NetScaler, Redfish, etc.)
 
 ### Release Artifact Naming
@@ -34,9 +35,79 @@ Release artifacts are ZIP archives named with dashes between OS and architecture
 
 Each ZIP contains a binary already named `senhub-agent` (or `senhub-agent.exe` on Windows). No renaming is needed after extraction.
 
+On Windows, the release also ships a Windows Installer package, `senhub-agent-<version>-amd64.msi` (amd64 only), which is the recommended way to install on servers and managed fleets.
+
 ## Windows Installation
 
-### 1. Prepare the binary
+Two paths are supported on Windows:
+
+- The **MSI installer** — a guided wizard for interactive installs, and a silent, property-driven install for GPO / SCCM / Intune fleets. This is the recommended path.
+- The **ZIP + `install` command** — extract the binary and register the service by hand, useful for quick local setups.
+
+### MSI installer (recommended)
+
+The MSI (built with WiX 5.0.2) installs `senhub-agent.exe` into `%ProgramFiles%\SenHub Agent\`, registers and starts the `senhub-agent` Windows service (display name **SenHub Agent**, running as `LocalSystem`, with restart-on-failure recovery), and provisions the configuration on first install.
+
+On first install the MSI runs `senhub-agent config init`, which writes the default multi-file configuration under `%ProgramData%\SenHub\` (`agent.yaml` + `probes.d\` + `strategies.d\`) with no interactive step, and applies any license key, tags or OTLP endpoint you provide. Provisioning is idempotent: an upgrade or reinstall never overwrites an existing configuration, and operator config under `%ProgramData%\SenHub\` is preserved on uninstall.
+
+!!! note "Signed installer"
+    The MSI, the bundled `senhub-agent.exe` and the installer's PowerShell payload are code-signed with an HSM-backed **Certum** code-signing certificate. Windows shows the `SENSOR FACTORY SAS` publisher, and SmartScreen does not raise an unknown-publisher warning. You can confirm the signature with `Get-AuthenticodeSignature .\senhub-agent-<version>-amd64.msi | Format-List` — status `Valid` with the `SENSOR FACTORY SAS` publisher.
+
+#### Interactive install
+
+Double-click `senhub-agent-<version>-amd64.msi` and follow the guided wizard (Welcome → license → install directory → ready → progress → finish). With nothing provided, the agent installs in the Free-tier default (local scrape endpoints only, no push).
+
+#### Silent / unattended install
+
+Public MSI properties drive an unattended install from the `msiexec` command line (or an MST for GPO). All are optional; with none set the agent installs in the Free-tier default (local endpoints only, no push).
+
+| Property | Purpose |
+|---|---|
+| `LICENSE_KEY` | JWT license token — unlocks Pro/Enterprise probes (Free needs none) |
+| `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
+| `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
+| `INSTALLFOLDER` | Override the install directory (default `%ProgramFiles%\SenHub Agent\`) |
+| `ADOPT` | `ADOPT=1` takes over an agent installed outside the MSI (see below) |
+
+Properties are consumed only on first install; they do not overwrite an existing `agent.yaml`.
+
+```bat
+msiexec /i senhub-agent-<version>-amd64.msi /qn ^
+  LICENSE_KEY=eyJhbGciOi... ^
+  TAGS=site=paris,env=prod ^
+  OTLP_ENDPOINT=collector.company.com:4317 ^
+  /l* %TEMP%\senhub-agent-install.log
+```
+
+Free tier, no provisioning:
+
+```bat
+msiexec /i senhub-agent-<version>-amd64.msi /qn
+```
+
+!!! warning "The license key is a secret"
+    A verbose install log (`/l*v`) records property values and custom-action command lines, so a `LICENSE_KEY` passed on the `msiexec` line can appear in that log. When provisioning a license silently, use a non-verbose log level (`/l*`) or omit logging entirely for the install that carries `LICENSE_KEY`; if you must capture a verbose log for troubleshooting, treat it as sensitive and delete it once the install is confirmed. The token equally lands in the deployment tool's job output — scrub it the same way.
+
+For GPO, SCCM and Intune deployment (including the MST transform GPO needs to pass properties), see the [Windows MSI deployment guide](https://github.com/senhub-io/senhub-agent/blob/dev/docs/deployment/windows-msi.md).
+
+#### Adopting an existing agent
+
+If the machine already runs an agent installed **outside** the MSI (a `senhub-agent install`, ZIP or auto-update deploy), the installer detects the foreign service and, by default, stops with a clear message rather than colliding on service creation. Pass `ADOPT=1` to take it over:
+
+```bat
+msiexec /i senhub-agent-<version>-amd64.msi /qn ADOPT=1 /l* %TEMP%\senhub-adopt.log
+```
+
+`ADOPT=1` stops and deletes the existing service, then installs the MSI-managed one. Configuration under `%ProgramData%\SenHub\` is preserved, so migrating a fleet from a script or auto-update install to MSI management is a single `ADOPT=1` install. An MSI installed by this MSI upgrades cleanly on its own — `ADOPT` is only for foreign installs.
+
+!!! note "Auto-update on MSI installs"
+    An MSI-managed install does **not** self-replace its binary. Auto-update stays automatic but applies a **new signed MSI** instead: when an update is available the agent downloads `senhub-agent-<version>-amd64.msi`, verifies its signature, and runs `msiexec /i /qn` (a clean MajorUpgrade that preserves `%ProgramData%\SenHub\` and restarts the service). The agent detects the MSI registry marker and switches to this path automatically; a non-MSI (ZIP / script) install keeps the binary self-replace flow. To manage updates yourself instead, disable `auto_update` and push new MSIs through your management tool (Intune / SCCM / WSUS).
+
+### ZIP install
+
+For a quick local setup you can install from the ZIP and register the service by hand.
+
+#### 1. Prepare the binary
 
 Download `senhub-agent-windows-amd64.zip`, then extract it to your installation directory:
 
@@ -47,7 +118,7 @@ Expand-Archive .\senhub-agent-windows-amd64.zip -DestinationPath C:\SenHub\
 
 The ZIP contains `senhub-agent.exe`, already correctly named.
 
-### 2. Install the service
+#### 2. Install the service
 
 Open a **PowerShell terminal as Administrator** and run:
 
@@ -64,13 +135,13 @@ To install with HTTPS enabled on the local API:
 .\senhub-agent.exe install --enable-https --https-port 8443
 ```
 
-### 3. Start the service
+#### 3. Start the service
 
 ```powershell
 .\senhub-agent.exe start
 ```
 
-### 4. Verify the installation
+#### 4. Verify the installation
 
 ```powershell
 .\senhub-agent.exe status
@@ -210,6 +281,8 @@ When you run `senhub-agent install`, the agent:
 6. If `--enable-https` is specified: creates a `certs/` directory with a self-signed certificate and private key (valid for 365 days), and configures the HTTP strategy fragment to use them.
 7. On Linux: hands the configuration, log and certificate files to the service user so the unprivileged daemon can read them.
 
+The Windows MSI installs the same service and configuration layout, driving the provisioning step through `config init` instead of an interactive `install` (see [MSI installer](#msi-installer-recommended) above).
+
 ### Files Created
 
 | File | Permissions | Description |
@@ -262,7 +335,7 @@ senhub-agent run --verbose
 senhub-agent run --filter probe.veeam
 ```
 
-The agent auto-detects its mode from the configuration file. All logs are printed to the console. Press Ctrl+C to stop.
+All logs are printed to the console. Press Ctrl+C to stop.
 
 Use `--filter` to limit debug output to specific modules (see [CLI Reference](cli.md)).
 
@@ -279,6 +352,8 @@ Install a specific version:
 ```bash
 senhub-agent update 0.1.87
 ```
+
+On an MSI-managed Windows install, auto-update applies a new signed MSI rather than swapping the binary in place — see the note under [MSI installer](#msi-installer-recommended).
 
 ## Post-Installation Checklist
 
@@ -301,7 +376,14 @@ After installation:
 
 ## Uninstallation
 
-**Windows:**
+**Windows (MSI install):**
+```bat
+msiexec /x senhub-agent-<version>-amd64.msi /qn
+```
+
+Or use **Apps & features** / **Programs and Features** interactively. Operator configuration under `%ProgramData%\SenHub\` is intentionally preserved on uninstall.
+
+**Windows (ZIP install):**
 ```powershell
 .\senhub-agent.exe stop
 .\senhub-agent.exe uninstall
@@ -313,4 +395,4 @@ sudo /opt/senhub/bin/senhub-agent stop
 sudo /opt/senhub/bin/senhub-agent uninstall
 ```
 
-The uninstall command stops the service, removes the service registration, and cleans up generated files (configuration, certificates, logs).
+The `uninstall` command stops the service, removes the service registration, and cleans up generated files (configuration, certificates, logs).
