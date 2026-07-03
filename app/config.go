@@ -107,25 +107,25 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 	// Remove files
 	for _, file := range filesToRemove {
 		if err := os.Remove(file); err != nil {
-			fmt.Printf("Warning: Could not remove %s: %v\n", file, err)
+			fmt.Fprintf(os.Stderr, "Warning: Could not remove %s: %v\n", file, err)
 		} else {
-			fmt.Printf("✅ Removed: %s\n", file)
+			fmt.Printf("Removed: %s\n", file)
 		}
 	}
 
 	// Remove directories
 	for _, dir := range dirsToRemove {
 		if err := os.RemoveAll(dir); err != nil {
-			fmt.Printf("Warning: Could not remove directory %s: %v\n", dir, err)
+			fmt.Fprintf(os.Stderr, "Warning: Could not remove directory %s: %v\n", dir, err)
 		} else {
-			fmt.Printf("✅ Removed directory: %s\n", dir)
+			fmt.Printf("Removed directory: %s\n", dir)
 		}
 	}
 
 	if len(filesToRemove) == 0 && len(dirsToRemove) == 0 {
-		fmt.Println("✅ No additional files to clean up")
+		fmt.Println("No additional files to clean up")
 	} else {
-		fmt.Printf("\n🧹 Cleanup completed - removed %d files and %d directories\n",
+		fmt.Printf("\nCleanup completed - removed %d files and %d directories\n",
 			len(filesToRemove), len(dirsToRemove))
 	}
 }

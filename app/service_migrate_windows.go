@@ -4,6 +4,7 @@ package app
 
 import (
 	"fmt"
+	"os"
 
 	"golang.org/x/sys/windows/registry"
 )
@@ -35,8 +36,8 @@ func migrateLegacyServiceRegistration() {
 	}
 
 	if err := key.SetStringValue("ImagePath", migrated); err != nil {
-		fmt.Printf("Warning: legacy service command line detected but migration failed: %v\n", err)
-		fmt.Printf("Fix manually with:\n    sc.exe config senhub-agent binPath= \"%s\"\n", migrated)
+		fmt.Fprintf(os.Stderr, "Warning: legacy service command line detected but migration failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Fix manually with:\n    sc.exe config senhub-agent binPath= \"%s\"\n", migrated)
 		return
 	}
 	fmt.Println("Migrated legacy service command line (added the 'run' subcommand) — see issue #309")
