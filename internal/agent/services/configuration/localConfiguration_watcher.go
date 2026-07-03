@@ -164,10 +164,10 @@ func (lc *LocalConfiguration) reloadConfiguration() error {
 	// Check if configuration actually changed
 	if lc.hasConfigurationChanged(previousData, currentData) {
 		lc.logger.Info().
-			Any("old_storage", previousData.Storage).
-			Any("new_storage", currentData.Storage).
-			Any("old_probes", previousData.Probes).
-			Any("new_probes", currentData.Probes).
+			Any("old_storage", SanitizeStorageForLog(previousData.Storage)).
+			Any("new_storage", SanitizeStorageForLog(currentData.Storage)).
+			Any("old_probes", SanitizeProbesForLog(previousData.Probes)).
+			Any("new_probes", SanitizeProbesForLog(currentData.Probes)).
 			Msg("Configuration changes detected, notifying observers")
 
 		// Notify all observers about the configuration change
