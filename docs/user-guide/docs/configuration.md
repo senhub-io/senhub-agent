@@ -423,7 +423,7 @@ SenHub supports two license formats:
 **Compact key** (recommended): a short 40-character key bound to your agent key.
 ```yaml
 agent:
-  key: "17b3cf0a-91b1-486d-8209-90ffe00ece5e"
+  key: "550e8400-e29b-41d4-a716-446655440000"
   license: "SH-040GMS-000100-02S3S2-HC3HMV-7RBZ4Y-PY"
 ```
 
@@ -523,7 +523,7 @@ Example output:
 Checking configuration: C:\SenHub\agent-config.yaml
 
   [OK]   config_version: 2
-  [OK]   agent.key: 17b3cf0a-91b1-486d-8209-90ffe00ece5e
+  [OK]   agent.key: 550e8400-e29b-41d4-a716-446655440000
   [OK]   agent.license: tier=pro, expires=2031-04-14
   [OK]   License binding verified
   [OK]   1 probe(s) configured
