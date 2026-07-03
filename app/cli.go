@@ -121,6 +121,39 @@ func hasArg(name string) bool {
 	return false
 }
 
+// parseUpdateArg interprets the single positional argument to the
+// `update` subcommand. `--help`/`-h`/`help` request usage (wantHelp
+// true, no version); `--list`/`-l` selects the version-listing mode;
+// anything else is taken as an explicit target version. Extracted as a
+// pure function so the dispatch — which used to treat `update --help`
+// as a version literal and try to install "--help" — is unit-testable.
+func parseUpdateArg(subArg string) (wantedVersion string, wantHelp bool) {
+	switch subArg {
+	case "--help", "-h", "help":
+		return "", true
+	case "--list", "-l":
+		return "list", false
+	default:
+		return subArg, false
+	}
+}
+
+// showUpdateHelp prints usage for the `update` subcommand.
+func showUpdateHelp() {
+	exe := os.Args[0]
+	fmt.Printf(`Usage: %s update [--list | <version>]
+
+Check for, list, or install agent updates.
+
+    %s update              Check for a newer version and install it
+    %s update --list       List all available versions (stable + beta)
+    %s update <version>    Install a specific version (e.g. %s update 0.4.1)
+
+Updating replaces the running binary and requires the same privileges
+as the service commands (root on Linux, administrator on Windows).
+`, exe, exe, exe, exe, exe)
+}
+
 // readOnlyCommand reports whether the invocation is a diagnostic /
 // inspection subcommand that should bypass the privilege check.
 //
@@ -142,6 +175,14 @@ func readOnlyCommand(args []string) bool {
 	case "config":
 		if len(args) > 2 && (args[2] == "check" || args[2] == "show") {
 			return true
+		}
+	case "update":
+		// `update --help` is informational only — usage text, no binary
+		// replacement — so it must not hit the privilege gate.
+		if len(args) > 2 {
+			if _, wantHelp := parseUpdateArg(args[2]); wantHelp {
+				return true
+			}
 		}
 	}
 	if c, ok := extraCommands[args[1]]; ok {
@@ -289,18 +330,18 @@ func Main() {
 		handleDbMonitoringCommand()
 		return
 	case "update":
-		// Parse update sub-arguments: update [--list | <version>]
+		// Parse update sub-arguments: update [--help | --list | <version>]
 		args := &cliArgs.ParsedArgs{
 			Version:    cliArgs.Version,
 			CommitHash: cliArgs.CommitHash,
 		}
 		if len(os.Args) > 2 {
-			subArg := os.Args[2]
-			if subArg == "--list" || subArg == "-l" {
-				args.WantedVersion = "list"
-			} else {
-				args.WantedVersion = subArg
+			wanted, wantHelp := parseUpdateArg(os.Args[2])
+			if wantHelp {
+				showUpdateHelp()
+				return
 			}
+			args.WantedVersion = wanted
 		}
 		agent.UpdateAgent(args)
 		return
