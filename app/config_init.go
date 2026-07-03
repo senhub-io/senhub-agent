@@ -20,43 +20,70 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 )
 
-func initConfig(argv []string) {
-	configPath := ""
-	license := ""
-	otlpEndpoint := ""
-	tags := map[string]string{}
+// initConfigArgs holds the provisionable fields `config init` accepts.
+type initConfigArgs struct {
+	configPath   string
+	license      string
+	otlpEndpoint string
+	tags         map[string]string
+}
 
+// parseInitConfigArgs parses the flags after `config init`. A value-taking
+// flag whose value is missing, or an unrecognised flag, is a hard error:
+// this command runs on unattended install paths (MSI silent install) where
+// nobody reads the output. Silently skipping a typo'd `--licence` or a
+// dropped value would leave the fleet host running Free-tier / untagged
+// while reporting success. Kept pure (returns an error, no os.Exit) so it
+// is unit-testable.
+func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
+	out := initConfigArgs{tags: map[string]string{}}
+	value := func(i *int) (string, error) {
+		flag := argv[*i]
+		if *i+1 >= len(argv) {
+			return "", fmt.Errorf("flag %q needs a value", flag)
+		}
+		*i++
+		return argv[*i], nil
+	}
 	for i := 0; i < len(argv); i++ {
+		var err error
 		switch argv[i] {
 		case "--config-path":
-			if i+1 < len(argv) {
-				configPath = argv[i+1]
-				i++
-			}
+			out.configPath, err = value(&i)
 		case "--license":
-			if i+1 < len(argv) {
-				license = argv[i+1]
-				i++
-			}
+			out.license, err = value(&i)
 		case "--tags":
-			if i+1 < len(argv) {
-				tags = parseTagList(argv[i+1])
-				i++
+			var raw string
+			if raw, err = value(&i); err == nil {
+				out.tags = parseTagList(raw)
 			}
 		case "--otlp-endpoint":
-			if i+1 < len(argv) {
-				otlpEndpoint = argv[i+1]
-				i++
-			}
+			out.otlpEndpoint, err = value(&i)
+		default:
+			return out, fmt.Errorf("unknown flag %q", argv[i])
+		}
+		if err != nil {
+			return out, err
 		}
 	}
+	return out, nil
+}
+
+func initConfig(argv []string) {
+	opts, err := parseInitConfigArgs(argv)
+	if err != nil {
+		fatalf("config init: %v", err)
+	}
+	configPath := opts.configPath
+	license := opts.license
+	otlpEndpoint := opts.otlpEndpoint
+	tags := opts.tags
 
 	if resolved, err := cliArgs.GetAbsoluteConfigPath(configPath); err == nil {
 		configPath = resolved
 	}
 	if configPath == "" {
-		fmt.Fprintln(os.Stderr, "config init: could not resolve a config path")
-		os.Exit(1)
+		fatalf("config init: could not resolve a config path")
 	}
 
 	// Idempotent: an existing config (multi-file agent.yaml or a legacy
@@ -68,18 +95,15 @@ func initConfig(argv []string) {
 
 	args := &cliArgs.ParsedArgs{ConfigPath: configPath}
 	if err := generateConfiguration(args); err != nil {
-		fmt.Fprintf(os.Stderr, "config init: %v\n", err)
-		os.Exit(1)
+		fatalf("config init: %v", err)
 	}
 
 	if err := configuration.ApplyInstallOverrides(configPath, license, tags); err != nil {
-		fmt.Fprintf(os.Stderr, "config init: applying provisioned fields: %v\n", err)
-		os.Exit(1)
+		fatalf("config init: applying provisioned fields: %v", err)
 	}
 
 	if err := configuration.WriteOTLPStrategyFragment(filepath.Dir(configPath), otlpEndpoint); err != nil {
-		fmt.Fprintf(os.Stderr, "config init: writing OTLP strategy: %v\n", err)
-		os.Exit(1)
+		fatalf("config init: writing OTLP strategy: %v", err)
 	}
 
 	fmt.Printf("Configuration created at %s\n", configPath)

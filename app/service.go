@@ -166,7 +166,22 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			fmt.Printf("\nYou can now start the service with:\n    %s start\n", os.Args[0])
 		}
 	case "uninstall":
-		// Try to stop first
+		// Confirm the destructive cleanup BEFORE touching the running
+		// service. Answering "n" (or a non-TTY stdin, which resolves to
+		// abort) must leave monitoring exactly as it was — running, config
+		// and certs and logs intact. Stopping first and prompting after
+		// left the service DOWN on a cancelled uninstall; --yes skips the
+		// prompt for unattended removal.
+		if !args.Yes {
+			fmt.Println("Uninstall will remove the agent configuration file, the certs/ directory, and log files/directories.")
+			fmt.Print("Proceed? [y/N] ")
+			if !readYesConfirmation() {
+				fmt.Println("Uninstall cancelled; nothing was removed.")
+				return
+			}
+		}
+
+		// Confirmed: stop a running service before removing it.
 		status, err := s.Status()
 		if err == nil && status == service.StatusRunning {
 			fmt.Println("Stopping service before uninstall...")
@@ -176,19 +191,6 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 				os.Exit(1)
 			}
 			time.Sleep(2 * time.Second)
-		}
-
-		// Confirm the destructive cleanup before removing operator data.
-		// A non-"y" answer (or a non-TTY stdin, which resolves to abort)
-		// leaves the config, certs and logs in place; --yes skips the
-		// prompt for unattended removal.
-		if !args.Yes {
-			fmt.Println("Uninstall will remove the agent configuration file, the certs/ directory, and log files/directories.")
-			fmt.Print("Proceed? [y/N] ")
-			if !readYesConfirmation() {
-				fmt.Println("Uninstall cancelled; nothing was removed.")
-				return
-			}
 		}
 
 		// Uninstall the service

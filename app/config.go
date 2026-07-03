@@ -431,7 +431,7 @@ func showConfig(args []string) {
 			return
 		default:
 			if strings.HasPrefix(a, "--") {
-				fmt.Fprintf(os.Stderr, "config show: unknown flag %q\n", a)
+				fmt.Fprintf(os.Stderr, "Error: config show: unknown flag %q\n", a)
 				os.Exit(2)
 			}
 			configPath = a
@@ -459,18 +459,15 @@ func showConfig(args []string) {
 
 	data, err := configuration.LoadForShow(configPath, mode, log)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "config show: %v\n", err)
-		os.Exit(1)
+		fatalf("config show: %v", err)
 	}
 
 	out, err := configuration.MarshalSortedYAML(&data)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "config show: marshaling output: %v\n", err)
-		os.Exit(1)
+		fatalf("config show: marshaling output: %v", err)
 	}
 	if _, err := os.Stdout.Write(out); err != nil {
-		fmt.Fprintf(os.Stderr, "config show: write: %v\n", err)
-		os.Exit(1)
+		fatalf("config show: write: %v", err)
 	}
 }
 

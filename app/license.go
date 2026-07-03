@@ -34,7 +34,11 @@ func handleLicenseCommand() {
 			parser.WriteHelp(os.Stdout)
 			os.Exit(0)
 		}
-		parser.WriteUsage(os.Stdout)
+		// A parse error is a diagnostic, not data: route the cause and the
+		// usage to stderr with the unified "Error:" prefix so piped callers
+		// see the failure rather than receiving usage text on stdout.
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		parser.WriteUsage(os.Stderr)
 		os.Exit(1)
 	}
 
@@ -179,12 +183,12 @@ func handleLicenseRemove(args *cliArgs.LicenseRemoveArgs) {
 		fatalf("failed to determine config path: %v", err)
 	}
 
-	// Confirm if not forced
+	// Confirm if not forced. Reuse the shared confirmation helper so this
+	// destructive prompt behaves identically to uninstall / secret rm
+	// (whitespace-tolerant, non-TTY stdin aborts).
 	if !args.Force {
 		fmt.Print("Are you sure you want to remove the license? [y/N] ")
-		var response string
-		_, _ = fmt.Scanln(&response)
-		if response != "y" && response != "Y" {
+		if !readYesConfirmation() {
 			fmt.Println("Cancelled.")
 			return
 		}
