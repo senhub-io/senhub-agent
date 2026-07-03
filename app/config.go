@@ -253,15 +253,24 @@ func checkConfig(configPath string) {
 	errors := 0
 	warnings := 0
 
-	// Config version
-	if config.ConfigVersion == 2 {
-		fmt.Println("  [OK]   config_version: 2")
-	} else if config.ConfigVersion == 0 {
-		fmt.Println("  [ERROR] config_version missing (should be 2)")
+	// Config version. Validate against the agent's supported range
+	// (MinimumConfigVersion..CurrentConfigVersion) rather than a
+	// hardcoded literal, so `config check` tracks the source of truth
+	// in config_version.go. A missing field defaults to version 1
+	// (legacy) at load time, mirroring the loader.
+	switch {
+	case config.ConfigVersion == 0:
+		fmt.Printf("  [ERROR] config_version missing (expected %d)\n", configuration.CurrentConfigVersion)
 		errors++
-	} else {
-		fmt.Printf("  [WARN] config_version: %d (expected 2)\n", config.ConfigVersion)
-		warnings++
+	case configuration.ValidateConfigVersion(config.ConfigVersion) != nil:
+		fmt.Printf("  [ERROR] config_version: %d (%v)\n",
+			config.ConfigVersion, configuration.ValidateConfigVersion(config.ConfigVersion))
+		errors++
+	case config.ConfigVersion < configuration.CurrentConfigVersion:
+		fmt.Printf("  [OK]   config_version: %d (agent supports up to %d; will migrate on next write)\n",
+			config.ConfigVersion, configuration.CurrentConfigVersion)
+	default:
+		fmt.Printf("  [OK]   config_version: %d\n", config.ConfigVersion)
 	}
 
 	// Agent key
