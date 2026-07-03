@@ -40,11 +40,22 @@ func TestShouldCollectMount_Blocklist(t *testing.T) {
 		// Network filesystems — skipped to avoid a stale-mount statfs hang.
 		{"nfs", "nfs4", "/mnt/nfs", "server:/export", false},
 		{"cifs", "cifs", "/mnt/share", "//server/share", false},
+		// FUSE network/user filesystems — skipped (whole fuse.* family), same
+		// stale-mount statfs-hang risk as NFS/CIFS.
+		{"fuse.rclone", "fuse.rclone", "/mnt/remote", "rclone", false},
+		{"fuse.s3fs", "fuse.s3fs", "/mnt/s3", "s3fs", false},
+		{"fuse.gcsfuse", "fuse.gcsfuse", "/mnt/gcs", "gcsfuse", false},
+		{"fuse.sshfs", "fuse.sshfs", "/mnt/ssh", "user@host:/", false},
+		{"fuse.portal", "fuse.portal", "/run/user/1000/doc", "portal", false},
+		// Plain local fuse passthrough stays included.
+		{"fuse", "fuse", "/mnt/local-fuse", "/dev/fuse", true},
 		// Guard clauses preserved.
 		{"empty device", "ext4", "/weird", "", false},
 		{"none device", "ext4", "/weird", "none", false},
-		// tmpfs allowlist preserved.
+		// tmpfs allowlist preserved, now prefix-matching /run/user/<uid>.
 		{"tmpfs /run", "tmpfs", "/run", "tmpfs", true},
+		{"tmpfs /run/user/0", "tmpfs", "/run/user/0", "tmpfs", true},
+		{"tmpfs /run/user/1000", "tmpfs", "/run/user/1000", "tmpfs", true},
 		{"tmpfs /home", "tmpfs", "/home", "tmpfs", false},
 	}
 

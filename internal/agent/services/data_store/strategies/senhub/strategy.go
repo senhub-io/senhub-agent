@@ -281,15 +281,23 @@ func (e *permanentClientError) Error() string {
 
 // isPermanentClientStatus reports whether a 4xx status is a permanent
 // client error for a metrics push. Every 4xx is treated as permanent
-// except 408 (Request Timeout) and 429 (Too Many Requests), which are
-// transient and stay on the retry path. Non-4xx (network errors, 5xx)
-// are never classified here and keep their existing retry behavior.
+// except the ones a resend can plausibly recover from:
+//   - 408 (Request Timeout) and 429 (Too Many Requests): transient by
+//     definition.
+//   - 401 (Unauthorized) and 403 (Forbidden): an intake-side auth blip or a
+//     slow key-rotation propagation clears on its own; dropping the batch would
+//     lose data during a window a retry would ride out. The bounded push buffer
+//     caps the backlog if the key is genuinely bad, so retrying is safe.
+//
+// Non-4xx (network errors, 5xx) are never classified here and keep their
+// existing retry behavior.
 func isPermanentClientStatus(status int) bool {
 	if status < 400 || status >= 500 {
 		return false
 	}
 	switch status {
-	case http.StatusRequestTimeout, http.StatusTooManyRequests:
+	case http.StatusRequestTimeout, http.StatusTooManyRequests,
+		http.StatusUnauthorized, http.StatusForbidden:
 		return false
 	default:
 		return true
