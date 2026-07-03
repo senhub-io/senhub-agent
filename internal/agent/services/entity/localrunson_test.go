@@ -65,3 +65,25 @@ func TestLocalRunsOn_CollapseGuard(t *testing.T) {
 		t.Error("tech id must be allowed on loopback")
 	}
 }
+
+// TestLocalRunsOn_CollapseGuardCrossForm: the loopback address has interchangeable
+// spellings; an id minted from one form while the target is passed in another must
+// still be refused (localhost vs 127.0.0.1 vs ::1 are one equivalence class).
+func TestLocalRunsOn_CollapseGuardCrossForm(t *testing.T) {
+	cases := []struct {
+		name, idValue, serverAddress string
+	}{
+		{"id localhost, target 127.0.0.1", "name:localhost", "127.0.0.1"},
+		{"id 127.0.0.1, target localhost", "mgmt:127.0.0.1", "localhost"},
+		{"id ::1, target 127.0.0.1", "name:node-::1", "127.0.0.1"},
+		{"id localhost, target ::1", "name:localhost", "::1"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			id := map[string]any{"network.device.id": c.idValue}
+			if _, ok := LocalRunsOn("network.device", id, c.serverAddress, "H"); ok {
+				t.Errorf("cross-form loopback id %q with target %q must be refused", c.idValue, c.serverAddress)
+			}
+		})
+	}
+}
