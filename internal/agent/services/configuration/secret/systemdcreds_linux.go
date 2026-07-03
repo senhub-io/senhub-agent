@@ -58,7 +58,11 @@ func (p *systemdCredsProvider) Get(name string) (string, error) {
 	if dir := os.Getenv("CREDENTIALS_DIRECTORY"); dir != "" {
 		data, err := os.ReadFile(filepath.Join(dir, key))
 		if err == nil {
-			return strings.TrimSpace(string(data)), nil
+			// Return the exact bytes systemd mounted — no trimming. Set piped the
+			// value verbatim to `systemd-creds encrypt`, so a value with leading or
+			// trailing whitespace must round-trip unchanged, matching the FileStore
+			// (age/DPAPI) backends. See Provider.Get contract.
+			return string(data), nil
 		}
 		if !os.IsNotExist(err) {
 			return "", fmt.Errorf("reading credential %q: %w", name, err)
@@ -86,7 +90,10 @@ func (p *systemdCredsProvider) Get(name string) (string, error) {
 		}
 		return "", fmt.Errorf("decrypting credential %q: %w", name, err)
 	}
-	return strings.TrimSpace(out.String()), nil
+	// Exact bytes, no trimming — `systemd-creds decrypt` writes the plaintext
+	// verbatim; trimming would corrupt a value that legitimately begins or ends
+	// with whitespace and diverge from the FileStore backends.
+	return out.String(), nil
 }
 
 // Set encrypts value into <configDir>/creds.d/<key>.cred via systemd-creds. The

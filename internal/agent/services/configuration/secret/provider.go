@@ -15,6 +15,10 @@ import (
 type Provider interface {
 	// Get returns the plaintext for name. It returns an error that wraps
 	// ErrNotFound when the name is unknown.
+	//
+	// The returned value is the EXACT bytes that were stored — implementations
+	// must not trim or otherwise transform it, so a secret with leading/trailing
+	// whitespace round-trips unchanged across every backend.
 	Get(name string) (string, error)
 	// Set stores value under name (overwrite). The value is held only for the
 	// duration of the call.
