@@ -83,22 +83,22 @@
       comma-separated k=v list applied as host global_tags. There is no
       cloud backend/token: the agent is offline by default (see header).
     -->
-    <Property Id="LICENSE_KEY" Secure="yes" />
+    <Property Id="LICENSE_KEY" Secure="yes" Hidden="yes" />
     <Property Id="TAGS" Secure="yes" />
     <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
     <Property Id="OTLP_ENDPOINT" Secure="yes" />
 
     <!--
       Keep the license token out of the MSI log. Secure="yes" only lets a
-      public property survive the transition to the deferred/system
-      context — it does NOT redact it. A verbose install (/l*v) otherwise
-      records the LICENSE_KEY property value AND the SeedConfig deferred
+      public property survive the transition to the deferred/system context
+      — it does NOT redact it. A verbose install (/l*v) would otherwise
+      record the LICENSE_KEY property value and the SeedConfig deferred
       custom-action data (the config-init command line embeds the token,
-      see SetProperty below). MsiHiddenProperties is the only mechanism
-      that masks a property value in the log, so list both here: the raw
-      property and the CA-data property that carries the expanded command.
+      see SetProperty below). In WiX v4/v5 the special MsiHiddenProperties
+      property cannot be authored directly (WIX0070); redaction is expressed
+      per element instead — Hidden="yes" on the LICENSE_KEY Property above,
+      and HideTarget="yes" on the SeedConfig CustomAction below.
     -->
-    <Property Id="MsiHiddenProperties" Value="LICENSE_KEY;SeedConfig" />
 
     <!-- ============================================================ -->
     <!-- Existing-install detection.                                  -->
@@ -147,6 +147,7 @@
                   DllEntry="WixQuietExec64"
                   Execute="deferred"
                   Impersonate="no"
+                  HideTarget="yes"
                   Return="ignore" />
 
     <!--
