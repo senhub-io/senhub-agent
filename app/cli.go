@@ -402,6 +402,9 @@ Other Commands:
     update               Check for new versions
     update --list        List all available versions (stable + beta)
     update <version>     Install a specific version
+    config init [opts]    Create the default offline configuration if none
+                          exists (idempotent). Accepts --config-path,
+                          --license <jwt>, --tags k=v,..., --otlp-endpoint
     config check [path]   Validate configuration (covers fragments under
                           probes.d/ and strategies.d/ if present)
     config show [opts]    Print merged + resolved configuration as YAML
@@ -414,6 +417,20 @@ Other Commands:
                           (agent.yaml + probes.d/ + strategies.d/) with
                           a timestamped backup. Idempotent.
     debug-modules-list    List available debug log modules
+
+Secret Store Commands:
+    secret set <name>    Store/replace a secret (hidden prompt, stdin, or
+                         --from-file); referenced from config as ${secret:name}
+    secret get <name>    Print a secret value (deliberate reveal)
+    secret list          List secret names (never values)
+    secret rm <name>     Delete a secret
+    secret migrate       Move inline plaintext secrets from config into the store
+    secret status        Show the active backend and store location
+    key show             Print the configured agent key
+
+Database Helper Commands:
+    db-monitoring init   Generate least-privilege SQL to provision a
+                         monitoring user (--engine mysql|postgresql --user NAME)
 
 Agent Options:
     --config-path PATH                     Path to the agent configuration file.
