@@ -71,7 +71,7 @@
     -->
     <Launch
         Condition="Installed OR MSI_MARKER OR NOT EXISTING_SERVICE OR ADOPT"
-        Message="A SenHub Agent installed outside this installer was detected (the 'senhub-agent' Windows service already exists). Uninstall it first, or re-run this installer with ADOPT=1 to migrate it to MSI management — your configuration under %ProgramData%\SenHub is preserved." />
+        Message="An existing SenHub Agent was found on this machine: the 'senhub-agent' Windows service is already installed, but it was not installed by this package. To continue, choose one option. Option 1 — uninstall the existing agent, then run this installer again. Option 2 — re-run this installer with the ADOPT=1 property (for example: msiexec /i senhub-agent-0.5.0-amd64.msi ADOPT=1) to take it over and manage it from now on through this installer. In both cases your configuration in %ProgramData%\SenHub is preserved." />
 
     <!-- ============================================================ -->
     <!-- Parametric configuration via public MSI properties.          -->
@@ -195,6 +195,15 @@
     <!-- ============================================================ -->
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
     <WixVariable Id="WixUILicenseRtf" Value="packaging/windows/license.rtf" />
+    <!-- SenHub-branded wizard art (mascot + brand accent), replacing the
+         default WiX bitmaps. Dialog = 493x312 (Welcome/Finish background),
+         Banner = 493x58 (interior dialog top). -->
+    <WixVariable Id="WixUIDialogBmp" Value="packaging/windows/dialog.bmp" />
+    <WixVariable Id="WixUIBannerBmp" Value="packaging/windows/banner.bmp" />
+
+    <!-- Add/Remove Programs icon = the SenHub Agent mascot. -->
+    <Icon Id="senhub.ico" SourceFile="packaging/windows/senhub.ico" />
+    <Property Id="ARPPRODUCTICON" Value="senhub.ico" />
 
     <!-- ============================================================ -->
     <!-- Install layout.                                              -->
