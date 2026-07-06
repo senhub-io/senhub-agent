@@ -7,18 +7,18 @@ The Memory probe monitors system memory and swap usage across all major operatin
 ### Basic Configuration
 
 ```yaml
-probes:
-  - name: memory
-    params:
-      interval: 30  # Collection interval in seconds (default: 30)
+# probes.d/10-memory.yaml — each file under probes.d/ is a YAML array of probes
+- name: memory
+  params:
+    interval: 30  # Collection interval in seconds (default: 30)
 ```
 
 ### Minimal Configuration
 
 ```yaml
-probes:
-  - name: memory
-    params: {}
+# probes.d/10-memory.yaml
+- name: memory
+  params: {}
 ```
 
 The Memory probe requires no mandatory parameters and works out-of-the-box with default settings.
@@ -82,18 +82,18 @@ For a complete metrics reference, see [METRICS.md](./METRICS.md).
 
 **High-frequency monitoring (every 10 seconds):**
 ```yaml
-probes:
-  - name: memory
-    params:
-      interval: 10
+# probes.d/10-memory.yaml
+- name: memory
+  params:
+    interval: 10
 ```
 
 **Standard monitoring (every minute):**
 ```yaml
-probes:
-  - name: memory
-    params:
-      interval: 60
+# probes.d/10-memory.yaml
+- name: memory
+  params:
+    interval: 60
 ```
 
 ## Monitoring Tool Integration
@@ -207,8 +207,8 @@ Monitor memory health:
 
 **Verify probe is enabled:**
 ```bash
-# Check configuration
-cat agent-config.yaml | grep -A5 "name: memory"
+# Check configuration (multi-file layout)
+grep -rA5 "name: memory" /etc/senhub/probes.d/
 ```
 
 ### Windows: PDH Counter Errors
@@ -306,14 +306,14 @@ Typical memory footprint per collection:
 Monitor memory with different collection frequencies:
 
 ```yaml
-probes:
-  - name: memory_realtime
-    params:
-      interval: 10
+# probes.d/10-memory.yaml
+- name: memory_realtime
+  params:
+    interval: 10
 
-  - name: memory_trending
-    params:
-      interval: 300
+- name: memory_trending
+  params:
+    interval: 300
 ```
 
 **Note:** This will create duplicate metrics. Use unique probe names for different collection intervals.
@@ -323,18 +323,18 @@ probes:
 Correlate memory metrics with other system metrics:
 
 ```yaml
-probes:
-  - name: cpu
-    params:
-      interval: 30
+# probes.d/00-host.yaml
+- name: cpu
+  params:
+    interval: 30
 
-  - name: memory
-    params:
-      interval: 30
+- name: memory
+  params:
+    interval: 30
 
-  - name: logicaldisk
-    params:
-      interval: 60
+- name: logicaldisk
+  params:
+    interval: 60
 ```
 
 This provides comprehensive system monitoring with aligned collection intervals.

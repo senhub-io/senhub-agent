@@ -982,22 +982,24 @@ severity=4 AND (message CONTAINS "high" OR message CONTAINS "peak")
 
 **High-Volume Environments:**
 
+Per-probe tuning (dedicated receiver, TCP for reliability):
+
 ```yaml
-# Use TCP for reliability
-protocol: tcp
-
-# Dedicated syslog receiver
-port: 514
+protocol: tcp        # Use TCP for reliability
+port: 514            # Dedicated syslog receiver
 bind_address: "10.0.0.100"
+```
 
-# Multiple probe instances (load balancing)
-probes:
-  - name: syslog_1
-    type: syslog
-    params: {port: 514, protocol: tcp}
-  - name: syslog_2
-    type: syslog
-    params: {port: 1514, protocol: tcp}
+Multiple probe instances (load balancing):
+
+```yaml
+# probes.d/10-syslog.yaml — each file under probes.d/ is a YAML array of probes
+- name: syslog_1
+  type: syslog
+  params: {port: 514, protocol: tcp}
+- name: syslog_2
+  type: syslog
+  params: {port: 1514, protocol: tcp}
 ```
 
 **Network Optimization:**

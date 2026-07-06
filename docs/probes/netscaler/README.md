@@ -26,36 +26,36 @@ The NetScaler probe collects performance, health, and configuration metrics from
 ### Minimal Configuration
 
 ```yaml
-probes:
-  - name: netscaler-prod
-    type: netscaler
-    params:
-      base_url: "https://netscaler.company.com"
-      username: "monitoring-user"
-      password: "secure-password"
-      interval: 60
+# probes.d/10-netscaler.yaml — each file under probes.d/ is a YAML array of probes
+- name: netscaler-prod
+  type: netscaler
+  params:
+    base_url: "https://netscaler.company.com"
+    username: "monitoring-user"
+    password: ${secret:netscaler-prod.password}   # OS secret store; inline plaintext is auto-sealed on install
+    interval: 60
 ```
 
 ### Recommended Configuration
 
 ```yaml
-probes:
-  - name: netscaler-prod
-    type: netscaler
-    params:
-      base_url: "https://netscaler.company.com"
-      username: "monitoring-user"
-      password: "secure-password"
-      insecure_skip_verify: false  # Validate SSL certificates
-      timeout: 30                   # API request timeout (seconds)
-      interval: 60                  # Collection interval (seconds)
-    custom_tags:
-      - key: "environment"
-        value: "production"
-      - key: "datacenter"
-        value: "dc-paris-01"
-      - key: "team"
-        value: "infrastructure"
+# probes.d/10-netscaler.yaml
+- name: netscaler-prod
+  type: netscaler
+  params:
+    base_url: "https://netscaler.company.com"
+    username: "monitoring-user"
+    password: ${secret:netscaler-prod.password}   # OS secret store; inline plaintext is auto-sealed on install
+    insecure_skip_verify: false  # Validate SSL certificates
+    timeout: 30                   # API request timeout (seconds)
+    interval: 60                  # Collection interval (seconds)
+  custom_tags:
+    - key: "environment"
+      value: "production"
+    - key: "datacenter"
+      value: "dc-paris-01"
+    - key: "team"
+      value: "infrastructure"
 ```
 
 ## Configuration Parameters
@@ -65,7 +65,7 @@ probes:
 | `base_url` | string | Yes | - | NetScaler management URL (primary node IP recommended) |
 | `secondary_url` | string | No | - | Secondary NetScaler URL for HA failover |
 | `username` | string | Yes | - | NITRO API username |
-| `password` | string | Yes | - | NITRO API password |
+| `password` | string | Yes | - | NITRO API password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 | `insecure_skip_verify` | boolean | No | `false` | Skip SSL certificate verification (set `true` when using IPs) |
 | `timeout` | integer | No | `30` | API request timeout in seconds |
 | `interval` | integer | No | `60` | Metric collection interval in seconds |

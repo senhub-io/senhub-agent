@@ -12,11 +12,11 @@ health-check state distribution and leader status.
 ## Quick start
 
 ```yaml
-probes:
-  - name: consul
-    type: consul
-    params:
-      endpoint: http://localhost:8500
+# probes.d/10-consul.yaml — each file under probes.d/ is a YAML array of probes
+- name: consul
+  type: consul
+  params:
+    endpoint: http://localhost:8500
 ```
 
 ## Parameters
@@ -24,7 +24,7 @@ probes:
 | Parameter | Default | Description |
 |---|---|---|
 | `endpoint` | `http://localhost:8500` | Consul HTTP API base URL |
-| `token` | — | Consul ACL token (required if ACLs are enabled) |
+| `token` | — | Consul ACL token (required if ACLs are enabled) — reference via `${secret:consul.token}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
 
 ## Metrics
 

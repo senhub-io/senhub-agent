@@ -7,18 +7,18 @@ The LogicalDisk probe monitors disk and filesystem performance across all major 
 ### Basic Configuration
 
 ```yaml
-probes:
-  - name: logicaldisk
-    params:
-      interval: 30  # Collection interval in seconds (default: 30)
+# probes.d/10-logicaldisk.yaml — each file under probes.d/ is a YAML array of probes
+- name: logicaldisk
+  params:
+    interval: 30  # Collection interval in seconds (default: 30)
 ```
 
 ### Minimal Configuration
 
 ```yaml
-probes:
-  - name: logicaldisk
-    params: {}
+# probes.d/10-logicaldisk.yaml
+- name: logicaldisk
+  params: {}
 ```
 
 The LogicalDisk probe requires no mandatory parameters and works out-of-the-box with default settings.
@@ -79,39 +79,39 @@ For a complete metrics reference, see [METRICS.md](./METRICS.md).
 
 **High-frequency monitoring (every 10 seconds):**
 ```yaml
-probes:
-  - name: logicaldisk
-    params:
-      interval: 10
+# probes.d/10-logicaldisk.yaml
+- name: logicaldisk
+  params:
+    interval: 10
 ```
 
 **Standard monitoring (every minute):**
 ```yaml
-probes:
-  - name: logicaldisk
-    params:
-      interval: 60
+# probes.d/10-logicaldisk.yaml
+- name: logicaldisk
+  params:
+    interval: 60
 ```
 
 **Windows: Monitor specific drives only:**
 ```yaml
-probes:
-  - name: logicaldisk
-    params:
-      interval: 30
-      filters:
-        include: ["C:", "D:", "E:"]
-        exclude: ["HarddiskVolume*", "_Total"]
+# probes.d/10-logicaldisk.yaml
+- name: logicaldisk
+  params:
+    interval: 30
+    filters:
+      include: ["C:", "D:", "E:"]
+      exclude: ["HarddiskVolume*", "_Total"]
 ```
 
 **Windows: Exclude drives matching patterns:**
 ```yaml
-probes:
-  - name: logicaldisk
-    params:
-      interval: 30
-      filters:
-        exclude: ["HarddiskVolume*", "_Total", "X:", "Y:"]
+# probes.d/10-logicaldisk.yaml
+- name: logicaldisk
+  params:
+    interval: 30
+    filters:
+      exclude: ["HarddiskVolume*", "_Total", "X:", "Y:"]
 ```
 
 ## Monitoring Tool Integration
@@ -346,8 +346,8 @@ fs_inodes_used_percent{mount_point="/",device="/dev/disk1s1",fs_type="apfs"} = 0
 
 **Verify probe is enabled:**
 ```bash
-# Check configuration
-cat agent-config.yaml | grep -A5 "name: logicaldisk"
+# Check configuration (multi-file layout)
+grep -rA5 "name: logicaldisk" /etc/senhub/probes.d/
 ```
 
 ### Windows: PDH Counter Errors
@@ -392,12 +392,12 @@ sudo setcap cap_sys_ptrace=eip ./agent
 
 **Solution:**
 ```yaml
-probes:
-  - name: logicaldisk
-    params:
-      filters:
-        include: ["C:", "D:", "E:", "Z:"]  # Explicitly include network drive
-        exclude: ["_Total"]  # Keep minimal exclusions
+# probes.d/10-logicaldisk.yaml
+- name: logicaldisk
+  params:
+    filters:
+      include: ["C:", "D:", "E:", "Z:"]  # Explicitly include network drive
+      exclude: ["_Total"]  # Keep minimal exclusions
 ```
 
 ### Unix/Linux: Filesystems Not Appearing
@@ -485,14 +485,14 @@ Typical memory footprint per collection:
 Monitor with different intervals for capacity vs. I/O:
 
 ```yaml
-probes:
-  - name: logicaldisk_capacity
-    params:
-      interval: 300  # Check capacity every 5 minutes
+# probes.d/10-logicaldisk.yaml
+- name: logicaldisk_capacity
+  params:
+    interval: 300  # Check capacity every 5 minutes
 
-  - name: logicaldisk_io
-    params:
-      interval: 30  # Check I/O every 30 seconds
+- name: logicaldisk_io
+  params:
+    interval: 30  # Check I/O every 30 seconds
 ```
 
 **Note:** This will create duplicate metrics. Use unique probe names for different collection intervals.
@@ -502,18 +502,18 @@ probes:
 Correlate disk metrics with system metrics:
 
 ```yaml
-probes:
-  - name: cpu
-    params:
-      interval: 30
+# probes.d/00-host.yaml
+- name: cpu
+  params:
+    interval: 30
 
-  - name: memory
-    params:
-      interval: 30
+- name: memory
+  params:
+    interval: 30
 
-  - name: logicaldisk
-    params:
-      interval: 30
+- name: logicaldisk
+  params:
+    interval: 30
 ```
 
 This provides comprehensive system monitoring:
@@ -526,24 +526,24 @@ This provides comprehensive system monitoring:
 **Scenario:** Monitor only production data drives
 
 ```yaml
-probes:
-  - name: logicaldisk
-    params:
-      interval: 30
-      filters:
-        include: ["D:", "E:", "F:"]  # Only data drives
-        exclude: ["_Total"]
+# probes.d/10-logicaldisk.yaml
+- name: logicaldisk
+  params:
+    interval: 30
+    filters:
+      include: ["D:", "E:", "F:"]  # Only data drives
+      exclude: ["_Total"]
 ```
 
 **Scenario:** Exclude temporary/cache drives
 
 ```yaml
-probes:
-  - name: logicaldisk
-    params:
-      interval: 30
-      filters:
-        exclude: ["HarddiskVolume*", "_Total", "T:", "X:"]
+# probes.d/10-logicaldisk.yaml
+- name: logicaldisk
+  params:
+    interval: 30
+    filters:
+      exclude: ["HarddiskVolume*", "_Total", "T:", "X:"]
 ```
 
 ### Unix/Linux Filesystem Filtering

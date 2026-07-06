@@ -12,11 +12,11 @@ Requires `mod_status` enabled with the `?auto` format.
 ## Quick start
 
 ```yaml
-probes:
-  - name: apache
-    type: apache
-    params:
-      endpoint: http://localhost/server-status?auto
+# probes.d/10-apache.yaml — each file under probes.d/ is a YAML array of probes
+- name: apache
+  type: apache
+  params:
+    endpoint: http://localhost/server-status?auto
 ```
 
 ## Parameters
@@ -25,7 +25,7 @@ probes:
 |---|---|---|
 | `endpoint` | `http://localhost/server-status?auto` | URL to the mod_status endpoint (must include `?auto`) |
 | `username` | — | Basic-auth username (if the status page is protected) |
-| `password` | — | Basic-auth password |
+| `password` | — | Basic-auth password — reference via `${secret:apache.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
 
 ## Metrics
 

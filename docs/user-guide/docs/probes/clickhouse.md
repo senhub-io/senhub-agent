@@ -12,11 +12,11 @@ key instantaneous gauges, async metrics, and cumulative profile-event counters.
 ## Quick start
 
 ```yaml
-probes:
-  - name: clickhouse
-    type: clickhouse
-    params:
-      endpoint: http://localhost:8123
+# probes.d/10-clickhouse.yaml — each file under probes.d/ is a YAML array of probes
+- name: clickhouse
+  type: clickhouse
+  params:
+    endpoint: http://localhost:8123
 ```
 
 ## Parameters
@@ -25,7 +25,7 @@ probes:
 |---|---|---|
 | `endpoint` | `http://localhost:8123` | ClickHouse HTTP interface base URL |
 | `username` | `default` | ClickHouse user (must have SELECT access to system tables) |
-| `password` | — | User password |
+| `password` | — | User password — reference via `${secret:clickhouse.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
 
 ## Metrics
 

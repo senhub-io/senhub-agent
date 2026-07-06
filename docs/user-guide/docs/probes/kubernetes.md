@@ -14,19 +14,19 @@ restart counts, deployment replica health, and namespace-level rollups.
 **In-cluster** (agent runs as a Pod with a ServiceAccount):
 
 ```yaml
-probes:
-  - name: kubernetes
-    type: kubernetes
+# probes.d/10-kubernetes.yaml — each file under probes.d/ is a YAML array of probes
+- name: kubernetes
+  type: kubernetes
 ```
 
 **Out-of-cluster** (agent runs outside the cluster):
 
 ```yaml
-probes:
-  - name: kubernetes
-    type: kubernetes
-    params:
-      kubeconfig: /home/agent/.kube/config
+# probes.d/10-kubernetes.yaml
+- name: kubernetes
+  type: kubernetes
+  params:
+    kubeconfig: /home/agent/.kube/config
 ```
 
 ## Parameters
